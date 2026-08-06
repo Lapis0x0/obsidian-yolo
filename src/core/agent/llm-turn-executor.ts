@@ -18,6 +18,7 @@ import {
 } from '../../types/reasoning'
 import { ToolCallRequest } from '../../types/tool-call.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
+import { ReasoningPhaseTracker } from '../../utils/chat/reasoningPhaseTracker'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
 import { executeSingleTurn } from '../ai/single-turn'
@@ -114,6 +115,7 @@ export class AgentLlmTurnExecutor {
 
   async run(): Promise<AgentLlmTurnExecutorOutput> {
     const responseStart = Date.now()
+    const reasoningTracker = new ReasoningPhaseTracker(responseStart)
     const model = this.input.model
     const deliveryMode = this.input.requestParams?.deliveryMode ?? 'incremental'
     const executionMode =
@@ -259,6 +261,16 @@ export class AgentLlmTurnExecutor {
         geminiTools: this.input.geminiTools,
         debugTraceId: debugTrace?.id,
         onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
+          if (reasoningDelta) reasoningTracker.observeReasoning()
+          if (contentDelta || toolCalls?.length) {
+            const reasoningDurationMs = reasoningTracker.settle()
+            if (reasoningDurationMs !== undefined) {
+              assistantMessage.metadata = {
+                ...assistantMessage.metadata,
+                reasoningDurationMs,
+              }
+            }
+          }
           if (
             !recordedFirstToken &&
             (Boolean(contentDelta) ||
@@ -333,6 +345,9 @@ export class AgentLlmTurnExecutor {
 
       assistantMessage.metadata = {
         ...assistantMessage.metadata,
+        ...(reasoningTracker.settle() !== undefined
+          ? { reasoningDurationMs: reasoningTracker.durationMs }
+          : {}),
         durationMs: Date.now() - responseStart,
         generationState: isAborted ? 'aborted' : 'error',
         errorMessage,
@@ -357,6 +372,8 @@ export class AgentLlmTurnExecutor {
     ) {
       assistantMessage.reasoning = `${initialReasoning}${turnResult.reasoning}`
     }
+    if (turnResult.reasoning) reasoningTracker.observeReasoning()
+    const reasoningDurationMs = reasoningTracker.settle()
 
     if (turnResult.annotations?.length) {
       const existingAnnotations = assistantMessage.annotations ?? []
@@ -373,6 +390,7 @@ export class AgentLlmTurnExecutor {
     }
     assistantMessage.metadata = {
       ...assistantMessage.metadata,
+      ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
       usage: turnResult.usage ?? assistantMessage.metadata?.usage,
       durationMs: Date.now() - responseStart,
       generationState: this.input.abortSignal?.aborted

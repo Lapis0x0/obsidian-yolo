@@ -767,6 +767,9 @@ function AssistantToolMessageGroupItem({
                       reasoning={message.reasoning ?? ''}
                       hasAnswerContent={message.content.trim().length > 0}
                       generationState={reasoningGenerationState}
+                      reasoningDurationMs={
+                        message.metadata?.reasoningDurationMs
+                      }
                     />
                   )}
                   <AssistantMessageContent
@@ -779,6 +782,7 @@ function AssistantToolMessageGroupItem({
                     isApplying={isApplying}
                     activeApplyRequestKey={activeApplyRequestKey}
                     generationState={message.metadata?.generationState}
+                    reasoningDurationMs={message.metadata?.reasoningDurationMs}
                     toolCallRequests={message.toolCallRequests}
                     showToolCallPreview={shouldShowAssistantToolPreview}
                     onQuote={onQuoteAssistantSelection}

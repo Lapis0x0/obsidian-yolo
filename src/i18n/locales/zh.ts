@@ -1782,6 +1782,7 @@ export const zh: TranslationKeys = {
     noAssistantContent: '没有可插入的助手内容',
     regenerate: '重新生成',
     reasoning: '推理过程',
+    reasonedFor: '思考了 {{seconds}} 秒',
     annotations: '注释',
     vaultSources: '笔记引用（{count}）',
     pdfReferenceNoPreview: '（PDF：点击标题打开对应页）',

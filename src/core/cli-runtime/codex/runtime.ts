@@ -4,6 +4,7 @@ import {
   type ToolCallRequest,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
+import { ReasoningPhaseTracker } from '../../../utils/chat/reasoningPhaseTracker'
 import {
   mapCodexTokenUsageUpdated,
   mapCodexTurnResponseUsage,
@@ -537,6 +538,7 @@ export class CodexCliRuntime implements CliRuntime {
     this.streamingAssistantText.clear()
     this.streamingReasoningSummaryParts.clear()
     this.streamingReasoningContentParts.clear()
+    this.reasoningTrackers.clear()
 
     await this.sendTurn({
       ...input,
@@ -792,6 +794,10 @@ export class CodexCliRuntime implements CliRuntime {
     ) {
       const itemId =
         typeof params.itemId === 'string' ? params.itemId : 'reasoning'
+      const tracker =
+        this.reasoningTrackers.get(itemId) ?? new ReasoningPhaseTracker()
+      tracker.observeReasoning()
+      this.reasoningTrackers.set(itemId, tracker)
       const delta = typeof params.delta === 'string' ? params.delta : ''
       const isSummary = method === 'item/reasoning/summaryTextDelta'
       const indexValue = isSummary ? params.summaryIndex : params.contentIndex
@@ -833,12 +839,28 @@ export class CodexCliRuntime implements CliRuntime {
         })
         return
       }
+      if (method === 'item/started' && item.type === 'reasoning') {
+        this.reasoningTrackers.set(item.id, new ReasoningPhaseTracker())
+      }
       if (method === 'item/started' && !shouldEmitCodexItemOnStarted(item)) {
         return
       }
       const turnId =
         typeof params.turnId === 'string' ? params.turnId : undefined
+      if (item.type === 'reasoning' && method === 'item/completed') {
+        this.reasoningTrackers.get(item.id)?.observeReasoning()
+      }
+      const reasoningDurationMs =
+        item.type === 'reasoning' && method === 'item/completed'
+          ? this.reasoningTrackers.get(item.id)?.settle()
+          : undefined
+      if (item.type === 'reasoning' && method === 'item/completed') {
+        this.reasoningTrackers.delete(item.id)
+      }
       for (const message of mapCodexItem(item, this.options.cwd, turnId)) {
+        if (reasoningDurationMs !== undefined && message.role === 'assistant') {
+          message.metadata = { ...message.metadata, reasoningDurationMs }
+        }
         this.emit({ type: 'message_upsert', message })
       }
       return
@@ -883,6 +905,7 @@ export class CodexCliRuntime implements CliRuntime {
       this.activeTurnStartedAt = null
       this.streamingReasoningSummaryParts.clear()
       this.streamingReasoningContentParts.clear()
+      this.reasoningTrackers.clear()
       this.streamingAssistantText.clear()
       return
     }
@@ -902,6 +925,7 @@ export class CodexCliRuntime implements CliRuntime {
   private readonly streamingAssistantText = new Map<string, string>()
   private readonly streamingReasoningSummaryParts = new Map<string, string[]>()
   private readonly streamingReasoningContentParts = new Map<string, string[]>()
+  private readonly reasoningTrackers = new Map<string, ReasoningPhaseTracker>()
 
   private handleSubagentNotification(
     threadId: string,

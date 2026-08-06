@@ -101,6 +101,7 @@ export type ChatAssistantMessage = {
     usage?: ResponseUsage
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
+    reasoningDurationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
     llmDebugTraceId?: string
@@ -251,6 +252,7 @@ export type SerializedChatAssistantMessage = {
     usage?: ResponseUsage
     model?: ChatModel // TODO: migrate legacy data to new model type
     durationMs?: number
+    reasoningDurationMs?: number
     generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
     errorMessage?: string
     llmDebugTraceId?: string

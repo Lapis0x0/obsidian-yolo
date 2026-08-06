@@ -18,11 +18,30 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import AssistantMessageReasoning, {
+  formatReasoningDurationSeconds,
   getReasoningPreviewHoldOffset,
   getReasoningRollText,
 } from './AssistantMessageReasoning'
 
 describe('AssistantMessageReasoning', () => {
+  it('rounds a completed reasoning duration to user-facing seconds', () => {
+    expect(formatReasoningDurationSeconds(400)).toBe(1)
+    expect(formatReasoningDurationSeconds(70_600)).toBe(71)
+  })
+
+  it('shows the completed reasoning duration', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMessageReasoning
+        reasoning="已有思考内容"
+        hasAnswerContent
+        generationState="completed"
+        reasoningDurationMs={70_600}
+      />,
+    )
+
+    expect(html).toContain('Thought for 71s')
+  })
+
   it('keeps reasoning continuous instead of splitting it into sentences', () => {
     expect(
       getReasoningRollText('先分析用户目标。现在检查项目中的现有实现'),

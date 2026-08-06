@@ -19,6 +19,7 @@ import {
   ToolCallResponseStatus,
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
+import { ReasoningPhaseTracker } from '../../../utils/chat/reasoningPhaseTracker'
 import {
   mapClaudeGetContextUsage,
   mapClaudeResultContextUsage,
@@ -265,6 +266,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   private yoloEnabled: boolean
   private activeAssistant?: ChatAssistantMessage
   private activeAssistantKey?: string
+  private reasoningTracker?: ReasoningPhaseTracker
   private activeUserMessageId?: string
   private disposed = false
   private resetting = false
@@ -501,6 +503,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined
+    this.reasoningTracker = undefined
     this.streamedToolInputs.clear()
     this.cancelRequested = false
     this.activeUserMessageId = undefined
@@ -582,6 +585,7 @@ export class ClaudeCliRuntime implements CliRuntime {
 
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined
+    this.reasoningTracker = undefined
     this.streamedToolInputs.clear()
     this.cancelRequested = false
     const userMessageId = input.userMessageId ?? uuidv4()
@@ -1065,6 +1069,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       ) {
         this.appendAssistantReasoning(event.content_block.thinking)
       } else if (event.content_block.type === 'tool_use') {
+        this.settleActiveReasoning()
         const toolUse = {
           id: event.content_block.id,
           name: event.content_block.name,
@@ -1112,6 +1117,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     )
     const finalReasoning = extractThinkingContent(nativeMessage.content)
     if (finalReasoning) {
+      this.reasoningTracker?.observeReasoning()
       assistant.reasoning = reconcileFinalText(
         assistant.reasoning ?? '',
         finalReasoning,
@@ -1130,6 +1136,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       })
       this.emitTool(toolUse.id)
     }
+    this.settleActiveReasoning()
     assistant.metadata = {
       ...assistant.metadata,
       generationState: 'completed',
@@ -1321,6 +1328,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   private ensureActiveAssistant(key: string, id: string): ChatAssistantMessage {
     if (!this.activeAssistant || this.activeAssistantKey !== key) {
       if (this.activeAssistant) {
+        this.settleActiveReasoning()
         this.activeAssistant.metadata = {
           ...this.activeAssistant.metadata,
           generationState: 'completed',
@@ -1328,6 +1336,7 @@ export class ClaudeCliRuntime implements CliRuntime {
         this.emitAssistant()
       }
       this.activeAssistantKey = key
+      this.reasoningTracker = new ReasoningPhaseTracker()
       this.activeAssistant = {
         role: 'assistant',
         id,
@@ -1344,6 +1353,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     const assistant =
       this.activeAssistant ??
       this.ensureActiveAssistant(id, `claude-assistant-${id}`)
+    this.settleActiveReasoning()
     assistant.content += text
     this.emitAssistant()
   }
@@ -1354,6 +1364,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     const assistant =
       this.activeAssistant ??
       this.ensureActiveAssistant(id, `claude-assistant-${id}`)
+    this.reasoningTracker?.observeReasoning()
     assistant.reasoning = (assistant.reasoning ?? '') + reasoning
     this.emitAssistant()
   }
@@ -1464,11 +1475,23 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   private markActiveAssistant(generationState: 'completed' | 'aborted'): void {
     if (!this.activeAssistant) return
+    this.settleActiveReasoning()
     this.activeAssistant.metadata = {
       ...this.activeAssistant.metadata,
       generationState,
     }
     this.emitAssistant()
+  }
+
+  private settleActiveReasoning(): number | undefined {
+    const reasoningDurationMs = this.reasoningTracker?.settle()
+    if (reasoningDurationMs !== undefined && this.activeAssistant) {
+      this.activeAssistant.metadata = {
+        ...this.activeAssistant.metadata,
+        reasoningDurationMs,
+      }
+    }
+    return reasoningDurationMs
   }
 
   private emit(event: CliRuntimeEvent): void {
@@ -1528,6 +1551,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.reasoningEffort = null
     this.activeAssistant = undefined
     this.activeAssistantKey = undefined
+    this.reasoningTracker = undefined
     this.activeUserMessageId = undefined
     this.tools.clear()
     this.streamedToolInputs.clear()

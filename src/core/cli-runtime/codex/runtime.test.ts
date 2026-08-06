@@ -832,6 +832,47 @@ describe('CodexCliRuntime', () => {
     ])
   })
 
+  it('records the duration of a completed reasoning item', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const durations: number[] = []
+    runtime.subscribe((event) => {
+      if (
+        event.type === 'message_upsert' &&
+        event.message.role === 'assistant' &&
+        event.message.metadata?.reasoningDurationMs !== undefined
+      ) {
+        durations.push(event.message.metadata.reasoningDurationMs)
+      }
+    })
+    await runtime.ensureReady({})
+    const now = jest.spyOn(Date, 'now').mockReturnValue(1_000)
+    const item = {
+      type: 'reasoning' as const,
+      id: 'reasoning-1',
+      summary: ['Public summary'],
+      content: [],
+    }
+
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/started',
+      params: { item },
+    })
+    now.mockReturnValue(3_500)
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'item/completed',
+      params: { item },
+    })
+    now.mockRestore()
+
+    expect(durations).toEqual([2_500])
+  })
+
   it('does not publish empty agent or reasoning shells on item/started', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({

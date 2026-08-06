@@ -1618,6 +1618,7 @@ export type TranslationKeys = {
     noAssistantContent?: string
     regenerate: string
     reasoning: string
+    reasonedFor?: string
     annotations: string
     vaultSources?: string
     assistantQuote?: {

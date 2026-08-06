@@ -1887,6 +1887,7 @@ export const en: TranslationKeys = {
     noAssistantContent: 'No assistant content to insert',
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
+    reasonedFor: 'Thought for {{seconds}}s',
     annotations: 'Annotations',
     vaultSources: 'Vault sources ({count})',
     pdfReferenceNoPreview: '(PDF: click the title to open the page)',

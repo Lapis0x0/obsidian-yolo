@@ -10531,10 +10531,14 @@ button.yolo-chat-quick-access-picker-row > svg {
 
 .yolo-chat-container--workspace-wide-header
   > .yolo-chat-header--workspace
-  .yolo-chat-header-left,
+  .yolo-chat-header-right {
+  pointer-events: auto;
+}
+
 .yolo-chat-container--workspace-wide-header
   > .yolo-chat-header--workspace
-  .yolo-chat-header-right {
+  .yolo-chat-header-left
+  > * {
   pointer-events: auto;
 }
 

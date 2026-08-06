@@ -36,6 +36,7 @@ export default function AssistantMessageContent({
   isApplying,
   activeApplyRequestKey,
   generationState,
+  reasoningDurationMs,
   toolCallRequests,
   showToolCallPreview = false,
   messageId,
@@ -56,6 +57,7 @@ export default function AssistantMessageContent({
   isApplying: boolean
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+  reasoningDurationMs?: number
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
   showToolCallPreview?: boolean
   messageId: string
@@ -95,6 +97,7 @@ export default function AssistantMessageContent({
       isApplying={isApplying}
       activeApplyRequestKey={activeApplyRequestKey}
       generationState={generationState}
+      reasoningDurationMs={reasoningDurationMs}
       toolCallRequests={toolCallRequests}
       showToolCallPreview={showToolCallPreview}
       messageId={messageId}
@@ -115,6 +118,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   isApplying,
   activeApplyRequestKey,
   generationState,
+  reasoningDurationMs,
   toolCallRequests,
   showToolCallPreview,
   messageId,
@@ -135,6 +139,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   isApplying: boolean
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+  reasoningDurationMs?: number
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
   showToolCallPreview: boolean
   messageId: string
@@ -203,6 +208,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             reasoning={block.content}
             hasAnswerContent={hasAnswerContent}
             generationState={generationState}
+            reasoningDurationMs={reasoningDurationMs}
           />
         ) : block.startLine && block.endLine && block.filename ? (
           <MarkdownReferenceBlock

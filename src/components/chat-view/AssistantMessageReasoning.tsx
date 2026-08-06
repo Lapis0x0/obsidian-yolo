@@ -48,6 +48,9 @@ export const getReasoningPreviewHoldOffset = (
 ): number =>
   lineHeight > 0 && contentHeight > lineHeight + 0.5 ? lineHeight : 0
 
+export const formatReasoningDurationSeconds = (durationMs: number): number =>
+  Math.max(1, Math.round(durationMs / 1000))
+
 const useThrottledReasoningRollText = (value: string, enabled: boolean) => {
   const [displayed, setDisplayed] = useState(value)
   const latestRef = useRef(value)
@@ -102,11 +105,13 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoning,
   hasAnswerContent,
   generationState,
+  reasoningDurationMs,
   MarkdownComponent,
 }: {
   reasoning: string
   hasAnswerContent: boolean
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+  reasoningDurationMs?: number
   MarkdownComponent?: React.ComponentType<{
     content: string
     scale?: 'xs' | 'sm' | 'base'
@@ -144,8 +149,14 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     if (stage === 'thinking') {
       return t('quickAsk.statusThinking', 'Thinking...')
     }
+    if (reasoningDurationMs !== undefined) {
+      return t('chat.reasonedFor', 'Thought for {{seconds}}s').replace(
+        '{{seconds}}',
+        String(formatReasoningDurationSeconds(reasoningDurationMs)),
+      )
+    }
     return t('chat.reasoning', 'Reasoning')
-  }, [stage, t])
+  }, [reasoningDurationMs, stage, t])
 
   const isToggleable = hasReasoningText
   const showBody = hasReasoningText && isExpanded
