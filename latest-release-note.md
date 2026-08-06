@@ -1,25 +1,31 @@
-## 1.6.4.4 Chat, Skills & Reliability Improvements ✨
+## 1.6.4.5 Web Search, Quoting & Chat Refinements ✨
 
-- Improved error messages for failed model requests, making provider and configuration issues easier to understand.
-- Skills are no longer forcibly moved or renamed into directory packages during startup or import. You can now use Markdown skills under their original filenames, or import complete Claude Code and Codex-style skill packages without changing their structure. (#543)
-- Fixed CLI conversations not scrolling to the new turn when sending a message while away from the bottom of the page.
-- Added a chat input shortcut preference: you can now use Enter for a new line and Cmd/Ctrl + Enter to send.
-- Added multi-selection quotes to regular Chat and CLI responses, with support for adding, editing, and removing annotations on individual excerpts.
-- Fixed the mobile keyboard unexpectedly closing when returning to a note and selecting text after opening sidebar chat.
-- Refined the visual design of scroll previews for collapsed reasoning sections.
-- Improved the layout of the multi-turn message navigation indicator across standalone and sidebar chat views.
-- Fixed Smart Space opening unexpectedly for abbreviations containing a slash, such as “w/ ”. “/ + Space” now triggers only at the start of a line or after whitespace. (#541, #542)
+- Added Exa as a web search provider.
+- Agent and CLI conversations now share one presentation layer, so both modes render turns, tools and errors consistently. (#550)
+- CLI conversations now show up in the process monitor at the bottom right, making background runs visible and controllable.
+- You can now click the Agent/CLI mode area to switch conversation modes directly.
+- Reworked quoting on assistant replies: the quote button appears only once a selection is complete, so it no longer interrupts continuous selection. Plain quotes are kept after the annotation box is closed, and you can right-click a quote marker to remove it.
+- Reasoning sections now report how long the model thought once thinking ends.
+- Failed requests are now recognised and classified more precisely, so provider and configuration problems are easier to act on.
+- Tab completion can now replace the text matched by its trigger. (#552)
+- Synced the latest OpenRouter model capability data.
+- Fixed the first user message bubble not being clickable for editing.
+- Fixed Codex CLI auto-generated conversation titles not syncing back to the native session.
+- Fixed history panel entries jittering while several conversations were running; deleting a history entry now asks for confirmation.
 
 ---
 
-## 1.6.4.4 聊天、Skills 与可靠性改进 ✨
+## 1.6.4.5 联网搜索、引用与聊天体验改进 ✨
 
-- 改进模型请求失败时的错误提示，让供应商与配置问题更容易理解和排查。
-- Skills 不再在启动或导入时被强制移动、重命名为目录包。现在既可直接使用保留原文件名的 Markdown 技能，也可原样导入 Claude Code、Codex 风格的完整技能包。（#543）
-- 修复 CLI 对话未处于页面底部时，发送消息不会自动滚动到新回合的问题。
-- 新增聊天输入快捷键偏好：现在可以选择使用 Enter 换行，并通过 Cmd/Ctrl + Enter 发送消息。
-- 为普通 Chat 与 CLI 回复增加多选引用能力，支持为不同片段添加、编辑和删除批注。
-- 修复手机端打开侧栏聊天后，返回笔记选择文本会意外收起软键盘的问题。
-- 优化折叠态思考过程滚动预览的样式设计。
-- 优化多轮对话消息导航指示器在独立窗口与侧边栏中的布局样式。
-- 修复输入 “w/ ” 等含斜杠缩写时误唤出 Smart Space 的问题。“/ + 空格”现在仅在行首或空白符后触发。（#541、#542）
+- 新增 Exa 联网搜索 Provider。
+- Agent 与 CLI 对话统一到同一套呈现层，两种模式下的回合、工具调用与报错展示保持一致。（#550）
+- CLI 对话接入右下角的进程监控，后台运行的会话可见、可控。
+- 支持点击 Agent/CLI 模式区域，快速切换对话模式。
+- 优化助手回答的文本引用操作：引用按钮仅在完成选择后出现，避免干扰连续选取；纯引用在关闭批注框后会保留，并支持右键批注浮标快速删除。
+- 思考结束后会显示本轮思考耗时。
+- 优化请求失败的识别与分类机制，供应商与配置问题更容易定位和处理。
+- Tab 补全支持替换触发器匹配的文本。（#552）
+- 同步最新的 OpenRouter 模型能力信息。
+- 修复首条用户消息气泡无法点击编辑的问题。
+- 修复 Codex CLI 对话自动命名无法同步到原生会话的问题。
+- 修复多个对话同时运行时历史面板条目抖动的问题；删除历史记录现在需要二次确认。
