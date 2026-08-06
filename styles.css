@@ -11896,6 +11896,7 @@ button.yolo-assistant-annotation-marker.is-active {
     color-mix(in srgb, var(--background-modifier-box-shadow) 16%, transparent);
   backdrop-filter: blur(8px);
   z-index: 8;
+  pointer-events: none;
   opacity: 0;
   transform: translateY(-2px) scale(0.98);
   transition:
@@ -11907,6 +11908,7 @@ button.yolo-assistant-annotation-marker.is-active {
 
 .yolo-assistant-message-selectable
   > button.yolo-assistant-selection-quote-button.visible {
+  pointer-events: auto;
   opacity: 1;
   transform: translateY(0) scale(1);
 }

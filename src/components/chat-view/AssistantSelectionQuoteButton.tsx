@@ -61,7 +61,6 @@ type LocalRect = {
   height: number
 }
 
-const SELECTION_STABILIZE_DELAY = 80
 const SELECTOR_CONTEXT_LENGTH = 24
 const selectionListeners = new Set<() => void>()
 const viewportListeners = new Set<() => void>()
@@ -226,8 +225,10 @@ export default function AssistantSelectionQuoteButton({
   const buttonRef = useRef<HTMLButtonElement>(null)
   const editorRef = useRef<HTMLInputElement>(null)
   const editorContainerRef = useRef<HTMLDivElement>(null)
-  const preserveNewQuoteOnBlurRef = useRef(false)
-  const debounceTimerRef = useRef<number | null>(null)
+  const finalizeSelectionFrameRef = useRef<number | null>(null)
+  const isSelectingRef = useRef(false)
+  const activePointerIdRef = useRef<number | null>(null)
+  const isKeyboardSelectingRef = useRef(false)
   const selectionOverlayRef = useRef<SelectionOverlay | null>(null)
   const processSelectionRef = useRef<() => void>(() => {})
   const measureRef = useRef<() => void>(() => {})
@@ -263,6 +264,7 @@ export default function AssistantSelectionQuoteButton({
   )
 
   const hideSelectionAction = useCallback(() => {
+    selectionOverlayRef.current = null
     setIsSelectionActionVisible(false)
     setSelectionOverlay(null)
   }, [])
@@ -392,15 +394,132 @@ export default function AssistantSelectionQuoteButton({
   }, [measureAnnotations, processSelection])
 
   useEffect(() => {
-    const handleSelectionChange = () => {
-      if (debounceTimerRef.current !== null) {
-        window.clearTimeout(debounceTimerRef.current)
-      }
-      setIsSelectionActionVisible(false)
-      debounceTimerRef.current = window.setTimeout(() => {
-        debounceTimerRef.current = null
+    const doc = containerRef.current?.ownerDocument ?? document
+    const win = doc.defaultView ?? window
+
+    const cancelFinalizeSelection = () => {
+      if (finalizeSelectionFrameRef.current === null) return
+      win.cancelAnimationFrame(finalizeSelectionFrameRef.current)
+      finalizeSelectionFrameRef.current = null
+    }
+
+    const beginSelection = () => {
+      cancelFinalizeSelection()
+      isSelectingRef.current = true
+      hideSelectionAction()
+    }
+
+    const finalizeSelection = () => {
+      cancelFinalizeSelection()
+      finalizeSelectionFrameRef.current = win.requestAnimationFrame(() => {
+        finalizeSelectionFrameRef.current = null
         processSelectionRef.current()
-      }, SELECTION_STABILIZE_DELAY)
+      })
+    }
+
+    const handleSelectionChange = () => {
+      if (isSelectingRef.current) {
+        hideSelectionAction()
+      }
+    }
+
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target
+      const NodeCtor = win.Node
+      if (!(target instanceof NodeCtor)) return
+      if (!contentRef.current?.contains(target)) {
+        if (!buttonRef.current?.contains(target)) hideSelectionAction()
+        return
+      }
+      activePointerIdRef.current = event.pointerId
+      beginSelection()
+    }
+
+    const handlePointerUp = (event: PointerEvent) => {
+      if (
+        !isSelectingRef.current ||
+        (activePointerIdRef.current !== null &&
+          activePointerIdRef.current !== event.pointerId)
+      ) {
+        return
+      }
+      activePointerIdRef.current = null
+      isSelectingRef.current = false
+      finalizeSelection()
+    }
+
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (
+        activePointerIdRef.current !== null &&
+        activePointerIdRef.current !== event.pointerId
+      ) {
+        return
+      }
+      activePointerIdRef.current = null
+      isSelectingRef.current = false
+      cancelFinalizeSelection()
+      hideSelectionAction()
+    }
+
+    const cancelSelection = () => {
+      activePointerIdRef.current = null
+      isKeyboardSelectingRef.current = false
+      isSelectingRef.current = false
+      cancelFinalizeSelection()
+      hideSelectionAction()
+    }
+
+    const handleTouchEnd = () => {
+      if (!isSelectingRef.current) return
+      activePointerIdRef.current = null
+      isSelectingRef.current = false
+      finalizeSelection()
+    }
+
+    const handleSelectStart = (event: Event) => {
+      const target = event.target
+      const NodeCtor = win.Node
+      if (target instanceof NodeCtor && contentRef.current?.contains(target)) {
+        beginSelection()
+      }
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (
+        !event.shiftKey ||
+        ![
+          'ArrowLeft',
+          'ArrowRight',
+          'ArrowUp',
+          'ArrowDown',
+          'Home',
+          'End',
+          'PageUp',
+          'PageDown',
+        ].includes(event.key)
+      ) {
+        return
+      }
+
+      const selection = win.getSelection()
+      const content = contentRef.current
+      if (
+        !content ||
+        !selection?.anchorNode ||
+        !content.contains(selection.anchorNode)
+      ) {
+        return
+      }
+
+      isKeyboardSelectingRef.current = true
+      beginSelection()
+    }
+
+    const handleKeyUp = (event: KeyboardEvent) => {
+      if (event.key !== 'Shift' || !isKeyboardSelectingRef.current) return
+      isKeyboardSelectingRef.current = false
+      isSelectingRef.current = false
+      finalizeSelection()
     }
 
     const handleViewportChange = () => {
@@ -408,20 +527,35 @@ export default function AssistantSelectionQuoteButton({
       measureRef.current()
     }
 
-    const doc = containerRef.current?.ownerDocument ?? document
     selectionListeners.add(handleSelectionChange)
     viewportListeners.add(handleViewportChange)
     acquireDocumentListeners(doc)
+    doc.addEventListener('pointerdown', handlePointerDown, true)
+    doc.addEventListener('pointerup', handlePointerUp, true)
+    doc.addEventListener('pointercancel', handlePointerCancel, true)
+    doc.addEventListener('touchend', handleTouchEnd, true)
+    doc.addEventListener('touchcancel', cancelSelection, true)
+    doc.addEventListener('selectstart', handleSelectStart, true)
+    doc.addEventListener('keydown', handleKeyDown, true)
+    doc.addEventListener('keyup', handleKeyUp, true)
+    win.addEventListener('blur', cancelSelection)
 
     return () => {
-      if (debounceTimerRef.current !== null) {
-        window.clearTimeout(debounceTimerRef.current)
-      }
+      cancelFinalizeSelection()
       selectionListeners.delete(handleSelectionChange)
       viewportListeners.delete(handleViewportChange)
       releaseDocumentListeners(doc)
+      doc.removeEventListener('pointerdown', handlePointerDown, true)
+      doc.removeEventListener('pointerup', handlePointerUp, true)
+      doc.removeEventListener('pointercancel', handlePointerCancel, true)
+      doc.removeEventListener('touchend', handleTouchEnd, true)
+      doc.removeEventListener('touchcancel', cancelSelection, true)
+      doc.removeEventListener('selectstart', handleSelectStart, true)
+      doc.removeEventListener('keydown', handleKeyDown, true)
+      doc.removeEventListener('keyup', handleKeyUp, true)
+      win.removeEventListener('blur', cancelSelection)
     }
-  }, [])
+  }, [hideSelectionAction])
 
   useEffect(() => {
     if (disabled) hideSelectionAction()
@@ -464,7 +598,6 @@ export default function AssistantSelectionQuoteButton({
     const editorWidth = draft.isNew ? 300 : 320
     const boundaryLeft = boundaryRect.left - containerRect.left + 8
     const boundaryRight = boundaryRect.right - containerRect.left - 8
-    preserveNewQuoteOnBlurRef.current = false
     setActiveDraft(draft)
     setEditorPosition({
       left: Math.min(
@@ -555,13 +688,8 @@ export default function AssistantSelectionQuoteButton({
 
   const dismissEditor = useCallback(() => {
     if (!activeDraft) return
-    const shouldPreserve = preserveNewQuoteOnBlurRef.current
-    preserveNewQuoteOnBlurRef.current = false
-    if (activeDraft.isNew && !shouldPreserve && !activeDraft.comment?.trim()) {
-      onDeleteQuote?.(activeDraft.id)
-    }
     handleSave()
-  }, [activeDraft, handleSave, onDeleteQuote])
+  }, [activeDraft, handleSave])
 
   const handleEditorBlur = useCallback(
     (event: ReactFocusEvent<HTMLInputElement>) => {
@@ -594,11 +722,18 @@ export default function AssistantSelectionQuoteButton({
     return () => doc.removeEventListener('pointerdown', handlePointerDown, true)
   }, [activeDraft, dismissEditor])
 
+  const handleDeleteQuote = useCallback(
+    (id: string) => {
+      onDeleteQuote?.(id)
+      if (activeDraft?.id === id) handleSave()
+    },
+    [activeDraft?.id, handleSave, onDeleteQuote],
+  )
+
   const handleDelete = useCallback(() => {
     if (!activeDraft) return
-    onDeleteQuote?.(activeDraft.id)
-    handleSave()
-  }, [activeDraft, handleSave, onDeleteQuote])
+    handleDeleteQuote(activeDraft.id)
+  }, [activeDraft, handleDeleteQuote])
 
   const buttonLabel = useMemo(() => t('chat.assistantQuote.add', '引用'), [t])
   const commentPlaceholder = t(
@@ -650,6 +785,11 @@ export default function AssistantSelectionQuoteButton({
             aria-labelledby={accessibleLabelId}
             onMouseDown={handleMouseDown}
             onClick={() => handleOpenQuote(quote)}
+            onContextMenu={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              handleDeleteQuote(quote.id)
+            }}
           >
             <MessageCircle
               className="yolo-assistant-annotation-marker-shape"
@@ -716,7 +856,6 @@ export default function AssistantSelectionQuoteButton({
             onKeyDown={(event) => {
               if (event.key === 'Enter') {
                 event.preventDefault()
-                preserveNewQuoteOnBlurRef.current = true
                 handleSave()
               } else if (event.key === 'Escape') {
                 event.preventDefault()
