@@ -189,6 +189,12 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
             setIsModeMenuOpen(false)
           }}
           onValueClick={() => {
+            if (activeView !== 'chat') {
+              onChangeView('chat')
+              clearHoverCloseTimeout()
+              setIsModeMenuOpen(false)
+              return
+            }
             const nextSurface = activeChatSurface === 'chat' ? 'cli' : 'chat'
             onChangeChatSurface(nextSurface)
             onChangeView('chat')

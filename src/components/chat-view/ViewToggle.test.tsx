@@ -96,6 +96,26 @@ describe('ViewToggle chat surface hierarchy', () => {
     expect(onChangeView).toHaveBeenCalledWith('chat')
   })
 
+  it('only enters Agent without changing runtime when clicked from composer', () => {
+    const onChangeChatSurface = jest.fn()
+    const onChangeView = jest.fn()
+
+    renderToStaticMarkup(
+      <ViewToggle
+        activeView="composer"
+        onChangeView={onChangeView}
+        activeChatSurface="chat"
+        onChangeChatSurface={onChangeChatSurface}
+        showCliMode
+      />,
+    )
+
+    mockRollerProps?.onValueClick()
+
+    expect(onChangeChatSurface).not.toHaveBeenCalled()
+    expect(onChangeView).toHaveBeenCalledWith('chat')
+  })
+
   it('keeps the caret activation separate from the shortcut switch', () => {
     const onChangeChatSurface = jest.fn()
     const onChangeView = jest.fn()
