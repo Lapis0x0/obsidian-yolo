@@ -18418,22 +18418,28 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   transform: translateX(0) scale(1);
 }
 
+/*
+ * 入场错峰只属于 opacity 与 transform。延迟列表按 transition-property 的顺序
+ * （opacity, transform, color, background-color）对位，否则它会一并推迟状态色，
+ * 让点击后的反馈凭空多出几十毫秒死区。
+ */
+
 .yolo-chat-list-inline-actions.is-open
   .yolo-chat-list-inline-actions-inner
   > .yolo-chat-list-dropdown-item-icon:nth-child(1) {
-  transition-delay: 30ms;
+  transition-delay: 30ms, 30ms, 0s, 0s;
 }
 
 .yolo-chat-list-inline-actions.is-open
   .yolo-chat-list-inline-actions-inner
   > .yolo-chat-list-dropdown-item-icon:nth-child(2) {
-  transition-delay: 55ms;
+  transition-delay: 55ms, 55ms, 0s, 0s;
 }
 
 .yolo-chat-list-inline-actions.is-open
   .yolo-chat-list-inline-actions-inner
   > .yolo-chat-list-dropdown-item-icon:nth-child(3) {
-  transition-delay: 80ms;
+  transition-delay: 80ms, 80ms, 0s, 0s;
 }
 
 .yolo-chat-list-dropdown-item-actions.is-more-open
@@ -18460,6 +18466,29 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 
 .yolo-chat-list-more-button.is-open svg {
   transform: rotate(90deg) scale(0.96);
+}
+
+/*
+ * 删除的待确认态只改图标自身：变红并加粗描线。加底色会把 stroke: currentColor
+ * 的图标糊成色块，加边框则和同排的无框图标打架，两者都不是这里该有的语言。
+ *
+ * 上色是一次点击回执而不是状态过渡，必须瞬时完成；渐变会让人拿点击时刻和颜色
+ * 到位的时刻对表，中间的过渡色就被读成卡顿。复位方向保留淡出，让自动超时取消
+ * 时不突兀。duration 按 transition-property 的顺序对位覆盖，只改 color 一项。
+ */
+
+.yolo-popover-surface li .yolo-chat-list-delete-button.is-confirming {
+  color: var(--color-red);
+  transition-duration: 140ms, 180ms, 0s, 120ms;
+}
+
+.yolo-popover-surface li .yolo-chat-list-delete-button svg {
+  transition: stroke-width 120ms ease;
+}
+
+.yolo-popover-surface li .yolo-chat-list-delete-button.is-confirming svg {
+  stroke-width: 2.5;
+  transition-duration: 0s;
 }
 
 .yolo-chat-list-pin-button {
@@ -19539,6 +19568,12 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
 
 .yolo-chat-list-ctx-menu button.danger {
   color: var(--color-red);
+}
+
+/* 待确认态：文案已说明下一步，视觉上与行内按钮统一，只加粗图标描线 */
+
+.yolo-chat-list-ctx-menu button.danger.is-confirming svg {
+  stroke-width: 2.5;
 }
 
 .yolo-chat-list-ctx-menu hr {

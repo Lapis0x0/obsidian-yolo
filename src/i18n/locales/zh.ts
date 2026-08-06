@@ -98,6 +98,7 @@ export const zh: TranslationKeys = {
       hideArchived: '收起归档',
       exportConversation: '导出对话到库',
       moreActions: '更多操作',
+      confirmDelete: '再次点击确认删除',
     },
     chat: {
       exportSuccess: '已导出聊天记录到 {path}',

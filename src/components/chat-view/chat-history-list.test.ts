@@ -3,7 +3,11 @@ import type {
   ChatConversationOrigin,
 } from '../../database/json/chat/types'
 
-import { partitionChatHistory } from './chat-history-list'
+import {
+  captureChatListOrder,
+  partitionChatHistory,
+  sortChatListForDisplay,
+} from './chat-history-list'
 
 const makeChat = (
   id: string,
@@ -83,5 +87,74 @@ describe('partitionChatHistory', () => {
       'external-1',
     )
     expect(withCurrent.archivedChatList).toEqual([])
+  })
+})
+
+describe('chat list display order', () => {
+  const withUpdatedAt = (
+    id: string,
+    updatedAt: number,
+    extra: Partial<ChatConversationMetadata> = {},
+  ): ChatConversationMetadata => ({
+    id,
+    title: id,
+    updatedAt,
+    schemaVersion: 1,
+    origin: 'user',
+    ...extra,
+  })
+
+  it('keeps the sampled order while conversations keep updating', () => {
+    const initial = [withUpdatedAt('a', 20), withUpdatedAt('b', 10)]
+    const snapshot = captureChatListOrder(initial, null)
+
+    // b 后续被 agent 刷新到最新，但快照期间不应抢走 a 的位置
+    const running = [withUpdatedAt('a', 20), withUpdatedAt('b', 99)]
+    expect(
+      sortChatListForDisplay({
+        chatList: running,
+        section: 'user',
+        orderSnapshot: snapshot,
+      }).map((chat) => chat.id),
+    ).toEqual(['a', 'b'])
+
+    expect(
+      sortChatListForDisplay({
+        chatList: running,
+        section: 'user',
+        orderSnapshot: null,
+      }).map((chat) => chat.id),
+    ).toEqual(['b', 'a'])
+  })
+
+  it('samples newly seen conversations once and leaves the rest untouched', () => {
+    const snapshot = captureChatListOrder([withUpdatedAt('a', 20)], null)
+    const extended = captureChatListOrder(
+      [withUpdatedAt('c', 30), withUpdatedAt('a', 99)],
+      snapshot,
+    )
+
+    expect(extended.get('a')).toBe(20)
+    expect(extended.get('c')).toBe(30)
+    expect(captureChatListOrder([withUpdatedAt('a', 99)], extended)).toBe(
+      extended,
+    )
+  })
+
+  it('still reorders immediately when the user pins a conversation', () => {
+    const chats = [withUpdatedAt('a', 20), withUpdatedAt('b', 10)]
+    const snapshot = captureChatListOrder(chats, null)
+    const pinned = [
+      withUpdatedAt('a', 20),
+      withUpdatedAt('b', 10, { isPinned: true, pinnedAt: 50 }),
+    ]
+
+    expect(
+      sortChatListForDisplay({
+        chatList: pinned,
+        section: 'user',
+        orderSnapshot: snapshot,
+      }).map((chat) => chat.id),
+    ).toEqual(['b', 'a'])
   })
 })

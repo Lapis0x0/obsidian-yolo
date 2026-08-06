@@ -27,14 +27,59 @@ import { YoloPopoverContent } from '../common/popover'
 
 import {
   type ChatHistorySection,
+  type ChatListOrderSnapshot,
   type TaskConversationOrigin,
   type TaskOriginFilter,
+  captureChatListOrder,
   partitionChatHistory,
+  sortChatListForDisplay,
 } from './chat-history-list'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 
 let rememberedHistorySection: ChatHistorySection = 'user'
 let rememberedTaskOriginFilter: TaskOriginFilter = 'all'
+
+// 确认必须是「看到按钮变红之后」的独立一次点击，否则一次双击就等于确认删除
+const DELETE_CONFIRM_MIN_DELAY_MS = 320
+// 待确认态不应无限挂着，否则下一次不经意的点击就直接删除
+const DELETE_CONFIRM_TIMEOUT_MS = 3000
+
+/**
+ * 删除的两击确认。第一击只切换到待确认态，第二击必须晚于 DELETE_CONFIRM_MIN_DELAY_MS
+ * 才算数，因此一次双击不会穿透成删除；超时后自动回到安全状态。
+ */
+function useDeleteConfirmation(onConfirm: () => void) {
+  const [isConfirming, setIsConfirming] = useState(false)
+  const requestedAtRef = useRef(0)
+  const timerRef = useRef<number | null>(null)
+
+  const reset = useCallback(() => {
+    if (timerRef.current !== null) {
+      window.clearTimeout(timerRef.current)
+      timerRef.current = null
+    }
+    requestedAtRef.current = 0
+    setIsConfirming(false)
+  }, [])
+
+  useEffect(() => reset, [reset])
+
+  const request = useCallback(() => {
+    if (!isConfirming) {
+      requestedAtRef.current = Date.now()
+      setIsConfirming(true)
+      timerRef.current = window.setTimeout(reset, DELETE_CONFIRM_TIMEOUT_MS)
+      return
+    }
+    if (Date.now() - requestedAtRef.current < DELETE_CONFIRM_MIN_DELAY_MS) {
+      return
+    }
+    reset()
+    onConfirm()
+  }, [isConfirming, onConfirm, reset])
+
+  return { isConfirming, request, reset }
+}
 
 function TitleInput({
   value,
@@ -177,6 +222,17 @@ function ChatListItem({
     null,
   )
   const [editingTitle, setEditingTitle] = useState(title)
+  const {
+    isConfirming: isConfirmingDelete,
+    request: requestDelete,
+    reset: resetDeleteConfirmation,
+  } = useDeleteConfirmation(() => {
+    onCloseMoreMenu()
+    onDelete()
+  })
+  const deleteActionLabel = isConfirmingDelete
+    ? t('sidebar.chatList.confirmDelete', 'Click again to delete')
+    : t('common.delete', 'Delete')
 
   const clearPress = useCallback(() => {
     if (pressTimerRef.current !== null) {
@@ -199,6 +255,13 @@ function ChatListItem({
       setEditingTitle(title)
     }
   }, [isEditing, title])
+
+  // 收起更多操作（点击别处、指针移出条目、关闭面板）即撤销待确认的删除
+  useEffect(() => {
+    if (!isMoreMenuOpen) {
+      resetDeleteConfirmation()
+    }
+  }, [isMoreMenuOpen, resetDeleteConfirmation])
 
   useEffect(() => clearPress, [clearPress])
 
@@ -380,17 +443,20 @@ function ChatListItem({
         ) : null}
         {!isMobile ? (
           <>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation()
-                onCloseMoreMenu()
-                onDelete()
-              }}
-              className="clickable-icon yolo-chat-list-dropdown-item-icon"
-            >
-              <Trash2 />
-            </button>
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onCloseMoreMenu()
+                  onStartEdit()
+                }}
+                className="clickable-icon yolo-chat-list-dropdown-item-icon"
+                aria-label={t('common.edit', 'Edit')}
+              >
+                <Pencil size={16} />
+              </button>
+            ) : null}
             {canPin ? (
               <button
                 type="button"
@@ -414,19 +480,6 @@ function ChatListItem({
                 aria-hidden={isMoreMenuOpen ? undefined : 'true'}
               >
                 <div className="yolo-chat-list-inline-actions-inner">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      onCloseMoreMenu()
-                      onStartEdit()
-                    }}
-                    className="clickable-icon yolo-chat-list-dropdown-item-icon"
-                    aria-label={t('common.edit', 'Edit')}
-                    tabIndex={isMoreMenuOpen ? undefined : -1}
-                  >
-                    <Pencil size={16} />
-                  </button>
                   {canRetryTitle ? (
                     <button
                       type="button"
@@ -469,6 +522,21 @@ function ChatListItem({
                       <Download size={16} />
                     </button>
                   ) : null}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      requestDelete()
+                    }}
+                    className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-delete-button${
+                      isConfirmingDelete ? ' is-confirming' : ''
+                    }`}
+                    aria-label={deleteActionLabel}
+                    title={deleteActionLabel}
+                    tabIndex={isMoreMenuOpen ? undefined : -1}
+                  >
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               </div>
             ) : null}
@@ -582,6 +650,8 @@ export function ChatListDropdown({
   const [moreMenuConversationId, setMoreMenuConversationId] = useState<
     string | null
   >(null)
+  const [orderSnapshot, setOrderSnapshot] =
+    useState<ChatListOrderSnapshot | null>(null)
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{
     top: number
@@ -597,6 +667,20 @@ export function ChatListDropdown({
   >(new Map())
   const searchIdRef = useRef(0)
   const isMobile = Platform.isMobileApp
+
+  const {
+    isConfirming: isMenuDeleteConfirming,
+    request: requestMenuDelete,
+    reset: resetMenuDeleteConfirmation,
+  } = useDeleteConfirmation(() => {
+    if (activeMenuId === null) return
+    setActiveMenuId(null)
+    setMenuPosition(null)
+    setMoreMenuConversationId(null)
+    void Promise.resolve(onDelete(activeMenuId)).catch((error) => {
+      console.error('Failed to delete conversation', error)
+    })
+  })
 
   const normalizedQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -656,25 +740,15 @@ export function ChatListDropdown({
     return matches
   }, [getDisplayTitle, normalizedQuery, scopedChatList])
 
-  const pinnedSortedChatList = useMemo(() => {
-    if (sectionChatList.length === 0) return sectionChatList
-    const canPin = activeSection === 'user'
-    return [...sectionChatList].sort((a, b) => {
-      const aPinned = canPin && a.isPinned ? 1 : 0
-      const bPinned = canPin && b.isPinned ? 1 : 0
-      if (aPinned !== bPinned) {
-        return bPinned - aPinned
-      }
-      if (aPinned && bPinned) {
-        const aPinnedAt = a.pinnedAt ?? 0
-        const bPinnedAt = b.pinnedAt ?? 0
-        if (aPinnedAt !== bPinnedAt) {
-          return bPinnedAt - aPinnedAt
-        }
-      }
-      return b.updatedAt - a.updatedAt
-    })
-  }, [activeSection, sectionChatList])
+  const pinnedSortedChatList = useMemo(
+    () =>
+      sortChatListForDisplay({
+        chatList: sectionChatList,
+        section: activeSection,
+        orderSnapshot,
+      }),
+    [activeSection, orderSnapshot, sectionChatList],
+  )
 
   const filteredChatList = useMemo(() => {
     if (!normalizedQuery) return scopedChatList
@@ -727,6 +801,8 @@ export function ChatListDropdown({
   const handleOpenChange = useCallback(
     (nextOpen: boolean) => {
       if (nextOpen) {
+        // 每次打开重新采样排序时间，这是列表顺序唯一的更新时机
+        setOrderSnapshot(null)
         setActiveSection(rememberedHistorySection)
         setTaskOriginFilter(rememberedTaskOriginFilter)
         const nextFocusedConversationId =
@@ -743,6 +819,7 @@ export function ChatListDropdown({
         setMoreMenuConversationId(null)
         setActiveMenuId(null)
         setMenuPosition(null)
+        resetMenuDeleteConfirmation()
         clearContentMatches()
       } else {
         setEditingId(null)
@@ -755,7 +832,12 @@ export function ChatListDropdown({
       }
       setOpen(nextOpen)
     },
-    [clearContentMatches, currentConversationId, pinnedSortedChatList],
+    [
+      clearContentMatches,
+      currentConversationId,
+      pinnedSortedChatList,
+      resetMenuDeleteConfirmation,
+    ],
   )
 
   const openContextMenu = useCallback(
@@ -795,10 +877,17 @@ export function ChatListDropdown({
   )
 
   useEffect(() => {
+    resetMenuDeleteConfirmation()
     if (activeMenuId !== null) {
       contextMenuRef.current?.focus({ preventScroll: true })
     }
-  }, [activeMenuId])
+  }, [activeMenuId, resetMenuDeleteConfirmation])
+
+  // 面板打开期间新出现的会话补录一次排序时间，之后它同样不再随运行状态换位
+  useEffect(() => {
+    if (!open) return
+    setOrderSnapshot((previous) => captureChatListOrder(chatList, previous))
+  }, [chatList, open])
 
   const handleContextMenuKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
@@ -1515,21 +1604,20 @@ export function ChatListDropdown({
               type="button"
               role="menuitem"
               data-act="delete"
-              className="danger"
+              className={`danger${
+                isMenuDeleteConfirming ? ' is-confirming' : ''
+              }`}
               onClick={(e) => {
                 e.stopPropagation()
-                setActiveMenuId(null)
-                setMenuPosition(null)
-                setMoreMenuConversationId(null)
-                void Promise.resolve(onDelete(activeMenuChat.id)).catch(
-                  (error) => {
-                    console.error('Failed to delete conversation', error)
-                  },
-                )
+                requestMenuDelete()
               }}
             >
               <Trash2 size={16} />
-              <span>{t('common.delete', 'Delete')}</span>
+              <span>
+                {isMenuDeleteConfirming
+                  ? t('sidebar.chatList.confirmDelete', 'Click again to delete')
+                  : t('common.delete', 'Delete')}
+              </span>
             </button>
           </div>
         ) : null}

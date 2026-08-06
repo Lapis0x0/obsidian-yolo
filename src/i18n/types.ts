@@ -107,6 +107,7 @@ export type TranslationKeys = {
       hideArchived?: string
       exportConversation?: string
       moreActions?: string
+      confirmDelete?: string
     }
     chat?: {
       exportSuccess?: string
