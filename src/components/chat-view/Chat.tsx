@@ -1,5 +1,5 @@
 import { EditorView } from '@codemirror/view'
-import { Download, History, Pencil, Plus, Trash2 } from 'lucide-react'
+import { Pencil, Trash2 } from 'lucide-react'
 import { MarkdownView, TFile, TFolder } from 'obsidian'
 import {
   forwardRef,
@@ -73,7 +73,6 @@ import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capabili
 
 // removed Prompt Templates feature
 
-import { AssistantSelector } from './AssistantSelector'
 import {
   CHAT_MODES,
   CLAUDE_CODE_CHAT_MODES,
@@ -85,7 +84,7 @@ import type { ChatUserInputProps } from './chat-input/ChatUserInput'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import MentionableBadge from './chat-input/MentionableBadge'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
-import { ChatListDropdown } from './ChatListDropdown'
+import { ChatHeader } from './ChatHeader'
 import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
@@ -100,7 +99,6 @@ import {
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
 import type { QueryProgressState } from './QueryProgress'
-import { RuntimeSelector } from './RuntimeSelector'
 import { TodoListPanel } from './TodoListPanel'
 import { useChatDomainActions } from './useChatDomainActions'
 import { useChatInputController } from './useChatInputController'
@@ -110,10 +108,8 @@ import { useChatStreamManager } from './useChatStreamManager'
 import { useChatTimelineReadModel } from './useChatTimelineReadModel'
 import { useCliRuntimeOrchestration } from './useCliRuntimeOrchestration'
 import { useYoloChatSession } from './useYoloChatSession'
-import ViewToggle from './ViewToggle'
 import { YoloChatSurface } from './YoloChatSurface'
 
-const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 const EMPTY_SELECTED_SKILLS: NonNullable<ChatUserInputProps['selectedSkills']> =
   []
 
@@ -355,7 +351,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     containerElement,
     mobileKeyboardViewportHeight !== null,
   )
-  const headerRef = useRef<HTMLDivElement | null>(null)
   const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
   const [workspaceWideHeaderHeight, setWorkspaceWideHeaderHeight] = useState(0)
 
@@ -475,62 +470,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const isSidebarPlacement = props.placement === 'sidebar'
   const activeView = isSidebarPlacement ? (props.activeView ?? 'chat') : 'chat'
   const onChangeView = props.onChangeView
-
-  useEffect(() => {
-    if (isSidebarPlacement) {
-      setIsWorkspaceWideHeader(false)
-      return
-    }
-
-    const element = containerRef.current
-    if (!element) return
-
-    const updateIsWideHeader = (width: number) => {
-      setIsWorkspaceWideHeader(width >= WORKSPACE_WIDE_HEADER_MIN_WIDTH)
-    }
-
-    updateIsWideHeader(element.getBoundingClientRect().width)
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      updateIsWideHeader(entry.contentRect.width)
-    })
-
-    resizeObserver.observe(element)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [isSidebarPlacement])
-
-  useEffect(() => {
-    if (isSidebarPlacement || !isWorkspaceWideHeader) {
-      setWorkspaceWideHeaderHeight(0)
-      return
-    }
-
-    const element = headerRef.current
-    if (!element) return
-
-    const updateHeaderHeight = (height: number) => {
-      setWorkspaceWideHeaderHeight(Math.ceil(height))
-    }
-
-    updateHeaderHeight(element.getBoundingClientRect().height)
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      updateHeaderHeight(entry.contentRect.height)
-    })
-
-    resizeObserver.observe(element)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [isSidebarPlacement, isWorkspaceWideHeader])
 
   const containerClassName = `yolo-chat-container${
     isSidebarPlacement
@@ -1266,148 +1205,35 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }))
 
   const header = (
-    <div
-      ref={headerRef}
-      className={`yolo-chat-header${
-        isSidebarPlacement ? '' : ' yolo-chat-header--workspace'
-      }`}
-    >
-      <div className="yolo-chat-header-left">
-        {onChangeView ? (
-          <ViewToggle
-            activeView={activeView}
-            onChangeView={onChangeView}
-            activeChatSurface={activeRuntimeId === 'yolo' ? 'chat' : 'cli'}
-            onChangeChatSurface={(surface) => {
-              handleRuntimeChange(
-                surface === 'chat' ? 'yolo' : lastCliRuntimeIdRef.current,
-              )
-            }}
-            showCliMode={cliRuntimeAvailable && cliRuntimeScope !== undefined}
-            showComposer={isSidebarPlacement}
-          />
-        ) : (
-          <h1 className="yolo-chat-header-title">
-            {t('sidebar.tabs.chat', 'Chat')}
-          </h1>
-        )}
-        {activeView === 'chat' && activeRuntimeId !== 'yolo' ? (
-          <RuntimeSelector
-            currentRuntimeId={activeRuntimeId}
-            onRuntimeChange={handleRuntimeChange}
-          />
-        ) : null}
-      </div>
-      {activeView === 'chat' && (
-        <div className="yolo-chat-header-right">
-          {activeRuntimeId === 'yolo' ? (
-            <AssistantSelector
-              currentAssistantId={conversationAssistantId}
-              triggerClassName={
-                !isSidebarPlacement && isWorkspaceWideHeader
-                  ? 'yolo-assistant-selector-button--workspace-floating'
-                  : undefined
-              }
-              contentClassName={
-                !isSidebarPlacement && isWorkspaceWideHeader
-                  ? 'yolo-assistant-selector-content--workspace-floating'
-                  : undefined
-              }
-              onAssistantChange={(assistant) => {
-                handleConversationAssistantSelect(assistant.id)
-              }}
-            />
-          ) : null}
-          <div className="yolo-chat-header-buttons">
-            <button
-              type="button"
-              onClick={() => handleNewChat()}
-              className="clickable-icon"
-              aria-label="New Chat"
-            >
-              <Plus size={18} />
-            </button>
-            {activeRuntimeId === 'yolo' ? (
-              <button
-                type="button"
-                onClick={() => handleExportChatToVault(currentConversationId)}
-                className="clickable-icon"
-                aria-label={t(
-                  'sidebar.chatList.exportConversation',
-                  'Export conversation to vault',
-                )}
-              >
-                <Download size={18} />
-              </button>
-            ) : null}
-            <ChatListDropdown
-              chatList={chatList}
-              currentConversationId={activeHistoryConversationId}
-              runSummariesByConversationId={runSummariesByConversationId}
-              onSelect={(conversationId) => {
-                if (conversationId === activeHistoryConversationId) return
-                void handleLoadConversation(conversationId)
-              }}
-              onDelete={(conversationId) => {
-                void (async () => {
-                  const conversation = await getConversationById(conversationId)
-                  await deleteConversation(conversationId)
-                  if (conversation?.cliSession && cliRuntimeScope) {
-                    await cliRuntimeScope.sessionService.removeOverlay(
-                      conversation.cliSession,
-                    )
-                  }
-                  if (conversationId === activeHistoryConversationId) {
-                    if (activeRuntimeId !== 'yolo') {
-                      handleNewChat()
-                      return
-                    }
-                    const nextConversation = chatList.find(
-                      (chat) => chat.id !== conversationId,
-                    )
-                    if (nextConversation) {
-                      void handleLoadConversation(nextConversation.id)
-                    } else {
-                      handleNewChat()
-                    }
-                  }
-                })()
-              }}
-              onUpdateTitle={async (conversationId, newTitle) => {
-                await updateConversationTitle(conversationId, newTitle)
-                syncCliConversationTitle(conversationId, newTitle)
-              }}
-              onTogglePinned={(conversationId) => {
-                void toggleConversationPinned(conversationId)
-              }}
-              onRetryTitle={async (conversationId) => {
-                const conversation = await getConversationById(conversationId)
-                if (!conversation) {
-                  console.error(
-                    'Failed to retry conversation title generation: conversation not found',
-                    {
-                      conversationId,
-                    },
-                  )
-                  return
-                }
-                const title = await generateConversationTitle(
-                  conversationId,
-                  conversation.messages,
-                  {
-                    force: true,
-                  },
-                )
-                if (title) syncCliConversationTitle(conversationId, title)
-              }}
-              onExportConversation={handleExportChatToVault}
-            >
-              <History size={18} />
-            </ChatListDropdown>
-          </div>
-        </div>
-      )}
-    </div>
+    <ChatHeader
+      isSidebarPlacement={isSidebarPlacement}
+      activeView={activeView}
+      onChangeView={onChangeView}
+      activeRuntimeId={activeRuntimeId}
+      handleRuntimeChange={handleRuntimeChange}
+      lastCliRuntimeIdRef={lastCliRuntimeIdRef}
+      cliRuntimeAvailable={cliRuntimeAvailable}
+      cliRuntimeScope={cliRuntimeScope}
+      containerRef={containerRef}
+      isWorkspaceWideHeader={isWorkspaceWideHeader}
+      setIsWorkspaceWideHeader={setIsWorkspaceWideHeader}
+      setWorkspaceWideHeaderHeight={setWorkspaceWideHeaderHeight}
+      conversationAssistantId={conversationAssistantId}
+      handleConversationAssistantSelect={handleConversationAssistantSelect}
+      handleNewChat={handleNewChat}
+      handleExportChatToVault={handleExportChatToVault}
+      currentConversationId={currentConversationId}
+      chatList={chatList}
+      activeHistoryConversationId={activeHistoryConversationId}
+      runSummariesByConversationId={runSummariesByConversationId}
+      handleLoadConversation={handleLoadConversation}
+      getConversationById={getConversationById}
+      deleteConversation={deleteConversation}
+      updateConversationTitle={updateConversationTitle}
+      syncCliConversationTitle={syncCliConversationTitle}
+      toggleConversationPinned={toggleConversationPinned}
+      generateConversationTitle={generateConversationTitle}
+    />
   )
 
   const buildContextBreakdownInputsRef = useLatestRef(
