@@ -102,6 +102,34 @@ describe('parseYoloSettings', () => {
     })
   })
 
+  it('defaults existing tab completion triggers to insert mode', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      continuationOptions: {
+        tabCompletionTriggers: [
+          {
+            id: 'legacy-trigger',
+            type: 'regex',
+            pattern: '\\$[^$\\n]*$',
+            enabled: true,
+          },
+        ],
+      },
+    })
+
+    expect(result.continuationOptions.tabCompletionTriggers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'legacy-trigger',
+          type: 'regex',
+          pattern: '\\$[^$\\n]*$',
+          enabled: true,
+          acceptMode: 'insert',
+        }),
+      ]),
+    )
+  })
+
   it('persists the last Chat surface and CLI provider independently', () => {
     const result = parseYoloSettings({
       version: SETTINGS_SCHEMA_VERSION,

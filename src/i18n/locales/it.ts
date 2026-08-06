@@ -1478,6 +1478,10 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletionTriggerTypeString: 'Stringa',
       tabCompletionTriggerTypeRegex: 'Regex',
       tabCompletionTriggerPattern: 'Pattern',
+      tabCompletionTriggerAcceptMode: 'Comportamento di accettazione',
+      tabCompletionTriggerAcceptModeInsert: 'Inserisci al cursore',
+      tabCompletionTriggerAcceptModeReplace:
+        'Sostituisci il testo corrispondente',
       tabCompletionTriggerDescription: 'Descrizione',
       tabCompletionTriggerRemove: 'Rimuovi',
     },

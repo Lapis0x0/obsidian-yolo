@@ -167,6 +167,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
       type: 'string',
       pattern: '',
       enabled: true,
+      acceptMode: 'insert',
       description: '',
     }
     updateTabCompletionTriggers([...tabCompletionTriggers, nextTrigger])
@@ -621,6 +622,11 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                         </th>
                         <th>
                           {t(
+                            'settings.continuation.tabCompletionTriggerAcceptMode',
+                          )}
+                        </th>
+                        <th>
+                          {t(
                             'settings.continuation.tabCompletionTriggerDescription',
                           )}
                         </th>
@@ -668,6 +674,24 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                               onChange={(value) => {
                                 handleTriggerChange(trigger.id, {
                                   pattern: value,
+                                })
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <ObsidianDropdown
+                              value={trigger.acceptMode ?? 'insert'}
+                              options={{
+                                insert: t(
+                                  'settings.continuation.tabCompletionTriggerAcceptModeInsert',
+                                ),
+                                replace: t(
+                                  'settings.continuation.tabCompletionTriggerAcceptModeReplace',
+                                ),
+                              }}
+                              onChange={(value) => {
+                                handleTriggerChange(trigger.id, {
+                                  acceptMode: value as 'insert' | 'replace',
                                 })
                               }}
                             />
