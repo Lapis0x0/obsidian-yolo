@@ -1,14 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import { Download, History, Pencil, Plus, Trash2 } from 'lucide-react'
-import {
-  MarkdownView,
-  Notice,
-  Platform,
-  TFile,
-  TFolder,
-  normalizePath,
-} from 'obsidian'
+import { MarkdownView, Notice, TFile, TFolder, normalizePath } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -59,8 +52,6 @@ import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPl
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
-import { parseToolName } from '../../core/mcp/tool-name-utils'
 import type { LiteSkillEntry } from '../../core/skills/liteSkills'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
@@ -109,6 +100,7 @@ import {
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
+import { normalizeHydratedConversationMessages } from '../../utils/chat/conversationHydration'
 import {
   type GroupEditSummary,
   deriveToolEditUndoStatus,
@@ -121,19 +113,30 @@ import {
 } from '../../utils/chat/foregroundAgentVisualTurns'
 import {
   getBlockContentHash,
-  getBlockMentionableCountInfo,
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
-import { parseTagContents } from '../../utils/chat/parse-tag-content'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import {
+  addOrUpdateMentionable,
+  collectRemovedSelectionHighlightIds,
+  collectSelectionHighlightIds,
+  collectSelectionHighlightIdsByMentionableKey,
+  collectSelectionHighlightIdsFromMessages,
+  createAssistantQuoteMentionable,
+  createSelectionBlockMentionable,
+  getMaxAssistantQuoteNumber,
+  isSyncSelectionMentionable,
+} from '../../utils/chat/selection-mentionables'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import {
   buildSubagentResultMap,
   buildTerminalCommandResultMap,
   collectToolCallIdsFromGroupedMessages,
+  findDebugTraceIdForToolCall,
   reuseShallowEqualMap,
+  updateToolCallResponseInMessages,
 } from '../../utils/chat/tool-result-index'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
@@ -203,11 +206,21 @@ import type {
   ConversationTimelineRendererContract,
 } from './conversation-surface-contract'
 import { useActiveViewState } from './hooks/useActiveViewState'
+import {
+  useMobileChatViewContentClass,
+  useMobileKeyboardViewportHeight,
+} from './hooks/useMobileViewport'
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
 import { syncRenderedLatexSelection } from './latex-copy'
 import MessageNavigator from './MessageNavigator'
 import type { MessageNavigatorAnchor } from './MessageNavigator'
+import {
+  getNavigatorAssistantText,
+  getPromptContentText,
+  isDelegateSubagentToolName,
+  normalizeNavigatorPreview,
+} from './messageNavigatorUtils'
 import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
 import { RuntimeSelector } from './RuntimeSelector'
@@ -229,9 +242,6 @@ const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
 const MESSAGE_NAVIGATOR_MIN_ANCHORS = 3
 const MESSAGE_NAVIGATOR_USER_PREVIEW_MAX_LENGTH = 90
 const MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH = 180
-const MESSAGE_NAVIGATOR_PREVIEW_SOURCE_MAX_LENGTH = 360
-const MOBILE_KEYBOARD_MIN_INSET_PX = 80
-const MOBILE_CHAT_MIN_VIEWPORT_HEIGHT = 160
 const EMPTY_SELECTED_SKILLS: NonNullable<ChatUserInputProps['selectedSkills']> =
   []
 
@@ -256,234 +266,6 @@ function getRenderVersionObjectId(value: object | null | undefined): number {
   nextRenderVersionObjectId += 1
   renderVersionObjectIds.set(value, id)
   return id
-}
-
-const parseCssPixelValue = (value: string): number => {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function useMobileKeyboardViewportHeight(
-  containerElement: HTMLDivElement | null,
-): number | null {
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
-
-  useLayoutEffect(() => {
-    if (!Platform.isMobile) {
-      setViewportHeight(null)
-      return
-    }
-
-    if (!containerElement) {
-      setViewportHeight(null)
-      return
-    }
-
-    const ownerWindow = containerElement.ownerDocument.defaultView ?? window
-    const visualViewport = ownerWindow.visualViewport
-    if (!visualViewport) {
-      setViewportHeight(null)
-      return
-    }
-
-    let animationFrameId: number | null = null
-
-    const publishHeight = () => {
-      animationFrameId = null
-
-      const rootStyle = ownerWindow.getComputedStyle(
-        containerElement.ownerDocument.documentElement,
-      )
-      const keyboardHeight = parseCssPixelValue(
-        rootStyle.getPropertyValue('--keyboard-height'),
-      )
-      const visualViewportInset = Math.max(
-        0,
-        ownerWindow.innerHeight -
-          visualViewport.height -
-          visualViewport.offsetTop,
-      )
-      const keyboardInset = Math.max(keyboardHeight, visualViewportInset)
-
-      if (keyboardInset < MOBILE_KEYBOARD_MIN_INSET_PX) {
-        setViewportHeight(null)
-        return
-      }
-
-      const viewportBottom = Math.min(
-        visualViewport.offsetTop + visualViewport.height,
-        ownerWindow.innerHeight - keyboardInset,
-      )
-      const nextHeight = Math.floor(
-        viewportBottom - containerElement.getBoundingClientRect().top,
-      )
-
-      if (nextHeight < MOBILE_CHAT_MIN_VIEWPORT_HEIGHT) {
-        setViewportHeight(null)
-        return
-      }
-
-      setViewportHeight((previous) =>
-        previous === nextHeight ? previous : nextHeight,
-      )
-    }
-
-    const schedulePublish = () => {
-      if (animationFrameId !== null) {
-        ownerWindow.cancelAnimationFrame(animationFrameId)
-      }
-      animationFrameId = ownerWindow.requestAnimationFrame(publishHeight)
-    }
-
-    schedulePublish()
-
-    visualViewport.addEventListener('resize', schedulePublish)
-    visualViewport.addEventListener('scroll', schedulePublish)
-    ownerWindow.addEventListener('resize', schedulePublish)
-    ownerWindow.addEventListener('orientationchange', schedulePublish)
-    ownerWindow.addEventListener('focusin', schedulePublish)
-    ownerWindow.addEventListener('focusout', schedulePublish)
-
-    const rootObserver = new MutationObserver(schedulePublish)
-    rootObserver.observe(containerElement.ownerDocument.documentElement, {
-      attributeFilter: ['style'],
-      attributes: true,
-    })
-
-    return () => {
-      rootObserver.disconnect()
-      visualViewport.removeEventListener('resize', schedulePublish)
-      visualViewport.removeEventListener('scroll', schedulePublish)
-      ownerWindow.removeEventListener('resize', schedulePublish)
-      ownerWindow.removeEventListener('orientationchange', schedulePublish)
-      ownerWindow.removeEventListener('focusin', schedulePublish)
-      ownerWindow.removeEventListener('focusout', schedulePublish)
-      if (animationFrameId !== null) {
-        ownerWindow.cancelAnimationFrame(animationFrameId)
-      }
-    }
-  }, [containerElement])
-
-  return viewportHeight
-}
-
-function useMobileChatViewContentClass(
-  containerElement: HTMLDivElement | null,
-  keyboardManaged: boolean,
-): void {
-  useLayoutEffect(() => {
-    if (!Platform.isMobile) return
-
-    const viewContent = containerElement?.closest('.view-content')
-    if (!(viewContent instanceof HTMLElement)) return
-
-    viewContent.classList.add('yolo-chat-view-content')
-    return () => {
-      viewContent.classList.remove(
-        'yolo-chat-view-content',
-        'yolo-chat-view-content--keyboard-managed',
-      )
-    }
-  }, [containerElement])
-
-  useLayoutEffect(() => {
-    if (!Platform.isMobile) return
-
-    const viewContent = containerElement?.closest('.view-content')
-    if (!(viewContent instanceof HTMLElement)) return
-
-    viewContent.classList.toggle(
-      'yolo-chat-view-content--keyboard-managed',
-      keyboardManaged,
-    )
-
-    return () => {
-      viewContent.classList.remove('yolo-chat-view-content--keyboard-managed')
-    }
-  }, [containerElement, keyboardManaged])
-}
-
-const getPromptContentText = (
-  promptContent: ChatUserMessage['promptContent'],
-): string => {
-  if (!promptContent) {
-    return ''
-  }
-  if (typeof promptContent === 'string') {
-    return promptContent
-  }
-  return promptContent
-    .map((part) => (part.type === 'text' ? part.text : ''))
-    .join(' ')
-}
-
-const normalizeNavigatorPreview = (
-  text: string,
-  maxLength: number,
-  fallback = '',
-): string => {
-  const normalized = text
-    .replace(/```(?:[A-Za-z0-9_-]+)?/g, ' ')
-    .replace(/!\[([^\]]*)]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)](?:\([^)]*\)|\[[^\]]*])/g, '$1')
-    .replace(/<\/?[A-Za-z][^>]*>/g, ' ')
-    .replace(/<([^>\n]+)>/g, '$1')
-    .replace(/(^|\n)\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)/g, '$1')
-    .replace(/[`*_~|]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (!normalized) {
-    return fallback
-  }
-  if (normalized.length <= maxLength) {
-    return normalized
-  }
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
-}
-
-const getNavigatorAssistantText = (
-  messages: AssistantToolMessageGroup,
-): string => {
-  const parts: string[] = []
-  let remainingLength = MESSAGE_NAVIGATOR_PREVIEW_SOURCE_MAX_LENGTH
-
-  for (const message of messages) {
-    if (remainingLength <= 0) {
-      break
-    }
-    if (message.role !== 'assistant') {
-      continue
-    }
-
-    const contentParts = /<(?:think|yolo_block)\b/i.test(message.content)
-      ? parseTagContents(message.content)
-          .filter((block) => block.type !== 'think')
-          .map((block) => block.content)
-      : [message.content]
-
-    for (const contentPart of contentParts) {
-      if (remainingLength <= 0) {
-        break
-      }
-      const previewPart = contentPart.slice(0, remainingLength)
-      parts.push(previewPart)
-      remainingLength -= previewPart.length
-    }
-  }
-
-  return parts.join(' ')
-}
-
-const isDelegateSubagentToolName = (name: string): boolean => {
-  try {
-    const parsed = parseToolName(name)
-    return (
-      parsed.serverName === getLocalFileToolServerName() &&
-      parsed.toolName === 'delegate_subagent'
-    )
-  } catch {
-    return name === 'delegate_subagent'
-  }
 }
 
 const ensureDirectoryPathExists = async (
@@ -529,117 +311,6 @@ const shouldShowContinueResponse = (
       ToolCallResponseStatus.Success,
     ].includes(toolCall.response.status),
   )
-}
-
-const normalizeHydratedConversationMessages = (
-  messages: ChatMessage[],
-): { messages: ChatMessage[]; changed: boolean } => {
-  let changed = false
-
-  const nextMessages = messages.map((message) => {
-    if (
-      message.role === 'assistant' &&
-      message.metadata?.generationState === 'streaming'
-    ) {
-      changed = true
-      return {
-        ...message,
-        metadata: {
-          ...message.metadata,
-          generationState: 'aborted' as const,
-        },
-      }
-    }
-
-    if (message.role !== 'tool') {
-      return message
-    }
-
-    let toolCallUpdated = false
-    const nextToolCalls = message.toolCalls.map((toolCall) => {
-      if (toolCall.response.status !== ToolCallResponseStatus.Running) {
-        return toolCall
-      }
-
-      toolCallUpdated = true
-      changed = true
-      return {
-        ...toolCall,
-        response: { status: ToolCallResponseStatus.Aborted as const },
-      }
-    })
-
-    if (!toolCallUpdated && message.metadata?.branchRunStatus !== 'running') {
-      return message
-    }
-
-    if (message.metadata?.branchRunStatus === 'running') {
-      changed = true
-    }
-
-    return {
-      ...message,
-      toolCalls: nextToolCalls,
-      metadata:
-        message.metadata?.branchRunStatus === 'running'
-          ? {
-              ...message.metadata,
-              branchRunStatus: 'aborted' as const,
-            }
-          : message.metadata,
-    }
-  })
-
-  return {
-    messages: nextMessages,
-    changed,
-  }
-}
-
-const updateToolCallResponseInMessages = ({
-  messages,
-  toolMessageId,
-  toolCallId,
-  response,
-}: {
-  messages: ChatMessage[]
-  toolMessageId: string
-  toolCallId: string
-  response: ToolCallResponse
-}) =>
-  messages.map((message) => {
-    if (message.role !== 'tool' || message.id !== toolMessageId) {
-      return message
-    }
-
-    return {
-      ...message,
-      toolCalls: message.toolCalls.map((toolCall) =>
-        toolCall.request.id === toolCallId
-          ? { ...toolCall, response }
-          : toolCall,
-      ),
-    }
-  })
-
-const findDebugTraceIdForToolCall = (
-  messages: ChatMessage[],
-  toolCallId: string,
-): string | undefined => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message.role !== 'assistant') {
-      continue
-    }
-    const matches = message.toolCallRequests?.some(
-      (toolCall) => toolCall.id === toolCallId,
-    )
-    if (matches) {
-      return message.metadata?.llmDebugTraceId
-    }
-  }
-
-  return undefined
 }
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
@@ -771,161 +442,6 @@ const serializeActiveBranchByUserMessageId = (
   )
 
   return entries.length > 0 ? Object.fromEntries(entries) : undefined
-}
-
-const createSelectionBlockMentionable = (
-  selectedBlock: MentionableBlockData,
-): MentionableBlock => {
-  const { count, unit } = getBlockMentionableCountInfo(selectedBlock.content)
-  const source = normalizeSelectionSource(selectedBlock.source)
-  return {
-    type: 'block',
-    ...selectedBlock,
-    source,
-    contentHash:
-      selectedBlock.contentHash ?? getBlockContentHash(selectedBlock.content),
-    contentCount: selectedBlock.contentCount ?? count,
-    contentUnit: selectedBlock.contentUnit ?? unit,
-  }
-}
-
-const createAssistantQuoteMentionable = ({
-  id,
-  annotationNumber,
-  conversationId,
-  messageId,
-  content,
-  comment,
-  selector,
-}: {
-  id?: string
-  annotationNumber?: number
-  conversationId: string
-  messageId: string
-  content: string
-  comment?: string
-  selector?: MentionableAssistantQuote['selector']
-}): MentionableAssistantQuote => {
-  const trimmedContent = content.trim()
-  const { count, unit } = getBlockMentionableCountInfo(trimmedContent)
-  return {
-    type: 'assistant-quote',
-    id,
-    annotationNumber,
-    conversationId,
-    messageId,
-    content: trimmedContent,
-    comment,
-    selector,
-    contentHash: getBlockContentHash(trimmedContent),
-    contentCount: count,
-    contentUnit: unit,
-  }
-}
-
-const getMaxAssistantQuoteNumber = (mentionables: Mentionable[]): number => {
-  const quotes = mentionables.filter(
-    (mentionable): mentionable is MentionableAssistantQuote =>
-      mentionable.type === 'assistant-quote',
-  )
-  return quotes.reduce(
-    (highest, quote) => Math.max(highest, quote.annotationNumber ?? 0),
-    quotes.length,
-  )
-}
-
-const addOrUpdateMentionable = (
-  mentionables: Mentionable[],
-  mentionable: Mentionable,
-): Mentionable[] => {
-  const mentionableKey = getMentionableKey(serializeMentionable(mentionable))
-  const existingIndex = mentionables.findIndex(
-    (item) => getMentionableKey(serializeMentionable(item)) === mentionableKey,
-  )
-  if (existingIndex < 0) return [...mentionables, mentionable]
-  if (mentionable.type !== 'assistant-quote' || !mentionable.id) {
-    return mentionables
-  }
-  const next = [...mentionables]
-  next[existingIndex] = mentionable
-  return next
-}
-
-const normalizeSelectionSource = (
-  source: MentionableBlockData['source'],
-): 'selection-sync' | 'selection-pinned' => {
-  return source === 'selection-pinned' ? 'selection-pinned' : 'selection-sync'
-}
-
-const isSyncSelectionSource = (source: MentionableBlock['source']): boolean => {
-  return source === 'selection' || source === 'selection-sync'
-}
-
-const isSyncSelectionMentionable = (mentionable: Mentionable): boolean => {
-  if (mentionable.type === 'block') {
-    return isSyncSelectionSource(mentionable.source)
-  }
-  return (
-    mentionable.type === 'web-selection' &&
-    mentionable.source === 'web-selection-sync'
-  )
-}
-
-const isSelectionBlockMentionable = (
-  mentionable: Mentionable,
-): mentionable is MentionableBlock => {
-  return (
-    mentionable.type === 'block' &&
-    (mentionable.source === 'selection' ||
-      mentionable.source === 'selection-sync' ||
-      mentionable.source === 'selection-pinned')
-  )
-}
-
-const collectSelectionHighlightIds = (
-  mentionables: Mentionable[],
-): string[] => {
-  const ids = new Set<string>()
-  for (const mentionable of mentionables) {
-    if (!isSelectionBlockMentionable(mentionable)) continue
-    if (mentionable.highlightId) ids.add(mentionable.highlightId)
-  }
-  return Array.from(ids)
-}
-
-const collectSelectionHighlightIdsFromMessages = (
-  messages: ChatMessage[],
-): string[] => {
-  const ids = new Set<string>()
-  for (const message of messages) {
-    if (message.role !== 'user') continue
-    for (const id of collectSelectionHighlightIds(message.mentionables)) {
-      ids.add(id)
-    }
-  }
-  return Array.from(ids)
-}
-
-const collectRemovedSelectionHighlightIds = (
-  previousMentionables: Mentionable[],
-  nextMentionables: Mentionable[],
-): string[] => {
-  const nextIds = new Set(collectSelectionHighlightIds(nextMentionables))
-  return collectSelectionHighlightIds(previousMentionables).filter(
-    (id) => !nextIds.has(id),
-  )
-}
-
-const collectSelectionHighlightIdsByMentionableKey = (
-  mentionables: Mentionable[],
-  mentionableKey: string,
-): string[] => {
-  return collectSelectionHighlightIds(
-    mentionables.filter(
-      (mentionable) =>
-        getMentionableKey(serializeMentionable(mentionable)) === mentionableKey,
-    ),
-  )
 }
 
 const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [...REASONING_LEVELS]

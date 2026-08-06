@@ -5,6 +5,7 @@ import type {
   ChatTerminalCommandResultMessage,
   ChatUserMessage,
 } from '../../types/chat'
+import type { ToolCallResponse } from '../../types/tool-call.types'
 
 export function collectToolCallIdsFromGroupedMessages(
   groupedMessages: Array<ChatUserMessage | AssistantToolMessageGroup>,
@@ -68,6 +69,52 @@ export function buildSubagentResultMap(
   }
 
   return map
+}
+
+export const updateToolCallResponseInMessages = ({
+  messages,
+  toolMessageId,
+  toolCallId,
+  response,
+}: {
+  messages: ChatMessage[]
+  toolMessageId: string
+  toolCallId: string
+  response: ToolCallResponse
+}) =>
+  messages.map((message) => {
+    if (message.role !== 'tool' || message.id !== toolMessageId) {
+      return message
+    }
+
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) =>
+        toolCall.request.id === toolCallId
+          ? { ...toolCall, response }
+          : toolCall,
+      ),
+    }
+  })
+
+export const findDebugTraceIdForToolCall = (
+  messages: ChatMessage[],
+  toolCallId: string,
+): string | undefined => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role !== 'assistant') {
+      continue
+    }
+    const matches = message.toolCallRequests?.some(
+      (toolCall) => toolCall.id === toolCallId,
+    )
+    if (matches) {
+      return message.metadata?.llmDebugTraceId
+    }
+  }
+
+  return undefined
 }
 
 export function reuseShallowEqualMap<T>(
