@@ -59,6 +59,7 @@ type RowProps<TItem extends ChatTimelineItem> = {
     ) => ReactNode
   >
   renderVersion: unknown
+  animateEnter: boolean
 }
 
 export type ChatTimelineRenderVersion<TItem extends ChatTimelineItem> = (
@@ -70,6 +71,7 @@ function TimelineRowInner<TItem extends ChatTimelineItem>({
   item,
   index,
   renderItemRef,
+  animateEnter,
 }: RowProps<TItem>) {
   const renderItem = renderItemRef.current
   if (!renderItem) {
@@ -78,7 +80,9 @@ function TimelineRowInner<TItem extends ChatTimelineItem>({
 
   return (
     <div
-      className={`yolo-chat-timeline-row yolo-chat-timeline-row--${item.kind}`}
+      className={`yolo-chat-timeline-row yolo-chat-timeline-row--${item.kind}${
+        animateEnter ? ' yolo-chat-timeline-row--enter' : ''
+      }`}
       data-timeline-kind={item.kind}
       data-yolo-user-anchor-id={
         item.kind === 'user-message' ? item.messageId : undefined
@@ -315,6 +319,7 @@ const getUserAnchorElement = (
 
 export function ChatTimelineList<TItem extends ChatTimelineItem>({
   items,
+  conversationId,
   scrollContainerRef,
   onScrollContainerChange,
   onBottomSentinelChange,
@@ -359,6 +364,20 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     targetMessageId: string | null | undefined
   } | null>(null)
   const contentElementRef = useRef<HTMLDivElement | null>(null)
+
+  // New-message enter animation bookkeeping. `seenIdsRef` and the
+  // conversation/window keys below are only ever written post-commit (in
+  // the effect further down) so the judgment made during render stays pure
+  // and safe under StrictMode's double-invoke. `enterKeysRef` is a sticky
+  // memo cache keyed by renderKey: once a row is judged true or false it
+  // keeps that verdict for as long as it stays mounted, so a mid-stream
+  // re-render can never strip the class out from under a row whose 220ms
+  // entrance animation is still playing.
+  const seenIdsRef = useRef<Set<string>>(new Set())
+  const enterKeysRef = useRef<Map<string, boolean>>(new Map())
+  const isInitializedRef = useRef(false)
+  const conversationKeyRef = useRef<string | undefined>(undefined)
+  const windowNavigationKeyRef = useRef<number | undefined>(undefined)
 
   useLayoutEffect(() => {
     onVirtualizationChange?.(false)
@@ -640,6 +659,60 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     })
   }, [items.length, onRenderStateChange])
 
+  // Post-commit bookkeeping for the enter-animation judgment below: mark
+  // this render's items as seen, record the conversation/window keys we
+  // judged against, and drop cache entries for rows that unmounted. Doing
+  // this in an effect (rather than during render) is what keeps the
+  // judgment above pure under StrictMode's double-invoke.
+  useEffect(() => {
+    isInitializedRef.current = true
+    conversationKeyRef.current = conversationId
+    windowNavigationKeyRef.current = windowNavigationKey
+    const currentRenderKeys = new Set<string>()
+    for (const item of items) {
+      seenIdsRef.current.add(item.id)
+      currentRenderKeys.add(item.renderKey)
+    }
+    for (const renderKey of enterKeysRef.current.keys()) {
+      if (!currentRenderKeys.has(renderKey)) {
+        enterKeysRef.current.delete(renderKey)
+      }
+    }
+  }, [items, conversationId, windowNavigationKey])
+
+  // Enter-animation judgment (pure, render-time). A reset round — first
+  // render, a conversation switch, or a windowNavigation jump — never
+  // animates anything. Otherwise, only unseen items at or after the active
+  // edge (the first already-seen item) animate, and never while
+  // hasNewerMessages is true (that append is backfilled history, not a
+  // live new message) or for the invisible bottom-anchor row. Verdicts are
+  // memoized per renderKey in `enterKeysRef` so a mid-stream re-render can
+  // never flip a row's class mid-animation.
+  const isTimelineResetRound =
+    !isInitializedRef.current ||
+    conversationKeyRef.current !== conversationId ||
+    windowNavigationKeyRef.current !== windowNavigationKey
+  const firstSeenItemIndex = isTimelineResetRound
+    ? -1
+    : items.findIndex((item) => seenIdsRef.current.has(item.id))
+  const animateEnterByRenderKey = new Map<string, boolean>()
+  for (const [index, item] of items.entries()) {
+    const cachedVerdict = enterKeysRef.current.get(item.renderKey)
+    if (cachedVerdict !== undefined) {
+      animateEnterByRenderKey.set(item.renderKey, cachedVerdict)
+      continue
+    }
+    const shouldAnimateEnter =
+      !isTimelineResetRound &&
+      firstSeenItemIndex !== -1 &&
+      index >= firstSeenItemIndex &&
+      !hasNewerMessages &&
+      item.kind !== 'bottom-anchor' &&
+      !seenIdsRef.current.has(item.id)
+    enterKeysRef.current.set(item.renderKey, shouldAnimateEnter)
+    animateEnterByRenderKey.set(item.renderKey, shouldAnimateEnter)
+  }
+
   const safeSpacerHeight = Math.max(0, Math.ceil(bottomSpacerHeight))
   const resolveRenderVersion = useCallback(
     (item: TItem, index: number) => {
@@ -665,6 +738,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
             index={index}
             renderItemRef={renderItemRef}
             renderVersion={resolveRenderVersion(item, index)}
+            animateEnter={animateEnterByRenderKey.get(item.renderKey) ?? false}
           />
         ))}
         <TimelineBottomSpacer height={safeSpacerHeight} />

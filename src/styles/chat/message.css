@@ -172,6 +172,22 @@
   margin-left: var(--yolo-toolcall-rail-x);
   border-left: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+  /* Expand animates in (L2 enter); collapse is intentionally instant
+   * (L1 receipt) — no exit animation here. */
+  animation: yolo-toolcall-content-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-toolcall-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .yolo-toolcall-content-section {

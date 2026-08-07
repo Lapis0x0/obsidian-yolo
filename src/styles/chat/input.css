@@ -1686,6 +1686,23 @@ button.yolo-chat-quick-access-picker-row > svg {
   min-height: 0;
 }
 
+.yolo-chat-timeline-row--enter {
+  animation: yolo-timeline-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-timeline-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 .yolo-message-navigator {
   position: absolute;
   top: 0;
@@ -1984,11 +2001,13 @@ button.yolo-chat-quick-access-picker-row > svg {
   pointer-events: none;
 }
 
-.yolo-chat-scroll-to-bottom-button {
+.yolo-chat-scroll-to-bottom-anchor {
   position: absolute;
   right: 8px;
-  top: 0;
-  transform: translateY(calc(-100% - 12px));
+  bottom: 12px;
+}
+
+.yolo-chat-scroll-to-bottom-button {
   display: inline-grid;
   place-items: center;
   width: 34px;
@@ -2003,13 +2022,13 @@ button.yolo-chat-quick-access-picker-row > svg {
     color-mix(in srgb, var(--background-modifier-box-shadow) 18%, transparent);
   backdrop-filter: blur(10px);
   transition:
-    transform 0.15s ease,
+    transform var(--yolo-anim-duration-feedback) ease,
     border-color var(--yolo-anim-duration-feedback) ease,
     background-color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-chat-scroll-to-bottom-button:hover {
-  transform: translateY(calc(-100% - 13px));
+  transform: translateY(-1px);
   border-color: color-mix(in srgb, var(--interactive-accent) 40%, transparent);
   background: color-mix(in srgb, var(--background-primary) 82%, transparent);
 }

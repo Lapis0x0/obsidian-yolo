@@ -8,7 +8,9 @@ import {
 import type { ReactNode, RefObject } from 'react'
 
 import {
+  MOTION_DURATION_ENTER_S,
   MOTION_DURATION_EXIT_S,
+  MOTION_EASE_IN,
   MOTION_EASE_OUT,
   MOTION_LAYOUT_SPRING,
 } from '../../styles/tokens/motion'
@@ -213,22 +215,44 @@ export function ChatConversationPane({
           layout: reduceMotion ? { duration: 0 } : MOTION_LAYOUT_SPRING,
         }}
       >
-        {showScrollToBottomButton && (
-          <div className="yolo-chat-floating-actions">
-            <button
-              type="button"
-              className="yolo-chat-scroll-to-bottom-button"
-              onClick={onForceScrollToBottom}
-              aria-label={
-                hasStreamingMessages
-                  ? scrollToBottomWhileStreamingLabel
-                  : scrollToBottomLabel
-              }
-            >
-              <ArrowDown size={14} strokeWidth={2.25} />
-            </button>
-          </div>
-        )}
+        <div className="yolo-chat-floating-actions">
+          <AnimatePresence initial={false}>
+            {showScrollToBottomButton ? (
+              <motion.div
+                key="scroll-to-bottom"
+                className="yolo-chat-scroll-to-bottom-anchor"
+                initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.9,
+                  y: 6,
+                  transition: {
+                    duration: reduceMotion ? 0 : MOTION_DURATION_EXIT_S,
+                    ease: MOTION_EASE_IN,
+                  },
+                }}
+                transition={{
+                  duration: reduceMotion ? 0 : MOTION_DURATION_ENTER_S,
+                  ease: MOTION_EASE_OUT,
+                }}
+              >
+                <button
+                  type="button"
+                  className="yolo-chat-scroll-to-bottom-button"
+                  onClick={onForceScrollToBottom}
+                  aria-label={
+                    hasStreamingMessages
+                      ? scrollToBottomWhileStreamingLabel
+                      : scrollToBottomLabel
+                  }
+                >
+                  <ArrowDown size={14} strokeWidth={2.25} />
+                </button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
         {footerContent}
       </motion.div>
     </>
