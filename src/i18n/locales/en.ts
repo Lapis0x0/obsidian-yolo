@@ -755,6 +755,15 @@ export const en: TranslationKeys = {
       imageCompressionQuality: 'Compression quality',
       imageCompressionQualityDesc:
         'Image compression ratio (1-100). Controls both dimensions and quality, e.g. 60 scales to 60% size at 60% quality.',
+      cliRuntimesBlockTitle: 'CLI runtimes',
+      claudeCliPathName: 'Claude Code CLI path',
+      claudeCliPathDesc:
+        'Custom path to the claude executable — paste the output of "which claude". Leave empty to auto-detect. Stored on this device only.',
+      codexCliPathName: 'Codex CLI path',
+      codexCliPathDesc:
+        'Custom path to the codex executable — paste the output of "which codex" ("where codex" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      cliPathMissing:
+        'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',
       autoContextCompaction: 'Automatic context compaction',
       autoContextCompactionDesc:

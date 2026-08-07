@@ -14,6 +14,12 @@ export type CodexHostResolver = () => Promise<CodexAppServerHost>
 
 export type CodexAppServerHostOptions = CodexProcessOptions & {
   createProcess?: (options: CodexProcessOptions) => Promise<CodexProcessLike>
+  /**
+   * Re-resolves launch options right before each process spawn, so a CLI
+   * installed or a path override changed after startup is picked up on the
+   * next attempt without restarting Obsidian.
+   */
+  resolveProcessOptions?: () => Promise<CodexProcessOptions>
 }
 
 /** Owns one initialized app-server process shared by independent threads. */
@@ -105,7 +111,10 @@ export class CodexAppServerHost {
     const createProcess =
       this.options.createProcess ??
       ((options: CodexProcessOptions) => CodexAppServerProcess.start(options))
-    const process = await createProcess(this.options)
+    const processOptions = this.options.resolveProcessOptions
+      ? { ...this.options, ...(await this.options.resolveProcessOptions()) }
+      : this.options
+    const process = await createProcess(processOptions)
     this.process = process
     const transport = new CodexRpcTransport(process)
     transport.onFatal((error) => this.handleFatal(transport, process, error))

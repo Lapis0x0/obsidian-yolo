@@ -47,6 +47,34 @@ const existingFile = async (candidate: string): Promise<boolean> => {
   }
 }
 
+const expandHomePath = (value: string, home: string): string => {
+  if (value === '~') return home
+  if (value.startsWith('~/')) return path.join(home, value.slice(2))
+  return value
+}
+
+export const isWindowsStylePath = (value: string): boolean =>
+  /^[A-Za-z]:[\\/]/u.test(value) ||
+  value.startsWith('\\\\') ||
+  /\.(?:exe|cmd|bat)$/i.test(value)
+
+/**
+ * A configured override that does not point at an existing file falls through
+ * to auto-detection, so a path synced from another device never makes things
+ * worse than having no override at all.
+ */
+const resolveConfiguredExecutable = async (
+  configuredPath: string | undefined,
+  home: string,
+  platform: NodeJS.Platform,
+): Promise<string | null> => {
+  const trimmed = configuredPath?.trim().replace(/^"|"$/g, '')
+  if (!trimmed) return null
+  const expanded =
+    platform === 'win32' ? trimmed : expandHomePath(trimmed, home)
+  return (await existingFile(expanded)) ? expanded : null
+}
+
 export const findCodexExecutable = async (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
@@ -66,6 +94,9 @@ export const findCodexExecutable = async (
             : '',
           env.NVM_SYMLINK ?? '',
           env.VOLTA_HOME ? path.win32.join(env.VOLTA_HOME, 'bin') : '',
+          env.PNPM_HOME ??
+            (env.LOCALAPPDATA ? path.win32.join(env.LOCALAPPDATA, 'pnpm') : ''),
+          env.FNM_MULTISHELL_PATH ?? '',
           home ? path.win32.join(home, 'scoop', 'shims') : '',
         ]
       : [
@@ -74,6 +105,28 @@ export const findCodexExecutable = async (
           '/usr/local/bin',
           '/opt/homebrew/bin',
           '/usr/bin',
+          // The Codex desktop app bundles the CLI binary; users who only
+          // installed the app still get a working runtime.
+          ...(platform === 'darwin'
+            ? [
+                path.join(
+                  home,
+                  'Applications',
+                  'Codex.app',
+                  'Contents',
+                  'Resources',
+                ),
+                '/Applications/Codex.app/Contents/Resources',
+                path.join(
+                  home,
+                  'Applications',
+                  'Codex.app',
+                  'Contents',
+                  'MacOS',
+                ),
+                '/Applications/Codex.app/Contents/MacOS',
+              ]
+            : []),
         ]
   const names =
     platform === 'win32'
@@ -164,11 +217,23 @@ export const wslPathToWindows = (value: string, distro: string): string => {
   return `\\\\wsl$\\${distro}${value.replace(/\//g, '\\')}`
 }
 
-const wslHasCodex = async (distro: string): Promise<boolean> => {
+const wslHasCodex = async (
+  distro: string,
+  command: string,
+): Promise<boolean> => {
   try {
     await execFileAsync(
       'wsl.exe',
-      ['--distribution', distro, '--exec', 'sh', '-lc', 'command -v codex'],
+      [
+        '--distribution',
+        distro,
+        '--exec',
+        'sh',
+        '-lc',
+        'command -v -- "$1"',
+        'sh',
+        command,
+      ],
       { timeout: 5_000, windowsHide: true },
     )
     return true
@@ -181,19 +246,23 @@ export const resolveCodexLaunch = async (
   vaultPath: string,
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
+  configuredCliPath?: string,
 ): Promise<ResolvedCodexLaunch> => {
+  const home = firstEnvironmentValue(env, 'HOME', 'USERPROFILE') ?? homedir()
+
   if (platform !== 'win32') {
-    return {
-      command: (await findCodexExecutable(env, platform)) ?? undefined,
-      runtimeCwd: vaultPath,
-      spawnCwd: vaultPath,
-    }
+    const command =
+      (await resolveConfiguredExecutable(configuredCliPath, home, platform)) ??
+      (await findCodexExecutable(env, platform)) ??
+      undefined
+    return { command, runtimeCwd: vaultPath, spawnCwd: vaultPath }
   }
 
   const pathDistro = inferWslDistro(vaultPath)
   const nativeCommand = pathDistro
     ? null
-    : await findCodexExecutable(env, platform)
+    : ((await resolveConfiguredExecutable(configuredCliPath, home, platform)) ??
+      (await findCodexExecutable(env, platform)))
   if (nativeCommand) {
     return {
       command: nativeCommand,
@@ -202,13 +271,21 @@ export const resolveCodexLaunch = async (
     }
   }
 
+  // Inside WSL a configured non-Windows-style value overrides the command
+  // the distribution resolves; Windows-style overrides only apply natively.
+  const configuredWslCommand = configuredCliPath?.trim()
+  const wslCommand =
+    configuredWslCommand && !isWindowsStylePath(configuredWslCommand)
+      ? configuredWslCommand
+      : 'codex'
+
   const distro = pathDistro ?? (await resolveDefaultWslDistro())
-  if (distro && (pathDistro || (await wslHasCodex(distro)))) {
+  if (distro && (pathDistro || (await wslHasCodex(distro, wslCommand)))) {
     const runtimeCwd = windowsPathToWsl(vaultPath, distro)
     if (runtimeCwd) {
       return {
         command: 'wsl.exe',
-        launchArgs: ['--distribution', distro, '--cd', runtimeCwd, 'codex'],
+        launchArgs: ['--distribution', distro, '--cd', runtimeCwd, wslCommand],
         runtimeCwd,
         spawnCwd: vaultPath,
         mapRuntimePathToHost: (runtimePath) =>

@@ -696,6 +696,14 @@ export const zh: TranslationKeys = {
       imageCompressionQuality: '压缩质量',
       imageCompressionQualityDesc:
         '图片压缩比例（1-100）。同时控制尺寸和画质，例如 60 表示尺寸缩至 60%、画质 60%。',
+      cliRuntimesBlockTitle: 'CLI 运行时',
+      claudeCliPathName: 'Claude Code CLI 路径',
+      claudeCliPathDesc:
+        '自定义 claude 可执行文件路径，可粘贴 which claude 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      codexCliPathName: 'Codex CLI 路径',
+      codexCliPathDesc:
+        '自定义 codex 可执行文件路径，可粘贴 which codex（Windows 为 where codex）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',
       autoContextCompactionDesc:

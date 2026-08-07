@@ -758,6 +758,15 @@ export const it: DeepPartial<TranslationKeys> = {
       imageCompressionQuality: 'Qualità di compressione',
       imageCompressionQualityDesc:
         'Rapporto di compressione immagini (1-100). Controlla sia dimensioni che qualità, es. 60 riduce al 60% con qualità 60%.',
+      cliRuntimesBlockTitle: 'Runtime CLI',
+      claudeCliPathName: 'Percorso CLI di Claude Code',
+      claudeCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      codexCliPathName: 'Percorso CLI di Codex',
+      codexCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile codex — incolla l\'output di "which codex" ("where codex" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      cliPathMissing:
+        'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
       autoContextCompaction: 'Compattazione automatica del contesto',
       autoContextCompactionDesc:

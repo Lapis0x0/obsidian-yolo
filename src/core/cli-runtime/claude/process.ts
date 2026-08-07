@@ -4,6 +4,7 @@ import type {
 } from '@yolo/claude-agent-sdk-runtime'
 
 import { assertCliRuntimeAvailable } from '../desktop'
+import { loadLoginShellEnvironment } from '../login-shell-env'
 
 import type { ClaudeProcessSupport } from './types'
 
@@ -109,7 +110,13 @@ const getClaudeCandidates = ({
     .filter(Boolean)
   const executableNames =
     platform === 'win32' ? ['claude.exe', 'claude'] : ['claude']
-  const configuredPath = configuredCliPath?.trim()
+  const rawConfiguredPath = configuredCliPath?.trim()
+  const configuredPath =
+    rawConfiguredPath === '~'
+      ? homedir
+      : rawConfiguredPath?.startsWith('~/')
+        ? joinPath(platform, homedir, rawConfiguredPath.slice(2))
+        : rawConfiguredPath
   const candidates: string[] = []
   if (configuredPath) {
     if (platform === 'win32' && /\.(?:cmd|bat)$/i.test(configuredPath)) {
@@ -252,17 +259,7 @@ const getNodeCandidates = ({
   return candidates
 }
 
-const loadDesktopEnvironment = async (): Promise<
-  Record<string, string | undefined>
-> => {
-  const inherited = { ...process.env }
-  try {
-    const { shellEnvSync } = await import('shell-env')
-    return { ...inherited, ...shellEnvSync() }
-  } catch {
-    return inherited
-  }
-}
+const loadDesktopEnvironment = loadLoginShellEnvironment
 
 const defaultFileExists = async (filePath: string): Promise<boolean> => {
   // eslint-disable-next-line import/no-nodejs-modules -- evaluated only after the shared Desktop capability gate
@@ -351,7 +348,9 @@ export const resolveClaudeProcessSupport = async (
     platform,
   )
   if (!cliPath) {
-    throw new Error('Claude Code CLI was not found on this device.')
+    throw new Error(
+      'Claude Code CLI was not found on this device. Install it, or set a custom CLI path in Settings → Agent, then retry.',
+    )
   }
 
   const nodePath = await findExisting(

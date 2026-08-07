@@ -102,7 +102,8 @@ type StreamedToolInput = {
 
 export type ClaudeCliRuntimeOptions = {
   vaultPath: string
-  configuredCliPath?: string
+  /** Read at each session start so path overrides apply without a restart. */
+  getConfiguredCliPath?: () => string | undefined
   loadSdk?: ClaudeSdkLoader
   resolveProcessSupport?: ClaudeProcessSupportResolver
   /** Product chat mode mapped into Claude SDK permissionMode at session start. */
@@ -243,7 +244,7 @@ export class ClaudeCliRuntime implements CliRuntime {
   readonly runtimeId = 'claude-code' as const
 
   private readonly vaultPath: string
-  private readonly configuredCliPath?: string
+  private readonly getConfiguredCliPath?: () => string | undefined
   private readonly loadSdk: ClaudeSdkLoader
   private readonly resolveProcessSupport: ClaudeProcessSupportResolver
   private readonly listeners = new Set<CliRuntimeEventListener>()
@@ -274,13 +275,13 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   constructor(options: ClaudeCliRuntimeOptions) {
     this.vaultPath = options.vaultPath
-    this.configuredCliPath = options.configuredCliPath
+    this.getConfiguredCliPath = options.getConfiguredCliPath
     this.loadSdk = options.loadSdk ?? loadClaudeAgentSdk
     this.resolveProcessSupport =
       options.resolveProcessSupport ??
       (() =>
         resolveClaudeProcessSupport({
-          configuredCliPath: this.configuredCliPath,
+          configuredCliPath: this.getConfiguredCliPath?.(),
         }))
     this.cliChatMode = options.cliChatMode ?? 'agent'
     this.yoloEnabled = options.yoloEnabled ?? false

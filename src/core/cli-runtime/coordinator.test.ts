@@ -20,7 +20,11 @@ class TestFileSystemAdapter extends FileSystemAdapter {
 }
 
 const createApp = (adapter: object) =>
-  ({ vault: { adapter } }) as Parameters<
+  ({
+    vault: { adapter },
+    loadLocalStorage: () => null,
+    saveLocalStorage: () => undefined,
+  }) as unknown as Parameters<
     typeof createDesktopCliRuntimeCoordinator
   >[0]['app']
 
@@ -162,8 +166,9 @@ describe('CLI runtime coordinator', () => {
 
   it('creates each provider lazily once per scope with current absolute cwd and options', async () => {
     const harness = runtimeHarness()
+    const getConfiguredCliPath = () => '/bin/claude'
     const getClaudeRuntimeOptions = jest.fn(() => ({
-      configuredCliPath: '/bin/claude',
+      getConfiguredCliPath,
     }))
     const getCodexRuntimeOptions = jest.fn(() => ({ command: '/bin/codex' }))
     const coordinator = await createDesktopCliRuntimeCoordinator({
@@ -182,7 +187,7 @@ describe('CLI runtime coordinator', () => {
     )
     expect(harness.createClaudeRuntime).toHaveBeenCalledTimes(1)
     expect(harness.createClaudeRuntime).toHaveBeenCalledWith({
-      configuredCliPath: '/bin/claude',
+      getConfiguredCliPath,
       vaultPath: '/vault/current',
     })
     expect(scope.resolveRuntime('codex')).toBe(scope.resolveRuntime('codex'))
@@ -195,7 +200,9 @@ describe('CLI runtime coordinator', () => {
       }),
     )
     expect(getClaudeRuntimeOptions).toHaveBeenCalledTimes(1)
-    expect(getCodexRuntimeOptions).toHaveBeenCalledTimes(1)
+    // Once for the shared app-server host pool, once at runtime creation so
+    // refreshed launch options are picked up per conversation.
+    expect(getCodexRuntimeOptions).toHaveBeenCalledTimes(2)
   })
 
   it('rejects a relative vault cwd without invoking a provider factory', async () => {

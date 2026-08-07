@@ -579,6 +579,12 @@ export type TranslationKeys = {
       imageCompressionEnabledDesc?: string
       imageCompressionQuality?: string
       imageCompressionQualityDesc?: string
+      cliRuntimesBlockTitle?: string
+      claudeCliPathName?: string
+      claudeCliPathDesc?: string
+      codexCliPathName?: string
+      codexCliPathDesc?: string
+      cliPathMissing?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string
       autoContextCompactionDesc?: string

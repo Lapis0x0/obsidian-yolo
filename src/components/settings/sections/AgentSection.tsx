@@ -1,6 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { BookOpen, Copy, Cpu, Plus, Trash2, Wrench } from 'lucide-react'
-import { App } from 'obsidian'
+import { App, Platform } from 'obsidian'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
@@ -39,6 +39,7 @@ import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
+import { AgentCliPathSection } from './AgentCliPathSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
 import { AgentMcpServerSection } from './AgentMcpServerSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
@@ -698,6 +699,14 @@ export function AgentSection({ app }: AgentSectionProps) {
           </div>
           <AgentMcpServerSection />
         </div>
+        {Platform.isDesktop && (
+          <div className="yolo-agent-sub-card">
+            <div className="yolo-agent-sub-card-head">
+              {t('settings.agent.cliRuntimesBlockTitle', 'CLI runtimes')}
+            </div>
+            <AgentCliPathSection app={app} />
+          </div>
+        )}
       </section>
 
       <section className="yolo-agent-block">

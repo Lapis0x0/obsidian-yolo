@@ -5,7 +5,9 @@ import { access } from 'node:fs/promises'
 import {
   findCodexExecutable,
   inferWslDistro,
+  isWindowsStylePath,
   parseDefaultWslDistro,
+  resolveCodexLaunch,
   windowsPathToWsl,
   wslPathToWindows,
 } from './launch'
@@ -79,5 +81,79 @@ describe('Codex launch discovery', () => {
     expect(wslPathToWindows('/home/me/.codex/session.jsonl', 'Ubuntu')).toBe(
       '\\\\wsl$\\Ubuntu\\home\\me\\.codex\\session.jsonl',
     )
+  })
+
+  it('searches the bundled Codex.app binary on macOS', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      if (
+        String(candidate) === '/Applications/Codex.app/Contents/Resources/codex'
+      ) {
+        return
+      }
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      findCodexExecutable({ HOME: '/Users/me' }, 'darwin'),
+    ).resolves.toBe('/Applications/Codex.app/Contents/Resources/codex')
+  })
+
+  it('prefers an existing configured path with home expansion', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      if (String(candidate) === '/Users/me/.nvm/current/bin/codex') return
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      resolveCodexLaunch(
+        '/vault',
+        { HOME: '/Users/me' },
+        'darwin',
+        '~/.nvm/current/bin/codex',
+      ),
+    ).resolves.toMatchObject({ command: '/Users/me/.nvm/current/bin/codex' })
+  })
+
+  it('falls back to auto-detection when the configured path is missing', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      if (String(candidate) === '/opt/homebrew/bin/codex') return
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      resolveCodexLaunch(
+        '/vault',
+        { HOME: '/Users/me' },
+        'darwin',
+        '/Users/me/gone/codex',
+      ),
+    ).resolves.toMatchObject({ command: '/opt/homebrew/bin/codex' })
+  })
+
+  it('uses a configured non-Windows-style command inside WSL', async () => {
+    await expect(
+      resolveCodexLaunch(
+        '\\\\wsl$\\Ubuntu\\home\\me\\vault',
+        { USERPROFILE: 'C:\\Users\\me' },
+        'win32',
+        '/home/me/.local/bin/codex',
+      ),
+    ).resolves.toMatchObject({
+      command: 'wsl.exe',
+      launchArgs: [
+        '--distribution',
+        'Ubuntu',
+        '--cd',
+        '/home/me/vault',
+        '/home/me/.local/bin/codex',
+      ],
+    })
+  })
+
+  it('classifies Windows-style CLI references', () => {
+    expect(isWindowsStylePath('C:\\tools\\codex.exe')).toBe(true)
+    expect(isWindowsStylePath('codex.cmd')).toBe(true)
+    expect(isWindowsStylePath('\\\\server\\share\\codex')).toBe(true)
+    expect(isWindowsStylePath('/home/me/.local/bin/codex')).toBe(false)
   })
 })

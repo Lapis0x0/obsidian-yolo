@@ -136,7 +136,7 @@ export class CodexAppServerProcess implements CodexProcessLike {
     const command = options.command?.trim()
     if (!command) {
       throw new Error(
-        'Codex CLI was not found. Install Codex for Windows or in the default WSL distribution, then restart Obsidian.',
+        'Codex CLI was not found. Install Codex, or set a custom CLI path in Settings → Agent, then retry.',
       )
     }
     const spec = resolveSpawnSpec(command, options.launchArgs)
