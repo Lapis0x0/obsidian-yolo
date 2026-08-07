@@ -139,7 +139,11 @@ export class AgentLlmTurnExecutor {
       })
     }
     const resumedMessage = this.input.resumeAssistantMessage
-    const assistantMessage: ChatAssistantMessage = {
+    // Streaming deltas replace this reference with a new object (immutable
+    // update) rather than mutating in place, so a message's identity changes
+    // exactly when its content changes. Downstream state layers rely on this
+    // to skip unchanged messages by reference instead of deep-comparing them.
+    let assistantMessage: ChatAssistantMessage = {
       ...(resumedMessage ?? {
         role: 'assistant' as const,
         id: assistantMessageId,
@@ -264,13 +268,12 @@ export class AgentLlmTurnExecutor {
         debugTraceId: debugTrace?.id,
         onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
           if (reasoningDelta) reasoningTracker.observeReasoning()
+
+          let metadata = assistantMessage.metadata
           if (contentDelta || toolCalls?.length) {
             const reasoningDurationMs = reasoningTracker.settle()
             if (reasoningDurationMs !== undefined) {
-              assistantMessage.metadata = {
-                ...assistantMessage.metadata,
-                reasoningDurationMs,
-              }
+              metadata = { ...metadata, reasoningDurationMs }
             }
           }
           if (
@@ -284,12 +287,17 @@ export class AgentLlmTurnExecutor {
               providerFirstTokenMs: Date.now() - providerStart,
             })
           }
-          if (contentDelta) {
-            assistantMessage.content += contentDelta
-          }
-          if (reasoningDelta && !preserveInitialReasoning) {
-            assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
-          }
+
+          const content = contentDelta
+            ? assistantMessage.content + contentDelta
+            : assistantMessage.content
+
+          const reasoning =
+            reasoningDelta && !preserveInitialReasoning
+              ? `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
+              : assistantMessage.reasoning
+
+          let toolCallRequests = assistantMessage.toolCallRequests
           if (toolCalls && toolCalls.length > 0) {
             const streamedToolCallRequests = toolCalls
               .map((toolCall) => {
@@ -314,19 +322,34 @@ export class AgentLlmTurnExecutor {
               )
 
             if (streamedToolCallRequests.length > 0) {
-              assistantMessage.toolCallRequests = streamedToolCallRequests
+              toolCallRequests = streamedToolCallRequests
             }
           }
           if (chunk.usage) {
-            assistantMessage.metadata = {
-              ...assistantMessage.metadata,
-              usage: chunk.usage,
-            }
+            metadata = { ...metadata, usage: chunk.usage }
           }
           if (chunk.choices?.[0]?.delta?.providerMetadata) {
-            assistantMessage.metadata = {
-              ...assistantMessage.metadata,
+            metadata = {
+              ...metadata,
               providerMetadata: chunk.choices[0].delta.providerMetadata,
+            }
+          }
+
+          // Only replace the reference when something actually changed —
+          // an untouched reference tells downstream state layers this
+          // message can be skipped without a deep comparison.
+          if (
+            content !== assistantMessage.content ||
+            reasoning !== assistantMessage.reasoning ||
+            toolCallRequests !== assistantMessage.toolCallRequests ||
+            metadata !== assistantMessage.metadata
+          ) {
+            assistantMessage = {
+              ...assistantMessage,
+              content,
+              reasoning,
+              toolCallRequests,
+              metadata,
             }
           }
           this.input.onAssistantMessage(assistantMessage)
@@ -355,42 +378,46 @@ export class AgentLlmTurnExecutor {
             }
           : undefined
 
-      assistantMessage.metadata = {
+      const errorMetadata = {
         ...assistantMessage.metadata,
         ...(reasoningTracker.settle() !== undefined
           ? { reasoningDurationMs: reasoningTracker.durationMs }
           : {}),
         durationMs: Date.now() - responseStart,
-        generationState: isAborted ? 'aborted' : 'error',
+        generationState: isAborted ? ('aborted' as const) : ('error' as const),
         errorMessage,
         ...(errorDetail ? { errorDetail } : {}),
       }
+      assistantMessage = { ...assistantMessage, metadata: errorMetadata }
       updateLLMDebugTrace(debugTrace?.id, {
         completedAt: Date.now(),
-        durationMs: assistantMessage.metadata.durationMs,
-        generationState: assistantMessage.metadata.generationState,
+        durationMs: errorMetadata.durationMs,
+        generationState: errorMetadata.generationState,
         errorMessage,
       })
       this.input.onAssistantMessage(assistantMessage)
       throw error
     }
 
-    if (assistantMessage.content === initialContent && turnResult.content) {
-      assistantMessage.content += turnResult.content
+    let finalContent = assistantMessage.content
+    if (finalContent === initialContent && turnResult.content) {
+      finalContent += turnResult.content
     }
+    let finalReasoning = assistantMessage.reasoning
     if (
       !preserveInitialReasoning &&
-      (assistantMessage.reasoning ?? '') === initialReasoning &&
+      (finalReasoning ?? '') === initialReasoning &&
       turnResult.reasoning
     ) {
-      assistantMessage.reasoning = `${initialReasoning}${turnResult.reasoning}`
+      finalReasoning = `${initialReasoning}${turnResult.reasoning}`
     }
     if (turnResult.reasoning) reasoningTracker.observeReasoning()
     const reasoningDurationMs = reasoningTracker.settle()
 
+    let finalAnnotations = assistantMessage.annotations
     if (turnResult.annotations?.length) {
       const existingAnnotations = assistantMessage.annotations ?? []
-      assistantMessage.annotations = [
+      finalAnnotations = [
         ...existingAnnotations,
         ...turnResult.annotations.filter(
           (incoming) =>
@@ -401,14 +428,14 @@ export class AgentLlmTurnExecutor {
         ),
       ]
     }
-    assistantMessage.metadata = {
+    const finalMetadata = {
       ...assistantMessage.metadata,
       ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
       usage: turnResult.usage ?? assistantMessage.metadata?.usage,
       durationMs: Date.now() - responseStart,
       generationState: this.input.abortSignal?.aborted
-        ? 'aborted'
-        : 'completed',
+        ? ('aborted' as const)
+        : ('completed' as const),
       providerMetadata: turnResult.providerMetadata,
     }
 
@@ -419,13 +446,20 @@ export class AgentLlmTurnExecutor {
       metadata: toolCall.metadata,
     }))
 
-    assistantMessage.toolCallRequests =
-      toolCallRequests.length > 0 ? toolCallRequests : undefined
+    assistantMessage = {
+      ...assistantMessage,
+      content: finalContent,
+      reasoning: finalReasoning,
+      annotations: finalAnnotations,
+      metadata: finalMetadata,
+      toolCallRequests:
+        toolCallRequests.length > 0 ? toolCallRequests : undefined,
+    }
     updateLLMDebugTrace(debugTrace?.id, {
       completedAt: Date.now(),
-      durationMs: assistantMessage.metadata.durationMs,
-      generationState: assistantMessage.metadata.generationState,
-      usage: assistantMessage.metadata.usage,
+      durationMs: finalMetadata.durationMs,
+      generationState: finalMetadata.generationState,
+      usage: finalMetadata.usage,
       hasToolCalls: toolCallRequests.length > 0,
       toolCallNames: toolCallRequests.map((toolCall) => toolCall.name),
     })

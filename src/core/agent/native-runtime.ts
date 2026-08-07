@@ -434,15 +434,25 @@ export class NativeAgentRuntime implements AgentRuntime {
                         toolCapabilityMode: input.toolCapabilityMode,
                       })
                         .then((estimatedNextContextTokens) => {
-                          nextCompaction.estimatedNextContextTokens =
-                            estimatedNextContextTokens
-                          if (typeof preCompactionTokens === 'number') {
-                            const saved =
-                              preCompactionTokens - estimatedNextContextTokens
-                            if (saved > 0) {
-                              nextCompaction.estimatedTokensSaved = saved
-                            }
-                          }
+                          const saved =
+                            typeof preCompactionTokens === 'number'
+                              ? preCompactionTokens - estimatedNextContextTokens
+                              : undefined
+                          // Published compaction entries are immutable once
+                          // notified; replace by reference instead of
+                          // mutating the entry already handed to subscribers.
+                          this.compactionState = this.compactionState.map(
+                            (entry) =>
+                              entry === nextCompaction
+                                ? {
+                                    ...entry,
+                                    estimatedNextContextTokens,
+                                    ...(saved !== undefined && saved > 0
+                                      ? { estimatedTokensSaved: saved }
+                                      : {}),
+                                  }
+                                : entry,
+                          )
                           this.notifySubscribers()
                         })
                         .catch((error) => {

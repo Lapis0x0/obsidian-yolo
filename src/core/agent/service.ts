@@ -2,7 +2,6 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import {
-  ChatAssistantMessage,
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
   ChatMessage,
@@ -184,32 +183,6 @@ type PendingScheduledConversationPublish = {
   timeoutId: ReturnType<typeof setTimeout>
 }
 
-type RuntimeMessageSignature = {
-  role: ChatMessage['role']
-  id: string
-  ref: ChatMessage
-  content?: string
-  reasoning?: string
-  generationState?: NonNullable<
-    ChatAssistantMessage['metadata']
-  >['generationState']
-  assistantMetadataKey?: string
-  assistantAnnotationsKey?: string
-  assistantToolCallRequestsKey?: string
-  toolResponseStatusKey?: string
-  taskStatus?: string
-}
-
-type RuntimeStateSignature = {
-  status: AgentRunStatus
-  runId?: number
-  anchorMessageId?: string
-  errorMessage?: string
-  pendingCompactionAnchorMessageId?: string | null
-  compactionKey: string
-  messages: RuntimeMessageSignature[]
-}
-
 type AgentServiceOptions = {
   getSettings?: () => YoloSettings
   persistConversationMessages?: (payload: {
@@ -360,74 +333,38 @@ const reconcileAssistantGenerationState = (
   })
 }
 
-const stringifySignaturePart = (value: unknown): string =>
-  value === undefined ? '' : JSON.stringify(value)
-
-const createRuntimeMessageSignature = (
-  message: ChatMessage,
-): RuntimeMessageSignature => {
-  if (message.role === 'assistant') {
-    return {
-      role: message.role,
-      id: message.id,
-      ref: message,
-      content: message.content,
-      reasoning: message.reasoning,
-      generationState: message.metadata?.generationState,
-      assistantMetadataKey: stringifySignaturePart(message.metadata),
-      assistantAnnotationsKey: stringifySignaturePart(message.annotations),
-      assistantToolCallRequestsKey: stringifySignaturePart(
-        message.toolCallRequests,
-      ),
-    }
-  }
-
-  if (message.role === 'tool') {
-    return {
-      role: message.role,
-      id: message.id,
-      ref: message,
-      toolResponseStatusKey: message.toolCalls
-        .map((toolCall) => `${toolCall.request.id}:${toolCall.response.status}`)
-        .join('|'),
-    }
-  }
-
-  if (
-    message.role === 'terminal_command_result' ||
-    message.role === 'subagent_result' ||
-    message.role === 'external_agent_result'
-  ) {
-    return {
-      role: message.role,
-      id: message.id,
-      ref: message,
-      taskStatus: message.status,
-    }
-  }
-
-  return {
-    role: message.role,
-    id: message.id,
-    ref: message,
-  }
+// Runtime message identity is a contract enforced upstream (llm-turn-executor,
+// NativeAgentRuntime): a message's object reference changes if and only if
+// its content changed. That lets publish-mode detection compare references
+// instead of deep- or stringify-comparing every message on every delta.
+const sameCompactionState = (
+  previous: ChatConversationCompactionState | undefined,
+  next: ChatConversationCompactionState | undefined,
+): boolean => {
+  const previousEntries = previous ?? []
+  const nextEntries = next ?? []
+  return (
+    previousEntries.length === nextEntries.length &&
+    previousEntries.every((entry, index) => entry === nextEntries[index])
+  )
 }
 
-const createRuntimeStateSignature = (
-  state: AgentConversationState,
-): RuntimeStateSignature => ({
-  status: state.status,
-  runId: state.runId,
-  anchorMessageId: state.anchorMessageId,
-  errorMessage: state.errorMessage,
-  pendingCompactionAnchorMessageId: state.pendingCompactionAnchorMessageId,
-  compactionKey: stringifySignaturePart(state.compaction ?? []),
-  messages: state.messages.map(createRuntimeMessageSignature),
-})
+const isDisplayOnlyAssistantChange = (
+  previousMessage: ChatMessage,
+  nextMessage: ChatMessage,
+): boolean =>
+  previousMessage.role === 'assistant' &&
+  nextMessage.role === 'assistant' &&
+  previousMessage.id === nextMessage.id &&
+  previousMessage.metadata?.generationState === 'streaming' &&
+  nextMessage.metadata?.generationState === 'streaming' &&
+  previousMessage.metadata === nextMessage.metadata &&
+  previousMessage.annotations === nextMessage.annotations &&
+  previousMessage.toolCallRequests === nextMessage.toolCallRequests
 
 const getRuntimeSnapshotPublishMode = (
-  previousState: RuntimeStateSignature,
-  nextState: RuntimeStateSignature,
+  previousState: AgentConversationState,
+  nextState: AgentConversationState,
 ): ConversationPublishMode => {
   if (
     previousState.status !== nextState.status ||
@@ -436,7 +373,7 @@ const getRuntimeSnapshotPublishMode = (
     previousState.errorMessage !== nextState.errorMessage ||
     previousState.pendingCompactionAnchorMessageId !==
       nextState.pendingCompactionAnchorMessageId ||
-    previousState.compactionKey !== nextState.compactionKey ||
+    !sameCompactionState(previousState.compaction, nextState.compaction) ||
     previousState.messages.length !== nextState.messages.length
   ) {
     return 'immediate'
@@ -447,47 +384,10 @@ const getRuntimeSnapshotPublishMode = (
   for (let index = 0; index < previousState.messages.length; index += 1) {
     const previousMessage = previousState.messages[index]
     const nextMessage = nextState.messages[index]
-    if (!nextMessage) {
-      return 'immediate'
-    }
-    if (
-      previousMessage.role === nextMessage.role &&
-      previousMessage.id === nextMessage.id &&
-      previousMessage.ref === nextMessage.ref &&
-      previousMessage.content === nextMessage.content &&
-      previousMessage.reasoning === nextMessage.reasoning &&
-      previousMessage.generationState === nextMessage.generationState &&
-      previousMessage.assistantMetadataKey ===
-        nextMessage.assistantMetadataKey &&
-      previousMessage.assistantAnnotationsKey ===
-        nextMessage.assistantAnnotationsKey &&
-      previousMessage.assistantToolCallRequestsKey ===
-        nextMessage.assistantToolCallRequestsKey &&
-      previousMessage.toolResponseStatusKey ===
-        nextMessage.toolResponseStatusKey &&
-      previousMessage.taskStatus === nextMessage.taskStatus
-    ) {
+    if (previousMessage === nextMessage) {
       continue
     }
-    if (
-      previousMessage.role !== 'assistant' ||
-      nextMessage.role !== 'assistant'
-    ) {
-      return 'immediate'
-    }
-
-    if (
-      previousMessage.id !== nextMessage.id ||
-      previousMessage.generationState !== 'streaming' ||
-      nextMessage.generationState !== 'streaming' ||
-      (previousMessage.content === nextMessage.content &&
-        previousMessage.reasoning === nextMessage.reasoning) ||
-      previousMessage.assistantAnnotationsKey !==
-        nextMessage.assistantAnnotationsKey ||
-      previousMessage.assistantToolCallRequestsKey !==
-        nextMessage.assistantToolCallRequestsKey ||
-      previousMessage.assistantMetadataKey !== nextMessage.assistantMetadataKey
-    ) {
+    if (!isDisplayOnlyAssistantChange(previousMessage, nextMessage)) {
       return 'immediate'
     }
 
@@ -500,46 +400,19 @@ const getRuntimeSnapshotPublishMode = (
   return displayOnlyAssistantChanges === 1 ? 'scheduled' : 'immediate'
 }
 
-const cloneMessageForSnapshot = (message: ChatMessage): ChatMessage => {
-  if (message.role === 'assistant') {
-    return {
-      ...message,
-      metadata: message.metadata ? { ...message.metadata } : undefined,
-      annotations: message.annotations ? [...message.annotations] : undefined,
-      toolCallRequests: message.toolCallRequests?.map((request) => ({
-        ...request,
-      })),
-    }
+// Dev-only enforcement of the reference-identity contract: published state
+// must never be mutated in place. `Object.isFrozen` short-circuits already
+// frozen subtrees, so under structural sharing this only does real work on
+// the messages/objects that actually changed this round.
+const deepFreezeForDev = <T>(value: T): T => {
+  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+    return value
   }
-
-  if (message.role === 'tool') {
-    return {
-      ...message,
-      toolCalls: message.toolCalls.map((toolCall) => ({
-        request: { ...toolCall.request },
-        response: { ...toolCall.response },
-      })),
-      metadata: message.metadata ? { ...message.metadata } : undefined,
-    }
+  Object.freeze(value)
+  for (const key of Object.getOwnPropertyNames(value)) {
+    deepFreezeForDev((value as Record<string, unknown>)[key])
   }
-
-  if (message.role === 'user') {
-    return {
-      ...message,
-      mentionables: [...message.mentionables],
-      selectedSkills: message.selectedSkills
-        ? [...message.selectedSkills]
-        : undefined,
-      selectedModelIds: message.selectedModelIds
-        ? [...message.selectedModelIds]
-        : undefined,
-    }
-  }
-
-  return {
-    ...message,
-    metadata: message.metadata ? { ...message.metadata } : undefined,
-  }
+  return value
 }
 
 const abortVisibleMessages = (messages: ChatMessage[]): ChatMessage[] => {
@@ -2210,7 +2083,6 @@ export class AgentService {
       activity,
     }
     this.recomputeConversationState(conversationId)
-    let runtimeStateSignature = createRuntimeStateSignature(runEntry.state)
 
     const unsubscribe = runtime.subscribe((snapshot) => {
       const currentRunEntry = this.runEntriesByKey.get(runKey)
@@ -2237,13 +2109,10 @@ export class AgentService {
             mergedMessages,
           ),
       }
-      const nextRuntimeStateSignature =
-        createRuntimeStateSignature(nextRunState)
       const publishMode = getRuntimeSnapshotPublishMode(
-        runtimeStateSignature,
-        nextRuntimeStateSignature,
+        previousRunState,
+        nextRunState,
       )
-      runtimeStateSignature = nextRuntimeStateSignature
       currentRunEntry.state = nextRunState
       this.recomputeConversationState(conversationId, publishMode)
     })
@@ -2654,6 +2523,9 @@ export class AgentService {
     this.cancelScheduledConversationPublish(conversationId)
     const entry = this.getOrCreateConversationEntry(conversationId)
     const state = this.cloneState(entry.state)
+    if (process.env.NODE_ENV !== 'production') {
+      deepFreezeForDev(state)
+    }
     for (const subscriber of entry.subscribers) {
       subscriber(state)
     }
@@ -2784,12 +2656,16 @@ export class AgentService {
     return tracked
   }
 
+  // Shallow only: message objects are immutable once published (see the
+  // reference-identity contract at `getRuntimeSnapshotPublishMode`), so
+  // cloning them per publish would just destroy the identity that lets
+  // downstream state layers skip unchanged messages by reference.
   private cloneState(state: AgentConversationState): AgentConversationState {
     return {
       conversationId: state.conversationId,
       status: state.status,
       runId: state.runId,
-      messages: state.messages.map(cloneMessageForSnapshot),
+      messages: [...state.messages],
       compaction: [...(state.compaction ?? [])],
       pendingCompactionAnchorMessageId:
         state.pendingCompactionAnchorMessageId ?? null,

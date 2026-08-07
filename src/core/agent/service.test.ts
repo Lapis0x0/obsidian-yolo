@@ -462,18 +462,22 @@ describe('AgentService streaming publish coalescing', () => {
     })
     const runtime = runtimeInstances[0]
 
-    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+    // Streaming deltas replace the message reference immutably (matching the
+    // real runtime's contract) rather than mutating one shared object, so
+    // each snapshot below is a distinct object with the same metadata
+    // reference — a display-only content change.
+    const firstAssistantMessage = makeStreamingAssistantMessage('a') as Extract<
       ChatMessage,
       { role: 'assistant' }
     >
-    runtime.emitSnapshot([userMessage, assistantMessage])
+    runtime.emitSnapshot([userMessage, firstAssistantMessage])
     expect(publishedStates).toHaveLength(2)
     const firstPublishedAssistant = publishedStates.at(-1)?.at(-1)
 
-    assistantMessage.content = 'ab'
-    runtime.emitSnapshot([userMessage, assistantMessage])
-    assistantMessage.content = 'abc'
-    runtime.emitSnapshot([userMessage, assistantMessage])
+    const secondAssistantMessage = { ...firstAssistantMessage, content: 'ab' }
+    runtime.emitSnapshot([userMessage, secondAssistantMessage])
+    const thirdAssistantMessage = { ...secondAssistantMessage, content: 'abc' }
+    runtime.emitSnapshot([userMessage, thirdAssistantMessage])
     expect(publishedStates).toHaveLength(2)
     expect(firstPublishedAssistant).toMatchObject({
       role: 'assistant',
@@ -511,25 +515,28 @@ describe('AgentService streaming publish coalescing', () => {
     })
     const runtime = runtimeInstances[0]
 
-    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+    const firstAssistantMessage = makeStreamingAssistantMessage('a') as Extract<
       ChatMessage,
       { role: 'assistant' }
     >
-    runtime.emitSnapshot([userMessage, assistantMessage])
+    runtime.emitSnapshot([userMessage, firstAssistantMessage])
     expect(subscriber).toHaveBeenCalledTimes(2)
 
-    assistantMessage.content = 'ab'
-    runtime.emitSnapshot([userMessage, assistantMessage])
+    const secondAssistantMessage = { ...firstAssistantMessage, content: 'ab' }
+    runtime.emitSnapshot([userMessage, secondAssistantMessage])
     expect(subscriber).toHaveBeenCalledTimes(2)
 
-    assistantMessage.toolCallRequests = [
-      {
-        id: 'call-1',
-        name: 'local:fs_read',
-        arguments: { kind: 'complete', value: {} },
-      },
-    ]
-    runtime.emitSnapshot([userMessage, assistantMessage])
+    const thirdAssistantMessage = {
+      ...secondAssistantMessage,
+      toolCallRequests: [
+        {
+          id: 'call-1',
+          name: 'local:fs_read',
+          arguments: { kind: 'complete' as const, value: {} },
+        },
+      ],
+    }
+    runtime.emitSnapshot([userMessage, thirdAssistantMessage])
     expect(subscriber).toHaveBeenCalledTimes(3)
 
     jest.advanceTimersByTime(16)
@@ -558,8 +565,15 @@ describe('AgentService streaming publish coalescing', () => {
     })
     const runtime = runtimeInstances[0]
 
-    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('a')])
-    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('ab')])
+    const firstAssistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, firstAssistantMessage])
+    runtime.emitSnapshot([
+      userMessage,
+      { ...firstAssistantMessage, content: 'ab' },
+    ])
     expect(subscriber).toHaveBeenCalledTimes(2)
 
     runtime.resolveRun()
@@ -588,14 +602,14 @@ describe('AgentService streaming publish coalescing', () => {
       input: buildBaseRunInput('conv-abort-publish', [userMessage]),
     })
     const runtime = runtimeInstances[0]
-    const assistantMessage = makeStreamingAssistantMessage('a') as Extract<
+    const firstAssistantMessage = makeStreamingAssistantMessage('a') as Extract<
       ChatMessage,
       { role: 'assistant' }
     >
 
-    runtime.emitSnapshot([userMessage, assistantMessage])
-    assistantMessage.content = 'ab'
-    runtime.emitSnapshot([userMessage, assistantMessage])
+    runtime.emitSnapshot([userMessage, firstAssistantMessage])
+    const secondAssistantMessage = { ...firstAssistantMessage, content: 'ab' }
+    runtime.emitSnapshot([userMessage, secondAssistantMessage])
     expect(subscriber).toHaveBeenCalledTimes(2)
 
     expect(service.abortConversation('conv-abort-publish')).toBe(true)
