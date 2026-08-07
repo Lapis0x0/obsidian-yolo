@@ -425,6 +425,12 @@ const truncateText = (text: string, maxLength: number): string => {
 
 const TOOL_RESULT_DISPLAY_MAX_CHARS = 12000
 
+/**
+ * 工具进入 Running 后，等待这么久仍未结束才展示中止按钮。
+ * 更短的调用由用户输入框的整体停止按钮兜底，不必为其闪现一次卡片内按钮。
+ */
+const RUNNING_ABORT_ACTION_DELAY_MS = 5000
+
 export const getToolResultDisplayText = ({
   response,
 }: {
@@ -1422,7 +1428,7 @@ function ToolCallItem({
 
     const timer = window.setTimeout(() => {
       setShowRunningActions(true)
-    }, 1000)
+    }, RUNNING_ABORT_ACTION_DELAY_MS)
 
     return () => {
       window.clearTimeout(timer)
