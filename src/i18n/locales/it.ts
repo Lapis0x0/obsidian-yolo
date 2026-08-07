@@ -632,9 +632,9 @@ export const it: DeepPartial<TranslationKeys> = {
         'Carica gli schemi completi degli strumenti su richiesta',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc: 'Modifica il testo di un singolo file',
-      builtinBashLabel: 'Bash',
+      builtinBashLabel: 'Terminale virtuale',
       builtinBashDesc:
-        'Cerca e ispeziona i file del vault, più operazioni su percorsi mkdir/mv/rm.',
+        'Cerca e ispeziona i file del vault, più operazioni su percorsi mkdir/mv/rm',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
@@ -670,7 +670,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Esegue JavaScript in un ambiente isolato per gestire compiti su cui gli LLM sono inaffidabili. Può comportare rischi',
       builtinTerminalCommandLabel: 'Comandi del terminale',
       builtinTerminalCommandDesc:
-        'Esegue comandi nel terminale locale. Solo desktop.',
+        'Esegue comandi nel terminale locale, solo desktop',
       builtinDelegateSubagentLabel: 'Delega a subagent',
       builtinDelegateSubagentDesc:
         'Avvia in modo asincrono un subagent temporaneo e isolato per completare un task autonomo.',

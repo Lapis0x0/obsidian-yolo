@@ -568,9 +568,9 @@ export const zh: TranslationKeys = {
       builtinToolSearchDesc: '加载按需工具的完整说明',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc: '编辑单个文件的文本',
-      builtinBashLabel: 'Bash',
+      builtinBashLabel: '虚拟终端',
       builtinBashDesc:
-        '在 vault 内检索、查看文件，并执行 mkdir/mv/rm 路径操作。',
+        '在 vault 内检索、查看文件，并执行 mkdir/mv/rm 路径操作',
       safetyControls: '安全控制',
       safetyControlsDesc: '配置 Agent 执行高风险文件操作前的额外审阅行为。',
       fsEditReviewToggle: '编辑文件是否需要审批',
@@ -600,7 +600,7 @@ export const zh: TranslationKeys = {
       builtinJsEvalLabel: 'JavaScript 执行',
       builtinJsEvalDesc: '在隔离环境中执行 JavaScript 代码',
       builtinTerminalCommandLabel: '终端命令',
-      builtinTerminalCommandDesc: '在本机终端中运行命令。仅桌面端可用。',
+      builtinTerminalCommandDesc: '在本机终端中运行命令，仅桌面端可用',
       builtinDelegateSubagentLabel: '派遣子 Agent',
       builtinDelegateSubagentDesc:
         '异步派遣一个隔离的临时子 Agent，完成自包含任务',

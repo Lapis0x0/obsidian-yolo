@@ -619,9 +619,9 @@ export const en: TranslationKeys = {
       builtinToolSearchDesc: 'Load full schemas for on-demand tools',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc: 'Edit text in a single file',
-      builtinBashLabel: 'Bash',
+      builtinBashLabel: 'Virtual terminal',
       builtinBashDesc:
-        'Search and inspect vault files, plus mkdir/mv/rm path operations.',
+        'Search and inspect vault files, plus mkdir/mv/rm path operations',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',
@@ -656,7 +656,7 @@ export const en: TranslationKeys = {
       builtinJsEvalDesc: 'Run JavaScript in an isolated environment.',
       builtinTerminalCommandLabel: 'Terminal Commands',
       builtinTerminalCommandDesc:
-        'Run commands in the local terminal. Desktop-only.',
+        'Run commands in the local terminal, desktop-only',
       builtinDelegateSubagentLabel: 'Delegate Subagent',
       builtinDelegateSubagentDesc:
         'Dispatch an isolated temporary subagent to complete a self-contained task asynchronously.',
