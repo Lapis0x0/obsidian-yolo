@@ -367,6 +367,19 @@ const isTerminalCommandRequest = (request: ToolRequestLike): boolean => {
   }
 }
 
+// The virtual vault bash tool shares the terminal card's header presentation
+// (mono command summary, terminal icon) but not its live-session machinery
+// (result hydration, running-footer suppression, LiveTaskCard) — bash returns
+// one plain text result and hosts its own dangerous-op confirmation footer.
+const isVirtualBashRequest = (request: ToolRequestLike): boolean => {
+  try {
+    const { toolName } = parseToolName(request.name)
+    return toolName === 'bash'
+  } catch {
+    return false
+  }
+}
+
 const extractLegacyExternalAgentArgs = (
   rawArguments?: ToolCallRequest['arguments'],
 ): { command?: string; workingDirectory?: string } | undefined => {
@@ -467,8 +480,6 @@ export const getToolResultDisplayText = ({
 const SHELL_COMMAND_SUMMARY_MAX_CHARS = 80
 const SHELL_COMMAND_SUMMARY_SIMPLE_MAX_CHARS = 48
 const SHELL_COMMAND_SUMMARY_MAX_NAMES = 5
-const SHELL_COMMAND_LONG_PREFIX = 'Long bash command'
-const SHELL_COMMAND_STREAMING_PREFIX = 'Long bash command with streaming output'
 const SHELL_COMMAND_KEYWORDS = new Set([
   'case',
   'do',
@@ -531,14 +542,7 @@ const summarizeShellCommand = (
 
   const visibleNames = commandNames.slice(0, SHELL_COMMAND_SUMMARY_MAX_NAMES)
   const hiddenCount = commandNames.length - visibleNames.length
-  const commandList = `${visibleNames.join(', ')}${
-    hiddenCount > 0 ? ` +${hiddenCount}` : ''
-  }`
-  const prefix = options.streaming
-    ? SHELL_COMMAND_STREAMING_PREFIX
-    : SHELL_COMMAND_LONG_PREFIX
-
-  return `${prefix} ${commandList}`
+  return `${visibleNames.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`
 }
 
 const summarizeSimpleShellCommand = (command: string): string | undefined => {
@@ -616,22 +620,6 @@ const extractCommandNameFromShellSegment = (
   }
 
   return undefined
-}
-
-const splitTerminalCommandSummary = (
-  summary: string,
-): { prefix: string; commands: string } | null => {
-  for (const prefix of [
-    SHELL_COMMAND_STREAMING_PREFIX,
-    SHELL_COMMAND_LONG_PREFIX,
-  ]) {
-    if (!summary.startsWith(`${prefix} `)) continue
-    return {
-      prefix,
-      commands: summary.slice(prefix.length + 1),
-    }
-  }
-  return null
 }
 
 const mapTerminalCommandResultStatus = (
@@ -851,7 +839,9 @@ export const getToolSuccessIconKind = ({
     return 'skill'
   }
 
-  return toolName === 'terminal_command' ? 'terminal' : 'default'
+  return toolName === 'terminal_command' || toolName === 'bash'
+    ? 'terminal'
+    : 'default'
 }
 
 const DELEGATE_SUMMARY_MAX_CHARS = 80
@@ -993,6 +983,16 @@ const getLocalToolSummaryText = ({
     }
 
     return labels.terminalCommandSessionPoll(sessionId)
+  }
+
+  if (toolName === 'bash') {
+    const command =
+      typeof argumentsObject?.command === 'string'
+        ? argumentsObject.command.trim()
+        : ''
+    return command
+      ? summarizeShellCommand(command, { streaming: false })
+      : undefined
   }
 
   if (toolName === 'js_eval') {
@@ -1408,10 +1408,11 @@ function ToolCallItem({
       }),
     [displayInfo, editSummary, response.status, toolLabels],
   )
-  const terminalSummaryParts =
-    headlineParts.summaryText && isTerminalCommandRequest(request)
-      ? splitTerminalCommandSummary(headlineParts.summaryText)
-      : null
+  const isShellCommandSummary = Boolean(
+    headlineParts.summaryText &&
+      (isTerminalCommandRequest(request) || isVirtualBashRequest(request)) &&
+      typeof parseToolArguments(request.arguments)?.command === 'string',
+  )
   const effectiveStatus =
     terminalCommandResult && isTerminalCommandRequest(request)
       ? mapTerminalCommandResultStatus(terminalCommandResult.status)
@@ -1599,16 +1600,10 @@ function ToolCallItem({
                     exit={{ opacity: 0 }}
                     transition={{ duration: motionDuration }}
                   >
-                    {terminalSummaryParts ? (
-                      <>
-                        <span className="yolo-toolcall-header-summary-prefix">
-                          {terminalSummaryParts.prefix}
-                        </span>
-                        <span className="yolo-toolcall-header-summary-command">
-                          {' '}
-                          {terminalSummaryParts.commands}
-                        </span>
-                      </>
+                    {isShellCommandSummary ? (
+                      <span className="yolo-toolcall-header-summary-command">
+                        {headlineParts.summaryText}
+                      </span>
                     ) : (
                       headlineParts.summaryText
                     )}

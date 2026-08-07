@@ -993,8 +993,7 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Terminal command',
-      summaryText:
-        'Long bash command with streaming output seq, echo, date, sleep, pwd +2',
+      summaryText: 'seq, echo, date, sleep, pwd +2',
     })
   })
 
