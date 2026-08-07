@@ -64,7 +64,6 @@ const INTENT_PRIORITY: readonly IntentKind[] = [
 type Intent = {
   resolve: ScrollTargetResolver
   settle: boolean
-  submittedAt: number
   lastTarget: number | null
   stableTicks: number
   observer: ResizeObserver | null
@@ -167,7 +166,6 @@ export function createScrollController(): ScrollController {
     intents.set(kind, {
       resolve,
       settle: true,
-      submittedAt: Date.now(),
       lastTarget: null,
       stableTicks: 0,
       observer,
@@ -198,7 +196,6 @@ export function createScrollController(): ScrollController {
       intents.set('followLiveEdge', {
         resolve,
         settle: false,
-        submittedAt: Date.now(),
         lastTarget: null,
         stableTicks: 0,
         observer: null,
