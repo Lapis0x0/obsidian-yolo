@@ -54,9 +54,33 @@ type BashConfirmDangerousOperation = (
   kind: BashDangerousOperationKind,
   targets: readonly string[],
 ) => Promise<boolean>
+type BashSearchResultEntry = Readonly<{
+  kind: 'file' | 'dir' | 'content'
+  path: string
+  startLine?: number
+  endLine?: number
+  page?: number
+  snippet?: string
+}>
+type BashSearchOutcome =
+  | Readonly<{
+      status: 'success'
+      results: readonly BashSearchResultEntry[]
+      notice?: string
+    }>
+  | Readonly<{ status: 'error'; message: string }>
+type BashSearchCallback = (
+  request: Readonly<{
+    query: string
+    scopePath?: string
+    maxResults: number
+  }>,
+) => Promise<BashSearchOutcome>
 type BashSessionOptions = Readonly<{
   fs: BashFsCallbacks
   confirmDangerousOperation: BashConfirmDangerousOperation
+  /** See `BashSessionOptions.search` in `src/core/runtime-components/contracts.ts`. */
+  search?: BashSearchCallback
   cwd?: string
   signal?: AbortSignal
   /** See `BashSessionOptions.readOnly` in `src/core/runtime-components/contracts.ts`. */
@@ -583,6 +607,117 @@ function createMvCommand(
   })
 }
 
+const SEARCH_MAX_RESULTS_DEFAULT = 20
+const SEARCH_MAX_RESULTS_CAP = 100
+const SEARCH_USAGE = 'usage: search [-n N] "query" [path]\n'
+
+function formatSearchLine(entry: BashSearchResultEntry): string {
+  const abs =
+    entry.path === '' ? VAULT_MOUNT : `${VAULT_MOUNT}/${entry.path}`
+  if (entry.kind === 'dir') return `${abs}/`
+  if (entry.kind === 'file') return abs
+  const loc =
+    entry.page !== undefined
+      ? `p${entry.page}`
+      : entry.startLine !== undefined
+        ? entry.endLine !== undefined && entry.endLine > entry.startLine
+          ? `${entry.startLine}-${entry.endLine}`
+          : `${entry.startLine}`
+        : ''
+  const snippet = (entry.snippet ?? '').replace(/\s+/g, ' ').trim()
+  return loc ? `${abs}:${loc}: ${snippet}` : `${abs}: ${snippet}`
+}
+
+/**
+ * Custom `search` command: semantic (hybrid RAG + keyword) vault retrieval,
+ * delegated entirely to the host callback. Output is grep-shaped
+ * (`/vault/path:line: snippet`, one hit per line) so results compose with
+ * pipes the same way grep's do. Registered in read-only sessions too —
+ * search is a read.
+ */
+function createSearchCommand(
+  search: BashSearchCallback,
+  sessionOf: (ctx: ResolvedCommandContext) => SessionFs,
+) {
+  return defineCommand('search', async (args, ctx): Promise<ExecResult> => {
+    let maxResults = SEARCH_MAX_RESULTS_DEFAULT
+    const positional: string[] = []
+    for (let i = 0; i < args.length; i++) {
+      const arg = args[i]
+      if (arg === '-n' || arg === '--max-results') {
+        const raw = args[i + 1]
+        i += 1
+        const parsed = Number(raw)
+        if (!Number.isInteger(parsed) || parsed < 1) {
+          return {
+            stdout: '',
+            stderr: `search: invalid result count '${raw ?? ''}'\n${SEARCH_USAGE}`,
+            exitCode: 2,
+          }
+        }
+        maxResults = Math.min(parsed, SEARCH_MAX_RESULTS_CAP)
+        continue
+      }
+      if (arg === '--') {
+        positional.push(...args.slice(i + 1))
+        break
+      }
+      if (arg.length > 1 && arg[0] === '-') {
+        return {
+          stdout: '',
+          stderr: `search: unknown option '${arg}'\n${SEARCH_USAGE}`,
+          exitCode: 2,
+        }
+      }
+      positional.push(arg)
+    }
+    if (positional.length === 0 || positional[0].trim() === '') {
+      return { stdout: '', stderr: SEARCH_USAGE, exitCode: 2 }
+    }
+    if (positional.length > 2) {
+      return {
+        stdout: '',
+        stderr: `search: too many arguments (quote the query)\n${SEARCH_USAGE}`,
+        exitCode: 2,
+      }
+    }
+    const query = positional[0]
+    let scopePath: string | undefined
+    if (positional.length === 2) {
+      const abs = sessionOf(ctx).resolvePath(ctx.cwd, positional[1])
+      const c = classify(abs)
+      if (c.kind === 'outside') {
+        return {
+          stdout: '',
+          stderr: `search: path is outside ${VAULT_MOUNT}: '${positional[1]}'\n`,
+          exitCode: 2,
+        }
+      }
+      // Root and the vault mount itself both mean "whole vault".
+      scopePath = c.kind === 'vault' && c.relative !== '' ? c.relative : undefined
+    }
+
+    const outcome = await search({ query, scopePath, maxResults })
+    if (outcome.status === 'error') {
+      return { stdout: '', stderr: `search: ${outcome.message}\n`, exitCode: 1 }
+    }
+    const notice = outcome.notice ? `search: ${outcome.notice}\n` : ''
+    if (outcome.results.length === 0) {
+      // Mirror grep: no matches is exit 1, distinct from usage/runtime errors.
+      return {
+        stdout: '',
+        stderr: `${notice}search: no results for '${query}'\n`,
+        exitCode: 1,
+      }
+    }
+    return {
+      stdout: `${outcome.results.map(formatSearchLine).join('\n')}\n`,
+      stderr: notice,
+      exitCode: 0,
+    }
+  })
+}
+
 globalThis.__yolo_register_runtime_component__({
   id: 'bash-engine',
   create(): BashEngineComponentApi {
@@ -605,13 +740,19 @@ globalThis.__yolo_register_runtime_component__({
           // (on top of `mkdir` already missing from READ_ONLY_ALLOWED_COMMANDS
           // above) so all four write verbs come back "command not found"
           // rather than reaching SessionFs's approval/fs plumbing at all.
-          customCommands: readOnly
-            ? []
-            : [
-                createRmLikeCommand('rm', sessionOf),
-                createRmLikeCommand('rmdir', sessionOf),
-                createMvCommand(sessionOf),
-              ],
+          // `search` is a read, so it stays available in both variants.
+          customCommands: [
+            ...(options.search
+              ? [createSearchCommand(options.search, sessionOf)]
+              : []),
+            ...(readOnly
+              ? []
+              : [
+                  createRmLikeCommand('rm', sessionOf),
+                  createRmLikeCommand('rmdir', sessionOf),
+                  createMvCommand(sessionOf),
+                ]),
+          ],
           executionLimits: {
             maxExecutionTimeMs: 30_000,
             maxOutputSize: 2 * 1024 * 1024,

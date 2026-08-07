@@ -193,9 +193,52 @@ export type BashConfirmDangerousOperation = (
   targets: readonly string[],
 ) => Promise<boolean>
 
+/**
+ * One line of `search` command output. `path` is vault-relative; the
+ * component owns mapping it back to `/vault/...` display form, mirroring how
+ * `BashFsCallbacks` paths work.
+ */
+export type BashSearchResultEntry = Readonly<{
+  kind: 'file' | 'dir' | 'content'
+  path: string
+  startLine?: number
+  endLine?: number
+  /** PDF hit: source page (1-based), shown instead of line numbers. */
+  page?: number
+  snippet?: string
+}>
+
+export type BashSearchOutcome =
+  | Readonly<{
+      status: 'success'
+      results: readonly BashSearchResultEntry[]
+      /** Non-fatal note (e.g. RAG-unavailable fallback), printed to stderr. */
+      notice?: string
+    }>
+  | Readonly<{ status: 'error'; message: string }>
+
+/**
+ * Host-provided semantic retrieval behind the custom `search` command. The
+ * component only parses arguments and formats output; ranking (hybrid
+ * RAG + keyword fusion, keyword fallback) is entirely the host's concern.
+ * `scopePath` is vault-relative (undefined = whole vault).
+ */
+export type BashSearchCallback = (
+  request: Readonly<{
+    query: string
+    scopePath?: string
+    maxResults: number
+  }>,
+) => Promise<BashSearchOutcome>
+
 export type BashSessionOptions = Readonly<{
   fs: BashFsCallbacks
   confirmDangerousOperation: BashConfirmDangerousOperation
+  /**
+   * When provided, registers the custom `search` command (semantic vault
+   * retrieval). Available in read-only sessions too — search is a read.
+   */
+  search?: BashSearchCallback
   cwd?: string
   signal?: AbortSignal
   /**

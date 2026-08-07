@@ -40,6 +40,7 @@ import {
   requestDangerousBashApproval,
 } from '../agent/bash/dangerousOperationGate'
 import { createVaultBashFileSystem } from '../agent/bash/vaultBashFileSystem'
+import { createVaultBashSearch } from '../agent/bash/vaultBashSearch'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import { resolveSubagentModelConfig } from '../agent/subagent/model-config'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
@@ -615,7 +616,7 @@ export function getLocalFileTools(_options?: {
           {
             name: BASH_TOOL_NAME,
             description:
-              'A virtual, sandboxed shell for read-only search/inspection plus mkdir/mv/rm over the vault. The filesystem is mounted at /vault (cwd defaults there); nothing outside /vault exists. Read-heavy retrieval (ls, find, grep/rg, cat, head/tail, sed, awk, sort, uniq, wc, diff, and pipes/xargs/loops) is unlimited. rm moves targets to the trash (recoverable via the system/Obsidian trash); mv renames/moves and updates every backlink across the vault, same as the vault UI. mkdir creates folders. Content mutation (redirects, sed -i, tee, cp, touch on a new file) is not available here — it fails with guidance; use fs_edit for a targeted change or fs_write to create/overwrite full file content. Depending on the configured approval level, rm/mv may pause mid-command for user confirmation; a denial returns a nonzero exit code and continues the rest of the script per normal shell semantics (&&, ||, ;).',
+              'A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. You can use search, find, cat, sed, awk, pipes, xargs, etc. `search [-n N] "query" [path]` does semantic retrieval (hybrid RAG + keyword); prefer it for search tasks — it already covers keyword matching. Path writes: mkdir, mv, rm. Content writes are unavailable — use fs_edit or fs_write.',
             inputSchema: {
               type: 'object',
               properties: {
@@ -2082,6 +2083,13 @@ export async function callLocalFileTool({
           const session = lease.api.createSession({
             fs,
             confirmDangerousOperation,
+            search: createVaultBashSearch({
+              app,
+              settings,
+              getRagEngine,
+              workspaceScope,
+              signal,
+            }),
             signal,
             readOnly: bashReadOnly ?? false,
           })

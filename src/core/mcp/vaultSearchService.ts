@@ -3,7 +3,10 @@ import { App, TFile, TFolder } from 'obsidian'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { RAGEngine } from '../rag/ragEngine'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
-import { aggregateSearchResults } from '../search/searchResultAggregation'
+import {
+  type AggregatedSearchResult,
+  aggregateSearchResults,
+} from '../search/searchResultAggregation'
 
 import { validateVaultPath } from './vaultFileOps'
 
@@ -14,9 +17,11 @@ import { validateVaultPath } from './vaultFileOps'
  * This logic used to live inside the internal agent's `fs_search` tool. That
  * tool was retired in favor of the agent's sandboxed bash tool (YOLO-45),
  * which does its own read-only search (grep/find/rg) directly over the
- * `/vault` mount. `vault_search` is the only remaining caller of this
- * keyword/RAG/hybrid orchestration, so it lives here as a standalone
- * service rather than being reintroduced as an agent tool.
+ * `/vault` mount. Two callers remain: the external `vault_search` MCP tool
+ * (JSON via `runVaultSearch`) and the bash tool's custom `search` command
+ * (structured via `runVaultSearchStructured`, see
+ * `src/core/agent/bash/vaultBashSearch.ts`) — semantic retrieval returns to
+ * the agent as a bash command rather than a separate tool schema.
  */
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
@@ -28,6 +33,21 @@ export type VaultSearchMode = 'keyword' | 'rag' | 'hybrid'
 
 export type VaultSearchOutcome =
   | { status: 'success'; text: string }
+  | { status: 'aborted' }
+  | { status: 'error'; error: string }
+
+export type VaultSearchStructuredOutcome =
+  | {
+      status: 'success'
+      requestedMode: VaultSearchMode
+      effectiveMode: VaultSearchMode
+      /** Set when hybrid degraded to keyword because RAG is unavailable. */
+      fallbackReason?: string
+      scope: VaultSearchScope
+      query: string
+      path: string
+      results: AggregatedSearchResult[]
+    }
   | { status: 'aborted' }
   | { status: 'error'; error: string }
 
@@ -585,12 +605,14 @@ const collectKeywordSearchResults = async ({
 }
 
 /**
- * Runs a keyword / RAG / hybrid vault search. Mirrors the retired internal
- * `fs_search` tool's behavior exactly: same argument parsing, same mode
- * fallback semantics (hybrid falls back to keyword when RAG is unavailable;
- * explicit rag stays strict), and same response JSON shape.
+ * Runs a keyword / RAG / hybrid vault search and returns structured,
+ * aggregated results. Mirrors the retired internal `fs_search` tool's
+ * behavior exactly: same argument parsing and same mode fallback semantics
+ * (hybrid falls back to keyword when RAG is unavailable; explicit rag stays
+ * strict). `runVaultSearch` wraps this into the `vault_search` JSON shape;
+ * the bash `search` command consumes the structured form directly.
  */
-export async function runVaultSearch({
+export async function runVaultSearchStructured({
   app,
   settings,
   getRagEngine,
@@ -602,7 +624,7 @@ export async function runVaultSearch({
   getRagEngine?: () => Promise<RAGEngine>
   args: Record<string, unknown>
   signal?: AbortSignal
-}): Promise<VaultSearchOutcome> {
+}): Promise<VaultSearchStructuredOutcome> {
   if (signal?.aborted) {
     return { status: 'aborted' }
   }
@@ -660,19 +682,16 @@ export async function runVaultSearch({
       const results = legacySearchItemsToSuper(legacy, 'keyword')
       return {
         status: 'success',
-        text: formatJsonResult({
-          tool: 'fs_search',
-          requestedMode,
-          effectiveMode,
-          fallbackReason:
-            requestedMode !== effectiveMode
-              ? semanticUnavailableReason
-              : undefined,
-          scope,
-          query,
-          path: scopeTarget.normalizedPath,
-          results: aggregateSearchResults({ results, maxResults }),
-        }),
+        requestedMode,
+        effectiveMode,
+        fallbackReason:
+          requestedMode !== effectiveMode
+            ? (semanticUnavailableReason ?? undefined)
+            : undefined,
+        scope,
+        query,
+        path: scopeTarget.normalizedPath,
+        results: aggregateSearchResults({ results, maxResults }),
       }
     }
 
@@ -718,15 +737,12 @@ export async function runVaultSearch({
       const results = ragMapped.slice(0, maxResults)
       return {
         status: 'success',
-        text: formatJsonResult({
-          tool: 'fs_search',
-          requestedMode,
-          effectiveMode: 'rag',
-          scope: effectiveScope,
-          query,
-          path: scopeTarget.normalizedPath,
-          results: aggregateSearchResults({ results, maxResults }),
-        }),
+        requestedMode,
+        effectiveMode: 'rag',
+        scope: effectiveScope,
+        query,
+        path: scopeTarget.normalizedPath,
+        results: aggregateSearchResults({ results, maxResults }),
       }
     }
 
@@ -779,17 +795,46 @@ export async function runVaultSearch({
     })
     return {
       status: 'success',
-      text: formatJsonResult({
-        tool: 'fs_search',
-        requestedMode,
-        effectiveMode: 'hybrid',
-        scope: 'content',
-        query,
-        path: scopeTarget.normalizedPath,
-        results: aggregateSearchResults({ results: fused, maxResults }),
-      }),
+      requestedMode,
+      effectiveMode: 'hybrid',
+      scope: 'content',
+      query,
+      path: scopeTarget.normalizedPath,
+      results: aggregateSearchResults({ results: fused, maxResults }),
     }
   } catch (error) {
     return { status: 'error', error: asErrorMessage(error) }
+  }
+}
+
+/**
+ * `vault_search` MCP entry point: same orchestration as
+ * `runVaultSearchStructured`, serialized into the legacy fs_search JSON
+ * response shape (`fallbackReason: undefined` is dropped by JSON.stringify,
+ * matching the historical output byte-for-byte).
+ */
+export async function runVaultSearch(options: {
+  app: App
+  settings?: YoloSettings
+  getRagEngine?: () => Promise<RAGEngine>
+  args: Record<string, unknown>
+  signal?: AbortSignal
+}): Promise<VaultSearchOutcome> {
+  const outcome = await runVaultSearchStructured(options)
+  if (outcome.status !== 'success') {
+    return outcome
+  }
+  return {
+    status: 'success',
+    text: formatJsonResult({
+      tool: 'fs_search',
+      requestedMode: outcome.requestedMode,
+      effectiveMode: outcome.effectiveMode,
+      fallbackReason: outcome.fallbackReason,
+      scope: outcome.scope,
+      query: outcome.query,
+      path: outcome.path,
+      results: outcome.results,
+    }),
   }
 }
