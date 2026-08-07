@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 11,
+  "revision": 12,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.4.4",
@@ -52,7 +52,7 @@
           "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
         }
       },
-      "version": "0.1.2",
+      "version": "0.1.3",
       "hostApi": "^1.4.0",
       "platforms": [
         "desktop",
@@ -65,23 +65,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.2",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.3",
       "releaseNotes": {
-        "en": "## 0.1.2 More Consistent Learning Content & Cards 📚\n\n### 🌐 Language & Presentation\n\n- Learning content now stays in the language selected when the project is created. Missing interface translations and Chinese fallback text have been completed for a more consistent experience.\n- Fixed the knowledge map appearing blank with certain themes.\n\n### 🗂️ Card Experience\n\n- Card generation now tolerates minor formatting variations more reliably, and the review screen no longer displays a non-functional placeholder timer.\n\nRefs #480, #482",
-        "zh": "## 0.1.2 更一致的学习内容与卡片体验 📚\n\n### 🌐 语言与展示\n\n- 学习内容现在会始终使用创建项目时选择的语言，并补齐缺失的界面翻译与中文回退文案，让生成和展示体验更加一致。\n- 修复特定主题下知识地图显示为空白的问题。\n\n### 🗂️ 卡片体验\n\n- 卡片生成现在能更可靠地兼容轻微的格式变化，同时移除了复习界面中没有实际功能的占位计时。\n\nRefs #480, #482"
+        "en": "## 0.1.3 Reliable Project Creation & Clearer Card Failures 📚\n\n### 🗂️ Project Creation\n\n- Fixed project creation failing and leaving the reference staging folder behind when Obsidian is configured to delete files permanently instead of moving them to trash. (Refs #545)\n\n### 🃏 Card Generation\n\n- When a chapter produces no cards, the failure now reports why — how many drafts were streamed, how many were discarded, and which validation rule rejected them — instead of only reporting that generation failed. The diagnostic contains no note or model content; raw model output is written only when the host's LLM debug capture is enabled. (Refs #494, #495)",
+        "zh": "## 0.1.3 更可靠的项目创建与更清晰的卡片失败原因 📚\n\n### 🗂️ 项目创建\n\n- 修复 Obsidian 设置为「永久删除」而非移入回收站时，创建学习项目会失败并残留参考资料临时目录的问题。（Refs #545）\n\n### 🃏 卡片生成\n\n- 章节生成零卡片时，现在会说明失败原因：流式产出的草稿数量、被丢弃的数量，以及具体是哪条校验规则拒绝了它们，而不再只提示生成失败。该诊断不包含笔记与模型正文内容；模型原始输出仅在开启宿主的 LLM 调试记录后才会输出。（Refs #494、#495）"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.2/release-note.md",
-        "byteSize": 1034,
-        "sha256": "bc9598fe36c398e0c3c83ea9a432de4c54bebc62232661900a650c5b3de83344"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.3/release-note.md",
+        "byteSize": 1297,
+        "sha256": "febf0096b5d86b316d0e73f029cc9f63f9825b094e3375916a2f53798d816b39"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/learning/0.1.2/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.2/module.json",
+        "mirrorPath": "modules/learning/0.1.3/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.3/module.json",
         "byteSize": 1860,
-        "sha256": "385cd89ebb5bacbd2f3eef6d85d4f6313ca7fb0c615c979ad3978aa9a111015a"
+        "sha256": "462e7d734b1afb90608eef3875a05b4df6f231acd1691284a188b2d2f8b6c6b3"
       }
     }
   ]
