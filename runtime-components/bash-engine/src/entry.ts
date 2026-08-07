@@ -126,8 +126,17 @@ type PathClass =
   | { kind: 'vault'; relative: string }
   | { kind: 'outside' }
 
-function classify(rawPath: string): PathClass {
+// path-browserify's POSIX normalize keeps trailing slashes ('/a/b/' stays
+// '/a/b/'), but vault lookups are exact-string, so '/vault/x/' must resolve
+// to the same entry as '/vault/x'.
+function normalizeNoTrailingSlash(rawPath: string): string {
   const normalized = path.normalize(rawPath) || '/'
+  if (normalized === '/') return normalized
+  return normalized.replace(/\/+$/, '') || '/'
+}
+
+function classify(rawPath: string): PathClass {
+  const normalized = normalizeNoTrailingSlash(rawPath)
   if (normalized === '/') return { kind: 'root' }
   if (normalized === VAULT_MOUNT) return { kind: 'vault', relative: '' }
   if (normalized.startsWith(`${VAULT_MOUNT}/`)) {
@@ -168,7 +177,7 @@ class SessionFs {
 
   resolvePath(base: string, target: string): string {
     const joined = target.startsWith('/') ? target : path.join(base, target)
-    return path.normalize(joined) || '/'
+    return normalizeNoTrailingSlash(joined)
   }
 
   async readFile(target: string): Promise<string> {
@@ -388,7 +397,7 @@ class SessionFs {
             `ENOENT: no such file or directory, realpath '${target}'`,
           )
         }
-        return path.normalize(target) || '/'
+        return normalizeNoTrailingSlash(target)
       },
       // Vault mtimes aren't independently settable through the public Vault
       // API; `touch` on an existing file becomes a harmless no-op instead of

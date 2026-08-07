@@ -218,6 +218,31 @@ describe('bash-engine read-only session', () => {
   // symlink step. This is the "unanticipated path" defense-in-depth layer 2
   // is for: confirm that even a command we didn't special-case can't reach
   // the write callback while read-only.
+  it('resolves directory paths with trailing slashes against exact-match fs lookups', async () => {
+    // Vault lookups are exact-string; path-browserify's normalize keeps
+    // trailing slashes, so `ls "/vault/dir/"` used to ENOENT (exit 2).
+    const { fs, files } = makeFakeFs({})
+    const session = component.createSession({
+      fs,
+      confirmDangerousOperation: alwaysApprove,
+    })
+    expect((await session.exec('mkdir /vault/tmp')).exitCode).toBe(0)
+    expect((await session.exec('mkdir /vault/tmp/mv测试')).exitCode).toBe(0)
+    files.set('tmp/mv测试/note.md', 'x')
+
+    const quoted = await session.exec('ls "/vault/tmp/mv测试/"')
+    expect(quoted.exitCode).toBe(0)
+    expect(quoted.stdout).toContain('note.md')
+
+    const unquoted = await session.exec('ls /vault/tmp/mv测试/')
+    expect(unquoted.exitCode).toBe(0)
+    expect(unquoted.stdout).toContain('note.md')
+
+    const cat = await session.exec('cat "/vault/tmp/mv测试/note.md"')
+    expect(cat.exitCode).toBe(0)
+    expect(cat.stdout).toBe('x')
+  })
+
   it('blocks writes reached through unanticipated commands (ln -f) at the fs boundary', async () => {
     const { fs, rm } = makeFakeFs({ 'a.md': 'x', 'b.md': 'y' })
 
