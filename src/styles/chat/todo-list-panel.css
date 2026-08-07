@@ -17,7 +17,8 @@
   overflow: hidden;
   /* 入场动画：从输入框上沿向上"冒出来"。每次组件从 null 切到渲染都会重跑
    * （首次出现、清空后再出现、切会话/分支等），不需要 React 端配合。 */
-  animation: yolo-todo-panel-appear 220ms cubic-bezier(0.2, 0, 0, 1);
+  animation: yolo-todo-panel-appear var(--yolo-anim-duration-enter)
+    cubic-bezier(0.2, 0, 0, 1);
 }
 
 @keyframes yolo-todo-panel-appear {

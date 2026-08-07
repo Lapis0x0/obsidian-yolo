@@ -21,13 +21,13 @@
 
 .yolo-selection-rewrite-outline.is-streaming {
   transition:
-    width 120ms cubic-bezier(0.22, 1, 0.36, 1),
-    height 120ms cubic-bezier(0.22, 1, 0.36, 1);
+    width 120ms var(--yolo-anim-ease-out),
+    height 120ms var(--yolo-anim-ease-out);
 }
 
 .yolo-selection-rewrite-outline.is-streaming
   .yolo-selection-rewrite-outline-path {
-  transition: d 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: d 120ms var(--yolo-anim-ease-out);
 }
 
 .yolo-selection-rewrite-outline.is-streaming.is-settling-surface,
@@ -100,12 +100,12 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   pointer-events: none;
-  transition: clip-path 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: clip-path 120ms var(--yolo-anim-ease-out);
 }
 
 .yolo-selection-rewrite-candidate-reveal {
-  animation: yolo-selection-rewrite-text-resolve 180ms
-    cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: yolo-selection-rewrite-text-resolve 180ms var(--yolo-anim-ease-out)
+    both;
   will-change: filter, opacity, transform;
 }
 
@@ -130,7 +130,7 @@
   padding: 0;
   border: 0;
   pointer-events: none;
-  transition: height 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: height 120ms var(--yolo-anim-ease-out);
 }
 
 .yolo-selection-rewrite-flow-spacer.is-resizing {
@@ -158,8 +158,8 @@
   gap: 10px;
   pointer-events: auto;
   transition:
-    left 160ms cubic-bezier(0.22, 1, 0.36, 1),
-    top 160ms cubic-bezier(0.22, 1, 0.36, 1),
+    left 160ms var(--yolo-anim-ease-out),
+    top 160ms var(--yolo-anim-ease-out),
     opacity 160ms ease;
 }
 
@@ -335,20 +335,6 @@ button.yolo-selection-rewrite-length-handle:focus-visible {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yolo-selection-rewrite-outline,
-  .yolo-selection-rewrite-outline-path,
-  .yolo-selection-rewrite-sheen-path,
-  .yolo-selection-rewrite-candidate-overlay,
-  .yolo-selection-rewrite-candidate-reveal,
-  .yolo-selection-rewrite-flow-spacer,
-  .yolo-selection-rewrite-controls,
-  .yolo-selection-rewrite-action,
-  .yolo-selection-rewrite-length-readout,
-  .yolo-selection-rewrite-length-handle {
-    animation: none !important;
-    transition: none !important;
-  }
-
   .yolo-selection-rewrite-sheen-path {
     display: none !important;
   }

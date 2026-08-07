@@ -54,7 +54,7 @@
   user-select: none;
   min-height: 24px;
   color: var(--text-muted);
-  transition: color 120ms ease;
+  transition: color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-toolcall-header:focus-visible {
@@ -92,7 +92,7 @@
 .yolo-toolcall-header-icon--expand {
   color: var(--text-faint);
   opacity: 0.9;
-  transition: opacity 120ms ease;
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -265,12 +265,6 @@
   background-color: var(--background-modifier-hover);
   border: 1px solid var(--background-modifier-border-hover);
   box-shadow: none;
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .yolo-toolcall-compaction-pending {
-    transition: none;
-  }
 }
 
 /* OpenAI-Style Thinking Loader - OpenAI 风格思考动画 */
@@ -617,7 +611,8 @@
   align-items: center;
   gap: var(--size-4-1);
   flex-shrink: 0;
-  transition: grid-template-columns 220ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: grid-template-columns var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-assistant-message-actions.is-more-open
@@ -633,8 +628,8 @@
   transform-origin: right center;
   pointer-events: none;
   transition:
-    opacity 150ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
 .yolo-assistant-message-inline-actions.is-open {
@@ -656,8 +651,8 @@
   opacity: 0;
   transform: translateX(5px) scale(0.96);
   transition:
-    opacity 140ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
 .yolo-assistant-message-inline-actions.is-open
@@ -694,8 +689,8 @@
 
 .yolo-assistant-message-more-button svg {
   transition:
-    transform 180ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 120ms ease;
+    transform 180ms var(--yolo-anim-ease-out),
+    opacity var(--yolo-anim-duration-feedback) ease;
   transform-origin: center;
 }
 
@@ -718,8 +713,8 @@
   z-index: 1;
   transform: translateY(-2px);
   transition:
-    opacity 140ms ease,
-    transform 160ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
 }
 
 .yolo-user-message-card:hover ~ .yolo-user-message-actions,
@@ -1143,9 +1138,9 @@
   opacity: 0;
   pointer-events: none;
   transition:
-    opacity 120ms ease,
-    color 120ms ease,
-    background-color 120ms ease;
+    opacity var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-agent-edit-summary-item:hover
@@ -1255,7 +1250,7 @@ button.yolo-assistant-error-card-details-toggle {
 }
 
 .yolo-assistant-error-card-details-toggle svg {
-  transition: transform 120ms ease;
+  transition: transform var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-assistant-error-card-details-toggle svg.is-open {
@@ -2563,7 +2558,7 @@ button.yolo-llm-debug-modal-button:focus-visible {
   color: var(--text-muted);
   cursor: pointer;
   opacity: 1;
-  transition: opacity 120ms ease;
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-chat-messages button.yolo-mermaid-open-button:focus-visible {
@@ -2763,12 +2758,6 @@ button.yolo-mermaid-modal-control:disabled {
 
   .yolo-mermaid-modal-controls {
     inset-block-end: max(var(--size-4-3), env(safe-area-inset-bottom));
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .yolo-chat-messages button.yolo-mermaid-open-button {
-    transition: none;
   }
 }
 

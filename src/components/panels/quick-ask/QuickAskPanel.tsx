@@ -1792,8 +1792,8 @@ export function QuickAskPanel({
   const quickAskChatShellClassName = 'yolo-quick-ask-chat-shell'
   const quickAskChatAreaClassName = useMemo(
     () =>
-      `yolo-chat-messages yolo-quick-ask-chat-area yolo-quick-ask-chat-area--shared${isAutoFollowEnabled ? ' yolo-chat-messages--following' : ''}${hideScrollbarWhileFollowing ? ' yolo-quick-ask-chat-area--hide-scrollbar' : ''}`,
-    [hideScrollbarWhileFollowing, isAutoFollowEnabled],
+      `yolo-chat-messages yolo-quick-ask-chat-area yolo-quick-ask-chat-area--shared${hideScrollbarWhileFollowing ? ' yolo-quick-ask-chat-area--hide-scrollbar' : ''}`,
+    [hideScrollbarWhileFollowing],
   )
   const latestTimelineAssistantToolGroupKey = useMemo(() => {
     for (

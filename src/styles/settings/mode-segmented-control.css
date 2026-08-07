@@ -74,9 +74,3 @@
 .yolo-mode-seg-label {
   white-space: nowrap;
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .yolo-mode-seg-glider {
-    transition: none;
-  }
-}

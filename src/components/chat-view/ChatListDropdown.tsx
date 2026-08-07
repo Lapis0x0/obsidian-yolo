@@ -26,6 +26,11 @@ import {
 } from '../../database/json/chat/types'
 import { getConversationDisplayTitle } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
+import {
+  MOTION_DURATION_EXIT_S,
+  MOTION_EASE_OUT,
+  MOTION_LAYOUT_SPRING,
+} from '../../styles/tokens/motion'
 import type { SerializedChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 import { getNodeWindow } from '../../utils/dom/window-context'
@@ -48,17 +53,17 @@ let rememberedTaskOriginFilter: TaskOriginFilter = 'all'
 /**
  * 会话历史面板的动效令牌，与 popover.css 中 .yolo-chat-list-dropdown-content 上的
  * --yolo-chat-list-presence-* 一一对应，两处需保持一致。三层语汇与「只动 opacity
- * 和 transform」的硬规则写在那里的注释里。
+ * 和 transform」的硬规则见 tokens/motion.css 头注释。
  */
 const CHAT_LIST_MOTION = {
   /** L2 退场：快速让位，注意力不该停在正在消失的东西上 */
-  exit: { duration: 0.12, ease: 'easeOut' },
+  exit: { duration: MOTION_DURATION_EXIT_S, ease: MOTION_EASE_OUT },
   /**
    * L3 跟随：位移用 spring 而不是 tween。贝塞尔插值的是「某个值」，spring 插值的
    * 是加速度，眼睛读到的才是有质量的东西被推动。阻尼取到接近临界，几乎不回弹——
    * 列表条目回弹显得轻浮，相邻条目回弹不同步更会乱。
    */
-  layout: { type: 'spring', stiffness: 350, damping: 35, mass: 0.8 },
+  layout: MOTION_LAYOUT_SPRING,
 } as const
 
 // 待确认态不应无限挂着，否则下一次不经意的点击就直接删除

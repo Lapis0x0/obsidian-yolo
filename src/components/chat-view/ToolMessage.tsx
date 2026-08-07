@@ -32,6 +32,11 @@ import {
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import {
+  MOTION_DURATION_ENTER_S,
+  MOTION_DURATION_EXIT_S,
+  MOTION_EASE_OUT,
+} from '../../styles/tokens/motion'
+import {
   ChatMessage,
   ChatSubagentResultMessage,
   ChatTerminalCommandResultMessage,
@@ -1209,7 +1214,10 @@ const ToolMessage = memo(function ToolMessage({
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            transition={{
+              duration: MOTION_DURATION_ENTER_S,
+              ease: MOTION_EASE_OUT,
+            }}
           >
             <MemoizedToolCallItem
               request={toolCall.request}
@@ -1322,7 +1330,7 @@ function ToolCallItem({
   }
   const COMPACTION_PENDING_EXIT_MS = 180
   const reduceMotion = useReducedMotion()
-  const motionDuration = reduceMotion ? 0 : 0.16
+  const motionDuration = reduceMotion ? 0 : MOTION_DURATION_EXIT_S
   const {
     handleToolCall,
     handleAllowForConversation,

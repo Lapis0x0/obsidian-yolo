@@ -226,7 +226,6 @@ button.yolo-subagent-card__abort-btn:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   .yolo-dotm-square-4__dot--outer,
   .yolo-dotm-square-4__dot--middle {
-    animation: none;
     opacity: 0.72;
   }
 }

@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import { MOTION_EASE_OUT_CSS } from '../../styles/tokens/motion'
 import DotLoader from '../common/DotLoader'
 
 import TransitioningMarkdown from './TransitioningMarkdown'
@@ -260,7 +261,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       ],
       {
         duration: REASONING_PREVIEW_TRANSITION_MS,
-        easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+        easing: MOTION_EASE_OUT_CSS,
       },
     )
     previewAnimationRef.current = animation

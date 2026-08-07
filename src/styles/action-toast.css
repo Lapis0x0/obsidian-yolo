@@ -224,10 +224,3 @@
     width: 100%;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .yolo-floating-toast,
-  .yolo-floating-toast.is-exiting {
-    animation: none;
-  }
-}

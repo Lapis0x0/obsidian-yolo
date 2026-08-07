@@ -531,9 +531,3 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
     flex-direction: column;
   }
 }
-
-@media (prefers-reduced-motion: reduce) {
-  .yolo-mcp-oauth-spinner {
-    animation: none;
-  }
-}

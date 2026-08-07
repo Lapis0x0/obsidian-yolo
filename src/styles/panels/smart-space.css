@@ -306,13 +306,6 @@
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .yolo-smart-space-mention-list[data-transition='forward'],
-  .yolo-smart-space-mention-list[data-transition='back'] {
-    animation: none;
-  }
-}
-
 .yolo-popover-surface--smart-space .yolo-smart-space-mention-list {
   max-height: min(320px, var(--yolo-typeahead-available-height, 320px));
   overflow-y: auto;

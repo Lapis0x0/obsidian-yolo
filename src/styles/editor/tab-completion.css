@@ -129,16 +129,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yolo-tab-loading-dots__dot {
-    animation: none;
-  }
-
-  .yolo-tab-completion-status__dot {
-    transition: none;
-  }
-
   .yolo-tab-completion-status__dot:is(.is-generating, .is-pending) {
-    animation: none;
     opacity: 0.42;
     transform: none;
   }

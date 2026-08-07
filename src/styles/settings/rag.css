@@ -273,11 +273,11 @@
 }
 
 .yolo-index-current-file-text.is-entering {
-  animation: yolo-index-file-enter 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: yolo-index-file-enter 120ms var(--yolo-anim-ease-out);
 }
 
 .yolo-index-current-file-text.is-leaving {
-  animation: yolo-index-file-leave 120ms cubic-bezier(0.22, 1, 0.36, 1);
+  animation: yolo-index-file-leave 120ms var(--yolo-anim-ease-out);
 }
 
 @keyframes yolo-index-file-enter {

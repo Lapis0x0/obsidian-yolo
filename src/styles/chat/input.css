@@ -386,7 +386,7 @@ button.yolo-runtime-selector[data-compact='true']
   height: 14px;
   width: 14px;
   color: var(--text-muted);
-  transition: color 0.15s ease;
+  transition: color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-chat-header-title-toggle:hover .yolo-chat-header-title-icon {
@@ -615,10 +615,10 @@ button.yolo-chat-quick-access-add {
   box-shadow: none !important;
   touch-action: none;
   transition:
-    color 120ms ease,
-    border-color 120ms ease,
-    background-color 120ms ease,
-    opacity 120ms ease;
+    color var(--yolo-anim-duration-feedback) ease,
+    border-color var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease,
+    opacity var(--yolo-anim-duration-feedback) ease;
 }
 
 button.yolo-chat-quick-access-entry {
@@ -1466,7 +1466,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   justify-content: center;
   color: var(--interactive-accent);
   opacity: 0;
-  transition: opacity 0.15s ease;
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-simple-select__item[data-state='checked']
@@ -1755,7 +1755,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   transform-origin: left center;
   transition:
     transform 70ms linear,
-    background-color 120ms ease;
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-message-navigator__bar.is-visible .yolo-message-navigator__bar-line {
@@ -1797,7 +1797,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   transform: translateY(-50%);
   pointer-events: none;
   animation: yolo-message-navigator-preview-enter 140ms
-    cubic-bezier(0.22, 1, 0.36, 1);
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-message-navigator__preview-user {
@@ -1845,16 +1845,6 @@ button.yolo-chat-quick-access-picker-row > svg {
   }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .yolo-message-navigator__bar-line {
-    transition: none;
-  }
-
-  .yolo-message-navigator__preview {
-    animation: none;
-  }
-}
-
 .yolo-chat-compaction-divider {
   display: flex;
   flex-direction: column;
@@ -1870,7 +1860,7 @@ button.yolo-chat-quick-access-picker-row > svg {
   align-items: center;
   gap: 6px;
   margin: var(--size-4-3) 0 var(--size-4-2);
-  animation: yolo-chat-compaction-pending-enter 220ms
+  animation: yolo-chat-compaction-pending-enter var(--yolo-anim-duration-enter)
     cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
@@ -1909,13 +1899,13 @@ button.yolo-chat-quick-access-picker-row > svg {
 }
 
 .yolo-chat-compaction-divider.is-entering {
-  animation: yolo-chat-compaction-divider-enter 220ms
+  animation: yolo-chat-compaction-divider-enter var(--yolo-anim-duration-enter)
     cubic-bezier(0.2, 0.8, 0.2, 1) both;
 
   .yolo-chat-compaction-divider__line {
     transform-origin: center;
-    animation: yolo-chat-compaction-divider-line-enter 220ms
-      cubic-bezier(0.2, 0.8, 0.2, 1) both;
+    animation: yolo-chat-compaction-divider-line-enter
+      var(--yolo-anim-duration-enter) cubic-bezier(0.2, 0.8, 0.2, 1) both;
   }
 }
 
@@ -2014,8 +2004,8 @@ button.yolo-chat-quick-access-picker-row > svg {
   backdrop-filter: blur(10px);
   transition:
     transform 0.15s ease,
-    border-color 0.15s ease,
-    background-color 0.15s ease;
+    border-color var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-chat-scroll-to-bottom-button:hover {
@@ -2132,7 +2122,7 @@ button.yolo-assistant-annotation-marker {
   -webkit-line-clamp: 3;
   transition:
     opacity 100ms ease,
-    transform 120ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--yolo-anim-duration-feedback) cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 button.yolo-assistant-annotation-marker:hover
@@ -2211,17 +2201,6 @@ button.yolo-assistant-annotation-marker.is-active {
   flex: none;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  button.yolo-assistant-annotation-marker,
-  .yolo-assistant-annotation-editor {
-    animation: none;
-  }
-
-  .yolo-assistant-annotation-marker-preview {
-    transition: none;
-  }
-}
-
 .yolo-assistant-message-selectable
   > button.yolo-assistant-selection-quote-button {
   appearance: none;
@@ -2248,10 +2227,10 @@ button.yolo-assistant-annotation-marker.is-active {
   opacity: 0;
   transform: translateY(-2px) scale(0.98);
   transition:
-    opacity 120ms cubic-bezier(0.16, 1, 0.3, 1),
-    transform 120ms cubic-bezier(0.16, 1, 0.3, 1),
-    border-color 0.15s ease,
-    background 0.15s ease;
+    opacity var(--yolo-anim-duration-feedback) cubic-bezier(0.16, 1, 0.3, 1),
+    transform var(--yolo-anim-duration-feedback) cubic-bezier(0.16, 1, 0.3, 1),
+    border-color var(--yolo-anim-duration-feedback) ease,
+    background var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-assistant-message-selectable
@@ -2333,13 +2312,15 @@ button.yolo-assistant-annotation-marker.is-active {
   text-align: left;
   /* Rise + fade in from the bottom-left corner; calm ease-out, no bounce. */
   transform-origin: bottom left;
-  animation: yolo-update-toast-in 220ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: yolo-update-toast-in var(--yolo-anim-duration-enter)
+    cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 /* Exit: sink down + fade, faster than entrance. The component keeps the card
    mounted for the duration before it actually dismisses (see UpdateToast). */
 .yolo-update-toast--exiting {
-  animation: yolo-update-toast-out 160ms ease-in forwards;
+  animation: yolo-update-toast-out var(--yolo-anim-duration-exit) ease-in
+    forwards;
   pointer-events: none;
 }
 
@@ -2362,13 +2343,6 @@ button.yolo-assistant-annotation-marker.is-active {
   to {
     opacity: 0;
     transform: translateY(8px) scale(0.98);
-  }
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .yolo-update-toast,
-  .yolo-update-toast--exiting {
-    animation: none;
   }
 }
 
@@ -2676,8 +2650,8 @@ button.yolo-assistant-annotation-marker.is-active {
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-update-toast-history-btn:hover {
@@ -2701,8 +2675,8 @@ button.yolo-assistant-annotation-marker.is-active {
   text-align: right;
   cursor: var(--cursor);
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-update-toast-skip-btn:hover {
@@ -2724,7 +2698,7 @@ button.yolo-assistant-annotation-marker.is-active {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-medium);
   cursor: var(--cursor);
-  transition: background 0.12s ease;
+  transition: background var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-update-toast-cta:hover {
@@ -2751,8 +2725,8 @@ button.yolo-assistant-annotation-marker.is-active {
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-update-toast-github-btn:hover,
@@ -3008,8 +2982,8 @@ button.yolo-assistant-annotation-marker.is-active {
   font-weight: var(--font-medium);
   cursor: var(--cursor);
   transition:
-    background 0.12s ease,
-    color 0.12s ease;
+    background var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-update-history-page-btn:hover:not(:disabled) {
@@ -3159,7 +3133,7 @@ button.yolo-assistant-annotation-marker.is-active {
   justify-content: center;
   color: var(--interactive-accent);
   background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
-  animation: yolo-chat-empty-icon-in 220ms ease-out;
+  animation: yolo-chat-empty-icon-in var(--yolo-anim-duration-enter) ease-out;
 }
 
 .yolo-chat-empty-state-icon[data-mode='chat'] {
@@ -3218,15 +3192,15 @@ button.yolo-assistant-annotation-marker.is-active {
   .yolo-obsidian-textarea:hover {
     border-color: var(--background-modifier-border-hover);
     transition:
-      box-shadow 0.15s ease-in-out,
-      border 0.15s ease-in-out;
+      box-shadow var(--yolo-anim-duration-feedback) ease-in-out,
+      border var(--yolo-anim-duration-feedback) ease-in-out;
   }
 }
 .yolo-obsidian-textarea:active {
   border-color: var(--background-modifier-border-focus);
   transition:
-    box-shadow 0.15s ease-in-out,
-    border 0.15s ease-in-out;
+    box-shadow var(--yolo-anim-duration-feedback) ease-in-out,
+    border var(--yolo-anim-duration-feedback) ease-in-out;
 }
 
 /* .yolo-obsidian-textarea::placeholder {
@@ -3252,16 +3226,16 @@ button.yolo-assistant-annotation-marker.is-active {
   --yolo-mention-max-width: 240px;
   --yolo-mention-badge-max-width: 180px;
   transition:
-    background-color 0.15s ease,
-    border-color 0.15s ease,
-    box-shadow 0.15s ease;
+    background-color var(--yolo-anim-duration-feedback) ease,
+    border-color var(--yolo-anim-duration-feedback) ease,
+    box-shadow var(--yolo-anim-duration-feedback) ease;
 
   &:focus-within,
   &:focus,
   &:focus-visible,
   &:active {
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
-    transition: box-shadow 0.15s ease-in-out;
+    transition: box-shadow var(--yolo-anim-duration-feedback) ease-in-out;
   }
 }
 
@@ -3802,9 +3776,9 @@ button.yolo-chat-user-input-submit-button-circle {
   justify-content: center;
   cursor: pointer;
   transition:
-    background-color 0.15s ease,
-    color 0.15s ease,
-    opacity 0.15s ease,
+    background-color var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease,
+    opacity var(--yolo-anim-duration-feedback) ease,
     transform 0.1s ease;
   flex: 0 0 auto;
   min-width: 0;
@@ -3914,7 +3888,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
   flex-shrink: 0;
   gap: var(--size-2-1);
   opacity: 0;
-  transition: opacity 120ms ease;
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-chat-queued-messages__item:hover .yolo-chat-queued-messages__actions,
@@ -4131,7 +4105,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   height: 15px;
   border-radius: 999px;
   background: var(--background-modifier-border);
-  transition: background 0.15s ease;
+  transition: background var(--yolo-anim-duration-feedback) ease;
   flex-shrink: 0;
 }
 
@@ -4315,10 +4289,6 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .yolo-reasoning-popover__header-current {
-    animation: none;
-  }
-
   .yolo-reasoning-slider__spark-canvas {
     display: none;
   }
@@ -4422,7 +4392,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   background: color-mix(in srgb, var(--text-muted) 55%, transparent);
   transform: translate(-50%, -50%);
   transition:
-    background-color 0.15s ease,
+    background-color var(--yolo-anim-duration-feedback) ease,
     opacity 0.6s cubic-bezier(0.2, 0.8, 0.2, 1);
   z-index: 2;
 }

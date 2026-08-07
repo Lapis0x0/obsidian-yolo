@@ -539,7 +539,7 @@ select.yolo-module-settings-select {
   margin-top: 2px;
   margin-bottom: var(--size-4-1);
   transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
     opacity 180ms ease;
 }
 
@@ -623,10 +623,10 @@ select.yolo-module-settings-select {
   opacity: 0;
   transform: translateY(-4px);
   transition:
-    max-height 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 240ms var(--yolo-anim-ease-out),
     opacity 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    margin-bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
 .yolo-assistant-message-metadata-preview-track {
@@ -723,8 +723,8 @@ select.yolo-module-settings-select {
   white-space: nowrap;
   color: color-mix(in srgb, var(--text-muted) 92%, var(--text-normal));
   transition:
-    opacity 160ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
 .yolo-assistant-message-metadata-status-dot {
@@ -762,8 +762,8 @@ select.yolo-module-settings-select {
   opacity: 0.68;
   transition:
     color 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease;
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    opacity var(--yolo-anim-duration-exit) ease;
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -883,7 +883,8 @@ select.yolo-module-settings-select {
 
 .yolo-stream-fresh-text {
   display: inline;
-  animation: yolo-stream-fresh-text-fade 120ms ease-out;
+  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
+    ease-out;
   will-change: opacity, filter;
 }
 

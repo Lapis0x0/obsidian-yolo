@@ -7,6 +7,11 @@ import {
 } from 'lucide-react'
 import type { ReactNode, RefObject } from 'react'
 
+import {
+  MOTION_DURATION_EXIT_S,
+  MOTION_EASE_OUT,
+  MOTION_LAYOUT_SPRING,
+} from '../../styles/tokens/motion'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
@@ -160,8 +165,8 @@ export function ChatConversationPane({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{
-                    duration: reduceMotion ? 0 : 0.12,
-                    ease: [0.22, 1, 0.36, 1],
+                    duration: reduceMotion ? 0 : MOTION_DURATION_EXIT_S,
+                    ease: MOTION_EASE_OUT,
                   }}
                 >
                   <div className="yolo-chat-empty-state-overlay-inner">
@@ -187,7 +192,7 @@ export function ChatConversationPane({
             {messageNavigatorContent}
           </>
         }
-        scrollContainerClassName={`yolo-chat-messages${isAutoFollowEnabled ? ' yolo-chat-messages--following' : ''}`}
+        scrollContainerClassName="yolo-chat-messages"
         onVirtualizationChange={onTimelineVirtualizationChange}
         onUserMessageViewportChange={onUserMessageViewportChange}
         windowNavigationKey={windowNavigationKey}
@@ -205,10 +210,7 @@ export function ChatConversationPane({
         layoutDependency={showEmptyState}
         className="yolo-chat-footer"
         transition={{
-          layout: {
-            duration: reduceMotion ? 0 : 0.28,
-            ease: [0.22, 1, 0.36, 1],
-          },
+          layout: reduceMotion ? { duration: 0 } : MOTION_LAYOUT_SPRING,
         }}
       >
         {showScrollToBottomButton && (

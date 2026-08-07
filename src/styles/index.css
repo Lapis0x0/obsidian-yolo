@@ -1,3 +1,5 @@
+@import './tokens/motion.css';
+
 @import './settings/base.css';
 @import './settings/mode-segmented-control.css';
 @import './settings/providers-models.css';
