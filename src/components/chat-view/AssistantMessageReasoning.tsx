@@ -9,7 +9,10 @@ import {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { MOTION_EASE_OUT_CSS } from '../../styles/tokens/motion'
+import {
+  MOTION_DURATION_ENTER_S,
+  MOTION_EASE_OUT_CSS,
+} from '../../styles/tokens/motion'
 import DotLoader from '../common/DotLoader'
 
 import TransitioningMarkdown from './TransitioningMarkdown'
@@ -19,7 +22,8 @@ type ReasoningStage = 'requesting' | 'thinking' | 'settled'
 const REASONING_PREVIEW_MAX_BUFFER_LENGTH = 4000
 const REASONING_PREVIEW_TRIM_CHUNK_LENGTH = 2000
 const REASONING_PREVIEW_UPDATE_INTERVAL_MS = 64
-const REASONING_PREVIEW_TRANSITION_MS = 220
+// WAAPI's `duration` wants milliseconds; the shared token is in seconds.
+const REASONING_PREVIEW_TRANSITION_MS = MOTION_DURATION_ENTER_S * 1000
 const useSafeLayoutEffect =
   typeof window === 'undefined' ? useEffect : useLayoutEffect
 

@@ -207,8 +207,8 @@
   opacity: 1;
   transform: translateY(0);
   transition:
-    opacity 180ms ease,
-    transform 180ms ease;
+    opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in),
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
 }
 
 .yolo-toolcall-compaction-pending--exiting {
@@ -263,6 +263,22 @@
   justify-content: end;
   align-items: center;
   padding: var(--size-4-1);
+  /* pending↔running remount animates in (L2 enter); collapse (unmount) is
+   * intentionally instant — no exit animation here. */
+  animation: yolo-toolcall-footer-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-toolcall-footer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .yolo-toolcall-footer-actions {
@@ -373,6 +389,25 @@
   }
 }
 
+/* 流式文本入场 - 每个新到达的 span 淡入 + 轻微模糊消散 */
+.yolo-stream-fresh-text {
+  display: inline;
+  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-stream-fresh-text-fade {
+  0% {
+    opacity: 0.18;
+    filter: blur(0.18em);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
+
 .yolo-dot-loader-minimal {
   display: inline-flex;
   gap: 4px;
@@ -410,41 +445,13 @@
   }
 }
 
-/* 保留旧的 dot-loader 作为后备 */
-.yolo-dot-loader {
-  display: inline-block;
-  text-align: left;
-}
-
-.yolo-dot-loader::after {
-  content: '...';
-  animation: dotFade 0.75s steps(4, end) infinite;
-  color: var(--text-muted);
-}
-
-@keyframes dotFade {
-  0%,
-  100% {
-    content: '';
-  }
-  25% {
-    content: '.';
-  }
-  50% {
-    content: '..';
-  }
-  75% {
-    content: '...';
-  }
-}
-
 .yolo-tooltip-content {
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   padding: var(--size-4-1) var(--size-4-2);
   font-size: var(--font-smallest);
-  animation: fadeIn 0.1s ease-in-out;
+  animation: fadeIn var(--yolo-anim-duration-feedback) ease;
 }
 
 /* Radix 渲染的 popper wrapper 默认 z-index: auto，在 Obsidian Settings Modal
@@ -535,6 +542,10 @@
   border: var(--border-width) solid var(--background-modifier-border);
   background-color: var(--background-secondary);
   padding: var(--size-4-5);
+  /* No `transition-property` is set here and no rule in this file toggles
+   * a state on `.yolo-dialog-content` itself (only descendants have their
+   * own transitions) — this appears orphaned/dead (no consumer found under
+   * src/**). Left as-is rather than guessing a bucket for unreferenced CSS. */
   transition-duration: 200ms;
   border-radius: var(--radius-m);
   box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
@@ -580,7 +591,7 @@
     top: var(--size-4-4);
     cursor: var(--cursor);
     opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity var(--yolo-anim-duration-feedback) ease;
 
     &:hover {
       opacity: 1;
@@ -601,7 +612,7 @@
     padding: var(--size-4-1);
     margin: calc(var(--size-4-1) * -1);
     opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity var(--yolo-anim-duration-feedback) ease;
 
     &:hover {
       opacity: 1;
@@ -627,6 +638,9 @@
   align-items: center;
   gap: var(--size-4-1);
   flex-shrink: 0;
+  /* Exempt from opacity/transform-only rule: this is the 0fr→1fr width
+   * reveal trick, user-triggered (clicking the more button), reflow is
+   * local to this inline action group. */
   transition: grid-template-columns var(--yolo-anim-duration-enter)
     var(--yolo-anim-ease-out);
 }
@@ -705,7 +719,7 @@
 
 .yolo-assistant-message-more-button svg {
   transition:
-    transform 180ms var(--yolo-anim-ease-out),
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
     opacity var(--yolo-anim-duration-feedback) ease;
   transform-origin: center;
 }
@@ -864,10 +878,10 @@
   cursor: pointer;
   flex: 0 0 auto;
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease,
-    transform 140ms ease;
+    background-color var(--yolo-anim-duration-feedback) ease,
+    border-color var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-multi-model-tab:hover,
@@ -1576,7 +1590,7 @@ button.yolo-llm-inline-info-debug-button:focus-visible {
   border-radius: var(--radius-s);
   padding: var(--size-4-2);
   font-size: var(--font-smallest);
-  animation: fadeIn 0.1s ease-in-out;
+  animation: fadeIn var(--yolo-anim-duration-feedback) ease;
 }
 
 .modal:has(.yolo-llm-debug-modal) {
@@ -1713,10 +1727,10 @@ button.yolo-llm-debug-modal-button:focus-visible {
   line-height: 16px; /* tighter height */
   cursor: pointer;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.18s ease;
+    background-color var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease,
+    box-shadow var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-segmented > button:hover {
   background: var(--background-modifier-hover);
@@ -1743,7 +1757,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   padding: var(--yolo-padding);
   overflow: hidden;
   isolation: isolate;
-  transition: all 0.2s ease;
+  /* Only box-shadow actually changes on this element (see :hover below). */
+  transition: box-shadow var(--yolo-anim-duration-feedback) ease;
   width: 200px;
   /* Pin box-sizing so `100cqi` and flex content area agree unambiguously
      (border included in width, padding outside content area). */
@@ -1793,7 +1808,19 @@ button.yolo-llm-debug-modal-button:focus-visible {
   font-weight: var(--font-medium);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Narrowed from `all`: only color, flex-basis (via the `flex` shorthand,
+   * see `--expanded`), opacity (`:disabled`) and gap (`--expanded`) ever
+   * change here. Duration/curve intentionally NOT tokenized: this drives a
+   * synced multi-element choreography together with the label
+   * (opacity/max-width below) and the indicator
+   * (`.yolo-view-toggle-indicator`), all sharing this exact symmetric
+   * two-way Material curve — the asymmetric enter/exit tokens would desync
+   * the group and read wrong on the shrinking side. */
+  transition:
+    color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    flex 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    gap 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 4px;
   text-align: center;
   white-space: nowrap;
@@ -1841,6 +1868,9 @@ button.yolo-llm-debug-modal-button:focus-visible {
 
 .yolo-view-toggle-button-label {
   display: inline-block;
+  /* Part of the same synced view-toggle choreography as
+   * `.yolo-view-toggle-button` above — kept un-tokenized to stay in step
+   * with the button's flex-basis and the indicator's slide. */
   transition:
     opacity 0.2s ease,
     max-width 0.3s ease;
@@ -1860,7 +1890,7 @@ button.yolo-llm-debug-modal-button:focus-visible {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  transition: color 0.2s ease;
+  transition: color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-view-toggle-button--active .yolo-view-toggle-button-icon {
@@ -1905,6 +1935,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   background: transparent;
   border: 2px solid var(--h1-color, var(--interactive-accent));
   border-radius: 4px;
+  /* Same synced view-toggle choreography as `.yolo-view-toggle-button`
+   * above — kept un-tokenized so the slide stays in lockstep. */
   transition:
     left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -2070,6 +2102,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
 }
 
 .yolo-roller-select-track.is-rolling {
+  /* Deliberate "slot machine" overshoot curve — a distinct character
+   * animation, not an enter/exit/feedback reveal. Not tokenized. */
   transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
   transform: translateY(-20px);
 }
@@ -2093,6 +2127,9 @@ button.yolo-llm-debug-modal-button:focus-visible {
   opacity: 0;
   overflow: hidden;
   transform: rotate(0deg);
+  /* Reveals in step with the same `--expanded` trigger as
+   * `.yolo-view-toggle-button` above — kept un-tokenized so it stays paced
+   * with that synced choreography. */
   transition:
     opacity 0.18s ease,
     width 0.2s ease,
@@ -2260,6 +2297,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   box-shadow: 0 2px 10px
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
   transform: translateX(calc(100% * var(--yolo-segment-index)));
+  /* Deliberate slight-overshoot "glider" curve for the sliding indicator —
+   * a distinct character animation, not tokenized. */
   transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
   pointer-events: none;
   z-index: 1;

@@ -113,7 +113,7 @@ button.yolo-todo-panel__icon-button svg {
   flex-shrink: 0;
   color: var(--text-muted);
   transform: rotate(180deg);
-  transition: transform 220ms ease;
+  transition: transform var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-todo-panel--collapsed .yolo-todo-panel__caret {
@@ -123,7 +123,11 @@ button.yolo-todo-panel__icon-button svg {
 .yolo-todo-panel__body {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+  /* Exempt from opacity/transform-only rule: same 1fr→0fr reveal trick as
+   * .yolo-assistant-message-more-group — user-triggered (panel collapse
+   * toggle), reflow local to this floating panel. */
+  transition: grid-template-rows var(--yolo-anim-duration-enter)
+    cubic-bezier(0.2, 0, 0, 1);
 }
 
 .yolo-todo-panel--collapsed .yolo-todo-panel__body {

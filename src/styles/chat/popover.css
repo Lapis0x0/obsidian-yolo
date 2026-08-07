@@ -28,6 +28,10 @@
   pointer-events: auto;
 }
 
+/* 105ms kept un-tokenized (enter bucket is 220ms, >80ms away): this panel
+ * follows arrow-key/hover navigation through mention menu items, so it
+ * must resolve well inside the time between two keystrokes — the enter
+ * bucket's slower pace would read as lag while arrowing through the list. */
 .yolo-smart-space-mention-subpanel[data-side='right'] {
   left: calc(100% + 6px);
   animation: yolo-smart-space-mention-subpanel-enter-right 105ms
@@ -514,7 +518,7 @@
  * JS 侧的对应常量在 ChatListDropdown.tsx 的 CHAT_LIST_MOTION，两处需保持一致。
  */
 .yolo-chat-list-dropdown-content {
-  --yolo-chat-list-response-duration: 0s;
+  --yolo-chat-list-response-duration: var(--yolo-anim-duration-response);
   --yolo-chat-list-presence-duration: var(--yolo-anim-duration-exit);
   --yolo-chat-list-presence-ease: var(--yolo-anim-ease-out);
 
@@ -624,8 +628,8 @@ button.yolo-chat-list-section-tab::after {
   opacity: 0;
   transform: scaleX(0.45);
   transition:
-    opacity 130ms ease,
-    transform 160ms var(--yolo-anim-ease-out);
+    opacity var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 
 button.yolo-chat-list-section-tab:hover,
@@ -731,6 +735,9 @@ button.yolo-chat-list-origin-filter:focus-visible {
  * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
  * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
  * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing 关掉。
+ * 260ms 故意不复用 --yolo-chat-list-presence-duration（用于 opacity/transform
+ * 的显隐）：L3 补位没有 CSS token（token 头注释：L3 用 spring，只在 JS 侧
+ * MOTION_LAYOUT_SPRING 有对应常量），这里是其在纯 CSS FLIP 场景下的手调近似值。
  */
 .yolo-chat-list-dropdown-item {
   transition: transform 260ms var(--yolo-chat-list-presence-ease);
@@ -786,7 +793,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   transform: translateY(0);
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
-    transform 180ms var(--yolo-anim-ease-out);
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
 }
 
 .yolo-chat-list-dropdown-item-current-badge {
@@ -941,7 +948,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   transform-origin: bottom right;
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
-    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
   pointer-events: none;
 }
 
@@ -975,8 +982,8 @@ button.yolo-chat-list-origin-filter:focus-visible {
   background: transparent;
   cursor: pointer;
   transition:
-    transform 140ms ease,
-    background-color 140ms ease;
+    transform var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-background-activity-status-panel-item:hover,
@@ -1084,12 +1091,12 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
 
 .yolo-chat-list-dropdown-content[data-state='open'] {
   animation: yolo-chat-list-dropdown-fade-in var(--yolo-anim-duration-enter)
-    cubic-bezier(0.16, 1, 0.3, 1);
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-chat-list-dropdown-content[data-state='closed'] {
   animation: yolo-chat-list-dropdown-fade-out var(--yolo-anim-duration-exit)
-    cubic-bezier(0.4, 0, 1, 1);
+    var(--yolo-anim-ease-in);
 }
 
 @keyframes yolo-chat-list-dropdown-fade-in {
@@ -1311,7 +1318,7 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 
 .yolo-chat-list-more-button svg {
   transition:
-    transform 180ms var(--yolo-anim-ease-out),
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
     opacity var(--yolo-anim-duration-feedback) ease;
   transform-origin: center;
 }
@@ -1479,15 +1486,18 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 
 .yolo-plan-preview-panel--streaming.is-exiting {
   pointer-events: none;
-  animation: yolo-plan-streaming-preview-exit 220ms
+  /* Was 220ms (enter duration) for an exit — corrected to the exit bucket.
+   * Curve kept as-is: cubic-bezier(0.32, 0, 0.2, 1) isn't a plain
+   * accelerate shape, likely deliberate for the collapse. */
+  animation: yolo-plan-streaming-preview-exit var(--yolo-anim-duration-exit)
     cubic-bezier(0.32, 0, 0.2, 1) forwards;
 }
 
 .yolo-plan-preview-panel--streaming.is-exiting
   .yolo-plan-streaming-preview-body {
   transform-origin: top left;
-  animation: yolo-plan-streaming-preview-body-collapse 220ms
-    cubic-bezier(0.32, 0, 0.2, 1) forwards;
+  animation: yolo-plan-streaming-preview-body-collapse
+    var(--yolo-anim-duration-exit) cubic-bezier(0.32, 0, 0.2, 1) forwards;
 }
 
 .yolo-plan-preview-panel--resolved {
@@ -1497,7 +1507,7 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 
 .yolo-plan-preview-panel--resolved.is-entering {
   border-radius: calc(var(--radius-s) - 2px);
-  animation: yolo-plan-preview-content-enter 260ms
+  animation: yolo-plan-preview-content-enter var(--yolo-anim-duration-enter)
     cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
@@ -1747,7 +1757,7 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
     background var(--yolo-anim-duration-feedback) ease,
     color var(--yolo-anim-duration-feedback) ease,
     border-color var(--yolo-anim-duration-feedback) ease,
-    transform 0.15s ease;
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-inline-review-floating-actions .yolo-apply-action-icon {
@@ -2111,8 +2121,8 @@ button.yolo-chat-input-model-select {
   border-radius: 3px;
   background: var(--interactive-accent);
   transition:
-    width 0.18s ease,
-    background-color 0.18s ease;
+    width var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-context-breakdown__bar[data-tone='warning']
@@ -2338,8 +2348,8 @@ button.yolo-chat-input-model-select {
   pointer-events: none;
   outline: none;
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-exit) ease;
 }
 
 .yolo-chat-list-ctx-menu.is-open {

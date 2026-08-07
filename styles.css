@@ -806,23 +806,6 @@ select.yolo-module-settings-select {
     border-top: 1px solid var(--background-modifier-border);
     border-bottom: 1px solid var(--background-modifier-border);
   }
-.yolo-stream-fresh-text {
-  display: inline;
-  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
-    ease-out;
-  will-change: opacity, filter;
-}
-@keyframes yolo-stream-fresh-text-fade {
-  0% {
-    opacity: 0.18;
-    filter: blur(0.18em);
-  }
-
-  100% {
-    opacity: 1;
-    filter: blur(0);
-  }
-}
 .yolo-mention-popover {
   width: 360px;
   max-width: 360px;
@@ -8004,6 +7987,11 @@ button.yolo-module-shelf-uninstall:hover {
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.12),
     0 0 0 1px var(--yolo-popover-ring);
+  /* 130ms kept un-tokenized (enter bucket is 220ms, 90ms away): this is the
+   * visual base for every default-variant popover/dropdown in the app
+   * (chat-input dropdowns, chat-history, AssistantSelector, ViewToggle) —
+   * the enter bucket's slower pace would be felt on every single popover
+   * open across the plugin, not just here. */
   animation: yolo-popover-fade-in 130ms cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 /* Smart-space variant — heavier shadow, blur backdrop, larger radius.
@@ -8030,8 +8018,8 @@ button.yolo-module-shelf-uninstall:hover {
     0 12px 32px -8px rgba(0, 0, 0, 0.2),
     0 4px 12px rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(16px);
-  animation: yolo-popover-smart-space-fade-in 0.25s
-    cubic-bezier(0.16, 1, 0.3, 1);
+  animation: yolo-popover-smart-space-fade-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 @keyframes yolo-popover-fade-in {
   0% {
@@ -8436,7 +8424,7 @@ body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='openai'] {
 .yolo-runtime-selector__chevron {
   flex: 0 0 auto;
   color: var(--text-muted);
-  transition: transform 0.15s ease;
+  transition: transform var(--yolo-anim-duration-feedback) ease;
 }
 button.yolo-runtime-selector[data-state='open']
   .yolo-runtime-selector__chevron {
@@ -8528,7 +8516,7 @@ button.yolo-runtime-selector[data-compact='true']
     var(--background-modifier-border) 70%,
     transparent
   );
-  transition: filter 0.15s ease;
+  transition: filter var(--yolo-anim-duration-feedback) ease;
 }
 /* Cursor-style hover: track switches to `--text-muted` (a clearly darker /
  * brighter tone than the idle border-modifier color), and the whole ring
@@ -8572,14 +8560,14 @@ button.yolo-runtime-selector[data-compact='true']
    * button container). Idle uses a faint border-modifier tone; hover/open
    * swap to --text-muted for clearly higher contrast. */
   stroke: var(--yolo-context-usage-ring-track-stroke);
-  transition: stroke 0.18s ease;
+  transition: stroke var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-context-usage-ring__progress {
   stroke: currentColor;
   stroke-linecap: round;
   transition:
-    stroke-dashoffset 0.18s ease,
-    stroke 0.18s ease;
+    stroke-dashoffset var(--yolo-anim-duration-feedback) ease,
+    stroke var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-context-usage-ring__unknown-mark {
   position: absolute;
@@ -9227,7 +9215,12 @@ button.yolo-chat-quick-access-picker-row > svg {
   padding: 6px 8px;
   border-radius: var(--radius-s);
   cursor: pointer;
-  transition: all 0.2s ease;
+  /* Narrowed from `all`: color/border/box-shadow are the only properties
+   * that actually change (see :hover / .is-active below). */
+  transition:
+    color var(--yolo-anim-duration-feedback) ease,
+    border var(--yolo-anim-duration-feedback) ease,
+    box-shadow var(--yolo-anim-duration-feedback) ease;
   position: relative;
   box-shadow: none !important;
   min-width: 0;
@@ -9271,6 +9264,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   box-shadow: 0 2px 10px
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
   transform: translateX(calc(100% * var(--yolo-tab-index)));
+  /* Deliberate slight-overshoot "glider" curve for the sliding indicator —
+   * a distinct character animation, not tokenized (matches
+   * .yolo-segmented-glider in message.css). */
   transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
   pointer-events: none;
   z-index: 1;
@@ -9352,7 +9348,11 @@ button.yolo-chat-quick-access-picker-row > svg {
   border-radius: var(--radius-m);
   background: transparent;
   border: 1px solid var(--background-modifier-border);
-  transition: all 0.2s ease;
+  /* Narrowed from `all`: only border-color and transform (hover lift)
+   * actually change (see :hover below). */
+  transition:
+    border-color var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
   position: relative;
 }
 .yolo-composer-option:hover {
@@ -9446,9 +9446,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   text-align: left;
   cursor: pointer;
   transition:
-    border-color 0.16s ease,
-    background 0.16s ease,
-    color 0.16s ease;
+    border-color var(--yolo-anim-duration-feedback) ease,
+    background var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease;
   box-shadow: none;
   overflow: hidden;
 }
@@ -9494,7 +9494,8 @@ button.yolo-chat-quick-access-picker-row > svg {
   min-width: max(var(--radix-dropdown-menu-trigger-width, 0px), 180px);
   max-width: min(320px, calc(100vw - 24px));
   overflow: hidden;
-  animation: yolo-simple-select-pop 0.16s cubic-bezier(0.2, 0, 0, 1);
+  animation: yolo-simple-select-pop var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 @keyframes yolo-simple-select-pop {
   from {
@@ -9854,6 +9855,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   box-shadow: none;
   transform: scaleX(calc(0.1667 + 0.8333 * var(--yolo-message-navigator-wave)));
   transform-origin: left center;
+  /* `transform` here tracks the drag position in real time (pointer-follow
+   * waveform), not a discrete enter/exit/feedback reveal — kept `linear`
+   * and un-tokenized so it doesn't lag or overshoot the pointer. */
   transition:
     transform 70ms linear,
     background-color var(--yolo-anim-duration-feedback) ease;
@@ -9892,8 +9896,8 @@ button.yolo-chat-quick-access-picker-row > svg {
   color: var(--text-normal);
   transform: translateY(-50%);
   pointer-events: none;
-  animation: yolo-message-navigator-preview-enter 140ms
-    var(--yolo-anim-ease-out);
+  animation: yolo-message-navigator-preview-enter
+    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 .yolo-message-navigator__preview-user {
   overflow: hidden;
@@ -10121,11 +10125,11 @@ button.yolo-assistant-annotation-marker {
   font-weight: var(--font-semibold);
   line-height: 1;
   transform: translate(-12%, -70%);
-  animation: yolo-assistant-annotation-marker-in 160ms
-    cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: yolo-assistant-annotation-marker-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) backwards;
   transition:
-    transform 120ms ease,
-    filter 120ms ease;
+    transform var(--yolo-anim-duration-feedback) ease,
+    filter var(--yolo-anim-duration-feedback) ease;
 }
 @keyframes yolo-assistant-annotation-marker-in {
   from {
@@ -10184,8 +10188,8 @@ button.yolo-assistant-annotation-marker {
   -webkit-box-orient: vertical;
   -webkit-line-clamp: 3;
   transition:
-    opacity 100ms ease,
-    transform var(--yolo-anim-duration-feedback) cubic-bezier(0.16, 1, 0.3, 1);
+    opacity var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out);
 }
 button.yolo-assistant-annotation-marker:hover
   .yolo-assistant-annotation-marker-preview,
@@ -10212,8 +10216,8 @@ button.yolo-assistant-annotation-marker.is-active {
   border-radius: var(--radius-m);
   background: var(--background-primary);
   box-shadow: var(--shadow-s);
-  animation: yolo-assistant-annotation-editor-in 150ms
-    cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  animation: yolo-assistant-annotation-editor-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) backwards;
 }
 @keyframes yolo-assistant-annotation-editor-in {
   from {
@@ -10281,8 +10285,8 @@ button.yolo-assistant-annotation-marker.is-active {
   opacity: 0;
   transform: translateY(-2px) scale(0.98);
   transition:
-    opacity var(--yolo-anim-duration-feedback) cubic-bezier(0.16, 1, 0.3, 1),
-    transform var(--yolo-anim-duration-feedback) cubic-bezier(0.16, 1, 0.3, 1),
+    opacity var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
     border-color var(--yolo-anim-duration-feedback) ease,
     background var(--yolo-anim-duration-feedback) ease;
 }
@@ -10360,13 +10364,13 @@ button.yolo-assistant-annotation-marker.is-active {
   /* Rise + fade in from the bottom-left corner; calm ease-out, no bounce. */
   transform-origin: bottom left;
   animation: yolo-update-toast-in var(--yolo-anim-duration-enter)
-    cubic-bezier(0.16, 1, 0.3, 1);
+    var(--yolo-anim-ease-out);
 }
 /* Exit: sink down + fade, faster than entrance. The component keeps the card
    mounted for the duration before it actually dismisses (see UpdateToast). */
 .yolo-update-toast--exiting {
-  animation: yolo-update-toast-out var(--yolo-anim-duration-exit) ease-in
-    forwards;
+  animation: yolo-update-toast-out var(--yolo-anim-duration-exit)
+    var(--yolo-anim-ease-in) forwards;
   pointer-events: none;
 }
 @keyframes yolo-update-toast-in {
@@ -10754,10 +10758,13 @@ button.yolo-assistant-annotation-marker.is-active {
   overflow: hidden;
 }
 .yolo-update-toast-progress-fill {
+  width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--interactive-accent);
-  transition: width 0.2s ease;
+  transform-origin: left;
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 /* Release history modal — custom header row (title · lang · close), same
  * pattern as the update toast; native modal-header and close button hidden. */
@@ -11080,7 +11087,8 @@ button.yolo-assistant-annotation-marker.is-active {
   justify-content: center;
   color: var(--interactive-accent);
   background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
-  animation: yolo-chat-empty-icon-in var(--yolo-anim-duration-enter) ease-out;
+  animation: yolo-chat-empty-icon-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 .yolo-chat-empty-state-icon[data-mode='chat'] {
   background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
@@ -11132,15 +11140,15 @@ button.yolo-assistant-annotation-marker.is-active {
   .yolo-obsidian-textarea:hover {
     border-color: var(--background-modifier-border-hover);
     transition:
-      box-shadow var(--yolo-anim-duration-feedback) ease-in-out,
-      border var(--yolo-anim-duration-feedback) ease-in-out;
+      box-shadow var(--yolo-anim-duration-feedback) ease,
+      border var(--yolo-anim-duration-feedback) ease;
   }
 }
 .yolo-obsidian-textarea:active {
   border-color: var(--background-modifier-border-focus);
   transition:
-    box-shadow var(--yolo-anim-duration-feedback) ease-in-out,
-    border var(--yolo-anim-duration-feedback) ease-in-out;
+    box-shadow var(--yolo-anim-duration-feedback) ease,
+    border var(--yolo-anim-duration-feedback) ease;
 }
 /* .yolo-obsidian-textarea::placeholder {
   color: var(--text-faint);
@@ -11170,7 +11178,7 @@ button.yolo-assistant-annotation-marker.is-active {
 }
 .yolo-chat-user-input-container:focus-within,.yolo-chat-user-input-container:focus,.yolo-chat-user-input-container:focus-visible,.yolo-chat-user-input-container:active {
     box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
-    transition: box-shadow var(--yolo-anim-duration-feedback) ease-in-out;
+    transition: box-shadow var(--yolo-anim-duration-feedback) ease;
   }
 .yolo-chat-user-input-container[data-file-drag-active='true'] {
   background: color-mix(
@@ -11298,8 +11306,8 @@ button.yolo-assistant-annotation-marker.is-active {
   box-shadow: none;
   padding: var(--size-2-3) var(--size-4-2);
   transition:
-    background 0.2s ease-in-out,
-    border-color 0.2s ease-in-out;
+    background var(--yolo-anim-duration-feedback) ease,
+    border-color var(--yolo-anim-duration-feedback) ease;
   cursor: pointer;
   gap: var(--size-2-2);
 }
@@ -11449,7 +11457,7 @@ button.yolo-assistant-annotation-marker.is-active {
     background-color: var(--tag-background);
     color: var(--tag-color);
     cursor: pointer;
-    transition: opacity 80ms ease;
+    transition: opacity var(--yolo-anim-duration-feedback) ease;
   }
 :is(.yolo-chat-user-input-placeholder .yolo-placeholder-trigger):hover {
       opacity: 0.75;
@@ -11584,7 +11592,8 @@ button.yolo-assistant-annotation-marker.is-active {
   box-shadow: none;
   padding: 0 var(--size-2-1);
   cursor: pointer;
-  transition: all 0.1s ease-in-out;
+  /* Narrowed from `all`: only color changes (see :hover below). */
+  transition: color var(--yolo-anim-duration-feedback) ease;
 }
 :is(.yolo-chat-user-input-controls .yolo-chat-user-input-submit-button,.yolo-chat-user-input-toolbar .yolo-chat-user-input-submit-button,.yolo-chat-user-input-send-row .yolo-chat-user-input-submit-button):hover {
     color: var(--text-normal);
@@ -11649,7 +11658,7 @@ button.yolo-chat-user-input-submit-button-circle {
     background-color var(--yolo-anim-duration-feedback) ease,
     color var(--yolo-anim-duration-feedback) ease,
     opacity var(--yolo-anim-duration-feedback) ease,
-    transform 0.1s ease;
+    transform var(--yolo-anim-duration-feedback) ease;
   flex: 0 0 auto;
   min-width: 0;
   min-height: 0;
@@ -11949,7 +11958,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   border-radius: 50%;
   background: var(--background-primary);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
-  transition: transform 0.15s ease;
+  transition: transform var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-chat-mode-yolo-toggle[data-active='true']
   .yolo-chat-mode-yolo-toggle__thumb {
@@ -12038,8 +12047,8 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   color: color-mix(in srgb, var(--text-normal) 88%, transparent);
   line-height: 1.2;
   transition:
-    color 0.25s ease,
-    text-shadow 0.25s ease;
+    color var(--yolo-anim-duration-feedback) ease,
+    text-shadow var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-reasoning-popover__header-current.is-max {
   color: #c084fc;
@@ -12055,11 +12064,12 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   color: #c084fc;
 }
 .yolo-reasoning-popover__header-current--up {
-  animation: yolo-reasoning-current-slide-up 180ms cubic-bezier(0.16, 1, 0.3, 1);
+  animation: yolo-reasoning-current-slide-up var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 .yolo-reasoning-popover__header-current--down {
-  animation: yolo-reasoning-current-slide-down 180ms
-    cubic-bezier(0.16, 1, 0.3, 1);
+  animation: yolo-reasoning-current-slide-down var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 @keyframes yolo-reasoning-current-slide-up {
   0% {
@@ -12148,6 +12158,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   );
   border-radius: inherit;
   background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  /* Exempt from opacity/transform-only rule: width is derived from a
+   * percentage position, not a fixed track length, so it can't become a
+   * translateX without a JS-measured pixel width; user-triggered
+   * (drag/click), reflow scoped to this slider only. */
   transition: width 0.22s cubic-bezier(0.2, 0.9, 0.3, 1);
   z-index: 0;
 }
@@ -12217,6 +12231,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
     0 2px 6px rgba(0, 0, 0, 0.12),
     0 0 0 1px rgba(255, 255, 255, 0.45) inset;
   transform: translate(-50%, -50%);
+  /* Exempt from opacity/transform-only rule: `left` is a percentage
+   * position (see calc() above) that already consumes the transform for
+   * centering; converting to translateX needs a JS-measured pixel offset.
+   * User-triggered (drag/click), reflow scoped to this slider only. */
   transition:
     left 0.22s cubic-bezier(0.2, 0.9, 0.3, 1),
     border-color 0.3s ease,
@@ -12580,8 +12598,8 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   opacity: 1;
   transform: translateY(0);
   transition:
-    opacity 180ms ease,
-    transform 180ms ease;
+    opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in),
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in);
 }
 .yolo-toolcall-compaction-pending--exiting {
   opacity: 0;
@@ -12628,6 +12646,21 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   justify-content: end;
   align-items: center;
   padding: var(--size-4-1);
+  /* pending↔running remount animates in (L2 enter); collapse (unmount) is
+   * intentionally instant — no exit animation here. */
+  animation: yolo-toolcall-footer-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+@keyframes yolo-toolcall-footer-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 .yolo-toolcall-footer-actions {
   display: flex;
@@ -12726,6 +12759,23 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
     background-position: -200% center;
   }
 }
+/* 流式文本入场 - 每个新到达的 span 淡入 + 轻微模糊消散 */
+.yolo-stream-fresh-text {
+  display: inline;
+  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
+    var(--yolo-anim-ease-out);
+}
+@keyframes yolo-stream-fresh-text-fade {
+  0% {
+    opacity: 0.18;
+    filter: blur(0.18em);
+  }
+
+  100% {
+    opacity: 1;
+    filter: blur(0);
+  }
+}
 .yolo-dot-loader-minimal {
   display: inline-flex;
   gap: 4px;
@@ -12758,38 +12808,13 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
     opacity: 0.9;
   }
 }
-/* 保留旧的 dot-loader 作为后备 */
-.yolo-dot-loader {
-  display: inline-block;
-  text-align: left;
-}
-.yolo-dot-loader::after {
-  content: '...';
-  animation: dotFade 0.75s steps(4, end) infinite;
-  color: var(--text-muted);
-}
-@keyframes dotFade {
-  0%,
-  100% {
-    content: '';
-  }
-  25% {
-    content: '.';
-  }
-  50% {
-    content: '..';
-  }
-  75% {
-    content: '...';
-  }
-}
 .yolo-tooltip-content {
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
   padding: var(--size-4-1) var(--size-4-2);
   font-size: var(--font-smallest);
-  animation: fadeIn 0.1s ease-in-out;
+  animation: fadeIn var(--yolo-anim-duration-feedback) ease;
 }
 /* Radix 渲染的 popper wrapper 默认 z-index: auto，在 Obsidian Settings Modal
    （--layer-modal）里会被盖住。给含 yolo-tooltip-content 的 wrapper 显式抬到
@@ -12866,6 +12891,10 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   border: var(--border-width) solid var(--background-modifier-border);
   background-color: var(--background-secondary);
   padding: var(--size-4-5);
+  /* No `transition-property` is set here and no rule in this file toggles
+   * a state on `.yolo-dialog-content` itself (only descendants have their
+   * own transitions) — this appears orphaned/dead (no consumer found under
+   * src/**). Left as-is rather than guessing a bucket for unreferenced CSS. */
   transition-duration: 200ms;
   border-radius: var(--radius-m);
   box-shadow: 0 25px 50px -12px rgb(0 0 0 / 0.25);
@@ -12905,7 +12934,7 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
     top: var(--size-4-4);
     cursor: var(--cursor);
     opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity var(--yolo-anim-duration-feedback) ease;
   }
 :is(.yolo-dialog-content .yolo-dialog-close):hover {
       opacity: 1;
@@ -12923,7 +12952,7 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
     padding: var(--size-4-1);
     margin: calc(var(--size-4-1) * -1);
     opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity var(--yolo-anim-duration-feedback) ease;
   }
 :is(.yolo-template-menu-item .yolo-template-menu-item-delete):hover {
       opacity: 1;
@@ -12944,6 +12973,9 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   align-items: center;
   gap: var(--size-4-1);
   flex-shrink: 0;
+  /* Exempt from opacity/transform-only rule: this is the 0fr→1fr width
+   * reveal trick, user-triggered (clicking the more button), reflow is
+   * local to this inline action group. */
   transition: grid-template-columns var(--yolo-anim-duration-enter)
     var(--yolo-anim-ease-out);
 }
@@ -13011,7 +13043,7 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
 }
 .yolo-assistant-message-more-button svg {
   transition:
-    transform 180ms var(--yolo-anim-ease-out),
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
     opacity var(--yolo-anim-duration-feedback) ease;
   transform-origin: center;
 }
@@ -13155,10 +13187,10 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   cursor: pointer;
   flex: 0 0 auto;
   transition:
-    background-color 140ms ease,
-    border-color 140ms ease,
-    color 140ms ease,
-    transform 140ms ease;
+    background-color var(--yolo-anim-duration-feedback) ease,
+    border-color var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-multi-model-tab:hover,
 .yolo-multi-model-tab:focus,
@@ -13779,7 +13811,7 @@ button.yolo-llm-inline-info-debug-button:focus-visible {
   border-radius: var(--radius-s);
   padding: var(--size-4-2);
   font-size: var(--font-smallest);
-  animation: fadeIn 0.1s ease-in-out;
+  animation: fadeIn var(--yolo-anim-duration-feedback) ease;
 }
 .modal:has(.yolo-llm-debug-modal) {
   width: min(96vw, 1100px);
@@ -13901,10 +13933,10 @@ button.yolo-llm-debug-modal-button:focus-visible {
   line-height: 16px; /* tighter height */
   cursor: pointer;
   transition:
-    background-color 0.18s ease,
-    color 0.18s ease,
-    box-shadow 0.18s ease,
-    transform 0.18s ease;
+    background-color var(--yolo-anim-duration-feedback) ease,
+    color var(--yolo-anim-duration-feedback) ease,
+    box-shadow var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-segmented > button:hover {
   background: var(--background-modifier-hover);
@@ -13930,7 +13962,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   padding: var(--yolo-padding);
   overflow: hidden;
   isolation: isolate;
-  transition: all 0.2s ease;
+  /* Only box-shadow actually changes on this element (see :hover below). */
+  transition: box-shadow var(--yolo-anim-duration-feedback) ease;
   width: 200px;
   /* Pin box-sizing so `100cqi` and flex content area agree unambiguously
      (border included in width, padding outside content area). */
@@ -13979,7 +14012,19 @@ button.yolo-llm-debug-modal-button:focus-visible {
   font-weight: var(--font-medium);
   color: var(--text-muted);
   cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* Narrowed from `all`: only color, flex-basis (via the `flex` shorthand,
+   * see `--expanded`), opacity (`:disabled`) and gap (`--expanded`) ever
+   * change here. Duration/curve intentionally NOT tokenized: this drives a
+   * synced multi-element choreography together with the label
+   * (opacity/max-width below) and the indicator
+   * (`.yolo-view-toggle-indicator`), all sharing this exact symmetric
+   * two-way Material curve — the asymmetric enter/exit tokens would desync
+   * the group and read wrong on the shrinking side. */
+  transition:
+    color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    flex 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    gap 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   border-radius: 4px;
   text-align: center;
   white-space: nowrap;
@@ -14024,6 +14069,9 @@ button.yolo-llm-debug-modal-button:focus-visible {
 }
 .yolo-view-toggle-button-label {
   display: inline-block;
+  /* Part of the same synced view-toggle choreography as
+   * `.yolo-view-toggle-button` above — kept un-tokenized to stay in step
+   * with the button's flex-basis and the indicator's slide. */
   transition:
     opacity 0.2s ease,
     max-width 0.3s ease;
@@ -14041,7 +14089,7 @@ button.yolo-llm-debug-modal-button:focus-visible {
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
-  transition: color 0.2s ease;
+  transition: color var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-view-toggle-button--active .yolo-view-toggle-button-icon {
   color: var(--h1-color, var(--interactive-accent));
@@ -14080,6 +14128,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   background: transparent;
   border: 2px solid var(--h1-color, var(--interactive-accent));
   border-radius: 4px;
+  /* Same synced view-toggle choreography as `.yolo-view-toggle-button`
+   * above — kept un-tokenized so the slide stays in lockstep. */
   transition:
     left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
@@ -14225,6 +14275,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   transform: translateY(0);
 }
 .yolo-roller-select-track.is-rolling {
+  /* Deliberate "slot machine" overshoot curve — a distinct character
+   * animation, not an enter/exit/feedback reveal. Not tokenized. */
   transition: transform 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
   transform: translateY(-20px);
 }
@@ -14246,6 +14298,9 @@ button.yolo-llm-debug-modal-button:focus-visible {
   opacity: 0;
   overflow: hidden;
   transform: rotate(0deg);
+  /* Reveals in step with the same `--expanded` trigger as
+   * `.yolo-view-toggle-button` above — kept un-tokenized so it stays paced
+   * with that synced choreography. */
   transition:
     opacity 0.18s ease,
     width 0.2s ease,
@@ -14399,6 +14454,8 @@ button.yolo-llm-debug-modal-button:focus-visible {
   box-shadow: 0 2px 10px
     color-mix(in srgb, var(--interactive-accent) 18%, transparent);
   transform: translateX(calc(100% * var(--yolo-segment-index)));
+  /* Deliberate slight-overshoot "glider" curve for the sliding indicator —
+   * a distinct character animation, not tokenized. */
   transition: transform 0.36s cubic-bezier(0.4, 1.2, 0.4, 1);
   pointer-events: none;
   z-index: 1;
@@ -14891,6 +14948,10 @@ button.yolo-mermaid-modal-control:disabled {
   overflow: visible;
   pointer-events: auto;
 }
+/* 105ms kept un-tokenized (enter bucket is 220ms, >80ms away): this panel
+ * follows arrow-key/hover navigation through mention menu items, so it
+ * must resolve well inside the time between two keystrokes — the enter
+ * bucket's slower pace would read as lag while arrowing through the list. */
 .yolo-smart-space-mention-subpanel[data-side='right'] {
   left: calc(100% + 6px);
   animation: yolo-smart-space-mention-subpanel-enter-right 105ms
@@ -15322,7 +15383,7 @@ button.yolo-mermaid-modal-control:disabled {
  * JS 侧的对应常量在 ChatListDropdown.tsx 的 CHAT_LIST_MOTION，两处需保持一致。
  */
 .yolo-chat-list-dropdown-content {
-  --yolo-chat-list-response-duration: 0s;
+  --yolo-chat-list-response-duration: var(--yolo-anim-duration-response);
   --yolo-chat-list-presence-duration: var(--yolo-anim-duration-exit);
   --yolo-chat-list-presence-ease: var(--yolo-anim-ease-out);
 
@@ -15423,8 +15484,8 @@ button.yolo-chat-list-section-tab::after {
   opacity: 0;
   transform: scaleX(0.45);
   transition:
-    opacity 130ms ease,
-    transform 160ms var(--yolo-anim-ease-out);
+    opacity var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 button.yolo-chat-list-section-tab:hover,
 button.yolo-chat-list-section-tab.is-active {
@@ -15516,6 +15577,9 @@ button.yolo-chat-list-origin-filter:focus-visible {
  * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
  * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
  * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing 关掉。
+ * 260ms 故意不复用 --yolo-chat-list-presence-duration（用于 opacity/transform
+ * 的显隐）：L3 补位没有 CSS token（token 头注释：L3 用 spring，只在 JS 侧
+ * MOTION_LAYOUT_SPRING 有对应常量），这里是其在纯 CSS FLIP 场景下的手调近似值。
  */
 .yolo-chat-list-dropdown-item {
   transition: transform 260ms var(--yolo-chat-list-presence-ease);
@@ -15566,7 +15630,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   transform: translateY(0);
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
-    transform 180ms var(--yolo-anim-ease-out);
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
 }
 .yolo-chat-list-dropdown-item-current-badge {
   flex-shrink: 0;
@@ -15704,7 +15768,7 @@ button.yolo-chat-list-origin-filter:focus-visible {
   transform-origin: bottom right;
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
-    transform 180ms cubic-bezier(0.16, 1, 0.3, 1);
+    transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
   pointer-events: none;
 }
 .yolo-background-activity-status-panel.is-open {
@@ -15733,8 +15797,8 @@ button.yolo-chat-list-origin-filter:focus-visible {
   background: transparent;
   cursor: pointer;
   transition:
-    transform 140ms ease,
-    background-color 140ms ease;
+    transform var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-background-activity-status-panel-item:hover,
 .yolo-background-activity-status-panel-item:focus-visible {
@@ -15827,11 +15891,11 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
 }
 .yolo-chat-list-dropdown-content[data-state='open'] {
   animation: yolo-chat-list-dropdown-fade-in var(--yolo-anim-duration-enter)
-    cubic-bezier(0.16, 1, 0.3, 1);
+    var(--yolo-anim-ease-out);
 }
 .yolo-chat-list-dropdown-content[data-state='closed'] {
   animation: yolo-chat-list-dropdown-fade-out var(--yolo-anim-duration-exit)
-    cubic-bezier(0.4, 0, 1, 1);
+    var(--yolo-anim-ease-in);
 }
 @keyframes yolo-chat-list-dropdown-fade-in {
   0% {
@@ -16029,7 +16093,7 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 }
 .yolo-chat-list-more-button svg {
   transition:
-    transform 180ms var(--yolo-anim-ease-out),
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out),
     opacity var(--yolo-anim-duration-feedback) ease;
   transform-origin: center;
 }
@@ -16172,14 +16236,17 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 }
 .yolo-plan-preview-panel--streaming.is-exiting {
   pointer-events: none;
-  animation: yolo-plan-streaming-preview-exit 220ms
+  /* Was 220ms (enter duration) for an exit — corrected to the exit bucket.
+   * Curve kept as-is: cubic-bezier(0.32, 0, 0.2, 1) isn't a plain
+   * accelerate shape, likely deliberate for the collapse. */
+  animation: yolo-plan-streaming-preview-exit var(--yolo-anim-duration-exit)
     cubic-bezier(0.32, 0, 0.2, 1) forwards;
 }
 .yolo-plan-preview-panel--streaming.is-exiting
   .yolo-plan-streaming-preview-body {
   transform-origin: top left;
-  animation: yolo-plan-streaming-preview-body-collapse 220ms
-    cubic-bezier(0.32, 0, 0.2, 1) forwards;
+  animation: yolo-plan-streaming-preview-body-collapse
+    var(--yolo-anim-duration-exit) cubic-bezier(0.32, 0, 0.2, 1) forwards;
 }
 .yolo-plan-preview-panel--resolved {
   position: relative;
@@ -16187,7 +16254,7 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 }
 .yolo-plan-preview-panel--resolved.is-entering {
   border-radius: calc(var(--radius-s) - 2px);
-  animation: yolo-plan-preview-content-enter 260ms
+  animation: yolo-plan-preview-content-enter var(--yolo-anim-duration-enter)
     cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 .yolo-plan-streaming-preview {
@@ -16412,7 +16479,7 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
     background var(--yolo-anim-duration-feedback) ease,
     color var(--yolo-anim-duration-feedback) ease,
     border-color var(--yolo-anim-duration-feedback) ease,
-    transform 0.15s ease;
+    transform var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-inline-review-floating-actions .yolo-apply-action-icon {
   display: inline-flex;
@@ -16731,8 +16798,8 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
   border-radius: 3px;
   background: var(--interactive-accent);
   transition:
-    width 0.18s ease,
-    background-color 0.18s ease;
+    width var(--yolo-anim-duration-feedback) ease,
+    background-color var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-context-breakdown__bar[data-tone='warning']
   .yolo-context-breakdown__bar-fill {
@@ -16934,8 +17001,8 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
   pointer-events: none;
   outline: none;
   transition:
-    opacity 0.15s ease,
-    transform 0.15s ease;
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-exit) ease;
 }
 .yolo-chat-list-ctx-menu.is-open {
   opacity: 1;
@@ -17065,7 +17132,7 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-external-agent-card__abort-btn:hover {
   background: color-mix(in srgb, var(--color-red) 15%, transparent);
@@ -17725,7 +17792,7 @@ button.yolo-todo-panel__icon-button svg {
   flex-shrink: 0;
   color: var(--text-muted);
   transform: rotate(180deg);
-  transition: transform 220ms ease;
+  transition: transform var(--yolo-anim-duration-feedback) ease;
 }
 .yolo-todo-panel--collapsed .yolo-todo-panel__caret {
   transform: rotate(270deg);
@@ -17733,7 +17800,11 @@ button.yolo-todo-panel__icon-button svg {
 .yolo-todo-panel__body {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+  /* Exempt from opacity/transform-only rule: same 1fr→0fr reveal trick as
+   * .yolo-assistant-message-more-group — user-triggered (panel collapse
+   * toggle), reflow local to this floating panel. */
+  transition: grid-template-rows var(--yolo-anim-duration-enter)
+    cubic-bezier(0.2, 0, 0, 1);
 }
 .yolo-todo-panel--collapsed .yolo-todo-panel__body {
   grid-template-rows: 0fr;

@@ -1698,77 +1698,64 @@ function ToolCallItem({
           </span>
         </div>
       )}
-      <AnimatePresence initial={false}>
-        {footerMode && (
-          <motion.div
-            key={footerMode}
-            className="yolo-toolcall-footer"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{
-              duration: reduceMotion ? 0 : 0.18,
-              ease: [0.22, 1, 0.36, 1],
-            }}
-            style={{ overflow: 'hidden' }}
-          >
-            {footerMode === 'pending' && (
-              <div className="yolo-toolcall-footer-actions">
-                {isAlwaysAllowDisabled ? (
-                  // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleToolCall()
-                      setIsOpen(false)
-                    }}
-                  >
-                    {pendingAllowLabel}
-                  </button>
-                ) : (
-                  <SplitButton
-                    primaryText={pendingAllowLabel}
-                    onPrimaryClick={() => {
-                      void handleToolCall()
-                      setIsOpen(false)
-                    }}
-                    menuOptions={[
-                      {
-                        label: toolLabels.allowForThisChat,
-                        onClick: () => {
-                          void handleAllowForConversation()
-                          setIsOpen(false)
-                        },
-                      },
-                    ]}
-                  />
-                )}
+      {footerMode && (
+        <div key={footerMode} className="yolo-toolcall-footer">
+          {footerMode === 'pending' && (
+            <div className="yolo-toolcall-footer-actions">
+              {isAlwaysAllowDisabled ? (
+                // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
                 <button
                   type="button"
                   onClick={() => {
-                    handleReject()
+                    void handleToolCall()
                     setIsOpen(false)
                   }}
                 >
-                  {pendingRejectLabel}
+                  {pendingAllowLabel}
                 </button>
-              </div>
-            )}
-            {footerMode === 'running' && (
-              <div className="yolo-toolcall-footer-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleAbort()
+              ) : (
+                <SplitButton
+                  primaryText={pendingAllowLabel}
+                  onPrimaryClick={() => {
+                    void handleToolCall()
+                    setIsOpen(false)
                   }}
-                >
-                  {toolLabels.abort}
-                </button>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+                  menuOptions={[
+                    {
+                      label: toolLabels.allowForThisChat,
+                      onClick: () => {
+                        void handleAllowForConversation()
+                        setIsOpen(false)
+                      },
+                    },
+                  ]}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  handleReject()
+                  setIsOpen(false)
+                }}
+              >
+                {pendingRejectLabel}
+              </button>
+            </div>
+          )}
+          {footerMode === 'running' && (
+            <div className="yolo-toolcall-footer-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleAbort()
+                }}
+              >
+                {toolLabels.abort}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
