@@ -609,14 +609,18 @@ export function CliChatSurface({
     containerRef: chatMessagesRef,
     onDismiss: dismissHistoricalUserMessage,
   })
-  const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
-    useAutoScroll({
-      scrollContainerRef: chatMessagesRef,
-      scrollContainerElement: chatMessagesElement,
-      bottomSentinelElement,
-      followKey: conversationId,
-      canFollowLiveEdge: !hasNewerMessages,
-    })
+  const {
+    autoScrollToBottom,
+    forceScrollToBottom,
+    isAutoFollowEnabled,
+    scrollController,
+  } = useAutoScroll({
+    scrollContainerRef: chatMessagesRef,
+    scrollContainerElement: chatMessagesElement,
+    bottomSentinelElement,
+    followKey: conversationId,
+    canFollowLiveEdge: !hasNewerMessages,
+  })
   useEffect(() => {
     if (isConversationBusy) resetToLatest()
   }, [isConversationBusy, resetToLatest])
@@ -873,6 +877,7 @@ export function CliChatSurface({
       chatMessagesRef={chatMessagesRef}
       onScrollContainerChange={setChatMessagesElement}
       onBottomSentinelChange={setBottomSentinelElement}
+      scrollController={scrollController}
       timelineRendererContract={timelineRendererContract}
       editingAssistantMessageId={null}
       hasEarlierMessages={hasEarlierMessages}

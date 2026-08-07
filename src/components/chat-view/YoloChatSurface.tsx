@@ -591,6 +591,7 @@ export function YoloChatSurface({
     forceScrollToBottom,
     stopAutoFollow,
     isAutoFollowEnabled,
+    scrollController,
   } = useAutoScroll({
     scrollContainerRef: chatMessagesRef,
     scrollContainerElement: chatMessagesElement,
@@ -1529,6 +1530,7 @@ export function YoloChatSurface({
       chatMessagesRef={chatMessagesRef}
       onScrollContainerChange={setChatMessagesElement}
       onBottomSentinelChange={setChatBottomSentinelElement}
+      scrollController={scrollController}
       timelineRendererContract={yoloTimelineRendererContract}
       editingAssistantMessageId={editingAssistantMessageId}
       hasEarlierMessages={hasEarlierMessages}

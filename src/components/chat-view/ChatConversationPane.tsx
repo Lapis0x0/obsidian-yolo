@@ -16,6 +16,7 @@ import type {
   UserMessageViewportState,
 } from './ChatTimelineList'
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
+import type { ScrollController } from './scroll/scrollController'
 import { SharedConversationSurface } from './SharedConversationSurface'
 
 export type ChatConversationPaneProps = {
@@ -29,6 +30,7 @@ export type ChatConversationPaneProps = {
   chatMessagesRef: RefObject<HTMLDivElement>
   onScrollContainerChange: (element: HTMLElement | null) => void
   onBottomSentinelChange: (element: HTMLElement | null) => void
+  scrollController?: ScrollController
   renderChatTimelineItem: (timelineItem: ChatTimelineItem) => ReactNode
   timelineRenderVersion?: ChatTimelineRenderVersion<ChatTimelineItem>
   editingAssistantMessageId: string | null
@@ -69,6 +71,7 @@ export function ChatConversationPane({
   chatMessagesRef,
   onScrollContainerChange,
   onBottomSentinelChange,
+  scrollController,
   renderChatTimelineItem,
   timelineRenderVersion,
   editingAssistantMessageId,
@@ -138,6 +141,7 @@ export function ChatConversationPane({
         scrollContainerRef={chatMessagesRef}
         onScrollContainerChange={onScrollContainerChange}
         onBottomSentinelChange={onBottomSentinelChange}
+        scrollController={scrollController}
         renderItem={renderChatTimelineItem}
         renderVersion={timelineRenderVersion}
         forceRenderItemIds={['bottom-anchor']}

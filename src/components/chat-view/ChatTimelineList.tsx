@@ -10,6 +10,8 @@ import {
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
+import type { ScrollController } from './scroll/scrollController'
+
 const MIN_LOAD_MORE_THRESHOLD_PX = 240
 const MAX_LOAD_MORE_THRESHOLD_PX = 720
 const LOAD_MORE_VIEWPORT_RATIO = 0.45
@@ -98,6 +100,13 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   scrollContainerRef: RefObject<HTMLElement>
   onScrollContainerChange?: (element: HTMLElement | null) => void
   onBottomSentinelChange?: (element: HTMLElement | null) => void
+  /**
+   * Shared scroll arbiter. When omitted (e.g. QuickAskPanel, which never
+   * enables history-window paging or windowNavigation), anchor-preserve and
+   * jump intents are simply not submitted — the caller keeps the identical
+   * live-edge-only behavior it had before this existed.
+   */
+  scrollController?: ScrollController
   renderItem: (
     item: TItem,
     index: number,
@@ -309,6 +318,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   scrollContainerRef,
   onScrollContainerChange,
   onBottomSentinelChange,
+  scrollController,
   renderItem,
   renderVersion,
   overscanPx,
@@ -348,7 +358,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     key: number
     targetMessageId: string | null | undefined
   } | null>(null)
-  const suppressLoadMoreUntilRef = useRef(0)
+  const contentElementRef = useRef<HTMLDivElement | null>(null)
 
   useLayoutEffect(() => {
     onVirtualizationChange?.(false)
@@ -482,11 +492,22 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    const afterTop = anchor.getBoundingClientRect().top
-    scrollerElement.scrollTop += afterTop - snapshot.top
-    lastScrollTopRef.current = scrollerElement.scrollTop
+    // Re-queries the anchor (rather than closing over the node above) so
+    // the resolver stays correct across the settlement window's repeated
+    // calls, in case ObsidianMarkdown's async second-pass layout is part of
+    // a re-render that swaps the DOM node.
+    scrollController?.submitPreserveAnchor(() => {
+      const currentAnchor = scrollerElement.querySelector<HTMLElement>(
+        `[data-yolo-user-anchor-id="${snapshot.messageId}"]`,
+      )
+      if (!currentAnchor) {
+        return null
+      }
+      const afterTop = currentAnchor.getBoundingClientRect().top
+      return scrollerElement.scrollTop + (afterTop - snapshot.top)
+    }, contentElementRef.current)
     scheduleUserMessageViewport()
-  }, [items, scheduleUserMessageViewport, scrollerElement])
+  }, [items, scheduleUserMessageViewport, scrollController, scrollerElement])
 
   useLayoutEffect(() => {
     if (!scrollerElement || windowNavigationKey === undefined) {
@@ -501,7 +522,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         key: windowNavigationKey,
         targetMessageId: windowNavigationTargetMessageId,
       }
-      suppressLoadMoreUntilRef.current = Date.now() + 300
     }
 
     const pendingNavigation = pendingWindowNavigationRef.current
@@ -509,38 +529,35 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    const targetAnchor = getUserAnchorElement(
-      scrollerElement,
-      pendingNavigation.targetMessageId,
-    )
-    if (!targetAnchor) {
-      scrollerElement.scrollTop = 0
-      lastScrollTopRef.current = scrollerElement.scrollTop
-      appliedWindowNavigationKeyRef.current = windowNavigationKey
-      pendingWindowNavigationRef.current = null
-      scheduleUserMessageViewport()
-      return
-    }
-
-    const scrollerTop = scrollerElement.getBoundingClientRect().top
-    const anchorTop = targetAnchor.getBoundingClientRect().top
-    const desiredScrollTop = Math.max(
-      0,
-      scrollerElement.scrollTop + anchorTop - scrollerTop,
-    )
-    const maxScrollTop = Math.max(
-      0,
-      scrollerElement.scrollHeight - scrollerElement.clientHeight,
-    )
-
-    scrollerElement.scrollTop = Math.min(desiredScrollTop, maxScrollTop)
-    lastScrollTopRef.current = scrollerElement.scrollTop
+    const targetMessageId = pendingNavigation.targetMessageId
     appliedWindowNavigationKeyRef.current = windowNavigationKey
     pendingWindowNavigationRef.current = null
+
+    scrollController?.submitJumpToMessage(() => {
+      const targetAnchor = getUserAnchorElement(
+        scrollerElement,
+        targetMessageId,
+      )
+      if (!targetAnchor) {
+        return 0
+      }
+      const scrollerTop = scrollerElement.getBoundingClientRect().top
+      const anchorTop = targetAnchor.getBoundingClientRect().top
+      const desiredScrollTop = Math.max(
+        0,
+        scrollerElement.scrollTop + anchorTop - scrollerTop,
+      )
+      const maxScrollTop = Math.max(
+        0,
+        scrollerElement.scrollHeight - scrollerElement.clientHeight,
+      )
+      return Math.min(desiredScrollTop, maxScrollTop)
+    }, contentElementRef.current)
     scheduleUserMessageViewport()
   }, [
     items,
     scheduleUserMessageViewport,
+    scrollController,
     scrollerElement,
     windowNavigationKey,
     windowNavigationTargetMessageId,
@@ -559,7 +576,10 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         previousScrollTop !== null && currentScrollTop > previousScrollTop
 
       scheduleUserMessageViewport()
-      if (Date.now() < suppressLoadMoreUntilRef.current) {
+      if (scrollController?.isSettling()) {
+        // A jumpToMessage/preserveAnchor intent is still correcting scroll
+        // position; its own writes must not be misread as the user
+        // scrolling toward newer messages and trigger another page load.
         return
       }
 
@@ -604,6 +624,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     hasNewerMessages,
     onLoadNewer,
     scheduleUserMessageViewport,
+    scrollController,
     scrollerElement,
   ])
 
@@ -633,7 +654,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       className={scrollContainerClassName}
       style={scrollContainerStyle}
     >
-      <div className="yolo-chat-timeline-content">
+      <div ref={contentElementRef} className="yolo-chat-timeline-content">
         {hasEarlierMessages && onLoadEarlier ? (
           <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
         ) : null}

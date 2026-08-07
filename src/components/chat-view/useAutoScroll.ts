@@ -6,6 +6,8 @@ import {
   useState,
 } from 'react'
 
+import { createScrollController } from './scroll/scrollController'
+
 const AT_BOTTOM_THRESHOLD_PX = 24
 const SCROLL_POSITION_EPSILON_PX = 1
 const TOUCH_DIRECTION_THRESHOLD_PX = 4
@@ -99,12 +101,27 @@ export function useAutoScroll({
 }: UseAutoScrollProps) {
   const scrollContainerElement =
     scrollContainerElementOverride ?? scrollContainerRef.current
+  const scrollControllerRef = useRef<ReturnType<
+    typeof createScrollController
+  > | null>(null)
+  if (scrollControllerRef.current === null) {
+    scrollControllerRef.current = createScrollController()
+  }
+  const scrollController = scrollControllerRef.current
+  // Declared first so this layout effect runs before the "snap to bottom"
+  // layout effect below in the same commit — the controller must be bound
+  // to the (possibly new, on conversation switch) element before anything
+  // submits an intent to it.
+  useLayoutEffect(() => {
+    scrollController.bindElement(scrollContainerElement ?? null)
+  }, [scrollController, scrollContainerElement])
+  useEffect(() => () => scrollController.dispose(), [scrollController])
+
   const autoFollowRef = useRef(true)
   const canFollowLiveEdgeRef = useRef(canFollowLiveEdge)
   canFollowLiveEdgeRef.current = canFollowLiveEdge
   const [autoFollowState, setAutoFollowState] = useState(true)
   const lastObservedScrollTopRef = useRef(0)
-  const followFrameRef = useRef<ScheduledFrame | null>(null)
   const scrollIntentFrameRef = useRef<ScheduledFrame | null>(null)
   const scrollIntentRef = useRef<ScrollDirection | null>(null)
   const pointerDownRef = useRef(false)
@@ -122,15 +139,6 @@ export function useAutoScroll({
     setAutoFollowState((previousValue) =>
       previousValue === nextValue ? previousValue : nextValue,
     )
-  }, [])
-
-  const cancelScheduledFollow = useCallback(() => {
-    if (followFrameRef.current !== null) {
-      followFrameRef.current.window.cancelAnimationFrame(
-        followFrameRef.current.id,
-      )
-      followFrameRef.current = null
-    }
   }, [])
 
   const clearScrollIntent = useCallback(() => {
@@ -196,67 +204,53 @@ export function useAutoScroll({
   )
 
   const stopAutoFollow = useCallback(() => {
-    cancelScheduledFollow()
+    scrollController.cancelFollowLiveEdge()
     updateAutoFollow(false)
-  }, [cancelScheduledFollow, updateAutoFollow])
+  }, [scrollController, updateAutoFollow])
 
-  const scrollToBottom = useCallback(() => {
+  const resolveBottomTarget = useCallback((): number | null => {
     const scrollContainer = getScrollContainer()
     if (!scrollContainer) {
-      return
+      return null
     }
-
-    const targetScrollTop = Math.max(
+    return Math.max(
       0,
       scrollContainer.scrollHeight - scrollContainer.clientHeight,
     )
-    if (
-      Math.abs(scrollContainer.scrollTop - targetScrollTop) <=
-      SCROLL_POSITION_EPSILON_PX
-    ) {
-      lastObservedScrollTopRef.current = scrollContainer.scrollTop
-      return
-    }
-
-    scrollContainer.scrollTop = targetScrollTop
-    lastObservedScrollTopRef.current = scrollContainer.scrollTop
   }, [getScrollContainer])
 
+  // Re-checked at write time (not just at schedule time) because the
+  // rAF-deferred write can land a frame after autoFollow/canFollowLiveEdge
+  // changed.
+  const resolveFollowTarget = useCallback((): number | null => {
+    if (!autoFollowRef.current || !canFollowLiveEdgeRef.current) {
+      return null
+    }
+    return resolveBottomTarget()
+  }, [resolveBottomTarget])
+
   const scheduleFollow = useCallback(() => {
-    if (
-      !autoFollowRef.current ||
-      !canFollowLiveEdgeRef.current ||
-      followFrameRef.current !== null
-    ) {
+    if (!autoFollowRef.current || !canFollowLiveEdgeRef.current) {
       return
     }
-
-    const scrollContainer = getScrollContainer()
-    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
-    followFrameRef.current = {
-      window: ownerWindow,
-      id: ownerWindow.requestAnimationFrame(() => {
-        followFrameRef.current = null
-        if (autoFollowRef.current && canFollowLiveEdgeRef.current) {
-          scrollToBottom()
-        }
-      }),
-    }
-  }, [getScrollContainer, scrollToBottom])
+    scrollController.submitFollowLiveEdge(resolveFollowTarget)
+  }, [resolveFollowTarget, scrollController])
 
   const forceScrollToBottom = useCallback(() => {
     clearScrollIntent()
     clearScrollSessionDirection()
     updateAutoFollow(true)
-    cancelScheduledFollow()
-    scrollToBottom()
+    // Bypasses the canFollowLiveEdge gate on purpose: this is an explicit
+    // user/caller request to snap to the live edge regardless of the
+    // history-window state.
+    scrollController.snapNow(resolveBottomTarget)
     scheduleFollow()
   }, [
-    cancelScheduledFollow,
     clearScrollIntent,
     clearScrollSessionDirection,
+    resolveBottomTarget,
     scheduleFollow,
-    scrollToBottom,
+    scrollController,
     updateAutoFollow,
   ])
 
@@ -266,16 +260,19 @@ export function useAutoScroll({
     }
 
     updateAutoFollow(true)
-    cancelScheduledFollow()
     if (canFollowLiveEdgeRef.current) {
-      scrollToBottom()
+      // Conversation switch must land at the bottom before paint; the rAF
+      // queue would show one frame of the previous scroll position first.
+      scrollController.snapNow(resolveBottomTarget)
+    } else {
+      scrollController.cancelFollowLiveEdge()
     }
   }, [
     bottomSentinelElement,
-    cancelScheduledFollow,
     followKey,
+    resolveBottomTarget,
     scrollContainerElement,
-    scrollToBottom,
+    scrollController,
     updateAutoFollow,
   ])
 
@@ -540,11 +537,11 @@ export function useAutoScroll({
 
   useEffect(
     () => () => {
-      cancelScheduledFollow()
+      scrollController.cancelFollowLiveEdge()
       clearScrollIntent()
       clearScrollSessionDirection()
     },
-    [cancelScheduledFollow, clearScrollIntent, clearScrollSessionDirection],
+    [clearScrollIntent, clearScrollSessionDirection, scrollController],
   )
 
   return {
@@ -552,5 +549,6 @@ export function useAutoScroll({
     forceScrollToBottom,
     stopAutoFollow,
     isAutoFollowEnabled: autoFollowState,
+    scrollController,
   }
 }

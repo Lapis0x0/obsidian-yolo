@@ -1631,10 +1631,10 @@ button.yolo-chat-quick-access-picker-row > svg {
   gap: var(--size-4-1);
   padding-block: var(--size-4-1);
   margin-block: calc(var(--size-4-1) * -1);
-
-  &.yolo-chat-messages--following {
-    overflow-anchor: none;
-  }
+  /* Scroll position is owned exclusively by the scroll controller (see
+   * scrollController.ts) — native scroll anchoring would be an uncoordinated
+   * fourth writer of scrollTop, racing follow/anchor/jump intents. */
+  overflow-anchor: none;
 
   > .yolo-chat-timeline-content {
     display: flex;
