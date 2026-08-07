@@ -41,6 +41,7 @@ import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions
 import LLMResponseInlineInfo from './LLMResponseInlineInfo'
 import { isReasoningActivityActive } from './reasoningActivity'
 import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
+import { buildHostedWebSearchToolMessage } from './tool-cards/hostedWebSearchAdapter'
 import ToolMessage from './ToolMessage'
 
 const getBranchStateLabel = (
@@ -735,12 +736,20 @@ function AssistantToolMessageGroupItem({
                 toolCallRequestCount: message.toolCallRequests?.length ?? 0,
                 hasToolMessages: hasToolResponseForThis,
               })
+            // A search the provider ran on its own servers. It produced no tool
+            // call, so it is rebuilt here purely for display.
+            const hostedWebSearchMessage =
+              message.role === 'assistant'
+                ? buildHostedWebSearchToolMessage(message)
+                : null
+
             const shouldHideAssistantPendingState =
               message.role === 'assistant' &&
               (hasToolResponseForThis || hidePendingAssistantPlaceholders) &&
               !hasVisibleAssistantContent &&
               !hasVisibleAssistantReasoning &&
               !hasVisibleAssistantAnnotations &&
+              !hostedWebSearchMessage &&
               !shouldShowAssistantToolPreview
 
             if (shouldHideAssistantPendingState) {
@@ -751,6 +760,7 @@ function AssistantToolMessageGroupItem({
               message.reasoning ||
               message.annotations ||
               message.content ||
+              hostedWebSearchMessage ||
               (message.metadata?.generationState === 'error' &&
                 Boolean(message.metadata?.errorMessage)) ||
               (message.metadata?.generationState === 'streaming' &&
@@ -770,6 +780,17 @@ function AssistantToolMessageGroupItem({
                       reasoningDurationMs={
                         message.metadata?.reasoningDurationMs
                       }
+                    />
+                  )}
+                  {hostedWebSearchMessage && (
+                    <ToolMessage
+                      message={hostedWebSearchMessage}
+                      conversationId={effectiveConversationId}
+                      showRunningFooter={false}
+                      onMessageUpdate={() => {
+                        // 服务端已执行完毕的只读卡片，没有可更新的状态。
+                      }}
+                      onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
                     />
                   )}
                   <AssistantMessageContent

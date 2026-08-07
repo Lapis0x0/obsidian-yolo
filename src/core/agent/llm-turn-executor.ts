@@ -22,6 +22,7 @@ import type { ContextualInjection } from '../../utils/chat/contextual-injections
 import { ReasoningPhaseTracker } from '../../utils/chat/reasoningPhaseTracker'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
+import { hasHostedWebSearch } from '../../utils/llm/model-tools'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
@@ -183,12 +184,23 @@ export class AgentLlmTurnExecutor {
     let tools: RequestTool[] | undefined
     try {
       const toolPlanStart = Date.now()
-      const availableTools = this.input.enableTools
+      const allAvailableTools = this.input.enableTools
         ? await this.input.mcpManager.listAvailableTools({
             includeBuiltinTools: this.input.includeBuiltinTools,
             chatModelModalities: this.input.model.modalities,
           })
         : []
+      // When the provider runs web search itself, offering ours too just gives
+      // the model two interchangeable options. `web_scrape` still earns its
+      // place: hosted results carry titles and URLs but no page content.
+      const availableTools = hasHostedWebSearch(
+        this.input.model,
+        this.input.apiType,
+      )
+        ? allAvailableTools.filter(
+            (tool) => tool.name !== this.qualifyLocalToolName('web_search'),
+          )
+        : allAvailableTools
       const {
         filteredTools,
         hasTools,
@@ -483,6 +495,10 @@ export class AgentLlmTurnExecutor {
     if (!AgentLlmTurnExecutor.LOCAL_TOOL_NAMES.has(toolName)) {
       return toolName
     }
+    return this.qualifyLocalToolName(toolName)
+  }
+
+  private qualifyLocalToolName(toolName: string): string {
     return `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
   }
 }

@@ -8,6 +8,7 @@ const hasVisibleAssistantActivity = (message: ChatAssistantMessage): boolean =>
   Boolean(message.reasoning?.trim()) ||
   Boolean(message.annotations?.length) ||
   Boolean(message.toolCallRequests?.length) ||
+  Boolean(message.metadata?.providerMetadata?.hostedWebSearch?.length) ||
   Boolean(message.metadata?.errorMessage) ||
   message.metadata?.generationState === 'streaming'
 
@@ -40,6 +41,7 @@ export const isReasoningActivityActive = ({
     message.content.trim() ||
     message.annotations?.length ||
     message.toolCallRequests?.length ||
+    message.metadata?.providerMetadata?.hostedWebSearch?.length ||
     message.metadata?.errorMessage
   ) {
     return false

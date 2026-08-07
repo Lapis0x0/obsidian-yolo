@@ -24,8 +24,10 @@ import {
 } from '../../types/llm/request'
 import {
   Annotation,
+  HostedWebSearchCall,
   LLMResponseNonStreaming,
   LLMResponseStreaming,
+  ProviderMetadata,
   ResponseUsage,
   ToolCall,
   ToolCallDelta,
@@ -39,6 +41,14 @@ type StreamState = {
   toolIndexByItemId: Map<string, number>
   sawToolCall: boolean
   reasoningSummaryIndices: Map<string, Set<number>>
+  /**
+   * Reasoning items whose text already arrived as deltas. `output_item.done`
+   * repeats the finished reasoning, which is the only source when a provider
+   * streams no deltas — but emitting both would duplicate the chain of thought.
+   */
+  streamedReasoningItemIds: Set<string>
+  /** Hosted searches seen so far, re-emitted in full as each one completes. */
+  hostedWebSearchCalls: Map<string, HostedWebSearchCall>
 }
 
 type ReasoningSummaryPartAddedEvent = {
@@ -324,11 +334,75 @@ type ReasoningItemWithOptionalSummary = Omit<
   summary?: ResponseReasoningOutputItem['summary'] | null
 }
 
+/**
+ * OpenAI puts reasoning in `summary[]`. DeepSeek implements the same endpoint
+ * shape but streams the real thing in `content[].reasoning_text` and leaves
+ * `summary` empty, so reading only `summary` silently drops the whole chain of
+ * thought. Both are read here; `summary` stays authoritative when present.
+ */
 const getReasoningSummaryTexts = (
   item: ResponseReasoningOutputItem,
 ): string[] => {
   const summary = (item as ReasoningItemWithOptionalSummary).summary
-  return summary?.map((s) => s.text) ?? []
+  const summaryTexts = summary?.map((s) => s.text) ?? []
+  if (summaryTexts.some((text) => text.length > 0)) {
+    return summaryTexts
+  }
+  const content = (item as { content?: unknown }).content
+  if (!Array.isArray(content)) {
+    return summaryTexts
+  }
+  return content.flatMap((part) => {
+    const entry = part as { type?: string; text?: string }
+    return entry.type === 'reasoning_text' && entry.text ? [entry.text] : []
+  })
+}
+
+/**
+ * Hosted search on the Responses transport reports itself as a
+ * `web_search_call` output item rather than a tool call — the provider ran it
+ * and only sends a receipt. The pages it opened are the sources behind the
+ * answer, so they become `url_citation` annotations.
+ *
+ * DeepSeek appends a `#ws_call_id=…` correlation fragment to each URL; it is
+ * stripped so the link points at the real page. Note that a receipt for a
+ * query-only call (`action.type === 'search'`) carries no URL and therefore
+ * produces nothing here.
+ */
+const getWebSearchCallAnnotations = (item: unknown): Annotation[] => {
+  const url = getWebSearchCallUrl(item)
+  return url ? [{ type: 'url_citation', url_citation: { url } }] : []
+}
+
+const getWebSearchCallUrl = (item: unknown): string | undefined => {
+  const action = (item as { action?: unknown }).action
+  const url = (action as { url?: unknown } | undefined)?.url
+  if (typeof url !== 'string' || url.length === 0) {
+    return undefined
+  }
+  return url.replace(/#ws_call_id=[^#]*$/, '')
+}
+
+/**
+ * Builds the receipt for one hosted search. A `search` action reports the
+ * queries it ran; an `open_page` action reports a page it read. DeepSeek
+ * appends its own `ws_call_id=…` entry to the query list — it is a correlation
+ * id, not a query, so it is dropped.
+ */
+const getHostedWebSearchCall = (
+  item: unknown,
+): HostedWebSearchCall | undefined => {
+  const typed = item as { id?: string; action?: { queries?: unknown } }
+  const id = typed.id ?? ''
+  const rawQueries = typed.action?.queries
+  if (Array.isArray(rawQueries)) {
+    const queries = rawQueries.filter(
+      (q): q is string => typeof q === 'string' && !q.startsWith('ws_call_id='),
+    )
+    return { id, query: queries.join(', '), results: [] }
+  }
+  const url = getWebSearchCallUrl(item)
+  return url ? { id, results: [{ url }] } : undefined
 }
 
 const getFinishReason = (
@@ -451,15 +525,27 @@ export class ChatGPTOAuthResponsesAdapter {
         return ''
       })
       .join('')
-    const annotations = contentParts
-      .flatMap((part) => {
-        if (part.type !== 'output_text') {
-          return []
-        }
-        return part.annotations
-      })
-      .map(toAnnotation)
-      .filter((annotation): annotation is Annotation => Boolean(annotation))
+    const annotations = [
+      ...contentParts
+        .flatMap((part) => {
+          if (part.type !== 'output_text') {
+            return []
+          }
+          return part.annotations
+        })
+        .map(toAnnotation)
+        .filter((annotation): annotation is Annotation => Boolean(annotation)),
+      ...response.output.flatMap((item) =>
+        item.type === ('web_search_call' as string)
+          ? getWebSearchCallAnnotations(item)
+          : [],
+      ),
+    ]
+    const hostedWebSearch = response.output.flatMap((item) =>
+      item.type === ('web_search_call' as string)
+        ? (getHostedWebSearchCall(item) ?? [])
+        : [],
+    )
 
     return {
       id: response.id,
@@ -475,6 +561,9 @@ export class ChatGPTOAuthResponsesAdapter {
             ...(reasoningText ? { reasoning: reasoningText } : {}),
             ...(toolCalls.length > 0 ? { tool_calls: toolCalls } : {}),
             ...(annotations.length > 0 ? { annotations } : {}),
+            ...(hostedWebSearch.length > 0
+              ? { providerMetadata: { hostedWebSearch } }
+              : {}),
           },
         },
       ],
@@ -505,6 +594,7 @@ export class ChatGPTOAuthResponsesAdapter {
 
     const reasoningDelta = this.getReasoningSummaryTextDelta(event)
     if (reasoningDelta) {
+      state.streamedReasoningItemIds.add(reasoningDelta.itemId)
       yield this.createChunk(reasoningDelta.itemId, {
         reasoning: reasoningDelta.delta,
       })
@@ -577,10 +667,29 @@ export class ChatGPTOAuthResponsesAdapter {
       }
       case 'response.output_item.done': {
         if (event.item.type === 'reasoning') {
+          if (state.streamedReasoningItemIds.has(event.item.id)) {
+            return
+          }
           const reasoning = getReasoningSummaryTexts(event.item).join('\n')
           if (reasoning) {
             yield this.createChunk(event.item.id, { reasoning })
           }
+          return
+        }
+
+        if (event.item.type === ('web_search_call' as string)) {
+          const itemId = event.item.id ?? ''
+          const call = getHostedWebSearchCall(event.item)
+          if (call) {
+            state.hostedWebSearchCalls.set(call.id || itemId, call)
+          }
+          const annotations = getWebSearchCallAnnotations(event.item)
+          yield this.createChunk(itemId, {
+            ...(annotations.length > 0 ? { annotations } : {}),
+            providerMetadata: {
+              hostedWebSearch: [...state.hostedWebSearchCalls.values()],
+            },
+          })
           return
         }
 
@@ -659,6 +768,8 @@ export class ChatGPTOAuthResponsesAdapter {
       toolIndexByItemId: new Map(),
       sawToolCall: false,
       reasoningSummaryIndices: new Map(),
+      streamedReasoningItemIds: new Set(),
+      hostedWebSearchCalls: new Map(),
     }
   }
 
@@ -669,6 +780,7 @@ export class ChatGPTOAuthResponsesAdapter {
       reasoning?: string
       annotations?: Annotation[]
       tool_calls?: ToolCallDelta[]
+      providerMetadata?: ProviderMetadata
     },
   ): LLMResponseStreaming {
     return {
@@ -684,12 +796,18 @@ export class ChatGPTOAuthResponsesAdapter {
     }
   }
 
+  /**
+   * `response.reasoning_summary_text.delta` is OpenAI's event;
+   * `response.reasoning_text.delta` is DeepSeek's for the same content. Both
+   * map to a reasoning delta — a provider only ever emits one of them.
+   */
   private getReasoningSummaryTextDelta(
     event: ResponseStreamEvent,
   ): { itemId: string; delta: string } | null {
     const value = event as unknown as Partial<ReasoningSummaryTextDeltaEvent>
     if (
-      value.type === 'response.reasoning_summary_text.delta' &&
+      (value.type === 'response.reasoning_summary_text.delta' ||
+        value.type === ('response.reasoning_text.delta' as never)) &&
       typeof value.item_id === 'string' &&
       typeof value.delta === 'string'
     ) {

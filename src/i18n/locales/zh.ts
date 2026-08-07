@@ -1069,12 +1069,18 @@ export const zh: TranslationKeys = {
       builtinToolProviderGpt: 'OpenAI',
       builtinToolProviderOpenRouter: 'OpenRouter',
       builtinToolProviderGrok: 'Grok',
+      builtinToolProviderDeepSeek: 'DeepSeek',
       builtinToolsGpt: 'OpenAI 内置工具',
       builtinToolsOpenRouter: 'OpenRouter 内置工具',
       builtinToolsGrok: 'Grok 内置工具',
       builtinToolsGemini: 'Gemini 内置工具',
+      builtinToolsDeepSeek: 'DeepSeek 内置工具',
       builtinToolWebSearch: 'Web Search',
       builtinToolWebSearchDesc: '允许模型联网搜索并返回来源引用',
+      builtinToolDeepSeekWebSearchDesc:
+        '由 DeepSeek 服务端执行联网搜索，无需另配搜索服务。启用后本模型不再提供 YOLO 自己的联网搜索工具，避免模型在两个搜索之间反复尝试；网页抓取工具保留。',
+      builtinToolDeepSeekWebSearchUnavailable:
+        '该提供商当前的 API 类型不支持官方联网。请先将 API 类型改为 Anthropic 或 OpenAI Responses。',
       builtinToolUrlContext: 'URL Context',
       builtinToolUrlContextDesc: '允许模型抓取消息里出现的链接作为上下文',
       openRouterWebSearchEngine: '搜索引擎',

@@ -683,6 +683,13 @@ function mergeProviderMetadata(
             ],
           }
         : undefined,
+    // Providers re-send the full list as calls complete, so the later value
+    // supersedes rather than appends.
+    ...((next.hostedWebSearch ?? prev?.hostedWebSearch)
+      ? {
+          hostedWebSearch: next.hostedWebSearch ?? prev?.hostedWebSearch,
+        }
+      : {}),
   }
 }
 

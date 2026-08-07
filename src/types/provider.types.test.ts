@@ -102,10 +102,11 @@ describe('getDefaultRequestTransportModeForPresetType', () => {
 })
 
 describe('getSupportedApiTypesForPresetType', () => {
-  it('limits DeepSeek to its official OpenAI-compatible and Anthropic APIs', () => {
+  it('limits DeepSeek to the three APIs it officially serves', () => {
     expect(getSupportedApiTypesForPresetType('deepseek')).toEqual([
       'openai-compatible',
       'anthropic',
+      'openai-responses',
     ])
   })
 })

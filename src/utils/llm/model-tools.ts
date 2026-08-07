@@ -1,4 +1,5 @@
 import { ChatModel } from '../../types/chat-model.types'
+import { LLMProviderApiType } from '../../types/provider.types'
 
 /**
  * Provider built-in (hosted / server-side) tools. These are executed on the
@@ -23,6 +24,12 @@ import { ChatModel } from '../../types/chat-model.types'
  * - `gemini:url_context`: Gemini URL Context. On native Gemini becomes
  *   `tools=[{urlContext:{}}]`; on openai-compatible gateways it becomes a
  *   synthetic `urlContext` function tool.
+ * - `deepseek:web_search`: DeepSeek's server-side web search. DeepSeek exposes
+ *   it on two transports with different shapes, so the family stays abstract
+ *   here and each client serializes its own: the Anthropic transport emits
+ *   `tools=[{type:"web_search_20250305", name:"web_search"}]`, the Responses
+ *   transport emits `tools=[{type:"web_search"}]`. It is NOT available on
+ *   `chat/completions` — DeepSeek rejects hosted tool types there.
  */
 export type BuiltinProviderTool =
   | { type: 'web_search' }
@@ -34,6 +41,7 @@ export type BuiltinProviderTool =
   | { type: 'grok:live_search' }
   | { type: 'gemini:web_search' }
   | { type: 'gemini:url_context' }
+  | { type: 'deepseek:web_search' }
 
 export function getBuiltinProviderTools(
   model: Pick<ChatModel, 'builtinToolProvider' | 'builtinTools'>,
@@ -69,6 +77,12 @@ export function getBuiltinProviderTools(
       }
       return []
     }
+    case 'deepseek': {
+      if (model.builtinTools?.deepseek?.webSearch?.enabled) {
+        return [{ type: 'deepseek:web_search' }]
+      }
+      return []
+    }
     case 'gemini': {
       const tools: BuiltinProviderTool[] = []
       if (model.builtinTools?.gemini?.webSearch?.enabled) {
@@ -82,4 +96,35 @@ export function getBuiltinProviderTools(
     default:
       return []
   }
+}
+
+/**
+ * Transports on which DeepSeek actually serves its hosted web search.
+ * `chat/completions` rejects hosted tool types, so a model configured for it
+ * gets nothing regardless of the toggle.
+ */
+const HOSTED_WEB_SEARCH_API_TYPES: readonly LLMProviderApiType[] = [
+  'anthropic',
+  'openai-responses',
+]
+
+/**
+ * Whether this turn will carry a provider-run web search. The agent uses this
+ * to stop offering its own `web_search` — otherwise the model sees two
+ * interchangeable search tools and routinely burns a turn on the first one.
+ *
+ * The api-type guard matters: leaving the toggle on and switching the provider
+ * back to `openai-compatible` would otherwise drop our search without the
+ * provider's ever replacing it.
+ */
+export function hasHostedWebSearch(
+  model: Pick<ChatModel, 'builtinToolProvider' | 'builtinTools'>,
+  apiType: LLMProviderApiType | null | undefined,
+): boolean {
+  if (!apiType || !HOSTED_WEB_SEARCH_API_TYPES.includes(apiType)) {
+    return false
+  }
+  return getBuiltinProviderTools(model).some(
+    (tool) => tool.type === 'deepseek:web_search',
+  )
 }

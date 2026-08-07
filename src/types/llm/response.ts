@@ -52,10 +52,22 @@ export type GeminiAssistantPart =
       thoughtSignature?: string
     }
 
+/**
+ * A search the provider ran on its own servers. There is no tool call for the
+ * agent to execute — this is the receipt of work already done, carried through
+ * so the UI can show what was searched and which pages came back.
+ */
+export type HostedWebSearchCall = {
+  id: string
+  query?: string
+  results: { title?: string; url: string }[]
+}
+
 export type ProviderMetadata = {
   gemini?: {
     parts: GeminiAssistantPart[]
   }
+  hostedWebSearch?: HostedWebSearchCall[]
 }
 
 type NonStreamingChoice = {

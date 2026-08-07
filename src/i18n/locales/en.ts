@@ -1148,13 +1148,19 @@ export const en: TranslationKeys = {
       builtinToolProviderGpt: 'OpenAI',
       builtinToolProviderOpenRouter: 'OpenRouter',
       builtinToolProviderGrok: 'Grok',
+      builtinToolProviderDeepSeek: 'DeepSeek',
       builtinToolsGpt: 'OpenAI built-in tools',
       builtinToolsOpenRouter: 'OpenRouter built-in tools',
       builtinToolsGrok: 'Grok built-in tools',
       builtinToolsGemini: 'Gemini built-in tools',
+      builtinToolsDeepSeek: 'DeepSeek built-in tools',
       builtinToolWebSearch: 'Web Search',
       builtinToolWebSearchDesc:
         'Allow the model to search the web and return cited sources.',
+      builtinToolDeepSeekWebSearchDesc:
+        'Web search runs on DeepSeek servers — no separate search provider needed. Once enabled, YOLO’s own web search is no longer offered to this model, so it stops trying both; web scraping stays available.',
+      builtinToolDeepSeekWebSearchUnavailable:
+        'This provider’s current API type does not support the official web search. Switch its API type to Anthropic or OpenAI Responses first.',
       builtinToolUrlContext: 'URL Context',
       builtinToolUrlContextDesc:
         'Allow the model to fetch links mentioned in the conversation as context.',

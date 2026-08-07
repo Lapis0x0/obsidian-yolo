@@ -68,6 +68,7 @@ export const builtinToolsConfigSchema = z
     openrouter: openRouterWebSearchToggleSchema,
     grok: webSearchToggleSchema,
     gemini: geminiBuiltinToolsSchema,
+    deepseek: webSearchToggleSchema,
   })
   .optional()
 
@@ -101,7 +102,7 @@ export const chatModelSchema = z.object({
   // 'gemini' / 'gpt' / 'openrouter' map to the provider-native tool family in
   // the request body. See `builtinTools` for per-family toggles.
   builtinToolProvider: z
-    .enum(['none', 'gemini', 'gpt', 'openrouter', 'grok'])
+    .enum(['none', 'gemini', 'gpt', 'openrouter', 'grok', 'deepseek'])
     .default('none')
     .optional(),
   builtinTools: builtinToolsConfigSchema,

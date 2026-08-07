@@ -72,6 +72,7 @@ const BUILTIN_TOOL_PROVIDERS = [
   'gpt',
   'openrouter',
   'grok',
+  'deepseek',
 ] as const
 type BuiltinToolProvider = (typeof BUILTIN_TOOL_PROVIDERS)[number]
 
@@ -254,6 +255,19 @@ function AddChatModelModalComponent({
     ) {
       setBuiltinToolProvider('none')
     }
+    if (
+      selectedProvider?.presetType !== 'deepseek' &&
+      builtinToolProvider === 'deepseek'
+    ) {
+      setBuiltinToolProvider('none')
+    }
+    if (
+      selectedProvider?.presetType === 'deepseek' &&
+      builtinToolProvider !== 'none' &&
+      builtinToolProvider !== 'deepseek'
+    ) {
+      setBuiltinToolProvider('none')
+    }
   }, [selectedProvider?.presetType, builtinToolProvider])
   const [modalities, setModalities] = useState<ChatModelModality[]>(() =>
     resolveDefaultChatModelModalities(selectedProvider),
@@ -289,6 +303,13 @@ function AddChatModelModalComponent({
     useState<boolean>(false)
   const [geminiUrlContextEnabled, setGeminiUrlContextEnabled] =
     useState<boolean>(false)
+  const [deepseekWebSearchEnabled, setDeepseekWebSearchEnabled] =
+    useState<boolean>(false)
+  // DeepSeek only exposes its hosted search on the Anthropic and Responses
+  // transports; `chat/completions` rejects hosted tool types outright.
+  const isDeepSeekWebSearchSupported =
+    selectedProvider?.apiType === 'anthropic' ||
+    selectedProvider?.apiType === 'openai-responses'
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
     topP: number
@@ -688,6 +709,7 @@ function AddChatModelModalComponent({
           webSearch: { enabled: geminiWebSearchEnabled },
           urlContext: { enabled: geminiUrlContextEnabled },
         },
+        deepseek: { webSearch: { enabled: deepseekWebSearchEnabled } },
       },
       ...(sanitizedCustomParameters.length > 0
         ? { customParameters: sanitizedCustomParameters }
@@ -1181,15 +1203,20 @@ function AddChatModelModalComponent({
                     'settings.models.builtinToolProviderOpenRouter',
                   ),
                 }
-              : {
-                  none: t('settings.models.builtinToolProviderNone'),
-                  gemini: t('settings.models.builtinToolProviderGemini'),
-                  gpt: t('settings.models.builtinToolProviderGpt'),
-                  openrouter: t(
-                    'settings.models.builtinToolProviderOpenRouter',
-                  ),
-                  grok: t('settings.models.builtinToolProviderGrok'),
-                }
+              : selectedProvider?.presetType === 'deepseek'
+                ? {
+                    none: t('settings.models.builtinToolProviderNone'),
+                    deepseek: t('settings.models.builtinToolProviderDeepSeek'),
+                  }
+                : {
+                    none: t('settings.models.builtinToolProviderNone'),
+                    gemini: t('settings.models.builtinToolProviderGemini'),
+                    gpt: t('settings.models.builtinToolProviderGpt'),
+                    openrouter: t(
+                      'settings.models.builtinToolProviderOpenRouter',
+                    ),
+                    grok: t('settings.models.builtinToolProviderGrok'),
+                  }
           }
           onChange={(value: string) =>
             setBuiltinToolProvider(
@@ -1356,6 +1383,44 @@ function AddChatModelModalComponent({
                   <ObsidianToggle
                     value={grokWebSearchEnabled}
                     onChange={setGrokWebSearchEnabled}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {builtinToolProvider === 'deepseek' && (
+        <div className="yolo-agent-tools-panel yolo-agent-model-panel">
+          <div className="yolo-agent-tools-panel-head yolo-agent-model-panel-head">
+            <div className="yolo-agent-tools-panel-title">
+              {t('settings.models.builtinToolsDeepSeek')}
+            </div>
+          </div>
+
+          <div className="yolo-agent-model-controls">
+            <div className="yolo-agent-model-control">
+              <div className="yolo-agent-model-control-top">
+                <div className="yolo-agent-model-control-meta">
+                  <div className="yolo-agent-model-control-label">
+                    {t('settings.models.builtinToolWebSearch')}
+                  </div>
+                  <div className="yolo-agent-model-control-desc">
+                    {isDeepSeekWebSearchSupported
+                      ? t('settings.models.builtinToolDeepSeekWebSearchDesc')
+                      : t(
+                          'settings.models.builtinToolDeepSeekWebSearchUnavailable',
+                        )}
+                  </div>
+                </div>
+                <div className="yolo-agent-model-control-actions">
+                  <ObsidianToggle
+                    value={
+                      isDeepSeekWebSearchSupported && deepseekWebSearchEnabled
+                    }
+                    onChange={setDeepseekWebSearchEnabled}
+                    disabled={!isDeepSeekWebSearchSupported}
                   />
                 </div>
               </div>

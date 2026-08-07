@@ -159,6 +159,7 @@ export function getSupportedApiTypesForPresetType(
       break
     case 'deepseek':
       defaults.add('anthropic')
+      defaults.add('openai-responses')
       break
     case 'amazon-bedrock':
       defaults.add('openai-compatible')

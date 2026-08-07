@@ -908,12 +908,16 @@ export type TranslationKeys = {
       builtinToolProviderGpt?: string
       builtinToolProviderOpenRouter?: string
       builtinToolProviderGrok?: string
+      builtinToolProviderDeepSeek?: string
       builtinToolsGpt?: string
       builtinToolsOpenRouter?: string
       builtinToolsGrok?: string
       builtinToolsGemini?: string
+      builtinToolsDeepSeek?: string
       builtinToolWebSearch?: string
       builtinToolWebSearchDesc?: string
+      builtinToolDeepSeekWebSearchDesc?: string
+      builtinToolDeepSeekWebSearchUnavailable?: string
       builtinToolUrlContext?: string
       builtinToolUrlContextDesc?: string
       openRouterWebSearchEngine?: string
