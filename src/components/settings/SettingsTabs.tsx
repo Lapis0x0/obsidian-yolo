@@ -191,20 +191,18 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
           </button>
         ))}
       </div>
-      <div
-        className={`yolo-settings-tabs-content ${
-          activeTab === 'modules' ? 'yolo-settings-tabs-content--modules' : ''
-        }`}
-      >
-        {activeTab === 'modules' ? (
-          <ModulesTab
-            service={plugin.getModuleService()}
-            runtimeComponents={plugin.getRuntimeComponentService()}
-            registrations={moduleSettings}
-          />
-        ) : (
-          <ActiveComponent app={app} plugin={plugin} />
-        )}
+      <div className="yolo-settings-tabs-content">
+        <div className="yolo-settings-tabs-body">
+          {activeTab === 'modules' ? (
+            <ModulesTab
+              service={plugin.getModuleService()}
+              runtimeComponents={plugin.getRuntimeComponentService()}
+              registrations={moduleSettings}
+            />
+          ) : (
+            <ActiveComponent app={app} plugin={plugin} />
+          )}
+        </div>
       </div>
     </div>
   )
