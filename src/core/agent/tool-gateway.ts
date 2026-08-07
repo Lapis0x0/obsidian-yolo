@@ -6,6 +6,7 @@ import { Platform } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
 import {
+  AssistantToolApprovalMode,
   AssistantToolPreference,
   AssistantToolServerPreference,
   AssistantWorkspaceScope,
@@ -34,6 +35,7 @@ import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
 import {
   ASK_USER_QUESTION_TOOL_NAME,
+  BASH_TOOL_NAME,
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   TERMINAL_COMMAND_TOOL_NAME,
   getLocalFileToolServerName,
@@ -272,6 +274,7 @@ export class AgentToolGateway {
   private readonly toolApprovalConversationId?: string
   private readonly blockedCommandPrefixes: readonly string[] | null
   private readonly bypassToolApproval: boolean
+  private readonly bashReadOnly: boolean
   private readonly ajv: AjvInstance
   private readonly schemaValidatorCache = new Map<
     string,
@@ -299,6 +302,7 @@ export class AgentToolGateway {
       toolApprovalConversationId?: string
       blockedCommandPrefixes?: string[]
       bypassToolApproval?: boolean
+      bashReadOnly?: boolean
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
@@ -317,6 +321,7 @@ export class AgentToolGateway {
     this.toolApprovalConversationId = options?.toolApprovalConversationId
     this.blockedCommandPrefixes = options?.blockedCommandPrefixes ?? null
     this.bypassToolApproval = options?.bypassToolApproval ?? false
+    this.bashReadOnly = options?.bashReadOnly ?? false
     // `strict: false` keeps ajv tolerant of MCP tool schemas that include
     // vendor-specific keywords or non-canonical types. `allErrors` lists every
     // violation in the error message so the model has enough signal to retry;
@@ -991,6 +996,12 @@ export class AgentToolGateway {
           allowedSkillPaths: this.allowedSkillPaths,
           runContext: this.runContext,
           subagentParentContext: this.subagentParentContext,
+          bashApprovalMode: this.isBashToolCall(entry.toolCall.request.name)
+            ? this.resolveApprovalMode(entry.toolCall.request.name)
+            : undefined,
+          bashReadOnly: this.isBashToolCall(entry.toolCall.request.name)
+            ? this.bashReadOnly
+            : undefined,
         }).then((response) => ({ entries: [entry], responses: [response] })),
       )
     }
@@ -1454,6 +1465,37 @@ export class AgentToolGateway {
     return this.mcpManager.abortToolCall(id)
   }
 
+  /**
+   * The bash tool's effective approval tier for this run. `bypassToolApproval`
+   * (the conversation-wide YOLO switch) always wins over the per-tool
+   * setting, same as every other tool.
+   */
+  private resolveApprovalMode(toolName: string): AssistantToolApprovalMode {
+    if (this.bypassToolApproval) return 'full_access'
+    return getAssistantToolApprovalMode(
+      {
+        toolPreferences: this.toolPreferences,
+        toolServerPreferences: this.toolServerPreferences,
+        enabledToolNames: this.allowedToolNames
+          ? [...this.allowedToolNames]
+          : undefined,
+      },
+      toolName,
+    )
+  }
+
+  private isBashToolCall(toolName: string): boolean {
+    try {
+      const parsed = parseToolName(toolName)
+      return (
+        parsed.serverName === getLocalFileToolServerName() &&
+        parsed.toolName === BASH_TOOL_NAME
+      )
+    } catch {
+      return false
+    }
+  }
+
   private shouldAutoExecuteTool({
     request,
     conversationId,
@@ -1469,28 +1511,14 @@ export class AgentToolGateway {
       return false
     }
 
-    if (this.bypassToolApproval) {
-      return this.mcpManager.isToolExecutionAllowed({
-        requestToolName: request.name,
-        conversationId: this.toolApprovalConversationId ?? conversationId,
-        requestArgs,
-        requireAutoExecution: true,
-      })
-    }
-
-    const approvalMode = getAssistantToolApprovalMode(
-      {
-        toolPreferences: this.toolPreferences,
-        toolServerPreferences: this.toolServerPreferences,
-        enabledToolNames: this.allowedToolNames
-          ? [...this.allowedToolNames]
-          : undefined,
-      },
-      request.name,
-    )
+    const approvalMode = this.resolveApprovalMode(request.name)
     const requireAutoExecution =
       approvalMode === 'full_access' ||
-      this.isReadonlyTerminalCommandToolCall(requestArgs, request.name)
+      this.isReadonlyTerminalCommandToolCall(requestArgs, request.name) ||
+      // 'dangerous_only' never pauses the whole bash call up front — only
+      // rm/mv pause, mid-script, via the dangerous-operation gate inside the
+      // dispatch itself (see localFileTools.ts's bash case).
+      (approvalMode === 'dangerous_only' && this.isBashToolCall(request.name))
 
     return this.mcpManager.isToolExecutionAllowed({
       requestToolName: request.name,

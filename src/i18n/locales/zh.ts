@@ -290,6 +290,12 @@ export const zh: TranslationKeys = {
           description: '保存并检索本地知识库索引。',
           impact: '关闭后将无法建立索引或进行语义检索。',
         },
+        bashEngine: {
+          name: 'Bash 引擎',
+          description:
+            '为 bash 工具提供虚拟 shell，用于检索与整理 vault 文件。',
+          impact: '关闭后 bash 工具将不可用，模型将无法检索或整理 vault 文件。',
+        },
         statuses: {
           missing: '等待安装',
           downloading: '正在下载',
@@ -562,6 +568,9 @@ export const zh: TranslationKeys = {
       builtinToolSearchDesc: '加载按需工具的完整说明',
       builtinFsEditLabel: '文本编辑',
       builtinFsEditDesc: '编辑单个文件的文本',
+      builtinBashLabel: 'Bash',
+      builtinBashDesc:
+        '在 vault 内检索、查看文件，并执行 mkdir/mv/rm 路径操作。',
       safetyControls: '安全控制',
       safetyControlsDesc: '配置 Agent 执行高风险文件操作前的额外审阅行为。',
       fsEditReviewToggle: '编辑文件是否需要审批',
@@ -641,6 +650,7 @@ export const zh: TranslationKeys = {
       toolApproval: '审批',
       toolApprovalFullAccess: '完全放行',
       toolApprovalRequire: '需要审批',
+      toolApprovalDangerousOnly: '危险操作审批',
       toolDisclosureAuto: 'Auto',
       toolDisclosureAutoSelect: '自动选择',
       toolDisclosureAlways: '常驻上下文',
@@ -2040,10 +2050,16 @@ export const zh: TranslationKeys = {
         fs_edit: '文本编辑',
         fs_edit_ops: '文件编辑工作集',
         fs_file_ops: '路径操作集',
+        bash: 'Bash',
         memory_add: '新增记忆',
         memory_update: '更新记忆',
         memory_delete: '删除记忆',
         open_skill: '加载技能',
+      },
+      dangerousBash: {
+        title: '危险操作需要确认',
+        rmSummary: '即将删除以下路径（进入回收站）：',
+        mvSummary: '即将移动/重命名以下路径：',
       },
       writeAction: {
         write: '写入文件',

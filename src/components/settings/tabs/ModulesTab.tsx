@@ -560,6 +560,8 @@ function runtimeComponentIcon(componentId: string): string {
       return 'database'
     case 'tokenizer':
       return 'binary'
+    case 'bash-engine':
+      return 'terminal'
     default:
       return 'component'
   }

@@ -34,3 +34,33 @@ export function setRuntimeComponentAcquirerForTests(
   }
   testAcquirer = acquirer
 }
+
+let testEnabledOverride: ((id: RuntimeComponentId) => boolean) | null = null
+
+/**
+ * Whether the user has this component enabled right now (irrespective of
+ * install/download status). Used to decide whether a component-backed tool
+ * (currently only `bash`) should even be registered — see
+ * `McpManager.isLocalToolEnabled`. Unlike `acquireRuntimeComponent`, this is
+ * synchronous and side-effect free: it never triggers install or activation.
+ *
+ * Fails closed (`false`) when the service hasn't been wired yet — the same
+ * "unavailable until proven available" default `acquireRuntimeComponent`
+ * uses for its own not-wired case.
+ */
+export function isRuntimeComponentEnabled(id: RuntimeComponentId): boolean {
+  if (testEnabledOverride) return testEnabledOverride(id)
+  if (!service) return false
+  return service
+    .getSnapshot()
+    .some((record) => record.descriptor.id === id && record.enabled)
+}
+
+export function setRuntimeComponentEnabledOverrideForTests(
+  override: ((id: RuntimeComponentId) => boolean) | null,
+): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('Runtime component enabled overrides are test-only')
+  }
+  testEnabledOverride = override
+}

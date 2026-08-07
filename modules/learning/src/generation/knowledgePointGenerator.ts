@@ -68,7 +68,7 @@ export async function generateKnowledgePointsForChapter({
     }
   }
   const refSection = referenceDir
-    ? `\nReference materials directory: ${referenceDir} (when the contract names reference files, use fs_read at their corresponding paths)`
+    ? `\nReference materials directory: ${referenceDir} (when the contract names reference files, use the bash tool, e.g. \`cat\`, at their corresponding paths)`
     : ''
   const prompt = `Generate knowledge points for the following chapter:
 

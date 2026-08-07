@@ -22,6 +22,7 @@ const IDS = new Set<RuntimeComponentId>([
   'tokenizer',
   'pdf-engine',
   'pglite-engine',
+  'bash-engine',
 ])
 export const MAX_RUNTIME_COMPONENT_BYTES = 16 * 1024 * 1024
 

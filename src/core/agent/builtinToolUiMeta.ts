@@ -64,6 +64,13 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
     descFallback:
       'Apply exactly one text edit within a single existing file, by exact text (oldText) or by line range (startLine/endLine).',
   },
+  bash: {
+    labelKey: 'settings.agent.builtinBashLabel',
+    descKey: 'settings.agent.builtinBashDesc',
+    labelFallback: 'Bash (Vault Shell)',
+    descFallback:
+      'A virtual shell for vault search and inspection, plus mkdir/mv/rm path operations. Content edits stay on Text Editing / Write File.',
+  },
   [FILE_EDIT_GROUP_TOOL_NAME]: {
     labelKey: 'settings.agent.builtinFsEditOpsLabel',
     descKey: 'settings.agent.builtinFsEditOpsDesc',
@@ -178,6 +185,7 @@ const BUILTIN_TOOL_CATEGORY_MAP: Record<string, BuiltinToolCategory> = {
   fs_search: 'vault',
   fs_read: 'vault',
   fs_edit: 'vault',
+  bash: 'vault',
   [FILE_EDIT_GROUP_TOOL_NAME]: 'vault',
   [FILE_OPS_GROUP_TOOL_NAME]: 'vault',
   context_prune_tool_results: 'context',

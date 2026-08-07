@@ -12,7 +12,12 @@ process.chdir(root)
 const production = process.argv.includes('--production')
 const check = process.argv.includes('--check')
 const componentRoot = path.resolve('runtime-components')
-const allowedIds = new Set(['tokenizer', 'pdf-engine', 'pglite-engine'])
+const allowedIds = new Set([
+  'tokenizer',
+  'pdf-engine',
+  'pglite-engine',
+  'bash-engine',
+])
 const nodeBuiltins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
@@ -166,6 +171,9 @@ function validateConfig(value, directoryName) {
 
 function componentPlugins(componentId) {
   const plugins = []
+  if (componentId === 'bash-engine') {
+    plugins.push(bashEngineZlibStubPlugin())
+  }
   if (componentId === 'pdf-engine') {
     plugins.push({
       name: 'runtime-pdf-worker',
@@ -252,6 +260,34 @@ function componentPlugins(componentId) {
     })
   }
   return plugins
+}
+
+function bashEngineZlibStubPlugin() {
+  return {
+    name: 'runtime-bash-engine-zlib-stub',
+    setup(build) {
+      build.onResolve({ filter: /^node:zlib$/ }, () => ({
+        path: 'bash-engine-zlib-stub',
+        namespace: 'runtime-stub',
+      }))
+      build.onLoad(
+        { filter: /^bash-engine-zlib-stub$/, namespace: 'runtime-stub' },
+        () => ({
+          contents: [
+            'export function gzipSync() {',
+            "  throw new Error('gzip is not supported in this environment')",
+            '}',
+            'export function gunzipSync() {',
+            "  throw new Error('gunzip is not supported in this environment')",
+            '}',
+            'export const constants = {}',
+            '',
+          ].join('\n'),
+          loader: 'js',
+        }),
+      )
+    },
+  }
 }
 
 function pgliteShimPlugin() {

@@ -29,6 +29,14 @@ export type AssistantSkillPreference = z.infer<
 export const assistantToolApprovalModeSchema = z.enum([
   'full_access',
   'require_approval',
+  /**
+   * bash-tool-only third tier: read commands and `mkdir` run without
+   * pausing; `rm`/`mv` pause execution and prompt inline for each command
+   * invocation. Other tools treat this the same as `require_approval` (only
+   * the bash tool's dispatch implements the mid-execution pause) — see
+   * `src/core/agent/bash/dangerousOperationGate.ts`.
+   */
+  'dangerous_only',
 ])
 
 export type AssistantToolApprovalMode = z.infer<

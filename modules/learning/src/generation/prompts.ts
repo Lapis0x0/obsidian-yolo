@@ -61,7 +61,7 @@ After all chapters are planned, give the estimated total number of knowledge poi
 
 ## reference materials
 
-If there are reference materials in the workspace (you can use fs_list to see which files exist), first use fs_list to see what is available, then use fs_read to read the relevant content, and generate the outline based on the actual content. In each chapter's contract, note which file and which lines you referenced (e.g. "see rust-book.pdf lines 120-180").
+If there are reference materials in the workspace (you can use the bash tool, e.g. \`ls\`, to see which files exist), first list what is available, then use bash (e.g. \`cat\`) to read the relevant content, and generate the outline based on the actual content. In each chapter's contract, note which file and which lines you referenced (e.g. "see rust-book.pdf lines 120-180").
 
 If there are no reference materials, generate from your own knowledge and do not fabricate reference sources.
 
@@ -99,7 +99,7 @@ One knowledge point = one cognitive unit that can be explained on its own and me
 
 ## reference materials
 
-If the chapter contract notes a reference file (e.g. "see rust-book.pdf lines 120-180"), use fs_read to read the corresponding content so the body is well-grounded.
+If the chapter contract notes a reference file (e.g. "see rust-book.pdf lines 120-180"), use the bash tool (e.g. \`cat\` or \`sed -n\`) to read the corresponding content so the body is well-grounded.
 
 If the contract gives no reference guidance, generate from your own knowledge.
 
@@ -137,9 +137,9 @@ Every card (including the last) must output a line containing only \`<!--yolo-ca
 
 ## tool-use constraints
 
-You have three tools available: fs_read, fs_list, and fs_edit, but:
+You have two tools available: bash and fs_edit, but:
 - **fs_edit is strictly forbidden during the initial generation pass**. fs_edit is only allowed when a later user message explicitly states that cards.md has been written and asks for corrections
-- fs_read and fs_list may be used to read reference materials (if any)
+- bash may be used to read reference materials (if any)
 - generating cards is your main task; just output markdown directly
 
 ## one card, one question

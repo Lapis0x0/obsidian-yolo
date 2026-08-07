@@ -46,7 +46,7 @@ export async function generateOutline({
     estimatedKnowledgePoints: 0,
   }
   const refSection = referenceFiles?.length
-    ? `\nReference materials (use fs_read to read these files at the provided paths):\n${referenceFiles.map((file) => `- ${file.name} (path: ${file.vaultPath})`).join('\n')}`
+    ? `\nReference materials (use the bash tool, e.g. \`cat\`, to read these files at the provided paths):\n${referenceFiles.map((file) => `- ${file.name} (path: ${file.vaultPath})`).join('\n')}`
     : ''
   const prompt = `Generate an outline for the following learning request:
 

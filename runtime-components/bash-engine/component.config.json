@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "bash-engine",
+  "platforms": ["desktop", "mobile"],
+  "nameKey": "settings.modules.runtimeComponents.bashEngine.name",
+  "descriptionKey": "settings.modules.runtimeComponents.bashEngine.description",
+  "impactKey": "settings.modules.runtimeComponents.bashEngine.impact",
+  "entry": "dist/entry.js"
+}

@@ -337,7 +337,7 @@ describe('buildReplaceMatchErrorHint', () => {
     })
 
     expect(hint).toContain('first line exists at line 1')
-    expect(hint).toContain('fs_read')
+    expect(hint).toContain('bash')
     expect(hint).not.toContain('lineEndingNormalized')
   })
 
@@ -348,7 +348,7 @@ describe('buildReplaceMatchErrorHint', () => {
     })
 
     expect(hint).toContain('Could not find the text to replace')
-    expect(hint).toContain('fs_read')
+    expect(hint).toContain('bash')
   })
 })
 

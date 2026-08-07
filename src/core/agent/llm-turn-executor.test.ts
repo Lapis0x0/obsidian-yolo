@@ -238,7 +238,7 @@ describe('AgentLlmTurnExecutor', () => {
                     id: 'tool-1',
                     type: 'function',
                     function: {
-                      name: 'fs_move',
+                      name: 'fs_write',
                       arguments: '{"oldPath":"a.md","newPath":"b.md"}',
                     },
                   },
@@ -253,7 +253,7 @@ describe('AgentLlmTurnExecutor', () => {
             id: 'tool-1',
             type: 'function',
             function: {
-              name: 'fs_move',
+              name: 'fs_write',
               arguments: createPartialToolCallArguments(
                 '{"oldPath":"a.md","newPath":"b.md"}',
               ),
@@ -270,7 +270,7 @@ describe('AgentLlmTurnExecutor', () => {
         toolCalls: [
           {
             id: 'tool-1',
-            name: 'fs_move',
+            name: 'fs_write',
             arguments: createCompleteToolCallArguments({
               value: { oldPath: 'a.md', newPath: 'b.md' },
               rawText: '{"oldPath":"a.md","newPath":"b.md"}',
@@ -289,8 +289,8 @@ describe('AgentLlmTurnExecutor', () => {
 
     const mcpManager = createMockMcpManager([
       {
-        name: 'yolo_local__fs_move',
-        description: 'Move path',
+        name: 'yolo_local__fs_write',
+        description: 'Write file',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -336,7 +336,7 @@ describe('AgentLlmTurnExecutor', () => {
 
     expect(streamingPreview?.toolCallRequests?.[0]).toEqual({
       id: 'tool-1',
-      name: 'yolo_local__fs_move',
+      name: 'yolo_local__fs_write',
       arguments: createPartialToolCallArguments(
         '{"oldPath":"a.md","newPath":"b.md"}',
       ),
@@ -345,7 +345,7 @@ describe('AgentLlmTurnExecutor', () => {
 
     expect(result.toolCallRequests[0]).toEqual({
       id: 'tool-1',
-      name: 'yolo_local__fs_move',
+      name: 'yolo_local__fs_write',
       arguments: createCompleteToolCallArguments({
         value: { oldPath: 'a.md', newPath: 'b.md' },
         rawText: '{"oldPath":"a.md","newPath":"b.md"}',

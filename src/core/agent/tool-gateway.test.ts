@@ -484,6 +484,86 @@ describe('AgentToolGateway', () => {
     })
   })
 
+  it('auto executes the bash tool under the dangerous_only tier (gating happens mid-script, not at dispatch)', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest
+        .fn()
+        .mockImplementation(({ requireAutoExecution }) => requireAutoExecution),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__bash'],
+      toolPreferences: {
+        yolo_local__bash: {
+          enabled: true,
+          approvalMode: 'dangerous_only',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__bash',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'rm notes/a.md' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'yolo_local__bash',
+      conversationId: 'conv-1',
+      requestArgs: { command: 'rm notes/a.md' },
+      requireAutoExecution: true,
+    })
+  })
+
+  it('keeps the bash tool pending under the require_approval tier (gates the whole call up front)', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest
+        .fn()
+        .mockImplementation(({ requireAutoExecution }) => requireAutoExecution),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__bash'],
+      toolPreferences: {
+        yolo_local__bash: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__bash',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'ls' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.PendingApproval,
+    )
+  })
+
   it('auto executes require_approval tools when bypassToolApproval is enabled', () => {
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),

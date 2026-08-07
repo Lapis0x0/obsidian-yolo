@@ -332,6 +332,13 @@ export const en: TranslationKeys = {
           description: 'Stores and searches the local knowledge-base index.',
           impact: 'Turning this off disables indexing and semantic search.',
         },
+        bashEngine: {
+          name: 'Bash engine',
+          description:
+            'Provides a virtual shell for the bash tool to search and organize vault files.',
+          impact:
+            'Turning this off disables the bash tool; the model loses vault search and file organization.',
+        },
         statuses: {
           missing: 'Waiting to install',
           downloading: 'Downloading',
@@ -612,6 +619,9 @@ export const en: TranslationKeys = {
       builtinToolSearchDesc: 'Load full schemas for on-demand tools',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc: 'Edit text in a single file',
+      builtinBashLabel: 'Bash',
+      builtinBashDesc:
+        'Search and inspect vault files, plus mkdir/mv/rm path operations.',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',
@@ -699,6 +709,7 @@ export const en: TranslationKeys = {
       toolApproval: 'Approval',
       toolApprovalFullAccess: 'Full access',
       toolApprovalRequire: 'Require approval',
+      toolApprovalDangerousOnly: 'Approve dangerous operations',
       toolDisclosureAuto: 'Auto',
       toolDisclosureAutoSelect: 'Auto select',
       toolDisclosureAlways: 'In context',
@@ -2180,10 +2191,16 @@ export const en: TranslationKeys = {
         fs_edit: 'Text editing',
         fs_edit_ops: 'File Editing Toolset',
         fs_file_ops: 'Path Operation Toolset',
+        bash: 'Bash',
         memory_add: 'Add memory',
         memory_update: 'Update memory',
         memory_delete: 'Delete memory',
         open_skill: 'Open skill',
+      },
+      dangerousBash: {
+        title: 'Dangerous operation needs confirmation',
+        rmSummary: 'About to delete the following paths (moved to trash):',
+        mvSummary: 'About to move/rename the following paths:',
       },
       writeAction: {
         write: 'Write file',

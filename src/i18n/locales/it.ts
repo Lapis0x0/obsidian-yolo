@@ -355,6 +355,13 @@ export const it: DeepPartial<TranslationKeys> = {
           impact:
             'Disattivandolo, indicizzazione e ricerca semantica non funzionano.',
         },
+        bashEngine: {
+          name: 'Motore Bash',
+          description:
+            'Fornisce una shell virtuale allo strumento bash per cercare e organizzare i file del vault.',
+          impact:
+            'Disattivandolo, lo strumento bash non è disponibile e il modello perde la ricerca e l’organizzazione dei file.',
+        },
         statuses: {
           missing: 'In attesa di installazione',
           downloading: 'Download in corso',
@@ -625,6 +632,9 @@ export const it: DeepPartial<TranslationKeys> = {
         'Carica gli schemi completi degli strumenti su richiesta',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc: 'Modifica il testo di un singolo file',
+      builtinBashLabel: 'Bash',
+      builtinBashDesc:
+        'Cerca e ispeziona i file del vault, più operazioni su percorsi mkdir/mv/rm.',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
@@ -715,6 +725,7 @@ export const it: DeepPartial<TranslationKeys> = {
       toolApproval: 'Approvazione',
       toolApprovalFullAccess: 'Accesso completo',
       toolApprovalRequire: 'Richiedi approvazione',
+      toolApprovalDangerousOnly: 'Approva solo operazioni pericolose',
       toolDisclosureAuto: 'Auto',
       toolDisclosureAutoSelect: 'Selezione automatica',
       toolDisclosureAlways: 'In contesto',
@@ -2039,10 +2050,16 @@ export const it: DeepPartial<TranslationKeys> = {
         fs_edit: 'Modifica testo',
         fs_edit_ops: 'Set modifica file',
         fs_file_ops: 'Set operazioni percorsi',
+        bash: 'Bash',
         memory_add: 'Aggiungi memoria',
         memory_update: 'Aggiorna memoria',
         memory_delete: 'Elimina memoria',
         open_skill: 'Apri skill',
+      },
+      dangerousBash: {
+        title: 'Operazione pericolosa da confermare',
+        rmSummary: 'Sto per eliminare i seguenti percorsi (nel cestino):',
+        mvSummary: 'Sto per spostare/rinominare i seguenti percorsi:',
       },
       writeAction: {
         write: 'Scrivi file',

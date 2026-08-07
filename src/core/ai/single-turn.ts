@@ -133,14 +133,6 @@ const isNonEmptyStringField = (
   return typeof value === 'string' && value.length > 0
 }
 
-const isOptionalBooleanField = (
-  args: Record<string, unknown>,
-  key: string,
-): boolean => {
-  const value = args[key]
-  return value === undefined || typeof value === 'boolean'
-}
-
 const isPositiveIntegerField = (
   args: Record<string, unknown>,
   key: string,
@@ -191,20 +183,6 @@ const isValidWriteToolArguments = ({
 
   if (normalizedToolName === 'fs_write') {
     return isStringField(args, 'path') && isStringField(args, 'content')
-  }
-
-  if (normalizedToolName === 'fs_delete') {
-    return (
-      isStringField(args, 'path') && isOptionalBooleanField(args, 'recursive')
-    )
-  }
-
-  if (normalizedToolName === 'fs_create_dir') {
-    return isStringField(args, 'path')
-  }
-
-  if (normalizedToolName === 'fs_move') {
-    return isStringField(args, 'oldPath') && isStringField(args, 'newPath')
   }
 
   return true

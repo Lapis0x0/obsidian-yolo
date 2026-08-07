@@ -7,6 +7,7 @@ import {
 import type { McpTool } from '../../types/mcp.types'
 import { JS_SANDBOX_TOOL_NAME } from '../mcp/jsSandboxTool'
 import {
+  BASH_TOOL_NAME,
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   USER_FACING_LOCAL_TOOL_SHORT_NAMES,
@@ -30,6 +31,7 @@ export const SERVER_TOOL_DISCLOSURE_AUTO_TOKEN_THRESHOLD = 2000
  */
 export const ALWAYS_ALLOW_DISABLED_TOOL_NAMES: readonly string[] = [
   'terminal_command',
+  BASH_TOOL_NAME,
 ]
 
 /**
@@ -196,6 +198,13 @@ export const getDefaultApprovalModeForTool = (
 
     if (FULL_ACCESS_LOCAL_TOOLS.has(parsedToolName)) {
       return 'full_access'
+    }
+
+    // bash's third tier (dangerous ops only) is its own default — read
+    // commands and mkdir run freely, rm/mv pause mid-script. See
+    // src/core/agent/bash/dangerousOperationGate.ts.
+    if (parsedToolName === BASH_TOOL_NAME) {
+      return 'dangerous_only'
     }
 
     return REQUIRE_APPROVAL_LOCAL_TOOLS.has(parsedToolName)

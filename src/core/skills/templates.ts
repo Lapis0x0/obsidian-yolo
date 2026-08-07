@@ -107,7 +107,7 @@ Think of the agent as exploring a path: a narrow bridge with cliffs needs specif
 
 ### Reversibility by Default
 
-Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a targeted content change in an existing file, \`fs_write\` to create or overwrite full file content, and \`fs_delete\` / \`fs_create_dir\` / \`fs_move\` for path operations. Do not perform destructive operations unless explicitly requested.
+Obsidian vaults contain the user's real data. Prefer minimal edits, explicit verification steps, and safe patterns. Use \`fs_edit\` for a targeted content change in an existing file, \`fs_write\` to create or overwrite full file content, and the \`bash\` tool (\`mkdir\`/\`mv\`/\`rm\`) for path operations. Do not perform destructive operations unless explicitly requested.
 
 ## Anatomy of a Skill
 
@@ -194,16 +194,11 @@ YOLO skills operate within Obsidian's environment. The following built-in tools 
 
 | Tool | Purpose |
 |------|---------|
-| \`fs_list\` | Inspect folder contents and vault structure |
-| \`fs_search\` | Find files by keyword or pattern |
-| \`fs_read\` | Read full files or targeted line ranges |
 | \`fs_edit\` | Apply exactly one targeted text edit to an existing file (by exact \`oldText\`, or by \`startLine\`/\`endLine\` range) |
 | \`fs_write\` | Create a file or overwrite it with full content |
-| \`fs_delete\` | Delete a file or folder path (supports \`recursive\` for folders) |
-| \`fs_create_dir\` | Create a directory path |
-| \`fs_move\` | Move or rename a file/folder path |
+| \`bash\` | Vault-sandboxed shell (mounted at \`/vault\`) for search/inspection (\`ls\`, \`find\`, \`grep\`, \`cat\`, pipes, ...) and \`mkdir\`/\`mv\`/\`rm\` path operations |
 
-Skills should be designed around these capabilities. There is no script execution environment, no shell access, and no external API calls. All skill workflows must be achievable through file operations and the agent's reasoning.
+Skills should be designed around these capabilities. \`bash\` is a sandboxed virtual shell scoped to the vault, not real OS/shell access, and there is no external API access. All skill workflows must be achievable through these tools and the agent's reasoning.
 
 ## Skill Load Modes
 
@@ -240,9 +235,9 @@ Conclude this step when there is a clear sense of the functionality the skill sh
 Before creating something new, check what already exists:
 
 ~~~
-fs_list YOLO/skills/          -> see current inventory
-fs_search <topic keywords>    -> find related skills
-fs_read <similar-skill-path>    -> study patterns that work (prefer line ranges when a section is known)
+bash: ls YOLO/skills/                     -> see current inventory
+bash: grep -rl "<topic keywords>" YOLO/skills/  -> find related skills
+bash: sed -n '1,40p' <similar-skill-path>       -> study patterns that work (prefer targeted ranges when a section is known)
 ~~~
 
 This avoids duplication and helps maintain consistency across the vault's skill collection.
@@ -280,7 +275,7 @@ fs_write { path: "YOLO/skills/<readable-name>.md", content: "..." }
 Only create a directory package when the skill needs scripts, references, assets, or other supporting files:
 
 ~~~
-fs_create_dir { path: "YOLO/skills/<folder>" }
+bash: mkdir -p YOLO/skills/<folder>
 fs_write { path: "YOLO/skills/<folder>/SKILL.md", content: "..." }
 ~~~
 
@@ -290,7 +285,7 @@ For updates, preserve the skill's existing filename or package folder and prefer
 
 After writing:
 
-1. \`fs_read\` the file to confirm it saved correctly, using line ranges unless the full file is needed
+1. \`bash: cat\` (or a targeted \`sed -n\` range) the file to confirm it saved correctly
 2. Verify the description clearly communicates trigger conditions
 3. Walk through each workflow step mentally: is it executable with available tools?
 4. Test the skill on a real task when possible
@@ -310,7 +305,7 @@ Before finalizing any skill, verify:
 - [ ] Description states clear trigger conditions (not buried in body)
 - [ ] \`name\` is stable and unique
 - [ ] A simple skill remains a readable Markdown file; supporting resources stay inside a package folder with \`SKILL.md\`
-- [ ] Workflow is executable with available tools (\`fs_list\`, \`fs_search\`, \`fs_read\`, \`fs_edit\`, \`fs_write\`, \`fs_delete\`, \`fs_create_dir\`, \`fs_move\`)
+- [ ] Workflow is executable with available tools (\`fs_edit\`, \`fs_write\`, \`bash\`)
 - [ ] Instructions are concise and avoid redundant background
 - [ ] Output pattern is defined where consistency matters
 - [ ] Body is under 300 lines
@@ -339,7 +334,7 @@ Thin adapter: route to the official CLI executable and let its help command supp
 ## When to use
 
 - User explicitly asks for Obsidian CLI, or needs capabilities that \`fs_*\` / \`js_eval\` do not cover (Obsidian semantics: backlinks, frontmatter properties, daily notes, command palette, plugin reload, link graph, tasks/tags, file history, etc.).
-- Otherwise prefer native tools (\`fs_read\`, \`fs_write\`, \`fs_edit\`, \`fs_search\`, …). Do not round-trip through the shell for simple vault file work.
+- Otherwise prefer native tools (\`bash\`, \`fs_write\`, \`fs_edit\`, …). Do not round-trip through \`terminal_command\` for simple vault file work — \`bash\` already covers it.
 
 ## Workflow
 

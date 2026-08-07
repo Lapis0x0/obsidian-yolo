@@ -10,9 +10,21 @@ import {
   X,
 } from 'lucide-react'
 import { Notice } from 'obsidian'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import {
+  getPendingDangerousBashApproval,
+  resolveDangerousBashApproval,
+  subscribeDangerousBashApproval,
+} from '../../core/agent/bash/dangerousOperationGate'
 import {
   BUILTIN_TOOL_UI_META,
   getBuiltinToolUiMeta,
@@ -1273,6 +1285,21 @@ type ToolCallItemProps = {
   onResponseUpdate: (toolCallId: string, response: ToolCallResponse) => void
 }
 
+/**
+ * Subscribes to the ephemeral dangerous-operation gate (see
+ * `src/core/agent/bash/dangerousOperationGate.ts`) for a single tool call.
+ * Deliberately outside the chat message state tree — this is live "waiting
+ * for a click" UI state, not something that belongs in the deep-frozen
+ * conversation snapshot.
+ */
+function useDangerousBashApproval(toolCallId: string) {
+  return useSyncExternalStore(
+    subscribeDangerousBashApproval,
+    () => getPendingDangerousBashApproval(toolCallId),
+    () => null,
+  )
+}
+
 function ToolCallItem({
   request,
   response,
@@ -1349,6 +1376,7 @@ function ToolCallItem({
     (nextResponse) => onResponseUpdate(request.id, nextResponse),
     onRecoverToolCall,
   )
+  const dangerousBashApproval = useDangerousBashApproval(request.id)
 
   const [isOpen, setIsOpen] = useState(
     // Open by default if the tool call requires approval
@@ -1443,11 +1471,20 @@ function ToolCallItem({
     effectiveStatus === ToolCallResponseStatus.Running &&
     showRunningActions &&
     !isCompactLiveTaskRequest
-  const footerMode: 'pending' | 'running' | null = shouldShowPendingFooter
-    ? 'pending'
-    : shouldShowRunningFooter
-      ? 'running'
-      : null
+  // A pending rm/mv confirmation inside a running bash call takes priority
+  // over the plain "abort" running footer — the user needs to answer it
+  // before the script can continue either way.
+  const shouldShowDangerousApprovalFooter =
+    effectiveStatus === ToolCallResponseStatus.Running &&
+    dangerousBashApproval !== null
+  const footerMode: 'pending' | 'running' | 'dangerous-approval' | null =
+    shouldShowDangerousApprovalFooter
+      ? 'dangerous-approval'
+      : shouldShowPendingFooter
+        ? 'pending'
+        : shouldShowRunningFooter
+          ? 'running'
+          : null
   const shouldShowParameters =
     !isCompactLiveTaskRequest ||
     effectiveStatus === ToolCallResponseStatus.PendingApproval
@@ -1758,6 +1795,58 @@ function ToolCallItem({
               >
                 {toolLabels.abort}
               </button>
+            </div>
+          )}
+          {footerMode === 'dangerous-approval' && dangerousBashApproval && (
+            <div className="yolo-toolcall-dangerous-approval">
+              <div className="yolo-toolcall-dangerous-approval-title">
+                {t(
+                  'chat.toolCall.dangerousBash.title',
+                  'Dangerous operation needs confirmation',
+                )}
+              </div>
+              <div className="yolo-toolcall-dangerous-approval-summary">
+                {dangerousBashApproval.kind === 'rm'
+                  ? t(
+                      'chat.toolCall.dangerousBash.rmSummary',
+                      'About to delete the following paths (moved to trash):',
+                    )
+                  : t(
+                      'chat.toolCall.dangerousBash.mvSummary',
+                      'About to move/rename the following paths:',
+                    )}
+              </div>
+              <ul className="yolo-toolcall-dangerous-approval-targets">
+                {dangerousBashApproval.targets.map((target) => (
+                  <li key={target}>{target}</li>
+                ))}
+              </ul>
+              <div className="yolo-toolcall-footer-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resolveDangerousBashApproval(
+                      request.id,
+                      dangerousBashApproval.requestId,
+                      true,
+                    )
+                  }}
+                >
+                  {toolLabels.allow}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resolveDangerousBashApproval(
+                      request.id,
+                      dangerousBashApproval.requestId,
+                      false,
+                    )
+                  }}
+                >
+                  {toolLabels.reject}
+                </button>
+              </div>
             </div>
           )}
         </div>

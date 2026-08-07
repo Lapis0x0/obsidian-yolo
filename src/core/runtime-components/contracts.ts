@@ -1,4 +1,8 @@
-export type RuntimeComponentId = 'tokenizer' | 'pdf-engine' | 'pglite-engine'
+export type RuntimeComponentId =
+  | 'tokenizer'
+  | 'pdf-engine'
+  | 'pglite-engine'
+  | 'bash-engine'
 
 export type TokenizerComponentApi = Readonly<{
   count(text: string): number
@@ -129,10 +133,103 @@ export type PgliteEngineComponentApi = Readonly<{
   dispose(): Promise<void>
 }>
 
+/**
+ * Minimal filesystem surface the bash-engine component needs from its host.
+ * Deliberately host-agnostic (no Obsidian/Vault types) so the component stays
+ * decoupled from vault semantics — the host adapter (see
+ * `src/core/agent/bash/vaultBashFileSystem.ts`) owns path mounting and vault
+ * mapping; this type only describes the callback shapes it must implement.
+ *
+ * Content mutation (`writeFile`/`appendFile`/`cp`) is intentionally absent:
+ * the component always rejects those internally and never calls out to the
+ * host for them — content edits stay on the `fs_edit`/`fs_write` tools.
+ */
+export type BashFsStat = Readonly<{
+  isFile: boolean
+  isDirectory: boolean
+  /** Milliseconds since epoch. */
+  mtimeMs: number
+  size: number
+}>
+
+export type BashFsDirentEntry = Readonly<{
+  name: string
+  isFile: boolean
+  isDirectory: boolean
+}>
+
+export type BashFsRmResult = Readonly<{
+  targetKind: 'file' | 'folder'
+}>
+
+export type BashFsCallbacks = Readonly<{
+  readFile(path: string): Promise<string>
+  readFileBuffer(path: string): Promise<Uint8Array>
+  exists(path: string): Promise<boolean>
+  stat(path: string): Promise<BashFsStat>
+  mkdir(path: string, options?: { recursive?: boolean }): Promise<void>
+  readdir(path: string): Promise<BashFsDirentEntry[]>
+  rm(
+    path: string,
+    options?: { recursive?: boolean; force?: boolean },
+  ): Promise<BashFsRmResult>
+  mv(oldPath: string, newPath: string): Promise<void>
+  /** All known paths under the mount, for glob/find matching. */
+  getAllPaths(): string[]
+}>
+
+export type BashDangerousOperationKind = 'rm' | 'mv'
+
+/**
+ * Host-provided gate consulted before an `rm`/`mv` target actually touches
+ * the filesystem. The component collects every target belonging to a single
+ * command invocation before calling this once, then performs the operation
+ * per target only if it resolves `true`. Policy (which tier is active,
+ * whether to prompt the user) is entirely the host's decision — the
+ * component has no notion of approval tiers.
+ */
+export type BashConfirmDangerousOperation = (
+  kind: BashDangerousOperationKind,
+  targets: readonly string[],
+) => Promise<boolean>
+
+export type BashSessionOptions = Readonly<{
+  fs: BashFsCallbacks
+  confirmDangerousOperation: BashConfirmDangerousOperation
+  cwd?: string
+  signal?: AbortSignal
+  /**
+   * When true, the session structurally cannot perform path writes: `mkdir`,
+   * `mv`, `rm`, and `rmdir` are excluded from the command set entirely
+   * (command not found) and the underlying `fs.mkdir`/`fs.rm`/`fs.mv`
+   * callbacks are never invoked, even if some other command reaches them
+   * unexpectedly. `confirmDangerousOperation` is never consulted in this
+   * mode — there is nothing to approve. Defaults to false.
+   */
+  readOnly?: boolean
+}>
+
+export type BashSessionResult = Readonly<{
+  stdout: string
+  stderr: string
+  exitCode: number
+}>
+
+export type BashSession = Readonly<{
+  exec(command: string): Promise<BashSessionResult>
+  dispose(): void
+}>
+
+export type BashEngineComponentApi = Readonly<{
+  createSession(options: BashSessionOptions): BashSession
+  dispose(): void
+}>
+
 export type RuntimeComponentApiMap = {
   tokenizer: TokenizerComponentApi
   'pdf-engine': PdfEngineComponentApi
   'pglite-engine': PgliteEngineComponentApi
+  'bash-engine': BashEngineComponentApi
 }
 
 export type RuntimeComponentDefinition<

@@ -870,7 +870,7 @@ export const buildReplaceMatchErrorHint = ({
         `Could not match oldText for replace. Its first line exists at line ${lineNumber}, ` +
         `but the full text does not match — usually a whitespace or tab-vs-space difference.\n\n` +
         `Context around line ${lineNumber}:\n${contextDisplay}\n\n` +
-        `TIP: Use fs_read to see the actual content, then retry. No need to explain, just call the tools.`
+        `TIP: Use bash (e.g. \`cat\`) to see the actual content, then retry. No need to explain, just call the tools.`
       )
     }
   }
@@ -878,7 +878,7 @@ export const buildReplaceMatchErrorHint = ({
   return (
     `Could not find the text to replace. Make sure oldText matches the file exactly, ` +
     `including all whitespace. ` +
-    `TIP: Use fs_read to view the actual content first, then retry. No need to explain, just call the tools.`
+    `TIP: Use bash (e.g. \`cat\`) to view the actual content first, then retry. No need to explain, just call the tools.`
   )
 }
 

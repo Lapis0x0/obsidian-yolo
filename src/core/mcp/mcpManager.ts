@@ -3,7 +3,10 @@ import { App, FileSystemAdapter, Platform } from 'obsidian'
 
 import { YoloSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
-import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import type {
+  AssistantToolApprovalMode,
+  AssistantWorkspaceScope,
+} from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import type { ChatModelModality } from '../../types/chat-model.types'
 import {
@@ -1056,6 +1059,8 @@ export class McpManager {
     allowedSkillPaths,
     subagentParentContext,
     runContext,
+    bashApprovalMode,
+    bashReadOnly,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -1070,6 +1075,10 @@ export class McpManager {
     allowedSkillPaths?: readonly string[]
     runContext?: AgentRunContext
     subagentParentContext?: SubagentParentContext
+    /** Effective approval tier for the bash tool; see tool-gateway.ts. */
+    bashApprovalMode?: AssistantToolApprovalMode
+    /** Forces the structurally read-only bash variant; see tool-gateway.ts. */
+    bashReadOnly?: boolean
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -1116,6 +1125,8 @@ export class McpManager {
           runContext,
           subagentParentContext,
           promptSourceWatcher: this.promptSourceWatcher,
+          bashApprovalMode,
+          bashReadOnly,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {

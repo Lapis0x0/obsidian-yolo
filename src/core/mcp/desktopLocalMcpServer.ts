@@ -4,7 +4,6 @@ import { z } from 'zod/v4'
 
 import { BAKED_PLUGIN_VERSION } from '../../constants/bakedVersion'
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 import type { AgentService } from '../agent/service'
 import type { RAGEngine } from '../rag/ragEngine'
@@ -13,7 +12,6 @@ import {
   type ExternalAgentTask,
   ExternalAgentTaskService,
 } from './externalAgentTasks'
-import { callLocalFileTool } from './localFileTools'
 import {
   LOCAL_MCP_SERVER_HOST,
   LOCAL_MCP_SERVER_PATH,
@@ -22,6 +20,7 @@ import {
   getLocalMcpServerUrl,
 } from './localMcpServerConfig'
 import type { McpManager } from './mcpManager'
+import { runVaultSearch } from './vaultSearchService'
 
 type HttpServer = import('node:http').Server
 type IncomingMessage = import('node:http').IncomingMessage
@@ -509,18 +508,17 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
         annotations: { readOnlyHint: true },
       },
       async (args, extra) => {
-        const result = await callLocalFileTool({
+        const result = await runVaultSearch({
           app: this.options.app,
           settings: this.options.getSettings(),
           getRagEngine: this.options.getRagEngine,
-          toolName: 'fs_search',
           args,
           signal: extra.signal,
         })
-        if (result.status === ToolCallResponseStatus.Success) {
+        if (result.status === 'success') {
           return textResult(result.text)
         }
-        if (result.status === ToolCallResponseStatus.Aborted) {
+        if (result.status === 'aborted') {
           return textResult('Search was cancelled.', true)
         }
         return textResult('Search failed.', true)

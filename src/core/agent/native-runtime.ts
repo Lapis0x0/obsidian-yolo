@@ -158,6 +158,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       toolApprovalConversationId: input.toolApprovalConversationId,
       blockedCommandPrefixes: input.blockedCommandPrefixes,
       bypassToolApproval: input.bypassToolApproval,
+      bashReadOnly: input.bashReadOnly,
     })
     const worker = createAgentLoopWorker()
     const runId = uuidv4()

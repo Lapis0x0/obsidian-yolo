@@ -4,26 +4,22 @@ import type { McpTool } from '../../types/mcp.types'
 import { expandAllowedToolNames, selectAllowedTools } from './tool-selection'
 
 describe('expandAllowedToolNames', () => {
-  it('expands file editing and file path operation groups separately', () => {
-    const expanded = expandAllowedToolNames([
-      'yolo_local__fs_edit_ops',
-      'yolo_local__fs_file_ops',
-    ])
+  it('expands the file editing group', () => {
+    const expanded = expandAllowedToolNames(['yolo_local__fs_edit_ops'])
 
     expect(expanded).toBeDefined()
     expect(expanded?.has('yolo_local__fs_edit')).toBe(true)
     expect(expanded?.has('yolo_local__fs_write')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_delete')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_create_dir')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_move')).toBe(true)
   })
 
-  it('does not expand the file path operation group to fs_write', () => {
+  it('expands the retired file path operation group to nothing (fs_delete/fs_create_dir/fs_move were replaced by the bash tool)', () => {
     const expanded = expandAllowedToolNames(['yolo_local__fs_file_ops'])
 
     expect(expanded?.has('yolo_local__fs_write')).toBe(false)
     expect(expanded?.has('yolo_local__fs_edit')).toBe(false)
-    expect(expanded?.has('yolo_local__fs_delete')).toBe(true)
+    // The group token itself stays (expandAllowedToolNames never removes
+    // input tokens); it just no longer expands to any split tool names.
+    expect(expanded).toEqual(new Set(['yolo_local__fs_file_ops']))
   })
 })
 

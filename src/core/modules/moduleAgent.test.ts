@@ -29,9 +29,9 @@ describe('CoreModuleAgentCapabilityProvider', () => {
         type: 'tool',
         conversationId: 'private-conversation',
         toolCallId: 'private-tool-call',
-        name: 'yolo_local__fs_read',
+        name: 'yolo_local__bash',
         status: 'running',
-        arguments: { path: 'Notes/a.md' },
+        arguments: { command: 'cat Notes/a.md' },
       },
       {
         type: 'state',
@@ -77,7 +77,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
       yolo: true,
       systemPromptOverride: 'System',
       tools: {
-        allowedToolNames: ['yolo_local__fs_read', 'yolo_local__fs_list'],
+        allowedToolNames: ['yolo_local__bash'],
       },
       workspaceScope: {
         enabled: true,
@@ -106,9 +106,9 @@ describe('CoreModuleAgentCapabilityProvider', () => {
       { type: 'text', text: 'Hello', delta: 'Hel' },
       {
         type: 'tool',
-        name: 'vault.read',
+        name: 'vault.bash',
         status: 'running',
-        arguments: { path: 'Notes/a.md' },
+        arguments: { command: 'cat Notes/a.md' },
       },
       { type: 'aborted' },
     ])
@@ -116,6 +116,42 @@ describe('CoreModuleAgentCapabilityProvider', () => {
     expect(Object.isFrozen(output[1])).toBe(true)
     lifecycle.dispose()
   })
+
+  it.each([
+    ['vault-read' as const, true],
+    ['vault-write' as const, false],
+    ['none' as const, false],
+  ])(
+    'maps capability %s to bashReadOnly=%s so bash writes stay gated by capability, not just tool visibility',
+    async (capability, expectedBashReadOnly) => {
+      let received: YoloAgentRunRequest | undefined
+      const agent: YoloAgentApi = {
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          received = request
+          yield { type: 'completed', conversationId: 'private', text: 'done' }
+        },
+      }
+      const lifecycle = new ModuleLifecycleScope()
+      const activation = new CoreModuleAgentCapabilityProvider({
+        isDebugCaptureEnabled: () => false,
+        getAgentApi: async () => agent,
+      }).create('learning', lifecycle)
+      activation.activate()
+
+      await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability,
+        }),
+      )
+
+      expect(received?.bashReadOnly).toBe(expectedBashReadOnly)
+      lifecycle.dispose()
+    },
+  )
 
   it('rejects work before activation and after disposal', () => {
     const lifecycle = new ModuleLifecycleScope()

@@ -41,6 +41,8 @@ describe('McpManager mobile built-in tool behavior', () => {
           getFileByPath: jest.fn().mockReturnValue(file),
           read: jest.fn().mockResolvedValue('hello world'),
           readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
+          modify: jest.fn(),
+          create: jest.fn(),
         },
       } as unknown as App,
       settings: {
@@ -70,7 +72,7 @@ describe('McpManager mobile built-in tool behavior', () => {
       manager.listAvailableTools({ includeBuiltinTools: true }),
     ).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'yolo_local__fs_read' }),
+        expect.objectContaining({ name: 'yolo_local__fs_write' }),
       ]),
     )
     await expect(
@@ -97,12 +99,15 @@ describe('McpManager mobile built-in tool behavior', () => {
     )
   })
 
-  it('keeps file editing tools separate from the file path operation group switch', async () => {
+  it('an unrelated group switch (fs_file_ops) does not disable file editing tools', async () => {
+    // fs_file_ops covered fs_delete/fs_create_dir/fs_move before they were
+    // retired in favor of the bash tool; it has no members anymore, but the
+    // switch itself must stay inert rather than accidentally catching
+    // fs_edit/fs_write.
     const manager = createManager(jest.fn(), {
       fs_file_ops: { disabled: true },
       fs_edit: { disabled: false },
       fs_write: { disabled: false },
-      fs_delete: { disabled: false },
     })
 
     const toolNames = (
@@ -111,16 +116,13 @@ describe('McpManager mobile built-in tool behavior', () => {
 
     expect(toolNames).toContain('yolo_local__fs_edit')
     expect(toolNames).toContain('yolo_local__fs_write')
-    expect(toolNames).not.toContain('yolo_local__fs_delete')
-    expect(toolNames).toContain('yolo_local__fs_read')
   })
 
-  it('keeps file path operation tools separate from the file editing group switch', async () => {
+  it('keeps file editing tools obeying only their own group switch', async () => {
     const manager = createManager(jest.fn(), {
       fs_edit_ops: { disabled: true },
       fs_edit: { disabled: false },
       fs_write: { disabled: false },
-      fs_delete: { disabled: false },
     })
 
     const toolNames = (
@@ -129,8 +131,6 @@ describe('McpManager mobile built-in tool behavior', () => {
 
     expect(toolNames).not.toContain('yolo_local__fs_edit')
     expect(toolNames).not.toContain('yolo_local__fs_write')
-    expect(toolNames).toContain('yolo_local__fs_delete')
-    expect(toolNames).toContain('yolo_local__fs_read')
   })
 
   it('executes built-in tools on mobile', async () => {
@@ -138,9 +138,10 @@ describe('McpManager mobile built-in tool behavior', () => {
 
     await expect(
       manager.callTool({
-        name: 'yolo_local__fs_read',
+        name: 'yolo_local__fs_write',
         args: {
-          paths: ['note.md'],
+          path: 'note.md',
+          content: 'updated content',
         },
       }),
     ).resolves.toMatchObject({

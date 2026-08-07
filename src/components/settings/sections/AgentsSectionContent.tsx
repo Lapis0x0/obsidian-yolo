@@ -57,12 +57,13 @@ import {
 import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection'
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
 import {
+  BASH_TOOL_NAME,
   LOCAL_FS_EDIT_TOOL_NAMES,
   LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../../../core/mcp/localFileTools'
-import { parseToolName } from '../../../core/mcp/tool-name-utils'
+import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
   LiteSkillEntry,
@@ -1224,6 +1225,33 @@ export function AgentsSectionContent({
     ],
     [t],
   )
+  // bash is the only tool with a third tier: dangerous operations only
+  // (read commands and mkdir run freely; rm/mv pause mid-script). See
+  // src/core/agent/bash/dangerousOperationGate.ts.
+  const bashToolFullName = useMemo(
+    () => getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
+    [],
+  )
+  const bashToolApprovalOptions = useMemo(
+    () => [
+      {
+        value: 'require_approval',
+        label: t('settings.agent.toolApprovalRequire', 'Require approval'),
+      },
+      {
+        value: 'dangerous_only',
+        label: t(
+          'settings.agent.toolApprovalDangerousOnly',
+          'Approve dangerous operations',
+        ),
+      },
+      {
+        value: 'full_access',
+        label: t('settings.agent.toolApprovalFullAccess', 'Full access'),
+      },
+    ],
+    [t],
+  )
   return (
     <div
       ref={sectionRef}
@@ -1895,17 +1923,29 @@ export function AgentsSectionContent({
                               (target) =>
                                 isAssistantToolEnabled(draftAgent, target),
                             )
-                            const approvalMode =
-                              group.isBuiltin &&
-                              tool.toggleTargets.every(
-                                (target) =>
-                                  getAssistantToolApprovalMode(
-                                    draftAgent,
-                                    target,
-                                  ) === 'full_access',
-                              )
+                            const isBashTool = tool.toggleTargets.every(
+                              (target) => target === bashToolFullName,
+                            )
+                            const approvalMode = !group.isBuiltin
+                              ? 'require_approval'
+                              : tool.toggleTargets.every(
+                                    (target) =>
+                                      getAssistantToolApprovalMode(
+                                        draftAgent,
+                                        target,
+                                      ) === 'full_access',
+                                  )
                                 ? 'full_access'
-                                : 'require_approval'
+                                : isBashTool &&
+                                    tool.toggleTargets.every(
+                                      (target) =>
+                                        getAssistantToolApprovalMode(
+                                          draftAgent,
+                                          target,
+                                        ) === 'dangerous_only',
+                                    )
+                                  ? 'dangerous_only'
+                                  : 'require_approval'
                             return (
                               <div
                                 key={tool.fullName}
@@ -1925,7 +1965,11 @@ export function AgentsSectionContent({
                                       <div className="yolo-agent-tool-select">
                                         <SimpleSelect
                                           value={approvalMode}
-                                          options={toolApprovalOptions}
+                                          options={
+                                            isBashTool
+                                              ? bashToolApprovalOptions
+                                              : toolApprovalOptions
+                                          }
                                           onChange={(value) =>
                                             setToolApprovalMode(
                                               tool.toggleTargets,

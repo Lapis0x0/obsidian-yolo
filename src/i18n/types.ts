@@ -285,6 +285,7 @@ export type TranslationKeys = {
         tokenizer: { name: string; description: string; impact: string }
         pdfEngine: { name: string; description: string; impact: string }
         pgliteEngine: { name: string; description: string; impact: string }
+        bashEngine: { name: string; description: string; impact: string }
         statuses: {
           missing: string
           downloading: string
@@ -457,6 +458,8 @@ export type TranslationKeys = {
       builtinToolSearchDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
+      builtinBashLabel?: string
+      builtinBashDesc?: string
       fsEditReviewToggle?: string
       fsEditReviewToggleDesc?: string
       safetyControls?: string
@@ -530,6 +533,7 @@ export type TranslationKeys = {
       toolApproval?: string
       toolApprovalFullAccess?: string
       toolApprovalRequire?: string
+      toolApprovalDangerousOnly?: string
       toolDisclosureAuto?: string
       toolDisclosureAutoSelect?: string
       toolDisclosureAlways?: string
@@ -1846,10 +1850,16 @@ export type TranslationKeys = {
         fs_edit?: string
         fs_edit_ops?: string
         fs_file_ops?: string
+        bash?: string
         memory_add?: string
         memory_update?: string
         memory_delete?: string
         open_skill?: string
+      }
+      dangerousBash?: {
+        title?: string
+        rmSummary?: string
+        mvSummary?: string
       }
       writeAction?: {
         write?: string

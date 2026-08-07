@@ -69,6 +69,12 @@ export type YoloAgentRunRequest = {
    * 动态传入；不传时回退到 assistant 的 scope。
    */
   workspaceScope?: AssistantWorkspaceScope
+  /**
+   * 强制本次 run 的 bash 工具调用使用结构性只读变体：mkdir/mv/rm/rmdir 一律
+   * command not found，且不受审批档位影响。供仅授予只读能力的调用方使用
+   * （见 `src/core/modules/moduleAgent.ts` 的 `vault-read` module agent 能力）。
+   */
+  bashReadOnly?: boolean
   systemPromptOverride?: string
   activity?: AgentRunActivity
   abortSignal?: AbortSignal
@@ -440,6 +446,7 @@ export async function resolveAgentApiRunInput({
       workspaceScope:
         request.workspaceScope ??
         resolveWorkspaceScopeForRuntimeInput(assistant),
+      bashReadOnly: request.bashReadOnly,
       allowedSkillPaths,
       requestParams: {
         deliveryMode: 'incremental',

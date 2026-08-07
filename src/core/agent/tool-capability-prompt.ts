@@ -1,6 +1,6 @@
 import {
+  BASH_TOOL_NAME,
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   TERMINAL_COMMAND_TOOL_NAME,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
@@ -18,10 +18,10 @@ const ACTION_CAPABILITIES = [
     ),
   },
   {
+    // Retired fs_delete/fs_create_dir/fs_move now live inside the bash tool
+    // (rm/mkdir/mv), alongside vault search/read — same capability, one tool.
     label: 'path operations',
-    toolNames: LOCAL_FS_PATH_OPERATION_TOOL_NAMES.map((name) =>
-      getToolName(localServerName, name),
-    ),
+    toolNames: [getToolName(localServerName, BASH_TOOL_NAME)],
   },
   {
     label: 'terminal commands',

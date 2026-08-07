@@ -38,9 +38,16 @@ export type CoreModuleAgentCapabilityProviderOptions = {
 const localFileToolName = (name: string): string =>
   getToolName(getLocalFileToolServerName(), name)
 
+// fs_read/fs_list were retired in favor of the bash tool (vault search +
+// read now live there — see YOLO-45). 'vault-read' requests the same 'bash'
+// tool identity as 'vault-write', but `mapRequest` below sets
+// `bashReadOnly: true` for it, which forces the entire run onto the
+// structurally read-only bash variant (mkdir/mv/rm/rmdir excluded from the
+// command set and guarded again at the fs boundary — see
+// runtime-components/bash-engine/src/entry.ts). The old read/write
+// capability split is preserved exactly; this is no longer a gap.
 const TOOL_NAMES = Object.freeze({
-  read: localFileToolName('fs_read'),
-  list: localFileToolName('fs_list'),
+  bash: localFileToolName('bash'),
   edit: localFileToolName('fs_edit'),
 })
 
@@ -48,12 +55,8 @@ const TOOLS_BY_CAPABILITY: Readonly<
   Record<YoloModuleAgentCapabilityV1, readonly string[]>
 > = Object.freeze({
   none: Object.freeze([]),
-  'vault-read': Object.freeze([TOOL_NAMES.read, TOOL_NAMES.list]),
-  'vault-write': Object.freeze([
-    TOOL_NAMES.read,
-    TOOL_NAMES.list,
-    TOOL_NAMES.edit,
-  ]),
+  'vault-read': Object.freeze([TOOL_NAMES.bash]),
+  'vault-write': Object.freeze([TOOL_NAMES.bash, TOOL_NAMES.edit]),
 })
 
 export const UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER: ModuleAgentCapabilityProviderV1 =
@@ -389,6 +392,7 @@ function mapRequest(
     tools: {
       allowedToolNames: [...TOOLS_BY_CAPABILITY[request.capability]],
     },
+    bashReadOnly: request.capability === 'vault-read',
     ...(request.workspaceScope
       ? {
           workspaceScope: {
@@ -460,8 +464,7 @@ function mapEvent(event: YoloAgentEvent): YoloModuleAgentEventV1 | null {
 }
 
 function publicToolName(name: string): string {
-  if (name === TOOL_NAMES.read) return 'vault.read'
-  if (name === TOOL_NAMES.list) return 'vault.list'
+  if (name === TOOL_NAMES.bash) return 'vault.bash'
   if (name === TOOL_NAMES.edit) return 'vault.edit'
   return 'unknown'
 }
