@@ -665,9 +665,9 @@ export const it: DeepPartial<TranslationKeys> = {
         'Recupera il contenuto completo di un singolo URL tramite il provider configurato.',
       builtinWebOpsLabel: 'Set strumenti ricerca web',
       builtinWebOpsDesc: 'Ricerca web e scraping di pagine',
-      builtinJsEvalLabel: 'Esecuzione JavaScript',
+      builtinJsEvalLabel: 'Sandbox di analisi',
       builtinJsEvalDesc:
-        'Esegue JavaScript in un ambiente isolato per gestire compiti su cui gli LLM sono inaffidabili. Può comportare rischi',
+        'Esegue JavaScript in una sandbox isolata per calcoli precisi, statistiche in batch ed elaborazione dati; le capacità di ricerca, lettura del vault e rete si concedono singolarmente.',
       builtinTerminalCommandLabel: 'Comandi del terminale',
       builtinTerminalCommandDesc:
         'Esegue comandi nel terminale locale, solo desktop',

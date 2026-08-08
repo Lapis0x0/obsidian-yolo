@@ -134,8 +134,9 @@ export const BUILTIN_TOOL_UI_META: Record<string, BuiltinToolUiMeta> = {
   js_eval: {
     labelKey: 'settings.agent.builtinJsEvalLabel',
     descKey: 'settings.agent.builtinJsEvalDesc',
-    labelFallback: 'JavaScript Execution',
-    descFallback: 'Run JavaScript in an isolated environment.',
+    labelFallback: 'Analysis Sandbox',
+    descFallback:
+      'Run JavaScript in an isolated sandbox for precise computation, batch statistics, and data processing; grant retrieval, vault read-only, and network capabilities individually.',
   },
   terminal_command: {
     labelKey: 'settings.agent.builtinTerminalCommandLabel',

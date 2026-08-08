@@ -597,8 +597,9 @@ export const zh: TranslationKeys = {
       builtinWebScrapeDesc: '通过配置的搜索服务抓取单个 URL 的完整正文',
       builtinWebOpsLabel: '联网搜索工具集',
       builtinWebOpsDesc: '网页搜索与正文抓取',
-      builtinJsEvalLabel: 'JavaScript 执行',
-      builtinJsEvalDesc: '在隔离环境中执行 JavaScript 代码',
+      builtinJsEvalLabel: '分析沙箱',
+      builtinJsEvalDesc:
+        '在隔离沙箱中运行 JavaScript，完成精确计算、批量统计与数据加工；可逐项授予知识库检索、库内只读、网络等能力',
       builtinTerminalCommandLabel: '终端命令',
       builtinTerminalCommandDesc: '在本机终端中运行命令，仅桌面端可用',
       builtinDelegateSubagentLabel: '派遣子 Agent',
@@ -786,7 +787,7 @@ export const zh: TranslationKeys = {
         '语义搜索的返回行数上限。按路径读取不受此项影响。范围 1–100。',
     },
     jsSandbox: {
-      openSettings: '配置 JavaScript 执行',
+      openSettings: '配置分析沙箱',
     },
     terminalCommand: {
       openSettings: '配置终端命令',

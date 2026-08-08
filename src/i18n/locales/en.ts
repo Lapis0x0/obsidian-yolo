@@ -652,8 +652,9 @@ export const en: TranslationKeys = {
         'Fetch the full content of a single URL through a configured search provider.',
       builtinWebOpsLabel: 'Web Search Toolset',
       builtinWebOpsDesc: 'Web search and page scraping',
-      builtinJsEvalLabel: 'JavaScript Execution',
-      builtinJsEvalDesc: 'Run JavaScript in an isolated environment.',
+      builtinJsEvalLabel: 'Analysis Sandbox',
+      builtinJsEvalDesc:
+        'Run JavaScript in an isolated sandbox for precise computation, batch statistics, and data processing; grant retrieval, vault read-only, and network capabilities individually.',
       builtinTerminalCommandLabel: 'Terminal Commands',
       builtinTerminalCommandDesc:
         'Run commands in the local terminal, desktop-only',
@@ -848,7 +849,7 @@ export const en: TranslationKeys = {
         'Upper bound on semantic search results. Path reads are not affected. Range 1–100.',
     },
     jsSandbox: {
-      openSettings: 'Configure JavaScript execution',
+      openSettings: 'Configure analysis sandbox',
     },
     terminalCommand: {
       openSettings: 'Configure terminal command',

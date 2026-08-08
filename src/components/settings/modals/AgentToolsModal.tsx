@@ -300,7 +300,7 @@ function AgentToolsModalContent({
                           tool.id === JS_SANDBOX_TOOL_NAME
                             ? t(
                                 'settings.jsSandbox.openSettings',
-                                'Configure JavaScript execution',
+                                'Configure analysis sandbox',
                               )
                             : tool.id === TERMINAL_COMMAND_TOOL_NAME
                               ? t(
@@ -322,7 +322,7 @@ function AgentToolsModalContent({
                             new JsSandboxConfigModal(app, {
                               title: t(
                                 'settings.jsSandbox.openSettings',
-                                'Configure JavaScript execution',
+                                'Configure analysis sandbox',
                               ),
                               value: settings.jsSandbox,
                               onChange: (next) =>
