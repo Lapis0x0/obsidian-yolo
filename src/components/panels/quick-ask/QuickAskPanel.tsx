@@ -176,6 +176,15 @@ type QuickAskPanelPropsBase = {
   onDragOffset?: (offsetX: number, offsetY: number) => void
   onResize?: (width: number, height: number) => void
   onDockToTopRight?: () => void
+  /**
+   * Shared Portal target for this panel's Radix popovers (model/mode/
+   * reasoning/assistant/continue-preset menus), owned by QuickAskWidget.
+   * It's a sibling of the panel's own animated overlay container rather
+   * than a descendant — see the comment in QuickAskWidget.mountOverlay —
+   * and gets its own closing fade toggled in lockstep so open popovers
+   * don't hang static while the panel fades out around them.
+   */
+  popoverPortalHost?: HTMLElement | null
 }
 
 type QuickAskPanelProps =
@@ -213,6 +222,7 @@ export function QuickAskPanel({
   onDragOffset,
   onResize,
   onDockToTopRight,
+  popoverPortalHost,
   ...editProps
 }: QuickAskPanelProps) {
   const selectionScope = capabilities.edit
@@ -2203,6 +2213,7 @@ export function QuickAskPanel({
                   </DropdownMenu.Trigger>
                   <YoloDropdownContent
                     anchorRef={assistantTriggerRef}
+                    container={popoverPortalHost ?? undefined}
                     variant="default"
                     minWidth={200}
                     maxWidth={300}
@@ -2246,6 +2257,7 @@ export function QuickAskPanel({
                         ? settings.continuationOptions?.continuationModelId
                         : settings.chatModelId
                     }
+                    container={popoverPortalHost ?? undefined}
                     onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
                     onChange={(modelId) => {
                       // reasoningLevel is re-derived by the model-change
@@ -2325,6 +2337,7 @@ export function QuickAskPanel({
                       value={reasoningLevel}
                       onChange={handleReasoningLevelChange}
                       onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
+                      container={popoverPortalHost ?? undefined}
                       side="bottom"
                       align="center"
                       sideOffset={12}
@@ -2360,6 +2373,7 @@ export function QuickAskPanel({
                       }
                     }}
                     onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
+                    container={popoverPortalHost ?? undefined}
                     side="bottom"
                     align="start"
                     sideOffset={12}
@@ -2416,6 +2430,7 @@ export function QuickAskPanel({
           variant="smart-space"
           className="yolo-quick-ask-continue-menu"
           anchorRef={inputRowRef}
+          container={popoverPortalHost ?? undefined}
           side="bottom"
           align="start"
           sideOffset={4}

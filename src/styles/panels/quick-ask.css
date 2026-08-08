@@ -55,6 +55,42 @@
   }
 }
 
+/* Shared Portal target for the panel's Radix popovers (model/mode/reasoning/
+   assistant/continue-preset menus) — see QuickAskWidget.mountOverlay for why
+   this is a sibling of .yolo-quick-ask-overlay rather than nested inside it.
+   Opacity-only (no transform, unlike the fade-out above): a transformed
+   ancestor would become the containing block for the popovers' `position:
+   fixed` content and break Floating UI's viewport-relative positioning. */
+.yolo-quick-ask-popover-portal {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+}
+
+/* Radix's Portal wraps its child in its own div before mounting it here, so
+   this targets that wrapper (not .yolo-popover-surface directly) — resetting
+   pointer-events back to auto for it and everything under it. Deliberately
+   NOT added to .yolo-popover-surface in surface.css: that shared class's
+   allowed properties are background/border/box-shadow/animation/overflow/
+   z-index only (see its file header) — this is specific to this host. */
+.yolo-quick-ask-popover-portal > * {
+  pointer-events: auto;
+}
+
+.yolo-quick-ask-popover-portal.closing {
+  animation: yolo-quick-ask-popover-portal-fade-out 0.15s
+    cubic-bezier(0.4, 0, 1, 1) forwards;
+}
+
+@keyframes yolo-quick-ask-popover-portal-fade-out {
+  0% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
 .yolo-quick-ask-inline-anchor {
   display: inline-block;
   width: 0;
