@@ -148,7 +148,6 @@ export const it: DeepPartial<TranslationKeys> = {
       },
       continuationPrompt: 'Prompt di sistema per continuazione',
       maxContinuationChars: 'Caratteri massimi di continuazione',
-      referenceRulesTitle: 'Regole di riferimento',
       referenceRulesPlaceholder:
         'Seleziona le cartelle il cui contenuto deve essere completamente iniettato.',
       knowledgeBaseTitle: 'Base di conoscenza',
@@ -2237,7 +2236,6 @@ export const it: DeepPartial<TranslationKeys> = {
     inputPlaceholder: 'Fai una domanda...',
     continuePlaceholder:
       'Lascia vuoto per continuare a scrivere, oppure aggiungi istruzioni...',
-    mentionContextLabel: 'File menzionati',
     close: 'Chiudi',
     copy: 'Copia',
     insert: 'Inserisci',

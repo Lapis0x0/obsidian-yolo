@@ -129,7 +129,6 @@ export const zh: TranslationKeys = {
       },
       continuationPrompt: '续写系统提示词',
       maxContinuationChars: '续写传入字符数',
-      referenceRulesTitle: '参考规则',
       referenceRulesPlaceholder: '点击选择需要完整注入上下文的文件夹。',
       knowledgeBaseTitle: '知识库',
       knowledgeBasePlaceholder:
@@ -2243,7 +2242,6 @@ export const zh: TranslationKeys = {
     navigationHint: '↑↓ 导航，Enter 选择，Esc 取消',
     inputPlaceholder: '输入问题...',
     continuePlaceholder: '留空则直接续写，或输入具体要求…',
-    mentionContextLabel: '引用的文件',
     close: '关闭',
     copy: '复制',
     insert: '插入',

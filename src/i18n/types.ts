@@ -138,7 +138,6 @@ export type TranslationKeys = {
       }
       continuationPrompt?: string
       maxContinuationChars?: string
-      referenceRulesTitle?: string
       referenceRulesPlaceholder?: string
       knowledgeBaseTitle?: string
       knowledgeBasePlaceholder?: string
@@ -2044,7 +2043,6 @@ export type TranslationKeys = {
     navigationHint?: string
     inputPlaceholder?: string
     continuePlaceholder?: string
-    mentionContextLabel?: string
     close?: string
     copy?: string
     insert?: string

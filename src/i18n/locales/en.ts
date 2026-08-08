@@ -132,7 +132,6 @@ export const en: TranslationKeys = {
       },
       continuationPrompt: 'Continuation system prompt',
       maxContinuationChars: 'Max continuation characters',
-      referenceRulesTitle: 'Reference rules',
       referenceRulesPlaceholder:
         'Select folders whose content should be fully injected.',
       knowledgeBaseTitle: 'Knowledge base',
@@ -2392,7 +2391,6 @@ export const en: TranslationKeys = {
     inputPlaceholder: 'Ask a question...',
     continuePlaceholder:
       'Leave empty to continue writing, or add instructions...',
-    mentionContextLabel: 'Mentioned files',
     close: 'Close',
     copy: 'Copy',
     insert: 'Insert',

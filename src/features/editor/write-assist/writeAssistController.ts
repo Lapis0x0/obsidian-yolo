@@ -12,6 +12,25 @@ import type {
 } from '../../../types/mentionable'
 import { getNestedFiles, readMultipleTFiles } from '../../../utils/obsidian'
 
+// Structural task contract for continuation generation. Always injected,
+// regardless of the user's configured chat persona (settings.systemPrompt) —
+// this is not a style preference, it's what keeps a chat-tuned model from
+// responding conversationally to a bare block of document text. Not exposed
+// as a setting, mirroring how tab completion's own base system prompt isn't
+// user-editable either; the instruction box and continuation presets are the
+// user-facing customization surface.
+const CONTINUATION_TASK_CONTRACT =
+  "You are continuing the user's writing directly inside their document. " +
+  'Your output will be inserted verbatim at the point where the given context ends.\n\n' +
+  'Rules:\n' +
+  '- Continue seamlessly from the exact end of the context in <context_to_continue> — do not repeat, rephrase, or summarize any of it.\n' +
+  '- If an instruction is given below, treat it as a directive for what the continuation should contain or how it should be shaped, not as a question to answer conversationally.\n' +
+  '- Match the existing language, tone, register, and formatting (headings, lists, emphasis, etc.) of the context, unless the instruction says otherwise.\n' +
+  '- Content inside <reference_rules>, if present, is a binding style/content constraint you must follow.\n' +
+  '- Content inside <mentioned_files>, if present, is supplementary background material you may draw on — do not copy it verbatim into the output.\n' +
+  '- Output only the continuation text itself: no preamble, no explanations, no meta-commentary, no code fences or quotation wrapping, no restating the instruction or title.\n' +
+  '- End at a natural stopping point (end of a sentence, thought, or paragraph) rather than trailing off mid-sentence.'
+
 // The provider/model pair the caller has already resolved (e.g. Quick Ask's
 // "continue" mode reuses the same providerClient/model as its ask/agent
 // path). Continuation always runs with an explicit model — there is no
@@ -138,17 +157,13 @@ export class WriteAssistController {
               referenceFiles,
               this.deps.app.vault,
             )
-            const referenceLabel = this.deps.t(
-              'sidebar.composer.referenceRulesTitle',
-              'Reference rules',
-            )
             const blocks = referenceFiles.map((file, index) => {
               const content = referenceContents[index] ?? ''
               return `File: ${file.path}\n${content}`
             })
             const combinedReference = blocks.join('\n\n')
             if (combinedReference.trim().length > 0) {
-              referenceRulesSection = `${referenceLabel}:\n\n${combinedReference}\n\n`
+              referenceRulesSection = `<reference_rules>\n${combinedReference}\n</reference_rules>\n\n`
             }
           }
         } catch (error) {
@@ -181,10 +196,6 @@ export class WriteAssistController {
               files,
               this.deps.app.vault,
             )
-            const mentionLabel = this.deps.t(
-              'quickAsk.mentionContextLabel',
-              'Mentioned files',
-            )
             const combined = files
               .map((file, index) => {
                 const content = contents[index] ?? ''
@@ -192,7 +203,7 @@ export class WriteAssistController {
               })
               .join('\n\n')
             if (combined.trim().length > 0) {
-              mentionableContextSection = `${mentionLabel}:\n\n${combined}\n\n`
+              mentionableContextSection = `<mentioned_files>\n${combined}\n</mentioned_files>\n\n`
             }
           }
         } catch (error) {
@@ -225,10 +236,17 @@ export class WriteAssistController {
 
       const userInstruction = (customPrompt ?? '').trim()
       const instructionSection = userInstruction
-        ? `Instruction:\n${userInstruction}\n\n`
+        ? `Instruction for this continuation:\n${userInstruction}\n\n`
         : ''
 
-      const systemPrompt = (settings.systemPrompt ?? '').trim()
+      // The user's chat persona is secondary voice/tone guidance layered
+      // under the structural task contract above — never a replacement
+      // for it, since an unrelated persona (e.g. "ask clarifying
+      // questions first") must not override the continuation contract.
+      const personaPrompt = (settings.systemPrompt ?? '').trim()
+      const systemPrompt = personaPrompt
+        ? `${CONTINUATION_TASK_CONTRACT}\n\nAdditional voice/persona guidance from the user (secondary to the rules above):\n${personaPrompt}`
+        : CONTINUATION_TASK_CONTRACT
 
       const activeFileForTitle = this.deps.app.workspace.getActiveFile()
       const fileTitle = activeFileForTitle?.basename?.trim() ?? ''
@@ -242,22 +260,28 @@ export class WriteAssistController {
       const limitedContextHasContent = limitedContext.trim().length > 0
       const contextSection =
         hasContext && limitedContextHasContent
-          ? `Context (up to recent portion):\n\n${limitedContext}\n\n`
+          ? `<context_to_continue>\n${limitedContext}\n</context_to_continue>\n\n`
           : ''
       const combinedContextSection = `${referenceRulesSection}${mentionableContextSection}${contextSection}`
 
+      // Always end on an explicit trigger cue — a chat-tuned model left
+      // with nothing but a trailing block of document text (the common
+      // case: no instruction) tends to respond to it conversationally
+      // instead of continuing it.
+      const generationCue = limitedContextHasContent
+        ? 'Continue writing directly from the end of <context_to_continue>.'
+        : userInstruction
+          ? 'Write according to the instruction above.'
+          : 'Begin writing new content based on the file title above.'
+
       const requestMessages: RequestMessage[] = [
-        ...(systemPrompt.length > 0
-          ? [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]
-          : []),
+        {
+          role: 'system' as const,
+          content: systemPrompt,
+        },
         {
           role: 'user' as const,
-          content: `${titleLine}${instructionSection}${combinedContextSection}`,
+          content: `${titleLine}${instructionSection}${combinedContextSection}${generationCue}`,
         },
       ]
 
