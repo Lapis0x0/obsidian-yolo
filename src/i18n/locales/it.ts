@@ -14,11 +14,7 @@ export const it: DeepPartial<TranslationKeys> = {
     addFolderToChat: 'Aggiungi cartella alla chat',
     rebuildVaultIndex: 'Ricostruisci indice completo del vault',
     updateVaultIndex: 'Aggiorna indice per file modificati',
-    continueWriting: 'AI continua scrittura',
-    continueWritingSelected: 'AI continua scrittura (selezione)',
-    customContinueWriting: 'AI continua personalizzato',
-    customRewrite: 'AI riscrivi personalizzato',
-    triggerSmartSpace: 'Attiva smart space',
+    triggerQuickAskContinue: 'Apri Quick Ask in modalità continua scrittura',
     triggerQuickAsk: 'Attiva quick ask',
     triggerTabCompletion: 'Attiva completamento tab',
     acceptInlineSuggestion: 'Accetta completamento',
@@ -161,12 +157,6 @@ export const it: DeepPartial<TranslationKeys> = {
       knowledgeBaseHint:
         "Abilita la ricerca embeddings per limitare l'ambito di recupero.",
     },
-  },
-
-  smartSpace: {
-    webSearch: 'Web',
-    urlContext: 'URL',
-    mentionContextLabel: 'File menzionati',
   },
 
   selection: {
@@ -375,16 +365,17 @@ export const it: DeepPartial<TranslationKeys> = {
       },
     },
     smartSpace: {
-      quickActionsTitle: 'Azioni rapide smart space',
+      quickActionsTitle: 'Preset di continuazione scrittura',
       quickActionsDesc:
-        'Personalizza le azioni rapide e i prompt visualizzati nello smart space',
+        'Personalizza le azioni rapide e i prompt mostrati nella modalità di continuazione di Quick Ask',
+      quickActionsModalTitle: 'Preset di continuazione Quick Ask',
       configureActions: 'Configura azioni rapide',
       actionsCount: 'Azioni rapide configurate: {count}',
       addAction: 'Aggiungi azione',
       resetToDefault: 'Ripristina predefiniti',
       confirmReset:
         'Sei sicuro di voler ripristinare le azioni rapide predefinite ed eliminare tutte le impostazioni personalizzate?',
-      resetConfirmTitle: 'Ripristina azioni rapide smart space',
+      resetConfirmTitle: 'Ripristina i preset di continuazione scrittura',
       actionLabel: 'Etichetta azione',
       actionLabelDesc: "Testo visualizzato nell'azione rapida",
       actionLabelPlaceholder: 'Ad esempio, continua a scrivere',
@@ -1381,7 +1372,6 @@ export const it: DeepPartial<TranslationKeys> = {
     continuation: {
       title: 'Sparkle',
       aiSubsectionTitle: 'Continuazione AI',
-      customSubsectionTitle: 'Continuazione personalizzata',
       tabSubsectionTitle: 'Completamento Tab',
       superContinuation: 'Abilita vista Sparkle',
       superContinuationDesc:
@@ -1389,20 +1379,6 @@ export const it: DeepPartial<TranslationKeys> = {
       continuationModel: 'Modello di continuazione',
       continuationModelDesc:
         'Seleziona il modello usato per la continuazione in Sparkle.',
-      smartSpaceDescription:
-        'Smart Space ti aiuta a continuare a scrivere con azioni rapide personalizzabili. Di default si apre con spazio su riga vuota o con "/" + spazio a inizio riga o dopo uno spazio; qui sotto puoi passare al doppio spazio o disattivare il trigger con spazio.',
-      smartSpaceToggle: 'Abilita smart space',
-      smartSpaceToggleDesc:
-        'Mostra il menu smart space quando il cursore è su una riga vuota.',
-      smartSpaceTriggerMode: 'Trigger spazio su riga vuota',
-      smartSpaceTriggerModeDesc:
-        'Cosa deve fare Smart Space quando premi spazio su una riga vuota.',
-      smartSpaceTriggerModeSingle:
-        'Spazio singolo per aprire (comportamento originale)',
-      smartSpaceTriggerModeDouble:
-        'Doppio spazio per aprire (~600ms; il primo spazio inserisce davvero uno spazio)',
-      smartSpaceTriggerModeOff:
-        'Disattiva trigger con spazio su riga vuota (solo "/" + spazio)',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
         'Offre azioni rapide sul testo selezionato, come chiedere, riscrivere o spiegare.',
@@ -1870,31 +1846,9 @@ export const it: DeepPartial<TranslationKeys> = {
       emptyPlanPreview: 'Questo piano rimuove contenuto',
       stopApplying: 'Interrompi applicazione',
     },
-    customContinuePromptLabel: 'Come vuoi continuare?',
-    customContinuePromptPlaceholder:
-      "Chiedi all'AI (@ per i file, # per le azioni rapide)",
-    customContinueHint:
-      'Shift+Invio per inviare, Invio per nuova riga, Esc per chiudere',
-    customContinueConfirmHint: 'Invia la tua istruzione per continuare',
     customRewritePromptPlaceholder:
       'Descrivi come riscrivere il testo selezionato, ad es. "rendi conciso e voce attiva; mantieni la struttura markdown"; premi shift+invio per confermare, invio per una nuova riga, ed esc per chiudere.',
     customContinueProcessing: 'Elaborazione...',
-    customContinueError: 'Impossibile generare la continuazione',
-    customContinuePresets: {
-      continue: {
-        label: 'Continua a scrivere',
-        instruction: 'Continua il testo corrente nello stesso stile e tono.',
-      },
-      summarize: {
-        label: 'Riassumi',
-        instruction: 'Scrivi un riassunto conciso del contenuto corrente.',
-      },
-      flowchart: {
-        label: 'Crea un diagramma di flusso',
-        instruction:
-          'Trasforma i punti correnti in un diagramma di flusso o passaggi ordinati.',
-      },
-    },
     customContinueSections: {
       suggestions: {
         title: 'Suggerimenti',
@@ -2281,6 +2235,9 @@ export const it: DeepPartial<TranslationKeys> = {
     noAssistantDescription: 'Usa prompt di sistema predefinito',
     navigationHint: '↑↓ per navigare, Invio per selezionare, Esc per annullare',
     inputPlaceholder: 'Fai una domanda...',
+    continuePlaceholder:
+      'Lascia vuoto per continuare a scrivere, oppure aggiungi istruzioni...',
+    mentionContextLabel: 'File menzionati',
     close: 'Chiudi',
     copy: 'Copia',
     insert: 'Inserisci',
@@ -2311,6 +2268,8 @@ export const it: DeepPartial<TranslationKeys> = {
     rewriteDesc: 'Modifica solo la selezione corrente',
     agent: 'Agent',
     agentDesc: 'Strumenti per task complessi',
+    continue: 'Scrivi',
+    continueDesc: 'Continua a scrivere al cursore, premi Tab per accettare',
     agentFull: 'Agent (YOLO)',
     agentFullDesc:
       'Approva automaticamente le chiamate agli strumenti per task complessi',

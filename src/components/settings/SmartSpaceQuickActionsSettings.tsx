@@ -41,7 +41,7 @@ import { ConfirmModal } from '../modals/ConfirmModal'
 
 import { SmartSpaceQuickActionsModal } from './modals/SmartSpaceQuickActionsModal'
 
-type QuickAction = {
+export type QuickAction = {
   id: string
   label: string
   instruction: string
@@ -64,8 +64,9 @@ const QUICK_ACTION_CATEGORIES: QuickActionCategory[] = [
 const isQuickActionCategory = (value: string): value is QuickActionCategory =>
   QUICK_ACTION_CATEGORIES.includes(value as QuickActionCategory)
 
-// Available icons mapping
-const ICON_OPTIONS = {
+// Available icons mapping. Exported so Quick Ask's "continue" mode can render
+// the same icon set for its quick-action chips.
+export const ICON_OPTIONS = {
   sparkles: {
     component: Sparkles,
     labelKey: 'settings.smartSpace.iconLabels.sparkles',
@@ -232,7 +233,7 @@ const generateId = () => {
   return `action_${Date.now()}_${Math.random().toString(36).slice(2, 11)}`
 }
 
-const getDefaultQuickActions = (t: TranslateFn): QuickAction[] => {
+export const getDefaultQuickActions = (t: TranslateFn): QuickAction[] => {
   return DEFAULT_ACTION_CONFIGS.map((config) => ({
     id: config.id,
     label: t(config.labelKey, config.labelFallback),
@@ -291,13 +292,10 @@ export function SmartSpaceQuickActionsSettings({
   return (
     <div className="yolo-smart-space-settings">
       <ObsidianSetting
-        name={t(
-          'settings.smartSpace.quickActionsTitle',
-          'Smart Space 快捷选项',
-        )}
+        name={t('settings.smartSpace.quickActionsTitle', '续写预设')}
         desc={t(
           'settings.smartSpace.quickActionsDesc',
-          '自定义 Smart Space 中显示的快捷选项和提示词',
+          '自定义续写模式下显示的快捷选项和提示词',
         )}
         className="yolo-settings-card"
       >
@@ -554,13 +552,10 @@ export function SmartSpaceQuickActionsSettingsContent() {
   return (
     <div className="yolo-smart-space-settings">
       <ObsidianSetting
-        name={t(
-          'settings.smartSpace.quickActionsTitle',
-          'Smart Space 快捷选项',
-        )}
+        name={t('settings.smartSpace.quickActionsTitle', '续写预设')}
         desc={t(
           'settings.smartSpace.quickActionsDesc',
-          '自定义 Smart Space 中显示的快捷选项和提示词',
+          '自定义续写模式下显示的快捷选项和提示词',
         )}
       >
         <ObsidianButton

@@ -14,11 +14,7 @@ export const en: TranslationKeys = {
     addFolderToChat: 'Add folder to chat',
     rebuildVaultIndex: 'Rebuild entire vault index',
     updateVaultIndex: 'Update index for modified files',
-    continueWriting: 'AI continue writing',
-    continueWritingSelected: 'AI continue writing (selection)',
-    customContinueWriting: 'AI custom continue',
-    customRewrite: 'AI custom rewrite',
-    triggerSmartSpace: 'Trigger smart space',
+    triggerQuickAskContinue: 'Trigger quick ask (continue writing)',
     triggerQuickAsk: 'Trigger quick ask',
     triggerTabCompletion: 'Trigger tab completion',
     acceptInlineSuggestion: 'Accept completion',
@@ -145,12 +141,6 @@ export const en: TranslationKeys = {
       knowledgeBaseHint:
         'Enable embedding search to limit the retrieval scope.',
     },
-  },
-
-  smartSpace: {
-    webSearch: 'Web',
-    urlContext: 'URL',
-    mentionContextLabel: 'Mentioned files',
   },
 
   selection: {
@@ -352,16 +342,17 @@ export const en: TranslationKeys = {
       },
     },
     smartSpace: {
-      quickActionsTitle: 'Smart space quick actions',
+      quickActionsTitle: 'Continue writing presets',
       quickActionsDesc:
-        'Customize the quick actions and prompts displayed in smart space',
+        'Customize the quick actions and prompts shown in Quick Ask’s continue mode',
+      quickActionsModalTitle: 'Quick Ask continuation presets',
       configureActions: 'Configure quick actions',
       actionsCount: 'Configured {count} quick actions',
       addAction: 'Add action',
       resetToDefault: 'Reset to default',
       confirmReset:
         'Are you sure you want to reset to default quick actions and delete all custom settings?',
-      resetConfirmTitle: 'Reset Smart Space quick actions',
+      resetConfirmTitle: 'Reset continue writing presets',
       actionLabel: 'Action label',
       actionLabelDesc: 'Text displayed in the quick action',
       actionLabelPlaceholder: 'For example, continue writing',
@@ -1537,7 +1528,6 @@ export const en: TranslationKeys = {
     continuation: {
       title: 'Sparkle',
       aiSubsectionTitle: 'Super continuation',
-      customSubsectionTitle: 'Smart space',
       tabSubsectionTitle: 'Tab completion',
       superContinuation: 'Enable Sparkle view',
       superContinuationDesc:
@@ -1545,20 +1535,6 @@ export const en: TranslationKeys = {
       continuationModel: 'Continuation model',
       continuationModelDesc:
         'Select the model used for continuation in Sparkle.',
-      smartSpaceDescription:
-        'Smart space offers a lightweight floating composer while you write; by default it appears when you press the space key on an empty line or type “/” followed by space at the start of a line or after whitespace. You can switch below to double-space on empty lines or disable space-triggering. Press enter twice to submit and press escape to close.',
-      smartSpaceToggle: 'Enable smart space',
-      smartSpaceToggleDesc:
-        'When disabled, the space bar or "/"+space will no longer summon the smart space floating composer.',
-      smartSpaceTriggerMode: 'Empty-line space trigger',
-      smartSpaceTriggerModeDesc:
-        'How smart space should respond when you press space on an empty line.',
-      smartSpaceTriggerModeSingle:
-        'Single space to trigger (original behavior)',
-      smartSpaceTriggerModeDouble:
-        'Double space to trigger (~600ms; first space inserts a real space)',
-      smartSpaceTriggerModeOff:
-        'Disable empty-line space trigger (keep "/"+space only)',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
         'Provides inline ask, rewrite, explain, and other quick actions around selected text.',
@@ -2032,13 +2008,7 @@ export const en: TranslationKeys = {
       emptyPlanPreview: 'This plan removes content',
       stopApplying: 'Stop apply',
     },
-    customContinuePromptLabel: 'Continuation instruction',
-    customContinuePromptPlaceholder:
-      'Ask AI (@ for files, # for quick actions)',
-    customContinueHint: 'Press enter (⏎) to submit',
-    customContinueConfirmHint: 'Press enter (⏎) again to confirm',
     customContinueProcessing: 'Thinking',
-    customContinueError: 'Generation failed; please try again soon.',
     customContinueSections: {
       suggestions: {
         title: 'Suggestions',
@@ -2420,6 +2390,9 @@ export const en: TranslationKeys = {
     noAssistantDescription: 'Use default system prompt',
     navigationHint: 'Use ↑/↓ to navigate, enter to select, esc to cancel',
     inputPlaceholder: 'Ask a question...',
+    continuePlaceholder:
+      'Leave empty to continue writing, or add instructions...',
+    mentionContextLabel: 'Mentioned files',
     close: 'Close',
     copy: 'Copy',
     insert: 'Insert',
@@ -2452,6 +2425,8 @@ export const en: TranslationKeys = {
     rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
+    continue: 'Write',
+    continueDesc: 'Continue writing at the cursor, press Tab to accept',
     plan: 'Plan',
     planDesc: 'Explore and design before editing',
     agentFull: 'Agent (YOLO)',

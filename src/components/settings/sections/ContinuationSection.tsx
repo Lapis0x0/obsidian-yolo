@@ -54,11 +54,8 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
     [settings.chatModels],
   )
 
-  const enableSmartSpace = settings.continuationOptions.enableSmartSpace ?? true
   const enableSelectionChat =
     settings.continuationOptions.enableSelectionChat ?? true
-  const smartSpaceTriggerMode =
-    settings.continuationOptions.smartSpaceTriggerMode ?? 'single-space'
   const enableTabCompletion = Boolean(
     settings.continuationOptions.enableTabCompletion,
   )
@@ -188,77 +185,6 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
   return (
     <>
       <SnippetsSection app={app} />
-
-      <div className="yolo-settings-section">
-        <section className="yolo-settings-block">
-          <div className="yolo-settings-block-head">
-            <div className="yolo-settings-block-head-title-row">
-              <div className="yolo-settings-sub-header yolo-settings-block-title">
-                {t('settings.continuation.customSubsectionTitle')}
-              </div>
-              <div className="yolo-settings-desc yolo-settings-block-desc">
-                {t('settings.continuation.smartSpaceDescription')}
-              </div>
-            </div>
-          </div>
-
-          <div className="yolo-settings-block-content">
-            <ObsidianSetting
-              name={t('settings.continuation.smartSpaceToggle')}
-              desc={t('settings.continuation.smartSpaceToggleDesc')}
-              className="yolo-settings-card"
-            >
-              <ObsidianToggle
-                value={enableSmartSpace}
-                onChange={(value) => {
-                  updateContinuationOptions(
-                    {
-                      enableSmartSpace: value,
-                    },
-                    'enableSmartSpace',
-                  )
-                }}
-              />
-            </ObsidianSetting>
-
-            {enableSmartSpace && (
-              <>
-                <ObsidianSetting
-                  name={t('settings.continuation.smartSpaceTriggerMode')}
-                  desc={t('settings.continuation.smartSpaceTriggerModeDesc')}
-                  className="yolo-settings-card yolo-smart-space-trigger-setting"
-                >
-                  <ObsidianDropdown
-                    value={smartSpaceTriggerMode}
-                    options={{
-                      'single-space': t(
-                        'settings.continuation.smartSpaceTriggerModeSingle',
-                      ),
-                      'double-space': t(
-                        'settings.continuation.smartSpaceTriggerModeDouble',
-                      ),
-                      off: t('settings.continuation.smartSpaceTriggerModeOff'),
-                    }}
-                    onChange={(value) => {
-                      updateContinuationOptions(
-                        {
-                          smartSpaceTriggerMode: value as
-                            | 'single-space'
-                            | 'double-space'
-                            | 'off',
-                        },
-                        'smartSpaceTriggerMode',
-                      )
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <SmartSpaceQuickActionsSettings />
-              </>
-            )}
-          </div>
-        </section>
-      </div>
 
       <div className="yolo-settings-section yolo-settings-section--tight">
         <section className="yolo-settings-block">
@@ -419,6 +345,8 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                     }}
                   />
                 </ObsidianSetting>
+
+                <SmartSpaceQuickActionsSettings />
               </>
             )}
 

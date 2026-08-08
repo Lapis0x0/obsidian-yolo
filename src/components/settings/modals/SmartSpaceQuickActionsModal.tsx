@@ -17,7 +17,10 @@ export class SmartSpaceQuickActionsModal extends ReactModal<SmartSpaceQuickActio
       Component: SmartSpaceQuickActionsModalComponentWrapper,
       props: { plugin },
       options: {
-        title: 'Smart space quick actions',
+        title: plugin.t(
+          'settings.smartSpace.quickActionsModalTitle',
+          'Quick Ask continuation presets',
+        ),
       },
       plugin: plugin,
     })

@@ -1,15 +1,28 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Bot, ChevronDown, ChevronUp, MessageSquare } from 'lucide-react'
-import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  Bot,
+  ChevronDown,
+  ChevronUp,
+  MessageSquare,
+  PenLine,
+} from 'lucide-react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { getNodeWindow } from '../../../utils/dom/window-context'
 import { YoloDropdownContent } from '../../common/popover'
 
-export type QuickAskMode = 'ask' | 'agent'
+export type QuickAskMode = 'ask' | 'agent' | 'continue'
 
 const isQuickAskMode = (value: string): value is QuickAskMode =>
-  value === 'ask' || value === 'agent'
+  value === 'ask' || value === 'agent' || value === 'continue'
 
 type ModeOption = {
   value: QuickAskMode
@@ -37,6 +50,14 @@ const MODE_OPTIONS: ModeOption[] = [
     descFallback: 'Enable tool calling capabilities',
     icon: <Bot size={14} />,
   },
+  {
+    value: 'continue',
+    labelKey: 'chatMode.continue',
+    labelFallback: 'Write',
+    descKey: 'chatMode.continueDesc',
+    descFallback: 'Continue writing at the cursor, press Tab to accept',
+    icon: <PenLine size={14} />,
+  },
 ]
 
 export const ModeSelect = forwardRef<
@@ -44,6 +65,8 @@ export const ModeSelect = forwardRef<
   {
     mode: QuickAskMode
     onChange: (mode: QuickAskMode) => void
+    /** Mode values to exclude from the menu entirely (e.g. 'continue' when the panel has no editor to write into). */
+    hiddenModes?: QuickAskMode[]
     triggerLabel?: string
     onMenuOpenChange?: (isOpen: boolean) => void
     onKeyDown?: (
@@ -61,6 +84,7 @@ export const ModeSelect = forwardRef<
     {
       mode,
       onChange,
+      hiddenModes,
       triggerLabel,
       onMenuOpenChange,
       onKeyDown,
@@ -78,6 +102,7 @@ export const ModeSelect = forwardRef<
     const itemRefs = useRef<Record<QuickAskMode, HTMLDivElement | null>>({
       ask: null,
       agent: null,
+      continue: null,
     })
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
@@ -89,6 +114,11 @@ export const ModeSelect = forwardRef<
         }
       },
       [ref],
+    )
+
+    const visibleOptions = useMemo(
+      () => MODE_OPTIONS.filter((opt) => !hiddenModes?.includes(opt.value)),
+      [hiddenModes],
     )
 
     const currentOption = MODE_OPTIONS.find((opt) => opt.value === mode)
@@ -105,7 +135,7 @@ export const ModeSelect = forwardRef<
 
     const focusByDelta = useCallback(
       (delta: number) => {
-        const values: QuickAskMode[] = ['ask', 'agent']
+        const values: QuickAskMode[] = visibleOptions.map((opt) => opt.value)
         const currentIndex = values.indexOf(mode)
         const nextIndex = (currentIndex + delta + values.length) % values.length
         const nextValue = values[nextIndex]
@@ -115,7 +145,7 @@ export const ModeSelect = forwardRef<
           target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
         }
       },
-      [mode],
+      [mode, visibleOptions],
     )
 
     useEffect(() => {
@@ -222,7 +252,7 @@ export const ModeSelect = forwardRef<
               }
             }}
           >
-            {MODE_OPTIONS.map((option) => (
+            {visibleOptions.map((option) => (
               <DropdownMenu.RadioItem
                 key={option.value}
                 className="yolo-popover-item yolo-mode-select-item"

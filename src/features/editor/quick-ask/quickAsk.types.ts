@@ -1,6 +1,6 @@
 import type { Mentionable, MentionableBlock } from '../../../types/mentionable'
 
-export type QuickAskVisibleMode = 'ask' | 'agent'
+export type QuickAskVisibleMode = 'ask' | 'agent' | 'continue'
 export type QuickAskLaunchMode = QuickAskVisibleMode
 
 export type QuickAskSelectionScope = {

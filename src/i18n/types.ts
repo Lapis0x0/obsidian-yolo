@@ -21,11 +21,7 @@ export type TranslationKeys = {
     addFolderToChat: string
     rebuildVaultIndex: string
     updateVaultIndex: string
-    continueWriting: string
-    continueWritingSelected: string
-    customContinueWriting: string
-    customRewrite: string
-    triggerSmartSpace: string
+    triggerQuickAskContinue: string
     triggerQuickAsk: string
     triggerTabCompletion: string
     acceptInlineSuggestion: string
@@ -148,13 +144,6 @@ export type TranslationKeys = {
       knowledgeBasePlaceholder?: string
       knowledgeBaseHint?: string
     }
-  }
-
-  // Smart Space UI
-  smartSpace?: {
-    webSearch?: string
-    urlContext?: string
-    mentionContextLabel?: string
   }
 
   // Settings
@@ -1226,20 +1215,11 @@ export type TranslationKeys = {
     continuation: {
       title: string
       aiSubsectionTitle: string
-      customSubsectionTitle: string
       tabSubsectionTitle: string
       superContinuation: string
       superContinuationDesc: string
       continuationModel: string
       continuationModelDesc: string
-      smartSpaceDescription: string
-      smartSpaceToggle: string
-      smartSpaceToggleDesc: string
-      smartSpaceTriggerMode: string
-      smartSpaceTriggerModeDesc: string
-      smartSpaceTriggerModeSingle: string
-      smartSpaceTriggerModeDouble: string
-      smartSpaceTriggerModeOff: string
       selectionChatSubsectionTitle: string
       selectionChatDescription: string
       selectionChatToggle: string
@@ -1417,6 +1397,7 @@ export type TranslationKeys = {
     smartSpace?: {
       quickActionsTitle: string
       quickActionsDesc: string
+      quickActionsModalTitle?: string
       configureActions: string
       actionsCount: string
       addAction: string
@@ -1735,18 +1716,8 @@ export type TranslationKeys = {
       emptyPlanPreview?: string
       stopApplying?: string
     }
-    customContinuePromptLabel?: string
-    customContinuePromptPlaceholder?: string
-    customContinueHint?: string
-    customContinueConfirmHint?: string
     customRewritePromptPlaceholder?: string
     customContinueProcessing?: string
-    customContinueError?: string
-    customContinuePresets?: {
-      continue?: { label: string; instruction: string }
-      summarize?: { label: string; instruction: string }
-      flowchart?: { label: string; instruction: string }
-    }
     customContinueSections?: {
       suggestions?: {
         title: string
@@ -2072,6 +2043,8 @@ export type TranslationKeys = {
     noAssistantDescription?: string
     navigationHint?: string
     inputPlaceholder?: string
+    continuePlaceholder?: string
+    mentionContextLabel?: string
     close?: string
     copy?: string
     insert?: string
@@ -2102,6 +2075,8 @@ export type TranslationKeys = {
     rewriteDesc?: string
     agent?: string
     agentDesc?: string
+    continue?: string
+    continueDesc?: string
     plan?: string
     planDesc?: string
     agentFull?: string

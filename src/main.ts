@@ -207,11 +207,8 @@ import {
   type StartSelectionLengthAdjustmentOptions,
   type StartSelectionRewriteOptions,
 } from './features/editor/selection-rewrite/selectionRewriteController'
-import {
-  SmartSpaceController,
-  SmartSpaceDraftState,
-} from './features/editor/smart-space/smartSpaceController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
+import type { ContinuationModelOverride } from './features/editor/write-assist/writeAssistController'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
@@ -288,8 +285,6 @@ export default class YoloPlugin extends Plugin {
   private inlineSuggestionController: InlineSuggestionController | null = null
   private diffReviewController: DiffReviewController | null = null
   private selectionRewriteController: SelectionRewriteController | null = null
-  private smartSpaceDraftState: SmartSpaceDraftState = null
-  private smartSpaceController: SmartSpaceController | null = null
   // Selection chat state
   private selectionChatController: SelectionChatController | null = null
   // Obsidian command IDs (un-namespaced) registered for selection-chat shortcuts.
@@ -356,14 +351,6 @@ export default class YoloPlugin extends Plugin {
       action?: BackgroundStatusPanelAction
     }
   >()
-
-  getSmartSpaceDraftState(): SmartSpaceDraftState {
-    return this.smartSpaceDraftState
-  }
-
-  setSmartSpaceDraftState(state: SmartSpaceDraftState) {
-    this.smartSpaceDraftState = state
-  }
 
   private getPromptSourceSettingsFingerprint(
     settings: YoloSettings | undefined,
@@ -666,20 +653,6 @@ export default class YoloPlugin extends Plugin {
     return this.pgliteRuntimeManager ?? this.pgliteRuntimeManagerInitPromise!
   }
 
-  // Compute a robust panel anchor position just below the caret line
-  private getSmartSpaceController(): SmartSpaceController {
-    if (!this.smartSpaceController) {
-      this.smartSpaceController = new SmartSpaceController({
-        plugin: this,
-        getSettings: () => this.settings,
-        getActiveMarkdownView: () =>
-          this.app.workspace.getActiveViewOfType(MarkdownView),
-        getEditorView: (editor) => this.getEditorView(editor),
-      })
-    }
-    return this.smartSpaceController
-  }
-
   private getQuickAskController(): QuickAskController {
     if (!this.quickAskController) {
       this.quickAskController = new QuickAskController({
@@ -690,7 +663,6 @@ export default class YoloPlugin extends Plugin {
         getEditorView: (editor) => this.getEditorView(editor),
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
-        closeSmartSpace: () => this.closeSmartSpace(),
       })
     }
     return this.quickAskController
@@ -717,18 +689,6 @@ export default class YoloPlugin extends Plugin {
     options: StartSelectionLengthAdjustmentOptions,
   ): void {
     this.getSelectionRewriteController().startLengthAdjustment(options)
-  }
-
-  private closeSmartSpace() {
-    this.getSmartSpaceController().close()
-  }
-
-  private showSmartSpace(
-    editor: Editor,
-    view: EditorView,
-    showQuickActions = true,
-  ) {
-    this.getSmartSpaceController().show(editor, view, showQuickActions)
   }
 
   // Quick Ask methods
@@ -857,7 +817,6 @@ export default class YoloPlugin extends Plugin {
             assistantId,
           )
         },
-        isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
       })
     }
     return this.selectionChatController
@@ -1092,10 +1051,6 @@ export default class YoloPlugin extends Plugin {
       },
     })
     this.webviewSelectionBridge.start()
-  }
-
-  private createSmartSpaceTriggerExtension(): Extension {
-    return this.getSmartSpaceController().createTriggerExtension()
   }
 
   private getActiveConversationOverrides():
@@ -2130,7 +2085,6 @@ export default class YoloPlugin extends Plugin {
         resolveContinuationParams: (overrides) =>
           this.resolveContinuationParams(overrides),
         getEditorView: (editor) => this.getEditorView(editor),
-        closeSmartSpace: () => this.closeSmartSpace(),
         registerTimeout: (callback, timeout) =>
           this.registerTimeout(callback, timeout),
         addAbortController: (controller) =>
@@ -2292,7 +2246,6 @@ export default class YoloPlugin extends Plugin {
     this.registerEditorExtension(
       this.getSelectionRewriteController().createExtension(),
     )
-    this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
     this.registerEditorExtension(
       this.getInlineSuggestionController().createExtension(),
@@ -2396,12 +2349,14 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.addCommand({
-      id: 'trigger-smart-space',
-      name: this.t('commands.triggerSmartSpace'),
+      id: 'trigger-quick-ask-continue',
+      name: this.t('commands.triggerQuickAskContinue'),
       editorCallback: (editor: Editor) => {
         const cmView = this.getEditorView(editor)
         if (!cmView) return
-        this.showSmartSpace(editor, cmView, true)
+        this.showQuickAskWithOptions(editor, cmView, {
+          initialMode: 'continue',
+        })
       },
     })
 
@@ -2705,7 +2660,6 @@ export default class YoloPlugin extends Plugin {
     this.updateToastCleanup = null
     this.actionToastController?.destroy()
     this.actionToastController = null
-    this.closeSmartSpace()
 
     // Selection chat cleanup
     this.webviewSelectionBridge?.destroy()
@@ -4450,32 +4404,34 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.timeoutIds.push(timeoutId)
   }
 
-  // Public wrapper for use in React modal
+  // Public wrapper — currently used by Quick Ask's "continue" mode, which
+  // always supplies its own resolved providerClient/model (the same one used
+  // for its ask/agent path) as modelOverride.
   async continueWriting(
     editor: Editor,
-    customPrompt?: string,
-    geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
-    mentionables?: (MentionableFile | MentionableFolder)[],
+    customPrompt: string | undefined,
+    mentionables: (MentionableFile | MentionableFolder)[] | undefined,
+    modelOverride: ContinuationModelOverride,
   ) {
     return this.handleContinueWriting(
       editor,
       customPrompt,
-      geminiTools,
       mentionables,
+      modelOverride,
     )
   }
 
   private async handleContinueWriting(
     editor: Editor,
-    customPrompt?: string,
-    geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
-    mentionables?: (MentionableFile | MentionableFolder)[],
+    customPrompt: string | undefined,
+    mentionables: (MentionableFile | MentionableFolder)[] | undefined,
+    modelOverride: ContinuationModelOverride,
   ) {
     return this.getWriteAssistController().handleContinueWriting(
       editor,
       customPrompt,
-      geminiTools,
       mentionables,
+      modelOverride,
     )
   }
 }

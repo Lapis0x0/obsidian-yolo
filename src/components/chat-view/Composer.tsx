@@ -24,7 +24,7 @@ type ComposerProps = {
   onNavigateChat?: () => void
 }
 
-type SparkleTab = 'smart-space' | 'quick-ask' | 'tab-completion'
+type SparkleTab = 'quick-ask' | 'tab-completion'
 
 type NumberInputState = {
   [key: string]: string
@@ -110,9 +110,6 @@ const Composer: React.FC<ComposerProps> = (_props) => {
     return parseInt(trimmed, 10)
   }
 
-  const enableSmartSpace = settings.continuationOptions.enableSmartSpace ?? true
-  const smartSpaceTriggerMode =
-    settings.continuationOptions.smartSpaceTriggerMode ?? 'single-space'
   const enableSelectionChat =
     settings.continuationOptions.enableSelectionChat ?? true
 
@@ -250,12 +247,10 @@ const Composer: React.FC<ComposerProps> = (_props) => {
         role="tablist"
         style={
           {
-            '--yolo-tab-count': 3,
-            '--yolo-tab-index': [
-              'tab-completion',
-              'quick-ask',
-              'smart-space',
-            ].indexOf(activeTab),
+            '--yolo-tab-count': 2,
+            '--yolo-tab-index': ['tab-completion', 'quick-ask'].indexOf(
+              activeTab,
+            ),
           } as React.CSSProperties
         }
       >
@@ -284,147 +279,9 @@ const Composer: React.FC<ComposerProps> = (_props) => {
             {t('settings.continuation.quickAskSubsectionTitle', 'Quick Ask')}
           </span>
         </button>
-        <button
-          className={`yolo-composer-tab${
-            activeTab === 'smart-space' ? ' is-active' : ''
-          }`}
-          onClick={() => setActiveTab('smart-space')}
-          role="tab"
-          aria-selected={activeTab === 'smart-space'}
-        >
-          <span className="yolo-composer-tab-label">
-            {t('settings.continuation.customSubsectionTitle', 'Smart Space')}
-          </span>
-        </button>
       </div>
 
       <div className="yolo-composer-scroll">
-        {activeTab === 'smart-space' && (
-          <>
-            <section className="yolo-composer-section">
-              <header className="yolo-composer-heading">
-                <div className="yolo-composer-heading-title">
-                  {t(
-                    'settings.continuation.smartSpaceToggle',
-                    '启用 Smart Space',
-                  )}
-                </div>
-                <div className="yolo-composer-heading-desc">
-                  {t(
-                    'settings.continuation.smartSpaceDescription',
-                    'Smart Space 在空行触发，为续写与快速操作提供入口。',
-                  )}
-                </div>
-              </header>
-
-              <div className="yolo-composer-option">
-                <div className="yolo-composer-option-info">
-                  <div className="yolo-composer-option-title">
-                    {t(
-                      'settings.continuation.smartSpaceToggle',
-                      '启用 Smart Space',
-                    )}
-                  </div>
-                  <div className="yolo-composer-option-desc">
-                    {t(
-                      'settings.continuation.smartSpaceToggleDesc',
-                      '关闭后将不会触发 Smart Space 浮动面板。',
-                    )}
-                  </div>
-                </div>
-                <div className="yolo-composer-option-control">
-                  <ObsidianToggle
-                    value={enableSmartSpace}
-                    onChange={(value) =>
-                      updateContinuationOptions({ enableSmartSpace: value })
-                    }
-                  />
-                </div>
-              </div>
-
-              {enableSmartSpace && (
-                <>
-                  <div className="yolo-composer-option">
-                    <div className="yolo-composer-option-info">
-                      <div className="yolo-composer-option-title">
-                        {t(
-                          'settings.continuation.smartSpaceTriggerMode',
-                          '触发模式',
-                        )}
-                      </div>
-                      <div className="yolo-composer-option-desc">
-                        {t(
-                          'settings.continuation.smartSpaceTriggerModeDesc',
-                          '定义在空行按下空格时的触发方式。',
-                        )}
-                      </div>
-                    </div>
-                    <div className="yolo-composer-option-control yolo-composer-option-control--fluid">
-                      <div className="yolo-simple-select-wrapper">
-                        <SimpleSelect
-                          value={smartSpaceTriggerMode}
-                          options={[
-                            {
-                              value: 'single-space',
-                              label: t(
-                                'settings.continuation.smartSpaceTriggerModeSingle',
-                                '单空格触发',
-                              ),
-                            },
-                            {
-                              value: 'double-space',
-                              label: t(
-                                'settings.continuation.smartSpaceTriggerModeDouble',
-                                '双空格触发',
-                              ),
-                            },
-                            {
-                              value: 'off',
-                              label: t(
-                                'settings.continuation.smartSpaceTriggerModeOff',
-                                '关闭',
-                              ),
-                            },
-                          ]}
-                          onChange={(value) => {
-                            updateContinuationOptions({
-                              smartSpaceTriggerMode: value as
-                                | 'single-space'
-                                | 'double-space'
-                                | 'off',
-                            })
-                          }}
-                          align="end"
-                          side="bottom"
-                          sideOffset={6}
-                          collisionBoundary={composerRef.current}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </>
-              )}
-            </section>
-
-            {enableSmartSpace && (
-              <section className="yolo-composer-section">
-                <header className="yolo-composer-heading">
-                  <div className="yolo-composer-heading-title">
-                    {t('settings.smartSpace.quickActionsTitle', '快捷动作')}
-                  </div>
-                  <div className="yolo-composer-heading-desc">
-                    {t(
-                      'settings.smartSpace.quickActionsDesc',
-                      '自定义 Smart Space 中显示的快捷选项和提示词。',
-                    )}
-                  </div>
-                </header>
-                <SmartSpaceQuickActionsSettings variant="composer" />
-              </section>
-            )}
-          </>
-        )}
-
         {activeTab === 'quick-ask' && (
           <>
             <section className="yolo-composer-section">
@@ -587,6 +444,23 @@ const Composer: React.FC<ComposerProps> = (_props) => {
                 </>
               )}
             </section>
+
+            {enableQuickAsk && (
+              <section className="yolo-composer-section">
+                <header className="yolo-composer-heading">
+                  <div className="yolo-composer-heading-title">
+                    {t('settings.smartSpace.quickActionsTitle', '续写预设')}
+                  </div>
+                  <div className="yolo-composer-heading-desc">
+                    {t(
+                      'settings.smartSpace.quickActionsDesc',
+                      '自定义续写模式下显示的快捷选项和提示词。',
+                    )}
+                  </div>
+                </header>
+                <SmartSpaceQuickActionsSettings variant="composer" />
+              </section>
+            )}
 
             <section className="yolo-composer-section">
               <header className="yolo-composer-heading">

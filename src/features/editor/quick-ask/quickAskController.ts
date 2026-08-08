@@ -55,7 +55,6 @@ type QuickAskControllerDeps = {
   getActiveMarkdownView: () => MarkdownView | null
   getEditorView: (editor: Editor) => EditorView | null
   getActiveFileTitle: () => string
-  closeSmartSpace: (restoreFocus?: boolean) => void
 }
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
@@ -268,8 +267,6 @@ export class QuickAskController {
 
     // Close any existing Quick Ask panel (CM or PDF)
     this.close(false)
-    // Also close Smart Space if open
-    this.deps.closeSmartSpace(false)
 
     const close = (restoreFocus = true) => {
       const isCurrentView =
@@ -388,9 +385,8 @@ export class QuickAskController {
       return
     }
 
-    // Close any existing Quick Ask (CM or PDF) and Smart Space
+    // Close any existing Quick Ask (CM or PDF)
     this.close(false)
-    this.deps.closeSmartSpace(false)
 
     const capabilities: QuickAskCapabilities = {
       edit: false,

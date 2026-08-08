@@ -2,7 +2,7 @@ import type { EditorView } from '@codemirror/view'
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 
 import { executeSingleTurn } from '../../../core/ai/single-turn'
-import { getChatModelClient } from '../../../core/llm/manager'
+import type { getChatModelClient } from '../../../core/llm/manager'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'
@@ -11,6 +11,12 @@ import type {
   MentionableFolder,
 } from '../../../types/mentionable'
 import { getNestedFiles, readMultipleTFiles } from '../../../utils/obsidian'
+
+// The provider/model pair the caller has already resolved (e.g. Quick Ask's
+// "continue" mode reuses the same providerClient/model as its ask/agent
+// path). Continuation always runs with an explicit model — there is no
+// implicit "continuation model" fallback here.
+export type ContinuationModelOverride = ReturnType<typeof getChatModelClient>
 
 type WriteAssistDeps = {
   app: App
@@ -24,7 +30,6 @@ type WriteAssistDeps = {
     stream: boolean
   }
   getEditorView: (editor: Editor) => EditorView | null
-  closeSmartSpace: () => void
   registerTimeout: (callback: () => void, timeout: number) => void
   addAbortController: (controller: AbortController) => void
   removeAbortController: (controller: AbortController) => void
@@ -60,9 +65,9 @@ export class WriteAssistController {
 
   async handleContinueWriting(
     editor: Editor,
-    customPrompt?: string,
-    geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
-    mentionables?: (MentionableFile | MentionableFolder)[],
+    customPrompt: string | undefined,
+    mentionables: (MentionableFile | MentionableFolder)[] | undefined,
+    modelOverride: ContinuationModelOverride,
   ) {
     this.deps.cancelAllAiTasks()
     this.deps.clearInlineSuggestion()
@@ -177,7 +182,7 @@ export class WriteAssistController {
               this.deps.app.vault,
             )
             const mentionLabel = this.deps.t(
-              'smartSpace.mentionContextLabel',
+              'quickAsk.mentionContextLabel',
               'Mentioned files',
             )
             const combined = files
@@ -209,10 +214,6 @@ export class WriteAssistController {
             ? ''
             : baseContext
 
-      const continuationModelId =
-        settings.continuationOptions?.continuationModelId ??
-        settings.chatModelId
-
       const sidebarOverrides = this.deps.getActiveConversationOverrides()
       const {
         temperature,
@@ -220,10 +221,7 @@ export class WriteAssistController {
         stream: streamPreference,
       } = this.deps.resolveContinuationParams(sidebarOverrides)
 
-      const { providerClient, model } = getChatModelClient({
-        settings,
-        modelId: continuationModelId,
-      })
+      const { providerClient, model } = modelOverride
 
       const userInstruction = (customPrompt ?? '').trim()
       const instructionSection = userInstruction
@@ -285,16 +283,6 @@ export class WriteAssistController {
         'Thinking',
       )
       this.deps.showThinkingIndicator(view, cursorOffset, thinkingText)
-
-      let hasClosedSmartSpaceWidget = false
-      const closeSmartSpaceWidgetOnce = () => {
-        if (!hasClosedSmartSpaceWidget) {
-          this.deps.closeSmartSpace()
-          hasClosedSmartSpaceWidget = true
-        }
-      }
-
-      closeSmartSpaceWidgetOnce()
 
       const baseRequest: LLMRequestBase = {
         model: model.model,
@@ -381,7 +369,6 @@ export class WriteAssistController {
           settings.continuationOptions.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled:
           settings.continuationOptions.streamFallbackRecoveryEnabled,
-        geminiTools,
         onStreamDelta: ({ contentDelta, reasoningDelta }) => {
           if (reasoningDelta) {
             reasoningPreviewBuffer += reasoningDelta
@@ -394,14 +381,12 @@ export class WriteAssistController {
           if (!contentDelta) return
 
           suggestionText += contentDelta
-          closeSmartSpaceWidgetOnce()
           updateContinuationSuggestion(suggestionText)
         },
       })
 
       if (!suggestionText && continuationResult.content) {
         suggestionText = continuationResult.content
-        closeSmartSpaceWidgetOnce()
         updateContinuationSuggestion(suggestionText)
       }
 

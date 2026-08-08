@@ -127,7 +127,6 @@ type SelectionChatControllerDeps = {
     text: string,
     assistantId?: string,
   ) => Promise<void>
-  isSmartSpaceOpen: () => boolean
 }
 
 export class SelectionChatController {
@@ -175,7 +174,6 @@ export class SelectionChatController {
     text: string,
     assistantId?: string,
   ) => Promise<void>
-  private readonly isSmartSpaceOpen: () => boolean
 
   private selectionManager: SelectionManager | null = null
   private pdfSelectionManager: PdfSelectionManager | null = null
@@ -218,7 +216,6 @@ export class SelectionChatController {
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
-    this.isSmartSpaceOpen = deps.isSmartSpaceOpen
   }
 
   isActive(): boolean {
@@ -636,10 +633,6 @@ export class SelectionChatController {
     this.lastSyncedPdfKey = null
 
     this.destroyCurrentWidget()
-
-    if (this.isSmartSpaceOpen()) {
-      return
-    }
 
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true

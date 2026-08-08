@@ -560,10 +560,10 @@ export const yoloSettingsSchema = z.object({
   // Continuation (续写) options
   continuationOptions: z
     .object({
-      // dedicated continuation model
+      // dedicated model for tab completion and selection rewrite (Quick Ask's
+      // "continue" mode uses the panel's own assistant model instead, see
+      // QuickAskPanel's modelClient)
       continuationModelId: z.string().optional(),
-      // enable smart space quick invoke
-      enableSmartSpace: z.boolean().optional(),
       // enable selection chat (Cursor-like text selection actions)
       enableSelectionChat: z.boolean().optional(),
       // persist selected editor block highlight while chatting in sidebar
@@ -599,7 +599,10 @@ export const yoloSettingsSchema = z.object({
       tabCompletionConstraints: z.string().optional(),
       // length preset for tab completion prompt constraints
       tabCompletionLengthPreset: z.enum(['short', 'medium', 'long']).optional(),
-      // Smart Space custom quick actions
+      // Quick Ask "continue" mode quick actions (chips shown when the
+      // continue mode input is empty). Key name predates the Quick Ask
+      // "continue" mode (it originally belonged to the now-removed Smart
+      // Space panel); kept as-is to avoid a settings migration.
       smartSpaceQuickActions: z
         .array(
           z.object({
@@ -630,23 +633,19 @@ export const yoloSettingsSchema = z.object({
           }),
         )
         .optional(),
-      // Empty-line trigger mode for Smart Space
-      smartSpaceTriggerMode: z
-        .enum(['single-space', 'double-space', 'off'])
-        .optional(),
-      // Smart Space Gemini tools default state
-      smartSpaceUseWebSearch: z.boolean().optional(),
-      smartSpaceUseUrlContext: z.boolean().optional(),
       // enable quick ask feature (@ trigger in empty line)
       enableQuickAsk: z.boolean().optional(),
       // trigger character for quick ask (default: @)
       quickAskTrigger: z.string().optional(),
-      // Quick Ask mode. The UI only ever persists 'ask'/'agent' — 'edit' and
-      // 'edit-direct' are kept here only so a leftover legacy value in an old
-      // data.json doesn't fail this whole continuationOptions object's
-      // validation (see the single .catch() below). Callers normalize any
-      // non-'agent' value, including these legacy ones, to 'ask'.
-      quickAskMode: z.enum(['ask', 'edit', 'edit-direct', 'agent']).optional(),
+      // Quick Ask mode. The UI only ever persists 'ask'/'agent'/'continue' —
+      // 'edit' and 'edit-direct' are kept here only so a leftover legacy
+      // value in an old data.json doesn't fail this whole continuationOptions
+      // object's validation (see the single .catch() below). Callers
+      // normalize any unrecognized value, including these legacy ones, to
+      // 'ask'.
+      quickAskMode: z
+        .enum(['ask', 'edit', 'edit-direct', 'agent', 'continue'])
+        .optional(),
       // auto dock quick ask to editor top right after sending
       quickAskAutoDockToTopRight: z.boolean().optional(),
       // quick ask context chars before cursor
@@ -667,7 +666,6 @@ export const yoloSettingsSchema = z.object({
       continuationModelId:
         DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID)
           ?.id ?? '',
-      enableSmartSpace: true,
       enableSelectionChat: true,
       persistSelectionHighlight: true,
       manualContextEnabled: false,
@@ -687,9 +685,6 @@ export const yoloSettingsSchema = z.object({
       tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
       smartSpaceQuickActions: undefined,
       selectionChatActions: undefined,
-      smartSpaceTriggerMode: 'single-space',
-      smartSpaceUseWebSearch: false,
-      smartSpaceUseUrlContext: false,
       enableQuickAsk: true,
       quickAskTrigger: '@',
       quickAskMode: 'ask',

@@ -118,6 +118,57 @@
   padding-right: 6px;
 }
 
+/* "Continue" mode preset menu — a detached Quick-Ask-style popover below the
+   composer (YoloPopoverContent, smart-space variant), replacing the old inline
+   chip row. Sizing lives here per the popover surface ownership rules. */
+.yolo-quick-ask-continue-menu {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 4px;
+  overflow-y: auto;
+}
+
+/* Native button reset: Obsidian core styles buttons via
+   `button:not(.clickable-icon)` (specificity 0,1,1), which beats a lone class —
+   scope with the element to tie specificity and win by source order. */
+button.yolo-quick-ask-continue-menu-item {
+  all: unset;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+button.yolo-quick-ask-continue-menu-item:hover,
+button.yolo-quick-ask-continue-menu-item:focus-visible {
+  background: var(--background-modifier-hover);
+  outline: none;
+  box-shadow: none;
+}
+
+.yolo-quick-ask-continue-menu-item__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.yolo-quick-ask-continue-menu-item__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .yolo-quick-ask-assistant-trigger {
   all: unset;
   display: inline-flex;
