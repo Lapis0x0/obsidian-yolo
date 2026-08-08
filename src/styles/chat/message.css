@@ -814,7 +814,7 @@
 
 .yolo-assistant-group-body {
   --yolo-chat-activity-gap: 0px;
-  --yolo-chat-answer-gap: var(--size-4-3);
+  --yolo-chat-answer-gap: var(--size-4-2);
 
   display: flex;
   flex-direction: column;
@@ -1394,7 +1394,9 @@ button.yolo-assistant-error-card-continue:focus-visible {
 }
 
 .yolo-assistant-tool-running-preview {
-  margin-top: var(--size-4-1);
+  margin-top: var(--yolo-chat-answer-gap);
+  animation: yolo-tool-activity-row-enter
+    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
 }
 
 .yolo-assistant-tool-running-preview-header {
@@ -2908,6 +2910,8 @@ button.yolo-mermaid-modal-control:disabled {
   cursor: pointer;
   user-select: none;
   opacity: 0.96;
+  animation: yolo-tool-activity-row-enter
+    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
 }
 
 .yolo-tool-run-summary:hover {
@@ -2962,4 +2966,15 @@ button.yolo-mermaid-modal-control:disabled {
  * space matches the gap between the activity group and the following prose. */
 .yolo-tool-run-summary.is-expanded + * {
   margin-top: var(--yolo-chat-answer-gap);
+}
+
+@keyframes yolo-tool-activity-row-enter {
+  from {
+    opacity: 0;
+    transform: translateY(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }

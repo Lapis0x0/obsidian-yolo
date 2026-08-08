@@ -356,17 +356,10 @@ type ToolRunSegment = {
    * thinking block belongs to the run narratively, so it collapses and
    * expands together with the run.
    */
-  boundaryIndex: number
+  boundaryIndex: number | null
   bucketCounts: Partial<Record<ToolRunSummaryBucket, number>>
+  requiresUserAction: boolean
 }
-
-const TERMINAL_TOOL_CALL_STATUSES: ReadonlySet<ToolCallResponseStatus> =
-  new Set([
-    ToolCallResponseStatus.Success,
-    ToolCallResponseStatus.Error,
-    ToolCallResponseStatus.Aborted,
-    ToolCallResponseStatus.Rejected,
-  ])
 
 const buildToolRunSummaryText = (
   segment: ToolRunSegment,
@@ -680,18 +673,16 @@ function AssistantToolMessageGroupItem({
     [displayedMessages, hidePendingAssistantPlaceholders],
   )
 
-  // Consecutive settled tool cards — plus the thinking-only assistant
-  // messages interleaved with them — collapse into a one-line summary. A run
-  // is settled once a later message in the group renders visible assistant
-  // output beyond thinking; the trailing (still-streaming) run always stays
-  // expanded, as does any run containing a non-terminal tool call (pending
-  // approval / running / awaiting user input).
+  // A run of two or more tool calls — plus any thinking-only assistant
+  // messages interleaved with them — gets a stable summary as soon as it is
+  // observed. Details stay collapsed by default; only a run requiring user
+  // action expands automatically so approval and answer controls remain
+  // immediately available.
   const toolRunSegments = useMemo(() => {
     const segments: ToolRunSegment[] = []
     let firstMemberIndex = -1
     let lastMemberIndex = -1
     let toolMessages: ChatToolMessage[] = []
-    let reasoningMessageCount = 0
 
     const addMember = (index: number) => {
       if (firstMemberIndex === -1) {
@@ -701,13 +692,10 @@ function AssistantToolMessageGroupItem({
     }
 
     const close = (boundaryIndex: number | null) => {
-      if (boundaryIndex !== null && toolMessages.length > 0) {
+      if (toolMessages.length > 0) {
         const toolCalls = toolMessages.flatMap((message) => message.toolCalls)
         if (
-          toolCalls.length + reasoningMessageCount >= 2 &&
-          toolCalls.every((call) =>
-            TERMINAL_TOOL_CALL_STATUSES.has(call.response.status),
-          )
+          toolCalls.length >= 2
         ) {
           const bucketCounts: ToolRunSegment['bucketCounts'] = {}
           for (const call of toolCalls) {
@@ -720,13 +708,17 @@ function AssistantToolMessageGroupItem({
             endIndex: lastMemberIndex,
             boundaryIndex,
             bucketCounts,
+            requiresUserAction: toolCalls.some(
+              (call) =>
+                call.response.status === ToolCallResponseStatus.PendingApproval ||
+                call.response.status === ToolCallResponseStatus.AwaitingUserInput,
+            ),
           })
         }
       }
       firstMemberIndex = -1
       lastMemberIndex = -1
       toolMessages = []
-      reasoningMessageCount = 0
     }
 
     displayedMessages.forEach((message, index) => {
@@ -739,7 +731,6 @@ function AssistantToolMessageGroupItem({
         message.role === 'assistant' ? messageRenderPlans[index] : null
       if (plan?.rendersOnlyReasoning) {
         addMember(index)
-        reasoningMessageCount += 1
         return
       }
       const rendersNothing =
@@ -769,7 +760,9 @@ function AssistantToolMessageGroupItem({
   const toolRunBoundaryByIndex = useMemo(() => {
     const byIndex = new Map<number, ToolRunSegment>()
     for (const segment of toolRunSegments) {
-      byIndex.set(segment.boundaryIndex, segment)
+      if (segment.boundaryIndex !== null) {
+        byIndex.set(segment.boundaryIndex, segment)
+      }
     }
     return byIndex
   }, [toolRunSegments])
@@ -1194,9 +1187,9 @@ function AssistantToolMessageGroupItem({
             if (!toolRunSegment) {
               return renderedMessage
             }
-            const isSegmentExpanded = expandedToolRunKeys.has(
-              toolRunSegment.key,
-            )
+            const isSegmentExpanded =
+              expandedToolRunKeys.has(toolRunSegment.key) ||
+              toolRunSegment.requiresUserAction
             if (messageIndex !== toolRunSegment.startIndex) {
               return isSegmentExpanded ? renderedMessage : null
             }

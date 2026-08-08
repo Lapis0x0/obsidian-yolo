@@ -490,8 +490,8 @@ describe('AssistantToolMessageGroupItem', () => {
       toolCalls: calls.map((call, index) => ({
         request: { id: `${id}-call-${index}`, name: call.name },
         response:
-          call.status === ToolCallResponseStatus.PendingApproval
-            ? { status: ToolCallResponseStatus.PendingApproval }
+          call.status && call.status !== ToolCallResponseStatus.Success
+            ? { status: call.status }
             : {
                 status: ToolCallResponseStatus.Success,
                 data: { type: 'text', text: 'ok' },
@@ -550,16 +550,20 @@ describe('AssistantToolMessageGroupItem', () => {
           {...baseProps}
           messages={[
             reasoningOnlyMessage,
-            buildToolMessage('tool-1', [{ name: 'yolo_local__fs_read' }]),
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__fs_read' },
+              { name: 'yolo_local__fs_list' },
+            ]),
             finalAssistantMessage,
           ]}
         />,
       )
 
-      // 1 tool call + 1 thinking block reaches the fold threshold; the
-      // summary counts only the tool call.
+      // The thinking block is folded into the run but does not count as a
+      // tool call toward the two-call threshold.
       expect(html).toContain('yolo-tool-run-summary')
       expect(html).toContain('Read 1 file(s)')
+      expect(html).toContain('Searched 1 time(s)')
     })
 
     it('folds the answer message thinking block into the preceding collapsed run', () => {
@@ -587,7 +591,7 @@ describe('AssistantToolMessageGroupItem', () => {
       expect(mockedAssistantMessageReasoning).not.toHaveBeenCalled()
     })
 
-    it('keeps the trailing tool run expanded while no answer follows', () => {
+    it('summarizes a settled trailing tool run even while no answer follows', () => {
       const html = renderToStaticMarkup(
         <AssistantToolMessageGroupItem
           {...baseProps}
@@ -601,10 +605,11 @@ describe('AssistantToolMessageGroupItem', () => {
         />,
       )
 
-      expect(html).not.toContain('yolo-tool-run-summary')
+      expect(html).toContain('yolo-tool-run-summary')
+      expect(html).toContain('aria-expanded="false"')
     })
 
-    it('never collapses a run containing a pending approval', () => {
+    it('keeps an active run expanded beneath its summary for pending approval', () => {
       const html = renderToStaticMarkup(
         <AssistantToolMessageGroupItem
           {...baseProps}
@@ -622,7 +627,26 @@ describe('AssistantToolMessageGroupItem', () => {
         />,
       )
 
-      expect(html).not.toContain('yolo-tool-run-summary')
+      expect(html).toContain('yolo-tool-run-summary')
+      expect(html).toContain('aria-expanded="true"')
+    })
+
+    it('keeps an ordinary running tool run collapsed by default', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__bash', status: ToolCallResponseStatus.Running },
+              { name: 'yolo_local__js_eval', status: ToolCallResponseStatus.Running },
+            ]),
+          ]}
+        />,
+      )
+
+      expect(html).toContain('yolo-tool-run-summary')
+      expect(html).toContain('aria-expanded="false"')
     })
   })
 })
