@@ -75,9 +75,8 @@ type SelectionChatControllerDeps = {
       initialMentionables?: Mentionable[]
       initialMode?: QuickAskLaunchMode
       initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      isRewriteEntry?: boolean
       autoSend?: boolean
       initialAssistantId?: string
     },
@@ -145,9 +144,8 @@ export class SelectionChatController {
       initialMentionables?: Mentionable[]
       initialMode?: QuickAskLaunchMode
       initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      isRewriteEntry?: boolean
       autoSend?: boolean
       initialAssistantId?: string
     },
@@ -1310,13 +1308,12 @@ export class SelectionChatController {
     }
 
     this.showQuickAskWithOptions(editor, editorView, {
-      initialMode: 'edit',
+      initialMode: 'ask',
       initialPrompt: behavior === 'preset' ? prompt : undefined,
       initialInput: behavior === 'custom' ? prompt : undefined,
       initialMentionables: [mentionable],
-      editContextText: resolvedSnapshot.editContextText,
-      editSelectionFrom: resolvedSnapshot.selectionFrom,
       selectionScope: this.createSelectionScope(mentionable, resolvedSnapshot),
+      isRewriteEntry: true,
       autoSend: behavior === 'preset',
       initialAssistantId: assistantId,
     })

@@ -2280,22 +2280,12 @@ export const zh: TranslationKeys = {
     noModelConfigured: '未配置聊天模型，请前往设置添加模型。',
     copied: '已复制到剪贴板',
     inserted: '已插入到光标位置',
-    // Mode select
-    modeAsk: '问答',
-    modeEdit: '编辑',
-    modeEditDirect: '编辑（完全访问）',
-    modeAskDesc: '提问并获取回答',
-    modeEditDesc: '编辑当前文档',
-    modeEditDirectDesc: '直接编辑文档，无需确认',
-    editNoFile: '请先打开一个文件',
-    editNoChanges: '模型未返回有效的编辑内容',
+    rewriteSelectionExpired: '选区已失效，请重新选择文本。',
     editPartialSuccess:
       '已应用 {appliedCount}/{totalEdits} 个编辑，详情请查看控制台',
-    editApplied: '成功应用了 {appliedCount} 个编辑到 {fileName}',
     statusRequesting: '请求中...',
     statusThinking: '思考中...',
     statusGenerating: '生成中...',
-    statusModifying: '修改中...',
   },
 
   chatMode: {

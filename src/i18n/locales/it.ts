@@ -2293,22 +2293,13 @@ export const it: DeepPartial<TranslationKeys> = {
     error: 'Impossibile generare la risposta',
     copied: 'Copiato negli appunti',
     inserted: 'Inserito al cursore',
-    modeAsk: 'Chiedi',
-    modeEdit: 'Modifica',
-    modeEditDirect: 'Modifica (Accesso completo)',
-    modeAskDesc: 'Fai domande e ottieni risposte',
-    modeEditDesc: 'Modifica il documento corrente',
-    modeEditDirectDesc: 'Modifica il documento direttamente senza conferma',
-    editNoFile: 'Apri prima un file',
-    editNoChanges: 'Nessuna modifica valida restituita dal modello',
+    rewriteSelectionExpired:
+      'La selezione non è più disponibile. Seleziona nuovamente il testo.',
     editPartialSuccess:
       'Applicate {appliedCount} di {totalEdits} modifiche. Controlla la console per i dettagli.',
-    editApplied:
-      'Applicate con successo {appliedCount} modifica/modifiche a {fileName}',
     statusRequesting: 'Richiesta in corso...',
     statusThinking: 'Sto pensando...',
     statusGenerating: 'Sto generando...',
-    statusModifying: 'Sto modificando...',
   },
 
   chatMode: {

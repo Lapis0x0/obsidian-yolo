@@ -48,9 +48,8 @@ type QuickAskOverlayOptions = {
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
   initialInput?: string
-  editContextText?: string
-  editSelectionFrom?: { line: number; ch: number }
   selectionScope?: QuickAskSelectionScope
+  isRewriteEntry?: boolean
   autoSend?: boolean
   initialAssistantId?: string
   onClose: () => void
@@ -258,9 +257,8 @@ export class QuickAskOverlay {
                         initialMentionables={this.options.initialMentionables}
                         initialMode={this.options.initialMode}
                         initialInput={this.options.initialInput}
-                        editContextText={this.options.editContextText}
-                        editSelectionFrom={this.options.editSelectionFrom}
                         selectionScope={this.options.selectionScope}
+                        isRewriteEntry={this.options.isRewriteEntry}
                         autoSend={this.options.autoSend}
                         initialAssistantId={this.options.initialAssistantId}
                         onClose={this.closeWithAnimation}

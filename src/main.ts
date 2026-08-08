@@ -770,8 +770,6 @@ export default class YoloPlugin extends Plugin {
 
     return {
       initialMentionables: [mentionable],
-      editContextText: selectedText,
-      editSelectionFrom: editor.getCursor('from'),
       selectionScope: {
         mentionable,
         selectionFrom: editor.getCursor('from'),
@@ -800,9 +798,8 @@ export default class YoloPlugin extends Plugin {
       initialMentionables?: Mentionable[]
       initialMode?: QuickAskLaunchMode
       initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      isRewriteEntry?: boolean
       autoSend?: boolean
       initialAssistantId?: string
     },

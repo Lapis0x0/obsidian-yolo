@@ -527,45 +527,6 @@
   font-size: var(--font-ui-small);
 }
 
-.yolo-quick-ask-run-status {
-  position: absolute;
-  left: 6px;
-  bottom: 2px;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: color-mix(in srgb, var(--text-muted) 88%, transparent);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.2;
-  pointer-events: none;
-}
-
-.yolo-quick-ask-input.is-disabled .yolo-quick-ask-run-status {
-  position: static;
-  padding: 12px 6px 2px;
-}
-
-.yolo-quick-ask-run-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: var(--interactive-accent);
-  opacity: 0.9;
-  animation: yolo-quick-ask-status-pulse 1.4s ease-in-out infinite;
-}
-
-@keyframes yolo-quick-ask-status-pulse {
-  0% {
-    opacity: 0.25;
-  }
-  50% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0.25;
-  }
-}
-
 .yolo-quick-ask-header-actions {
   position: absolute;
   top: 7px;

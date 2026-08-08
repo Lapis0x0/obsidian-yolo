@@ -2085,21 +2085,11 @@ export type TranslationKeys = {
     noModelConfigured?: string
     copied?: string
     inserted?: string
-    // Mode select
-    modeAsk?: string
-    modeEdit?: string
-    modeEditDirect?: string
-    modeAskDesc?: string
-    modeEditDesc?: string
-    modeEditDirectDesc?: string
-    editNoFile?: string
-    editNoChanges?: string
+    rewriteSelectionExpired?: string
     editPartialSuccess?: string
-    editApplied?: string
     statusRequesting?: string
     statusThinking?: string
     statusGenerating?: string
-    statusModifying?: string
   }
 
   // Chat Mode Select

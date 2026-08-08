@@ -2433,22 +2433,13 @@ export const en: TranslationKeys = {
       'No chat model configured. Please add a model in settings.',
     copied: 'Copied to clipboard',
     inserted: 'Inserted at cursor',
-    // Mode select
-    modeAsk: 'Ask',
-    modeEdit: 'Edit',
-    modeEditDirect: 'Edit (full access)',
-    modeAskDesc: 'Ask questions and get answers',
-    modeEditDesc: 'Edit the current document',
-    modeEditDirectDesc: 'Edit document directly without confirmation',
-    editNoFile: 'Please open a file first',
-    editNoChanges: 'No valid changes returned by model',
+    rewriteSelectionExpired:
+      'Selection is no longer available. Please reselect the text.',
     editPartialSuccess:
       'Applied {appliedCount} of {totalEdits} edits. Check console for details.',
-    editApplied: 'Successfully applied {appliedCount} edit(s) to {fileName}',
     statusRequesting: 'Requesting...',
     statusThinking: 'Thinking...',
     statusGenerating: 'Generating...',
-    statusModifying: 'Modifying...',
   },
 
   chatMode: {

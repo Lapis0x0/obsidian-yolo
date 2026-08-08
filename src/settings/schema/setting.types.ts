@@ -641,7 +641,11 @@ export const yoloSettingsSchema = z.object({
       enableQuickAsk: z.boolean().optional(),
       // trigger character for quick ask (default: @)
       quickAskTrigger: z.string().optional(),
-      // quick ask mode: support legacy ask/edit values and current chat/agent values
+      // Quick Ask mode. The UI only ever persists 'ask'/'agent' — 'edit' and
+      // 'edit-direct' are kept here only so a leftover legacy value in an old
+      // data.json doesn't fail this whole continuationOptions object's
+      // validation (see the single .catch() below). Callers normalize any
+      // non-'agent' value, including these legacy ones, to 'ask'.
       quickAskMode: z.enum(['ask', 'edit', 'edit-direct', 'agent']).optional(),
       // auto dock quick ask to editor top right after sending
       quickAskAutoDockToTopRight: z.boolean().optional(),

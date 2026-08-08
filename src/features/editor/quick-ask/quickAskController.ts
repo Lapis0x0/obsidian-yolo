@@ -34,9 +34,8 @@ type QuickAskWidgetPayload = {
     initialMentionables?: Mentionable[]
     initialMode?: QuickAskLaunchMode
     initialInput?: string
-    editContextText?: string
-    editSelectionFrom?: { line: number; ch: number }
     selectionScope?: QuickAskSelectionScope
+    isRewriteEntry?: boolean
     selectionAnchor?: { from: number; to: number }
     autoSend?: boolean
     initialAssistantId?: string
@@ -262,9 +261,8 @@ export class QuickAskController {
     const initialMentionables = options?.initialMentionables
     const initialMode = options?.initialMode
     const initialInput = options?.initialInput
-    const editContextText = options?.editContextText
-    const editSelectionFrom = options?.editSelectionFrom
     const selectionScope = options?.selectionScope
+    const isRewriteEntry = options?.isRewriteEntry
     const autoSend = options?.autoSend
     const initialAssistantId = options?.initialAssistantId
 
@@ -326,9 +324,8 @@ export class QuickAskController {
             initialMentionables,
             initialMode,
             initialInput,
-            editContextText,
-            editSelectionFrom,
             selectionScope,
+            isRewriteEntry,
             selectionAnchor,
             autoSend,
             initialAssistantId,

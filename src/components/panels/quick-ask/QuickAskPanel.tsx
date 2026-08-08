@@ -38,7 +38,6 @@ import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
 import {
   AssistantToolMessageGroup,
-  ChatAssistantMessage,
   ChatMessage,
   ChatSelectedSkill,
   ChatToolMessage,
@@ -49,7 +48,6 @@ import { Mentionable, MentionableBlock } from '../../../types/mentionable'
 import type { ToolCallResponse } from '../../../types/tool-call.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
-import { generateEditPlan } from '../../../utils/chat/editMode'
 import {
   getMentionableKey,
   serializeMentionable,
@@ -81,8 +79,6 @@ import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { ModeSelect, QuickAskMode } from './ModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
-type QuickAskExecutionMode = QuickAskMode | 'edit' | 'edit-direct'
-
 const quickAskRenderVersionObjectIds = new WeakMap<object, number>()
 let nextQuickAskRenderVersionObjectId = 1
 
@@ -102,20 +98,13 @@ function getQuickAskRenderVersionObjectId(
   return id
 }
 
-function normalizeQuickAskVisibleMode(
-  mode?: QuickAskLaunchMode | null,
-): QuickAskMode {
+// Accepts loosely-typed input (not just QuickAskLaunchMode) because it also
+// normalizes settings.continuationOptions.quickAskMode, whose zod schema
+// still accepts legacy 'edit'/'edit-direct' values from old data.json files
+// (see setting.types.ts) so that reading a leftover value there doesn't fail
+// the whole continuationOptions object's validation.
+function normalizeQuickAskVisibleMode(mode?: string | null): QuickAskMode {
   return mode === 'agent' ? 'agent' : 'ask'
-}
-
-function normalizeQuickAskExecutionMode(
-  mode?: QuickAskLaunchMode | null,
-): QuickAskExecutionMode {
-  if (mode === 'agent' || mode === 'edit' || mode === 'edit-direct') {
-    return mode
-  }
-
-  return 'ask'
 }
 
 function getSelectionMentionable(
@@ -129,36 +118,12 @@ function getSelectionMentionable(
   )
 }
 
-function getSelectionEndPosition(
-  from: { line: number; ch: number },
-  text: string,
-): { line: number; ch: number } {
-  const lines = text.split('\n')
-  if (lines.length <= 1) {
-    return {
-      line: from.line,
-      ch: from.ch + text.length,
-    }
-  }
-  return {
-    line: from.line + lines.length - 1,
-    ch: lines[lines.length - 1]?.length ?? 0,
-  }
-}
-
-type QuickAskRunStatus =
-  | 'requesting'
-  | 'thinking'
-  | 'generating'
-  | 'modifying'
-  | null
 
 /**
  * QuickAskPanel props use a capabilities discriminated union so that
- * edit-mode props (editor, view, editContextText, editSelectionFrom,
- * selectionScope) are only accessible when capabilities.edit === true.
- * This lets TypeScript enforce that PDF paths cannot accidentally invoke
- * editor methods.
+ * edit-only props (editor, view, selectionScope) are only accessible when
+ * capabilities.edit === true. This lets TypeScript enforce that PDF paths
+ * cannot accidentally invoke editor methods.
  */
 type QuickAskPanelPropsBase = {
   plugin: YoloPlugin
@@ -171,6 +136,11 @@ type QuickAskPanelPropsBase = {
   initialInput?: string
   autoSend?: boolean
   initialAssistantId?: string
+  /**
+   * One-shot rewrite entry (see QuickAskShowOptions.isRewriteEntry). Ignored
+   * when capabilities.edit is false (PDF has no editor to rewrite into).
+   */
+  isRewriteEntry?: boolean
   onClose: () => void
   messageInputRef?: React.RefObject<MessageInputCoreRef>
   containerRef?: React.RefObject<HTMLDivElement>
@@ -185,8 +155,6 @@ type QuickAskPanelProps =
       capabilities: { edit: true }
       editor: Editor
       view: EditorView
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
     })
   | (QuickAskPanelPropsBase & {
@@ -209,6 +177,7 @@ export function QuickAskPanel({
   initialInput,
   autoSend,
   initialAssistantId,
+  isRewriteEntry,
   onClose,
   messageInputRef: externalMessageInputRef,
   containerRef,
@@ -218,13 +187,6 @@ export function QuickAskPanel({
   onDockToTopRight,
   ...editProps
 }: QuickAskPanelProps) {
-  const editContextText = capabilities.edit
-    ? (editProps as { editContextText?: string }).editContextText
-    : undefined
-  const editSelectionFrom = capabilities.edit
-    ? (editProps as { editSelectionFrom?: { line: number; ch: number } })
-        .editSelectionFrom
-    : undefined
   const selectionScope = capabilities.edit
     ? (editProps as { selectionScope?: QuickAskSelectionScope }).selectionScope
     : undefined
@@ -276,7 +238,6 @@ export function QuickAskPanel({
       selectionHighlightController.updateVisualByOwner('quickask', 'selection')
     }
   }, [isStreaming])
-  const [runStatus, setRunStatus] = useState<QuickAskRunStatus>(null)
   const [isAssistantMenuOpen, setIsAssistantMenuOpen] = useState(false)
   const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
   const [isModeMenuOpen, setIsModeMenuOpen] = useState(false)
@@ -329,20 +290,10 @@ export function QuickAskPanel({
       initialMode ?? settings.continuationOptions?.quickAskMode,
     ),
   )
-  const [executionMode, setExecutionMode] = useState<QuickAskExecutionMode>(
-    () => {
-      const resolved = normalizeQuickAskExecutionMode(
-        initialMode ?? settings.continuationOptions?.quickAskMode,
-      )
-      // PDF path: edit modes are unavailable; fall back to 'ask'
-      if (
-        !capabilities.edit &&
-        (resolved === 'edit' || resolved === 'edit-direct')
-      ) {
-        return 'ask'
-      }
-      return resolved
-    },
+  // One-shot rewrite entry (see QuickAskShowOptions.isRewriteEntry). PDF
+  // panels have no editor to rewrite into, so the entry never applies there.
+  const [isRewriteIntent, setIsRewriteIntent] = useState<boolean>(
+    () => capabilities.edit && Boolean(isRewriteEntry),
   )
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
@@ -372,18 +323,9 @@ export function QuickAskPanel({
   useEffect(() => {
     if (initialMode) {
       setMode(normalizeQuickAskVisibleMode(initialMode))
-      const resolved = normalizeQuickAskExecutionMode(initialMode)
-      // PDF path: edit modes are unavailable; fall back to 'ask'
-      if (
-        !capabilities.edit &&
-        (resolved === 'edit' || resolved === 'edit-direct')
-      ) {
-        setExecutionMode('ask')
-      } else {
-        setExecutionMode(resolved)
-      }
     }
-  }, [capabilities.edit, initialMode])
+    setIsRewriteIntent(capabilities.edit && Boolean(isRewriteEntry))
+  }, [capabilities.edit, initialMode, isRewriteEntry])
 
   useEffect(() => {
     setMentionables(initialMentionables ?? [])
@@ -424,26 +366,15 @@ export function QuickAskPanel({
   } | null>(null)
   const compactMinHeightRef = useRef<number | null>(null)
   const selectionMentionable = activeSelectionScope?.mentionable ?? null
-  const selectionEditContextText =
-    activeSelectionScope?.mentionable.content ?? editContextText ?? ''
-  const selectionEditFrom =
-    activeSelectionScope?.selectionFrom ?? editSelectionFrom
-  const hasScopedSelectionForEdit =
-    selectionEditContextText.trim().length > 0 && !!selectionEditFrom
-  const isTemporaryRewriteMode =
-    (executionMode === 'edit' || executionMode === 'edit-direct') &&
-    hasScopedSelectionForEdit
+  const selectionRewriteContextText =
+    activeSelectionScope?.mentionable.content ?? ''
+  const selectionRewriteFrom = activeSelectionScope?.selectionFrom
+  const hasScopedSelectionForRewrite =
+    selectionRewriteContextText.trim().length > 0 && !!selectionRewriteFrom
+  const isTemporaryRewriteMode = isRewriteIntent && hasScopedSelectionForRewrite
   const modeTriggerLabel = isTemporaryRewriteMode
     ? t('chatMode.rewrite', '改写')
     : undefined
-  const buildEditInstruction = useCallback(
-    (instruction: string) => {
-      const context = selectionEditContextText.trim()
-      if (!context) return instruction
-      return `${instruction}\n\nOnly modify the selected context below. Do not change other parts.\nSelected context:\n${context}`
-    },
-    [selectionEditContextText],
-  )
 
   useLayoutEffect(() => {
     if (
@@ -466,53 +397,6 @@ export function QuickAskPanel({
     }
     return app.workspace.getActiveFile()
   }, [app, sourceFilePath])
-
-  const deriveAskRunStatus = useCallback(
-    (
-      messages: ChatMessage[],
-    ): Exclude<QuickAskRunStatus, 'modifying' | null> => {
-      const lastAssistantMessage = [...messages]
-        .reverse()
-        .find((message): message is ChatAssistantMessage => {
-          return message.role === 'assistant'
-        })
-
-      if (!lastAssistantMessage) {
-        return 'requesting'
-      }
-
-      if (lastAssistantMessage.content.trim().length > 0) {
-        return 'generating'
-      }
-
-      if (lastAssistantMessage.reasoning?.trim().length) {
-        return 'thinking'
-      }
-
-      return 'requesting'
-    },
-    [],
-  )
-
-  const runStatusLabel = useMemo(() => {
-    if (!runStatus) return null
-    if (runStatus === 'requesting') {
-      return t('quickAsk.statusRequesting', 'Requesting...')
-    }
-    if (runStatus === 'thinking') {
-      return t('quickAsk.statusThinking', 'Thinking...')
-    }
-    if (runStatus === 'generating') {
-      return t('quickAsk.statusGenerating', 'Generating...')
-    }
-    return t('quickAsk.statusModifying', 'Modifying...')
-  }, [runStatus, t])
-
-  const shouldShowInlineRunStatus =
-    isStreaming &&
-    !!runStatusLabel &&
-    executionMode !== 'agent' &&
-    executionMode !== 'ask'
 
   const allSkillEntries = useLiteSkillEntries(app, { settings })
   const availableSkills = useMemo(() => {
@@ -606,7 +490,7 @@ export function QuickAskPanel({
         systemPrompt: combinedSystemPrompt,
       },
       {
-        includeSkills: executionMode === 'agent' || executionMode === 'ask',
+        includeSkills: mode === 'agent' || mode === 'ask',
         systemPromptSnapshotStore: plugin
           .getAgentService()
           .getSystemPromptSnapshotStore(),
@@ -619,7 +503,7 @@ export function QuickAskPanel({
             .setWatchedPaths(paths),
       },
     )
-  }, [app, executionMode, selectedAssistant, settings, plugin])
+  }, [app, mode, selectedAssistant, settings, plugin])
 
   const editorSnapshotInjection =
     useMemo<EditorSnapshotInjection | null>(() => {
@@ -779,150 +663,6 @@ export function QuickAskPanel({
   const providerClient = modelClient?.providerClient
   const model = modelClient?.model
 
-  const readEditBaseContent = useCallback(
-    async (targetFilePath?: string): Promise<string> => {
-      // This callback is only called in edit mode where _editor is an Editor.
-      if (!capabilities.edit || !_editor) return ''
-      const activeFilePath = app.workspace.getActiveFile()?.path
-      if (
-        targetFilePath &&
-        (targetFilePath === sourceFilePath || targetFilePath === activeFilePath)
-      ) {
-        return _editor.getValue()
-      }
-      const fallbackFile = targetFilePath
-        ? app.vault.getFileByPath(targetFilePath)
-        : null
-      if (!fallbackFile) {
-        return _editor.getValue()
-      }
-      return readTFileContent(fallbackFile, app.vault)
-    },
-
-    [capabilities.edit, _editor, app, sourceFilePath],
-  )
-
-  const buildSelectionScopedContent = useCallback(
-    ({
-      currentContent,
-      selectedContext,
-      selectionFrom,
-    }: {
-      currentContent: string
-      selectedContext: string
-      selectionFrom?: { line: number; ch: number }
-    }): {
-      editSourceText: string
-      finalContent: string
-    } => {
-      if (!selectionFrom || selectedContext.trim().length === 0) {
-        return {
-          editSourceText: currentContent,
-          finalContent: currentContent,
-        }
-      }
-
-      // This callback is only reached in edit mode where _editor is an Editor.
-      if (!capabilities.edit || !_editor) {
-        return { editSourceText: currentContent, finalContent: currentContent }
-      }
-
-      const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
-      const tail = currentContent.slice(head.length + selectedContext.length)
-
-      return {
-        editSourceText: selectedContext,
-        finalContent: head + selectedContext + tail,
-      }
-    },
-
-    [capabilities.edit, _editor],
-  )
-
-  const generatePlannedEdit = useCallback(
-    async ({
-      instruction,
-      targetFile,
-      scopedToSelection,
-    }: {
-      instruction: string
-      targetFile: ReturnType<typeof resolveEditTargetFile>
-      scopedToSelection: boolean
-    }) => {
-      if (!targetFile || !providerClient || !model) {
-        return null
-      }
-
-      const currentContent = await readEditBaseContent(targetFile.path)
-      const selectedContext = selectionEditContextText
-      const selectionFrom = scopedToSelection ? selectionEditFrom : undefined
-      const scopedContent = buildSelectionScopedContent({
-        currentContent,
-        selectedContext,
-        selectionFrom,
-      })
-
-      const plan = await generateEditPlan({
-        instruction,
-        currentFile: targetFile,
-        currentFileContent: scopedContent.editSourceText,
-        scopedToSelection,
-        providerClient,
-        model,
-      })
-
-      if (!plan) {
-        return {
-          currentContent,
-          scopedSourceText: scopedContent.editSourceText,
-          scopedToSelection,
-          selectionFrom,
-          selectedContext,
-          materialized: null,
-        }
-      }
-
-      const materialized = materializeTextEditPlan({
-        content: scopedContent.editSourceText,
-        plan,
-      })
-
-      // generatePlannedEdit is only called in edit mode where _editor is Editor.
-      const finalContent =
-        selectionFrom && capabilities.edit && _editor
-          ? (() => {
-              const head = _editor.getRange({ line: 0, ch: 0 }, selectionFrom)
-              const tail = currentContent.slice(
-                head.length + scopedContent.editSourceText.length,
-              )
-              return head + materialized.newContent + tail
-            })()
-          : materialized.newContent
-
-      return {
-        currentContent,
-        scopedSourceText: scopedContent.editSourceText,
-        scopedToSelection,
-        selectionFrom,
-        selectedContext,
-        materialized: {
-          ...materialized,
-          finalContent,
-        },
-      }
-    },
-    [
-      capabilities.edit,
-      _editor,
-      buildSelectionScopedContent,
-      selectionEditContextText,
-      selectionEditFrom,
-      model,
-      providerClient,
-      readEditBaseContent,
-    ],
-  )
-
   useEffect(() => {
     if (hasDockedRef.current) return
     if (!enableAutoDock) return
@@ -939,7 +679,6 @@ export function QuickAskPanel({
     }
     plugin.getAgentService().abortConversation(conversationId)
     setIsStreaming(false)
-    setRunStatus(null)
   }, [conversationId, plugin])
 
   // Submit message
@@ -980,7 +719,6 @@ export function QuickAskPanel({
       }
 
       setIsStreaming(true)
-      setRunStatus('requesting')
       setInputText('')
       forceScrollToBottom()
 
@@ -1041,7 +779,6 @@ export function QuickAskPanel({
         // have already replaced the controller while we were compiling.
         if (abortControllerRef.current === abortController) {
           setIsStreaming(false)
-          setRunStatus(null)
           abortControllerRef.current = null
         }
         return
@@ -1071,7 +808,7 @@ export function QuickAskPanel({
       try {
         const mcpManager = await getMcpManager()
 
-        const isAgentMode = executionMode === 'agent'
+        const isAgentMode = mode === 'agent'
         const chatModeRuntime = resolveChatModeRuntime({
           mode: isAgentMode ? 'agent' : 'ask',
           assistant: selectedAssistant,
@@ -1095,7 +832,6 @@ export function QuickAskPanel({
         unsubscribeRunner = agentService.subscribe(
           conversationId,
           (state) => {
-            setRunStatus(deriveAskRunStatus(state.messages))
             setChatMessages(state.messages)
           },
           { emitCurrent: false },
@@ -1155,7 +891,6 @@ export function QuickAskPanel({
           unsubscribeRunner()
         }
         setIsStreaming(false)
-        setRunStatus(null)
         abortControllerRef.current = null
       }
     },
@@ -1163,13 +898,12 @@ export function QuickAskPanel({
       chatMessages,
       conversationId,
       createOrUpdateConversationImmediately,
-      deriveAskRunStatus,
       generateConversationTitle,
       getMcpManager,
       isStreaming,
       mentionables,
       selectedSkills,
-      executionMode,
+      mode,
       forceScrollToBottom,
       model,
       plugin,
@@ -1388,9 +1122,13 @@ export function QuickAskPanel({
     [activeApplyRequestKey, app, isApplying, plugin, resolveEditTargetFile],
   )
 
-  // Submit edit mode - generate a text edit plan and open ApplyView
-  const submitEditMode = useCallback(
-    async (instruction: string) => {
+  // Submit a one-shot rewrite entry: hands off to
+  // plugin.startSelectionRewrite, scoped to the selection captured when the
+  // panel opened. If that selection is no longer valid (e.g. its mentionable
+  // chip was removed from the input), surface a Notice and keep the panel
+  // open rather than falling back to any whole-document edit.
+  const submitRewrite = useCallback(
+    (instruction: string) => {
       if (isStreaming) return
       if (!instruction.trim()) return
 
@@ -1404,137 +1142,38 @@ export function QuickAskPanel({
         return
       }
 
-      const targetFile = resolveEditTargetFile()
-      if (!targetFile) {
-        new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
-        return
-      }
-
       if (
-        capabilities.edit &&
-        _editor &&
-        _view &&
-        executionMode === 'edit' &&
-        hasScopedSelectionForEdit &&
-        selectionEditFrom
+        !capabilities.edit ||
+        !_editor ||
+        !_view ||
+        !hasScopedSelectionForRewrite ||
+        !selectionRewriteFrom
       ) {
-        if (selectionRewriteStartedRef.current) return
-        selectionRewriteStartedRef.current = true
-        const from = _editor.posToOffset(selectionEditFrom)
-        plugin.startSelectionRewrite({
-          view: _view,
-          from,
-          to: from + selectionEditContextText.length,
-          selectedText: selectionEditContextText,
-          instruction: instruction.trim(),
-          providerClient,
-          model,
-          settings,
-        })
-        selectionHighlightController.clearByOwner('quickask')
-        onClose()
+        new Notice(
+          t('quickAsk.rewriteSelectionExpired', '选区已失效，请重新选择文本。'),
+        )
         return
       }
 
-      const resolvedInstruction = buildEditInstruction(instruction.trim())
-
-      setIsStreaming(true)
-      setRunStatus('requesting')
-
-      messageInputRef.current?.replaceText('')
-      latestEditorStateRef.current = null
-      setInputText('')
-      setSelectedSkills([])
-
-      let closedForReview = false
-      try {
-        const scopedToSelection =
-          executionMode === 'edit' && hasScopedSelectionForEdit
-
-        const editResult = await generatePlannedEdit({
-          instruction: resolvedInstruction,
-          targetFile,
-          scopedToSelection,
-        })
-
-        setRunStatus('modifying')
-
-        if (!editResult?.materialized) {
-          new Notice(
-            t('quickAsk.editNoChanges', 'No valid changes returned by model'),
-          )
-          return
-        }
-
-        const { materialized, currentContent, selectionFrom, selectedContext } =
-          editResult
-        const { errors, appliedCount, totalOperations, finalContent } =
-          materialized
-
-        if (appliedCount === 0) {
-          console.error('[QuickAsk Edit] Edit plan did not produce changes.', {
-            filePath: targetFile.path,
-            operationCount: totalOperations,
-            appliedCount,
-            errors,
-          })
-          new Notice(
-            t(
-              'quickAsk.editNoChanges',
-              'Could not apply any changes. The model output may not match the document.',
-            ),
-          )
-          return
-        }
-
-        if (errors.length > 0) {
-          console.warn('Some planned edits failed:', errors)
-        }
-
-        // Close Quick Ask before opening review to avoid layout jump.
-        // Tear down the QuickAsk-owned selection highlight *synchronously*
-        // here, instead of relying on the controller's local close (which
-        // runs ~200ms later, after the close animation). Otherwise the
-        // pending shimmer keeps painting over the selection through the
-        // review and stays visible after the user rejects the diff, because
-        // the review layer never touches owner='quickask' entries.
-        selectionHighlightController.clearByOwner('quickask')
-        setIsStreaming(false)
-        setRunStatus(null)
-        closedForReview = true
-        onClose()
-
-        await plugin.openApplyReview({
-          file: targetFile,
-          originalContent: currentContent,
-          newContent: finalContent,
-          reviewEdits: selectionFrom ? undefined : materialized.reviewEdits,
-          reviewMode:
-            scopedToSelection && selectionFrom ? 'selection-focus' : undefined,
-          selectionRange:
-            scopedToSelection && selectionFrom
-              ? {
-                  from: selectionFrom,
-                  to: getSelectionEndPosition(selectionFrom, selectedContext),
-                }
-              : undefined,
-        } satisfies ApplyViewState)
-      } catch (error) {
-        console.error('Edit mode failed:', error)
-        new Notice(t('quickAsk.error', 'Failed to generate edits'))
-      } finally {
-        if (!closedForReview) {
-          setIsStreaming(false)
-          setRunStatus(null)
-        }
-      }
+      if (selectionRewriteStartedRef.current) return
+      selectionRewriteStartedRef.current = true
+      const from = _editor.posToOffset(selectionRewriteFrom)
+      plugin.startSelectionRewrite({
+        view: _view,
+        from,
+        to: from + selectionRewriteContextText.length,
+        selectedText: selectionRewriteContextText,
+        instruction: instruction.trim(),
+        providerClient,
+        model,
+        settings,
+      })
+      selectionHighlightController.clearByOwner('quickask')
+      onClose()
     },
     [
-      buildEditInstruction,
       capabilities.edit,
-      executionMode,
-      generatePlannedEdit,
-      hasScopedSelectionForEdit,
+      hasScopedSelectionForRewrite,
       isStreaming,
       _editor,
       _view,
@@ -1542,129 +1181,9 @@ export function QuickAskPanel({
       onClose,
       plugin,
       providerClient,
-      resolveEditTargetFile,
-      selectionEditContextText,
-      selectionEditFrom,
+      selectionRewriteContextText,
+      selectionRewriteFrom,
       settings,
-      t,
-    ],
-  )
-
-  // Submit edit-direct mode - generate and apply edits directly without confirmation
-  const submitEditDirect = useCallback(
-    async (instruction: string) => {
-      if (isStreaming) return
-      if (!instruction.trim()) return
-
-      if (!providerClient || !model) {
-        new Notice(
-          t(
-            'quickAsk.noModelConfigured',
-            'No chat model configured. Please add a model in settings.',
-          ),
-        )
-        return
-      }
-
-      const resolvedInstruction = buildEditInstruction(instruction.trim())
-
-      const targetFile = resolveEditTargetFile()
-      if (!targetFile) {
-        new Notice(t('quickAsk.editNoFile', 'Please open a file first'))
-        return
-      }
-
-      setIsStreaming(true)
-      setRunStatus('requesting')
-
-      messageInputRef.current?.replaceText('')
-      latestEditorStateRef.current = null
-      setInputText('')
-      setSelectedSkills([])
-
-      try {
-        const scopedToSelection =
-          executionMode === 'edit-direct' && hasScopedSelectionForEdit
-
-        const editResult = await generatePlannedEdit({
-          instruction: resolvedInstruction,
-          targetFile,
-          scopedToSelection,
-        })
-
-        setRunStatus('modifying')
-
-        if (!editResult?.materialized) {
-          new Notice(
-            t('quickAsk.editNoChanges', 'No valid changes returned by model'),
-          )
-          return
-        }
-
-        const { materialized } = editResult
-        const { errors, appliedCount, totalOperations, finalContent } =
-          materialized
-
-        if (appliedCount === 0) {
-          console.error(
-            '[QuickAsk Edit-Direct] Edit plan did not produce changes.',
-            {
-              filePath: targetFile.path,
-              operationCount: totalOperations,
-              appliedCount,
-              errors,
-            },
-          )
-          new Notice(
-            t(
-              'quickAsk.editNoChanges',
-              'Could not apply any changes. The model output may not match the document.',
-            ),
-          )
-          return
-        }
-
-        if (errors.length > 0) {
-          console.warn('Some edits failed:', errors)
-          const partialMessage = t(
-            'quickAsk.editPartialSuccess',
-            `Applied {appliedCount} of {totalEdits} edits. Check console for details.`,
-          )
-            .replace('{appliedCount}', String(appliedCount))
-            .replace('{totalEdits}', String(totalOperations))
-          new Notice(partialMessage)
-        }
-
-        // Apply changes directly to file
-        await app.vault.modify(targetFile, finalContent)
-
-        const successMessage = t(
-          'quickAsk.editApplied',
-          `Successfully applied {appliedCount} edit(s) to {fileName}`,
-        )
-          .replace('{appliedCount}', String(appliedCount))
-          .replace('{fileName}', targetFile.name)
-        new Notice(successMessage)
-
-        // Close Quick Ask
-        onClose()
-      } catch (error) {
-        console.error('Edit-direct mode failed:', error)
-        new Notice(t('quickAsk.error', 'Failed to apply edits'))
-      } finally {
-        setIsStreaming(false)
-        setRunStatus(null)
-      }
-    },
-    [
-      app,
-      buildEditInstruction,
-      executionMode,
-      generatePlannedEdit,
-      hasScopedSelectionForEdit,
-      isStreaming,
-      onClose,
-      resolveEditTargetFile,
       t,
     ],
   )
@@ -1676,13 +1195,8 @@ export function QuickAskPanel({
 
     autoSendRef.current = true
 
-    if (executionMode === 'edit') {
-      void submitEditMode(prompt)
-      return
-    }
-
-    if (executionMode === 'edit-direct') {
-      void submitEditDirect(prompt)
+    if (isRewriteIntent) {
+      submitRewrite(prompt)
       return
     }
 
@@ -1703,17 +1217,18 @@ export function QuickAskPanel({
     initialMentionables,
     initialPrompt,
     mentionableUnitLabels,
-    executionMode,
-    submitEditDirect,
-    submitEditMode,
+    isRewriteIntent,
+    submitRewrite,
     submitMessage,
   ])
 
-  // Handle mode change
+  // Handle mode change — switching to Ask/Agent from the dropdown always
+  // exits a one-shot rewrite entry; the rewrite intent itself is never
+  // persisted to settings.
   const handleModeChange = useCallback(
     (newMode: QuickAskMode) => {
       setMode(newMode)
-      setExecutionMode(newMode)
+      setIsRewriteIntent(false)
       void setSettings({
         ...settings,
         continuationOptions: {
@@ -1737,16 +1252,13 @@ export function QuickAskPanel({
     const editorState = latestEditorStateRef.current
     if (!editorState) return
 
-    const textContent = editorStateToPlainText(editorState)
-
-    if (executionMode === 'edit') {
-      void submitEditMode(textContent)
-    } else if (executionMode === 'edit-direct') {
-      void submitEditDirect(textContent)
-    } else {
-      void submitMessage(editorState)
+    if (isRewriteIntent) {
+      submitRewrite(editorStateToPlainText(editorState))
+      return
     }
-  }, [executionMode, submitEditMode, submitEditDirect, submitMessage])
+
+    void submitMessage(editorState)
+  }, [isRewriteIntent, submitRewrite, submitMessage])
 
   // Open in sidebar
   const hasMessages = chatMessages.length > 0
@@ -2390,15 +1902,6 @@ export function QuickAskPanel({
                   {t('quickAsk.inputPlaceholder', 'Ask a question...')}
                 </div>
               )}
-            {shouldShowInlineRunStatus && (
-              <div className="yolo-quick-ask-run-status" aria-live="polite">
-                <span
-                  className="yolo-quick-ask-run-status-dot"
-                  aria-hidden="true"
-                />
-                <span>{runStatusLabel}</span>
-              </div>
-            )}
           </div>
         </div>
 
@@ -2593,7 +2096,7 @@ export function QuickAskPanel({
               onAbort={abortStream}
               disabled={
                 isStreaming ||
-                (executionMode === 'edit' || executionMode === 'edit-direct'
+                (isRewriteIntent
                   ? inputText.trim().length === 0
                   : !canSubmitMainInput)
               }
