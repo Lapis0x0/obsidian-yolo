@@ -849,7 +849,7 @@ export function getLocalFileTools(options?: {
           {
             name: BASH_TOOL_NAME,
             description:
-              'A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. You can use search, find, cat, sed, awk, pipes, xargs, etc. `search [-n N] "query" [path]` does semantic retrieval (hybrid RAG + keyword); prefer it for search tasks — it already covers keyword matching. Path writes: mkdir, mv, rm. Content writes are unavailable — use fs_edit or fs_write.',
+              'A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate `fs_read` tool — this shell has no read command. To search, use the `search [-n N] "query" [path]` command inside this shell (hybrid RAG + keyword retrieval). Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate `fs_edit` or `fs_write` tool instead.',
             inputSchema: {
               type: 'object',
               properties: {
