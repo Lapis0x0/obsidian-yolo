@@ -86,8 +86,16 @@ import {
 } from '../../settings/SmartSpaceQuickActionsSettings'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
-import { ModeSelect, QuickAskMode } from './ModeSelect'
+import {
+  ChatModeSelect,
+  type ChatModeSelectOptionValue,
+} from '../../chat-view/chat-input/ChatModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
+
+type QuickAskMode = Extract<
+  ChatModeSelectOptionValue,
+  'ask' | 'agent' | 'continue'
+>
 
 const quickAskRenderVersionObjectIds = new WeakMap<object, number>()
 let nextQuickAskRenderVersionObjectId = 1
@@ -312,6 +320,9 @@ export function QuickAskPanel({
       ),
     ),
   )
+  const [yoloEnabled, setYoloEnabled] = useState(
+    () => settings.chatOptions.agentYoloEnabled ?? false,
+  )
   // One-shot rewrite entry (see QuickAskShowOptions.isRewriteEntry). PDF
   // panels have no editor to rewrite into, so the entry never applies there.
   const [isRewriteIntent, setIsRewriteIntent] = useState<boolean>(
@@ -449,10 +460,6 @@ export function QuickAskPanel({
   // — mirrors the old Smart Space panel's quick-action click behavior.
   const isContinueMode = mode === 'continue' && capabilities.edit
   // PDF panels (capabilities.edit === false) have no editor to write into.
-  const modeSelectHiddenModes = useMemo<QuickAskMode[] | undefined>(
-    () => (capabilities.edit ? undefined : ['continue']),
-    [capabilities.edit],
-  )
   const continueQuickActions = useMemo(() => {
     if (!isContinueMode) return []
     const configured = settings.continuationOptions?.smartSpaceQuickActions
@@ -466,13 +473,23 @@ export function QuickAskPanel({
   // Preset menu floats below the composer as a Quick-Ask-style popover; it is
   // an alternative to typing, so it yields as soon as the user starts writing
   // an instruction (or the mention menu needs the space).
-  const continueMenuRef = useRef<HTMLDivElement | null>(null)
   const showContinueActionsMenu =
     isContinueMode &&
     continueQuickActions.length > 0 &&
     !isStreaming &&
     inputText.length === 0 &&
-    !isMentionMenuOpen
+    !isMentionMenuOpen &&
+    !isModeMenuOpen
+
+  const focusFirstContinueAction = useCallback(() => {
+    const ownerDocument = modeTriggerRef.current?.ownerDocument ?? document
+    const firstAction = ownerDocument.querySelector<HTMLButtonElement>(
+      '.yolo-quick-ask-continue-menu-item',
+    )
+    if (!firstAction) return false
+    firstAction.focus()
+    return true
+  }, [])
 
   const handleContinueMenuKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -495,7 +512,7 @@ export function QuickAskPanel({
       if (event.key === 'ArrowUp') {
         event.preventDefault()
         if (currentIndex <= 0) {
-          messageInputRef.current?.focus()
+          modeTriggerRef.current?.focus()
           return
         }
         items[currentIndex - 1]?.focus()
@@ -504,7 +521,7 @@ export function QuickAskPanel({
       if (event.key === 'Escape') {
         event.preventDefault()
         event.stopPropagation()
-        messageInputRef.current?.focus()
+        modeTriggerRef.current?.focus()
       }
     },
     [],
@@ -671,9 +688,11 @@ export function QuickAskPanel({
     onOverlayStateChange,
   ])
 
-  // Arrow keys focus assistant trigger; Enter on the trigger will open the menu
+  // Arrow keys focus the first toolbar control (mode); Enter on the trigger
+  // will open the menu.
   const handlePanelKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.defaultPrevented) return
       if (isAssistantMenuOpen || isModelMenuOpen || isModeMenuOpen) return
       const active = document.activeElement
       if (
@@ -687,18 +706,18 @@ export function QuickAskPanel({
       if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
       event.preventDefault()
       event.stopPropagation()
-      assistantTriggerRef.current?.focus()
+      modeTriggerRef.current?.focus()
     },
     [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen],
   )
 
-  // When focus在助手按钮但菜单未展开时，ArrowUp 将焦点送回输入框（兜底）
+  // When focus在模式按钮但菜单未展开时，ArrowUp 将焦点送回输入框（兜底）
   useEffect(() => {
     const handleArrowUpBack = (event: KeyboardEvent) => {
       if (event.key !== 'ArrowUp') return
       if (isAssistantMenuOpen) return
       const active = document.activeElement
-      if (active !== assistantTriggerRef.current) return
+      if (active !== modeTriggerRef.current) return
       event.preventDefault()
       event.stopPropagation()
       messageInputRef.current?.focus()
@@ -901,6 +920,7 @@ export function QuickAskPanel({
         const isAgentMode = mode === 'agent'
         const chatModeRuntime = resolveChatModeRuntime({
           mode: isAgentMode ? 'agent' : 'ask',
+          yoloEnabled,
           assistant: selectedAssistant,
           assistantEnabledToolNames:
             getEnabledAssistantToolNames(selectedAssistant),
@@ -1003,6 +1023,7 @@ export function QuickAskPanel({
       selectedAssistant,
       settings,
       t,
+      yoloEnabled,
       editorSnapshotInjection,
     ],
   )
@@ -1384,6 +1405,20 @@ export function QuickAskPanel({
       })
     },
     [clampQuickAskMode, setSettings, settings],
+  )
+
+  const handleYoloChange = useCallback(
+    (enabled: boolean) => {
+      setYoloEnabled(enabled)
+      void setSettings({
+        ...settings,
+        chatOptions: {
+          ...settings.chatOptions,
+          agentYoloEnabled: enabled,
+        },
+      })
+    },
+    [setSettings, settings],
   )
 
   const handleMainInputChange = useCallback(
@@ -2039,15 +2074,7 @@ export function QuickAskPanel({
                   onKeyDown={(event) => {
                     if (event.key === 'ArrowDown') {
                       event.preventDefault()
-                      const firstContinueAction =
-                        continueMenuRef.current?.querySelector<HTMLButtonElement>(
-                          '.yolo-quick-ask-continue-menu-item',
-                        )
-                      if (firstContinueAction) {
-                        firstContinueAction.focus()
-                        return
-                      }
-                      assistantTriggerRef.current?.focus()
+                      modeTriggerRef.current?.focus()
                     }
                   }}
                   onMentionMenuToggle={(open) => {
@@ -2074,9 +2101,9 @@ export function QuickAskPanel({
               </div>
             </div>
 
-            {/* Toolbar: assistant / model / mode left, send right */}
+            {/* Toolbar: mode / model / assistant left, send right */}
             <div className="yolo-quick-ask-toolbar">
-              {/* Left: Assistant selector */}
+              {/* Left: mode / model / assistant selectors */}
               <div className="yolo-quick-ask-toolbar-left">
                 <DropdownMenu.Root
                   open={isAssistantMenuOpen}
@@ -2095,13 +2122,16 @@ export function QuickAskPanel({
                             messageInputRef.current?.focus()
                             return
                           }
-                          if (
-                            event.key === 'ArrowRight' ||
-                            event.key === 'ArrowLeft'
-                          ) {
+                          if (event.key === 'ArrowLeft') {
                             event.preventDefault()
                             event.stopPropagation()
                             modelTriggerRef.current?.focus()
+                            return
+                          }
+                          if (event.key === 'ArrowRight') {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            modeTriggerRef.current?.focus()
                             return
                           }
                         }
@@ -2125,12 +2155,12 @@ export function QuickAskPanel({
                   </DropdownMenu.Trigger>
                   <YoloDropdownContent
                     anchorRef={assistantTriggerRef}
-                    variant="smart-space"
+                    variant="default"
                     minWidth={200}
                     maxWidth={300}
                     side="top"
                     align="start"
-                    sideOffset={8}
+                    sideOffset={4}
                     collisionPadding={8}
                     avoidCollisions={false}
                     onCloseAutoFocus={(e) => e.preventDefault()}
@@ -2180,10 +2210,10 @@ export function QuickAskPanel({
                     }}
                     side="bottom"
                     align="start"
-                    sideOffset={12}
+                    sideOffset={4}
                     alignOffset={-4}
                     popover={{
-                      variant: 'smart-space',
+                      variant: 'default',
                       maxHeight: 400,
                       className: 'yolo-quick-ask-model-popover',
                     }}
@@ -2198,12 +2228,12 @@ export function QuickAskPanel({
 
                       if (event.key === 'ArrowLeft') {
                         event.preventDefault()
-                        assistantTriggerRef.current?.focus()
+                        modeTriggerRef.current?.focus()
                         return
                       }
                       if (event.key === 'ArrowRight') {
                         event.preventDefault()
-                        modeTriggerRef.current?.focus()
+                        assistantTriggerRef.current?.focus()
                         return
                       }
                       if (event.key === 'ArrowUp') {
@@ -2220,16 +2250,36 @@ export function QuickAskPanel({
                 </div>
 
                 <div className="yolo-quick-ask-mode-select">
-                  <ModeSelect
+                  <ChatModeSelect
                     ref={modeTriggerRef}
                     mode={mode}
-                    onChange={handleModeChange}
-                    hiddenModes={modeSelectHiddenModes}
+                    availableModes={
+                      capabilities.edit
+                        ? ['ask', 'agent', 'continue']
+                        : ['ask', 'agent']
+                    }
+                    yoloEnabled={yoloEnabled}
+                    onYoloChange={handleYoloChange}
                     triggerLabel={modeTriggerLabel}
+                    popoverClassName="yolo-quick-ask-mode-popover"
+                    onArrowDownWhenClosed={() =>
+                      isContinueMode && showContinueActionsMenu
+                        ? focusFirstContinueAction()
+                        : false
+                    }
+                    onChange={(nextMode) => {
+                      if (
+                        nextMode === 'ask' ||
+                        nextMode === 'agent' ||
+                        nextMode === 'continue'
+                      ) {
+                        handleModeChange(nextMode)
+                      }
+                    }}
                     onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
                     side="bottom"
                     align="start"
-                    sideOffset={12}
+                    sideOffset={4}
                     alignOffset={-4}
                     onKeyDown={(event, isMenuOpen) => {
                       if (isMenuOpen) {
@@ -2242,12 +2292,12 @@ export function QuickAskPanel({
 
                       if (event.key === 'ArrowLeft') {
                         event.preventDefault()
-                        modelTriggerRef.current?.focus()
+                        messageInputRef.current?.focus()
                         return
                       }
                       if (event.key === 'ArrowRight') {
                         event.preventDefault()
-                        assistantTriggerRef.current?.focus()
+                        modelTriggerRef.current?.focus()
                         return
                       }
                       if (event.key === 'ArrowUp') {
@@ -2280,7 +2330,6 @@ export function QuickAskPanel({
         </Popover.Anchor>
 
         <YoloPopoverContent
-          ref={continueMenuRef}
           variant="smart-space"
           className="yolo-quick-ask-continue-menu"
           anchorRef={inputRowRef}

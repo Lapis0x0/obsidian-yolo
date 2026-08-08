@@ -19320,6 +19320,15 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
   outline: none;
   box-shadow: none;
 }
+button.yolo-quick-ask-continue-menu-item:focus {
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 10%,
+    transparent
+  );
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+}
 .yolo-quick-ask-continue-menu-item__icon {
   display: flex;
   align-items: center;
@@ -19352,6 +19361,7 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
   transition: all 0.15s ease;
   white-space: nowrap;
   margin-left: -5px;
+  order: 3;
 }
 .yolo-quick-ask-assistant-trigger:hover,
 .yolo-quick-ask-assistant-trigger:focus-visible {
@@ -19380,6 +19390,7 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
   align-items: center;
   margin-left: 0px;
   min-width: 0;
+  order: 2;
 }
 .yolo-quick-ask-toolbar
   .yolo-quick-ask-model-select
@@ -19466,8 +19477,9 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
   align-items: center;
   margin-left: 0px;
   min-width: 0;
+  order: 1;
 }
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-mode-select {
+.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -19493,14 +19505,14 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-mode-select:hover,
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-mode-select:focus,
+.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select:hover,
+.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select:focus,
 .yolo-quick-ask-toolbar
   .yolo-quick-ask-mode-select
-  .yolo-mode-select:focus-visible,
+  .yolo-chat-mode-select:focus-visible,
 .yolo-quick-ask-toolbar
   .yolo-quick-ask-mode-select
-  .yolo-mode-select[data-state='open'] {
+  .yolo-chat-mode-select[data-state='open'] {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 32%,
@@ -19514,6 +19526,20 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
 .yolo-quick-ask-mode-popover {
   min-width: 140px;
   max-width: 200px;
+}
+/* Quick Ask uses the current mode as context, not as a selected-list badge.
+   Keep the checked row quiet unless keyboard focus is actively on it. */
+.yolo-quick-ask-mode-popover .yolo-popover-item[data-state='checked'] {
+  background: transparent !important;
+  font-weight: var(--font-normal) !important;
+}
+.yolo-quick-ask-mode-popover
+  .yolo-popover-item[data-state='checked']:not(:focus-visible) {
+  box-shadow: none !important;
+}
+.yolo-quick-ask-mode-popover button.yolo-chat-mode-select-item:focus-visible,
+.yolo-quick-ask-mode-popover .yolo-chat-mode-agent-card:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
 }
 .yolo-mode-select-item {
   display: flex;

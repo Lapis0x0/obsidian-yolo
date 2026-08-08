@@ -6,6 +6,7 @@ import {
   Infinity as InfinityIcon,
   ListTodo,
   MessageSquare,
+  PenLine,
 } from 'lucide-react'
 import {
   forwardRef,
@@ -33,6 +34,7 @@ export type ChatMode = 'ask' | 'agent'
  * (Claude Code only) without expanding YOLO-native `ChatMode`.
  */
 export type ChatModeSelectValue = ChatMode | 'plan'
+export type ChatModeSelectOptionValue = ChatModeSelectValue | 'continue'
 
 export const CHAT_MODES: readonly ChatMode[] = ['ask', 'agent']
 
@@ -44,8 +46,8 @@ export const CLAUDE_CODE_CHAT_MODES: readonly ChatModeSelectValue[] = [
 export const CODEX_CHAT_MODES: readonly ChatModeSelectValue[] = ['agent']
 
 export const shouldShowYoloToggle = (
-  availableModes: readonly ChatModeSelectValue[],
-  mode: ChatModeSelectValue,
+  availableModes: readonly ChatModeSelectOptionValue[],
+  mode: ChatModeSelectOptionValue,
 ): boolean => availableModes.includes('agent') && mode !== 'plan'
 
 export const isChatMode = (value: string): value is ChatMode =>
@@ -55,6 +57,11 @@ export const isChatModeSelectValue = (
   value: string,
 ): value is ChatModeSelectValue =>
   value === 'ask' || value === 'agent' || value === 'plan'
+
+export const isChatModeSelectOptionValue = (
+  value: string,
+): value is ChatModeSelectOptionValue =>
+  isChatModeSelectValue(value) || value === 'continue'
 
 export const normalizeChatMode = (
   raw: string | null | undefined,
@@ -93,11 +100,11 @@ export const normalizeYoloEnabled = (
   return fallback
 }
 
-export const isAgentChatMode = (mode: ChatModeSelectValue): boolean =>
+export const isAgentChatMode = (mode: ChatModeSelectOptionValue): boolean =>
   mode === 'agent'
 
 type ModeOption = {
-  value: ChatModeSelectValue
+  value: ChatModeSelectOptionValue
   labelKey: string
   labelFallback: string
   descKey: string
@@ -130,16 +137,28 @@ const MODE_OPTIONS: ModeOption[] = [
     descFallback: 'Explore and design before editing',
     icon: <ListTodo size={16} />,
   },
+  {
+    value: 'continue',
+    labelKey: 'chatMode.continue',
+    labelFallback: 'Write',
+    descKey: 'chatMode.continueDesc',
+    descFallback: 'Continue writing at the cursor, press Tab to accept',
+    icon: <PenLine size={16} />,
+  },
 ]
 
 export const ChatModeSelect = forwardRef<
   HTMLButtonElement,
   {
-    mode: ChatModeSelectValue
-    onChange: (mode: ChatModeSelectValue) => void
-    availableModes?: readonly ChatModeSelectValue[]
+    mode: ChatModeSelectOptionValue
+    onChange: (mode: ChatModeSelectOptionValue) => void
+    availableModes?: readonly ChatModeSelectOptionValue[]
     yoloEnabled: boolean
     onYoloChange: (enabled: boolean) => void
+    showYoloToggle?: boolean
+    triggerLabel?: string
+    popoverClassName?: string
+    onArrowDownWhenClosed?: () => boolean
     onMenuOpenChange?: (isOpen: boolean) => void
     onKeyDown?: (
       event: React.KeyboardEvent<HTMLButtonElement>,
@@ -159,6 +178,10 @@ export const ChatModeSelect = forwardRef<
       availableModes = CHAT_MODES,
       yoloEnabled,
       onYoloChange,
+      showYoloToggle = true,
+      triggerLabel,
+      popoverClassName,
+      onArrowDownWhenClosed,
       onMenuOpenChange,
       onKeyDown,
       container,
@@ -177,13 +200,14 @@ export const ChatModeSelect = forwardRef<
         MODE_OPTIONS.filter((option) => availableModes.includes(option.value)),
       [availableModes],
     )
-    const showYoloToggle = shouldShowYoloToggle(availableModes, mode)
+    const showYoloControl =
+      showYoloToggle && shouldShowYoloToggle(availableModes, mode)
     const navOrder = useMemo(() => {
-      const keys: ChatModeSelectValue[] = visibleOptions.map(
+      const keys: ChatModeSelectOptionValue[] = visibleOptions.map(
         (option) => option.value,
       )
-      return showYoloToggle ? ([...keys, 'yolo'] as const) : keys
-    }, [showYoloToggle, visibleOptions])
+      return showYoloControl ? ([...keys, 'yolo'] as const) : keys
+    }, [showYoloControl, visibleOptions])
     type NavKey = (typeof navOrder)[number]
     const itemRefs = useRef<
       Partial<Record<NavKey | 'yolo', HTMLElement | null>>
@@ -240,7 +264,7 @@ export const ChatModeSelect = forwardRef<
         focusSelectedItem()
       })
       return () => ownerWindow.cancelAnimationFrame(rafId)
-    }, [isOpen, focusSelectedItem])
+    }, [focusSelectedItem, isOpen])
 
     const handleOpenChange = (open: boolean) => {
       setIsOpen(open)
@@ -250,6 +274,11 @@ export const ChatModeSelect = forwardRef<
     const handleTriggerKeyDown = (
       event: React.KeyboardEvent<HTMLButtonElement>,
     ) => {
+      if (event.key === 'ArrowDown' && onArrowDownWhenClosed?.()) {
+        event.preventDefault()
+        return
+      }
+
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         if (onKeyDown) {
           onKeyDown(event, isOpen)
@@ -279,7 +308,7 @@ export const ChatModeSelect = forwardRef<
       }
     }
 
-    const selectMode = (next: ChatModeSelectValue) => {
+    const selectMode = (next: ChatModeSelectOptionValue) => {
       onChange(next)
       handleOpenChange(false)
     }
@@ -313,10 +342,11 @@ export const ChatModeSelect = forwardRef<
           onKeyDown={handleTriggerKeyDown}
         >
           <div className="yolo-chat-input-model-select__model-name">
-            {t(
-              currentOption?.labelKey ?? 'chatMode.ask',
-              currentOption?.labelFallback ?? 'Ask',
-            )}
+            {triggerLabel ??
+              t(
+                currentOption?.labelKey ?? 'chatMode.ask',
+                currentOption?.labelFallback ?? 'Ask',
+              )}
           </div>
           {isYoloActive ? (
             <div
@@ -335,6 +365,7 @@ export const ChatModeSelect = forwardRef<
           container={container}
           anchorRef={triggerRef}
           variant="default"
+          className={popoverClassName}
           minWidth={220}
           side={side}
           sideOffset={sideOffset}
@@ -357,7 +388,7 @@ export const ChatModeSelect = forwardRef<
           >
             {visibleOptions.map((option) => {
               const isSelected = option.value === mode
-              if (option.value === 'agent' && showYoloToggle) {
+              if (option.value === 'agent' && showYoloControl) {
                 return (
                   <div
                     key={option.value}
