@@ -155,10 +155,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       return t('quickAsk.statusThinking', 'Thinking...')
     }
     if (reasoningDurationMs !== undefined) {
-      return t('chat.reasonedFor', 'Thought for {{seconds}}s').replace(
-        '{{seconds}}',
-        String(formatReasoningDurationSeconds(reasoningDurationMs)),
-      )
+      return ''
     }
     return t('chat.reasoning', 'Reasoning')
   }, [reasoningDurationMs, stage, t])
@@ -173,6 +170,10 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
 
     return stageLabel.replace(/\.\.\.$/, '')
   }, [showDots, stageLabel])
+  const settledDurationSeconds =
+    reasoningDurationMs !== undefined
+      ? formatReasoningDurationSeconds(reasoningDurationMs)
+      : null
   const reasoningRollText = useMemo(
     () => getReasoningRollText(reasoning),
     [reasoning],
@@ -347,9 +348,19 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
         disabled={!isToggleable}
       >
         <span className="yolo-assistant-message-metadata-label">
-          <span className="yolo-assistant-message-metadata-status-dot" />
           <span className="yolo-assistant-message-metadata-label-text">
-            {visibleStageLabel}
+            {stage === 'settled' && settledDurationSeconds !== null ? (
+              <>
+                <span className="yolo-assistant-message-metadata-label-title">
+                  Thought
+                </span>
+                <span className="yolo-assistant-message-metadata-label-detail">
+                  {' '}for {settledDurationSeconds}s
+                </span>
+              </>
+            ) : (
+              visibleStageLabel
+            )}
           </span>
           {showDots && (
             <DotLoader

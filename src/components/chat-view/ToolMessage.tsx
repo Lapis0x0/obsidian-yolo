@@ -1,13 +1,9 @@
 import cx from 'clsx'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import {
-  Check,
   ChevronDown,
   ChevronRight,
   Loader2,
-  SquareTerminal,
-  Wrench,
-  X,
 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {
@@ -1417,10 +1413,6 @@ function ToolCallItem({
     terminalCommandResult && isTerminalCommandRequest(request)
       ? mapTerminalCommandResultStatus(terminalCommandResult.status)
       : response.status
-  const successIconKind = useMemo(
-    () => getToolSuccessIconKind({ request, response }),
-    [request, response],
-  )
   // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
   const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
   const isAlwaysAllowDisabled = useMemo(() => {
@@ -1565,23 +1557,6 @@ function ToolCallItem({
         aria-expanded={isOpen}
         aria-controls={`yolo-toolcall-content-${request.id}`}
       >
-        <div className="yolo-toolcall-header-icon yolo-toolcall-header-icon--status-inline">
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={effectiveStatus}
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              transition={{ duration: motionDuration }}
-              style={{ display: 'flex', alignItems: 'center' }}
-            >
-              <StatusIcon
-                status={effectiveStatus}
-                successIconKind={successIconKind}
-              />
-            </motion.span>
-          </AnimatePresence>
-        </div>
         <div className="yolo-toolcall-header-content">
           <span className="yolo-toolcall-header-tool-name">
             <span className="yolo-toolcall-header-title">
@@ -1968,46 +1943,6 @@ function useToolCall(
     handleAllowForConversation,
     handleReject,
     handleAbort,
-  }
-}
-
-function StatusIcon({
-  status,
-  successIconKind,
-}: {
-  status: ToolCallResponseStatus
-  successIconKind: ToolSuccessIconKind
-}) {
-  switch (status) {
-    case ToolCallResponseStatus.PendingApproval:
-      return <span className="yolo-toolcall-status-dot" />
-    case ToolCallResponseStatus.Rejected:
-    case ToolCallResponseStatus.Aborted:
-    case ToolCallResponseStatus.Error:
-      return <X size={16} className="yolo-icon-error" />
-    case ToolCallResponseStatus.Running:
-      return <Loader2 size={16} className="yolo-spinner" />
-    case ToolCallResponseStatus.Success:
-      if (successIconKind === 'skill') {
-        return (
-          <Wrench size={16} className="yolo-toolcall-status-success-semantic" />
-        )
-      }
-      if (successIconKind === 'terminal') {
-        return (
-          <SquareTerminal
-            size={16}
-            className="yolo-toolcall-status-success-semantic"
-          />
-        )
-      }
-      return (
-        <span className="yolo-toolcall-status-success-ring">
-          <Check size={11} className="yolo-toolcall-status-success-check" />
-        </span>
-      )
-    default:
-      return null
   }
 }
 

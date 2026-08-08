@@ -2062,6 +2062,17 @@ export const it: DeepPartial<TranslationKeys> = {
         sessionInput: 'Sessione {id} · Input: {preview}',
       },
     },
+    toolRunSummary: {
+      read: 'Letti {count} file',
+      search: 'Eseguite {count} ricerche',
+      web: '{count} ricerche web',
+      edit: 'Modificati {count} file',
+      virtualTerminal: 'Terminale virtuale {count} volte',
+      terminal: 'Terminale {count} volte',
+      command: 'Eseguiti {count} comandi',
+      analysis: '{count} analisi in sandbox',
+      other: '{count} altre azioni',
+    },
     liveTask: {
       statusRunning: 'In esecuzione',
       statusDone: 'Completato',

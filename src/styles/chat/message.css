@@ -32,8 +32,9 @@
   flex-direction: column;
   align-items: stretch;
   gap: var(--size-2-2);
-  padding: 2px 0;
-  font-size: var(--font-ui-smaller);
+  padding: 0;
+  font-size: 0.85rem;
+  line-height: 1.5;
 }
 
 .yolo-toolcall-header {
@@ -113,8 +114,8 @@
   min-width: 0;
   font-family: var(--font-ui);
   font-weight: var(--font-normal);
-  font-size: var(--font-ui-smaller);
-  line-height: 1.35;
+  font-size: inherit;
+  line-height: inherit;
 }
 
 .yolo-toolcall-header-title,
@@ -124,7 +125,7 @@
 }
 
 .yolo-toolcall-header-title {
-  color: var(--text-normal);
+  color: var(--text-muted);
   font-weight: var(--font-normal);
 }
 
@@ -134,7 +135,7 @@
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  color: var(--text-muted);
+  color: var(--text-faint);
 }
 
 .yolo-toolcall-header-summary-command {
@@ -812,9 +813,33 @@
 }
 
 .yolo-assistant-group-body {
+  --yolo-chat-activity-gap: 0px;
+  --yolo-chat-answer-gap: var(--size-4-3);
+
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
+  gap: var(--yolo-chat-activity-gap);
+}
+
+/* The group owns vertical rhythm. Activity rows no longer accumulate margins
+ * from their individual implementations, while prose keeps a slightly larger
+ * separation from the activity timeline. */
+.yolo-assistant-group-body
+  > .yolo-assistant-answer-item:not(.has-visible-reasoning) {
+  margin-top: calc(
+    var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap)
+  );
+}
+
+/* A prose-bearing assistant item also creates breathing room before the next
+ * activity item (tool card, summary, or thinking row). Consecutive activity
+ * items remain flush because neither side matches this rule. */
+.yolo-assistant-group-body > .yolo-assistant-answer-item + * {
+  margin-top: var(--yolo-chat-answer-gap);
+}
+
+.yolo-assistant-answer-item.has-visible-reasoning {
+  gap: var(--yolo-chat-answer-gap);
 }
 
 .yolo-assistant-message-editor-textarea,
@@ -2856,4 +2881,85 @@ button.yolo-mermaid-modal-control:disabled {
     .yolo-assistant-message-metadata-content .yolo-markdown-rendered
   ) {
   font-family: var(--yolo-chat-response-font-family);
+}
+
+/* ---------------------------------------------------------------------------
+ * Tool run summary — 已完成的连续工具调用（含穿插及答案前的纯思考消息）折叠
+ * 成一行摘要，点击展开还原完整卡片。布局规格对齐 .yolo-toolcall-header
+ * （all: unset 重置、--font-ui-smaller、2px 纵向内边距、hover 才浮现的右侧
+ * 展开箭头），使其看起来就是工具卡片体系中的一行。
+ * ------------------------------------------------------------------------- */
+
+.yolo-tool-run-summary {
+  all: unset;
+  box-sizing: border-box;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  padding: 2px 0;
+  min-height: 24px;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  cursor: pointer;
+  user-select: none;
+  opacity: 0.96;
+}
+
+.yolo-tool-run-summary:hover {
+  background-color: transparent;
+}
+
+.yolo-tool-run-summary:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+/* 颜色设在文字 span 而非 button 上，避免主题对 button 的颜色覆盖。折叠摘要
+ * 与工具标题、思考标题同属活动层，统一使用 text-muted；正文保持 text-normal，
+ * 参数与详情继续使用 text-faint。 */
+.yolo-tool-run-summary__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: inherit;
+  color: var(--text-muted);
+}
+
+/* 右侧展开箭头：默认隐藏、hover/聚焦浮现，与 .yolo-toolcall-header-icon--expand
+ * 同一套行为。 */
+.yolo-tool-run-summary__chevron {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  opacity: 0.9;
+  transition:
+    opacity var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .yolo-tool-run-summary__chevron {
+    opacity: 0;
+  }
+
+  .yolo-tool-run-summary:hover .yolo-tool-run-summary__chevron,
+  .yolo-tool-run-summary:focus-visible .yolo-tool-run-summary__chevron {
+    opacity: 0.9;
+  }
+}
+
+.yolo-tool-run-summary.is-expanded .yolo-tool-run-summary__chevron {
+  transform: rotate(90deg);
+}
+
+/* Treat the expanded calls as a detail group beneath the summary. Its leading
+ * space matches the gap between the activity group and the following prose. */
+.yolo-tool-run-summary.is-expanded + * {
+  margin-top: var(--yolo-chat-answer-gap);
 }

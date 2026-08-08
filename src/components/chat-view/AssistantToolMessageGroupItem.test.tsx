@@ -51,7 +51,7 @@ jest.mock('./AssistantMessageEditor', () => ({
 }))
 jest.mock('./AssistantMessageReasoning', () => ({
   __esModule: true,
-  default: () => null,
+  default: jest.fn(() => null),
 }))
 jest.mock('./AssistantToolMessageGroupActions', () => ({
   __esModule: true,
@@ -70,10 +70,17 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import { LLMResponseFormatError } from '../../core/llm/responseFormatError'
-import type { ChatAssistantMessage } from '../../types/chat'
+import type { ChatAssistantMessage, ChatToolMessage } from '../../types/chat'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
+import AssistantMessageReasoning from './AssistantMessageReasoning'
 import AssistantToolMessageGroupActions from './AssistantToolMessageGroupActions'
 import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
+
+const mockedAssistantMessageReasoning =
+  AssistantMessageReasoning as jest.MockedFunction<
+    typeof AssistantMessageReasoning
+  >
 
 const mockedAssistantToolMessageGroupActions =
   AssistantToolMessageGroupActions as jest.MockedFunction<
@@ -452,5 +459,170 @@ describe('AssistantToolMessageGroupItem', () => {
 
     expect(html).toContain('yolo-assistant-message-footer')
     expect(mockedAssistantToolMessageGroupActions).toHaveBeenCalledTimes(1)
+  })
+
+  describe('tool run collapsing', () => {
+    const baseProps = {
+      conversationId: 'conversation-1',
+      isApplying: false,
+      activeApplyRequestKey: null,
+      onApply: () => {},
+      onToolMessageUpdate: () => {},
+      onEditStart: () => {},
+      onEditCancel: () => {},
+      onEditSave: () => {},
+      onDeleteGroup: () => {},
+      onRetryGroup: () => {},
+      onBranchGroup: () => {},
+      onQuoteAssistantSelection: () => {},
+      onOpenEditSummaryFile: () => {},
+    }
+
+    const buildToolMessage = (
+      id: string,
+      calls: {
+        name: string
+        status?: ToolCallResponseStatus
+      }[],
+    ): ChatToolMessage => ({
+      role: 'tool',
+      id,
+      toolCalls: calls.map((call, index) => ({
+        request: { id: `${id}-call-${index}`, name: call.name },
+        response:
+          call.status === ToolCallResponseStatus.PendingApproval
+            ? { status: ToolCallResponseStatus.PendingApproval }
+            : {
+                status: ToolCallResponseStatus.Success,
+                data: { type: 'text', text: 'ok' },
+              },
+      })),
+    })
+
+    const hiddenAssistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-hidden',
+      content: '',
+      metadata: { generationState: 'completed' },
+    }
+
+    const finalAssistantMessage: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'assistant-final',
+      content: 'all done',
+      metadata: { generationState: 'completed' },
+    }
+
+    it('collapses a settled tool run into a summary line', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__fs_read' },
+              { name: 'yolo_local__fs_read' },
+              { name: 'yolo_local__bash' },
+            ]),
+            finalAssistantMessage,
+          ]}
+        />,
+      )
+
+      expect(html).toContain('yolo-tool-run-summary')
+      expect(html).toContain('Read 2 file(s)')
+      expect(html).toContain('Virtual terminal 1 time(s)')
+      expect(html).not.toContain('yolo-tool-run-summary__dot')
+      expect(html).toContain('aria-expanded="false"')
+    })
+
+    it('folds interleaved thinking-only messages into the run without counting them', () => {
+      const reasoningOnlyMessage: ChatAssistantMessage = {
+        role: 'assistant',
+        id: 'assistant-reasoning',
+        content: '',
+        reasoning: 'let me look around first',
+        metadata: { generationState: 'completed' },
+      }
+
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            reasoningOnlyMessage,
+            buildToolMessage('tool-1', [{ name: 'yolo_local__fs_read' }]),
+            finalAssistantMessage,
+          ]}
+        />,
+      )
+
+      // 1 tool call + 1 thinking block reaches the fold threshold; the
+      // summary counts only the tool call.
+      expect(html).toContain('yolo-tool-run-summary')
+      expect(html).toContain('Read 1 file(s)')
+    })
+
+    it('folds the answer message thinking block into the preceding collapsed run', () => {
+      mockedAssistantMessageReasoning.mockClear()
+      const finalWithReasoning: ChatAssistantMessage = {
+        ...finalAssistantMessage,
+        reasoning: 'now I can answer',
+      }
+
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__fs_read' },
+              { name: 'yolo_local__fs_read' },
+            ]),
+            finalWithReasoning,
+          ]}
+        />,
+      )
+
+      expect(html).toContain('yolo-tool-run-summary')
+      expect(mockedAssistantMessageReasoning).not.toHaveBeenCalled()
+    })
+
+    it('keeps the trailing tool run expanded while no answer follows', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__fs_read' },
+              { name: 'yolo_local__fs_read' },
+            ]),
+          ]}
+        />,
+      )
+
+      expect(html).not.toContain('yolo-tool-run-summary')
+    })
+
+    it('never collapses a run containing a pending approval', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__fs_read' },
+              {
+                name: 'yolo_local__bash',
+                status: ToolCallResponseStatus.PendingApproval,
+              },
+            ]),
+            finalAssistantMessage,
+          ]}
+        />,
+      )
+
+      expect(html).not.toContain('yolo-tool-run-summary')
+    })
   })
 })

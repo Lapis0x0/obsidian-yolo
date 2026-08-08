@@ -1,5 +1,6 @@
-import { Ban, Check, CircleAlert, Loader2 } from 'lucide-react'
+import { Ban, Check, ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
 import {
+  Fragment,
   memo,
   useCallback,
   useEffect,
@@ -13,6 +14,8 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
+import { InvalidToolNameException } from '../../core/mcp/exception'
+import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
@@ -23,6 +26,7 @@ import {
   ChatToolMessage,
 } from '../../types/chat'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import {
@@ -182,6 +186,200 @@ const getMessageGroupRunState = ({
   )
   return assistantMessage?.metadata?.generationState ?? 'completed'
 }
+
+type AssistantMessageRenderPlan = {
+  hostedWebSearchMessage: ChatToolMessage | null
+  shouldShowAssistantToolPreview: boolean
+  hasToolResponseForThis: boolean
+  hidden: boolean
+  visible: boolean
+  rendersOnlyReasoning: boolean
+}
+
+// Single source of truth for "does this assistant message render anything",
+// shared by the render loop and the tool-run collapsing segmentation below so
+// the two can never drift apart.
+const getAssistantMessageRenderPlan = ({
+  message,
+  nextMessage,
+  hidePendingAssistantPlaceholders,
+}: {
+  message: ChatAssistantMessage
+  nextMessage: AssistantToolMessageGroup[number] | undefined
+  hidePendingAssistantPlaceholders: boolean
+}): AssistantMessageRenderPlan => {
+  const hasVisibleContent = message.content.trim().length > 0
+  const hasVisibleReasoning = (message.reasoning ?? '').trim().length > 0
+  const hasVisibleAnnotations = Boolean(message.annotations)
+  const hasToolResponseForThis = nextMessage?.role === 'tool'
+  const shouldShowAssistantToolPreview = shouldRenderAssistantToolPreview({
+    generationState: message.metadata?.generationState,
+    toolCallRequestCount: message.toolCallRequests?.length ?? 0,
+    hasToolMessages: hasToolResponseForThis,
+  })
+  // A search the provider ran on its own servers. It produced no tool call,
+  // so it is rebuilt here purely for display.
+  const hostedWebSearchMessage = buildHostedWebSearchToolMessage(message)
+
+  const hidden =
+    (hasToolResponseForThis || hidePendingAssistantPlaceholders) &&
+    !hasVisibleContent &&
+    !hasVisibleReasoning &&
+    !hasVisibleAnnotations &&
+    !hostedWebSearchMessage &&
+    !shouldShowAssistantToolPreview
+
+  const visible =
+    !hidden &&
+    Boolean(
+      message.reasoning ||
+        message.annotations ||
+        message.content ||
+        hostedWebSearchMessage ||
+        (message.metadata?.generationState === 'error' &&
+          Boolean(message.metadata?.errorMessage)) ||
+        (message.metadata?.generationState === 'streaming' &&
+          !message.content &&
+          !message.reasoning) ||
+        shouldShowAssistantToolPreview,
+    )
+
+  // Renders nothing but a thinking block — foldable into a tool-run summary
+  // alongside the tool cards it interleaves with.
+  const rendersOnlyReasoning =
+    visible &&
+    hasVisibleReasoning &&
+    !message.content &&
+    !message.annotations &&
+    !hostedWebSearchMessage &&
+    !(
+      message.metadata?.generationState === 'error' &&
+      Boolean(message.metadata?.errorMessage)
+    ) &&
+    !shouldShowAssistantToolPreview
+
+  return {
+    hostedWebSearchMessage,
+    shouldShowAssistantToolPreview,
+    hasToolResponseForThis,
+    hidden,
+    visible,
+    rendersOnlyReasoning,
+  }
+}
+
+const TOOL_RUN_SUMMARY_BUCKET_ORDER = [
+  'read',
+  'search',
+  'web',
+  'edit',
+  'virtualTerminal',
+  'terminal',
+  'command',
+  'analysis',
+  'other',
+] as const
+
+type ToolRunSummaryBucket = (typeof TOOL_RUN_SUMMARY_BUCKET_ORDER)[number]
+
+const TOOL_RUN_SUMMARY_BUCKET_BY_TOOL: Record<string, ToolRunSummaryBucket> = {
+  fs_read: 'read',
+  fs_list: 'search',
+  fs_search: 'search',
+  web_search: 'web',
+  web_scrape: 'web',
+  fs_write: 'edit',
+  fs_edit: 'edit',
+  fs_move: 'edit',
+  fs_delete: 'edit',
+  fs_create_dir: 'edit',
+  // Legacy tool names — keep summarizing historical conversations.
+  fs_create_file: 'edit',
+  fs_delete_file: 'edit',
+  fs_delete_dir: 'edit',
+  bash: 'virtualTerminal',
+  terminal_command: 'terminal',
+  js_eval: 'analysis',
+}
+
+const getToolRunSummaryBucket = (rawToolName: string): ToolRunSummaryBucket => {
+  let toolName = rawToolName
+  try {
+    toolName = parseToolName(rawToolName).toolName
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+  }
+  return TOOL_RUN_SUMMARY_BUCKET_BY_TOOL[toolName] ?? 'other'
+}
+
+const TOOL_RUN_SUMMARY_LABELS: Record<
+  ToolRunSummaryBucket,
+  { key: string; fallback: string }
+> = {
+  read: { key: 'chat.toolRunSummary.read', fallback: 'Read {count} file(s)' },
+  search: {
+    key: 'chat.toolRunSummary.search',
+    fallback: 'Searched {count} time(s)',
+  },
+  web: { key: 'chat.toolRunSummary.web', fallback: '{count} web lookup(s)' },
+  edit: { key: 'chat.toolRunSummary.edit', fallback: 'Edited {count} file(s)' },
+  virtualTerminal: {
+    key: 'chat.toolRunSummary.virtualTerminal',
+    fallback: 'Virtual terminal {count} time(s)',
+  },
+  terminal: {
+    key: 'chat.toolRunSummary.terminal',
+    fallback: 'Terminal {count} time(s)',
+  },
+  command: {
+    key: 'chat.toolRunSummary.command',
+    fallback: 'Ran {count} command(s)',
+  },
+  analysis: {
+    key: 'chat.toolRunSummary.analysis',
+    fallback: '{count} sandbox run(s)',
+  },
+  other: {
+    key: 'chat.toolRunSummary.other',
+    fallback: '{count} other action(s)',
+  },
+}
+
+type ToolRunSegment = {
+  key: string
+  startIndex: number
+  endIndex: number
+  /**
+   * Index of the visible assistant message that settled this run. Its
+   * thinking block belongs to the run narratively, so it collapses and
+   * expands together with the run.
+   */
+  boundaryIndex: number
+  bucketCounts: Partial<Record<ToolRunSummaryBucket, number>>
+}
+
+const TERMINAL_TOOL_CALL_STATUSES: ReadonlySet<ToolCallResponseStatus> =
+  new Set([
+    ToolCallResponseStatus.Success,
+    ToolCallResponseStatus.Error,
+    ToolCallResponseStatus.Aborted,
+    ToolCallResponseStatus.Rejected,
+  ])
+
+const buildToolRunSummaryText = (
+  segment: ToolRunSegment,
+  t: (keyPath: string, fallback?: string) => string,
+): string =>
+  TOOL_RUN_SUMMARY_BUCKET_ORDER.flatMap((bucket) => {
+    const count = segment.bucketCounts[bucket]
+    if (!count) {
+      return []
+    }
+    const label = TOOL_RUN_SUMMARY_LABELS[bucket]
+    return [t(label.key, label.fallback).replace('{count}', String(count))]
+  }).join(' · ')
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
@@ -468,6 +666,129 @@ function AssistantToolMessageGroupItem({
   const isRunActive =
     groupRunState === 'streaming' || groupRunState === 'waiting-approval'
 
+  const messageRenderPlans = useMemo(
+    () =>
+      displayedMessages.map((message, index) =>
+        message.role === 'assistant'
+          ? getAssistantMessageRenderPlan({
+              message,
+              nextMessage: displayedMessages[index + 1],
+              hidePendingAssistantPlaceholders,
+            })
+          : null,
+      ),
+    [displayedMessages, hidePendingAssistantPlaceholders],
+  )
+
+  // Consecutive settled tool cards — plus the thinking-only assistant
+  // messages interleaved with them — collapse into a one-line summary. A run
+  // is settled once a later message in the group renders visible assistant
+  // output beyond thinking; the trailing (still-streaming) run always stays
+  // expanded, as does any run containing a non-terminal tool call (pending
+  // approval / running / awaiting user input).
+  const toolRunSegments = useMemo(() => {
+    const segments: ToolRunSegment[] = []
+    let firstMemberIndex = -1
+    let lastMemberIndex = -1
+    let toolMessages: ChatToolMessage[] = []
+    let reasoningMessageCount = 0
+
+    const addMember = (index: number) => {
+      if (firstMemberIndex === -1) {
+        firstMemberIndex = index
+      }
+      lastMemberIndex = index
+    }
+
+    const close = (boundaryIndex: number | null) => {
+      if (boundaryIndex !== null && toolMessages.length > 0) {
+        const toolCalls = toolMessages.flatMap((message) => message.toolCalls)
+        if (
+          toolCalls.length + reasoningMessageCount >= 2 &&
+          toolCalls.every((call) =>
+            TERMINAL_TOOL_CALL_STATUSES.has(call.response.status),
+          )
+        ) {
+          const bucketCounts: ToolRunSegment['bucketCounts'] = {}
+          for (const call of toolCalls) {
+            const bucket = getToolRunSummaryBucket(call.request.name)
+            bucketCounts[bucket] = (bucketCounts[bucket] ?? 0) + 1
+          }
+          segments.push({
+            key: toolMessages[0].id,
+            startIndex: firstMemberIndex,
+            endIndex: lastMemberIndex,
+            boundaryIndex,
+            bucketCounts,
+          })
+        }
+      }
+      firstMemberIndex = -1
+      lastMemberIndex = -1
+      toolMessages = []
+      reasoningMessageCount = 0
+    }
+
+    displayedMessages.forEach((message, index) => {
+      if (message.role === 'tool') {
+        addMember(index)
+        toolMessages.push(message)
+        return
+      }
+      const plan =
+        message.role === 'assistant' ? messageRenderPlans[index] : null
+      if (plan?.rendersOnlyReasoning) {
+        addMember(index)
+        reasoningMessageCount += 1
+        return
+      }
+      const rendersNothing =
+        message.role === 'subagent_result' ||
+        message.role === 'terminal_command_result' ||
+        (message.role === 'assistant' && !plan?.visible)
+      if (rendersNothing) {
+        return
+      }
+      close(index)
+    })
+    close(null)
+
+    return segments
+  }, [displayedMessages, messageRenderPlans])
+
+  const toolRunSegmentByIndex = useMemo(() => {
+    const byIndex = new Map<number, ToolRunSegment>()
+    for (const segment of toolRunSegments) {
+      for (let index = segment.startIndex; index <= segment.endIndex; index++) {
+        byIndex.set(index, segment)
+      }
+    }
+    return byIndex
+  }, [toolRunSegments])
+
+  const toolRunBoundaryByIndex = useMemo(() => {
+    const byIndex = new Map<number, ToolRunSegment>()
+    for (const segment of toolRunSegments) {
+      byIndex.set(segment.boundaryIndex, segment)
+    }
+    return byIndex
+  }, [toolRunSegments])
+
+  const [expandedToolRunKeys, setExpandedToolRunKeys] = useState<
+    ReadonlySet<string>
+  >(() => new Set())
+  const toggleToolRunSegment = useCallback((key: string) => {
+    setExpandedToolRunKeys((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) {
+        next.delete(key)
+      } else {
+        next.add(key)
+      }
+      return next
+    })
+  }, [])
+
   // Keep the action area stationary while the rendered group and its capped
   // editor exchange heights, without preserving the full message height.
   const captureEditLayoutAnchor = useCallback(() => {
@@ -703,13 +1024,10 @@ function AssistantToolMessageGroupItem({
           />
         ) : (
           displayedMessages.map((message, messageIndex) => {
-            const hasVisibleAssistantContent =
-              message.role === 'assistant' && message.content.trim().length > 0
-            const hasVisibleAssistantReasoning =
-              message.role === 'assistant' &&
-              (message.reasoning ?? '').trim().length > 0
-            const hasVisibleAssistantAnnotations =
-              message.role === 'assistant' && Boolean(message.annotations)
+            const renderPlan =
+              message.role === 'assistant'
+                ? messageRenderPlans[messageIndex]
+                : null
             const isReasoningActive = isReasoningActivityActive({
               messages: displayedMessages,
               messageIndex,
@@ -726,151 +1044,182 @@ function AssistantToolMessageGroupItem({
                 : message.role === 'assistant'
                   ? message.metadata?.generationState
                   : undefined
-            const hasToolResponseForThis =
-              message.role === 'assistant' &&
-              displayedMessages[messageIndex + 1]?.role === 'tool'
             const shouldShowAssistantToolPreview =
-              message.role === 'assistant' &&
-              shouldRenderAssistantToolPreview({
-                generationState: message.metadata?.generationState,
-                toolCallRequestCount: message.toolCallRequests?.length ?? 0,
-                hasToolMessages: hasToolResponseForThis,
-              })
-            // A search the provider ran on its own servers. It produced no tool
-            // call, so it is rebuilt here purely for display.
+              renderPlan?.shouldShowAssistantToolPreview ?? false
             const hostedWebSearchMessage =
-              message.role === 'assistant'
-                ? buildHostedWebSearchToolMessage(message)
-                : null
+              renderPlan?.hostedWebSearchMessage ?? null
 
-            const shouldHideAssistantPendingState =
-              message.role === 'assistant' &&
-              (hasToolResponseForThis || hidePendingAssistantPlaceholders) &&
-              !hasVisibleAssistantContent &&
-              !hasVisibleAssistantReasoning &&
-              !hasVisibleAssistantAnnotations &&
-              !hostedWebSearchMessage &&
-              !shouldShowAssistantToolPreview
-
-            if (shouldHideAssistantPendingState) {
+            if (renderPlan?.hidden) {
               return null
             }
 
-            return message.role === 'assistant' ? (
-              message.reasoning ||
-              message.annotations ||
-              message.content ||
-              hostedWebSearchMessage ||
-              (message.metadata?.generationState === 'error' &&
-                Boolean(message.metadata?.errorMessage)) ||
-              (message.metadata?.generationState === 'streaming' &&
-                !message.content &&
-                !message.reasoning) ||
-              shouldShowAssistantToolPreview ? (
-                <div key={message.id} className="yolo-chat-messages-assistant">
-                  {(message.reasoning ||
-                    (message.metadata?.generationState === 'streaming' &&
-                      !message.content &&
-                      !message.annotations &&
-                      !message.toolCallRequests?.length)) && (
-                    <AssistantMessageReasoning
-                      reasoning={message.reasoning ?? ''}
-                      hasAnswerContent={message.content.trim().length > 0}
-                      generationState={reasoningGenerationState}
-                      reasoningDurationMs={
-                        message.metadata?.reasoningDurationMs
-                      }
-                    />
-                  )}
-                  {hostedWebSearchMessage && (
-                    <ToolMessage
-                      message={hostedWebSearchMessage}
-                      conversationId={effectiveConversationId}
-                      showRunningFooter={false}
-                      onMessageUpdate={() => {
-                        // 服务端已执行完毕的只读卡片，没有可更新的状态。
-                      }}
-                      onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
-                    />
-                  )}
-                  <AssistantMessageContent
-                    messageId={message.id}
-                    conversationId={effectiveConversationId}
-                    content={message.content}
-                    annotations={message.annotations}
-                    sources={message.metadata?.sources}
-                    handleApply={onApply}
-                    isApplying={isApplying}
-                    activeApplyRequestKey={activeApplyRequestKey}
-                    generationState={message.metadata?.generationState}
-                    reasoningDurationMs={message.metadata?.reasoningDurationMs}
-                    toolCallRequests={message.toolCallRequests}
-                    showToolCallPreview={shouldShowAssistantToolPreview}
-                    onQuote={onQuoteAssistantSelection}
-                    assistantQuotes={assistantQuotes}
-                    onDeleteQuote={onDeleteAssistantQuote}
-                    enableSelectionQuote={showQuoteAction}
-                  />
-                  {message.annotations && (
-                    <AssistantMessageAnnotations
-                      annotations={message.annotations}
-                    />
-                  )}
-                  {message.metadata?.sources &&
-                    message.metadata.sources.length > 0 && (
-                      <AssistantMessageSources
-                        sources={message.metadata.sources}
-                      />
-                    )}
-                  {message.metadata?.generationState === 'error' &&
-                    message.metadata.errorMessage && (
-                      <AssistantErrorCard
-                        errorMessage={message.metadata.errorMessage}
-                        errorDetail={message.metadata.errorDetail}
-                        onContinue={
-                          continuableErrorMessageIds?.has(message.id) &&
-                          onContinueError &&
-                          !isRunActive
-                            ? () => onContinueError(message.id)
-                            : undefined
+            // The thinking block right before the answer belongs to the
+            // preceding tool run — fold and unfold it with that run.
+            const boundaryToolRunSegment =
+              toolRunBoundaryByIndex.get(messageIndex)
+            const isReasoningFoldedIntoRun =
+              boundaryToolRunSegment !== undefined &&
+              !expandedToolRunKeys.has(boundaryToolRunSegment.key)
+
+            const renderedMessage =
+              message.role === 'assistant' ? (
+                renderPlan?.visible ? (
+                  <div
+                    key={message.id}
+                    className={`yolo-chat-messages-assistant${
+                      message.content.trim().length > 0
+                        ? ' yolo-assistant-answer-item'
+                        : ''
+                    }${
+                      !isReasoningFoldedIntoRun &&
+                      (message.reasoning ?? '').trim().length > 0
+                        ? ' has-visible-reasoning'
+                        : ''
+                    }`}
+                  >
+                    {!isReasoningFoldedIntoRun &&
+                      (message.reasoning ||
+                        (message.metadata?.generationState === 'streaming' &&
+                          !message.content &&
+                          !message.annotations &&
+                          !message.toolCallRequests?.length)) && (
+                        <AssistantMessageReasoning
+                          reasoning={message.reasoning ?? ''}
+                          hasAnswerContent={message.content.trim().length > 0}
+                          generationState={reasoningGenerationState}
+                          reasoningDurationMs={
+                            message.metadata?.reasoningDurationMs
+                          }
+                        />
+                      )}
+                    {hostedWebSearchMessage && (
+                      <ToolMessage
+                        message={hostedWebSearchMessage}
+                        conversationId={effectiveConversationId}
+                        showRunningFooter={false}
+                        onMessageUpdate={() => {
+                          // 服务端已执行完毕的只读卡片，没有可更新的状态。
+                        }}
+                        onRecoverAnswerUserQuestion={
+                          onRecoverAnswerUserQuestion
                         }
                       />
                     )}
+                    {(message.content.trim().length > 0 ||
+                      shouldShowAssistantToolPreview) && (
+                      <AssistantMessageContent
+                        messageId={message.id}
+                        conversationId={effectiveConversationId}
+                        content={message.content}
+                        annotations={message.annotations}
+                        sources={message.metadata?.sources}
+                        handleApply={onApply}
+                        isApplying={isApplying}
+                        activeApplyRequestKey={activeApplyRequestKey}
+                        generationState={message.metadata?.generationState}
+                        reasoningDurationMs={
+                          message.metadata?.reasoningDurationMs
+                        }
+                        toolCallRequests={message.toolCallRequests}
+                        showToolCallPreview={shouldShowAssistantToolPreview}
+                        onQuote={onQuoteAssistantSelection}
+                        assistantQuotes={assistantQuotes}
+                        onDeleteQuote={onDeleteAssistantQuote}
+                        enableSelectionQuote={showQuoteAction}
+                      />
+                    )}
+                    {message.annotations && (
+                      <AssistantMessageAnnotations
+                        annotations={message.annotations}
+                      />
+                    )}
+                    {message.metadata?.sources &&
+                      message.metadata.sources.length > 0 && (
+                        <AssistantMessageSources
+                          sources={message.metadata.sources}
+                        />
+                      )}
+                    {message.metadata?.generationState === 'error' &&
+                      message.metadata.errorMessage && (
+                        <AssistantErrorCard
+                          errorMessage={message.metadata.errorMessage}
+                          errorDetail={message.metadata.errorDetail}
+                          onContinue={
+                            continuableErrorMessageIds?.has(message.id) &&
+                            onContinueError &&
+                            !isRunActive
+                              ? () => onContinueError(message.id)
+                              : undefined
+                          }
+                        />
+                      )}
+                  </div>
+                ) : null
+              ) : message.role === 'external_agent_result' ? (
+                <div key={message.id}>
+                  <ToolMessage
+                    message={buildSynthToolMessageFromResult(message)}
+                    conversationId={effectiveConversationId}
+                    showRunningFooter={false}
+                    onMessageUpdate={() => {
+                      // 异步派遣结果是终态消息，UI 内部不会触发 update；
+                      // 万一调到这里也不持久化（result message 有自己的存储路径）。
+                    }}
+                    onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
+                  />
                 </div>
-              ) : null
-            ) : message.role === 'external_agent_result' ? (
-              <div key={message.id}>
-                <ToolMessage
-                  message={buildSynthToolMessageFromResult(message)}
-                  conversationId={effectiveConversationId}
-                  showRunningFooter={false}
-                  onMessageUpdate={() => {
-                    // 异步派遣结果是终态消息，UI 内部不会触发 update；
-                    // 万一调到这里也不持久化（result message 有自己的存储路径）。
-                  }}
-                  onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
-                />
-              </div>
-            ) : message.role === 'subagent_result' ||
-              message.role === 'terminal_command_result' ? null : (
-              <div key={message.id}>
-                <ToolMessage
-                  message={message}
-                  conversationId={effectiveConversationId}
-                  isCompactionPending={
-                    message.id === pendingCompactionAnchorMessageId
-                  }
-                  showRunningFooter={showRunningToolFooter}
-                  terminalCommandResultsByToolCallId={
-                    terminalCommandResultsByToolCallId
-                  }
-                  subagentResultsByToolCallId={subagentResultsByToolCallId}
-                  onMessageUpdate={onToolMessageUpdate}
-                  onToolCallResponseUpdate={onToolCallResponseUpdate}
-                  onRecoverToolCall={onRecoverToolCall}
-                  onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
-                />
-              </div>
+              ) : message.role === 'subagent_result' ||
+                message.role === 'terminal_command_result' ? null : (
+                <div key={message.id}>
+                  <ToolMessage
+                    message={message}
+                    conversationId={effectiveConversationId}
+                    isCompactionPending={
+                      message.id === pendingCompactionAnchorMessageId
+                    }
+                    showRunningFooter={showRunningToolFooter}
+                    terminalCommandResultsByToolCallId={
+                      terminalCommandResultsByToolCallId
+                    }
+                    subagentResultsByToolCallId={subagentResultsByToolCallId}
+                    onMessageUpdate={onToolMessageUpdate}
+                    onToolCallResponseUpdate={onToolCallResponseUpdate}
+                    onRecoverToolCall={onRecoverToolCall}
+                    onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
+                  />
+                </div>
+              )
+
+            const toolRunSegment = toolRunSegmentByIndex.get(messageIndex)
+            if (!toolRunSegment) {
+              return renderedMessage
+            }
+            const isSegmentExpanded = expandedToolRunKeys.has(
+              toolRunSegment.key,
+            )
+            if (messageIndex !== toolRunSegment.startIndex) {
+              return isSegmentExpanded ? renderedMessage : null
+            }
+            return (
+              <Fragment key={`tool-run-${toolRunSegment.key}`}>
+                <button
+                  type="button"
+                  className={`yolo-tool-run-summary${
+                    isSegmentExpanded ? ' is-expanded' : ''
+                  }`}
+                  aria-expanded={isSegmentExpanded}
+                  onClick={() => toggleToolRunSegment(toolRunSegment.key)}
+                >
+                  <span className="yolo-tool-run-summary__text">
+                    {buildToolRunSummaryText(toolRunSegment, t)}
+                  </span>
+                  <ChevronRight
+                    size={14}
+                    className="yolo-tool-run-summary__chevron"
+                  />
+                </button>
+                {isSegmentExpanded ? renderedMessage : null}
+              </Fragment>
             )
           })
         )}

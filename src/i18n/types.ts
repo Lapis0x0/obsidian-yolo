@@ -1879,6 +1879,18 @@ export type TranslationKeys = {
         sessionInput?: string
       }
     }
+    // Collapsed summary line for a settled run of consecutive tool calls.
+    toolRunSummary?: {
+      read?: string
+      search?: string
+      web?: string
+      edit?: string
+      virtualTerminal?: string
+      terminal?: string
+      command?: string
+      analysis?: string
+      other?: string
+    }
     // shared live task card
     liveTask?: {
       statusRunning?: string

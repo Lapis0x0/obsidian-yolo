@@ -1,4 +1,3 @@
-import { Loader2 } from 'lucide-react'
 import React, { useCallback, useMemo } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
@@ -239,9 +238,6 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
         <div className="yolo-toolcall-container yolo-assistant-tool-running-preview">
           <div className="yolo-toolcall">
             <div className="yolo-toolcall-header yolo-assistant-tool-running-preview-header">
-              <div className="yolo-toolcall-header-icon yolo-toolcall-header-icon--status-inline">
-                <Loader2 className="yolo-spinner" size={14} />
-              </div>
               <div className="yolo-toolcall-header-content">
                 <span className="yolo-toolcall-header-tool-name">
                   {toolPreviewText}

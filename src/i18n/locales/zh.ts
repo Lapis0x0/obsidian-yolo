@@ -2083,6 +2083,17 @@ export const zh: TranslationKeys = {
         sessionInput: '会话 {id} · 输入: {preview}',
       },
     },
+    toolRunSummary: {
+      read: '读取 {count} 个文件',
+      search: '检索 {count} 次',
+      web: '联网查询 {count} 次',
+      edit: '编辑 {count} 个文件',
+      virtualTerminal: '虚拟终端 {count} 次',
+      terminal: '终端 {count} 次',
+      command: '运行 {count} 条命令',
+      analysis: '沙箱分析 {count} 次',
+      other: '其他操作 {count} 项',
+    },
     liveTask: {
       statusRunning: '执行中',
       statusDone: '已完成',

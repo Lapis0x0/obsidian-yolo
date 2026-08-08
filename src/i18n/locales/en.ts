@@ -2220,6 +2220,17 @@ export const en: TranslationKeys = {
         sessionInput: 'Session {id} · Input: {preview}',
       },
     },
+    toolRunSummary: {
+      read: 'Read {count} file(s)',
+      search: 'Searched {count} time(s)',
+      web: '{count} web lookup(s)',
+      edit: 'Edited {count} file(s)',
+      virtualTerminal: 'Virtual terminal {count} time(s)',
+      terminal: 'Terminal {count} time(s)',
+      command: 'Ran {count} command(s)',
+      analysis: '{count} sandbox run(s)',
+      other: '{count} other action(s)',
+    },
     liveTask: {
       statusRunning: 'Running',
       statusDone: 'Done',

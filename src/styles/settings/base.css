@@ -536,8 +536,7 @@ select.yolo-module-settings-select {
   --yolo-assistant-metadata-line-offset: calc(
     var(--yolo-assistant-metadata-dot-size) / 2
   );
-  margin-top: 2px;
-  margin-bottom: var(--size-4-1);
+  margin: 0;
   transition:
     transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
     opacity 180ms ease;
@@ -668,8 +667,10 @@ select.yolo-module-settings-select {
   justify-content: flex-start;
   gap: var(--size-2-2);
   width: 100%;
-  min-height: 0;
-  font-size: var(--font-ui-small);
+  height: 24px;
+  min-height: 24px;
+  font-size: 0.85rem;
+  line-height: 1.5;
   color: var(--text-muted);
   background: transparent !important;
   background-color: transparent !important;
@@ -721,10 +722,19 @@ select.yolo-module-settings-select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.35;
   color: color-mix(in srgb, var(--text-muted) 92%, var(--text-normal));
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
     transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-assistant-message-metadata-label-title {
+  color: var(--text-muted);
+}
+
+.yolo-assistant-message-metadata-label-detail {
+  color: var(--text-faint);
 }
 
 .yolo-assistant-message-metadata-status-dot {
@@ -755,8 +765,8 @@ select.yolo-module-settings-select {
 }
 
 .yolo-assistant-message-metadata-toggle-icon {
-  width: var(--size-4-4);
-  height: var(--size-4-4);
+  width: var(--yolo-toolcall-status-icon-size, 16px);
+  height: var(--yolo-toolcall-status-icon-size, 16px);
   flex: 0 0 auto;
   color: color-mix(in srgb, var(--text-faint) 84%, var(--text-muted));
   opacity: 0.68;
