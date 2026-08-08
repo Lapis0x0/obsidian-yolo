@@ -19361,7 +19361,8 @@ button.yolo-quick-ask-continue-menu-item:focus {
   transition: all 0.15s ease;
   white-space: nowrap;
   margin-left: -5px;
-  order: 3;
+  order: 4;
+  flex-shrink: 1;
 }
 .yolo-quick-ask-assistant-trigger:hover,
 .yolo-quick-ask-assistant-trigger:focus-visible {
@@ -19380,7 +19381,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   justify-content: center;
 }
 .yolo-quick-ask-assistant-name {
-  max-width: 140px;
+  max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -19401,7 +19402,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   padding: 6px 10px;
   min-height: 28px;
   min-width: 0;
-  max-width: 220px;
+  max-width: 180px;
   flex-shrink: 1;
   border: none !important;
   border-radius: 6px;
@@ -19471,6 +19472,43 @@ button.yolo-quick-ask-continue-menu-item:focus {
     360px
   );
 }
+.yolo-quick-ask-reasoning-select {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  order: 3;
+  flex-shrink: 0;
+}
+.yolo-quick-ask-reasoning-select .yolo-reasoning-select {
+  min-width: 72px;
+  max-width: 88px;
+  flex: 0 1 auto;
+  padding: 6px 8px;
+  gap: 3px;
+}
+.yolo-quick-ask-reasoning-select .yolo-reasoning-select:hover,
+.yolo-quick-ask-reasoning-select .yolo-reasoning-select:focus,
+.yolo-quick-ask-reasoning-select .yolo-reasoning-select:focus-visible,
+.yolo-quick-ask-reasoning-select
+  .yolo-reasoning-select[data-state='open'] {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 32%,
+    transparent
+  ) !important;
+  border: none !important;
+  box-shadow: none !important;
+  color: var(--interactive-accent) !important;
+  outline: none;
+}
+.yolo-quick-ask-reasoning-select
+  .yolo-reasoning-select
+  .yolo-chat-input-model-select__model-name {
+  max-width: 42px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 /* Mode Select */
 .yolo-quick-ask-mode-select {
   display: flex;
@@ -19478,6 +19516,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   margin-left: 0px;
   min-width: 0;
   order: 1;
+  flex-shrink: 0;
 }
 .yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select {
   display: inline-flex;
@@ -19487,7 +19526,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
   min-height: 28px;
   min-width: 0;
   max-width: 180px;
-  flex-shrink: 1;
+  flex-shrink: 0;
   border: none !important;
   border-radius: 6px;
   background: transparent !important;

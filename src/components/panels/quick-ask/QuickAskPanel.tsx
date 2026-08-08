@@ -68,6 +68,12 @@ import MessageInputCore, {
   type MessageInputCoreRef,
 } from '../../chat-view/chat-input/MessageInputCore'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
+import {
+  ReasoningSelect,
+  supportsReasoning,
+  type ReasoningLevel,
+} from '../../chat-view/chat-input/ReasoningSelect'
+import { getDefaultReasoningLevel } from '../../../types/reasoning'
 import { SubmitButton } from '../../chat-view/chat-input/SubmitButton'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
 import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
@@ -330,6 +336,7 @@ export function QuickAskPanel({
   )
   const assistantTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modelTriggerRef = useRef<HTMLButtonElement | null>(null)
+  const reasoningTriggerRef = useRef<HTMLButtonElement | null>(null)
   const modeTriggerRef = useRef<HTMLButtonElement | null>(null)
   const inputRowRef = useRef<HTMLDivElement | null>(null)
   const internalMessageInputRef = useRef<MessageInputCoreRef>(null)
@@ -771,6 +778,11 @@ export function QuickAskPanel({
   }, [settings])
   const providerClient = modelClient?.providerClient
   const model = modelClient?.model
+  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>('auto')
+
+  useEffect(() => {
+    setReasoningLevel(getDefaultReasoningLevel(model ?? null))
+  }, [model?.id])
 
   useEffect(() => {
     if (hasDockedRef.current) return
@@ -843,6 +855,7 @@ export function QuickAskPanel({
           id: options?.userMessageId ?? uuidv4(),
           mentionables: resolvedMentionables,
           selectedSkills: resolvedSelectedSkills,
+          reasoningLevel,
         },
         resolveAssistantTimeContextEnabled(selectedAssistant, settings),
       )
@@ -953,6 +966,7 @@ export function QuickAskPanel({
           input: {
             providerClient,
             model: effectiveModel,
+            reasoningLevel,
             messages: compiledMessages,
             conversationId,
             requestContextBuilder,
@@ -1024,6 +1038,7 @@ export function QuickAskPanel({
       settings,
       t,
       yoloEnabled,
+      reasoningLevel,
       editorSnapshotInjection,
     ],
   )
@@ -2125,7 +2140,7 @@ export function QuickAskPanel({
                           if (event.key === 'ArrowLeft') {
                             event.preventDefault()
                             event.stopPropagation()
-                            modelTriggerRef.current?.focus()
+                            reasoningTriggerRef.current?.focus()
                             return
                           }
                           if (event.key === 'ArrowRight') {
@@ -2159,8 +2174,8 @@ export function QuickAskPanel({
                     minWidth={200}
                     maxWidth={300}
                     side="top"
-                    align="start"
-                    sideOffset={4}
+                    align="center"
+                    sideOffset={12}
                     collisionPadding={8}
                     avoidCollisions={false}
                     onCloseAutoFocus={(e) => e.preventDefault()}
@@ -2200,6 +2215,10 @@ export function QuickAskPanel({
                     }
                     onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
                     onChange={(modelId) => {
+                      const nextModel = settings.chatModels.find(
+                        (candidate) => candidate.id === modelId,
+                      )
+                      setReasoningLevel(getDefaultReasoningLevel(nextModel ?? null))
                       void setSettings({
                         ...settings,
                         continuationOptions: {
@@ -2209,9 +2228,9 @@ export function QuickAskPanel({
                       })
                     }}
                     side="bottom"
-                    align="start"
-                    sideOffset={4}
-                    alignOffset={-4}
+                    align="center"
+                    sideOffset={12}
+                    alignOffset={0}
                     popover={{
                       variant: 'default',
                       maxHeight: 400,
@@ -2233,7 +2252,7 @@ export function QuickAskPanel({
                       }
                       if (event.key === 'ArrowRight') {
                         event.preventDefault()
-                        assistantTriggerRef.current?.focus()
+                        reasoningTriggerRef.current?.focus()
                         return
                       }
                       if (event.key === 'ArrowUp') {
@@ -2247,6 +2266,38 @@ export function QuickAskPanel({
                       })
                     }}
                   />
+                </div>
+
+                <div
+                  className="yolo-quick-ask-reasoning-select"
+                  onKeyDown={(event) => {
+                    if (event.key === 'ArrowLeft') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      modelTriggerRef.current?.focus()
+                    } else if (event.key === 'ArrowRight') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      assistantTriggerRef.current?.focus()
+                    } else if (event.key === 'ArrowUp') {
+                      event.preventDefault()
+                      event.stopPropagation()
+                      messageInputRef.current?.focus()
+                    }
+                  }}
+                >
+                  {supportsReasoning(model ?? null) && (
+                    <ReasoningSelect
+                      ref={reasoningTriggerRef}
+                      model={model ?? null}
+                      value={reasoningLevel}
+                      onChange={setReasoningLevel}
+                      onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
+                      side="bottom"
+                      align="center"
+                      sideOffset={12}
+                    />
+                  )}
                 </div>
 
                 <div className="yolo-quick-ask-mode-select">
@@ -2279,7 +2330,7 @@ export function QuickAskPanel({
                     onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
                     side="bottom"
                     align="start"
-                    sideOffset={4}
+                    sideOffset={12}
                     alignOffset={-4}
                     onKeyDown={(event, isMenuOpen) => {
                       if (isMenuOpen) {
