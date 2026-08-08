@@ -208,7 +208,7 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
     await expect(api.removeFileExact('notes/card.md')).resolves.toBe(true)
     expect(vault.delete).toHaveBeenNthCalledWith(1, file, true)
     await expect(api.removeEmptyFolderExact('notes/empty')).resolves.toBe(true)
-    expect(vault.delete).toHaveBeenNthCalledWith(2, emptyFolder, false)
+    expect(vault.delete).toHaveBeenNthCalledWith(2, emptyFolder, true)
     await expect(api.removeFileExact('notes/card.md')).resolves.toBe(false)
     await expect(api.removeEmptyFolderExact('notes/empty')).resolves.toBe(false)
     expect(vault.delete).toHaveBeenCalledTimes(2)

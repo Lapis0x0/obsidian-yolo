@@ -449,13 +449,18 @@ function createObsidianModuleVaultCapability({
           if (listing.files.length > 0 || listing.folders.length > 0) {
             return false
           }
-          await app.vault.adapter.rmdir(path, false)
+          // Obsidian 1.13.4 implements rmdir with fs.rm. Passing false for
+          // recursive causes Node to reject directories with ERR_FS_EISDIR.
+          await app.vault.adapter.rmdir(path, true)
           assertAvailable()
           return true
         }
         if (entry.children.length > 0) return false
         // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated empty folder.
-        await app.vault.delete(entry, false)
+        // The folder has already been verified empty. Force deletion keeps
+        // Obsidian's vault index in sync while avoiding its non-recursive
+        // directory-removal path, which can raise ERR_FS_EISDIR.
+        await app.vault.delete(entry, true)
         return true
       })
     },
