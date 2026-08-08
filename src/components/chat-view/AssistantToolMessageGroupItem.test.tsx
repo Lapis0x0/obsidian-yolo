@@ -483,12 +483,28 @@ describe('AssistantToolMessageGroupItem', () => {
       calls: {
         name: string
         status?: ToolCallResponseStatus
+        cliCapability?: 'command_execution' | 'file_change'
       }[],
     ): ChatToolMessage => ({
       role: 'tool',
       id,
       toolCalls: calls.map((call, index) => ({
-        request: { id: `${id}-call-${index}`, name: call.name },
+        request: {
+          id: `${id}-call-${index}`,
+          name: call.name,
+          ...(call.cliCapability
+            ? {
+                metadata: {
+                  cliToolCall: {
+                    runtimeId: 'codex' as const,
+                    eventType: 'test',
+                    name: call.name,
+                    capability: call.cliCapability,
+                  },
+                },
+              }
+            : {}),
+        },
         response:
           call.status && call.status !== ToolCallResponseStatus.Success
             ? { status: call.status }
@@ -647,6 +663,25 @@ describe('AssistantToolMessageGroupItem', () => {
 
       expect(html).toContain('yolo-tool-run-summary')
       expect(html).toContain('aria-expanded="false"')
+    })
+
+    it('summarizes CLI capabilities instead of treating them as other actions', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'commandExecution', cliCapability: 'command_execution' },
+              { name: 'fileChange', cliCapability: 'file_change' },
+            ]),
+          ]}
+        />,
+      )
+
+      expect(html).toContain('Ran 1 command(s)')
+      expect(html).toContain('Edited 1 file(s)')
+      expect(html).not.toContain('other action')
     })
   })
 })

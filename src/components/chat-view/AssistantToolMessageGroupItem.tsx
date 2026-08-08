@@ -14,6 +14,7 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
+import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
@@ -302,10 +303,54 @@ const TOOL_RUN_SUMMARY_BUCKET_BY_TOOL: Record<string, ToolRunSummaryBucket> = {
   js_eval: 'analysis',
 }
 
-const getToolRunSummaryBucket = (rawToolName: string): ToolRunSummaryBucket => {
-  let toolName = rawToolName
+const CLI_TOOL_RUN_SUMMARY_BUCKET_BY_NAME: Record<
+  string,
+  ToolRunSummaryBucket
+> = {
+  bash: 'command',
+  exec: 'command',
+  exec_command: 'command',
+  shell: 'command',
+  terminal: 'command',
+  terminal_command: 'command',
+  read: 'read',
+  glob: 'search',
+  grep: 'search',
+  search: 'search',
+  find: 'search',
+  edit: 'edit',
+  write: 'edit',
+  apply_patch: 'edit',
+  websearch: 'web',
+  web_search: 'web',
+  fetch: 'web',
+  scrape: 'web',
+}
+
+type ToolCallRequestLike = ChatToolMessage['toolCalls'][number]['request']
+
+const getToolRunSummaryBucket = (
+  request: ToolCallRequestLike,
+): ToolRunSummaryBucket => {
+  const cliToolCall = request.metadata?.cliToolCall
+  if (cliToolCall) {
+    if (isCliToolCallCapability(request, 'file_change')) {
+      return 'edit'
+    }
+    if (isCliToolCallCapability(request, 'command_execution')) {
+      return 'command'
+    }
+    const cliBucket =
+      CLI_TOOL_RUN_SUMMARY_BUCKET_BY_NAME[cliToolCall.name.toLowerCase()]
+    if (cliBucket) {
+      return cliBucket
+    }
+    return 'other'
+  }
+
+  let toolName = request.name
   try {
-    toolName = parseToolName(rawToolName).toolName
+    toolName = parseToolName(request.name).toolName
   } catch (error) {
     if (!(error instanceof InvalidToolNameException)) {
       throw error
@@ -699,7 +744,7 @@ function AssistantToolMessageGroupItem({
         ) {
           const bucketCounts: ToolRunSegment['bucketCounts'] = {}
           for (const call of toolCalls) {
-            const bucket = getToolRunSummaryBucket(call.request.name)
+            const bucket = getToolRunSummaryBucket(call.request)
             bucketCounts[bucket] = (bucketCounts[bucket] ?? 0) + 1
           }
           segments.push({
