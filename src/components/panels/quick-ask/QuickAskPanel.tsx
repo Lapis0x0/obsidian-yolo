@@ -51,6 +51,10 @@ import {
   MentionableFile,
   MentionableFolder,
 } from '../../../types/mentionable'
+import {
+  getDefaultReasoningLevel,
+  normalizeStoredReasoningLevel,
+} from '../../../types/reasoning'
 import type { ToolCallResponse } from '../../../types/tool-call.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
@@ -63,17 +67,20 @@ import { buildMessageTimelineItems } from '../../../utils/chat/timeline'
 import { readTFileContent } from '../../../utils/obsidian'
 import { stampUserMessageTimeContext } from '../../../utils/prompt/timeContext'
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
+import {
+  ChatModeSelect,
+  type ChatModeSelectOptionValue,
+} from '../../chat-view/chat-input/ChatModeSelect'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import MessageInputCore, {
   type MessageInputCoreRef,
 } from '../../chat-view/chat-input/MessageInputCore'
 import { ModelSelect } from '../../chat-view/chat-input/ModelSelect'
 import {
+  type ReasoningLevel,
   ReasoningSelect,
   supportsReasoning,
-  type ReasoningLevel,
 } from '../../chat-view/chat-input/ReasoningSelect'
-import { getDefaultReasoningLevel } from '../../../types/reasoning'
 import { SubmitButton } from '../../chat-view/chat-input/SubmitButton'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
 import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
@@ -92,10 +99,6 @@ import {
 } from '../../settings/SmartSpaceQuickActionsSettings'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
-import {
-  ChatModeSelect,
-  type ChatModeSelectOptionValue,
-} from '../../chat-view/chat-input/ChatModeSelect'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
 
 type QuickAskMode = Extract<
@@ -781,8 +784,38 @@ export function QuickAskPanel({
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>('auto')
 
   useEffect(() => {
-    setReasoningLevel(getDefaultReasoningLevel(model ?? null))
+    const remembered = model
+      ? normalizeStoredReasoningLevel(
+          settings.chatOptions.reasoningLevelByModelId?.[model.id],
+        )
+      : null
+    setReasoningLevel(remembered ?? getDefaultReasoningLevel(model ?? null))
+    // Only re-derive when the resolved model changes — this must not react
+    // to every settings update, or persisting the user's own pick below
+    // would immediately re-trigger this effect via the changed
+    // reasoningLevelByModelId reference.
   }, [model?.id])
+
+  const handleReasoningLevelChange = useCallback(
+    (level: ReasoningLevel) => {
+      setReasoningLevel(level)
+      if (!model?.id) return
+      if (settings.chatOptions.reasoningLevelByModelId?.[model.id] === level) {
+        return
+      }
+      void setSettings({
+        ...settings,
+        chatOptions: {
+          ...settings.chatOptions,
+          reasoningLevelByModelId: {
+            ...settings.chatOptions.reasoningLevelByModelId,
+            [model.id]: level,
+          },
+        },
+      })
+    },
+    [model, settings, setSettings],
+  )
 
   useEffect(() => {
     if (hasDockedRef.current) return
@@ -2215,10 +2248,9 @@ export function QuickAskPanel({
                     }
                     onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
                     onChange={(modelId) => {
-                      const nextModel = settings.chatModels.find(
-                        (candidate) => candidate.id === modelId,
-                      )
-                      setReasoningLevel(getDefaultReasoningLevel(nextModel ?? null))
+                      // reasoningLevel is re-derived by the model-change
+                      // effect above (remembered level for the new model,
+                      // falling back to its default) — no need to set it here.
                       void setSettings({
                         ...settings,
                         continuationOptions: {
@@ -2291,7 +2323,7 @@ export function QuickAskPanel({
                       ref={reasoningTriggerRef}
                       model={model ?? null}
                       value={reasoningLevel}
-                      onChange={setReasoningLevel}
+                      onChange={handleReasoningLevelChange}
                       onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
                       side="bottom"
                       align="center"
