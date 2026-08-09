@@ -1854,6 +1854,352 @@ describe('local fs tool action helpers', () => {
   })
 })
 
+describe('fs_read wikilink resolution', () => {
+  const makeMdFile = (path: string, size = 20, mtime = 1000): TFile =>
+    Object.assign(new TFile(), {
+      path,
+      name: path.split('/').pop(),
+      extension: 'md',
+      stat: { size, mtime },
+    })
+
+  type FakeHeading = { heading: string; level: number; line0: number }
+
+  const makeReadApp = (options: {
+    content: Record<string, string>
+    resolver: (linkpath: string, sourcePath: string) => TFile | null
+    headingsByFile?: Map<TFile, FakeHeading[]>
+  }): App => {
+    const { content, resolver, headingsByFile } = options
+    return {
+      vault: {
+        getFileByPath: jest.fn().mockReturnValue(null),
+        read: jest
+          .fn()
+          .mockImplementation((file: TFile) =>
+            Promise.resolve(content[file.path] ?? ''),
+          ),
+      },
+      metadataCache: {
+        getFirstLinkpathDest: jest.fn(resolver),
+        getFileCache: jest.fn().mockImplementation((file: TFile) => {
+          const headings = headingsByFile?.get(file)
+          if (!headings) return null
+          return {
+            headings: headings.map((h) => ({
+              heading: h.heading,
+              level: h.level,
+              position: {
+                start: { line: h.line0, col: 0, offset: 0 },
+                end: { line: h.line0, col: 0, offset: 0 },
+              },
+            })),
+          }
+        }),
+      },
+    } as unknown as App
+  }
+
+  const parseSuccessResults = (result: {
+    status: ToolCallResponseStatus
+    text?: string
+  }): Array<Record<string, unknown>> => {
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    return (
+      JSON.parse((result as { text: string }).text) as {
+        results: Array<Record<string, unknown>>
+      }
+    ).results
+  }
+
+  it('resolves a [[...]]-style path entry that has no exact vault match', async () => {
+    const file = makeMdFile('Notes/Foo.md')
+    const app = makeReadApp({
+      content: { 'Notes/Foo.md': 'line1\nline2\nline3' },
+      resolver: (linkpath) => (linkpath === 'Foo' ? file : null),
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Foo]]'] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results).toEqual([
+      expect.objectContaining({
+        path: '[[Foo]]',
+        ok: true,
+        resolvedPath: 'Notes/Foo.md',
+        content: '1|line1\n2|line2\n3|line3',
+      }),
+    ])
+  })
+
+  it('leaves exact vault-path matches unaffected (no resolvedPath)', async () => {
+    const file = makeMdFile('Notes/Foo.md')
+    const app: App = {
+      vault: {
+        getFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) =>
+            path === 'Notes/Foo.md' ? file : null,
+          ),
+        read: jest.fn().mockResolvedValue('hello'),
+      },
+      metadataCache: {
+        getFirstLinkpathDest: jest.fn().mockReturnValue(null),
+        getFileCache: jest.fn().mockReturnValue(null),
+      },
+    } as unknown as App
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Notes/Foo.md'] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual(
+      expect.objectContaining({ path: 'Notes/Foo.md', ok: true }),
+    )
+    expect(results[0]?.resolvedPath).toBeUndefined()
+  })
+
+  it('applies a resolved heading subpath as the effective range on a full read', async () => {
+    const file = makeMdFile('Notes/Foo.md')
+    const app = makeReadApp({
+      content: {
+        'Notes/Foo.md':
+          'Intro\nSection A\nBody A\nSub A.1\nBody A.1\nSection B\nBody B',
+      },
+      resolver: (linkpath) => (linkpath === 'Foo' ? file : null),
+      headingsByFile: new Map([
+        [
+          file,
+          [
+            { heading: 'Section A', level: 1, line0: 1 },
+            { heading: 'Sub A.1', level: 2, line0: 3 },
+            { heading: 'Section B', level: 1, line0: 5 },
+          ],
+        ],
+      ]),
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Foo#Section A]]'] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual(
+      expect.objectContaining({
+        path: '[[Foo#Section A]]',
+        ok: true,
+        resolvedPath: 'Notes/Foo.md',
+        resolvedSubpath: { type: 'heading', startLine: 2, endLine: 5 },
+        returnedRange: { startLine: 2, endLine: 5 },
+        // 1-based lines 2-5: "Section A", "Body A", "Sub A.1", "Body A.1" —
+        // stops before "Section B" (same level as "Section A").
+        content: '2|Section A\n3|Body A\n4|Sub A.1\n5|Body A.1',
+      }),
+    )
+  })
+
+  it('lets an explicit startLine/endLine override the resolved subpath range', async () => {
+    const file = makeMdFile('Notes/Foo.md')
+    const app = makeReadApp({
+      content: {
+        'Notes/Foo.md': 'Intro\nSection A\nBody A\nSection B\nBody B',
+      },
+      resolver: (linkpath) => (linkpath === 'Foo' ? file : null),
+      headingsByFile: new Map([
+        [
+          file,
+          [
+            { heading: 'Section A', level: 1, line0: 1 },
+            { heading: 'Section B', level: 1, line0: 3 },
+          ],
+        ],
+      ]),
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Foo#Section A]]'], startLine: 1, endLine: 1 },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual(
+      expect.objectContaining({
+        ok: true,
+        // Section A (1-based line 2) runs through Body A (line 3), stopping
+        // before Section B (line 4) — but the explicit startLine/endLine
+        // below overrides this for the actual returned range.
+        resolvedSubpath: { type: 'heading', startLine: 2, endLine: 3 },
+        returnedRange: { startLine: 1, endLine: 1 },
+        content: '1|Intro',
+      }),
+    )
+  })
+
+  it('falls back to a full read with a warning when the subpath is not found', async () => {
+    const file = makeMdFile('Notes/Foo.md')
+    const app = makeReadApp({
+      content: { 'Notes/Foo.md': 'line1\nline2' },
+      resolver: (linkpath) => (linkpath === 'Foo' ? file : null),
+      headingsByFile: new Map([[file, []]]),
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Foo#Missing]]'] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual(
+      expect.objectContaining({
+        ok: true,
+        resolvedPath: 'Notes/Foo.md',
+        content: '1|line1\n2|line2',
+      }),
+    )
+    expect(results[0]?.resolvedSubpath).toBeUndefined()
+    expect(results[0]?.warning).toMatch(/Missing/)
+  })
+
+  it('reports an actionable error when the wikilink target cannot be resolved', async () => {
+    const app = makeReadApp({
+      content: {},
+      resolver: () => null,
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Missing]]'] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual({
+      path: '[[Missing]]',
+      ok: false,
+      error:
+        'File not found. "[[Missing]]" did not match a vault path or a resolvable wikilink target.',
+    })
+  })
+
+  it('rejects a wikilink target that resolves outside the workspace scope', async () => {
+    const file = makeMdFile('Private/Secret.md')
+    const app = makeReadApp({
+      content: { 'Private/Secret.md': 'shh' },
+      resolver: (linkpath) => (linkpath === 'Secret' ? file : null),
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Secret]]'] },
+      workspaceScope: { enabled: true, include: ['Notes'], exclude: [] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual({
+      path: '[[Secret]]',
+      ok: false,
+      error:
+        'Path "Private/Secret.md" is outside this agent\'s workspace scope.',
+    })
+  })
+
+  it('allows a wikilink target that resolves inside the workspace scope', async () => {
+    const file = makeMdFile('Notes/Foo.md')
+    const app = makeReadApp({
+      content: { 'Notes/Foo.md': 'in scope' },
+      resolver: (linkpath) => (linkpath === 'Foo' ? file : null),
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['[[Foo]]'] },
+      workspaceScope: { enabled: true, include: ['Notes'], exclude: [] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual(
+      expect.objectContaining({ ok: true, resolvedPath: 'Notes/Foo.md' }),
+    )
+  })
+
+  it('still enforces workspace scope for an exact-match fs_read path (no gateway-level pre-check anymore)', async () => {
+    const file = makeMdFile('Private/Secret.md')
+    const app: App = {
+      vault: {
+        getFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) =>
+            path === 'Private/Secret.md' ? file : null,
+          ),
+        read: jest.fn().mockResolvedValue('shh'),
+      },
+      metadataCache: {
+        getFirstLinkpathDest: jest.fn().mockReturnValue(null),
+        getFileCache: jest.fn().mockReturnValue(null),
+      },
+    } as unknown as App
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Private/Secret.md'] },
+      workspaceScope: { enabled: true, include: ['Notes'], exclude: [] },
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual({
+      path: 'Private/Secret.md',
+      ok: false,
+      error:
+        'Path "Private/Secret.md" is outside this agent\'s workspace scope.',
+    })
+  })
+
+  it('keeps the skill package exemption for out-of-scope files inside an allowed skill directory', async () => {
+    const file = makeMdFile('Skills/pkg/reference.md')
+    const app: App = {
+      vault: {
+        getFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) =>
+            path === 'Skills/pkg/reference.md' ? file : null,
+          ),
+        read: jest.fn().mockResolvedValue('skill reference content'),
+      },
+      metadataCache: {
+        getFirstLinkpathDest: jest.fn().mockReturnValue(null),
+        getFileCache: jest.fn().mockReturnValue(null),
+      },
+    } as unknown as App
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Skills/pkg/reference.md'] },
+      workspaceScope: { enabled: true, include: ['Notes'], exclude: [] },
+      allowedSkillPaths: ['Skills/pkg/SKILL.md'],
+    })
+
+    const results = parseSuccessResults(result)
+    expect(results[0]).toEqual(
+      expect.objectContaining({ path: 'Skills/pkg/reference.md', ok: true }),
+    )
+  })
+})
+
 describe('bash tool dispatch', () => {
   const mockApp = { vault: {}, fileManager: {} } as unknown as App
 

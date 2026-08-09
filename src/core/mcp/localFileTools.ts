@@ -43,6 +43,10 @@ import {
   chatModelSupportsVision,
 } from '../../utils/llm/model-modalities'
 import {
+  type WikilinkReadSubpath,
+  resolveWikilinkReadTarget,
+} from '../../utils/llm/resolve-wikilink-target'
+import {
   type OfficeDocumentKind,
   parseOfficeDocument,
 } from '../../utils/office'
@@ -70,6 +74,8 @@ import {
   BUILTIN_SKILL_PATH_PREFIX,
   buildAllowedSkillPathSet,
   findPathOutsideScope,
+  isCoveredBySkillPathExemption,
+  isPathAllowedByScope,
   normalizeSkillPathForExemption,
 } from '../agent/workspaceScope'
 import {
@@ -753,7 +759,7 @@ export function getLocalFileTools(options?: {
     {
       name: 'fs_read',
       description:
-        'Read vault files, skill instructions, or open Obsidian web pages. Omit range fields for a full read. For a targeted read, pass startLine and optionally endLine or maxLines. Lines are 1-based; for PDFs they are page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
+        'Read vault files, skill instructions, or open Obsidian web pages. Path entries also accept Obsidian wikilink targets (e.g. "[[Note#Heading]]" or bare "Note#^blockId"), resolved the same way Obsidian resolves links. Omit range fields for a full read. For a targeted read, pass startLine and optionally endLine or maxLines. Lines are 1-based; for PDFs they are page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
       inputSchema: {
         type: 'object',
         properties: {
@@ -762,7 +768,12 @@ export function getLocalFileTools(options?: {
             items: {
               type: 'string',
             },
-            description: `Vault-relative file paths, skill paths (builtin://), or browser://<page_id> copied exactly from <browser_context>. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
+            description: `Vault-relative file paths, skill paths (builtin://), browser://<page_id> copied exactly from <browser_context>, or Obsidian wikilink targets. Wikilink targets may be wrapped in [[...]] or bare, may omit the .md extension, and may carry "#heading" (including nested "#Heading#Subheading") or "#^blockId" to read just that section. Exact vault paths are tried first, so this only kicks in when an entry doesn't match a real file path. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
+          },
+          sourcePath: {
+            type: 'string',
+            description:
+              "Optional vault path of the note the wikilink targets are being resolved from, to match Obsidian's link-resolution rules (relative/shortest-path). Only affects wikilink-style paths entries; ignored otherwise. Omit to resolve against the vault-wide best match.",
           },
           startLine: {
             type: 'integer',
@@ -2287,6 +2298,15 @@ export async function callLocalFileTool({
           )
         }
         const operation = getFsReadOperation(args)
+        // Resolution context for wikilink-style path entries (see the
+        // fallback resolution below). Not a path read from — just the
+        // linking note's path, mirroring how Obsidian resolves real
+        // wikilinks. Not subject to workspace-scope checks itself.
+        const rawSourcePath = getOptionalTextArg(args, 'sourcePath')?.trim()
+        const sourcePath =
+          rawSourcePath && rawSourcePath.length > 0
+            ? validateVaultPath(rawSourcePath)
+            : undefined
         const allowedSkillPathSet = allowedSkillPaths
           ? buildAllowedSkillPathSet(allowedSkillPaths)
           : undefined
@@ -2311,6 +2331,11 @@ export async function callLocalFileTool({
               loading?: boolean
               redactions?: Array<{ kind: string; count: number }>
               partial?: { reason: string; message: string }
+              // Present when this entry was resolved via wikilink fallback
+              // rather than an exact vault path match (see the resolution
+              // loop below).
+              resolvedPath?: string
+              resolvedSubpath?: WikilinkReadSubpath
             }
           | {
               path: string
@@ -2460,11 +2485,66 @@ export async function callLocalFileTool({
             continue
           }
 
-          const file = app.vault.getFileByPath(path)
+          // Exact vault path first (unchanged from prior behavior). Only on
+          // a miss do we try wikilink resolution — an explicit `[[...]]`
+          // wrapper can never be a valid exact path, and Obsidian filenames
+          // can't contain '#', so subpathed links can't collide with exact
+          // paths either.
+          let file = app.vault.getFileByPath(path)
+          let resolvedPath: string | undefined
+          let resolvedSubpath: WikilinkReadSubpath | undefined
+          let subpathWarning: string | undefined
+
           if (!file) {
-            results.push({ path, ok: false, error: 'File not found.' })
+            const target = resolveWikilinkReadTarget(app, path, sourcePath)
+            if (!target) {
+              results.push({
+                path,
+                ok: false,
+                error: `File not found. "${path}" did not match a vault path or a resolvable wikilink target.`,
+              })
+              continue
+            }
+            file = target.file
+            resolvedPath = file.path
+            if (target.subpath) {
+              resolvedSubpath = target.subpath
+            } else if (target.subpathError) {
+              subpathWarning = target.subpathError
+            }
+          }
+
+          // Scope enforcement for fs_read lives here rather than in the
+          // top-level raw-string check (see workspaceScope.ts) because
+          // wikilink targets aren't literal paths until resolved above.
+          // Applies uniformly to exact-match and wikilink-resolved entries.
+          // Files inside an allowed skill package keep the same exemption
+          // they had under findPathOutsideScope's exemptPaths option.
+          if (
+            workspaceScope?.enabled &&
+            !isPathAllowedByScope(file.path, workspaceScope) &&
+            !(
+              allowedSkillPathSet &&
+              isCoveredBySkillPathExemption(file.path, allowedSkillPathSet)
+            )
+          ) {
+            results.push({
+              path,
+              ok: false,
+              error: `Path "${file.path}" is outside this agent's workspace scope.`,
+            })
             continue
           }
+
+          const wikilinkResultFields: {
+            resolvedPath?: string
+            resolvedSubpath?: WikilinkReadSubpath
+          } = resolvedPath
+            ? {
+                resolvedPath,
+                ...(resolvedSubpath ? { resolvedSubpath } : {}),
+              }
+            : {}
 
           const isPdf = file.extension?.toLowerCase() === 'pdf'
           if (isPdf) {
@@ -2617,6 +2697,8 @@ export async function callLocalFileTool({
                   // slice-internal numbers (1–slicePageCount).
                   content: `Read pages ${actualStart}–${actualEnd} of "${file.name}" (original document has ${totalSourcePages} pages).\nThe attached PDF slice contains those pages renumbered as 1–${slicePageCount} internally, but you should refer to them by their ORIGINAL page numbers (${actualStart}–${actualEnd}) when citing.`,
                   effectiveModality: 'pdf' as const,
+                  ...wikilinkResultFields,
+                  ...(subpathWarning ? { warning: subpathWarning } : {}),
                 })
                 perFileAttachmentParts.push({ path, parts: [documentPart] })
                 continue
@@ -2684,7 +2766,10 @@ export async function callLocalFileTool({
                     : null,
                 content: fbWarningPrefix + fbTaggedBody,
                 effectiveModality: 'text' as const,
-                warning: fbWarningPrefix.trim(),
+                warning: subpathWarning
+                  ? `${fbWarningPrefix.trim()} ${subpathWarning}`
+                  : fbWarningPrefix.trim(),
+                ...wikilinkResultFields,
               })
               continue
             }
@@ -2757,6 +2842,8 @@ export async function callLocalFileTool({
                 hasMoreBelow,
                 nextStartLine,
                 content: '',
+                ...wikilinkResultFields,
+                ...(subpathWarning ? { warning: subpathWarning } : {}),
               })
 
               if (rendered.length > 0) {
@@ -2910,11 +2997,19 @@ export async function callLocalFileTool({
               ...(visionDowngraded
                 ? {
                     effectiveModality: 'text' as const,
-                    warning: '当前模型不支持图像输入，已自动降级为文本读取',
+                    warning: subpathWarning
+                      ? `当前模型不支持图像输入，已自动降级为文本读取 ${subpathWarning}`
+                      : '当前模型不支持图像输入，已自动降级为文本读取',
                   }
                 : pdfDowngraded
-                  ? { effectiveModality: 'text' as const }
-                  : {}),
+                  ? {
+                      effectiveModality: 'text' as const,
+                      ...(subpathWarning ? { warning: subpathWarning } : {}),
+                    }
+                  : subpathWarning
+                    ? { warning: subpathWarning }
+                    : {}),
+              ...wikilinkResultFields,
             })
             continue
           }
@@ -2951,6 +3046,8 @@ export async function callLocalFileTool({
                 hasMoreBelow: sliced.hasMoreBelow,
                 nextStartLine: sliced.nextStartLine,
                 content: sliced.outputContent,
+                ...wikilinkResultFields,
+                ...(subpathWarning ? { warning: subpathWarning } : {}),
               })
             } catch (error) {
               results.push({
@@ -2976,16 +3073,31 @@ export async function callLocalFileTool({
             continue
           }
 
+          // A subpath resolved from wikilink fallback only takes effect for
+          // a `full` read — an explicit startLine/endLine/maxLines from the
+          // caller always wins and the subpath is used only to locate the
+          // file.
+          const effectiveOperation: FsReadOperation =
+            resolvedSubpath && operation.type === 'full'
+              ? {
+                  type: 'lines',
+                  startLine: resolvedSubpath.startLine,
+                  endLine: resolvedSubpath.endLine,
+                  modality: operation.modality,
+                  format: operation.format,
+                }
+              : operation
+
           const rawContent = await app.vault.read(file)
           const content = rawContent
           const lines = content.length === 0 ? [] : content.split('\n')
-          const sliced = sliceLinesForFsReadOperation(lines, operation)
+          const sliced = sliceLinesForFsReadOperation(lines, effectiveOperation)
           const outputContent = sliced.outputContent
           const rawSelected = sliced.rawSelected
 
           const wikilinks =
-            path.endsWith('.md') && rawSelected.length > 0
-              ? collectWikilinkPaths(app, rawSelected, path)
+            file.extension === 'md' && rawSelected.length > 0
+              ? collectWikilinkPaths(app, rawSelected, file.path)
               : []
 
           results.push({
@@ -2993,7 +3105,7 @@ export async function callLocalFileTool({
             ok: true,
             totalLines: sliced.totalLines,
             returnedRange:
-              operation.type === 'lines'
+              effectiveOperation.type === 'lines'
                 ? {
                     startLine: sliced.returnedStartLine,
                     endLine: sliced.returnedEndLine,
@@ -3003,6 +3115,8 @@ export async function callLocalFileTool({
             nextStartLine: sliced.nextStartLine,
             content: outputContent,
             ...(wikilinks.length > 0 ? { wikilinks } : {}),
+            ...wikilinkResultFields,
+            ...(subpathWarning ? { warning: subpathWarning } : {}),
           })
 
           // Extract images from markdown files using the outputContent
@@ -3010,13 +3124,13 @@ export async function callLocalFileTool({
           if (
             chatModelAcceptsImages &&
             (settings?.chatOptions?.imageReadingEnabled ?? true) &&
-            path.endsWith('.md') &&
+            file.extension === 'md' &&
             outputContent.length > 0
           ) {
             const imageResult = await extractMarkdownImages(
               app,
               outputContent,
-              path,
+              file.path,
               {
                 compression: {
                   enabled:

@@ -404,8 +404,24 @@ const getRuntimeSnapshotPublishMode = (
 // must never be mutated in place. `Object.isFrozen` short-circuits already
 // frozen subtrees, so under structural sharing this only does real work on
 // the messages/objects that actually changed this round.
+//
+// Only plain objects and arrays are frozen. Class instances are live foreign
+// objects outside the immutability contract — e.g. mentionables hold TFile
+// references, and freezing one would crawl through `file.vault` into
+// Obsidian's entire app graph, breaking the app (frozen workspace/events).
+const isPlainStateValue = (value: object): boolean => {
+  if (Array.isArray(value)) return true
+  const proto: unknown = Object.getPrototypeOf(value)
+  return proto === Object.prototype || proto === null
+}
+
 const deepFreezeForDev = <T>(value: T): T => {
-  if (value === null || typeof value !== 'object' || Object.isFrozen(value)) {
+  if (
+    value === null ||
+    typeof value !== 'object' ||
+    Object.isFrozen(value) ||
+    !isPlainStateValue(value)
+  ) {
     return value
   }
   Object.freeze(value)

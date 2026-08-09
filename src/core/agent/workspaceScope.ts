@@ -41,10 +41,16 @@ export function isWorkspaceScopeActive(
 }
 
 // Top-level arg keys that may carry a vault path for a given fs_* tool.
-// Value can be a string (single path) or an array of strings (e.g. fs_read.paths).
+// Value can be a string (single path) or an array of strings.
+//
+// fs_read is intentionally absent: its `paths` entries may be Obsidian
+// wikilink targets (e.g. "[[Note#Heading]]") rather than literal vault
+// paths, which this raw-string check cannot resolve. Scope is instead
+// enforced inside fs_read's own read loop, per resolved TFile, before any
+// content is read — see the wikilink resolution + scope check in
+// localFileTools.ts's `case 'fs_read'`.
 const TOOL_TOP_LEVEL_PATH_KEYS: Record<string, readonly string[]> = {
   fs_list: ['path'],
-  fs_read: ['paths'],
   fs_search: ['path'],
   fs_edit: ['path'],
   fs_write: ['path'],
@@ -106,7 +112,7 @@ export function buildAllowedSkillPathSet(
   return new Set(paths.map(normalizeSkillPathForExemption))
 }
 
-function isCoveredBySkillPathExemption(
+export function isCoveredBySkillPathExemption(
   path: string,
   exemptPaths: ReadonlySet<string>,
 ): boolean {

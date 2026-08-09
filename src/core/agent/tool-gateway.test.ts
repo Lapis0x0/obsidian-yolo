@@ -1196,6 +1196,52 @@ describe('AgentToolGateway', () => {
     } as unknown as McpManager
 
     const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_edit'],
+      workspaceScope: {
+        enabled: true,
+        include: ['Notes'],
+        exclude: [],
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_edit',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'Private/secret.md',
+              oldText: 'x',
+              newText: 'y',
+            },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Path "Private/secret.md" is outside this agent\'s workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.',
+    })
+  })
+
+  // fs_read is intentionally absent from workspaceScope's PATH_ARGS table
+  // (its `paths` entries may be Obsidian wikilinks, not literal vault
+  // paths — see workspaceScope.ts). This gateway-level pre-check is
+  // therefore a no-op for it; scope is instead enforced per-resolved-file
+  // inside fs_read's own read loop (see localFileTools.ts's
+  // `case 'fs_read'`, and the "workspace scope final defense" /
+  // wikilink-resolution tests in localFileTools.test.ts).
+  it('does not reject fs_read at the gateway level even for out-of-scope paths', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_read'],
       workspaceScope: {
         enabled: true,
@@ -1217,11 +1263,9 @@ describe('AgentToolGateway', () => {
       conversationId: 'conv-1',
     })
 
-    expect(message.toolCalls[0]?.response).toEqual({
-      status: ToolCallResponseStatus.Rejected,
-      reason:
-        'Path "Private/secret.md" is outside this agent\'s workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.',
-    })
+    expect(message.toolCalls[0]?.response.status).not.toBe(
+      ToolCallResponseStatus.Rejected,
+    )
   })
 
   describe('on-demand harness', () => {
