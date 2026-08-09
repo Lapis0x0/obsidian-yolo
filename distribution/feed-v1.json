@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 14,
+  "revision": 15,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.5",
@@ -52,8 +52,8 @@
           "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
         }
       },
-      "version": "0.1.3",
-      "hostApi": "^1.4.0",
+      "version": "0.1.4",
+      "hostApi": "^1.5.0",
       "platforms": [
         "desktop",
         "mobile"
@@ -65,23 +65,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.3",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.4",
       "releaseNotes": {
-        "en": "## 0.1.3 Reliable Project Creation & Clearer Card Failures 📚\n\n### 🗂️ Project Creation\n\n- Fixed project creation failing and leaving the reference staging folder behind when Obsidian is configured to delete files permanently instead of moving them to trash. (Refs #545)\n\n### 🃏 Card Generation\n\n- When a chapter produces no cards, the failure now reports why — how many drafts were streamed, how many were discarded, and which validation rule rejected them — instead of only reporting that generation failed. The diagnostic contains no note or model content; raw model output is written only when the host's LLM debug capture is enabled. (Refs #494, #495)",
-        "zh": "## 0.1.3 更可靠的项目创建与更清晰的卡片失败原因 📚\n\n### 🗂️ 项目创建\n\n- 修复 Obsidian 设置为「永久删除」而非移入回收站时，创建学习项目会失败并残留参考资料临时目录的问题。（Refs #545）\n\n### 🃏 卡片生成\n\n- 章节生成零卡片时，现在会说明失败原因：流式产出的草稿数量、被丢弃的数量，以及具体是哪条校验规则拒绝了它们，而不再只提示生成失败。该诊断不包含笔记与模型正文内容；模型原始输出仅在开启宿主的 LLM 调试记录后才会输出。（Refs #494、#495）"
+        "en": "## 0.1.4 Cross-Device Learning Data Sync 🔄\n\n- Learning data (spaced-repetition state and Anki import journals) now lives in the visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate your review progress across devices. Existing data is migrated automatically.\n- Requires YOLO Core 1.6.5 or later, which performs the storage migration before the module activates.",
+        "zh": "## 0.1.4 学习数据跨设备同步 🔄\n\n- 学习数据（间隔重复状态与 Anki 导入日志）迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步复习进度；存量数据自动迁移。\n- 需要 YOLO Core 1.6.5 及以上版本（Core 会在模块激活前完成存储迁移）。"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.3/release-note.md",
-        "byteSize": 1297,
-        "sha256": "febf0096b5d86b316d0e73f029cc9f63f9825b094e3375916a2f53798d816b39"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/release-note.md",
+        "byteSize": 739,
+        "sha256": "1f4ec035a5cf9aa97c07961d6bbd440540fff2a1e08b7daef43a2ec755aebb76"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/learning/0.1.3/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.3/module.json",
+        "mirrorPath": "modules/learning/0.1.4/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/module.json",
         "byteSize": 1860,
-        "sha256": "462e7d734b1afb90608eef3875a05b4df6f231acd1691284a188b2d2f8b6c6b3"
+        "sha256": "f226e62c9fb1d7785db70e49bb1fd48430c13501c1353f42d482c3081bc99120"
       }
     }
   ]

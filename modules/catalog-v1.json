@@ -20,8 +20,8 @@
       },
       "versions": [
         {
-          "version": "0.1.3",
-          "hostApi": "^1.4.0",
+          "version": "0.1.4",
+          "hostApi": "^1.5.0",
           "platforms": [
             "desktop",
             "mobile"
@@ -33,15 +33,15 @@
               "write": 1
             }
           },
-          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.3/module.json",
+          "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/module.json",
           "manifest": {
             "byteSize": 1860,
-            "sha256": "462e7d734b1afb90608eef3875a05b4df6f231acd1691284a188b2d2f8b6c6b3"
+            "sha256": "f226e62c9fb1d7785db70e49bb1fd48430c13501c1353f42d482c3081bc99120"
           },
           "releaseNotes": {
-            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.3/release-note.md",
-            "byteSize": 1297,
-            "sha256": "febf0096b5d86b316d0e73f029cc9f63f9825b094e3375916a2f53798d816b39"
+            "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/release-note.md",
+            "byteSize": 739,
+            "sha256": "1f4ec035a5cf9aa97c07961d6bbd440540fff2a1e08b7daef43a2ec755aebb76"
           }
         }
       ]
