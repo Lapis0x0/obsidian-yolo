@@ -482,7 +482,12 @@ describe('AssistantToolMessageGroupItem', () => {
       id: string,
       calls: {
         name: string
-        status?: ToolCallResponseStatus
+        // Only the field-free response statuses; ones like Error carry
+        // required payload fields this fixture never builds.
+        status?:
+          | ToolCallResponseStatus.PendingApproval
+          | ToolCallResponseStatus.Running
+          | ToolCallResponseStatus.AwaitingUserInput
         cliCapability?: 'command_execution' | 'file_change'
       }[],
     ): ChatToolMessage => ({
@@ -505,13 +510,12 @@ describe('AssistantToolMessageGroupItem', () => {
               }
             : {}),
         },
-        response:
-          call.status && call.status !== ToolCallResponseStatus.Success
-            ? { status: call.status }
-            : {
-                status: ToolCallResponseStatus.Success,
-                data: { type: 'text', text: 'ok' },
-              },
+        response: call.status
+          ? { status: call.status }
+          : {
+              status: ToolCallResponseStatus.Success,
+              data: { type: 'text', text: 'ok' },
+            },
       })),
     })
 
