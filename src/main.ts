@@ -110,6 +110,7 @@ import { migrateHiddenYoloBaseDir } from './core/paths/yoloBaseDirMigration'
 import { relocateYoloBaseDir } from './core/paths/yoloBaseDirRelocation'
 import {
   type YoloDataMeta,
+  ensureUserDataRootDir,
   extractYoloDataMeta,
   readVaultDataJson,
   removeVaultDataJson,
@@ -2175,6 +2176,15 @@ export default class YoloPlugin extends Plugin {
       await this.learningLegacyInstallMigration?.()
     } catch (error) {
       console.error('[YOLO] Learning legacy install migration failed', error)
+    }
+    try {
+      // Must complete before `activateModules()`: the Learning module reads
+      // and writes `learning-srs`/`anki-import-journals` directly under the
+      // visible `data/` root (see `modules/learning/src/host/srsStorage.ts`)
+      // and has no migration logic of its own for the hidden-root layout.
+      await ensureUserDataRootDir(this.app, this.settings)
+    } catch (error) {
+      console.error('[YOLO] User data root migration failed', error)
     }
     this.warnIfInstallationIncomplete()
     this.activateModules()

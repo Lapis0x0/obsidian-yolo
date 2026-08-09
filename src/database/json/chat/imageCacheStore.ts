@@ -1,7 +1,7 @@
 import { App, normalizePath } from 'obsidian'
 import path from 'path-browserify'
 
-import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
+import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
 import { CHAT_DIR } from '../constants'
 
 type ImageCacheEntry = {
@@ -61,7 +61,7 @@ const getCacheDirPath = async (
   app: App,
   settings?: YoloSettingsLike | null,
 ): Promise<string> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings ?? null)
+  const rootDir = await ensureUserDataRootDir(app, settings ?? null)
   return normalizePath(path.join(rootDir, CHAT_DIR, IMAGE_CACHE_DIR))
 }
 

@@ -69,18 +69,18 @@ describe('HostLearningSrsStorage', () => {
       createRunExclusive(),
     )
 
-    expect(storage.getLocationKey()).toBe('YOLO/.yolo_json_db')
+    expect(storage.getLocationKey()).toBe('YOLO/data')
     await expect(storage.write('project-a', '{"version":3}')).resolves.toBe(
-      'YOLO/.yolo_json_db/learning-srs/project-a.json',
+      'YOLO/data/learning-srs/project-a.json',
     )
-    expect(folders).toContain('YOLO/.yolo_json_db')
-    expect(folders).toContain('YOLO/.yolo_json_db/learning-srs')
+    expect(folders).toContain('YOLO/data')
+    expect(folders).toContain('YOLO/data/learning-srs')
 
     baseDir = 'Moved/YOLO'
-    expect(storage.getLocationKey()).toBe('Moved/YOLO/.yolo_json_db')
+    expect(storage.getLocationKey()).toBe('Moved/YOLO/data')
     await storage.write('project-a', '{"version":3,"moved":true}')
     expect(
-      files.get('Moved/YOLO/.yolo_json_db/learning-srs/project-a.json'),
+      files.get('Moved/YOLO/data/learning-srs/project-a.json'),
     ).toBe('{"version":3,"moved":true}')
   })
 
@@ -207,9 +207,9 @@ describe('HostLearningSrsStorage', () => {
     release()
     await relocation
     await expect(writing).resolves.toBe(
-      'Moved/.yolo_json_db/learning-srs/project.json',
+      'Moved/data/learning-srs/project.json',
     )
-    expect(files.has('Old/.yolo_json_db/learning-srs/project.json')).toBe(false)
+    expect(files.has('Old/data/learning-srs/project.json')).toBe(false)
   })
 
   it('releases the managed-data queue after a mutation fails', async () => {
@@ -221,6 +221,6 @@ describe('HostLearningSrsStorage', () => {
 
     await expect(storage.write('failed', '{}')).rejects.toBe(failure)
     await expect(storage.write('next', '{}')).resolves.toContain('next.json')
-    expect(files.has('Root/.yolo_json_db/learning-srs/next.json')).toBe(true)
+    expect(files.has('Root/data/learning-srs/next.json')).toBe(true)
   })
 })

@@ -14,6 +14,7 @@ import { $getRoot, LexicalEditor, SerializedEditorState } from 'lexical'
 import { RefObject, memo, useCallback, useEffect, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
+import { useSettings } from '../../../contexts/settings-context'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../core/snippets/snippetsManager'
 import { Assistant } from '../../../types/assistant.types'
@@ -201,6 +202,7 @@ function LexicalContentEditable({
   plugins,
 }: LexicalContentEditableProps) {
   const app = useApp()
+  const { settings } = useSettings()
   const [activeFilePath, setActiveFilePath] = useState<string | null>(
     app.workspace.getActiveFile()?.path ?? null,
   )
@@ -223,12 +225,13 @@ function LexicalContentEditable({
   }
 
   const defaultSearch = useCallback(
-    (query: string) => fuzzySearch(app, query),
-    [app],
+    (query: string) => fuzzySearch(app, query, settings),
+    [app, settings],
   )
   const searchFoldersByQuery = useCallback(
-    (query: string): MentionableFolder[] => fuzzySearchFolders(app, query),
-    [app],
+    (query: string): MentionableFolder[] =>
+      fuzzySearchFolders(app, query, settings),
+    [app, settings],
   )
 
   const resolvedSearch = useCallback(

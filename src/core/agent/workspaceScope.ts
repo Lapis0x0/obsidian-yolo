@@ -153,3 +153,36 @@ export function findPathOutsideScope(
   }
   return null
 }
+
+/**
+ * Generic version of `findPathOutsideScope` for any other reason a local
+ * fs_* tool's literal path args might need to be rejected wholesale —
+ * currently used to keep the YOLO user-data root (`<baseDir>/data`) invisible
+ * to agent tools (see `isWithinYoloUserDataRoot` in `core/paths/yoloPaths.ts`
+ * and its caller in `localFileTools.ts`'s `callLocalFileTool`). Kept
+ * independent of `isExcluded`'s reason so this file doesn't need to depend on
+ * `core/paths`.
+ *
+ * Like `findPathOutsideScope`, `fs_read` is out of scope here: its `paths`
+ * entries may be wikilink targets rather than literal vault paths, so it
+ * enforces this same exclusion itself, post-resolution (see `case 'fs_read'`
+ * in `localFileTools.ts`).
+ */
+export function findPathWithinExcludedRoot(
+  toolName: string,
+  args: Record<string, unknown> | undefined,
+  isExcluded: (path: string) => boolean,
+): string | null {
+  const paths = collectToolCallPaths(toolName, args)
+  for (const path of paths) {
+    const trimmed = path.trim()
+    if (
+      trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX) ||
+      trimmed.startsWith(BROWSER_READ_PATH_PREFIX)
+    ) {
+      continue
+    }
+    if (isExcluded(path)) return path
+  }
+  return null
+}

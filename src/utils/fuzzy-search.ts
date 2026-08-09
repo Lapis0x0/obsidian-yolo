@@ -1,10 +1,17 @@
 import fuzzysort from 'fuzzysort'
 import { App, TFile, TFolder } from 'obsidian'
 
+import { isWithinYoloUserDataRoot } from '../core/paths/yoloPaths'
 import { MentionableFile, MentionableFolder } from '../types/mentionable'
 
 import { IMAGE_FILE_EXTENSIONS } from './llm/image'
 import { calculateFileDistance, getOpenFiles } from './obsidian'
+
+type FuzzySearchSettingsLike = {
+  yolo?: {
+    baseDir?: string
+  }
+}
 
 const TEXT_MENTION_SEARCHABLE_EXTENSIONS = [
   'base',
@@ -136,10 +143,12 @@ function getEmptyQueryResult(
 export function fuzzySearchFolders(
   app: App,
   query: string,
+  settings?: FuzzySearchSettingsLike | null,
 ): MentionableFolder[] {
   const allFolders = app.vault
     .getAllFolders()
     .filter((folder) => folder.path.length > 0)
+    .filter((folder) => !isWithinYoloUserDataRoot(folder.path, settings))
 
   if (!query.trim()) {
     return allFolders
@@ -169,7 +178,11 @@ export function fuzzySearchFolders(
     }))
 }
 
-export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
+export function fuzzySearch(
+  app: App,
+  query: string,
+  settings?: FuzzySearchSettingsLike | null,
+): SearchableMentionable[] {
   const currentFile = app.workspace.getActiveFile()
   const openFiles = getOpenFiles(app)
 
@@ -178,6 +191,7 @@ export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
     .filter((file) =>
       MENTION_SEARCHABLE_EXTENSIONS.has(file.extension.toLowerCase()),
     )
+    .filter((file) => !isWithinYoloUserDataRoot(file.path, settings))
 
   const allFilesWithMetadata: SearchItem[] = allSupportedFiles.map((file) => ({
     type: 'file',
@@ -194,7 +208,9 @@ export function fuzzySearch(app: App, query: string): SearchableMentionable[] {
       (Date.now() - file.stat.mtime) / (1000 * 60 * 60 * 24),
   }))
 
-  const allFolders = app.vault.getAllFolders()
+  const allFolders = app.vault
+    .getAllFolders()
+    .filter((folder) => !isWithinYoloUserDataRoot(folder.path, settings))
   const allFoldersWithMetadata: SearchItem[] = allFolders.map((folder) => ({
     type: 'folder',
     path: folder.path,

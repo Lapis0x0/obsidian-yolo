@@ -79,6 +79,7 @@ import {
   BUILTIN_SKILL_PATH_PREFIX,
   buildAllowedSkillPathSet,
   findPathOutsideScope,
+  findPathWithinExcludedRoot,
   isCoveredBySkillPathExemption,
   isPathAllowedByScope,
   normalizeSkillPathForExemption,
@@ -106,6 +107,7 @@ import {
   memoryDelete,
   memoryUpdate,
 } from '../memory/memoryManager'
+import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
 import type { RAGEngine } from '../rag/ragEngine'
 import {
   acquireRuntimeComponent,
@@ -1328,6 +1330,7 @@ const assertContentSize = (content: string): void => {
 const resolveFolderByPath = (
   app: App,
   rawPath: string | undefined,
+  settings?: YoloSettings,
 ): { folder: TFolder; normalizedPath: string } => {
   const trimmedPath = rawPath?.trim()
   // Treat "/" as vault root for better model compatibility.
@@ -1336,6 +1339,12 @@ const resolveFolderByPath = (
   }
 
   const normalizedPath = validateVaultPath(trimmedPath)
+  // The YOLO user-data root must stay invisible to agent tools; see the
+  // matching fs_read check for the full rationale. Reported as the same
+  // "Folder not found" a genuinely missing path would get.
+  if (isWithinYoloUserDataRoot(normalizedPath, settings)) {
+    throw new Error(`Folder not found: ${normalizedPath}`)
+  }
   const abstractFile = app.vault.getAbstractFileByPath(normalizedPath)
 
   if (!abstractFile) {
@@ -1375,10 +1384,18 @@ const collectVaultChildEntries = ({
   folder,
   depth,
   maxResults,
+  isExcluded,
 }: {
   folder: TFolder
   depth: number
   maxResults: number
+  /**
+   * Paths for which this returns true are skipped entirely — not counted
+   * against `maxResults` and never descended into — so hidden content (the
+   * YOLO user-data root) can't exhaust a caller's result budget before real
+   * content is collected.
+   */
+  isExcluded?: (path: string) => boolean
 }): CollectedVaultListEntry[] => {
   const entries: CollectedVaultListEntry[] = []
   const queue: Array<{ folder: TFolder; level: number }> = [
@@ -1393,6 +1410,7 @@ const collectVaultChildEntries = ({
 
     for (const child of currentFolder.children) {
       if (entries.length >= maxResults) break
+      if (isExcluded?.(child.path)) continue
 
       if (child instanceof TFolder) {
         entries.push({ kind: 'dir', node: child, path: child.path })
@@ -2232,6 +2250,25 @@ export async function callLocalFileTool({
       }
     }
 
+    // The YOLO user-data root (`<baseDir>/data`: chat history, module
+    // settings/intent — see `ensureUserDataRootDir` in
+    // `core/paths/yoloManagedData.ts`) must stay invisible to agent tools,
+    // unconditionally and regardless of workspace scope. Before that data
+    // moved out of the hidden `.yolo_json_db` directory, it could never be
+    // reached this way at all — dot directories are never indexed into the
+    // `TFile` tree fs_* tools resolve paths against. This reproduces that
+    // same invisibility now that the root is a normal, visible folder.
+    // Reported as a plain not-found, matching a genuine miss, so nothing
+    // about "this path is specially hidden" leaks to the model.
+    const offendingUserDataPath = findPathWithinExcludedRoot(
+      toolName,
+      args,
+      (path) => isWithinYoloUserDataRoot(path, settings),
+    )
+    if (offendingUserDataPath !== null) {
+      throw new Error(`File not found: ${offendingUserDataPath}`)
+    }
+
     const name = toolName as LocalFileToolName
     switch (name) {
       case 'context_prune_tool_results': {
@@ -2517,6 +2554,27 @@ export async function callLocalFileTool({
             } else if (target.subpathError) {
               subpathWarning = target.subpathError
             }
+          }
+
+          // The YOLO user-data root (`<baseDir>/data`: chat history, module
+          // settings/intent) must stay invisible to agent tools exactly like
+          // its hidden pre-migration location (`.yolo_json_db`) was — see
+          // `ensureUserDataRootDir` in `core/paths/yoloManagedData.ts`. Dot
+          // directories were never indexed into the `TFile` tree at all, so
+          // this exact-match/wikilink resolution above could never have hit
+          // them; this check reproduces that invisibility explicitly now
+          // that the root is visible. Reported as a plain not-found — same
+          // wording as a genuine miss — so no new information ("this path is
+          // specially hidden") leaks to the model. Checked before the
+          // workspace-scope gate so it applies unconditionally, regardless
+          // of whether workspace scope is even enabled.
+          if (isWithinYoloUserDataRoot(file.path, settings)) {
+            results.push({
+              path,
+              ok: false,
+              error: `File not found: "${path}".`,
+            })
+            continue
           }
 
           // Scope enforcement for fs_read lives here rather than in the
@@ -3388,7 +3446,7 @@ export async function callLocalFileTool({
         const command = getTextArg(args, 'command')
         const lease = await acquireRuntimeComponent('bash-engine')
         try {
-          const fs = createVaultBashFileSystem(app, workspaceScope)
+          const fs = createVaultBashFileSystem(app, workspaceScope, settings)
           const confirmDangerousOperation = async (
             kind: DangerousBashOperationKind,
             targets: readonly string[],
@@ -3518,6 +3576,7 @@ export async function callLocalFileTool({
           app,
           jsSandboxSettings,
           getRagEngine,
+          settings,
         )
         return callJsSandboxTool({
           app,
@@ -4119,6 +4178,7 @@ export function buildJsSandboxProxyHandlers(
   app: App,
   config: JsSandboxSettings,
   getRagEngine?: () => Promise<RAGEngine>,
+  settings?: YoloSettings,
 ): JsSandboxProxyHandlers {
   const handlers: JsSandboxProxyHandlers = {}
 
@@ -4139,7 +4199,11 @@ export function buildJsSandboxProxyHandlers(
         path?: string,
         options?: Record<string, unknown>,
       ) => {
-        const { folder, normalizedPath } = resolveFolderByPath(app, path)
+        const { folder, normalizedPath } = resolveFolderByPath(
+          app,
+          path,
+          settings,
+        )
         const recursive = options?.recursive === true
         // The list crosses the sandbox/host boundary as one array. Keep a hard
         // fuse for pathological vaults while leaving normal large-vault stats
@@ -4148,6 +4212,8 @@ export function buildJsSandboxProxyHandlers(
           folder,
           depth: recursive ? Number.POSITIVE_INFINITY : 1,
           maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
+          isExcluded: (childPath) =>
+            isWithinYoloUserDataRoot(childPath, settings),
         })
         if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
           throw new Error(
@@ -4162,6 +4228,12 @@ export function buildJsSandboxProxyHandlers(
 
     handlers.vaultReadText = async (path: string) => {
       const normalized = normalizePath(path)
+      // The YOLO user-data root must stay invisible to agent tools; see the
+      // matching fs_read check for the full rationale. Reported via the
+      // same `null` this handler already uses for a genuine miss.
+      if (isWithinYoloUserDataRoot(normalized, settings)) {
+        return null
+      }
       const file = app.vault.getAbstractFileByPath(normalized)
       // Contract: return null ONLY when the file truly does not exist
       // (a legitimate "missing" signal the model can branch on). Folder
@@ -4197,6 +4269,11 @@ export function buildJsSandboxProxyHandlers(
     if (config.allowVaultRead) {
       handlers.vaultReadBinary = async (path: string) => {
         const normalized = normalizePath(path)
+        // The YOLO user-data root must stay invisible to agent tools; see
+        // the matching fs_read check for the full rationale.
+        if (isWithinYoloUserDataRoot(normalized, settings)) {
+          return null
+        }
         const file = app.vault.getAbstractFileByPath(normalized)
         // Same contract as readText: null only for "file does not exist".
         if (file === null) {

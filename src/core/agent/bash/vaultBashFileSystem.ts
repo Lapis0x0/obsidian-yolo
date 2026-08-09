@@ -8,6 +8,7 @@ import {
   moveVaultPath,
   trashVaultPath,
 } from '../../mcp/vaultFileOps'
+import { isWithinYoloUserDataRoot } from '../../paths/yoloPaths'
 import type {
   BashFsCallbacks,
   BashFsDirentEntry,
@@ -17,6 +18,12 @@ import type {
 import { isPathAllowedByScope } from '../workspaceScope'
 
 const SCOPE_ERROR_PREFIX = 'EACCES: path is outside the allowed workspace scope'
+
+type BashFsSettingsLike = {
+  yolo?: {
+    baseDir?: string
+  }
+}
 
 const stripSlashes = (raw: string): string =>
   raw.replace(/^\/+/, '').replace(/\/+$/, '')
@@ -87,11 +94,35 @@ function isVisibleForTraversal(
  * `scope` mirrors the workspace-scope confinement other local tools already
  * respect (used to sandbox subagents to a folder subtree); when set, every
  * operation here is denied for paths outside it.
+ *
+ * `settings` (when supplied) hides the visible `<baseDir>/data` user-data
+ * root from every operation below, treating it exactly like a path that
+ * doesn't exist. That root holds chat history, module settings, and other
+ * internal storage that must live outside a hidden dot-directory so vault
+ * sync tools replicate it (see `ensureUserDataRootDir`) — but it was never
+ * meant to be agent-readable content. Before that migration the equivalent
+ * `.yolo_json_db` root got this same invisibility for free, because Obsidian
+ * never indexes dot-prefixed paths into the `TFile` tree this adapter reads
+ * from; this is that protection's explicit replacement for the now-visible
+ * root.
  */
 export function createVaultBashFileSystem(
   app: App,
   scope?: AssistantWorkspaceScope,
+  settings?: BashFsSettingsLike | null,
 ): BashFsCallbacks {
+  const isHiddenUserDataPath = (vaultPath: string): boolean =>
+    vaultPath !== '' && isWithinYoloUserDataRoot(vaultPath, settings)
+  const assertNotHiddenUserDataPath = (
+    vaultPath: string,
+    verb: string,
+  ): void => {
+    if (isHiddenUserDataPath(vaultPath)) {
+      throw new Error(
+        `ENOENT: no such file or directory, ${verb} '${vaultPath}'`,
+      )
+    }
+  }
   const getFileOrThrow = (vaultPath: string): TFile => {
     const abstractFile = app.vault.getAbstractFileByPath(vaultPath)
     if (!abstractFile) {
@@ -107,11 +138,13 @@ export function createVaultBashFileSystem(
 
   return {
     async readFile(vaultPath) {
+      assertNotHiddenUserDataPath(vaultPath, 'open')
       assertPathInScope(vaultPath, scope)
       return app.vault.cachedRead(getFileOrThrow(vaultPath))
     },
 
     async readFileBuffer(vaultPath) {
+      assertNotHiddenUserDataPath(vaultPath, 'open')
       assertPathInScope(vaultPath, scope)
       const buffer = await app.vault.readBinary(getFileOrThrow(vaultPath))
       return new Uint8Array(buffer)
@@ -119,6 +152,7 @@ export function createVaultBashFileSystem(
 
     async exists(vaultPath) {
       if (vaultPath === '') return true
+      if (isHiddenUserDataPath(vaultPath)) return false
       if (scope?.enabled && !isVisibleForTraversal(vaultPath, scope)) {
         return false
       }
@@ -129,6 +163,7 @@ export function createVaultBashFileSystem(
       if (vaultPath === '') {
         return { isFile: false, isDirectory: true, mtimeMs: 0, size: 0 }
       }
+      assertNotHiddenUserDataPath(vaultPath, 'stat')
       assertPathInScope(vaultPath, scope)
       const abstractFile = app.vault.getAbstractFileByPath(vaultPath)
       if (!abstractFile) {
@@ -148,6 +183,7 @@ export function createVaultBashFileSystem(
     },
 
     async mkdir(vaultPath, options) {
+      assertNotHiddenUserDataPath(vaultPath, 'mkdir')
       assertPathInScope(vaultPath, scope)
       const existing =
         vaultPath === ''
@@ -175,6 +211,7 @@ export function createVaultBashFileSystem(
     },
 
     async readdir(vaultPath): Promise<BashFsDirentEntry[]> {
+      assertNotHiddenUserDataPath(vaultPath, 'scandir')
       if (scope?.enabled && !isVisibleForTraversal(vaultPath, scope)) {
         throw new Error(`${SCOPE_ERROR_PREFIX}: '${vaultPath}'`)
       }
@@ -190,11 +227,11 @@ export function createVaultBashFileSystem(
       if (!(folder instanceof TFolder)) {
         throw new Error(`ENOTDIR: not a directory, scandir '${vaultPath}'`)
       }
-      const children = scope?.enabled
-        ? folder.children.filter((child) =>
-            isVisibleForTraversal(child.path, scope),
-          )
-        : folder.children
+      const children = folder.children
+        .filter((child) => !isHiddenUserDataPath(child.path))
+        .filter((child) =>
+          scope?.enabled ? isVisibleForTraversal(child.path, scope) : true,
+        )
       return children.map((child) => ({
         name: child.name,
         isFile: child instanceof TFile,
@@ -203,11 +240,14 @@ export function createVaultBashFileSystem(
     },
 
     async rm(vaultPath, options): Promise<BashFsRmResult> {
+      assertNotHiddenUserDataPath(vaultPath, 'unlink')
       assertPathInScope(vaultPath, scope)
       return trashVaultPath(app, vaultPath, options)
     },
 
     async mv(oldVaultPath, newVaultPath) {
+      assertNotHiddenUserDataPath(oldVaultPath, 'rename')
+      assertNotHiddenUserDataPath(newVaultPath, 'rename')
       assertPathInScope(oldVaultPath, scope)
       assertPathInScope(newVaultPath, scope)
       await moveVaultPath(app, oldVaultPath, newVaultPath)
@@ -218,6 +258,7 @@ export function createVaultBashFileSystem(
         .getAllLoadedFiles()
         .map((file) => file.path)
         .filter((filePath) => filePath !== '' && filePath !== '/')
+        .filter((filePath) => !isHiddenUserDataPath(filePath))
       return scope?.enabled
         ? paths.filter((filePath) => isPathAllowedByScope(filePath, scope))
         : paths

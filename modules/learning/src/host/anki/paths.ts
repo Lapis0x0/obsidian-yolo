@@ -1,4 +1,9 @@
-const JSON_DATA_DIR = '.yolo_json_db'
+// Visible, sync-friendly root for user data (mirrors the host's
+// `YOLO_USER_DATA_DIR_NAME` in `src/core/paths/yoloPaths.ts` — this module
+// cannot import host code, so the name is duplicated here). The host's
+// `ensureUserDataRootDir` migrates `anki-import-journals` from the legacy
+// hidden `.yolo_json_db` root into this location before module activation.
+const JSON_DATA_DIR = 'data'
 
 const normalizeVaultPath = (path: string, label: string): string => {
   if (path.includes('\\')) throw new Error(`${label} must use vault separators`)

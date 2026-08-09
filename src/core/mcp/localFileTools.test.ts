@@ -228,6 +228,91 @@ describe('js sandbox vault list handler', () => {
       'content:notes/a.md',
     )
   })
+
+  describe('YOLO user data root exclusion', () => {
+    const settings = { yolo: { baseDir: 'YOLO' } } as unknown as YoloSettings
+
+    it('excludes the user data root from vault.list', async () => {
+      const chatFile = makeFile('YOLO/data/chats/v1_abc.json')
+      const dataFolder = makeFolder('YOLO/data', [chatFile])
+      const noteFile = makeFile('Notes/a.md')
+      const yoloFolder = makeFolder('YOLO', [dataFolder])
+      const root = makeFolder('', [yoloFolder, noteFile])
+      const handlers = buildJsSandboxProxyHandlers(
+        makeApp(root, [yoloFolder, dataFolder, chatFile, noteFile]),
+        { allowVaultRead: true },
+        undefined,
+        settings,
+      )
+      if (!handlers.vaultList) throw new Error('expected vaultList handler')
+
+      await expect(
+        handlers.vaultList('/', { recursive: true }),
+      ).resolves.toEqual([
+        {
+          kind: 'file',
+          path: 'Notes/a.md',
+          name: 'a.md',
+          size: 10,
+          mtime: 1000,
+        },
+        { kind: 'dir', path: 'YOLO', name: 'YOLO' },
+      ])
+    })
+
+    it('reports the user data root itself as a missing folder for vault.list', async () => {
+      const dataFolder = makeFolder('YOLO/data')
+      const yoloFolder = makeFolder('YOLO', [dataFolder])
+      const root = makeFolder('', [yoloFolder])
+      const handlers = buildJsSandboxProxyHandlers(
+        makeApp(root, [yoloFolder, dataFolder]),
+        { allowVaultRead: true },
+        undefined,
+        settings,
+      )
+      if (!handlers.vaultList) throw new Error('expected vaultList handler')
+
+      await expect(handlers.vaultList('YOLO/data')).rejects.toThrow(
+        'Folder not found: YOLO/data',
+      )
+    })
+
+    it('reports null (not found) for vault.readText under the user data root', async () => {
+      const chatFile = makeFile('YOLO/data/chats/v1_abc.json')
+      const root = makeFolder('', [chatFile])
+      const handlers = buildJsSandboxProxyHandlers(
+        makeApp(root, [chatFile]),
+        { allowVaultRead: true },
+        undefined,
+        settings,
+      )
+      if (!handlers.vaultReadText) {
+        throw new Error('expected vaultReadText handler')
+      }
+
+      await expect(
+        handlers.vaultReadText('YOLO/data/chats/v1_abc.json'),
+      ).resolves.toBeNull()
+    })
+
+    it('reports null (not found) for vault.readBinary under the user data root', async () => {
+      const chatFile = makeFile('YOLO/data/chats/v1_abc.json')
+      const root = makeFolder('', [chatFile])
+      const handlers = buildJsSandboxProxyHandlers(
+        makeApp(root, [chatFile]),
+        { allowVaultRead: true },
+        undefined,
+        settings,
+      )
+      if (!handlers.vaultReadBinary) {
+        throw new Error('expected vaultReadBinary handler')
+      }
+
+      await expect(
+        handlers.vaultReadBinary('YOLO/data/chats/v1_abc.json'),
+      ).resolves.toBeNull()
+    })
+  })
 })
 
 describe('js sandbox browser page HTML handler', () => {
@@ -1851,6 +1936,153 @@ describe('local fs tool action helpers', () => {
       })
       expect(result.status).toBe(ToolCallResponseStatus.Success)
     })
+  })
+})
+
+describe('YOLO user data root final defense', () => {
+  const settings = { yolo: { baseDir: 'YOLO' } } as unknown as YoloSettings
+
+  it('reports fs_write to the user data root as not found instead of writing', async () => {
+    const create = jest.fn()
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(null),
+          create,
+          createFolder: jest.fn(),
+        },
+      } as unknown as App,
+      settings,
+      toolName: 'fs_write',
+      args: {
+        path: 'YOLO/data/chats/v1_new.json',
+        content: 'leak',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toBe('File not found: YOLO/data/chats/v1_new.json')
+      expect(result.error).not.toMatch(/hidden|excluded|internal/i)
+    }
+    expect(create).not.toHaveBeenCalled()
+  })
+
+  it('reports fs_edit on the user data root as not found instead of editing', async () => {
+    const modify = jest.fn()
+    const existingChatFile = Object.assign(new TFile(), {
+      path: 'YOLO/data/chats/v1_abc.json',
+      stat: { size: 20 },
+    })
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(existingChatFile),
+          read: jest.fn().mockResolvedValue('{"title":"other conversation"}'),
+          modify,
+        },
+      } as unknown as App,
+      settings,
+      toolName: 'fs_edit',
+      args: {
+        path: 'YOLO/data/chats/v1_abc.json',
+        oldText: 'other',
+        newText: 'tampered',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toBe('File not found: YOLO/data/chats/v1_abc.json')
+    }
+    expect(modify).not.toHaveBeenCalled()
+  })
+
+  it('reports fs_read on the user data root as not found without reading its content', async () => {
+    const read = jest.fn().mockResolvedValue('{"title":"other conversation"}')
+    const chatFile = Object.assign(new TFile(), {
+      path: 'YOLO/data/chats/v1_abc.json',
+      extension: 'json',
+      stat: { size: 20 },
+    })
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest
+            .fn()
+            .mockImplementation((path: string) =>
+              path === 'YOLO/data/chats/v1_abc.json' ? chatFile : null,
+            ),
+          read,
+        },
+        metadataCache: {
+          getFirstLinkpathDest: jest.fn().mockReturnValue(null),
+        },
+      } as unknown as App,
+      settings,
+      toolName: 'fs_read',
+      args: { paths: ['YOLO/data/chats/v1_abc.json'] },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      results: Array<{ path: string; ok: boolean; error?: string }>
+    }
+    expect(payload.results).toEqual([
+      {
+        path: 'YOLO/data/chats/v1_abc.json',
+        ok: false,
+        error: 'File not found: "YOLO/data/chats/v1_abc.json".',
+      },
+    ])
+    expect(read).not.toHaveBeenCalled()
+  })
+
+  it('reports fs_read on a wikilink resolved into the user data root as not found', async () => {
+    const read = jest.fn().mockResolvedValue('{"title":"other conversation"}')
+    const chatFile = Object.assign(new TFile(), {
+      path: 'YOLO/data/chats/v1_abc.json',
+      extension: 'json',
+      stat: { size: 20 },
+    })
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getFileByPath: jest.fn().mockReturnValue(null),
+          read,
+        },
+        metadataCache: {
+          getFirstLinkpathDest: jest
+            .fn()
+            .mockImplementation((linkpath: string) =>
+              linkpath === 'v1_abc' ? chatFile : null,
+            ),
+          getFileCache: jest.fn().mockReturnValue(null),
+        },
+      } as unknown as App,
+      settings,
+      toolName: 'fs_read',
+      args: { paths: ['[[v1_abc]]'] },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    if (result.status !== ToolCallResponseStatus.Success) {
+      throw new Error('expected success')
+    }
+    const payload = JSON.parse(result.text) as {
+      results: Array<{ path: string; ok: boolean; error?: string }>
+    }
+    expect(payload.results).toEqual([
+      {
+        path: '[[v1_abc]]',
+        ok: false,
+        error: 'File not found: "[[v1_abc]]".',
+      },
+    ])
+    expect(read).not.toHaveBeenCalled()
   })
 })
 

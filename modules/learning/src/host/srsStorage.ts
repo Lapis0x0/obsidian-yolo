@@ -10,8 +10,19 @@ import {
 type HostVault = YoloModuleHostApiV1['vault']
 type RunMutation = <T>(operation: () => T | PromiseLike<T>) => Promise<T>
 
-const JSON_DB_DIR_NAME = '.yolo_json_db'
-const LEGACY_JSON_DB_DIR_NAME = '.smtcmp_json_db'
+// Visible, sync-friendly root for user data (mirrors the host's
+// `YOLO_USER_DATA_DIR_NAME` in `src/core/paths/yoloPaths.ts` — this module
+// cannot import host code, so the name is duplicated here). The host's
+// `ensureUserDataRootDir` migrates `learning-srs`/`anki-import-journals`
+// from the legacy hidden roots below into this location before module
+// activation (see `src/main.ts`'s `onload`), so by the time this class reads
+// or writes, the data already lives here.
+const USER_DATA_DIR_NAME = 'data'
+// Historical hidden roots, kept only so `validateProjectStatePath` still
+// recognizes project-state paths recorded before the migration to the
+// visible root above.
+const LEGACY_HIDDEN_JSON_DB_DIR_NAME = '.yolo_json_db'
+const LEGACY_SMTCMP_JSON_DB_DIR_NAME = '.smtcmp_json_db'
 const SRS_DIR_NAME = 'learning-srs'
 
 export type HostLearningSrsOptions = Readonly<{
@@ -157,7 +168,7 @@ export class HostLearningSrsStorage implements SrsStorage {
   ) {}
 
   getLocationKey(): string {
-    return `${normalizeVaultPath(this.getBaseDir())}/${JSON_DB_DIR_NAME}`
+    return `${normalizeVaultPath(this.getBaseDir())}/${USER_DATA_DIR_NAME}`
   }
 
   ensureRoot(): Promise<string> {
@@ -280,7 +291,11 @@ export function validateProjectStatePath(
   assertProjectSlug(projectSlug)
   const normalized = normalizeVaultPath(path)
   const suffix = `/${SRS_DIR_NAME}/${projectSlug}.json`
-  const managed = [JSON_DB_DIR_NAME, LEGACY_JSON_DB_DIR_NAME].some(
+  const managed = [
+    USER_DATA_DIR_NAME,
+    LEGACY_HIDDEN_JSON_DB_DIR_NAME,
+    LEGACY_SMTCMP_JSON_DB_DIR_NAME,
+  ].some(
     (root) =>
       normalized === `${root}${suffix}` ||
       normalized.endsWith(`/${root}${suffix}`),

@@ -38,6 +38,8 @@ describe('migrateLearningLegacyInstallIntent', () => {
 
   it.each([
     'Custom/YOLO/learning',
+    'Custom/YOLO/data/learning-srs',
+    'Custom/YOLO/data/anki-import-journals',
     'Custom/YOLO/.yolo_json_db/learning-srs',
     'Custom/YOLO/.yolo_json_db/anki-import-journals',
     '.smtcmp_json_db/learning-srs',

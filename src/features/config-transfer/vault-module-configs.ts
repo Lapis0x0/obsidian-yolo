@@ -1,6 +1,9 @@
 import type { ModuleDataEnvelope } from '../../core/modules/moduleSettingsStore'
 import { assertModuleId } from '../../core/modules/moduleStore'
-import { getYoloJsonDbRootDir } from '../../core/paths/yoloPaths'
+import {
+  getYoloJsonDbRootDir,
+  getYoloUserDataRootDir,
+} from '../../core/paths/yoloPaths'
 
 export type VaultImportFile = Readonly<{
   webkitRelativePath: string
@@ -51,10 +54,20 @@ export async function collectVaultModuleConfigs(
 ): Promise<Record<string, ModuleDataEnvelope>> {
   const match = ROOT_DATA_JSON.exec(dataJsonPath)
   if (!match) throw new Error('Selected plugin data.json is not at vault root')
-  const prefix = `${match[1]}/${getYoloJsonDbRootDir(migratedSettings)}/module-settings/`
+  // Accept both the current visible root (`data/module-settings/`) and the
+  // legacy hidden root (`.yolo_json_db/module-settings/`) — an imported
+  // folder may be a backup taken with an older plugin version that predates
+  // this migration.
+  const prefixes = [
+    `${match[1]}/${getYoloUserDataRootDir(migratedSettings)}/module-settings/`,
+    `${match[1]}/${getYoloJsonDbRootDir(migratedSettings)}/module-settings/`,
+  ]
   const configs: Record<string, ModuleDataEnvelope> = {}
   for (const file of files) {
-    if (!file.webkitRelativePath.startsWith(prefix)) continue
+    const prefix = prefixes.find((candidate) =>
+      file.webkitRelativePath.startsWith(candidate),
+    )
+    if (!prefix) continue
     const name = file.webkitRelativePath.slice(prefix.length)
     if (!name.endsWith('.json')) continue
     const moduleId = name.slice(0, -'.json'.length)

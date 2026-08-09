@@ -159,6 +159,52 @@ describe('runVaultSearch', () => {
     })
   })
 
+  it('excludes the YOLO user data root from keyword file and dir results', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const dataFolder = Object.assign(new TFolder(), { path: 'YOLO/data' })
+    const files = [
+      Object.assign(new TFile(), {
+        path: 'YOLO/data/chats/v1_report.json',
+        stat: { size: 20 },
+      }),
+      Object.assign(new TFile(), {
+        path: 'Notes/report.md',
+        stat: { size: 20 },
+      }),
+    ]
+
+    const result = await runVaultSearch({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getFiles: jest.fn().mockReturnValue(files),
+          getAllLoadedFiles: jest.fn().mockReturnValue([root, dataFolder]),
+          getMarkdownFiles: jest.fn().mockReturnValue(files),
+          read: jest.fn().mockResolvedValue(''),
+        },
+      } as unknown as App,
+      settings: { yolo: { baseDir: 'YOLO' } } as unknown as YoloSettings,
+      args: {
+        mode: 'keyword',
+        scope: 'all',
+        query: 'report',
+        maxResults: 10,
+      },
+    })
+
+    expect(result.status).toBe('success')
+    if (result.status !== 'success') {
+      throw new Error('expected success')
+    }
+
+    const payload = JSON.parse(result.text) as {
+      results: Array<{ kind: string; path: string }>
+    }
+    expect(payload.results).toEqual([
+      { kind: 'file', path: 'Notes/report.md', source: 'keyword' },
+    ])
+  })
+
   it('ranks keyword content hits by matched token count before file path', async () => {
     const root = Object.assign(new TFolder(), { path: '' })
     const fileA = Object.assign(new TFile(), {

@@ -22,7 +22,7 @@ type VaultEvent = 'create' | 'modify' | 'delete' | 'rename'
 type EventHandler = (entry: TAbstractFile, oldPath?: string) => void
 
 const LEARNING_CONFIG_PATH = (baseDir: string): string =>
-  `${baseDir}/.yolo_json_db/module-settings/learning.json`
+  `${baseDir}/data/module-settings/learning.json`
 
 class MemoryAdapter {
   readonly files = new Map<string, string>()

@@ -6,6 +6,7 @@ import {
   YOLO_DATA_META_KEY,
   ensureJsonDbRootDir,
   ensureLearningJsonDbRootDir,
+  ensureUserDataRootDir,
   ensureVectorDbPath,
   extractYoloDataMeta,
   readVaultDataJson,
@@ -28,7 +29,13 @@ const CONFIG_DIR = '.vault-config'
 class MockAdapter {
   private readonly files = new Map<string, string | ArrayBuffer>()
   private readonly folders = new Set<string>()
+  private readonly mtimes = new Map<string, number>()
+  private readonly mtimeSequences = new Map<string, number[]>()
+  private readonly lastSequencedMtime = new Map<string, number>()
   private failWriteBinaryPaths = new Set<string>()
+  private failWritePaths = new Set<string>()
+  private failReadPaths = new Set<string>()
+  private failMkdirPaths = new Set<string>()
   private failRemovePaths = new Set<string>()
   private failRenamePaths = new Set<string>()
   private throwAfterRenamePaths = new Set<string>()
@@ -38,6 +45,9 @@ class MockAdapter {
   }
 
   async mkdir(path: string): Promise<void> {
+    if (this.failMkdirPaths.has(path)) {
+      throw new Error(`Mock mkdir failure: ${path}`)
+    }
     const segments = path.split('/').filter(Boolean)
     let current = ''
     for (const segment of segments) {
@@ -47,6 +57,9 @@ class MockAdapter {
   }
 
   async read(path: string): Promise<string> {
+    if (this.failReadPaths.has(path)) {
+      throw new Error(`Mock read failure: ${path}`)
+    }
     const value = this.files.get(path)
     if (typeof value !== 'string') {
       throw new Error(`File is not text: ${path}`)
@@ -55,6 +68,9 @@ class MockAdapter {
   }
 
   async write(path: string, content: string): Promise<void> {
+    if (this.failWritePaths.has(path)) {
+      throw new Error(`Mock write failure: ${path}`)
+    }
     this.files.set(path, content)
     await this.ensureParent(path)
   }
@@ -76,12 +92,13 @@ class MockAdapter {
   }
 
   async stat(path: string): Promise<Stat | null> {
+    const mtime = this.nextMtime(path)
     if (this.files.has(path)) {
       const value = this.files.get(path)
       return {
         type: 'file',
         ctime: 0,
-        mtime: 0,
+        mtime,
         size:
           typeof value === 'string' ? value.length : (value?.byteLength ?? 0),
       }
@@ -91,12 +108,31 @@ class MockAdapter {
       return {
         type: 'folder',
         ctime: 0,
-        mtime: 0,
+        mtime,
         size: 0,
       }
     }
 
     return null
+  }
+
+  /**
+   * Returns the mtime a `stat()` call for `path` should report, consuming
+   * one entry from a queued sequence (see `setMtimeSequence`) if one is
+   * pending — used to simulate a file being rewritten mid-merge (TOCTOU)
+   * between two `stat()` calls on the same path. Falls back to the fixed
+   * value from `setMtime`, then 0.
+   */
+  private nextMtime(path: string): number {
+    const sequence = this.mtimeSequences.get(path)
+    if (sequence && sequence.length > 0) {
+      const next = sequence.shift() as number
+      this.lastSequencedMtime.set(path, next)
+      return next
+    }
+    return (
+      this.lastSequencedMtime.get(path) ?? this.mtimes.get(path) ?? 0
+    )
   }
 
   async remove(path: string): Promise<void> {
@@ -185,6 +221,33 @@ class MockAdapter {
 
   failWriteBinary(path: string): void {
     this.failWriteBinaryPaths.add(path)
+  }
+
+  failWrite(path: string): void {
+    this.failWritePaths.add(path)
+  }
+
+  failRead(path: string): void {
+    this.failReadPaths.add(path)
+  }
+
+  failMkdir(path: string): void {
+    this.failMkdirPaths.add(path)
+  }
+
+  setMtime(path: string, mtime: number): void {
+    this.mtimes.set(path, mtime)
+  }
+
+  /**
+   * Queues the mtimes returned by successive `stat()` calls for `path` — the
+   * first call consumes `mtimes[0]`, the second `mtimes[1]`, etc. Once the
+   * queue is exhausted, every later call keeps returning the last consumed
+   * value. Used to simulate an external rewrite landing between two `stat()`
+   * calls on the same file (TOCTOU).
+   */
+  setMtimeSequence(path: string, mtimes: number[]): void {
+    this.mtimeSequences.set(path, [...mtimes])
   }
 
   failRemove(path: string): void {
@@ -681,7 +744,7 @@ describe('yoloManagedData', () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
     const sourceRoot = 'YOLO/.yolo_json_db'
-    const targetRoot = 'Config/YOLO/.yolo_json_db'
+    const targetRoot = 'Config/YOLO/data'
     await adapter.write(
       `${sourceRoot}/learning-srs/project.json`,
       '{"state":"current"}',
@@ -716,7 +779,7 @@ describe('yoloManagedData', () => {
     ).resolves.toBe('{"state":"preserved"}')
     await expect(
       adapter.read(`${targetRoot}/anki-import-journals/run.json`),
-    ).resolves.toContain('Config/YOLO/.yolo_json_db/learning-srs/project.json')
+    ).resolves.toContain('Config/YOLO/data/learning-srs/project.json')
     await expect(adapter.exists(sourceRoot)).resolves.toBe(false)
     await expect(adapter.exists('YOLO')).resolves.toBe(false)
   })
@@ -751,8 +814,8 @@ describe('yoloManagedData', () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
     const sourcePath = 'YOLO/.yolo_json_db/learning-srs/project.json'
-    const targetPath = 'Config/YOLO/.yolo_json_db/learning-srs/project.json'
-    const markerPath = 'Config/YOLO/.yolo_json_db/.learning-path-migration-v1'
+    const targetPath = 'Config/YOLO/data/learning-srs/project.json'
+    const markerPath = 'Config/YOLO/data/.learning-path-migration-v1'
     await adapter.write(sourcePath, '{"state":"source"}')
     adapter.failRemove(sourcePath)
 
@@ -781,7 +844,7 @@ describe('yoloManagedData', () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
     const sourcePath = 'YOLO/.yolo_json_db/learning-srs/project.json'
-    const targetPath = 'Config/YOLO/.yolo_json_db/learning-srs/project.json'
+    const targetPath = 'Config/YOLO/data/learning-srs/project.json'
     await adapter.write(sourcePath, '{"state":"source"}')
     adapter.failRemove(sourcePath)
 
@@ -1022,6 +1085,350 @@ describe('yoloManagedData', () => {
     await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(
       false,
     )
+  })
+})
+
+describe('ensureUserDataRootDir', () => {
+  test('creates an empty visible data root on a fresh install', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+
+    const root = await ensureUserDataRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+
+    expect(root).toBe('YOLO/data')
+    await expect(adapter.exists('YOLO/data')).resolves.toBe(true)
+  })
+
+  test('migrates every managed subdirectory from the hidden root to the visible root', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/v1_abc.json',
+      '{"id":"abc"}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/learning-srs/project.json',
+      '{"state":"srs"}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/anki-import-journals/run.json',
+      '{"version":1}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/module-settings/learning.json',
+      '{"schemaVersion":1,"data":{}}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/module-intent-v1/learning.json',
+      '{"schemaVersion":1,"data":{}}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/component-intent-v1/bash-engine.json',
+      '{"schemaVersion":1,"data":{}}',
+    )
+
+    const root = await ensureUserDataRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+
+    expect(root).toBe('YOLO/data')
+    await expect(adapter.read('YOLO/data/chats/v1_abc.json')).resolves.toBe(
+      '{"id":"abc"}',
+    )
+    await expect(
+      adapter.read('YOLO/data/learning-srs/project.json'),
+    ).resolves.toBe('{"state":"srs"}')
+    await expect(
+      adapter.read('YOLO/data/anki-import-journals/run.json'),
+    ).resolves.toBe('{"version":1}')
+    await expect(
+      adapter.read('YOLO/data/module-settings/learning.json'),
+    ).resolves.toBe('{"schemaVersion":1,"data":{}}')
+    await expect(
+      adapter.read('YOLO/data/module-intent-v1/learning.json'),
+    ).resolves.toBe('{"schemaVersion":1,"data":{}}')
+    await expect(
+      adapter.read('YOLO/data/component-intent-v1/bash-engine.json'),
+    ).resolves.toBe('{"schemaVersion":1,"data":{}}')
+    // The hidden root's managed subdirectories are gone; device-local state
+    // (not part of the migrated list) would remain untouched if present.
+    await expect(adapter.exists('YOLO/.yolo_json_db/chats')).resolves.toBe(
+      false,
+    )
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/learning-srs'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/anki-import-journals'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/module-settings'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/module-intent-v1'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/component-intent-v1'),
+    ).resolves.toBe(false)
+  })
+
+  test('is a cheap no-op on the second call once migration has completed', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_abc.json', '{"id":"abc"}')
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+    const root = await ensureUserDataRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+
+    expect(root).toBe('YOLO/data')
+    await expect(adapter.read('YOLO/data/chats/v1_abc.json')).resolves.toBe(
+      '{"id":"abc"}',
+    )
+  })
+
+  test('keeps the file with the newer mtime when both roots hold a same-named file', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    // Hidden root has the newer write (e.g. an older-version device wrote
+    // here and got synced in after this device already migrated).
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/v1_a.json',
+      '{"title":"from hidden root, newer"}',
+    )
+    adapter.setMtime('YOLO/.yolo_json_db/chats/v1_a.json', 200)
+    await adapter.write(
+      'YOLO/data/chats/v1_a.json',
+      '{"title":"already migrated, stale"}',
+    )
+    adapter.setMtime('YOLO/data/chats/v1_a.json', 100)
+    // Visible root has the newer write for a second file.
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/v1_b.json',
+      '{"title":"from hidden root, stale"}',
+    )
+    adapter.setMtime('YOLO/.yolo_json_db/chats/v1_b.json', 10)
+    await adapter.write(
+      'YOLO/data/chats/v1_b.json',
+      '{"title":"already migrated, newer"}',
+    )
+    adapter.setMtime('YOLO/data/chats/v1_b.json', 999)
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    await expect(adapter.read('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      '{"title":"from hidden root, newer"}',
+    )
+    await expect(adapter.read('YOLO/data/chats/v1_b.json')).resolves.toBe(
+      '{"title":"already migrated, newer"}',
+    )
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_a.json'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_b.json'),
+    ).resolves.toBe(false)
+  })
+
+  test('falls back to the hidden root when the visible root cannot be created', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_abc.json', '{"id":"abc"}')
+    adapter.failMkdir('YOLO/data')
+
+    const root = await ensureUserDataRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+
+    expect(root).toBe('YOLO/.yolo_json_db')
+    await expect(
+      adapter.read('YOLO/.yolo_json_db/chats/v1_abc.json'),
+    ).resolves.toBe('{"id":"abc"}')
+  })
+
+  test('leaves one failed subdirectory untouched (self-healing) while others still migrate', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_abc.json', '{"id":"abc"}')
+    await adapter.write(
+      'YOLO/.yolo_json_db/learning-srs/project.json',
+      '{"state":"srs"}',
+    )
+    adapter.failRead('YOLO/.yolo_json_db/chats/v1_abc.json')
+
+    const root = await ensureUserDataRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+
+    // The whole-root return value is unaffected by a single subdir failure —
+    // other subdirectories (learning-srs) must keep working.
+    expect(root).toBe('YOLO/data')
+    await expect(
+      adapter.read('YOLO/data/learning-srs/project.json'),
+    ).resolves.toBe('{"state":"srs"}')
+    // The failed subdirectory's source file is left completely untouched —
+    // no data lost, safe to retry on the next launch.
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_abc.json'),
+    ).resolves.toBe(true)
+    await expect(adapter.exists('YOLO/data/chats/v1_abc.json')).resolves.toBe(
+      false,
+    )
+  })
+
+  test('rewrites an Anki import journal srsPath to the new root during migration', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const oldSrsPath = 'YOLO/.yolo_json_db/learning-srs/deck.json'
+    await adapter.write(oldSrsPath, '{"version":3,"cards":{}}')
+    await adapter.write(
+      'YOLO/.yolo_json_db/anki-import-journals/run-1.json',
+      JSON.stringify({
+        version: 1,
+        phase: 'verified',
+        runId: 'run-1',
+        projectSlug: 'deck',
+        projectPath: 'Learning/deck',
+        indexPath: 'Learning/deck/index.md',
+        srsPath: oldSrsPath,
+        createdFiles: ['Learning/deck/index.md'],
+        createdFolders: ['Learning/deck'],
+      }),
+    )
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    const migratedJournal = JSON.parse(
+      await adapter.read('YOLO/data/anki-import-journals/run-1.json'),
+    ) as { srsPath: string }
+    // The journal's pinned srsPath must follow the SRS file to its new
+    // location — otherwise `recoverAnkiImports` (Learning module) would look
+    // for it at the now-vacated hidden path, find nothing, and treat this
+    // already-verified import as failed, deleting everything it created.
+    expect(migratedJournal.srsPath).toBe('YOLO/data/learning-srs/deck.json')
+    await expect(adapter.exists(migratedJournal.srsPath)).resolves.toBe(true)
+    await expect(adapter.exists(oldSrsPath)).resolves.toBe(false)
+  })
+
+  test('does not delete a source file whose mtime changed during the merge window (TOCTOU guard)', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const sourcePath = 'YOLO/.yolo_json_db/chats/v1_abc.json'
+    await adapter.write(sourcePath, '{"id":"abc","title":"original"}')
+    // First stat() (captured as the pre-copy baseline) sees mtime 100; the
+    // second stat() (taken immediately before deleting the source) sees 250
+    // — as if a sync tool rewrote the file in between.
+    adapter.setMtimeSequence(sourcePath, [100, 250])
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    await expect(adapter.exists(sourcePath)).resolves.toBe(true)
+    await expect(adapter.read(sourcePath)).resolves.toBe(
+      '{"id":"abc","title":"original"}',
+    )
+    await expect(
+      adapter.exists('YOLO/data/chats/v1_abc.json'),
+    ).resolves.toBe(true)
+  })
+
+  test('deduplicates concurrent calls for the same root instead of migrating twice', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_abc.json', '{"id":"abc"}')
+    const listSpy = jest.spyOn(adapter, 'list')
+
+    // Simulates the host startup call and a store's lazy first-touch
+    // `prepareDataDir` racing each other at launch.
+    const [first, second] = await Promise.all([
+      ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } }),
+      ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } }),
+    ])
+
+    expect(first).toBe('YOLO/data')
+    expect(second).toBe('YOLO/data')
+    // Both callers shared one in-flight migration: the chats subdirectory is
+    // listed exactly once, not once per caller.
+    const chatsListCalls = listSpy.mock.calls.filter(
+      ([path]) => path === 'YOLO/.yolo_json_db/chats',
+    )
+    expect(chatsListCalls).toHaveLength(1)
+
+    // A later, non-overlapping call still works (single-flight entries are
+    // cleared once settled, not cached forever).
+    const third = await ensureUserDataRootDir(app, {
+      yolo: { baseDir: 'YOLO' },
+    })
+    expect(third).toBe('YOLO/data')
+  })
+})
+
+describe('relocateYoloManagedData (visible user data root)', () => {
+  test('prefers the source file when it is newer than an existing same-named target file', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write(
+      'YOLO/data/chats/v1_a.json',
+      '{"title":"from source, newer"}',
+    )
+    adapter.setMtime('YOLO/data/chats/v1_a.json', 200)
+    await adapter.write(
+      'Config/YOLO/data/chats/v1_a.json',
+      '{"title":"already at target, stale"}',
+    )
+    adapter.setMtime('Config/YOLO/data/chats/v1_a.json', 50)
+
+    const migrated = await relocateYoloManagedData({
+      app,
+      fromSettings: { yolo: { baseDir: 'YOLO' } },
+      toSettings: { yolo: { baseDir: 'Config/YOLO' } },
+    })
+
+    expect(migrated).toBe(true)
+    await expect(
+      adapter.read('Config/YOLO/data/chats/v1_a.json'),
+    ).resolves.toBe('{"title":"from source, newer"}')
+    await expect(adapter.exists('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      false,
+    )
+  })
+
+  test('relocates both the hidden root and the visible data root when baseDir changes', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/v1_hidden.json',
+      '{"id":"hidden"}',
+    )
+    await adapter.write('YOLO/data/chats/v1_visible.json', '{"id":"visible"}')
+
+    const migrated = await relocateYoloManagedData({
+      app,
+      fromSettings: { yolo: { baseDir: 'YOLO' } },
+      toSettings: { yolo: { baseDir: 'Config/YOLO' } },
+    })
+
+    expect(migrated).toBe(true)
+    await expect(
+      adapter.exists('Config/YOLO/.yolo_json_db/chats/v1_hidden.json'),
+    ).resolves.toBe(true)
+    await expect(
+      adapter.exists('Config/YOLO/data/chats/v1_visible.json'),
+    ).resolves.toBe(true)
+    await expect(adapter.exists('YOLO/.yolo_json_db')).resolves.toBe(false)
+    await expect(adapter.exists('YOLO/data')).resolves.toBe(false)
+  })
+
+  test('rejects a visible data root nested inside its own source tree', async () => {
+    await expect(
+      relocateYoloManagedData({
+        app: createMockApp(new MockAdapter()),
+        fromSettings: { yolo: { baseDir: 'YOLO' } },
+        toSettings: { yolo: { baseDir: 'YOLO/data/custom' } },
+      }),
+    ).resolves.toBe(false)
   })
 })
 

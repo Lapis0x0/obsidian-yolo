@@ -347,6 +347,73 @@ describe('createVaultBashFileSystem', () => {
     })
   })
 
+  describe('hidden user data root', () => {
+    const settings = { yolo: { baseDir: 'YOLO' } }
+
+    it('reports the user data root and its contents as non-existent', async () => {
+      const dataFolder = makeFolder('YOLO/data')
+      const chatFile = makeFile('YOLO/data/chats/v1_abc.json')
+      const { app } = makeApp([dataFolder, chatFile])
+      const fs = createVaultBashFileSystem(app, undefined, settings)
+
+      await expect(fs.exists('YOLO/data')).resolves.toBe(false)
+      await expect(fs.exists('YOLO/data/chats/v1_abc.json')).resolves.toBe(
+        false,
+      )
+      await expect(fs.readFile('YOLO/data/chats/v1_abc.json')).rejects.toThrow(
+        /ENOENT/,
+      )
+      await expect(fs.stat('YOLO/data/chats/v1_abc.json')).rejects.toThrow(
+        /ENOENT/,
+      )
+      await expect(fs.readdir('YOLO/data')).rejects.toThrow(/ENOENT/)
+    })
+
+    it('excludes the user data root from a parent directory listing', async () => {
+      const baseDir = makeFolder('YOLO', [
+        makeFile('YOLO/snippets.md'),
+        makeFolder('YOLO/data'),
+      ])
+      const { app } = makeApp([baseDir])
+      const fs = createVaultBashFileSystem(app, undefined, settings)
+
+      await expect(fs.readdir('YOLO')).resolves.toEqual([
+        { name: 'snippets.md', isFile: true, isDirectory: false },
+      ])
+    })
+
+    it('excludes the user data root from getAllPaths', () => {
+      const chatFile = makeFile('YOLO/data/chats/v1_abc.json')
+      const otherFile = makeFile('YOLO/snippets.md')
+      const { app } = makeApp([chatFile, otherFile])
+      const fs = createVaultBashFileSystem(app, undefined, settings)
+
+      expect(fs.getAllPaths()).toEqual(['YOLO/snippets.md'])
+    })
+
+    it('refuses to write into or remove the user data root', async () => {
+      const dataFolder = makeFolder('YOLO/data')
+      const { app } = makeApp([dataFolder])
+      const fs = createVaultBashFileSystem(app, undefined, settings)
+
+      await expect(fs.mkdir('YOLO/data/new-dir')).rejects.toThrow(/ENOENT/)
+      await expect(fs.rm('YOLO/data')).rejects.toThrow(/ENOENT/)
+      await expect(fs.mv('YOLO/data', 'YOLO/moved')).rejects.toThrow(/ENOENT/)
+    })
+
+    it('still guards the default baseDir root when settings are not supplied', () => {
+      // `getYoloUserDataRootDir` falls back to the default `YOLO` baseDir
+      // when settings are missing entirely, so the guard stays in effect
+      // rather than silently disabling itself.
+      const chatFile = makeFile('YOLO/data/chats/v1_abc.json')
+      const otherFile = makeFile('Notes/a.md')
+      const { app } = makeApp([chatFile, otherFile])
+      const fs = createVaultBashFileSystem(app)
+
+      expect(fs.getAllPaths()).toEqual(['Notes/a.md'])
+    })
+  })
+
   describe('workspace scope enforcement', () => {
     const scope = {
       enabled: true,

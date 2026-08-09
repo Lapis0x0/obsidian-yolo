@@ -30,7 +30,7 @@ const mockApp = {
   vault: mockVault,
 } as unknown as App
 
-const CHATS_DIR = 'YOLO/.yolo_json_db/chats'
+const CHATS_DIR = 'YOLO/data/chats'
 
 function createFakeFs(initial: Record<string, string>) {
   const files = new Map<string, string>(Object.entries(initial))

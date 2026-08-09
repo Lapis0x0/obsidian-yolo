@@ -1,6 +1,7 @@
 import { App, TFile, TFolder } from 'obsidian'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
 import type { RAGEngine } from '../rag/ragEngine'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import {
@@ -361,6 +362,7 @@ const pathToRagScope = (
 
 const collectKeywordSearchResults = async ({
   app,
+  settings,
   scopeTarget,
   scope,
   query,
@@ -369,6 +371,7 @@ const collectKeywordSearchResults = async ({
   signal,
 }: {
   app: App
+  settings?: YoloSettings
   scopeTarget: SearchScopeTarget
   scope: VaultSearchScope
   query: string
@@ -456,6 +459,7 @@ const collectKeywordSearchResults = async ({
     const files = app.vault
       .getFiles()
       .filter((file) => isPathInSearchScope(file.path, scopeTarget))
+      .filter((file) => !isWithinYoloUserDataRoot(file.path, settings))
       .map((file) => file.path)
       .map((path) => ({
         path,
@@ -495,6 +499,7 @@ const collectKeywordSearchResults = async ({
       .filter((entry): entry is TFolder => entry instanceof TFolder)
       .filter((folder) => folder.path.length > 0)
       .filter((folder) => isPathInSearchScope(folder.path, scopeTarget))
+      .filter((folder) => !isWithinYoloUserDataRoot(folder.path, settings))
       .map((folder) => folder.path)
       .map((path) => ({
         path,
@@ -669,6 +674,7 @@ export async function runVaultSearchStructured({
       const scope = getOptionalVaultSearchScope(args, 'all')
       const legacy = await collectKeywordSearchResults({
         app,
+        settings,
         scopeTarget,
         scope,
         query,
@@ -748,6 +754,7 @@ export async function runVaultSearchStructured({
 
     const keywordLegacy = await collectKeywordSearchResults({
       app,
+      settings,
       scopeTarget,
       scope: 'content',
       query,
@@ -761,6 +768,7 @@ export async function runVaultSearchStructured({
     const keywordSuper = legacySearchItemsToSuper(keywordLegacy, 'keyword')
     const pathLegacyFiles = await collectKeywordSearchResults({
       app,
+      settings,
       scopeTarget,
       scope: 'files',
       query,
@@ -773,6 +781,7 @@ export async function runVaultSearchStructured({
     }
     const pathLegacyDirs = await collectKeywordSearchResults({
       app,
+      settings,
       scopeTarget,
       scope: 'dirs',
       query,

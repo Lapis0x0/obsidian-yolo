@@ -11,7 +11,7 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { isPortableVaultPathSegment } from '../../../core/paths/portableVaultPath'
-import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
+import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
 import { hasHiddenYoloBaseDirSegment } from '../../../core/paths/yoloPaths'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
@@ -54,9 +54,9 @@ const LEGACY_TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 
 const clearLegacyExternalAgentProgressDir = async (
   app: App,
-  settings: Parameters<typeof ensureJsonDbRootDir>[1],
+  settings: Parameters<typeof ensureUserDataRootDir>[1],
 ): Promise<void> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureUserDataRootDir(app, settings)
   const path = normalizePath(
     `${rootDir}/${CHAT_DIR}/${LEGACY_EXTERNAL_AGENT_PROGRESS_DIR}`,
   )
@@ -67,9 +67,9 @@ const clearLegacyExternalAgentProgressDir = async (
 
 const clearLegacyTimelineHeightCacheDir = async (
   app: App,
-  settings: Parameters<typeof ensureJsonDbRootDir>[1],
+  settings: Parameters<typeof ensureUserDataRootDir>[1],
 ): Promise<void> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureUserDataRootDir(app, settings)
   const path = normalizePath(
     `${rootDir}/${CHAT_DIR}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`,
   )
@@ -124,9 +124,9 @@ const getPathSize = async (app: App, path: string): Promise<number> => {
 
 const loadStorageUsage = async (
   app: App,
-  settings: Parameters<typeof ensureJsonDbRootDir>[1],
+  settings: Parameters<typeof ensureUserDataRootDir>[1],
 ): Promise<StorageUsage> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureUserDataRootDir(app, settings)
   const chatDir = normalizePath(`${rootDir}/${CHAT_DIR}`)
 
   const [

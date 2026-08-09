@@ -307,11 +307,11 @@ describe('Host Anki shared sidecars', () => {
     })
     const projectSlug = 'Project 一'
     const pinned = await storage.ensure(projectSlug)
-    expect(pinned).toBe('First/.yolo_json_db/learning-srs/Project 一.json')
+    expect(pinned).toBe('First/data/learning-srs/Project 一.json')
     await storage.writeProjectStateAtPath(projectSlug, pinned, 'old')
 
     contentRoot = 'Second/learning'
-    expect(storage.getLocationKey()).toBe('Second/.yolo_json_db')
+    expect(storage.getLocationKey()).toBe('Second/data')
     await storage.write(projectSlug, 'new')
     await expect(
       storage.existsProjectStateAtPath(projectSlug, pinned),
@@ -335,7 +335,7 @@ describe('Host Anki shared sidecars', () => {
     })
     const journalPath = await journals.create('{}')
     expect(journalPath).toMatch(
-      /^Second\/.yolo_json_db\/anki-import-journals\/.+\.json$/,
+      /^Second\/data\/anki-import-journals\/.+\.json$/,
     )
     expect(files.get(journalPath)).toBe('{}')
     expect(synchronized.calls).toEqual([])
@@ -344,20 +344,20 @@ describe('Host Anki shared sidecars', () => {
   it('follows the current root, lists explicit legacy roots, and removes exact files', async () => {
     const { files, folders, removeFileExact, trashPath, vault } =
       createSharedVault()
-    let root = 'One/.yolo_json_db'
-    const legacyDirectory = 'Legacy/.yolo_json_db/anki-import-journals'
+    let root = 'One/data'
+    const legacyDirectory = 'Legacy/data/anki-import-journals'
     folders.add(legacyDirectory)
     files.set(`${legacyDirectory}/old.json`, '{}')
     files.set(`${legacyDirectory}/notes.md`, 'keep')
     files.set(`${legacyDirectory}/nested/run.json`, 'ignore')
     const journals = new FileAnkiImportJournalStorage(
       createHostAnkiJournalFilePort(vault, async () => root, {
-        legacyJournalDataRoots: ['Legacy/.yolo_json_db'],
+        legacyJournalDataRoots: ['Legacy/data'],
       }),
       async () => root,
     )
     const first = await journals.create('{}')
-    root = 'Two/.yolo_json_db'
+    root = 'Two/data'
     const second = await journals.create('{"phase":"writing"}')
 
     await expect(journals.list()).resolves.toEqual([
@@ -412,7 +412,7 @@ describe('Host Anki shared sidecars', () => {
     await journals.remove(path)
 
     expect(path).toMatch(
-      /^Moved\/.yolo_json_db\/anki-import-journals\/.+\.json$/,
+      /^Moved\/data\/anki-import-journals\/.+\.json$/,
     )
     expect(files.has(path)).toBe(false)
     expect(namespaces).toEqual([
