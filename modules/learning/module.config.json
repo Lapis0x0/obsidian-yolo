@@ -15,7 +15,7 @@
       "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
     }
   },
-  "hostApi": "^1.4.0",
+  "hostApi": "^1.5.0",
   "platforms": ["desktop", "mobile"],
   "dataSchemas": {
     "settings": {
