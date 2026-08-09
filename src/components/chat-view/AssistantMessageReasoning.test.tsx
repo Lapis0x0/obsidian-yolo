@@ -39,7 +39,9 @@ describe('AssistantMessageReasoning', () => {
       />,
     )
 
-    expect(html).toContain('Thought for 71s')
+    // The label renders as separate title/detail spans, so assert the parts.
+    expect(html).toContain('Thought')
+    expect(html).toContain('for 71s')
   })
 
   it('keeps reasoning continuous instead of splitting it into sentences', () => {
