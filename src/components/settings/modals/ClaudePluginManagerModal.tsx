@@ -45,7 +45,7 @@ export class ClaudePluginManagerModal extends ReactModal<ClaudePluginManagerModa
 }
 
 type PluginManagerTab = 'installed' | 'browse'
-type RowActionKind = 'enable' | 'disable' | 'update' | 'uninstall' | 'install'
+type RowActionKind = 'enable' | 'disable' | 'uninstall' | 'install'
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -148,16 +148,7 @@ function ClaudePluginManagerModalContent({
           return
         }
         await refresh()
-        if (action === 'update') {
-          new Notice(
-            t(
-              'chat.claudePlugins.updateRestartRequired',
-              '插件已更新，需新建会话后生效。',
-            ),
-          )
-        } else {
-          await hotRefreshAfterMutation()
-        }
+        await hotRefreshAfterMutation()
       } catch (error) {
         console.warn(`[YOLO] Claude plugin ${action} failed`, error)
         setRowError((prev) => ({ ...prev, [key]: getErrorMessage(error) }))
@@ -206,21 +197,6 @@ function ClaudePluginManagerModalContent({
         return enabled
           ? enablePlugin(item.id, options)
           : disablePlugin(item.id, options)
-      })
-    },
-    [configuredCliPath, runRowAction],
-  )
-
-  const handleUpdateInstalled = useCallback(
-    (item: ClaudeInstalledPlugin) => {
-      void runRowAction(item.id, 'update', async () => {
-        const { updatePlugin } = await import(
-          '../../../core/cli-runtime/claude/plugin-cli'
-        )
-        return updatePlugin(item.id, {
-          scope: item.scope as ClaudePluginScope,
-          configuredCliPath,
-        })
       })
     },
     [configuredCliPath, runRowAction],
@@ -349,11 +325,6 @@ function ClaudePluginManagerModalContent({
                       value={item.enabled}
                       disabled={!!busy}
                       onChange={(value) => handleToggleInstalled(item, value)}
-                    />
-                    <ObsidianButton
-                      text={t('chat.claudePlugins.update', '更新')}
-                      disabled={!!busy}
-                      onClick={() => handleUpdateInstalled(item)}
                     />
                     <ObsidianButton
                       text={t('chat.claudePlugins.uninstall', '卸载')}
