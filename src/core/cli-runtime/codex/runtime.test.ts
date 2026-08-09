@@ -20,6 +20,8 @@ class RpcFakeProcess implements CodexProcessLike {
   threadTurns: CodexTurn[] = []
   modelListData?: unknown[]
   modelListError?: string
+  mcpServerStatusData?: unknown[]
+  mcpServerStatusError?: { code: number; message: string }
   configuredModel?: string
   threadModel?: string
   threadIdForStart?: (params: Record<string, unknown>) => string
@@ -67,6 +69,19 @@ class RpcFakeProcess implements CodexProcessLike {
           jsonrpc: '2.0',
           id: request.id,
           error: { code: -32603, message: this.modelListError },
+        }),
+      )
+      return
+    }
+    if (
+      request.method === 'mcpServerStatus/list' &&
+      this.mcpServerStatusError
+    ) {
+      queueMicrotask(() =>
+        this.emit({
+          jsonrpc: '2.0',
+          id: request.id,
+          error: this.mcpServerStatusError,
         }),
       )
       return
@@ -162,7 +177,12 @@ class RpcFakeProcess implements CodexProcessLike {
                             error: null,
                           },
                         }
-                      : {}
+                      : request.method === 'mcpServerStatus/list'
+                        ? {
+                            data: this.mcpServerStatusData ?? [],
+                            nextCursor: null,
+                          }
+                        : {}
     queueMicrotask(() => this.emit({ jsonrpc: '2.0', id: request.id, result }))
   }
   onLine(listener: (line: string) => void): () => void {
@@ -640,6 +660,116 @@ describe('CodexCliRuntime', () => {
       )?.params,
     ).toEqual({ threadId: 'thread-1' })
     expect(events).not.toContainEqual({ type: 'run_state', state: 'running' })
+  })
+
+  it('maps mcpServerStatus/list entries to CliRuntimeMcpServerStatus', async () => {
+    const process = new RpcFakeProcess()
+    process.mcpServerStatusData = [
+      {
+        name: 'connected-server',
+        serverInfo: { name: 'connected-server', version: '1.0.0' },
+        tools: { a: {}, b: {} },
+        authStatus: 'bearerToken',
+      },
+      {
+        name: 'needs-auth-server',
+        serverInfo: null,
+        tools: {},
+        authStatus: 'notLoggedIn',
+      },
+      {
+        name: 'pending-server',
+        serverInfo: null,
+        tools: {},
+        authStatus: 'oAuth',
+      },
+      {
+        name: 'no-auth-status-server',
+        serverInfo: null,
+        tools: {},
+      },
+      {
+        name: 'unclassified-server',
+        serverInfo: null,
+        tools: {},
+        authStatus: 'unsupported',
+      },
+    ]
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await expect(runtime.mcpServerStatus()).resolves.toEqual([
+      {
+        name: 'connected-server',
+        status: 'connected',
+        toolCount: 2,
+        readOnly: true,
+      },
+      {
+        name: 'needs-auth-server',
+        status: 'needs-auth',
+        toolCount: 0,
+        readOnly: true,
+      },
+      {
+        name: 'pending-server',
+        status: 'pending',
+        toolCount: 0,
+        readOnly: true,
+      },
+      {
+        name: 'no-auth-status-server',
+        status: 'pending',
+        toolCount: 0,
+        readOnly: true,
+      },
+      {
+        name: 'unclassified-server',
+        status: 'unknown',
+        toolCount: 0,
+        readOnly: true,
+      },
+    ])
+    expect(
+      process.requests.find(
+        (request) => request.method === 'mcpServerStatus/list',
+      )?.params,
+    ).toEqual({ detail: 'toolsAndAuthOnly' })
+  })
+
+  it('surfaces an unsupported-version error when Codex rejects mcpServerStatus/list', async () => {
+    const process = new RpcFakeProcess()
+    // Verified against codex-cli 0.146.0: unknown methods are rejected with
+    // this "unknown variant" JSON-RPC -32600 message.
+    process.mcpServerStatusError = {
+      code: -32600,
+      message:
+        'Invalid request: unknown variant `mcpServerStatus/list`, expected one of `initialize`, `thread/start`',
+    }
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    const { CodexMcpServerStatusUnsupportedError } = await import('./protocol')
+    await expect(runtime.mcpServerStatus()).rejects.toBeInstanceOf(
+      CodexMcpServerStatusUnsupportedError,
+    )
+  })
+
+  it('rethrows unrelated mcpServerStatus/list failures unchanged', async () => {
+    const process = new RpcFakeProcess()
+    process.mcpServerStatusError = { code: -32603, message: 'internal error' }
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+
+    await expect(runtime.mcpServerStatus()).rejects.toThrow(
+      'mcpServerStatus/list: internal error',
+    )
   })
 
   it('routes interleaved shared-host events and cancellation by thread', async () => {

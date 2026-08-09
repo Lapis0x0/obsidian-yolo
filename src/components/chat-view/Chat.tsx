@@ -83,6 +83,7 @@ import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputProps } from './chat-input/ChatUserInput'
 import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import MentionableBadge from './chat-input/MentionableBadge'
+import type { SlashCommand } from './chat-input/plugins/mention/SkillSlashPlugin'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatHeader } from './ChatHeader'
 import {
@@ -683,6 +684,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliTransitioning,
     cliModelCatalog,
     cliSkillEntries,
+    refreshCliSkills,
     activeHistoryConversationId,
     transitionCliSession,
     createFreshCliConversation,
@@ -1293,6 +1295,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMountedRef,
     handleManualContextCompaction,
     cliPreferenceSettingsRef,
+    refreshCliSkills,
     abortConversationRun,
     setConversationModelId,
     conversationModelIdRef,
@@ -1336,6 +1339,43 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : {}),
     }
   }, [activeCliConversationSnapshot?.contextUsage, t])
+  // `/` 菜单按运行时暴露的原生动作条目：claude-code 有插件管理 + MCP 状态，
+  // codex 仅 MCP 状态（无插件机制），yolo 运行时没有对应 CLI 客户端。
+  const nativeSlashCommands = useMemo<SlashCommand[]>(() => {
+    if (activeRuntimeId === 'claude-code') {
+      return [
+        {
+          id: 'open-plugin-manager',
+          name: t('chat.slashCommands.openPluginManager.label', '插件管理'),
+          description: t(
+            'chat.slashCommands.openPluginManager.description',
+            '管理已安装的 Claude Code 插件，或从 Marketplace 安装新插件。',
+          ),
+        },
+        {
+          id: 'open-mcp-servers',
+          name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
+          description: t(
+            'chat.slashCommands.openMcpServers.description',
+            '查看当前会话加载的 MCP 服务器状态。',
+          ),
+        },
+      ]
+    }
+    if (activeRuntimeId === 'codex') {
+      return [
+        {
+          id: 'open-mcp-servers',
+          name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
+          description: t(
+            'chat.slashCommands.openMcpServers.description',
+            '查看当前会话加载的 MCP 服务器状态。',
+          ),
+        },
+      ]
+    }
+    return []
+  }, [activeRuntimeId, t])
   const mainInputSelectedSkills =
     inputMessage.selectedSkills ?? EMPTY_SELECTED_SKILLS
 
@@ -1545,6 +1585,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         allowAgentModeOption
         enableResize
         onRunSlashCommand={handleMainInputRunSlashCommand}
+        nativeSlashCommands={nativeSlashCommands}
         isGenerating={
           isCliRuntimeActive
             ? cliSubmissionPending || isCliRunActive || cliTransitioning

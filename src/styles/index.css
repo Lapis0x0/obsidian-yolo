@@ -13,6 +13,7 @@
 @import './settings/web-search.css';
 @import './settings/connectivity-test.css';
 @import './settings/batch-add-models.css';
+@import './settings/cli-native-actions.css';
 
 @import './popover/index.css';
 

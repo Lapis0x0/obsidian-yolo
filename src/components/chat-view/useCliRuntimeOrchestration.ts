@@ -284,6 +284,13 @@ export function useCliRuntimeOrchestration({
     return cliRuntimeScope.subscribeToModelCatalog(publishCatalog)
   }, [cliRuntimeScope])
   const [cliSkillEntries, setCliSkillEntries] = useState<LiteSkillEntry[]>([])
+  // Bumped by `refreshCliSkills` (e.g. after the Claude plugin manager
+  // installs/enables/disables a plugin) to force the skills effect below to
+  // re-run against the same controller without duplicating its fetch logic.
+  const [cliSkillsRefreshTick, setCliSkillsRefreshTick] = useState(0)
+  const refreshCliSkills = useCallback(() => {
+    setCliSkillsRefreshTick((tick) => tick + 1)
+  }, [])
   useEffect(() => {
     if (
       activeRuntimeId === 'yolo' ||
@@ -319,7 +326,12 @@ export function useCliRuntimeOrchestration({
     return () => {
       cancelled = true
     }
-  }, [activeRuntimeId, cliConversationController, cliRuntimeScope])
+  }, [
+    activeRuntimeId,
+    cliConversationController,
+    cliRuntimeScope,
+    cliSkillsRefreshTick,
+  ])
   useEffect(() => {
     if (activeRuntimeId === 'yolo' || !cliConversationController) return
     const snapshot = cliConversationController.getSnapshot()
@@ -1096,6 +1108,7 @@ export function useCliRuntimeOrchestration({
     cliTransitioning,
     cliModelCatalog,
     cliSkillEntries,
+    refreshCliSkills,
     activeHistoryConversationId,
 
     transitionCliSession,

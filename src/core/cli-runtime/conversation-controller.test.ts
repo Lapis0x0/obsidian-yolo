@@ -10,6 +10,7 @@ import type {
   CliRuntimeEvent,
   CliRuntimeEventListener,
   CliRuntimeId,
+  CliRuntimeMcpServerStatus,
   CliRuntimeReadyInput,
   CliSessionHydration,
   CliSessionRef,
@@ -74,6 +75,25 @@ class FakeCliRuntime implements CliRuntime {
     undefined
   cancelImpl: () => Promise<void> = async () => undefined
   compactImpl: () => Promise<void> = async () => undefined
+  reloadPluginsCalls = 0
+  // Assigned as an instance field (not a prototype method) so tests can
+  // `delete` it to simulate a runtime that does not implement reloadPlugins.
+  reloadPlugins = async (): Promise<void> => {
+    this.reloadPluginsCalls += 1
+  }
+  mcpServerStatusResult: CliRuntimeMcpServerStatus[] = []
+  // Same instance-field pattern as reloadPlugins, so tests can `delete` these
+  // to simulate a runtime that does not implement the MCP status methods.
+  mcpServerStatus = async (): Promise<CliRuntimeMcpServerStatus[]> =>
+    this.mcpServerStatusResult
+  readonly toggleMcpServerCalls: Array<{ name: string; enabled: boolean }> = []
+  toggleMcpServer = async (name: string, enabled: boolean): Promise<void> => {
+    this.toggleMcpServerCalls.push({ name, enabled })
+  }
+  readonly reconnectMcpServerCalls: string[] = []
+  reconnectMcpServer = async (name: string): Promise<void> => {
+    this.reconnectMcpServerCalls.push(name)
+  }
   configuration: CliRuntimeConfiguration
 
   constructor(readonly runtimeId: CliRuntimeId = 'codex') {
@@ -844,5 +864,103 @@ describe('CliConversationController', () => {
       { mode: 'agent', yoloEnabled: true },
       { mode: 'plan', yoloEnabled: false },
     ])
+  })
+
+  it('reloadPlugins delegates to the runtime when supported', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await controller.reloadPlugins()
+
+    expect(runtime.reloadPluginsCalls).toBe(1)
+  })
+
+  it('reloadPlugins no-ops when the runtime does not support it', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    delete (runtime as unknown as { reloadPlugins?: () => Promise<void> })
+      .reloadPlugins
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await expect(controller.reloadPlugins()).resolves.toBeUndefined()
+  })
+
+  it('mcpServerStatus delegates to the runtime when supported', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    runtime.mcpServerStatusResult = [
+      { name: 'github', status: 'connected', readOnly: false },
+    ]
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await expect(controller.mcpServerStatus()).resolves.toEqual([
+      { name: 'github', status: 'connected', readOnly: false },
+    ])
+  })
+
+  it('mcpServerStatus returns an empty list when the runtime does not support it', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    delete (
+      runtime as unknown as {
+        mcpServerStatus?: () => Promise<CliRuntimeMcpServerStatus[]>
+      }
+    ).mcpServerStatus
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await expect(controller.mcpServerStatus()).resolves.toEqual([])
+  })
+
+  it('toggleMcpServer delegates to the runtime when supported', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await controller.toggleMcpServer('github', false)
+
+    expect(runtime.toggleMcpServerCalls).toEqual([
+      { name: 'github', enabled: false },
+    ])
+  })
+
+  it('toggleMcpServer throws when the runtime does not support it', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    delete (
+      runtime as unknown as {
+        toggleMcpServer?: (name: string, enabled: boolean) => Promise<void>
+      }
+    ).toggleMcpServer
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await expect(controller.toggleMcpServer('github', true)).rejects.toThrow(
+      'does not support toggling MCP servers',
+    )
+  })
+
+  it('reconnectMcpServer delegates to the runtime when supported', async () => {
+    const runtime = new FakeCliRuntime('claude-code')
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await controller.reconnectMcpServer('github')
+
+    expect(runtime.reconnectMcpServerCalls).toEqual(['github'])
+  })
+
+  it('reconnectMcpServer throws when the runtime does not support it', async () => {
+    const runtime = new FakeCliRuntime('codex')
+    delete (
+      runtime as unknown as {
+        reconnectMcpServer?: (name: string) => Promise<void>
+      }
+    ).reconnectMcpServer
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await expect(controller.reconnectMcpServer('github')).rejects.toThrow(
+      'does not support reconnecting MCP servers',
+    )
   })
 })

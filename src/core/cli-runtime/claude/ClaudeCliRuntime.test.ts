@@ -335,6 +335,17 @@ class FakeQuery implements ClaudeSdkQuery {
       argumentHint?: string
     }>,
   }))
+  readonly reloadPlugins = jest.fn(async (): Promise<unknown> => undefined)
+  readonly mcpServerStatus = jest.fn<
+    ReturnType<NonNullable<ClaudeSdkQuery['mcpServerStatus']>>,
+    Parameters<NonNullable<ClaudeSdkQuery['mcpServerStatus']>>
+  >(async () => [])
+  readonly reconnectMcpServer = jest.fn(
+    async (_serverName: string) => undefined,
+  )
+  readonly toggleMcpServer = jest.fn(
+    async (_serverName: string, _enabled: boolean) => undefined,
+  )
   readonly setModel = jest.fn(async () => undefined)
   readonly setPermissionMode = jest.fn(async () => undefined)
   readonly applyFlagSettings = jest.fn(async () => undefined)
@@ -1055,6 +1066,178 @@ describe('ClaudeCliRuntime', () => {
       value: { type: 'user', message: { content: '/compact' } },
     })
     expect(events).not.toContainEqual({ type: 'run_state', state: 'running' })
+  })
+
+  it('reloadPlugins forwards to the SDK query when supported', async () => {
+    const { sdk, queryInstance } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+    await runtime.reloadPlugins()
+
+    expect(queryInstance.reloadPlugins).toHaveBeenCalledTimes(1)
+  })
+
+  it('reloadPlugins no-ops when the SDK query predates it', async () => {
+    const { sdk, queryInstance } = createSdk()
+    delete (queryInstance as unknown as { reloadPlugins?: unknown })
+      .reloadPlugins
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+
+    await expect(runtime.reloadPlugins()).resolves.toBeUndefined()
+  })
+
+  it('mcpServerStatus maps the SDK query response to CliRuntimeMcpServerStatus', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.mcpServerStatus.mockResolvedValue([
+      {
+        name: 'github',
+        status: 'connected',
+        scope: 'user',
+        tools: [{ name: 'get_commit' }, { name: 'list_prs' }],
+      },
+      {
+        name: 'broken',
+        status: 'failed',
+        error: 'connection refused',
+      },
+      {
+        // Simulates an SDK build reporting a status value this adapter does
+        // not yet recognize.
+        name: 'future',
+        status: 'future-status',
+      } as unknown as Awaited<
+        ReturnType<NonNullable<ClaudeSdkQuery['mcpServerStatus']>>
+      >[number],
+    ])
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+
+    await expect(runtime.mcpServerStatus()).resolves.toEqual([
+      {
+        name: 'github',
+        status: 'connected',
+        scope: 'user',
+        toolCount: 2,
+        readOnly: false,
+      },
+      {
+        name: 'broken',
+        status: 'failed',
+        errorMessage: 'connection refused',
+        readOnly: false,
+      },
+      {
+        name: 'future',
+        status: 'unknown',
+        readOnly: false,
+      },
+    ])
+  })
+
+  it('mcpServerStatus returns an empty list when the SDK query predates it', async () => {
+    const { sdk, queryInstance } = createSdk()
+    delete (queryInstance as unknown as { mcpServerStatus?: unknown })
+      .mcpServerStatus
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+
+    await expect(runtime.mcpServerStatus()).resolves.toEqual([])
+  })
+
+  it('mcpServerStatus throws when the runtime is not ready', async () => {
+    const { sdk } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await expect(runtime.mcpServerStatus()).rejects.toThrow(
+      'Claude CLI runtime is not ready.',
+    )
+  })
+
+  it('toggleMcpServer forwards to the SDK query when supported', async () => {
+    const { sdk, queryInstance } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+    await runtime.toggleMcpServer('github', false)
+
+    expect(queryInstance.toggleMcpServer).toHaveBeenCalledWith('github', false)
+  })
+
+  it('toggleMcpServer throws when the SDK query predates it', async () => {
+    const { sdk, queryInstance } = createSdk()
+    delete (queryInstance as unknown as { toggleMcpServer?: unknown })
+      .toggleMcpServer
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+
+    await expect(runtime.toggleMcpServer('github', true)).rejects.toThrow(
+      'does not support toggling MCP servers',
+    )
+  })
+
+  it('reconnectMcpServer forwards to the SDK query when supported', async () => {
+    const { sdk, queryInstance } = createSdk()
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+    await runtime.reconnectMcpServer('github')
+
+    expect(queryInstance.reconnectMcpServer).toHaveBeenCalledWith('github')
+  })
+
+  it('reconnectMcpServer throws when the SDK query predates it', async () => {
+    const { sdk, queryInstance } = createSdk()
+    delete (queryInstance as unknown as { reconnectMcpServer?: unknown })
+      .reconnectMcpServer
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+
+    await runtime.ensureReady({})
+
+    await expect(runtime.reconnectMcpServer('github')).rejects.toThrow(
+      'does not support reconnecting MCP servers',
+    )
   })
 
   it('maps Claude compact boundaries to native compaction markers', async () => {

@@ -42,6 +42,7 @@ import type {
   CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
   CliRuntimeEventListener,
+  CliRuntimeMcpServerStatus,
   CliRuntimeReadyInput,
   CliRuntimeSkill,
   CliSessionHydration,
@@ -114,6 +115,29 @@ export type ClaudeCliRuntimeOptions = {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
+
+const CLAUDE_MCP_SERVER_STATUSES = new Set<CliRuntimeMcpServerStatus['status']>(
+  ['connected', 'failed', 'needs-auth', 'pending', 'disabled'],
+)
+
+const toCliMcpServerStatus = (status: {
+  name: string
+  status: string
+  error?: string
+  scope?: string
+  tools?: Array<{ name: string; description?: string }>
+}): CliRuntimeMcpServerStatus => ({
+  name: status.name,
+  status: CLAUDE_MCP_SERVER_STATUSES.has(
+    status.status as CliRuntimeMcpServerStatus['status'],
+  )
+    ? (status.status as CliRuntimeMcpServerStatus['status'])
+    : 'unknown',
+  ...(status.tools ? { toolCount: status.tools.length } : {}),
+  ...(status.scope ? { scope: status.scope } : {}),
+  ...(status.error ? { errorMessage: status.error } : {}),
+  readOnly: false,
+})
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
@@ -495,6 +519,57 @@ export class ClaudeCliRuntime implements CliRuntime {
       description: command.description,
       path: `claude-code://skills/${encodeURIComponent(command.name)}`,
     }))
+  }
+
+  /**
+   * Best-effort hot-reload of plugin state into the live session, used by the
+   * plugin manager after install/enable/disable/uninstall so the running CLI
+   * session picks up the change without a restart. Silently no-ops when the
+   * runtime is not ready or the SDK build predates `reloadPlugins`.
+   */
+  async reloadPlugins(): Promise<void> {
+    this.assertUsable()
+    const query = this.query
+    if (!query?.reloadPlugins) return
+    await query.reloadPlugins()
+  }
+
+  /**
+   * Current status of all configured MCP servers, including plugin-provided
+   * ones. Returns an empty list when the SDK build predates the query
+   * method rather than throwing, since this is a best-effort status view.
+   */
+  async mcpServerStatus(): Promise<CliRuntimeMcpServerStatus[]> {
+    this.assertUsable()
+    const query = this.query
+    if (!query) throw new Error('Claude CLI runtime is not ready.')
+    if (!query.mcpServerStatus) return []
+    const statuses = await query.mcpServerStatus()
+    return statuses.map(toCliMcpServerStatus)
+  }
+
+  async toggleMcpServer(name: string, enabled: boolean): Promise<void> {
+    this.assertUsable()
+    const query = this.query
+    if (!query) throw new Error('Claude CLI runtime is not ready.')
+    if (!query.toggleMcpServer) {
+      throw new Error(
+        'This Claude Code build does not support toggling MCP servers.',
+      )
+    }
+    await query.toggleMcpServer(name, enabled)
+  }
+
+  async reconnectMcpServer(name: string): Promise<void> {
+    this.assertUsable()
+    const query = this.query
+    if (!query) throw new Error('Claude CLI runtime is not ready.')
+    if (!query.reconnectMcpServer) {
+      throw new Error(
+        'This Claude Code build does not support reconnecting MCP servers.',
+      )
+    }
+    await query.reconnectMcpServer(name)
   }
 
   async compact(): Promise<void> {

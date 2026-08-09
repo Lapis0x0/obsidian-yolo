@@ -124,6 +124,7 @@ export type ChatUserInputProps = {
   onEditorKeyDown?: (event: React.KeyboardEvent<HTMLDivElement>) => void
   enableResize?: boolean
   onRunSlashCommand?: (command: SlashCommand) => void
+  nativeSlashCommands?: SlashCommand[]
   // 当父级正在执行 conversation run 时，发送按钮切换为停止按钮（圆形 + 方块）
   isGenerating?: boolean
   canQueueWhileGenerating?: boolean
@@ -203,6 +204,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onEditorKeyDown,
       enableResize = false,
       onRunSlashCommand,
+      nativeSlashCommands,
       isGenerating = false,
       canQueueWhileGenerating = true,
       onAbort,
@@ -910,6 +912,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               snippets={availableSnippets}
               onCreateSnippetsFile={handleCreateSnippetsFile}
               onRunSlashCommand={onRunSlashCommand}
+              nativeSlashCommands={nativeSlashCommands}
             />
           </div>
 

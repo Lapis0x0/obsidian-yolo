@@ -1,0 +1,340 @@
+/*
+ * CLI 原生动作弹窗：Claude 插件管理（ClaudePluginManagerModal）与
+ * MCP 服务器状态（McpServerStatusModal）。v1 骨架阶段仅有加载占位样式，
+ * 真实的列表/操作样式随功能落地在此文件补充。
+ */
+
+.yolo-cli-native-modal-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: var(--size-4-16);
+  padding: var(--size-4-4);
+  color: var(--text-muted);
+  font-size: var(--font-ui-medium);
+  text-align: center;
+}
+
+/* ================= Claude plugin manager ================= */
+
+.yolo-claude-plugins-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-claude-plugins-tabs {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  padding: var(--size-2-2);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  width: max-content;
+}
+
+.yolo-claude-plugins-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-s);
+  background: transparent !important;
+  background-color: transparent !important;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  padding: 6px 12px;
+  cursor: pointer;
+  box-shadow: none !important;
+}
+
+.yolo-claude-plugins-tab:hover {
+  color: var(--text-normal);
+}
+
+.yolo-claude-plugins-tab.is-active {
+  color: var(--text-normal);
+  border-color: var(--interactive-accent);
+  background: color-mix(
+    in srgb,
+    var(--interactive-accent) 12%,
+    transparent
+  ) !important;
+}
+
+.yolo-claude-plugins-tab-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-claude-plugins-browse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-claude-plugins-search input {
+  width: 100%;
+}
+
+.yolo-claude-plugins-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.yolo-claude-plugins-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+  padding: var(--size-4-2) var(--size-4-3);
+  transition: opacity 140ms ease;
+}
+
+.yolo-claude-plugins-row + .yolo-claude-plugins-row {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-claude-plugins-row.is-busy {
+  opacity: 0.64;
+}
+
+.yolo-claude-plugins-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-claude-plugins-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-claude-plugins-row-version,
+.yolo-claude-plugins-row-scope {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+  padding: 1px 6px;
+}
+
+.yolo-claude-plugins-row-installed-badge {
+  color: var(--text-success);
+  border: 1px solid color-mix(in srgb, var(--text-success) 30%, transparent);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+  padding: 1px 6px;
+}
+
+.yolo-claude-plugins-row-desc {
+  margin-top: 4px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.yolo-claude-plugins-row-meta {
+  margin-top: 4px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-claude-plugins-row-error {
+  margin-top: 4px;
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-claude-plugins-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  flex-shrink: 0;
+}
+
+.yolo-claude-plugins-empty {
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: var(--size-4-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  align-items: center;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.yolo-claude-plugins-empty-hint {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+@media (max-width: 720px) {
+  .yolo-claude-plugins-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .yolo-claude-plugins-row-actions {
+    justify-content: flex-end;
+  }
+}
+
+/* ================= MCP server status ================= */
+
+.yolo-mcp-status-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-3);
+}
+
+.yolo-mcp-status-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--size-4-3);
+  flex-wrap: wrap;
+}
+
+.yolo-mcp-status-readonly-note {
+  flex: 1;
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-mcp-status-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  overflow: hidden;
+}
+
+.yolo-mcp-status-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+  padding: var(--size-4-2) var(--size-4-3);
+  transition: opacity 140ms ease;
+}
+
+.yolo-mcp-status-row + .yolo-mcp-status-row {
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-mcp-status-row.is-busy {
+  opacity: 0.64;
+}
+
+.yolo-mcp-status-row-main {
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-mcp-status-row-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-mcp-status-badge {
+  border-radius: 9999px;
+  padding: var(--size-2-1) var(--size-4-2);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+  line-height: 1;
+  background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  color: var(--text-muted);
+}
+
+.yolo-mcp-status-badge.is-connected {
+  background-color: color-mix(in srgb, var(--text-success) 10%, transparent);
+  color: var(--text-success);
+}
+
+.yolo-mcp-status-badge.is-failed {
+  background-color: color-mix(in srgb, var(--text-error) 10%, transparent);
+  color: var(--text-error);
+}
+
+.yolo-mcp-status-badge.is-needs-auth {
+  background-color: color-mix(in srgb, var(--text-warning) 10%, transparent);
+  color: var(--text-warning);
+}
+
+.yolo-mcp-status-badge.is-pending,
+.yolo-mcp-status-badge.is-disabled,
+.yolo-mcp-status-badge.is-unknown {
+  background-color: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  color: var(--text-muted);
+}
+
+.yolo-mcp-status-meta {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-secondary-alt);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+  padding: 1px 6px;
+}
+
+.yolo-mcp-status-row-error {
+  margin-top: 4px;
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-mcp-status-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  flex-shrink: 0;
+}
+
+.yolo-mcp-status-empty {
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  padding: var(--size-4-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  align-items: center;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+@media (max-width: 720px) {
+  .yolo-mcp-status-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .yolo-mcp-status-row-actions {
+    justify-content: flex-end;
+  }
+}

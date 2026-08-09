@@ -1921,6 +1921,15 @@ export const en: TranslationKeys = {
         description:
           'Manually compress earlier conversation history and continue the current task in a fresh context window.',
       },
+      openPluginManager: {
+        label: 'Manage Plugins',
+        description:
+          'Manage installed Claude Code plugins, or install new ones from a marketplace.',
+      },
+      openMcpServers: {
+        label: 'MCP Servers',
+        description: 'View the MCP server status for the current session.',
+      },
     },
     slashMenu: {
       entrySkill: 'Skills',
@@ -1958,6 +1967,53 @@ export const en: TranslationKeys = {
       defaultModel: '{provider} default model',
       loadError: 'Could not load CLI models: {message}',
       updateError: 'Could not update CLI configuration: {message}',
+    },
+    claudePlugins: {
+      title: 'Manage Plugins',
+      placeholder: 'Loading plugin information…',
+      tabInstalled: 'Installed',
+      tabBrowse: 'Browse',
+      loadError: 'Could not load plugin information.',
+      cliFallback:
+        'Plugin action failed. Manage plugins from the terminal with claude plugin instead.',
+      updateRestartRequired:
+        'Plugin updated. Start a new session for the change to take effect.',
+      installedEmpty: 'No plugins installed yet.',
+      browseEmpty: 'No matching plugins found.',
+      searchPlaceholder: 'Search plugins…',
+      update: 'Update',
+      uninstall: 'Uninstall',
+      install: 'Install',
+      installedBadge: 'Installed',
+      uninstallConfirmTitle: 'Uninstall plugin',
+      uninstallConfirmMessage: 'Uninstall "{name}"? This cannot be undone.',
+      scopeUser: 'User',
+      scopeProject: 'Project',
+      scopeLocal: 'Local',
+      installCount: '{count} installs',
+    },
+    mcpServers: {
+      title: 'MCP Servers',
+      placeholder: 'Loading MCP server status…',
+      refresh: 'Refresh',
+      reconnect: 'Reconnect',
+      toolCount: '{count} tools',
+      statusConnected: 'Connected',
+      statusFailed: 'Failed',
+      statusNeedsAuth: 'Needs auth',
+      statusPending: 'Connecting',
+      statusDisabled: 'Disabled',
+      statusUnknown: 'Unknown',
+      empty: 'No MCP servers are configured for this session.',
+      loadError: 'Failed to load MCP server status.',
+      noActiveSession:
+        'No active session yet. Send a message to start a CLI session.',
+      actionError: 'Action failed: {error}',
+      runtimeSwitched: 'The runtime changed, so this action was cancelled.',
+      codexReadOnlyNote:
+        'Codex MCP server status is read-only here. Manage servers in the terminal.',
+      codexUnsupportedVersion:
+        'This Codex CLI version does not support querying MCP server status. Please upgrade Codex CLI.',
     },
     quickAccess: {
       manage: 'Manage quick access',

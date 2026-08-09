@@ -2,10 +2,12 @@ import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext
 import { $createTextNode, COMMAND_PRIORITY_NORMAL, TextNode } from 'lexical'
 import {
   ArrowLeft,
+  Blocks,
   Check,
   ChevronRight,
   FilePlus2,
   Minimize2,
+  Plug,
   Sparkles,
   Zap,
 } from 'lucide-react'
@@ -42,7 +44,7 @@ const COMPACT_COMMAND_ID = 'compact-context'
 const CREATE_SNIPPETS_FILE_COMMAND_ID = 'create-snippets-file'
 
 export type SlashCommand = {
-  id: typeof COMPACT_COMMAND_ID
+  id: typeof COMPACT_COMMAND_ID | 'open-plugin-manager' | 'open-mcp-servers'
   name: string
   description: string
 }
@@ -162,9 +164,17 @@ function SkillTypeaheadMenuItem({
       )
       break
     case 'command':
-      iconNode = (
-        <Minimize2 size={14} className="yolo-smart-space-mention-option-icon" />
-      )
+      iconNode =
+        option.payload.command.id === 'open-plugin-manager' ? (
+          <Blocks size={14} className="yolo-smart-space-mention-option-icon" />
+        ) : option.payload.command.id === 'open-mcp-servers' ? (
+          <Plug size={14} className="yolo-smart-space-mention-option-icon" />
+        ) : (
+          <Minimize2
+            size={14}
+            className="yolo-smart-space-mention-option-icon"
+          />
+        )
       break
     case 'create-snippets-file':
       iconNode = (
@@ -227,6 +237,7 @@ export default function SkillSlashPlugin({
   onSelectSkill,
   onRunCommand,
   onCreateSnippetsFile,
+  nativeCommands = [],
 }: {
   skills: LiteSkillEntry[]
   snippets?: SnippetEntry[]
@@ -238,6 +249,8 @@ export default function SkillSlashPlugin({
   onSelectSkill?: (skill: LiteSkillEntry) => void
   onRunCommand?: (command: SlashCommand) => void
   onCreateSnippetsFile?: () => void
+  /** Runtime-specific native commands (e.g. Claude plugin manager, MCP status). Component stays runtime-agnostic. */
+  nativeCommands?: SlashCommand[]
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
@@ -445,23 +458,23 @@ export default function SkillSlashPlugin({
           order: orderCounter++,
         })
       })
-
-      const commandScore = Math.max(
-        scoreText(compactCommand.name),
-        compactCommand.id.toLowerCase().includes(q) ? 30 : 0,
-        compactCommand.description.toLowerCase().includes(q) ? 10 : 0,
-      )
-      if (commandScore > 0) {
+      ;[compactCommand, ...nativeCommands].forEach((command) => {
+        const commandScore = Math.max(
+          scoreText(command.name),
+          command.id.toLowerCase().includes(q) ? 30 : 0,
+          command.description.toLowerCase().includes(q) ? 10 : 0,
+        )
+        if (commandScore === 0) return
         ranked.push({
           option: new SkillTypeaheadOption({
             kind: 'command',
-            command: compactCommand,
+            command,
           }),
           score: commandScore,
           categoryRank: 2,
           order: orderCounter++,
         })
-      }
+      })
 
       ranked.sort((a, b) => {
         if (a.score !== b.score) return b.score - a.score
@@ -475,7 +488,7 @@ export default function SkillSlashPlugin({
         .map((entry) => entry.option)
     }
 
-    // root scope, empty query: show three entries
+    // root scope, empty query: show three entries + runtime-native commands
     return [
       new SkillTypeaheadOption({
         kind: 'entry',
@@ -491,12 +504,20 @@ export default function SkillSlashPlugin({
         kind: 'command',
         command: compactCommand,
       }),
+      ...nativeCommands.map(
+        (command) =>
+          new SkillTypeaheadOption({
+            kind: 'command',
+            command,
+          }),
+      ),
     ]
   }, [
     backLabel,
     compactCommand,
     getSubOptionsForEntry,
     menuScope,
+    nativeCommands,
     normalizedQuery,
     queryString,
     selectedSkillNameSet,

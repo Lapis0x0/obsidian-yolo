@@ -127,6 +127,7 @@ export type MessageInputCoreProps = {
   snippets?: SnippetEntry[]
   onCreateSnippetsFile?: () => void
   onRunSlashCommand?: (command: SlashCommand) => void
+  nativeSlashCommands?: SlashCommand[]
   onMentionMenuToggle?: (isOpen: boolean) => void
   mentionMenuPlacement?: 'top' | 'bottom'
   mentionMenuContainerRef?: RefObject<HTMLElement>
@@ -184,6 +185,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
       snippets,
       onCreateSnippetsFile,
       onRunSlashCommand,
+      nativeSlashCommands,
       onMentionMenuToggle,
       mentionMenuPlacement,
       mentionMenuContainerRef,
@@ -1371,6 +1373,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
           selectedSkillNames={enableSkills ? selectedSkillNames : undefined}
           onSelectSkill={enableSkills ? handleSelectSkill : undefined}
           onRunSlashCommand={onRunSlashCommand}
+          nativeSlashCommands={nativeSlashCommands}
           snippets={snippets}
           onCreateSnippetsFile={onCreateSnippetsFile}
           onMentionMenuToggle={onMentionMenuToggle}

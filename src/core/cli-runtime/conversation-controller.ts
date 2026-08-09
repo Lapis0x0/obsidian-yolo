@@ -14,6 +14,7 @@ import type {
   CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
+  CliRuntimeMcpServerStatus,
   CliRuntimeModel,
   CliRuntimeRunState,
   CliRuntimeSkill,
@@ -543,6 +544,55 @@ export class CliConversationController {
     if (!operation.runtime.listSkills) return []
     const skills = await operation.runtime.listSkills()
     return this.isCurrent(operation) ? skills : []
+  }
+
+  /**
+   * Best-effort hot-reload of plugin state into the bound runtime. No-ops
+   * when the runtime does not support it (non-Claude runtimes, or a stale
+   * operation) so callers can fire-and-forget after a plugin CLI mutation.
+   */
+  async reloadPlugins(): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!operation.runtime.reloadPlugins) return
+    await operation.runtime.reloadPlugins()
+  }
+
+  /**
+   * Current MCP server status for the bound runtime. No-ops to an empty list
+   * when the runtime does not support it (or a stale operation), mirroring
+   * `listSkills`.
+   */
+  async mcpServerStatus(): Promise<readonly CliRuntimeMcpServerStatus[]> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!operation.runtime.mcpServerStatus) return []
+    const statuses = await operation.runtime.mcpServerStatus()
+    return this.isCurrent(operation) ? statuses : []
+  }
+
+  /** Claude Code only. Throws when the runtime does not support toggling. */
+  async toggleMcpServer(name: string, enabled: boolean): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!operation.runtime.toggleMcpServer) {
+      throw new Error(
+        `${operation.runtime.runtimeId} does not support toggling MCP servers.`,
+      )
+    }
+    await operation.runtime.toggleMcpServer(name, enabled)
+  }
+
+  /** Claude Code only. Throws when the runtime does not support reconnecting. */
+  async reconnectMcpServer(name: string): Promise<void> {
+    this.assertActive()
+    const operation = this.captureOperation()
+    if (!operation.runtime.reconnectMcpServer) {
+      throw new Error(
+        `${operation.runtime.runtimeId} does not support reconnecting MCP servers.`,
+      )
+    }
+    await operation.runtime.reconnectMcpServer(name)
   }
 
   async compact(): Promise<void> {

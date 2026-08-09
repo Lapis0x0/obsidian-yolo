@@ -55,6 +55,28 @@ export type CliRuntimeSkill = {
   path: string
 }
 
+/**
+ * Connection status for one MCP server, normalized across Claude Code
+ * (live SDK query, read-write) and Codex (app-server snapshot, read-only).
+ * `'unknown'` covers states neither adapter can confidently classify, e.g.
+ * a Codex server with neither `serverInfo` nor a recognized auth status.
+ */
+export type CliRuntimeMcpServerStatus = {
+  name: string
+  status:
+    | 'connected'
+    | 'failed'
+    | 'needs-auth'
+    | 'pending'
+    | 'disabled'
+    | 'unknown'
+  toolCount?: number
+  scope?: string
+  errorMessage?: string
+  /** Codex only exposes a read-only snapshot; Claude supports toggle/reconnect. */
+  readOnly: boolean
+}
+
 export type CliRuntimeReadyInput = {
   sessionRef?: CliSessionRef
 }
@@ -228,6 +250,21 @@ export type CliRuntime = {
   listSkills?(): Promise<CliRuntimeSkill[]>
   /** Compact the active provider-native session without creating a user turn. */
   compact?(): Promise<void>
+  /**
+   * Best-effort hot-reload of plugin state into the live session. Claude Code
+   * only; other runtimes leave this undefined and callers treat it as a no-op.
+   */
+  reloadPlugins?(): Promise<void>
+  /**
+   * Current status of all configured MCP servers. Claude returns a live,
+   * writable snapshot; Codex returns a read-only snapshot and may reject
+   * with an error when the running CLI predates the query method.
+   */
+  mcpServerStatus?(): Promise<CliRuntimeMcpServerStatus[]>
+  /** Claude Code only. Throws when the runtime does not support toggling. */
+  toggleMcpServer?(name: string, enabled: boolean): Promise<void>
+  /** Claude Code only. Throws when the runtime does not support reconnecting. */
+  reconnectMcpServer?(name: string): Promise<void>
   openSession(ref: CliSessionRef): Promise<CliSessionHydration>
   readSubagent?(ref: CliSubagentRef): Promise<readonly ChatMessage[]>
   watchSubagent?(

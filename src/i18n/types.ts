@@ -1642,6 +1642,14 @@ export type TranslationKeys = {
         label?: string
         description?: string
       }
+      openPluginManager?: {
+        label?: string
+        description?: string
+      }
+      openMcpServers?: {
+        label?: string
+        description?: string
+      }
     }
     slashMenu?: {
       entrySkill?: string
@@ -1674,6 +1682,48 @@ export type TranslationKeys = {
       defaultModel?: string
       loadError?: string
       updateError?: string
+    }
+    claudePlugins?: {
+      title?: string
+      placeholder?: string
+      tabInstalled?: string
+      tabBrowse?: string
+      loadError?: string
+      cliFallback?: string
+      updateRestartRequired?: string
+      installedEmpty?: string
+      browseEmpty?: string
+      searchPlaceholder?: string
+      update?: string
+      uninstall?: string
+      install?: string
+      installedBadge?: string
+      uninstallConfirmTitle?: string
+      uninstallConfirmMessage?: string
+      scopeUser?: string
+      scopeProject?: string
+      scopeLocal?: string
+      installCount?: string
+    }
+    mcpServers?: {
+      title?: string
+      placeholder?: string
+      refresh?: string
+      reconnect?: string
+      toolCount?: string
+      statusConnected?: string
+      statusFailed?: string
+      statusNeedsAuth?: string
+      statusPending?: string
+      statusDisabled?: string
+      statusUnknown?: string
+      empty?: string
+      loadError?: string
+      noActiveSession?: string
+      actionError?: string
+      runtimeSwitched?: string
+      codexReadOnlyNote?: string
+      codexUnsupportedVersion?: string
     }
     quickAccess?: {
       manage?: string

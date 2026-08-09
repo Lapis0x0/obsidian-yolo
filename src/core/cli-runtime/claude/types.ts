@@ -19,6 +19,30 @@ export type ClaudeSdkQuery = AsyncGenerator<SDKMessage, void> & {
   reloadSkills?(): Promise<{
     skills: Array<{ name: string; description: string; argumentHint?: string }>
   }>
+  /**
+   * Hot-reloads plugin state (enable/disable/install/uninstall) into the live
+   * session. YOLO does not consume the resolved value, so it stays untyped.
+   */
+  reloadPlugins?(): Promise<unknown>
+  /**
+   * Current connection status of all configured MCP servers (including
+   * plugin-provided servers). Optional because it depends on the Claude
+   * Agent SDK build; YOLO probes for it defensively.
+   */
+  mcpServerStatus?(): Promise<
+    Array<{
+      name: string
+      status: 'connected' | 'failed' | 'needs-auth' | 'pending' | 'disabled'
+      serverInfo?: { name: string; version: string }
+      error?: string
+      scope?: string
+      tools?: Array<{ name: string; description?: string }>
+    }>
+  >
+  /** Reconnect an MCP server by name. Throws on failure. */
+  reconnectMcpServer?(serverName: string): Promise<void>
+  /** Enable or disable an MCP server by name. Throws on failure. */
+  toggleMcpServer?(serverName: string, enabled: boolean): Promise<void>
   supportedModels(): Promise<ModelInfo[]>
   setModel(model?: string): Promise<void>
   setPermissionMode(mode: PermissionMode): Promise<void>

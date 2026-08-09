@@ -238,3 +238,52 @@ export type CodexServerRequest = {
   method: string
   params: Record<string, unknown>
 }
+
+/**
+ * `authStatus` values from the Codex `mcpServerStatus/list` response, per
+ * `codex app-server generate-json-schema` (codex-cli 0.146.0).
+ */
+export type CodexMcpAuthStatus =
+  | 'unsupported'
+  | 'notLoggedIn'
+  | 'bearerToken'
+  | 'oAuth'
+
+export type CodexMcpServerStatusDetail = 'full' | 'toolsAndAuthOnly'
+
+export type CodexMcpServerStatusEntry = {
+  name: string
+  /** Present once the server has initialized; null/absent while connecting. */
+  serverInfo?: { name: string; version: string } | null
+  tools?: Record<string, { name: string; description?: string | null }>
+  authStatus?: CodexMcpAuthStatus
+}
+
+export type McpServerStatusListResponse = {
+  data: CodexMcpServerStatusEntry[]
+  nextCursor: string | null
+}
+
+/**
+ * Thrown when `mcpServerStatus/list` fails because the connected Codex CLI
+ * predates the method. Codex app-server rejects unknown methods with a JSON-RPC
+ * -32600 "Invalid request: unknown variant `<method>`, expected one of ..."
+ * error (verified against codex-cli 0.146.0); the transport loses the error
+ * code, so detection matches on that message text.
+ */
+export class CodexMcpServerStatusUnsupportedError extends Error {
+  constructor() {
+    super('This Codex CLI version does not support querying MCP server status.')
+    this.name = 'CodexMcpServerStatusUnsupportedError'
+  }
+}
+
+export const isCodexMcpServerStatusUnsupportedError = (
+  error: unknown,
+): boolean => {
+  if (!(error instanceof Error)) return false
+  const message = error.message.toLowerCase()
+  return (
+    message.includes('unknown variant') || message.includes('method not found')
+  )
+}

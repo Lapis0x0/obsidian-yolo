@@ -91,6 +91,7 @@ export type LexicalContentEditableProps = {
   selectedSkillNames?: string[]
   onSelectSkill?: (skill: LiteSkillEntry) => void
   onRunSlashCommand?: (command: SlashCommand) => void
+  nativeSlashCommands?: SlashCommand[]
   snippets?: SnippetEntry[]
   onCreateSnippetsFile?: () => void
   plugins?: {
@@ -194,6 +195,7 @@ function LexicalContentEditable({
   selectedSkillNames = [],
   onSelectSkill,
   onRunSlashCommand,
+  nativeSlashCommands,
   snippets = [],
   onCreateSnippetsFile,
   plugins,
@@ -329,6 +331,7 @@ function LexicalContentEditable({
           placement={mentionMenuPlacement}
           onSelectSkill={onSelectSkill}
           onRunCommand={onRunSlashCommand}
+          nativeCommands={nativeSlashCommands}
           onCreateSnippetsFile={onCreateSnippetsFile}
         />
       )}

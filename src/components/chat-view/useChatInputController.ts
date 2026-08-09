@@ -11,6 +11,7 @@ import {
 import { flushSync } from 'react-dom'
 import { v4 as uuidv4 } from 'uuid'
 
+import { usePlugin } from '../../contexts/plugin-context'
 import { resolveAssistantTimeContextEnabled } from '../../core/agent/assistant-capabilities'
 import type { AgentService } from '../../core/agent/service'
 import {
@@ -50,6 +51,8 @@ import {
   isSyncSelectionMentionable,
 } from '../../utils/chat/selection-mentionables'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
+import { ClaudePluginManagerModal } from '../settings/modals/ClaudePluginManagerModal'
+import { McpServerStatusModal } from '../settings/modals/McpServerStatusModal'
 
 import { ChatInputDraftHolder } from './chat-input/chatInputDraft'
 import type {
@@ -183,6 +186,8 @@ export type ChatInputLateState = {
   chatMountedRef: MutableRefObject<boolean>
   handleManualContextCompaction: () => Promise<void>
   cliPreferenceSettingsRef: MutableRefObject<YoloSettings>
+  /** Forces the CLI skills list to re-fetch, e.g. after the Claude plugin manager mutates plugins. */
+  refreshCliSkills: () => void
   abortConversationRun: (conversationId: string) => void
   setConversationModelId: Dispatch<SetStateAction<string>>
   conversationModelIdRef: MutableRefObject<Map<string, string>>
@@ -225,6 +230,13 @@ export function useChatInputController({
   chatMessagesStateRef,
   setChatMessages,
 }: UseChatInputControllerParams) {
+  const plugin = usePlugin()
+  // 供 handleMainInputRunSlashCommand 打开的原生动作弹窗读取「当前」运行时——
+  // 弹窗的 isActive() 在异步/稍后调用时需要实时值，不能依赖闭包捕获的
+  // activeRuntimeId（每次渲染才更新一次）。写入方式与 chatMessagesStateRef 等
+  // 既有 ref 一致：渲染期间直接赋值。
+  const activeRuntimeIdRef = useRef(activeRuntimeId)
+  activeRuntimeIdRef.current = activeRuntimeId
   const [inputMessage, setInputMessageState] = useState<ChatUserMessage>(() => {
     if (seededInputMessage) {
       return seededInputMessage
@@ -1288,6 +1300,30 @@ export function useChatInputController({
   >(
     (command) => {
       const late = getLate()
+      if (command.id === 'open-plugin-manager') {
+        // 打开弹窗是纯 UI 导航，不改变会话状态，因此不经
+        // cliOperationCoordinator.transition。
+        const modal = new ClaudePluginManagerModal(late.app, plugin, {
+          controller: late.cliConversationController,
+          isActive: () => activeRuntimeIdRef.current === 'claude-code',
+          refreshCliSkills: late.refreshCliSkills,
+        })
+        modal.open()
+        return
+      }
+      if (command.id === 'open-mcp-servers') {
+        if (activeRuntimeId !== 'claude-code' && activeRuntimeId !== 'codex') {
+          return
+        }
+        const runtimeIdAtOpen = activeRuntimeId
+        const modal = new McpServerStatusModal(late.app, plugin, {
+          runtimeId: runtimeIdAtOpen,
+          controller: late.cliConversationController,
+          isActive: () => activeRuntimeIdRef.current === runtimeIdAtOpen,
+        })
+        modal.open()
+        return
+      }
       if (command.id !== 'compact-context') return
       if (
         activeRuntimeId === 'yolo' ||
@@ -1341,7 +1377,7 @@ export function useChatInputController({
           console.error('Failed to compact native CLI context', error)
         })
     },
-    [activeRuntimeId, getLate],
+    [activeRuntimeId, getLate, plugin],
   )
 
   const handleMainInputAbort = useCallback(() => {

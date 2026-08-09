@@ -1757,6 +1757,16 @@ export const it: DeepPartial<TranslationKeys> = {
         description:
           'Comprimi manualmente la cronologia precedente e continua il task corrente in una nuova finestra di contesto.',
       },
+      openPluginManager: {
+        label: 'Gestisci plugin',
+        description:
+          'Gestisci i plugin di Claude Code installati o installane di nuovi da un marketplace.',
+      },
+      openMcpServers: {
+        label: 'Server MCP',
+        description:
+          'Visualizza lo stato dei server MCP della sessione corrente.',
+      },
     },
     slashMenu: {
       entrySkill: 'Abilità',
@@ -1795,6 +1805,55 @@ export const it: DeepPartial<TranslationKeys> = {
       defaultModel: 'Modello predefinito di {provider}',
       loadError: 'Impossibile caricare i modelli CLI: {message}',
       updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
+    },
+    claudePlugins: {
+      title: 'Gestisci plugin',
+      placeholder: 'Caricamento informazioni sui plugin…',
+      tabInstalled: 'Installati',
+      tabBrowse: 'Sfoglia',
+      loadError: 'Impossibile caricare le informazioni sui plugin.',
+      cliFallback:
+        'Operazione plugin non riuscita. Gestisci i plugin dal terminale con claude plugin.',
+      updateRestartRequired:
+        'Plugin aggiornato. Avvia una nuova sessione perché la modifica abbia effetto.',
+      installedEmpty: 'Nessun plugin installato.',
+      browseEmpty: 'Nessun plugin corrispondente trovato.',
+      searchPlaceholder: 'Cerca plugin…',
+      update: 'Aggiorna',
+      uninstall: 'Disinstalla',
+      install: 'Installa',
+      installedBadge: 'Installato',
+      uninstallConfirmTitle: 'Disinstalla plugin',
+      uninstallConfirmMessage:
+        'Disinstallare "{name}"? Questa azione non può essere annullata.',
+      scopeUser: 'Utente',
+      scopeProject: 'Progetto',
+      scopeLocal: 'Locale',
+      installCount: '{count} installazioni',
+    },
+    mcpServers: {
+      title: 'Server MCP',
+      placeholder: 'Caricamento stato dei server MCP…',
+      refresh: 'Aggiorna',
+      reconnect: 'Riconnetti',
+      toolCount: '{count} strumenti',
+      statusConnected: 'Connesso',
+      statusFailed: 'Connessione non riuscita',
+      statusNeedsAuth: 'Accesso richiesto',
+      statusPending: 'Connessione in corso',
+      statusDisabled: 'Disattivato',
+      statusUnknown: 'Stato sconosciuto',
+      empty: 'Nessun server MCP configurato per questa sessione.',
+      loadError: 'Impossibile caricare lo stato dei server MCP.',
+      noActiveSession:
+        'Nessuna sessione attiva. Invia un messaggio per avviare una sessione CLI.',
+      actionError: 'Operazione non riuscita: {error}',
+      runtimeSwitched:
+        'Il runtime è cambiato, quindi questa azione è stata annullata.',
+      codexReadOnlyNote:
+        'Lo stato dei server MCP di Codex è di sola lettura qui. Gestisci i server dal terminale.',
+      codexUnsupportedVersion:
+        'Questa versione di Codex CLI non supporta la query dello stato dei server MCP. Aggiorna Codex CLI.',
     },
     quickAccess: {
       manage: 'Gestisci accessi rapidi',

@@ -25,6 +25,7 @@ import type {
   CliRuntimeConfigurationUpdate,
   CliRuntimeEvent,
   CliRuntimeEventListener,
+  CliRuntimeMcpServerStatus,
   CliRuntimeModel,
   CliRuntimeReadyInput,
   CliRuntimeSkill,
@@ -53,22 +54,26 @@ import {
   toCodexClientUserMessageId,
 } from './mapping'
 import type { CodexProcessOptions } from './process'
-import type {
-  CodexRawResponseItem,
-  CodexSandboxPolicy,
-  CodexServerRequest,
-  CodexThread,
-  CodexThreadItem,
-  CodexUserInput,
-  ConfigReadResponse,
-  ModelListResponse,
-  SkillsListResponse,
-  ThreadCompactStartResponse,
-  ThreadReadResponse,
-  ThreadResumeResponse,
-  ThreadRollbackResponse,
-  ThreadStartResponse,
-  TurnStartResponse,
+import {
+  type CodexMcpServerStatusEntry,
+  CodexMcpServerStatusUnsupportedError,
+  type CodexRawResponseItem,
+  type CodexSandboxPolicy,
+  type CodexServerRequest,
+  type CodexThread,
+  type CodexThreadItem,
+  type CodexUserInput,
+  type ConfigReadResponse,
+  type McpServerStatusListResponse,
+  type ModelListResponse,
+  type SkillsListResponse,
+  type ThreadCompactStartResponse,
+  type ThreadReadResponse,
+  type ThreadResumeResponse,
+  type ThreadRollbackResponse,
+  type ThreadStartResponse,
+  type TurnStartResponse,
+  isCodexMcpServerStatusUnsupportedError,
 } from './protocol'
 
 type PendingServerRequest = {
@@ -129,6 +134,30 @@ const toCodexTurnSandboxPolicy = (
     excludeTmpdirEnvVar: false,
     excludeSlashTmp: false,
   }
+}
+
+/**
+ * Codex's `mcpServerStatus/list` has no Claude-style top-level status field,
+ * so the status is approximated from `serverInfo`/`authStatus`: a populated
+ * `serverInfo` means the server finished initializing; `notLoggedIn` means it
+ * is waiting on auth; an empty `serverInfo` with no auth blocker (undefined,
+ * or an already-authenticated status) means it is still connecting; anything
+ * else (e.g. `serverInfo` empty with `authStatus: 'unsupported'`) cannot be
+ * classified confidently and falls back to `'unknown'`.
+ */
+const mapCodexMcpServerStatus = (
+  entry: CodexMcpServerStatusEntry,
+): CliRuntimeMcpServerStatus['status'] => {
+  if (entry.serverInfo) return 'connected'
+  if (entry.authStatus === 'notLoggedIn') return 'needs-auth'
+  if (
+    entry.authStatus === undefined ||
+    entry.authStatus === 'bearerToken' ||
+    entry.authStatus === 'oAuth'
+  ) {
+    return 'pending'
+  }
+  return 'unknown'
 }
 
 const toSessionRef = (
@@ -412,6 +441,34 @@ export class CodexCliRuntime implements CliRuntime {
         .filter((skill) => skill.enabled)
         .map(({ name, description, path }) => ({ name, description, path })),
     )
+  }
+
+  /**
+   * Read-only snapshot of configured MCP server status. Codex has no
+   * per-server toggle/reconnect RPC, so this is a display-only surface.
+   * Throws `CodexMcpServerStatusUnsupportedError` when the connected Codex
+   * CLI predates `mcpServerStatus/list`.
+   */
+  async mcpServerStatus(): Promise<CliRuntimeMcpServerStatus[]> {
+    const host = await this.getHost()
+    let response: McpServerStatusListResponse
+    try {
+      response = await host.request<McpServerStatusListResponse>(
+        'mcpServerStatus/list',
+        { detail: 'toolsAndAuthOnly' },
+      )
+    } catch (error) {
+      if (isCodexMcpServerStatusUnsupportedError(error)) {
+        throw new CodexMcpServerStatusUnsupportedError()
+      }
+      throw error
+    }
+    return response.data.map((entry) => ({
+      name: entry.name,
+      status: mapCodexMcpServerStatus(entry),
+      toolCount: Object.keys(entry.tools ?? {}).length,
+      readOnly: true,
+    }))
   }
 
   async compact(): Promise<void> {
