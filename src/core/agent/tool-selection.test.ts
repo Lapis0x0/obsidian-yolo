@@ -11,16 +11,6 @@ describe('expandAllowedToolNames', () => {
     expect(expanded?.has('yolo_local__fs_edit')).toBe(true)
     expect(expanded?.has('yolo_local__fs_write')).toBe(true)
   })
-
-  it('expands the retired file path operation group to nothing (fs_delete/fs_create_dir/fs_move were replaced by the bash tool)', () => {
-    const expanded = expandAllowedToolNames(['yolo_local__fs_file_ops'])
-
-    expect(expanded?.has('yolo_local__fs_write')).toBe(false)
-    expect(expanded?.has('yolo_local__fs_edit')).toBe(false)
-    // The group token itself stays (expandAllowedToolNames never removes
-    // input tokens); it just no longer expands to any split tool names.
-    expect(expanded).toEqual(new Set(['yolo_local__fs_file_ops']))
-  })
 })
 
 describe('selectAllowedTools', () => {

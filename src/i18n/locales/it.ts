@@ -634,8 +634,6 @@ export const it: DeepPartial<TranslationKeys> = {
       builtinFsEditOpsLabel: 'Set modifica file',
       builtinFsEditOpsDesc:
         'Modifica testo mirato o scrive il contenuto completo del file',
-      builtinFsFileOpsLabel: 'Set operazioni percorsi',
-      builtinFsFileOpsDesc: 'Elimina o sposta file e cartelle, e crea cartelle',
       builtinMemoryOpsLabel: 'Set strumenti memoria',
       builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
       builtinMemoryAddLabel: 'Aggiungi memoria',
@@ -2061,7 +2059,6 @@ export const it: DeepPartial<TranslationKeys> = {
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
         fs_edit_ops: 'Set modifica file',
-        fs_file_ops: 'Set operazioni percorsi',
         bash: 'Bash',
         memory_add: 'Aggiungi memoria',
         memory_update: 'Aggiorna memoria',

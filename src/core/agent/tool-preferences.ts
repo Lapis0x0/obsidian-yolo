@@ -40,7 +40,6 @@ export const ALWAYS_ALLOW_DISABLED_TOOL_NAMES: readonly string[] = [
  */
 const REQUIRE_APPROVAL_LOCAL_TOOLS: ReadonlySet<string> = new Set([
   FILE_EDIT_GROUP_TOOL_NAME,
-  'fs_file_ops',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   'terminal_command',
 ])

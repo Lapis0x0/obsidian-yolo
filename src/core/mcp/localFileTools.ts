@@ -341,17 +341,6 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
 
 export const LOCAL_FS_EDIT_TOOL_NAMES = ['fs_edit', 'fs_write'] as const
 
-/**
- * Retired with fs_delete/fs_create_dir/fs_move — the bash tool now covers
- * path operations and isn't arg-shaped for this grouping mechanism (see
- * `src/core/agent/workspaceScope.ts`, which enforces scope on the bash
- * adapter directly instead). Kept as an empty array, not deleted, because
- * `LOCAL_FS_PATH_OPERATION_TOOL_NAME_SET` and `FILE_OPS_GROUP_TOOL_NAME`
- * checks elsewhere key off its (now empty) membership rather than needing
- * their own removal.
- */
-export const LOCAL_FS_PATH_OPERATION_TOOL_NAMES: readonly string[] = []
-
 export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
   'memory_add',
   'memory_update',

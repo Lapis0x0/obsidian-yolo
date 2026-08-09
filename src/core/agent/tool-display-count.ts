@@ -2,7 +2,6 @@ import type { Assistant } from '../../types/assistant.types'
 import type { McpTool } from '../../types/mcp.types'
 import {
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
@@ -13,7 +12,6 @@ import { getEnabledAssistantToolNames } from './tool-preferences'
 
 const BUILTIN_TOOL_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(LOCAL_FS_EDIT_TOOL_NAMES),
-  new Set(LOCAL_FS_PATH_OPERATION_TOOL_NAMES),
   new Set(LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES),
   new Set(WEB_OPS_SPLIT_ACTION_TOOL_NAMES),
 ]

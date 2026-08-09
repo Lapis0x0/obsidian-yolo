@@ -22,7 +22,6 @@ type AssistantRuntimeOptions = Pick<
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
 
 export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
-  getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
   getToolName(getLocalFileToolServerName(), FILE_EDIT_GROUP_TOOL_NAME),
   getToolName(getLocalFileToolServerName(), 'fs_edit'),
   getToolName(getLocalFileToolServerName(), 'fs_write'),

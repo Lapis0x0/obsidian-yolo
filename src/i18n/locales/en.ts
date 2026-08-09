@@ -620,9 +620,6 @@ export const en: TranslationKeys = {
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
       builtinFsEditOpsLabel: 'File Editing Toolset',
       builtinFsEditOpsDesc: 'Edit targeted text or write full file content',
-      builtinFsFileOpsLabel: 'Path Operation Toolset',
-      builtinFsFileOpsDesc:
-        'Delete or move files and folders, and create folders',
       builtinMemoryOpsLabel: 'Memory Toolset',
       builtinMemoryOpsDesc: 'Add, update, and delete memory',
       builtinMemoryAddLabel: 'Add Memory',
@@ -2216,7 +2213,6 @@ export const en: TranslationKeys = {
         fs_read: 'Read files',
         fs_edit: 'Text editing',
         fs_edit_ops: 'File Editing Toolset',
-        fs_file_ops: 'Path Operation Toolset',
         bash: 'Bash',
         memory_add: 'Add memory',
         memory_update: 'Update memory',

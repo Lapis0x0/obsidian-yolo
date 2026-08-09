@@ -33,7 +33,6 @@ import {
   BUILTIN_TOOL_CATEGORY_ORDER,
   type BuiltinToolCategory,
   FILE_EDIT_GROUP_TOOL_NAME,
-  FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
   WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
@@ -59,7 +58,6 @@ import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
 import {
   BASH_TOOL_NAME,
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../../../core/mcp/localFileTools'
@@ -128,9 +126,6 @@ type SkillRowView = LiteSkillEntry & {
 }
 
 const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const PATH_FS_TOOL_NAME_SET = new Set<string>(
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
-)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -759,7 +754,6 @@ export function AgentsSectionContent({
       { title: string; tools: AgentToolView[]; isBuiltin: boolean }
     >()
     const localEditSplitToolTargets = new Set<string>()
-    const localPathSplitToolTargets = new Set<string>()
     const localMemorySplitToolTargets = new Set<string>()
     const localWebSplitToolTargets = new Set<string>()
 
@@ -782,10 +776,6 @@ export function AgentsSectionContent({
       }
       if (isBuiltin && EDIT_FS_TOOL_NAME_SET.has(toolName)) {
         localEditSplitToolTargets.add(tool.name)
-        return
-      }
-      if (isBuiltin && PATH_FS_TOOL_NAME_SET.has(toolName)) {
-        localPathSplitToolTargets.add(tool.name)
         return
       }
       if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
@@ -849,22 +839,6 @@ export function AgentsSectionContent({
         toggleTargets: [...localEditSplitToolTargets],
         displayName: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
         description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
-      })
-    }
-
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localPathSplitToolTargets.size > 0
-    ) {
-      const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
-      if (!fileOpsMeta) {
-        throw new Error('Missing built-in tool UI metadata for fs_file_ops')
-      }
-      pushBuiltinGroupTool(FILE_OPS_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localPathSplitToolTargets],
-        displayName: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
-        description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       })
     }
 

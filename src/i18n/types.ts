@@ -454,8 +454,6 @@ export type TranslationKeys = {
       safetyControlsDesc?: string
       builtinFsEditOpsLabel?: string
       builtinFsEditOpsDesc?: string
-      builtinFsFileOpsLabel?: string
-      builtinFsFileOpsDesc?: string
       builtinMemoryOpsLabel?: string
       builtinMemoryOpsDesc?: string
       builtinMemoryAddLabel?: string
@@ -1869,7 +1867,6 @@ export type TranslationKeys = {
         fs_read?: string
         fs_edit?: string
         fs_edit_ops?: string
-        fs_file_ops?: string
         bash?: string
         memory_add?: string
         memory_update?: string

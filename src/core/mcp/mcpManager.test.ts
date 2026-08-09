@@ -99,25 +99,6 @@ describe('McpManager mobile built-in tool behavior', () => {
     )
   })
 
-  it('an unrelated group switch (fs_file_ops) does not disable file editing tools', async () => {
-    // fs_file_ops covered fs_delete/fs_create_dir/fs_move before they were
-    // retired in favor of the bash tool; it has no members anymore, but the
-    // switch itself must stay inert rather than accidentally catching
-    // fs_edit/fs_write.
-    const manager = createManager(jest.fn(), {
-      fs_file_ops: { disabled: true },
-      fs_edit: { disabled: false },
-      fs_write: { disabled: false },
-    })
-
-    const toolNames = (
-      await manager.listAvailableTools({ includeBuiltinTools: true })
-    ).map((tool) => tool.name)
-
-    expect(toolNames).toContain('yolo_local__fs_edit')
-    expect(toolNames).toContain('yolo_local__fs_write')
-  })
-
   it('keeps file editing tools obeying only their own group switch', async () => {
     const manager = createManager(jest.fn(), {
       fs_edit_ops: { disabled: true },
