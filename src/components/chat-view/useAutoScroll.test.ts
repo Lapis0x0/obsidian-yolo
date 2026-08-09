@@ -1,6 +1,7 @@
 import {
   resolveAutoFollowFromScroll,
   resolveTouchScrollDirection,
+  shouldFollowAfterLiveEdgeExit,
 } from './useAutoScroll'
 
 describe('resolveTouchScrollDirection', () => {
@@ -98,5 +99,36 @@ describe('resolveAutoFollowFromScroll', () => {
         allowReattach: true,
       }),
     ).toBe(true)
+  })
+})
+
+describe('shouldFollowAfterLiveEdgeExit', () => {
+  const base = {
+    isIntersecting: false,
+    isFollowing: true,
+    canFollowLiveEdge: true,
+    hasActiveFollowSession: true,
+  }
+
+  it('follows an asynchronous layout change during a live-content update', () => {
+    expect(shouldFollowAfterLiveEdgeExit(base)).toBe(true)
+  })
+
+  it('ignores a sentinel exit caused by a user disclosure toggle', () => {
+    expect(
+      shouldFollowAfterLiveEdgeExit({
+        ...base,
+        hasActiveFollowSession: false,
+      }),
+    ).toBe(false)
+  })
+
+  it('never follows when the surface is showing an older history window', () => {
+    expect(
+      shouldFollowAfterLiveEdgeExit({
+        ...base,
+        canFollowLiveEdge: false,
+      }),
+    ).toBe(false)
   })
 })

@@ -12,6 +12,12 @@ const AT_BOTTOM_THRESHOLD_PX = 24
 const SCROLL_POSITION_EPSILON_PX = 1
 const TOUCH_DIRECTION_THRESHOLD_PX = 4
 const SCROLL_SESSION_END_DELAY_MS = 160
+// A follow session is opened by an explicit live-content update (streaming,
+// a new message, or an explicit jump to the live edge). Layout observers may
+// continue reporting asynchronous markdown/image/LaTeX growth during this
+// window. Once it expires, a layout change is treated as a viewport-preserving
+// user interaction instead of an implicit request to scroll to the bottom.
+const FOLLOW_SESSION_END_DELAY_MS = 500
 
 type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
@@ -26,7 +32,32 @@ type ScheduledFrame = {
   id: number
 }
 
+type ScheduledTimeout = {
+  window: Window
+  id: number
+}
+
 type ScrollDirection = 'up' | 'down'
+
+type LiveEdgeObservation = {
+  isIntersecting: boolean
+  isFollowing: boolean
+  canFollowLiveEdge: boolean
+  hasActiveFollowSession: boolean
+}
+
+/**
+ * A live-edge observation is only actionable while an explicit follow
+ * session is active. A disclosure/layout change can move the sentinel out of
+ * view without representing new live content.
+ */
+export const shouldFollowAfterLiveEdgeExit = ({
+  isIntersecting,
+  isFollowing,
+  canFollowLiveEdge,
+  hasActiveFollowSession,
+}: LiveEdgeObservation): boolean =>
+  !isIntersecting && isFollowing && canFollowLiveEdge && hasActiveFollowSession
 
 export const resolveTouchScrollDirection = (
   previousClientY: number,
@@ -124,6 +155,8 @@ export function useAutoScroll({
   const lastObservedScrollTopRef = useRef(0)
   const scrollIntentFrameRef = useRef<ScheduledFrame | null>(null)
   const scrollIntentRef = useRef<ScrollDirection | null>(null)
+  const followSessionRef = useRef(false)
+  const followSessionEndTimerRef = useRef<ScheduledTimeout | null>(null)
   const pointerDownRef = useRef(false)
   const touchActiveRef = useRef(false)
   const lastTouchClientYRef = useRef<number | null>(null)
@@ -160,6 +193,35 @@ export function useAutoScroll({
       scrollSessionEndTimerRef.current = null
     }
   }, [])
+
+  const clearFollowSession = useCallback(() => {
+    followSessionRef.current = false
+    if (followSessionEndTimerRef.current !== null) {
+      followSessionEndTimerRef.current.window.clearTimeout(
+        followSessionEndTimerRef.current.id,
+      )
+      followSessionEndTimerRef.current = null
+    }
+  }, [])
+
+  const beginFollowSession = useCallback(() => {
+    followSessionRef.current = true
+    if (followSessionEndTimerRef.current !== null) {
+      followSessionEndTimerRef.current.window.clearTimeout(
+        followSessionEndTimerRef.current.id,
+      )
+    }
+
+    const scrollContainer = getScrollContainer()
+    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+    followSessionEndTimerRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.setTimeout(() => {
+        followSessionEndTimerRef.current = null
+        followSessionRef.current = false
+      }, FOLLOW_SESSION_END_DELAY_MS),
+    }
+  }, [getScrollContainer])
 
   const scheduleScrollSessionEnd = useCallback(() => {
     if (scrollSessionDirectionRef.current === null) {
@@ -233,8 +295,9 @@ export function useAutoScroll({
     if (!autoFollowRef.current || !canFollowLiveEdgeRef.current) {
       return
     }
+    beginFollowSession()
     scrollController.submitFollowLiveEdge(resolveFollowTarget)
-  }, [resolveFollowTarget, scrollController])
+  }, [beginFollowSession, resolveFollowTarget, scrollController])
 
   const forceScrollToBottom = useCallback(() => {
     clearScrollIntent()
@@ -351,6 +414,11 @@ export function useAutoScroll({
       if (event.pointerType === 'touch') {
         return
       }
+      // A pointer interaction inside the timeline may synchronously change
+      // layout (for example, expanding a Thought panel). It ends the current
+      // follow session before that layout reaches IntersectionObserver, while
+      // leaving auto-follow enabled for the next actual live-content update.
+      clearFollowSession()
       pointerDownRef.current = true
       clearScrollSessionDirection()
     }
@@ -379,6 +447,7 @@ export function useAutoScroll({
         return
       }
 
+      clearFollowSession()
       clearScrollSessionDirection()
       touchActiveRef.current = true
       lastTouchClientYRef.current = touch.clientY
@@ -422,6 +491,8 @@ export function useAutoScroll({
       if (isEditableTarget(event.target)) {
         return
       }
+
+      clearFollowSession()
 
       const scrollsUp =
         event.key === 'ArrowUp' ||
@@ -495,6 +566,7 @@ export function useAutoScroll({
   }, [
     clearScrollIntent,
     clearScrollSessionDirection,
+    clearFollowSession,
     markScrollIntent,
     scheduleFollow,
     scheduleScrollSessionEnd,
@@ -516,9 +588,12 @@ export function useAutoScroll({
       ([entry]) => {
         if (
           entry &&
-          !entry.isIntersecting &&
-          autoFollowRef.current &&
-          canFollowLiveEdgeRef.current
+          shouldFollowAfterLiveEdgeExit({
+            isIntersecting: entry.isIntersecting,
+            isFollowing: autoFollowRef.current,
+            canFollowLiveEdge: canFollowLiveEdgeRef.current,
+            hasActiveFollowSession: followSessionRef.current,
+          })
         ) {
           scheduleFollow()
         }
@@ -540,8 +615,14 @@ export function useAutoScroll({
       scrollController.cancelFollowLiveEdge()
       clearScrollIntent()
       clearScrollSessionDirection()
+      clearFollowSession()
     },
-    [clearScrollIntent, clearScrollSessionDirection, scrollController],
+    [
+      clearFollowSession,
+      clearScrollIntent,
+      clearScrollSessionDirection,
+      scrollController,
+    ],
   )
 
   return {
