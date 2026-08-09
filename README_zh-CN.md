@@ -52,16 +52,18 @@
 
 ## 最近更新
 
+- **`1.6`**：新增 CLI 对话，桌面端可在同一个对话界面里直接驱动本机已登录的 Claude Code 或 Codex
+
 - **`1.6`**：推出全新的学习模式，可根据学习主题、目标和参考资料生成个性化学习项目，包括结构化大纲、知识点、闪卡与交互式知识地图；并通过 FSRS 间隔复习和 Anki 卡包导入，将知识整理、学习与长期复习串成完整工作流
 
 - **`1.5`**：引入全新 Agent 运行时，让 AI 从「问答」升级为「协作」，完整支持工具调用、MCP、Skills、桌面 Bash、子 Agent 与联网搜索；同时带来长会话上下文与记忆、混合检索 RAG、焦点同步与 PDF 感知，以及多窗口对话与后台 Agent
 
 ## Highlights
 
-| 跨端可用的完整 Agent 体验 | 让 Vault 里的知识真正被你掌握 |
+| 完整的 Agent 体验｜在 OB 内使用 Codex/Claude Code | 让 Vault 里的知识真正被你掌握 |
 |:-:|:-:|
 | ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| 不止回答问题。YOLO 能理解并操作你的 Vault，调用工具与 MCP，并通过 Skills 按你的方式完成任务。 | 把主题与资料转化为专属学习内容，再用闪卡与 FSRS 持续复习，让知识从被收藏走向真正掌握。 |
+| 不止回答问题。YOLO 能理解并操作你的 Vault，调用工具与 MCP，并通过 Skills 按你的方式完成任务。桌面端还能一键切到你已登录的 Claude Code 或 Codex，让它们直接在 Vault 里工作。 | 把主题与资料转化为专属学习内容，再用闪卡与 FSRS 持续复习，让知识从被收藏走向真正掌握。 |
 
 ## Features
 
@@ -69,6 +71,7 @@
 
 | 特性 | 说明 |
 |------|------|
+| 🖥️ CLI Agent（桌面端） | 复用本机已登录的 Claude Code / Codex，直接在 Obsidian 里和 CLI Agent 对话 |
 | 🔌 外部 Agent 支持 | 通过 MCP，让 Hermes、OpenClaw 等外部 Agent 使用 YOLO 的 Vault 搜索，或派遣已配置的 YOLO Agent 执行任务 |
 | ⚡ Quick Ask 与 Smart Space | 无需离开编辑器即可提问、修改和续写内容 |
 | 🔎 Vault RAG | 检索整个 Vault，让回答建立在你自己的笔记之上 |

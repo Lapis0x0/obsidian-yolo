@@ -54,16 +54,18 @@
 
 ## What's New
 
+- **`1.6`**: Adds CLI chat—on desktop, drive the Claude Code or Codex you are already signed in to from the same chat surface.
+
 - **`1.6`**: Introduces the new Learning Mode—turn any topic and reference materials into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map. Built-in FSRS spaced repetition and Anki `.apkg` import help turn knowledge into a sustainable review workflow.
 
 - **`1.5`**: Introduces a new Agent runtime that turns AI from Q&A into active collaboration—with full tool calling, MCP, Skills, desktop Bash, subagents, and web search—plus smarter long-session context and memory, refreshed hybrid RAG, focus/PDF awareness, and multi-window chat with background Agents.
 
 ## Highlights
 
-| A Complete Agent Experience, Across Devices | Turn Vault Knowledge into Lasting Mastery |
+| A Complete Agent Experience \| Use Codex / Claude Code Inside Obsidian | Turn Vault Knowledge into Lasting Mastery |
 |:--:|:--:|
 | ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| Go beyond answers. YOLO understands and works directly with your Vault, calls tools and MCP servers, and uses Skills to get real work done your way. | Turn topics and source material into a personal learning system, then use flashcards and FSRS-powered review to move from saved notes to lasting knowledge. |
+| Go beyond answers. YOLO understands and works directly with your Vault, calls tools and MCP servers, and uses Skills to get real work done your way. On desktop, switch in one click to the Claude Code or Codex you are already signed in to and let them work directly in your Vault. | Turn topics and source material into a personal learning system, then use flashcards and FSRS-powered review to move from saved notes to lasting knowledge. |
 
 ## Features
 
@@ -71,6 +73,7 @@ Beyond the core capabilities above, YOLO also provides:
 
 | Feature | Description |
 |---------|-------------|
+| 🖥️ CLI Agent (Desktop) | Reuse the Claude Code / Codex you are already signed in to locally, and chat with the CLI agent right inside Obsidian |
 | 🔌 External Agent Support | Connect MCP clients such as Hermes and OpenClaw to YOLO's Vault search, or delegate tasks to a configured YOLO Agent |
 | ⚡ Quick Ask & Smart Space | Ask, edit, and continue writing without leaving the editor |
 | 🔎 Vault RAG | Retrieve across your Vault for answers grounded in your own notes |

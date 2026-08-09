@@ -54,16 +54,18 @@
 
 ## Novita recenti
 
+- **`1.6`**: Aggiunge la chat CLI: su desktop puoi pilotare Claude Code o Codex già autenticati sul tuo dispositivo dalla stessa interfaccia di chat.
+
 - **`1.6`**: Introduce la nuova Modalità di apprendimento: trasforma qualsiasi argomento e materiale di riferimento in un progetto di studio personalizzato con scalette strutturate, concetti chiave, flashcard e una mappa interattiva delle conoscenze. La ripetizione dilazionata FSRS integrata e l'importazione di pacchetti Anki `.apkg` aiutano a trasformare le conoscenze in un percorso di ripasso sostenibile.
 
 - **`1.5`**: Introduce un nuovo runtime Agent che trasforma l'AI da semplice Q&A in collaborazione attiva—con tool calling completo, MCP, Skills, Bash desktop, subagent e ricerca web—oltre a contesto e memoria per sessioni lunghe, RAG ibrido rinnovato, sincronizzazione del focus e consapevolezza PDF, e chat multi-finestra con Agent in background.
 
 ## Highlights
 
-| Un'esperienza Agent completa e multipiattaforma | Trasforma la conoscenza del Vault in padronanza duratura |
+| Un'esperienza Agent completa \| Usa Codex / Claude Code dentro Obsidian | Trasforma la conoscenza del Vault in padronanza duratura |
 |:--:|:--:|
 | ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| Non si limita a rispondere. YOLO comprende e gestisce direttamente il tuo Vault, utilizza strumenti e server MCP e applica le Skills per completare il lavoro secondo il tuo metodo. | Trasforma argomenti e materiali in un sistema di apprendimento personale, poi usa flashcard e ripassi basati su FSRS per convertire gli appunti salvati in conoscenze durature. |
+| Non si limita a rispondere. YOLO comprende e gestisce direttamente il tuo Vault, utilizza strumenti e server MCP e applica le Skills per completare il lavoro secondo il tuo metodo. Su desktop puoi passare con un clic a Claude Code o Codex già autenticati e lasciarli lavorare direttamente nel tuo Vault. | Trasforma argomenti e materiali in un sistema di apprendimento personale, poi usa flashcard e ripassi basati su FSRS per convertire gli appunti salvati in conoscenze durature. |
 
 ## Funzionalità
 
@@ -71,6 +73,7 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
 
 | Funzionalità | Descrizione |
 |--------------|-------------|
+| 🖥️ Agent CLI (desktop) | Riutilizza Claude Code / Codex già autenticati sul tuo dispositivo e dialoga con l'agent CLI direttamente dentro Obsidian |
 | 🔌 Supporto per Agent esterni | Collega client MCP come Hermes e OpenClaw alla ricerca nel Vault di YOLO oppure delega attività a un Agent YOLO configurato |
 | ⚡ Quick Ask e Smart Space | Chiedi, modifica e continua a scrivere senza lasciare l'editor |
 | 🔎 Vault RAG | Cerca nell'intero Vault per ottenere risposte fondate sui tuoi appunti |
