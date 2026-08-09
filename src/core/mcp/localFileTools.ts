@@ -62,6 +62,11 @@ import {
   cancelDangerousBashApproval,
   requestDangerousBashApproval,
 } from '../agent/bash/dangerousOperationGate'
+import {
+  VAULT_BASH_STDERR_BUDGET,
+  VAULT_BASH_STDOUT_BUDGET,
+  truncateBashOutputForContext,
+} from '../agent/bash/outputBudget'
 import { createVaultBashFileSystem } from '../agent/bash/vaultBashFileSystem'
 import { createVaultBashSearch } from '../agent/bash/vaultBashSearch'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
@@ -3430,8 +3435,14 @@ export async function callLocalFileTool({
               text: formatJsonResult({
                 tool: BASH_TOOL_NAME,
                 exit_code: result.exitCode,
-                stdout: result.stdout,
-                stderr: result.stderr,
+                stdout: truncateBashOutputForContext(
+                  result.stdout,
+                  VAULT_BASH_STDOUT_BUDGET,
+                ),
+                stderr: truncateBashOutputForContext(
+                  result.stderr,
+                  VAULT_BASH_STDERR_BUDGET,
+                ),
               }),
             }
           } finally {
