@@ -1,21 +1,11 @@
-## 0.1.3 Reliable Project Creation & Clearer Card Failures 📚
+## 0.1.4 Cross-Device Learning Data Sync 🔄
 
-### 🗂️ Project Creation
-
-- Fixed project creation failing and leaving the reference staging folder behind when Obsidian is configured to delete files permanently instead of moving them to trash. (Refs #545)
-
-### 🃏 Card Generation
-
-- When a chapter produces no cards, the failure now reports why — how many drafts were streamed, how many were discarded, and which validation rule rejected them — instead of only reporting that generation failed. The diagnostic contains no note or model content; raw model output is written only when the host's LLM debug capture is enabled. (Refs #494, #495)
+- Learning data (spaced-repetition state and Anki import journals) now lives in the visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate your review progress across devices. Existing data is migrated automatically.
+- Requires YOLO Core 1.6.5 or later, which performs the storage migration before the module activates.
 
 ---
 
-## 0.1.3 更可靠的项目创建与更清晰的卡片失败原因 📚
+## 0.1.4 学习数据跨设备同步 🔄
 
-### 🗂️ 项目创建
-
-- 修复 Obsidian 设置为「永久删除」而非移入回收站时，创建学习项目会失败并残留参考资料临时目录的问题。（Refs #545）
-
-### 🃏 卡片生成
-
-- 章节生成零卡片时，现在会说明失败原因：流式产出的草稿数量、被丢弃的数量，以及具体是哪条校验规则拒绝了它们，而不再只提示生成失败。该诊断不包含笔记与模型正文内容；模型原始输出仅在开启宿主的 LLM 调试记录后才会输出。（Refs #494、#495）
+- 学习数据（间隔重复状态与 Anki 导入日志）迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步复习进度；存量数据自动迁移。
+- 需要 YOLO Core 1.6.5 及以上版本（Core 会在模块激活前完成存储迁移）。

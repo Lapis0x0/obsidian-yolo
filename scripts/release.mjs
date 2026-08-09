@@ -81,11 +81,16 @@ export async function validateRuntimeComponentArtifacts(root) {
     !hasExactKeys(registry, ['schemaVersion', 'components']) ||
     registry.schemaVersion !== 1 ||
     !Array.isArray(registry.components) ||
-    registry.components.length !== 3
+    registry.components.length !== 4
   ) {
     throw new Error('Runtime component registry is invalid')
   }
-  const expectedIds = new Set(['tokenizer', 'pdf-engine', 'pglite-engine'])
+  const expectedIds = new Set([
+    'tokenizer',
+    'pdf-engine',
+    'pglite-engine',
+    'bash-engine',
+  ])
   for (const descriptor of registry.components) {
     if (
       !isPlainRecord(descriptor) ||
