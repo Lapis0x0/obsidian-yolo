@@ -208,6 +208,7 @@ async function loadOfficialModules() {
     ) {
       throw new Error(`${config.id} preview tag must match its pinned version`)
     }
+    warnIfPreviewVersionIsStale(config.id, previewVersion, packageJson.version)
     const styleSource = path.join(moduleDir, 'src', 'style.css')
     const hasStyle = await access(styleSource).then(
       () => true,
@@ -232,6 +233,57 @@ async function loadOfficialModules() {
 
 async function readJson(filePath) {
   return JSON.parse(await readFile(filePath, 'utf8'))
+}
+
+// The dev-only local install channel (src/core/modules/devModuleCatalogSource.ts)
+// only ever offers yoloModule.previewVersion as an install candidate when it
+// resolves higher than the currently active module version. If previewVersion
+// regresses to or below the published package.json version (typically because
+// it was not bumped after a release), the bundled preview silently stops being
+// installable in dev vaults. Warn loudly instead of failing the build: the
+// release flow can legitimately pass through this state for a moment (e.g.
+// right after bumping package.json for a release, before previewVersion is
+// bumped past it).
+function warnIfPreviewVersionIsStale(moduleId, previewVersion, packageVersion) {
+  if (typeof packageVersion !== 'string') return
+  if (isSemverHigher(previewVersion, packageVersion)) return
+  console.warn(
+    [
+      '',
+      '!'.repeat(72),
+      `WARNING: ${moduleId} yoloModule.previewVersion "${previewVersion}" is not`,
+      `higher than package.json version "${packageVersion}".`,
+      'The dev-only local install channel will not surface this build as an',
+      'install candidate until previewVersion/previewTag are bumped past the',
+      'published release version.',
+      '!'.repeat(72),
+      '',
+    ].join('\n'),
+  )
+}
+
+function semverPrecedence(value) {
+  const dashIndex = value.indexOf('-')
+  const core = dashIndex === -1 ? value : value.slice(0, dashIndex)
+  return {
+    core: core.split('.').map((part) => Number.parseInt(part, 10)),
+    hasPrerelease: dashIndex !== -1,
+  }
+}
+
+/** True when `candidate` outranks `baseline` under semver precedence rules. */
+function isSemverHigher(candidate, baseline) {
+  const left = semverPrecedence(candidate)
+  const right = semverPrecedence(baseline)
+  const length = Math.max(left.core.length, right.core.length)
+  for (let index = 0; index < length; index += 1) {
+    const diff = (left.core[index] ?? 0) - (right.core[index] ?? 0)
+    if (Number.isNaN(diff)) return false
+    if (diff !== 0) return diff > 0
+  }
+  if (left.hasPrerelease === right.hasPrerelease) return false
+  // A release outranks a prerelease sharing the same core version.
+  return !left.hasPrerelease
 }
 
 async function buildModule({

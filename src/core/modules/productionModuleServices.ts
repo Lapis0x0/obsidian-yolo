@@ -95,6 +95,7 @@ export type ProductionModuleServicesOptions = Readonly<{
   intentStore: ProductionModuleIntentStore
   catalogSource?: ModuleCatalogResolutionSource
   artifactDownloader?: ModuleArtifactInstallerOptions['download']
+  resolveDownloadSources?: ModuleArtifactInstallerOptions['resolveDownloadSources']
   artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   artifactRequest?: OfficialModuleArtifactRequest
@@ -107,6 +108,50 @@ export type ProductionModuleServicesOptions = Readonly<{
 }>
 
 export type ProductionModuleServices = ModuleService
+
+/** Rejects a compatibility result computed for the wrong runtime platform. */
+export function assertCompatibilityPlatform(
+  getCompatibility: OfficialModuleCompatibilityProvider,
+  platform: ModuleArtifactPlatform,
+): OfficialModuleCompatibilityProvider {
+  return async (module) => {
+    const compatibility = await getCompatibility(module)
+    if (compatibility.platform !== platform) {
+      throw new Error(
+        `Official module compatibility platform ${compatibility.platform} does not match ${platform}`,
+      )
+    }
+    return compatibility
+  }
+}
+
+/** Composes the trusted official catalog source from the signed distribution Feed. */
+export function createOfficialModuleCatalogSource(
+  options: Pick<
+    ProductionModuleServicesOptions,
+    'distributionFeedClient' | 'locale' | 'getCompatibility' | 'platform'
+  >,
+): OfficialModuleCatalogSource {
+  if (!options.distributionFeedClient) {
+    throw new Error('Official module catalog source requires a Feed client')
+  }
+  const distributionFeedClient = options.distributionFeedClient
+  return new OfficialModuleCatalogSource({
+    client: {
+      load: async () =>
+        projectDistributionFeedCatalog(await distributionFeedClient.load()),
+      loadFresh: async () =>
+        projectDistributionFeedCatalog(
+          await distributionFeedClient.loadFresh(),
+        ),
+    },
+    locale: options.locale,
+    getCompatibility: assertCompatibilityPlatform(
+      options.getCompatibility,
+      options.platform,
+    ),
+  })
+}
 
 export function isInstallCandidateState(
   displayed: ModuleRecord | undefined,
@@ -130,29 +175,7 @@ export function createProductionModuleServices(
   assertOptions(options)
 
   const catalogSource =
-    options.catalogSource ??
-    new OfficialModuleCatalogSource({
-      client: {
-        load: async () =>
-          projectDistributionFeedCatalog(
-            await options.distributionFeedClient!.load(),
-          ),
-        loadFresh: async () =>
-          projectDistributionFeedCatalog(
-            await options.distributionFeedClient!.loadFresh(),
-          ),
-      },
-      locale: options.locale,
-      getCompatibility: async (module) => {
-        const compatibility = await options.getCompatibility(module)
-        if (compatibility.platform !== options.platform) {
-          throw new Error(
-            `Official module compatibility platform ${compatibility.platform} does not match ${options.platform}`,
-          )
-        }
-        return compatibility
-      },
-    })
+    options.catalogSource ?? createOfficialModuleCatalogSource(options)
   const activationLoader =
     options.activationLoader ??
     Object.freeze({
@@ -209,7 +232,8 @@ export function createProductionModuleServices(
           ? { requestUrl: options.artifactRequest }
           : {}),
       }),
-    resolveDownloadSources: resolveOfficialModuleArtifactSources,
+    resolveDownloadSources:
+      options.resolveDownloadSources ?? resolveOfficialModuleArtifactSources,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportCleanupError
       ? { reportCleanupError: options.reportCleanupError }
@@ -668,6 +692,8 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       )) ||
     (options.artifactRequest !== undefined &&
       typeof options.artifactRequest !== 'function') ||
+    (options.resolveDownloadSources !== undefined &&
+      typeof options.resolveDownloadSources !== 'function') ||
     (options.artifactArrivalGrace !== undefined &&
       typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
     (options.subscribeLocale !== undefined &&

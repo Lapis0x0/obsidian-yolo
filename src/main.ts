@@ -88,12 +88,16 @@ import {
   ModuleSettingsCapabilityProvider,
   ModuleSettingsContributionRegistry,
   ModuleStore,
+  OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
+  createDevModuleCatalogOverlay,
   createObsidianModuleConfigBackendFactory,
   createObsidianModuleConfigCreateIfAbsent,
   createObsidianModuleIntentBackend,
+  createOfficialModuleArtifactDownloader,
+  createOfficialModuleCatalogSource,
   createOfficialModuleCompatibilityProvider,
   createProductionModuleServices,
   handoffLearningLegacySettings,
@@ -4140,19 +4144,53 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       timeoutMs: 10_000,
     })
     this.distributionFeedClient = distributionFeedClient
+    const moduleCatalogLocale = () =>
+      normalizeModuleCatalogLocale(localeStore.getSnapshot().locale)
+    // Development-only local install channel: layers module artifacts built
+    // by `npm run module:build` (modules/bundled.json) on top of the
+    // unmodified official catalog, so a dev vault can install and run an
+    // unpublished local build. Never used in production — see
+    // devModuleCatalogSource.ts for why bytes are always read locally.
+    const devModuleCatalogOverlay =
+      process.env.NODE_ENV === 'development'
+        ? createDevModuleCatalogOverlay({
+            readBundledIndexBytes: () => store.readBundledIndexBytes(),
+            adapter: store.adapter,
+            pluginDir: store.pluginDir,
+            platform,
+            locale: moduleCatalogLocale,
+            getCompatibility,
+            official: createOfficialModuleCatalogSource({
+              distributionFeedClient,
+              locale: moduleCatalogLocale,
+              getCompatibility,
+              platform,
+            }),
+            fallbackDownload: createOfficialModuleArtifactDownloader({
+              timeoutMs: OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+            }),
+          })
+        : null
     const services = createProductionModuleServices({
       store,
       deviceStateStore,
       distributionFeedClient,
       platform,
-      locale: () =>
-        normalizeModuleCatalogLocale(localeStore.getSnapshot().locale),
+      locale: moduleCatalogLocale,
       subscribeLocale: localeStore.subscribe,
       getCompatibility,
       isActive: (moduleId, version) => runtime.isActive(moduleId, version),
       runtimeReservation,
       intentStore,
       artifactArrivalGrace,
+      ...(devModuleCatalogOverlay
+        ? {
+            catalogSource: devModuleCatalogOverlay.catalogSource,
+            artifactDownloader: devModuleCatalogOverlay.artifactDownloader,
+            resolveDownloadSources:
+              devModuleCatalogOverlay.resolveDownloadSources,
+          }
+        : {}),
       reportCleanupError: (error) => {
         console.error('[YOLO] Module artifact cleanup failed', error)
       },

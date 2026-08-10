@@ -34,6 +34,30 @@ async function pickMainTarget() {
       'No Obsidian page target found. Start Obsidian with --remote-debugging-port=9222.',
     )
   }
+  // Window titles look like "<note> - <vault> - Obsidian 1.x". With several
+  // vault windows sharing one debug port, picking pages[0] silently drives the
+  // wrong vault, so require an explicit vault match when more than one exists.
+  const vault = process.env.OBSIDIAN_DEBUG_VAULT
+  if (vault) {
+    // Titles are "<note> - <vault> - Obsidian 1.x", or "<vault> - Obsidian
+    // 1.x" when no note is open.
+    const matched = pages.filter(
+      (t) =>
+        t.title?.includes(` - ${vault} - `) ||
+        t.title?.startsWith(`${vault} - `),
+    )
+    if (matched.length === 0) {
+      throw new Error(
+        `No Obsidian window matches vault "${vault}". Open targets: ${pages.map((t) => t.title).join(' | ')}`,
+      )
+    }
+    return matched[0]
+  }
+  if (pages.length > 1) {
+    throw new Error(
+      `Multiple Obsidian windows share this debug port; set OBSIDIAN_DEBUG_VAULT=<vault name> to choose. Open targets: ${pages.map((t) => t.title).join(' | ')}`,
+    )
+  }
   return pages[0]
 }
 

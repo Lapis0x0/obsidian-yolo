@@ -200,10 +200,20 @@ export {
 } from './officialModuleCompatibilityProvider'
 export {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+  assertCompatibilityPlatform,
+  createOfficialModuleCatalogSource,
   createProductionModuleServices,
+  type ModuleCatalogResolutionSource,
   type ProductionModuleServices,
   type ProductionModuleServicesOptions,
 } from './productionModuleServices'
+export {
+  createDevModuleCatalogOverlay,
+  createMergedModuleCatalogSource,
+  type DevModuleCatalogOverlay,
+  type DevModuleCatalogOverlayOptions,
+  type MergedModuleCatalogSourceOptions,
+} from './devModuleCatalogSource'
 export {
   ModuleArtifactMissingError,
   ModuleStore,
