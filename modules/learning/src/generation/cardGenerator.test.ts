@@ -57,7 +57,6 @@ describe('assertKnowledgeUnchanged', () => {
   const expected: LearningVaultFileSnapshot = {
     path,
     content: 'stable content',
-    identity: { path },
   }
 
   it('resolves when the file is unchanged', async () => {
@@ -174,7 +173,6 @@ describe('hasResumableCardsFile', () => {
         readTextSnapshot: async () => ({
           path: cardsPath,
           content: buildCardsContent(chapterTitle, []),
-          identity: {},
         }),
       } as unknown as LearningVaultWriteApi,
     }
@@ -200,7 +198,6 @@ describe('hasResumableCardsFile', () => {
           content: buildCardsContent(chapterTitle, [
             '## A\n\nfront\n---\nback',
           ]),
-          identity: {},
         }),
       } as unknown as LearningVaultWriteApi,
     }

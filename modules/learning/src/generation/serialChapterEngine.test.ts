@@ -48,7 +48,7 @@ function createInMemoryFiles(initial: Record<string, string> = {}) {
     ): Promise<LearningVaultFileSnapshot | null> => {
       const content = files.get(path)
       if (content === undefined) return null
-      return { path, content, identity: path }
+      return { path, content }
     },
     createTextIfAbsent: async (
       path,
@@ -56,7 +56,7 @@ function createInMemoryFiles(initial: Record<string, string> = {}) {
     ): Promise<LearningVaultFileSnapshot | null> => {
       if (files.has(path)) return null
       files.set(path, content)
-      return { path, content, identity: path }
+      return { path, content }
     },
   }
   return { files, vault, writer, vaultWriter }

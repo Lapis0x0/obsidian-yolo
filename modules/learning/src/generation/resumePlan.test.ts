@@ -92,7 +92,7 @@ function createVault(files: Record<string, string>): {
     ): Promise<LearningVaultFileSnapshot | null> => {
       const content = backing.get(path)
       if (content === undefined) return null
-      return { path, content, identity: path }
+      return { path, content }
     },
   } as unknown as LearningVaultWriteApi
   return { vault, vaultWriter }

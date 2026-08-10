@@ -26,7 +26,6 @@ describe('cardFile domain', () => {
     let current: LearningVaultFileSnapshot = {
       path: 'p/cards.md',
       content: CARD,
-      identity: Object.freeze({ receipt: 'initial' }),
     }
     const replaceTextIfUnchanged = jest.fn(
       async (expected: LearningVaultFileSnapshot, content: string) => {
@@ -34,7 +33,6 @@ describe('cardFile domain', () => {
         current = {
           path: expected.path,
           content,
-          identity: Object.freeze({ receipt: 'updated' }),
         }
         return current
       },

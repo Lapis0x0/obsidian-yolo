@@ -28,10 +28,7 @@ export async function assertKnowledgeUnchanged(
 ): Promise<void> {
   const current = await host.vaultWriter.readTextSnapshot(expected.path)
   if (!current) throw new Error(`Knowledge file disappeared: ${expected.path}`)
-  if (
-    current.identity !== expected.identity ||
-    current.content !== expected.content
-  ) {
+  if (current.content !== expected.content) {
     throw new Error(
       `Knowledge file changed during generation: ${expected.path}`,
     )
