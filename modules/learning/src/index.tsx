@@ -1,7 +1,9 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react'
 
 import type { LearningNavigationTarget } from './domain/runtime/learningNavigation'
+import type { ProjectGenerationService } from './generation/projectGenerationService'
 import { createHostAnkiImportService } from './host/anki/import'
+import { createHostLearningProjectGenerationService } from './host/generation'
 import { createHostLearningRuntimeAdapter } from './host/runtime'
 import {
   type LearningSettingsModel,
@@ -149,6 +151,32 @@ export function createLearningAssemblyRoot(
     }
   }
 
+  // Opens a generated project's cards view. Defined at root scope (not per
+  // mount) because the generation service that calls it is itself a
+  // module-level singleton, independent of any mount. Used both to navigate
+  // to a project once it's ready and as the destination for the generation
+  // completion toast and the background-activity/error entry points.
+  const openProjectCards = (
+    projectId: string,
+    mode: '学习' | '浏览',
+  ): Promise<void> =>
+    open({ type: 'project', projectId, tab: '卡片', cardMode: mode })
+
+  // Owns the "project generation" background task end to end (knowledge
+  // points + cards). Created once per module activation and disposed with
+  // the root below, so it outlives every wizard and every workspace mount:
+  // closing the view that started a generation does not interrupt it.
+  const projectGenerationService = createHostLearningProjectGenerationService(
+    host,
+    {
+      getModelId: () =>
+        settingsModel?.getSnapshot().modelId ??
+        host.settings.getModelSnapshot().defaultModelId,
+      onProjectReady: (projectId) => openProjectCards(projectId, '浏览'),
+      openProjectCards,
+    },
+  )
+
   const root: LearningAssemblyRoot = Object.freeze({
     attach: (ownerElement) => {
       assertActive(disposed)
@@ -166,13 +194,7 @@ export function createLearningAssemblyRoot(
         controllers,
         inFlightTasks,
         recoveryPromise,
-        openProject: (projectId) =>
-          open({
-            type: 'project',
-            projectId,
-            tab: '卡片',
-            cardMode: '浏览',
-          }),
+        projectGenerationService,
         onDispose: () => mounts.delete(mount),
       })
       mounts.add(mount)
@@ -205,6 +227,7 @@ export function createLearningAssemblyRoot(
       controllers.clear()
       for (const mount of [...mounts]) mount.dispose()
       mounts.clear()
+      projectGenerationService.dispose()
       runtimeAdapter.dispose()
       settingsModel?.dispose()
     },
@@ -225,7 +248,7 @@ function createMountAssembly({
   controllers,
   inFlightTasks,
   recoveryPromise,
-  openProject,
+  projectGenerationService,
   onDispose,
 }: {
   host: YoloModuleHostApiV1
@@ -237,7 +260,7 @@ function createMountAssembly({
   controllers: Set<AbortController>
   inFlightTasks: Set<Promise<unknown>>
   recoveryPromise: Promise<void>
-  openProject: (projectId: string) => Promise<void>
+  projectGenerationService: ProjectGenerationService
   onDispose: () => void
 }): LearningMountAssembly {
   const runtime = runtimeAdapter.runtime
@@ -249,9 +272,6 @@ function createMountAssembly({
   const ui = createLearningUiServices(host, {
     runtime,
     ownerDocument,
-    generation: {
-      onProjectReady: openProject,
-    },
     getGenerationModelId: () =>
       learningSettings?.getSnapshot().modelId ??
       host.settings.getModelSnapshot().defaultModelId,
@@ -282,14 +302,16 @@ function createMountAssembly({
     },
     navigation: createMountNavigation(),
     generation: {
-      createWorkflow: (events) =>
+      createOutlineWorkflow: () =>
         trackGenerationWorkflow(
-          ui.createOutlineBuilderWorkflow(events),
+          ui.createOutlineBuilderWorkflow(),
           runtimeAdapter,
           controllers,
           inFlightTasks,
         ),
-      abortAll: () => undefined,
+      projectGeneration: projectGenerationService,
+      abortAll: () => projectGenerationService.abortCurrentTask(),
+      resume: projectGenerationService,
     },
     recovery: {
       recoverAnkiImports: () => recoveryPromise,
@@ -378,7 +400,6 @@ function trackGenerationWorkflow(
   }
   return {
     generateOutline: (input) => track(input, workflow.generateOutline),
-    generateProject: (input) => track(input, workflow.generateProject),
   }
 }
 

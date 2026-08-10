@@ -14,15 +14,6 @@ import type {
   OutlineChapter,
 } from './types'
 
-export type WriteProjectOptions = {
-  writer: LearningVaultWriteApi
-  baseDir: string
-  topic: string
-  goal: string
-  chapters: ChapterGenerationResult[]
-  level: string
-}
-
 export type ProjectScaffold = {
   projectPath: string
   projectSlug: string
@@ -57,12 +48,17 @@ export async function createProjectScaffold({
   baseDir,
   topic,
   goal,
+  level,
+  outputLanguage,
   chapters,
 }: {
   writer: LearningVaultWriteApi
   baseDir: string
   topic: string
   goal: string
+  /** Persisted alongside the project so an interrupted run can be resumed. */
+  level: string
+  outputLanguage: string
   chapters: OutlineChapter[]
 }): Promise<ProjectScaffold> {
   const normalizedBaseDir = normalizeLearningVaultPath(baseDir)
@@ -88,7 +84,10 @@ export async function createProjectScaffold({
     await writer.ensureFolder(chapterPath)
     await writer.createText(
       knowledgePath,
-      buildMarkdown({ title: chapter.title }, ''),
+      buildChapterKnowledgeBaseline({
+        title: chapter.title,
+        contract: chapter.contract,
+      }),
     )
     targets.push({
       chapterIndex: i,
@@ -107,6 +106,8 @@ export async function createProjectScaffold({
       goal,
       status: 'building',
       chapterSlugs,
+      level,
+      outputLanguage,
       chapters: chapters.map((chapter, index) => ({
         chapterTitle: chapter.title,
         chapterIndex: index,
@@ -115,6 +116,47 @@ export async function createProjectScaffold({
     }),
   )
   return { projectPath, projectSlug, indexPath, chapters: targets }
+}
+
+/**
+ * The pristine content of a chapter's `knowledge.md` before any knowledge
+ * point has been emitted: frontmatter only (title, generation contract, and
+ * a `complete: false` marker), empty body. Used both to scaffold a new
+ * chapter and to reset a chapter with leftover partial content before a
+ * resumed generation reruns its knowledge stage from scratch.
+ */
+export function buildChapterKnowledgeBaseline({
+  title,
+  contract,
+}: {
+  title: string
+  contract: string
+}): string {
+  return buildMarkdown({ title, contract, complete: false }, '')
+}
+
+/**
+ * Marks a chapter's knowledge stage as finished by flipping the `complete`
+ * frontmatter flag written by {@link buildChapterKnowledgeBaseline}. This is
+ * the ground-truth signal generation resume uses to tell "interrupted
+ * mid-run" apart from "knowledge done, cards still missing" — both can leave
+ * knowledge.md with knowledge-point content on disk.
+ */
+export async function markChapterKnowledgeComplete({
+  vault,
+  writer,
+  knowledgePath,
+}: {
+  vault: LearningVaultReadApi
+  writer: LearningVaultWriteApi
+  knowledgePath: string
+}): Promise<void> {
+  if (vault.getEntry(knowledgePath)?.kind !== 'file') {
+    throw new Error(`Knowledge file not found: ${knowledgePath}`)
+  }
+  const existing = await vault.readText(knowledgePath)
+  const updated = existing.replace(/^complete: false$/m, 'complete: true')
+  if (updated !== existing) await writer.writeText(knowledgePath, updated)
 }
 
 export async function appendKnowledgePointDraft({
@@ -178,53 +220,6 @@ export async function markProjectStudying({
   )
 }
 
-export async function writeProject({
-  writer,
-  baseDir,
-  topic,
-  goal,
-  chapters,
-}: WriteProjectOptions): Promise<{ projectPath: string; projectSlug: string }> {
-  const normalizedBaseDir = normalizeLearningVaultPath(baseDir)
-  await writer.ensureFolder(normalizedBaseDir)
-  const projectSlug = createUniqueSlug(
-    topic,
-    await writer.listChildNames(normalizedBaseDir),
-  )
-  const projectPath = joinVaultPath(normalizedBaseDir, projectSlug)
-  await writer.ensureFolder(projectPath)
-  const successful = chapters.filter((chapter) => !chapter.error)
-  const chapterSlugs: string[] = []
-  for (let i = 0; i < successful.length; i += 1) {
-    const chapter = successful[i]
-    const chapterNumber = String(i + 1).padStart(2, '0')
-    const orderedTitle = `${chapterNumber}-${chapter.chapterTitle}`
-    chapterSlugs.push(createUniqueSlug(orderedTitle, chapterSlugs))
-  }
-  await writer.createText(
-    joinVaultPath(projectPath, 'index.md'),
-    buildProjectIndexMarkdown({
-      topic,
-      goal,
-      status: 'studying',
-      chapterSlugs,
-      chapters: successful,
-    }),
-  )
-  for (let i = 0; i < successful.length; i += 1) {
-    const chapterPath = joinVaultPath(projectPath, chapterSlugs[i])
-    await writer.ensureFolder(chapterPath)
-    await writer.createText(
-      joinVaultPath(chapterPath, 'knowledge.md'),
-      buildMarkdown(
-        { title: successful[i].chapterTitle },
-        buildKnowledgeBody(successful[i].knowledgePoints),
-      ),
-    )
-  }
-  return { projectPath, projectSlug }
-}
-
 const joinVaultPath = (...parts: string[]) =>
   normalizeLearningVaultPath(parts.join('/'))
 
@@ -242,15 +237,27 @@ function buildProjectIndexMarkdown({
   status,
   chapterSlugs,
   chapters,
+  level,
+  outputLanguage,
 }: {
   topic: string
   goal: string
   status: 'building' | 'studying'
   chapterSlugs: string[]
   chapters: Array<Pick<ChapterGenerationResult, 'chapterTitle'>>
+  /** Persisted only when known, so a resumed generation can rebuild its inputs. */
+  level?: string
+  outputLanguage?: string
 }): string {
   return buildMarkdown(
-    { topic, goal, status, chapters: chapterSlugs },
+    {
+      topic,
+      goal,
+      status,
+      chapters: chapterSlugs,
+      ...(level ? { level } : {}),
+      ...(outputLanguage ? { outputLanguage } : {}),
+    },
     chapters
       .map(
         (chapter, index) =>
@@ -258,13 +265,4 @@ function buildProjectIndexMarkdown({
       )
       .join('\n'),
   )
-}
-
-function buildKnowledgeBody(points: KnowledgePointDraft[]): string {
-  return points
-    .map(
-      (point) =>
-        `## ${point.title} <!--kp:${createKnowledgePointUuid()}-->\n\n${point.body.trim()}`,
-    )
-    .join('\n\n')
 }

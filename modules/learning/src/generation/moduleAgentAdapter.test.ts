@@ -93,6 +93,34 @@ describe('createLearningGenerationAgent', () => {
       { type: 'aborted' },
     ])
   })
+
+  it('passes tools through to the module agent', async () => {
+    let received: ModuleRequest | undefined
+    const moduleAgent: ModuleAgent = {
+      stream: async function* (request) {
+        received = request
+        yield { type: 'completed', text: 'done' }
+      },
+    }
+    const handler = jest.fn(async () => ({ content: 'ok' }))
+    const request: LearningGenerationAgentRequest = {
+      prompt: 'prompt',
+      systemPromptOverride: 'system',
+      capability: 'none',
+      tools: [
+        {
+          name: 'emit_thing',
+          description: 'Emit a thing',
+          inputSchema: { type: 'object', properties: {} },
+          handler,
+        },
+      ],
+    }
+
+    await collect(createLearningGenerationAgent(moduleAgent).stream(request))
+
+    expect(received?.tools).toEqual(request.tools)
+  })
 })
 
 function createRequest(

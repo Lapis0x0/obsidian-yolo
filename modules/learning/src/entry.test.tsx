@@ -1,10 +1,7 @@
 import type { ReactElement } from 'react'
 
 import type { LearningNavigationTarget } from './domain/runtime/learningNavigation'
-import type {
-  LearningWorkspaceGenerationEvents,
-  LearningWorkspacePorts,
-} from './ui/LearningWorkspace'
+import type { LearningWorkspacePorts } from './ui/LearningWorkspace'
 import type { OutlineBuilderWorkflow } from './ui/outline/OutlineBuilder'
 
 const mockSrsStore = { canonical: true }
@@ -31,6 +28,9 @@ const mockCreateSettingsModel = jest.fn(async () => mockSettingsModel)
 const mockContributeSettings = jest.fn()
 const mockRuntimeAdapters: Array<ReturnType<typeof createRuntimeAdapter>> = []
 const mockUiServices: Array<ReturnType<typeof createUiServices>> = []
+const mockGenerationServices: Array<
+  ReturnType<typeof createGenerationService>
+> = []
 const mockOutline = {
   projectName: 'Project',
   projectGoal: 'Learn',
@@ -63,6 +63,13 @@ jest.mock('./host/ui', () => ({
     return services
   }),
 }))
+jest.mock('./host/generation', () => ({
+  createHostLearningProjectGenerationService: jest.fn((_host, options) => {
+    const service = createGenerationService(options)
+    mockGenerationServices.push(service)
+    return service
+  }),
+}))
 jest.mock('./ui/LearningWorkspace', () => ({
   LearningWorkspace: () => null,
 }))
@@ -86,7 +93,6 @@ function createRuntimeAdapter(options: { owner: Document; srsStore: unknown }) {
   const runtime = {
     getStatsService: jest.fn(() => stats),
     startStats: jest.fn(),
-    setEventBus: jest.fn(),
     setNavigationHandler: jest.fn((handler: typeof navigationHandler) => {
       navigationHandler = handler
       if (handler && pending) {
@@ -119,15 +125,11 @@ function createRuntimeAdapter(options: { owner: Document; srsStore: unknown }) {
   }
 }
 
-function createUiServices(options: {
-  ownerDocument: Document
-  generation?: { onProjectReady?(projectPath: string): void | Promise<void> }
-}) {
+function createUiServices(options: { ownerDocument: Document }) {
   const eventBus = { dispose: jest.fn() }
   const createOutlineBuilderWorkflow = jest.fn(
-    (_events: LearningWorkspaceGenerationEvents): OutlineBuilderWorkflow => ({
+    (): OutlineBuilderWorkflow => ({
       generateOutline: jest.fn(async () => mockOutline),
-      generateProject: jest.fn(async () => undefined),
     }),
   )
   return {
@@ -144,6 +146,20 @@ function createUiServices(options: {
     scanProject: jest.fn(),
     getLearningBaseDir: () => 'YOLO/learning',
     dispose: jest.fn(() => eventBus.dispose()),
+  }
+}
+
+function createGenerationService(options: {
+  getModelId: () => string | undefined
+  onProjectReady?: (projectPath: string) => void | Promise<void>
+}) {
+  return {
+    options,
+    startProjectGeneration: jest.fn(),
+    subscribe: jest.fn(() => jest.fn()),
+    getCurrentTask: jest.fn(() => null),
+    abortCurrentTask: jest.fn(),
+    dispose: jest.fn(),
   }
 }
 
@@ -260,6 +276,7 @@ describe('production Learning module entry', () => {
     jest.clearAllMocks()
     mockRuntimeAdapters.length = 0
     mockUiServices.length = 0
+    mockGenerationServices.length = 0
     mainDocument = ownerDocument('en-US')
     Object.defineProperty(globalThis, 'document', {
       configurable: true,
@@ -513,7 +530,7 @@ describe('production Learning module entry', () => {
     expect(mockUiServices[1].options.ownerDocument).toBe(secondDocument)
   })
 
-  it('binds generation events and keeps generation alive across mount disposal', async () => {
+  it('keeps outline generation alive across mount disposal', async () => {
     const harness = createHost()
     await definition.activate(harness.host)
     await harness.runWhenActive()
@@ -521,33 +538,24 @@ describe('production Learning module entry', () => {
     const mount = root.attach({
       ownerDocument: ownerDocument(),
     } as HTMLElement)
-    const events = {
-      onCardGenerationStarted: jest.fn(),
-      onCard: jest.fn(),
-      onChapterSettled: jest.fn(),
-      onCardGenerationFinished: jest.fn(),
-    }
     let generationSignal: AbortSignal | undefined
     mockUiServices[0].createOutlineBuilderWorkflow.mockReturnValue({
       generateOutline: jest.fn(async (input) => {
         generationSignal = input.signal
         return mockOutline
       }),
-      generateProject: jest.fn(async () => undefined),
     })
-    const workflow = mount.ports.generation.createWorkflow(events)
+    const workflow = mount.ports.generation.createOutlineWorkflow()
     const pending = workflow.generateOutline(createOutlineInput())
 
-    expect(mockUiServices[0].createOutlineBuilderWorkflow).toHaveBeenCalledWith(
-      events,
-    )
+    expect(mockUiServices[0].createOutlineBuilderWorkflow).toHaveBeenCalled()
     mount.dispose()
     expect(generationSignal?.aborted).toBe(false)
     expect(mockRuntimeAdapters[0].dispose).not.toHaveBeenCalled()
     await pending
   })
 
-  it('aborts generation and disposes all activation resources at root disposal', async () => {
+  it('aborts outline generation and disposes all activation resources at root disposal', async () => {
     const harness = createHost()
     await definition.activate(harness.host)
     await harness.runWhenActive()
@@ -561,14 +569,8 @@ describe('production Learning module entry', () => {
         generationSignal = input.signal
         return mockOutline
       }),
-      generateProject: jest.fn(async () => undefined),
     })
-    const workflow = mount.ports.generation.createWorkflow({
-      onCardGenerationStarted: jest.fn(),
-      onCard: jest.fn(),
-      onChapterSettled: jest.fn(),
-      onCardGenerationFinished: jest.fn(),
-    })
+    const workflow = mount.ports.generation.createOutlineWorkflow()
     const pending = workflow.generateOutline(createOutlineInput())
 
     harness.lifecycleDisposers[0]()
@@ -576,7 +578,52 @@ describe('production Learning module entry', () => {
     expect(mockUiServices[0].dispose).toHaveBeenCalledTimes(1)
     expect(mockRuntimeAdapters[0].dispose).toHaveBeenCalledTimes(1)
     expect(mockSettingsModel.dispose).toHaveBeenCalledTimes(1)
+    expect(mockGenerationServices[0].dispose).toHaveBeenCalledTimes(1)
     await pending
+  })
+
+  it('shares one project generation service across every mount', async () => {
+    const harness = createHost()
+    await definition.activate(harness.host)
+    await harness.runWhenActive()
+    const root = getRoot(harness.getView())
+    const first = root.attach({ ownerDocument: ownerDocument() } as HTMLElement)
+    const second = root.attach({
+      ownerDocument: ownerDocument('zh-CN'),
+    } as HTMLElement)
+
+    // Exactly one module-level service backs both mounts: closing the view
+    // that started a generation must not interrupt it, which only holds if
+    // the service is not recreated per mount.
+    expect(mockGenerationServices).toHaveLength(1)
+    expect(first.ports.generation.projectGeneration).toBe(
+      mockGenerationServices[0],
+    )
+    expect(second.ports.generation.projectGeneration).toBe(
+      mockGenerationServices[0],
+    )
+
+    first.ports.generation.projectGeneration.startProjectGeneration(
+      createProjectGenerationInput(),
+    )
+
+    expect(
+      mockGenerationServices[0].startProjectGeneration,
+    ).toHaveBeenCalledTimes(1)
+  })
+
+  it('aborts the current project generation task through abortAll', async () => {
+    const harness = createHost()
+    await definition.activate(harness.host)
+    await harness.runWhenActive()
+    const root = getRoot(harness.getView())
+    const mount = root.attach({
+      ownerDocument: ownerDocument(),
+    } as HTMLElement)
+
+    mount.ports.generation.abortAll()
+
+    expect(mockGenerationServices[0].abortCurrentTask).toHaveBeenCalledTimes(1)
   })
 
   it('isolates recovery failure and reuses its settled promise for workspaces', async () => {
@@ -613,7 +660,7 @@ describe('production Learning module entry', () => {
     const root = getRoot(harness.getView())
     root.attach({ ownerDocument: ownerDocument() } as HTMLElement)
 
-    await mockUiServices[0].options.generation?.onProjectReady?.(
+    await mockGenerationServices[0].options.onProjectReady?.(
       'Learning/project-one',
     )
 
@@ -658,5 +705,17 @@ function createOutlineInput() {
     signal: new AbortController().signal,
     onOutline: jest.fn(),
     onProgress: jest.fn(),
+  }
+}
+
+function createProjectGenerationInput() {
+  return {
+    topic: 'Topic',
+    level: 'Beginner',
+    goal: 'Learn',
+    projectName: 'Project',
+    projectGoal: 'Learn',
+    outputLanguage: 'English',
+    chapters: [{ title: 'Chapter one', contract: 'Explain it' }],
   }
 }

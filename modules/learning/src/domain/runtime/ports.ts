@@ -1,4 +1,3 @@
-import type { ProjectEventBus } from '../projectEventBus'
 import type { LearningStatsSnapshot } from '../stats/learningStatsService'
 
 import type {
@@ -53,7 +52,6 @@ export type LearningRuntimePorts<
   clock: LearningRuntimeClockPort
 }
 
-export type LearningRuntimeEventBus = ProjectEventBus
 export type {
   LearningNavigationHandler,
   LearningNavigationPort,

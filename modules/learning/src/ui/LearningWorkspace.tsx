@@ -14,6 +14,7 @@ import type {
 } from '../domain/runtime/learningNavigation'
 import type { LearningStatsSnapshot } from '../domain/stats/learningStatsService'
 import type { ProjectKind } from '../domain/types'
+import type { ProjectGenerationService } from '../generation/projectGenerationService'
 import type {
   CardGenerationEvent,
   CardGenerationResult,
@@ -29,8 +30,10 @@ import { KnowledgeGraph } from './graph/KnowledgeGraph'
 import { type HomeProjectActions, HomeView } from './home/HomeView'
 import {
   OutlineBuilder,
+  type OutlineBuilderProjectGenerationTrigger,
   type OutlineBuilderWorkflow,
 } from './outline/OutlineBuilder'
+import { GenerationResumeBanner } from './tabs/GenerationResumeBanner'
 import { type LearningTabKey, defaultLearningTab } from './tabs/tabs'
 import { type LearningWorkspaceTabServices, Workspace } from './tabs/Workspace'
 import {
@@ -42,20 +45,14 @@ import {
 
 export type LearningLocale = 'en' | 'it' | 'zh'
 
-export type LearningWorkspaceGenerationEvents = {
-  onCardGenerationStarted(runId: string, projectId: string): void
-  onCard(event: CardGenerationEvent): void
-  onChapterSettled(
-    runId: string,
-    projectId: string,
-    result: CardGenerationResult,
-  ): void
-  onCardGenerationFinished(
-    runId: string,
-    projectId: string,
-    failed: boolean,
-  ): void
-}
+/** The subset of {@link ProjectGenerationService} the resume banner needs. */
+export type GenerationResumePort = Pick<
+  ProjectGenerationService,
+  | 'resumeProjectGeneration'
+  | 'inspectResumability'
+  | 'subscribe'
+  | 'getCurrentTask'
+>
 
 export type LearningWorkspacePorts = {
   ownerDocument: Document
@@ -78,10 +75,11 @@ export type LearningWorkspacePorts = {
     register(handler: LearningNavigationHandler): () => void
   }
   generation: {
-    createWorkflow(
-      events: LearningWorkspaceGenerationEvents,
-    ): OutlineBuilderWorkflow
+    createOutlineWorkflow(): OutlineBuilderWorkflow
+    projectGeneration: OutlineBuilderProjectGenerationTrigger
     abortAll(): void
+    /** Inspecting and resuming an interrupted generation for an existing project. */
+    resume: GenerationResumePort
   }
   recovery: {
     recoverAnkiImports(): Promise<void>
@@ -392,33 +390,60 @@ export function LearningWorkspace({ ports }: LearningWorkspaceProps) {
     [ports.projects],
   )
 
-  const generationEvents = useMemo<LearningWorkspaceGenerationEvents>(
-    () => ({
-      onCardGenerationStarted: (runId, projectId) =>
-        dispatch({ type: 'card-generation-started', runId, projectId }),
-      onCard: (event) => dispatch({ type: 'card-generated', event }),
-      onChapterSettled: (runId, projectId, result) =>
-        dispatch({ type: 'card-chapter-settled', runId, projectId, result }),
-      onCardGenerationFinished: (runId, projectId, failed) => {
-        void refreshProjects()
-          .then(() =>
-            dispatch({
-              type: 'card-generation-finished',
-              runId,
-              projectId,
-              failed,
-            }),
-          )
-          .catch((error) =>
-            reportError?.('Failed to refresh generated cards', error),
-          )
-      },
-    }),
-    [refreshProjects, reportError],
-  )
   const outlineWorkflow = useMemo(
-    () => ports.generation.createWorkflow(generationEvents),
-    [generationEvents, ports.generation],
+    () => ports.generation.createOutlineWorkflow(),
+    [ports.generation],
+  )
+
+  // Project generation runs in a module-level service shared by every mount.
+  // Only react to events for the task *this* mount started (via its own
+  // OutlineBuilder), so an unrelated generation running for another open
+  // view does not hijack this workspace's active tab or card preview.
+  const trackedGenerationTaskIdRef = useRef<string | null>(null)
+  useEffect(
+    () =>
+      ports.generation.projectGeneration.subscribe((event) => {
+        if (event.snapshot.taskId !== trackedGenerationTaskIdRef.current) {
+          return
+        }
+        const { taskId, projectId } = event.snapshot
+        if (!projectId) return
+        switch (event.type) {
+          case 'cards-started':
+            dispatch({
+              type: 'card-generation-started',
+              runId: taskId,
+              projectId,
+            })
+            break
+          case 'card':
+            dispatch({ type: 'card-generated', event: event.card })
+            break
+          case 'chapter-settled':
+            dispatch({
+              type: 'card-chapter-settled',
+              runId: taskId,
+              projectId,
+              result: event.result,
+            })
+            break
+          case 'cards-finished':
+            void refreshProjects()
+              .then(() =>
+                dispatch({
+                  type: 'card-generation-finished',
+                  runId: taskId,
+                  projectId,
+                  failed: event.failed,
+                }),
+              )
+              .catch((error) =>
+                reportError?.('Failed to refresh generated cards', error),
+              )
+            break
+        }
+      }),
+    [ports.generation, refreshProjects, reportError],
   )
 
   useEffect(
@@ -543,10 +568,12 @@ export function LearningWorkspace({ ports }: LearningWorkspaceProps) {
                     reportError?.('Failed to refresh completed project', error),
                   )
               }}
-              onProjectStarted={async (projectId) => {
+              onProjectStarted={async (projectId, taskId) => {
+                trackedGenerationTaskIdRef.current = taskId
                 await refreshProjects()
                 dispatch({ type: 'project-started', projectId })
               }}
+              projectGeneration={ports.generation.projectGeneration}
               referenceFiles={state.wizardInput.referenceFiles}
               stagingDir={state.wizardInput.stagingDir}
               t={ports.t}
@@ -582,6 +609,24 @@ export function LearningWorkspace({ ports }: LearningWorkspaceProps) {
             ownerDocument={ports.ownerDocument}
             project={project ?? null}
             projectPaused={projectPaused}
+            resumeBanner={
+              project?.kind === 'outline' ? (
+                <GenerationResumeBanner
+                  key={project.id}
+                  onResumed={() =>
+                    void refreshProjects().catch((error) =>
+                      reportError?.(
+                        'Failed to refresh Learning projects',
+                        error,
+                      ),
+                    )
+                  }
+                  projectId={project.id}
+                  resume={ports.generation.resume}
+                  t={ports.t}
+                />
+              ) : undefined
+            }
             selectedPointId={state.selectedPointId}
             services={ports.tabs}
             t={ports.t}

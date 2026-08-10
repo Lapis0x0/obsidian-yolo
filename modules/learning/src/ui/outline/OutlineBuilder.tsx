@@ -29,6 +29,11 @@ import {
 import type React from 'react'
 import { useEffect, useRef, useState } from 'react'
 
+import {
+  LearningProjectGenerationBusyError,
+  type ProjectGenerationService,
+  type ProjectGenerationTaskSnapshot,
+} from '../../generation/projectGenerationService'
 import type { StagedReference } from '../../generation/referenceStaging'
 import type {
   GenerationProgress,
@@ -55,22 +60,18 @@ export type OutlineBuilderWorkflow = {
     onOutline: (outline: Outline) => void
     onProgress: () => void
   }) => Promise<Outline>
-  generateProject: (input: {
-    topic: string
-    level: string
-    goal: string
-    projectName: string
-    projectGoal: string
-    outputLanguage: string
-    chapters: readonly OutlineChapter[]
-    stagingDir?: string
-    referenceFiles?: readonly StagedReference[]
-    signal: AbortSignal
-    onProjectStarted: (projectId: string) => void | Promise<void>
-    onChapterProgress: (progress: GenerationProgress) => void
-    onComplete: (projectId: string) => void
-  }) => Promise<void>
 }
+
+/**
+ * The subset of {@link ProjectGenerationService} the wizard needs to trigger
+ * a background generation task and observe its own run. The service owns the
+ * abort signal and outlives this component: closing the wizard after
+ * confirming does not interrupt generation.
+ */
+export type OutlineBuilderProjectGenerationTrigger = Pick<
+  ProjectGenerationService,
+  'startProjectGeneration' | 'subscribe'
+>
 
 export function OutlineBuilder({
   topic,
@@ -80,6 +81,7 @@ export function OutlineBuilder({
   stagingDir,
   referenceFiles,
   workflow,
+  projectGeneration,
   t,
   onCancel,
   onProjectStarted,
@@ -92,9 +94,10 @@ export function OutlineBuilder({
   stagingDir?: string
   referenceFiles?: readonly StagedReference[]
   workflow: OutlineBuilderWorkflow
+  projectGeneration: OutlineBuilderProjectGenerationTrigger
   t: LearningTranslate
   onCancel: () => void
-  onProjectStarted: (projectId: string) => void | Promise<void>
+  onProjectStarted: (projectId: string, taskId: string) => void | Promise<void>
   onComplete: (projectId: string) => void
 }) {
   const [chapters, setChapters] = useState<EditableChapter[]>([])
@@ -107,7 +110,6 @@ export function OutlineBuilder({
   const [error, setError] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const abortRef = useRef<AbortController | null>(null)
-  const abortOnUnmountRef = useRef(true)
   const nextChapterIdRef = useRef(0)
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 6 } }),
@@ -169,12 +171,16 @@ export function OutlineBuilder({
 
   useEffect(() => {
     startOutlineGeneration()
-    return () => {
-      if (abortOnUnmountRef.current) abortRef.current?.abort()
-    }
+    return () => abortRef.current?.abort()
   }, [])
 
-  const confirmAndGenerate = async () => {
+  // Project generation runs in the module-level service, independent of this
+  // component's lifetime: unmounting the wizard only drops this local
+  // subscription, it never aborts the running task.
+  const generationUnsubscribeRef = useRef<(() => void) | null>(null)
+  useEffect(() => () => generationUnsubscribeRef.current?.(), [])
+
+  const confirmAndGenerate = () => {
     const validChapters = chapters.filter(
       (chapter) => chapter.title.trim() && chapter.contract.trim(),
     )
@@ -185,13 +191,11 @@ export function OutlineBuilder({
       setPhase('error')
       return
     }
-    abortRef.current?.abort()
-    const controller = new AbortController()
-    abortRef.current = controller
     setPhase('knowledge')
     setError(null)
+    let task: ProjectGenerationTaskSnapshot
     try {
-      await workflow.generateProject({
+      task = projectGeneration.startProjectGeneration({
         topic,
         level,
         goal,
@@ -201,27 +205,60 @@ export function OutlineBuilder({
         chapters: validChapters,
         stagingDir,
         referenceFiles,
-        signal: controller.signal,
-        onProjectStarted: async (projectId) => {
-          abortOnUnmountRef.current = false
-          await onProjectStarted(projectId)
-        },
-        onChapterProgress: (progress) => {
+      })
+    } catch (reason) {
+      setError(
+        reason instanceof LearningProjectGenerationBusyError
+          ? t(
+              'learning.generation.alreadyRunning',
+              'Another learning project is already being generated. Wait for it to finish, or check its progress.',
+            )
+          : reason instanceof Error
+            ? reason.message
+            : String(reason),
+      )
+      setPhase('error')
+      return
+    }
+    generationUnsubscribeRef.current?.()
+    const finish = () => {
+      generationUnsubscribeRef.current?.()
+      generationUnsubscribeRef.current = null
+    }
+    generationUnsubscribeRef.current = projectGeneration.subscribe((event) => {
+      if (event.snapshot.taskId !== task.taskId) return
+      switch (event.type) {
+        case 'project-started':
+          if (event.snapshot.projectId) {
+            void onProjectStarted(event.snapshot.projectId, task.taskId)
+          }
+          break
+        case 'chapter-progress':
           setChapters((current) =>
             current.map((chapter, index) =>
-              index === progress.chapterIndex
-                ? { ...chapter, progress }
+              index === event.progress.chapterIndex
+                ? { ...chapter, progress: event.progress }
                 : chapter,
             ),
           )
-        },
-        onComplete,
-      })
-    } catch (reason) {
-      if (controller.signal.aborted) return
-      setError(reason instanceof Error ? reason.message : String(reason))
-      setPhase('error')
-    }
+          break
+        case 'knowledge-completed':
+          if (event.snapshot.projectId) onComplete(event.snapshot.projectId)
+          break
+        case 'error':
+          finish()
+          setError(
+            event.snapshot.error ??
+              t('learning.outlineBuilder.failed', '生成失败'),
+          )
+          setPhase('error')
+          break
+        case 'completed':
+        case 'aborted':
+          finish()
+          break
+      }
+    })
   }
 
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
@@ -414,7 +451,7 @@ export function OutlineBuilder({
           <div className="yolo-learning-outline-builder-rail-footer">
             <button
               type="button"
-              onClick={() => void confirmAndGenerate()}
+              onClick={confirmAndGenerate}
               disabled={busy || phase === 'error'}
               className="yolo-learning-outline-builder-complete"
             >
@@ -560,8 +597,11 @@ function ProgressLine({
         ? progress.error
         : done
           ? t('learning.outlineBuilder.knowledgeComplete', '知识点生成完成')
-          : progress.currentKnowledgePointTitle
-            ? `${t('learning.outlineBuilder.generatingPoint', '正在生成')}：${progress.currentKnowledgePointTitle}`
+          : progress.emittedCount
+            ? t(
+                'learning.outlineBuilder.generatedCount',
+                '已生成 {count} 条',
+              ).replace('{count}', String(progress.emittedCount))
             : t(
                 'learning.outlineBuilder.knowledgeGenerating',
                 '知识点生成中...',

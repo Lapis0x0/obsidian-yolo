@@ -17,6 +17,29 @@ export type LearningGenerationActivity = {
   detail?: string
 }
 
+export type LearningGenerationToolResult = {
+  /** Text returned to the model. */
+  content: string
+  /** True when the call failed validation — the model should self-correct. */
+  isError?: boolean
+}
+
+/**
+ * A run-scoped tool the model can call during a single `agent.stream` run
+ * (see `YoloModuleAgentToolV1`). Used by the serial chapter engine to let
+ * the model emit knowledge points and cards directly instead of writing
+ * markdown for the host to parse.
+ */
+export type LearningGenerationTool = {
+  /** Must match `^[a-z][a-z0-9_]*$` and be unique within a single request. */
+  name: string
+  description: string
+  inputSchema: Record<string, unknown>
+  handler: (
+    input: Record<string, unknown>,
+  ) => Promise<LearningGenerationToolResult> | LearningGenerationToolResult
+}
+
 export type LearningGenerationUserMessage = {
   role: 'user'
   id: string
@@ -41,6 +64,8 @@ export type LearningGenerationAgentRequest = {
   capability: LearningGenerationCapability
   workspaceScope?: LearningWorkspaceScope
   activity?: LearningGenerationActivity
+  /** Run-scoped custom tools (up to 16), registered for this run only. */
+  tools?: readonly LearningGenerationTool[]
   abortSignal?: AbortSignal
 }
 

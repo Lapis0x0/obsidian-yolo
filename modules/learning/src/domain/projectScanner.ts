@@ -274,7 +274,17 @@ async function readFrontmatter(
   vault: LearningVaultReadApi,
   file: LearningVaultFile,
 ): Promise<Record<string, unknown>> {
-  const content = await vault.readText(file.path)
+  return parseFrontmatterBlock(await vault.readText(file.path))
+}
+
+/**
+ * Parses the YAML frontmatter block from a markdown file's raw content.
+ * Exported for callers (e.g. generation resume) that already hold file text
+ * and don't need a vault read.
+ */
+export function parseFrontmatterBlock(
+  content: string,
+): Record<string, unknown> {
   const match = /^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/.exec(content)
   if (!match) return {}
   try {

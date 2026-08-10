@@ -6,20 +6,9 @@ import {
 import type { LearningVaultWriteApi } from '../../domain/learningVaultWriteApi'
 import { ProjectEventBus } from '../../domain/projectEventBus'
 import { scanProject, scanProjects } from '../../domain/projectScanner'
-import { LearningGenerationAbortError } from '../../generation/abortError'
-import { generateCardsParallel } from '../../generation/cardGenerator'
-import type {
-  LearningGenerationActivity,
-  LearningGenerationHost,
-} from '../../generation/host'
-import { generateKnowledgePointsForChapter } from '../../generation/knowledgePointGenerator'
+import type { LearningGenerationHost } from '../../generation/host'
 import { createLearningGenerationAgent } from '../../generation/moduleAgentAdapter'
 import { generateOutline } from '../../generation/outlineGenerator'
-import {
-  appendKnowledgePointDraft,
-  createProjectScaffold,
-  markProjectStudying,
-} from '../../generation/projectWriter'
 import {
   validateReferenceFile,
   writeReferenceToStaging,
@@ -27,7 +16,6 @@ import {
 import type { CardsViewServices } from '../../ui/cards/CardsView'
 import type { ExercisesViewServices } from '../../ui/exercises/ExercisesView'
 import type { HomeProjectActions } from '../../ui/home/HomeView'
-import type { LearningWorkspaceGenerationEvents } from '../../ui/LearningWorkspace'
 import type { OutlineBuilderWorkflow } from '../../ui/outline/OutlineBuilder'
 import type { OutlineViewHost } from '../../ui/outline/OutlineView'
 import type { WizardReferenceHost } from '../../ui/wizard/Wizard'
@@ -35,25 +23,18 @@ import {
   type HostLearningRuntimeAdapter,
   createHostLearningTranslation,
 } from '../runtime'
+import {
+  assertCurrentProjectPath,
+  assertPathInRoot,
+  normalizePath,
+} from '../vaultPaths'
 
 type Runtime = HostLearningRuntimeAdapter['runtime']
-
-export type LearningUiProjectGenerationPort = Readonly<{
-  /** Called after knowledge files are complete and the project enters studying. */
-  onProjectReady?(projectPath: string): void | Promise<void>
-  /** Card generation is supported by the module, but callers may disable it. */
-  generateCards?: boolean
-  /** Opens the generated project's cards without coupling this host adapter to navigation. */
-  openProjectCards?(
-    projectPath: string,
-    mode: '学习' | '浏览',
-  ): void | Promise<void>
-}>
 
 export type CreateLearningUiServicesOptions = Readonly<{
   runtime: Runtime
   ownerDocument: Document
-  generation?: LearningUiProjectGenerationPort
+  /** Learning-specific generation model override, if the user configured one. */
   getGenerationModelId?: () => string | undefined
   reportError?: (message: string, error: unknown) => void
 }>
@@ -62,10 +43,8 @@ export type LearningUiServices = Readonly<{
   ownerDocument: Document
   homeProjectActions: HomeProjectActions
   wizardReferences: WizardReferenceHost
-  createOutlineBuilderWorkflow(
-    events?: LearningWorkspaceGenerationEvents,
-  ): OutlineBuilderWorkflow
-  /** Compatibility workflow for callers that do not consume generation events. */
+  createOutlineBuilderWorkflow(): OutlineBuilderWorkflow
+  /** Compatibility workflow for callers that construct it eagerly. */
   outlineBuilderWorkflow: OutlineBuilderWorkflow
   outlineViewHost: OutlineViewHost
   cardsViewServices: CardsViewServices
@@ -77,16 +56,18 @@ export type LearningUiServices = Readonly<{
   dispose(): void
 }>
 
-type ProjectWriterPort = Pick<
-  LearningVaultWriteApi,
-  'ensureFolder' | 'listChildNames' | 'createText' | 'writeText'
->
-
 let stagingSequence = 0
 
 /**
  * Closes the migrated Learning UI over Host 1.1 and the module runtime.
  * Every managed-root lookup is live so host path changes do not stale closures.
+ *
+ * Project generation (knowledge points + cards) is not owned here: it lives
+ * in the module-level `ProjectGenerationService` (see `host/generation.ts`),
+ * which is created once per module activation and outlives every mount and
+ * every wizard. This factory only wires the mount-scoped UI adapters:
+ * home actions, wizard staging, the outline draft workflow, and the project
+ * event bus used to render the knowledge graph.
  */
 export function createLearningUiServices(
   host: YoloModuleHostApiV1,
@@ -99,7 +80,6 @@ export function createLearningUiServices(
   const eventBus = new ProjectEventBus(vault)
   const getLearningBaseDir = () =>
     normalizePath(host.paths.getSnapshot().contentRoot)
-  const getSrs = () => options.runtime.getSrsStore()
   const generationHost: LearningGenerationHost = {
     vault,
     // The generation code only consumes the CAS subset. Host 1.1 deliberately
@@ -111,6 +91,7 @@ export function createLearningUiServices(
   const markdown = {
     createRenderer: () => host.ui.createMarkdownRenderer(),
   }
+  const getSrs = () => options.runtime.getSrsStore()
 
   const homeProjectActions: HomeProjectActions = {
     setPaused: async (project, paused) => {
@@ -260,18 +241,14 @@ export function createLearningUiServices(
     showNotice: (message) => host.ui.notice(message),
   }
 
-  const createWorkflow = (events?: LearningWorkspaceGenerationEvents) =>
+  const createWorkflow = (): OutlineBuilderWorkflow =>
     buildOutlineBuilderWorkflow({
       host,
-      runtime: options.runtime,
       generationHost,
-      eventBus,
       getLearningBaseDir,
       getModelId: () =>
         options.getGenerationModelId?.() ??
         host.settings.getModelSnapshot().defaultModelId,
-      projectGeneration: options.generation,
-      events,
     })
   const outlineBuilderWorkflow = createWorkflow()
 
@@ -295,9 +272,6 @@ export function createLearningUiServices(
     dispose: () => {
       if (disposed) return
       disposed = true
-      if (options.runtime.getEventBus() === eventBus) {
-        options.runtime.setEventBus(null)
-      }
       eventBus.dispose()
     },
   })
@@ -305,32 +279,16 @@ export function createLearningUiServices(
 
 function buildOutlineBuilderWorkflow({
   host,
-  runtime,
   generationHost,
-  eventBus,
   getLearningBaseDir,
   getModelId,
-  projectGeneration,
-  events,
 }: {
   host: YoloModuleHostApiV1
-  runtime: Runtime
   generationHost: LearningGenerationHost
-  eventBus: ProjectEventBus
   getLearningBaseDir: () => string
   getModelId: () => string | undefined
-  projectGeneration?: LearningUiProjectGenerationPort
-  events?: LearningWorkspaceGenerationEvents
 }): OutlineBuilderWorkflow {
-  const vault = generationHost.vault
   const t = createHostLearningTranslation(host)
-  const writer: ProjectWriterPort = {
-    ensureFolder: (path) => host.vault.ensureFolder(path),
-    listChildNames: async (path) =>
-      host.vault.listChildren(path).map((entry) => entry.name),
-    createText: (path, content) => host.vault.createText(path, content),
-    writeText: (path, content) => host.vault.writeText(path, content),
-  }
 
   return {
     generateOutline: async (input) => {
@@ -354,348 +312,19 @@ function buildOutlineBuilderWorkflow({
         })),
         workspaceScope,
         abortSignal: input.signal,
-        activity: generationActivity(
-          t('generation.outlineActivity'),
-          input.topic,
-        ),
+        activity: {
+          title: t('generation.outlineActivity'),
+          detail: input.topic,
+        },
         onOutline: input.onOutline,
         onProgress: () => input.onProgress(),
       })
       return result.outline
     },
-    generateProject: async (input) => {
-      const root = getLearningBaseDir()
-      const projectWriter = writer as LearningVaultWriteApi
-      const scaffold = await createProjectScaffold({
-        writer: projectWriter,
-        baseDir: root,
-        topic: input.projectName || input.topic,
-        goal: input.projectGoal || input.goal,
-        chapters: [...input.chapters],
-      })
-      let referenceDir: string | undefined
-      if (input.stagingDir && input.referenceFiles?.length) {
-        referenceDir = await moveStagedReferences({
-          host,
-          root,
-          stagingDir: input.stagingDir,
-          projectPath: scaffold.projectPath,
-        })
-      }
-      await eventBus.setActiveProject(root, scaffold.projectPath)
-      runtime.setEventBus(eventBus)
-      await input.onProjectStarted(scaffold.projectPath)
-
-      const workspaceScope = referenceDir
-        ? { enabled: true, include: [referenceDir], exclude: [] }
-        : undefined
-      const outcomes = await Promise.all(
-        input.chapters.map(async (chapter, chapterIndex) => {
-          const target = scaffold.chapters[chapterIndex]
-          input.onChapterProgress({
-            chapterIndex,
-            chapterTitle: chapter.title,
-            status: 'generating',
-          })
-          if (!target)
-            return new Error(`Missing chapter target: ${chapter.title}`)
-          try {
-            const result = await generateKnowledgePointsForChapter({
-              host: generationHost,
-              modelId: getModelId(),
-              projectTopic: input.projectName || input.topic,
-              chapterTitle: chapter.title,
-              chapterContract: chapter.contract,
-              outputLanguage: input.outputLanguage,
-              level: input.level,
-              workspaceScope,
-              referenceDir,
-              abortSignal: input.signal,
-              activity: generationActivity(
-                t('generation.knowledgePointsActivity'),
-                chapter.title,
-              ),
-              onProgress: (_delta, fullText) => {
-                input.onChapterProgress({
-                  chapterIndex,
-                  chapterTitle: chapter.title,
-                  status: 'generating',
-                  currentKnowledgePointTitle: lastMarkdownHeading(fullText),
-                })
-              },
-              onKnowledgePoint: (point) =>
-                appendKnowledgePointDraft({
-                  vault,
-                  writer: projectWriter,
-                  projectPath: scaffold.projectPath,
-                  chapter: target,
-                  point,
-                }).then(() => undefined),
-            })
-            if (result.drafts.length === 0) {
-              throw new Error(`No knowledge points generated: ${chapter.title}`)
-            }
-            input.onChapterProgress({
-              chapterIndex,
-              chapterTitle: chapter.title,
-              status: 'completed',
-            })
-            return null
-          } catch (error) {
-            input.onChapterProgress({
-              chapterIndex,
-              chapterTitle: chapter.title,
-              status: 'error',
-              error: error instanceof Error ? error.message : String(error),
-            })
-            return error
-          }
-        }),
-      )
-      const failure = outcomes.find((outcome) => outcome !== null)
-      if (failure) throw failure
-      await markProjectStudying({
-        vault,
-        writer: projectWriter,
-        indexPath: scaffold.indexPath,
-      })
-      await eventBus.refreshSnapshot({ emitInitial: false })
-      await projectGeneration?.onProjectReady?.(scaffold.projectPath)
-      input.onComplete(scaffold.projectPath)
-
-      if (projectGeneration?.generateCards !== false) {
-        const runId = `cards-${Date.now().toString(36)}`
-        const projectId = scaffold.projectPath
-        let failed = true
-        events?.onCardGenerationStarted(runId, projectId)
-        try {
-          const results = await generateCardsParallel({
-            host: generationHost,
-            modelId: getModelId(),
-            projectTopic: input.projectName || input.topic,
-            projectPath: scaffold.projectPath,
-            chapters: input.chapters.map((chapter, index) => ({
-              ...chapter,
-              knowledgePath: scaffold.chapters[index].knowledgePath,
-              cardsPath: scaffold.chapters[index].cardsPath,
-            })),
-            level: input.level,
-            workspaceScope,
-            abortSignal: input.signal,
-            activity: generationActivity(
-              t('generation.cardsActivity'),
-              input.projectName || input.topic,
-            ),
-            runId,
-            projectId,
-            onCard: (event) => events?.onCard(event),
-            onChapterSettled: (result) =>
-              events?.onChapterSettled(runId, projectId, result),
-          })
-          if (input.signal.aborted) {
-            throw new LearningGenerationAbortError('Card generation aborted')
-          }
-          const outcome = getCardGenerationOutcome(results)
-          failed = outcome !== 'success'
-          await eventBus.refreshSnapshot({ emitInitial: false })
-          showCardGenerationToast({
-            host,
-            projectGeneration,
-            projectId,
-            runId,
-            outcome,
-            cardCount: results.reduce(
-              (total, result) => total + result.cards.length,
-              0,
-            ),
-            generatedCount: results.filter(
-              (result) => result.status === 'generated',
-            ).length,
-            skippedCount: results.filter(
-              (result) => result.status === 'skipped',
-            ).length,
-            notFinishedCount: results.filter(
-              (result) =>
-                result.status === 'partial' || result.status === 'failed',
-            ).length,
-          })
-        } catch (error) {
-          if (!input.signal.aborted) {
-            showCardGenerationToast({
-              host,
-              projectGeneration,
-              projectId,
-              runId,
-              outcome: 'failed',
-              cardCount: 0,
-              generatedCount: 0,
-              skippedCount: 0,
-              notFinishedCount: 0,
-            })
-          }
-          throw error
-        } finally {
-          events?.onCardGenerationFinished(runId, projectId, failed)
-        }
-      }
-    },
   }
-}
-
-function generationActivity(
-  title: string,
-  detail: string,
-): LearningGenerationActivity {
-  return { title, detail }
-}
-
-function getCardGenerationOutcome(
-  results: Awaited<ReturnType<typeof generateCardsParallel>>,
-): 'success' | 'partial' | 'failed' {
-  if (
-    results.length === 0 ||
-    results.every((result) => result.status === 'failed')
-  ) {
-    return 'failed'
-  }
-  return results.some(
-    (result) => result.status === 'partial' || result.status === 'failed',
-  )
-    ? 'partial'
-    : 'success'
-}
-
-function showCardGenerationToast({
-  host,
-  projectGeneration,
-  projectId,
-  runId,
-  outcome,
-  cardCount,
-  generatedCount,
-  skippedCount,
-  notFinishedCount,
-}: {
-  host: YoloModuleHostApiV1
-  projectGeneration?: LearningUiProjectGenerationPort
-  projectId: string
-  runId: string
-  outcome: 'success' | 'partial' | 'failed'
-  cardCount: number
-  generatedCount: number
-  skippedCount: number
-  notFinishedCount: number
-}): void {
-  const t = createHostLearningTranslation(host)
-  const mode = outcome === 'success' ? '学习' : '浏览'
-  const copy =
-    outcome === 'success'
-      ? skippedCount > 0
-        ? {
-            tone: 'success' as const,
-            title: t('cards.generationCompleteTitle'),
-            message: t('cards.generationExistingSummary')
-              .replace('{chapters}', String(generatedCount + skippedCount))
-              .replace('{cards}', String(cardCount)),
-          }
-        : {
-            tone: 'success' as const,
-            title: t('cards.generationCompleteTitle'),
-            message: t('cards.generationCompleteSummary')
-              .replace('{chapters}', String(generatedCount))
-              .replace('{cards}', String(cardCount)),
-          }
-      : outcome === 'partial'
-        ? {
-            tone: 'warning' as const,
-            title: t('cards.generationPartialTitle'),
-            message: t('cards.generationPartialSummary')
-              .replace('{cards}', String(cardCount))
-              .replace('{count}', String(notFinishedCount)),
-          }
-        : {
-            tone: 'error' as const,
-            title: t('cards.generationFailedTitle'),
-            message: t('cards.generationFailedSummary'),
-          }
-  host.ui.showActionToast({
-    id: `card-generation-${runId}`,
-    ...copy,
-    actionLabel:
-      outcome === 'success' ? t('cards.startLearning') : t('cards.browseCards'),
-    dismissLabel: t('common.close'),
-    onAction: () => projectGeneration?.openProjectCards?.(projectId, mode),
-  })
-}
-
-async function moveStagedReferences({
-  host,
-  root,
-  stagingDir,
-  projectPath,
-}: {
-  host: YoloModuleHostApiV1
-  root: string
-  stagingDir: string
-  projectPath: string
-}): Promise<string> {
-  assertPathInRoot(stagingDir, root, '_staging')
-  assertCurrentProjectPath(projectPath, root)
-  const referenceDir = `${projectPath}/ref`
-  await host.vault.ensureFolder(referenceDir)
-  for (const entry of host.vault.listChildren(stagingDir)) {
-    if (entry.kind === 'file') {
-      await host.vault.renamePath(entry.path, `${referenceDir}/${entry.name}`)
-    }
-  }
-  const removed = await host.vault.removeEmptyFolderExact(stagingDir)
-  if (!removed && host.vault.getEntry(stagingDir)?.kind === 'folder') {
-    throw new Error(`Staging directory is not empty: ${stagingDir}`)
-  }
-  return referenceDir
 }
 
 function scopedReferenceWorkspace(stagingDir: string, root: string) {
   assertPathInRoot(stagingDir, root, '_staging')
   return { enabled: true, include: [stagingDir], exclude: [] }
-}
-
-function lastMarkdownHeading(markdown: string): string | undefined {
-  return [...markdown.matchAll(/^##\s+(.+?)(?:\s+<!--|$)/gm)]
-    .at(-1)?.[1]
-    ?.trim()
-}
-
-function assertCurrentProjectPath(path: string, root: string): void {
-  assertPathInRoot(path, root)
-  if (normalizePath(path) === normalizePath(root)) {
-    throw new Error(`Expected a project below Learning root: ${path}`)
-  }
-}
-
-function assertPathInRoot(path: string, root: string, child?: string): void {
-  const normalizedPath = normalizePath(path)
-  const normalizedRoot = normalizePath(root)
-  const requiredRoot = child ? `${normalizedRoot}/${child}` : normalizedRoot
-  if (
-    normalizedPath !== requiredRoot &&
-    !normalizedPath.startsWith(`${requiredRoot}/`)
-  ) {
-    throw new Error(`Path is outside the current Learning root: ${path}`)
-  }
-}
-
-function normalizePath(path: string): string {
-  const segments: string[] = []
-  for (const segment of path.trim().replace(/\\/g, '/').split('/')) {
-    if (!segment || segment === '.') continue
-    if (segment === '..') {
-      if (segments.length === 0) throw new Error(`Invalid vault path: ${path}`)
-      segments.pop()
-    } else {
-      segments.push(segment)
-    }
-  }
-  if (segments.length === 0) throw new Error(`Invalid vault path: ${path}`)
-  return segments.join('/')
 }
