@@ -129,4 +129,21 @@ describe('Claude desktop process support', () => {
       'C:\\Users\\me\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\cli.js',
     )
   })
+
+  it('does not select the extensionless Windows npm shim over the package entrypoint', async () => {
+    const support = await resolveClaudeProcessSupport({
+      loadEnvironment: async () => ({
+        Path: 'C:\\nvm4w\\node_global',
+      }),
+      platform: 'win32',
+      homedir: 'C:\\Users\\me',
+      fileExists: async (path) =>
+        path ===
+        'C:\\nvm4w\\node_global\\node_modules\\@anthropic-ai\\claude-code\\cli.js',
+    })
+
+    expect(support.cliPath).toBe(
+      'C:\\nvm4w\\node_global\\node_modules\\@anthropic-ai\\claude-code\\cli.js',
+    )
+  })
 })
