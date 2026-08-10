@@ -262,7 +262,9 @@ const mergeJsonDirectoryPreferNewer = async (
     // pick it up instead of dropping data.
     const safeRemoveSource = async (): Promise<void> => {
       const sourceStatNow = await app.vault.adapter.stat(filePath)
-      if ((sourceStatNow?.mtime ?? null) !== (sourceStatBefore?.mtime ?? null)) {
+      if (
+        (sourceStatNow?.mtime ?? null) !== (sourceStatBefore?.mtime ?? null)
+      ) {
         return
       }
       await removePathIfExists(app, filePath)
@@ -292,7 +294,12 @@ const mergeJsonDirectoryPreferNewer = async (
   for (const folderPath of listing.folders) {
     const relativePath = folderPath.slice(sourceDir.length + 1)
     const nextTargetDir = normalizePath(`${targetDir}/${relativePath}`)
-    await mergeJsonDirectoryPreferNewer(app, folderPath, nextTargetDir, transform)
+    await mergeJsonDirectoryPreferNewer(
+      app,
+      folderPath,
+      nextTargetDir,
+      transform,
+    )
   }
 
   await removePathIfExists(app, sourceDir)
@@ -543,7 +550,8 @@ const ensureUserDataRootDirUnlocked = async (
     // created — this rewrite is what prevents that.
     const transform: TextTransform | undefined =
       subdirName === YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME
-        ? (content) => rewriteAnkiJournalSrsPath(content, jsonDbRoot, userDataRoot)
+        ? (content) =>
+            rewriteAnkiJournalSrsPath(content, jsonDbRoot, userDataRoot)
         : undefined
     try {
       await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
@@ -800,7 +808,12 @@ const relocateJsonDbRootDir = async ({
   try {
     if (await app.vault.adapter.exists(targetDir)) {
       if (preferNewerMerge) {
-        await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+        await mergeJsonDirectoryPreferNewer(
+          app,
+          sourceDir,
+          targetDir,
+          transform,
+        )
       } else {
         await mergeJsonDirectory(app, sourceDir, targetDir)
       }

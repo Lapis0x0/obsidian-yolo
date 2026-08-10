@@ -612,8 +612,7 @@ const SEARCH_MAX_RESULTS_CAP = 100
 const SEARCH_USAGE = 'usage: search [-n N] "query" [path]\n'
 
 function formatSearchLine(entry: BashSearchResultEntry): string {
-  const abs =
-    entry.path === '' ? VAULT_MOUNT : `${VAULT_MOUNT}/${entry.path}`
+  const abs = entry.path === '' ? VAULT_MOUNT : `${VAULT_MOUNT}/${entry.path}`
   if (entry.kind === 'dir') return `${abs}/`
   if (entry.kind === 'file') return abs
   const loc =
@@ -694,7 +693,8 @@ function createSearchCommand(
         }
       }
       // Root and the vault mount itself both mean "whole vault".
-      scopePath = c.kind === 'vault' && c.relative !== '' ? c.relative : undefined
+      scopePath =
+        c.kind === 'vault' && c.relative !== '' ? c.relative : undefined
     }
 
     const outcome = await search({ query, scopePath, maxResults })

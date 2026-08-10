@@ -1,10 +1,6 @@
 import cx from 'clsx'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {
   memo,

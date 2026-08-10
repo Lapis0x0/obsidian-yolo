@@ -119,24 +119,25 @@ describe('bash-engine search command', () => {
   })
 
   it('passes query with default maxResults and formats grep-style lines', async () => {
-    const search = jest.fn<Promise<SearchOutcome>, [Parameters<SearchCallback>[0]]>(
-      async () => ({
-        status: 'success',
-        results: [
-          {
-            kind: 'content',
-            path: 'notes/a.md',
-            startLine: 3,
-            endLine: 5,
-            snippet: 'hello  world',
-          },
-          { kind: 'content', path: 'notes/b.md', startLine: 7, snippet: 's' },
-          { kind: 'content', path: 'docs/c.pdf', page: 4, snippet: 'p' },
-          { kind: 'file', path: 'notes/a.md' },
-          { kind: 'dir', path: 'notes' },
-        ],
-      }),
-    )
+    const search = jest.fn<
+      Promise<SearchOutcome>,
+      [Parameters<SearchCallback>[0]]
+    >(async () => ({
+      status: 'success',
+      results: [
+        {
+          kind: 'content',
+          path: 'notes/a.md',
+          startLine: 3,
+          endLine: 5,
+          snippet: 'hello  world',
+        },
+        { kind: 'content', path: 'notes/b.md', startLine: 7, snippet: 's' },
+        { kind: 'content', path: 'docs/c.pdf', page: 4, snippet: 'p' },
+        { kind: 'file', path: 'notes/a.md' },
+        { kind: 'dir', path: 'notes' },
+      ],
+    }))
     const session = createSession(search)
 
     const result = await session.exec('search "hello world"')
@@ -161,9 +162,13 @@ describe('bash-engine search command', () => {
   })
 
   it('parses -n and rejects invalid counts', async () => {
-    const search = jest.fn<Promise<SearchOutcome>, [Parameters<SearchCallback>[0]]>(
-      async () => ({ status: 'success', results: [{ kind: 'file', path: 'a.md' }] }),
-    )
+    const search = jest.fn<
+      Promise<SearchOutcome>,
+      [Parameters<SearchCallback>[0]]
+    >(async () => ({
+      status: 'success',
+      results: [{ kind: 'file', path: 'a.md' }],
+    }))
     const session = createSession(search)
 
     expect((await session.exec('search -n 5 topic')).exitCode).toBe(0)
@@ -178,9 +183,13 @@ describe('bash-engine search command', () => {
   })
 
   it('resolves the path argument to a vault-relative scope', async () => {
-    const search = jest.fn<Promise<SearchOutcome>, [Parameters<SearchCallback>[0]]>(
-      async () => ({ status: 'success', results: [{ kind: 'file', path: 'x' }] }),
-    )
+    const search = jest.fn<
+      Promise<SearchOutcome>,
+      [Parameters<SearchCallback>[0]]
+    >(async () => ({
+      status: 'success',
+      results: [{ kind: 'file', path: 'x' }],
+    }))
     const session = createSession(search)
 
     // cwd defaults to /vault; trailing slash must not leak into the scope.
@@ -202,9 +211,10 @@ describe('bash-engine search command', () => {
   })
 
   it('requires a query and rejects extra arguments', async () => {
-    const search = jest.fn<Promise<SearchOutcome>, [Parameters<SearchCallback>[0]]>(
-      async () => ({ status: 'success', results: [] }),
-    )
+    const search = jest.fn<
+      Promise<SearchOutcome>,
+      [Parameters<SearchCallback>[0]]
+    >(async () => ({ status: 'success', results: [] }))
     const session = createSession(search)
 
     const missing = await session.exec('search')

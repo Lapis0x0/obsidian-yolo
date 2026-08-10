@@ -739,9 +739,7 @@ function AssistantToolMessageGroupItem({
     const close = (boundaryIndex: number | null) => {
       if (toolMessages.length > 0) {
         const toolCalls = toolMessages.flatMap((message) => message.toolCalls)
-        if (
-          toolCalls.length >= 2
-        ) {
+        if (toolCalls.length >= 2) {
           const bucketCounts: ToolRunSegment['bucketCounts'] = {}
           for (const call of toolCalls) {
             const bucket = getToolRunSummaryBucket(call.request)
@@ -755,8 +753,10 @@ function AssistantToolMessageGroupItem({
             bucketCounts,
             requiresUserAction: toolCalls.some(
               (call) =>
-                call.response.status === ToolCallResponseStatus.PendingApproval ||
-                call.response.status === ToolCallResponseStatus.AwaitingUserInput,
+                call.response.status ===
+                  ToolCallResponseStatus.PendingApproval ||
+                call.response.status ===
+                  ToolCallResponseStatus.AwaitingUserInput,
             ),
           })
         }

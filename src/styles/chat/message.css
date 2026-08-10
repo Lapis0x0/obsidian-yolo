@@ -826,9 +826,7 @@
  * separation from the activity timeline. */
 .yolo-assistant-group-body
   > .yolo-assistant-answer-item:not(.has-visible-reasoning) {
-  margin-top: calc(
-    var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap)
-  );
+  margin-top: calc(var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap));
 }
 
 /* A prose-bearing assistant item also creates breathing room before the next
@@ -1395,8 +1393,8 @@ button.yolo-assistant-error-card-continue:focus-visible {
 
 .yolo-assistant-tool-running-preview {
   margin-top: var(--yolo-chat-answer-gap);
-  animation: yolo-tool-activity-row-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+  animation: yolo-tool-activity-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
 }
 
 .yolo-assistant-tool-running-preview-header {
@@ -2910,8 +2908,8 @@ button.yolo-mermaid-modal-control:disabled {
   cursor: pointer;
   user-select: none;
   opacity: 0.96;
-  animation: yolo-tool-activity-row-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+  animation: yolo-tool-activity-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
 }
 
 .yolo-tool-run-summary:hover {

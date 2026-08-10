@@ -168,8 +168,7 @@ function ClaudePluginManagerModalContent({
     [installed],
   )
   const isAvailablePluginInstalled = useCallback(
-    (item: ClaudeAvailablePlugin) =>
-      installedIds.has(availablePluginKey(item)),
+    (item: ClaudeAvailablePlugin) => installedIds.has(availablePluginKey(item)),
     [installedIds],
   )
 
@@ -217,11 +216,9 @@ function ClaudePluginManagerModalContent({
             const { uninstallPlugin } = await import(
               '../../../core/cli-runtime/claude/plugin-cli'
             )
-            return uninstallPlugin(
-              item.id,
-              item.scope as ClaudePluginScope,
-              { configuredCliPath },
-            )
+            return uninstallPlugin(item.id, item.scope as ClaudePluginScope, {
+              configuredCliPath,
+            })
           })
         },
       })

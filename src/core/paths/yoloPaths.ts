@@ -152,9 +152,7 @@ export const getYoloJsonDbRootDir = (
 export const getYoloUserDataRootDir = (
   settings?: YoloSettingsLike | null,
 ): string => {
-  return normalizePath(
-    `${getYoloBaseDir(settings)}/${YOLO_USER_DATA_DIR_NAME}`,
-  )
+  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_USER_DATA_DIR_NAME}`)
 }
 
 /** True when `value` is the user-data root itself or lives inside it. */

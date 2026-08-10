@@ -130,9 +130,7 @@ class MockAdapter {
       this.lastSequencedMtime.set(path, next)
       return next
     }
-    return (
-      this.lastSequencedMtime.get(path) ?? this.mtimes.get(path) ?? 0
-    )
+    return this.lastSequencedMtime.get(path) ?? this.mtimes.get(path) ?? 0
   }
 
   async remove(path: string): Promise<void> {
@@ -1104,10 +1102,7 @@ describe('ensureUserDataRootDir', () => {
   test('migrates every managed subdirectory from the hidden root to the visible root', async () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
-    await adapter.write(
-      'YOLO/.yolo_json_db/chats/v1_abc.json',
-      '{"id":"abc"}',
-    )
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_abc.json', '{"id":"abc"}')
     await adapter.write(
       'YOLO/.yolo_json_db/learning-srs/project.json',
       '{"state":"srs"}',
@@ -1329,9 +1324,9 @@ describe('ensureUserDataRootDir', () => {
     await expect(adapter.read(sourcePath)).resolves.toBe(
       '{"id":"abc","title":"original"}',
     )
-    await expect(
-      adapter.exists('YOLO/data/chats/v1_abc.json'),
-    ).resolves.toBe(true)
+    await expect(adapter.exists('YOLO/data/chats/v1_abc.json')).resolves.toBe(
+      true,
+    )
   })
 
   test('deduplicates concurrent calls for the same root instead of migrating twice', async () => {

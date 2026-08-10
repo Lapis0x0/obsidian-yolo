@@ -4155,8 +4155,7 @@ button.yolo-assistant-selector-footer-btn:hover {
 /* ========================================
    Settings Tabs Styles
    ======================================== */
-.modal.mod-settings
-  .vertical-tab-content:has(> .yolo-settings-tabs-container) {
+.modal.mod-settings .vertical-tab-content:has(> .yolo-settings-tabs-container) {
   padding-inline: 0;
 }
 .yolo-settings-tabs-container {
@@ -4304,10 +4303,7 @@ button.yolo-assistant-selector-footer-btn:hover {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
-  width: min(
-    calc(100% - var(--size-4-4) - var(--size-4-4)),
-    700px
-  );
+  width: min(calc(100% - var(--size-4-4) - var(--size-4-4)), 700px);
   margin-inline: auto;
 }
 .yolo-settings-tabs-content::-webkit-scrollbar {
@@ -13451,9 +13447,7 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
  * separation from the activity timeline. */
 .yolo-assistant-group-body
   > .yolo-assistant-answer-item:not(.has-visible-reasoning) {
-  margin-top: calc(
-    var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap)
-  );
+  margin-top: calc(var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap));
 }
 /* A prose-bearing assistant item also creates breathing room before the next
  * activity item (tool card, summary, or thinking row). Consecutive activity
@@ -13956,8 +13950,8 @@ button.yolo-assistant-error-card-continue:focus-visible {
 }
 .yolo-assistant-tool-running-preview {
   margin-top: var(--yolo-chat-answer-gap);
-  animation: yolo-tool-activity-row-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+  animation: yolo-tool-activity-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
 }
 .yolo-assistant-tool-running-preview-header {
   cursor: default;
@@ -15309,8 +15303,8 @@ button.yolo-mermaid-modal-control:disabled {
   cursor: pointer;
   user-select: none;
   opacity: 0.96;
-  animation: yolo-tool-activity-row-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+  animation: yolo-tool-activity-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
 }
 .yolo-tool-run-summary:hover {
   background-color: transparent;
@@ -19764,11 +19758,7 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
   box-shadow: none;
 }
 button.yolo-quick-ask-continue-menu-item:focus {
-  background: color-mix(
-    in srgb,
-    var(--interactive-accent) 10%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
   outline: none;
   box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
@@ -19932,8 +19922,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 .yolo-quick-ask-reasoning-select .yolo-reasoning-select:hover,
 .yolo-quick-ask-reasoning-select .yolo-reasoning-select:focus,
 .yolo-quick-ask-reasoning-select .yolo-reasoning-select:focus-visible,
-.yolo-quick-ask-reasoning-select
-  .yolo-reasoning-select[data-state='open'] {
+.yolo-quick-ask-reasoning-select .yolo-reasoning-select[data-state='open'] {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 32%,
@@ -19987,8 +19976,12 @@ button.yolo-quick-ask-continue-menu-item:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select:hover,
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select:focus,
+.yolo-quick-ask-toolbar
+  .yolo-quick-ask-mode-select
+  .yolo-chat-mode-select:hover,
+.yolo-quick-ask-toolbar
+  .yolo-quick-ask-mode-select
+  .yolo-chat-mode-select:focus,
 .yolo-quick-ask-toolbar
   .yolo-quick-ask-mode-select
   .yolo-chat-mode-select:focus-visible,

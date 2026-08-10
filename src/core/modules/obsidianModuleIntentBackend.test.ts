@@ -300,10 +300,7 @@ describe('createObsidianModuleIntentBackend', () => {
     harness.store.subscribeAll(listener)
 
     harness.setBaseDir('New', false)
-    harness.vault.emit(
-      'create',
-      'New/data/module-intent-v1/discovered.json',
-    )
+    harness.vault.emit('create', 'New/data/module-intent-v1/discovered.json')
 
     expect(listener).toHaveBeenCalledWith('discovered')
   })
@@ -367,10 +364,7 @@ describe('createObsidianModuleIntentBackend', () => {
       'modify',
       'Active/data/module-intent-v1/nested/notes.json',
     )
-    harness.vault.emit(
-      'modify',
-      'Active/data/module-intent-v1/search.json',
-    )
+    harness.vault.emit('modify', 'Active/data/module-intent-v1/search.json')
     harness.vault.emit('rename', 'other.json', target)
     harness.vault.emit('rename', target, 'other.json')
     harness.vault.emit('rename', 'new.json', 'old.json')
@@ -399,14 +393,8 @@ describe('createObsidianModuleIntentBackend', () => {
     harness.store.subscribe('notes', listener)
 
     harness.setBaseDir('New', false)
-    harness.vault.emit(
-      'modify',
-      'New/data/module-intent-v1/notes.json',
-    )
-    harness.vault.emit(
-      'modify',
-      'Old/data/module-intent-v1/notes.json',
-    )
+    harness.vault.emit('modify', 'New/data/module-intent-v1/notes.json')
+    harness.vault.emit('modify', 'Old/data/module-intent-v1/notes.json')
 
     expect(listener).toHaveBeenCalledTimes(1)
   })
@@ -418,10 +406,7 @@ describe('createObsidianModuleIntentBackend', () => {
 
     unsubscribe()
     unsubscribe()
-    harness.vault.emit(
-      'modify',
-      'YOLO/data/module-intent-v1/notes.json',
-    )
+    harness.vault.emit('modify', 'YOLO/data/module-intent-v1/notes.json')
     harness.setBaseDir('Other')
 
     expect(harness.vault.removed).toHaveLength(4)
@@ -437,10 +422,7 @@ describe('createObsidianModuleIntentBackend', () => {
     const unsubscribe = harness.store.subscribe('notes', listener)
 
     expect(unsubscribe).toThrow('offref failed')
-    harness.vault.emit(
-      'modify',
-      'YOLO/data/module-intent-v1/notes.json',
-    )
+    harness.vault.emit('modify', 'YOLO/data/module-intent-v1/notes.json')
     harness.setBaseDir('Other')
     expect(listener).not.toHaveBeenCalled()
     expect(harness.vault.removed).toHaveLength(0)
@@ -471,10 +453,7 @@ describe('createObsidianModuleIntentBackend', () => {
       message: 'registration failed',
     })
     expect(harness.vault.removed).toHaveLength(0)
-    harness.vault.emit(
-      'modify',
-      'YOLO/data/module-intent-v1/notes.json',
-    )
+    harness.vault.emit('modify', 'YOLO/data/module-intent-v1/notes.json')
     expect(listener).not.toHaveBeenCalled()
 
     expect(() => registrationError?.cleanup()).not.toThrow()

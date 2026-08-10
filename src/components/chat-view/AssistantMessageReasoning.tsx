@@ -355,7 +355,8 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
                   Thought
                 </span>
                 <span className="yolo-assistant-message-metadata-label-detail">
-                  {' '}for {settledDurationSeconds}s
+                  {' '}
+                  for {settledDurationSeconds}s
                 </span>
               </>
             ) : (

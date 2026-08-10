@@ -2,8 +2,7 @@
    Settings Tabs Styles
    ======================================== */
 
-.modal.mod-settings
-  .vertical-tab-content:has(> .yolo-settings-tabs-container) {
+.modal.mod-settings .vertical-tab-content:has(> .yolo-settings-tabs-container) {
   padding-inline: 0;
 }
 
@@ -166,10 +165,7 @@
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
-  width: min(
-    calc(100% - var(--size-4-4) - var(--size-4-4)),
-    700px
-  );
+  width: min(calc(100% - var(--size-4-4) - var(--size-4-4)), 700px);
   margin-inline: auto;
 }
 
