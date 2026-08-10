@@ -14,7 +14,7 @@ import type {
 
 declare global {
   const yolo: YoloModuleRuntimeRegistration
-  type YoloModuleHostApiVersion = '1.4.0'
+  type YoloModuleHostApiVersion = '1.6.0'
   type YoloModuleHostApiV1 = YoloHostApiV1
   type YoloModuleHostActionToastV1 = YoloModuleActionToastV1
   type YoloModuleHostI18nV1 = YoloModuleI18nV1

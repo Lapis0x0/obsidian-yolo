@@ -1,9 +1,17 @@
+import { v4 as uuidv4 } from 'uuid'
+
 import type { ChatAssistantMessage, ChatUserMessage } from '../../types/chat'
+import type { McpTool } from '../../types/mcp.types'
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+} from '../../types/tool-call.types'
 import type {
   YoloAgentApi,
   YoloAgentEvent,
   YoloAgentRunRequest,
 } from '../agent/agent-api'
+import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import { getLocalFileToolServerName } from '../mcp/localFileToolNames'
 import { getToolName } from '../mcp/tool-name-utils'
 
@@ -15,6 +23,7 @@ import type {
   YoloModuleAgentEventV1,
   YoloModuleAgentMessageV1,
   YoloModuleAgentRequestV1,
+  YoloModuleAgentToolV1,
   YoloModuleAgentV1,
 } from './types'
 
@@ -58,6 +67,9 @@ const TOOLS_BY_CAPABILITY: Readonly<
   'vault-read': Object.freeze([TOOL_NAMES.bash]),
   'vault-write': Object.freeze([TOOL_NAMES.bash, TOOL_NAMES.edit]),
 })
+
+const MODULE_AGENT_TOOL_NAME_RE = /^[a-z][a-z0-9_]*$/
+const MAX_MODULE_AGENT_TOOLS = 16
 
 export const UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER: ModuleAgentCapabilityProviderV1 =
   Object.freeze({
@@ -136,6 +148,7 @@ export class CoreModuleAgentCapabilityProvider
     let coreDone = false
     let iterator: AsyncIterator<YoloAgentEvent> | null = null
     let debug: ModuleAgentDebugCollector | null = null
+    const toolContext = buildModuleToolRuntimeContext(request, moduleId)
     try {
       assertAvailable()
       if (controller.signal.aborted) {
@@ -160,7 +173,7 @@ export class CoreModuleAgentCapabilityProvider
         return
       }
       const coreStream = agent.stream(
-        mapRequest(request, moduleId, controller.signal),
+        mapRequest(request, moduleId, controller.signal, toolContext),
       )
       if (this.options.isDebugCaptureEnabled()) {
         debug = new ModuleAgentDebugCollector(moduleId, request)
@@ -183,7 +196,7 @@ export class CoreModuleAgentCapabilityProvider
           yield Object.freeze({ type: 'aborted' })
           return
         }
-        const mapped = mapEvent(event)
+        const mapped = mapEvent(event, toolContext.publicNameByFullName)
         if (!mapped) continue
         debug?.record(mapped)
         const isTerminal =
@@ -208,7 +221,10 @@ export class CoreModuleAgentCapabilityProvider
         } else {
           const mapped = Object.freeze({
             type: 'error',
-            message: sanitizeErrorMessage(describeError(error)),
+            message: sanitizeErrorMessage(
+              describeError(error),
+              toolContext.publicNameByFullName,
+            ),
           }) satisfies YoloModuleAgentEventV1
           debug?.record(mapped)
           yield mapped
@@ -237,6 +253,7 @@ function snapshotRequest(
   const capability = request.capability
   const workspaceScope = request.workspaceScope
   const activity = request.activity
+  const tools = request.tools
   const signal = request.signal
   if (prompt !== undefined && typeof prompt !== 'string') {
     throw new TypeError('Module agent prompt must be a string')
@@ -290,6 +307,7 @@ function snapshotRequest(
   ) {
     throw new Error('Module agent messages must end with a user message')
   }
+  const snappedTools = tools === undefined ? undefined : snapshotTools(tools)
   return Object.freeze({
     ...(prompt !== undefined ? { prompt } : {}),
     ...(snappedMessages !== undefined
@@ -302,7 +320,63 @@ function snapshotRequest(
       ? { workspaceScope: snapshotWorkspaceScope(workspaceScope) }
       : {}),
     ...(snappedActivity !== undefined ? { activity: snappedActivity } : {}),
+    ...(snappedTools !== undefined ? { tools: snappedTools } : {}),
     ...(signal ? { signal } : {}),
+  })
+}
+
+function snapshotTools(
+  tools: NonNullable<YoloModuleAgentRequestV1['tools']>,
+): NonNullable<YoloModuleAgentRequestV1['tools']> {
+  if (!Array.isArray(tools)) {
+    throw new TypeError('Module agent tools must be an array')
+  }
+  if (tools.length > MAX_MODULE_AGENT_TOOLS) {
+    throw new Error(
+      `Module agent tools must not exceed ${MAX_MODULE_AGENT_TOOLS}`,
+    )
+  }
+  const snapped = tools.map(snapshotTool)
+  const names = new Set<string>()
+  for (const tool of snapped) {
+    if (names.has(tool.name)) {
+      throw new Error(`Module agent tool name "${tool.name}" is duplicated`)
+    }
+    names.add(tool.name)
+  }
+  return Object.freeze(snapped)
+}
+
+function snapshotTool(tool: YoloModuleAgentToolV1): YoloModuleAgentToolV1 {
+  if (!tool || typeof tool !== 'object') {
+    throw new TypeError('Module agent tool must be an object')
+  }
+  if (
+    typeof tool.name !== 'string' ||
+    !MODULE_AGENT_TOOL_NAME_RE.test(tool.name)
+  ) {
+    throw new TypeError('Module agent tool name must match ^[a-z][a-z0-9_]*$')
+  }
+  if (typeof tool.description !== 'string' || !tool.description.trim()) {
+    throw new TypeError(
+      'Module agent tool description must be a non-empty string',
+    )
+  }
+  if (
+    !tool.inputSchema ||
+    typeof tool.inputSchema !== 'object' ||
+    Array.isArray(tool.inputSchema)
+  ) {
+    throw new TypeError('Module agent tool input schema must be an object')
+  }
+  if (typeof tool.handler !== 'function') {
+    throw new TypeError('Module agent tool handler must be a function')
+  }
+  return Object.freeze({
+    name: tool.name,
+    description: tool.description,
+    inputSchema: tool.inputSchema,
+    handler: tool.handler,
   })
 }
 
@@ -381,6 +455,7 @@ function mapRequest(
   request: YoloModuleAgentRequestV1,
   moduleId: string,
   abortSignal: AbortSignal,
+  toolContext: ModuleToolRuntimeContext,
 ): YoloAgentRunRequest {
   return {
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
@@ -391,6 +466,9 @@ function mapRequest(
     systemPromptOverride: request.systemPrompt,
     tools: {
       allowedToolNames: [...TOOLS_BY_CAPABILITY[request.capability]],
+      ...(toolContext.inProcessServer
+        ? { inProcessServer: toolContext.inProcessServer }
+        : {}),
     },
     bashReadOnly: request.capability === 'vault-read',
     ...(request.workspaceScope
@@ -432,7 +510,10 @@ function mapMessage(
   return { role: 'assistant', id: message.id, content: message.content }
 }
 
-function mapEvent(event: YoloAgentEvent): YoloModuleAgentEventV1 | null {
+function mapEvent(
+  event: YoloAgentEvent,
+  moduleToolNameByFullName: ReadonlyMap<string, string>,
+): YoloModuleAgentEventV1 | null {
   switch (event.type) {
     case 'state':
       return event.status === 'aborted'
@@ -447,7 +528,7 @@ function mapEvent(event: YoloAgentEvent): YoloModuleAgentEventV1 | null {
     case 'tool':
       return Object.freeze({
         type: 'tool',
-        name: publicToolName(event.name),
+        name: publicToolName(event.name, moduleToolNameByFullName),
         status: event.status,
         ...(event.arguments
           ? { arguments: Object.freeze({ ...event.arguments }) }
@@ -458,15 +539,85 @@ function mapEvent(event: YoloAgentEvent): YoloModuleAgentEventV1 | null {
     case 'error':
       return Object.freeze({
         type: 'error',
-        message: sanitizeErrorMessage(event.message),
+        message: sanitizeErrorMessage(event.message, moduleToolNameByFullName),
       })
   }
 }
 
-function publicToolName(name: string): string {
+function publicToolName(
+  name: string,
+  moduleToolNameByFullName: ReadonlyMap<string, string>,
+): string {
   if (name === TOOL_NAMES.bash) return 'vault.bash'
   if (name === TOOL_NAMES.edit) return 'vault.edit'
-  return 'unknown'
+  return moduleToolNameByFullName.get(name) ?? 'unknown'
+}
+
+/**
+ * Per-run context for a module's own custom tools (`request.tools`): the
+ * in-process server to hand to `agent.stream` (undefined when the request
+ * declares no tools) and a full-name -> bare-name map used to make module
+ * tools identifiable (not "unknown"/redacted) in events and error messages.
+ */
+type ModuleToolRuntimeContext = Readonly<{
+  inProcessServer?: Readonly<{ name: string; server: InProcessToolServer }>
+  publicNameByFullName: ReadonlyMap<string, string>
+}>
+
+function buildModuleToolRuntimeContext(
+  request: YoloModuleAgentRequestV1,
+  moduleId: string,
+): ModuleToolRuntimeContext {
+  const tools = request.tools
+  if (!tools || tools.length === 0) {
+    return Object.freeze({ publicNameByFullName: new Map() })
+  }
+  // Unique per call: guards against name collisions if the same module ever
+  // has more than one tool-bearing run in flight (registerInProcessServer
+  // throws on a duplicate server name).
+  const serverName = `module-${moduleId}-${uuidv4()}`
+  const publicNameByFullName = new Map(
+    tools.map((tool) => [getToolName(serverName, tool.name), tool.name]),
+  )
+  return Object.freeze({
+    inProcessServer: Object.freeze({
+      name: serverName,
+      server: createModuleToolServer(tools),
+    }),
+    publicNameByFullName,
+  })
+}
+
+function createModuleToolServer(
+  tools: readonly YoloModuleAgentToolV1[],
+): InProcessToolServer {
+  const byName = new Map(tools.map((tool) => [tool.name, tool]))
+  return {
+    listTools: (): McpTool[] =>
+      tools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: tool.inputSchema as McpTool['inputSchema'],
+      })),
+    callTool: async ({ toolName, args }): Promise<ToolCallResponse> => {
+      const tool = byName.get(toolName)
+      if (!tool) {
+        throw new Error(`Module tool "${toolName}" is not registered`)
+      }
+      const result = await tool.handler(args)
+      if (!result || typeof result.content !== 'string') {
+        throw new TypeError(
+          `Module tool "${toolName}" must resolve with a string content result`,
+        )
+      }
+      return result.isError
+        ? { status: ToolCallResponseStatus.Error, error: result.content }
+        : {
+            status: ToolCallResponseStatus.Success,
+            data: { type: 'text', text: result.content },
+          }
+    },
+  }
 }
 
 function isAbortSignal(value: unknown): value is AbortSignal {
@@ -483,8 +634,14 @@ function describeError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-function sanitizeErrorMessage(message: string): string {
-  return message.replace(/[A-Za-z0-9_-]+__[A-Za-z0-9_-]+/g, 'internal tool')
+function sanitizeErrorMessage(
+  message: string,
+  moduleToolNameByFullName: ReadonlyMap<string, string>,
+): string {
+  return message.replace(
+    /[A-Za-z0-9_-]+__[A-Za-z0-9_-]+/g,
+    (match) => moduleToolNameByFullName.get(match) ?? 'internal tool',
+  )
 }
 
 type AbortRace<T> =

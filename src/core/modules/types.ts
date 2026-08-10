@@ -89,6 +89,24 @@ export type YoloModuleAgentActivityV1 = Readonly<{
   detail?: string
 }>
 
+export type YoloModuleAgentToolResultV1 = Readonly<{
+  /** Text returned to the model. */
+  content: string
+  /** True when the call failed (e.g. validation) — the model should self-correct. */
+  isError?: boolean
+}>
+
+export type YoloModuleAgentToolV1 = Readonly<{
+  /** Must match `^[a-z][a-z0-9_]*$` and be unique within the request's `tools`. */
+  name: string
+  description: string
+  /** JSON Schema object describing the tool's input. */
+  inputSchema: Record<string, unknown>
+  handler: (
+    input: Record<string, unknown>,
+  ) => Promise<YoloModuleAgentToolResultV1> | YoloModuleAgentToolResultV1
+}>
+
 export type YoloModuleAgentRequestV1 = Readonly<{
   prompt?: string
   messages?: readonly YoloModuleAgentMessageV1[]
@@ -101,6 +119,11 @@ export type YoloModuleAgentRequestV1 = Readonly<{
     exclude: readonly string[]
   }>
   activity?: YoloModuleAgentActivityV1
+  /**
+   * Custom tools scoped to this run only. Registered as an in-process MCP
+   * server for the run's lifetime and torn down when it settles. Up to 16.
+   */
+  tools?: readonly YoloModuleAgentToolV1[]
   signal?: AbortSignal
 }>
 
