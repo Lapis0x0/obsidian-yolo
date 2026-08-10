@@ -108,8 +108,7 @@ const getClaudeCandidates = ({
   const pathEntries = getPathValue(env, platform)
     .split(pathSeparator)
     .filter(Boolean)
-  const executableNames =
-    platform === 'win32' ? ['claude.exe'] : ['claude']
+  const executableNames = platform === 'win32' ? ['claude.exe'] : ['claude']
   const rawConfiguredPath = configuredCliPath?.trim()
   const configuredPath =
     rawConfiguredPath === '~'
