@@ -65,6 +65,10 @@
   position: fixed;
   inset: 0;
   pointer-events: none;
+  /* Popovers are transient surfaces anchored to the panel — they must stack
+     above it (.yolo-quick-ask-overlay is z-index: 1), or the panel's shadow
+     paints over their top edge. */
+  z-index: 2;
 }
 
 /* Radix's Portal wraps its child in its own div before mounting it here, so

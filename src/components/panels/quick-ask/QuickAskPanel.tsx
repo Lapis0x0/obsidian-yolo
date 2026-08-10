@@ -106,6 +106,8 @@ type QuickAskMode = Extract<
   'ask' | 'agent' | 'continue'
 >
 
+type QuickAskMenuId = 'assistant' | 'model' | 'reasoning' | 'mode' | 'mention'
+
 const quickAskRenderVersionObjectIds = new WeakMap<object, number>()
 let nextQuickAskRenderVersionObjectId = 1
 
@@ -276,10 +278,29 @@ export function QuickAskPanel({
       selectionHighlightController.updateVisualByOwner('quickask', 'selection')
     }
   }, [isStreaming])
-  const [isAssistantMenuOpen, setIsAssistantMenuOpen] = useState(false)
-  const [isModelMenuOpen, setIsModelMenuOpen] = useState(false)
-  const [isModeMenuOpen, setIsModeMenuOpen] = useState(false)
-  const [isMentionMenuOpen, setIsMentionMenuOpen] = useState(false)
+  // Single source of truth for which transient menus are open. Each menu
+  // reports open/close under its own id, so a close event from one menu can
+  // never stomp another menu's open state regardless of event ordering.
+  const [openMenus, setOpenMenus] = useState<ReadonlySet<QuickAskMenuId>>(
+    () => new Set(),
+  )
+  const setMenuOpen = useCallback((menu: QuickAskMenuId, open: boolean) => {
+    setOpenMenus((prev) => {
+      if (prev.has(menu) === open) return prev
+      const next = new Set(prev)
+      if (open) {
+        next.add(menu)
+      } else {
+        next.delete(menu)
+      }
+      return next
+    })
+  }, [])
+  const isAssistantMenuOpen = openMenus.has('assistant')
+  const isModelMenuOpen = openMenus.has('model')
+  const isReasoningMenuOpen = openMenus.has('reasoning')
+  const isModeMenuOpen = openMenus.has('mode')
+  const isMentionMenuOpen = openMenus.has('mention')
   const [mentionMenuPlacement, setMentionMenuPlacement] = useState<
     'top' | 'bottom'
   >('top')
@@ -491,15 +512,14 @@ export function QuickAskPanel({
   }, [isContinueMode, settings.continuationOptions?.smartSpaceQuickActions, t])
 
   // Preset menu floats below the composer as a Quick-Ask-style popover; it is
-  // an alternative to typing, so it yields as soon as the user starts writing
-  // an instruction (or the mention menu needs the space).
+  // the idle-state default, so it yields as soon as the user starts writing
+  // an instruction or opens any other menu.
   const showContinueActionsMenu =
     isContinueMode &&
     continueQuickActions.length > 0 &&
     !isStreaming &&
     inputText.length === 0 &&
-    !isMentionMenuOpen &&
-    !isModeMenuOpen
+    openMenus.size === 0
 
   const focusFirstContinueAction = useCallback(() => {
     const ownerDocument = modeTriggerRef.current?.ownerDocument ?? document
@@ -694,26 +714,22 @@ export function QuickAskPanel({
 
   // Notify overlay state changes
   useEffect(() => {
-    onOverlayStateChange?.(
-      isAssistantMenuOpen ||
-        isModelMenuOpen ||
-        isModeMenuOpen ||
-        isMentionMenuOpen,
-    )
-  }, [
-    isAssistantMenuOpen,
-    isModelMenuOpen,
-    isModeMenuOpen,
-    isMentionMenuOpen,
-    onOverlayStateChange,
-  ])
+    onOverlayStateChange?.(openMenus.size > 0)
+  }, [openMenus, onOverlayStateChange])
 
   // Arrow keys focus the first toolbar control (mode); Enter on the trigger
   // will open the menu.
   const handlePanelKeyDown = useCallback(
     (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.defaultPrevented) return
-      if (isAssistantMenuOpen || isModelMenuOpen || isModeMenuOpen) return
+      if (
+        isAssistantMenuOpen ||
+        isModelMenuOpen ||
+        isReasoningMenuOpen ||
+        isModeMenuOpen
+      ) {
+        return
+      }
       const active = document.activeElement
       if (
         (active && assistantTriggerRef.current?.contains(active)) ||
@@ -728,7 +744,7 @@ export function QuickAskPanel({
       event.stopPropagation()
       modeTriggerRef.current?.focus()
     },
-    [isAssistantMenuOpen, isModelMenuOpen, isModeMenuOpen],
+    [isAssistantMenuOpen, isModelMenuOpen, isReasoningMenuOpen, isModeMenuOpen],
   )
 
   // When focus在模式按钮但菜单未展开时，ArrowUp 将焦点送回输入框（兜底）
@@ -753,14 +769,14 @@ export function QuickAskPanel({
       if (event.key !== 'Escape') return
       event.preventDefault()
       event.stopPropagation()
-      setIsAssistantMenuOpen(false)
+      setMenuOpen('assistant', false)
       requestAnimationFrame(() => {
         messageInputRef.current?.focus()
       })
     }
     window.addEventListener('keydown', handleMenuEscape, true)
     return () => window.removeEventListener('keydown', handleMenuEscape, true)
-  }, [isAssistantMenuOpen])
+  }, [isAssistantMenuOpen, setMenuOpen])
 
   // Get model client
   const modelClient = useMemo((): ReturnType<
@@ -1572,10 +1588,10 @@ export function QuickAskPanel({
       if (event.key !== 'Escape') return
       if (isAssistantMenuOpen) {
         event.preventDefault()
-        setIsAssistantMenuOpen(false)
+        setMenuOpen('assistant', false)
         return
       }
-      if (isModelMenuOpen || isModeMenuOpen) {
+      if (isModelMenuOpen || isReasoningMenuOpen || isModeMenuOpen) {
         // 交给下拉自身处理关闭，避免误关闭面板
         return
       }
@@ -1594,9 +1610,11 @@ export function QuickAskPanel({
     abortStream,
     isAssistantMenuOpen,
     isModelMenuOpen,
+    isReasoningMenuOpen,
     isModeMenuOpen,
     isStreaming,
     onClose,
+    setMenuOpen,
   ])
 
   // Drag handling
@@ -2136,7 +2154,7 @@ export function QuickAskPanel({
                     }
                   }}
                   onMentionMenuToggle={(open) => {
-                    setIsMentionMenuOpen(open)
+                    setMenuOpen('mention', open)
                     if (open) updateMentionMenuPlacement()
                   }}
                   mentionMenuPlacement={mentionMenuPlacement}
@@ -2165,7 +2183,7 @@ export function QuickAskPanel({
               <div className="yolo-quick-ask-toolbar-left">
                 <DropdownMenu.Root
                   open={isAssistantMenuOpen}
-                  onOpenChange={setIsAssistantMenuOpen}
+                  onOpenChange={(open) => setMenuOpen('assistant', open)}
                 >
                   <DropdownMenu.Trigger asChild>
                     <button
@@ -2217,11 +2235,10 @@ export function QuickAskPanel({
                     variant="default"
                     minWidth={200}
                     maxWidth={300}
-                    side="top"
+                    side="bottom"
                     align="center"
                     sideOffset={12}
                     collisionPadding={8}
-                    avoidCollisions={false}
                     onCloseAutoFocus={(e) => e.preventDefault()}
                   >
                     <AssistantSelectMenu
@@ -2233,12 +2250,12 @@ export function QuickAskPanel({
                           ...settings,
                           quickAskAssistantId: assistant?.id,
                         })
-                        setIsAssistantMenuOpen(false)
+                        setMenuOpen('assistant', false)
                         requestAnimationFrame(() => {
                           messageInputRef.current?.focus()
                         })
                       }}
-                      onClose={() => setIsAssistantMenuOpen(false)}
+                      onClose={() => setMenuOpen('assistant', false)}
                       compact
                     />
                   </YoloDropdownContent>
@@ -2258,7 +2275,7 @@ export function QuickAskPanel({
                         : settings.chatModelId
                     }
                     container={popoverPortalHost ?? undefined}
-                    onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
+                    onMenuOpenChange={(open) => setMenuOpen('model', open)}
                     onChange={(modelId) => {
                       // reasoningLevel is re-derived by the model-change
                       // effect above (remembered level for the new model,
@@ -2284,7 +2301,7 @@ export function QuickAskPanel({
                       if (isMenuOpen) {
                         if (event.key === 'Escape') {
                           event.preventDefault()
-                          setIsModelMenuOpen(false)
+                          setMenuOpen('model', false)
                         }
                         return
                       }
@@ -2336,7 +2353,7 @@ export function QuickAskPanel({
                       model={model ?? null}
                       value={reasoningLevel}
                       onChange={handleReasoningLevelChange}
-                      onMenuOpenChange={(open) => setIsModelMenuOpen(open)}
+                      onMenuOpenChange={(open) => setMenuOpen('reasoning', open)}
                       container={popoverPortalHost ?? undefined}
                       side="bottom"
                       align="center"
@@ -2372,7 +2389,7 @@ export function QuickAskPanel({
                         handleModeChange(nextMode)
                       }
                     }}
-                    onMenuOpenChange={(open) => setIsModeMenuOpen(open)}
+                    onMenuOpenChange={(open) => setMenuOpen('mode', open)}
                     container={popoverPortalHost ?? undefined}
                     side="bottom"
                     align="start"
@@ -2382,7 +2399,7 @@ export function QuickAskPanel({
                       if (isMenuOpen) {
                         if (event.key === 'Escape') {
                           event.preventDefault()
-                          setIsModeMenuOpen(false)
+                          setMenuOpen('mode', false)
                         }
                         return
                       }
