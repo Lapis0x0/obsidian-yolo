@@ -698,9 +698,12 @@ export type TranslationKeys = {
         grok?: string
         zhipu?: string
         exa?: string
+        anysearch?: string
       }
       fieldName?: string
       fieldApiKey?: string
+      fieldApiKeyOptional?: string
+      anysearchApiKeyDesc?: string
       fieldDepth?: string
       fieldSearchUrl?: string
       fieldScrapeUrl?: string

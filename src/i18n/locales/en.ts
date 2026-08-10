@@ -907,9 +907,13 @@ export const en: TranslationKeys = {
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
         exa: 'Exa',
+        anysearch: 'AnySearch',
       },
       fieldName: 'Display name',
       fieldApiKey: 'API key',
+      fieldApiKeyOptional: 'API key (optional)',
+      anysearchApiKeyDesc:
+        'Leave empty for anonymous access (rate-limited per IP with a daily free quota). Add a key for higher limits.',
       fieldDepth: 'Depth',
       fieldSearchUrl: 'Search URL',
       fieldScrapeUrl: 'Scrape URL',

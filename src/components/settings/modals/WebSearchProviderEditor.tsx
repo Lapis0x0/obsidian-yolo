@@ -382,6 +382,24 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
         />
       )}
 
+      {form.type === 'anysearch' && (
+        <ObsidianSetting
+          name={t(
+            'settings.webSearch.fieldApiKeyOptional',
+            'API key (optional)',
+          )}
+          desc={t(
+            'settings.webSearch.anysearchApiKeyDesc',
+            'Leave empty for anonymous access (rate-limited per IP with a daily free quota). Add a key for higher limits.',
+          )}
+        >
+          <ObsidianTextInput
+            value={form.apiKey}
+            onChange={(value) => update('apiKey', value)}
+          />
+        </ObsidianSetting>
+      )}
+
       <ObsidianSetting>
         <ObsidianButton
           text={t('common.save', 'Save')}

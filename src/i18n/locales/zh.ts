@@ -845,9 +845,13 @@ export const zh: TranslationKeys = {
         grok: 'Grok',
         zhipu: '智谱网页搜索',
         exa: 'Exa',
+        anysearch: 'AnySearch',
       },
       fieldName: '显示名称',
       fieldApiKey: 'API Key',
+      fieldApiKeyOptional: 'API Key（可选）',
+      anysearchApiKeyDesc:
+        '留空即可匿名使用（按 IP 限流，含每日免费额度）；填写 Key 可获得更高额度。',
       fieldDepth: '搜索深度',
       fieldSearchUrl: '搜索 URL',
       fieldScrapeUrl: '抓取 URL',
