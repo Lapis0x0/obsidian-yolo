@@ -2,6 +2,7 @@ import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConf
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
+  DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS,
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
@@ -102,6 +103,14 @@ describe('parseYoloSettings', () => {
     })
   })
 
+  it('provides voice defaults at the upstream schema version without a fork migration', () => {
+    const result = parseYoloSettings({ version: SETTINGS_SCHEMA_VERSION })
+
+    expect(result.contextVoiceInputOptions).toEqual(
+      DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS,
+    )
+  })
+
   it('migrates released voice v70 data through upstream additions', () => {
     const result = migrateYoloSettingsData({
       version: 70,
@@ -150,11 +159,11 @@ describe('parseYoloSettings', () => {
     })
   })
 
-  it('backfills upstream migrations for released voice v77 data', () => {
+  it('does not backfill the skipped upstream migration for released voice v77 data', () => {
     const result = migrateYoloSettingsData({
       // Voice builds published a different v76→v77 before upstream assigned
-      // that number. The final migration must recognize this persisted shape
-      // and recover upstream's skipped Tab/MCP changes without losing voice.
+      // that number. Accept the resulting gap: later upstream migrations still
+      // run normally, but the migration chain must not replay v76→v77.
       version: 77,
       assistants: [
         {
@@ -176,9 +185,7 @@ describe('parseYoloSettings', () => {
     })
 
     expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
-    expect(result.continuationOptions).toMatchObject({
-      tabCompletionOptions: { multipleCandidatesEnabled: true },
-    })
+    expect(result.continuationOptions).toBeUndefined()
     expect(result.chatOptions).toMatchObject({
       cliChatModeByRuntime: {},
       cliAgentYoloEnabledByRuntime: {},
@@ -190,23 +197,18 @@ describe('parseYoloSettings', () => {
     })
 
     const assistant = (result.assistants as Array<Record<string, unknown>>)[0]
-    expect(assistant.toolServerPreferences).toEqual({
-      remote_search: { disclosureMode: 'on_demand' },
-    })
+    expect(assistant.toolServerPreferences).toBeUndefined()
     expect(assistant.toolPreferences).toMatchObject({
       remote_search__search: {
         enabled: true,
         approvalMode: 'require_approval',
+        disclosureMode: 'on_demand',
       },
       yolo_local__bash: {
         enabled: true,
         approvalMode: 'dangerous_only',
       },
     })
-    expect(
-      (assistant.toolPreferences as Record<string, Record<string, unknown>>)
-        .remote_search__search.disclosureMode,
-    ).toBeUndefined()
   })
 
   it('defaults existing tab completion triggers to insert mode', () => {
