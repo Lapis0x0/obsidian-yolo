@@ -55,7 +55,6 @@ export type CreateLearningUiServicesOptions = Readonly<{
   ownerDocument: Document
   generation?: LearningUiProjectGenerationPort
   getGenerationModelId?: () => string | undefined
-  isGenerationDebugEnabled?: () => boolean
   reportError?: (message: string, error: unknown) => void
 }>
 
@@ -107,7 +106,6 @@ export function createLearningUiServices(
     // does not implement LearningVaultWriteApi's permanent-removal operations.
     vaultWriter: hostWriter as LearningVaultWriteApi,
     agent: createLearningGenerationAgent(host.agent),
-    isDebugEnabled: () => options.isGenerationDebugEnabled?.() ?? false,
   }
 
   const markdown = {
@@ -208,7 +206,17 @@ export function createLearningUiServices(
     },
     cleanup: async (stagingDir) => {
       assertPathInRoot(stagingDir, getLearningBaseDir(), '_staging')
-      await host.vault.trashPath(stagingDir)
+      // The staging directory is a plugin-owned temporary folder, so remove it
+      // with the folder-aware exact-removal APIs instead of routing a directory
+      // through trashFile. When the vault is configured to delete permanently
+      // (no trashOption / no .trash folder), trashing a *folder* fails with
+      // EISDIR and leaves the staging directory behind, which then surfaces as
+      // a generation failure. This mirrors moveStagedReferences, which already
+      // removes the emptied staging folder via removeEmptyFolderExact.
+      for (const entry of host.vault.listChildren(stagingDir)) {
+        if (entry.kind === 'file') await host.vault.removeFileExact(entry.path)
+      }
+      await host.vault.removeEmptyFolderExact(stagingDir)
     },
   }
 
@@ -395,7 +403,6 @@ function buildOutlineBuilderWorkflow({
             const result = await generateKnowledgePointsForChapter({
               host: generationHost,
               modelId: getModelId(),
-              chapterIndex,
               projectTopic: input.projectName || input.topic,
               chapterTitle: chapter.title,
               chapterContract: chapter.contract,

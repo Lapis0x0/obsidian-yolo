@@ -88,9 +88,7 @@ describe('createObsidianModuleConfigBackendFactory', () => {
     )
 
     expect(
-      adapter.files.has(
-        'Restored/YOLO/.yolo_json_db/module-settings/learning.json',
-      ),
+      adapter.files.has('Restored/YOLO/data/module-settings/learning.json'),
     ).toBe(true)
     await expect(
       readObsidianModuleConfigEnvelopes(app, {

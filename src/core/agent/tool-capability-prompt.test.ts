@@ -31,7 +31,7 @@ describe('buildToolCapabilityPrompt', () => {
       mode: 'agent',
       toolNames: [
         'yolo_local__fs_edit',
-        'yolo_local__fs_delete',
+        'yolo_local__bash',
         'yolo_local__terminal_command',
       ],
     })

@@ -2,6 +2,11 @@
    Settings Tabs Styles
    ======================================== */
 
+.modal.mod-settings
+  .vertical-tab-content:has(> .yolo-settings-tabs-container) {
+  padding-inline: 0;
+}
+
 .yolo-settings-tabs-container {
   display: flex;
   flex-direction: column;
@@ -139,30 +144,33 @@
 }
 
 .yolo-settings-tabs-content {
+  display: flex;
+  flex-direction: column;
   flex: 1;
   overflow-y: auto;
   /* `both-edges` reserves a phantom gutter on the left too, so the
-     usable card area stays centered to the container even when the
-     scrollbar is visible. Without this, the right-side gutter shifts
-     the cards left and they no longer align with the centered tabs nav. */
+     centered settings body does not shift when the scrollbar appears. */
   scrollbar-gutter: stable both-edges;
-  padding-inline: var(--size-4-6);
+  padding-inline: 0;
   box-sizing: border-box;
   padding-bottom: var(--size-4-4);
   width: 100%;
   max-width: 100%;
+  margin-inline: 0;
   scrollbar-width: thin;
   scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
     transparent;
 }
 
-.yolo-settings-tabs-content--modules {
+.yolo-settings-tabs-body {
   display: flex;
+  flex: 1 0 auto;
   flex-direction: column;
-  width: calc(100% + var(--size-4-12) + var(--size-4-12));
-  max-width: none;
-  margin-inline: calc(0px - var(--size-4-12));
-  padding-inline: calc(var(--size-4-12) + var(--size-4-6));
+  width: min(
+    calc(100% - var(--size-4-4) - var(--size-4-4)),
+    700px
+  );
+  margin-inline: auto;
 }
 
 .yolo-settings-tabs-content::-webkit-scrollbar {
@@ -214,9 +222,13 @@
     font-size: var(--font-ui-smaller);
   }
 
-  .yolo-settings-tabs-content--modules {
+  .yolo-settings-tabs-content {
     width: 100%;
     margin-inline: 0;
-    padding-inline: var(--size-4-6);
+    padding-inline: 0;
+  }
+
+  .yolo-settings-tabs-body {
+    width: calc(100% - var(--size-4-6) - var(--size-4-6));
   }
 }

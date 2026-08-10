@@ -92,6 +92,8 @@
 .yolo-ask-user-question-chip {
   appearance: none;
   -webkit-appearance: none;
+  max-width: 100%;
+  height: auto;
   padding: 2px var(--size-4-2);
   border-radius: var(--radius-s);
   border: 2px solid var(--background-modifier-border);
@@ -99,6 +101,9 @@
   background-color: transparent;
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: start;
   cursor: pointer;
 }
 

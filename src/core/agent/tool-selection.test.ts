@@ -4,26 +4,12 @@ import type { McpTool } from '../../types/mcp.types'
 import { expandAllowedToolNames, selectAllowedTools } from './tool-selection'
 
 describe('expandAllowedToolNames', () => {
-  it('expands file editing and file path operation groups separately', () => {
-    const expanded = expandAllowedToolNames([
-      'yolo_local__fs_edit_ops',
-      'yolo_local__fs_file_ops',
-    ])
+  it('expands the file editing group', () => {
+    const expanded = expandAllowedToolNames(['yolo_local__fs_edit_ops'])
 
     expect(expanded).toBeDefined()
     expect(expanded?.has('yolo_local__fs_edit')).toBe(true)
     expect(expanded?.has('yolo_local__fs_write')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_delete')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_create_dir')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_move')).toBe(true)
-  })
-
-  it('does not expand the file path operation group to fs_write', () => {
-    const expanded = expandAllowedToolNames(['yolo_local__fs_file_ops'])
-
-    expect(expanded?.has('yolo_local__fs_write')).toBe(false)
-    expect(expanded?.has('yolo_local__fs_edit')).toBe(false)
-    expect(expanded?.has('yolo_local__fs_delete')).toBe(true)
   })
 })
 
@@ -47,9 +33,9 @@ describe('selectAllowedTools', () => {
         server__tool_a: {
           enabled: true,
           approvalMode: 'full_access',
-          disclosureMode: 'always',
         },
       },
+      toolServerPreferences: { server: { disclosureMode: 'always' } },
     })
 
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
@@ -111,7 +97,6 @@ describe('selectAllowedTools', () => {
       toolPreferences: {
         yolo_local__delegate_subagent: {
           enabled: true,
-          disclosureMode: 'always',
         },
       },
       settings,
@@ -148,8 +133,9 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' },
+        server__tool_a: { enabled: true },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
       apiType: 'anthropic',
     })
 
@@ -183,8 +169,9 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' },
+        server__tool_a: { enabled: true },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
       apiType: 'gemini',
     })
 
@@ -218,8 +205,9 @@ describe('selectAllowedTools', () => {
       allowedToolNames: ['server__tool_a'],
       enableToolDisclosure: false,
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' },
+        server__tool_a: { enabled: true },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
     })
 
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
@@ -247,9 +235,9 @@ describe('selectAllowedTools', () => {
       toolPreferences: {
         server__tool_a: {
           enabled: true,
-          disclosureMode: 'always',
         },
       },
+      toolServerPreferences: { server: { disclosureMode: 'always' } },
     })
 
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
@@ -346,7 +334,10 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: { enabled: true, disclosureMode: 'on_demand' as const },
+        server__tool_a: { enabled: true },
+      },
+      toolServerPreferences: {
+        server: { disclosureMode: 'on_demand' as const },
       },
       apiType: 'anthropic' as const,
     }

@@ -1,3 +1,11 @@
+.yolo-ghost-text {
+  color: var(--text-muted);
+  pointer-events: none;
+  opacity: 0.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 .yolo-tab-loading-dots {
   display: inline-flex;
   align-items: center;
@@ -36,5 +44,93 @@
   40% {
     opacity: 0.55;
     transform: scale(1);
+  }
+}
+
+.yolo-tab-completion-display {
+  display: inline;
+  pointer-events: none;
+}
+
+.yolo-tab-completion-status {
+  position: relative;
+  top: -1px;
+  display: inline-flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 3px;
+  width: 9px;
+  height: 1em;
+  margin: 0 5px;
+  vertical-align: middle;
+  user-select: none;
+}
+
+.yolo-tab-completion-status__dot {
+  width: 3px;
+  height: 3px;
+  flex: 0 0 3px;
+  border-radius: 999px;
+  background-color: var(--text-muted);
+  opacity: 0.22;
+  transition:
+    background-color 120ms ease,
+    opacity 120ms ease,
+    transform 120ms ease,
+    width 140ms ease;
+}
+
+.yolo-tab-completion-status__dot:is(.is-generating, .is-pending) {
+  animation: yolo-tab-completion-dot-pulse 1.2s ease-in-out infinite;
+}
+
+.yolo-tab-completion-status__dot:nth-child(2) {
+  animation-delay: 200ms;
+}
+
+.yolo-tab-completion-status__dot:nth-child(3) {
+  animation-delay: 400ms;
+}
+
+.yolo-tab-completion-status__dot.is-complete {
+  background-color: var(--interactive-accent);
+  opacity: 0.9;
+}
+
+.yolo-tab-completion-status__dot.is-interrupted {
+  opacity: 0.42;
+}
+
+.yolo-tab-completion-status__dot.is-selected {
+  width: 7px;
+}
+
+.yolo-tab-completion-switch-hint {
+  margin-left: 0.55em;
+  color: var(--text-faint);
+  font-family: var(--font-interface);
+  font-size: 0.78em;
+  white-space: nowrap;
+  opacity: 0.72;
+}
+
+@keyframes yolo-tab-completion-dot-pulse {
+  0%,
+  80%,
+  100% {
+    opacity: 0.2;
+    transform: scale(0.85);
+  }
+  40% {
+    opacity: 0.62;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-tab-completion-status__dot:is(.is-generating, .is-pending) {
+    opacity: 0.42;
+    transform: none;
   }
 }

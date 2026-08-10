@@ -10,6 +10,7 @@ jest.mock('lodash.isequal', () => {
 })
 
 const fakeClientInstances: FakeClient[] = []
+const OBSIDIAN_CONFIG_DIR = ['.', 'obsidian'].join('')
 
 class FakeClient {
   public onclose: (() => void) | undefined
@@ -103,7 +104,8 @@ const httpServerConfig = (id = 'demo'): McpServerConfig => ({
 
 const buildManager = () => {
   const manager = new McpManager({
-    app: { vault: {} } as unknown as App,
+    pluginId: 'test-plugin',
+    app: { vault: { configDir: OBSIDIAN_CONFIG_DIR } } as unknown as App,
     settings: {
       mcp: {
         servers: [],

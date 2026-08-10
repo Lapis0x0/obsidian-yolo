@@ -3,7 +3,10 @@ import { App, FileSystemAdapter, Platform } from 'obsidian'
 
 import { YoloSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
-import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import type {
+  AssistantToolApprovalMode,
+  AssistantWorkspaceScope,
+} from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import type { ChatModelModality } from '../../types/chat-model.types'
 import {
@@ -20,7 +23,6 @@ import {
 } from '../../types/tool-call.types'
 import {
   FILE_EDIT_GROUP_TOOL_NAME,
-  FILE_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
 } from '../agent/builtinToolUiMeta'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
@@ -42,7 +44,6 @@ import { disposeJsSandbox } from './jsSandboxTool'
 // eslint-disable-next-line import/order -- false positive: sibling group is contiguous; rule miscounts the blank line above this group
 import {
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   callLocalFileTool,
   getLocalFileToolServerName,
@@ -51,18 +52,18 @@ import {
 } from './localFileTools'
 
 const LOCAL_FS_EDIT_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const LOCAL_FS_PATH_OPERATION_TOOL_NAME_SET = new Set<string>(
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
-)
 const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
+import { McpOAuthController } from './mcpOAuthController'
+import type { McpOAuthClientProvider } from './mcpOAuthProvider'
 import type { McpRemoteTransportBackend } from './remoteTransport'
 import {
   getToolName,
   parseToolName,
   validateServerName,
 } from './tool-name-utils'
+import { prewarmMcpServerToolTokenCosts } from './toolCatalogTokenCache'
 
 type RemoteTransportModule = typeof import('./remoteTransport')
 
@@ -86,6 +87,7 @@ export class McpManager {
   public readonly remoteMcpDisabled = !Platform.isDesktop // Remote MCP should be disabled on mobile since it doesn't support node.js
 
   private readonly app: App
+  private readonly oauthController: McpOAuthController
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
   private readonly getRagEngine?: () => Promise<RAGEngine>
   private readonly promptSourceWatcher?: PromptSourceWatcher
@@ -166,14 +168,6 @@ export class McpManager {
           ?.disabled ?? false
       return !(splitToolDisabled || groupedEditOpsDisabled)
     }
-    if (LOCAL_FS_PATH_OPERATION_TOOL_NAME_SET.has(toolName)) {
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      const groupedFileOpsDisabled =
-        this.settings.mcp.builtinToolOptions[FILE_OPS_GROUP_TOOL_NAME]
-          ?.disabled ?? false
-      return !(splitToolDisabled || groupedFileOpsDisabled)
-    }
     if (LOCAL_MEMORY_SPLIT_TOOL_NAME_SET.has(toolName)) {
       const splitToolDisabled =
         this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
@@ -191,6 +185,7 @@ export class McpManager {
 
   constructor({
     app,
+    pluginId,
     settings,
     openApplyReview,
     registerSettingsListener,
@@ -198,6 +193,7 @@ export class McpManager {
     promptSourceWatcher,
   }: {
     app: App
+    pluginId: string
     settings: YoloSettings
     openApplyReview: (state: ApplyViewState) => Promise<boolean>
     registerSettingsListener: (
@@ -207,6 +203,7 @@ export class McpManager {
     promptSourceWatcher?: PromptSourceWatcher
   }) {
     this.app = app
+    this.oauthController = new McpOAuthController(app, pluginId)
     this.openApplyReview = openApplyReview
     this.getRagEngine = getRagEngine
     this.promptSourceWatcher = promptSourceWatcher
@@ -264,6 +261,7 @@ export class McpManager {
     this.subscribers.clear()
     this.activeToolCalls.clear()
     this.reconnectAttempts.clear()
+    this.oauthController.close()
     disposeJsSandbox()
   }
 
@@ -298,8 +296,144 @@ export class McpManager {
     return () => this.subscribers.delete(callback)
   }
 
+  public async hasOAuthCredential(
+    serverId: string,
+    serverUrl: string,
+  ): Promise<boolean> {
+    return await this.oauthController.hasCredential(serverId, serverUrl)
+  }
+
+  public discardOAuthDraft(draftId: string): void {
+    this.oauthController.discardDraft(draftId)
+  }
+
+  public async commitOAuthDraft(
+    draftId: string,
+    serverId: string,
+  ): Promise<() => Promise<void>> {
+    return await this.oauthController.commitDraft(draftId, serverId)
+  }
+
+  public async moveOAuthCredential(
+    fromServerId: string,
+    toServerId: string,
+    serverUrl: string,
+  ): Promise<(() => Promise<void>) | null> {
+    return await this.oauthController.moveCredential(
+      fromServerId,
+      toServerId,
+      serverUrl,
+    )
+  }
+
+  public async clearOAuthCredential(serverId: string): Promise<void> {
+    await this.oauthController.clearCredential(serverId)
+  }
+
+  public async authorizeOAuthDraft({
+    draftId,
+    serverId,
+    serverUrl,
+    signal,
+  }: {
+    draftId: string
+    serverId: string
+    serverUrl: string
+    signal?: AbortSignal
+  }): Promise<void> {
+    if (this.remoteMcpDisabled) {
+      throw new McpNotAvailableException()
+    }
+
+    const parsedUrl = new URL(serverUrl)
+    if (parsedUrl.protocol !== 'http:' && parsedUrl.protocol !== 'https:') {
+      throw new Error('OAuth requires an HTTP or HTTPS MCP server URL.')
+    }
+
+    const provider = await this.oauthController.createDraftProvider(
+      draftId,
+      serverUrl,
+    )
+    if (signal?.aborted) {
+      this.oauthController.discardDraft(draftId)
+      throw new Error('OAuth authorization was cancelled.')
+    }
+    const { Client } = await import('@modelcontextprotocol/sdk/client/index.js')
+    const { UnauthorizedError } = await import(
+      '@modelcontextprotocol/sdk/client/auth.js'
+    )
+    const remoteTransport = await this.loadRemoteTransportModule()
+    const parameters = { transport: 'http' as const, url: serverUrl }
+
+    const connectWithBackend = async (
+      backend: McpRemoteTransportBackend,
+    ): Promise<void> => {
+      let client = new Client({ name: serverId, version: '1.0.0' })
+      let transport = await this.createClientTransport(parameters, {
+        httpBackend: backend,
+        oauthProvider: provider,
+      })
+
+      try {
+        try {
+          await client.connect(transport, signal ? { signal } : undefined)
+        } catch (error) {
+          if (!(error instanceof UnauthorizedError)) throw error
+
+          const code = await provider.waitForAuthorizationCode()
+          if (!('finishAuth' in transport)) {
+            throw new Error('OAuth is unavailable for this MCP transport.')
+          }
+          await transport.finishAuth(code)
+          await client.close().catch(() => undefined)
+
+          client = new Client({ name: serverId, version: '1.0.0' })
+          transport = await this.createClientTransport(parameters, {
+            httpBackend: backend,
+            oauthProvider: provider,
+          })
+          await client.connect(transport, signal ? { signal } : undefined)
+        }
+
+        await client.listTools({}, signal ? { signal } : undefined)
+      } finally {
+        await client.close().catch(() => undefined)
+      }
+    }
+
+    try {
+      await connectWithBackend('chromium-fetch')
+    } catch (error) {
+      if (
+        !signal?.aborted &&
+        remoteTransport.shouldRetryMcpHttpWithJsonBackend({
+          params: parameters,
+          error,
+        })
+      ) {
+        await connectWithBackend('obsidian-request-url-json')
+      } else {
+        throw error
+      }
+    }
+
+    if (!provider.getCredential().tokens) {
+      throw new Error('This MCP server did not request OAuth authorization.')
+    }
+  }
+
   public async handleSettingsUpdate(settings: YoloSettings) {
     this.settings = settings
+    if (settings.mcp.enableToolDisclosure) {
+      for (const server of this.servers) {
+        if (
+          server.status === McpServerStatus.Connected &&
+          this.shouldPrewarmToolTokenCosts(server.name)
+        ) {
+          prewarmMcpServerToolTokenCosts(server.name, server.tools)
+        }
+      }
+    }
     const updatedServers = settings.mcp.servers.map(
       (serverConfig: McpServerConfig): McpServerState => {
         const existingServer = this.servers.find(
@@ -308,6 +442,7 @@ export class McpManager {
         if (
           existingServer &&
           isEqual(existingServer.config.parameters, serverConfig.parameters) &&
+          existingServer.config.auth === serverConfig.auth &&
           existingServer.config.enabled === serverConfig.enabled
         ) {
           // Server is already up to date
@@ -506,10 +641,18 @@ export class McpManager {
     }
 
     let remoteTransportBackend: McpRemoteTransportBackend = 'chromium-fetch'
+    let oauthProvider: McpOAuthClientProvider | undefined
 
     try {
+      if (serverConfig.auth === 'oauth' && serverParams.transport === 'http') {
+        oauthProvider = await this.oauthController.createRuntimeProvider(
+          name,
+          serverParams.url,
+        )
+      }
       const transport = await this.createClientTransport(serverParams, {
         httpBackend: remoteTransportBackend,
+        oauthProvider,
       })
       await client.connect(transport, signal ? { signal } : undefined)
     } catch (error) {
@@ -540,6 +683,7 @@ export class McpManager {
         try {
           const transport = await this.createClientTransport(serverParams, {
             httpBackend: remoteTransportBackend,
+            oauthProvider,
           })
           await client.connect(transport, signal ? { signal } : undefined)
         } catch (fallbackError) {
@@ -608,6 +752,9 @@ export class McpManager {
         {},
         signal ? { signal } : undefined,
       )
+      if (this.shouldPrewarmToolTokenCosts(name)) {
+        prewarmMcpServerToolTokenCosts(name, toolList.tools)
+      }
       signal?.removeEventListener('abort', abortListener)
       return {
         name,
@@ -659,7 +806,10 @@ export class McpManager {
 
   private async createClientTransport(
     serverParams: McpServerConfig['parameters'],
-    options: { httpBackend?: McpRemoteTransportBackend } = {},
+    options: {
+      httpBackend?: McpRemoteTransportBackend
+      oauthProvider?: McpOAuthClientProvider
+    } = {},
   ) {
     switch (serverParams.transport) {
       case 'stdio': {
@@ -691,6 +841,9 @@ export class McpManager {
             serverParams,
             options.httpBackend,
           ),
+          ...(options.oauthProvider
+            ? { authProvider: options.oauthProvider }
+            : {}),
         })
       }
       case 'sse': {
@@ -736,6 +889,21 @@ export class McpManager {
     return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}`
   }
 
+  private shouldPrewarmToolTokenCosts(serverName: string): boolean {
+    if (!this.settings.mcp.enableToolDisclosure) return false
+    const assistants = this.settings.assistants ?? []
+    // With no saved Agent yet, runtime still uses Auto. Otherwise an explicit
+    // server policy on every Agent means the threshold budget is never read.
+    return (
+      assistants.length === 0 ||
+      assistants.some(
+        (assistant) =>
+          assistant.toolServerPreferences?.[serverName]?.disclosureMode ===
+          undefined,
+      )
+    )
+  }
+
   public async listAvailableTools({
     includeBuiltinTools = false,
     chatModelModalities,
@@ -752,33 +920,24 @@ export class McpManager {
       return cached
     }
 
+    // `connectServer` owns tools/list and stores the resulting catalog on the
+    // connected server state. Request preparation must only materialize that
+    // snapshot: asking the remote server again here made every cache miss
+    // (including model-modality variants that only affect builtins) pay a
+    // network round trip on the LLM hot path.
     const availableTools = this.remoteMcpDisabled
       ? []
-      : (
-          await Promise.all(
-            this.servers.map(async (server): Promise<McpTool[]> => {
-              if (server.status !== McpServerStatus.Connected) {
-                return []
-              }
-              try {
-                const toolList = await server.client.listTools({})
-                return toolList.tools
-                  .filter(
-                    (tool) => !server.config.toolOptions[tool.name]?.disabled,
-                  )
-                  .map((tool) => ({
-                    ...tool,
-                    name: getToolName(server.name, tool.name),
-                  }))
-              } catch (error) {
-                console.error(
-                  `Failed to list tools for MCP server ${server.name}: ${error instanceof Error ? error.message : String(error)}`,
-                )
-                return []
-              }
-            }),
-          )
-        ).flat()
+      : this.servers.flatMap((server): McpTool[] => {
+          if (server.status !== McpServerStatus.Connected) {
+            return []
+          }
+          return server.tools
+            .filter((tool) => !server.config.toolOptions[tool.name]?.disabled)
+            .map((tool) => ({
+              ...tool,
+              name: getToolName(server.name, tool.name),
+            }))
+        })
 
     const nextTools = includeBuiltinTools
       ? [
@@ -887,6 +1046,8 @@ export class McpManager {
     allowedSkillPaths,
     subagentParentContext,
     runContext,
+    bashApprovalMode,
+    bashReadOnly,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -901,6 +1062,10 @@ export class McpManager {
     allowedSkillPaths?: readonly string[]
     runContext?: AgentRunContext
     subagentParentContext?: SubagentParentContext
+    /** Effective approval tier for the bash tool; see tool-gateway.ts. */
+    bashApprovalMode?: AssistantToolApprovalMode
+    /** Forces the structurally read-only bash variant; see tool-gateway.ts. */
+    bashReadOnly?: boolean
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -947,6 +1112,8 @@ export class McpManager {
           runContext,
           subagentParentContext,
           promptSourceWatcher: this.promptSourceWatcher,
+          bashApprovalMode,
+          bashReadOnly,
         })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {
@@ -969,6 +1136,9 @@ export class McpManager {
         if (localResult.status === ToolCallResponseStatus.Rejected) {
           return {
             status: ToolCallResponseStatus.Rejected,
+            ...(localResult.reason !== undefined && {
+              reason: localResult.reason,
+            }),
           }
         }
         return {

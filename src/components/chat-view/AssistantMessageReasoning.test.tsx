@@ -17,9 +17,58 @@ jest.mock('./TransitioningMarkdown', () => ({
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
-import AssistantMessageReasoning from './AssistantMessageReasoning'
+import AssistantMessageReasoning, {
+  formatReasoningDurationSeconds,
+  getReasoningPreviewHoldOffset,
+  getReasoningRollText,
+} from './AssistantMessageReasoning'
 
 describe('AssistantMessageReasoning', () => {
+  it('rounds a completed reasoning duration to user-facing seconds', () => {
+    expect(formatReasoningDurationSeconds(400)).toBe(1)
+    expect(formatReasoningDurationSeconds(70_600)).toBe(71)
+  })
+
+  it('shows the completed reasoning duration', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMessageReasoning
+        reasoning="已有思考内容"
+        hasAnswerContent
+        generationState="completed"
+        reasoningDurationMs={70_600}
+      />,
+    )
+
+    // The label renders as separate title/detail spans, so assert the parts.
+    expect(html).toContain('Thought')
+    expect(html).toContain('for 71s')
+  })
+
+  it('keeps reasoning continuous instead of splitting it into sentences', () => {
+    expect(
+      getReasoningRollText('先分析用户目标。现在检查项目中的现有实现'),
+    ).toBe('先分析用户目标。现在检查项目中的现有实现')
+  })
+
+  it('flattens short markdown lines so only the viewport determines wrapping', () => {
+    expect(
+      getReasoningRollText('# 分析\n\n1. 游戏品质\n2. 玩法设计\n- 最新进展'),
+    ).toBe('分析 游戏品质 玩法设计 最新进展')
+  })
+
+  it('bounds the text used by the rolling preview', () => {
+    const preview = getReasoningRollText('a'.repeat(6500))
+
+    expect(preview).toHaveLength(2500)
+    expect(preview).toBe('a'.repeat(2500))
+  })
+
+  it('holds back the unfinished visual line once wrapping begins', () => {
+    expect(getReasoningPreviewHoldOffset(20, 20)).toBe(0)
+    expect(getReasoningPreviewHoldOffset(40, 20)).toBe(20)
+    expect(getReasoningPreviewHoldOffset(80, 20)).toBe(20)
+  })
+
   it('keeps the reasoning title when the response generation fails', () => {
     const html = renderToStaticMarkup(
       <AssistantMessageReasoning

@@ -12,9 +12,13 @@ describe('builtin skills', () => {
 
     expect(builtin).not.toBeNull()
     expect(builtin?.content).toContain('99-Assets/YOLO/skills')
-    expect(builtin?.content).not.toContain(
-      'fs_write { path: "YOLO/skills/<skill-name>.md"',
+    expect(builtin?.content).toContain(
+      '99-Assets/YOLO/skills/<readable-name>.md',
     )
+    expect(builtin?.content).toContain(
+      '99-Assets/YOLO/skills/<folder>/SKILL.md',
+    )
+    expect(builtin?.content).not.toContain('fs_write { path: "YOLO/skills/')
   })
 
   it('keeps other builtin skills unchanged when injecting a skills directory', () => {

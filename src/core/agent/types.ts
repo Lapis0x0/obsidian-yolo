@@ -1,3 +1,4 @@
+import type { AssistantToolApprovalMode } from '../../types/assistant.types'
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
@@ -71,14 +72,14 @@ export type AgentRuntimeRunInput = {
     string,
     {
       enabled?: boolean
-      approvalMode?: 'full_access' | 'require_approval'
-      disclosureMode?: 'always' | 'on_demand'
+      approvalMode?: AssistantToolApprovalMode
     }
   >
   toolServerPreferences?: Record<
     string,
     {
-      approvalMode?: 'full_access' | 'require_approval'
+      approvalMode?: AssistantToolApprovalMode
+      disclosureMode?: 'always' | 'on_demand'
     }
   >
   workspaceScope?: {
@@ -124,6 +125,14 @@ export type AgentRuntimeRunInput = {
    * Dangerous command prefix blocklist and global tool enable gates still apply.
    */
   bypassToolApproval?: boolean
+  /**
+   * When true, the bash tool for this entire run is the structurally
+   * read-only variant: mkdir/mv/rm/rmdir are unavailable (command not found)
+   * regardless of approval tier. Set by callers that only granted a
+   * read-only capability (see `src/core/modules/moduleAgent.ts`'s
+   * `vault-read` module agent capability). Defaults to false.
+   */
+  bashReadOnly?: boolean
 }
 
 export type AgentRuntimeLoopConfig = {

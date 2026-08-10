@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { memo, useRef, useState } from 'react'
 
 import { Annotation } from '../../types/llm/response'
@@ -29,9 +29,9 @@ const AssistantMessageAnnotations = memo(function AssistantMessageAnnotations({
       >
         <span>View Sources ({annotations.length})</span>
         {isExpanded ? (
-          <ChevronUp className="yolo-assistant-message-metadata-toggle-icon" />
-        ) : (
           <ChevronDown className="yolo-assistant-message-metadata-toggle-icon" />
+        ) : (
+          <ChevronRight className="yolo-assistant-message-metadata-toggle-icon" />
         )}
       </button>
       {isExpanded && (

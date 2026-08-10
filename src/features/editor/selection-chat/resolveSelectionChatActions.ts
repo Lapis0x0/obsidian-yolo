@@ -1,8 +1,15 @@
-import type {
-  SelectionActionMode,
-  SelectionActionRewriteBehavior,
-} from '../../../components/selection/SelectionActionsMenu'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
+
+import {
+  ALL_SELECTION_ACTION_CONFIGS,
+  FIXED_SELECTION_ACTION_CONFIGS,
+  FIXED_SELECTION_ACTION_IDS,
+  type SelectionActionMode,
+  type SelectionActionRewriteBehavior,
+  isSelectionQuickActionId,
+  resolveSelectionActionMode,
+  resolveSelectionActionRewriteBehavior,
+} from './selectionChatActionCatalog'
 
 export type ResolvedSelectionChatAction = {
   id: string
@@ -24,35 +31,6 @@ type SelectionActionPreset = {
   assistantId?: string
 }
 
-const FIXED_ACTION_IDS = new Set([
-  'custom-rewrite',
-  'custom-ask',
-  'add-to-sidebar',
-])
-
-const FIXED_ACTION_ORDER = ['custom-rewrite', 'custom-ask', 'add-to-sidebar']
-
-const resolveMode = (
-  id: string,
-  mode?: SelectionActionMode,
-): SelectionActionMode => {
-  if (mode) return mode
-  if (id === 'rewrite' || id === 'custom-rewrite') return 'rewrite'
-  if (id === 'chat-send') return 'chat-send'
-  if (id === 'chat-input' || id === 'add-to-sidebar') return 'chat-input'
-  return 'ask'
-}
-
-const resolveRewriteBehavior = (
-  id: string,
-  mode: SelectionActionMode,
-  behavior?: SelectionActionRewriteBehavior,
-): SelectionActionRewriteBehavior | undefined => {
-  if (mode !== 'rewrite') return undefined
-  if (behavior) return behavior
-  return id === 'custom-rewrite' ? 'custom' : 'preset'
-}
-
 /**
  * Reproduces the action-resolution logic of SelectionActionsMenu without React.
  * Returns the same set of actions the in-editor popup would show, so registered
@@ -62,60 +40,35 @@ export function resolveSelectionChatActions(
   settings: YoloSettings,
   t: TranslateFn,
 ): ResolvedSelectionChatAction[] {
-  const defaultActions: SelectionActionPreset[] = [
-    {
-      id: 'custom-rewrite',
-      label: t('selection.actions.customRewrite', '自定义改写'),
-      instruction: '',
-      mode: 'rewrite',
-      rewriteBehavior: 'custom',
-    },
-    {
-      id: 'custom-ask',
-      label: t('selection.actions.customAsk', '自定义提问'),
-      instruction: '',
-      mode: 'ask',
-    },
-    {
-      id: 'add-to-sidebar',
-      label: t('selection.actions.addToSidebar', '添加到侧边栏'),
-      instruction: '',
-      mode: 'chat-input',
-    },
-    {
-      id: 'explain',
-      label: t('selection.actions.explain', '深入解释'),
-      instruction: t('selection.actions.explain', '深入解释'),
-      mode: 'ask',
-    },
-    {
-      id: 'suggest',
-      label: t('selection.actions.suggest', '提供建议'),
-      instruction: t('selection.actions.suggest', '提供建议'),
-      mode: 'ask',
-    },
-    {
-      id: 'translate-to-chinese',
-      label: t('selection.actions.translateToChinese', '翻译成中文'),
-      instruction: t('selection.actions.translateToChinese', '翻译成中文'),
-      mode: 'ask',
-    },
-  ]
+  const defaultActions: SelectionActionPreset[] =
+    ALL_SELECTION_ACTION_CONFIGS.map((config) => {
+      const label = t(config.labelKey, config.labelFallback)
+      return {
+        id: config.id,
+        label,
+        instruction: config.allowEmptyInstruction ? '' : label,
+        mode: config.mode ?? 'ask',
+        rewriteBehavior: config.rewriteBehavior,
+      }
+    })
 
   const fixedActionLookup = new Map(
     defaultActions
-      .filter((action) => FIXED_ACTION_IDS.has(action.id))
+      .filter((action) => FIXED_SELECTION_ACTION_IDS.has(action.id))
       .map((action) => [action.id, action]),
   )
 
-  const customActions = settings.continuationOptions?.selectionChatActions
+  const customActions =
+    settings.continuationOptions?.selectionChatActions?.filter((action) =>
+      isSelectionQuickActionId(action.id),
+    )
   // Defensive: collapse any accidental duplicate fixed-action ids to the first
   // occurrence so a single hide/show toggle behaves predictably.
   const dedupedCustomActions = customActions
     ? (() => {
         const seenFixed = new Set<string>()
         return customActions.filter((action) => {
-          if (!FIXED_ACTION_IDS.has(action.id)) return true
+          if (!FIXED_SELECTION_ACTION_IDS.has(action.id)) return true
           if (seenFixed.has(action.id)) return false
           seenFixed.add(action.id)
           return true
@@ -133,10 +86,10 @@ export function resolveSelectionChatActions(
             id: action.id,
             label: action.label,
             instruction: action.instruction,
-            mode: resolveMode(action.id, action.mode),
-            rewriteBehavior: resolveRewriteBehavior(
+            mode: resolveSelectionActionMode(action.id, action.mode),
+            rewriteBehavior: resolveSelectionActionRewriteBehavior(
               action.id,
-              resolveMode(action.id, action.mode),
+              resolveSelectionActionMode(action.id, action.mode),
               action.rewriteBehavior,
             ),
             assistantId: action.assistantId,
@@ -151,9 +104,8 @@ export function resolveSelectionChatActions(
   const customActionIds = new Set(
     (dedupedCustomActions ?? []).map((action) => action.id),
   )
-  const missingFixed = FIXED_ACTION_ORDER.filter(
-    (id) => !presentIds.has(id) && !customActionIds.has(id),
-  )
+  const missingFixed = FIXED_SELECTION_ACTION_CONFIGS.map((config) => config.id)
+    .filter((id) => !presentIds.has(id) && !customActionIds.has(id))
     .map((id) => fixedActionLookup.get(id))
     .filter((action): action is SelectionActionPreset => action !== undefined)
 
@@ -161,8 +113,8 @@ export function resolveSelectionChatActions(
 
   return merged.map((action) => {
     const label = action.label?.trim() || action.id
-    const mode = resolveMode(action.id, action.mode)
-    const rewriteBehavior = resolveRewriteBehavior(
+    const mode = resolveSelectionActionMode(action.id, action.mode)
+    const rewriteBehavior = resolveSelectionActionRewriteBehavior(
       action.id,
       mode,
       action.rewriteBehavior,

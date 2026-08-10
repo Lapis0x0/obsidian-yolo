@@ -1,8 +1,12 @@
 import { useCallback } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import { usePlugin } from '../../../contexts/plugin-context'
 import type { ToolCallRequest } from '../../../types/tool-call.types'
+import { useChatRuntimeActions } from '../chat-runtime-actions-context'
+import {
+  handleRuntimeToolApproval,
+  handleRuntimeToolRejection,
+} from '../runtime-action-handlers'
 
 import { buildSubagentApprovalSummary } from './subagentApprovalSummary'
 
@@ -12,40 +16,36 @@ export type SubagentPendingApproval = {
 }
 
 type SubagentApprovalBlockProps = {
-  /**
-   * Parent conversation id — passed through to `approveToolCall` /
-   * `rejectToolCall`. The service routes by `toolCallId` first, but this
-   * field is kept for parity with the parent path and in case the service
-   * later needs the parent conv for telemetry / scoping.
-   */
-  parentConversationId: string
+  conversationId: string
   pendingApprovals: SubagentPendingApproval[]
 }
 
 export function SubagentApprovalBlock({
-  parentConversationId,
+  conversationId,
   pendingApprovals,
 }: SubagentApprovalBlockProps) {
-  const plugin = usePlugin()
   const { t } = useLanguage()
+  const { actions, conversation } = useChatRuntimeActions(conversationId)
 
   const handleApprove = useCallback(
     (toolCallId: string) =>
-      plugin.getAgentService().approveToolCall({
-        conversationId: parentConversationId,
+      handleRuntimeToolApproval({
+        actions,
+        conversation,
         toolCallId,
       }),
-    [plugin, parentConversationId],
+    [actions, conversation],
   )
 
   const handleReject = useCallback(
     (toolCallId: string) => {
-      plugin.getAgentService().rejectToolCall({
-        conversationId: parentConversationId,
+      void handleRuntimeToolRejection({
+        actions,
+        conversation,
         toolCallId,
       })
     },
-    [plugin, parentConversationId],
+    [actions, conversation],
   )
 
   const handleApproveAll = useCallback(() => {

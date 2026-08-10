@@ -94,6 +94,9 @@
   color: var(--text-muted) !important;
   cursor: pointer !important;
   height: auto !important;
+  min-width: 34px !important;
+  flex: 0 100 auto !important;
+  margin-left: auto !important;
 }
 
 .yolo-chat-header-right button.yolo-assistant-selector-button:hover {
@@ -648,11 +651,6 @@ button.yolo-assistant-selector-footer-btn:hover {
 .yolo-typeahead-menu {
   position: absolute;
   display: block;
-}
-
-/* ApplyView: diff content width */
-.yolo-diff-block-content {
-  width: 100%;
 }
 
 /* Assistants Section */

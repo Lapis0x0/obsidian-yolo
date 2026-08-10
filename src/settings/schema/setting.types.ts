@@ -76,6 +76,7 @@ const ragOptionsSchema = z.object({
 })
 
 type TabCompletionOptionDefaults = {
+  multipleCandidatesEnabled: boolean
   idleTriggerEnabled: boolean
   autoTriggerDelayMs: number
   autoTriggerCooldownMs: number
@@ -101,6 +102,7 @@ export type TabCompletionTrigger = {
   type: 'string' | 'regex'
   pattern: string
   enabled: boolean
+  acceptMode: 'insert' | 'replace'
   description?: string
 }
 
@@ -122,14 +124,15 @@ export const notificationTimingSchema = z.enum(['always', 'when-unfocused'])
 export type NotificationTiming = z.infer<typeof notificationTimingSchema>
 
 export const DEFAULT_TAB_COMPLETION_OPTIONS: TabCompletionOptionDefaults = {
+  multipleCandidatesEnabled: true,
   idleTriggerEnabled: false,
   autoTriggerDelayMs: 3000,
   autoTriggerCooldownMs: 15000,
   triggerDelayMs: 3000,
-  minContextLength: 20,
+  minContextLength: 5,
   contextRange: 4000, // Total context chars, split 4:1 (3200 before, 800 after)
-  maxSuggestionLength: 2000,
-  temperature: 0.5,
+  maxSuggestionLength: 2000, // Legacy; no longer applied at request/render time
+  temperature: 0.5, // Legacy; tab completion no longer sends temperature
   requestTimeoutMs: 12000,
   // Tab 补全是延迟敏感场景，默认关闭推理；用户可在设置中改为 low / auto 以适配强制推理的模型（如 gpt-oss）
   reasoningLevel: 'off',
@@ -160,36 +163,42 @@ export const DEFAULT_TAB_COMPLETION_TRIGGERS: TabCompletionTrigger[] = [
     type: 'string',
     pattern: ', ',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'sentence-end-chinese-comma',
     type: 'string',
     pattern: '，',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'sentence-end-colon',
     type: 'string',
     pattern: ': ',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'sentence-end-chinese-colon',
     type: 'string',
     pattern: '：',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'newline',
     type: 'regex',
     pattern: '\\n$',
     enabled: true,
+    acceptMode: 'insert',
   },
   {
     id: 'list-item',
     type: 'regex',
     pattern: '(?:^|\\n)[-*+]\\s$',
     enabled: true,
+    acceptMode: 'insert',
   },
 ]
 
@@ -209,6 +218,9 @@ export const splitContextRange = (
 
 const tabCompletionOptionsSchema = z
   .object({
+    multipleCandidatesEnabled: z
+      .boolean()
+      .catch(DEFAULT_TAB_COMPLETION_OPTIONS.multipleCandidatesEnabled),
     idleTriggerEnabled: z
       .boolean()
       .catch(DEFAULT_TAB_COMPLETION_OPTIONS.idleTriggerEnabled),
@@ -300,6 +312,7 @@ const tabCompletionTriggerSchema = z
     type: z.enum(['string', 'regex']),
     pattern: z.string(),
     enabled: z.boolean().catch(true),
+    acceptMode: z.enum(['insert', 'replace']).catch('insert'),
     description: z.string().optional(),
   })
   .catch({
@@ -307,6 +320,7 @@ const tabCompletionTriggerSchema = z
     type: 'string',
     pattern: '',
     enabled: true,
+    acceptMode: 'insert',
   })
 
 /**
@@ -958,6 +972,7 @@ export const yoloSettingsSchema = z.object({
       includeCurrentFileContent: z.boolean(),
       mentionDisplayMode: z.enum(['inline', 'badge']).optional(),
       mentionContextMode: z.enum(['light', 'full']).optional(),
+      enterKeyCreatesNewline: z.boolean().optional(),
       chatInputHeight: z.number().int().min(80).max(520).optional(),
       chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
@@ -1001,6 +1016,31 @@ export const yoloSettingsSchema = z.object({
       lastChatPlacement: z
         .enum(['sidebar', 'tab', 'split', 'window'])
         .optional(),
+      // Last user-selected conversation surface and CLI provider. Kept
+      // separately so returning to Chat does not forget the preferred CLI.
+      lastChatSurface: z.enum(['chat', 'cli']).optional(),
+      lastCliRuntimeId: z.enum(['claude-code', 'codex']).optional(),
+      cliModelIdByRuntime: z
+        .object({
+          'claude-code': z.string().optional(),
+          codex: z.string().optional(),
+        })
+        .optional(),
+      cliReasoningEffortByModel: z.record(z.string(), z.string()).optional(),
+      // Last CLI chat mode (agent/plan) remembered per CLI runtime.
+      cliChatModeByRuntime: z
+        .object({
+          'claude-code': z.enum(['agent', 'plan']).optional(),
+          codex: z.enum(['agent', 'plan']).optional(),
+        })
+        .optional(),
+      // Last CLI YOLO flag remembered per CLI runtime.
+      cliAgentYoloEnabledByRuntime: z
+        .object({
+          'claude-code': z.boolean().optional(),
+          codex: z.boolean().optional(),
+        })
+        .optional(),
       quickAccessEntries: resilientArraySchema(
         z.discriminatedUnion('type', [
           z.object({ type: z.literal('skill'), name: z.string().min(1) }),
@@ -1030,6 +1070,12 @@ export const yoloSettingsSchema = z.object({
       chatExportIncludeThinking: false,
       chatExportIncludeToolCalls: false,
       ribbonClickAction: 'sidebar',
+      lastChatSurface: 'chat',
+      lastCliRuntimeId: 'claude-code',
+      cliModelIdByRuntime: {},
+      cliReasoningEffortByModel: {},
+      cliChatModeByRuntime: {},
+      cliAgentYoloEnabledByRuntime: {},
       lastChatPlacement: undefined,
       quickAccessEntries: DEFAULT_CHAT_QUICK_ACCESS_ENTRIES,
     }),
@@ -1041,10 +1087,10 @@ export const yoloSettingsSchema = z.object({
   // Continuation (续写) options
   continuationOptions: z
     .object({
-      // dedicated continuation model
+      // dedicated model for tab completion and selection rewrite (Quick Ask's
+      // "continue" mode uses the panel's own assistant model instead, see
+      // QuickAskPanel's modelClient)
       continuationModelId: z.string().optional(),
-      // enable smart space quick invoke
-      enableSmartSpace: z.boolean().optional(),
       // enable selection chat (Cursor-like text selection actions)
       enableSelectionChat: z.boolean().optional(),
       // persist selected editor block highlight while chatting in sidebar
@@ -1080,7 +1126,10 @@ export const yoloSettingsSchema = z.object({
       tabCompletionConstraints: z.string().optional(),
       // length preset for tab completion prompt constraints
       tabCompletionLengthPreset: z.enum(['short', 'medium', 'long']).optional(),
-      // Smart Space custom quick actions
+      // Quick Ask "continue" mode quick actions (chips shown when the
+      // continue mode input is empty). Key name predates the Quick Ask
+      // "continue" mode (it originally belonged to the now-removed Smart
+      // Space panel); kept as-is to avoid a settings migration.
       smartSpaceQuickActions: z
         .array(
           z.object({
@@ -1111,19 +1160,19 @@ export const yoloSettingsSchema = z.object({
           }),
         )
         .optional(),
-      // Empty-line trigger mode for Smart Space
-      smartSpaceTriggerMode: z
-        .enum(['single-space', 'double-space', 'off'])
-        .optional(),
-      // Smart Space Gemini tools default state
-      smartSpaceUseWebSearch: z.boolean().optional(),
-      smartSpaceUseUrlContext: z.boolean().optional(),
       // enable quick ask feature (@ trigger in empty line)
       enableQuickAsk: z.boolean().optional(),
       // trigger character for quick ask (default: @)
       quickAskTrigger: z.string().optional(),
-      // quick ask mode: support legacy ask/edit values and current chat/agent values
-      quickAskMode: z.enum(['ask', 'edit', 'edit-direct', 'agent']).optional(),
+      // Quick Ask mode. The UI only ever persists 'ask'/'agent'/'continue' —
+      // 'edit' and 'edit-direct' are kept here only so a leftover legacy
+      // value in an old data.json doesn't fail this whole continuationOptions
+      // object's validation (see the single .catch() below). Callers
+      // normalize any unrecognized value, including these legacy ones, to
+      // 'ask'.
+      quickAskMode: z
+        .enum(['ask', 'edit', 'edit-direct', 'agent', 'continue'])
+        .optional(),
       // auto dock quick ask to editor top right after sending
       quickAskAutoDockToTopRight: z.boolean().optional(),
       // quick ask context chars before cursor
@@ -1144,7 +1193,6 @@ export const yoloSettingsSchema = z.object({
       continuationModelId:
         DEFAULT_CHAT_MODELS.find((v) => v.id === DEFAULT_CHAT_TITLE_MODEL_ID)
           ?.id ?? '',
-      enableSmartSpace: true,
       enableSelectionChat: true,
       persistSelectionHighlight: true,
       manualContextEnabled: false,
@@ -1164,9 +1212,6 @@ export const yoloSettingsSchema = z.object({
       tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
       smartSpaceQuickActions: undefined,
       selectionChatActions: undefined,
-      smartSpaceTriggerMode: 'single-space',
-      smartSpaceUseWebSearch: false,
-      smartSpaceUseUrlContext: false,
       enableQuickAsk: true,
       quickAskTrigger: '@',
       quickAskMode: 'ask',

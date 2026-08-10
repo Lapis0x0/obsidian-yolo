@@ -70,6 +70,7 @@ export type MaterializedTextEditPlan = {
   totalOperations: number
   errors: string[]
   operationResults: AppliedTextEditOperation[]
+  reviewEdits?: Array<{ from: number; to: number; replacement: string }>
   failures?: TextEditFailure[]
 }
 
@@ -869,7 +870,7 @@ export const buildReplaceMatchErrorHint = ({
         `Could not match oldText for replace. Its first line exists at line ${lineNumber}, ` +
         `but the full text does not match — usually a whitespace or tab-vs-space difference.\n\n` +
         `Context around line ${lineNumber}:\n${contextDisplay}\n\n` +
-        `TIP: Use fs_read to see the actual content, then retry. No need to explain, just call the tools.`
+        `TIP: Use bash (e.g. \`cat\`) to see the actual content, then retry. No need to explain, just call the tools.`
       )
     }
   }
@@ -877,7 +878,7 @@ export const buildReplaceMatchErrorHint = ({
   return (
     `Could not find the text to replace. Make sure oldText matches the file exactly, ` +
     `including all whitespace. ` +
-    `TIP: Use fs_read to view the actual content first, then retry. No need to explain, just call the tools.`
+    `TIP: Use bash (e.g. \`cat\`) to view the actual content first, then retry. No need to explain, just call the tools.`
   )
 }
 
@@ -1025,6 +1026,45 @@ export const materializeTextEditPlan = ({
     totalOperations: plan.operations.length,
     errors,
     operationResults,
+    reviewEdits:
+      operationResults.filter((result) => result.changed).length === 1
+        ? [createMinimalReviewEdit(content, nextContent)]
+        : undefined,
     failures: failures.length > 0 ? failures : undefined,
+  }
+}
+
+const createMinimalReviewEdit = (
+  originalContent: string,
+  modifiedContent: string,
+): { from: number; to: number; replacement: string } => {
+  let prefixLength = 0
+  const maxPrefixLength = Math.min(
+    originalContent.length,
+    modifiedContent.length,
+  )
+  while (
+    prefixLength < maxPrefixLength &&
+    originalContent[prefixLength] === modifiedContent[prefixLength]
+  ) {
+    prefixLength += 1
+  }
+
+  let originalSuffixStart = originalContent.length
+  let modifiedSuffixStart = modifiedContent.length
+  while (
+    originalSuffixStart > prefixLength &&
+    modifiedSuffixStart > prefixLength &&
+    originalContent[originalSuffixStart - 1] ===
+      modifiedContent[modifiedSuffixStart - 1]
+  ) {
+    originalSuffixStart -= 1
+    modifiedSuffixStart -= 1
+  }
+
+  return {
+    from: prefixLength,
+    to: originalSuffixStart,
+    replacement: modifiedContent.slice(prefixLength, modifiedSuffixStart),
   }
 }

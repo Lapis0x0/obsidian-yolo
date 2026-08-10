@@ -48,9 +48,8 @@ type QuickAskOverlayOptions = {
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
   initialInput?: string
-  editContextText?: string
-  editSelectionFrom?: { line: number; ch: number }
   selectionScope?: QuickAskSelectionScope
+  isRewriteEntry?: boolean
   autoSend?: boolean
   initialAssistantId?: string
   onClose: () => void
@@ -62,6 +61,7 @@ export class QuickAskOverlay {
 
   private root: Root | null = null
   private overlayContainer: HTMLDivElement | null = null
+  private popoverPortalHost: HTMLDivElement | null = null
   private cleanupListeners: (() => void) | null = null
   private cleanupCallbacks: (() => void)[] = []
   private overlayHost: HTMLElement | null = null
@@ -140,6 +140,10 @@ export class QuickAskOverlay {
       clearDynamicStyleClass(this.overlayContainer)
     }
     this.overlayContainer = null
+    if (this.popoverPortalHost?.parentNode) {
+      this.popoverPortalHost.parentNode.removeChild(this.popoverPortalHost)
+    }
+    this.popoverPortalHost = null
     const overlayRoot = QuickAskOverlay.overlayRoot
     if (overlayRoot && overlayRoot.childElementCount === 0) {
       const host = overlayRoot.parentElement
@@ -204,6 +208,14 @@ export class QuickAskOverlay {
     if (this.overlayContainer) {
       this.overlayContainer.classList.add('closing')
     }
+    // Popovers (model/mode/reasoning/assistant/continue-preset menus) are
+    // portaled to popoverPortalHost, outside overlayContainer's subtree, so
+    // they don't inherit its fade-out — mirror the class here so an open
+    // menu fades in lockstep instead of hanging static until the hard
+    // unmount below.
+    if (this.popoverPortalHost) {
+      this.popoverPortalHost.classList.add('closing')
+    }
 
     // Wait for animation to complete before actually closing
     this.closeAnimationTimeout = window.setTimeout(() => {
@@ -221,6 +233,20 @@ export class QuickAskOverlay {
     overlayContainer.className = 'yolo-quick-ask-overlay'
     overlayRoot.appendChild(overlayContainer)
     this.overlayContainer = overlayContainer
+
+    // Dedicated Portal target for the panel's Radix popovers. Kept as an
+    // independent sibling of overlayContainer rather than nested inside it:
+    // overlayContainer's fade-in keyframe has a `forwards` fill, so it
+    // carries a permanent non-none `transform` at rest — and any ancestor
+    // with a transform becomes the containing block for `position: fixed`
+    // descendants, which would silently break Floating UI's viewport-relative
+    // popover positioning. Its own opacity-only closing animation (toggled
+    // alongside overlayContainer's in closeWithAnimation) keeps it visually
+    // in sync without touching transform.
+    const popoverPortalHost = document.createElement('div')
+    popoverPortalHost.className = 'yolo-quick-ask-popover-portal'
+    overlayRoot.appendChild(popoverPortalHost)
+    this.popoverPortalHost = popoverPortalHost
 
     const { capabilities } = this.options
 
@@ -258,9 +284,8 @@ export class QuickAskOverlay {
                         initialMentionables={this.options.initialMentionables}
                         initialMode={this.options.initialMode}
                         initialInput={this.options.initialInput}
-                        editContextText={this.options.editContextText}
-                        editSelectionFrom={this.options.editSelectionFrom}
                         selectionScope={this.options.selectionScope}
+                        isRewriteEntry={this.options.isRewriteEntry}
                         autoSend={this.options.autoSend}
                         initialAssistantId={this.options.initialAssistantId}
                         onClose={this.closeWithAnimation}
@@ -270,6 +295,7 @@ export class QuickAskOverlay {
                         onDragOffset={this.handleDragOffset}
                         onResize={this.handleResize}
                         onDockToTopRight={this.handleDockToTopRight}
+                        popoverPortalHost={popoverPortalHost}
                       />
                     ) : (
                       <QuickAskPanel
@@ -293,6 +319,7 @@ export class QuickAskOverlay {
                         onDragOffset={this.handleDragOffset}
                         onResize={this.handleResize}
                         onDockToTopRight={this.handleDockToTopRight}
+                        popoverPortalHost={popoverPortalHost}
                       />
                     )}
                   </McpProvider>

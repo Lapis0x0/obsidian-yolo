@@ -14,8 +14,12 @@ const createUrlSchema = (allowedProtocols: string[]) =>
     .string()
     .url()
     .refine((urlString) => {
-      const url = new URL(urlString)
-      return allowedProtocols.includes(url.protocol)
+      try {
+        const url = new URL(urlString)
+        return allowedProtocols.includes(url.protocol)
+      } catch {
+        return false
+      }
     })
 
 export const mcpServerStdioParametersLegacySchema = z
@@ -236,6 +240,7 @@ export const mcpServerToolOptionsSchema = z.record(
 export const mcpServerConfigSchema = z.object({
   id: z.string(),
   parameters: mcpServerParametersSchema,
+  auth: z.enum(['oauth']).optional(),
   enabled: z.boolean(),
   toolOptions: mcpServerToolOptionsSchema,
 })

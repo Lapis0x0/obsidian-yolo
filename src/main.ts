@@ -20,6 +20,7 @@ import {
   type ActionToastOptions,
   mountActionToast,
 } from './components/ActionToast'
+import { MarkdownInsertionTargetTracker } from './components/chat-view/markdownInsertionTarget'
 import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE } from './constants'
@@ -34,6 +35,7 @@ import {
   hasConfiguredAudioFileAsrConfig,
 } from './core/asr/configStatus'
 import {
+  clearAllChatGPTOAuthServices,
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
   initializeChatGPTOAuthRuntime,
@@ -48,12 +50,22 @@ import {
   BackgroundActivityAction,
   BackgroundActivityRegistry,
 } from './core/background/backgroundActivityRegistry'
+import { backgroundExecutionController } from './core/background/backgroundExecutionController'
 import { buildBackgroundStatusModel } from './core/background/backgroundStatusModel'
 import { noteWebviewLeafFocus } from './core/browser/activeWebviewProbe'
 import { WebviewSelectionBridge } from './core/browser/webviewSelectionBridge'
+import type {
+  CliConversationRunSummary,
+  CliRuntimeCoordinator,
+  CliRuntimeScope,
+} from './core/cli-runtime/coordinator'
+import type { CliActiveRunState } from './core/cli-runtime/types'
 import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
-import { setLLMDebugCaptureEnabled } from './core/llm/debugCapture'
+import {
+  isLLMDebugCaptureEnabled,
+  setLLMDebugCaptureEnabled,
+} from './core/llm/debugCapture'
 import { clearRequestTransportMemory } from './core/llm/requestTransport'
 import type {
   LocalMcpServerRuntime,
@@ -102,6 +114,7 @@ import { migrateHiddenYoloBaseDir } from './core/paths/yoloBaseDirMigration'
 import { relocateYoloBaseDir } from './core/paths/yoloBaseDirRelocation'
 import {
   type YoloDataMeta,
+  ensureUserDataRootDir,
   extractYoloDataMeta,
   readVaultDataJson,
   removeVaultDataJson,
@@ -123,7 +136,25 @@ import {
   RagIndexRunSnapshot,
   RagIndexService,
 } from './core/rag/ragIndexService'
-import { migrateVaultSkillFrontmatter } from './core/skills/liteSkills'
+import {
+  BAKED_RUNTIME_COMPONENT_REGISTRY,
+  RuntimeComponentDeviceStateStore,
+  RuntimeComponentInstaller,
+  RuntimeComponentIntentStore,
+  RuntimeComponentLoader,
+  RuntimeComponentRuntime,
+  RuntimeComponentService,
+  RuntimeComponentStore,
+  createRuntimeComponentDownloader,
+  resolveRuntimeComponentArtifactSources,
+  setRuntimeComponentService,
+} from './core/runtime-components'
+import {
+  initializeLiteSkillRegistryService,
+  migrateVaultSkillFrontmatter,
+  prewarmLiteSkillRegistry,
+  updateLiteSkillRegistrySettings,
+} from './core/skills/liteSkills'
 import { hasConfiguredTtsConfig } from './core/tts/configStatus'
 import {
   type InstallationIncompleteDetail,
@@ -170,10 +201,7 @@ import {
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
-import {
-  buildFullReviewBlocks,
-  countModifiedBlocks,
-} from './features/editor/diff-review/review-model'
+import { buildSnapshotReviewPlan } from './features/editor/diff-review/review-model'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
@@ -183,9 +211,10 @@ import { resolveSelectionChatActions } from './features/editor/selection-chat/re
 import { SelectionChatController } from './features/editor/selection-chat/selectionChatController'
 import { selectionHighlightController } from './features/editor/selection-highlight/selectionHighlightController'
 import {
-  SmartSpaceController,
-  SmartSpaceDraftState,
-} from './features/editor/smart-space/smartSpaceController'
+  SelectionRewriteController,
+  type StartSelectionLengthAdjustmentOptions,
+  type StartSelectionRewriteOptions,
+} from './features/editor/selection-rewrite/selectionRewriteController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
 import {
   type AudioFileSource,
@@ -199,6 +228,7 @@ import { GENERATED_AUDIO_DRAG_MIME } from './features/editor/voice/read-aloud/ge
 import type { VoiceController } from './features/editor/voice/voiceController'
 import { rebaseVoiceManagedPaths } from './features/editor/voice/voiceManagedPaths'
 import type { ActiveVoiceModeId } from './features/editor/voice/voiceModes'
+import type { ContinuationModelOverride } from './features/editor/write-assist/writeAssistController'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
@@ -300,8 +330,7 @@ export default class YoloPlugin extends Plugin {
     revealedMarkdownView: MarkdownView | null
   } | null = null
   private diffReviewController: DiffReviewController | null = null
-  private smartSpaceDraftState: SmartSpaceDraftState = null
-  private smartSpaceController: SmartSpaceController | null = null
+  private selectionRewriteController: SelectionRewriteController | null = null
   // Selection chat state
   private selectionChatController: SelectionChatController | null = null
   // Obsidian command IDs (un-namespaced) registered for selection-chat shortcuts.
@@ -310,12 +339,15 @@ export default class YoloPlugin extends Plugin {
   private selectionChatCommandsFingerprint: string | null = null
   private chatViewNavigator: ChatViewNavigator | null = null
   private chatLeafSessionManager: ChatLeafSessionManager | null = null
+  private markdownInsertionTargetTracker: MarkdownInsertionTargetTracker | null =
+    null
   private newTabEmptyStateEnhancer: NewTabEmptyStateEnhancer | null = null
   private ragAutoUpdateService: RagAutoUpdateService | null = null
   private ragCoordinator: RagCoordinator | null = null
   private ragIndexService: RagIndexService | null = null
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
+  private runtimeComponentService: RuntimeComponentService | null = null
   private distributionFeedClient: DistributionFeedClient | null = null
   private moduleUpdateController: ModuleUpdateController | null = null
   private moduleRuntime: ModuleRuntime | null = null
@@ -327,6 +359,7 @@ export default class YoloPlugin extends Plugin {
   private readonly managedModulePathChangeListeners = new Set<() => void>()
   private localMcpServer: LocalMcpServerRuntime | null = null
   private localMcpSettingsUnsubscribe: (() => void) | null = null
+  private liteSkillRegistryDispose: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
   private writeAssistController: WriteAssistController | null = null
   // Model list cache for provider model fetching
@@ -334,6 +367,10 @@ export default class YoloPlugin extends Plugin {
     new Map()
   // Quick Ask state
   private quickAskController: QuickAskController | null = null
+  private cliRuntimeCoordinatorPromise: Promise<CliRuntimeCoordinator | null> | null =
+    null
+  private cliRuntimeCapabilityError: unknown = null
+  private cliRunSummaryUnsubscribe: (() => void) | null = null
   private agentService: AgentService | null = null
   private agentServiceReady: Promise<AgentService> | null = null
   private agentApiService: YoloAgentApiService | null = null
@@ -354,19 +391,12 @@ export default class YoloPlugin extends Plugin {
     {
       item: HTMLElement
       title: HTMLElement
+      badge: HTMLElement
       detail: HTMLElement
       indicator: HTMLElement
       action?: BackgroundStatusPanelAction
     }
   >()
-
-  getSmartSpaceDraftState(): SmartSpaceDraftState {
-    return this.smartSpaceDraftState
-  }
-
-  setSmartSpaceDraftState(state: SmartSpaceDraftState) {
-    this.smartSpaceDraftState = state
-  }
 
   private getPromptSourceSettingsFingerprint(
     settings: YoloSettings | undefined,
@@ -412,6 +442,91 @@ export default class YoloPlugin extends Plugin {
       this.chatLeafSessionManager = new ChatLeafSessionManager(this.app)
     }
     return this.chatLeafSessionManager
+  }
+
+  /**
+   * Lazily enters the desktop-only CLI boundary. Keeping the promise here
+   * gives every ChatView one shared coordinator without loading provider
+   * runtime paths on mobile.
+   */
+  getCliRuntimeCoordinator(): Promise<CliRuntimeCoordinator | null> {
+    if (!Platform.isDesktop || this.isUnloaded) {
+      return Promise.resolve(null)
+    }
+    this.cliRuntimeCoordinatorPromise ??= this.initializeCliRuntimeCoordinator()
+    return this.cliRuntimeCoordinatorPromise
+  }
+
+  async createCliRuntimeScope(): Promise<CliRuntimeScope | null> {
+    const coordinator = await this.getCliRuntimeCoordinator()
+    if (!coordinator || this.isUnloaded) return null
+    try {
+      return coordinator.createScope()
+    } catch (error) {
+      this.reportCliRuntimeCapabilityError(error)
+      return null
+    }
+  }
+
+  getCliRuntimeCapabilityError(): unknown {
+    return this.cliRuntimeCapabilityError
+  }
+
+  private async initializeCliRuntimeCoordinator(): Promise<CliRuntimeCoordinator | null> {
+    try {
+      const { createDesktopCliRuntimeCoordinator } = await import(
+        './core/cli-runtime/coordinator'
+      )
+      if (this.isUnloaded) return null
+
+      const coordinator = await createDesktopCliRuntimeCoordinator({
+        app: this.app,
+        getSettings: () => this.settings,
+      })
+      if (this.isUnloaded) {
+        await coordinator.dispose()
+        return null
+      }
+
+      const unsubscribe = coordinator.subscribeToRunSummaries((summaries) => {
+        if (this.isUnloaded) return
+        this.syncCliBackgroundActivities(summaries)
+      })
+      this.cliRunSummaryUnsubscribe = () => {
+        unsubscribe()
+        if (this.isUnloaded) return
+        this.syncCliBackgroundActivities(new Map())
+      }
+
+      return coordinator
+    } catch (error) {
+      if (!this.isUnloaded) {
+        this.reportCliRuntimeCapabilityError(error)
+      }
+      return null
+    }
+  }
+
+  private reportCliRuntimeCapabilityError(error: unknown): void {
+    this.cliRuntimeCapabilityError = error
+    console.error('[YOLO] CLI runtime capability is unavailable', error)
+  }
+
+  private disposeCliRuntimeCoordinator(): void {
+    const coordinatorPromise = this.cliRuntimeCoordinatorPromise
+    this.cliRuntimeCoordinatorPromise = null
+    this.cliRunSummaryUnsubscribe?.()
+    this.cliRunSummaryUnsubscribe = null
+    if (!coordinatorPromise) return
+    void coordinatorPromise
+      .then((coordinator) => coordinator?.dispose())
+      .catch((error: unknown) => {
+        console.error('[YOLO] CLI runtime coordinator cleanup failed', error)
+      })
+  }
+
+  getMarkdownInsertionTarget(): MarkdownView | null {
+    return this.markdownInsertionTargetTracker?.getTarget() ?? null
   }
 
   private publishManagedModulePathChange(): void {
@@ -584,23 +699,6 @@ export default class YoloPlugin extends Plugin {
     return this.pgliteRuntimeManager ?? this.pgliteRuntimeManagerInitPromise!
   }
 
-  // Compute a robust panel anchor position just below the caret line
-  private getSmartSpaceController(): SmartSpaceController {
-    if (!this.smartSpaceController) {
-      this.smartSpaceController = new SmartSpaceController({
-        plugin: this,
-        getSettings: () => this.settings,
-        getActiveMarkdownView: () =>
-          this.app.workspace.getActiveViewOfType(MarkdownView),
-        getEditorView: (editor) => this.getEditorView(editor),
-        clearPendingSelectionRewrite: () => {
-          this.selectionChatController?.clearPendingSelectionRewrite()
-        },
-      })
-    }
-    return this.smartSpaceController
-  }
-
   private getQuickAskController(): QuickAskController {
     if (!this.quickAskController) {
       this.quickAskController = new QuickAskController({
@@ -611,22 +709,32 @@ export default class YoloPlugin extends Plugin {
         getEditorView: (editor) => this.getEditorView(editor),
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
-        closeSmartSpace: () => this.closeSmartSpace(),
       })
     }
     return this.quickAskController
   }
 
-  private closeSmartSpace() {
-    this.getSmartSpaceController().close()
+  private getSelectionRewriteController(): SelectionRewriteController {
+    if (!this.selectionRewriteController) {
+      this.selectionRewriteController = new SelectionRewriteController({
+        t: (key, fallback) => this.t(key, fallback),
+        addAbortController: (controller) =>
+          this.activeAbortControllers.add(controller),
+        removeAbortController: (controller) =>
+          this.activeAbortControllers.delete(controller),
+      })
+    }
+    return this.selectionRewriteController
   }
 
-  private showSmartSpace(
-    editor: Editor,
-    view: EditorView,
-    showQuickActions = true,
-  ) {
-    this.getSmartSpaceController().show(editor, view, showQuickActions)
+  startSelectionRewrite(options: StartSelectionRewriteOptions): void {
+    this.getSelectionRewriteController().start(options)
+  }
+
+  startSelectionLengthAdjustment(
+    options: StartSelectionLengthAdjustmentOptions,
+  ): void {
+    this.getSelectionRewriteController().startLengthAdjustment(options)
   }
 
   // Quick Ask methods
@@ -668,8 +776,6 @@ export default class YoloPlugin extends Plugin {
 
     return {
       initialMentionables: [mentionable],
-      editContextText: selectedText,
-      editSelectionFrom: editor.getCursor('from'),
       selectionScope: {
         mentionable,
         selectionFrom: editor.getCursor('from'),
@@ -698,9 +804,8 @@ export default class YoloPlugin extends Plugin {
       initialMentionables?: Mentionable[]
       initialMode?: QuickAskLaunchMode
       initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      isRewriteEntry?: boolean
       autoSend?: boolean
       initialAssistantId?: string
     },
@@ -758,7 +863,6 @@ export default class YoloPlugin extends Plugin {
             assistantId,
           )
         },
-        isSmartSpaceOpen: () => this.smartSpaceController?.isOpen() ?? false,
       })
     }
     return this.selectionChatController
@@ -849,17 +953,27 @@ export default class YoloPlugin extends Plugin {
           // Background auto-update never surfaces partial failures (product
           // decision: settings page shows them durably via the snapshot). The
           // reconcile result is intentionally discarded here.
-          await this.getRagIndexService().runIndex({
-            mode: 'sync',
-            scope: request,
-            trigger: 'auto',
-            retryPolicy: 'transient',
-          })
+          const indexService = this.getRagIndexService()
+          const snapshot = indexService.getSnapshot()
+          await indexService.runIndex(
+            {
+              mode: 'sync',
+              scope: request,
+              trigger: 'auto',
+              // RagAutoUpdateService owns the finite automatic retry policy.
+              retryPolicy: 'none',
+            },
+            snapshot.trigger === 'auto' && snapshot.retryCount > 0
+              ? 'automatic-retry'
+              : 'new',
+          )
         },
+        getRetryCount: () => this.getRagIndexService().getSnapshot().retryCount,
         markRetryScheduled: (input) =>
           this.getRagIndexService().markRetryScheduled({
             mode: 'sync',
             retryAt: input.retryAt,
+            retryCount: input.retryCount,
             failureMessage: input.failureMessage,
           }),
         clearRetryScheduled: () =>
@@ -908,6 +1022,7 @@ export default class YoloPlugin extends Plugin {
       const { McpCoordinator } = await import('./core/mcp/mcpCoordinator')
       this.mcpCoordinator = new McpCoordinator({
         app: this.app,
+        pluginId: this.manifest.id,
         getSettings: () => this.settings,
         openApplyReview: (state) => this.openApplyReview(state),
         registerSettingsListener: (
@@ -982,10 +1097,6 @@ export default class YoloPlugin extends Plugin {
       },
     })
     this.webviewSelectionBridge.start()
-  }
-
-  private createSmartSpaceTriggerExtension(): Extension {
-    return this.getSmartSpaceController().createTriggerExtension()
   }
 
   private getActiveConversationOverrides():
@@ -1952,7 +2063,7 @@ export default class YoloPlugin extends Plugin {
         action: summary.activity?.kind.startsWith('module:')
           ? undefined
           : {
-              type: 'open-agent-conversation',
+              type: 'open-conversation',
               conversationId: summary.conversationId,
             },
       })
@@ -1967,6 +2078,54 @@ export default class YoloPlugin extends Plugin {
       }
       registry.remove(activityId)
     }
+  }
+
+  private syncCliBackgroundActivities(
+    summaries: Map<string, CliConversationRunSummary>,
+  ): void {
+    const registry = this.getBackgroundActivityRegistry()
+    const nextActivityIds = new Set<string>()
+
+    for (const summary of summaries.values()) {
+      const id = `cli:${summary.conversationId}`
+      nextActivityIds.add(id)
+      registry.upsert({
+        id,
+        kind: 'cli',
+        title: this.t(
+          'statusBar.agentStatusFallbackConversationTitle',
+          '运行中的对话',
+        ),
+        detail: this.resolveCliActivityDetail(summary.runState),
+        cliRuntimeId: summary.runtimeId,
+        status: summary.runState === 'running' ? 'running' : 'waiting',
+        updatedAt: Date.now(),
+        action: {
+          type: 'open-conversation',
+          conversationId: summary.conversationId,
+        },
+      })
+    }
+
+    for (const activityId of this.latestBackgroundActivities.keys()) {
+      if (!activityId.startsWith('cli:')) {
+        continue
+      }
+      if (nextActivityIds.has(activityId)) {
+        continue
+      }
+      registry.remove(activityId)
+    }
+  }
+
+  private resolveCliActivityDetail(runState: CliActiveRunState): string {
+    if (runState === 'waiting_for_approval') {
+      return this.t('statusBar.cliStatusWaitingApproval', '待审批')
+    }
+    if (runState === 'waiting_for_user') {
+      return this.t('statusBar.cliStatusWaitingUser', '等待输入')
+    }
+    return this.t('statusBar.cliStatusRunning', '运行中')
   }
 
   private updateBackgroundStatusBar(): void {
@@ -2034,7 +2193,7 @@ export default class YoloPlugin extends Plugin {
       (activity) => activity.status === 'reminder',
     )
     const agentActivities = runningActivities.filter(
-      (activity) => activity.kind === 'agent',
+      (activity) => activity.kind === 'agent' || activity.kind === 'cli',
     )
     const waitingApprovalCount = runningActivities.filter(
       (activity) => activity.status === 'waiting',
@@ -2150,7 +2309,7 @@ export default class YoloPlugin extends Plugin {
     let metadataList: { id: string; title?: string }[] = []
     if (
       activities.some(
-        (activity) => activity.action?.type === 'open-agent-conversation',
+        (activity) => activity.action?.type === 'open-conversation',
       )
     ) {
       try {
@@ -2197,6 +2356,7 @@ export default class YoloPlugin extends Plugin {
       if (itemRecord.title.getAttribute('title') !== title) {
         itemRecord.title.setAttribute('title', title)
       }
+      this.renderBackgroundActivityBadge(itemRecord.badge, activity)
       if (itemRecord.detail.getText() !== detail) {
         itemRecord.detail.setText(detail)
       }
@@ -2240,6 +2400,7 @@ export default class YoloPlugin extends Plugin {
   ): {
     item: HTMLElement
     title: HTMLElement
+    badge: HTMLElement
     detail: HTMLElement
     indicator: HTMLElement
     action?: BackgroundStatusPanelAction
@@ -2256,9 +2417,16 @@ export default class YoloPlugin extends Plugin {
     const copy = row.createDiv({
       cls: 'yolo-background-activity-status-panel-item-copy',
     })
-    const title = copy.createDiv({
+    const titleRow = copy.createDiv({
+      cls: 'yolo-background-activity-status-panel-item-title-row',
+    })
+    const title = titleRow.createDiv({
       cls: 'yolo-background-activity-status-panel-item-title',
     })
+    const badge = titleRow.createSpan({
+      cls: 'yolo-runtime-badge',
+    })
+    badge.hidden = true
     const detail = copy.createDiv({
       cls: 'yolo-background-activity-status-panel-item-detail',
     })
@@ -2268,12 +2436,14 @@ export default class YoloPlugin extends Plugin {
     const record: {
       item: HTMLElement
       title: HTMLElement
+      badge: HTMLElement
       detail: HTMLElement
       indicator: HTMLElement
       action?: BackgroundStatusPanelAction
     } = {
       item,
       title,
+      badge,
       detail,
       indicator,
       action,
@@ -2287,7 +2457,7 @@ export default class YoloPlugin extends Plugin {
         currentAction.run()
         return
       }
-      if (currentAction.type === 'open-agent-conversation') {
+      if (currentAction.type === 'open-conversation') {
         void this.openChatView({
           placement: 'split',
           initialConversationId: currentAction.conversationId,
@@ -2328,7 +2498,7 @@ export default class YoloPlugin extends Plugin {
     metadataById: Map<string, { title?: string }>,
   ): string {
     if (
-      activity.action?.type === 'open-agent-conversation' &&
+      activity.action?.type === 'open-conversation' &&
       activity.action.conversationId
     ) {
       const metadata = metadataById.get(activity.action.conversationId)
@@ -2341,6 +2511,40 @@ export default class YoloPlugin extends Plugin {
     activity: BackgroundActivity,
   ): string {
     return activity.detail?.trim() ?? ''
+  }
+
+  private renderBackgroundActivityBadge(
+    badge: HTMLElement,
+    activity: BackgroundActivity,
+  ): void {
+    const runtimeId = activity.cliRuntimeId
+    badge.classList.remove(
+      'yolo-runtime-badge--claude-code',
+      'yolo-runtime-badge--codex',
+    )
+    if (!runtimeId) {
+      badge.hidden = true
+      badge.setText('')
+      badge.removeAttribute('data-runtime-id')
+      badge.removeAttribute('aria-label')
+      badge.removeAttribute('title')
+      return
+    }
+
+    const fullLabel =
+      runtimeId === 'claude-code'
+        ? this.t('sidebar.runtimeSelector.claudeCodeLabel', 'Claude Code')
+        : this.t('sidebar.runtimeSelector.codexLabel', 'Codex')
+    badge.classList.add(`yolo-runtime-badge--${runtimeId}`)
+    badge.setText(
+      runtimeId === 'claude-code'
+        ? this.t('sidebar.runtimeSelector.claudeCodeShortLabel', 'CC')
+        : fullLabel,
+    )
+    badge.setAttribute('data-runtime-id', runtimeId)
+    badge.setAttribute('aria-label', fullLabel)
+    badge.setAttribute('title', fullLabel)
+    badge.hidden = false
   }
 
   private openKnowledgeSettings(): void {
@@ -2422,12 +2626,16 @@ export default class YoloPlugin extends Plugin {
           this.resolveContinuationParams(overrides),
         getActiveFileTitle: () =>
           this.app.workspace.getActiveFile()?.basename?.trim() ?? '',
+        setTabCompletionDisplay: (view, payload) =>
+          inlineSuggestionController.setTabCompletionDisplay(view, payload),
         setInlineSuggestionGhost: (view, payload) =>
           inlineSuggestionController.setInlineSuggestionGhost(view, payload),
         showTabLoadingDots: (view, from) =>
           inlineSuggestionController.showTabLoadingDots(view, from),
         hideTabLoadingDots: (view) =>
           inlineSuggestionController.hideTabLoadingDots(view),
+        getSwitchSuggestionHint: () =>
+          this.t('common.switchSuggestion', '↑↓ 切换建议'),
         clearInlineSuggestion: () =>
           inlineSuggestionController.clearInlineSuggestion(),
         setActiveInlineSuggestion: (suggestion) =>
@@ -2646,11 +2854,11 @@ export default class YoloPlugin extends Plugin {
     // If the diff that the overlay would display has zero modified blocks,
     // skip the overlay entirely — otherwise the UI renders "0/0" with every
     // button disabled and no auto-close path, stranding the user.
-    const reviewBlocks = buildFullReviewBlocks(
+    const reviewSuggestions = buildSnapshotReviewPlan(
       state.originalContent,
       state.newContent,
-    )
-    if (countModifiedBlocks(reviewBlocks) === 0) {
+    ).suggestions
+    if (reviewSuggestions.length === 0) {
       if (state.originalContent !== state.newContent) {
         await this.app.vault.modify(state.file, state.newContent)
       }
@@ -2698,7 +2906,6 @@ export default class YoloPlugin extends Plugin {
         resolveContinuationParams: (overrides) =>
           this.resolveContinuationParams(overrides),
         getEditorView: (editor) => this.getEditorView(editor),
-        closeSmartSpace: () => this.closeSmartSpace(),
         registerTimeout: (callback, timeout) =>
           this.registerTimeout(callback, timeout),
         addAbortController: (controller) =>
@@ -2719,7 +2926,6 @@ export default class YoloPlugin extends Plugin {
           this.getInlineSuggestionController().setContinuationSuggestion(
             params,
           ),
-        openApplyReview: (state) => this.openApplyReview(state),
       })
     }
     return this.writeAssistController
@@ -2741,24 +2947,12 @@ export default class YoloPlugin extends Plugin {
     this.getTabCompletionController().handleEditorChange(editor)
   }
 
-  private async handleCustomRewrite(
-    editor: Editor,
-    customPrompt?: string,
-    preSelectedText?: string,
-    preSelectionFrom?: { line: number; ch: number },
-  ) {
-    return this.getWriteAssistController().handleCustomRewrite(
-      editor,
-      customPrompt,
-      preSelectedText,
-      preSelectionFrom,
-    )
-  }
-
   async onload() {
     this.isUnloaded = false
+    this.cliRuntimeCapabilityError = null
     this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
+    this.initializeRuntimeComponentSystem()
     if (process.env.NODE_ENV === 'development') {
       this.addCommand({
         id: 'dev-activate-host-api-conformance-module',
@@ -2773,6 +2967,13 @@ export default class YoloPlugin extends Plugin {
     addIcon(YOLO_ICON_ID, YOLO_ICON_SVG)
 
     await this.loadSettings()
+    this.liteSkillRegistryDispose = initializeLiteSkillRegistryService({
+      app: this.app,
+      settings: this.settings,
+    })
+    this.addSettingsChangeListener((settings) => {
+      updateLiteSkillRegistrySettings(this.app, settings)
+    })
     let moduleAutoDownloadEnabled =
       this.settings.pluginUpdateAutoDownloadEnabled
     this.addSettingsChangeListener((settings) => {
@@ -2796,6 +2997,15 @@ export default class YoloPlugin extends Plugin {
     } catch (error) {
       console.error('[YOLO] Learning legacy install migration failed', error)
     }
+    try {
+      // Must complete before `activateModules()`: the Learning module reads
+      // and writes `learning-srs`/`anki-import-journals` directly under the
+      // visible `data/` root (see `modules/learning/src/host/srsStorage.ts`)
+      // and has no migration logic of its own for the hidden-root layout.
+      await ensureUserDataRootDir(this.app, this.settings)
+    } catch (error) {
+      console.error('[YOLO] User data root migration failed', error)
+    }
     this.warnIfInstallationIncomplete()
     this.activateModules()
     this.syncOAuthRuntimesFromSettings()
@@ -2807,16 +3017,24 @@ export default class YoloPlugin extends Plugin {
     void pruneImageCache(this.app, 30, this.settings)
     void prunePdfTextCache(this.app, 30, this.settings)
     await this.getRagIndexService().initialize()
-    // One-time, idempotent migration of vault skill files from legacy
-    // `id + name` frontmatter to the converged `name`-only form. Kicked off as
-    // soon as the vault index is ready. Note: Obsidian's metadataCache updates
-    // asynchronously after each modify, so on the very first post-upgrade
-    // startup a skill list/open may briefly observe pre-migration frontmatter
-    // until the cache re-parses — self-healing and one-time. A full
-    // cache-event barrier is intentionally avoided as over-engineering for this
-    // sub-second transient; the migration is idempotent so it always converges.
+    // One-time, idempotent migration of legacy skill frontmatter. Skill files
+    // themselves remain at their user-chosen paths.
     this.app.workspace.onLayoutReady(() => {
       void migrateVaultSkillFrontmatter(this.app, this.settings)
+        .catch((error) => {
+          console.error(
+            '[YOLO] Vault skill frontmatter migration failed',
+            error,
+          )
+        })
+        .finally(() => {
+          prewarmLiteSkillRegistry(this.app, this.settings)
+        })
+    })
+    this.app.workspace.onLayoutReady(() => {
+      void this.runtimeComponentService?.start().catch((error) => {
+        console.error('[YOLO] Runtime component startup failed', error)
+      })
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
@@ -2855,7 +3073,9 @@ export default class YoloPlugin extends Plugin {
     enablePdfScreenshotFeature(this)
 
     this.registerEditorExtension(selectionHighlightController.createExtension())
-    this.registerEditorExtension(this.createSmartSpaceTriggerExtension())
+    this.registerEditorExtension(
+      this.getSelectionRewriteController().createExtension(),
+    )
     this.registerEditorExtension(this.createQuickAskTriggerExtension())
     this.registerEditorExtension(
       this.getInlineSuggestionController().createExtension(),
@@ -2976,12 +3196,14 @@ export default class YoloPlugin extends Plugin {
     })
 
     this.addCommand({
-      id: 'trigger-smart-space',
-      name: this.t('commands.triggerSmartSpace'),
+      id: 'trigger-quick-ask-continue',
+      name: this.t('commands.triggerQuickAskContinue'),
       editorCallback: (editor: Editor) => {
         const cmView = this.getEditorView(editor)
         if (!cmView) return
-        this.showSmartSpace(editor, cmView, true)
+        this.showQuickAskWithOptions(editor, cmView, {
+          initialMode: 'continue',
+        })
       },
     })
 
@@ -3147,6 +3369,10 @@ export default class YoloPlugin extends Plugin {
     })
     this.registerDomEvent(window, 'online', () => {
       this.getRagAutoUpdateService().onOnline()
+      this.ragIndexService?.onOnline()
+      void this.runtimeComponentService?.onOnline().catch((error) => {
+        console.error('[YOLO] Failed to resume runtime component retry', error)
+      })
     })
 
     this.addCommand({
@@ -3280,10 +3506,16 @@ export default class YoloPlugin extends Plugin {
 
     // removed templates JSON migration
 
+    this.markdownInsertionTargetTracker = new MarkdownInsertionTargetTracker(
+      this.app.workspace,
+    )
+    this.markdownInsertionTargetTracker.captureCurrentLeaf()
+
     // Handle tab completion trigger
     this.registerEvent(
       this.app.workspace.on('active-leaf-change', (leaf) => {
         try {
+          this.markdownInsertionTargetTracker?.trackActiveLeaf(leaf)
           if (leaf?.view instanceof ChatView) {
             this.getChatLeafSessionManager().touchLeafActive(leaf)
           }
@@ -3334,10 +3566,17 @@ export default class YoloPlugin extends Plugin {
 
   onunload() {
     this.isUnloaded = true
+    clearAllChatGPTOAuthServices()
+    this.disposeCliRuntimeCoordinator()
+    this.liteSkillRegistryDispose?.()
+    this.liteSkillRegistryDispose = null
     this.moduleUpdateController?.dispose()
     this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
+    setRuntimeComponentService(null)
+    this.runtimeComponentService?.stop()
+    this.runtimeComponentService = null
     this.distributionFeedClient = null
     this.learningModuleSettingsHandoff = null
     this.learningLegacyInstallMigration = null
@@ -3352,7 +3591,6 @@ export default class YoloPlugin extends Plugin {
     this.updateToastCleanup = null
     this.actionToastController?.destroy()
     this.actionToastController = null
-    this.closeSmartSpace()
 
     // Selection chat cleanup
     this.webviewSelectionBridge?.destroy()
@@ -3360,6 +3598,7 @@ export default class YoloPlugin extends Plugin {
     this.selectionChatController?.destroy()
     this.selectionChatController = null
     this.chatViewNavigator = null
+    this.markdownInsertionTargetTracker = null
     this.newTabEmptyStateEnhancer = null
     this.voiceController?.destroy()
     this.voiceController = null
@@ -3372,6 +3611,8 @@ export default class YoloPlugin extends Plugin {
     this.inlineSuggestionController = null
     this.diffReviewController?.destroy()
     this.diffReviewController = null
+    this.selectionRewriteController?.destroy()
+    this.selectionRewriteController = null
     this.writeAssistController = null
 
     // clear all timers
@@ -3416,18 +3657,12 @@ export default class YoloPlugin extends Plugin {
     void import('./core/agent/subagent/runner').then(
       ({ abortAllSubagentTasks }) => abortAllSubagentTasks(),
     )
+    backgroundExecutionController.dispose()
     // Ensure all in-flight requests are aborted on unload
     this.cancelAllAiTasks()
     this.clearTabCompletionTimer()
     this.cancelTabCompletionRequest()
     this.clearInlineSuggestion()
-
-    // Release the pdfjs worker Blob URL we may have created during this
-    // session. Outstanding workers already spawned keep running; this only
-    // prevents future fetches and lets the GC collect the source string.
-    void import('./utils/pdf/pdfjsLoader').then(({ disposePdfjsWorker }) =>
-      disposePdfjsWorker(),
-    )
   }
 
   async loadSettings() {
@@ -4169,9 +4404,17 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     // When RAG is disabled, stop all pending auto-update timers and clear
     // any retry_scheduled state so the background-activity UI disappears.
     const ragIsEnabled = settingsToApply.ragOptions.enabled
+    const autoUpdateWasEnabled = previousSettings.ragOptions.autoUpdateEnabled
+    const autoUpdateIsEnabled = settingsToApply.ragOptions.autoUpdateEnabled
     if (!ragIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
+      await this.ragIndexService?.resetRetryState()
       this.ragIndexService?.refreshActivity()
+    } else if (autoUpdateWasEnabled && !autoUpdateIsEnabled) {
+      this.ragAutoUpdateService?.cleanup()
+      if (this.ragIndexService?.getSnapshot().trigger === 'auto') {
+        await this.ragIndexService.resetRetryState()
+      }
     }
 
     this.settingsChangeListeners.forEach((listener) => {
@@ -4706,6 +4949,13 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleService
   }
 
+  getRuntimeComponentService(): RuntimeComponentService {
+    if (!this.runtimeComponentService) {
+      throw new Error('[YOLO] Runtime component service is unavailable')
+    }
+    return this.runtimeComponentService
+  }
+
   getModuleUpdateSnapshot = (): readonly ModuleUpdateOffer[] =>
     this.moduleUpdateController?.getSnapshot() ?? []
 
@@ -4766,6 +5016,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       new ObsidianModuleContributionRegistrar(this),
       new CoreModuleHostCapabilityProvider({
         agent: new CoreModuleAgentCapabilityProvider({
+          isDebugCaptureEnabled: isLLMDebugCaptureEnabled,
           getAgentApi: async () => {
             await this.warmupAgentService()
             return this.getAgentApi()
@@ -4961,6 +5212,102 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     })
   }
 
+  private initializeRuntimeComponentSystem(): void {
+    const store = new RuntimeComponentStore(
+      this.app.vault.adapter,
+      this.manifest,
+      this.app.vault.configDir,
+    )
+    const deviceAdapter = new IndexedDbDataAdapter(this.app)
+    this.register(() => deviceAdapter.close())
+    const platform = Platform.isDesktop ? 'desktop' : 'mobile'
+    const intentStore = new RuntimeComponentIntentStore(
+      createObsidianModuleIntentBackend({
+        app: this.app,
+        getSettings: () => this.settings,
+        subscribeSettingsChange: (listener) =>
+          this.addSettingsChangeListener(() => listener()),
+        directoryName: 'component-intent-v1',
+      }),
+    )
+    const deviceStateStore = new RuntimeComponentDeviceStateStore({
+      kind: 'device-local-runtime-state',
+      adapter: deviceAdapter,
+      rootPath: 'component-device-state-v1',
+    })
+    const remoteDownload = createRuntimeComponentDownloader()
+    const download = async ({
+      descriptor,
+      source,
+      signal,
+    }: Parameters<typeof remoteDownload>[0]): Promise<Uint8Array> => {
+      if (signal?.aborted) {
+        throw new DOMException(
+          'Runtime component download aborted',
+          'AbortError',
+        )
+      }
+      if (process.env.NODE_ENV !== 'production') {
+        return new Uint8Array(
+          await this.app.vault.adapter.readBinary(
+            normalizePath(`${store.pluginDir}/${descriptor.entry}`),
+          ),
+        )
+      }
+      return remoteDownload({
+        descriptor,
+        source,
+        ...(signal ? { signal } : {}),
+      })
+    }
+    const installer = new RuntimeComponentInstaller({
+      store,
+      download,
+      ...(process.env.NODE_ENV === 'production'
+        ? {
+            resolveDownloadSources: (
+              descriptor: (typeof BAKED_RUNTIME_COMPONENT_REGISTRY.components)[number],
+            ) =>
+              resolveRuntimeComponentArtifactSources(
+                descriptor,
+                BAKED_PLUGIN_VERSION,
+              ),
+          }
+        : {}),
+      reportCleanupError: (error) => {
+        console.error('[YOLO] Runtime component artifact cleanup failed', error)
+      },
+    })
+    const service = new RuntimeComponentService({
+      registry: BAKED_RUNTIME_COMPONENT_REGISTRY,
+      platform,
+      store,
+      installer,
+      loader: new RuntimeComponentLoader(),
+      runtime: new RuntimeComponentRuntime(),
+      intentStore,
+      deviceStateStore,
+      reportError: (id, error) => {
+        console.error(`[YOLO] Runtime component "${id}" failed`, error)
+      },
+    })
+    service.registerQuiesceParticipant('pglite-engine', async () => {
+      this.ragIndexService?.cancelActiveRun()
+      await this.ragIndexService?.waitForIdle()
+      this.ragCoordinator?.cleanup()
+      const pending = this.dbManagerInitPromise
+      if (pending) await pending.catch(() => undefined)
+      try {
+        await this.dbManager?.quiesceAndCleanup()
+      } finally {
+        this.dbManager = null
+        this.dbManagerInitPromise = null
+      }
+    })
+    this.runtimeComponentService = service
+    setRuntimeComponentService(service)
+  }
+
   private activateModules(): void {
     void this.getModuleService()
       .start()
@@ -5089,63 +5436,34 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.timeoutIds.push(timeoutId)
   }
 
-  // Public wrapper for use in React modal
+  // Public wrapper — currently used by Quick Ask's "continue" mode, which
+  // always supplies its own resolved providerClient/model (the same one used
+  // for its ask/agent path) as modelOverride.
   async continueWriting(
     editor: Editor,
-    customPrompt?: string,
-    geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
-    mentionables?: (MentionableFile | MentionableFolder)[],
+    customPrompt: string | undefined,
+    mentionables: (MentionableFile | MentionableFolder)[] | undefined,
+    modelOverride: ContinuationModelOverride,
   ) {
-    // Check if this is actually a rewrite request from Selection Chat
-    const pendingRewrite =
-      this.selectionChatController?.consumePendingSelectionRewrite() ?? null
-    if (pendingRewrite) {
-      const { editor: rewriteEditor, selectedText, from } = pendingRewrite
-
-      // Pass the pre-saved selectedText and position directly to handleCustomRewrite
-      // No need to re-select or check current selection
-      await this.handleCustomRewrite(
-        rewriteEditor,
-        customPrompt,
-        selectedText,
-        from,
-      )
-      return
-    }
     return this.handleContinueWriting(
       editor,
       customPrompt,
-      geminiTools,
       mentionables,
-    )
-  }
-
-  // Public wrapper for use in React panel
-  async customRewrite(
-    editor: Editor,
-    customPrompt?: string,
-    preSelectedText?: string,
-    preSelectionFrom?: { line: number; ch: number },
-  ) {
-    return this.handleCustomRewrite(
-      editor,
-      customPrompt,
-      preSelectedText,
-      preSelectionFrom,
+      modelOverride,
     )
   }
 
   private async handleContinueWriting(
     editor: Editor,
-    customPrompt?: string,
-    geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
-    mentionables?: (MentionableFile | MentionableFolder)[],
+    customPrompt: string | undefined,
+    mentionables: (MentionableFile | MentionableFolder)[] | undefined,
+    modelOverride: ContinuationModelOverride,
   ) {
     return this.getWriteAssistController().handleContinueWriting(
       editor,
       customPrompt,
-      geminiTools,
       mentionables,
+      modelOverride,
     )
   }
 }

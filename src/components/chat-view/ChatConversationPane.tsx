@@ -7,6 +7,13 @@ import {
 } from 'lucide-react'
 import type { ReactNode, RefObject } from 'react'
 
+import {
+  MOTION_DURATION_ENTER_S,
+  MOTION_DURATION_EXIT_S,
+  MOTION_EASE_IN,
+  MOTION_EASE_OUT,
+  MOTION_LAYOUT_SPRING,
+} from '../../styles/tokens/motion'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
@@ -16,9 +23,10 @@ import type {
   UserMessageViewportState,
 } from './ChatTimelineList'
 import { InstallationIncompleteBanner } from './InstallationIncompleteBanner'
+import type { ScrollController } from './scroll/scrollController'
 import { SharedConversationSurface } from './SharedConversationSurface'
 
-type ChatConversationPaneProps = {
+export type ChatConversationPaneProps = {
   chatMode: ChatMode
   yoloEnabled: boolean
   showEmptyState: boolean
@@ -28,7 +36,8 @@ type ChatConversationPaneProps = {
   chatTimelineItems: ChatTimelineItem[]
   chatMessagesRef: RefObject<HTMLDivElement>
   onScrollContainerChange: (element: HTMLElement | null) => void
-  onContentElementChange: (element: HTMLElement | null) => void
+  onBottomSentinelChange: (element: HTMLElement | null) => void
+  scrollController?: ScrollController
   renderChatTimelineItem: (timelineItem: ChatTimelineItem) => ReactNode
   timelineRenderVersion?: ChatTimelineRenderVersion<ChatTimelineItem>
   editingAssistantMessageId: string | null
@@ -43,6 +52,8 @@ type ChatConversationPaneProps = {
   emptyStateAskDescription: string
   emptyStateAgentDescription: string
   emptyStateAgentFullDescription: string
+  emptyStateIcon?: ReactNode
+  emptyStateIconMode?: string
   footerContent: ReactNode
   onTimelineVirtualizationChange?: (isVirtualized: boolean) => void
   onUserMessageViewportChange?: (state: UserMessageViewportState) => void
@@ -66,7 +77,8 @@ export function ChatConversationPane({
   chatTimelineItems,
   chatMessagesRef,
   onScrollContainerChange,
-  onContentElementChange,
+  onBottomSentinelChange,
+  scrollController,
   renderChatTimelineItem,
   timelineRenderVersion,
   editingAssistantMessageId,
@@ -81,6 +93,8 @@ export function ChatConversationPane({
   emptyStateAskDescription,
   emptyStateAgentDescription,
   emptyStateAgentFullDescription,
+  emptyStateIcon,
+  emptyStateIconMode,
   footerContent,
   onTimelineVirtualizationChange,
   onUserMessageViewportChange,
@@ -112,17 +126,29 @@ export function ChatConversationPane({
     : isAgentChatMode(chatMode)
       ? emptyStateAgentDescription
       : emptyStateAskDescription
+  const resolvedEmptyStateIconMode =
+    emptyStateIconMode ?? (isYoloAgent ? 'agent-full' : chatMode)
+  const resolvedEmptyStateIcon =
+    emptyStateIcon ??
+    (isYoloAgent ? (
+      <InfinityIcon size={18} strokeWidth={2} />
+    ) : isAgentChatMode(chatMode) ? (
+      <Bot size={18} strokeWidth={2} />
+    ) : (
+      <MessageCircle size={18} strokeWidth={2} />
+    ))
 
   return (
     <>
       <InstallationIncompleteBanner />
       <SharedConversationSurface
-        key={`${currentConversationId}:${groupedChatMessagesLength > 0 ? 'ready' : 'empty'}`}
+        key={currentConversationId}
         items={chatTimelineItems}
         conversationId={currentConversationId}
         scrollContainerRef={chatMessagesRef}
         onScrollContainerChange={onScrollContainerChange}
-        onContentElementChange={onContentElementChange}
+        onBottomSentinelChange={onBottomSentinelChange}
+        scrollController={scrollController}
         renderItem={renderChatTimelineItem}
         renderVersion={timelineRenderVersion}
         forceRenderItemIds={['bottom-anchor']}
@@ -141,24 +167,18 @@ export function ChatConversationPane({
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
                   transition={{
-                    duration: reduceMotion ? 0 : 0.12,
-                    ease: [0.22, 1, 0.36, 1],
+                    duration: reduceMotion ? 0 : MOTION_DURATION_EXIT_S,
+                    ease: MOTION_EASE_OUT,
                   }}
                 >
                   <div className="yolo-chat-empty-state-overlay-inner">
                     <div className="yolo-chat-empty-state">
                       <div
-                        key={`${chatMode}-${isYoloAgent ? 'yolo' : 'std'}`}
+                        key={resolvedEmptyStateIconMode}
                         className="yolo-chat-empty-state-icon"
-                        data-mode={isYoloAgent ? 'agent-full' : chatMode}
+                        data-mode={resolvedEmptyStateIconMode}
                       >
-                        {isYoloAgent ? (
-                          <InfinityIcon size={18} strokeWidth={2} />
-                        ) : isAgentChatMode(chatMode) ? (
-                          <Bot size={18} strokeWidth={2} />
-                        ) : (
-                          <MessageCircle size={18} strokeWidth={2} />
-                        )}
+                        {resolvedEmptyStateIcon}
                       </div>
                       <div className="yolo-chat-empty-state-title">
                         {emptyStateTitle}
@@ -174,7 +194,7 @@ export function ChatConversationPane({
             {messageNavigatorContent}
           </>
         }
-        scrollContainerClassName={`yolo-chat-messages${isAutoFollowEnabled ? ' yolo-chat-messages--following' : ''}`}
+        scrollContainerClassName="yolo-chat-messages"
         onVirtualizationChange={onTimelineVirtualizationChange}
         onUserMessageViewportChange={onUserMessageViewportChange}
         windowNavigationKey={windowNavigationKey}
@@ -185,32 +205,54 @@ export function ChatConversationPane({
         onLoadNewer={onLoadNewer}
         bottomSpacerHeight={bottomSpacerHeight}
       />
+      {/* Animate only the empty-state layout transition. Internal composer
+       * changes such as mounting the first badge must not move the footer. */}
       <motion.div
         layout="position"
+        layoutDependency={showEmptyState}
         className="yolo-chat-footer"
         transition={{
-          layout: {
-            duration: reduceMotion ? 0 : 0.28,
-            ease: [0.22, 1, 0.36, 1],
-          },
+          layout: reduceMotion ? { duration: 0 } : MOTION_LAYOUT_SPRING,
         }}
       >
-        {showScrollToBottomButton && (
-          <div className="yolo-chat-floating-actions">
-            <button
-              type="button"
-              className="yolo-chat-scroll-to-bottom-button"
-              onClick={onForceScrollToBottom}
-              aria-label={
-                hasStreamingMessages
-                  ? scrollToBottomWhileStreamingLabel
-                  : scrollToBottomLabel
-              }
-            >
-              <ArrowDown size={14} strokeWidth={2.25} />
-            </button>
-          </div>
-        )}
+        <div className="yolo-chat-floating-actions">
+          <AnimatePresence initial={false}>
+            {showScrollToBottomButton ? (
+              <motion.div
+                key="scroll-to-bottom"
+                className="yolo-chat-scroll-to-bottom-anchor"
+                initial={{ opacity: 0, scale: 0.9, y: 6 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{
+                  opacity: 0,
+                  scale: 0.9,
+                  y: 6,
+                  transition: {
+                    duration: reduceMotion ? 0 : MOTION_DURATION_EXIT_S,
+                    ease: MOTION_EASE_IN,
+                  },
+                }}
+                transition={{
+                  duration: reduceMotion ? 0 : MOTION_DURATION_ENTER_S,
+                  ease: MOTION_EASE_OUT,
+                }}
+              >
+                <button
+                  type="button"
+                  className="yolo-chat-scroll-to-bottom-button"
+                  onClick={onForceScrollToBottom}
+                  aria-label={
+                    hasStreamingMessages
+                      ? scrollToBottomWhileStreamingLabel
+                      : scrollToBottomLabel
+                  }
+                >
+                  <ArrowDown size={14} strokeWidth={2.25} />
+                </button>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        </div>
         {footerContent}
       </motion.div>
     </>

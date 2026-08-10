@@ -73,6 +73,11 @@
   box-shadow:
     0 6px 18px rgba(0, 0, 0, 0.12),
     0 0 0 1px var(--yolo-popover-ring);
+  /* 130ms kept un-tokenized (enter bucket is 220ms, 90ms away): this is the
+   * visual base for every default-variant popover/dropdown in the app
+   * (chat-input dropdowns, chat-history, AssistantSelector, ViewToggle) —
+   * the enter bucket's slower pace would be felt on every single popover
+   * open across the plugin, not just here. */
   animation: yolo-popover-fade-in 130ms cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
@@ -100,8 +105,8 @@
     0 12px 32px -8px rgba(0, 0, 0, 0.2),
     0 4px 12px rgba(0, 0, 0, 0.08);
   backdrop-filter: blur(16px);
-  animation: yolo-popover-smart-space-fade-in 0.25s
-    cubic-bezier(0.16, 1, 0.3, 1);
+  animation: yolo-popover-smart-space-fade-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 
 @keyframes yolo-popover-fade-in {

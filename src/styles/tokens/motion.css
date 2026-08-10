@@ -1,0 +1,65 @@
+/*
+ * 全局动效 token。三层动效语汇（自会话历史下拉的实践提炼而来）：
+ *
+ * L1 回执 —— 用户直接操作的即时反馈（按下态、删除按钮变红）。0ms，禁止过渡；
+ *            它回答的是「我收到这一下了」，任何渐变都会被读成迟滞。
+ * L2 显隐 —— 元素进出。退场快速收场，入场从容落位，注意力才会从「没了的
+ *            那个」转到现在的内容。
+ * L3 跟随 —— 因他人进出而产生的位移（补位、布局迁移）。用 spring 插值
+ *            加速度而非数值，且不错峰；CSS 表达不了 spring，对应常量在
+ *            tokens/motion.ts 的 MOTION_LAYOUT_SPRING。
+ *
+ * 贯穿三层的硬规则：动画只碰 opacity 与 transform，永不碰
+ * height/padding/margin/width/grid-template-*——后者逐帧触发 reflow。
+ * 列表退场走 FLIP：条目 absolute 脱离文档流当帧让出空间，其余条目
+ * translateY 补位。
+ *
+ * JS 侧（framer-motion / WAAPI）的同源常量在 tokens/motion.ts，
+ * 改动任一侧时必须同步另一侧。
+ */
+:root {
+  /* L1 回执：语义占位，让「刻意不过渡」在样式里可读、可检索。 */
+  --yolo-anim-duration-response: 0s;
+  /* 微反馈：hover / focus 的颜色、透明度变化。曲线用浏览器默认 ease 即可。 */
+  --yolo-anim-duration-feedback: 120ms;
+  /* L2 退场。 */
+  --yolo-anim-duration-exit: 160ms;
+  /* L2 入场。 */
+  --yolo-anim-duration-enter: 220ms;
+  /* 持续型进度 / 草稿指示；不参与 L1/L2/L3 的一次性状态切换。 */
+  --yolo-anim-duration-progress: 900ms;
+  --yolo-anim-duration-shimmer: 1.4s;
+  --yolo-anim-duration-ambient: 3.2s;
+
+  /* 入场 / 落位默认曲线（easeOutQuint）：快速启动、缓慢收尾。 */
+  --yolo-anim-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  /* 退场曲线：加速离开。 */
+  --yolo-anim-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* 持续型状态指示器使用的循环曲线。 */
+  --yolo-anim-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --yolo-anim-ease-linear: linear;
+}
+
+/*
+ * reduced-motion 全局兜底：覆盖所有 yolo- 前缀元素的 CSS 动画与过渡，
+ * 不再依赖逐组件枚举（历史上枚举必漏：thinking shimmer、dot loader、
+ * 流式文字淡入都曾漏网）。仅作用于本插件的 class，不影响 Obsidian 宿主。
+ *
+ * 用 0.01ms 而非 0，保证依赖 transitionend/animationend 的逻辑仍能收到事件。
+ * 注意这只覆盖 CSS 侧；framer-motion / WAAPI 是 JS 驱动的内联样式，
+ * 仍需各自通过 useReducedMotion / matchMedia 降级。
+ *
+ * 需要「静态替代样式」的场景（如 loader 停在某个可读状态）仍可在组件里
+ * 追加自己的 reduced-motion 块；但纯粹「关掉动画」的枚举块不应再新增。
+ */
+@media (prefers-reduced-motion: reduce) {
+  [class*='yolo-'],
+  [class*='yolo-']::before,
+  [class*='yolo-']::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
+  }
+}

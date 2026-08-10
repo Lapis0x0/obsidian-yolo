@@ -1,7 +1,10 @@
 import { FILE_EDIT_GROUP_TOOL_NAME } from '../../core/agent/builtinToolUiMeta'
 import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import {
+  BASH_TOOL_NAME,
+  getLocalFileToolServerName,
+} from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import type { Assistant } from '../../types/assistant.types'
 
@@ -19,13 +22,15 @@ type AssistantRuntimeOptions = Pick<
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
 
 export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
-  getToolName(getLocalFileToolServerName(), 'fs_file_ops'),
   getToolName(getLocalFileToolServerName(), FILE_EDIT_GROUP_TOOL_NAME),
   getToolName(getLocalFileToolServerName(), 'fs_edit'),
   getToolName(getLocalFileToolServerName(), 'fs_write'),
-  getToolName(getLocalFileToolServerName(), 'fs_delete'),
-  getToolName(getLocalFileToolServerName(), 'fs_create_dir'),
-  getToolName(getLocalFileToolServerName(), 'fs_move'),
+  // bash absorbed fs_delete/fs_create_dir/fs_move (path writes) — and,
+  // unlike those three, also vault search/read. Blocking it here in
+  // non-agent chat modes keeps their write ban intact and additionally
+  // withholds vault-wide read access, which is a stricter (but only
+  // sensible, since bash is a single tool) version of the prior behavior.
+  getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
   getToolName(getLocalFileToolServerName(), 'terminal_command'),
   getToolName(getLocalFileToolServerName(), 'todo_write'),
 ]

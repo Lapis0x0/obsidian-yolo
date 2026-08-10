@@ -60,7 +60,7 @@ export async function renderCurrentFilePointerInjection(
   if (!viewState || viewState.kind === 'other') {
     lines.push(
       '# Current Context (auto-attached, content NOT included)',
-      'The user is currently viewing this file. Use read_file if you need its content.',
+      'The user is currently viewing this file. Use an available file-reading tool if you need its content.',
       '',
       `File: ${file.path}`,
     )
@@ -70,7 +70,7 @@ export async function renderCurrentFilePointerInjection(
   } else if (viewState.kind === 'markdown-edit') {
     lines.push(
       '# Current Context (auto-attached, content NOT included)',
-      'The user is currently viewing this file. Use read_file if you need its content.',
+      'The user is currently viewing this file. Use an available file-reading tool if you need its content.',
       '',
       `File: ${file.path}`,
       `Total: ${viewState.totalLines} lines`,
@@ -81,7 +81,7 @@ export async function renderCurrentFilePointerInjection(
     // pdf
     lines.push(
       '# Current Context (auto-attached, content NOT included)',
-      'The user is currently viewing this PDF. Use read_file if you need its content.',
+      'The user is currently viewing this PDF. Use an available file-reading tool if you need its content.',
       '',
       `File: ${file.path}`,
       `Total: ${viewState.totalPages} pages`,

@@ -170,7 +170,6 @@ function createHost(
   return {
     vault: {} as LearningVaultReadApi,
     vaultWriter: {} as LearningVaultWriteApi,
-    isDebugEnabled: () => false,
     agent: {
       stream: (request: unknown) => {
         onRequest?.(request)

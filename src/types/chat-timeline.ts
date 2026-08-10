@@ -50,12 +50,17 @@ export type ChatTimelineCompactionPendingItem = ChatTimelineBaseItem & {
 
 export type ChatTimelineCompactionDividerItem = ChatTimelineBaseItem & {
   kind: 'compaction-divider'
-  anchorMessageId: string
+  anchorMessageId: string | null
   compaction: ChatConversationCompaction | null
 }
 
 export type ChatTimelineQueryProgressItem = ChatTimelineBaseItem & {
   kind: 'query-progress'
+}
+
+export type ChatTimelinePendingResponseItem = ChatTimelineBaseItem & {
+  kind: 'pending-response'
+  sourceUserMessageId: string
 }
 
 export type ChatTimelineContinueResponseItem = ChatTimelineBaseItem & {
@@ -72,6 +77,7 @@ export type ChatTimelineItem =
   | ChatTimelineCompactionPendingItem
   | ChatTimelineCompactionDividerItem
   | ChatTimelineQueryProgressItem
+  | ChatTimelinePendingResponseItem
   | ChatTimelineContinueResponseItem
   | ChatTimelineBottomAnchorItem
 

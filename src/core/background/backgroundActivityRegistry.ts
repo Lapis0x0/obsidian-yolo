@@ -6,7 +6,7 @@ export type BackgroundActivityStatus =
 
 export type BackgroundActivityAction =
   | {
-      type: 'open-agent-conversation'
+      type: 'open-conversation'
       conversationId: string
     }
   | {
@@ -24,6 +24,11 @@ export type BackgroundActivity = {
   detail?: string
   summary?: string
   icon?: string
+  /**
+   * CLI runtime that owns this activity. Rendered as a short badge so a run can
+   * be attributed at a glance, the same way the chat list marks its sessions.
+   */
+  cliRuntimeId?: 'claude-code' | 'codex'
   status: BackgroundActivityStatus
   updatedAt: number
   action?: BackgroundActivityAction

@@ -7,6 +7,7 @@ import type { TFile } from 'obsidian'
 
 import type {
   Mentionable,
+  SerializedMentionableAssistantQuote,
   SerializedMentionableBlock,
 } from '../../types/mentionable'
 
@@ -206,5 +207,62 @@ describe('web selection mentionables', () => {
         `web-selection:https://example.com/article:${serialized.contentHash}`,
       )
     }
+  })
+})
+
+describe('assistant quote annotations', () => {
+  const quote: Mentionable = {
+    type: 'assistant-quote',
+    id: 'annotation-1',
+    annotationNumber: 4,
+    conversationId: 'conversation-1',
+    messageId: 'assistant-1',
+    content: 'Selected reply text',
+    comment: 'Rewrite this more directly.',
+    selector: {
+      start: 10,
+      end: 29,
+      exact: 'Selected reply text',
+      prefix: 'Context: ',
+      suffix: ' after',
+    },
+  }
+
+  test('round-trips the comment and selector', () => {
+    const serialized = serializeMentionable(quote)
+    const restored = deserializeMentionable(serialized, makeMockApp() as any)
+
+    expect(restored).toMatchObject(quote)
+  })
+
+  test('uses the annotation id as stable identity', () => {
+    const serialized = serializeMentionable(
+      quote,
+    ) as SerializedMentionableAssistantQuote
+    expect(getMentionableKey(serialized)).toBe('assistant-quote:annotation-1')
+    expect(
+      getMentionableKey({ ...serialized, comment: 'Updated feedback' }),
+    ).toBe('assistant-quote:annotation-1')
+  })
+
+  test('distinguishes legacy quotes at different rendered positions', () => {
+    const base: SerializedMentionableAssistantQuote = {
+      type: 'assistant-quote',
+      conversationId: 'conversation-1',
+      messageId: 'assistant-1',
+      content: 'Repeated text',
+      contentHash: 'same-hash',
+    }
+    expect(
+      getMentionableKey({
+        ...base,
+        selector: { start: 0, end: 13, exact: 'Repeated text' },
+      }),
+    ).not.toBe(
+      getMentionableKey({
+        ...base,
+        selector: { start: 20, end: 33, exact: 'Repeated text' },
+      }),
+    )
   })
 })

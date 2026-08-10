@@ -1,33 +1,55 @@
-## 1.6.1.3 Safer Updates & More Complete Configuration Transfer 🛡️
+## 1.6.5 Agent Tools, Cross-Device Sync & Chat Polish ✨
 
-### ⚙️ Configuration Transfer
+### 🛠️ Agent Capabilities
 
-- Fixed configuration imports incorrectly treating an existing YOLO root directory as a migration conflict. Import and export now cover registered feature data consistently, reducing the chance that newer settings are left behind.
+- New virtual Bash tool unifies file search and operations in a sandboxed shell over your vault.
+- Oversized virtual bash output is now auto-truncated with guidance to narrow the query, preventing large directory listings from flooding context. (#555)
+- The agent can read `[[wikilink]]` targets directly, resolving down to `#heading` / `^block` ranges. (#555)
+- The `js_eval` tool is renamed to Analysis Sandbox to better reflect its purpose.
+- Added support for DeepSeek's native web search tool.
 
-### 🔄 Reliable Update Distribution
+### 💬 Chat Experience
 
-- Core and module updates now prefer the Cloudflare Pages mirror and automatically fall back to GitHub when needed. Signed feeds, rollback protection, and integrity verification secure the update path while improving reliability on constrained networks.
-- Automatic updates are more stable on slower connections and now show accurate background download states instead of a progress indicator that could appear stuck.
-- Successful module upgrades clean up replaced local artifacts without compromising rollback when an update fails.
+- Reworked streaming rendering and scroll performance, with a unified motion system and polished high-frequency interaction animations.
+- Multiple consecutive tool cards now auto-collapse for a cleaner agent conversation view.
+- Fixed the view unexpectedly scrolling to the bottom when expanding reasoning content.
 
-### 💬 Chat Editing
+### ⚡ Quick Ask & CLI
 
-- Fixed a large blank area appearing below long AI responses while editing, which could push later messages far down the conversation.
+- Quick Ask and YOLO Agent now share unified core runtime semantics; Smart Space is retired, with its continuation feature merged into Quick Ask's third mode. (#529)
+- The CLI mode menu adds native actions for Claude plugin management and MCP server status. (#535)
+- More robust CLI executable discovery, with support for custom CLI paths.
+
+### 🔄 Data Sync & Fixes
+
+- Chat history, learning data, and module settings moved to a visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate them across devices. In Obsidian Sync, enable "Sync all other types" to include them.
+- Fixed Learning project creation failing on Windows with Obsidian 1.13.4 due to `_staging` temp directory cleanup errors, which could leave empty folders behind. (#556)
 
 ---
 
-## 1.6.1.3 更安全可靠的更新与更完整的配置迁移 🛡️
+## 1.6.5 Agent 工具、跨设备同步与对话体验 ✨
 
-### ⚙️ 配置迁移
+### 🛠️ Agent 能力
 
-- 修复导入配置时将已有 YOLO 根目录误判为迁移冲突的问题。配置导入导出现在会统一覆盖已注册的功能数据，降低后续新增配置被遗漏的风险。
+- 新增虚拟 Bash 工具，在 vault 沙箱 shell 中统一文件检索与操作能力。
+- 虚拟 bash 超大输出自动截断并引导收窄查询，防止大目录列出灌爆上下文。（#555）
+- Agent 支持直接读取 `[[wikilink]]` 目标，可精确定位到 `#标题` / `^块` 范围。（#555）
+- `js_eval` 工具更名为「分析沙箱」，更符合产品定位。
+- 适配支持 DeepSeek 官方原生搜索工具。
 
-### 🔄 可靠的更新分发
+### 💬 对话体验
 
-- Core 与模块更新现在优先使用 Cloudflare Pages 镜像，并在异常时自动回退 GitHub；同时通过签名 Feed、版本防回退和完整性校验保障更新安全，改善受限网络环境下的可靠性。
-- 提升较慢网络下自动更新的下载稳定性，并以准确的后台下载状态替代容易产生卡顿感的进度显示。
-- 模块升级成功后会清理已被替换的本地制品，同时在升级失败时保留安全回滚能力。
+- 重构流式渲染与滚动性能，统一动效体系并补齐高频交互动画。
+- 连续多个工具卡片自动折叠，Agent 对话视觉更清爽。
+- 修复展开思维链内容时视图意外滚动到底部的问题。
 
-### 💬 聊天编辑
+### ⚡ Quick Ask 与 CLI
 
-- 修复编辑较长的 AI 回复时下方出现大块空白、将后续消息推远的问题。
+- 统一 Quick Ask 与 YOLO Agent 的核心运行语义；Smart Space 退役，续写能力并入 Quick Ask 第三档模式。（#529）
+- CLI 模式菜单新增 Claude 插件管理与 MCP 服务器状态原生动作。（#535）
+- 增强 CLI 定位鲁棒性，支持自定义 CLI 路径。
+
+### 🔄 数据同步与修复
+
+- 聊天记录、学习数据与模块配置迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步；Obsidian Sync 需开启「同步所有其他类型文件」。
+- 修复 Windows + Obsidian 1.13.4 下 Learning 清理 `_staging` 临时目录报错导致项目创建失败并残留空目录的问题。（#556）

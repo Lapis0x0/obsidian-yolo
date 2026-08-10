@@ -1,6 +1,6 @@
 import { App, normalizePath } from 'obsidian'
 
-import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
+import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
 import { countFileChangeStats } from '../../../utils/chat/editSummary'
 import { CHAT_DIR } from '../constants'
 
@@ -45,7 +45,7 @@ const getSnapshotDirPath = async (
   app: App,
   settings?: YoloSettingsLike | null,
 ): Promise<string> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings ?? null)
+  const rootDir = await ensureUserDataRootDir(app, settings ?? null)
   return normalizePath(`${rootDir}/${CHAT_DIR}/${SNAPSHOT_DIR}`)
 }
 

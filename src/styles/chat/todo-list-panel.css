@@ -1,20 +1,24 @@
 /* 任务清单面板：作为 .yolo-chat-input-overlay 的子项，浮在输入框上方，可折叠。
  * 定位与层级由 .yolo-chat-input-overlay 统一负责，本组件只关心自身样式。
- * 布局：header（折叠摘要按钮+关闭按钮） → body（列表）
+ * 视觉布局：body（列表） → header（折叠摘要按钮+关闭按钮）。DOM 中仍保持
+ * header 在前，确保读屏顺序先遇到控制项；通过反向列布局让 header 始终锚在底部，
+ * 展开时列表向输入框上方生长。
  * 折叠动画：grid-template-rows 0fr ↔ 1fr，无需测量高度
  */
 
 .yolo-todo-panel {
   display: flex;
-  flex-direction: column;
-  border: 1px solid var(--background-modifier-border);
+  flex-direction: column-reverse;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
   border-radius: var(--radius-m, 8px);
   background: var(--background-primary);
   font-size: var(--font-ui-small);
   overflow: hidden;
   /* 入场动画：从输入框上沿向上"冒出来"。每次组件从 null 切到渲染都会重跑
    * （首次出现、清空后再出现、切会话/分支等），不需要 React 端配合。 */
-  animation: yolo-todo-panel-appear 220ms cubic-bezier(0.2, 0, 0, 1);
+  animation: yolo-todo-panel-appear var(--yolo-anim-duration-enter)
+    cubic-bezier(0.2, 0, 0, 1);
 }
 
 @keyframes yolo-todo-panel-appear {
@@ -100,6 +104,7 @@ button.yolo-todo-panel__icon-button svg {
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
+  color: var(--text-normal);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -107,17 +112,22 @@ button.yolo-todo-panel__icon-button svg {
 .yolo-todo-panel__caret {
   flex-shrink: 0;
   color: var(--text-muted);
-  transition: transform 220ms ease;
+  transform: rotate(180deg);
+  transition: transform var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-todo-panel--collapsed .yolo-todo-panel__caret {
-  transform: rotate(-90deg);
+  transform: rotate(270deg);
 }
 
 .yolo-todo-panel__body {
   display: grid;
   grid-template-rows: 1fr;
-  transition: grid-template-rows 240ms cubic-bezier(0.2, 0, 0, 1);
+  /* Exempt from opacity/transform-only rule: same 1fr→0fr reveal trick as
+   * .yolo-assistant-message-more-group — user-triggered (panel collapse
+   * toggle), reflow local to this floating panel. */
+  transition: grid-template-rows var(--yolo-anim-duration-enter)
+    cubic-bezier(0.2, 0, 0, 1);
 }
 
 .yolo-todo-panel--collapsed .yolo-todo-panel__body {

@@ -5,7 +5,7 @@ async function compileMigrations() {
   const migrations = readMigrationFiles({ migrationsFolder: './drizzle/' })
 
   await fs.writeFile(
-    './src/database/migrations.json',
+    './runtime-components/pglite-engine/migrations.json',
     JSON.stringify(migrations),
   )
 

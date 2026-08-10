@@ -24,11 +24,15 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
+  ASSISTANT_FOLLOW_DEFAULT_MODEL_OPTION_VALUE,
+  getAssistantModelSelectValue,
+  modelIdFromAssistantModelSelectValue,
+} from '../../../core/agent/assistant-model'
+import {
   BUILTIN_TOOL_CATEGORY_I18N,
   BUILTIN_TOOL_CATEGORY_ORDER,
   type BuiltinToolCategory,
   FILE_EDIT_GROUP_TOOL_NAME,
-  FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
   WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
@@ -52,12 +56,12 @@ import {
 import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection'
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
 import {
+  BASH_TOOL_NAME,
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../../../core/mcp/localFileTools'
-import { parseToolName } from '../../../core/mcp/tool-name-utils'
+import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
   LiteSkillEntry,
@@ -122,9 +126,6 @@ type SkillRowView = LiteSkillEntry & {
 }
 
 const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const PATH_FS_TOOL_NAME_SET = new Set<string>(
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
-)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -150,6 +151,7 @@ const skillDefaultContextTokenCache = new Map<string, number>()
 // Caches the in-flight or resolved promise so concurrent calls dedupe to a
 // single estimateJsonTokens invocation.
 const toolDefaultContextTokenCache = new Map<string, Promise<number>>()
+const toolDeferredContextTokenCache = new Map<string, Promise<number>>()
 
 function fnv1aHash(text: string): string {
   let hash = 0x811c9dc5
@@ -200,6 +202,19 @@ function estimateToolDefaultContextTokens(tool: McpTool): Promise<number> {
     throw error
   })
   toolDefaultContextTokenCache.set(cacheKey, pending)
+  return pending
+}
+
+function estimateToolDeferredContextTokens(tool: McpTool): Promise<number> {
+  const payload = buildDeferredToolStubTokenPayload(tool)
+  const cacheKey = `${tool.name}:${fnv1aHash(stableStringify(payload))}`
+  const cached = toolDeferredContextTokenCache.get(cacheKey)
+  if (cached) return cached
+  const pending = estimateJsonTokens(payload).catch((error) => {
+    toolDeferredContextTokenCache.delete(cacheKey)
+    throw error
+  })
+  toolDeferredContextTokenCache.set(cacheKey, pending)
   return pending
 }
 
@@ -277,14 +292,14 @@ async function estimateSkillDefaultContextTokens({
   return count
 }
 
-function createNewAgent(defaultModelId: string): Assistant {
+function createNewAgent(): Assistant {
   return {
     id: crypto.randomUUID(),
     name: '',
     description: '',
     systemPrompt: '',
     persona: DEFAULT_PERSONA,
-    modelId: defaultModelId,
+    // Omit modelId so new agents follow the global chat model.
     enableTools: true,
     includeBuiltinTools: true,
     enabledToolNames: [],
@@ -299,14 +314,12 @@ function createNewAgent(defaultModelId: string): Assistant {
   }
 }
 
-function toDraftAgent(
-  assistant: Assistant,
-  fallbackModelId: string,
-): Assistant {
+function toDraftAgent(assistant: Assistant): Assistant {
   return {
     ...assistant,
     persona: assistant.persona ?? DEFAULT_PERSONA,
-    modelId: assistant.modelId ?? fallbackModelId,
+    // Preserve empty/undefined modelId as "follow default".
+    modelId: assistant.modelId || undefined,
     enabledToolNames: getExplicitlyEnabledAssistantToolNames(assistant),
     toolPreferences: getAssistantToolPreferences(assistant),
     toolServerPreferences: assistant.toolServerPreferences ?? {},
@@ -358,7 +371,7 @@ export function AgentsSectionContent({
   const isDirectEntry = isDirectEditEntry || isDirectCreateEntry
   const [draftAgent, setDraftAgent] = useState<Assistant | null>(() => {
     if (initialCreate) {
-      const draft = createNewAgent(settings.chatModelId)
+      const draft = createNewAgent()
       draft.name = t('settings.agent.editorDefaultName', 'New agent')
       return draft
     }
@@ -371,12 +384,16 @@ export function AgentsSectionContent({
     if (!initialAssistant) {
       return null
     }
-    return toDraftAgent(initialAssistant, settings.chatModelId)
+    return toDraftAgent(initialAssistant)
   })
   const [activeTab, setActiveTab] = useState<AgentEditorTab>('profile')
   const [isSystemPromptExpanded, setIsSystemPromptExpanded] = useState(false)
   const expandedPromptTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const systemPromptWrapperRef = useRef<HTMLDivElement | null>(null)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const sectionRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
   const [systemPromptOverlayTarget, setSystemPromptOverlayTarget] =
     useState<HTMLElement | null>(null)
 
@@ -385,9 +402,11 @@ export function AgentsSectionContent({
       setSystemPromptOverlayTarget(null)
       return
     }
+    const wrapper = systemPromptWrapperRef.current
     const target =
-      systemPromptWrapperRef.current?.closest<HTMLElement>('.modal') ??
-      document.body
+      wrapper?.closest<HTMLElement>('.modal') ??
+      wrapper?.ownerDocument.body ??
+      null
     setSystemPromptOverlayTarget(target)
   }, [isSystemPromptExpanded])
   const [availableTools, setAvailableTools] = useState<McpTool[]>([])
@@ -464,6 +483,14 @@ export function AgentsSectionContent({
     }
   }, [plugin])
 
+  const agentFollowDefaultModelOption = useMemo(
+    () => ({
+      value: ASSISTANT_FOLLOW_DEFAULT_MODEL_OPTION_VALUE,
+      label: t('settings.agent.followDefaultModel', 'Follow default model'),
+    }),
+    [t],
+  )
+
   const agentModelOptionGroups = useMemo(() => {
     const providerOrder = settings.providers.map((provider) => provider.id)
     const providerIdsInModels = Array.from(
@@ -512,9 +539,9 @@ export function AgentsSectionContent({
     if (!target) {
       return
     }
-    setDraftAgent(toDraftAgent(target, settings.chatModelId))
+    setDraftAgent(toDraftAgent(target))
     setActiveTab('profile')
-  }, [assistants, draftAgent, initialAssistantId, settings.chatModelId])
+  }, [assistants, draftAgent, initialAssistantId])
 
   const upsertDraft = async () => {
     if (!draftAgent || !draftAgent.name.trim()) {
@@ -525,6 +552,7 @@ export function AgentsSectionContent({
       ...draftAgent,
       name: draftAgent.name.trim(),
       description: draftAgent.description?.trim(),
+      modelId: draftAgent.modelId || undefined,
       toolPreferences: normalizeToolPreferencesForPersistence(
         draftAgent.toolPreferences,
         availableTools,
@@ -617,66 +645,46 @@ export function AgentsSectionContent({
         ...prev,
         toolServerPreferences: {
           ...(prev.toolServerPreferences ?? {}),
-          [serverName]: { approvalMode },
+          [serverName]: {
+            ...(prev.toolServerPreferences?.[serverName] ?? {}),
+            approvalMode,
+          },
         },
       }
     })
   }
 
-  const setToolDisclosureMode = (
-    toolNames: string[],
-    disclosureMode: AssistantToolDisclosureMode,
+  const setServerDisclosureMode = (
+    serverName: string,
+    disclosureMode: AssistantToolDisclosureMode | undefined,
   ) => {
     setDraftAgent((prev) => {
       if (!prev) {
         return prev
       }
-
-      return updateDraftToolPreferences(prev, (current) => {
-        const next = { ...current }
-        for (const toolName of toolNames) {
-          // Preserve the tool's effective enabled state. Without this, batch
-          // server-level disclosure changes would flip default-off MCP tools
-          // on, which violates the "enable stays per-tool" decision.
-          const effectiveEnabled = isAssistantToolEnabled(prev, toolName)
-          next[toolName] = {
-            ...next[toolName],
-            enabled: next[toolName]?.enabled ?? effectiveEnabled,
-            approvalMode:
-              next[toolName]?.approvalMode ??
-              getDefaultApprovalModeForTool(toolName),
-            disclosureMode,
+      const current = prev.toolServerPreferences?.[serverName] ?? {}
+      const nextPreferences = { ...(prev.toolServerPreferences ?? {}) }
+      if (disclosureMode === undefined) {
+        const { disclosureMode: _disclosureMode, ...remaining } = current
+        if (Object.keys(remaining).length === 0) {
+          return {
+            ...prev,
+            toolServerPreferences: Object.fromEntries(
+              Object.entries(nextPreferences).filter(
+                ([name]) => name !== serverName,
+              ),
+            ),
           }
+        } else {
+          nextPreferences[serverName] = remaining
         }
-        return next
-      })
-    })
-  }
-
-  const clearToolDisclosureMode = (toolNames: string[]) => {
-    setDraftAgent((prev) => {
-      if (!prev) {
-        return prev
+      } else {
+        nextPreferences[serverName] = { ...current, disclosureMode }
       }
-
-      return updateDraftToolPreferences(prev, (current) => {
-        let next = { ...current }
-        for (const toolName of toolNames) {
-          const currentPreference = next[toolName]
-          if (!currentPreference) {
-            continue
-          }
-          const { disclosureMode: _disclosureMode, ...rest } = currentPreference
-          if (Object.keys(rest).length === 0) {
-            next = Object.fromEntries(
-              Object.entries(next).filter(([name]) => name !== toolName),
-            )
-          } else {
-            next[toolName] = rest
-          }
-        }
-        return next
-      })
+      return {
+        ...prev,
+        toolServerPreferences: nextPreferences,
+      }
     })
   }
 
@@ -746,7 +754,6 @@ export function AgentsSectionContent({
       { title: string; tools: AgentToolView[]; isBuiltin: boolean }
     >()
     const localEditSplitToolTargets = new Set<string>()
-    const localPathSplitToolTargets = new Set<string>()
     const localMemorySplitToolTargets = new Set<string>()
     const localWebSplitToolTargets = new Set<string>()
 
@@ -769,10 +776,6 @@ export function AgentsSectionContent({
       }
       if (isBuiltin && EDIT_FS_TOOL_NAME_SET.has(toolName)) {
         localEditSplitToolTargets.add(tool.name)
-        return
-      }
-      if (isBuiltin && PATH_FS_TOOL_NAME_SET.has(toolName)) {
-        localPathSplitToolTargets.add(tool.name)
         return
       }
       if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
@@ -836,22 +839,6 @@ export function AgentsSectionContent({
         toggleTargets: [...localEditSplitToolTargets],
         displayName: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
         description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
-      })
-    }
-
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localPathSplitToolTargets.size > 0
-    ) {
-      const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
-      if (!fileOpsMeta) {
-        throw new Error('Missing built-in tool UI metadata for fs_file_ops')
-      }
-      pushBuiltinGroupTool(FILE_OPS_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${FILE_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localPathSplitToolTargets],
-        displayName: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
-        description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
       })
     }
 
@@ -1020,27 +1007,41 @@ export function AgentsSectionContent({
       settings,
     })
 
+    const automaticBudgetTools = enableToolDisclosure
+      ? resolvedTools.filter((tool) => {
+          try {
+            const { serverName } = parseToolName(tool.name)
+            return (
+              serverName !== localFsServerName &&
+              draftAgent.toolServerPreferences?.[serverName]?.disclosureMode ===
+                undefined
+            )
+          } catch {
+            return false
+          }
+        })
+      : []
+
     void buildServerToolTokenBudgets(
-      groupToolsByServer(resolvedTools),
+      groupToolsByServer(automaticBudgetTools),
       estimateJsonTokens,
     ).then(async (serverToolTokenBudgets) => {
       const entries = await Promise.all(
-        resolvedTools.map((tool) =>
-          estimateToolDefaultContextTokens(tool).then(async (count) => {
-            const disclosureMode = getAssistantToolDisclosureMode(
-              draftAgent,
-              tool.name,
-              { enableToolDisclosure, serverToolTokenBudgets },
-            )
-            if (disclosureMode !== 'on_demand') {
-              return [tool.name, count] as const
-            }
-            const stubCount = await estimateJsonTokens(
-              buildDeferredToolStubTokenPayload(tool),
-            )
+        resolvedTools.map(async (tool) => {
+          const disclosureMode = getAssistantToolDisclosureMode(
+            draftAgent,
+            tool.name,
+            { enableToolDisclosure, serverToolTokenBudgets },
+          )
+          if (disclosureMode === 'on_demand') {
+            const stubCount = await estimateToolDeferredContextTokens(tool)
             return [tool.name, stubCount] as const
-          }),
-        ),
+          }
+          return [
+            tool.name,
+            await estimateToolDefaultContextTokens(tool),
+          ] as const
+        }),
       )
       if (cancelled) return
       const perTool = new Map(entries)
@@ -1198,8 +1199,36 @@ export function AgentsSectionContent({
     ],
     [t],
   )
+  // bash is the only tool with a third tier: dangerous operations only
+  // (read commands and mkdir run freely; rm/mv pause mid-script). See
+  // src/core/agent/bash/dangerousOperationGate.ts.
+  const bashToolFullName = useMemo(
+    () => getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
+    [],
+  )
+  const bashToolApprovalOptions = useMemo(
+    () => [
+      {
+        value: 'require_approval',
+        label: t('settings.agent.toolApprovalRequire', 'Require approval'),
+      },
+      {
+        value: 'dangerous_only',
+        label: t(
+          'settings.agent.toolApprovalDangerousOnly',
+          'Approve dangerous operations',
+        ),
+      },
+      {
+        value: 'full_access',
+        label: t('settings.agent.toolApprovalFullAccess', 'Full access'),
+      },
+    ],
+    [t],
+  )
   return (
     <div
+      ref={sectionRef}
       className={`yolo-settings-section yolo-agent-editor-panel${
         isDirectEntry ? ' yolo-agent-editor-panel--direct' : ''
       }`}
@@ -1349,7 +1378,8 @@ export function AgentsSectionContent({
                 </div>
                 <div className="yolo-agent-model-select-wrap">
                   <SimpleSelect
-                    value={draftAgent.modelId || settings.chatModelId}
+                    value={getAssistantModelSelectValue(draftAgent.modelId)}
+                    leadingOptions={[agentFollowDefaultModelOption]}
                     groupedOptions={agentModelOptionGroups}
                     align="end"
                     side="bottom"
@@ -1359,7 +1389,7 @@ export function AgentsSectionContent({
                     onChange={(value: string) =>
                       setDraftAgent({
                         ...draftAgent,
-                        modelId: value,
+                        modelId: modelIdFromAssistantModelSelectValue(value),
                       })
                     }
                   />
@@ -1593,30 +1623,10 @@ export function AgentsSectionContent({
                     !group.isBuiltin &&
                     enableToolDisclosure &&
                     group.tools.length > 0
-                  const explicitDisclosureModes = showServerDisclosure
-                    ? groupToggleTargets
-                        .map(
-                          (target) =>
-                            draftAgent.toolPreferences?.[target]
-                              ?.disclosureMode,
-                        )
-                        .filter(
-                          (mode): mode is AssistantToolDisclosureMode =>
-                            mode !== undefined,
-                        )
-                    : []
-                  const explicitDisclosureMode =
-                    explicitDisclosureModes.length ===
-                      groupToggleTargets.length &&
-                    explicitDisclosureModes.every(
-                      (mode) => mode === explicitDisclosureModes[0],
-                    )
-                      ? explicitDisclosureModes[0]
-                      : null
-                  const disclosureSelectionValue =
-                    explicitDisclosureModes.length === 0
-                      ? 'auto'
-                      : (explicitDisclosureMode ?? 'mixed')
+                  const disclosureSelectionValue = showServerDisclosure
+                    ? (draftAgent.toolServerPreferences?.[group.key]
+                        ?.disclosureMode ?? 'auto')
+                    : 'auto'
                   const autoDisclosureMode = (() => {
                     const firstTarget = groupToggleTargets[0]
                     if (!firstTarget) return null
@@ -1657,9 +1667,7 @@ export function AgentsSectionContent({
                   const serverDisclosureLabel =
                     disclosureSelectionValue === 'auto'
                       ? autoDisclosureLabel
-                      : disclosureSelectionValue === 'mixed'
-                        ? t('settings.agent.toolDisclosureMixed', 'Mixed')
-                        : disclosureModeLabel(disclosureSelectionValue)
+                      : disclosureModeLabel(disclosureSelectionValue)
                   const showServerApproval = !group.isBuiltin
                   const serverApprovalMode: AssistantToolApprovalMode =
                     draftAgent.toolServerPreferences?.[group.key]
@@ -1703,7 +1711,7 @@ export function AgentsSectionContent({
                                   <ChevronDown size={12} aria-hidden="true" />
                                 </button>
                               </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
+                              <DropdownMenu.Portal container={portalContainer}>
                                 <DropdownMenu.Content
                                   className="yolo-simple-select__content"
                                   side="bottom"
@@ -1720,8 +1728,9 @@ export function AgentsSectionContent({
                                     value={disclosureSelectionValue}
                                     onValueChange={(nextValue) => {
                                       if (nextValue === 'auto') {
-                                        clearToolDisclosureMode(
-                                          groupToggleTargets,
+                                        setServerDisclosureMode(
+                                          group.key,
+                                          undefined,
                                         )
                                         return
                                       }
@@ -1729,8 +1738,8 @@ export function AgentsSectionContent({
                                         nextValue === 'always' ||
                                         nextValue === 'on_demand'
                                       ) {
-                                        setToolDisclosureMode(
-                                          groupToggleTargets,
+                                        setServerDisclosureMode(
+                                          group.key,
                                           nextValue,
                                         )
                                       }
@@ -1803,7 +1812,7 @@ export function AgentsSectionContent({
                                   <ChevronDown size={12} aria-hidden="true" />
                                 </button>
                               </DropdownMenu.Trigger>
-                              <DropdownMenu.Portal>
+                              <DropdownMenu.Portal container={portalContainer}>
                                 <DropdownMenu.Content
                                   className="yolo-simple-select__content"
                                   side="bottom"
@@ -1888,17 +1897,29 @@ export function AgentsSectionContent({
                               (target) =>
                                 isAssistantToolEnabled(draftAgent, target),
                             )
-                            const approvalMode =
-                              group.isBuiltin &&
-                              tool.toggleTargets.every(
-                                (target) =>
-                                  getAssistantToolApprovalMode(
-                                    draftAgent,
-                                    target,
-                                  ) === 'full_access',
-                              )
+                            const isBashTool = tool.toggleTargets.every(
+                              (target) => target === bashToolFullName,
+                            )
+                            const approvalMode = !group.isBuiltin
+                              ? 'require_approval'
+                              : tool.toggleTargets.every(
+                                    (target) =>
+                                      getAssistantToolApprovalMode(
+                                        draftAgent,
+                                        target,
+                                      ) === 'full_access',
+                                  )
                                 ? 'full_access'
-                                : 'require_approval'
+                                : isBashTool &&
+                                    tool.toggleTargets.every(
+                                      (target) =>
+                                        getAssistantToolApprovalMode(
+                                          draftAgent,
+                                          target,
+                                        ) === 'dangerous_only',
+                                    )
+                                  ? 'dangerous_only'
+                                  : 'require_approval'
                             return (
                               <div
                                 key={tool.fullName}
@@ -1918,7 +1939,11 @@ export function AgentsSectionContent({
                                       <div className="yolo-agent-tool-select">
                                         <SimpleSelect
                                           value={approvalMode}
-                                          options={toolApprovalOptions}
+                                          options={
+                                            isBashTool
+                                              ? bashToolApprovalOptions
+                                              : toolApprovalOptions
+                                          }
                                           onChange={(value) =>
                                             setToolApprovalMode(
                                               tool.toggleTargets,
@@ -2077,7 +2102,7 @@ export function AgentsSectionContent({
                   <div className="yolo-agent-tools-empty">
                     {t(
                       'settings.agent.skillsEmptyHint',
-                      'No skills found. Create skill markdown files under {path}.',
+                      'No skills found. Create a Markdown file or a folder containing SKILL.md under {path}.',
                     ).replace('{path}', skillsDir)}
                   </div>
                 )}

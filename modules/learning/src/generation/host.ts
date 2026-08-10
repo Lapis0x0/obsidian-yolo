@@ -71,5 +71,4 @@ export type LearningGenerationHost = {
   vault: LearningVaultReadApi
   vaultWriter: LearningVaultWriteApi
   agent: LearningGenerationAgent
-  isDebugEnabled(): boolean
 }

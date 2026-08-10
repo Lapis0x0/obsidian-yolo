@@ -10,6 +10,7 @@ import {
 
 import { useApp } from '../../contexts/app-context'
 import { useChatView } from '../../contexts/chat-view-context'
+import { useLanguage } from '../../contexts/language-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
 
@@ -18,6 +19,7 @@ import {
   copySelectedLatex,
   syncRenderedLatexSelection,
 } from './latex-copy'
+import { setupMermaidViewers } from './MermaidViewer'
 
 type ObsidianMarkdownProps = {
   content: string
@@ -185,6 +187,7 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
 }: ObsidianMarkdownProps) {
   const app = useApp()
   const chatView = useChatView()
+  const { t } = useLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
   const previousContentRef = useRef('')
   const renderTokenRef = useRef(0)
@@ -310,11 +313,24 @@ const ObsidianMarkdown = memo(function ObsidianMarkdown({
     ) {
       setInitialRenderComplete(true)
     }
-  }, [animateIncrementalText, app, chatView, content, hasInitialFallback])
+  }, [animateIncrementalText, app, chatView, content, hasInitialFallback, t])
 
   useEffect(() => {
     void renderMarkdown()
   }, [renderMarkdown])
+
+  useEffect(() => {
+    const containerEl = containerRef.current
+    if (!containerEl) {
+      return
+    }
+
+    return setupMermaidViewers(
+      app,
+      containerEl,
+      t('chat.mermaidControls.open', 'Open diagram viewer'),
+    )
+  }, [app, t])
 
   // Re-bind citation handlers when sources arrive after the initial render
   // (sources are appended to metadata only once the stream completes, so the

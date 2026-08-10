@@ -29,6 +29,14 @@ export type AssistantSkillPreference = z.infer<
 export const assistantToolApprovalModeSchema = z.enum([
   'full_access',
   'require_approval',
+  /**
+   * bash-tool-only third tier: read commands and `mkdir` run without
+   * pausing; `rm`/`mv` pause execution and prompt inline for each command
+   * invocation. Other tools treat this the same as `require_approval` (only
+   * the bash tool's dispatch implements the mid-execution pause) — see
+   * `src/core/agent/bash/dangerousOperationGate.ts`.
+   */
+  'dangerous_only',
 ])
 
 export type AssistantToolApprovalMode = z.infer<
@@ -44,7 +52,6 @@ export type AssistantToolDisclosureMode = z.infer<
 export const assistantToolPreferenceSchema = z.object({
   enabled: z.boolean().optional(),
   approvalMode: assistantToolApprovalModeSchema.optional(),
-  disclosureMode: assistantToolDisclosureModeSchema.optional(),
 })
 
 export type AssistantToolPreference = z.infer<
@@ -53,6 +60,8 @@ export type AssistantToolPreference = z.infer<
 
 export const assistantToolServerPreferenceSchema = z.object({
   approvalMode: assistantToolApprovalModeSchema.optional(),
+  /** Undefined means automatic selection from the current enabled schema cost. */
+  disclosureMode: assistantToolDisclosureModeSchema.optional(),
 })
 
 export type AssistantToolServerPreference = z.infer<

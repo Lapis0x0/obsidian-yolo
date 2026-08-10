@@ -12,6 +12,20 @@ export type ApplyViewSelectionRange = {
 
 export type ApplyViewResult = {
   finalContent: string
+  review?: {
+    totalChanges: number
+    rejectedChanges: Array<{
+      index: number
+      originalText: string
+      proposedText: string
+    }>
+  }
+}
+
+export type ApplyReviewEdit = {
+  from: number
+  to: number
+  replacement: string
 }
 
 export type ApplyViewCallbacks = {
@@ -23,7 +37,8 @@ export type ApplyViewState = {
   file: TFile
   originalContent: string
   newContent: string
-  viewMode?: 'apply' | 'revert-review'
+  reviewEdits?: ApplyReviewEdit[]
+  viewMode?: 'apply' | 'applied-review'
   reviewMode?: 'full' | 'selection-focus'
   selectionRange?: ApplyViewSelectionRange
   callbacks?: ApplyViewCallbacks

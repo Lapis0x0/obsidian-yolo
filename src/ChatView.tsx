@@ -21,9 +21,10 @@ import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
 import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
+import type { CliRuntimeScope } from './core/cli-runtime/coordinator'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
 import { getConversationDisplayTitle } from './hooks/useChatHistory'
-import YoloPlugin from './main'
+import type YoloPlugin from './main'
 import { ConversationOverrideSettings } from './types/conversation-settings.types'
 import {
   MentionableBlockData,
@@ -52,10 +53,14 @@ export class ChatView extends ItemView {
   private runtimeSnapshot: ChatRuntimeSnapshot | null = null
   private rebuildScheduled = false
   private rebuildRafId: number | null = null
+  private rebuildRafWindow: Window | null = null
   private isClosed = false
   private isApplyingPersistedViewState = false
   private pendingRestoredConversationId?: string
   private restoredConversationLoadPromise: Promise<void> | null = null
+  private cliRuntimeScope: CliRuntimeScope | undefined
+  private cliRuntimeScopeInitialization: Promise<void> | null = null
+  private cliRuntimeScopeDisposal: Promise<void> | null = null
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -122,8 +127,12 @@ export class ChatView extends ItemView {
   }
 
   async onOpen(): Promise<void> {
+    await this.prepareCliRuntimeScopeForOpen()
     this.isClosed = false
-    await this.plugin.warmupAgentService()
+    await Promise.all([
+      this.plugin.warmupAgentService(),
+      this.initializeCliRuntimeScope(),
+    ])
     const manager = this.plugin.getChatLeafSessionManager()
     const pendingPayload = manager.consumePendingPayload(this.leaf)
     const placement =
@@ -170,13 +179,16 @@ export class ChatView extends ItemView {
     this.plugin.refreshInstallationIncompleteBanner()
   }
 
-  onClose(): Promise<void> {
+  async onClose(): Promise<void> {
     this.isClosed = true
     this.runtimeSnapshot =
       this.chatRef.current?.getRuntimeSnapshot() ?? this.runtimeSnapshot
     if (this.rebuildRafId !== null) {
-      window.cancelAnimationFrame(this.rebuildRafId)
+      ;(this.rebuildRafWindow ?? this.containerEl.win).cancelAnimationFrame(
+        this.rebuildRafId,
+      )
       this.rebuildRafId = null
+      this.rebuildRafWindow = null
     }
     this.rebuildScheduled = false
     this.plugin.getChatLeafSessionManager().unregisterLeaf(this.leaf)
@@ -190,15 +202,54 @@ export class ChatView extends ItemView {
     this.root = null
     this.mountedHost = null
     this.mountedDoc = null
-    return Promise.resolve()
+    await this.disposeCliRuntimeScope()
+  }
+
+  private async prepareCliRuntimeScopeForOpen(): Promise<void> {
+    if (!this.cliRuntimeScopeDisposal) return
+    await this.cliRuntimeScopeDisposal
+    this.cliRuntimeScopeInitialization = null
+    this.cliRuntimeScopeDisposal = null
+  }
+
+  private initializeCliRuntimeScope(): Promise<void> {
+    this.cliRuntimeScopeInitialization ??= (async () => {
+      try {
+        const scope = await this.plugin.createCliRuntimeScope()
+        if (!scope) return
+        if (this.isClosed) {
+          await scope.dispose()
+          return
+        }
+        this.cliRuntimeScope = scope
+      } catch (error) {
+        console.error('[YOLO] Failed to initialize ChatView CLI scope', error)
+      }
+    })()
+    return this.cliRuntimeScopeInitialization
+  }
+
+  private disposeCliRuntimeScope(): Promise<void> {
+    this.cliRuntimeScopeDisposal ??= (async () => {
+      await this.cliRuntimeScopeInitialization
+      const scope = this.cliRuntimeScope
+      this.cliRuntimeScope = undefined
+      await scope?.dispose()
+    })().catch((error: unknown) => {
+      console.error('[YOLO] Failed to dispose ChatView CLI scope', error)
+    })
+    return this.cliRuntimeScopeDisposal
   }
 
   private scheduleRebuildCheck(): void {
     if (this.isClosed) return
     if (this.rebuildScheduled) return
     this.rebuildScheduled = true
-    this.rebuildRafId = window.requestAnimationFrame(() => {
+    const ownerWindow = this.containerEl.win
+    this.rebuildRafWindow = ownerWindow
+    this.rebuildRafId = ownerWindow.requestAnimationFrame(() => {
       this.rebuildRafId = null
+      this.rebuildRafWindow = null
       this.rebuildScheduled = false
       // Bail out if the view was closed between scheduling and firing.
       if (this.isClosed) return
@@ -288,6 +339,7 @@ export class ChatView extends ItemView {
                                 placement={placement}
                                 initialChatProps={{
                                   ...(this.initialChatProps ?? {}),
+                                  cliRuntimeScope: this.cliRuntimeScope,
                                   seededRuntimeSnapshot,
                                 }}
                                 onConversationContextChange={(context) => {

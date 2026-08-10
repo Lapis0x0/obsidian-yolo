@@ -8,12 +8,12 @@ import {
   RotateCcw,
   Trash2,
 } from 'lucide-react'
-import { MarkdownView, Notice, htmlToMarkdown } from 'obsidian'
+import { Notice, htmlToMarkdown } from 'obsidian'
 import type { ReactNode, Ref } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
-import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
@@ -110,7 +110,7 @@ function CopyButton({ messages }: { messages: AssistantToolMessageGroup }) {
 }
 
 function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
-  const app = useApp()
+  const plugin = usePlugin()
   const { t } = useLanguage()
   const buttonRef = useRef<HTMLButtonElement | null>(null)
   const content = useMemo(() => {
@@ -178,24 +178,7 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
       return
     }
 
-    const activeMarkdownView = app.workspace.getActiveViewOfType(MarkdownView)
-    const recentLeaf = app.workspace.getMostRecentLeaf()
-    const recentMarkdownView =
-      recentLeaf?.view instanceof MarkdownView ? recentLeaf.view : null
-    const fallbackMarkdownView = (() => {
-      if (activeMarkdownView || recentMarkdownView) {
-        return null
-      }
-      const markdownLeaves = app.workspace.getLeavesOfType('markdown')
-      const visibleLeaf =
-        markdownLeaves.find((leaf) => {
-          const el = (leaf.view as { containerEl?: HTMLElement }).containerEl
-          return el ? isElementVisible(el) : true
-        }) ?? markdownLeaves[0]
-      return visibleLeaf?.view instanceof MarkdownView ? visibleLeaf.view : null
-    })()
-    const markdownView =
-      activeMarkdownView ?? recentMarkdownView ?? fallbackMarkdownView
+    const markdownView = plugin.getMarkdownInsertionTarget()
 
     if (!markdownView) {
       new Notice(t('chat.insertUnavailable', 'No active markdown editor found'))
@@ -223,14 +206,6 @@ function InsertButton({ messages }: { messages: AssistantToolMessageGroup }) {
       <Import size={12} />
     </ActionIconButton>
   )
-}
-
-function isElementVisible(el: HTMLElement): boolean {
-  const maybeIsShown = (el as HTMLElement & { isShown?: unknown }).isShown
-  if (typeof maybeIsShown === 'function') {
-    return maybeIsShown.call(el) as boolean
-  }
-  return el.offsetParent !== null || el.getClientRects().length > 0
 }
 
 export default function AssistantToolMessageGroupActions({

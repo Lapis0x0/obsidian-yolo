@@ -1,11 +1,7 @@
 import type { Mentionable, MentionableBlock } from '../../../types/mentionable'
 
-export type QuickAskVisibleMode = 'ask' | 'agent'
-export type QuickAskLaunchMode =
-  | QuickAskVisibleMode
-  | 'ask'
-  | 'edit'
-  | 'edit-direct'
+export type QuickAskVisibleMode = 'ask' | 'agent' | 'continue'
+export type QuickAskLaunchMode = QuickAskVisibleMode
 
 export type QuickAskSelectionScope = {
   mentionable: MentionableBlock
@@ -17,9 +13,15 @@ export type QuickAskShowOptions = {
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
   initialInput?: string
-  editContextText?: string
-  editSelectionFrom?: { line: number; ch: number }
   selectionScope?: QuickAskSelectionScope
+  /**
+   * One-shot rewrite entry: the panel opens as a "改写" (rewrite) prompt
+   * scoped to `selectionScope`. Submitting hands off to
+   * `plugin.startSelectionRewrite` instead of the normal ask/agent runtime.
+   * Never persisted to settings — switching Ask/Agent from the dropdown
+   * exits this intent for the rest of the session.
+   */
+  isRewriteEntry?: boolean
   autoSend?: boolean
   initialAssistantId?: string
 }

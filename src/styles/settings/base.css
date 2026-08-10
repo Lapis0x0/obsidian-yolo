@@ -514,7 +514,7 @@ select.yolo-module-settings-select {
 }
 
 .yolo-error-modal-log {
-  white-space: pre-wrap;
+  white-space: normal;
   word-break: break-word;
   margin-top: 1rem;
   flex-grow: 1;
@@ -536,10 +536,9 @@ select.yolo-module-settings-select {
   --yolo-assistant-metadata-line-offset: calc(
     var(--yolo-assistant-metadata-dot-size) / 2
   );
-  margin-top: 2px;
-  margin-bottom: var(--size-4-1);
+  margin: 0;
   transition:
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
     opacity 180ms ease;
 }
 
@@ -608,32 +607,42 @@ select.yolo-module-settings-select {
 }
 
 .yolo-assistant-message-metadata-preview {
+  position: relative;
+  contain: layout paint;
+  height: 1.4em;
   max-height: 0;
   overflow: hidden;
-  margin-left: var(--yolo-assistant-metadata-line-offset);
-  padding-left: calc(var(--size-4-2) + var(--yolo-assistant-metadata-dot-gap));
+  margin-left: calc(
+    var(--yolo-assistant-metadata-line-offset) + var(--size-4-2) +
+      var(--yolo-assistant-metadata-dot-gap)
+  );
   color: color-mix(in srgb, var(--text-faint) 72%, var(--text-muted));
   font-size: var(--font-ui-smaller);
   line-height: 1.4;
   opacity: 0;
   transform: translateY(-4px);
   transition:
-    max-height 240ms cubic-bezier(0.22, 1, 0.36, 1),
+    max-height 240ms var(--yolo-anim-ease-out),
     opacity 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    margin-bottom 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    margin-bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
-.yolo-assistant-message-metadata-preview span {
-  display: block;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
+.yolo-assistant-message-metadata-preview-track {
+  position: absolute;
+  inset-inline: 0;
+  bottom: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  transform: translateY(
+    var(--yolo-assistant-metadata-preview-hold-offset, 0px)
+  );
+  will-change: transform;
 }
 
 .yolo-assistant-message-metadata.has-preview
   .yolo-assistant-message-metadata-preview {
-  max-height: 24px;
+  max-height: 1.4em;
   margin-bottom: 2px;
   opacity: 1;
   transform: translateY(0);
@@ -655,11 +664,13 @@ select.yolo-module-settings-select {
   appearance: none;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: var(--size-4-1);
+  justify-content: flex-start;
+  gap: var(--size-2-2);
   width: 100%;
-  min-height: 0;
-  font-size: var(--font-ui-small);
+  height: 24px;
+  min-height: 24px;
+  font-size: 0.85rem;
+  line-height: 1.5;
   color: var(--text-muted);
   background: transparent !important;
   background-color: transparent !important;
@@ -711,10 +722,19 @@ select.yolo-module-settings-select {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1.35;
   color: color-mix(in srgb, var(--text-muted) 92%, var(--text-normal));
   transition:
-    opacity 160ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+    opacity var(--yolo-anim-duration-exit) ease,
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-assistant-message-metadata-label-title {
+  color: var(--text-muted);
+}
+
+.yolo-assistant-message-metadata-label-detail {
+  color: var(--text-faint);
 }
 
 .yolo-assistant-message-metadata-status-dot {
@@ -745,21 +765,28 @@ select.yolo-module-settings-select {
 }
 
 .yolo-assistant-message-metadata-toggle-icon {
-  width: var(--size-4-4);
-  height: var(--size-4-4);
+  width: var(--yolo-toolcall-status-icon-size, 16px);
+  height: var(--yolo-toolcall-status-icon-size, 16px);
   flex: 0 0 auto;
   color: color-mix(in srgb, var(--text-faint) 84%, var(--text-muted));
+  opacity: 0.68;
   transition:
     color 180ms ease,
-    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
-    opacity 160ms ease;
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    opacity var(--yolo-anim-duration-exit) ease;
 }
 
-.yolo-assistant-message-metadata--generating
-  .yolo-assistant-message-metadata-toggle-icon,
-.yolo-assistant-message-metadata--settled
+@media (hover: hover) and (pointer: fine) {
   .yolo-assistant-message-metadata-toggle-icon {
-  opacity: 0.68;
+    opacity: 0;
+  }
+
+  .yolo-assistant-message-metadata-toggle:hover
+    .yolo-assistant-message-metadata-toggle-icon,
+  .yolo-assistant-message-metadata-toggle:focus-visible
+    .yolo-assistant-message-metadata-toggle-icon {
+    opacity: 0.68;
+  }
 }
 
 @keyframes yolo-assistant-message-status-pulse {
@@ -861,24 +888,6 @@ select.yolo-module-settings-select {
     background-color: transparent;
     border-top: 1px solid var(--background-modifier-border);
     border-bottom: 1px solid var(--background-modifier-border);
-  }
-}
-
-.yolo-stream-fresh-text {
-  display: inline;
-  animation: yolo-stream-fresh-text-fade 120ms ease-out;
-  will-change: opacity, filter;
-}
-
-@keyframes yolo-stream-fresh-text-fade {
-  0% {
-    opacity: 0.18;
-    filter: blur(0.18em);
-  }
-
-  100% {
-    opacity: 1;
-    filter: blur(0);
   }
 }
 

@@ -1,7 +1,5 @@
 import {
   parseFrontmatter,
-  validateCompatibility,
-  validateDescription,
   validateDirectoryPackage,
   validateSingleFileSkill,
   validateSkillName,
@@ -120,13 +118,11 @@ describe('parseFrontmatter', () => {
 // ---------------------------------------------------------------------------
 
 describe('validateSkillName', () => {
-  it('passes for valid names', () => {
+  it('accepts any non-empty string without enforcing a naming convention', () => {
     expect(validateSkillName('pdf-processing')).toEqual([])
-    expect(validateSkillName('data-analysis')).toEqual([])
-    expect(validateSkillName('code-review')).toEqual([])
-    expect(validateSkillName('a')).toEqual([])
-    expect(validateSkillName('skill123')).toEqual([])
-    expect(validateSkillName('my-skill-v2')).toEqual([])
+    expect(validateSkillName('PDF Processing')).toEqual([])
+    expect(validateSkillName('技能')).toEqual([])
+    expect(validateSkillName('a'.repeat(65))).toEqual([])
   })
 
   it('fails when name is missing', () => {
@@ -142,134 +138,6 @@ describe('validateSkillName', () => {
     expect(validateSkillName('   ')).toEqual([
       { field: 'name', message: 'missing' },
     ])
-  })
-
-  it('fails when name exceeds 64 characters', () => {
-    const longName = 'a'.repeat(65)
-    const errors = validateSkillName(longName)
-    expect(errors).toContainEqual({
-      field: 'name',
-      message: 'exceeds 64 characters',
-    })
-  })
-
-  it('fails when name contains uppercase', () => {
-    expect(validateSkillName('PDF-Processing')).toContainEqual({
-      field: 'name',
-      message: 'uppercase not allowed',
-    })
-  })
-
-  it('fails when name starts with hyphen', () => {
-    expect(validateSkillName('-pdf')).toContainEqual({
-      field: 'name',
-      message: 'cannot start or end with hyphen',
-    })
-  })
-
-  it('fails when name ends with hyphen', () => {
-    expect(validateSkillName('pdf-')).toContainEqual({
-      field: 'name',
-      message: 'cannot start or end with hyphen',
-    })
-  })
-
-  it('fails when name contains consecutive hyphens', () => {
-    expect(validateSkillName('pdf--processing')).toContainEqual({
-      field: 'name',
-      message: 'consecutive hyphens not allowed',
-    })
-  })
-
-  it('fails when name contains invalid characters', () => {
-    expect(validateSkillName('my_skill')).toContainEqual({
-      field: 'name',
-      message: 'only lowercase letters, numbers, and hyphens allowed',
-    })
-    expect(validateSkillName('my skill')).toContainEqual({
-      field: 'name',
-      message: 'only lowercase letters, numbers, and hyphens allowed',
-    })
-    expect(validateSkillName('技能')).toContainEqual({
-      field: 'name',
-      message: 'only lowercase letters, numbers, and hyphens allowed',
-    })
-  })
-
-  it('passes for single character name', () => {
-    expect(validateSkillName('a')).toEqual([])
-    expect(validateSkillName('1')).toEqual([])
-  })
-
-  it('passes for exactly 64 characters', () => {
-    const name = 'a'.repeat(64)
-    expect(validateSkillName(name)).toEqual([])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// validateDescription
-// ---------------------------------------------------------------------------
-
-describe('validateDescription', () => {
-  it('passes for valid description', () => {
-    expect(validateDescription('Extracts text from PDF files.')).toEqual([])
-  })
-
-  it('fails when description is missing', () => {
-    expect(validateDescription(undefined)).toEqual([
-      { field: 'description', message: 'missing' },
-    ])
-    expect(validateDescription(null)).toEqual([
-      { field: 'description', message: 'missing' },
-    ])
-    expect(validateDescription('')).toEqual([
-      { field: 'description', message: 'missing' },
-    ])
-    expect(validateDescription('   ')).toEqual([
-      { field: 'description', message: 'missing' },
-    ])
-  })
-
-  it('fails when description exceeds 1024 characters', () => {
-    const longDesc = 'a'.repeat(1025)
-    expect(validateDescription(longDesc)).toContainEqual({
-      field: 'description',
-      message: 'exceeds 1024 characters',
-    })
-  })
-
-  it('passes for exactly 1024 characters', () => {
-    const desc = 'a'.repeat(1024)
-    expect(validateDescription(desc)).toEqual([])
-  })
-})
-
-// ---------------------------------------------------------------------------
-// validateCompatibility
-// ---------------------------------------------------------------------------
-
-describe('validateCompatibility', () => {
-  it('passes when not provided', () => {
-    expect(validateCompatibility(undefined)).toEqual([])
-    expect(validateCompatibility(null)).toEqual([])
-  })
-
-  it('passes for valid compatibility string', () => {
-    expect(validateCompatibility('Requires Python 3.14+ and uv')).toEqual([])
-  })
-
-  it('fails when exceeds 500 characters', () => {
-    const longCompat = 'a'.repeat(501)
-    expect(validateCompatibility(longCompat)).toContainEqual({
-      field: 'compatibility',
-      message: 'exceeds 500 characters',
-    })
-  })
-
-  it('passes for exactly 500 characters', () => {
-    const compat = 'a'.repeat(500)
-    expect(validateCompatibility(compat)).toEqual([])
   })
 })
 
@@ -317,78 +185,26 @@ describe('validateDirectoryPackage', () => {
     })
   })
 
-  it('fails when name is invalid and description is missing', () => {
-    const content = ['---', 'name: My-Skill', '---'].join('\n')
+  it('accepts missing description and a non-standard name', () => {
+    const content = ['---', 'name: My Skill', '---'].join('\n')
     const files = [{ relativePath: 'SKILL.md', content }]
-    const errors = validateDirectoryPackage('My-Skill', files)
+    expect(validateDirectoryPackage('different-folder', files)).toEqual([])
+  })
+
+  it('fails when name is missing', () => {
+    const content = ['---', 'description: No name', '---'].join('\n')
+    const files = [{ relativePath: 'SKILL.md', content }]
+    const errors = validateDirectoryPackage('my-skill', files)
     expect(errors).toContainEqual({
       field: 'name',
-      message: 'uppercase not allowed',
-    })
-    expect(errors).toContainEqual({
-      field: 'description',
       message: 'missing',
     })
   })
 
-  it('fails when description is missing', () => {
-    const content = ['---', 'name: my-skill', '---'].join('\n')
+  it('does not require frontmatter.name to match the folder name', () => {
+    const content = ['---', 'name: pdf-processing', '---'].join('\n')
     const files = [{ relativePath: 'SKILL.md', content }]
-    const errors = validateDirectoryPackage('my-skill', files)
-    expect(errors).toContainEqual({
-      field: 'description',
-      message: 'missing',
-    })
-  })
-
-  it('validates optional compatibility field', () => {
-    const content = [
-      '---',
-      'name: my-skill',
-      'description: A skill.',
-      `compatibility: ${'x'.repeat(501)}`,
-      '---',
-    ].join('\n')
-    const files = [{ relativePath: 'SKILL.md', content }]
-    const errors = validateDirectoryPackage('my-skill', files)
-    expect(errors).toContainEqual({
-      field: 'compatibility',
-      message: 'exceeds 500 characters',
-    })
-  })
-
-  it('fails when frontmatter.name does not match folder name', () => {
-    const content = [
-      '---',
-      'name: pdf-processing',
-      'description: A useful skill.',
-      '---',
-    ].join('\n')
-    const files = [{ relativePath: 'SKILL.md', content }]
-    const errors = validateDirectoryPackage('different-folder', files)
-    expect(errors).toContainEqual({
-      field: 'name',
-      message: 'must match folder name',
-    })
-  })
-
-  it('does not report mismatch when name is already invalid', () => {
-    const content = [
-      '---',
-      'name: PDF-Processing',
-      'description: A useful skill.',
-      '---',
-    ].join('\n')
-    const files = [{ relativePath: 'SKILL.md', content }]
-    const errors = validateDirectoryPackage('pdf-processing', files)
-    expect(errors).toContainEqual({
-      field: 'name',
-      message: 'uppercase not allowed',
-    })
-    expect(errors).not.toContainEqual({
-      field: 'name',
-      message: 'must match folder name',
-    })
+    expect(validateDirectoryPackage('different-folder', files)).toEqual([])
   })
 
   it('passes with all optional fields valid', () => {
@@ -422,7 +238,7 @@ describe('validateSingleFileSkill', () => {
   it('passes for valid single file skill', () => {
     const content = [
       '---',
-      'name: My Custom Skill',
+      'name: my-custom-skill',
       'description: Does something useful.',
       '---',
       '',
@@ -449,9 +265,8 @@ describe('validateSingleFileSkill', () => {
     })
   })
 
-  it('passes with name only (legacy format allows free-form names)', () => {
+  it('accepts a non-standard name without description', () => {
     const content = ['---', 'name: Any Name With Spaces', '---'].join('\n')
-    // Legacy 格式不强制 name 命名规范
     expect(validateSingleFileSkill(content)).toEqual([])
   })
 
@@ -459,7 +274,7 @@ describe('validateSingleFileSkill', () => {
     const content = [
       '---',
       'id: custom-id',
-      'name: My Skill',
+      'name: my-skill',
       'description: Detailed description here.',
       'mode: always',
       '---',

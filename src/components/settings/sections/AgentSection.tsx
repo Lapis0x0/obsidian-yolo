@@ -1,14 +1,14 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { BookOpen, Copy, Cpu, Plus, Trash2, Wrench } from 'lucide-react'
-import { App } from 'obsidian'
-import { useEffect, useMemo, useState } from 'react'
+import { App, Platform } from 'obsidian'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { getAssistantModelDisplayLabel } from '../../../core/agent/assistant-model'
 import {
   FILE_EDIT_GROUP_TOOL_NAME,
-  FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
   WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
@@ -18,7 +18,6 @@ import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import {
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileTools,
 } from '../../../core/mcp/localFileTools'
@@ -38,6 +37,7 @@ import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
 
 import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionSection'
+import { AgentCliPathSection } from './AgentCliPathSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
 import { AgentMcpServerSection } from './AgentMcpServerSection'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
@@ -47,9 +47,6 @@ type AgentSectionProps = {
 }
 
 const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const PATH_FS_TOOL_NAME_SET = new Set<string>(
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
-)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -63,6 +60,10 @@ export function AgentSection({ app }: AgentSectionProps) {
   const [mcpManager, setMcpManager] = useState<McpManager | null>(null)
   const [mcpServers, setMcpServers] = useState<McpServerState[]>([])
   const [mcpManagerLoading, setMcpManagerLoading] = useState(true)
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const sectionRef = useCallback((node: HTMLDivElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
 
   useEffect(() => {
     let isMounted = true
@@ -222,7 +223,6 @@ export function AgentSection({ app }: AgentSectionProps) {
       .filter(
         (tool) =>
           !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
-          !PATH_FS_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
@@ -248,21 +248,6 @@ export function AgentSection({ app }: AgentSectionProps) {
       id: FILE_EDIT_GROUP_TOOL_NAME,
       label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
       enabled: editSplitToolEnabled,
-    }
-
-    const splitToolEnabled = LOCAL_FS_PATH_OPERATION_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
-    if (!fileOpsMeta) {
-      throw new Error('Missing built-in tool UI metadata for fs_file_ops')
-    }
-    const fileOpsTool = {
-      id: FILE_OPS_GROUP_TOOL_NAME,
-      label: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
-      enabled: splitToolEnabled,
     }
 
     const memorySplitToolEnabled = LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES.every(
@@ -298,12 +283,10 @@ export function AgentSection({ app }: AgentSectionProps) {
     const fsReadIndex = tools.findIndex((tool) => tool.id === 'fs_read')
     if (fsReadIndex >= 0) {
       tools.splice(fsReadIndex, 0, fileEditTool)
-      tools.splice(fsReadIndex + 1, 0, fileOpsTool)
-      tools.splice(fsReadIndex + 2, 0, memoryOpsTool)
-      tools.splice(fsReadIndex + 3, 0, webOpsTool)
+      tools.splice(fsReadIndex + 1, 0, memoryOpsTool)
+      tools.splice(fsReadIndex + 2, 0, webOpsTool)
     } else {
       tools.push(fileEditTool)
-      tools.push(fileOpsTool)
       tools.push(memoryOpsTool)
       tools.push(webOpsTool)
     }
@@ -390,7 +373,7 @@ export function AgentSection({ app }: AgentSectionProps) {
     globallyEnabledSkillEntries.length - visibleSkillEntries.length
 
   return (
-    <div className="yolo-settings-section yolo-agent-section">
+    <div ref={sectionRef} className="yolo-settings-section yolo-agent-section">
       <div className="yolo-settings-header">
         {t('settings.agent.title', 'Agent')}
       </div>
@@ -575,7 +558,7 @@ export function AgentSection({ app }: AgentSectionProps) {
                       ...
                     </span>
                   </DropdownMenu.Trigger>
-                  <DropdownMenu.Portal>
+                  <DropdownMenu.Portal container={portalContainer}>
                     <DropdownMenu.Content
                       className="yolo-agent-card-menu-popover"
                       align="end"
@@ -618,7 +601,13 @@ export function AgentSection({ app }: AgentSectionProps) {
               <div className="yolo-agent-meta-row">
                 <span className="yolo-agent-meta-item">
                   <Cpu size={12} />
-                  {assistant.modelId || settings.chatModelId}
+                  {getAssistantModelDisplayLabel(
+                    assistant.modelId,
+                    t(
+                      'settings.agent.followDefaultModel',
+                      'Follow default model',
+                    ),
+                  )}
                 </span>
                 <span className="yolo-agent-meta-item">
                   <Wrench size={12} />
@@ -687,6 +676,14 @@ export function AgentSection({ app }: AgentSectionProps) {
           </div>
           <AgentMcpServerSection />
         </div>
+        {Platform.isDesktop && (
+          <div className="yolo-agent-sub-card">
+            <div className="yolo-agent-sub-card-head">
+              {t('settings.agent.cliRuntimesBlockTitle', 'CLI runtimes')}
+            </div>
+            <AgentCliPathSection app={app} />
+          </div>
+        )}
       </section>
 
       <section className="yolo-agent-block">

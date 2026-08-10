@@ -21,11 +21,7 @@ export type TranslationKeys = {
     addFolderToChat: string
     rebuildVaultIndex: string
     updateVaultIndex: string
-    continueWriting: string
-    continueWritingSelected: string
-    customContinueWriting: string
-    customRewrite: string
-    triggerSmartSpace: string
+    triggerQuickAskContinue: string
     triggerQuickAsk: string
     triggerTabCompletion: string
     acceptInlineSuggestion: string
@@ -57,6 +53,7 @@ export type TranslationKeys = {
     success: string
     warning: string
     retry: string
+    switchSuggestion: string
     copy: string
     paste: string
     characters: string
@@ -79,6 +76,20 @@ export type TranslationKeys = {
       agent?: string
       composer: string
     }
+    runtimeSelector: {
+      modeAccessibleLabel: string
+      chatLabel: string
+      cliLabel: string
+      chatDescription: string
+      cliDescription: string
+      accessibleLabel: string
+      menuLabel: string
+      claudeCodeLabel: string
+      claudeCodeShortLabel: string
+      claudeCodeDescription: string
+      codexLabel: string
+      codexDescription: string
+    }
     chatList?: {
       searchPlaceholder?: string
       empty?: string
@@ -97,6 +108,7 @@ export type TranslationKeys = {
       hideArchived?: string
       exportConversation?: string
       moreActions?: string
+      confirmDelete?: string
     }
     chat?: {
       exportSuccess?: string
@@ -131,19 +143,11 @@ export type TranslationKeys = {
       }
       continuationPrompt?: string
       maxContinuationChars?: string
-      referenceRulesTitle?: string
       referenceRulesPlaceholder?: string
       knowledgeBaseTitle?: string
       knowledgeBasePlaceholder?: string
       knowledgeBaseHint?: string
     }
-  }
-
-  // Smart Space UI
-  smartSpace?: {
-    webSearch?: string
-    urlContext?: string
-    mentionContextLabel?: string
   }
 
   // Settings
@@ -269,6 +273,24 @@ export type TranslationKeys = {
         activationPending: string
         failed: string
       }
+      runtimeComponents: {
+        title: string
+        description: string
+        tokenizer: { name: string; description: string; impact: string }
+        pdfEngine: { name: string; description: string; impact: string }
+        pgliteEngine: { name: string; description: string; impact: string }
+        bashEngine: { name: string; description: string; impact: string }
+        statuses: {
+          missing: string
+          downloading: string
+          ready: string
+          loading: string
+          active: string
+          quiescing: string
+          disabled: string
+          failed: string
+        }
+      }
     }
     chatPreferences: {
       title: string
@@ -354,20 +376,12 @@ export type TranslationKeys = {
       importSkillSuccess?: string
       importSkillInvalidFile?: string
       importSkillReadError?: string
+      importSkillErrTooDeep?: string
       importSkillWriteError?: string
       importSkillErrHeader?: string
       importSkillErrNoSkillMd?: string
       importSkillErrNoFrontmatter?: string
       importSkillErrNoName?: string
-      importSkillErrNameTooLong?: string
-      importSkillErrNameUppercase?: string
-      importSkillErrNameHyphenEdge?: string
-      importSkillErrNameDoubleHyphen?: string
-      importSkillErrNameInvalidChars?: string
-      importSkillErrNameMismatch?: string
-      importSkillErrNoDescription?: string
-      importSkillErrDescTooLong?: string
-      importSkillErrCompatTooLong?: string
       importSkillConflictTitle?: string
       importSkillConflictMessage?: string
       importSkillConflictMessageList?: string
@@ -389,6 +403,7 @@ export type TranslationKeys = {
       deleteSkillConfirm?: string
       deleteSkillSuccess?: string
       deleteSkillError?: string
+      deleteSkillNotFound?: string
       deleteSkillBatchMessage?: string
       deleteSkillBatchSuccess?: string
       deleteSkillBatchBtn?: string
@@ -438,14 +453,14 @@ export type TranslationKeys = {
       builtinToolSearchDesc?: string
       builtinFsEditLabel?: string
       builtinFsEditDesc?: string
+      builtinBashLabel?: string
+      builtinBashDesc?: string
       fsEditReviewToggle?: string
       fsEditReviewToggleDesc?: string
       safetyControls?: string
       safetyControlsDesc?: string
       builtinFsEditOpsLabel?: string
       builtinFsEditOpsDesc?: string
-      builtinFsFileOpsLabel?: string
-      builtinFsFileOpsDesc?: string
       builtinMemoryOpsLabel?: string
       builtinMemoryOpsDesc?: string
       builtinMemoryAddLabel?: string
@@ -511,6 +526,7 @@ export type TranslationKeys = {
       toolApproval?: string
       toolApprovalFullAccess?: string
       toolApprovalRequire?: string
+      toolApprovalDangerousOnly?: string
       toolDisclosureAuto?: string
       toolDisclosureAutoSelect?: string
       toolDisclosureAlways?: string
@@ -520,6 +536,7 @@ export type TranslationKeys = {
       editorDisabled?: string
       editorModel?: string
       editorModelDesc?: string
+      followDefaultModel?: string
       editorModelCurrent?: string
       editorModelSampling?: string
       editorModelResetDefaults?: string
@@ -559,6 +576,12 @@ export type TranslationKeys = {
       imageCompressionEnabledDesc?: string
       imageCompressionQuality?: string
       imageCompressionQualityDesc?: string
+      cliRuntimesBlockTitle?: string
+      claudeCliPathName?: string
+      claudeCliPathDesc?: string
+      codexCliPathName?: string
+      codexCliPathDesc?: string
+      cliPathMissing?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string
       autoContextCompactionDesc?: string
@@ -659,8 +682,6 @@ export type TranslationKeys = {
       colType?: string
       colDefault?: string
       colActions?: string
-      deleteConfirmTitle?: string
-      deleteConfirmMessage?: string
       deleteFailed?: string
       commonHeader?: string
       resultSize?: string
@@ -683,6 +704,7 @@ export type TranslationKeys = {
         'gemini-grounding'?: string
         grok?: string
         zhipu?: string
+        exa?: string
       }
       fieldName?: string
       fieldApiKey?: string
@@ -779,8 +801,22 @@ export type TranslationKeys = {
       chatgptOAuthConnected: string
       chatgptOAuthExpires: string
       chatgptOAuthDisconnectedHelp: string
-      chatgptOAuthStreamingNotice: string
-      chatgptOAuthPendingCode?: string
+      chatgptOAuthBrowserLogin: string
+      chatgptOAuthDeviceLogin: string
+      chatgptOAuthBrowserConnecting: string
+      chatgptOAuthDeviceConnecting: string
+      chatgptOAuthBrowserDesktopOnly: string
+      chatgptOAuthBrowserOpened: string
+      chatgptOAuthDeviceOpened: string
+      chatgptOAuthConnectedNotice: string
+      chatgptOAuthDisconnectedNotice: string
+      chatgptOAuthPortFallback: string
+      chatgptOAuthPendingCode: string
+      chatgptOAuthDeviceHelp: string
+      chatgptOAuthCopyCode: string
+      chatgptOAuthCodeCopied: string
+      chatgptOAuthOpenDevicePage: string
+      chatgptOAuthCancelDevice: string
       oauthDesktopOnly?: string
       geminiOAuthTitle?: string
       geminiOAuthConnect?: string
@@ -791,7 +827,6 @@ export type TranslationKeys = {
       geminiOAuthExpires?: string
       geminiOAuthDisconnectedHelp?: string
       geminiOAuthProject?: string
-      geminiOAuthStreamingNotice?: string
     }
     tts?: {
       title?: string
@@ -984,12 +1019,16 @@ export type TranslationKeys = {
       builtinToolProviderGpt?: string
       builtinToolProviderOpenRouter?: string
       builtinToolProviderGrok?: string
+      builtinToolProviderDeepSeek?: string
       builtinToolsGpt?: string
       builtinToolsOpenRouter?: string
       builtinToolsGrok?: string
       builtinToolsGemini?: string
+      builtinToolsDeepSeek?: string
       builtinToolWebSearch?: string
       builtinToolWebSearchDesc?: string
+      builtinToolDeepSeekWebSearchDesc?: string
+      builtinToolDeepSeekWebSearchUnavailable?: string
       builtinToolUrlContext?: string
       builtinToolUrlContextDesc?: string
       openRouterWebSearchEngine?: string
@@ -1007,6 +1046,11 @@ export type TranslationKeys = {
       maxContextTokens?: string
       maxContextTokensDesc?: string
       maxOutputTokens?: string
+      requestParameters?: string
+      requestParametersDesc?: string
+      requestParametersEnabledCount?: string
+      clearRequestParameterOverrides?: string
+      additionalParameters?: string
       customParameters?: string
       customParametersDesc?: string
       customParametersAdd?: string
@@ -1173,6 +1217,9 @@ export type TranslationKeys = {
       collapse: string
       addServerTitle?: string
       editServerTitle?: string
+      modeForm?: string
+      modeJson?: string
+      editorMode?: string
       serverNameField?: string
       serverNameFieldDesc?: string
       serverNamePlaceholder?: string
@@ -1192,6 +1239,49 @@ export type TranslationKeys = {
       invalidJsonFormat?: string
       invalidParameters?: string
       validParameters?: string
+      transportField?: string
+      transportFieldDesc?: string
+      remoteTransports?: string
+      localTransports?: string
+      transportHttp?: string
+      transportSse?: string
+      transportWs?: string
+      transportStdio?: string
+      urlField?: string
+      urlFieldDesc?: string
+      authenticationField?: string
+      authenticationFieldDesc?: string
+      authenticationOAuth?: string
+      authenticationNone?: string
+      authenticationHeaders?: string
+      oauthTitle?: string
+      oauthDesc?: string
+      oauthNotConnected?: string
+      oauthConnect?: string
+      oauthCancelConnection?: string
+      oauthReconnect?: string
+      oauthChecking?: string
+      oauthConnecting?: string
+      oauthConnected?: string
+      oauthConnectionFailed?: string
+      oauthConnectBeforeSave?: string
+      oauthHttpRequired?: string
+      commandField?: string
+      commandFieldDesc?: string
+      argumentsField?: string
+      argumentsFieldDesc?: string
+      cwdField?: string
+      cwdFieldDesc?: string
+      headersField?: string
+      headersFieldDesc?: string
+      addHeader?: string
+      headerKeyPlaceholder?: string
+      headerValuePlaceholder?: string
+      environmentField?: string
+      environmentFieldDesc?: string
+      addEnvironmentVariable?: string
+      environmentKeyPlaceholder?: string
+      environmentValuePlaceholder?: string
       failedToAddServer?: string
       failedToDeleteServer?: string
     }
@@ -1237,20 +1327,11 @@ export type TranslationKeys = {
     continuation: {
       title: string
       aiSubsectionTitle: string
-      customSubsectionTitle: string
       tabSubsectionTitle: string
       superContinuation: string
       superContinuationDesc: string
       continuationModel: string
       continuationModelDesc: string
-      smartSpaceDescription: string
-      smartSpaceToggle: string
-      smartSpaceToggleDesc: string
-      smartSpaceTriggerMode: string
-      smartSpaceTriggerModeDesc: string
-      smartSpaceTriggerModeSingle: string
-      smartSpaceTriggerModeDouble: string
-      smartSpaceTriggerModeOff: string
       selectionChatSubsectionTitle: string
       selectionChatDescription: string
       selectionChatToggle: string
@@ -1282,6 +1363,8 @@ export type TranslationKeys = {
       tabCompletionAdvancedSectionDesc: string
       tabCompletion: string
       tabCompletionDesc: string
+      tabCompletionMultipleCandidates: string
+      tabCompletionMultipleCandidatesDesc: string
       tabCompletionModel: string
       tabCompletionModelDesc: string
       tabCompletionTriggerDelay: string
@@ -1318,6 +1401,9 @@ export type TranslationKeys = {
       tabCompletionTriggerTypeString: string
       tabCompletionTriggerTypeRegex: string
       tabCompletionTriggerPattern: string
+      tabCompletionTriggerAcceptMode: string
+      tabCompletionTriggerAcceptModeInsert: string
+      tabCompletionTriggerAcceptModeReplace: string
       tabCompletionTriggerDescription: string
       tabCompletionTriggerRemove: string
     }
@@ -1379,6 +1465,8 @@ export type TranslationKeys = {
       ribbonClickActionSplit?: string
       ribbonClickActionWindow?: string
       ribbonClickActionLast?: string
+      enterKeyCreatesNewline?: string
+      enterKeyCreatesNewlineDesc?: string
       mentionDisplayMode?: string
       mentionDisplayModeDesc?: string
       mentionDisplayModeInline?: string
@@ -1421,6 +1509,7 @@ export type TranslationKeys = {
     smartSpace?: {
       quickActionsTitle: string
       quickActionsDesc: string
+      quickActionsModalTitle?: string
       configureActions: string
       actionsCount: string
       addAction: string
@@ -1893,6 +1982,17 @@ export type TranslationKeys = {
       suggest?: string
       translateToChinese?: string
     }
+    length?: {
+      adjust?: string
+      condense?: string
+      expand?: string
+      freeExpand?: string
+      handle?: string
+      noEditor?: string
+      noSelection?: string
+      noEditorView?: string
+      tableUnsupported?: string
+    }
   }
 
   // Chat Interface
@@ -1901,6 +2001,7 @@ export type TranslationKeys = {
     placeholderCompact?: string
     placeholderPrefix?: string
     placeholderMention?: string
+    placeholderMentionReferences?: string
     placeholderSkill?: string
     contextUsage?: string
     contextUsageUnknownMaxSuffix?: string
@@ -1908,6 +2009,10 @@ export type TranslationKeys = {
       title?: string
       /** "{{percent}} Full" — interpolated client-side */
       fullLabel?: string
+      /** "Previous turn cache hit {{percent}}" — interpolated client-side */
+      cacheHitLabel?: string
+      breakdownBarAriaLabel?: string
+      usageBarAriaLabel?: string
       tokensSuffix?: string
       localEstimateCaption?: string
       unknownMaxHint?: string
@@ -1948,6 +2053,14 @@ export type TranslationKeys = {
       title?: string
       itemAriaLabel?: string
       emptyMessage?: string
+    }
+    mermaidControls?: {
+      open?: string
+      zoomOut?: string
+      zoomIn?: string
+      fitViewport?: string
+      reset?: string
+      controlsLabel?: string
     }
     stopGeneration?: string
     queueMessage?: {
@@ -1997,11 +2110,16 @@ export type TranslationKeys = {
     noAssistantContent?: string
     regenerate: string
     reasoning: string
+    reasonedFor?: string
     annotations: string
     vaultSources?: string
     assistantQuote?: {
       add?: string
       badge?: string
+      commentPlaceholder?: string
+      save?: string
+      delete?: string
+      inputLabel?: string
     }
     mentionMenu?: {
       back?: string
@@ -2015,6 +2133,14 @@ export type TranslationKeys = {
     }
     slashCommands?: {
       compact?: {
+        label?: string
+        description?: string
+      }
+      openPluginManager?: {
+        label?: string
+        description?: string
+      }
+      openMcpServers?: {
         label?: string
         description?: string
       }
@@ -2034,6 +2160,64 @@ export type TranslationKeys = {
       agentDescription?: string
       agentFullTitle?: string
       agentFullDescription?: string
+    }
+    cliSurface?: {
+      emptyTitle?: string
+      emptyDescription?: string
+      emptyUserMessage?: string
+      error?: string
+      runtimeError?: string
+      submitError?: string
+      cancelError?: string
+      openError?: string
+      transitionError?: string
+    }
+    cliControls?: {
+      defaultModel?: string
+      loadError?: string
+      updateError?: string
+    }
+    claudePlugins?: {
+      title?: string
+      placeholder?: string
+      tabInstalled?: string
+      tabBrowse?: string
+      loadError?: string
+      cliFallback?: string
+      updateRestartRequired?: string
+      installedEmpty?: string
+      browseEmpty?: string
+      searchPlaceholder?: string
+      update?: string
+      uninstall?: string
+      install?: string
+      installedBadge?: string
+      uninstallConfirmTitle?: string
+      uninstallConfirmMessage?: string
+      scopeUser?: string
+      scopeProject?: string
+      scopeLocal?: string
+      installCount?: string
+    }
+    mcpServers?: {
+      title?: string
+      placeholder?: string
+      refresh?: string
+      reconnect?: string
+      toolCount?: string
+      statusConnected?: string
+      statusFailed?: string
+      statusNeedsAuth?: string
+      statusPending?: string
+      statusDisabled?: string
+      statusUnknown?: string
+      empty?: string
+      loadError?: string
+      noActiveSession?: string
+      actionError?: string
+      runtimeSwitched?: string
+      codexReadOnlyNote?: string
+      codexUnsupportedVersion?: string
     }
     quickAccess?: {
       manage?: string
@@ -2075,18 +2259,8 @@ export type TranslationKeys = {
       emptyPlanPreview?: string
       stopApplying?: string
     }
-    customContinuePromptLabel?: string
-    customContinuePromptPlaceholder?: string
-    customContinueHint?: string
-    customContinueConfirmHint?: string
     customRewritePromptPlaceholder?: string
     customContinueProcessing?: string
-    customContinueError?: string
-    customContinuePresets?: {
-      continue?: { label: string; instruction: string }
-      summarize?: { label: string; instruction: string }
-      flowchart?: { label: string; instruction: string }
-    }
     customContinueSections?: {
       suggestions?: {
         title: string
@@ -2132,6 +2306,28 @@ export type TranslationKeys = {
     }
     errorCard?: {
       title?: string
+      connectionInterruptedContinuable?: string
+      viewDetails?: string
+      hideDetails?: string
+      goToSettings?: string
+      diagnosis?: {
+        auth?: string
+        region?: string
+        model?: string
+        quota?: string
+        rateLimit?: string
+        contextLength?: string
+        payload?: string
+        content?: string
+        mcp?: string
+        stream?: string
+        network?: string
+        proxy?: string
+        server?: string
+        deprecated?: string
+        knowledge?: string
+        parse?: string
+      }
       responseFormat?: {
         responseNotObject?: string
         missingChoices?: string
@@ -2167,11 +2363,16 @@ export type TranslationKeys = {
         fs_read?: string
         fs_edit?: string
         fs_edit_ops?: string
-        fs_file_ops?: string
+        bash?: string
         memory_add?: string
         memory_update?: string
         memory_delete?: string
         open_skill?: string
+      }
+      dangerousBash?: {
+        title?: string
+        rmSummary?: string
+        mvSummary?: string
       }
       writeAction?: {
         write?: string
@@ -2205,6 +2406,8 @@ export type TranslationKeys = {
       abort?: string
       alwaysAllowThisTool?: string
       allowForThisChat?: string
+      approvePlan?: string
+      stayInPlan?: string
     }
     toolSummary?: {
       todoWrite?: {
@@ -2218,6 +2421,18 @@ export type TranslationKeys = {
         sessionKill?: string
         sessionInput?: string
       }
+    }
+    // Collapsed summary line for a settled run of consecutive tool calls.
+    toolRunSummary?: {
+      read?: string
+      search?: string
+      web?: string
+      edit?: string
+      virtualTerminal?: string
+      terminal?: string
+      command?: string
+      analysis?: string
+      other?: string
     }
     // shared live task card
     liveTask?: {
@@ -2234,12 +2449,15 @@ export type TranslationKeys = {
       truncated?: string
     }
     subagent?: {
+      defaultTitle?: string
       openDetails?: string
+      loadingActivity?: string
       planningNextMoves?: string
       noActivity?: string
       statusCompleted?: string
       statusAborted?: string
       statusFailed?: string
+      statusDispatched?: string
       toolUseCount?: string
       tokenCount?: string
       approval?: {
@@ -2319,6 +2537,9 @@ export type TranslationKeys = {
     agentStatusRunning?: string
     agentStatusWaitingApproval?: string
     agentStatusFallbackConversationTitle?: string
+    cliStatusRunning?: string
+    cliStatusWaitingApproval?: string
+    cliStatusWaitingUser?: string
     backgroundStatusPanelTitle?: string
     backgroundStatusPanelEmpty?: string
     backgroundTasksRunning?: string
@@ -2345,16 +2566,20 @@ export type TranslationKeys = {
     reviewTitle?: string
     changesResolved?: string
     acceptAllIncoming?: string
+    acceptAllChanges?: string
     keepAllChanges?: string
     rejectAll?: string
+    rejectAllChanges?: string
     revertAllChanges?: string
     prevChange?: string
     nextChange?: string
     reset?: string
     applyAndClose?: string
     acceptIncoming?: string
+    acceptChange?: string
     keepChange?: string
     acceptCurrent?: string
+    rejectChange?: string
     revertChange?: string
     acceptBoth?: string
     acceptedIncoming?: string
@@ -2372,6 +2597,7 @@ export type TranslationKeys = {
     noAssistantDescription?: string
     navigationHint?: string
     inputPlaceholder?: string
+    continuePlaceholder?: string
     close?: string
     copy?: string
     insert?: string
@@ -2385,21 +2611,11 @@ export type TranslationKeys = {
     noModelConfigured?: string
     copied?: string
     inserted?: string
-    // Mode select
-    modeAsk?: string
-    modeEdit?: string
-    modeEditDirect?: string
-    modeAskDesc?: string
-    modeEditDesc?: string
-    modeEditDirectDesc?: string
-    editNoFile?: string
-    editNoChanges?: string
+    rewriteSelectionExpired?: string
     editPartialSuccess?: string
-    editApplied?: string
     statusRequesting?: string
     statusThinking?: string
     statusGenerating?: string
-    statusModifying?: string
   }
 
   // Chat Mode Select
@@ -2412,6 +2628,10 @@ export type TranslationKeys = {
     rewriteDesc?: string
     agent?: string
     agentDesc?: string
+    continue?: string
+    continueDesc?: string
+    plan?: string
+    planDesc?: string
     agentFull?: string
     agentFullDesc?: string
     yolo?: string

@@ -87,7 +87,7 @@
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   cursor: pointer;
-  transition: background 0.12s ease;
+  transition: background var(--yolo-anim-duration-feedback) ease;
 }
 
 .yolo-external-agent-card__abort-btn:hover {

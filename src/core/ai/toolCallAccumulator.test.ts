@@ -23,7 +23,7 @@ describe('ToolCallAccumulator', () => {
             id: 'tool-1',
             type: 'function',
             function: {
-              name: 'yolo_local__fs_read',
+              name: 'test__nested_object',
               arguments: '{"paths":["foo.md"],"operation":',
             },
           },

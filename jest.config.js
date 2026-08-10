@@ -2,6 +2,7 @@
 module.exports = {
   roots: ['<rootDir>/src', '<rootDir>/modules'],
   testEnvironment: 'node',
+  setupFilesAfterEnv: ['<rootDir>/__mocks__/runtimeComponentTestSetup.ts'],
   transform: {
     '^.+.tsx?$': ['ts-jest', { isolatedModules: true }],
   },
@@ -13,5 +14,12 @@ module.exports = {
     // path-browserify ships CommonJS; its default import resolves to undefined
     // under ts-jest. Re-export Node's built-in path (identical API) instead.
     '^path-browserify$': '<rootDir>/__mocks__/path-browserify.ts',
+    // just-bash's "./browser" export only declares an ESM "import" condition,
+    // which Jest's CJS resolver can't load. Redirect to the package's CJS
+    // main bundle for tests only — same public API (Bash, defineCommand,
+    // getCommandNames, ...), just packaged differently. Production code
+    // (runtime-components/bash-engine/src/entry.ts) still resolves the real
+    // browser subpath via esbuild at build time; this mapping never affects it.
+    '^just-bash/browser$': '<rootDir>/node_modules/just-bash/dist/bundle/index.cjs',
   },
 }

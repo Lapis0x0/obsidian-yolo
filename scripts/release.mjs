@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -57,6 +58,7 @@ export async function checkRelease(root, product, id, version) {
       throw new Error('Core version sources are not synchronized')
     }
     validateReleaseNote(note, target.version)
+    await validateRuntimeComponentArtifacts(root)
   } else {
     const [config, packageJson, note] = await Promise.all([
       readJson(root, `modules/${target.id}/module.config.json`),
@@ -70,6 +72,79 @@ export async function checkRelease(root, product, id, version) {
     validateReleaseNote(note, target.version)
   }
   return target
+}
+
+export async function validateRuntimeComponentArtifacts(root) {
+  const registry = await readJson(root, 'runtime-components/registry.json')
+  if (
+    !isPlainRecord(registry) ||
+    !hasExactKeys(registry, ['schemaVersion', 'components']) ||
+    registry.schemaVersion !== 1 ||
+    !Array.isArray(registry.components) ||
+    registry.components.length !== 4
+  ) {
+    throw new Error('Runtime component registry is invalid')
+  }
+  const expectedIds = new Set([
+    'tokenizer',
+    'pdf-engine',
+    'pglite-engine',
+    'bash-engine',
+  ])
+  for (const descriptor of registry.components) {
+    if (
+      !isPlainRecord(descriptor) ||
+      !hasExactKeys(descriptor, [
+        'id',
+        'platforms',
+        'nameKey',
+        'descriptionKey',
+        'impactKey',
+        'entry',
+        'byteSize',
+        'sha256',
+      ]) ||
+      !expectedIds.delete(descriptor.id) ||
+      descriptor.entry !==
+        `runtime-components/${descriptor.id}/dist/entry.js` ||
+      !Array.isArray(descriptor.platforms) ||
+      descriptor.platforms.length === 0 ||
+      descriptor.platforms.some(
+        (platform) => platform !== 'desktop' && platform !== 'mobile',
+      ) ||
+      !Number.isSafeInteger(descriptor.byteSize) ||
+      descriptor.byteSize <= 0 ||
+      typeof descriptor.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(descriptor.sha256)
+    ) {
+      throw new Error('Runtime component descriptor is invalid')
+    }
+    const config = await readJson(
+      root,
+      `runtime-components/${descriptor.id}/component.config.json`,
+    )
+    if (
+      config.id !== descriptor.id ||
+      config.entry !== 'dist/entry.js' ||
+      JSON.stringify(config.platforms) !== JSON.stringify(descriptor.platforms)
+    ) {
+      throw new Error(
+        `Runtime component config is not synchronized: ${descriptor.id}`,
+      )
+    }
+    const bytes = await readFile(path.resolve(root, descriptor.entry))
+    if (
+      bytes.byteLength !== descriptor.byteSize ||
+      createHash('sha256').update(bytes).digest('hex') !== descriptor.sha256
+    ) {
+      throw new Error(
+        `Runtime component artifact is not synchronized: ${descriptor.id}`,
+      )
+    }
+  }
+  if (expectedIds.size > 0) {
+    throw new Error('Runtime component registry is incomplete')
+  }
 }
 
 function normalizeTarget(product, id, version) {

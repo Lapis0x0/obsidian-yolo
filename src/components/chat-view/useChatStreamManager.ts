@@ -79,6 +79,7 @@ type UseChatStreamManagerParams = {
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
+  cancelRuntimeRun: (conversationId: string) => void
   conversationOverrides?: ConversationOverrideSettings
   modelId: string
   chatMode: ChatMode
@@ -121,7 +122,6 @@ const AUTO_CONTEXT_COMPACT_TOOL_FQN = getToolName(
 const AUTO_CONTEXT_COMPACT_TOOL_PREFERENCE: AssistantToolPreference = {
   enabled: true,
   approvalMode: 'full_access',
-  disclosureMode: 'always',
 }
 
 const enableAutoContextCompactionTool = (
@@ -279,6 +279,7 @@ export function useChatStreamManager({
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
+  cancelRuntimeRun,
   conversationOverrides,
   modelId,
   chatMode,
@@ -447,9 +448,7 @@ export function useChatStreamManager({
             message.metadata?.generationState === 'streaming',
         )
       ) {
-        requestAnimationFrame(() => {
-          autoScrollToBottom()
-        })
+        autoScrollToBottom()
       }
     }
 
@@ -486,9 +485,9 @@ export function useChatStreamManager({
     (conversationId: string) => {
       activeStreamAbortControllersRef.current.get(conversationId)?.abort()
       activeStreamAbortControllersRef.current.delete(conversationId)
-      plugin.getAgentService().abortConversation(conversationId)
+      cancelRuntimeRun(conversationId)
     },
-    [plugin],
+    [cancelRuntimeRun],
   )
 
   const compactConversation = useCallback(
@@ -595,6 +594,7 @@ export function useChatStreamManager({
         availableTools,
         allowedToolNames: effectiveAllowedToolNames,
         toolPreferences: chatModeRuntime.toolPreferences,
+        toolServerPreferences: chatModeRuntime.toolServerPreferences,
         apiType: manualApiType,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
@@ -651,6 +651,7 @@ export function useChatStreamManager({
             allowedToolNames: effectiveAllowedToolNames,
             enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
+            toolServerPreferences: chatModeRuntime.toolServerPreferences,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: manualContextualInjections,
           })
@@ -1117,6 +1118,7 @@ export function useChatStreamManager({
         allowedToolNames: chatModeRuntime.allowedToolNames,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         toolPreferences: chatModeRuntime.toolPreferences,
+        toolServerPreferences: chatModeRuntime.toolServerPreferences,
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
         contextualInjections: buildChatContextualInjections({
           app,

@@ -53,6 +53,23 @@ describe('vault module config collection', () => {
     })
   })
 
+  it('collects module envelopes from the current visible data root', async () => {
+    const configs = await collectVaultModuleConfigs(
+      [
+        file(dataJson, '{}'),
+        file(
+          `${root}/配置/YOLO/data/module-settings/learning.json`,
+          '{"schemaVersion":1,"data":{"modelId":"a"}}',
+        ),
+      ],
+      dataJson,
+      { yolo: { baseDir: '配置/YOLO' } },
+    )
+    expect(configs).toEqual({
+      learning: { schemaVersion: 1, data: { modelId: 'a' } },
+    })
+  })
+
   it('rejects invalid envelopes', async () => {
     await expect(
       collectVaultModuleConfigs(

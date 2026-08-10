@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 1,
+  "revision": 15,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.1.2",
+    "version": "1.6.5",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.1.2",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5",
     "releaseNotes": {
-      "en": "## 1.6.1.2 Streamlined Module Lifecycle & New Tab Polish 🛠️\n\n### 🧩 Module Installation & Uninstallation\n\n- Development and production environments now consistently install modules from official remote releases. Uninstalling no longer waits for redundant remote verification, and reinstalling recovers cleanly from artifacts left by an incomplete uninstall.\n\n### 🎨 Interface Fixes\n\n- Fixed duplicate icons and misaligned layout for the YOLO entry on new tabs with certain themes.",
-      "zh": "## 1.6.1.2 模块流程精简与新标签页优化 🛠️\n\n### 🧩 模块安装与卸载\n\n- 开发与正式环境现在统一使用远程官方版本；卸载无需再等待冗余的远程校验，并修复卸载残留导致无法重新安装的问题。\n\n### 🎨 界面修复\n\n- 修复部分主题下新标签页的 YOLO 入口出现重复图标和布局错位的问题。"
+      "en": "## 1.6.5 Agent Tools, Cross-Device Sync & Chat Polish ✨\n\n### 🛠️ Agent Capabilities\n\n- New virtual Bash tool unifies file search and operations in a sandboxed shell over your vault.\n- Oversized virtual bash output is now auto-truncated with guidance to narrow the query, preventing large directory listings from flooding context. (#555)\n- The agent can read `[[wikilink]]` targets directly, resolving down to `#heading` / `^block` ranges. (#555)\n- The `js_eval` tool is renamed to Analysis Sandbox to better reflect its purpose.\n- Added support for DeepSeek's native web search tool.\n\n### 💬 Chat Experience\n\n- Reworked streaming rendering and scroll performance, with a unified motion system and polished high-frequency interaction animations.\n- Multiple consecutive tool cards now auto-collapse for a cleaner agent conversation view.\n- Fixed the view unexpectedly scrolling to the bottom when expanding reasoning content.\n\n### ⚡ Quick Ask & CLI\n\n- Quick Ask and YOLO Agent now share unified core runtime semantics; Smart Space is retired, with its continuation feature merged into Quick Ask's third mode. (#529)\n- The CLI mode menu adds native actions for Claude plugin management and MCP server status. (#535)\n- More robust CLI executable discovery, with support for custom CLI paths.\n\n### 🔄 Data Sync & Fixes\n\n- Chat history, learning data, and module settings moved to a visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate them across devices. In Obsidian Sync, enable \"Sync all other types\" to include them.\n- Fixed Learning project creation failing on Windows with Obsidian 1.13.4 due to `_staging` temp directory cleanup errors, which could leave empty folders behind. (#556)",
+      "zh": "## 1.6.5 Agent 工具、跨设备同步与对话体验 ✨\n\n### 🛠️ Agent 能力\n\n- 新增虚拟 Bash 工具，在 vault 沙箱 shell 中统一文件检索与操作能力。\n- 虚拟 bash 超大输出自动截断并引导收窄查询，防止大目录列出灌爆上下文。（#555）\n- Agent 支持直接读取 `[[wikilink]]` 目标，可精确定位到 `#标题` / `^块` 范围。（#555）\n- `js_eval` 工具更名为「分析沙箱」，更符合产品定位。\n- 适配支持 DeepSeek 官方原生搜索工具。\n\n### 💬 对话体验\n\n- 重构流式渲染与滚动性能，统一动效体系并补齐高频交互动画。\n- 连续多个工具卡片自动折叠，Agent 对话视觉更清爽。\n- 修复展开思维链内容时视图意外滚动到底部的问题。\n\n### ⚡ Quick Ask 与 CLI\n\n- 统一 Quick Ask 与 YOLO Agent 的核心运行语义；Smart Space 退役，续写能力并入 Quick Ask 第三档模式。（#529）\n- CLI 模式菜单新增 Claude 插件管理与 MCP 服务器状态原生动作。（#535）\n- 增强 CLI 定位鲁棒性，支持自定义 CLI 路径。\n\n### 🔄 数据同步与修复\n\n- 聊天记录、学习数据与模块配置迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步；Obsidian Sync 需开启「同步所有其他类型文件」。\n- 修复 Windows + Obsidian 1.13.4 下 Learning 清理 `_staging` 临时目录报错导致项目创建失败并残留空目录的问题。（#556）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.1.2/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.2/main.js",
-        "byteSize": 12016204,
-        "sha256": "00b2e20432797ab9a9f47fef4f6b69396a732c5d43c77004e08f41804e99f47e"
+        "mirrorPath": "core/1.6.5/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5/main.js",
+        "byteSize": 9146419,
+        "sha256": "2e66a161f33c7b8c30d04da160f0e51f003dc96e8444c3f02a475da1b5391a25"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.1.2/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.2/manifest.json",
-        "byteSize": 329,
-        "sha256": "fb6e0881581468231a8fe1af63fc6f12c72e88c026cb1340b1bf181649714c78"
+        "mirrorPath": "core/1.6.5/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5/manifest.json",
+        "byteSize": 328,
+        "sha256": "5fc0367aa21faa1a215fd0a7d308294aa02e0863f118b8a6f840abaaea3d4fb2"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.1.2/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.2/styles.css",
-        "byteSize": 559894,
-        "sha256": "561c11d1f7523b879d1bbb8002c044f2cc879c62287b9a6761f3bdda3ae7d5ae"
+        "mirrorPath": "core/1.6.5/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5/styles.css",
+        "byteSize": 599683,
+        "sha256": "6e443a7cecdca0611bd927072ddcedd71461d607eb230a91a87a77f3d5f4d9e0"
       }
     }
   },
@@ -52,8 +52,8 @@
           "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
         }
       },
-      "version": "0.1.1",
-      "hostApi": "^1.4.0",
+      "version": "0.1.4",
+      "hostApi": "^1.5.0",
       "platforms": [
         "desktop",
         "mobile"
@@ -65,23 +65,23 @@
           "write": 1
         }
       },
-      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.1",
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/learning/v0.1.4",
       "releaseNotes": {
-        "en": "## 0.1.1 Seamless module migration ✨\n\n### ✨ Independent Learning module\n\n- **Independent delivery**: Learning can now be installed and updated independently from YOLO Core while keeping the existing Learning experience intact.\n\n### 🔧 Upgrade reliability\n\n- **Seamless migration**: Existing Learning settings, study projects, and review progress are preserved when moving to the standalone module.",
-        "zh": "## 0.1.1 无感模块迁移 ✨\n\n### ✨ 独立学习模块\n\n- **独立交付**：学习模式现在可以独立于 YOLO Core 安装与更新，原有学习体验保持不变。\n\n### 🔧 升级稳定性\n\n- **无感迁移**：迁移到独立模块时，已有学习设置、学习项目与复习进度都会完整保留。"
+        "en": "## 0.1.4 Cross-Device Learning Data Sync 🔄\n\n- Learning data (spaced-repetition state and Anki import journals) now lives in the visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate your review progress across devices. Existing data is migrated automatically.\n- Requires YOLO Core 1.6.5 or later, which performs the storage migration before the module activates.",
+        "zh": "## 0.1.4 学习数据跨设备同步 🔄\n\n- 学习数据（间隔重复状态与 Anki 导入日志）迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步复习进度；存量数据自动迁移。\n- 需要 YOLO Core 1.6.5 及以上版本（Core 会在模块激活前完成存储迁移）。"
       },
       "releaseNote": {
         "name": "release-note.md",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/release-note.md",
-        "byteSize": 733,
-        "sha256": "e74823b2661eacb5f60c0b749fcf3cb269d75001c1ec40089fe16ce1357bb1ca"
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/release-note.md",
+        "byteSize": 739,
+        "sha256": "1f4ec035a5cf9aa97c07961d6bbd440540fff2a1e08b7daef43a2ec755aebb76"
       },
       "manifest": {
         "name": "module.json",
-        "mirrorPath": "modules/learning/0.1.1/module.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.1/module.json",
+        "mirrorPath": "modules/learning/0.1.4/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/module.json",
         "byteSize": 1860,
-        "sha256": "48e21c7960df8cb7adadffaed54c8dff7b8aa51bac7cc0b1afb427d9e3c4daba"
+        "sha256": "f226e62c9fb1d7785db70e49bb1fd48430c13501c1353f42d482c3081bc99120"
       }
     }
   ]

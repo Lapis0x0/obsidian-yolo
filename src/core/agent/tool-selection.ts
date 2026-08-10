@@ -1,5 +1,8 @@
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { AssistantToolPreference } from '../../types/assistant.types'
+import type {
+  AssistantToolPreference,
+  AssistantToolServerPreference,
+} from '../../types/assistant.types'
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
@@ -9,7 +12,6 @@ import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLoadToolSchemasTool,
   getLocalFileToolServerName,
@@ -57,26 +59,14 @@ export const expandAllowedToolNames = (
   const expanded = new Set<string>(toolNames)
   const localServer = getLocalFileToolServerName()
   const localFileEditTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}${FILE_EDIT_GROUP_TOOL_NAME}`
-  const localFileOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}fs_file_ops`
   const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
   const hasFileEditGroup =
     expanded.has(localFileEditTool) || expanded.has(FILE_EDIT_GROUP_TOOL_NAME)
-  const hasFileOpsGroup =
-    expanded.has(localFileOpsTool) || expanded.has('fs_file_ops')
   const hasMemoryOpsGroup =
     expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
 
   if (hasFileEditGroup) {
     for (const splitToolName of LOCAL_FS_EDIT_TOOL_NAMES) {
-      expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-      )
-      expanded.add(splitToolName)
-    }
-  }
-
-  if (hasFileOpsGroup) {
-    for (const splitToolName of LOCAL_FS_PATH_OPERATION_TOOL_NAMES) {
       expanded.add(
         `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
       )
@@ -238,6 +228,7 @@ export const selectAllowedTools = async ({
   availableTools,
   allowedToolNames,
   toolPreferences,
+  toolServerPreferences,
   apiType,
   enableToolDisclosure = true,
   jsSandboxSettings = {},
@@ -247,6 +238,7 @@ export const selectAllowedTools = async ({
   availableTools: McpTool[]
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
+  toolServerPreferences?: Record<string, AssistantToolServerPreference>
   apiType?: LLMProviderApiType | null
   enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
@@ -273,16 +265,24 @@ export const selectAllowedTools = async ({
   )
   const assistantLike = {
     toolPreferences,
+    toolServerPreferences,
     enabledToolNames: normalizedAllowedToolNames
       ? [...normalizedAllowedToolNames]
       : undefined,
   }
-  const resolvedServerToolTokenBudgets =
-    serverToolTokenBudgets ??
-    (await buildServerToolTokenBudgets(
-      groupToolsByServer(baseFiltered),
-      estimateJsonTokens,
-    ))
+  const serverTools = groupToolsByServer(baseFiltered)
+  const localServerName = getLocalFileToolServerName()
+  const needsAutomaticBudget =
+    enableToolDisclosure &&
+    [...serverTools.keys()].some(
+      (serverName) =>
+        serverName !== localServerName &&
+        toolServerPreferences?.[serverName]?.disclosureMode === undefined,
+    )
+  const resolvedServerToolTokenBudgets = !needsAutomaticBudget
+    ? new Map<string, number>()
+    : (serverToolTokenBudgets ??
+      (await buildServerToolTokenBudgets(serverTools, estimateJsonTokens)))
 
   // Per-tool disclosure decisions for the filtered (non-loader) tools.
   // Computed up front so the loader injection can ask "does any surviving

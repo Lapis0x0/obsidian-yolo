@@ -7,12 +7,14 @@ type ObsidianToggleProps = {
   value: boolean
   onChange: (value: boolean) => void
   disabled?: boolean
+  ariaLabel?: string
 }
 
 export function ObsidianToggle({
   value,
   onChange,
   disabled,
+  ariaLabel,
 }: ObsidianToggleProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const { setting } = useObsidianSetting()
@@ -82,6 +84,15 @@ export function ObsidianToggle({
     // (.yolo-checkbox-container.is-disabled) can dim and block clicks.
     toggleComponent.toggleEl.toggleClass('is-disabled', !!disabled)
   }, [toggleComponent, disabled])
+
+  useEffect(() => {
+    if (!toggleComponent) return
+    if (ariaLabel) {
+      toggleComponent.toggleEl.setAttribute('aria-label', ariaLabel)
+    } else {
+      toggleComponent.toggleEl.removeAttribute('aria-label')
+    }
+  }, [toggleComponent, ariaLabel])
 
   return <div ref={containerRef} className="yolo-display-contents" />
 }

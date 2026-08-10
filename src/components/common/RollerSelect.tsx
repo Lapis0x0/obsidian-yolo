@@ -27,6 +27,8 @@ type RollerSelectProps = {
   value: string
   options: RollerOption[]
   onChange: (value: string) => void
+  /** Activates the currently visible value without opening the menu. */
+  onValueClick?: () => void
   onActivate?: () => void
   open?: boolean
   onOpenChange?: (open: boolean) => void
@@ -50,6 +52,7 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
   value,
   options,
   onChange,
+  onValueClick,
   onActivate,
   open,
   onOpenChange,
@@ -137,7 +140,6 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
     ? (options.find((option) => option.value === incomingValue) ?? null)
     : null
   const isRolling = incomingOption !== null
-
   const handleOpenChange = (nextOpen: boolean) => {
     if (open === undefined) {
       setUncontrolledOpen(nextOpen)
@@ -159,6 +161,18 @@ const RollerSelect: React.FC<RollerSelectProps> = ({
             : `yolo-roller-select-trigger${isOpen ? ' is-open' : ''}`
         }
         aria-label={ariaLabel}
+        onPointerDown={(event) => {
+          if (
+            disabled ||
+            !onValueClick ||
+            event.button !== 0 ||
+            event.ctrlKey
+          ) {
+            return
+          }
+          event.preventDefault()
+          onValueClick()
+        }}
         onClick={() => {
           onActivate?.()
         }}

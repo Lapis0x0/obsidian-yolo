@@ -1,0 +1,14 @@
+.yolo-cli-chat-surface__user-card {
+  cursor: text;
+  user-select: text;
+}
+
+.yolo-cli-chat-surface__bottom-anchor {
+  height: 1px;
+}
+
+.yolo-toolcall--nested {
+  margin-left: var(--size-4-4);
+  border-left: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+}

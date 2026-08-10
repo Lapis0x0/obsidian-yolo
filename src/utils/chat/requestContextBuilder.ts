@@ -1062,31 +1062,7 @@ export class RequestContextBuilder {
     const webSelections = message.mentionables.filter(
       (m): m is MentionableWebSelection => m.type === 'web-selection',
     )
-    const blockPrompt = blocks
-      .map(
-        ({ file, content, startLine, endLine, pageNumber, contentFormat }) => {
-          const pageTag =
-            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
-          const header = `${file.path}${pageTag}`
-          if (pageNumber !== undefined) {
-            // PDF block: skip line numbering (startLine/endLine are 0)
-            return `\`\`\`${header}\n${content}\n\`\`\`\n`
-          }
-          if (contentFormat === 'markdown-table') {
-            const lineTag =
-              startLine === endLine
-                ? `line ${startLine}`
-                : `lines ${startLine}-${endLine}`
-            return `${file.path} (${lineTag}, table selection)\n\n\`\`\`md\n${content}\n\`\`\`\n`
-          }
-          const numberedContent = this.addLineNumbersToContent({
-            content,
-            startLine,
-          })
-          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
-        },
-      )
-      .join('')
+    const blockPrompt = this.buildUserSelectedContentPrompt(blocks)
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
     const webSelectionPrompt = this.buildWebSelectionPrompt(webSelections)
     const officePrompt = offices
@@ -1495,31 +1471,7 @@ ${message.annotations
     const webSelections = mentionables.filter(
       (m): m is MentionableWebSelection => m.type === 'web-selection',
     )
-    const blockPrompt = blocks
-      .map(
-        ({ file, content, startLine, endLine, pageNumber, contentFormat }) => {
-          const pageTag =
-            pageNumber !== undefined ? ` (page ${pageNumber})` : ''
-          const header = `${file.path}${pageTag}`
-          if (pageNumber !== undefined) {
-            // PDF block: skip line numbering (startLine/endLine are 0)
-            return `\`\`\`${header}\n${content}\n\`\`\`\n`
-          }
-          if (contentFormat === 'markdown-table') {
-            const lineTag =
-              startLine === endLine
-                ? `line ${startLine}`
-                : `lines ${startLine}-${endLine}`
-            return `${file.path} (${lineTag}, table selection)\n\n\`\`\`md\n${content}\n\`\`\`\n`
-          }
-          const numberedContent = this.addLineNumbersToContent({
-            content,
-            startLine,
-          })
-          return `\`\`\`${header}\n${numberedContent}\n\`\`\`\n`
-        },
-      )
-      .join('')
+    const blockPrompt = this.buildUserSelectedContentPrompt(blocks)
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
     const webSelectionPrompt = this.buildWebSelectionPrompt(webSelections)
     const officePrompt = offices
@@ -1607,6 +1559,32 @@ ${selections
   .join('\n\n')}\n\n`
   }
 
+  private buildUserSelectedContentPrompt(blocks: MentionableBlock[]): string {
+    return blocks
+      .map(
+        ({ file, content, startLine, endLine, pageNumber, contentFormat }) => {
+          const attrs = [`path="${escapeXmlAttr(file.path)}"`]
+          if (pageNumber !== undefined) {
+            attrs.push(`page="${pageNumber}"`)
+            return `<user_selected_content ${attrs.join(' ')}>\n\`\`\`${file.path} (page ${pageNumber})\n${content}\n\`\`\`\n</user_selected_content>\n`
+          }
+
+          attrs.push(`startLine="${startLine}"`, `endLine="${endLine}"`)
+          if (contentFormat === 'markdown-table') {
+            attrs.push('format="markdown-table"')
+            return `<user_selected_content ${attrs.join(' ')}>\n\`\`\`md\n${content}\n\`\`\`\n</user_selected_content>\n`
+          }
+
+          const numberedContent = this.addLineNumbersToContent({
+            content,
+            startLine,
+          })
+          return `<user_selected_content ${attrs.join(' ')}>\n\`\`\`${file.path}\n${numberedContent}\n\`\`\`\n</user_selected_content>\n`
+        },
+      )
+      .join('')
+  }
+
   private buildAssistantQuotePrompt(
     quotes: MentionableAssistantQuote[],
   ): string {
@@ -1617,8 +1595,11 @@ ${selections
     return `## Referenced assistant reply snippets
 ${quotes
   .map(
-    ({ conversationId, messageId, content }) =>
-      `<assistant_quote conversationId="${conversationId}" messageId="${messageId}">\n${content}\n</assistant_quote>`,
+    (
+      { annotationNumber, conversationId, messageId, content, comment },
+      index,
+    ) =>
+      `<assistant_quote index="${annotationNumber ?? index + 1}" conversationId="${conversationId}" messageId="${messageId}">\n<quote>\n${content}\n</quote>${comment?.trim() ? `\n<comment>\n${comment.trim()}\n</comment>` : ''}\n</assistant_quote>`,
   )
   .join('\n\n')}\n\n`
   }
@@ -2132,7 +2113,7 @@ ${customInstruction}
       section += `
 - You have access to tools that can help you perform actions. Use them when appropriate to provide better assistance.
 - When using tools, focus on providing clear results to the user. Only briefly mention tool usage if it helps understanding.
-- Prefer using content already provided in the current message. Only call file tools when the current message is insufficient, you need another file, or you need to verify the latest contents. Avoid repeatedly reading the same window.
+- Before calling file-reading tools, use relevant content already present in the conversation, especially <user_selected_content> and prior tool results. Do not re-read the same or an overlapping range; if more context is necessary, read only the smallest missing range. Re-read only to verify content that may have changed.
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
       if (hasOnDemandTools) {
         section += `

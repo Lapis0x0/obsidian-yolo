@@ -1,9 +1,9 @@
-import { Loader2 } from 'lucide-react'
 import React, { useCallback, useMemo } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
 import { ChatAssistantMessage } from '../../types/chat'
+import type { MentionableAssistantQuote } from '../../types/mentionable'
 import { injectAnnotationMarkers } from '../../utils/chat/inject-annotation-markers'
 import {
   ParsedTagContent,
@@ -35,11 +35,14 @@ export default function AssistantMessageContent({
   isApplying,
   activeApplyRequestKey,
   generationState,
+  reasoningDurationMs,
   toolCallRequests,
   showToolCallPreview = false,
   messageId,
   conversationId,
   onQuote,
+  assistantQuotes = [],
+  onDeleteQuote,
   enableSelectionQuote = true,
 }: {
   content: ChatAssistantMessage['content']
@@ -53,15 +56,22 @@ export default function AssistantMessageContent({
   isApplying: boolean
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+  reasoningDurationMs?: number
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
   showToolCallPreview?: boolean
   messageId: string
   conversationId: string
   onQuote: (payload: {
+    id?: string
+    annotationNumber?: number
     messageId: string
     conversationId: string
     content: string
+    comment?: string
+    selector?: MentionableAssistantQuote['selector']
   }) => void
+  assistantQuotes?: readonly MentionableAssistantQuote[]
+  onDeleteQuote?: (id: string) => void
   enableSelectionQuote?: boolean
 }) {
   const onApply = useCallback(
@@ -86,11 +96,14 @@ export default function AssistantMessageContent({
       isApplying={isApplying}
       activeApplyRequestKey={activeApplyRequestKey}
       generationState={generationState}
+      reasoningDurationMs={reasoningDurationMs}
       toolCallRequests={toolCallRequests}
       showToolCallPreview={showToolCallPreview}
       messageId={messageId}
       conversationId={conversationId}
       onQuote={onQuote}
+      assistantQuotes={assistantQuotes}
+      onDeleteQuote={onDeleteQuote}
       enableSelectionQuote={enableSelectionQuote}
       sources={sources}
     >
@@ -104,11 +117,14 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   isApplying,
   activeApplyRequestKey,
   generationState,
+  reasoningDurationMs,
   toolCallRequests,
   showToolCallPreview,
   messageId,
   conversationId,
   onQuote,
+  assistantQuotes,
+  onDeleteQuote,
   enableSelectionQuote,
   sources,
   children,
@@ -122,15 +138,22 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   isApplying: boolean
   activeApplyRequestKey: string | null
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
+  reasoningDurationMs?: number
   toolCallRequests?: ChatAssistantMessage['toolCallRequests']
   showToolCallPreview: boolean
   messageId: string
   conversationId: string
   onQuote: (payload: {
+    id?: string
+    annotationNumber?: number
     messageId: string
     conversationId: string
     content: string
+    comment?: string
+    selector?: MentionableAssistantQuote['selector']
   }) => void
+  assistantQuotes: readonly MentionableAssistantQuote[]
+  onDeleteQuote?: (id: string) => void
   enableSelectionQuote: boolean
   sources?: CitationSource[]
 }) {
@@ -184,6 +207,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
             reasoning={block.content}
             hasAnswerContent={hasAnswerContent}
             generationState={generationState}
+            reasoningDurationMs={reasoningDurationMs}
           />
         ) : block.startLine && block.endLine && block.filename ? (
           <MarkdownReferenceBlock
@@ -214,9 +238,6 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
         <div className="yolo-toolcall-container yolo-assistant-tool-running-preview">
           <div className="yolo-toolcall">
             <div className="yolo-toolcall-header yolo-assistant-tool-running-preview-header">
-              <div className="yolo-toolcall-header-icon yolo-toolcall-header-icon--status-inline">
-                <Loader2 className="yolo-spinner" size={14} />
-              </div>
               <div className="yolo-toolcall-header-content">
                 <span className="yolo-toolcall-header-tool-name">
                   {toolPreviewText}
@@ -238,7 +259,9 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
       messageId={messageId}
       conversationId={conversationId}
       disabled={generationState === 'streaming'}
+      quotes={assistantQuotes}
       onQuote={onQuote}
+      onDeleteQuote={onDeleteQuote}
     >
       {renderedContent}
     </AssistantSelectionQuoteButton>

@@ -8,6 +8,12 @@ export const CHAT_SCHEMA_VERSION = 1
 
 export type ChatConversationOrigin = 'user' | 'external-agent'
 
+export type ChatConversationCliSession = {
+  runtimeId: 'claude-code' | 'codex'
+  nativeSessionId: string
+  sessionPathHint?: string
+}
+
 export const getChatConversationOrigin = (
   conversation: Pick<ChatConversation, 'origin'>,
 ): ChatConversationOrigin => conversation.origin ?? 'user'
@@ -31,6 +37,12 @@ export type ChatConversation = {
   reasoningLevel?: string
   compaction?: ChatConversationCompactionLike | null
   origin?: ChatConversationOrigin
+  /**
+   * Native runtime binding for a CLI conversation created by YOLO.
+   * The native transcript remains provider-owned; YOLO persists only this
+   * stable reference and its own conversation metadata.
+   */
+  cliSession?: ChatConversationCliSession
 }
 
 export type ChatConversationMetadata = {
@@ -41,4 +53,5 @@ export type ChatConversationMetadata = {
   isPinned?: boolean
   pinnedAt?: number
   origin?: ChatConversationOrigin
+  cliSession?: ChatConversationCliSession
 }

@@ -1,4 +1,7 @@
+@import './tokens/motion.css';
+
 @import './settings/base.css';
+@import './settings/mode-segmented-control.css';
 @import './settings/providers-models.css';
 @import './settings/provider-picker.css';
 @import './settings/mcp.css';
@@ -10,6 +13,7 @@
 @import './settings/web-search.css';
 @import './settings/connectivity-test.css';
 @import './settings/batch-add-models.css';
+@import './settings/cli-native-actions.css';
 
 @import './popover/index.css';
 
@@ -24,11 +28,14 @@
 @import './chat/todo-list-panel.css';
 @import './chat/ask-user-question-panel.css';
 @import './chat/new-tab-action.css';
+@import './chat/cli-chat-surface.css';
+@import './chat/runtime-badge.css';
 
 @import './panels/smart-space.css';
 @import './panels/quick-ask.css';
 
 @import './selection/selection-chat.css';
+@import './selection/selection-rewrite.css';
 @import './selection/pdf-selection.css';
 
 @import './editor/tab-completion.css';

@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/github/v/release/Lapis0x0/obsidian-yolo?style=flat-square&color=00b894" alt="Latest Release">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/releases">
-    <img src="https://img.shields.io/github/downloads/Lapis0x0/obsidian-yolo/total?style=flat-square&color=0984e3" alt="Downloads">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fcdn.jsdelivr.net%2Fgh%2FLapis0x0%2Fobsidian-yolo%40download-metrics%2Fbadge.json&style=flat-square" alt="Downloads">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/Lapis0x0/obsidian-yolo?style=flat-square&color=636e72" alt="License">
@@ -54,16 +54,18 @@
 
 ## Novedades
 
+- **`1.6`**: Añade el chat por CLI: en escritorio puedes controlar desde la misma interfaz de chat el Claude Code o Codex con el que ya has iniciado sesión en tu equipo.
+
 - **`1.6`**: Presenta el nuevo Modo de Aprendizaje: convierte cualquier tema y material de referencia en un proyecto de aprendizaje personalizado con esquemas estructurados, puntos de conocimiento, tarjetas de estudio y un mapa de conocimiento interactivo. La repetición espaciada FSRS integrada y la importación de `.apkg` de Anki ayudan a convertir el conocimiento en un flujo de repaso sostenible.
 
 - **`1.5`**: Presenta un nuevo runtime de Agente que convierte la IA de simples preguntas y respuestas en colaboración activa, con llamada completa a herramientas, MCP, Skills, Bash de escritorio, subagentes y búsqueda web, además de un contexto y una memoria más inteligentes para sesiones largas, RAG híbrido renovado, reconocimiento de foco/PDF y chat multiventana con Agentes en segundo plano.
 
 ## Lo más destacado
 
-| Una experiencia de Agente completa, en todos tus dispositivos | Convierte el conocimiento de tu Vault en dominio duradero |
+| Una experiencia de Agente completa \| Usa Codex / Claude Code dentro de Obsidian | Convierte el conocimiento de tu Vault en dominio duradero |
 |:--:|:--:|
 | ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| Ve más allá de las respuestas. YOLO entiende y trabaja directamente con tu Vault, llama a herramientas y servidores MCP, y usa Skills para hacer trabajo real a tu manera. | Convierte temas y material de origen en un sistema de aprendizaje personal, y luego usa tarjetas y el repaso con FSRS para pasar de notas guardadas a conocimiento duradero. |
+| Ve más allá de las respuestas. YOLO entiende y trabaja directamente con tu Vault, llama a herramientas y servidores MCP, y usa Skills para hacer trabajo real a tu manera. En escritorio puedes cambiar con un clic al Claude Code o Codex con el que ya has iniciado sesión y dejar que trabajen directamente en tu Vault. | Convierte temas y material de origen en un sistema de aprendizaje personal, y luego usa tarjetas y el repaso con FSRS para pasar de notas guardadas a conocimiento duradero. |
 
 ## Funciones
 
@@ -71,6 +73,7 @@ Además de las capacidades principales anteriores, YOLO también ofrece:
 
 | Función | Descripción |
 |---------|-------------|
+| 🖥️ Agente CLI (escritorio) | Reutiliza el Claude Code / Codex con el que ya has iniciado sesión en tu equipo y conversa con el agente CLI dentro de Obsidian |
 | 🔌 Soporte de agentes externos | Conecta clientes MCP como Hermes y OpenClaw a la búsqueda en el Vault de YOLO, o delega tareas a un Agente YOLO configurado |
 | ⚡ Quick Ask y Smart Space | Pregunta, edita y continúa escribiendo sin salir del editor |
 | 🔎 RAG del Vault | Recupera información en todo tu Vault para obtener respuestas basadas en tus propias notas |
@@ -103,12 +106,6 @@ Consulta el Inicio rápido más arriba.
 
 > [!WARNING]
 > YOLO no puede coexistir con [Smart Composer](https://github.com/glowingjade/obsidian-smart-composer). Desactiva o desinstala Smart Composer antes de usar YOLO.
-
-## Nota sobre el soporte móvil
-
-Debido a la diferencia de capacidades entre Obsidian en móvil y en escritorio, YOLO no puede igualar por completo el conjunto de funciones ni la experiencia de escritorio en móvil a corto plazo. Con un tiempo de mantenimiento personal limitado, por ahora solo puedo garantizar que YOLO siga siendo utilizable en móvil, no que todas las funciones alcancen la paridad con el escritorio.
-
-Si usas YOLO en móvil, aún podrías encontrar funciones no disponibles, comportamientos inconsistentes o adaptaciones incompletas en algunos flujos de trabajo. Ten en cuenta esa expectativa.
 
 ## Hoja de ruta
 

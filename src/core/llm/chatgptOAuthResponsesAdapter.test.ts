@@ -603,3 +603,116 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
     ])
   })
 })
+
+describe('ChatGPTOAuthResponsesAdapter — DeepSeek Responses semantics', () => {
+  const adapter = new ChatGPTOAuthResponsesAdapter()
+
+  // DeepSeek implements the Responses endpoint shape but puts reasoning in
+  // `content[].reasoning_text` with an empty `summary`, and reports hosted
+  // search as a `web_search_call` receipt instead of a tool call.
+  const deepseekReasoningItem = {
+    type: 'reasoning',
+    id: 'r1',
+    summary: [],
+    content: [{ type: 'reasoning_text', text: 'let me search' }],
+  }
+
+  it('reads reasoning from content[] when summary is empty', () => {
+    const response = {
+      id: 'resp_1',
+      created_at: 0,
+      model: 'deepseek-v4-flash',
+      status: 'completed',
+      output: [
+        deepseekReasoningItem,
+        {
+          type: 'message',
+          id: 'm1',
+          role: 'assistant',
+          status: 'completed',
+          content: [{ type: 'output_text', text: 'done', annotations: [] }],
+        },
+      ],
+    } as unknown as Response
+
+    expect(adapter.parseResponse(response).choices[0].message.reasoning).toBe(
+      'let me search',
+    )
+  })
+
+  it('turns opened pages into url_citation annotations and strips the ws_call_id fragment', () => {
+    const response = {
+      id: 'resp_2',
+      created_at: 0,
+      model: 'deepseek-v4-flash',
+      status: 'completed',
+      output: [
+        {
+          type: 'web_search_call',
+          id: 'call_0',
+          status: 'completed',
+          action: { type: 'search', queries: ['deepseek v4'] },
+        },
+        {
+          type: 'web_search_call',
+          id: 'call_1',
+          status: 'completed',
+          action: {
+            type: 'open_page',
+            url: 'https://example.com/a#ws_call_id=call_1',
+          },
+        },
+        {
+          type: 'message',
+          id: 'm1',
+          role: 'assistant',
+          status: 'completed',
+          content: [{ type: 'output_text', text: 'done', annotations: [] }],
+        },
+      ],
+    } as unknown as Response
+
+    // A query-only receipt carries no URL, so only the opened page surfaces.
+    expect(
+      adapter.parseResponse(response).choices[0].message.annotations,
+    ).toEqual([
+      { type: 'url_citation', url_citation: { url: 'https://example.com/a' } },
+    ])
+  })
+
+  it('streams DeepSeek reasoning deltas without repeating them on output_item.done', () => {
+    const state = adapter.createStreamState()
+    const collect = (event: unknown) => [
+      ...adapter.parseStreamEvent(event as ResponseStreamEvent, state),
+    ]
+
+    const deltas = collect({
+      type: 'response.reasoning_text.delta',
+      item_id: 'r1',
+      delta: 'let me search',
+    })
+    expect(deltas[0].choices[0].delta.reasoning).toBe('let me search')
+
+    // `output_item.done` repeats the finished reasoning; it must not double up.
+    expect(
+      collect({
+        type: 'response.output_item.done',
+        item: deepseekReasoningItem,
+      }),
+    ).toEqual([])
+  })
+
+  it('still falls back to output_item.done when no reasoning deltas were streamed', () => {
+    const state = adapter.createStreamState()
+    const chunks = [
+      ...adapter.parseStreamEvent(
+        {
+          type: 'response.output_item.done',
+          item: deepseekReasoningItem,
+        } as unknown as ResponseStreamEvent,
+        state,
+      ),
+    ]
+    expect(chunks[0].choices[0].delta.reasoning).toBe('let me search')
+  })
+})

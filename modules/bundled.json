@@ -19,7 +19,7 @@
           "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
         }
       },
-      "hostApi": "^1.4.0",
+      "hostApi": "^1.5.0",
       "dataSchemas": {
         "settings": {
           "readMin": 0,
@@ -34,7 +34,7 @@
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.2-dev.0/module.json",
       "manifest": {
         "byteSize": 1910,
-        "sha256": "7eab51c0099c118124edc24ca888caa8522a0c095e1259de9dd2478f0e8f3e94"
+        "sha256": "8122d125167e1d4a10d384fbcf3e14a753b7c96ea3d8294fa746a4c144091a98"
       }
     }
   ]

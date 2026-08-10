@@ -1,17 +1,37 @@
 import cx from 'clsx'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import { Check, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react'
+import {
+  ChevronDown,
+  ChevronRight,
+  Loader2,
+} from 'lucide-react'
 import { Notice } from 'obsidian'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import { usePlugin } from '../../contexts/plugin-context'
+import {
+  getPendingDangerousBashApproval,
+  resolveDangerousBashApproval,
+  subscribeDangerousBashApproval,
+} from '../../core/agent/bash/dangerousOperationGate'
 import {
   BUILTIN_TOOL_UI_META,
   getBuiltinToolUiMeta,
 } from '../../core/agent/builtinToolUiMeta'
-import { subagentTaskRegistry } from '../../core/agent/subagent/task-registry'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
+import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
+import {
+  getCliToolCallDisplayName,
+  getCliToolPresentationArguments,
+  isCliToolCallCapability,
+} from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import {
   getLocalFileToolServerName,
@@ -19,6 +39,11 @@ import {
   parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import {
+  MOTION_DURATION_ENTER_S,
+  MOTION_DURATION_EXIT_S,
+  MOTION_EASE_OUT,
+} from '../../styles/tokens/motion'
 import {
   ChatMessage,
   ChatSubagentResultMessage,
@@ -30,13 +55,22 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
   type ToolFsReadOperationSummary,
+  createCompleteToolCallArguments,
   getToolCallArgumentsObject,
   getToolCallArgumentsText,
 } from '../../types/tool-call.types'
 import { SplitButton } from '../common/SplitButton'
 
 import { AskUserQuestionPanel } from './AskUserQuestionPanel'
+import { useChatRuntimeActions } from './chat-runtime-actions-context'
+import { useCliSubagent } from './cli-subagent-context'
 import { ObsidianCodeBlock } from './ObsidianMarkdown'
+import {
+  handleRuntimeToolAbort,
+  handleRuntimeToolApproval,
+  handleRuntimeToolRejection,
+} from './runtime-action-handlers'
+import { CliSubagentCard } from './tool-cards/CliSubagentCard'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'
 import { SubagentCard } from './tool-cards/SubagentCard'
 import {
@@ -68,6 +102,8 @@ export type ToolLabels = {
   reject: string
   abort: string
   allowForThisChat: string
+  approvePlan: string
+  stayInPlan: string
   todoWriteCleared: string
   todoWriteAllCompleted: (count: number) => string
   todoWriteCreated: (count: number) => string
@@ -93,6 +129,7 @@ const DEFAULT_STATUS_LABELS: Record<ToolCallResponseStatus, string> = {
 type ToolRequestLike = {
   name: string
   arguments?: ToolCallRequest['arguments']
+  metadata?: ToolCallRequest['metadata']
 }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
@@ -188,6 +225,12 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'chat.toolCall.writeAction.delete_dir',
         DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_dir,
       ),
+      // Skill bodies are read through fs_read, but expose their product-level
+      // meaning in the transcript rather than the transport implementation.
+      open_skill: translate(
+        'chat.toolCall.displayName.open_skill',
+        'Open skill',
+      ),
     },
     writeActionLabels: {
       write: translate(
@@ -247,6 +290,8 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'chat.toolCall.allowForThisChat',
       'Allow for this chat',
     ),
+    approvePlan: translate('chat.toolCall.approvePlan', 'Approve plan'),
+    stayInPlan: translate('chat.toolCall.stayInPlan', 'Stay in plan'),
     todoWriteCleared: translate(
       'chat.toolSummary.todoWrite.cleared',
       'Cleared list',
@@ -309,9 +354,23 @@ const isDelegateSubagentRequest = (request: ToolRequestLike): boolean => {
 }
 
 const isTerminalCommandRequest = (request: ToolRequestLike): boolean => {
+  if (isCliToolCallCapability(request, 'command_execution')) return true
   try {
     const { toolName } = parseToolName(request.name)
     return toolName === 'terminal_command'
+  } catch {
+    return false
+  }
+}
+
+// The virtual vault bash tool shares the terminal card's header presentation
+// (mono command summary, terminal icon) but not its live-session machinery
+// (result hydration, running-footer suppression, LiveTaskCard) — bash returns
+// one plain text result and hosts its own dangerous-op confirmation footer.
+const isVirtualBashRequest = (request: ToolRequestLike): boolean => {
+  try {
+    const { toolName } = parseToolName(request.name)
+    return toolName === 'bash'
   } catch {
     return false
   }
@@ -366,20 +425,6 @@ const extractSyntheticLiveTaskOutput = (
   }
 }
 
-const extractAcceptedTaskId = (
-  response: ToolCallResponse,
-): string | undefined => {
-  if (response.status !== ToolCallResponseStatus.Success) return undefined
-  try {
-    const parsed = JSON.parse(response.data.text) as unknown
-    if (!parsed || typeof parsed !== 'object') return undefined
-    const taskId = (parsed as Record<string, unknown>).taskId
-    return typeof taskId === 'string' ? taskId : undefined
-  } catch {
-    return undefined
-  }
-}
-
 const translateBuiltinToolLabel = (
   toolName: string,
   translate: TranslateFn,
@@ -400,6 +445,12 @@ const truncateText = (text: string, maxLength: number): string => {
 }
 
 const TOOL_RESULT_DISPLAY_MAX_CHARS = 12000
+
+/**
+ * 工具进入 Running 后，等待这么久仍未结束才展示中止按钮。
+ * 更短的调用由用户输入框的整体停止按钮兜底，不必为其闪现一次卡片内按钮。
+ */
+const RUNNING_ABORT_ACTION_DELAY_MS = 5000
 
 export const getToolResultDisplayText = ({
   response,
@@ -425,8 +476,6 @@ export const getToolResultDisplayText = ({
 const SHELL_COMMAND_SUMMARY_MAX_CHARS = 80
 const SHELL_COMMAND_SUMMARY_SIMPLE_MAX_CHARS = 48
 const SHELL_COMMAND_SUMMARY_MAX_NAMES = 5
-const SHELL_COMMAND_LONG_PREFIX = 'Long bash command'
-const SHELL_COMMAND_STREAMING_PREFIX = 'Long bash command with streaming output'
 const SHELL_COMMAND_KEYWORDS = new Set([
   'case',
   'do',
@@ -489,14 +538,7 @@ const summarizeShellCommand = (
 
   const visibleNames = commandNames.slice(0, SHELL_COMMAND_SUMMARY_MAX_NAMES)
   const hiddenCount = commandNames.length - visibleNames.length
-  const commandList = `${visibleNames.join(', ')}${
-    hiddenCount > 0 ? ` +${hiddenCount}` : ''
-  }`
-  const prefix = options.streaming
-    ? SHELL_COMMAND_STREAMING_PREFIX
-    : SHELL_COMMAND_LONG_PREFIX
-
-  return `${prefix} ${commandList}`
+  return `${visibleNames.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`
 }
 
 const summarizeSimpleShellCommand = (command: string): string | undefined => {
@@ -574,22 +616,6 @@ const extractCommandNameFromShellSegment = (
   }
 
   return undefined
-}
-
-const splitTerminalCommandSummary = (
-  summary: string,
-): { prefix: string; commands: string } | null => {
-  for (const prefix of [
-    SHELL_COMMAND_STREAMING_PREFIX,
-    SHELL_COMMAND_LONG_PREFIX,
-  ]) {
-    if (!summary.startsWith(`${prefix} `)) continue
-    return {
-      prefix,
-      commands: summary.slice(prefix.length + 1),
-    }
-  }
-  return null
 }
 
 const mapTerminalCommandResultStatus = (
@@ -746,10 +772,15 @@ export const getHeadlineDisplayInfo = ({
   }
 
   if (toolName === 'fs_read') {
-    const modeText = formatFsReadHeadlineMode(
-      getFsReadOperationSummary({ response }),
-      labels,
-    )
+    const operation = getFsReadOperationSummary({ response })
+    if (operation?.skillNames?.length) {
+      return {
+        displayName: labels.displayNames.open_skill || displayInfo.displayName,
+        summaryText: operation.skillNames.join(', '),
+      }
+    }
+
+    const modeText = formatFsReadHeadlineMode(operation, labels)
     if (!modeText) {
       return displayInfo
     }
@@ -769,6 +800,44 @@ export const getHeadlineDisplayInfo = ({
   }
 
   return displayInfo
+}
+
+type ToolSuccessIconKind = 'default' | 'skill' | 'terminal'
+
+export const getToolSuccessIconKind = ({
+  request,
+  response,
+}: {
+  request: ToolRequestLike
+  response?: ToolCallResponse
+}): ToolSuccessIconKind => {
+  if (isCliToolCallCapability(request, 'command_execution')) {
+    return 'terminal'
+  }
+  let toolName: string
+  try {
+    const parsed = parseToolName(request.name)
+    if (parsed.serverName !== getLocalFileToolServerName()) {
+      return 'default'
+    }
+    toolName = parsed.toolName
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+    return 'default'
+  }
+
+  if (
+    toolName === 'fs_read' &&
+    getFsReadOperationSummary({ response })?.skillNames?.length
+  ) {
+    return 'skill'
+  }
+
+  return toolName === 'terminal_command' || toolName === 'bash'
+    ? 'terminal'
+    : 'default'
 }
 
 const DELEGATE_SUMMARY_MAX_CHARS = 80
@@ -912,6 +981,16 @@ const getLocalToolSummaryText = ({
     return labels.terminalCommandSessionPoll(sessionId)
   }
 
+  if (toolName === 'bash') {
+    const command =
+      typeof argumentsObject?.command === 'string'
+        ? argumentsObject.command.trim()
+        : ''
+    return command
+      ? summarizeShellCommand(command, { streaming: false })
+      : undefined
+  }
+
   if (toolName === 'js_eval') {
     const code =
       typeof argumentsObject?.code === 'string' ? argumentsObject.code : ''
@@ -992,6 +1071,20 @@ export const getToolDisplayInfo = (
 ): ToolDisplayInfo => {
   const localServerName = getLocalFileToolServerName()
   const argumentsObject = parseToolArguments(request.arguments)
+  const cliToolCall = request.metadata?.cliToolCall
+  if (cliToolCall) {
+    const isCommandExecution = cliToolCall.capability === 'command_execution'
+    const summaryText =
+      isCommandExecution && typeof argumentsObject?.command === 'string'
+        ? summarizeShellCommand(argumentsObject.command, { streaming: false })
+        : undefined
+    return {
+      displayName: isCommandExecution
+        ? (labels.displayNames.terminal_command ?? 'Terminal command')
+        : getCliToolCallDisplayName(cliToolCall),
+      ...(summaryText ? { summaryText } : {}),
+    }
+  }
   try {
     const { serverName, toolName } = parseToolName(request.name)
 
@@ -1135,7 +1228,10 @@ const ToolMessage = memo(function ToolMessage({
             initial={{ opacity: 0, y: -4 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0 }}
-            transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
+            transition={{
+              duration: MOTION_DURATION_ENTER_S,
+              ease: MOTION_EASE_OUT,
+            }}
           >
             <MemoizedToolCallItem
               request={toolCall.request}
@@ -1185,6 +1281,21 @@ type ToolCallItemProps = {
   onResponseUpdate: (toolCallId: string, response: ToolCallResponse) => void
 }
 
+/**
+ * Subscribes to the ephemeral dangerous-operation gate (see
+ * `src/core/agent/bash/dangerousOperationGate.ts`) for a single tool call.
+ * Deliberately outside the chat message state tree — this is live "waiting
+ * for a click" UI state, not something that belongs in the deep-frozen
+ * conversation snapshot.
+ */
+function useDangerousBashApproval(toolCallId: string) {
+  return useSyncExternalStore(
+    subscribeDangerousBashApproval,
+    () => getPendingDangerousBashApproval(toolCallId),
+    () => null,
+  )
+}
+
 function ToolCallItem({
   request,
   response,
@@ -1198,9 +1309,15 @@ function ToolCallItem({
   onRecoverAnswerUserQuestion,
   onResponseUpdate,
 }: ToolCallItemProps) {
+  const cliSubagent = useCliSubagent(request.id)
+  const isNestedCliToolCall = Boolean(
+    request.metadata?.cliToolCall?.parentCallId,
+  )
   const isAskUserQuestion = useMemo(
-    () => isAskUserQuestionToolName(request.name),
-    [request.name],
+    () =>
+      isCliToolCallCapability(request, 'user_question') ||
+      isAskUserQuestionToolName(request.name),
+    [request],
   )
   if (isAskUserQuestion) {
     // The tool has no execute path: the gateway either parks it in
@@ -1222,9 +1339,18 @@ function ToolCallItem({
         'ask_user_question: hosting surface must pass onRecoverAnswerUserQuestion. The parent chat surface forgot to wire the recovery handler.',
       )
     }
+    const presentationArguments = getCliToolPresentationArguments(request)
+    const presentationRequest = presentationArguments
+      ? {
+          ...request,
+          arguments: createCompleteToolCallArguments({
+            value: presentationArguments,
+          }),
+        }
+      : request
     return (
       <AskUserQuestionPanel
-        request={request}
+        request={presentationRequest}
         response={response}
         conversationId={conversationId}
         onRecoverAnswerUserQuestion={onRecoverAnswerUserQuestion}
@@ -1233,7 +1359,7 @@ function ToolCallItem({
   }
   const COMPACTION_PENDING_EXIT_MS = 180
   const reduceMotion = useReducedMotion()
-  const motionDuration = reduceMotion ? 0 : 0.16
+  const motionDuration = reduceMotion ? 0 : MOTION_DURATION_EXIT_S
   const {
     handleToolCall,
     handleAllowForConversation,
@@ -1246,6 +1372,7 @@ function ToolCallItem({
     (nextResponse) => onResponseUpdate(request.id, nextResponse),
     onRecoverToolCall,
   )
+  const dangerousBashApproval = useDangerousBashApproval(request.id)
 
   const [isOpen, setIsOpen] = useState(
     // Open by default if the tool call requires approval
@@ -1277,23 +1404,32 @@ function ToolCallItem({
       }),
     [displayInfo, editSummary, response.status, toolLabels],
   )
-  const terminalSummaryParts =
-    headlineParts.summaryText && isTerminalCommandRequest(request)
-      ? splitTerminalCommandSummary(headlineParts.summaryText)
-      : null
+  const isShellCommandSummary = Boolean(
+    headlineParts.summaryText &&
+      (isTerminalCommandRequest(request) || isVirtualBashRequest(request)) &&
+      typeof parseToolArguments(request.arguments)?.command === 'string',
+  )
   const effectiveStatus =
     terminalCommandResult && isTerminalCommandRequest(request)
       ? mapTerminalCommandResultStatus(terminalCommandResult.status)
       : response.status
   // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
+  const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
   const isAlwaysAllowDisabled = useMemo(() => {
+    if (isExitPlanMode) return true
     try {
       const { toolName } = parseToolName(request.name)
       return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
     } catch {
       return false
     }
-  }, [request.name])
+  }, [isExitPlanMode, request.name])
+  const pendingAllowLabel = isExitPlanMode
+    ? toolLabels.approvePlan
+    : toolLabels.allow
+  const pendingRejectLabel = isExitPlanMode
+    ? toolLabels.stayInPlan
+    : toolLabels.reject
   const [showRunningActions, setShowRunningActions] = useState(false)
   const [renderCompactionPendingHint, setRenderCompactionPendingHint] =
     useState(
@@ -1313,7 +1449,7 @@ function ToolCallItem({
 
     const timer = window.setTimeout(() => {
       setShowRunningActions(true)
-    }, 1000)
+    }, RUNNING_ABORT_ACTION_DELAY_MS)
 
     return () => {
       window.clearTimeout(timer)
@@ -1328,11 +1464,20 @@ function ToolCallItem({
     effectiveStatus === ToolCallResponseStatus.Running &&
     showRunningActions &&
     !isCompactLiveTaskRequest
-  const footerMode: 'pending' | 'running' | null = shouldShowPendingFooter
-    ? 'pending'
-    : shouldShowRunningFooter
-      ? 'running'
-      : null
+  // A pending rm/mv confirmation inside a running bash call takes priority
+  // over the plain "abort" running footer — the user needs to answer it
+  // before the script can continue either way.
+  const shouldShowDangerousApprovalFooter =
+    effectiveStatus === ToolCallResponseStatus.Running &&
+    dangerousBashApproval !== null
+  const footerMode: 'pending' | 'running' | 'dangerous-approval' | null =
+    shouldShowDangerousApprovalFooter
+      ? 'dangerous-approval'
+      : shouldShowPendingFooter
+        ? 'pending'
+        : shouldShowRunningFooter
+          ? 'running'
+          : null
   const shouldShowParameters =
     !isCompactLiveTaskRequest ||
     effectiveStatus === ToolCallResponseStatus.PendingApproval
@@ -1379,16 +1524,32 @@ function ToolCallItem({
         initialStdout={syntheticLiveTaskOutput.stdout}
         initialStderr={syntheticLiveTaskOutput.stderr}
         onAbort={() => {
-          const taskId = extractAcceptedTaskId(response)
-          if (taskId) subagentTaskRegistry.abort(taskId)
           void handleAbort()
         }}
       />
     )
   }
 
+  if (
+    cliSubagent.presentation &&
+    cliSubagent.actions &&
+    cliSubagent.sessionRef
+  ) {
+    return (
+      <CliSubagentCard
+        presentation={cliSubagent.presentation}
+        actions={cliSubagent.actions}
+        sessionRef={cliSubagent.sessionRef}
+      />
+    )
+  }
+
   return (
-    <div className="yolo-toolcall">
+    <div
+      className={cx('yolo-toolcall', {
+        'yolo-toolcall--nested': isNestedCliToolCall,
+      })}
+    >
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
@@ -1396,20 +1557,6 @@ function ToolCallItem({
         aria-expanded={isOpen}
         aria-controls={`yolo-toolcall-content-${request.id}`}
       >
-        <div className="yolo-toolcall-header-icon yolo-toolcall-header-icon--status-inline">
-          <AnimatePresence mode="wait">
-            <motion.span
-              key={effectiveStatus}
-              initial={{ opacity: 0, scale: 0.92 }}
-              animate={{ opacity: 1, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.92 }}
-              transition={{ duration: motionDuration }}
-              style={{ display: 'flex', alignItems: 'center' }}
-            >
-              <StatusIcon status={effectiveStatus} />
-            </motion.span>
-          </AnimatePresence>
-        </div>
         <div className="yolo-toolcall-header-content">
           <span className="yolo-toolcall-header-tool-name">
             <span className="yolo-toolcall-header-title">
@@ -1428,16 +1575,10 @@ function ToolCallItem({
                     exit={{ opacity: 0 }}
                     transition={{ duration: motionDuration }}
                   >
-                    {terminalSummaryParts ? (
-                      <>
-                        <span className="yolo-toolcall-header-summary-prefix">
-                          {terminalSummaryParts.prefix}
-                        </span>
-                        <span className="yolo-toolcall-header-summary-command">
-                          {' '}
-                          {terminalSummaryParts.commands}
-                        </span>
-                      </>
+                    {isShellCommandSummary ? (
+                      <span className="yolo-toolcall-header-summary-command">
+                        {headlineParts.summaryText}
+                      </span>
                     ) : (
                       headlineParts.summaryText
                     )}
@@ -1570,77 +1711,116 @@ function ToolCallItem({
           </span>
         </div>
       )}
-      <AnimatePresence initial={false}>
-        {footerMode && (
-          <motion.div
-            key={footerMode}
-            className="yolo-toolcall-footer"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{
-              duration: reduceMotion ? 0 : 0.18,
-              ease: [0.22, 1, 0.36, 1],
-            }}
-            style={{ overflow: 'hidden' }}
-          >
-            {footerMode === 'pending' && (
-              <div className="yolo-toolcall-footer-actions">
-                {isAlwaysAllowDisabled ? (
-                  // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void handleToolCall()
-                      setIsOpen(false)
-                    }}
-                  >
-                    {toolLabels.allow}
-                  </button>
-                ) : (
-                  <SplitButton
-                    primaryText={toolLabels.allow}
-                    onPrimaryClick={() => {
-                      void handleToolCall()
-                      setIsOpen(false)
-                    }}
-                    menuOptions={[
-                      {
-                        label: toolLabels.allowForThisChat,
-                        onClick: () => {
-                          void handleAllowForConversation()
-                          setIsOpen(false)
-                        },
-                      },
-                    ]}
-                  />
-                )}
+      {footerMode && (
+        <div key={footerMode} className="yolo-toolcall-footer">
+          {footerMode === 'pending' && (
+            <div className="yolo-toolcall-footer-actions">
+              {isAlwaysAllowDisabled ? (
+                // 始终允许已禁用：直接渲染普通按钮，不展示下拉菜单
                 <button
                   type="button"
                   onClick={() => {
-                    handleReject()
+                    void handleToolCall()
                     setIsOpen(false)
+                  }}
+                >
+                  {pendingAllowLabel}
+                </button>
+              ) : (
+                <SplitButton
+                  primaryText={pendingAllowLabel}
+                  onPrimaryClick={() => {
+                    void handleToolCall()
+                    setIsOpen(false)
+                  }}
+                  menuOptions={[
+                    {
+                      label: toolLabels.allowForThisChat,
+                      onClick: () => {
+                        void handleAllowForConversation()
+                        setIsOpen(false)
+                      },
+                    },
+                  ]}
+                />
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  handleReject()
+                  setIsOpen(false)
+                }}
+              >
+                {pendingRejectLabel}
+              </button>
+            </div>
+          )}
+          {footerMode === 'running' && (
+            <div className="yolo-toolcall-footer-actions">
+              <button
+                type="button"
+                onClick={() => {
+                  void handleAbort()
+                }}
+              >
+                {toolLabels.abort}
+              </button>
+            </div>
+          )}
+          {footerMode === 'dangerous-approval' && dangerousBashApproval && (
+            <div className="yolo-toolcall-dangerous-approval">
+              <div className="yolo-toolcall-dangerous-approval-title">
+                {t(
+                  'chat.toolCall.dangerousBash.title',
+                  'Dangerous operation needs confirmation',
+                )}
+              </div>
+              <div className="yolo-toolcall-dangerous-approval-summary">
+                {dangerousBashApproval.kind === 'rm'
+                  ? t(
+                      'chat.toolCall.dangerousBash.rmSummary',
+                      'About to delete the following paths (moved to trash):',
+                    )
+                  : t(
+                      'chat.toolCall.dangerousBash.mvSummary',
+                      'About to move/rename the following paths:',
+                    )}
+              </div>
+              <ul className="yolo-toolcall-dangerous-approval-targets">
+                {dangerousBashApproval.targets.map((target) => (
+                  <li key={target}>{target}</li>
+                ))}
+              </ul>
+              <div className="yolo-toolcall-footer-actions">
+                <button
+                  type="button"
+                  onClick={() => {
+                    resolveDangerousBashApproval(
+                      request.id,
+                      dangerousBashApproval.requestId,
+                      true,
+                    )
+                  }}
+                >
+                  {toolLabels.allow}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    resolveDangerousBashApproval(
+                      request.id,
+                      dangerousBashApproval.requestId,
+                      false,
+                    )
                   }}
                 >
                   {toolLabels.reject}
                 </button>
               </div>
-            )}
-            {footerMode === 'running' && (
-              <div className="yolo-toolcall-footer-actions">
-                <button
-                  type="button"
-                  onClick={() => {
-                    void handleAbort()
-                  }}
-                >
-                  {toolLabels.abort}
-                </button>
-              </div>
-            )}
-          </motion.div>
-        )}
-      </AnimatePresence>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -1675,7 +1855,7 @@ function useToolCall(
     allowForConversation?: boolean
   }) => Promise<boolean>,
 ) {
-  const plugin = usePlugin()
+  const { actions, conversation } = useChatRuntimeActions(conversationId)
   const suppressReloadNotice = isDelegateSubagentRequest(request)
   const showReloadNotice = useCallback(() => {
     new Notice(
@@ -1700,19 +1880,16 @@ function useToolCall(
   )
 
   const handleToolCall = useCallback(async () => {
-    const approved = await plugin.getAgentService().approveToolCall({
-      conversationId,
+    await handleRuntimeToolApproval({
+      actions,
+      conversation,
       toolCallId: request.id,
+      recover: tryRecoverToolCall,
+      onStale: suppressReloadNotice ? undefined : showReloadNotice,
     })
-    if (!approved) {
-      const recovered = await tryRecoverToolCall()
-      if (!recovered && !suppressReloadNotice) {
-        showReloadNotice()
-      }
-    }
   }, [
-    conversationId,
-    plugin,
+    actions,
+    conversation,
     request.id,
     showReloadNotice,
     suppressReloadNotice,
@@ -1720,20 +1897,17 @@ function useToolCall(
   ])
 
   const handleAllowForConversation = useCallback(async () => {
-    const approved = await plugin.getAgentService().approveToolCall({
-      conversationId,
+    await handleRuntimeToolApproval({
+      actions,
+      conversation,
       toolCallId: request.id,
       allowForConversation: true,
+      recover: () => tryRecoverToolCall(true),
+      onStale: suppressReloadNotice ? undefined : showReloadNotice,
     })
-    if (!approved) {
-      const recovered = await tryRecoverToolCall(true)
-      if (!recovered && !suppressReloadNotice) {
-        showReloadNotice()
-      }
-    }
   }, [
-    conversationId,
-    plugin,
+    actions,
+    conversation,
     request.id,
     showReloadNotice,
     suppressReloadNotice,
@@ -1741,55 +1915,34 @@ function useToolCall(
   ])
 
   const handleReject = useCallback(() => {
-    const rejected = plugin.getAgentService().rejectToolCall({
-      conversationId,
+    void handleRuntimeToolRejection({
+      actions,
+      conversation,
       toolCallId: request.id,
+      onStale: () =>
+        onResponseUpdate({
+          status: ToolCallResponseStatus.Rejected,
+        }),
     })
-    if (!rejected) {
-      onResponseUpdate({
-        status: ToolCallResponseStatus.Rejected,
-      })
-    }
-  }, [conversationId, onResponseUpdate, plugin, request.id])
+  }, [actions, conversation, onResponseUpdate, request.id])
 
   const handleAbort = useCallback(async () => {
-    const aborted = plugin.getAgentService().abortToolCall({
-      conversationId,
+    await handleRuntimeToolAbort({
+      actions,
+      conversation,
       toolCallId: request.id,
+      onStale: () =>
+        onResponseUpdate({
+          status: ToolCallResponseStatus.Aborted,
+        }),
     })
-    if (!aborted) {
-      onResponseUpdate({
-        status: ToolCallResponseStatus.Aborted,
-      })
-    }
-  }, [conversationId, onResponseUpdate, plugin, request.id])
+  }, [actions, conversation, onResponseUpdate, request.id])
 
   return {
     handleToolCall,
     handleAllowForConversation,
     handleReject,
     handleAbort,
-  }
-}
-
-function StatusIcon({ status }: { status: ToolCallResponseStatus }) {
-  switch (status) {
-    case ToolCallResponseStatus.PendingApproval:
-      return <span className="yolo-toolcall-status-dot" />
-    case ToolCallResponseStatus.Rejected:
-    case ToolCallResponseStatus.Aborted:
-    case ToolCallResponseStatus.Error:
-      return <X size={16} className="yolo-icon-error" />
-    case ToolCallResponseStatus.Running:
-      return <Loader2 size={16} className="yolo-spinner" />
-    case ToolCallResponseStatus.Success:
-      return (
-        <span className="yolo-toolcall-status-success-ring">
-          <Check size={11} className="yolo-toolcall-status-success-check" />
-        </span>
-      )
-    default:
-      return null
   }
 }
 

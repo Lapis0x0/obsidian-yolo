@@ -8,6 +8,7 @@ import {
   getLegacyJsonDbRootDir,
   getYoloJsonDbRootDir,
   getYoloLearningDir,
+  getYoloUserDataRootDir,
 } from '../paths/yoloPaths'
 
 import type { ModuleCreateIfAbsentResult } from './moduleSettingsStore'
@@ -62,8 +63,14 @@ async function hasLegacyLearningData(
 ): Promise<boolean> {
   const currentJsonRoot = getYoloJsonDbRootDir(settings)
   const legacyJsonRoot = getLegacyJsonDbRootDir()
+  const currentUserDataRoot = getYoloUserDataRootDir(settings)
   const paths = [
     getYoloLearningDir(settings),
+    // Visible root (post-migration, or synced in from an already-migrated
+    // device before this device has ever run `ensureUserDataRootDir`).
+    `${currentUserDataRoot}/${YOLO_LEARNING_SRS_DIR_NAME}`,
+    `${currentUserDataRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}`,
+    // Hidden roots (pre-migration, or a not-yet-upgraded device's writes).
     `${currentJsonRoot}/${YOLO_LEARNING_SRS_DIR_NAME}`,
     `${currentJsonRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}`,
     `${legacyJsonRoot}/${YOLO_LEARNING_SRS_DIR_NAME}`,

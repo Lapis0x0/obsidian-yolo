@@ -16,6 +16,8 @@ export type SimpleSelectOptionGroup = {
 type SimpleSelectProps = {
   value: string
   options?: SimpleSelectOption[]
+  /** Pinned options rendered above grouped/flat options, as regular items. */
+  leadingOptions?: SimpleSelectOption[]
   groupedOptions?: SimpleSelectOptionGroup[]
   onChange: (value: string) => void
   disabled?: boolean
@@ -32,6 +34,7 @@ type SimpleSelectProps = {
 export function SimpleSelect({
   value,
   options = [],
+  leadingOptions = [],
   groupedOptions,
   onChange,
   disabled = false,
@@ -47,14 +50,42 @@ export function SimpleSelect({
   const [isOpen, setIsOpen] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const flattenedOptions = useMemo(() => {
-    if (groupedOptions && groupedOptions.length > 0) {
-      return groupedOptions.flatMap((group) => group.options)
-    }
-    return options
-  }, [groupedOptions, options])
+    const baseOptions =
+      groupedOptions && groupedOptions.length > 0
+        ? groupedOptions.flatMap((group) => group.options)
+        : options
+    return [...leadingOptions, ...baseOptions]
+  }, [groupedOptions, leadingOptions, options])
   const selected = useMemo(
     () => flattenedOptions.find((option) => option.value === value) ?? null,
     [flattenedOptions, value],
+  )
+
+  const renderOptionItem = (
+    option: SimpleSelectOption,
+    variant?: 'leading',
+  ) => (
+    <DropdownMenu.RadioItem
+      key={option.value}
+      className={
+        variant === 'leading'
+          ? 'yolo-simple-select__item yolo-simple-select__item--leading'
+          : 'yolo-simple-select__item'
+      }
+      value={option.value}
+    >
+      <div className="yolo-simple-select__item-text">
+        <div className="yolo-simple-select__item-label">{option.label}</div>
+        {option.description ? (
+          <div className="yolo-simple-select__item-desc">
+            {option.description}
+          </div>
+        ) : null}
+      </div>
+      <DropdownMenu.ItemIndicator className="yolo-simple-select__item-indicator">
+        <Check size={12} />
+      </DropdownMenu.ItemIndicator>
+    </DropdownMenu.RadioItem>
   )
 
   return (
@@ -101,31 +132,16 @@ export function SimpleSelect({
               onChange(nextValue)
             }}
           >
+            {leadingOptions.map((option) =>
+              renderOptionItem(option, 'leading'),
+            )}
             {(groupedOptions && groupedOptions.length > 0
               ? groupedOptions
               : [{ label: '', options }]
             ).flatMap((group, groupIndex) => {
-              const items = group.options.map((option) => (
-                <DropdownMenu.RadioItem
-                  key={option.value}
-                  className="yolo-simple-select__item"
-                  value={option.value}
-                >
-                  <div className="yolo-simple-select__item-text">
-                    <div className="yolo-simple-select__item-label">
-                      {option.label}
-                    </div>
-                    {option.description ? (
-                      <div className="yolo-simple-select__item-desc">
-                        {option.description}
-                      </div>
-                    ) : null}
-                  </div>
-                  <DropdownMenu.ItemIndicator className="yolo-simple-select__item-indicator">
-                    <Check size={12} />
-                  </DropdownMenu.ItemIndicator>
-                </DropdownMenu.RadioItem>
-              ))
+              const items = group.options.map((option) =>
+                renderOptionItem(option),
+              )
 
               const label = group.label ? (
                 <DropdownMenu.Label

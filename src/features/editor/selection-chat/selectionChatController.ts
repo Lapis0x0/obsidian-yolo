@@ -19,6 +19,7 @@ import {
   SelectionInfo,
   SelectionManager,
 } from '../../../components/selection/SelectionManager'
+import { getChatModelClient } from '../../../core/llm/manager'
 import type YoloPlugin from '../../../main'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import type {
@@ -41,13 +42,6 @@ import type { PdfSelectionResult } from './getPdfSelectionData'
 import { getPdfLeafContentEl } from './getPdfSelectionData'
 import { PdfSelectionManager } from './PdfSelectionManager'
 import { resolveMarkdownTableSelectionFromTableElement } from './tableSelectionResolver'
-
-export type PendingSelectionRewrite = {
-  editor: Editor
-  selectedText: string
-  from: { line: number; ch: number }
-  to: { line: number; ch: number }
-}
 
 type EditorRange = {
   from: number
@@ -81,9 +75,8 @@ type SelectionChatControllerDeps = {
       initialMentionables?: Mentionable[]
       initialMode?: QuickAskLaunchMode
       initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      isRewriteEntry?: boolean
       autoSend?: boolean
       initialAssistantId?: string
     },
@@ -134,7 +127,6 @@ type SelectionChatControllerDeps = {
     text: string,
     assistantId?: string,
   ) => Promise<void>
-  isSmartSpaceOpen: () => boolean
 }
 
 export class SelectionChatController {
@@ -151,9 +143,8 @@ export class SelectionChatController {
       initialMentionables?: Mentionable[]
       initialMode?: QuickAskLaunchMode
       initialInput?: string
-      editContextText?: string
-      editSelectionFrom?: { line: number; ch: number }
       selectionScope?: QuickAskSelectionScope
+      isRewriteEntry?: boolean
       autoSend?: boolean
       initialAssistantId?: string
     },
@@ -183,7 +174,6 @@ export class SelectionChatController {
     text: string,
     assistantId?: string,
   ) => Promise<void>
-  private readonly isSmartSpaceOpen: () => boolean
 
   private selectionManager: SelectionManager | null = null
   private pdfSelectionManager: PdfSelectionManager | null = null
@@ -209,7 +199,6 @@ export class SelectionChatController {
    * highlight id and cause the highlight to disappear on next reconcile.
    */
   private lastSyncedPdfKey: string | null = null
-  private pendingSelectionRewrite: PendingSelectionRewrite | null = null
   private enableSelectionChat = true
   private layoutChangeEventRef: EventRef | null = null
 
@@ -227,21 +216,10 @@ export class SelectionChatController {
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
-    this.isSmartSpaceOpen = deps.isSmartSpaceOpen
   }
 
   isActive(): boolean {
     return this.enableSelectionChat
-  }
-
-  clearPendingSelectionRewrite() {
-    this.pendingSelectionRewrite = null
-  }
-
-  consumePendingSelectionRewrite(): PendingSelectionRewrite | null {
-    const pending = this.pendingSelectionRewrite
-    this.pendingSelectionRewrite = null
-    return pending
   }
 
   initialize() {
@@ -656,10 +634,6 @@ export class SelectionChatController {
 
     this.destroyCurrentWidget()
 
-    if (this.isSmartSpaceOpen()) {
-      return
-    }
-
     const enableSelectionChat =
       this.getSettings().continuationOptions?.enableSelectionChat ?? true
     if (!enableSelectionChat) {
@@ -682,6 +656,14 @@ export class SelectionChatController {
         onClose: () => {
           this.destroyCurrentWidget()
         },
+        onLengthDragStart: snapshot.isTableSelection
+          ? undefined
+          : (startClientY, currentClientY) => {
+              return this.adjustSelectionLength(editor, snapshot, {
+                startClientY,
+                currentClientY,
+              })
+            },
         onAction: (
           actionId: string,
           _sel: SelectionInfo,
@@ -1163,6 +1145,121 @@ export class SelectionChatController {
     })
   }
 
+  private adjustSelectionLength(
+    editor: Editor,
+    snapshot?: MarkdownSelectionSnapshot,
+    initialDrag?: { startClientY: number; currentClientY: number },
+  ): boolean {
+    const markdownView = this.app.workspace.getActiveViewOfType(MarkdownView)
+    if (!markdownView) {
+      new Notice(this.t('selection.length.noEditor', '无法获取当前编辑器'))
+      return false
+    }
+    const resolvedSnapshot = this.resolveMarkdownSelectionSnapshot(
+      editor,
+      markdownView,
+      snapshot,
+    )
+    if (!resolvedSnapshot?.editContextText.trim()) {
+      new Notice(
+        this.t('selection.length.noSelection', '请先选择要调整的文本。'),
+      )
+      return false
+    }
+    if (resolvedSnapshot.isTableSelection) {
+      new Notice(
+        this.t(
+          'selection.length.tableUnsupported',
+          '暂不支持调整表格选区的篇幅。',
+        ),
+      )
+      return false
+    }
+    const editorView = this.getEditorView(editor)
+    if (!editorView) {
+      new Notice(this.t('selection.length.noEditorView', '无法获取编辑器视图'))
+      return false
+    }
+
+    const from =
+      resolvedSnapshot.highlightRange?.from ??
+      editor.posToOffset(resolvedSnapshot.selectionFrom)
+    const to =
+      resolvedSnapshot.highlightRange?.to ??
+      from + resolvedSnapshot.editContextText.length
+    const selectedText = resolvedSnapshot.editContextText.trimEnd()
+    const effectiveTo = Math.max(
+      from,
+      to - (resolvedSnapshot.editContextText.length - selectedText.length),
+    )
+    const settings = this.getSettings()
+    const preferredModelId = [
+      settings.continuationOptions?.tabCompletionModelId,
+      settings.continuationOptions?.continuationModelId,
+      settings.chatModelId,
+    ].find(
+      (modelId): modelId is string =>
+        Boolean(modelId) &&
+        settings.chatModels.some((model) => model.id === modelId),
+    )
+    const fallbackModelId =
+      preferredModelId || settings.chatModels.at(0)?.id || ''
+    if (!fallbackModelId) {
+      new Notice(
+        this.t(
+          'quickAsk.noModelConfigured',
+          'No chat model configured. Please add a model in settings.',
+        ),
+      )
+      return false
+    }
+
+    let modelClient: ReturnType<typeof getChatModelClient>
+    try {
+      modelClient = getChatModelClient({
+        settings,
+        modelId: fallbackModelId,
+      })
+    } catch (error) {
+      console.error('[YOLO] Failed to resolve length adjustment model:', error)
+      new Notice(
+        this.t(
+          'quickAsk.noModelConfigured',
+          'No chat model configured. Please add a model in settings.',
+        ),
+      )
+      return false
+    }
+
+    const beforeChars = Math.max(
+      0,
+      settings.continuationOptions?.quickAskContextBeforeChars ?? 5000,
+    )
+    const afterChars = Math.max(
+      0,
+      settings.continuationOptions?.quickAskContextAfterChars ?? 2000,
+    )
+    const doc = editorView.state.doc
+    const file = resolvedSnapshot.editBlockData.file
+    this.plugin.startSelectionLengthAdjustment({
+      view: editorView,
+      from,
+      to: effectiveTo,
+      selectedText,
+      contextBefore: doc.sliceString(Math.max(0, from - beforeChars), from),
+      contextAfter: doc.sliceString(
+        effectiveTo,
+        Math.min(doc.length, effectiveTo + afterChars),
+      ),
+      fileTitle: file.basename,
+      providerClient: modelClient.providerClient,
+      model: modelClient.model,
+      settings,
+      initialDrag,
+    })
+    return true
+  }
+
   private async rewriteSelection(
     editor: Editor,
     instruction: string,
@@ -1204,13 +1301,12 @@ export class SelectionChatController {
     }
 
     this.showQuickAskWithOptions(editor, editorView, {
-      initialMode: 'edit',
+      initialMode: 'ask',
       initialPrompt: behavior === 'preset' ? prompt : undefined,
       initialInput: behavior === 'custom' ? prompt : undefined,
       initialMentionables: [mentionable],
-      editContextText: resolvedSnapshot.editContextText,
-      editSelectionFrom: resolvedSnapshot.selectionFrom,
       selectionScope: this.createSelectionScope(mentionable, resolvedSnapshot),
+      isRewriteEntry: true,
       autoSend: behavior === 'preset',
       initialAssistantId: assistantId,
     })

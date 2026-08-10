@@ -6,14 +6,16 @@ import {
   normalizePath,
 } from 'obsidian'
 
-import { getYoloJsonDbRootDir } from '../paths/yoloPaths'
+import {
+  YOLO_COMPONENT_INTENT_DIR_NAME,
+  YOLO_MODULE_INTENT_DIR_NAME,
+  getYoloUserDataRootDir,
+} from '../paths/yoloPaths'
 
 import type { ModuleIntentBackend } from './moduleIntentStore'
 import { ModuleSettingsStore } from './moduleSettingsStore'
 import { assertModuleId } from './moduleStore'
 import type { ModuleDisposer } from './types'
-
-const MODULE_INTENT_DIR_NAME = 'module-intent-v1'
 
 export type ObsidianModuleIntentSettings = Readonly<{
   yolo?: Readonly<{
@@ -25,6 +27,9 @@ export type ObsidianModuleIntentBackendOptions = Readonly<{
   app: App
   getSettings(): ObsidianModuleIntentSettings | null
   subscribeSettingsChange(listener: () => void): ModuleDisposer
+  directoryName?:
+    | typeof YOLO_MODULE_INTENT_DIR_NAME
+    | typeof YOLO_COMPONENT_INTENT_DIR_NAME
 }>
 
 export class ModuleIntentSubscriptionRegistrationError extends Error {
@@ -44,9 +49,10 @@ export class ModuleIntentSubscriptionRegistrationError extends Error {
 export function createObsidianModuleIntentBackend(
   options: ObsidianModuleIntentBackendOptions,
 ): ModuleIntentBackend {
+  const directoryName = options.directoryName ?? YOLO_MODULE_INTENT_DIR_NAME
   const rootPath = (): string =>
     normalizePath(
-      `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_INTENT_DIR_NAME}`,
+      `${getYoloUserDataRootDir(options.getSettings())}/${directoryName}`,
     )
   const targetPath = (moduleId: string): string =>
     normalizePath(`${rootPath()}/${moduleId}.json`)

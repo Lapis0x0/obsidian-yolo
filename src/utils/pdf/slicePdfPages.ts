@@ -1,4 +1,4 @@
-import { PDFDocument } from 'pdf-lib'
+import { acquireRuntimeComponent } from '../../core/runtime-components/runtimeComponentAccess'
 
 /**
  * Hard limits aligned with Anthropic's native-PDF constraints (32 MB whole
@@ -6,9 +6,6 @@ import { PDFDocument } from 'pdf-lib'
  * slice output at 24 MB to keep the encoded request comfortably under the API
  * ceiling — matches `PDF_UPLOAD_MAX_BYTES` for parity.
  */
-const MAX_SLICE_PAGES = 100
-const MAX_SLICE_BYTES = 24 * 1024 * 1024 // 24 MB raw
-
 /**
  * Thrown when a slice cannot be produced. The `kind` field tells the caller
  * how to react:
@@ -68,72 +65,26 @@ export async function slicePdfPages(
   rawData: Uint8Array,
   range: SlicePdfPagesRange,
 ): Promise<SlicePdfPagesResult> {
-  let source: PDFDocument
+  const lease = await acquireRuntimeComponent('pdf-engine')
   try {
-    source = await PDFDocument.load(rawData)
-  } catch (err) {
-    throw new PdfSliceError(
-      'load-failed',
-      `Failed to load PDF (may be encrypted, corrupt, or an unsupported format): ${err instanceof Error ? err.message : String(err)}`,
-    )
+    return await lease.api.slicePages(rawData, range)
+  } catch (error) {
+    const candidate = error as { kind?: unknown; message?: unknown }
+    if (
+      candidate.kind === 'invalid-range' ||
+      candidate.kind === 'load-failed' ||
+      candidate.kind === 'too-many-pages' ||
+      candidate.kind === 'too-large'
+    ) {
+      throw new PdfSliceError(
+        candidate.kind,
+        typeof candidate.message === 'string'
+          ? candidate.message
+          : 'PDF slice failed',
+      )
+    }
+    throw error
+  } finally {
+    lease.release()
   }
-
-  const totalSourcePages = source.getPageCount()
-
-  if (!Number.isInteger(range.startPage) || range.startPage < 1) {
-    throw new PdfSliceError(
-      'invalid-range',
-      `Invalid startPage ${range.startPage}; must be a positive integer.`,
-    )
-  }
-  if (range.startPage > totalSourcePages) {
-    throw new PdfSliceError(
-      'invalid-range',
-      `startPage ${range.startPage} exceeds the source document's ${totalSourcePages} pages.`,
-    )
-  }
-
-  const actualStart = range.startPage
-  const actualEnd =
-    range.endPage !== undefined
-      ? Math.min(range.endPage, totalSourcePages)
-      : totalSourcePages
-
-  if (actualEnd < actualStart) {
-    throw new PdfSliceError(
-      'invalid-range',
-      `endPage ${range.endPage} is less than startPage ${range.startPage}.`,
-    )
-  }
-
-  const sliceLength = actualEnd - actualStart + 1
-  if (sliceLength > MAX_SLICE_PAGES) {
-    throw new PdfSliceError(
-      'too-many-pages',
-      `Requested ${sliceLength} pages but the maximum allowed per slice is ${MAX_SLICE_PAGES}.`,
-    )
-  }
-
-  const target = await PDFDocument.create()
-  // pdf-lib uses 0-based page indices.
-  const zeroBasedIndices: number[] = []
-  for (let p = actualStart; p <= actualEnd; p += 1) {
-    zeroBasedIndices.push(p - 1)
-  }
-  const copiedPages = await target.copyPages(source, zeroBasedIndices)
-  for (const page of copiedPages) {
-    target.addPage(page)
-  }
-
-  const saved = await target.save()
-  const bytes = saved instanceof Uint8Array ? saved : new Uint8Array(saved)
-
-  if (bytes.byteLength > MAX_SLICE_BYTES) {
-    throw new PdfSliceError(
-      'too-large',
-      `PDF slice is ${bytes.byteLength} bytes, which exceeds the ${MAX_SLICE_BYTES}-byte limit.`,
-    )
-  }
-
-  return { bytes, totalSourcePages, actualStart, actualEnd }
 }

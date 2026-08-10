@@ -5,14 +5,14 @@ import {
   ReconcileResult,
   VectorManager,
 } from '../../database/modules/vector/VectorManager'
-import { SelectEmbedding } from '../../database/schema'
 import { YoloSettings } from '../../settings/schema/setting.types'
 import { EmbeddingModelClient } from '../../types/embedding'
+import type { VectorSelect } from '../runtime-components'
 
 import { getEmbeddingModelClient } from './embedding'
 import type { ReconcileScope } from './reconciler'
 
-type RagQueryResult = Omit<SelectEmbedding, 'embedding'> & {
+type RagQueryResult = VectorSelect & {
   similarity: number
 }
 

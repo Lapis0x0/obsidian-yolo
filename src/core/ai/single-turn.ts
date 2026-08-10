@@ -107,7 +107,7 @@ type SingleTurnExecutionInput = {
     reasoningDelta: string
     chunk: LLMResponseStreaming
     toolCalls?: StreamedToolCall[]
-  }) => void
+  }) => void | Promise<void>
 }
 
 const DEFAULT_PRIMARY_REQUEST_TIMEOUT_MS = DEFAULT_MODEL_REQUEST_TIMEOUT_MS
@@ -132,14 +132,6 @@ const isNonEmptyStringField = (
 ): boolean => {
   const value = args[key]
   return typeof value === 'string' && value.length > 0
-}
-
-const isOptionalBooleanField = (
-  args: Record<string, unknown>,
-  key: string,
-): boolean => {
-  const value = args[key]
-  return value === undefined || typeof value === 'boolean'
 }
 
 const isPositiveIntegerField = (
@@ -192,20 +184,6 @@ const isValidWriteToolArguments = ({
 
   if (normalizedToolName === 'fs_write') {
     return isStringField(args, 'path') && isStringField(args, 'content')
-  }
-
-  if (normalizedToolName === 'fs_delete') {
-    return (
-      isStringField(args, 'path') && isOptionalBooleanField(args, 'recursive')
-    )
-  }
-
-  if (normalizedToolName === 'fs_create_dir') {
-    return isStringField(args, 'path')
-  }
-
-  if (normalizedToolName === 'fs_move') {
-    return isStringField(args, 'oldPath') && isStringField(args, 'newPath')
   }
 
   return true
@@ -544,7 +522,7 @@ export async function executeSingleTurn({
         const streamedToolCallList = toolCallAccumulator.getSnapshots()
 
         if (!isBufferedStreaming) {
-          onStreamDelta?.({
+          await onStreamDelta?.({
             contentDelta,
             reasoningDelta,
             chunk,
@@ -703,6 +681,13 @@ function mergeProviderMetadata(
             ],
           }
         : undefined,
+    // Providers re-send the full list as calls complete, so the later value
+    // supersedes rather than appends.
+    ...((next.hostedWebSearch ?? prev?.hostedWebSearch)
+      ? {
+          hostedWebSearch: next.hostedWebSearch ?? prev?.hostedWebSearch,
+        }
+      : {}),
   }
 }
 

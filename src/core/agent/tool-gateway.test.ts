@@ -119,9 +119,9 @@ describe('AgentToolGateway', () => {
         },
         server__tool_a: {
           enabled: true,
-          disclosureMode: 'on_demand',
         },
       },
+      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
     })
 
     const toolMessage = gateway.createToolMessage({
@@ -386,8 +386,13 @@ describe('AgentToolGateway', () => {
     if (response?.status !== ToolCallResponseStatus.Error) {
       throw new Error('expected error')
     }
-    expect(response.error).toContain('startLine must be an integer')
-    expect(response.error).toContain('endLine must be an integer')
+    expect(response.error).toContain('Missing edit locator.')
+    expect(response.error).toContain(
+      'Always required parameter names: path, newText',
+    )
+    expect(response.error).toContain(
+      'Edit locator requirement: provide exactly one of oldText, or startLine together with endLine.',
+    )
     expect(response.error).toContain('"path":"note.md"')
   })
 
@@ -477,6 +482,86 @@ describe('AgentToolGateway', () => {
       requestArgs: { command: 'echo hello > out.txt' },
       requireAutoExecution: false,
     })
+  })
+
+  it('auto executes the bash tool under the dangerous_only tier (gating happens mid-script, not at dispatch)', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest
+        .fn()
+        .mockImplementation(({ requireAutoExecution }) => requireAutoExecution),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__bash'],
+      toolPreferences: {
+        yolo_local__bash: {
+          enabled: true,
+          approvalMode: 'dangerous_only',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__bash',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'rm notes/a.md' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.Running,
+    )
+    // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+    const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+    expect(isToolExecutionAllowedMock).toHaveBeenCalledWith({
+      requestToolName: 'yolo_local__bash',
+      conversationId: 'conv-1',
+      requestArgs: { command: 'rm notes/a.md' },
+      requireAutoExecution: true,
+    })
+  })
+
+  it('keeps the bash tool pending under the require_approval tier (gates the whole call up front)', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest
+        .fn()
+        .mockImplementation(({ requireAutoExecution }) => requireAutoExecution),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__bash'],
+      toolPreferences: {
+        yolo_local__bash: {
+          enabled: true,
+          approvalMode: 'require_approval',
+        },
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__bash',
+          arguments: createCompleteToolCallArguments({
+            value: { command: 'ls' },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response.status).toBe(
+      ToolCallResponseStatus.PendingApproval,
+    )
   })
 
   it('auto executes require_approval tools when bypassToolApproval is enabled', () => {
@@ -1073,6 +1158,8 @@ describe('AgentToolGateway', () => {
     if (followerResponse.status === ToolCallResponseStatus.Success) {
       expect(followerResponse.data.text).toContain('batched fs_edit')
       expect(followerResponse.data.text).toContain('note.md')
+      expect(followerResponse.data.text).toContain('unified review outcome')
+      expect(followerResponse.data.text).not.toContain('Applied')
     }
   })
 
@@ -1109,6 +1196,52 @@ describe('AgentToolGateway', () => {
     } as unknown as McpManager
 
     const gateway = new AgentToolGateway(mcpManager, {
+      allowedToolNames: ['yolo_local__fs_edit'],
+      workspaceScope: {
+        enabled: true,
+        include: ['Notes'],
+        exclude: [],
+      },
+    })
+
+    const message = gateway.createToolMessage({
+      toolCallRequests: [
+        {
+          id: 'tool-1',
+          name: 'yolo_local__fs_edit',
+          arguments: createCompleteToolCallArguments({
+            value: {
+              path: 'Private/secret.md',
+              oldText: 'x',
+              newText: 'y',
+            },
+          }),
+        },
+      ],
+      conversationId: 'conv-1',
+    })
+
+    expect(message.toolCalls[0]?.response).toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Path "Private/secret.md" is outside this agent\'s workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.',
+    })
+  })
+
+  // fs_read is intentionally absent from workspaceScope's PATH_ARGS table
+  // (its `paths` entries may be Obsidian wikilinks, not literal vault
+  // paths — see workspaceScope.ts). This gateway-level pre-check is
+  // therefore a no-op for it; scope is instead enforced per-resolved-file
+  // inside fs_read's own read loop (see localFileTools.ts's
+  // `case 'fs_read'`, and the "workspace scope final defense" /
+  // wikilink-resolution tests in localFileTools.test.ts).
+  it('does not reject fs_read at the gateway level even for out-of-scope paths', () => {
+    const mcpManager = {
+      isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+      getJsSandboxSettings: jest.fn().mockReturnValue({}),
+    } as unknown as McpManager
+
+    const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_read'],
       workspaceScope: {
         enabled: true,
@@ -1130,11 +1263,9 @@ describe('AgentToolGateway', () => {
       conversationId: 'conv-1',
     })
 
-    expect(message.toolCalls[0]?.response).toEqual({
-      status: ToolCallResponseStatus.Rejected,
-      reason:
-        'Path "Private/secret.md" is outside this agent\'s workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.',
-    })
+    expect(message.toolCalls[0]?.response.status).not.toBe(
+      ToolCallResponseStatus.Rejected,
+    )
   })
 
   describe('on-demand harness', () => {
@@ -1172,9 +1303,9 @@ describe('AgentToolGateway', () => {
           server__tool_a: {
             enabled: true,
             approvalMode: 'full_access',
-            disclosureMode: 'on_demand',
           },
         },
+        toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
         apiType,
       })
 

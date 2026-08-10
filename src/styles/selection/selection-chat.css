@@ -151,7 +151,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .yolo-selection-persisted-layer.yolo-selection-persisted-layer-pending::after {
-    animation: none;
     background: color-mix(in srgb, var(--interactive-accent) 14%, transparent);
     background-size: auto;
   }
@@ -195,6 +194,15 @@
   width: 14px;
   height: 14px;
   color: var(--h1-color, var(--interactive-accent));
+}
+
+.yolo-selection-length-affordance {
+  position: absolute;
+  z-index: 2;
+  width: 64px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
 }
 
 /* Selection Actions Menu */

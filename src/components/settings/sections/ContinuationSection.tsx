@@ -26,7 +26,6 @@ type ContinuationSectionProps = {
 export function ContinuationSection({ app }: ContinuationSectionProps) {
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
-  const [showAdvancedTabSettings, setShowAdvancedTabSettings] = useState(false)
 
   const updateContinuationOptions = (
     patch: Partial<typeof settings.continuationOptions>,
@@ -55,11 +54,8 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
     [settings.chatModels],
   )
 
-  const enableSmartSpace = settings.continuationOptions.enableSmartSpace ?? true
   const enableSelectionChat =
     settings.continuationOptions.enableSelectionChat ?? true
-  const smartSpaceTriggerMode =
-    settings.continuationOptions.smartSpaceTriggerMode ?? 'single-space'
   const enableTabCompletion = Boolean(
     settings.continuationOptions.enableTabCompletion,
   )
@@ -79,14 +75,15 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
   const tabCompletionConstraints =
     settings.continuationOptions.tabCompletionConstraints ?? ''
   const [tabNumberInputs, setTabNumberInputs] = useState({
-    maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
     triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
     autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
     autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
-    contextRange: String(tabCompletionOptions.contextRange),
-    minContextLength: String(tabCompletionOptions.minContextLength),
-    temperature: String(tabCompletionOptions.temperature),
-    requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+    requestTimeoutSeconds: String(
+      Math.max(
+        1,
+        Math.round(tabCompletionOptions.requestTimeoutMs / 1000) || 12,
+      ),
+    ),
   })
   const [quickAskNumberInputs, setQuickAskNumberInputs] = useState({
     contextBeforeChars: String(quickAskContextBeforeChars),
@@ -95,23 +92,20 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
 
   useEffect(() => {
     setTabNumberInputs({
-      maxSuggestionLength: String(tabCompletionOptions.maxSuggestionLength),
       triggerDelayMs: String(tabCompletionOptions.triggerDelayMs),
       autoTriggerDelayMs: String(tabCompletionOptions.autoTriggerDelayMs),
       autoTriggerCooldownMs: String(tabCompletionOptions.autoTriggerCooldownMs),
-      contextRange: String(tabCompletionOptions.contextRange),
-      minContextLength: String(tabCompletionOptions.minContextLength),
-      temperature: String(tabCompletionOptions.temperature),
-      requestTimeoutMs: String(tabCompletionOptions.requestTimeoutMs),
+      requestTimeoutSeconds: String(
+        Math.max(
+          1,
+          Math.round(tabCompletionOptions.requestTimeoutMs / 1000) || 12,
+        ),
+      ),
     })
   }, [
-    tabCompletionOptions.maxSuggestionLength,
     tabCompletionOptions.triggerDelayMs,
     tabCompletionOptions.autoTriggerDelayMs,
     tabCompletionOptions.autoTriggerCooldownMs,
-    tabCompletionOptions.contextRange,
-    tabCompletionOptions.minContextLength,
-    tabCompletionOptions.temperature,
     tabCompletionOptions.requestTimeoutMs,
   ])
   useEffect(() => {
@@ -170,6 +164,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
       type: 'string',
       pattern: '',
       enabled: true,
+      acceptMode: 'insert',
       description: '',
     }
     updateTabCompletionTriggers([...tabCompletionTriggers, nextTrigger])
@@ -187,96 +182,9 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
     return parseInt(trimmed, 10)
   }
 
-  const parseFloatInput = (value: string) => {
-    const trimmed = value.trim()
-    if (trimmed.length === 0) return null
-    if (!/^-?\d*(?:\.\d*)?$/.test(trimmed)) return null
-    if (
-      trimmed === '-' ||
-      trimmed === '.' ||
-      trimmed === '-.' ||
-      trimmed.endsWith('.')
-    ) {
-      return null
-    }
-    const parsed = Number(trimmed)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-
   return (
     <>
       <SnippetsSection app={app} />
-
-      <div className="yolo-settings-section">
-        <section className="yolo-settings-block">
-          <div className="yolo-settings-block-head">
-            <div className="yolo-settings-block-head-title-row">
-              <div className="yolo-settings-sub-header yolo-settings-block-title">
-                {t('settings.continuation.customSubsectionTitle')}
-              </div>
-              <div className="yolo-settings-desc yolo-settings-block-desc">
-                {t('settings.continuation.smartSpaceDescription')}
-              </div>
-            </div>
-          </div>
-
-          <div className="yolo-settings-block-content">
-            <ObsidianSetting
-              name={t('settings.continuation.smartSpaceToggle')}
-              desc={t('settings.continuation.smartSpaceToggleDesc')}
-              className="yolo-settings-card"
-            >
-              <ObsidianToggle
-                value={enableSmartSpace}
-                onChange={(value) => {
-                  updateContinuationOptions(
-                    {
-                      enableSmartSpace: value,
-                    },
-                    'enableSmartSpace',
-                  )
-                }}
-              />
-            </ObsidianSetting>
-
-            {enableSmartSpace && (
-              <>
-                <ObsidianSetting
-                  name={t('settings.continuation.smartSpaceTriggerMode')}
-                  desc={t('settings.continuation.smartSpaceTriggerModeDesc')}
-                  className="yolo-settings-card yolo-smart-space-trigger-setting"
-                >
-                  <ObsidianDropdown
-                    value={smartSpaceTriggerMode}
-                    options={{
-                      'single-space': t(
-                        'settings.continuation.smartSpaceTriggerModeSingle',
-                      ),
-                      'double-space': t(
-                        'settings.continuation.smartSpaceTriggerModeDouble',
-                      ),
-                      off: t('settings.continuation.smartSpaceTriggerModeOff'),
-                    }}
-                    onChange={(value) => {
-                      updateContinuationOptions(
-                        {
-                          smartSpaceTriggerMode: value as
-                            | 'single-space'
-                            | 'double-space'
-                            | 'off',
-                        },
-                        'smartSpaceTriggerMode',
-                      )
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <SmartSpaceQuickActionsSettings />
-              </>
-            )}
-          </div>
-        </section>
-      </div>
 
       <div className="yolo-settings-section yolo-settings-section--tight">
         <section className="yolo-settings-block">
@@ -437,6 +345,8 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                     }}
                   />
                 </ObsidianSetting>
+
+                <SmartSpaceQuickActionsSettings />
               </>
             )}
 
@@ -547,42 +457,65 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                 </ObsidianSetting>
 
                 <ObsidianSetting
-                  name={t(
-                    'settings.continuation.tabCompletionMaxSuggestionLength',
-                  )}
-                  desc={t(
-                    'settings.continuation.tabCompletionMaxSuggestionLengthDesc',
-                  )}
+                  name={t('settings.continuation.tabCompletionRequestTimeout')}
                   className="yolo-settings-card"
                 >
                   <ObsidianTextInput
                     type="number"
-                    value={tabNumberInputs.maxSuggestionLength}
+                    value={tabNumberInputs.requestTimeoutSeconds}
                     onChange={(value) => {
                       setTabNumberInputs((prev) => ({
                         ...prev,
-                        maxSuggestionLength: value,
+                        requestTimeoutSeconds: value,
                       }))
                       const parsed = parseIntegerInput(value)
                       if (parsed === null) return
-                      const next = Math.max(20, parsed)
-                      updateTabCompletionOptions({ maxSuggestionLength: next })
+                      const seconds = Math.min(120, Math.max(1, parsed))
+                      updateTabCompletionOptions({
+                        requestTimeoutMs: seconds * 1000,
+                      })
                     }}
                     onBlur={() => {
                       const parsed = parseIntegerInput(
-                        tabNumberInputs.maxSuggestionLength,
+                        tabNumberInputs.requestTimeoutSeconds,
                       )
                       if (parsed === null) {
                         setTabNumberInputs((prev) => ({
                           ...prev,
-                          maxSuggestionLength: String(
-                            tabCompletionOptions.maxSuggestionLength,
+                          requestTimeoutSeconds: String(
+                            Math.max(
+                              1,
+                              Math.round(
+                                tabCompletionOptions.requestTimeoutMs / 1000,
+                              ) || 12,
+                            ),
                           ),
                         }))
                       }
                     }}
                   />
                 </ObsidianSetting>
+
+                <div className="yolo-models-textarea-card">
+                  <ObsidianSetting
+                    name={t('settings.continuation.tabCompletionConstraints')}
+                    desc={t(
+                      'settings.continuation.tabCompletionConstraintsDesc',
+                    )}
+                    className="yolo-settings-textarea-header yolo-models-textarea-card-header"
+                  />
+                  <ObsidianSetting className="yolo-settings-textarea yolo-models-textarea-card-body">
+                    <ObsidianTextArea
+                      value={tabCompletionConstraints}
+                      onChange={(value: string) => {
+                        updateContinuationOptions(
+                          { tabCompletionConstraints: value },
+                          'tabCompletionConstraints',
+                        )
+                      }}
+                    />
+                  </ObsidianSetting>
+                </div>
 
                 <div className="yolo-settings-sub-header">
                   {t('settings.continuation.tabCompletionTriggersTitle')}
@@ -613,6 +546,11 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                         <th>
                           {t(
                             'settings.continuation.tabCompletionTriggerPattern',
+                          )}
+                        </th>
+                        <th>
+                          {t(
+                            'settings.continuation.tabCompletionTriggerAcceptMode',
                           )}
                         </th>
                         <th>
@@ -664,6 +602,24 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                               onChange={(value) => {
                                 handleTriggerChange(trigger.id, {
                                   pattern: value,
+                                })
+                              }}
+                            />
+                          </td>
+                          <td>
+                            <ObsidianDropdown
+                              value={trigger.acceptMode ?? 'insert'}
+                              options={{
+                                insert: t(
+                                  'settings.continuation.tabCompletionTriggerAcceptModeInsert',
+                                ),
+                                replace: t(
+                                  'settings.continuation.tabCompletionTriggerAcceptModeReplace',
+                                ),
+                              }}
+                              onChange={(value) => {
+                                handleTriggerChange(trigger.id, {
+                                  acceptMode: value as 'insert' | 'replace',
                                 })
                               }}
                             />
@@ -819,204 +775,6 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                         }}
                       />
                     </ObsidianSetting>
-                  </>
-                )}
-
-                <div
-                  className={`yolo-settings-advanced-toggle yolo-clickable${
-                    showAdvancedTabSettings ? ' is-expanded' : ''
-                  }`}
-                  onClick={() => setShowAdvancedTabSettings((prev) => !prev)}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      setShowAdvancedTabSettings((prev) => !prev)
-                    }
-                  }}
-                >
-                  <span className="yolo-settings-advanced-toggle-icon">▶</span>
-                  {t('settings.continuation.tabCompletionAdvanced')}
-                </div>
-
-                {showAdvancedTabSettings && (
-                  <>
-                    <ObsidianSetting
-                      name={t(
-                        'settings.continuation.tabCompletionContextRange',
-                      )}
-                      desc={t(
-                        'settings.continuation.tabCompletionContextRangeDesc',
-                      )}
-                      className="yolo-settings-card"
-                    >
-                      <ObsidianTextInput
-                        type="number"
-                        value={tabNumberInputs.contextRange}
-                        onChange={(value) => {
-                          setTabNumberInputs((prev) => ({
-                            ...prev,
-                            contextRange: value,
-                          }))
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) return
-                          const next = Math.max(500, parsed)
-                          updateTabCompletionOptions({ contextRange: next })
-                        }}
-                        onBlur={() => {
-                          const parsed = parseIntegerInput(
-                            tabNumberInputs.contextRange,
-                          )
-                          if (parsed === null) {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              contextRange: String(
-                                tabCompletionOptions.contextRange,
-                              ),
-                            }))
-                          }
-                        }}
-                      />
-                    </ObsidianSetting>
-
-                    <ObsidianSetting
-                      name={t(
-                        'settings.continuation.tabCompletionMinContextLength',
-                      )}
-                      desc={t(
-                        'settings.continuation.tabCompletionMinContextLengthDesc',
-                      )}
-                      className="yolo-settings-card"
-                    >
-                      <ObsidianTextInput
-                        type="number"
-                        value={tabNumberInputs.minContextLength}
-                        onChange={(value) => {
-                          setTabNumberInputs((prev) => ({
-                            ...prev,
-                            minContextLength: value,
-                          }))
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) return
-                          const next = Math.max(0, parsed)
-                          updateTabCompletionOptions({
-                            minContextLength: next,
-                          })
-                        }}
-                        onBlur={() => {
-                          const parsed = parseIntegerInput(
-                            tabNumberInputs.minContextLength,
-                          )
-                          if (parsed === null) {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              minContextLength: String(
-                                tabCompletionOptions.minContextLength,
-                              ),
-                            }))
-                          }
-                        }}
-                      />
-                    </ObsidianSetting>
-
-                    <ObsidianSetting
-                      name={t('settings.continuation.tabCompletionTemperature')}
-                      desc={t(
-                        'settings.continuation.tabCompletionTemperatureDesc',
-                      )}
-                      className="yolo-settings-card"
-                    >
-                      <ObsidianTextInput
-                        type="number"
-                        value={tabNumberInputs.temperature}
-                        onChange={(value) => {
-                          setTabNumberInputs((prev) => ({
-                            ...prev,
-                            temperature: value,
-                          }))
-                          const parsed = parseFloatInput(value)
-                          if (parsed === null) return
-                          updateTabCompletionOptions({
-                            temperature: Math.min(Math.max(parsed, 0), 2),
-                          })
-                        }}
-                        onBlur={() => {
-                          const parsed = parseFloatInput(
-                            tabNumberInputs.temperature,
-                          )
-                          if (parsed === null) {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              temperature: String(
-                                tabCompletionOptions.temperature,
-                              ),
-                            }))
-                          }
-                        }}
-                      />
-                    </ObsidianSetting>
-
-                    <ObsidianSetting
-                      name={t(
-                        'settings.continuation.tabCompletionRequestTimeout',
-                      )}
-                      desc={t(
-                        'settings.continuation.tabCompletionRequestTimeoutDesc',
-                      )}
-                      className="yolo-settings-card"
-                    >
-                      <ObsidianTextInput
-                        type="number"
-                        value={tabNumberInputs.requestTimeoutMs}
-                        onChange={(value) => {
-                          setTabNumberInputs((prev) => ({
-                            ...prev,
-                            requestTimeoutMs: value,
-                          }))
-                          const parsed = parseIntegerInput(value)
-                          if (parsed === null) return
-                          const next = Math.max(1000, parsed)
-                          updateTabCompletionOptions({ requestTimeoutMs: next })
-                        }}
-                        onBlur={() => {
-                          const parsed = parseIntegerInput(
-                            tabNumberInputs.requestTimeoutMs,
-                          )
-                          if (parsed === null) {
-                            setTabNumberInputs((prev) => ({
-                              ...prev,
-                              requestTimeoutMs: String(
-                                tabCompletionOptions.requestTimeoutMs,
-                              ),
-                            }))
-                          }
-                        }}
-                      />
-                    </ObsidianSetting>
-
-                    <div className="yolo-models-textarea-card">
-                      <ObsidianSetting
-                        name={t(
-                          'settings.continuation.tabCompletionConstraints',
-                        )}
-                        desc={t(
-                          'settings.continuation.tabCompletionConstraintsDesc',
-                        )}
-                        className="yolo-settings-textarea-header yolo-models-textarea-card-header"
-                      />
-                      <ObsidianSetting className="yolo-settings-textarea yolo-models-textarea-card-body">
-                        <ObsidianTextArea
-                          value={tabCompletionConstraints}
-                          onChange={(value: string) => {
-                            updateContinuationOptions(
-                              { tabCompletionConstraints: value },
-                              'tabCompletionConstraints',
-                            )
-                          }}
-                        />
-                      </ObsidianSetting>
-                    </div>
                   </>
                 )}
               </>

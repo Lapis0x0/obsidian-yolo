@@ -14,6 +14,7 @@ type ReasoningPanelProps = {
   model: ChatModel | null
   value: ReasoningLevel
   onChange: (level: ReasoningLevel) => void
+  levels?: readonly ReasoningLevel[]
   /**
    * Optional refs map for the segmented buttons. Used by `ReasoningSelect`'s
    * popover to drive focus on open. Inline callers can omit it.
@@ -35,13 +36,17 @@ export function ReasoningPanel({
   value,
   onChange,
   segmentRefs,
+  levels,
 }: ReasoningPanelProps) {
   const { t } = useLanguage()
+  const options = levels
+    ? REASONING_OPTIONS.filter((option) => levels.includes(option.value))
+    : REASONING_OPTIONS
 
   const fallbackValue = getDefaultReasoningLevel(model)
-  const safeValue = REASONING_OPTIONS.some((opt) => opt.value === value)
+  const safeValue = options.some((opt) => opt.value === value)
     ? value
-    : fallbackValue
+    : (options[0]?.value ?? fallbackValue)
   const [draftValue, setDraftValue] = useState<ReasoningLevel>(safeValue)
   const previousDraftValueRef = useRef<ReasoningLevel>(safeValue)
 
@@ -49,15 +54,11 @@ export function ReasoningPanel({
     setDraftValue(safeValue)
   }, [safeValue])
 
-  const safeDraftValue = REASONING_OPTIONS.some(
-    (opt) => opt.value === draftValue,
-  )
+  const safeDraftValue = options.some((opt) => opt.value === draftValue)
     ? draftValue
     : safeValue
-  const currentIndex = REASONING_OPTIONS.findIndex(
-    (opt) => opt.value === safeDraftValue,
-  )
-  const previousIndex = REASONING_OPTIONS.findIndex(
+  const currentIndex = options.findIndex((opt) => opt.value === safeDraftValue)
+  const previousIndex = options.findIndex(
     (opt) => opt.value === previousDraftValueRef.current,
   )
   const currentMotionClass =
@@ -65,7 +66,8 @@ export function ReasoningPanel({
       ? 'yolo-reasoning-popover__header-current--up'
       : 'yolo-reasoning-popover__header-current--down'
   const currentOption =
-    REASONING_OPTIONS.find((opt) => opt.value === safeDraftValue) ??
+    options.find((opt) => opt.value === safeDraftValue) ??
+    options[0] ??
     REASONING_OPTIONS[0]
   const currentLabel = t(currentOption.labelKey, currentOption.labelFallback)
 
@@ -105,6 +107,7 @@ export function ReasoningPanel({
           onChange(level)
         }}
         segmentRefs={segmentRefs}
+        levels={levels}
       />
     </div>
   )

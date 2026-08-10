@@ -304,7 +304,7 @@ function UpdateHistoryModalComponent({
               <div
                 className="yolo-update-toast-progress-fill"
                 style={{
-                  width: `${moduleOffer.progress}%`,
+                  transform: `scaleX(${moduleOffer.progress / 100})`,
                 }}
               />
             </div>

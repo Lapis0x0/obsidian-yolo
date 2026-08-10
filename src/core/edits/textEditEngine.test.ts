@@ -30,6 +30,9 @@ describe('materializeTextEditPlan', () => {
       start: 0,
       end: 14,
     })
+    expect(result.reviewEdits).toEqual([
+      { from: 6, to: 11, replacement: 'universe' },
+    ])
   })
 
   it('applies insert_after operations', () => {
@@ -334,7 +337,7 @@ describe('buildReplaceMatchErrorHint', () => {
     })
 
     expect(hint).toContain('first line exists at line 1')
-    expect(hint).toContain('fs_read')
+    expect(hint).toContain('bash')
     expect(hint).not.toContain('lineEndingNormalized')
   })
 
@@ -345,7 +348,7 @@ describe('buildReplaceMatchErrorHint', () => {
     })
 
     expect(hint).toContain('Could not find the text to replace')
-    expect(hint).toContain('fs_read')
+    expect(hint).toContain('bash')
   })
 })
 

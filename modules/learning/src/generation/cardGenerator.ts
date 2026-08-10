@@ -10,10 +10,9 @@ import type { LearningVaultFileSnapshot } from '../domain/learningVaultWriteApi'
 
 import { LearningGenerationAbortError } from './abortError'
 import {
-  type ChapterDebugData,
-  PhaseDebugCollector,
-  emitChaptersDebugLog,
-} from './debugLog'
+  type CardFailureDiagnostics,
+  emitCardFailureDiagnostics,
+} from './cardFailureDiagnostics'
 import type {
   LearningGenerationActivity,
   LearningGenerationAssistantMessage,
@@ -52,6 +51,11 @@ type WrittenCardValidation = {
   valid: WrittenCardEntry[]
   invalid: Array<{ cardUuid: string; block: string; errors: string[] }>
   discardedCount: number
+}
+
+type CardStreamRejection = {
+  blockIndex: number
+  errors: string[]
 }
 
 export type GenerateCardsForChapterOptions = {
@@ -98,7 +102,6 @@ export async function generateCardsForChapter({
   cards: GeneratedCard[]
   status: 'generated' | 'partial'
   discardedCount: number
-  debugData: ChapterDebugData
 }> {
   if (host.vault.getEntry(knowledgePath)?.kind !== 'file') {
     throw new Error(`Knowledge file not found: ${knowledgePath}`)
@@ -123,7 +126,6 @@ export async function generateCardsForChapter({
     level,
   })
   const cardWorkspaceScope = buildCardWorkspaceScope(workspaceScope, cardsPath)
-  const debug = new PhaseDebugCollector()
   const assignedDrafts: GeneratedCard[] = []
   const streamParser = new CardStreamParser(validKpUuids, (draft) => {
     const card = assignCardUuid(draft, usedCardUuids)
@@ -162,7 +164,6 @@ export async function generateCardsForChapter({
           if (consumeCards) streamParser.push(event.delta)
           onProgress?.(event.delta, accumulated)
         }
-        if (event.type === 'tool') debug.recordToolCall(event)
         if (event.type === 'completed') completedText = event.text
         if (event.type === 'aborted') {
           aborted = true
@@ -198,7 +199,20 @@ export async function generateCardsForChapter({
   }
   throwIfAborted(abortSignal)
   if (assignedDrafts.length === 0) {
+    // Preserve the original error boundary: a stream/provider/tool failure is
+    // not evidence about the model's card formatting, so it must not be
+    // reported as a parser result.
     if (firstRun.error) throw firstRun.error
+    const diagnostics: CardFailureDiagnostics = {
+      chapterTitle,
+      reason: 'no-usable-drafts',
+      publishedCards: 0,
+      discardedBlocks: streamParser.discardedCount,
+      inspectedLength: firstRun.text.length,
+      inspectedSource: 'stream-output',
+      parserRejections: streamParser.rejections,
+    }
+    emitCardFailureDiagnostics(diagnostics)
     throw new Error(`No card drafts generated for chapter: ${chapterTitle}`)
   }
 
@@ -218,7 +232,6 @@ export async function generateCardsForChapter({
 
   try {
     await assertKnowledgeUnchanged(host, knowledgeSnapshot)
-    let finalOutput = firstRun.text
     let validation = validateWrittenCards(
       parseWrittenCardEntries(cardsSnapshot.content),
       expectedCardUuids,
@@ -246,7 +259,6 @@ export async function generateCardsForChapter({
           messages: [firstUserMessage, assistant, retry],
         })
         retryAborted = retryRun.aborted === true
-        finalOutput = retryRun.text
         if (retryRun.error) throw retryRun.error
       } catch (error) {
         if (retryAborted) throw error
@@ -271,6 +283,22 @@ export async function generateCardsForChapter({
     const discardedCount =
       validation.discardedCount + streamParser.discardedCount
     if (validation.valid.length === 0) {
+      const diagnostics: CardFailureDiagnostics = {
+        chapterTitle,
+        reason: 'no-valid-cards',
+        publishedCards: assignedDrafts.length,
+        discardedBlocks:
+          validation.discardedCount + streamParser.discardedCount,
+        // This stage validates the cards file after tool writes and any
+        // correction pass, not the raw stream, so label it as such.
+        inspectedLength: cardsSnapshot.content.length,
+        inspectedSource: 'cards-file',
+        validationRejections: validation.invalid.map((entry) => ({
+          cardUuid: entry.cardUuid,
+          errors: entry.errors,
+        })),
+      }
+      emitCardFailureDiagnostics(diagnostics)
       throw new Error(`No valid cards remained for chapter: ${chapterTitle}`)
     }
     if (discardedCount > 0 && cleanupExpected) {
@@ -288,19 +316,10 @@ export async function generateCardsForChapter({
     const finalCards = validation.valid.map(toGeneratedCard)
     if (abortSignal?.aborted)
       throw new Error(`Card generation aborted: ${chapterTitle}`)
-    const collected = debug.finalize()
     return {
       cards: finalCards,
       status: firstRun.error || discardedCount > 0 ? 'partial' : 'generated',
       discardedCount,
-      debugData: {
-        chapterIndex,
-        chapterTitle,
-        ...collected,
-        outputLength: finalOutput.length,
-        output: finalOutput,
-        count: finalCards.length,
-      },
     }
   } catch (error) {
     if (!cleanupExpected) throw cleanupIncompleteError(error, cardsPath)
@@ -363,7 +382,6 @@ export async function generateCardsParallel({
   onCard,
   onChapterSettled,
 }: GenerateCardsParallelOptions): Promise<CardGenerationResult[]> {
-  const chapterDebugData: ChapterDebugData[] = []
   const usedCardUuids = await collectExistingCardUuids(host.vault, projectPath)
   const resolvedRunId = runId ?? `card-generation-${Date.now()}`
   const resolvedProjectId = projectId ?? projectPath
@@ -407,7 +425,6 @@ export async function generateCardsParallel({
         chapterId: chapter.chapterId ?? chapter.cardsPath,
         onCard,
       })
-      chapterDebugData.push(generated.debugData)
       onChapterProgress?.({
         chapterIndex,
         chapterTitle: chapter.title,
@@ -440,11 +457,7 @@ export async function generateCardsParallel({
     onChapterSettled?.(result)
     return result
   })
-  const results = await Promise.all(tasks)
-  if (!abortSignal?.aborted) {
-    emitChaptersDebugLog(host, chapterDebugData, 'card-generator', 'cards')
-  }
-  return results
+  return Promise.all(tasks)
 }
 
 export function parseCardDrafts(markdown: string): CardDraft[] {
@@ -521,14 +534,7 @@ export function validateWrittenCards(
       continue
     }
     const entry = matches[0]
-    const errors: string[] = []
-    if (!entry.title) errors.push('missing title')
-    if (!entry.kpUuid) errors.push('missing kp UUID')
-    else if (!validKpUuids.has(entry.kpUuid)) {
-      errors.push(`kp:${entry.kpUuid} does not belong to this chapter`)
-    }
-    if (!entry.front) errors.push('missing front content before the separator')
-    if (!entry.back) errors.push('missing back content after the separator')
+    const errors = getCardDraftErrors(entry, validKpUuids)
     if (errors.length) invalid.push({ cardUuid, block: entry.block, errors })
     else valid.push(entry)
   }
@@ -545,12 +551,21 @@ export function validateWrittenCards(
 export class CardStreamParser {
   private pending = ''
   private block = ''
+  private completedBlockCount = 0
+  private readonly rejectedBlocks: CardStreamRejection[] = []
   discardedCount = 0
 
   constructor(
     private readonly validKpUuids: Set<string>,
     private readonly onCard: (draft: CardDraft) => void,
   ) {}
+
+  get rejections(): readonly CardStreamRejection[] {
+    return this.rejectedBlocks.map((entry) => ({
+      blockIndex: entry.blockIndex,
+      errors: [...entry.errors],
+    }))
+  }
 
   push(delta: string): void {
     this.pending += delta
@@ -575,24 +590,48 @@ export class CardStreamParser {
   }
 
   private publishBlock(): void {
+    this.completedBlockCount += 1
     const drafts = parseCardDrafts(this.block)
     this.block = ''
     if (drafts.length !== 1) {
-      this.discardedCount += 1
+      this.rejectCurrentBlock([
+        drafts.length === 0
+          ? 'missing card heading'
+          : 'multiple card headings before the end marker',
+      ])
       return
     }
     const draft = drafts[0]
-    if (
-      draft.title &&
-      draft.front &&
-      draft.back &&
-      this.validKpUuids.has(draft.kpUuid)
-    ) {
-      this.onCard(draft)
-    } else {
-      this.discardedCount += 1
+    const errors = getCardDraftErrors(draft, this.validKpUuids)
+    if (errors.length > 0) {
+      this.rejectCurrentBlock(errors)
+      return
     }
+    this.onCard(draft)
   }
+
+  private rejectCurrentBlock(errors: string[]): void {
+    this.discardedCount += 1
+    this.rejectedBlocks.push({
+      blockIndex: this.completedBlockCount,
+      errors,
+    })
+  }
+}
+
+function getCardDraftErrors(
+  draft: Pick<CardDraft, 'title' | 'kpUuid' | 'front' | 'back'>,
+  validKpUuids: ReadonlySet<string>,
+): string[] {
+  const errors: string[] = []
+  if (!draft.title) errors.push('missing title')
+  if (!draft.kpUuid) errors.push('missing kp UUID')
+  else if (!validKpUuids.has(draft.kpUuid)) {
+    errors.push(`kp:${draft.kpUuid} does not belong to this chapter`)
+  }
+  if (!draft.front) errors.push('missing front content before the separator')
+  if (!draft.back) errors.push('missing back content after the separator')
+  return errors
 }
 
 function buildCardWorkspaceScope(

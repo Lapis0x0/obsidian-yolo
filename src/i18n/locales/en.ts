@@ -14,11 +14,7 @@ export const en: TranslationKeys = {
     addFolderToChat: 'Add folder to chat',
     rebuildVaultIndex: 'Rebuild entire vault index',
     updateVaultIndex: 'Update index for modified files',
-    continueWriting: 'AI continue writing',
-    continueWritingSelected: 'AI continue writing (selection)',
-    customContinueWriting: 'AI custom continue',
-    customRewrite: 'AI custom rewrite',
-    triggerSmartSpace: 'Trigger smart space',
+    triggerQuickAskContinue: 'Trigger quick ask (continue writing)',
     triggerQuickAsk: 'Trigger quick ask',
     triggerTabCompletion: 'Trigger tab completion',
     acceptInlineSuggestion: 'Accept completion',
@@ -49,6 +45,7 @@ export const en: TranslationKeys = {
     success: 'Success',
     warning: 'Warning',
     retry: 'Retry',
+    switchSuggestion: '↑↓ Switch suggestion',
     copy: 'Copy',
     paste: 'Paste',
     characters: 'Chars',
@@ -70,6 +67,20 @@ export const en: TranslationKeys = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      modeAccessibleLabel: 'Chat mode',
+      chatLabel: 'Agent',
+      cliLabel: 'CLI',
+      chatDescription: 'Built-in YOLO chat',
+      cliDescription: 'Use CLI for tasks',
+      accessibleLabel: 'CLI provider: {runtime}',
+      menuLabel: 'CLI provider',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
+      claudeCodeDescription: 'Claude Code on this device',
+      codexLabel: 'Codex',
+      codexDescription: 'Codex on this device',
+    },
     chatList: {
       searchPlaceholder: 'Search conversations',
       empty: 'No conversations',
@@ -88,6 +99,7 @@ export const en: TranslationKeys = {
       hideArchived: 'Hide archived',
       exportConversation: 'Export conversation to vault',
       moreActions: 'More actions',
+      confirmDelete: 'Click again to delete',
     },
     chat: {
       exportSuccess: 'Exported chat to {path}',
@@ -125,7 +137,6 @@ export const en: TranslationKeys = {
       },
       continuationPrompt: 'Continuation system prompt',
       maxContinuationChars: 'Max continuation characters',
-      referenceRulesTitle: 'Reference rules',
       referenceRulesPlaceholder:
         'Select folders whose content should be fully injected.',
       knowledgeBaseTitle: 'Knowledge base',
@@ -134,12 +145,6 @@ export const en: TranslationKeys = {
       knowledgeBaseHint:
         'Enable embedding search to limit the retrieval scope.',
     },
-  },
-
-  smartSpace: {
-    webSearch: 'Web',
-    urlContext: 'URL',
-    mentionContextLabel: 'Mentioned files',
   },
 
   selection: {
@@ -153,6 +158,17 @@ export const en: TranslationKeys = {
       suggest: 'Provide suggestions',
       translateToChinese: 'Translate to Chinese',
     },
+    length: {
+      adjust: 'Adjust length',
+      condense: 'Condense',
+      expand: 'Expand',
+      freeExpand: 'Free expand',
+      handle: 'Drag to adjust length',
+      noEditor: 'Unable to access the current editor',
+      noSelection: 'Select text to adjust first.',
+      noEditorView: 'Unable to access the editor view',
+      tableUnsupported: 'Table selections cannot be adjusted yet.',
+    },
   },
 
   settings: {
@@ -160,7 +176,7 @@ export const en: TranslationKeys = {
     tabs: {
       models: 'Models',
       voice: 'Voice',
-      editor: 'Editor',
+      editor: 'Sparkle',
       knowledge: 'Knowledge',
       tools: 'Tools',
       agent: 'Agent',
@@ -293,18 +309,55 @@ export const en: TranslationKeys = {
         activationPending: 'Activation pending',
         failed: 'Failed',
       },
+      runtimeComponents: {
+        title: 'Runtime components',
+        description: 'These components support certain YOLO features.',
+        tokenizer: {
+          name: 'Tokenizer',
+          description: 'Counts context and tool tokens for Agent workflows.',
+          impact: 'Turning this off disables accurate token budgeting.',
+        },
+        pdfEngine: {
+          name: 'PDF engine',
+          description: 'Extracts text, renders pages, and prepares PDF ranges.',
+          impact: 'Turning this off disables PDF reading and page tools.',
+        },
+        pgliteEngine: {
+          name: 'PGlite engine',
+          description: 'Stores and searches the local knowledge-base index.',
+          impact: 'Turning this off disables indexing and semantic search.',
+        },
+        bashEngine: {
+          name: 'Bash engine',
+          description:
+            'Provides a virtual shell for the bash tool to search and organize vault files.',
+          impact:
+            'Turning this off disables the bash tool; the model loses vault search and file organization.',
+        },
+        statuses: {
+          missing: 'Waiting to install',
+          downloading: 'Downloading',
+          ready: 'Ready',
+          loading: 'Loading',
+          active: 'In use',
+          quiescing: 'Finishing current work',
+          disabled: 'Disabled',
+          failed: 'Failed',
+        },
+      },
     },
     smartSpace: {
-      quickActionsTitle: 'Smart space quick actions',
+      quickActionsTitle: 'Continue writing presets',
       quickActionsDesc:
-        'Customize the quick actions and prompts displayed in smart space',
+        'Customize the quick actions and prompts shown in Quick Ask’s continue mode',
+      quickActionsModalTitle: 'Quick Ask continuation presets',
       configureActions: 'Configure quick actions',
       actionsCount: 'Configured {count} quick actions',
       addAction: 'Add action',
       resetToDefault: 'Reset to default',
       confirmReset:
         'Are you sure you want to reset to default quick actions and delete all custom settings?',
-      resetConfirmTitle: 'Reset Smart Space quick actions',
+      resetConfirmTitle: 'Reset continue writing presets',
       actionLabel: 'Action label',
       actionLabelDesc: 'Text displayed in the quick action',
       actionLabelPlaceholder: 'For example, continue writing',
@@ -432,7 +485,7 @@ export const en: TranslationKeys = {
       skillsCount: '{count} skills',
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
-        'Skills are discovered from built-in skills and {path}/**/*.md (excluding Skills.md where applicable). Disable a skill here to block it for all agents.',
+        'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<folder>/SKILL.md packages. Disable a skill here to block it for all agents.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
@@ -455,15 +508,15 @@ export const en: TranslationKeys = {
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
       skillsSourcePath:
-        'Source: built-in skills + {path}/*.md + {path}/**/SKILL.md',
+        'Source: built-in skills + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
-        'No skills found. Create skill markdown files under {path}.',
+        'No skills found. Create a Markdown file or a folder containing SKILL.md under {path}.',
       createSkillTemplates: 'Initialize Skills system',
       skillsTemplateCreated: 'Skills system initialized in {path}.',
       importSkill: 'Import Skill',
       importSkillDesc:
-        'Import skill packages into {path}. Supports single .md files or Agent Skills standard folders.',
+        'Import skills into {path}. Markdown files keep their filenames; folders keep their names, SKILL.md, and all package resources.',
       importSkillDropzoneText: 'Drag & drop skill files or folders here',
       importSkillBrowseFiles: 'Browse Files',
       importSkillBrowseFolder: 'Browse Folder',
@@ -474,25 +527,14 @@ export const en: TranslationKeys = {
       importSkillSuccess: 'Successfully imported {count} skill(s).',
       importSkillInvalidFile: 'No valid skill files or packages found.',
       importSkillReadError: 'Failed to read files.',
+      importSkillErrTooDeep:
+        'Skill package exceeds the maximum import depth of {depth}. Nothing was imported.',
       importSkillWriteError: 'Failed to import {name}: {error}',
       importSkillErrHeader: '"{name}" cannot be imported:',
       importSkillErrNoSkillMd: 'missing SKILL.md file in folder',
       importSkillErrNoFrontmatter:
         'missing metadata header (---) at the top of the file',
       importSkillErrNoName: 'missing "name" field in metadata',
-      importSkillErrNameTooLong: '"name" is too long (max 64 characters)',
-      importSkillErrNameUppercase: '"name" must be all lowercase',
-      importSkillErrNameHyphenEdge: '"name" cannot start or end with a hyphen',
-      importSkillErrNameDoubleHyphen:
-        '"name" cannot contain consecutive hyphens (--)',
-      importSkillErrNameInvalidChars:
-        '"name" can only contain lowercase letters, numbers, and hyphens',
-      importSkillErrNameMismatch: '"name" must match the folder name',
-      importSkillErrNoDescription: 'missing "description" field in metadata',
-      importSkillErrDescTooLong:
-        '"description" is too long (max 1024 characters)',
-      importSkillErrCompatTooLong:
-        '"compatibility" is too long (max 500 characters)',
       importSkillConflictTitle: 'Skill already exists',
       importSkillConflictMessage:
         'A skill with the same name already exists. Do you want to overwrite it?',
@@ -502,7 +544,7 @@ export const en: TranslationKeys = {
       importSkillConflictSkip: 'Skip conflicts',
       importSkillUnsafePath: 'Refused unsafe path in "{name}": {path}',
       importSkillDuplicateInBatch:
-        'Duplicate skill name in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
+        'Duplicate import destination in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
       importSkillFromUrlPlaceholder: 'Paste a GitHub URL (repo / blob / tree)',
       importSkillFromUrlFetch: 'Fetch',
       importSkillFromUrlFetching: 'Fetching...',
@@ -517,12 +559,13 @@ export const en: TranslationKeys = {
       importSkillFromUrlFetchError: 'Failed to fetch from GitHub: {error}',
       deleteSkillTitle: 'Delete skill',
       deleteSkillMessage:
-        'Are you sure you want to delete "{name}"? This cannot be undone.',
+        'Are you sure you want to delete the "{name}" skill package, including all resources? This cannot be undone.',
       deleteSkillConfirm: 'Delete',
       deleteSkillSuccess: '"{name}" has been deleted.',
       deleteSkillError: 'Failed to delete "{name}": {error}',
+      deleteSkillNotFound: 'Skill not found',
       deleteSkillBatchMessage:
-        'Are you sure you want to delete {count} skill(s)? This cannot be undone.',
+        'Are you sure you want to delete {count} skill(s), including package resources? This cannot be undone.',
       deleteSkillBatchSuccess: 'Deleted {count} skill(s).',
       deleteSkillBatchBtn: 'Delete',
       deleteSkillSelectAll: 'Select all',
@@ -574,6 +617,9 @@ export const en: TranslationKeys = {
       builtinToolSearchDesc: 'Load full schemas for on-demand tools',
       builtinFsEditLabel: 'Text Editing',
       builtinFsEditDesc: 'Edit text in a single file',
+      builtinBashLabel: 'Virtual terminal',
+      builtinBashDesc:
+        'Search and inspect vault files, plus mkdir/mv/rm path operations',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',
@@ -582,9 +628,6 @@ export const en: TranslationKeys = {
         'When enabled, agent fs_edit changes open inline/apply review before writing the file.',
       builtinFsEditOpsLabel: 'File Editing Toolset',
       builtinFsEditOpsDesc: 'Edit targeted text or write full file content',
-      builtinFsFileOpsLabel: 'Path Operation Toolset',
-      builtinFsFileOpsDesc:
-        'Delete or move files and folders, and create folders',
       builtinMemoryOpsLabel: 'Memory Toolset',
       builtinMemoryOpsDesc: 'Add, update, and delete memory',
       builtinMemoryAddLabel: 'Add Memory',
@@ -604,11 +647,12 @@ export const en: TranslationKeys = {
         'Fetch the full content of a single URL through a configured search provider.',
       builtinWebOpsLabel: 'Web Search Toolset',
       builtinWebOpsDesc: 'Web search and page scraping',
-      builtinJsEvalLabel: 'JavaScript Execution',
-      builtinJsEvalDesc: 'Run JavaScript in an isolated environment.',
+      builtinJsEvalLabel: 'Analysis Sandbox',
+      builtinJsEvalDesc:
+        'Run JavaScript in an isolated sandbox for precise computation, batch statistics, and data processing; grant retrieval, vault read-only, and network capabilities individually.',
       builtinTerminalCommandLabel: 'Terminal Commands',
       builtinTerminalCommandDesc:
-        'Run commands in the local terminal. Desktop-only.',
+        'Run commands in the local terminal, desktop-only',
       builtinDelegateSubagentLabel: 'Delegate Subagent',
       builtinDelegateSubagentDesc:
         'Dispatch an isolated temporary subagent to complete a self-contained task asynchronously.',
@@ -661,6 +705,7 @@ export const en: TranslationKeys = {
       toolApproval: 'Approval',
       toolApprovalFullAccess: 'Full access',
       toolApprovalRequire: 'Require approval',
+      toolApprovalDangerousOnly: 'Approve dangerous operations',
       toolDisclosureAuto: 'Auto',
       toolDisclosureAutoSelect: 'Auto select',
       toolDisclosureAlways: 'In context',
@@ -670,6 +715,7 @@ export const en: TranslationKeys = {
       editorDisabled: 'Disabled',
       editorModel: 'Model',
       editorModelDesc: 'Select the model used by this agent',
+      followDefaultModel: 'Follow default model',
       editorModelCurrent: 'Current: {model}',
       editorModelSampling: 'Sampling parameters',
       editorModelResetDefaults: 'Restore defaults',
@@ -716,6 +762,15 @@ export const en: TranslationKeys = {
       imageCompressionQuality: 'Compression quality',
       imageCompressionQualityDesc:
         'Image compression ratio (1-100). Controls both dimensions and quality, e.g. 60 scales to 60% size at 60% quality.',
+      cliRuntimesBlockTitle: 'CLI runtimes',
+      claudeCliPathName: 'Claude Code CLI path',
+      claudeCliPathDesc:
+        'Custom path to the claude executable — paste the output of "which claude". Leave empty to auto-detect. Stored on this device only.',
+      codexCliPathName: 'Codex CLI path',
+      codexCliPathDesc:
+        'Custom path to the codex executable — paste the output of "which codex" ("where codex" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      cliPathMissing:
+        'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',
       autoContextCompaction: 'Automatic context compaction',
       autoContextCompactionDesc:
@@ -789,7 +844,7 @@ export const en: TranslationKeys = {
         'Upper bound on semantic search results. Path reads are not affected. Range 1–100.',
     },
     jsSandbox: {
-      openSettings: 'Configure JavaScript execution',
+      openSettings: 'Configure analysis sandbox',
     },
     terminalCommand: {
       openSettings: 'Configure terminal command',
@@ -835,9 +890,6 @@ export const en: TranslationKeys = {
       colType: 'Type',
       colDefault: 'Default',
       colActions: 'Actions',
-      deleteConfirmTitle: 'Delete provider',
-      deleteConfirmMessage:
-        'Are you sure you want to delete this web search provider?',
       deleteFailed: 'Failed to delete provider.',
       commonHeader: 'Common',
       resultSize: 'Result size',
@@ -862,6 +914,7 @@ export const en: TranslationKeys = {
         'gemini-grounding': 'Gemini (Grounding)',
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
+        exa: 'Exa',
       },
       fieldName: 'Display name',
       fieldApiKey: 'API key',
@@ -988,9 +1041,27 @@ export const en: TranslationKeys = {
       chatgptOAuthExpires: 'expires',
       chatgptOAuthDisconnectedHelp:
         'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
-      chatgptOAuthStreamingNotice:
-        'ChatGPT OAuth supports streaming. Obsidian requestUrl buffers the response, while desktop Node fetch can stream it in real time.',
-      chatgptOAuthPendingCode: 'Current device code:',
+      chatgptOAuthBrowserLogin: 'Browser login',
+      chatgptOAuthDeviceLogin: 'Device code login',
+      chatgptOAuthBrowserConnecting: 'Opening browser...',
+      chatgptOAuthDeviceConnecting: 'Waiting for authorization...',
+      chatgptOAuthBrowserDesktopOnly:
+        'Browser login is only available on desktop.',
+      chatgptOAuthBrowserOpened:
+        'ChatGPT login opened in your browser. Complete authorization there.',
+      chatgptOAuthDeviceOpened:
+        'Enter the device code below on the ChatGPT authorization page.',
+      chatgptOAuthConnectedNotice: 'ChatGPT OAuth connected.',
+      chatgptOAuthDisconnectedNotice: 'ChatGPT OAuth disconnected.',
+      chatgptOAuthPortFallback:
+        'Use device code login instead; it does not require a local port.',
+      chatgptOAuthPendingCode: 'Device code',
+      chatgptOAuthDeviceHelp:
+        'Enter this code on the authorization page within 15 minutes. Continue only if you started this login.',
+      chatgptOAuthCopyCode: 'Copy code',
+      chatgptOAuthCodeCopied: 'Device code copied.',
+      chatgptOAuthOpenDevicePage: 'Open authorization page',
+      chatgptOAuthCancelDevice: 'Cancel',
       oauthDesktopOnly:
         'OAuth login is only available on desktop. Please connect on desktop first.',
       geminiOAuthTitle: 'Gemini OAuth',
@@ -1003,8 +1074,6 @@ export const en: TranslationKeys = {
       geminiOAuthDisconnectedHelp:
         'Not connected. Connect to use Gemini quota from your Google account.',
       geminiOAuthProject: 'project',
-      geminiOAuthStreamingNotice:
-        'Gemini OAuth supports streaming. Obsidian requestUrl buffers the response, while desktop Node fetch can stream it in real time.',
     },
     models: {
       title: 'Models',
@@ -1095,13 +1164,19 @@ export const en: TranslationKeys = {
       builtinToolProviderGpt: 'OpenAI',
       builtinToolProviderOpenRouter: 'OpenRouter',
       builtinToolProviderGrok: 'Grok',
+      builtinToolProviderDeepSeek: 'DeepSeek',
       builtinToolsGpt: 'OpenAI built-in tools',
       builtinToolsOpenRouter: 'OpenRouter built-in tools',
       builtinToolsGrok: 'Grok built-in tools',
       builtinToolsGemini: 'Gemini built-in tools',
+      builtinToolsDeepSeek: 'DeepSeek built-in tools',
       builtinToolWebSearch: 'Web Search',
       builtinToolWebSearchDesc:
         'Allow the model to search the web and return cited sources.',
+      builtinToolDeepSeekWebSearchDesc:
+        'Web search runs on DeepSeek servers — no separate search provider needed. Once enabled, YOLO’s own web search is no longer offered to this model, so it stops trying both; web scraping stays available.',
+      builtinToolDeepSeekWebSearchUnavailable:
+        'This provider’s current API type does not support the official web search. Switch its API type to Anthropic or OpenAI Responses first.',
       builtinToolUrlContext: 'URL Context',
       builtinToolUrlContextDesc:
         'Allow the model to fetch links mentioned in the conversation as context.',
@@ -1123,6 +1198,12 @@ export const en: TranslationKeys = {
       maxContextTokensDesc:
         'Auto-filled when this model is recognized. Adjust it if your provider uses a different limit.',
       maxOutputTokens: 'Max output tokens',
+      requestParameters: 'Request parameters',
+      requestParametersDesc:
+        'Usually no adjustment is needed. Fields left disabled use the provider defaults.',
+      requestParametersEnabledCount: '{count} request parameters enabled',
+      clearRequestParameterOverrides: 'Clear overrides',
+      additionalParameters: 'Other parameters',
       customParameters: 'Custom parameters',
       customParametersDesc:
         'Attach additional request fields; values accept plain text or JSON (for example, {"thinking": {"type": "enabled"}}).',
@@ -1331,6 +1412,9 @@ export const en: TranslationKeys = {
       collapse: 'Collapse',
       addServerTitle: 'Add server',
       editServerTitle: 'Edit server',
+      modeForm: 'Form',
+      modeJson: 'JSON',
+      editorMode: 'Configuration editor',
       serverNameField: 'Name',
       serverNameFieldDesc: 'The name of the MCP server',
       serverNamePlaceholder: "e.g. 'github'",
@@ -1354,6 +1438,51 @@ export const en: TranslationKeys = {
       invalidJsonFormat: 'Invalid JSON format',
       invalidParameters: 'Invalid parameters',
       validParameters: 'Valid parameters',
+      transportField: 'Connection type',
+      transportFieldDesc: 'Choose how YOLO connects to this server.',
+      remoteTransports: 'Remote',
+      localTransports: 'Local',
+      transportHttp: 'Streamable HTTP',
+      transportSse: 'SSE',
+      transportWs: 'WebSocket',
+      transportStdio: 'stdio',
+      urlField: 'Server URL',
+      urlFieldDesc: 'The URL provided by the MCP server.',
+      authenticationField: 'Authentication',
+      authenticationFieldDesc: 'Choose how this server verifies your identity.',
+      authenticationOAuth: 'OAuth',
+      authenticationNone: 'No authentication',
+      authenticationHeaders: 'Custom headers',
+      oauthTitle: 'Connect with OAuth',
+      oauthDesc:
+        'YOLO will open your browser so you can authorize this MCP server securely.',
+      oauthNotConnected: 'Not connected',
+      oauthConnect: 'Connect',
+      oauthCancelConnection: 'Stop connecting',
+      oauthReconnect: 'Reconnect',
+      oauthChecking: 'Checking...',
+      oauthConnecting: 'Connecting...',
+      oauthConnected: 'Connected',
+      oauthConnectionFailed: 'Connection failed',
+      oauthConnectBeforeSave: 'Connect with OAuth before saving this server.',
+      oauthHttpRequired: 'OAuth requires an HTTP or HTTPS server URL.',
+      commandField: 'Command',
+      commandFieldDesc: 'The executable used to start the MCP server.',
+      argumentsField: 'Arguments',
+      argumentsFieldDesc: 'Enter one command argument per line.',
+      cwdField: 'Working directory',
+      cwdFieldDesc: 'Optional directory in which to start the command.',
+      headersField: 'Headers',
+      headersFieldDesc:
+        'Optional headers for servers that use manual authentication.',
+      addHeader: 'Add header',
+      headerKeyPlaceholder: 'Header name',
+      headerValuePlaceholder: 'Header value',
+      environmentField: 'Environment variables',
+      environmentFieldDesc: 'Values passed to the local server process.',
+      addEnvironmentVariable: 'Add variable',
+      environmentKeyPlaceholder: 'Variable name',
+      environmentValuePlaceholder: 'Value',
       failedToAddServer: 'Failed to add custom tool server (MCP).',
       failedToDeleteServer: 'Failed to delete server.',
     },
@@ -1401,30 +1530,15 @@ export const en: TranslationKeys = {
       },
     },
     continuation: {
-      title: 'Sparkle mode',
+      title: 'Sparkle',
       aiSubsectionTitle: 'Super continuation',
-      customSubsectionTitle: 'Smart space',
       tabSubsectionTitle: 'Tab completion',
-      superContinuation: 'Enable sparkle view',
+      superContinuation: 'Enable Sparkle view',
       superContinuationDesc:
-        'Enable the sparkle sidebar view where you can configure dedicated continuation models, parameters, rules, and reference sources; when disabled, only the chat view is available.',
-      continuationModel: 'Sparkle continuation model',
+        'Enable the Sparkle sidebar view where you can configure dedicated continuation models, parameters, rules, and reference sources; when disabled, only the chat view is available.',
+      continuationModel: 'Continuation model',
       continuationModelDesc:
-        'Select the model used for continuation while sparkle mode is enabled.',
-      smartSpaceDescription:
-        'Smart space offers a lightweight floating composer while you write; by default it appears when you press the space key on an empty line or type “/” followed by space anywhere. You can switch below to double-space on empty lines or disable space-triggering. Press enter twice to submit and press escape to close.',
-      smartSpaceToggle: 'Enable smart space',
-      smartSpaceToggleDesc:
-        'When disabled, the space bar or "/"+space will no longer summon the smart space floating composer.',
-      smartSpaceTriggerMode: 'Empty-line space trigger',
-      smartSpaceTriggerModeDesc:
-        'How smart space should respond when you press space on an empty line.',
-      smartSpaceTriggerModeSingle:
-        'Single space to trigger (original behavior)',
-      smartSpaceTriggerModeDouble:
-        'Double space to trigger (~600ms; first space inserts a real space)',
-      smartSpaceTriggerModeOff:
-        'Disable empty-line space trigger (keep "/"+space only)',
+        'Select the model used for continuation in Sparkle.',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
         'Provides inline ask, rewrite, explain, and other quick actions around selected text.',
@@ -1467,9 +1581,12 @@ export const en: TranslationKeys = {
       tabCompletion: 'Enable tab completion',
       tabCompletionDesc:
         'Request a completion when a trigger rule matches, then show it as gray ghost text that can be accepted with the tab key.',
+      tabCompletionMultipleCandidates: 'Generate multiple candidates',
+      tabCompletionMultipleCandidatesDesc:
+        'Generate three completion suggestions when enabled.',
       tabCompletionModel: 'Completion model',
       tabCompletionModelDesc:
-        'Choose which model provides tab completion suggestions.',
+        'Choose the model used for tab completion and length adjustment.',
       tabCompletionTriggerDelay: 'Trigger delay (ms)',
       tabCompletionTriggerDelayDesc:
         'How long to wait after you stop typing before a prefix completion request is sent.',
@@ -1501,9 +1618,9 @@ export const en: TranslationKeys = {
       tabCompletionTemperature: 'Sampling temperature',
       tabCompletionTemperatureDesc:
         'Controls creativity for prefix suggestions (0 = deterministic, higher = more diverse).',
-      tabCompletionRequestTimeout: 'Request timeout (ms)',
+      tabCompletionRequestTimeout: 'Request timeout (seconds)',
       tabCompletionRequestTimeoutDesc:
-        'Abort a prefix completion request if it takes longer than this time.',
+        'Abort a tab completion request if it takes longer than this many seconds. Raise it for slower or long-reasoning models.',
       tabCompletionConstraints: 'Tab completion constraints',
       tabCompletionConstraintsDesc:
         'Optional rules inserted into the tab completion prompt (for example, "write in another language" or "match a specific style").',
@@ -1516,6 +1633,9 @@ export const en: TranslationKeys = {
       tabCompletionTriggerTypeString: 'String',
       tabCompletionTriggerTypeRegex: 'Regex',
       tabCompletionTriggerPattern: 'Pattern',
+      tabCompletionTriggerAcceptMode: 'Accept behavior',
+      tabCompletionTriggerAcceptModeInsert: 'Insert at cursor',
+      tabCompletionTriggerAcceptModeReplace: 'Replace matched text',
       tabCompletionTriggerDescription: 'Description',
       tabCompletionTriggerRemove: 'Remove',
     },
@@ -1602,6 +1722,9 @@ export const en: TranslationKeys = {
       ribbonClickActionSplit: 'Right split',
       ribbonClickActionWindow: 'New window',
       ribbonClickActionLast: 'Last used location',
+      enterKeyCreatesNewline: 'Use Enter to start a new line',
+      enterKeyCreatesNewlineDesc:
+        'Applies to Chat and Quick Ask inputs. Press Cmd/Ctrl + Enter to send.',
       mentionDisplayMode: 'Mention display position',
       mentionDisplayModeDesc:
         'Choose whether @ file mentions and / skill selections are shown inline in the editor or as badges above the input box.',
@@ -2287,12 +2410,16 @@ export const en: TranslationKeys = {
     placeholderCompact: 'Click to expand and edit...',
     placeholderPrefix: 'Type a message...',
     placeholderMention: 'add references or models',
+    placeholderMentionReferences: 'add references',
     placeholderSkill: 'choose a skill or command',
     contextUsage: 'Context window usage',
     contextUsageUnknownMaxSuffix: ' (context window limit not set)',
     contextBreakdown: {
       title: 'Context',
       fullLabel: '{{percent}} Full',
+      cacheHitLabel: 'Previous turn cache hit {{percent}}',
+      breakdownBarAriaLabel: 'Context breakdown',
+      usageBarAriaLabel: 'Context usage',
       tokensSuffix: 'Tokens',
       localEstimateCaption:
         'Local estimate — may differ from server-side billing.',
@@ -2336,6 +2463,14 @@ export const en: TranslationKeys = {
       title: 'Message navigator',
       itemAriaLabel: 'Jump to message {index}: {label}',
       emptyMessage: 'Empty message',
+    },
+    mermaidControls: {
+      open: 'Open diagram viewer',
+      zoomOut: 'Zoom out',
+      zoomIn: 'Zoom in',
+      fitViewport: 'Fit diagram to window',
+      reset: 'Reset zoom',
+      controlsLabel: 'Diagram controls',
     },
     stopGeneration: 'Stop generation',
     queueMessage: {
@@ -2390,12 +2525,17 @@ export const en: TranslationKeys = {
     noAssistantContent: 'No assistant content to insert',
     regenerate: 'Regenerate',
     reasoning: 'Reasoning',
+    reasonedFor: 'Thought for {{seconds}}s',
     annotations: 'Annotations',
     vaultSources: 'Vault sources ({count})',
     pdfReferenceNoPreview: '(PDF: click the title to open the page)',
     assistantQuote: {
       add: 'Quote',
       badge: 'Reply quote',
+      commentPlaceholder: 'Add a comment…',
+      save: 'Save comment',
+      delete: 'Delete comment',
+      inputLabel: 'Annotation {index}',
     },
     mentionMenu: {
       back: 'Back',
@@ -2412,6 +2552,15 @@ export const en: TranslationKeys = {
         label: 'Compact Context',
         description:
           'Manually compress earlier conversation history and continue the current task in a fresh context window.',
+      },
+      openPluginManager: {
+        label: 'Manage Plugins',
+        description:
+          'Manage installed Claude Code plugins, or install new ones from a marketplace.',
+      },
+      openMcpServers: {
+        label: 'MCP Servers',
+        description: 'View the MCP server status for the current session.',
       },
     },
     slashMenu: {
@@ -2433,6 +2582,70 @@ export const en: TranslationKeys = {
       agentFullTitle: 'Let AI execute · YOLO Mode',
       agentFullDescription:
         'Auto-approve tool calls for search, read/write operations, and multi-step tasks.',
+    },
+    cliSurface: {
+      emptyTitle: 'Use CLI Agent',
+      emptyDescription:
+        'Connect Claude Code or Codex to run complex tasks on this device.',
+      emptyUserMessage: 'Empty message',
+      error: 'CLI session error: {message}',
+      runtimeError: 'Could not start the CLI runtime: {message}',
+      submitError: 'Could not send the CLI message: {message}',
+      cancelError: 'Could not stop the CLI run: {message}',
+      openError: 'Could not open the CLI session: {message}',
+      transitionError: 'Could not leave the current CLI session: {message}',
+    },
+    cliControls: {
+      defaultModel: '{provider} default model',
+      loadError: 'Could not load CLI models: {message}',
+      updateError: 'Could not update CLI configuration: {message}',
+    },
+    claudePlugins: {
+      title: 'Manage Plugins',
+      placeholder: 'Loading plugin information…',
+      tabInstalled: 'Installed',
+      tabBrowse: 'Browse',
+      loadError: 'Could not load plugin information.',
+      cliFallback:
+        'Plugin action failed. Manage plugins from the terminal with claude plugin instead.',
+      updateRestartRequired:
+        'Plugin updated. Start a new session for the change to take effect.',
+      installedEmpty: 'No plugins installed yet.',
+      browseEmpty: 'No matching plugins found.',
+      searchPlaceholder: 'Search plugins…',
+      update: 'Update',
+      uninstall: 'Uninstall',
+      install: 'Install',
+      installedBadge: 'Installed',
+      uninstallConfirmTitle: 'Uninstall plugin',
+      uninstallConfirmMessage: 'Uninstall "{name}"? This cannot be undone.',
+      scopeUser: 'User',
+      scopeProject: 'Project',
+      scopeLocal: 'Local',
+      installCount: '{count} installs',
+    },
+    mcpServers: {
+      title: 'MCP Servers',
+      placeholder: 'Loading MCP server status…',
+      refresh: 'Refresh',
+      reconnect: 'Reconnect',
+      toolCount: '{count} tools',
+      statusConnected: 'Connected',
+      statusFailed: 'Failed',
+      statusNeedsAuth: 'Needs auth',
+      statusPending: 'Connecting',
+      statusDisabled: 'Disabled',
+      statusUnknown: 'Unknown',
+      empty: 'No MCP servers are configured for this session.',
+      loadError: 'Failed to load MCP server status.',
+      noActiveSession:
+        'No active session yet. Send a message to start a CLI session.',
+      actionError: 'Action failed: {error}',
+      runtimeSwitched: 'The runtime changed, so this action was cancelled.',
+      codexReadOnlyNote:
+        'Codex MCP server status is read-only here. Manage servers in the terminal.',
+      codexUnsupportedVersion:
+        'This Codex CLI version does not support querying MCP server status. Please upgrade Codex CLI.',
     },
     quickAccess: {
       manage: 'Manage quick access',
@@ -2482,13 +2695,7 @@ export const en: TranslationKeys = {
       emptyPlanPreview: 'This plan removes content',
       stopApplying: 'Stop apply',
     },
-    customContinuePromptLabel: 'Continuation instruction',
-    customContinuePromptPlaceholder:
-      'Ask AI (@ for files, # for quick actions)',
-    customContinueHint: 'Press enter (⏎) to submit',
-    customContinueConfirmHint: 'Press enter (⏎) again to confirm',
     customContinueProcessing: 'Thinking',
-    customContinueError: 'Generation failed; please try again soon.',
     customContinueSections: {
       suggestions: {
         title: 'Suggestions',
@@ -2571,6 +2778,39 @@ export const en: TranslationKeys = {
     },
     errorCard: {
       title: 'This response failed to generate',
+      connectionInterruptedContinuable:
+        'The connection to the model service was interrupted. Your partial response is still here—click Continue response to resume.',
+      viewDetails: 'View error details',
+      hideDetails: 'Hide error details',
+      goToSettings: 'Go to settings',
+      diagnosis: {
+        auth: 'The API key is invalid. Check it and reconfigure the provider.',
+        region:
+          'The service is unavailable in your region. Configure a proxy or switch to an available provider.',
+        model: 'The model does not exist, or you do not have access to it.',
+        quota:
+          'Your account balance is exhausted. Top up or switch to another provider.',
+        rateLimit:
+          'Too many requests in a short time. Wait a moment and retry, or switch to a model with a higher rate limit.',
+        contextLength:
+          'The conversation context is too long. Clear older messages or start a new chat.',
+        payload: 'The request is too large. Send fewer files or less text.',
+        content:
+          'The content was blocked by a safety system. Revise it and try again.',
+        mcp: 'The MCP server could not be reached. Check whether it is running.',
+        stream:
+          'The response stream was interrupted. Check your network stability or retry.',
+        network:
+          'Could not reach the server. Check your network or proxy settings.',
+        proxy:
+          'Proxy or SSL certificate error. Check your proxy and network settings.',
+        server: 'The model service is having problems. Try again later.',
+        deprecated:
+          'This model has been retired or deprecated. Switch to another model.',
+        knowledge: 'Knowledge base vectorization failed.',
+        parse:
+          'The model returned a malformed response. Retry or switch to another model.',
+      },
       responseFormat: {
         responseNotObject:
           'The model service returned a response that is not an object (actual: {{actual}}).',
@@ -2608,11 +2848,16 @@ export const en: TranslationKeys = {
         fs_read: 'Read files',
         fs_edit: 'Text editing',
         fs_edit_ops: 'File Editing Toolset',
-        fs_file_ops: 'Path Operation Toolset',
+        bash: 'Bash',
         memory_add: 'Add memory',
         memory_update: 'Update memory',
         memory_delete: 'Delete memory',
         open_skill: 'Open skill',
+      },
+      dangerousBash: {
+        title: 'Dangerous operation needs confirmation',
+        rmSummary: 'About to delete the following paths (moved to trash):',
+        mvSummary: 'About to move/rename the following paths:',
       },
       writeAction: {
         write: 'Write file',
@@ -2646,6 +2891,8 @@ export const en: TranslationKeys = {
       abort: 'Abort',
       alwaysAllowThisTool: 'Always allow this tool',
       allowForThisChat: 'Allow for this chat',
+      approvePlan: 'Approve plan',
+      stayInPlan: 'Stay in plan',
     },
     toolSummary: {
       todoWrite: {
@@ -2659,6 +2906,17 @@ export const en: TranslationKeys = {
         sessionKill: 'Session {id} · Kill',
         sessionInput: 'Session {id} · Input: {preview}',
       },
+    },
+    toolRunSummary: {
+      read: 'Read {count} file(s)',
+      search: 'Searched {count} time(s)',
+      web: '{count} web lookup(s)',
+      edit: 'Edited {count} file(s)',
+      virtualTerminal: 'Virtual terminal {count} time(s)',
+      terminal: 'Terminal {count} time(s)',
+      command: 'Ran {count} command(s)',
+      analysis: '{count} sandbox run(s)',
+      other: '{count} other action(s)',
     },
     liveTask: {
       statusRunning: 'Running',
@@ -2674,12 +2932,15 @@ export const en: TranslationKeys = {
       truncated: 'Output truncated.',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: 'View subagent details',
+      loadingActivity: 'Loading activity…',
       planningNextMoves: 'Planning next moves',
       noActivity: 'No activity yet.',
       statusCompleted: 'Completed',
       statusAborted: 'Aborted',
       statusFailed: 'Failed',
+      statusDispatched: 'Dispatched',
       toolUseCount: '{count} tools',
       tokenCount: '{count} tokens',
       approval: {
@@ -2766,6 +3027,9 @@ export const en: TranslationKeys = {
     agentStatusRunning: 'Running',
     agentStatusWaitingApproval: 'Awaiting approval',
     agentStatusFallbackConversationTitle: 'Running conversation',
+    cliStatusRunning: 'Running',
+    cliStatusWaitingApproval: 'Awaiting approval',
+    cliStatusWaitingUser: 'Awaiting input',
     backgroundStatusPanelTitle: 'Activity and reminders',
     backgroundStatusPanelEmpty: 'There is no activity or reminder',
     backgroundTasksRunning:
@@ -2793,16 +3057,20 @@ export const en: TranslationKeys = {
     reviewTitle: 'Review changes',
     changesResolved: 'Changes resolved',
     acceptAllIncoming: 'Accept all incoming',
+    acceptAllChanges: 'Accept all changes',
     keepAllChanges: 'Keep all',
     rejectAll: 'Reject all',
+    rejectAllChanges: 'Reject all changes',
     revertAllChanges: 'Revert all',
     prevChange: 'Previous change',
     nextChange: 'Next change',
     reset: 'Reset',
     applyAndClose: 'Apply & close',
     acceptIncoming: 'Accept incoming',
+    acceptChange: 'Accept change',
     keepChange: 'Keep this change',
     acceptCurrent: 'Accept current',
+    rejectChange: 'Reject change',
     revertChange: 'Revert this change',
     acceptBoth: 'Accept both',
     acceptedIncoming: 'Accepted incoming',
@@ -2819,6 +3087,8 @@ export const en: TranslationKeys = {
     noAssistantDescription: 'Use default system prompt',
     navigationHint: 'Use ↑/↓ to navigate, enter to select, esc to cancel',
     inputPlaceholder: 'Ask a question...',
+    continuePlaceholder:
+      'Leave empty to continue writing, or add instructions...',
     close: 'Close',
     copy: 'Copy',
     insert: 'Insert',
@@ -2833,22 +3103,13 @@ export const en: TranslationKeys = {
       'No chat model configured. Please add a model in settings.',
     copied: 'Copied to clipboard',
     inserted: 'Inserted at cursor',
-    // Mode select
-    modeAsk: 'Ask',
-    modeEdit: 'Edit',
-    modeEditDirect: 'Edit (full access)',
-    modeAskDesc: 'Ask questions and get answers',
-    modeEditDesc: 'Edit the current document',
-    modeEditDirectDesc: 'Edit document directly without confirmation',
-    editNoFile: 'Please open a file first',
-    editNoChanges: 'No valid changes returned by model',
+    rewriteSelectionExpired:
+      'Selection is no longer available. Please reselect the text.',
     editPartialSuccess:
       'Applied {appliedCount} of {totalEdits} edits. Check console for details.',
-    editApplied: 'Successfully applied {appliedCount} edit(s) to {fileName}',
     statusRequesting: 'Requesting...',
     statusThinking: 'Thinking...',
     statusGenerating: 'Generating...',
-    statusModifying: 'Modifying...',
   },
 
   chatMode: {
@@ -2860,6 +3121,10 @@ export const en: TranslationKeys = {
     rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
+    continue: 'Write',
+    continueDesc: 'Continue writing at the cursor, press Tab to accept',
+    plan: 'Plan',
+    planDesc: 'Explore and design before editing',
     agentFull: 'Agent (YOLO)',
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
     yolo: 'YOLO',

@@ -1,5 +1,10 @@
 import { Editor } from 'obsidian'
 
+import {
+  getSelectionVisualLineRects,
+  trimRangeEndWhitespace,
+} from './selectionRangeGeometry'
+
 export type SelectionInfo = {
   text: string
   range: Range
@@ -32,6 +37,8 @@ export class SelectionManager {
   private minSelectionLength = 6
   private debounceDelay = 150
   private editorContainer: HTMLElement | null = null
+  private readonly ownerDocument: Document
+  private readonly ownerWindow: Window
 
   constructor(
     editorContainer: HTMLElement,
@@ -42,6 +49,8 @@ export class SelectionManager {
     },
   ) {
     this.editorContainer = editorContainer
+    this.ownerDocument = editorContainer.ownerDocument
+    this.ownerWindow = this.ownerDocument.defaultView ?? window
     if (options) {
       this.isEnabled = options.enabled ?? true
       this.minSelectionLength = options.minSelectionLength ?? 6
@@ -51,15 +60,21 @@ export class SelectionManager {
 
   init(callback: (selection: SelectionInfo | null) => void): void {
     this.onSelectionChange = callback
-    document.addEventListener('selectionchange', this.handleSelectionChange)
+    this.ownerDocument.addEventListener(
+      'selectionchange',
+      this.handleSelectionChange,
+    )
   }
 
   destroy(): void {
     if (this.debounceTimer !== null) {
-      window.clearTimeout(this.debounceTimer)
+      this.ownerWindow.clearTimeout(this.debounceTimer)
       this.debounceTimer = null
     }
-    document.removeEventListener('selectionchange', this.handleSelectionChange)
+    this.ownerDocument.removeEventListener(
+      'selectionchange',
+      this.handleSelectionChange,
+    )
     this.onSelectionChange = null
     this.currentSelection = null
     this.lastRangeSnapshot = null
@@ -84,10 +99,10 @@ export class SelectionManager {
 
   private handleSelectionChange = (): void => {
     if (this.debounceTimer !== null) {
-      window.clearTimeout(this.debounceTimer)
+      this.ownerWindow.clearTimeout(this.debounceTimer)
     }
 
-    this.debounceTimer = window.setTimeout(() => {
+    this.debounceTimer = this.ownerWindow.setTimeout(() => {
       this.debounceTimer = null
       this.processSelection()
     }, this.debounceDelay)
@@ -98,7 +113,7 @@ export class SelectionManager {
       return
     }
 
-    const selection = window.getSelection()
+    const selection = this.ownerWindow.getSelection()
     if (!selection || selection.rangeCount === 0) {
       this.clearSelection()
       return
@@ -133,7 +148,8 @@ export class SelectionManager {
         return
       }
 
-      const rects = range.getClientRects()
+      const effectiveRange = trimRangeEndWhitespace(range)
+      const rects = getSelectionVisualLineRects(effectiveRange)
 
       if (rects.length === 0) {
         this.clearSelection()
@@ -146,7 +162,7 @@ export class SelectionManager {
 
       this.currentSelection = {
         text,
-        range,
+        range: effectiveRange,
         rect,
         isMultiLine,
       }

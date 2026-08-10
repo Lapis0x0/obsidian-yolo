@@ -125,6 +125,7 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
           ...clientOptions,
           fetch: transportFetch,
         }),
+      { providerId: provider.id, protocol: 'openai' },
     )
     this.browserClient = clients.browserClient
     this.obsidianClient = clients.obsidianClient
@@ -135,15 +136,23 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
     model: ChatModel,
     body: ResponseCreateParamsStreaming,
   ): ResponseCreateParamsStreaming {
-    // Only the OpenAI hosted `web_search` family is forwarded on the Responses
-    // transport (mapped to `web_search_preview`). Other families
-    // (`openrouter:web_search`, `grok:live_search`, `gemini:web_search`) are
-    // dropped — they target different endpoints and rewriting them here would
-    // change user intent.
-    const webSearchCount = getBuiltinProviderTools(model).filter(
-      (t) => t.type === 'web_search',
-    ).length
-    if (webSearchCount === 0) {
+    // Only hosted web-search families are forwarded on the Responses transport.
+    // Other families (`openrouter:web_search`, `grok:live_search`,
+    // `gemini:web_search`) are dropped — they target different endpoints and
+    // rewriting them here would change user intent.
+    //
+    // The two supported families serialize to different tool types on purpose.
+    // OpenAI's hosted search is `web_search_preview`; DeepSeek only recognizes
+    // the bare `web_search` type and silently ignores `web_search_preview` —
+    // it answers 200 without ever searching, so reusing OpenAI's mapping would
+    // fail invisibly.
+    const builtinTools = getBuiltinProviderTools(model)
+    const hostedSearchTypes = builtinTools.flatMap((t) => {
+      if (t.type === 'web_search') return ['web_search_preview' as const]
+      if (t.type === 'deepseek:web_search') return ['web_search' as const]
+      return []
+    })
+    if (hostedSearchTypes.length === 0) {
       return body
     }
 
@@ -151,9 +160,10 @@ export class OpenAIResponsesProvider extends BaseLLMProvider<LLMProvider> {
       ...body,
       tools: [
         ...(body.tools ?? []),
-        ...Array.from({ length: webSearchCount }, () => ({
-          type: 'web_search_preview' as const,
-        })),
+        // `web_search` is not in the SDK's tool union yet; cast the entries.
+        ...(hostedSearchTypes.map((type) => ({
+          type,
+        })) as unknown as NonNullable<ResponseCreateParamsStreaming['tools']>),
       ],
     }
   }

@@ -49,9 +49,13 @@ export const serializeMentionable = (
     case 'assistant-quote':
       return {
         type: 'assistant-quote',
+        id: mentionable.id,
+        annotationNumber: mentionable.annotationNumber,
         conversationId: mentionable.conversationId,
         messageId: mentionable.messageId,
         content: mentionable.content,
+        comment: mentionable.comment,
+        selector: mentionable.selector,
         contentHash:
           mentionable.contentHash ?? getBlockContentHash(mentionable.content),
         contentCount: mentionable.contentCount,
@@ -198,9 +202,13 @@ export const deserializeMentionable = (
         }
         return {
           type: 'assistant-quote',
+          id: mentionable.id,
+          annotationNumber: mentionable.annotationNumber,
           conversationId: mentionable.conversationId,
           messageId: mentionable.messageId,
           content: mentionable.content,
+          comment: mentionable.comment,
+          selector: mentionable.selector,
           contentHash:
             mentionable.contentHash ?? getBlockContentHash(mentionable.content),
           contentCount: mentionable.contentCount,
@@ -334,7 +342,9 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
     }
     case 'assistant-quote':
-      return `assistant-quote:${mentionable.conversationId}:${mentionable.messageId}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+      return mentionable.id
+        ? `assistant-quote:${mentionable.id}`
+        : `assistant-quote:${mentionable.conversationId}:${mentionable.messageId}:${mentionable.selector?.start ?? 'legacy'}:${mentionable.selector?.end ?? 'legacy'}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
     case 'url':
       return `url:${mentionable.url}`
     case 'web-selection':

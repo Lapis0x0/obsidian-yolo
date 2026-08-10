@@ -1,15 +1,6 @@
 import { EditorView } from '@codemirror/view'
-import { useMutation } from '@tanstack/react-query'
-import cx from 'clsx'
-import { Download, History, Pencil, Plus, Trash2 } from 'lucide-react'
-import {
-  MarkdownView,
-  Notice,
-  Platform,
-  TFile,
-  TFolder,
-  normalizePath,
-} from 'obsidian'
+import { Pencil, Trash2 } from 'lucide-react'
+import { MarkdownView, TFile, TFolder } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -26,48 +17,39 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
-import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import {
   resolveAssistantIncludeCurrentFileContent,
   resolveAssistantTimeContextEnabled,
 } from '../../core/agent/assistant-capabilities'
+import { resolveAssistantModelId } from '../../core/agent/assistant-model'
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
-import type { AgentConversationRunSummary } from '../../core/agent/service'
-import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
-import { parseTextEditPlan } from '../../core/edits/textEditPlan'
-import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
-import { parseToolName } from '../../core/mcp/tool-name-utils'
-import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import {
+  type ChatRuntimeId,
+  type CliRuntimeScope,
+  type CliSessionRef,
+  createYoloChatRuntimeActions,
+  isCliRuntimeAvailable,
+} from '../../core/cli-runtime'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
-import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHighlightSession } from '../../features/editor/selection-highlight/useChatHighlightSession'
 import {
   getConversationDisplayTitle,
   useChatHistory,
 } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
-import type { ApplyViewState } from '../../types/apply-view.types'
+import { useLiteSkillEntries } from '../../hooks/useLiteSkillEntries'
 import type {
-  AssistantToolMessageGroup,
-  ChatAssistantMessage,
   ChatConversationCompactionState,
   ChatMessage,
-  ChatSubagentResultMessage,
-  ChatTerminalCommandResultMessage,
-  ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
-import { getLatestChatConversationCompaction } from '../../types/chat'
-import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
   Mentionable,
   MentionableAssistantQuote,
-  MentionableBlock,
   MentionableBlockData,
   MentionableImage,
   MentionableWebSelection,
@@ -79,98 +61,56 @@ import {
   normalizeStoredReasoningLevel,
 } from '../../types/reasoning'
 import {
-  type ToolCallRequest,
-  type ToolCallResponse,
-  ToolCallResponseStatus,
-  getToolCallArgumentsObject,
-} from '../../types/tool-call.types'
-import {
-  type GroupEditSummary,
-  deriveToolEditUndoStatus,
-  updateToolMessageEditSummary,
-} from '../../utils/chat/editSummary'
-import { exportChatConversationToVault } from '../../utils/chat/exportConversation'
-import {
-  buildForegroundAgentVisualTurnPlan,
-  getForegroundAgentFooterForGroup,
-} from '../../utils/chat/foregroundAgentVisualTurns'
-import {
-  getBlockContentHash,
-  getBlockMentionableCountInfo,
   getMentionableKey,
   serializeMentionable,
 } from '../../utils/chat/mentionable'
-import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
-import { parseTagContents } from '../../utils/chat/parse-tag-content'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
-import { buildChatTimelineItems } from '../../utils/chat/timeline'
 import {
-  buildSubagentResultMap,
-  buildTerminalCommandResultMap,
-  collectToolCallIdsFromGroupedMessages,
-  reuseShallowEqualMap,
-} from '../../utils/chat/tool-result-index'
-import { formatTokenCount } from '../../utils/llm/formatTokenCount'
+  collectSelectionHighlightIds,
+  createSelectionBlockMentionable,
+} from '../../utils/chat/selection-mentionables'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
-import { readTFileContent } from '../../utils/obsidian'
-import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
-import DotLoader from '../common/DotLoader'
-import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
 // removed Prompt Templates feature
 
-import { AssistantSelector } from './AssistantSelector'
-import AssistantToolMessageGroupItem from './AssistantToolMessageGroupItem'
-import { ChatInputDraftHolder } from './chat-input/chatInputDraft'
 import {
+  CHAT_MODES,
+  CLAUDE_CODE_CHAT_MODES,
+  CODEX_CHAT_MODES,
   type ChatMode,
-  isAgentChatMode,
-  normalizeChatMode,
-  normalizeYoloEnabled,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
-import type {
-  ChatUserInputProps,
-  ChatUserInputRef,
-} from './chat-input/ChatUserInput'
+import type { ChatUserInputProps } from './chat-input/ChatUserInput'
+import { CliRuntimeControls } from './chat-input/CliRuntimeControls'
 import MentionableBadge from './chat-input/MentionableBadge'
+import type { SlashCommand } from './chat-input/plugins/mention/SkillSlashPlugin'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
-import { getChatSurfacePreset } from './chat-surface-presets'
-import { ChatConversationPane } from './ChatConversationPane'
-import { ChatListDropdown } from './ChatListDropdown'
+import { ChatHeader } from './ChatHeader'
 import {
-  buildAssistantErrorContinuation,
-  buildRetrySubmissionMessages,
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
+import CliChatSurface from './CliChatSurface'
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
+import {
+  useMobileChatViewContentClass,
+  useMobileKeyboardViewportHeight,
+} from './hooks/useMobileViewport'
+import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
-import { syncRenderedLatexSelection } from './latex-copy'
-import MessageNavigator from './MessageNavigator'
-import type { MessageNavigatorAnchor } from './MessageNavigator'
-import QueryProgress from './QueryProgress'
 import type { QueryProgressState } from './QueryProgress'
 import { TodoListPanel } from './TodoListPanel'
-import { useAutoScroll } from './useAutoScroll'
-import { useChatHistoryWindow } from './useChatHistoryWindow'
+import { useChatDomainActions } from './useChatDomainActions'
+import { useChatInputController } from './useChatInputController'
+import { useChatRuntimePreferences } from './useChatRuntimePreferences'
+import { useChatRuntimeSnapshot } from './useChatRuntimeSnapshot'
 import { useChatStreamManager } from './useChatStreamManager'
-import {
-  findAssistantGroupIdForRunAnchor,
-  useChatTimelineReadModel,
-  useStableChatTimelineItems,
-} from './useChatTimelineReadModel'
-import UserMessageItem from './UserMessageItem'
-import ViewToggle from './ViewToggle'
+import { useChatTimelineReadModel } from './useChatTimelineReadModel'
+import { useCliRuntimeOrchestration } from './useCliRuntimeOrchestration'
+import { useYoloChatSession } from './useYoloChatSession'
+import { YoloChatSurface } from './YoloChatSurface'
 
-const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
-const MESSAGE_NAVIGATOR_MIN_ANCHORS = 3
-const MESSAGE_NAVIGATOR_USER_PREVIEW_MAX_LENGTH = 90
-const MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH = 180
-const MESSAGE_NAVIGATOR_PREVIEW_SOURCE_MAX_LENGTH = 360
-const MOBILE_KEYBOARD_MIN_INSET_PX = 80
-const MOBILE_CHAT_MIN_VIEWPORT_HEIGHT = 160
 const EMPTY_SELECTED_SKILLS: NonNullable<ChatUserInputProps['selectedSkills']> =
   []
 
@@ -178,476 +118,6 @@ function useLatestRef<T>(value: T) {
   const ref = useRef(value)
   ref.current = value
   return ref
-}
-
-const renderVersionObjectIds = new WeakMap<object, number>()
-let nextRenderVersionObjectId = 1
-
-function getRenderVersionObjectId(value: object | null | undefined): number {
-  if (!value) {
-    return 0
-  }
-  const existing = renderVersionObjectIds.get(value)
-  if (existing !== undefined) {
-    return existing
-  }
-  const id = nextRenderVersionObjectId
-  nextRenderVersionObjectId += 1
-  renderVersionObjectIds.set(value, id)
-  return id
-}
-
-const parseCssPixelValue = (value: string): number => {
-  const parsed = Number.parseFloat(value)
-  return Number.isFinite(parsed) ? parsed : 0
-}
-
-function useMobileKeyboardViewportHeight(
-  containerElement: HTMLDivElement | null,
-): number | null {
-  const [viewportHeight, setViewportHeight] = useState<number | null>(null)
-
-  useLayoutEffect(() => {
-    if (!Platform.isMobile) {
-      setViewportHeight(null)
-      return
-    }
-
-    if (!containerElement) {
-      setViewportHeight(null)
-      return
-    }
-
-    const ownerWindow = containerElement.ownerDocument.defaultView ?? window
-    const visualViewport = ownerWindow.visualViewport
-    if (!visualViewport) {
-      setViewportHeight(null)
-      return
-    }
-
-    let animationFrameId: number | null = null
-
-    const publishHeight = () => {
-      animationFrameId = null
-
-      const rootStyle = ownerWindow.getComputedStyle(
-        containerElement.ownerDocument.documentElement,
-      )
-      const keyboardHeight = parseCssPixelValue(
-        rootStyle.getPropertyValue('--keyboard-height'),
-      )
-      const visualViewportInset = Math.max(
-        0,
-        ownerWindow.innerHeight -
-          visualViewport.height -
-          visualViewport.offsetTop,
-      )
-      const keyboardInset = Math.max(keyboardHeight, visualViewportInset)
-
-      if (keyboardInset < MOBILE_KEYBOARD_MIN_INSET_PX) {
-        setViewportHeight(null)
-        return
-      }
-
-      const viewportBottom = Math.min(
-        visualViewport.offsetTop + visualViewport.height,
-        ownerWindow.innerHeight - keyboardInset,
-      )
-      const nextHeight = Math.floor(
-        viewportBottom - containerElement.getBoundingClientRect().top,
-      )
-
-      if (nextHeight < MOBILE_CHAT_MIN_VIEWPORT_HEIGHT) {
-        setViewportHeight(null)
-        return
-      }
-
-      setViewportHeight((previous) =>
-        previous === nextHeight ? previous : nextHeight,
-      )
-    }
-
-    const schedulePublish = () => {
-      if (animationFrameId !== null) {
-        ownerWindow.cancelAnimationFrame(animationFrameId)
-      }
-      animationFrameId = ownerWindow.requestAnimationFrame(publishHeight)
-    }
-
-    schedulePublish()
-
-    visualViewport.addEventListener('resize', schedulePublish)
-    visualViewport.addEventListener('scroll', schedulePublish)
-    ownerWindow.addEventListener('resize', schedulePublish)
-    ownerWindow.addEventListener('orientationchange', schedulePublish)
-    ownerWindow.addEventListener('focusin', schedulePublish)
-    ownerWindow.addEventListener('focusout', schedulePublish)
-
-    const rootObserver = new MutationObserver(schedulePublish)
-    rootObserver.observe(containerElement.ownerDocument.documentElement, {
-      attributeFilter: ['style'],
-      attributes: true,
-    })
-
-    return () => {
-      rootObserver.disconnect()
-      visualViewport.removeEventListener('resize', schedulePublish)
-      visualViewport.removeEventListener('scroll', schedulePublish)
-      ownerWindow.removeEventListener('resize', schedulePublish)
-      ownerWindow.removeEventListener('orientationchange', schedulePublish)
-      ownerWindow.removeEventListener('focusin', schedulePublish)
-      ownerWindow.removeEventListener('focusout', schedulePublish)
-      if (animationFrameId !== null) {
-        ownerWindow.cancelAnimationFrame(animationFrameId)
-      }
-    }
-  }, [containerElement])
-
-  return viewportHeight
-}
-
-function useMobileChatViewContentClass(
-  containerElement: HTMLDivElement | null,
-  keyboardManaged: boolean,
-): void {
-  useLayoutEffect(() => {
-    if (!Platform.isMobile) return
-
-    const viewContent = containerElement?.closest('.view-content')
-    if (!(viewContent instanceof HTMLElement)) return
-
-    viewContent.classList.add('yolo-chat-view-content')
-    return () => {
-      viewContent.classList.remove(
-        'yolo-chat-view-content',
-        'yolo-chat-view-content--keyboard-managed',
-      )
-    }
-  }, [containerElement])
-
-  useLayoutEffect(() => {
-    if (!Platform.isMobile) return
-
-    const viewContent = containerElement?.closest('.view-content')
-    if (!(viewContent instanceof HTMLElement)) return
-
-    viewContent.classList.toggle(
-      'yolo-chat-view-content--keyboard-managed',
-      keyboardManaged,
-    )
-
-    return () => {
-      viewContent.classList.remove('yolo-chat-view-content--keyboard-managed')
-    }
-  }, [containerElement, keyboardManaged])
-}
-
-const getPromptContentText = (
-  promptContent: ChatUserMessage['promptContent'],
-): string => {
-  if (!promptContent) {
-    return ''
-  }
-  if (typeof promptContent === 'string') {
-    return promptContent
-  }
-  return promptContent
-    .map((part) => (part.type === 'text' ? part.text : ''))
-    .join(' ')
-}
-
-const normalizeNavigatorPreview = (
-  text: string,
-  maxLength: number,
-  fallback = '',
-): string => {
-  const normalized = text
-    .replace(/```(?:[A-Za-z0-9_-]+)?/g, ' ')
-    .replace(/!\[([^\]]*)]\([^)]*\)/g, '$1')
-    .replace(/\[([^\]]+)](?:\([^)]*\)|\[[^\]]*])/g, '$1')
-    .replace(/<\/?[A-Za-z][^>]*>/g, ' ')
-    .replace(/<([^>\n]+)>/g, '$1')
-    .replace(/(^|\n)\s{0,3}(?:#{1,6}\s+|>\s?|[-+*]\s+|\d+[.)]\s+)/g, '$1')
-    .replace(/[`*_~|]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim()
-  if (!normalized) {
-    return fallback
-  }
-  if (normalized.length <= maxLength) {
-    return normalized
-  }
-  return `${normalized.slice(0, maxLength - 1).trimEnd()}…`
-}
-
-const getNavigatorAssistantText = (
-  messages: AssistantToolMessageGroup,
-): string => {
-  const parts: string[] = []
-  let remainingLength = MESSAGE_NAVIGATOR_PREVIEW_SOURCE_MAX_LENGTH
-
-  for (const message of messages) {
-    if (remainingLength <= 0) {
-      break
-    }
-    if (message.role !== 'assistant') {
-      continue
-    }
-
-    const contentParts = /<(?:think|yolo_block)\b/i.test(message.content)
-      ? parseTagContents(message.content)
-          .filter((block) => block.type !== 'think')
-          .map((block) => block.content)
-      : [message.content]
-
-    for (const contentPart of contentParts) {
-      if (remainingLength <= 0) {
-        break
-      }
-      const previewPart = contentPart.slice(0, remainingLength)
-      parts.push(previewPart)
-      remainingLength -= previewPart.length
-    }
-  }
-
-  return parts.join(' ')
-}
-
-const isDelegateSubagentToolName = (name: string): boolean => {
-  try {
-    const parsed = parseToolName(name)
-    return (
-      parsed.serverName === getLocalFileToolServerName() &&
-      parsed.toolName === 'delegate_subagent'
-    )
-  } catch {
-    return name === 'delegate_subagent'
-  }
-}
-
-const ensureDirectoryPathExists = async (
-  app: ReturnType<typeof useApp>,
-  path: string,
-): Promise<void> => {
-  const segments = normalizePath(path)
-    .split('/')
-    .filter((segment) => segment.length > 0)
-
-  let currentPath = ''
-  for (const segment of segments) {
-    currentPath = currentPath.length > 0 ? `${currentPath}/${segment}` : segment
-    const existing = app.vault.getAbstractFileByPath(currentPath)
-    if (!existing) {
-      await app.vault.createFolder(currentPath)
-      continue
-    }
-    if (!(existing instanceof TFolder)) {
-      throw new Error(`Path exists and is not a folder: ${currentPath}`)
-    }
-  }
-}
-
-const shouldShowContinueResponse = (
-  messages: ChatMessage[],
-  isPending: boolean,
-): boolean => {
-  if (isPending) {
-    return false
-  }
-
-  const lastMessage = messages.at(-1)
-  if (lastMessage?.role !== 'tool') {
-    return false
-  }
-
-  return lastMessage.toolCalls.every((toolCall) =>
-    [
-      ToolCallResponseStatus.Aborted,
-      ToolCallResponseStatus.Rejected,
-      ToolCallResponseStatus.Error,
-      ToolCallResponseStatus.Success,
-    ].includes(toolCall.response.status),
-  )
-}
-
-const normalizeHydratedConversationMessages = (
-  messages: ChatMessage[],
-): { messages: ChatMessage[]; changed: boolean } => {
-  let changed = false
-
-  const nextMessages = messages.map((message) => {
-    if (
-      message.role === 'assistant' &&
-      message.metadata?.generationState === 'streaming'
-    ) {
-      changed = true
-      return {
-        ...message,
-        metadata: {
-          ...message.metadata,
-          generationState: 'aborted' as const,
-        },
-      }
-    }
-
-    if (message.role !== 'tool') {
-      return message
-    }
-
-    let toolCallUpdated = false
-    const nextToolCalls = message.toolCalls.map((toolCall) => {
-      if (toolCall.response.status !== ToolCallResponseStatus.Running) {
-        return toolCall
-      }
-
-      toolCallUpdated = true
-      changed = true
-      return {
-        ...toolCall,
-        response: { status: ToolCallResponseStatus.Aborted as const },
-      }
-    })
-
-    if (!toolCallUpdated && message.metadata?.branchRunStatus !== 'running') {
-      return message
-    }
-
-    if (message.metadata?.branchRunStatus === 'running') {
-      changed = true
-    }
-
-    return {
-      ...message,
-      toolCalls: nextToolCalls,
-      metadata:
-        message.metadata?.branchRunStatus === 'running'
-          ? {
-              ...message.metadata,
-              branchRunStatus: 'aborted' as const,
-            }
-          : message.metadata,
-    }
-  })
-
-  return {
-    messages: nextMessages,
-    changed,
-  }
-}
-
-const updateToolCallResponseInMessages = ({
-  messages,
-  toolMessageId,
-  toolCallId,
-  response,
-}: {
-  messages: ChatMessage[]
-  toolMessageId: string
-  toolCallId: string
-  response: ToolCallResponse
-}) =>
-  messages.map((message) => {
-    if (message.role !== 'tool' || message.id !== toolMessageId) {
-      return message
-    }
-
-    return {
-      ...message,
-      toolCalls: message.toolCalls.map((toolCall) =>
-        toolCall.request.id === toolCallId
-          ? { ...toolCall, response }
-          : toolCall,
-      ),
-    }
-  })
-
-const findDebugTraceIdForToolCall = (
-  messages: ChatMessage[],
-  toolCallId: string,
-): string | undefined => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message.role !== 'assistant') {
-      continue
-    }
-    const matches = message.toolCallRequests?.some(
-      (toolCall) => toolCall.id === toolCallId,
-    )
-    if (matches) {
-      return message.metadata?.llmDebugTraceId
-    }
-  }
-
-  return undefined
-}
-
-const offsetToSelectionPosition = (content: string, offset: number) => {
-  const clampedOffset = Math.max(0, Math.min(offset, content.length))
-  const before = content.slice(0, clampedOffset)
-  const lines = before.split('\n')
-
-  return {
-    line: Math.max(0, lines.length - 1),
-    ch: lines.at(-1)?.length ?? 0,
-  }
-}
-
-const getInlineSelectionRange = (
-  originalContent: string,
-  operationResults: ReturnType<
-    typeof materializeTextEditPlan
-  >['operationResults'],
-): ApplyViewState['selectionRange'] | undefined => {
-  const changedRanges = operationResults
-    .map((result) => (result.changed ? result.matchedRange : undefined))
-    .filter((range): range is NonNullable<typeof range> => Boolean(range))
-
-  if (changedRanges.length === 0) {
-    return undefined
-  }
-
-  const start = Math.min(...changedRanges.map((range) => range.start))
-  const end = Math.max(...changedRanges.map((range) => range.end))
-
-  return {
-    from: offsetToSelectionPosition(originalContent, start),
-    to: offsetToSelectionPosition(originalContent, end),
-  }
-}
-
-const waitForEditorContentSync = async (
-  view: EditorView,
-  expectedContent: string,
-  timeoutMs = 400,
-): Promise<boolean> => {
-  if (view.state.doc.toString() === expectedContent) {
-    return true
-  }
-
-  const startedAt = Date.now()
-
-  return await new Promise((resolve) => {
-    const check = () => {
-      if (!view.dom.isConnected) {
-        resolve(false)
-        return
-      }
-
-      if (view.state.doc.toString() === expectedContent) {
-        resolve(true)
-        return
-      }
-
-      if (Date.now() - startedAt >= timeoutMs) {
-        resolve(false)
-        return
-      }
-
-      window.setTimeout(check, 16)
-    }
-
-    window.setTimeout(check, 16)
-  })
 }
 
 const getNewInputMessage = (
@@ -663,168 +133,6 @@ const getNewInputMessage = (
     selectedSkills: [],
     selectedModelIds: [],
   }
-}
-
-const extractSelectedModelIds = (mentionables: Mentionable[]): string[] => {
-  const seen = new Set<string>()
-  const modelIds: string[] = []
-  for (const mentionable of mentionables) {
-    if (mentionable.type !== 'model' || seen.has(mentionable.modelId)) {
-      continue
-    }
-    seen.add(mentionable.modelId)
-    modelIds.push(mentionable.modelId)
-  }
-  return modelIds
-}
-
-const getLatestUserSelectedModelIds = (
-  messages: ChatMessage[],
-): string[] | undefined => {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message.role !== 'user') {
-      continue
-    }
-    return message.selectedModelIds?.length
-      ? message.selectedModelIds
-      : undefined
-  }
-
-  return undefined
-}
-
-const serializeActiveBranchByUserMessageId = (
-  messages: ChatMessage[],
-  activeBranchByUserMessageId: ReadonlyMap<string, string>,
-): Record<string, string> | undefined => {
-  const validUserMessageIds = new Set(
-    messages
-      .filter((message): message is ChatUserMessage => message.role === 'user')
-      .map((message) => message.id),
-  )
-
-  const entries = Array.from(activeBranchByUserMessageId.entries()).filter(
-    ([userMessageId, branchId]) =>
-      validUserMessageIds.has(userMessageId) && branchId.trim().length > 0,
-  )
-
-  return entries.length > 0 ? Object.fromEntries(entries) : undefined
-}
-
-const createSelectionBlockMentionable = (
-  selectedBlock: MentionableBlockData,
-): MentionableBlock => {
-  const { count, unit } = getBlockMentionableCountInfo(selectedBlock.content)
-  const source = normalizeSelectionSource(selectedBlock.source)
-  return {
-    type: 'block',
-    ...selectedBlock,
-    source,
-    contentHash:
-      selectedBlock.contentHash ?? getBlockContentHash(selectedBlock.content),
-    contentCount: selectedBlock.contentCount ?? count,
-    contentUnit: selectedBlock.contentUnit ?? unit,
-  }
-}
-
-const createAssistantQuoteMentionable = ({
-  conversationId,
-  messageId,
-  content,
-}: {
-  conversationId: string
-  messageId: string
-  content: string
-}): MentionableAssistantQuote => {
-  const trimmedContent = content.trim()
-  const { count, unit } = getBlockMentionableCountInfo(trimmedContent)
-  return {
-    type: 'assistant-quote',
-    conversationId,
-    messageId,
-    content: trimmedContent,
-    contentHash: getBlockContentHash(trimmedContent),
-    contentCount: count,
-    contentUnit: unit,
-  }
-}
-
-const normalizeSelectionSource = (
-  source: MentionableBlockData['source'],
-): 'selection-sync' | 'selection-pinned' => {
-  return source === 'selection-pinned' ? 'selection-pinned' : 'selection-sync'
-}
-
-const isSyncSelectionSource = (source: MentionableBlock['source']): boolean => {
-  return source === 'selection' || source === 'selection-sync'
-}
-
-const isSyncSelectionMentionable = (mentionable: Mentionable): boolean => {
-  if (mentionable.type === 'block') {
-    return isSyncSelectionSource(mentionable.source)
-  }
-  return (
-    mentionable.type === 'web-selection' &&
-    mentionable.source === 'web-selection-sync'
-  )
-}
-
-const isSelectionBlockMentionable = (
-  mentionable: Mentionable,
-): mentionable is MentionableBlock => {
-  return (
-    mentionable.type === 'block' &&
-    (mentionable.source === 'selection' ||
-      mentionable.source === 'selection-sync' ||
-      mentionable.source === 'selection-pinned')
-  )
-}
-
-const collectSelectionHighlightIds = (
-  mentionables: Mentionable[],
-): string[] => {
-  const ids = new Set<string>()
-  for (const mentionable of mentionables) {
-    if (!isSelectionBlockMentionable(mentionable)) continue
-    if (mentionable.highlightId) ids.add(mentionable.highlightId)
-  }
-  return Array.from(ids)
-}
-
-const collectSelectionHighlightIdsFromMessages = (
-  messages: ChatMessage[],
-): string[] => {
-  const ids = new Set<string>()
-  for (const message of messages) {
-    if (message.role !== 'user') continue
-    for (const id of collectSelectionHighlightIds(message.mentionables)) {
-      ids.add(id)
-    }
-  }
-  return Array.from(ids)
-}
-
-const collectRemovedSelectionHighlightIds = (
-  previousMentionables: Mentionable[],
-  nextMentionables: Mentionable[],
-): string[] => {
-  const nextIds = new Set(collectSelectionHighlightIds(nextMentionables))
-  return collectSelectionHighlightIds(previousMentionables).filter(
-    (id) => !nextIds.has(id),
-  )
-}
-
-const collectSelectionHighlightIdsByMentionableKey = (
-  mentionables: Mentionable[],
-  mentionableKey: string,
-): string[] => {
-  return collectSelectionHighlightIds(
-    mentionables.filter(
-      (mentionable) =>
-        getMentionableKey(serializeMentionable(mentionable)) === mentionableKey,
-    ),
-  )
 }
 
 const REASONING_LEVEL_CANDIDATES: ReasoningLevel[] = [...REASONING_LEVELS]
@@ -868,8 +176,12 @@ export type ChatRef = {
  * 都塞进来（消息列表会从 DB 自动恢复，无需快照）。
  */
 export type ChatRuntimeSnapshot = {
+  activeRuntimeId: ChatRuntimeId
+  cliSessionRef: CliSessionRef | null
+  cliConversationId: string | null
   currentConversationId: string
   inputMessage: ChatUserMessage
+  inputDraftRevision: number
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
@@ -879,6 +191,7 @@ export type ChatRuntimeSnapshot = {
 }
 
 export type ChatProps = {
+  cliRuntimeScope?: CliRuntimeScope
   selectedBlock?: MentionableBlockData
   activeView?: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
@@ -904,13 +217,19 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const app = useApp()
   const plugin = usePlugin()
   const agentService = plugin.getAgentService()
-  const { settings, setSettings } = useSettings()
+  const runtimeActions = useMemo(
+    () => createYoloChatRuntimeActions(agentService),
+    [agentService],
+  )
+  const { settings, setSettings, updateSettings } = useSettings()
+  const quickAccessSkillEntries = useLiteSkillEntries(app, { settings })
+  const quickAccessSnippetEntries = useSnippetEntries()
   const { t } = useLanguage()
-  const { getMcpManager } = useMcp()
 
   const {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    createOrTouchCliConversation,
     deleteConversation,
     getConversationById,
     updateConversationTitle,
@@ -920,13 +239,65 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } = useChatHistory()
   const chatManager = useChatManager()
   const seededRuntimeSnapshot = props.seededRuntimeSnapshot
+  const cliRuntimeScope = props.cliRuntimeScope
+  const cliRuntimeAvailable = isCliRuntimeAvailable()
+  const chatMountedRef = useRef(true)
+  useEffect(() => {
+    chatMountedRef.current = true
+    return () => {
+      chatMountedRef.current = false
+    }
+  }, [])
   const [conversationAssistantId, setConversationAssistantId] =
     useState<string>(
       seededRuntimeSnapshot?.conversationAssistantId ??
         settings.currentAssistantId ??
         DEFAULT_ASSISTANT_ID,
     )
-  const conversationAssistantIdRef = useRef<Map<string, string>>(new Map())
+  // seed 早于 useChatInputController：activeRuntimeId 直接消费本 state。
+  const [currentConversationId, setCurrentConversationId] = useState<string>(
+    () =>
+      seededRuntimeSnapshot?.currentConversationId ??
+      props.initialConversationId ??
+      uuidv4(),
+  )
+  const {
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    setRequestedRuntimeId,
+    lastCliRuntimeIdRef,
+    initialActiveRuntimeId,
+    initialCliModePreference,
+    cliModeRequestGenerationRef,
+    prePlanCliModeByConversationRef,
+    runtimeNavigationGenerationRef,
+    handleRuntimeChange,
+    conversationModelIdRef,
+    conversationReasoningLevelRef,
+    conversationAssistantIdRef,
+    conversationOverridesRef,
+    persistReasoningLevelForModel,
+    persistChatRuntimePreference,
+    applyAssistantDefaultModel,
+    handleConversationAssistantSelect,
+    handleChatModeChange,
+    handleYoloChange,
+    lateStateRef: runtimePreferencesLateStateRef,
+  } = useChatRuntimePreferences({
+    app,
+    t,
+    settings,
+    setSettings,
+    cliRuntimeScope,
+    cliRuntimeAvailable,
+    chatMountedRef,
+    seededActiveRuntimeId: seededRuntimeSnapshot?.activeRuntimeId,
+    seededConversationOverrides: seededRuntimeSnapshot?.conversationOverrides,
+    hasInitialConversationId: props.initialConversationId !== undefined,
+    currentConversationId,
+    conversationAssistantId,
+    setConversationAssistantId,
+  })
   const effectiveSettings = useMemo(
     () => ({
       ...settings,
@@ -981,62 +352,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     containerElement,
     mobileKeyboardViewportHeight !== null,
   )
-  const headerRef = useRef<HTMLDivElement | null>(null)
   const [isWorkspaceWideHeader, setIsWorkspaceWideHeader] = useState(false)
   const [workspaceWideHeaderHeight, setWorkspaceWideHeaderHeight] = useState(0)
 
-  const [inputMessage, setInputMessageState] = useState<ChatUserMessage>(() => {
-    if (seededRuntimeSnapshot) {
-      return seededRuntimeSnapshot.inputMessage
-    }
-    const newMessage = getNewInputMessage(initialReasoningLevel)
-    if (props.selectedBlock) {
-      newMessage.mentionables = [
-        ...newMessage.mentionables,
-        createSelectionBlockMentionable(props.selectedBlock),
-      ]
-    }
-    return newMessage
-  })
-  const inputDraftHolderRef = useRef<ChatInputDraftHolder | null>(null)
-  if (!inputDraftHolderRef.current) {
-    inputDraftHolderRef.current = new ChatInputDraftHolder(inputMessage)
-  }
-  const inputDraftHolder = inputDraftHolderRef.current
-  const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
-  const inputMessageRef = useRef(inputMessage)
-  const getLatestInputMessage = useCallback(
-    () => inputDraftHolder.get(),
-    [inputDraftHolder],
-  )
-  const getLatestInputContent = useCallback(
-    () => getLatestInputMessage().content,
-    [getLatestInputMessage],
-  )
-  const setInputMessage = useCallback(
-    (updater: (message: ChatUserMessage) => ChatUserMessage) => {
-      const nextMessage = inputDraftHolder.update(updater)
-      inputMessageRef.current = nextMessage
-      setInputMessageState(nextMessage)
-    },
-    [inputDraftHolder],
-  )
-  const replaceInputMessage = useCallback(
-    (message: ChatUserMessage) => {
-      const nextMessage = inputDraftHolder.replace(message)
-      inputMessageRef.current = nextMessage
-      setInputMessageState(nextMessage)
-      setInputReplacementVersion(inputDraftHolder.getReplacementVersion())
-    },
-    [inputDraftHolder],
-  )
   const [queuedMessageEditState, setQueuedMessageEditState] = useState<{
     preservedInputMessage: ChatUserMessage
     preservedReasoningLevel: ReasoningLevel
   } | null>(null)
   const chatMessagesStateRef = useRef<ChatMessage[]>([])
   const activeBranchByUserMessageIdRef = useRef<Map<string, string>>(new Map())
-  const [addedBlockKey, setAddedBlockKey] = useState<string | null>(null)
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
   const [compactionState, setCompactionState] =
     useState<ChatConversationCompactionState>([])
@@ -1044,49 +368,75 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     pendingCompactionAnchorMessageId,
     setPendingCompactionAnchorMessageId,
   ] = useState<string | null>(null)
-  const [
-    enteringCompactionDividerAnchorMessageId,
-    setEnteringCompactionDividerAnchorMessageId,
-  ] = useState<string | null>(null)
-  const [focusedMessageId, setFocusedMessageId] = useState<string | null>(null)
-  const suppressNextHistoricalUserMessageOutsidePointerRef = useRef<
-    string | null
-  >(null)
-  const [currentConversationId, setCurrentConversationId] = useState<string>(
-    () =>
-      seededRuntimeSnapshot?.currentConversationId ??
-      props.initialConversationId ??
-      uuidv4(),
+  const inputController = useChatInputController({
+    seededInputMessage: seededRuntimeSnapshot?.inputMessage,
+    seededInputDraftRevision: seededRuntimeSnapshot?.inputDraftRevision,
+    initialReasoningLevel,
+    selectedBlock: props.selectedBlock,
+    activeRuntimeId,
+    buildNewInputMessage: getNewInputMessage,
+    chatMessagesStateRef,
+    setChatMessages,
+  })
+  const {
+    inputMessage,
+    inputDraftRevisionRef,
+    getLatestInputMessage,
+    getLatestInputContent,
+    setInputMessage,
+    replaceInputMessage,
+    inputReplacementVersion,
+    focusedMessageId,
+    setFocusedMessageId,
+    addedBlockKey,
+    setAddedBlockKey,
+    chatUserInputRefs,
+    registerChatUserInputRef,
+    handleQuoteAssistantSelection,
+    handleDeleteAssistantQuote,
+    syncSelectionMentionable,
+    syncSelectionMentionableToInput,
+    syncWebSelectionMentionableToInput,
+    upsertSelectionMentionableInMainInput,
+    clearSelectionMentionable,
+    handleMainInputRef,
+    handleMainInputChange,
+    handleMainInputSubmit,
+    handleMainInputFocus,
+    handleMainInputMentionablesChange,
+    handleMainInputRuntimeSkillsChange,
+    handleMainInputMentionableDelete,
+    handleMainInputModelChange,
+    handleMainInputReasoningChange,
+    handleMainInputRunSlashCommand,
+    handleMainInputAbort,
+    addSelectionToChat,
+    addFileToChat,
+    addFolderToChat,
+    addImageToChat,
+    insertTextToInput,
+    appendTextToInput,
+    setMainInputText,
+    focusMessage,
+    focusMainInput,
+    submitMainInput,
+  } = inputController
+  const cancelRuntimeRun = useCallback(
+    (conversationId: string) => {
+      void runtimeActions.cancelRun({ runtimeId: 'yolo', conversationId })
+    },
+    [runtimeActions],
   )
   const [isLoadingConversation, setIsLoadingConversation] = useState(() =>
     Boolean(props.initialConversationId),
   )
   const untitledFallback = t('chat.untitledConversation', 'New chat')
-  const currentConversationPersisted = useMemo(
-    () =>
-      chatList.some(
-        (conversation) => conversation.id === currentConversationId,
-      ),
-    [chatList, currentConversationId],
-  )
-  const currentConversationTitle = useMemo(() => {
-    const rawTitle = currentConversationId
-      ? chatList.find(
-          (conversation) => conversation.id === currentConversationId,
-        )?.title
-      : undefined
-    return getConversationDisplayTitle(rawTitle, untitledFallback)
-  }, [chatList, currentConversationId, untitledFallback])
   const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
     seededRuntimeSnapshot?.reasoningLevel ?? initialReasoningLevel,
-  )
-  const conversationReasoningLevelRef = useRef<Map<string, ReasoningLevel>>(
-    new Map(),
   )
   const [messageReasoningMap, setMessageReasoningMap] = useState<
     Map<string, ReasoningLevel>
   >(new Map())
-  const messageReasoningMapRef = useLatestRef(messageReasoningMap)
   const [editingAssistantMessageId, setEditingAssistantMessageId] = useState<
     string | null
   >(null)
@@ -1118,145 +468,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     type: 'idle',
   })
 
-  const addMentionableToFocusedMessage = useCallback(
-    (mentionable: Mentionable) => {
-      setAddedBlockKey(null)
-
-      if (focusedMessageId === inputMessage.id) {
-        setInputMessage((prevInputMessage) => {
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
-          )
-          if (
-            prevInputMessage.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
-            return prevInputMessage
-          }
-          return {
-            ...prevInputMessage,
-            mentionables: [...prevInputMessage.mentionables, mentionable],
-            promptContent: null,
-          }
-        })
-        return
-      }
-
-      setChatMessages((prevChatHistory) =>
-        prevChatHistory.map((message) => {
-          if (message.id !== focusedMessageId || message.role !== 'user') {
-            return message
-          }
-
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
-          )
-          if (
-            message.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
-            return message
-          }
-
-          return {
-            ...message,
-            mentionables: [...message.mentionables, mentionable],
-            promptContent: null,
-          }
-        }),
-      )
-    },
-    [focusedMessageId, inputMessage.id],
-  )
-
-  const handleQuoteAssistantSelection = useCallback(
-    ({
-      conversationId,
-      messageId,
-      content,
-    }: {
-      messageId: string
-      conversationId: string
-      content: string
-    }) => {
-      const targetMessageId = focusedMessageId || inputMessage.id
-      addMentionableToFocusedMessage(
-        createAssistantQuoteMentionable({
-          conversationId,
-          messageId,
-          content,
-        }),
-      )
-      window.requestAnimationFrame(() => {
-        chatUserInputRefs.current.get(targetMessageId)?.focus()
-      })
-    },
-    [addMentionableToFocusedMessage, focusedMessageId, inputMessage.id],
-  )
-
   const isSidebarPlacement = props.placement === 'sidebar'
   const activeView = isSidebarPlacement ? (props.activeView ?? 'chat') : 'chat'
   const onChangeView = props.onChangeView
-
-  useEffect(() => {
-    if (isSidebarPlacement) {
-      setIsWorkspaceWideHeader(false)
-      return
-    }
-
-    const element = containerRef.current
-    if (!element) return
-
-    const updateIsWideHeader = (width: number) => {
-      setIsWorkspaceWideHeader(width >= WORKSPACE_WIDE_HEADER_MIN_WIDTH)
-    }
-
-    updateIsWideHeader(element.getBoundingClientRect().width)
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      updateIsWideHeader(entry.contentRect.width)
-    })
-
-    resizeObserver.observe(element)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [isSidebarPlacement])
-
-  useEffect(() => {
-    if (isSidebarPlacement || !isWorkspaceWideHeader) {
-      setWorkspaceWideHeaderHeight(0)
-      return
-    }
-
-    const element = headerRef.current
-    if (!element) return
-
-    const updateHeaderHeight = (height: number) => {
-      setWorkspaceWideHeaderHeight(Math.ceil(height))
-    }
-
-    updateHeaderHeight(element.getBoundingClientRect().height)
-
-    const resizeObserver = new ResizeObserver((entries) => {
-      const entry = entries[0]
-      if (!entry) return
-      updateHeaderHeight(entry.contentRect.height)
-    })
-
-    resizeObserver.observe(element)
-
-    return () => {
-      resizeObserver.disconnect()
-    }
-  }, [isSidebarPlacement, isWorkspaceWideHeader])
 
   const containerClassName = `yolo-chat-container${
     isSidebarPlacement
@@ -1287,9 +501,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   } as CSSProperties
 
   // Per-conversation override settings (temperature, top_p, context, stream)
-  const conversationOverridesRef = useRef<
-    Map<string, ConversationOverrideSettings | null>
-  >(new Map())
   const [conversationOverrides, setConversationOverrides] =
     useState<ConversationOverrideSettings | null>(
       seededRuntimeSnapshot?.conversationOverrides ?? null,
@@ -1307,7 +518,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
     return settings.chatOptions.agentYoloEnabled ?? false
   })
-
   const selectedAssistant = useMemo(() => {
     return (
       settings.assistants.find(
@@ -1321,7 +531,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   // Per-conversation model id (do NOT write back to global settings)
-  const conversationModelIdRef = useRef<Map<string, string>>(new Map())
   const [conversationModelId, setConversationModelId] = useState<string>(() => {
     if (seededRuntimeSnapshot) {
       return seededRuntimeSnapshot.conversationModelId
@@ -1358,6 +567,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     return {
       promptTokens: contextUsage.promptTokens,
       maxContextTokens: contextUsage.maxContextTokens,
+      ...(contextUsage.cacheHitRate !== undefined
+        ? { cacheHitRate: contextUsage.cacheHitRate }
+        : {}),
     }
   }, [chatMessages, effectiveMaxContextTokens])
 
@@ -1377,176 +589,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ],
   )
 
-  const persistReasoningLevelForModel = useCallback(
-    async (modelId: string, level: ReasoningLevel) => {
-      if (!modelId) return
-      const currentMap = settings.chatOptions.reasoningLevelByModelId ?? {}
-      if (currentMap[modelId] === level) return
-      try {
-        await setSettings({
-          ...settings,
-          chatOptions: {
-            ...settings.chatOptions,
-            reasoningLevelByModelId: {
-              ...currentMap,
-              [modelId]: level,
-            },
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist reasoning level preference', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const persistPreferredChatMode = useCallback(
-    async (mode: ChatMode) => {
-      if (settings.chatOptions.chatMode === mode) {
-        return
-      }
-
-      try {
-        await setSettings({
-          ...settings,
-          chatOptions: {
-            ...settings.chatOptions,
-            chatMode: mode,
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist preferred chat mode', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const persistPreferredYolo = useCallback(
-    async (enabled: boolean) => {
-      if ((settings.chatOptions.agentYoloEnabled ?? false) === enabled) {
-        return
-      }
-
-      try {
-        await setSettings({
-          ...settings,
-          chatOptions: {
-            ...settings.chatOptions,
-            agentYoloEnabled: enabled,
-          },
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist preferred YOLO state', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const persistPreferredAssistantId = useCallback(
-    async (assistantId: string) => {
-      if (settings.currentAssistantId === assistantId) {
-        return
-      }
-
-      try {
-        await setSettings({
-          ...settings,
-          currentAssistantId: assistantId,
-        })
-      } catch (error: unknown) {
-        console.error('Failed to persist preferred assistant', error)
-      }
-    },
-    [setSettings, settings],
-  )
-
-  const applyAssistantDefaultModel = useCallback(
-    (assistantModelId?: string | null) => {
-      if (!assistantModelId) {
-        return
-      }
-      const matchedModel = settings.chatModels.find(
-        (model) => model.id === assistantModelId,
-      )
-      if (!matchedModel) {
-        return
-      }
-      setConversationModelId(assistantModelId)
-      conversationModelIdRef.current.set(
-        currentConversationId,
-        assistantModelId,
-      )
-      const nextReasoningLevel = getReasoningLevelForModelId(assistantModelId)
-      setReasoningLevel(nextReasoningLevel)
-      conversationReasoningLevelRef.current.set(
-        currentConversationId,
-        nextReasoningLevel,
-      )
-      setInputMessage((prev) => ({
-        ...prev,
-        reasoningLevel: nextReasoningLevel,
-      }))
-    },
-    [currentConversationId, getReasoningLevelForModelId, settings.chatModels],
-  )
-
-  const handleConversationAssistantSelect = useCallback(
-    (assistantId: string) => {
-      setConversationAssistantId(assistantId)
-      conversationAssistantIdRef.current.set(currentConversationId, assistantId)
-      void persistPreferredAssistantId(assistantId)
-      const assistant = settings.assistants.find(
-        (item) => item.id === assistantId,
-      )
-      if (assistant?.modelId) {
-        applyAssistantDefaultModel(assistant.modelId)
-      }
-    },
-    [
-      applyAssistantDefaultModel,
-      currentConversationId,
-      persistPreferredAssistantId,
-      settings.assistants,
-    ],
-  )
-
-  useEffect(() => {
-    if (
-      settings.assistants.some(
-        (assistant) => assistant.id === conversationAssistantId,
-      )
-    ) {
-      return
-    }
-    const fallbackAssistantId =
-      settings.currentAssistantId ??
-      settings.assistants[0]?.id ??
-      DEFAULT_ASSISTANT_ID
-    setConversationAssistantId(fallbackAssistantId)
-    conversationAssistantIdRef.current.set(
-      currentConversationId,
-      fallbackAssistantId,
-    )
-  }, [
-    conversationAssistantId,
-    currentConversationId,
-    settings.assistants,
-    settings.currentAssistantId,
-  ])
-
   // Per-message model mapping for historical user messages
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
     new Map(),
   )
-  const messageModelMapRef = useLatestRef(messageModelMap)
   const [
     assistantGroupBoundaryMessageIds,
     setAssistantGroupBoundaryMessageIds,
   ] = useState<string[]>([])
   const [activeBranchByUserMessageId, setActiveBranchByUserMessageId] =
     useState<Map<string, string>>(new Map())
-  const submitMutationPendingRef = useRef(false)
-  const assistantContinuationPendingRef = useRef(false)
 
   const chatTimelineReadModel = useChatTimelineReadModel({
     messages: chatMessages,
@@ -1554,157 +606,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   })
   const groupedChatMessages = chatTimelineReadModel.groupedChatMessages
   const groupedChatMessagesRef = useLatestRef(groupedChatMessages)
-  const continuableErrorMessageIds = useMemo(() => {
-    const ids = new Set<string>()
-    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
-      const message = chatMessages[index]
-      if (message.role === 'user') {
-        break
-      }
-      if (
-        message.role === 'assistant' &&
-        buildAssistantErrorContinuation({
-          sourceMessages: chatMessages,
-          groupedChatMessages,
-          assistantMessageId: message.id,
-          activeBranchByUserMessageId,
-        })
-      ) {
-        ids.add(message.id)
-      }
-    }
-    return ids
-  }, [activeBranchByUserMessageId, chatMessages, groupedChatMessages])
-  const {
-    windowedGroupedChatMessages,
-    hasEarlierMessages,
-    hasNewerMessages,
-    loadEarlier,
-    loadNewer,
-    resetToLatest,
-    jumpToUserMessage,
-    windowNavigationKey,
-    windowNavigationTargetMessageId,
-  } = useChatHistoryWindow({
-    conversationId: currentConversationId,
-    groupedChatMessages,
-  })
-  const messageNavigatorUserPreviewCacheRef = useRef(
-    new WeakMap<ChatUserMessage, { emptyLabel: string; preview: string }>(),
-  )
-  const messageNavigatorAssistantPreviewCacheRef = useRef(
-    new WeakMap<
-      AssistantToolMessageGroup,
-      { activeBranchKey: string | null; preview: string }
-    >(),
-  )
-  const messageNavigatorAnchorCacheRef = useRef<
-    Map<string, MessageNavigatorAnchor>
-  >(new Map())
-  const messageNavigatorAnchors = useMemo<MessageNavigatorAnchor[]>(() => {
-    const emptyLabel = t('chat.messageNavigator.emptyMessage', '空消息')
-    const assistantTextByUserMessageId = new Map<string, string[]>()
-    let precedingUserMessageId: string | null = null
-
-    groupedChatMessages.forEach((messageOrGroup) => {
-      if (!Array.isArray(messageOrGroup)) {
-        precedingUserMessageId = messageOrGroup.id
-        return
-      }
-
-      const sourceUserMessageId =
-        getSourceUserMessageIdForGroup(messageOrGroup) ?? precedingUserMessageId
-      if (!sourceUserMessageId) {
-        return
-      }
-
-      const activeBranchKey =
-        activeBranchByUserMessageId.get(sourceUserMessageId) ?? null
-      const cachedPreview =
-        messageNavigatorAssistantPreviewCacheRef.current.get(messageOrGroup)
-      const assistantPreview =
-        cachedPreview?.activeBranchKey === activeBranchKey
-          ? cachedPreview.preview
-          : normalizeNavigatorPreview(
-              getNavigatorAssistantText(
-                getDisplayedAssistantToolMessages(
-                  messageOrGroup,
-                  activeBranchKey,
-                ),
-              ),
-              MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH,
-            )
-      if (cachedPreview?.activeBranchKey !== activeBranchKey) {
-        messageNavigatorAssistantPreviewCacheRef.current.set(messageOrGroup, {
-          activeBranchKey,
-          preview: assistantPreview,
-        })
-      }
-      if (!assistantPreview) {
-        return
-      }
-
-      const existingText = assistantTextByUserMessageId.get(sourceUserMessageId)
-      if (existingText) {
-        existingText.push(assistantPreview)
-      } else {
-        assistantTextByUserMessageId.set(sourceUserMessageId, [
-          assistantPreview,
-        ])
-      }
-    })
-
-    let userMessageIndex = 0
-    const nextAnchorCache = new Map<string, MessageNavigatorAnchor>()
-    const anchors = groupedChatMessages.flatMap((messageOrGroup) => {
-      if (Array.isArray(messageOrGroup)) {
-        return []
-      }
-
-      userMessageIndex += 1
-      const cachedUserPreview =
-        messageNavigatorUserPreviewCacheRef.current.get(messageOrGroup)
-      const userPreview =
-        cachedUserPreview?.emptyLabel === emptyLabel
-          ? cachedUserPreview.preview
-          : normalizeNavigatorPreview(
-              (messageOrGroup.content
-                ? editorStateToPlainText(messageOrGroup.content)
-                : '') || getPromptContentText(messageOrGroup.promptContent),
-              MESSAGE_NAVIGATOR_USER_PREVIEW_MAX_LENGTH,
-              emptyLabel,
-            )
-      if (cachedUserPreview?.emptyLabel !== emptyLabel) {
-        messageNavigatorUserPreviewCacheRef.current.set(messageOrGroup, {
-          emptyLabel,
-          preview: userPreview,
-        })
-      }
-
-      const assistantPreview = normalizeNavigatorPreview(
-        assistantTextByUserMessageId.get(messageOrGroup.id)?.join(' ') ?? '',
-        MESSAGE_NAVIGATOR_ASSISTANT_PREVIEW_MAX_LENGTH,
-      )
-      const previousAnchor = messageNavigatorAnchorCacheRef.current.get(
-        messageOrGroup.id,
-      )
-      const anchor =
-        previousAnchor?.index === userMessageIndex &&
-        previousAnchor.userPreview === userPreview &&
-        previousAnchor.assistantPreview === assistantPreview
-          ? previousAnchor
-          : {
-              id: messageOrGroup.id,
-              index: userMessageIndex,
-              userPreview,
-              assistantPreview,
-            }
-      nextAnchorCache.set(anchor.id, anchor)
-      return [anchor]
-    })
-    messageNavigatorAnchorCacheRef.current = nextAnchorCache
-    return anchors
-  }, [activeBranchByUserMessageId, groupedChatMessages, t])
 
   const displayedChatMessages = useMemo(() => {
     return groupedChatMessages.flatMap((messageOrGroup): ChatMessage[] => {
@@ -1721,20 +622,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     })
   }, [activeBranchByUserMessageId, groupedChatMessages])
 
-  const firstUserMessageId = useMemo(() => {
-    return chatMessages.find((message) => message.role === 'user')?.id
-  }, [chatMessages])
-
   const effectiveCompactionState = useMemo(
     () =>
       compactionState.filter((entry) =>
         chatMessages.some((message) => message.id === entry.anchorMessageId),
       ),
     [chatMessages, compactionState],
-  )
-  const latestCompactionState = useMemo(
-    () => getLatestChatConversationCompaction(effectiveCompactionState),
-    [effectiveCompactionState],
   )
 
   useEffect(() => {
@@ -1756,6 +649,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     )
     return focused?.role === 'user' ? focused.mentionables : null
   }, [chatMessages, focusedMessageId, inputMessage.id])
+  const activeAssistantQuotes = useMemo(
+    () =>
+      (focusedHistoricalMentionables ?? inputMessage.mentionables).filter(
+        (mentionable): mentionable is MentionableAssistantQuote =>
+          mentionable.type === 'assistant-quote',
+      ),
+    [focusedHistoricalMentionables, inputMessage.mentionables],
+  )
 
   const { commitSentSelectionHighlights, releaseHighlightIds } =
     useChatHighlightSession({
@@ -1764,87 +665,139 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       inputMentionables: inputMessage.mentionables,
       focusedHistoricalMentionables,
     })
+  const {
+    cliPreferenceSettingsRef,
+    syncCliConversationTitle,
+    cliChatMode,
+    setCliChatMode,
+    cliYoloEnabled,
+    setCliYoloEnabled,
+    cliConversationController,
+    setCliConversationController,
+    cliConversationId,
+    setCliConversationId,
+    activeCliConversationSnapshot,
+    isCliRunActive,
+    cliOperationCoordinator,
+    cliOperationSnapshot,
+    cliSubmissionPending,
+    cliTransitioning,
+    cliModelCatalog,
+    cliSkillEntries,
+    refreshCliSkills,
+    activeHistoryConversationId,
+    transitionCliSession,
+    createFreshCliConversation,
+    consumeAcceptedCliDraft,
+    consumePresentedCliDraft,
+    handleCliModeSelectChange,
+    handleCliYoloChange,
+    handleClaudePlanShortcut,
+    cliChatRuntimeActions,
+    handleCliModelChange,
+    handleCliReasoningEffortChange,
+    handleCliUserMessageRewrite,
+  } = useCliRuntimeOrchestration({
+    app,
+    t,
+    settings,
+    updateSettings,
+    cliRuntimeScope,
+    getConversationById,
+    createOrTouchCliConversation,
+    activeRuntimeId,
+    initialActiveRuntimeId,
+    initialCliModePreference,
+    activeRuntimeIdRef,
+    setRequestedRuntimeId,
+    lastCliRuntimeIdRef,
+    cliModeRequestGenerationRef,
+    prePlanCliModeByConversationRef,
+    chatMountedRef,
+    seededCliSessionRef: seededRuntimeSnapshot?.cliSessionRef,
+    seededCliConversationId: seededRuntimeSnapshot?.cliConversationId,
+    currentConversationId,
+    conversationOverrides,
+    setConversationOverrides,
+    conversationOverridesRef,
+    reasoningLevel,
+    getLatestInputMessage,
+    replaceInputMessage,
+    buildNewInputMessage: getNewInputMessage,
+    commitSentSelectionHighlights,
+    inputDraftRevisionRef,
+    activeFile,
+    activeViewState,
+  })
 
-  const compactionDividerAnchorMessageIds = useMemo(
-    () => effectiveCompactionState.map((entry) => entry.anchorMessageId),
-    [effectiveCompactionState],
+  // useChatRuntimePreferences 的处理器（applyAssistantDefaultModel/
+  // handleConversationAssistantSelect/handleChatModeChange/handleYoloChange/
+  // handleRuntimeChange）依赖输入控制器与 CLI 编排 hook 都已就绪之后才产生
+  // 的值,一律经 lateStateRef 注入——与 inputController.lateStateRef 完全
+  // 相同的惯例,只是本对象在两者都就绪后立即写入。
+  runtimePreferencesLateStateRef.current = {
+    setInputMessage,
+    conversationModelId,
+    setConversationModelId,
+    setReasoningLevel,
+    setChatMode,
+    setYoloEnabled,
+    conversationOverrides,
+    setConversationOverrides,
+    selectedAssistant,
+    getReasoningLevelForModelId,
+    cliPreferenceSettingsRef,
+    cliModelCatalog,
+    setCliConversationController,
+    setCliConversationId,
+    setCliChatMode,
+    setCliYoloEnabled,
+    transitionCliSession,
+    activeHistoryConversationId,
+  }
+
+  const currentConversationPersisted = useMemo(
+    () =>
+      chatList.some(
+        (conversation) => conversation.id === activeHistoryConversationId,
+      ),
+    [activeHistoryConversationId, chatList],
   )
-  const compactionDividerAnchorMessageId =
-    latestCompactionState?.anchorMessageId ?? null
-  const previousPendingCompactionAnchorMessageIdRef = useRef<string | null>(
-    null,
-  )
+  const currentConversationTitle = useMemo(() => {
+    const rawTitle = activeHistoryConversationId
+      ? chatList.find(
+          (conversation) => conversation.id === activeHistoryConversationId,
+        )?.title
+      : undefined
+    return getConversationDisplayTitle(rawTitle, untitledFallback)
+  }, [activeHistoryConversationId, chatList, untitledFallback])
 
   useEffect(() => {
-    const previousPendingAnchorMessageId =
-      previousPendingCompactionAnchorMessageIdRef.current
-    previousPendingCompactionAnchorMessageIdRef.current =
-      pendingCompactionAnchorMessageId
-
-    if (
-      previousPendingAnchorMessageId === null ||
-      pendingCompactionAnchorMessageId !== null ||
-      !compactionDividerAnchorMessageId
-    ) {
-      return
-    }
-
-    setEnteringCompactionDividerAnchorMessageId(
-      compactionDividerAnchorMessageId,
-    )
-    const timer = window.setTimeout(() => {
-      setEnteringCompactionDividerAnchorMessageId((current) =>
-        current === compactionDividerAnchorMessageId ? null : current,
-      )
-    }, 240)
-
-    return () => {
-      window.clearTimeout(timer)
-    }
-  }, [compactionDividerAnchorMessageId, pendingCompactionAnchorMessageId])
-
-  const compactionDividerTitle = t(
-    'chat.compaction.dividerTitle',
-    '从这里继续当前任务',
-  )
-  const compactionPendingTitle = t(
-    'chat.compaction.pendingTitle',
-    '正在压缩上下文',
-  )
-  const compactionDividerDescription = (() => {
-    const compactedMessageCount = latestCompactionState?.compactedMessageCount
-    const estimatedTokensSaved = latestCompactionState?.estimatedTokensSaved
-    if (
-      typeof compactedMessageCount === 'number' &&
-      compactedMessageCount > 0 &&
-      typeof estimatedTokensSaved === 'number' &&
-      estimatedTokensSaved > 0
-    ) {
-      return t(
-        'chat.compaction.dividerDescriptionWithSavings',
-        '{messageCount} 条消息已压缩，节省约 {tokens} tokens',
-      )
-        .replace('{messageCount}', String(compactedMessageCount))
-        .replace('{tokens}', formatTokenCount(estimatedTokensSaved))
-    }
-    if (typeof latestCompactionState?.estimatedNextContextTokens === 'number') {
-      return t(
-        'chat.compaction.dividerDescriptionWithEstimate',
-        '以上对话已压缩为摘要，下一轮总上下文约为 {count} tokens',
-      ).replace(
-        '{count}',
-        formatTokenCount(latestCompactionState.estimatedNextContextTokens),
-      )
-    }
-    return t(
-      'chat.compaction.dividerDescription',
-      '以上对话已压缩为摘要，以下回复基于摘要继续',
-    )
-  })()
-  const compactionPendingDescription = t(
-    'chat.compaction.pendingStatus',
-    '正在整理上下文，稍后将从新的上下文继续。',
-  )
+    props.onConversationContextChange?.({
+      currentConversationId: activeHistoryConversationId,
+      currentConversationPersisted,
+      currentConversationTitle,
+      currentModelId:
+        conversationModelId ??
+        (currentConversationId
+          ? conversationModelIdRef.current.get(currentConversationId)
+          : undefined),
+      currentOverrides:
+        conversationOverrides === null
+          ? undefined
+          : (conversationOverrides ??
+            (currentConversationId
+              ? conversationOverridesRef.current.get(currentConversationId)
+              : undefined)),
+    })
+  }, [
+    currentConversationTitle,
+    currentConversationPersisted,
+    conversationModelId,
+    conversationOverrides,
+    activeHistoryConversationId,
+    props.onConversationContextChange,
+  ])
 
   const displayMentionablesForInput = inputMessage.mentionables
 
@@ -1855,12 +808,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ? activeFile
     : null
 
-  const chatUserInputRefs = useRef<Map<string, ChatUserInputRef>>(new Map())
-  const chatMessagesRef = useRef<HTMLDivElement>(null)
-  const [chatMessagesElement, setChatMessagesElement] =
-    useState<HTMLElement | null>(null)
-  const [chatContentElement, setChatContentElement] =
-    useState<HTMLElement | null>(null)
   // Callback-ref + state for the overlay element. A plain useRef with a
   // mount-once effect would lose its observation when the chat view unmounts
   // (e.g. switching to the composer view and back), since the new overlay
@@ -1869,50 +816,20 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const [inputOverlayElement, setInputOverlayElement] =
     useState<HTMLDivElement | null>(null)
   const [inputOverlayHeight, setInputOverlayHeight] = useState(0)
-  const [navigatorViewport, setNavigatorViewport] = useState<{
-    activeMessageId: string | null
-    visibleMessageIds: string[]
-  }>({ activeMessageId: null, visibleMessageIds: [] })
-  const latexSelectionSyncFrameRef = useRef<number | null>(null)
-  const chatSurfacePreset = getChatSurfacePreset('chat')
-  const hasStreamingMessages = useMemo(
-    () =>
-      chatMessages.some(
-        (message) =>
-          message.role === 'assistant' &&
-          message.metadata?.generationState === 'streaming',
-      ),
-    [chatMessages],
-  )
-
-  const {
-    autoScrollToBottom,
-    forceScrollToBottom,
-    stopAutoFollow,
-    isAutoFollowEnabled,
-  } = useAutoScroll({
-    scrollContainerRef: chatMessagesRef,
-    scrollContainerElement: chatMessagesElement,
-    contentElement: chatContentElement,
-    followKey: currentConversationId,
-  })
-  const handleForceScrollToBottom = useCallback(() => {
-    resetToLatest()
-    requestAnimationFrame(() => {
-      forceScrollToBottom()
-    })
-  }, [forceScrollToBottom, resetToLatest])
-  const handleNavigateToUserMessage = useCallback(
-    (messageId: string) => {
-      setNavigatorViewport((currentViewport) => ({
-        ...currentViewport,
-        activeMessageId: messageId,
-      }))
-      stopAutoFollow()
-      jumpToUserMessage(messageId)
-    },
-    [jumpToUserMessage, stopAutoFollow],
-  )
+  // YoloChatSurface 现在拥有自己的 chatMessagesRef/useAutoScroll（与
+  // CliChatSurface 对称）。useChatStreamManager 仍需要在流式消息到达时触发
+  // 自动滚动，因此这里保留一个稳定引用作为 ref 注入桥——YoloChatSurface 把
+  // 它内部最新的 autoScrollToBottom 写入这个 ref，triggerAutoScrollToBottom
+  // 的身份永远不变，不会导致 useChatStreamManager 的订阅 effect 反复重建。
+  const autoScrollToBottomRef = useRef<() => void>(() => {})
+  const triggerAutoScrollToBottom = useCallback(() => {
+    autoScrollToBottomRef.current()
+  }, [])
+  // 同上：useChatDomainActions 在 apply/提交等动作后需要强制滚到底部。
+  const forceScrollToBottomRef = useRef<() => void>(() => {})
+  const triggerForceScrollToBottom = useCallback(() => {
+    forceScrollToBottomRef.current()
+  }, [])
 
   // Measure the overlay above the input box so the timeline can reserve
   // equivalent scrollable space at its bottom — keeps the last assistant
@@ -1985,9 +902,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setChatMessages,
     setCompactionState,
     setPendingCompactionAnchorMessageId,
-    autoScrollToBottom,
+    autoScrollToBottom: triggerAutoScrollToBottom,
     requestContextBuilder,
     currentConversationId,
+    cancelRuntimeRun,
     conversationOverrides: conversationOverrides ?? undefined,
     modelId: conversationModelId,
     chatMode,
@@ -1997,3080 +915,189 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     assistantIdOverride: conversationAssistantId,
     compaction: effectiveCompactionState,
   })
-  const [runSummariesByConversationId, setRunSummariesByConversationId] =
-    useState<Map<string, AgentConversationRunSummary>>(new Map())
-  const [queuedUserMessages, setQueuedUserMessages] = useState<
-    ChatUserMessage[]
-  >(() => agentService.peekPendingUserMessages(currentConversationId))
   const isCurrentConversationRunActive = currentConversationRunSummary.isActive
-  const shouldHidePendingAssistantPlaceholders = useMemo(() => {
-    if (!isCurrentConversationRunActive) {
-      return false
-    }
 
-    let lastUserIndex = -1
-    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
-      if (chatMessages[index].role === 'user') {
-        lastUserIndex = index
-        break
-      }
-    }
-
-    if (lastUserIndex === -1) {
-      return false
-    }
-
-    return chatMessages
-      .slice(lastUserIndex + 1)
-      .some((message) => message.role === 'tool')
-  }, [chatMessages, isCurrentConversationRunActive])
-  const activeStreamingMessageId = useMemo(() => {
-    for (let index = chatMessages.length - 1; index >= 0; index -= 1) {
-      const message = chatMessages[index]
-      if (
-        message.role === 'assistant' &&
-        message.metadata?.generationState === 'streaming'
-      ) {
-        return message.id
-      }
-    }
-
-    return null
-  }, [chatMessages])
-  const showContinueResponseButton = useMemo(() => {
-    return shouldShowContinueResponse(
-      chatMessages,
-      isCurrentConversationRunActive,
-    )
-  }, [chatMessages, isCurrentConversationRunActive])
-  const chatTimelineItems: ChatTimelineItem[] = useMemo(
-    () =>
-      buildChatTimelineItems({
-        groupedChatMessages: windowedGroupedChatMessages,
-        revisionsById: chatTimelineReadModel.revisionsById,
-        assistantGroupBoundaryMessageIds,
-        compactionDividerAnchorMessageIds,
-        latestCompaction: latestCompactionState,
-        pendingCompactionAnchorMessageId,
-        queryProgress,
-        showContinueResponseButton,
-        activeEditableMessageId:
-          focusedMessageId && focusedMessageId !== inputMessage.id
-            ? focusedMessageId
-            : null,
-        activeEditingAssistantMessageId: editingAssistantMessageId,
-        activeStreamingMessageId,
-      }),
-    [
-      editingAssistantMessageId,
-      activeStreamingMessageId,
-      assistantGroupBoundaryMessageIds,
-      chatTimelineReadModel.revisionsById,
-      compactionDividerAnchorMessageIds,
-      focusedMessageId,
-      inputMessage.id,
-      latestCompactionState,
-      pendingCompactionAnchorMessageId,
-      queryProgress,
-      showContinueResponseButton,
-      windowedGroupedChatMessages,
-    ],
-  )
-  const stableChatTimelineItems = useStableChatTimelineItems(chatTimelineItems)
-
-  const windowedToolCallIds = useMemo(
-    () => collectToolCallIdsFromGroupedMessages(windowedGroupedChatMessages),
-    [windowedGroupedChatMessages],
-  )
-  const terminalCommandResultsByToolCallIdRef = useRef<ReadonlyMap<
-    string,
-    ChatTerminalCommandResultMessage
-  > | null>(null)
-  const subagentResultsByToolCallIdRef = useRef<ReadonlyMap<
-    string,
-    ChatSubagentResultMessage
-  > | null>(null)
-  const terminalCommandResultsByToolCallId = useMemo(() => {
-    const next = buildTerminalCommandResultMap(
-      chatMessages,
-      windowedToolCallIds,
-    )
-    const stable = terminalCommandResultsByToolCallIdRef.current
-      ? reuseShallowEqualMap(
-          terminalCommandResultsByToolCallIdRef.current,
-          next,
-        )
-      : next
-    terminalCommandResultsByToolCallIdRef.current = stable
-    return stable
-  }, [chatMessages, windowedToolCallIds])
-  const subagentResultsByToolCallId = useMemo(() => {
-    const next = buildSubagentResultMap(chatMessages, windowedToolCallIds)
-    const stable = subagentResultsByToolCallIdRef.current
-      ? reuseShallowEqualMap(subagentResultsByToolCallIdRef.current, next)
-      : next
-    subagentResultsByToolCallIdRef.current = stable
-    return stable
-  }, [chatMessages, windowedToolCallIds])
-  useEffect(() => {
-    const chatMessagesElement = chatMessagesRef.current
-    if (!chatMessagesElement) {
-      return
-    }
-
-    let didSelectionTouchChat = false
-
-    const syncLatexSelectionInView = () => {
-      latexSelectionSyncFrameRef.current = null
-
-      const selection = (
-        chatMessagesElement.ownerDocument.defaultView ?? window
-      ).getSelection()
-      const selectionRoot =
-        selection?.rangeCount && !selection.isCollapsed
-          ? selection.getRangeAt(0).commonAncestorContainer
-          : null
-      const selectionTouchesChat = selectionRoot
-        ? chatMessagesElement.contains(selectionRoot)
-        : false
-
-      if (!selectionTouchesChat && !didSelectionTouchChat) {
-        return
-      }
-
-      didSelectionTouchChat = selectionTouchesChat
-
-      chatMessagesElement
-        .querySelectorAll<HTMLElement>('.yolo-markdown-rendered')
-        .forEach((containerEl) => {
-          syncRenderedLatexSelection(containerEl)
-        })
-    }
-
-    const scheduleLatexSelectionSync = () => {
-      if (latexSelectionSyncFrameRef.current !== null) {
-        return
-      }
-
-      latexSelectionSyncFrameRef.current = requestAnimationFrame(() => {
-        syncLatexSelectionInView()
-      })
-    }
-
-    const doc = chatMessagesElement.ownerDocument
-    doc.addEventListener('selectionchange', scheduleLatexSelectionSync)
-    doc.addEventListener('mouseup', scheduleLatexSelectionSync)
-    doc.addEventListener('keyup', scheduleLatexSelectionSync)
-
-    return () => {
-      doc.removeEventListener('selectionchange', scheduleLatexSelectionSync)
-      doc.removeEventListener('mouseup', scheduleLatexSelectionSync)
-      doc.removeEventListener('keyup', scheduleLatexSelectionSync)
-      if (latexSelectionSyncFrameRef.current !== null) {
-        cancelAnimationFrame(latexSelectionSyncFrameRef.current)
-        latexSelectionSyncFrameRef.current = null
-      }
-    }
-  }, [])
-
-  useEffect(() => {
-    const unsubscribe = agentService.subscribeToRunSummaries((summaries) => {
-      setRunSummariesByConversationId(summaries)
-    })
-
-    return () => {
-      unsubscribe()
-    }
-  }, [agentService])
-
-  // Re-peek the mid-run user message queue on every conversation state push
-  // so the queued bubble stays in sync with enqueue / drain / abort events.
-  useEffect(() => {
-    const refreshQueued = () => {
-      setQueuedUserMessages(
-        agentService.peekPendingUserMessages(currentConversationId),
-      )
-    }
-    refreshQueued()
-    const unsubscribe = agentService.subscribe(
-      currentConversationId,
-      refreshQueued,
-      { emitCurrent: false },
-    )
-    return () => {
-      unsubscribe()
-    }
-  }, [agentService, currentConversationId])
-
-  // When the user aborts a run, restore the most recently queued message into
-  // the input box so its content is not silently lost. If multiple messages
-  // were queued, only the latest is restored (it best reflects the user's
-  // current intent); a notice surfaces the count of dropped earlier entries.
-  useEffect(() => {
-    const unsubscribe = agentService.subscribeToAbortedQueuedMessages(
-      (conversationId, messages) => {
-        if (conversationId !== currentConversationId) return
-        if (messages.length === 0) return
-        const latest = messages[messages.length - 1]
-        releaseHighlightIds(
-          collectSelectionHighlightIdsFromMessages(messages.slice(0, -1)),
-        )
-        const currentInputMessage = getLatestInputMessage()
-        replaceInputMessage({
-          ...currentInputMessage,
-          content: latest.content,
-          promptContent: latest.promptContent,
-          snapshotRef: latest.snapshotRef,
-          mentionables: latest.mentionables,
-          selectedSkills: latest.selectedSkills,
-          selectedModelIds: latest.selectedModelIds,
-          reasoningLevel:
-            latest.reasoningLevel ?? currentInputMessage.reasoningLevel,
-          // 该消息从未真正发送出去 → 清掉入队时打的旧时间,下次提交会重新打戳。
-          timeContext: undefined,
-        })
-        if (messages.length > 1) {
-          new Notice(
-            t(
-              'chat.queueMessage.abortedRestoredMany',
-              '已恢复最新 1 条排队消息到输入框（共取消 {{count}} 条）',
-            ).replace('{{count}}', String(messages.length)),
-          )
-        } else {
-          new Notice(
-            t(
-              'chat.queueMessage.abortedRestoredOne',
-              '已将排队消息恢复到输入框',
-            ),
-          )
-        }
-      },
-    )
-    return () => {
-      unsubscribe()
-    }
-  }, [
-    agentService,
-    currentConversationId,
-    getLatestInputMessage,
-    releaseHighlightIds,
-    replaceInputMessage,
-    t,
-  ])
-
-  // Auto-run when external agent results arrive for the current conversation
-  useEffect(() => {
-    const unsubscribe = agentService.subscribeToPendingBackgroundTaskResults(
-      (conversationId) => {
-        if (conversationId !== currentConversationId) return
-        if (agentService.isRunning(conversationId)) return
-        // Pull the latest messages directly from AgentService — the React
-        // closure's `chatMessages` is stale at this point because the result
-        // was just appended synchronously and React hasn't re-rendered yet.
-        const latestMessages = agentService.getState(conversationId).messages
-        submitChatMutation.mutate({
-          chatMessages: latestMessages,
-          conversationId,
-        })
-      },
-    )
-    return () => {
-      unsubscribe()
-    }
-  }, [agentService, currentConversationId, submitChatMutation])
-
-  const serializeMessageModelMap = useCallback(
-    (
-      messages: ChatMessage[],
-      sourceMap: Map<string, string> = messageModelMap,
-    ): Record<string, string> | undefined => {
-      const persistedEntries = messages.flatMap((message) => {
-        if (message.role !== 'user') {
-          return []
-        }
-        const modelId = sourceMap.get(message.id)
-        return modelId ? [[message.id, modelId] as const] : []
-      })
-      return persistedEntries.length > 0
-        ? Object.fromEntries(persistedEntries)
-        : undefined
-    },
-    [messageModelMap],
-  )
-
-  const normalizeAssistantGroupBoundaryMessageIds = useCallback(
-    (messages: ChatMessage[], sourceIds: readonly string[]): string[] => {
-      const availableNonUserMessageIds = new Set(
-        messages
-          .filter(
-            (message): message is ChatAssistantMessage | ChatToolMessage =>
-              message.role === 'assistant' || message.role === 'tool',
-          )
-          .map((message) => message.id),
-      )
-
-      return sourceIds.filter((messageId, index) => {
-        return (
-          availableNonUserMessageIds.has(messageId) &&
-          sourceIds.indexOf(messageId) === index
-        )
-      })
-    },
-    [],
-  )
-
-  const buildAssistantGroupBoundaryMessageIdsAfterUserRemoval = useCallback(
-    (
-      sourceMessages: ChatMessage[],
-      nextMessages: ChatMessage[],
-      existingBoundaryMessageIds: readonly string[],
-    ): string[] => {
-      const retainedMessageIds = new Set(
-        nextMessages.map((message) => message.id),
-      )
-      const nextBoundaryMessageIds = [
-        ...normalizeAssistantGroupBoundaryMessageIds(
-          nextMessages,
-          existingBoundaryMessageIds,
-        ),
-      ]
-      let lastRetainedNonUserMessageId: string | null = null
-      let sawRemovedUserAfterRetainedNonUser = false
-
-      sourceMessages.forEach((message) => {
-        const isRetained = retainedMessageIds.has(message.id)
-
-        if (!isRetained) {
-          if (message.role === 'user' && lastRetainedNonUserMessageId) {
-            sawRemovedUserAfterRetainedNonUser = true
-          }
-          return
-        }
-
-        if (message.role === 'user') {
-          lastRetainedNonUserMessageId = null
-          sawRemovedUserAfterRetainedNonUser = false
-          return
-        }
-
-        if (
-          lastRetainedNonUserMessageId &&
-          sawRemovedUserAfterRetainedNonUser
-        ) {
-          nextBoundaryMessageIds.push(message.id)
-        }
-
-        lastRetainedNonUserMessageId = message.id
-        sawRemovedUserAfterRetainedNonUser = false
-      })
-
-      return normalizeAssistantGroupBoundaryMessageIds(
-        nextMessages,
-        nextBoundaryMessageIds,
-      )
-    },
-    [normalizeAssistantGroupBoundaryMessageIds],
-  )
-
-  const persistConversation = useCallback(
-    async (
-      messages: ChatMessage[],
-      assistantGroupBoundaryIdsOverride?: readonly string[],
-    ) => {
-      if (messages.length === 0) return
-      try {
-        const effectiveOverrides = {
-          ...(conversationOverrides ?? {}),
-          chatMode,
-          agentYoloEnabled: yoloEnabled,
-        }
-        await createOrUpdateConversation(
-          currentConversationId,
-          messages,
-          effectiveOverrides,
-          conversationModelId,
-          serializeMessageModelMap(messages),
-          serializeActiveBranchByUserMessageId(
-            messages,
-            activeBranchByUserMessageIdRef.current,
-          ),
-          conversationReasoningLevelRef.current.get(currentConversationId) ??
-            reasoningLevel,
-          effectiveCompactionState,
-          normalizeAssistantGroupBoundaryMessageIds(
-            messages,
-            assistantGroupBoundaryIdsOverride ??
-              assistantGroupBoundaryMessageIds,
-          ),
-        )
-      } catch (error) {
-        new Notice('Failed to save chat history')
-        console.error('Failed to save chat history', error)
-      }
-    },
-    [
-      chatMode,
-      yoloEnabled,
-      conversationModelId,
-      conversationOverrides,
-      createOrUpdateConversation,
-      currentConversationId,
-      effectiveCompactionState,
-      reasoningLevel,
-      normalizeAssistantGroupBoundaryMessageIds,
-      assistantGroupBoundaryMessageIds,
-      serializeMessageModelMap,
-    ],
-  )
-
-  const persistConversationImmediately = useCallback(
-    async (
-      messages: ChatMessage[],
-      assistantGroupBoundaryIdsOverride?: readonly string[],
-    ): Promise<boolean> => {
-      if (messages.length === 0) return false
-      try {
-        const effectiveOverrides = {
-          ...(conversationOverrides ?? {}),
-          chatMode,
-          agentYoloEnabled: yoloEnabled,
-        }
-        await createOrUpdateConversationImmediately(
-          currentConversationId,
-          messages,
-          effectiveOverrides,
-          conversationModelId,
-          serializeMessageModelMap(messages),
-          serializeActiveBranchByUserMessageId(
-            messages,
-            activeBranchByUserMessageIdRef.current,
-          ),
-          conversationReasoningLevelRef.current.get(currentConversationId) ??
-            reasoningLevel,
-          effectiveCompactionState,
-          normalizeAssistantGroupBoundaryMessageIds(
-            messages,
-            assistantGroupBoundaryIdsOverride ??
-              assistantGroupBoundaryMessageIds,
-          ),
-        )
-        return true
-      } catch (error) {
-        new Notice('Failed to save chat history')
-        console.error('Failed to save chat history', error)
-        return false
-      }
-    },
-    [
-      chatMode,
-      yoloEnabled,
-      conversationModelId,
-      conversationOverrides,
-      createOrUpdateConversationImmediately,
-      currentConversationId,
-      effectiveCompactionState,
-      reasoningLevel,
-      normalizeAssistantGroupBoundaryMessageIds,
-      assistantGroupBoundaryMessageIds,
-      serializeMessageModelMap,
-    ],
-  )
-
-  const isUserMessageEffectivelyEmpty = useCallback(
-    (
-      message: Pick<
-        ChatUserMessage,
-        'content' | 'mentionables' | 'selectedSkills'
-      >,
-    ): boolean => {
-      const textContent = message.content
-        ? editorStateToPlainText(message.content).trim()
-        : ''
-
-      return (
-        textContent.length === 0 &&
-        message.mentionables.length === 0 &&
-        (message.selectedSkills?.length ?? 0) === 0
-      )
-    },
-    [],
-  )
-
-  const removeHistoricalUserMessage = useCallback(
-    (messageId: string) => {
-      const sourceMessages = chatMessagesStateRef.current
-      const removedMessages = sourceMessages.filter(
-        (message) => message.role === 'user' && message.id === messageId,
-      )
-      releaseHighlightIds(
-        collectSelectionHighlightIdsFromMessages(removedMessages),
-      )
-      const nextMessages = sourceMessages.filter(
-        (message) => !(message.role === 'user' && message.id === messageId),
-      )
-      const nextAssistantGroupBoundaryMessageIds =
-        buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
-          sourceMessages,
-          nextMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-
-      chatMessagesStateRef.current = nextMessages
-      setChatMessages(nextMessages)
-      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-      setFocusedMessageId((prev) =>
-        prev === messageId ? inputMessage.id : prev,
-      )
-      setMessageModelMap((prev) => {
-        if (!prev.has(messageId)) return prev
-        const next = new Map(prev)
-        next.delete(messageId)
-        return next
-      })
-      setMessageReasoningMap((prev) => {
-        if (!prev.has(messageId)) return prev
-        const next = new Map(prev)
-        next.delete(messageId)
-        return next
-      })
-
-      const nextActiveBranchByUserMessageId = new Map(
-        activeBranchByUserMessageIdRef.current,
-      )
-      if (nextActiveBranchByUserMessageId.delete(messageId)) {
-        activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
-        setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
-      }
-
-      if (nextMessages.length === 0) {
-        void deleteConversation(currentConversationId)
-        return
-      }
-
-      void persistConversation(
-        nextMessages,
-        nextAssistantGroupBoundaryMessageIds,
-      )
-    },
-    [
-      assistantGroupBoundaryMessageIds,
-      buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
-      currentConversationId,
-      deleteConversation,
-      inputMessage.id,
-      persistConversation,
-      releaseHighlightIds,
-    ],
-  )
-
-  const updateHistoricalUserMessage = useCallback(
-    (
-      messageId: string,
-      updater: (message: ChatUserMessage) => ChatUserMessage,
-    ) => {
-      const nextMessages = chatMessagesStateRef.current.map((message) => {
-        if (message.role !== 'user' || message.id !== messageId) {
-          return message
-        }
-
-        return updater(message)
-      })
-
-      const updatedMessage = nextMessages.find(
-        (message): message is ChatUserMessage =>
-          message.role === 'user' && message.id === messageId,
-      )
-      if (!updatedMessage) {
-        return
-      }
-
-      chatMessagesStateRef.current = nextMessages
-      setChatMessages(nextMessages)
-      setAssistantGroupBoundaryMessageIds((prev) =>
-        normalizeAssistantGroupBoundaryMessageIds(nextMessages, prev),
-      )
-    },
-    [normalizeAssistantGroupBoundaryMessageIds],
-  )
-
-  const finalizeHistoricalUserMessageEdit = useCallback(
-    (messageId: string) => {
-      const message = chatMessagesStateRef.current.find(
-        (candidate): candidate is ChatUserMessage =>
-          candidate.role === 'user' && candidate.id === messageId,
-      )
-      if (!message) {
-        return
-      }
-
-      if (!isUserMessageEffectivelyEmpty(message)) {
-        return
-      }
-
-      removeHistoricalUserMessage(messageId)
-    },
-    [isUserMessageEffectivelyEmpty, removeHistoricalUserMessage],
-  )
-
-  const handleManualContextCompaction = useCallback(async () => {
-    if (currentConversationRunSummary.isWaitingApproval) {
-      new Notice(
-        t(
-          'chat.compaction.waitingApproval',
-          '请先处理当前待确认的工具调用，再压缩上下文。',
-        ),
-      )
-      return
-    }
-
-    if (currentConversationRunSummary.isActive) {
-      new Notice(
-        t('chat.compaction.runActive', '请等待当前回复完成后再压缩上下文。'),
-      )
-      return
-    }
-
-    if (chatMessages.length === 0) {
-      new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
-      return
-    }
-
-    try {
-      setPendingCompactionAnchorMessageId(chatMessages.at(-1)?.id ?? null)
-      const nextCompactionState = await compactConversation(chatMessages)
-      setPendingCompactionAnchorMessageId(null)
-
-      if (!nextCompactionState) {
-        new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
-        return
-      }
-
-      const nextCompactionHistory = [
-        ...effectiveCompactionState,
-        nextCompactionState,
-      ]
-
-      plugin
-        .getAgentService()
-        .replaceConversationMessages(
-          currentConversationId,
-          chatMessages,
-          nextCompactionHistory,
-        )
-
-      const effectiveOverrides = {
-        ...(conversationOverrides ?? {}),
-        chatMode,
-        agentYoloEnabled: yoloEnabled,
-      }
-      await createOrUpdateConversationImmediately(
-        currentConversationId,
-        chatMessages,
-        effectiveOverrides,
-        conversationModelId,
-        serializeMessageModelMap(chatMessages),
-        serializeActiveBranchByUserMessageId(
-          chatMessages,
-          activeBranchByUserMessageIdRef.current,
-        ),
-        conversationReasoningLevelRef.current.get(currentConversationId) ??
-          reasoningLevel,
-        nextCompactionHistory,
-        normalizeAssistantGroupBoundaryMessageIds(
-          chatMessages,
-          assistantGroupBoundaryMessageIds,
-        ),
-      )
-      new Notice(
-        t(
-          'chat.compaction.success',
-          '已压缩较早上下文，后续回复将基于摘要继续。',
-        ),
-      )
-    } catch (error) {
-      setPendingCompactionAnchorMessageId(null)
-      new Notice(t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'))
-      console.error('Failed to compact conversation context', error)
-    }
-  }, [
+  const {
+    runSummariesByConversationId,
+    queuedUserMessages,
+    serializeMessageModelMap,
+    normalizeAssistantGroupBoundaryMessageIds,
+    buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
+    persistConversation,
+    persistConversationImmediately,
+    isUserMessageEffectivelyEmpty,
+    updateHistoricalUserMessage,
+    finalizeHistoricalUserMessageEdit,
+    dismissHistoricalUserMessage,
+    handleLoadConversation,
+    handleNewChat,
+    handleAssistantMessageEditSave,
+    handleAssistantMessageEditCancel,
+    handleAssistantMessageGroupDelete,
+    handleHistoricalUserMessageDelete,
+    handleAssistantMessageGroupBranch,
+  } = useYoloChatSession({
+    initialConversationId: props.initialConversationId,
+    onConversationContextChange: props.onConversationContextChange,
+    createOrUpdateConversation,
+    createOrUpdateConversationImmediately,
+    deleteConversation,
+    getConversationById,
+    updateConversationTitle,
+    chatList,
+    submitChatMutation,
+    chatMessagesStateRef,
     chatMessages,
+    setChatMessages,
+    currentConversationId,
+    setCurrentConversationId,
+    activeBranchByUserMessageIdRef,
+    setActiveBranchByUserMessageId,
+    assistantGroupBoundaryMessageIds,
+    setAssistantGroupBoundaryMessageIds,
+    isCurrentConversationRunActive,
+    effectiveCompactionState,
+    messageModelMap,
+    setMessageModelMap,
+    messageReasoningMap,
+    setMessageReasoningMap,
+    conversationOverrides,
+    setConversationOverrides,
+    conversationOverridesRef,
+    conversationModelId,
+    setConversationModelId,
+    conversationModelIdRef,
+    conversationAssistantId,
+    setConversationAssistantId,
+    conversationAssistantIdRef,
+    reasoningLevel,
+    setReasoningLevel,
+    conversationReasoningLevelRef,
+    chatMode,
+    setChatMode,
+    yoloEnabled,
+    setYoloEnabled,
+    selectedAssistant,
+    setCompactionState,
+    setPendingCompactionAnchorMessageId,
+    setEditingAssistantMessageId,
+    setIsLoadingConversation,
+    setQueryProgress,
+    setAddedBlockKey,
+    inputMessageId: inputMessage.id,
+    getLatestInputMessage,
+    replaceInputMessage,
+    buildNewInputMessage: getNewInputMessage,
+    setInputMessage,
+    setFocusedMessageId,
+    releaseHighlightIds,
+    normalizeReasoningLevel,
+    getReasoningLevelForModelId,
+    persistChatRuntimePreference,
+    cliRuntimeScope,
+    cliRuntimeAvailable,
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    setRequestedRuntimeId,
+    lastCliRuntimeIdRef,
+    cliModeRequestGenerationRef,
+    runtimeNavigationGenerationRef,
+    chatMountedRef,
+    prePlanCliModeByConversationRef,
+    setCliChatMode,
+    setCliYoloEnabled,
+    setCliConversationController,
+    setCliConversationId,
+    transitionCliSession,
+    createFreshCliConversation,
+  })
+
+  const {
+    handleManualContextCompaction,
+    handleRecoverPendingToolCall,
+    handleRecoverAnswerUserQuestion,
+    handleUserMessageSubmit,
+    handleAssistantMessageGroupRetry,
+    handleAssistantErrorContinue,
+    applyMutation,
+    handleApply,
+    handleUndoEditSummary,
+    handleOpenEditSummaryFile,
+    handleToolMessageUpdate,
+    handleToolCallResponseUpdate,
+    handleContinueResponse,
+    handleExportChatToVault,
+  } = useChatDomainActions({
+    chatMessages,
+    chatMessagesStateRef,
+    setChatMessages,
+    currentConversationId,
+    conversationOverrides,
+    conversationModelId,
     chatMode,
     yoloEnabled,
-    compactConversation,
-    conversationModelId,
-    conversationOverrides,
-    createOrUpdateConversationImmediately,
-    currentConversationId,
-    currentConversationRunSummary.isActive,
-    currentConversationRunSummary.isWaitingApproval,
     effectiveCompactionState,
-    plugin,
-    reasoningLevel,
+    setCompactionState,
+    setPendingCompactionAnchorMessageId,
     assistantGroupBoundaryMessageIds,
+    setAssistantGroupBoundaryMessageIds,
+    activeBranchByUserMessageIdRef,
+    setActiveBranchByUserMessageId,
+    messageModelMap,
+    reasoningLevel,
+    conversationReasoningLevelRef,
+    groupedChatMessagesRef,
+    selectedAssistant,
+    setQueryProgress,
+    setUndoingEditSummaryTarget,
+    activeApplyRequestKey,
+    setActiveApplyRequestKey,
+    applyAbortControllerRef,
+    forceScrollToBottom: triggerForceScrollToBottom,
+    runtimeNavigationGenerationRef,
+    getEditorViewForFile,
+    persistConversationImmediately,
     normalizeAssistantGroupBoundaryMessageIds,
     serializeMessageModelMap,
-    t,
-  ])
+    createOrUpdateConversation,
+    createOrUpdateConversationImmediately,
+    generateConversationTitle,
+    submitChatMutation,
+    abortConversationRun,
+    compactConversation,
+    currentConversationRunSummary,
+    requestContextBuilder,
+    chatManager,
+    normalizeReasoningLevel,
+  })
 
-  const registerChatUserInputRef = useCallback(
-    (id: string, ref: ChatUserInputRef | null) => {
-      if (ref) {
-        chatUserInputRefs.current.set(id, ref)
-      } else {
-        chatUserInputRefs.current.delete(id)
-      }
-    },
-    [],
-  )
-
-  useEffect(() => {
-    if (!focusedMessageId || focusedMessageId === inputMessage.id) {
-      suppressNextHistoricalUserMessageOutsidePointerRef.current = null
-      return
-    }
-
-    const handlePointerDown = (event: PointerEvent) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement)) {
-        return
-      }
-
-      if (target.closest('.yolo-popover-surface')) {
-        return
-      }
-
-      const activeMessageElement = chatMessagesRef.current?.querySelector(
-        `[data-user-message-id="${focusedMessageId}"]`,
-      )
-      if (activeMessageElement?.contains(target)) {
-        return
-      }
-
-      if (
-        suppressNextHistoricalUserMessageOutsidePointerRef.current ===
-        focusedMessageId
-      ) {
-        suppressNextHistoricalUserMessageOutsidePointerRef.current = null
-        return
-      }
-
-      finalizeHistoricalUserMessageEdit(focusedMessageId)
-      setFocusedMessageId(inputMessage.id)
-    }
-
-    const doc = chatMessagesRef.current?.ownerDocument ?? document
-    doc.addEventListener('pointerdown', handlePointerDown, true)
-    return () => {
-      doc.removeEventListener('pointerdown', handlePointerDown, true)
-    }
-  }, [finalizeHistoricalUserMessageEdit, focusedMessageId, inputMessage.id])
-
-  const handleLoadConversation = useCallback(
-    async (conversationId: string) => {
-      setIsLoadingConversation(true)
-      try {
-        const conversation = await getConversationById(conversationId)
-        if (!conversation) {
-          throw new Error('Conversation not found')
-        }
-        const normalizedConversation = normalizeHydratedConversationMessages(
-          conversation.messages,
-        )
-        setCurrentConversationId(conversationId)
-        setChatMessages(normalizedConversation.messages)
-        setAssistantGroupBoundaryMessageIds(
-          normalizeAssistantGroupBoundaryMessageIds(
-            normalizedConversation.messages,
-            conversation.assistantGroupBoundaryMessageIds ?? [],
-          ),
-        )
-        setCompactionState(conversation.compaction ?? [])
-        setPendingCompactionAnchorMessageId(null)
-        plugin
-          .getAgentService()
-          .replaceConversationMessages(
-            conversationId,
-            normalizedConversation.messages,
-            conversation.compaction ?? [],
-            {
-              persistState: true,
-              reason: normalizedConversation.changed ? 'self-heal' : 'hydrate',
-            },
-          )
-        setConversationOverrides(conversation.overrides ?? null)
-        const loadedAssistantId =
-          conversation.assistantId ??
-          conversationAssistantIdRef.current.get(conversationId) ??
-          settings.currentAssistantId ??
-          settings.assistants[0]?.id ??
-          DEFAULT_ASSISTANT_ID
-        const loadedAssistantModelId =
-          settings.assistants.find(
-            (assistant) => assistant.id === loadedAssistantId,
-          )?.modelId ?? null
-        setConversationAssistantId(loadedAssistantId)
-        conversationAssistantIdRef.current.set(
-          conversationId,
-          loadedAssistantId,
-        )
-        const loadedChatMode = normalizeChatMode(
-          conversation.overrides?.chatMode,
-          settings.chatOptions.chatMode ?? 'agent',
-        )
-        setChatMode(loadedChatMode)
-        setYoloEnabled(
-          normalizeYoloEnabled(
-            conversation.overrides?.chatMode,
-            conversation.overrides?.agentYoloEnabled,
-            settings.chatOptions.agentYoloEnabled ?? false,
-          ),
-        )
-        if (conversation.overrides) {
-          conversationOverridesRef.current.set(
-            conversationId,
-            conversation.overrides,
-          )
-        }
-        const modelFromRef =
-          conversation.conversationModelId ??
-          conversationModelIdRef.current.get(conversationId) ??
-          loadedAssistantModelId ??
-          settings.chatModelId
-        setConversationModelId(modelFromRef)
-        conversationModelIdRef.current.set(conversationId, modelFromRef)
-        const loadedConversationTitle = getConversationDisplayTitle(
-          chatList.find((chat) => chat.id === conversationId)?.title,
-          untitledFallback,
-        )
-        props.onConversationContextChange?.({
-          currentConversationId: conversationId,
-          currentConversationPersisted: true,
-          currentConversationTitle: loadedConversationTitle,
-          currentModelId: modelFromRef,
-          currentOverrides: conversation.overrides ?? undefined,
-        })
-        const storedReasoningLevel = normalizeReasoningLevel(
-          conversation.reasoningLevel,
-        )
-        const resolvedReasoningLevel =
-          storedReasoningLevel ?? getReasoningLevelForModelId(modelFromRef)
-        setReasoningLevel(resolvedReasoningLevel)
-        conversationReasoningLevelRef.current.set(
-          conversationId,
-          resolvedReasoningLevel,
-        )
-        setMessageModelMap(
-          new Map(Object.entries(conversation.messageModelMap ?? {})),
-        )
-        const loadedActiveBranchByUserMessageId = new Map(
-          Object.entries(conversation.activeBranchByUserMessageId ?? {}),
-        )
-        activeBranchByUserMessageIdRef.current =
-          loadedActiveBranchByUserMessageId
-        setActiveBranchByUserMessageId(loadedActiveBranchByUserMessageId)
-        const nextMessageReasoningMap = new Map<string, ReasoningLevel>()
-        normalizedConversation.messages.forEach((message) => {
-          if (message.role !== 'user') return
-          const messageLevel = normalizeReasoningLevel(message.reasoningLevel)
-          if (messageLevel) {
-            nextMessageReasoningMap.set(message.id, messageLevel)
-          }
-        })
-        setMessageReasoningMap(nextMessageReasoningMap)
-        const preservedInput = getLatestInputMessage()
-        const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
-        newInputMessage.content = preservedInput.content
-        newInputMessage.mentionables = [...preservedInput.mentionables]
-        newInputMessage.selectedSkills = [
-          ...(preservedInput.selectedSkills ?? []),
-        ]
-        replaceInputMessage(newInputMessage)
-        setFocusedMessageId(newInputMessage.id)
-        setEditingAssistantMessageId(null)
-        setQueryProgress({
-          type: 'idle',
-        })
-        if (normalizedConversation.changed) {
-          await createOrUpdateConversationImmediately(
-            conversationId,
-            normalizedConversation.messages,
-            conversation.overrides,
-            conversation.conversationModelId,
-            conversation.messageModelMap,
-            conversation.activeBranchByUserMessageId,
-            conversation.reasoningLevel,
-            conversation.compaction,
-            normalizeAssistantGroupBoundaryMessageIds(
-              normalizedConversation.messages,
-              conversation.assistantGroupBoundaryMessageIds ?? [],
-            ),
-            { touchUpdatedAt: false },
-          )
-        }
-      } catch (error) {
-        new Notice('Failed to load conversation')
-        console.error('Failed to load conversation', error)
-      } finally {
-        setIsLoadingConversation(false)
-      }
-    },
-    [
-      getConversationById,
-      chatList,
-      createOrUpdateConversationImmediately,
-      plugin,
-      settings.chatModelId,
-      settings.currentAssistantId,
-      settings.chatOptions.chatMode,
-      settings.chatOptions.agentYoloEnabled,
-      settings.assistants,
-      getReasoningLevelForModelId,
-      normalizeAssistantGroupBoundaryMessageIds,
-      normalizeReasoningLevel,
-      props.onConversationContextChange,
-      getLatestInputMessage,
-      replaceInputMessage,
-      untitledFallback,
-    ],
-  )
-
-  // Load an initial conversation passed in via props (e.g., from Quick Ask)
-  useEffect(() => {
-    if (!props.initialConversationId) return
-    void handleLoadConversation(props.initialConversationId)
-  }, [handleLoadConversation, props.initialConversationId])
-
-  useEffect(() => {
-    props.onConversationContextChange?.({
-      currentConversationId,
-      currentConversationPersisted,
-      currentConversationTitle,
-      currentModelId:
-        conversationModelId ??
-        (currentConversationId
-          ? conversationModelIdRef.current.get(currentConversationId)
-          : undefined),
-      currentOverrides:
-        conversationOverrides === null
-          ? undefined
-          : (conversationOverrides ??
-            (currentConversationId
-              ? conversationOverridesRef.current.get(currentConversationId)
-              : undefined)),
-    })
-  }, [
-    currentConversationTitle,
-    currentConversationPersisted,
-    conversationModelId,
-    conversationOverrides,
-    currentConversationId,
-    props.onConversationContextChange,
-  ])
-
-  // 把当前可重建态实时上报给 ChatView，供 host DOM 被替换（pop-out / dock back）
-  // 时无缝重建 React tree。仅副作用：上报快照；不要在这里改 state。
-  const onRuntimeSnapshotChange = props.onRuntimeSnapshotChange
-  useEffect(() => {
-    if (!onRuntimeSnapshotChange) return
-    onRuntimeSnapshotChange({
-      currentConversationId,
-      inputMessage: getLatestInputMessage(),
-      conversationModelId,
-      conversationAssistantId,
-      chatMode,
-      yoloEnabled,
-      reasoningLevel,
-      conversationOverrides,
-    })
-  }, [
-    onRuntimeSnapshotChange,
+  const { buildRuntimeSnapshot } = useChatRuntimeSnapshot({
+    onRuntimeSnapshotChange: props.onRuntimeSnapshotChange,
+    activeRuntimeId,
+    cliSessionRef: activeCliConversationSnapshot?.sessionRef,
+    cliConversationId,
     currentConversationId,
     inputMessage,
+    getLatestInputMessage,
+    inputDraftRevisionRef,
     conversationModelId,
     conversationAssistantId,
     chatMode,
     yoloEnabled,
     reasoningLevel,
     conversationOverrides,
-    getLatestInputMessage,
-  ])
-
-  const handleExportChatToVault = useCallback(
-    (conversationId: string) => {
-      void (async () => {
-        try {
-          const { path } = await exportChatConversationToVault({
-            app,
-            chatManager,
-            conversationId,
-            settings,
-          })
-          new Notice(
-            t('sidebar.chat.exportSuccess', 'Exported chat to {path}').replace(
-              '{path}',
-              path,
-            ),
-          )
-        } catch (error) {
-          console.error('Failed to export conversation', error)
-          new Notice(
-            t('sidebar.chat.exportError', 'Could not export conversation'),
-          )
-        }
-      })()
-    },
-    [app, chatManager, settings, t],
-  )
-
-  const handleNewChat = (selectedBlock?: MentionableBlockData) => {
-    const newId = uuidv4()
-    setCurrentConversationId(newId)
-    conversationAssistantIdRef.current.set(newId, conversationAssistantId)
-    setConversationAssistantId(conversationAssistantId)
-    setConversationOverrides(null)
-    const defaultChatMode = chatMode
-    setChatMode(defaultChatMode)
-    setYoloEnabled(yoloEnabled)
-    const defaultConversationModelId =
-      selectedAssistant?.modelId ?? settings.chatModelId
-    conversationModelIdRef.current.set(newId, defaultConversationModelId)
-    setConversationModelId(defaultConversationModelId)
-    const defaultReasoningLevel = getReasoningLevelForModelId(
-      defaultConversationModelId,
-    )
-    setReasoningLevel(defaultReasoningLevel)
-    conversationReasoningLevelRef.current.set(newId, defaultReasoningLevel)
-    setMessageModelMap(new Map())
-    setAssistantGroupBoundaryMessageIds([])
-    activeBranchByUserMessageIdRef.current = new Map()
-    setActiveBranchByUserMessageId(new Map())
-    setMessageReasoningMap(new Map())
-    setChatMessages([])
-    setCompactionState([])
-    setPendingCompactionAnchorMessageId(null)
-    setEditingAssistantMessageId(null)
-    const newInputMessage = getNewInputMessage(defaultReasoningLevel)
-    const latestInputMessage = getLatestInputMessage()
-    newInputMessage.content = latestInputMessage.content
-    newInputMessage.mentionables = [...latestInputMessage.mentionables]
-    newInputMessage.selectedSkills = [
-      ...(latestInputMessage.selectedSkills ?? []),
-    ]
-    if (selectedBlock) {
-      const mentionableBlock = createSelectionBlockMentionable(selectedBlock)
-      newInputMessage.mentionables = [
-        ...newInputMessage.mentionables,
-        mentionableBlock,
-      ]
-    }
-    setAddedBlockKey(null)
-    replaceInputMessage(newInputMessage)
-    setFocusedMessageId(newInputMessage.id)
-    setQueryProgress({
-      type: 'idle',
-    })
-  }
-
-  const handleAssistantMessageEditSave = useCallback(
-    (groupAnchorMessageId: string, replacementMessages: ChatMessage[]) => {
-      setChatMessages((prevChatHistory) => {
-        const groupedMessages = groupAssistantAndToolMessages(
-          prevChatHistory,
-          assistantGroupBoundaryMessageIds,
-        )
-        const targetGroup = groupedMessages.find(
-          (item): item is AssistantToolMessageGroup =>
-            Array.isArray(item) &&
-            item.some((message) => message.id === groupAnchorMessageId),
-        )
-        if (!targetGroup) {
-          return prevChatHistory
-        }
-
-        const anchorMessage = targetGroup.find(
-          (message) => message.id === groupAnchorMessageId,
-        )
-        const anchorBranchId = anchorMessage?.metadata?.branchId
-        const targetMessages = anchorBranchId
-          ? targetGroup.filter(
-              (message) => message.metadata?.branchId === anchorBranchId,
-            )
-          : targetGroup
-        const targetIds = new Set(targetMessages.map((message) => message.id))
-        const targetIndexes = prevChatHistory
-          .map((message, index) => (targetIds.has(message.id) ? index : null))
-          .filter((index): index is number => index !== null)
-        const startIndex = targetIndexes[0]
-        const endIndex = targetIndexes.at(-1)
-        if (startIndex === undefined || endIndex === undefined) {
-          return prevChatHistory
-        }
-
-        const nextMessages = [
-          ...prevChatHistory.slice(0, startIndex),
-          ...replacementMessages,
-          ...prevChatHistory.slice(endIndex + 1),
-        ]
-        chatMessagesStateRef.current = nextMessages
-        void persistConversation(nextMessages)
-        return nextMessages
-      })
-      setEditingAssistantMessageId(null)
-    },
-    [assistantGroupBoundaryMessageIds, persistConversation],
-  )
-
-  const handleAssistantMessageEditCancel = useCallback(() => {
-    setEditingAssistantMessageId(null)
-  }, [])
-
-  const handleAssistantMessageGroupDelete = useCallback(
-    (messageIds: string[]) => {
-      const idsToRemove = new Set(messageIds)
-      const nextMessages = chatMessagesStateRef.current.filter(
-        (message) => !idsToRemove.has(message.id),
-      )
-      const nextAssistantGroupBoundaryMessageIds =
-        normalizeAssistantGroupBoundaryMessageIds(
-          nextMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-      chatMessagesStateRef.current = nextMessages
-      setChatMessages(nextMessages)
-      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-      void persistConversation(
-        nextMessages,
-        nextAssistantGroupBoundaryMessageIds,
-      )
-      setEditingAssistantMessageId((prev) =>
-        prev && idsToRemove.has(prev) ? null : prev,
-      )
-    },
-    [
-      assistantGroupBoundaryMessageIds,
-      normalizeAssistantGroupBoundaryMessageIds,
-      persistConversation,
-    ],
-  )
-
-  const handleHistoricalUserMessageDelete = useCallback(
-    (userMessageId: string) => {
-      if (isCurrentConversationRunActive) return
-      const sourceMessages = chatMessagesStateRef.current
-      const startIdx = sourceMessages.findIndex(
-        (m) => m.id === userMessageId && m.role === 'user',
-      )
-      if (startIdx < 0) return
-      let endIdx = sourceMessages.length
-      for (let i = startIdx + 1; i < sourceMessages.length; i += 1) {
-        if (sourceMessages[i].role === 'user') {
-          endIdx = i
-          break
-        }
-      }
-      const removedIds = new Set(
-        sourceMessages.slice(startIdx, endIdx).map((m) => m.id),
-      )
-      const removedMessages = sourceMessages.slice(startIdx, endIdx)
-      releaseHighlightIds(
-        collectSelectionHighlightIdsFromMessages(removedMessages),
-      )
-      const nextMessages = sourceMessages.filter((m) => !removedIds.has(m.id))
-      const nextAssistantGroupBoundaryMessageIds =
-        normalizeAssistantGroupBoundaryMessageIds(
-          nextMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-      chatMessagesStateRef.current = nextMessages
-      setChatMessages(nextMessages)
-      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-
-      setMessageModelMap((prev) => {
-        if (!prev.has(userMessageId)) return prev
-        const next = new Map(prev)
-        next.delete(userMessageId)
-        return next
-      })
-      setMessageReasoningMap((prev) => {
-        if (!prev.has(userMessageId)) return prev
-        const next = new Map(prev)
-        next.delete(userMessageId)
-        return next
-      })
-      if (activeBranchByUserMessageIdRef.current.has(userMessageId)) {
-        const nextBranchMap = new Map(activeBranchByUserMessageIdRef.current)
-        nextBranchMap.delete(userMessageId)
-        activeBranchByUserMessageIdRef.current = nextBranchMap
-        setActiveBranchByUserMessageId(nextBranchMap)
-      }
-      setEditingAssistantMessageId((prev) =>
-        prev && removedIds.has(prev) ? null : prev,
-      )
-      setFocusedMessageId((prev) =>
-        prev && removedIds.has(prev) ? inputMessage.id : prev,
-      )
-      if (nextMessages.length === 0) {
-        void deleteConversation(currentConversationId)
-        return
-      }
-      void persistConversation(
-        nextMessages,
-        nextAssistantGroupBoundaryMessageIds,
-      )
-    },
-    [
-      assistantGroupBoundaryMessageIds,
-      currentConversationId,
-      deleteConversation,
-      inputMessage.id,
-      isCurrentConversationRunActive,
-      normalizeAssistantGroupBoundaryMessageIds,
-      persistConversation,
-      releaseHighlightIds,
-    ],
-  )
-
-  const handleAssistantMessageGroupBranch = useCallback(
-    (messageIds: string[]) => {
-      if (messageIds.length === 0) return
-
-      const sourceMessages = chatMessagesStateRef.current
-      const targetIds = new Set(messageIds)
-      let branchEndIndex = -1
-      for (let i = sourceMessages.length - 1; i >= 0; i -= 1) {
-        if (targetIds.has(sourceMessages[i].id)) {
-          branchEndIndex = i
-          break
-        }
-      }
-
-      if (branchEndIndex < 0) {
-        new Notice(t('chat.branchCreateFailed', 'Failed to create branch'))
-        return
-      }
-
-      const nextMessages = sourceMessages.slice(0, branchEndIndex + 1)
-      if (nextMessages.length === 0) {
-        new Notice(t('chat.branchCreateFailed', 'Failed to create branch'))
-        return
-      }
-
-      const sourceTitle = getConversationDisplayTitle(
-        chatList.find((chat) => chat.id === currentConversationId)?.title,
-        t('chat.untitledConversation', 'New chat'),
-      )
-      const branchTitle = `${sourceTitle} (copy)`
-
-      const newConversationId = uuidv4()
-      const nextOverrides =
-        conversationOverridesRef.current.get(currentConversationId) ??
-        conversationOverrides ??
-        null
-      const nextChatMode = normalizeChatMode(nextOverrides?.chatMode, chatMode)
-      const nextYoloEnabled = normalizeYoloEnabled(
-        nextOverrides?.chatMode,
-        nextOverrides?.agentYoloEnabled,
-        yoloEnabled,
-      )
-
-      const resolvedConversationModelId =
-        conversationModelIdRef.current.get(currentConversationId) ??
-        conversationModelId ??
-        settings.chatModelId
-      const resolvedReasoningLevel =
-        conversationReasoningLevelRef.current.get(currentConversationId) ??
-        reasoningLevel
-
-      const retainedUserMessageIds = new Set(
-        nextMessages
-          .filter(
-            (message): message is ChatUserMessage => message.role === 'user',
-          )
-          .map((message) => message.id),
-      )
-
-      const nextMessageModelMap = new Map(
-        Array.from(messageModelMap.entries()).filter(([messageId]) =>
-          retainedUserMessageIds.has(messageId),
-        ),
-      )
-      const nextMessageReasoningMap = new Map(
-        Array.from(messageReasoningMap.entries()).filter(([messageId]) =>
-          retainedUserMessageIds.has(messageId),
-        ),
-      )
-      const nextAssistantGroupBoundaryMessageIds =
-        normalizeAssistantGroupBoundaryMessageIds(
-          nextMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-      const nextActiveBranchByUserMessageId = new Map(
-        Array.from(activeBranchByUserMessageIdRef.current.entries()).filter(
-          ([messageId]) => retainedUserMessageIds.has(messageId),
-        ),
-      )
-      const branchedCompactionState = effectiveCompactionState.filter((entry) =>
-        nextMessages.some((message) => message.id === entry.anchorMessageId),
-      )
-
-      setCurrentConversationId(newConversationId)
-      setChatMessages(nextMessages)
-      setCompactionState(branchedCompactionState)
-      setPendingCompactionAnchorMessageId(null)
-      setEditingAssistantMessageId(null)
-
-      setConversationOverrides(nextOverrides)
-      if (nextOverrides) {
-        conversationOverridesRef.current.set(newConversationId, nextOverrides)
-      } else {
-        conversationOverridesRef.current.delete(newConversationId)
-      }
-
-      setChatMode(nextChatMode)
-      setYoloEnabled(nextYoloEnabled)
-
-      setConversationAssistantId(conversationAssistantId)
-      conversationAssistantIdRef.current.set(
-        newConversationId,
-        conversationAssistantId,
-      )
-
-      setConversationModelId(resolvedConversationModelId)
-      conversationModelIdRef.current.set(
-        newConversationId,
-        resolvedConversationModelId,
-      )
-
-      setReasoningLevel(resolvedReasoningLevel)
-      conversationReasoningLevelRef.current.set(
-        newConversationId,
-        resolvedReasoningLevel,
-      )
-
-      setMessageModelMap(nextMessageModelMap)
-      setMessageReasoningMap(nextMessageReasoningMap)
-      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
-      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
-
-      const newInputMessage = getNewInputMessage(resolvedReasoningLevel)
-      replaceInputMessage(newInputMessage)
-      setFocusedMessageId(newInputMessage.id)
-      setQueryProgress({ type: 'idle' })
-
-      void (async () => {
-        await createOrUpdateConversationImmediately(
-          newConversationId,
-          nextMessages,
-          {
-            ...(nextOverrides ?? {}),
-            chatMode: nextChatMode,
-            agentYoloEnabled: nextYoloEnabled,
-          },
-          resolvedConversationModelId,
-          serializeMessageModelMap(nextMessages, nextMessageModelMap),
-          serializeActiveBranchByUserMessageId(
-            nextMessages,
-            nextActiveBranchByUserMessageId,
-          ),
-          resolvedReasoningLevel,
-          branchedCompactionState,
-          nextAssistantGroupBoundaryMessageIds,
-        )
-        await updateConversationTitle(newConversationId, branchTitle)
-        new Notice(t('chat.branchCreated', 'Branch created'))
-      })().catch((error) => {
-        new Notice(t('chat.branchCreateFailed', 'Failed to create branch'))
-        console.error('Failed to create branched conversation', error)
-      })
-    },
-    [
-      chatList,
-      chatMode,
-      yoloEnabled,
-      conversationAssistantId,
-      conversationModelId,
-      conversationOverrides,
-      createOrUpdateConversationImmediately,
-      currentConversationId,
-      effectiveCompactionState,
-      messageModelMap,
-      messageReasoningMap,
-      assistantGroupBoundaryMessageIds,
-      normalizeAssistantGroupBoundaryMessageIds,
-      reasoningLevel,
-      serializeMessageModelMap,
-      settings.chatModelId,
-      t,
-      updateConversationTitle,
-    ],
-  )
-
-  const resolveReasoningLevelForMessages = useCallback(
-    (messages: ChatMessage[]) => {
-      const lastUserMessage = [...messages]
-        .reverse()
-        .find((message): message is ChatUserMessage => message.role === 'user')
-      const storedLevel = normalizeReasoningLevel(
-        lastUserMessage?.reasoningLevel,
-      )
-      return storedLevel ?? reasoningLevel
-    },
-    [normalizeReasoningLevel, reasoningLevel],
-  )
-
-  const handleRecoverPendingToolCall = useCallback(
-    async ({
-      conversationId,
-      toolMessageId,
-      request,
-      allowForConversation = false,
-    }: {
-      conversationId: string
-      toolMessageId: string
-      request: ToolCallRequest
-      allowForConversation?: boolean
-    }): Promise<boolean> => {
-      if (conversationId !== currentConversationId) {
-        return false
-      }
-
-      const sourceMessages = chatMessagesStateRef.current
-      const toolMessageIndex = sourceMessages.findIndex(
-        (message) => message.role === 'tool' && message.id === toolMessageId,
-      )
-      if (toolMessageIndex === -1) {
-        return false
-      }
-
-      const toolMessage = sourceMessages[toolMessageIndex]
-      if (toolMessage.role !== 'tool') {
-        return false
-      }
-
-      const targetToolCall = toolMessage.toolCalls.find(
-        (toolCall) => toolCall.request.id === request.id,
-      )
-      if (
-        !targetToolCall ||
-        targetToolCall.response.status !==
-          ToolCallResponseStatus.PendingApproval
-      ) {
-        return false
-      }
-
-      const applyMessages = (nextMessages: ChatMessage[]) => {
-        setChatMessages(nextMessages)
-        chatMessagesStateRef.current = nextMessages
-        plugin
-          .getAgentService()
-          .replaceConversationMessages(
-            conversationId,
-            nextMessages,
-            effectiveCompactionState,
-            { persistState: true },
-          )
-      }
-
-      const runningMessages = updateToolCallResponseInMessages({
-        messages: sourceMessages,
-        toolMessageId,
-        toolCallId: request.id,
-        response: { status: ToolCallResponseStatus.Running },
-      })
-      applyMessages(runningMessages)
-
-      const foregroundToolAbortController = new AbortController()
-      let unregisterForegroundToolAborter: (() => void) | null = null
-      try {
-        const mcpManager = await getMcpManager()
-        const args = getToolCallArgumentsObject(request.arguments)
-        unregisterForegroundToolAborter = plugin
-          .getAgentService()
-          .registerForegroundToolAborter({
-            conversationId,
-            toolCallId: request.id,
-            abort: () => {
-              foregroundToolAbortController.abort()
-              mcpManager.abortToolCall(request.id)
-            },
-          })
-
-        if (allowForConversation) {
-          mcpManager.allowToolForConversation(
-            request.name,
-            conversationId,
-            args,
-          )
-        }
-
-        if (foregroundToolAbortController.signal.aborted) {
-          return true
-        }
-
-        const result = await captureLLMDebugOperation({
-          traceId: findDebugTraceIdForToolCall(runningMessages, request.id),
-          transportMode: 'mcp',
-          url: `mcp://${request.name}`,
-          method: 'callTool',
-          requestBody: {
-            name: request.name,
-            args,
-            id: request.id,
-            conversationId,
-            roundId: toolMessageId,
-            chatModelId:
-              toolMessage.metadata?.branchModelId ?? conversationModelId,
-          },
-          responseContentType: 'application/json',
-          run: () =>
-            mcpManager.callTool({
-              name: request.name,
-              args,
-              id: request.id,
-              signal: foregroundToolAbortController.signal,
-              conversationId,
-              conversationMessages: runningMessages,
-              roundId: toolMessageId,
-              // Pass the model that produced this tool call (recorded as
-              // branchModelId on the tool message when the LLM turn ran), not
-              // the current conversation model. The user may have switched
-              // models before approving it, so capability-gated resolution must
-              // match the schema used when the call was emitted.
-              chatModelId:
-                toolMessage.metadata?.branchModelId ?? conversationModelId,
-              workspaceScope: isAgentChatMode(chatMode)
-                ? selectedAssistant?.workspaceScope
-                : undefined,
-              subagentParentContext: isDelegateSubagentToolName(request.name)
-                ? plugin
-                    .getAgentService()
-                    .getPendingApprovalSubagentParentContext(conversationId)
-                : undefined,
-            }),
-          getResponseBody: (response) => response,
-        })
-
-        if (foregroundToolAbortController.signal.aborted) {
-          return true
-        }
-
-        const resolvedMessages = updateToolCallResponseInMessages({
-          messages: chatMessagesStateRef.current,
-          toolMessageId,
-          toolCallId: request.id,
-          response: result,
-        })
-        applyMessages(resolvedMessages)
-        await persistConversationImmediately(resolvedMessages)
-
-        const latestToolMessage = resolvedMessages.find(
-          (message) => message.role === 'tool' && message.id === toolMessageId,
-        )
-        if (
-          toolMessageIndex === resolvedMessages.length - 1 &&
-          latestToolMessage?.role === 'tool' &&
-          latestToolMessage.toolCalls.every((toolCall) =>
-            [
-              ToolCallResponseStatus.Success,
-              ToolCallResponseStatus.Error,
-            ].includes(toolCall.response.status),
-          )
-        ) {
-          submitChatMutation.mutate({
-            chatMessages: resolvedMessages,
-            conversationId,
-            reasoningLevel: resolveReasoningLevelForMessages(resolvedMessages),
-            modelIds: getLatestUserSelectedModelIds(resolvedMessages),
-          })
-        }
-
-        return true
-      } catch (error) {
-        if (foregroundToolAbortController.signal.aborted) {
-          return true
-        }
-
-        const errorMessage =
-          error instanceof Error ? error.message : 'Tool call failed'
-        const failedMessages = updateToolCallResponseInMessages({
-          messages: chatMessagesStateRef.current,
-          toolMessageId,
-          toolCallId: request.id,
-          response: {
-            status: ToolCallResponseStatus.Error,
-            error: errorMessage,
-          },
-        })
-        applyMessages(failedMessages)
-        await persistConversationImmediately(failedMessages)
-        console.error('[YOLO] Failed to recover pending tool call', {
-          conversationId,
-          toolCallId: request.id,
-          error,
-        })
-        return true
-      } finally {
-        unregisterForegroundToolAborter?.()
-      }
-    },
-    [
-      currentConversationId,
-      effectiveCompactionState,
-      getMcpManager,
-      persistConversationImmediately,
-      plugin,
-      resolveReasoningLevelForMessages,
-      submitChatMutation,
-    ],
-  )
-
-  /**
-   * Recovery path for ask_user_question: the service has already committed
-   * the user's answers to the persisted tool message but no live run remains
-   * (the conversation finalized before the user answered). Mirror the tail
-   * of handleRecoverPendingToolCall — persist immediately and kick off a
-   * fresh submit so the agent loop resumes from the resolved messages.
-   */
-  const handleRecoverAnswerUserQuestion = useCallback(
-    ({
-      resolvedMessages,
-      toolCallId: _toolCallId,
-    }: {
-      resolvedMessages: ChatMessage[]
-      toolCallId: string
-    }) => {
-      const conversationId = currentConversationId
-      setChatMessages(resolvedMessages)
-      chatMessagesStateRef.current = resolvedMessages
-      plugin
-        .getAgentService()
-        .replaceConversationMessages(
-          conversationId,
-          resolvedMessages,
-          effectiveCompactionState,
-          { persistState: true },
-        )
-      void persistConversationImmediately(resolvedMessages)
-      submitChatMutation.mutate({
-        chatMessages: resolvedMessages,
-        conversationId,
-        reasoningLevel: resolveReasoningLevelForMessages(resolvedMessages),
-        modelIds: getLatestUserSelectedModelIds(resolvedMessages),
-      })
-    },
-    [
-      currentConversationId,
-      effectiveCompactionState,
-      persistConversationImmediately,
-      plugin,
-      resolveReasoningLevelForMessages,
-      setChatMessages,
-      submitChatMutation,
-    ],
-  )
-
-  const buildInputMessageForSubmit = useCallback(
-    (content: ChatUserMessage['content']): ChatUserMessage => {
-      const latestInputMessage = getLatestInputMessage()
-      const mentionables = latestInputMessage.mentionables
-      return {
-        ...latestInputMessage,
-        content,
-        reasoningLevel,
-        mentionables,
-        selectedSkills: latestInputMessage.selectedSkills ?? [],
-        selectedModelIds: extractSelectedModelIds(mentionables),
-      }
-    },
-    [getLatestInputMessage, reasoningLevel],
-  )
-
-  const handleUserMessageSubmit = useCallback(
-    async ({
-      inputChatMessages,
-      requestChatMessages,
-      retryBranchTarget,
-      persistedMessageModelMap,
-    }: {
-      inputChatMessages: ChatMessage[]
-      requestChatMessages?: ChatMessage[]
-      retryBranchTarget?: {
-        branchId: string
-        sourceUserMessageId: string
-        branchModelId?: string
-        branchLabel?: string
-      }
-      persistedMessageModelMap?: Map<string, string>
-    }) => {
-      abortConversationRun(currentConversationId)
-      setQueryProgress({
-        type: 'idle',
-      })
-
-      const compactionForSubmit = effectiveCompactionState
-
-      // Update the chat history to show the new user message
-      setChatMessages(inputChatMessages)
-      requestAnimationFrame(() => {
-        forceScrollToBottom()
-      })
-
-      const effectiveRequestChatMessages =
-        requestChatMessages ?? inputChatMessages
-      const lastMessage = effectiveRequestChatMessages.at(-1)
-      if (lastMessage?.role !== 'user') {
-        throw new Error('Last message is not a user message')
-      }
-
-      const compiledRequestMessages = await Promise.all(
-        effectiveRequestChatMessages.map(async (message) => {
-          if (message.role === 'user' && message.id === lastMessage.id) {
-            const { promptContent } =
-              await requestContextBuilder.compileUserMessagePrompt({
-                message,
-                onQueryProgressChange: setQueryProgress,
-              })
-            return {
-              ...message,
-              promptContent,
-            }
-          } else if (message.role === 'user' && !message.promptContent) {
-            const { promptContent } =
-              await requestContextBuilder.compileUserMessagePrompt({
-                message,
-              })
-            return {
-              ...message,
-              promptContent,
-            }
-          }
-          return message
-        }),
-      )
-
-      const compiledUserMessagesById = new Map(
-        compiledRequestMessages
-          .filter(
-            (message): message is ChatUserMessage => message.role === 'user',
-          )
-          .map((message) => [message.id, message]),
-      )
-
-      const compiledInputMessages = inputChatMessages.map((message) => {
-        if (message.role !== 'user') {
-          return message
-        }
-
-        const compiledUserMessage = compiledUserMessagesById.get(message.id)
-        return compiledUserMessage
-          ? {
-              ...message,
-              promptContent: compiledUserMessage.promptContent,
-            }
-          : message
-      })
-
-      const persistedMessages = compiledInputMessages.map((message) => {
-        if (message.role !== 'user') {
-          return message
-        }
-        if (!message.promptContent) {
-          return message
-        }
-        return {
-          ...message,
-          promptContent: null,
-        }
-      })
-
-      setChatMessages(persistedMessages)
-      plugin
-        .getAgentService()
-        .replaceConversationMessages(
-          currentConversationId,
-          persistedMessages,
-          compactionForSubmit,
-        )
-      setCompactionState(compactionForSubmit)
-      void createOrUpdateConversation(
-        currentConversationId,
-        compiledInputMessages,
-        {
-          ...(conversationOverrides ?? {}),
-          chatMode,
-          agentYoloEnabled: yoloEnabled,
-        },
-        conversationModelId,
-        serializeMessageModelMap(
-          compiledInputMessages,
-          persistedMessageModelMap ?? messageModelMap,
-        ),
-        serializeActiveBranchByUserMessageId(
-          compiledInputMessages,
-          activeBranchByUserMessageIdRef.current,
-        ),
-        conversationReasoningLevelRef.current.get(currentConversationId) ??
-          reasoningLevel,
-        compactionForSubmit,
-        normalizeAssistantGroupBoundaryMessageIds(
-          compiledInputMessages,
-          assistantGroupBoundaryMessageIds,
-        ),
-      )
-      void generateConversationTitle(
-        currentConversationId,
-        compiledInputMessages,
-      )
-      const requestReasoningLevel = resolveReasoningLevelForMessages(
-        compiledRequestMessages,
-      )
-      const requestModelIds =
-        lastMessage.selectedModelIds && lastMessage.selectedModelIds.length > 0
-          ? lastMessage.selectedModelIds
-          : undefined
-      submitChatMutation.mutate({
-        chatMessages: compiledInputMessages,
-        requestMessages: compiledRequestMessages,
-        conversationId: currentConversationId,
-        reasoningLevel: requestReasoningLevel,
-        modelIds: requestModelIds,
-        branchTarget: retryBranchTarget,
-        compactionOverride: compactionForSubmit,
-      })
-    },
-    [
-      submitChatMutation,
-      currentConversationId,
-      conversationModelId,
-      conversationOverrides,
-      requestContextBuilder,
-      abortConversationRun,
-      activeBranchByUserMessageIdRef,
-      forceScrollToBottom,
-      assistantGroupBoundaryMessageIds,
-      createOrUpdateConversation,
-      effectiveCompactionState,
-      generateConversationTitle,
-      chatMode,
-      yoloEnabled,
-      messageModelMap,
-      normalizeAssistantGroupBoundaryMessageIds,
-      reasoningLevel,
-      resolveReasoningLevelForMessages,
-      serializeMessageModelMap,
-      plugin,
-    ],
-  )
-
-  const handleAssistantMessageGroupRetry = useCallback(
-    (messageIds: string[]) => {
-      const retryPayload = buildRetrySubmissionMessages({
-        sourceMessages: chatMessagesStateRef.current,
-        groupedChatMessages: groupedChatMessagesRef.current,
-        targetMessageIds: messageIds,
-        activeBranchByUserMessageId: activeBranchByUserMessageIdRef.current,
-      })
-
-      if (!retryPayload) {
-        new Notice(
-          t('chat.regenerateFailed', 'Failed to regenerate this reply'),
-        )
-        return
-      }
-
-      const {
-        sourceUserMessageId,
-        inputChatMessages,
-        requestChatMessages,
-        branchTarget,
-      } = retryPayload
-      const nextAssistantGroupBoundaryMessageIds =
-        normalizeAssistantGroupBoundaryMessageIds(
-          inputChatMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-
-      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-
-      const nextActiveBranchByUserMessageId = new Map(
-        activeBranchByUserMessageIdRef.current,
-      )
-      if (branchTarget) {
-        nextActiveBranchByUserMessageId.set(
-          sourceUserMessageId,
-          branchTarget.branchId,
-        )
-      } else {
-        nextActiveBranchByUserMessageId.delete(sourceUserMessageId)
-      }
-      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
-      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
-
-      void handleUserMessageSubmit({
-        inputChatMessages,
-        requestChatMessages,
-        retryBranchTarget: branchTarget
-          ? {
-              ...branchTarget,
-              sourceUserMessageId,
-            }
-          : undefined,
-      })
-    },
-    [
-      assistantGroupBoundaryMessageIds,
-      groupedChatMessagesRef,
-      handleUserMessageSubmit,
-      normalizeAssistantGroupBoundaryMessageIds,
-      t,
-    ],
-  )
-
-  const handleAssistantErrorContinue = useCallback(
-    (assistantMessageId: string) => {
-      if (assistantContinuationPendingRef.current) {
-        return
-      }
-      const payload = buildAssistantErrorContinuation({
-        sourceMessages: chatMessagesStateRef.current,
-        groupedChatMessages: groupedChatMessagesRef.current,
-        assistantMessageId,
-        activeBranchByUserMessageId: activeBranchByUserMessageIdRef.current,
-      })
-      if (!payload) {
-        new Notice(
-          t('chat.regenerateFailed', 'Failed to regenerate this reply'),
-        )
-        return
-      }
-
-      forceScrollToBottom()
-      assistantContinuationPendingRef.current = true
-      submitChatMutation.mutate(
-        {
-          chatMessages: payload.inputChatMessages,
-          requestMessages: payload.requestChatMessages,
-          conversationId: currentConversationId,
-          reasoningLevel: resolveReasoningLevelForMessages(
-            payload.requestChatMessages,
-          ),
-          assistantContinuation: {
-            assistantMessageId: payload.assistantMessageId,
-            sourceUserMessageId: payload.sourceUserMessageId,
-            modelId: payload.modelId,
-            branchId: payload.branchId,
-            branchLabel: payload.branchLabel,
-          },
-        },
-        {
-          onSettled: () => {
-            assistantContinuationPendingRef.current = false
-          },
-        },
-      )
-    },
-    [
-      currentConversationId,
-      forceScrollToBottom,
-      resolveReasoningLevelForMessages,
-      submitChatMutation,
-      t,
-    ],
-  )
-
-  const applyMutation = useMutation({
-    mutationFn: async ({
-      blockToApply,
-      targetFilePath,
-      abortSignal,
-    }: {
-      blockToApply: string
-      targetFilePath?: string
-      abortSignal?: AbortSignal
-    }) => {
-      if (abortSignal?.aborted) {
-        throw new DOMException('Apply aborted', 'AbortError')
-      }
-
-      const targetFile = targetFilePath
-        ? app.vault.getFileByPath(targetFilePath)
-        : app.workspace.getActiveFile()
-      if (!targetFile) {
-        throw new Error(
-          'No file is currently open to apply changes. Please open a file and try again.',
-        )
-      }
-      const targetFileContent = await readTFileContent(targetFile, app.vault)
-      const plan = parseTextEditPlan(blockToApply, {
-        requireDocumentType: true,
-      })
-
-      if (!plan) {
-        throw new Error('当前内容不包含可应用的编辑计划。')
-      }
-
-      const materialized = materializeTextEditPlan({
-        content: targetFileContent,
-        plan,
-      })
-
-      if (materialized.errors.length > 0) {
-        console.warn('[Chat Apply] Some planned edits failed during apply.', {
-          filePath: targetFile.path,
-          errors: materialized.errors,
-        })
-      }
-
-      if (materialized.appliedCount === 0) {
-        console.error('[Chat Apply] Edit plan did not produce changes.', {
-          filePath: targetFile.path,
-          operationCount: materialized.totalOperations,
-          errors: materialized.errors,
-        })
-        throw new Error('当前编辑计划未匹配到可修改内容，请重新生成。')
-      }
-
-      const selectionRange = getInlineSelectionRange(
-        targetFileContent,
-        materialized.operationResults,
-      )
-
-      if (settings.chatOptions.chatApplyMode === 'direct-apply') {
-        await app.vault.modify(targetFile, materialized.newContent)
-
-        if (materialized.errors.length > 0) {
-          const partialMessage = t(
-            'quickAsk.editPartialSuccess',
-            '已应用 {appliedCount}/{totalEdits} 个编辑，详情请查看控制台',
-          )
-            .replace('{appliedCount}', String(materialized.appliedCount))
-            .replace('{totalEdits}', String(materialized.totalOperations))
-          new Notice(partialMessage)
-        }
-
-        const updatedRanges = materialized.operationResults
-          .map((result) => result.newRange)
-          .filter((range): range is NonNullable<typeof range> => Boolean(range))
-        const editorView = getEditorViewForFile(targetFile)
-        if (editorView && updatedRanges.length > 0) {
-          const isEditorSynced = await waitForEditorContentSync(
-            editorView,
-            materialized.newContent,
-          )
-
-          if (isEditorSynced) {
-            selectionHighlightController.highlightRanges(
-              editorView,
-              updatedRanges.map((range) => ({
-                from: range.start,
-                to: range.end,
-                visual: 'updated' as const,
-              })),
-              1050,
-            )
-          }
-        }
-        return
-      }
-
-      await plugin.openApplyReview({
-        file: targetFile,
-        originalContent: targetFileContent,
-        newContent: materialized.newContent,
-        reviewMode: selectionRange ? 'selection-focus' : 'full',
-        selectionRange,
-      } satisfies ApplyViewState)
-    },
-    onError: (error) => {
-      if (
-        (error instanceof Error && error.name === 'AbortError') ||
-        (error instanceof Error && /abort/i.test(error.message))
-      ) {
-        return
-      }
-      if (error instanceof Error) {
-        new Notice(error.message)
-        console.error('Failed to apply changes', error)
-        return
-      }
-      new Notice('Failed to apply changes')
-      console.error('Failed to apply changes', error)
-    },
-    onSettled: () => {
-      applyAbortControllerRef.current = null
-      setActiveApplyRequestKey(null)
-    },
   })
-
-  const handleApply = useCallback(
-    (
-      blockToApply: string,
-      applyRequestKey: string,
-      targetFilePath?: string,
-    ) => {
-      if (applyMutation.isPending) {
-        if (activeApplyRequestKey === applyRequestKey) {
-          applyAbortControllerRef.current?.abort()
-          applyAbortControllerRef.current = null
-          setActiveApplyRequestKey(null)
-        }
-        return
-      }
-
-      const abortController = new AbortController()
-      applyAbortControllerRef.current = abortController
-      setActiveApplyRequestKey(applyRequestKey)
-      applyMutation.mutate({
-        blockToApply,
-        targetFilePath,
-        abortSignal: abortController.signal,
-      })
-    },
-    [activeApplyRequestKey, applyMutation],
-  )
-
-  const handleUndoEditSummary = useCallback(
-    async (summary: GroupEditSummary) => {
-      if (!currentConversationId) {
-        return
-      }
-
-      const summaryKey = summary.entries
-        .map((entry) => entry.toolCallId)
-        .join(':')
-      const targetKey =
-        summary.files.length === 1
-          ? `${summaryKey}::${summary.files[0]?.path ?? 'all'}`
-          : `${summaryKey}::all`
-      setUndoingEditSummaryTarget(targetKey)
-
-      try {
-        const undoStateByPath = new Map<string, 'applied' | 'unavailable'>()
-
-        for (const fileGroup of summary.files) {
-          const [firstSnapshot, latestSnapshot] = await Promise.all([
-            readEditReviewSnapshot({
-              app,
-              conversationId: currentConversationId,
-              roundId: fileGroup.firstRoundId,
-              filePath: fileGroup.path,
-              settings,
-            }),
-            readEditReviewSnapshot({
-              app,
-              conversationId: currentConversationId,
-              roundId: fileGroup.latestRoundId,
-              filePath: fileGroup.path,
-              settings,
-            }),
-          ])
-
-          if (!firstSnapshot || !latestSnapshot) {
-            undoStateByPath.set(fileGroup.path, 'unavailable')
-            continue
-          }
-
-          const targetFile = app.vault.getAbstractFileByPath(fileGroup.path)
-          const currentFile = targetFile instanceof TFile ? targetFile : null
-
-          if (latestSnapshot.afterExists) {
-            if (!currentFile) {
-              undoStateByPath.set(fileGroup.path, 'unavailable')
-              continue
-            }
-
-            const currentContent = await app.vault.read(currentFile)
-            if (currentContent !== latestSnapshot.afterContent) {
-              undoStateByPath.set(fileGroup.path, 'unavailable')
-              continue
-            }
-          } else if (targetFile) {
-            undoStateByPath.set(fileGroup.path, 'unavailable')
-            continue
-          }
-
-          undoStateByPath.set(fileGroup.path, 'applied')
-
-          if (!firstSnapshot.beforeExists) {
-            if (currentFile) {
-              await app.fileManager.trashFile(currentFile)
-            }
-            continue
-          }
-
-          if (currentFile) {
-            const currentContent = await app.vault.read(currentFile)
-            if (currentContent !== firstSnapshot.beforeContent) {
-              await app.vault.modify(currentFile, firstSnapshot.beforeContent)
-            }
-            continue
-          }
-
-          const parentPath = fileGroup.path.split('/').slice(0, -1).join('/')
-          if (parentPath.length > 0) {
-            await ensureDirectoryPathExists(app, parentPath)
-          }
-          await app.vault.create(fileGroup.path, firstSnapshot.beforeContent)
-        }
-
-        const appliedCount = summary.files.filter(
-          (file) => undoStateByPath.get(file.path) === 'applied',
-        ).length
-        const unavailableCount = summary.files.length - appliedCount
-
-        const updatedMessages = chatMessages.map((message) => {
-          if (message.role !== 'tool') {
-            return message
-          }
-
-          let nextToolMessage = message
-          summary.entries.forEach((entry) => {
-            if (entry.toolMessageId !== message.id) {
-              return
-            }
-
-            const nextFiles = entry.summary.files.map((file) => {
-              const nextStatus =
-                undoStateByPath.get(file.path) ?? file.undoStatus
-
-              return {
-                ...file,
-                undoStatus: nextStatus,
-              }
-            })
-
-            nextToolMessage = updateToolMessageEditSummary({
-              toolMessage: nextToolMessage,
-              toolCallId: entry.toolCallId,
-              editSummary: {
-                ...entry.summary,
-                files: nextFiles,
-                undoStatus: deriveToolEditUndoStatus(nextFiles),
-              },
-            })
-          })
-
-          return nextToolMessage
-        })
-
-        setChatMessages(updatedMessages)
-        agentService.replaceConversationMessages(
-          currentConversationId,
-          updatedMessages,
-        )
-        await persistConversationImmediately(updatedMessages)
-
-        if (appliedCount > 0 && unavailableCount === 0) {
-          new Notice(
-            t(
-              'chat.editSummary.undoSuccess',
-              '已撤销本轮 assistant 的文件修改。',
-            ),
-          )
-        } else if (appliedCount > 0) {
-          new Notice(
-            t(
-              'chat.editSummary.undoPartial',
-              '部分文件已撤销，另一些文件因后续变更未覆盖。',
-            ),
-          )
-        } else {
-          new Notice(
-            t(
-              'chat.editSummary.undoUnavailable',
-              '文件内容已变化，无法安全撤销本轮修改。',
-            ),
-          )
-        }
-      } catch (error) {
-        new Notice(t('chat.editSummary.undoFailed', '撤销失败，请稍后重试。'))
-        console.error('Failed to undo assistant edit summary', error)
-      } finally {
-        setUndoingEditSummaryTarget(null)
-      }
-    },
-    [
-      app,
-      agentService,
-      chatMessages,
-      currentConversationId,
-      persistConversationImmediately,
-      settings,
-      t,
-    ],
-  )
-
-  const handleOpenEditSummaryFile = useCallback(
-    async ({
-      path,
-      firstRoundId,
-      latestRoundId,
-    }: GroupEditSummary['files'][number]) => {
-      const targetEntry = app.vault.getAbstractFileByPath(path)
-      const targetFile = targetEntry instanceof TFile ? targetEntry : null
-
-      if (!currentConversationId) {
-        if (!targetFile) {
-          new Notice(
-            t('chat.editSummary.fileMissing', '文件不存在或已被移动。'),
-          )
-          return
-        }
-        const leaf = app.workspace.getLeaf(false)
-        void leaf.openFile(targetFile)
-        return
-      }
-
-      const [firstSnapshot, latestSnapshot] = await Promise.all([
-        readEditReviewSnapshot({
-          app,
-          conversationId: currentConversationId,
-          roundId: firstRoundId,
-          filePath: path,
-          settings,
-        }),
-        readEditReviewSnapshot({
-          app,
-          conversationId: currentConversationId,
-          roundId: latestRoundId,
-          filePath: path,
-          settings,
-        }),
-      ])
-
-      if (firstSnapshot && latestSnapshot) {
-        if (!latestSnapshot.afterExists) {
-          new Notice(
-            t(
-              'chat.editSummary.fileDeleted',
-              '文件已被删除，可使用撤销进行恢复。',
-            ),
-          )
-          return
-        }
-
-        if (!targetFile) {
-          new Notice(
-            t('chat.editSummary.fileMissing', '文件不存在或已被移动。'),
-          )
-          return
-        }
-
-        const currentContent = await app.vault.read(targetFile)
-        if (currentContent !== latestSnapshot.afterContent) {
-          const leaf = app.workspace.getLeaf(false)
-          await leaf.openFile(targetFile)
-          new Notice(
-            t(
-              'chat.editSummary.undoUnavailable',
-              '文件内容已变化，无法安全撤销本轮修改。',
-            ),
-          )
-          return
-        }
-
-        await plugin.openApplyReview({
-          file: targetFile,
-          originalContent: firstSnapshot.beforeContent,
-          newContent: latestSnapshot.afterContent,
-          viewMode: 'revert-review',
-          reviewMode: 'full',
-        })
-        return
-      }
-
-      if (!targetFile) {
-        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
-        return
-      }
-
-      const leaf = app.workspace.getLeaf(false)
-      await leaf.openFile(targetFile)
-    },
-    [app, app.vault, app.workspace, currentConversationId, plugin, settings, t],
-  )
-
-  const updateToolMessageInChatHistory = useCallback(
-    (
-      update:
-        | ChatToolMessage
-        | ((currentToolMessage: ChatToolMessage) => ChatToolMessage),
-      targetToolMessageId?: string,
-    ): boolean => {
-      const targetId =
-        typeof update === 'function' ? targetToolMessageId : update.id
-      if (!targetId) {
-        return false
-      }
-
-      const sourceMessages = chatMessagesStateRef.current
-      const toolMessageIndex = sourceMessages.findIndex(
-        (message) => message.id === targetId,
-      )
-      const currentToolMessage = sourceMessages[toolMessageIndex]
-      if (toolMessageIndex === -1 || currentToolMessage?.role !== 'tool') {
-        return false
-      }
-
-      const nextToolMessage =
-        typeof update === 'function' ? update(currentToolMessage) : update
-      if (nextToolMessage === currentToolMessage) {
-        return true
-      }
-
-      const updatedMessages = sourceMessages.map((message) =>
-        message.id === targetId ? nextToolMessage : message,
-      )
-      chatMessagesStateRef.current = updatedMessages
-      setChatMessages(updatedMessages)
-      agentService.replaceConversationMessages(
-        currentConversationId,
-        updatedMessages,
-      )
-
-      const shouldResume =
-        toolMessageIndex === sourceMessages.length - 1 &&
-        nextToolMessage.toolCalls.every((toolCall) =>
-          [
-            ToolCallResponseStatus.Success,
-            ToolCallResponseStatus.Error,
-          ].includes(toolCall.response.status),
-        )
-
-      if (shouldResume) {
-        submitChatMutation.mutate({
-          chatMessages: updatedMessages,
-          conversationId: currentConversationId,
-          reasoningLevel: resolveReasoningLevelForMessages(updatedMessages),
-          modelIds: getLatestUserSelectedModelIds(updatedMessages),
-        })
-        requestAnimationFrame(() => {
-          forceScrollToBottom()
-        })
-      }
-
-      return true
-    },
-    [
-      agentService,
-      currentConversationId,
-      forceScrollToBottom,
-      resolveReasoningLevelForMessages,
-      submitChatMutation,
-    ],
-  )
-
-  const handleToolMessageUpdate = useCallback(
-    (toolMessage: ChatToolMessage) => {
-      // Normal Chat rendering uses handleToolCallResponseUpdate so unchanged
-      // sibling tool cards can stay memoized. This remains as the legacy whole
-      // message fallback for ToolMessage hosts that still call onMessageUpdate.
-      const didFindToolMessage = updateToolMessageInChatHistory(toolMessage)
-      if (didFindToolMessage) {
-        return
-      }
-
-      // The tool message no longer exists in the chat history.
-      // This likely means a new message was submitted while this stream was running.
-      // Abort the tool calls and keep the current chat history.
-      void (async () => {
-        const mcpManager = await getMcpManager()
-        toolMessage.toolCalls.forEach((toolCall) => {
-          mcpManager.abortToolCall(toolCall.request.id)
-        })
-      })()
-    },
-    [getMcpManager, updateToolMessageInChatHistory],
-  )
-
-  const handleToolCallResponseUpdate = useCallback(
-    (toolMessageId: string, toolCallId: string, response: ToolCallResponse) => {
-      let shouldAbortMissingToolCall = false
-      const didFindToolMessage = updateToolMessageInChatHistory(
-        (currentToolMessage) => {
-          if (currentToolMessage.id !== toolMessageId) {
-            return currentToolMessage
-          }
-          let didUpdate = false
-          let didChange = false
-          const nextToolCalls = currentToolMessage.toolCalls.map((toolCall) => {
-            if (toolCall.request.id !== toolCallId) {
-              return toolCall
-            }
-            didUpdate = true
-            if (toolCall.response === response) {
-              return toolCall
-            }
-            didChange = true
-            return { ...toolCall, response }
-          })
-
-          if (!didUpdate) {
-            shouldAbortMissingToolCall = true
-            return currentToolMessage
-          }
-          if (!didChange) {
-            return currentToolMessage
-          }
-
-          return { ...currentToolMessage, toolCalls: nextToolCalls }
-        },
-        toolMessageId,
-      )
-
-      if (!didFindToolMessage || shouldAbortMissingToolCall) {
-        void (async () => {
-          const mcpManager = await getMcpManager()
-          mcpManager.abortToolCall(toolCallId)
-        })()
-      }
-    },
-    [getMcpManager, updateToolMessageInChatHistory],
-  )
-
-  const handleContinueResponse = useCallback(() => {
-    const latestMessage = chatMessages.at(-1)
-    submitChatMutation.mutate({
-      chatMessages: chatMessages,
-      conversationId: currentConversationId,
-      reasoningLevel: resolveReasoningLevelForMessages(chatMessages),
-      modelIds:
-        latestMessage?.role === 'user'
-          ? latestMessage.selectedModelIds
-          : undefined,
-    })
-  }, [
-    submitChatMutation,
-    chatMessages,
-    currentConversationId,
-    resolveReasoningLevelForMessages,
-  ])
 
   useEffect(() => {
     setFocusedMessageId(inputMessage.id)
   }, [inputMessage.id])
-
-  useEffect(() => {
-    if (isCurrentConversationRunActive) {
-      submitMutationPendingRef.current = true
-      return
-    }
-    if (submitMutationPendingRef.current) {
-      submitMutationPendingRef.current = false
-      void (async () => {
-        await persistConversationImmediately(chatMessages)
-      })().catch((error) => {
-        console.error('Failed to persist conversation after run', error)
-      })
-    }
-  }, [
-    chatMessages,
-    isCurrentConversationRunActive,
-    persistConversationImmediately,
-  ])
-
-  const buildSelectionMentionable = useCallback(
-    (selectedBlock: MentionableBlockData): MentionableBlock =>
-      createSelectionBlockMentionable(selectedBlock),
-    [],
-  )
-
-  const removeSelectionMentionable = useCallback(
-    (mentionables: ChatUserMessage['mentionables']) =>
-      mentionables.filter(
-        (mentionable) => !isSyncSelectionMentionable(mentionable),
-      ),
-    [],
-  )
-
-  const syncSelectionMentionable = useCallback(
-    (selectedBlock: MentionableBlockData) => {
-      if (!focusedMessageId) return
-
-      const mentionable = buildSelectionMentionable(selectedBlock)
-      const mentionableKey = getMentionableKey(
-        serializeMentionable(mentionable),
-      )
-
-      if (focusedMessageId === inputMessage.id) {
-        setInputMessage((prevInputMessage) => {
-          const existingSelection = prevInputMessage.mentionables.find((m) =>
-            isSyncSelectionMentionable(m),
-          )
-          if (existingSelection) {
-            const existingKey = getMentionableKey(
-              serializeMentionable(existingSelection),
-            )
-            if (existingKey === mentionableKey) {
-              return prevInputMessage
-            }
-          }
-          const nextMentionables = [
-            ...removeSelectionMentionable(prevInputMessage.mentionables),
-            mentionable,
-          ]
-          return {
-            ...prevInputMessage,
-            mentionables: nextMentionables,
-            promptContent: null,
-          }
-        })
-        return
-      }
-
-      setChatMessages((prevChatHistory) =>
-        prevChatHistory.map((message) => {
-          if (message.id === focusedMessageId && message.role === 'user') {
-            const existingSelection = message.mentionables.find((m) =>
-              isSyncSelectionMentionable(m),
-            )
-            if (existingSelection) {
-              const existingKey = getMentionableKey(
-                serializeMentionable(existingSelection),
-              )
-              if (existingKey === mentionableKey) {
-                return message
-              }
-            }
-            return {
-              ...message,
-              mentionables: [
-                ...removeSelectionMentionable(message.mentionables),
-                mentionable,
-              ],
-              promptContent: null,
-            }
-          }
-          return message
-        }),
-      )
-    },
-    [
-      buildSelectionMentionable,
-      focusedMessageId,
-      inputMessage.id,
-      removeSelectionMentionable,
-    ],
-  )
-
-  const syncSelectionMentionableToInput = useCallback(
-    (selectedBlock: MentionableBlockData) => {
-      const mentionable = buildSelectionMentionable(selectedBlock)
-      const mentionableKey = getMentionableKey(
-        serializeMentionable(mentionable),
-      )
-
-      flushSync(() => {
-        setInputMessage((prevInputMessage) => {
-          const existingSelection = prevInputMessage.mentionables.find((m) =>
-            isSyncSelectionMentionable(m),
-          )
-          if (existingSelection) {
-            const existingKey = getMentionableKey(
-              serializeMentionable(existingSelection),
-            )
-            if (existingKey === mentionableKey) {
-              return prevInputMessage
-            }
-          }
-
-          return {
-            ...prevInputMessage,
-            mentionables: [
-              ...removeSelectionMentionable(prevInputMessage.mentionables),
-              mentionable,
-            ],
-            promptContent: null,
-          }
-        })
-      })
-    },
-    [buildSelectionMentionable, removeSelectionMentionable],
-  )
-
-  const syncWebSelectionMentionableToInput = useCallback(
-    (selection: MentionableWebSelection) => {
-      const mentionable: MentionableWebSelection = {
-        ...selection,
-        source: selection.source ?? 'web-selection-sync',
-        contentHash:
-          selection.contentHash ?? getBlockContentHash(selection.content),
-      }
-      const mentionableKey = getMentionableKey(
-        serializeMentionable(mentionable),
-      )
-
-      flushSync(() => {
-        setInputMessage((prevInputMessage) => {
-          const existingSelection = prevInputMessage.mentionables.find((m) =>
-            isSyncSelectionMentionable(m),
-          )
-          if (existingSelection) {
-            const existingKey = getMentionableKey(
-              serializeMentionable(existingSelection),
-            )
-            if (existingKey === mentionableKey) {
-              return prevInputMessage
-            }
-          }
-
-          return {
-            ...prevInputMessage,
-            mentionables: [
-              ...removeSelectionMentionable(prevInputMessage.mentionables),
-              mentionable,
-            ],
-            promptContent: null,
-          }
-        })
-      })
-    },
-    [removeSelectionMentionable],
-  )
-
-  const upsertSelectionMentionableInMainInput = useCallback(
-    (mentionable: MentionableBlock) => {
-      setInputMessage((prevInputMessage) => {
-        const mentionableKey = getMentionableKey(
-          serializeMentionable(mentionable),
-        )
-        let changed = false
-        const nextMentionables = prevInputMessage.mentionables.map((m) => {
-          const key = getMentionableKey(serializeMentionable(m))
-          if (key !== mentionableKey) return m
-          if (m.type === 'block' && isSyncSelectionMentionable(m)) {
-            changed = true
-            return mentionable
-          }
-          return m
-        })
-
-        if (changed) {
-          return {
-            ...prevInputMessage,
-            mentionables: nextMentionables,
-            promptContent: null,
-          }
-        }
-
-        if (
-          prevInputMessage.mentionables.some(
-            (m) =>
-              getMentionableKey(serializeMentionable(m)) === mentionableKey,
-          )
-        ) {
-          return prevInputMessage
-        }
-
-        return {
-          ...prevInputMessage,
-          mentionables: [...prevInputMessage.mentionables, mentionable],
-          promptContent: null,
-        }
-      })
-    },
-    [],
-  )
-
-  const clearSelectionMentionable = useCallback(() => {
-    if (!focusedMessageId) return
-
-    if (focusedMessageId === inputMessage.id) {
-      const nextMentionables = removeSelectionMentionable(
-        inputMessageRef.current.mentionables,
-      )
-      releaseHighlightIds(
-        collectRemovedSelectionHighlightIds(
-          inputMessageRef.current.mentionables,
-          nextMentionables,
-        ),
-      )
-      setInputMessage((prevInputMessage) => {
-        const nextMentionables = removeSelectionMentionable(
-          prevInputMessage.mentionables,
-        )
-        if (nextMentionables.length === prevInputMessage.mentionables.length) {
-          return prevInputMessage
-        }
-        return {
-          ...prevInputMessage,
-          mentionables: nextMentionables,
-          promptContent: null,
-        }
-      })
-      return
-    }
-
-    const focusedMessage = chatMessagesStateRef.current.find(
-      (message): message is ChatUserMessage =>
-        message.role === 'user' && message.id === focusedMessageId,
-    )
-    if (focusedMessage) {
-      const nextMentionables = removeSelectionMentionable(
-        focusedMessage.mentionables,
-      )
-      releaseHighlightIds(
-        collectRemovedSelectionHighlightIds(
-          focusedMessage.mentionables,
-          nextMentionables,
-        ),
-      )
-    }
-
-    updateHistoricalUserMessage(focusedMessageId, (message) => {
-      const nextMentionables = removeSelectionMentionable(message.mentionables)
-      if (nextMentionables.length === message.mentionables.length) {
-        return message
-      }
-
-      return {
-        ...message,
-        mentionables: nextMentionables,
-        promptContent: null,
-      }
-    })
-  }, [
-    focusedMessageId,
-    inputMessage.id,
-    removeSelectionMentionable,
-    releaseHighlightIds,
-    updateHistoricalUserMessage,
-  ])
-
-  // 从所有消息中删除指定的 mentionable，并清空 promptContent 以便重新编译
-  const handleMentionableDeleteFromAll = useCallback(
-    (mentionable: ChatUserMessage['mentionables'][number]) => {
-      const mentionableKey = getMentionableKey(
-        serializeMentionable(mentionable),
-      )
-
-      // 从所有历史消息中删除
-      const sourceMessages = chatMessagesStateRef.current
-      const idsToRelease = new Set<string>()
-      for (const message of sourceMessages) {
-        if (message.role !== 'user') continue
-        for (const id of collectSelectionHighlightIdsByMentionableKey(
-          message.mentionables,
-          mentionableKey,
-        )) {
-          idsToRelease.add(id)
-        }
-      }
-      for (const id of collectSelectionHighlightIdsByMentionableKey(
-        inputMessageRef.current.mentionables,
-        mentionableKey,
-      )) {
-        idsToRelease.add(id)
-      }
-      releaseHighlightIds(idsToRelease)
-
-      let didChangeHistory = false
-      const nextMessages = sourceMessages.flatMap((message): ChatMessage[] => {
-        if (message.role !== 'user') {
-          return [message]
-        }
-
-        const filtered = message.mentionables.filter(
-          (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
-        )
-        if (filtered.length === message.mentionables.length) {
-          return [message]
-        }
-        didChangeHistory = true
-
-        const nextMessage: ChatUserMessage = {
-          ...message,
-          mentionables: filtered,
-          promptContent: null,
-        }
-
-        return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
-      })
-      const nextAssistantGroupBoundaryMessageIds =
-        buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
-          sourceMessages,
-          nextMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-
-      if (didChangeHistory) {
-        chatMessagesStateRef.current = nextMessages
-        setChatMessages(nextMessages)
-        setAssistantGroupBoundaryMessageIds(
-          nextAssistantGroupBoundaryMessageIds,
-        )
-      }
-
-      const retainedUserMessageIds = new Set(
-        nextMessages
-          .filter(
-            (message): message is ChatUserMessage => message.role === 'user',
-          )
-          .map((message) => message.id),
-      )
-
-      setFocusedMessageId((prev) =>
-        prev && !retainedUserMessageIds.has(prev) && prev !== inputMessage.id
-          ? inputMessage.id
-          : prev,
-      )
-      setMessageModelMap(
-        (prev) =>
-          new Map(
-            Array.from(prev.entries()).filter(([messageId]) =>
-              retainedUserMessageIds.has(messageId),
-            ),
-          ),
-      )
-      setMessageReasoningMap(
-        (prev) =>
-          new Map(
-            Array.from(prev.entries()).filter(([messageId]) =>
-              retainedUserMessageIds.has(messageId),
-            ),
-          ),
-      )
-
-      const nextActiveBranchByUserMessageId = new Map(
-        Array.from(activeBranchByUserMessageIdRef.current.entries()).filter(
-          ([messageId]) => retainedUserMessageIds.has(messageId),
-        ),
-      )
-      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
-      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
-
-      // 从当前输入消息中删除
-      setInputMessage((prev) => ({
-        ...prev,
-        mentionables: prev.mentionables.filter(
-          (m) => getMentionableKey(serializeMentionable(m)) !== mentionableKey,
-        ),
-      }))
-      if (!didChangeHistory) {
-        return
-      }
-
-      if (nextMessages.length === 0) {
-        void deleteConversation(currentConversationId)
-        return
-      }
-
-      void persistConversation(
-        nextMessages,
-        nextAssistantGroupBoundaryMessageIds,
-      )
-    },
-    [
-      assistantGroupBoundaryMessageIds,
-      buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
-      currentConversationId,
-      deleteConversation,
-      inputMessage.id,
-      isUserMessageEffectivelyEmpty,
-      persistConversation,
-      releaseHighlightIds,
-    ],
-  )
 
   useImperativeHandle(ref, () => ({
     openNewChat: (selectedBlock?: MentionableBlockData) =>
       handleNewChat(selectedBlock),
     loadConversation: async (conversationId: string) =>
       await handleLoadConversation(conversationId),
-    addSelectionToChat: (selectedBlock: MentionableBlockData) => {
-      const mentionable = createSelectionBlockMentionable({
-        ...selectedBlock,
-        source: 'selection-pinned',
-      })
-
-      setAddedBlockKey(null)
-
-      if (focusedMessageId === inputMessage.id) {
-        setInputMessage((prevInputMessage) => {
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
-          )
-          let changed = false
-          const nextMentionables = prevInputMessage.mentionables.map((m) => {
-            const key = getMentionableKey(serializeMentionable(m))
-            if (key !== mentionableKey) return m
-            if (m.type === 'block' && isSyncSelectionMentionable(m)) {
-              changed = true
-              return mentionable
-            }
-            return m
-          })
-
-          if (changed) {
-            return {
-              ...prevInputMessage,
-              mentionables: nextMentionables,
-              promptContent: null,
-            }
-          }
-
-          if (
-            prevInputMessage.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
-            return prevInputMessage
-          }
-
-          return {
-            ...prevInputMessage,
-            mentionables: [...prevInputMessage.mentionables, mentionable],
-            promptContent: null,
-          }
-        })
-      } else {
-        setChatMessages((prevChatHistory) =>
-          prevChatHistory.map((message) => {
-            if (message.id === focusedMessageId && message.role === 'user') {
-              const mentionableKey = getMentionableKey(
-                serializeMentionable(mentionable),
-              )
-              let changed = false
-              const nextMentionables = message.mentionables.map((m) => {
-                const key = getMentionableKey(serializeMentionable(m))
-                if (key !== mentionableKey) return m
-                if (m.type === 'block' && isSyncSelectionMentionable(m)) {
-                  changed = true
-                  return mentionable
-                }
-                return m
-              })
-
-              if (changed) {
-                return {
-                  ...message,
-                  mentionables: nextMentionables,
-                  promptContent: null,
-                }
-              }
-
-              if (
-                message.mentionables.some(
-                  (m) =>
-                    getMentionableKey(serializeMentionable(m)) ===
-                    mentionableKey,
-                )
-              ) {
-                return message
-              }
-              return {
-                ...message,
-                mentionables: [...message.mentionables, mentionable],
-                promptContent: null,
-              }
-            }
-            return message
-          }),
-        )
-      }
-    },
+    addSelectionToChat,
     addSelectionToInput: (selectedBlock: MentionableBlockData) => {
       const mentionable = createSelectionBlockMentionable({
         ...selectedBlock,
@@ -5105,31 +1132,36 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             (assistant) => assistant.id === overrideAssistantId,
           ) ?? null)
         : null
-      flushSync(() => {
-        if (overrideAssistant) {
-          setConversationAssistantId(overrideAssistant.id)
-          conversationAssistantIdRef.current.set(
-            currentConversationId,
-            overrideAssistant.id,
-          )
-          if (overrideAssistant.modelId) {
-            applyAssistantDefaultModel(overrideAssistant.modelId)
+      const applySelection = () => {
+        flushSync(() => {
+          if (overrideAssistant) {
+            if (activeRuntimeIdRef.current === 'yolo') {
+              setConversationAssistantId(overrideAssistant.id)
+              conversationAssistantIdRef.current.set(
+                currentConversationId,
+                overrideAssistant.id,
+              )
+              applyAssistantDefaultModel(
+                resolveAssistantModelId(
+                  overrideAssistant.modelId,
+                  settings.chatModelId,
+                ),
+              )
+            }
           }
+          upsertSelectionMentionableInMainInput(mentionable)
+        })
+
+        const inputRef = chatUserInputRefs.current.get(inputMessage.id)
+        if (text) inputRef?.appendText(text)
+        if (options?.submit) {
+          inputRef?.submit()
+        } else {
+          inputRef?.focus()
         }
-        upsertSelectionMentionableInMainInput(mentionable)
-      })
-
-      const inputRef = chatUserInputRefs.current.get(inputMessage.id)
-      if (text) {
-        inputRef?.appendText(text)
       }
 
-      if (options?.submit) {
-        inputRef?.submit()
-        return
-      }
-
-      inputRef?.focus()
+      applySelection()
     },
     syncSelectionToChat: (selectedBlock: MentionableBlockData) => {
       syncSelectionMentionable(selectedBlock)
@@ -5143,141 +1175,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     clearSelectionFromChat: () => {
       clearSelectionMentionable()
     },
-    addFileToChat: (file: TFile) => {
-      const mentionable: { type: 'file'; file: TFile } = {
-        type: 'file',
-        file: file,
-      }
-
-      setAddedBlockKey(null)
-
-      if (focusedMessageId === inputMessage.id) {
-        setInputMessage((prevInputMessage) => {
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
-          )
-          // Check if mentionable already exists
-          if (
-            prevInputMessage.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
-            return prevInputMessage
-          }
-          return {
-            ...prevInputMessage,
-            mentionables: [...prevInputMessage.mentionables, mentionable],
-          }
-        })
-      } else {
-        setChatMessages((prevChatHistory) =>
-          prevChatHistory.map((message) => {
-            if (message.id === focusedMessageId && message.role === 'user') {
-              const mentionableKey = getMentionableKey(
-                serializeMentionable(mentionable),
-              )
-              // Check if mentionable already exists
-              if (
-                message.mentionables.some(
-                  (m) =>
-                    getMentionableKey(serializeMentionable(m)) ===
-                    mentionableKey,
-                )
-              ) {
-                return message
-              }
-              return {
-                ...message,
-                mentionables: [...message.mentionables, mentionable],
-              }
-            }
-            return message
-          }),
-        )
-      }
-    },
-    addFolderToChat: (folder: TFolder) => {
-      const mentionable: { type: 'folder'; folder: TFolder } = {
-        type: 'folder',
-        folder: folder,
-      }
-
-      setAddedBlockKey(null)
-
-      if (focusedMessageId === inputMessage.id) {
-        setInputMessage((prevInputMessage) => {
-          const mentionableKey = getMentionableKey(
-            serializeMentionable(mentionable),
-          )
-          // Check if mentionable already exists
-          if (
-            prevInputMessage.mentionables.some(
-              (m) =>
-                getMentionableKey(serializeMentionable(m)) === mentionableKey,
-            )
-          ) {
-            return prevInputMessage
-          }
-          return {
-            ...prevInputMessage,
-            mentionables: [...prevInputMessage.mentionables, mentionable],
-          }
-        })
-      } else {
-        setChatMessages((prevChatHistory) =>
-          prevChatHistory.map((message) => {
-            if (message.id === focusedMessageId && message.role === 'user') {
-              const mentionableKey = getMentionableKey(
-                serializeMentionable(mentionable),
-              )
-              // Check if mentionable already exists
-              if (
-                message.mentionables.some(
-                  (m) =>
-                    getMentionableKey(serializeMentionable(m)) ===
-                    mentionableKey,
-                )
-              ) {
-                return message
-              }
-              return {
-                ...message,
-                mentionables: [...message.mentionables, mentionable],
-              }
-            }
-            return message
-          }),
-        )
-      }
-    },
-    addImageToChat: (image: MentionableImage) => {
-      addMentionableToFocusedMessage(image)
-    },
-    insertTextToInput: (text: string) => {
-      if (!focusedMessageId) return
-      const inputRef = chatUserInputRefs.current.get(focusedMessageId)
-      if (inputRef) {
-        inputRef.insertText(text)
-      }
-    },
-    appendTextToInput: (text: string) => {
-      if (!text) return
-      chatUserInputRefs.current.get(inputMessage.id)?.appendText(text)
-    },
-    setMainInputText: (text: string) => {
-      chatUserInputRefs.current.get(inputMessage.id)?.replaceText(text)
-    },
-    focusMessage: () => {
-      if (!focusedMessageId) return
-      chatUserInputRefs.current.get(focusedMessageId)?.focus()
-    },
-    focusMainInput: () => {
-      chatUserInputRefs.current.get(inputMessage.id)?.focus()
-    },
-    submitMainInput: () => {
-      chatUserInputRefs.current.get(inputMessage.id)?.submit()
-    },
+    addFileToChat,
+    addFolderToChat,
+    addImageToChat,
+    insertTextToInput,
+    appendTextToInput,
+    setMainInputText,
+    focusMessage,
+    focusMainInput,
+    submitMainInput,
     getCurrentConversationOverrides: () => {
       if (conversationOverrides) {
         return conversationOverrides
@@ -5297,519 +1203,105 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
       return conversationModelIdRef.current.get(currentConversationId)
     },
-    getRuntimeSnapshot: () => ({
-      currentConversationId,
-      inputMessage: getLatestInputMessage(),
-      conversationModelId,
-      conversationAssistantId,
-      chatMode,
-      yoloEnabled,
-      reasoningLevel,
-      conversationOverrides,
-    }),
+    getRuntimeSnapshot: () => buildRuntimeSnapshot(),
   }))
 
-  const applyChatModeChange = useCallback(
-    (nextMode: ChatMode) => {
-      setChatMode(nextMode)
-      setConversationOverrides((prev) => ({
-        ...(prev ?? {}),
-        chatMode: nextMode,
-      }))
-      conversationOverridesRef.current.set(currentConversationId, {
-        ...(conversationOverridesRef.current.get(currentConversationId) ?? {}),
-        chatMode: nextMode,
-      })
-    },
-    [currentConversationId],
-  )
-
-  const applyYoloChange = useCallback(
-    (enabled: boolean) => {
-      setYoloEnabled(enabled)
-      setConversationOverrides((prev) => ({
-        ...(prev ?? {}),
-        agentYoloEnabled: enabled,
-      }))
-      conversationOverridesRef.current.set(currentConversationId, {
-        ...(conversationOverridesRef.current.get(currentConversationId) ?? {}),
-        agentYoloEnabled: enabled,
-      })
-    },
-    [currentConversationId],
-  )
-
-  const handleYoloChange = useCallback(
-    (enabled: boolean) => {
-      if (enabled && !settings.chatOptions.fullAccessWarningConfirmed) {
-        new AcknowledgementModal(app, {
-          title: t(
-            'chatMode.fullAccessWarning.title',
-            'Please confirm before enabling YOLO Mode',
-          ),
-          messages: [
-            t(
-              'chatMode.fullAccessWarning.description',
-              'YOLO Mode auto-approves all tool calls, including file edits and terminal commands. Review the risks before continuing:',
-            ),
-          ],
-          items: [
-            t(
-              'chatMode.fullAccessWarning.permission',
-              'Tools run without per-call approval. Dangerous command prefixes are still blocked.',
-            ),
-            t(
-              'chatMode.fullAccessWarning.cost',
-              'Autonomous runs may consume significant model resources and incur higher costs.',
-            ),
-            t(
-              'chatMode.fullAccessWarning.backup',
-              'Back up important content in advance to avoid unintended changes.',
-            ),
-          ],
-          checkboxLabel: t(
-            'chatMode.fullAccessWarning.checkbox',
-            'I understand the risks above and accept responsibility for proceeding',
-          ),
-          cancelText: t('chatMode.fullAccessWarning.cancel', 'Cancel'),
-          confirmText: t(
-            'chatMode.fullAccessWarning.confirm',
-            'Continue with YOLO Mode',
-          ),
-          confirmTone: 'warning',
-          onConfirm: () => {
-            applyYoloChange(true)
-            void (async () => {
-              try {
-                await setSettings({
-                  ...settings,
-                  chatOptions: {
-                    ...settings.chatOptions,
-                    agentYoloEnabled: true,
-                    fullAccessWarningConfirmed: true,
-                  },
-                })
-              } catch (error: unknown) {
-                console.error(
-                  'Failed to persist YOLO preference and warning confirmation',
-                  error,
-                )
-              }
-            })()
-          },
-        }).open()
-        return
-      }
-
-      applyYoloChange(enabled)
-      void persistPreferredYolo(enabled)
-    },
-    [app, applyYoloChange, persistPreferredYolo, setSettings, settings, t],
-  )
-
-  const handleChatModeChange = useCallback(
-    (nextMode: ChatMode) => {
-      applyChatModeChange(nextMode)
-      void persistPreferredChatMode(nextMode)
-
-      if (
-        isAgentChatMode(nextMode) &&
-        selectedAssistant?.modelId &&
-        conversationModelId === settings.chatModelId
-      ) {
-        applyAssistantDefaultModel(selectedAssistant.modelId)
-      }
-    },
-    [
-      applyAssistantDefaultModel,
-      applyChatModeChange,
-      conversationModelId,
-      selectedAssistant?.modelId,
-      persistPreferredChatMode,
-      settings,
-    ],
-  )
-
   const header = (
-    <div
-      ref={headerRef}
-      className={`yolo-chat-header${
-        isSidebarPlacement ? '' : ' yolo-chat-header--workspace'
-      }`}
-    >
-      {onChangeView ? (
-        <ViewToggle
-          activeView={activeView}
-          onChangeView={onChangeView}
-          showComposer={isSidebarPlacement}
-          disabled={false}
-        />
-      ) : (
-        <h1 className="yolo-chat-header-title">
-          {t('sidebar.tabs.chat', 'Chat')}
-        </h1>
-      )}
-      {activeView === 'chat' && (
-        <div className="yolo-chat-header-right">
-          <AssistantSelector
-            currentAssistantId={conversationAssistantId}
-            triggerClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-button--workspace-floating'
-                : undefined
-            }
-            contentClassName={
-              !isSidebarPlacement && isWorkspaceWideHeader
-                ? 'yolo-assistant-selector-content--workspace-floating'
-                : undefined
-            }
-            onAssistantChange={(assistant) => {
-              handleConversationAssistantSelect(assistant.id)
-            }}
-          />
-          <div className="yolo-chat-header-buttons">
-            <button
-              type="button"
-              onClick={() => handleNewChat()}
-              className="clickable-icon"
-              aria-label="New Chat"
-            >
-              <Plus size={18} />
-            </button>
-            <button
-              type="button"
-              onClick={() => handleExportChatToVault(currentConversationId)}
-              className="clickable-icon"
-              aria-label={t(
-                'sidebar.chatList.exportConversation',
-                'Export conversation to vault',
-              )}
-            >
-              <Download size={18} />
-            </button>
-            <ChatListDropdown
-              chatList={chatList}
-              currentConversationId={currentConversationId}
-              runSummariesByConversationId={runSummariesByConversationId}
-              onSelect={(conversationId) => {
-                if (conversationId === currentConversationId) return
-                void handleLoadConversation(conversationId)
-              }}
-              onDelete={(conversationId) => {
-                void (async () => {
-                  await deleteConversation(conversationId)
-                  if (conversationId === currentConversationId) {
-                    const nextConversation = chatList.find(
-                      (chat) => chat.id !== conversationId,
-                    )
-                    if (nextConversation) {
-                      void handleLoadConversation(nextConversation.id)
-                    } else {
-                      handleNewChat()
-                    }
-                  }
-                })()
-              }}
-              onUpdateTitle={async (conversationId, newTitle) => {
-                await updateConversationTitle(conversationId, newTitle)
-              }}
-              onTogglePinned={(conversationId) => {
-                void toggleConversationPinned(conversationId)
-              }}
-              onRetryTitle={async (conversationId) => {
-                const conversation = await getConversationById(conversationId)
-                if (!conversation) {
-                  console.error(
-                    'Failed to retry conversation title generation: conversation not found',
-                    {
-                      conversationId,
-                    },
-                  )
-                  return
-                }
-                await generateConversationTitle(
-                  conversationId,
-                  conversation.messages,
-                  {
-                    force: true,
-                  },
-                )
-              }}
-              onExportConversation={handleExportChatToVault}
-            >
-              <History size={18} />
-            </ChatListDropdown>
-          </div>
-        </div>
-      )}
-    </div>
+    <ChatHeader
+      isSidebarPlacement={isSidebarPlacement}
+      activeView={activeView}
+      onChangeView={onChangeView}
+      activeRuntimeId={activeRuntimeId}
+      handleRuntimeChange={handleRuntimeChange}
+      lastCliRuntimeIdRef={lastCliRuntimeIdRef}
+      cliRuntimeAvailable={cliRuntimeAvailable}
+      cliRuntimeScope={cliRuntimeScope}
+      containerRef={containerRef}
+      isWorkspaceWideHeader={isWorkspaceWideHeader}
+      setIsWorkspaceWideHeader={setIsWorkspaceWideHeader}
+      setWorkspaceWideHeaderHeight={setWorkspaceWideHeaderHeight}
+      conversationAssistantId={conversationAssistantId}
+      handleConversationAssistantSelect={handleConversationAssistantSelect}
+      handleNewChat={handleNewChat}
+      handleExportChatToVault={handleExportChatToVault}
+      currentConversationId={currentConversationId}
+      chatList={chatList}
+      activeHistoryConversationId={activeHistoryConversationId}
+      runSummariesByConversationId={runSummariesByConversationId}
+      handleLoadConversation={handleLoadConversation}
+      getConversationById={getConversationById}
+      deleteConversation={deleteConversation}
+      updateConversationTitle={updateConversationTitle}
+      syncCliConversationTitle={syncCliConversationTitle}
+      toggleConversationPinned={toggleConversationPinned}
+      generateConversationTitle={generateConversationTitle}
+    />
   )
 
-  const currentConversationIdValueRef = useLatestRef(currentConversationId)
-  const conversationModelIdValueRef = useLatestRef(conversationModelId)
-  const getReasoningLevelForModelIdRef = useLatestRef(
-    getReasoningLevelForModelId,
-  )
-  const persistReasoningLevelForModelRef = useLatestRef(
-    persistReasoningLevelForModel,
-  )
-  const releaseHighlightIdsRef = useLatestRef(releaseHighlightIds)
-  const handleManualContextCompactionRef = useLatestRef(
-    handleManualContextCompaction,
-  )
-  const abortConversationRunRef = useLatestRef(abortConversationRun)
   const buildContextBreakdownInputsRef = useLatestRef(
     buildContextBreakdownInputs,
   )
-  const mainInputSubmitStateRef = useLatestRef({
+
+  // 输入控制器的「延迟依赖」——CLI 编排、会话持久化、useChatStreamManager
+  // 均在 useChatInputController 调用之后才产生；本对象在每次渲染的这个
+  // 位置写入最新快照，供 handleMainInputSubmit 等已经在 hook 内部创建好
+  // 的处理器通过 lateStateRef 读取。取代原先的 mainInputSubmitStateRef /
+  // releaseHighlightIdsRef 等各个独立 useLatestRef。
+  inputController.lateStateRef.current = {
+    reasoningLevel,
+    updateHistoricalUserMessage,
+    releaseHighlightIds,
+    isUserMessageEffectivelyEmpty,
+    buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
+    assistantGroupBoundaryMessageIds,
+    setAssistantGroupBoundaryMessageIds,
+    persistConversation,
+    deleteConversation,
+    currentConversationId,
+    setMessageModelMap,
+    setMessageReasoningMap,
+    activeBranchByUserMessageIdRef,
+    setActiveBranchByUserMessageId,
+    activeFile,
+    activeViewState,
     agentService,
-    buildInputMessageForSubmit,
+    app,
     chatMessages,
+    cliChatMode,
+    cliConversationId,
     commitSentSelectionHighlights,
     conversationModelId,
-    currentConversationId,
+    conversationOverrides,
+    cliConversationController,
+    cliOperationCoordinator,
+    cliRuntimeScope,
     currentConversationRunSummary,
+    createOrTouchCliConversation,
     displayedChatMessages,
     handleUserMessageSubmit,
-    inputMessage,
+    generateConversationTitle,
+    syncCliConversationTitle,
     messageModelMap,
     queuedMessageEditState,
-    reasoningLevel,
+    setQueuedMessageEditState,
     selectedAssistant,
     settings,
     t,
-  })
-
-  const handleMainInputRef = useCallback(
-    (ref: ChatUserInputRef | null) => {
-      registerChatUserInputRef(inputMessage.id, ref)
-    },
-    [inputMessage.id, registerChatUserInputRef],
-  )
-
-  const handleMainInputChange = useCallback<ChatUserInputProps['onChange']>(
-    (content) => {
-      inputDraftHolder.updateContent(content)
-      inputMessageRef.current = inputDraftHolder.get()
-    },
-    [inputDraftHolder],
-  )
-
-  const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
-    (content) => {
-      const state = mainInputSubmitStateRef.current
-      if (
-        editorStateToPlainText(content).trim() === '' &&
-        state.inputMessage.mentionables.length === 0 &&
-        (state.inputMessage.selectedSkills?.length ?? 0) === 0
-      ) {
-        return
-      }
-
-      // 新用户回合进入对话:在此固定当前时间。同时覆盖随后两条出口
-      // ——入队(running 分支)与普通提交——保证两者用的都是入队/提交
-      // 那一刻的时间,而非 drain 时刻。
-      const messageForSubmit = stampUserMessageTimeContext(
-        state.buildInputMessageForSubmit(content),
-        resolveAssistantTimeContextEnabled(
-          state.selectedAssistant,
-          state.settings,
-        ),
-      )
-
-      // ask_user_question parks the agent in a paused state that may outlive
-      // the run itself. A new message must answer that panel first.
-      if (state.currentConversationRunSummary.isWaitingUserInput) {
-        new Notice(
-          state.t(
-            'chat.queueMessage.blockedAwaitingInput',
-            '请先在对话中回答模型的提问，再发送新消息。',
-          ),
-        )
-        return
-      }
-
-      if (state.currentConversationRunSummary.isWaitingApproval) {
-        new Notice(
-          state.t(
-            'chat.queueMessage.blockedApproval',
-            '请先批准或拒绝待审批工具，再发送新消息。',
-          ),
-        )
-        return
-      }
-
-      // While the live loop is queueable, route the message through
-      // AgentService so it can be injected at the next safe LLM boundary.
-      if (state.currentConversationRunSummary.isQueueable) {
-        const enqueueResult = state.agentService.enqueueUserMessage(
-          state.currentConversationId,
-          messageForSubmit,
-        )
-        if (enqueueResult === 'enqueued') {
-          setMessageReasoningMap((prev) => {
-            const next = new Map(prev)
-            next.set(state.inputMessage.id, state.reasoningLevel)
-            return next
-          })
-          state.commitSentSelectionHighlights(messageForSubmit.mentionables)
-          if (state.queuedMessageEditState) {
-            setReasoningLevel(
-              state.queuedMessageEditState.preservedReasoningLevel,
-            )
-            conversationReasoningLevelRef.current.set(
-              state.currentConversationId,
-              state.queuedMessageEditState.preservedReasoningLevel,
-            )
-            replaceInputMessage(
-              state.queuedMessageEditState.preservedInputMessage,
-            )
-            setQueuedMessageEditState(null)
-          } else {
-            replaceInputMessage(getNewInputMessage(state.reasoningLevel))
-          }
-          return
-        }
-        if (enqueueResult === 'blocked_awaiting_approval') {
-          new Notice(
-            state.t(
-              'chat.queueMessage.blockedApproval',
-              '请先批准或拒绝待审批工具，再发送新消息。',
-            ),
-          )
-          return
-        }
-        // 'idle' -> fall through to the normal submit path below.
-      }
-
-      if (state.currentConversationRunSummary.isActive) {
-        new Notice(
-          state.t(
-            'chat.queueMessage.blockedActiveTool',
-            '请等待当前工具调用完成后再发送新消息。',
-          ),
-        )
-        return
-      }
-
-      const nextMessageModelMap = new Map(state.messageModelMap)
-      nextMessageModelMap.set(state.inputMessage.id, state.conversationModelId)
-      void state.handleUserMessageSubmit({
-        inputChatMessages: [...state.chatMessages, messageForSubmit],
-        requestChatMessages: [...state.displayedChatMessages, messageForSubmit],
-        persistedMessageModelMap: nextMessageModelMap,
-      })
-      setMessageModelMap(nextMessageModelMap)
-      setMessageReasoningMap((prev) => {
-        const next = new Map(prev)
-        next.set(state.inputMessage.id, state.reasoningLevel)
-        return next
-      })
-      state.commitSentSelectionHighlights(messageForSubmit.mentionables)
-      if (state.queuedMessageEditState) {
-        setReasoningLevel(state.queuedMessageEditState.preservedReasoningLevel)
-        conversationReasoningLevelRef.current.set(
-          state.currentConversationId,
-          state.queuedMessageEditState.preservedReasoningLevel,
-        )
-        replaceInputMessage(state.queuedMessageEditState.preservedInputMessage)
-        setQueuedMessageEditState(null)
-      } else {
-        replaceInputMessage(getNewInputMessage(state.reasoningLevel))
-      }
-    },
-    [mainInputSubmitStateRef, replaceInputMessage],
-  )
-
-  const handleMainInputFocus = useCallback(() => {
-    setFocusedMessageId(inputMessageRef.current.id)
-  }, [])
-
-  const handleMainInputMentionablesChange = useCallback<
-    ChatUserInputProps['setMentionables']
-  >(
-    (mentionables) => {
-      releaseHighlightIdsRef.current(
-        collectRemovedSelectionHighlightIds(
-          inputMessageRef.current.mentionables,
-          mentionables,
-        ),
-      )
-      setInputMessage((prevInputMessage) => ({
-        ...prevInputMessage,
-        mentionables,
-      }))
-    },
-    [releaseHighlightIdsRef],
-  )
-
-  const handleMainInputSelectedSkillsChange = useCallback<
-    NonNullable<ChatUserInputProps['setSelectedSkills']>
-  >((selectedSkills) => {
-    setInputMessage((prevInputMessage) => ({
-      ...prevInputMessage,
-      selectedSkills,
-      promptContent: null,
-      snapshotRef: undefined,
-    }))
-  }, [])
-
-  const handleMainInputModelChange = useCallback<
-    NonNullable<ChatUserInputProps['onModelChange']>
-  >(
-    (id) => {
-      const conversationId = currentConversationIdValueRef.current
-      setConversationModelId(id)
-      conversationModelIdRef.current.set(conversationId, id)
-      const nextReasoningLevel = getReasoningLevelForModelIdRef.current(id)
-      setReasoningLevel(nextReasoningLevel)
-      conversationReasoningLevelRef.current.set(
-        conversationId,
-        nextReasoningLevel,
-      )
-      setInputMessage((prev) => ({
-        ...prev,
-        reasoningLevel: nextReasoningLevel,
-      }))
-    },
-    [currentConversationIdValueRef, getReasoningLevelForModelIdRef],
-  )
-
-  const handleMainInputReasoningChange = useCallback<
-    NonNullable<ChatUserInputProps['onReasoningChange']>
-  >(
-    (level) => {
-      const conversationId = currentConversationIdValueRef.current
-      const modelId = conversationModelIdValueRef.current
-      setReasoningLevel(level)
-      conversationReasoningLevelRef.current.set(conversationId, level)
-      void persistReasoningLevelForModelRef.current(modelId, level)
-      setInputMessage((prev) => ({
-        ...prev,
-        reasoningLevel: level,
-      }))
-    },
-    [
-      conversationModelIdValueRef,
-      currentConversationIdValueRef,
-      persistReasoningLevelForModelRef,
-    ],
-  )
-
-  const handleMainInputRunSlashCommand = useCallback<
-    NonNullable<ChatUserInputProps['onRunSlashCommand']>
-  >(
-    (command) => {
-      if (command.id === 'compact-context') {
-        void handleManualContextCompactionRef.current()
-      }
-    },
-    [handleManualContextCompactionRef],
-  )
-
-  const handleMainInputAbort = useCallback(() => {
-    abortConversationRunRef.current(currentConversationIdValueRef.current)
-  }, [abortConversationRunRef, currentConversationIdValueRef])
+    cliYoloEnabled,
+    setCliConversationId,
+    consumeAcceptedCliDraft,
+    conversationReasoningLevelRef,
+    setReasoningLevel,
+    chatMountedRef,
+    handleManualContextCompaction,
+    cliPreferenceSettingsRef,
+    refreshCliSkills,
+    abortConversationRun,
+    setConversationModelId,
+    conversationModelIdRef,
+    getReasoningLevelForModelId,
+    persistReasoningLevelForModel,
+  }
 
   const buildMainInputContextBreakdownInputs = useCallback(() => {
     return buildContextBreakdownInputsRef.current(chatMessagesStateRef.current)
@@ -5821,749 +1313,72 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ? {
             promptTokens: headerContextUsage.promptTokens,
             maxContextTokens: headerContextUsage.maxContextTokens,
+            ...(headerContextUsage.cacheHitRate !== undefined
+              ? { cacheHitRate: headerContextUsage.cacheHitRate }
+              : {}),
             label: t('chat.contextUsage', '上下文窗口占用'),
             buildBreakdownInputs: buildMainInputContextBreakdownInputs,
           }
         : undefined,
     [headerContextUsage, buildMainInputContextBreakdownInputs, t],
   )
+  const cliInputContextUsage = useMemo<
+    ChatUserInputProps['contextUsage']
+  >(() => {
+    const usage = activeCliConversationSnapshot?.contextUsage
+    if (!usage) return undefined
+    return {
+      promptTokens: usage.promptTokens,
+      maxContextTokens: usage.maxContextTokens,
+      ...(usage.cacheHitRate !== undefined
+        ? { cacheHitRate: usage.cacheHitRate }
+        : {}),
+      label: t('chat.contextUsage', '上下文窗口占用'),
+      ...(usage.categories && usage.categories.length > 0
+        ? { categories: usage.categories }
+        : {}),
+    }
+  }, [activeCliConversationSnapshot?.contextUsage, t])
+  // `/` 菜单按运行时暴露的原生动作条目：claude-code 有插件管理 + MCP 状态，
+  // codex 仅 MCP 状态（无插件机制），yolo 运行时没有对应 CLI 客户端。
+  const nativeSlashCommands = useMemo<SlashCommand[]>(() => {
+    if (activeRuntimeId === 'claude-code') {
+      return [
+        {
+          id: 'open-plugin-manager',
+          name: t('chat.slashCommands.openPluginManager.label', '插件管理'),
+          description: t(
+            'chat.slashCommands.openPluginManager.description',
+            '管理已安装的 Claude Code 插件，或从 Marketplace 安装新插件。',
+          ),
+        },
+        {
+          id: 'open-mcp-servers',
+          name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
+          description: t(
+            'chat.slashCommands.openMcpServers.description',
+            '查看当前会话加载的 MCP 服务器状态。',
+          ),
+        },
+      ]
+    }
+    if (activeRuntimeId === 'codex') {
+      return [
+        {
+          id: 'open-mcp-servers',
+          name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
+          description: t(
+            'chat.slashCommands.openMcpServers.description',
+            '查看当前会话加载的 MCP 服务器状态。',
+          ),
+        },
+      ]
+    }
+    return []
+  }, [activeRuntimeId, t])
   const mainInputSelectedSkills =
     inputMessage.selectedSkills ?? EMPTY_SELECTED_SKILLS
 
-  const handleAssistantGroupEditStart = useCallback((messageId: string) => {
-    setEditingAssistantMessageId(messageId)
-  }, [])
-
-  const handleAssistantGroupActiveBranchChange = useCallback(
-    (sourceUserMessageId: string, branchKey: string | null) => {
-      const next = new Map(activeBranchByUserMessageIdRef.current)
-      if (!branchKey) {
-        next.delete(sourceUserMessageId)
-      } else {
-        next.set(sourceUserMessageId, branchKey)
-      }
-      activeBranchByUserMessageIdRef.current = next
-      setActiveBranchByUserMessageId(next)
-      void persistConversation(chatMessagesStateRef.current)
-    },
-    [persistConversation],
-  )
-
-  const timelineHandlersRef = useLatestRef({
-    finalizeHistoricalUserMessageEdit,
-    handleApply,
-    handleAssistantGroupActiveBranchChange,
-    handleAssistantGroupEditStart,
-    handleAssistantErrorContinue,
-    handleAssistantMessageEditCancel,
-    handleAssistantMessageEditSave,
-    handleAssistantMessageGroupBranch,
-    handleAssistantMessageGroupDelete,
-    handleAssistantMessageGroupRetry,
-    handleChatModeChange,
-    handleContinueResponse,
-    handleHistoricalUserMessageDelete,
-    handleOpenEditSummaryFile,
-    handleQuoteAssistantSelection,
-    handleRecoverAnswerUserQuestion,
-    handleRecoverPendingToolCall,
-    handleToolCallResponseUpdate,
-    handleToolMessageUpdate,
-    handleUndoEditSummary,
-    handleUserMessageSubmit,
-    updateHistoricalUserMessage,
-  })
-
-  const runSummaryAssistantGroupId = useMemo(
-    () =>
-      findAssistantGroupIdForRunAnchor({
-        groupedChatMessages,
-        anchorMessageId: currentConversationRunSummary.anchorMessageId,
-      }),
-    [currentConversationRunSummary.anchorMessageId, groupedChatMessages],
-  )
-
-  // 后台任务结果在渲染上会接回对应 tool card，且 subagent/terminal result
-  // standalone group 会被 timeline 过滤掉；因此必须在过滤前的 grouped
-  // messages 上决定“视觉回合”的 footer 归属。
-  const foregroundAgentVisualTurnPlan = useMemo(
-    () => buildForegroundAgentVisualTurnPlan(groupedChatMessages),
-    [groupedChatMessages],
-  )
-
-  const renderChatTimelineItem = useCallback(
-    (timelineItem: ChatTimelineItem) => {
-      if (timelineItem.kind === 'compaction-pending') {
-        return (
-          <div
-            className="yolo-chat-compaction-pending"
-            data-anchor-message-id={timelineItem.anchorMessageId}
-          >
-            <div className="yolo-chat-compaction-pending__loader">
-              <DotLoader text={compactionPendingTitle} />
-            </div>
-            <div className="yolo-chat-compaction-pending__description">
-              {compactionPendingDescription}
-            </div>
-          </div>
-        )
-      }
-
-      if (timelineItem.kind === 'compaction-divider') {
-        return (
-          <div
-            className={cx(
-              'yolo-chat-compaction-divider',
-              timelineItem.renderKey ===
-                `${enteringCompactionDividerAnchorMessageId}-compact-divider` &&
-                'is-entering',
-            )}
-          >
-            <div className="yolo-chat-compaction-divider__title">
-              {compactionDividerTitle}
-            </div>
-            <div className="yolo-chat-compaction-divider__line" />
-            <div className="yolo-chat-compaction-divider__content">
-              <div className="yolo-chat-compaction-divider__description">
-                {compactionDividerDescription}
-              </div>
-            </div>
-          </div>
-        )
-      }
-
-      if (timelineItem.kind === 'assistant-group') {
-        const messageOrGroup = timelineItem.messageIds
-          .map((messageId) => chatTimelineReadModel.messagesById.get(messageId))
-          .filter(
-            (message): message is AssistantToolMessageGroup[number] =>
-              message !== undefined && message.role !== 'user',
-          )
-        if (messageOrGroup.length === 0) {
-          return null
-        }
-        const sourceUserMessageId =
-          getSourceUserMessageIdForGroup(messageOrGroup)
-        const foregroundAgentFooter = getForegroundAgentFooterForGroup(
-          foregroundAgentVisualTurnPlan,
-          messageOrGroup,
-        )
-        const containsCompactionAnchor =
-          compactionDividerAnchorMessageId !== null &&
-          messageOrGroup.some(
-            (message) => message.id === compactionDividerAnchorMessageId,
-          )
-        const shouldSuppressCompactionAnchorFooter =
-          containsCompactionAnchor &&
-          Boolean(latestCompactionState?.triggerToolCallId)
-
-        return (
-          <AssistantToolMessageGroupItem
-            messages={messageOrGroup}
-            conversationId={currentConversationId}
-            conversationRunSummary={
-              timelineItem.groupId === runSummaryAssistantGroupId
-                ? currentConversationRunSummary
-                : undefined
-            }
-            activeBranchKey={activeBranchByUserMessageId.get(
-              sourceUserMessageId ?? '',
-            )}
-            sourceUserMessageId={sourceUserMessageId}
-            continuableErrorMessageIds={continuableErrorMessageIds}
-            suppressFooter={
-              shouldSuppressCompactionAnchorFooter ||
-              foregroundAgentFooter?.suppress === true
-            }
-            inlineInfoMessages={
-              foregroundAgentFooter?.inlineInfoMessages ?? messageOrGroup
-            }
-            showInlineInfo={chatSurfacePreset.assistantActions.showInlineInfo}
-            showRetryAction={chatSurfacePreset.assistantActions.showRetryAction}
-            showInsertAction={
-              chatSurfacePreset.assistantActions.showInsertAction
-            }
-            showCopyAction={chatSurfacePreset.assistantActions.showCopyAction}
-            showBranchAction={
-              chatSurfacePreset.assistantActions.showBranchAction
-            }
-            showEditAction={chatSurfacePreset.assistantActions.showEditAction}
-            showDeleteAction={
-              chatSurfacePreset.assistantActions.showDeleteAction
-            }
-            isApplying={applyMutation.isPending}
-            activeApplyRequestKey={activeApplyRequestKey}
-            onApply={(...args) =>
-              timelineHandlersRef.current.handleApply(...args)
-            }
-            onToolMessageUpdate={(...args) =>
-              timelineHandlersRef.current.handleToolMessageUpdate(...args)
-            }
-            onToolCallResponseUpdate={(...args) =>
-              timelineHandlersRef.current.handleToolCallResponseUpdate(...args)
-            }
-            terminalCommandResultsByToolCallId={
-              terminalCommandResultsByToolCallId
-            }
-            subagentResultsByToolCallId={subagentResultsByToolCallId}
-            onRecoverToolCall={(...args) =>
-              timelineHandlersRef.current.handleRecoverPendingToolCall(...args)
-            }
-            onRecoverAnswerUserQuestion={(...args) =>
-              timelineHandlersRef.current.handleRecoverAnswerUserQuestion(
-                ...args,
-              )
-            }
-            editingAssistantMessageId={editingAssistantMessageId}
-            onEditStart={(...args) =>
-              timelineHandlersRef.current.handleAssistantGroupEditStart(...args)
-            }
-            onEditCancel={(...args) =>
-              timelineHandlersRef.current.handleAssistantMessageEditCancel(
-                ...args,
-              )
-            }
-            onEditSave={(...args) =>
-              timelineHandlersRef.current.handleAssistantMessageEditSave(
-                ...args,
-              )
-            }
-            onDeleteGroup={(...args) =>
-              timelineHandlersRef.current.handleAssistantMessageGroupDelete(
-                ...args,
-              )
-            }
-            onRetryGroup={(...args) =>
-              timelineHandlersRef.current.handleAssistantMessageGroupRetry(
-                ...args,
-              )
-            }
-            onContinueError={(...args) =>
-              timelineHandlersRef.current.handleAssistantErrorContinue(...args)
-            }
-            onBranchGroup={(...args) =>
-              timelineHandlersRef.current.handleAssistantMessageGroupBranch(
-                ...args,
-              )
-            }
-            onActiveBranchChange={(...args) =>
-              timelineHandlersRef.current.handleAssistantGroupActiveBranchChange(
-                ...args,
-              )
-            }
-            onQuoteAssistantSelection={(...args) =>
-              timelineHandlersRef.current.handleQuoteAssistantSelection(...args)
-            }
-            onOpenEditSummaryFile={(...args) =>
-              timelineHandlersRef.current.handleOpenEditSummaryFile(...args)
-            }
-            onUndoEditSummary={(...args) =>
-              timelineHandlersRef.current.handleUndoEditSummary(...args)
-            }
-            undoingEditSummaryTarget={undoingEditSummaryTarget}
-            pendingCompactionAnchorMessageId={pendingCompactionAnchorMessageId}
-            hidePendingAssistantPlaceholders={
-              shouldHidePendingAssistantPlaceholders
-            }
-            showQuoteAction={chatSurfacePreset.assistantActions.showQuoteAction}
-          />
-        )
-      }
-
-      if (timelineItem.kind === 'user-message') {
-        const messageOrGroup = chatTimelineReadModel.messagesById.get(
-          timelineItem.messageId,
-        )
-        if (!messageOrGroup || messageOrGroup.role !== 'user') {
-          return null
-        }
-        const messageReasoningLevel =
-          messageReasoningMap.get(messageOrGroup.id) ??
-          normalizeReasoningLevel(messageOrGroup.reasoningLevel) ??
-          reasoningLevel
-
-        return (
-          <UserMessageItem
-            message={messageOrGroup}
-            isFocused={focusedMessageId === messageOrGroup.id}
-            isActionDisabled={isCurrentConversationRunActive}
-            onDelete={() => {
-              timelineHandlersRef.current.handleHistoricalUserMessageDelete(
-                messageOrGroup.id,
-              )
-            }}
-            displayMentionables={messageOrGroup.mentionables}
-            chatUserInputRef={(ref) =>
-              registerChatUserInputRef(messageOrGroup.id, ref)
-            }
-            onControlPopoverOpenChange={(isOpen) => {
-              if (!isOpen) {
-                return
-              }
-              suppressNextHistoricalUserMessageOutsidePointerRef.current =
-                messageOrGroup.id
-            }}
-            onInputChange={(content) => {
-              timelineHandlersRef.current.updateHistoricalUserMessage(
-                messageOrGroup.id,
-                (message) => ({
-                  ...message,
-                  content,
-                  promptContent: null,
-                }),
-              )
-            }}
-            onSubmit={(content) => {
-              if (
-                editorStateToPlainText(content).trim() === '' &&
-                messageOrGroup.mentionables.length === 0 &&
-                (messageOrGroup.selectedSkills?.length ?? 0) === 0
-              ) {
-                timelineHandlersRef.current.finalizeHistoricalUserMessageEdit(
-                  messageOrGroup.id,
-                )
-                chatUserInputRefs.current.get(inputMessage.id)?.focus()
-                return
-              }
-              const latestGroupedChatMessages = groupedChatMessagesRef.current
-              const latestGroupedMessageIndex =
-                latestGroupedChatMessages.findIndex(
-                  (candidate) =>
-                    !Array.isArray(candidate) &&
-                    candidate.id === messageOrGroup.id,
-                )
-              if (latestGroupedMessageIndex < 0) {
-                return
-              }
-              const currentConversationModelId =
-                conversationModelIdValueRef.current
-              const modelForThisMessage =
-                messageModelMapRef.current.get(messageOrGroup.id) ??
-                currentConversationModelId
-              const reasoningForThisMessage =
-                messageReasoningMapRef.current.get(messageOrGroup.id) ??
-                messageReasoningLevel
-              const nextMessageModelMap = new Map(messageModelMapRef.current)
-              nextMessageModelMap.set(messageOrGroup.id, modelForThisMessage)
-              // 历史编辑后重新提交是一个新的用户回合 → 打上新的当前时间。
-              const editedUserMessage: ChatUserMessage =
-                stampUserMessageTimeContext(
-                  {
-                    role: 'user',
-                    content,
-                    promptContent: null,
-                    id: messageOrGroup.id,
-                    reasoningLevel: reasoningForThisMessage,
-                    mentionables: messageOrGroup.mentionables,
-                    selectedSkills: messageOrGroup.selectedSkills ?? [],
-                    selectedModelIds: extractSelectedModelIds(
-                      messageOrGroup.mentionables,
-                    ),
-                  },
-                  selectedAssistantTimeContextEnabled,
-                )
-              const inputChatMessages = [
-                ...latestGroupedChatMessages
-                  .slice(0, latestGroupedMessageIndex)
-                  .flatMap((candidate): ChatMessage[] =>
-                    !Array.isArray(candidate) ? [candidate] : candidate,
-                  ),
-                editedUserMessage,
-              ]
-              const requestChatMessages = [
-                ...latestGroupedChatMessages
-                  .slice(0, latestGroupedMessageIndex)
-                  .flatMap((candidate): ChatMessage[] =>
-                    !Array.isArray(candidate)
-                      ? [candidate]
-                      : getDisplayedAssistantToolMessages(
-                          candidate,
-                          activeBranchByUserMessageIdRef.current.get(
-                            getSourceUserMessageIdForGroup(candidate) ?? '',
-                          ),
-                        ),
-                  ),
-                editedUserMessage,
-              ]
-              void timelineHandlersRef.current.handleUserMessageSubmit({
-                inputChatMessages,
-                requestChatMessages,
-                persistedMessageModelMap: nextMessageModelMap,
-              })
-              chatUserInputRefs.current.get(inputMessage.id)?.focus()
-              setMessageModelMap(nextMessageModelMap)
-              setMessageReasoningMap((prev) => {
-                const next = new Map(prev)
-                next.set(messageOrGroup.id, reasoningForThisMessage)
-                return next
-              })
-            }}
-            onFocus={() => {
-              setFocusedMessageId(messageOrGroup.id)
-            }}
-            onMentionablesChange={(mentionables) => {
-              const currentMessage = chatMessagesStateRef.current.find(
-                (message): message is ChatUserMessage =>
-                  message.role === 'user' && message.id === messageOrGroup.id,
-              )
-              if (currentMessage) {
-                releaseHighlightIds(
-                  collectRemovedSelectionHighlightIds(
-                    currentMessage.mentionables,
-                    mentionables,
-                  ),
-                )
-              }
-              timelineHandlersRef.current.updateHistoricalUserMessage(
-                messageOrGroup.id,
-                (message) => {
-                  const prevKeys = message.mentionables.map((m) =>
-                    getMentionableKey(serializeMentionable(m)),
-                  )
-                  const nextKeys = mentionables.map((m) =>
-                    getMentionableKey(serializeMentionable(m)),
-                  )
-                  const nextKeySet = new Set(nextKeys)
-                  const isSameMentionables =
-                    prevKeys.length === nextKeys.length &&
-                    prevKeys.every((key) => nextKeySet.has(key))
-
-                  return {
-                    ...message,
-                    mentionables,
-                    promptContent: isSameMentionables
-                      ? message.promptContent
-                      : null,
-                  }
-                },
-              )
-            }}
-            onSelectedSkillsChange={(selectedSkills) => {
-              timelineHandlersRef.current.updateHistoricalUserMessage(
-                messageOrGroup.id,
-                (message) => ({
-                  ...message,
-                  selectedSkills,
-                  promptContent: null,
-                  snapshotRef: undefined,
-                }),
-              )
-            }}
-            modelId={
-              messageModelMap.get(messageOrGroup.id) ?? conversationModelId
-            }
-            onModelChange={(id) => {
-              setMessageModelMap((prev) => {
-                const next = new Map(prev)
-                next.set(messageOrGroup.id, id)
-                return next
-              })
-              setConversationModelId(id)
-              conversationModelIdRef.current.set(currentConversationId, id)
-              const nextReasoningLevel = getReasoningLevelForModelId(id)
-              setReasoningLevel(nextReasoningLevel)
-              conversationReasoningLevelRef.current.set(
-                currentConversationId,
-                nextReasoningLevel,
-              )
-              setInputMessage((prev) => ({
-                ...prev,
-                reasoningLevel: nextReasoningLevel,
-              }))
-            }}
-            reasoningLevel={messageReasoningLevel}
-            onReasoningChange={(level) => {
-              setMessageReasoningMap((prev) => {
-                const next = new Map(prev)
-                next.set(messageOrGroup.id, level)
-                return next
-              })
-              setChatMessages((prevChatHistory) =>
-                prevChatHistory.map((msg) =>
-                  msg.role === 'user' && msg.id === messageOrGroup.id
-                    ? {
-                        ...msg,
-                        reasoningLevel: level,
-                      }
-                    : msg,
-                ),
-              )
-              setReasoningLevel(level)
-              conversationReasoningLevelRef.current.set(
-                currentConversationId,
-                level,
-              )
-              void persistReasoningLevelForModel(
-                conversationModelIdValueRef.current,
-                level,
-              )
-            }}
-            currentAssistantId={conversationAssistantId}
-            currentChatMode={chatMode}
-            onSelectChatModeForConversation={(...args) =>
-              timelineHandlersRef.current.handleChatModeChange(...args)
-            }
-            showReasoningSelect={
-              chatSurfacePreset.userMessage.showReasoningSelect
-            }
-            allowAgentModeOption={
-              chatSurfacePreset.userMessage.allowAgentModeOption
-            }
-          />
-        )
-      }
-
-      if (timelineItem.kind === 'query-progress') {
-        return <QueryProgress state={queryProgress} />
-      }
-
-      if (timelineItem.kind === 'continue-response') {
-        return (
-          <div className="yolo-continue-response-button-container">
-            <button
-              type="button"
-              className="yolo-continue-response-button"
-              onClick={handleContinueResponse}
-            >
-              <div>Continue response</div>
-            </button>
-          </div>
-        )
-      }
-
-      return <div className="yolo-chat-bottom-anchor" aria-hidden="true" />
-    },
-    [
-      activeApplyRequestKey,
-      activeBranchByUserMessageId,
-      applyMutation.isPending,
-      chatTimelineReadModel.messagesById,
-      chatSurfacePreset,
-      chatMode,
-      compactionDividerAnchorMessageId,
-      compactionDividerDescription,
-      compactionPendingDescription,
-      compactionPendingTitle,
-      compactionDividerTitle,
-      conversationAssistantId,
-      conversationModelId,
-      continuableErrorMessageIds,
-      currentConversationId,
-      editingAssistantMessageId,
-      enteringCompactionDividerAnchorMessageId,
-      firstUserMessageId,
-      focusedMessageId,
-      groupedChatMessages,
-      handleApply,
-      handleAssistantGroupActiveBranchChange,
-      handleAssistantGroupEditStart,
-      handleAssistantMessageGroupBranch,
-      handleAssistantMessageGroupDelete,
-      handleAssistantMessageGroupRetry,
-      handleAssistantMessageEditCancel,
-      handleAssistantMessageEditSave,
-      handleHistoricalUserMessageDelete,
-      handleChatModeChange,
-      handleContinueResponse,
-      handleOpenEditSummaryFile,
-      handleQuoteAssistantSelection,
-      handleRecoverAnswerUserQuestion,
-      handleRecoverPendingToolCall,
-      handleToolCallResponseUpdate,
-      handleToolMessageUpdate,
-      handleUndoEditSummary,
-      handleUserMessageSubmit,
-      inputMessage.id,
-      isCurrentConversationRunActive,
-      runSummaryAssistantGroupId,
-      latestCompactionState?.triggerToolCallId,
-      messageModelMap,
-      messageReasoningMap,
-      pendingCompactionAnchorMessageId,
-      queryProgress,
-      reasoningLevel,
-      selectedAssistantTimeContextEnabled,
-      foregroundAgentVisualTurnPlan,
-      shouldHidePendingAssistantPlaceholders,
-      undoingEditSummaryTarget,
-      updateHistoricalUserMessage,
-      finalizeHistoricalUserMessageEdit,
-    ],
-  )
-
-  const chatTimelineRenderVersion = useCallback(
-    (timelineItem: ChatTimelineItem): string => {
-      if (timelineItem.kind === 'compaction-pending') {
-        return [
-          timelineItem.renderKey,
-          compactionPendingTitle,
-          compactionPendingDescription,
-        ].join('|')
-      }
-
-      if (timelineItem.kind === 'compaction-divider') {
-        return [
-          timelineItem.renderKey,
-          compactionDividerTitle,
-          compactionDividerDescription,
-          timelineItem.renderKey ===
-            `${enteringCompactionDividerAnchorMessageId}-compact-divider`,
-        ].join('|')
-      }
-
-      if (timelineItem.kind === 'assistant-group') {
-        const messages = timelineItem.messageIds
-          .map((messageId) => chatTimelineReadModel.messagesById.get(messageId))
-          .filter(
-            (message): message is AssistantToolMessageGroup[number] =>
-              message !== undefined && message.role !== 'user',
-          )
-        const sourceUserMessageId = getSourceUserMessageIdForGroup(messages)
-        const foregroundAgentFooter = getForegroundAgentFooterForGroup(
-          foregroundAgentVisualTurnPlan,
-          messages,
-        )
-        const containsCompactionAnchor =
-          compactionDividerAnchorMessageId !== null &&
-          timelineItem.messageIds.includes(compactionDividerAnchorMessageId)
-        const shouldSuppressCompactionAnchorFooter =
-          containsCompactionAnchor &&
-          Boolean(latestCompactionState?.triggerToolCallId)
-        const isRunSummaryGroup =
-          timelineItem.groupId === runSummaryAssistantGroupId
-        const isEditingGroup =
-          editingAssistantMessageId !== null &&
-          timelineItem.messageIds.includes(editingAssistantMessageId)
-
-        return [
-          'assistant',
-          timelineItem.revision,
-          currentConversationId,
-          activeBranchByUserMessageId.get(sourceUserMessageId ?? '') ?? '',
-          foregroundAgentFooter?.suppress === true,
-          getRenderVersionObjectId(foregroundAgentFooter?.inlineInfoMessages),
-          shouldSuppressCompactionAnchorFooter,
-          chatSurfacePreset.assistantActions.showInlineInfo,
-          chatSurfacePreset.assistantActions.showRetryAction,
-          chatSurfacePreset.assistantActions.showInsertAction,
-          chatSurfacePreset.assistantActions.showCopyAction,
-          chatSurfacePreset.assistantActions.showBranchAction,
-          chatSurfacePreset.assistantActions.showEditAction,
-          chatSurfacePreset.assistantActions.showDeleteAction,
-          chatSurfacePreset.assistantActions.showQuoteAction,
-          applyMutation.isPending,
-          activeApplyRequestKey ?? '',
-          getRenderVersionObjectId(terminalCommandResultsByToolCallId),
-          getRenderVersionObjectId(subagentResultsByToolCallId),
-          isEditingGroup ? editingAssistantMessageId : '',
-          pendingCompactionAnchorMessageId ?? '',
-          shouldHidePendingAssistantPlaceholders,
-          undoingEditSummaryTarget ?? '',
-          isRunSummaryGroup,
-          isRunSummaryGroup ? currentConversationRunSummary.status : '',
-          isRunSummaryGroup ? currentConversationRunSummary.isRunning : '',
-          isRunSummaryGroup
-            ? currentConversationRunSummary.isWaitingApproval
-            : '',
-          isRunSummaryGroup
-            ? currentConversationRunSummary.isWaitingUserInput
-            : '',
-          isRunSummaryGroup ? currentConversationRunSummary.isAbortable : '',
-        ].join('|')
-      }
-
-      if (timelineItem.kind === 'user-message') {
-        const message = chatTimelineReadModel.messagesById.get(
-          timelineItem.messageId,
-        )
-        const reasoning =
-          message?.role === 'user'
-            ? (messageReasoningMap.get(message.id) ??
-              normalizeReasoningLevel(message.reasoningLevel) ??
-              reasoningLevel)
-            : reasoningLevel
-
-        return [
-          'user',
-          timelineItem.revision,
-          focusedMessageId === timelineItem.messageId,
-          isCurrentConversationRunActive,
-          messageModelMap.get(timelineItem.messageId) ?? conversationModelId,
-          reasoning,
-          conversationAssistantId,
-          selectedAssistantTimeContextEnabled,
-          chatMode,
-          chatSurfacePreset.userMessage.showReasoningSelect,
-          chatSurfacePreset.userMessage.allowAgentModeOption,
-        ].join('|')
-      }
-
-      if (timelineItem.kind === 'query-progress') {
-        return `query|${getRenderVersionObjectId(queryProgress ?? null)}`
-      }
-
-      if (timelineItem.kind === 'continue-response') {
-        return `continue|${isCurrentConversationRunActive}`
-      }
-
-      return timelineItem.renderKey
-    },
-    [
-      activeApplyRequestKey,
-      activeBranchByUserMessageId,
-      applyMutation.isPending,
-      chatMode,
-      chatSurfacePreset,
-      chatTimelineReadModel.messagesById,
-      compactionDividerAnchorMessageId,
-      compactionDividerDescription,
-      compactionDividerTitle,
-      compactionPendingDescription,
-      compactionPendingTitle,
-      conversationAssistantId,
-      conversationModelId,
-      currentConversationId,
-      currentConversationRunSummary,
-      editingAssistantMessageId,
-      enteringCompactionDividerAnchorMessageId,
-      focusedMessageId,
-      foregroundAgentVisualTurnPlan,
-      isCurrentConversationRunActive,
-      runSummaryAssistantGroupId,
-      latestCompactionState?.triggerToolCallId,
-      messageModelMap,
-      messageReasoningMap,
-      pendingCompactionAnchorMessageId,
-      queryProgress,
-      reasoningLevel,
-      selectedAssistantTimeContextEnabled,
-      shouldHidePendingAssistantPlaceholders,
-      subagentResultsByToolCallId,
-      terminalCommandResultsByToolCallId,
-      undoingEditSummaryTarget,
-    ],
-  )
-
-  const getMessageNavigatorItemLabel = useCallback(
-    (index: number, label: string) =>
-      t(
-        'chat.messageNavigator.itemAriaLabel',
-        '跳转到第 {index} 条消息：{label}',
-      )
-        .replace('{index}', String(index))
-        .replace('{label}', label),
-    [t],
-  )
-  const messageNavigatorContent =
-    messageNavigatorAnchors.length >= MESSAGE_NAVIGATOR_MIN_ANCHORS ? (
-      <MessageNavigator
-        anchors={messageNavigatorAnchors}
-        activeMessageId={navigatorViewport.activeMessageId}
-        visibleMessageIds={navigatorViewport.visibleMessageIds}
-        itemLabel={getMessageNavigatorItemLabel}
-        onSelect={handleNavigateToUserMessage}
-      />
-    ) : undefined
   const showEmptyState =
     groupedChatMessages.length === 0 &&
     !isCurrentConversationRunActive &&
@@ -6581,12 +1396,222 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       {workspaceTitleParts.slice(1).join('{vaultName}')}
     </>
   ) : undefined
+  const isCliRuntimeActive = activeRuntimeId !== 'yolo'
+  const activeSurfaceEmpty = isCliRuntimeActive
+    ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
+      !isCliRunActive
+    : showEmptyState
+  const mainInputFooter = (
+    <div className="yolo-chat-input-wrapper">
+      <div ref={setInputOverlayElement} className="yolo-chat-input-overlay">
+        {!isCliRuntimeActive && queuedUserMessages.length > 0 ? (
+          <div className="yolo-chat-queued-messages">
+            <div className="yolo-chat-queued-messages__hint">
+              {t('chat.queueMessage.hint', '等待 Agent 完成当前步骤...')}
+            </div>
+            {queuedUserMessages.map((queued) => {
+              const preview = queued.content
+                ? editorStateToPlainText(queued.content).trim()
+                : ''
+              return (
+                <div
+                  key={queued.id}
+                  className="yolo-chat-queued-messages__item"
+                  title={preview}
+                >
+                  <span className="yolo-chat-queued-messages__preview">
+                    {preview || ' '}
+                  </span>
+                  <span className="yolo-chat-queued-messages__actions">
+                    <button
+                      type="button"
+                      className="yolo-chat-queued-messages__action"
+                      aria-label={t('common.edit', '编辑')}
+                      title={t('common.edit', '编辑')}
+                      disabled={queuedMessageEditState !== null}
+                      onClick={() => {
+                        const removed = agentService.removePendingUserMessage(
+                          currentConversationId,
+                          queued.id,
+                        )
+                        if (!removed) return
+
+                        const preservedReasoningLevel = reasoningLevel
+                        const editingReasoningLevel =
+                          normalizeReasoningLevel(removed.reasoningLevel) ??
+                          reasoningLevel
+                        setQueuedMessageEditState({
+                          preservedInputMessage: getLatestInputMessage(),
+                          preservedReasoningLevel,
+                        })
+                        setReasoningLevel(editingReasoningLevel)
+                        replaceInputMessage({
+                          ...removed,
+                          timeContext: undefined,
+                        })
+                        requestAnimationFrame(() => {
+                          chatUserInputRefs.current.get(removed.id)?.focus()
+                        })
+                      }}
+                    >
+                      <Pencil size={13} strokeWidth={2.5} />
+                    </button>
+                    <button
+                      type="button"
+                      className="yolo-chat-queued-messages__action is-delete"
+                      aria-label={t('common.delete', '删除')}
+                      title={t('common.delete', '删除')}
+                      onClick={() => {
+                        const removed = agentService.removePendingUserMessage(
+                          currentConversationId,
+                          queued.id,
+                        )
+                        if (!removed) return
+                        releaseHighlightIds(
+                          collectSelectionHighlightIds(removed.mentionables),
+                        )
+                        setMessageReasoningMap((prev) => {
+                          if (!prev.has(removed.id)) return prev
+                          const next = new Map(prev)
+                          next.delete(removed.id)
+                          return next
+                        })
+                      }}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        ) : null}
+        {!isCliRuntimeActive ? (
+          <TodoListPanel
+            key={currentConversationId}
+            messages={displayedChatMessages}
+            queuedMessageCount={queuedUserMessages.length}
+          />
+        ) : null}
+      </div>
+      {(settings.chatOptions.mentionDisplayMode ?? 'inline') === 'badge' &&
+      displayMentionablesForInput.length > 0 ? (
+        <div className="yolo-chat-user-input-files">
+          {displayMentionablesForInput.map((mentionable) => {
+            const mentionableKey = getMentionableKey(
+              serializeMentionable(mentionable),
+            )
+            return (
+              <MentionableBadge
+                key={mentionableKey}
+                mentionable={mentionable}
+                onDelete={() => handleMainInputMentionableDelete(mentionable)}
+                onClick={() => {}}
+              />
+            )
+          })}
+        </div>
+      ) : null}
+      <ChatUserInput
+        key={inputMessage.id}
+        ref={handleMainInputRef}
+        initialSerializedEditorState={null}
+        getInitialSerializedEditorState={getLatestInputContent}
+        replacementVersion={inputReplacementVersion}
+        onChange={handleMainInputChange}
+        onSubmit={handleMainInputSubmit}
+        onFocus={handleMainInputFocus}
+        mentionables={inputMessage.mentionables}
+        setMentionables={handleMainInputMentionablesChange}
+        selectedSkills={mainInputSelectedSkills}
+        setSelectedSkills={handleMainInputRuntimeSkillsChange}
+        enableSkills
+        skipImageModelCapabilityCheck={isCliRuntimeActive}
+        skillEntries={isCliRuntimeActive ? cliSkillEntries : undefined}
+        modelId={conversationModelId}
+        onModelChange={handleMainInputModelChange}
+        showModelControl={!isCliRuntimeActive}
+        allowModelMentions={!isCliRuntimeActive}
+        reasoningLevel={reasoningLevel}
+        onReasoningChange={handleMainInputReasoningChange}
+        showReasoningSelect={!isCliRuntimeActive}
+        runtimeControls={
+          isCliRuntimeActive ? (
+            <CliRuntimeControls
+              configuration={
+                activeCliConversationSnapshot?.configuration ?? null
+              }
+              cachedModels={cliModelCatalog.get(activeRuntimeId)}
+              runtimeId={activeRuntimeId}
+              disabled={
+                cliSubmissionPending || isCliRunActive || cliTransitioning
+              }
+              onModelChange={handleCliModelChange}
+              onReasoningEffortChange={handleCliReasoningEffortChange}
+            />
+          ) : undefined
+        }
+        autoFocus
+        addedBlockKey={addedBlockKey}
+        hideBadgeMentionables
+        displayMentionables={displayMentionablesForInput}
+        onDeleteFromAll={handleMainInputMentionableDelete}
+        currentAssistantId={
+          isCliRuntimeActive ? undefined : conversationAssistantId
+        }
+        onSelectAssistantForConversation={
+          isCliRuntimeActive ? undefined : handleConversationAssistantSelect
+        }
+        currentChatMode={isCliRuntimeActive ? cliChatMode : chatMode}
+        onSelectChatModeForConversation={
+          isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
+        }
+        chatMode={isCliRuntimeActive ? cliChatMode : chatMode}
+        onChatModeChange={
+          isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
+        }
+        chatModeOptions={
+          activeRuntimeId === 'claude-code'
+            ? CLAUDE_CODE_CHAT_MODES
+            : activeRuntimeId === 'codex'
+              ? CODEX_CHAT_MODES
+              : CHAT_MODES
+        }
+        yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}
+        onYoloChange={
+          isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
+        }
+        onEditorKeyDown={handleClaudePlanShortcut}
+        allowAgentModeOption
+        enableResize
+        onRunSlashCommand={handleMainInputRunSlashCommand}
+        nativeSlashCommands={nativeSlashCommands}
+        isGenerating={
+          isCliRuntimeActive
+            ? cliSubmissionPending || isCliRunActive || cliTransitioning
+            : currentConversationRunSummary.isAbortable
+        }
+        canQueueWhileGenerating={
+          isCliRuntimeActive ? false : currentConversationRunSummary.isQueueable
+        }
+        onAbort={handleMainInputAbort}
+        contextUsage={
+          isCliRuntimeActive ? cliInputContextUsage : mainInputContextUsage
+        }
+        showQuickAccess={activeSurfaceEmpty && !isSidebarPlacement}
+        quickAccessSkillEntries={
+          isCliRuntimeActive ? [] : quickAccessSkillEntries
+        }
+        quickAccessSnippetEntries={quickAccessSnippetEntries}
+      />
+    </div>
+  )
 
   return (
     <div
       ref={handleContainerRef}
       className={`${containerClassName}${
-        showEmptyState ? ' yolo-chat-container--empty-state' : ''
+        activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
       }`}
       style={containerStyle}
     >
@@ -6595,229 +1620,105 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         <div className="yolo-chat-composer-wrapper">
           <Composer onNavigateChat={() => onChangeView?.('chat')} />
         </div>
+      ) : isCliRuntimeActive &&
+        cliConversationController &&
+        activeCliConversationSnapshot &&
+        cliRuntimeScope ? (
+        <CliChatSurface
+          key={activeCliConversationSnapshot.surfaceId}
+          snapshot={activeCliConversationSnapshot}
+          presentedDraft={cliOperationSnapshot?.presentedDraft ?? null}
+          showEmptyState={activeSurfaceEmpty}
+          actions={cliChatRuntimeActions ?? cliRuntimeScope.chatRuntimeActions}
+          footerContent={mainInputFooter}
+          emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+          onRewriteUserMessage={handleCliUserMessageRewrite}
+          onPresentedDraftHandled={consumePresentedCliDraft}
+          cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
+          assistantQuotes={inputMessage.mentionables.filter(
+            (mentionable): mentionable is MentionableAssistantQuote =>
+              mentionable.type === 'assistant-quote',
+          )}
+          onQuoteAssistantSelection={handleQuoteAssistantSelection}
+          onDeleteAssistantQuote={handleDeleteAssistantQuote}
+        />
       ) : (
-        <ChatConversationPane
+        <YoloChatSurface
           chatMode={chatMode}
           yoloEnabled={yoloEnabled}
           showEmptyState={showEmptyState}
-          groupedChatMessagesLength={groupedChatMessages.length}
-          isAutoFollowEnabled={isAutoFollowEnabled}
           currentConversationId={currentConversationId}
-          chatTimelineItems={stableChatTimelineItems}
-          timelineRenderVersion={chatTimelineRenderVersion}
-          chatMessagesRef={chatMessagesRef}
-          onScrollContainerChange={setChatMessagesElement}
-          onContentElementChange={setChatContentElement}
-          renderChatTimelineItem={renderChatTimelineItem}
           editingAssistantMessageId={editingAssistantMessageId}
-          hasEarlierMessages={hasEarlierMessages}
-          hasNewerMessages={hasNewerMessages}
-          onLoadEarlier={loadEarlier}
-          onLoadNewer={loadNewer}
-          onForceScrollToBottom={handleForceScrollToBottom}
-          hasStreamingMessages={hasStreamingMessages}
-          scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
-          scrollToBottomWhileStreamingLabel={t(
-            'chat.scrollToBottomWhileStreaming',
-            '回到底部继续跟随',
-          )}
-          emptyStateAskTitle={t('chat.emptyState.askTitle', '先想清楚，再落笔')}
-          emptyStateAgentTitle={t('chat.emptyState.agentTitle', '让 AI 去执行')}
-          emptyStateAgentFullTitle={t(
-            'chat.emptyState.agentFullTitle',
-            '让 AI 自主执行 · YOLO 模式',
-          )}
+          setEditingAssistantMessageId={setEditingAssistantMessageId}
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
-          emptyStateAskDescription={t(
-            'chat.emptyState.askDescription',
-            '适合提问、润色与改写，专注表达本身',
-          )}
-          emptyStateAgentDescription={t(
-            'chat.emptyState.agentDescription',
-            '启用工具链，处理搜索、读写与多步骤任务',
-          )}
-          emptyStateAgentFullDescription={t(
-            'chat.emptyState.agentFullDescription',
-            '自动放行工具调用，处理搜索、读写与多步骤任务',
-          )}
-          onUserMessageViewportChange={setNavigatorViewport}
-          windowNavigationKey={windowNavigationKey || undefined}
-          windowNavigationTargetMessageId={windowNavigationTargetMessageId}
-          messageNavigatorContent={messageNavigatorContent}
           bottomSpacerHeight={inputOverlayHeight}
-          footerContent={
-            <>
-              {(settings.chatOptions.mentionDisplayMode ?? 'inline') ===
-                'badge' &&
-                displayMentionablesForInput.length > 0 && (
-                  <div className="yolo-chat-user-input-files">
-                    {displayMentionablesForInput.map((mentionable) => {
-                      const mentionableKey = getMentionableKey(
-                        serializeMentionable(mentionable),
-                      )
-                      return (
-                        <MentionableBadge
-                          key={mentionableKey}
-                          mentionable={mentionable}
-                          onDelete={() =>
-                            handleMentionableDeleteFromAll(mentionable)
-                          }
-                          onClick={() => {}}
-                        />
-                      )
-                    })}
-                  </div>
-                )}
-              <div className="yolo-chat-input-wrapper">
-                <div
-                  ref={setInputOverlayElement}
-                  className="yolo-chat-input-overlay"
-                >
-                  {queuedUserMessages.length > 0 && (
-                    <div className="yolo-chat-queued-messages">
-                      <div className="yolo-chat-queued-messages__hint">
-                        {t(
-                          'chat.queueMessage.hint',
-                          '等待 Agent 完成当前步骤...',
-                        )}
-                      </div>
-                      {queuedUserMessages.map((queued) => {
-                        const preview = queued.content
-                          ? editorStateToPlainText(queued.content).trim()
-                          : ''
-                        return (
-                          <div
-                            key={queued.id}
-                            className="yolo-chat-queued-messages__item"
-                            title={preview}
-                          >
-                            <span className="yolo-chat-queued-messages__preview">
-                              {preview || ' '}
-                            </span>
-                            <span className="yolo-chat-queued-messages__actions">
-                              <button
-                                type="button"
-                                className="yolo-chat-queued-messages__action"
-                                aria-label={t('common.edit', '编辑')}
-                                title={t('common.edit', '编辑')}
-                                disabled={queuedMessageEditState !== null}
-                                onClick={() => {
-                                  const removed =
-                                    agentService.removePendingUserMessage(
-                                      currentConversationId,
-                                      queued.id,
-                                    )
-                                  if (!removed) return
-
-                                  const preservedReasoningLevel = reasoningLevel
-                                  const editingReasoningLevel =
-                                    normalizeReasoningLevel(
-                                      removed.reasoningLevel,
-                                    ) ?? reasoningLevel
-                                  setQueuedMessageEditState({
-                                    preservedInputMessage:
-                                      getLatestInputMessage(),
-                                    preservedReasoningLevel,
-                                  })
-                                  setReasoningLevel(editingReasoningLevel)
-                                  replaceInputMessage({
-                                    ...removed,
-                                    timeContext: undefined,
-                                  })
-                                  requestAnimationFrame(() => {
-                                    chatUserInputRefs.current
-                                      .get(removed.id)
-                                      ?.focus()
-                                  })
-                                }}
-                              >
-                                <Pencil size={13} strokeWidth={2.5} />
-                              </button>
-                              <button
-                                type="button"
-                                className="yolo-chat-queued-messages__action is-delete"
-                                aria-label={t('common.delete', '删除')}
-                                title={t('common.delete', '删除')}
-                                onClick={() => {
-                                  const removed =
-                                    agentService.removePendingUserMessage(
-                                      currentConversationId,
-                                      queued.id,
-                                    )
-                                  if (!removed) return
-                                  releaseHighlightIds(
-                                    collectSelectionHighlightIds(
-                                      removed.mentionables,
-                                    ),
-                                  )
-                                  setMessageReasoningMap((prev) => {
-                                    if (!prev.has(removed.id)) return prev
-                                    const next = new Map(prev)
-                                    next.delete(removed.id)
-                                    return next
-                                  })
-                                }}
-                              >
-                                <Trash2 size={13} />
-                              </button>
-                            </span>
-                          </div>
-                        )
-                      })}
-                    </div>
-                  )}
-                  <TodoListPanel
-                    key={currentConversationId}
-                    messages={displayedChatMessages}
-                    queuedMessageCount={queuedUserMessages.length}
-                  />
-                </div>
-                <ChatUserInput
-                  key={inputMessage.id}
-                  ref={handleMainInputRef}
-                  initialSerializedEditorState={null}
-                  getInitialSerializedEditorState={getLatestInputContent}
-                  replacementVersion={inputReplacementVersion}
-                  onChange={handleMainInputChange}
-                  onSubmit={handleMainInputSubmit}
-                  onFocus={handleMainInputFocus}
-                  mentionables={inputMessage.mentionables}
-                  setMentionables={handleMainInputMentionablesChange}
-                  selectedSkills={mainInputSelectedSkills}
-                  setSelectedSkills={handleMainInputSelectedSkillsChange}
-                  modelId={conversationModelId}
-                  onModelChange={handleMainInputModelChange}
-                  reasoningLevel={reasoningLevel}
-                  onReasoningChange={handleMainInputReasoningChange}
-                  autoFocus
-                  addedBlockKey={addedBlockKey}
-                  hideBadgeMentionables
-                  displayMentionables={displayMentionablesForInput}
-                  onDeleteFromAll={handleMentionableDeleteFromAll}
-                  currentAssistantId={conversationAssistantId}
-                  onSelectAssistantForConversation={
-                    handleConversationAssistantSelect
-                  }
-                  currentChatMode={chatMode}
-                  onSelectChatModeForConversation={handleChatModeChange}
-                  chatMode={chatMode}
-                  onChatModeChange={handleChatModeChange}
-                  yoloEnabled={yoloEnabled}
-                  onYoloChange={handleYoloChange}
-                  allowAgentModeOption={true}
-                  enableResize
-                  onRunSlashCommand={handleMainInputRunSlashCommand}
-                  isGenerating={currentConversationRunSummary.isAbortable}
-                  canQueueWhileGenerating={
-                    currentConversationRunSummary.isQueueable
-                  }
-                  onAbort={handleMainInputAbort}
-                  contextUsage={mainInputContextUsage}
-                  showQuickAccess={showEmptyState && !isSidebarPlacement}
-                />
-              </div>
-            </>
+          footerContent={mainInputFooter}
+          runtimeActions={runtimeActions}
+          autoScrollToBottomRef={autoScrollToBottomRef}
+          forceScrollToBottomRef={forceScrollToBottomRef}
+          chatMessages={chatMessages}
+          chatMessagesStateRef={chatMessagesStateRef}
+          chatTimelineReadModel={chatTimelineReadModel}
+          activeBranchByUserMessageId={activeBranchByUserMessageId}
+          activeBranchByUserMessageIdRef={activeBranchByUserMessageIdRef}
+          setActiveBranchByUserMessageId={setActiveBranchByUserMessageId}
+          effectiveCompactionState={effectiveCompactionState}
+          pendingCompactionAnchorMessageId={pendingCompactionAnchorMessageId}
+          queryProgress={queryProgress}
+          currentConversationRunSummary={currentConversationRunSummary}
+          isCurrentConversationRunActive={isCurrentConversationRunActive}
+          isApplying={applyMutation.isPending}
+          activeApplyRequestKey={activeApplyRequestKey}
+          undoingEditSummaryTarget={undoingEditSummaryTarget}
+          messageModelMap={messageModelMap}
+          setMessageModelMap={setMessageModelMap}
+          messageReasoningMap={messageReasoningMap}
+          setMessageReasoningMap={setMessageReasoningMap}
+          setChatMessages={setChatMessages}
+          conversationModelId={conversationModelId}
+          setConversationModelId={setConversationModelId}
+          conversationModelIdRef={conversationModelIdRef}
+          conversationAssistantId={conversationAssistantId}
+          reasoningLevel={reasoningLevel}
+          setReasoningLevel={setReasoningLevel}
+          conversationReasoningLevelRef={conversationReasoningLevelRef}
+          selectedAssistantTimeContextEnabled={
+            selectedAssistantTimeContextEnabled
           }
+          getReasoningLevelForModelId={getReasoningLevelForModelId}
+          persistReasoningLevelForModel={persistReasoningLevelForModel}
+          normalizeReasoningLevel={normalizeReasoningLevel}
+          setInputMessage={setInputMessage}
+          focusedMessageId={focusedMessageId}
+          setFocusedMessageId={setFocusedMessageId}
+          inputMessageId={inputMessage.id}
+          activeAssistantQuotes={activeAssistantQuotes}
+          chatUserInputRefs={chatUserInputRefs}
+          registerChatUserInputRef={registerChatUserInputRef}
+          handleQuoteAssistantSelection={handleQuoteAssistantSelection}
+          handleDeleteAssistantQuote={handleDeleteAssistantQuote}
+          releaseHighlightIds={releaseHighlightIds}
+          persistConversation={persistConversation}
+          updateHistoricalUserMessage={updateHistoricalUserMessage}
+          finalizeHistoricalUserMessageEdit={finalizeHistoricalUserMessageEdit}
+          dismissHistoricalUserMessage={dismissHistoricalUserMessage}
+          handleAssistantMessageEditSave={handleAssistantMessageEditSave}
+          handleAssistantMessageEditCancel={handleAssistantMessageEditCancel}
+          handleAssistantMessageGroupDelete={handleAssistantMessageGroupDelete}
+          handleHistoricalUserMessageDelete={handleHistoricalUserMessageDelete}
+          handleAssistantMessageGroupBranch={handleAssistantMessageGroupBranch}
+          handleChatModeChange={handleChatModeChange}
+          handleUserMessageSubmit={handleUserMessageSubmit}
+          handleRecoverPendingToolCall={handleRecoverPendingToolCall}
+          handleRecoverAnswerUserQuestion={handleRecoverAnswerUserQuestion}
+          handleAssistantMessageGroupRetry={handleAssistantMessageGroupRetry}
+          handleAssistantErrorContinue={handleAssistantErrorContinue}
+          handleApply={handleApply}
+          handleUndoEditSummary={handleUndoEditSummary}
+          handleOpenEditSummaryFile={handleOpenEditSummaryFile}
+          handleToolMessageUpdate={handleToolMessageUpdate}
+          handleToolCallResponseUpdate={handleToolCallResponseUpdate}
+          handleContinueResponse={handleContinueResponse}
         />
       )}
     </div>

@@ -14,11 +14,7 @@ export const it: DeepPartial<TranslationKeys> = {
     addFolderToChat: 'Aggiungi cartella alla chat',
     rebuildVaultIndex: 'Ricostruisci indice completo del vault',
     updateVaultIndex: 'Aggiorna indice per file modificati',
-    continueWriting: 'AI continua scrittura',
-    continueWritingSelected: 'AI continua scrittura (selezione)',
-    customContinueWriting: 'AI continua personalizzato',
-    customRewrite: 'AI riscrivi personalizzato',
-    triggerSmartSpace: 'Attiva smart space',
+    triggerQuickAskContinue: 'Apri Quick Ask in modalità continua scrittura',
     triggerQuickAsk: 'Attiva quick ask',
     triggerTabCompletion: 'Attiva completamento tab',
     acceptInlineSuggestion: 'Accetta completamento',
@@ -88,6 +84,20 @@ export const it: DeepPartial<TranslationKeys> = {
       agent: 'Agent',
       composer: 'Sparkle',
     },
+    runtimeSelector: {
+      modeAccessibleLabel: 'Modalità chat',
+      chatLabel: 'Agent',
+      cliLabel: 'CLI',
+      chatDescription: 'Chat integrata di YOLO',
+      cliDescription: 'Usa CLI per attività',
+      accessibleLabel: 'Provider CLI: {runtime}',
+      menuLabel: 'Provider CLI',
+      claudeCodeLabel: 'Claude Code',
+      claudeCodeShortLabel: 'CC',
+      claudeCodeDescription: 'Claude Code su questo dispositivo',
+      codexLabel: 'Codex',
+      codexDescription: 'Codex su questo dispositivo',
+    },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
       empty: 'Nessuna conversazione',
@@ -106,6 +116,7 @@ export const it: DeepPartial<TranslationKeys> = {
       hideArchived: 'Nascondi archiviate',
       exportConversation: 'Esporta conversazione nel vault',
       moreActions: 'Altre azioni',
+      confirmDelete: 'Clicca di nuovo per eliminare',
     },
     chat: {
       exportSuccess: 'Chat esportata in {path}',
@@ -143,7 +154,6 @@ export const it: DeepPartial<TranslationKeys> = {
       },
       continuationPrompt: 'Prompt di sistema per continuazione',
       maxContinuationChars: 'Caratteri massimi di continuazione',
-      referenceRulesTitle: 'Regole di riferimento',
       referenceRulesPlaceholder:
         'Seleziona le cartelle il cui contenuto deve essere completamente iniettato.',
       knowledgeBaseTitle: 'Base di conoscenza',
@@ -152,12 +162,6 @@ export const it: DeepPartial<TranslationKeys> = {
       knowledgeBaseHint:
         "Abilita la ricerca embeddings per limitare l'ambito di recupero.",
     },
-  },
-
-  smartSpace: {
-    webSearch: 'Web',
-    urlContext: 'URL',
-    mentionContextLabel: 'File menzionati',
   },
 
   selection: {
@@ -171,6 +175,17 @@ export const it: DeepPartial<TranslationKeys> = {
       suggest: 'Fornisci suggerimenti',
       translateToChinese: 'Traduci in cinese',
     },
+    length: {
+      adjust: 'Regola lunghezza',
+      condense: 'Sintetizza',
+      expand: 'Espandi',
+      freeExpand: 'Espansione libera',
+      handle: 'Trascina per regolare la lunghezza',
+      noEditor: "Impossibile accedere all'editor corrente",
+      noSelection: 'Seleziona prima il testo da regolare.',
+      noEditorView: "Impossibile accedere alla vista dell'editor",
+      tableUnsupported: 'Le selezioni di tabella non sono ancora supportate.',
+    },
   },
 
   settings: {
@@ -178,7 +193,7 @@ export const it: DeepPartial<TranslationKeys> = {
     tabs: {
       models: 'Modelli',
       voice: 'Voce',
-      editor: 'Editor',
+      editor: 'Sparkle',
       knowledge: 'Conoscenza',
       tools: 'Strumenti',
       agent: 'Agent',
@@ -313,18 +328,60 @@ export const it: DeepPartial<TranslationKeys> = {
         activationPending: 'Attivazione in attesa',
         failed: 'Non riuscito',
       },
+      runtimeComponents: {
+        title: 'Componenti runtime',
+        description:
+          'Questi componenti supportano alcune funzionalità di YOLO.',
+        tokenizer: {
+          name: 'Tokenizer',
+          description: 'Conta i token del contesto e degli strumenti Agent.',
+          impact:
+            'Disattivandolo, il budget preciso dei token non è disponibile.',
+        },
+        pdfEngine: {
+          name: 'Motore PDF',
+          description:
+            'Estrae testo, renderizza pagine e prepara intervalli PDF.',
+          impact:
+            'Disattivandolo, la lettura PDF e gli strumenti pagina non funzionano.',
+        },
+        pgliteEngine: {
+          name: 'Motore PGlite',
+          description: 'Archivia e cerca l’indice locale della knowledge base.',
+          impact:
+            'Disattivandolo, indicizzazione e ricerca semantica non funzionano.',
+        },
+        bashEngine: {
+          name: 'Motore Bash',
+          description:
+            'Fornisce una shell virtuale allo strumento bash per cercare e organizzare i file del vault.',
+          impact:
+            'Disattivandolo, lo strumento bash non è disponibile e il modello perde la ricerca e l’organizzazione dei file.',
+        },
+        statuses: {
+          missing: 'In attesa di installazione',
+          downloading: 'Download in corso',
+          ready: 'Pronto',
+          loading: 'Caricamento',
+          active: 'In uso',
+          quiescing: 'Completamento attività in corso',
+          disabled: 'Disabilitato',
+          failed: 'Non riuscito',
+        },
+      },
     },
     smartSpace: {
-      quickActionsTitle: 'Azioni rapide smart space',
+      quickActionsTitle: 'Preset di continuazione scrittura',
       quickActionsDesc:
-        'Personalizza le azioni rapide e i prompt visualizzati nello smart space',
+        'Personalizza le azioni rapide e i prompt mostrati nella modalità di continuazione di Quick Ask',
+      quickActionsModalTitle: 'Preset di continuazione Quick Ask',
       configureActions: 'Configura azioni rapide',
       actionsCount: 'Azioni rapide configurate: {count}',
       addAction: 'Aggiungi azione',
       resetToDefault: 'Ripristina predefiniti',
       confirmReset:
         'Sei sicuro di voler ripristinare le azioni rapide predefinite ed eliminare tutte le impostazioni personalizzate?',
-      resetConfirmTitle: 'Ripristina azioni rapide smart space',
+      resetConfirmTitle: 'Ripristina i preset di continuazione scrittura',
       actionLabel: 'Etichetta azione',
       actionLabelDesc: "Testo visualizzato nell'azione rapida",
       actionLabelPlaceholder: 'Ad esempio, continua a scrivere',
@@ -456,7 +513,7 @@ export const it: DeepPartial<TranslationKeys> = {
       skillsCount: '{count} competenze',
       skillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillsGlobalDesc:
-        'Le skill vengono rilevate dalle skill integrate e da {path}/**/*.md (escludendo Skills.md quando applicabile). Disabilitale qui per bloccarle su tutti gli agent.',
+        'Le skill vengono rilevate dalle skill integrate, dai file {path}/*.md e dai pacchetti {path}/<folder>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
@@ -479,15 +536,15 @@ export const it: DeepPartial<TranslationKeys> = {
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
       skillsSourcePath:
-        'Origine: skill integrate + {path}/*.md + {path}/**/SKILL.md',
+        'Origine: skill integrate + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: 'Aggiorna',
       skillsEmptyHint:
-        'Nessuna skill trovata. Crea file markdown skill sotto {path}.',
+        'Nessuna skill trovata. Crea un file Markdown o una cartella contenente SKILL.md in {path}.',
       createSkillTemplates: 'Inizializza sistema Skills',
       skillsTemplateCreated: 'Sistema Skills inizializzato in {path}.',
       importSkill: 'Importa Skill',
       importSkillDesc:
-        'Importa pacchetti skill in {path}. Supporta file .md singoli o cartelle standard Agent Skills.',
+        'Importa skill in {path}. I file Markdown mantengono il nome; le cartelle mantengono il nome, SKILL.md e tutte le risorse.',
       importSkillDropzoneText: 'Trascina file o cartelle skill qui',
       importSkillBrowseFiles: 'Sfoglia File',
       importSkillBrowseFolder: 'Sfoglia Cartella',
@@ -498,27 +555,14 @@ export const it: DeepPartial<TranslationKeys> = {
       importSkillSuccess: 'Importate con successo {count} skill.',
       importSkillInvalidFile: 'Nessun file o pacchetto skill valido trovato.',
       importSkillReadError: 'Impossibile leggere i file.',
+      importSkillErrTooDeep:
+        'Il pacchetto skill supera la profondità massima di importazione di {depth}. Non è stato importato nulla.',
       importSkillWriteError: 'Impossibile importare {name}: {error}',
       importSkillErrHeader: '"{name}" non può essere importato:',
       importSkillErrNoSkillMd: 'file SKILL.md mancante nella cartella',
       importSkillErrNoFrontmatter:
         'intestazione metadati (---) mancante in cima al file',
       importSkillErrNoName: 'campo "name" mancante nei metadati',
-      importSkillErrNameTooLong: '"name" troppo lungo (massimo 64 caratteri)',
-      importSkillErrNameUppercase: '"name" deve essere tutto minuscolo',
-      importSkillErrNameHyphenEdge:
-        '"name" non può iniziare o terminare con un trattino',
-      importSkillErrNameDoubleHyphen:
-        '"name" non può contenere trattini consecutivi (--)',
-      importSkillErrNameInvalidChars:
-        '"name" può contenere solo lettere minuscole, numeri e trattini',
-      importSkillErrNameMismatch:
-        '"name" deve corrispondere al nome della cartella',
-      importSkillErrNoDescription: 'campo "description" mancante nei metadati',
-      importSkillErrDescTooLong:
-        '"description" troppo lungo (massimo 1024 caratteri)',
-      importSkillErrCompatTooLong:
-        '"compatibility" troppo lungo (massimo 500 caratteri)',
       importSkillConflictTitle: 'Skill già esistente',
       importSkillConflictMessage:
         'Esiste già una skill con lo stesso nome. Vuoi sovrascriverla?',
@@ -529,15 +573,16 @@ export const it: DeepPartial<TranslationKeys> = {
       importSkillUnsafePath:
         'Percorso non sicuro rifiutato in "{name}": {path}',
       importSkillDuplicateInBatch:
-        'Nome skill duplicato in questo batch: "{name}" (da "{source}"). Viene mantenuta solo la prima occorrenza.',
+        'Destinazione di importazione duplicata in questo batch: "{name}" (da "{source}"). Viene mantenuta solo la prima occorrenza.',
       deleteSkillTitle: 'Elimina skill',
       deleteSkillMessage:
-        'Sei sicuro di voler eliminare "{name}"? Questa azione non può essere annullata.',
+        'Sei sicuro di voler eliminare il pacchetto skill "{name}", incluse tutte le risorse? Questa azione non può essere annullata.',
       deleteSkillConfirm: 'Elimina',
       deleteSkillSuccess: '"{name}" è stata eliminata.',
       deleteSkillError: 'Impossibile eliminare "{name}": {error}',
+      deleteSkillNotFound: 'Skill non trovata',
       deleteSkillBatchMessage:
-        'Sei sicuro di voler eliminare {count} skill? Questa azione non può essere annullata.',
+        'Sei sicuro di voler eliminare {count} skill, incluse le risorse dei pacchetti? Questa azione non può essere annullata.',
       deleteSkillBatchSuccess: 'Eliminate {count} skill.',
       deleteSkillBatchBtn: 'Elimina',
       deleteSkillSelectAll: 'Seleziona tutto',
@@ -586,6 +631,9 @@ export const it: DeepPartial<TranslationKeys> = {
         'Carica gli schemi completi degli strumenti su richiesta',
       builtinFsEditLabel: 'Modifica testo',
       builtinFsEditDesc: 'Modifica il testo di un singolo file',
+      builtinBashLabel: 'Terminale virtuale',
+      builtinBashDesc:
+        'Cerca e ispeziona i file del vault, più operazioni su percorsi mkdir/mv/rm',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',
@@ -595,8 +643,6 @@ export const it: DeepPartial<TranslationKeys> = {
       builtinFsEditOpsLabel: 'Set modifica file',
       builtinFsEditOpsDesc:
         'Modifica testo mirato o scrive il contenuto completo del file',
-      builtinFsFileOpsLabel: 'Set operazioni percorsi',
-      builtinFsFileOpsDesc: 'Elimina o sposta file e cartelle, e crea cartelle',
       builtinMemoryOpsLabel: 'Set strumenti memoria',
       builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
       builtinMemoryAddLabel: 'Aggiungi memoria',
@@ -616,12 +662,12 @@ export const it: DeepPartial<TranslationKeys> = {
         'Recupera il contenuto completo di un singolo URL tramite il provider configurato.',
       builtinWebOpsLabel: 'Set strumenti ricerca web',
       builtinWebOpsDesc: 'Ricerca web e scraping di pagine',
-      builtinJsEvalLabel: 'Esecuzione JavaScript',
+      builtinJsEvalLabel: 'Sandbox di analisi',
       builtinJsEvalDesc:
-        'Esegue JavaScript in un ambiente isolato per gestire compiti su cui gli LLM sono inaffidabili. Può comportare rischi',
+        'Esegue JavaScript in una sandbox isolata per calcoli precisi, statistiche in batch ed elaborazione dati; le capacità di ricerca, lettura del vault e rete si concedono singolarmente.',
       builtinTerminalCommandLabel: 'Comandi del terminale',
       builtinTerminalCommandDesc:
-        'Esegue comandi nel terminale locale. Solo desktop.',
+        'Esegue comandi nel terminale locale, solo desktop',
       builtinDelegateSubagentLabel: 'Delega a subagent',
       builtinDelegateSubagentDesc:
         'Avvia in modo asincrono un subagent temporaneo e isolato per completare un task autonomo.',
@@ -676,6 +722,7 @@ export const it: DeepPartial<TranslationKeys> = {
       toolApproval: 'Approvazione',
       toolApprovalFullAccess: 'Accesso completo',
       toolApprovalRequire: 'Richiedi approvazione',
+      toolApprovalDangerousOnly: 'Approva solo operazioni pericolose',
       toolDisclosureAuto: 'Auto',
       toolDisclosureAutoSelect: 'Selezione automatica',
       toolDisclosureAlways: 'In contesto',
@@ -684,6 +731,8 @@ export const it: DeepPartial<TranslationKeys> = {
       editorEnabled: 'Abilitato',
       editorDisabled: 'Disabilitato',
       editorModel: 'Modello',
+      editorModelDesc: 'Seleziona il modello usato da questo agent',
+      followDefaultModel: 'Segui modello predefinito',
       editorModelCurrent: 'Corrente: {model}',
       editorTemperature: 'Temperatura',
       editorTemperatureDesc: '0.0 - 2.0',
@@ -717,6 +766,15 @@ export const it: DeepPartial<TranslationKeys> = {
       imageCompressionQuality: 'Qualità di compressione',
       imageCompressionQualityDesc:
         'Rapporto di compressione immagini (1-100). Controlla sia dimensioni che qualità, es. 60 riduce al 60% con qualità 60%.',
+      cliRuntimesBlockTitle: 'Runtime CLI',
+      claudeCliPathName: 'Percorso CLI di Claude Code',
+      claudeCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      codexCliPathName: 'Percorso CLI di Codex',
+      codexCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile codex — incolla l\'output di "which codex" ("where codex" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      cliPathMissing:
+        'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
       autoContextCompaction: 'Compattazione automatica del contesto',
       autoContextCompactionDesc:
@@ -766,9 +824,6 @@ export const it: DeepPartial<TranslationKeys> = {
       colType: 'Tipo',
       colDefault: 'Predefinito',
       colActions: 'Azioni',
-      deleteConfirmTitle: 'Elimina provider',
-      deleteConfirmMessage:
-        'Sei sicuro di voler eliminare questo provider di ricerca web?',
       deleteFailed: 'Impossibile eliminare il provider.',
       commonHeader: 'Comuni',
       resultSize: 'Numero risultati',
@@ -795,6 +850,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'gemini-grounding': 'Gemini (Grounding)',
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
+        exa: 'Exa',
       },
       fieldName: 'Nome visualizzato',
       fieldApiKey: 'API key',
@@ -903,9 +959,27 @@ export const it: DeepPartial<TranslationKeys> = {
       chatgptOAuthExpires: 'scade',
       chatgptOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare i modelli del tuo account ChatGPT Plus / Pro.',
-      chatgptOAuthStreamingNotice:
-        'ChatGPT OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
-      chatgptOAuthPendingCode: 'Codice dispositivo corrente:',
+      chatgptOAuthBrowserLogin: 'Accesso dal browser',
+      chatgptOAuthDeviceLogin: 'Accesso con codice dispositivo',
+      chatgptOAuthBrowserConnecting: 'Apertura del browser...',
+      chatgptOAuthDeviceConnecting: 'In attesa di autorizzazione...',
+      chatgptOAuthBrowserDesktopOnly:
+        "L'accesso dal browser è disponibile solo su desktop.",
+      chatgptOAuthBrowserOpened:
+        "La pagina di accesso a ChatGPT è stata aperta nel browser. Completa lì l'autorizzazione.",
+      chatgptOAuthDeviceOpened:
+        'Inserisci il codice dispositivo seguente nella pagina di autorizzazione di ChatGPT.',
+      chatgptOAuthConnectedNotice: 'ChatGPT OAuth connesso.',
+      chatgptOAuthDisconnectedNotice: 'ChatGPT OAuth disconnesso.',
+      chatgptOAuthPortFallback:
+        "Usa l'accesso con codice dispositivo: non richiede una porta locale.",
+      chatgptOAuthPendingCode: 'Codice dispositivo',
+      chatgptOAuthDeviceHelp:
+        "Inserisci questo codice nella pagina di autorizzazione entro 15 minuti. Continua solo se hai avviato tu l'accesso.",
+      chatgptOAuthCopyCode: 'Copia codice',
+      chatgptOAuthCodeCopied: 'Codice dispositivo copiato.',
+      chatgptOAuthOpenDevicePage: 'Apri pagina di autorizzazione',
+      chatgptOAuthCancelDevice: 'Annulla',
       oauthDesktopOnly:
         'Il login OAuth è disponibile solo su desktop. Collegati prima da desktop.',
       geminiOAuthTitle: 'Gemini OAuth',
@@ -918,8 +992,6 @@ export const it: DeepPartial<TranslationKeys> = {
       geminiOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare la quota Gemini del tuo account Google.',
       geminiOAuthProject: 'progetto',
-      geminiOAuthStreamingNotice:
-        'Gemini OAuth supporta lo streaming. Con Obsidian requestUrl la risposta viene bufferizzata, mentre il fetch Node desktop puo trasmetterla in tempo reale.',
     },
     tts: {
       title: 'Generazione vocale (TTS)',
@@ -1452,30 +1524,15 @@ export const it: DeepPartial<TranslationKeys> = {
       },
     },
     continuation: {
-      title: 'Continuazione',
+      title: 'Sparkle',
       aiSubsectionTitle: 'Continuazione AI',
-      customSubsectionTitle: 'Continuazione personalizzata',
       tabSubsectionTitle: 'Completamento Tab',
-      superContinuation: 'Super continuazione',
+      superContinuation: 'Abilita vista Sparkle',
       superContinuationDesc:
-        'Abilita la vista Sparkle nella barra laterale per la configurazione avanzata della continuazione.',
+        'Abilita la vista Sparkle nella barra laterale per configurare modelli, parametri, regole e fonti di riferimento dedicati alla continuazione. Se disabilitata, resta disponibile solo la vista Chat.',
       continuationModel: 'Modello di continuazione',
       continuationModelDesc:
-        'Modello usato per generare testo di continuazione.',
-      smartSpaceDescription:
-        'Smart Space ti aiuta a continuare a scrivere con azioni rapide personalizzabili. Di default si apre con spazio su riga vuota o "/" + spazio; qui sotto puoi passare al doppio spazio o disattivare il trigger con spazio.',
-      smartSpaceToggle: 'Abilita smart space',
-      smartSpaceToggleDesc:
-        'Mostra il menu smart space quando il cursore è su una riga vuota.',
-      smartSpaceTriggerMode: 'Trigger spazio su riga vuota',
-      smartSpaceTriggerModeDesc:
-        'Cosa deve fare Smart Space quando premi spazio su una riga vuota.',
-      smartSpaceTriggerModeSingle:
-        'Spazio singolo per aprire (comportamento originale)',
-      smartSpaceTriggerModeDouble:
-        'Doppio spazio per aprire (~600ms; il primo spazio inserisce davvero uno spazio)',
-      smartSpaceTriggerModeOff:
-        'Disattiva trigger con spazio su riga vuota (solo "/" + spazio)',
+        'Seleziona il modello usato per la continuazione in Sparkle.',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
         'Offre azioni rapide sul testo selezionato, come chiedere, riscrivere o spiegare.',
@@ -1518,9 +1575,12 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletion: 'Completamento tab',
       tabCompletionDesc:
         'Genera suggerimenti quando una regola trigger corrisponde.',
+      tabCompletionMultipleCandidates: 'Genera più suggerimenti',
+      tabCompletionMultipleCandidatesDesc:
+        'Quando attivo, genera tre suggerimenti di completamento.',
       tabCompletionModel: 'Modello completamento tab',
       tabCompletionModelDesc:
-        'Modello usato per generare suggerimenti di completamento tab.',
+        'Modello usato per il completamento tab e la regolazione della lunghezza.',
       tabCompletionTriggerDelay: 'Ritardo trigger (ms)',
       tabCompletionTriggerDelayDesc:
         'Quanto tempo attendere dopo che smetti di digitare prima di generare un suggerimento.',
@@ -1553,9 +1613,9 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletionTemperature: 'Temperatura',
       tabCompletionTemperatureDesc:
         'Controlla la casualità dei suggerimenti (0 = deterministico, 1 = creativo).',
-      tabCompletionRequestTimeout: 'Timeout richiesta (ms)',
+      tabCompletionRequestTimeout: 'Timeout richiesta (secondi)',
       tabCompletionRequestTimeoutDesc:
-        'Quanto tempo attendere una risposta dal modello prima del timeout.',
+        'Interrompe la richiesta di completamento se supera questo numero di secondi. Aumentalo per modelli più lenti o con ragionamento lungo.',
       tabCompletionConstraints: 'Vincoli completamento tab',
       tabCompletionConstraintsDesc:
         'Regole opzionali inserite nel prompt di completamento tab (ad esempio "scrivi in italiano" o "segui uno stile specifico").',
@@ -1568,6 +1628,10 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletionTriggerTypeString: 'Stringa',
       tabCompletionTriggerTypeRegex: 'Regex',
       tabCompletionTriggerPattern: 'Pattern',
+      tabCompletionTriggerAcceptMode: 'Comportamento di accettazione',
+      tabCompletionTriggerAcceptModeInsert: 'Inserisci al cursore',
+      tabCompletionTriggerAcceptModeReplace:
+        'Sostituisci il testo corrispondente',
       tabCompletionTriggerDescription: 'Descrizione',
       tabCompletionTriggerRemove: 'Rimuovi',
     },
@@ -1649,6 +1713,9 @@ export const it: DeepPartial<TranslationKeys> = {
       ribbonClickActionSplit: 'Split destro',
       ribbonClickActionWindow: 'Nuova finestra',
       ribbonClickActionLast: 'Ultima posizione usata',
+      enterKeyCreatesNewline: 'Usa Invio per andare a capo',
+      enterKeyCreatesNewlineDesc:
+        'Si applica ai campi di Chat e Quick Ask. Premi Cmd/Ctrl + Invio per inviare.',
       mentionDisplayMode: 'Posizione visualizzazione mention',
       mentionDisplayModeDesc:
         "Scegli se mostrare i file selezionati con @ e le skill selezionate con / nel testo dell'input o come badge sopra la casella.",
@@ -1739,6 +1806,7 @@ export const it: DeepPartial<TranslationKeys> = {
     placeholderCompact: 'Clicca per espandere e modificare...',
     placeholderPrefix: 'Scrivi un messaggio...',
     placeholderMention: 'aggiungere riferimenti o modelli',
+    placeholderMentionReferences: 'aggiungere riferimenti',
     placeholderSkill: 'scegliere una skill o un comando',
     contextUsage: 'Utilizzo finestra di contesto',
     contextUsageUnknownMaxSuffix:
@@ -1790,6 +1858,14 @@ export const it: DeepPartial<TranslationKeys> = {
       title: 'Navigatore messaggi',
       itemAriaLabel: 'Vai al messaggio {index}: {label}',
       emptyMessage: 'Messaggio vuoto',
+    },
+    mermaidControls: {
+      open: 'Apri visualizzatore diagramma',
+      zoomOut: 'Riduci',
+      zoomIn: 'Ingrandisci',
+      fitViewport: 'Adatta alla finestra',
+      reset: 'Reimposta zoom',
+      controlsLabel: 'Controlli diagramma',
     },
     stopGeneration: 'Ferma generazione',
     queueMessage: {
@@ -1844,12 +1920,17 @@ export const it: DeepPartial<TranslationKeys> = {
     noAssistantContent: 'Nessun contenuto assistente da inserire',
     regenerate: 'Rigenera',
     reasoning: 'Ragionamento',
+    reasonedFor: 'Ha ragionato per {{seconds}} s',
     annotations: 'Annotazioni',
     vaultSources: 'Fonti dal vault ({count})',
     pdfReferenceNoPreview: '(PDF: clicca il titolo per aprire la pagina)',
     assistantQuote: {
       add: 'Cita',
       badge: 'Citazione risposta',
+      commentPlaceholder: 'Aggiungi un commento…',
+      save: 'Salva commento',
+      delete: 'Elimina commento',
+      inputLabel: 'Annotazione {index}',
     },
     mentionMenu: {
       back: 'Torna indietro',
@@ -1866,6 +1947,16 @@ export const it: DeepPartial<TranslationKeys> = {
         label: 'Compatta contesto',
         description:
           'Comprimi manualmente la cronologia precedente e continua il task corrente in una nuova finestra di contesto.',
+      },
+      openPluginManager: {
+        label: 'Gestisci plugin',
+        description:
+          'Gestisci i plugin di Claude Code installati o installane di nuovi da un marketplace.',
+      },
+      openMcpServers: {
+        label: 'Server MCP',
+        description:
+          'Visualizza lo stato dei server MCP della sessione corrente.',
       },
     },
     slashMenu: {
@@ -1887,6 +1978,73 @@ export const it: DeepPartial<TranslationKeys> = {
       agentFullTitle: "Lascia eseguire all'AI · Modalità YOLO",
       agentFullDescription:
         'Approva automaticamente gli strumenti per ricerca, lettura/scrittura e task multi-step.',
+    },
+    cliSurface: {
+      emptyTitle: 'Usa CLI Agent',
+      emptyDescription:
+        'Collega Claude Code o Codex per eseguire attività complesse su questo dispositivo.',
+      emptyUserMessage: 'Messaggio vuoto',
+      error: 'Errore della sessione CLI: {message}',
+      runtimeError: 'Impossibile avviare il runtime CLI: {message}',
+      submitError: 'Impossibile inviare il messaggio CLI: {message}',
+      cancelError: 'Impossibile interrompere la CLI: {message}',
+      openError: 'Impossibile aprire la sessione CLI: {message}',
+      transitionError:
+        'Impossibile lasciare la sessione CLI corrente: {message}',
+    },
+    cliControls: {
+      defaultModel: 'Modello predefinito di {provider}',
+      loadError: 'Impossibile caricare i modelli CLI: {message}',
+      updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
+    },
+    claudePlugins: {
+      title: 'Gestisci plugin',
+      placeholder: 'Caricamento informazioni sui plugin…',
+      tabInstalled: 'Installati',
+      tabBrowse: 'Sfoglia',
+      loadError: 'Impossibile caricare le informazioni sui plugin.',
+      cliFallback:
+        'Operazione plugin non riuscita. Gestisci i plugin dal terminale con claude plugin.',
+      updateRestartRequired:
+        'Plugin aggiornato. Avvia una nuova sessione perché la modifica abbia effetto.',
+      installedEmpty: 'Nessun plugin installato.',
+      browseEmpty: 'Nessun plugin corrispondente trovato.',
+      searchPlaceholder: 'Cerca plugin…',
+      update: 'Aggiorna',
+      uninstall: 'Disinstalla',
+      install: 'Installa',
+      installedBadge: 'Installato',
+      uninstallConfirmTitle: 'Disinstalla plugin',
+      uninstallConfirmMessage:
+        'Disinstallare "{name}"? Questa azione non può essere annullata.',
+      scopeUser: 'Utente',
+      scopeProject: 'Progetto',
+      scopeLocal: 'Locale',
+      installCount: '{count} installazioni',
+    },
+    mcpServers: {
+      title: 'Server MCP',
+      placeholder: 'Caricamento stato dei server MCP…',
+      refresh: 'Aggiorna',
+      reconnect: 'Riconnetti',
+      toolCount: '{count} strumenti',
+      statusConnected: 'Connesso',
+      statusFailed: 'Connessione non riuscita',
+      statusNeedsAuth: 'Accesso richiesto',
+      statusPending: 'Connessione in corso',
+      statusDisabled: 'Disattivato',
+      statusUnknown: 'Stato sconosciuto',
+      empty: 'Nessun server MCP configurato per questa sessione.',
+      loadError: 'Impossibile caricare lo stato dei server MCP.',
+      noActiveSession:
+        'Nessuna sessione attiva. Invia un messaggio per avviare una sessione CLI.',
+      actionError: 'Operazione non riuscita: {error}',
+      runtimeSwitched:
+        'Il runtime è cambiato, quindi questa azione è stata annullata.',
+      codexReadOnlyNote:
+        'Lo stato dei server MCP di Codex è di sola lettura qui. Gestisci i server dal terminale.',
+      codexUnsupportedVersion:
+        'Questa versione di Codex CLI non supporta la query dello stato dei server MCP. Aggiorna Codex CLI.',
     },
     quickAccess: {
       manage: 'Gestisci accessi rapidi',
@@ -1937,31 +2095,9 @@ export const it: DeepPartial<TranslationKeys> = {
       emptyPlanPreview: 'Questo piano rimuove contenuto',
       stopApplying: 'Interrompi applicazione',
     },
-    customContinuePromptLabel: 'Come vuoi continuare?',
-    customContinuePromptPlaceholder:
-      "Chiedi all'AI (@ per i file, # per le azioni rapide)",
-    customContinueHint:
-      'Shift+Invio per inviare, Invio per nuova riga, Esc per chiudere',
-    customContinueConfirmHint: 'Invia la tua istruzione per continuare',
     customRewritePromptPlaceholder:
       'Descrivi come riscrivere il testo selezionato, ad es. "rendi conciso e voce attiva; mantieni la struttura markdown"; premi shift+invio per confermare, invio per una nuova riga, ed esc per chiudere.',
     customContinueProcessing: 'Elaborazione...',
-    customContinueError: 'Impossibile generare la continuazione',
-    customContinuePresets: {
-      continue: {
-        label: 'Continua a scrivere',
-        instruction: 'Continua il testo corrente nello stesso stile e tono.',
-      },
-      summarize: {
-        label: 'Riassumi',
-        instruction: 'Scrivi un riassunto conciso del contenuto corrente.',
-      },
-      flowchart: {
-        label: 'Crea un diagramma di flusso',
-        instruction:
-          'Trasforma i punti correnti in un diagramma di flusso o passaggi ordinati.',
-      },
-    },
     customContinueSections: {
       suggestions: {
         title: 'Suggerimenti',
@@ -2046,6 +2182,39 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     errorCard: {
       title: 'Questa risposta non e stata generata',
+      connectionInterruptedContinuable:
+        'La connessione al servizio del modello si e interrotta. La risposta parziale e ancora disponibile: fai clic su Continua risposta per riprendere.',
+      viewDetails: 'Mostra dettagli errore',
+      hideDetails: 'Nascondi dettagli errore',
+      goToSettings: 'Vai alle impostazioni',
+      diagnosis: {
+        auth: 'La chiave API non e valida. Controllala e riconfigura il provider.',
+        region:
+          'Il servizio non e disponibile nella tua area. Configura un proxy o passa a un provider disponibile.',
+        model: 'Il modello non esiste o non hai i permessi per accedervi.',
+        quota:
+          'Il credito dell account e esaurito. Ricarica o passa a un altro provider.',
+        rateLimit:
+          'Troppe richieste in poco tempo. Attendi un momento e riprova, oppure passa a un modello con limiti piu alti.',
+        contextLength:
+          'Il contesto della conversazione e troppo lungo. Elimina i messaggi precedenti o avvia una nuova chat.',
+        payload: 'La richiesta e troppo grande. Invia meno file o meno testo.',
+        content:
+          'Il contenuto e stato bloccato da un sistema di sicurezza. Modificalo e riprova.',
+        mcp: 'Impossibile raggiungere il server MCP. Verifica che sia in esecuzione.',
+        stream:
+          'La trasmissione della risposta si e interrotta. Controlla la stabilita della rete o riprova.',
+        network:
+          'Impossibile raggiungere il server. Controlla la rete o le impostazioni del proxy.',
+        proxy:
+          'Errore di proxy o certificato SSL. Controlla le impostazioni di proxy e rete.',
+        server: 'Il servizio del modello ha un problema. Riprova piu tardi.',
+        deprecated:
+          'Questo modello e stato ritirato o deprecato. Passa a un altro modello.',
+        knowledge: 'Vettorizzazione della base di conoscenza non riuscita.',
+        parse:
+          'Il modello ha restituito una risposta non valida. Riprova o cambia modello.',
+      },
       responseFormat: {
         responseNotObject:
           'Il servizio modello ha restituito una risposta che non e un oggetto (valore effettivo: {{actual}}).',
@@ -2083,11 +2252,16 @@ export const it: DeepPartial<TranslationKeys> = {
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
         fs_edit_ops: 'Set modifica file',
-        fs_file_ops: 'Set operazioni percorsi',
+        bash: 'Bash',
         memory_add: 'Aggiungi memoria',
         memory_update: 'Aggiorna memoria',
         memory_delete: 'Elimina memoria',
         open_skill: 'Apri skill',
+      },
+      dangerousBash: {
+        title: 'Operazione pericolosa da confermare',
+        rmSummary: 'Sto per eliminare i seguenti percorsi (nel cestino):',
+        mvSummary: 'Sto per spostare/rinominare i seguenti percorsi:',
       },
       writeAction: {
         write: 'Scrivi file',
@@ -2121,6 +2295,8 @@ export const it: DeepPartial<TranslationKeys> = {
       abort: 'Interrompi',
       alwaysAllowThisTool: 'Consenti sempre questo strumento',
       allowForThisChat: 'Consenti per questa chat',
+      approvePlan: 'Approva il piano',
+      stayInPlan: 'Resta in modalità piano',
     },
     toolSummary: {
       todoWrite: {
@@ -2134,6 +2310,17 @@ export const it: DeepPartial<TranslationKeys> = {
         sessionKill: 'Sessione {id} · Termina',
         sessionInput: 'Sessione {id} · Input: {preview}',
       },
+    },
+    toolRunSummary: {
+      read: 'Letti {count} file',
+      search: 'Eseguite {count} ricerche',
+      web: '{count} ricerche web',
+      edit: 'Modificati {count} file',
+      virtualTerminal: 'Terminale virtuale {count} volte',
+      terminal: 'Terminale {count} volte',
+      command: 'Eseguiti {count} comandi',
+      analysis: '{count} analisi in sandbox',
+      other: '{count} altre azioni',
     },
     liveTask: {
       statusRunning: 'In esecuzione',
@@ -2149,12 +2336,15 @@ export const it: DeepPartial<TranslationKeys> = {
       truncated: 'Output troncato.',
     },
     subagent: {
+      defaultTitle: 'Subagent',
       openDetails: 'Visualizza dettagli subagent',
+      loadingActivity: 'Caricamento attività…',
       planningNextMoves: 'Pianificazione prossimi passi',
       noActivity: 'Nessuna attività.',
       statusCompleted: 'Completato',
       statusAborted: 'Interrotto',
       statusFailed: 'Fallito',
+      statusDispatched: 'Inviato',
       toolUseCount: '{count} strumenti',
       tokenCount: '{count} token',
       approval: {
@@ -2242,6 +2432,9 @@ export const it: DeepPartial<TranslationKeys> = {
     agentStatusRunning: 'In esecuzione',
     agentStatusWaitingApproval: 'In attesa di approvazione',
     agentStatusFallbackConversationTitle: 'Conversazione in esecuzione',
+    cliStatusRunning: 'In esecuzione',
+    cliStatusWaitingApproval: 'In attesa di approvazione',
+    cliStatusWaitingUser: 'In attesa di input',
     backgroundStatusPanelTitle: 'Attivita e promemoria',
     backgroundStatusPanelEmpty: 'Non ci sono attivita o promemoria',
     backgroundTasksRunning:
@@ -2271,16 +2464,20 @@ export const it: DeepPartial<TranslationKeys> = {
     reviewTitle: 'Rivedi modifiche',
     changesResolved: 'modifiche risolte',
     acceptAllIncoming: 'Accetta tutte in arrivo',
+    acceptAllChanges: 'Accetta tutte le modifiche',
     keepAllChanges: 'Mantieni tutto',
     rejectAll: 'Rifiuta tutte',
+    rejectAllChanges: 'Rifiuta tutte le modifiche',
     revertAllChanges: 'Ripristina tutto',
     prevChange: 'Modifica precedente',
     nextChange: 'Modifica successiva',
     reset: 'Ripristina',
     applyAndClose: 'Applica e chiudi',
     acceptIncoming: 'Accetta in arrivo',
+    acceptChange: 'Accetta modifica',
     keepChange: 'Mantieni questa modifica',
     acceptCurrent: 'Accetta corrente',
+    rejectChange: 'Rifiuta modifica',
     revertChange: 'Ripristina questa modifica',
     acceptBoth: 'Accetta entrambe',
     acceptedIncoming: 'In arrivo accettata',
@@ -2297,6 +2494,8 @@ export const it: DeepPartial<TranslationKeys> = {
     noAssistantDescription: 'Usa prompt di sistema predefinito',
     navigationHint: '↑↓ per navigare, Invio per selezionare, Esc per annullare',
     inputPlaceholder: 'Fai una domanda...',
+    continuePlaceholder:
+      'Lascia vuoto per continuare a scrivere, oppure aggiungi istruzioni...',
     close: 'Chiudi',
     copy: 'Copia',
     insert: 'Inserisci',
@@ -2309,22 +2508,13 @@ export const it: DeepPartial<TranslationKeys> = {
     error: 'Impossibile generare la risposta',
     copied: 'Copiato negli appunti',
     inserted: 'Inserito al cursore',
-    modeAsk: 'Chiedi',
-    modeEdit: 'Modifica',
-    modeEditDirect: 'Modifica (Accesso completo)',
-    modeAskDesc: 'Fai domande e ottieni risposte',
-    modeEditDesc: 'Modifica il documento corrente',
-    modeEditDirectDesc: 'Modifica il documento direttamente senza conferma',
-    editNoFile: 'Apri prima un file',
-    editNoChanges: 'Nessuna modifica valida restituita dal modello',
+    rewriteSelectionExpired:
+      'La selezione non è più disponibile. Seleziona nuovamente il testo.',
     editPartialSuccess:
       'Applicate {appliedCount} di {totalEdits} modifiche. Controlla la console per i dettagli.',
-    editApplied:
-      'Applicate con successo {appliedCount} modifica/modifiche a {fileName}',
     statusRequesting: 'Richiesta in corso...',
     statusThinking: 'Sto pensando...',
     statusGenerating: 'Sto generando...',
-    statusModifying: 'Sto modificando...',
   },
 
   chatMode: {
@@ -2336,6 +2526,8 @@ export const it: DeepPartial<TranslationKeys> = {
     rewriteDesc: 'Modifica solo la selezione corrente',
     agent: 'Agent',
     agentDesc: 'Strumenti per task complessi',
+    continue: 'Scrivi',
+    continueDesc: 'Continua a scrivere al cursore, premi Tab per accettare',
     agentFull: 'Agent (YOLO)',
     agentFullDesc:
       'Approva automaticamente le chiamate agli strumenti per task complessi',

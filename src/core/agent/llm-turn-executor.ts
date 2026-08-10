@@ -1,9 +1,13 @@
 import { v4 as uuidv4 } from 'uuid'
 
-import type { AssistantToolPreference } from '../../types/assistant.types'
+import type {
+  AssistantToolPreference,
+  AssistantToolServerPreference,
+} from '../../types/assistant.types'
 import {
   ChatAssistantMessage,
   ChatConversationCompactionLike,
+  ChatErrorDetail,
   ChatMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
@@ -15,8 +19,10 @@ import {
 } from '../../types/reasoning'
 import { ToolCallRequest } from '../../types/tool-call.types'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
+import { ReasoningPhaseTracker } from '../../utils/chat/reasoningPhaseTracker'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
+import { hasHostedWebSearch } from '../../utils/llm/model-tools'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
@@ -25,6 +31,7 @@ import {
   registerLLMDebugTraceForTurn,
   updateLLMDebugTrace,
 } from '../llm/debugCapture'
+import { ProviderRequestError } from '../llm/providerErrors'
 import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import {
   LOCAL_FILE_TOOL_SHORT_NAMES,
@@ -57,6 +64,7 @@ type AgentLlmTurnExecutorInput = {
   allowedToolNames?: string[]
   enableToolDisclosure?: boolean
   toolPreferences?: Record<string, AssistantToolPreference>
+  toolServerPreferences?: Record<string, AssistantToolServerPreference>
   allowedSkillPaths?: string[]
   abortSignal?: AbortSignal
   reasoningLevel?: ReasoningLevel
@@ -109,57 +117,8 @@ export class AgentLlmTurnExecutor {
   constructor(private readonly input: AgentLlmTurnExecutorInput) {}
 
   async run(): Promise<AgentLlmTurnExecutorOutput> {
-    const availableTools = this.input.enableTools
-      ? await this.input.mcpManager.listAvailableTools({
-          includeBuiltinTools: this.input.includeBuiltinTools,
-          // Pass the active model's modalities so built-in tool schemas
-          // (notably fs_read's modality enum) are tailored — PDF-capable
-          // models see ['text','pdf'], vision-capable see ['text','image'],
-          // text-only see no modality field at all.
-          chatModelModalities: this.input.model.modalities,
-        })
-      : []
-    const {
-      filteredTools,
-      hasTools,
-      hasMemoryTools,
-      hasOnDemandTools,
-      requestTools: tools,
-    } = await selectAllowedTools({
-      availableTools,
-      allowedToolNames: this.input.allowedToolNames,
-      toolPreferences: this.input.toolPreferences,
-      apiType: this.input.apiType,
-      enableToolDisclosure: this.input.enableToolDisclosure,
-      jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
-      settings: this.input.mcpManager.getSettingsSnapshot(),
-    })
-    const runtimeModePrompt = buildToolCapabilityPrompt({
-      mode: this.input.toolCapabilityMode ?? 'agent',
-      toolNames: filteredTools.map((tool) => tool.name),
-    })
-    const baseRequestMessages =
-      await this.input.requestContextBuilder.generateRequestMessages({
-        messages: this.input.messages,
-        hasTools,
-        hasMemoryTools,
-        hasOnDemandTools,
-        model: this.input.model,
-        conversationId: this.input.conversationId,
-        compaction: this.input.compaction,
-        contextualInjections: this.input.contextualInjections,
-        runtimeModePrompt,
-        systemPromptOverride: this.input.systemPromptOverride,
-        // Real LLM request: freeze (or reuse) the per-conversation system prompt.
-        systemPromptSnapshotMode: 'create',
-      })
-    const requestMessages =
-      this.input.transientRequestMessages &&
-      this.input.transientRequestMessages.length > 0
-        ? [...baseRequestMessages, ...this.input.transientRequestMessages]
-        : baseRequestMessages
-
     const responseStart = Date.now()
+    const reasoningTracker = new ReasoningPhaseTracker(responseStart)
     const model = this.input.model
     const deliveryMode = this.input.requestParams?.deliveryMode ?? 'incremental'
     const executionMode =
@@ -181,7 +140,11 @@ export class AgentLlmTurnExecutor {
       })
     }
     const resumedMessage = this.input.resumeAssistantMessage
-    const assistantMessage: ChatAssistantMessage = {
+    // Streaming deltas replace this reference with a new object (immutable
+    // update) rather than mutating in place, so a message's identity changes
+    // exactly when its content changes. Downstream state layers rely on this
+    // to skip unchanged messages by reference instead of deep-comparing them.
+    let assistantMessage: ChatAssistantMessage = {
       ...(resumedMessage ?? {
         role: 'assistant' as const,
         id: assistantMessageId,
@@ -217,11 +180,82 @@ export class AgentLlmTurnExecutor {
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
     let requestReasoning: ReasoningLevel | undefined
+    let requestMessages: RequestMessage[]
+    let tools: RequestTool[] | undefined
     try {
+      const toolPlanStart = Date.now()
+      const allAvailableTools = this.input.enableTools
+        ? await this.input.mcpManager.listAvailableTools({
+            includeBuiltinTools: this.input.includeBuiltinTools,
+            chatModelModalities: this.input.model.modalities,
+          })
+        : []
+      // When the provider runs web search itself, offering ours too just gives
+      // the model two interchangeable options. `web_scrape` still earns its
+      // place: hosted results carry titles and URLs but no page content.
+      const availableTools = hasHostedWebSearch(
+        this.input.model,
+        this.input.apiType,
+      )
+        ? allAvailableTools.filter(
+            (tool) => tool.name !== this.qualifyLocalToolName('web_search'),
+          )
+        : allAvailableTools
+      const {
+        filteredTools,
+        hasTools,
+        hasMemoryTools,
+        hasOnDemandTools,
+        requestTools,
+      } = await selectAllowedTools({
+        availableTools,
+        allowedToolNames: this.input.allowedToolNames,
+        toolPreferences: this.input.toolPreferences,
+        toolServerPreferences: this.input.toolServerPreferences,
+        apiType: this.input.apiType,
+        enableToolDisclosure: this.input.enableToolDisclosure,
+        jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
+        settings: this.input.mcpManager.getSettingsSnapshot(),
+      })
+      tools = requestTools
+      updateLLMDebugTrace(debugTrace?.id, {
+        toolPlanDurationMs: Date.now() - toolPlanStart,
+      })
+
+      const contextPreparationStart = Date.now()
+      const runtimeModePrompt = buildToolCapabilityPrompt({
+        mode: this.input.toolCapabilityMode ?? 'agent',
+        toolNames: filteredTools.map((tool) => tool.name),
+      })
+      const baseRequestMessages =
+        await this.input.requestContextBuilder.generateRequestMessages({
+          messages: this.input.messages,
+          hasTools,
+          hasMemoryTools,
+          hasOnDemandTools,
+          model: this.input.model,
+          conversationId: this.input.conversationId,
+          compaction: this.input.compaction,
+          contextualInjections: this.input.contextualInjections,
+          runtimeModePrompt,
+          systemPromptOverride: this.input.systemPromptOverride,
+          systemPromptSnapshotMode: 'create',
+        })
+      requestMessages =
+        this.input.transientRequestMessages &&
+        this.input.transientRequestMessages.length > 0
+          ? [...baseRequestMessages, ...this.input.transientRequestMessages]
+          : baseRequestMessages
+      updateLLMDebugTrace(debugTrace?.id, {
+        contextPreparationDurationMs: Date.now() - contextPreparationStart,
+      })
+
       requestReasoning = resolveRequestReasoningLevel(
         this.input.model,
         this.input.reasoningLevel,
       )
+      const providerStart = Date.now()
+      let recordedFirstToken = false
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
         model: this.input.model,
@@ -245,12 +279,37 @@ export class AgentLlmTurnExecutor {
         geminiTools: this.input.geminiTools,
         debugTraceId: debugTrace?.id,
         onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
-          if (contentDelta) {
-            assistantMessage.content += contentDelta
+          if (reasoningDelta) reasoningTracker.observeReasoning()
+
+          let metadata = assistantMessage.metadata
+          if (contentDelta || toolCalls?.length) {
+            const reasoningDurationMs = reasoningTracker.settle()
+            if (reasoningDurationMs !== undefined) {
+              metadata = { ...metadata, reasoningDurationMs }
+            }
           }
-          if (reasoningDelta && !preserveInitialReasoning) {
-            assistantMessage.reasoning = `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
+          if (
+            !recordedFirstToken &&
+            (Boolean(contentDelta) ||
+              Boolean(reasoningDelta) ||
+              Boolean(toolCalls?.length))
+          ) {
+            recordedFirstToken = true
+            updateLLMDebugTrace(debugTrace?.id, {
+              providerFirstTokenMs: Date.now() - providerStart,
+            })
           }
+
+          const content = contentDelta
+            ? assistantMessage.content + contentDelta
+            : assistantMessage.content
+
+          const reasoning =
+            reasoningDelta && !preserveInitialReasoning
+              ? `${assistantMessage.reasoning ?? ''}${reasoningDelta}`
+              : assistantMessage.reasoning
+
+          let toolCallRequests = assistantMessage.toolCallRequests
           if (toolCalls && toolCalls.length > 0) {
             const streamedToolCallRequests = toolCalls
               .map((toolCall) => {
@@ -275,24 +334,44 @@ export class AgentLlmTurnExecutor {
               )
 
             if (streamedToolCallRequests.length > 0) {
-              assistantMessage.toolCallRequests = streamedToolCallRequests
+              toolCallRequests = streamedToolCallRequests
             }
           }
           if (chunk.usage) {
-            assistantMessage.metadata = {
-              ...assistantMessage.metadata,
-              usage: chunk.usage,
-            }
+            metadata = { ...metadata, usage: chunk.usage }
           }
           if (chunk.choices?.[0]?.delta?.providerMetadata) {
-            assistantMessage.metadata = {
-              ...assistantMessage.metadata,
+            metadata = {
+              ...metadata,
               providerMetadata: chunk.choices[0].delta.providerMetadata,
+            }
+          }
+
+          // Only replace the reference when something actually changed —
+          // an untouched reference tells downstream state layers this
+          // message can be skipped without a deep comparison.
+          if (
+            content !== assistantMessage.content ||
+            reasoning !== assistantMessage.reasoning ||
+            toolCallRequests !== assistantMessage.toolCallRequests ||
+            metadata !== assistantMessage.metadata
+          ) {
+            assistantMessage = {
+              ...assistantMessage,
+              content,
+              reasoning,
+              toolCallRequests,
+              metadata,
             }
           }
           this.input.onAssistantMessage(assistantMessage)
         },
       })
+      if (!recordedFirstToken) {
+        updateLLMDebugTrace(debugTrace?.id, {
+          providerFirstTokenMs: Date.now() - providerStart,
+        })
+      }
     } catch (error) {
       const isAborted =
         this.input.abortSignal?.aborted ||
@@ -300,37 +379,57 @@ export class AgentLlmTurnExecutor {
       const errorMessage = isAborted
         ? undefined
         : formatErrorMessageWithCauses(error)
+      const errorDetail: ChatErrorDetail | undefined =
+        !isAborted && error instanceof ProviderRequestError
+          ? {
+              providerId: error.providerId,
+              status: error.status,
+              ...(error.responseBody
+                ? { responseBody: error.responseBody }
+                : {}),
+            }
+          : undefined
 
-      assistantMessage.metadata = {
+      const errorMetadata = {
         ...assistantMessage.metadata,
+        ...(reasoningTracker.settle() !== undefined
+          ? { reasoningDurationMs: reasoningTracker.durationMs }
+          : {}),
         durationMs: Date.now() - responseStart,
-        generationState: isAborted ? 'aborted' : 'error',
+        generationState: isAborted ? ('aborted' as const) : ('error' as const),
         errorMessage,
+        ...(errorDetail ? { errorDetail } : {}),
       }
+      assistantMessage = { ...assistantMessage, metadata: errorMetadata }
       updateLLMDebugTrace(debugTrace?.id, {
         completedAt: Date.now(),
-        durationMs: assistantMessage.metadata.durationMs,
-        generationState: assistantMessage.metadata.generationState,
+        durationMs: errorMetadata.durationMs,
+        generationState: errorMetadata.generationState,
         errorMessage,
       })
       this.input.onAssistantMessage(assistantMessage)
       throw error
     }
 
-    if (assistantMessage.content === initialContent && turnResult.content) {
-      assistantMessage.content += turnResult.content
+    let finalContent = assistantMessage.content
+    if (finalContent === initialContent && turnResult.content) {
+      finalContent += turnResult.content
     }
+    let finalReasoning = assistantMessage.reasoning
     if (
       !preserveInitialReasoning &&
-      (assistantMessage.reasoning ?? '') === initialReasoning &&
+      (finalReasoning ?? '') === initialReasoning &&
       turnResult.reasoning
     ) {
-      assistantMessage.reasoning = `${initialReasoning}${turnResult.reasoning}`
+      finalReasoning = `${initialReasoning}${turnResult.reasoning}`
     }
+    if (turnResult.reasoning) reasoningTracker.observeReasoning()
+    const reasoningDurationMs = reasoningTracker.settle()
 
+    let finalAnnotations = assistantMessage.annotations
     if (turnResult.annotations?.length) {
       const existingAnnotations = assistantMessage.annotations ?? []
-      assistantMessage.annotations = [
+      finalAnnotations = [
         ...existingAnnotations,
         ...turnResult.annotations.filter(
           (incoming) =>
@@ -341,13 +440,14 @@ export class AgentLlmTurnExecutor {
         ),
       ]
     }
-    assistantMessage.metadata = {
+    const finalMetadata = {
       ...assistantMessage.metadata,
+      ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
       usage: turnResult.usage ?? assistantMessage.metadata?.usage,
       durationMs: Date.now() - responseStart,
       generationState: this.input.abortSignal?.aborted
-        ? 'aborted'
-        : 'completed',
+        ? ('aborted' as const)
+        : ('completed' as const),
       providerMetadata: turnResult.providerMetadata,
     }
 
@@ -358,13 +458,20 @@ export class AgentLlmTurnExecutor {
       metadata: toolCall.metadata,
     }))
 
-    assistantMessage.toolCallRequests =
-      toolCallRequests.length > 0 ? toolCallRequests : undefined
+    assistantMessage = {
+      ...assistantMessage,
+      content: finalContent,
+      reasoning: finalReasoning,
+      annotations: finalAnnotations,
+      metadata: finalMetadata,
+      toolCallRequests:
+        toolCallRequests.length > 0 ? toolCallRequests : undefined,
+    }
     updateLLMDebugTrace(debugTrace?.id, {
       completedAt: Date.now(),
-      durationMs: assistantMessage.metadata.durationMs,
-      generationState: assistantMessage.metadata.generationState,
-      usage: assistantMessage.metadata.usage,
+      durationMs: finalMetadata.durationMs,
+      generationState: finalMetadata.generationState,
+      usage: finalMetadata.usage,
       hasToolCalls: toolCallRequests.length > 0,
       toolCallNames: toolCallRequests.map((toolCall) => toolCall.name),
     })
@@ -388,6 +495,10 @@ export class AgentLlmTurnExecutor {
     if (!AgentLlmTurnExecutor.LOCAL_TOOL_NAMES.has(toolName)) {
       return toolName
     }
+    return this.qualifyLocalToolName(toolName)
+  }
+
+  private qualifyLocalToolName(toolName: string): string {
     return `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
   }
 }

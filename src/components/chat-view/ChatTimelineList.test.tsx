@@ -70,8 +70,19 @@ describe('ChatTimelineList windowed timeline', () => {
     expect(html).toContain('yolo-chat-timeline-bottom-spacer')
     expect(html).toContain('height:120px')
     const spacerIndex = html.indexOf('yolo-chat-timeline-bottom-spacer')
+    const liveEdgeIndex = html.indexOf('yolo-chat-live-edge-sentinel')
     const lastRowIndex = html.lastIndexOf('data-key="b"')
     expect(spacerIndex).toBeGreaterThan(lastRowIndex)
+    expect(liveEdgeIndex).toBeGreaterThan(spacerIndex)
+  })
+
+  it('always renders a live-edge sentinel at the true timeline end', () => {
+    const html = renderList({ items: [makeUserItem('a')] })
+
+    expect(html).toContain('yolo-chat-live-edge-sentinel')
+    expect(html.indexOf('yolo-chat-live-edge-sentinel')).toBeGreaterThan(
+      html.lastIndexOf('data-key="a"'),
+    )
   })
 
   it('omits the spacer when height is 0', () => {

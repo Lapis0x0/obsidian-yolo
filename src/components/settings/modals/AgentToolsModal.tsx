@@ -13,7 +13,6 @@ import {
   BUILTIN_TOOL_CATEGORY_ORDER,
   BuiltinToolCategory,
   FILE_EDIT_GROUP_TOOL_NAME,
-  FILE_OPS_GROUP_TOOL_NAME,
   MEMORY_OPS_GROUP_TOOL_NAME,
   WEB_OPS_GROUP_TOOL_NAME,
   WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
@@ -25,7 +24,6 @@ import { DELEGATE_SUBAGENT_TOOL_SHORT_NAME } from '../../../core/agent/subagent/
 import { JS_SANDBOX_TOOL_NAME } from '../../../core/mcp/jsSandboxTool'
 import {
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   TERMINAL_COMMAND_TOOL_NAME,
   getLocalFileTools,
@@ -47,9 +45,6 @@ type AgentToolsModalProps = {
 }
 
 const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const PATH_FS_TOOL_NAME_SET = new Set<string>(
-  LOCAL_FS_PATH_OPERATION_TOOL_NAMES,
-)
 const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
   LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
 )
@@ -104,7 +99,6 @@ function AgentToolsModalContent({
       .filter(
         (tool) =>
           !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
-          !PATH_FS_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
           !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
       )
@@ -138,23 +132,6 @@ function AgentToolsModalContent({
       label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
       description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
       enabled: editSplitToolEnabled,
-      hasSettings: false,
-    }
-
-    const splitToolEnabled = LOCAL_FS_PATH_OPERATION_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[FILE_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const fileOpsMeta = getBuiltinToolUiMeta(FILE_OPS_GROUP_TOOL_NAME)
-    if (!fileOpsMeta) {
-      throw new Error('Missing built-in tool UI metadata for fs_file_ops')
-    }
-    const fileOpsTool = {
-      id: FILE_OPS_GROUP_TOOL_NAME,
-      label: t(fileOpsMeta.labelKey, fileOpsMeta.labelFallback),
-      description: t(fileOpsMeta.descKey ?? '', fileOpsMeta.descFallback),
-      enabled: splitToolEnabled,
       hasSettings: false,
     }
 
@@ -192,13 +169,7 @@ function AgentToolsModalContent({
       hasSettings: true,
     }
 
-    const allTools = [
-      ...tools,
-      fileEditTool,
-      fileOpsTool,
-      memoryOpsTool,
-      webOpsTool,
-    ]
+    const allTools = [...tools, fileEditTool, memoryOpsTool, webOpsTool]
 
     const byCategory = new Map<BuiltinToolCategory, typeof allTools>()
     for (const category of BUILTIN_TOOL_CATEGORY_ORDER) {
@@ -228,16 +199,14 @@ function AgentToolsModalContent({
     const targets =
       toolName === FILE_EDIT_GROUP_TOOL_NAME
         ? [FILE_EDIT_GROUP_TOOL_NAME, ...LOCAL_FS_EDIT_TOOL_NAMES]
-        : toolName === FILE_OPS_GROUP_TOOL_NAME
-          ? [FILE_OPS_GROUP_TOOL_NAME, ...LOCAL_FS_PATH_OPERATION_TOOL_NAMES]
-          : toolName === MEMORY_OPS_GROUP_TOOL_NAME
-            ? [
-                MEMORY_OPS_GROUP_TOOL_NAME,
-                ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-              ]
-            : toolName === WEB_OPS_GROUP_TOOL_NAME
-              ? [WEB_OPS_GROUP_TOOL_NAME, ...WEB_OPS_SPLIT_ACTION_TOOL_NAMES]
-              : [toolName]
+        : toolName === MEMORY_OPS_GROUP_TOOL_NAME
+          ? [
+              MEMORY_OPS_GROUP_TOOL_NAME,
+              ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
+            ]
+          : toolName === WEB_OPS_GROUP_TOOL_NAME
+            ? [WEB_OPS_GROUP_TOOL_NAME, ...WEB_OPS_SPLIT_ACTION_TOOL_NAMES]
+            : [toolName]
     const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
     for (const target of targets) {
       nextBuiltinToolOptions[target] = {
@@ -300,7 +269,7 @@ function AgentToolsModalContent({
                           tool.id === JS_SANDBOX_TOOL_NAME
                             ? t(
                                 'settings.jsSandbox.openSettings',
-                                'Configure JavaScript execution',
+                                'Configure analysis sandbox',
                               )
                             : tool.id === TERMINAL_COMMAND_TOOL_NAME
                               ? t(
@@ -322,7 +291,7 @@ function AgentToolsModalContent({
                             new JsSandboxConfigModal(app, {
                               title: t(
                                 'settings.jsSandbox.openSettings',
-                                'Configure JavaScript execution',
+                                'Configure analysis sandbox',
                               ),
                               value: settings.jsSandbox,
                               onChange: (next) =>

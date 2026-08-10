@@ -23,6 +23,8 @@ import {
   RequestToolChoice,
 } from '../../types/llm/request'
 import {
+  Annotation,
+  HostedWebSearchCall,
   LLMResponseNonStreaming,
   LLMResponseStreaming,
   ResponseUsage,
@@ -35,6 +37,7 @@ import {
 } from '../../types/reasoning'
 import { getToolCallArgumentsObject } from '../../types/tool-call.types'
 import { parseImageDataUrl } from '../../utils/llm/image'
+import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
 import { applyAnthropicPromptCache } from './anthropicPromptCache'
@@ -52,6 +55,31 @@ import {
   runWithRequestTransportForStream,
 } from './requestTransport'
 import { createTransportClients } from './transportClients'
+
+/**
+ * Reads the `query` out of a hosted search's streamed arguments. The JSON
+ * arrives in fragments, so a partial-but-usable query is extracted before the
+ * object closes — the card shows what is being searched while it happens.
+ */
+const parseHostedSearchQuery = (partialJson: string): string | undefined => {
+  try {
+    const parsed = JSON.parse(partialJson) as { query?: unknown }
+    if (typeof parsed.query === 'string') {
+      return parsed.query
+    }
+  } catch {
+    // Still mid-stream; fall through to the partial read below.
+  }
+  const match = /"query"\s*:\s*"((?:[^"\\]|\\.)*)/.exec(partialJson)
+  if (!match) {
+    return undefined
+  }
+  try {
+    return JSON.parse(`"${match[1]}"`) as string
+  } catch {
+    return undefined
+  }
+}
 
 export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private browserClient: Anthropic
@@ -135,10 +163,43 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
           ...clientOptions,
           fetch: transportFetch,
         }),
+      { providerId: provider.id, protocol: 'passthrough' },
     )
     this.browserClient = clients.browserClient
     this.obsidianClient = clients.obsidianClient
     this.nodeClient = clients.nodeClient
+  }
+
+  /**
+   * Serializes function tools plus any hosted (server-side) tool the model has
+   * enabled. The hosted tool's name is fixed to `web_search` by the protocol,
+   * and Anthropic requires globally unique tool names — but our own web search
+   * reaches the model fully qualified as `yolo_local__web_search`, so the two
+   * coexist and the agent keeps both: the provider-run search and its own
+   * configured backend.
+   */
+  private buildTools(
+    model: ChatModel,
+    request: LLMRequestNonStreaming | LLMRequestStreaming,
+  ): MessageCreateParamsNonStreaming['tools'] {
+    const functionTools = request.tools?.map((tool) =>
+      AnthropicProvider.parseRequestTool(tool),
+    )
+
+    const hasHostedWebSearch = getBuiltinProviderTools(model).some(
+      (tool) => tool.type === 'deepseek:web_search',
+    )
+    if (!hasHostedWebSearch) {
+      return functionTools
+    }
+
+    // SDK v0.39 predates the server-tool union, so the entry is cast.
+    const hostedWebSearch = {
+      type: 'web_search_20250305',
+      name: 'web_search',
+    } as unknown as AnthropicTool
+
+    return [...(functionTools ?? []), hostedWebSearch]
   }
 
   async generateResponse(
@@ -167,7 +228,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
             .filter((m): m is MessageParam => m !== null),
         ),
         system: systemMessage,
-        tools: request.tools?.map((t) => AnthropicProvider.parseRequestTool(t)),
+        tools: this.buildTools(model, request),
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
@@ -294,7 +355,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
             .filter((m): m is MessageParam => m !== null),
         ),
         system: systemMessage,
-        tools: request.tools?.map((t) => AnthropicProvider.parseRequestTool(t)),
+        tools: this.buildTools(model, request),
         tool_choice: request.tool_choice
           ? AnthropicProvider.parseRequestToolChoice(request.tool_choice)
           : undefined,
@@ -410,6 +471,31 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       completion_tokens: 0,
       total_tokens: 0,
     }
+    // Hosted tools stream a `server_tool_use` block whose arguments arrive as
+    // `input_json_delta` — the same delta type function tool calls use. Those
+    // deltas must not reach the tool-call accumulator: the provider already ran
+    // the tool, and there is no matching tool call for the agent to execute.
+    // They are collected here instead, so the query can be paired with the
+    // results that arrive later in a separate `web_search_tool_result` block.
+    const serverToolBlockIndices = new Set<number>()
+    const hostedSearchByToolUseId = new Map<string, HostedWebSearchCall>()
+    const hostedSearchIdByBlockIndex = new Map<number, string>()
+    const hostedSearchArgsByBlockIndex = new Map<number, string>()
+    const emitHostedSearch = (): LLMResponseStreaming => ({
+      id: messageId,
+      choices: [
+        {
+          finish_reason: null,
+          delta: {
+            providerMetadata: {
+              hostedWebSearch: [...hostedSearchByToolUseId.values()],
+            },
+          },
+        },
+      ],
+      object: 'chat.completion.chunk',
+      model,
+    })
 
     for await (const chunk of stream) {
       if (chunk.type === 'message_start') {
@@ -438,6 +524,62 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         chunk.type === 'content_block_start' ||
         chunk.type === 'content_block_delta'
       ) {
+        if (
+          chunk.type === 'content_block_start' &&
+          chunk.content_block.type === ('server_tool_use' as string)
+        ) {
+          serverToolBlockIndices.add(chunk.index)
+          const block = chunk.content_block as unknown as {
+            id?: string
+            name?: string
+          }
+          if (block.name === 'web_search' && block.id) {
+            hostedSearchIdByBlockIndex.set(chunk.index, block.id)
+            hostedSearchArgsByBlockIndex.set(chunk.index, '')
+            hostedSearchByToolUseId.set(block.id, { id: block.id, results: [] })
+            yield emitHostedSearch()
+          }
+          continue
+        }
+        if (
+          chunk.type === 'content_block_delta' &&
+          serverToolBlockIndices.has(chunk.index)
+        ) {
+          const toolUseId = hostedSearchIdByBlockIndex.get(chunk.index)
+          if (toolUseId && chunk.delta.type === 'input_json_delta') {
+            const args =
+              (hostedSearchArgsByBlockIndex.get(chunk.index) ?? '') +
+              chunk.delta.partial_json
+            hostedSearchArgsByBlockIndex.set(chunk.index, args)
+            const query = parseHostedSearchQuery(args)
+            const call = hostedSearchByToolUseId.get(toolUseId)
+            if (query && call && call.query !== query) {
+              hostedSearchByToolUseId.set(toolUseId, { ...call, query })
+              yield emitHostedSearch()
+            }
+          }
+          continue
+        }
+        if (
+          chunk.type === 'content_block_start' &&
+          chunk.content_block.type === ('web_search_tool_result' as string)
+        ) {
+          const toolUseId = (
+            chunk.content_block as unknown as { tool_use_id?: string }
+          ).tool_use_id
+          const call = toolUseId
+            ? hostedSearchByToolUseId.get(toolUseId)
+            : undefined
+          if (toolUseId && call) {
+            hostedSearchByToolUseId.set(toolUseId, {
+              ...call,
+              results: AnthropicProvider.parseWebSearchResults(
+                chunk.content_block,
+              ),
+            })
+            yield emitHostedSearch()
+          }
+        }
         const parsedChunk = AnthropicProvider.parseStreamingResponseChunk(
           chunk,
           messageId,
@@ -618,6 +760,85 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
     }
   }
 
+  /**
+   * Converts a hosted-search receipt (`web_search_tool_result`) into the
+   * `url_citation` annotations the assistant message already renders as
+   * "View Sources". The provider ran the search itself, so this block is the
+   * only record of which pages the answer is based on. SDK v0.39 predates the
+   * server-tool content blocks, so the shape is read structurally.
+   *
+   * Returns an empty array for the error variant (`web_search_tool_result` may
+   * carry `{type:'web_search_tool_result_error'}` instead of a result list).
+   */
+  private static parseWebSearchToolResult(block: unknown): Annotation[] {
+    return AnthropicProvider.parseWebSearchResults(block).map((result) => ({
+      type: 'url_citation',
+      url_citation: {
+        url: result.url,
+        ...(result.title ? { title: result.title } : {}),
+      },
+    }))
+  }
+
+  private static parseWebSearchResults(
+    block: unknown,
+  ): HostedWebSearchCall['results'] {
+    const content = (block as { content?: unknown }).content
+    if (!Array.isArray(content)) {
+      return []
+    }
+    return content.flatMap((entry) => {
+      const result = entry as { type?: string; url?: string; title?: string }
+      if (result.type !== 'web_search_result' || !result.url) {
+        return []
+      }
+      return [
+        { url: result.url, ...(result.title ? { title: result.title } : {}) },
+      ]
+    })
+  }
+
+  /**
+   * Pairs each `server_tool_use` with the `web_search_tool_result` that carries
+   * its `tool_use_id`, producing one receipt per search the provider ran.
+   */
+  private static parseHostedWebSearchCalls(
+    content: readonly unknown[],
+  ): HostedWebSearchCall[] {
+    const resultsByToolUseId = new Map<string, HostedWebSearchCall['results']>()
+    for (const block of content) {
+      const typed = block as { type?: string; tool_use_id?: string }
+      if (typed.type === 'web_search_tool_result' && typed.tool_use_id) {
+        resultsByToolUseId.set(
+          typed.tool_use_id,
+          AnthropicProvider.parseWebSearchResults(block),
+        )
+      }
+    }
+
+    return content.flatMap((block): HostedWebSearchCall[] => {
+      const typed = block as {
+        type?: string
+        id?: string
+        name?: string
+        input?: { query?: unknown }
+      }
+      if (typed.type !== 'server_tool_use' || typed.name !== 'web_search') {
+        return []
+      }
+      const id = typed.id ?? ''
+      const query =
+        typeof typed.input?.query === 'string' ? typed.input.query : undefined
+      return [
+        {
+          id,
+          ...(query ? { query } : {}),
+          results: resultsByToolUseId.get(id) ?? [],
+        },
+      ]
+    })
+  }
+
   static parseNonStreamingResponse(
     response: Anthropic.Message,
   ): LLMResponseNonStreaming {
@@ -645,6 +866,15 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
         }
       })
 
+    const annotations = response.content.flatMap((c) =>
+      c.type === ('web_search_tool_result' as string)
+        ? AnthropicProvider.parseWebSearchToolResult(c)
+        : [],
+    )
+    const hostedWebSearch = AnthropicProvider.parseHostedWebSearchCalls(
+      response.content,
+    )
+
     const cacheRead = response.usage.cache_read_input_tokens ?? undefined
     const cacheCreation =
       response.usage.cache_creation_input_tokens ?? undefined
@@ -660,6 +890,10 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
             content: textContent,
             reasoning: reasoningContent,
             tool_calls: toolCalls.length > 0 ? toolCalls : undefined,
+            ...(annotations.length > 0 ? { annotations } : {}),
+            ...(hostedWebSearch.length > 0
+              ? { providerMetadata: { hostedWebSearch } }
+              : {}),
             role: response.role,
           },
         },
@@ -693,6 +927,28 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
     }
 
     if (chunk.type === 'content_block_start') {
+      // Hosted-search receipt. It arrives complete in `content_block_start`
+      // (no deltas follow), so the annotations are emitted in one chunk.
+      if (chunk.content_block.type === ('web_search_tool_result' as string)) {
+        const annotations = AnthropicProvider.parseWebSearchToolResult(
+          chunk.content_block,
+        )
+        if (annotations.length === 0) {
+          return null
+        }
+        return {
+          id: messageId,
+          choices: [
+            {
+              finish_reason: null,
+              delta: { annotations },
+            },
+          ],
+          object: 'chat.completion.chunk',
+          model: model,
+        }
+      }
+
       if (chunk.content_block.type === 'tool_use') {
         return {
           id: messageId,

@@ -1,0 +1,341 @@
+/* Selection rewrite turns the selected source range into one continuous,
+   in-document writing surface. Motion belongs to the surface geometry; the
+   candidate text deliberately keeps the editor's normal typography/color. */
+
+.yolo-selection-rewrite-layer {
+  --yolo-selection-rewrite-fill: var(
+    --text-selection,
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+  );
+  pointer-events: none;
+}
+
+.yolo-selection-rewrite-outline {
+  opacity: 1;
+  pointer-events: none;
+}
+
+.yolo-selection-rewrite-outline.has-candidate {
+  overflow: clip;
+}
+
+.yolo-selection-rewrite-outline.is-streaming {
+  transition:
+    width 120ms var(--yolo-anim-ease-out),
+    height 120ms var(--yolo-anim-ease-out);
+}
+
+.yolo-selection-rewrite-outline.is-streaming
+  .yolo-selection-rewrite-outline-path {
+  transition: d 120ms var(--yolo-anim-ease-out);
+}
+
+.yolo-selection-rewrite-outline.is-streaming.is-settling-surface,
+.yolo-selection-rewrite-outline.is-streaming.is-settling-surface
+  .yolo-selection-rewrite-outline-path {
+  transition-duration: 240ms;
+}
+
+.yolo-selection-rewrite-outline-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.yolo-selection-rewrite-outline-path {
+  fill: var(--yolo-selection-rewrite-fill);
+}
+
+.yolo-selection-rewrite-sheen-path {
+  opacity: 0;
+}
+
+.yolo-selection-rewrite-sheen-stop.is-edge {
+  stop-color: var(--interactive-accent);
+  stop-opacity: 0;
+}
+
+.yolo-selection-rewrite-sheen-stop.is-center {
+  stop-color: var(--interactive-accent);
+  stop-opacity: 0.2;
+}
+
+.yolo-selection-rewrite-outline.is-waiting {
+  animation: yolo-selection-rewrite-fade-in 140ms ease-out both;
+}
+
+.yolo-selection-rewrite-outline.is-waiting .yolo-selection-rewrite-sheen-path {
+  opacity: 1;
+}
+
+@keyframes yolo-selection-rewrite-fade-in {
+  from {
+    opacity: 0.82;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.yolo-selection-rewrite-candidate-text {
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+}
+
+.yolo-selection-rewrite-source-placeholder {
+  visibility: hidden;
+}
+
+.yolo-selection-rewrite-candidate-overlay {
+  position: absolute;
+  inset: 0 auto auto 0;
+  z-index: 1;
+  width: 100%;
+  color: var(--text-normal);
+  font: inherit;
+  line-height: inherit;
+  text-indent: var(--yolo-selection-rewrite-start-indent, 0);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  transition: clip-path 120ms var(--yolo-anim-ease-out);
+}
+
+.yolo-selection-rewrite-candidate-reveal {
+  animation: yolo-selection-rewrite-text-resolve 180ms var(--yolo-anim-ease-out)
+    both;
+  will-change: filter, opacity, transform;
+}
+
+@keyframes yolo-selection-rewrite-text-resolve {
+  from {
+    opacity: 0.35;
+    filter: blur(3px);
+    transform: translateY(1px);
+  }
+  to {
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
+.yolo-selection-rewrite-flow-spacer {
+  display: block;
+  width: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  pointer-events: none;
+  transition: height 120ms var(--yolo-anim-ease-out);
+}
+
+.yolo-selection-rewrite-flow-spacer.is-resizing {
+  transition: none;
+}
+
+.yolo-selection-rewrite-flow-spacer.is-settling {
+  transition: none;
+}
+
+.yolo-selection-rewrite-stretch-suffix {
+  position: relative;
+  top: var(--yolo-selection-rewrite-stretch-height, 0);
+}
+
+.yolo-selection-rewrite-controls-layer {
+  z-index: 10;
+  pointer-events: none;
+}
+
+.yolo-selection-rewrite-controls {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  pointer-events: auto;
+  transition:
+    left 160ms var(--yolo-anim-ease-out),
+    top 160ms var(--yolo-anim-ease-out),
+    opacity 160ms ease;
+}
+
+.yolo-selection-rewrite-length-control {
+  position: absolute;
+  z-index: 2;
+  width: 64px;
+  height: 16px;
+  transform: translate(-50%, -50%);
+  opacity: 1;
+  pointer-events: auto;
+  transition: opacity 120ms ease;
+}
+
+.yolo-selection-rewrite-length-control.is-condensing::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: calc(50% - var(--yolo-selection-rewrite-handle-surface-extension, 5px));
+  width: var(--yolo-selection-rewrite-length-guide-width, 120px);
+  transform: translate(-50%, -50%);
+  border-top: 1px dashed
+    color-mix(in srgb, var(--interactive-accent) 72%, transparent);
+  pointer-events: none;
+}
+
+.yolo-selection-rewrite-length-readout {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  width: max-content;
+  max-width: 180px;
+  padding: 4px 9px;
+  transform: translateX(-50%);
+  border: 1px solid color-mix(in srgb, var(--text-muted) 38%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--background-primary) 94%, transparent);
+  box-shadow: 0 5px 16px rgb(0 0 0 / 18%);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: 550;
+  line-height: 1.2;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+.yolo-selection-rewrite-length-control.is-resizing
+  .yolo-selection-rewrite-length-readout,
+.yolo-selection-rewrite-length-control:hover
+  .yolo-selection-rewrite-length-readout,
+.yolo-selection-rewrite-length-control:focus-within
+  .yolo-selection-rewrite-length-readout {
+  opacity: 1;
+}
+
+button.yolo-selection-rewrite-length-handle {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 64px;
+  min-width: 64px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: none;
+  cursor: ns-resize;
+  touch-action: none;
+  appearance: none;
+  z-index: 1;
+}
+
+button.yolo-selection-rewrite-length-handle::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64px;
+  height: 4px;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 40%, transparent);
+  transition: background-color 150ms ease;
+}
+
+button.yolo-selection-rewrite-length-handle:hover::before,
+button.yolo-selection-rewrite-length-handle:focus-visible::before,
+.yolo-selection-rewrite-length-control.is-resizing
+  button.yolo-selection-rewrite-length-handle::before {
+  background: color-mix(in srgb, var(--text-muted) 65%, transparent);
+}
+
+button.yolo-selection-rewrite-length-handle:focus-visible {
+  outline: none;
+}
+
+.yolo-selection-rewrite-length-control.is-locked {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.yolo-selection-rewrite-controls::before {
+  content: '';
+  position: absolute;
+  left: -4px;
+  top: var(--yolo-selection-rewrite-rail-top, 0);
+  width: 2px;
+  height: var(--yolo-selection-rewrite-rail-height, 20px);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--interactive-accent) 65%, transparent);
+  opacity: 0.95;
+  pointer-events: none;
+  transition:
+    top 180ms ease,
+    height 180ms ease,
+    opacity 140ms ease;
+}
+
+.yolo-selection-rewrite-action {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+  min-height: 26px;
+  margin: 0;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--text-muted) 40%, transparent);
+  background: color-mix(in srgb, var(--background-primary) 92%, transparent);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    transform 150ms ease;
+}
+
+.yolo-selection-rewrite-action:hover,
+.yolo-selection-rewrite-action:focus-visible {
+  background: color-mix(
+    in srgb,
+    var(--background-primary) 82%,
+    var(--background-secondary) 18%
+  );
+  border-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  outline: none;
+  transform: translateY(-1px);
+}
+
+.yolo-selection-rewrite-action.is-stop {
+  color: var(--text-normal);
+  font-size: 10px;
+}
+
+.yolo-selection-rewrite-action.is-accept {
+  color: rgb(var(--yolo-incoming-color-rgb, 4, 120, 87));
+}
+
+.yolo-selection-rewrite-action.is-reject {
+  color: rgb(var(--yolo-current-color-rgb, 185, 28, 28));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .yolo-selection-rewrite-sheen-path {
+    display: none !important;
+  }
+}

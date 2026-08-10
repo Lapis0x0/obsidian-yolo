@@ -43,23 +43,24 @@ function UpdateToast() {
   const { app } = plugin
   const { result: coreResult, muteUpdateVersion } = useUpdateCheck()
   const moduleOffers = useModuleUpdates()
-  const moduleOffer = coreResult?.hasUpdate ? null : (moduleOffers[0] ?? null)
-  const result = coreResult?.hasUpdate
-    ? coreResult
-    : moduleOffer
-      ? {
-          hasUpdate: true,
-          latestVersion: moduleOffer.latestVersion,
-          releaseNotes:
-            moduleOffer.releaseNotes ??
-            fallbackModuleReleaseNotes(
-              moduleOffer.latestVersion,
-              moduleOffer.name,
-            ),
-          releaseUrl: '',
-          assets: null,
-        }
-      : null
+  const coreUpdate = coreResult?.hasUpdate ? coreResult : null
+  const moduleOffer = coreUpdate ? null : (moduleOffers[0] ?? null)
+  const latestVersion = coreUpdate
+    ? coreUpdate.latestVersion
+    : (moduleOffer?.latestVersion ?? null)
+  const releaseNotes = useMemo(() => {
+    if (coreUpdate) return coreUpdate.releaseNotes
+    if (!moduleOffer) return null
+    return (
+      moduleOffer.releaseNotes ??
+      fallbackModuleReleaseNotes(moduleOffer.latestVersion, moduleOffer.name)
+    )
+  }, [
+    coreUpdate,
+    moduleOffer?.latestVersion,
+    moduleOffer?.name,
+    moduleOffer?.releaseNotes,
+  ])
   const {
     primaryCta,
     hasSelfUpdate,
@@ -74,16 +75,20 @@ function UpdateToast() {
   const [exiting, setExiting] = useState(false)
   const [hiddenForSession, setHiddenForSession] = useState(false)
   const [lang, setLang] = useState<ReleaseLanguage>('en')
-  const activeKey = moduleOffer?.key ?? result?.latestVersion ?? null
+  const moduleOfferKey = moduleOffer?.key ?? null
+  const activeKey = moduleOfferKey ?? latestVersion
 
   // Reset transient view state whenever a different version surfaces.
   useEffect(() => {
-    if (result) {
-      setExiting(false)
-      setHiddenForSession(false)
-      setLang(resolveDefaultLanguage(result.releaseNotes, language))
-    }
-  }, [activeKey, language, result])
+    if (!activeKey) return
+    setExiting(false)
+    setHiddenForSession(false)
+  }, [activeKey])
+
+  useEffect(() => {
+    if (!releaseNotes) return
+    setLang(resolveDefaultLanguage(releaseNotes, language))
+  }, [activeKey, language, releaseNotes])
 
   // Closing plays the exit animation first, then hides for this session only.
   // Use "Skip this version" in the header to persist a mute across launches.
@@ -91,9 +96,9 @@ function UpdateToast() {
   // prefers-reduced-motion (where the animation is disabled). Keep in sync with
   // the 160ms exit duration in input.css.
   useEffect(() => {
-    if (!exiting || !result) return
+    if (!exiting || !activeKey) return
     const id = window.setTimeout(() => {
-      if (moduleOffer) plugin.dismissModuleUpdateForSession(moduleOffer.key)
+      if (moduleOfferKey) plugin.dismissModuleUpdateForSession(moduleOfferKey)
       else {
         plugin.dismissUpdateForSession()
         setHiddenForSession(true)
@@ -101,9 +106,8 @@ function UpdateToast() {
       setExiting(false)
     }, 160)
     return () => window.clearTimeout(id)
-  }, [exiting, moduleOffer, plugin, result])
+  }, [activeKey, exiting, moduleOfferKey, plugin])
 
-  const releaseNotes = result?.releaseNotes
   // The header (title + subtitle) tracks the UI's default language; only the
   // body changelog follows the 中文/EN toggle.
   const headerLang = releaseNotes
@@ -123,7 +127,7 @@ function UpdateToast() {
     [bodyNotes],
   )
 
-  if (!result?.hasUpdate || !releaseNotes || hiddenForSession) {
+  if (!latestVersion || !releaseNotes || hiddenForSession) {
     return null
   }
 
@@ -191,9 +195,7 @@ function UpdateToast() {
                   : `${moduleOffer!.name} update available`
                 : t('update.toastTitle', 'YOLO update available')}
             </span>
-            <span className="yolo-update-toast-version">
-              {result.latestVersion}
-            </span>
+            <span className="yolo-update-toast-version">{latestVersion}</span>
           </div>
           {subtitle ? (
             <div className="yolo-update-toast-subtitle">{subtitle}</div>
@@ -206,7 +208,7 @@ function UpdateToast() {
             title={t('update.skipVersion', "Don't remind me for this version")}
             onClick={() => {
               if (moduleOffer) void plugin.muteModuleUpdate(moduleOffer.key)
-              else muteUpdateVersion(result.latestVersion)
+              else muteUpdateVersion(latestVersion)
             }}
           >
             {t('update.skipVersion', "Don't remind me for this version")}
@@ -242,7 +244,7 @@ function UpdateToast() {
           <div
             className="yolo-update-toast-progress-fill"
             style={{
-              width: `${moduleOffer.progress}%`,
+              transform: `scaleX(${moduleOffer.progress / 100})`,
             }}
           />
         </div>

@@ -6,14 +6,73 @@ import {
   useState,
 } from 'react'
 
+import { createScrollController } from './scroll/scrollController'
+
 const AT_BOTTOM_THRESHOLD_PX = 24
 const SCROLL_POSITION_EPSILON_PX = 1
+const TOUCH_DIRECTION_THRESHOLD_PX = 4
+const SCROLL_SESSION_END_DELAY_MS = 160
+// A follow session is opened by an explicit live-content update (streaming,
+// a new message, or an explicit jump to the live edge). Layout observers may
+// continue reporting asynchronous markdown/image/LaTeX growth during this
+// window. Once it expires, a layout change is treated as a viewport-preserving
+// user interaction instead of an implicit request to scroll to the bottom.
+const FOLLOW_SESSION_END_DELAY_MS = 500
 
 type UseAutoScrollProps = {
   scrollContainerRef: React.RefObject<HTMLElement>
   scrollContainerElement?: HTMLElement | null
-  contentElement?: HTMLElement | null
+  bottomSentinelElement?: HTMLElement | null
   followKey?: string
+  canFollowLiveEdge?: boolean
+}
+
+type ScheduledFrame = {
+  window: Window
+  id: number
+}
+
+type ScheduledTimeout = {
+  window: Window
+  id: number
+}
+
+type ScrollDirection = 'up' | 'down'
+
+type LiveEdgeObservation = {
+  isIntersecting: boolean
+  isFollowing: boolean
+  canFollowLiveEdge: boolean
+  hasActiveFollowSession: boolean
+}
+
+/**
+ * A live-edge observation is only actionable while an explicit follow
+ * session is active. A disclosure/layout change can move the sentinel out of
+ * view without representing new live content.
+ */
+export const shouldFollowAfterLiveEdgeExit = ({
+  isIntersecting,
+  isFollowing,
+  canFollowLiveEdge,
+  hasActiveFollowSession,
+}: LiveEdgeObservation): boolean =>
+  !isIntersecting && isFollowing && canFollowLiveEdge && hasActiveFollowSession
+
+export const resolveTouchScrollDirection = (
+  previousClientY: number,
+  currentClientY: number,
+  currentDirection: ScrollDirection | null,
+): ScrollDirection | null => {
+  if (currentClientY > previousClientY + TOUCH_DIRECTION_THRESHOLD_PX) {
+    return 'up'
+  }
+
+  if (currentClientY < previousClientY - TOUCH_DIRECTION_THRESHOLD_PX) {
+    return 'down'
+  }
+
+  return currentDirection
 }
 
 type ScrollTransitionInput = {
@@ -21,8 +80,8 @@ type ScrollTransitionInput = {
   previousScrollTop: number
   currentScrollTop: number
   distanceToBottom: number
+  allowDetach: boolean
   allowReattach: boolean
-  isLayoutAdjustment?: boolean
 }
 
 export const resolveAutoFollowFromScroll = ({
@@ -30,20 +89,19 @@ export const resolveAutoFollowFromScroll = ({
   previousScrollTop,
   currentScrollTop,
   distanceToBottom,
+  allowDetach,
   allowReattach,
-  isLayoutAdjustment = false,
 }: ScrollTransitionInput): boolean => {
-  if (isLayoutAdjustment) {
-    return isFollowing
-  }
-
-  if (currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX) {
+  if (
+    allowDetach &&
+    currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX
+  ) {
     return false
   }
 
   if (
-    currentScrollTop > previousScrollTop + SCROLL_POSITION_EPSILON_PX &&
     allowReattach &&
+    currentScrollTop > previousScrollTop + SCROLL_POSITION_EPSILON_PX &&
     distanceToBottom <= AT_BOTTOM_THRESHOLD_PX
   ) {
     return true
@@ -68,21 +126,42 @@ const isEditableTarget = (target: EventTarget | null): boolean => {
 export function useAutoScroll({
   scrollContainerRef,
   scrollContainerElement: scrollContainerElementOverride,
-  contentElement,
+  bottomSentinelElement,
   followKey,
+  canFollowLiveEdge = true,
 }: UseAutoScrollProps) {
   const scrollContainerElement =
     scrollContainerElementOverride ?? scrollContainerRef.current
+  const scrollControllerRef = useRef<ReturnType<
+    typeof createScrollController
+  > | null>(null)
+  if (scrollControllerRef.current === null) {
+    scrollControllerRef.current = createScrollController()
+  }
+  const scrollController = scrollControllerRef.current
+  // Declared first so this layout effect runs before the "snap to bottom"
+  // layout effect below in the same commit — the controller must be bound
+  // to the (possibly new, on conversation switch) element before anything
+  // submits an intent to it.
+  useLayoutEffect(() => {
+    scrollController.bindElement(scrollContainerElement ?? null)
+  }, [scrollController, scrollContainerElement])
+  useEffect(() => () => scrollController.dispose(), [scrollController])
+
   const autoFollowRef = useRef(true)
+  const canFollowLiveEdgeRef = useRef(canFollowLiveEdge)
+  canFollowLiveEdgeRef.current = canFollowLiveEdge
   const [autoFollowState, setAutoFollowState] = useState(true)
   const lastObservedScrollTopRef = useRef(0)
-  const lastMaxScrollTopRef = useRef(0)
-  const followFrameRef = useRef<number | null>(null)
-  const reattachIntentFrameRef = useRef<number | null>(null)
-  const hasReattachIntentRef = useRef(false)
+  const scrollIntentFrameRef = useRef<ScheduledFrame | null>(null)
+  const scrollIntentRef = useRef<ScrollDirection | null>(null)
+  const followSessionRef = useRef(false)
+  const followSessionEndTimerRef = useRef<ScheduledTimeout | null>(null)
   const pointerDownRef = useRef(false)
-  const pointerMomentumRef = useRef(false)
-  const programmaticScrollTargetRef = useRef<number | null>(null)
+  const touchActiveRef = useRef(false)
+  const lastTouchClientYRef = useRef<number | null>(null)
+  const scrollSessionDirectionRef = useRef<ScrollDirection | null>(null)
+  const scrollSessionEndTimerRef = useRef<ScheduledFrame | null>(null)
 
   const getScrollContainer = useCallback(() => {
     return scrollContainerElementOverride ?? scrollContainerRef.current
@@ -95,99 +174,168 @@ export function useAutoScroll({
     )
   }, [])
 
-  const cancelScheduledFollow = useCallback(() => {
-    if (followFrameRef.current !== null) {
-      cancelAnimationFrame(followFrameRef.current)
-      followFrameRef.current = null
+  const clearScrollIntent = useCallback(() => {
+    scrollIntentRef.current = null
+    if (scrollIntentFrameRef.current !== null) {
+      scrollIntentFrameRef.current.window.cancelAnimationFrame(
+        scrollIntentFrameRef.current.id,
+      )
+      scrollIntentFrameRef.current = null
     }
   }, [])
 
-  const clearReattachIntent = useCallback(() => {
-    hasReattachIntentRef.current = false
-    if (reattachIntentFrameRef.current !== null) {
-      cancelAnimationFrame(reattachIntentFrameRef.current)
-      reattachIntentFrameRef.current = null
+  const clearScrollSessionDirection = useCallback(() => {
+    scrollSessionDirectionRef.current = null
+    if (scrollSessionEndTimerRef.current !== null) {
+      scrollSessionEndTimerRef.current.window.clearTimeout(
+        scrollSessionEndTimerRef.current.id,
+      )
+      scrollSessionEndTimerRef.current = null
     }
   }, [])
 
-  const markReattachIntent = useCallback(() => {
-    hasReattachIntentRef.current = true
-    if (reattachIntentFrameRef.current !== null) {
+  const clearFollowSession = useCallback(() => {
+    followSessionRef.current = false
+    if (followSessionEndTimerRef.current !== null) {
+      followSessionEndTimerRef.current.window.clearTimeout(
+        followSessionEndTimerRef.current.id,
+      )
+      followSessionEndTimerRef.current = null
+    }
+  }, [])
+
+  const beginFollowSession = useCallback(() => {
+    followSessionRef.current = true
+    if (followSessionEndTimerRef.current !== null) {
+      followSessionEndTimerRef.current.window.clearTimeout(
+        followSessionEndTimerRef.current.id,
+      )
+    }
+
+    const scrollContainer = getScrollContainer()
+    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+    followSessionEndTimerRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.setTimeout(() => {
+        followSessionEndTimerRef.current = null
+        followSessionRef.current = false
+      }, FOLLOW_SESSION_END_DELAY_MS),
+    }
+  }, [getScrollContainer])
+
+  const scheduleScrollSessionEnd = useCallback(() => {
+    if (scrollSessionDirectionRef.current === null) {
       return
     }
 
-    reattachIntentFrameRef.current = requestAnimationFrame(() => {
-      reattachIntentFrameRef.current = null
-      hasReattachIntentRef.current = false
-    })
-  }, [])
+    if (scrollSessionEndTimerRef.current !== null) {
+      scrollSessionEndTimerRef.current.window.clearTimeout(
+        scrollSessionEndTimerRef.current.id,
+      )
+    }
+
+    const scrollContainer = getScrollContainer()
+    const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+    scrollSessionEndTimerRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.setTimeout(() => {
+        scrollSessionEndTimerRef.current = null
+        scrollSessionDirectionRef.current = null
+      }, SCROLL_SESSION_END_DELAY_MS),
+    }
+  }, [getScrollContainer])
+
+  const markScrollIntent = useCallback(
+    (direction: ScrollDirection) => {
+      scrollIntentRef.current = direction
+      if (scrollIntentFrameRef.current !== null) {
+        return
+      }
+
+      const scrollContainer = getScrollContainer()
+      const ownerWindow = scrollContainer?.ownerDocument.defaultView ?? window
+      scrollIntentFrameRef.current = {
+        window: ownerWindow,
+        id: ownerWindow.requestAnimationFrame(() => {
+          scrollIntentFrameRef.current = null
+          scrollIntentRef.current = null
+        }),
+      }
+    },
+    [getScrollContainer],
+  )
 
   const stopAutoFollow = useCallback(() => {
-    cancelScheduledFollow()
-    programmaticScrollTargetRef.current = null
+    scrollController.cancelFollowLiveEdge()
     updateAutoFollow(false)
-  }, [cancelScheduledFollow, updateAutoFollow])
+  }, [scrollController, updateAutoFollow])
 
-  const scrollToBottom = useCallback(() => {
+  const resolveBottomTarget = useCallback((): number | null => {
     const scrollContainer = getScrollContainer()
     if (!scrollContainer) {
-      return
+      return null
     }
-
-    const targetScrollTop = Math.max(
+    return Math.max(
       0,
       scrollContainer.scrollHeight - scrollContainer.clientHeight,
     )
-    if (
-      Math.abs(scrollContainer.scrollTop - targetScrollTop) <=
-      SCROLL_POSITION_EPSILON_PX
-    ) {
-      programmaticScrollTargetRef.current = null
-      lastObservedScrollTopRef.current = scrollContainer.scrollTop
-      lastMaxScrollTopRef.current = targetScrollTop
-      return
-    }
-
-    programmaticScrollTargetRef.current = targetScrollTop
-    scrollContainer.scrollTop = targetScrollTop
-    lastObservedScrollTopRef.current = scrollContainer.scrollTop
-    lastMaxScrollTopRef.current = targetScrollTop
   }, [getScrollContainer])
 
+  // Re-checked at write time (not just at schedule time) because the
+  // rAF-deferred write can land a frame after autoFollow/canFollowLiveEdge
+  // changed.
+  const resolveFollowTarget = useCallback((): number | null => {
+    if (!autoFollowRef.current || !canFollowLiveEdgeRef.current) {
+      return null
+    }
+    return resolveBottomTarget()
+  }, [resolveBottomTarget])
+
   const scheduleFollow = useCallback(() => {
-    if (!autoFollowRef.current || followFrameRef.current !== null) {
+    if (!autoFollowRef.current || !canFollowLiveEdgeRef.current) {
       return
     }
-
-    followFrameRef.current = requestAnimationFrame(() => {
-      followFrameRef.current = null
-      if (autoFollowRef.current) {
-        scrollToBottom()
-      }
-    })
-  }, [scrollToBottom])
+    beginFollowSession()
+    scrollController.submitFollowLiveEdge(resolveFollowTarget)
+  }, [beginFollowSession, resolveFollowTarget, scrollController])
 
   const forceScrollToBottom = useCallback(() => {
+    clearScrollIntent()
+    clearScrollSessionDirection()
     updateAutoFollow(true)
-    cancelScheduledFollow()
-    scrollToBottom()
+    // Bypasses the canFollowLiveEdge gate on purpose: this is an explicit
+    // user/caller request to snap to the live edge regardless of the
+    // history-window state.
+    scrollController.snapNow(resolveBottomTarget)
     scheduleFollow()
-  }, [cancelScheduledFollow, scheduleFollow, scrollToBottom, updateAutoFollow])
+  }, [
+    clearScrollIntent,
+    clearScrollSessionDirection,
+    resolveBottomTarget,
+    scheduleFollow,
+    scrollController,
+    updateAutoFollow,
+  ])
 
   useLayoutEffect(() => {
-    if (!scrollContainerElement || !contentElement) {
+    if (!scrollContainerElement || !bottomSentinelElement) {
       return
     }
 
     updateAutoFollow(true)
-    cancelScheduledFollow()
-    scrollToBottom()
+    if (canFollowLiveEdgeRef.current) {
+      // Conversation switch must land at the bottom before paint; the rAF
+      // queue would show one frame of the previous scroll position first.
+      scrollController.snapNow(resolveBottomTarget)
+    } else {
+      scrollController.cancelFollowLiveEdge()
+    }
   }, [
-    cancelScheduledFollow,
-    contentElement,
+    bottomSentinelElement,
     followKey,
+    resolveBottomTarget,
     scrollContainerElement,
-    scrollToBottom,
+    scrollController,
     updateAutoFollow,
   ])
 
@@ -197,66 +345,52 @@ export function useAutoScroll({
     }
 
     lastObservedScrollTopRef.current = scrollContainerElement.scrollTop
-    lastMaxScrollTopRef.current = Math.max(
-      0,
-      scrollContainerElement.scrollHeight - scrollContainerElement.clientHeight,
-    )
 
     const handleScroll = () => {
       const currentScrollTop = scrollContainerElement.scrollTop
       const previousScrollTop = lastObservedScrollTopRef.current
-      const previousMaxScrollTop = lastMaxScrollTopRef.current
+      lastObservedScrollTopRef.current = currentScrollTop
+
       const currentMaxScrollTop = Math.max(
         0,
         scrollContainerElement.scrollHeight -
           scrollContainerElement.clientHeight,
       )
-      lastObservedScrollTopRef.current = currentScrollTop
-      lastMaxScrollTopRef.current = currentMaxScrollTop
-
-      const programmaticTarget = programmaticScrollTargetRef.current
-      if (
-        programmaticTarget !== null &&
-        Math.abs(currentScrollTop - programmaticTarget) <=
-          SCROLL_POSITION_EPSILON_PX
-      ) {
-        programmaticScrollTargetRef.current = null
-        return
-      }
-      programmaticScrollTargetRef.current = null
-
-      if (
-        'onscrollend' in scrollContainerElement &&
-        (pointerDownRef.current || hasReattachIntentRef.current)
-      ) {
-        pointerMomentumRef.current = true
-      }
-
       const distanceToBottom = currentMaxScrollTop - currentScrollTop
-      const wasAtBottomBefore =
-        previousMaxScrollTop - previousScrollTop <= AT_BOTTOM_THRESHOLD_PX
-      const isAtBottom = distanceToBottom <= SCROLL_POSITION_EPSILON_PX
-      const maxScrollTopShrank =
-        currentMaxScrollTop < previousMaxScrollTop - SCROLL_POSITION_EPSILON_PX
-      const isLayoutAdjustment =
-        currentScrollTop < previousScrollTop - SCROLL_POSITION_EPSILON_PX &&
-        wasAtBottomBefore &&
-        isAtBottom &&
-        maxScrollTopShrank
+      const intent = scrollIntentRef.current
+      const sessionDirection = scrollSessionDirectionRef.current
       const nextAutoFollow = resolveAutoFollowFromScroll({
         isFollowing: autoFollowRef.current,
         previousScrollTop,
         currentScrollTop,
         distanceToBottom,
-        allowReattach:
+        allowDetach:
           pointerDownRef.current ||
-          pointerMomentumRef.current ||
-          hasReattachIntentRef.current,
-        isLayoutAdjustment,
+          sessionDirection === 'up' ||
+          intent === 'up',
+        allowReattach:
+          canFollowLiveEdgeRef.current &&
+          (pointerDownRef.current ||
+            sessionDirection === 'down' ||
+            intent === 'down'),
       })
 
-      if (!pointerDownRef.current && !pointerMomentumRef.current) {
-        clearReattachIntent()
+      if (pointerDownRef.current || intent !== null) {
+        scrollSessionDirectionRef.current =
+          intent ??
+          (currentScrollTop < previousScrollTop
+            ? 'up'
+            : currentScrollTop > previousScrollTop
+              ? 'down'
+              : scrollSessionDirectionRef.current)
+      }
+
+      if (
+        !pointerDownRef.current &&
+        !touchActiveRef.current &&
+        scrollSessionDirectionRef.current !== null
+      ) {
+        scheduleScrollSessionEnd()
       }
 
       if (!nextAutoFollow) {
@@ -271,29 +405,85 @@ export function useAutoScroll({
     }
 
     const handleWheel = (event: WheelEvent) => {
-      if (event.deltaY > 0) {
-        markReattachIntent()
+      if (event.deltaY !== 0) {
+        markScrollIntent(event.deltaY < 0 ? 'up' : 'down')
       }
     }
 
-    const handlePointerDown = () => {
+    const handlePointerDown = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return
+      }
+      // A pointer interaction inside the timeline may synchronously change
+      // layout (for example, expanding a Thought panel). It ends the current
+      // follow session before that layout reaches IntersectionObserver, while
+      // leaving auto-follow enabled for the next actual live-content update.
+      clearFollowSession()
       pointerDownRef.current = true
-      pointerMomentumRef.current = false
+      clearScrollSessionDirection()
     }
 
-    const handlePointerEnd = () => {
+    const handlePointerEnd = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return
+      }
       pointerDownRef.current = false
-      clearReattachIntent()
+      clearScrollIntent()
+      scheduleScrollSessionEnd()
     }
 
-    const handlePointerCancel = () => {
+    const handlePointerCancel = (event: PointerEvent) => {
+      if (event.pointerType === 'touch') {
+        return
+      }
       pointerDownRef.current = false
-      markReattachIntent()
+      clearScrollIntent()
+      scheduleScrollSessionEnd()
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      if (!touch) {
+        return
+      }
+
+      clearFollowSession()
+      clearScrollSessionDirection()
+      touchActiveRef.current = true
+      lastTouchClientYRef.current = touch.clientY
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const touch = event.touches[0]
+      const previousClientY = lastTouchClientYRef.current
+      if (!touch || previousClientY === null) {
+        return
+      }
+
+      const nextDirection = resolveTouchScrollDirection(
+        previousClientY,
+        touch.clientY,
+        scrollSessionDirectionRef.current,
+      )
+      if (nextDirection !== null) {
+        lastTouchClientYRef.current = touch.clientY
+      }
+      scrollSessionDirectionRef.current = nextDirection
+
+      if (nextDirection === 'up') {
+        stopAutoFollow()
+      }
+    }
+
+    const handleTouchEnd = () => {
+      touchActiveRef.current = false
+      lastTouchClientYRef.current = null
+      scheduleScrollSessionEnd()
     }
 
     const handleScrollEnd = () => {
-      if (!pointerDownRef.current) {
-        pointerMomentumRef.current = false
+      if (!pointerDownRef.current && !touchActiveRef.current) {
+        clearScrollSessionDirection()
       }
     }
 
@@ -301,6 +491,8 @@ export function useAutoScroll({
       if (isEditableTarget(event.target)) {
         return
       }
+
+      clearFollowSession()
 
       const scrollsUp =
         event.key === 'ArrowUp' ||
@@ -312,8 +504,10 @@ export function useAutoScroll({
         event.key === 'PageDown' ||
         event.key === 'End' ||
         (event.key === ' ' && !event.shiftKey)
-      if (!scrollsUp && scrollsDown) {
-        markReattachIntent()
+      if (scrollsUp) {
+        markScrollIntent('up')
+      } else if (scrollsDown) {
+        markScrollIntent('down')
       }
     }
 
@@ -321,6 +515,18 @@ export function useAutoScroll({
       passive: true,
     })
     scrollContainerElement.addEventListener('pointerdown', handlePointerDown)
+    scrollContainerElement.addEventListener('touchstart', handleTouchStart, {
+      passive: true,
+    })
+    scrollContainerElement.addEventListener('touchmove', handleTouchMove, {
+      passive: true,
+    })
+    scrollContainerElement.addEventListener('touchend', handleTouchEnd, {
+      passive: true,
+    })
+    scrollContainerElement.addEventListener('touchcancel', handleTouchEnd, {
+      passive: true,
+    })
     scrollContainerElement.ownerDocument.addEventListener(
       'pointerup',
       handlePointerEnd,
@@ -341,22 +547,29 @@ export function useAutoScroll({
         'pointerdown',
         handlePointerDown,
       )
+      scrollContainerElement.removeEventListener('touchstart', handleTouchStart)
+      scrollContainerElement.removeEventListener('touchmove', handleTouchMove)
+      scrollContainerElement.removeEventListener('touchend', handleTouchEnd)
+      scrollContainerElement.removeEventListener('touchcancel', handleTouchEnd)
       scrollContainerElement.ownerDocument.removeEventListener(
         'pointerup',
         handlePointerEnd,
       )
-      scrollContainerElement.removeEventListener('keydown', handleKeyDown)
       scrollContainerElement.ownerDocument.removeEventListener(
         'pointercancel',
         handlePointerCancel,
       )
+      scrollContainerElement.removeEventListener('keydown', handleKeyDown)
       scrollContainerElement.removeEventListener('scroll', handleScroll)
       scrollContainerElement.removeEventListener('scrollend', handleScrollEnd)
     }
   }, [
-    clearReattachIntent,
-    markReattachIntent,
+    clearScrollIntent,
+    clearScrollSessionDirection,
+    clearFollowSession,
+    markScrollIntent,
     scheduleFollow,
+    scheduleScrollSessionEnd,
     scrollContainerElement,
     stopAutoFollow,
     updateAutoFollow,
@@ -365,32 +578,51 @@ export function useAutoScroll({
   useEffect(() => {
     if (
       !scrollContainerElement ||
-      !contentElement ||
-      typeof ResizeObserver === 'undefined'
+      !bottomSentinelElement ||
+      typeof IntersectionObserver === 'undefined'
     ) {
       return
     }
 
-    const observer = new ResizeObserver(() => {
-      if (autoFollowRef.current) {
-        scrollToBottom()
-      }
-    })
-    observer.observe(scrollContainerElement)
-    observer.observe(contentElement)
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (
+          entry &&
+          shouldFollowAfterLiveEdgeExit({
+            isIntersecting: entry.isIntersecting,
+            isFollowing: autoFollowRef.current,
+            canFollowLiveEdge: canFollowLiveEdgeRef.current,
+            hasActiveFollowSession: followSessionRef.current,
+          })
+        ) {
+          scheduleFollow()
+        }
+      },
+      {
+        root: scrollContainerElement,
+        threshold: 0,
+      },
+    )
+    observer.observe(bottomSentinelElement)
 
     return () => {
       observer.disconnect()
     }
-  }, [contentElement, scrollContainerElement, scrollToBottom])
+  }, [bottomSentinelElement, scheduleFollow, scrollContainerElement])
 
   useEffect(
     () => () => {
-      cancelScheduledFollow()
-      clearReattachIntent()
-      programmaticScrollTargetRef.current = null
+      scrollController.cancelFollowLiveEdge()
+      clearScrollIntent()
+      clearScrollSessionDirection()
+      clearFollowSession()
     },
-    [cancelScheduledFollow, clearReattachIntent],
+    [
+      clearFollowSession,
+      clearScrollIntent,
+      clearScrollSessionDirection,
+      scrollController,
+    ],
   )
 
   return {
@@ -398,5 +630,6 @@ export function useAutoScroll({
     forceScrollToBottom,
     stopAutoFollow,
     isAutoFollowEnabled: autoFollowState,
+    scrollController,
   }
 }

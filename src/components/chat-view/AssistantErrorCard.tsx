@@ -1,11 +1,20 @@
-import { ArrowRight, CircleAlert } from 'lucide-react'
-import { memo } from 'react'
+import { ArrowRight, ChevronDown, CircleAlert, Settings } from 'lucide-react'
+import { memo, useMemo, useState } from 'react'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
+import { usePlugin } from '../../contexts/plugin-context'
+import {
+  ProviderErrorCategory,
+  classifyProviderError,
+} from '../../core/llm/providerErrorClassification'
 import {
   LLMResponseFormatErrorPayload,
   parseLLMResponseFormatError,
 } from '../../core/llm/responseFormatError'
+import type { ChatErrorDetail } from '../../types/chat'
+import { openPluginSettingsTab } from '../../utils/openPluginSettingsTab'
+import type { SettingsTabId } from '../settings/SettingsTabs'
 
 type Translate = (keyPath: string, fallback?: string) => string
 
@@ -61,10 +70,10 @@ const formatExpectedField = (expected: string, t: Translate): string => {
 const formatResponseFormatError = (
   errorMessage: string,
   t: Translate,
-): string => {
+): string | null => {
   const payload = parseLLMResponseFormatError(errorMessage)
   if (!payload) {
-    return errorMessage
+    return null
   }
 
   const lines = [
@@ -143,21 +152,112 @@ const formatResponseFormatError = (
   return lines.join('\n')
 }
 
+// The classified headline already explains a dropped connection, so the only
+// thing left to say here is that the partial response survived — which the
+// classification cannot know.
+const formatKnownError = (
+  errorMessage: string,
+  canContinue: boolean,
+  t: Translate,
+): string | null =>
+  canContinue && /premature close|socket hang up|econnreset/i.test(errorMessage)
+    ? t(
+        'chat.errorCard.connectionInterruptedContinuable',
+        'The connection to the model service was interrupted. Your partial response is still here—click Continue response to resume.',
+      )
+    : null
+
+const formatError = (
+  errorMessage: string,
+  canContinue: boolean,
+  t: Translate,
+): string =>
+  formatResponseFormatError(errorMessage, t) ??
+  formatKnownError(errorMessage, canContinue, t) ??
+  errorMessage
+
+const DIAGNOSIS_FALLBACK: Record<
+  Exclude<ProviderErrorCategory, 'unknown'>,
+  string
+> = {
+  auth: 'The API key is invalid. Check it and reconfigure the provider.',
+  region:
+    'The service is unavailable in your region. Configure a proxy or switch to an available provider.',
+  model: 'The model does not exist, or you do not have access to it.',
+  quota:
+    'Your account balance is exhausted. Top up or switch to another provider.',
+  rateLimit:
+    'Too many requests in a short time. Wait a moment and retry, or switch to a model with a higher rate limit.',
+  contextLength:
+    'The conversation context is too long. Clear older messages or start a new chat.',
+  payload: 'The request is too large. Send fewer files or less text.',
+  content:
+    'The content was blocked by a safety system. Revise it and try again.',
+  mcp: 'The MCP server could not be reached. Check whether it is running.',
+  stream:
+    'The response stream was interrupted. Check your network stability or retry.',
+  network: 'Could not reach the server. Check your network or proxy settings.',
+  proxy:
+    'Proxy or SSL certificate error. Check your proxy and network settings.',
+  server: 'The model service is having problems. Try again later.',
+  deprecated:
+    'This model has been retired or deprecated. Switch to another model.',
+  knowledge: 'Knowledge base vectorization failed.',
+  parse:
+    'The model returned a malformed response. Retry or switch to another model.',
+}
+
+// Categories YOLO can actually route somewhere. `network` and `proxy` are
+// deliberately absent: the plugin has no network settings to send the user to.
+const CATEGORY_SETTINGS_TAB: Partial<
+  Record<ProviderErrorCategory, SettingsTabId>
+> = {
+  auth: 'models',
+  region: 'models',
+  model: 'models',
+  quota: 'models',
+  rateLimit: 'models',
+  deprecated: 'models',
+  mcp: 'agent',
+  knowledge: 'knowledge',
+}
+
 const AssistantErrorCard = memo(function AssistantErrorCard({
   errorMessage,
+  errorDetail,
   onContinue,
 }: {
   errorMessage: string
+  errorDetail?: ChatErrorDetail
   onContinue?: () => void
 }) {
   const { t } = useLanguage()
-  const displayErrorMessage = formatResponseFormatError(errorMessage, t)
+  const app = useApp()
+  const plugin = usePlugin()
+  const [showDetails, setShowDetails] = useState(false)
+
+  const category = useMemo(
+    () =>
+      classifyProviderError({
+        message: errorMessage,
+        status: errorDetail?.status,
+        responseBody: errorDetail?.responseBody,
+      }),
+    [errorMessage, errorDetail?.status, errorDetail?.responseBody],
+  )
+  const settingsTab = CATEGORY_SETTINGS_TAB[category]
+  const responseBody = errorDetail?.responseBody
+  const displayErrorMessage = formatError(errorMessage, Boolean(onContinue), t)
+  const headline =
+    category === 'unknown'
+      ? t('chat.errorCard.title', '本次回复生成失败')
+      : t(`chat.errorCard.diagnosis.${category}`, DIAGNOSIS_FALLBACK[category])
 
   return (
     <div className="yolo-assistant-error-card" role="alert">
       <div className="yolo-assistant-error-card-header">
         <CircleAlert size={14} />
-        <span>{t('chat.errorCard.title', '本次回复生成失败')}</span>
+        <span>{headline}</span>
       </div>
       <div className="yolo-assistant-error-card-body">
         {displayErrorMessage}
@@ -171,6 +271,38 @@ const AssistantErrorCard = memo(function AssistantErrorCard({
           <span>{t('chat.continueResponse', 'Continue response')}</span>
           <ArrowRight size={13} />
         </button>
+      )}
+      {(settingsTab || responseBody) && (
+        <div className="yolo-assistant-error-card-footer">
+          {settingsTab && (
+            <button
+              type="button"
+              className="yolo-assistant-error-card-settings"
+              onClick={() => openPluginSettingsTab(app, plugin, settingsTab)}
+            >
+              <Settings size={13} />
+              <span>{t('chat.errorCard.goToSettings', 'Go to settings')}</span>
+            </button>
+          )}
+          {responseBody && (
+            <button
+              type="button"
+              className="yolo-assistant-error-card-details-toggle"
+              aria-expanded={showDetails}
+              onClick={() => setShowDetails((visible) => !visible)}
+            >
+              <span>
+                {showDetails
+                  ? t('chat.errorCard.hideDetails', 'Hide error details')
+                  : t('chat.errorCard.viewDetails', 'View error details')}
+              </span>
+              <ChevronDown size={13} className={showDetails ? 'is-open' : ''} />
+            </button>
+          )}
+        </div>
+      )}
+      {showDetails && responseBody && (
+        <pre className="yolo-assistant-error-card-details">{responseBody}</pre>
       )}
     </div>
   )

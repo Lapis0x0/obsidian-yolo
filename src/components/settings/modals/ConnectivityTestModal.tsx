@@ -110,12 +110,19 @@ function MetricDetailTooltip({
   detail: string
   className: string
 }) {
+  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  const triggerRef = useCallback((node: HTMLSpanElement | null) => {
+    setPortalContainer(node?.ownerDocument.body)
+  }, [])
+
   return (
     <Tooltip.Root>
       <Tooltip.Trigger asChild>
-        <span className={className}>{detail}</span>
+        <span ref={triggerRef} className={className}>
+          {detail}
+        </span>
       </Tooltip.Trigger>
-      <Tooltip.Portal>
+      <Tooltip.Portal container={portalContainer}>
         <Tooltip.Content
           className="yolo-tooltip-content yolo-health-metric-tooltip"
           side="top"

@@ -146,6 +146,78 @@ describe('AgentLlmTurnExecutor', () => {
     )
   })
 
+  it('publishes the streaming placeholder before preparing the request', async () => {
+    const observed: ChatAssistantMessage[] = []
+    const requestContextBuilder = {
+      generateRequestMessages: jest.fn(async () => {
+        expect(observed).toHaveLength(1)
+        expect(observed[0].metadata?.generationState).toBe('streaming')
+        return [{ role: 'user' as const, content: 'hello' }]
+      }),
+    } as unknown as RequestContextBuilder
+    mockExecuteSingleTurn.mockResolvedValue({
+      content: 'done',
+      reasoning: undefined,
+      annotations: undefined,
+      usage: undefined,
+      providerMetadata: undefined,
+      toolCalls: [],
+    })
+
+    await new AgentLlmTurnExecutor({
+      providerClient: new MockProvider(),
+      model: TEST_MODEL,
+      requestContextBuilder,
+      mcpManager: createMockMcpManager(),
+      conversationId: 'conv-1',
+      messages: [],
+      enableTools: false,
+      includeBuiltinTools: false,
+      onAssistantMessage: (message) => {
+        observed.push({
+          ...message,
+          metadata: message.metadata ? { ...message.metadata } : undefined,
+        })
+      },
+    }).run()
+
+    expect(observed.at(-1)?.metadata?.generationState).toBe('completed')
+  })
+
+  it('moves preparation failures onto the visible assistant placeholder', async () => {
+    const observed: ChatAssistantMessage[] = []
+    const requestContextBuilder = {
+      generateRequestMessages: jest
+        .fn()
+        .mockRejectedValue(new Error('attachment unavailable')),
+    } as unknown as RequestContextBuilder
+
+    await expect(
+      new AgentLlmTurnExecutor({
+        providerClient: new MockProvider(),
+        model: TEST_MODEL,
+        requestContextBuilder,
+        mcpManager: createMockMcpManager(),
+        conversationId: 'conv-1',
+        messages: [],
+        enableTools: false,
+        includeBuiltinTools: false,
+        onAssistantMessage: (message) => {
+          observed.push({
+            ...message,
+            metadata: message.metadata ? { ...message.metadata } : undefined,
+          })
+        },
+      }).run(),
+    ).rejects.toThrow('attachment unavailable')
+
+    expect(observed.at(-1)?.metadata).toMatchObject({
+      generationState: 'error',
+      errorMessage: 'attachment unavailable',
+    })
+    expect(mockExecuteSingleTurn).not.toHaveBeenCalled()
+  })
+
   it('keeps streaming arguments for local write tool previews', async () => {
     const provider = new MockProvider()
     mockExecuteSingleTurn.mockImplementation(async ({ onStreamDelta }) => {
@@ -166,7 +238,7 @@ describe('AgentLlmTurnExecutor', () => {
                     id: 'tool-1',
                     type: 'function',
                     function: {
-                      name: 'fs_move',
+                      name: 'fs_write',
                       arguments: '{"oldPath":"a.md","newPath":"b.md"}',
                     },
                   },
@@ -181,7 +253,7 @@ describe('AgentLlmTurnExecutor', () => {
             id: 'tool-1',
             type: 'function',
             function: {
-              name: 'fs_move',
+              name: 'fs_write',
               arguments: createPartialToolCallArguments(
                 '{"oldPath":"a.md","newPath":"b.md"}',
               ),
@@ -198,7 +270,7 @@ describe('AgentLlmTurnExecutor', () => {
         toolCalls: [
           {
             id: 'tool-1',
-            name: 'fs_move',
+            name: 'fs_write',
             arguments: createCompleteToolCallArguments({
               value: { oldPath: 'a.md', newPath: 'b.md' },
               rawText: '{"oldPath":"a.md","newPath":"b.md"}',
@@ -217,8 +289,8 @@ describe('AgentLlmTurnExecutor', () => {
 
     const mcpManager = createMockMcpManager([
       {
-        name: 'yolo_local__fs_move',
-        description: 'Move path',
+        name: 'yolo_local__fs_write',
+        description: 'Write file',
         inputSchema: {
           type: 'object',
           properties: {},
@@ -264,7 +336,7 @@ describe('AgentLlmTurnExecutor', () => {
 
     expect(streamingPreview?.toolCallRequests?.[0]).toEqual({
       id: 'tool-1',
-      name: 'yolo_local__fs_move',
+      name: 'yolo_local__fs_write',
       arguments: createPartialToolCallArguments(
         '{"oldPath":"a.md","newPath":"b.md"}',
       ),
@@ -273,7 +345,7 @@ describe('AgentLlmTurnExecutor', () => {
 
     expect(result.toolCallRequests[0]).toEqual({
       id: 'tool-1',
-      name: 'yolo_local__fs_move',
+      name: 'yolo_local__fs_write',
       arguments: createCompleteToolCallArguments({
         value: { oldPath: 'a.md', newPath: 'b.md' },
         rawText: '{"oldPath":"a.md","newPath":"b.md"}',

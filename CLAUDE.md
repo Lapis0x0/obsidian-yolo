@@ -45,6 +45,11 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - PGlite cannot use its default `node:fs` path in Obsidian. `DatabaseManager.ts` lazily loads its data, WASM, and vector extension and supplies them during initialization; preserve the build shims for `process` and `import.meta.url`.
 - `src/utils/chat/responseGenerator.ts` was removed. Do not recreate a parallel chat or agent orchestration path.
 
+### Chat Runtime Invariants
+
+- Agent conversation state is structurally shared: a message object's reference changes if and only if its content changes. Never mutate messages or state arrays in place; dev builds deep-freeze published snapshots to catch this.
+- All scroll writes in chat surfaces go through the scroll controller in `src/components/chat-view/scroll/`. Never set `scrollTop` directly.
+
 ### Database Schema Changes
 
 1. Edit `src/database/schema.ts`.
@@ -61,6 +66,8 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - When styling native controls, assume Obsidian core and theme styles apply globally. Use component-scoped `element.yolo-*` selectors, explicitly reset affected properties, and use `!important` only for a confirmed host-style collision.
 - Organize host styles by responsibility as documented in `src/styles/README.md`. Before changing popovers or dropdowns, read the ownership rules in `src/styles/popover/surface.css`.
 - Never hardcode user-visible text; route it through i18n, and resolve the current locale at use time rather than caching a locale-bound translator.
+- Animate only `opacity` and `transform`, with durations and easings from `src/styles/tokens/motion.css` / `motion.ts` (paired files — keep both in sync). Animating layout properties requires an inline exemption comment.
+- CSS animations get reduced-motion handling for free from a global fallback; do not add per-component disable blocks. JS-driven animations (framer-motion / WAAPI) must degrade via `useReducedMotion`.
 
 ## Verification
 

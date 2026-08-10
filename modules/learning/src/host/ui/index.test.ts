@@ -257,6 +257,30 @@ describe('createLearningUiServices memory host', () => {
     generateCardsParallelMock.mockReset()
   })
 
+  it('cleans up staging with folder-aware removal instead of trashing a directory', async () => {
+    const memory = new MemoryLearningHost()
+    const { runtime } = createRuntime()
+    const services = createLearningUiServices(memory.api, {
+      runtime: runtime as never,
+      ownerDocument: {} as Document,
+    })
+
+    const stagingDir =
+      await services.wizardReferences.createStagingDir('First/learning')
+    await services.wizardReferences.writeFile(stagingDir, {
+      name: 'ref.md',
+      contents: 'body',
+    } as never)
+
+    await services.wizardReferences.cleanup(stagingDir)
+
+    // Trashing a *folder* is what fails with EISDIR when the vault deletes
+    // permanently, so the staging folder must not go through trashPath.
+    expect(memory.trashed).not.toContain(stagingDir)
+    expect(memory.api.vault.getEntry(stagingDir)).toBeNull()
+    expect(memory.api.vault.getEntry(`${stagingDir}/ref.md`)).toBeNull()
+  })
+
   it('resolves the managed root dynamically for scans and staging', async () => {
     const memory = new MemoryLearningHost()
     memory.addProject('First/learning', 'alpha')

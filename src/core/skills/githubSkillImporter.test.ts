@@ -1,4 +1,24 @@
-import { parseGitHubUrl } from './githubSkillImporter'
+import { type RequestUrlResponse, requestUrl } from 'obsidian'
+
+import { fetchGitHubSkill, parseGitHubUrl } from './githubSkillImporter'
+
+const mockedRequestUrl = requestUrl as jest.MockedFunction<typeof requestUrl>
+
+const makeResponse = ({
+  arrayBuffer = new ArrayBuffer(0),
+  json = null,
+  text = '',
+}: {
+  arrayBuffer?: ArrayBuffer
+  json?: unknown
+  text?: string
+}): RequestUrlResponse => ({
+  status: 200,
+  headers: {},
+  arrayBuffer,
+  json,
+  text,
+})
 
 describe('parseGitHubUrl', () => {
   it('parses a single-file blob URL', () => {
@@ -175,5 +195,79 @@ describe('parseGitHubUrl', () => {
     expect(
       parseGitHubUrl('https://github.com/user/repo/tree/../path'),
     ).toBeNull()
+  })
+})
+
+describe('fetchGitHubSkill package resources', () => {
+  beforeEach(() => {
+    mockedRequestUrl.mockReset()
+  })
+
+  it('keeps non-entry package resources as exact bytes', async () => {
+    const skillContent = [
+      '---',
+      'name: different-frontmatter-name',
+      'description: Keeps binary assets unchanged.',
+      '---',
+    ].join('\n')
+    const skillBytes = new TextEncoder().encode(skillContent).buffer
+    const assetBytes = new Uint8Array([0, 255, 1, 2]).buffer
+    mockedRequestUrl
+      .mockResolvedValueOnce(
+        makeResponse({
+          json: {
+            sha: 'tree',
+            truncated: false,
+            tree: [
+              {
+                path: 'SKILL.md',
+                mode: '100644',
+                type: 'blob',
+                sha: 'skill',
+                size: skillBytes.byteLength,
+              },
+              {
+                path: 'assets/icon.bin',
+                mode: '100644',
+                type: 'blob',
+                sha: 'asset',
+                size: assetBytes.byteLength,
+              },
+            ],
+          },
+        }),
+      )
+      .mockResolvedValueOnce(makeResponse({ arrayBuffer: skillBytes }))
+      .mockResolvedValueOnce(makeResponse({ arrayBuffer: assetBytes }))
+
+    const [result] = await fetchGitHubSkill(
+      'https://github.com/user/binary-assets',
+    )
+
+    expect(result.targetName).toBe('binary-assets')
+    expect(
+      result.files.find((file) => file.relativePath === 'SKILL.md'),
+    ).toEqual({ relativePath: 'SKILL.md', content: skillContent })
+    const asset = result.files.find(
+      (file) => file.relativePath === 'assets/icon.bin',
+    )
+    expect(new Uint8Array(asset?.data ?? new ArrayBuffer(0))).toEqual(
+      new Uint8Array([0, 255, 1, 2]),
+    )
+  })
+
+  it('preserves a blob filename instead of replacing it with frontmatter name', async () => {
+    const content = ['---', 'name: different-name', '---'].join('\n')
+    mockedRequestUrl.mockResolvedValueOnce(makeResponse({ text: content }))
+
+    const [result] = await fetchGitHubSkill(
+      'https://github.com/user/repo/blob/main/readable-file.md',
+    )
+
+    expect(result).toMatchObject({
+      sourceName: 'readable-file.md',
+      targetName: 'readable-file.md',
+      isDirectory: false,
+    })
   })
 })

@@ -350,7 +350,10 @@ describe('IndexedDbDataAdapter', () => {
 
     expect(listed.files).toHaveLength(MAX_MODULE_PRIVATE_LIST_ENTRIES + 1)
     expect(listed.folders).toEqual([])
-  }, 30_000)
+    // fake-indexeddb is substantially slower for this 10k-record boundary
+    // case on Windows; keep the production cap assertion, but avoid turning
+    // host filesystem/CPU variance into a false regression.
+  }, 60_000)
 
   it('commits concurrent writes to different records without losing either file', async () => {
     const adapter = createAdapter()

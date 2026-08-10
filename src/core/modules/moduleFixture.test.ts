@@ -127,7 +127,7 @@ describe('host API conformance artifact boundary', () => {
       'style.css',
     ])
     expect(style).toBeDefined()
-    expect(manifest.hostApi).toBe('^1.4.0')
+    expect(manifest.hostApi).toBe('^1.5.0')
     expect(manifest.dataSchemas).toEqual({
       settings: { readMin: 0, readMax: 1, write: 1 },
     })
@@ -212,7 +212,7 @@ describe('host API conformance artifact boundary', () => {
     )
     expect(
       selectInitialCompatibleVersion(catalog.modules[0], {
-        hostApi: '1.4.0',
+        hostApi: '1.5.0',
         platform: 'desktop',
       })?.version,
     ).toBe(learningVersion)

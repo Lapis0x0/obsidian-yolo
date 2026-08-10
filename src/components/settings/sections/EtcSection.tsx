@@ -11,7 +11,7 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { isPortableVaultPathSegment } from '../../../core/paths/portableVaultPath'
-import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
+import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
 import {
   getYoloLogsDir,
   hasHiddenYoloBaseDirSegment,
@@ -21,7 +21,6 @@ import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/ed
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
 import { clearPdfTextCache } from '../../../database/json/chat/pdfTextCacheStore'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
-import { clearAllTimelineHeightCacheStores } from '../../../database/json/chat/timelineHeightCacheStore'
 import { CHAT_DIR } from '../../../database/json/constants'
 import YoloPlugin from '../../../main'
 import { yoloSettingsSchema } from '../../../settings/schema/setting.types'
@@ -48,19 +47,33 @@ type StorageUsage = {
 
 const CHAT_SNAPSHOT_DIR = 'chat_snapshots'
 const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
-const TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
 /** Legacy cache dir from removed delegate_external_agent tool. */
 const LEGACY_EXTERNAL_AGENT_PROGRESS_DIR = 'external_agent_progress'
+/** Legacy cache dir from removed timeline virtualization (superseded by the chat history window). */
+const LEGACY_TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
 
 const clearLegacyExternalAgentProgressDir = async (
   app: App,
-  settings: Parameters<typeof ensureJsonDbRootDir>[1],
+  settings: Parameters<typeof ensureUserDataRootDir>[1],
 ): Promise<void> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureUserDataRootDir(app, settings)
   const path = normalizePath(
     `${rootDir}/${CHAT_DIR}/${LEGACY_EXTERNAL_AGENT_PROGRESS_DIR}`,
+  )
+  if (await app.vault.adapter.exists(path)) {
+    await app.vault.adapter.rmdir(path, true)
+  }
+}
+
+const clearLegacyTimelineHeightCacheDir = async (
+  app: App,
+  settings: Parameters<typeof ensureUserDataRootDir>[1],
+): Promise<void> => {
+  const rootDir = await ensureUserDataRootDir(app, settings)
+  const path = normalizePath(
+    `${rootDir}/${CHAT_DIR}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`,
   )
   if (await app.vault.adapter.exists(path)) {
     await app.vault.adapter.rmdir(path, true)
@@ -113,9 +126,9 @@ const getPathSize = async (app: App, path: string): Promise<number> => {
 
 const loadStorageUsage = async (
   app: App,
-  settings: Parameters<typeof ensureJsonDbRootDir>[1],
+  settings: Parameters<typeof ensureUserDataRootDir>[1],
 ): Promise<StorageUsage> => {
-  const rootDir = await ensureJsonDbRootDir(app, settings)
+  const rootDir = await ensureUserDataRootDir(app, settings)
   const chatDir = normalizePath(`${rootDir}/${CHAT_DIR}`)
 
   const [
@@ -130,7 +143,10 @@ const loadStorageUsage = async (
     getPathSize(app, chatDir),
     getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
-    getPathSize(app, normalizePath(`${chatDir}/${TIMELINE_HEIGHT_CACHE_DIR}`)),
+    getPathSize(
+      app,
+      normalizePath(`${chatDir}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`),
+    ),
     getPathSize(app, normalizePath(`${chatDir}/${IMAGE_CACHE_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${PDF_CACHE_DIR}`)),
     getPathSize(
@@ -438,10 +454,10 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
         void (async () => {
           await clearAllPromptSnapshotStores(app, settings)
           await clearAllEditReviewSnapshotStores(app, settings)
-          await clearAllTimelineHeightCacheStores(app, settings)
           await clearImageCache(app, settings)
           await clearPdfTextCache(app, settings)
           await clearLegacyExternalAgentProgressDir(app, settings)
+          await clearLegacyTimelineHeightCacheDir(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))

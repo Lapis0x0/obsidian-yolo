@@ -27,5 +27,13 @@ export const getChatGPTOAuthService = (
 ): ChatGPTOAuthService | null => services.get(providerId) ?? null
 
 export const clearChatGPTOAuthService = (providerId: string): void => {
+  services.get(providerId)?.dispose()
   services.delete(providerId)
+}
+
+export const clearAllChatGPTOAuthServices = (): void => {
+  for (const service of services.values()) {
+    service.dispose()
+  }
+  services.clear()
 }

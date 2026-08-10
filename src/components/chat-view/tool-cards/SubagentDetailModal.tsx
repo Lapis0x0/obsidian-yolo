@@ -3,16 +3,16 @@ import { useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../contexts/language-context'
-import type {
-  ChatMessage,
-  ChatSubagentResultMessage,
-} from '../../../types/chat'
-import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import type { ChatMessage } from '../../../types/chat'
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { formatTokenCount } from '../../../utils/llm/formatTokenCount'
 import AssistantToolMessageGroupItem from '../AssistantToolMessageGroupItem'
 
 import { formatDuration, formatSubagentActivityLine } from './subagentCardUtils'
+import type {
+  SubagentDetailStats,
+  SubagentDisplayStatus,
+} from './SubagentCardView'
 
 type SubagentDetailModalProps = {
   container: HTMLElement
@@ -20,26 +20,29 @@ type SubagentDetailModalProps = {
   modelName?: string
   prompt?: string
   taskId?: string
-  effectiveStatus: ToolCallResponseStatus
-  subagentResult?: ChatSubagentResultMessage
-  liveTranscript?: ChatMessage[]
+  status: SubagentDisplayStatus
+  transcript?: ChatMessage[]
   activityLines: string[]
+  detailStats?: SubagentDetailStats
+  isTranscriptLoading?: boolean
   onClose: () => void
 }
 
 function getStatusLabel(
-  status: ToolCallResponseStatus,
+  status: SubagentDisplayStatus,
   t: (key: string, fallback?: string) => string,
 ): string {
   switch (status) {
-    case ToolCallResponseStatus.Running:
+    case 'running':
       return t('chat.liveTask.statusRunning', 'Running')
-    case ToolCallResponseStatus.Success:
+    case 'success':
       return t('chat.liveTask.statusDone', 'Done')
-    case ToolCallResponseStatus.Aborted:
+    case 'aborted':
       return t('chat.liveTask.statusAborted', 'Aborted')
-    case ToolCallResponseStatus.Error:
+    case 'error':
       return t('chat.liveTask.statusError', 'Error')
+    case 'dispatched':
+      return t('chat.subagent.statusDispatched', 'Dispatched')
     default:
       return status
   }
@@ -51,10 +54,11 @@ export function SubagentDetailModal({
   modelName,
   prompt,
   taskId,
-  effectiveStatus,
-  subagentResult,
-  liveTranscript,
+  status,
+  transcript,
   activityLines,
+  detailStats,
+  isTranscriptLoading = false,
   onClose,
 }: SubagentDetailModalProps) {
   const { t } = useLanguage()
@@ -73,9 +77,6 @@ export function SubagentDetailModal({
     }
   }, [onClose])
 
-  const transcript =
-    subagentResult?.transcript ??
-    (liveTranscript && liveTranscript.length > 0 ? liveTranscript : undefined)
   const groupedTranscript =
     transcript && transcript.length > 0
       ? groupAssistantAndToolMessages(transcript)
@@ -112,34 +113,32 @@ export function SubagentDetailModal({
                 </span>
               )}
               <span className="yolo-subagent-detail-meta-item">
-                {getStatusLabel(effectiveStatus, t)}
+                {getStatusLabel(status, t)}
               </span>
-              {subagentResult && subagentResult.durationMs > 0 && (
+              {detailStats?.durationMs && detailStats.durationMs > 0 && (
                 <span className="yolo-subagent-detail-meta-item">
                   <Clock size={12} />
-                  {formatDuration(subagentResult.durationMs)}
+                  {formatDuration(detailStats.durationMs)}
                 </span>
               )}
-              {subagentResult && subagentResult.toolUseCount > 0 && (
+              {detailStats?.toolUseCount && detailStats.toolUseCount > 0 && (
                 <span className="yolo-subagent-detail-meta-item">
                   <Wrench size={12} />
                   {t('chat.subagent.toolUseCount', '{count} tools').replace(
                     '{count}',
-                    String(subagentResult.toolUseCount),
+                    String(detailStats.toolUseCount),
                   )}
                 </span>
               )}
-              {subagentResult &&
-                subagentResult.usage &&
-                subagentResult.usage.total_tokens > 0 && (
-                  <span className="yolo-subagent-detail-meta-item">
-                    <Coins size={12} />
-                    {t('chat.subagent.tokenCount', '{count} tokens').replace(
-                      '{count}',
-                      formatTokenCount(subagentResult.usage.total_tokens),
-                    )}
-                  </span>
-                )}
+              {detailStats?.totalTokens && detailStats.totalTokens > 0 && (
+                <span className="yolo-subagent-detail-meta-item">
+                  <Coins size={12} />
+                  {t('chat.subagent.tokenCount', '{count} tokens').replace(
+                    '{count}',
+                    formatTokenCount(detailStats.totalTokens),
+                  )}
+                </span>
+              )}
             </div>
           </div>
           <button
@@ -157,7 +156,11 @@ export function SubagentDetailModal({
             <div className="yolo-subagent-detail-prompt">{prompt}</div>
           )}
 
-          {groupedTranscript ? (
+          {isTranscriptLoading ? (
+            <div className="yolo-subagent-detail-empty">
+              {t('chat.subagent.loadingActivity', 'Loading activity…')}
+            </div>
+          ) : groupedTranscript ? (
             groupedTranscript.map((messageOrGroup) =>
               Array.isArray(messageOrGroup) ? (
                 <AssistantToolMessageGroupItem

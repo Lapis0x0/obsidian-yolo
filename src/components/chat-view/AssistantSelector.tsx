@@ -14,6 +14,7 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import { getAssistantModelDisplayLabel } from '../../core/agent/assistant-model'
 import {
   DEFAULT_ASSISTANT_ID,
   isDefaultAssistantId,
@@ -22,6 +23,7 @@ import { countEnabledVisibleAssistantTools } from '../../core/agent/tool-display
 import { Assistant } from '../../types/assistant.types'
 import type { McpTool } from '../../types/mcp.types'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
+import { openPluginSettingsTab } from '../../utils/openPluginSettingsTab'
 import { YoloPopoverContent } from '../common/popover'
 import { AssistantsModal } from '../settings/modals/AssistantsModal'
 
@@ -153,13 +155,7 @@ export function AssistantSelector({
 
   const handleManageAll = () => {
     setOpen(false)
-    // Pre-select the Agent tab; SettingsTabs reads this on mount.
-    // Key kept in sync with SettingsTabs.STORAGE_KEY.
-    app.saveLocalStorage('yolo_settings_active_tab', 'agent')
-    // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-    app.setting.open()
-    // @ts-expect-error: setting property exists in Obsidian's App but is not typed
-    app.setting.openTabById(plugin.manifest.id)
+    openPluginSettingsTab(app, plugin, 'agent')
   }
 
   const defaultAssistant = assistants.find((assistant) =>
@@ -168,13 +164,20 @@ export function AssistantSelector({
   const customAssistants = assistants.filter(
     (assistant) => !isDefaultAssistantId(assistant.id),
   )
-  const fallbackModelId = settings.chatModelId
 
   const renderMetaRow = (assistant: Assistant) => {
-    const rawModelId = assistant.modelId || fallbackModelId || ''
-    const modelLabel = rawModelId.includes('/')
-      ? rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
-      : rawModelId
+    const followDefaultLabel = t(
+      'settings.agent.followDefaultModel',
+      'Follow default model',
+    )
+    const rawModelId = getAssistantModelDisplayLabel(
+      assistant.modelId,
+      followDefaultLabel,
+    )
+    const modelLabel =
+      rawModelId === followDefaultLabel || !rawModelId.includes('/')
+        ? rawModelId
+        : rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
     const toolCount = assistant.enableTools
       ? countEnabledVisibleAssistantTools(assistant, availableTools)
       : 0

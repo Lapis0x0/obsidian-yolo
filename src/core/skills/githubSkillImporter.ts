@@ -1,6 +1,6 @@
 import { requestUrl } from 'obsidian'
 
-import { type FileEntry, parseFrontmatter } from './skillValidation'
+import { type FileEntry } from './skillValidation'
 
 // ---------------------------------------------------------------------------
 // 唯一保留的边界:单文件大小。其它(深度 / 文件数 / 目录数)由 GitHub 自身的
@@ -224,6 +224,37 @@ async function fetchRawText(rawUrl: string): Promise<string> {
   return text
 }
 
+/** Fetch package resources as exact bytes so binary assets are never decoded. */
+async function fetchRawBytes(rawUrl: string): Promise<ArrayBuffer> {
+  const response = await requestUrl({ url: rawUrl, throw: false })
+
+  if (isRateLimitResponse(response.status, response.headers)) {
+    throw new GitHubRateLimitError()
+  }
+  if (response.status === 404) {
+    throw new GitHubNotFoundError(`404: ${rawUrl}`)
+  }
+  if (response.status >= 400) {
+    throw new Error(`HTTP ${response.status}: ${rawUrl}`)
+  }
+
+  const contentLengthRaw =
+    response.headers?.['content-length'] ?? response.headers?.['Content-Length']
+  const contentLength = contentLengthRaw ? Number(contentLengthRaw) : NaN
+  if (Number.isFinite(contentLength) && contentLength > MAX_FILE_BYTES) {
+    throw new GitHubLimitExceededError(
+      `file exceeds ${MAX_FILE_BYTES} bytes: ${rawUrl}`,
+    )
+  }
+
+  if (response.arrayBuffer.byteLength > MAX_FILE_BYTES) {
+    throw new GitHubLimitExceededError(
+      `file exceeds ${MAX_FILE_BYTES} bytes: ${rawUrl}`,
+    )
+  }
+  return response.arrayBuffer.slice(0)
+}
+
 // ---------------------------------------------------------------------------
 // Git Trees API:一次请求拿整棵树,后续 raw 下载不消耗 API 配额
 // ---------------------------------------------------------------------------
@@ -304,7 +335,7 @@ export type GitHubFetchResult = {
   files: FileEntry[]
   /** 显示用源名 */
   sourceName: string
-  /** 目录模式 = frontmatter.name;单文件模式 = 源文件名 */
+  /** 保留远端来源的文件名或目录名 */
   targetName: string
   isDirectory: boolean
 }
@@ -352,33 +383,29 @@ async function buildSkillPackage(
     RAW_DOWNLOAD_CONCURRENCY,
     async (blob) => ({
       blob,
-      content: await fetchRawText(buildRawUrl(effectiveInfo, blob.path)),
+      data: await fetchRawBytes(buildRawUrl(effectiveInfo, blob.path)),
     }),
   )
 
   const files: FileEntry[] = []
-  let skillMdContent = ''
-  for (const { blob, content } of downloaded) {
+  for (const { blob, data } of downloaded) {
     const relativePath = skillDir
       ? blob.path.slice(subtreePrefix.length)
       : blob.path
-    files.push({ relativePath, content })
-    if (blob.path === skillMdPath) skillMdContent = content
+    if (blob.path === skillMdPath) {
+      files.push({ relativePath, content: new TextDecoder().decode(data) })
+    } else {
+      files.push({ relativePath, data })
+    }
   }
 
-  const fm = parseFrontmatter(skillMdContent)
-  const fmName =
-    typeof fm?.name === 'string' && fm.name.trim().length > 0
-      ? fm.name.trim()
-      : null
   const dirLastSeg = skillDir ? (skillDir.split('/').pop() ?? skillDir) : ''
   const fallbackName = dirLastSeg || fallbackRepoName
-  const targetName = fmName ?? fallbackName
 
   return {
     files,
     sourceName: dirLastSeg || fallbackRepoName,
-    targetName,
+    targetName: fallbackName,
     isDirectory: true,
   }
 }

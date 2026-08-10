@@ -19,6 +19,12 @@ export type ModelSelectPopoverProps = {
   className?: string
 }
 
+export type ModelSelectOption = {
+  id: string
+  label: string
+  group?: string
+}
+
 export const ModelSelect = forwardRef<
   HTMLButtonElement,
   {
@@ -37,6 +43,8 @@ export const ModelSelect = forwardRef<
       event: React.KeyboardEvent<HTMLButtonElement>,
       isMenuOpen: boolean,
     ) => void
+    options?: ModelSelectOption[]
+    disabled?: boolean
   }
 >(
   (
@@ -52,6 +60,8 @@ export const ModelSelect = forwardRef<
       container,
       popover,
       onKeyDown,
+      options: externalOptions,
+      disabled = false,
     } = {},
     ref,
   ) => {
@@ -84,12 +94,30 @@ export const ModelSelect = forwardRef<
       ...providerOrder.filter((id) => providerIdsInModels.includes(id)),
       ...providerIdsInModels.filter((id) => !providerOrder.includes(id)),
     ]
-    const orderedModelIds = orderedProviderIds.flatMap((pid) =>
-      enabledModels.filter((m) => m.providerId === pid).map((m) => m.id),
+    const modelOptions: ModelSelectOption[] =
+      externalOptions ??
+      orderedProviderIds.flatMap((providerId) =>
+        enabledModels
+          .filter((model) => model.providerId === providerId)
+          .map((model) => ({
+            id: model.id,
+            label: model.name || model.model || getModelDisplayName(model.id),
+            group: providerId,
+          })),
+      )
+    const orderedGroups = Array.from(
+      new Set(modelOptions.map((model) => model.group ?? '')),
     )
+    const orderedModelIds = modelOptions.map((model) => model.id)
 
     // Get provider name for current model
     const getCurrentModelDisplay = () => {
+      if (externalOptions) {
+        return (
+          modelOptions.find((model) => model.id === selectedModelId)?.label ??
+          selectedModelId
+        )
+      }
       const currentModel = settings.chatModels.find(
         (m) => m.id === selectedModelId,
       )
@@ -202,6 +230,7 @@ export const ModelSelect = forwardRef<
           ref={setTriggerRef}
           className="yolo-chat-input-model-select"
           onKeyDown={handleTriggerKeyDown}
+          disabled={disabled}
         >
           <div className="yolo-chat-input-model-select__label yolo-chat-input-model-select__model-name">
             {getCurrentModelDisplay()}
@@ -271,43 +300,38 @@ export const ModelSelect = forwardRef<
             {(() => {
               let runningIndex = 0
 
-              return orderedProviderIds.flatMap((pid, groupIndex) => {
-                const groupModels = enabledModels.filter(
-                  (m) => m.providerId === pid,
+              return orderedGroups.flatMap((group, groupIndex) => {
+                const groupModels = modelOptions.filter(
+                  (model) => (model.group ?? '') === group,
                 )
                 if (groupModels.length === 0) return []
 
-                const groupHeader = (
+                const groupHeader = group ? (
                   <DropdownMenu.Label
-                    key={`label-${pid}`}
+                    key={`label-${group}`}
                     className="yolo-popover-group-label"
                   >
-                    {pid}
+                    {group}
                   </DropdownMenu.Label>
-                )
+                ) : null
 
-                const items = groupModels.map((chatModelOption, index) => {
-                  // 列表项名称：优先显示「展示名称」，其次调用ID(model)，最后回退到内部 id
-                  const displayName =
-                    chatModelOption.name ||
-                    chatModelOption.model ||
-                    getModelDisplayName(chatModelOption.id)
+                const items = groupModels.map((modelOption, index) => {
                   runningIndex += 1
                   return (
                     <DropdownMenu.RadioItem
-                      key={chatModelOption.id}
+                      key={modelOption.id}
                       className="yolo-popover-item"
-                      value={chatModelOption.id}
+                      value={modelOption.id}
                       ref={(element) => {
-                        itemRefs.current[chatModelOption.id] = element
+                        itemRefs.current[modelOption.id] = element
                       }}
-                      data-model-id={chatModelOption.id}
+                      data-model-id={modelOption.id}
                       data-first-item={
                         runningIndex === 1 && index === 0 ? 'true' : undefined
                       }
                     >
                       <span className="yolo-popover-item__label">
-                        {displayName}
+                        {modelOption.label}
                       </span>
                       <DropdownMenu.ItemIndicator className="yolo-popover-item__indicator">
                         <Check size={12} />
@@ -317,12 +341,12 @@ export const ModelSelect = forwardRef<
                 })
 
                 return [
-                  groupHeader,
+                  ...(groupHeader ? [groupHeader] : []),
                   ...items,
-                  ...(groupIndex < orderedProviderIds.length - 1
+                  ...(groupIndex < orderedGroups.length - 1
                     ? [
                         <DropdownMenu.Separator
-                          key={`sep-${pid}`}
+                          key={`sep-${group || groupIndex}`}
                           className="yolo-popover-group-separator"
                         />,
                       ]

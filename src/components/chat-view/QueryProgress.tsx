@@ -1,4 +1,4 @@
-import { SelectEmbedding } from '../../database/schema'
+import type { VectorSelect } from '../../core/runtime-components'
 import DotLoader from '../common/DotLoader'
 
 export type QueryProgressState =
@@ -14,7 +14,7 @@ export type QueryProgressState =
     }
   | {
       type: 'querying-done'
-      queryResult: (Omit<SelectEmbedding, 'embedding'> & {
+      queryResult: (VectorSelect & {
         similarity: number
       })[]
     }

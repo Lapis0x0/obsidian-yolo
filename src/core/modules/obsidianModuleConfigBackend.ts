@@ -5,7 +5,10 @@ import {
   normalizePath,
 } from 'obsidian'
 
-import { getYoloJsonDbRootDir } from '../paths/yoloPaths'
+import {
+  YOLO_MODULE_SETTINGS_DIR_NAME,
+  getYoloUserDataRootDir,
+} from '../paths/yoloPaths'
 
 import type { ModuleConfigBackend, ModuleConfigSnapshot } from './moduleConfig'
 import {
@@ -16,7 +19,6 @@ import {
 import { assertModuleId } from './moduleStore'
 import type { ModuleDisposer } from './types'
 
-const MODULE_SETTINGS_DIR_NAME = 'module-settings'
 const EMPTY_MODULE_CONFIG = Object.freeze({
   schemaVersion: 0,
   data: Object.freeze({}),
@@ -80,7 +82,7 @@ export function createObsidianModuleConfigBackendFactory<T = unknown>(
 ): ObsidianModuleConfigBackendFactory<T> {
   const rootPath = (): string =>
     normalizePath(
-      `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_SETTINGS_DIR_NAME}`,
+      `${getYoloUserDataRootDir(options.getSettings())}/${YOLO_MODULE_SETTINGS_DIR_NAME}`,
     )
   const createStore = (capturedRoot: string): ModuleSettingsStore =>
     new ModuleSettingsStore({
@@ -206,7 +208,7 @@ export function createObsidianModuleConfigCreateIfAbsent<T = unknown>(
     // Vault.create excludes locally visible files; it cannot arbitrate a
     // remote sync write that has not reached this device yet.
     const capturedRoot = normalizePath(
-      `${getYoloJsonDbRootDir(options.getSettings())}/${MODULE_SETTINGS_DIR_NAME}`,
+      `${getYoloUserDataRootDir(options.getSettings())}/${YOLO_MODULE_SETTINGS_DIR_NAME}`,
     )
     const store = new ModuleSettingsStore({
       kind: 'synchronized-intent',
@@ -230,7 +232,7 @@ export async function readObsidianModuleConfigEnvelopes(
   settings: ObsidianModuleConfigSettings | null,
 ): Promise<Record<string, ModuleDataEnvelope>> {
   const rootPath = normalizePath(
-    `${getYoloJsonDbRootDir(settings)}/${MODULE_SETTINGS_DIR_NAME}`,
+    `${getYoloUserDataRootDir(settings)}/${YOLO_MODULE_SETTINGS_DIR_NAME}`,
   )
   const adapter = app.vault.adapter
   if (!(await adapter.exists(rootPath))) return {}
@@ -264,7 +266,7 @@ export async function writeObsidianModuleConfigEnvelopes(
   entries: Readonly<Record<string, ModuleDataEnvelope>>,
 ): Promise<void> {
   const rootPath = normalizePath(
-    `${getYoloJsonDbRootDir(settings)}/${MODULE_SETTINGS_DIR_NAME}`,
+    `${getYoloUserDataRootDir(settings)}/${YOLO_MODULE_SETTINGS_DIR_NAME}`,
   )
   const store = new ModuleSettingsStore({
     kind: 'synchronized-intent',

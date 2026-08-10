@@ -4,26 +4,64 @@ import {
   ChevronDown,
   ChevronUp,
   Infinity as InfinityIcon,
+  ListTodo,
   MessageSquare,
+  PenLine,
 } from 'lucide-react'
-import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
+import {
+  forwardRef,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { getNodeWindow } from '../../../utils/dom/window-context'
 import { YoloDropdownContent } from '../../common/popover'
 
 /**
- * Capability modes. These are mutually exclusive and describe what the chat is
- * allowed to do. "Auto-approve tool calls" (YOLO) is NOT a mode — it is an
- * orthogonal boolean (`yoloEnabled`) that only takes effect while in Agent
- * mode. See `chat-runtime-profiles.ts`.
+ * YOLO-native capability modes. These are mutually exclusive and describe what
+ * the chat is allowed to do. "Auto-approve tool calls" (YOLO) is NOT a mode —
+ * it is an orthogonal boolean (`yoloEnabled`) that only takes effect while in
+ * Agent mode. See `chat-runtime-profiles.ts`.
  */
 export type ChatMode = 'ask' | 'agent'
 
+/**
+ * Values the mode selector can display. CLI runtimes may include `plan`
+ * (Claude Code only) without expanding YOLO-native `ChatMode`.
+ */
+export type ChatModeSelectValue = ChatMode | 'plan'
+export type ChatModeSelectOptionValue = ChatModeSelectValue | 'continue'
+
 export const CHAT_MODES: readonly ChatMode[] = ['ask', 'agent']
+
+export const CLAUDE_CODE_CHAT_MODES: readonly ChatModeSelectValue[] = [
+  'agent',
+  'plan',
+]
+
+export const CODEX_CHAT_MODES: readonly ChatModeSelectValue[] = ['agent']
+
+export const shouldShowYoloToggle = (
+  availableModes: readonly ChatModeSelectOptionValue[],
+  mode: ChatModeSelectOptionValue,
+): boolean => availableModes.includes('agent') && mode !== 'plan'
 
 export const isChatMode = (value: string): value is ChatMode =>
   value === 'ask' || value === 'agent'
+
+export const isChatModeSelectValue = (
+  value: string,
+): value is ChatModeSelectValue =>
+  value === 'ask' || value === 'agent' || value === 'plan'
+
+export const isChatModeSelectOptionValue = (
+  value: string,
+): value is ChatModeSelectOptionValue =>
+  isChatModeSelectValue(value) || value === 'continue'
 
 export const normalizeChatMode = (
   raw: string | null | undefined,
@@ -62,10 +100,11 @@ export const normalizeYoloEnabled = (
   return fallback
 }
 
-export const isAgentChatMode = (mode: ChatMode): boolean => mode === 'agent'
+export const isAgentChatMode = (mode: ChatModeSelectOptionValue): boolean =>
+  mode === 'agent'
 
 type ModeOption = {
-  value: ChatMode
+  value: ChatModeSelectOptionValue
   labelKey: string
   labelFallback: string
   descKey: string
@@ -90,19 +129,36 @@ const MODE_OPTIONS: ModeOption[] = [
     descFallback: 'Tools for complex tasks',
     icon: <Bot size={16} />,
   },
+  {
+    value: 'plan',
+    labelKey: 'chatMode.plan',
+    labelFallback: 'Plan',
+    descKey: 'chatMode.planDesc',
+    descFallback: 'Explore and design before editing',
+    icon: <ListTodo size={16} />,
+  },
+  {
+    value: 'continue',
+    labelKey: 'chatMode.continue',
+    labelFallback: 'Write',
+    descKey: 'chatMode.continueDesc',
+    descFallback: 'Continue writing at the cursor, press Tab to accept',
+    icon: <PenLine size={16} />,
+  },
 ]
-
-// Keyboard navigation order across the focusable controls in the dropdown.
-type NavKey = 'ask' | 'agent' | 'yolo'
-const NAV_ORDER: readonly NavKey[] = ['ask', 'agent', 'yolo']
 
 export const ChatModeSelect = forwardRef<
   HTMLButtonElement,
   {
-    mode: ChatMode
-    onChange: (mode: ChatMode) => void
+    mode: ChatModeSelectOptionValue
+    onChange: (mode: ChatModeSelectOptionValue) => void
+    availableModes?: readonly ChatModeSelectOptionValue[]
     yoloEnabled: boolean
     onYoloChange: (enabled: boolean) => void
+    showYoloToggle?: boolean
+    triggerLabel?: string
+    popoverClassName?: string
+    onArrowDownWhenClosed?: () => boolean
     onMenuOpenChange?: (isOpen: boolean) => void
     onKeyDown?: (
       event: React.KeyboardEvent<HTMLButtonElement>,
@@ -119,8 +175,13 @@ export const ChatModeSelect = forwardRef<
     {
       mode,
       onChange,
+      availableModes = CHAT_MODES,
       yoloEnabled,
       onYoloChange,
+      showYoloToggle = true,
+      triggerLabel,
+      popoverClassName,
+      onArrowDownWhenClosed,
       onMenuOpenChange,
       onKeyDown,
       container,
@@ -134,11 +195,23 @@ export const ChatModeSelect = forwardRef<
     const { t } = useLanguage()
     const [isOpen, setIsOpen] = useState(false)
     const triggerRef = useRef<HTMLButtonElement | null>(null)
-    const itemRefs = useRef<Record<NavKey, HTMLElement | null>>({
-      ask: null,
-      agent: null,
-      yolo: null,
-    })
+    const visibleOptions = useMemo(
+      () =>
+        MODE_OPTIONS.filter((option) => availableModes.includes(option.value)),
+      [availableModes],
+    )
+    const showYoloControl =
+      showYoloToggle && shouldShowYoloToggle(availableModes, mode)
+    const navOrder = useMemo(() => {
+      const keys: ChatModeSelectOptionValue[] = visibleOptions.map(
+        (option) => option.value,
+      )
+      return showYoloControl ? ([...keys, 'yolo'] as const) : keys
+    }, [showYoloControl, visibleOptions])
+    type NavKey = (typeof navOrder)[number]
+    const itemRefs = useRef<
+      Partial<Record<NavKey | 'yolo', HTMLElement | null>>
+    >({})
 
     const setTriggerRef = useCallback(
       (node: HTMLButtonElement | null) => {
@@ -152,7 +225,8 @@ export const ChatModeSelect = forwardRef<
       [ref],
     )
 
-    const currentOption = MODE_OPTIONS.find((opt) => opt.value === mode)
+    const currentOption =
+      visibleOptions.find((opt) => opt.value === mode) ?? visibleOptions[0]
 
     const focusSelectedItem = useCallback(() => {
       const target = itemRefs.current[mode]
@@ -165,21 +239,22 @@ export const ChatModeSelect = forwardRef<
       (delta: number) => {
         const ownerWindow = getNodeWindow(triggerRef.current)
         const activeEl = ownerWindow.document.activeElement
-        let currentIndex = NAV_ORDER.findIndex(
+        let currentIndex = navOrder.findIndex(
           (key) => itemRefs.current[key] === activeEl,
         )
         if (currentIndex < 0) {
-          currentIndex = NAV_ORDER.indexOf(mode)
+          const modeIndex = navOrder.findIndex((key) => key === mode)
+          currentIndex = modeIndex >= 0 ? modeIndex : 0
         }
         const nextIndex =
-          (currentIndex + delta + NAV_ORDER.length) % NAV_ORDER.length
-        const target = itemRefs.current[NAV_ORDER[nextIndex]]
+          (currentIndex + delta + navOrder.length) % navOrder.length
+        const target = itemRefs.current[navOrder[nextIndex]]
         if (target) {
           target.focus({ preventScroll: true })
           target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
         }
       },
-      [mode],
+      [mode, navOrder],
     )
 
     useEffect(() => {
@@ -189,7 +264,7 @@ export const ChatModeSelect = forwardRef<
         focusSelectedItem()
       })
       return () => ownerWindow.cancelAnimationFrame(rafId)
-    }, [isOpen, focusSelectedItem])
+    }, [focusSelectedItem, isOpen])
 
     const handleOpenChange = (open: boolean) => {
       setIsOpen(open)
@@ -199,6 +274,11 @@ export const ChatModeSelect = forwardRef<
     const handleTriggerKeyDown = (
       event: React.KeyboardEvent<HTMLButtonElement>,
     ) => {
+      if (event.key === 'ArrowDown' && onArrowDownWhenClosed?.()) {
+        event.preventDefault()
+        return
+      }
+
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
         if (onKeyDown) {
           onKeyDown(event, isOpen)
@@ -228,7 +308,7 @@ export const ChatModeSelect = forwardRef<
       }
     }
 
-    const selectMode = (next: ChatMode) => {
+    const selectMode = (next: ChatModeSelectOptionValue) => {
       onChange(next)
       handleOpenChange(false)
     }
@@ -239,11 +319,6 @@ export const ChatModeSelect = forwardRef<
       onYoloChange(!yoloEnabled)
     }
 
-    // We render the list as plain buttons (not Radix RadioItem/Item) so the
-    // Agent card can host an independent YOLO toggle without fighting Radix's
-    // "the whole item is one selectable unit" model. Radix still owns the
-    // popover surface (portal, positioning, dismiss, focus trap); we own the
-    // arrow-key navigation across the three buttons.
     const handleListKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
       if (event.key === 'ArrowDown') {
         event.preventDefault()
@@ -267,10 +342,11 @@ export const ChatModeSelect = forwardRef<
           onKeyDown={handleTriggerKeyDown}
         >
           <div className="yolo-chat-input-model-select__model-name">
-            {t(
-              currentOption?.labelKey ?? 'chatMode.ask',
-              currentOption?.labelFallback ?? 'Ask',
-            )}
+            {triggerLabel ??
+              t(
+                currentOption?.labelKey ?? 'chatMode.ask',
+                currentOption?.labelFallback ?? 'Ask',
+              )}
           </div>
           {isYoloActive ? (
             <div
@@ -289,6 +365,7 @@ export const ChatModeSelect = forwardRef<
           container={container}
           anchorRef={triggerRef}
           variant="default"
+          className={popoverClassName}
           minWidth={220}
           side={side}
           sideOffset={sideOffset}
@@ -309,9 +386,9 @@ export const ChatModeSelect = forwardRef<
             role="menu"
             onKeyDown={handleListKeyDown}
           >
-            {MODE_OPTIONS.map((option) => {
+            {visibleOptions.map((option) => {
               const isSelected = option.value === mode
-              if (option.value === 'agent') {
+              if (option.value === 'agent' && showYoloControl) {
                 return (
                   <div
                     key={option.value}
@@ -386,7 +463,7 @@ export const ChatModeSelect = forwardRef<
                   data-mode={option.value}
                   data-state={isSelected ? 'checked' : 'unchecked'}
                   ref={(element) => {
-                    itemRefs.current[option.value as NavKey] = element
+                    itemRefs.current[option.value] = element
                   }}
                   className="yolo-popover-item yolo-chat-mode-select-item"
                   onClick={() => selectMode(option.value)}

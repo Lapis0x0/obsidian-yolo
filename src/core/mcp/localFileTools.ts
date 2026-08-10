@@ -12,8 +12,14 @@ import {
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { buildPdfPageImageCacheKey } from '../../database/json/chat/imageCacheStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { ApplyViewState } from '../../types/apply-view.types'
-import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import type {
+  ApplyViewResult,
+  ApplyViewState,
+} from '../../types/apply-view.types'
+import type {
+  AssistantToolApprovalMode,
+  AssistantWorkspaceScope,
+} from '../../types/assistant.types'
 import type { ChatMessage } from '../../types/chat'
 import type { ChatModelModality } from '../../types/chat-model.types'
 import type { ContentPart } from '../../types/llm/request'
@@ -37,6 +43,10 @@ import {
   chatModelSupportsVision,
 } from '../../utils/llm/model-modalities'
 import {
+  type WikilinkReadSubpath,
+  resolveWikilinkReadTarget,
+} from '../../utils/llm/resolve-wikilink-target'
+import {
   type OfficeDocumentKind,
   parseOfficeDocument,
 } from '../../utils/office'
@@ -47,6 +57,18 @@ import {
 } from '../../utils/pdf/extractPdfText'
 import { renderPdfPagesToImages } from '../../utils/pdf/renderPdfPagesToImages'
 import { PdfSliceError, slicePdfPages } from '../../utils/pdf/slicePdfPages'
+import {
+  type DangerousBashOperationKind,
+  cancelDangerousBashApproval,
+  requestDangerousBashApproval,
+} from '../agent/bash/dangerousOperationGate'
+import {
+  VAULT_BASH_STDERR_BUDGET,
+  VAULT_BASH_STDOUT_BUDGET,
+  truncateBashOutputForContext,
+} from '../agent/bash/outputBudget'
+import { createVaultBashFileSystem } from '../agent/bash/vaultBashFileSystem'
+import { createVaultBashSearch } from '../agent/bash/vaultBashSearch'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import { resolveSubagentModelConfig } from '../agent/subagent/model-config'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
@@ -57,6 +79,8 @@ import {
   BUILTIN_SKILL_PATH_PREFIX,
   buildAllowedSkillPathSet,
   findPathOutsideScope,
+  findPathWithinExcludedRoot,
+  isCoveredBySkillPathExemption,
   isPathAllowedByScope,
   normalizeSkillPathForExemption,
 } from '../agent/workspaceScope'
@@ -83,16 +107,12 @@ import {
   memoryDelete,
   memoryUpdate,
 } from '../memory/memoryManager'
+import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
 import type { RAGEngine } from '../rag/ragEngine'
 import {
-  type SuperSearchResult,
-  fuseRrfHybrid,
-  superSearchDedupKey,
-} from '../search/hybridSearch'
-import {
-  type AggregatedSearchResult,
-  aggregateSearchResults,
-} from '../search/searchResultAggregation'
+  acquireRuntimeComponent,
+  isRuntimeComponentEnabled,
+} from '../runtime-components/runtimeComponentAccess'
 import { getLiteSkillDocumentByPath } from '../skills/liteSkills'
 import {
   WEB_SCRAPE_TOOL_NAME,
@@ -131,26 +151,36 @@ import {
 } from './jsSandboxTool'
 import { LOCAL_FILE_TOOL_SERVER } from './localFileToolNames'
 import { parseToolName } from './tool-name-utils'
+import { ensureParentFolderExists, validateVaultPath } from './vaultFileOps'
 
 export { getLocalFileToolServerName } from './localFileToolNames'
 
 export { recoverLikelyEscapedBackslashSequences }
 
 export const TERMINAL_COMMAND_TOOL_NAME = 'terminal_command'
+export const BASH_TOOL_NAME = 'bash'
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
-const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
 // fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES 是"快照阈值"
 // （超过则跳过 undo/review 快照），本常量是"绝对拒绝上限"（超过才真正拒绝编辑）。
 const MAX_EDIT_FILE_SIZE_BYTES = 16 * 1024 * 1024
+const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
 const MAX_BATCH_READ_FILES = 20
 const DEFAULT_READ_START_LINE = 1
 const DEFAULT_READ_MAX_LINES = 50
 const MAX_READ_MAX_LINES = 2000
 const MAX_READ_LINE_INDEX = 1_000_000
-const MAX_RAG_SNIPPET_CHARS = 500
-const RAG_FETCH_LIMIT_MAX = 300
 const BROWSER_READ_PATH_USAGE =
   'browser:// paths only read open Obsidian web pages by page_id copied exactly from <browser_context> (browser://page_<8 lowercase base36>_<8 lowercase base36>). Do not append URL paths to a page_id and do not use browser:// to open or fetch internet URLs. For internet access, use web_search or web_scrape when available; if those tools are unavailable, tell the user.'
+
+function getOfficeDocumentKindFromExtension(
+  extension: string | undefined,
+): OfficeDocumentKind | null {
+  const normalized = extension?.toLowerCase()
+  if (normalized === 'docx' || normalized === 'pptx' || normalized === 'xlsx') {
+    return normalized
+  }
+  return null
+}
 
 const getContextPrunableToolCallIds = (
   messages: ChatMessage[] | undefined,
@@ -188,16 +218,12 @@ const getContextPrunableToolCallIds = (
 }
 
 export const LOCAL_FILE_TOOL_SHORT_NAMES = [
-  'fs_list',
-  'fs_search',
-  'fs_read',
+  BASH_TOOL_NAME,
   'context_prune_tool_results',
   'context_compact',
+  'fs_read',
   'fs_edit',
   'fs_write',
-  'fs_delete',
-  'fs_create_dir',
-  'fs_move',
   'memory_add',
   'memory_update',
   'memory_delete',
@@ -222,13 +248,11 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
 export const USER_FACING_LOCAL_TOOL_SHORT_NAMES: readonly string[] =
   LOCAL_FILE_TOOL_SHORT_NAMES.filter((name) => name !== 'load_tool_schemas')
 type LocalFileToolName = (typeof LOCAL_FILE_TOOL_SHORT_NAMES)[number]
-type FsSearchScope = 'files' | 'dirs' | 'content' | 'all'
-type FsSearchMode = 'keyword' | 'rag' | 'hybrid'
-type LegacyFsSearchItem =
-  | { kind: 'file'; path: string }
-  | { kind: 'dir'; path: string }
-  | { kind: 'content_match'; path: string; line: number; snippet: string }
-type FsListScope = 'files' | 'dirs' | 'all'
+type ContextPruneMode = 'selected' | 'all'
+// 'delete' | 'create_dir' | 'move' retired with fs_delete/fs_create_dir/fs_move
+// (see the bash tool, which now covers path operations via vaultFileOps.ts).
+type FsFileOpAction = 'write'
+
 // PDF read modality override. Omitted = default behavior (native PDF when the
 // chat model supports it, otherwise text). Concrete values are presented to
 // the model via a per-capability schema (see buildFsReadModalitySchema):
@@ -247,22 +271,10 @@ type FsReadOperation =
       type: 'lines'
       startLine: number
       endLine?: number
-      maxLines: number
+      maxLines?: number
       modality?: FsReadModality
       format?: BrowserReadFormat
     }
-type ContextPruneMode = 'selected' | 'all'
-type FsFileOpAction = 'write' | 'delete' | 'create_dir' | 'move'
-
-function getOfficeDocumentKindFromExtension(
-  extension: string | undefined,
-): OfficeDocumentKind | null {
-  const normalized = extension?.toLowerCase()
-  if (normalized === 'docx' || normalized === 'pptx' || normalized === 'xlsx') {
-    return normalized
-  }
-  return null
-}
 
 type LocalToolCallResultMetadata = {
   editSummary?: ToolEditSummary
@@ -280,6 +292,7 @@ type LocalToolCallResult =
     }
   | {
       status: ToolCallResponseStatus.Rejected
+      reason?: string
     }
   | {
       status: ToolCallResponseStatus.Error
@@ -302,17 +315,17 @@ type FsResultItem = {
   action: FsFileOpAction
   target: string
   message: string
-  /** For fs_delete: whether the deleted target was a file or a folder. */
-  targetKind?: 'file' | 'folder'
 }
 
 type FsEditReviewResult =
   | {
       status: ToolCallResponseStatus.Success
       finalContent: string
+      review: NonNullable<ApplyViewResult['review']>
     }
   | {
       status: ToolCallResponseStatus.Rejected
+      review: NonNullable<ApplyViewResult['review']>
     }
   | {
       status: ToolCallResponseStatus.Aborted
@@ -320,9 +333,6 @@ type FsEditReviewResult =
 
 const LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION = {
   fs_write: 'write',
-  fs_delete: 'delete',
-  fs_create_dir: 'create_dir',
-  fs_move: 'move',
 } as const
 
 export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
@@ -330,12 +340,6 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
 ) as Array<keyof typeof LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION>
 
 export const LOCAL_FS_EDIT_TOOL_NAMES = ['fs_edit', 'fs_write'] as const
-
-export const LOCAL_FS_PATH_OPERATION_TOOL_NAMES = [
-  'fs_delete',
-  'fs_create_dir',
-  'fs_move',
-] as const
 
 export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
   'memory_add',
@@ -356,10 +360,6 @@ const asErrorMessage = (error: unknown): string => {
     return error.message
   }
   return typeof error === 'string' ? error : JSON.stringify(error)
-}
-
-const asOptionalString = (value: unknown): string => {
-  return typeof value === 'string' ? value : ''
 }
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
@@ -406,6 +406,7 @@ const waitForFsEditReview = async ({
   file,
   originalContent,
   newContent,
+  reviewEdits,
   selectionRange,
   signal,
 }: {
@@ -413,6 +414,7 @@ const waitForFsEditReview = async ({
   file: TFile
   originalContent: string
   newContent: string
+  reviewEdits: ApplyViewState['reviewEdits']
   selectionRange: ApplyViewState['selectionRange']
   signal?: AbortSignal
 }): Promise<FsEditReviewResult> => {
@@ -433,17 +435,26 @@ const waitForFsEditReview = async ({
       file,
       originalContent,
       newContent,
+      reviewEdits,
       reviewMode: selectionRange ? 'selection-focus' : 'full',
       selectionRange,
       abortSignal: signal,
       callbacks: {
-        onComplete: ({ finalContent }) => {
+        onComplete: ({ finalContent, review }) => {
+          const resolvedReview = review ?? {
+            totalChanges: 1,
+            rejectedChanges: [],
+          }
           settle(
             finalContent === originalContent
-              ? { status: ToolCallResponseStatus.Rejected }
+              ? {
+                  status: ToolCallResponseStatus.Rejected,
+                  review: resolvedReview,
+                }
               : {
                   status: ToolCallResponseStatus.Success,
                   finalContent,
+                  review: resolvedReview,
                 },
           )
         },
@@ -478,25 +489,36 @@ const waitForFsEditReview = async ({
   ])
 }
 
-const validateVaultPath = (path: string): string => {
-  const normalizedPath = normalizePath(path).trim()
+const FS_EDIT_REVIEW_PREVIEW_LENGTH = 40
 
-  if (normalizedPath.length === 0) {
-    throw new Error('Path is required.')
-  }
-  if (
-    normalizedPath.startsWith('/') ||
-    normalizedPath.startsWith('./') ||
-    normalizedPath.startsWith('../')
-  ) {
-    throw new Error('Path must be a vault-relative path.')
-  }
-  if (normalizedPath.includes('/../') || normalizedPath.endsWith('/..')) {
-    throw new Error('Path cannot contain parent directory traversal.')
-  }
-
-  return normalizedPath
+const buildFsEditReviewPreview = ({
+  originalText,
+  proposedText,
+}: {
+  originalText: string
+  proposedText: string
+}): string => {
+  const normalized = (proposedText || originalText).replace(/\s+/g, ' ').trim()
+  if (!normalized) return '(empty change)'
+  const characters = Array.from(normalized)
+  if (characters.length <= FS_EDIT_REVIEW_PREVIEW_LENGTH) return normalized
+  return `${characters.slice(0, FS_EDIT_REVIEW_PREVIEW_LENGTH - 1).join('')}…`
 }
+
+const buildFsEditReviewPayload = (
+  review: NonNullable<ApplyViewResult['review']>,
+) => {
+  const rejected = review.rejectedChanges.map((change) => ({
+    index: change.index,
+    preview: buildFsEditReviewPreview(change),
+  }))
+  return rejected.length === 0
+    ? { outcome: 'accepted' as const }
+    : { outcome: 'partially_rejected' as const, rejected }
+}
+
+const buildFsEditRejectedReason = (): string =>
+  'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.'
 
 const normalizeFsReadPath = (path: string): string => {
   const trimmed = path.trim()
@@ -572,7 +594,8 @@ const sliceLinesForFsReadOperation = (
   const startIndex = Math.min(Math.max(operation.startLine - 1, 0), totalLines)
   const endExclusive = Math.min(
     totalLines,
-    operation.endLine ?? startIndex + operation.maxLines,
+    operation.endLine ??
+      startIndex + (operation.maxLines ?? DEFAULT_READ_MAX_LINES),
   )
   const selectedLines = lines.slice(startIndex, endExclusive)
   const outputContent = selectedLines
@@ -684,135 +707,6 @@ export function getLocalFileTools(options?: {
   const modalitySchema = buildFsReadModalitySchema(options?.chatModelModalities)
   return [
     {
-      name: 'fs_list',
-      description:
-        'List directory structure under a vault path. Useful for workspace orientation.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description:
-              'Optional vault-relative directory path. Omit or use "/" for vault root.',
-          },
-          depth: {
-            type: 'integer',
-            description:
-              'Traversal depth from the target directory. Defaults to 1, range 1-10.',
-          },
-          maxResults: {
-            type: 'integer',
-            description:
-              'Maximum entries to return. Defaults to 200, range 1-2000.',
-          },
-        },
-      },
-    },
-    {
-      name: 'fs_search',
-      description:
-        'Search the vault. Prefer hybrid mode (keyword + RAG fused). Results grouped by file with snippets. For PDF hits, startLine/endLine are page numbers. Use keyword for exact terms; rag for semantic-only. ' +
-        'Each returned snippet carries a `cite: N` field. When you write the answer using content from this tool, annotate each citing point with a markdown link `[N](yolo-cite:N?yolo-cite=N)` where N is the `cite` number of the snippet you relied on. The same `N` may be reused as often as needed; multiple `[1](...)[2](...)` may appear back-to-back. Do not emit `yolo-cite:` links unless they correspond to a `cite` number from this tool.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          mode: {
-            type: 'string',
-            enum: ['keyword', 'rag', 'hybrid'],
-            description:
-              'Default: hybrid (keyword+RAG). keyword: exact match. rag: semantic only.',
-          },
-          scope: {
-            type: 'string',
-            enum: ['files', 'dirs', 'content', 'all'],
-            description:
-              'Keyword scope (default: all). rag/hybrid: content or all only.',
-          },
-          query: {
-            type: 'string',
-            description:
-              'Search query. Optional for keyword files/dirs. Required for content/rag/hybrid.',
-          },
-          path: {
-            type: 'string',
-            description:
-              "Optional vault-relative path to scope search. Folder (recursive) or single file. For a file, RAG is restricted to that file's chunks and keyword content scans only that file (markdown only for keyword content).",
-          },
-          maxResults: {
-            type: 'integer',
-            description:
-              'Maximum top-level results to return. For content search, this means grouped file results. Defaults to 20, range 1-300.',
-          },
-          caseSensitive: {
-            type: 'boolean',
-            description:
-              'Whether matching should be case-sensitive. Mainly useful for content scope.',
-          },
-          ragMinSimilarity: {
-            type: 'number',
-            description:
-              'Optional minimum similarity threshold (0-1) for rag/hybrid; defaults to settings.',
-          },
-          ragLimit: {
-            type: 'integer',
-            description:
-              'Optional max RAG chunks to retrieve for rag/hybrid; defaults to settings, range 1-300.',
-          },
-        },
-      },
-    },
-    {
-      name: 'fs_read',
-      description:
-        'Read vault files, skill instructions, or open Obsidian web pages. Lines are 1-based. For PDFs, output is <page N> tags; lines mode uses page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Prefer lines for targeted reads. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          paths: {
-            type: 'array',
-            items: {
-              type: 'string',
-            },
-            description: `Vault-relative file paths, skill paths (builtin://), or browser://<page_id> copied exactly from <browser_context>. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
-          },
-          operation: {
-            type: 'object',
-            description:
-              'Read strategy. Omit for full. full: whole file/page. lines: targeted range (PDFs use page numbers). format applies only to browser:// paths.',
-            properties: {
-              type: {
-                type: 'string',
-                enum: ['full', 'lines'],
-              },
-              startLine: {
-                type: 'integer',
-                description: `Start line/page (1-based). Defaults to ${DEFAULT_READ_START_LINE}.`,
-              },
-              endLine: {
-                type: 'integer',
-                description:
-                  'Inclusive end line/page. If set, maxLines is ignored.',
-              },
-              maxLines: {
-                type: 'integer',
-                description:
-                  'Max lines/pages in the range when endLine is unset.',
-              },
-              format: {
-                type: 'string',
-                enum: ['readable', 'key_visible_info'],
-                description:
-                  'Browser pages only. key_visible_info (default): compact visible headings, text blocks, tables, code, and formulas — prefer for long pages. readable: fuller Markdown-like text.',
-              },
-              ...(modalitySchema ? { modality: modalitySchema } : {}),
-            },
-            required: ['type'],
-          },
-        },
-        required: ['paths'],
-      },
-    },
-    {
       name: 'context_prune_tool_results',
       description:
         'Exclude historical tool call results from future model-visible context without deleting chat history. Supports pruning selected calls or all prunable calls at once.',
@@ -856,6 +750,51 @@ export function getLocalFileTools(options?: {
             description: 'Optional focus hint for the summary.',
           },
         },
+      },
+    },
+    {
+      name: 'fs_read',
+      description:
+        'Read vault files, skill instructions, or open Obsidian web pages. Path entries also accept Obsidian wikilink targets (e.g. "[[Note#Heading]]" or bare "Note#^blockId"), resolved the same way Obsidian resolves links. Omit range fields for a full read. For a targeted read, pass startLine and optionally endLine or maxLines. Lines are 1-based; for PDFs they are page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          paths: {
+            type: 'array',
+            items: {
+              type: 'string',
+            },
+            description: `Vault-relative file paths, skill paths (builtin://), browser://<page_id> copied exactly from <browser_context>, or Obsidian wikilink targets. Wikilink targets may be wrapped in [[...]] or bare, may omit the .md extension, and may carry "#heading" (including nested "#Heading#Subheading") or "#^blockId" to read just that section. Exact vault paths are tried first, so this only kicks in when an entry doesn't match a real file path. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
+          },
+          sourcePath: {
+            type: 'string',
+            description:
+              "Optional vault path of the note the wikilink targets are being resolved from, to match Obsidian's link-resolution rules (relative/shortest-path). Only affects wikilink-style paths entries; ignored otherwise. Omit to resolve against the vault-wide best match.",
+          },
+          startLine: {
+            type: 'integer',
+            description:
+              'Start line/page (1-based). Providing this selects a targeted read; omit all range fields for a full read.',
+          },
+          endLine: {
+            type: 'integer',
+            description:
+              'Inclusive end line/page. Requires startLine and cannot be combined with maxLines.',
+          },
+          maxLines: {
+            type: 'integer',
+            description:
+              'Maximum lines/pages to return. Requires startLine and cannot be combined with endLine. When both endLine and maxLines are omitted, text-like content defaults to 50 lines and PDFs default to one page.',
+          },
+          format: {
+            type: 'string',
+            enum: ['readable', 'key_visible_info'],
+            description:
+              'Browser pages only. key_visible_info (default): compact visible headings, text blocks, tables, code, and formulas — prefer for long pages. readable: fuller Markdown-like text.',
+          },
+          ...(modalitySchema ? { modality: modalitySchema } : {}),
+        },
+        required: ['paths'],
       },
     },
     {
@@ -912,59 +851,25 @@ export function getLocalFileTools(options?: {
         required: ['path', 'content'],
       },
     },
-    {
-      name: 'fs_delete',
-      description:
-        'Delete a file or folder in the vault. The target kind is detected automatically. For a non-empty folder set recursive=true. Deleted items go to the trash; folder deletions cannot be undone from the chat (recover them via the system/Obsidian trash).',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative file or folder path.',
-          },
-          recursive: {
-            type: 'boolean',
+    ...(isRuntimeComponentEnabled('bash-engine')
+      ? [
+          {
+            name: BASH_TOOL_NAME,
             description:
-              'Folders only. Default false; when false a non-empty folder cannot be deleted. Ignored for files.',
-          },
-        },
-        required: ['path'],
-      },
-    },
-    {
-      name: 'fs_create_dir',
-      description:
-        'Create an empty folder in the vault. Missing parent folders are created automatically.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative folder path.',
-          },
-        },
-        required: ['path'],
-      },
-    },
-    {
-      name: 'fs_move',
-      description: 'Move or rename a file/folder path in the vault.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          oldPath: {
-            type: 'string',
-            description: 'Vault-relative source path.',
-          },
-          newPath: {
-            type: 'string',
-            description: 'Vault-relative destination path.',
-          },
-        },
-        required: ['oldPath', 'newPath'],
-      },
-    },
+              'A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate `fs_read` tool — this shell has no read command. To search, use the `search [-n N] "query" [path]` command inside this shell (hybrid RAG + keyword retrieval). Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate `fs_edit` or `fs_write` tool instead.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                command: {
+                  type: 'string',
+                  description: 'The shell command line to run.',
+                },
+              },
+              required: ['command'],
+            },
+          } satisfies McpTool,
+        ]
+      : []),
     {
       name: 'memory_add',
       description:
@@ -1110,7 +1015,8 @@ export function getLocalFileTools(options?: {
       description:
         'Run a command in the local OS shell. Desktop-only. ' +
         'Uses PowerShell on Windows and a POSIX shell on macOS/Linux. ' +
-        'Use for terminal-style inspection or local CLI commands. ' +
+        'Use for terminal-style inspection or local CLI commands on the user’s machine. ' +
+        'For vault content search/read/inspection, prefer the bash tool instead — it is sandboxed to the vault and works on every platform. ' +
         'By default, command runs as a one-shot process and completes when that process exits; ' +
         'it does not keep shell state between calls. ' +
         'Use background=true to create a persistent session for long-running or interactive commands; ' +
@@ -1358,25 +1264,6 @@ const getOptionalBoundedIntegerArg = ({
   return value
 }
 
-const getOptionalBoundedFloatArg = (
-  args: Record<string, unknown>,
-  key: string,
-  min: number,
-  max: number,
-): number | undefined => {
-  const value = args[key]
-  if (value === undefined) {
-    return undefined
-  }
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new Error(`${key} must be a number.`)
-  }
-  if (value < min || value > max) {
-    throw new Error(`${key} must be between ${min} and ${max}.`)
-  }
-  return value
-}
-
 const getOptionalBooleanArg = (
   args: Record<string, unknown>,
   key: string,
@@ -1432,6 +1319,7 @@ const assertContentSize = (content: string): void => {
 const resolveFolderByPath = (
   app: App,
   rawPath: string | undefined,
+  settings?: YoloSettings,
 ): { folder: TFolder; normalizedPath: string } => {
   const trimmedPath = rawPath?.trim()
   // Treat "/" as vault root for better model compatibility.
@@ -1440,6 +1328,12 @@ const resolveFolderByPath = (
   }
 
   const normalizedPath = validateVaultPath(trimmedPath)
+  // The YOLO user-data root must stay invisible to agent tools; see the
+  // matching fs_read check for the full rationale. Reported as the same
+  // "Folder not found" a genuinely missing path would get.
+  if (isWithinYoloUserDataRoot(normalizedPath, settings)) {
+    throw new Error(`Folder not found: ${normalizedPath}`)
+  }
   const abstractFile = app.vault.getAbstractFileByPath(normalizedPath)
 
   if (!abstractFile) {
@@ -1479,10 +1373,18 @@ const collectVaultChildEntries = ({
   folder,
   depth,
   maxResults,
+  isExcluded,
 }: {
   folder: TFolder
   depth: number
   maxResults: number
+  /**
+   * Paths for which this returns true are skipped entirely — not counted
+   * against `maxResults` and never descended into — so hidden content (the
+   * YOLO user-data root) can't exhaust a caller's result budget before real
+   * content is collected.
+   */
+  isExcluded?: (path: string) => boolean
 }): CollectedVaultListEntry[] => {
   const entries: CollectedVaultListEntry[] = []
   const queue: Array<{ folder: TFolder; level: number }> = [
@@ -1497,6 +1399,7 @@ const collectVaultChildEntries = ({
 
     for (const child of currentFolder.children) {
       if (entries.length >= maxResults) break
+      if (isExcluded?.(child.path)) continue
 
       if (child instanceof TFolder) {
         entries.push({ kind: 'dir', node: child, path: child.path })
@@ -1541,470 +1444,6 @@ const toJsSandboxVaultListEntry = (
   }
 }
 
-/**
- * Scope for fs_search. `vault` = entire vault, `folder` = recursive subtree,
- * `file` = a single file (RAG restricts to that file's chunks; keyword content
- * scans only that file).
- */
-type FsSearchScopeTarget =
-  | { kind: 'vault'; normalizedPath: '' }
-  | { kind: 'folder'; folder: TFolder; normalizedPath: string }
-  | { kind: 'file'; file: TFile; normalizedPath: string }
-
-const resolveSearchScopeByPath = (
-  app: App,
-  rawPath: string | undefined,
-): FsSearchScopeTarget => {
-  const trimmedPath = rawPath?.trim()
-  if (!trimmedPath || trimmedPath === '/') {
-    return { kind: 'vault', normalizedPath: '' }
-  }
-
-  const normalizedPath = validateVaultPath(trimmedPath)
-  const abstractFile = app.vault.getAbstractFileByPath(normalizedPath)
-
-  if (!abstractFile) {
-    throw new Error(`Path not found: ${normalizedPath}`)
-  }
-  if (abstractFile instanceof TFolder) {
-    return { kind: 'folder', folder: abstractFile, normalizedPath }
-  }
-  if (abstractFile instanceof TFile) {
-    return { kind: 'file', file: abstractFile, normalizedPath }
-  }
-  throw new Error(`Unsupported path target: ${normalizedPath}`)
-}
-
-const isPathWithinFolder = (filePath: string, folderPath: string): boolean => {
-  if (!folderPath) {
-    return true
-  }
-  return filePath.startsWith(`${folderPath}/`)
-}
-
-/** Whether a vault file path falls inside the active search scope. */
-const isPathInSearchScope = (
-  filePath: string,
-  scope: FsSearchScopeTarget,
-): boolean => {
-  if (scope.kind === 'vault') return true
-  if (scope.kind === 'folder')
-    return isPathWithinFolder(filePath, scope.normalizedPath)
-  return filePath === scope.normalizedPath
-}
-
-const getParentFolderPath = (path: string): string => {
-  const lastSlashIndex = path.lastIndexOf('/')
-  return lastSlashIndex === -1 ? '' : path.slice(0, lastSlashIndex)
-}
-
-const ensureFolderPathExists = async (
-  app: App,
-  path: string,
-): Promise<void> => {
-  const normalizedPath = validateVaultPath(path)
-  const existing = app.vault.getAbstractFileByPath(normalizedPath)
-  if (existing) {
-    if (!(existing instanceof TFolder)) {
-      throw new Error(`Path is not a folder: ${normalizedPath}`)
-    }
-    return
-  }
-
-  const parentFolderPath = getParentFolderPath(normalizedPath)
-  if (parentFolderPath) {
-    await ensureFolderPathExists(app, parentFolderPath)
-  }
-
-  await app.vault.createFolder(normalizedPath)
-}
-
-const makeContentSnippet = ({
-  content,
-  matchIndex,
-  matchLength,
-}: {
-  content: string
-  matchIndex: number
-  matchLength: number
-}): string => {
-  const radius = 120
-  const start = Math.max(0, matchIndex - radius)
-  const end = Math.min(content.length, matchIndex + matchLength + radius)
-  const snippet = content.slice(start, end).replace(/\s+/g, ' ').trim()
-
-  const prefix = start > 0 ? '...' : ''
-  const suffix = end < content.length ? '...' : ''
-  return `${prefix}${snippet}${suffix}`
-}
-
-const truncateRagSnippet = (text: string): string => {
-  const normalized = text.replace(/\s+/g, ' ').trim()
-  if (normalized.length <= MAX_RAG_SNIPPET_CHARS) {
-    return normalized
-  }
-  return `${normalized.slice(0, MAX_RAG_SNIPPET_CHARS)}...`
-}
-
-const legacyFsSearchItemsToSuper = (
-  items: LegacyFsSearchItem[],
-  source: 'keyword' | 'rag',
-): SuperSearchResult[] => {
-  return items.map((item) => {
-    if (item.kind === 'file') {
-      return { kind: 'file', path: item.path, source }
-    }
-    if (item.kind === 'dir') {
-      return { kind: 'dir', path: item.path, source }
-    }
-    return {
-      kind: 'content',
-      path: item.path,
-      line: item.line,
-      startLine: item.line,
-      endLine: item.line,
-      snippet: item.snippet,
-      source,
-    }
-  })
-}
-
-type RagEmbeddingRow = {
-  path: string
-  content: string
-  metadata: { startLine: number; endLine: number; page?: number }
-  similarity: number
-}
-
-const mapRagRowsToSuper = (
-  rows: RagEmbeddingRow[],
-  source: 'rag',
-): SuperSearchResult[] => {
-  return rows.map((row) => {
-    const page = row.metadata.page
-    const locLine = page ?? row.metadata.startLine
-    const locEnd = page ?? row.metadata.endLine
-    return {
-      kind: 'content' as const,
-      path: row.path,
-      line: locLine,
-      startLine: locLine,
-      endLine: locEnd,
-      page,
-      snippet: truncateRagSnippet(row.content),
-      similarity: row.similarity,
-      source,
-    }
-  })
-}
-
-const pathToRagScope = (
-  scope: FsSearchScopeTarget,
-): { files: string[]; folders: string[] } | undefined => {
-  if (scope.kind === 'vault') return undefined
-  if (scope.kind === 'folder')
-    return { files: [], folders: [scope.normalizedPath] }
-  return { files: [scope.normalizedPath], folders: [] }
-}
-
-const collectKeywordFsSearchResults = async ({
-  app,
-  scopeTarget,
-  scope,
-  query,
-  maxResults,
-  caseSensitive,
-  signal,
-}: {
-  app: App
-  scopeTarget: FsSearchScopeTarget
-  scope: FsSearchScope
-  query: string
-  maxResults: number
-  caseSensitive: boolean
-  signal?: AbortSignal
-}): Promise<LegacyFsSearchItem[]> => {
-  const queryForMatch = caseSensitive ? query : query.toLowerCase()
-  const queryTokens = Array.from(
-    new Set(
-      queryForMatch
-        .split(/\s+/)
-        .map((token) => token.trim())
-        .filter((token) => token.length > 0),
-    ),
-  )
-  const effectiveTokens =
-    queryTokens.length > 0 ? queryTokens : queryForMatch ? [queryForMatch] : []
-
-  const getTokenMatchSummary = (
-    sourceText: string,
-  ): {
-    matchedTokenCount: number
-    firstMatchIndex: number
-    bestMatchLength: number
-  } | null => {
-    if (!query) {
-      return {
-        matchedTokenCount: 0,
-        firstMatchIndex: 0,
-        bestMatchLength: 0,
-      }
-    }
-
-    let matchedTokenCount = 0
-    let firstMatchIndex = Number.MAX_SAFE_INTEGER
-    let bestMatchLength = 0
-
-    for (const token of effectiveTokens) {
-      const matchIndex = sourceText.indexOf(token)
-      if (matchIndex === -1) {
-        continue
-      }
-      matchedTokenCount += 1
-      if (matchIndex < firstMatchIndex) {
-        firstMatchIndex = matchIndex
-        bestMatchLength = token.length
-      }
-    }
-
-    if (matchedTokenCount === 0) {
-      return null
-    }
-
-    return {
-      matchedTokenCount,
-      firstMatchIndex,
-      bestMatchLength,
-    }
-  }
-
-  const getPathMatchSummary = (path: string) => {
-    if (!query) {
-      return {
-        matchedTokenCount: 0,
-        firstMatchIndex: 0,
-        bestMatchLength: 0,
-      }
-    }
-
-    const sourceText = caseSensitive ? path : path.toLowerCase()
-    return getTokenMatchSummary(sourceText)
-  }
-
-  const includeFiles = scope === 'files' || scope === 'all'
-  const includeDirs = scope === 'dirs' || scope === 'all'
-  const includeContent = scope === 'content' || scope === 'all'
-
-  if (includeContent && !query) {
-    throw new Error('query is required when scope includes content.')
-  }
-
-  const results: LegacyFsSearchItem[] = []
-  if (includeFiles) {
-    const files = app.vault
-      .getFiles()
-      .filter((file) => isPathInSearchScope(file.path, scopeTarget))
-      .map((file) => file.path)
-      .map((path) => ({
-        path,
-        match: getPathMatchSummary(path),
-      }))
-      .filter(
-        (
-          entry,
-        ): entry is {
-          path: string
-          match: {
-            matchedTokenCount: number
-            firstMatchIndex: number
-            bestMatchLength: number
-          }
-        } => entry.match !== null,
-      )
-      .sort((a, b) => {
-        if (a.match.matchedTokenCount !== b.match.matchedTokenCount) {
-          return b.match.matchedTokenCount - a.match.matchedTokenCount
-        }
-        if (a.match.firstMatchIndex !== b.match.firstMatchIndex) {
-          return a.match.firstMatchIndex - b.match.firstMatchIndex
-        }
-        return a.path.localeCompare(b.path)
-      })
-
-    for (const fileEntry of files) {
-      if (results.length >= maxResults) break
-      results.push({ kind: 'file', path: fileEntry.path })
-    }
-  }
-
-  if (includeDirs && results.length < maxResults) {
-    const dirs = app.vault
-      .getAllLoadedFiles()
-      .filter((entry): entry is TFolder => entry instanceof TFolder)
-      .filter((folder) => folder.path.length > 0)
-      .filter((folder) => isPathInSearchScope(folder.path, scopeTarget))
-      .map((folder) => folder.path)
-      .map((path) => ({
-        path,
-        match: getPathMatchSummary(path),
-      }))
-      .filter(
-        (
-          entry,
-        ): entry is {
-          path: string
-          match: {
-            matchedTokenCount: number
-            firstMatchIndex: number
-            bestMatchLength: number
-          }
-        } => entry.match !== null,
-      )
-      .sort((a, b) => {
-        if (a.match.matchedTokenCount !== b.match.matchedTokenCount) {
-          return b.match.matchedTokenCount - a.match.matchedTokenCount
-        }
-        if (a.match.firstMatchIndex !== b.match.firstMatchIndex) {
-          return a.match.firstMatchIndex - b.match.firstMatchIndex
-        }
-        return a.path.localeCompare(b.path)
-      })
-
-    for (const dirEntry of dirs) {
-      if (results.length >= maxResults) break
-      results.push({ kind: 'dir', path: dirEntry.path })
-    }
-  }
-
-  if (includeContent && results.length < maxResults) {
-    const searchableFiles = app.vault
-      .getMarkdownFiles()
-      .filter((file) => isPathInSearchScope(file.path, scopeTarget))
-      .sort((a, b) => a.path.localeCompare(b.path))
-    const contentMatches: Array<{
-      kind: 'content_match'
-      path: string
-      line: number
-      snippet: string
-      matchedTokenCount: number
-      firstMatchIndex: number
-    }> = []
-
-    for (const file of searchableFiles) {
-      if (signal?.aborted) {
-        break
-      }
-      if (file.stat.size > MAX_FILE_SIZE_BYTES) {
-        continue
-      }
-
-      const content = await app.vault.read(file)
-      const source = caseSensitive ? content : content.toLowerCase()
-      const match = getTokenMatchSummary(source)
-      if (!match) {
-        continue
-      }
-
-      const matchIndex = match.firstMatchIndex
-      const line = content.slice(0, matchIndex).split('\n').length
-      const snippet = makeContentSnippet({
-        content,
-        matchIndex,
-        matchLength: match.bestMatchLength,
-      })
-      contentMatches.push({
-        kind: 'content_match',
-        path: file.path,
-        line,
-        snippet,
-        matchedTokenCount: match.matchedTokenCount,
-        firstMatchIndex: match.firstMatchIndex,
-      })
-    }
-
-    contentMatches
-      .sort((a, b) => {
-        if (a.matchedTokenCount !== b.matchedTokenCount) {
-          return b.matchedTokenCount - a.matchedTokenCount
-        }
-        if (a.firstMatchIndex !== b.firstMatchIndex) {
-          return a.firstMatchIndex - b.firstMatchIndex
-        }
-        if (a.line !== b.line) {
-          return a.line - b.line
-        }
-        return a.path.localeCompare(b.path)
-      })
-      .slice(0, Math.max(maxResults - results.length, 0))
-      .forEach(
-        ({
-          matchedTokenCount: _matchedTokenCount,
-          firstMatchIndex: _firstMatchIndex,
-          ...item
-        }) => {
-          void _matchedTokenCount
-          void _firstMatchIndex
-          results.push(item)
-        },
-      )
-  }
-
-  return results
-}
-
-const getFsSearchScope = (args: Record<string, unknown>): FsSearchScope => {
-  const value = args.scope
-  if (
-    value !== 'files' &&
-    value !== 'dirs' &&
-    value !== 'content' &&
-    value !== 'all'
-  ) {
-    throw new Error('scope must be one of: files, dirs, content, all.')
-  }
-  return value
-}
-
-const getFsSearchMode = (args: Record<string, unknown>): FsSearchMode => {
-  const value = args.mode
-  if (value === undefined) {
-    return 'hybrid'
-  }
-  if (value !== 'keyword' && value !== 'rag' && value !== 'hybrid') {
-    throw new Error('mode must be one of: keyword, rag, hybrid.')
-  }
-  return value
-}
-
-const getOptionalFsSearchScope = (
-  args: Record<string, unknown>,
-  defaultScope: FsSearchScope,
-): FsSearchScope => {
-  if (args.scope === undefined) {
-    return defaultScope
-  }
-  return getFsSearchScope(args)
-}
-
-const getSemanticSearchUnavailableReason = ({
-  settings,
-  getRagEngine,
-}: {
-  settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
-}): string | null => {
-  if (!getRagEngine || !settings) {
-    return 'Semantic search is not available in this context.'
-  }
-  if (!settings.ragOptions.enabled) {
-    return 'RAG is not enabled. Fell back to keyword search.'
-  }
-  if (!settings.embeddingModelId?.trim()) {
-    return 'No embedding model configured. Fell back to keyword search.'
-  }
-  return null
-}
-
 const getContextPruneMode = (
   args: Record<string, unknown>,
 ): ContextPruneMode => {
@@ -2014,17 +1453,6 @@ const getContextPruneMode = (
   }
   if (value !== 'selected' && value !== 'all') {
     throw new Error('mode must be one of: selected, all.')
-  }
-  return value
-}
-
-const getFsListScope = (args: Record<string, unknown>): FsListScope => {
-  const value = args.scope
-  if (value === undefined) {
-    return 'all'
-  }
-  if (value !== 'files' && value !== 'dirs' && value !== 'all') {
-    throw new Error('scope must be one of: files, dirs, all.')
   }
   return value
 }
@@ -2137,27 +1565,11 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
 }
 
 const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
-  const topLevelOperationKeys = [
-    'type',
-    'startLine',
-    'endLine',
-    'maxLines',
-    'format',
-    'modality',
-  ]
-  const hasTopLevelOperationKey = topLevelOperationKeys.some(
-    (key) => args[key] !== undefined,
-  )
-
-  if (
-    (args.operation === undefined || args.operation === null) &&
-    !hasTopLevelOperationKey
-  ) {
-    return { type: 'full' }
+  if (args.operation !== undefined || args.type !== undefined) {
+    throw new Error(
+      'fs_read uses flat range parameters. Omit range fields for a full read, or pass startLine with optional endLine or maxLines.',
+    )
   }
-
-  const parsedOperation = coerceOperationObject(args.operation)
-  const type = asOptionalString(parsedOperation.type).trim().toLowerCase()
 
   // Strict modality parsing: accept undefined / null / empty string (→ unset,
   // use default per active model) or one of 'text' / 'image' / 'pdf'. Numbers,
@@ -2171,12 +1583,12 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
   // request to a sensible effective modality given the active model — a
   // model that somehow sends 'image' to a PDF-capable model gets upgraded to
   // native PDF rather than rejected, which is the more conservative path.
-  const rawModalityValue = parsedOperation.modality
+  const rawModalityValue = args.modality
   let modality: FsReadModality | undefined
   if (rawModalityValue !== undefined && rawModalityValue !== null) {
     if (typeof rawModalityValue !== 'string') {
       throw new Error(
-        "operation.modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
+        "modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
       )
     }
     const normalized = rawModalityValue.trim().toLowerCase()
@@ -2190,17 +1602,17 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
       modality = normalized
     } else {
       throw new Error(
-        "operation.modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
+        "modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
       )
     }
   }
 
   let format: BrowserReadFormat | undefined
-  const rawFormatValue = parsedOperation.format
+  const rawFormatValue = args.format
   if (rawFormatValue !== undefined && rawFormatValue !== null) {
     if (typeof rawFormatValue !== 'string') {
       throw new Error(
-        "operation.format must be 'readable' or 'key_visible_info' (or omitted).",
+        "format must be 'readable' or 'key_visible_info' (or omitted).",
       )
     }
     const normalizedFormat = rawFormatValue.trim().toLowerCase()
@@ -2213,119 +1625,71 @@ const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
       format = normalizedFormat
     } else {
       throw new Error(
-        "operation.format must be 'readable' or 'key_visible_info' (or omitted).",
+        "format must be 'readable' or 'key_visible_info' (or omitted).",
       )
     }
   }
 
-  if (type === 'full') {
+  const hasStartLine = args.startLine !== undefined
+  const hasEndLine = args.endLine !== undefined
+  const hasMaxLines = args.maxLines !== undefined
+  const hasRange = hasStartLine || hasEndLine || hasMaxLines
+
+  if (!hasRange) {
     return { type: 'full', modality, format }
   }
 
-  if (type === 'lines') {
-    const startLine = getOptionalIntegerArg({
-      args: parsedOperation,
-      key: 'startLine',
-      defaultValue: DEFAULT_READ_START_LINE,
-      min: 1,
-      max: MAX_READ_LINE_INDEX,
-    })
-
-    const maxLines = getOptionalIntegerArg({
-      args: parsedOperation,
-      key: 'maxLines',
-      defaultValue: DEFAULT_READ_MAX_LINES,
-      min: 1,
-      max: MAX_READ_MAX_LINES,
-    })
-
-    const endLine = getOptionalBoundedIntegerArg({
-      args: parsedOperation,
-      key: 'endLine',
-      min: 1,
-      max: MAX_READ_LINE_INDEX,
-    })
-
-    if (endLine !== undefined && endLine < startLine) {
-      throw new Error(
-        'operation.endLine must be greater than or equal to operation.startLine.',
-      )
-    }
-
-    if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
-      throw new Error(
-        `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
-      )
-    }
-
-    return {
-      type: 'lines',
-      startLine,
-      endLine,
-      maxLines,
-      modality,
-      format,
-    }
+  if (!hasStartLine) {
+    throw new Error('startLine is required when endLine or maxLines is set.')
+  }
+  if (hasEndLine && hasMaxLines) {
+    throw new Error('endLine and maxLines cannot be used together.')
   }
 
-  throw new Error('operation.type must be one of: full, lines.')
-}
+  const startLine = getOptionalIntegerArg({
+    args,
+    key: 'startLine',
+    defaultValue: DEFAULT_READ_START_LINE,
+    min: 1,
+    max: MAX_READ_LINE_INDEX,
+  })
+  const endLine = getOptionalBoundedIntegerArg({
+    args,
+    key: 'endLine',
+    min: 1,
+    max: MAX_READ_LINE_INDEX,
+  })
+  const maxLines = hasMaxLines
+    ? getOptionalIntegerArg({
+        args,
+        key: 'maxLines',
+        defaultValue: DEFAULT_READ_MAX_LINES,
+        min: 1,
+        max: MAX_READ_MAX_LINES,
+      })
+    : undefined
 
-const ensureParentFolderExists = async (
-  app: App,
-  path: string,
-): Promise<void> => {
-  const parentFolderPath = getParentFolderPath(path)
-  if (!parentFolderPath) {
-    return
+  if (endLine !== undefined && endLine < startLine) {
+    throw new Error('endLine must be greater than or equal to startLine.')
   }
-  await ensureFolderPathExists(app, parentFolderPath)
+  if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
+    throw new Error(
+      `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
+    )
+  }
+
+  return {
+    type: 'lines',
+    startLine,
+    endLine,
+    maxLines,
+    modality,
+    format,
+  }
 }
 
 const formatJsonResult = (payload: unknown): string => {
   return JSON.stringify(payload, null, 2)
-}
-
-const annotateAggregatedSearchWithCitations = (
-  results: AggregatedSearchResult[],
-  runContext: AgentRunContext | undefined,
-): AggregatedSearchResult[] => {
-  const registry = runContext?.citationRegistry
-  if (!registry) {
-    return results
-  }
-  return results.map((group) => {
-    if (group.kind !== 'content_group') {
-      return group
-    }
-    const decoratedSnippets = group.snippets.map((snippet) => {
-      const start = snippet.startLine ?? snippet.line ?? 0
-      const end = snippet.endLine ?? snippet.line ?? start
-      const dedupKey = superSearchDedupKey({
-        kind: 'content',
-        path: group.path,
-        line: snippet.line,
-        startLine: snippet.startLine,
-        endLine: snippet.endLine,
-        page: snippet.page,
-        snippet: snippet.snippet,
-        source: snippet.source,
-        similarity: snippet.similarity,
-        rrfScore: snippet.rrfScore,
-      })
-      const ordinal = registry.assign(dedupKey, {
-        path: group.path,
-        startLine: start,
-        endLine: end,
-        page: snippet.page,
-        snippet: snippet.snippet ?? '',
-        similarity: snippet.similarity,
-        source: snippet.source,
-      })
-      return { ...snippet, cite: ordinal }
-    })
-    return { ...group, snippets: decoratedSnippets }
-  })
 }
 
 const normalizeLocalToolName = (toolName: string): string => {
@@ -2752,150 +2116,6 @@ const executeFsFileOps = async ({
       }
     }
 
-    if (action === 'delete') {
-      const path = validateVaultPath(getTextArg(item, 'path'))
-      const recursive = getOptionalBooleanArg(item, 'recursive') ?? false
-      const existing = app.vault.getAbstractFileByPath(path)
-      if (!existing) {
-        throw new Error(`Path not found: ${path}`)
-      }
-
-      if (existing instanceof TFile) {
-        const content = await app.vault.read(existing)
-        await app.fileManager.trashFile(existing)
-        const metadata = await buildFileChangeSummary({
-          app,
-          settings,
-          path,
-          beforeContent: content,
-          afterContent: '',
-          beforeExists: true,
-          afterExists: false,
-          conversationId,
-          roundId,
-          toolCallId,
-          appliedAt,
-        })
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool,
-            action,
-            results: [
-              {
-                ok: true,
-                action,
-                target: path,
-                message: 'Deleted file.',
-                targetKind: 'file',
-              } satisfies FsResultItem,
-            ],
-          }),
-          metadata,
-        }
-      }
-
-      if (existing instanceof TFolder) {
-        if (!recursive && existing.children.length > 0) {
-          throw new Error(
-            `Folder is not empty: ${path}. Set recursive=true to delete non-empty folders.`,
-          )
-        }
-        // Folder deletions only move to trash — no editSummary / chat-undo
-        // snapshot. Recovery relies on the system/Obsidian trash.
-        await app.fileManager.trashFile(existing)
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool,
-            action,
-            results: [
-              {
-                ok: true,
-                action,
-                target: path,
-                message: 'Deleted folder.',
-                targetKind: 'folder',
-              } satisfies FsResultItem,
-            ],
-          }),
-        }
-      }
-
-      throw new Error(`Unsupported delete target: ${path}`)
-    }
-
-    if (action === 'create_dir') {
-      const path = validateVaultPath(getTextArg(item, 'path'))
-      const existing = app.vault.getAbstractFileByPath(path)
-      if (existing) {
-        throw new Error(`Path already exists: ${path}`)
-      }
-      await ensureParentFolderExists(app, path)
-      await app.vault.createFolder(path)
-
-      return {
-        status: ToolCallResponseStatus.Success,
-        text: formatJsonResult({
-          tool,
-          action,
-          results: [
-            {
-              ok: true,
-              action,
-              target: path,
-              message: 'Created folder.',
-            } satisfies FsResultItem,
-          ],
-        }),
-      }
-    }
-
-    if (action === 'move') {
-      const oldPath = validateVaultPath(getTextArg(item, 'oldPath'))
-      const newPath = validateVaultPath(getTextArg(item, 'newPath'))
-
-      if (oldPath === newPath) {
-        throw new Error('oldPath and newPath must be different.')
-      }
-
-      const source = app.vault.getAbstractFileByPath(oldPath)
-      if (!source) {
-        throw new Error(`Source path not found: ${oldPath}`)
-      }
-
-      const targetExists = app.vault.getAbstractFileByPath(newPath)
-      if (targetExists) {
-        throw new Error(`Target path already exists: ${newPath}`)
-      }
-      await ensureParentFolderExists(app, newPath)
-
-      if (
-        source instanceof TFolder &&
-        (newPath === source.path || newPath.startsWith(`${source.path}/`))
-      ) {
-        throw new Error('Cannot move a folder into itself or its subfolder.')
-      }
-
-      await app.fileManager.renameFile(source, newPath)
-
-      return {
-        status: ToolCallResponseStatus.Success,
-        text: formatJsonResult({
-          tool,
-          action,
-          results: [
-            {
-              ok: true,
-              action,
-              target: `${oldPath} -> ${newPath}`,
-              message: 'Moved path.',
-            } satisfies FsResultItem,
-          ],
-        }),
-      }
-    }
-
     throw new Error(`Unsupported fs action: ${action}`)
   } catch (error) {
     return {
@@ -2955,9 +2175,14 @@ export async function callLocalFileTool({
   chatModelId,
   workspaceScope,
   allowedSkillPaths,
-  runContext,
+  // Unused in this file now that fs_search (citation annotation) — its only
+  // consumer — is gone. Kept in the accepted options shape because callers
+  // still pass it uniformly regardless of which tool is being invoked.
+  runContext: _runContext,
   subagentParentContext,
   promptSourceWatcher,
+  bashApprovalMode,
+  bashReadOnly,
 }: {
   app: App
   settings?: YoloSettings
@@ -2977,6 +2202,14 @@ export async function callLocalFileTool({
   runContext?: AgentRunContext
   subagentParentContext?: SubagentParentContext
   promptSourceWatcher?: PromptSourceWatcher
+  /** Effective approval tier for the bash tool (see tool-gateway.ts). */
+  bashApprovalMode?: AssistantToolApprovalMode
+  /**
+   * Forces the bash tool call into its structurally read-only variant for
+   * this entire run (see tool-gateway.ts). When true, mkdir/mv/rm/rmdir are
+   * unavailable regardless of `bashApprovalMode`.
+   */
+  bashReadOnly?: boolean
 }): Promise<LocalToolCallResult> {
   if (signal?.aborted) {
     return { status: ToolCallResponseStatus.Aborted }
@@ -3006,85 +2239,82 @@ export async function callLocalFileTool({
       }
     }
 
+    // The YOLO user-data root (`<baseDir>/data`: chat history, module
+    // settings/intent — see `ensureUserDataRootDir` in
+    // `core/paths/yoloManagedData.ts`) must stay invisible to agent tools,
+    // unconditionally and regardless of workspace scope. Before that data
+    // moved out of the hidden `.yolo_json_db` directory, it could never be
+    // reached this way at all — dot directories are never indexed into the
+    // `TFile` tree fs_* tools resolve paths against. This reproduces that
+    // same invisibility now that the root is a normal, visible folder.
+    // Reported as a plain not-found, matching a genuine miss, so nothing
+    // about "this path is specially hidden" leaks to the model.
+    const offendingUserDataPath = findPathWithinExcludedRoot(
+      toolName,
+      args,
+      (path) => isWithinYoloUserDataRoot(path, settings),
+    )
+    if (offendingUserDataPath !== null) {
+      throw new Error(`File not found: ${offendingUserDataPath}`)
+    }
+
     const name = toolName as LocalFileToolName
     switch (name) {
-      case 'fs_list': {
-        const scopeFolder = resolveFolderByPath(
-          app,
-          getOptionalTextArg(args, 'path'),
+      case 'context_prune_tool_results': {
+        const mode = getContextPruneMode(args)
+
+        const prunableToolCallIds = getContextPrunableToolCallIds(
+          conversationMessages,
+          toolCallId,
         )
-        const scope = getFsListScope(args)
-        const depth = getOptionalIntegerArg({
-          args,
-          key: 'depth',
-          defaultValue: 1,
-          min: 1,
-          max: 10,
-        })
-        const maxResults = getOptionalIntegerArg({
-          args,
-          key: 'maxResults',
-          defaultValue: 200,
-          min: 1,
-          max: 2000,
-        })
+        const toolCallIds =
+          mode === 'all'
+            ? [...prunableToolCallIds]
+            : getStringArrayArg(args, 'toolCallIds')
+                .map((value) => value.trim())
+                .filter(
+                  (value, index, arr) =>
+                    value.length > 0 && arr.indexOf(value) === index,
+                )
 
-        const includeFiles = scope === 'files' || scope === 'all'
-        const includeDirs = scope === 'dirs' || scope === 'all'
-
-        const entries: Array<{
-          kind: 'file' | 'dir'
-          path: string
-          depth: number
-        }> = []
-        const queue: Array<{ folder: TFolder; level: number }> = [
-          { folder: scopeFolder.folder, level: 1 },
-        ]
-
-        while (queue.length > 0 && entries.length < maxResults) {
-          const current = queue.shift()
-          if (!current) break
-          const { folder, level } = current
-
-          const sortedChildren = [...folder.children].sort((a, b) =>
-            a.path.localeCompare(b.path),
-          )
-          for (const child of sortedChildren) {
-            if (entries.length >= maxResults) break
-
-            if (child instanceof TFolder) {
-              if (includeDirs) {
-                entries.push({ kind: 'dir', path: child.path, depth: level })
-              }
-              if (level < depth) {
-                queue.push({ folder: child, level: level + 1 })
-              }
-              continue
-            }
-
-            if (includeFiles && child instanceof TFile) {
-              entries.push({ kind: 'file', path: child.path, depth: level })
-            }
-          }
+        if (mode === 'selected' && toolCallIds.length === 0) {
+          throw new Error('toolCallIds cannot be empty when mode is selected.')
         }
 
-        const filteredEntries = workspaceScope?.enabled
-          ? entries.filter((entry) =>
-              isPathAllowedByScope(entry.path, workspaceScope),
-            )
-          : entries
+        const acceptedToolCallIds = toolCallIds.filter((value) =>
+          prunableToolCallIds.has(value),
+        )
+        const ignoredToolCallIds = toolCallIds.filter(
+          (value) => !prunableToolCallIds.has(value),
+        )
 
         return {
           status: ToolCallResponseStatus.Success,
           text: formatJsonResult({
-            tool: 'fs_list',
-            path: scopeFolder.normalizedPath,
-            scope,
-            depth,
-            entries: filteredEntries,
+            tool: 'context_prune_tool_results',
+            toolCallId: toolCallId ?? null,
+            operation: mode === 'all' ? 'prune_all' : 'prune_selected',
+            acceptedToolCallIds,
+            ignoredToolCallIds,
+            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
           }),
         }
       }
+
+      case 'context_compact': {
+        return {
+          status: ToolCallResponseStatus.Success,
+          text: formatJsonResult({
+            tool: 'context_compact',
+            toolCallId: toolCallId ?? null,
+            operation: 'compact_restart',
+            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
+            instruction:
+              getOptionalTextArg(args, 'instruction')?.trim() || null,
+          }),
+        }
+      }
+
       case 'fs_read': {
         const paths = getStringArrayArg(args, 'paths')
           .map((path) => normalizeFsReadPath(path))
@@ -3099,6 +2329,15 @@ export async function callLocalFileTool({
           )
         }
         const operation = getFsReadOperation(args)
+        // Resolution context for wikilink-style path entries (see the
+        // fallback resolution below). Not a path read from — just the
+        // linking note's path, mirroring how Obsidian resolves real
+        // wikilinks. Not subject to workspace-scope checks itself.
+        const rawSourcePath = getOptionalTextArg(args, 'sourcePath')?.trim()
+        const sourcePath =
+          rawSourcePath && rawSourcePath.length > 0
+            ? validateVaultPath(rawSourcePath)
+            : undefined
         const allowedSkillPathSet = allowedSkillPaths
           ? buildAllowedSkillPathSet(allowedSkillPaths)
           : undefined
@@ -3123,6 +2362,11 @@ export async function callLocalFileTool({
               loading?: boolean
               redactions?: Array<{ kind: string; count: number }>
               partial?: { reason: string; message: string }
+              // Present when this entry was resolved via wikilink fallback
+              // rather than an exact vault path match (see the resolution
+              // loop below).
+              resolvedPath?: string
+              resolvedSubpath?: WikilinkReadSubpath
             }
           | {
               path: string
@@ -3130,6 +2374,7 @@ export async function callLocalFileTool({
               error: string
             }
         > = []
+        const readSkillNames: string[] = []
 
         // Tool result attachments hoisted to a follow-up user message after
         // the tool block. Mostly image_url for rendered PDFs/images, but also
@@ -3191,6 +2436,7 @@ export async function callLocalFileTool({
               nextStartLine: sliced.nextStartLine,
               content: sliced.outputContent,
             })
+            readSkillNames.push(skillDocument.entry.name)
             continue
           }
 
@@ -3270,11 +2516,87 @@ export async function callLocalFileTool({
             continue
           }
 
-          const file = app.vault.getFileByPath(path)
+          // Exact vault path first (unchanged from prior behavior). Only on
+          // a miss do we try wikilink resolution — an explicit `[[...]]`
+          // wrapper can never be a valid exact path, and Obsidian filenames
+          // can't contain '#', so subpathed links can't collide with exact
+          // paths either.
+          let file = app.vault.getFileByPath(path)
+          let resolvedPath: string | undefined
+          let resolvedSubpath: WikilinkReadSubpath | undefined
+          let subpathWarning: string | undefined
+
           if (!file) {
-            results.push({ path, ok: false, error: 'File not found.' })
+            const target = resolveWikilinkReadTarget(app, path, sourcePath)
+            if (!target) {
+              results.push({
+                path,
+                ok: false,
+                error: `File not found. "${path}" did not match a vault path or a resolvable wikilink target.`,
+              })
+              continue
+            }
+            file = target.file
+            resolvedPath = file.path
+            if (target.subpath) {
+              resolvedSubpath = target.subpath
+            } else if (target.subpathError) {
+              subpathWarning = target.subpathError
+            }
+          }
+
+          // The YOLO user-data root (`<baseDir>/data`: chat history, module
+          // settings/intent) must stay invisible to agent tools exactly like
+          // its hidden pre-migration location (`.yolo_json_db`) was — see
+          // `ensureUserDataRootDir` in `core/paths/yoloManagedData.ts`. Dot
+          // directories were never indexed into the `TFile` tree at all, so
+          // this exact-match/wikilink resolution above could never have hit
+          // them; this check reproduces that invisibility explicitly now
+          // that the root is visible. Reported as a plain not-found — same
+          // wording as a genuine miss — so no new information ("this path is
+          // specially hidden") leaks to the model. Checked before the
+          // workspace-scope gate so it applies unconditionally, regardless
+          // of whether workspace scope is even enabled.
+          if (isWithinYoloUserDataRoot(file.path, settings)) {
+            results.push({
+              path,
+              ok: false,
+              error: `File not found: "${path}".`,
+            })
             continue
           }
+
+          // Scope enforcement for fs_read lives here rather than in the
+          // top-level raw-string check (see workspaceScope.ts) because
+          // wikilink targets aren't literal paths until resolved above.
+          // Applies uniformly to exact-match and wikilink-resolved entries.
+          // Files inside an allowed skill package keep the same exemption
+          // they had under findPathOutsideScope's exemptPaths option.
+          if (
+            workspaceScope?.enabled &&
+            !isPathAllowedByScope(file.path, workspaceScope) &&
+            !(
+              allowedSkillPathSet &&
+              isCoveredBySkillPathExemption(file.path, allowedSkillPathSet)
+            )
+          ) {
+            results.push({
+              path,
+              ok: false,
+              error: `Path "${file.path}" is outside this agent's workspace scope.`,
+            })
+            continue
+          }
+
+          const wikilinkResultFields: {
+            resolvedPath?: string
+            resolvedSubpath?: WikilinkReadSubpath
+          } = resolvedPath
+            ? {
+                resolvedPath,
+                ...(resolvedSubpath ? { resolvedSubpath } : {}),
+              }
+            : {}
 
           const isPdf = file.extension?.toLowerCase() === 'pdf'
           if (isPdf) {
@@ -3341,11 +2663,15 @@ export async function callLocalFileTool({
             if (resolvedModality === 'pdf') {
               const reqStart =
                 operation.type === 'lines' ? operation.startLine : 1
-              // lines 模式无 endLine 时语义与 image/text 分支一致：只读单页。
+              // 范围读取显式给 maxLines 时按页数计算；未给 endLine/maxLines
+              // 时保留低成本探查语义，只读 startLine 对应的单页。
               // full 模式的 endPage 留空，由 slicePdfPages 自动取到文档末页。
               const reqEnd =
                 operation.type === 'lines'
-                  ? (operation.endLine ?? operation.startLine)
+                  ? (operation.endLine ??
+                    (operation.maxLines !== undefined
+                      ? operation.startLine + operation.maxLines - 1
+                      : operation.startLine))
                   : undefined
 
               // Attempt to slice the PDF. slicePdfPages loads the source once
@@ -3423,6 +2749,8 @@ export async function callLocalFileTool({
                   // slice-internal numbers (1–slicePageCount).
                   content: `Read pages ${actualStart}–${actualEnd} of "${file.name}" (original document has ${totalSourcePages} pages).\nThe attached PDF slice contains those pages renumbered as 1–${slicePageCount} internally, but you should refer to them by their ORIGINAL page numbers (${actualStart}–${actualEnd}) when citing.`,
                   effectiveModality: 'pdf' as const,
+                  ...wikilinkResultFields,
+                  ...(subpathWarning ? { warning: subpathWarning } : {}),
                 })
                 perFileAttachmentParts.push({ path, parts: [documentPart] })
                 continue
@@ -3490,7 +2818,10 @@ export async function callLocalFileTool({
                     : null,
                 content: fbWarningPrefix + fbTaggedBody,
                 effectiveModality: 'text' as const,
-                warning: fbWarningPrefix.trim(),
+                warning: subpathWarning
+                  ? `${fbWarningPrefix.trim()} ${subpathWarning}`
+                  : fbWarningPrefix.trim(),
+                ...wikilinkResultFields,
               })
               continue
             }
@@ -3501,15 +2832,18 @@ export async function callLocalFileTool({
             if (resolvedModality === 'image') {
               // Mirror text-mode semantics where it makes sense:
               //   - `full`  → render every page (matches "full = whole file").
-              //   - `lines` without `endLine` → render only `startLine`. This
-              //     gives the model a cheap peek that returns `totalPages`,
-              //     so it can ask for a precise range on the next call
-              //     instead of guessing.
+              //   - targeted read with maxLines → render that many pages.
+              //   - targeted read without endLine/maxLines → render only
+              //     startLine. This gives the model a cheap peek that returns
+              //     totalPages before it asks for a precise range.
               const reqStart =
                 operation.type === 'lines' ? operation.startLine : 1
               const reqEnd =
                 operation.type === 'lines'
-                  ? (operation.endLine ?? operation.startLine)
+                  ? (operation.endLine ??
+                    (operation.maxLines !== undefined
+                      ? operation.startLine + operation.maxLines - 1
+                      : operation.startLine))
                   : undefined
 
               let renderResult: Awaited<
@@ -3560,6 +2894,8 @@ export async function callLocalFileTool({
                 hasMoreBelow,
                 nextStartLine,
                 content: '',
+                ...wikilinkResultFields,
+                ...(subpathWarning ? { warning: subpathWarning } : {}),
               })
 
               if (rendered.length > 0) {
@@ -3614,20 +2950,21 @@ export async function callLocalFileTool({
             let rangeEndPageInclusive = totalPageCount
             if (operation.type === 'lines') {
               rangeStartPage = operation.startLine
-              // PDF defaults to a single page when endLine is omitted —
-              // a PDF page carries far more content than a markdown line,
-              // so the markdown-style `maxLines=50` default is too aggressive
-              // here. The model can paginate explicitly when it wants more.
+              // PDF defaults to a single page when neither endLine nor
+              // maxLines is provided — a PDF page carries far more content
+              // than a markdown line. Explicit maxLines counts pages.
               rangeEndPageInclusive = Math.min(
-                operation.endLine ?? rangeStartPage,
+                operation.endLine ??
+                  (operation.maxLines !== undefined
+                    ? rangeStartPage + operation.maxLines - 1
+                    : rangeStartPage),
                 totalPageCount,
               )
               if (rangeEndPageInclusive < rangeStartPage) {
                 results.push({
                   path,
                   ok: false,
-                  error:
-                    'operation.endLine must be greater than or equal to operation.startLine.',
+                  error: 'endLine must be greater than or equal to startLine.',
                 })
                 continue
               }
@@ -3712,11 +3049,19 @@ export async function callLocalFileTool({
               ...(visionDowngraded
                 ? {
                     effectiveModality: 'text' as const,
-                    warning: '当前模型不支持图像输入，已自动降级为文本读取',
+                    warning: subpathWarning
+                      ? `当前模型不支持图像输入，已自动降级为文本读取 ${subpathWarning}`
+                      : '当前模型不支持图像输入，已自动降级为文本读取',
                   }
                 : pdfDowngraded
-                  ? { effectiveModality: 'text' as const }
-                  : {}),
+                  ? {
+                      effectiveModality: 'text' as const,
+                      ...(subpathWarning ? { warning: subpathWarning } : {}),
+                    }
+                  : subpathWarning
+                    ? { warning: subpathWarning }
+                    : {}),
+              ...wikilinkResultFields,
             })
             continue
           }
@@ -3753,6 +3098,8 @@ export async function callLocalFileTool({
                 hasMoreBelow: sliced.hasMoreBelow,
                 nextStartLine: sliced.nextStartLine,
                 content: sliced.outputContent,
+                ...wikilinkResultFields,
+                ...(subpathWarning ? { warning: subpathWarning } : {}),
               })
             } catch (error) {
               results.push({
@@ -3778,16 +3125,31 @@ export async function callLocalFileTool({
             continue
           }
 
+          // A subpath resolved from wikilink fallback only takes effect for
+          // a `full` read — an explicit startLine/endLine/maxLines from the
+          // caller always wins and the subpath is used only to locate the
+          // file.
+          const effectiveOperation: FsReadOperation =
+            resolvedSubpath && operation.type === 'full'
+              ? {
+                  type: 'lines',
+                  startLine: resolvedSubpath.startLine,
+                  endLine: resolvedSubpath.endLine,
+                  modality: operation.modality,
+                  format: operation.format,
+                }
+              : operation
+
           const rawContent = await app.vault.read(file)
           const content = rawContent
           const lines = content.length === 0 ? [] : content.split('\n')
-          const sliced = sliceLinesForFsReadOperation(lines, operation)
+          const sliced = sliceLinesForFsReadOperation(lines, effectiveOperation)
           const outputContent = sliced.outputContent
           const rawSelected = sliced.rawSelected
 
           const wikilinks =
-            path.endsWith('.md') && rawSelected.length > 0
-              ? collectWikilinkPaths(app, rawSelected, path)
+            file.extension === 'md' && rawSelected.length > 0
+              ? collectWikilinkPaths(app, rawSelected, file.path)
               : []
 
           results.push({
@@ -3795,7 +3157,7 @@ export async function callLocalFileTool({
             ok: true,
             totalLines: sliced.totalLines,
             returnedRange:
-              operation.type === 'lines'
+              effectiveOperation.type === 'lines'
                 ? {
                     startLine: sliced.returnedStartLine,
                     endLine: sliced.returnedEndLine,
@@ -3805,6 +3167,8 @@ export async function callLocalFileTool({
             nextStartLine: sliced.nextStartLine,
             content: outputContent,
             ...(wikilinks.length > 0 ? { wikilinks } : {}),
+            ...wikilinkResultFields,
+            ...(subpathWarning ? { warning: subpathWarning } : {}),
           })
 
           // Extract images from markdown files using the outputContent
@@ -3812,13 +3176,13 @@ export async function callLocalFileTool({
           if (
             chatModelAcceptsImages &&
             (settings?.chatOptions?.imageReadingEnabled ?? true) &&
-            path.endsWith('.md') &&
+            file.extension === 'md' &&
             outputContent.length > 0
           ) {
             const imageResult = await extractMarkdownImages(
               app,
               outputContent,
-              path,
+              file.path,
               {
                 compression: {
                   enabled:
@@ -3871,7 +3235,13 @@ export async function callLocalFileTool({
             return undefined
           }
           if (operation.type === 'full') {
-            return { type: 'full', isPdf }
+            return {
+              type: 'full',
+              isPdf,
+              ...(readSkillNames.length === paths.length
+                ? { skillNames: readSkillNames }
+                : {}),
+            }
           }
           const returnedRange = firstReadableResult.returnedRange
           if (
@@ -3885,6 +3255,9 @@ export async function callLocalFileTool({
             startLine: returnedRange.startLine,
             endLine: returnedRange.endLine,
             isPdf,
+            ...(readSkillNames.length === paths.length
+              ? { skillNames: readSkillNames }
+              : {}),
           }
         })()
 
@@ -3893,61 +3266,6 @@ export async function callLocalFileTool({
           text: textResult,
           contentParts,
           metadata: fsReadOperation ? { fsReadOperation } : undefined,
-        }
-      }
-
-      case 'context_prune_tool_results': {
-        const mode = getContextPruneMode(args)
-
-        const prunableToolCallIds = getContextPrunableToolCallIds(
-          conversationMessages,
-          toolCallId,
-        )
-        const toolCallIds =
-          mode === 'all'
-            ? [...prunableToolCallIds]
-            : getStringArrayArg(args, 'toolCallIds')
-                .map((value) => value.trim())
-                .filter(
-                  (value, index, arr) =>
-                    value.length > 0 && arr.indexOf(value) === index,
-                )
-
-        if (mode === 'selected' && toolCallIds.length === 0) {
-          throw new Error('toolCallIds cannot be empty when mode is selected.')
-        }
-
-        const acceptedToolCallIds = toolCallIds.filter((value) =>
-          prunableToolCallIds.has(value),
-        )
-        const ignoredToolCallIds = toolCallIds.filter(
-          (value) => !prunableToolCallIds.has(value),
-        )
-
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'context_prune_tool_results',
-            toolCallId: toolCallId ?? null,
-            operation: mode === 'all' ? 'prune_all' : 'prune_selected',
-            acceptedToolCallIds,
-            ignoredToolCallIds,
-            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
-          }),
-        }
-      }
-
-      case 'context_compact': {
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'context_compact',
-            toolCallId: toolCallId ?? null,
-            operation: 'compact_restart',
-            reason: getOptionalTextArg(args, 'reason')?.trim() || null,
-            instruction:
-              getOptionalTextArg(args, 'instruction')?.trim() || null,
-          }),
         }
       }
 
@@ -3995,6 +3313,8 @@ export async function callLocalFileTool({
         }
 
         let appliedContent = nextContent
+        let reviewResultSummary: NonNullable<ApplyViewResult['review']> | null =
+          null
 
         if (requireReview) {
           if (!openApplyReview) {
@@ -4006,6 +3326,7 @@ export async function callLocalFileTool({
             file,
             originalContent: content,
             newContent: nextContent,
+            reviewEdits: materialized.reviewEdits,
             selectionRange: getFsEditSelectionRange(
               content,
               materialized.operationResults,
@@ -4017,10 +3338,14 @@ export async function callLocalFileTool({
             return reviewResult
           }
           if (reviewResult.status === ToolCallResponseStatus.Rejected) {
-            return reviewResult
+            return {
+              status: ToolCallResponseStatus.Rejected,
+              reason: buildFsEditRejectedReason(),
+            }
           }
 
           appliedContent = reviewResult.finalContent
+          reviewResultSummary = reviewResult.review
         } else {
           await maybeWithInternalWrite(promptSourceWatcher, path, () =>
             app.vault.modify(file, nextContent),
@@ -4051,26 +3376,37 @@ export async function callLocalFileTool({
               appliedAt,
             })
 
+        const resultPayload = reviewResultSummary
+          ? {
+              tool: 'fs_edit',
+              path,
+              changed: content !== appliedContent,
+              review: buildFsEditReviewPayload(reviewResultSummary),
+              message:
+                reviewResultSummary.rejectedChanges.length > 0
+                  ? 'Explicit user decision: the listed change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.'
+                  : 'Applied reviewed edit.',
+            }
+          : {
+              tool: 'fs_edit',
+              path,
+              totalOperations: materialized.totalOperations,
+              appliedCount: materialized.appliedCount,
+              operationResults: materialized.operationResults.map((result) => ({
+                type: result.operation.type,
+                changed: result.changed,
+                actualOccurrences: result.actualOccurrences,
+                matchMode: result.matchMode,
+              })),
+              changed: content !== appliedContent,
+              message: overSized
+                ? 'Applied edit (content too large for undo snapshot).'
+                : 'Applied edit.',
+            }
+
         return {
           status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'fs_edit',
-            path,
-            totalOperations: materialized.totalOperations,
-            appliedCount: materialized.appliedCount,
-            operationResults: materialized.operationResults.map((result) => ({
-              type: result.operation.type,
-              changed: result.changed,
-              actualOccurrences: result.actualOccurrences,
-              matchMode: result.matchMode,
-            })),
-            changed: content !== appliedContent,
-            message: overSized
-              ? 'Applied edit (content too large for undo snapshot).'
-              : requireReview
-                ? 'Applied reviewed edit.'
-                : 'Applied edit.',
-          }),
+          text: formatJsonResult(resultPayload),
           metadata,
         }
       }
@@ -4095,280 +3431,73 @@ export async function callLocalFileTool({
         )
       }
 
-      case 'fs_delete': {
-        const path = normalizePath(getTextArg(args, 'path'))
-        const recursive = getOptionalBooleanArg(args, 'recursive')
-        return maybeWithInternalWrite(promptSourceWatcher, path, () =>
-          executeFsFileOps({
-            app,
-            settings,
-            action: 'delete',
-            item: {
-              path,
-              ...(recursive === undefined ? {} : { recursive }),
-            },
-            signal,
-            tool: 'fs_delete',
-            conversationId,
-            roundId,
-            toolCallId,
-          }),
-        )
-      }
-
-      case 'fs_create_dir': {
-        return executeFsFileOps({
-          app,
-          action: 'create_dir',
-          item: { path: getTextArg(args, 'path') },
-          signal,
-          tool: 'fs_create_dir',
-        })
-      }
-
-      case 'fs_move': {
-        const oldPath = normalizePath(getTextArg(args, 'oldPath'))
-        const newPath = normalizePath(getTextArg(args, 'newPath'))
-        const runMove = () =>
-          executeFsFileOps({
-            app,
-            action: 'move',
-            item: {
-              oldPath,
-              newPath,
-            },
-            signal,
-            tool: 'fs_move',
-          })
-        if (
-          promptSourceWatcher?.isWatchedPath(oldPath) &&
-          promptSourceWatcher.isWatchedPath(newPath) &&
-          oldPath !== newPath
-        ) {
-          return promptSourceWatcher.withInternalWrite(oldPath, () =>
-            promptSourceWatcher.withInternalWrite(newPath, runMove),
-          )
-        }
-        if (promptSourceWatcher?.isWatchedPath(oldPath)) {
-          return promptSourceWatcher.withInternalWrite(oldPath, runMove)
-        }
-        if (promptSourceWatcher?.isWatchedPath(newPath)) {
-          return promptSourceWatcher.withInternalWrite(newPath, runMove)
-        }
-        return runMove()
-      }
-
-      case 'fs_search': {
-        const requestedMode = getFsSearchMode(args)
-        const query = (getOptionalTextArg(args, 'query') ?? '').trim()
-        const maxResults = getOptionalIntegerArg({
-          args,
-          key: 'maxResults',
-          defaultValue: 20,
-          min: 1,
-          max: 300,
-        })
-        const caseSensitive =
-          getOptionalBooleanArg(args, 'caseSensitive') ?? false
-        const scopeTarget = resolveSearchScopeByPath(
-          app,
-          getOptionalTextArg(args, 'path'),
-        )
-        const ragMinSimilarity = getOptionalBoundedFloatArg(
-          args,
-          'ragMinSimilarity',
-          0,
-          1,
-        )
-        const ragLimitArg = getOptionalBoundedIntegerArg({
-          args,
-          key: 'ragLimit',
-          min: 1,
-          max: RAG_FETCH_LIMIT_MAX,
-        })
-        const semanticUnavailableReason =
-          requestedMode === 'keyword'
-            ? null
-            : getSemanticSearchUnavailableReason({ settings, getRagEngine })
-        const effectiveMode: FsSearchMode =
-          requestedMode === 'hybrid' && semanticUnavailableReason
-            ? 'keyword'
-            : requestedMode
-
-        const applyWorkspaceScopeFilter = <T extends { path: string }>(
-          rows: T[],
-        ): T[] =>
-          workspaceScope?.enabled
-            ? rows.filter((row) =>
-                isPathAllowedByScope(row.path, workspaceScope),
-              )
-            : rows
-
-        if (effectiveMode === 'keyword') {
-          const scope = getOptionalFsSearchScope(args, 'all')
-          const legacy = await collectKeywordFsSearchResults({
-            app,
-            scopeTarget,
-            scope,
-            query,
-            maxResults,
-            caseSensitive,
-            signal,
-          })
-          if (signal?.aborted) {
-            return { status: ToolCallResponseStatus.Aborted }
+      case BASH_TOOL_NAME: {
+        const command = getTextArg(args, 'command')
+        const lease = await acquireRuntimeComponent('bash-engine')
+        try {
+          const fs = createVaultBashFileSystem(app, workspaceScope, settings)
+          const confirmDangerousOperation = async (
+            kind: DangerousBashOperationKind,
+            targets: readonly string[],
+          ): Promise<boolean> => {
+            // 'full_access': nothing to gate. 'require_approval': the whole
+            // call was already approved before execution started (see
+            // tool-gateway.ts's pre-call gate) — asking again mid-script
+            // would be redundant. Only the default 'dangerous_only' tier (and
+            // any unrecognized value, failing toward the safer behavior)
+            // pauses here.
+            if (
+              bashApprovalMode === 'full_access' ||
+              bashApprovalMode === 'require_approval'
+            ) {
+              return true
+            }
+            // No addressable tool call to attach an approval card to (should
+            // not happen in practice — every real dispatch has a toolCallId).
+            // Fail closed rather than silently allowing a destructive op.
+            if (!toolCallId) return false
+            return requestDangerousBashApproval(toolCallId, kind, targets)
           }
-          const results = applyWorkspaceScopeFilter(
-            legacyFsSearchItemsToSuper(legacy, 'keyword'),
-          )
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: formatJsonResult({
-              tool: 'fs_search',
-              requestedMode,
-              effectiveMode,
-              fallbackReason:
-                requestedMode !== effectiveMode
-                  ? semanticUnavailableReason
-                  : undefined,
-              scope,
-              query,
-              path: scopeTarget.normalizedPath,
-              results: annotateAggregatedSearchWithCitations(
-                aggregateSearchResults({ results, maxResults }),
-                runContext,
-              ),
+          const session = lease.api.createSession({
+            fs,
+            confirmDangerousOperation,
+            search: createVaultBashSearch({
+              app,
+              settings,
+              getRagEngine,
+              workspaceScope,
+              signal,
             }),
+            signal,
+            readOnly: bashReadOnly ?? false,
+          })
+          const onAbort = (): void => {
+            if (toolCallId) cancelDangerousBashApproval(toolCallId)
           }
-        }
-
-        if (semanticUnavailableReason) {
-          throw new Error(
-            semanticUnavailableReason.replace(
-              ' Fell back to keyword search.',
-              '',
-            ),
-          )
-        }
-        if (!query) {
-          throw new Error('query is required for rag/hybrid mode.')
-        }
-        if (!getRagEngine || !settings) {
-          throw new Error('Semantic search is not available in this context.')
-        }
-
-        const rawScope = args.scope
-        if (rawScope === 'files' || rawScope === 'dirs') {
-          throw new Error(
-            'rag mode only supports content search. Use keyword or hybrid for file/dir search.',
-          )
-        }
-
-        const ragEngine = await getRagEngine()
-        const ragScope = pathToRagScope(scopeTarget)
-
-        const effectiveRagLimit = Math.min(
-          ragLimitArg ?? settings.ragOptions.limit,
-          RAG_FETCH_LIMIT_MAX,
-        )
-
-        const ragRows = await ragEngine.processQuery({
-          query,
-          scope: ragScope,
-          minSimilarity: ragMinSimilarity,
-          limit: effectiveRagLimit,
-        })
-
-        const ragMapped = applyWorkspaceScopeFilter(
-          mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag'),
-        )
-
-        if (effectiveMode === 'rag') {
-          const effectiveScope: FsSearchScope =
-            rawScope === undefined ? 'content' : (rawScope as FsSearchScope)
-          const results = ragMapped.slice(0, maxResults)
-          return {
-            status: ToolCallResponseStatus.Success,
-            text: formatJsonResult({
-              tool: 'fs_search',
-              requestedMode,
-              effectiveMode: 'rag',
-              scope: effectiveScope,
-              query,
-              path: scopeTarget.normalizedPath,
-              results: annotateAggregatedSearchWithCitations(
-                aggregateSearchResults({ results, maxResults }),
-                runContext,
-              ),
-            }),
+          signal?.addEventListener('abort', onAbort)
+          try {
+            const result = await session.exec(command)
+            return {
+              status: ToolCallResponseStatus.Success,
+              text: formatJsonResult({
+                tool: BASH_TOOL_NAME,
+                exit_code: result.exitCode,
+                stdout: truncateBashOutputForContext(
+                  result.stdout,
+                  VAULT_BASH_STDOUT_BUDGET,
+                ),
+                stderr: truncateBashOutputForContext(
+                  result.stderr,
+                  VAULT_BASH_STDERR_BUDGET,
+                ),
+              }),
+            }
+          } finally {
+            signal?.removeEventListener('abort', onAbort)
+            session.dispose()
           }
-        }
-
-        const keywordLegacy = await collectKeywordFsSearchResults({
-          app,
-          scopeTarget,
-          scope: 'content',
-          query,
-          maxResults,
-          caseSensitive,
-          signal,
-        })
-        if (signal?.aborted) {
-          return { status: ToolCallResponseStatus.Aborted }
-        }
-        const keywordSuper = applyWorkspaceScopeFilter(
-          legacyFsSearchItemsToSuper(keywordLegacy, 'keyword'),
-        )
-        const pathLegacyFiles = await collectKeywordFsSearchResults({
-          app,
-          scopeTarget,
-          scope: 'files',
-          query,
-          maxResults,
-          caseSensitive,
-          signal,
-        })
-        if (signal?.aborted) {
-          return { status: ToolCallResponseStatus.Aborted }
-        }
-        const pathLegacyDirs = await collectKeywordFsSearchResults({
-          app,
-          scopeTarget,
-          scope: 'dirs',
-          query,
-          maxResults,
-          caseSensitive,
-          signal,
-        })
-        if (signal?.aborted) {
-          return { status: ToolCallResponseStatus.Aborted }
-        }
-        const pathSuper = applyWorkspaceScopeFilter(
-          legacyFsSearchItemsToSuper(
-            [...pathLegacyFiles, ...pathLegacyDirs],
-            'keyword',
-          ),
-        )
-        const fused = fuseRrfHybrid({
-          pathResults: pathSuper,
-          keywordResults: keywordSuper,
-          ragResults: ragMapped,
-          maxResults,
-        })
-        return {
-          status: ToolCallResponseStatus.Success,
-          text: formatJsonResult({
-            tool: 'fs_search',
-            requestedMode,
-            effectiveMode: 'hybrid',
-            scope: 'content',
-            query,
-            path: scopeTarget.normalizedPath,
-            results: annotateAggregatedSearchWithCitations(
-              aggregateSearchResults({ results: fused, maxResults }),
-              runContext,
-            ),
-          }),
+        } finally {
+          lease.release()
         }
       }
 
@@ -4436,6 +3565,7 @@ export async function callLocalFileTool({
           app,
           jsSandboxSettings,
           getRagEngine,
+          settings,
         )
         return callJsSandboxTool({
           app,
@@ -5037,6 +4167,7 @@ export function buildJsSandboxProxyHandlers(
   app: App,
   config: JsSandboxSettings,
   getRagEngine?: () => Promise<RAGEngine>,
+  settings?: YoloSettings,
 ): JsSandboxProxyHandlers {
   const handlers: JsSandboxProxyHandlers = {}
 
@@ -5057,7 +4188,11 @@ export function buildJsSandboxProxyHandlers(
         path?: string,
         options?: Record<string, unknown>,
       ) => {
-        const { folder, normalizedPath } = resolveFolderByPath(app, path)
+        const { folder, normalizedPath } = resolveFolderByPath(
+          app,
+          path,
+          settings,
+        )
         const recursive = options?.recursive === true
         // The list crosses the sandbox/host boundary as one array. Keep a hard
         // fuse for pathological vaults while leaving normal large-vault stats
@@ -5066,6 +4201,8 @@ export function buildJsSandboxProxyHandlers(
           folder,
           depth: recursive ? Number.POSITIVE_INFINITY : 1,
           maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
+          isExcluded: (childPath) =>
+            isWithinYoloUserDataRoot(childPath, settings),
         })
         if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
           throw new Error(
@@ -5080,6 +4217,12 @@ export function buildJsSandboxProxyHandlers(
 
     handlers.vaultReadText = async (path: string) => {
       const normalized = normalizePath(path)
+      // The YOLO user-data root must stay invisible to agent tools; see the
+      // matching fs_read check for the full rationale. Reported via the
+      // same `null` this handler already uses for a genuine miss.
+      if (isWithinYoloUserDataRoot(normalized, settings)) {
+        return null
+      }
       const file = app.vault.getAbstractFileByPath(normalized)
       // Contract: return null ONLY when the file truly does not exist
       // (a legitimate "missing" signal the model can branch on). Folder
@@ -5115,6 +4258,11 @@ export function buildJsSandboxProxyHandlers(
     if (config.allowVaultRead) {
       handlers.vaultReadBinary = async (path: string) => {
         const normalized = normalizePath(path)
+        // The YOLO user-data root must stay invisible to agent tools; see
+        // the matching fs_read check for the full rationale.
+        if (isWithinYoloUserDataRoot(normalized, settings)) {
+          return null
+        }
         const file = app.vault.getAbstractFileByPath(normalized)
         // Same contract as readText: null only for "file does not exist".
         if (file === null) {

@@ -7,7 +7,7 @@ describe('migrateFrom35To36', () => {
       assistants: [
         {
           id: 'agent-1',
-          enabledToolNames: ['yolo_local__fs_read', 'server__tool_a'],
+          enabledToolNames: ['yolo_local__memory_add', 'server__tool_a'],
         },
       ],
     })
@@ -17,9 +17,9 @@ describe('migrateFrom35To36', () => {
       assistants: [
         {
           id: 'agent-1',
-          enabledToolNames: ['yolo_local__fs_read', 'server__tool_a'],
+          enabledToolNames: ['yolo_local__memory_add', 'server__tool_a'],
           toolPreferences: {
-            yolo_local__fs_read: {
+            yolo_local__memory_add: {
               enabled: true,
               approvalMode: 'full_access',
             },
@@ -39,13 +39,13 @@ describe('migrateFrom35To36', () => {
       assistants: [
         {
           id: 'agent-1',
-          enabledToolNames: ['yolo_local__fs_move', 'server__tool_b'],
+          enabledToolNames: ['yolo_local__fs_write', 'server__tool_b'],
           toolPreferences: {
-            yolo_local__fs_read: {
+            yolo_local__memory_add: {
               enabled: false,
               approvalMode: 'require_approval',
             },
-            yolo_local__fs_move: {
+            yolo_local__fs_write: {
               enabled: true,
               approvalMode: 'full_access',
             },
@@ -59,13 +59,13 @@ describe('migrateFrom35To36', () => {
       assistants: [
         {
           id: 'agent-1',
-          enabledToolNames: ['yolo_local__fs_move', 'server__tool_b'],
+          enabledToolNames: ['yolo_local__fs_write', 'server__tool_b'],
           toolPreferences: {
-            yolo_local__fs_read: {
+            yolo_local__memory_add: {
               enabled: false,
               approvalMode: 'full_access',
             },
-            yolo_local__fs_move: {
+            yolo_local__fs_write: {
               enabled: true,
               approvalMode: 'require_approval',
             },

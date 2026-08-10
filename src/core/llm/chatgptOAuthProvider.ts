@@ -107,7 +107,10 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
         fetch: this.createAuthorizedFetch(customFetch),
       })
 
-    const clients = createTransportClients(createClient)
+    const clients = createTransportClients(createClient, {
+      providerId: provider.id,
+      protocol: 'openai',
+    })
     this.browserClient = clients.browserClient
     this.obsidianClient = clients.obsidianClient
     this.nodeClient = clients.nodeClient

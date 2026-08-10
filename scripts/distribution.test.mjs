@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
+import { createHash } from 'node:crypto'
 import test from 'node:test'
 
 import {
   assertNewReleaseVersion,
   buildDesiredSnapshot,
+  describeRuntimeComponentArtifacts,
 } from './distribution.mjs'
 
 test('requires every product release to advance its published version', () => {
@@ -123,5 +125,76 @@ test('rebuilds the complete current snapshot from published Releases', async () 
   assert.equal(
     snapshot.modules[0].manifest.mirrorPath,
     'modules/learning/0.2.0/module.json',
+  )
+})
+
+test('loads runtime components only from the selected Core tag', async () => {
+  const version = '1.7.0'
+  const repository = 'Lapis0x0/obsidian-yolo'
+  const bytes = Buffer.from('runtime entry')
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const registry = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      components: [
+        {
+          id: 'tokenizer',
+          entry: 'runtime-components/tokenizer/dist/entry.js',
+          byteSize: bytes.byteLength,
+          sha256,
+        },
+      ],
+    }),
+  )
+  const responses = new Map([
+    [`${root}/registry.json`, registry],
+    [
+      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/tokenizer/dist/entry.js`,
+      bytes,
+    ],
+  ])
+  const fetchImpl = async (url) => {
+    const body = responses.get(url)
+    return body ? new Response(body) : new Response('missing', { status: 404 })
+  }
+
+  const [artifact] = await describeRuntimeComponentArtifacts({
+    repository,
+    version,
+    fetchImpl,
+  })
+
+  assert.equal(
+    artifact.mirrorPath,
+    'runtime-components/1.7.0/tokenizer/entry.js',
+  )
+  assert.equal(artifact.sha256, sha256)
+  assert.deepEqual(artifact.bytes, bytes)
+})
+
+test('rejects a runtime component that differs from its tagged registry', async () => {
+  const version = '1.7.0'
+  const repository = 'Lapis0x0/obsidian-yolo'
+  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const registry = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      components: [
+        {
+          id: 'tokenizer',
+          entry: 'runtime-components/tokenizer/dist/entry.js',
+          byteSize: 3,
+          sha256: createHash('sha256').update('abc').digest('hex'),
+        },
+      ],
+    }),
+  )
+  const fetchImpl = async (url) =>
+    new Response(url === `${root}/registry.json` ? registry : 'xyz')
+
+  await assert.rejects(
+    describeRuntimeComponentArtifacts({ repository, version, fetchImpl }),
+    /integrity mismatch/,
   )
 })

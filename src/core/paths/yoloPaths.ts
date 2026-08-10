@@ -13,6 +13,16 @@ export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
 export const YOLO_LEARNING_SUBDIR = 'learning'
 export const YOLO_LEARNING_SRS_DIR_NAME = 'learning-srs'
 export const YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME = 'anki-import-journals'
+// Visible root for user data that must survive vault sync (Obsidian Sync,
+// Remotely Save, etc. do not sync dot-prefixed directories, so anything a
+// user needs replicated across devices — chat history, module settings and
+// intent — lives here instead of the hidden `.yolo_json_db`). Device-local
+// runtime state (CLI session index, model catalog cache, ...) intentionally
+// stays under the hidden root; see `ensureUserDataRootDir`.
+export const YOLO_USER_DATA_DIR_NAME = 'data'
+export const YOLO_MODULE_SETTINGS_DIR_NAME = 'module-settings'
+export const YOLO_MODULE_INTENT_DIR_NAME = 'module-intent-v1'
+export const YOLO_COMPONENT_INTENT_DIR_NAME = 'component-intent-v1'
 // Fixed-name pointer file at vault root. Its content is a JSON object
 // { "dataPath": "<vault-relative path to .yolo_data.json>" } used to locate
 // the actual mirror file whose directory depends on `yolo.baseDir`.
@@ -184,6 +194,22 @@ export const getYoloJsonDbRootDir = (
   settings?: YoloSettingsLike | null,
 ): string => {
   return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_JSON_DB_DIR_NAME}`)
+}
+
+export const getYoloUserDataRootDir = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_USER_DATA_DIR_NAME}`)
+}
+
+/** True when `value` is the user-data root itself or lives inside it. */
+export const isWithinYoloUserDataRoot = (
+  value: string,
+  settings?: YoloSettingsLike | null,
+): boolean => {
+  const root = getYoloUserDataRootDir(settings)
+  const normalized = normalizePath(value)
+  return normalized === root || normalized.startsWith(`${root}/`)
 }
 
 export const getYoloVectorDbPath = (

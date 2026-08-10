@@ -27,6 +27,9 @@ export type LLMDebugTraceSummary = {
   startedAt: number
   completedAt?: number
   durationMs?: number
+  toolPlanDurationMs?: number
+  contextPreparationDurationMs?: number
+  providerFirstTokenMs?: number
   usage?: ResponseUsage
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   errorMessage?: string

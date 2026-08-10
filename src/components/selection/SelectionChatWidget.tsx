@@ -14,7 +14,12 @@ import type {
 } from './SelectionActionsMenu'
 import { SelectionActionsMenu } from './SelectionActionsMenu'
 import { SelectionIndicator, getIndicatorPosition } from './SelectionIndicator'
+import { SelectionLengthHandle } from './SelectionLengthHandle'
 import type { SelectionInfo } from './SelectionManager'
+import {
+  getSelectionVisualLineRects,
+  trimRangeEndWhitespace,
+} from './selectionRangeGeometry'
 
 // ─── Discriminated union for widget options ──────────────────────────────────
 
@@ -26,6 +31,7 @@ type MarkdownWidgetOptions = {
   /** The .cm-editor element — used as host and for scroll listeners. */
   hostEl: HTMLElement
   onClose: () => void
+  onLengthDragStart?: (startClientY: number, currentClientY: number) => boolean
   onAction: (
     actionId: string,
     selection: SelectionInfo,
@@ -63,6 +69,7 @@ type SelectionChatWidgetBodyProps = {
   hostEl: HTMLElement
   source: 'markdown' | 'pdf'
   onClose: () => void
+  onLengthDragStart?: (startClientY: number, currentClientY: number) => boolean
   onAction: (
     actionId: string,
     instruction: string,
@@ -78,6 +85,7 @@ function SelectionChatWidgetBody({
   hostEl,
   source,
   onClose,
+  onLengthDragStart,
   onAction,
 }: SelectionChatWidgetBodyProps) {
   const isMobile = !Platform.isDesktop
@@ -161,8 +169,24 @@ function SelectionChatWidgetBody({
     })
   }
 
+  const handleLengthDragStart = (
+    startClientY: number,
+    currentClientY: number,
+  ): boolean => {
+    const started = onLengthDragStart?.(startClientY, currentClientY) ?? false
+    if (started) onClose()
+    return started
+  }
+
   return (
     <>
+      {source === 'markdown' && !isMobile && onLengthDragStart && (
+        <SelectionLengthHandle
+          selection={selection}
+          containerEl={hostEl}
+          onDragStart={handleLengthDragStart}
+        />
+      )}
       <SelectionIndicator
         selection={selection}
         containerEl={hostEl}
@@ -342,7 +366,8 @@ export class SelectionChatWidget {
       return
     }
 
-    const rects = range.getClientRects()
+    const effectiveRange = trimRangeEndWhitespace(range)
+    const rects = getSelectionVisualLineRects(effectiveRange)
     const text = selection.toString().trim()
     if (!rects.length || !text) {
       this.handleClose()
@@ -354,7 +379,7 @@ export class SelectionChatWidget {
 
     this.currentSelection = {
       text,
-      range,
+      range: effectiveRange,
       rect,
       isMultiLine,
     }
@@ -417,6 +442,11 @@ export class SelectionChatWidget {
               hostEl={this.options.hostEl}
               source={this.options.source}
               onClose={this.handleClose}
+              onLengthDragStart={
+                this.options.source === 'markdown'
+                  ? this.options.onLengthDragStart
+                  : undefined
+              }
               onAction={onAction}
             />
           </SettingsProvider>

@@ -1,5 +1,4 @@
 import { LearningGenerationAbortError } from './abortError'
-import { PhaseDebugCollector, emitPhaseDebugLog } from './debugLog'
 import type {
   LearningGenerationActivity,
   LearningGenerationHost,
@@ -46,9 +45,8 @@ export async function generateOutline({
     chapters: [],
     estimatedKnowledgePoints: 0,
   }
-  const debug = new PhaseDebugCollector()
   const refSection = referenceFiles?.length
-    ? `\nReference materials (use fs_read to read these files at the provided paths):\n${referenceFiles.map((file) => `- ${file.name} (path: ${file.vaultPath})`).join('\n')}`
+    ? `\nReference materials (use the bash tool, e.g. \`cat\`, to read these files at the provided paths):\n${referenceFiles.map((file) => `- ${file.name} (path: ${file.vaultPath})`).join('\n')}`
     : ''
   const prompt = `Generate an outline for the following learning request:
 
@@ -74,7 +72,6 @@ ${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.tr
         onOutline?.(outline)
       }
     }
-    if (event.type === 'tool') debug.recordToolCall(event)
     if (event.type === 'completed') completedText = event.text
     if (event.type === 'aborted') {
       throw new LearningGenerationAbortError('Outline generation aborted')
@@ -82,24 +79,6 @@ ${referencesBlock?.trim() ? `\n${referencesBlock.trim()}` : ''}${refSection}`.tr
     if (event.type === 'error') throw new Error(event.message)
   }
   const finalText = completedText || accumulated
-  if (!abortSignal?.aborted) {
-    const collected = debug.finalize()
-    emitPhaseDebugLog(host, {
-      label: 'outline-generator',
-      ...collected,
-      outputLength: finalText.length,
-      output: finalText,
-      meta: {
-        topic: `"${topic}"`,
-        level,
-        ...(referenceFiles?.length
-          ? {
-              references: `[${referenceFiles.map((file) => file.name).join(', ')}]`,
-            }
-          : {}),
-      },
-    })
-  }
   const outline = parseOutline(finalText)
   if (!isOutlineEqual(outline, streamedOutline)) onOutline?.(outline)
   return { outline }

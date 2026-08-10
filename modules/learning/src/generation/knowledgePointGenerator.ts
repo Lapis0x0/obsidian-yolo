@@ -1,7 +1,6 @@
 import { scanMarkdownEntries } from '../domain/markdownScanner'
 
 import { LearningGenerationAbortError } from './abortError'
-import { type ChapterDebugData, PhaseDebugCollector } from './debugLog'
 import type {
   LearningGenerationActivity,
   LearningGenerationHost,
@@ -18,7 +17,6 @@ import type {
 export type GenerateKnowledgePointsForChapterOptions = {
   host: LearningGenerationHost
   modelId?: string
-  chapterIndex: number
   projectTopic: string
   chapterTitle: string
   chapterContract: string
@@ -36,7 +34,6 @@ export type GenerateKnowledgePointsForChapterOptions = {
 export async function generateKnowledgePointsForChapter({
   host,
   modelId,
-  chapterIndex,
   projectTopic,
   chapterTitle,
   chapterContract,
@@ -51,13 +48,11 @@ export async function generateKnowledgePointsForChapter({
   onKnowledgePoint,
 }: GenerateKnowledgePointsForChapterOptions): Promise<{
   drafts: KnowledgePointDraft[]
-  debugData: ChapterDebugData
 }> {
   let accumulated = ''
   let completedText = ''
   let titledCount = 0
   let emittedCount = 0
-  const debug = new PhaseDebugCollector()
   const emitTitles = async (titles: string[]) => {
     if (!onKnowledgePointTitle) return
     for (const title of titles.slice(titledCount)) {
@@ -73,7 +68,7 @@ export async function generateKnowledgePointsForChapter({
     }
   }
   const refSection = referenceDir
-    ? `\nReference materials directory: ${referenceDir} (when the contract names reference files, use fs_read at their corresponding paths)`
+    ? `\nReference materials directory: ${referenceDir} (when the contract names reference files, use the bash tool, e.g. \`cat\`, at their corresponding paths)`
     : ''
   const prompt = `Generate knowledge points for the following chapter:
 
@@ -100,7 +95,6 @@ User's current level: ${level}${refSection}`
       await emitTitles(parseKnowledgePointTitles(accumulated))
       await emitPoints(parseCompletedKnowledgePointDrafts(accumulated))
     }
-    if (event.type === 'tool') debug.recordToolCall(event)
     if (event.type === 'completed') completedText = event.text
     if (event.type === 'aborted') {
       throw new LearningGenerationAbortError(
@@ -113,18 +107,7 @@ User's current level: ${level}${refSection}`
   const drafts = parseKnowledgePointDrafts(finalText)
   await emitTitles(drafts.map((draft) => draft.title))
   await emitPoints(drafts)
-  const collected = debug.finalize()
-  return {
-    drafts,
-    debugData: {
-      chapterIndex,
-      chapterTitle,
-      ...collected,
-      outputLength: finalText.length,
-      output: finalText,
-      count: drafts.length,
-    },
-  }
+  return { drafts }
 }
 
 export type GenerateKnowledgePointsParallelOptions = {
@@ -163,7 +146,6 @@ export async function generateKnowledgePointsParallel({
         const { drafts } = await generateKnowledgePointsForChapter({
           host,
           modelId,
-          chapterIndex,
           projectTopic,
           chapterTitle: chapter.title,
           chapterContract: chapter.contract,

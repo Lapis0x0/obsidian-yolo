@@ -167,6 +167,8 @@ export const getDefaultTimelineEstimatedHeight = (
       return COMPACTION_ESTIMATED_HEIGHT
     case 'query-progress':
       return QUERY_PROGRESS_ESTIMATED_HEIGHT
+    case 'pending-response':
+      return 56
     case 'continue-response':
       return CONTINUE_RESPONSE_ESTIMATED_HEIGHT
     case 'bottom-anchor':
@@ -291,6 +293,11 @@ type BuildChatTimelineItemsParams = {
   revisionsById?: ReadonlyMap<string, number>
   assistantGroupBoundaryMessageIds?: readonly string[]
   compactionDividerAnchorMessageIds: string[]
+  compactionDividers?: readonly {
+    id: string
+    anchorMessageId: string | null
+    compaction: ChatConversationCompaction | null
+  }[]
   latestCompaction: ChatConversationCompaction | null
   pendingCompactionAnchorMessageId?: string | null
   queryProgress?: QueryProgressState
@@ -305,6 +312,7 @@ export const buildChatTimelineItems = ({
   revisionsById,
   assistantGroupBoundaryMessageIds = [],
   compactionDividerAnchorMessageIds,
+  compactionDividers,
   latestCompaction,
   pendingCompactionAnchorMessageId = null,
   queryProgress,
@@ -318,6 +326,35 @@ export const buildChatTimelineItems = ({
   const compactionAnchorMessageIdSet = new Set(
     compactionDividerAnchorMessageIds,
   )
+  const resolvedCompactionDividers =
+    compactionDividers ??
+    compactionDividerAnchorMessageIds.map((anchorMessageId) => ({
+      id: `${anchorMessageId}-compact-divider`,
+      anchorMessageId,
+      compaction: latestCompaction,
+    }))
+  const compactionDividersByAnchor = new Map<
+    string | null,
+    Array<(typeof resolvedCompactionDividers)[number]>
+  >()
+  for (const divider of resolvedCompactionDividers) {
+    const anchored = compactionDividersByAnchor.get(divider.anchorMessageId)
+    if (anchored) anchored.push(divider)
+    else compactionDividersByAnchor.set(divider.anchorMessageId, [divider])
+  }
+  const insertCompactionDividers = (anchorMessageId: string | null) => {
+    for (const divider of compactionDividersByAnchor.get(anchorMessageId) ??
+      []) {
+      items.push({
+        kind: 'compaction-divider',
+        id: divider.id,
+        renderKey: divider.id,
+        estimatedHeight: COMPACTION_ESTIMATED_HEIGHT,
+        anchorMessageId,
+        compaction: divider.compaction,
+      })
+    }
+  }
   const messagesById = new Map<
     string,
     ChatUserMessage | AssistantToolMessageGroup[number]
@@ -339,6 +376,8 @@ export const buildChatTimelineItems = ({
     activeEditableMessageId,
     activeStreamingMessageId,
   })
+
+  insertCompactionDividers(null)
 
   const insertPendingItem = (anchorMessageId: string) => {
     if (
@@ -403,14 +442,7 @@ export const buildChatTimelineItems = ({
         }
 
         pushCurrentGroup()
-        items.push({
-          kind: 'compaction-divider',
-          id: `${message.id}-compact-divider`,
-          renderKey: `${message.id}-compact-divider`,
-          estimatedHeight: COMPACTION_ESTIMATED_HEIGHT,
-          anchorMessageId: message.id,
-          compaction: latestCompaction,
-        })
+        insertCompactionDividers(message.id)
       })
 
       pushCurrentGroup()
@@ -419,6 +451,7 @@ export const buildChatTimelineItems = ({
 
     items.push(item)
     insertPendingItem(item.id)
+    insertCompactionDividers(item.id)
   })
 
   if (queryProgress && queryProgress.type !== 'idle') {

@@ -1,4 +1,4 @@
-import { App, TFile, normalizePath } from 'obsidian'
+import { App, EventRef, TAbstractFile, TFile, normalizePath } from 'obsidian'
 
 import {
   YOLO_SKILLS_INDEX_FILE_NAME,
@@ -10,6 +10,7 @@ import {
   getBuiltinLiteSkillByName,
   listBuiltinLiteSkills,
 } from './builtinSkills'
+import { parseFrontmatter } from './skillValidation'
 
 export type LiteSkillMode = 'lazy' | 'always'
 
@@ -23,6 +24,8 @@ export type LiteSkillEntry = {
   description: string
   mode: LiteSkillMode
   path: string
+  /** Builtin and externally owned project skills must never be mutated by YOLO. */
+  isReadOnly: boolean
 }
 
 export type LiteSkillDocument = {
@@ -30,7 +33,24 @@ export type LiteSkillDocument = {
   content: string
 }
 
-const CLAUDE_SKILL_FILE_NAME = 'SKILL.md'
+export type LiteSkillPackageResource =
+  | {
+      kind: 'vault'
+      relativePath: string
+      path: string
+    }
+  | {
+      kind: 'builtin'
+      relativePath: typeof SKILL_PACKAGE_ENTRY_FILE_NAME
+      content: string
+    }
+
+export type LiteSkillPackageSource = {
+  entry: LiteSkillEntry
+  resources: LiteSkillPackageResource[]
+}
+
+export const SKILL_PACKAGE_ENTRY_FILE_NAME = 'SKILL.md'
 
 type SkillSettings = {
   yolo?: {
@@ -45,11 +65,15 @@ export const HIDDEN_VAULT_SKILL_DIR_SUFFIXES = [
   'YOLO/skills',
 ] as const
 
-/**
- * Skill directories to scan, in priority order. Duplicate normalized paths are
- * included once (first occurrence wins).
- */
-export const getSkillScanDirs = ({
+/** Project-local Agent Skills owned by other compatible harnesses. */
+export const EXTERNAL_PROJECT_SKILL_DIRS = [
+  '.claude/skills',
+  '.agents/skills',
+  '.codex/skills',
+] as const
+
+/** Skill roots owned by YOLO and therefore eligible for migrations. */
+export const getManagedSkillScanDirs = ({
   settings,
   configDir,
 }: {
@@ -72,6 +96,25 @@ export const getSkillScanDirs = ({
   return dirs
 }
 
+/**
+ * Skill directories to scan, in priority order. Duplicate normalized paths are
+ * included once (first occurrence wins).
+ */
+export const getSkillScanDirs = ({
+  settings,
+  configDir,
+}: {
+  settings?: SkillSettings | null
+  configDir: string
+}): string[] => {
+  return [
+    ...new Set([
+      ...getManagedSkillScanDirs({ settings, configDir }),
+      ...EXTERNAL_PROJECT_SKILL_DIRS.map((dir) => normalizePath(dir)),
+    ]),
+  ]
+}
+
 const normalizeSkillMode = (value: unknown): LiteSkillMode => {
   if (typeof value !== 'string') {
     return 'lazy'
@@ -87,52 +130,18 @@ const asTrimmedString = (value: unknown): string | null => {
   return trimmed.length > 0 ? trimmed : null
 }
 
-const stripWrappingQuotes = (value: string): string => {
-  const trimmed = value.trim()
-  if (
-    (trimmed.startsWith('"') && trimmed.endsWith('"')) ||
-    (trimmed.startsWith("'") && trimmed.endsWith("'"))
-  ) {
-    return trimmed.slice(1, -1)
-  }
-  return trimmed
-}
-
 const parseFrontmatterFromContent = (
   content: string,
-): Record<string, string> | null => {
-  if (!content.startsWith('---\n')) {
-    return null
-  }
-
-  const closingIndex = content.indexOf('\n---\n', 4)
-  if (closingIndex === -1) {
-    return null
-  }
-
-  const frontmatterText = content.slice(4, closingIndex)
-  const lines = frontmatterText.split('\n')
-  const frontmatter: Record<string, string> = {}
-
-  for (const line of lines) {
-    const matched = line.match(/^([A-Za-z0-9_-]+)\s*:\s*(.+)$/)
-    if (!matched) {
-      continue
-    }
-    const key = matched[1]
-    const value = stripWrappingQuotes(matched[2])
-    frontmatter[key] = value
-  }
-
-  return frontmatter
-}
+): Record<string, unknown> | null => parseFrontmatter(content)
 
 const toLiteSkillEntry = ({
   path,
   frontmatter,
+  isReadOnly,
 }: {
   path: string
   frontmatter?: Record<string, unknown> | null
+  isReadOnly: boolean
 }): LiteSkillEntry | null => {
   const name = asTrimmedString(frontmatter?.name)
   if (!name) {
@@ -148,33 +157,8 @@ const toLiteSkillEntry = ({
     description,
     mode,
     path,
+    isReadOnly,
   }
-}
-
-const isLiteSkillPath = ({
-  path,
-  skillsDir,
-}: {
-  path: string
-  skillsDir: string
-}): boolean => {
-  const normalizedDir = normalizePath(skillsDir)
-  const prefix = `${normalizedDir}/`
-  if (!path.startsWith(prefix) || !path.endsWith('.md')) {
-    return false
-  }
-
-  const fileName = path.slice(path.lastIndexOf('/') + 1)
-  if (fileName === YOLO_SKILLS_INDEX_FILE_NAME) {
-    return false
-  }
-
-  const relativePath = path.slice(prefix.length)
-  if (!relativePath.includes('/')) {
-    return true
-  }
-
-  return fileName === CLAUDE_SKILL_FILE_NAME
 }
 
 const listSkillPathsInDir = async (
@@ -186,22 +170,45 @@ const listSkillPathsInDir = async (
     return []
   }
 
+  const listing = await adapter.list(normalizedDir)
   const paths: string[] = []
-  const collect = async (currentDir: string): Promise<void> => {
-    const listing = await adapter.list(currentDir)
-    for (const filePath of listing.files) {
-      const normalizedPath = normalizePath(filePath)
-      if (isLiteSkillPath({ path: normalizedPath, skillsDir: normalizedDir })) {
-        paths.push(normalizedPath)
-      }
+  for (const rawFolderPath of listing.folders) {
+    const folderPath = normalizePath(rawFolderPath)
+    const relativePath = folderPath.slice(normalizedDir.length + 1)
+    if (!relativePath || relativePath.includes('/')) {
+      continue
     }
-    for (const folderPath of listing.folders) {
-      await collect(normalizePath(folderPath))
+    const skillPath = normalizePath(
+      `${folderPath}/${SKILL_PACKAGE_ENTRY_FILE_NAME}`,
+    )
+    if (await adapter.exists(skillPath)) {
+      paths.push(skillPath)
     }
   }
+  // Directory packages take precedence over single-file skills with
+  // the same frontmatter name. This preserves package resources when both
+  // formats are present without moving or renaming either user file.
+  return [
+    ...paths.sort((a, b) => a.localeCompare(b)),
+    ...listing.files
+      .map((path) => normalizePath(path))
+      .filter((path) => {
+        const fileName = path.slice(path.lastIndexOf('/') + 1)
+        return (
+          fileName !== YOLO_SKILLS_INDEX_FILE_NAME &&
+          (fileName.endsWith('.md') || fileName.endsWith('.markdown'))
+        )
+      })
+      .sort((a, b) => a.localeCompare(b)),
+  ]
+}
 
-  await collect(normalizedDir)
-  return paths.sort((a, b) => a.localeCompare(b))
+export const getSkillPackageDirPath = (skillPath: string): string | null => {
+  const normalizedPath = normalizePath(skillPath)
+  const suffix = `/${SKILL_PACKAGE_ENTRY_FILE_NAME}`
+  return normalizedPath.endsWith(suffix)
+    ? normalizedPath.slice(0, -suffix.length)
+    : null
 }
 
 const readSkillFileContent = async (
@@ -223,10 +230,6 @@ const resolveSkillFrontmatter = async (
   const metadataFrontmatter = file
     ? app.metadataCache.getFileCache(file)?.frontmatter
     : undefined
-  if (asTrimmedString(metadataFrontmatter?.name)) {
-    return metadataFrontmatter ?? null
-  }
-
   const content = await readSkillFileContent(app, path, file)
   const parsedFrontmatter = parseFrontmatterFromContent(content)
   return {
@@ -284,12 +287,19 @@ const buildSkillRegistry = async ({
         description: skill.description,
         mode: skill.mode,
         path: skill.path,
+        isReadOnly: true,
       },
       file: null,
     })
   })
 
   const vaultClaimed = new Set<string>()
+  const managedSkillDirs = new Set(
+    getManagedSkillScanDirs({
+      settings,
+      configDir: app.vault.configDir,
+    }),
+  )
   for (const skillsDir of getSkillScanDirs({
     settings,
     configDir: app.vault.configDir,
@@ -298,7 +308,11 @@ const buildSkillRegistry = async ({
     for (const path of paths) {
       const file = app.vault.getFileByPath(path)
       const frontmatter = await resolveSkillFrontmatter(app, path, file)
-      const entry = toLiteSkillEntry({ path, frontmatter })
+      const entry = toLiteSkillEntry({
+        path,
+        frontmatter,
+        isReadOnly: !managedSkillDirs.has(skillsDir),
+      })
       if (!entry) {
         continue
       }
@@ -313,6 +327,170 @@ const buildSkillRegistry = async ({
   return registry
 }
 
+class LiteSkillRegistryService {
+  private static readonly EVENT_REBUILD_DEBOUNCE_MS = 75
+
+  private registry: Map<string, SkillRegistryRecord> | null = null
+  private inflight: Promise<Map<string, SkillRegistryRecord>> | null = null
+  private settings: SkillSettings | undefined
+  private settingsFingerprint = ''
+  private revision = 0
+  private eventRefs: EventRef[] = []
+  private rebuildTimer: ReturnType<typeof setTimeout> | null = null
+
+  constructor(private readonly app: App) {}
+
+  private fingerprint(settings?: SkillSettings): string {
+    return getSkillScanDirs({
+      settings,
+      configDir: this.app.vault.configDir,
+    }).join('\n')
+  }
+
+  private applySettings(settings?: SkillSettings): void {
+    const fingerprint = this.fingerprint(settings)
+    this.settings = settings
+    if (fingerprint === this.settingsFingerprint) return
+    this.settingsFingerprint = fingerprint
+    this.invalidate()
+  }
+
+  private isRelevantPath(path: string): boolean {
+    const normalized = normalizePath(path)
+    return getSkillScanDirs({
+      settings: this.settings,
+      configDir: this.app.vault.configDir,
+    }).some((dir) => normalized === dir || normalized.startsWith(`${dir}/`))
+  }
+
+  private invalidate(): void {
+    this.revision += 1
+    this.registry = null
+  }
+
+  private scheduleRebuild(): void {
+    if (this.rebuildTimer) clearTimeout(this.rebuildTimer)
+    this.rebuildTimer = setTimeout(() => {
+      this.rebuildTimer = null
+      this.prewarm()
+    }, LiteSkillRegistryService.EVENT_REBUILD_DEBOUNCE_MS)
+  }
+
+  public start(settings?: SkillSettings): void {
+    this.applySettings(settings)
+    if (this.eventRefs.length > 0) return
+    const invalidateFile = (file: TAbstractFile) => {
+      if (this.isRelevantPath(file.path)) {
+        this.invalidate()
+        this.scheduleRebuild()
+      }
+    }
+    this.eventRefs = [
+      this.app.vault.on('create', invalidateFile),
+      this.app.vault.on('modify', invalidateFile),
+      this.app.vault.on('delete', invalidateFile),
+      this.app.vault.on('rename', (file, oldPath) => {
+        if (this.isRelevantPath(file.path) || this.isRelevantPath(oldPath)) {
+          this.invalidate()
+          this.scheduleRebuild()
+        }
+      }),
+    ]
+  }
+
+  public updateSettings(settings?: SkillSettings): void {
+    const changed = this.fingerprint(settings) !== this.settingsFingerprint
+    this.applySettings(settings)
+    if (changed) this.prewarm()
+  }
+
+  public prewarm(): void {
+    void this.getRegistry(this.settings).catch((error) => {
+      console.warn('[YOLO] Failed to prewarm Lite Skill registry', error)
+    })
+  }
+
+  public async getRegistry(
+    settings?: SkillSettings,
+  ): Promise<Map<string, SkillRegistryRecord>> {
+    this.applySettings(settings)
+    while (true) {
+      if (this.registry) return this.registry
+      if (!this.inflight) {
+        const buildRevision = this.revision
+        const buildSettings = this.settings
+        this.inflight = buildSkillRegistry({
+          app: this.app,
+          settings: buildSettings,
+        }).then((registry) => {
+          if (buildRevision === this.revision) this.registry = registry
+          return registry
+        })
+      }
+
+      const pending = this.inflight
+      try {
+        const registry = await pending
+        if (this.registry === registry) return registry
+      } finally {
+        if (this.inflight === pending) this.inflight = null
+      }
+      // A vault/settings event invalidated the catalog while it was building.
+      // Loop once more; all concurrent callers converge on the same new build.
+    }
+  }
+
+  public dispose(): void {
+    if (this.rebuildTimer) clearTimeout(this.rebuildTimer)
+    this.rebuildTimer = null
+    for (const ref of this.eventRefs) this.app.vault.offref(ref)
+    this.eventRefs = []
+    this.registry = null
+    this.inflight = null
+  }
+}
+
+const registryServices = new WeakMap<App, LiteSkillRegistryService>()
+
+const getRegistryService = (app: App): LiteSkillRegistryService => {
+  const existing = registryServices.get(app)
+  if (existing) return existing
+  const service = new LiteSkillRegistryService(app)
+  registryServices.set(app, service)
+  return service
+}
+
+export const initializeLiteSkillRegistryService = ({
+  app,
+  settings,
+}: {
+  app: App
+  settings?: SkillSettings
+}): (() => void) => {
+  const service = getRegistryService(app)
+  service.start(settings)
+  return () => {
+    service.dispose()
+    registryServices.delete(app)
+  }
+}
+
+export const updateLiteSkillRegistrySettings = (
+  app: App,
+  settings?: SkillSettings,
+): void => {
+  getRegistryService(app).updateSettings(settings)
+}
+
+export const prewarmLiteSkillRegistry = (
+  app: App,
+  settings?: SkillSettings,
+): void => {
+  const service = getRegistryService(app)
+  service.updateSettings(settings)
+  service.prewarm()
+}
+
 export async function listLiteSkillEntries(
   app: App,
   options?: {
@@ -320,9 +498,7 @@ export async function listLiteSkillEntries(
   },
 ): Promise<LiteSkillEntry[]> {
   return [
-    ...(
-      await buildSkillRegistry({ app, settings: options?.settings })
-    ).values(),
+    ...(await getRegistryService(app).getRegistry(options?.settings)).values(),
   ]
     .map((record) => record.entry)
     .sort((a, b) => a.path.localeCompare(b.path))
@@ -344,19 +520,22 @@ export async function getLiteSkillDocument({
 
   // Resolve through the SAME registry as `list`, so a name displayed in the UI
   // opens exactly the file/builtin that was displayed.
-  const record = (await buildSkillRegistry({ app, settings })).get(target)
+  const record = (await getRegistryService(app).getRegistry(settings)).get(
+    target,
+  )
   if (!record) {
     return null
   }
 
   if (!record.entry.path.startsWith('builtin://')) {
+    const currentFile = app.vault.getFileByPath(record.entry.path)
     const content = await readSkillFileContent(
       app,
       record.entry.path,
-      record.file,
+      currentFile,
     )
-    const metadataFrontmatter = record.file
-      ? app.metadataCache.getFileCache(record.file)?.frontmatter
+    const metadataFrontmatter = currentFile
+      ? app.metadataCache.getFileCache(currentFile)?.frontmatter
       : undefined
     const parsedFrontmatter = parseFrontmatterFromContent(content)
     const mergedFrontmatter = {
@@ -366,6 +545,7 @@ export async function getLiteSkillDocument({
     const entry = toLiteSkillEntry({
       path: record.entry.path,
       frontmatter: mergedFrontmatter,
+      isReadOnly: record.entry.isReadOnly,
     })
     if (!entry) {
       return null
@@ -393,6 +573,7 @@ export async function getLiteSkillDocument({
       description: builtin.description,
       mode: builtin.mode,
       path: builtin.path,
+      isReadOnly: true,
     },
     content: builtin.content,
   }
@@ -412,7 +593,7 @@ export async function getLiteSkillDocumentByPath({
     return null
   }
 
-  const registry = await buildSkillRegistry({ app, settings })
+  const registry = await getRegistryService(app).getRegistry(settings)
   for (const record of registry.values()) {
     if (record.entry.path === targetPath) {
       return getLiteSkillDocument({
@@ -423,6 +604,81 @@ export async function getLiteSkillDocumentByPath({
     }
   }
   return null
+}
+
+const listPackageResourcePaths = async (
+  adapter: App['vault']['adapter'],
+  packageDir: string,
+): Promise<string[]> => {
+  const paths: string[] = []
+  const collect = async (dir: string): Promise<void> => {
+    const listing = await adapter.list(dir)
+    paths.push(...listing.files.map((path) => normalizePath(path)))
+    for (const folder of listing.folders) {
+      await collect(normalizePath(folder))
+    }
+  }
+  await collect(packageDir)
+  return paths.sort((a, b) => a.localeCompare(b))
+}
+
+/**
+ * Resolve the complete package behind a canonical frontmatter name. Vault
+ * resources are returned as paths so downstream materializers can preserve
+ * text and binary files with the adapter operation appropriate to each file.
+ */
+export async function getLiteSkillPackageSource({
+  app,
+  name,
+  settings,
+}: {
+  app: App
+  name?: string
+  settings?: SkillSettings
+}): Promise<LiteSkillPackageSource | null> {
+  const document = await getLiteSkillDocument({ app, name, settings })
+  if (!document) {
+    return null
+  }
+
+  if (document.entry.path.startsWith('builtin://')) {
+    return {
+      entry: document.entry,
+      resources: [
+        {
+          kind: 'builtin',
+          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
+          content: document.content,
+        },
+      ],
+    }
+  }
+
+  const packageDir = getSkillPackageDirPath(document.entry.path)
+  if (!packageDir) {
+    return {
+      entry: document.entry,
+      resources: [
+        {
+          kind: 'vault',
+          path: document.entry.path,
+          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
+        },
+      ],
+    }
+  }
+  const prefix = `${packageDir}/`
+  const resources = (
+    await listPackageResourcePaths(app.vault.adapter, packageDir)
+  ).map(
+    (path): LiteSkillPackageResource => ({
+      kind: 'vault',
+      path,
+      relativePath: path.slice(prefix.length),
+    }),
+  )
+
+  return { entry: document.entry, resources }
 }
 
 /**
@@ -544,11 +800,11 @@ export function rewriteSkillFrontmatterIdToName(
 
 /**
  * One-time, idempotent migration of vault skill files from the legacy
- * `id + name` frontmatter to the converged `name`-only form. Scans every skill
- * file under any configured skill scan directory and, when a file carries a valid `id`,
- * promotes `id` -> `name` and removes the `id` line. Files without a valid `id`
- * are skipped. Per-file failures are logged and skipped without aborting the
- * batch.
+ * `id + name` frontmatter to the converged `name`-only form. Scans standard
+ * directory packages plus root-level Markdown sources and, when a file
+ * carries a valid `id`, promotes `id` -> `name` and removes the `id` line.
+ * Files without a valid `id` are skipped. Per-file failures are logged and
+ * skipped without aborting the batch.
  *
  * Must run before any skill list/get so callers never observe a mixed state.
  */
@@ -560,7 +816,7 @@ export async function migrateVaultSkillFrontmatter(
     }
   },
 ): Promise<void> {
-  for (const skillsDir of getSkillScanDirs({
+  for (const skillsDir of getManagedSkillScanDirs({
     settings,
     configDir: app.vault.configDir,
   })) {

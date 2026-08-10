@@ -1,4 +1,3 @@
-/* eslint-disable import/no-extraneous-dependencies -- Parser dependencies are supplied by the first-party module build workspace. */
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js'
 
 import { htmlToMarkdown } from './htmlToMarkdown'

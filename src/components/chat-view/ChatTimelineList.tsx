@@ -10,6 +10,8 @@ import {
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
+import type { ScrollController } from './scroll/scrollController'
+
 const MIN_LOAD_MORE_THRESHOLD_PX = 240
 const MAX_LOAD_MORE_THRESHOLD_PX = 720
 const LOAD_MORE_VIEWPORT_RATIO = 0.45
@@ -57,6 +59,7 @@ type RowProps<TItem extends ChatTimelineItem> = {
     ) => ReactNode
   >
   renderVersion: unknown
+  animateEnter: boolean
 }
 
 export type ChatTimelineRenderVersion<TItem extends ChatTimelineItem> = (
@@ -68,6 +71,7 @@ function TimelineRowInner<TItem extends ChatTimelineItem>({
   item,
   index,
   renderItemRef,
+  animateEnter,
 }: RowProps<TItem>) {
   const renderItem = renderItemRef.current
   if (!renderItem) {
@@ -76,7 +80,9 @@ function TimelineRowInner<TItem extends ChatTimelineItem>({
 
   return (
     <div
-      className={`yolo-chat-timeline-row yolo-chat-timeline-row--${item.kind}`}
+      className={`yolo-chat-timeline-row yolo-chat-timeline-row--${item.kind}${
+        animateEnter ? ' yolo-chat-timeline-row--enter' : ''
+      }`}
       data-timeline-kind={item.kind}
       data-yolo-user-anchor-id={
         item.kind === 'user-message' ? item.messageId : undefined
@@ -97,7 +103,14 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   conversationId?: string
   scrollContainerRef: RefObject<HTMLElement>
   onScrollContainerChange?: (element: HTMLElement | null) => void
-  onContentElementChange?: (element: HTMLElement | null) => void
+  onBottomSentinelChange?: (element: HTMLElement | null) => void
+  /**
+   * Shared scroll arbiter. When omitted (e.g. QuickAskPanel, which never
+   * enables history-window paging or windowNavigation), anchor-preserve and
+   * jump intents are simply not submitted — the caller keeps the identical
+   * live-edge-only behavior it had before this existed.
+   */
+  scrollController?: ScrollController
   renderItem: (
     item: TItem,
     index: number,
@@ -141,6 +154,20 @@ function TimelineBottomSpacer({ height }: { height: number }) {
       aria-hidden
       className="yolo-chat-timeline-bottom-spacer"
       style={{ height: safeHeight }}
+    />
+  )
+}
+
+function TimelineBottomSentinel({
+  elementRef,
+}: {
+  elementRef?: (element: HTMLDivElement | null) => void
+}) {
+  return (
+    <div
+      ref={elementRef}
+      aria-hidden
+      className="yolo-chat-live-edge-sentinel"
     />
   )
 }
@@ -292,9 +319,11 @@ const getUserAnchorElement = (
 
 export function ChatTimelineList<TItem extends ChatTimelineItem>({
   items,
+  conversationId,
   scrollContainerRef,
   onScrollContainerChange,
-  onContentElementChange,
+  onBottomSentinelChange,
+  scrollController,
   renderItem,
   renderVersion,
   overscanPx,
@@ -334,7 +363,21 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     key: number
     targetMessageId: string | null | undefined
   } | null>(null)
-  const suppressLoadMoreUntilRef = useRef(0)
+  const contentElementRef = useRef<HTMLDivElement | null>(null)
+
+  // New-message enter animation bookkeeping. `seenIdsRef` and the
+  // conversation/window keys below are only ever written post-commit (in
+  // the effect further down) so the judgment made during render stays pure
+  // and safe under StrictMode's double-invoke. `enterKeysRef` is a sticky
+  // memo cache keyed by renderKey: once a row is judged true or false it
+  // keeps that verdict for as long as it stays mounted, so a mid-stream
+  // re-render can never strip the class out from under a row whose 220ms
+  // entrance animation is still playing.
+  const seenIdsRef = useRef<Set<string>>(new Set())
+  const enterKeysRef = useRef<Map<string, boolean>>(new Map())
+  const isInitializedRef = useRef(false)
+  const conversationKeyRef = useRef<string | undefined>(undefined)
+  const windowNavigationKeyRef = useRef<number | undefined>(undefined)
 
   useLayoutEffect(() => {
     onVirtualizationChange?.(false)
@@ -468,11 +511,22 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    const afterTop = anchor.getBoundingClientRect().top
-    scrollerElement.scrollTop += afterTop - snapshot.top
-    lastScrollTopRef.current = scrollerElement.scrollTop
+    // Re-queries the anchor (rather than closing over the node above) so
+    // the resolver stays correct across the settlement window's repeated
+    // calls, in case ObsidianMarkdown's async second-pass layout is part of
+    // a re-render that swaps the DOM node.
+    scrollController?.submitPreserveAnchor(() => {
+      const currentAnchor = scrollerElement.querySelector<HTMLElement>(
+        `[data-yolo-user-anchor-id="${snapshot.messageId}"]`,
+      )
+      if (!currentAnchor) {
+        return null
+      }
+      const afterTop = currentAnchor.getBoundingClientRect().top
+      return scrollerElement.scrollTop + (afterTop - snapshot.top)
+    }, contentElementRef.current)
     scheduleUserMessageViewport()
-  }, [items, scheduleUserMessageViewport, scrollerElement])
+  }, [items, scheduleUserMessageViewport, scrollController, scrollerElement])
 
   useLayoutEffect(() => {
     if (!scrollerElement || windowNavigationKey === undefined) {
@@ -487,7 +541,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         key: windowNavigationKey,
         targetMessageId: windowNavigationTargetMessageId,
       }
-      suppressLoadMoreUntilRef.current = Date.now() + 300
     }
 
     const pendingNavigation = pendingWindowNavigationRef.current
@@ -495,38 +548,35 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    const targetAnchor = getUserAnchorElement(
-      scrollerElement,
-      pendingNavigation.targetMessageId,
-    )
-    if (!targetAnchor) {
-      scrollerElement.scrollTop = 0
-      lastScrollTopRef.current = scrollerElement.scrollTop
-      appliedWindowNavigationKeyRef.current = windowNavigationKey
-      pendingWindowNavigationRef.current = null
-      scheduleUserMessageViewport()
-      return
-    }
-
-    const scrollerTop = scrollerElement.getBoundingClientRect().top
-    const anchorTop = targetAnchor.getBoundingClientRect().top
-    const desiredScrollTop = Math.max(
-      0,
-      scrollerElement.scrollTop + anchorTop - scrollerTop,
-    )
-    const maxScrollTop = Math.max(
-      0,
-      scrollerElement.scrollHeight - scrollerElement.clientHeight,
-    )
-
-    scrollerElement.scrollTop = Math.min(desiredScrollTop, maxScrollTop)
-    lastScrollTopRef.current = scrollerElement.scrollTop
+    const targetMessageId = pendingNavigation.targetMessageId
     appliedWindowNavigationKeyRef.current = windowNavigationKey
     pendingWindowNavigationRef.current = null
+
+    scrollController?.submitJumpToMessage(() => {
+      const targetAnchor = getUserAnchorElement(
+        scrollerElement,
+        targetMessageId,
+      )
+      if (!targetAnchor) {
+        return 0
+      }
+      const scrollerTop = scrollerElement.getBoundingClientRect().top
+      const anchorTop = targetAnchor.getBoundingClientRect().top
+      const desiredScrollTop = Math.max(
+        0,
+        scrollerElement.scrollTop + anchorTop - scrollerTop,
+      )
+      const maxScrollTop = Math.max(
+        0,
+        scrollerElement.scrollHeight - scrollerElement.clientHeight,
+      )
+      return Math.min(desiredScrollTop, maxScrollTop)
+    }, contentElementRef.current)
     scheduleUserMessageViewport()
   }, [
     items,
     scheduleUserMessageViewport,
+    scrollController,
     scrollerElement,
     windowNavigationKey,
     windowNavigationTargetMessageId,
@@ -545,7 +595,10 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
         previousScrollTop !== null && currentScrollTop > previousScrollTop
 
       scheduleUserMessageViewport()
-      if (Date.now() < suppressLoadMoreUntilRef.current) {
+      if (scrollController?.isSettling()) {
+        // A jumpToMessage/preserveAnchor intent is still correcting scroll
+        // position; its own writes must not be misread as the user
+        // scrolling toward newer messages and trigger another page load.
         return
       }
 
@@ -590,6 +643,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     hasNewerMessages,
     onLoadNewer,
     scheduleUserMessageViewport,
+    scrollController,
     scrollerElement,
   ])
 
@@ -605,6 +659,60 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     })
   }, [items.length, onRenderStateChange])
 
+  // Post-commit bookkeeping for the enter-animation judgment below: mark
+  // this render's items as seen, record the conversation/window keys we
+  // judged against, and drop cache entries for rows that unmounted. Doing
+  // this in an effect (rather than during render) is what keeps the
+  // judgment above pure under StrictMode's double-invoke.
+  useEffect(() => {
+    isInitializedRef.current = true
+    conversationKeyRef.current = conversationId
+    windowNavigationKeyRef.current = windowNavigationKey
+    const currentRenderKeys = new Set<string>()
+    for (const item of items) {
+      seenIdsRef.current.add(item.id)
+      currentRenderKeys.add(item.renderKey)
+    }
+    for (const renderKey of enterKeysRef.current.keys()) {
+      if (!currentRenderKeys.has(renderKey)) {
+        enterKeysRef.current.delete(renderKey)
+      }
+    }
+  }, [items, conversationId, windowNavigationKey])
+
+  // Enter-animation judgment (pure, render-time). A reset round — first
+  // render, a conversation switch, or a windowNavigation jump — never
+  // animates anything. Otherwise, only unseen items at or after the active
+  // edge (the first already-seen item) animate, and never while
+  // hasNewerMessages is true (that append is backfilled history, not a
+  // live new message) or for the invisible bottom-anchor row. Verdicts are
+  // memoized per renderKey in `enterKeysRef` so a mid-stream re-render can
+  // never flip a row's class mid-animation.
+  const isTimelineResetRound =
+    !isInitializedRef.current ||
+    conversationKeyRef.current !== conversationId ||
+    windowNavigationKeyRef.current !== windowNavigationKey
+  const firstSeenItemIndex = isTimelineResetRound
+    ? -1
+    : items.findIndex((item) => seenIdsRef.current.has(item.id))
+  const animateEnterByRenderKey = new Map<string, boolean>()
+  for (const [index, item] of items.entries()) {
+    const cachedVerdict = enterKeysRef.current.get(item.renderKey)
+    if (cachedVerdict !== undefined) {
+      animateEnterByRenderKey.set(item.renderKey, cachedVerdict)
+      continue
+    }
+    const shouldAnimateEnter =
+      !isTimelineResetRound &&
+      firstSeenItemIndex !== -1 &&
+      index >= firstSeenItemIndex &&
+      !hasNewerMessages &&
+      item.kind !== 'bottom-anchor' &&
+      !seenIdsRef.current.has(item.id)
+    enterKeysRef.current.set(item.renderKey, shouldAnimateEnter)
+    animateEnterByRenderKey.set(item.renderKey, shouldAnimateEnter)
+  }
+
   const safeSpacerHeight = Math.max(0, Math.ceil(bottomSpacerHeight))
   const resolveRenderVersion = useCallback(
     (item: TItem, index: number) => {
@@ -619,7 +727,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       className={scrollContainerClassName}
       style={scrollContainerStyle}
     >
-      <div ref={onContentElementChange} className="yolo-chat-timeline-content">
+      <div ref={contentElementRef} className="yolo-chat-timeline-content">
         {hasEarlierMessages && onLoadEarlier ? (
           <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
         ) : null}
@@ -630,9 +738,11 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
             index={index}
             renderItemRef={renderItemRef}
             renderVersion={resolveRenderVersion(item, index)}
+            animateEnter={animateEnterByRenderKey.get(item.renderKey) ?? false}
           />
         ))}
         <TimelineBottomSpacer height={safeSpacerHeight} />
+        <TimelineBottomSentinel elementRef={onBottomSentinelChange} />
       </div>
     </div>
   )

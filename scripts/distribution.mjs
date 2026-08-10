@@ -19,6 +19,7 @@ const KEY_ID = 'yolo-distribution-2026-01'
 const CORE_TAG = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,3}$/
 const MODULE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
 const SHA256 = /^[a-f0-9]{64}$/
+const RUNTIME_COMPONENT_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const MAX_FEED_BYTES = 1_000_000
 
 export async function reconcileDistribution(options = {}) {
@@ -115,6 +116,15 @@ export async function buildPagesSnapshot(options = {}) {
       )
     }
   }
+  const runtimeComponents = await describeRuntimeComponentArtifacts({
+    repository: REPOSITORY,
+    version: feed.core.version,
+    token,
+    fetchImpl,
+  })
+  for (const artifact of runtimeComponents) {
+    await writeMirroredAsset(artifact, artifact.bytes, outputDir)
+  }
   const headers = [
     '/feed-v1.json',
     '  Cache-Control: public, max-age=0, must-revalidate',
@@ -123,6 +133,8 @@ export async function buildPagesSnapshot(options = {}) {
     '/core/*',
     '  Cache-Control: public, max-age=31536000, immutable',
     '/modules/*',
+    '  Cache-Control: public, max-age=31536000, immutable',
+    '/runtime-components/*',
     '  Cache-Control: public, max-age=31536000, immutable',
     '',
   ].join('\n')
@@ -136,6 +148,8 @@ export async function verifyPagesDeployment(options = {}) {
     '',
   )
   const fetchImpl = options.fetchImpl ?? fetch
+  const token =
+    options.token ?? process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN
   const expectedFeed = await readFile(FEED_PATH)
   const expectedSignature = (await readFile(SIGNATURE_PATH, 'utf8')).trim()
   const feedResponse = await fetchImpl(`${baseUrl}/feed-v1.json`, {
@@ -186,6 +200,13 @@ export async function verifyPagesDeployment(options = {}) {
       })
     }
   }
+  const runtimeComponents = await describeRuntimeComponentArtifacts({
+    repository: REPOSITORY,
+    version: feed.core.version,
+    token,
+    fetchImpl,
+  })
+  assets.push(...runtimeComponents)
   for (const asset of assets) {
     const response = await fetchImpl(`${baseUrl}/${asset.mirrorPath}`, {
       cache: 'no-store',
@@ -458,13 +479,88 @@ function projectCatalog(feed) {
 async function mirrorAsset(asset, outputDir, token, fetchImpl) {
   validateDescriptor(asset)
   const bytes = await downloadUrl(asset.canonicalUrl, token, fetchImpl)
+  await writeMirroredAsset(asset, bytes, outputDir)
+  return bytes
+}
+
+async function writeMirroredAsset(asset, bytes, outputDir) {
   verifyBytes(bytes, asset)
   const target = path.resolve(outputDir, asset.mirrorPath)
   if (!target.startsWith(`${outputDir}${path.sep}`))
     throw new Error('Mirror path escapes output')
   await mkdir(path.dirname(target), { recursive: true })
   await writeFile(target, bytes)
-  return bytes
+}
+
+export async function describeRuntimeComponentArtifacts(options) {
+  const repository = options.repository ?? REPOSITORY
+  const { version, token, fetchImpl = fetch } = options
+  if (!CORE_TAG.test(version)) {
+    throw new Error('Runtime component Core version is invalid')
+  }
+  const tagRoot = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const registryBytes = await downloadUrl(
+    `${tagRoot}/registry.json`,
+    token,
+    fetchImpl,
+  )
+  let registry
+  try {
+    registry = JSON.parse(registryBytes.toString('utf8'))
+  } catch {
+    throw new Error('Runtime component registry is not valid JSON')
+  }
+  const components = validateRuntimeComponentRegistry(registry)
+  const artifacts = []
+  for (const descriptor of components) {
+    const canonicalUrl = `https://raw.githubusercontent.com/${repository}/${version}/${descriptor.entry}`
+    const bytes = await downloadUrl(canonicalUrl, token, fetchImpl)
+    const artifact = {
+      name: 'entry.js',
+      mirrorPath: `runtime-components/${version}/${descriptor.id}/entry.js`,
+      canonicalUrl,
+      byteSize: descriptor.byteSize,
+      sha256: descriptor.sha256,
+      bytes,
+    }
+    verifyBytes(bytes, artifact)
+    artifacts.push(artifact)
+  }
+  return artifacts
+}
+
+function validateRuntimeComponentRegistry(registry) {
+  if (
+    !registry ||
+    typeof registry !== 'object' ||
+    Array.isArray(registry) ||
+    registry.schemaVersion !== 1 ||
+    !Array.isArray(registry.components) ||
+    registry.components.length === 0
+  ) {
+    throw new Error('Runtime component registry is invalid')
+  }
+  const ids = new Set()
+  for (const descriptor of registry.components) {
+    if (
+      !descriptor ||
+      typeof descriptor !== 'object' ||
+      Array.isArray(descriptor) ||
+      typeof descriptor.id !== 'string' ||
+      !RUNTIME_COMPONENT_ID.test(descriptor.id) ||
+      ids.has(descriptor.id) ||
+      descriptor.entry !==
+        `runtime-components/${descriptor.id}/dist/entry.js` ||
+      !Number.isSafeInteger(descriptor.byteSize) ||
+      descriptor.byteSize <= 0 ||
+      typeof descriptor.sha256 !== 'string' ||
+      !SHA256.test(descriptor.sha256)
+    ) {
+      throw new Error('Runtime component registry is invalid')
+    }
+    ids.add(descriptor.id)
+  }
+  return registry.components
 }
 
 function describeAsset(repository, tag, name, mirrorPath, bytes) {

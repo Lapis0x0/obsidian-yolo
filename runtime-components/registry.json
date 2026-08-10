@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "components": [
+    {
+      "id": "bash-engine",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.bashEngine.name",
+      "descriptionKey": "settings.modules.runtimeComponents.bashEngine.description",
+      "impactKey": "settings.modules.runtimeComponents.bashEngine.impact",
+      "entry": "runtime-components/bash-engine/dist/entry.js",
+      "byteSize": 1279196,
+      "sha256": "1797c24e23f62885705d0aef617728b139583586bd3d47dd574a0e45ed49fbd6"
+    },
+    {
+      "id": "pdf-engine",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.pdfEngine.name",
+      "descriptionKey": "settings.modules.runtimeComponents.pdfEngine.description",
+      "impactKey": "settings.modules.runtimeComponents.pdfEngine.impact",
+      "entry": "runtime-components/pdf-engine/dist/entry.js",
+      "byteSize": 2258500,
+      "sha256": "a224786bbf62622d86b7a0cc5146445609e2b1e364b7f6d1c8b8cc345d22c3ee"
+    },
+    {
+      "id": "pglite-engine",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.pgliteEngine.name",
+      "descriptionKey": "settings.modules.runtimeComponents.pgliteEngine.description",
+      "impactKey": "settings.modules.runtimeComponents.pgliteEngine.impact",
+      "entry": "runtime-components/pglite-engine/dist/entry.js",
+      "byteSize": 1291023,
+      "sha256": "267e3e349eca084e0bc6744e39b91f22f5ddab1b79a3fc19e22855340849dc52"
+    },
+    {
+      "id": "tokenizer",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.tokenizer.name",
+      "descriptionKey": "settings.modules.runtimeComponents.tokenizer.description",
+      "impactKey": "settings.modules.runtimeComponents.tokenizer.impact",
+      "entry": "runtime-components/tokenizer/dist/entry.js",
+      "byteSize": 993929,
+      "sha256": "0ef42c40887139054a5caa16ccd4805ec4ead6f62367e1244b04985c8dd1bcaf"
+    }
+  ]
+}

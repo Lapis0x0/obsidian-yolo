@@ -8,8 +8,11 @@ const CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const ISSUER = 'https://auth.openai.com'
 const DEVICE_VERIFICATION_URI = `${ISSUER}/codex/device`
 const DEVICE_CODE_POLL_MARGIN_MS = 3000
-const BROWSER_OAUTH_PORTS = [1455, 1456, 1457]
-const OAUTH_CALLBACK_HOST = 'localhost'
+const DEVICE_AUTH_TIMEOUT_MS = 15 * 60 * 1000
+// Keep in sync with the Codex OAuth redirect URI allow-list.
+const BROWSER_OAUTH_PORTS = [1455, 1457]
+const OAUTH_BIND_HOST = '127.0.0.1'
+const OAUTH_REDIRECT_HOST = 'localhost'
 
 type PkceCodes = {
   verifier: string
@@ -71,7 +74,34 @@ type Server = import('node:http').Server
 type ServerResponse = import('node:http').ServerResponse
 type AddressInfo = import('node:net').AddressInfo
 
-const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
+const createAbortError = (): DOMException =>
+  new DOMException('Device authorization was cancelled.', 'AbortError')
+
+const throwIfAborted = (signal?: AbortSignal): void => {
+  if (!signal?.aborted) {
+    return
+  }
+
+  throw signal.reason instanceof Error ? signal.reason : createAbortError()
+}
+
+const sleep = (ms: number, signal?: AbortSignal): Promise<void> =>
+  new Promise((resolve, reject) => {
+    throwIfAborted(signal)
+
+    const timeoutId = setTimeout(() => {
+      signal?.removeEventListener('abort', handleAbort)
+      resolve()
+    }, ms)
+    const handleAbort = () => {
+      clearTimeout(timeoutId)
+      signal?.removeEventListener('abort', handleAbort)
+      reject(
+        signal?.reason instanceof Error ? signal.reason : createAbortError(),
+      )
+    }
+    signal?.addEventListener('abort', handleAbort, { once: true })
+  })
 
 const generateRandomString = (length: number): string => {
   const chars =
@@ -213,6 +243,7 @@ export class ChatGPTOAuthService {
             return
           }
           this.pendingBrowserAuthorization = null
+          this.closeOAuthServer()
           reject(
             new ChatGPTOAuthError(
               'OAuth callback timeout - authorization took too long',
@@ -248,12 +279,13 @@ export class ChatGPTOAuthService {
   cancelPendingBrowserAuthorization(
     message = 'ChatGPT OAuth login was cancelled.',
   ) {
-    if (!this.pendingBrowserAuthorization) {
-      return
-    }
-
-    this.pendingBrowserAuthorization.reject(new ChatGPTOAuthError(message))
+    this.pendingBrowserAuthorization?.reject(new ChatGPTOAuthError(message))
     this.pendingBrowserAuthorization = null
+    this.closeOAuthServer()
+  }
+
+  dispose(): void {
+    this.cancelPendingBrowserAuthorization()
   }
 
   async beginDeviceAuthorization(): Promise<ChatGPTOAuthDeviceAuthorization> {
@@ -274,7 +306,16 @@ export class ChatGPTOAuthService {
       )
     }
 
-    const data = response.json as DeviceAuthorizationResponse
+    const data = response.json as Partial<DeviceAuthorizationResponse>
+    if (
+      typeof data.device_auth_id !== 'string' ||
+      typeof data.user_code !== 'string'
+    ) {
+      throw new ChatGPTOAuthError(
+        'Device authorization returned an invalid user code payload',
+      )
+    }
+
     return {
       deviceAuthId: data.device_auth_id,
       userCode: data.user_code,
@@ -287,8 +328,16 @@ export class ChatGPTOAuthService {
     authorization: ChatGPTOAuthDeviceAuthorization,
     signal?: AbortSignal,
   ): Promise<ChatGPTOAuthCredential> {
+    const startedAt = Date.now()
+
     while (true) {
-      signal?.throwIfAborted?.()
+      throwIfAborted(signal)
+
+      if (Date.now() - startedAt >= DEVICE_AUTH_TIMEOUT_MS) {
+        throw new ChatGPTOAuthError(
+          'Device authorization timed out after 15 minutes',
+        )
+      }
 
       const response = await requestUrl({
         url: `${ISSUER}/api/accounts/deviceauth/token`,
@@ -307,6 +356,8 @@ export class ChatGPTOAuthService {
       if (response.status >= 200 && response.status < 300) {
         const data = response.json as DeviceTokenResponse
         if (
+          !data ||
+          typeof data !== 'object' ||
           !('authorization_code' in data) ||
           typeof data.authorization_code !== 'string' ||
           typeof data.code_verifier !== 'string'
@@ -331,7 +382,20 @@ export class ChatGPTOAuthService {
         )
       }
 
-      await sleep(authorization.intervalMs + DEVICE_CODE_POLL_MARGIN_MS)
+      const remainingMs = DEVICE_AUTH_TIMEOUT_MS - (Date.now() - startedAt)
+      if (remainingMs <= 0) {
+        throw new ChatGPTOAuthError(
+          'Device authorization timed out after 15 minutes',
+        )
+      }
+
+      await sleep(
+        Math.min(
+          authorization.intervalMs + DEVICE_CODE_POLL_MARGIN_MS,
+          remainingMs,
+        ),
+        signal,
+      )
     }
   }
 
@@ -432,19 +496,22 @@ export class ChatGPTOAuthService {
 
   private async ensureOAuthServer(): Promise<string> {
     if (this.oauthServer && this.oauthPort) {
-      return `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`
+      return `http://${OAUTH_REDIRECT_HOST}:${this.oauthPort}/auth/callback`
     }
 
+    const failures: string[] = []
     for (const port of BROWSER_OAUTH_PORTS) {
       try {
         const redirectUri = await this.startOAuthServer(port)
         return redirectUri
-      } catch {
-        continue
+      } catch (error) {
+        failures.push(`${OAUTH_BIND_HOST}:${port} — ${toErrorMessage(error)}`)
       }
     }
 
-    throw new ChatGPTOAuthError('Failed to start local OAuth callback server.')
+    throw new ChatGPTOAuthError(
+      `Failed to start local OAuth callback server: ${failures.join('; ')}`,
+    )
   }
 
   private startOAuthServer(port: number): Promise<string> {
@@ -477,22 +544,29 @@ export class ChatGPTOAuthService {
           this.oauthServer = server
           this.oauthPort = (server.address() as AddressInfo).port
           resolve(
-            `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`,
+            `http://${OAUTH_REDIRECT_HOST}:${this.oauthPort}/auth/callback`,
           )
         }
 
         server.once('error', onError)
         server.once('listening', onListening)
-        server.listen(port, OAUTH_CALLBACK_HOST)
+        server.listen(port, OAUTH_BIND_HOST)
       })()
     })
+  }
+
+  private closeOAuthServer(): void {
+    const server = this.oauthServer
+    this.oauthServer = null
+    this.oauthPort = null
+    server?.close()
   }
 
   private async handleOAuthRequest(
     rawUrl: string,
     res: ServerResponse,
   ): Promise<void> {
-    const url = new URL(rawUrl, `http://${OAUTH_CALLBACK_HOST}`)
+    const url = new URL(rawUrl, `http://${OAUTH_REDIRECT_HOST}`)
 
     if (url.pathname === '/cancel') {
       this.cancelPendingBrowserAuthorization(
@@ -514,6 +588,7 @@ export class ChatGPTOAuthService {
       this.pendingBrowserAuthorization?.reject(new ChatGPTOAuthError(message))
       this.pendingBrowserAuthorization = null
       this.respondHtml(res, 400, `Authorization failed: ${message}`)
+      this.closeOAuthServer()
       return
     }
 
@@ -530,6 +605,7 @@ export class ChatGPTOAuthService {
       )
       this.pendingBrowserAuthorization = null
       this.respondHtml(res, 400, 'Invalid state')
+      this.closeOAuthServer()
       return
     }
 
@@ -538,7 +614,7 @@ export class ChatGPTOAuthService {
       const credential = await this.exchangeAuthorizationCode({
         code,
         codeVerifier: pending.pkce.verifier,
-        redirectUri: `http://${OAUTH_CALLBACK_HOST}:${this.oauthPort}/auth/callback`,
+        redirectUri: `http://${OAUTH_REDIRECT_HOST}:${this.oauthPort}/auth/callback`,
       })
       await this.store.set(credential)
       pending.resolve(credential)
@@ -558,6 +634,8 @@ export class ChatGPTOAuthService {
         500,
         `Authorization failed: ${toErrorMessage(oauthError)}`,
       )
+    } finally {
+      this.closeOAuthServer()
     }
   }
 
@@ -568,6 +646,7 @@ export class ChatGPTOAuthService {
   ) {
     res.writeHead(statusCode, {
       'Content-Type': 'text/html; charset=utf-8',
+      Connection: 'close',
     })
     res.end(
       `<!doctype html><html><body><p>${message}</p><script>setTimeout(() => window.close(), 1500)</script></body></html>`,

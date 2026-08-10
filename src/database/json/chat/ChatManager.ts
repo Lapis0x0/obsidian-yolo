@@ -2,8 +2,8 @@ import { App, normalizePath } from 'obsidian'
 import path from 'path-browserify'
 import { v4 as uuidv4 } from 'uuid'
 
-import { ensureJsonDbRootDir } from '../../../core/paths/yoloManagedData'
-import { getYoloJsonDbRootDir } from '../../../core/paths/yoloPaths'
+import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
+import { getYoloUserDataRootDir } from '../../../core/paths/yoloPaths'
 import { AbstractJsonRepository } from '../base'
 import { CHAT_DIR } from '../constants'
 import { EmptyChatTitleException } from '../exception'
@@ -37,9 +37,9 @@ export class ChatManager extends AbstractJsonRepository<
     } | null,
   ) {
     const normalizedSettings = settings ?? null
-    super(app, `${getYoloJsonDbRootDir(settings)}/${CHAT_DIR}`, {
+    super(app, `${getYoloUserDataRootDir(settings)}/${CHAT_DIR}`, {
       prepareDataDir: async () => {
-        const rootDir = await ensureJsonDbRootDir(app, normalizedSettings)
+        const rootDir = await ensureUserDataRootDir(app, normalizedSettings)
         return normalizePath(`${rootDir}/${CHAT_DIR}`)
       },
     })
@@ -265,7 +265,7 @@ export class ChatManager extends AbstractJsonRepository<
   private toMetadata(
     source: Pick<
       ChatConversation,
-      'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin'
+      'id' | 'title' | 'updatedAt' | 'schemaVersion' | 'origin' | 'cliSession'
     > & { isPinned?: boolean; pinnedAt?: number },
   ): ChatConversationMetadata {
     return {
@@ -276,6 +276,7 @@ export class ChatManager extends AbstractJsonRepository<
       isPinned: source.isPinned ?? false,
       pinnedAt: source.pinnedAt,
       origin: getChatConversationOrigin(source),
+      cliSession: source.cliSession,
     }
   }
 
@@ -338,6 +339,7 @@ export class ChatManager extends AbstractJsonRepository<
       isPinned: chat.isPinned ?? false,
       pinnedAt: chat.pinnedAt,
       origin: getChatConversationOrigin(chat),
+      cliSession: chat.cliSession,
     }
     if (targetIndex === -1) {
       normalized.push(entry)

@@ -51,10 +51,16 @@ jobs:
       - name: Validate release sources
         run: npm run release:check -- core "$GITHUB_REF_NAME"
 
+      - name: Validate runtime component artifacts
+        run: |
+          npm run runtime:build
+          git diff --exit-code -- runtime-components
+
       - name: Build and test Core
         run: |
           npm run type:check
           npx jest --runInBand
+          npm run runtime:test
           npm run build
           mkdir core-release
           cp main.js manifest.json styles.css core-release/

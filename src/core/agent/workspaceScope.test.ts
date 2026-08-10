@@ -82,10 +82,10 @@ describe('collectToolCallPaths', () => {
     ])
   })
 
-  it('extracts array path from fs_read.paths', () => {
+  it('returns empty for fs_read (its paths may be wikilinks, not literal vault paths — scope is enforced per-resolved-file inside its own read loop instead, see localFileTools.ts)', () => {
     expect(
       collectToolCallPaths('fs_read', { paths: ['a.md', 'b.md'] }),
-    ).toEqual(['a.md', 'b.md'])
+    ).toEqual([])
   })
 
   it('extracts oldPath + newPath for fs_move top-level', () => {
@@ -111,9 +111,6 @@ describe('collectToolCallPaths', () => {
 
   it('ignores empty strings and non-string values', () => {
     expect(collectToolCallPaths('fs_list', { path: '  ' })).toEqual([])
-    expect(
-      collectToolCallPaths('fs_read', { paths: ['a.md', 42, null] }),
-    ).toEqual(['a.md'])
   })
 })
 
@@ -121,21 +118,21 @@ describe('findPathOutsideScope', () => {
   it('returns null when scope is disabled', () => {
     expect(
       findPathOutsideScope(
-        'fs_read',
-        { paths: ['secret/a.md'] },
+        'fs_edit',
+        { path: 'secret/a.md' },
         scope({ enabled: false, include: ['allowed'] }),
       ),
     ).toBeNull()
   })
 
-  it('returns the first offending path for array args', () => {
+  it('is a no-op for fs_read regardless of scope — its paths may be wikilinks, resolved and scope-checked per-file inside fs_read itself (see localFileTools.ts)', () => {
     expect(
       findPathOutsideScope(
         'fs_read',
-        { paths: ['allowed/a.md', 'secret/b.md', 'allowed/c.md'] },
+        { paths: ['secret/a.md'] },
         scope({ include: ['allowed'] }),
       ),
-    ).toBe('secret/b.md')
+    ).toBeNull()
   })
 
   it('catches out-of-scope oldPath in fs_move', () => {
@@ -172,16 +169,24 @@ describe('findPathOutsideScope', () => {
     const exemptPaths = new Set(['YOLO/skills/demo/SKILL.md'])
     expect(
       findPathOutsideScope(
-        'fs_read',
-        { paths: ['YOLO/skills/demo/SKILL.md'] },
+        'fs_edit',
+        { path: 'YOLO/skills/demo/SKILL.md' },
         scope({ include: ['Notes'] }),
         { exemptPaths },
       ),
     ).toBeNull()
     expect(
       findPathOutsideScope(
-        'fs_read',
-        { paths: ['YOLO/skills/other/SKILL.md'] },
+        'fs_edit',
+        { path: 'YOLO/skills/demo/references/guide.md' },
+        scope({ include: ['Notes'] }),
+        { exemptPaths },
+      ),
+    ).toBeNull()
+    expect(
+      findPathOutsideScope(
+        'fs_edit',
+        { path: 'YOLO/skills/other/SKILL.md' },
         scope({ include: ['Notes'] }),
         { exemptPaths },
       ),
@@ -192,8 +197,8 @@ describe('findPathOutsideScope', () => {
     const exemptPaths = new Set(['builtin://skills/skill-creator.md'])
     expect(
       findPathOutsideScope(
-        'fs_read',
-        { paths: ['builtin://skills/skill-creator.md'] },
+        'fs_edit',
+        { path: 'builtin://skills/skill-creator.md' },
         scope({ include: ['Notes'] }),
         { exemptPaths },
       ),
@@ -203,8 +208,8 @@ describe('findPathOutsideScope', () => {
   it('exempts browser:// paths from workspace scope', () => {
     expect(
       findPathOutsideScope(
-        'fs_read',
-        { paths: ['browser://page_ab12cd34_ef56gh78'] },
+        'fs_edit',
+        { path: 'browser://page_ab12cd34_ef56gh78' },
         scope({ include: ['Notes'] }),
       ),
     ).toBeNull()

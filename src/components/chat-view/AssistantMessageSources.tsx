@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronUp } from 'lucide-react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
 import { memo, useCallback, useState } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -57,9 +57,9 @@ const AssistantMessageSources = memo(function AssistantMessageSources({
       >
         <span>{label}</span>
         {isExpanded ? (
-          <ChevronUp className="yolo-assistant-message-metadata-toggle-icon" />
-        ) : (
           <ChevronDown className="yolo-assistant-message-metadata-toggle-icon" />
+        ) : (
+          <ChevronRight className="yolo-assistant-message-metadata-toggle-icon" />
         )}
       </button>
       {isExpanded && (

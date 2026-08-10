@@ -12,22 +12,13 @@
   margin-top: calc(var(--size-4-1) * -1);
 }
 
-.yolo-modules-page > .yolo-settings-header,
-.yolo-modules-intro {
-  margin-inline-start: calc(0px - var(--size-4-12) - var(--size-4-6));
-}
-
 .yolo-module-shelf {
   display: grid;
   flex: 1;
   grid-template-columns: 104px minmax(0, 1fr);
   align-items: stretch;
-  width: calc(
-    100% + var(--size-4-12) + var(--size-4-12) + var(--size-4-6) +
-      var(--size-4-6)
-  );
+  width: 100%;
   min-width: 0;
-  margin-inline: calc(0px - var(--size-4-12) - var(--size-4-6));
 }
 
 .yolo-module-shelf-rail {
@@ -115,13 +106,18 @@ button.yolo-module-shelf-action:focus-visible,
   background: var(--background-modifier-border);
 }
 
+.yolo-runtime-component-toggle {
+  display: flex;
+  align-items: center;
+}
+
 .yolo-module-shelf-canvas {
   min-width: 0;
   padding: 0 0 0 var(--size-4-4);
 }
 
 .yolo-module-shelf-header {
-  margin-bottom: var(--size-4-6);
+  margin-bottom: 6px;
 }
 
 .yolo-module-shelf-header h2 {
@@ -147,6 +143,7 @@ button.yolo-module-shelf-action:focus-visible,
 
 .yolo-module-shelf-group h3 {
   margin: 0;
+  padding: 0;
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
@@ -195,7 +192,7 @@ button.yolo-module-shelf-action:focus-visible,
 .yolo-module-shelf-row-copy p {
   width: 100%;
   max-width: 60ch;
-  margin: var(--size-4-1) 0 0;
+  margin: 0;
   overflow: hidden;
   color: var(--text-muted);
   font-size: var(--font-ui-small);
@@ -407,6 +404,15 @@ button.yolo-module-shelf-uninstall:hover {
     grid-template-columns: auto minmax(0, 1fr);
   }
 
+  .yolo-module-shelf-row.yolo-runtime-component-row {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .yolo-runtime-component-row .yolo-module-shelf-actions {
+    grid-column: auto;
+    width: auto;
+  }
+
   .yolo-module-shelf-actions {
     grid-column: 1 / -1;
     width: 100%;
@@ -421,17 +427,5 @@ button.yolo-module-shelf-uninstall:hover {
 @media (prefers-reduced-motion: reduce) {
   .is-spinning {
     animation-duration: 0.01ms;
-  }
-}
-
-@media (max-width: 768px) {
-  .yolo-modules-page > .yolo-settings-header,
-  .yolo-modules-intro {
-    margin-inline-start: 0;
-  }
-
-  .yolo-module-shelf {
-    width: 100%;
-    margin-inline: 0;
   }
 }

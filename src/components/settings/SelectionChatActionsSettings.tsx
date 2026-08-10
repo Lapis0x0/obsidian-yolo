@@ -19,6 +19,17 @@ import React, { useMemo, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import {
+  ALL_SELECTION_ACTION_CONFIGS,
+  FIXED_SELECTION_ACTION_CONFIGS,
+  FIXED_SELECTION_ACTION_IDS,
+  SELECTION_ACTION_CONFIG_BY_ID,
+  type SelectionActionMode,
+  type SelectionActionRewriteBehavior,
+  isSelectionQuickActionId,
+  resolveSelectionActionMode,
+  resolveSelectionActionRewriteBehavior,
+} from '../../features/editor/selection-chat/selectionChatActionCatalog'
 import { ObsidianButton } from '../common/ObsidianButton'
 import { ObsidianDropdown } from '../common/ObsidianDropdown'
 import { ObsidianSetting } from '../common/ObsidianSetting'
@@ -33,8 +44,8 @@ type SelectionChatAction = {
   label: string
   instruction: string
   enabled: boolean
-  mode?: SelectionChatActionMode
-  rewriteBehavior?: SelectionChatActionRewriteBehavior
+  mode?: SelectionActionMode
+  rewriteBehavior?: SelectionActionRewriteBehavior
   assistantId?: string
 }
 
@@ -42,103 +53,9 @@ type SelectionChatAction = {
 // Maps to `assistantId === undefined` when persisted.
 const FOLLOW_CURRENT_ASSISTANT_VALUE = '__follow_current__'
 
-type SelectionChatActionMode = 'ask' | 'rewrite' | 'chat-input' | 'chat-send'
-type SelectionChatActionRewriteBehavior = 'custom' | 'preset'
-
 type TranslateFn = (key: string, fallback?: string) => string
 
-type DefaultActionConfig = {
-  id: string
-  labelKey: string
-  labelFallback: string
-  mode?: SelectionChatActionMode
-  rewriteBehavior?: SelectionChatActionRewriteBehavior
-  allowEmptyInstruction?: boolean
-}
-
-// Fixed actions are built-in entries that always exist; users can reorder and
-// hide them but cannot edit their label/instruction. They live in the same
-// `selectionChatActions` array as a sortable placeholder.
-const FIXED_ACTION_CONFIGS: DefaultActionConfig[] = [
-  {
-    id: 'custom-rewrite',
-    labelKey: 'selection.actions.customRewrite',
-    labelFallback: '自定义改写',
-    mode: 'rewrite',
-    rewriteBehavior: 'custom',
-    allowEmptyInstruction: true,
-  },
-  {
-    id: 'custom-ask',
-    labelKey: 'selection.actions.customAsk',
-    labelFallback: '自定义提问',
-    mode: 'ask',
-    allowEmptyInstruction: true,
-  },
-  {
-    id: 'add-to-sidebar',
-    labelKey: 'selection.actions.addToSidebar',
-    labelFallback: '添加到侧边栏',
-    mode: 'chat-input',
-    allowEmptyInstruction: true,
-  },
-]
-
-const FIXED_ACTION_IDS = new Set(FIXED_ACTION_CONFIGS.map((c) => c.id))
-
-const DEFAULT_ACTION_CONFIGS: DefaultActionConfig[] = [
-  {
-    id: 'explain',
-    labelKey: 'selection.actions.explain',
-    labelFallback: '深入解释',
-    mode: 'ask',
-  },
-  {
-    id: 'suggest',
-    labelKey: 'selection.actions.suggest',
-    labelFallback: '提供建议',
-    mode: 'ask',
-  },
-  {
-    id: 'translate-to-chinese',
-    labelKey: 'selection.actions.translateToChinese',
-    labelFallback: '翻译成中文',
-    mode: 'ask',
-  },
-]
-
-const ALL_KNOWN_ACTION_LOOKUP: Record<string, DefaultActionConfig> =
-  Object.fromEntries(
-    [...FIXED_ACTION_CONFIGS, ...DEFAULT_ACTION_CONFIGS].map((c) => [c.id, c]),
-  )
-
-const resolveSelectionActionMode = (
-  action: SelectionChatAction,
-): SelectionChatActionMode => {
-  if (action.mode) return action.mode
-  if (action.id === 'rewrite' || action.id === 'custom-rewrite') {
-    return 'rewrite'
-  }
-  if (action.id === 'chat-send') {
-    return 'chat-send'
-  }
-  if (action.id === 'chat-input' || action.id === 'add-to-sidebar') {
-    return 'chat-input'
-  }
-  return 'ask'
-}
-
-const resolveRewriteBehavior = (
-  action: SelectionChatAction,
-  mode: SelectionChatActionMode,
-): SelectionChatActionRewriteBehavior | undefined => {
-  if (mode !== 'rewrite') return undefined
-  if (action.rewriteBehavior) return action.rewriteBehavior
-  if (action.id === 'custom-rewrite') return 'custom'
-  return 'preset'
-}
-
-const normalizeActionMode = (value: string): SelectionChatActionMode => {
+const normalizeActionMode = (value: string): SelectionActionMode => {
   if (value === 'rewrite') return 'rewrite'
   if (value === 'chat-input') return 'chat-input'
   if (value === 'chat-send') return 'chat-send'
@@ -152,7 +69,7 @@ const generateId = () => {
 const getDefaultSelectionChatActions = (
   t: TranslateFn,
 ): SelectionChatAction[] => {
-  return [...FIXED_ACTION_CONFIGS, ...DEFAULT_ACTION_CONFIGS].map((config) => {
+  return ALL_SELECTION_ACTION_CONFIGS.map((config) => {
     const label = t(config.labelKey, config.labelFallback)
     return {
       id: config.id,
@@ -178,7 +95,7 @@ const withFixedActionsBackfilled = (
   // data) to the first occurrence so hide/show and reorder behave predictably.
   const seenFixed = new Set<string>()
   const deduped = actions.filter((a) => {
-    if (!FIXED_ACTION_IDS.has(a.id)) return true
+    if (!FIXED_SELECTION_ACTION_IDS.has(a.id)) return true
     if (seenFixed.has(a.id)) return false
     seenFixed.add(a.id)
     return true
@@ -186,7 +103,7 @@ const withFixedActionsBackfilled = (
   const dedupedChanged = deduped.length !== actions.length
 
   const presentIds = new Set(deduped.map((a) => a.id))
-  const missingConfigs = FIXED_ACTION_CONFIGS.filter(
+  const missingConfigs = FIXED_SELECTION_ACTION_CONFIGS.filter(
     (c) => !presentIds.has(c.id),
   )
   if (missingConfigs.length === 0) {
@@ -217,16 +134,18 @@ export function SelectionChatActionsSettings({
   const { settings } = useSettings()
   const { t } = useLanguage()
   const selectionChatActions =
-    settings.continuationOptions.selectionChatActions ||
-    getDefaultSelectionChatActions(t)
+    settings.continuationOptions.selectionChatActions?.filter((action) =>
+      isSelectionQuickActionId(action.id),
+    ) || getDefaultSelectionChatActions(t)
   const actionsCountLabel = t(
     'settings.selectionChat.actionsCount',
     '已配置 {count} 个快捷指令',
   ).replace(
     '{count}',
     String(
-      selectionChatActions.filter((action) => !FIXED_ACTION_IDS.has(action.id))
-        .length,
+      selectionChatActions.filter(
+        (action) => !FIXED_SELECTION_ACTION_IDS.has(action.id),
+      ).length,
     ),
   )
   const handleOpenModal = () => {
@@ -278,7 +197,7 @@ export function SelectionChatActionsSettingsContent() {
   const [editingAction, setEditingAction] =
     useState<SelectionChatAction | null>(null)
   const [isAddingAction, setIsAddingAction] = useState(false)
-  const actionModeOptions: Record<SelectionChatActionMode, string> = {
+  const actionModeOptions: Record<SelectionActionMode, string> = {
     ask: t('settings.selectionChat.actionModeAsk', 'Quick Ask 问答'),
     rewrite: t('settings.selectionChat.actionModeRewrite', 'Quick Ask 改写'),
     'chat-input': t(
@@ -291,7 +210,7 @@ export function SelectionChatActionsSettingsContent() {
     ),
   }
   const actionRewriteTypeOptions: Record<
-    SelectionChatActionRewriteBehavior,
+    SelectionActionRewriteBehavior,
     string
   > = {
     custom: t(
@@ -327,20 +246,25 @@ export function SelectionChatActionsSettingsContent() {
   )
 
   const rawActions =
-    settings.continuationOptions.selectionChatActions ||
-    getDefaultSelectionChatActions(t)
+    settings.continuationOptions.selectionChatActions?.filter((action) =>
+      isSelectionQuickActionId(action.id),
+    ) || getDefaultSelectionChatActions(t)
   const { list: backfilledActions } = withFixedActionsBackfilled(rawActions, t)
   const selectionChatActions = backfilledActions.map((action) => {
-    const isFixed = FIXED_ACTION_IDS.has(action.id)
-    const config = ALL_KNOWN_ACTION_LOOKUP[action.id]
+    const isFixed = FIXED_SELECTION_ACTION_IDS.has(action.id)
+    const config = SELECTION_ACTION_CONFIG_BY_ID[action.id]
     let label = action.label
     let instruction = action.instruction
     const mode = isFixed
-      ? (config?.mode ?? resolveSelectionActionMode(action))
-      : resolveSelectionActionMode(action)
+      ? (config?.mode ?? resolveSelectionActionMode(action.id, action.mode))
+      : resolveSelectionActionMode(action.id, action.mode)
     const rewriteBehavior = isFixed
       ? config?.rewriteBehavior
-      : resolveRewriteBehavior(action, mode)
+      : resolveSelectionActionRewriteBehavior(
+          action.id,
+          mode,
+          action.rewriteBehavior,
+        )
 
     if (config) {
       const localizedLabel = t(config.labelKey, config.labelFallback)
@@ -375,7 +299,7 @@ export function SelectionChatActionsSettingsContent() {
     }
   })
 
-  const getInstructionDesc = (mode: SelectionChatActionMode) =>
+  const getInstructionDesc = (mode: SelectionActionMode) =>
     mode === 'rewrite'
       ? t(
           'settings.selectionChat.actionInstructionRewriteDesc',
@@ -383,7 +307,7 @@ export function SelectionChatActionsSettingsContent() {
         )
       : t('settings.selectionChat.actionInstructionDesc', '发送给 AI 的指令')
 
-  const getInstructionPlaceholder = (mode: SelectionChatActionMode) =>
+  const getInstructionPlaceholder = (mode: SelectionActionMode) =>
     mode === 'rewrite'
       ? t(
           'settings.selectionChat.actionInstructionRewritePlaceholder',
@@ -419,7 +343,7 @@ export function SelectionChatActionsSettingsContent() {
         ...settings.continuationOptions,
         selectionChatActions: newActions.map((action) => ({
           ...action,
-          enabled: FIXED_ACTION_IDS.has(action.id)
+          enabled: FIXED_SELECTION_ACTION_IDS.has(action.id)
             ? (action.enabled ?? true)
             : true,
         })),
@@ -820,13 +744,13 @@ type QuickActionItemProps = {
   handleDeleteAction: (id: string) => void | Promise<void>
   handleToggleFixedAction: (id: string) => void | Promise<void>
   handleSaveAction: () => void | Promise<void>
-  actionModeOptions: Record<SelectionChatActionMode, string>
-  actionRewriteTypeOptions: Record<SelectionChatActionRewriteBehavior, string>
+  actionModeOptions: Record<SelectionActionMode, string>
+  actionRewriteTypeOptions: Record<SelectionActionRewriteBehavior, string>
   assistantOptions: Record<string, string>
   resolveAssistantDropdownValue: (value?: string) => string
   normalizeAssistantDropdownValue: (value: string) => string | undefined
-  getInstructionDesc: (mode: SelectionChatActionMode) => string
-  getInstructionPlaceholder: (mode: SelectionChatActionMode) => string
+  getInstructionDesc: (mode: SelectionActionMode) => string
+  getInstructionPlaceholder: (mode: SelectionActionMode) => string
   canSaveAction: (action: SelectionChatAction | null) => boolean
   t: TranslateFn
 }
@@ -866,7 +790,7 @@ function QuickActionItem({
   }
 
   const currentEditing = isEditing ? editingAction : null
-  const isFixed = FIXED_ACTION_IDS.has(action.id)
+  const isFixed = FIXED_SELECTION_ACTION_IDS.has(action.id)
   const isHidden = isFixed && action.enabled === false
   const itemClassName = [
     'yolo-quick-action-item',

@@ -54,6 +54,8 @@ describe('parseYoloSettings', () => {
       reasoningLevelByModelId: {},
       chatExportIncludeThinking: false,
       chatExportIncludeToolCalls: false,
+      lastChatSurface: 'chat',
+      lastCliRuntimeId: 'claude-code',
     })
 
     expect(result.notificationOptions).toMatchObject({
@@ -100,7 +102,7 @@ describe('parseYoloSettings', () => {
     })
   })
 
-  it('migrates released voice v70 data without replaying colliding history', () => {
+  it('migrates released voice v70 data through upstream additions', () => {
     const result = migrateYoloSettingsData({
       version: 70,
       browser: {
@@ -136,11 +138,118 @@ describe('parseYoloSettings', () => {
       activeAsrConfigId: 'asr-1',
     })
     const assistants = result.assistants as Array<Record<string, unknown>>
-    expect(assistants[0].toolPreferences).toEqual({
+    expect(assistants[0].toolPreferences).toMatchObject({
       yolo_local__browser_read_page: {
         enabled: true,
         approvalMode: 'require_approval',
       },
+      yolo_local__bash: {
+        enabled: true,
+        approvalMode: 'dangerous_only',
+      },
+    })
+  })
+
+  it('backfills upstream migrations for released voice v77 data', () => {
+    const result = migrateYoloSettingsData({
+      // Voice builds published a different v76→v77 before upstream assigned
+      // that number. The final migration must recognize this persisted shape
+      // and recover upstream's skipped Tab/MCP changes without losing voice.
+      version: 77,
+      assistants: [
+        {
+          id: 'voice-user',
+          toolPreferences: {
+            remote_search__search: {
+              enabled: true,
+              approvalMode: 'require_approval',
+              disclosureMode: 'on_demand',
+            },
+          },
+        },
+      ],
+      contextVoiceInputOptions: {
+        enabled: true,
+        asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+        activeAsrConfigId: 'asr-1',
+      },
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.continuationOptions).toMatchObject({
+      tabCompletionOptions: { multipleCandidatesEnabled: true },
+    })
+    expect(result.chatOptions).toMatchObject({
+      cliChatModeByRuntime: {},
+      cliAgentYoloEnabledByRuntime: {},
+    })
+    expect(result.contextVoiceInputOptions).toMatchObject({
+      enabled: true,
+      asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+      activeAsrConfigId: 'asr-1',
+    })
+
+    const assistant = (result.assistants as Array<Record<string, unknown>>)[0]
+    expect(assistant.toolServerPreferences).toEqual({
+      remote_search: { disclosureMode: 'on_demand' },
+    })
+    expect(assistant.toolPreferences).toMatchObject({
+      remote_search__search: {
+        enabled: true,
+        approvalMode: 'require_approval',
+      },
+      yolo_local__bash: {
+        enabled: true,
+        approvalMode: 'dangerous_only',
+      },
+    })
+    expect(
+      (assistant.toolPreferences as Record<string, Record<string, unknown>>)
+        .remote_search__search.disclosureMode,
+    ).toBeUndefined()
+  })
+
+  it('defaults existing tab completion triggers to insert mode', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      continuationOptions: {
+        tabCompletionTriggers: [
+          {
+            id: 'legacy-trigger',
+            type: 'regex',
+            pattern: '\\$[^$\\n]*$',
+            enabled: true,
+          },
+        ],
+      },
+    })
+
+    expect(result.continuationOptions.tabCompletionTriggers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'legacy-trigger',
+          type: 'regex',
+          pattern: '\\$[^$\\n]*$',
+          enabled: true,
+          acceptMode: 'insert',
+        }),
+      ]),
+    )
+  })
+
+  it('persists the last Chat surface and CLI provider independently', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      chatOptions: {
+        includeCurrentFileContent: true,
+        lastChatSurface: 'chat',
+        lastCliRuntimeId: 'codex',
+      },
+    })
+
+    expect(result.chatOptions).toMatchObject({
+      lastChatSurface: 'chat',
+      lastCliRuntimeId: 'codex',
     })
   })
 

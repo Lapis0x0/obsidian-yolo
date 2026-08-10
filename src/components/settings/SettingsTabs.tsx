@@ -10,6 +10,7 @@ import React, {
 
 import { useLanguage } from '../../contexts/language-context'
 import YoloPlugin from '../../main'
+import { SETTINGS_ACTIVE_TAB_STORAGE_KEY } from '../../utils/openPluginSettingsTab'
 
 import { AgentTab } from './tabs/AgentTab'
 import { EditorTab } from './tabs/EditorTab'
@@ -84,7 +85,7 @@ const SETTINGS_TABS: SettingsTab[] = [
   },
 ]
 
-const STORAGE_KEY = 'yolo_settings_active_tab'
+const STORAGE_KEY = SETTINGS_ACTIVE_TAB_STORAGE_KEY
 
 export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const { t } = useLanguage()
@@ -207,19 +208,18 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
           </button>
         ))}
       </div>
-      <div
-        className={`yolo-settings-tabs-content ${
-          activeTab === 'modules' ? 'yolo-settings-tabs-content--modules' : ''
-        }`}
-      >
-        {activeTab === 'modules' ? (
-          <ModulesTab
-            service={plugin.getModuleService()}
-            registrations={moduleSettings}
-          />
-        ) : (
-          <ActiveComponent app={app} plugin={plugin} />
-        )}
+      <div className="yolo-settings-tabs-content">
+        <div className="yolo-settings-tabs-body">
+          {activeTab === 'modules' ? (
+            <ModulesTab
+              service={plugin.getModuleService()}
+              runtimeComponents={plugin.getRuntimeComponentService()}
+              registrations={moduleSettings}
+            />
+          ) : (
+            <ActiveComponent app={app} plugin={plugin} />
+          )}
+        </div>
       </div>
     </div>
   )

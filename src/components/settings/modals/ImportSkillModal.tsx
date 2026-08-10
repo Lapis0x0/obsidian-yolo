@@ -16,6 +16,11 @@ import {
   parseGitHubUrl,
 } from '../../../core/skills/githubSkillImporter'
 import {
+  MAX_SKILL_PACKAGE_IMPORT_DEPTH,
+  SkillPackageImportDepthExceededError,
+  assertSkillPackageImportDepth,
+} from '../../../core/skills/skillImportLimits'
+import {
   type FileEntry,
   type ValidationError,
   parseFrontmatter,
@@ -74,12 +79,12 @@ function ImportSkillModalWrapper({
 // ---------------------------------------------------------------------------
 
 /**
- * 一个准备导入的 skill 包(已经识别出根目录 / 单文件)。
+ * 一个准备导入的 skill(已经识别出目录包 / 单文件)。
  */
 type SkillPackage = {
   /** 用作错误信息显示的源名称(原文件夹名 / 文件名) */
   sourceName: string
-  /** 目标名称:目录模式 = frontmatter.name;单文件模式 = 源文件名 */
+  /** 保留来源形态的目标文件名或目录名 */
   targetName: string
   /** 用于列表显示 */
   displayName: string
@@ -89,7 +94,6 @@ type SkillPackage = {
 }
 
 const SKILL_MD = 'SKILL.md'
-const MAX_PATH_DEPTH = 16
 
 // ---------------------------------------------------------------------------
 // 校验错误转为通俗提示
@@ -120,51 +124,6 @@ function formatValidationErrors(
           'settings.agent.importSkillErrNoName',
           'missing "name" field in metadata',
         )
-      case 'name:exceeds 64 characters':
-        return t(
-          'settings.agent.importSkillErrNameTooLong',
-          '"name" is too long (max 64 characters)',
-        )
-      case 'name:uppercase not allowed':
-        return t(
-          'settings.agent.importSkillErrNameUppercase',
-          '"name" must be all lowercase',
-        )
-      case 'name:cannot start or end with hyphen':
-        return t(
-          'settings.agent.importSkillErrNameHyphenEdge',
-          '"name" cannot start or end with a hyphen',
-        )
-      case 'name:consecutive hyphens not allowed':
-        return t(
-          'settings.agent.importSkillErrNameDoubleHyphen',
-          '"name" cannot contain consecutive hyphens (--)',
-        )
-      case 'name:only lowercase letters, numbers, and hyphens allowed':
-        return t(
-          'settings.agent.importSkillErrNameInvalidChars',
-          '"name" can only contain lowercase letters, numbers, and hyphens',
-        )
-      case 'name:must match folder name':
-        return t(
-          'settings.agent.importSkillErrNameMismatch',
-          '"name" must match the folder name',
-        )
-      case 'description:missing':
-        return t(
-          'settings.agent.importSkillErrNoDescription',
-          'missing "description" field in metadata',
-        )
-      case 'description:exceeds 1024 characters':
-        return t(
-          'settings.agent.importSkillErrDescTooLong',
-          '"description" is too long (max 1024 characters)',
-        )
-      case 'compatibility:exceeds 500 characters':
-        return t(
-          'settings.agent.importSkillErrCompatTooLong',
-          '"compatibility" is too long (max 500 characters)',
-        )
       default:
         return `${err.field}: ${err.message}`
     }
@@ -193,7 +152,7 @@ async function readDirectoryEntryRecursively(
   basePath: string,
   depth: number,
 ): Promise<FileEntry[]> {
-  if (depth > MAX_PATH_DEPTH) return []
+  assertSkillPackageImportDepth(depth)
 
   const readBatch = (
     reader: FileSystemDirectoryReader,
@@ -217,11 +176,14 @@ async function readDirectoryEntryRecursively(
       const file = await new Promise<File>((resolve, reject) => {
         fileEntry.file(resolve, reject)
       })
-      const content = await file.text()
       const relativePath = basePath
         ? `${basePath}/${fileEntry.name}`
         : fileEntry.name
-      results.push({ relativePath, content })
+      if (fileEntry.name === SKILL_MD) {
+        results.push({ relativePath, content: await file.text() })
+      } else {
+        results.push({ relativePath, data: await file.arrayBuffer() })
+      }
     } else if (entry.isDirectory) {
       const subDir = entry as FileSystemDirectoryEntry
       const subPath = basePath ? `${basePath}/${subDir.name}` : subDir.name
@@ -312,9 +274,13 @@ async function readRawCandidatesFromFileList(
     const rootDir = slashIdx > 0 ? relPath.slice(0, slashIdx) : relPath
     const innerPath = slashIdx > 0 ? relPath.slice(slashIdx + 1) : ''
     if (!innerPath) continue
-    const content = await file.text()
+    assertSkillPackageImportDepth(innerPath.split('/').length - 1)
     const entries = groupedByRoot.get(rootDir) ?? []
-    entries.push({ relativePath: innerPath, content })
+    if (innerPath.split('/').pop() === SKILL_MD) {
+      entries.push({ relativePath: innerPath, content: await file.text() })
+    } else {
+      entries.push({ relativePath: innerPath, data: await file.arrayBuffer() })
+    }
     groupedByRoot.set(rootDir, entries)
   }
 
@@ -393,11 +359,11 @@ function extractSkillsFromDirectoryCandidate(
           : f.relativePath.startsWith(prefix),
       )
       .map((f) => ({
+        ...f,
         relativePath:
           rootRelDir === ''
             ? f.relativePath
             : f.relativePath.slice(prefix.length),
-        content: f.content,
       }))
     const sourceName =
       rootRelDir === ''
@@ -451,6 +417,24 @@ function ImportSkillModalContent({
     }
   }, [])
 
+  const showReadError = useCallback(
+    (error: unknown) => {
+      if (error instanceof SkillPackageImportDepthExceededError) {
+        new Notice(
+          t(
+            'settings.agent.importSkillErrTooDeep',
+            'Skill package exceeds the maximum import depth of {depth}. Nothing was imported.',
+          ).replace('{depth}', String(MAX_SKILL_PACKAGE_IMPORT_DEPTH)),
+        )
+        return
+      }
+      new Notice(
+        t('settings.agent.importSkillReadError', 'Failed to read files.'),
+      )
+    },
+    [t],
+  )
+
   const buildSkillPackagesFromCandidates = useCallback(
     (
       candidates: RawCandidate[],
@@ -463,7 +447,7 @@ function ImportSkillModalContent({
           errors.push(
             t(
               'settings.agent.importSkillDuplicateInBatch',
-              'Duplicate skill name in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
+              'Duplicate import destination in this batch: "{name}" (from "{source}"). Only the first occurrence is kept.',
             )
               .replace('{name}', pkg.targetName)
               .replace('{source}', pkg.sourceName),
@@ -475,6 +459,17 @@ function ImportSkillModalContent({
       }
 
       for (const candidate of candidates) {
+        if (!isSafeRelativePath(candidate.rootName)) {
+          errors.push(
+            t(
+              'settings.agent.importSkillUnsafePath',
+              'Refused unsafe path in "{name}": {path}',
+            )
+              .replace('{name}', candidate.rootName)
+              .replace('{path}', candidate.rootName),
+          )
+          continue
+        }
         // 路径安全校验(整批候选,提前拦截 — 任意一个文件不安全就丢弃整包)
         const unsafe = candidate.files.find(
           (f) => !isSafeRelativePath(f.relativePath),
@@ -502,26 +497,13 @@ function ImportSkillModalContent({
           }
           const fm = parseFrontmatter(content)
           const fmName =
-            typeof fm?.name === 'string' && fm.name.trim()
-              ? fm.name.trim()
-              : null
+            typeof fm?.name === 'string' ? fm.name.trim() : candidate.rootName
           const description =
-            (typeof fm?.description === 'string' && fm.description.trim()) || ''
-          if (!isSafeRelativePath(candidate.rootName)) {
-            errors.push(
-              t(
-                'settings.agent.importSkillUnsafePath',
-                'Refused unsafe path in "{name}": {path}',
-              )
-                .replace('{name}', candidate.rootName)
-                .replace('{path}', candidate.rootName),
-            )
-            continue
-          }
+            typeof fm?.description === 'string' ? fm.description.trim() : ''
           pushValid({
             sourceName: candidate.rootName,
             targetName: candidate.rootName,
-            displayName: fmName ?? candidate.rootName,
+            displayName: fmName,
             description,
             files: candidate.files,
             isDirectory: false,
@@ -552,7 +534,7 @@ function ImportSkillModalContent({
             (typeof fm?.description === 'string' && fm.description.trim()) || ''
           pushValid({
             sourceName: skill.sourceName,
-            targetName: fmName,
+            targetName: skill.sourceName,
             displayName: fmName,
             description,
             files: skill.files,
@@ -655,14 +637,12 @@ function ImportSkillModalContent({
       try {
         const candidates = await readRawCandidatesFromFileList(files)
         addCandidates(candidates)
-      } catch {
-        new Notice(
-          t('settings.agent.importSkillReadError', 'Failed to read files.'),
-        )
+      } catch (error) {
+        showReadError(error)
       }
       e.target.value = ''
     },
-    [addCandidates, t],
+    [addCandidates, showReadError],
   )
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -688,14 +668,12 @@ function ImportSkillModalContent({
         try {
           const candidates = await readRawCandidatesFromDataTransfer(items)
           addCandidates(candidates)
-        } catch {
-          new Notice(
-            t('settings.agent.importSkillReadError', 'Failed to read files.'),
-          )
+        } catch (error) {
+          showReadError(error)
         }
       }
     },
-    [addCandidates, t],
+    [addCandidates, showReadError],
   )
 
   const runUrlFetch = useCallback(async () => {
@@ -715,7 +693,7 @@ function ImportSkillModalContent({
     try {
       const results = await fetchGitHubSkill(trimmed)
       if (!isMountedRef.current) return
-      // 把 GitHub 抓取结果适配成 RawCandidate;rootName 对齐 targetName 以通过目录校验
+      // GitHub 结果保留远端文件名或目录名，不按 frontmatter name 改写路径。
       const candidates: RawCandidate[] = results.map((result) => ({
         rootName: result.targetName,
         files: result.files,
@@ -788,21 +766,23 @@ function ImportSkillModalContent({
 
       for (const pkg of skillPackages) {
         try {
-          if (pkg.isDirectory) {
-            const pkgDir = normalizePath(`${skillsDir}/${pkg.targetName}`)
-            // 覆盖时:无论已存在的是文件还是目录,先 trash 再写新,避免遗留旧资源 / 类型冲突
-            const existing = app.vault.getAbstractFileByPath(pkgDir)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
-            }
-            await app.vault.createFolder(pkgDir)
+          const targetRoot = normalizePath(`${skillsDir}/${pkg.targetName}`)
+          // 覆盖时先 trash，避免目录遗留旧资源或文件/目录类型冲突。
+          const existing = app.vault.getAbstractFileByPath(targetRoot)
+          if (existing) {
+            await app.fileManager.trashFile(existing)
+          }
 
+          if (pkg.isDirectory) {
+            await app.vault.createFolder(targetRoot)
             for (const file of pkg.files) {
               if (!isSafeRelativePath(file.relativePath)) {
                 throw new Error(`unsafe path: ${file.relativePath}`)
               }
-              const targetPath = normalizePath(`${pkgDir}/${file.relativePath}`)
-              if (!targetPath.startsWith(`${pkgDir}/`)) {
+              const targetPath = normalizePath(
+                `${targetRoot}/${file.relativePath}`,
+              )
+              if (!targetPath.startsWith(`${targetRoot}/`)) {
                 throw new Error(`path escaped target: ${file.relativePath}`)
               }
               const parentDir = targetPath.substring(
@@ -812,18 +792,14 @@ function ImportSkillModalContent({
               if (parentDir) {
                 await ensureFolder(parentDir)
               }
-              await app.vault.create(targetPath, file.content)
+              if (file.data) {
+                await app.vault.createBinary(targetPath, file.data)
+              } else {
+                await app.vault.create(targetPath, file.content ?? '')
+              }
             }
           } else {
-            const targetPath = normalizePath(`${skillsDir}/${pkg.targetName}`)
-            if (!targetPath.startsWith(`${skillsDir}/`)) {
-              throw new Error(`path escaped target: ${pkg.targetName}`)
-            }
-            const existing = app.vault.getAbstractFileByPath(targetPath)
-            if (existing) {
-              await app.fileManager.trashFile(existing)
-            }
-            await app.vault.create(targetPath, pkg.files[0].content)
+            await app.vault.create(targetRoot, pkg.files[0]?.content ?? '')
           }
           successCount++
         } catch (err) {
@@ -887,7 +863,7 @@ function ImportSkillModalContent({
       <div className="yolo-settings-desc yolo-settings-callout">
         {t(
           'settings.agent.importSkillDesc',
-          'Import skill packages into {path}. Supports single .md files or Agent Skills standard folders (containing SKILL.md, scripts/, references/, etc.).',
+          'Import skills into {path}. Markdown files keep their filenames; folders keep their names, SKILL.md, and all package resources.',
         ).replace('{path}', skillsDir)}
       </div>
 

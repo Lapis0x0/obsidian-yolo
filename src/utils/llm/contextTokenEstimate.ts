@@ -9,17 +9,31 @@
 const TEXT_TOKEN_CACHE_LIMIT = 500
 const textTokenCache = new Map<string, number>()
 
-type EncodeFn = (text: string) => number[]
+export type TokenizerProvider = Readonly<{
+  count(text: string): Promise<number>
+}>
 
-let encoderPromise: Promise<EncodeFn> | null = null
+const runtimeTokenizerProvider: TokenizerProvider = Object.freeze({
+  async count(text) {
+    const lease = await acquireRuntimeComponent('tokenizer')
+    try {
+      return lease.api.count(text)
+    } finally {
+      lease.release()
+    }
+  },
+})
 
-const ensureEncoder = (): Promise<EncodeFn> => {
-  if (!encoderPromise) {
-    encoderPromise = import('gpt-tokenizer/encoding/cl100k_base').then(
-      (mod) => mod.encode,
-    )
+let tokenizerProvider: TokenizerProvider = runtimeTokenizerProvider
+
+export function setTokenizerProviderForTests(
+  provider: TokenizerProvider | null,
+): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('Tokenizer provider overrides are test-only')
   }
-  return encoderPromise
+  tokenizerProvider = provider ?? runtimeTokenizerProvider
+  textTokenCache.clear()
 }
 
 // Rough per-image token estimate used when replacing base64 data URLs.
@@ -140,8 +154,7 @@ export const estimateTextTokens = async (text: string): Promise<number> => {
     return cached
   }
 
-  const encode = await ensureEncoder()
-  const count = encode(text).length
+  const count = await tokenizerProvider.count(text)
   textTokenCache.set(text, count)
   if (textTokenCache.size > TEXT_TOKEN_CACHE_LIMIT) {
     // Drop the oldest inserted key (first in iteration order).
@@ -163,10 +176,10 @@ export const estimateJsonTokens = async (value: unknown): Promise<number> => {
 
   // Do not cache here — keys are always unique in hot paths (request payloads
   // change every turn) and caching them would leak memory unboundedly.
-  const encode = await ensureEncoder()
   return (
-    encode(serialized).length +
+    (await tokenizerProvider.count(serialized)) +
     imageCount * ESTIMATED_IMAGE_TOKENS +
     pdfTokenEstimate
   )
 }
+import { acquireRuntimeComponent } from '../../core/runtime-components/runtimeComponentAccess'

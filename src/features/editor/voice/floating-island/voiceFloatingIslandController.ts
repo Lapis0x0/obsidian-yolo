@@ -26,6 +26,10 @@
 
 import type { MarkdownView } from 'obsidian'
 
+import {
+  MOTION_DURATION_ENTER_S,
+  MOTION_EASE_OUT_CSS,
+} from '../../../../styles/tokens/motion'
 import type { AudioFileSource } from '../audio-file-transcription/audioFileSource'
 import type { VoiceController } from '../voiceController'
 import type { ActiveVoiceModeId } from '../voiceModes'
@@ -1150,8 +1154,8 @@ export class VoiceFloatingIslandController {
     const icon = button.querySelector('svg')
     if (!icon || typeof icon.animate !== 'function') return
     icon.animate([{ opacity: 0 }, { opacity: 1 }], {
-      duration: 150,
-      easing: 'ease-out',
+      duration: MOTION_DURATION_ENTER_S * 1000,
+      easing: MOTION_EASE_OUT_CSS,
     })
   }
 

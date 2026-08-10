@@ -8,7 +8,7 @@ import {
   Type,
 } from 'lucide-react'
 import { App, Notice, requestUrl } from 'obsidian'
-import { type CSSProperties, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { DEFAULT_CHAT_MODELS } from '../../../constants'
 import { BAKED_PLUGIN_VERSION } from '../../../constants/bakedVersion'
@@ -51,6 +51,8 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { SearchableDropdown } from '../../common/SearchableDropdown'
+import { ModelRequestParametersDisclosure } from '../common/ModelRequestParametersDisclosure'
+import { ModeSegmentedControl } from '../common/ModeSegmentedControl'
 
 type AddChatModelModalComponentProps = {
   plugin: YoloPlugin
@@ -70,6 +72,7 @@ const BUILTIN_TOOL_PROVIDERS = [
   'gpt',
   'openrouter',
   'grok',
+  'deepseek',
 ] as const
 type BuiltinToolProvider = (typeof BUILTIN_TOOL_PROVIDERS)[number]
 
@@ -252,6 +255,19 @@ function AddChatModelModalComponent({
     ) {
       setBuiltinToolProvider('none')
     }
+    if (
+      selectedProvider?.presetType !== 'deepseek' &&
+      builtinToolProvider === 'deepseek'
+    ) {
+      setBuiltinToolProvider('none')
+    }
+    if (
+      selectedProvider?.presetType === 'deepseek' &&
+      builtinToolProvider !== 'none' &&
+      builtinToolProvider !== 'deepseek'
+    ) {
+      setBuiltinToolProvider('none')
+    }
   }, [selectedProvider?.presetType, builtinToolProvider])
   const [modalities, setModalities] = useState<ChatModelModality[]>(() =>
     resolveDefaultChatModelModalities(selectedProvider),
@@ -287,6 +303,13 @@ function AddChatModelModalComponent({
     useState<boolean>(false)
   const [geminiUrlContextEnabled, setGeminiUrlContextEnabled] =
     useState<boolean>(false)
+  const [deepseekWebSearchEnabled, setDeepseekWebSearchEnabled] =
+    useState<boolean>(false)
+  // DeepSeek only exposes its hosted search on the Anthropic and Responses
+  // transports; `chat/completions` rejects hosted tool types outright.
+  const isDeepSeekWebSearchSupported =
+    selectedProvider?.apiType === 'anthropic' ||
+    selectedProvider?.apiType === 'openai-responses'
   const [modelParamCache, setModelParamCache] = useState<{
     temperature: number
     topP: number
@@ -308,6 +331,13 @@ function AddChatModelModalComponent({
   const [customParameters, setCustomParameters] = useState<
     CustomParameterFormEntry[]
   >([])
+  const enabledRequestParameterCount =
+    Number(formData.temperature !== undefined) +
+    Number(formData.topP !== undefined) +
+    Number(formData.maxOutputTokens !== undefined) +
+    sanitizeCustomParameters(customParameters).filter(
+      (entry) => !isReservedCustomParameterKey(entry.key),
+    ).length
 
   // Batch add: pick many fetched models at once, save with default settings.
   const [addMode, setAddMode] = useState<'single' | 'batch'>('single')
@@ -584,23 +614,14 @@ function AddChatModelModalComponent({
     setMaxContextTokensInput(String(clamped))
   }
 
-  const resetModelParams = () => {
-    setModelParamCache({
-      temperature: MODEL_SAMPLING_DEFAULTS.temperature,
-      topP: MODEL_SAMPLING_DEFAULTS.topP,
-      maxContextTokens:
-        resolveKnownMaxContextTokens(formData.model) ??
-        MODEL_SAMPLING_DEFAULTS.maxContextTokens,
-      maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
-    })
+  const clearRequestParameterOverrides = () => {
     setFormData((prev) => ({
       ...prev,
-      temperature: MODEL_SAMPLING_DEFAULTS.temperature,
-      topP: MODEL_SAMPLING_DEFAULTS.topP,
-      maxContextTokens: resolveKnownMaxContextTokens(prev.model),
-      maxOutputTokens: MODEL_SAMPLING_DEFAULTS.maxOutputTokens,
+      temperature: undefined,
+      topP: undefined,
+      maxOutputTokens: undefined,
     }))
-    setHasManualMaxContextTokens(false)
+    setCustomParameters([])
   }
 
   const setTemperatureEnabled = (enabled: boolean) => {
@@ -688,6 +709,7 @@ function AddChatModelModalComponent({
           webSearch: { enabled: geminiWebSearchEnabled },
           urlContext: { enabled: geminiUrlContextEnabled },
         },
+        deepseek: { webSearch: { enabled: deepseekWebSearchEnabled } },
       },
       ...(sanitizedCustomParameters.length > 0
         ? { customParameters: sanitizedCustomParameters }
@@ -892,35 +914,15 @@ function AddChatModelModalComponent({
       <h2 className="yolo-chat-model-modal-title">
         {t('settings.models.addCustomChatModel')}
       </h2>
-      <div
-        className="yolo-model-mode-seg"
-        role="tablist"
-        style={
-          {
-            '--yolo-mode-seg-count': modeTabs.length,
-            '--yolo-mode-seg-index': addMode === 'single' ? 0 : 1,
-          } as CSSProperties
-        }
-      >
-        <div className="yolo-model-mode-seg-glider" aria-hidden="true" />
-        {modeTabs.map(({ key, label, Icon }) => (
-          <button
-            key={key}
-            type="button"
-            role="tab"
-            aria-selected={addMode === key}
-            className={`yolo-model-mode-seg-btn${
-              addMode === key ? ' is-active' : ''
-            }`}
-            onClick={() => setAddMode(key)}
-          >
-            <span className="yolo-model-mode-seg-icon" aria-hidden="true">
-              <Icon size={14} />
-            </span>
-            <span className="yolo-model-mode-seg-label">{label}</span>
-          </button>
-        ))}
-      </div>
+      <ModeSegmentedControl<'single' | 'batch'>
+        value={addMode}
+        options={modeTabs.map(({ key, ...option }) => ({
+          value: key,
+          ...option,
+        }))}
+        onChange={setAddMode}
+        ariaLabel={t('settings.models.addMode', '添加方式')}
+      />
     </div>
   )
 
@@ -1201,15 +1203,20 @@ function AddChatModelModalComponent({
                     'settings.models.builtinToolProviderOpenRouter',
                   ),
                 }
-              : {
-                  none: t('settings.models.builtinToolProviderNone'),
-                  gemini: t('settings.models.builtinToolProviderGemini'),
-                  gpt: t('settings.models.builtinToolProviderGpt'),
-                  openrouter: t(
-                    'settings.models.builtinToolProviderOpenRouter',
-                  ),
-                  grok: t('settings.models.builtinToolProviderGrok'),
-                }
+              : selectedProvider?.presetType === 'deepseek'
+                ? {
+                    none: t('settings.models.builtinToolProviderNone'),
+                    deepseek: t('settings.models.builtinToolProviderDeepSeek'),
+                  }
+                : {
+                    none: t('settings.models.builtinToolProviderNone'),
+                    gemini: t('settings.models.builtinToolProviderGemini'),
+                    gpt: t('settings.models.builtinToolProviderGpt'),
+                    openrouter: t(
+                      'settings.models.builtinToolProviderOpenRouter',
+                    ),
+                    grok: t('settings.models.builtinToolProviderGrok'),
+                  }
           }
           onChange={(value: string) =>
             setBuiltinToolProvider(
@@ -1384,6 +1391,44 @@ function AddChatModelModalComponent({
         </div>
       )}
 
+      {builtinToolProvider === 'deepseek' && (
+        <div className="yolo-agent-tools-panel yolo-agent-model-panel">
+          <div className="yolo-agent-tools-panel-head yolo-agent-model-panel-head">
+            <div className="yolo-agent-tools-panel-title">
+              {t('settings.models.builtinToolsDeepSeek')}
+            </div>
+          </div>
+
+          <div className="yolo-agent-model-controls">
+            <div className="yolo-agent-model-control">
+              <div className="yolo-agent-model-control-top">
+                <div className="yolo-agent-model-control-meta">
+                  <div className="yolo-agent-model-control-label">
+                    {t('settings.models.builtinToolWebSearch')}
+                  </div>
+                  <div className="yolo-agent-model-control-desc">
+                    {isDeepSeekWebSearchSupported
+                      ? t('settings.models.builtinToolDeepSeekWebSearchDesc')
+                      : t(
+                          'settings.models.builtinToolDeepSeekWebSearchUnavailable',
+                        )}
+                  </div>
+                </div>
+                <div className="yolo-agent-model-control-actions">
+                  <ObsidianToggle
+                    value={
+                      isDeepSeekWebSearchSupported && deepseekWebSearchEnabled
+                    }
+                    onChange={setDeepseekWebSearchEnabled}
+                    disabled={!isDeepSeekWebSearchSupported}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {builtinToolProvider === 'gemini' && (
         <div className="yolo-agent-tools-panel yolo-agent-model-panel">
           <div className="yolo-agent-tools-panel-head yolo-agent-model-panel-head">
@@ -1435,20 +1480,7 @@ function AddChatModelModalComponent({
 
       {/* Provider is derived from the current group context; field removed intentionally */}
 
-      <div className="yolo-agent-tools-panel yolo-agent-model-panel">
-        <div className="yolo-agent-tools-panel-head yolo-agent-model-panel-head">
-          <div className="yolo-agent-tools-panel-title">
-            {t('settings.models.customParameters', 'Custom parameters')}
-          </div>
-          <button
-            type="button"
-            className="yolo-agent-model-reset"
-            onClick={resetModelParams}
-          >
-            {t('settings.models.restoreDefaults', 'Restore defaults')}
-          </button>
-        </div>
-
+      <div className="yolo-agent-model-context">
         <div className="yolo-agent-model-controls">
           <div
             className={`yolo-agent-model-control${
@@ -1539,7 +1571,14 @@ function AddChatModelModalComponent({
               </div>
             )}
           </div>
+        </div>
+      </div>
 
+      <ModelRequestParametersDisclosure
+        enabledCount={enabledRequestParameterCount}
+        onClear={clearRequestParameterOverrides}
+      >
+        <div className="yolo-agent-model-controls">
           <div
             className={`yolo-agent-model-control${
               formData.temperature === undefined ? ' is-disabled' : ''
@@ -1740,89 +1779,91 @@ function AddChatModelModalComponent({
             )}
           </div>
         </div>
-      </div>
 
-      <ObsidianSetting
-        name={t('settings.models.customParameters')}
-        desc={t('settings.models.customParametersDesc')}
-      >
-        <ObsidianButton
-          text={t('settings.models.customParametersAdd')}
-          onClick={() =>
-            setCustomParameters((prev) => [
-              ...prev,
-              {
-                uid: createCustomParameterUid(),
-                key: '',
-                value: '',
-                type: 'text',
-              },
-            ])
-          }
-        />
-      </ObsidianSetting>
-
-      {customParameters.map((param, index) => (
         <ObsidianSetting
-          key={param.uid}
-          className="yolo-settings-kv-entry yolo-settings-kv-entry--inline"
+          name={t('settings.models.additionalParameters')}
+          desc={t('settings.models.customParametersDesc')}
         >
-          <ObsidianTextInput
-            value={param.key}
-            placeholder={t('settings.models.customParametersKeyPlaceholder')}
-            onChange={(value: string) =>
-              setCustomParameters((prev) => {
-                const next = [...prev]
-                next[index] = { ...next[index], key: value }
-                return next
-              })
-            }
-          />
-          <ObsidianDropdown
-            value={normalizeCustomParameterType(param.type)}
-            options={Object.fromEntries(
-              CUSTOM_PARAMETER_TYPES.map((type) => [
-                type,
-                t(
-                  `settings.models.customParameterType${
-                    type.charAt(0).toUpperCase() + type.slice(1)
-                  }`,
-                  type,
-                ),
-              ]),
-            )}
-            onChange={(value: string) =>
-              setCustomParameters((prev) => {
-                const next = [...prev]
-                next[index] = {
-                  ...next[index],
-                  type: normalizeCustomParameterType(value),
-                }
-                return next
-              })
-            }
-          />
-          <ObsidianTextInput
-            value={param.value}
-            placeholder={t('settings.models.customParametersValuePlaceholder')}
-            onChange={(value: string) =>
-              setCustomParameters((prev) => {
-                const next = [...prev]
-                next[index] = { ...next[index], value }
-                return next
-              })
-            }
-          />
           <ObsidianButton
-            text={t('common.remove')}
+            text={t('settings.models.customParametersAdd')}
             onClick={() =>
-              setCustomParameters((prev) =>
-                prev.filter((_, removeIndex) => removeIndex !== index),
-              )
+              setCustomParameters((prev) => [
+                ...prev,
+                {
+                  uid: createCustomParameterUid(),
+                  key: '',
+                  value: '',
+                  type: 'text',
+                },
+              ])
             }
           />
         </ObsidianSetting>
-      ))}
+
+        {customParameters.map((param, index) => (
+          <ObsidianSetting
+            key={param.uid}
+            className="yolo-settings-kv-entry yolo-settings-kv-entry--inline"
+          >
+            <ObsidianTextInput
+              value={param.key}
+              placeholder={t('settings.models.customParametersKeyPlaceholder')}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = { ...next[index], key: value }
+                  return next
+                })
+              }
+            />
+            <ObsidianDropdown
+              value={normalizeCustomParameterType(param.type)}
+              options={Object.fromEntries(
+                CUSTOM_PARAMETER_TYPES.map((type) => [
+                  type,
+                  t(
+                    `settings.models.customParameterType${
+                      type.charAt(0).toUpperCase() + type.slice(1)
+                    }`,
+                    type,
+                  ),
+                ]),
+              )}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = {
+                    ...next[index],
+                    type: normalizeCustomParameterType(value),
+                  }
+                  return next
+                })
+              }
+            />
+            <ObsidianTextInput
+              value={param.value}
+              placeholder={t(
+                'settings.models.customParametersValuePlaceholder',
+              )}
+              onChange={(value: string) =>
+                setCustomParameters((prev) => {
+                  const next = [...prev]
+                  next[index] = { ...next[index], value }
+                  return next
+                })
+              }
+            />
+            <ObsidianButton
+              text={t('common.remove')}
+              onClick={() =>
+                setCustomParameters((prev) =>
+                  prev.filter((_, removeIndex) => removeIndex !== index),
+                )
+              }
+            />
+          </ObsidianSetting>
+        ))}
+      </ModelRequestParametersDisclosure>
 
       <ObsidianSetting>
         <ObsidianButton text={t('common.add')} onClick={handleSubmit} cta />

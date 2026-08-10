@@ -10,6 +10,7 @@ import type {
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { collectTotalAssistantUsage } from '../../../utils/chat/llmUsage'
 import { formatErrorMessageWithCauses } from '../../../utils/error-message'
+import { runWithBackgroundExecution } from '../../background/backgroundExecutionController'
 import type { BaseLLMProvider } from '../../llm/base'
 import { type YoloAgentEvent, conversationStateToEvents } from '../agent-api'
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
@@ -358,7 +359,7 @@ async function runChildAgent(
   try {
     let nextRunInput: AgentRuntimeRunInput = runInput
     while (true) {
-      await runtime.run(nextRunInput)
+      await runWithBackgroundExecution(() => runtime.run(nextRunInput))
       const snapshotAfterRun = runtime.getSnapshot()
       if (
         abortController.signal.aborted ||

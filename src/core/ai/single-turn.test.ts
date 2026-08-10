@@ -204,8 +204,8 @@ describe('executeSingleTurn', () => {
                     id: 'tool-1',
                     type: 'function',
                     function: {
-                      name: 'yolo_local__fs_move',
-                      arguments: '{"oldPath":"a.md","newPath":"b.md"}',
+                      name: 'yolo_local__fs_write',
+                      arguments: '{"path":"a.md","content":"b"}',
                     },
                   },
                 ],
@@ -241,8 +241,8 @@ describe('executeSingleTurn', () => {
                 id: 'tool-2',
                 type: 'function',
                 function: {
-                  name: 'yolo_local__fs_move',
-                  arguments: '{"oldPath":"x.md","newPath":"y.md"}',
+                  name: 'yolo_local__fs_write',
+                  arguments: '{"path":"x.md","content":"y"}',
                 },
               },
             ],
@@ -262,10 +262,10 @@ describe('executeSingleTurn', () => {
     expect(result.toolCalls).toEqual([
       {
         id: 'tool-1',
-        name: 'yolo_local__fs_move',
+        name: 'yolo_local__fs_write',
         arguments: completeArgs(
-          { oldPath: 'a.md', newPath: 'b.md' },
-          '{"oldPath":"a.md","newPath":"b.md"}',
+          { path: 'a.md', content: 'b' },
+          '{"path":"a.md","content":"b"}',
         ),
         metadata: undefined,
       },
@@ -353,7 +353,7 @@ describe('executeSingleTurn', () => {
                     id: 'tool-read-1',
                     type: 'function',
                     function: {
-                      name: 'yolo_local__fs_read',
+                      name: 'test__nested_object',
                       arguments: '{"paths":["foo.md"],"operation":',
                     },
                   },
@@ -407,7 +407,7 @@ describe('executeSingleTurn', () => {
     expect(result.toolCalls).toEqual([
       {
         id: 'tool-read-1',
-        name: 'yolo_local__fs_read',
+        name: 'test__nested_object',
         arguments: completeArgs(
           {
             paths: ['foo.md'],

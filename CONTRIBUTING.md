@@ -174,6 +174,8 @@ In the Obsidian developer console:
 
 - The maintainer reviews PRs as time allows. Expect anywhere from a day to a couple of weeks for a first response, longer for large changes.
 - You can summon the review bot by mentioning `@Lapis0x1` in a comment — its replies count as Lapis0x0's.
+- The bot may leave ordinary feedback or submit a blocking **Changes requested** review. Use your judgment on each finding: fix valid issues, or explain why a suggestion does not apply.
+- After addressing the feedback, you can request another pass either with GitHub's **Re-request review** action or by mentioning `@Lapis0x1` again. This is optional, but useful when you want confirmation that the revised PR has no remaining blockers; pushing new commits alone does not request a re-review.
 
 ---
 

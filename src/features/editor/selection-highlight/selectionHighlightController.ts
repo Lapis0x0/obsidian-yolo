@@ -414,6 +414,31 @@ export class SelectionHighlightController {
   }
 
   /**
+   * Remove persisted paint for the exact range another in-editor interaction
+   * is taking over. The owner is deliberately ignored: the same selection can
+   * arrive through Quick Ask, Selection Chat, or a pinned mention, but stacking
+   * two translucent layers over identical glyphs always produces the wrong
+   * color.
+   */
+  clearMatchingRange(
+    view: EditorView,
+    location: { from: number; to: number },
+  ): void {
+    let changed = false
+    for (const [id, entry] of Array.from(this.entries)) {
+      if (
+        entry.view === view &&
+        entry.from === location.from &&
+        entry.to === location.to
+      ) {
+        this._removeEntry(id, entry)
+        changed = true
+      }
+    }
+    if (changed) this._dispatchToView(view)
+  }
+
+  /**
    * Switch the visual style of every highlight matching `owner` without
    * touching its range or lifecycle. Used to flip the QuickAsk-owned highlight
    * into a "pending" shimmer while the LLM is streaming and back to plain

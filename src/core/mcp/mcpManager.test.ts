@@ -2,10 +2,14 @@ jest.mock('obsidian')
 
 import { App, Platform, TFile } from 'obsidian'
 
+import type { ApplyViewState } from '../../types/apply-view.types'
+import { McpServerStatus } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { McpNotAvailableException } from './exception'
 import { McpManager } from './mcpManager'
+
+const OBSIDIAN_CONFIG_DIR = ['.', 'obsidian'].join('')
 
 describe('McpManager mobile built-in tool behavior', () => {
   const originalIsDesktop = Platform.isDesktop
@@ -29,12 +33,16 @@ describe('McpManager mobile built-in tool behavior', () => {
     })
 
     return new McpManager({
+      pluginId: 'test-plugin',
       app: {
         vault: {
+          configDir: OBSIDIAN_CONFIG_DIR,
           getAbstractFileByPath: jest.fn().mockReturnValue(file),
           getFileByPath: jest.fn().mockReturnValue(file),
           read: jest.fn().mockResolvedValue('hello world'),
           readBinary: jest.fn().mockResolvedValue(new ArrayBuffer(0)),
+          modify: jest.fn(),
+          create: jest.fn(),
         },
       } as unknown as App,
       settings: {
@@ -64,7 +72,7 @@ describe('McpManager mobile built-in tool behavior', () => {
       manager.listAvailableTools({ includeBuiltinTools: true }),
     ).resolves.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ name: 'yolo_local__fs_read' }),
+        expect.objectContaining({ name: 'yolo_local__fs_write' }),
       ]),
     )
     await expect(
@@ -91,30 +99,11 @@ describe('McpManager mobile built-in tool behavior', () => {
     )
   })
 
-  it('keeps file editing tools separate from the file path operation group switch', async () => {
-    const manager = createManager(jest.fn(), {
-      fs_file_ops: { disabled: true },
-      fs_edit: { disabled: false },
-      fs_write: { disabled: false },
-      fs_delete: { disabled: false },
-    })
-
-    const toolNames = (
-      await manager.listAvailableTools({ includeBuiltinTools: true })
-    ).map((tool) => tool.name)
-
-    expect(toolNames).toContain('yolo_local__fs_edit')
-    expect(toolNames).toContain('yolo_local__fs_write')
-    expect(toolNames).not.toContain('yolo_local__fs_delete')
-    expect(toolNames).toContain('yolo_local__fs_read')
-  })
-
-  it('keeps file path operation tools separate from the file editing group switch', async () => {
+  it('keeps file editing tools obeying only their own group switch', async () => {
     const manager = createManager(jest.fn(), {
       fs_edit_ops: { disabled: true },
       fs_edit: { disabled: false },
       fs_write: { disabled: false },
-      fs_delete: { disabled: false },
     })
 
     const toolNames = (
@@ -123,8 +112,6 @@ describe('McpManager mobile built-in tool behavior', () => {
 
     expect(toolNames).not.toContain('yolo_local__fs_edit')
     expect(toolNames).not.toContain('yolo_local__fs_write')
-    expect(toolNames).toContain('yolo_local__fs_delete')
-    expect(toolNames).toContain('yolo_local__fs_read')
   })
 
   it('executes built-in tools on mobile', async () => {
@@ -132,12 +119,10 @@ describe('McpManager mobile built-in tool behavior', () => {
 
     await expect(
       manager.callTool({
-        name: 'yolo_local__fs_read',
+        name: 'yolo_local__fs_write',
         args: {
-          paths: ['note.md'],
-          operation: {
-            type: 'full',
-          },
+          path: 'note.md',
+          content: 'updated content',
         },
       }),
     ).resolves.toMatchObject({
@@ -168,6 +153,42 @@ describe('McpManager mobile built-in tool behavior', () => {
     })
   })
 
+  it('preserves the rejection reason returned by a reviewed built-in tool', async () => {
+    const manager = createManager(async (state) => {
+      const review = state as ApplyViewState
+      review.callbacks?.onComplete?.({
+        finalContent: 'hello world',
+        review: {
+          totalChanges: 1,
+          rejectedChanges: [
+            {
+              index: 1,
+              originalText: 'hello world',
+              proposedText: 'updated',
+            },
+          ],
+        },
+      })
+      return true
+    })
+
+    await expect(
+      manager.callTool({
+        name: 'yolo_local__fs_edit',
+        args: {
+          path: 'note.md',
+          oldText: 'hello world',
+          newText: 'updated',
+        },
+        requireReview: true,
+      }),
+    ).resolves.toEqual({
+      status: ToolCallResponseStatus.Rejected,
+      reason:
+        'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.',
+    })
+  })
+
   it('still rejects remote MCP tools on mobile', async () => {
     const manager = createManager()
 
@@ -180,5 +201,48 @@ describe('McpManager mobile built-in tool behavior', () => {
       status: ToolCallResponseStatus.Error,
       error: new McpNotAvailableException().message,
     })
+  })
+})
+
+describe('McpManager connected tool catalog', () => {
+  it('materializes the connect-time snapshot without another tools/list call', async () => {
+    const originalIsDesktop = Platform.isDesktop
+    Platform.isDesktop = true
+    const manager = new McpManager({
+      pluginId: 'test-plugin',
+      app: {
+        vault: { adapter: {}, configDir: OBSIDIAN_CONFIG_DIR },
+      } as unknown as App,
+      settings: {
+        mcp: { servers: [], builtinToolOptions: {} },
+      } as never,
+      openApplyReview: jest.fn(),
+      registerSettingsListener: () => () => {},
+    })
+    Platform.isDesktop = originalIsDesktop
+    const listTools = jest.fn()
+    ;(manager as unknown as { servers: unknown[] }).servers = [
+      {
+        name: 'remote',
+        status: McpServerStatus.Connected,
+        client: { listTools },
+        tools: [
+          {
+            name: 'search',
+            description: 'Search',
+            inputSchema: { type: 'object', properties: {} },
+          },
+        ],
+        config: { toolOptions: {} },
+      },
+    ]
+
+    await expect(manager.listAvailableTools()).resolves.toEqual([
+      expect.objectContaining({ name: 'remote__search' }),
+    ])
+    await expect(
+      manager.listAvailableTools({ chatModelModalities: ['vision'] }),
+    ).resolves.toEqual([expect.objectContaining({ name: 'remote__search' })])
+    expect(listTools).not.toHaveBeenCalled()
   })
 })

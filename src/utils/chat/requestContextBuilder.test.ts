@@ -26,6 +26,7 @@ jest.mock('../../core/skills/liteSkills', () => ({
 import { SystemPromptSnapshotStore } from '../../core/agent/systemPromptSnapshotStore'
 import { getMemoryPromptContext } from '../../core/memory/memoryManager'
 import { getLiteSkillDocument } from '../../core/skills/liteSkills'
+import { readPromptSnapshotEntries } from '../../database/json/chat/promptSnapshotStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ChatModel } from '../../types/chat-model.types'
@@ -42,6 +43,7 @@ import {
 const mockGetLiteSkillDocument = getLiteSkillDocument as jest.MockedFunction<
   typeof getLiteSkillDocument
 >
+const mockReadPromptSnapshotEntries = jest.mocked(readPromptSnapshotEntries)
 
 function createMockFile(path: string): InstanceType<typeof TFile> {
   const extension = path.split('.').pop() ?? ''
@@ -240,6 +242,117 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     )
   })
 
+  it('marks selected vault text with its source range', async () => {
+    const file = createMockFile('notes/selected.md')
+    const app = createMockApp({
+      files: [file],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compileUserMessagePrompt({
+      message: {
+        ...createUserMessage([
+          {
+            type: 'block',
+            file,
+            content: 'Alpha\nBeta',
+            startLine: 12,
+            endLine: 13,
+          },
+        ]),
+        content: createTextEditorState('Explain this selection'),
+      },
+    })
+
+    expect(getTextContent(result.promptContent)).toContain(
+      [
+        '<user_selected_content path="notes/selected.md" startLine="12" endLine="13">',
+        '```notes/selected.md',
+        '12|Alpha',
+        '13|Beta',
+        '```',
+        '</user_selected_content>',
+      ].join('\n'),
+    )
+  })
+
+  it('keeps assistant reply quotes paired with their comments', async () => {
+    const app = createMockApp({
+      files: [],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compilePlainUserMessagePrompt({
+      prompt: '',
+      mentionables: [
+        {
+          type: 'assistant-quote',
+          id: 'annotation-1',
+          annotationNumber: 4,
+          conversationId: 'conversation-1',
+          messageId: 'assistant-1',
+          content: 'Quoted answer',
+          comment: 'Make this more concrete.',
+        },
+      ],
+    })
+
+    expect(getTextContent(result.promptContent)).toContain(
+      [
+        '<assistant_quote index="4" conversationId="conversation-1" messageId="assistant-1">',
+        '<quote>',
+        'Quoted answer',
+        '</quote>',
+        '<comment>',
+        'Make this more concrete.',
+        '</comment>',
+        '</assistant_quote>',
+      ].join('\n'),
+    )
+  })
+
+  it('marks PDF and table selections with source-specific metadata', async () => {
+    const pdf = createMockFile('docs/paper.pdf')
+    const table = createMockFile('notes/table.md')
+    const app = createMockApp({
+      files: [pdf, table],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compilePlainUserMessagePrompt({
+      prompt: 'Compare these selections',
+      mentionables: [
+        {
+          type: 'block',
+          file: pdf,
+          content: 'Selected PDF text',
+          startLine: 0,
+          endLine: 0,
+          pageNumber: 3,
+        },
+        {
+          type: 'block',
+          file: table,
+          content: '| A | B |\n| - | - |',
+          startLine: 20,
+          endLine: 21,
+          contentFormat: 'markdown-table',
+        },
+      ],
+    })
+
+    const textContent = getTextContent(result.promptContent)
+    expect(textContent).toContain(
+      '<user_selected_content path="docs/paper.pdf" page="3">',
+    )
+    expect(textContent).toContain(
+      '<user_selected_content path="notes/table.md" startLine="20" endLine="21" format="markdown-table">',
+    )
+  })
+
   it('reuses file mention compilation for plain prompts', async () => {
     const explicitFile = createMockFile('notes/explicit.md')
     const app = createMockApp({
@@ -266,6 +379,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         description: 'Create skills',
         mode: 'lazy',
         path: 'builtin://skills/skill-creator',
+        isReadOnly: true,
       },
       content: '# skill body',
     })
@@ -609,6 +723,74 @@ describe('RequestContextBuilder generateRequestMessages', () => {
   } as unknown as YoloSettings
 
   const emptyArgs = createCompleteToolCallArguments({ value: {} })
+
+  it('replays historical attachment/skill prompts from snapshots without recompiling them', async () => {
+    const app = {
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+      },
+    } as unknown as ReturnType<typeof createMockApp>
+    const builder = new RequestContextBuilder(app as never, settings)
+    const compileSpy = jest.spyOn(builder, 'compileUserMessagePrompt')
+    mockReadPromptSnapshotEntries.mockResolvedValueOnce({
+      'historical-hash': 'frozen historical skill prompt',
+    })
+
+    const requestMessages = await builder.generateRequestMessages({
+      messages: [
+        {
+          role: 'user',
+          id: 'historical',
+          content: null,
+          promptContent: null,
+          snapshotRef: { hash: 'historical-hash' },
+          mentionables: [],
+          selectedSkills: [
+            { name: 'old-skill', description: 'old', path: 'old/SKILL.md' },
+          ],
+        },
+        {
+          role: 'assistant',
+          id: 'assistant',
+          content: 'done',
+        },
+        {
+          role: 'user',
+          id: 'latest',
+          content: null,
+          promptContent: null,
+          mentionables: [],
+        },
+      ],
+      model: {
+        provider: 'openai',
+        model: 'gpt-test',
+        name: 'gpt-test',
+      } as never,
+      conversationId: 'conversation-snapshot',
+      systemPromptSnapshotMode: 'create',
+    })
+
+    expect(compileSpy).toHaveBeenCalledTimes(1)
+    expect(compileSpy).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.objectContaining({ id: 'latest' }),
+      }),
+    )
+    expect(requestMessages).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          role: 'user',
+          content: 'frozen historical skill prompt',
+        }),
+      ]),
+    )
+  })
 
   it('includes a rejection reason in the model tool result', async () => {
     const app = {
@@ -2028,6 +2210,12 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
     const systemContent = getSystemContent(messages)
     expect(systemContent).toContain('You have access to tools')
+    expect(systemContent).toContain(
+      'Before calling file-reading tools, use relevant content already present in the conversation, especially <user_selected_content> and prior tool results.',
+    )
+    expect(systemContent).toContain(
+      'Do not re-read the same or an overlapping range; if more context is necessary, read only the smallest missing range.',
+    )
     expect(systemContent).not.toContain(
       'If available skills are listed, use yolo_local__fs_read',
     )

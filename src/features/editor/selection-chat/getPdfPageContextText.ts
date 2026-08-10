@@ -17,8 +17,7 @@
 
 import type { App, TFile } from 'obsidian'
 
-import { loadPdfjs } from '../../../utils/pdf/pdfjsLoader'
-import { pageItemsToText } from '../../../utils/pdf/pdfPages'
+import { acquireRuntimeComponent } from '../../../core/runtime-components/runtimeComponentAccess'
 
 export type PdfPageContextOptions = {
   /** Max characters kept before the selection start (within page bounds). */
@@ -58,17 +57,15 @@ export async function getPdfPageContextText(
   let pageText: string
   try {
     const buf = await app.vault.adapter.readBinary(file.path)
-    const pdfjs = await loadPdfjs()
-    const loadingTask = pdfjs.getDocument({
-      data: new Uint8Array(buf),
-      useWorkerFetch: false,
-      isEvalSupported: false,
-    })
-    const pdf = await loadingTask.promise
-    if (pageNumber < 1 || pageNumber > pdf.numPages) return null
-    const page = await pdf.getPage(pageNumber)
-    const textContent = await page.getTextContent()
-    pageText = pageItemsToText(textContent.items as unknown[])
+    const lease = await acquireRuntimeComponent('pdf-engine')
+    try {
+      pageText = await lease.api.extractPageText(
+        new Uint8Array(buf),
+        pageNumber,
+      )
+    } finally {
+      lease.release()
+    }
   } catch {
     return null
   }

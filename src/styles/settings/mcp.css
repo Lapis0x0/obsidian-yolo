@@ -231,6 +231,169 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 }
 
 /* MCP Server Modal Styles */
+.yolo-mcp-server-form-modal .modal-header {
+  display: none;
+}
+
+.yolo-mcp-server-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-4);
+  margin: var(--size-4-6, 24px) 0 18px;
+}
+
+.yolo-mcp-server-modal-title {
+  margin: 0;
+  color: var(--text-normal);
+  font-size: var(--h3-size, 1.3em);
+  font-weight: var(--font-bold, 700);
+  line-height: 1.2;
+}
+
+.yolo-mcp-server-modal-form .setting-item:not(.yolo-settings-kv-entry) {
+  align-items: center;
+  padding-top: var(--size-4-2) !important;
+  padding-bottom: var(--size-4-2) !important;
+}
+
+.yolo-mcp-server-modal-form
+  .setting-item:not(.yolo-settings-kv-entry)
+  .setting-item-description {
+  margin-top: 6px;
+}
+
+.yolo-mcp-field-block {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--size-4-2) 0;
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-mcp-field-label {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+}
+
+.yolo-mcp-field-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+.yolo-mcp-form-textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-monospace);
+}
+
+.yolo-mcp-kv-entry .setting-item-control > :nth-child(1) {
+  flex: 0 0 180px;
+}
+
+.yolo-mcp-kv-entry .setting-item-control > :nth-child(2) {
+  flex: 1 1 320px;
+}
+
+.yolo-mcp-kv-entry .setting-item-control > :nth-child(3) {
+  flex: 0 0 auto;
+}
+
+.yolo-mcp-oauth-card {
+  display: flex;
+  gap: var(--size-4-3);
+  margin: var(--size-4-2) 0 var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.yolo-mcp-oauth-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  flex: 0 0 34px;
+  border-radius: var(--radius-s);
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 12%, transparent);
+}
+
+.yolo-mcp-oauth-content {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--size-2-2);
+}
+
+.yolo-mcp-oauth-title-row,
+.yolo-mcp-oauth-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+}
+
+.yolo-mcp-oauth-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-mcp-oauth-desc {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.45;
+}
+
+.yolo-mcp-oauth-actions {
+  margin-top: var(--size-2-1);
+}
+
+.yolo-mcp-oauth-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-mcp-oauth-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-faint);
+}
+
+.yolo-mcp-oauth-status.is-connected {
+  color: var(--text-success);
+}
+
+.yolo-mcp-oauth-status.is-error,
+.yolo-mcp-oauth-error {
+  color: var(--text-error);
+}
+
+.yolo-mcp-oauth-spinner {
+  animation: yolo-mcp-oauth-spin 0.8s linear infinite;
+}
+
+.yolo-mcp-oauth-error {
+  font-size: var(--font-ui-smaller);
+  line-height: 1.4;
+}
+
+@keyframes yolo-mcp-oauth-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .yolo-mcp-parameters-header {
   display: block;
 }
@@ -349,5 +512,22 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
   &.yolo-mcp-server-modal-validation--success {
     color: var(--text-success);
+  }
+}
+
+@media (max-width: 600px) {
+  .yolo-mcp-server-modal-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .yolo-mcp-server-modal-header .yolo-mode-seg {
+    align-self: flex-start;
+  }
+
+  .yolo-mcp-oauth-title-row,
+  .yolo-mcp-oauth-actions {
+    align-items: flex-start;
+    flex-direction: column;
   }
 }

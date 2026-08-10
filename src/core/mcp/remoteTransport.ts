@@ -242,11 +242,22 @@ function createRequestUrlJsonFetch(): typeof fetch {
     }
 
     const url = requestInputToUrl(input)
+    const method = getRequestMethod(input, init)
     const headers = getRequestHeaders(input, init)
+    const accept = getHeaderValue(headers, 'accept')?.toLowerCase()
+    if (method === 'GET' && accept?.includes('text/event-stream')) {
+      // requestUrl buffers responses and therefore cannot hold the optional
+      // long-lived GET stream open. Report it as unsupported so the MCP SDK
+      // continues with request/response POSTs, as permitted by the protocol.
+      return new Response(null, {
+        status: 405,
+        statusText: 'Streaming GET unavailable in requestUrl backend',
+      })
+    }
     const response = await requestUrlWithAbort(
       {
         url,
-        method: getRequestMethod(input, init),
+        method,
         headers,
         contentType: getHeaderValue(headers, 'content-type'),
         body: await requestBodyToBufferedBody(init?.body),
@@ -255,14 +266,6 @@ function createRequestUrlJsonFetch(): typeof fetch {
       init?.signal,
     )
     const responseHeaders = response.headers ?? {}
-    const contentType = getHeaderValue(responseHeaders, 'content-type')
-
-    if (contentType?.toLowerCase().includes('text/event-stream')) {
-      throw new Error(
-        'MCP HTTP JSON backend does not support text/event-stream responses.',
-      )
-    }
-
     return new Response(response.arrayBuffer, {
       status: response.status,
       headers: responseHeaders,

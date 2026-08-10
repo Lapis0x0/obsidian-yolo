@@ -1,417 +1,190 @@
-import { PGlite } from '@electric-sql/pglite'
-import { PGliteWorker } from '@electric-sql/pglite/worker'
-import { PgliteDatabase, drizzle } from 'drizzle-orm/pglite'
-import { App, normalizePath } from 'obsidian'
-import pgliteWorkerScript from 'virtual:pglite-worker-script'
+import { type App, normalizePath } from 'obsidian'
 
 import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
+import {
+  type PgliteEngineSession,
+  type RuntimeComponentLease,
+} from '../core/runtime-components/contracts'
+import { acquireRuntimeComponent } from '../core/runtime-components/runtimeComponentAccess'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
 import { DatabaseSaveFailedError, PGLiteAbortedException } from './exception'
-import migrations from './migrations.json'
 import { VectorManager } from './modules/vector/VectorManager'
 import { loadPgliteRuntimeFromDisk } from './runtime/loadPgliteRuntimeFromDisk'
 
-type DrizzleMigratableDatabase = PgliteDatabase & {
-  dialect: {
-    migrate: (
-      migrationData: unknown,
-      session: unknown,
-      options: { migrationsTable: string },
-    ) => Promise<void>
-  }
-  session: unknown
-}
-
-/** PGlite 0.4+ main thread or worker client */
-type PgliteClientInstance = PGlite | PGliteWorker
-
-const hasDrizzleMigrationSupport = (
-  database: PgliteDatabase,
-): database is DrizzleMigratableDatabase => {
-  const candidate = database as Partial<DrizzleMigratableDatabase>
-  return (
-    typeof candidate.dialect?.migrate === 'function' &&
-    candidate.session !== undefined
-  )
-}
-
 export class DatabaseManager {
-  private app: App
-  private dbPath: string
-  private runtimeDir: string
-  private pgClient: PgliteClientInstance | null = null
-  private db: PgliteDatabase | null = null
-  // WeakMap to prevent circular references
-  private static managers = new WeakMap<
-    DatabaseManager,
-    { vectorManager?: VectorManager }
-  >()
+  private session: PgliteEngineSession | null = null
+  private lease: RuntimeComponentLease<'pglite-engine'> | null = null
+  private vectorManager: VectorManager | null = null
+  private cleanupPromise: Promise<void> | null = null
 
-  constructor(app: App, dbPath: string, runtimeDir: string) {
-    this.app = app
-    this.dbPath = dbPath
-    this.runtimeDir = normalizePath(runtimeDir)
-  }
+  private constructor(
+    private readonly app: App,
+    private readonly dbPath: string,
+    private readonly runtimeDir: string,
+  ) {}
 
   static async create(
     app: App,
     runtimeDir: string,
-    settings?: {
-      yolo?: {
-        baseDir?: string
-      }
-    } | null,
+    settings?: { yolo?: { baseDir?: string } } | null,
     pluginDir?: string,
   ): Promise<DatabaseManager> {
-    const dbPath = await ensureVectorDbPath(app, settings ?? null)
-    const dbManager = new DatabaseManager(app, dbPath, runtimeDir)
-    let createdNewDatabase = false
     void pluginDir
-    dbManager.db = await dbManager.loadExistingDatabase()
-    const migrationStateBefore =
-      dbManager.db && !createdNewDatabase
-        ? await dbManager.getMigrationState()
-        : null
-    if (!dbManager.db) {
-      dbManager.db = await dbManager.createNewDatabase()
-      createdNewDatabase = true
-    }
-    await dbManager.migrateDatabase()
-    const migrationStateAfter =
-      dbManager.db && !createdNewDatabase
-        ? await dbManager.getMigrationState()
-        : null
-    const shouldSaveAfterInit =
-      createdNewDatabase || migrationStateBefore !== migrationStateAfter
+    const dbPath = await ensureVectorDbPath(app, settings ?? null)
+    const manager = new DatabaseManager(app, dbPath, normalizePath(runtimeDir))
+    await manager.initialize()
+    return manager
+  }
 
-    if (shouldSaveAfterInit) {
-      // Init-time checkpoint: a save failure here must not block plugin
-      // startup, otherwise an OOM on the very first dump would lock the user
-      // out of changing settings to recover. Log and continue; the next
-      // indexing run will surface the same failure through proper channels.
-      try {
-        await dbManager.save()
-      } catch (error) {
-        console.warn(
-          '[YOLO] Initial database save failed; continuing without snapshot.',
-          error,
-        )
-      }
-    }
-
-    // WeakMap setup
-    const managers = { vectorManager: new VectorManager(app, dbManager.db) }
-
-    // save, vacuum callback setup
-    const saveCallback = dbManager.save.bind(dbManager) as () => Promise<void>
-    const vacuumCallback = dbManager.vacuum.bind(
-      dbManager,
-    ) as () => Promise<void>
-
-    managers.vectorManager.setSaveCallback(saveCallback)
-    managers.vectorManager.setVacuumCallback(vacuumCallback)
-
-    DatabaseManager.managers.set(dbManager, managers)
-
-    // One-time cleanup: drop legacy staging-namespace rows left over from the
-    // pre-reconcile architecture. These are unreachable by the new code path
-    // but still occupy space and surface as confusing "unknown model" entries
-    // in the embedding management modal. Idempotent — no-op once cleared.
+  private async initialize(): Promise<void> {
+    const resources = await this.loadPGliteResources()
+    const lease = await acquireRuntimeComponent('pglite-engine')
+    this.lease = lease
+    let createdNewDatabase = false
     try {
-      const result = await dbManager.db.execute(
-        `DELETE FROM embeddings WHERE model LIKE '%::staging:%'`,
-      )
-      const deleted = (result as unknown as { affectedRows?: number })
-        .affectedRows
-      if (deleted && deleted > 0) {
-        console.debug(
-          `[YOLO] Dropped ${deleted} legacy staging row(s) from embeddings.`,
-        )
-        await dbManager.vacuum()
+      const snapshot = await this.readSnapshot()
+      if (snapshot) {
         try {
-          await dbManager.save()
+          this.session = await lease.api.createSession({ resources, snapshot })
         } catch (error) {
-          console.warn(
-            '[YOLO] Save after legacy staging cleanup failed; data is cleaned in memory but snapshot is stale.',
+          if (isPgliteAbort(error)) throw new PGLiteAbortedException()
+          console.error(
+            '[YOLO] Existing vector snapshot could not be opened; creating a new database.',
             error,
           )
         }
       }
+      if (!this.session) {
+        createdNewDatabase = true
+        try {
+          this.session = await lease.api.createSession({ resources })
+        } catch (error) {
+          if (isPgliteAbort(error)) throw new PGLiteAbortedException()
+          throw error
+        }
+      }
+      this.vectorManager = new VectorManager(this.app, this.session.vectorStore)
+      this.vectorManager.setSaveCallback(() => this.save())
+      this.vectorManager.setVacuumCallback(() => this.vacuum())
+
+      if (createdNewDatabase || this.session.migrationChanged) {
+        try {
+          await this.save()
+        } catch (error) {
+          console.warn(
+            '[YOLO] Initial database save failed; continuing without snapshot.',
+            error,
+          )
+        }
+      }
+
+      try {
+        const deleted = await this.session.cleanupLegacyStaging()
+        if (deleted > 0) {
+          console.debug(
+            `[YOLO] Dropped ${deleted} legacy staging row(s) from embeddings.`,
+          )
+          await this.vacuum()
+          try {
+            await this.save()
+          } catch (error) {
+            console.warn(
+              '[YOLO] Save after legacy staging cleanup failed; snapshot is stale.',
+              error,
+            )
+          }
+        }
+      } catch (error) {
+        console.warn('[YOLO] Failed to clean up legacy staging rows', error)
+      }
+      console.debug('YOLO database initialized.')
     } catch (error) {
-      console.warn('[YOLO] Failed to clean up legacy staging rows', error)
+      await this.session?.close().catch(() => undefined)
+      this.session = null
+      this.lease?.release()
+      this.lease = null
+      throw error
     }
-
-    console.debug('YOLO database initialized.', dbManager)
-
-    return dbManager
-  }
-
-  getDb() {
-    return this.db
   }
 
   getVectorManager(): VectorManager {
-    const managers = DatabaseManager.managers.get(this) ?? {}
-    if (!managers.vectorManager) {
-      if (this.db) {
-        managers.vectorManager = new VectorManager(this.app, this.db)
-        DatabaseManager.managers.set(this, managers)
-      } else {
-        throw new Error('Database is not initialized')
-      }
-    }
-    return managers.vectorManager
+    if (!this.vectorManager) throw new Error('Database is not initialized')
+    return this.vectorManager
   }
 
-  // removed template manager
-
-  // vacuum the database to release unused space
-  async vacuum() {
-    if (!this.pgClient) {
-      return
-    }
-    await this.pgClient.exec('VACUUM FULL;')
+  async vacuum(): Promise<void> {
+    await this.session?.vacuum()
   }
 
-  private async tryCreateWithWorker(
-    options: Record<string, unknown>,
-  ): Promise<PgliteClientInstance | null> {
-    if (
-      typeof Worker === 'undefined' ||
-      typeof Blob === 'undefined' ||
-      typeof URL === 'undefined'
-    ) {
-      return null
-    }
-    const workerBlob = new Blob([pgliteWorkerScript], {
-      type: 'application/javascript',
-    })
-    const workerUrl = URL.createObjectURL(workerBlob)
-    let worker: Worker | null = null
-    try {
-      worker = new Worker(workerUrl)
-      const result = await PGliteWorker.create(worker, options)
-      const SMOKE_TIMEOUT_MS = 30000
-      const smokeResult = await Promise.race([
-        result.exec('SELECT 1 as ok;').then(() => 'ok' as const),
-        new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), SMOKE_TIMEOUT_MS),
-        ),
-      ])
-      if (smokeResult === 'timeout') {
-        worker?.terminate()
-        throw new Error('PGlite worker smoke test timed out')
-      }
-      return result
-    } catch (error) {
-      worker?.terminate()
-      console.warn(
-        '[YOLO] PGlite Worker unavailable, falling back to main thread',
-        error,
-      )
-      return null
-    } finally {
-      URL.revokeObjectURL(workerUrl)
-    }
-  }
-
-  private async createNewDatabase() {
-    try {
-      const resources = await this.loadPGliteResources()
-      const baseOpts = {
-        fsBundle: resources.fsBundle,
-        pgliteWasmModule: resources.pgliteWasmModule,
-        initdbWasmModule: resources.initdbWasmModule,
-        _vectorExtensionBlob: resources.vectorExtensionBlob,
-      }
-      const workerClient = await this.tryCreateWithWorker(baseOpts)
-      if (workerClient) {
-        this.pgClient = workerClient
-      } else {
-        this.pgClient = await PGlite.create({
-          fsBundle: resources.fsBundle,
-          pgliteWasmModule: resources.pgliteWasmModule,
-          initdbWasmModule: resources.initdbWasmModule,
-          extensions: {
-            vector: resources.vectorExtensionBundlePath,
-          },
-        })
-      }
-      const db = drizzle(this.pgClient as PGlite)
-      return db
-    } catch (error) {
-      console.error('createNewDatabase error', error)
-      if (
-        error instanceof Error &&
-        error.message.includes(
-          'Aborted(). Build with -sASSERTIONS for more info.',
-        )
-      ) {
-        // This error occurs when using an outdated Obsidian installer version
-        throw new PGLiteAbortedException()
-      }
-      throw error
-    }
-  }
-
-  private async loadExistingDatabase(): Promise<PgliteDatabase | null> {
-    try {
-      const databaseFileExists = await this.app.vault.adapter.exists(
-        this.dbPath,
-      )
-      if (!databaseFileExists) {
-        return null
-      }
-      const fileBuffer = await this.app.vault.adapter.readBinary(this.dbPath)
-      const fileBlob = new Blob([fileBuffer], { type: 'application/x-gzip' })
-      const resources = await this.loadPGliteResources()
-      const baseOpts = {
-        loadDataDir: fileBlob,
-        fsBundle: resources.fsBundle,
-        pgliteWasmModule: resources.pgliteWasmModule,
-        initdbWasmModule: resources.initdbWasmModule,
-        _vectorExtensionBlob: resources.vectorExtensionBlob,
-      }
-      const workerClient = await this.tryCreateWithWorker(baseOpts)
-      if (workerClient) {
-        this.pgClient = workerClient
-      } else {
-        this.pgClient = await PGlite.create({
-          loadDataDir: fileBlob,
-          fsBundle: resources.fsBundle,
-          pgliteWasmModule: resources.pgliteWasmModule,
-          initdbWasmModule: resources.initdbWasmModule,
-          extensions: {
-            vector: resources.vectorExtensionBundlePath,
-          },
-        })
-      }
-      return drizzle(this.pgClient as PGlite)
-    } catch (error) {
-      console.error('loadExistingDatabase error', error)
-      if (
-        error instanceof Error &&
-        error.message.includes(
-          'Aborted(). Build with -sASSERTIONS for more info.',
-        )
-      ) {
-        // This error occurs when using an outdated Obsidian installer version
-        throw new PGLiteAbortedException()
-      }
-      return null
-    }
-  }
-
-  private async migrateDatabase(): Promise<void> {
-    try {
-      if (!this.db) {
-        throw new Error('Database is not initialized')
-      }
-      if (!hasDrizzleMigrationSupport(this.db)) {
-        throw new Error('Drizzle migration API is unavailable')
-      }
-      // Workaround for running Drizzle migrations in a browser environment
-      // This method uses an undocumented API to perform migrations
-      // See: https://github.com/drizzle-team/drizzle-orm/discussions/2532#discussioncomment-10780523
-      await this.db.dialect.migrate(migrations, this.db.session, {
-        migrationsTable: 'drizzle_migrations',
-      })
-    } catch (error) {
-      console.error('Error migrating database:', error)
-      throw error
-    }
-  }
-
-  private async getMigrationState(): Promise<string> {
-    if (!this.pgClient) {
-      return 'pgClient-unavailable'
-    }
-
-    try {
-      const migrationTableExists = await this.pgClient.query(
-        `SELECT to_regclass('public.drizzle_migrations') AS table_name`,
-      )
-      const tableName = (
-        migrationTableExists.rows?.[0] as
-          | {
-              table_name?: string | null
-            }
-          | undefined
-      )?.table_name
-      if (!tableName) {
-        return 'missing'
-      }
-      const result = await this.pgClient.query(
-        `SELECT count(*)::text AS count, COALESCE(MAX(created_at)::text, '') AS latest_created_at FROM drizzle_migrations`,
-      )
-      const row = (result.rows?.[0] ?? {}) as {
-        count?: string
-        latest_created_at?: string
-      }
-      return `${row.count ?? '0'}:${row.latest_created_at ?? ''}`
-    } catch (error) {
-      console.warn('[YOLO] Failed to inspect drizzle_migrations', error)
-      return 'unknown'
-    }
-  }
-
-  /**
-   * Persist the in-memory PGlite database to the vault as a gzipped snapshot.
-   *
-   * Failures (most commonly `RangeError: Array buffer allocation failed` on
-   * large vector libraries — see issue #408) are wrapped in
-   * {@link DatabaseSaveFailedError} and re-thrown. Callers in the indexing
-   * loop rely on this so the run state can move to `failed` instead of
-   * silently reporting 100% complete on a database that wasn't flushed.
-   *
-   * Callsites that legitimately don't want a save failure to abort their flow
-   * (cleanup, init checkpoints, base-dir migration) must catch and decide
-   * locally — never swallow at this layer.
-   */
   async save(): Promise<void> {
-    if (!this.pgClient) {
-      return
-    }
+    if (!this.session) return
     try {
-      // 让步给主线程，避免在繁忙时刻开始保存
       await yieldToMain()
-
-      const blob: Blob = await this.pgClient.dumpDataDir('gzip')
-
-      // 让步给主线程，大型数据库的 dump 可能很耗时
+      const snapshot = await this.session.dump()
       await yieldToMain()
-
-      const arrayBuffer = await blob.arrayBuffer()
-
-      // 让步给主线程，准备写入文件
+      const bytes = await snapshot.arrayBuffer()
       await yieldToMain()
-
-      await this.app.vault.adapter.writeBinary(this.dbPath, arrayBuffer)
+      await this.app.vault.adapter.writeBinary(this.dbPath, bytes)
     } catch (error) {
       console.error('Error saving database:', error)
       throw new DatabaseSaveFailedError(error)
     }
   }
 
-  async cleanup() {
-    // Cleanup is best-effort: a save failure here must not stop us from
-    // closing the PGlite client and tearing down state. The error has already
-    // been logged inside `save()`; suppress the throw so cleanup paths
-    // (plugin unload, vault switch, base-dir migration) can complete.
+  cleanup(): Promise<void> {
+    if (!this.cleanupPromise) {
+      this.cleanupPromise = this.cleanupUnlocked(false)
+    }
+    return this.cleanupPromise
+  }
+
+  quiesceAndCleanup(): Promise<void> {
+    if (!this.cleanupPromise) {
+      this.cleanupPromise = this.cleanupUnlocked(true)
+    }
+    return this.cleanupPromise
+  }
+
+  private async cleanupUnlocked(requireSave: boolean): Promise<void> {
+    // DatabaseManager is the long-session owner. It stops new VectorManager
+    // work and waits for in-flight RAG/index operations before checkpointing,
+    // closing the session, and finally releasing the runtime lease.
+    await this.vectorManager?.quiesce()
+    let saveError: unknown
     try {
       await this.save()
     } catch (error) {
+      saveError = error
       console.warn(
         '[YOLO] Save during cleanup failed; closing without persisting.',
         error,
       )
     }
-    // WeakMap cleanup
-    DatabaseManager.managers.delete(this)
-    await this.pgClient?.close()
-    this.pgClient = null
-    this.db = null
+    this.vectorManager = null
+    try {
+      await this.session?.close()
+    } finally {
+      this.session = null
+      this.lease?.release()
+      this.lease = null
+    }
+    if (requireSave && saveError) {
+      throw saveError instanceof Error
+        ? saveError
+        : new Error('Unknown database save failure')
+    }
+  }
+
+  private async readSnapshot(): Promise<Blob | undefined> {
+    try {
+      if (!(await this.app.vault.adapter.exists(this.dbPath))) return undefined
+      const bytes = await this.app.vault.adapter.readBinary(this.dbPath)
+      return new Blob([bytes], { type: 'application/x-gzip' })
+    } catch (error) {
+      console.error('loadExistingDatabase error', error)
+      return undefined
+    }
   }
 
   private async loadPGliteResources(): Promise<
@@ -426,4 +199,11 @@ export class DatabaseManager {
       throw error
     }
   }
+}
+
+function isPgliteAbort(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.message.includes('Aborted(). Build with -sASSERTIONS for more info.')
+  )
 }

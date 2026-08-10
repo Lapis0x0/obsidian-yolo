@@ -1,6 +1,6 @@
 {
   "name": "@obsidian-yolo/learning",
-  "version": "0.1.2",
+  "version": "0.1.4",
   "private": true,
   "yoloModule": {
     "previewVersion": "0.1.2-dev.0",

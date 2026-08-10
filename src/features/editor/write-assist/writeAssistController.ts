@@ -2,21 +2,40 @@ import type { EditorView } from '@codemirror/view'
 import { App, Editor, Notice, TFile, TFolder } from 'obsidian'
 
 import { executeSingleTurn } from '../../../core/ai/single-turn'
-import { getChatModelClient } from '../../../core/llm/manager'
-import { promoteProviderTransportModeToObsidian } from '../../../core/llm/transportModePromotion'
+import type { getChatModelClient } from '../../../core/llm/manager'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
-import type { ApplyViewState } from '../../../types/apply-view.types'
 import type { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
 import type { LLMRequestBase, RequestMessage } from '../../../types/llm/request'
 import type {
   MentionableFile,
   MentionableFolder,
 } from '../../../types/mentionable'
-import {
-  getNestedFiles,
-  readMultipleTFiles,
-  readTFileContent,
-} from '../../../utils/obsidian'
+import { getNestedFiles, readMultipleTFiles } from '../../../utils/obsidian'
+
+// Structural task contract for continuation generation. Always injected,
+// regardless of the user's configured chat persona (settings.systemPrompt) —
+// this is not a style preference, it's what keeps a chat-tuned model from
+// responding conversationally to a bare block of document text. Not exposed
+// as a setting, mirroring how tab completion's own base system prompt isn't
+// user-editable either; the instruction box and continuation presets are the
+// user-facing customization surface.
+const CONTINUATION_TASK_CONTRACT =
+  "You are continuing the user's writing directly inside their document. " +
+  'Your output will be inserted verbatim at the point where the given context ends.\n\n' +
+  'Rules:\n' +
+  '- Continue seamlessly from the exact end of the context in <context_to_continue> — do not repeat, rephrase, or summarize any of it.\n' +
+  '- If an instruction is given below, treat it as a directive for what the continuation should contain or how it should be shaped, not as a question to answer conversationally.\n' +
+  '- Match the existing language, tone, register, and formatting (headings, lists, emphasis, etc.) of the context, unless the instruction says otherwise.\n' +
+  '- Content inside <reference_rules>, if present, is a binding style/content constraint you must follow.\n' +
+  '- Content inside <mentioned_files>, if present, is supplementary background material you may draw on — do not copy it verbatim into the output.\n' +
+  '- Output only the continuation text itself: no preamble, no explanations, no meta-commentary, no code fences or quotation wrapping, no restating the instruction or title.\n' +
+  '- End at a natural stopping point (end of a sentence, thought, or paragraph) rather than trailing off mid-sentence.'
+
+// The provider/model pair the caller has already resolved (e.g. Quick Ask's
+// "continue" mode reuses the same providerClient/model as its ask/agent
+// path). Continuation always runs with an explicit model — there is no
+// implicit "continuation model" fallback here.
+export type ContinuationModelOverride = ReturnType<typeof getChatModelClient>
 
 type WriteAssistDeps = {
   app: App
@@ -30,7 +49,6 @@ type WriteAssistDeps = {
     stream: boolean
   }
   getEditorView: (editor: Editor) => EditorView | null
-  closeSmartSpace: () => void
   registerTimeout: (callback: () => void, timeout: number) => void
   addAbortController: (controller: AbortController) => void
   removeAbortController: (controller: AbortController) => void
@@ -55,24 +73,6 @@ type WriteAssistDeps = {
     fromOffset: number
     startPos: ReturnType<Editor['getCursor']>
   }) => void
-  openApplyReview: (state: ApplyViewState) => Promise<boolean>
-}
-
-function getSelectionEndPosition(
-  from: { line: number; ch: number },
-  text: string,
-): { line: number; ch: number } {
-  const lines = text.split('\n')
-  if (lines.length <= 1) {
-    return {
-      line: from.line,
-      ch: from.ch + text.length,
-    }
-  }
-  return {
-    line: from.line + lines.length - 1,
-    ch: lines[lines.length - 1]?.length ?? 0,
-  }
 }
 
 export class WriteAssistController {
@@ -82,150 +82,11 @@ export class WriteAssistController {
     this.deps = deps
   }
 
-  async handleCustomRewrite(
-    editor: Editor,
-    customPrompt?: string,
-    preSelectedText?: string,
-    preSelectionFrom?: { line: number; ch: number },
-  ) {
-    const selected = preSelectedText ?? editor.getSelection()
-    if (!selected || selected.trim().length === 0) {
-      new Notice('请先选择要改写的文本。')
-      return
-    }
-
-    const from = preSelectionFrom ?? editor.getCursor('from')
-    const to = getSelectionEndPosition(from, selected)
-
-    const notice = new Notice('正在生成改写...', 0)
-    const controller = new AbortController()
-    this.deps.addAbortController(controller)
-
-    try {
-      const sidebarOverrides = this.deps.getActiveConversationOverrides()
-      const {
-        temperature,
-        topP,
-        stream: streamPreference,
-      } = this.deps.resolveContinuationParams(sidebarOverrides)
-
-      const settings = this.deps.getSettings()
-      const rewriteModelId =
-        settings.continuationOptions?.continuationModelId ??
-        settings.chatModelId
-
-      const { providerClient, model } = getChatModelClient({
-        settings,
-        modelId: rewriteModelId,
-        onAutoPromoteTransportMode: (providerId, mode) => {
-          void promoteProviderTransportModeToObsidian({
-            getSettings: this.deps.getSettings,
-            setSettings: this.deps.setSettings,
-            providerId,
-            mode,
-          })
-        },
-      })
-
-      const systemPrompt =
-        'You are an intelligent assistant that rewrites ONLY the provided markdown text according to the instruction. Preserve the original meaning, structure, and any markdown (links, emphasis, code) unless explicitly told otherwise. Output ONLY the rewritten text without code fences or extra explanations.'
-
-      const instruction = (customPrompt ?? '').trim()
-      const requestMessages: RequestMessage[] = [
-        {
-          role: 'system' as const,
-          content: systemPrompt,
-        },
-        {
-          role: 'user' as const,
-          content: `Instruction:\n${instruction}\n\nSelected text:\n${selected}\n\nRewrite the selected text accordingly. Output only the rewritten text.`,
-        },
-      ]
-
-      const rewriteRequestBase: LLMRequestBase = {
-        model: model.model,
-        messages: requestMessages,
-      }
-      if (typeof temperature === 'number') {
-        rewriteRequestBase.temperature = temperature
-      }
-      if (typeof topP === 'number') {
-        rewriteRequestBase.top_p = topP
-      }
-
-      const stripFences = (s: string) => {
-        const lines = (s ?? '').split('\n')
-        if (lines.length > 0 && lines[0].startsWith('```')) lines.shift()
-        if (lines.length > 0 && lines[lines.length - 1].startsWith('```'))
-          lines.pop()
-        return lines.join('\n')
-      }
-
-      const rewriteResult = await executeSingleTurn({
-        providerClient,
-        model,
-        request: rewriteRequestBase,
-        signal: controller.signal,
-        deliveryMode: streamPreference ? 'incremental' : 'buffered',
-        primaryRequestTimeoutMs:
-          settings.continuationOptions.primaryRequestTimeoutMs,
-        streamFallbackRecoveryEnabled:
-          settings.continuationOptions.streamFallbackRecoveryEnabled,
-      })
-      const rewritten = stripFences(rewriteResult.content).trim()
-      if (!rewritten) {
-        notice.setMessage('未生成改写内容。')
-        this.deps.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      const activeFile = this.deps.app.workspace.getActiveFile()
-      if (!activeFile) {
-        notice.setMessage('未找到当前文件。')
-        this.deps.registerTimeout(() => notice.hide(), 1200)
-        return
-      }
-
-      const head = editor.getRange({ line: 0, ch: 0 }, from)
-      const originalContent = await readTFileContent(
-        activeFile,
-        this.deps.app.vault,
-      )
-      const tail = originalContent.slice(head.length + selected.length)
-      const newContent = head + rewritten + tail
-
-      await this.deps.openApplyReview({
-        file: activeFile,
-        originalContent,
-        newContent,
-        reviewMode: 'selection-focus',
-        selectionRange: {
-          from,
-          to,
-        },
-      } satisfies ApplyViewState)
-
-      notice.setMessage('改写结果已生成。')
-      this.deps.registerTimeout(() => notice.hide(), 1200)
-    } catch (error) {
-      if ((error as Error)?.name === 'AbortError') {
-        notice.setMessage('已取消生成。')
-        this.deps.registerTimeout(() => notice.hide(), 1000)
-      } else {
-        console.error(error)
-        notice.setMessage('改写失败。')
-        this.deps.registerTimeout(() => notice.hide(), 1200)
-      }
-    } finally {
-      this.deps.removeAbortController(controller)
-    }
-  }
-
   async handleContinueWriting(
     editor: Editor,
-    customPrompt?: string,
-    geminiTools?: { useWebSearch?: boolean; useUrlContext?: boolean },
-    mentionables?: (MentionableFile | MentionableFolder)[],
+    customPrompt: string | undefined,
+    mentionables: (MentionableFile | MentionableFolder)[] | undefined,
+    modelOverride: ContinuationModelOverride,
   ) {
     this.deps.cancelAllAiTasks()
     this.deps.clearInlineSuggestion()
@@ -296,17 +157,13 @@ export class WriteAssistController {
               referenceFiles,
               this.deps.app.vault,
             )
-            const referenceLabel = this.deps.t(
-              'sidebar.composer.referenceRulesTitle',
-              'Reference rules',
-            )
             const blocks = referenceFiles.map((file, index) => {
               const content = referenceContents[index] ?? ''
               return `File: ${file.path}\n${content}`
             })
             const combinedReference = blocks.join('\n\n')
             if (combinedReference.trim().length > 0) {
-              referenceRulesSection = `${referenceLabel}:\n\n${combinedReference}\n\n`
+              referenceRulesSection = `<reference_rules>\n${combinedReference}\n</reference_rules>\n\n`
             }
           }
         } catch (error) {
@@ -339,10 +196,6 @@ export class WriteAssistController {
               files,
               this.deps.app.vault,
             )
-            const mentionLabel = this.deps.t(
-              'smartSpace.mentionContextLabel',
-              'Mentioned files',
-            )
             const combined = files
               .map((file, index) => {
                 const content = contents[index] ?? ''
@@ -350,7 +203,7 @@ export class WriteAssistController {
               })
               .join('\n\n')
             if (combined.trim().length > 0) {
-              mentionableContextSection = `${mentionLabel}:\n\n${combined}\n\n`
+              mentionableContextSection = `<mentioned_files>\n${combined}\n</mentioned_files>\n\n`
             }
           }
         } catch (error) {
@@ -372,10 +225,6 @@ export class WriteAssistController {
             ? ''
             : baseContext
 
-      const continuationModelId =
-        settings.continuationOptions?.continuationModelId ??
-        settings.chatModelId
-
       const sidebarOverrides = this.deps.getActiveConversationOverrides()
       const {
         temperature,
@@ -383,17 +232,21 @@ export class WriteAssistController {
         stream: streamPreference,
       } = this.deps.resolveContinuationParams(sidebarOverrides)
 
-      const { providerClient, model } = getChatModelClient({
-        settings,
-        modelId: continuationModelId,
-      })
+      const { providerClient, model } = modelOverride
 
       const userInstruction = (customPrompt ?? '').trim()
       const instructionSection = userInstruction
-        ? `Instruction:\n${userInstruction}\n\n`
+        ? `Instruction for this continuation:\n${userInstruction}\n\n`
         : ''
 
-      const systemPrompt = (settings.systemPrompt ?? '').trim()
+      // The user's chat persona is secondary voice/tone guidance layered
+      // under the structural task contract above — never a replacement
+      // for it, since an unrelated persona (e.g. "ask clarifying
+      // questions first") must not override the continuation contract.
+      const personaPrompt = (settings.systemPrompt ?? '').trim()
+      const systemPrompt = personaPrompt
+        ? `${CONTINUATION_TASK_CONTRACT}\n\nAdditional voice/persona guidance from the user (secondary to the rules above):\n${personaPrompt}`
+        : CONTINUATION_TASK_CONTRACT
 
       const activeFileForTitle = this.deps.app.workspace.getActiveFile()
       const fileTitle = activeFileForTitle?.basename?.trim() ?? ''
@@ -407,22 +260,28 @@ export class WriteAssistController {
       const limitedContextHasContent = limitedContext.trim().length > 0
       const contextSection =
         hasContext && limitedContextHasContent
-          ? `Context (up to recent portion):\n\n${limitedContext}\n\n`
+          ? `<context_to_continue>\n${limitedContext}\n</context_to_continue>\n\n`
           : ''
       const combinedContextSection = `${referenceRulesSection}${mentionableContextSection}${contextSection}`
 
+      // Always end on an explicit trigger cue — a chat-tuned model left
+      // with nothing but a trailing block of document text (the common
+      // case: no instruction) tends to respond to it conversationally
+      // instead of continuing it.
+      const generationCue = limitedContextHasContent
+        ? 'Continue writing directly from the end of <context_to_continue>.'
+        : userInstruction
+          ? 'Write according to the instruction above.'
+          : 'Begin writing new content based on the file title above.'
+
       const requestMessages: RequestMessage[] = [
-        ...(systemPrompt.length > 0
-          ? [
-              {
-                role: 'system' as const,
-                content: systemPrompt,
-              },
-            ]
-          : []),
+        {
+          role: 'system' as const,
+          content: systemPrompt,
+        },
         {
           role: 'user' as const,
-          content: `${titleLine}${instructionSection}${combinedContextSection}`,
+          content: `${titleLine}${instructionSection}${combinedContextSection}${generationCue}`,
         },
       ]
 
@@ -448,16 +307,6 @@ export class WriteAssistController {
         'Thinking',
       )
       this.deps.showThinkingIndicator(view, cursorOffset, thinkingText)
-
-      let hasClosedSmartSpaceWidget = false
-      const closeSmartSpaceWidgetOnce = () => {
-        if (!hasClosedSmartSpaceWidget) {
-          this.deps.closeSmartSpace()
-          hasClosedSmartSpaceWidget = true
-        }
-      }
-
-      closeSmartSpaceWidgetOnce()
 
       const baseRequest: LLMRequestBase = {
         model: model.model,
@@ -544,7 +393,6 @@ export class WriteAssistController {
           settings.continuationOptions.primaryRequestTimeoutMs,
         streamFallbackRecoveryEnabled:
           settings.continuationOptions.streamFallbackRecoveryEnabled,
-        geminiTools,
         onStreamDelta: ({ contentDelta, reasoningDelta }) => {
           if (reasoningDelta) {
             reasoningPreviewBuffer += reasoningDelta
@@ -557,14 +405,12 @@ export class WriteAssistController {
           if (!contentDelta) return
 
           suggestionText += contentDelta
-          closeSmartSpaceWidgetOnce()
           updateContinuationSuggestion(suggestionText)
         },
       })
 
       if (!suggestionText && continuationResult.content) {
         suggestionText = continuationResult.content
-        closeSmartSpaceWidgetOnce()
         updateContinuationSuggestion(suggestionText)
       }
 

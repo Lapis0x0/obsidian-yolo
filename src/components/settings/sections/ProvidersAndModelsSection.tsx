@@ -35,6 +35,7 @@ import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
 import { resolveProviderDisplayBaseUrl } from '../../../utils/llm/provider-base-url'
 import { providerSupportsEmbedding } from '../../../utils/llm/provider-config'
+import { openExternalLink } from '../../../utils/openExternalLink'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
@@ -95,9 +96,15 @@ function ChatGPTOAuthPanel({
   const [connected, setConnected] = useState(false)
   const [accountId, setAccountId] = useState<string | null>(null)
   const [expiresAt, setExpiresAt] = useState<number | null>(null)
-  const [isConnecting, setIsConnecting] = useState(false)
-  const [pendingCode, setPendingCode] = useState<string | null>(null)
+  const [connectingMethod, setConnectingMethod] = useState<
+    'browser' | 'device' | null
+  >(null)
+  const [deviceAuthorization, setDeviceAuthorization] = useState<{
+    userCode: string
+    verificationUri: string
+  } | null>(null)
   const abortRef = useRef<AbortController | null>(null)
+  const connectionAttemptRef = useRef(0)
 
   const refreshStatus = useCallback(async () => {
     setLoading(true)
@@ -119,51 +126,175 @@ function ChatGPTOAuthPanel({
   useEffect(() => {
     void refreshStatus()
     return () => {
+      connectionAttemptRef.current += 1
       abortRef.current?.abort()
+      plugin
+        .getChatGPTOAuthService(provider.id)
+        .cancelPendingBrowserAuthorization()
     }
-  }, [refreshStatus])
+  }, [plugin, provider.id, refreshStatus])
 
-  const handleConnect = () => {
+  const handleBrowserConnect = () => {
+    const attemptId = ++connectionAttemptRef.current
     const execute = async () => {
-      setIsConnecting(true)
+      setConnectingMethod('browser')
       const service = plugin.getChatGPTOAuthService(provider.id)
       const authorization = await service.beginBrowserAuthorization()
-      setPendingCode(null)
-      window.open(
-        authorization.authorizationUrl,
-        '_blank',
-        'noopener,noreferrer',
+      setDeviceAuthorization(null)
+      openExternalLink(authorization.authorizationUrl)
+      new Notice(
+        t(
+          'settings.providers.chatgptOAuthBrowserOpened',
+          'ChatGPT login opened in your browser. Complete authorization there.',
+        ),
+        8000,
       )
-      new Notice('已打开 ChatGPT OAuth 登录页面，请在浏览器中完成授权。', 8000)
       await authorization.complete
-      new Notice('ChatGPT OAuth 连接成功')
+      new Notice(
+        t(
+          'settings.providers.chatgptOAuthConnectedNotice',
+          'ChatGPT OAuth connected.',
+        ),
+      )
       await refreshStatus()
     }
 
     void execute()
       .catch((error: unknown) => {
+        if (connectionAttemptRef.current !== attemptId) {
+          return
+        }
         console.error('[YOLO] Failed to connect ChatGPT OAuth:', error)
         const message =
           error instanceof Error
             ? error.message
             : 'Failed to connect ChatGPT OAuth.'
-        new Notice(message)
+        const portFallback = message.includes(
+          'Failed to start local OAuth callback server',
+        )
+          ? `\n${t(
+              'settings.providers.chatgptOAuthPortFallback',
+              'Use device code login instead; it does not require a local port.',
+            )}`
+          : ''
+        new Notice(`${message}${portFallback}`)
       })
       .finally(() => {
-        setIsConnecting(false)
+        if (connectionAttemptRef.current === attemptId) {
+          setConnectingMethod(null)
+        }
+      })
+  }
+
+  const handleDeviceConnect = () => {
+    const attemptId = ++connectionAttemptRef.current
+    let activeAbortController: AbortController | null = null
+    const execute = async () => {
+      setConnectingMethod('device')
+      const service = plugin.getChatGPTOAuthService(provider.id)
+      const authorization = await service.beginDeviceAuthorization()
+      setDeviceAuthorization({
+        userCode: authorization.userCode,
+        verificationUri: authorization.verificationUri,
+      })
+
+      abortRef.current?.abort()
+      const abortController = new AbortController()
+      activeAbortController = abortController
+      abortRef.current = abortController
+      openExternalLink(authorization.verificationUri)
+      new Notice(
+        t(
+          'settings.providers.chatgptOAuthDeviceOpened',
+          'Enter the displayed device code on the ChatGPT authorization page.',
+        ),
+        10000,
+      )
+
+      await service.pollDeviceAuthorization(
+        authorization,
+        abortController.signal,
+      )
+      setDeviceAuthorization(null)
+      new Notice(
+        t(
+          'settings.providers.chatgptOAuthConnectedNotice',
+          'ChatGPT OAuth connected.',
+        ),
+      )
+      await refreshStatus()
+    }
+
+    void execute()
+      .catch((error: unknown) => {
+        if (connectionAttemptRef.current !== attemptId) {
+          return
+        }
+        if (error instanceof Error && error.name === 'AbortError') {
+          return
+        }
+        console.error(
+          '[YOLO] Failed to connect ChatGPT OAuth with device code:',
+          error,
+        )
+        new Notice(
+          error instanceof Error
+            ? error.message
+            : 'Failed to connect ChatGPT OAuth with device code.',
+        )
+      })
+      .finally(() => {
+        if (abortRef.current === activeAbortController) {
+          abortRef.current = null
+        }
+        if (connectionAttemptRef.current === attemptId) {
+          setDeviceAuthorization(null)
+          setConnectingMethod(null)
+        }
+      })
+  }
+
+  const handleCancelDeviceConnect = () => {
+    connectionAttemptRef.current += 1
+    abortRef.current?.abort()
+    abortRef.current = null
+    setDeviceAuthorization(null)
+    setConnectingMethod(null)
+  }
+
+  const handleCopyDeviceCode = () => {
+    if (!deviceAuthorization) {
+      return
+    }
+
+    void navigator.clipboard
+      .writeText(deviceAuthorization.userCode)
+      .then(() => {
+        new Notice(
+          t('settings.providers.chatgptOAuthCodeCopied', 'Device code copied.'),
+        )
+      })
+      .catch((error: unknown) => {
+        console.error('[YOLO] Failed to copy ChatGPT device code:', error)
       })
   }
 
   const handleDisconnect = () => {
     const execute = async () => {
+      connectionAttemptRef.current += 1
       abortRef.current?.abort()
       abortRef.current = null
       plugin
         .getChatGPTOAuthService(provider.id)
         .cancelPendingBrowserAuthorization()
       await plugin.disconnectChatGPTOAuthAccount(provider.id)
-      setPendingCode(null)
-      new Notice('ChatGPT OAuth 已断开')
+      setDeviceAuthorization(null)
+      new Notice(
+        t(
+          'settings.providers.chatgptOAuthDisconnectedNotice',
+          'ChatGPT OAuth disconnected.',
+        ),
+      )
       await refreshStatus()
     }
 
@@ -180,54 +311,116 @@ function ChatGPTOAuthPanel({
           {t('settings.providers.chatgptOAuthTitle', 'ChatGPT OAuth')}
         </span>
         {!connected ? (
-          <button
-            type="button"
-            onClick={handleConnect}
-            className="yolo-add-model-btn"
-            disabled={isConnecting || !Platform.isDesktop}
-          >
-            {isConnecting
-              ? t('settings.providers.chatgptOAuthConnecting', 'Connecting...')
-              : t('settings.providers.chatgptOAuthConnect', 'Connect')}
-          </button>
+          <div className="yolo-chatgpt-oauth-login-actions">
+            <button
+              type="button"
+              onClick={handleBrowserConnect}
+              className="yolo-add-model-btn"
+              disabled={connectingMethod !== null || !Platform.isDesktop}
+              title={
+                Platform.isDesktop
+                  ? undefined
+                  : t(
+                      'settings.providers.chatgptOAuthBrowserDesktopOnly',
+                      'Browser login is only available on desktop.',
+                    )
+              }
+            >
+              {connectingMethod === 'browser'
+                ? t(
+                    'settings.providers.chatgptOAuthBrowserConnecting',
+                    'Opening browser...',
+                  )
+                : t(
+                    'settings.providers.chatgptOAuthBrowserLogin',
+                    'Browser login',
+                  )}
+            </button>
+            <button
+              type="button"
+              onClick={handleDeviceConnect}
+              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+              disabled={connectingMethod !== null}
+            >
+              {connectingMethod === 'device'
+                ? t(
+                    'settings.providers.chatgptOAuthDeviceConnecting',
+                    'Waiting for authorization...',
+                  )
+                : t(
+                    'settings.providers.chatgptOAuthDeviceLogin',
+                    'Device code login',
+                  )}
+            </button>
+          </div>
         ) : (
           <button
             type="button"
             onClick={handleDisconnect}
             className="yolo-add-model-btn yolo-chatgpt-oauth-disconnect-btn"
-            disabled={isConnecting}
+            disabled={connectingMethod !== null}
           >
             {t('settings.providers.chatgptOAuthDisconnect', 'Disconnect')}
           </button>
         )}
       </div>
       <div className="yolo-no-models">
-        {!Platform.isDesktop && !connected
+        {loading
           ? t(
-              'settings.providers.oauthDesktopOnly',
-              'OAuth login is only available on desktop. Please connect on desktop first.',
+              'settings.providers.chatgptOAuthLoadingStatus',
+              'Loading ChatGPT OAuth status...',
             )
-          : loading
-            ? t(
-                'settings.providers.chatgptOAuthLoadingStatus',
-                'Loading ChatGPT OAuth status...',
-              )
-            : connected
-              ? `${t('settings.providers.chatgptOAuthConnected', 'Connected')}${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · ${t('settings.providers.chatgptOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
-              : t(
-                  'settings.providers.chatgptOAuthDisconnectedHelp',
-                  'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
-                )}
-        {pendingCode
-          ? ` ${t('settings.providers.chatgptOAuthPendingCode', 'Current device code:')} ${pendingCode}`
-          : ''}
+          : connected
+            ? `${t('settings.providers.chatgptOAuthConnected', 'Connected')}${accountId ? ` · ${accountId}` : ''}${expiresAt ? ` · ${t('settings.providers.chatgptOAuthExpires', 'expires')} ${new Date(expiresAt).toLocaleString()}` : ''}`
+            : t(
+                'settings.providers.chatgptOAuthDisconnectedHelp',
+                'Not connected. Connect to use models from your ChatGPT Plus / Pro account.',
+              )}
       </div>
-      <div className="yolo-chatgpt-oauth-note">
-        {t(
-          'settings.providers.chatgptOAuthStreamingNotice',
-          'Due to Obsidian environment limitations, ChatGPT OAuth currently does not support streaming responses.',
-        )}
-      </div>
+      {deviceAuthorization ? (
+        <div className="yolo-chatgpt-oauth-device-card">
+          <div className="yolo-chatgpt-oauth-device-code-row">
+            <span>
+              {t('settings.providers.chatgptOAuthPendingCode', 'Device code')}
+            </span>
+            <code>{deviceAuthorization.userCode}</code>
+          </div>
+          <div className="yolo-chatgpt-oauth-device-help">
+            {t(
+              'settings.providers.chatgptOAuthDeviceHelp',
+              'Enter this code on the authorization page within 15 minutes. Continue only if you started this login.',
+            )}
+          </div>
+          <div className="yolo-chatgpt-oauth-device-actions">
+            <button
+              type="button"
+              onClick={handleCopyDeviceCode}
+              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+            >
+              {t('settings.providers.chatgptOAuthCopyCode', 'Copy code')}
+            </button>
+            <button
+              type="button"
+              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+              onClick={() =>
+                openExternalLink(deviceAuthorization.verificationUri)
+              }
+            >
+              {t(
+                'settings.providers.chatgptOAuthOpenDevicePage',
+                'Open authorization page',
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={handleCancelDeviceConnect}
+              className="yolo-add-model-btn yolo-chatgpt-oauth-secondary-btn"
+            >
+              {t('settings.providers.chatgptOAuthCancelDevice', 'Cancel')}
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -359,12 +552,6 @@ function GeminiOAuthPanel({
                   'settings.providers.geminiOAuthDisconnectedHelp',
                   'Not connected. Connect to use Gemini quota from your Google account.',
                 )}
-      </div>
-      <div className="yolo-chatgpt-oauth-note">
-        {t(
-          'settings.providers.geminiOAuthStreamingNotice',
-          'Gemini OAuth will try streaming by default and automatically fall back to buffered responses when needed.',
-        )}
       </div>
     </div>
   )

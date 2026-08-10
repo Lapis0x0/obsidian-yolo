@@ -18,6 +18,7 @@ type UserMessageCardProps = {
   snapshot: UserMessageDisplaySnapshot
   onClick: () => void
   className?: string
+  interactive?: boolean
 }
 
 const ReadOnlyBadge = memo(function ReadOnlyBadge({
@@ -53,6 +54,7 @@ function UserMessageCard({
   snapshot,
   onClick,
   className,
+  interactive = true,
 }: UserMessageCardProps) {
   const { settings } = useSettings()
   const mentionDisplayMode = settings.chatOptions.mentionDisplayMode ?? 'inline'
@@ -76,11 +78,11 @@ function UserMessageCard({
 
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
       className={`yolo-user-message-card yolo-chat-user-input-wrapper yolo-chat-user-input-wrapper--compact${className ? ` ${className}` : ''}`}
-      onClick={onClick}
-      onKeyDown={handleKeyDown}
+      onClick={interactive ? onClick : undefined}
+      onKeyDown={interactive ? handleKeyDown : undefined}
     >
       {mentionDisplayMode === 'badge' &&
         (snapshot.mentionables.length > 0 ||

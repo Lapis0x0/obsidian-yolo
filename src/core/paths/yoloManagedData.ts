@@ -1,17 +1,39 @@
 import { App, normalizePath } from 'obsidian'
 
+import { CHAT_DIR } from '../../database/json/constants'
+
 import {
   DEFAULT_YOLO_BASE_DIR,
   YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME,
+  YOLO_COMPONENT_INTENT_DIR_NAME,
   YOLO_LEARNING_SRS_DIR_NAME,
+  YOLO_MODULE_INTENT_DIR_NAME,
+  YOLO_MODULE_SETTINGS_DIR_NAME,
   getLegacyJsonDbRootDir,
   getLegacyVectorDbPath,
   getYoloBaseDir,
   getYoloDataJsonPath,
   getYoloJsonDbRootDir,
   getYoloSyncPointerPath,
+  getYoloUserDataRootDir,
   getYoloVectorDbPath,
 } from './yoloPaths'
+
+/**
+ * Top-level subdirectories that must survive vault sync, migrated from the
+ * hidden `.yolo_json_db` root into the visible `data/` root by
+ * `ensureUserDataRootDir`. Device-local runtime state (CLI session index,
+ * model catalog, external agent tasks) deliberately stays out of this list —
+ * see `YOLO_JSON_DB_DIR_NAME`'s doc comment in `yoloPaths.ts`.
+ */
+export const YOLO_USER_DATA_SUBDIR_NAMES = [
+  CHAT_DIR,
+  YOLO_LEARNING_SRS_DIR_NAME,
+  YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME,
+  YOLO_MODULE_SETTINGS_DIR_NAME,
+  YOLO_MODULE_INTENT_DIR_NAME,
+  YOLO_COMPONENT_INTENT_DIR_NAME,
+] as const
 
 export type YoloSettingsLike = {
   yolo?: {
@@ -139,6 +161,7 @@ const copyJsonDirectory = async (
   app: App,
   sourceDir: string,
   targetDir: string,
+  transform?: TextTransform,
 ): Promise<void> => {
   await ensureDir(app, targetDir)
   const listing = await app.vault.adapter.list(sourceDir)
@@ -148,13 +171,16 @@ const copyJsonDirectory = async (
     const targetPath = normalizePath(`${targetDir}/${relativePath}`)
     await ensureParentDir(app, targetPath)
     const content = await app.vault.adapter.read(filePath)
-    await app.vault.adapter.write(targetPath, content)
+    const finalContent = transform
+      ? transform(content, filePath, targetPath)
+      : content
+    await app.vault.adapter.write(targetPath, finalContent)
   }
 
   for (const folderPath of listing.folders) {
     const relativePath = folderPath.slice(sourceDir.length + 1)
     const nextTargetDir = normalizePath(`${targetDir}/${relativePath}`)
-    await copyJsonDirectory(app, folderPath, nextTargetDir)
+    await copyJsonDirectory(app, folderPath, nextTargetDir, transform)
   }
 }
 
@@ -183,6 +209,90 @@ const mergeJsonDirectory = async (
     const relativePath = folderPath.slice(sourceDir.length + 1)
     const nextTargetDir = normalizePath(`${targetDir}/${relativePath}`)
     await mergeJsonDirectory(app, folderPath, nextTargetDir)
+  }
+
+  await removePathIfExists(app, sourceDir)
+}
+
+/**
+ * Recursively merges `sourceDir` into `targetDir`, keeping whichever copy of
+ * a same-named file is newer (`adapter.stat().mtime`). This is the self-heal
+ * path for a mixed-version device fleet: an older plugin build may still
+ * write to the hidden `.yolo_json_db` root, and a sync tool can replicate
+ * that write to a device that has already migrated to the visible `data/`
+ * root. Blindly preferring the already-migrated target (as the plain
+ * `mergeJsonDirectory` above does for the baseDir-relocation case) would
+ * silently drop that newer write, which is unacceptable for user data.
+ *
+ * Safety matches the existing copy-then-cleanup convention: a source file is
+ * only removed once its content (or the already-newer target content) is
+ * confirmed to be the thing left standing. If this throws partway through, no
+ * source file that hasn't been processed yet has been touched, so the caller
+ * can safely retry on the next launch without any risk of data loss.
+ *
+ * `transform`, when given, rewrites a file's content before it's written to
+ * `targetPath` (see `rewriteAnkiJournalSrsPath`'s callers) — used to keep an
+ * Anki import journal's recorded `srsPath` pointing at wherever its SRS
+ * sidecar actually ends up after this same move.
+ */
+const mergeJsonDirectoryPreferNewer = async (
+  app: App,
+  sourceDir: string,
+  targetDir: string,
+  transform?: TextTransform,
+): Promise<void> => {
+  await ensureDir(app, targetDir)
+  const listing = await app.vault.adapter.list(sourceDir)
+
+  for (const filePath of listing.files) {
+    const relativePath = filePath.slice(sourceDir.length + 1)
+    const targetPath = normalizePath(`${targetDir}/${relativePath}`)
+    await ensureParentDir(app, targetPath)
+
+    // Captured once and reused as the TOCTOU baseline below: re-reading it
+    // right before deleting the source lets us detect a rewrite that landed
+    // *during* this merge (e.g. a sync tool flushing a write mid-migration).
+    const sourceStatBefore = await app.vault.adapter.stat(filePath)
+
+    // Deletes the source file only if it is still exactly what
+    // `sourceStatBefore` observed. If a sync tool touched it in the window
+    // between that stat and now, its newer content would otherwise be lost
+    // (the copy already made, or the decision to keep target, would both
+    // predate that write) — skip the delete and let the next launch's merge
+    // pick it up instead of dropping data.
+    const safeRemoveSource = async (): Promise<void> => {
+      const sourceStatNow = await app.vault.adapter.stat(filePath)
+      if ((sourceStatNow?.mtime ?? null) !== (sourceStatBefore?.mtime ?? null)) {
+        return
+      }
+      await removePathIfExists(app, filePath)
+    }
+
+    if (await app.vault.adapter.exists(targetPath)) {
+      const targetStat = await app.vault.adapter.stat(targetPath)
+      const sourceIsNewer =
+        (sourceStatBefore?.mtime ?? 0) > (targetStat?.mtime ?? 0)
+      if (!sourceIsNewer) {
+        // Equal mtimes intentionally fall here too: a real concurrent edit
+        // on both sides can't be arbitrated at the file layer, so target
+        // simply wins — same as it always has for this comparison.
+        await safeRemoveSource()
+        continue
+      }
+    }
+
+    const content = await app.vault.adapter.read(filePath)
+    const finalContent = transform
+      ? transform(content, filePath, targetPath)
+      : content
+    await app.vault.adapter.write(targetPath, finalContent)
+    await safeRemoveSource()
+  }
+
+  for (const folderPath of listing.folders) {
+    const relativePath = folderPath.slice(sourceDir.length + 1)
+    const nextTargetDir = normalizePath(`${targetDir}/${relativePath}`)
+    await mergeJsonDirectoryPreferNewer(app, folderPath, nextTargetDir, transform)
   }
 
   await removePathIfExists(app, sourceDir)
@@ -262,9 +372,10 @@ const migrateJsonDirectory = async (
   app: App,
   sourceDir: string,
   targetDir: string,
+  transform?: TextTransform,
 ): Promise<void> => {
   try {
-    await copyJsonDirectory(app, sourceDir, targetDir)
+    await copyJsonDirectory(app, sourceDir, targetDir, transform)
   } catch (error) {
     await cleanupJsonDirectory(app, targetDir)
     throw error
@@ -346,6 +457,107 @@ export const ensureJsonDbRootDir = async (
   }
 }
 
+/**
+ * Ensures `<baseDir>/data` (the visible, sync-friendly root for user data —
+ * see `YOLO_USER_DATA_SUBDIR_NAMES`) exists and holds the latest copy of
+ * every managed subdirectory that a mixed-version device fleet may have left
+ * behind under the hidden `.yolo_json_db` root.
+ *
+ * Runs on every startup. When nothing needs migrating (the common case after
+ * the first successful run) this is a handful of cheap `exists()` checks.
+ *
+ * Each subdirectory is migrated independently and failures are isolated: if
+ * one subdirectory's merge throws (e.g. a transient I/O error), the
+ * unmigrated files are left completely untouched at their old hidden-root
+ * location (see `mergeJsonDirectoryPreferNewer`'s safety contract) and the
+ * next launch retries automatically — the caller still gets the visible root
+ * back so every *other* already-migrated subdirectory keeps working. Only a
+ * hard failure to prepare the root folder itself falls back to the legacy
+ * hidden root wholesale, mirroring `ensureJsonDbRootDir`.
+ */
+// Deduplicates concurrent calls for the same (app, userDataRoot) pair — the
+// host startup call in `main.ts` and a user-data store's lazy first-touch
+// `prepareDataDir` can both fire around the same time, and running the same
+// migration twice in parallel would race on the same files. Keyed by the
+// resolved root path (not settings identity) so callers with equivalent
+// settings share one in-flight run; cleared once that run settles so a later
+// call (a real subsequent launch, or after `baseDir` changes) starts fresh.
+const inFlightUserDataRootMigrations = new WeakMap<
+  App,
+  Map<string, Promise<string>>
+>()
+
+export const ensureUserDataRootDir = async (
+  app: App,
+  settings: YoloSettingsLike | null,
+): Promise<string> => {
+  const rootKey = getYoloUserDataRootDir(settings)
+  let byRoot = inFlightUserDataRootMigrations.get(app)
+  if (!byRoot) {
+    byRoot = new Map()
+    inFlightUserDataRootMigrations.set(app, byRoot)
+  }
+  const inFlight = byRoot.get(rootKey)
+  if (inFlight) {
+    return inFlight
+  }
+
+  const promise = ensureUserDataRootDirUnlocked(app, settings).finally(() => {
+    if (byRoot?.get(rootKey) === promise) {
+      byRoot.delete(rootKey)
+    }
+  })
+  byRoot.set(rootKey, promise)
+  return promise
+}
+
+const ensureUserDataRootDirUnlocked = async (
+  app: App,
+  settings: YoloSettingsLike | null,
+): Promise<string> => {
+  const jsonDbRoot = await ensureJsonDbRootDir(app, settings)
+  const userDataRoot = getYoloUserDataRootDir(settings)
+
+  try {
+    await ensureDir(app, userDataRoot)
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to prepare user data root "${userDataRoot}", fallback to legacy managed data location.`,
+      error,
+    )
+    return jsonDbRoot
+  }
+
+  for (const subdirName of YOLO_USER_DATA_SUBDIR_NAMES) {
+    const sourceDir = normalizePath(`${jsonDbRoot}/${subdirName}`)
+    if (!(await app.vault.adapter.exists(sourceDir))) {
+      continue
+    }
+    const targetDir = normalizePath(`${userDataRoot}/${subdirName}`)
+    // Anki import journals pin an absolute `srsPath` to their SRS sidecar
+    // (see `rewriteAnkiJournalSrsPath`'s doc comment) — moving the journal
+    // without rewriting that field would leave it pointing at the
+    // now-vacated hidden root. A leftover `phase: 'verified'` journal in
+    // that state makes `recoverAnkiImports` (in the Learning module) treat
+    // an already-successful import as failed and delete everything it
+    // created — this rewrite is what prevents that.
+    const transform: TextTransform | undefined =
+      subdirName === YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME
+        ? (content) => rewriteAnkiJournalSrsPath(content, jsonDbRoot, userDataRoot)
+        : undefined
+    try {
+      await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+    } catch (error) {
+      console.warn(
+        `[YOLO] Failed to migrate "${sourceDir}" to "${targetDir}"; will retry on next launch.`,
+        error,
+      )
+    }
+  }
+
+  return userDataRoot
+}
+
 const rewriteAnkiJournalSrsPath = (
   content: string,
   sourceRoot: string,
@@ -365,6 +577,25 @@ const rewriteAnkiJournalSrsPath = (
     // Recovery will report malformed journals; migration must preserve them.
   }
   return content
+}
+
+/**
+ * Builds a `TextTransform` that applies `rewriteAnkiJournalSrsPath` only to
+ * files under the Anki import journal subdirectory, leaving every other
+ * moved file (chats, module settings/intent, the SRS files themselves)
+ * untouched. Used when relocating the whole visible user-data root at once
+ * (`relocateYoloManagedData`), where a single recursive copy/merge walks
+ * every subdirectory together and can't otherwise tell them apart.
+ */
+const makeAnkiJournalSrsPathTransform = (
+  sourceRoot: string,
+  targetRoot: string,
+): TextTransform => {
+  const journalDirPrefix = `${sourceRoot}/${YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME}/`
+  return (content, sourcePath) =>
+    sourcePath.startsWith(journalDirPrefix)
+      ? rewriteAnkiJournalSrsPath(content, sourceRoot, targetRoot)
+      : content
 }
 
 const parseLearningMigrationManifest = (
@@ -421,6 +652,17 @@ const restoreMissingMigrationTargets = async (
   }
 }
 
+/**
+ * NOTE: not currently called from any runtime path. Learning became an
+ * independent module (`modules/learning/`) that resolves its own storage
+ * root directly from the current `baseDir` (see
+ * `modules/learning/src/host/srsStorage.ts`'s `getLocationKey`), so the
+ * historical "default baseDir → custom baseDir" bug this function guards
+ * against can no longer occur — the module never reads a stale default path.
+ * Kept (and adapted to the visible user-data root below) because it is still
+ * covered by `yoloManagedData.test.ts`; flagged for a follow-up decision on
+ * whether to delete it or wire it back in.
+ */
 export const ensureLearningJsonDbRootDir = async (
   app: App,
   settings: YoloSettingsLike | null,
@@ -429,13 +671,13 @@ export const ensureLearningJsonDbRootDir = async (
   const sourceRoot = getYoloJsonDbRootDir({
     yolo: { baseDir: sourceBaseDir },
   })
-  const requestedTargetRoot = getYoloJsonDbRootDir(settings)
+  const requestedTargetRoot = getYoloUserDataRootDir(settings)
   if (requestedTargetRoot.startsWith(`${sourceRoot}/`)) {
     throw new Error(
       `YOLO base directory cannot be nested inside managed data: ${requestedTargetRoot}`,
     )
   }
-  const targetRoot = await ensureJsonDbRootDir(app, settings)
+  const targetRoot = await ensureUserDataRootDir(app, settings)
   if (sourceRoot === targetRoot) return targetRoot
 
   await ensureDir(app, targetRoot)
@@ -529,10 +771,23 @@ const relocateJsonDbRootDir = async ({
   app,
   sourceCandidates,
   targetDir,
+  preferNewerMerge = false,
+  transform,
 }: {
   app: App
   sourceCandidates: string[]
   targetDir: string
+  /**
+   * Use `mergeJsonDirectoryPreferNewer` instead of the plain, first-wins
+   * `mergeJsonDirectory` when `targetDir` already exists. The hidden
+   * `.yolo_json_db` root and the vector DB keep the plain merge (unchanged
+   * semantics — those aren't exposed to the same mixed-version-fleet risk
+   * this was added for); the visible user-data root opts in because a
+   * baseDir change on one device shouldn't silently discard a newer write
+   * that another device already synced into the target location.
+   */
+  preferNewerMerge?: boolean
+  transform?: TextTransform
 }): Promise<boolean> => {
   const sourceDir = await findFirstExistingPath(
     app,
@@ -544,9 +799,13 @@ const relocateJsonDbRootDir = async ({
 
   try {
     if (await app.vault.adapter.exists(targetDir)) {
-      await mergeJsonDirectory(app, sourceDir, targetDir)
+      if (preferNewerMerge) {
+        await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+      } else {
+        await mergeJsonDirectory(app, sourceDir, targetDir)
+      }
     } else {
-      await migrateJsonDirectory(app, sourceDir, targetDir)
+      await migrateJsonDirectory(app, sourceDir, targetDir, transform)
     }
     return true
   } catch (error) {
@@ -635,11 +894,19 @@ export const relocateYoloManagedData = async ({
 }): Promise<boolean> => {
   const currentJsonDir = getYoloJsonDbRootDir(fromSettings)
   const currentVectorPath = getYoloVectorDbPath(fromSettings)
+  const currentUserDataDir = getYoloUserDataRootDir(fromSettings)
   const targetJsonDir = getYoloJsonDbRootDir(toSettings)
   const targetVectorPath = getYoloVectorDbPath(toSettings)
+  const targetUserDataDir = getYoloUserDataRootDir(toSettings)
   if (targetJsonDir.startsWith(`${currentJsonDir}/`)) {
     console.warn(
       `[YOLO] Refusing to relocate managed data into its own source tree: "${targetJsonDir}".`,
+    )
+    return false
+  }
+  if (targetUserDataDir.startsWith(`${currentUserDataDir}/`)) {
+    console.warn(
+      `[YOLO] Refusing to relocate managed data into its own source tree: "${targetUserDataDir}".`,
     )
     return false
   }
@@ -647,6 +914,7 @@ export const relocateYoloManagedData = async ({
   await ensureDir(app, getYoloBaseDir(toSettings))
   const sourceJsonCandidates = [currentJsonDir, getLegacyJsonDbRootDir()]
   const sourceVectorCandidates = [currentVectorPath, getLegacyVectorDbPath()]
+  const sourceUserDataCandidates = [currentUserDataDir]
 
   const jsonSucceeded = await relocateJsonDbRootDir({
     app,
@@ -657,12 +925,51 @@ export const relocateYoloManagedData = async ({
     return false
   }
 
+  const userDataSucceeded = await relocateJsonDbRootDir({
+    app,
+    sourceCandidates: sourceUserDataCandidates,
+    targetDir: targetUserDataDir,
+    preferNewerMerge: true,
+    transform: makeAnkiJournalSrsPathTransform(
+      currentUserDataDir,
+      targetUserDataDir,
+    ),
+  })
+  if (!userDataSucceeded) {
+    const rolledBackJson = await relocateJsonDbRootDir({
+      app,
+      sourceCandidates: [targetJsonDir],
+      targetDir: getYoloJsonDbRootDir(fromSettings),
+    })
+    if (!rolledBackJson) {
+      console.warn(
+        `[YOLO] Failed to roll back chat storage after user data relocation failed. Source root: "${targetJsonDir}".`,
+      )
+    }
+    return false
+  }
+
   const vectorSucceeded = await relocateVectorDbFile({
     app,
     sourceCandidates: sourceVectorCandidates,
     targetPath: targetVectorPath,
   })
   if (!vectorSucceeded) {
+    const rolledBackUserData = await relocateJsonDbRootDir({
+      app,
+      sourceCandidates: [targetUserDataDir],
+      targetDir: getYoloUserDataRootDir(fromSettings),
+      preferNewerMerge: true,
+      transform: makeAnkiJournalSrsPathTransform(
+        targetUserDataDir,
+        getYoloUserDataRootDir(fromSettings),
+      ),
+    })
+    if (!rolledBackUserData) {
+      console.warn(
+        `[YOLO] Failed to roll back user data after vector relocation failed. Source root: "${targetUserDataDir}".`,
+      )
+    }
     const rolledBackJson = await relocateJsonDbRootDir({
       app,
       sourceCandidates: [targetJsonDir],

@@ -68,7 +68,8 @@ export function buildSubagentApprovalSummary(
       else if (scope) summary.detail = scope
       break
     }
-    case 'terminal_command': {
+    case 'terminal_command':
+    case 'bash': {
       const command = stringArg(args, 'command')
       if (command) summary.detail = truncate(command)
       break

@@ -8,8 +8,11 @@ import type { VoiceController } from '../voice/voiceController'
 
 import {
   InlineSuggestionGhostPayload,
+  TabCompletionDisplayPayload,
   inlineSuggestionGhostEffect,
   inlineSuggestionGhostField,
+  tabCompletionDisplayEffect,
+  tabCompletionDisplayField,
   tabLoadingDotsEffect,
   tabLoadingDotsField,
   thinkingIndicatorEffect,
@@ -65,6 +68,7 @@ export class InlineSuggestionController {
     return [
       inlineSuggestionGhostField,
       thinkingIndicatorField,
+      tabCompletionDisplayField,
       tabLoadingDotsField,
       EditorView.updateListener.of((update) => {
         if (update.focusChanged && !update.view.hasFocus) {
@@ -87,11 +91,22 @@ export class InlineSuggestionController {
           return
         }
         if (update.selectionSet) {
+          this.getTabCompletionController().handleSelectionChange(update.view)
           this.invalidateIfStale(update.view)
         }
       }),
-      Prec.high(
+      Prec.highest(
         keymap.of([
+          {
+            key: 'ArrowUp',
+            run: (v) =>
+              this.getTabCompletionController().tryNavigateFromView(v, -1),
+          },
+          {
+            key: 'ArrowDown',
+            run: (v) =>
+              this.getTabCompletionController().tryNavigateFromView(v, 1),
+          },
           {
             key: 'Tab',
             run: (v) => this.tryAcceptInlineSuggestionFromView(v),
@@ -151,6 +166,13 @@ export class InlineSuggestionController {
 
   hideThinkingIndicator(view: EditorView) {
     view.dispatch({ effects: thinkingIndicatorEffect.of(null) })
+  }
+
+  setTabCompletionDisplay(
+    view: EditorView,
+    payload: TabCompletionDisplayPayload,
+  ) {
+    view.dispatch({ effects: tabCompletionDisplayEffect.of(payload) })
   }
 
   showTabLoadingDots(view: EditorView, from: number) {
@@ -287,6 +309,8 @@ export class InlineSuggestionController {
   }
 
   tryRejectInlineSuggestionFromView(view: EditorView): boolean {
+    if (this.getTabCompletionController().tryRejectFromView(view)) return true
+
     const suggestion = this.activeInlineSuggestion
     if (!suggestion) return false
     if (suggestion.source === 'voice') {
