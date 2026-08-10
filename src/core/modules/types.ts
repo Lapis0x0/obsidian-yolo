@@ -102,6 +102,12 @@ export type YoloModuleAgentToolV1 = Readonly<{
   description: string
   /** JSON Schema object describing the tool's input. */
   inputSchema: Record<string, unknown>
+  /**
+   * Invoked serially per run in arrival order: a handler starts only after
+   * the previous handler (across all of the run's tools) has settled, even
+   * when the model issues multiple tool calls in one turn. Handlers may
+   * therefore safely read-modify-write run-scoped state.
+   */
   handler: (
     input: Record<string, unknown>,
   ) => Promise<YoloModuleAgentToolResultV1> | YoloModuleAgentToolResultV1

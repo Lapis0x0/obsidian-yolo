@@ -592,6 +592,12 @@ function createModuleToolServer(
   tools: readonly YoloModuleAgentToolV1[],
 ): InProcessToolServer {
   const byName = new Map(tools.map((tool) => [tool.name, tool]))
+  // The agent loop dispatches a turn's tool calls concurrently, but module
+  // tool handlers are run-scoped state mutators (append-to-file, buffer
+  // pushes) that read-modify-write shared state. Serialize handler
+  // invocations per server, in arrival order, so parallel emissions from a
+  // single model turn cannot clobber each other.
+  let chain: Promise<unknown> = Promise.resolve()
   return {
     listTools: (): McpTool[] =>
       tools.map((tool) => ({
@@ -604,7 +610,13 @@ function createModuleToolServer(
       if (!tool) {
         throw new Error(`Module tool "${toolName}" is not registered`)
       }
-      const result = await tool.handler(args)
+      const invoke = () => tool.handler(args)
+      const pending = chain.then(invoke, invoke)
+      chain = pending.then(
+        () => undefined,
+        () => undefined,
+      )
+      const result = await pending
       if (!result || typeof result.content !== 'string') {
         throw new TypeError(
           `Module tool "${toolName}" must resolve with a string content result`,

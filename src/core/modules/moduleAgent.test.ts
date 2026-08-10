@@ -665,6 +665,84 @@ describe('CoreModuleAgentCapabilityProvider', () => {
       ).resolves.toEqual({ status: 'error', error: 'validation failed' })
     })
 
+    it('serializes concurrent handler invocations in arrival order, across tools and past failures', async () => {
+      const events: string[] = []
+      let active = 0
+      const record = async (label: string, fail = false) => {
+        active += 1
+        expect(active).toBe(1)
+        events.push(`start:${label}`)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        events.push(`end:${label}`)
+        active -= 1
+        if (fail) throw new Error(`${label} failed`)
+        return { content: label }
+      }
+      const tools: YoloModuleAgentToolV1[] = [
+        {
+          name: 'emit_knowledge_point',
+          description: 'Emit a knowledge point',
+          inputSchema: { type: 'object' },
+          handler: (input) =>
+            record(String(input.label), input.fail === true),
+        },
+        {
+          name: 'emit_card',
+          description: 'Emit a card',
+          inputSchema: { type: 'object' },
+          handler: (input) => record(String(input.label)),
+        },
+      ]
+      let received: YoloAgentRunRequest | undefined
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          received = request
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools,
+        }),
+      )
+
+      const server = received!.tools!.inProcessServer!.server
+      const signal = new AbortController().signal
+      const results = await Promise.allSettled([
+        server.callTool({
+          toolName: 'emit_knowledge_point',
+          args: { label: 'a' },
+          signal,
+        }),
+        server.callTool({
+          toolName: 'emit_knowledge_point',
+          args: { label: 'b', fail: true },
+          signal,
+        }),
+        server.callTool({ toolName: 'emit_card', args: { label: 'c' }, signal }),
+      ])
+
+      expect(events).toEqual([
+        'start:a',
+        'end:a',
+        'start:b',
+        'end:b',
+        'start:c',
+        'end:c',
+      ])
+      expect(results.map((result) => result.status)).toEqual([
+        'fulfilled',
+        'rejected',
+        'fulfilled',
+      ])
+    })
+
     it('lets a thrown handler error propagate (the registry converts it to an Error-status response)', async () => {
       const tools: YoloModuleAgentToolV1[] = [
         {
