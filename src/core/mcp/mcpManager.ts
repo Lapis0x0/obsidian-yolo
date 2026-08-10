@@ -36,6 +36,7 @@ import {
 } from '../web-search'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
+import type { InProcessToolServer } from './inProcessToolServer'
 import {
   type JsSandboxSettings,
   getJsSandboxSettings,
@@ -115,6 +116,11 @@ export class McpManager {
   private subscribers = new Set<(servers: McpServerState[]) => void>()
 
   private availableToolsCache: Map<string, McpTool[]> = new Map()
+
+  // Registry of in-process tool servers (see inProcessToolServer.ts). Keyed
+  // by server name, disjoint from both `getLocalFileToolServerName()` and any
+  // configured remote MCP server name — enforced in registerInProcessServer.
+  private inProcessServers: Map<string, InProcessToolServer> = new Map()
 
   private buildExecutionAllowanceKey({
     requestToolName,
@@ -256,6 +262,7 @@ export class McpManager {
     }
 
     this.servers = []
+    this.inProcessServers.clear()
     this.remoteTransportFactory = null
     this.remoteTransportModulePromise = null
     this.subscribers.clear()
@@ -904,6 +911,66 @@ export class McpManager {
     )
   }
 
+  /**
+   * Register an in-process tool server. Its tools become reachable through
+   * `listAvailableTools`/`callTool`/`isToolExecutionAllowed`/`abortToolCall`
+   * immediately, prefixed as `${serverName}__${toolName}` like any other
+   * server. Returns a dispose function that unregisters it; call it when the
+   * server's tools should stop being offered (e.g. when the owning run
+   * ends). Disposing is idempotent.
+   *
+   * Throws if `serverName` fails MCP server-name validation, is the reserved
+   * local-file-tool server name, or collides with an already-registered
+   * in-process server or a currently configured remote MCP server.
+   */
+  public registerInProcessServer(
+    serverName: string,
+    server: InProcessToolServer,
+  ): () => void {
+    validateServerName(serverName)
+    if (serverName === getLocalFileToolServerName()) {
+      throw new Error(
+        `Tool server name "${serverName}" is reserved for built-in local tools.`,
+      )
+    }
+    if (this.inProcessServers.has(serverName)) {
+      throw new Error(
+        `An in-process tool server named "${serverName}" is already registered.`,
+      )
+    }
+    if (this.servers.some((existing) => existing.name === serverName)) {
+      throw new Error(
+        `Tool server name "${serverName}" conflicts with a configured MCP server.`,
+      )
+    }
+
+    this.inProcessServers.set(serverName, server)
+    this.availableToolsCache.clear()
+
+    let disposed = false
+    return () => {
+      if (disposed) return
+      disposed = true
+      // Only remove if we're still the registered instance for this name —
+      // guards against a stale dispose call outliving a later re-registration
+      // of the same name after a prior, already-completed dispose.
+      if (this.inProcessServers.get(serverName) === server) {
+        this.inProcessServers.delete(serverName)
+        this.availableToolsCache.clear()
+      }
+    }
+  }
+
+  private listInProcessServerTools(): McpTool[] {
+    const tools: McpTool[] = []
+    for (const [serverName, server] of this.inProcessServers) {
+      for (const tool of server.listTools()) {
+        tools.push({ ...tool, name: getToolName(serverName, tool.name) })
+      }
+    }
+    return tools
+  }
+
   public async listAvailableTools({
     includeBuiltinTools = false,
     chatModelModalities,
@@ -939,7 +1006,7 @@ export class McpManager {
             }))
         })
 
-    const nextTools = includeBuiltinTools
+    const builtinTools = includeBuiltinTools
       ? [
           ...availableTools,
           ...getLocalFileTools({
@@ -953,6 +1020,13 @@ export class McpManager {
             })),
         ]
       : availableTools
+
+    // Registered in-process servers (see registerInProcessServer) are always
+    // surfaced, independent of includeBuiltinTools — that flag only gates the
+    // fixed local-file-tool set. A server only ends up in the registry
+    // because a caller explicitly opted in for this run, so listing its
+    // tools needs no separate opt-in flag.
+    const nextTools = [...builtinTools, ...this.listInProcessServerTools()]
 
     this.availableToolsCache.set(cacheKey, [...nextTools])
     return nextTools
@@ -991,6 +1065,14 @@ export class McpManager {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (serverName === getLocalFileToolServerName()) {
         if (!this.isLocalToolEnabled(toolName)) {
+          return false
+        }
+      } else if (this.inProcessServers.has(serverName)) {
+        // Registered in-process servers have no user-facing enable/disable
+        // toggle — being registered for this run is authorization enough.
+        // Still verify the tool is actually one this server offers.
+        const registered = this.inProcessServers.get(serverName)
+        if (!registered?.listTools().some((tool) => tool.name === toolName)) {
           return false
         }
       } else {
@@ -1145,6 +1227,19 @@ export class McpManager {
           status: ToolCallResponseStatus.Error,
           error: localResult.error,
         }
+      }
+
+      const inProcessServer = this.inProcessServers.get(serverName)
+      if (inProcessServer) {
+        // A thrown/rejected error here falls through to the catch block
+        // below, which already converts it into an Error-status response —
+        // no separate try/catch needed just to keep the handler from
+        // crashing the caller.
+        return await inProcessServer.callTool({
+          toolName,
+          args: parsedArgs ?? {},
+          signal: compositeSignal,
+        })
       }
 
       if (this.remoteMcpDisabled) {
