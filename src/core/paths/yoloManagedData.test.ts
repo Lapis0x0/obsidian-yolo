@@ -148,19 +148,14 @@ class MockAdapter {
       throw new Error(`Directory does not exist: ${path}`)
     }
 
-    const prefix = `${path}/`
-    const hasChildren =
-      Array.from(this.files.keys()).some((filePath) =>
-        filePath.startsWith(prefix),
-      ) ||
-      Array.from(this.folders).some(
-        (folderPath) => folderPath !== path && folderPath.startsWith(prefix),
-      )
-
-    if (hasChildren && !recursive) {
-      throw new Error(`Directory is not empty: ${path}`)
+    // Mirrors Obsidian 1.13+ on desktop: `rmdir(path, false)` maps to
+    // `fs.rm(path, { recursive: false })`, which rejects every directory —
+    // even an empty one — with ERR_FS_EISDIR (see vaultFs.ts).
+    if (!recursive) {
+      throw new Error(`Path is a directory: rm returned EISDIR: ${path}`)
     }
 
+    const prefix = `${path}/`
     for (const filePath of Array.from(this.files.keys())) {
       if (filePath.startsWith(prefix)) {
         this.files.delete(filePath)
@@ -1345,11 +1340,12 @@ describe('ensureUserDataRootDir', () => {
     expect(first).toBe('YOLO/data')
     expect(second).toBe('YOLO/data')
     // Both callers shared one in-flight migration: the chats subdirectory is
-    // listed exactly once, not once per caller.
+    // listed once by the merge walk and once by the emptiness check before
+    // deleting the drained source dir — not that pair per caller.
     const chatsListCalls = listSpy.mock.calls.filter(
       ([path]) => path === 'YOLO/.yolo_json_db/chats',
     )
-    expect(chatsListCalls).toHaveLength(1)
+    expect(chatsListCalls).toHaveLength(2)
 
     // A later, non-overlapping call still works (single-flight entries are
     // cleared once settled, not cached forever).

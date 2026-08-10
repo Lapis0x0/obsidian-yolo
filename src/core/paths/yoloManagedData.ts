@@ -2,6 +2,7 @@ import { App, normalizePath } from 'obsidian'
 
 import { CHAT_DIR } from '../../database/json/constants'
 
+import { removeDirIfEmpty } from './vaultFs'
 import {
   DEFAULT_YOLO_BASE_DIR,
   YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME,
@@ -135,7 +136,10 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
   try {
     const stat = await app.vault.adapter.stat(path)
     if (stat?.type === 'folder') {
-      await app.vault.adapter.rmdir(path, false)
+      // A directory that still has content stays in place: a merge may have
+      // deliberately kept files for the next launch to retry, and warning on
+      // every periodic cleanup pass would be pure noise.
+      await removeDirIfEmpty(app.vault.adapter, path)
       return
     }
     await app.vault.adapter.remove(path)
@@ -144,16 +148,6 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
       `[YOLO] Failed to remove path "${path}" after migration`,
       error,
     )
-  }
-}
-
-const removeDirIfEmpty = async (app: App, path: string): Promise<void> => {
-  if (!(await app.vault.adapter.exists(path))) return
-  const stat = await app.vault.adapter.stat(path)
-  if (stat?.type !== 'folder') return
-  const listing = await app.vault.adapter.list(path)
-  if (listing.files.length === 0 && listing.folders.length === 0) {
-    await app.vault.adapter.rmdir(path, false)
   }
 }
 
@@ -372,7 +366,10 @@ const cleanupDirectoryStrict = async (
   for (const folderPath of listing.folders) {
     await cleanupDirectoryStrict(app, folderPath)
   }
-  await app.vault.adapter.rmdir(rootDir, false)
+  // Non-recursive rmdir rejects every directory on Obsidian 1.13+ (see
+  // vaultFs.ts); the directory was just drained, so a recursive delete
+  // removes exactly the empty shell.
+  await app.vault.adapter.rmdir(rootDir, true)
 }
 
 const migrateJsonDirectory = async (
@@ -740,8 +737,8 @@ export const ensureLearningJsonDbRootDir = async (
   await restoreMissingMigrationTargets(app, manifest)
   if (hasSourceSrs) await cleanupDirectoryStrict(app, sourceSrsDir)
   if (hasSourceJournals) await cleanupDirectoryStrict(app, sourceJournalDir)
-  await removeDirIfEmpty(app, sourceRoot)
-  await removeDirIfEmpty(app, sourceBaseDir)
+  await removeDirIfEmpty(app.vault.adapter, sourceRoot)
+  await removeDirIfEmpty(app.vault.adapter, sourceBaseDir)
   if (await app.vault.adapter.exists(markerPath)) {
     await app.vault.adapter.remove(markerPath)
   }
