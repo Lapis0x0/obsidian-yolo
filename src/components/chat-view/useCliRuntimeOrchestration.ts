@@ -37,7 +37,10 @@ import type { CurrentFileViewState, Mentionable } from '../../types/mentionable'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
-import type { ChatModeSelectValue } from './chat-input/ChatModeSelect'
+import {
+  type ChatModeSelectValue,
+  isModuleChatMode,
+} from './chat-input/ChatModeSelect'
 import {
   type CliChatOperationSnapshot,
   getCliChatOperationCoordinator,
@@ -702,6 +705,11 @@ export function useCliRuntimeOrchestration({
     (nextMode: ChatModeSelectValue) => {
       if (activeRuntimeId === 'yolo') return
       if (nextMode === 'ask') return
+      // CLI runtimes never offer a module chat mode (`CLAUDE_CODE_CHAT_MODES`
+      // / `CODEX_CHAT_MODES` are fixed 'agent'/'plan' lists) — this is an
+      // unreachable defensive guard, needed only to narrow `ChatModeSelectValue`
+      // (which structurally includes module ids) down to `CliChatMode`.
+      if (isModuleChatMode(nextMode)) return
       if (
         activeRuntimeId === 'claude-code' &&
         cliChatMode === 'plan' &&

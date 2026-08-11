@@ -3964,6 +3964,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleSettingsContributions
   }
 
+  getModuleChatModeRegistry(): ModuleChatModeRegistry {
+    return this.moduleChatModeRegistry
+  }
+
   private initializeModuleSystem(): void {
     const store = new ModuleStore({
       adapter: this.app.vault.adapter,

@@ -2659,3 +2659,196 @@ describe('RequestContextBuilder system prompt freezing', () => {
     expect(getSystemContent(real)).toContain('MEM_V2')
   })
 })
+
+describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
+  function makeApp(rootFiles: Map<string, string> = new Map()) {
+    return {
+      metadataCache: { getFileCache: jest.fn(() => null) },
+      vault: {
+        adapter: {
+          exists: jest.fn().mockResolvedValue(false),
+          mkdir: jest.fn().mockResolvedValue(undefined),
+          read: jest.fn().mockResolvedValue(''),
+          write: jest.fn().mockResolvedValue(undefined),
+        },
+        cachedRead: jest.fn(async (file: { path: string }) => {
+          return rootFiles.get(file.path) ?? ''
+        }),
+        getAbstractFileByPath: jest.fn((path: string) => {
+          if (!rootFiles.has(path)) return null
+          const file = Object.assign(new TFile(), { path })
+          ;(
+            file as unknown as { parent: InstanceType<typeof TFolder> }
+          ).parent = Object.assign(new TFolder(), { path: '', parent: null })
+          return file
+        }),
+        getRoot: jest.fn(() =>
+          Object.assign(new TFolder(), { path: '', parent: null }),
+        ),
+        getFileByPath: jest.fn(() => null),
+        getFolderByPath: jest.fn(() => null),
+        getMarkdownFiles: jest.fn(() => []),
+      },
+    }
+  }
+
+  const model = {
+    provider: 'openai',
+    model: 'gpt-test',
+    name: 'gpt-test',
+  } as never
+
+  const settingsWithAssistant = {
+    systemPrompt: 'GLOBAL_SYSTEM_PROMPT',
+    currentAssistantId: 'agent-1',
+    assistants: [
+      {
+        id: 'agent-1',
+        name: 'Scoped agent',
+        systemPrompt: 'ASSISTANT_INSTRUCTIONS',
+        enableProjectInstructions: true,
+        workspaceScope: {
+          enabled: true,
+          include: ['Notes'],
+          exclude: [],
+        },
+      },
+    ],
+    chatOptions: {
+      includeCurrentFileContent: false,
+      mentionContextMode: 'light',
+    },
+    skills: {},
+  } as unknown as YoloSettings
+
+  const memMock = jest.mocked(getMemoryPromptContext)
+
+  beforeEach(() => {
+    // Mirrors real getMemoryPromptContext gating: assistant memory only
+    // materializes when an assistantId is actually passed in — required so
+    // this suite can tell "assistant cut off" apart from "mock ignores args".
+    memMock.mockImplementation(async ({ assistantId }) => ({
+      global: 'GLOBAL_MEMORY',
+      assistant: assistantId ? 'ASSISTANT_MEMORY' : null,
+    }))
+  })
+
+  async function buildSystemContent(
+    settings: YoloSettings,
+    opts: {
+      conversationId: string
+      contextPolicy?: { useAssistant: boolean }
+      modePersonaPrompt?: string
+      modePersonaModuleId?: string
+      store?: SystemPromptSnapshotStore
+    },
+  ): Promise<string> {
+    const builder = new RequestContextBuilder(makeApp() as never, settings, {
+      includeSkills: false,
+      systemPromptSnapshotStore: opts.store,
+    })
+    const requestMessages = await builder.generateRequestMessages({
+      systemPromptSnapshotMode: 'create',
+      messages: [
+        {
+          role: 'user',
+          id: 'u1',
+          content: null,
+          promptContent: 'hi',
+          mentionables: [],
+        },
+      ],
+      model,
+      conversationId: opts.conversationId,
+      contextPolicy: opts.contextPolicy,
+      modePersonaPrompt: opts.modePersonaPrompt,
+      modePersonaModuleId: opts.modePersonaModuleId,
+    })
+    const system = requestMessages.find((m) => m.role === 'system')
+    expect(system).toBeDefined()
+    return typeof system!.content === 'string' ? system!.content : ''
+  }
+
+  it('keeps built-in-mode behavior unchanged when contextPolicy is omitted', async () => {
+    const content = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-builtin-mode',
+    })
+
+    expect(content).toContain('<assistant_instructions name="Scoped agent">')
+    expect(content).toContain('ASSISTANT_INSTRUCTIONS')
+    expect(content).toContain('ASSISTANT_MEMORY')
+    expect(content).toContain('<workspace_scope>')
+    expect(content).not.toContain('module_mode_instructions')
+  })
+
+  it('replaces assistant instructions with the module persona and cuts the assistant out of memory/workspace scope/project instructions', async () => {
+    const content = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-module-mode',
+      contextPolicy: { useAssistant: false },
+      modePersonaPrompt: 'You are the learning course assistant.',
+      modePersonaModuleId: 'learning',
+    })
+
+    // In-place substitution: same slot as assistant instructions would use.
+    expect(content).toContain('<module_mode_instructions module="learning">')
+    expect(content).toContain('You are the learning course assistant.')
+    expect(content).not.toContain('ASSISTANT_INSTRUCTIONS')
+    expect(content).not.toContain('<assistant_instructions')
+
+    // Assistant memory dropped; global memory retained.
+    expect(content).toContain('GLOBAL_MEMORY')
+    expect(content).not.toContain('ASSISTANT_MEMORY')
+
+    // Workspace scope and project instructions are assistant-scoped fields —
+    // fully cut off, not partially preserved.
+    expect(content).not.toContain('<workspace_scope>')
+    expect(content).not.toContain('Project instructions')
+
+    // Global systemPrompt is user-level context, not assistant-level — kept.
+    expect(content).toContain('GLOBAL_SYSTEM_PROMPT')
+  })
+
+  it('omits the persona section when a module mode has no persona text (defensive)', async () => {
+    const content = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-module-mode-empty-persona',
+      contextPolicy: { useAssistant: false },
+    })
+
+    expect(content).not.toContain('module_mode_instructions')
+    expect(content).not.toContain('<assistant_instructions')
+  })
+
+  it('includes contextPolicy and the persona prompt in the system prompt fingerprint', async () => {
+    const store = new SystemPromptSnapshotStore()
+
+    const builtIn = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-fingerprint',
+      store,
+    })
+    // Same conversationId, 'create' mode: only a fingerprint change refreshes
+    // the frozen snapshot — proves contextPolicy/modePersonaPrompt are part
+    // of the cache key, not silently reusing the built-in-mode snapshot.
+    const moduleMode = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-fingerprint',
+      store,
+      contextPolicy: { useAssistant: false },
+      modePersonaPrompt: 'Persona V1',
+      modePersonaModuleId: 'learning',
+    })
+    expect(moduleMode).not.toEqual(builtIn)
+    expect(moduleMode).toContain('Persona V1')
+
+    const moduleModePersonaChanged = await buildSystemContent(
+      settingsWithAssistant,
+      {
+        conversationId: 'conv-fingerprint',
+        store,
+        contextPolicy: { useAssistant: false },
+        modePersonaPrompt: 'Persona V2',
+        modePersonaModuleId: 'learning',
+      },
+    )
+    expect(moduleModePersonaChanged).not.toEqual(moduleMode)
+    expect(moduleModePersonaChanged).toContain('Persona V2')
+  })
+})

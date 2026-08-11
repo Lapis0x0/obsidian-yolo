@@ -6,10 +6,12 @@ import {
   getLocalFileToolServerName,
 } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
+import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabilityProfile'
+import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 import type { Assistant } from '../../types/assistant.types'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
-import { isAgentChatMode } from './chat-input/ChatModeSelect'
+import { isAgentChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,
@@ -35,6 +37,21 @@ export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
   getToolName(getLocalFileToolServerName(), 'todo_write'),
 ]
 
+/**
+ * Explicit context-assembly policy produced by `resolveChatModeRuntime` and
+ * consumed by every prompt/tool/context/model resolution path. Module chat
+ * modes are a complete product contract of their own — assistant
+ * instructions, memory, skills policy, workspace scope, current-file policy,
+ * default model, and new-session model init all cut over together, never
+ * partially. See `ChatContextPolicy` consumers in
+ * `src/utils/chat/requestContextBuilder.ts` and the call sites that resolve
+ * a model id.
+ */
+export type ChatContextPolicy = Readonly<{
+  /** false only for module chat modes; built-in modes are always true. */
+  useAssistant: boolean
+}>
+
 export type ChatModeRuntime = {
   loopConfig: AgentRuntimeLoopConfig
   allowedToolNames: string[] | undefined
@@ -42,6 +59,18 @@ export type ChatModeRuntime = {
   toolServerPreferences: Assistant['toolServerPreferences']
   bypassToolApproval: boolean
   toolCapabilityMode: ToolCapabilityMode
+  /**
+   * True when the shared 'bash' tool identity must run read-only for this
+   * entire run. Always false for built-in modes. Follows
+   * `resolveModuleCapabilityProfile` for module chat modes — see that
+   * function's doc comment for why this must never be a separately-set flag.
+   */
+  bashReadOnly: boolean
+  /** Module chat mode persona, injected in place of assistant instructions. */
+  modePersonaPrompt?: string
+  /** The owning module id, for the persona injection's `module="..."` attribute. */
+  modePersonaModuleId?: string
+  contextPolicy: ChatContextPolicy
 }
 
 export type ChatModeRuntimeInput = {
@@ -53,14 +82,34 @@ export type ChatModeRuntimeInput = {
   yoloEnabled?: boolean
   assistant?: AssistantRuntimeOptions | null
   assistantEnabledToolNames: string[]
+  /**
+   * The registered entry for `mode` when `mode` is a module chat mode id.
+   * Callers are expected to have already resolved `mode` to an *effective*
+   * value via `resolveEffectiveChatMode` before calling this function — an
+   * unregistered/unavailable module id never reaches here as `'agent'` would
+   * have been substituted upstream. Omitted/undefined for built-in modes.
+   */
+  moduleChatMode?: RegisteredModuleChatModeV1
 }
+
+const BUILT_IN_CONTEXT_POLICY: ChatContextPolicy = Object.freeze({
+  useAssistant: true,
+})
+const MODULE_CONTEXT_POLICY: ChatContextPolicy = Object.freeze({
+  useAssistant: false,
+})
 
 export function resolveChatModeRuntime({
   mode,
   yoloEnabled = false,
   assistant,
   assistantEnabledToolNames,
+  moduleChatMode,
 }: ChatModeRuntimeInput): ChatModeRuntime {
+  if (isModuleChatMode(mode) && moduleChatMode) {
+    return resolveModuleChatModeRuntime(moduleChatMode)
+  }
+
   const enableTools = assistant?.enableTools ?? true
   const includeBuiltinTools = enableTools
     ? (assistant?.includeBuiltinTools ?? true)
@@ -87,5 +136,44 @@ export function resolveChatModeRuntime({
       : undefined,
     bypassToolApproval: isAgentMode && yoloEnabled,
     toolCapabilityMode: isAgentMode ? 'agent' : 'ask',
+    bashReadOnly: false,
+    contextPolicy: BUILT_IN_CONTEXT_POLICY,
+  }
+}
+
+/**
+ * Module chat mode branch: host tool grant + mode-declared tools, no
+ * assistant participation at all. Does not intersect with the assistant's
+ * enabled tool set — a module mode's tool grant is fully self-declared
+ * (capability tier + mode tools), never narrowed by whatever assistant
+ * happens to be selected in settings.
+ */
+function resolveModuleChatModeRuntime(
+  registered: RegisteredModuleChatModeV1,
+): ChatModeRuntime {
+  const capabilityProfile = resolveModuleCapabilityProfile(
+    registered.mode.capability,
+  )
+  const moduleToolNames = (registered.mode.tools ?? []).map((tool) =>
+    getToolName(registered.serverName, tool.name),
+  )
+  return {
+    loopConfig: {
+      enableTools: true,
+      includeBuiltinTools: true,
+      maxAutoIterations: DEFAULT_AGENT_MAX_AUTO_ITERATIONS,
+    },
+    allowedToolNames: [
+      ...capabilityProfile.allowedHostToolNames,
+      ...moduleToolNames,
+    ],
+    toolPreferences: undefined,
+    toolServerPreferences: undefined,
+    bypassToolApproval: false,
+    toolCapabilityMode: registered.mode.capability === 'none' ? 'ask' : 'agent',
+    bashReadOnly: capabilityProfile.bashReadOnly,
+    modePersonaPrompt: registered.mode.personaPrompt,
+    modePersonaModuleId: registered.moduleId,
+    contextPolicy: MODULE_CONTEXT_POLICY,
   }
 }

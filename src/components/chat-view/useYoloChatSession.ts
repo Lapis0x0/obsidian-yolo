@@ -7,6 +7,7 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -48,8 +49,11 @@ import {
 
 import {
   type ChatMode,
-  normalizeChatMode,
+  chatModeForSave,
+  isModuleChatMode,
+  normalizePersistedChatMode,
   normalizeYoloEnabled,
+  resolveEffectiveChatMode,
 } from './chat-input/ChatModeSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import {
@@ -151,8 +155,22 @@ export type UseYoloChatSessionParams = {
   reasoningLevel: ReasoningLevel
   setReasoningLevel: Dispatch<SetStateAction<ReasoningLevel>>
   conversationReasoningLevelRef: MutableRefObject<Map<string, ReasoningLevel>>
-  chatMode: ChatMode
+  /**
+   * Setter for the effective (runtime) chat mode — see
+   * `resolveEffectiveChatMode`. This hook only ever derives and writes this
+   * value (from `persistedChatMode` + the live module registry); it never
+   * needs to read the current effective value, so only the setter is taken.
+   */
   setChatMode: Dispatch<SetStateAction<ChatMode>>
+  /**
+   * The chat mode as it should be written to conversation storage — never
+   * downgraded by module (un)availability. Updated only alongside the
+   * effective `chatMode` at session load, new-conversation default, branch
+   * copy, and user-driven mode switches (`useChatRuntimePreferences`). All
+   * write-back call sites must read this via `chatModeForSave`.
+   */
+  persistedChatMode: ChatMode
+  setPersistedChatMode: Dispatch<SetStateAction<ChatMode>>
   yoloEnabled: boolean
   setYoloEnabled: Dispatch<SetStateAction<boolean>>
   selectedAssistant: Assistant | null
@@ -249,8 +267,9 @@ export function useYoloChatSession({
   reasoningLevel,
   setReasoningLevel,
   conversationReasoningLevelRef,
-  chatMode,
   setChatMode,
+  persistedChatMode,
+  setPersistedChatMode,
   yoloEnabled,
   setYoloEnabled,
   selectedAssistant,
@@ -291,6 +310,26 @@ export function useYoloChatSession({
   const agentService = plugin.getAgentService()
   const { settings } = useSettings()
   const { t } = useLanguage()
+
+  const moduleChatModeRegistry = plugin.getModuleChatModeRegistry()
+  const moduleChatModeSnapshot = useSyncExternalStore(
+    moduleChatModeRegistry.subscribe,
+    moduleChatModeRegistry.getSnapshot,
+  )
+
+  // Keeps the effective (runtime) chat mode in sync with the persisted value
+  // and live module availability — e.g. a module getting disabled/enabled
+  // while its chat mode is the active one downgrades/restores `chatMode`
+  // without ever touching `persistedChatMode` or conversation storage.
+  useEffect(() => {
+    setChatMode((current) => {
+      const next = resolveEffectiveChatMode(
+        persistedChatMode,
+        moduleChatModeSnapshot,
+      )
+      return current === next ? current : next
+    })
+  }, [persistedChatMode, moduleChatModeSnapshot, setChatMode])
 
   const [runSummariesByConversationId, setRunSummariesByConversationId] =
     useState<Map<string, AgentConversationRunSummary>>(new Map())
@@ -400,7 +439,7 @@ export function useYoloChatSession({
       try {
         const effectiveOverrides = {
           ...(conversationOverrides ?? {}),
-          chatMode,
+          chatMode: chatModeForSave(persistedChatMode),
           agentYoloEnabled: yoloEnabled,
         }
         await createOrUpdateConversation(
@@ -428,7 +467,7 @@ export function useYoloChatSession({
       }
     },
     [
-      chatMode,
+      persistedChatMode,
       yoloEnabled,
       conversationModelId,
       conversationOverrides,
@@ -453,7 +492,7 @@ export function useYoloChatSession({
       try {
         const effectiveOverrides = {
           ...(conversationOverrides ?? {}),
-          chatMode,
+          chatMode: chatModeForSave(persistedChatMode),
           agentYoloEnabled: yoloEnabled,
         }
         await createOrUpdateConversationImmediately(
@@ -483,7 +522,7 @@ export function useYoloChatSession({
       }
     },
     [
-      chatMode,
+      persistedChatMode,
       yoloEnabled,
       conversationModelId,
       conversationOverrides,
@@ -712,11 +751,17 @@ export function useYoloChatSession({
           conversationId,
           loadedAssistantId,
         )
-        const loadedChatMode = normalizeChatMode(
+        const loadedPersistedChatMode = normalizePersistedChatMode(
           conversation.overrides?.chatMode,
           settings.chatOptions.chatMode ?? 'agent',
         )
-        setChatMode(loadedChatMode)
+        setPersistedChatMode(loadedPersistedChatMode)
+        setChatMode(
+          resolveEffectiveChatMode(
+            loadedPersistedChatMode,
+            moduleChatModeSnapshot,
+          ),
+        )
         setYoloEnabled(
           normalizeYoloEnabled(
             conversation.overrides?.chatMode,
@@ -854,6 +899,8 @@ export function useYoloChatSession({
       conversationAssistantIdRef,
       setConversationAssistantId,
       setChatMode,
+      setPersistedChatMode,
+      moduleChatModeSnapshot,
       setYoloEnabled,
       conversationOverridesRef,
       lastCliRuntimeIdRef,
@@ -1053,11 +1100,17 @@ export function useYoloChatSession({
       conversationAssistantIdRef.current.set(newId, conversationAssistantId)
       setConversationAssistantId(conversationAssistantId)
       setConversationOverrides(null)
-      const defaultChatMode = chatMode
+      const defaultPersistedChatMode = persistedChatMode
+      setPersistedChatMode(defaultPersistedChatMode)
+      const defaultChatMode = resolveEffectiveChatMode(
+        defaultPersistedChatMode,
+        moduleChatModeSnapshot,
+      )
       setChatMode(defaultChatMode)
       setYoloEnabled(yoloEnabled)
-      const defaultConversationModelId =
-        selectedAssistant?.modelId ?? settings.chatModelId
+      const defaultConversationModelId = isModuleChatMode(defaultChatMode)
+        ? settings.chatModelId
+        : (selectedAssistant?.modelId ?? settings.chatModelId)
       conversationModelIdRef.current.set(newId, defaultConversationModelId)
       setConversationModelId(defaultConversationModelId)
       const defaultReasoningLevel = getReasoningLevelForModelId(
@@ -1105,8 +1158,10 @@ export function useYoloChatSession({
       conversationAssistantId,
       setConversationAssistantId,
       setConversationOverrides,
-      chatMode,
+      persistedChatMode,
+      setPersistedChatMode,
       setChatMode,
+      moduleChatModeSnapshot,
       yoloEnabled,
       setYoloEnabled,
       selectedAssistant,
@@ -1351,7 +1406,14 @@ export function useYoloChatSession({
         conversationOverridesRef.current.get(currentConversationId) ??
         conversationOverrides ??
         null
-      const nextChatMode = normalizeChatMode(nextOverrides?.chatMode, chatMode)
+      const nextPersistedChatMode = normalizePersistedChatMode(
+        nextOverrides?.chatMode,
+        persistedChatMode,
+      )
+      const nextChatMode = resolveEffectiveChatMode(
+        nextPersistedChatMode,
+        moduleChatModeSnapshot,
+      )
       const nextYoloEnabled = normalizeYoloEnabled(
         nextOverrides?.chatMode,
         nextOverrides?.agentYoloEnabled,
@@ -1412,6 +1474,7 @@ export function useYoloChatSession({
       }
 
       setChatMode(nextChatMode)
+      setPersistedChatMode(nextPersistedChatMode)
       setYoloEnabled(nextYoloEnabled)
 
       setConversationAssistantId(conversationAssistantId)
@@ -1449,7 +1512,7 @@ export function useYoloChatSession({
           nextMessages,
           {
             ...(nextOverrides ?? {}),
-            chatMode: nextChatMode,
+            chatMode: chatModeForSave(nextPersistedChatMode),
             agentYoloEnabled: nextYoloEnabled,
           },
           resolvedConversationModelId,
@@ -1471,7 +1534,8 @@ export function useYoloChatSession({
     },
     [
       chatList,
-      chatMode,
+      persistedChatMode,
+      moduleChatModeSnapshot,
       yoloEnabled,
       conversationAssistantId,
       conversationModelId,
@@ -1500,6 +1564,7 @@ export function useYoloChatSession({
       setEditingAssistantMessageId,
       setConversationOverrides,
       setChatMode,
+      setPersistedChatMode,
       setYoloEnabled,
       setConversationAssistantId,
       conversationAssistantIdRef,

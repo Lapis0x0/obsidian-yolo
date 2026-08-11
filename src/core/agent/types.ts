@@ -1,3 +1,4 @@
+import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type { AssistantToolApprovalMode } from '../../types/assistant.types'
 import {
   ChatConversationCompactionLike,
@@ -90,6 +91,17 @@ export type AgentRuntimeRunInput = {
   allowedSkillPaths?: string[]
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  /** Module chat mode persona, injected in place of assistant instructions. */
+  modePersonaPrompt?: string
+  /** The owning module id, for the persona injection's `module="..."` attribute. */
+  modePersonaModuleId?: string
+  /**
+   * Explicit context-assembly policy from `resolveChatModeRuntime`. Absent
+   * (built-in modes) is equivalent to `{ useAssistant: true }` — every
+   * consumer defaults accordingly, so omitting it never changes existing
+   * behavior.
+   */
+  contextPolicy?: ChatContextPolicy
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean

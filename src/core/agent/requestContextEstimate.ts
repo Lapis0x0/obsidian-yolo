@@ -1,3 +1,4 @@
+import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type {
   AssistantToolPreference,
   AssistantToolServerPreference,
@@ -35,6 +36,9 @@ export const estimateContinuationRequestContextTokens = async ({
   toolServerPreferences,
   contextualInjections,
   toolCapabilityMode,
+  modePersonaPrompt,
+  modePersonaModuleId,
+  contextPolicy,
 }: {
   requestContextBuilder: RequestContextBuilder
   mcpManager: McpManager
@@ -51,6 +55,9 @@ export const estimateContinuationRequestContextTokens = async ({
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  modePersonaPrompt?: string
+  modePersonaModuleId?: string
+  contextPolicy?: ChatContextPolicy
 }): Promise<number> => {
   const availableTools = enableTools
     ? await mcpManager.listAvailableTools({
@@ -90,6 +97,9 @@ export const estimateContinuationRequestContextTokens = async ({
     compaction,
     contextualInjections,
     runtimeModePrompt,
+    modePersonaPrompt,
+    modePersonaModuleId,
+    contextPolicy,
     // Token estimate only: never create/freeze the snapshot ahead of the real request.
     systemPromptSnapshotMode: 'reuse',
   })

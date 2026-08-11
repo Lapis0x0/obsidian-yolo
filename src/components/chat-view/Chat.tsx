@@ -185,6 +185,8 @@ export type ChatRuntimeSnapshot = {
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
+  /** Persisted (never runtime-downgraded) chat mode — see `chatModeForSave`. */
+  persistedChatMode: ChatMode
   yoloEnabled: boolean
   reasoningLevel: ReasoningLevel
   conversationOverrides: ConversationOverrideSettings | null
@@ -512,6 +514,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     const defaultMode = settings.chatOptions.chatMode ?? 'agent'
     return defaultMode
   })
+  // Persisted counterpart of `chatMode` — see `chatModeForSave` and
+  // `resolveEffectiveChatMode`. Seeded from the same source as `chatMode`
+  // since, at mount time (before any registry-driven downgrade), the two
+  // are identical.
+  const [persistedChatMode, setPersistedChatMode] = useState<ChatMode>(
+    () => seededRuntimeSnapshot?.persistedChatMode ?? chatMode,
+  )
   const [yoloEnabled, setYoloEnabled] = useState<boolean>(() => {
     if (seededRuntimeSnapshot) {
       return seededRuntimeSnapshot.yoloEnabled
@@ -741,6 +750,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setConversationModelId,
     setReasoningLevel,
     setChatMode,
+    setPersistedChatMode,
     setYoloEnabled,
     conversationOverrides,
     setConversationOverrides,
@@ -973,8 +983,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     reasoningLevel,
     setReasoningLevel,
     conversationReasoningLevelRef,
-    chatMode,
     setChatMode,
+    persistedChatMode,
+    setPersistedChatMode,
     yoloEnabled,
     setYoloEnabled,
     selectedAssistant,
@@ -1083,6 +1094,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     conversationModelId,
     conversationAssistantId,
     chatMode,
+    persistedChatMode,
     yoloEnabled,
     reasoningLevel,
     conversationOverrides,

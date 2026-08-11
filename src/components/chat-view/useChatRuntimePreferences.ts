@@ -27,7 +27,13 @@ import type { ConversationOverrideSettings } from '../../types/conversation-sett
 import type { ReasoningLevel } from '../../types/reasoning'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
-import { type ChatMode, isAgentChatMode } from './chat-input/ChatModeSelect'
+import {
+  type BuiltinChatMode,
+  type ChatMode,
+  chatModeForSave,
+  isAgentChatMode,
+  isModuleChatMode,
+} from './chat-input/ChatModeSelect'
 import {
   beginChatRuntimeNavigation,
   resolveChatRuntimeId,
@@ -56,6 +62,7 @@ export type ChatRuntimePreferencesLateState = {
   setConversationModelId: Dispatch<SetStateAction<string>>
   setReasoningLevel: Dispatch<SetStateAction<ReasoningLevel>>
   setChatMode: Dispatch<SetStateAction<ChatMode>>
+  setPersistedChatMode: Dispatch<SetStateAction<ChatMode>>
   setYoloEnabled: Dispatch<SetStateAction<boolean>>
   conversationOverrides: ConversationOverrideSettings | null
   setConversationOverrides: Dispatch<
@@ -226,7 +233,7 @@ export function useChatRuntimePreferences({
   )
 
   const persistPreferredChatMode = useCallback(
-    async (mode: ChatMode) => {
+    async (mode: BuiltinChatMode) => {
       if (settings.chatOptions.chatMode === mode) {
         return
       }
@@ -379,15 +386,20 @@ export function useChatRuntimePreferences({
 
   const applyChatModeChange = useCallback(
     (nextMode: ChatMode) => {
+      // A user-driven selection is by construction both the effective value
+      // (it was offered in the menu, so it's available) and the value to
+      // persist — this is the only entry point that updates
+      // `persistedChatMode`. See `chatModeForSave`.
       const late = getLate()
       late.setChatMode(nextMode)
+      late.setPersistedChatMode(nextMode)
       late.setConversationOverrides((prev) => ({
         ...(prev ?? {}),
-        chatMode: nextMode,
+        chatMode: chatModeForSave(nextMode),
       }))
       conversationOverridesRef.current.set(currentConversationId, {
         ...(conversationOverridesRef.current.get(currentConversationId) ?? {}),
-        chatMode: nextMode,
+        chatMode: chatModeForSave(nextMode),
       })
     },
     [currentConversationId, getLate],
@@ -480,7 +492,12 @@ export function useChatRuntimePreferences({
   const handleChatModeChange = useCallback(
     (nextMode: ChatMode) => {
       applyChatModeChange(nextMode)
-      void persistPreferredChatMode(nextMode)
+      // Global settings never learn about a module chat mode — only the
+      // conversation override (written above) does. A module can be
+      // uninstalled; the global default must never point at it.
+      if (!isModuleChatMode(nextMode)) {
+        void persistPreferredChatMode(nextMode)
+      }
 
       const late = getLate()
       if (

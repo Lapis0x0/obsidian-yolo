@@ -1,4 +1,156 @@
+import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
+
 import { resolveChatModeRuntime } from './chat-runtime-profiles'
+
+function moduleChatMode(
+  overrides: Partial<RegisteredModuleChatModeV1['mode']> = {},
+): RegisteredModuleChatModeV1 {
+  return {
+    fullModeId: 'module:learning:chat',
+    moduleId: 'learning',
+    serverName: 'module-mode-learning-chat',
+    availability: { status: 'available' },
+    mode: {
+      id: 'chat',
+      label: { en: 'Learning' },
+      personaPrompt: 'You are the learning course assistant.',
+      capability: 'vault-read',
+      tools: [
+        {
+          name: 'start_course_generation',
+          description: 'Start generating a course.',
+          inputSchema: { type: 'object', properties: {} },
+          handler: async () => ({ ok: true }),
+          requiresApproval: true,
+        },
+        {
+          name: 'get_generation_status',
+          description: 'Get generation status.',
+          inputSchema: { type: 'object', properties: {} },
+          handler: async () => ({ ok: true }),
+        },
+      ],
+      ...overrides,
+    } as RegisteredModuleChatModeV1['mode'],
+  }
+}
+
+describe('resolveChatModeRuntime module chat mode branch', () => {
+  const assistant = {
+    enableTools: false,
+    includeBuiltinTools: false,
+    toolPreferences: {
+      yolo_local__fs_write: {
+        enabled: true,
+        approvalMode: 'require_approval' as const,
+      },
+    },
+    toolServerPreferences: {
+      playwright: { approvalMode: 'full_access' as const },
+    },
+  }
+
+  it('grants the capability tier host tools + all mode tool names, ignoring the assistant enable/tool-preference toggles entirely', () => {
+    const registered = moduleChatMode()
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistant,
+      assistantEnabledToolNames: [], // assistant has enableTools: false — irrelevant here
+      moduleChatMode: registered,
+    })
+
+    expect(runtime.loopConfig).toEqual({
+      enableTools: true,
+      includeBuiltinTools: true,
+      maxAutoIterations: 100,
+    })
+    expect(runtime.allowedToolNames).toEqual(
+      expect.arrayContaining([
+        'yolo_local__bash',
+        'module-mode-learning-chat__start_course_generation',
+        'module-mode-learning-chat__get_generation_status',
+      ]),
+    )
+    // vault-read must not also grant the write tool.
+    expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_edit')
+    expect(runtime.toolPreferences).toBeUndefined()
+    expect(runtime.toolServerPreferences).toBeUndefined()
+  })
+
+  it('sets bashReadOnly from the capability profile (vault-read → true)', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistantEnabledToolNames: [],
+      moduleChatMode: moduleChatMode(),
+    })
+    expect(runtime.bashReadOnly).toBe(true)
+  })
+
+  it('sets bashReadOnly to false for vault-write capability', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistantEnabledToolNames: [],
+      moduleChatMode: moduleChatMode({ capability: 'vault-write' }),
+    })
+    expect(runtime.bashReadOnly).toBe(false)
+    expect(runtime.allowedToolNames).toEqual(
+      expect.arrayContaining(['yolo_local__bash', 'yolo_local__fs_edit']),
+    )
+  })
+
+  it('never bypasses tool approval, even with yoloEnabled true', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      yoloEnabled: true,
+      assistantEnabledToolNames: [],
+      moduleChatMode: moduleChatMode(),
+    })
+    expect(runtime.bypassToolApproval).toBe(false)
+  })
+
+  it("maps capability 'none' to toolCapabilityMode 'ask', others to 'agent'", () => {
+    expect(
+      resolveChatModeRuntime({
+        mode: 'module:learning:chat',
+        assistantEnabledToolNames: [],
+        moduleChatMode: moduleChatMode({ capability: 'none' }),
+      }).toolCapabilityMode,
+    ).toBe('ask')
+    expect(
+      resolveChatModeRuntime({
+        mode: 'module:learning:chat',
+        assistantEnabledToolNames: [],
+        moduleChatMode: moduleChatMode({ capability: 'vault-read' }),
+      }).toolCapabilityMode,
+    ).toBe('agent')
+  })
+
+  it('carries the persona prompt, owning module id, and useAssistant: false', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistantEnabledToolNames: [],
+      moduleChatMode: moduleChatMode(),
+    })
+    expect(runtime.modePersonaPrompt).toBe(
+      'You are the learning course assistant.',
+    )
+    expect(runtime.modePersonaModuleId).toBe('learning')
+    expect(runtime.contextPolicy).toEqual({ useAssistant: false })
+  })
+
+  it('falls back to the built-in branch when moduleChatMode is missing (defensive)', () => {
+    // Callers are expected to resolve the effective mode before calling —
+    // this only guards against a mismatched/missing lookup rather than
+    // throwing.
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistant,
+      assistantEnabledToolNames: ['yolo_local__fs_read'],
+    })
+    expect(runtime.bashReadOnly).toBe(false)
+    expect(runtime.contextPolicy).toEqual({ useAssistant: true })
+  })
+})
 
 describe('resolveChatModeRuntime', () => {
   const assistantEnabledToolNames = [

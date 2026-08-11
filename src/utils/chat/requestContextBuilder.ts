@@ -2,6 +2,7 @@ import type { App, TFile, TFolder } from 'obsidian'
 import { normalizePath } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
+import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
 import {
   buildCompactionResumeMessage,
@@ -562,6 +563,10 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
+    /** Module chat mode persona — see `ChatContextPolicy`. */
+    modePersonaPrompt?: string
+    modePersonaModuleId?: string
+    contextPolicy?: ChatContextPolicy
     systemPromptOverride?: string
     systemPromptSnapshotMode: SystemPromptSnapshotMode
   }): Promise<RequestMessage[]> {
@@ -586,6 +591,9 @@ export class RequestContextBuilder {
     compaction,
     contextualInjections,
     runtimeModePrompt,
+    modePersonaPrompt,
+    modePersonaModuleId,
+    contextPolicy,
     systemPromptOverride,
     systemPromptSnapshotMode,
   }: {
@@ -598,6 +606,9 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
+    modePersonaPrompt?: string
+    modePersonaModuleId?: string
+    contextPolicy?: ChatContextPolicy
     systemPromptOverride?: string
     systemPromptSnapshotMode: SystemPromptSnapshotMode
   }): Promise<{
@@ -691,6 +702,9 @@ export class RequestContextBuilder {
           hasOnDemandTools,
           compaction,
           runtimeModePrompt,
+          modePersonaPrompt,
+          modePersonaModuleId,
+          contextPolicy,
           mode: systemPromptSnapshotMode,
         })
     const systemMessage: RequestMessage = {
@@ -748,6 +762,9 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
+    modePersonaPrompt?: string
+    modePersonaModuleId?: string
+    contextPolicy?: ChatContextPolicy
     requestTools?: unknown[] | undefined
     systemPromptSnapshotMode: SystemPromptSnapshotMode
   }): Promise<PromptSection[]> {
@@ -1744,6 +1761,9 @@ ${entries}
     hasOnDemandTools,
     compaction,
     runtimeModePrompt,
+    modePersonaPrompt,
+    modePersonaModuleId,
+    contextPolicy,
     mode,
   }: {
     conversationId: string
@@ -1752,6 +1772,9 @@ ${entries}
     hasOnDemandTools: boolean
     compaction?: ChatConversationCompactionLike | null
     runtimeModePrompt?: string
+    modePersonaPrompt?: string
+    modePersonaModuleId?: string
+    contextPolicy?: ChatContextPolicy
     mode: SystemPromptSnapshotMode
   }): Promise<SystemPromptSnapshot> {
     const build = async (): Promise<SystemPromptSnapshot> => {
@@ -1760,6 +1783,9 @@ ${entries}
         hasMemoryTools,
         hasOnDemandTools,
         runtimeModePrompt,
+        modePersonaPrompt,
+        modePersonaModuleId,
+        contextPolicy,
       )
       const systemContent = systemSections
         .map((section) =>
@@ -1781,6 +1807,8 @@ ${entries}
       hasOnDemandTools,
       compaction,
       runtimeModePrompt,
+      modePersonaPrompt,
+      contextPolicy,
     )
     return store.getOrCreate(conversationId, fingerprint, build, {
       reuseOnly: mode === 'reuse',
@@ -1801,8 +1829,17 @@ ${entries}
     hasOnDemandTools: boolean,
     compaction?: ChatConversationCompactionLike | null,
     runtimeModePrompt?: string,
+    modePersonaPrompt?: string,
+    contextPolicy?: ChatContextPolicy,
   ): string {
-    const assistant = this.getCurrentAssistant()
+    // `useAssistant === false` (module chat modes) makes `getCurrentAssistant`
+    // return null below, which already changes the `assistant` field of this
+    // fingerprint whenever an assistant WAS selected. The explicit
+    // `useAssistant`/`modePersonaPrompt` entries below additionally cover the
+    // "no assistant selected either way" edge case, and the persona text
+    // itself, which the `assistant` field can't see.
+    const useAssistant = contextPolicy?.useAssistant ?? true
+    const assistant = useAssistant ? this.getCurrentAssistant() : null
     const latestCompaction = getLatestChatConversationCompaction(compaction)
     // The exact memory files this request will read. Captures baseDir, the
     // assistant name, AND the sibling-driven duplicate index — so a same-named
@@ -1830,6 +1867,8 @@ ${entries}
       hasMemoryTools,
       hasOnDemandTools,
       runtimeModePrompt: runtimeModePrompt?.trim() ?? '',
+      useAssistant,
+      modePersonaPrompt: modePersonaPrompt?.trim() ?? '',
       includeSkills: this.includeSkills,
       systemPrompt: this.settings.systemPrompt ?? '',
       // Normalize the same way the real path/skill lookups do, so cosmetic-only
@@ -1879,15 +1918,30 @@ ${entries}
     hasMemoryTools: boolean,
     hasOnDemandTools: boolean,
     runtimeModePrompt?: string,
+    modePersonaPrompt?: string,
+    modePersonaModuleId?: string,
+    contextPolicy?: ChatContextPolicy,
   ): Promise<SystemPromptSections> {
     const sections: SystemPromptSections = []
-    const currentAssistant = this.getCurrentAssistant()
+    const useAssistant = contextPolicy?.useAssistant ?? true
+    // `useAssistant === false` (module chat modes) is a complete product
+    // contract of its own: gating `currentAssistant` to null here is what
+    // makes assistant memory / workspace scope / project instructions all
+    // fall out below for free (each already keys off `currentAssistant`).
+    // Only the assistant-instructions section and skills policy need an
+    // explicit branch — see `buildCustomInstructionsSubsections`.
+    const currentAssistant = useAssistant ? this.getCurrentAssistant() : null
 
     // Custom-instructions block — split into sub-sections so that memory /
     // skills / system text can be counted independently. Order MUST match the
     // legacy parts[] order in `buildCustomInstructionsSection`.
     const customInstructionSubsections =
-      await this.buildCustomInstructionsSubsections(hasMemoryTools)
+      await this.buildCustomInstructionsSubsections(
+        hasMemoryTools,
+        useAssistant,
+        modePersonaPrompt,
+        modePersonaModuleId,
+      )
     sections.push(...customInstructionSubsections)
 
     const baseBehaviorContent = this.buildDefaultBehaviorSection(
@@ -1969,14 +2023,20 @@ ${entries}
    */
   private async buildCustomInstructionsSubsections(
     hasMemoryTools: boolean,
+    useAssistant = true,
+    modePersonaPrompt?: string,
+    modePersonaModuleId?: string,
   ): Promise<SystemPromptSections> {
     const sections: SystemPromptSections = []
-    const currentAssistant = this.getCurrentAssistant()
+    const currentAssistant = useAssistant ? this.getCurrentAssistant() : null
 
     // Custom system prompt (global)
     const customInstruction = this.settings.systemPrompt.trim()
 
-    // Assistant instructions — bucket: system (assistant prompt is system-prompt-side)
+    // Assistant instructions — bucket: system (assistant prompt is system-prompt-side).
+    // Module chat modes (`useAssistant === false`) inject their persona in
+    // the exact same slot instead — an in-place substitution, not an
+    // addition, per `ChatContextPolicy`.
     if (currentAssistant?.systemPrompt) {
       const resolvedAssistantSystemPrompt = currentAssistant.systemPrompt.trim()
       if (resolvedAssistantSystemPrompt) {
@@ -1988,6 +2048,14 @@ ${resolvedAssistantSystemPrompt}
 </assistant_instructions>`,
         })
       }
+    } else if (!useAssistant && modePersonaPrompt?.trim()) {
+      sections.push({
+        bucket: 'system',
+        id: 'system.assistant-instructions',
+        content: `<module_mode_instructions module="${modePersonaModuleId ?? ''}">
+${modePersonaPrompt.trim()}
+</module_mode_instructions>`,
+      })
     }
 
     // Memory block — bucket: memory
@@ -2033,18 +2101,23 @@ ${memoryParts.join('\n\n')}
 
     if (this.includeSkills) {
       const disabledSkillNames = this.settings.skills?.disabledSkillIds ?? []
-      const enabledSkillEntries = currentAssistant
-        ? (
-            await listLiteSkillEntries(this.app, { settings: this.settings })
-          ).filter((skill) =>
-            isSkillEnabledForAssistant({
-              assistant: currentAssistant,
-              skillName: skill.name,
-              disabledSkillNames,
-              defaultLoadMode: skill.mode,
-            }),
-          )
-        : []
+      // Module chat modes have no per-mode skills yet (D6) — the allowed set
+      // is every enabled vault skill, bypassing assistant preferences
+      // entirely. Built-in modes keep the exact prior behavior: no assistant
+      // selected means no skills.
+      const enabledSkillEntries =
+        useAssistant && !currentAssistant
+          ? []
+          : (
+              await listLiteSkillEntries(this.app, { settings: this.settings })
+            ).filter((skill) =>
+              isSkillEnabledForAssistant({
+                assistant: useAssistant ? currentAssistant : null,
+                skillName: skill.name,
+                disabledSkillNames,
+                defaultLoadMode: skill.mode,
+              }),
+            )
 
       if (enabledSkillEntries.length > 0) {
         sections.push({
