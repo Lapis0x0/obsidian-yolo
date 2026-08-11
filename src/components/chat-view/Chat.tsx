@@ -26,7 +26,6 @@ import {
 } from '../../core/agent/assistant-capabilities'
 import { resolveAssistantModelId } from '../../core/agent/assistant-model'
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
-import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import {
   type ChatRuntimeId,
   type CliRuntimeScope,
@@ -280,12 +279,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatMountedRef.current = false
     }
   }, [])
-  const [conversationAssistantId, setConversationAssistantId] =
-    useState<string>(
-      seededRuntimeSnapshot?.conversationAssistantId ??
-        settings.currentAssistantId ??
-        DEFAULT_ASSISTANT_ID,
-    )
   // seed 早于 useChatInputController：activeRuntimeId 直接消费本 state。
   const [currentConversationId, setCurrentConversationId] = useState<string>(
     () =>
@@ -293,60 +286,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       props.initialConversationId ??
       uuidv4(),
   )
-  const {
-    activeRuntimeId,
-    activeRuntimeIdRef,
-    setRequestedRuntimeId,
-    lastCliRuntimeIdRef,
-    initialActiveRuntimeId,
-    initialCliModePreference,
-    cliModeRequestGenerationRef,
-    prePlanCliModeByConversationRef,
-    runtimeNavigationGenerationRef,
-    handleRuntimeChange,
-    conversationModelIdRef,
-    conversationReasoningLevelRef,
-    conversationAssistantIdRef,
-    conversationOverridesRef,
-    persistReasoningLevelForModel,
-    persistChatRuntimePreference,
-    applyAssistantDefaultModel,
-    handleConversationAssistantSelect,
-    handleChatModeChange,
-    handleYoloChange,
-    lateStateRef: runtimePreferencesLateStateRef,
-  } = useChatRuntimePreferences({
-    app,
-    t,
-    settings,
-    setSettings,
-    cliRuntimeScope,
-    cliRuntimeAvailable,
-    chatMountedRef,
-    seededActiveRuntimeId: seededRuntimeSnapshot?.activeRuntimeId,
-    seededConversationOverrides: seededRuntimeSnapshot?.conversationOverrides,
-    hasInitialConversationId: props.initialConversationId !== undefined,
-    currentConversationId,
-    conversationAssistantId,
-    setConversationAssistantId,
-  })
-  const effectiveSettings = useMemo(
-    () => ({
-      ...settings,
-      currentAssistantId: conversationAssistantId,
-    }),
-    [conversationAssistantId, settings],
-  )
-  const requestContextBuilder = useMemo(() => {
-    return new RequestContextBuilder(app, effectiveSettings, {
-      systemPromptSnapshotStore: agentService.getSystemPromptSnapshotStore(),
-      getPromptSourceRevision: () =>
-        agentService.getPromptSourceWatcher().getRevision(),
-      promptSourcePathsCallback: (paths) =>
-        agentService.getPromptSourceWatcher().setWatchedPaths(paths),
-    })
-  }, [app, effectiveSettings, agentService])
 
+  // normalizeReasoningLevel / initialReasoningLevel / getReasoningLevelForModelId
+  // 只依赖全局 settings（与 conversationAssistantId 等会话级偏好无关），提到
+  // useChatRuntimePreferences 调用之前计算好传入——这是消灭原环 1 里
+  // 「useChatRuntimePreferences 需要反过来经 lateStateRef 读取这两个值」的
+  // 关键：现在两者在调用时已经现成可用,不再需要延迟绑定。
   const normalizeReasoningLevel = useCallback(
     (value?: string): ReasoningLevel | null => {
       const normalized = normalizeStoredReasoningLevel(value)
@@ -369,6 +314,103 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     settings.chatModels,
     settings.chatOptions.reasoningLevelByModelId,
   ])
+
+  const getReasoningLevelForModelId = useCallback(
+    (modelId?: string | null): ReasoningLevel => {
+      if (!modelId) return 'off'
+      const model = settings.chatModels.find((m) => m.id === modelId) ?? null
+      const rememberedLevel = normalizeReasoningLevel(
+        settings.chatOptions.reasoningLevelByModelId?.[modelId],
+      )
+      return rememberedLevel ?? getDefaultReasoningLevel(model)
+    },
+    [
+      normalizeReasoningLevel,
+      settings.chatModels,
+      settings.chatOptions.reasoningLevelByModelId,
+    ],
+  )
+
+  const {
+    activeRuntimeId,
+    activeRuntimeIdRef,
+    setRequestedRuntimeId,
+    lastCliRuntimeIdRef,
+    initialActiveRuntimeId,
+    initialCliModePreference,
+    cliModeRequestGenerationRef,
+    prePlanCliModeByConversationRef,
+    runtimeNavigationGenerationRef,
+    handleRuntimeChange,
+
+    conversationModelId,
+    conversationAssistantId,
+    reasoningLevel,
+    chatMode,
+    persistedChatMode,
+    yoloEnabled,
+    conversationOverrides,
+    setConversationModelId,
+    setConversationAssistantId,
+    setReasoningLevel,
+    setChatMode,
+    setConversationOverrides,
+    conversationModelIdRef,
+    conversationReasoningLevelRef,
+    conversationAssistantIdRef,
+    conversationOverridesRef,
+    switchConversation,
+
+    persistReasoningLevelForModel,
+    persistChatRuntimePreference,
+    applyAssistantDefaultModel,
+    handleConversationAssistantSelect,
+    handleChatModeChange,
+    handleYoloChange,
+    onAssistantDefaultModelApplied,
+
+    cliRuntimeSwitchLateStateRef,
+  } = useChatRuntimePreferences({
+    app,
+    t,
+    settings,
+    setSettings,
+    cliRuntimeScope,
+    cliRuntimeAvailable,
+    chatMountedRef,
+    seededActiveRuntimeId: seededRuntimeSnapshot?.activeRuntimeId,
+    hasInitialConversationId: props.initialConversationId !== undefined,
+    currentConversationId,
+    seededPreferences: seededRuntimeSnapshot
+      ? {
+          conversationModelId: seededRuntimeSnapshot.conversationModelId,
+          conversationAssistantId: seededRuntimeSnapshot.conversationAssistantId,
+          reasoningLevel: seededRuntimeSnapshot.reasoningLevel,
+          chatMode: seededRuntimeSnapshot.chatMode,
+          persistedChatMode: seededRuntimeSnapshot.persistedChatMode,
+          yoloEnabled: seededRuntimeSnapshot.yoloEnabled,
+          conversationOverrides: seededRuntimeSnapshot.conversationOverrides,
+        }
+      : undefined,
+    initialReasoningLevel,
+    getReasoningLevelForModelId,
+  })
+  const effectiveSettings = useMemo(
+    () => ({
+      ...settings,
+      currentAssistantId: conversationAssistantId,
+    }),
+    [conversationAssistantId, settings],
+  )
+  const requestContextBuilder = useMemo(() => {
+    return new RequestContextBuilder(app, effectiveSettings, {
+      systemPromptSnapshotStore: agentService.getSystemPromptSnapshotStore(),
+      getPromptSourceRevision: () =>
+        agentService.getPromptSourceWatcher().getRevision(),
+      promptSourcePathsCallback: (paths) =>
+        agentService.getPromptSourceWatcher().setWatchedPaths(paths),
+    })
+  }, [app, effectiveSettings, agentService])
 
   const { file: activeFile, viewState: activeViewState } = useActiveViewState()
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -463,9 +505,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     Boolean(props.initialConversationId),
   )
   const untitledFallback = t('chat.untitledConversation', 'New chat')
-  const [reasoningLevel, setReasoningLevel] = useState<ReasoningLevel>(
-    seededRuntimeSnapshot?.reasoningLevel ?? initialReasoningLevel,
-  )
   const [messageReasoningMap, setMessageReasoningMap] = useState<
     Map<string, ReasoningLevel>
   >(new Map())
@@ -532,25 +571,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ...(fontScale != null ? { zoom: fontScale } : {}),
   } as CSSProperties
 
-  // Per-conversation override settings (temperature, top_p, context, stream)
-  const [conversationOverrides, setConversationOverrides] =
-    useState<ConversationOverrideSettings | null>(
-      seededRuntimeSnapshot?.conversationOverrides ?? null,
-    )
-  const [chatMode, setChatMode] = useState<ChatMode>(() => {
-    if (seededRuntimeSnapshot) {
-      return seededRuntimeSnapshot.chatMode
-    }
-    const defaultMode = settings.chatOptions.chatMode ?? 'agent'
-    return defaultMode
-  })
-  // Persisted counterpart of `chatMode` — see `chatModeForSave` and
-  // `resolveEffectiveChatMode`. Seeded from the same source as `chatMode`
-  // since, at mount time (before any registry-driven downgrade), the two
-  // are identical.
-  const [persistedChatMode, setPersistedChatMode] = useState<ChatMode>(
-    () => seededRuntimeSnapshot?.persistedChatMode ?? chatMode,
-  )
   // Quick-access skill entries for the composer's `/` menu — scoped to the
   // active module chat mode's own skills (in addition to the always-included
   // user/global bucket) so a module's skills are only offered while its mode
@@ -561,12 +581,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     scope: isModuleChatMode(chatMode)
       ? { moduleChatModeId: chatMode }
       : undefined,
-  })
-  const [yoloEnabled, setYoloEnabled] = useState<boolean>(() => {
-    if (seededRuntimeSnapshot) {
-      return seededRuntimeSnapshot.yoloEnabled
-    }
-    return settings.chatOptions.agentYoloEnabled ?? false
   })
   const selectedAssistant = useMemo(() => {
     return (
@@ -579,19 +593,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     () => resolveAssistantTimeContextEnabled(selectedAssistant, settings),
     [selectedAssistant, settings],
   )
-
-  // Per-conversation model id (do NOT write back to global settings)
-  const [conversationModelId, setConversationModelId] = useState<string>(() => {
-    if (seededRuntimeSnapshot) {
-      return seededRuntimeSnapshot.conversationModelId
-    }
-    const initialAssistantId =
-      settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID
-    const initialAssistant = settings.assistants.find(
-      (assistant) => assistant.id === initialAssistantId,
-    )
-    return initialAssistant?.modelId ?? settings.chatModelId
-  })
 
   const currentConversationModel = useMemo(() => {
     return (
@@ -622,22 +623,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : {}),
     }
   }, [chatMessages, effectiveMaxContextTokens])
-
-  const getReasoningLevelForModelId = useCallback(
-    (modelId?: string | null): ReasoningLevel => {
-      if (!modelId) return 'off'
-      const model = settings.chatModels.find((m) => m.id === modelId) ?? null
-      const rememberedLevel = normalizeReasoningLevel(
-        settings.chatOptions.reasoningLevelByModelId?.[modelId],
-      )
-      return rememberedLevel ?? getDefaultReasoningLevel(model)
-    },
-    [
-      normalizeReasoningLevel,
-      settings.chatModels,
-      settings.chatOptions.reasoningLevelByModelId,
-    ],
-  )
 
   // Per-message model mapping for historical user messages
   const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
@@ -780,23 +765,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     activeViewState,
   })
 
-  // useChatRuntimePreferences 的处理器（applyAssistantDefaultModel/
-  // handleConversationAssistantSelect/handleChatModeChange/handleYoloChange/
-  // handleRuntimeChange）依赖输入控制器与 CLI 编排 hook 都已就绪之后才产生
-  // 的值,一律经 lateStateRef 注入——与 inputController.lateStateRef 完全
-  // 相同的惯例,只是本对象在两者都就绪后立即写入。
-  runtimePreferencesLateStateRef.current = {
-    setInputMessage,
-    conversationModelId,
-    setConversationModelId,
-    setReasoningLevel,
-    setChatMode,
-    setPersistedChatMode,
-    setYoloEnabled,
-    conversationOverrides,
-    setConversationOverrides,
-    selectedAssistant,
-    getReasoningLevelForModelId,
+  // handleRuntimeChange（useChatRuntimePreferences）依赖 CLI 编排 hook 就绪
+  // 之后才产生的值——偏好七件套已经由 ConversationPreferencesController
+  // 直接持有,不再需要经 late ref 注入;只有 CLI 编排相关的量仍需要在此写入。
+  cliRuntimeSwitchLateStateRef.current = {
     cliPreferenceSettingsRef,
     cliModelCatalog,
     setCliConversationController,
@@ -806,6 +778,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     transitionCliSession,
     activeHistoryConversationId,
   }
+
+  // applyAssistantDefaultModel 触达输入层（写回草稿 reasoningLevel）的一次
+  // 性事件——由 controller 在 assistant 切换/chatMode 级联触发默认模型应用
+  // 时发出，这里连接到 setInputMessage。取代原
+  // ChatRuntimePreferencesLateState.setInputMessage 反向依赖。
+  useEffect(
+    () =>
+      onAssistantDefaultModelApplied((level: ReasoningLevel) => {
+        setInputMessage((prev) => ({
+          ...prev,
+          reasoningLevel: level,
+        }))
+      }),
+    [onAssistantDefaultModelApplied, setInputMessage],
+  )
 
   const currentConversationPersisted = useMemo(
     () =>
@@ -1016,19 +1003,15 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setConversationOverrides,
     conversationOverridesRef,
     conversationModelId,
-    setConversationModelId,
     conversationModelIdRef,
     conversationAssistantId,
-    setConversationAssistantId,
     conversationAssistantIdRef,
     reasoningLevel,
-    setReasoningLevel,
     conversationReasoningLevelRef,
     setChatMode,
     persistedChatMode,
-    setPersistedChatMode,
     yoloEnabled,
-    setYoloEnabled,
+    switchConversation,
     selectedAssistant,
     setCompactionState,
     setPendingCompactionAnchorMessageId,
