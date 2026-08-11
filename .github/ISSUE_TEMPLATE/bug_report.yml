@@ -6,7 +6,10 @@ body:
   - type: markdown
     attributes:
       value: |
-        Thanks for taking the time to fill out this bug report! Please provide as much detail as possible to help us investigate the issue.
+        Thanks for taking the time to fill out this bug report! Two things make the biggest difference:
+
+        - **Reproduction steps matter most.** A bug we can reproduce usually gets fixed within a day. One we can't reproduce often goes nowhere.
+        - **Please check back after submitting** (watch your GitHub notifications / email). We typically respond within a day — if the information is sufficient we'll just fix it, and if not we'll ask follow-up questions here. An issue whose author never replies cannot move forward and may eventually be closed.
 
   - type: textarea
     id: bug-description
@@ -21,7 +24,9 @@ body:
     id: reproduction
     attributes:
       label: Steps to reproduce
-      description: How can we reproduce this issue?
+      description: |
+        How can we reproduce this issue? Walk us through it step by step, starting from a state we can recreate (which surface — Chat / Agent / Quick Ask, which model or provider, what you clicked or typed).
+        This is the single most important field: "it sometimes breaks" is not something we can act on.
       placeholder: |
         1. Go to '...'
         2. Click on '....'
