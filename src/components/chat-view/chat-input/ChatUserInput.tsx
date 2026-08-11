@@ -62,6 +62,7 @@ import { FileUploadButton } from './FileUploadButton'
 import MentionableBadge from './MentionableBadge'
 import MessageInputCore, { type MessageInputCoreRef } from './MessageInputCore'
 import { ModelSelect } from './ModelSelect'
+import { canAcceptDrop } from './plugins/drop/resolveDrop'
 import type { SlashCommand } from './plugins/mention/SkillSlashPlugin'
 import { ReasoningSelect, supportsReasoning } from './ReasoningSelect'
 import { SubmitButton } from './SubmitButton'
@@ -154,11 +155,6 @@ export type ChatUserInputProps = {
 const DEFAULT_INPUT_HEIGHT = 80
 const MIN_INPUT_HEIGHT = 80
 const MAX_INPUT_HEIGHT = 520
-
-function isFileDragEvent(event: ReactDragEvent<HTMLDivElement>) {
-  const types = Array.from(event.dataTransfer.types ?? [])
-  return types.includes('Files')
-}
 
 const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
   (
@@ -573,31 +569,31 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
 
     const handleContainerDragEnter = useCallback(
       (event: ReactDragEvent<HTMLDivElement>) => {
-        if (compact || !isFileDragEvent(event)) {
+        if (compact || !canAcceptDrop(app, event.dataTransfer)) {
           return
         }
 
         fileDragDepthRef.current += 1
         setIsFileDragActive(true)
       },
-      [compact],
+      [app, compact],
     )
 
     const handleContainerDragOver = useCallback(
       (event: ReactDragEvent<HTMLDivElement>) => {
-        if (compact || !isFileDragEvent(event)) {
+        if (compact || !canAcceptDrop(app, event.dataTransfer)) {
           return
         }
 
         event.preventDefault()
         event.dataTransfer.dropEffect = 'copy'
       },
-      [compact],
+      [app, compact],
     )
 
     const handleContainerDragLeave = useCallback(
       (event: ReactDragEvent<HTMLDivElement>) => {
-        if (compact || !isFileDragEvent(event)) {
+        if (compact || !canAcceptDrop(app, event.dataTransfer)) {
           return
         }
 
@@ -606,17 +602,12 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           setIsFileDragActive(false)
         }
       },
-      [compact],
+      [app, compact],
     )
 
-    const handleContainerDropCapture = useCallback(
-      (event: ReactDragEvent<HTMLDivElement>) => {
-        if (isFileDragEvent(event)) {
-          clearFileDragState()
-        }
-      },
-      [clearFileDragState],
-    )
+    const handleContainerDropCapture = useCallback(() => {
+      clearFileDragState()
+    }, [clearFileDragState])
 
     const handleContainerMouseDown = useCallback(
       (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -820,7 +811,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           {isFileDragActive && (
             <div className="yolo-chat-user-input-drop-hint" aria-hidden="true">
               <FilePlus2 size={24} />
-              <span>{t('chat.dropFilesHint', '松开以添加文件')}</span>
+              <span>{t('chat.dropFilesHint', '松开以添加到对话')}</span>
             </div>
           )}
           <div className="yolo-chat-user-input-editor" role="presentation">

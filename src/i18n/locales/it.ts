@@ -1710,7 +1710,7 @@ export const it: DeepPartial<TranslationKeys> = {
     selectModel: 'Seleziona modello',
     uploadImage: 'Carica immagine',
     uploadFile: 'Aggiungi file',
-    dropFilesHint: 'Rilascia per aggiungere file',
+    dropFilesHint: 'Rilascia per aggiungere alla conversazione',
     imageUnsupportedByModel:
       'Questo modello non dichiara il supporto alle immagini. Abilita la modalità di input "Vision" nelle impostazioni del modello per allegare immagini.',
     unsupportedFileType: 'Tipo di file non supportato: {names}',

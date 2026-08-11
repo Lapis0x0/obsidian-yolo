@@ -29,6 +29,11 @@ export const serializeMentionable = (
         type: 'folder',
         folder: mentionable.folder.path,
       }
+    case 'local-folder':
+      return {
+        type: 'local-folder',
+        path: mentionable.path,
+      }
     case 'block':
       return {
         type: 'block',
@@ -162,6 +167,17 @@ export const deserializeMentionable = (
         return {
           type: 'folder',
           folder: folder,
+        }
+      }
+      case 'local-folder': {
+        const path =
+          typeof mentionable.path === 'string' ? mentionable.path.trim() : ''
+        if (!path) {
+          return null
+        }
+        return {
+          type: 'local-folder',
+          path,
         }
       }
       case 'block': {
@@ -334,6 +350,8 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `file:${mentionable.file}`
     case 'folder':
       return `folder:${mentionable.folder}`
+    case 'local-folder':
+      return `local-folder:${mentionable.path}`
     case 'block': {
       const pageTag =
         mentionable.pageNumber !== undefined
@@ -439,6 +457,21 @@ function resolveUnitLabel(
   return unitLabels?.[unit] ?? unit
 }
 
+/**
+ * Trailing segment of an absolute path. Handles both separators because the
+ * path comes from the host OS, not from the vault.
+ */
+export function getLocalFolderDisplayName(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const lastSeparator = Math.max(
+    trimmed.lastIndexOf('/'),
+    trimmed.lastIndexOf('\\'),
+  )
+  const name = lastSeparator === -1 ? trimmed : trimmed.slice(lastSeparator + 1)
+  // A drive or filesystem root has no trailing segment; show the path itself.
+  return name.length > 0 ? name : path
+}
+
 export function getMentionableName(
   mentionable: Mentionable,
   options?: {
@@ -451,6 +484,8 @@ export function getMentionableName(
       return mentionable.file.name
     case 'folder':
       return mentionable.folder.name
+    case 'local-folder':
+      return getLocalFolderDisplayName(mentionable.path)
     case 'block': {
       if (
         mentionable.contentFormat === 'markdown-table' &&

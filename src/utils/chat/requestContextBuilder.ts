@@ -51,6 +51,7 @@ import type {
   MentionableFile,
   MentionableFolder,
   MentionableImage,
+  MentionableLocalFolder,
   MentionableOffice,
   MentionablePDF,
   MentionableTextAttachment,
@@ -1062,6 +1063,10 @@ export class RequestContextBuilder {
     const webSelections = message.mentionables.filter(
       (m): m is MentionableWebSelection => m.type === 'web-selection',
     )
+    const localFolders = message.mentionables.filter(
+      (m): m is MentionableLocalFolder => m.type === 'local-folder',
+    )
+    const localFolderPrompt = this.buildLocalFolderPrompt(localFolders)
     const blockPrompt = this.buildUserSelectedContentPrompt(blocks)
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
     const webSelectionPrompt = this.buildWebSelectionPrompt(webSelections)
@@ -1091,7 +1096,7 @@ export class RequestContextBuilder {
     const selectedSkillsPrompt = await this.buildSelectedSkillsPrompt(
       message.selectedSkills,
     )
-    const textContent = `${blockPrompt}${assistantQuotePrompt}${webSelectionPrompt}${officePrompt}${textAttachmentPrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`
+    const textContent = `${localFolderPrompt}${blockPrompt}${assistantQuotePrompt}${webSelectionPrompt}${officePrompt}${textAttachmentPrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`
     if (imageParts.length === 0 && pdfDocumentParts.length === 0) {
       return withTimeContext(textContent)
     }
@@ -1471,6 +1476,10 @@ ${message.annotations
     const webSelections = mentionables.filter(
       (m): m is MentionableWebSelection => m.type === 'web-selection',
     )
+    const localFolders = mentionables.filter(
+      (m): m is MentionableLocalFolder => m.type === 'local-folder',
+    )
+    const localFolderPrompt = this.buildLocalFolderPrompt(localFolders)
     const blockPrompt = this.buildUserSelectedContentPrompt(blocks)
     const assistantQuotePrompt = this.buildAssistantQuotePrompt(assistantQuotes)
     const webSelectionPrompt = this.buildWebSelectionPrompt(webSelections)
@@ -1538,9 +1547,27 @@ ${message.annotations
       ...pdfDocumentParts,
       {
         type: 'text',
-        text: `${filePrompt}${blockPrompt}${assistantQuotePrompt}${webSelectionPrompt}${officePrompt}${textAttachmentPrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`,
+        text: `${filePrompt}${localFolderPrompt}${blockPrompt}${assistantQuotePrompt}${webSelectionPrompt}${officePrompt}${textAttachmentPrompt}${legacyPdfFallbackText}${selectedSkillsPrompt}\n\n${query}\n\n`,
       },
     ]
+  }
+
+  /**
+   * Directories outside the vault have no vault reader, so the absolute path
+   * is the whole context — the agent reaches the contents itself.
+   */
+  private buildLocalFolderPrompt(folders: MentionableLocalFolder[]): string {
+    if (folders.length === 0) {
+      return ''
+    }
+
+    const uniquePaths = [...new Set(folders.map((folder) => folder.path))]
+    // State the fact, name no tool: which tools can reach an absolute path
+    // depends on the user's settings, so the model picks from what it has.
+    return `## Mentioned Local Folders (outside the vault)
+${uniquePaths.map((path) => `- \`${path}\``).join('\n')}
+
+Absolute filesystem paths — vault file tools cannot reach them.\n\n`
   }
 
   private buildWebSelectionPrompt(

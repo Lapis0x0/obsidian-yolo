@@ -8,6 +8,17 @@ export type MentionableFolder = {
   type: 'folder'
   folder: TFolder
 }
+/**
+ * A directory outside the vault, referenced by absolute filesystem path.
+ *
+ * Vault folders resolve to a `TFolder` and have their contents read into the
+ * prompt; a directory outside the vault has no such reader, so the path itself
+ * is the context — the agent reaches it through the terminal / read tools.
+ */
+export type MentionableLocalFolder = {
+  type: 'local-folder'
+  path: string
+}
 
 export type CurrentFileViewState =
   | {
@@ -130,6 +141,7 @@ export type MentionableModel = {
 export type Mentionable =
   | MentionableFile
   | MentionableFolder
+  | MentionableLocalFolder
   | MentionableBlock
   | MentionableAssistantQuote
   | MentionableUrl
@@ -147,6 +159,7 @@ export type SerializedMentionableFolder = {
   type: 'folder'
   folder: string
 }
+export type SerializedMentionableLocalFolder = MentionableLocalFolder
 export type SerializedMentionableBlock = {
   type: 'block'
   content?: string
@@ -191,6 +204,7 @@ export type SerializedMentionableModel = MentionableModel
 export type SerializedMentionable =
   | SerializedMentionableFile
   | SerializedMentionableFolder
+  | SerializedMentionableLocalFolder
   | SerializedMentionableBlock
   | SerializedMentionableAssistantQuote
   | SerializedMentionableUrl

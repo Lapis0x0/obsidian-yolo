@@ -382,7 +382,9 @@ function LexicalContentEditable({
         </>
       )}
       <PlainTextPastePlugin />
-      <ObsidianFileDropPlugin />
+      <ObsidianFileDropPlugin
+        onDropFiles={attachmentsEnabled ? onPasteFiles : undefined}
+      />
       {/* templates feature removed */}
     </LexicalComposer>
   )
