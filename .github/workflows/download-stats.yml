@@ -73,8 +73,13 @@ jobs:
           node -e '
             const stats = require("/tmp/download-metrics-output/download-stats.json");
             const summary = process.env.GITHUB_STEP_SUMMARY;
+            const feedDates = Object.keys(stats.feedDaily ?? {}).sort();
+            const latestFeedDate = feedDates[feedDates.length - 1];
             require("node:fs").appendFileSync(summary,
               `### Downloads ${stats.total.toLocaleString()}\n` +
               `- GitHub Releases: ${stats.githubTotal.toLocaleString()}\n` +
-              `- Cloudflare mirror: ${stats.cloudflareTotal.toLocaleString()}\n`);
+              `- Cloudflare mirror: ${stats.cloudflareTotal.toLocaleString()}\n` +
+              (latestFeedDate
+                ? `- Feed clients ${latestFeedDate}: ${stats.feedDaily[latestFeedDate].uniques.toLocaleString()} unique IPs\n`
+                : ""));
           '
