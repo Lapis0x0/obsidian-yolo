@@ -44,11 +44,7 @@ import {
 } from '../../hooks/useChatHistory'
 import { useChatManager } from '../../hooks/useJsonManagers'
 import { useLiteSkillEntries } from '../../hooks/useLiteSkillEntries'
-import type {
-  ChatConversationCompactionState,
-  ChatMessage,
-  ChatUserMessage,
-} from '../../types/chat'
+import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
   Mentionable,
@@ -83,6 +79,7 @@ import {
   CODEX_CHAT_MODES,
   type ChatMode,
   type ModuleChatModeOption,
+  chatModeForSave,
   isModuleChatMode,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
@@ -96,6 +93,8 @@ import {
   getDisplayedAssistantToolMessages,
   getSourceUserMessageIdForGroup,
 } from './chatRetry'
+import type { ChatSessionControllerDeps } from './ChatSessionController'
+import { ChatSessionController } from './ChatSessionController'
 import CliChatSurface from './CliChatSurface'
 import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
@@ -279,13 +278,26 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       chatMountedRef.current = false
     }
   }, [])
-  // seed 早于 useChatInputController：activeRuntimeId 直接消费本 state。
-  const [currentConversationId, setCurrentConversationId] = useState<string>(
+  // seed 早于 useChatInputController：activeRuntimeId 直接消费本 state。会话
+  // 身份的唯一 owner 是下方构造的 ChatSessionController；这里只是它构造
+  // 前（早于 preferencesController 就绪）需要的一次性初始值，构造完成后
+  // `currentConversationId` 这个标识符改为从 controller 快照读取——写一次、
+  // 不再更新的种子 useState 没有 setter。
+  const [initialConversationId] = useState<string>(
     () =>
       seededRuntimeSnapshot?.currentConversationId ??
       props.initialConversationId ??
       uuidv4(),
   )
+  // ChatSessionController 要等 preferencesController（下方 useChatRuntimePreferences
+  // 的产出）就绪才能构造,但 useChatRuntimePreferences 本身在每次渲染都要读取
+  // 「当前」会话 id（推进 ConversationPreferencesController 内部的会话游标）。
+  // 用同一个 ref 承接：首次渲染 controller 尚未构造,退回 initialConversationId；
+  // 此后每次渲染 controller 已经从上一轮渲染起持续存在,直接读它的最新快照。
+  const sessionControllerRef = useRef<ChatSessionController | null>(null)
+  const currentConversationId =
+    sessionControllerRef.current?.getSnapshot().currentConversationId ??
+    initialConversationId
 
   // normalizeReasoningLevel / initialReasoningLevel / getReasoningLevelForModelId
   // 只依赖全局 settings（与 conversationAssistantId 等会话级偏好无关），提到
@@ -370,6 +382,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onAssistantDefaultModelApplied,
 
     cliRuntimeSwitchLateStateRef,
+    preferencesController,
   } = useChatRuntimePreferences({
     app,
     t,
@@ -384,7 +397,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     seededPreferences: seededRuntimeSnapshot
       ? {
           conversationModelId: seededRuntimeSnapshot.conversationModelId,
-          conversationAssistantId: seededRuntimeSnapshot.conversationAssistantId,
+          conversationAssistantId:
+            seededRuntimeSnapshot.conversationAssistantId,
           reasoningLevel: seededRuntimeSnapshot.reasoningLevel,
           chatMode: seededRuntimeSnapshot.chatMode,
           persistedChatMode: seededRuntimeSnapshot.persistedChatMode,
@@ -433,15 +447,84 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     preservedInputMessage: ChatUserMessage
     preservedReasoningLevel: ReasoningLevel
   } | null>(null)
-  const chatMessagesStateRef = useRef<ChatMessage[]>([])
-  const activeBranchByUserMessageIdRef = useRef<Map<string, string>>(new Map())
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([])
-  const [compactionState, setCompactionState] =
-    useState<ChatConversationCompactionState>([])
-  const [
+
+  // 消息态八件套（会话身份 + chatMessages/compactionState/
+  // pendingCompactionAnchorMessageId/messageModelMap/messageReasoningMap/
+  // assistantGroupBoundaryMessageIds/activeBranchByUserMessageId）的唯一
+  // owner——见架构治理第三步分期 C1。deps 经 getter 闭包注入,与
+  // preferencesController 同款;构造一次,随 ChatView 实例存活。
+  // useChatHistory() 的四个持久化函数经 chatManager（settings 变化时
+  // 重建,见 useJsonManagers.ts）间接依赖 settings,并非跨渲染稳定引用——
+  // 必须经 useLatestRef 转发,不能被 sessionControllerDepsRef 的一次性
+  // ??= 直接捕获(否则 settings 变更后 controller 会一直调用第一次渲染
+  // 时那个已过期的闭包)。
+  const createOrUpdateConversationRef = useLatestRef(createOrUpdateConversation)
+  const createOrUpdateConversationImmediatelyRef = useLatestRef(
+    createOrUpdateConversationImmediately,
+  )
+  const deleteConversationRef = useLatestRef(deleteConversation)
+  const updateConversationTitleRef = useLatestRef(updateConversationTitle)
+  const sessionControllerDepsRef = useRef<ChatSessionControllerDeps>()
+  const sessionControllerDeps = (sessionControllerDepsRef.current ??= {
+    getAgentService: () => plugin.getAgentService(),
+    createOrUpdateConversation: (...args) =>
+      createOrUpdateConversationRef.current(...args),
+    createOrUpdateConversationImmediately: (...args) =>
+      createOrUpdateConversationImmediatelyRef.current(...args),
+    deleteConversation: (id) => deleteConversationRef.current(id),
+    updateConversationTitle: (id, title) =>
+      updateConversationTitleRef.current(id, title),
+    chatModeForSave,
+  })
+  const sessionController = (sessionControllerRef.current ??=
+    new ChatSessionController(
+      initialConversationId,
+      {
+        chatMessages: [],
+        compactionState: [],
+        pendingCompactionAnchorMessageId: null,
+        messageModelMap: new Map(),
+        messageReasoningMap: new Map(),
+        assistantGroupBoundaryMessageIds: [],
+        activeBranchByUserMessageId: new Map(),
+      },
+      preferencesController,
+      sessionControllerDeps,
+    ))
+  useEffect(() => {
+    // StrictMode（dev 构建）会把本 effect 重放为 setup→cleanup→setup：
+    // cleanup 的 dispose() 掉线后由 setup 幂等重建 AgentService 订阅。
+    sessionController.resumeAgentSubscription()
+    return () => sessionController.dispose()
+  }, [sessionController])
+
+  const {
+    chatMessages,
+    compactionState,
     pendingCompactionAnchorMessageId,
-    setPendingCompactionAnchorMessageId,
-  ] = useState<string | null>(null)
+    messageModelMap,
+    messageReasoningMap,
+    assistantGroupBoundaryMessageIds,
+    activeBranchByUserMessageId,
+  } = useSyncExternalStore(
+    sessionController.subscribe,
+    sessionController.getSnapshot,
+  )
+  const chatMessagesStateRef = sessionController.chatMessagesStateRef
+  const activeBranchByUserMessageIdRef =
+    sessionController.activeBranchByUserMessageIdRef
+  const setChatMessages = sessionController.setChatMessages
+  const setCompactionState = sessionController.setCompactionState
+  const setPendingCompactionAnchorMessageId =
+    sessionController.setPendingCompactionAnchorMessageId
+  const setMessageModelMap = sessionController.setMessageModelMap
+  const setMessageReasoningMap = sessionController.setMessageReasoningMap
+  const setAssistantGroupBoundaryMessageIds =
+    sessionController.setAssistantGroupBoundaryMessageIds
+  const setActiveBranchByUserMessageId =
+    sessionController.setActiveBranchByUserMessageId
+  const setCurrentConversationId = sessionController.setCurrentConversationId
+
   const inputController = useChatInputController({
     seededInputMessage: seededRuntimeSnapshot?.inputMessage,
     seededInputDraftRevision: seededRuntimeSnapshot?.inputDraftRevision,
@@ -451,6 +534,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     buildNewInputMessage: getNewInputMessage,
     chatMessagesStateRef,
     setChatMessages,
+    preferencesController,
   })
   const {
     inputMessage,
@@ -505,9 +589,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     Boolean(props.initialConversationId),
   )
   const untitledFallback = t('chat.untitledConversation', 'New chat')
-  const [messageReasoningMap, setMessageReasoningMap] = useState<
-    Map<string, ReasoningLevel>
-  >(new Map())
   const [editingAssistantMessageId, setEditingAssistantMessageId] = useState<
     string | null
   >(null)
@@ -624,17 +705,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     }
   }, [chatMessages, effectiveMaxContextTokens])
 
-  // Per-message model mapping for historical user messages
-  const [messageModelMap, setMessageModelMap] = useState<Map<string, string>>(
-    new Map(),
-  )
-  const [
-    assistantGroupBoundaryMessageIds,
-    setAssistantGroupBoundaryMessageIds,
-  ] = useState<string[]>([])
-  const [activeBranchByUserMessageId, setActiveBranchByUserMessageId] =
-    useState<Map<string, string>>(new Map())
-
   const chatTimelineReadModel = useChatTimelineReadModel({
     messages: chatMessages,
     assistantGroupBoundaryMessageIds,
@@ -669,9 +739,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setQueuedMessageEditState(null)
   }, [currentConversationId])
 
-  useEffect(() => {
-    chatMessagesStateRef.current = chatMessages
-  }, [chatMessages])
+  // `chatMessagesStateRef` is now a live facade over the controller's own
+  // snapshot (see ChatSessionController) — no forwarding effect needed.
 
   // Selection-highlight lifecycle — see useChatHighlightSession for the full
   // contract. In-input mentions reconcile immediately on delete; sent
@@ -937,9 +1006,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     submitChatMutation,
     buildContextBreakdownInputs,
   } = useChatStreamManager({
-    setChatMessages,
-    setCompactionState,
-    setPendingCompactionAnchorMessageId,
     autoScrollToBottom: triggerAutoScrollToBottom,
     requestContextBuilder,
     currentConversationId,
@@ -975,13 +1041,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     handleHistoricalUserMessageDelete,
     handleAssistantMessageGroupBranch,
   } = useYoloChatSession({
+    sessionController,
     initialConversationId: props.initialConversationId,
     onConversationContextChange: props.onConversationContextChange,
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
-    deleteConversation,
     getConversationById,
-    updateConversationTitle,
     chatList,
     submitChatMutation,
     chatMessagesStateRef,
@@ -997,7 +1062,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     effectiveCompactionState,
     messageModelMap,
     setMessageModelMap,
-    messageReasoningMap,
     setMessageReasoningMap,
     conversationOverrides,
     setConversationOverrides,
@@ -1285,7 +1349,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   // 的处理器通过 lateStateRef 读取。取代原先的 mainInputSubmitStateRef /
   // releaseHighlightIdsRef 等各个独立 useLatestRef。
   inputController.lateStateRef.current = {
-    reasoningLevel,
     updateHistoricalUserMessage,
     releaseHighlightIds,
     isUserMessageEffectivelyEmpty,
@@ -1307,8 +1370,6 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliChatMode,
     cliConversationId,
     commitSentSelectionHighlights,
-    conversationModelId,
-    conversationOverrides,
     cliConversationController,
     cliOperationCoordinator,
     cliRuntimeScope,
@@ -1327,15 +1388,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliYoloEnabled,
     setCliConversationId,
     consumeAcceptedCliDraft,
-    conversationReasoningLevelRef,
-    setReasoningLevel,
     chatMountedRef,
     handleManualContextCompaction,
     cliPreferenceSettingsRef,
     refreshCliSkills,
     abortConversationRun,
-    setConversationModelId,
-    conversationModelIdRef,
     getReasoningLevelForModelId,
     persistReasoningLevelForModel,
   }

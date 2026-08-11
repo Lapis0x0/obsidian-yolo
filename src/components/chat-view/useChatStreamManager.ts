@@ -75,13 +75,6 @@ import { useAgentConversationState } from './useAgentConversationState'
 import type { ContextBreakdownInputs } from './useContextBreakdown'
 
 type UseChatStreamManagerParams = {
-  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
-  setCompactionState: React.Dispatch<
-    React.SetStateAction<ChatConversationCompactionState>
-  >
-  setPendingCompactionAnchorMessageId: React.Dispatch<
-    React.SetStateAction<string | null>
-  >
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
@@ -222,9 +215,6 @@ const buildChatContextualInjections = ({
 }
 
 export function useChatStreamManager({
-  setChatMessages,
-  setCompactionState,
-  setPendingCompactionAnchorMessageId,
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
@@ -286,13 +276,6 @@ export function useChatStreamManager({
     [agentConversationState],
   )
 
-  const syncVisibleConversationState = useCallback(
-    (baseMessages?: ChatMessage[]) => {
-      setChatMessages(baseMessages ?? baseConversationMessagesRef.current)
-    },
-    [setChatMessages],
-  )
-
   const handleAutoPromoteTransportMode = useCallback(
     (providerId: string, mode: AutoPromotedTransportMode) => {
       void promoteProviderTransportModeToObsidian({
@@ -318,11 +301,14 @@ export function useChatStreamManager({
         return
       }
 
-      syncVisibleConversationState(state.messages)
-      setCompactionState(state.compaction ?? [])
-      setPendingCompactionAnchorMessageId(
-        state.pendingCompactionAnchorMessageId ?? null,
-      )
+      // The `chatMessages`/`compactionState`/`pendingCompactionAnchorMessageId`
+      // mirror into React state used to happen here — it's now
+      // `ChatSessionController`'s own independent AgentService subscription
+      // (see docs/plans/2026-08-11-arch-governance-step3-chat-state-ownership.md,
+      // "分期 C1"). This effect keeps its own subscription only for
+      // `baseConversationMessagesRef`/`baseCompactionStateRef` (read by
+      // `compactConversation`/`submitChatMutation` below) and the
+      // auto-scroll trigger.
       if (!runSummary.isActive) {
         return
       }
@@ -355,14 +341,7 @@ export function useChatStreamManager({
     return () => {
       unsubscribe()
     }
-  }, [
-    autoScrollToBottom,
-    currentConversationId,
-    plugin,
-    setCompactionState,
-    setPendingCompactionAnchorMessageId,
-    syncVisibleConversationState,
-  ])
+  }, [autoScrollToBottom, currentConversationId, plugin])
 
   const abortConversationRun = useCallback(
     (conversationId: string) => {

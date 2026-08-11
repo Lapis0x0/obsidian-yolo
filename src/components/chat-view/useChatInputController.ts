@@ -27,7 +27,6 @@ import type { useChatHistory } from '../../hooks/useChatHistory'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { Assistant } from '../../types/assistant.types'
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
-import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
   CurrentFileViewState,
   Mentionable,
@@ -69,6 +68,7 @@ import {
   prepareCliConversation,
   submitCliComposerTurn,
 } from './cliChatIntegration'
+import type { ConversationPreferencesController } from './ConversationPreferencesController'
 
 const extractSelectedModelIds = (mentionables: Mentionable[]): string[] => {
   const seen = new Set<string>()
@@ -105,7 +105,6 @@ type HandleUserMessageSubmitArgs = {
  * ref 的创建挪到了 hook 内部，写入仍在 Chat.tsx 完成。
  */
 export type ChatInputLateState = {
-  reasoningLevel: ReasoningLevel
   updateHistoricalUserMessage: (
     messageId: string,
     updater: (message: ChatUserMessage) => ChatUserMessage,
@@ -142,8 +141,6 @@ export type ChatInputLateState = {
   cliChatMode: CliChatMode
   cliConversationId: string | null
   commitSentSelectionHighlights: (mentionables: Mentionable[]) => void
-  conversationModelId: string
-  conversationOverrides: ConversationOverrideSettings | null
   cliConversationController: CliConversationController | null
   cliOperationCoordinator: CliChatOperationCoordinator | null
   cliRuntimeScope: CliRuntimeScope | undefined
@@ -183,16 +180,12 @@ export type ChatInputLateState = {
   consumeAcceptedCliDraft: (
     acceptedDraft: NonNullable<CliChatOperationSnapshot['acceptedDraft']>,
   ) => void
-  conversationReasoningLevelRef: MutableRefObject<Map<string, ReasoningLevel>>
-  setReasoningLevel: Dispatch<SetStateAction<ReasoningLevel>>
   chatMountedRef: MutableRefObject<boolean>
   handleManualContextCompaction: () => Promise<void>
   cliPreferenceSettingsRef: MutableRefObject<YoloSettings>
   /** Forces the CLI skills list to re-fetch, e.g. after the Claude plugin manager mutates plugins. */
   refreshCliSkills: () => void
   abortConversationRun: (conversationId: string) => void
-  setConversationModelId: Dispatch<SetStateAction<string>>
-  conversationModelIdRef: MutableRefObject<Map<string, string>>
   getReasoningLevelForModelId: (modelId?: string | null) => ReasoningLevel
   persistReasoningLevelForModel: (
     modelId: string,
@@ -209,6 +202,12 @@ export type UseChatInputControllerParams = {
   buildNewInputMessage: (reasoningLevel: ReasoningLevel) => ChatUserMessage
   chatMessagesStateRef: MutableRefObject<ChatMessage[]>
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>
+  /**
+   * 会话级偏好七件套的唯一 owner——跨渲染稳定的 controller 实例（在
+   * useChatRuntimePreferences 中构造，早于本 hook 调用），事件处理器直接
+   * 调用其命令 API，不再经 lateStateRef 读写。见架构治理第三步分期 C1。
+   */
+  preferencesController: ConversationPreferencesController
 }
 
 /**
@@ -231,6 +230,7 @@ export function useChatInputController({
   buildNewInputMessage,
   chatMessagesStateRef,
   setChatMessages,
+  preferencesController,
 }: UseChatInputControllerParams) {
   const plugin = usePlugin()
   // 供 handleMainInputRunSlashCommand 打开的原生动作弹窗读取「当前」运行时——
@@ -710,13 +710,13 @@ export function useChatInputController({
       return {
         ...latestInputMessage,
         content,
-        reasoningLevel: getLate().reasoningLevel,
+        reasoningLevel: preferencesController.getSnapshot().reasoningLevel,
         mentionables,
         selectedSkills: latestInputMessage.selectedSkills ?? [],
         selectedModelIds: extractSelectedModelIds(mentionables),
       }
     },
-    [getLate, getLatestInputMessage],
+    [getLatestInputMessage, preferencesController],
   )
 
   const clearSelectionMentionable = useCallback(() => {
@@ -1013,7 +1013,7 @@ export function useChatInputController({
                   ? { sessionPathHint: result.sessionRef.sessionPathHint }
                   : {}),
               },
-              late.conversationOverrides,
+              preferencesController.getSnapshot().conversationOverrides,
             )
             if (
               late.cliConversationId === null &&
@@ -1105,15 +1105,18 @@ export function useChatInputController({
         if (enqueueResult === 'enqueued') {
           late.setMessageReasoningMap((prev) => {
             const next = new Map(prev)
-            next.set(inputMessage.id, late.reasoningLevel)
+            next.set(
+              inputMessage.id,
+              preferencesController.getSnapshot().reasoningLevel,
+            )
             return next
           })
           late.commitSentSelectionHighlights(messageForSubmit.mentionables)
           if (late.queuedMessageEditState) {
-            late.setReasoningLevel(
+            preferencesController.setReasoningLevel(
               late.queuedMessageEditState.preservedReasoningLevel,
             )
-            late.conversationReasoningLevelRef.current.set(
+            preferencesController.conversationReasoningLevelRef.current.set(
               late.currentConversationId,
               late.queuedMessageEditState.preservedReasoningLevel,
             )
@@ -1122,7 +1125,11 @@ export function useChatInputController({
             )
             late.setQueuedMessageEditState(null)
           } else {
-            replaceInputMessage(buildNewInputMessage(late.reasoningLevel))
+            replaceInputMessage(
+              buildNewInputMessage(
+                preferencesController.getSnapshot().reasoningLevel,
+              ),
+            )
           }
           return
         }
@@ -1149,7 +1156,10 @@ export function useChatInputController({
       }
 
       const nextMessageModelMap = new Map(late.messageModelMap)
-      nextMessageModelMap.set(inputMessage.id, late.conversationModelId)
+      nextMessageModelMap.set(
+        inputMessage.id,
+        preferencesController.getSnapshot().conversationModelId,
+      )
       void late.handleUserMessageSubmit({
         inputChatMessages: [...late.chatMessages, messageForSubmit],
         requestChatMessages: [...late.displayedChatMessages, messageForSubmit],
@@ -1158,22 +1168,29 @@ export function useChatInputController({
       late.setMessageModelMap(nextMessageModelMap)
       late.setMessageReasoningMap((prev) => {
         const next = new Map(prev)
-        next.set(inputMessage.id, late.reasoningLevel)
+        next.set(
+          inputMessage.id,
+          preferencesController.getSnapshot().reasoningLevel,
+        )
         return next
       })
       late.commitSentSelectionHighlights(messageForSubmit.mentionables)
       if (late.queuedMessageEditState) {
-        late.setReasoningLevel(
+        preferencesController.setReasoningLevel(
           late.queuedMessageEditState.preservedReasoningLevel,
         )
-        late.conversationReasoningLevelRef.current.set(
+        preferencesController.conversationReasoningLevelRef.current.set(
           late.currentConversationId,
           late.queuedMessageEditState.preservedReasoningLevel,
         )
         replaceInputMessage(late.queuedMessageEditState.preservedInputMessage)
         late.setQueuedMessageEditState(null)
       } else {
-        replaceInputMessage(buildNewInputMessage(late.reasoningLevel))
+        replaceInputMessage(
+          buildNewInputMessage(
+            preferencesController.getSnapshot().reasoningLevel,
+          ),
+        )
       }
     },
     [
@@ -1182,6 +1199,7 @@ export function useChatInputController({
       buildNewInputMessage,
       getLate,
       inputMessage.id,
+      preferencesController,
       replaceInputMessage,
     ],
   )
@@ -1263,11 +1281,14 @@ export function useChatInputController({
     (id) => {
       const late = getLate()
       const conversationId = late.currentConversationId
-      late.setConversationModelId(id)
-      late.conversationModelIdRef.current.set(conversationId, id)
+      preferencesController.setConversationModelId(id)
+      preferencesController.conversationModelIdRef.current.set(
+        conversationId,
+        id,
+      )
       const nextReasoningLevel = late.getReasoningLevelForModelId(id)
-      late.setReasoningLevel(nextReasoningLevel)
-      late.conversationReasoningLevelRef.current.set(
+      preferencesController.setReasoningLevel(nextReasoningLevel)
+      preferencesController.conversationReasoningLevelRef.current.set(
         conversationId,
         nextReasoningLevel,
       )
@@ -1276,7 +1297,7 @@ export function useChatInputController({
         reasoningLevel: nextReasoningLevel,
       }))
     },
-    [getLate, setInputMessage],
+    [getLate, preferencesController, setInputMessage],
   )
 
   const handleMainInputReasoningChange = useCallback<
@@ -1285,16 +1306,19 @@ export function useChatInputController({
     (level) => {
       const late = getLate()
       const conversationId = late.currentConversationId
-      const modelId = late.conversationModelId
-      late.setReasoningLevel(level)
-      late.conversationReasoningLevelRef.current.set(conversationId, level)
+      const modelId = preferencesController.getSnapshot().conversationModelId
+      preferencesController.setReasoningLevel(level)
+      preferencesController.conversationReasoningLevelRef.current.set(
+        conversationId,
+        level,
+      )
       void late.persistReasoningLevelForModel(modelId, level)
       setInputMessage((prev) => ({
         ...prev,
         reasoningLevel: level,
       }))
     },
-    [getLate, setInputMessage],
+    [getLate, preferencesController, setInputMessage],
   )
 
   const handleMainInputRunSlashCommand = useCallback<

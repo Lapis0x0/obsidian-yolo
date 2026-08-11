@@ -24,7 +24,10 @@ import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
-import { type BuiltinChatMode, type ChatMode } from './chat-input/ChatModeSelect'
+import {
+  type BuiltinChatMode,
+  type ChatMode,
+} from './chat-input/ChatModeSelect'
 import {
   beginChatRuntimeNavigation,
   resolveChatRuntimeId,
@@ -109,10 +112,10 @@ function computeInitialSnapshot(
     settings.currentAssistantId ??
     DEFAULT_ASSISTANT_ID
   const chatMode: ChatMode =
-    seeded?.chatMode ?? (settings.chatOptions.chatMode ?? 'agent')
+    seeded?.chatMode ?? settings.chatOptions.chatMode ?? 'agent'
   const persistedChatMode: ChatMode = seeded?.persistedChatMode ?? chatMode
   const yoloEnabled =
-    seeded?.yoloEnabled ?? (settings.chatOptions.agentYoloEnabled ?? false)
+    seeded?.yoloEnabled ?? settings.chatOptions.agentYoloEnabled ?? false
   const conversationModelId =
     seeded?.conversationModelId ??
     (() => {
@@ -325,11 +328,11 @@ export function useChatRuntimePreferences({
   const getReasoningLevelForModelIdRef = useLatestRef(
     getReasoningLevelForModelId,
   )
-  const persistPreferredAssistantIdRef = useLatestRef((assistantId: string) =>
-    void persistPreferredAssistantId(assistantId),
+  const persistPreferredAssistantIdRef = useLatestRef(
+    (assistantId: string) => void persistPreferredAssistantId(assistantId),
   )
-  const persistPreferredChatModeRef = useLatestRef((mode: BuiltinChatMode) =>
-    void persistPreferredChatMode(mode),
+  const persistPreferredChatModeRef = useLatestRef(
+    (mode: BuiltinChatMode) => void persistPreferredChatMode(mode),
   )
 
   const controllerDepsRef = useRef<ConversationPreferencesControllerDeps>()
@@ -469,7 +472,14 @@ export function useChatRuntimePreferences({
       preferencesController.toggleYolo(enabled)
       void persistPreferredYolo(enabled)
     },
-    [app, persistPreferredYolo, preferencesController, setSettings, settings, t],
+    [
+      app,
+      persistPreferredYolo,
+      preferencesController,
+      setSettings,
+      settings,
+      t,
+    ],
   )
 
   const applyAssistantDefaultModel = useCallback(
@@ -615,7 +625,8 @@ export function useChatRuntimePreferences({
     // 供 useYoloChatSession / useCliRuntimeOrchestration / useChatDomainActions
     // 等消费 hook 的会话生命周期逻辑直接替换原 useState setter。
     setConversationModelId: preferencesController.setConversationModelId,
-    setConversationAssistantId: preferencesController.setConversationAssistantId,
+    setConversationAssistantId:
+      preferencesController.setConversationAssistantId,
     setReasoningLevel: preferencesController.setReasoningLevel,
     setChatMode: preferencesController.setChatMode,
     setPersistedChatMode: preferencesController.setPersistedChatMode,
@@ -624,12 +635,18 @@ export function useChatRuntimePreferences({
     conversationModelIdRef: preferencesController.conversationModelIdRef,
     conversationReasoningLevelRef:
       preferencesController.conversationReasoningLevelRef,
-    conversationAssistantIdRef: preferencesController.conversationAssistantIdRef,
+    conversationAssistantIdRef:
+      preferencesController.conversationAssistantIdRef,
     conversationOverridesRef: preferencesController.conversationOverridesRef,
 
     // switchConversation：会话加载/新建/分支时一次性提交恢复值 + 写入 Ref
     // 缓存，供 useYoloChatSession 替换原「setX + 手动 ref.set」散落写法。
     switchConversation: preferencesController.switchConversation,
+
+    // controller 实例本身：供 useChatInputController 直接注入（跨渲染稳定，
+    // 不需要 late ref）——见架构治理第三步分期 C1，消灭事件处理器中的偏好
+    // 残留 late 绑定。
+    preferencesController,
 
     // persist* 全族
     persistReasoningLevelForModel,
