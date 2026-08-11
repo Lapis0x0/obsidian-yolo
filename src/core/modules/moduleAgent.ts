@@ -12,14 +12,16 @@ import type {
   YoloAgentRunRequest,
 } from '../agent/agent-api'
 import type { InProcessToolServer } from '../mcp/inProcessToolServer'
-import { getLocalFileToolServerName } from '../mcp/localFileToolNames'
 import { getToolName } from '../mcp/tool-name-utils'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { ModuleAgentDebugCollector } from './moduleAgentDebugLog'
+import {
+  MODULE_CAPABILITY_TOOL_NAMES,
+  resolveModuleCapabilityProfile,
+} from './moduleCapabilityProfile'
 import { assertModuleId } from './moduleStore'
 import type {
-  YoloModuleAgentCapabilityV1,
   YoloModuleAgentEventV1,
   YoloModuleAgentMessageV1,
   YoloModuleAgentRequestV1,
@@ -44,32 +46,8 @@ export type CoreModuleAgentCapabilityProviderOptions = {
   isDebugCaptureEnabled(): boolean
 }
 
-const localFileToolName = (name: string): string =>
-  getToolName(getLocalFileToolServerName(), name)
-
-// fs_read/fs_list were retired in favor of the bash tool (vault search +
-// read now live there — see YOLO-45). 'vault-read' requests the same 'bash'
-// tool identity as 'vault-write', but `mapRequest` below sets
-// `bashReadOnly: true` for it, which forces the entire run onto the
-// structurally read-only bash variant (mkdir/mv/rm/rmdir excluded from the
-// command set and guarded again at the fs boundary — see
-// runtime-components/bash-engine/src/entry.ts). The old read/write
-// capability split is preserved exactly; this is no longer a gap.
-const TOOL_NAMES = Object.freeze({
-  bash: localFileToolName('bash'),
-  edit: localFileToolName('fs_edit'),
-})
-
-const TOOLS_BY_CAPABILITY: Readonly<
-  Record<YoloModuleAgentCapabilityV1, readonly string[]>
-> = Object.freeze({
-  none: Object.freeze([]),
-  'vault-read': Object.freeze([TOOL_NAMES.bash]),
-  'vault-write': Object.freeze([TOOL_NAMES.bash, TOOL_NAMES.edit]),
-})
-
-const MODULE_AGENT_TOOL_NAME_RE = /^[a-z][a-z0-9_]*$/
-const MAX_MODULE_AGENT_TOOLS = 16
+export const MODULE_AGENT_TOOL_NAME_RE = /^[a-z][a-z0-9_]*$/
+export const MAX_MODULE_AGENT_TOOLS = 16
 
 export const UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER: ModuleAgentCapabilityProviderV1 =
   Object.freeze({
@@ -336,7 +314,7 @@ function snapshotTools(
       `Module agent tools must not exceed ${MAX_MODULE_AGENT_TOOLS}`,
     )
   }
-  const snapped = tools.map(snapshotTool)
+  const snapped = tools.map(snapshotModuleAgentToolBase)
   const names = new Set<string>()
   for (const tool of snapped) {
     if (names.has(tool.name)) {
@@ -347,7 +325,15 @@ function snapshotTools(
   return Object.freeze(snapped)
 }
 
-function snapshotTool(tool: YoloModuleAgentToolV1): YoloModuleAgentToolV1 {
+/**
+ * Validates and snapshots the fields shared by every module tool contract:
+ * name/description/inputSchema/handler. Exported so `moduleChatModeRegistry.ts`
+ * can validate its (superset) tool declaration identically instead of
+ * re-implementing the same checks.
+ */
+export function snapshotModuleAgentToolBase(
+  tool: YoloModuleAgentToolV1,
+): YoloModuleAgentToolV1 {
   if (!tool || typeof tool !== 'object') {
     throw new TypeError('Module agent tool must be an object')
   }
@@ -457,6 +443,7 @@ function mapRequest(
   abortSignal: AbortSignal,
   toolContext: ModuleToolRuntimeContext,
 ): YoloAgentRunRequest {
+  const capabilityProfile = resolveModuleCapabilityProfile(request.capability)
   return {
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
     ...(request.messages ? { messages: request.messages.map(mapMessage) } : {}),
@@ -465,12 +452,12 @@ function mapRequest(
     yolo: true,
     systemPromptOverride: request.systemPrompt,
     tools: {
-      allowedToolNames: [...TOOLS_BY_CAPABILITY[request.capability]],
+      allowedToolNames: [...capabilityProfile.allowedHostToolNames],
       ...(toolContext.inProcessServer
         ? { inProcessServer: toolContext.inProcessServer }
         : {}),
     },
-    bashReadOnly: request.capability === 'vault-read',
+    bashReadOnly: capabilityProfile.bashReadOnly,
     ...(request.workspaceScope
       ? {
           workspaceScope: {
@@ -548,8 +535,8 @@ function publicToolName(
   name: string,
   moduleToolNameByFullName: ReadonlyMap<string, string>,
 ): string {
-  if (name === TOOL_NAMES.bash) return 'vault.bash'
-  if (name === TOOL_NAMES.edit) return 'vault.edit'
+  if (name === MODULE_CAPABILITY_TOOL_NAMES.bash) return 'vault.bash'
+  if (name === MODULE_CAPABILITY_TOOL_NAMES.edit) return 'vault.edit'
   return moduleToolNameByFullName.get(name) ?? 'unknown'
 }
 
@@ -582,13 +569,20 @@ function buildModuleToolRuntimeContext(
   return Object.freeze({
     inProcessServer: Object.freeze({
       name: serverName,
-      server: createModuleToolServer(tools),
+      server: createModuleToolInProcessServer(tools),
     }),
     publicNameByFullName,
   })
 }
 
-function createModuleToolServer(
+/**
+ * Builds an `InProcessToolServer` that dispatches to `tools`' handlers,
+ * serialized per server in arrival order (see the handler-serialization note
+ * below). Exported so `moduleChatModeRegistry.ts` can build the same kind of
+ * server for a chat mode's (longer-lived) tool set instead of re-implementing
+ * the serial dispatch chain.
+ */
+export function createModuleToolInProcessServer(
   tools: readonly YoloModuleAgentToolV1[],
 ): InProcessToolServer {
   const byName = new Map(tools.map((tool) => [tool.name, tool]))

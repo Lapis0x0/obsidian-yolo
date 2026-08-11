@@ -71,12 +71,14 @@ import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
 import {
   CoreModuleAgentCapabilityProvider,
+  CoreModuleChatCapabilityProvider,
   CoreModuleHostCapabilityProvider,
   DomBlobModuleScriptExecutor,
   IndexedDbDataAdapter,
   ManagedModulePathsCapabilityProvider,
   ModuleArtifactArrivalGrace,
   ModuleAssetsCapabilityProvider,
+  ModuleChatModeRegistry,
   ModuleConfigCapabilityProvider,
   ModuleDeviceStateStore,
   ModuleIntentStore,
@@ -273,6 +275,7 @@ export default class YoloPlugin extends Plugin {
   private actionToastController: ActionToastController | null = null
   private readonly moduleSettingsContributions =
     new ModuleSettingsContributionRegistry()
+  private readonly moduleChatModeRegistry = new ModuleChatModeRegistry()
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -989,6 +992,7 @@ export default class YoloPlugin extends Plugin {
         ) => this.addSettingsChangeListener(listener),
         getRagEngine: () => this.getRAGEngine(),
         promptSourceWatcher: agentService.getPromptSourceWatcher(),
+        moduleChatModeRegistry: this.moduleChatModeRegistry,
       })
     }
     return this.mcpCoordinator
@@ -4010,6 +4014,9 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             servicesReference.current?.getVerifiedArtifact(moduleId),
         }),
         backgroundActivities: this.getBackgroundActivityRegistry(),
+        chat: new CoreModuleChatCapabilityProvider({
+          sink: this.moduleChatModeRegistry,
+        }),
         config: new ModuleConfigCapabilityProvider({
           createBackend: (moduleId) => {
             if (

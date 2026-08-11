@@ -927,7 +927,10 @@ export class McpManager {
     serverName: string,
     server: InProcessToolServer,
   ): () => void {
-    validateServerName(serverName)
+    // In-process registration is host-controlled (never fed a user-supplied
+    // name), so it's the one legitimate user of the reserved
+    // `module-mode-` prefix (see `moduleChatModeRegistry.ts`).
+    validateServerName(serverName, { allowReservedPrefix: true })
     if (serverName === getLocalFileToolServerName()) {
       throw new Error(
         `Tool server name "${serverName}" is reserved for built-in local tools.`,

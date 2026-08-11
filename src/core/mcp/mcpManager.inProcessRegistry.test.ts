@@ -260,6 +260,15 @@ describe('McpManager in-process tool server registry', () => {
     ).toThrow(/already registered/)
   })
 
+  it('allows registering a server using the reserved module-mode- prefix', () => {
+    const manager = createManager()
+    const { server } = createEchoServer()
+
+    expect(() =>
+      manager.registerInProcessServer('module-mode-learning-chat', server),
+    ).not.toThrow()
+  })
+
   it('rejects a registration name that collides with a configured MCP server', () => {
     const manager = createManager(['remote'])
     const { server } = createEchoServer()
