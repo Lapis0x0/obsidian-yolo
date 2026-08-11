@@ -915,6 +915,8 @@ export function useChatStreamManager({
             : resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
           allowedSkillPaths,
           bashReadOnly: chatModeRuntime.bashReadOnly,
+          moduleToolApprovalPolicies:
+            chatModeRuntime.moduleToolApprovalPolicies,
           modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
           modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
           contextPolicy: chatModeRuntime.contextPolicy,

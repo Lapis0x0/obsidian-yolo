@@ -1521,4 +1521,183 @@ describe('AgentToolGateway', () => {
       expect(response?.status).toBe(ToolCallResponseStatus.Success)
     })
   })
+
+  describe('module chat mode tool call snapshot', () => {
+    // Mirrors resolveModuleChatModeRuntime's moduleToolApprovalPolicies: full
+    // tool name -> the mode's declared requiresApproval (present with
+    // `false` when omitted, absent entirely for non-mode tools).
+    const moduleToolApprovalPolicies = new Map<string, boolean>([
+      ['module-mode-learning-chat__start_course_generation', true],
+      ['module-mode-learning-chat__get_generation_status', false],
+    ])
+
+    it('fixes approvalPolicy "always-require-user" and stays PendingApproval, ignoring bypassToolApproval and the conversation allow-list', () => {
+      const mcpManager = {
+        // Both would normally auto-execute the call; the persisted policy
+        // must override them entirely.
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        bypassToolApproval: true,
+        allowedToolNames: [
+          'module-mode-learning-chat__start_course_generation',
+        ],
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'module-mode-learning-chat__start_course_generation',
+            arguments: emptyArgs,
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(message.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.PendingApproval,
+      )
+      expect(message.toolCalls[0]?.request.metadata?.approvalPolicy).toBe(
+        'always-require-user',
+      )
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+      const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+      expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+    })
+
+    it('fixes approvalPolicy "auto" and runs immediately for a mode tool without requiresApproval', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(false),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['module-mode-learning-chat__get_generation_status'],
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'module-mode-learning-chat__get_generation_status',
+            arguments: emptyArgs,
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(message.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.Running,
+      )
+      expect(message.toolCalls[0]?.request.metadata?.approvalPolicy).toBe(
+        'auto',
+      )
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+      const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+      expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+    })
+
+    it('does not write approvalPolicy for a host tool granted by the mode capability tier (not in the map)', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__bash'],
+        bashReadOnly: true,
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'yolo_local__bash',
+            arguments: createCompleteToolCallArguments({
+              value: { command: 'ls' },
+            }),
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(
+        message.toolCalls[0]?.request.metadata?.approvalPolicy,
+      ).toBeUndefined()
+      expect(
+        message.toolCalls[0]?.request.metadata?.executionConstraints,
+      ).toEqual({ bashReadOnly: true })
+    })
+
+    it('does not write executionConstraints for a non-bash tool in module mode', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(false),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['module-mode-learning-chat__get_generation_status'],
+        bashReadOnly: true,
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'module-mode-learning-chat__get_generation_status',
+            arguments: emptyArgs,
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(
+        message.toolCalls[0]?.request.metadata?.executionConstraints,
+      ).toBeUndefined()
+    })
+
+    it('writes no module chat mode metadata at all outside module chat mode runs', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      // No `moduleToolApprovalPolicies` passed — matches every existing
+      // (non-module) chat mode and assistant run.
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__bash'],
+        toolPreferences: {
+          yolo_local__bash: { enabled: true, approvalMode: 'full_access' },
+        },
+        bashReadOnly: false,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'yolo_local__bash',
+            arguments: createCompleteToolCallArguments({
+              value: { command: 'ls' },
+            }),
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(
+        message.toolCalls[0]?.request.metadata?.approvalPolicy,
+      ).toBeUndefined()
+      expect(
+        message.toolCalls[0]?.request.metadata?.executionConstraints,
+      ).toBeUndefined()
+    })
+  })
 })

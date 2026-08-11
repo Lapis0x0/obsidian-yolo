@@ -275,6 +275,7 @@ export class AgentToolGateway {
   private readonly blockedCommandPrefixes: readonly string[] | null
   private readonly bypassToolApproval: boolean
   private readonly bashReadOnly: boolean
+  private readonly moduleToolApprovalPolicies?: ReadonlyMap<string, boolean>
   private readonly ajv: AjvInstance
   private readonly schemaValidatorCache = new Map<
     string,
@@ -303,6 +304,7 @@ export class AgentToolGateway {
       blockedCommandPrefixes?: string[]
       bypassToolApproval?: boolean
       bashReadOnly?: boolean
+      moduleToolApprovalPolicies?: ReadonlyMap<string, boolean>
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
@@ -322,6 +324,7 @@ export class AgentToolGateway {
     this.blockedCommandPrefixes = options?.blockedCommandPrefixes ?? null
     this.bypassToolApproval = options?.bypassToolApproval ?? false
     this.bashReadOnly = options?.bashReadOnly ?? false
+    this.moduleToolApprovalPolicies = options?.moduleToolApprovalPolicies
     // `strict: false` keeps ajv tolerant of MCP tool schemas that include
     // vendor-specific keywords or non-canonical types. `allErrors` lists every
     // violation in the error message so the model has enough signal to retry;
@@ -713,6 +716,49 @@ export class AgentToolGateway {
     })
   }
 
+  /**
+   * Fixes the module chat mode approval/execution snapshot onto a tool call
+   * request at creation time — see `ToolCallRequest.metadata.approvalPolicy`
+   * / `.executionConstraints`. A no-op (returns `request` unchanged) for
+   * every non-module-chat-mode run, since `moduleToolApprovalPolicies` is
+   * only ever set by `resolveModuleChatModeRuntime`.
+   *
+   * `approvalPolicy` is written only for tools the mode itself declared
+   * (i.e. present as a key in `moduleToolApprovalPolicies`) — host tools
+   * granted via the mode's capability tier (bash, fs_edit, ...) are not in
+   * that map and keep following the normal approval resolution.
+   * `executionConstraints.bashReadOnly` is written for every bash-identity
+   * call in a module chat mode run, regardless of whether it's a mode tool.
+   */
+  private attachModuleChatModeSnapshot(
+    request: ToolCallRequest,
+  ): ToolCallRequest {
+    if (!this.moduleToolApprovalPolicies) {
+      return request
+    }
+    const requiresApproval = this.moduleToolApprovalPolicies.get(request.name)
+    const approvalPolicy: 'auto' | 'always-require-user' | undefined =
+      requiresApproval === undefined
+        ? undefined
+        : requiresApproval
+          ? 'always-require-user'
+          : 'auto'
+    const executionConstraints = this.isBashToolCall(request.name)
+      ? { bashReadOnly: this.bashReadOnly }
+      : undefined
+    if (approvalPolicy === undefined && executionConstraints === undefined) {
+      return request
+    }
+    return {
+      ...request,
+      metadata: {
+        ...request.metadata,
+        ...(approvalPolicy !== undefined ? { approvalPolicy } : {}),
+        ...(executionConstraints !== undefined ? { executionConstraints } : {}),
+      },
+    }
+  }
+
   createToolMessage({
     toolCallRequests,
     conversationId,
@@ -729,7 +775,9 @@ export class AgentToolGateway {
     branchLabel?: string
   }): ChatToolMessage {
     const preparedRequests = toolCallRequests.map((request) =>
-      this.prepareFinalToolCallRequest(request),
+      this.prepareFinalToolCallRequest(
+        this.attachModuleChatModeSnapshot(request),
+      ),
     )
     const normalizedToolCallRequests = preparedRequests.map(
       (prepared) => prepared.request,
@@ -849,6 +897,20 @@ export class AgentToolGateway {
         }
       }
       return { status: ToolCallResponseStatus.AwaitingUserInput }
+    }
+
+    // Module chat mode tools carry a persisted approval policy fixed at
+    // creation time (see `attachModuleChatModeSnapshot`). It fully replaces
+    // the normal approval resolution below — in particular it is NOT
+    // affected by `bypassToolApproval` (YOLO) or the mcpManager "always
+    // allow this conversation" list, which only `shouldAutoExecuteTool`
+    // consults. This is what makes `requiresApproval: true` an unconditional
+    // per-call confirmation gate.
+    const approvalPolicy = request.metadata?.approvalPolicy
+    if (approvalPolicy !== undefined) {
+      return approvalPolicy === 'auto'
+        ? { status: ToolCallResponseStatus.Running }
+        : { status: ToolCallResponseStatus.PendingApproval }
     }
 
     if (this.shouldAutoExecuteTool({ request, conversationId })) {

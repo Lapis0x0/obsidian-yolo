@@ -138,6 +138,29 @@ describe('resolveChatModeRuntime module chat mode branch', () => {
     expect(runtime.contextPolicy).toEqual({ useAssistant: false })
   })
 
+  it("builds moduleToolApprovalPolicies keyed by full tool name from each tool's requiresApproval", () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistantEnabledToolNames: [],
+      moduleChatMode: moduleChatMode(),
+    })
+    expect(runtime.moduleToolApprovalPolicies).toEqual(
+      new Map([
+        ['module-mode-learning-chat__start_course_generation', true],
+        ['module-mode-learning-chat__get_generation_status', false],
+      ]),
+    )
+  })
+
+  it('builds an empty moduleToolApprovalPolicies map when the mode declares no tools', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'module:learning:chat',
+      assistantEnabledToolNames: [],
+      moduleChatMode: moduleChatMode({ tools: undefined }),
+    })
+    expect(runtime.moduleToolApprovalPolicies).toEqual(new Map())
+  })
+
   it('falls back to the built-in branch when moduleChatMode is missing (defensive)', () => {
     // Callers are expected to resolve the effective mode before calling —
     // this only guards against a mismatched/missing lookup rather than
@@ -149,6 +172,7 @@ describe('resolveChatModeRuntime module chat mode branch', () => {
     })
     expect(runtime.bashReadOnly).toBe(false)
     expect(runtime.contextPolicy).toEqual({ useAssistant: true })
+    expect(runtime.moduleToolApprovalPolicies).toBeUndefined()
   })
 })
 

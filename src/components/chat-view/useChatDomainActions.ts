@@ -504,11 +504,27 @@ export function useChatDomainActions({
           })
 
         if (allowForConversation) {
-          mcpManager.allowToolForConversation(
-            request.name,
-            conversationId,
-            args,
-          )
+          if (request.metadata?.approvalPolicy === 'always-require-user') {
+            // See `AgentService.approveToolCall`'s matching guard: module
+            // chat mode tools declared `requiresApproval: true` are an
+            // unconditional per-call confirmation gate and must never be
+            // added to the conversation's "always allow" list, even from
+            // this recovery path.
+            console.warn(
+              '[YOLO] Ignoring allowForConversation: tool call approval policy is always-require-user',
+              {
+                conversationId,
+                toolCallId: request.id,
+                toolName: request.name,
+              },
+            )
+          } else {
+            mcpManager.allowToolForConversation(
+              request.name,
+              conversationId,
+              args,
+            )
+          }
         }
 
         if (foregroundToolAbortController.signal.aborted) {
@@ -554,6 +570,12 @@ export function useChatDomainActions({
                     .getAgentService()
                     .getPendingApprovalSubagentParentContext(conversationId)
                 : undefined,
+              // This recovery path also bypasses `AgentToolGateway` and has
+              // no live `bashReadOnly` option to read — use the persisted
+              // snapshot fixed at tool-call creation time instead. See
+              // `ToolCallRequest.metadata.executionConstraints`.
+              bashReadOnly:
+                request.metadata?.executionConstraints?.bashReadOnly,
             }),
           getResponseBody: (response) => response,
         })

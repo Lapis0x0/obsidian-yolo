@@ -1413,13 +1413,19 @@ function ToolCallItem({
   const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
   const isAlwaysAllowDisabled = useMemo(() => {
     if (isExitPlanMode) return true
+    // Module chat mode tools declared `requiresApproval: true` are an
+    // unconditional per-call confirmation gate (see `tool-gateway.ts`'s
+    // `attachModuleChatModeSnapshot`) — the "always allow this
+    // conversation" option would be misleading since the service layer
+    // rejects it anyway (see `AgentService.approveToolCall`).
+    if (request.metadata?.approvalPolicy === 'always-require-user') return true
     try {
       const { toolName } = parseToolName(request.name)
       return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
     } catch {
       return false
     }
-  }, [isExitPlanMode, request.name])
+  }, [isExitPlanMode, request.metadata?.approvalPolicy, request.name])
   const pendingAllowLabel = isExitPlanMode
     ? toolLabels.approvePlan
     : toolLabels.allow

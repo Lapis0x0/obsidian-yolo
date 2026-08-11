@@ -1183,12 +1183,17 @@ const makeAssistantToolMessages = ({
   userMessage,
   responseStatus,
   toolName = 'server__tool',
+  requestMetadata,
 }: {
   userMessage: ChatUserMessage
   responseStatus:
     | ToolCallResponseStatus.PendingApproval
     | ToolCallResponseStatus.AwaitingUserInput
   toolName?: string
+  requestMetadata?: {
+    approvalPolicy?: 'auto' | 'always-require-user'
+    executionConstraints?: { bashReadOnly?: boolean }
+  }
 }): ChatMessage[] => {
   const request = {
     id: 'call-1',
@@ -1197,6 +1202,7 @@ const makeAssistantToolMessages = ({
       kind: 'complete' as const,
       value: {},
     },
+    ...(requestMetadata ? { metadata: requestMetadata } : {}),
   }
   return [
     userMessage,
@@ -1295,6 +1301,105 @@ describe('AgentService continuation input', () => {
     expect(await approvePromise).toBe(true)
     firstRuntime.resolveRun()
     await runPromise
+  })
+
+  it('approveToolCall passes the persisted executionConstraints.bashReadOnly to mcpManager.callTool', async () => {
+    const service = new AgentService()
+    const userMessage = makeUserMessage('u1', 'dispatch once')
+    const callTool = jest.fn().mockResolvedValue({
+      status: ToolCallResponseStatus.Success,
+      data: { type: 'text', text: 'ok' },
+    })
+
+    const runPromise = service.run({
+      conversationId: 'conv-approve-bashro',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conv-approve-bashro',
+        messages: [userMessage],
+        model: { id: 'model-1' },
+        mcpManager: { callTool },
+      } as unknown as AgentRuntimeRunInput,
+    })
+    const firstRuntime = runtimeInstances[0]
+    firstRuntime.emitSnapshot(
+      makeAssistantToolMessages({
+        userMessage,
+        responseStatus: ToolCallResponseStatus.PendingApproval,
+        toolName: 'yolo_local__bash',
+        requestMetadata: { executionConstraints: { bashReadOnly: true } },
+      }),
+    )
+
+    const approvePromise = service.approveToolCall({
+      conversationId: 'conv-approve-bashro',
+      toolCallId: 'call-1',
+    })
+
+    await waitForRuntimeCount(2)
+    expect(callTool).toHaveBeenCalledWith(
+      expect.objectContaining({ name: 'yolo_local__bash', bashReadOnly: true }),
+    )
+
+    runtimeInstances[1].resolveRun()
+    expect(await approvePromise).toBe(true)
+    firstRuntime.resolveRun()
+    await runPromise
+  })
+
+  it('approveToolCall ignores allowForConversation when the persisted approvalPolicy is always-require-user', async () => {
+    const service = new AgentService()
+    const userMessage = makeUserMessage('u1', 'dispatch once')
+    const allowToolForConversation = jest.fn()
+    const callTool = jest.fn().mockResolvedValue({
+      status: ToolCallResponseStatus.Success,
+      data: { type: 'text', text: 'ok' },
+    })
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const runPromise = service.run({
+      conversationId: 'conv-approve-locked',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conv-approve-locked',
+        messages: [userMessage],
+        model: { id: 'model-1' },
+        mcpManager: { callTool, allowToolForConversation },
+      } as unknown as AgentRuntimeRunInput,
+    })
+    const firstRuntime = runtimeInstances[0]
+    firstRuntime.emitSnapshot(
+      makeAssistantToolMessages({
+        userMessage,
+        responseStatus: ToolCallResponseStatus.PendingApproval,
+        toolName: 'module-mode-learning-chat__start_course_generation',
+        requestMetadata: { approvalPolicy: 'always-require-user' },
+      }),
+    )
+
+    const approvePromise = service.approveToolCall({
+      conversationId: 'conv-approve-locked',
+      toolCallId: 'call-1',
+      allowForConversation: true,
+    })
+
+    await waitForRuntimeCount(2)
+    expect(allowToolForConversation).not.toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+
+    runtimeInstances[1].resolveRun()
+    expect(await approvePromise).toBe(true)
+    firstRuntime.resolveRun()
+    await runPromise
+    warnSpy.mockRestore()
   })
 
   it('drops stale requestMessages when continuing after answered user questions', async () => {

@@ -145,6 +145,15 @@ export type AgentRuntimeRunInput = {
    * `vault-read` module agent capability). Defaults to false.
    */
   bashReadOnly?: boolean
+  /**
+   * For module chat modes: full tool name → the mode's declared
+   * `requiresApproval` for each of the mode's own tools. See
+   * `ChatModeRuntime.moduleToolApprovalPolicies` — threaded through
+   * unchanged to `AgentToolGateway`, which uses it to fix a persisted
+   * `approvalPolicy` (and, for bash calls, `executionConstraints`) onto
+   * every `ToolCallRequest` at creation time. Undefined for built-in modes.
+   */
+  moduleToolApprovalPolicies?: ReadonlyMap<string, boolean>
 }
 
 export type AgentRuntimeLoopConfig = {
