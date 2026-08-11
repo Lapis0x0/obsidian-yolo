@@ -973,4 +973,102 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       )
     })
   })
+
+  describe('continueAssistantError', () => {
+    it('reports failed when no matching continuation payload is found', () => {
+      const { controller } = createController('c1', [userMessage('u1')])
+      const result = controller.continueAssistantError('missing')
+      expect(result).toEqual({ kind: 'failed' })
+    })
+
+    it('starts a continuation, guards against re-entrant calls, and resets after the run settles', () => {
+      const user1 = userMessage('user-1')
+      const erroredAssistant = assistantMessage('assistant-1', {
+        content: 'partial answer',
+        metadata: {
+          generationState: 'error',
+          model: { id: 'model-1', model: 'model-1', providerId: 'provider-1' },
+        },
+      })
+      const { controller, runConversation, forceScrollToBottom } =
+        createController('c1', [user1, erroredAssistant])
+
+      const started = controller.continueAssistantError('assistant-1')
+      expect(started).toEqual({ kind: 'started' })
+      expect(forceScrollToBottom).toHaveBeenCalled()
+      expect(runConversation).toHaveBeenCalledTimes(1)
+      const [params, options] = runConversation.mock.calls[0]
+      expect(params).toMatchObject({
+        conversationId: 'c1',
+        assistantContinuation: expect.objectContaining({
+          assistantMessageId: 'assistant-1',
+          sourceUserMessageId: 'user-1',
+          modelId: 'model-1',
+        }),
+      })
+
+      // A re-entrant call while the continuation is still in flight is guarded
+      // (mirrors the pre-C2 `assistantContinuationPendingRef`).
+      const pending = controller.continueAssistantError('assistant-1')
+      expect(pending).toEqual({ kind: 'pending' })
+      expect(runConversation).toHaveBeenCalledTimes(1)
+
+      // Once the injected run settles, the guard resets.
+      ;(options as { onSettled?: () => void } | undefined)?.onSettled?.()
+      const startedAgain = controller.continueAssistantError('assistant-1')
+      expect(startedAgain).toEqual({ kind: 'started' })
+      expect(runConversation).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  describe('continueResponse', () => {
+    it('re-runs the conversation with the resolved reasoning level and last message model ids', () => {
+      const user1 = userMessage('user-1', { selectedModelIds: ['model-a'] })
+      const { controller, runConversation } = createController('c1', [user1])
+
+      controller.continueResponse()
+
+      expect(runConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: 'c1',
+          chatMessages: [user1],
+          modelIds: ['model-a'],
+        }),
+      )
+    })
+  })
+
+  describe('recoverAnswerUserQuestion', () => {
+    it('replaces the working copy, registers + persists it, and triggers a fresh run', async () => {
+      const user1 = userMessage('user-1')
+      const resolvedMessages: ChatMessage[] = [
+        user1,
+        assistantMessage('assistant-2'),
+      ]
+      const {
+        controller,
+        agentService,
+        runConversation,
+        createOrUpdateConversationImmediately,
+      } = createController('c1', [user1])
+
+      controller.recoverAnswerUserQuestion(resolvedMessages)
+
+      expect(controller.getSnapshot().chatMessages).toEqual(resolvedMessages)
+      expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+        'c1',
+        resolvedMessages,
+        [],
+        { persistState: true },
+      )
+      await flushMicrotasks()
+      expect(createOrUpdateConversationImmediately).toHaveBeenCalled()
+      expect(runConversation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          conversationId: 'c1',
+          chatMessages: resolvedMessages,
+        }),
+      )
+    })
+  })
 })

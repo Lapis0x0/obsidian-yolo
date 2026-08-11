@@ -250,15 +250,21 @@ export type YoloChatSurfaceProps = {
   handleChatModeChange: ChatRuntimePreferences['handleChatModeChange']
   handleUserMessageSubmit: ChatDomainActions['handleUserMessageSubmit']
   handleRecoverPendingToolCall: ChatDomainActions['handleRecoverPendingToolCall']
-  handleRecoverAnswerUserQuestion: ChatDomainActions['handleRecoverAnswerUserQuestion']
-  handleAssistantMessageGroupRetry: ChatDomainActions['handleAssistantMessageGroupRetry']
-  handleAssistantErrorContinue: ChatDomainActions['handleAssistantErrorContinue']
+  // 架构治理第三步分期 C3：retry/continue/recover 收编进
+  // ChatSessionController——类型不再从 useChatDomainActions 派生,直接写
+  // 消费方（AssistantToolMessageGroupItem）期望的函数签名。
+  handleRecoverAnswerUserQuestion: (payload: {
+    resolvedMessages: ChatMessage[]
+    toolCallId: string
+  }) => void
+  handleAssistantMessageGroupRetry: (messageIds: string[]) => void
+  handleAssistantErrorContinue: (assistantMessageId: string) => void
   handleApply: ChatDomainActions['handleApply']
   handleUndoEditSummary: ChatDomainActions['handleUndoEditSummary']
   handleOpenEditSummaryFile: ChatDomainActions['handleOpenEditSummaryFile']
   handleToolMessageUpdate: ChatDomainActions['handleToolMessageUpdate']
   handleToolCallResponseUpdate: ChatDomainActions['handleToolCallResponseUpdate']
-  handleContinueResponse: ChatDomainActions['handleContinueResponse']
+  handleContinueResponse: () => void
 }
 
 export function YoloChatSurface({
