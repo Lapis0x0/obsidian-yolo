@@ -1247,6 +1247,9 @@ describe('ensureUserDataRootDir', () => {
       'YOLO/.yolo_json_db/learning-srs/project.json',
       '{"state":"srs"}',
     )
+    // Both paths have to fail for the subdirectory to fail: the whole-tree
+    // rename first, then the per-file merge it falls back to.
+    adapter.failRename('YOLO/.yolo_json_db/chats', 'YOLO/data/chats')
     adapter.failRead('YOLO/.yolo_json_db/chats/v1_abc.json')
 
     const root = await ensureUserDataRootDir(app, {
@@ -1308,6 +1311,10 @@ describe('ensureUserDataRootDir', () => {
     const app = createMockApp(adapter)
     const sourcePath = 'YOLO/.yolo_json_db/chats/v1_abc.json'
     await adapter.write(sourcePath, '{"id":"abc","title":"original"}')
+    // An already-populated target forces the per-file merge — the guard being
+    // tested only exists there, since the whole-tree rename has no
+    // copy-then-delete window to protect.
+    await adapter.write('YOLO/data/chats/v1_other.json', '{"id":"other"}')
     // First stat() (captured as the pre-copy baseline) sees mtime 100; the
     // second stat() (taken immediately before deleting the source) sees 250
     // — as if a sync tool rewrote the file in between.
@@ -1328,7 +1335,7 @@ describe('ensureUserDataRootDir', () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
     await adapter.write('YOLO/.yolo_json_db/chats/v1_abc.json', '{"id":"abc"}')
-    const listSpy = jest.spyOn(adapter, 'list')
+    const renameSpy = jest.spyOn(adapter, 'rename')
 
     // Simulates the host startup call and a store's lazy first-touch
     // `prepareDataDir` racing each other at launch.
@@ -1340,12 +1347,12 @@ describe('ensureUserDataRootDir', () => {
     expect(first).toBe('YOLO/data')
     expect(second).toBe('YOLO/data')
     // Both callers shared one in-flight migration: the chats subdirectory is
-    // listed once by the merge walk and once by the emptiness check before
-    // deleting the drained source dir — not that pair per caller.
-    const chatsListCalls = listSpy.mock.calls.filter(
-      ([path]) => path === 'YOLO/.yolo_json_db/chats',
+    // moved exactly once, not once per caller. A second rename would also
+    // have thrown (its source is gone), so the count is the contract.
+    const chatsRenameCalls = renameSpy.mock.calls.filter(
+      ([from]) => from === 'YOLO/.yolo_json_db/chats',
     )
-    expect(chatsListCalls).toHaveLength(2)
+    expect(chatsRenameCalls).toHaveLength(1)
 
     // A later, non-overlapping call still works (single-flight entries are
     // cleared once settled, not cached forever).
@@ -1353,6 +1360,161 @@ describe('ensureUserDataRootDir', () => {
       yolo: { baseDir: 'YOLO' },
     })
     expect(third).toBe('YOLO/data')
+  })
+
+  test('moves an absent-target subdirectory with one rename instead of walking its files', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_a.json', '{"id":"a"}')
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/nested/v1_b.json',
+      '{"id":"b"}',
+    )
+    const readSpy = jest.spyOn(adapter, 'read')
+    const renameSpy = jest.spyOn(adapter, 'rename')
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    expect(renameSpy).toHaveBeenCalledWith(
+      'YOLO/.yolo_json_db/chats',
+      'YOLO/data/chats',
+    )
+    // The whole point of the fast path: cost is independent of file count.
+    // Reading even one migrated file means the per-file walk ran.
+    const chatReads = readSpy.mock.calls.filter(([path]) =>
+      path.startsWith('YOLO/.yolo_json_db/chats/'),
+    )
+    expect(chatReads).toHaveLength(0)
+    await expect(adapter.read('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      '{"id":"a"}',
+    )
+    await expect(
+      adapter.read('YOLO/data/chats/nested/v1_b.json'),
+    ).resolves.toBe('{"id":"b"}')
+    await expect(adapter.exists('YOLO/.yolo_json_db/chats')).resolves.toBe(
+      false,
+    )
+  })
+
+  test('merges per-file when the target subdirectory already exists', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_a.json', '{"id":"a"}')
+    await adapter.write('YOLO/data/chats/v1_b.json', '{"id":"b"}')
+    const renameSpy = jest.spyOn(adapter, 'rename')
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    // Renaming onto an existing directory is rejected by the real adapters,
+    // so the fast path must not even be attempted here.
+    expect(
+      renameSpy.mock.calls.filter(
+        ([from]) => from === 'YOLO/.yolo_json_db/chats',
+      ),
+    ).toHaveLength(0)
+    await expect(adapter.read('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      '{"id":"a"}',
+    )
+    await expect(adapter.read('YOLO/data/chats/v1_b.json')).resolves.toBe(
+      '{"id":"b"}',
+    )
+  })
+
+  test('falls back to the per-file merge when the rename fails outright', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_a.json', '{"id":"a"}')
+    // Stands in for an adapter that cannot rename a folder at all (a platform
+    // we cannot verify, e.g. iOS) — migration must still complete.
+    adapter.failRename('YOLO/.yolo_json_db/chats', 'YOLO/data/chats')
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    await expect(adapter.read('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      '{"id":"a"}',
+    )
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/v1_a.json'),
+    ).resolves.toBe(false)
+  })
+
+  test('treats a rename that threw after moving the tree as done, not as a failure to redo', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_a.json', '{"id":"a"}')
+    // `DataAdapter.rename` guarantees no defined post-failure state, so a
+    // throw after the move must be resolved by re-reading the disk: the
+    // source is gone, so the move did happen and re-running the merge would
+    // be wrong.
+    adapter.throwAfterRename('YOLO/.yolo_json_db/chats', 'YOLO/data/chats')
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    await expect(adapter.read('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      '{"id":"a"}',
+    )
+  })
+
+  test('never fast-paths a subdirectory that needs its contents rewritten', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    const oldSrsPath = 'YOLO/.yolo_json_db/learning-srs/deck.json'
+    await adapter.write(oldSrsPath, '{"version":3,"cards":{}}')
+    await adapter.write(
+      'YOLO/.yolo_json_db/anki-import-journals/run-1.json',
+      JSON.stringify({ version: 1, phase: 'verified', srsPath: oldSrsPath }),
+    )
+    const renameSpy = jest.spyOn(adapter, 'rename')
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    // A rename moves bytes untouched, which would silently skip the srsPath
+    // rewrite and leave journals pointing at the vacated hidden root.
+    expect(
+      renameSpy.mock.calls.filter(
+        ([from]) => from === 'YOLO/.yolo_json_db/anki-import-journals',
+      ),
+    ).toHaveLength(0)
+    const migrated = JSON.parse(
+      await adapter.read('YOLO/data/anki-import-journals/run-1.json'),
+    ) as { srsPath: string }
+    expect(migrated.srsPath).toBe('YOLO/data/learning-srs/deck.json')
+  })
+
+  test('deletes dead legacy chat caches instead of migrating them into the visible root', async () => {
+    const adapter = new MockAdapter()
+    const app = createMockApp(adapter)
+    await adapter.write('YOLO/.yolo_json_db/chats/v1_a.json', '{"id":"a"}')
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/timeline_height_cache/c1.json',
+      '{"scopes":{}}',
+    )
+    await adapter.write(
+      'YOLO/.yolo_json_db/chats/external_agent_progress/p1.json',
+      '{}',
+    )
+    // A device that already migrated carries its copies under the visible
+    // root instead — both sides have to be swept.
+    await adapter.write(
+      'YOLO/data/chats/timeline_height_cache/c2.json',
+      '{"scopes":{}}',
+    )
+
+    await ensureUserDataRootDir(app, { yolo: { baseDir: 'YOLO' } })
+
+    await expect(
+      adapter.exists('YOLO/data/chats/timeline_height_cache'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/data/chats/external_agent_progress'),
+    ).resolves.toBe(false)
+    await expect(
+      adapter.exists('YOLO/.yolo_json_db/chats/timeline_height_cache'),
+    ).resolves.toBe(false)
+    // Real chat data is untouched by the sweep.
+    await expect(adapter.read('YOLO/data/chats/v1_a.json')).resolves.toBe(
+      '{"id":"a"}',
+    )
   })
 })
 

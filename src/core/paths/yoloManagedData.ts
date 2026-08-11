@@ -36,6 +36,21 @@ export const YOLO_USER_DATA_SUBDIR_NAMES = [
   YOLO_COMPONENT_INTENT_DIR_NAME,
 ] as const
 
+/**
+ * Chat subdirectories left behind by removed features: the timeline height
+ * cache (superseded by the chat history window) and the progress cache of the
+ * deleted `delegate_external_agent` tool. Nothing writes them any more, but
+ * they were never cleaned up automatically — a long-running vault can hold
+ * thousands of dead ~1KB files (one per conversation ever opened, including
+ * deleted ones). Dropped on every startup before the migration runs so they
+ * are never carried into the visible `data/` root, where Obsidian would index
+ * them for good.
+ */
+const LEGACY_CHAT_CACHE_DIR_NAMES = [
+  'timeline_height_cache',
+  'external_agent_progress',
+] as const
+
 export type YoloSettingsLike = {
   yolo?: {
     baseDir?: string
@@ -515,6 +530,79 @@ export const ensureUserDataRootDir = async (
   return promise
 }
 
+/**
+ * Drops the dead cache directories listed in `LEGACY_CHAT_CACHE_DIR_NAMES`
+ * from one chat root. Runs against both the hidden and the visible root: a
+ * device that already migrated has them under the visible root, one that has
+ * not still has them under the hidden one.
+ *
+ * Failures are swallowed — this is opportunistic cleanup and must never block
+ * the migration that follows it.
+ */
+const removeLegacyChatCacheDirs = async (
+  app: App,
+  root: string,
+): Promise<void> => {
+  for (const dirName of LEGACY_CHAT_CACHE_DIR_NAMES) {
+    const path = normalizePath(`${root}/${CHAT_DIR}/${dirName}`)
+    try {
+      if (await app.vault.adapter.exists(path)) {
+        await app.vault.adapter.rmdir(path, true)
+      }
+    } catch (error) {
+      console.warn(`[YOLO] Failed to remove legacy cache dir "${path}".`, error)
+    }
+  }
+}
+
+/**
+ * Moves one managed subdirectory from the hidden root to the visible one.
+ *
+ * A whole-tree `rename` is one filesystem operation regardless of file count,
+ * where the per-file merge costs ~10 adapter round-trips each. That gap is
+ * what makes the difference load-bearing on mobile: during `onload` every
+ * round-trip competes with Obsidian's cold-start vault indexing and measures
+ * ~830ms instead of the ~17ms it takes once the app is idle, so a vault with a
+ * few thousand chat files blocks plugin startup for tens of minutes. The same
+ * tree renames in a single ~2.8s call.
+ *
+ * The fast path is only safe when the target is absent (`rename` rejects an
+ * existing destination on both desktop and mobile rather than merging into it)
+ * and when no `transform` is needed, since rewriting file contents requires
+ * reading them. Everything else falls through to the merge, which stays the
+ * authority on conflict resolution.
+ */
+const migrateUserDataSubdir = async (
+  app: App,
+  sourceDir: string,
+  targetDir: string,
+  transform: TextTransform | undefined,
+): Promise<void> => {
+  if (!transform && !(await app.vault.adapter.exists(targetDir))) {
+    try {
+      await app.vault.adapter.rename(sourceDir, targetDir)
+      return
+    } catch (error) {
+      // The target may have appeared between the check above and the rename
+      // (a sync tool landing the directory), or this adapter may not support
+      // renaming a folder at all — `DataAdapter.rename` promises neither
+      // atomicity nor a defined post-failure state. Re-read what is actually
+      // on disk instead of assuming nothing happened: a vanished source means
+      // the rename did take effect, and anything else is handed to the merge,
+      // which already reconciles a partially populated target by mtime.
+      console.warn(
+        `[YOLO] Fast-path rename of "${sourceDir}" to "${targetDir}" failed, falling back to per-file merge.`,
+        error,
+      )
+      if (!(await app.vault.adapter.exists(sourceDir))) {
+        return
+      }
+    }
+  }
+
+  await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+}
+
 const ensureUserDataRootDirUnlocked = async (
   app: App,
   settings: YoloSettingsLike | null,
@@ -531,6 +619,11 @@ const ensureUserDataRootDirUnlocked = async (
     )
     return jsonDbRoot
   }
+
+  // Before the migration, so the dead files are deleted in place instead of
+  // being carried into the visible root first.
+  await removeLegacyChatCacheDirs(app, jsonDbRoot)
+  await removeLegacyChatCacheDirs(app, userDataRoot)
 
   for (const subdirName of YOLO_USER_DATA_SUBDIR_NAMES) {
     const sourceDir = normalizePath(`${jsonDbRoot}/${subdirName}`)
@@ -551,7 +644,7 @@ const ensureUserDataRootDirUnlocked = async (
             rewriteAnkiJournalSrsPath(content, jsonDbRoot, userDataRoot)
         : undefined
     try {
-      await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+      await migrateUserDataSubdir(app, sourceDir, targetDir, transform)
     } catch (error) {
       console.warn(
         `[YOLO] Failed to migrate "${sourceDir}" to "${targetDir}"; will retry on next launch.`,

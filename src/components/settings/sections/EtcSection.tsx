@@ -47,37 +47,6 @@ const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
 const DEBUG_LOGS_DIR = 'YOLO/logs'
-/** Legacy cache dir from removed delegate_external_agent tool. */
-const LEGACY_EXTERNAL_AGENT_PROGRESS_DIR = 'external_agent_progress'
-/** Legacy cache dir from removed timeline virtualization (superseded by the chat history window). */
-const LEGACY_TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
-
-const clearLegacyExternalAgentProgressDir = async (
-  app: App,
-  settings: Parameters<typeof ensureUserDataRootDir>[1],
-): Promise<void> => {
-  const rootDir = await ensureUserDataRootDir(app, settings)
-  const path = normalizePath(
-    `${rootDir}/${CHAT_DIR}/${LEGACY_EXTERNAL_AGENT_PROGRESS_DIR}`,
-  )
-  if (await app.vault.adapter.exists(path)) {
-    await app.vault.adapter.rmdir(path, true)
-  }
-}
-
-const clearLegacyTimelineHeightCacheDir = async (
-  app: App,
-  settings: Parameters<typeof ensureUserDataRootDir>[1],
-): Promise<void> => {
-  const rootDir = await ensureUserDataRootDir(app, settings)
-  const path = normalizePath(
-    `${rootDir}/${CHAT_DIR}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`,
-  )
-  if (await app.vault.adapter.exists(path)) {
-    await app.vault.adapter.rmdir(path, true)
-  }
-}
-
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) {
     return `${bytes} B`
@@ -133,33 +102,21 @@ const loadStorageUsage = async (
     chatHistoryBytes,
     promptSnapshotBytes,
     editReviewSnapshotBytes,
-    timelineHeightCacheBytes,
     imageCacheBytes,
     pdfCacheBytes,
-    agentProgressBytes,
   ] = await Promise.all([
     getPathSize(app, chatDir),
     getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
-    getPathSize(
-      app,
-      normalizePath(`${chatDir}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`),
-    ),
     getPathSize(app, normalizePath(`${chatDir}/${IMAGE_CACHE_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${PDF_CACHE_DIR}`)),
-    getPathSize(
-      app,
-      normalizePath(`${chatDir}/${LEGACY_EXTERNAL_AGENT_PROGRESS_DIR}`),
-    ),
   ])
 
   const snapshotAndCacheBytes =
     promptSnapshotBytes +
     editReviewSnapshotBytes +
-    timelineHeightCacheBytes +
     imageCacheBytes +
-    pdfCacheBytes +
-    agentProgressBytes
+    pdfCacheBytes
 
   return {
     chatHistoryBytes: Math.max(0, chatHistoryBytes - snapshotAndCacheBytes),
@@ -449,8 +406,6 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
           await clearAllEditReviewSnapshotStores(app, settings)
           await clearImageCache(app, settings)
           await clearPdfTextCache(app, settings)
-          await clearLegacyExternalAgentProgressDir(app, settings)
-          await clearLegacyTimelineHeightCacheDir(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
