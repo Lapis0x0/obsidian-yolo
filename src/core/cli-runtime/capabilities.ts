@@ -28,6 +28,14 @@ export type ChatRuntimeCapabilities = Readonly<{
   supportsVaultExport: boolean
   /** Subagent transcripts can be watched live, not just read once (C3). */
   supportsSubagentWatch: boolean
+  /** Shows the main-input model control and allows `@model` mentions (B1). */
+  supportsModelControl: boolean
+  /** Shows the main-input reasoning-effort selector (B1). */
+  supportsReasoningSelect: boolean
+  /** Main input skips its yolo-only image/model capability check (B1). */
+  skipsImageModelCapabilityCheck: boolean
+  /** Main input allows queueing a message while a run is in flight (B1). */
+  supportsQueueWhileGenerating: boolean
 }>
 
 export const RUNTIME_CAPABILITIES: Record<
@@ -44,6 +52,10 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsMessageRewrite: false,
     supportsVaultExport: true,
     supportsSubagentWatch: false,
+    supportsModelControl: true,
+    supportsReasoningSelect: true,
+    skipsImageModelCapabilityCheck: false,
+    supportsQueueWhileGenerating: true,
   },
   'claude-code': {
     supportsPlanMode: true,
@@ -55,6 +67,10 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsMessageRewrite: true,
     supportsVaultExport: false,
     supportsSubagentWatch: false,
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsQueueWhileGenerating: false,
   },
   codex: {
     supportsPlanMode: false,
@@ -66,6 +82,10 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsMessageRewrite: true,
     supportsVaultExport: false,
     supportsSubagentWatch: true,
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsQueueWhileGenerating: false,
   },
 }
 

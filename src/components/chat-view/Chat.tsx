@@ -1456,6 +1456,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       }
     : undefined
   const isCliRuntimeActive = isCliRuntime(activeRuntimeId)
+  // Main-input display/config differences are looked up from the static
+  // capability table (see B1/B2 in the step-2 runtime-contract plan) rather
+  // than branched inline; only "which data source" ternaries stay here.
+  const mainInputCapabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
   const activeSurfaceEmpty = isCliRuntimeActive
     ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
       !isCliRunActive
@@ -1585,15 +1589,17 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         selectedSkills={mainInputSelectedSkills}
         setSelectedSkills={handleMainInputRuntimeSkillsChange}
         enableSkills
-        skipImageModelCapabilityCheck={isCliRuntimeActive}
+        skipImageModelCapabilityCheck={
+          mainInputCapabilities.skipsImageModelCapabilityCheck
+        }
         skillEntries={isCliRuntimeActive ? cliSkillEntries : undefined}
         modelId={conversationModelId}
         onModelChange={handleMainInputModelChange}
-        showModelControl={!isCliRuntimeActive}
-        allowModelMentions={!isCliRuntimeActive}
+        showModelControl={mainInputCapabilities.supportsModelControl}
+        allowModelMentions={mainInputCapabilities.supportsModelControl}
         reasoningLevel={reasoningLevel}
         onReasoningChange={handleMainInputReasoningChange}
-        showReasoningSelect={!isCliRuntimeActive}
+        showReasoningSelect={mainInputCapabilities.supportsReasoningSelect}
         runtimeControls={
           isCliRuntimeActive ? (
             <CliRuntimeControls
@@ -1634,16 +1640,16 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           isCliRuntimeActive ? handleCliModeSelectChange : handleChatModeChange
         }
         chatModeOptions={
-          activeRuntimeId === 'claude-code'
-            ? CLAUDE_CODE_CHAT_MODES
-            : activeRuntimeId === 'codex'
-              ? CODEX_CHAT_MODES
-              : moduleModeOptions.length > 0
-                ? [
-                    ...CHAT_MODES,
-                    ...moduleModeOptions.map((option) => option.value),
-                  ]
-                : CHAT_MODES
+          isCliRuntimeActive
+            ? mainInputCapabilities.supportsPlanMode
+              ? CLAUDE_CODE_CHAT_MODES
+              : CODEX_CHAT_MODES
+            : moduleModeOptions.length > 0
+              ? [
+                  ...CHAT_MODES,
+                  ...moduleModeOptions.map((option) => option.value),
+                ]
+              : CHAT_MODES
         }
         moduleModeOptions={moduleModeOptions}
         yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}
@@ -1661,7 +1667,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             : currentConversationRunSummary.isAbortable
         }
         canQueueWhileGenerating={
-          isCliRuntimeActive ? false : currentConversationRunSummary.isQueueable
+          mainInputCapabilities.supportsQueueWhileGenerating
+            ? currentConversationRunSummary.isQueueable
+            : false
         }
         onAbort={handleMainInputAbort}
         contextUsage={
