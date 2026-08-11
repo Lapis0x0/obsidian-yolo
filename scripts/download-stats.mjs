@@ -276,7 +276,7 @@ async function fetchCloudflareFeedMetrics({
       viewer {
         zones(filter: { zoneTag: $zoneTag }) {
           httpRequestsAdaptiveGroups(
-            limit: 10
+            limit: 10000
             filter: {
               datetime_geq: $from
               datetime_lt: $to
@@ -289,8 +289,8 @@ async function fetchCloudflareFeedMetrics({
             }
           ) {
             count
-            uniq {
-              uniques
+            dimensions {
+              clientIP
             }
           }
         }
@@ -309,17 +309,21 @@ async function fetchCloudflareFeedMetrics({
     }),
   })
   const groups = await readAnalyticsGroups(response)
-  const requests = groups?.[0]?.count ?? 0
-  const uniques = groups?.[0]?.uniq?.uniques ?? 0
-  if (
-    !Number.isSafeInteger(requests) ||
-    requests < 0 ||
-    !Number.isSafeInteger(uniques) ||
-    uniques < 0
-  ) {
+  if (!Array.isArray(groups)) {
     throw new Error('Cloudflare Analytics feed metrics are invalid')
   }
-  return { requests, uniques }
+  let requests = 0
+  const clientIps = new Set()
+  for (const group of groups) {
+    const count = group?.count
+    const clientIp = group?.dimensions?.clientIP
+    if (!Number.isSafeInteger(count) || count < 0 || !clientIp) {
+      throw new Error('Cloudflare Analytics feed metrics are invalid')
+    }
+    requests += count
+    clientIps.add(clientIp)
+  }
+  return { requests, uniques: clientIps.size }
 }
 
 async function readAnalyticsGroups(response) {

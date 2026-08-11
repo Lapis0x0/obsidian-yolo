@@ -173,7 +173,9 @@ test('combines paginated GitHub assets with persisted Cloudflare days', async ()
               zones: [
                 {
                   httpRequestsAdaptiveGroups: [
-                    { count: 40, uniq: { uniques: 25 } },
+                    { count: 30, dimensions: { clientIP: '203.0.113.7' } },
+                    { count: 6, dimensions: { clientIP: '203.0.113.7' } },
+                    { count: 4, dimensions: { clientIP: '198.51.100.9' } },
                   ],
                 },
               ],
@@ -249,8 +251,8 @@ test('combines paginated GitHub assets with persisted Cloudflare days', async ()
     '2026-07-29': { '1.6.2': 10 },
   })
   assert.deepEqual(result.state.feedDaily, {
-    '2026-07-27': { requests: 40, uniques: 25 },
-    '2026-07-28': { requests: 40, uniques: 25 },
-    '2026-07-29': { requests: 40, uniques: 25 },
+    '2026-07-27': { requests: 40, uniques: 2 },
+    '2026-07-28': { requests: 40, uniques: 2 },
+    '2026-07-29': { requests: 40, uniques: 2 },
   })
 })
