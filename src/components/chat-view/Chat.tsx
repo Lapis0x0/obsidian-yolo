@@ -31,7 +31,9 @@ import {
   type ChatRuntimeId,
   type CliRuntimeScope,
   type CliSessionRef,
+  RUNTIME_CAPABILITIES,
   createYoloChatRuntimeActions,
+  isCliRuntime,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
 import { resolveLocalizedText } from '../../core/modules/moduleI18n'
@@ -1391,42 +1393,32 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : {}),
     }
   }, [activeCliConversationSnapshot?.contextUsage, t])
-  // `/` 菜单按运行时暴露的原生动作条目：claude-code 有插件管理 + MCP 状态，
-  // codex 仅 MCP 状态（无插件机制），yolo 运行时没有对应 CLI 客户端。
+  // `/` 菜单按运行时 capability 组装原生动作条目：hasPluginManagement 贡献
+  // 插件管理入口，hasNativeMcpPanel 贡献 MCP 状态入口；yolo 两者皆无。
   const nativeSlashCommands = useMemo<SlashCommand[]>(() => {
-    if (activeRuntimeId === 'claude-code') {
-      return [
-        {
-          id: 'open-plugin-manager',
-          name: t('chat.slashCommands.openPluginManager.label', '插件管理'),
-          description: t(
-            'chat.slashCommands.openPluginManager.description',
-            '管理已安装的 Claude Code 插件，或从 Marketplace 安装新插件。',
-          ),
-        },
-        {
-          id: 'open-mcp-servers',
-          name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
-          description: t(
-            'chat.slashCommands.openMcpServers.description',
-            '查看当前会话加载的 MCP 服务器状态。',
-          ),
-        },
-      ]
+    const capabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
+    const commands: SlashCommand[] = []
+    if (capabilities.hasPluginManagement) {
+      commands.push({
+        id: 'open-plugin-manager',
+        name: t('chat.slashCommands.openPluginManager.label', '插件管理'),
+        description: t(
+          'chat.slashCommands.openPluginManager.description',
+          '管理已安装的 Claude Code 插件，或从 Marketplace 安装新插件。',
+        ),
+      })
     }
-    if (activeRuntimeId === 'codex') {
-      return [
-        {
-          id: 'open-mcp-servers',
-          name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
-          description: t(
-            'chat.slashCommands.openMcpServers.description',
-            '查看当前会话加载的 MCP 服务器状态。',
-          ),
-        },
-      ]
+    if (capabilities.hasNativeMcpPanel) {
+      commands.push({
+        id: 'open-mcp-servers',
+        name: t('chat.slashCommands.openMcpServers.label', 'MCP 服务器'),
+        description: t(
+          'chat.slashCommands.openMcpServers.description',
+          '查看当前会话加载的 MCP 服务器状态。',
+        ),
+      })
     }
-    return []
+    return commands
   }, [activeRuntimeId, t])
   const mainInputSelectedSkills =
     inputMessage.selectedSkills ?? EMPTY_SELECTED_SKILLS
@@ -1463,7 +1455,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         ),
       }
     : undefined
-  const isCliRuntimeActive = activeRuntimeId !== 'yolo'
+  const isCliRuntimeActive = isCliRuntime(activeRuntimeId)
   const activeSurfaceEmpty = isCliRuntimeActive
     ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
       !isCliRunActive

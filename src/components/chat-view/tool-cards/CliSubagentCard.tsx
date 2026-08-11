@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import type {
-  ChatRuntimeActions,
-  CliSessionRef,
+import {
+  type ChatRuntimeActions,
+  type CliSessionRef,
+  RUNTIME_CAPABILITIES,
 } from '../../../core/cli-runtime'
 import type { ChatMessage } from '../../../types/chat'
 import type { CliSubagentPresentation } from '../cliSubagentReadModel'
@@ -47,7 +48,8 @@ export function CliSubagentCard({
       subagentId: presentation.taskId,
     }
     const operation =
-      presentation.runtimeId === 'codex' && actions.watchSubagent
+      RUNTIME_CAPABILITIES[presentation.runtimeId].supportsSubagentWatch &&
+      actions.watchSubagent
         ? actions.watchSubagent(ref, (messages) => {
             if (disposed) return
             setLoadedTranscript(messages)

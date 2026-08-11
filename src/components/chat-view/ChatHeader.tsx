@@ -9,10 +9,12 @@ import { useEffect, useRef } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import type {
-  ChatRuntimeId,
-  CliRuntimeId,
-  CliRuntimeScope,
+import {
+  type ChatRuntimeId,
+  type CliRuntimeId,
+  type CliRuntimeScope,
+  RUNTIME_CAPABILITIES,
+  isCliRuntime,
 } from '../../core/cli-runtime'
 import type {
   ChatConversationCliSession,
@@ -203,7 +205,7 @@ export function ChatHeader({
             {t('sidebar.tabs.chat', 'Chat')}
           </h1>
         )}
-        {activeView === 'chat' && activeRuntimeId !== 'yolo' ? (
+        {activeView === 'chat' && isCliRuntime(activeRuntimeId) ? (
           <RuntimeSelector
             currentRuntimeId={activeRuntimeId}
             onRuntimeChange={handleRuntimeChange}
@@ -212,7 +214,8 @@ export function ChatHeader({
       </div>
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          {activeRuntimeId === 'yolo' && !isModuleChatMode(chatMode) ? (
+          {RUNTIME_CAPABILITIES[activeRuntimeId].hasAssistants &&
+          !isModuleChatMode(chatMode) ? (
             <AssistantSelector
               currentAssistantId={conversationAssistantId}
               triggerClassName={
@@ -239,7 +242,7 @@ export function ChatHeader({
             >
               <Plus size={18} />
             </button>
-            {activeRuntimeId === 'yolo' ? (
+            {RUNTIME_CAPABILITIES[activeRuntimeId].supportsVaultExport ? (
               <button
                 type="button"
                 onClick={() => handleExportChatToVault(currentConversationId)}

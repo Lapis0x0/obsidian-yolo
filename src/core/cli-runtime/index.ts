@@ -1,4 +1,5 @@
 export * from './actions'
+export * from './capabilities'
 export * from './cli-actions'
 export * from './context-usage'
 export * from './desktop'

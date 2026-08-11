@@ -19,7 +19,9 @@ import {
   type CliChatMode,
   type CliConversationController,
   type CliRuntimeScope,
+  RUNTIME_CAPABILITIES,
   buildCliEnvironmentContext,
+  isCliRuntime,
 } from '../../core/cli-runtime'
 import type { useChatHistory } from '../../hooks/useChatHistory'
 import type { YoloSettings } from '../../settings/schema/setting.types'
@@ -1312,7 +1314,10 @@ export function useChatInputController({
         return
       }
       if (command.id === 'open-mcp-servers') {
-        if (activeRuntimeId !== 'claude-code' && activeRuntimeId !== 'codex') {
+        if (
+          !isCliRuntime(activeRuntimeId) ||
+          !RUNTIME_CAPABILITIES[activeRuntimeId].hasNativeMcpPanel
+        ) {
           return
         }
         const runtimeIdAtOpen = activeRuntimeId

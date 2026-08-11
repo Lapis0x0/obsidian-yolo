@@ -1,0 +1,82 @@
+import type { ChatRuntimeId, CliRuntimeId } from './types'
+
+/**
+ * Static "does this runtime support X" answers, consumed only for UI
+ * visibility and entry guards. Process differences must stay inside each
+ * runtime implementation — never branch behavior on these fields.
+ *
+ * Fields are inducted from the guards they replace (see
+ * `docs/plans/2026-08-11-arch-governance-step2-survey.md`); do not add a
+ * field ahead of an actual guard that needs it.
+ */
+export type ChatRuntimeCapabilities = Readonly<{
+  /** Shift+Tab plan-mode shortcut and plan/agent mode switching (A20). */
+  supportsPlanMode: boolean
+  /** Needs `warmConversationRuntime` before first use (A25, codex only). */
+  needsWarmup: boolean
+  /** Loads provider-native skills into the skills picker (A12). */
+  hasNativeSkills: boolean
+  /** Has a native MCP server status panel (A5, B8). */
+  hasNativeMcpPanel: boolean
+  /** Has a plugin manager surface (B8, claude-code only). */
+  hasPluginManagement: boolean
+  /** Shows the assistant selector (B5, yolo only). */
+  hasAssistants: boolean
+  /** Supports rewriting an already-sent user turn (A17). */
+  supportsMessageRewrite: boolean
+  /** Supports exporting the conversation to the vault (B6, yolo only). */
+  supportsVaultExport: boolean
+  /** Subagent transcripts can be watched live, not just read once (C3). */
+  supportsSubagentWatch: boolean
+}>
+
+export const RUNTIME_CAPABILITIES: Record<
+  ChatRuntimeId,
+  ChatRuntimeCapabilities
+> = {
+  yolo: {
+    supportsPlanMode: false,
+    needsWarmup: false,
+    hasNativeSkills: false,
+    hasNativeMcpPanel: false,
+    hasPluginManagement: false,
+    hasAssistants: true,
+    supportsMessageRewrite: false,
+    supportsVaultExport: true,
+    supportsSubagentWatch: false,
+  },
+  'claude-code': {
+    supportsPlanMode: true,
+    needsWarmup: false,
+    hasNativeSkills: true,
+    hasNativeMcpPanel: true,
+    hasPluginManagement: true,
+    hasAssistants: false,
+    supportsMessageRewrite: true,
+    supportsVaultExport: false,
+    supportsSubagentWatch: false,
+  },
+  codex: {
+    supportsPlanMode: false,
+    needsWarmup: true,
+    hasNativeSkills: true,
+    hasNativeMcpPanel: true,
+    hasPluginManagement: false,
+    hasAssistants: false,
+    supportsMessageRewrite: true,
+    supportsVaultExport: false,
+    supportsSubagentWatch: true,
+  },
+}
+
+/**
+ * Single definition point for "is this a CLI runtime" — the identity check
+ * that `activeRuntimeId !== 'yolo'` / `=== 'yolo'` comparisons were
+ * reimplementing ad hoc across chat-view. Answers "which runtime", never
+ * "what can it do" (see `RUNTIME_CAPABILITIES` for that). A type predicate
+ * so callers keep the same `CliRuntimeId` narrowing a literal `!== 'yolo'`
+ * comparison gave them.
+ */
+export const isCliRuntime = (
+  runtimeId: ChatRuntimeId,
+): runtimeId is CliRuntimeId => runtimeId !== 'yolo'
