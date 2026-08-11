@@ -1,7 +1,12 @@
 import type {
+  AgentConversationRunSummary,
   AgentConversationState,
   AgentService,
 } from '../../core/agent/service'
+import type {
+  CliConversationController,
+  CliRuntimeScope,
+} from '../../core/cli-runtime'
 import { SETTINGS_SCHEMA_VERSION } from '../../settings/schema/migrations'
 import { parseYoloSettings } from '../../settings/schema/settings'
 import type {
@@ -10,11 +15,75 @@ import type {
   ChatUserMessage,
 } from '../../types/chat'
 
-import {
-  ChatSessionController,
-  type ChatSessionControllerDeps,
+import type {
+  ChatSessionCliContext,
+  ChatSessionControllerDeps,
 } from './ChatSessionController'
+import { ChatSessionController } from './ChatSessionController'
+import type { CliChatOperationCoordinator } from './cliChatIntegration'
 import { ConversationPreferencesController } from './ConversationPreferencesController'
+
+const idleRunSummary: Pick<
+  AgentConversationRunSummary,
+  'isActive' | 'isQueueable' | 'isWaitingApproval' | 'isWaitingUserInput'
+> = {
+  isActive: false,
+  isQueueable: false,
+  isWaitingApproval: false,
+  isWaitingUserInput: false,
+}
+
+/** Minimal `ChatSessionCliContext` stub — enough to exercise `submit`/
+ * `abortRun`'s CLI branch orchestration (begin/finish submission, error
+ * translation) without pulling in the real CLI turn machinery, which
+ * `cliChatIntegration.test.ts` already covers directly. */
+function createCliContext(overrides: Partial<ChatSessionCliContext> = {}): {
+  cliContext: ChatSessionCliContext
+  coordinator: {
+    beginSubmission: jest.Mock
+    finishSubmission: jest.Mock
+    cancelCurrentOperation: jest.Mock
+    getSnapshot: jest.Mock
+  }
+} {
+  const coordinator = {
+    beginSubmission: jest.fn(() => ({
+      token: 1,
+      signal: new AbortController().signal,
+    })),
+    markSending: jest.fn(() => true),
+    markPresented: jest.fn(() => true),
+    markAccepted: jest.fn(() => true),
+    finishSubmission: jest.fn(),
+    cancelCurrentOperation: jest.fn(async () => undefined),
+    getSnapshot: jest.fn(() => ({ acceptedDraft: null })),
+  }
+  const controller = {
+    getSnapshot: () => ({ runState: 'idle', isCompacting: false }),
+  } as unknown as CliConversationController
+  const cliContext: ChatSessionCliContext = {
+    runtimeId: 'claude-code',
+    controller,
+    coordinator: coordinator as unknown as CliChatOperationCoordinator,
+    scope: {} as CliRuntimeScope,
+    settings: parseYoloSettings({ version: SETTINGS_SCHEMA_VERSION }),
+    chatMode: 'agent',
+    yoloEnabled: false,
+    cliConversationId: null,
+    getDraftRevision: () => 0,
+    buildEnvironmentContext: jest.fn(async () => []),
+    createOrTouchCliConversation: jest.fn(async () => undefined),
+    generateConversationTitle: jest.fn(async () => null),
+    syncCliConversationTitle: jest.fn(),
+    setCliConversationId: jest.fn(),
+    consumeAcceptedCliDraft: jest.fn(),
+    isMounted: () => true,
+    ...overrides,
+  }
+  return { cliContext, coordinator }
+}
+
+const flushMicrotasks = () => new Promise((resolve) => setTimeout(resolve, 0))
 
 const userMessage = (
   id: string,
@@ -100,17 +169,27 @@ function createMockAgentService() {
     subscribers.get(conversationId)?.forEach((callback) => callback(state))
   }
 
+  const enqueueUserMessage = jest.fn(
+    (_conversationId: string, _message: ChatUserMessage) =>
+      'idle' as 'enqueued' | 'blocked_awaiting_approval' | 'idle',
+  )
+
   return {
     getState,
     replaceConversationMessages,
     subscribe,
+    enqueueUserMessage,
     push,
   } as unknown as Pick<
     AgentService,
-    'subscribe' | 'getState' | 'replaceConversationMessages'
+    | 'subscribe'
+    | 'getState'
+    | 'replaceConversationMessages'
+    | 'enqueueUserMessage'
   > & {
     replaceConversationMessages: jest.Mock
     subscribe: jest.Mock
+    enqueueUserMessage: jest.Mock
     push: (conversationId: string, state: AgentConversationState) => void
   }
 }
@@ -142,6 +221,26 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
   const createOrUpdateConversationImmediately = jest.fn(async () => undefined)
   const deleteConversation = jest.fn(async () => undefined)
   const updateConversationTitle = jest.fn(async () => undefined)
+  const compileUserMessagePrompt = jest.fn(async () => ({
+    promptContent: null,
+  }))
+  const getRequestContextBuilder = jest.fn(() => ({ compileUserMessagePrompt }))
+  const runConversation = jest.fn()
+  const abortConversationRun = jest.fn()
+  const compactConversation = jest.fn(
+    async (
+      _messages: ChatMessage[],
+    ): Promise<{
+      anchorMessageId: string
+      summary: string
+      compactedAt: number
+    } | null> => null,
+  )
+  const generateConversationTitle = jest.fn(async () => null)
+  const forceScrollToBottom = jest.fn()
+  const setQueryProgress = jest.fn()
+  const runtimeNavigationGenerationRef = { current: 0 }
+  const getCliSubmitContext = jest.fn((): ChatSessionCliContext | null => null)
   const deps: ChatSessionControllerDeps = {
     getAgentService: () => agentService,
     createOrUpdateConversation,
@@ -149,6 +248,15 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
     deleteConversation,
     updateConversationTitle,
     chatModeForSave: (mode) => mode,
+    getRequestContextBuilder,
+    runConversation,
+    abortConversationRun,
+    compactConversation,
+    generateConversationTitle,
+    forceScrollToBottom,
+    setQueryProgress,
+    runtimeNavigationGenerationRef,
+    getCliSubmitContext,
   }
   return {
     deps,
@@ -156,6 +264,14 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
     createOrUpdateConversationImmediately,
     deleteConversation,
     updateConversationTitle,
+    compileUserMessagePrompt,
+    runConversation,
+    abortConversationRun,
+    compactConversation,
+    generateConversationTitle,
+    forceScrollToBottom,
+    setQueryProgress,
+    getCliSubmitContext,
   }
 }
 
@@ -486,5 +602,375 @@ describe('ChatSessionController', () => {
     expect(controller.getSnapshot().chatMessages).toEqual([
       assistantMessage('after-resume'),
     ])
+  })
+})
+
+describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  describe('submit (yolo runtime)', () => {
+    it('blocks when the run is waiting for user input', () => {
+      const { controller } = createController('c1', [])
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: {
+          ...idleRunSummary,
+          isWaitingUserInput: true,
+        },
+      })
+      expect(result).toEqual({ kind: 'blocked_waiting_user_input' })
+    })
+
+    it('blocks when the run is waiting for tool approval', () => {
+      const { controller } = createController('c1', [])
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: {
+          ...idleRunSummary,
+          isWaitingApproval: true,
+        },
+      })
+      expect(result).toEqual({ kind: 'blocked_waiting_approval' })
+    })
+
+    it('enqueues into AgentService while queueable, without touching chatMessages', () => {
+      const { controller, agentService } = createController('c1', [])
+      agentService.enqueueUserMessage.mockReturnValueOnce('enqueued')
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: { ...idleRunSummary, isQueueable: true },
+      })
+      expect(result.kind).toBe('enqueued')
+      expect(agentService.enqueueUserMessage).toHaveBeenCalledWith(
+        'c1',
+        expect.objectContaining({ id: 'draft-1' }),
+      )
+      expect(controller.getSnapshot().chatMessages).toEqual([])
+      expect(controller.getSnapshot().messageReasoningMap.get('draft-1')).toBe(
+        'off',
+      )
+    })
+
+    it('reports blocked_enqueue_awaiting_approval when the queue rejects', () => {
+      const { controller, agentService } = createController('c1', [])
+      agentService.enqueueUserMessage.mockReturnValueOnce(
+        'blocked_awaiting_approval',
+      )
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: { ...idleRunSummary, isQueueable: true },
+      })
+      expect(result).toEqual({ kind: 'blocked_enqueue_awaiting_approval' })
+    })
+
+    it('blocks when a foreground tool call is active', () => {
+      const { controller } = createController('c1', [])
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: { ...idleRunSummary, isActive: true },
+      })
+      expect(result).toEqual({ kind: 'blocked_active_tool' })
+    })
+
+    it('falls through to a normal submit when the queue is idle', async () => {
+      const { controller, agentService, runConversation } = createController(
+        'c1',
+        [],
+      )
+      agentService.enqueueUserMessage.mockReturnValueOnce('idle')
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: { ...idleRunSummary, isQueueable: true },
+      })
+      expect(result.kind).toBe('submitted')
+      await flushMicrotasks()
+      expect(runConversation).toHaveBeenCalled()
+      expect(controller.getSnapshot().chatMessages.map((m) => m.id)).toEqual([
+        'draft-1',
+      ])
+    })
+
+    it('registers the message into AgentService and triggers the injected run on a plain idle submit', async () => {
+      const {
+        controller,
+        agentService,
+        runConversation,
+        createOrUpdateConversation,
+        generateConversationTitle,
+      } = createController('c1', [])
+
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: true,
+        currentConversationRunSummary: idleRunSummary,
+      })
+      expect(result.kind).toBe('submitted')
+      await flushMicrotasks()
+
+      expect(controller.getSnapshot().chatMessages.map((m) => m.id)).toEqual([
+        'draft-1',
+      ])
+      expect(controller.getSnapshot().messageModelMap.get('draft-1')).toBe(
+        'model-1',
+      )
+      expect(controller.getSnapshot().messageReasoningMap.get('draft-1')).toBe(
+        'off',
+      )
+      // Submitted through the yolo main line — registered into AgentService…
+      expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+        'c1',
+        expect.arrayContaining([expect.objectContaining({ id: 'draft-1' })]),
+        [],
+      )
+      // …and the injected run trigger fires with the same conversation.
+      expect(runConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'c1' }),
+      )
+      expect(createOrUpdateConversation).toHaveBeenCalled()
+      expect(generateConversationTitle).toHaveBeenCalled()
+      // `assistantTimeContextEnabled: true` stamps the new-turn message.
+      expect(controller.getSnapshot().chatMessages[0]).toMatchObject({
+        timeContext: expect.anything(),
+      })
+    })
+  })
+
+  describe('submit (CLI runtime)', () => {
+    it('reports cli_unavailable when no CLI context is ready', () => {
+      const { controller } = createController('c1', [])
+      const result = controller.submit({
+        runtimeId: 'claude-code',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: idleRunSummary,
+      })
+      expect(result).toEqual({ kind: 'cli_unavailable' })
+    })
+
+    it('reports cli_busy when the CLI conversation is already running', () => {
+      const { controller, getCliSubmitContext } = createController('c1', [])
+      const { cliContext } = createCliContext({
+        controller: {
+          getSnapshot: () => ({ runState: 'running', isCompacting: false }),
+        } as unknown as CliConversationController,
+      })
+      getCliSubmitContext.mockReturnValue(cliContext)
+      const result = controller.submit({
+        runtimeId: 'claude-code',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: idleRunSummary,
+      })
+      expect(result).toEqual({ kind: 'cli_busy' })
+    })
+
+    it('resolves settled with a typed error outcome and always finishes the submission', async () => {
+      const { controller, getCliSubmitContext } = createController('c1', [])
+      const { cliContext, coordinator } = createCliContext({
+        buildEnvironmentContext: jest.fn(async () => {
+          throw new Error('environment build failed')
+        }),
+      })
+      getCliSubmitContext.mockReturnValue(cliContext)
+
+      const result = controller.submit({
+        runtimeId: 'claude-code',
+        message: userMessage('draft-1'),
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: idleRunSummary,
+      })
+      expect(result.kind).toBe('cli_submitted')
+      if (result.kind !== 'cli_submitted') throw new Error('unreachable')
+      await expect(result.settled).resolves.toEqual({
+        kind: 'error',
+        message: 'environment build failed',
+      })
+      expect(coordinator.finishSubmission).toHaveBeenCalledWith(1)
+    })
+  })
+
+  describe('abortRun', () => {
+    it('aborts the yolo run through the injected dep', () => {
+      const { controller, abortConversationRun } = createController('c1', [])
+      const result = controller.abortRun({ runtimeId: 'yolo' })
+      expect(result).toEqual({ kind: 'yolo_aborted' })
+      expect(abortConversationRun).toHaveBeenCalledWith('c1')
+    })
+
+    it('reports cli_unavailable with no ready CLI context', () => {
+      const { controller } = createController('c1', [])
+      const result = controller.abortRun({ runtimeId: 'claude-code' })
+      expect(result).toEqual({ kind: 'cli_unavailable' })
+    })
+
+    it('cancels the CLI operation and resolves ok on success', async () => {
+      const { controller, getCliSubmitContext } = createController('c1', [])
+      const { cliContext, coordinator } = createCliContext()
+      getCliSubmitContext.mockReturnValue(cliContext)
+
+      const result = controller.abortRun({ runtimeId: 'claude-code' })
+      expect(result.kind).toBe('cli_cancelling')
+      if (result.kind !== 'cli_cancelling') throw new Error('unreachable')
+      await expect(result.settled).resolves.toEqual({ ok: true })
+      expect(coordinator.cancelCurrentOperation).toHaveBeenCalledWith(
+        cliContext.controller,
+      )
+    })
+
+    it('surfaces a typed error when the CLI cancel rejects', async () => {
+      const { controller, getCliSubmitContext } = createController('c1', [])
+      const { cliContext, coordinator } = createCliContext()
+      coordinator.cancelCurrentOperation.mockRejectedValueOnce(
+        new Error('cancel failed'),
+      )
+      getCliSubmitContext.mockReturnValue(cliContext)
+
+      const result = controller.abortRun({ runtimeId: 'claude-code' })
+      expect(result.kind).toBe('cli_cancelling')
+      if (result.kind !== 'cli_cancelling') throw new Error('unreachable')
+      await expect(result.settled).resolves.toEqual({
+        ok: false,
+        message: 'cancel failed',
+      })
+    })
+  })
+
+  describe('compactContext', () => {
+    it('blocks when waiting for tool approval', async () => {
+      const { controller } = createController('c1', [userMessage('u1')])
+      const result = await controller.compactContext({
+        currentConversationRunSummary: {
+          isActive: false,
+          isWaitingApproval: true,
+        },
+      })
+      expect(result).toEqual({ kind: 'blocked_waiting_approval' })
+    })
+
+    it('blocks while a run is active', async () => {
+      const { controller } = createController('c1', [userMessage('u1')])
+      const result = await controller.compactContext({
+        currentConversationRunSummary: {
+          isActive: true,
+          isWaitingApproval: false,
+        },
+      })
+      expect(result).toEqual({ kind: 'blocked_active' })
+    })
+
+    it('reports empty when there is nothing to compact', async () => {
+      const { controller } = createController('c1', [])
+      const result = await controller.compactContext({
+        currentConversationRunSummary: {
+          isActive: false,
+          isWaitingApproval: false,
+        },
+      })
+      expect(result).toEqual({ kind: 'empty' })
+    })
+
+    it('compacts, persists immediately, and folds the entry back through the AgentService subscription', async () => {
+      const {
+        controller,
+        agentService,
+        compactConversation,
+        createOrUpdateConversationImmediately,
+      } = createController('c1', [userMessage('u1')])
+      compactConversation.mockResolvedValueOnce({
+        anchorMessageId: 'u1',
+        summary: 'summary text',
+        compactedAt: Date.now(),
+      })
+
+      const result = await controller.compactContext({
+        currentConversationRunSummary: {
+          isActive: false,
+          isWaitingApproval: false,
+        },
+      })
+
+      expect(result).toEqual({ kind: 'compacted' })
+      expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+        'c1',
+        [userMessage('u1')],
+        [expect.objectContaining({ anchorMessageId: 'u1' })],
+      )
+      // The controller never calls `setCompactionState` itself — this proves
+      // the implicit-dependency note in `compactContext`'s doc comment: the
+      // entry above reached this snapshot only via the controller's own
+      // AgentService subscription re-merging.
+      expect(controller.getSnapshot().compactionState).toEqual([
+        expect.objectContaining({ anchorMessageId: 'u1' }),
+      ])
+      expect(createOrUpdateConversationImmediately).toHaveBeenCalled()
+      expect(
+        controller.getSnapshot().pendingCompactionAnchorMessageId,
+      ).toBeNull()
+    })
+
+    it('reports failed and clears the pending anchor when compaction throws', async () => {
+      const { controller, compactConversation } = createController('c1', [
+        userMessage('u1'),
+      ])
+      compactConversation.mockRejectedValueOnce(new Error('boom'))
+
+      const result = await controller.compactContext({
+        currentConversationRunSummary: {
+          isActive: false,
+          isWaitingApproval: false,
+        },
+      })
+
+      expect(result.kind).toBe('failed')
+      expect(
+        controller.getSnapshot().pendingCompactionAnchorMessageId,
+      ).toBeNull()
+    })
+  })
+
+  describe('retryAssistantMessageGroup', () => {
+    it('reports failed when no matching group is found', () => {
+      const { controller } = createController('c1', [userMessage('u1')])
+      const result = controller.retryAssistantMessageGroup(['missing'])
+      expect(result).toEqual({ kind: 'failed' })
+    })
+
+    it('drops the retried group, resubmits, and registers the trimmed history into AgentService', async () => {
+      const user1 = userMessage('user-1')
+      const assistant1 = assistantMessage('assistant-1')
+      const { controller, agentService, runConversation } = createController(
+        'c1',
+        [user1, assistant1],
+      )
+
+      const result = controller.retryAssistantMessageGroup(['assistant-1'])
+      expect(result).toEqual({ kind: 'submitted' })
+      await flushMicrotasks()
+
+      expect(controller.getSnapshot().chatMessages).toEqual([user1])
+      expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+        'c1',
+        [user1],
+        [],
+      )
+      expect(runConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'c1' }),
+      )
+    })
   })
 })

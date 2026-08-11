@@ -1,24 +1,56 @@
 import { v4 as uuidv4 } from 'uuid'
 
 import type {
+  AgentConversationRunSummary,
   AgentConversationState,
   AgentService,
 } from '../../core/agent/service'
 import type {
+  ChatRuntimeId,
+  CliChatMode,
+  CliConversationController,
+  CliPermissionProfileUpdate,
+  CliRuntimeId,
+  CliRuntimeScope,
+} from '../../core/cli-runtime'
+import type { ChatConversationCliSession } from '../../database/json/chat/types'
+import type { YoloSettings } from '../../settings/schema/setting.types'
+import type {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
+  ChatConversationCompaction,
   ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
-import type { ReasoningLevel } from '../../types/reasoning'
+import type { ContentPart } from '../../types/llm/request'
+import {
+  type ReasoningLevel,
+  normalizeStoredReasoningLevel,
+} from '../../types/reasoning'
 import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
+import type { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
+import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
-import type { ChatMode } from './chat-input/ChatModeSelect'
+import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
+import {
+  buildAssistantErrorContinuation,
+  buildRetrySubmissionMessages,
+  getDisplayedAssistantToolMessages,
+  getSourceUserMessageIdForGroup,
+} from './chatRetry'
+import {
+  type CliChatOperationCoordinator,
+  type CliChatOperationSnapshot,
+  invalidateChatRuntimeNavigation,
+  isCliConversationActive,
+  submitCliComposerTurn,
+} from './cliChatIntegration'
 import type { SetStateActionLike } from './ConversationPreferencesController'
 import { ConversationPreferencesController } from './ConversationPreferencesController'
+import type { QueryProgressState } from './QueryProgress'
 
 function resolveNext<T>(action: SetStateActionLike<T>, prev: T): T {
   return typeof action === 'function'
@@ -56,6 +88,131 @@ export type ChatSessionPersistOutcome =
   | { kind: 'deleted' }
   | { kind: 'persisted'; ok: Promise<boolean> }
 
+/**
+ * Everything `submit`/`abortRun` need from the CLI runtime side for the
+ * currently-active CLI runtime. Still React state owned by
+ * `useCliRuntimeOrchestration` (see plan "分期 C" boundary rules — CLI
+ * orchestration state stays there until C3); Chat.tsx assembles a fresh bag
+ * every render behind a `useLatestRef` and hands the controller only a
+ * zero-arg getter, so this file never imports `obsidian` or React to type
+ * `app`/`settings` directly (`buildEnvironmentContext` is pre-bound by the
+ * hook instead of taking `app`/`currentFile`/... params here).
+ */
+export type ChatSessionCliContext = {
+  runtimeId: CliRuntimeId
+  controller: CliConversationController
+  coordinator: CliChatOperationCoordinator
+  scope: CliRuntimeScope
+  settings: YoloSettings
+  chatMode: CliChatMode
+  yoloEnabled: boolean
+  cliConversationId: string | null
+  /** Reads `inputDraftRevisionRef.current` live — that ref bumps on every
+   * keystroke without a Chat.tsx re-render (see `ChatInputDraftHolder`), so a
+   * value snapshotted when this bag was assembled would go stale between
+   * renders. Must stay a getter, not a plain field. */
+  getDraftRevision: () => number
+  buildEnvironmentContext: () => Promise<ContentPart[]>
+  createOrTouchCliConversation: (
+    id: string,
+    cliSession: ChatConversationCliSession,
+    overrides: ConversationOverrideSettings | null | undefined,
+  ) => Promise<void>
+  generateConversationTitle: (
+    id: string,
+    messages: ChatUserMessage[],
+  ) => Promise<string | null>
+  syncCliConversationTitle: (conversationId: string, title: string) => void
+  setCliConversationId: (id: string) => void
+  consumeAcceptedCliDraft: (
+    acceptedDraft: NonNullable<CliChatOperationSnapshot['acceptedDraft']>,
+  ) => void
+  isMounted: () => boolean
+}
+
+export type ChatSessionCliSubmitOutcome =
+  | { kind: 'ok' }
+  | { kind: 'aborted' }
+  | { kind: 'error'; message: string }
+
+export type ChatSessionSubmitInput = {
+  runtimeId: ChatRuntimeId
+  /** Built via the hook's `buildInputMessageForSubmit` — mentionables/
+   * selectedSkills/reasoningLevel already resolved, not yet time-stamped. */
+  message: ChatUserMessage
+  /** Resolved by the hook from settings + selected assistant (policy input —
+   * see the C1 branch-policy precedent in `branchFromAssistantGroup`). Only
+   * consulted on the yolo path; the CLI path always stamps (see
+   * `submitCliComposerTurn`). */
+  assistantTimeContextEnabled: boolean
+  /** Fresh-at-call-time run status from `useChatStreamManager` (still owned
+   * there — "不动 streaming 层"). */
+  currentConversationRunSummary: Pick<
+    AgentConversationRunSummary,
+    'isActive' | 'isQueueable' | 'isWaitingApproval' | 'isWaitingUserInput'
+  >
+}
+
+export type ChatSessionSubmitResult =
+  | { kind: 'cli_unavailable' }
+  | { kind: 'cli_busy' }
+  | { kind: 'cli_submission_blocked' }
+  | { kind: 'cli_submitted'; settled: Promise<ChatSessionCliSubmitOutcome> }
+  | { kind: 'blocked_waiting_user_input' }
+  | { kind: 'blocked_waiting_approval' }
+  | { kind: 'blocked_enqueue_awaiting_approval' }
+  | { kind: 'blocked_active_tool' }
+  | { kind: 'enqueued'; message: ChatUserMessage }
+  | { kind: 'submitted'; message: ChatUserMessage }
+
+export type ChatSessionAbortResult =
+  | { kind: 'yolo_aborted' }
+  | { kind: 'cli_unavailable' }
+  | {
+      kind: 'cli_cancelling'
+      settled: Promise<{ ok: true } | { ok: false; message: string }>
+    }
+
+export type ChatSessionCompactResult =
+  | { kind: 'blocked_waiting_approval' }
+  | { kind: 'blocked_active' }
+  | { kind: 'empty' }
+  | { kind: 'compacted' }
+  | { kind: 'failed'; error: unknown }
+
+export type ChatSessionRetryResult = { kind: 'failed' } | { kind: 'submitted' }
+
+export type ChatSessionContinueErrorResult =
+  | { kind: 'failed' }
+  | { kind: 'pending' }
+  | { kind: 'started' }
+
+export type ChatSessionRunConversationBranchTarget = {
+  branchId: string
+  sourceUserMessageId: string
+  branchModelId?: string
+  branchLabel?: string
+}
+
+export type ChatSessionAssistantContinuationTarget = {
+  assistantMessageId: string
+  sourceUserMessageId: string
+  modelId: string
+  branchId?: string
+  branchLabel?: string
+}
+
+export type ChatSessionRunConversationParams = {
+  chatMessages: ChatMessage[]
+  requestMessages?: ChatMessage[]
+  conversationId: string
+  reasoningLevel?: ReasoningLevel
+  modelIds?: string[]
+  branchTarget?: ChatSessionRunConversationBranchTarget
+  assistantContinuation?: ChatSessionAssistantContinuationTarget
+  compactionOverride?: ChatConversationCompactionState
+}
+
 export type ChatSessionControllerDeps = {
   /**
    * Long-lived object — read the current AgentService through a getter
@@ -64,7 +221,10 @@ export type ChatSessionControllerDeps = {
    */
   getAgentService: () => Pick<
     AgentService,
-    'subscribe' | 'getState' | 'replaceConversationMessages'
+    | 'subscribe'
+    | 'getState'
+    | 'replaceConversationMessages'
+    | 'enqueueUserMessage'
   >
   createOrUpdateConversation: (
     id: string,
@@ -98,6 +258,54 @@ export type ChatSessionControllerDeps = {
    * intent documented at its definition.
    */
   chatModeForSave: (mode: ChatMode) => ChatMode
+
+  // === C2 additions: submit/abort/compact/retry/recover/continue ===
+
+  /** `RequestContextBuilder` changes identity when `settings` changes — read
+   * it through a getter, not a captured reference (same reason
+   * `submitChatMutation` etc. below need one). */
+  getRequestContextBuilder: () => Pick<
+    RequestContextBuilder,
+    'compileUserMessagePrompt'
+  >
+  /** Wraps `useChatStreamManager().submitChatMutation.mutate` — streaming
+   * itself is not moved into the controller (plan: "本分期不重写 streaming
+   * 层"), only the call-time orchestration around it. */
+  runConversation: (
+    params: ChatSessionRunConversationParams,
+    options?: { onSettled?: () => void },
+  ) => void
+  abortConversationRun: (conversationId: string) => void
+  compactConversation: (
+    messages: ChatMessage[],
+  ) => Promise<ChatConversationCompaction | null>
+  generateConversationTitle: (
+    id: string,
+    messages: ChatMessage[],
+    options?: { force?: boolean },
+  ) => Promise<string | null>
+  /**
+   * Scroll writes stay behind an injected trigger — never a direct
+   * `scrollTop` write from this file (CLAUDE.md "Chat Runtime Invariants").
+   * `deferToNextFrame` preserves the pre-C2 difference between call sites:
+   * `handleUserMessageSubmit` wrapped its call in `requestAnimationFrame`,
+   * `handleAssistantErrorContinue` called it synchronously. Scheduling is
+   * the dep's job (Chat.tsx wraps it when asked) so this file never touches
+   * a browser-only global and stays runnable under Jest's Node test
+   * environment.
+   */
+  forceScrollToBottom: (options?: { deferToNextFrame?: boolean }) => void
+  setQueryProgress: (action: SetStateActionLike<QueryProgressState>) => void
+  /** Bumped once per new user turn entering the conversation (queued or
+   * submitted) so any in-flight CLI/native-action navigation token is
+   * invalidated — mirrors the pre-C2 `invalidateChatRuntimeNavigation` call
+   * site. Plain `{ current }` object (not `MutableRefObject`) to keep this
+   * file React-import-free. */
+  runtimeNavigationGenerationRef: { current: number }
+  /** `null` whenever the active runtime is `'yolo'`, or the CLI orchestration
+   * hook hasn't produced a ready controller/coordinator/scope yet — mirrors
+   * the pre-C2 `if (!controller || !coordinator || !scope) return` guard. */
+  getCliSubmitContext: () => ChatSessionCliContext | null
 }
 
 type Listener = () => void
@@ -160,6 +368,10 @@ export class ChatSessionController {
   private snapshot: ChatSessionSnapshot
   private readonly listeners = new Set<Listener>()
   private agentUnsubscribe: (() => void) | null = null
+  /** Guards `continueAssistantError` against re-entrant clicks — equivalent
+   * to the pre-C2 `assistantContinuationPendingRef` in
+   * `useChatDomainActions.ts`, now a plain field instead of a React ref. */
+  private assistantContinuationPending = false
 
   readonly chatMessagesStateRef: { current: ChatMessage[] }
   readonly activeBranchByUserMessageIdRef: { current: Map<string, string> }
@@ -286,7 +498,13 @@ export class ChatSessionController {
     )
   }
 
-  private buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
+  /**
+   * Public (unlike the other grouping helpers below): the hook layer calls
+   * this directly for the mentionable-delete-from-all boundary recompute
+   * (`useChatInputController.ts`'s `handleMentionableDeleteFromAll` — see
+   * the C2 migration list, "boundary 工具已是 controller 能力").
+   */
+  buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
     sourceMessages: ChatMessage[],
     nextMessages: ChatMessage[],
     existingBoundaryMessageIds: readonly string[],
@@ -373,7 +591,15 @@ export class ChatSessionController {
     )
   }
 
-  private persist(
+  /**
+   * Public (debounced persist, no Notice — the caller decides what to show
+   * on failure). Exposed for the same reason as
+   * `buildAssistantGroupBoundaryMessageIdsAfterUserRemoval` above: the
+   * mentionable-delete-from-all path in `useChatInputController.ts` used to
+   * go through `useYoloChatSession`'s own `persistConversation` wrapper;
+   * this is the controller-owned equivalent.
+   */
+  persist(
     messages: ChatMessage[],
     assistantGroupBoundaryIdsOverride?: readonly string[],
   ): Promise<boolean> {
@@ -419,6 +645,355 @@ export class ChatSessionController {
         return false
       }
     })()
+  }
+
+  /** Same as `persist`, but through `createOrUpdateConversationImmediately`
+   * (no debounce) — used by the C2 recovery paths that must land on disk
+   * before the next `run()` call reads the conversation back. */
+  private persistImmediately(
+    messages: ChatMessage[],
+    assistantGroupBoundaryIdsOverride?: readonly string[],
+  ): Promise<boolean> {
+    if (messages.length === 0) return Promise.resolve(true)
+    const conversationId = this.snapshot.currentConversationId
+    const prefs = this.preferencesController.getSnapshot()
+    const effectiveOverrides = {
+      ...(prefs.conversationOverrides ?? {}),
+      chatMode: this.deps.chatModeForSave(prefs.persistedChatMode),
+      agentYoloEnabled: prefs.yoloEnabled,
+    }
+    const reasoningLevel =
+      this.preferencesController.conversationReasoningLevelRef.current.get(
+        conversationId,
+      ) ?? prefs.reasoningLevel
+
+    return (async () => {
+      try {
+        await this.deps.createOrUpdateConversationImmediately(
+          conversationId,
+          messages,
+          effectiveOverrides,
+          prefs.conversationModelId,
+          this.serializeMessageModelMap(
+            messages,
+            this.snapshot.messageModelMap,
+          ),
+          this.serializeActiveBranchByUserMessageId(
+            messages,
+            this.snapshot.activeBranchByUserMessageId,
+          ),
+          reasoningLevel,
+          this.effectiveCompactionState(messages),
+          this.normalizeAssistantGroupBoundaryMessageIds(
+            messages,
+            assistantGroupBoundaryIdsOverride ??
+              this.snapshot.assistantGroupBoundaryMessageIds,
+          ),
+        )
+        return true
+      } catch (error) {
+        console.error('Failed to save chat history', error)
+        return false
+      }
+    })()
+  }
+
+  /** Equivalent to the original `resolveReasoningLevelForMessages`
+   * (`useChatDomainActions.ts`): last user message's stored level, falling
+   * back to the current preference. `normalizeStoredReasoningLevel` already
+   * validates against `REASONING_LEVELS`, so no extra allow-list check is
+   * needed here (the hook's `normalizeReasoningLevel` wrapper was a no-op
+   * re-check of the exact same set). */
+  private resolveReasoningLevelForMessages(
+    messages: ChatMessage[],
+  ): ReasoningLevel {
+    const lastUserMessage = [...messages]
+      .reverse()
+      .find((message): message is ChatUserMessage => message.role === 'user')
+    return (
+      normalizeStoredReasoningLevel(lastUserMessage?.reasoningLevel) ??
+      this.preferencesController.getSnapshot().reasoningLevel
+    )
+  }
+
+  /** Duplicated from `useChatDomainActions.ts` intentionally — same
+   * rationale as the grouping helpers above (C1 completion report): pulling
+   * it in would either import React into this module or create a
+   * controller -> hook edge for a five-line pure function. */
+  private getLatestUserSelectedModelIds(
+    messages: ChatMessage[],
+  ): string[] | undefined {
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      const message = messages[index]
+      if (message.role !== 'user') {
+        continue
+      }
+      return message.selectedModelIds?.length
+        ? message.selectedModelIds
+        : undefined
+    }
+    return undefined
+  }
+
+  /** Equivalent to the original `displayedChatMessages` `useMemo` in
+   * Chat.tsx: groups the working copy and resolves each group's active
+   * branch. Recomputed on demand (submit/retry/continue are user-triggered,
+   * not per-render) rather than cached — `useChatTimelineReadModel`'s
+   * memoization existed for render-time reuse, which no longer applies once
+   * this lives outside React. */
+  private computeDisplayedChatMessages(): ChatMessage[] {
+    const grouped = groupAssistantAndToolMessages(
+      this.snapshot.chatMessages,
+      this.snapshot.assistantGroupBoundaryMessageIds,
+    )
+    return grouped.flatMap((messageOrGroup): ChatMessage[] => {
+      if (!Array.isArray(messageOrGroup)) {
+        return [messageOrGroup]
+      }
+      const sourceUserMessageId =
+        getSourceUserMessageIdForGroup(messageOrGroup) ?? ''
+      return getDisplayedAssistantToolMessages(
+        messageOrGroup,
+        this.snapshot.activeBranchByUserMessageId.get(sourceUserMessageId),
+      )
+    })
+  }
+
+  /**
+   * Equivalent to the original `handleUserMessageSubmit`
+   * (`useChatDomainActions.ts`): compiles the submitted user message's
+   * prompt, writes the working copy + AgentService + debounced persistence,
+   * and triggers the run. Shared by the normal `submit()` yolo path and
+   * `retryAssistantMessageGroup` (its `retryBranchTarget` is the only thing
+   * that differs between the two call sites, exactly as before the move).
+   */
+  private async runNormalSubmission({
+    inputChatMessages,
+    requestChatMessages,
+    retryBranchTarget,
+    persistedMessageModelMap,
+  }: {
+    inputChatMessages: ChatMessage[]
+    requestChatMessages?: ChatMessage[]
+    retryBranchTarget?: ChatSessionRunConversationBranchTarget
+    persistedMessageModelMap?: Map<string, string>
+  }): Promise<void> {
+    invalidateChatRuntimeNavigation(this.deps.runtimeNavigationGenerationRef)
+    this.deps.abortConversationRun(this.snapshot.currentConversationId)
+    this.deps.setQueryProgress({ type: 'idle' })
+
+    // Captured once, matching the pre-C2 closure semantics: this submission
+    // targets the compaction state as of the moment the user hit submit, not
+    // whatever it happens to be once the (awaited) prompt compilation below
+    // resolves.
+    const compactionForSubmit = this.effectiveCompactionState(
+      this.snapshot.chatMessages,
+    )
+
+    this.setChatMessages(inputChatMessages)
+    this.deps.forceScrollToBottom({ deferToNextFrame: true })
+
+    const effectiveRequestChatMessages =
+      requestChatMessages ?? inputChatMessages
+    const lastMessage = effectiveRequestChatMessages.at(-1)
+    if (lastMessage?.role !== 'user') {
+      throw new Error('Last message is not a user message')
+    }
+
+    const prefs = this.preferencesController.getSnapshot()
+    const { promptContent } = await this.deps
+      .getRequestContextBuilder()
+      .compileUserMessagePrompt({
+        message: lastMessage,
+        onQueryProgressChange: this.deps.setQueryProgress,
+        scope: isModuleChatMode(prefs.chatMode)
+          ? { moduleChatModeId: prefs.chatMode }
+          : undefined,
+      })
+    const compiledRequestMessages = effectiveRequestChatMessages.map(
+      (message) =>
+        message.role === 'user' && message.id === lastMessage.id
+          ? { ...message, promptContent }
+          : message,
+    )
+
+    const compiledUserMessagesById = new Map(
+      compiledRequestMessages
+        .filter(
+          (message): message is ChatUserMessage => message.role === 'user',
+        )
+        .map((message) => [message.id, message]),
+    )
+
+    const compiledInputMessages = inputChatMessages.map((message) => {
+      if (message.role !== 'user') {
+        return message
+      }
+      const compiledUserMessage = compiledUserMessagesById.get(message.id)
+      return compiledUserMessage
+        ? { ...message, promptContent: compiledUserMessage.promptContent }
+        : message
+    })
+
+    const persistedMessages = compiledInputMessages.map((message) => {
+      if (message.role !== 'user' || !message.promptContent) {
+        return message
+      }
+      return { ...message, promptContent: null }
+    })
+
+    this.setChatMessages(persistedMessages)
+    this.deps
+      .getAgentService()
+      .replaceConversationMessages(
+        this.snapshot.currentConversationId,
+        persistedMessages,
+        compactionForSubmit,
+      )
+    this.setCompactionState(compactionForSubmit)
+    void this.deps.createOrUpdateConversation(
+      this.snapshot.currentConversationId,
+      compiledInputMessages,
+      {
+        ...(prefs.conversationOverrides ?? {}),
+        chatMode: prefs.chatMode,
+        agentYoloEnabled: prefs.yoloEnabled,
+      },
+      prefs.conversationModelId,
+      this.serializeMessageModelMap(
+        compiledInputMessages,
+        persistedMessageModelMap ?? this.snapshot.messageModelMap,
+      ),
+      this.serializeActiveBranchByUserMessageId(
+        compiledInputMessages,
+        this.snapshot.activeBranchByUserMessageId,
+      ),
+      this.preferencesController.conversationReasoningLevelRef.current.get(
+        this.snapshot.currentConversationId,
+      ) ?? prefs.reasoningLevel,
+      compactionForSubmit,
+      this.normalizeAssistantGroupBoundaryMessageIds(
+        compiledInputMessages,
+        this.snapshot.assistantGroupBoundaryMessageIds,
+      ),
+    )
+    void this.deps.generateConversationTitle(
+      this.snapshot.currentConversationId,
+      compiledInputMessages,
+    )
+    const requestReasoningLevel = this.resolveReasoningLevelForMessages(
+      compiledRequestMessages,
+    )
+    const requestModelIds =
+      lastMessage.selectedModelIds && lastMessage.selectedModelIds.length > 0
+        ? lastMessage.selectedModelIds
+        : undefined
+    this.deps.runConversation({
+      chatMessages: compiledInputMessages,
+      requestMessages: compiledRequestMessages,
+      conversationId: this.snapshot.currentConversationId,
+      reasoningLevel: requestReasoningLevel,
+      modelIds: requestModelIds,
+      branchTarget: retryBranchTarget,
+      compactionOverride: compactionForSubmit,
+    })
+  }
+
+  /**
+   * CLI branch of `submit()` — equivalent to the CLI half of the original
+   * `handleMainInputSubmit` (`useChatInputController.ts`). Notice/i18n stay
+   * out: the async result resolves `settled` with a typed outcome and the
+   * hook decides what to show.
+   */
+  private submitCli(message: ChatUserMessage): ChatSessionSubmitResult {
+    const cliContext = this.deps.getCliSubmitContext()
+    if (!cliContext) return { kind: 'cli_unavailable' }
+    const { controller, coordinator, scope } = cliContext
+    if (isCliConversationActive(controller.getSnapshot())) {
+      return { kind: 'cli_busy' }
+    }
+
+    const submission = coordinator.beginSubmission(
+      cliContext.getDraftRevision(),
+    )
+    if (!submission) return { kind: 'cli_submission_blocked' }
+
+    const settled: Promise<ChatSessionCliSubmitOutcome> = (async () => {
+      try {
+        const environmentContext = await cliContext.buildEnvironmentContext()
+        const result = await submitCliComposerTurn({
+          settings: cliContext.settings,
+          scope,
+          controller,
+          runtimeId: cliContext.runtimeId,
+          userMessage: message,
+          environmentContext,
+          permissionProfile: {
+            mode: cliContext.chatMode,
+            yoloEnabled:
+              cliContext.chatMode === 'plan' ? false : cliContext.yoloEnabled,
+          } satisfies CliPermissionProfileUpdate,
+          signal: submission.signal,
+          onSendStarted: () => coordinator.markSending(submission.token),
+          onPresented: (presentedMessage) =>
+            coordinator.markPresented(submission.token, presentedMessage),
+          onAccepted: (acceptedMessage) => {
+            if (
+              coordinator.markAccepted(submission.token, acceptedMessage) &&
+              cliContext.isMounted()
+            ) {
+              const acceptedDraft = coordinator.getSnapshot().acceptedDraft
+              if (acceptedDraft) {
+                cliContext.consumeAcceptedCliDraft(acceptedDraft)
+              }
+            }
+          },
+        })
+        const historyConversationId = cliContext.cliConversationId ?? uuidv4()
+        await cliContext.createOrTouchCliConversation(
+          historyConversationId,
+          {
+            runtimeId: result.sessionRef.runtimeId,
+            nativeSessionId: result.sessionRef.nativeSessionId,
+            ...(result.sessionRef.sessionPathHint
+              ? { sessionPathHint: result.sessionRef.sessionPathHint }
+              : {}),
+          },
+          this.preferencesController.getSnapshot().conversationOverrides,
+        )
+        if (cliContext.cliConversationId === null && cliContext.isMounted()) {
+          cliContext.setCliConversationId(historyConversationId)
+        }
+        void cliContext
+          .generateConversationTitle(historyConversationId, [
+            result.userMessage,
+          ])
+          .then((title) => {
+            if (title) {
+              cliContext.syncCliConversationTitle(historyConversationId, title)
+            }
+          })
+        if (cliContext.isMounted() && result.overlayError) {
+          console.warn('[YOLO] Failed to save CLI display metadata', {
+            conversationId: historyConversationId,
+            error: result.overlayError.message,
+          })
+        }
+        return { kind: 'ok' }
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') {
+          return { kind: 'aborted' }
+        }
+        return {
+          kind: 'error',
+          message: error instanceof Error ? error.message : String(error),
+        }
+      } finally {
+        coordinator.finishSubmission(submission.token)
+      }
+    })()
+
+    return { kind: 'cli_submitted', settled }
   }
 
   // === Raw setters — `SetStateActionLike` drop-ins for the `useState`
@@ -836,5 +1411,351 @@ export class ChatSessionController {
       resolvedReasoningLevel: policy.resolvedReasoningLevel,
       persisted,
     }
+  }
+
+  // === C2 commands: submit / abort / compact / retry / recover / continue ===
+
+  /**
+   * Equivalent to `handleMainInputSubmit` (`useChatInputController.ts`),
+   * minus the DOM/editor-state parsing and post-submit input-box rebuild
+   * (both stay in the hook — see the type doc on `ChatSessionSubmitResult`).
+   * Dispatches to the CLI branch when `runtimeId !== 'yolo'`; otherwise runs
+   * the exact yolo gating order the original had: waiting-for-user-input,
+   * waiting-for-approval, queueable (enqueue), active, normal submit.
+   */
+  submit(input: ChatSessionSubmitInput): ChatSessionSubmitResult {
+    if (input.runtimeId !== 'yolo') {
+      return this.submitCli(input.message)
+    }
+
+    const messageForSubmit = stampUserMessageTimeContext(
+      input.message,
+      input.assistantTimeContextEnabled,
+    )
+    const runSummary = input.currentConversationRunSummary
+
+    // ask_user_question parks the agent in a paused state that may outlive
+    // the run itself — a new message must answer that panel first.
+    if (runSummary.isWaitingUserInput) {
+      return { kind: 'blocked_waiting_user_input' }
+    }
+    if (runSummary.isWaitingApproval) {
+      return { kind: 'blocked_waiting_approval' }
+    }
+
+    if (runSummary.isQueueable) {
+      const enqueueResult = this.deps
+        .getAgentService()
+        .enqueueUserMessage(
+          this.snapshot.currentConversationId,
+          messageForSubmit,
+        )
+      if (enqueueResult === 'enqueued') {
+        this.setMessageReasoningMap((prev) => {
+          const next = new Map(prev)
+          next.set(
+            messageForSubmit.id,
+            this.preferencesController.getSnapshot().reasoningLevel,
+          )
+          return next
+        })
+        return { kind: 'enqueued', message: messageForSubmit }
+      }
+      if (enqueueResult === 'blocked_awaiting_approval') {
+        return { kind: 'blocked_enqueue_awaiting_approval' }
+      }
+      // 'idle' falls through to the normal submit path below, matching the
+      // pre-C2 behavior.
+    }
+
+    if (runSummary.isActive) {
+      return { kind: 'blocked_active_tool' }
+    }
+
+    const nextMessageModelMap = new Map(this.snapshot.messageModelMap)
+    nextMessageModelMap.set(
+      messageForSubmit.id,
+      this.preferencesController.getSnapshot().conversationModelId,
+    )
+    const inputChatMessages = [...this.snapshot.chatMessages, messageForSubmit]
+    const requestChatMessages = [
+      ...this.computeDisplayedChatMessages(),
+      messageForSubmit,
+    ]
+
+    this.setMessageModelMap(nextMessageModelMap)
+    this.setMessageReasoningMap((prev) => {
+      const next = new Map(prev)
+      next.set(
+        messageForSubmit.id,
+        this.preferencesController.getSnapshot().reasoningLevel,
+      )
+      return next
+    })
+
+    void this.runNormalSubmission({
+      inputChatMessages,
+      requestChatMessages,
+      persistedMessageModelMap: nextMessageModelMap,
+    })
+
+    return { kind: 'submitted', message: messageForSubmit }
+  }
+
+  /** Equivalent to `handleMainInputAbort` (`useChatInputController.ts`).
+   * Notice on a failed CLI cancel is the hook's job — it awaits `settled`. */
+  abortRun(input: { runtimeId: ChatRuntimeId }): ChatSessionAbortResult {
+    if (input.runtimeId !== 'yolo') {
+      const cliContext = this.deps.getCliSubmitContext()
+      if (!cliContext) return { kind: 'cli_unavailable' }
+      const settled = cliContext.coordinator
+        .cancelCurrentOperation(cliContext.controller)
+        .then(
+          () => ({ ok: true as const }),
+          (error: unknown) => ({
+            ok: false as const,
+            message: error instanceof Error ? error.message : String(error),
+          }),
+        )
+      return { kind: 'cli_cancelling', settled }
+    }
+    this.deps.abortConversationRun(this.snapshot.currentConversationId)
+    return { kind: 'yolo_aborted' }
+  }
+
+  /**
+   * Equivalent to `handleManualContextCompaction` (`useChatDomainActions.ts`)
+   * — yolo-only; the CLI `/compact` slash command still goes through the
+   * hook's own `cliOperationCoordinator.transition` (native CLI compaction
+   * has no local message-state to own here).
+   *
+   * Implicit-dependency note (see the plan's C2 design-audit section): this
+   * method does not call `this.setCompactionState` directly after a
+   * successful compaction. `replaceConversationMessages` below reaches this
+   * same controller's own AgentService subscription (`mergeAgentState`,
+   * re-pointed per `currentConversationId` since C1), which synchronously
+   * folds the new compaction entry into this snapshot. Confirmed still true
+   * post-C1: the controller, not `useChatStreamManager`, now owns that
+   * subscription.
+   */
+  async compactContext(input: {
+    currentConversationRunSummary: Pick<
+      AgentConversationRunSummary,
+      'isActive' | 'isWaitingApproval'
+    >
+  }): Promise<ChatSessionCompactResult> {
+    if (input.currentConversationRunSummary.isWaitingApproval) {
+      return { kind: 'blocked_waiting_approval' }
+    }
+    if (input.currentConversationRunSummary.isActive) {
+      return { kind: 'blocked_active' }
+    }
+    const messages = this.snapshot.chatMessages
+    if (messages.length === 0) {
+      return { kind: 'empty' }
+    }
+
+    try {
+      this.setPendingCompactionAnchorMessageId(messages.at(-1)?.id ?? null)
+      const nextCompactionState = await this.deps.compactConversation(messages)
+      this.setPendingCompactionAnchorMessageId(null)
+
+      if (!nextCompactionState) {
+        return { kind: 'empty' }
+      }
+
+      const nextCompactionHistory = [
+        ...this.effectiveCompactionState(messages),
+        nextCompactionState,
+      ]
+
+      this.deps
+        .getAgentService()
+        .replaceConversationMessages(
+          this.snapshot.currentConversationId,
+          messages,
+          nextCompactionHistory,
+        )
+
+      const prefs = this.preferencesController.getSnapshot()
+      // Intentionally mirrors the pre-C2 behavior exactly: raw `chatMode`
+      // here, not `chatModeForSave(persistedChatMode)` like `persist()` uses
+      // — an existing discrepancy carried over unchanged, not something
+      // introduced by this move.
+      const effectiveOverrides = {
+        ...(prefs.conversationOverrides ?? {}),
+        chatMode: prefs.chatMode,
+        agentYoloEnabled: prefs.yoloEnabled,
+      }
+      await this.deps.createOrUpdateConversationImmediately(
+        this.snapshot.currentConversationId,
+        messages,
+        effectiveOverrides,
+        prefs.conversationModelId,
+        this.serializeMessageModelMap(messages, this.snapshot.messageModelMap),
+        this.serializeActiveBranchByUserMessageId(
+          messages,
+          this.snapshot.activeBranchByUserMessageId,
+        ),
+        this.preferencesController.conversationReasoningLevelRef.current.get(
+          this.snapshot.currentConversationId,
+        ) ?? prefs.reasoningLevel,
+        nextCompactionHistory,
+        this.normalizeAssistantGroupBoundaryMessageIds(
+          messages,
+          this.snapshot.assistantGroupBoundaryMessageIds,
+        ),
+      )
+      return { kind: 'compacted' }
+    } catch (error) {
+      this.setPendingCompactionAnchorMessageId(null)
+      console.error('Failed to compact conversation context', error)
+      return { kind: 'failed', error }
+    }
+  }
+
+  /** Equivalent to `handleAssistantMessageGroupRetry`
+   * (`useChatDomainActions.ts`). */
+  retryAssistantMessageGroup(messageIds: string[]): ChatSessionRetryResult {
+    const groupedChatMessages = groupAssistantAndToolMessages(
+      this.snapshot.chatMessages,
+      this.snapshot.assistantGroupBoundaryMessageIds,
+    )
+    const retryPayload = buildRetrySubmissionMessages({
+      sourceMessages: this.snapshot.chatMessages,
+      groupedChatMessages,
+      targetMessageIds: messageIds,
+      activeBranchByUserMessageId: this.snapshot.activeBranchByUserMessageId,
+    })
+    if (!retryPayload) {
+      return { kind: 'failed' }
+    }
+
+    const {
+      sourceUserMessageId,
+      inputChatMessages,
+      requestChatMessages,
+      branchTarget,
+    } = retryPayload
+    const nextAssistantGroupBoundaryMessageIds =
+      this.normalizeAssistantGroupBoundaryMessageIds(
+        inputChatMessages,
+        this.snapshot.assistantGroupBoundaryMessageIds,
+      )
+    this.setAssistantGroupBoundaryMessageIds(
+      nextAssistantGroupBoundaryMessageIds,
+    )
+
+    const nextActiveBranchByUserMessageId = new Map(
+      this.snapshot.activeBranchByUserMessageId,
+    )
+    if (branchTarget) {
+      nextActiveBranchByUserMessageId.set(
+        sourceUserMessageId,
+        branchTarget.branchId,
+      )
+    } else {
+      nextActiveBranchByUserMessageId.delete(sourceUserMessageId)
+    }
+    this.setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
+
+    void this.runNormalSubmission({
+      inputChatMessages,
+      requestChatMessages,
+      retryBranchTarget: branchTarget
+        ? { ...branchTarget, sourceUserMessageId }
+        : undefined,
+    })
+    return { kind: 'submitted' }
+  }
+
+  /** Equivalent to `handleAssistantErrorContinue`
+   * (`useChatDomainActions.ts`). The pending-guard (`assistantContinuationPendingRef`
+   * there) is now a plain private field — no React ref needed once this
+   * lives outside a component. */
+  continueAssistantError(
+    assistantMessageId: string,
+  ): ChatSessionContinueErrorResult {
+    if (this.assistantContinuationPending) {
+      return { kind: 'pending' }
+    }
+    const groupedChatMessages = groupAssistantAndToolMessages(
+      this.snapshot.chatMessages,
+      this.snapshot.assistantGroupBoundaryMessageIds,
+    )
+    const payload = buildAssistantErrorContinuation({
+      sourceMessages: this.snapshot.chatMessages,
+      groupedChatMessages,
+      assistantMessageId,
+      activeBranchByUserMessageId: this.snapshot.activeBranchByUserMessageId,
+    })
+    if (!payload) {
+      return { kind: 'failed' }
+    }
+
+    this.deps.forceScrollToBottom()
+    this.assistantContinuationPending = true
+    this.deps.runConversation(
+      {
+        chatMessages: payload.inputChatMessages,
+        requestMessages: payload.requestChatMessages,
+        conversationId: this.snapshot.currentConversationId,
+        reasoningLevel: this.resolveReasoningLevelForMessages(
+          payload.requestChatMessages,
+        ),
+        assistantContinuation: {
+          assistantMessageId: payload.assistantMessageId,
+          sourceUserMessageId: payload.sourceUserMessageId,
+          modelId: payload.modelId,
+          branchId: payload.branchId,
+          branchLabel: payload.branchLabel,
+        },
+      },
+      {
+        onSettled: () => {
+          this.assistantContinuationPending = false
+        },
+      },
+    )
+    return { kind: 'started' }
+  }
+
+  /** Equivalent to `handleContinueResponse` (`useChatDomainActions.ts`). */
+  continueResponse(): void {
+    const latestMessage = this.snapshot.chatMessages.at(-1)
+    this.deps.runConversation({
+      chatMessages: this.snapshot.chatMessages,
+      conversationId: this.snapshot.currentConversationId,
+      reasoningLevel: this.resolveReasoningLevelForMessages(
+        this.snapshot.chatMessages,
+      ),
+      modelIds:
+        latestMessage?.role === 'user'
+          ? latestMessage.selectedModelIds
+          : undefined,
+    })
+  }
+
+  /** Equivalent to `handleRecoverAnswerUserQuestion`
+   * (`useChatDomainActions.ts`) — recovery path for `ask_user_question` when
+   * no live run remains to pick the resolved messages back up. */
+  recoverAnswerUserQuestion(resolvedMessages: ChatMessage[]): void {
+    const conversationId = this.snapshot.currentConversationId
+    this.setChatMessages(resolvedMessages)
+    this.deps
+      .getAgentService()
+      .replaceConversationMessages(
+        conversationId,
+        resolvedMessages,
+        this.effectiveCompactionState(resolvedMessages),
+        { persistState: true },
+      )
+    void this.persistImmediately(resolvedMessages)
+    this.deps.runConversation({
+      chatMessages: resolvedMessages,
+      conversationId,
+      reasoningLevel: this.resolveReasoningLevelForMessages(resolvedMessages),
+      modelIds: this.getLatestUserSelectedModelIds(resolvedMessages),
+    })
   }
 }
