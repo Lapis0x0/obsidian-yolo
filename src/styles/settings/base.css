@@ -655,6 +655,36 @@ select.yolo-module-settings-select {
   opacity: 0;
 }
 
+/*
+ * 面板式预览：user message 后的首条 thinking 用多行视口，随内容长高、
+ * 封顶后内容在顶部渐隐遮罩后上滚。高度由组件量测后写入
+ * --yolo-assistant-metadata-preview-viewport-height 驱动，收场时归零。
+ * 动效豁免（height 属布局属性）：视口 contain: layout paint 已隔离重排，
+ * 且 height 过渡必须与 track 的 WAAPI translate 同时长同曲线，旧行才能在
+ * 视口生长时保持静止，无法用纯 transform 表达这一生长。
+ */
+.yolo-assistant-message-metadata-preview--panel {
+  height: var(--yolo-assistant-metadata-preview-viewport-height, 0px);
+  max-height: none;
+  transition:
+    height var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    opacity 180ms ease,
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    margin-bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-assistant-message-metadata.has-preview
+  .yolo-assistant-message-metadata-preview--panel,
+.yolo-assistant-message-metadata.is-expanded
+  .yolo-assistant-message-metadata-preview--panel {
+  max-height: none;
+}
+
+.yolo-assistant-message-metadata-preview--panel.is-overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+}
+
 .yolo-assistant-message-metadata.is-expanded
   .yolo-assistant-message-metadata-body {
   grid-template-rows: 1fr;

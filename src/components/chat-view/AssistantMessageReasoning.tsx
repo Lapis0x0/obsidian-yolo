@@ -53,6 +53,25 @@ export const getReasoningPreviewHoldOffset = (
 ): number =>
   lineHeight > 0 && contentHeight > lineHeight + 0.5 ? lineHeight : 0
 
+export const getReasoningPreviewViewportMetrics = ({
+  contentHeight,
+  holdOffset,
+  lineHeight,
+  previewLines,
+}: {
+  contentHeight: number
+  holdOffset: number
+  lineHeight: number
+  previewLines: number
+}): { viewportHeight: number; isOverflowing: boolean } => {
+  const visibleHeight = Math.max(0, contentHeight - holdOffset)
+  const capHeight = previewLines * lineHeight
+  return {
+    viewportHeight: Math.min(visibleHeight, capHeight),
+    isOverflowing: visibleHeight > capHeight + 0.5,
+  }
+}
+
 export const formatReasoningDurationSeconds = (durationMs: number): number =>
   Math.max(1, Math.round(durationMs / 1000))
 
@@ -111,12 +130,15 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   hasAnswerContent,
   generationState,
   reasoningDurationMs,
+  previewLines = 1,
   MarkdownComponent,
 }: {
   reasoning: string
   hasAnswerContent: boolean
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   reasoningDurationMs?: number
+  /** 预览视口的最大可见行数；>1 时切换为随内容长高的面板形态。 */
+  previewLines?: number
   MarkdownComponent?: React.ComponentType<{
     content: string
     scale?: 'xs' | 'sm' | 'base'
@@ -184,6 +206,8 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   )
   const showPreview =
     reasoningPreview.length > 0 && !showBody && stage === 'thinking'
+  const isPanelPreview = previewLines > 1
+  const [isPreviewOverflowing, setIsPreviewOverflowing] = useState(false)
   const previewViewportRef = useRef<HTMLDivElement | null>(null)
   const previewTrackRef = useRef<HTMLDivElement | null>(null)
   const previewHeightRef = useRef(0)
@@ -205,6 +229,13 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       track.setCssProps({
         '--yolo-assistant-metadata-preview-hold-offset': '0px',
       })
+      if (isPanelPreview) {
+        viewport.style.setProperty(
+          '--yolo-assistant-metadata-preview-viewport-height',
+          '0px',
+        )
+        setIsPreviewOverflowing(false)
+      }
       return
     }
 
@@ -224,6 +255,21 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       '--yolo-assistant-metadata-preview-hold-offset',
       `${holdOffset}px`,
     )
+
+    if (isPanelPreview) {
+      const { viewportHeight, isOverflowing } =
+        getReasoningPreviewViewportMetrics({
+          contentHeight: height,
+          holdOffset,
+          lineHeight,
+          previewLines,
+        })
+      viewport.style.setProperty(
+        '--yolo-assistant-metadata-preview-viewport-height',
+        `${viewportHeight}px`,
+      )
+      setIsPreviewOverflowing(isOverflowing)
+    }
 
     if (widthChanged || previousHeight === 0 || height < previousHeight) {
       previewAnimationRef.current?.cancel()
@@ -246,24 +292,31 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     }
 
     previewAnimationRef.current?.cancel()
+    // 面板形态下视口 height 过渡与该位移同时长同曲线，旧行在视口生长时保持
+    // 静止、新行从底缘长出；透明度低谷只适合单行的整行置换，多行时会闪整块。
     const animation = track.animate(
-      [
-        {
-          opacity: 1,
-          transform: `translateY(${startOffset}px)`,
-        },
-        {
-          offset: 0.48,
-          opacity: 0.4,
-          transform: `translateY(${startOffset * 0.55 + holdOffset * 0.45}px)`,
-        },
-        {
-          offset: 0.52,
-          opacity: 0.4,
-          transform: `translateY(${startOffset * 0.45 + holdOffset * 0.55}px)`,
-        },
-        { opacity: 1, transform: `translateY(${holdOffset}px)` },
-      ],
+      isPanelPreview
+        ? [
+            { transform: `translateY(${startOffset}px)` },
+            { transform: `translateY(${holdOffset}px)` },
+          ]
+        : [
+            {
+              opacity: 1,
+              transform: `translateY(${startOffset}px)`,
+            },
+            {
+              offset: 0.48,
+              opacity: 0.4,
+              transform: `translateY(${startOffset * 0.55 + holdOffset * 0.45}px)`,
+            },
+            {
+              offset: 0.52,
+              opacity: 0.4,
+              transform: `translateY(${startOffset * 0.45 + holdOffset * 0.55}px)`,
+            },
+            { opacity: 1, transform: `translateY(${holdOffset}px)` },
+          ],
       {
         duration: REASONING_PREVIEW_TRANSITION_MS,
         easing: MOTION_EASE_OUT_CSS,
@@ -275,7 +328,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
         previewAnimationRef.current = null
       }
     }
-  }, [reasoningPreview, showPreview])
+  }, [reasoningPreview, showPreview, isPanelPreview, previewLines])
 
   useEffect(
     () => () => {
@@ -380,7 +433,13 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       </button>
       <div
         ref={previewViewportRef}
-        className="yolo-assistant-message-metadata-preview"
+        className={`yolo-assistant-message-metadata-preview${
+          isPanelPreview
+            ? ` yolo-assistant-message-metadata-preview--panel${
+                isPreviewOverflowing ? ' is-overflowing' : ''
+              }`
+            : ''
+        }`}
         aria-hidden
       >
         <div

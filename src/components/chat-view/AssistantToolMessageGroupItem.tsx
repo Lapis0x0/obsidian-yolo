@@ -49,6 +49,9 @@ import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResul
 import { buildHostedWebSearchToolMessage } from './tool-cards/hostedWebSearchAdapter'
 import ToolMessage from './ToolMessage'
 
+// user message 之后的首条 thinking 用多行预览面板；工具轮之间的保持单行。
+const LEAD_REASONING_PREVIEW_LINES = 5
+
 const getBranchStateLabel = (
   state: 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error',
   t: (keyPath: string, fallback?: string) => string,
@@ -1127,6 +1130,11 @@ function AssistantToolMessageGroupItem({
                           generationState={reasoningGenerationState}
                           reasoningDurationMs={
                             message.metadata?.reasoningDurationMs
+                          }
+                          previewLines={
+                            messageIndex === 0
+                              ? LEAD_REASONING_PREVIEW_LINES
+                              : undefined
                           }
                         />
                       )}
