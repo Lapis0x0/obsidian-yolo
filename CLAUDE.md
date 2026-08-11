@@ -75,3 +75,4 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - Module code: run `npm run module:typecheck`, relevant tests, `npm --prefix modules/<id> run test:boundary` when available, and `npm run module:build`.
 - Host CSS: run `npm run styles:build`. Module CSS is rebuilt by the module build.
 - Run `npm run build` for changes that affect production bundling, module boundaries, runtime loading, or cross-platform behavior.
+- Dependency hygiene: `npm run deps:check` enforces the circular-dependency ratchet; after removing cycles, tighten the baseline with `npm run deps:baseline`.
