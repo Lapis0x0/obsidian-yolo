@@ -10,6 +10,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import type { CSSProperties } from 'react'
 import { flushSync } from 'react-dom'
@@ -33,6 +34,7 @@ import {
   createYoloChatRuntimeActions,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
+import { resolveLocalizedText } from '../../core/modules/moduleI18n'
 import type { ChatLeafPlacement } from '../../features/chat/chatLeafSessionManager'
 import { useChatHighlightSession } from '../../features/editor/selection-highlight/useChatHighlightSession'
 import {
@@ -70,6 +72,7 @@ import {
   createSelectionBlockMentionable,
 } from '../../utils/chat/selection-mentionables'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
+import { ObsidianIcon } from '../common/ObsidianIcon'
 
 // removed Prompt Templates feature
 
@@ -78,6 +81,8 @@ import {
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
   type ChatMode,
+  type ModuleChatModeOption,
+  isModuleChatMode,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputProps } from './chat-input/ChatUserInput'
@@ -226,7 +231,31 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const { settings, setSettings, updateSettings } = useSettings()
   const quickAccessSkillEntries = useLiteSkillEntries(app, { settings })
   const quickAccessSnippetEntries = useSnippetEntries()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
+
+  // Module chat modes (Phase D): subscribed here so the mode selector, empty
+  // state, and assistant/YOLO visibility all react live to a module being
+  // enabled/disabled — same registry `useSyncExternalStore` pattern as
+  // `useChatStreamManager`/`useYoloChatSession`.
+  const moduleChatModeRegistry = plugin.getModuleChatModeRegistry()
+  const moduleChatModeSnapshot = useSyncExternalStore(
+    moduleChatModeRegistry.subscribe,
+    moduleChatModeRegistry.getSnapshot,
+  )
+  const moduleModeOptions = useMemo<ModuleChatModeOption[]>(
+    () =>
+      moduleChatModeSnapshot
+        .filter((entry) => entry.availability.status === 'available')
+        .map((entry) => ({
+          value: entry.fullModeId as ModuleChatModeOption['value'],
+          label: resolveLocalizedText(entry.mode.label, language),
+          description: entry.mode.description
+            ? resolveLocalizedText(entry.mode.description, language)
+            : undefined,
+          icon: entry.mode.icon,
+        })),
+    [moduleChatModeSnapshot, language],
+  )
 
   const {
     createOrUpdateConversation,
@@ -1228,6 +1257,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       lastCliRuntimeIdRef={lastCliRuntimeIdRef}
       cliRuntimeAvailable={cliRuntimeAvailable}
       cliRuntimeScope={cliRuntimeScope}
+      chatMode={chatMode}
       containerRef={containerRef}
       isWorkspaceWideHeader={isWorkspaceWideHeader}
       setIsWorkspaceWideHeader={setIsWorkspaceWideHeader}
@@ -1408,6 +1438,21 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       {workspaceTitleParts.slice(1).join('{vaultName}')}
     </>
   ) : undefined
+  const currentModuleModeOption = isModuleChatMode(chatMode)
+    ? moduleModeOptions.find((option) => option.value === chatMode)
+    : undefined
+  const emptyStateModuleContent = currentModuleModeOption
+    ? {
+        title: currentModuleModeOption.label,
+        description: currentModuleModeOption.description ?? '',
+        icon: (
+          <ObsidianIcon
+            name={currentModuleModeOption.icon}
+            className="yolo-chat-empty-state-module-icon"
+          />
+        ),
+      }
+    : undefined
   const isCliRuntimeActive = activeRuntimeId !== 'yolo'
   const activeSurfaceEmpty = isCliRuntimeActive
     ? (activeCliConversationSnapshot?.messages.length ?? 0) === 0 &&
@@ -1569,10 +1614,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         displayMentionables={displayMentionablesForInput}
         onDeleteFromAll={handleMainInputMentionableDelete}
         currentAssistantId={
-          isCliRuntimeActive ? undefined : conversationAssistantId
+          isCliRuntimeActive || isModuleChatMode(chatMode)
+            ? undefined
+            : conversationAssistantId
         }
         onSelectAssistantForConversation={
-          isCliRuntimeActive ? undefined : handleConversationAssistantSelect
+          isCliRuntimeActive || isModuleChatMode(chatMode)
+            ? undefined
+            : handleConversationAssistantSelect
         }
         currentChatMode={isCliRuntimeActive ? cliChatMode : chatMode}
         onSelectChatModeForConversation={
@@ -1587,8 +1636,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
             ? CLAUDE_CODE_CHAT_MODES
             : activeRuntimeId === 'codex'
               ? CODEX_CHAT_MODES
-              : CHAT_MODES
+              : moduleModeOptions.length > 0
+                ? [
+                    ...CHAT_MODES,
+                    ...moduleModeOptions.map((option) => option.value),
+                  ]
+                : CHAT_MODES
         }
+        moduleModeOptions={moduleModeOptions}
         yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}
         onYoloChange={
           isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
@@ -1663,6 +1718,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           editingAssistantMessageId={editingAssistantMessageId}
           setEditingAssistantMessageId={setEditingAssistantMessageId}
           emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+          emptyStateModuleContent={emptyStateModuleContent}
           bottomSpacerHeight={inputOverlayHeight}
           footerContent={mainInputFooter}
           runtimeActions={runtimeActions}

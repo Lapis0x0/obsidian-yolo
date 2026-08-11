@@ -3187,6 +3187,14 @@ button.yolo-assistant-annotation-marker.is-active {
   );
 }
 
+/* Module chat mode empty state icon (`ObsidianIcon`, setIcon-produced —
+ * sized via CSS, unlike the lucide-react icons above which size via a `size`
+ * prop on the SVG itself). */
+.yolo-chat-empty-state-module-icon svg {
+  width: 18px;
+  height: 18px;
+}
+
 @keyframes yolo-chat-empty-icon-in {
   from {
     opacity: 0;

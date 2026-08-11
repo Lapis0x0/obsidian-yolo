@@ -5,3 +5,13 @@ svg.svg-icon.yolo-orbit {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+
+/* `ObsidianIcon` (src/components/common/ObsidianIcon.tsx): a `setIcon`-based
+ * glyph wrapper. Deliberately has no `size` prop — sizing/color are each
+ * consumer's responsibility via a `<container> svg { width; height }` rule,
+ * same convention as the other setIcon-based glyphs in this codebase. */
+.yolo-obsidian-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}

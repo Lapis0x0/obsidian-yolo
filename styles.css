@@ -8604,6 +8604,15 @@ svg.svg-icon.yolo-orbit {
   stroke-linecap: round;
   stroke-linejoin: round;
 }
+/* `ObsidianIcon` (src/components/common/ObsidianIcon.tsx): a `setIcon`-based
+ * glyph wrapper. Deliberately has no `size` prop — sizing/color are each
+ * consumer's responsibility via a `<container> svg { width; height }` rule,
+ * same convention as the other setIcon-based glyphs in this codebase. */
+.yolo-obsidian-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .yolo-chat-header {
   display: flex;
   box-sizing: border-box;
@@ -11409,6 +11418,13 @@ button.yolo-assistant-annotation-marker.is-active {
     var(--interactive-accent-hover) 14%,
     transparent
   );
+}
+/* Module chat mode empty state icon (`ObsidianIcon`, setIcon-produced —
+ * sized via CSS, unlike the lucide-react icons above which size via a `size`
+ * prop on the SVG itself). */
+.yolo-chat-empty-state-module-icon svg {
+  width: 18px;
+  height: 18px;
 }
 @keyframes yolo-chat-empty-icon-in {
   from {

@@ -20,6 +20,7 @@ import {
 import { useLanguage } from '../../../contexts/language-context'
 import type { RegisteredModuleChatModeV1 } from '../../../core/modules/moduleChatModeRegistry'
 import { getNodeWindow } from '../../../utils/dom/window-context'
+import { ObsidianIcon } from '../../common/ObsidianIcon'
 import { YoloDropdownContent } from '../../common/popover'
 
 /**
@@ -71,16 +72,17 @@ export const CLAUDE_CODE_CHAT_MODES: readonly ChatModeSelectValue[] = [
 
 export const CODEX_CHAT_MODES: readonly ChatModeSelectValue[] = ['agent']
 
-export const shouldShowYoloToggle = (
-  availableModes: readonly ChatModeSelectOptionValue[],
-  mode: ChatModeSelectOptionValue,
-): boolean => availableModes.includes('agent') && mode !== 'plan'
-
 /** Full persisted/runtime module mode id format — see `ChatMode`. */
 export const MODULE_CHAT_MODE_ID_RE = /^module:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/
 
 export const isModuleChatMode = (value: string): value is ModuleChatModeId =>
   MODULE_CHAT_MODE_ID_RE.test(value)
+
+export const shouldShowYoloToggle = (
+  availableModes: readonly ChatModeSelectOptionValue[],
+  mode: ChatModeSelectOptionValue,
+): boolean =>
+  availableModes.includes('agent') && mode !== 'plan' && !isModuleChatMode(mode)
 
 export const isChatMode = (value: string): value is ChatMode =>
   value === 'ask' || value === 'agent' || isModuleChatMode(value)
@@ -180,6 +182,53 @@ export const normalizeYoloEnabled = (
 export const isAgentChatMode = (mode: ChatModeSelectOptionValue): boolean =>
   mode === 'agent'
 
+/**
+ * Narrows a chat mode down to what the mention menu's `/` mode switcher
+ * understands (`CHAT_MODES` = `['ask', 'agent']` only — see
+ * `MentionPlugin.tsx`, consumed from `ChatUserInput.tsx`). A module chat
+ * mode is agent-like (tools + capability profile), so it narrows to
+ * `'agent'` rather than dropping out as `undefined` — otherwise the menu
+ * would highlight `'ask'` as the current mode while the conversation is
+ * actually running a module mode.
+ */
+export function narrowToMentionChatMode(
+  mode: ChatModeSelectValue | undefined,
+): 'ask' | 'agent' | undefined {
+  if (mode === 'ask') return 'ask'
+  if (mode === 'agent') return 'agent'
+  if (mode !== undefined && isModuleChatMode(mode)) return 'agent'
+  return undefined
+}
+
+/**
+ * A module chat mode ready for rendering: text already resolved to the
+ * current locale by the caller (`resolveLocalizedText` against the
+ * registry's `LocalizedTextV1` label/description — see `Chat.tsx`), so this
+ * component never needs registry or i18n access itself.
+ */
+export type ModuleChatModeOption = Readonly<{
+  value: ModuleChatModeId
+  label: string
+  description?: string
+  icon?: string
+}>
+
+/**
+ * Module options the caller declared minus any not currently selectable
+ * (mirrors how built-in `MODE_OPTIONS` are filtered by `availableModes` —
+ * see `visibleOptions` below). Exported as a pure function so the filtering
+ * rule is unit-testable without rendering the popover (this component has no
+ * RTL test harness — see `ChatModeSelect.test.ts`).
+ */
+export function resolveVisibleModuleModeOptions(
+  moduleModeOptions: readonly ModuleChatModeOption[],
+  availableModes: readonly ChatModeSelectOptionValue[],
+): readonly ModuleChatModeOption[] {
+  return moduleModeOptions.filter((option) =>
+    availableModes.includes(option.value),
+  )
+}
+
 type ModeOption = {
   value: ChatModeSelectOptionValue
   labelKey: string
@@ -224,12 +273,16 @@ const MODE_OPTIONS: ModeOption[] = [
   },
 ]
 
+const EMPTY_MODULE_MODE_OPTIONS: readonly ModuleChatModeOption[] = []
+
 export const ChatModeSelect = forwardRef<
   HTMLButtonElement,
   {
     mode: ChatModeSelectOptionValue
     onChange: (mode: ChatModeSelectOptionValue) => void
     availableModes?: readonly ChatModeSelectOptionValue[]
+    /** Rendered after the built-in options — see `resolveVisibleModuleModeOptions`. */
+    moduleModeOptions?: readonly ModuleChatModeOption[]
     yoloEnabled: boolean
     onYoloChange: (enabled: boolean) => void
     showYoloToggle?: boolean
@@ -253,6 +306,7 @@ export const ChatModeSelect = forwardRef<
       mode,
       onChange,
       availableModes = CHAT_MODES,
+      moduleModeOptions = EMPTY_MODULE_MODE_OPTIONS,
       yoloEnabled,
       onYoloChange,
       showYoloToggle = true,
@@ -277,14 +331,19 @@ export const ChatModeSelect = forwardRef<
         MODE_OPTIONS.filter((option) => availableModes.includes(option.value)),
       [availableModes],
     )
+    const visibleModuleOptions = useMemo(
+      () => resolveVisibleModuleModeOptions(moduleModeOptions, availableModes),
+      [moduleModeOptions, availableModes],
+    )
     const showYoloControl =
       showYoloToggle && shouldShowYoloToggle(availableModes, mode)
     const navOrder = useMemo(() => {
-      const keys: ChatModeSelectOptionValue[] = visibleOptions.map(
-        (option) => option.value,
-      )
+      const keys: ChatModeSelectOptionValue[] = [
+        ...visibleOptions.map((option) => option.value),
+        ...visibleModuleOptions.map((option) => option.value),
+      ]
       return showYoloControl ? ([...keys, 'yolo'] as const) : keys
-    }, [showYoloControl, visibleOptions])
+    }, [showYoloControl, visibleOptions, visibleModuleOptions])
     type NavKey = (typeof navOrder)[number]
     const itemRefs = useRef<
       Partial<Record<NavKey | 'yolo', HTMLElement | null>>
@@ -304,6 +363,9 @@ export const ChatModeSelect = forwardRef<
 
     const currentOption =
       visibleOptions.find((opt) => opt.value === mode) ?? visibleOptions[0]
+    const currentModuleOption = visibleModuleOptions.find(
+      (option) => option.value === mode,
+    )
 
     const focusSelectedItem = useCallback(() => {
       const target = itemRefs.current[mode]
@@ -420,6 +482,7 @@ export const ChatModeSelect = forwardRef<
         >
           <div className="yolo-chat-input-model-select__model-name">
             {triggerLabel ??
+              currentModuleOption?.label ??
               t(
                 currentOption?.labelKey ?? 'chatMode.ask',
                 currentOption?.labelFallback ?? 'Ask',
@@ -555,6 +618,38 @@ export const ChatModeSelect = forwardRef<
                     <span className="yolo-chat-mode-select-item__desc">
                       {t(option.descKey, option.descFallback)}
                     </span>
+                  </span>
+                </button>
+              )
+            })}
+            {visibleModuleOptions.map((option) => {
+              const isSelected = option.value === mode
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  role="menuitemradio"
+                  aria-checked={isSelected}
+                  data-mode={option.value}
+                  data-state={isSelected ? 'checked' : 'unchecked'}
+                  ref={(element) => {
+                    itemRefs.current[option.value] = element
+                  }}
+                  className="yolo-popover-item yolo-chat-mode-select-item"
+                  onClick={() => selectMode(option.value)}
+                >
+                  <span className="yolo-chat-mode-select-item__icon">
+                    <ObsidianIcon name={option.icon} />
+                  </span>
+                  <span className="yolo-chat-mode-select-item__content">
+                    <span className="yolo-chat-mode-select-item__label">
+                      {option.label}
+                    </span>
+                    {option.description ? (
+                      <span className="yolo-chat-mode-select-item__desc">
+                        {option.description}
+                      </span>
+                    ) : null}
                   </span>
                 </button>
               )

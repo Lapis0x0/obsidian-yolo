@@ -100,6 +100,7 @@ jest.mock('./ReasoningSelect', () => ({
 }))
 
 jest.mock('./ChatModeSelect', () => ({
+  ...jest.requireActual('./ChatModeSelect'),
   ChatModeSelect: () => <span data-control="chat-mode" />,
 }))
 

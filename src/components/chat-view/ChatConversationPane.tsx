@@ -54,6 +54,18 @@ export type ChatConversationPaneProps = {
   emptyStateAgentFullDescription: string
   emptyStateIcon?: ReactNode
   emptyStateIconMode?: string
+  /**
+   * Full override for a module chat mode's empty state — the registry's
+   * resolved label/description (and optionally icon) instead of the
+   * ask/agent copy. Takes priority over every other `emptyState*` prop when
+   * present (module modes are a complete, decoupled product surface — see
+   * Phase D design doc 4.7).
+   */
+  emptyStateModuleContent?: {
+    title: ReactNode
+    description: ReactNode
+    icon?: ReactNode
+  }
   footerContent: ReactNode
   onTimelineVirtualizationChange?: (isVirtualized: boolean) => void
   onUserMessageViewportChange?: (state: UserMessageViewportState) => void
@@ -95,6 +107,7 @@ export function ChatConversationPane({
   emptyStateAgentFullDescription,
   emptyStateIcon,
   emptyStateIconMode,
+  emptyStateModuleContent,
   footerContent,
   onTimelineVirtualizationChange,
   onUserMessageViewportChange,
@@ -115,20 +128,24 @@ export function ChatConversationPane({
 
   const isYoloAgent = isAgentChatMode(chatMode) && yoloEnabled
   const emptyStateTitle =
+    emptyStateModuleContent?.title ??
     emptyStateWorkspaceTitle ??
     (isYoloAgent
       ? emptyStateAgentFullTitle
       : isAgentChatMode(chatMode)
         ? emptyStateAgentTitle
         : emptyStateAskTitle)
-  const emptyStateDescription = isYoloAgent
-    ? emptyStateAgentFullDescription
-    : isAgentChatMode(chatMode)
-      ? emptyStateAgentDescription
-      : emptyStateAskDescription
+  const emptyStateDescription =
+    emptyStateModuleContent?.description ??
+    (isYoloAgent
+      ? emptyStateAgentFullDescription
+      : isAgentChatMode(chatMode)
+        ? emptyStateAgentDescription
+        : emptyStateAskDescription)
   const resolvedEmptyStateIconMode =
     emptyStateIconMode ?? (isYoloAgent ? 'agent-full' : chatMode)
   const resolvedEmptyStateIcon =
+    emptyStateModuleContent?.icon ??
     emptyStateIcon ??
     (isYoloAgent ? (
       <InfinityIcon size={18} strokeWidth={2} />

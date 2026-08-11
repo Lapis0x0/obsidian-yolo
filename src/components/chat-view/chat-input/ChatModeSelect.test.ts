@@ -4,11 +4,14 @@ import {
   CHAT_MODES,
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
+  type ModuleChatModeOption,
   chatModeForSave,
   isChatMode,
   isModuleChatMode,
+  narrowToMentionChatMode,
   normalizePersistedChatMode,
   resolveEffectiveChatMode,
+  resolveVisibleModuleModeOptions,
   shouldShowYoloToggle,
 } from './ChatModeSelect'
 
@@ -22,6 +25,67 @@ describe('ChatModeSelect runtime options', () => {
   it('hides the YOLO switch while Plan is active', () => {
     expect(shouldShowYoloToggle(CLAUDE_CODE_CHAT_MODES, 'agent')).toBe(true)
     expect(shouldShowYoloToggle(CLAUDE_CODE_CHAT_MODES, 'plan')).toBe(false)
+  })
+
+  it('hides the YOLO switch while a module chat mode is selected', () => {
+    const availableModes = ['ask', 'agent', 'module:learning:chat'] as const
+    expect(shouldShowYoloToggle(availableModes, 'agent')).toBe(true)
+    expect(shouldShowYoloToggle(availableModes, 'module:learning:chat')).toBe(
+      false,
+    )
+  })
+})
+
+describe('resolveVisibleModuleModeOptions', () => {
+  const learningOption: ModuleChatModeOption = {
+    value: 'module:learning:chat',
+    label: 'Learning',
+    description: 'Study with a tutor',
+    icon: 'graduation-cap',
+  }
+  const otherOption: ModuleChatModeOption = {
+    value: 'module:other:mode',
+    label: 'Other',
+  }
+
+  it('keeps only module options present in availableModes, same as the built-in filter', () => {
+    expect(
+      resolveVisibleModuleModeOptions(
+        [learningOption, otherOption],
+        ['ask', 'agent', 'module:learning:chat'],
+      ),
+    ).toEqual([learningOption])
+  })
+
+  it('returns an empty list when no module options are selectable (e.g. CLI runtimes)', () => {
+    expect(
+      resolveVisibleModuleModeOptions([learningOption], ['agent', 'plan']),
+    ).toEqual([])
+  })
+
+  it('passes through every option once all are selectable', () => {
+    expect(
+      resolveVisibleModuleModeOptions(
+        [learningOption, otherOption],
+        ['ask', 'agent', 'module:learning:chat', 'module:other:mode'],
+      ),
+    ).toEqual([learningOption, otherOption])
+  })
+})
+
+describe('narrowToMentionChatMode', () => {
+  it('passes ask/agent through unchanged', () => {
+    expect(narrowToMentionChatMode('ask')).toBe('ask')
+    expect(narrowToMentionChatMode('agent')).toBe('agent')
+  })
+
+  it('narrows a module chat mode to agent — the mention menu only understands CHAT_MODES (ask/agent), so a module mode must fall back to the closest built-in mode rather than the unrelated ask', () => {
+    expect(narrowToMentionChatMode('module:learning:chat')).toBe('agent')
+  })
+
+  it('drops other values (plan, undefined) so nothing is highlighted', () => {
+    expect(narrowToMentionChatMode('plan')).toBeUndefined()
+    expect(narrowToMentionChatMode(undefined)).toBeUndefined()
   })
 })
 

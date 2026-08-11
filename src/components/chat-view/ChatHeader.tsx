@@ -26,6 +26,7 @@ import type { ConversationOverrideSettings } from '../../types/conversation-sett
 import type { MentionableBlockData } from '../../types/mentionable'
 
 import { AssistantSelector } from './AssistantSelector'
+import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { ChatListDropdown } from './ChatListDropdown'
 import { RuntimeSelector } from './RuntimeSelector'
 import ViewToggle from './ViewToggle'
@@ -41,6 +42,8 @@ export type ChatHeaderProps = {
   lastCliRuntimeIdRef: MutableRefObject<CliRuntimeId>
   cliRuntimeAvailable: boolean
   cliRuntimeScope: CliRuntimeScope | undefined
+  /** Gates the assistant selector — hidden while a module chat mode is active. */
+  chatMode: ChatMode
 
   // workspace-wide header 测量：containerRef 由 Chat.tsx 持有（同一节点也
   // 服务于其他用途），这里只读取 .current 做宽度测量；isWorkspaceWideHeader
@@ -94,6 +97,7 @@ export function ChatHeader({
   lastCliRuntimeIdRef,
   cliRuntimeAvailable,
   cliRuntimeScope,
+  chatMode,
   containerRef,
   isWorkspaceWideHeader,
   setIsWorkspaceWideHeader,
@@ -208,7 +212,7 @@ export function ChatHeader({
       </div>
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          {activeRuntimeId === 'yolo' ? (
+          {activeRuntimeId === 'yolo' && !isModuleChatMode(chatMode) ? (
             <AssistantSelector
               currentAssistantId={conversationAssistantId}
               triggerClassName={

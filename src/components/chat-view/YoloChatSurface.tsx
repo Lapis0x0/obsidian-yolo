@@ -174,6 +174,12 @@ export type YoloChatSurfaceProps = {
   editingAssistantMessageId: string | null
   setEditingAssistantMessageId: Dispatch<SetStateAction<string | null>>
   emptyStateWorkspaceTitle?: ReactNode
+  /** See `ChatConversationPaneProps['emptyStateModuleContent']`. */
+  emptyStateModuleContent?: {
+    title: ReactNode
+    description: ReactNode
+    icon?: ReactNode
+  }
   bottomSpacerHeight: number
   footerContent: ReactNode
   runtimeActions: ChatRuntimeActions
@@ -263,6 +269,7 @@ export function YoloChatSurface({
   editingAssistantMessageId,
   setEditingAssistantMessageId,
   emptyStateWorkspaceTitle,
+  emptyStateModuleContent,
   bottomSpacerHeight,
   footerContent,
   runtimeActions,
@@ -1551,6 +1558,7 @@ export function YoloChatSurface({
         '让 AI 自主执行 · YOLO 模式',
       )}
       emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
+      emptyStateModuleContent={emptyStateModuleContent}
       emptyStateAskDescription={t(
         'chat.emptyState.askDescription',
         '适合提问、润色与改写，专注表达本身',
