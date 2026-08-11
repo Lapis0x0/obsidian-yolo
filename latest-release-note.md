@@ -1,55 +1,43 @@
-## 1.6.5 Agent Tools, Cross-Device Sync & Chat Polish ✨
-
-### 🛠️ Agent Capabilities
-
-- New virtual Bash tool unifies file search and operations in a sandboxed shell over your vault.
-- Oversized virtual bash output is now auto-truncated with guidance to narrow the query, preventing large directory listings from flooding context. (#555)
-- The agent can read `[[wikilink]]` targets directly, resolving down to `#heading` / `^block` ranges. (#555)
-- The `js_eval` tool is renamed to Analysis Sandbox to better reflect its purpose.
-- Added support for DeepSeek's native web search tool.
+## 1.6.5.1 Module Chat Modes, Thinking Panel & Fixes ✨
 
 ### 💬 Chat Experience
 
-- Reworked streaming rendering and scroll performance, with a unified motion system and polished high-frequency interaction animations.
-- Multiple consecutive tool cards now auto-collapse for a cleaner agent conversation view.
-- Fixed the view unexpectedly scrolling to the bottom when expanding reasoning content.
+- The reasoning preview is upgraded from a single rolling line to a multi-line panel, so more of the thought process is visible while thinking.
+- The chat input now accepts dropped folders, with unified drag-and-drop handling for files inside and outside the vault.
+- Web search adds AnySearch as a new provider.
 
-### ⚡ Quick Ask & CLI
+### 🧩 Module Platform
 
-- Quick Ask and YOLO Agent now share unified core runtime semantics; Smart Space is retired, with its continuation feature merged into Quick Ask's third mode. (#529)
-- The CLI mode menu adds native actions for Claude plugin management and MCP server status. (#535)
-- More robust CLI executable discovery, with support for custom CLI paths.
+- Modules can now register their own chat modes, with isolated capability surfaces, pinned tool-approval policies, and skills shipped alongside the module.
+- The module Host API now supports registering custom agent tools.
 
-### 🔄 Data Sync & Fixes
+### 🐛 Fixes & Cleanup
 
-- Chat history, learning data, and module settings moved to a visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate them across devices. In Obsidian Sync, enable "Sync all other types" to include them.
-- Fixed Learning project creation failing on Windows with Obsidian 1.13.4 due to `_staging` temp directory cleanup errors, which could leave empty folders behind. (#556)
+- Fixed mobile startup hanging on "Loading plugins" for a long time when chat history is large. (#565)
+- Fixed the "Import configuration" file picker not responding in Obsidian 1.13's standalone settings window.
+- Fixed the Quick Ask continuation shortcut menu covering the model / reasoning-effort dropdowns, with unified popover layering and menu expansion direction.
+- Fixed npm-installed Claude Code CLI on Windows being misdetected as a native binary and failing to launch. (#562)
+- Removed the obsolete "path operation set" toggle from settings; path operations are handled by the virtual terminal.
 
 ---
 
-## 1.6.5 Agent 工具、跨设备同步与对话体验 ✨
-
-### 🛠️ Agent 能力
-
-- 新增虚拟 Bash 工具，在 vault 沙箱 shell 中统一文件检索与操作能力。
-- 虚拟 bash 超大输出自动截断并引导收窄查询，防止大目录列出灌爆上下文。（#555）
-- Agent 支持直接读取 `[[wikilink]]` 目标，可精确定位到 `#标题` / `^块` 范围。（#555）
-- `js_eval` 工具更名为「分析沙箱」，更符合产品定位。
-- 适配支持 DeepSeek 官方原生搜索工具。
+## 1.6.5.1 模块聊天模式、思考面板与修复 ✨
 
 ### 💬 对话体验
 
-- 重构流式渲染与滚动性能，统一动效体系并补齐高频交互动画。
-- 连续多个工具卡片自动折叠，Agent 对话视觉更清爽。
-- 修复展开思维链内容时视图意外滚动到底部的问题。
+- 思考过程预览从单行升级为多行面板，思考时能看到更多推理内容。
+- 聊天输入框支持拖入文件夹，vault 内外的拖放逻辑已统一。
+- 联网搜索新增 AnySearch Provider。
 
-### ⚡ Quick Ask 与 CLI
+### 🧩 模块平台
 
-- 统一 Quick Ask 与 YOLO Agent 的核心运行语义；Smart Space 退役，续写能力并入 Quick Ask 第三档模式。（#529）
-- CLI 模式菜单新增 Claude 插件管理与 MCP 服务器状态原生动作。（#535）
-- 增强 CLI 定位鲁棒性，支持自定义 CLI 路径。
+- 模块可注册专属聊天模式：能力面隔离、工具审批策略固化，并支持随模块分发的专属 skills。
+- 模块 Host API 支持注册自定义 Agent 工具。
 
-### 🔄 数据同步与修复
+### 🐛 修复与清理
 
-- 聊天记录、学习数据与模块配置迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步；Obsidian Sync 需开启「同步所有其他类型文件」。
-- 修复 Windows + Obsidian 1.13.4 下 Learning 清理 `_staging` 临时目录报错导致项目创建失败并残留空目录的问题。（#556）
+- 修复聊天记录较多时移动端启动长时间卡在「加载插件中」无法使用的问题。（#565）
+- 修复 Obsidian 1.13 独立设置窗口中「导入配置」选择文件无反应的问题。
+- 修复 Quick Ask 续写快捷指令菜单遮挡模型/推理强度下拉的问题，统一弹窗层级与菜单展开方向。
+- 修复 Windows 上 npm 安装的 Claude Code CLI 被误判为原生程序而无法启动的问题。（#562）
+- 移除设置中已失效的「路径操作集」开关，路径操作已由虚拟终端接管。
