@@ -1071,4 +1071,119 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       )
     })
   })
+
+  describe('conversation switch during awaited work', () => {
+    it('submit finishes against the originating conversation after a mid-compile switch', async () => {
+      const draft = userMessage('draft-1')
+      const {
+        controller,
+        agentService,
+        compileUserMessagePrompt,
+        createOrUpdateConversation,
+        generateConversationTitle,
+        runConversation,
+      } = createController('c1', [])
+
+      let resolveCompile!: (value: { promptContent: null }) => void
+      compileUserMessagePrompt.mockImplementationOnce(
+        () =>
+          new Promise<{ promptContent: null }>((resolve) => {
+            resolveCompile = resolve
+          }),
+      )
+
+      const result = controller.submit({
+        runtimeId: 'yolo',
+        message: draft,
+        assistantTimeContextEnabled: false,
+        currentConversationRunSummary: idleRunSummary,
+      })
+      expect(result.kind).toBe('submitted')
+
+      // The user loads another conversation while the prompt is compiling.
+      controller.setCurrentConversationId('c2')
+      const c2Messages = [userMessage('c2-user')]
+      controller.setChatMessages(c2Messages)
+
+      resolveCompile({ promptContent: null })
+      await flushMicrotasks()
+
+      // Persistence, registration, title generation, and the run all target
+      // the conversation the submission started in…
+      expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+        'c1',
+        expect.anything(),
+        expect.anything(),
+      )
+      expect((createOrUpdateConversation.mock.calls[0] as unknown[])[0]).toBe(
+        'c1',
+      )
+      expect(generateConversationTitle).toHaveBeenCalledWith(
+        'c1',
+        expect.anything(),
+      )
+      expect(runConversation).toHaveBeenCalledWith(
+        expect.objectContaining({ conversationId: 'c1' }),
+      )
+      // …while the now-displayed conversation's working copy is left alone.
+      expect(controller.getSnapshot().currentConversationId).toBe('c2')
+      expect(controller.getSnapshot().chatMessages).toBe(c2Messages)
+    })
+
+    it('compactContext persists to the originating conversation after a mid-compaction switch', async () => {
+      const user1 = userMessage('user-1')
+      const {
+        controller,
+        agentService,
+        compactConversation,
+        createOrUpdateConversationImmediately,
+      } = createController('c1', [user1])
+
+      let resolveCompaction!: (
+        value: {
+          anchorMessageId: string
+          summary: string
+          compactedAt: number
+        } | null,
+      ) => void
+      compactConversation.mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            resolveCompaction = resolve
+          }),
+      )
+
+      const pending = controller.compactContext({
+        currentConversationRunSummary: idleRunSummary,
+      })
+      expect(controller.getSnapshot().pendingCompactionAnchorMessageId).toBe(
+        'user-1',
+      )
+
+      // Switch away mid-compaction; the new conversation even starts its own
+      // pending anchor, which the finishing compaction must not clobber.
+      controller.setCurrentConversationId('c2')
+      controller.setChatMessages([userMessage('c2-user')])
+      controller.setPendingCompactionAnchorMessageId('c2-anchor')
+
+      resolveCompaction({
+        anchorMessageId: 'user-1',
+        summary: 'summary',
+        compactedAt: 1,
+      })
+      await expect(pending).resolves.toEqual({ kind: 'compacted' })
+
+      expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+        'c1',
+        [user1],
+        [expect.objectContaining({ anchorMessageId: 'user-1' })],
+      )
+      expect(
+        (createOrUpdateConversationImmediately.mock.calls[0] as unknown[])[0],
+      ).toBe('c1')
+      expect(controller.getSnapshot().pendingCompactionAnchorMessageId).toBe(
+        'c2-anchor',
+      )
+    })
+  })
 })

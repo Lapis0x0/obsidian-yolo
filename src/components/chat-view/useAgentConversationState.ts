@@ -50,9 +50,11 @@ export function useAgentConversationState(
           cacheRef.current = { conversationId, state }
           onStoreChange()
         },
-        // 上面的 getSnapshot 已经在 id 变化时同步取过一次最新状态，这里
-        // 不需要 AgentService 再补发一次当前值。
-        { emitCurrent: false },
+        // 必须补发当前值（emitCurrent 默认 true）：render（getSnapshot 填
+        // 缓存）到本订阅建立之间是有时间差的，这个窗口内的发布既没有被
+        // 回调收到，也会被缓存挡住——React 订阅后的快照复核读到的仍是
+        // 缓存的旧值，错过的状态要等下一次发布才能自愈。补发让订阅建立
+        // 时的最新状态立即刷进缓存，关闭这个丢更新窗口。
       ),
     [agentService, conversationId],
   )
