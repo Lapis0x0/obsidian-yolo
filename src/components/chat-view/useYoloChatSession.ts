@@ -61,7 +61,11 @@ import {
   openCliSessionForNavigation,
   prepareCliConversation,
 } from './cliChatIntegration'
-import { resolveCliModePreference } from './cliRuntimePreferences'
+import {
+  type PrePlanCliModeMemory,
+  prunePrePlanCliMode,
+  resolveCliModePreference,
+} from './cliRuntimePreferences'
 import type { QueryProgressState } from './QueryProgress'
 import type { useChatStreamManager } from './useChatStreamManager'
 
@@ -206,9 +210,7 @@ export type UseYoloChatSessionParams = {
   cliModeRequestGenerationRef: MutableRefObject<number>
   runtimeNavigationGenerationRef: MutableRefObject<number>
   chatMountedRef: MutableRefObject<boolean>
-  prePlanCliModeByConversationRef: MutableRefObject<
-    Map<string, { mode: 'agent'; yoloEnabled: boolean }>
-  >
+  prePlanCliModeByConversationRef: PrePlanCliModeMemory
   setCliChatMode: Dispatch<SetStateAction<CliChatMode>>
   setCliYoloEnabled: Dispatch<SetStateAction<boolean>>
   setCliConversationController: Dispatch<
@@ -784,12 +786,12 @@ export function useYoloChatSession({
         )
         setCliChatMode(loadedCliMode.mode)
         setCliYoloEnabled(loadedCliMode.yoloEnabled)
-        if (
-          cliRuntimeForPrefs === 'claude-code' &&
-          loadedCliMode.mode !== 'plan'
-        ) {
-          prePlanCliModeByConversationRef.current.delete(conversationId)
-        }
+        prunePrePlanCliMode(
+          prePlanCliModeByConversationRef,
+          conversationId,
+          cliRuntimeForPrefs,
+          loadedCliMode.mode,
+        )
         const modelFromRef =
           conversation.conversationModelId ??
           conversationModelIdRef.current.get(conversationId) ??
@@ -971,9 +973,12 @@ export function useYoloChatSession({
         conversationOverridesRef.current.set(conversationId, restoredOverrides)
         setCliChatMode(modePreference.mode)
         setCliYoloEnabled(modePreference.yoloEnabled)
-        if (ref.runtimeId === 'claude-code' && modePreference.mode !== 'plan') {
-          prePlanCliModeByConversationRef.current.delete(conversationId)
-        }
+        prunePrePlanCliMode(
+          prePlanCliModeByConversationRef,
+          conversationId,
+          ref.runtimeId,
+          modePreference.mode,
+        )
         if (result.overlayError) {
           console.warn('[YOLO] Failed to restore CLI conversation metadata', {
             conversationId,
