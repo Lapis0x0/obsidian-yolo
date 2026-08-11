@@ -7,6 +7,7 @@ import {
   snapshotModuleAgentToolBase,
 } from './moduleAgent'
 import { snapshotLocalizedText } from './moduleI18n'
+import { normalizeModuleArtifactFilePath } from './moduleStore'
 import type {
   YoloModuleAgentCapabilityV1,
   YoloModuleChatModeToolV1,
@@ -16,6 +17,9 @@ import type {
 /** Mode-local id format — see `YoloModuleChatModeV1.id`. */
 export const MODULE_CHAT_MODE_LOCAL_ID_RE = /^[a-z][a-z0-9-]*$/
 export const MAX_MODULE_CHAT_MODES_PER_MODULE = 4
+/** Matches `MAX_MODULE_ARTIFACT_FILES` headroom — a mode's skills are a
+ * small curated set, not a bulk asset manifest. */
+export const MAX_MODULE_CHAT_MODE_SKILLS = 16
 
 const MODULE_CHAT_MODE_CAPABILITIES: ReadonlySet<YoloModuleAgentCapabilityV1> =
   new Set(['none', 'vault-read', 'vault-write'])
@@ -153,9 +157,16 @@ function sameAvailability(
  * description, inputSchema, handler) so the two tool contracts cannot
  * validate divergently, then layers on `requiresApproval`.
  *
- * `skills` is part of the type contract ahead of implementation: D6 (skills
- * distribution) has not landed, so a non-empty declaration is rejected
- * outright here rather than silently ignored or half-supported.
+ * `skills` validation here is format-only: each entry must be a safe flat
+ * file name (reusing `normalizeModuleArtifactFilePath`'s rules — the same
+ * ones a manifest `role: 'data'` artifact file name must satisfy), deduped
+ * and capped. Cross-checking a name against the module's actual verified
+ * manifest (does a `role: 'data'` file with this name exist?) cannot happen
+ * here — this function runs synchronously inside `chat.registerMode(...)`,
+ * called from the module's own `activate()`, before the module's
+ * `VerifiedModuleArtifact` is published (see `moduleChatModeSkills.ts`'s
+ * doc comment for the exact ordering). That check happens lazily, on demand,
+ * wherever a mode's skills are actually consumed.
  */
 export function snapshotModuleChatMode(
   mode: YoloModuleChatModeV1,
@@ -190,16 +201,8 @@ export function snapshotModuleChatMode(
   }
   const tools =
     mode.tools === undefined ? undefined : snapshotChatModeTools(mode.tools)
-  if (mode.skills !== undefined) {
-    if (!Array.isArray(mode.skills)) {
-      throw new TypeError('Module chat mode skills must be an array')
-    }
-    if (mode.skills.length > 0) {
-      throw new Error(
-        'Module chat mode skills are not implemented yet (D6 is deferred) — declare an empty array or omit the field',
-      )
-    }
-  }
+  const skills =
+    mode.skills === undefined ? undefined : snapshotChatModeSkills(mode.skills)
   return Object.freeze({
     id: mode.id,
     label,
@@ -208,10 +211,46 @@ export function snapshotModuleChatMode(
     personaPrompt: mode.personaPrompt,
     capability: mode.capability,
     ...(tools !== undefined ? { tools } : {}),
-    ...(mode.skills !== undefined
-      ? { skills: Object.freeze([...mode.skills]) }
-      : {}),
+    ...(skills !== undefined ? { skills } : {}),
   })
+}
+
+function snapshotChatModeSkills(
+  skills: readonly string[],
+): readonly string[] {
+  if (!Array.isArray(skills)) {
+    throw new TypeError('Module chat mode skills must be an array')
+  }
+  if (skills.length > MAX_MODULE_CHAT_MODE_SKILLS) {
+    throw new Error(
+      `Module chat mode skills must not exceed ${MAX_MODULE_CHAT_MODE_SKILLS}`,
+    )
+  }
+  const seen = new Set<string>()
+  const normalized = skills.map((skill) => {
+    if (typeof skill !== 'string') {
+      throw new TypeError('Module chat mode skill file name must be a string')
+    }
+    let normalizedName: string
+    try {
+      normalizedName = normalizeModuleArtifactFilePath(skill)
+    } catch {
+      throw new Error(
+        `Module chat mode skill file name "${skill}" must be a safe flat file name`,
+      )
+    }
+    if (normalizedName.includes('/')) {
+      throw new Error(
+        `Module chat mode skill "${skill}" must be a flat file name (no directories)`,
+      )
+    }
+    if (seen.has(normalizedName)) {
+      throw new Error(`Module chat mode skill "${normalizedName}" is duplicated`)
+    }
+    seen.add(normalizedName)
+    return normalizedName
+  })
+  return Object.freeze(normalized)
 }
 
 function snapshotChatModeTools(

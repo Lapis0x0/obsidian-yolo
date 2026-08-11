@@ -51,7 +51,11 @@ import {
 } from '../../utils/chat/tool-result-index'
 import { readTFileContent } from '../../utils/obsidian'
 
-import { type ChatMode, isAgentChatMode } from './chat-input/ChatModeSelect'
+import {
+  type ChatMode,
+  isAgentChatMode,
+  isModuleChatMode,
+} from './chat-input/ChatModeSelect'
 import {
   buildAssistantErrorContinuation,
   buildRetrySubmissionMessages,
@@ -751,6 +755,9 @@ export function useChatDomainActions({
         await requestContextBuilder.compileUserMessagePrompt({
           message: lastMessage,
           onQueryProgressChange: setQueryProgress,
+          scope: isModuleChatMode(chatMode)
+            ? { moduleChatModeId: chatMode }
+            : undefined,
         })
       const compiledRequestMessages = effectiveRequestChatMessages.map(
         (message) =>

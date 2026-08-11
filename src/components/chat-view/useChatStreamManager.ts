@@ -649,6 +649,7 @@ export function useChatStreamManager({
           runtimeModePrompt,
           modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
           modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+          moduleChatModeId: chatModeRuntime.moduleChatModeId,
           contextPolicy: chatModeRuntime.contextPolicy,
           // Reuse the frozen snapshot; never create one outside the real request.
           systemPromptSnapshotMode: 'reuse',
@@ -692,6 +693,7 @@ export function useChatStreamManager({
             contextualInjections: manualContextualInjections,
             modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
             modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+            moduleChatModeId: chatModeRuntime.moduleChatModeId,
             contextPolicy: chatModeRuntime.contextPolicy,
           })
       } catch (error) {
@@ -833,25 +835,6 @@ export function useChatStreamManager({
         const modelTopP = resolvedClient.model.topP
         const modelMaxTokens = resolvedClient.model.maxOutputTokens
         const effectiveModel = resolvedClient.model
-        const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
-        // Module chat modes have no per-mode skills yet (D6) — the allowed
-        // set is every enabled vault skill, bypassing assistant preferences
-        // entirely (ChatContextPolicy.useAssistant === false). Built-in
-        // modes keep the exact prior behavior: no assistant selected means
-        // no skills.
-        const isModuleMode = isModuleChatMode(chatMode)
-        const enabledSkillEntries =
-          isModuleMode || selectedAssistant
-            ? (await listLiteSkillEntries(app, { settings })).filter((skill) =>
-                isSkillEnabledForAssistant({
-                  assistant: isModuleMode ? null : selectedAssistant,
-                  skillName: skill.name,
-                  disabledSkillNames,
-                }),
-              )
-            : []
-        const allowedSkillPaths = enabledSkillEntries.map((skill) => skill.path)
-
         const autoContextCompactionOptions =
           resolveAutoContextCompactionChatOptions(settings.chatOptions)
         const chatModeRuntime = enableAutoContextCompactionTool(
@@ -865,6 +848,33 @@ export function useChatStreamManager({
           }),
           autoContextCompactionOptions.autoContextCompactionEnabled,
         )
+
+        const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
+        // Module chat modes bypass assistant skill preferences entirely
+        // (ChatContextPolicy.useAssistant === false): the allowed set is the
+        // mode's own declared skills (scoped by `moduleChatModeId`) plus
+        // every enabled vault skill. Built-in modes keep the exact prior
+        // behavior: no assistant selected means no skills.
+        const isModuleMode = isModuleChatMode(chatMode)
+        const skillScope = chatModeRuntime.moduleChatModeId
+          ? { moduleChatModeId: chatModeRuntime.moduleChatModeId }
+          : undefined
+        const enabledSkillEntries =
+          isModuleMode || selectedAssistant
+            ? (
+                await listLiteSkillEntries(app, {
+                  settings,
+                  scope: skillScope,
+                })
+              ).filter((skill) =>
+                isSkillEnabledForAssistant({
+                  assistant: isModuleMode ? null : selectedAssistant,
+                  skillName: skill.name,
+                  disabledSkillNames,
+                }),
+              )
+            : []
+        const allowedSkillPaths = enabledSkillEntries.map((skill) => skill.path)
 
         const mcpManager = await getMcpManager()
 
@@ -919,6 +929,7 @@ export function useChatStreamManager({
             chatModeRuntime.moduleToolApprovalPolicies,
           modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
           modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+          moduleChatModeId: chatModeRuntime.moduleChatModeId,
           contextPolicy: chatModeRuntime.contextPolicy,
           requestParams,
           contextualInjections: buildChatContextualInjections({
@@ -1188,6 +1199,7 @@ export function useChatStreamManager({
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
         modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
         modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+        moduleChatModeId: chatModeRuntime.moduleChatModeId,
         contextPolicy: chatModeRuntime.contextPolicy,
         contextualInjections: buildChatContextualInjections({
           app,

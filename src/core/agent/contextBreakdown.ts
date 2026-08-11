@@ -149,6 +149,7 @@ export const estimateContextBreakdown = async ({
   toolCapabilityMode,
   modePersonaPrompt,
   modePersonaModuleId,
+  moduleChatModeId,
   contextPolicy,
 }: {
   requestContextBuilder: RequestContextBuilder
@@ -168,6 +169,7 @@ export const estimateContextBreakdown = async ({
   toolCapabilityMode?: ToolCapabilityMode
   modePersonaPrompt?: string
   modePersonaModuleId?: string
+  moduleChatModeId?: string
   contextPolicy?: ChatContextPolicy
 }): Promise<ContextBreakdown> => {
   const availableTools = enableTools
@@ -208,6 +210,7 @@ export const estimateContextBreakdown = async ({
     runtimeModePrompt,
     modePersonaPrompt,
     modePersonaModuleId,
+    moduleChatModeId,
     contextPolicy,
     requestTools,
     // Token breakdown only: reuse a frozen snapshot if present, never create one.

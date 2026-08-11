@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import {
   access,
+  copyFile,
   mkdir,
   readFile,
   readdir,
@@ -214,21 +215,81 @@ async function loadOfficialModules() {
       () => true,
       () => false,
     )
+    const dataFileAssets = await resolveModuleDataFileAssets(
+      config.id,
+      moduleDir,
+      config.dataFiles,
+    )
     definitions.push({
       id: config.id,
       version: previewVersion,
       declarationPath: path.join(moduleDir, 'module.config.json'),
       releaseTag: previewTag,
       workers: packageJson.yoloModule?.workers ?? {},
-      assets: hasStyle
-        ? [{ role: 'style', source: 'style.css', path: 'style.css' }]
-        : [],
+      assets: [
+        ...(hasStyle
+          ? [{ role: 'style', source: 'style.css', path: 'style.css' }]
+          : []),
+        ...dataFileAssets,
+      ],
       bundled: true,
       config,
       package: packageJson,
     })
   }
   return definitions.sort((left, right) => left.id.localeCompare(right.id))
+}
+
+/**
+ * `module.config.json`'s optional `dataFiles: string[]` declares flat,
+ * top-level `role: 'data'` artifacts (e.g. a skill Markdown file) that ship
+ * verbatim from `modules/<id>/src/<fileName>` — no subdirectories, no
+ * transform, matching the Release protocol's flat asset-directory upload and
+ * the host's manifest-driven trusted path resolution (see
+ * `src/core/modules/moduleChatModeSkills.ts`).
+ */
+async function resolveModuleDataFileAssets(moduleId, moduleDir, dataFiles) {
+  if (dataFiles === undefined) return []
+  if (!Array.isArray(dataFiles)) {
+    throw new Error(`${moduleId} module.config.json dataFiles must be an array`)
+  }
+  const seen = new Set()
+  const assets = []
+  for (const fileName of dataFiles) {
+    if (
+      typeof fileName !== 'string' ||
+      !fileName ||
+      fileName.includes('/') ||
+      fileName.includes('\\')
+    ) {
+      throw new Error(
+        `${moduleId} module.config.json dataFiles entry must be a flat file name: ${JSON.stringify(fileName)}`,
+      )
+    }
+    if (fileName === 'style.css') {
+      throw new Error(
+        `${moduleId} module.config.json dataFiles must not reuse the style.css name`,
+      )
+    }
+    if (seen.has(fileName)) {
+      throw new Error(
+        `${moduleId} module.config.json dataFiles has a duplicate entry: ${fileName}`,
+      )
+    }
+    seen.add(fileName)
+    const dataSource = path.join(moduleDir, 'src', fileName)
+    const exists = await access(dataSource).then(
+      () => true,
+      () => false,
+    )
+    if (!exists) {
+      throw new Error(
+        `${moduleId} declares dataFiles entry missing from src/: ${fileName}`,
+      )
+    }
+    assets.push({ role: 'data', source: fileName, path: fileName })
+  }
+  return assets
 }
 
 async function readJson(filePath) {
@@ -348,16 +409,26 @@ async function buildModule({
 
   await Promise.all(
     assets.map(async (asset) => {
-      if (asset.role !== 'style') {
-        throw new Error(`Unsupported module asset role: ${asset.role}`)
+      if (asset.role === 'style') {
+        await esbuild.build({
+          entryPoints: [path.join(sourceDir, asset.source)],
+          outfile: path.join(artifactDir, asset.path),
+          bundle: true,
+          minify: true,
+          legalComments: 'none',
+        })
+        return
       }
-      await esbuild.build({
-        entryPoints: [path.join(sourceDir, asset.source)],
-        outfile: path.join(artifactDir, asset.path),
-        bundle: true,
-        minify: true,
-        legalComments: 'none',
-      })
+      if (asset.role === 'data') {
+        // Ships verbatim — no bundling/transform for a data artifact (e.g. a
+        // module chat mode skill Markdown file).
+        await copyFile(
+          path.join(sourceDir, asset.source),
+          path.join(artifactDir, asset.path),
+        )
+        return
+      }
+      throw new Error(`Unsupported module asset role: ${asset.role}`)
     }),
   )
 

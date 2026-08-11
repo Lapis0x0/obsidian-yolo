@@ -553,6 +553,28 @@ export class ModuleStore {
     )
   }
 
+  /**
+   * The trusted absolute (adapter-relative) path for a declared artifact
+   * file, without reading it. Same root-construction rule as
+   * `readEntryBytes` — callers that only need a path (e.g. module chat mode
+   * skill resolution, which hands the path to a text reader elsewhere) must
+   * go through this instead of concatenating `pluginDir`/manifest fields
+   * themselves, so every module-artifact path in the host is built exactly
+   * one way.
+   */
+  resolveEntryPath(
+    moduleId: string,
+    version: string,
+    entryPath: string,
+  ): string {
+    assertModuleId(moduleId, 'Module id')
+    assertModulePathSegment(version, 'Module version')
+    const relativePath = normalizeModuleArtifactFilePath(entryPath)
+    return normalizePortablePath(
+      `${this.pluginDir}/modules/${moduleId}/${version}/${relativePath}`,
+    )
+  }
+
   async listVersionFiles(
     moduleId: string,
     version: string,

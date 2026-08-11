@@ -95,6 +95,10 @@ export type AgentRuntimeRunInput = {
   modePersonaPrompt?: string
   /** The owning module id, for the persona injection's `module="..."` attribute. */
   modePersonaModuleId?: string
+  /** Full running mode id (`module:<moduleId>:<modeId>`) — scopes skill
+   * resolution to the mode's own declared skills. See
+   * `ChatModeRuntime.moduleChatModeId`. Undefined for built-in modes. */
+  moduleChatModeId?: string
   /**
    * Explicit context-assembly policy from `resolveChatModeRuntime`. Absent
    * (built-in modes) is equivalent to `{ useAssistant: true }` — every

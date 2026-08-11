@@ -188,10 +188,13 @@ export type YoloModuleChatModeV1 = Readonly<{
    * for the lifetime of the mode's contribution. */
   tools?: readonly YoloModuleChatModeToolV1[]
   /**
-   * Skills that apply within this mode: data-role artifact file names from
-   * this module's manifest. Part of the type contract ahead of
-   * implementation — the host rejects any non-empty declaration until
-   * skills distribution lands (see the module chat mode design doc, D6).
+   * Skills that apply within this mode: flat `role: 'data'` artifact file
+   * names declared in `module.config.json`'s `dataFiles` (and therefore
+   * present in this module's verified manifest). Resolved through the
+   * module's trusted verified-artifact + `ModuleStore` version root — never
+   * from a manifest- or module-supplied path fragment. Effective only while
+   * this mode is active: skills declared here are not visible in ordinary
+   * (non-module) chat modes, and a same-named user/vault skill always wins.
    */
   skills?: readonly string[]
 }>

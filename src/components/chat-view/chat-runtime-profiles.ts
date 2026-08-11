@@ -70,6 +70,15 @@ export type ChatModeRuntime = {
   modePersonaPrompt?: string
   /** The owning module id, for the persona injection's `module="..."` attribute. */
   modePersonaModuleId?: string
+  /**
+   * Full running mode id (`module:<moduleId>:<modeId>`) — see
+   * `ModuleChatModeId`. Scopes skill resolution (`LiteSkillScope`) so a
+   * mode's own declared skills join the candidate set only for its own
+   * runs; distinct from `modePersonaModuleId`, which names only the owning
+   * module and cannot disambiguate between two modes of the same module.
+   * Undefined for built-in modes.
+   */
+  moduleChatModeId?: string
   contextPolicy: ChatContextPolicy
   /**
    * For module chat modes: full tool name (`<serverName>__<toolName>`, see
@@ -194,6 +203,7 @@ function resolveModuleChatModeRuntime(
     bashReadOnly: capabilityProfile.bashReadOnly,
     modePersonaPrompt: registered.mode.personaPrompt,
     modePersonaModuleId: registered.moduleId,
+    moduleChatModeId: registered.fullModeId,
     contextPolicy: MODULE_CONTEXT_POLICY,
     moduleToolApprovalPolicies,
   }

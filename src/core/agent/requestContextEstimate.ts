@@ -38,6 +38,7 @@ export const estimateContinuationRequestContextTokens = async ({
   toolCapabilityMode,
   modePersonaPrompt,
   modePersonaModuleId,
+  moduleChatModeId,
   contextPolicy,
 }: {
   requestContextBuilder: RequestContextBuilder
@@ -57,6 +58,7 @@ export const estimateContinuationRequestContextTokens = async ({
   toolCapabilityMode?: ToolCapabilityMode
   modePersonaPrompt?: string
   modePersonaModuleId?: string
+  moduleChatModeId?: string
   contextPolicy?: ChatContextPolicy
 }): Promise<number> => {
   const availableTools = enableTools
@@ -99,6 +101,7 @@ export const estimateContinuationRequestContextTokens = async ({
     runtimeModePrompt,
     modePersonaPrompt,
     modePersonaModuleId,
+    moduleChatModeId,
     contextPolicy,
     // Token estimate only: never create/freeze the snapshot ahead of the real request.
     systemPromptSnapshotMode: 'reuse',

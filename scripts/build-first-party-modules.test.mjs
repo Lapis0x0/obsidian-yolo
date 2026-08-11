@@ -1,7 +1,14 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
 import { execFile } from 'node:child_process'
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises'
+import {
+  mkdir,
+  mkdtemp,
+  readFile,
+  readdir,
+  rm,
+  writeFile,
+} from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
 import test from 'node:test'
@@ -154,6 +161,151 @@ test('keeps hashes and the module metafile self-contained', async () => {
     await rm(fixture.root, { recursive: true, force: true })
   }
 })
+
+test('module.config.json dataFiles ship as flat role:data artifacts (D6 skills pipeline)', async () => {
+  const moduleId = 'zz-datafiles-fixture'
+  const fixture = await buildDataFilesFixture(moduleId, {
+    dataFiles: ['fixture-skill.md'],
+  })
+  try {
+    assert.deepEqual((await readdir(fixture.artifactDir)).sort(), [
+      'entry.js',
+      'fixture-skill.md',
+      'module.json',
+    ])
+
+    const shippedBytes = await readFile(
+      path.join(fixture.artifactDir, 'fixture-skill.md'),
+    )
+    assert.equal(shippedBytes.toString('utf8'), fixture.skillContent)
+
+    const manifest = JSON.parse(
+      await readFile(path.join(fixture.artifactDir, 'module.json'), 'utf8'),
+    )
+    for (const variant of manifest.variants) {
+      const dataFile = variant.files.find(
+        (file) => file.path === 'fixture-skill.md',
+      )
+      assert.ok(dataFile, 'manifest must declare the data artifact')
+      assert.equal(dataFile.role, 'data')
+      assert.equal(dataFile.name, 'fixture-skill.md')
+      assert.equal(dataFile.storage, 'module')
+      assert.equal(dataFile.byteSize, shippedBytes.byteLength)
+      assert.equal(dataFile.sha256, hash(shippedBytes))
+    }
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+test('module.config.json rejects a dataFiles entry that is not a flat file name', async () => {
+  const moduleId = 'zz-datafiles-nested-fixture'
+  await assert.rejects(
+    buildDataFilesFixture(moduleId, {
+      dataFiles: ['nested/skill.md'],
+      skipWritingSkillFile: true,
+    }),
+    /flat file name/,
+  )
+  await rm(path.join(repositoryRoot, 'modules', moduleId), {
+    recursive: true,
+    force: true,
+  })
+})
+
+test('module.config.json rejects a dataFiles entry missing from src/', async () => {
+  const moduleId = 'zz-datafiles-missing-fixture'
+  await assert.rejects(
+    buildDataFilesFixture(moduleId, {
+      dataFiles: ['missing-skill.md'],
+      skipWritingSkillFile: true,
+    }),
+    /missing from src\//,
+  )
+  await rm(path.join(repositoryRoot, 'modules', moduleId), {
+    recursive: true,
+    force: true,
+  })
+})
+
+/**
+ * Scaffolds a minimal, throwaway first-party module directory under the real
+ * `modules/` root (required — `loadOfficialModules()` hardcodes that scan
+ * root) declaring `dataFiles`, builds it via the actual CLI, and returns a
+ * `cleanup()` that removes both the scaffolded module directory and the
+ * build's output directory. The module directory is removed even when the
+ * build throws, so validation-failure tests never leak fixture state.
+ */
+async function buildDataFilesFixture(
+  moduleId,
+  { dataFiles, skipWritingSkillFile = false },
+) {
+  const moduleDir = path.join(repositoryRoot, 'modules', moduleId)
+  const root = await mkdtemp(
+    path.join(os.tmpdir(), 'module-datafiles-build-'),
+  )
+  const artifactDir = path.join(root, 'artifact')
+  const skillContent = '---\nname: fixture-skill\n---\nFixture skill body.\n'
+  try {
+    await mkdir(path.join(moduleDir, 'src'), { recursive: true })
+    await writeFile(
+      path.join(moduleDir, 'module.config.json'),
+      JSON.stringify({
+        id: moduleId,
+        icon: 'graduation-cap',
+        localizations: { en: { name: 'Fixture', description: 'Fixture.' } },
+        hostApi: '^1.0.0',
+        platforms: ['desktop'],
+        dataSchemas: {},
+        dataFiles,
+      }),
+    )
+    await writeFile(
+      path.join(moduleDir, 'package.json'),
+      JSON.stringify({
+        name: moduleId,
+        version: '0.0.1',
+        yoloModule: {
+          previewVersion: '0.0.1',
+          previewTag: `module-${moduleId}-v0.0.1`,
+        },
+      }),
+    )
+    await writeFile(
+      path.join(moduleDir, 'src', 'index.tsx'),
+      'export {}\n',
+    )
+    if (!skipWritingSkillFile) {
+      for (const fileName of dataFiles) {
+        await writeFile(path.join(moduleDir, 'src', fileName), skillContent)
+      }
+    }
+
+    await execFileAsync(
+      process.execPath,
+      [
+        'scripts/build-first-party-modules.mjs',
+        '--module',
+        moduleId,
+        '--output-dir',
+        artifactDir,
+      ],
+      { cwd: repositoryRoot },
+    )
+    return {
+      artifactDir,
+      skillContent,
+      cleanup: async () => {
+        await rm(root, { recursive: true, force: true })
+        await rm(moduleDir, { recursive: true, force: true })
+      },
+    }
+  } catch (error) {
+    await rm(root, { recursive: true, force: true })
+    await rm(moduleDir, { recursive: true, force: true })
+    throw error
+  }
+}
 
 async function buildFixture() {
   const root = await mkdtemp(path.join(os.tmpdir(), 'learning-module-build-'))

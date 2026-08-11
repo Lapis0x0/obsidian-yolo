@@ -1,6 +1,7 @@
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import {
+  MAX_MODULE_CHAT_MODE_SKILLS,
   MAX_MODULE_CHAT_MODES_PER_MODULE,
   ModuleChatModeRegistry,
   buildModuleChatModeFullId,
@@ -165,10 +166,48 @@ describe('snapshotModuleChatMode', () => {
     expect(() => snapshotModuleChatMode(baseMode({ skills: [] }))).not.toThrow()
   })
 
-  it('rejects a non-empty skills array (D6 is deferred)', () => {
+  it('accepts and freezes a valid skills array', () => {
+    const snapshot = snapshotModuleChatMode(
+      baseMode({ skills: ['outline-skill.md', 'plan-skill.md'] }),
+    )
+    expect(snapshot.skills).toEqual(['outline-skill.md', 'plan-skill.md'])
+    expect(Object.isFrozen(snapshot.skills)).toBe(true)
+  })
+
+  it('rejects a skill file name containing a directory separator', () => {
     expect(() =>
-      snapshotModuleChatMode(baseMode({ skills: ['outline.md'] })),
-    ).toThrow(/not implemented yet/)
+      snapshotModuleChatMode(baseMode({ skills: ['dir/outline.md'] })),
+    ).toThrow(/must be a flat file name/)
+  })
+
+  it('rejects a skill file name with unsafe characters', () => {
+    expect(() =>
+      snapshotModuleChatMode(baseMode({ skills: ['../escape.md'] })),
+    ).toThrow(/must be a safe flat file name/)
+  })
+
+  it('rejects a non-string skill entry', () => {
+    expect(() =>
+      snapshotModuleChatMode(baseMode({ skills: [42 as unknown as string] })),
+    ).toThrow(/must be a string/)
+  })
+
+  it('rejects duplicate skill file names', () => {
+    expect(() =>
+      snapshotModuleChatMode(
+        baseMode({ skills: ['outline.md', 'outline.md'] }),
+      ),
+    ).toThrow(/is duplicated/)
+  })
+
+  it(`rejects more than ${MAX_MODULE_CHAT_MODE_SKILLS} skills`, () => {
+    const skills = Array.from(
+      { length: MAX_MODULE_CHAT_MODE_SKILLS + 1 },
+      (_, index) => `skill-${index}.md`,
+    )
+    expect(() => snapshotModuleChatMode(baseMode({ skills }))).toThrow(
+      new RegExp(`must not exceed ${MAX_MODULE_CHAT_MODE_SKILLS}`),
+    )
   })
 })
 

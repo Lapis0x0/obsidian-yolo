@@ -135,6 +135,7 @@ describe('resolveChatModeRuntime module chat mode branch', () => {
       'You are the learning course assistant.',
     )
     expect(runtime.modePersonaModuleId).toBe('learning')
+    expect(runtime.moduleChatModeId).toBe('module:learning:chat')
     expect(runtime.contextPolicy).toEqual({ useAssistant: false })
   })
 

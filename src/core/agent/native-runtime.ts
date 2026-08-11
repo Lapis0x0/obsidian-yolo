@@ -253,6 +253,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                   toolCapabilityMode: input.toolCapabilityMode,
                   modePersonaPrompt: input.modePersonaPrompt,
                   modePersonaModuleId: input.modePersonaModuleId,
+                  moduleChatModeId: input.moduleChatModeId,
                   contextPolicy: input.contextPolicy,
                   transientRequestMessages: autoContextCompactionNotice
                     ? [
@@ -627,6 +628,7 @@ export class NativeAgentRuntime implements AgentRuntime {
       toolCapabilityMode: input.toolCapabilityMode,
       modePersonaPrompt: input.modePersonaPrompt,
       modePersonaModuleId: input.modePersonaModuleId,
+      moduleChatModeId: input.moduleChatModeId,
       contextPolicy: input.contextPolicy,
       geminiTools: input.geminiTools,
       systemPromptOverride: input.systemPromptOverride,

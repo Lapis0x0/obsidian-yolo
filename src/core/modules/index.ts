@@ -40,6 +40,11 @@ export {
   type RegisteredModuleChatModeV1,
 } from './moduleChatModeRegistry'
 export {
+  createModuleChatModeSkillResolver,
+  type ModuleChatModeSkillResolverOptions,
+  type ModuleChatModeSkillResolverV1,
+} from './moduleChatModeSkills'
+export {
   ModuleConfigCapabilityProvider,
   type ModuleConfigBackend,
   type ModuleConfigCapabilityActivationV1,
