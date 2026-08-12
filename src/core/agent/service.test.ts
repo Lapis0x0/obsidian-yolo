@@ -1810,6 +1810,62 @@ describe('AgentService mid-run user message queue', () => {
     await runPromise
   })
 
+  it('preserves prior conversation history after a queued message is drained', async () => {
+    const service = new AgentService()
+    const priorUser = makeUserMessage('u0', 'earlier question')
+    const priorAssistant: ChatMessage = {
+      role: 'assistant',
+      id: 'a0',
+      content: 'earlier answer',
+      metadata: { generationState: 'completed' },
+    }
+    const currentUser = makeUserMessage('u1', 'current task')
+    const runPromise = service.run({
+      conversationId: 'conv-drain-history',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-drain-history', [
+        priorUser,
+        priorAssistant,
+        currentUser,
+      ]),
+    })
+    const runtime = runtimeInstances[0]
+    const currentAssistant: ChatMessage = {
+      role: 'assistant',
+      id: 'a1',
+      content: 'working',
+      metadata: { generationState: 'completed' },
+    }
+    runtime.emitSnapshot([currentAssistant])
+
+    const queued = makeUserMessage('u2', 'continue')
+    expect(service.enqueueUserMessage('conv-drain-history', queued)).toBe(
+      'enqueued',
+    )
+    expect(
+      runtime.getRunInput()?.drainPendingUserMessages?.(),
+    ).toMatchObject({ messages: [queued] })
+
+    // NativeAgentRuntime publishes only its run-local tail here.
+    runtime.emitSnapshot([currentAssistant, queued])
+
+    expect(
+      service
+        .getState('conv-drain-history')
+        .messages.map((message) => message.id),
+    ).toEqual(['u0', 'a0', 'u1', 'a1', 'u2'])
+    expect(
+      service.getConversationRunSummary('conv-drain-history').anchorMessageId,
+    ).toBe('u2')
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
   it('atomically removes a message while it is still queued', async () => {
     const service = new AgentService()
     const runPromise = service.run({
