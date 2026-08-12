@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ItemView, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
+import { ItemView, Menu, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
 import type { ViewStateResult } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
@@ -10,6 +10,7 @@ import type {
   ChatRuntimeSnapshot,
 } from './components/chat-view/Chat'
 import ChatSidebarTabs from './components/chat-view/ChatSidebarTabs'
+import { ConfirmModal } from './components/modals/ConfirmModal'
 import { CHAT_VIEW_TYPE } from './constants'
 import { AppProvider } from './contexts/app-context'
 import { ChatViewProvider } from './contexts/chat-view-context'
@@ -403,6 +404,41 @@ export class ChatView extends ItemView {
   openNewChat(selectedBlock?: MentionableBlockData) {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.openNewChat(selectedBlock)
+  }
+
+  /**
+   * issue #567 Step 2. Opens the history dropdown — used by the "Open chat
+   * history" command (`main.ts`) so it's reachable via the command palette,
+   * a bound keyboard shortcut, or Commander. The in-content History button
+   * (`ChatHeader`) keeps its own direct click handler; this is a second
+   * entry point onto the same `ChatListDropdown` instance.
+   */
+  openChatHistory(): void {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.openChatHistory()
+  }
+
+  /**
+   * issue #567 Step 2. Whether the active conversation can currently be
+   * exported to the vault — persisted conversation + active runtime
+   * supports vault export. Backs the "Export current conversation to vault"
+   * command's `checkCallback` gate in `main.ts`. Reads
+   * `ChatRef.getCurrentConversationMenuState`, the same live source
+   * `onPaneMenu` uses — not a new state source.
+   */
+  canExportCurrentConversation(): boolean {
+    const state = this.chatRef.current?.getCurrentConversationMenuState()
+    return Boolean(state?.persisted && state?.canExport)
+  }
+
+  /**
+   * issue #567 Step 2. Exports the active conversation to the vault. Callers
+   * must gate on `canExportCurrentConversation()` first (see the command's
+   * `checkCallback`); mirrors the in-content export button's behavior.
+   */
+  exportCurrentConversation(): void {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.exportCurrentConversation()
   }
 
   async loadConversation(conversationId: string) {
@@ -872,5 +908,103 @@ export class ChatView extends ItemView {
 
     titleEl.addEventListener('keydown', onKeyDown)
     titleEl.addEventListener('blur', onBlur)
+  }
+
+  /**
+   * issue #567 Step 2. Adds a conversation-management group to the pane's
+   * native "···" menu: rename / pin-toggle / export / delete. All four act
+   * on the active conversation and are disabled when it isn't persisted yet
+   * (a brand-new, not-yet-saved chat has nothing to rename/pin/export/
+   * delete) — export is omitted entirely when the active runtime doesn't
+   * support vault export, matching `ChatHeader`'s conditional rendering.
+   */
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source)
+
+    const state = this.chatRef.current?.getCurrentConversationMenuState()
+    const persisted = state?.persisted ?? false
+
+    menu.addSeparator()
+
+    menu.addItem((item) =>
+      item
+        .setTitle(this.plugin.t('chat.paneMenu.rename', 'Rename'))
+        .setIcon('pencil')
+        .setDisabled(!persisted)
+        .onClick(() => {
+          if (!persisted) return
+          this.beginTitleEditing()
+        }),
+    )
+
+    menu.addItem((item) =>
+      item
+        .setTitle(
+          state?.pinned
+            ? this.plugin.t('sidebar.chatList.unpinConversation', 'Unpin')
+            : this.plugin.t('sidebar.chatList.pinConversation', 'Pin'),
+        )
+        .setIcon(state?.pinned ? 'star-off' : 'star')
+        .setDisabled(!persisted)
+        .onClick(() => {
+          if (!persisted) return
+          void this.chatRef.current?.toggleCurrentConversationPinned()
+        }),
+    )
+
+    if (state?.canExport) {
+      menu.addItem((item) =>
+        item
+          .setTitle(
+            this.plugin.t(
+              'sidebar.chatList.exportConversation',
+              'Export conversation to vault',
+            ),
+          )
+          .setIcon('download')
+          .setDisabled(!persisted)
+          .onClick(() => {
+            if (!persisted) return
+            this.chatRef.current?.exportCurrentConversation()
+          }),
+      )
+    }
+
+    menu.addItem((item) =>
+      item
+        .setTitle(this.plugin.t('common.delete', 'Delete'))
+        .setIcon('trash-2')
+        .setDisabled(!persisted)
+        .onClick(() => {
+          if (!persisted) return
+          this.confirmDeleteCurrentConversation()
+        }),
+    )
+  }
+
+  /**
+   * Native confirm dialog (shared `ConfirmModal`, see
+   * `src/components/modals/ConfirmModal.tsx`) before deleting the active
+   * conversation. Delete cleanup + post-delete conversation switching is
+   * `ChatRef.deleteCurrentConversation`'s sunk implementation, shared with
+   * `ChatHeader`'s history dropdown.
+   */
+  private confirmDeleteCurrentConversation(): void {
+    new ConfirmModal(this.app, {
+      title: this.plugin.t(
+        'chat.paneMenu.deleteConfirmTitle',
+        'Delete conversation?',
+      ),
+      message: this.plugin
+        .t(
+          'chat.paneMenu.deleteConfirmMessage',
+          'This will permanently delete "{title}". This action cannot be undone.',
+        )
+        .replace('{title}', this.displayTitle),
+      ctaText: this.plugin.t('common.delete', 'Delete'),
+      onConfirm: () => {
+        void this.chatRef.current?.deleteCurrentConversation()
+      },
+    }).open()
   }
 }

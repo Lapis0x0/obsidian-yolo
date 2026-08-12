@@ -2352,6 +2352,41 @@ export default class YoloPlugin extends Plugin {
       },
     })
 
+    // issue #567 Step 2：只在活动叶子是聊天视图时可用，让命令面板/快捷键/
+    // Commander 能达到聊天内容区的历史弹层入口（该入口本身仍锚定在
+    // ChatHeader 的 History 按钮上，命令只是多一条打开路径）。
+    this.addCommand({
+      id: 'open-chat-history',
+      name: this.t('commands.openChatHistory'),
+      checkCallback: (checking: boolean) => {
+        const view = this.app.workspace.getActiveViewOfType(ChatView)
+        if (!view) {
+          return false
+        }
+        if (!checking) {
+          view.openChatHistory()
+        }
+        return true
+      },
+    })
+
+    // issue #567 Step 2：同上，导出仅在当前会话已持久化且活动运行时支持
+    // vault 导出时可用——见 ChatView.canExportCurrentConversation。
+    this.addCommand({
+      id: 'export-current-conversation-to-vault',
+      name: this.t('commands.exportCurrentConversationToVault'),
+      checkCallback: (checking: boolean) => {
+        const view = this.app.workspace.getActiveViewOfType(ChatView)
+        if (!view || !view.canExportCurrentConversation()) {
+          return false
+        }
+        if (!checking) {
+          view.exportCurrentConversation()
+        }
+        return true
+      },
+    })
+
     // Global ESC to cancel any ongoing AI continuation/rewrite
     this.registerDomEvent(document, 'keydown', (e: KeyboardEvent) => {
       if (e.key === 'Escape') {

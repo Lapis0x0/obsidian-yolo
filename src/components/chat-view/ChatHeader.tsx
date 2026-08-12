@@ -77,7 +77,12 @@ export type ChatHeaderProps = {
     compaction?: ChatConversationCompactionState
     cliSession?: ChatConversationCliSession
   } | null>
-  deleteConversation: (id: string) => Promise<void>
+  /**
+   * issue #567 Step 2：删除会话后的清理（CLI overlay 移除）+ 会话切换逻辑
+   * 下沉到 Chat.tsx 单一实现，供本组件与 `ChatRef.deleteCurrentConversation`
+   * 共用，取代原先直接内联在 `onDelete` 里的那段逻辑。
+   */
+  deleteConversationWithCleanup: (conversationId: string) => Promise<void>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   syncCliConversationTitle: (conversationId: string, title: string) => void
   toggleConversationPinned: (id: string) => Promise<void>
@@ -88,6 +93,8 @@ export type ChatHeaderProps = {
       force?: boolean
     },
   ) => Promise<string | null>
+  /** 见 `ChatListDropdown` 的 `openHandleRef` 文档注释。 */
+  historyOpenHandleRef: MutableRefObject<(() => void) | null>
 }
 
 export function ChatHeader({
@@ -114,11 +121,12 @@ export function ChatHeader({
   runSummariesByConversationId,
   handleLoadConversation,
   getConversationById,
-  deleteConversation,
+  deleteConversationWithCleanup,
   updateConversationTitle,
   syncCliConversationTitle,
   toggleConversationPinned,
   generateConversationTitle,
+  historyOpenHandleRef,
 }: ChatHeaderProps) {
   const { t } = useLanguage()
   const headerRef = useRef<HTMLDivElement | null>(null)
@@ -238,7 +246,7 @@ export function ChatHeader({
               type="button"
               onClick={() => handleNewChat()}
               className="clickable-icon"
-              aria-label="New Chat"
+              aria-label={t('chat.newChat', 'New chat')}
             >
               <Plus size={18} />
             </button>
@@ -259,34 +267,13 @@ export function ChatHeader({
               chatList={chatList}
               currentConversationId={activeHistoryConversationId}
               runSummariesByConversationId={runSummariesByConversationId}
+              openHandleRef={historyOpenHandleRef}
               onSelect={(conversationId) => {
                 if (conversationId === activeHistoryConversationId) return
                 void handleLoadConversation(conversationId)
               }}
               onDelete={(conversationId) => {
-                void (async () => {
-                  const conversation = await getConversationById(conversationId)
-                  await deleteConversation(conversationId)
-                  if (conversation?.cliSession && cliRuntimeScope) {
-                    await cliRuntimeScope.sessionService.removeOverlay(
-                      conversation.cliSession,
-                    )
-                  }
-                  if (conversationId === activeHistoryConversationId) {
-                    if (activeRuntimeId !== 'yolo') {
-                      handleNewChat()
-                      return
-                    }
-                    const nextConversation = chatList.find(
-                      (chat) => chat.id !== conversationId,
-                    )
-                    if (nextConversation) {
-                      void handleLoadConversation(nextConversation.id)
-                    } else {
-                      handleNewChat()
-                    }
-                  }
-                })()
+                void deleteConversationWithCleanup(conversationId)
               }}
               onUpdateTitle={async (conversationId, newTitle) => {
                 await updateConversationTitle(conversationId, newTitle)

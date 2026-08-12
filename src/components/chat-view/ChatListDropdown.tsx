@@ -673,6 +673,7 @@ export function ChatListDropdown({
   onTogglePinned,
   onRetryTitle,
   onExportConversation,
+  openHandleRef,
   children,
 }: {
   chatList: ChatConversationMetadata[]
@@ -687,6 +688,15 @@ export function ChatListDropdown({
   onTogglePinned: (conversationId: string) => void | Promise<void>
   onRetryTitle: (conversationId: string) => void | Promise<void>
   onExportConversation: (conversationId: string) => void | Promise<void>
+  /**
+   * issue #567 Step 2：外部（`ChatView` 的 view-header action / 命令 /
+   * ⋯ 窗格菜单）需要以编程方式打开这个弹层，但它的 `open` 状态完全是本组件
+   * 内部 `useState`（见 `handleOpenChange`）。没有引入受控 prop 或
+   * `forwardRef`（会让 `ChatListDropdown.test.tsx` 直接函数调用组件的既有
+   * 写法失效）——改为可选的一次性回调 ref：挂载后把「打开」函数写进去，
+   * 供 `ChatRef.openChatHistory` 调用。
+   */
+  openHandleRef?: React.MutableRefObject<(() => void) | null>
   children: React.ReactNode
 }) {
   const { t } = useLanguage()
@@ -962,6 +972,16 @@ export function ChatListDropdown({
       resetMenuDeleteConfirmation,
     ],
   )
+
+  useEffect(() => {
+    if (!openHandleRef) return
+    openHandleRef.current = () => handleOpenChange(true)
+    return () => {
+      if (openHandleRef.current) {
+        openHandleRef.current = null
+      }
+    }
+  }, [openHandleRef, handleOpenChange])
 
   const openContextMenu = useCallback(
     (
@@ -1427,7 +1447,7 @@ export function ChatListDropdown({
           type="button"
           ref={triggerRef}
           className="clickable-icon"
-          aria-label="Chat History"
+          aria-label={t('sidebar.chatList.openHistory', 'Chat history')}
         >
           {children}
         </button>

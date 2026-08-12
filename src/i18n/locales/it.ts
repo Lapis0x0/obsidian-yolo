@@ -9,6 +9,9 @@ export const it: DeepPartial<TranslationKeys> = {
     openNewChatTab: 'Apri nuova chat (nuova scheda)',
     openNewChatSplit: 'Apri nuova chat (divisione destra)',
     openNewChatWindow: 'Apri nuova chat (nuova finestra)',
+    openChatHistory: 'Apri cronologia chat',
+    exportCurrentConversationToVault:
+      'Esporta la conversazione attuale nel vault',
     addSelectionToChat: 'Aggiungi selezione alla chat',
     addFileToChat: 'Aggiungi file alla chat',
     addFolderToChat: 'Aggiungi cartella alla chat',
@@ -111,6 +114,7 @@ export const it: DeepPartial<TranslationKeys> = {
       exportConversation: 'Esporta conversazione nel vault',
       moreActions: 'Altre azioni',
       confirmDelete: 'Clicca di nuovo per eliminare',
+      openHistory: 'Cronologia chat',
     },
     chat: {
       exportSuccess: 'Chat esportata in {path}',
@@ -1663,6 +1667,12 @@ export const it: DeepPartial<TranslationKeys> = {
     paneTitle: {
       renameAriaLabel: 'Clicca per rinominare la conversazione',
       editingAriaLabel: 'Modifica del titolo della conversazione',
+    },
+    paneMenu: {
+      rename: 'Rinomina',
+      deleteConfirmTitle: 'Eliminare la conversazione?',
+      deleteConfirmMessage:
+        'Questo eliminerà definitivamente "{title}". Questa azione non può essere annullata.',
     },
     continueResponse: 'Continua risposta',
     messageNavigator: {

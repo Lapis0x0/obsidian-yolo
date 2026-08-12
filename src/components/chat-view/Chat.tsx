@@ -185,6 +185,47 @@ export type ChatRef = {
    * depth rather than the primary gate.
    */
   renameCurrentConversation: (title: string) => Promise<void>
+  /**
+   * issue #567 Step 2. Exports the currently active conversation to the
+   * vault, mirroring the in-content export button's behavior — gated on the
+   * active runtime's `supportsVaultExport` capability. `ChatView`'s view
+   * header action also toggles its own visibility from the same capability
+   * (see `onRuntimeSnapshotChange`), so this check is defense in depth.
+   */
+  exportCurrentConversation: () => void
+  /**
+   * issue #567 Step 2. Opens the history dropdown (`ChatListDropdown`)
+   * anchored at its usual History button. No-ops if the dropdown isn't
+   * currently mounted (e.g. composer view is active).
+   */
+  openChatHistory: () => void
+  /**
+   * issue #567 Step 2. Snapshot of the active conversation's menu-relevant
+   * state, read by `ChatView.onPaneMenu` to decide which pane-menu items are
+   * enabled/visible. Derived from state Chat.tsx already tracks — not a new
+   * state source.
+   */
+  getCurrentConversationMenuState: () => ConversationMenuState
+  /**
+   * issue #567 Step 2. Toggles the active conversation's pinned state.
+   * No-ops when there is no active persisted conversation.
+   */
+  toggleCurrentConversationPinned: () => Promise<void>
+  /**
+   * issue #567 Step 2. Deletes the active conversation, including CLI
+   * overlay cleanup and post-delete conversation switching — the same
+   * shared implementation `ChatHeader`'s history dropdown uses. No-ops when
+   * there is no active persisted conversation.
+   */
+  deleteCurrentConversation: () => Promise<void>
+}
+
+/** See `ChatRef.getCurrentConversationMenuState`. */
+export type ConversationMenuState = {
+  conversationId: string
+  persisted: boolean
+  pinned: boolean
+  canExport: boolean
 }
 
 /**
@@ -1273,6 +1314,51 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     normalizeReasoningLevel,
   })
 
+  // issue #567 Step 2：history 弹层的「打开」能力提升给 ChatRef.openChatHistory
+  // 调用——见 ChatListDropdown 的 openHandleRef 文档注释，避免受控 prop / ref
+  // 转发的更大改动。
+  const historyDropdownOpenRef = useRef<(() => void) | null>(null)
+
+  // issue #567 Step 2：删除会话的清理（CLI overlay 移除）+ 后续会话切换逻辑，
+  // 从 ChatHeader 内联的 onDelete 下沉到这里，供 ChatHeader（任意历史条目）
+  // 与 ChatRef.deleteCurrentConversation（当前会话，⋯ 窗格菜单走这条）共用。
+  const deleteConversationWithCleanup = useCallback(
+    async (conversationId: string) => {
+      const conversation = await getConversationById(conversationId)
+      await deleteConversation(conversationId)
+      if (conversation?.cliSession && cliRuntimeScope) {
+        await cliRuntimeScope.sessionService.removeOverlay(
+          conversation.cliSession,
+        )
+      }
+      if (conversationId !== activeHistoryConversationId) {
+        return
+      }
+      if (activeRuntimeId !== 'yolo') {
+        handleNewChat()
+        return
+      }
+      const nextConversation = chatList.find(
+        (chat) => chat.id !== conversationId,
+      )
+      if (nextConversation) {
+        void handleLoadConversation(nextConversation.id)
+      } else {
+        handleNewChat()
+      }
+    },
+    [
+      getConversationById,
+      deleteConversation,
+      cliRuntimeScope,
+      activeHistoryConversationId,
+      activeRuntimeId,
+      chatList,
+      handleNewChat,
+      handleLoadConversation,
+    ],
+  )
+
   // retry/continue/recover 收编进 ChatSessionController（架构治理第三步
   // 分期 C3）——这里只做 Notice 翻译的薄包装，参考 handleMainInputSubmit
   // 在 useChatInputController.ts 里的既有模式。
@@ -1464,6 +1550,33 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       await updateConversationTitle(activeHistoryConversationId, trimmedTitle)
       syncCliConversationTitle(activeHistoryConversationId, trimmedTitle)
     },
+    exportCurrentConversation: () => {
+      if (!RUNTIME_CAPABILITIES[activeRuntimeId].supportsVaultExport) return
+      handleExportChatToVault(currentConversationId)
+    },
+    openChatHistory: () => {
+      historyDropdownOpenRef.current?.()
+    },
+    getCurrentConversationMenuState: () => ({
+      conversationId: activeHistoryConversationId,
+      persisted: currentConversationPersisted,
+      pinned:
+        chatList.find((chat) => chat.id === activeHistoryConversationId)
+          ?.isPinned ?? false,
+      canExport: RUNTIME_CAPABILITIES[activeRuntimeId].supportsVaultExport,
+    }),
+    toggleCurrentConversationPinned: async () => {
+      if (!activeHistoryConversationId || !currentConversationPersisted) {
+        return
+      }
+      await toggleConversationPinned(activeHistoryConversationId)
+    },
+    deleteCurrentConversation: async () => {
+      if (!activeHistoryConversationId || !currentConversationPersisted) {
+        return
+      }
+      await deleteConversationWithCleanup(activeHistoryConversationId)
+    },
   }))
 
   const header = (
@@ -1491,11 +1604,12 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       runSummariesByConversationId={runSummariesByConversationId}
       handleLoadConversation={handleLoadConversation}
       getConversationById={getConversationById}
-      deleteConversation={deleteConversation}
+      deleteConversationWithCleanup={deleteConversationWithCleanup}
       updateConversationTitle={updateConversationTitle}
       syncCliConversationTitle={syncCliConversationTitle}
       toggleConversationPinned={toggleConversationPinned}
       generateConversationTitle={generateConversationTitle}
+      historyOpenHandleRef={historyDropdownOpenRef}
     />
   )
 
