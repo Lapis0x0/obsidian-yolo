@@ -754,8 +754,22 @@ export function getLocalFileTools(options?: {
     },
     {
       name: 'fs_read',
-      description:
-        'Read vault files, skill instructions, or open Obsidian web pages. Path entries also accept Obsidian wikilink targets (e.g. "[[Note#Heading]]" or bare "Note#^blockId"), resolved the same way Obsidian resolves links. Omit range fields for a full read. For a targeted read, pass startLine and optionally endLine or maxLines. Lines are 1-based; for PDFs they are page numbers. Office files (.docx/.pptx/.xlsx) are parsed to markdown text. Skill paths from <available_skills> may use builtin:// prefixes. Open web pages use browser://<page_id> copied exactly from <browser_context>. browser:// does not open URLs or fetch internet content; use web_search or web_scrape when available, and tell the user if those tools are unavailable. Do not call browser:// paths when <browser_context> is absent.',
+      description: [
+        'Read vault files, listed skills, or open web pages.',
+        '',
+        'paths: copy exactly from the source. Do not invent prefixes.',
+        '- vault file: vault-relative path',
+        '- skill: the path field in <available_skills>',
+        '- open page: browser://<page_id> from <browser_context>',
+        '- wikilink: [[Note#Heading]] or bare Note#^blockId (nested headings ok; .md optional). Exact vault path wins first.',
+        '',
+        'Omit range fields for a full read. Targeted read: startLine and optionally endLine or maxLines (1-based; PDF pages). Office files (.docx/.pptx/.xlsx) parse to markdown.',
+        '',
+        'browser://:',
+        '- copy page_id from <browser_context>; never invent browser://https://... or browser://domain/path',
+        '- do not call when <browser_context> is absent',
+        '- does not fetch internet content; use web_search or web_scrape when available',
+      ].join('\n'),
       inputSchema: {
         type: 'object',
         properties: {
@@ -764,7 +778,7 @@ export function getLocalFileTools(options?: {
             items: {
               type: 'string',
             },
-            description: `Vault-relative file paths, skill paths (builtin://), browser://<page_id> copied exactly from <browser_context>, or Obsidian wikilink targets. Wikilink targets may be wrapped in [[...]] or bare, may omit the .md extension, and may carry "#heading" (including nested "#Heading#Subheading") or "#^blockId" to read just that section. Exact vault paths are tried first, so this only kicks in when an entry doesn't match a real file path. Max ${MAX_BATCH_READ_FILES} items. Do not pass browser://https://... or browser://domain/path.`,
+            description: `Copy each path exactly as given. Max ${MAX_BATCH_READ_FILES} items.`,
           },
           sourcePath: {
             type: 'string',
