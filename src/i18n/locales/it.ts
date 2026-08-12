@@ -112,6 +112,7 @@ export const it: DeepPartial<TranslationKeys> = {
       archived: 'Archiviate',
       hideArchived: 'Nascondi archiviate',
       exportConversation: 'Esporta conversazione nel vault',
+      exportShort: 'Esporta',
       moreActions: 'Altre azioni',
       confirmDelete: 'Clicca di nuovo per eliminare',
       openHistory: 'Cronologia chat',

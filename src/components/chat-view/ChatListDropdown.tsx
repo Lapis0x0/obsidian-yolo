@@ -21,10 +21,12 @@ import {
   useCallback,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
 } from 'react'
+import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
@@ -41,7 +43,7 @@ import {
 } from '../../styles/tokens/motion'
 import type { SerializedChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
-import { getNodeWindow } from '../../utils/dom/window-context'
+import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
 import { YoloPopoverContent } from '../common/popover'
 
 import {
@@ -62,6 +64,55 @@ function useLatestRef<T>(value: T) {
   const ref = useRef(value)
   ref.current = value
   return ref
+}
+
+/**
+ * issue #567 Step 3：Esc 分层的判定逻辑，抽成不依赖 React/DOM 的纯函数单独
+ * 测——真正的时序原因（为什么不能在 ctx-menu 自身的 onKeyDown 里
+ * stopPropagation 了事）见 handleContextMenuKeyDown 边上的注释。约定：自绘
+ * 菜单开着时吞掉这次 Esc（preventDefault，弹层跳过关闭，只关菜单）；菜单没
+ * 开则放行，弹层按 Radix 默认行为处理。
+ */
+export function handlePopoverEscapeKeyDown(
+  event: Pick<KeyboardEvent, 'preventDefault'>,
+  isContextMenuOpen: boolean,
+  closeContextMenu: () => void,
+): void {
+  if (!isContextMenuOpen) return
+  event.preventDefault()
+  closeContextMenu()
+}
+
+/**
+ * issue #567 Step 3（追加需求）：ctx-menu 越界钳制的纯计算，从
+ * useLayoutEffect 里抽出来单独测。基准是视口（viewport），不是母弹层的
+ * contentRect——菜单已经 Portal 到 <body>（见 ChatListDropdown 组件里
+ * createPortal 调用旁的注释），母弹层多窄都不该反过来钳住菜单，只需不超出
+ * 屏幕。anchorMode 是 openContextMenu 记录的触发方式：'anchor'（长按，没有
+ * 指针坐标，锚点取卡片底部）在下方放不下时整体翻到卡片上方；'pointer'
+ * （鼠标右键）保持锚在点击处，不做翻转，只做越界钳制。
+ */
+export function clampContextMenuPosition(params: {
+  position: { top: number; left: number }
+  menuSize: { width: number; height: number }
+  viewport: { width: number; height: number }
+  anchorMode: 'pointer' | 'anchor'
+  cardTop: number | null
+}): { top: number; left: number } {
+  const { position, menuSize, viewport, anchorMode, cardTop } = params
+  const maxLeft = Math.max(8, viewport.width - menuSize.width - 8)
+  const maxTop = Math.max(8, viewport.height - menuSize.height - 8)
+  let nextTop = position.top
+  if (
+    anchorMode === 'anchor' &&
+    cardTop !== null &&
+    position.top + menuSize.height > viewport.height
+  ) {
+    nextTop = Math.max(8, cardTop - menuSize.height - 6)
+  }
+  const nextLeft = Math.min(Math.max(8, position.left), maxLeft)
+  nextTop = Math.min(Math.max(8, nextTop), maxTop)
+  return { top: nextTop, left: nextLeft }
 }
 
 /**
@@ -302,13 +353,6 @@ const ChatListItem = memo(function ChatListItem({
     }
   }, [isEditing, title])
 
-  // 收起更多操作（点击别处、指针移出条目、关闭面板）即撤销待确认的删除
-  useEffect(() => {
-    if (!isMoreMenuOpen) {
-      resetDeleteConfirmation()
-    }
-  }, [isMoreMenuOpen, resetDeleteConfirmation])
-
   useEffect(() => clearPress, [clearPress])
 
   const handlePointerDown = useCallback(
@@ -424,6 +468,10 @@ const ChatListItem = memo(function ChatListItem({
           clearPress()
         }
         onMouseLeave(conversationId)
+        // 行内删除按钮常驻显示（不再依赖「更多」展开态），指针移出条目即视作
+        // 「移出一段时间」的复位条件之一，另一半是 useDeleteConfirmation 自带的
+        // 3 秒超时。
+        resetDeleteConfirmation()
         if (isEditing || !itemRef.current) {
           return
         }
@@ -539,6 +587,25 @@ const ChatListItem = memo(function ChatListItem({
                 <Star />
               </button>
             ) : null}
+            {/* issue #567 Step 3：删除从 ⋯ 菜单/更多展开组移回常驻行内图标（改名 /
+                置顶 / 删除 / ⋯），不再需要先展开才能删；两步确认沿用同一个
+                useDeleteConfirmation 实例，未跟着挪位置。 */}
+            {!isEditing ? (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  requestDelete()
+                }}
+                className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-delete-button${
+                  isConfirmingDelete ? ' is-confirming' : ''
+                }`}
+                aria-label={deleteActionLabel}
+                title={deleteActionLabel}
+              >
+                <Trash2 size={16} />
+              </button>
+            ) : null}
             {!isEditing ? (
               <div
                 className={`yolo-chat-list-inline-actions${
@@ -589,21 +656,6 @@ const ChatListItem = memo(function ChatListItem({
                       <Download size={16} />
                     </button>
                   ) : null}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation()
-                      requestDelete()
-                    }}
-                    className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-delete-button${
-                      isConfirmingDelete ? ' is-confirming' : ''
-                    }`}
-                    aria-label={deleteActionLabel}
-                    title={deleteActionLabel}
-                    tabIndex={isMoreMenuOpen ? undefined : -1}
-                  >
-                    <Trash2 size={16} />
-                  </button>
                 </div>
               </div>
             ) : null}
@@ -787,18 +839,6 @@ export function ChatListDropdown({
     [onDelete],
   )
 
-  const {
-    isConfirming: isMenuDeleteConfirming,
-    request: requestMenuDelete,
-    reset: resetMenuDeleteConfirmation,
-  } = useDeleteConfirmation(() => {
-    if (activeMenuId === null) return
-    setActiveMenuId(null)
-    setMenuPosition(null)
-    setMoreMenuConversationId(null)
-    deleteConversation(activeMenuId)
-  })
-
   const normalizedQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
     [searchQuery],
@@ -949,7 +989,6 @@ export function ChatListDropdown({
         setMoreMenuConversationId(null)
         setActiveMenuId(null)
         setMenuPosition(null)
-        resetMenuDeleteConfirmation()
         setPendingDeletionIds((previous) =>
           previous.size === 0 ? previous : new Set(),
         )
@@ -965,12 +1004,7 @@ export function ChatListDropdown({
       }
       setOpen(nextOpen)
     },
-    [
-      clearContentMatches,
-      currentConversationId,
-      pinnedSortedChatList,
-      resetMenuDeleteConfirmation,
-    ],
+    [clearContentMatches, currentConversationId, pinnedSortedChatList],
   )
 
   useEffect(() => {
@@ -983,41 +1017,76 @@ export function ChatListDropdown({
     }
   }, [openHandleRef, handleOpenChange])
 
+  // issue #567 Step 3（追加需求）：菜单不再钳在母弹层（历史弹层本身很窄）
+  // 范围内，只需不超出视口。母弹层的 .yolo-popover-surface 有 overflow:hidden
+  // （src/styles/popover/surface.css，所有权归该文件），菜单若继续渲染在弹层
+  // DOM 内部会被物理裁剪——所以菜单改为 Portal 到 <body>（见下面 JSX 里的
+  // createPortal），定位坐标系随之从"相对弹层内容"换成"相对视口"
+  // （position: fixed + 视口坐标），不再需要 contentRect。
+  //
+  // 菜单宽度随内容自适应（popover.css 的 .yolo-chat-list-ctx-menu 从固定
+  // 176px 换成 min/max 夹住的 max-content），意味着这里再也不知道菜单的真实
+  // 尺寸——打开的一刻只能先给个粗略锚点，真正的越界钳制交给下面的
+  // useLayoutEffect，等菜单真的挂载测出宽高后再修正一次位置，commit 之后、
+  // 绘制之前完成，不会有可见的位置跳动。
+  // anchorMode 记的是「有没有指针坐标」：长按（无指针）时若下方放不下要整体
+  // 翻到卡片上方，鼠标右键（有指针）时保持锚在点击处，不做翻转。
+  const contextMenuAnchorModeRef = useRef<'pointer' | 'anchor'>('pointer')
+
+  const closeContextMenu = useCallback(() => {
+    setActiveMenuId(null)
+    setMenuPosition(null)
+    contextMenuAnchorRef.current?.focus({ preventScroll: true })
+  }, [])
+
   const openContextMenu = useCallback(
     (
       chatId: string,
       cardEl: HTMLElement,
       pointer?: { clientX: number; clientY: number },
     ) => {
-      const contentEl = contentRef.current
-      if (!contentEl) {
-        return
-      }
-      const contentRect = contentEl.getBoundingClientRect()
       const cardRect = cardEl.getBoundingClientRect()
-      const menuWidth = 176
-      const menuHeight = 168
-      const maxLeft = Math.max(8, contentRect.width - menuWidth - 8)
-      const maxTop = Math.max(8, contentRect.height - menuHeight - 8)
-      const anchorLeft = (pointer?.clientX ?? cardRect.left) - contentRect.left
-      const anchorTop =
-        (pointer?.clientY ?? cardRect.bottom + 6) - contentRect.top
-      const left = Math.min(Math.max(8, anchorLeft), maxLeft)
-      let top = Math.min(Math.max(8, anchorTop), maxTop)
-      if (!pointer && anchorTop + menuHeight > contentRect.height) {
-        top = Math.min(
-          Math.max(8, cardRect.top - contentRect.top - menuHeight - 6),
-          maxTop,
-        )
-      }
+      // 视口坐标，不再减去弹层的 contentRect——菜单已经 Portal 到 <body>。
+      const anchorLeft = pointer?.clientX ?? cardRect.left
+      const anchorTop = pointer?.clientY ?? cardRect.bottom + 6
       setMoreMenuConversationId(null)
       setFocusedConversationId(chatId)
       contextMenuAnchorRef.current = cardEl
-      setMenuPosition({ top, left })
+      contextMenuAnchorModeRef.current = pointer ? 'pointer' : 'anchor'
+      setMenuPosition({
+        top: Math.max(8, anchorTop),
+        left: Math.max(8, anchorLeft),
+      })
       setActiveMenuId(chatId)
     },
     [],
   )
+
+  // 菜单挂载测出真实宽高后的越界钳制 + 翻转，纯计算见上面的
+  // clampContextMenuPosition。基准是菜单所在 ownerDocument 的视口尺寸
+  // （popout 窗口场景下这不是主窗口），不是母弹层的 contentRect——母弹层多
+  // 窄都不该反过来钳住菜单。
+  useLayoutEffect(() => {
+    if (activeMenuId === null || !menuPosition) return
+    const menuEl = contextMenuRef.current
+    if (!menuEl) return
+    const ownerWindow = getNodeWindow(menuEl)
+    const menuRect = menuEl.getBoundingClientRect()
+    const cardEl = contextMenuAnchorRef.current
+    const next = clampContextMenuPosition({
+      position: menuPosition,
+      menuSize: { width: menuRect.width, height: menuRect.height },
+      viewport: {
+        width: ownerWindow.innerWidth,
+        height: ownerWindow.innerHeight,
+      },
+      anchorMode: contextMenuAnchorModeRef.current,
+      cardTop: cardEl ? cardEl.getBoundingClientRect().top : null,
+    })
+    if (next.left !== menuPosition.left || next.top !== menuPosition.top) {
+      setMenuPosition(next)
+    }
+  }, [activeMenuId, menuPosition])
 
   // ChatListItem 的 memo 契约要求回调 props 每帧引用稳定，但上游传入的动作
   // props（onSelect/onDelete/…）是 ChatHeader 每次渲染新建的内联闭包。这里
@@ -1070,12 +1139,16 @@ export function ChatListDropdown({
         })
       },
       onRetryTitle: (conversationId: string) => {
-        if (itemActionsRef.current.retryingConversationIds.has(conversationId)) {
+        if (
+          itemActionsRef.current.retryingConversationIds.has(conversationId)
+        ) {
           return
         }
         const retryStartedAt = Date.now()
         setRetryingConversationIds((prev) => new Set(prev).add(conversationId))
-        void Promise.resolve(itemActionsRef.current.onRetryTitle(conversationId))
+        void Promise.resolve(
+          itemActionsRef.current.onRetryTitle(conversationId),
+        )
           .catch((error) => {
             console.error(
               'Failed to retry conversation title generation',
@@ -1166,11 +1239,10 @@ export function ChatListDropdown({
   )
 
   useEffect(() => {
-    resetMenuDeleteConfirmation()
     if (activeMenuId !== null) {
       contextMenuRef.current?.focus({ preventScroll: true })
     }
-  }, [activeMenuId, resetMenuDeleteConfirmation])
+  }, [activeMenuId])
 
   // 面板打开期间新出现的会话补录一次排序时间，之后它同样不再随运行状态换位
   useEffect(() => {
@@ -1200,18 +1272,18 @@ export function ChatListDropdown({
     })
   }, [chatList])
 
+  // issue #567 Step 3：Esc 分层。Radix Popover 的 Escape 探测（见
+  // useEscapeKeydown）挂在 document 的捕获阶段，比这个 ctx-menu 自身冒泡阶段
+  // 的 onKeyDown 更早跑完判定——菜单内部 stopPropagation 拦不住外层弹层一起
+  // 关闭，因为 Radix 在事件到达这里之前就已经读过 defaultPrevented 并决定
+  // dismiss 了。唯一能插进 Radix 判定之前的钩子是 Popover.Content 的
+  // onEscapeKeyDown（下面的 handlePopoverEscapeKeyDown，接到 YoloPopoverContent
+  // 上）：菜单开着时 preventDefault 让弹层跳过这次关闭，只关自绘菜单；菜单没
+  // 开则放行，弹层按 Radix 默认行为关闭。两层各自消费一次 Esc。
   const handleContextMenuKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLDivElement>) => {
       const menu = contextMenuRef.current
       if (!menu) return
-      if (e.key === 'Escape') {
-        e.preventDefault()
-        e.stopPropagation()
-        setActiveMenuId(null)
-        setMenuPosition(null)
-        contextMenuAnchorRef.current?.focus({ preventScroll: true })
-        return
-      }
       if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
         e.stopPropagation()
         return
@@ -1440,6 +1512,15 @@ export function ChatListDropdown({
     [renderedChatList, focusedConversationId, focusedIndex, onSelect],
   )
 
+  // issue #567 Step 3：Esc 分层的另一半，见 handlePopoverEscapeKeyDown 和
+  // handleContextMenuKeyDown 边上的注释——这是唯一真正拦得住 Radix 的钩子。
+  const handleContentEscapeKeyDown = useCallback(
+    (e: KeyboardEvent) => {
+      handlePopoverEscapeKeyDown(e, activeMenuId !== null, closeContextMenu)
+    },
+    [activeMenuId, closeContextMenu],
+  )
+
   return (
     <Popover.Root open={open} onOpenChange={handleOpenChange}>
       <Popover.Trigger asChild>
@@ -1462,6 +1543,24 @@ export function ChatListDropdown({
         className="yolo-chat-list-dropdown-content"
         sideOffset={8}
         onKeyDown={handleKeyDown}
+        onEscapeKeyDown={handleContentEscapeKeyDown}
+        // issue #567 Step 3（追加需求）：ctx-menu 现在 createPortal 到
+        // <body>，DOM 上不再是这个 Popover.Content 的后代。Radix 的
+        // outside-interaction 探测（pointerdown-outside / focus-outside，见
+        // usePointerDownOutside / useFocusOutside）按 DOM 包含关系判断，会把
+        // 点击/聚焦菜单本身判成"在弹层外"，从而连累整个历史弹层一起关闭。
+        // onInteractOutside 是 Radix 提供的、专门拦这类误判的钩子（在内部
+        // dismiss 判定之前调用，preventDefault 即可让这次交互不触发关闭）：
+        // 命中目标在菜单 DOM 内就拦下，其余情况放行、按 Radix 默认行为处理。
+        onInteractOutside={(e) => {
+          const target = e.detail.originalEvent.target
+          if (
+            target instanceof Node &&
+            contextMenuRef.current?.contains(target)
+          ) {
+            e.preventDefault()
+          }
+        }}
       >
         <div className="yolo-chat-list-search">
           <div className="yolo-chat-list-search-field">
@@ -1702,121 +1801,108 @@ export function ChatListDropdown({
             </>
           )}
         </ul>
-        {activeMenuChat && menuPosition ? (
-          <div
-            ref={contextMenuRef}
-            className="yolo-chat-list-ctx-menu is-open"
-            style={{ top: menuPosition.top, left: menuPosition.left }}
-            role="menu"
-            tabIndex={-1}
-            aria-label={t('sidebar.chatList.moreActions', 'More actions')}
-            onKeyDown={handleContextMenuKeyDown}
-          >
-            {activeSection === 'user' ? (
-              <button
-                type="button"
-                role="menuitem"
-                data-act="pin"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setActiveMenuId(null)
-                  setMenuPosition(null)
-                  setMoreMenuConversationId(null)
-                  void Promise.resolve(onTogglePinned(activeMenuChat.id)).catch(
-                    (error) => {
-                      console.error('Failed to toggle pin', error)
-                    },
-                  )
-                }}
+        {activeMenuChat && menuPosition
+          ? createPortal(
+              // issue #567 Step 3（追加需求）：Portal 到 <body>，逃出母弹层
+              // .yolo-popover-surface 的 overflow:hidden 裁剪（所有权归
+              // src/styles/popover/surface.css，本次未改那条规则）。定位坐标
+              // 系见 openContextMenu / 下面 useLayoutEffect 顶部注释；
+              // onInteractOutside（挂在 YoloPopoverContent 上）负责防止点击
+              // 这个已经不在弹层 DOM 内的菜单被 Radix 误判成"点击外部"从而
+              // 连累整个历史弹层关闭。
+              <div
+                ref={contextMenuRef}
+                className="yolo-chat-list-ctx-menu is-open"
+                style={{ top: menuPosition.top, left: menuPosition.left }}
+                role="menu"
+                tabIndex={-1}
+                aria-label={t('sidebar.chatList.moreActions', 'More actions')}
+                onKeyDown={handleContextMenuKeyDown}
               >
-                <Star size={16} />
-                <span>
-                  {activeMenuChat.isPinned
-                    ? t('sidebar.chatList.unpinConversation', 'Unpin')
-                    : t('sidebar.chatList.pinConversation', 'Pin')}
-                </span>
-              </button>
-            ) : null}
-            <button
-              type="button"
-              role="menuitem"
-              data-act="rename"
-              onClick={(e) => {
-                e.stopPropagation()
-                setActiveMenuId(null)
-                setMenuPosition(null)
-                setMoreMenuConversationId(null)
-                setEditingId(activeMenuChat.id)
-              }}
-            >
-              <Pencil size={16} />
-              <span>{t('common.edit', 'Edit')}</span>
-            </button>
-            {!activeMenuChat.cliSession ? (
-              <button
-                type="button"
-                role="menuitem"
-                data-act="retitle"
-                disabled={retryingConversationIds.has(activeMenuChat.id)}
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setActiveMenuId(null)
-                  setMenuPosition(null)
-                  itemHandlers.onRetryTitle(activeMenuChat.id)
-                }}
-              >
-                <RotateCcw size={16} />
-                <span>{t('sidebar.chatList.retryTitle', 'Retry title')}</span>
-              </button>
-            ) : null}
-            {!activeMenuChat.cliSession ? (
-              <button
-                type="button"
-                role="menuitem"
-                data-act="export"
-                onClick={(e) => {
-                  e.stopPropagation()
-                  setActiveMenuId(null)
-                  setMenuPosition(null)
-                  setMoreMenuConversationId(null)
-                  void Promise.resolve(
-                    onExportConversation(activeMenuChat.id),
-                  ).catch((error) => {
-                    console.error('Failed to export conversation', error)
-                  })
-                }}
-              >
-                <Download size={16} />
-                <span>
-                  {t(
-                    'sidebar.chatList.exportConversation',
-                    'Export conversation to vault',
-                  )}
-                </span>
-              </button>
-            ) : null}
-            <hr />
-            <button
-              type="button"
-              role="menuitem"
-              data-act="delete"
-              className={`danger${
-                isMenuDeleteConfirming ? ' is-confirming' : ''
-              }`}
-              onClick={(e) => {
-                e.stopPropagation()
-                requestMenuDelete()
-              }}
-            >
-              <Trash2 size={16} />
-              <span>
-                {isMenuDeleteConfirming
-                  ? t('sidebar.chatList.confirmDelete', 'Click again to delete')
-                  : t('common.delete', 'Delete')}
-              </span>
-            </button>
-          </div>
-        ) : null}
+                {activeSection === 'user' ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-act="pin"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setActiveMenuId(null)
+                      setMenuPosition(null)
+                      setMoreMenuConversationId(null)
+                      void Promise.resolve(
+                        onTogglePinned(activeMenuChat.id),
+                      ).catch((error) => {
+                        console.error('Failed to toggle pin', error)
+                      })
+                    }}
+                  >
+                    <Star size={16} />
+                    <span>
+                      {activeMenuChat.isPinned
+                        ? t('sidebar.chatList.unpinConversation', 'Unpin')
+                        : t('sidebar.chatList.pinConversation', 'Pin')}
+                    </span>
+                  </button>
+                ) : null}
+                <button
+                  type="button"
+                  role="menuitem"
+                  data-act="rename"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    setActiveMenuId(null)
+                    setMenuPosition(null)
+                    setMoreMenuConversationId(null)
+                    setEditingId(activeMenuChat.id)
+                  }}
+                >
+                  <Pencil size={16} />
+                  <span>{t('common.edit', 'Edit')}</span>
+                </button>
+                {!activeMenuChat.cliSession ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-act="retitle"
+                    disabled={retryingConversationIds.has(activeMenuChat.id)}
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setActiveMenuId(null)
+                      setMenuPosition(null)
+                      itemHandlers.onRetryTitle(activeMenuChat.id)
+                    }}
+                  >
+                    <RotateCcw size={16} />
+                    <span>
+                      {t('sidebar.chatList.retryTitle', 'Retry title')}
+                    </span>
+                  </button>
+                ) : null}
+                {!activeMenuChat.cliSession ? (
+                  <button
+                    type="button"
+                    role="menuitem"
+                    data-act="export"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setActiveMenuId(null)
+                      setMenuPosition(null)
+                      setMoreMenuConversationId(null)
+                      void Promise.resolve(
+                        onExportConversation(activeMenuChat.id),
+                      ).catch((error) => {
+                        console.error('Failed to export conversation', error)
+                      })
+                    }}
+                  >
+                    <Download size={16} />
+                    <span>{t('sidebar.chatList.exportShort', 'Export')}</span>
+                  </button>
+                ) : null}
+              </div>,
+              getNodeBody(triggerRef.current),
+            )
+          : null}
       </YoloPopoverContent>
     </Popover.Root>
   )

@@ -104,6 +104,7 @@ export type TranslationKeys = {
       archived?: string
       hideArchived?: string
       exportConversation?: string
+      exportShort?: string
       moreActions?: string
       confirmDelete?: string
       openHistory?: string

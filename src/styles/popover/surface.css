@@ -51,6 +51,26 @@
   overflow: hidden;
 }
 
+/*
+ * Radix 会把 Content 的 computed z-index 抄写到外层
+ * [data-radix-popper-content-wrapper] 的 inline style 上，我们的层叠设计
+ * （如 chat-history 的 ctx-menu 1010 需要盖过 --default 弹层的 1000）依赖
+ * 这个抄写值。但第三方插件可能用无作用域的
+ * `[data-radix-popper-content-wrapper] { z-index: ... !important }`
+ * 污染同 vault 里所有 Radix 弹层（已确认收敛案例：Copilot 插件强设 9999，
+ * 导致我们的弹层容器压过自家 ctx-menu）。这里用更高优先级的作用域规则把
+ * 自家 wrapper 钉回声明值。!important 为对抗上述已确认的外部 !important
+ * 污染所必需；:has(> …) 限定只命中包含 yolo surface 的 wrapper，不影响
+ * 其他插件的弹层。
+ */
+[data-radix-popper-content-wrapper]:has(> .yolo-popover-surface--default) {
+  z-index: 1000 !important;
+}
+
+[data-radix-popper-content-wrapper]:has(> .yolo-popover-surface--smart-space) {
+  z-index: 10000 !important;
+}
+
 /* Default variant — used by chat-input dropdowns, chat-history,
    AssistantSelector, ViewToggle. */
 .yolo-popover-surface--default {

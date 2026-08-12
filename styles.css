@@ -9517,6 +9517,26 @@ button.yolo-module-shelf-uninstall:hover {
   overflow: hidden;
 }
 
+/*
+ * Radix 会把 Content 的 computed z-index 抄写到外层
+ * [data-radix-popper-content-wrapper] 的 inline style 上，我们的层叠设计
+ * （如 chat-history 的 ctx-menu 1010 需要盖过 --default 弹层的 1000）依赖
+ * 这个抄写值。但第三方插件可能用无作用域的
+ * `[data-radix-popper-content-wrapper] { z-index: ... !important }`
+ * 污染同 vault 里所有 Radix 弹层（已确认收敛案例：Copilot 插件强设 9999，
+ * 导致我们的弹层容器压过自家 ctx-menu）。这里用更高优先级的作用域规则把
+ * 自家 wrapper 钉回声明值。!important 为对抗上述已确认的外部 !important
+ * 污染所必需；:has(> …) 限定只命中包含 yolo surface 的 wrapper，不影响
+ * 其他插件的弹层。
+ */
+[data-radix-popper-content-wrapper]:has(> .yolo-popover-surface--default) {
+  z-index: 1000 !important;
+}
+
+[data-radix-popper-content-wrapper]:has(> .yolo-popover-surface--smart-space) {
+  z-index: 10000 !important;
+}
+
 /* Default variant — used by chat-input dropdowns, chat-history,
    AssistantSelector, ViewToggle. */
 .yolo-popover-surface--default {
@@ -18889,12 +18909,6 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   transition-delay: 55ms, 55ms, 0s, 0s;
 }
 
-.yolo-chat-list-inline-actions.is-open
-  .yolo-chat-list-inline-actions-inner
-  > .yolo-chat-list-dropdown-item-icon:nth-child(3) {
-  transition-delay: 80ms, 80ms, 0s, 0s;
-}
-
 .yolo-chat-list-dropdown-item-actions.is-more-open
   .yolo-chat-list-dropdown-item-icon,
 .yolo-chat-list-dropdown-item-actions.is-more-open .yolo-chat-list-pin-button {
@@ -19929,9 +19943,28 @@ button.yolo-chat-input-model-select .yolo-chat-input-model-select__icon {
 }
 
 .yolo-chat-list-ctx-menu {
-  position: absolute;
-  z-index: 210;
-  width: 176px;
+  /*
+   * issue #567 Step 3（追加需求）：菜单 createPortal 到 <body>（见
+   * ChatListDropdown.tsx），不再是母弹层 .yolo-popover-surface 的 DOM 后代——
+   * 逃开了 surface.css 那条 overflow:hidden 的物理裁剪，窄弹层里靠右侧会话
+   * 弹出的菜单不会再被削掉。position 从 absolute（相对弹层内容定位）换成
+   * fixed（相对视口），top/left 也随之变成视口坐标。z-index 必须盖过
+   * --default 变体的 1000（src/styles/popover/surface.css）——Portal 后两者
+   * 是 <body> 下的兄弟节点，层叠顺序只看 z-index，不再天然继承弹层内部的
+   * 绘制顺序。
+   */
+  position: fixed;
+  z-index: 1010;
+  /*
+   * 宽度随内容自适应而不是固定死。width: max-content 让盒子撑到最长一行
+   * 文案的自然宽度；min/max 兜住两端——短文案（如「置顶」）不再空荡，长文案
+   * （如「Export conversation to vault」）到 max-width 才换行，而不是在固定
+   * 176px 里过早折断。真实渲染宽高由 ChatListDropdown.tsx 的 useLayoutEffect
+   * 量出来后再钳一次位置（基准是视口，不是母弹层），越界翻转同样在那处理。
+   */
+  width: max-content;
+  min-width: 148px;
+  max-width: 240px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
