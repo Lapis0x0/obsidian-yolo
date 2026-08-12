@@ -1,43 +1,47 @@
-## 1.6.5.1 Module Chat Modes, Thinking Panel & Fixes ✨
+## 1.6.5.2 Chat History Panel Overhaul & Fixes ✨
 
-### 💬 Chat Experience
+### 💬 Chat History Panel
 
-- The reasoning preview is upgraded from a single rolling line to a multi-line panel, so more of the thought process is visible while thinking.
-- The chat input now accepts dropped folders, with unified drag-and-drop handling for files inside and outside the vault.
-- Web search adds AnySearch as a new provider.
+- The pane's "…" menu now supports full conversation actions, adding "Open chat history / Export current conversation" commands. (#567)
+- The pane title bar now shows the conversation's real title, and it can be renamed by clicking it directly.
+- The history panel's context menu now closes layer-by-layer with Esc, sizes itself to content, and shows overflowing items; the delete action moves back inline. (#567)
+- The history panel no longer gets squeezed by a narrow sidebar; long titles truncate in the middle while keeping the "(copy)" suffix, and accidental clicks on action icons are fixed. (#567)
+- Off-screen entries now render on demand, cutting the panel's open latency by roughly 40% (~260ms → ~160ms).
+- The history panel is now fully keyboard-reachable: arrow-key/Enter navigation, shortcuts for delete/pin/rename, and a keybinding legend at the bottom. (#567)
+- Pin/unpin now animates as a reorder the list follows, action buttons become a hover overlay, and the title regains the full row width.
 
-### 🧩 Module Platform
+### 🐛 Fixes
 
-- Modules can now register their own chat modes, with isolated capability surfaces, pinned tool-approval policies, and skills shipped alongside the module.
-- The module Host API now supports registering custom agent tools.
+- Fixed existing conversation history disappearing when a message was appended while a task was still running. (#566)
+- Fixed the whole UI stalling when opening the history panel while the agent was still replying.
+- Fixed being unable to continue a conversation after deleting messages within it.
 
-### 🐛 Fixes & Cleanup
+### ⚙️ Core & Performance
 
-- Fixed mobile startup hanging on "Loading plugins" for a long time when chat history is large. (#565)
-- Fixed the "Import configuration" file picker not responding in Obsidian 1.13's standalone settings window.
-- Fixed the Quick Ask continuation shortcut menu covering the model / reasoning-effort dropdowns, with unified popover layering and menu expansion direction.
-- Fixed npm-installed Claude Code CLI on Windows being misdetected as a native binary and failing to launch. (#562)
-- Removed the obsolete "path operation set" toggle from settings; path operations are handled by the virtual terminal.
+- Partially refactored the chat core, cleaning up long-standing architectural debt.
+- Chat history persistence is now event-driven, fixing repeated errors from high-frequency rewrites in the repo-sync backend. (#569)
 
 ---
 
-## 1.6.5.1 模块聊天模式、思考面板与修复 ✨
+## 1.6.5.2 聊天历史弹层全面改造与修复 ✨
 
-### 💬 对话体验
+### 💬 聊天历史弹层
 
-- 思考过程预览从单行升级为多行面板，思考时能看到更多推理内容。
-- 聊天输入框支持拖入文件夹，vault 内外的拖放逻辑已统一。
-- 联网搜索新增 AnySearch Provider。
+- 聊天窗格 ⋯ 菜单支持完整会话操作，新增「打开聊天历史 / 导出当前对话」命令。（#567）
+- 窗格标题栏显示当前会话的真实标题，支持点击直接改名。
+- 历史弹层右键菜单支持 Esc 逐层关闭、宽度自适应内容并支持溢出显示，删除按钮回归行内。（#567）
+- 历史弹层不再被窄侧边栏压扁，超长标题居中截断并保住「(副本)」后缀，修复操作图标误触问题。（#567）
+- 视口外条目改为按需渲染，弹层打开延迟降低约 40%（~260ms → ~160ms）。
+- 历史弹层全程键盘可达：支持方向键/Enter 导航，删除/置顶/改名快捷键，底部新增键位图例。（#567）
+- 置顶/取消置顶改为可跟随的重排动效，操作区改为悬停浮层，标题栏拿回整行宽度。
 
-### 🧩 模块平台
+### 🐛 修复
 
-- 模块可注册专属聊天模式：能力面隔离、工具审批策略固化，并支持随模块分发的专属 skills。
-- 模块 Host API 支持注册自定义 Agent 工具。
+- 修复任务运行中追加消息导致已有历史对话记录丢失的问题。（#566）
+- 修复 Agent 回复期间打开会话历史面板导致整个界面卡顿的问题。
+- 修复删除对话内消息后无法继续对话的问题。
 
-### 🐛 修复与清理
+### ⚙️ 内核与性能
 
-- 修复聊天记录较多时移动端启动长时间卡在「加载插件中」无法使用的问题。（#565）
-- 修复 Obsidian 1.13 独立设置窗口中「导入配置」选择文件无反应的问题。
-- 修复 Quick Ask 续写快捷指令菜单遮挡模型/推理强度下拉的问题，统一弹窗层级与菜单展开方向。
-- 修复 Windows 上 npm 安装的 Claude Code CLI 被误判为原生程序而无法启动的问题。（#562）
-- 移除设置中已失效的「路径操作集」开关，路径操作已由虚拟终端接管。
+- 部分重构聊天内核，清理历史遗留的架构债务。
+- 聊天记录落盘改为事件驱动，修复仓库同步后端因高频重写持续报错的问题。（#569）

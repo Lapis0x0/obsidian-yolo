@@ -2,6 +2,28 @@ export const App = jest.fn()
 export const apiVersion = '1.8.0'
 export const Editor = jest.fn()
 export const MarkdownView = jest.fn()
+export class Modal {
+  app: unknown
+  contentEl: { empty: jest.Mock; addClass: jest.Mock; removeClass: jest.Mock }
+  titleEl: { setText: jest.Mock }
+  modalEl: { classList: { add: jest.Mock; remove: jest.Mock } }
+
+  constructor(app: unknown) {
+    this.app = app
+    this.contentEl = {
+      empty: jest.fn(),
+      addClass: jest.fn(),
+      removeClass: jest.fn(),
+    }
+    this.titleEl = { setText: jest.fn() }
+    this.modalEl = { classList: { add: jest.fn(), remove: jest.fn() } }
+  }
+
+  open(): void {}
+  close(): void {}
+  onOpen(): void {}
+  onClose(): void {}
+}
 export const Platform = { isDesktop: true, isMobile: false }
 export const TFile = jest.fn()
 export const TFolder = jest.fn()
