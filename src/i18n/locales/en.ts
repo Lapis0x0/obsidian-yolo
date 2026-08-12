@@ -1827,6 +1827,10 @@ export const en: TranslationKeys = {
     sendMessage: 'Send message',
     newChat: 'New chat',
     untitledConversation: 'New chat',
+    paneTitle: {
+      renameAriaLabel: 'Click to rename conversation',
+      editingAriaLabel: 'Editing conversation title',
+    },
     continueResponse: 'Continue response',
     messageNavigator: {
       title: 'Message navigator',

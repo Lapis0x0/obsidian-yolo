@@ -35,6 +35,15 @@ import { YOLO_ICON_ID } from './yoloIcon'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
+  // Task-1 (issue #567): Obsidian's `leaf.updateHeader()` only refreshes the
+  // tab-strip label, never the pane-top `.view-header-title` element — that
+  // element only gets its initial text once, at leaf-open time. Runtime
+  // instances expose it as an undocumented `titleEl: HTMLElement` property
+  // (verified empirically; not part of the public `ItemView`/`View` types),
+  // so we read it through a local type narrowing rather than `any`.
+  private isEditingTitle = false
+  private currentConversationRenamable = false
+  private boundTitleEl: HTMLElement | null = null
   private root: Root | null = null
   private initialChatProps?: ChatProps
   private restoredConversationId?: string
@@ -138,9 +147,11 @@ export class ChatView extends ItemView {
     const placement =
       pendingPayload?.placement ?? manager.getLeafPlacement(this.leaf)
     manager.registerLeaf(this.leaf, placement)
-    this.updateDisplayTitle(
-      manager.getLeafSummary(this.leaf)?.currentConversationTitle,
+    const leafSummary = manager.getLeafSummary(this.leaf)
+    this.currentConversationRenamable = Boolean(
+      leafSummary?.currentConversationPersisted,
     )
+    this.updateDisplayTitle(leafSummary?.currentConversationTitle)
     this.initialChatProps = this.getInitialChatProps(pendingPayload)
 
     await this.render()
@@ -202,6 +213,8 @@ export class ChatView extends ItemView {
     this.root = null
     this.mountedHost = null
     this.mountedDoc = null
+    this.boundTitleEl = null
+    this.isEditingTitle = false
     await this.disposeCliRuntimeScope()
   }
 
@@ -274,6 +287,11 @@ export class ChatView extends ItemView {
     this.mountedHost = newHost
     this.mountedDoc = newHost.ownerDocument
     await this.render()
+    // Defensive: rebuild only replaces view-content (children[1]), so the
+    // header/titleEl should survive untouched — but re-sync anyway in case a
+    // platform's pop-out path ever recreates the whole leaf DOM including
+    // the header (see class-level note on `titleEl`).
+    this.syncHeaderTitleElement()
   }
 
   render(): Promise<void> {
@@ -349,9 +367,17 @@ export class ChatView extends ItemView {
                                   this.updateRestoredConversationFromContext(
                                     context,
                                   )
+                                  // Only a persisted conversation has a
+                                  // rename path (ChatRef.renameCurrentConversation
+                                  // no-ops otherwise) — gate the pane title's
+                                  // click-to-edit affordance on the same flag.
+                                  this.currentConversationRenamable = Boolean(
+                                    context.currentConversationPersisted,
+                                  )
                                   this.updateDisplayTitle(
                                     context.currentConversationTitle,
                                   )
+                                  this.syncHeaderTitleElement()
                                   void this.persistLeafViewState(context)
                                 }}
                                 onRuntimeSnapshotChange={(snapshot) => {
@@ -705,13 +731,146 @@ export class ChatView extends ItemView {
       this.plugin.t('chat.untitledConversation', 'New chat'),
     )
 
-    if (this.displayTitle === nextTitle) {
-      return
+    if (this.displayTitle !== nextTitle) {
+      this.displayTitle = nextTitle
+      ;(
+        this.leaf as WorkspaceLeaf & { updateHeader?: () => void }
+      ).updateHeader?.()
     }
 
-    this.displayTitle = nextTitle
-    ;(
-      this.leaf as WorkspaceLeaf & { updateHeader?: () => void }
-    ).updateHeader?.()
+    // `updateHeader()` above only refreshes the tab label — the pane-top
+    // title element needs its text synced separately (see class-level note).
+    this.syncHeaderTitleElement()
+  }
+
+  private getHeaderTitleEl(): HTMLElement | null {
+    return (this as ItemView & { titleEl?: HTMLElement }).titleEl ?? null
+  }
+
+  /**
+   * Keeps the native `.view-header-title` element's text, editable-affordance
+   * class, and click binding in sync with `displayTitle` /
+   * `currentConversationRenamable`. Cheap and idempotent — safe to call from
+   * every place the underlying element or its bound state might have moved
+   * (title change, conversation-context change, rebuild after popout).
+   */
+  private syncHeaderTitleElement(): void {
+    const titleEl = this.getHeaderTitleEl()
+    if (!titleEl) return
+
+    if (!this.isEditingTitle && titleEl.textContent !== this.displayTitle) {
+      titleEl.textContent = this.displayTitle
+    }
+
+    titleEl.toggleClass(
+      'yolo-view-header-title-editable',
+      this.currentConversationRenamable && !this.isEditingTitle,
+    )
+    if (this.currentConversationRenamable && !this.isEditingTitle) {
+      titleEl.setAttribute(
+        'aria-label',
+        this.plugin.t(
+          'chat.paneTitle.renameAriaLabel',
+          'Click to rename conversation',
+        ),
+      )
+    } else if (!this.isEditingTitle) {
+      titleEl.removeAttribute('aria-label')
+    }
+
+    if (titleEl !== this.boundTitleEl) {
+      this.boundTitleEl = titleEl
+      this.registerDomEvent(titleEl, 'click', this.handleTitleClick)
+    }
+  }
+
+  private handleTitleClick = (): void => {
+    if (this.isEditingTitle || !this.currentConversationRenamable) return
+    this.beginTitleEditing()
+  }
+
+  /**
+   * Turns the pane title into a plain contenteditable field: select-all on
+   * entry, Enter commits (via blur), Esc cancels and restores the previous
+   * text, blur commits. An empty/unchanged submission is treated as a
+   * cancel. Commit calls through `ChatRef.renameCurrentConversation` so
+   * history list, tab label, and CLI session overlays all stay in sync —
+   * the same rename path `ChatHeader`'s history dropdown uses.
+   */
+  private beginTitleEditing(): void {
+    const titleEl = this.getHeaderTitleEl()
+    if (!titleEl || this.isEditingTitle) return
+
+    this.isEditingTitle = true
+    const originalTitle = this.displayTitle
+
+    titleEl.contentEditable = 'true'
+    titleEl.spellcheck = false
+    titleEl.addClass('yolo-view-header-title-editing')
+    titleEl.removeClass('yolo-view-header-title-editable')
+    titleEl.setAttribute(
+      'aria-label',
+      this.plugin.t(
+        'chat.paneTitle.editingAriaLabel',
+        'Editing conversation title',
+      ),
+    )
+
+    titleEl.focus()
+    const selection = titleEl.ownerDocument.getSelection()
+    if (selection) {
+      const range = titleEl.ownerDocument.createRange()
+      range.selectNodeContents(titleEl)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+
+    let settled = false
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        titleEl.blur()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        finish(false)
+      }
+    }
+    const onBlur = () => finish(true)
+
+    const finish = (commit: boolean): void => {
+      if (settled) return
+      settled = true
+      titleEl.removeEventListener('keydown', onKeyDown)
+      titleEl.removeEventListener('blur', onBlur)
+      titleEl.removeAttribute('contenteditable')
+      titleEl.removeClass('yolo-view-header-title-editing')
+      this.isEditingTitle = false
+
+      const trimmedTitle = (titleEl.textContent ?? '').trim()
+      // Blank or unchanged submissions are treated as a cancel.
+      if (!commit || !trimmedTitle || trimmedTitle === originalTitle) {
+        this.syncHeaderTitleElement()
+        return
+      }
+
+      const renamePromise =
+        this.chatRef.current?.renameCurrentConversation(trimmedTitle)
+      if (!renamePromise) {
+        this.syncHeaderTitleElement()
+        return
+      }
+
+      // Optimistic: reflect the typed title immediately (pane + tab). The
+      // async round trip through onConversationContextChange will confirm
+      // (no-op) or, on failure below, we revert.
+      this.updateDisplayTitle(trimmedTitle)
+      renamePromise.catch((error: unknown) => {
+        console.error('[YOLO] Failed to rename conversation', error)
+        this.updateDisplayTitle(originalTitle)
+      })
+    }
+
+    titleEl.addEventListener('keydown', onKeyDown)
+    titleEl.addEventListener('blur', onBlur)
   }
 }

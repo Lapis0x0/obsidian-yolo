@@ -1727,6 +1727,10 @@ export const zh: TranslationKeys = {
     sendMessage: '发送消息',
     newChat: '新建聊天',
     untitledConversation: '新对话',
+    paneTitle: {
+      renameAriaLabel: '点击重命名对话',
+      editingAriaLabel: '正在编辑对话标题',
+    },
     continueResponse: '继续生成',
     messageNavigator: {
       title: '消息导航',

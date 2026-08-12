@@ -177,6 +177,14 @@ export type ChatRef = {
     | undefined
   getCurrentConversationModelId: () => string | undefined
   getRuntimeSnapshot: () => ChatRuntimeSnapshot
+  /**
+   * Renames the currently active conversation. No-ops when there is no
+   * active persisted conversation to rename (e.g. a brand-new, not-yet-saved
+   * chat) — the pane-title inline editor (ChatView) only enters edit mode
+   * when a persisted conversation is active, so this guard is defense in
+   * depth rather than the primary gate.
+   */
+  renameCurrentConversation: (title: string) => Promise<void>
 }
 
 /**
@@ -1444,6 +1452,18 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       return conversationModelIdRef.current.get(currentConversationId)
     },
     getRuntimeSnapshot: () => buildRuntimeSnapshot(),
+    renameCurrentConversation: async (title: string) => {
+      const trimmedTitle = title.trim()
+      if (
+        !trimmedTitle ||
+        !activeHistoryConversationId ||
+        !currentConversationPersisted
+      ) {
+        return
+      }
+      await updateConversationTitle(activeHistoryConversationId, trimmedTitle)
+      syncCliConversationTitle(activeHistoryConversationId, trimmedTitle)
+    },
   }))
 
   const header = (
