@@ -765,7 +765,9 @@ const ChatListItem = memo(function ChatListItem({
       }}
       className={`yolo-chat-list-dropdown-item${isFocused ? ' selected' : ''}${
         isContextMenuOpen ? ' is-ctx-open' : ''
-      }${isReordering ? ' is-pin-moving' : ''}`}
+      }${isReordering ? ' is-pin-moving' : ''}${
+        isPinned && canPin ? ' is-pinned-row' : ''
+      }${isEditing ? ' is-editing' : ''}`}
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (

@@ -851,13 +851,21 @@ button.yolo-chat-list-origin-filter:focus-visible {
  * 视觉上仍是「这一行被拿起来了」，只是不透。
  */
 .yolo-chat-list-dropdown-item.is-pin-moving {
-  position: relative;
-  z-index: 1;
-  background: color-mix(
+  --yolo-chat-list-row-tint: color-mix(
     in srgb,
     var(--background-modifier-hover) 92%,
-    var(--background-primary)
+    transparent
   );
+
+  z-index: 1;
+  /* 状态色图层 + 底色打底，两层才不透明（见 --yolo-chat-list-row-tint 注释）。
+     !important 用于对抗行基础规则里的 background: transparent !important —— 那条
+     是为压住宿主 li 样式而存在的，不加就写不进来。 */
+  background: linear-gradient(
+      var(--yolo-chat-list-row-tint),
+      var(--yolo-chat-list-row-tint)
+    ),
+    var(--background-primary) !important;
 }
 
 /* Invert 帧（无论来自删除补位还是置顶重排）必须无过渡，见上一条注释 */
@@ -878,6 +886,18 @@ button.yolo-chat-list-origin-filter:focus-visible {
 
 .yolo-chat-list-dropdown-content li,
 .yolo-chat-list-dropdown-item {
+  /*
+   * 行的状态色（hover / 高亮 / 飞行中），半透明，叠在弹层底色之上。
+   *
+   * 需要不透明版本的地方（操作区浮层的遮罩、置顶飞行中的行）一律用
+   * 「状态色图层 + --background-primary 打底」两层叠出来，不要写
+   * color-mix(状态色 92%, 底色)：--background-modifier-hover 自身就是半透明的
+   * （默认主题 rgba(0,0,0,0.075)），与不透明色 92:8 混合后 alpha 只剩 ~0.13，
+   * 看着像没生效。混色改不了 alpha 不足的事实，叠层才能。
+   */
+  --yolo-chat-list-row-tint: transparent;
+
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -1267,11 +1287,13 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
 .yolo-chat-list-dropdown-item:focus-within:not(.is-pin-moving),
 .yolo-chat-list-dropdown-content
   li:is(:hover, :focus-within, :has(:hover)):not(.is-pin-moving) {
-  background: color-mix(
+  --yolo-chat-list-row-tint: color-mix(
     in srgb,
     var(--background-modifier-hover) 92%,
     transparent
-  ) !important;
+  );
+
+  background: var(--yolo-chat-list-row-tint) !important;
   outline: none;
   color: var(--text-normal) !important;
 }
@@ -1282,11 +1304,13 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
 .yolo-chat-list-dropdown-content li.selected:not(.is-pin-moving),
 .yolo-chat-list-dropdown-content
   li[data-highlighted='true']:not(.is-pin-moving) {
-  background: color-mix(
+  --yolo-chat-list-row-tint: color-mix(
     in srgb,
     var(--background-modifier-hover) 96%,
     transparent
-  ) !important;
+  );
+
+  background: var(--yolo-chat-list-row-tint) !important;
   box-shadow: none;
   border: 0 !important;
   color: var(--text-normal) !important;
@@ -1349,12 +1373,35 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   );
 }
 
+/*
+ * 操作区脱离文档流，浮在行的右端。
+ *
+ * 它原本是普通 flex 成员，四个常驻图标（改名/置顶/删除/⋯）即使 opacity: 0
+ * 也一直占着约 100px 宽度——静息态整条右侧是空的，标题却按被削掉 100px 的
+ * 宽度去算中间截断。那段空白是为「hover 不抖」付的租金：图标若按需占位，
+ * 标题盒子会随 hover 变宽变窄，useMiddleTruncatedTitle 的 ResizeObserver
+ * 每次都要重算截断，文字当场重排。
+ *
+ * 改成浮层之后租金不必再付，而且比原方案更稳：标题盒子恒为整行宽，hover
+ * 前后都不变，重排从根上不存在。代价是 hover 那一行时标题尾部（以及靠右的
+ * 徽标、运行指示点）被盖住约 100px——这段空间今天标题本来就吃不到，所以是
+ * 净赚；完整标题另有 tooltip 兜底。
+ *
+ * pointer-events: none 是必需的：浮层横跨标题尾部，若它自己参与命中测试，
+ * 这段区域会对「点击行 = 打开会话」失灵。按钮各自在显形时把命中恢复成 auto。
+ */
 .yolo-chat-list-dropdown-item-actions {
+  position: absolute;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  /* z-index 而非 auto：形成层叠上下文，让底下的遮罩 ::before 只垫在按钮
+     之下，而不是掉到行背景之后（无上下文时 z-index: -1 会穿到行背景后面） */
+  z-index: 0;
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
-  margin-left: auto;
-  position: relative;
+  pointer-events: none;
 
   svg {
     height: var(--icon-xs);
@@ -1363,11 +1410,61 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   }
 }
 
-body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
-  width: 86px;
-  min-height: 26px;
-  flex-shrink: 0;
-  pointer-events: none;
+/* 遮罩：向左延伸一段渐变，让被盖住的标题淡出而不是被硬切一刀。
+   :not(:empty) —— 移动端不渲染任何操作按钮，空浮层不该凭空亮出一块底色。 */
+.yolo-chat-list-dropdown-item-actions:not(:empty)::before {
+  content: '';
+  position: absolute;
+  /* 右侧多盖出行的 10px 内边距，左侧多出 28px 作渐变段 */
+  inset: 0 -10px 0 -28px;
+  z-index: -1;
+  /* 两层：上层是行的状态色，下层是弹层底色。合起来才不透明，理由见
+     --yolo-chat-list-row-tint 的注释。两层同一条 28px 渐变，一起淡出。 */
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-list-row-tint) 28px
+    ),
+    linear-gradient(to right, transparent, var(--background-primary) 28px);
+  opacity: 0;
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+/* 遮罩跟着图标一起显形，选择器与下面那条「同权显形」保持一一对应 */
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-actions::before,
+.yolo-chat-list-dropdown-item-actions.is-more-open::before {
+  opacity: 1;
+}
+
+/*
+ * 显形时整个浮层恢复命中：issue #567 Step 4 修过一次「点到按钮之间的缝隙
+ * 被当成点击行」，靠的就是在这个容器上统一拦一次 mousedown——容器若始终
+ * pointer-events: none，缝隙会重新漏到行上去。静息态仍然让位（此时图标不
+ * 可见，那段区域属于标题）。
+ */
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-actions,
+.yolo-chat-list-dropdown-item-actions.is-more-open {
+  pointer-events: auto;
+}
+
+/*
+ * 改名态例外：输入框要占满整行，保存按钮必须留在流内把它顶窄，不能浮在
+ * 输入框上面。
+ */
+.yolo-chat-list-dropdown-item.is-editing .yolo-chat-list-dropdown-item-actions {
+  position: static;
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.yolo-chat-list-dropdown-item.is-editing
+  .yolo-chat-list-dropdown-item-actions::before {
+  content: none;
 }
 
 .yolo-chat-list-inline-actions {
@@ -1506,15 +1603,34 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   fill: transparent;
 }
 
+/*
+ * 星标不再常驻显形。它原本是「置顶状态」和「置顶开关」两件事共用一个图标，
+ * 状态那一半逼着操作区在静息态也得占位——正是右侧那块空白的最后一个理由。
+ * 状态改由行左缘的导轨承载（.is-pinned-row），星标退回纯开关，跟其余图标
+ * 一起只在 hover / 键盘高亮时显形；显形时仍然是填充态，读得出当前是置顶。
+ */
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned {
   color: var(--text-normal);
-  opacity: 1;
-  transform: translateX(0) scale(1);
-  pointer-events: auto;
 }
 
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned svg {
   fill: currentColor;
+}
+
+/*
+ * 置顶状态：行左缘的导轨。绝对定位在行的内边距里，不占布局宽度——置顶因此
+ * 不会改变标题的可用宽度，也就不会触发一次重新截断。上下贴边，连续的置顶行
+ * 连成一整段，顺带把「顶部这一段是置顶区」说清楚（列表没有分区标题）。
+ */
+.yolo-chat-list-dropdown-item.is-pinned-row::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--interactive-accent);
+  pointer-events: none;
 }
 
 /*
