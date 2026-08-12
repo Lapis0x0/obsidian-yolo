@@ -496,6 +496,69 @@ describe('AgentService streaming publish coalescing', () => {
     await runPromise
   })
 
+  it('notifies run summary subscribers on semantic events only, never on display deltas', async () => {
+    const service = new AgentService()
+    const summarySubscriber = jest.fn()
+    service.subscribeToRunSummaries(summarySubscriber)
+    // Initial emit on subscribe.
+    expect(summarySubscriber).toHaveBeenCalledTimes(1)
+
+    const stateSubscriber = jest.fn()
+    service.subscribe('conv-summary-routing', stateSubscriber, {
+      emitCurrent: false,
+    })
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-summary-routing',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-summary-routing', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const firstAssistantMessage = makeStreamingAssistantMessage('a') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, firstAssistantMessage])
+
+    // Run start and the first assistant message are semantic events: the
+    // summary flipped to active and must have been re-broadcast.
+    const callsAfterFirstSnapshot = summarySubscriber.mock.calls.length
+    expect(callsAfterFirstSnapshot).toBeGreaterThan(1)
+    const activeSummaries = summarySubscriber.mock.calls.at(-1)?.[0] as Map<
+      string,
+      { isActive: boolean }
+    >
+    expect(activeSummaries.get('conv-summary-routing')?.isActive).toBe(true)
+
+    // Pure display deltas: coalesced into a frame publish that must reach
+    // state subscribers but not run summary subscribers.
+    const stateCallsBeforeDeltas = stateSubscriber.mock.calls.length
+    runtime.emitSnapshot([
+      userMessage,
+      { ...firstAssistantMessage, content: 'ab' },
+    ])
+    runtime.emitSnapshot([
+      userMessage,
+      { ...firstAssistantMessage, content: 'abc' },
+    ])
+    jest.advanceTimersByTime(16)
+    expect(stateSubscriber.mock.calls.length).toBe(stateCallsBeforeDeltas + 1)
+    expect(summarySubscriber).toHaveBeenCalledTimes(callsAfterFirstSnapshot)
+
+    // Completion is a semantic event again.
+    runtime.resolveRun()
+    await runPromise
+    expect(summarySubscriber.mock.calls.length).toBeGreaterThan(
+      callsAfterFirstSnapshot,
+    )
+  })
+
   it('publishes tool call request changes immediately and cancels pending streaming publish', async () => {
     const service = new AgentService()
     const subscriber = jest.fn()

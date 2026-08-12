@@ -2565,6 +2565,7 @@ export class AgentService {
     persistReason: AgentReplaceConversationMessagesReason = 'mutation',
   ): void {
     const state = this.publishConversationSnapshot(conversationId)
+    this.notifyRunSummarySubscribers()
     this.schedulePersistence(state, persistReason)
   }
 
@@ -2573,6 +2574,10 @@ export class AgentService {
   // (see `getRuntimeSnapshotPublishMode`), so persisting them would let frame
   // cadence drive vault writes. Any semantic event that follows publishes
   // immediately and carries the same text, so nothing is lost by skipping them.
+  // Run summaries follow the same routing: every summary input (run status,
+  // pending approval, running tool call, awaiting user input, activity) only
+  // changes through events classified as immediate, so display-only publishes
+  // cannot change a summary and skip the notification entirely.
   private publishConversationSnapshot(
     conversationId: string,
   ): AgentConversationState {
@@ -2588,7 +2593,6 @@ export class AgentService {
     for (const subscriber of this.stateFeedSubscribers) {
       subscriber(state)
     }
-    this.notifyRunSummarySubscribers()
     return state
   }
 

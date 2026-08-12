@@ -93,12 +93,18 @@ const createTree = (
     children: <span>History</span>,
   })
 
+// ChatListItem 由 React.memo 包装：元素的 type 是 memo 对象，内层组件函数在
+// 其 .type 字段上。
+const unwrapMemoType = (type: unknown): unknown =>
+  typeof type === 'object' && type !== null && 'type' in type
+    ? (type as { type: unknown }).type
+    : type
+
 const historyRows = (tree: ReactElement) =>
-  walkElements(tree).filter(
-    (element) =>
-      typeof element.type === 'function' &&
-      element.type.name === 'ChatListItem',
-  )
+  walkElements(tree).filter((element) => {
+    const inner = unwrapMemoType(element.type)
+    return typeof inner === 'function' && inner.name === 'ChatListItem'
+  })
 
 describe('ChatListDropdown', () => {
   beforeEach(() => {
@@ -120,7 +126,9 @@ describe('ChatListDropdown', () => {
 
     expect(rows).toHaveLength(1)
     expect(rows[0]?.props.title).toBe('Alpha conversation')
-    ;(rows[0]?.props.onSelect as () => void)()
+    ;(rows[0]?.props.onSelect as (conversationId: string) => void)(
+      rows[0]?.props.conversationId as string,
+    )
     await Promise.resolve()
     expect(onSelect).toHaveBeenCalledWith('alpha')
   })
@@ -142,7 +150,11 @@ describe('ChatListDropdown', () => {
     const html = rows
       .map((row) =>
         renderToStaticMarkup(
-          (row.type as (props: typeof row.props) => ReactElement)(row.props),
+          (
+            unwrapMemoType(row.type) as (
+              props: typeof row.props,
+            ) => ReactElement
+          )(row.props),
         ),
       )
       .join('')

@@ -16,7 +16,15 @@ import {
   Trash2,
 } from 'lucide-react'
 import { Platform } from 'obsidian'
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
@@ -49,6 +57,12 @@ import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain
 
 let rememberedHistorySection: ChatHistorySection = 'user'
 let rememberedTaskOriginFilter: TaskOriginFilter = 'all'
+
+function useLatestRef<T>(value: T) {
+  const ref = useRef(value)
+  ref.current = value
+  return ref
+}
 
 /**
  * 会话历史面板的动效令牌，与 popover.css 中 .yolo-chat-list-dropdown-content 上的
@@ -166,7 +180,12 @@ function ChatRuntimeBadge({
   )
 }
 
-function ChatListItem({
+// memo 是打开面板期间的性能承重墙：流式回复让父组件按帧重渲，列表项必须在
+// props 浅比较处全部拦下。契约是所有回调 props 每帧引用稳定（由 itemHandlers
+// 的 useLatestRef 层保证）、数据 props 都是原始值或帧间稳定引用（runSummary
+// 的 Map 只在语义事件时重建）。往这里新增 props 时不要传每次渲染新建的
+// 对象/闭包，否则卡顿会无声复活。
+const ChatListItem = memo(function ChatListItem({
   title,
   displayTitle,
   cliRuntimeId,
@@ -214,20 +233,21 @@ function ChatListItem({
   canRetryTitle: boolean
   canExport: boolean
   isRetrying: boolean
-  onMouseEnter: () => void
-  onMouseLeave: () => void
+  onMouseEnter: (conversationId: string) => void
+  onMouseLeave: (conversationId: string) => void
   isMoreMenuOpen: boolean
-  onSelect: () => void
-  onDelete: () => void
-  onTogglePinned: () => void
-  onRetryTitle: () => void
-  onExport: () => void
-  onStartEdit: () => void
-  onFinishEdit: (title: string) => void
-  onToggleMoreMenu: () => void
-  onCloseMoreMenu: () => void
-  onLongPress?: (cardEl: HTMLElement) => void
+  onSelect: (conversationId: string) => void
+  onDelete: (conversationId: string) => void
+  onTogglePinned: (conversationId: string) => void
+  onRetryTitle: (conversationId: string) => void
+  onExport: (conversationId: string) => void
+  onStartEdit: (conversationId: string) => void
+  onFinishEdit: (conversationId: string, title: string) => void
+  onToggleMoreMenu: (conversationId: string) => void
+  onCloseMoreMenu: (conversationId: string) => void
+  onLongPress?: (conversationId: string, cardEl: HTMLElement) => void
   onContextMenu?: (
+    conversationId: string,
     cardEl: HTMLElement,
     clientX: number,
     clientY: number,
@@ -253,8 +273,8 @@ function ChatListItem({
     request: requestDelete,
     reset: resetDeleteConfirmation,
   } = useDeleteConfirmation(() => {
-    onCloseMoreMenu()
-    onDelete()
+    onCloseMoreMenu(conversationId)
+    onDelete(conversationId)
   })
   const deleteActionLabel = isConfirmingDelete
     ? t('sidebar.chatList.confirmDelete', 'Click again to delete')
@@ -305,11 +325,11 @@ function ChatListItem({
         pressTimerRef.current = null
         pressStartRef.current = null
         if (itemRef.current) {
-          onLongPress?.(itemRef.current)
+          onLongPress?.(conversationId, itemRef.current)
         }
       }, 420)
     },
-    [isEditing, isMobile, onLongPress],
+    [conversationId, isEditing, isMobile, onLongPress],
   )
 
   const handlePointerMove = useCallback(
@@ -333,9 +353,9 @@ function ChatListItem({
     }
     if (pressTimerRef.current !== null) {
       clearPress()
-      onSelect()
+      onSelect(conversationId)
     }
-  }, [clearPress, isMobile, onSelect])
+  }, [clearPress, conversationId, isMobile, onSelect])
 
   const handlePointerCancel = useCallback(() => {
     if (isMobile) {
@@ -370,7 +390,7 @@ function ChatListItem({
         if (e.target instanceof Element && e.target.closest('button')) {
           return
         }
-        onSelect()
+        onSelect(conversationId)
       }}
       onContextMenu={
         isMobile
@@ -386,19 +406,24 @@ function ChatListItem({
               }
               e.preventDefault()
               e.stopPropagation()
-              onContextMenu?.(itemRef.current, e.clientX, e.clientY)
+              onContextMenu?.(
+                conversationId,
+                itemRef.current,
+                e.clientX,
+                e.clientY,
+              )
             }
       }
       onPointerDown={isMobile ? handlePointerDown : undefined}
       onPointerMove={isMobile ? handlePointerMove : undefined}
       onPointerUp={isMobile ? handlePointerUp : undefined}
       onPointerCancel={isMobile ? handlePointerCancel : undefined}
-      onMouseEnter={onMouseEnter}
+      onMouseEnter={() => onMouseEnter(conversationId)}
       onPointerLeave={() => {
         if (isMobile) {
           clearPress()
         }
-        onMouseLeave()
+        onMouseLeave(conversationId)
         if (isEditing || !itemRef.current) {
           return
         }
@@ -420,7 +445,7 @@ function ChatListItem({
           value={editingTitle}
           disabled={isUpdatingTitle}
           onChange={setEditingTitle}
-          onSubmit={onFinishEdit}
+          onSubmit={(nextTitle) => onFinishEdit(conversationId, nextTitle)}
         />
       ) : (
         <div
@@ -474,7 +499,7 @@ function ChatListItem({
               if (isUpdatingTitle) {
                 return
               }
-              onFinishEdit(editingTitle)
+              onFinishEdit(conversationId, editingTitle)
             }}
             className="clickable-icon yolo-chat-list-dropdown-item-icon"
             disabled={isUpdatingTitle}
@@ -490,8 +515,8 @@ function ChatListItem({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCloseMoreMenu()
-                  onStartEdit()
+                  onCloseMoreMenu(conversationId)
+                  onStartEdit(conversationId)
                 }}
                 className="clickable-icon yolo-chat-list-dropdown-item-icon"
                 aria-label={t('common.edit', 'Edit')}
@@ -504,8 +529,8 @@ function ChatListItem({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onCloseMoreMenu()
-                  onTogglePinned()
+                  onCloseMoreMenu(conversationId)
+                  onTogglePinned(conversationId)
                 }}
                 className={`clickable-icon yolo-chat-list-pin-button${
                   isPinned ? ' is-pinned' : ''
@@ -528,8 +553,8 @@ function ChatListItem({
                       disabled={isRetrying}
                       onClick={(e) => {
                         e.stopPropagation()
-                        onCloseMoreMenu()
-                        onRetryTitle()
+                        onCloseMoreMenu(conversationId)
+                        onRetryTitle(conversationId)
                       }}
                       className={`clickable-icon yolo-chat-list-dropdown-item-icon${
                         isRetrying ? ' is-pending' : ''
@@ -551,8 +576,8 @@ function ChatListItem({
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation()
-                        onCloseMoreMenu()
-                        onExport()
+                        onCloseMoreMenu(conversationId)
+                        onExport(conversationId)
                       }}
                       className="clickable-icon yolo-chat-list-dropdown-item-icon"
                       aria-label={t(
@@ -587,7 +612,7 @@ function ChatListItem({
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  onToggleMoreMenu()
+                  onToggleMoreMenu(conversationId)
                 }}
                 className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-more-button${
                   isMoreMenuOpen ? ' is-open' : ''
@@ -606,7 +631,7 @@ function ChatListItem({
       </div>
     </motion.li>
   )
-}
+})
 
 function extractPromptContent(
   promptContent: string | ContentPart[] | null | undefined,
@@ -972,6 +997,152 @@ export function ChatListDropdown({
       setActiveMenuId(chatId)
     },
     [],
+  )
+
+  // ChatListItem 的 memo 契约要求回调 props 每帧引用稳定，但上游传入的动作
+  // props（onSelect/onDelete/…）是 ChatHeader 每次渲染新建的内联闭包。这里
+  // 用 useLatestRef 承接易变引用，处理器本体只创建一次，按 conversationId
+  // 路由；对本组件状态的读取一律走 ref 或函数式 setState，避免 stale closure。
+  const itemActionsRef = useLatestRef({
+    onSelect,
+    onTogglePinned,
+    onRetryTitle,
+    onExportConversation,
+    onUpdateTitle,
+    deleteConversation,
+    retryingConversationIds,
+    updatingTitleIds,
+  })
+
+  const itemHandlers = useMemo(
+    () => ({
+      onMouseEnter: (conversationId: string) => {
+        setFocusedConversationId(conversationId)
+        setScrollIntoViewConversationId(null)
+        setMoreMenuConversationId((prev) =>
+          prev !== null && prev !== conversationId ? null : prev,
+        )
+      },
+      onMouseLeave: (conversationId: string) => {
+        setMoreMenuConversationId((prev) =>
+          prev === conversationId ? null : prev,
+        )
+      },
+      onSelect: (conversationId: string) => {
+        void Promise.resolve(itemActionsRef.current.onSelect(conversationId))
+          .then(() => {
+            setOpen(false)
+          })
+          .catch((error) => {
+            console.error('Failed to select conversation', error)
+          })
+      },
+      onDelete: (conversationId: string) => {
+        setMoreMenuConversationId(null)
+        itemActionsRef.current.deleteConversation(conversationId)
+      },
+      onTogglePinned: (conversationId: string) => {
+        setMoreMenuConversationId(null)
+        void Promise.resolve(
+          itemActionsRef.current.onTogglePinned(conversationId),
+        ).catch((error) => {
+          console.error('Failed to toggle pin', error)
+        })
+      },
+      onRetryTitle: (conversationId: string) => {
+        if (itemActionsRef.current.retryingConversationIds.has(conversationId)) {
+          return
+        }
+        const retryStartedAt = Date.now()
+        setRetryingConversationIds((prev) => new Set(prev).add(conversationId))
+        void Promise.resolve(itemActionsRef.current.onRetryTitle(conversationId))
+          .catch((error) => {
+            console.error(
+              'Failed to retry conversation title generation',
+              error,
+            )
+          })
+          .finally(() => {
+            const elapsed = Date.now() - retryStartedAt
+            const remaining = Math.max(0, 320 - elapsed)
+            window.setTimeout(() => {
+              setRetryingConversationIds((prev) => {
+                if (!prev.has(conversationId)) {
+                  return prev
+                }
+                const next = new Set(prev)
+                next.delete(conversationId)
+                return next
+              })
+            }, remaining)
+          })
+      },
+      onExport: (conversationId: string) => {
+        setMoreMenuConversationId(null)
+        void Promise.resolve(
+          itemActionsRef.current.onExportConversation(conversationId),
+        ).catch((error) => {
+          console.error('Failed to export conversation', error)
+        })
+      },
+      onStartEdit: (conversationId: string) => {
+        setMoreMenuConversationId(null)
+        setEditingId(conversationId)
+      },
+      onFinishEdit: (conversationId: string, title: string) => {
+        if (itemActionsRef.current.updatingTitleIds.has(conversationId)) {
+          return
+        }
+        setUpdatingTitleIds((prev) => new Set(prev).add(conversationId))
+        void Promise.resolve(
+          itemActionsRef.current.onUpdateTitle(conversationId, title),
+        )
+          .then(() => {
+            setEditingId(null)
+          })
+          .catch((error) => {
+            console.error('Failed to update conversation title', error)
+          })
+          .finally(() => {
+            setUpdatingTitleIds((prev) => {
+              if (!prev.has(conversationId)) {
+                return prev
+              }
+              const next = new Set(prev)
+              next.delete(conversationId)
+              return next
+            })
+          })
+      },
+      onToggleMoreMenu: (conversationId: string) => {
+        setMoreMenuConversationId((prev) =>
+          prev === conversationId ? null : conversationId,
+        )
+      },
+      onCloseMoreMenu: (conversationId: string) => {
+        setMoreMenuConversationId((prev) =>
+          prev === conversationId ? null : prev,
+        )
+      },
+      onLongPress: (conversationId: string, cardEl: HTMLElement) => {
+        if (!Platform.isMobileApp) {
+          return
+        }
+        openContextMenu(conversationId, cardEl)
+      },
+      onContextMenu: (
+        conversationId: string,
+        cardEl: HTMLElement,
+        clientX: number,
+        clientY: number,
+      ) => {
+        if (Platform.isMobileApp) {
+          return
+        }
+        openContextMenu(conversationId, cardEl, { clientX, clientY })
+      },
+    }),
+    [itemActionsRef, openContextMenu],
   )
 
   useEffect(() => {
@@ -1427,7 +1598,12 @@ export function ChatListDropdown({
           ) : (
             <>
               {/* initial={false} 让面板打开时条目直接就位，只有删除才播放退场 */}
-              <AnimatePresence initial={false}>
+              {/* presenceAffectsLayout={false}：默认 true 时 AnimatePresence 每次
+                  重渲都发布新的 presence context，所有 motion 条目被 context 强制
+                  重渲，ChatListItem 的 memo 形同虚设——流式回复期间面板就会退回
+                  每帧全量重渲。该开关只服务于 framer 的 layout 动画（退场时让兄弟
+                  条目重测布局），本列表的补位是手写 FLIP（shiftY），不依赖它。 */}
+              <AnimatePresence initial={false} presenceAffectsLayout={false}>
                 {renderedChatList.map((chat) => (
                   <ChatListItem
                     key={chat.id}
@@ -1462,138 +1638,19 @@ export function ChatListDropdown({
                         ? collapse.distance
                         : 0
                     }
-                    onMouseEnter={() => {
-                      setFocusedConversationId(chat.id)
-                      setScrollIntoViewConversationId(null)
-                      if (
-                        moreMenuConversationId != null &&
-                        moreMenuConversationId !== chat.id
-                      ) {
-                        setMoreMenuConversationId(null)
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      if (moreMenuConversationId === chat.id) {
-                        setMoreMenuConversationId(null)
-                      }
-                    }}
-                    onSelect={() => {
-                      void Promise.resolve(onSelect(chat.id))
-                        .then(() => {
-                          setOpen(false)
-                        })
-                        .catch((error) => {
-                          console.error('Failed to select conversation', error)
-                        })
-                    }}
-                    onDelete={() => {
-                      setMoreMenuConversationId(null)
-                      deleteConversation(chat.id)
-                    }}
-                    onRetryTitle={() => {
-                      if (retryingConversationIds.has(chat.id)) {
-                        return
-                      }
-                      const retryStartedAt = Date.now()
-                      setRetryingConversationIds((prev) => {
-                        const next = new Set(prev)
-                        next.add(chat.id)
-                        return next
-                      })
-                      void Promise.resolve(onRetryTitle(chat.id))
-                        .catch((error) => {
-                          console.error(
-                            'Failed to retry conversation title generation',
-                            error,
-                          )
-                        })
-                        .finally(() => {
-                          const elapsed = Date.now() - retryStartedAt
-                          const remaining = Math.max(0, 320 - elapsed)
-                          window.setTimeout(() => {
-                            setRetryingConversationIds((prev) => {
-                              if (!prev.has(chat.id)) {
-                                return prev
-                              }
-                              const next = new Set(prev)
-                              next.delete(chat.id)
-                              return next
-                            })
-                          }, remaining)
-                        })
-                    }}
-                    onTogglePinned={() => {
-                      setMoreMenuConversationId(null)
-                      void Promise.resolve(onTogglePinned(chat.id)).catch(
-                        (error) => {
-                          console.error('Failed to toggle pin', error)
-                        },
-                      )
-                    }}
-                    onExport={() => {
-                      setMoreMenuConversationId(null)
-                      void Promise.resolve(onExportConversation(chat.id)).catch(
-                        (error) => {
-                          console.error('Failed to export conversation', error)
-                        },
-                      )
-                    }}
-                    onStartEdit={() => {
-                      setMoreMenuConversationId(null)
-                      setEditingId(chat.id)
-                    }}
-                    onFinishEdit={(title) => {
-                      if (updatingTitleIds.has(chat.id)) {
-                        return
-                      }
-                      setUpdatingTitleIds((prev) => {
-                        const next = new Set(prev)
-                        next.add(chat.id)
-                        return next
-                      })
-                      void Promise.resolve(onUpdateTitle(chat.id, title))
-                        .then(() => {
-                          setEditingId(null)
-                        })
-                        .catch((error) => {
-                          console.error(
-                            'Failed to update conversation title',
-                            error,
-                          )
-                        })
-                        .finally(() => {
-                          setUpdatingTitleIds((prev) => {
-                            if (!prev.has(chat.id)) {
-                              return prev
-                            }
-                            const next = new Set(prev)
-                            next.delete(chat.id)
-                            return next
-                          })
-                        })
-                    }}
-                    onToggleMoreMenu={() => {
-                      setMoreMenuConversationId((prev) =>
-                        prev === chat.id ? null : chat.id,
-                      )
-                    }}
-                    onCloseMoreMenu={() => {
-                      setMoreMenuConversationId((prev) =>
-                        prev === chat.id ? null : prev,
-                      )
-                    }}
-                    onLongPress={(cardEl) => {
-                      if (!isMobile) {
-                        return
-                      }
-                      openContextMenu(chat.id, cardEl)
-                    }}
-                    onContextMenu={(cardEl, clientX, clientY) => {
-                      if (isMobile) {
-                        return
-                      }
-                      openContextMenu(chat.id, cardEl, { clientX, clientY })
-                    }}
+                    onMouseEnter={itemHandlers.onMouseEnter}
+                    onMouseLeave={itemHandlers.onMouseLeave}
+                    onSelect={itemHandlers.onSelect}
+                    onDelete={itemHandlers.onDelete}
+                    onRetryTitle={itemHandlers.onRetryTitle}
+                    onTogglePinned={itemHandlers.onTogglePinned}
+                    onExport={itemHandlers.onExport}
+                    onStartEdit={itemHandlers.onStartEdit}
+                    onFinishEdit={itemHandlers.onFinishEdit}
+                    onToggleMoreMenu={itemHandlers.onToggleMoreMenu}
+                    onCloseMoreMenu={itemHandlers.onCloseMoreMenu}
+                    onLongPress={itemHandlers.onLongPress}
+                    onContextMenu={itemHandlers.onContextMenu}
                   />
                 ))}
               </AnimatePresence>
@@ -1683,38 +1740,9 @@ export function ChatListDropdown({
                 disabled={retryingConversationIds.has(activeMenuChat.id)}
                 onClick={(e) => {
                   e.stopPropagation()
-                  if (retryingConversationIds.has(activeMenuChat.id)) {
-                    return
-                  }
                   setActiveMenuId(null)
                   setMenuPosition(null)
-                  const retryStartedAt = Date.now()
-                  setRetryingConversationIds((prev) => {
-                    const next = new Set(prev)
-                    next.add(activeMenuChat.id)
-                    return next
-                  })
-                  void Promise.resolve(onRetryTitle(activeMenuChat.id))
-                    .catch((error) => {
-                      console.error(
-                        'Failed to retry conversation title generation',
-                        error,
-                      )
-                    })
-                    .finally(() => {
-                      const elapsed = Date.now() - retryStartedAt
-                      const remaining = Math.max(0, 320 - elapsed)
-                      window.setTimeout(() => {
-                        setRetryingConversationIds((prev) => {
-                          if (!prev.has(activeMenuChat.id)) {
-                            return prev
-                          }
-                          const next = new Set(prev)
-                          next.delete(activeMenuChat.id)
-                          return next
-                        })
-                      }, remaining)
-                    })
+                  itemHandlers.onRetryTitle(activeMenuChat.id)
                 }}
               >
                 <RotateCcw size={16} />
