@@ -244,7 +244,10 @@ function useMiddleTruncatedTitle(title: string): {
       const available = el.getBoundingClientRect().width - 1
       setTruncatedTitle(computeMiddleTruncatedTitle(title, available, measure))
     }
-    recompute()
+    // 不手动跑首次 recompute：observe() 对已渲染元素保证补发一次初始回调，
+    // 手动再跑等于所有行全都测量两遍（实测占弹层打开长任务的 ~33ms）。
+    // content-visibility 跳过的视口外行初始回调可能不来，此时保持完整标题
+    // （正确的兜底），滚入视口时尺寸从 0 变化、回调自然触发。
     const observer = new ResizeObserver(recompute)
     observer.observe(el)
     return () => observer.disconnect()

@@ -770,6 +770,18 @@ button.yolo-chat-list-origin-filter:focus-visible {
  */
 .yolo-chat-list-dropdown-item {
   transition: transform 260ms var(--yolo-chat-list-presence-ease);
+  /*
+   * 打开性能：弹层子树 ~1700 个 DOM 节点（每行 ~35 个，操作按钮的 SVG 图标
+   * 是大头），但滚动区一屏只露出十来行。挂载后 Radix Presence 的
+   * getComputedStyle 强制整文档样式重算（实测 ~100ms，占「点击→呈现」
+   * ~260ms 的最大单项），成本 ∝ 新节点数 × 全文档规则数。
+   * content-visibility: auto 让视口外的行跳过 style/layout/paint，滚到
+   * 才渲染——浏览器原生的按需渲染。intrinsic-size 用实测行高 34px 占位，
+   * 保证滚动条与 popper 测量稳定；auto 关键字让渲染过的行记住真实尺寸。
+   * 不支持的引擎（老 iOS WebKit）忽略该属性，退回全量渲染，无行为差异。
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
 }
 
 .yolo-model-select-list.is-collapsing .yolo-chat-list-dropdown-item {
@@ -1134,39 +1146,30 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
   color: var(--text-normal) !important;
 }
 
-.yolo-chat-list-dropdown-content {
-  transform-origin: var(--radix-popover-content-transform-origin);
-}
-
-.yolo-chat-list-dropdown-content[data-state='open'] {
-  animation: yolo-chat-list-dropdown-fade-in var(--yolo-anim-duration-enter)
-    var(--yolo-anim-ease-out);
-}
-
+/*
+ * 入场不再单独覆盖：弹层开合是高频交互，不属于 L2「一次性揭示」的语汇，
+ * 这里直接吃 .yolo-popover-surface--default 自带的 130ms fade-in
+ * （surface.css 头注释已把 chat-history 列为该默认动画的既定消费者之一），
+ * 不再重复定义一份更慢的 L2 版本。
+ *
+ * 退场则保留：默认弹层整体没有关闭动效（Radix 卸载即走），历史菜单是
+ * 目前唯一需要「关闭也有 fade-out」的消费者，所以仍在本文件单独定义，
+ * 时长继续复用 L2 的 exit token——160ms 离 130ms 的入场并不远，不需要
+ * 再造一个未 token 化的退场数值。
+ */
 .yolo-chat-list-dropdown-content[data-state='closed'] {
   animation: yolo-chat-list-dropdown-fade-out var(--yolo-anim-duration-exit)
     var(--yolo-anim-ease-in);
 }
 
-@keyframes yolo-chat-list-dropdown-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(7px) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 @keyframes yolo-chat-list-dropdown-fade-out {
   0% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
   100% {
     opacity: 0;
-    transform: translateY(5px) scale(0.98);
+    transform: translateY(5px);
   }
 }
 
