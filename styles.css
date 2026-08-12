@@ -18141,6 +18141,8 @@ button.yolo-mermaid-modal-control:disabled {
   --yolo-chat-list-response-duration: var(--yolo-anim-duration-response);
   --yolo-chat-list-presence-duration: var(--yolo-anim-duration-exit);
   --yolo-chat-list-presence-ease: var(--yolo-anim-ease-out);
+  /* L3 补位 / 重排滑行，JS 侧同源常量见 CHAT_LIST_REORDER_DURATION_MS */
+  --yolo-chat-list-reorder-duration: 260ms;
 
   display: inline-flex;
   flex-direction: column;
@@ -18420,13 +18422,17 @@ button.yolo-chat-list-origin-filter:focus-visible {
 /*
  * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
  * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
- * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing 关掉。
- * 260ms 故意不复用 --yolo-chat-list-presence-duration（用于 opacity/transform
- * 的显隐）：L3 补位没有 CSS token（token 头注释：L3 用 spring，只在 JS 侧
+ * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing
+ * / .is-reordering 关掉。
+ * --yolo-chat-list-reorder-duration（260ms）故意不复用
+ * --yolo-chat-list-presence-duration（用于 opacity/transform 的显隐）：L3 补位
+ * 没有全局 CSS token（token 头注释：L3 用 spring，只在 JS 侧
  * MOTION_LAYOUT_SPRING 有对应常量），这里是其在纯 CSS FLIP 场景下的手调近似值。
+ * 置顶重排的滑行走同一条过渡，所以两者共用这一个时长。
  */
 .yolo-chat-list-dropdown-item {
-  transition: transform 260ms var(--yolo-chat-list-presence-ease);
+  transition: transform var(--yolo-chat-list-reorder-duration)
+    var(--yolo-chat-list-presence-ease);
   /*
    * 打开性能：弹层子树 ~1700 个 DOM 节点（每行 ~35 个，操作按钮的 SVG 图标
    * 是大头），但滚动区一屏只露出十来行。挂载后 Radix Presence 的
@@ -18441,8 +18447,36 @@ button.yolo-chat-list-origin-filter:focus-visible {
   contain-intrinsic-size: auto 34px;
 }
 
-.yolo-model-select-list.is-collapsing .yolo-chat-list-dropdown-item {
+/*
+ * 飞行中的行：压在其余行之上，并且必须不透明——FLIP 重排里被移动的行一定会
+ * 在中途与被它越过的行完全重合（两边都在线性插值到对方的位置），透明就是
+ * 文字叠文字。底色用与悬停同样的色，但以弹层底色而不是 transparent 调和：
+ * 视觉上仍是「这一行被拿起来了」，只是不透。
+ */
+.yolo-chat-list-dropdown-item.is-pin-moving {
+  position: relative;
+  z-index: 1;
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 92%,
+    var(--background-primary)
+  );
+}
+
+/* Invert 帧（无论来自删除补位还是置顶重排）必须无过渡，见上一条注释 */
+.yolo-model-select-list.is-collapsing .yolo-chat-list-dropdown-item,
+.yolo-model-select-list.is-reordering .yolo-chat-list-dropdown-item {
   transition: none;
+}
+
+/*
+ * 置顶重排会在视口上方插入一行（置顶区在列表顶端），内容高度的变化落在滚动
+ * 视口之外——浏览器的滚动锚定会自作主张地补偿 scrollTop 来「稳住」画面，而
+ * FLIP 的 Invert 量是按行索引算出来的，一旦被补偿，摁回去的位置就和真实旧位
+ * 对不上，重排会在落位时抖一下。关掉锚定，这段几何由我们自己负责。
+ */
+.yolo-chat-list-dropdown-content .yolo-model-select-list {
+  overflow-anchor: none;
 }
 
 .yolo-chat-list-dropdown-content li,
@@ -18830,9 +18864,12 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
   }
 }
 
-.yolo-chat-list-dropdown-item:hover,
-.yolo-chat-list-dropdown-item:focus-within,
-.yolo-chat-list-dropdown-content li:is(:hover, :focus-within, :has(:hover)) {
+/* :not(.is-pin-moving)：飞行中的行有自己的一套底色（见下方 .is-pin-moving），
+   悬停/高亮那套底色是半透明的，会让它在与被越过的行交错时透出重影。 */
+.yolo-chat-list-dropdown-item:hover:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item:focus-within:not(.is-pin-moving),
+.yolo-chat-list-dropdown-content
+  li:is(:hover, :focus-within, :has(:hover)):not(.is-pin-moving) {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 92%,
@@ -18842,11 +18879,12 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
   color: var(--text-normal) !important;
 }
 
-.yolo-chat-list-dropdown-item.selected,
-.yolo-chat-list-dropdown-item[data-highlighted='true'],
-.yolo-chat-list-dropdown-item.is-ctx-open,
-.yolo-chat-list-dropdown-content li.selected,
-.yolo-chat-list-dropdown-content li[data-highlighted='true'] {
+.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item[data-highlighted='true']:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item.is-ctx-open:not(.is-pin-moving),
+.yolo-chat-list-dropdown-content li.selected:not(.is-pin-moving),
+.yolo-chat-list-dropdown-content
+  li[data-highlighted='true']:not(.is-pin-moving) {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 96%,
@@ -19080,6 +19118,53 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
 
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned svg {
   fill: currentColor;
+}
+
+/*
+ * L1 回执：星标被按下的手感。填充与颜色仍然是 0ms 硬切换（L1 禁止渐变，见
+ * tokens/motion.css），这里动的只是 transform——它不是状态的过渡，而是反馈
+ * 本身，压下去的那一刻状态已经切完了。
+ *
+ * 放在 svg 上而不是按钮上：按钮的 transform 归显形/悬停那套过渡管（见上面
+ * translateX/scale 的规则），两者抢同一个属性会互相截断。
+ *
+ * 置顶给一点点回弹（落定），取消置顶只压不弹（收回不该被庆祝）。
+ */
+@keyframes yolo-chat-list-pin-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.84);
+  }
+  62% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes yolo-chat-list-unpin-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.86);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.yolo-chat-list-pin-button[data-pin-pulse='pin'] svg {
+  animation: yolo-chat-list-pin-pop var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-list-pin-button[data-pin-pulse='unpin'] svg {
+  animation: yolo-chat-list-unpin-pop var(--yolo-anim-duration-exit)
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-code-block {

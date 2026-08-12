@@ -366,6 +366,22 @@ const CHAT_LIST_MOTION = {
 // 待确认态不应无限挂着，否则下一次不经意的点击就直接删除
 const DELETE_CONFIRM_TIMEOUT_MS = 3000
 
+/**
+ * 置顶重排时，被移动的那一行最多可见地走这么多行的距离。
+ *
+ * 置顶的目的地永远是列表第 0 位，而用户常常是滚到列表深处才置顶某一行——真实
+ * 行程动辄几百像素，一路横穿整列的位移噪音远大于它携带的信息（何况目的地多半
+ * 已经滚出视口，飞过去也没人看得见）。截断只砍行程长度，不改行进方向：行仍然
+ * 朝它真正的新位置移动，只是从更近的地方起步。
+ */
+const PIN_TRAVEL_MAX_ROWS = 3
+
+/**
+ * 重排滑行时长，与 popover.css 里 `--yolo-chat-list-reorder-duration` 同一个
+ * 数，两处需保持一致。JS 侧只用它判断「飞行结束」，动画本身由 CSS 过渡驱动。
+ */
+const CHAT_LIST_REORDER_DURATION_MS = 260
+
 function TitleInput({
   value,
   disabled,
@@ -518,6 +534,7 @@ const ChatListItem = memo(function ChatListItem({
   isMobile,
   conversationId,
   shiftY,
+  isReordering,
 }: {
   title: string
   displayTitle?: string
@@ -558,8 +575,10 @@ const ChatListItem = memo(function ChatListItem({
   isContextMenuOpen?: boolean
   isMobile?: boolean
   conversationId: string
-  /** FLIP 的 Invert 量：先把条目摁回删除前的位置，再由 CSS 过渡回 0 */
+  /** FLIP 的 Invert 量：先把条目摁回重排前的位置，再由 CSS 过渡回 0 */
   shiftY: number
+  /** 这一行正在置顶/取消置顶的滑行途中：期间它必须不透明并压在其余行之上 */
+  isReordering: boolean
 }) {
   const { t } = useLanguage()
   const moreActionsLabelId = useId()
@@ -569,6 +588,13 @@ const ChatListItem = memo(function ChatListItem({
     null,
   )
   const [editingTitle, setEditingTitle] = useState(title)
+  /**
+   * 星标的 L1 回执（动画本体在 popover.css）。用瞬时态而不是直接挂在 .is-pinned
+   * 上：后者会让每次打开面板时所有已置顶的行一起弹一下——回执只属于刚刚发生的
+   * 那一次操作。首帧不弹同理（面板打开、列表重挂载都不是"操作"）。
+   */
+  const [pinPulse, setPinPulse] = useState<'pin' | 'unpin' | null>(null)
+  const previousPinnedRef = useRef(isPinned)
   const resolvedTitle = displayTitle ?? title
   const { titleTextRef, truncatedTitle } =
     useMiddleTruncatedTitle(resolvedTitle)
@@ -601,6 +627,12 @@ const ChatListItem = memo(function ChatListItem({
   }, [isEditing, title])
 
   useEffect(() => clearPress, [clearPress])
+
+  useEffect(() => {
+    if (previousPinnedRef.current === isPinned) return
+    previousPinnedRef.current = isPinned
+    setPinPulse(isPinned ? 'pin' : 'unpin')
+  }, [isPinned])
 
   const handlePointerDown = useCallback(
     (e: React.PointerEvent<HTMLLIElement>) => {
@@ -733,7 +765,7 @@ const ChatListItem = memo(function ChatListItem({
       }}
       className={`yolo-chat-list-dropdown-item${isFocused ? ' selected' : ''}${
         isContextMenuOpen ? ' is-ctx-open' : ''
-      }`}
+      }${isReordering ? ' is-pin-moving' : ''}`}
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (
@@ -858,6 +890,8 @@ const ChatListItem = memo(function ChatListItem({
                 className={`clickable-icon yolo-chat-list-pin-button${
                   isPinned ? ' is-pinned' : ''
                 }`}
+                data-pin-pulse={pinPulse ?? undefined}
+                onAnimationEnd={() => setPinPulse(null)}
               >
                 <Star />
               </button>
@@ -1066,6 +1100,29 @@ export function ChatListDropdown({
     fromIndex: number
     distance: number
   } | null>(null)
+  /**
+   * 置顶/取消置顶的重排位移（FLIP 的 Invert 量）。与 collapse 同一套机制：
+   * 先把所有位置变了的行摁回旧位，下一帧松手交给 CSS 过渡。区别只在受影响的
+   * 范围——删除是「removedIndex 之后全部上移」，重排是「起点与终点之间的行
+   * 让开一格，被移动的那一行走完全程」。
+   */
+  const [pinShift, setPinShift] = useState<{
+    conversationId: string
+    fromIndex: number
+    toIndex: number
+    /** 行高：被越过的行一律让开这么多 */
+    distance: number
+    /** 被移动行的 Invert 位移，已按 PIN_TRAVEL_MAX_ROWS 截断 */
+    travel: number
+    /** invert：摁回旧位的那一帧（禁用过渡）；play：松手滑行中 */
+    phase: 'invert' | 'play'
+  } | null>(null)
+  /**
+   * 等待重排的会话 id。写库是异步的，点击时列表还没换位，位移必须等到顺序
+   * 真的变化的那一帧才开始——提前动就是和还停在旧位的 DOM 打架。
+   */
+  const pinFlightIdRef = useRef<string | null>(null)
+  const previousDisplayIndexRef = useRef<Map<string, number>>(new Map())
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null)
   const [menuPosition, setMenuPosition] = useState<{
     top: number
@@ -1095,6 +1152,9 @@ export function ChatListDropdown({
   const confirmingDeleteIdRef = useRef<string | null>(null)
   const deleteConfirmTimerRef = useRef<number | null>(null)
   const isMobile = Platform.isMobileApp
+  // CSS 侧的过渡有 tokens/motion.css 的全局兜底，这里额外用它跳过整段重排
+  // FLIP：过渡被压成 0 之后，飞行态只剩「亮一下底色」的副作用，没有意义。
+  const reduceMotion = useReducedMotion()
 
   const deleteConversation = useCallback(
     (conversationId: string) => {
@@ -1263,6 +1323,26 @@ export function ChatListDropdown({
     })
     return map
   }, [renderedChatList])
+
+  /**
+   * 每一行当前该被摁住的 Invert 位移。两种重排互斥（删除与置顶不会同帧发生），
+   * 所以按优先级依次判定即可。
+   */
+  const resolveShiftY = (conversationId: string): number => {
+    const index = displayChatIndexById.get(conversationId) ?? -1
+    if (collapse) {
+      return index >= collapse.fromIndex ? collapse.distance : 0
+    }
+    if (!pinShift || pinShift.phase !== 'invert') return 0
+    if (conversationId === pinShift.conversationId) return pinShift.travel
+    const { fromIndex, toIndex, distance } = pinShift
+    // 置顶（向上走）：起点与终点之间的行整体下移一格，Invert 把它们摁回上方
+    if (toIndex < fromIndex) {
+      return index > toIndex && index <= fromIndex ? -distance : 0
+    }
+    // 取消置顶（向下走）：这段区间的行反过来上移一格
+    return index >= fromIndex && index < toIndex ? distance : 0
+  }
 
   const clearContentMatches = useCallback(() => {
     setContentMatches((prev) => (prev.size === 0 ? prev : new Set()))
@@ -1467,6 +1547,9 @@ export function ChatListDropdown({
       },
       onTogglePinned: (conversationId: string) => {
         setMoreMenuConversationId(null)
+        // 行内星标、Mod+Shift+S、右键菜单三个入口都走这里，重排位移因此只需
+        // 在这一处挂号（真正开始位移的时机见 pinFlightIdRef 旁的 layout effect）
+        pinFlightIdRef.current = conversationId
         void Promise.resolve(
           itemActionsRef.current.onTogglePinned(conversationId),
         ).catch((error) => {
@@ -1596,6 +1679,70 @@ export function ChatListDropdown({
     const frame = window.requestAnimationFrame(() => setCollapse(null))
     return () => window.cancelAnimationFrame(frame)
   }, [collapse])
+
+  /**
+   * 置顶重排的 FLIP 的 First+Invert：顺序真的变了的那一帧才动手。
+   * 在 layout effect 里 setState 会在浏览器绘制前同步补一次渲染，所以「换位」
+   * 和「摁回旧位」落在同一帧里，看不到中间态。
+   *
+   * 行高对全列一致（列表行是单行定高，见 popover.css 的 contain-intrinsic-size），
+   * 所以这里只量被移动的那一行——与删除同一个前提，全列仍然只测一次。
+   */
+  useLayoutEffect(() => {
+    const previousIndexById = previousDisplayIndexRef.current
+    previousDisplayIndexRef.current = displayChatIndexById
+    const conversationId = pinFlightIdRef.current
+    if (!conversationId) return
+    // 一次性：无论这次列表变化是不是那次置顶带来的，都把挂号销掉，避免过期的
+    // 挂号在之后某次无关的重排上放出一段莫名其妙的位移。
+    pinFlightIdRef.current = null
+    if (reduceMotion) return
+    const fromIndex = previousIndexById.get(conversationId)
+    const toIndex = displayChatIndexById.get(conversationId)
+    if (fromIndex === undefined || toIndex === undefined) return
+    if (fromIndex === toIndex) return
+    const movedElement = listRef.current?.querySelector(
+      `[data-conversation-id="${CSS.escape(conversationId)}"]`,
+    )
+    const distance = movedElement
+      ? Math.round(movedElement.getBoundingClientRect().height)
+      : 0
+    if (distance === 0) return
+    const travel = (fromIndex - toIndex) * distance
+    const limit = PIN_TRAVEL_MAX_ROWS * distance
+    setPinShift({
+      conversationId,
+      fromIndex,
+      toIndex,
+      distance,
+      travel: Math.sign(travel) * Math.min(Math.abs(travel), limit),
+      phase: 'invert',
+    })
+  }, [displayChatIndexById, reduceMotion])
+
+  /**
+   * 置顶重排 FLIP 的 Play：下一帧松手（与 collapse 的松手同理），再等滑行结束
+   * 才收摊——「飞行中」这个状态要一直挂到落位，被移动的行靠它保持不透明，否则
+   * 它和被越过的行会在交错的那一瞬互相透出成重影。
+   */
+  useEffect(() => {
+    if (!pinShift) return
+    if (pinShift.phase === 'invert') {
+      const frame = window.requestAnimationFrame(() =>
+        setPinShift((previous) =>
+          previous && previous.phase === 'invert'
+            ? { ...previous, phase: 'play' }
+            : previous,
+        ),
+      )
+      return () => window.cancelAnimationFrame(frame)
+    }
+    const timer = window.setTimeout(
+      () => setPinShift(null),
+      CHAT_LIST_REORDER_DURATION_MS,
+    )
+    return () => window.clearTimeout(timer)
+  }, [pinShift])
 
   // 磁盘上真的删掉之后，乐观移除的记录就没用了
   useEffect(() => {
@@ -2071,8 +2218,8 @@ export function ChatListDropdown({
         ) : null}
         <ul
           ref={listRef}
-          className={`yolo-model-select-list${
-            collapse ? ' is-collapsing' : ''
+          className={`yolo-model-select-list${collapse ? ' is-collapsing' : ''}${
+            pinShift?.phase === 'invert' ? ' is-reordering' : ''
           }`}
           onPointerDownCapture={(e) => {
             if (activeMenuId === null) {
@@ -2142,13 +2289,8 @@ export function ChatListDropdown({
                     isContextMenuOpen={activeMenuId === chat.id}
                     isMobile={isMobile}
                     conversationId={chat.id}
-                    shiftY={
-                      collapse &&
-                      (displayChatIndexById.get(chat.id) ?? -1) >=
-                        collapse.fromIndex
-                        ? collapse.distance
-                        : 0
-                    }
+                    shiftY={resolveShiftY(chat.id)}
+                    isReordering={pinShift?.conversationId === chat.id}
                     onMouseEnter={itemHandlers.onMouseEnter}
                     onMouseLeave={itemHandlers.onMouseLeave}
                     onSelect={itemHandlers.onSelect}
@@ -2221,12 +2363,9 @@ export function ChatListDropdown({
                       e.stopPropagation()
                       setActiveMenuId(null)
                       setMenuPosition(null)
-                      setMoreMenuConversationId(null)
-                      void Promise.resolve(
-                        onTogglePinned(activeMenuChat.id),
-                      ).catch((error) => {
-                        console.error('Failed to toggle pin', error)
-                      })
+                      // 走 itemHandlers 这一个入口（原先在这里重复了一遍
+                      // 置顶逻辑）：重排位移的挂号只在那里做，菜单不能绕过。
+                      itemHandlers.onTogglePinned(activeMenuChat.id)
                     }}
                   >
                     <Star size={16} />
