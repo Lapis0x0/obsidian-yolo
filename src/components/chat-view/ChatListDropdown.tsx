@@ -43,7 +43,11 @@ import {
 } from '../../styles/tokens/motion'
 import type { SerializedChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
-import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
+import {
+  getNodeBody,
+  getNodeDocument,
+  getNodeWindow,
+} from '../../utils/dom/window-context'
 import { YoloPopoverContent } from '../common/popover'
 
 import {
@@ -113,6 +117,140 @@ export function clampContextMenuPosition(params: {
   const nextLeft = Math.min(Math.max(8, position.left), maxLeft)
   nextTop = Math.min(Math.max(8, nextTop), maxTop)
   return { top: nextTop, left: nextLeft }
+}
+
+/**
+ * issue #567 Step 4：标题从尾部截断改为中间截断，保住末尾若干个字符——分支
+ * 会话常见的 "xxx (copy)" 后缀原先被尾部 ellipsis 吃掉，副本和原件在列表里
+ * 分辨不出来。TITLE_TAIL_LENGTH 取 12：常见后缀 " (copy)" 是 7 个字符，留出
+ * 几个字符余量避免贴边。按 code point（而非 UTF-16 code unit）切，避免劈裂
+ * 中文/emoji——与 src/core/project-instructions.ts 里 truncateUtf8ToBytes 的
+ * Array.from(text) 处理码点的既有写法保持一致，不引入 Intl.Segmenter 这个新
+ * 依赖。
+ *
+ * 为什么必须测量、不能纯 CSS：任何「头段占固定盒子 + 整字截断」的布局方案，
+ * 整字排布都不可能恰好填满 flex 分下来的盒子宽度，余数（最宽一个字形，CJK
+ * ≈ 1em）必然留在省略号与尾段之间，正是全场最显眼的位置。原生中间截断
+ * （macOS Finder）没有缝，是因为它先算好 `头…尾` 字符串再整段排版——余数
+ * 落到整个标题末尾的空白里。这里照此办理：canvas measureText + 二分找最长
+ * 可容纳前缀，渲染成单个文本节点。
+ */
+const TITLE_TAIL_LENGTH = 12
+const TITLE_ELLIPSIS = '…'
+
+export function splitTitleForMiddleTruncation(title: string): {
+  head: string
+  tail: string
+} {
+  const codePoints = Array.from(title)
+  if (codePoints.length <= TITLE_TAIL_LENGTH) {
+    return { head: '', tail: title }
+  }
+  const splitIndex = codePoints.length - TITLE_TAIL_LENGTH
+  return {
+    head: codePoints.slice(0, splitIndex).join(''),
+    tail: codePoints.slice(splitIndex).join(''),
+  }
+}
+
+/**
+ * 拼出 `头部前缀…尾段` 使其宽度不超过 availableWidth。宽度随前缀码点数
+ * 单调不减（trimEnd 只会持平或回退），二分成立。省略号两侧的边界空白
+ * trim 掉，避免 "… 尾段" 里出现字面空格。纯函数，测量器注入，可单测。
+ */
+export function computeMiddleTruncatedTitle(
+  title: string,
+  availableWidth: number,
+  measureWidth: (text: string) => number,
+): string {
+  if (measureWidth(title) <= availableWidth) {
+    return title
+  }
+  const { head, tail } = splitTitleForMiddleTruncation(title)
+  if (!head) {
+    // 标题本身不超过尾段长度：中间截断无意义，交给容器裁切
+    return title
+  }
+  const trimmedTail = tail.trimStart()
+  const headCodePoints = Array.from(head)
+  const candidate = (count: number) =>
+    `${headCodePoints.slice(0, count).join('').trimEnd()}${TITLE_ELLIPSIS}${trimmedTail}`
+  let low = 0
+  let high = headCodePoints.length
+  while (low < high) {
+    const mid = Math.ceil((low + high) / 2)
+    if (measureWidth(candidate(mid)) <= availableWidth) {
+      low = mid
+    } else {
+      high = mid - 1
+    }
+  }
+  return candidate(low)
+}
+
+/** 每个 Document 一个共享的测量 canvas（popout 窗口有自己的 Document）。 */
+const titleMeasurementContexts = new WeakMap<
+  Document,
+  CanvasRenderingContext2D
+>()
+
+function getTitleMeasurer(el: HTMLElement): ((text: string) => number) | null {
+  const doc = getNodeDocument(el)
+  let ctx = titleMeasurementContexts.get(doc) ?? null
+  if (!ctx) {
+    ctx = doc.createElement('canvas').getContext('2d')
+    if (!ctx) {
+      return null
+    }
+    titleMeasurementContexts.set(doc, ctx)
+  }
+  const style = getNodeWindow(el).getComputedStyle(el)
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+  const context = ctx
+  return (text) => context.measureText(text).width
+}
+
+/**
+ * 中间截断的落地钩子。容器里放一个不可见的 ghost span（完整标题）撑出
+ * 理想宽度，flex 收缩后的容器实际宽度即截断计算的可用宽度；可见文本
+ * 绝对定位铺在同一个盒子上，内容变化不影响布局，不会形成测量反馈环。
+ * 元素用 callback ref 接（编辑态会卸载重挂标题节点，useRef 接不到重挂），
+ * 状态全部局部于 ChatListItem，不破坏其 memo 契约。
+ */
+function useMiddleTruncatedTitle(title: string): {
+  titleTextRef: (el: HTMLSpanElement | null) => void
+  truncatedTitle: string
+} {
+  const [el, setEl] = useState<HTMLSpanElement | null>(null)
+  const [truncatedTitle, setTruncatedTitle] = useState(title)
+
+  useEffect(() => {
+    setTruncatedTitle(title)
+    if (!el) {
+      return
+    }
+    const recompute = () => {
+      // 是否需要截断以 DOM 自己的溢出判定为准（ghost 撑出 scrollWidth），
+      // 避免 canvas 与 DOM 排版的亚像素分歧把恰好放得下的标题误截
+      if (el.scrollWidth <= el.clientWidth) {
+        setTruncatedTitle(title)
+        return
+      }
+      const measure = getTitleMeasurer(el)
+      if (!measure) {
+        return
+      }
+      // 1px 余量吸收 canvas 与 DOM 的亚像素差异，防可见文本溢出被裁边
+      const available = el.getBoundingClientRect().width - 1
+      setTruncatedTitle(computeMiddleTruncatedTitle(title, available, measure))
+    }
+    recompute()
+    const observer = new ResizeObserver(recompute)
+    observer.observe(el)
+    return () => observer.disconnect()
+  }, [title, el])
+
+  return { titleTextRef: setEl, truncatedTitle }
 }
 
 /**
@@ -317,6 +455,9 @@ const ChatListItem = memo(function ChatListItem({
     null,
   )
   const [editingTitle, setEditingTitle] = useState(title)
+  const resolvedTitle = displayTitle ?? title
+  const { titleTextRef, truncatedTitle } =
+    useMiddleTruncatedTitle(resolvedTitle)
   const reduceMotion = useReducedMotion()
   const isPresent = useIsPresent()
   const {
@@ -502,8 +643,26 @@ const ChatListItem = memo(function ChatListItem({
           }`}
         >
           <div className="yolo-chat-list-dropdown-item-title-group">
-            <span className="yolo-chat-list-dropdown-item-title-text">
-              {displayTitle ?? title}
+            {/* issue #567 Step 4：中间截断保住尾部（如分支会话的 " (copy)"
+                后缀），省略号两侧像素级贴合——原理与结构见
+                useMiddleTruncatedTitle。ghost 承载完整标题、不可见，负责撑出
+                容器宽度；display 绝对定位铺在同一盒子上，放测量拼好的
+                `头…尾` 单段文本。title 属性放完整标题，作为原生 tooltip
+                （本文件里 ChatRuntimeBadge/delete 按钮已有同样用法）。 */}
+            <span
+              className="yolo-chat-list-dropdown-item-title-text"
+              title={resolvedTitle}
+              ref={titleTextRef}
+            >
+              <span
+                className="yolo-chat-list-dropdown-item-title-ghost"
+                aria-hidden="true"
+              >
+                {resolvedTitle}
+              </span>
+              <span className="yolo-chat-list-dropdown-item-title-display">
+                {truncatedTitle}
+              </span>
             </span>
             {cliRuntimeId ? (
               <ChatRuntimeBadge runtimeId={cliRuntimeId} />
@@ -538,6 +697,15 @@ const ChatListItem = memo(function ChatListItem({
         className={`yolo-chat-list-dropdown-item-actions${
           isMoreMenuOpen ? ' is-more-open' : ''
         }`}
+        // issue #567 Step 4：选中会话是靠 motion.li 的 onMouseDown 触发的
+        // （见下方 onMouseDown 与它旁边的注释），不是 onClick——mousedown 比
+        // click 先完成一整轮事件派发，下面每个操作按钮身上的 stopPropagation
+        // 都只挂在 onClick 上，拦不住这条路径；li 自己虽然也用
+        // e.target.closest('button') 排除按钮，但按钮之间的空隙、展开条的
+        // padding 命中的不是 <button>，那条判断会失手，点击就穿透成「选中这
+        // 一行」。修法是在这整个操作区的入口拦一次 mousedown，覆盖区内所有
+        // 按钮和空隙，不需要逐个按钮补——单一防线，覆盖面更完整也更好维护。
+        onMouseDown={(e) => e.stopPropagation()}
       >
         {isEditing ? (
           <button
@@ -794,7 +962,6 @@ export function ChatListDropdown({
     left: number
   } | null>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
-  const contentRef = useRef<HTMLDivElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuAnchorRef = useRef<HTMLElement | null>(null)
@@ -1313,20 +1480,6 @@ export function ChatListDropdown({
     [],
   )
 
-  const syncPopoverWidth = useCallback(() => {
-    const content = contentRef.current
-    const trigger = triggerRef.current
-    if (!content || !trigger) return
-    const sidebar = trigger.closest('.yolo-chat-container')
-    if (!sidebar) return
-    const { width } = sidebar.getBoundingClientRect()
-    if (width > 0) {
-      const maxWidth = 420
-      const nextWidth = `${Math.round(Math.min(width, maxWidth))}px`
-      content.style.width = nextWidth
-    }
-  }, [])
-
   useEffect(() => {
     if (!open) return
     if (renderedChatList.length === 0) {
@@ -1433,29 +1586,6 @@ export function ChatListDropdown({
     titleMatches,
   ])
 
-  useEffect(() => {
-    if (!open) return
-    syncPopoverWidth()
-    const sidebar = triggerRef.current?.closest('.yolo-chat-container')
-    if (!sidebar) return
-    const ownerWindow = getNodeWindow(triggerRef.current)
-    const handleResize = () => {
-      syncPopoverWidth()
-    }
-    let resizeObserver: ResizeObserver | null = null
-    if (typeof ResizeObserver !== 'undefined') {
-      resizeObserver = new ResizeObserver(() => {
-        syncPopoverWidth()
-      })
-      resizeObserver.observe(sidebar)
-    }
-    ownerWindow.addEventListener('resize', handleResize)
-    return () => {
-      ownerWindow.removeEventListener('resize', handleResize)
-      resizeObserver?.disconnect()
-    }
-  }, [open, syncPopoverWidth])
-
   const focusedIndex = useMemo(
     () =>
       focusedConversationId === null
@@ -1535,7 +1665,6 @@ export function ChatListDropdown({
       </Popover.Trigger>
 
       <YoloPopoverContent
-        ref={contentRef}
         anchorRef={triggerRef}
         variant="default"
         minWidth={280}

@@ -535,8 +535,26 @@
 
   display: inline-flex;
   flex-direction: column;
-  width: 100%;
-  max-width: 420px;
+  /*
+   * issue #567 Step 4：宽度不再钳在母容器（原先是聊天侧边栏的
+   * .yolo-chat-container，窄侧边栏下弹层被跟着挤窄——这正是 pjeby 抱怨的
+   * "弹层相对标题太窄"）。目标宽度固定 420px，只受弹层所在窗口的视口宽度
+   * 约束：100vw 取的是这个元素所在文档的 viewport（弹层 Portal 到
+   * anchorRef.current.ownerDocument.body，popout 窗口下 100vw 天然就是
+   * popout 自己的视口，不用假设主窗口，也不需要 JS 读 window.innerWidth）。
+   *
+   * 原先这里改用过 JS 方案（syncPopoverWidth，一次性 useLayoutEffect 读
+   * getNodeWindow(trigger).innerWidth 后设 inline style width）：实测在真实
+   * Obsidian 里，Popover 首次打开时该 effect 确实跑了（用 React DevTools
+   * fiber 验证过 hook 状态、并手动重放同一个 effect 闭包证实计算逻辑本身
+   * 没问题），但 inline style 设完之后没有生效——大概率是 Radix
+   * Popover.Content 背后的 floating-ui 在同一次打开过程中还有一轮异步定位/
+   * 重渲染，把这次 inline style 写入盖掉了，且我们的 effect 依赖是
+   * [open, syncPopoverWidth]，不会再重试。CSS 表达式不吃这个时序坑（不是
+   * inline style，不参与 floating-ui 对 Content 节点的属性管理），也更简单
+   * ——去掉了 useLayoutEffect、resize 监听、以及 contentRef 这一整套机制。
+   */
+  width: min(420px, calc(100vw - 24px));
   min-width: 0;
   /* 让弹层左侧与聊天面板外层布局对齐（仅聊天历史下拉需要）。 */
   margin-left: -64px;
@@ -792,19 +810,39 @@ button.yolo-chat-list-origin-filter:focus-visible {
   overflow: hidden;
 }
 
+/*
+ * issue #567 Step 4：中间截断。ghost/overlay 结构（原理与测量逻辑见
+ * ChatListDropdown.tsx 的 useMiddleTruncatedTitle）：.title-ghost 承载完整
+ * 标题、visibility 隐藏，负责撑出容器的理想宽度——flex 收缩后容器的实际
+ * 宽度就是截断计算的可用宽度；.title-display 绝对定位铺满同一盒子，放
+ * JS 测量拼好的「头…尾」单段文本，内容变化不影响布局，无测量反馈环。
+ * 单段文本排版让整字截断的余数落在标题末尾（不可见），省略号两侧
+ * 像素级贴合，没有 text-overflow: ellipsis 的整字形残留缝隙。
+ * opacity/transform 过渡（为 is-retrying 骨架屏服务）留在外层容器上不变。
+ */
 .yolo-chat-list-dropdown-item-title-text {
-  display: block;
+  position: relative;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 1;
   transform: translateY(0);
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
     transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-list-dropdown-item-title-ghost {
+  visibility: hidden;
+}
+
+.yolo-chat-list-dropdown-item-title-display {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .yolo-chat-list-dropdown-item-current-badge {
