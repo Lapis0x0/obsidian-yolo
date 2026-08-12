@@ -2732,6 +2732,7 @@ export default class YoloPlugin extends Plugin {
     this.ragAutoUpdateService = null
     this.agentService?.stopBackgroundTaskResultListener()
     this.agentService?.abortAll()
+    this.agentService?.flushAllConversationPersistence()
     this.agentService = null
     this.agentServiceReady = null
     this.agentApiService = null

@@ -199,6 +199,12 @@ export type AgentReplaceConversationMessagesReason =
   | 'hydrate'
   | 'self-heal'
 
+// Lower bound between two conversation writes while a run is in flight. Vault
+// files are commonly on a sync backend that uploads whole files, so writing a
+// conversation faster than one upload cycle makes the backend race its own
+// in-flight upload of the same file.
+export const RUNNING_PERSIST_MIN_INTERVAL_MS = 15_000
+
 function buildSubagentResultMessage(
   record: SubagentTaskRecord,
 ): ChatSubagentResultMessage {
@@ -879,6 +885,7 @@ export class AgentService {
   private stateFeedSubscribers = new Set<AgentConversationStateFeedSubscriber>()
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private persistenceChains = new Map<string, Promise<void>>()
+  private lastPersistedAt = new Map<string, number>()
   private pendingScheduledConversationPublishes = new Map<
     string,
     PendingScheduledConversationPublish
@@ -971,6 +978,7 @@ export class AgentService {
 
     this.autoRunScheduled.delete(conversationId)
     this.pendingBackgroundTaskResults.delete(conversationId)
+    this.lastPersistedAt.delete(conversationId)
     this.conversationEntries.delete(conversationId)
 
     if (droppedState) {
@@ -2556,6 +2564,18 @@ export class AgentService {
     conversationId: string,
     persistReason: AgentReplaceConversationMessagesReason = 'mutation',
   ): void {
+    const state = this.publishConversationSnapshot(conversationId)
+    this.schedulePersistence(state, persistReason)
+  }
+
+  // Renders the current state without touching disk. Streaming-delta publishes
+  // use this directly: the runtime has already classified them as display-only
+  // (see `getRuntimeSnapshotPublishMode`), so persisting them would let frame
+  // cadence drive vault writes. Any semantic event that follows publishes
+  // immediately and carries the same text, so nothing is lost by skipping them.
+  private publishConversationSnapshot(
+    conversationId: string,
+  ): AgentConversationState {
     this.cancelScheduledConversationPublish(conversationId)
     const entry = this.getOrCreateConversationEntry(conversationId)
     const state = this.cloneState(entry.state)
@@ -2568,8 +2588,8 @@ export class AgentService {
     for (const subscriber of this.stateFeedSubscribers) {
       subscriber(state)
     }
-    this.schedulePersistence(state, persistReason)
     this.notifyRunSummarySubscribers()
+    return state
   }
 
   private publishConversationState(
@@ -2603,7 +2623,7 @@ export class AgentService {
       }
       clearTimeout(pending.timeoutId)
       this.pendingScheduledConversationPublishes.delete(conversationId)
-      this.notifyConversationSubscribers(conversationId)
+      this.publishConversationSnapshot(conversationId)
     }
 
     if (typeof globalThis.requestAnimationFrame === 'function') {
@@ -2655,6 +2675,31 @@ export class AgentService {
     await this.enqueueConversationPersistence(this.cloneState(entry.state))
   }
 
+  // Best-effort durability for the in-run coalescing window: on plugin unload
+  // (disable, update, vault switch, quit) every conversation that could be
+  // holding unwritten state commits it. That is any conversation with a
+  // pending write, plus any conversation with a live run — a long streaming
+  // answer raises no persistable event at all, so it has no pending timer to
+  // find. Conversations whose content already matches disk elide the write in
+  // `ChatManager.updateChat`. Callers cannot await this during a real process
+  // exit, so it is fire-and-forget by design.
+  flushAllConversationPersistence(): void {
+    const conversationIds = new Set([
+      ...this.persistTimers.keys(),
+      ...[...this.runEntriesByKey.values()].map(
+        (entry) => entry.conversationId,
+      ),
+    ])
+    for (const conversationId of conversationIds) {
+      void this.flushConversationPersistence(conversationId).catch((error) => {
+        console.error('[YOLO] Failed to flush agent conversation state', {
+          conversationId,
+          error,
+        })
+      })
+    }
+  }
+
   private enqueueConversationPersistence(
     state: AgentConversationState,
     touchUpdatedAt?: boolean,
@@ -2663,6 +2708,8 @@ export class AgentService {
     if (!persist) {
       return Promise.resolve()
     }
+
+    this.lastPersistedAt.set(state.conversationId, Date.now())
 
     const previous = this.persistenceChains.get(state.conversationId)
     const next = (previous ?? Promise.resolve()).then(
@@ -2721,6 +2768,30 @@ export class AgentService {
     }
   }
 
+  // Commit points go to disk right away: any state outside a run — a settled
+  // run, the user's own message, an edited or deleted message, a rename — plus
+  // the first write of a conversation that has never been persisted. Only
+  // events raised while a run is in flight (tool requests, tool results,
+  // message boundaries) are coalesced to at most one write per
+  // `RUNNING_PERSIST_MIN_INTERVAL_MS`, so a tool-heavy run cannot rewrite the
+  // conversation file faster than a vault sync backend can upload it. The
+  // deadline is measured from the last write rather than the last event, so a
+  // busy run still lands a write every interval instead of starving behind a
+  // resetting debounce.
+  private getPersistenceDelayMs(state: AgentConversationState): number {
+    if (state.status !== 'running') {
+      return 0
+    }
+    const lastPersistedAt = this.lastPersistedAt.get(state.conversationId)
+    if (lastPersistedAt === undefined) {
+      return 0
+    }
+    return Math.max(
+      0,
+      RUNNING_PERSIST_MIN_INTERVAL_MS - (Date.now() - lastPersistedAt),
+    )
+  }
+
   private schedulePersistence(
     state: AgentConversationState,
     reason: AgentReplaceConversationMessagesReason = 'mutation',
@@ -2742,12 +2813,7 @@ export class AgentService {
 
     this.cancelPersistTimer(state.conversationId)
 
-    const delayMs =
-      state.status === 'completed' ||
-      state.status === 'aborted' ||
-      state.status === 'error'
-        ? 0
-        : 250
+    const delayMs = this.getPersistenceDelayMs(state)
 
     // Self-heal writes (e.g. normalizing aborted streaming residue) must
     // persist the repaired payload but should not be treated as user activity

@@ -2,7 +2,7 @@ import { ChatMessage, ChatUserMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { backgroundTaskCompletionBus } from './background-task/completion-bus'
-import { AgentService } from './service'
+import { AgentService, RUNNING_PERSIST_MIN_INTERVAL_MS } from './service'
 import { subagentRuntimeRegistry } from './subagent/runtime-registry'
 import { subagentTaskRegistry } from './subagent/task-registry'
 import type { SubagentTaskRecord } from './subagent/types'
@@ -995,6 +995,187 @@ describe('AgentService conversation persistence flush', () => {
     )
     jest.runOnlyPendingTimers()
     expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('AgentService conversation persistence cadence', () => {
+  const makeStreamingAssistantMessage = (
+    content: string,
+  ): Extract<ChatMessage, { role: 'assistant' }> => ({
+    role: 'assistant',
+    id: 'assistant-streaming',
+    content,
+    metadata: { generationState: 'streaming' },
+  })
+
+  beforeEach(() => {
+    runtimeInstances.length = 0
+    jest.useFakeTimers()
+  })
+
+  afterEach(() => {
+    jest.runOnlyPendingTimers()
+    jest.useRealTimers()
+  })
+
+  // Persistence is enqueued on a promise chain, so a fired timer only reaches
+  // the persist callback on the next microtask.
+  const advance = async (ms: number) => {
+    jest.advanceTimersByTime(ms)
+    await Promise.resolve()
+    await Promise.resolve()
+  }
+
+  // Mirrors the real submit path: the user message is committed to the
+  // conversation first, then the run starts.
+  const startRun = async (conversationId: string) => {
+    const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
+    const service = new AgentService({ persistConversationMessages })
+    const userMessage = makeUserMessage('u1', 'hello')
+
+    service.replaceConversationMessages(conversationId, [userMessage], [], {
+      persistState: true,
+    })
+    // The user's own message is a commit point: it reaches disk without
+    // waiting for the in-run interval.
+    await advance(1)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+
+    const runPromise = service.run({
+      conversationId,
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput(conversationId, [userMessage]),
+    })
+    return {
+      service,
+      persistConversationMessages,
+      runPromise,
+      runtime: runtimeInstances[0],
+      userMessage,
+    }
+  }
+
+  it('does not write streaming display deltas to disk', async () => {
+    const { persistConversationMessages, runtime, runPromise, userMessage } =
+      await startRun('conv-persist-stream')
+
+    const first = makeStreamingAssistantMessage('a')
+    runtime.emitSnapshot([userMessage, first])
+    // The assistant message appearing is a structural change, but it lands
+    // inside the interval opened by the user message write above.
+    await advance(1)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+
+    for (const content of ['ab', 'abc', 'abcd']) {
+      runtime.emitSnapshot([userMessage, { ...first, content }])
+      await advance(16)
+    }
+    // Frame-cadence publishes happened, disk writes did not.
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('coalesces in-run structural events to one write per interval', async () => {
+    const { persistConversationMessages, runtime, runPromise, userMessage } =
+      await startRun('conv-persist-events')
+
+    // A burst of structural events (tool requests / results / boundaries)
+    // arriving right after the run started must not each trigger a write.
+    for (let index = 0; index < 10; index += 1) {
+      runtime.emitSnapshot([
+        userMessage,
+        makeStreamingAssistantMessage(`chunk-${index}`),
+        makeToolMessage(ToolCallResponseStatus.Running, `call-${index}`),
+      ])
+      await advance(1_000)
+    }
+
+    // 10 seconds of events, still inside the first interval.
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+
+    await advance(5_000)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(2)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('writes immediately once the run settles', async () => {
+    const { persistConversationMessages, runtime, runPromise, userMessage } =
+      await startRun('conv-persist-settle')
+
+    runtime.emitSnapshot([userMessage, makeStreamingAssistantMessage('a')])
+    await advance(1_000)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+
+    runtime.resolveRun()
+    await runPromise
+    await advance(1)
+
+    expect(persistConversationMessages).toHaveBeenCalledTimes(2)
+  })
+
+  it('flushes a pending in-run write on unload', async () => {
+    const {
+      service,
+      persistConversationMessages,
+      runtime,
+      runPromise,
+      userMessage,
+    } = await startRun('conv-persist-unload')
+
+    runtime.emitSnapshot([
+      userMessage,
+      makeStreamingAssistantMessage('a'),
+      makeToolMessage(ToolCallResponseStatus.Running),
+    ])
+    await advance(1_000)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(1)
+
+    service.flushAllConversationPersistence()
+    await advance(0)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(2)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('flushes a streaming run that has no pending write left', async () => {
+    const {
+      service,
+      persistConversationMessages,
+      runtime,
+      runPromise,
+      userMessage,
+    } = await startRun('conv-persist-unload-stream')
+
+    const first = makeStreamingAssistantMessage('a')
+    runtime.emitSnapshot([userMessage, first])
+    // Let the coalesced write for the assistant message land, so the only
+    // unwritten state left is streamed text — which schedules nothing.
+    await advance(RUNNING_PERSIST_MIN_INTERVAL_MS)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(2)
+
+    runtime.emitSnapshot([userMessage, { ...first, content: 'ab' }])
+    await advance(16)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(2)
+
+    service.flushAllConversationPersistence()
+    await advance(0)
+    expect(persistConversationMessages).toHaveBeenCalledTimes(3)
+    // The flushed payload carries the text that was only ever streamed.
+    expect(
+      persistConversationMessages.mock.calls.at(-1)?.[0].messages.at(-1),
+    ).toMatchObject({ role: 'assistant', content: 'ab' })
+
+    runtime.resolveRun()
+    await runPromise
   })
 })
 
