@@ -120,6 +120,97 @@ export function clampContextMenuPosition(params: {
 }
 
 /**
+ * issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——搜索框键盘处理器和
+ * 弹层刚打开、Radix Content 自身持有焦点那一瞬间的容器级 handleKeyDown 共用
+ * 同一份移动计算。到底/到顶不回绕（clamp，不取模），currentIndex 传 -1 表示
+ * 还没有高亮项，从第一条开始移动。
+ */
+export function computeNextHighlightedIndex(
+  currentIndex: number,
+  direction: 'up' | 'down',
+  length: number,
+): number {
+  if (length === 0) return -1
+  const base = currentIndex < 0 ? 0 : currentIndex
+  return direction === 'up'
+    ? Math.max(0, base - 1)
+    : Math.min(length - 1, base + 1)
+}
+
+/**
+ * issue #567 Step 5：搜索框键盘事件 → 动作的判定，纯函数（不碰 DOM/React
+ * state），单测覆盖全部分支。产品决策是键盘焦点全程留在搜索框（对齐
+ * Obsidian 快速切换器的体验：用户不需要把光标移出输入框就能浏览、打开、
+ * 删除/置顶/改名会话），所以这里处理的按键集合比容器级 handleKeyDown（只
+ * 服务于弹层刚打开、还没点进搜索框那一瞬间）更完整。
+ *
+ * 键位取舍（审计结论,详见计划文档 Step 5 实施备忘）：
+ * - 置顶用 Mod+Shift+S（Star 助记），前两版都被推翻：最初的 Mod+P 是
+ *   Obsidian「打开命令面板」默认全局热键；第二版 Mod+Shift+P 在用户系统上
+ *   被 macOS 级全局快捷键吞掉（window 捕获层探针实测：修饰键 keydown 到达、
+ *   字母 P 的事件根本没进渲染进程——这类系统级占用 App 层面无从拦截）。
+ * - 删除用 Mod+Backspace：未发现与 Obsidian 默认热键冲突。
+ * - 改名用 Mod+R，不用最初实现的 F2：F2 是 Obsidian 默认热键
+ *   workspace:edit-file-title，宿主 keymap 在捕获层就把事件消费掉（实测
+ *   keydown 根本到不了弹层的 React 委托层）；且 mac 默认键盘布局下 F2 是
+ *   亮度键、需要按 Fn 才发得出来，双重不可用。Mod+R 在默认与自定义热键
+ *   注册表中均空闲。
+ */
+export type ChatListSearchKeyboardAction =
+  | { type: 'navigate'; direction: 'up' | 'down' }
+  | { type: 'open' }
+  | { type: 'delete' }
+  | { type: 'togglePin' }
+  | { type: 'rename' }
+
+export function resolveChatListSearchKeyboardAction(
+  event: Pick<
+    KeyboardEvent,
+    'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'altKey'
+  >,
+  isMac: boolean,
+): ChatListSearchKeyboardAction | null {
+  const modKey = isMac ? event.metaKey : event.ctrlKey
+  if (event.key === 'ArrowUp') return { type: 'navigate', direction: 'up' }
+  if (event.key === 'ArrowDown') {
+    return { type: 'navigate', direction: 'down' }
+  }
+  if (event.key === 'Enter' && !modKey && !event.altKey) {
+    return { type: 'open' }
+  }
+  if (modKey && !event.shiftKey && event.key === 'Backspace') {
+    return { type: 'delete' }
+  }
+  if (modKey && event.shiftKey && event.key.toLowerCase() === 's') {
+    return { type: 'togglePin' }
+  }
+  if (
+    modKey &&
+    !event.shiftKey &&
+    !event.altKey &&
+    event.key.toLowerCase() === 'r'
+  ) {
+    return { type: 'rename' }
+  }
+  return null
+}
+
+/**
+ * issue #567 Step 5：高亮行删除的两步确认判定，从原先 ChatListItem 内部的
+ * useDeleteConfirmation 抽出来的纯逻辑。键盘删除快捷键（Mod+Backspace）和
+ * 行内删除按钮现在必须共用同一份确认状态——不允许出现两套确认态各自数「这是
+ * 第几下」，否则键盘按一下、鼠标再点一下会互相看不见对方的进度。状态本身也
+ * 从 ChatListItem 提升到了 ChatListDropdown：键盘快捷键触发时事件源是搜索框，
+ * 不在目标行的 DOM 内，行内 hook 拿不到。
+ */
+export function resolveChatListDeleteConfirmation(
+  currentConfirmingId: string | null,
+  conversationId: string,
+): 'arm' | 'confirm' {
+  return currentConfirmingId === conversationId ? 'confirm' : 'arm'
+}
+
+/**
  * issue #567 Step 4：标题从尾部截断改为中间截断，保住末尾若干个字符——分支
  * 会话常见的 "xxx (copy)" 后缀原先被尾部 ellipsis 吃掉，副本和原件在列表里
  * 分辨不出来。TITLE_TAIL_LENGTH 取 12：常见后缀 " (copy)" 是 7 个字符，留出
@@ -275,37 +366,6 @@ const CHAT_LIST_MOTION = {
 // 待确认态不应无限挂着，否则下一次不经意的点击就直接删除
 const DELETE_CONFIRM_TIMEOUT_MS = 3000
 
-/**
- * 删除的两击确认。第一击只切换到待确认态，第二击才真的删；超时自动回到安全状态。
- * 刻意不给两击之间设最小间隔——点得快是正常操作，拦它只会让确认显得没反应。
- */
-function useDeleteConfirmation(onConfirm: () => void) {
-  const [isConfirming, setIsConfirming] = useState(false)
-  const timerRef = useRef<number | null>(null)
-
-  const reset = useCallback(() => {
-    if (timerRef.current !== null) {
-      window.clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    setIsConfirming(false)
-  }, [])
-
-  useEffect(() => reset, [reset])
-
-  const request = useCallback(() => {
-    if (!isConfirming) {
-      setIsConfirming(true)
-      timerRef.current = window.setTimeout(reset, DELETE_CONFIRM_TIMEOUT_MS)
-      return
-    }
-    reset()
-    onConfirm()
-  }, [isConfirming, onConfirm, reset])
-
-  return { isConfirming, request, reset }
-}
-
 function TitleInput({
   value,
   disabled,
@@ -372,6 +432,53 @@ function ChatRuntimeBadge({
   )
 }
 
+/**
+ * issue #567 Step 5：仿 Obsidian 快速切换器 prompt-instructions 的键位图例，
+ * 静态展示、不参与列表的 content-visibility 按需渲染（渲染在 <ul> 外）。
+ * 桌面端专属——`Platform.isMobile` 下没有物理键盘，图例没有意义（这里刻意用
+ * isMobile 而非组件其余处用的 isMobileApp：图例要跟着「有没有键盘」的布局
+ * 判断走，不是「是不是原生 App 壳」）。
+ *
+ * 键位符号（⌘/Ctrl/⇧/Shift/F2/↑↓/↵/⌫）视为键盘物理标注，不当作语言文本走
+ * i18n——同一个惯例在所有主流软件的快捷键图例里都成立（VSCode/JetBrains/
+ * Obsidian 自身的 Hotkeys 设置页都不翻译 Ctrl/Shift/F2）；图例每一项的动作
+ * 描述（导航/打开/删除/置顶/改名）才是语言文本，走 i18n。
+ */
+function ChatListKeyboardLegend() {
+  const { t } = useLanguage()
+  const modLabel = Platform.isMacOS ? '⌘' : 'Ctrl+'
+  const shiftLabel = Platform.isMacOS ? '⇧' : 'Shift+'
+  const items: { key: string; label: string }[] = [
+    {
+      key: '↑↓',
+      label: t('sidebar.chatList.legend.navigate', 'Navigate'),
+    },
+    { key: '↵', label: t('sidebar.chatList.legend.open', 'Open') },
+    {
+      key: `${modLabel}⌫`,
+      label: t('sidebar.chatList.legend.delete', 'Delete'),
+    },
+    {
+      key: `${modLabel}${shiftLabel}S`,
+      label: t('sidebar.chatList.legend.pin', 'Pin'),
+    },
+    {
+      key: `${modLabel}R`,
+      label: t('sidebar.chatList.legend.rename', 'Rename'),
+    },
+  ]
+  return (
+    <div className="yolo-chat-list-legend" aria-hidden="true">
+      {items.map((item) => (
+        <span className="yolo-chat-list-legend-item" key={item.label}>
+          <kbd className="yolo-chat-list-legend-key">{item.key}</kbd>
+          <span className="yolo-chat-list-legend-label">{item.label}</span>
+        </span>
+      ))}
+    </div>
+  )
+}
+
 // memo 是打开面板期间的性能承重墙：流式回复让父组件按帧重渲，列表项必须在
 // props 浅比较处全部拦下。契约是所有回调 props 每帧引用稳定（由 itemHandlers
 // 的 useLatestRef 层保证）、数据 props 都是原始值或帧间稳定引用（runSummary
@@ -392,11 +499,12 @@ const ChatListItem = memo(function ChatListItem({
   canRetryTitle,
   canExport,
   isRetrying,
+  isConfirmingDelete,
   onMouseEnter,
   onMouseLeave,
   isMoreMenuOpen,
   onSelect,
-  onDelete,
+  onRequestDelete,
   onTogglePinned,
   onRetryTitle,
   onExport,
@@ -425,11 +533,14 @@ const ChatListItem = memo(function ChatListItem({
   canRetryTitle: boolean
   canExport: boolean
   isRetrying: boolean
+  /** issue #567 Step 5：确认态提升到 ChatListDropdown，键盘删除快捷键和行内
+   *  删除按钮共用同一份状态（见 resolveChatListDeleteConfirmation）。 */
+  isConfirmingDelete: boolean
   onMouseEnter: (conversationId: string) => void
   onMouseLeave: (conversationId: string) => void
   isMoreMenuOpen: boolean
   onSelect: (conversationId: string) => void
-  onDelete: (conversationId: string) => void
+  onRequestDelete: (conversationId: string) => void
   onTogglePinned: (conversationId: string) => void
   onRetryTitle: (conversationId: string) => void
   onExport: (conversationId: string) => void
@@ -463,14 +574,6 @@ const ChatListItem = memo(function ChatListItem({
     useMiddleTruncatedTitle(resolvedTitle)
   const reduceMotion = useReducedMotion()
   const isPresent = useIsPresent()
-  const {
-    isConfirming: isConfirmingDelete,
-    request: requestDelete,
-    reset: resetDeleteConfirmation,
-  } = useDeleteConfirmation(() => {
-    onCloseMoreMenu(conversationId)
-    onDelete(conversationId)
-  })
   const deleteActionLabel = isConfirmingDelete
     ? t('sidebar.chatList.confirmDelete', 'Click again to delete')
     : t('common.delete', 'Delete')
@@ -611,11 +714,12 @@ const ChatListItem = memo(function ChatListItem({
         if (isMobile) {
           clearPress()
         }
-        onMouseLeave(conversationId)
         // 行内删除按钮常驻显示（不再依赖「更多」展开态），指针移出条目即视作
-        // 「移出一段时间」的复位条件之一，另一半是 useDeleteConfirmation 自带的
-        // 3 秒超时。
-        resetDeleteConfirmation()
+        // 「移出一段时间」的复位条件之一，另一半是超时自动复位——两者现在都在
+        // ChatListDropdown 的 onMouseLeave 里完成（issue #567 Step 5：确认态
+        // 提升到父组件后，行内不再持有自己的确认状态，见 resolveChatListDeleteConfirmation
+        // 旁的注释）。
+        onMouseLeave(conversationId)
         if (isEditing || !itemRef.current) {
           return
         }
@@ -759,14 +863,17 @@ const ChatListItem = memo(function ChatListItem({
               </button>
             ) : null}
             {/* issue #567 Step 3：删除从 ⋯ 菜单/更多展开组移回常驻行内图标（改名 /
-                置顶 / 删除 / ⋯），不再需要先展开才能删；两步确认沿用同一个
-                useDeleteConfirmation 实例，未跟着挪位置。 */}
+                置顶 / 删除 / ⋯），不再需要先展开才能删。issue #567 Step 5：两步
+                确认状态提升到了 ChatListDropdown（onRequestDelete），行内点击
+                和 Mod+Backspace 键盘快捷键走同一份状态机
+                （resolveChatListDeleteConfirmation），不会各自以为自己是
+                「第一下」。 */}
             {!isEditing ? (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation()
-                  requestDelete()
+                  onRequestDelete(conversationId)
                 }}
                 className={`clickable-icon yolo-chat-list-dropdown-item-icon yolo-chat-list-delete-button${
                   isConfirmingDelete ? ' is-confirming' : ''
@@ -964,8 +1071,16 @@ export function ChatListDropdown({
     top: number
     left: number
   } | null>(null)
+  // issue #567 Step 5：删除的两步确认状态从 ChatListItem 提升上来（键盘快捷键
+  // 和行内按钮共用，见 resolveChatListDeleteConfirmation 旁的注释）。只有一行
+  // 能同时处于待确认态，用单个 nullable id 而不是 Set——语义上与 editingId/
+  // activeMenuId 是同一类「互斥的单行瞬时态」。
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
+    null,
+  )
   const triggerRef = useRef<HTMLButtonElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const searchInputRef = useRef<HTMLInputElement>(null)
   const contextMenuRef = useRef<HTMLDivElement>(null)
   const contextMenuAnchorRef = useRef<HTMLElement | null>(null)
   const searchCacheRef = useRef<
@@ -974,6 +1089,11 @@ export function ChatListDropdown({
   const searchIdRef = useRef(0)
   // 焦点所在条目的位置，用于它被删除后把焦点继承给顶上来的那条
   const focusedIndexRef = useRef<number | null>(null)
+  // confirmingDeleteId 的同步镜像：键盘快捷键处理器需要在同一次事件里立刻读到
+  // 「当前是不是已经在确认这一行」，不能等下一次渲染才看到 state——两次按键
+  // 之间没有渲染间隙保证。
+  const confirmingDeleteIdRef = useRef<string | null>(null)
+  const deleteConfirmTimerRef = useRef<number | null>(null)
   const isMobile = Platform.isMobileApp
 
   const deleteConversation = useCallback(
@@ -1008,6 +1128,17 @@ export function ChatListDropdown({
     },
     [onDelete],
   )
+
+  // issue #567 Step 5：删除两步确认的复位（超时/移出行/切换 tab/关闭弹层都
+  // 走这一个函数），对应旧 useDeleteConfirmation 里的 reset。
+  const resetDeleteConfirmationState = useCallback(() => {
+    if (deleteConfirmTimerRef.current !== null) {
+      window.clearTimeout(deleteConfirmTimerRef.current)
+      deleteConfirmTimerRef.current = null
+    }
+    confirmingDeleteIdRef.current = null
+    setConfirmingDeleteId(null)
+  }, [])
 
   const normalizedQuery = useMemo(
     () => searchQuery.trim().toLowerCase(),
@@ -1159,6 +1290,7 @@ export function ChatListDropdown({
         setMoreMenuConversationId(null)
         setActiveMenuId(null)
         setMenuPosition(null)
+        resetDeleteConfirmationState()
         setPendingDeletionIds((previous) =>
           previous.size === 0 ? previous : new Set(),
         )
@@ -1171,10 +1303,16 @@ export function ChatListDropdown({
         setMoreMenuConversationId(null)
         setActiveMenuId(null)
         setMenuPosition(null)
+        resetDeleteConfirmationState()
       }
       setOpen(nextOpen)
     },
-    [clearContentMatches, currentConversationId, pinnedSortedChatList],
+    [
+      clearContentMatches,
+      currentConversationId,
+      pinnedSortedChatList,
+      resetDeleteConfirmationState,
+    ],
   )
 
   useEffect(() => {
@@ -1286,6 +1424,13 @@ export function ChatListDropdown({
         setMoreMenuConversationId((prev) =>
           prev === conversationId ? null : prev,
         )
+        // issue #567 Step 5：指针移出这一行是待确认态的复位条件之一（另一半是
+        // 超时），确认态提升到父组件后挪到这里——只复位「正好是这一行」的确认，
+        // 不影响别的行（旧的行内 useDeleteConfirmation 天然只管自己，这里用 id
+        // 比对复刻同样的效果）。
+        if (confirmingDeleteIdRef.current === conversationId) {
+          resetDeleteConfirmationState()
+        }
       },
       onSelect: (conversationId: string) => {
         void Promise.resolve(itemActionsRef.current.onSelect(conversationId))
@@ -1296,7 +1441,27 @@ export function ChatListDropdown({
             console.error('Failed to select conversation', error)
           })
       },
-      onDelete: (conversationId: string) => {
+      // issue #567 Step 5：两步确认——沿用 resolveChatListDeleteConfirmation
+      // 的判定，行内删除按钮和 Mod+Backspace 键盘快捷键都走这一个入口，共用
+      // 同一份 confirmingDeleteId，不会各自以为自己是「第一下」。
+      onRequestDelete: (conversationId: string) => {
+        const result = resolveChatListDeleteConfirmation(
+          confirmingDeleteIdRef.current,
+          conversationId,
+        )
+        if (result === 'arm') {
+          if (deleteConfirmTimerRef.current !== null) {
+            window.clearTimeout(deleteConfirmTimerRef.current)
+          }
+          confirmingDeleteIdRef.current = conversationId
+          setConfirmingDeleteId(conversationId)
+          deleteConfirmTimerRef.current = window.setTimeout(
+            resetDeleteConfirmationState,
+            DELETE_CONFIRM_TIMEOUT_MS,
+          )
+          return
+        }
+        resetDeleteConfirmationState()
         setMoreMenuConversationId(null)
         itemActionsRef.current.deleteConversation(conversationId)
       },
@@ -1362,6 +1527,10 @@ export function ChatListDropdown({
         )
           .then(() => {
             setEditingId(null)
+            // issue #567 Step 5：提交改名后把焦点送回搜索框，键盘链路（↑↓/
+            // Enter/快捷键）不因为改名而在 <body> 上断掉——与 Esc 取消改名
+            // 走的是同一个「焦点回搜索框」终点。
+            searchInputRef.current?.focus({ preventScroll: true })
           })
           .catch((error) => {
             console.error('Failed to update conversation title', error)
@@ -1405,7 +1574,7 @@ export function ChatListDropdown({
         openContextMenu(conversationId, cardEl, { clientX, clientY })
       },
     }),
-    [itemActionsRef, openContextMenu],
+    [itemActionsRef, openContextMenu, resetDeleteConfirmationState],
   )
 
   useEffect(() => {
@@ -1602,6 +1771,10 @@ export function ChatListDropdown({
     [activeMenuId, renderedChatList],
   )
 
+  // issue #567 Step 5：只服务于弹层刚打开、Radix Content 自身持有焦点、用户
+  // 还没点进/Tab 进搜索框那一瞬间——一旦焦点落进搜索框（绝大多数时间），键盘
+  // 事件被下面 handleSearchInputKeyDown 直接接住，不会冒泡到这里（搜索框自己
+  // stopPropagation）。两处的移动计算共用 computeNextHighlightedIndex。
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const target = e.target
@@ -1613,17 +1786,13 @@ export function ChatListDropdown({
         return
       }
       const activeList = renderedChatList
-      if (e.key === 'ArrowUp') {
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
         if (activeList.length === 0) return
-        const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
-        const nextIndex = Math.max(0, currentIndex - 1)
-        const nextConversationId = activeList[nextIndex]?.id ?? null
-        setFocusedConversationId(nextConversationId)
-        setScrollIntoViewConversationId(nextConversationId)
-      } else if (e.key === 'ArrowDown') {
-        if (activeList.length === 0) return
-        const currentIndex = focusedIndex === -1 ? 0 : focusedIndex
-        const nextIndex = Math.min(activeList.length - 1, currentIndex + 1)
+        const nextIndex = computeNextHighlightedIndex(
+          focusedIndex,
+          e.key === 'ArrowUp' ? 'up' : 'down',
+          activeList.length,
+        )
         const nextConversationId = activeList[nextIndex]?.id ?? null
         setFocusedConversationId(nextConversationId)
         setScrollIntoViewConversationId(nextConversationId)
@@ -1645,13 +1814,100 @@ export function ChatListDropdown({
     [renderedChatList, focusedConversationId, focusedIndex, onSelect],
   )
 
+  // issue #567 Step 5：F2 改名走 editingId（与鼠标点铅笔同一条路径），取消
+  // 用 Esc（见下面 handleContentEscapeKeyDown 的分层）、提交用 Enter（
+  // TitleInput 自带）——两条退出路径都要把焦点送回搜索框，键盘链路不断在
+  // <body> 上。
+  const cancelEdit = useCallback(() => {
+    setEditingId(null)
+    searchInputRef.current?.focus({ preventScroll: true })
+  }, [])
+
   // issue #567 Step 3：Esc 分层的另一半，见 handlePopoverEscapeKeyDown 和
   // handleContextMenuKeyDown 边上的注释——这是唯一真正拦得住 Radix 的钩子。
+  // issue #567 Step 5：新增第二层——改名编辑态。层级判定复用同一个
+  // handlePopoverEscapeKeyDown（它的逻辑本来就是「isOpen 就消费掉这次 Esc」，
+  // 对任意一层都成立，不需要为了多一层而改它的签名）：ctx 菜单开着时优先只关
+  // 菜单；菜单没开、正在改名时只取消改名；两者都没有则放行给 Radix 默认关闭
+  // 弹层。
   const handleContentEscapeKeyDown = useCallback(
     (e: KeyboardEvent) => {
-      handlePopoverEscapeKeyDown(e, activeMenuId !== null, closeContextMenu)
+      if (activeMenuId !== null) {
+        handlePopoverEscapeKeyDown(e, true, closeContextMenu)
+        return
+      }
+      handlePopoverEscapeKeyDown(e, editingId !== null, cancelEdit)
     },
-    [activeMenuId, closeContextMenu],
+    [activeMenuId, cancelEdit, closeContextMenu, editingId],
+  )
+
+  // issue #567 Step 5：搜索框键盘处理——产品决策是键盘焦点全程留在搜索框，
+  // 详见 resolveChatListSearchKeyboardAction 头注释里的键位取舍备忘。只对
+  // 判定出动作的按键 preventDefault+stopPropagation；其余按键（正常打字、
+  // 左右移动光标等）不受影响,继续走浏览器默认行为。
+  const handleSearchInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      const action = resolveChatListSearchKeyboardAction(e, Platform.isMacOS)
+      if (!action) {
+        // 沿用原有的防御性 stopPropagation：搜索框里的任意按键都不应该冒泡出
+        // 弹层（避免误触发 Obsidian 全局热键），未识别的动作也不例外。
+        e.stopPropagation()
+        return
+      }
+      e.preventDefault()
+      e.stopPropagation()
+      switch (action.type) {
+        case 'navigate': {
+          if (renderedChatList.length === 0) return
+          const nextIndex = computeNextHighlightedIndex(
+            focusedIndex,
+            action.direction,
+            renderedChatList.length,
+          )
+          const nextConversationId = renderedChatList[nextIndex]?.id ?? null
+          setFocusedConversationId(nextConversationId)
+          setScrollIntoViewConversationId(nextConversationId)
+          return
+        }
+        case 'open': {
+          const conversationId =
+            focusedConversationId ?? renderedChatList[0]?.id
+          if (!conversationId) return
+          void Promise.resolve(onSelect(conversationId))
+            .then(() => {
+              setOpen(false)
+            })
+            .catch((error) => {
+              console.error('Failed to select conversation from list', error)
+            })
+          return
+        }
+        case 'delete': {
+          if (!focusedConversationId) return
+          itemHandlers.onRequestDelete(focusedConversationId)
+          return
+        }
+        case 'togglePin': {
+          // 仅 user 区有效：task 会话不可置顶，与鼠标态（canPin）保持一致。
+          if (!focusedConversationId || activeSection !== 'user') return
+          itemHandlers.onTogglePinned(focusedConversationId)
+          return
+        }
+        case 'rename': {
+          if (!focusedConversationId) return
+          itemHandlers.onStartEdit(focusedConversationId)
+          return
+        }
+      }
+    },
+    [
+      activeSection,
+      focusedConversationId,
+      focusedIndex,
+      itemHandlers,
+      onSelect,
+      renderedChatList,
+    ],
   )
 
   return (
@@ -1698,6 +1954,7 @@ export function ChatListDropdown({
           <div className="yolo-chat-list-search-field">
             <Search size={13} className="yolo-chat-list-search-icon" />
             <input
+              ref={searchInputRef}
               type="search"
               value={searchQuery}
               placeholder={t(
@@ -1710,7 +1967,7 @@ export function ChatListDropdown({
               )}
               className="yolo-chat-list-search-input"
               onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.stopPropagation()}
+              onKeyDown={handleSearchInputKeyDown}
             />
           </div>
         </div>
@@ -1735,6 +1992,7 @@ export function ChatListDropdown({
               setMoreMenuConversationId(null)
               setActiveMenuId(null)
               setMenuPosition(null)
+              resetDeleteConfirmationState()
             }}
           >
             <span>
@@ -1757,6 +2015,7 @@ export function ChatListDropdown({
               setMoreMenuConversationId(null)
               setActiveMenuId(null)
               setMenuPosition(null)
+              resetDeleteConfirmationState()
             }}
           >
             <span>
@@ -1878,6 +2137,7 @@ export function ChatListDropdown({
                     canRetryTitle={!chat.cliSession}
                     canExport={!chat.cliSession}
                     isRetrying={retryingConversationIds.has(chat.id)}
+                    isConfirmingDelete={confirmingDeleteId === chat.id}
                     isMoreMenuOpen={moreMenuConversationId === chat.id}
                     isContextMenuOpen={activeMenuId === chat.id}
                     isMobile={isMobile}
@@ -1892,7 +2152,7 @@ export function ChatListDropdown({
                     onMouseEnter={itemHandlers.onMouseEnter}
                     onMouseLeave={itemHandlers.onMouseLeave}
                     onSelect={itemHandlers.onSelect}
-                    onDelete={itemHandlers.onDelete}
+                    onRequestDelete={itemHandlers.onRequestDelete}
                     onRetryTitle={itemHandlers.onRetryTitle}
                     onTogglePinned={itemHandlers.onTogglePinned}
                     onExport={itemHandlers.onExport}
@@ -1933,6 +2193,7 @@ export function ChatListDropdown({
             </>
           )}
         </ul>
+        {!Platform.isMobile ? <ChatListKeyboardLegend /> : null}
         {activeMenuChat && menuPosition
           ? createPortal(
               // issue #567 Step 3（追加需求）：Portal 到 <body>，逃出母弹层

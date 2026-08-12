@@ -108,6 +108,13 @@ export type TranslationKeys = {
       moreActions?: string
       confirmDelete?: string
       openHistory?: string
+      legend?: {
+        navigate?: string
+        open?: string
+        delete?: string
+        pin?: string
+        rename?: string
+      }
     }
     chat?: {
       exportSuccess?: string

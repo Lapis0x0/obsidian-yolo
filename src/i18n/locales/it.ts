@@ -116,6 +116,13 @@ export const it: DeepPartial<TranslationKeys> = {
       moreActions: 'Altre azioni',
       confirmDelete: 'Clicca di nuovo per eliminare',
       openHistory: 'Cronologia chat',
+      legend: {
+        navigate: 'Naviga',
+        open: 'Apri',
+        delete: 'Elimina',
+        pin: 'Fissa',
+        rename: 'Rinomina',
+      },
     },
     chat: {
       exportSuccess: 'Chat esportata in {path}',

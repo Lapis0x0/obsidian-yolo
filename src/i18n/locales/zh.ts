@@ -99,6 +99,13 @@ export const zh: TranslationKeys = {
       moreActions: '更多操作',
       confirmDelete: '再次点击确认删除',
       openHistory: '聊天历史',
+      legend: {
+        navigate: '导航',
+        open: '打开',
+        delete: '删除',
+        pin: '置顶',
+        rename: '改名',
+      },
     },
     chat: {
       exportSuccess: '已导出聊天记录到 {path}',

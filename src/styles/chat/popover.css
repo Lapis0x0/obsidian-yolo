@@ -499,10 +499,16 @@
     background-color var(--yolo-anim-duration-feedback) ease;
 }
 
+/* issue #567 Step 5：键盘高亮行（data-highlighted）与鼠标悬停同权显形操作
+   图标——纯键盘操作（Mod+Shift+P 置顶、Mod+Backspace 删除）的状态反馈不能
+   依赖鼠标恰好悬停在该行上，否则星标点亮/删除变红发生在不可见的图标上，
+   操作看起来像没生效。 */
 .yolo-popover-surface
-  li:is(:hover, :focus-within)
+  li:is(:hover, :focus-within, [data-highlighted='true'])
   .yolo-chat-list-dropdown-item-icon,
-.yolo-popover-surface li:is(:hover, :focus-within) .yolo-chat-list-pin-button {
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-pin-button {
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
@@ -758,6 +764,54 @@ button.yolo-chat-list-origin-filter:focus-visible {
   padding: 0;
   /* 退场条目会切到 absolute 当帧让出空间，需要这里做定位参照 */
   position: relative;
+}
+
+/*
+ * issue #567 Step 5：键位图例，仿 Obsidian 快速切换器的 prompt-instructions。
+ * 是 .yolo-chat-list-dropdown-content（flex column）里 <ul> 的下一个兄弟节点，
+ * flex-shrink: 0 保证它不参与滚动区、不被压缩——列表滚动只发生在上面的
+ * .yolo-model-select-list 内部。
+ */
+.yolo-chat-list-legend {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 52%, transparent);
+  padding: 6px 10px;
+  background: var(--background-primary);
+}
+
+.yolo-chat-list-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.yolo-chat-list-legend-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+  border-radius: var(--radius-s);
+  padding: 0 3px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.yolo-chat-list-legend-label {
+  color: var(--text-faint);
 }
 
 /*
@@ -1380,9 +1434,17 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
  * 上色是一次点击回执而不是状态过渡，必须瞬时完成；渐变会让人拿点击时刻和颜色
  * 到位的时刻对表，中间的过渡色就被读成卡顿。复位方向保留淡出，让自动超时取消
  * 时不突兀。duration 按 transition-property 的顺序对位覆盖，只改 color 一项。
+ *
+ * issue #567 Step 5：opacity/transform/pointer-events 强制置 1（与下面
+ * .is-pinned 同一惯例）——删除按钮平时靠 :hover/:focus-within 才显形，但
+ * Mod+Backspace 键盘快捷键触发确认态时这一行未必被鼠标悬停，待确认反馈必须
+ * 不依赖鼠标位置就可见。
  */
 .yolo-popover-surface li .yolo-chat-list-delete-button.is-confirming {
   color: var(--color-red);
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
   /* L1 回执：只把 color 一项压成 0s，其余按位保留 L2 的显隐时长 */
   transition-duration: var(--yolo-chat-list-presence-duration),
     var(--yolo-chat-list-presence-duration),

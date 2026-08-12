@@ -99,6 +99,13 @@ export const en: TranslationKeys = {
       moreActions: 'More actions',
       confirmDelete: 'Click again to delete',
       openHistory: 'Chat history',
+      legend: {
+        navigate: 'Navigate',
+        open: 'Open',
+        delete: 'Delete',
+        pin: 'Pin',
+        rename: 'Rename',
+      },
     },
     chat: {
       exportSuccess: 'Exported chat to {path}',

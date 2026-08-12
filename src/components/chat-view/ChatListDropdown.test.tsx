@@ -58,7 +58,10 @@ import {
   ChatListDropdown,
   clampContextMenuPosition,
   computeMiddleTruncatedTitle,
+  computeNextHighlightedIndex,
   handlePopoverEscapeKeyDown,
+  resolveChatListDeleteConfirmation,
+  resolveChatListSearchKeyboardAction,
   splitTitleForMiddleTruncation,
 } from './ChatListDropdown'
 
@@ -147,6 +150,12 @@ const findDivByClass = (root: ReactElement, cls: string) =>
   walkElements(root).find(
     (element) =>
       element.type === 'div' && classNames(element.props).includes(cls),
+  )
+
+const findInputByClass = (root: ReactElement, cls: string) =>
+  walkElements(root).find(
+    (element) =>
+      element.type === 'input' && classNames(element.props).includes(cls),
   )
 
 // createTree 只暴露 onSelect（既有用例的需要）；点击误触测试还要断言
@@ -426,6 +435,122 @@ describe('ChatListDropdown', () => {
       expect(html).toContain(`title="${longTitle}"`)
     })
   })
+
+  // issue #567 Step 5：弹层键盘可达。焦点全程留在搜索框（对齐 Obsidian 快速
+  // 切换器），按键 → 动作的判定逻辑在 resolveChatListSearchKeyboardAction 的
+  // 专门单测里覆盖；这里测组件真正接线到了搜索框的 onKeyDown、以及删除两步
+  // 确认从 ChatListItem 提升到 ChatListDropdown 后键盘/鼠标共用同一份状态。
+  describe('keyboard navigation and shortcuts (issue #567 Step 5)', () => {
+    // 两步删除确认靠 window.setTimeout 做 3 秒自动复位；测试环境是 node（没有
+    // window 全局），沿用上面「action icon clicks...」describe 里的同款
+    // 最小 shim + fake timers 手法（原因见那里的注释）。
+    let originalWindow: unknown
+    beforeAll(() => {
+      jest.useFakeTimers()
+      originalWindow = (global as { window?: unknown }).window
+      ;(global as { window?: unknown }).window = { setTimeout, clearTimeout }
+    })
+    afterAll(() => {
+      jest.useRealTimers()
+      ;(global as { window?: unknown }).window = originalWindow
+    })
+
+    it('requires two presses on the same row before it actually deletes (arm, then confirm)', () => {
+      const { tree, mocks } = createInteractionTree([chat('yolo', 'Normal')])
+      const row = historyRows(tree)[0]
+      if (!row) throw new Error('expected a row')
+      const onRequestDelete = row.props.onRequestDelete as (
+        conversationId: string,
+      ) => void
+
+      onRequestDelete('yolo')
+      expect(mocks.onDelete).not.toHaveBeenCalled()
+
+      onRequestDelete('yolo')
+      expect(mocks.onDelete).toHaveBeenCalledWith('yolo')
+    })
+
+    it('pressing delete on a different row arms that row instead of confirming the first one', () => {
+      const { tree, mocks } = createInteractionTree([
+        chat('a', 'A'),
+        chat('b', 'B'),
+      ])
+      const rows = historyRows(tree)
+      const rowA = rows.find((row) => row.props.conversationId === 'a')
+      const rowB = rows.find((row) => row.props.conversationId === 'b')
+      if (!rowA || !rowB) throw new Error('expected two rows')
+      const onRequestDelete = rowA.props.onRequestDelete as (
+        conversationId: string,
+      ) => void
+
+      onRequestDelete('a')
+      onRequestDelete('b') // 切到另一行：不是「a 的第二下」，b 重新进入待确认
+      expect(mocks.onDelete).not.toHaveBeenCalled()
+      onRequestDelete('b')
+      expect(mocks.onDelete).toHaveBeenCalledWith('b')
+      expect(mocks.onDelete).not.toHaveBeenCalledWith('a')
+    })
+
+    const buildSearchInputKeyDown = (chatList: ChatConversationMetadata[]) => {
+      const { tree, mocks } = createInteractionTree(chatList)
+      const searchInput = findInputByClass(tree, 'yolo-chat-list-search-input')
+      if (!searchInput) throw new Error('expected the search input')
+      return {
+        onKeyDown: searchInput.props.onKeyDown as (e: unknown) => void,
+        mocks,
+      }
+    }
+
+    const keyEvent = (
+      overrides: Partial<{
+        key: string
+        metaKey: boolean
+        ctrlKey: boolean
+        shiftKey: boolean
+        altKey: boolean
+      }>,
+    ) => ({
+      key: '',
+      metaKey: false,
+      ctrlKey: false,
+      shiftKey: false,
+      altKey: false,
+      preventDefault: jest.fn(),
+      stopPropagation: jest.fn(),
+      ...overrides,
+    })
+
+    it('Enter opens a conversation, preventDefault+stopPropagation so it never leaks to Obsidian', () => {
+      // focusedConversationId 在这套浅渲染测试里恒为初始值 null（useState 被
+      // mock 成不响应 setState），落到 renderedChatList[0] 的兜底分支——这条
+      // 兜底本身也是真实存在的行为，值得覆盖。
+      const { onKeyDown, mocks } = buildSearchInputKeyDown([
+        chat('alpha', 'Alpha'),
+        chat('beta', 'Beta'),
+      ])
+      const event = keyEvent({ key: 'Enter' })
+      onKeyDown(event)
+      expect(event.preventDefault).toHaveBeenCalledTimes(1)
+      expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+      expect(mocks.onSelect).toHaveBeenCalledWith('alpha')
+    })
+
+    it('an unrecognized key (normal typing) only stops propagation, never preventDefault', () => {
+      const { onKeyDown } = buildSearchInputKeyDown([chat('yolo', 'Normal')])
+      const event = keyEvent({ key: 'a' })
+      onKeyDown(event)
+      expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+    })
+
+    it('Backspace without a modifier is left alone so normal text editing keeps working', () => {
+      const { onKeyDown } = buildSearchInputKeyDown([chat('yolo', 'Normal')])
+      const event = keyEvent({ key: 'Backspace' })
+      onKeyDown(event)
+      expect(event.stopPropagation).toHaveBeenCalledTimes(1)
+      expect(event.preventDefault).not.toHaveBeenCalled()
+    })
+  })
 })
 
 // issue #567 Step 3：Esc 分层。Radix Popover 的 Escape 探测挂在 document 捕获
@@ -642,5 +767,166 @@ describe('computeMiddleTruncatedTitle', () => {
     // 前缀按 code point 切：不应出现残缺的代理对（单独的 \uD83D 或 \uDE00）
     const beforeEllipsis = result.split('…')[0] ?? ''
     expect(beforeEllipsis).toBe('😀'.repeat(5))
+  })
+})
+
+// issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——搜索框键盘处理器和
+// 容器级 handleKeyDown 共用。到底/到顶不回绕。
+describe('computeNextHighlightedIndex', () => {
+  it('moves down from the current index', () => {
+    expect(computeNextHighlightedIndex(1, 'down', 5)).toBe(2)
+  })
+
+  it('moves up from the current index', () => {
+    expect(computeNextHighlightedIndex(2, 'up', 5)).toBe(1)
+  })
+
+  it('treats "nothing highlighted yet" (-1) as if the first item were already the base', () => {
+    // 与原有 handleKeyDown 的既有行为一致（这里只是把它抽成纯函数，没有改变
+    // 语义）：base 取 0，↓ 从 0 再往下移一格到 1，↑ 从 0 停在 0。
+    expect(computeNextHighlightedIndex(-1, 'down', 5)).toBe(1)
+    expect(computeNextHighlightedIndex(-1, 'up', 5)).toBe(0)
+  })
+
+  it('clamps at the bottom without wrapping', () => {
+    expect(computeNextHighlightedIndex(4, 'down', 5)).toBe(4)
+  })
+
+  it('clamps at the top without wrapping', () => {
+    expect(computeNextHighlightedIndex(0, 'up', 5)).toBe(0)
+  })
+
+  it('returns -1 for an empty list', () => {
+    expect(computeNextHighlightedIndex(0, 'down', 0)).toBe(-1)
+  })
+})
+
+// issue #567 Step 5：搜索框键盘事件 → 动作的判定，纯函数。键位取舍（Mod+P
+// 与 Obsidian 命令面板冲突、换成 Mod+Shift+P）见 ChatListDropdown.tsx 里
+// resolveChatListSearchKeyboardAction 头注释与计划文档 Step 5 实施备忘。
+describe('resolveChatListSearchKeyboardAction', () => {
+  it('resolves ArrowUp/ArrowDown to navigate actions', () => {
+    expect(
+      resolveChatListSearchKeyboardAction({ key: 'ArrowUp' } as never, false),
+    ).toEqual({ type: 'navigate', direction: 'up' })
+    expect(
+      resolveChatListSearchKeyboardAction({ key: 'ArrowDown' } as never, false),
+    ).toEqual({ type: 'navigate', direction: 'down' })
+  })
+
+  it('resolves a plain Enter to open', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        {
+          key: 'Enter',
+          metaKey: false,
+          ctrlKey: false,
+          shiftKey: false,
+          altKey: false,
+        } as never,
+        false,
+      ),
+    ).toEqual({ type: 'open' })
+  })
+
+  it('resolves Mod+Backspace to delete, on both mac and non-mac modifier keys', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'Backspace', metaKey: true, shiftKey: false } as never,
+        true,
+      ),
+    ).toEqual({ type: 'delete' })
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'Backspace', ctrlKey: true, shiftKey: false } as never,
+        false,
+      ),
+    ).toEqual({ type: 'delete' })
+  })
+
+  it('does not resolve a bare Backspace (no modifier) — normal text editing must keep working', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'Backspace', metaKey: false, ctrlKey: false } as never,
+        true,
+      ),
+    ).toBeNull()
+  })
+
+  // 置顶键位两次换键的原因见 resolveChatListSearchKeyboardAction 头注释：
+  // Mod+P 撞 Obsidian 命令面板，Mod+Shift+P 在用户系统上被 macOS 级全局
+  // 快捷键吞掉（字母键事件根本进不了渲染进程），落定 Mod+Shift+S（Star）。
+  it('resolves Mod+Shift+S to togglePin, case-insensitively', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 's', metaKey: true, shiftKey: true } as never,
+        true,
+      ),
+    ).toEqual({ type: 'togglePin' })
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'S', ctrlKey: true, shiftKey: true } as never,
+        false,
+      ),
+    ).toEqual({ type: 'togglePin' })
+  })
+
+  it('does not resolve Mod+S without Shift — that combo is Obsidian’s save-file hotkey', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 's', metaKey: true, shiftKey: false } as never,
+        true,
+      ),
+    ).toBeNull()
+  })
+
+  // 改名不用 F2：Obsidian 默认热键 workspace:edit-file-title 在宿主 keymap
+  // 捕获层消费 F2，事件到不了弹层；mac 媒体键布局下 F2 还需要按 Fn。见
+  // resolveChatListSearchKeyboardAction 头注释的键位取舍。
+  it('resolves Mod+R to rename', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'r', metaKey: true, shiftKey: false, altKey: false } as never,
+        true,
+      ),
+    ).toEqual({ type: 'rename' })
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'R', ctrlKey: true, shiftKey: false, altKey: false } as never,
+        false,
+      ),
+    ).toEqual({ type: 'rename' })
+  })
+
+  it('does not resolve F2 (consumed by the host workspace:edit-file-title hotkey)', () => {
+    expect(
+      resolveChatListSearchKeyboardAction({ key: 'F2' } as never, false),
+    ).toBeNull()
+  })
+
+  it('returns null for ordinary typing keys', () => {
+    expect(
+      resolveChatListSearchKeyboardAction(
+        { key: 'a', metaKey: false, ctrlKey: false } as never,
+        false,
+      ),
+    ).toBeNull()
+  })
+})
+
+// issue #567 Step 5：删除两步确认的判定，从原先 ChatListItem 内部的
+// useDeleteConfirmation 提升为纯函数——键盘 Mod+Backspace 和行内删除按钮现在
+// 共用同一份状态，见 ChatListDropdown.tsx 里这个函数头注释。
+describe('resolveChatListDeleteConfirmation', () => {
+  it('arms when nothing is currently pending confirmation', () => {
+    expect(resolveChatListDeleteConfirmation(null, 'a')).toBe('arm')
+  })
+
+  it('arms when a different row is pending confirmation (switching target does not confirm)', () => {
+    expect(resolveChatListDeleteConfirmation('a', 'b')).toBe('arm')
+  })
+
+  it('confirms when the same row is pressed again', () => {
+    expect(resolveChatListDeleteConfirmation('a', 'a')).toBe('confirm')
   })
 })
