@@ -1046,6 +1046,11 @@ export function YoloChatSurface({
             timelineHandlersRef.current.handleHistoricalUserMessageDelete(
               message.id,
             )
+            // Focus before the deleted turn unmounts, otherwise the trash
+            // button takes DOM focus down with it and lands on `<body>` —
+            // most visible when the last turn goes and the composer is the
+            // only thing left on screen.
+            chatUserInputRefs.current.get(inputMessageId)?.focus()
           }}
           displayMentionables={message.mentionables}
           chatUserInputRef={(ref) => registerChatUserInputRef(message.id, ref)}

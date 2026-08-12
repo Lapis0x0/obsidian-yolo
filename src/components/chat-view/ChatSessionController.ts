@@ -84,9 +84,10 @@ export type ChatSessionSnapshot = {
  * `docs/plans/2026-08-11-arch-governance-step3-chat-state-ownership.md`,
  * "分期 C" boundary rules).
  */
-export type ChatSessionPersistOutcome =
-  | { kind: 'deleted' }
-  | { kind: 'persisted'; ok: Promise<boolean> }
+export type ChatSessionPersistOutcome = {
+  kind: 'persisted'
+  ok: Promise<boolean>
+}
 
 /**
  * Everything `submit`/`abortRun` need from the CLI runtime side for the
@@ -249,7 +250,6 @@ export type ChatSessionControllerDeps = {
     assistantGroupBoundaryMessageIds: string[] | undefined,
     options?: { touchUpdatedAt?: boolean },
   ) => Promise<void>
-  deleteConversation: (id: string) => Promise<void>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   /**
    * `chatModeForSave` is an identity function today (see
@@ -592,18 +592,44 @@ export class ChatSessionController {
   }
 
   /**
+   * Align AgentService's in-memory copy of the conversation with a message
+   * list the user just mutated outside of a run (deletions). Without this the
+   * service keeps the pre-deletion list and any later publish — a background
+   * task result appending to `entry.state.messages`, for instance — pushes the
+   * deleted messages straight back into React state through `mergeAgentState`.
+   * Deleting every message used to avoid this only as a side effect of
+   * `dropConversation`, which also tombstoned the conversation id.
+   *
+   * Public for the same reason `persist` below is: the mentionable-delete-from-all
+   * path in `useChatInputController.ts` mutates the message list itself.
+   */
+  syncAgentConversationMessages(messages: ChatMessage[]): void {
+    this.deps
+      .getAgentService()
+      .replaceConversationMessages(
+        this.snapshot.currentConversationId,
+        messages,
+        this.effectiveCompactionState(messages),
+      )
+  }
+
+  /**
    * Public (debounced persist, no Notice — the caller decides what to show
    * on failure). Exposed for the same reason as
    * `buildAssistantGroupBoundaryMessageIdsAfterUserRemoval` above: the
    * mentionable-delete-from-all path in `useChatInputController.ts` used to
    * go through `useYoloChatSession`'s own `persistConversation` wrapper;
    * this is the controller-owned equivalent.
+   *
+   * Persisting an empty list is meaningful: an existing conversation the user
+   * emptied stays in history with zero messages (the "never created" case is
+   * filtered in `persistConversationInternal`, which knows whether the row
+   * exists).
    */
   persist(
     messages: ChatMessage[],
     assistantGroupBoundaryIdsOverride?: readonly string[],
   ): Promise<boolean> {
-    if (messages.length === 0) return Promise.resolve(true)
     const conversationId = this.snapshot.currentConversationId
     const prefs = this.preferencesController.getSnapshot()
     const effectiveOverrides = {
@@ -654,7 +680,6 @@ export class ChatSessionController {
     messages: ChatMessage[],
     assistantGroupBoundaryIdsOverride?: readonly string[],
   ): Promise<boolean> {
-    if (messages.length === 0) return Promise.resolve(true)
     const conversationId = this.snapshot.currentConversationId
     const prefs = this.preferencesController.getSnapshot()
     const effectiveOverrides = {
@@ -1151,11 +1176,7 @@ export class ChatSessionController {
       ),
     })
 
-    if (nextMessages.length === 0) {
-      void this.deps.deleteConversation(this.snapshot.currentConversationId)
-      return { removedMessages, outcome: { kind: 'deleted' } }
-    }
-
+    this.syncAgentConversationMessages(nextMessages)
     const ok = this.persist(nextMessages, nextAssistantGroupBoundaryMessageIds)
     return { removedMessages, outcome: { kind: 'persisted', ok } }
   }
@@ -1223,6 +1244,7 @@ export class ChatSessionController {
       chatMessages: nextMessages,
       assistantGroupBoundaryMessageIds: nextAssistantGroupBoundaryMessageIds,
     })
+    this.syncAgentConversationMessages(nextMessages)
     const ok = this.persist(nextMessages, nextAssistantGroupBoundaryMessageIds)
     return { outcome: { kind: 'persisted', ok } }
   }
@@ -1280,11 +1302,7 @@ export class ChatSessionController {
       ),
     })
 
-    if (nextMessages.length === 0) {
-      void this.deps.deleteConversation(this.snapshot.currentConversationId)
-      return { removedMessages, outcome: { kind: 'deleted' } }
-    }
-
+    this.syncAgentConversationMessages(nextMessages)
     const ok = this.persist(nextMessages, nextAssistantGroupBoundaryMessageIds)
     return { removedMessages, outcome: { kind: 'persisted', ok } }
   }

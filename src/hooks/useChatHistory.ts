@@ -168,6 +168,12 @@ export function useChatHistory(): UseChatHistory {
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
+      // 「一条消息都没有」不等于「这个会话不该存在」：从未发过消息的新会话不建行，
+      // 但已存在的会话被清空后仍然是同一个会话，必须把空消息写回去，否则重新加载
+      // 会把删掉的消息复活。判据是会话行在不在，不是消息数。
+      if (messages.length === 0 && !existingConversation) {
+        return
+      }
       const normalizedCompaction =
         normalizeChatConversationCompactionState(compaction)
       const existingCompaction = normalizeChatConversationCompactionState(

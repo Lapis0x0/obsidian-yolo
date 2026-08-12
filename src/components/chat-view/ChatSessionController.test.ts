@@ -219,7 +219,6 @@ function createPreferencesController(conversationId: string) {
 function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
   const createOrUpdateConversation = jest.fn(async () => undefined)
   const createOrUpdateConversationImmediately = jest.fn(async () => undefined)
-  const deleteConversation = jest.fn(async () => undefined)
   const updateConversationTitle = jest.fn(async () => undefined)
   const compileUserMessagePrompt = jest.fn(async () => ({
     promptContent: null,
@@ -245,7 +244,6 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
     getAgentService: () => agentService,
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
-    deleteConversation,
     updateConversationTitle,
     chatModeForSave: (mode) => mode,
     getRequestContextBuilder,
@@ -262,7 +260,6 @@ function createDeps(agentService: ReturnType<typeof createMockAgentService>) {
     deps,
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
-    deleteConversation,
     updateConversationTitle,
     compileUserMessagePrompt,
     runConversation,
@@ -329,17 +326,29 @@ describe('ChatSessionController', () => {
     expect(createOrUpdateConversation).toHaveBeenCalledTimes(1)
   })
 
-  it('deletes the conversation instead of persisting when the last message is removed', async () => {
+  it('keeps the conversation and persists an empty list when the last message is removed', async () => {
     const user1 = userMessage('user-1')
-    const { controller, deleteConversation, createOrUpdateConversation } =
+    const { controller, createOrUpdateConversation, agentService } =
       createController('c1', [user1])
 
     const result = controller.removeHistoricalUserMessage('user-1')
 
-    expect(result.outcome).toEqual({ kind: 'deleted' })
+    expect(result.outcome.kind).toBe('persisted')
+    await expect(result.outcome.ok).resolves.toBe(true)
     expect(controller.getSnapshot().chatMessages).toEqual([])
-    expect(deleteConversation).toHaveBeenCalledWith('c1')
-    expect(createOrUpdateConversation).not.toHaveBeenCalled()
+    // Emptying is a message-level edit, not a conversation deletion: the id
+    // stays alive (an AgentService `dropConversation` would tombstone it and
+    // silently drop every later run) and the empty list is written back.
+    expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
+      'c1',
+      [],
+      [],
+    )
+    expect(createOrUpdateConversation).toHaveBeenCalledTimes(1)
+    expect(createOrUpdateConversation.mock.calls[0].slice(0, 2)).toEqual([
+      'c1',
+      [],
+    ])
   })
 
   it('updateHistoricalUserMessage never persists and reports whether it found the message', () => {
