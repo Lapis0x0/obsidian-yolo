@@ -33,6 +33,7 @@ import {
   preserveUnclosedMathSource,
   renderStreamingMath,
 } from './streamingMath'
+import { createStreamingRevealPlugin } from './streamingReveal'
 
 type StreamingMarkdownProps = {
   content: string
@@ -65,6 +66,11 @@ const REVEAL_RATE_SMOOTHING_TAU_MS = 200
 // handoff to the fully rendered message doesn't jump.
 const DRAIN_TARGET_LATENCY_MS = 120
 const DRAIN_MIN_CHARS_PER_SECOND = 200
+
+// A frame reveals at most REVEAL_MAX_CHARS_PER_SECOND / 60 ≈ 20 characters;
+// this leaves room for dropped frames while still catching the bulk jumps that
+// should not animate at all.
+const MAX_REVEAL_CHARS = 120
 
 // Strict scheme match so web-search citations (https URLs that happen to
 // carry a `yolo-cite=N` query param) aren't misrouted into vault navigation.
@@ -327,15 +333,31 @@ const MARKDOWN_COMPONENTS: Components = {
  * One top-level markdown block. Memoized on its source text so that a streamed
  * frame only re-parses the block the model is still writing into, instead of
  * the whole answer.
+ *
+ * `revealFrom` is an offset into this block's own source: characters past it
+ * are the ones this frame just revealed and get faded in. It is only passed to
+ * the trailing block, so a block that the stream has moved past re-renders once
+ * without it and sheds its animation spans.
  */
 const MarkdownBlock = memo(function MarkdownBlock({
   content,
+  revealFrom,
 }: {
   content: string
+  revealFrom?: number
 }) {
+  const rehypePlugins = useMemo(
+    () =>
+      revealFrom === undefined
+        ? undefined
+        : [createStreamingRevealPlugin(revealFrom)],
+    [revealFrom],
+  )
+
   return (
     <ReactMarkdown
       remarkPlugins={REMARK_PLUGINS}
+      rehypePlugins={rehypePlugins}
       skipHtml
       urlTransform={transformCitationUrl}
       components={MARKDOWN_COMPONENTS}
@@ -358,6 +380,9 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
   const targetContentRef = useRef(content)
   const containerRef = useRef<HTMLDivElement>(null)
   const splitCacheRef = useRef<MarkdownBlockSplit | null>(null)
+  const trailingBlockRef = useRef<{ index: number; length: number } | null>(
+    null,
+  )
   const animationFrameRef = useRef<number | null>(null)
   const animationWindowRef = useRef<Window | null>(null)
   const lastFrameTimeRef = useRef<number | null>(null)
@@ -524,6 +549,33 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
     return split.blocks
   }, [displayedContent])
 
+  // Where the trailing block stood on the previous frame. Written in an effect
+  // rather than during render because StrictMode renders twice, which would
+  // consume the previous length before the animation could use it.
+  const trailingBlockIndex = blocks.length - 1
+  const trailingBlockLength = blocks[trailingBlockIndex]?.length ?? 0
+  const previousTrailing = trailingBlockRef.current
+  const previousTrailingLength =
+    previousTrailing?.index === trailingBlockIndex ? previousTrailing.length : 0
+
+  useEffect(() => {
+    trailingBlockRef.current = {
+      index: trailingBlockIndex,
+      length: trailingBlockLength,
+    }
+  }, [trailingBlockIndex, trailingBlockLength])
+
+  // A jump far larger than a frame's worth of characters is not the stream
+  // writing — it is reduced motion, a refocus catch-up, or a rewrite dropping
+  // the whole answer in at once. Wrapping thousands of characters in spans for
+  // an animation nobody asked for is exactly the cost the block split just
+  // removed, so those frames render plain.
+  const revealFrom =
+    animateIncrementalText &&
+    trailingBlockLength - previousTrailingLength <= MAX_REVEAL_CHARS
+      ? previousTrailingLength
+      : undefined
+
   return (
     <div
       ref={containerRef}
@@ -535,7 +587,11 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
           // remount the trailing block on every streamed character, which
           // flickers and drops rendered math. Memoization on `content` is what
           // decides whether a block re-renders.
-          <MarkdownBlock key={index} content={block} />
+          <MarkdownBlock
+            key={index}
+            content={block}
+            revealFrom={index === trailingBlockIndex ? revealFrom : undefined}
+          />
         ))}
       </CitationSourcesContext.Provider>
     </div>
