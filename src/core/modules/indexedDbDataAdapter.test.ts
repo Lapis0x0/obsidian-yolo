@@ -322,35 +322,45 @@ describe('IndexedDbDataAdapter', () => {
     getAll.mockRestore()
   })
 
-  it('bounds wide immediate-child listings at the provider cap plus one', async () => {
+  it('bounds wide immediate-child listings at the query limit', async () => {
+    // The bound is exercised through a small injected limit. Filling a folder
+    // past the real 1024-entry cap costs ~16s of fake-IndexedDB writes, which
+    // made this test time out whenever the suite ran under load.
+    const listQueryLimit = 4
     const indexedDB = new IDBFactory()
-    const adapter = createAdapter(new FakeAppLocalStorage(), indexedDB)
+    const adapter = new IndexedDbDataAdapter(new FakeAppLocalStorage(), {
+      indexedDB,
+      createNamespaceId: () => FIRST_NAMESPACE,
+      listQueryLimit,
+    })
     await createTree(adapter)
     const now = Date.now()
     await putRawRecord(
       indexedDB,
       FIRST_NAMESPACE,
-      Array.from(
-        { length: MAX_MODULE_PRIVATE_LIST_ENTRIES + 2 },
-        (_, index) => ({
-          version: 1,
-          path: `private/notes/${String(index).padStart(4, '0')}.txt`,
-          parent: 'private/notes',
-          kind: 'file',
-          type: 'text',
-          ctime: now,
-          mtime: now,
-          size: 1,
-          data: 'x',
-        }),
-      ),
+      Array.from({ length: listQueryLimit + 2 }, (_, index) => ({
+        version: 1,
+        path: `private/notes/${String(index).padStart(4, '0')}.txt`,
+        parent: 'private/notes',
+        kind: 'file',
+        type: 'text',
+        ctime: now,
+        mtime: now,
+        size: 1,
+        data: 'x',
+      })),
     )
 
     const listed = await adapter.list('private/notes')
 
-    expect(listed.files).toHaveLength(MAX_MODULE_PRIVATE_LIST_ENTRIES + 1)
+    expect(listed.files).toHaveLength(listQueryLimit)
     expect(listed.folders).toEqual([])
-  }, 30_000)
+  })
+
+  it('ships a listing query limit one past the module private storage cap', () => {
+    // Guards the number the test above no longer exercises directly.
+    expect(MAX_MODULE_PRIVATE_LIST_ENTRIES).toBe(1024)
+  })
 
   it('commits concurrent writes to different records without losing either file', async () => {
     const adapter = createAdapter()

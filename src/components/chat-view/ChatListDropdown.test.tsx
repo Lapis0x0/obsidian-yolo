@@ -62,6 +62,13 @@ import {
 } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+import type {
+  KeymapContext,
+  KeymapEventHandler,
+  KeymapEventListener,
+  Modifier,
+} from 'obsidian'
+
 import type { ChatConversationMetadata } from '../../database/json/chat/types'
 
 import {
@@ -934,18 +941,34 @@ describe('resolveChatListDeleteConfirmation', () => {
 })
 
 const createFakeScope = () => {
-  const handlers = new Map<string, () => false | undefined>()
+  // Mirrors `Scope['register']` exactly: the production helpers take a
+  // `{ register: Scope['register'] }`, and a narrower mock signature (one that
+  // ignores the listener's arguments) is not assignable to it.
+  const handlers = new Map<string, KeymapEventListener>()
   return {
     register: (
-      modifiers: string[] | null,
+      modifiers: Modifier[] | null,
       key: string | null,
-      func: () => false | undefined,
-    ) => {
+      func: KeymapEventListener,
+    ): KeymapEventHandler => {
       handlers.set(`${(modifiers ?? []).join('+')}:${key}`, func)
-      return {} as never
+      return {} as KeymapEventHandler
     },
     trigger(modifiers: string[], key: string) {
-      return handlers.get(`${modifiers.join('+')}:${key}`)?.()
+      const handler = handlers.get(`${modifiers.join('+')}:${key}`)
+      // This suite runs on the node environment, so there is no global
+      // KeyboardEvent to construct; the bindings only ever need to suppress
+      // the default action.
+      const event = {
+        key,
+        preventDefault: () => undefined,
+        stopPropagation: () => undefined,
+      } as unknown as KeyboardEvent
+      return handler?.(event, {
+        key,
+        vkey: key,
+        modifiers: modifiers.join('+'),
+      } as KeymapContext)
     },
   }
 }

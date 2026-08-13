@@ -51,6 +51,13 @@ type StoredRecord =
 export type IndexedDbDataAdapterOptions = Readonly<{
   indexedDB?: IDBFactory | null
   createNamespaceId?: () => string
+  /**
+   * Overrides how many immediate children a listing reads before it stops.
+   * Only tests set this: filling a folder past the real cap costs seconds of
+   * fake-IndexedDB writes, while the behaviour under test is that the bound
+   * holds at all, not what its size happens to be.
+   */
+  listQueryLimit?: number
 }>
 
 /** A vault-isolated DataAdapter subset backed by one IndexedDB record per path. */
@@ -93,7 +100,7 @@ export class IndexedDbDataAdapter {
       const children = await listChildKeys(
         store.index(PARENT_KIND_INDEX),
         normalizedPath,
-        LIST_QUERY_LIMIT,
+        this.options.listQueryLimit ?? LIST_QUERY_LIMIT,
       )
       for (const child of children) {
         if (child.kind === 'folder') folders.push(child.path)
