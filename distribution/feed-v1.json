@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 17,
+  "revision": 18,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.5.2",
+    "version": "1.6.5.3",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.2",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.3",
     "releaseNotes": {
-      "en": "## 1.6.5.2 Chat History Panel Overhaul & Fixes ✨\n\n### 💬 Chat History Panel\n\n- The pane's \"…\" menu now supports full conversation actions, adding \"Open chat history / Export current conversation\" commands. (#567)\n- The pane title bar now shows the conversation's real title, and it can be renamed by clicking it directly.\n- The history panel's context menu now closes layer-by-layer with Esc, sizes itself to content, and shows overflowing items; the delete action moves back inline. (#567)\n- The history panel no longer gets squeezed by a narrow sidebar; long titles truncate in the middle while keeping the \"(copy)\" suffix, and accidental clicks on action icons are fixed. (#567)\n- Off-screen entries now render on demand, cutting the panel's open latency by roughly 40% (~260ms → ~160ms).\n- The history panel is now fully keyboard-reachable: arrow-key/Enter navigation, shortcuts for delete/pin/rename, and a keybinding legend at the bottom. (#567)\n- Pin/unpin now animates as a reorder the list follows, action buttons become a hover overlay, and the title regains the full row width.\n\n### 🐛 Fixes\n\n- Fixed existing conversation history disappearing when a message was appended while a task was still running. (#566)\n- Fixed the whole UI stalling when opening the history panel while the agent was still replying.\n- Fixed being unable to continue a conversation after deleting messages within it.\n\n### ⚙️ Core & Performance\n\n- Partially refactored the chat core, cleaning up long-standing architectural debt.\n- Chat history persistence is now event-driven, fixing repeated errors from high-frequency rewrites in the repo-sync backend. (#569)",
-      "zh": "## 1.6.5.2 聊天历史弹层全面改造与修复 ✨\n\n### 💬 聊天历史弹层\n\n- 聊天窗格 ⋯ 菜单支持完整会话操作，新增「打开聊天历史 / 导出当前对话」命令。（#567）\n- 窗格标题栏显示当前会话的真实标题，支持点击直接改名。\n- 历史弹层右键菜单支持 Esc 逐层关闭、宽度自适应内容并支持溢出显示，删除按钮回归行内。（#567）\n- 历史弹层不再被窄侧边栏压扁，超长标题居中截断并保住「(副本)」后缀，修复操作图标误触问题。（#567）\n- 视口外条目改为按需渲染，弹层打开延迟降低约 40%（~260ms → ~160ms）。\n- 历史弹层全程键盘可达：支持方向键/Enter 导航，删除/置顶/改名快捷键，底部新增键位图例。（#567）\n- 置顶/取消置顶改为可跟随的重排动效，操作区改为悬停浮层，标题栏拿回整行宽度。\n\n### 🐛 修复\n\n- 修复任务运行中追加消息导致已有历史对话记录丢失的问题。（#566）\n- 修复 Agent 回复期间打开会话历史面板导致整个界面卡顿的问题。\n- 修复删除对话内消息后无法继续对话的问题。\n\n### ⚙️ 内核与性能\n\n- 部分重构聊天内核，清理历史遗留的架构债务。\n- 聊天记录落盘改为事件驱动，修复仓库同步后端因高频重写持续报错的问题。（#569）"
+      "en": "## 1.6.5.3 Streaming Performance & Fixes ✨\n\n- Improved streaming performance for long replies, and added a fade-in animation to streamed text.\n- Pinned conversations in the history panel now use a persistent star at the end of the row.\n- Fixed history popover shortcuts and Esc not working in popout windows. (thanks @pjeby)\n- Improved the read tool's prompt for reading skills, raising read accuracy.\n- Added a transition animation when switching sections in the settings tabs.",
+      "zh": "## 1.6.5.3 流式生成性能与修复 ✨\n\n- 优化长回复流式生成的性能表现，为流式回复添加淡入动画。\n- 历史面板置顶态改用行尾常驻星标。\n- 修复独立窗口中历史弹层快捷键与 Esc 失效的问题。（感谢 @pjeby）\n- 优化 read 工具在 skills 读取方面的提示词，提高读取正确率。\n- 为设置页 tab 分区切换添加过渡动画。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.5.2/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.2/main.js",
-        "byteSize": 9203081,
-        "sha256": "486a293541f4e9367fcabd16d306aa4cf7177e335ca78d8f671b1fad068852f2"
+        "mirrorPath": "core/1.6.5.3/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.3/main.js",
+        "byteSize": 9206699,
+        "sha256": "ac6b8c5984ad6f84f709d1a303fc5fa9cb92050f213b4a0d7bddb7796fe7f264"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.5.2/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.2/manifest.json",
+        "mirrorPath": "core/1.6.5.3/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.3/manifest.json",
         "byteSize": 330,
-        "sha256": "b45515af4278c2fcf6be716af66de98a2d0d6e17ef45774bd49ed015146d7fad"
+        "sha256": "f84666222e25940e763a8cc62e9b8cf195fe54f4a80952d22f0b5c79368b9221"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.5.2/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.2/styles.css",
-        "byteSize": 622842,
-        "sha256": "96482a167c5284721c7629c94de7028f3862bb88f28bd81fc5a8e4f63cbf6798"
+        "mirrorPath": "core/1.6.5.3/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.3/styles.css",
+        "byteSize": 626820,
+        "sha256": "eac24411a0118cffd1b7c4b35649bd250f44598e0bed22728a84cd96121922e4"
       }
     }
   },
