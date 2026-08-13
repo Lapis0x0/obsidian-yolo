@@ -1604,13 +1604,16 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 /*
- * 星标不再常驻显形。它原本是「置顶状态」和「置顶开关」两件事共用一个图标，
- * 状态那一半逼着操作区在静息态也得占位——正是右侧那块空白的最后一个理由。
- * 状态改由行左缘的导轨承载（.is-pinned-row），星标退回纯开关，跟其余图标
- * 一起只在 hover / 键盘高亮时显形；显形时仍然是填充态，读得出当前是置顶。
+ * 星标按钮不常驻显形：它是「置顶开关」，跟其余图标一起只在 hover / 键盘高亮
+ * 时出现；显形时是填充态，读得出当前是置顶。静息态的「这条被置顶了」由下面
+ * 的 .pin-marker 承担。
+ *
+ * 置顶态用 accent 而非 --text-normal：同排图标都是中性色，accent 是这一排里
+ * 唯一的「已激活」语汇；也和静息态的 .pin-marker 同色，hover 前后不变色，
+ * 交接读起来才是同一颗星标换了个人拿着。
  */
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned {
-  color: var(--text-normal);
+  color: var(--interactive-accent);
 }
 
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned svg {
@@ -1618,19 +1621,65 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
 }
 
 /*
- * 置顶状态：行左缘的导轨。绝对定位在行的内边距里，不占布局宽度——置顶因此
- * 不会改变标题的可用宽度，也就不会触发一次重新截断。上下贴边，连续的置顶行
- * 连成一整段，顺带把「顶部这一段是置顶区」说清楚（列表没有分区标题）。
+ * 置顶状态的静息标识。曾经是行左缘一条 accent 导轨，但一条竖线读不出「置顶」
+ * 这层意思，反而更容易被当成「当前选中的那一行」。改用星标本身：和操作区里
+ * 那颗开关同一个图标、同一个填充态，状态语言全程只有一种。
+ *
+ * 位置在行尾——静息态的行尾本来就是状态位（运行中的状态点也在这里），hover
+ * 时整块换成操作区，两者不并存：状态点由 React 侧让位（见 ChatListDropdown
+ * 里 pin-marker 的渲染条件），星标由下面的 opacity 规则让位。
+ *
+ * 绝对定位在行的内边距里（与操作区同一套做法），不占布局宽度——置顶因此不会
+ * 改变标题的可用宽度，也就不会触发一次重新截断。
  */
-.yolo-chat-list-dropdown-item.is-pinned-row::after {
-  content: '';
+.yolo-chat-list-pin-marker {
   position: absolute;
-  left: 0;
+  right: 10px;
   top: 0;
   bottom: 0;
-  width: 2px;
-  background: var(--interactive-accent);
+  /* z-index 而非 auto：与操作区同理，形成层叠上下文，让遮罩 ::before 只垫在
+     星标之下，而不是掉到行背景之后 */
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  color: var(--interactive-accent);
   pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+.yolo-chat-list-pin-marker svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  stroke-width: var(--icon-stroke);
+  fill: currentColor;
+}
+
+/* 遮罩：与操作区同一条 28px 渐变、同样的两层叠法（理由见
+   --yolo-chat-list-row-tint 的注释），让被盖住的长标题淡出而不是被硬切一刀。 */
+.yolo-chat-list-pin-marker::before {
+  content: '';
+  position: absolute;
+  inset: 0 -10px 0 -28px;
+  z-index: -1;
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-list-row-tint) 28px
+    ),
+    linear-gradient(to right, transparent, var(--background-primary) 28px);
+}
+
+/* 交给操作区里的星标按钮，选择器与操作区的显形规则一一对应 */
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-pin-marker,
+.yolo-chat-list-dropdown-item:has(
+    .yolo-chat-list-dropdown-item-actions.is-more-open
+  )
+  .yolo-chat-list-pin-marker {
+  opacity: 0;
 }
 
 /*

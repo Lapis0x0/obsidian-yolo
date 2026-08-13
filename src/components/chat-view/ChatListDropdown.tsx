@@ -875,8 +875,8 @@ const ChatListItem = memo(function ChatListItem({
       className={`yolo-chat-list-dropdown-item${isFocused ? ' selected' : ''}${
         isContextMenuOpen ? ' is-ctx-open' : ''
       }${isReordering ? ' is-pin-moving' : ''}${
-        isPinned && canPin ? ' is-pinned-row' : ''
-      }${isEditing ? ' is-editing' : ''}`}
+        isEditing ? ' is-editing' : ''
+      }`}
       data-highlighted={isFocused ? 'true' : undefined}
     >
       {isEditing ? (
@@ -943,6 +943,16 @@ const ChatListItem = memo(function ChatListItem({
           )}
         </div>
       )}
+      {/*
+       * 置顶态的静息标识。星标按钮只在 hover / 键盘高亮时显形，静息态得有人
+       * 把「这条被置顶了」说出来。运行中的行让位给状态点：两者都落在行尾的
+       * 同一个位置上，瞬时态优先。样式与定位见 popover.css 的 .pin-marker。
+       */}
+      {isPinned && canPin && !isEditing && !runSummary?.isActive ? (
+        <span className="yolo-chat-list-pin-marker" aria-hidden="true">
+          <Star />
+        </span>
+      ) : null}
       <div
         className={`yolo-chat-list-dropdown-item-actions${
           isMoreMenuOpen ? ' is-more-open' : ''
@@ -1001,6 +1011,12 @@ const ChatListItem = memo(function ChatListItem({
                 className={`clickable-icon yolo-chat-list-pin-button${
                   isPinned ? ' is-pinned' : ''
                 }`}
+                aria-label={
+                  isPinned
+                    ? t('sidebar.chatList.unpinConversation', 'Unpin')
+                    : t('sidebar.chatList.pinConversation', 'Pin')
+                }
+                aria-pressed={isPinned}
                 data-pin-pulse={pinPulse ?? undefined}
                 onAnimationEnd={() => setPinPulse(null)}
               >
