@@ -5,7 +5,13 @@ module.exports = {
   setupFilesAfterEnv: ['<rootDir>/__mocks__/runtimeComponentTestSetup.ts'],
   transform: {
     '^.+.tsx?$': ['ts-jest', { isolatedModules: true }],
+    '^.+\\.m?js$': '<rootDir>/scripts/jest-esm-transform.cjs',
   },
+  // Only the ESM-only markdown parsing chain needs transpiling; everything else
+  // in node_modules stays untransformed.
+  transformIgnorePatterns: [
+    '/node_modules/(?!(mdast-util-from-markdown|mdast-util-to-string|micromark|micromark-[a-z-]+|character-entities|decode-named-character-reference|devlop|unist-util-stringify-position)/)',
+  ],
   testPathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   modulePathIgnorePatterns: ['<rootDir>/Reference/', '<rootDir>/.opencode/'],
   moduleNameMapper: {

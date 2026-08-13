@@ -63,6 +63,13 @@ function isEscaped(source: string, index: number): boolean {
 }
 
 export function normalizeDisplayMathDelimiters(markdown: string): string {
+  // This runs on every streamed frame over the whole document. Without a `$$`
+  // there is nothing to normalize and the scan would rebuild the entire string
+  // for an identical result.
+  if (!markdown.includes('$$')) {
+    return markdown
+  }
+
   let displayMathOpen = false
   let fence: { marker: string; length: number } | null = null
 
