@@ -44,6 +44,16 @@ jest.mock('../../hooks/useChatHistory', () => ({
     title.trim() || fallback,
 }))
 
+jest.mock('../../contexts/app-context', () => ({
+  useApp: () => ({
+    keymap: {
+      scope: {},
+      pushScope: jest.fn(),
+      popScope: jest.fn(),
+    },
+  }),
+}))
+
 import {
   Children,
   type ReactElement,
@@ -60,6 +70,9 @@ import {
   computeMiddleTruncatedTitle,
   computeNextHighlightedIndex,
   handlePopoverEscapeKeyDown,
+  navigateContextMenu,
+  registerChatListMenuKeys,
+  registerChatListPanelKeys,
   resolveChatListDeleteConfirmation,
   resolveChatListSearchKeyboardAction,
   splitTitleForMiddleTruncation,
@@ -436,10 +449,9 @@ describe('ChatListDropdown', () => {
     })
   })
 
-  // issue #567 Step 5：弹层键盘可达。焦点全程留在搜索框（对齐 Obsidian 快速
-  // 切换器），按键 → 动作的判定逻辑在 resolveChatListSearchKeyboardAction 的
-  // 专门单测里覆盖；这里测组件真正接线到了搜索框的 onKeyDown、以及删除两步
-  // 确认从 ChatListItem 提升到 ChatListDropdown 后键盘/鼠标共用同一份状态。
+  // issue #567：快捷键改挂 Obsidian keymap scope 后，搜索框 onKeyDown 不再
+  // dispatch 动作——只对「不是 scope 已注册的键」stopPropagation，避免打字
+  // 漏到宿主热键。动作本身由 registerChatListPanelKeys 覆盖。
   describe('keyboard navigation and shortcuts (issue #567 Step 5)', () => {
     // 两步删除确认靠 window.setTimeout 做 3 秒自动复位；测试环境是 node（没有
     // window 全局），沿用上面「action icon clicks...」describe 里的同款
@@ -520,19 +532,16 @@ describe('ChatListDropdown', () => {
       ...overrides,
     })
 
-    it('Enter opens a conversation, preventDefault+stopPropagation so it never leaks to Obsidian', () => {
-      // focusedConversationId 在这套浅渲染测试里恒为初始值 null（useState 被
-      // mock 成不响应 setState），落到 renderedChatList[0] 的兜底分支——这条
-      // 兜底本身也是真实存在的行为，值得覆盖。
+    it('Enter is left for the keymap scope (no preventDefault/stopPropagation, no dispatch here)', () => {
       const { onKeyDown, mocks } = buildSearchInputKeyDown([
         chat('alpha', 'Alpha'),
         chat('beta', 'Beta'),
       ])
       const event = keyEvent({ key: 'Enter' })
       onKeyDown(event)
-      expect(event.preventDefault).toHaveBeenCalledTimes(1)
-      expect(event.stopPropagation).toHaveBeenCalledTimes(1)
-      expect(mocks.onSelect).toHaveBeenCalledWith('alpha')
+      expect(event.preventDefault).not.toHaveBeenCalled()
+      expect(event.stopPropagation).not.toHaveBeenCalled()
+      expect(mocks.onSelect).not.toHaveBeenCalled()
     })
 
     it('an unrecognized key (normal typing) only stops propagation, never preventDefault', () => {
@@ -550,42 +559,35 @@ describe('ChatListDropdown', () => {
       expect(event.stopPropagation).toHaveBeenCalledTimes(1)
       expect(event.preventDefault).not.toHaveBeenCalled()
     })
+
+    it('Escape is left for the keymap scope so the panel/menu layers can consume it', () => {
+      const { onKeyDown } = buildSearchInputKeyDown([chat('yolo', 'Normal')])
+      const event = keyEvent({ key: 'Escape' })
+      onKeyDown(event)
+      expect(event.stopPropagation).not.toHaveBeenCalled()
+      expect(event.preventDefault).not.toHaveBeenCalled()
+    })
   })
 })
 
-// issue #567 Step 3：Esc 分层。Radix Popover 的 Escape 探测挂在 document 捕获
-// 阶段，比自绘 ctx-menu 冒泡阶段的 onKeyDown 更早跑完判定，菜单内部再怎么
-// stopPropagation 都拦不住外层弹层一起关闭（详见 ChatListDropdown.tsx 里
-// handleContextMenuKeyDown 和 handlePopoverEscapeKeyDown 边上的注释）。真正
-// 能拦截的钩子是 Popover.Content 的 onEscapeKeyDown，这里直接测它的判定逻辑。
+// issue #567：Esc 改由 Obsidian scope 分层。Radix onEscapeKeyDown 永远
+// preventDefault，避免它在 popout / 自绘菜单场景里抢着 dismiss 弹层。
 describe('handlePopoverEscapeKeyDown', () => {
-  it('suppresses the popover dismissal and closes only the context menu while it is open', () => {
+  it('always prevents Radix from dismissing the popover', () => {
     const preventDefault = jest.fn()
-    const closeContextMenu = jest.fn()
 
-    handlePopoverEscapeKeyDown({ preventDefault }, true, closeContextMenu)
+    handlePopoverEscapeKeyDown({ preventDefault })
 
     expect(preventDefault).toHaveBeenCalledTimes(1)
-    expect(closeContextMenu).toHaveBeenCalledTimes(1)
   })
 
-  it('lets the popover close as usual on Escape when no context menu is open', () => {
-    const preventDefault = jest.fn()
-    const closeContextMenu = jest.fn()
-
-    handlePopoverEscapeKeyDown({ preventDefault }, false, closeContextMenu)
-
-    expect(preventDefault).not.toHaveBeenCalled()
-    expect(closeContextMenu).not.toHaveBeenCalled()
-  })
-
-  it('wires the popover content onEscapeKeyDown prop so the layering fix is actually reachable', () => {
+  it('wires the popover content onEscapeKeyDown prop so Radix never dismisses on Escape', () => {
     const content = findByRenderName(
       createTree([chat('yolo', 'Normal')]),
       'YoloPopoverContent',
     )
     expect(content).toBeDefined()
-    expect(typeof content?.props.onEscapeKeyDown).toBe('function')
+    expect(content?.props.onEscapeKeyDown).toBe(handlePopoverEscapeKeyDown)
   })
 
   it('wires the popover content onInteractOutside prop so clicks inside the portaled menu do not close the popover', () => {
@@ -770,8 +772,8 @@ describe('computeMiddleTruncatedTitle', () => {
   })
 })
 
-// issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——搜索框键盘处理器和
-// 容器级 handleKeyDown 共用。到底/到顶不回绕。
+// issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——panel keymap
+// scope 的 ArrowUp/ArrowDown 绑定使用。到底/到顶不回绕。
 describe('computeNextHighlightedIndex', () => {
   it('moves down from the current index', () => {
     expect(computeNextHighlightedIndex(1, 'down', 5)).toBe(2)
@@ -782,8 +784,8 @@ describe('computeNextHighlightedIndex', () => {
   })
 
   it('treats "nothing highlighted yet" (-1) as if the first item were already the base', () => {
-    // 与原有 handleKeyDown 的既有行为一致（这里只是把它抽成纯函数，没有改变
-    // 语义）：base 取 0，↓ 从 0 再往下移一格到 1，↑ 从 0 停在 0。
+    // 与 panel scope 里 Arrow 绑定的既有行为一致（这里只是把它抽成纯函数，
+    // 没有改变语义）：base 取 0，↓ 从 0 再往下移一格到 1，↑ 从 0 停在 0。
     expect(computeNextHighlightedIndex(-1, 'down', 5)).toBe(1)
     expect(computeNextHighlightedIndex(-1, 'up', 5)).toBe(0)
   })
@@ -928,5 +930,118 @@ describe('resolveChatListDeleteConfirmation', () => {
 
   it('confirms when the same row is pressed again', () => {
     expect(resolveChatListDeleteConfirmation('a', 'a')).toBe('confirm')
+  })
+})
+
+const createFakeScope = () => {
+  const handlers = new Map<string, () => false | undefined>()
+  return {
+    register: (
+      modifiers: string[] | null,
+      key: string | null,
+      func: () => false | undefined,
+    ) => {
+      handlers.set(`${(modifiers ?? []).join('+')}:${key}`, func)
+      return {} as never
+    },
+    trigger(modifiers: string[], key: string) {
+      return handlers.get(`${modifiers.join('+')}:${key}`)?.()
+    },
+  }
+}
+
+describe('registerChatListPanelKeys', () => {
+  const handlers = () => ({
+    onEscape: jest.fn(),
+    shouldIgnoreListKeys: jest.fn(() => false),
+    onNavigate: jest.fn(),
+    onOpen: jest.fn(),
+    onDelete: jest.fn(),
+    onTogglePin: jest.fn(),
+    onRename: jest.fn(),
+  })
+
+  it('consumes Escape by closing the panel (or canceling edit via onEscape)', () => {
+    const scope = createFakeScope()
+    const h = handlers()
+    registerChatListPanelKeys(scope, h)
+    expect(scope.trigger([], 'Escape')).toBe(false)
+    expect(h.onEscape).toHaveBeenCalledTimes(1)
+  })
+
+  it('consumes list keys and dispatches the matching action', () => {
+    const scope = createFakeScope()
+    const h = handlers()
+    registerChatListPanelKeys(scope, h)
+    expect(scope.trigger([], 'ArrowDown')).toBe(false)
+    expect(h.onNavigate).toHaveBeenCalledWith('down')
+    expect(scope.trigger(['Mod'], 'R')).toBe(false)
+    expect(h.onRename).toHaveBeenCalledTimes(1)
+    expect(scope.trigger(['Mod', 'Shift'], 'S')).toBe(false)
+    expect(h.onTogglePin).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not consume list keys while renaming, so the title input keeps them', () => {
+    const scope = createFakeScope()
+    const h = handlers()
+    h.shouldIgnoreListKeys.mockReturnValue(true)
+    registerChatListPanelKeys(scope, h)
+    expect(scope.trigger([], 'Enter')).toBeUndefined()
+    expect(h.onOpen).not.toHaveBeenCalled()
+    expect(scope.trigger([], 'Escape')).toBe(false)
+    expect(h.onEscape).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('registerChatListMenuKeys', () => {
+  it('consumes Escape by closing only the menu', () => {
+    const scope = createFakeScope()
+    const onEscape = jest.fn()
+    const onMove = jest.fn()
+    registerChatListMenuKeys(scope, { onEscape, onMove })
+    expect(scope.trigger([], 'Escape')).toBe(false)
+    expect(onEscape).toHaveBeenCalledTimes(1)
+    expect(onMove).not.toHaveBeenCalled()
+  })
+
+  it('moves between menu items with arrows without touching the list', () => {
+    const scope = createFakeScope()
+    const onEscape = jest.fn()
+    const onMove = jest.fn()
+    registerChatListMenuKeys(scope, { onEscape, onMove })
+    expect(scope.trigger([], 'ArrowUp')).toBe(false)
+    expect(onMove).toHaveBeenCalledWith('ArrowUp')
+  })
+})
+
+describe('navigateContextMenu', () => {
+  const button = () =>
+    ({
+      disabled: false,
+      focus: jest.fn(),
+    }) as unknown as HTMLButtonElement
+
+  it('moves from the active item to the next', () => {
+    const first = button()
+    const second = button()
+    const menu = {
+      querySelectorAll: () => [first, second],
+      ownerDocument: { activeElement: first },
+    } as unknown as HTMLElement
+
+    navigateContextMenu(menu, 'ArrowDown')
+    expect(second.focus).toHaveBeenCalledTimes(1)
+  })
+
+  it('wraps ArrowUp from the first item to the last', () => {
+    const first = button()
+    const last = button()
+    const menu = {
+      querySelectorAll: () => [first, button(), last],
+      ownerDocument: { activeElement: first },
+    } as unknown as HTMLElement
+
+    navigateContextMenu(menu, 'ArrowUp')
+    expect(last.focus).toHaveBeenCalledTimes(1)
   })
 })

@@ -25,6 +25,17 @@ export class Modal {
   onClose(): void {}
 }
 export const Platform = { isDesktop: true, isMobile: false }
+export class Scope {
+  constructor(_parent?: unknown) {}
+  register(
+    _modifiers: unknown,
+    _key: unknown,
+    _func: unknown,
+  ): { modifiers: unknown; key: unknown } {
+    return { modifiers: _modifiers, key: _key }
+  }
+  unregister(_handler: unknown): void {}
+}
 export const TFile = jest.fn()
 export const TFolder = jest.fn()
 export const Vault = jest.fn()

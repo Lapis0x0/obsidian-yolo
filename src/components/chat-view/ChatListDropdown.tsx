@@ -15,7 +15,7 @@ import {
   Star,
   Trash2,
 } from 'lucide-react'
-import { Platform } from 'obsidian'
+import { Platform, Scope } from 'obsidian'
 import {
   memo,
   useCallback,
@@ -28,6 +28,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 
+import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
@@ -71,20 +72,128 @@ function useLatestRef<T>(value: T) {
 }
 
 /**
- * issue #567 Step 3：Esc 分层的判定逻辑，抽成不依赖 React/DOM 的纯函数单独
- * 测——真正的时序原因（为什么不能在 ctx-menu 自身的 onKeyDown 里
- * stopPropagation 了事）见 handleContextMenuKeyDown 边上的注释。约定：自绘
- * 菜单开着时吞掉这次 Esc（preventDefault，弹层跳过关闭，只关菜单）；菜单没
- * 开则放行，弹层按 Radix 默认行为处理。
+ * issue #567：Esc 改由 Obsidian keymap scope 分层消费（弹层一层、自绘右键
+ * 菜单一层），不再靠 Radix 的 onEscapeKeyDown 自己数「这是第几次 Esc」。
+ * Radix 的 document 捕获监听在 popout 窗口里对不上，而且和自绘菜单的开关
+ * 时序叠在一起会把两次不同菜单的 Esc 算成「Esc 两次 → 关弹层」。
+ *
+ * 这里只做一件事：永远 preventDefault，让 Radix 不要 dismiss。真正的关闭
+ * 由 panel / menu scope 的 Escape 绑定负责。
  */
 export function handlePopoverEscapeKeyDown(
   event: Pick<KeyboardEvent, 'preventDefault'>,
-  isContextMenuOpen: boolean,
-  closeContextMenu: () => void,
 ): void {
-  if (!isContextMenuOpen) return
   event.preventDefault()
-  closeContextMenu()
+}
+
+type ChatListKeymapScope = {
+  register: Scope['register']
+}
+
+export type ChatListPanelKeyHandlers = {
+  /** 改名编辑态中：取消改名。否则：关闭弹层。 */
+  onEscape: () => void
+  /**
+   * 改名输入框持有焦点时，方向键 / Enter / 快捷键必须放行给输入框，
+   * 不能当成列表导航。返回 true 时对应绑定不 preventDefault。
+   */
+  shouldIgnoreListKeys: () => boolean
+  onNavigate: (direction: 'up' | 'down') => void
+  onOpen: () => void
+  onDelete: () => void
+  onTogglePin: () => void
+  onRename: () => void
+}
+
+/**
+ * 历史弹层打开期间 push 的 keymap scope。键位与
+ * `resolveChatListSearchKeyboardAction` 一致，但挂在 `app.keymap` 上——
+ * 主窗口 / popout 共用同一套 scope 栈，不再依赖弹层 DOM 是否收到 keydown。
+ */
+export function registerChatListPanelKeys(
+  scope: ChatListKeymapScope,
+  handlers: ChatListPanelKeyHandlers,
+): void {
+  const runListAction = (action: () => void): false | undefined => {
+    if (handlers.shouldIgnoreListKeys()) return undefined
+    action()
+    return false
+  }
+
+  scope.register([], 'Escape', () => {
+    handlers.onEscape()
+    return false
+  })
+  scope.register([], 'ArrowUp', () =>
+    runListAction(() => handlers.onNavigate('up')),
+  )
+  scope.register([], 'ArrowDown', () =>
+    runListAction(() => handlers.onNavigate('down')),
+  )
+  scope.register([], 'Enter', () => runListAction(handlers.onOpen))
+  scope.register(['Mod'], 'Backspace', () => runListAction(handlers.onDelete))
+  scope.register(['Mod', 'Shift'], 'S', () =>
+    runListAction(handlers.onTogglePin),
+  )
+  scope.register(['Mod'], 'R', () => runListAction(handlers.onRename))
+}
+
+export type ChatListMenuKeyHandlers = {
+  onEscape: () => void
+  onMove: (key: 'ArrowUp' | 'ArrowDown' | 'Home' | 'End') => void
+}
+
+/**
+ * 自绘右键 / 长按菜单打开期间 push 的子 scope。Escape 只关菜单，不落到
+ * 下面的弹层 scope——这就是「Esc 两次关弹层」在两次不同右键之间串号的根因
+ * 修法。箭头在菜单项之间移动，不改列表高亮。
+ */
+export function registerChatListMenuKeys(
+  scope: ChatListKeymapScope,
+  handlers: ChatListMenuKeyHandlers,
+): void {
+  scope.register([], 'Escape', () => {
+    handlers.onEscape()
+    return false
+  })
+  const move = (key: 'ArrowUp' | 'ArrowDown' | 'Home' | 'End'): false => {
+    handlers.onMove(key)
+    return false
+  }
+  scope.register([], 'ArrowUp', () => move('ArrowUp'))
+  scope.register([], 'ArrowDown', () => move('ArrowDown'))
+  scope.register([], 'Home', () => move('Home'))
+  scope.register([], 'End', () => move('End'))
+}
+
+/**
+ * 自绘菜单项的键盘移动，从原先挂在菜单 DOM 上的 onKeyDown 抽出来，改由
+ * menu scope 调用。菜单本身仍要能被聚焦（打开时 focus），但按键分发不再
+ * 依赖那个节点是否在 popout 里接到了 React 事件。
+ */
+export function navigateContextMenu(
+  menu: HTMLElement,
+  key: 'ArrowUp' | 'ArrowDown' | 'Home' | 'End',
+): void {
+  const items = Array.from(
+    menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
+  )
+  if (items.length === 0) return
+  const currentIndex = items.findIndex(
+    (item) => item === menu.ownerDocument.activeElement,
+  )
+  let nextIndex = 0
+  if (key === 'End') {
+    nextIndex = items.length - 1
+  } else if (key === 'ArrowUp') {
+    nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1
+  } else if (key === 'ArrowDown') {
+    nextIndex =
+      currentIndex === -1 || currentIndex === items.length - 1
+        ? 0
+        : currentIndex + 1
+  }
+  items[nextIndex]?.focus({ preventScroll: true })
 }
 
 /**
@@ -120,10 +229,9 @@ export function clampContextMenuPosition(params: {
 }
 
 /**
- * issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——搜索框键盘处理器和
- * 弹层刚打开、Radix Content 自身持有焦点那一瞬间的容器级 handleKeyDown 共用
- * 同一份移动计算。到底/到顶不回绕（clamp，不取模），currentIndex 传 -1 表示
- * 还没有高亮项，从第一条开始移动。
+ * issue #567 Step 5：↑/↓ 移动高亮的下一个索引，纯函数——panel keymap
+ * scope 的 ArrowUp/ArrowDown 绑定使用。到底/到顶不回绕（clamp，不取模），
+ * currentIndex 传 -1 表示还没有高亮项，从第一条开始移动。
  */
 export function computeNextHighlightedIndex(
   currentIndex: number,
@@ -138,11 +246,10 @@ export function computeNextHighlightedIndex(
 }
 
 /**
- * issue #567 Step 5：搜索框键盘事件 → 动作的判定，纯函数（不碰 DOM/React
- * state），单测覆盖全部分支。产品决策是键盘焦点全程留在搜索框（对齐
- * Obsidian 快速切换器的体验：用户不需要把光标移出输入框就能浏览、打开、
- * 删除/置顶/改名会话），所以这里处理的按键集合比容器级 handleKeyDown（只
- * 服务于弹层刚打开、还没点进搜索框那一瞬间）更完整。
+ * issue #567 Step 5：快捷键 → 动作的判定，纯函数。搜索框 onKeyDown 用它
+ * 判断「这是不是已经交给 panel scope 的键」：是则放行给 keymap，不是则
+ * stopPropagation，避免打字漏到宿主热键。真正执行动作的是
+ * `registerChatListPanelKeys`，不再走 React 事件。
  *
  * 键位取舍（审计结论,详见计划文档 Step 5 实施备忘）：
  * - 置顶用 Mod+Shift+S（Star 助记），前两版都被推翻：最初的 Mod+P 是
@@ -413,7 +520,9 @@ function TitleInput({
       onClick={(e) => e.stopPropagation()}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
-        e.stopPropagation()
+        if (e.key !== 'Escape') {
+          e.stopPropagation()
+        }
         if (e.key === 'Enter' && !disabled) {
           onSubmit(value)
         }
@@ -1066,6 +1175,7 @@ export function ChatListDropdown({
   children: React.ReactNode
 }) {
   const { t } = useLanguage()
+  const app = useApp()
   const chatManager = useChatManager()
   const [open, setOpen] = useState(false)
   const [focusedConversationId, setFocusedConversationId] = useState<
@@ -1426,7 +1536,10 @@ export function ChatListDropdown({
   const closeContextMenu = useCallback(() => {
     setActiveMenuId(null)
     setMenuPosition(null)
-    contextMenuAnchorRef.current?.focus({ preventScroll: true })
+    // 焦点回到搜索框，而不是右键那一行。关菜单后如果 focus 停在卡片上，
+    // :focus-within 会让原条目继续显示 selected，再 hover / 方向键就会出现
+    // 两条同时高亮（pjeby 在 #567 里报的 phantom selection）。
+    searchInputRef.current?.focus({ preventScroll: true })
   }, [])
 
   const openContextMenu = useCallback(
@@ -1760,47 +1873,6 @@ export function ChatListDropdown({
     })
   }, [chatList])
 
-  // issue #567 Step 3：Esc 分层。Radix Popover 的 Escape 探测（见
-  // useEscapeKeydown）挂在 document 的捕获阶段，比这个 ctx-menu 自身冒泡阶段
-  // 的 onKeyDown 更早跑完判定——菜单内部 stopPropagation 拦不住外层弹层一起
-  // 关闭，因为 Radix 在事件到达这里之前就已经读过 defaultPrevented 并决定
-  // dismiss 了。唯一能插进 Radix 判定之前的钩子是 Popover.Content 的
-  // onEscapeKeyDown（下面的 handlePopoverEscapeKeyDown，接到 YoloPopoverContent
-  // 上）：菜单开着时 preventDefault 让弹层跳过这次关闭，只关自绘菜单；菜单没
-  // 开则放行，弹层按 Radix 默认行为关闭。两层各自消费一次 Esc。
-  const handleContextMenuKeyDown = useCallback(
-    (e: React.KeyboardEvent<HTMLDivElement>) => {
-      const menu = contextMenuRef.current
-      if (!menu) return
-      if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(e.key)) {
-        e.stopPropagation()
-        return
-      }
-      e.preventDefault()
-      e.stopPropagation()
-      const items = Array.from(
-        menu.querySelectorAll<HTMLButtonElement>('button:not(:disabled)'),
-      )
-      if (items.length === 0) return
-      const currentIndex = items.findIndex(
-        (item) => item === menu.ownerDocument.activeElement,
-      )
-      let nextIndex = 0
-      if (e.key === 'End') {
-        nextIndex = items.length - 1
-      } else if (e.key === 'ArrowUp') {
-        nextIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1
-      } else if (e.key === 'ArrowDown') {
-        nextIndex =
-          currentIndex === -1 || currentIndex === items.length - 1
-            ? 0
-            : currentIndex + 1
-      }
-      items[nextIndex]?.focus({ preventScroll: true })
-    },
-    [],
-  )
-
   useEffect(() => {
     if (!open) return
     if (renderedChatList.length === 0) {
@@ -1920,143 +1992,118 @@ export function ChatListDropdown({
     [activeMenuId, renderedChatList],
   )
 
-  // issue #567 Step 5：只服务于弹层刚打开、Radix Content 自身持有焦点、用户
-  // 还没点进/Tab 进搜索框那一瞬间——一旦焦点落进搜索框（绝大多数时间），键盘
-  // 事件被下面 handleSearchInputKeyDown 直接接住，不会冒泡到这里（搜索框自己
-  // stopPropagation）。两处的移动计算共用 computeNextHighlightedIndex。
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const target = e.target
-      if (
-        target instanceof HTMLInputElement ||
-        target instanceof HTMLTextAreaElement ||
-        target instanceof HTMLButtonElement
-      ) {
-        return
-      }
-      const activeList = renderedChatList
-      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
-        if (activeList.length === 0) return
-        const nextIndex = computeNextHighlightedIndex(
-          focusedIndex,
-          e.key === 'ArrowUp' ? 'up' : 'down',
-          activeList.length,
-        )
-        const nextConversationId = activeList[nextIndex]?.id ?? null
-        setFocusedConversationId(nextConversationId)
-        setScrollIntoViewConversationId(nextConversationId)
-      } else if (e.key === 'Enter') {
-        const conversationId =
-          focusedConversationId ??
-          activeList[focusedIndex]?.id ??
-          activeList[0]?.id
-        if (!conversationId) return
-        void Promise.resolve(onSelect(conversationId))
-          .then(() => {
-            setOpen(false)
-          })
-          .catch((error) => {
-            console.error('Failed to select conversation from list', error)
-          })
-      }
-    },
-    [renderedChatList, focusedConversationId, focusedIndex, onSelect],
-  )
-
-  // issue #567 Step 5：F2 改名走 editingId（与鼠标点铅笔同一条路径），取消
-  // 用 Esc（见下面 handleContentEscapeKeyDown 的分层）、提交用 Enter（
-  // TitleInput 自带）——两条退出路径都要把焦点送回搜索框，键盘链路不断在
-  // <body> 上。
+  // issue #567：F2 改名走 editingId（与鼠标点铅笔同一条路径），取消用 Esc
+  // （panel scope 的 Escape 绑定）、提交用 Enter（TitleInput 自带）——两条
+  // 退出路径都要把焦点送回搜索框。
   const cancelEdit = useCallback(() => {
     setEditingId(null)
     searchInputRef.current?.focus({ preventScroll: true })
   }, [])
 
-  // issue #567 Step 3：Esc 分层的另一半，见 handlePopoverEscapeKeyDown 和
-  // handleContextMenuKeyDown 边上的注释——这是唯一真正拦得住 Radix 的钩子。
-  // issue #567 Step 5：新增第二层——改名编辑态。层级判定复用同一个
-  // handlePopoverEscapeKeyDown（它的逻辑本来就是「isOpen 就消费掉这次 Esc」，
-  // 对任意一层都成立，不需要为了多一层而改它的签名）：ctx 菜单开着时优先只关
-  // 菜单；菜单没开、正在改名时只取消改名；两者都没有则放行给 Radix 默认关闭
-  // 弹层。
-  const handleContentEscapeKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (activeMenuId !== null) {
-        handlePopoverEscapeKeyDown(e, true, closeContextMenu)
+  const panelKeyHandlersRef = useLatestRef({
+    onEscape: () => {
+      if (editingId !== null) {
+        cancelEdit()
         return
       }
-      handlePopoverEscapeKeyDown(e, editingId !== null, cancelEdit)
+      handleOpenChange(false)
     },
-    [activeMenuId, cancelEdit, closeContextMenu, editingId],
-  )
+    shouldIgnoreListKeys: () => editingId !== null,
+    onNavigate: (direction: 'up' | 'down') => {
+      if (renderedChatList.length === 0) return
+      const nextIndex = computeNextHighlightedIndex(
+        focusedIndex,
+        direction,
+        renderedChatList.length,
+      )
+      const nextConversationId = renderedChatList[nextIndex]?.id ?? null
+      setFocusedConversationId(nextConversationId)
+      setScrollIntoViewConversationId(nextConversationId)
+    },
+    onOpen: () => {
+      const conversationId = focusedConversationId ?? renderedChatList[0]?.id
+      if (!conversationId) return
+      void Promise.resolve(onSelect(conversationId))
+        .then(() => {
+          handleOpenChange(false)
+        })
+        .catch((error) => {
+          console.error('Failed to select conversation from list', error)
+        })
+    },
+    onDelete: () => {
+      if (!focusedConversationId) return
+      itemHandlers.onRequestDelete(focusedConversationId)
+    },
+    onTogglePin: () => {
+      if (!focusedConversationId || activeSection !== 'user') return
+      itemHandlers.onTogglePinned(focusedConversationId)
+    },
+    onRename: () => {
+      if (!focusedConversationId) return
+      itemHandlers.onStartEdit(focusedConversationId)
+    },
+  })
 
-  // issue #567 Step 5：搜索框键盘处理——产品决策是键盘焦点全程留在搜索框，
-  // 详见 resolveChatListSearchKeyboardAction 头注释里的键位取舍备忘。只对
-  // 判定出动作的按键 preventDefault+stopPropagation；其余按键（正常打字、
-  // 左右移动光标等）不受影响,继续走浏览器默认行为。
+  const panelScopeRef = useRef<Scope | null>(null)
+
+  // 弹层打开期间把快捷键挂到 Obsidian keymap scope 上，而不是搜索框的
+  // React onKeyDown。popout 窗口里宿主会在捕获层消费 Ctrl/Cmd 组合键，
+  // DOM 监听根本收不到；scope 跨窗口有效（issue #567，pjeby）。
+  useEffect(() => {
+    if (!open) return
+    const panelScope = new Scope(app.keymap.scope)
+    registerChatListPanelKeys(panelScope, {
+      onEscape: () => panelKeyHandlersRef.current.onEscape(),
+      shouldIgnoreListKeys: () =>
+        panelKeyHandlersRef.current.shouldIgnoreListKeys(),
+      onNavigate: (direction) =>
+        panelKeyHandlersRef.current.onNavigate(direction),
+      onOpen: () => panelKeyHandlersRef.current.onOpen(),
+      onDelete: () => panelKeyHandlersRef.current.onDelete(),
+      onTogglePin: () => panelKeyHandlersRef.current.onTogglePin(),
+      onRename: () => panelKeyHandlersRef.current.onRename(),
+    })
+    app.keymap.pushScope(panelScope)
+    panelScopeRef.current = panelScope
+    return () => {
+      app.keymap.popScope(panelScope)
+      if (panelScopeRef.current === panelScope) {
+        panelScopeRef.current = null
+      }
+    }
+  }, [app, open, panelKeyHandlersRef])
+
+  // 自绘右键/长按菜单是独立的一层 scope：Esc 只关菜单。父 scope 是上面
+  // 刚 push 的弹层 scope，菜单关掉后自动回到弹层那一层。
+  useEffect(() => {
+    if (activeMenuId === null) return
+    const menuScope = new Scope(panelScopeRef.current ?? app.keymap.scope)
+    registerChatListMenuKeys(menuScope, {
+      onEscape: closeContextMenu,
+      onMove: (key) => {
+        const menu = contextMenuRef.current
+        if (!menu) return
+        navigateContextMenu(menu, key)
+      },
+    })
+    app.keymap.pushScope(menuScope)
+    return () => {
+      app.keymap.popScope(menuScope)
+    }
+  }, [activeMenuId, app, closeContextMenu])
+
+  // 搜索框只拦「未注册给 scope 的键」的冒泡，避免打字漏到宿主热键。
+  // 已注册的快捷键（含 Escape）不 stopPropagation，让 keymap 能在捕获/
+  // 冒泡阶段收到。动作本身由 panel scope 执行，这里不再 dispatch，否则
+  // 主窗口会触发两次。
   const handleSearchInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
-      const action = resolveChatListSearchKeyboardAction(e, Platform.isMacOS)
-      if (!action) {
-        // 沿用原有的防御性 stopPropagation：搜索框里的任意按键都不应该冒泡出
-        // 弹层（避免误触发 Obsidian 全局热键），未识别的动作也不例外。
-        e.stopPropagation()
-        return
-      }
-      e.preventDefault()
+      if (e.key === 'Escape') return
+      if (resolveChatListSearchKeyboardAction(e, Platform.isMacOS)) return
       e.stopPropagation()
-      switch (action.type) {
-        case 'navigate': {
-          if (renderedChatList.length === 0) return
-          const nextIndex = computeNextHighlightedIndex(
-            focusedIndex,
-            action.direction,
-            renderedChatList.length,
-          )
-          const nextConversationId = renderedChatList[nextIndex]?.id ?? null
-          setFocusedConversationId(nextConversationId)
-          setScrollIntoViewConversationId(nextConversationId)
-          return
-        }
-        case 'open': {
-          const conversationId =
-            focusedConversationId ?? renderedChatList[0]?.id
-          if (!conversationId) return
-          void Promise.resolve(onSelect(conversationId))
-            .then(() => {
-              setOpen(false)
-            })
-            .catch((error) => {
-              console.error('Failed to select conversation from list', error)
-            })
-          return
-        }
-        case 'delete': {
-          if (!focusedConversationId) return
-          itemHandlers.onRequestDelete(focusedConversationId)
-          return
-        }
-        case 'togglePin': {
-          // 仅 user 区有效：task 会话不可置顶，与鼠标态（canPin）保持一致。
-          if (!focusedConversationId || activeSection !== 'user') return
-          itemHandlers.onTogglePinned(focusedConversationId)
-          return
-        }
-        case 'rename': {
-          if (!focusedConversationId) return
-          itemHandlers.onStartEdit(focusedConversationId)
-          return
-        }
-      }
     },
-    [
-      activeSection,
-      focusedConversationId,
-      focusedIndex,
-      itemHandlers,
-      onSelect,
-      renderedChatList,
-    ],
+    [],
   )
 
   return (
@@ -2079,8 +2126,7 @@ export function ChatListDropdown({
         maxHeight={400}
         className="yolo-chat-list-dropdown-content"
         sideOffset={8}
-        onKeyDown={handleKeyDown}
-        onEscapeKeyDown={handleContentEscapeKeyDown}
+        onEscapeKeyDown={handlePopoverEscapeKeyDown}
         // issue #567 Step 3（追加需求）：ctx-menu 现在 createPortal 到
         // <body>，DOM 上不再是这个 Popover.Content 的后代。Radix 的
         // outside-interaction 探测（pointerdown-outside / focus-outside，见
@@ -2354,7 +2400,6 @@ export function ChatListDropdown({
                 role="menu"
                 tabIndex={-1}
                 aria-label={t('sidebar.chatList.moreActions', 'More actions')}
-                onKeyDown={handleContextMenuKeyDown}
               >
                 {activeSection === 'user' ? (
                   <button

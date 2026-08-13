@@ -50,6 +50,14 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - Agent conversation state is structurally shared: a message object's reference changes if and only if its content changes. Never mutate messages or state arrays in place; dev builds deep-freeze published snapshots to catch this.
 - All scroll writes in chat surfaces go through the scroll controller in `src/components/chat-view/scroll/`. Never set `scrollTop` directly.
 
+### Popout / Multi-window
+
+Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm, but each window has its own `document`, `window`, and keymap. Global `document` / `window` are the **main** window.
+
+- View-local DOM work (portals, listeners, `requestAnimationFrame`, `getComputedStyle`, `activeElement`, timers) must use the node's `ownerDocument` / `defaultView`. Use `src/utils/dom/window-context.ts`; do not default to the globals.
+- Keyboard, Escape layering, and menus belong to Obsidian's keymap: `Scope` + `app.keymap.pushScope` / `popScope`, or `Menu` / `Modal`. Do not build a parallel stack with React `onKeyDown` plus Radix/document-capture Escape. That stack only sees keys that reach a node in that document; in a popout the host often consumes the same keys at capture (and Radix's listener is usually on the main `document`), so shortcuts and Esc layering work in the main window and fail in the popout.
+- Overlay, shortcut, and portal behavior is not done until it has been checked in a popout, not only the main window.
+
 ### Database Schema Changes
 
 1. Edit `src/database/schema.ts`.
