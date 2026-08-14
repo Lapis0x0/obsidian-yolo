@@ -1679,6 +1679,8 @@ export type TranslationKeys = {
     slashMenu?: {
       entrySkill?: string
       entrySnippet?: string
+      categoryCommand?: string
+      categoryEmpty?: string
       createSnippetsFile?: string
     }
     emptyState?: {

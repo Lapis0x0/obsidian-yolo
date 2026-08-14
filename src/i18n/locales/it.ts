@@ -1794,6 +1794,8 @@ export const it: DeepPartial<TranslationKeys> = {
     slashMenu: {
       entrySkill: 'Abilità',
       entrySnippet: 'Snippet',
+      categoryCommand: 'Comandi',
+      categoryEmpty: 'Ancora nulla qui',
       createSnippetsFile: 'Clicca per creare snippets.md',
     },
     emptyState: {

@@ -64,6 +64,19 @@ export type MenuResolution = {
 export const PUNCTUATION =
   '\\.,\\+\\*\\?\\$\\@\\|#{}\\(\\)\\^\\-\\[\\]\\\\/!%\'"~=<>_:;'
 
+/* `/` 斜杠菜单（SkillSlashMenu，设计代号 C2）的目标宽度：内容宽度约 470px，
+ * 不像 @ 提及菜单那样铺满输入框。与 isMentionPopover 分支互斥，见下方
+ * positionMenu() 里的 isSkillSlashPopover 分支。 */
+const SKILL_SLASH_MENU_WIDTH_PX = 470
+/* typeahead 菜单的完整面板高度：斜杠菜单列表高度钉死 320px，@ 提及菜单列表
+ * max-height 同为 min(320px, available)，加上面板 padding/border 约 24px 余量
+ * → 344。展开方向的规则：打开首帧朝空间更大的一侧展开；打开期间方向粘滞，
+ * 仅当已选一侧装不下此值且另一侧更大时才改判（输入框长高、窗口缩放不会
+ * 导致方向来回翻）。翻转的唯一决策点在 reposition()（内联样式是垂直定位的
+ * 最终权威），生效方向通过 menuEle 的 data-flip 属性暴露给 CSS（子面板同向
+ * 展开规则），该属性随弹层卸载消失，每次打开重新决策。 */
+const TYPEAHEAD_MENU_FULL_HEIGHT_PX = 344
+
 export class MenuOption {
   key: string
   ref?: MutableRefObject<HTMLElement | null>
@@ -735,7 +748,41 @@ export function useMenuAnchorRef(
         // Position menu to align with the outermost edge of the focus ring
         const menuLeft = Math.round(rect.left - ring)
         const menuWidth = Math.round(rect.width + ring * 2)
-        const menuTop = Math.round(rect.top - offsetTop)
+
+        const availableAbove = Math.max(margin, Math.floor(rect.top - margin))
+        const availableBelow = Math.max(
+          margin,
+          Math.floor(ownerWindow.innerHeight - rect.bottom - margin),
+        )
+        // 展开方向：首帧朝空间更大的一侧；打开期间粘滞（data-flip 记录上次
+        // 决策），仅当已选一侧装不下完整面板高度且另一侧更大时改判。判定只
+        // 依赖输入框 rect 与视口，不依赖菜单自身尺寸。斜杠菜单与 @ 提及菜单
+        // 共用同一判定；Quick Ask 层面的 mentionMenuPlacement 状态不再影响
+        // 主面板的实际垂直方向（这里的内联样式是最终权威）。
+        const isSkillSlashMenu =
+          menuEle?.classList.contains('yolo-skill-slash-popover') ?? false
+        const isMentionMenu =
+          menuEle?.classList.contains('yolo-smart-space-mention-popover') ??
+          false
+        let flipBelow = false
+        if (menuEle && (isSkillSlashMenu || isMentionMenu)) {
+          const prevFlip = menuEle.getAttribute('data-flip')
+          if (prevFlip !== 'above' && prevFlip !== 'below') {
+            flipBelow = availableBelow > availableAbove
+          } else {
+            flipBelow = prevFlip === 'below'
+            const chosen = flipBelow ? availableBelow : availableAbove
+            const other = flipBelow ? availableAbove : availableBelow
+            if (chosen < TYPEAHEAD_MENU_FULL_HEIGHT_PX && other > chosen) {
+              flipBelow = !flipBelow
+            }
+          }
+          menuEle.setAttribute('data-flip', flipBelow ? 'below' : 'above')
+        }
+
+        const menuTop = Math.round(
+          flipBelow ? rect.bottom + offsetTop : rect.top - offsetTop,
+        )
 
         // 与上次写入的坐标相同则跳过,避免 animationFrame 模式下每帧重写样式。
         // menuEle 也要复检 —— 它的 absolute 定位完全依赖 containerDiv,
@@ -762,10 +809,9 @@ export function useMenuAnchorRef(
         }
 
         if (menuEle) {
-          const available = Math.max(margin, Math.floor(rect.top - margin))
-          const isMentionPopover = menuEle.classList.contains(
-            'yolo-smart-space-mention-popover',
-          )
+          const available = flipBelow ? availableBelow : availableAbove
+          const isMentionPopover = isMentionMenu
+          const isSkillSlashPopover = isSkillSlashMenu
           if (isMentionPopover) {
             const mentionPopoverWidth = isCenteredChatContainer
               ? `min(100%, ${centeredChatTypeaheadMaxWidth})`
@@ -774,7 +820,11 @@ export function useMenuAnchorRef(
               position: 'absolute',
               left: 0,
               right: isCenteredChatContainer ? 'auto' : 0,
-              bottom: 0,
+              // top 必须显式写（含 'auto'）：smart-space.css 有
+              // [data-placement='bottom'] { top: calc(100% + 10px) } 的规则，
+              // 不覆盖会与这里的 bottom 组成过约束定位。
+              top: flipBelow ? 0 : 'auto',
+              bottom: flipBelow ? 'auto' : 0,
               width: mentionPopoverWidth,
               maxWidth: mentionPopoverWidth,
               boxSizing: 'border-box',
@@ -786,6 +836,28 @@ export function useMenuAnchorRef(
               '--yolo-typeahead-boundary-right': `${Math.round(
                 boundaryRect.right,
               )}px`,
+            })
+          } else if (isSkillSlashPopover) {
+            // 内容宽度、左对齐：与 isMentionPopover 分支相反，宽度不跟随输入框，
+            // 而是钳在设计宽度（约 470px）和输入框宽度（containerDiv/100%）中
+            // 较小者——输入框比 470px 窄时自然退化为输入框宽度，SkillSlashMenu
+            // 内部再据此测得的实际渲染宽度切换单栏降级布局。
+            const skillSlashWidth = `min(100%, ${SKILL_SLASH_MENU_WIDTH_PX}px)`
+            updateDynamicStyleClass(menuEle, 'yolo-typeahead-pop', {
+              position: 'absolute',
+              left: 0,
+              right: 'auto',
+              // 常态锚在 containerDiv 底边向上生长；翻转时锚在顶边向下生长
+              //（containerDiv 的 top 已在上方按 flipBelow 移到输入框底边）。
+              top: flipBelow ? 0 : 'auto',
+              bottom: flipBelow ? 'auto' : 0,
+              width: skillSlashWidth,
+              maxWidth: skillSlashWidth,
+              boxSizing: 'border-box',
+              overflow: 'visible',
+              '--yolo-typeahead-available-height': `${
+                flipBelow ? availableBelow : availableAbove
+              }px`,
             })
           } else {
             updateDynamicStyleClass(menuEle, 'yolo-typeahead-pop', {

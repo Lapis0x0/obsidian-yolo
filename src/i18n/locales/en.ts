@@ -1959,6 +1959,8 @@ export const en: TranslationKeys = {
     slashMenu: {
       entrySkill: 'Skills',
       entrySnippet: 'Snippets',
+      categoryCommand: 'Commands',
+      categoryEmpty: 'Nothing here yet',
       createSnippetsFile: 'Click to create snippets.md',
     },
     emptyState: {

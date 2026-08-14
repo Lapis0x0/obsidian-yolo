@@ -232,6 +232,229 @@
   opacity: 0.85;
 }
 
+/*
+ * `/` 斜杠菜单（技能 / 快捷指令 / 命令）的双栏面板，设计代号 C2。
+ * 独立于上面的 .yolo-smart-space-mention-popover（@ 提及菜单专用）：后者的宽度
+ * 被 LexicalMenu 锁定为输入框宽度；斜杠菜单需要内容宽度（约 470px）、左对齐，
+ * 用不同的 class 名互相隔离，实际宽度锁定分支见 LexicalMenu.ts 的
+ * isSkillSlashPopover。窄容器降级（隐藏左栏、按类别分组）由
+ * SkillSlashMenu.tsx 内部测量面板渲染宽度决定，与这里的 CSS 无关。
+ */
+.yolo-skill-slash-popover {
+  position: absolute;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.yolo-skill-slash-panel {
+  display: flex;
+  align-items: stretch;
+  width: 100%;
+  pointer-events: auto;
+  padding: 0;
+}
+
+.yolo-skill-slash-rail {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 128px;
+  width: 128px;
+  gap: 2px;
+  padding: 8px 6px;
+  border-right: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-border) 7%,
+    transparent
+  );
+}
+
+/* button. 作用域 + 显式重置：Obsidian 核心对裸 button 全局加
+ * box-shadow(--input-shadow)/height(--input-height)/font-weight，
+ * 未声明的属性不会被 class 选择器"覆盖"，必须逐项归零。 */
+button.yolo-skill-slash-rail-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: auto;
+  border: none;
+  border-radius: 7px;
+  padding: 6px 7px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yolo-skill-slash-rail-item-icon {
+  flex-shrink: 0;
+  color: currentColor;
+}
+
+.yolo-skill-slash-rail-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.yolo-skill-slash-rail-item-count {
+  flex-shrink: 0;
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-skill-slash-rail-item:hover {
+  background: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 70%,
+    transparent
+  );
+  color: var(--text-normal);
+}
+
+.yolo-skill-slash-rail-item.is-active {
+  background: color-mix(
+    in srgb,
+    var(--h1-color, var(--interactive-accent)) 14%,
+    transparent
+  );
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.yolo-skill-slash-rail-item.is-active .yolo-skill-slash-rail-item-icon {
+  color: var(--h1-color, var(--interactive-accent));
+}
+
+/* 单焦点双区模型的焦点指示：焦点在 rail 时，激活类别加 ring、右栏高亮行减弱
+ * 为纯底色；焦点在 list 时反之（rail 激活项只保留底色作类别指示）。 */
+.yolo-skill-slash-panel[data-focus-zone='rail']
+  button.yolo-skill-slash-rail-item.is-active {
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--h1-color, var(--interactive-accent)) 40%,
+      transparent
+    );
+}
+
+.yolo-skill-slash-panel[data-focus-zone='rail']
+  button.yolo-skill-slash-row[data-highlighted='true'] {
+  background: color-mix(
+    in srgb,
+    var(--h1-color, var(--interactive-accent)) 7%,
+    transparent
+  );
+  box-shadow: none;
+}
+
+.yolo-skill-slash-list {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px;
+  overflow-y: auto;
+  max-height: min(320px, var(--yolo-typeahead-available-height, 320px));
+  scrollbar-width: thin;
+}
+
+/* 根态双栏时把列表高度钉死：类别间条目数差异很大（技能十几条 vs 命令三条），
+ * 若由内容撑高，←→/点击切类别时整个弹窗高度会坍缩跳动。内容不满时留白。 */
+.yolo-skill-slash-panel--two-pane .yolo-skill-slash-list {
+  height: min(320px, var(--yolo-typeahead-available-height, 320px));
+}
+
+.yolo-skill-slash-group + .yolo-skill-slash-group {
+  margin-top: 4px;
+}
+
+.yolo-skill-slash-group-header {
+  padding: 6px 8px 4px;
+  color: color-mix(in srgb, var(--text-muted) 80%, transparent);
+  font-size: 10px;
+  font-weight: var(--font-bold);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  user-select: none;
+}
+
+/* 同上：button. 作用域 + 显式重置全局按钮样式（height 不归零会把双行内容
+ * 压到 --input-height 并裁掉描述）。 */
+button.yolo-skill-slash-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  width: 100%;
+  height: auto;
+  border: none;
+  border-radius: 8px;
+  padding: 7px 9px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-weight: var(--font-normal);
+  line-height: 1.4;
+  text-align: left;
+  cursor: pointer;
+}
+
+.yolo-skill-slash-row:hover,
+.yolo-skill-slash-row[data-highlighted='true'] {
+  background: color-mix(
+    in srgb,
+    var(--h1-color, var(--interactive-accent)) 14%,
+    transparent
+  );
+  box-shadow: inset 0 0 0 1px
+    color-mix(
+      in srgb,
+      var(--h1-color, var(--interactive-accent)) 40%,
+      transparent
+    );
+}
+
+.yolo-skill-slash-row-icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+  color: var(--h1-color, var(--interactive-accent));
+}
+
+.yolo-skill-slash-row-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-skill-slash-row-name {
+  font-weight: 550;
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.yolo-skill-slash-row-desc {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Smart Space Model Select - 精致的按钮设计 */
 .yolo-smart-space-model-select {
   display: flex;

@@ -67,16 +67,20 @@
 }
 
 /* 子菜单与主菜单同向展开：
- * placement='bottom'（主菜单向下） → 子菜单顶对齐 hover 项的顶 → 向下延伸；
- * placement='top'   （主菜单向上） → 子菜单底对齐 hover 项的底 → 向上延伸。
- * CSS 变量由 MentionPlugin 在测量 hover 项后写到 popover 根。 */
-.yolo-smart-space-mention-popover[data-placement='bottom']
+ * 主菜单向下生长 → 子菜单顶对齐 hover 项的顶 → 向下延伸；
+ * 主菜单向上生长 → 子菜单底对齐 hover 项的底 → 向上延伸。
+ * 主面板的实际生长方向由 LexicalMenu.ts 的 reposition() 统一决定（上方空间
+ * 不足时翻转向下），并通过 popover 根上的 data-flip='below' 暴露；这里据此
+ * 选择方向，不再读 data-placement（React 传入的 placement prop 不代表实际
+ * 方向）。锚点 CSS 变量由 MentionPlugin 在测量 hover 项后写到 popover 根，
+ * 两个变量始终同时写入，与方向无关。 */
+.yolo-smart-space-mention-popover[data-flip='below']
   .yolo-smart-space-mention-subpanel {
   top: var(--yolo-sub-anchor-top, 0);
   bottom: auto;
 }
 
-.yolo-smart-space-mention-popover[data-placement='top']
+.yolo-smart-space-mention-popover:not([data-flip='below'])
   .yolo-smart-space-mention-subpanel {
   top: auto;
   bottom: calc(100% - var(--yolo-sub-anchor-bottom, 100%));

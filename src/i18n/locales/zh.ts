@@ -1853,6 +1853,8 @@ export const zh: TranslationKeys = {
     slashMenu: {
       entrySkill: '技能',
       entrySnippet: '快捷指令',
+      categoryCommand: '命令',
+      categoryEmpty: '暂无内容',
       createSnippetsFile: '点击创建 snippets.md',
     },
     emptyState: {
