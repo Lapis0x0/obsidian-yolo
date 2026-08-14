@@ -346,17 +346,47 @@ export function useCliRuntimeOrchestration({
     // After reload, hydrate may bind sessionRef before the model catalog is
     // warm enough for stageConfiguration. Keep retrying until configuration
     // exists so the model/reasoning controls are not stuck disabled.
-    if (snapshot.configuration) return
-    cliConversationController.stageConfiguration(
-      resolveCliRuntimePreference(
-        cliPreferenceSettingsRef.current,
-        activeRuntimeId,
-        cliModelCatalog.get(activeRuntimeId) ?? [],
-      ),
-    )
+    if (!snapshot.configuration) {
+      cliConversationController.stageConfiguration(
+        resolveCliRuntimePreference(
+          cliPreferenceSettingsRef.current,
+          activeRuntimeId,
+          cliModelCatalog.get(activeRuntimeId) ?? [],
+        ),
+      )
+    }
+    // Nothing requested and nothing remembered: ask the runtime itself which
+    // model will actually run (pi answers via get_state before any session
+    // exists; the shared warm-up instance caches it, so this is a memory read
+    // after the catalog warm). Session-scoped runtimes (ACP) simply report
+    // no selection here and the picker fills in on bind instead.
+    const staged = cliConversationController.getSnapshot().configuration
+    if (staged?.modelId != null || snapshot.sessionRef || !cliRuntimeScope) {
+      return
+    }
+    let cancelled = false
+    void cliRuntimeScope
+      .resolveRuntime(activeRuntimeId)
+      .getConfiguration(cliModelCatalog.get(activeRuntimeId) ?? [])
+      .then((configuration) => {
+        if (cancelled || !configuration.modelId) return
+        const current = cliConversationController.getSnapshot()
+        if (current.configuration?.modelId != null) return
+        cliConversationController.stageConfiguration({
+          modelId: configuration.modelId,
+          ...(configuration.reasoningEffort
+            ? { reasoningEffort: configuration.reasoningEffort }
+            : {}),
+        })
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
   }, [
     activeRuntimeId,
     cliConversationController,
+    cliRuntimeScope,
     cliModelCatalog,
     settings.chatOptions.cliModelIdByRuntime,
     settings.chatOptions.cliReasoningEffortByModel,

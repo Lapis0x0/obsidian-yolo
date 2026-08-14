@@ -142,9 +142,16 @@ export class PiCliRuntime implements CliRuntime {
 
   async listModels(): Promise<CliRuntimeModel[]> {
     if (this.models) return this.models
-    const models = await this.withQueryHandle((transport) =>
-      transport.request('get_available_models', {}).then(mapPiModels),
-    )
+    const models = await this.withQueryHandle(async (transport) => {
+      // Piggyback the current-model restoration on the same (possibly
+      // throwaway) query process: catalog warm-up is the host's first pi
+      // contact, and knowing "which model will actually run" is as much a
+      // part of warming the picker as the list itself.
+      if (this.modelId === null && !this.modelRestoreAttempted) {
+        await this.restoreCurrentModelFromTransport(transport)
+      }
+      return transport.request('get_available_models', {}).then(mapPiModels)
+    })
     this.models = models
     return models
   }
@@ -178,10 +185,20 @@ export class PiCliRuntime implements CliRuntime {
    * `getConfiguration()` retries once pi is configured.
    */
   private async restoreCurrentModelFromState(): Promise<void> {
+    await this.withQueryHandle((transport) =>
+      this.restoreCurrentModelFromTransport(transport),
+    ).catch(() => {
+      // pi unreachable right now — retry on the next getConfiguration().
+    })
+  }
+
+  private async restoreCurrentModelFromTransport(
+    transport: PiRpcTransport,
+  ): Promise<void> {
     try {
-      const current = await this.withQueryHandle((transport) =>
-        transport.request('get_state', {}).then(extractPiCurrentModelState),
-      )
+      const current = await transport
+        .request('get_state', {})
+        .then(extractPiCurrentModelState)
       if (!current) return
       this.modelRestoreAttempted = true
       if (this.modelId !== null) return

@@ -325,6 +325,31 @@ describe('PiCliRuntime — model configuration restoration', () => {
     await runtime.dispose()
   })
 
+  it('restores the current model during catalog warm-up, on the same process as listModels', async () => {
+    const runtime = createRuntime()
+    await runtime.ensureReady({})
+    const process = startedProcesses[0]
+    process.registerHandler('get_state', () => ({
+      sessionId: 'sess-1',
+      model: { id: 'xiaomi/mimo-v2.5', provider: 'openrouter' },
+      thinkingLevel: 'medium',
+    }))
+    process.registerHandler('get_available_models', () => ({
+      models: [
+        { id: 'xiaomi/mimo-v2.5', provider: 'openrouter', name: 'MiMo' },
+      ],
+    }))
+
+    await runtime.listModels()
+    const configuration = await runtime.getConfiguration()
+
+    expect(configuration.modelId).toBe('openrouter/xiaomi/mimo-v2.5')
+    // One get_state piggybacked on the warm-up query — getConfiguration must
+    // not have needed a second restoration round-trip.
+    expect(process.requestsOf('get_state')).toHaveLength(1)
+    await runtime.dispose()
+  })
+
   it('keeps modelId null (no catalog fallback) and retries restoration when get_state has no model yet', async () => {
     const runtime = createRuntime()
     await runtime.ensureReady({})
