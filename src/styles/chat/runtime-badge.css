@@ -1,5 +1,5 @@
 /*
- * Short CLI runtime marker (CC / Codex).
+ * Short CLI runtime marker (CC / Codex / Hermes / Pi).
  *
  * Shared by every surface that attributes a conversation or a live run to its
  * runtime — the chat list popover and the background activity status panel.
@@ -24,4 +24,14 @@
 .yolo-runtime-badge--codex {
   background: color-mix(in srgb, var(--color-cyan) 14%, transparent);
   color: color-mix(in srgb, var(--color-cyan) 82%, var(--text-normal));
+}
+
+.yolo-runtime-badge--hermes {
+  background: color-mix(in srgb, var(--color-blue) 15%, transparent);
+  color: color-mix(in srgb, var(--color-blue) 82%, var(--text-normal));
+}
+
+.yolo-runtime-badge--pi {
+  background: color-mix(in srgb, var(--color-purple) 14%, transparent);
+  color: color-mix(in srgb, var(--color-purple) 82%, var(--text-normal));
 }

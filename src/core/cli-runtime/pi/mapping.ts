@@ -77,6 +77,7 @@ export type PiMappingState = {
   toolInputs: Map<string, Record<string, unknown>>
   toolNames: Map<string, string>
   toolOutputs: Map<string, string>
+  turn: number
 }
 
 export const createPiMappingState = (): PiMappingState => ({
@@ -85,6 +86,7 @@ export const createPiMappingState = (): PiMappingState => ({
   toolInputs: new Map(),
   toolNames: new Map(),
   toolOutputs: new Map(),
+  turn: 0,
 })
 
 /** Called at the start of every turn — pi streams are turn-scoped. */
@@ -94,6 +96,7 @@ export const resetPiMappingState = (state: PiMappingState): void => {
   state.toolInputs.clear()
   state.toolNames.clear()
   state.toolOutputs.clear()
+  state.turn += 1
 }
 
 /**
@@ -164,12 +167,13 @@ const extractDelta = (
 const extractStreamId = (
   event: Record<string, unknown>,
   assistantEvent: Record<string, unknown>,
+  turn: number,
 ): string =>
   getString(event.messageId) ??
   getString(event.itemId) ??
   getString(assistantEvent.messageId) ??
   getString(assistantEvent.id) ??
-  'stream'
+  `stream-${turn}`
 
 const mapMessageUpdate = (
   event: Record<string, unknown>,
@@ -180,7 +184,7 @@ const mapMessageUpdate = (
     getNestedRecord(event, 'assistantMessageEvent') ??
     getNestedRecord(event, 'assistant_message_event') ??
     event
-  const streamId = extractStreamId(event, assistantEvent)
+  const streamId = extractStreamId(event, assistantEvent, state.turn)
   const events: CliRuntimeEvent[] = []
 
   const textDelta = extractDelta(assistantEvent, 'text')

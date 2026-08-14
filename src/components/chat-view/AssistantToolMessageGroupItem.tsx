@@ -28,7 +28,10 @@ import {
 } from '../../types/chat'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
+import {
+  hasMatchingToolMessageForRequests,
+  shouldRenderAssistantToolPreview,
+} from '../../utils/chat/assistantToolPreview'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import {
   collectGroupEditSummary,
@@ -206,16 +209,23 @@ type AssistantMessageRenderPlan = {
 const getAssistantMessageRenderPlan = ({
   message,
   nextMessage,
+  groupMessages,
   hidePendingAssistantPlaceholders,
 }: {
   message: ChatAssistantMessage
   nextMessage: AssistantToolMessageGroup[number] | undefined
+  groupMessages: AssistantToolMessageGroup
   hidePendingAssistantPlaceholders: boolean
 }): AssistantMessageRenderPlan => {
   const hasVisibleContent = message.content.trim().length > 0
   const hasVisibleReasoning = (message.reasoning ?? '').trim().length > 0
   const hasVisibleAnnotations = Boolean(message.annotations)
-  const hasToolResponseForThis = nextMessage?.role === 'tool'
+  const hasToolResponseForThis =
+    nextMessage?.role === 'tool' ||
+    hasMatchingToolMessageForRequests(
+      message.toolCallRequests?.map((request) => request.id) ?? [],
+      groupMessages,
+    )
   const shouldShowAssistantToolPreview = shouldRenderAssistantToolPreview({
     generationState: message.metadata?.generationState,
     toolCallRequestCount: message.toolCallRequests?.length ?? 0,
@@ -714,6 +724,7 @@ function AssistantToolMessageGroupItem({
           ? getAssistantMessageRenderPlan({
               message,
               nextMessage: displayedMessages[index + 1],
+              groupMessages: displayedMessages,
               hidePendingAssistantPlaceholders,
             })
           : null,

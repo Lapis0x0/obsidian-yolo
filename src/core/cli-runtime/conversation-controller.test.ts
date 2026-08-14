@@ -1,4 +1,9 @@
-import type { ChatAssistantMessage, ChatUserMessage } from '../../types/chat'
+import type {
+  ChatAssistantMessage,
+  ChatToolMessage,
+  ChatUserMessage,
+} from '../../types/chat'
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { CliConversationController } from './conversation-controller'
 import type {
@@ -228,6 +233,222 @@ describe('CliConversationController', () => {
 
     controller.resetSession()
     expect(controller.getSnapshot().surfaceId).not.toBe(initialSurfaceId)
+  })
+
+  it('allows ensureReady to complete before a native session exists', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    runtime.ensureReadyImpl = async () => undefined
+    const controller = new CliConversationController(runtime)
+
+    await controller.ensureReady()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionRef: null,
+      runState: 'idle',
+      error: null,
+      configuration: { modelId: 'pi-model' },
+    })
+  })
+
+  it('accepts the first session_bound after a deferred bind', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    const ref = session('pi-sess-1', 'pi')
+    runtime.ensureReadyImpl = async () => undefined
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({ type: 'session_bound', ref })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('a1', 'ok'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    const surfaceId = controller.getSnapshot().surfaceId
+    await controller.ensureReady()
+
+    await controller.sendTurn({
+      userMessage: userMessage('u1', 'hi'),
+      content: 'hi',
+    })
+
+    expect(runtime.turnInputs[0]?.sessionRef).toBeUndefined()
+    expect(controller.getSnapshot()).toMatchObject({
+      surfaceId,
+      sessionRef: ref,
+      messages: [
+        { id: 'u1', role: 'user' },
+        { id: 'a1', role: 'assistant' },
+      ],
+    })
+  })
+
+  it('ignores a different session_bound after the deferred bind has landed', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    const ref = session('pi-sess-1', 'pi')
+    runtime.ensureReadyImpl = async () => undefined
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({ type: 'session_bound', ref })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    await controller.sendTurn({
+      userMessage: userMessage('u1', 'hi'),
+      content: 'hi',
+    })
+
+    runtime.emit({
+      type: 'session_bound',
+      ref: session('pi-sess-other', 'pi'),
+    })
+
+    expect(controller.getSnapshot().sessionRef).toEqual(ref)
+  })
+
+  it('does not upsert a reused assistant id into a previous turn', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    runtime.sendTurnImpl = async (input) => {
+      const content = input.content === 'second' ? 'tool test' : 'here'
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('shared-stream', content),
+      })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage(
+          'shared-stream',
+          `${content} continued`,
+        ),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await controller.sendTurn({
+      userMessage: userMessage('u1', '在吗'),
+      content: 'first',
+    })
+    runtime.emit({ type: 'run_state', state: 'completed' })
+    await controller.sendTurn({
+      userMessage: userMessage('u2', '你测试一下工具调用'),
+      content: 'second',
+    })
+
+    expect(controller.getSnapshot().messages).toMatchObject([
+      { id: 'u1', role: 'user' },
+      { id: 'shared-stream', role: 'assistant', content: 'here continued' },
+      { id: 'u2', role: 'user' },
+      {
+        id: expect.stringMatching(/^shared-stream#/),
+        role: 'assistant',
+        content: 'tool test continued',
+      },
+    ])
+  })
+
+  it('appends a new assistant bubble when text continues after tools', async () => {
+    const runtime = new FakeCliRuntime('hermes')
+    const toolMessage: ChatToolMessage = {
+      role: 'tool',
+      id: 'tool-1',
+      toolCalls: [
+        {
+          request: { id: 'call-1', name: 'ls' },
+          response: { status: ToolCallResponseStatus.Running },
+        },
+      ],
+    }
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '好的，我来测试一下主要工具：'),
+      })
+      runtime.emit({ type: 'message_upsert', message: toolMessage })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '一切正常。'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    await controller.sendTurn({
+      userMessage: userMessage('u1', '你测试一下工具'),
+      content: '你测试一下工具',
+    })
+
+    expect(controller.getSnapshot().messages).toMatchObject([
+      { id: 'u1', role: 'user' },
+      {
+        id: 'stream',
+        role: 'assistant',
+        content: '好的，我来测试一下主要工具：',
+      },
+      { id: 'tool-1', role: 'tool' },
+      {
+        id: expect.stringMatching(/^stream#/),
+        role: 'assistant',
+        content: '一切正常。',
+      },
+    ])
+  })
+
+  it('does not duplicate a tool-request assistant when it is re-upserted after its tool card', async () => {
+    const runtime = new FakeCliRuntime('hermes')
+    const request: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'acp-request-call-1',
+      content: '',
+      toolCallRequests: [{ id: 'call-1', name: 'ls' }],
+      metadata: { generationState: 'completed' },
+    }
+    const toolRunning: ChatToolMessage = {
+      role: 'tool',
+      id: 'acp-result-call-1',
+      toolCalls: [
+        {
+          request: { id: 'call-1', name: 'ls' },
+          response: { status: ToolCallResponseStatus.Running },
+        },
+      ],
+    }
+    const toolDone: ChatToolMessage = {
+      role: 'tool',
+      id: 'acp-result-call-1',
+      toolCalls: [
+        {
+          request: { id: 'call-1', name: 'ls' },
+          response: {
+            status: ToolCallResponseStatus.Success,
+            data: { type: 'text', text: 'ok' },
+          },
+        },
+      ],
+    }
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '好的，开始测试：'),
+      })
+      runtime.emit({ type: 'message_upsert', message: request })
+      runtime.emit({ type: 'message_upsert', message: toolRunning })
+      runtime.emit({ type: 'message_upsert', message: request })
+      runtime.emit({ type: 'message_upsert', message: toolDone })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '完成。'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    await controller.sendTurn({
+      userMessage: userMessage('u1', '测试工具'),
+      content: '测试工具',
+    })
+
+    expect(
+      controller
+        .getSnapshot()
+        .messages.filter((message) => message.role === 'assistant')
+        .map((message) => message.id),
+    ).toEqual(['stream', 'acp-request-call-1', expect.stringMatching(/^stream#/)])
   })
 
   it('presents a staged turn before provider readiness and scopes rejection', () => {

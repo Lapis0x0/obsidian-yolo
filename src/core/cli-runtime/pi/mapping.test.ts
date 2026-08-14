@@ -13,6 +13,7 @@ import {
   mapPiEntriesToHydration,
   mapPiEvent,
   mapPiModels,
+  resetPiMappingState,
   toPiPrompt,
 } from './mapping'
 
@@ -38,7 +39,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
       {
         type: 'message_upsert',
         message: expect.objectContaining({
-          id: 'pi-assistant-stream',
+          id: 'pi-assistant-stream-0',
           content: 'Hel',
         }),
       },
@@ -47,7 +48,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
       {
         type: 'message_upsert',
         message: expect.objectContaining({
-          id: 'pi-assistant-stream',
+          id: 'pi-assistant-stream-0',
           content: 'Hello',
         }),
       },
@@ -75,7 +76,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
       {
         type: 'message_upsert',
         message: expect.objectContaining({
-          id: 'pi-thinking-stream',
+          id: 'pi-thinking-stream-0',
           content: '',
           reasoning: 'pondering',
         }),
@@ -105,6 +106,33 @@ describe('mapPiEvent — message_update delta aggregation', () => {
       type: 'message_upsert',
       message: expect.objectContaining({ id: 'pi-assistant-b', content: 'B' }),
     })
+  })
+
+  it('scopes the fallback stream id per turn so a second turn does not edit the first', () => {
+    const state = createPiMappingState()
+    resetPiMappingState(state)
+    const turn1 = mapPiEvent(
+      {
+        type: 'message_update',
+        assistantMessageEvent: { text_delta: 'first' },
+      },
+      state,
+    )
+    resetPiMappingState(state)
+    const turn2 = mapPiEvent(
+      {
+        type: 'message_update',
+        assistantMessageEvent: { text_delta: 'second' },
+      },
+      state,
+    )
+
+    expect(turn1).toMatchObject([
+      { message: { id: 'pi-assistant-stream-1', content: 'first' } },
+    ])
+    expect(turn2).toMatchObject([
+      { message: { id: 'pi-assistant-stream-2', content: 'second' } },
+    ])
   })
 
   it('emits turn_metrics and context_usage from cumulative usage', () => {

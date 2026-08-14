@@ -280,6 +280,10 @@ export type CliRuntime = {
     ref: CliSubagentRef,
     listener: CliSubagentTranscriptListener,
   ): Promise<() => void>
+  /**
+   * Prepare the process for turns. `session_bound` may be emitted here, or
+   * deferred until the first `sendTurn` when the provider has no session yet.
+   */
   ensureReady(input: CliRuntimeReadyInput): Promise<void>
   getConfiguration(
     cachedModels?: readonly CliRuntimeModel[],

@@ -222,7 +222,7 @@ describe('ACP session update aggregation — multi-turn fallback id scoping', ()
     ])
   })
 
-  it('does not scope ids that carry an explicit messageId — the protocol already keys those', () => {
+  it('scopes explicit messageIds per turn so a recycled protocol id does not edit the previous turn', () => {
     const aggregator = new AcpSessionAggregator('live')
     aggregator.beginTurn()
     aggregator.apply(
@@ -242,9 +242,48 @@ describe('ACP session update aggregation — multi-turn fallback id scoping', ()
       } as SessionUpdate,
       'hermes',
     )
-    // Same explicit messageId across the epoch boundary still accumulates —
-    // fallback-id scoping must not interfere with protocol-provided ids.
-    expect(second).toMatchObject([{ id: 'acp-assistant-m1', content: 'ab' }])
+    expect(second).toMatchObject([
+      { id: 'acp-assistant-m1@2', content: 'b' },
+    ])
+  })
+
+  it('starts a new assistant message for text that arrives after tool calls', () => {
+    const aggregator = new AcpSessionAggregator('live')
+    aggregator.beginTurn()
+    const preamble = aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        messageId: 'm1',
+        content: { type: 'text', text: '好的，我来测试一下主要工具：' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    aggregator.apply(
+      {
+        sessionUpdate: 'tool_call',
+        toolCallId: 'call-1',
+        title: 'ls',
+        kind: 'execute',
+        status: 'in_progress',
+        content: [],
+      } as SessionUpdate,
+      'hermes',
+    )
+    const after = aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        messageId: 'm1',
+        content: { type: 'text', text: '一切正常。' },
+      } as SessionUpdate,
+      'hermes',
+    )
+
+    expect(preamble).toMatchObject([
+      { id: 'acp-assistant-m1@1', content: '好的，我来测试一下主要工具：' },
+    ])
+    expect(after).toMatchObject([
+      { id: 'acp-assistant-m1@1.1', content: '一切正常。' },
+    ])
   })
 
   it('resets the epoch on reset()', () => {

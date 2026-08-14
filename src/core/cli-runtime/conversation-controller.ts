@@ -74,6 +74,11 @@ const isSameSession = (
   left?.runtimeId === right?.runtimeId &&
   left?.nativeSessionId === right?.nativeSessionId
 
+const isToolRequestShell = (message: ChatMessage): boolean =>
+  message.role === 'assistant' &&
+  !message.content.trim() &&
+  (message.toolCallRequests?.length ?? 0) > 0
+
 const upsertMessage = (
   messages: readonly ChatMessage[],
   message: ChatMessage,
@@ -286,6 +291,14 @@ export class CliConversationController {
   private bindingTarget: CliSessionRef | null | undefined
   private bindingEpoch: number | null = null
   private pendingOptimisticUserMessageId: string | null = null
+  /**
+   * Live-turn remapping of runtime message ids. A provider may reuse the same
+   * stream id across turns (pi's fallback `"stream"`, an ACP agent recycling
+   * `messageId`); upsert-in-place would then edit the previous turn. When that
+   * happens we mint a fresh id for the current turn and keep routing later
+   * deltas to it.
+   */
+  private currentTurnMessageIds = new Map<string, string>()
   private allowSessionRebind = false
   private restoredCacheHitRate: number | null = null
   private currentTurnMetrics: CliTurnMetrics | null = null
@@ -433,6 +446,7 @@ export class CliConversationController {
     const sessionRef = this.snapshot.sessionRef
 
     this.currentTurnMetrics = {}
+    this.currentTurnMessageIds.clear()
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
@@ -490,6 +504,7 @@ export class CliConversationController {
 
     const sessionRef = this.snapshot.sessionRef
     this.currentTurnMetrics = {}
+    this.currentTurnMessageIds.clear()
     this.pendingOptimisticUserMessageId = userMessage.id
     const messages = Object.freeze([
       ...this.snapshot.messages.slice(0, sourceIndex),
@@ -796,9 +811,8 @@ export class CliConversationController {
         ...(target ? { sessionRef: target } : {}),
       })
       if (!this.isCurrent(operation)) return
-      if (!target && !this.snapshot.sessionRef) {
-        throw new Error('CLI runtime did not bind a session.')
-      }
+      // Some runtimes (pi) only materialize a native session on the first
+      // prompt. `surfaceId` already identifies the conversation until then.
       let configuration = await operation.runtime.getConfiguration(
         this.getCachedModels(),
       )
@@ -922,6 +936,10 @@ export class CliConversationController {
           return
         }
         this.acceptingEvents = true
+        this.publish({ ...this.snapshot, sessionRef: event.ref, error: null })
+        return
+      }
+      if (this.acceptingEvents && !this.snapshot.sessionRef) {
         this.publish({ ...this.snapshot, sessionRef: event.ref, error: null })
         return
       }
@@ -1050,19 +1068,22 @@ export class CliConversationController {
           return
         }
       }
-      const messages = upsertMessage(this.snapshot.messages, event.message)
+      const message = this.resolveCurrentTurnUpsert(event.message)
+      const messages = upsertMessage(this.snapshot.messages, message)
       this.publish({
         ...this.snapshot,
         messages:
-          event.message.role === 'assistant' && this.currentTurnMetrics
+          message.role === 'assistant' && this.currentTurnMetrics
             ? applyTurnMetrics(messages, this.currentTurnMetrics)
             : messages,
       })
       return
     }
     if (event.type === 'message_remove') {
+      const messageId =
+        this.currentTurnMessageIds.get(event.messageId) ?? event.messageId
       const messages = this.snapshot.messages.filter(
-        (message) => message.id !== event.messageId,
+        (message) => message.id !== messageId,
       )
       if (messages.length !== this.snapshot.messages.length) {
         const frozenMessages = Object.freeze(messages)
@@ -1083,6 +1104,7 @@ export class CliConversationController {
       event.state !== 'waiting_for_user'
     ) {
       this.pendingOptimisticUserMessageId = null
+      this.currentTurnMessageIds.clear()
       this.currentTurnMetrics = null
     }
     if (event.state === 'error' && event.error) {
@@ -1128,6 +1150,69 @@ export class CliConversationController {
     this.acceptingEvents = false
     this.bindingTarget = undefined
     this.bindingEpoch = null
+    this.currentTurnMessageIds.clear()
+  }
+
+  /**
+   * Streaming upserts may only edit the current bubble. Reused ids from an
+   * earlier turn, or assistant *text* that continues after tools, must start
+   * a new message. Tool-request shells (empty assistant + toolCallRequests)
+   * stay in place — they are re-emitted on every tool update, and appending
+   * them would duplicate a stale "running" preview after the real tool cards.
+   */
+  private resolveCurrentTurnUpsert(message: ChatMessage): ChatMessage {
+    if (message.role === 'user') return message
+    const sourceId = message.id
+    const mappedId = this.currentTurnMessageIds.get(sourceId) ?? sourceId
+    const candidate =
+      mappedId === sourceId ? message : { ...message, id: mappedId }
+    const existingIndex = this.snapshot.messages.findIndex(
+      (entry) => entry.id === candidate.id,
+    )
+    if (this.shouldAppendInsteadOfReplace(candidate, existingIndex)) {
+      const nextId = `${sourceId}#${this.conversationEpoch}-${this.currentTurnMessageIds.size}`
+      this.currentTurnMessageIds.set(sourceId, nextId)
+      return { ...message, id: nextId }
+    }
+    this.currentTurnMessageIds.set(sourceId, candidate.id)
+    return candidate
+  }
+
+  private shouldAppendInsteadOfReplace(
+    message: ChatMessage,
+    existingIndex: number,
+  ): boolean {
+    if (existingIndex < 0) return false
+    const turnStart = this.findCurrentTurnUserIndex(this.snapshot.messages)
+    if (turnStart >= 0 && existingIndex < turnStart) return true
+    if (message.role !== 'assistant') return false
+    const existing = this.snapshot.messages[existingIndex]
+    if (existing?.role !== 'assistant') return false
+    if (isToolRequestShell(existing) || isToolRequestShell(message)) {
+      return false
+    }
+    return this.snapshot.messages
+      .slice(existingIndex + 1)
+      .some((entry) => entry.role !== 'assistant')
+  }
+
+  private findCurrentTurnUserIndex(messages: readonly ChatMessage[]): number {
+    const optimisticId = this.pendingOptimisticUserMessageId
+    if (optimisticId) {
+      const index = messages.findIndex((message) => message.id === optimisticId)
+      if (index >= 0) return index
+    }
+    if (
+      this.snapshot.runState !== 'running' &&
+      this.snapshot.runState !== 'waiting_for_approval' &&
+      this.snapshot.runState !== 'waiting_for_user'
+    ) {
+      return -1
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'user') return index
+    }
+    return -1
   }
 
   private captureOperation(): {
@@ -1176,6 +1261,7 @@ export class CliConversationController {
       this.snapshot.runState === 'waiting_for_approval' ||
       this.snapshot.runState === 'waiting_for_user'
     this.pendingOptimisticUserMessageId = null
+    this.currentTurnMessageIds.clear()
     this.publish({
       ...this.snapshot,
       ...(isTurnError

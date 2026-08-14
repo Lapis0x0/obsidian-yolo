@@ -285,17 +285,20 @@ export class AcpSessionAggregator {
   private readonly userText = new Map<string, string>()
   private readonly toolCalls = new Map<string, AcpToolCallState>()
   /**
-   * Scopes the fallback ids used when the agent omits `messageId` (legal per
-   * ACP — "all chunks belonging to the same message share the same
-   * `messageId`" only constrains chunks that carry one at all). Without this,
-   * every id-less turn's deltas collide on the same literal fallback string
-   * and a second turn's text appends onto — and keeps "upserting" as an edit
-   * to — the first turn's already-finished message. Advanced once per live
-   * turn (`beginTurn`, called by the runtime before each `prompt`) and once
-   * per id-less `user_message_chunk` in replay, since each such notification
-   * there is a distinct historical turn, not a live token-by-token stream.
+   * Scopes the ids used when aggregating live chunks. ACP only requires that
+   * chunks of the same message share a `messageId`, not that the id is unique
+   * across turns — so both omitted ids and recycled explicit ids are keyed
+   * by `turnSequence`. Advanced once per live turn (`beginTurn`) and once
+   * per id-less `user_message_chunk` in replay.
    */
   private turnSequence = 0
+  /**
+   * After a `tool_call`, later `agent_message_chunk`s are a new assistant
+   * bubble — otherwise every delta in the turn shares one id and the UI
+   * paints the whole answer above the tools.
+   */
+  private textSegment = 0
+  private splitNextAssistantText = false
 
   constructor(private readonly mode: AcpSessionAggregatorMode = 'live') {}
 
@@ -305,11 +308,40 @@ export class AcpSessionAggregator {
     this.userText.clear()
     this.toolCalls.clear()
     this.turnSequence = 0
+    this.textSegment = 0
+    this.splitNextAssistantText = false
   }
 
   /** Advances the aggregation epoch. Call once per live turn, before the prompt is sent. */
   beginTurn(): void {
     this.turnSequence += 1
+    this.textSegment = 0
+    this.splitNextAssistantText = false
+  }
+
+  /**
+   * Fallback ids are already epoch-scoped (`stream-1`). Explicit `messageId`s
+   * must be too: ACP only requires that chunks of the same message share an
+   * id, not that the id is unique across turns. Hermes (and others) recycle
+   * the same value, which would otherwise upsert into the previous turn.
+   */
+  private scopeLiveMessageId(
+    messageId: string | undefined,
+    kind: string,
+  ): string {
+    const explicit = messageId?.trim()
+    if (!explicit) return `${kind}-${this.turnSequence}`
+    if (this.turnSequence === 0) return explicit
+    return `${explicit}@${this.turnSequence}`
+  }
+
+  private scopeAssistantTextId(messageId: string | undefined): string {
+    if (this.splitNextAssistantText) {
+      this.textSegment += 1
+      this.splitNextAssistantText = false
+    }
+    const base = this.scopeLiveMessageId(messageId, 'stream')
+    return this.textSegment > 0 ? `${base}.${this.textSegment}` : base
   }
 
   apply(update: SessionUpdate, runtimeId: CliRuntimeId): ChatMessage[] {
@@ -319,6 +351,8 @@ export class AcpSessionAggregator {
         return []
       }
       if (!update.messageId) this.turnSequence += 1
+      this.textSegment = 0
+      this.splitNextAssistantText = false
       const messageId = update.messageId ?? `user-${this.turnSequence}`
       const text = `${this.userText.get(messageId) ?? ''}${contentBlockToText(update.content)}`
       this.userText.set(messageId, text)
@@ -332,7 +366,7 @@ export class AcpSessionAggregator {
       return [message]
     }
     if (update.sessionUpdate === 'agent_message_chunk') {
-      const messageId = update.messageId ?? `stream-${this.turnSequence}`
+      const messageId = this.scopeAssistantTextId(update.messageId)
       const text = `${this.assistantText.get(messageId) ?? ''}${contentBlockToText(update.content)}`
       this.assistantText.set(messageId, text)
       return [
@@ -345,7 +379,7 @@ export class AcpSessionAggregator {
       ]
     }
     if (update.sessionUpdate === 'agent_thought_chunk') {
-      const messageId = update.messageId ?? `thought-${this.turnSequence}`
+      const messageId = this.scopeLiveMessageId(update.messageId, 'thought')
       const text = `${this.thoughtText.get(messageId) ?? ''}${contentBlockToText(update.content)}`
       this.thoughtText.set(messageId, text)
       return [
@@ -359,6 +393,7 @@ export class AcpSessionAggregator {
       ]
     }
     if (update.sessionUpdate === 'tool_call') {
+      this.splitNextAssistantText = true
       const state = applyAcpToolCall(update)
       this.toolCalls.set(state.toolCallId, state)
       return mapAcpToolCallState(state, runtimeId)

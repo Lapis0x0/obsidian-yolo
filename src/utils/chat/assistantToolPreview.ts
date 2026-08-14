@@ -1,4 +1,4 @@
-import type { ChatAssistantMessage } from '../../types/chat'
+import type { ChatAssistantMessage, ChatMessage } from '../../types/chat'
 
 type AssistantGenerationState = NonNullable<
   ChatAssistantMessage['metadata']
@@ -18,4 +18,17 @@ export function shouldRenderAssistantToolPreview({
   }
 
   return generationState === 'streaming' || generationState === 'completed'
+}
+
+export function hasMatchingToolMessageForRequests(
+  requestIds: readonly string[],
+  messages: readonly ChatMessage[],
+): boolean {
+  if (requestIds.length === 0) return false
+  const ids = new Set(requestIds)
+  return messages.some(
+    (message) =>
+      message.role === 'tool' &&
+      message.toolCalls.some((call) => ids.has(call.request.id)),
+  )
 }
