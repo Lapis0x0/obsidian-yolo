@@ -690,14 +690,20 @@ select.yolo-module-settings-select {
     margin-bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
+/*
+ * 顶部锚定：视口长高时轨道原地不动，新行由下边缘扫出来。若改锚到 bottom，
+ * 轨道会跟着正在过渡的下边缘漂移，就必须再叠一个反向 transform 去抵消它——
+ * 而 height 只能在主线程逐帧重排、transform 跑在合成线程，两者无法保持同步，
+ * 主线程一卡帧旧行就会向上窜。位移只承担封顶后的滚动量。
+ */
 .yolo-assistant-message-metadata-preview-track {
   position: absolute;
   inset-inline: 0;
-  bottom: 0;
+  top: 0;
   white-space: normal;
   overflow-wrap: anywhere;
   transform: translateY(
-    var(--yolo-assistant-metadata-preview-hold-offset, 0px)
+    calc(var(--yolo-assistant-metadata-preview-scroll-offset, 0px) * -1)
   );
   will-change: transform;
 }
@@ -722,8 +728,8 @@ select.yolo-module-settings-select {
  * 封顶后内容在顶部渐隐遮罩后上滚。高度由组件量测后写入
  * --yolo-assistant-metadata-preview-viewport-height 驱动，收场时归零。
  * 动效豁免（height 属布局属性）：视口 contain: layout paint 已隔离重排，
- * 且 height 过渡必须与 track 的 WAAPI translate 同时长同曲线，旧行才能在
- * 视口生长时保持静止，无法用纯 transform 表达这一生长。
+ * 而“视口自身长高”无法用 transform 表达。封顶后 height 恒定、与轨道位移互斥，
+ * 不会出现两条动画争抢同一段视觉位置。
  */
 .yolo-assistant-message-metadata-preview--panel {
   height: var(--yolo-assistant-metadata-preview-viewport-height, 0px);
