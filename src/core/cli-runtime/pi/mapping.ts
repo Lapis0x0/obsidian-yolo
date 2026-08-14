@@ -106,16 +106,28 @@ export const isPiAgentSettled = (event: PiRpcRecord): boolean =>
 /**
  * `message_end` / `turn_end` carry `stopReason === 'error'` when the turn
  * failed outright (distinct from the normal `agent_settled` completion).
+ *
+ * Per the documented shape (`{ type: 'message_end' | 'turn_end', message:
+ * AgentMessage }`), `stopReason` lives on the nested `message` object — that
+ * is checked first. `assistantMessageEvent`/top-level fields are not part of
+ * that documented shape (they belong to `message_update`'s streaming-delta
+ * envelope instead), but a reference pi client integration does read them
+ * off `message_end`/`turn_end` too, so they stay as a fallback.
  */
 export const getPiTerminalErrorMessage = (
   event: PiRpcRecord,
 ): string | null => {
   const type = getString(event.type)
   if (type !== 'message_end' && type !== 'turn_end') return null
-  const nested =
+  const message = getNestedRecord(event, 'message')
+  const legacy =
     getNestedRecord(event, 'assistantMessageEvent') ??
     getNestedRecord(event, 'assistant_message_event')
-  const records = nested ? [nested, event] : [event]
+  const records = [
+    ...(message ? [message] : []),
+    ...(legacy ? [legacy] : []),
+    event,
+  ]
   const stopReason = firstStringField(records, ['stopReason', 'stop_reason'])
   if (!stopReason || stopReason.toLowerCase() !== 'error') return null
   const direct = firstStringField(records, [
@@ -546,7 +558,7 @@ export const toPiPrompt = (content: string | ContentPart[]): PiPrompt => {
 // ---------------------------------------------------------------------------
 
 const PI_THINKING_LEVELS = ['off', 'low', 'medium', 'high', 'max'] as const
-type PiThinkingLevel = (typeof PI_THINKING_LEVELS)[number]
+export type PiThinkingLevel = (typeof PI_THINKING_LEVELS)[number]
 
 const normalizeThinkingLevel = (value: unknown): PiThinkingLevel | null => {
   const normalized = getString(value)?.toLowerCase()
@@ -589,10 +601,33 @@ const extractThinkingLevels = (
 }
 
 /**
+ * pi's `set_model` RPC identifies a model by `{ provider, modelId }` — the
+ * same bare model id can exist under more than one provider, so the id alone
+ * is not a valid host-side selection key. `CliRuntimeModel.id` is opaque to
+ * the rest of the host, so it encodes `provider/modelId` here and nowhere
+ * else needs to know the scheme; `decodePiModelId` reverses it right before
+ * the `set_model` call.
+ */
+export const encodePiModelId = (provider: string, modelId: string): string =>
+  `${provider}/${modelId}`
+
+export type PiDecodedModelId = { provider: string; modelId: string }
+
+export const decodePiModelId = (encoded: string): PiDecodedModelId | null => {
+  const slashIndex = encoded.indexOf('/')
+  if (slashIndex <= 0 || slashIndex >= encoded.length - 1) return null
+  return {
+    provider: encoded.slice(0, slashIndex),
+    modelId: encoded.slice(slashIndex + 1),
+  }
+}
+
+/**
  * `get_available_models` → `CliRuntimeModel[]`. `reasoningEfforts` includes
  * every thinking level the model reports, `'off'` included for API
  * completeness — `CliRuntimeControls` already filters `'off'` out of the
- * picker itself (its `'auto'` entry covers "let pi decide").
+ * picker itself (its `'auto'` entry covers "let pi decide"). Entries without
+ * a `provider` are skipped: pi's `set_model` has no way to select them.
  */
 export const mapPiModels = (response: unknown): CliRuntimeModel[] => {
   const record = getRecord(response)
@@ -605,15 +640,18 @@ export const mapPiModels = (response: unknown): CliRuntimeModel[] => {
   const models: CliRuntimeModel[] = []
   for (const raw of list) {
     if (!isRecord(raw)) continue
-    const id =
+    const provider = getString(raw.provider)
+    const rawId =
       getString(raw.id) ?? getString(raw.modelId) ?? getString(raw.model)
-    if (!id || seen.has(id)) continue
+    if (!provider || !rawId) continue
+    const id = encodePiModelId(provider, rawId)
+    if (seen.has(id)) continue
     seen.add(id)
     const label =
       getString(raw.label) ??
       getString(raw.displayName) ??
       getString(raw.name) ??
-      id
+      rawId
     const description = getString(raw.description)
     const defaultLevel = normalizeThinkingLevel(
       raw.defaultThinkingLevel ?? raw.default_thinking_level,
@@ -634,6 +672,37 @@ export const mapPiModels = (response: unknown): CliRuntimeModel[] => {
   return models
 }
 
+/**
+ * Restores the provider/model pi already has selected (from `get_state`'s
+ * `model` field, a full `Model` object) as our encoded id, so a resumed
+ * session's first `getConfiguration()` reflects what pi is actually running
+ * instead of defaulting to the catalog's first entry and forcing a spurious
+ * `set_model` on the next turn.
+ */
+export type PiCurrentModelState = {
+  modelId: string
+  thinkingLevel: PiThinkingLevel | null
+}
+
+export const extractPiCurrentModelState = (
+  response: unknown,
+): PiCurrentModelState | null => {
+  const state = extractStateRecord(response)
+  const model = getNestedRecord(state, 'model')
+  if (!model) return null
+  const provider = getString(model.provider)
+  const rawId =
+    getString(model.id) ?? getString(model.modelId) ?? getString(model.model)
+  if (!provider || !rawId) return null
+  const thinkingLevel = normalizeThinkingLevel(
+    state.thinkingLevel ?? state.thinking_level,
+  )
+  return {
+    modelId: encodePiModelId(provider, rawId),
+    thinkingLevel,
+  }
+}
+
 // ---------------------------------------------------------------------------
 // History hydration (get_entries)
 // ---------------------------------------------------------------------------
@@ -646,13 +715,20 @@ type PiSessionEntry = {
   raw: Record<string, unknown>
 }
 
-const normalizePiEntries = (response: unknown): PiSessionEntry[] => {
+type PiNormalizedEntries = { entries: PiSessionEntry[]; leafId: string | null }
+
+const normalizePiEntries = (response: unknown): PiNormalizedEntries => {
   const record = getRecord(response)
   const list = Array.isArray(response)
     ? response
     : Array.isArray(record.entries)
       ? record.entries
       : []
+  // `leafId` only applies when `get_entries` returned the documented
+  // `{ entries, leafId }` envelope — a bare array response has no such field.
+  const leafId = Array.isArray(response)
+    ? null
+    : (getString(record.leafId) ?? getString(record.leaf_id))
   const entries: PiSessionEntry[] = []
   for (const raw of list) {
     if (!isRecord(raw)) continue
@@ -668,7 +744,7 @@ const normalizePiEntries = (response: unknown): PiSessionEntry[] => {
       raw,
     })
   }
-  return entries
+  return { entries, leafId }
 }
 
 const isToolResultEntry = (entry: PiSessionEntry): boolean =>
@@ -731,11 +807,21 @@ const collectToolCallIds = (entries: PiSessionEntry[]): Set<string> => {
 
 /**
  * pi session entries are a tree (parent-linked, forkable); only the current
- * branch — the path from the last entry back to the root — belongs in
+ * branch — the path from the leaf entry back to the root — belongs in
  * `CliSessionHydration.messages`. Sessions with no branching (no entry has a
  * `parentId`) are already linear and returned unchanged.
+ *
+ * `get_entries` is append-only, so the active branch's leaf is not
+ * necessarily the last array element — navigation can leave the current
+ * branch pointed at an earlier entry while later (now-abandoned) entries
+ * remain appended after it. The response's own `leafId` is authoritative for
+ * where the active branch currently ends; the last entry is only a fallback
+ * for the (undocumented) case where `leafId` is absent.
  */
-const resolvePiActiveBranch = (entries: PiSessionEntry[]): PiSessionEntry[] => {
+const resolvePiActiveBranch = (
+  entries: PiSessionEntry[],
+  leafId: string | null,
+): PiSessionEntry[] => {
   const withIds = entries.filter(
     (entry): entry is PiSessionEntry & { id: string } => !!entry.id,
   )
@@ -746,7 +832,8 @@ const resolvePiActiveBranch = (entries: PiSessionEntry[]): PiSessionEntry[] => {
   if (!hasBranchGraph) return entries
 
   const byId = new Map(withIds.map((entry) => [entry.id, entry] as const))
-  const leaf = withIds[withIds.length - 1]
+  const leaf =
+    (leafId ? byId.get(leafId) : undefined) ?? withIds[withIds.length - 1]
   const path: PiSessionEntry[] = []
   const seen = new Set<string>()
   let current: PiSessionEntry | undefined = leaf
@@ -909,7 +996,8 @@ export type PiSessionHydrationContent = {
 export const mapPiEntriesToHydration = (
   response: unknown,
 ): PiSessionHydrationContent => {
-  const entries = resolvePiActiveBranch(normalizePiEntries(response))
+  const normalized = normalizePiEntries(response)
+  const entries = resolvePiActiveBranch(normalized.entries, normalized.leafId)
   const messages: ChatMessage[] = []
   const compactionBoundaries: CliCompactionBoundary[] = []
 

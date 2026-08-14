@@ -23,7 +23,9 @@ import type {
 import {
   type PiMappingState,
   createPiMappingState,
+  decodePiModelId,
   extractPiContextWindow,
+  extractPiCurrentModelState,
   extractPiSessionIdentity,
   getPiTerminalErrorMessage,
   isPiAgentSettled,
@@ -80,6 +82,7 @@ export class PiCliRuntime implements CliRuntime {
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private models: CliRuntimeModel[] | null = null
   private modelId: string | null = null
+  private modelRestoreAttempted = false
   private reasoningEffort: string | null = null
   private appliedModelId: string | null = null
   private appliedThinkingLevel: string | null = null
@@ -102,6 +105,13 @@ export class PiCliRuntime implements CliRuntime {
 
     await this.shutdownActiveHandle()
     const handle = await this.startProcessHandle(targetKey)
+    if (this.disposed) {
+      // `dispose()` ran while the process was spawning and found nothing to
+      // shut down (`activeHandle` was still null at that point) — this
+      // continuation owns cleanup instead of publishing a leaked process.
+      await this.disposeProcessHandle(handle)
+      throw new Error('pi CLI runtime has been disposed.')
+    }
     this.activeHandle = handle
     this.boundTargetKey = targetKey
     this.sessionBound = false
@@ -142,6 +152,10 @@ export class PiCliRuntime implements CliRuntime {
   async getConfiguration(
     cachedModels?: readonly CliRuntimeModel[],
   ): Promise<CliRuntimeConfiguration> {
+    if (this.modelId === null && !this.modelRestoreAttempted) {
+      this.modelRestoreAttempted = true
+      await this.restoreCurrentModelFromState()
+    }
     const models = includeActiveCliModel(
       cachedModels?.length ? cachedModels : await this.listModels(),
       this.modelId,
@@ -152,6 +166,30 @@ export class PiCliRuntime implements CliRuntime {
       models,
       modelId: this.modelId,
       reasoningEffort: this.reasoningEffort,
+    }
+  }
+
+  /**
+   * Seeds `modelId`/`reasoningEffort` (and marks them already-applied) from
+   * pi's own `get_state` before the catalog default is allowed to win —
+   * otherwise a resumed session's first turn would call `set_model` with the
+   * catalog's first entry and silently switch away from whatever model pi
+   * actually has selected.
+   */
+  private async restoreCurrentModelFromState(): Promise<void> {
+    try {
+      const current = await this.withQueryHandle((transport) =>
+        transport.request('get_state', {}).then(extractPiCurrentModelState),
+      )
+      if (!current || this.modelId !== null) return
+      this.modelId = current.modelId
+      this.appliedModelId = current.modelId
+      if (current.thinkingLevel) {
+        this.reasoningEffort ??= current.thinkingLevel
+        this.appliedThinkingLevel = current.thinkingLevel
+      }
+    } catch {
+      // Best-effort restoration; the catalog default is still a safe fallback.
     }
   }
 
@@ -210,7 +248,12 @@ export class PiCliRuntime implements CliRuntime {
       throw error
     }
 
-    if (!this.sessionBound) void this.attemptBindSession()
+    // `prompt`'s response only acknowledges acceptance — it does not imply a
+    // session exists yet for a brand-new conversation. The caller checks
+    // `sessionRef` immediately after this resolves, so binding must complete
+    // (or be given a real chance to) before returning, not merely be kicked
+    // off in the background.
+    if (!this.sessionBound) await this.attemptBindSession()
   }
 
   async rewriteTurn(_input: CliRewriteTurnInput): Promise<void> {
@@ -369,46 +412,73 @@ export class PiCliRuntime implements CliRuntime {
 
   private handleTransportFatal(handle: PiProcessHandle, error: Error): void {
     if (handle !== this.activeHandle) return
+    // Detach and drop the dead handle so the next `ensureReady()` respawns
+    // instead of reusing a process whose transport rejects every request
+    // with this same fatal error forever (`transport.isDisposed` alone never
+    // reflects a fatal exit — only an explicit `dispose()` call sets it).
+    this.activeHandle = null
+    this.detachActiveListeners?.()
+    this.detachActiveListeners = null
     this.sessionBound = false
     if (!this.disposed) {
       this.emit({ type: 'run_state', state: 'error', error: error.message })
     }
+    void this.disposeProcessHandle(handle)
   }
 
   /**
    * pi does not hand back a session id/file proactively for a brand-new
-   * session — it only becomes known once pi has materialized one. Callers
-   * trigger this: synchronously after a resume (`ensureReady`), on the
-   * first inbound event of a fresh session, and again after a `prompt`
-   * round-trip if still unbound at that point.
+   * session — it only becomes known once pi has materialized one, which can
+   * lag slightly behind the `prompt` response that accepted the turn.
+   * Callers trigger this: synchronously after a resume (`ensureReady`), on
+   * the first inbound event of a fresh session, and again after a `prompt`
+   * round-trip if still unbound at that point — the last of which is now
+   * awaited by the caller, so a bounded retry gives pi a real chance to
+   * materialize the session before giving up.
    */
   private async attemptBindSession(): Promise<void> {
     if (this.sessionBound || this.disposed || !this.activeHandle) return
     if (this.bindAttemptInFlight) return this.bindAttemptInFlight
     const handle = this.activeHandle
+    const maxAttempts = 3
+    const retryDelayMs = 150
     const attempt = (async () => {
-      try {
-        const state = await handle.transport.request('get_state', {})
-        if (handle !== this.activeHandle || this.sessionBound) return
-        const window = extractPiContextWindow(state)
-        if (window !== null) this.contextWindowHint = window
-        const identity = extractPiSessionIdentity(state)
-        if (!identity) return
-        const nativeSessionId = identity.sessionId ?? identity.sessionFile
-        if (!nativeSessionId) return
-        const ref: CliSessionRef = {
-          runtimeId: 'pi',
-          nativeSessionId,
-          ...(identity.sessionFile
-            ? { sessionPathHint: identity.sessionFile }
-            : {}),
+      for (
+        let attemptIndex = 0;
+        attemptIndex < maxAttempts;
+        attemptIndex += 1
+      ) {
+        try {
+          const state = await handle.transport.request('get_state', {})
+          if (handle !== this.activeHandle || this.sessionBound) return
+          const window = extractPiContextWindow(state)
+          if (window !== null) this.contextWindowHint = window
+          const identity = extractPiSessionIdentity(state)
+          const nativeSessionId =
+            identity && (identity.sessionId ?? identity.sessionFile)
+          if (nativeSessionId) {
+            const ref: CliSessionRef = {
+              runtimeId: 'pi',
+              nativeSessionId,
+              ...(identity?.sessionFile
+                ? { sessionPathHint: identity.sessionFile }
+                : {}),
+            }
+            this.activeSessionRef = ref
+            this.sessionBound = true
+            this.boundTargetKey = ref.sessionPathHint ?? ref.nativeSessionId
+            this.emit({ type: 'session_bound', ref })
+            return
+          }
+        } catch {
+          // Fall through to retry/give-up below — a later trigger point can
+          // still succeed once this attempt sequence is exhausted.
         }
-        this.activeSessionRef = ref
-        this.sessionBound = true
-        this.boundTargetKey = ref.sessionPathHint ?? ref.nativeSessionId
-        this.emit({ type: 'session_bound', ref })
-      } catch {
-        // Best-effort — a later trigger point can still succeed.
+        if (attemptIndex < maxAttempts - 1) {
+          await new Promise((resolve) =>
+            globalThis.setTimeout(resolve, retryDelayMs),
+          )
+        }
       }
     })()
     this.bindAttemptInFlight = attempt.finally(() => {
@@ -419,7 +489,15 @@ export class PiCliRuntime implements CliRuntime {
 
   private async applySelectedModel(handle: PiProcessHandle): Promise<void> {
     if (!this.modelId || this.appliedModelId === this.modelId) return
-    await handle.transport.request('set_model', { modelId: this.modelId })
+    const decoded = decodePiModelId(this.modelId)
+    // A malformed/stale id (e.g. carried over from a persisted index entry
+    // predating the `provider/modelId` encoding) can't be applied safely —
+    // leave pi on its current model rather than sending a broken request.
+    if (!decoded) return
+    await handle.transport.request('set_model', {
+      provider: decoded.provider,
+      modelId: decoded.modelId,
+    })
     this.appliedModelId = this.modelId
     this.appliedThinkingLevel = null
   }

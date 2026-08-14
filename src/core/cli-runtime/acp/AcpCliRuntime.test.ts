@@ -111,7 +111,10 @@ class FakeAcpAgent implements AcpProcessLike {
     return () => this.exitListeners.delete(listener)
   }
 
+  shutdownCalled = false
+
   async shutdown(): Promise<void> {
+    this.shutdownCalled = true
     this.emitExit()
   }
 
@@ -312,6 +315,50 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
+  it('resolves as aborted, not completed, when the agent races the cancel with an end_turn prompt response', async () => {
+    // Models the race in issue #5: `cancel()` resolves the pending approval
+    // as cancelled, and the agent — instead of waiting for `session/cancel`
+    // to be processed — decides to just skip that tool call and finish the
+    // turn normally. `session/cancel`'s own response never corrects a
+    // `completed` that already got emitted, so the fix must make `sendTurn`
+    // itself resolve to `aborted` once cancellation was requested.
+    const agent = new FakeAcpAgent()
+    wireServerRequestReplies(agent)
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    agent.on('session/cancel', () => undefined)
+    agent.on('session/prompt', async (message) => {
+      const params = message.params as { sessionId: string }
+      await agent.request('session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call-1',
+          title: 'Delete file',
+          kind: 'delete',
+        },
+        options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }],
+      })
+      // The agent decides to just finish rather than honor the cancel.
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+    const turnPromise = runtime.sendTurn({ content: 'clean up' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    await runtime.cancel()
+    await turnPromise
+
+    expect(events).toContainEqual({ type: 'run_state', state: 'aborted' })
+    expect(
+      events.some(
+        (event) => event.type === 'run_state' && event.state === 'completed',
+      ),
+    ).toBe(false)
+    await runtime.dispose()
+  })
+
   it('emits an error run state when the agent process exits unexpectedly', async () => {
     const agent = new FakeAcpAgent()
     agent.on('session/new', () => ({ sessionId: 'sess-1' }))
@@ -328,5 +375,35 @@ describe('AcpCliRuntime', () => {
       ),
     ).toBe(true)
     await runtime.dispose()
+  })
+
+  it('does not leak the process when dispose() races the host still connecting it', async () => {
+    let releaseSpawn: (() => void) | undefined
+    let spawnedAgent: FakeAcpAgent | undefined
+    const runtime = new AcpCliRuntime('hermes', {
+      cwd: '/vault',
+      createProcess: () =>
+        new Promise<AcpProcessLike>((resolve) => {
+          releaseSpawn = () => {
+            spawnedAgent = new FakeAcpAgent()
+            resolve(spawnedAgent)
+          }
+        }),
+    })
+
+    const ensureReadyPromise = runtime.ensureReady({})
+    // Let `getHost()` progress to the point where it has published `this.host`
+    // and started `AcpHost.connect()` — which is now blocked on the pending
+    // `createProcess()` promise.
+    await new Promise((resolve) => setTimeout(resolve, 0))
+    await runtime.dispose()
+
+    // Only now does the process finish spawning — `dispose()` already ran
+    // and found nothing to shut down.
+    releaseSpawn?.()
+    await expect(ensureReadyPromise).rejects.toThrow(/disposed/)
+    await new Promise((resolve) => setTimeout(resolve, 0))
+
+    expect(spawnedAgent?.shutdownCalled).toBe(true)
   })
 })

@@ -127,7 +127,15 @@ export class AcpHost {
       runtimeId: this.options.runtimeId,
       ...(await this.options.resolveProcessOptions()),
     }
+    if (this.disposed) throw new Error('ACP host is disposed.')
     const process = await createProcess(processOptions)
+    if (this.disposed) {
+      // `dispose()` ran while the process was spawning and found nothing to
+      // shut down (`this.process` was still null at that point) — this
+      // continuation owns cleanup instead of publishing a leaked process.
+      await process.shutdown()
+      throw new Error('ACP host is disposed.')
+    }
     this.process = process
     process.onExit(() => {
       const stderr = process.getStderrSnapshot()
@@ -142,6 +150,7 @@ export class AcpHost {
 
     try {
       const stream = await createAcpStream(process)
+      if (this.disposed) throw new Error('ACP host is disposed.')
       const connection = new sdk.ClientSideConnection(
         () => this.createClient(),
         stream,
@@ -154,6 +163,7 @@ export class AcpHost {
         },
         clientInfo: { name: this.options.clientName, version: '1.0.0' },
       })
+      if (this.disposed) throw new Error('ACP host is disposed.')
       this.agentCapabilities = init.agentCapabilities
       this.connection = connection
       // A successful (re)connect supersedes any earlier fatal state.

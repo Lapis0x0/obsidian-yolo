@@ -64,6 +64,7 @@ export class AcpCliRuntime implements CliRuntime {
   private unregisterSession: (() => void) | null = null
   private activeSessionRef: CliSessionRef | null = null
   private turnInFlight = false
+  private cancelRequested = false
   private disposed = false
 
   constructor(
@@ -90,7 +91,7 @@ export class AcpCliRuntime implements CliRuntime {
       return { ref, messages: [], compactionBoundaries: [] }
     }
 
-    const aggregator = new AcpSessionAggregator()
+    const aggregator = new AcpSessionAggregator('replay')
     const messages: ChatMessage[] = []
     const unregister = host.registerSession(ref.nativeSessionId, {
       onUpdate: (update) => {
@@ -178,6 +179,8 @@ export class AcpCliRuntime implements CliRuntime {
     }
     const host = await this.getHost()
     const sessionId = this.activeSessionRef.nativeSessionId
+    this.cancelRequested = false
+    this.aggregator.beginTurn()
     this.emit({ type: 'run_state', state: 'running' })
     this.turnInFlight = true
     try {
@@ -188,9 +191,15 @@ export class AcpCliRuntime implements CliRuntime {
         }),
       )
       this.turnInFlight = false
+      // `cancel()` may have already resolved a pending approval as
+      // cancelled and raced the agent to `end_turn` before `session/cancel`
+      // was processed — once cancellation was requested for this turn, its
+      // outcome can only be `aborted`, regardless of what `stopReason` the
+      // (possibly racing) prompt response reports.
+      const aborted = this.cancelRequested || result.stopReason === 'cancelled'
       this.emit({
         type: 'run_state',
-        state: result.stopReason === 'cancelled' ? 'aborted' : 'completed',
+        state: aborted ? 'aborted' : 'completed',
       })
       if (result.usage) {
         this.emit({
@@ -216,6 +225,11 @@ export class AcpCliRuntime implements CliRuntime {
 
   async cancel(): Promise<void> {
     if (!this.activeSessionRef) return
+    // Set before releasing pending approvals: an agent that reacts to the
+    // cancelled approval by finishing the prompt with a non-`cancelled`
+    // `stopReason` must still have this turn resolve as `aborted`, not race
+    // `sendTurn()` to `completed`.
+    this.cancelRequested = true
     for (const pending of this.pendingApprovals.values()) {
       pending.resolve(buildCancelledApprovalOutcome())
     }

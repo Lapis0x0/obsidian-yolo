@@ -2,6 +2,7 @@ import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule
 import { assertCliRuntimeAvailable } from '../desktop'
 
 type ChildProcess = import('node:child_process').ChildProcess
+type StringDecoder = import('node:string_decoder').StringDecoder
 
 export type PiProcessExitListener = (
   code: number | null,
@@ -56,7 +57,10 @@ export class PiSubprocess implements PiProcessLike {
     | { code: number | null; signal: NodeJS.Signals | null }
     | undefined
 
-  private constructor(private readonly child: ChildProcess) {
+  private constructor(
+    private readonly child: ChildProcess,
+    private readonly stdoutDecoder: StringDecoder,
+  ) {
     this.started = new Promise<void>((resolve, reject) => {
       let settled = false
       child.once('spawn', () => {
@@ -73,9 +77,20 @@ export class PiSubprocess implements PiProcessLike {
         this.signalExit(null, null)
       })
     })
+    // `StringDecoder` (not a per-chunk `.toString('utf8')`) so a multi-byte
+    // UTF-8 character split across two `data` events decodes correctly
+    // instead of turning into `�` — or, worse, corrupting a JSONL frame badly
+    // enough that `JSON.parse` fails and the transport silently drops it.
     child.stdout?.on('data', (chunk: Buffer | string) => {
-      const text = Buffer.isBuffer(chunk) ? chunk.toString('utf8') : chunk
-      for (const listener of this.dataListeners) listener(text)
+      const text = Buffer.isBuffer(chunk)
+        ? this.stdoutDecoder.write(chunk)
+        : chunk
+      if (text) for (const listener of this.dataListeners) listener(text)
+    })
+    child.stdout?.on('end', () => {
+      const trailing = this.stdoutDecoder.end()
+      if (trailing)
+        for (const listener of this.dataListeners) listener(trailing)
     })
     child.stderr?.on('data', (chunk: Buffer | string) => {
       const text = Buffer.isBuffer(chunk)
@@ -94,19 +109,27 @@ export class PiSubprocess implements PiProcessLike {
       await loadDesktopNodeModule<typeof import('node:child_process')>(
         'node:child_process',
       )
+    const { StringDecoder } = await loadDesktopNodeModule<
+      typeof import('node:string_decoder')
+    >('node:string_decoder')
     const command = options.command.trim()
     if (!command) {
       throw new Error(
         'pi CLI was not found. Install pi, or set a custom CLI path in Settings → Agent, then retry.',
       )
     }
+    const env = await getProcessEnv(options.env)
+    // No `await` between `spawn()` and constructing `PiSubprocess` — the
+    // constructor is what attaches the `'spawn'`/`'error'` listeners, and a
+    // fast-starting process's `'spawn'` event must not have a chance to fire
+    // (and be lost) before that listener exists.
     const child = spawn(command, options.args, {
       cwd: options.cwd,
-      env: await getProcessEnv(options.env),
+      env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
     })
-    const process = new PiSubprocess(child)
+    const process = new PiSubprocess(child, new StringDecoder('utf8'))
     await process.started
     return process
   }

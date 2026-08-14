@@ -17,6 +17,7 @@ import type {
   ChatAssistantMessage,
   ChatMessage,
   ChatToolMessage,
+  ChatUserMessage,
 } from '../../../types/chat'
 import type { ContentPart } from '../../../types/llm/request'
 import {
@@ -258,29 +259,76 @@ export const buildAcpPlanMessage = (plan: Plan): ChatAssistantMessage => ({
 })
 
 /**
+ * `live`: streaming a turn this client itself just sent — the prompt's own
+ * `user_message_chunk` echo is redundant with the local optimistic user
+ * message and is suppressed.
+ * `replay`: hydrating a stored session via `session/load` — there is no
+ * local user message to fall back on, so `user_message_chunk` is the only
+ * source of user turns and must be aggregated into `ChatUserMessage`s.
+ */
+export type AcpSessionAggregatorMode = 'live' | 'replay'
+
+/**
  * Aggregates streaming `SessionUpdate` notifications into `ChatMessage`
  * upserts. Instantiated once per bound ACP session (live turns and
- * `session/load` replay share the same aggregation rules) and reset when the
- * runtime rebinds to a different session.
+ * `session/load` replay share the same aggregation rules, only differing on
+ * `user_message_chunk` per `mode`) and reset when the runtime rebinds to a
+ * different session.
  */
 export class AcpSessionAggregator {
   private readonly assistantText = new Map<string, string>()
   private readonly thoughtText = new Map<string, string>()
+  private readonly userText = new Map<string, string>()
   private readonly toolCalls = new Map<string, AcpToolCallState>()
+  /**
+   * Scopes the fallback ids used when the agent omits `messageId` (legal per
+   * ACP — "all chunks belonging to the same message share the same
+   * `messageId`" only constrains chunks that carry one at all). Without this,
+   * every id-less turn's deltas collide on the same literal fallback string
+   * and a second turn's text appends onto — and keeps "upserting" as an edit
+   * to — the first turn's already-finished message. Advanced once per live
+   * turn (`beginTurn`, called by the runtime before each `prompt`) and once
+   * per id-less `user_message_chunk` in replay, since each such notification
+   * there is a distinct historical turn, not a live token-by-token stream.
+   */
+  private turnSequence = 0
+
+  constructor(private readonly mode: AcpSessionAggregatorMode = 'live') {}
 
   reset(): void {
     this.assistantText.clear()
     this.thoughtText.clear()
+    this.userText.clear()
     this.toolCalls.clear()
+    this.turnSequence = 0
+  }
+
+  /** Advances the aggregation epoch. Call once per live turn, before the prompt is sent. */
+  beginTurn(): void {
+    this.turnSequence += 1
   }
 
   apply(update: SessionUpdate, runtimeId: CliRuntimeId): ChatMessage[] {
     if (update.sessionUpdate === 'user_message_chunk') {
-      // Echo of the prompt we just sent; the local user message already covers it.
-      return []
+      if (this.mode === 'live') {
+        // Echo of the prompt we just sent; the local user message already covers it.
+        return []
+      }
+      if (!update.messageId) this.turnSequence += 1
+      const messageId = update.messageId ?? `user-${this.turnSequence}`
+      const text = `${this.userText.get(messageId) ?? ''}${contentBlockToText(update.content)}`
+      this.userText.set(messageId, text)
+      const message: ChatUserMessage = {
+        role: 'user',
+        id: `acp-user-${messageId}`,
+        content: null,
+        promptContent: text,
+        mentionables: [],
+      }
+      return [message]
     }
     if (update.sessionUpdate === 'agent_message_chunk') {
-      const messageId = update.messageId ?? 'stream'
+      const messageId = update.messageId ?? `stream-${this.turnSequence}`
       const text = `${this.assistantText.get(messageId) ?? ''}${contentBlockToText(update.content)}`
       this.assistantText.set(messageId, text)
       return [
@@ -293,7 +341,7 @@ export class AcpSessionAggregator {
       ]
     }
     if (update.sessionUpdate === 'agent_thought_chunk') {
-      const messageId = update.messageId ?? 'thought'
+      const messageId = update.messageId ?? `thought-${this.turnSequence}`
       const text = `${this.thoughtText.get(messageId) ?? ''}${contentBlockToText(update.content)}`
       this.thoughtText.set(messageId, text)
       return [

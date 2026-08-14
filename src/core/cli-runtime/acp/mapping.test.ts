@@ -169,6 +169,205 @@ describe('ACP session update aggregation', () => {
   })
 })
 
+describe('ACP session update aggregation — multi-turn fallback id scoping', () => {
+  it('scopes fallback stream/thought ids to the turn epoch, so a second live turn does not append onto the first', () => {
+    const aggregator = new AcpSessionAggregator('live')
+    aggregator.beginTurn()
+    const turn1 = aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'first turn answer' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    expect(turn1).toMatchObject([
+      { id: 'acp-assistant-stream-1', content: 'first turn answer' },
+    ])
+
+    aggregator.beginTurn()
+    const turn2 = aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'second turn answer' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    // A distinct message id, and critically not the first turn's already
+    // "completed" text with the second turn's text appended onto it.
+    expect(turn2).toMatchObject([
+      { id: 'acp-assistant-stream-2', content: 'second turn answer' },
+    ])
+  })
+
+  it('does the same for agent_thought_chunk fallback ids', () => {
+    const aggregator = new AcpSessionAggregator('live')
+    aggregator.beginTurn()
+    aggregator.apply(
+      {
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: 'thinking about turn 1' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    aggregator.beginTurn()
+    const turn2 = aggregator.apply(
+      {
+        sessionUpdate: 'agent_thought_chunk',
+        content: { type: 'text', text: 'thinking about turn 2' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    expect(turn2).toMatchObject([
+      { id: 'acp-thought-thought-2', reasoning: 'thinking about turn 2' },
+    ])
+  })
+
+  it('does not scope ids that carry an explicit messageId — the protocol already keys those', () => {
+    const aggregator = new AcpSessionAggregator('live')
+    aggregator.beginTurn()
+    aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        messageId: 'm1',
+        content: { type: 'text', text: 'a' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    aggregator.beginTurn()
+    const second = aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        messageId: 'm1',
+        content: { type: 'text', text: 'b' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    // Same explicit messageId across the epoch boundary still accumulates —
+    // fallback-id scoping must not interfere with protocol-provided ids.
+    expect(second).toMatchObject([{ id: 'acp-assistant-m1', content: 'ab' }])
+  })
+
+  it('resets the epoch on reset()', () => {
+    const aggregator = new AcpSessionAggregator('live')
+    aggregator.beginTurn()
+    aggregator.beginTurn()
+    aggregator.reset()
+    aggregator.beginTurn()
+    const messages = aggregator.apply(
+      {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: 'x' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    expect(messages).toMatchObject([{ id: 'acp-assistant-stream-1' }])
+  })
+})
+
+describe('ACP session update aggregation — replay mode', () => {
+  it('aggregates user_message_chunk into a ChatUserMessage instead of dropping it', () => {
+    const aggregator = new AcpSessionAggregator('replay')
+    const messages = aggregator.apply(
+      {
+        sessionUpdate: 'user_message_chunk',
+        messageId: 'u1',
+        content: { type: 'text', text: 'what does this function do?' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    expect(messages).toEqual([
+      {
+        role: 'user',
+        id: 'acp-user-u1',
+        content: null,
+        promptContent: 'what does this function do?',
+        mentionables: [],
+      },
+    ])
+  })
+
+  it('accumulates chunks sharing the same explicit messageId', () => {
+    const aggregator = new AcpSessionAggregator('replay')
+    aggregator.apply(
+      {
+        sessionUpdate: 'user_message_chunk',
+        messageId: 'u1',
+        content: { type: 'text', text: 'part one ' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    const second = aggregator.apply(
+      {
+        sessionUpdate: 'user_message_chunk',
+        messageId: 'u1',
+        content: { type: 'text', text: 'part two' },
+      } as SessionUpdate,
+      'hermes',
+    )
+    expect(second).toMatchObject([
+      { id: 'acp-user-u1', promptContent: 'part one part two' },
+    ])
+  })
+
+  it('replaying a full multi-turn session recovers every user turn and keeps assistant deltas separated per turn', () => {
+    const aggregator = new AcpSessionAggregator('replay')
+    const collected: ReturnType<typeof aggregator.apply> = []
+    const feed = (update: SessionUpdate) =>
+      collected.push(...aggregator.apply(update, 'hermes'))
+
+    // Turn 1 — no messageId on either side (some agents omit it in replay).
+    feed({
+      sessionUpdate: 'user_message_chunk',
+      content: { type: 'text', text: 'turn one question' },
+    } as SessionUpdate)
+    feed({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'turn one answer' },
+    } as SessionUpdate)
+    // Turn 2.
+    feed({
+      sessionUpdate: 'user_message_chunk',
+      content: { type: 'text', text: 'turn two question' },
+    } as SessionUpdate)
+    feed({
+      sessionUpdate: 'agent_message_chunk',
+      content: { type: 'text', text: 'turn two answer' },
+    } as SessionUpdate)
+
+    const userMessages = collected.filter((message) => message.role === 'user')
+    expect(userMessages).toHaveLength(2)
+    expect(userMessages[0]).toMatchObject({
+      promptContent: 'turn one question',
+    })
+    expect(userMessages[1]).toMatchObject({
+      promptContent: 'turn two question',
+    })
+
+    const assistantMessages = collected.filter(
+      (message) => message.role === 'assistant',
+    )
+    // Two distinct assistant messages, not one turn's text appended onto
+    // the other's under a shared fallback id.
+    const distinctIds = new Set(assistantMessages.map((message) => message.id))
+    expect(distinctIds.size).toBe(2)
+    expect(assistantMessages[0]).toMatchObject({ content: 'turn one answer' })
+    expect(assistantMessages[1]).toMatchObject({ content: 'turn two answer' })
+  })
+
+  it('still suppresses user_message_chunk in live mode (default constructor)', () => {
+    const aggregator = new AcpSessionAggregator()
+    expect(
+      aggregator.apply(
+        {
+          sessionUpdate: 'user_message_chunk',
+          content: { type: 'text', text: 'hi' },
+        } as SessionUpdate,
+        'hermes',
+      ),
+    ).toEqual([])
+  })
+})
+
 describe('ACP approval decision mapping', () => {
   const options: PermissionOption[] = [
     { optionId: 'once', name: 'Allow once', kind: 'allow_once' },

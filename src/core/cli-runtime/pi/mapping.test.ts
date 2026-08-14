@@ -2,7 +2,10 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
 import {
   createPiMappingState,
+  decodePiModelId,
+  encodePiModelId,
   extractPiContextUsage,
+  extractPiCurrentModelState,
   extractPiSessionIdentity,
   extractPiUsage,
   getPiTerminalErrorMessage,
@@ -296,7 +299,43 @@ describe('agent_settled / terminal error detection', () => {
     expect(isPiAgentSettled({ type: 'agent_end' })).toBe(false)
   })
 
-  it('extracts the error message from message_end/turn_end with stopReason error', () => {
+  it('prioritizes the documented event.message.stopReason/errorMessage shape', () => {
+    expect(
+      getPiTerminalErrorMessage({
+        type: 'turn_end',
+        message: {
+          role: 'assistant',
+          stopReason: 'error',
+          errorMessage: 'provider unavailable',
+        },
+        toolResults: [],
+      }),
+    ).toBe('provider unavailable')
+    // message.errorMessage wins over a conflicting top-level field.
+    expect(
+      getPiTerminalErrorMessage({
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          stopReason: 'error',
+          errorMessage: 'from message',
+        },
+        errorMessage: 'from top level',
+      }),
+    ).toBe('from message')
+  })
+
+  it('lets event.message win over a conflicting legacy/top-level stopReason', () => {
+    expect(
+      getPiTerminalErrorMessage({
+        type: 'message_end',
+        message: { role: 'assistant', stopReason: 'stop' },
+        stopReason: 'error',
+      }),
+    ).toBeNull()
+  })
+
+  it('falls back to the legacy assistantMessageEvent shape when message is absent', () => {
     expect(
       getPiTerminalErrorMessage({
         type: 'message_end',
@@ -399,15 +438,43 @@ describe('toPiPrompt', () => {
   })
 })
 
+describe('encodePiModelId / decodePiModelId', () => {
+  it('round-trips a provider/modelId pair', () => {
+    expect(
+      decodePiModelId(encodePiModelId('anthropic', 'claude-sonnet-4')),
+    ).toEqual({
+      provider: 'anthropic',
+      modelId: 'claude-sonnet-4',
+    })
+  })
+
+  it('takes the first slash as the provider boundary, keeping later slashes in modelId', () => {
+    expect(decodePiModelId('openrouter/anthropic/claude-3.5')).toEqual({
+      provider: 'openrouter',
+      modelId: 'anthropic/claude-3.5',
+    })
+  })
+
+  it('returns null for a string with no provider boundary', () => {
+    expect(decodePiModelId('gpt-5')).toBeNull()
+  })
+})
+
 describe('mapPiModels', () => {
   it('maps discovered models with off|low|medium|high|max reasoning efforts', () => {
     const models = mapPiModels([
-      { id: 'gpt-5', label: 'GPT-5', reasoning: true, isDefault: true },
-      { id: 'small', name: 'Small', reasoning: false },
+      {
+        id: 'gpt-5',
+        provider: 'openai',
+        label: 'GPT-5',
+        reasoning: true,
+        isDefault: true,
+      },
+      { id: 'small', provider: 'openai', name: 'Small', reasoning: false },
     ])
     expect(models).toEqual([
       {
-        id: 'gpt-5',
+        id: 'openai/gpt-5',
         label: 'GPT-5',
         reasoningEfforts: [
           { id: 'off' },
@@ -418,18 +485,59 @@ describe('mapPiModels', () => {
         ],
         isDefault: true,
       },
-      { id: 'small', label: 'Small', reasoningEfforts: [{ id: 'off' }] },
+      {
+        id: 'openai/small',
+        label: 'Small',
+        reasoningEfforts: [{ id: 'off' }],
+      },
     ])
   })
 
-  it('deduplicates by id and skips entries without one', () => {
+  it('deduplicates by provider+id and skips entries without a provider or id', () => {
     const models = mapPiModels([
-      { id: 'a', label: 'A' },
-      { id: 'a', label: 'A dup' },
-      { label: 'no id' },
+      { id: 'a', provider: 'p1', label: 'A' },
+      { id: 'a', provider: 'p1', label: 'A dup' },
+      { id: 'a', provider: 'p2', label: 'A (other provider)' },
+      { label: 'no id', provider: 'p1' },
+      { id: 'no-provider' },
     ])
-    expect(models).toHaveLength(1)
-    expect(models[0].id).toBe('a')
+    expect(models.map((model) => model.id)).toEqual(['p1/a', 'p2/a'])
+  })
+
+  it('keeps the same bare model id distinct across different providers', () => {
+    const models = mapPiModels([
+      { id: 'shared-id', provider: 'anthropic', label: 'Anthropic model' },
+      { id: 'shared-id', provider: 'openai', label: 'OpenAI model' },
+    ])
+    expect(models).toHaveLength(2)
+    expect(models.map((model) => model.id)).toEqual([
+      'anthropic/shared-id',
+      'openai/shared-id',
+    ])
+  })
+})
+
+describe('extractPiCurrentModelState', () => {
+  it('reads the current provider/model and thinkingLevel off get_state', () => {
+    expect(
+      extractPiCurrentModelState({
+        model: { id: 'claude-sonnet-4', provider: 'anthropic' },
+        thinkingLevel: 'high',
+      }),
+    ).toEqual({ modelId: 'anthropic/claude-sonnet-4', thinkingLevel: 'high' })
+  })
+
+  it('reads from a nested state/session wrapper', () => {
+    expect(
+      extractPiCurrentModelState({
+        state: { model: { id: 'gpt-5', provider: 'openai' } },
+      }),
+    ).toEqual({ modelId: 'openai/gpt-5', thinkingLevel: null })
+  })
+
+  it('returns null when the model or provider is missing', () => {
+    expect(extractPiCurrentModelState({ model: { id: 'gpt-5' } })).toBeNull()
+    expect(extractPiCurrentModelState({})).toBeNull()
   })
 })
 
@@ -516,5 +624,51 @@ describe('mapPiEntriesToHydration', () => {
       },
     ])
     expect(messages.map((message) => message.id)).toEqual(['u1', 'a1', 'u2'])
+  })
+
+  it('follows the response leafId when it points earlier than the last appended entry', () => {
+    // `get_entries` is append-only: the client navigated back to `a1` (e.g.
+    // a rewrite/fork), so the abandoned `u2`/`a2` entries are still appended
+    // after it in the array, but `leafId` says the active branch ends at
+    // `a1`. Hydration must follow `leafId`, not "last array element".
+    const { messages } = mapPiEntriesToHydration({
+      leafId: 'a1',
+      entries: [
+        { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
+        {
+          id: 'a1',
+          parentId: 'u1',
+          type: 'assistant',
+          message: { role: 'assistant', content: 'reply A' },
+        },
+        // Appended after a1 but abandoned — not on the leafId's branch.
+        {
+          id: 'u2',
+          parentId: 'a1',
+          type: 'user',
+          message: { role: 'user', content: 'abandoned follow-up' },
+        },
+        {
+          id: 'a2',
+          parentId: 'u2',
+          type: 'assistant',
+          message: { role: 'assistant', content: 'abandoned reply' },
+        },
+      ],
+    })
+    expect(messages.map((message) => message.id)).toEqual(['u1', 'a1'])
+  })
+
+  it('falls back to the last appended entry when leafId is absent (bare array response)', () => {
+    const { messages } = mapPiEntriesToHydration([
+      { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
+      {
+        id: 'a1',
+        parentId: 'u1',
+        type: 'assistant',
+        message: { role: 'assistant', content: 'reply A' },
+      },
+    ])
+    expect(messages.map((message) => message.id)).toEqual(['u1', 'a1'])
   })
 })
