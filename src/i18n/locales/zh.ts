@@ -1538,6 +1538,8 @@ export const zh: TranslationKeys = {
     },
     etc: {
       title: '其他',
+      pluginUpdateNotice: '更新提醒',
+      pluginUpdateNoticeDesc: '开启后 YOLO 会自动检测新版本并提醒。',
       pluginAutoUpdate: '自动下载更新',
       pluginAutoUpdateDesc: '开启后检测到新版本会自动在后台加载。',
       pluginAutoUpdateDescUnavailable:

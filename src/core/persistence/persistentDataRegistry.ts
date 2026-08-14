@@ -103,6 +103,7 @@ export const HOST_SETTINGS_CLASSIFICATIONS = [
     'runtime-state',
     'synchronized module update banner mute state',
   ),
+  hostSetting('pluginUpdateNoticeEnabled', '插件更新提醒'),
   hostSetting('pluginUpdateAutoDownloadEnabled', '插件自动下载更新'),
   hostSetting('ragOptions', '知识库设置'),
   hostSetting('mcp', 'MCP 工具'),

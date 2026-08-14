@@ -262,6 +262,17 @@ const MODULE_DEVICE_STATE_ROOT = 'module-device-state-v2'
 type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
+/**
+ * A staged module update can only be installed from the update toast, so
+ * downloading one while the notice is off would never be applied.
+ */
+function isModuleAutoDownloadEnabled(settings: YoloSettings): boolean {
+  return (
+    settings.pluginUpdateNoticeEnabled &&
+    settings.pluginUpdateAutoDownloadEnabled
+  )
+}
+
 export default class YoloPlugin extends Plugin {
   settings: YoloSettings
   settingsChangeListeners: ((newSettings: YoloSettings) => void)[] = []
@@ -2164,10 +2175,9 @@ export default class YoloPlugin extends Plugin {
     this.addSettingsChangeListener((settings) => {
       updateLiteSkillRegistrySettings(this.app, settings)
     })
-    let moduleAutoDownloadEnabled =
-      this.settings.pluginUpdateAutoDownloadEnabled
+    let moduleAutoDownloadEnabled = isModuleAutoDownloadEnabled(this.settings)
     this.addSettingsChangeListener((settings) => {
-      const next = settings.pluginUpdateAutoDownloadEnabled
+      const next = isModuleAutoDownloadEnabled(settings)
       if (next && !moduleAutoDownloadEnabled) {
         void this.moduleUpdateController?.refresh()
       }
@@ -3834,12 +3844,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     void Promise.allSettled([
       (async () => {
         if (!this.distributionFeedClient) return
+        // The Feed load itself is never gated: it is also the module catalog's
+        // data source, so `设置 → 模块` keeps offering updates even when the
+        // update notice is off. Only the prompt and its download are gated.
         const fetched = await checkForUpdate(
           this.manifest.version,
           this.distributionFeedClient,
         )
         if (fetched?.hasUpdate) {
-          if (this.isUpdateVersionMuted(fetched.latestVersion)) {
+          if (
+            !this.settings.pluginUpdateNoticeEnabled ||
+            this.isUpdateVersionMuted(fetched.latestVersion)
+          ) {
             return
           }
           this.updateCheckResult = fetched
@@ -3855,7 +3871,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         }
       })(),
       (async () => {
+        // Catalog refresh always runs — it feeds the module list in settings.
+        // Only the toast-facing offers (and their auto-download) are gated.
         await this.moduleService?.checkForUpdates()
+        if (!this.settings.pluginUpdateNoticeEnabled) return
         await this.moduleUpdateController?.refresh()
       })(),
     ])
@@ -4263,8 +4282,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.moduleService = services
     this.moduleUpdateController = new ModuleUpdateController({
       service: services,
-      getAutoDownloadEnabled: () =>
-        this.settings.pluginUpdateAutoDownloadEnabled,
+      getAutoDownloadEnabled: () => isModuleAutoDownloadEnabled(this.settings),
       getMutedVersions: () => this.settings.mutedModuleUpdateVersions,
       muteVersion: async (moduleId, version) => {
         await this.setSettings({

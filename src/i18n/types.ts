@@ -1308,6 +1308,8 @@ export type TranslationKeys = {
     }
     etc: {
       title: string
+      pluginUpdateNotice?: string
+      pluginUpdateNoticeDesc?: string
       pluginAutoUpdate?: string
       pluginAutoUpdateDesc?: string
       pluginAutoUpdateDescUnavailable?: string

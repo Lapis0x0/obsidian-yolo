@@ -260,6 +260,19 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     )
   }
 
+  const handlePluginUpdateNoticeChange = (value: boolean) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          pluginUpdateNoticeEnabled: value,
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update plugin update notice setting', error)
+      }
+    })()
+  }
+
   const handlePluginAutoUpdateChange = (value: boolean) => {
     void (async () => {
       try {
@@ -454,25 +467,41 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
 
         <div className="yolo-settings-block-content">
           <ObsidianSetting
-            name={t('settings.etc.pluginAutoUpdate', '自动下载更新')}
-            desc={
-              Platform.isDesktop && canSelfUpdate
-                ? t(
-                    'settings.etc.pluginAutoUpdateDesc',
-                    '开启后检测到新版本会自动在后台加载。',
-                  )
-                : t(
-                    'settings.etc.pluginAutoUpdateDescUnavailable',
-                    '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
-                  )
-            }
+            name={t('settings.etc.pluginUpdateNotice', '更新提醒')}
+            desc={t(
+              'settings.etc.pluginUpdateNoticeDesc',
+              '开启后 YOLO 会自动检测新版本并提醒。',
+            )}
             className="yolo-settings-card"
           >
             <ObsidianToggle
-              value={settings.pluginUpdateAutoDownloadEnabled ?? true}
-              onChange={handlePluginAutoUpdateChange}
+              value={settings.pluginUpdateNoticeEnabled ?? true}
+              onChange={handlePluginUpdateNoticeChange}
             />
           </ObsidianSetting>
+
+          {(settings.pluginUpdateNoticeEnabled ?? true) ? (
+            <ObsidianSetting
+              name={t('settings.etc.pluginAutoUpdate', '自动下载更新')}
+              desc={
+                Platform.isDesktop && canSelfUpdate
+                  ? t(
+                      'settings.etc.pluginAutoUpdateDesc',
+                      '开启后检测到新版本会自动在后台加载。',
+                    )
+                  : t(
+                      'settings.etc.pluginAutoUpdateDescUnavailable',
+                      '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
+                    )
+              }
+              className="yolo-settings-card"
+            >
+              <ObsidianToggle
+                value={settings.pluginUpdateAutoDownloadEnabled ?? true}
+                onChange={handlePluginAutoUpdateChange}
+              />
+            </ObsidianSetting>
+          ) : null}
 
           <ObsidianSetting
             name={t('settings.etc.exportConfig', '导出配置')}

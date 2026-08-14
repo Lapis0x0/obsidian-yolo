@@ -1648,6 +1648,9 @@ export const en: TranslationKeys = {
     },
     etc: {
       title: 'Other',
+      pluginUpdateNotice: 'Update notifications',
+      pluginUpdateNoticeDesc:
+        'When enabled, YOLO checks for new versions and lets you know.',
       pluginAutoUpdate: 'Auto-download updates',
       pluginAutoUpdateDesc:
         'When enabled, new versions are downloaded automatically in the background when detected.',

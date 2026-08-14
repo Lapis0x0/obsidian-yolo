@@ -341,6 +341,13 @@ export const yoloSettingsSchema = z.object({
   // 模块更新提示:按模块记录被静音的版本,更高版本仍会重新提示。
   mutedModuleUpdateVersions: z.record(z.string(), z.string()).catch({}),
 
+  /**
+   * 检测到新版本时是否弹出更新卡片。关闭后主插件与模块都不再提示,也不再自动
+   * 下载(没有卡片就没有安装入口)。分发源 Feed 仍然照常请求——它同时是模块
+   * 目录的数据源,`设置 → 模块` 的更新按钮依赖它。
+   */
+  pluginUpdateNoticeEnabled: z.boolean().catch(true),
+
   /** 检测到新版本时在后台自动下载 release 文件；安装仍需用户确认。 */
   pluginUpdateAutoDownloadEnabled: z.boolean().catch(true),
 
