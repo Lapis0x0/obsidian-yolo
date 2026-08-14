@@ -408,7 +408,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  backdrop-filter: blur(6px);
 }
 
 @keyframes yolo-thinking-text-shimmer {
@@ -417,28 +416,6 @@
   }
   100% {
     background-position: -200% center;
-  }
-}
-
-/* 流式文本入场 - 每个新到达的 span 淡入 + 轻微模糊消散 */
-/* 动画豁免：filter 不在「只动画 opacity / transform」的允许列表内。这里每次
-   追加只包一个 span，滤镜区域是单个片段，代价可控；模糊消散正是显影质感的构成
-   本身，用 opacity 无法替代。 */
-.yolo-stream-fresh-text {
-  display: inline;
-  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
-    var(--yolo-anim-ease-out);
-}
-
-@keyframes yolo-stream-fresh-text-fade {
-  0% {
-    opacity: 0.18;
-    filter: blur(0.18em);
-  }
-
-  100% {
-    opacity: 1;
-    filter: blur(0);
   }
 }
 

@@ -124,7 +124,6 @@
     0 0 0 3px var(--yolo-popover-ring),
     0 12px 32px -8px rgba(0, 0, 0, 0.2),
     0 4px 12px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(16px);
   animation: yolo-popover-smart-space-fade-in var(--yolo-anim-duration-enter)
     var(--yolo-anim-ease-out);
 }

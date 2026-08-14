@@ -9630,7 +9630,6 @@ button.yolo-module-shelf-uninstall:hover {
     0 0 0 3px var(--yolo-popover-ring),
     0 12px 32px -8px rgba(0, 0, 0, 0.2),
     0 4px 12px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(16px);
   animation: yolo-popover-smart-space-fade-in var(--yolo-anim-duration-enter)
     var(--yolo-anim-ease-out);
 }
@@ -10886,7 +10885,6 @@ button.yolo-chat-quick-access-picker-row > svg {
     0 10px 28px
       color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent),
     0 1px 0 color-mix(in srgb, white 10%, transparent) inset;
-  backdrop-filter: blur(12px);
 }
 
 .yolo-chat-container--workspace-wide-header
@@ -12017,7 +12015,6 @@ button.yolo-chat-quick-access-picker-row > svg {
   color: var(--text-normal);
   box-shadow: 0 10px 24px
     color-mix(in srgb, var(--background-modifier-box-shadow) 18%, transparent);
-  backdrop-filter: blur(10px);
   transition:
     transform var(--yolo-anim-duration-feedback) ease,
     border-color var(--yolo-anim-duration-feedback) ease,
@@ -12237,7 +12234,6 @@ button.yolo-assistant-annotation-marker.is-active {
   color: var(--text-normal);
   box-shadow: 0 10px 24px
     color-mix(in srgb, var(--background-modifier-box-shadow) 16%, transparent);
-  backdrop-filter: blur(8px);
   z-index: 8;
   pointer-events: none;
   opacity: 0;
@@ -15071,7 +15067,6 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  backdrop-filter: blur(6px);
 }
 
 @keyframes yolo-thinking-text-shimmer {
@@ -15080,28 +15075,6 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   }
   100% {
     background-position: -200% center;
-  }
-}
-
-/* 流式文本入场 - 每个新到达的 span 淡入 + 轻微模糊消散 */
-/* 动画豁免：filter 不在「只动画 opacity / transform」的允许列表内。这里每次
-   追加只包一个 span，滤镜区域是单个片段，代价可控；模糊消散正是显影质感的构成
-   本身，用 opacity 无法替代。 */
-.yolo-stream-fresh-text {
-  display: inline;
-  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
-    var(--yolo-anim-ease-out);
-}
-
-@keyframes yolo-stream-fresh-text-fade {
-  0% {
-    opacity: 0.18;
-    filter: blur(0.18em);
-  }
-
-  100% {
-    opacity: 1;
-    filter: blur(0);
   }
 }
 
@@ -19762,7 +19735,6 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   background: color-mix(in srgb, var(--background-secondary) 86%, transparent);
   border: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-  backdrop-filter: blur(12px);
 }
 
 .yolo-inline-review-toolbar-nav,
@@ -20836,7 +20808,6 @@ button.yolo-subagent-card__abort-btn:focus-visible {
   justify-content: center;
   padding: var(--size-4-6);
   background: color-mix(in srgb, var(--background-primary) 62%, transparent);
-  backdrop-filter: blur(1px);
 }
 
 .yolo-subagent-detail-panel {

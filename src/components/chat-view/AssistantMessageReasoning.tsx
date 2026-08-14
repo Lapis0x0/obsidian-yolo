@@ -142,7 +142,6 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   generationState,
   reasoningDurationMs,
   previewLines = 1,
-  MarkdownComponent,
 }: {
   reasoning: string
   hasAnswerContent: boolean
@@ -150,11 +149,6 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   reasoningDurationMs?: number
   /** 预览视口的最大可见行数；>1 时切换为随内容长高的面板形态。 */
   previewLines?: number
-  MarkdownComponent?: React.ComponentType<{
-    content: string
-    scale?: 'xs' | 'sm' | 'base'
-    animateIncrementalText?: boolean
-  }>
 }) {
   const { t } = useLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
@@ -459,19 +453,11 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       </div>
       <div className="yolo-assistant-message-metadata-body">
         <div className="yolo-assistant-message-metadata-content">
-          {MarkdownComponent ? (
-            <MarkdownComponent
-              content={reasoning}
-              scale="xs"
-              animateIncrementalText={generationState === 'streaming'}
-            />
-          ) : (
-            <TransitioningMarkdown
-              content={reasoning}
-              scale="xs"
-              generationState={generationState}
-            />
-          )}
+          <TransitioningMarkdown
+            content={reasoning}
+            scale="xs"
+            generationState={generationState}
+          />
         </div>
       </div>
     </div>

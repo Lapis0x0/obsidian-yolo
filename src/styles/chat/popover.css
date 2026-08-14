@@ -2109,7 +2109,6 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   background: color-mix(in srgb, var(--background-secondary) 86%, transparent);
   border: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-  backdrop-filter: blur(12px);
 }
 
 .yolo-inline-review-toolbar-nav,
