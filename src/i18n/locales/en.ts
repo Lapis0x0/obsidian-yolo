@@ -77,6 +77,8 @@ export const en: TranslationKeys = {
       claudeCodeDescription: 'Claude Code on this device',
       codexLabel: 'Codex',
       codexDescription: 'Codex on this device',
+      hermesLabel: 'Hermes',
+      hermesDescription: 'Hermes on this device',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',
@@ -772,6 +774,9 @@ export const en: TranslationKeys = {
       codexCliPathName: 'Codex CLI path',
       codexCliPathDesc:
         'Custom path to the codex executable — paste the output of "which codex" ("where codex" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      hermesCliPathName: 'Hermes CLI path',
+      hermesCliPathDesc:
+        'Custom path to the hermes executable — paste the output of "which hermes". Leave empty to auto-detect. Stored on this device only.',
       cliPathMissing:
         'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',

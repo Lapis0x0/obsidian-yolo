@@ -87,6 +87,21 @@ export const RUNTIME_CAPABILITIES: Record<
     skipsImageModelCapabilityCheck: true,
     supportsQueueWhileGenerating: false,
   },
+  hermes: {
+    supportsPlanMode: false,
+    needsWarmup: false,
+    hasNativeSkills: false,
+    hasNativeMcpPanel: false,
+    hasPluginManagement: false,
+    hasAssistants: false,
+    supportsMessageRewrite: false,
+    supportsVaultExport: false,
+    supportsSubagentWatch: false,
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsQueueWhileGenerating: false,
+  },
 }
 
 /**

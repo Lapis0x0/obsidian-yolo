@@ -1,4 +1,5 @@
 import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
+import hermesLogo from '../../assets/provider-icons/hermes.svg'
 import openaiLogo from '../../assets/provider-icons/openai.svg'
 
 import { RUNTIME_CAPABILITIES } from './capabilities'
@@ -47,6 +48,13 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       descriptionKey: 'sidebar.runtimeSelector.codexDescription',
       icon: { src: openaiLogo, provider: 'openai' },
       capabilities: RUNTIME_CAPABILITIES.codex,
+    },
+    hermes: {
+      id: 'hermes',
+      labelKey: 'sidebar.runtimeSelector.hermesLabel',
+      descriptionKey: 'sidebar.runtimeSelector.hermesDescription',
+      icon: { src: hermesLogo, provider: 'hermes' },
+      capabilities: RUNTIME_CAPABILITIES.hermes,
     },
   }
 

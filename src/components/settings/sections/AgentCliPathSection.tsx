@@ -97,6 +97,16 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         )}
         placeholder="/opt/homebrew/bin/codex"
       />
+      <CliPathRow
+        app={app}
+        runtimeId="hermes"
+        name={t('settings.agent.hermesCliPathName', 'Hermes CLI path')}
+        desc={t(
+          'settings.agent.hermesCliPathDesc',
+          'Custom path to the hermes executable — paste the output of "which hermes". Leave empty to auto-detect. Stored on this device only.',
+        )}
+        placeholder="~/.local/bin/hermes"
+      />
     </>
   )
 }

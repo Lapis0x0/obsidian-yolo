@@ -77,6 +77,8 @@ export const zh: TranslationKeys = {
       claudeCodeDescription: '本机 Claude Code 运行时',
       codexLabel: 'Codex',
       codexDescription: '本机 Codex 运行时',
+      hermesLabel: 'Hermes',
+      hermesDescription: '本机 Hermes 运行时',
     },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
@@ -718,6 +720,9 @@ export const zh: TranslationKeys = {
       codexCliPathName: 'Codex CLI 路径',
       codexCliPathDesc:
         '自定义 codex 可执行文件路径，可粘贴 which codex（Windows 为 where codex）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      hermesCliPathName: 'Hermes CLI 路径',
+      hermesCliPathDesc:
+        '自定义 hermes 可执行文件路径，可粘贴 which hermes 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',

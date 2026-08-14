@@ -7,6 +7,7 @@ import type {
   CliRuntime,
   CliRuntimeEvent,
   CliRuntimeEventListener,
+  CliRuntimeId,
 } from './types'
 
 class TestFileSystemAdapter extends FileSystemAdapter {
@@ -41,7 +42,7 @@ class TestRuntime implements CliRuntime {
   readonly cancel = jest.fn(async () => undefined)
   readonly dispose = jest.fn(async () => undefined)
 
-  constructor(readonly runtimeId: 'claude-code' | 'codex') {}
+  constructor(readonly runtimeId: CliRuntimeId) {}
 
   async openSession(ref: Parameters<CliRuntime['openSession']>[0]) {
     return { ref, messages: [], compactionBoundaries: [] }
@@ -90,6 +91,7 @@ class TestRuntime implements CliRuntime {
 const runtimeHarness = () => {
   const claudeRuntimes: TestRuntime[] = []
   const codexRuntimes: TestRuntime[] = []
+  const hermesRuntimes: TestRuntime[] = []
   const createClaudeRuntime = jest.fn(() => {
     const runtime = new TestRuntime('claude-code')
     claudeRuntimes.push(runtime)
@@ -100,15 +102,23 @@ const runtimeHarness = () => {
     codexRuntimes.push(runtime)
     return runtime
   })
+  const createHermesRuntime = jest.fn(() => {
+    const runtime = new TestRuntime('hermes')
+    hermesRuntimes.push(runtime)
+    return runtime
+  })
   const factories: CliRuntimeFactories = {
     'claude-code': { create: createClaudeRuntime },
     codex: { create: createCodexRuntime },
+    hermes: { create: createHermesRuntime },
   }
   return {
     claudeRuntimes,
     codexRuntimes,
+    hermesRuntimes,
     createClaudeRuntime,
     createCodexRuntime,
+    createHermesRuntime,
     factories,
   }
 }

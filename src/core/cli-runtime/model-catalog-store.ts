@@ -26,6 +26,7 @@ const documentSchema = z.object({
   providers: z.object({
     'claude-code': z.array(modelSchema).optional(),
     codex: z.array(modelSchema).optional(),
+    hermes: z.array(modelSchema).optional(),
   }),
 })
 
