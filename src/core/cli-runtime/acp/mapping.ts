@@ -325,8 +325,10 @@ export class AcpSessionAggregator {
    * id, not that the id is unique across turns. Hermes (and others) recycle
    * the same value, which would otherwise upsert into the previous turn.
    */
+  // ACP delivers `messageId` as `string | null | undefined`; absent and
+  // explicitly-null both mean "no id", and `?.trim()` collapses them together.
   private scopeLiveMessageId(
-    messageId: string | undefined,
+    messageId: string | null | undefined,
     kind: string,
   ): string {
     const explicit = messageId?.trim()
@@ -335,7 +337,7 @@ export class AcpSessionAggregator {
     return `${explicit}@${this.turnSequence}`
   }
 
-  private scopeAssistantTextId(messageId: string | undefined): string {
+  private scopeAssistantTextId(messageId: string | null | undefined): string {
     if (this.splitNextAssistantText) {
       this.textSegment += 1
       this.splitNextAssistantText = false
