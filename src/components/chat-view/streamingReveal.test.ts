@@ -1,4 +1,7 @@
-import { createStreamingRevealPlugin } from './streamingReveal'
+import {
+  type RevealSegment,
+  createStreamingRevealPlugin,
+} from './streamingReveal'
 
 type TestNode = {
   type: string
@@ -21,17 +24,21 @@ function element(tagName: string, children: TestNode[]): TestNode {
   return { type: 'element', tagName, children }
 }
 
-function run(tree: TestNode, revealFrom: number): TestNode {
-  createStreamingRevealPlugin(revealFrom)()(tree as never)
+function run(tree: TestNode, segments: RevealSegment[]): TestNode {
+  createStreamingRevealPlugin(segments)()(tree as never)
   return tree
+}
+
+function isRevealSpan(node: TestNode): boolean {
+  const className = node.properties?.className
+  return Array.isArray(className) && className.includes('yolo-stream-reveal')
 }
 
 function revealedText(node: TestNode): string {
   if (node.type === 'text') {
     return ''
   }
-  const className = node.properties?.className
-  if (Array.isArray(className) && className.includes('yolo-stream-reveal')) {
+  if (isRevealSpan(node)) {
     return node.children?.map((child) => child.value ?? '').join('') ?? ''
   }
   return node.children?.map(revealedText).join('') ?? ''
@@ -41,81 +48,125 @@ function plainText(node: TestNode): string {
   if (node.type === 'text') {
     return node.value ?? ''
   }
-  const className = node.properties?.className
-  if (Array.isArray(className) && className.includes('yolo-stream-reveal')) {
+  if (isRevealSpan(node)) {
     return ''
   }
   return node.children?.map(plainText).join('') ?? ''
 }
 
+function spans(node: TestNode): { value: string; style: unknown }[] {
+  if (isRevealSpan(node)) {
+    return [
+      {
+        value: node.children?.[0]?.value ?? '',
+        style: node.properties?.style,
+      },
+    ]
+  }
+  return node.children?.flatMap(spans) ?? []
+}
+
 describe('createStreamingRevealPlugin', () => {
-  it('wraps only the characters past the reveal offset', () => {
+  it('wraps only the characters inside the fade window', () => {
     const tree = element('root', [element('p', [text('Hello world', 0)])])
 
-    run(tree, 6)
+    run(tree, [{ from: 6, opacity: 0.5 }])
 
     expect(plainText(tree)).toBe('Hello ')
     expect(revealedText(tree)).toBe('world')
   })
 
-  it('wraps each character separately so CJK animates', () => {
+  it('wraps a segment as one span, whatever the script', () => {
     const tree = element('root', [element('p', [text('你好世界', 0)])])
 
-    run(tree, 2)
+    run(tree, [{ from: 2, opacity: 0.5 }])
 
-    const spans: string[] = []
-    const collect = (node: TestNode) => {
-      const className = node.properties?.className
-      if (
-        Array.isArray(className) &&
-        className.includes('yolo-stream-reveal')
-      ) {
-        spans.push(node.children?.[0]?.value ?? '')
-        return
-      }
-      node.children?.forEach(collect)
-    }
-    collect(tree)
+    expect(spans(tree)).toEqual([{ value: '世界', style: 'opacity:0.500' }])
+  })
 
-    expect(spans).toEqual(['世', '界'])
+  it('splits a text node at every segment boundary', () => {
+    const tree = element('root', [element('p', [text('abcdef', 0)])])
+
+    run(tree, [
+      { from: 2, opacity: 0.8 },
+      { from: 4, opacity: 0.4 },
+    ])
+
+    expect(plainText(tree)).toBe('ab')
+    expect(spans(tree)).toEqual([
+      { value: 'cd', style: 'opacity:0.800' },
+      { value: 'ef', style: 'opacity:0.400' },
+    ])
+  })
+
+  it('carries segments across element boundaries', () => {
+    const tree = element('root', [
+      element('p', [
+        text('ab', 0),
+        element('strong', [text('cd', 2)]),
+        text('ef', 4),
+      ]),
+    ])
+
+    run(tree, [
+      { from: 1, opacity: 0.9 },
+      { from: 3, opacity: 0.3 },
+    ])
+
+    expect(plainText(tree)).toBe('a')
+    expect(spans(tree)).toEqual([
+      { value: 'b', style: 'opacity:0.900' },
+      { value: 'c', style: 'opacity:0.900' },
+      { value: 'd', style: 'opacity:0.300' },
+      { value: 'ef', style: 'opacity:0.300' },
+    ])
   })
 
   it('leaves fully settled text untouched', () => {
     const tree = element('root', [element('p', [text('Settled', 0)])])
 
-    run(tree, 100)
+    run(tree, [{ from: 100, opacity: 0.5 }])
 
     expect(plainText(tree)).toBe('Settled')
     expect(revealedText(tree)).toBe('')
   })
 
-  it('does not animate inside code or math subtrees', () => {
+  it('renders plain when there is no fade window', () => {
+    const tree = element('root', [element('p', [text('Settled', 0)])])
+
+    run(tree, [])
+
+    expect(plainText(tree)).toBe('Settled')
+    expect(revealedText(tree)).toBe('')
+  })
+
+  it('does not reveal inside code or math subtrees', () => {
     const tree = element('root', [
       element('pre', [element('code', [text('const x = 1', 0)])]),
     ])
 
-    run(tree, 0)
+    run(tree, [{ from: 0, opacity: 0.5 }])
 
     expect(revealedText(tree)).toBe('')
     expect(plainText(tree)).toBe('const x = 1')
   })
 
-  it('animates a node whole when source offsets disagree with its value', () => {
+  it('reveals a node whole when source offsets disagree with its value', () => {
     // `&amp;` occupies five source characters but one text character; slicing
     // at a source offset would cut in the wrong place.
     const tree = element('root', [element('p', [text('&', 10, 15)])])
 
-    run(tree, 12)
+    run(tree, [{ from: 12, opacity: 0.6 }])
 
-    expect(revealedText(tree)).toBe('&')
+    expect(spans(tree)).toEqual([{ value: '&', style: 'opacity:0.600' }])
   })
 
-  it('animates the whole node when it starts past the offset', () => {
+  it('reveals a whole node that starts inside the window', () => {
     const tree = element('root', [element('p', [text('abc', 10)])])
 
-    run(tree, 5)
+    run(tree, [{ from: 5, opacity: 0.7 }])
 
-    expect(revealedText(tree)).toBe('abc')
+    expect(spans(tree)).toEqual([{ value: 'abc', style: 'opacity:0.700' }])
     expect(plainText(tree)).toBe('')
   })
 })

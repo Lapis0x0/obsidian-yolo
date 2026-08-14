@@ -15078,9 +15078,9 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
 }
 
 /* 流式文本入场 - 每个新到达的 span 淡入 + 轻微模糊消散 */
-/* 动画豁免：filter 不在「只动画 opacity / transform」的允许列表内。blur 在
-   合成阶段完成，不触发重排也不影响布局，且模糊消散正是显影质感的构成本身，
-   用 opacity 无法替代。下方 yolo-stream-reveal 同此豁免。 */
+/* 动画豁免：filter 不在「只动画 opacity / transform」的允许列表内。这里每次
+   追加只包一个 span，滤镜区域是单个片段，代价可控；模糊消散正是显影质感的构成
+   本身，用 opacity 无法替代。 */
 .yolo-stream-fresh-text {
   display: inline;
   animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
@@ -15099,26 +15099,12 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   }
 }
 
-/* 流式 markdown 逐字显影 - 由 streamingReveal 的 rehype 插件包裹当帧新增字符。
-   只有正在书写的那一块会带上这些 span，块一旦被写过就重渲染并卸掉它们。 */
+/* 流式 markdown 的显影尾巴 - 由 streamingReveal 的 rehype 插件包裹，透明度作为
+   内联样式逐帧写入（见 StreamingMarkdown 的 revealOpacity）。这里刻意不放动画：
+   相位取自字符的年龄，而 CSS 动画的相位取自元素挂载时刻，react-markdown 按序号
+   复用节点，两者对不上。降级由 JS 侧的 prefers-reduced-motion 判断负责。 */
 .yolo-stream-reveal {
   display: inline;
-  animation: yolo-stream-reveal-in var(--yolo-anim-duration-enter)
-    var(--yolo-anim-ease-out) both;
-}
-
-@keyframes yolo-stream-reveal-in {
-  0% {
-    opacity: 0.35;
-    filter: blur(3px);
-    transform: translateY(1px);
-  }
-
-  100% {
-    opacity: 1;
-    filter: blur(0);
-    transform: translateY(0);
-  }
 }
 
 .yolo-dot-loader-minimal {

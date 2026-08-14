@@ -1,15 +1,24 @@
 /**
- * Fades in the characters a streamed frame just revealed.
+ * Fades in the tail of a streamed block.
+ *
+ * The reveal is a pure function of (position, age): every frame the renderer
+ * hands over the segments still inside the fade window — one per frame that
+ * added characters — each carrying the opacity its age maps to, and this plugin
+ * wraps the matching source ranges. Nothing depends on element identity, which
+ * is what makes it correct here: react-markdown rebuilds the tree every frame
+ * and keys children by ordinal, so a span that survives reconciliation is
+ * usually showing a different segment than it did on the previous frame. A CSS
+ * animation, whose phase comes from when its element mounted, would play at the
+ * wrong point or — once the segment count holds steady and nothing remounts —
+ * not at all.
  *
  * The wrapping happens in the HAST tree rather than on the rendered DOM,
  * because the streaming surface is React-managed: splitting text nodes by hand
  * afterwards would fight reconciliation on the next frame.
  *
- * Only the block the model is still writing into gets a plugin, and only the
- * characters after `revealFrom` are wrapped. Once a block stops being the
- * trailing one it renders without the plugin, which drops its spans — so the
- * number of animated nodes stays in the single digits instead of growing with
- * the answer.
+ * One span per segment, and a segment is a frame's worth of characters, so the
+ * number of wrapped nodes is the fade window divided by the frame interval — a
+ * constant, independent of both the stream rate and the length of the answer.
  */
 
 type HastNode = {
@@ -24,6 +33,13 @@ type HastNode = {
   properties?: Record<string, unknown>
 }
 
+export type RevealSegment = {
+  /** Offset into the block's markdown source where this segment starts. */
+  from: number
+  /** 0–1: the opacity this segment's characters render at on this frame. */
+  opacity: number
+}
+
 // Animating inside these would either be meaningless or actively wrong: code
 // and math are rendered by dedicated components, and svg/annotation subtrees
 // are not prose.
@@ -31,31 +47,41 @@ const SKIP_TAGS = new Set(['code', 'pre', 'svg', 'math', 'annotation'])
 
 const REVEAL_CLASS = 'yolo-stream-reveal'
 
-function createRevealSpan(value: string): HastNode {
+function createRevealSpan(value: string, opacity: number): HastNode {
   return {
     type: 'element',
     tagName: 'span',
-    properties: { className: [REVEAL_CLASS] },
+    properties: {
+      className: [REVEAL_CLASS],
+      style: `opacity:${opacity.toFixed(3)}`,
+    },
     children: [{ type: 'text', value }],
   }
 }
 
-function splitIntoRevealNodes(value: string): HastNode[] {
-  // Per-character so CJK animates too — it has no spaces to split on, and
-  // splitting by whitespace would fade in a whole Chinese paragraph at once.
-  return Array.from(value, (character) => createRevealSpan(character))
+/**
+ * Index of the segment covering `offset`, or -1 when it sits before the first
+ * one — that text has already settled and stays unwrapped.
+ */
+function segmentIndexAt(segments: RevealSegment[], offset: number): number {
+  for (let index = segments.length - 1; index >= 0; index--) {
+    if (segments[index].from <= offset) {
+      return index
+    }
+  }
+  return -1
 }
 
 /**
- * Replaces the text nodes that extend past `revealFrom` with per-character
- * spans. A node is only split when its `value` length matches the source span
+ * Replaces the text nodes that extend into the fade window with one span per
+ * segment. A node is only split when its `value` length matches the source span
  * it came from; when markdown escapes or character entities make the two
- * disagree, the node is animated as a whole rather than sliced at a position
+ * disagree, the node is revealed as a whole rather than sliced at a position
  * that does not mean what it looks like.
  */
 function revealChildren(
   node: HastNode,
-  revealFrom: number,
+  segments: RevealSegment[],
   insideSkippedTag: boolean,
 ): void {
   const children = node.children
@@ -63,6 +89,7 @@ function revealChildren(
     return
   }
 
+  const windowStart = segments[0].from
   const next: HastNode[] = []
   let changed = false
 
@@ -71,7 +98,7 @@ function revealChildren(
       const skip =
         insideSkippedTag ||
         (child.tagName !== undefined && SKIP_TAGS.has(child.tagName))
-      revealChildren(child, revealFrom, skip)
+      revealChildren(child, segments, skip)
       next.push(child)
       continue
     }
@@ -83,22 +110,46 @@ function revealChildren(
 
     const start = child.position?.start?.offset
     const end = child.position?.end?.offset
-    if (start === undefined || end === undefined || end <= revealFrom) {
+    if (start === undefined || end === undefined || end <= windowStart) {
       next.push(child)
       continue
     }
 
-    if (end - start !== child.value.length) {
-      next.push(createRevealSpan(child.value))
+    const value = child.value
+
+    if (end - start !== value.length) {
+      next.push(
+        createRevealSpan(
+          value,
+          segments[segmentIndexAt(segments, Math.max(start, windowStart))]
+            .opacity,
+        ),
+      )
       changed = true
       continue
     }
 
-    const splitAt = Math.max(0, revealFrom - start)
-    if (splitAt > 0) {
-      next.push({ type: 'text', value: child.value.slice(0, splitAt) })
+    let cursor = start
+    const pushPiece = (pieceEnd: number) => {
+      if (pieceEnd <= cursor) {
+        return
+      }
+      const piece = value.slice(cursor - start, pieceEnd - start)
+      const index = segmentIndexAt(segments, cursor)
+      next.push(
+        index < 0
+          ? { type: 'text', value: piece }
+          : createRevealSpan(piece, segments[index].opacity),
+      )
+      cursor = pieceEnd
     }
-    next.push(...splitIntoRevealNodes(child.value.slice(splitAt)))
+
+    for (const segment of segments) {
+      if (segment.from > start && segment.from < end) {
+        pushPiece(segment.from)
+      }
+    }
+    pushPiece(end)
     changed = true
   }
 
@@ -108,13 +159,16 @@ function revealChildren(
 }
 
 /**
- * Builds a rehype plugin that animates everything after `revealFrom`, an offset
- * into the block's own markdown source.
+ * Builds a rehype plugin that reveals the given segments. `segments` must be
+ * ascending by `from`; the last one runs to the end of the block.
  */
-export function createStreamingRevealPlugin(revealFrom: number) {
+export function createStreamingRevealPlugin(segments: RevealSegment[]) {
   return function streamingRevealPlugin() {
     return (tree: HastNode): void => {
-      revealChildren(tree, revealFrom, false)
+      if (segments.length === 0) {
+        return
+      }
+      revealChildren(tree, segments, false)
     }
   }
 }
