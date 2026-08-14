@@ -14,13 +14,14 @@ import {
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import type {
-  ChatRuntimeActions,
-  CliConversationSnapshot,
-  CliRuntimeModel,
-  CliRuntimeRunState,
-  CliSessionRef,
-  CliTurnConfiguration,
+import {
+  RUNTIME_CAPABILITIES,
+  type ChatRuntimeActions,
+  type CliConversationSnapshot,
+  type CliRuntimeModel,
+  type CliRuntimeRunState,
+  type CliSessionRef,
+  type CliTurnConfiguration,
 } from '../../core/cli-runtime'
 import type {
   ChatMessage,
@@ -186,6 +187,7 @@ function CliUserMessage({
   message,
   isFocused,
   isActionDisabled,
+  canEdit,
   onFocus,
   onSubmit,
   runtimeId,
@@ -198,6 +200,7 @@ function CliUserMessage({
   message: ChatUserMessage
   isFocused: boolean
   isActionDisabled: boolean
+  canEdit: boolean
   onFocus: () => void
   onSubmit: (
     editedMessage: ChatUserMessage,
@@ -251,6 +254,7 @@ function CliUserMessage({
       displayMentionables={displayMessage.mentionables}
       isFocused={isFocused}
       isActionDisabled={isActionDisabled}
+      canEdit={canEdit}
       chatUserInputRef={noop}
       onInputChange={(content) =>
         setDraft((current) => ({
@@ -474,6 +478,8 @@ export function CliChatSurface({
   >(null)
   const isConversationBusy =
     snapshot.isCompacting === true || ACTIVE_RUN_STATES.has(snapshot.runState)
+  const canRewriteUserMessage =
+    RUNTIME_CAPABILITIES[snapshot.runtimeId].supportsMessageRewrite
   const cliSubagentReadModel = useMemo(
     () => buildCliSubagentReadModel(snapshot.messages, snapshot.runtimeId),
     [snapshot.messages, snapshot.runtimeId],
@@ -678,9 +684,13 @@ export function CliChatSurface({
           <CliUserMessage
             key={message.id}
             message={message}
-            isFocused={focusedUserMessageId === message.id}
+            isFocused={
+              canRewriteUserMessage && focusedUserMessageId === message.id
+            }
             isActionDisabled={isConversationBusy}
+            canEdit={canRewriteUserMessage}
             onSubmit={(editedMessage, configuration) => {
+              if (!canRewriteUserMessage) return
               if (
                 editorStateToPlainText(editedMessage.content).trim() === '' &&
                 editedMessage.mentionables.length === 0
@@ -697,7 +707,7 @@ export function CliChatSurface({
               })
             }}
             onFocus={() => {
-              if (!isConversationBusy) {
+              if (!isConversationBusy && canRewriteUserMessage) {
                 setFocusedUserMessageId(message.id)
               }
             }}
@@ -753,6 +763,7 @@ export function CliChatSurface({
         },
         getAssistantActionOverrides: (_messageGroup, timelineItem) => ({
           showRetryAction:
+            canRewriteUserMessage &&
             getSourceUserMessageForGroup(
               snapshot.messages,
               timelineItem.messageIds,
@@ -823,6 +834,7 @@ export function CliChatSurface({
         handleOpenEditSummaryFile,
         cachedModels,
         cliSubagentReadModel.presentationsByToolCallId,
+        canRewriteUserMessage,
         isConversationBusy,
         onHistoricalUserMessageControlPopoverOpenChange,
         onDeleteAssistantQuote,

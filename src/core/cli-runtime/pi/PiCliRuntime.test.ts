@@ -14,6 +14,18 @@ jest.mock('../login-shell-env', () => ({
 jest.mock('../cli-path-override', () => ({
   getCliPathOverride: () => undefined,
 }))
+jest.mock('../../../utils/platform/desktopNodeModule', () => ({
+  loadDesktopNodeModule: async (specifier: string) => {
+    switch (specifier) {
+      case 'node:fs/promises':
+        return require('node:fs/promises')
+      case 'node:path':
+        return require('node:path')
+      default:
+        throw new Error(`Unexpected desktop module: ${specifier}`)
+    }
+  },
+}))
 jest.mock('./process')
 
 /**
@@ -388,5 +400,96 @@ describe('PiCliRuntime — model configuration restoration', () => {
     const second = await runtime.getConfiguration(catalog)
     expect(second.modelId).toBe('openrouter/xiaomi/mimo-v2.5')
     await runtime.dispose()
+  })
+})
+
+describe('PiCliRuntime — rewriteTurn', () => {
+  it('forks the session file before the edited user turn and prompts on the new session', async () => {
+    const fs = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-rewrite-'))
+    const sourceFile = path.join(dir, 'source.jsonl')
+    await fs.writeFile(sourceFile, '{}\n')
+    const history = [
+      { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
+      {
+        id: 'a1',
+        type: 'assistant',
+        message: { role: 'assistant', content: 'reply A' },
+      },
+      {
+        id: 't1',
+        type: 'toolResult',
+        message: { toolCallId: 'call-1', result: 'ok' },
+      },
+      { id: 'u2', type: 'user', message: { role: 'user', content: 'second' } },
+      {
+        id: 'a2',
+        type: 'assistant',
+        message: { role: 'assistant', content: 'reply B' },
+      },
+    ]
+
+    const { PiSubprocess } = (await import('./process')) as unknown as {
+      PiSubprocess: { start: jest.Mock }
+    }
+    PiSubprocess.start = jest.fn(
+      async (options: { args: string[] }) => {
+        const child = new FakePiProcess()
+        startedProcesses.push(child)
+        const sessionArg = options.args.indexOf('--session')
+        const sessionTarget =
+          sessionArg >= 0 ? options.args[sessionArg + 1] : sourceFile
+        child.registerHandler('get_state', () => ({
+          sessionId:
+            sessionTarget === sourceFile ? 'sess-1' : 'forked-session',
+          sessionFile: sessionTarget,
+        }))
+        child.registerHandler('get_entries', () => history)
+        child.registerHandler('prompt', () => undefined)
+        return child
+      },
+    )
+
+    const runtime = createRuntime()
+    const sessionRef = {
+      runtimeId: 'pi' as const,
+      nativeSessionId: 'sess-1',
+      sessionPathHint: sourceFile,
+    }
+    await runtime.ensureReady({ sessionRef })
+    await runtime.sendTurn({ userMessageId: 'yolo-1', content: 'first' })
+    await runtime.sendTurn({ userMessageId: 'yolo-2', content: 'second' })
+
+    await runtime.rewriteTurn({
+      sessionRef,
+      sourceUserMessageId: 'yolo-2',
+      userMessageId: 'yolo-2-edit',
+      content: 'edited second',
+    })
+
+    const forkedArgs = PiSubprocess.start.mock.calls[1]?.[0].args as string[]
+    const forkedFile = forkedArgs[forkedArgs.indexOf('--session') + 1]
+    expect(forkedFile).not.toBe(sourceFile)
+    const forkedLines = (await fs.readFile(forkedFile, 'utf8'))
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line) as { id?: string; type?: string })
+    expect(forkedLines[0]).toMatchObject({
+      type: 'session',
+      parentSession: sourceFile,
+    })
+    expect(forkedLines.slice(1).map((entry) => entry.id)).toEqual([
+      'u1',
+      'a1',
+      't1',
+    ])
+    expect(startedProcesses[1].requestsOf('prompt')[0]).toMatchObject({
+      message: 'edited second',
+    })
+
+    await runtime.dispose()
+    await fs.rm(dir, { recursive: true, force: true })
   })
 })

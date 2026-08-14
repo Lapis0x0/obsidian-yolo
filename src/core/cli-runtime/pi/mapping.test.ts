@@ -1,6 +1,8 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 
 import {
+  buildPiForkSessionContent,
+  collectPiForkRawEntries,
   createPiMappingState,
   decodePiModelId,
   encodePiModelId,
@@ -14,6 +16,7 @@ import {
   mapPiEvent,
   mapPiModels,
   resetPiMappingState,
+  resolvePiRewriteCheckpoint,
   toPiPrompt,
 } from './mapping'
 
@@ -698,5 +701,74 @@ describe('mapPiEntriesToHydration', () => {
       },
     ])
     expect(messages.map((message) => message.id)).toEqual(['u1', 'a1'])
+  })
+})
+
+const linearHistory = [
+  { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
+  {
+    id: 'a1',
+    type: 'assistant',
+    message: { role: 'assistant', content: 'reply A' },
+  },
+  {
+    id: 't1',
+    type: 'toolResult',
+    message: { toolCallId: 'call-1', result: 'ok' },
+  },
+  { id: 'u2', type: 'user', message: { role: 'user', content: 'second' } },
+  {
+    id: 'a2',
+    type: 'assistant',
+    message: { role: 'assistant', content: 'reply B' },
+  },
+]
+
+describe('pi rewrite checkpoints', () => {
+  it('forks at the previous assistant when rewriting a later user turn', () => {
+    expect(resolvePiRewriteCheckpoint(linearHistory, 'u2')).toEqual({
+      resumeAt: 'a1',
+      userIndex: 1,
+    })
+  })
+
+  it('matches a live YOLO user-message id by ordinal', () => {
+    expect(
+      resolvePiRewriteCheckpoint(linearHistory, 'yolo-2', ['yolo-1', 'yolo-2']),
+    ).toEqual({ resumeAt: 'a1', userIndex: 1 })
+  })
+
+  it('starts a fresh session when rewriting the first user turn', () => {
+    expect(resolvePiRewriteCheckpoint(linearHistory, 'u1')).toEqual({
+      resumeAt: null,
+      userIndex: 0,
+    })
+  })
+
+  it('keeps tool results that belong to the forked prefix', () => {
+    expect(collectPiForkRawEntries(linearHistory, 'a1').map((entry) => entry.id)).toEqual(
+      ['u1', 'a1', 't1'],
+    )
+  })
+
+  it('writes a session header plus the forked raw entries', () => {
+    const content = buildPiForkSessionContent({
+      entries: collectPiForkRawEntries(linearHistory, 'a1'),
+      sessionId: 'fork-1',
+      timestamp: '2026-08-14T11:00:00.000Z',
+      cwd: '/vault',
+      parentSession: '/tmp/source.jsonl',
+    })
+    const lines = content.trim().split('\n').map((line) => JSON.parse(line))
+    expect(lines[0]).toMatchObject({
+      type: 'session',
+      id: 'fork-1',
+      parentSession: '/tmp/source.jsonl',
+    })
+    expect(lines.slice(1).map((entry: { id: string }) => entry.id)).toEqual([
+      'u1',
+      'a1',
+      't1',
+    ])
   })
 })

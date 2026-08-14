@@ -757,6 +757,9 @@ const isToolResultEntry = (entry: PiSessionEntry): boolean =>
   getString(entry.message.role) === 'toolResult' ||
   getString(entry.message.role) === 'tool_result'
 
+const isUserEntry = (entry: PiSessionEntry): boolean =>
+  getString(entry.message.role) === 'user' || entry.type === 'user'
+
 const getToolResultCallId = (entry: PiSessionEntry): string | null =>
   getString(entry.message.toolCallId) ??
   getString(entry.message.tool_call_id) ??
@@ -989,6 +992,118 @@ const applyToolResultEntry = (
 export type PiSessionHydrationContent = {
   messages: ChatMessage[]
   compactionBoundaries: CliCompactionBoundary[]
+}
+
+export type PiRewriteCheckpoint = {
+  /** Parent entry to keep as the forked leaf. `null` starts a fresh session. */
+  resumeAt: string | null
+  userIndex: number
+}
+
+const sliceLinearPrefix = (
+  entries: PiSessionEntry[],
+  resumeAt: string,
+): PiSessionEntry[] => {
+  const index = entries.findIndex((entry) => entry.id === resumeAt)
+  if (index < 0) return []
+  let end = index + 1
+  while (end < entries.length && isToolResultEntry(entries[end])) end += 1
+  return entries.slice(0, end)
+}
+
+/**
+ * Locate the native entry to replace when the user rewrites a sent turn.
+ * Hydrated conversations use pi entry ids; live turns use YOLO user-message
+ * ids recorded by `sendTurn`, matched by ordinal against the active branch.
+ */
+export const resolvePiRewriteCheckpoint = (
+  response: unknown,
+  sourceUserMessageId: string,
+  sentUserMessageIds: readonly string[] = [],
+): PiRewriteCheckpoint => {
+  const normalized = normalizePiEntries(response)
+  const branch = resolvePiActiveBranch(normalized.entries, normalized.leafId)
+  const userEntries = branch.filter(
+    (entry): entry is PiSessionEntry & { id: string } =>
+      isUserEntry(entry) && !!entry.id,
+  )
+  let userIndex = userEntries.findIndex(
+    (entry) => entry.id === sourceUserMessageId,
+  )
+  if (userIndex < 0) {
+    userIndex = sentUserMessageIds.indexOf(sourceUserMessageId)
+  }
+  if (userIndex < 0 || userIndex >= userEntries.length) {
+    throw new Error('The selected pi user message no longer exists.')
+  }
+  if (userIndex === 0) return { resumeAt: null, userIndex: 0 }
+
+  const target = userEntries[userIndex]
+  if (target.parentId && branch.some((entry) => entry.id === target.parentId)) {
+    return { resumeAt: target.parentId, userIndex }
+  }
+  const targetPos = branch.findIndex((entry) => entry.id === target.id)
+  for (let index = targetPos - 1; index >= 0; index -= 1) {
+    const candidate = branch[index]
+    if (candidate?.id && !isToolResultEntry(candidate)) {
+      return { resumeAt: candidate.id, userIndex }
+    }
+  }
+  return { resumeAt: null, userIndex }
+}
+
+/**
+ * Entries (as originally returned by `get_entries`) that belong on a fork
+ * whose leaf is `resumeAt`, including tool results attached to that prefix.
+ */
+export const collectPiForkRawEntries = (
+  response: unknown,
+  resumeAt: string,
+): Record<string, unknown>[] => {
+  const normalized = normalizePiEntries(response)
+  const hasBranchGraph = normalized.entries.some(
+    (entry) => !!entry.id && !!entry.parentId && !isToolResultEntry(entry),
+  )
+  if (
+    hasBranchGraph &&
+    !normalized.entries.some((entry) => entry.id === resumeAt)
+  ) {
+    throw new Error(`Pi fork checkpoint not found: ${resumeAt}`)
+  }
+  const selected = hasBranchGraph
+    ? resolvePiActiveBranch(normalized.entries, resumeAt)
+    : sliceLinearPrefix(normalized.entries, resumeAt)
+  if (
+    selected.length === 0 ||
+    !selected.some((entry) => entry.id === resumeAt)
+  ) {
+    throw new Error(`Pi fork checkpoint not found: ${resumeAt}`)
+  }
+  return selected.map((entry) => entry.raw)
+}
+
+export const buildPiForkSessionContent = ({
+  entries,
+  sessionId,
+  timestamp,
+  cwd,
+  parentSession,
+}: {
+  entries: readonly Record<string, unknown>[]
+  sessionId: string
+  timestamp: string
+  cwd: string
+  parentSession: string
+}): string => {
+  const header = {
+    type: 'session',
+    version: 3,
+    id: sessionId,
+    timestamp,
+    cwd,
+    parentSession,
+  }
+  return `${[header, ...entries].map((entry) => JSON.stringify(entry)).join('\n')}\n`
 }
 
 /**

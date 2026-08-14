@@ -109,7 +109,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasNativeMcpPanel: false,
     hasPluginManagement: false,
     hasAssistants: false,
-    supportsMessageRewrite: false,
+    supportsMessageRewrite: true,
     supportsVaultExport: false,
     supportsSubagentWatch: false,
     // The model/reasoning picker still shows for pi via CliRuntimeControls

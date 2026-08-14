@@ -26,6 +26,8 @@ export type UserMessageItemProps = {
   displayMentionables?: Mentionable[]
   isFocused: boolean
   isActionDisabled?: boolean
+  /** When false, the bubble stays read-only: no click-to-edit and no pencil. */
+  canEdit?: boolean
   modelId?: string
   onModelChange?: (modelId: string) => void
   reasoningLevel?: ReasoningLevel
@@ -76,11 +78,13 @@ function UserMessageActions({
   onEdit,
   onDelete,
   isDisabled,
+  showEdit,
 }: {
   text: string
   onEdit: () => void
   onDelete?: () => void
   isDisabled?: boolean
+  showEdit: boolean
 }) {
   const { t } = useLanguage()
   const [copied, setCopied] = useState(false)
@@ -127,13 +131,15 @@ function UserMessageActions({
       >
         {copied ? <Check size={12} /> : <CopyIcon size={12} />}
       </UserActionButton>
-      <UserActionButton
-        label={editLabel}
-        onClick={onEdit}
-        disabled={isDisabled}
-      >
-        <Pencil size={12} />
-      </UserActionButton>
+      {showEdit ? (
+        <UserActionButton
+          label={editLabel}
+          onClick={onEdit}
+          disabled={isDisabled}
+        >
+          <Pencil size={12} />
+        </UserActionButton>
+      ) : null}
       {onDelete ? (
         <UserActionButton
           label={deleteLabel}
@@ -159,6 +165,7 @@ function UserMessageItem({
   displayMentionables,
   isFocused,
   isActionDisabled,
+  canEdit = true,
   modelId,
   onModelChange,
   reasoningLevel,
@@ -194,7 +201,7 @@ function UserMessageItem({
 
   return (
     <div className="yolo-chat-messages-user" data-user-message-id={message.id}>
-      {isFocused ? (
+      {isFocused && canEdit ? (
         <EditableUserMessageItem
           message={message}
           chatUserInputRef={chatUserInputRef}
@@ -221,12 +228,17 @@ function UserMessageItem({
         />
       ) : (
         <>
-          <UserMessageCard snapshot={snapshot} onClick={onFocus} />
+          <UserMessageCard
+            snapshot={snapshot}
+            onClick={onFocus}
+            interactive={canEdit}
+          />
           <UserMessageActions
             text={snapshot.text}
             onEdit={onFocus}
             onDelete={onDelete}
             isDisabled={isActionDisabled}
+            showEdit={canEdit}
           />
         </>
       )}

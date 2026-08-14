@@ -1,5 +1,7 @@
 import type { App } from 'obsidian'
 
+import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
+
 import { getCliPathOverride } from '../cli-path-override'
 import { loadLoginShellEnvironment } from '../login-shell-env'
 import { includeActiveCliModel } from '../model-catalog'
@@ -22,6 +24,8 @@ import type {
 
 import {
   type PiMappingState,
+  buildPiForkSessionContent,
+  collectPiForkRawEntries,
   createPiMappingState,
   decodePiModelId,
   extractPiContextWindow,
@@ -33,6 +37,7 @@ import {
   mapPiEvent,
   mapPiModels,
   resetPiMappingState,
+  resolvePiRewriteCheckpoint,
   toPiPrompt,
 } from './mapping'
 import { PiSubprocess } from './process'
@@ -86,6 +91,7 @@ export class PiCliRuntime implements CliRuntime {
   private reasoningEffort: string | null = null
   private appliedModelId: string | null = null
   private appliedThinkingLevel: string | null = null
+  private sentUserMessageIds: string[] = []
   private disposed = false
 
   constructor(private readonly options: PiCliRuntimeOptions) {}
@@ -104,6 +110,7 @@ export class PiCliRuntime implements CliRuntime {
     }
 
     await this.shutdownActiveHandle()
+    this.sentUserMessageIds = []
     const handle = await this.startProcessHandle(targetKey)
     if (this.disposed) {
       // `dispose()` ran while the process was spawning and found nothing to
@@ -261,6 +268,9 @@ export class PiCliRuntime implements CliRuntime {
         message,
         ...(images.length > 0 ? { images } : {}),
       })
+      if (input.userMessageId) {
+        this.sentUserMessageIds = [...this.sentUserMessageIds, input.userMessageId]
+      }
     } catch (error) {
       this.turnTerminalEmitted = true
       const messageText = error instanceof Error ? error.message : String(error)
@@ -276,8 +286,96 @@ export class PiCliRuntime implements CliRuntime {
     if (!this.sessionBound) await this.attemptBindSession()
   }
 
-  async rewriteTurn(_input: CliRewriteTurnInput): Promise<void> {
-    throw new Error('pi CLI runtime does not support rewriting a turn.')
+  async rewriteTurn(input: CliRewriteTurnInput): Promise<void> {
+    if (this.disposed) throw new Error('pi CLI runtime has been disposed.')
+    if (!this.activeHandle || !this.activeSessionRef) {
+      throw new Error('pi runtime is not ready.')
+    }
+    const activeRef = this.activeSessionRef
+    const sameSession =
+      input.sessionRef.nativeSessionId === activeRef.nativeSessionId ||
+      (!!input.sessionRef.sessionPathHint &&
+        input.sessionRef.sessionPathHint === activeRef.sessionPathHint)
+    if (!sameSession) {
+      throw new Error('pi rewrite does not match the active session.')
+    }
+
+    const handle = this.activeHandle
+    const entriesResponse = await handle.transport.request('get_entries', {})
+    const checkpoint = resolvePiRewriteCheckpoint(
+      entriesResponse,
+      input.sourceUserMessageId,
+      this.sentUserMessageIds,
+    )
+    const keptUserMessageIds = this.sentUserMessageIds.slice(
+      0,
+      checkpoint.userIndex,
+    )
+    const state = await handle.transport.request('get_state', {})
+    const identity = extractPiSessionIdentity(state)
+    const sourceFile = activeRef.sessionPathHint ?? identity?.sessionFile
+    if (!sourceFile) {
+      throw new Error('pi session file is unknown; cannot rewrite a turn.')
+    }
+
+    const nextRef = checkpoint.resumeAt
+      ? await this.writeForkedSession({
+          entriesResponse,
+          resumeAt: checkpoint.resumeAt,
+          sourceFile,
+        })
+      : null
+
+    await this.ensureReady(nextRef ? { sessionRef: nextRef } : {})
+    this.sentUserMessageIds = keptUserMessageIds
+    await this.sendTurn({
+      content: input.content,
+      userMessageId: input.userMessageId,
+      ...(input.selectedSkills ? { selectedSkills: input.selectedSkills } : {}),
+      ...(this.activeSessionRef
+        ? { sessionRef: this.activeSessionRef }
+        : {}),
+    })
+  }
+
+  private async writeForkedSession({
+    entriesResponse,
+    resumeAt,
+    sourceFile,
+  }: {
+    entriesResponse: unknown
+    resumeAt: string
+    sourceFile: string
+  }): Promise<CliSessionRef> {
+    const path = await loadDesktopNodeModule<typeof import('node:path')>(
+      'node:path',
+    )
+    const fs = await loadDesktopNodeModule<typeof import('node:fs/promises')>(
+      'node:fs/promises',
+    )
+    const sessionId = globalThis.crypto.randomUUID()
+    const timestamp = new Date().toISOString()
+    const sessionFile = path.join(
+      path.dirname(sourceFile),
+      `${timestamp.replace(/[:.]/g, '-')}_${sessionId}.jsonl`,
+    )
+    await fs.mkdir(path.dirname(sessionFile), { recursive: true })
+    await fs.writeFile(
+      sessionFile,
+      buildPiForkSessionContent({
+        entries: collectPiForkRawEntries(entriesResponse, resumeAt),
+        sessionId,
+        timestamp,
+        cwd: this.options.vaultPath,
+        parentSession: sourceFile,
+      }),
+      { flag: 'wx' },
+    )
+    return {
+      runtimeId: 'pi',
+      nativeSessionId: sessionId,
+      sessionPathHint: sessionFile,
+    }
   }
 
   async cancel(): Promise<void> {
