@@ -333,6 +333,28 @@ describe('CliConversationController', () => {
     ])
   })
 
+  it('stages null instead of inventing a selection when nothing is requested or the remembered model is stale', () => {
+    const models = [
+      { id: 'alpha-first', label: 'Alpha', reasoningEfforts: [] },
+      { id: 'omega-actual', label: 'Omega', reasoningEfforts: [] },
+    ]
+    const controller = new CliConversationController(
+      new FakeCliRuntime(),
+      () => models,
+    )
+
+    // No request, nothing remembered: the runtime's own current model must
+    // win after bind — staging the catalog head here would get applied via
+    // set_model and silently switch the agent's model.
+    expect(controller.stageConfiguration({})).toMatchObject({ modelId: null })
+
+    // A remembered id that is no longer in the catalog degrades to null, not
+    // to an arbitrary entry.
+    expect(controller.stageConfiguration({ modelId: 'removed' })).toMatchObject(
+      { modelId: null },
+    )
+  })
+
   it('hydrates messages, upserts by stable id in place, and removes by id', async () => {
     const runtime = new FakeCliRuntime()
     const ref = session('existing')

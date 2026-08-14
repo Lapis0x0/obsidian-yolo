@@ -951,6 +951,25 @@ export function useCliRuntimeOrchestration({
     ],
   )
 
+  // Runtimes that restore their real current model on bind (pi via
+  // get_state, Hermes via ACP's currentModelId) are the source of truth for
+  // "which model will actually run". Remember that restored model so the next
+  // fresh conversation's staged (pre-bind) picker shows it instead of an
+  // empty selection — staging deliberately never invents a pick on its own.
+  useEffect(() => {
+    if (!isCliRuntime(activeRuntimeId)) return
+    const configuration = activeCliConversationSnapshot?.configuration
+    if (!configuration?.modelId || !activeCliConversationSnapshot?.sessionRef) {
+      return
+    }
+    const remembered =
+      cliPreferenceSettingsRef.current.chatOptions.cliModelIdByRuntime?.[
+        activeRuntimeId
+      ]
+    if (remembered === configuration.modelId) return
+    persistCliConfiguration(configuration)
+  }, [activeRuntimeId, activeCliConversationSnapshot, persistCliConfiguration])
+
   const handleCliModelChange = useCallback(
     (modelId: string | null) => {
       if (!cliConversationController || !isCliRuntime(activeRuntimeId)) return

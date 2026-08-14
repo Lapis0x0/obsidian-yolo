@@ -725,11 +725,18 @@ export class CliConversationController {
     const current = this.snapshot.configuration
     const requestedModelId =
       'modelId' in update ? update.modelId : current?.modelId
+    // No invented selection: when nothing is requested/remembered (or the
+    // remembered id is no longer in the catalog), stage `null` — "the
+    // runtime's own current model". Falling back to the catalog head here
+    // would not just display an arbitrary model, it would be applied via
+    // set_model once the session binds (the runtime restores its real model
+    // on bind and the orchestration layer remembers it, so a fresh
+    // conversation's staged null resolves to the truth one turn later).
     const modelId =
-      requestedModelId === null ||
+      requestedModelId != null &&
       models.some((model) => model.id === requestedModelId)
-        ? (requestedModelId ?? null)
-        : (models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null)
+        ? requestedModelId
+        : null
     const selectedModel = modelId
       ? models.find((model) => model.id === modelId)
       : undefined
