@@ -324,4 +324,44 @@ describe('PiCliRuntime — model configuration restoration', () => {
     })
     await runtime.dispose()
   })
+
+  it('keeps modelId null (no catalog fallback) and retries restoration when get_state has no model yet', async () => {
+    const runtime = createRuntime()
+    await runtime.ensureReady({})
+    const process = startedProcesses[0]
+    // pi not configured yet: get_state reports no current model.
+    process.registerHandler('get_state', () => ({ sessionId: 'sess-1' }))
+    const catalog = [
+      {
+        id: 'openrouter/ai21/jamba-large',
+        label: 'AI21: Jamba Large',
+        reasoningEfforts: [],
+      },
+      {
+        id: 'openrouter/xiaomi/mimo-v2.5',
+        label: 'Xiaomi: MiMo-V2.5',
+        reasoningEfforts: [],
+      },
+    ]
+
+    const first = await runtime.getConfiguration(catalog)
+    // Pre-fix this silently selected the catalog head — an arbitrary
+    // alphabetical entry — and would have set_model'd to it on the next turn.
+    expect(first.modelId).toBeNull()
+
+    process.registerHandler('prompt', () => undefined)
+    await runtime.sendTurn({ content: 'hi' })
+    expect(process.requestsOf('set_model')).toHaveLength(0)
+
+    // pi got configured in the meantime: the next getConfiguration retries
+    // instead of staying latched on the earlier failure.
+    process.registerHandler('get_state', () => ({
+      sessionId: 'sess-1',
+      model: { id: 'xiaomi/mimo-v2.5', provider: 'openrouter' },
+      thinkingLevel: 'medium',
+    }))
+    const second = await runtime.getConfiguration(catalog)
+    expect(second.modelId).toBe('openrouter/xiaomi/mimo-v2.5')
+    await runtime.dispose()
+  })
 })

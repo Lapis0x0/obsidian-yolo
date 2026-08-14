@@ -15,6 +15,7 @@ import type {
   CliRuntimeEvent,
   CliRuntimeEventListener,
   CliRuntimeId,
+  CliRuntimeModel,
   CliRuntimeReadyInput,
   CliSessionHydration,
   CliSessionRef,
@@ -26,6 +27,7 @@ import {
   AcpSessionAggregator,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
+  extractAcpSessionModelState,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
   upsertAcpMessage,
@@ -63,6 +65,8 @@ export class AcpCliRuntime implements CliRuntime {
   private detachFatal: (() => void) | null = null
   private unregisterSession: (() => void) | null = null
   private activeSessionRef: CliSessionRef | null = null
+  private models: CliRuntimeModel[] = []
+  private modelId: string | null = null
   private turnInFlight = false
   private cancelRequested = false
   private disposed = false
@@ -102,13 +106,14 @@ export class AcpCliRuntime implements CliRuntime {
       onRequestPermission: async () => buildCancelledApprovalOutcome(),
     })
     try {
-      await host.call((connection) =>
+      const response = await host.call((connection) =>
         connection.loadSession({
           sessionId: ref.nativeSessionId,
           cwd: this.options.cwd,
           mcpServers: [],
         }),
       )
+      this.captureModelState(response)
     } finally {
       unregister()
     }
@@ -131,6 +136,7 @@ export class AcpCliRuntime implements CliRuntime {
       const response = await host.call((connection) =>
         connection.newSession({ cwd: this.options.cwd, mcpServers: [] }),
       )
+      this.captureModelState(response)
       this.bindSession(host, {
         runtimeId: this.runtimeId,
         nativeSessionId: response.sessionId,
@@ -142,27 +148,49 @@ export class AcpCliRuntime implements CliRuntime {
       throw new Error(`Cannot resume a non-${this.runtimeId} session.`)
     }
     if (host.capabilities?.loadSession) {
-      await host.call((connection) =>
+      const response = await host.call((connection) =>
         connection.loadSession({
           sessionId: input.sessionRef!.nativeSessionId,
           cwd: this.options.cwd,
           mcpServers: [],
         }),
       )
+      this.captureModelState(response)
     }
     this.bindSession(host, input.sessionRef)
   }
 
-  async getConfiguration(): Promise<CliRuntimeConfiguration> {
-    return { models: [], modelId: null, reasoningEffort: null }
+  async getConfiguration(
+    cachedModels?: readonly CliRuntimeModel[],
+  ): Promise<CliRuntimeConfiguration> {
+    const models = this.models.length ? this.models : [...(cachedModels ?? [])]
+    return { models, modelId: this.modelId, reasoningEffort: null }
   }
 
   async updateConfiguration(
-    _update: CliRuntimeConfigurationUpdate,
+    update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration> {
-    // Model/reasoning selection is delegated entirely to the agent's own
-    // configuration; the main-input controls are hidden via capabilities.
+    // Model selection goes through ACP's `session/set_model` extension when
+    // the agent reported a model list; reasoning has no ACP surface, so that
+    // part of the update is ignored. A `null` modelId means "keep the agent's
+    // own selection" — the protocol has no way to unset a model.
+    const modelId = update.modelId
+    if (modelId && modelId !== this.modelId && this.activeSessionRef) {
+      const host = await this.getHost()
+      const sessionId = this.activeSessionRef.nativeSessionId
+      await host.call((connection) =>
+        connection.request('session/set_model', { sessionId, modelId }),
+      )
+      this.modelId = modelId
+    }
     return this.getConfiguration()
+  }
+
+  private captureModelState(response: unknown): void {
+    const state = extractAcpSessionModelState(response)
+    if (!state) return
+    this.models = state.models
+    this.modelId = state.currentModelId ?? this.modelId
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {

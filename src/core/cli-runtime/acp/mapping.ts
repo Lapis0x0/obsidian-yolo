@@ -28,7 +28,11 @@ import {
 } from '../../../types/tool-call.types'
 import { createToolEditSummary } from '../../../utils/chat/editSummary'
 import { createCliToolCallRequest } from '../tool-call'
-import type { CliApprovalDecision, CliRuntimeId } from '../types'
+import type {
+  CliApprovalDecision,
+  CliRuntimeId,
+  CliRuntimeModel,
+} from '../types'
 
 const ACP_PLAN_MESSAGE_ID = 'acp-plan'
 
@@ -490,3 +494,60 @@ export const resolveApprovalOptionId = (
 export const buildCancelledApprovalOutcome = (): RequestPermissionResponse => ({
   outcome: { outcome: 'cancelled' },
 })
+
+// ---------------------------------------------------------------------------
+// Session model state
+// ---------------------------------------------------------------------------
+
+/**
+ * `session/new` and `session/load` responses may carry the agent's model list
+ * as `models: { availableModels, currentModelId }` — the ACP model-selection
+ * extension (paired with the `session/set_model` request) that Hermes and
+ * other agents speak. The current SDK's typed responses omit the field (the
+ * spec is migrating it to `configOptions`), so this reads the raw shape
+ * defensively; `null` means the agent doesn't report models and the host
+ * keeps its picker in the default-model placeholder state.
+ */
+export type AcpSessionModelState = Readonly<{
+  models: CliRuntimeModel[]
+  currentModelId: string | null
+}>
+
+export const extractAcpSessionModelState = (
+  response: unknown,
+): AcpSessionModelState | null => {
+  if (typeof response !== 'object' || response === null) return null
+  const models = (response as { models?: unknown }).models
+  if (typeof models !== 'object' || models === null) return null
+  const { availableModels, currentModelId } = models as {
+    availableModels?: unknown
+    currentModelId?: unknown
+  }
+  if (!Array.isArray(availableModels)) return null
+  const mapped: CliRuntimeModel[] = []
+  for (const raw of availableModels) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const { modelId, name, description } = raw as {
+      modelId?: unknown
+      name?: unknown
+      description?: unknown
+    }
+    if (typeof modelId !== 'string' || modelId.length === 0) continue
+    mapped.push({
+      id: modelId,
+      label: typeof name === 'string' && name.length > 0 ? name : modelId,
+      ...(typeof description === 'string' && description.length > 0
+        ? { description }
+        : {}),
+      reasoningEfforts: [],
+    })
+  }
+  if (mapped.length === 0) return null
+  return {
+    models: mapped,
+    currentModelId:
+      typeof currentModelId === 'string' && currentModelId.length > 0
+        ? currentModelId
+        : null,
+  }
+}

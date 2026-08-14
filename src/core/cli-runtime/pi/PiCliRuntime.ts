@@ -153,15 +153,12 @@ export class PiCliRuntime implements CliRuntime {
     cachedModels?: readonly CliRuntimeModel[],
   ): Promise<CliRuntimeConfiguration> {
     if (this.modelId === null && !this.modelRestoreAttempted) {
-      this.modelRestoreAttempted = true
       await this.restoreCurrentModelFromState()
     }
     const models = includeActiveCliModel(
       cachedModels?.length ? cachedModels : await this.listModels(),
       this.modelId,
     )
-    this.modelId ??=
-      models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null
     return {
       models,
       modelId: this.modelId,
@@ -171,17 +168,23 @@ export class PiCliRuntime implements CliRuntime {
 
   /**
    * Seeds `modelId`/`reasoningEffort` (and marks them already-applied) from
-   * pi's own `get_state` before the catalog default is allowed to win —
-   * otherwise a resumed session's first turn would call `set_model` with the
-   * catalog's first entry and silently switch away from whatever model pi
-   * actually has selected.
+   * pi's own `get_state`. There is deliberately no catalog fallback: pi's
+   * catalog is the full provider list in alphabetical order, so "first entry"
+   * is an arbitrary model — selecting it here would both display the wrong
+   * model and actively `set_model` to it on the next turn. When pi can't
+   * report a current model yet (unreachable, or freshly installed with no
+   * auth), `modelId` stays null — no `set_model` is sent and pi keeps its own
+   * default — and the restore latch stays unset so the next
+   * `getConfiguration()` retries once pi is configured.
    */
   private async restoreCurrentModelFromState(): Promise<void> {
     try {
       const current = await this.withQueryHandle((transport) =>
         transport.request('get_state', {}).then(extractPiCurrentModelState),
       )
-      if (!current || this.modelId !== null) return
+      if (!current) return
+      this.modelRestoreAttempted = true
+      if (this.modelId !== null) return
       this.modelId = current.modelId
       this.appliedModelId = current.modelId
       if (current.thinkingLevel) {
@@ -189,7 +192,7 @@ export class PiCliRuntime implements CliRuntime {
         this.appliedThinkingLevel = current.thinkingLevel
       }
     } catch {
-      // Best-effort restoration; the catalog default is still a safe fallback.
+      // pi unreachable right now — retry on the next getConfiguration().
     }
   }
 

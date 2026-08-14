@@ -377,6 +377,73 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
+  it('captures the model list from session/new and applies a pick via session/set_model', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({
+      sessionId: 'sess-1',
+      models: {
+        availableModels: [
+          {
+            modelId: 'openrouter:xiaomi/mimo-v2.5',
+            name: 'OpenRouter · xiaomi/mimo-v2.5',
+            description: 'Provider: OpenRouter • current',
+          },
+          {
+            modelId: 'openrouter:anthropic/claude-sonnet-5',
+            name: 'OpenRouter · anthropic/claude-sonnet-5',
+          },
+        ],
+        currentModelId: 'openrouter:xiaomi/mimo-v2.5',
+      },
+    }))
+    agent.on('session/set_model', () => ({}))
+
+    const runtime = createRuntime(agent)
+    await runtime.ensureReady({})
+
+    const configuration = await runtime.getConfiguration()
+    expect(configuration.models.map((model) => model.id)).toEqual([
+      'openrouter:xiaomi/mimo-v2.5',
+      'openrouter:anthropic/claude-sonnet-5',
+    ])
+    expect(configuration.modelId).toBe('openrouter:xiaomi/mimo-v2.5')
+
+    const updated = await runtime.updateConfiguration({
+      modelId: 'openrouter:anthropic/claude-sonnet-5',
+    })
+    const setModelRequest = agent.requests.find(
+      (message) => message.method === 'session/set_model',
+    )
+    expect(setModelRequest?.params).toEqual({
+      sessionId: 'sess-1',
+      modelId: 'openrouter:anthropic/claude-sonnet-5',
+    })
+    expect(updated.modelId).toBe('openrouter:anthropic/claude-sonnet-5')
+    await runtime.dispose()
+  })
+
+  it('falls back to cached models and skips set_model when the agent reports none', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+
+    const runtime = createRuntime(agent)
+    await runtime.ensureReady({})
+
+    const cached = [
+      { id: 'cached-model', label: 'Cached model', reasoningEfforts: [] },
+    ]
+    const configuration = await runtime.getConfiguration(cached)
+    expect(configuration.models).toEqual(cached)
+    expect(configuration.modelId).toBeNull()
+
+    // `null` means "keep the agent's own selection" — no protocol call.
+    await runtime.updateConfiguration({ modelId: null })
+    expect(
+      agent.requests.some((message) => message.method === 'session/set_model'),
+    ).toBe(false)
+    await runtime.dispose()
+  })
+
   it('does not leak the process when dispose() races the host still connecting it', async () => {
     let releaseSpawn: (() => void) | undefined
     let spawnedAgent: FakeAcpAgent | undefined
