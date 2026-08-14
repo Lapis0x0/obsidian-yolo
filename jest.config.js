@@ -6,6 +6,7 @@ module.exports = {
   transform: {
     '^.+.tsx?$': ['ts-jest', { isolatedModules: true }],
     '^.+\\.m?js$': '<rootDir>/scripts/jest-esm-transform.cjs',
+    '\\.svg$': '<rootDir>/scripts/jest-svg-transform.cjs',
   },
   // Only the ESM-only markdown parsing chain needs transpiling; everything else
   // in node_modules stays untransformed.

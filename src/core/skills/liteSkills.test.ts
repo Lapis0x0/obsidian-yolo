@@ -1230,12 +1230,9 @@ describe('module chat mode skill scope', () => {
     const app = makeAdapterApp({
       listings: { 'YOLO/skills': { files: [], folders: [] } },
       fileContents: {
-        [SKILL_PATH]: [
-          '---',
-          'name: outline-skill',
-          '---',
-          'module body',
-        ].join('\n'),
+        [SKILL_PATH]: ['---', 'name: outline-skill', '---', 'module body'].join(
+          '\n',
+        ),
       },
     })
 

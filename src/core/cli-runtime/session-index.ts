@@ -3,11 +3,12 @@ import { z } from 'zod'
 import type { SerializedChatUserMessage } from '../../types/chat'
 import type { ToolEditSummary } from '../../types/tool-call.types'
 
+import { CLI_RUNTIME_IDS } from './types'
 import type { CliRuntimeId, CliSessionRef } from './types'
 
 export const CLI_SESSION_INDEX_SCHEMA_VERSION = 1 as const
 
-const cliRuntimeIdSchema = z.enum(['claude-code', 'codex'])
+const cliRuntimeIdSchema = z.enum(CLI_RUNTIME_IDS)
 
 const serializedUserMessageSchema = z.custom<SerializedChatUserMessage>(
   (value) => {

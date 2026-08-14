@@ -28,10 +28,7 @@ export type ModuleChatModeSkillResolverV1 = Readonly<{
    * Never throws for an ordinary "not available right now" outcome, since
    * callers treat that identically to "mode currently unavailable".
    */
-  resolveSkillPath(
-    moduleId: string,
-    fileName: string,
-  ): Promise<string | null>
+  resolveSkillPath(moduleId: string, fileName: string): Promise<string | null>
 }>
 
 export type ModuleChatModeSkillResolverOptions = Readonly<{

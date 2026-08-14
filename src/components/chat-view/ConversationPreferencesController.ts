@@ -75,9 +75,8 @@ export class ConversationPreferencesController {
   private snapshot: ConversationPreferencesSnapshot
   private currentConversationId: string
   private readonly listeners = new Set<Listener>()
-  private readonly assistantDefaultModelListeners = new Set<
-    AssistantDefaultModelListener
-  >()
+  private readonly assistantDefaultModelListeners =
+    new Set<AssistantDefaultModelListener>()
 
   readonly conversationModelIdRef: { current: Map<string, string> } = {
     current: new Map(),
@@ -130,7 +129,9 @@ export class ConversationPreferencesController {
   }
 
   private commit(partial: Partial<ConversationPreferencesSnapshot>): void {
-    const keys = Object.keys(partial) as (keyof ConversationPreferencesSnapshot)[]
+    const keys = Object.keys(
+      partial,
+    ) as (keyof ConversationPreferencesSnapshot)[]
     const changed = keys.some(
       (key) => !Object.is(this.snapshot[key], partial[key]),
     )
@@ -176,10 +177,7 @@ export class ConversationPreferencesController {
 
   setPersistedChatMode = (action: SetStateActionLike<ChatMode>): void => {
     this.commit({
-      persistedChatMode: resolveNext(
-        action,
-        this.snapshot.persistedChatMode,
-      ),
+      persistedChatMode: resolveNext(action, this.snapshot.persistedChatMode),
     })
   }
 

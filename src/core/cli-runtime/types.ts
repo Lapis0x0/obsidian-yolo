@@ -1,3 +1,5 @@
+import type { App } from 'obsidian'
+
 import type { ChatMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
 import type { ResponseUsage } from '../../types/llm/response'
@@ -5,7 +7,14 @@ import type { ToolEditSummary } from '../../types/tool-call.types'
 
 import type { CliChatMode } from './permission-profile'
 
-export type CliRuntimeId = 'claude-code' | 'codex'
+/**
+ * Single source of truth for which CLI runtimes exist. Order here is the
+ * selector's display order. `CliRuntimeId` is derived from it so the two can
+ * never drift; adding a runtime means adding one entry here (plus a
+ * `CliRuntimeDescriptor` in `registry.ts` and a factory in `coordinator.ts`).
+ */
+export const CLI_RUNTIME_IDS = ['claude-code', 'codex'] as const
+export type CliRuntimeId = (typeof CLI_RUNTIME_IDS)[number]
 export type ChatRuntimeId = 'yolo' | CliRuntimeId
 
 export type YoloConversationRef = {
@@ -295,3 +304,27 @@ export type CliRuntime = {
   subscribe(listener: CliRuntimeEventListener): () => void
   dispose(): Promise<void>
 }
+
+/** Call-time context every runtime factory needs to construct a `CliRuntime`. */
+export type CliRuntimeFactoryDeps = Readonly<{
+  app: App
+  vaultPath: string
+}>
+
+/**
+ * Constructs one runtime id's `CliRuntime` instances. Provider-specific setup
+ * (launch resolution, pooled host processes, etc.) belongs behind this
+ * boundary, in the factory's own module — the coordinator only calls `create`
+ * and, when present, the optional lifecycle hooks.
+ */
+export type CliRuntimeFactory = Readonly<{
+  create(deps: CliRuntimeFactoryDeps): CliRuntime
+  /** Pre-warms shared, factory-owned infrastructure ahead of first use. */
+  warm?(): Promise<void>
+  /** Tears down shared, factory-owned infrastructure (e.g. a pooled host process). */
+  dispose?(): Promise<void>
+}>
+
+export type CliRuntimeFactories = Readonly<
+  Record<CliRuntimeId, CliRuntimeFactory>
+>

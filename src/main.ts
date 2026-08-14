@@ -55,7 +55,9 @@ import type {
   CliRuntimeCoordinator,
   CliRuntimeScope,
 } from './core/cli-runtime/coordinator'
+import { getCliRuntimeDescriptor } from './core/cli-runtime/registry'
 import type { CliActiveRunState } from './core/cli-runtime/types'
+import { CLI_RUNTIME_IDS } from './core/cli-runtime/types'
 import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
 import {
@@ -1898,8 +1900,7 @@ export default class YoloPlugin extends Plugin {
   ): void {
     const runtimeId = activity.cliRuntimeId
     badge.classList.remove(
-      'yolo-runtime-badge--claude-code',
-      'yolo-runtime-badge--codex',
+      ...CLI_RUNTIME_IDS.map((id) => `yolo-runtime-badge--${id}`),
     )
     if (!runtimeId) {
       badge.hidden = true
@@ -1910,14 +1911,15 @@ export default class YoloPlugin extends Plugin {
       return
     }
 
-    const fullLabel =
-      runtimeId === 'claude-code'
-        ? this.t('sidebar.runtimeSelector.claudeCodeLabel', 'Claude Code')
-        : this.t('sidebar.runtimeSelector.codexLabel', 'Codex')
+    const descriptor = getCliRuntimeDescriptor(runtimeId)
+    const fullLabel = this.t(
+      descriptor.labelKey,
+      runtimeId === 'claude-code' ? 'Claude Code' : 'Codex',
+    )
     badge.classList.add(`yolo-runtime-badge--${runtimeId}`)
     badge.setText(
-      runtimeId === 'claude-code'
-        ? this.t('sidebar.runtimeSelector.claudeCodeShortLabel', 'CC')
+      descriptor.shortLabelKey
+        ? this.t(descriptor.shortLabelKey, 'CC')
         : fullLabel,
     )
     badge.setAttribute('data-runtime-id', runtimeId)

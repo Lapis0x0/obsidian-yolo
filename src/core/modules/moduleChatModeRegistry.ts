@@ -215,9 +215,7 @@ export function snapshotModuleChatMode(
   })
 }
 
-function snapshotChatModeSkills(
-  skills: readonly string[],
-): readonly string[] {
+function snapshotChatModeSkills(skills: readonly string[]): readonly string[] {
   if (!Array.isArray(skills)) {
     throw new TypeError('Module chat mode skills must be an array')
   }
@@ -245,7 +243,9 @@ function snapshotChatModeSkills(
       )
     }
     if (seen.has(normalizedName)) {
-      throw new Error(`Module chat mode skill "${normalizedName}" is duplicated`)
+      throw new Error(
+        `Module chat mode skill "${normalizedName}" is duplicated`,
+      )
     }
     seen.add(normalizedName)
     return normalizedName

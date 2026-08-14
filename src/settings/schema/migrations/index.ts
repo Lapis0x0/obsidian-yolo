@@ -81,7 +81,7 @@ import { migrateFrom7To8 } from './7_to_8'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
-export const SETTINGS_SCHEMA_VERSION = 80
+export { SETTINGS_SCHEMA_VERSION } from './version'
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {

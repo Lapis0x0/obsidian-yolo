@@ -1846,9 +1846,9 @@ describe('AgentService mid-run user message queue', () => {
     expect(service.enqueueUserMessage('conv-drain-history', queued)).toBe(
       'enqueued',
     )
-    expect(
-      runtime.getRunInput()?.drainPendingUserMessages?.(),
-    ).toMatchObject({ messages: [queued] })
+    expect(runtime.getRunInput()?.drainPendingUserMessages?.()).toMatchObject({
+      messages: [queued],
+    })
 
     // NativeAgentRuntime publishes only its run-local tail here.
     runtime.emitSnapshot([currentAssistant, queued])

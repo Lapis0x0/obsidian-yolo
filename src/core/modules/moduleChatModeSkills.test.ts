@@ -63,10 +63,7 @@ describe('createModuleChatModeSkillResolver', () => {
       getVerifiedArtifact: () => artifact,
     })
 
-    const path = await resolver.resolveSkillPath(
-      'learning',
-      'outline-skill.md',
-    )
+    const path = await resolver.resolveSkillPath('learning', 'outline-skill.md')
 
     expect(path).toBe('/plugins/yolo/modules/learning/1.0.0/outline-skill.md')
     expect(resolveEntryPath).toHaveBeenCalledWith(
@@ -155,8 +152,8 @@ describe('createModuleChatModeSkillResolver', () => {
       getVerifiedArtifact: async () => artifact,
     })
 
-    expect(await resolver.resolveSkillPath('learning', 'outline-skill.md')).toBe(
-      'learning/1.0.0/outline-skill.md',
-    )
+    expect(
+      await resolver.resolveSkillPath('learning', 'outline-skill.md'),
+    ).toBe('learning/1.0.0/outline-skill.md')
   })
 })

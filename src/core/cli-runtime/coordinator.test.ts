@@ -101,8 +101,8 @@ const runtimeHarness = () => {
     return runtime
   })
   const factories: CliRuntimeFactories = {
-    createClaudeRuntime,
-    createCodexRuntime,
+    'claude-code': { create: createClaudeRuntime },
+    codex: { create: createCodexRuntime },
   }
   return {
     claudeRuntimes,
@@ -164,17 +164,34 @@ describe('CLI runtime coordinator', () => {
     expect(loadRuntimeFactories).not.toHaveBeenCalled()
   })
 
-  it('creates each provider lazily once per scope with current absolute cwd and options', async () => {
+  it('passes the vault path and configured option getters to the runtime factories loader', async () => {
     const harness = runtimeHarness()
-    const getConfiguredCliPath = () => '/bin/claude'
-    const getClaudeRuntimeOptions = jest.fn(() => ({
-      getConfiguredCliPath,
-    }))
-    const getCodexRuntimeOptions = jest.fn(() => ({ command: '/bin/codex' }))
-    const coordinator = await createDesktopCliRuntimeCoordinator({
-      app: createApp(new TestFileSystemAdapter('/vault/current')),
+    const app = createApp(new TestFileSystemAdapter('/vault/loader'))
+    const getClaudeRuntimeOptions = () => ({})
+    const getCodexRuntimeOptions = () => ({})
+    const loadRuntimeFactories = jest.fn(() => harness.factories)
+
+    await createDesktopCliRuntimeCoordinator({
+      app,
       getClaudeRuntimeOptions,
       getCodexRuntimeOptions,
+      loadRuntimeFactories,
+      createSessionIndexStore: indexStore,
+    })
+
+    expect(loadRuntimeFactories).toHaveBeenCalledWith({
+      app,
+      vaultPath: '/vault/loader',
+      getClaudeRuntimeOptions,
+      getCodexRuntimeOptions,
+    })
+  })
+
+  it('creates each provider lazily once per scope with the current absolute vault path', async () => {
+    const harness = runtimeHarness()
+    const app = createApp(new TestFileSystemAdapter('/vault/current'))
+    const coordinator = await createDesktopCliRuntimeCoordinator({
+      app,
       loadRuntimeFactories: () => harness.factories,
       createSessionIndexStore: indexStore,
     })
@@ -187,22 +204,15 @@ describe('CLI runtime coordinator', () => {
     )
     expect(harness.createClaudeRuntime).toHaveBeenCalledTimes(1)
     expect(harness.createClaudeRuntime).toHaveBeenCalledWith({
-      getConfiguredCliPath,
+      app,
       vaultPath: '/vault/current',
     })
     expect(scope.resolveRuntime('codex')).toBe(scope.resolveRuntime('codex'))
     expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
-    expect(harness.createCodexRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: '/bin/codex',
-        cwd: '/vault/current',
-        resolveHost: expect.any(Function),
-      }),
-    )
-    expect(getClaudeRuntimeOptions).toHaveBeenCalledTimes(1)
-    // Once for the shared app-server host pool, once at runtime creation so
-    // refreshed launch options are picked up per conversation.
-    expect(getCodexRuntimeOptions).toHaveBeenCalledTimes(2)
+    expect(harness.createCodexRuntime).toHaveBeenCalledWith({
+      app,
+      vaultPath: '/vault/current',
+    })
   })
 
   it('rejects a relative vault cwd without invoking a provider factory', async () => {
@@ -215,6 +225,38 @@ describe('CLI runtime coordinator', () => {
       coordinator.createScope().resolveRuntime('claude-code'),
     ).toThrow(/absolute vault path/)
     expect(harness.createClaudeRuntime).not.toHaveBeenCalled()
+  })
+
+  it('delegates warmConversationRuntime to the factory warm hook when present', async () => {
+    const warm = jest.fn(async () => undefined)
+    const harness = runtimeHarness()
+    const factories: CliRuntimeFactories = {
+      ...harness.factories,
+      codex: { ...harness.factories.codex, warm },
+    }
+    const { coordinator } = await createCoordinator({ ...harness, factories })
+    const scope = coordinator.createScope()
+
+    await scope.warmConversationRuntime('codex')
+    expect(warm).toHaveBeenCalledTimes(1)
+
+    // claude-code declares no warm hook — this must resolve as a no-op.
+    await expect(
+      scope.warmConversationRuntime('claude-code'),
+    ).resolves.toBeUndefined()
+  })
+
+  it('disposes factory-owned infrastructure when the coordinator disposes', async () => {
+    const dispose = jest.fn(async () => undefined)
+    const harness = runtimeHarness()
+    const factories: CliRuntimeFactories = {
+      ...harness.factories,
+      codex: { ...harness.factories.codex, dispose },
+    }
+    const { coordinator } = await createCoordinator({ ...harness, factories })
+
+    await coordinator.dispose()
+    expect(dispose).toHaveBeenCalledTimes(1)
   })
 
   it('shares service and action routing inside a scope', async () => {

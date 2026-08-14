@@ -1,3 +1,5 @@
+import type { CliRuntimeId } from '../cli-runtime/types'
+
 export type BackgroundActivityStatus =
   | 'running'
   | 'waiting'
@@ -28,7 +30,7 @@ export type BackgroundActivity = {
    * CLI runtime that owns this activity. Rendered as a short badge so a run can
    * be attributed at a glance, the same way the chat list marks its sessions.
    */
-  cliRuntimeId?: 'claude-code' | 'codex'
+  cliRuntimeId?: CliRuntimeId
   status: BackgroundActivityStatus
   updatedAt: number
   action?: BackgroundActivityAction

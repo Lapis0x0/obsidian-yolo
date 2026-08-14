@@ -2,15 +2,12 @@ import { App, FileSystemAdapter, Platform } from 'obsidian'
 
 import type { YoloSettingsLike } from '../paths/yoloManagedData'
 
-import type { ClaudeCliRuntimeOptions } from './claude'
+import type { ClaudeRuntimeOptions } from './claude/factory'
+import { createClaudeRuntimeFactory } from './claude/factory'
 import { createCliChatRuntimeActions } from './cli-actions'
-import { getCliPathOverride } from './cli-path-override'
-import type { CodexCliRuntimeOptions } from './codex'
-import { CodexAppServerHostPool } from './codex/host'
-import { type ResolvedCodexLaunch, resolveCodexLaunch } from './codex/launch'
-import type { CodexProcessOptions } from './codex/process'
+import type { CodexRuntimeOptions } from './codex/factory'
+import { createCodexRuntimeFactory } from './codex/factory'
 import { CliConversationController } from './conversation-controller'
-import { loadLoginShellEnvironment } from './login-shell-env'
 import {
   CliModelCatalogService,
   type CliModelCatalogSnapshot,
@@ -24,34 +21,31 @@ import { CliSessionService } from './session-service'
 import type {
   CliActiveRunState,
   CliRuntime,
+  CliRuntimeFactories,
+  CliRuntimeFactoryDeps,
   CliRuntimeId,
   CliRuntimeRunState,
   CliSessionRef,
 } from './types'
 import { VaultCliSessionIndexStore } from './vault-session-index-store'
 
-type ClaudeRuntimeOptions = Omit<ClaudeCliRuntimeOptions, 'vaultPath'>
-type CodexRuntimeOptions = Omit<
-  CodexCliRuntimeOptions,
-  'cwd' | 'resolveHost'
-> & {
-  cwd?: string
-}
+export type { CliRuntimeFactories }
 
-export type CliRuntimeFactories = Readonly<{
-  createClaudeRuntime(options: ClaudeCliRuntimeOptions): CliRuntime
-  createCodexRuntime(options: CodexCliRuntimeOptions): CliRuntime
-}>
+/** Deps available to whatever builds the default (or a caller-injected) factory table. */
+export type CliRuntimeFactoriesLoaderDeps = CliRuntimeFactoryDeps &
+  Readonly<{
+    getClaudeRuntimeOptions?: () => ClaudeRuntimeOptions
+    getCodexRuntimeOptions?: () => CodexRuntimeOptions
+  }>
 
 export type CliRuntimeCoordinatorOptions = Readonly<{
   app: App
   getSettings?: () => YoloSettingsLike | null
   getClaudeRuntimeOptions?: () => ClaudeRuntimeOptions
   getCodexRuntimeOptions?: () => CodexRuntimeOptions
-  resolveCodexProcessOptions?: () => Promise<CodexProcessOptions>
-  loadRuntimeFactories?: () =>
-    | CliRuntimeFactories
-    | Promise<CliRuntimeFactories>
+  loadRuntimeFactories?: (
+    deps: CliRuntimeFactoriesLoaderDeps,
+  ) => CliRuntimeFactories | Promise<CliRuntimeFactories>
   createSessionIndexStore?: (
     app: App,
     getSettings: () => YoloSettingsLike | null,
@@ -105,14 +99,16 @@ const isAbsoluteFileSystemPath = (path: string): boolean =>
   /^[A-Za-z]:[\\/]/u.test(path) ||
   path.startsWith('\\\\')
 
-const defaultLoadRuntimeFactories = async (): Promise<CliRuntimeFactories> => {
-  const [{ ClaudeCliRuntime }, { CodexCliRuntime }] = await Promise.all([
-    import('./claude/ClaudeCliRuntime'),
-    import('./codex/runtime'),
+const defaultLoadRuntimeFactories = async (
+  deps: CliRuntimeFactoriesLoaderDeps,
+): Promise<CliRuntimeFactories> => {
+  const [claudeFactory, codexFactory] = await Promise.all([
+    createClaudeRuntimeFactory(deps),
+    createCodexRuntimeFactory(deps),
   ])
   return {
-    createClaudeRuntime: (options) => new ClaudeCliRuntime(options),
-    createCodexRuntime: (options) => new CodexCliRuntime(options),
+    'claude-code': claudeFactory,
+    codex: codexFactory,
   }
 }
 
@@ -209,7 +205,6 @@ class DesktopCliRuntimeWorkspace {
     new Set<CliConversationRunSummarySubscriber>()
   private lastRunSummaryFingerprint = ''
   private readonly modelCatalog: CliModelCatalogService
-  private readonly codexHostPool: CodexAppServerHostPool
   private sessionServiceInstance: CliSessionService | null = null
   private disposePromise: Promise<void> | null = null
   private disposing = false
@@ -228,16 +223,6 @@ class DesktopCliRuntimeWorkspace {
       options.app,
       options.getSettings ?? (() => null),
     )
-    const codexRuntimeOptions = this.getCodexRuntimeOptions()
-    this.codexHostPool = new CodexAppServerHostPool({
-      ...codexRuntimeOptions,
-      cwd: codexRuntimeOptions.cwd ?? this.adapter.getBasePath(),
-      resolveProcessOptions: this.options.resolveCodexProcessOptions,
-    })
-  }
-
-  private getCodexRuntimeOptions(): CodexRuntimeOptions {
-    return this.options.getCodexRuntimeOptions?.() ?? {}
   }
 
   get sessionService(): CliSessionService {
@@ -254,26 +239,7 @@ class DesktopCliRuntimeWorkspace {
     const existing = this.runtimes.get(runtimeId)
     if (existing) return existing
 
-    const vaultPath = this.getVaultPath()
-    const codexRuntimeOptions =
-      runtimeId === 'codex' ? this.getCodexRuntimeOptions() : null
-    const runtime =
-      runtimeId === 'claude-code'
-        ? this.factories.createClaudeRuntime({
-            ...this.options.getClaudeRuntimeOptions?.(),
-            vaultPath,
-          })
-        : this.factories.createCodexRuntime({
-            ...codexRuntimeOptions,
-            cwd: codexRuntimeOptions?.cwd ?? vaultPath,
-            resolveHost: this.codexHostPool.acquire,
-          })
-    this.ownedRuntimes.add(runtime)
-    if (runtime.runtimeId !== runtimeId) {
-      throw new Error(
-        `CLI runtime factory returned ${runtime.runtimeId} for ${runtimeId}.`,
-      )
-    }
+    const runtime = this.instantiateRuntime(runtimeId)
     this.runtimes.set(runtimeId, runtime)
     return runtime
   }
@@ -282,7 +248,7 @@ class DesktopCliRuntimeWorkspace {
     runtimeId: CliRuntimeId,
   ): CliConversationController {
     this.assertActive()
-    const runtime = this.createRuntime(runtimeId)
+    const runtime = this.instantiateRuntime(runtimeId)
     const controller = new CliConversationController(
       runtime,
       () => this.modelCatalog.getSnapshot().get(runtimeId) ?? [],
@@ -399,9 +365,7 @@ class DesktopCliRuntimeWorkspace {
   }
 
   async warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void> {
-    if (runtimeId === 'codex') {
-      await this.codexHostPool.warm()
-    }
+    await this.factories[runtimeId].warm?.()
   }
 
   selectConversationSession(ref: CliSessionRef): CliConversationController {
@@ -438,10 +402,12 @@ class DesktopCliRuntimeWorkspace {
         ...this.conversationDisposals,
         ...[...this.ownedRuntimes].map((runtime) => runtime.dispose()),
       ])
-      const [hostResult] = await Promise.allSettled([
-        this.codexHostPool.dispose(),
-      ])
-      const failure = [...results, hostResult].find(
+      const factoryDisposeResults = await Promise.allSettled(
+        Object.values(this.factories).map(
+          (factory) => factory.dispose?.() ?? Promise.resolve(),
+        ),
+      )
+      const failure = [...results, ...factoryDisposeResults].find(
         (result): result is PromiseRejectedResult =>
           result.status === 'rejected',
       )
@@ -498,21 +464,11 @@ class DesktopCliRuntimeWorkspace {
     if (this.disposing) throw new Error('CLI runtime scope is disposed.')
   }
 
-  private createRuntime(runtimeId: CliRuntimeId): CliRuntime {
-    const vaultPath = this.getVaultPath()
-    const codexRuntimeOptions =
-      runtimeId === 'codex' ? this.getCodexRuntimeOptions() : null
-    const runtime =
-      runtimeId === 'claude-code'
-        ? this.factories.createClaudeRuntime({
-            ...this.options.getClaudeRuntimeOptions?.(),
-            vaultPath,
-          })
-        : this.factories.createCodexRuntime({
-            ...codexRuntimeOptions,
-            cwd: codexRuntimeOptions?.cwd ?? vaultPath,
-            resolveHost: this.codexHostPool.acquire,
-          })
+  private instantiateRuntime(runtimeId: CliRuntimeId): CliRuntime {
+    const runtime = this.factories[runtimeId].create({
+      app: this.options.app,
+      vaultPath: this.getVaultPath(),
+    })
     this.ownedRuntimes.add(runtime)
     if (runtime.runtimeId !== runtimeId) {
       throw new Error(
@@ -708,49 +664,14 @@ export const createDesktopCliRuntimeCoordinator = async (
   if (!(adapter instanceof FileSystemAdapter)) {
     throw new Error('CLI runtimes require a file-system-backed vault.')
   }
+  const vaultPath = adapter.getBasePath()
   const factories = await (
     options.loadRuntimeFactories ?? defaultLoadRuntimeFactories
-  )()
-  const vaultPath = adapter.getBasePath()
-
-  let resolvedOptions = options
-  if (!options.getClaudeRuntimeOptions) {
-    resolvedOptions = {
-      ...resolvedOptions,
-      getClaudeRuntimeOptions: () => ({
-        getConfiguredCliPath: () =>
-          getCliPathOverride(options.app, 'claude-code'),
-      }),
-    }
-  }
-  if (!options.getCodexRuntimeOptions) {
-    const resolveLaunch = async (): Promise<ResolvedCodexLaunch> =>
-      resolveCodexLaunch(
-        vaultPath,
-        (await loadLoginShellEnvironment()) as NodeJS.ProcessEnv,
-        process.platform,
-        getCliPathOverride(options.app, 'codex'),
-      )
-    let launchSnapshot = await resolveLaunch()
-    resolvedOptions = {
-      ...resolvedOptions,
-      getCodexRuntimeOptions: () => ({
-        command: launchSnapshot.command,
-        cwd: launchSnapshot.runtimeCwd,
-        spawnCwd: launchSnapshot.spawnCwd,
-        launchArgs: launchSnapshot.launchArgs,
-        mapRuntimePathToHost: launchSnapshot.mapRuntimePathToHost,
-      }),
-      resolveCodexProcessOptions: async () => {
-        launchSnapshot = await resolveLaunch()
-        return {
-          command: launchSnapshot.command,
-          cwd: launchSnapshot.runtimeCwd,
-          spawnCwd: launchSnapshot.spawnCwd,
-          launchArgs: launchSnapshot.launchArgs,
-        }
-      },
-    }
-  }
-  return new DesktopCliRuntimeCoordinator(adapter, resolvedOptions, factories)
+  )({
+    app: options.app,
+    vaultPath,
+    getClaudeRuntimeOptions: options.getClaudeRuntimeOptions,
+    getCodexRuntimeOptions: options.getCodexRuntimeOptions,
+  })
+  return new DesktopCliRuntimeCoordinator(adapter, options, factories)
 }

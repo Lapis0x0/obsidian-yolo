@@ -683,8 +683,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
           name: 'emit_knowledge_point',
           description: 'Emit a knowledge point',
           inputSchema: { type: 'object' },
-          handler: (input) =>
-            record(String(input.label), input.fail === true),
+          handler: (input) => record(String(input.label), input.fail === true),
         },
         {
           name: 'emit_card',
@@ -725,7 +724,11 @@ describe('CoreModuleAgentCapabilityProvider', () => {
           args: { label: 'b', fail: true },
           signal,
         }),
-        server.callTool({ toolName: 'emit_card', args: { label: 'c' }, signal }),
+        server.callTool({
+          toolName: 'emit_card',
+          args: { label: 'c' },
+          signal,
+        }),
       ])
 
       expect(events).toEqual([

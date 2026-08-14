@@ -32,6 +32,10 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
+  type CliRuntimeId,
+  getCliRuntimeDescriptor,
+} from '../../core/cli-runtime'
+import {
   type ChatConversationMetadata,
   getChatConversationOrigin,
 } from '../../database/json/chat/types'
@@ -532,16 +536,13 @@ function TitleInput({
   )
 }
 
-function ChatRuntimeBadge({
-  runtimeId,
-}: {
-  runtimeId: 'claude-code' | 'codex'
-}) {
+function ChatRuntimeBadge({ runtimeId }: { runtimeId: CliRuntimeId }) {
   const { t } = useLanguage()
-  const fullLabel =
-    runtimeId === 'claude-code'
-      ? t('sidebar.runtimeSelector.claudeCodeLabel', 'Claude Code')
-      : t('sidebar.runtimeSelector.codexLabel', 'Codex')
+  const descriptor = getCliRuntimeDescriptor(runtimeId)
+  const fullLabel = t(
+    descriptor.labelKey,
+    runtimeId === 'claude-code' ? 'Claude Code' : 'Codex',
+  )
 
   return (
     <span
@@ -550,9 +551,7 @@ function ChatRuntimeBadge({
       aria-label={fullLabel}
       title={fullLabel}
     >
-      {runtimeId === 'claude-code'
-        ? t('sidebar.runtimeSelector.claudeCodeShortLabel', 'CC')
-        : fullLabel}
+      {descriptor.shortLabelKey ? t(descriptor.shortLabelKey, 'CC') : fullLabel}
     </span>
   )
 }
@@ -647,7 +646,7 @@ const ChatListItem = memo(function ChatListItem({
 }: {
   title: string
   displayTitle?: string
-  cliRuntimeId?: 'claude-code' | 'codex'
+  cliRuntimeId?: CliRuntimeId
   runSummary?: AgentConversationRunSummary
   isCurrent: boolean
   isFocused: boolean
