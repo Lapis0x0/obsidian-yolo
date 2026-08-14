@@ -36,7 +36,7 @@ describe('runVaultSearch', () => {
     }
 
     expect(JSON.parse(result.text)).toEqual({
-      tool: 'fs_search',
+      tool: 'vault_search',
       requestedMode: 'hybrid',
       effectiveMode: 'keyword',
       fallbackReason: 'Semantic search is not available in this context.',
@@ -138,7 +138,7 @@ describe('runVaultSearch', () => {
     }
 
     expect(JSON.parse(result.text)).toEqual({
-      tool: 'fs_search',
+      tool: 'vault_search',
       requestedMode: 'keyword',
       effectiveMode: 'keyword',
       scope: 'files',
@@ -331,7 +331,7 @@ describe('runVaultSearch', () => {
     }
 
     expect(JSON.parse(result.text)).toMatchObject({
-      tool: 'fs_search',
+      tool: 'vault_search',
       requestedMode: 'hybrid',
       effectiveMode: 'hybrid',
       scope: 'content',

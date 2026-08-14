@@ -818,9 +818,8 @@ export async function runVaultSearchStructured({
 
 /**
  * `vault_search` MCP entry point: same orchestration as
- * `runVaultSearchStructured`, serialized into the legacy fs_search JSON
- * response shape (`fallbackReason: undefined` is dropped by JSON.stringify,
- * matching the historical output byte-for-byte).
+ * `runVaultSearchStructured`, serialized into the JSON response shape
+ * (`fallbackReason: undefined` is dropped by JSON.stringify).
  */
 export async function runVaultSearch(options: {
   app: App
@@ -836,7 +835,7 @@ export async function runVaultSearch(options: {
   return {
     status: 'success',
     text: formatJsonResult({
-      tool: 'fs_search',
+      tool: 'vault_search',
       requestedMode: outcome.requestedMode,
       effectiveMode: outcome.effectiveMode,
       fallbackReason: outcome.fallbackReason,
