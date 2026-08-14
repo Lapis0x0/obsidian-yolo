@@ -1941,14 +1941,13 @@ export const en: TranslationKeys = {
       inputLabel: 'Annotation {index}',
     },
     mentionMenu: {
-      back: 'Back',
       entryCurrentFile: 'Current file',
       entryMode: 'Mode',
-      entrySkill: 'Skill',
       entryAssistant: 'Assistant',
       entryModel: 'Model',
       entryFile: 'File',
       entryFolder: 'Folder',
+      categoryEmpty: 'Nothing here yet',
     },
     slashCommands: {
       compact: {

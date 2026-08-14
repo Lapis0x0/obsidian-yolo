@@ -476,7 +476,6 @@ export function getMentionableName(
   mentionable: Mentionable,
   options?: {
     unitLabels?: MentionableUnitLabels
-    currentFileLabel?: string
   },
 ): string {
   switch (mentionable.type) {

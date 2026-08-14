@@ -1775,14 +1775,13 @@ export const it: DeepPartial<TranslationKeys> = {
       inputLabel: 'Annotazione {index}',
     },
     mentionMenu: {
-      back: 'Torna indietro',
       entryCurrentFile: 'File corrente',
       entryMode: 'Modalita',
-      entrySkill: 'Skill',
       entryAssistant: 'Assistente',
       entryModel: 'Modello',
       entryFile: 'File',
       entryFolder: 'Cartella',
+      categoryEmpty: 'Ancora nulla qui',
     },
     slashCommands: {
       compact: {

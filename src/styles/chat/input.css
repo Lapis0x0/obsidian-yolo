@@ -526,7 +526,6 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-chat-container--centered {
   --yolo-chat-content-max-width: min(720px, calc(100% - var(--size-4-6)));
-  --yolo-chat-typeahead-max-width: 400px;
   --yolo-chat-host-inline-padding: var(--size-4-3);
 }
 

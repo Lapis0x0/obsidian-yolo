@@ -1,252 +1,24 @@
 /* The Smart Space floating panel itself was removed (superseded by Quick
  * Ask's "continue" mode). What remains here is CSS that other live
  * components still depend on: the shared `--smart-space` popover variant's
- * mention dropdown (Quick Ask, chat input @ mentions), the Quick Ask model
- * select button, and the Smart Space quick-action *settings editor* (still
- * used — Quick Ask's continue mode reads the same presets). See
- * src/styles/README.md before adding anything new here. */
-.yolo-smart-space-mention-popover {
-  position: absolute;
-  bottom: calc(100% + 10px);
-  left: 16px;
-  right: 16px;
-  display: flex;
-  justify-content: flex-start;
-  pointer-events: none;
-  z-index: 5;
-}
-
-.yolo-smart-space-mention-popover[data-placement='bottom'] {
-  bottom: auto;
-  top: calc(100% + 10px);
-}
-
-.yolo-smart-space-mention-dropdown {
-  display: block;
-  right: auto;
-  width: min(100%, var(--yolo-chat-typeahead-max-width, 480px));
-  min-width: 0;
-  max-width: min(100%, var(--yolo-chat-typeahead-max-width, 480px));
-  pointer-events: auto;
-  padding: 0;
-  /* 视觉表面由 .yolo-popover-surface--smart-space 提供；此处不再覆盖 background/border/box-shadow。
-     宽度上限用 CSS 变量 --yolo-chat-typeahead-max-width 控制：
-     默认 480px；centered 容器（input.css）会覆盖为 400px。 */
-}
-
-.yolo-smart-space-mention-list {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  overflow-y: auto;
-  background: transparent;
-  border: none;
-  padding: 8px;
-}
-
-.yolo-smart-space-mention-list[data-transition='forward'] {
-  animation: yolo-smart-space-mention-list-forward 110ms
-    cubic-bezier(0.2, 0, 0, 1) both;
-}
-
-.yolo-smart-space-mention-list[data-transition='back'] {
-  animation: yolo-smart-space-mention-list-back 110ms cubic-bezier(0.2, 0, 0, 1)
-    both;
-}
-
-@keyframes yolo-smart-space-mention-list-forward {
-  from {
-    opacity: 0;
-    transform: translateX(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes yolo-smart-space-mention-list-back {
-  from {
-    opacity: 0;
-    transform: translateX(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-.yolo-popover-surface--smart-space .yolo-smart-space-mention-list {
-  max-height: min(320px, var(--yolo-typeahead-available-height, 320px));
-  overflow-y: auto;
-  scrollbar-width: thin;
-  scroll-padding-top: 8px;
-  scroll-padding-bottom: 8px;
-}
-
-.yolo-smart-space-mention-option {
-  width: 100%;
-  display: flex;
-  justify-content: flex-start;
-  align-items: center;
-  border: none;
-  background: transparent;
-  color: var(--text-normal);
-  cursor: pointer;
-  text-align: left;
-}
-
-.yolo-smart-space-mention-option-icon {
-  color: var(--h1-color, var(--interactive-accent));
-  margin-top: 0;
-  flex-shrink: 0;
-}
-
-.yolo-smart-space-mention-option-text {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  min-width: 0;
-  flex: 1;
-}
-
-.yolo-smart-space-mention-option-text--inline-meta {
-  flex-direction: row;
-  align-items: center;
-  gap: 8px;
-}
-
-.yolo-smart-space-mention-option-name {
-  font-weight: 600;
-  font-size: var(--font-ui-small);
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.yolo-smart-space-mention-option-text--inline-meta
-  .yolo-smart-space-mention-option-name {
-  min-width: 0;
-  flex: 0 1 auto;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.yolo-smart-space-mention-option-text--inline-meta
-  .yolo-smart-space-mention-option-path {
-  flex: 1 1 auto;
-  width: 0;
-  min-width: 0;
-}
-
-.yolo-smart-space-mention-option-path {
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  line-height: 1.25;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  word-break: normal;
-}
-
-.yolo-smart-space-mention-option-inline-meta {
-  flex: 1;
-  min-width: 0;
-}
-
-.yolo-popover-surface--smart-space
-  .yolo-smart-space-mention-list
-  > .yolo-smart-space-mention-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 10px;
-  white-space: normal;
-  line-height: 1.35;
-  background: transparent;
-  border: none;
-  margin: 0;
-  box-shadow: none;
-  border-radius: 8px;
-  transform: none;
-  scroll-margin-top: 8px;
-  scroll-margin-bottom: 8px;
-}
-
-.yolo-popover-surface--smart-space
-  .yolo-smart-space-mention-list
-  > .yolo-smart-space-mention-option:focus-visible {
-  outline: 1px solid
-    color-mix(
-      in srgb,
-      var(--h1-color, var(--interactive-accent)) 70%,
-      transparent
-    );
-}
-
-.yolo-popover-surface--smart-space
-  .yolo-smart-space-mention-list
-  > .yolo-smart-space-mention-option::before {
-  display: none;
-}
-
-.yolo-popover-surface--smart-space
-  .yolo-smart-space-mention-list
-  > .yolo-smart-space-mention-option:hover,
-.yolo-popover-surface--smart-space
-  .yolo-smart-space-mention-list
-  > .yolo-smart-space-mention-option[data-highlighted='true'] {
-  background: color-mix(
-    in srgb,
-    var(--h1-color, var(--interactive-accent)) 14%,
-    transparent
-  );
-  border-radius: 8px;
-  box-shadow: inset 0 0 0 1px
-    color-mix(
-      in srgb,
-      var(--h1-color, var(--interactive-accent)) 40%,
-      transparent
-    );
-  border: none;
-}
-
-.yolo-smart-space-mention-empty {
-  padding: 10px 12px;
-  font-size: var(--font-ui-small);
-  color: var(--text-muted);
-}
-
-.yolo-smart-space-mention-option-check {
-  margin-left: auto;
-  margin-top: 0;
-  color: var(--text-accent, var(--interactive-accent));
-}
-
-.yolo-smart-space-mention-option-expand {
-  margin-left: auto;
-  color: var(--text-muted);
-  opacity: 0.85;
-}
-
+ * rail typeahead menu (chat input `/` and `@` menus, Quick Ask), the Quick
+ * Ask model select button, and the Smart Space quick-action *settings
+ * editor* (still used — Quick Ask's continue mode reads the same presets).
+ * See src/styles/README.md before adding anything new here. */
 /*
- * `/` 斜杠菜单（技能 / 快捷指令 / 命令）的双栏面板，设计代号 C2。
- * 独立于上面的 .yolo-smart-space-mention-popover（@ 提及菜单专用）：后者的宽度
- * 被 LexicalMenu 锁定为输入框宽度；斜杠菜单需要内容宽度（约 470px）、左对齐，
- * 用不同的 class 名互相隔离，实际宽度锁定分支见 LexicalMenu.ts 的
- * isSkillSlashPopover。窄容器降级（隐藏左栏、按类别分组）由
- * SkillSlashMenu.tsx 内部测量面板渲染宽度决定，与这里的 CSS 无关。
+ * 输入框 typeahead 菜单的双栏面板，`/`（技能 / 快捷指令 / 命令）与
+ * `@`（文件 / 文件夹 / 模式 / 助手 / 模型）共用同一套结构与行视觉。
+ * 面板宽度是内容宽度（约 470px）、左对齐，不铺满输入框，锁定分支见
+ * LexicalMenu.ts 的 isRailMenu。窄容器降级（隐藏左栏、按类别分组）由
+ * RailTypeaheadMenu.tsx 内部测量面板渲染宽度决定，与这里的 CSS 无关。
  */
-.yolo-skill-slash-popover {
+.yolo-rail-menu-popover {
   position: absolute;
   pointer-events: none;
   z-index: 5;
 }
 
-.yolo-skill-slash-panel {
+.yolo-rail-menu-panel {
   display: flex;
   align-items: stretch;
   width: 100%;
@@ -254,7 +26,14 @@
   padding: 0;
 }
 
-.yolo-skill-slash-rail {
+/* 窄容器：同一套面板转 90°——类别选择器从左侧竖栏变成顶部横排 tabs，
+ * 列表接在下方。结构不变，只是方向变了。 */
+.yolo-rail-menu-panel--tabs {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.yolo-rail-menu-rail {
   display: flex;
   flex-direction: column;
   flex: 0 0 128px;
@@ -270,10 +49,48 @@
   );
 }
 
+.yolo-rail-menu-rail--horizontal {
+  flex-direction: row;
+  flex: 0 0 auto;
+  width: auto;
+  gap: 2px;
+  padding: 6px 8px;
+  border-right: none;
+  border-bottom: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 55%, transparent);
+  /* 类别多到放不下时横向滚动，但不显示滚动条——tabs 本身就是可扫视的短列表，
+   * 一条滚动条会比它占的信息还重。同 .yolo-chat-list-origin-filters 的处理。 */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.yolo-rail-menu-rail--horizontal::-webkit-scrollbar {
+  display: none;
+}
+
+/* 横排下只留文字：五个类别各带图标与计数会挤到必须横滚，而 tabs 一旦要滚
+ * 就失去了「一眼看全」的意义。图标/计数的信息在切过去后由列表自身承担。 */
+.yolo-rail-menu-rail--horizontal .yolo-rail-menu-rail-item-icon,
+.yolo-rail-menu-rail--horizontal .yolo-rail-menu-rail-item-count {
+  display: none;
+}
+
+.yolo-rail-menu-rail--horizontal .yolo-rail-menu-rail-item {
+  width: auto;
+  flex: 0 0 auto;
+  padding: 5px 10px;
+}
+
+.yolo-rail-menu-rail--horizontal .yolo-rail-menu-rail-item-label {
+  flex: 0 0 auto;
+  overflow: visible;
+}
+
 /* button. 作用域 + 显式重置：Obsidian 核心对裸 button 全局加
  * box-shadow(--input-shadow)/height(--input-height)/font-weight，
  * 未声明的属性不会被 class 选择器"覆盖"，必须逐项归零。 */
-button.yolo-skill-slash-rail-item {
+button.yolo-rail-menu-rail-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -292,12 +109,12 @@ button.yolo-skill-slash-rail-item {
   cursor: pointer;
 }
 
-.yolo-skill-slash-rail-item-icon {
+.yolo-rail-menu-rail-item-icon {
   flex-shrink: 0;
   color: currentColor;
 }
 
-.yolo-skill-slash-rail-item-label {
+.yolo-rail-menu-rail-item-label {
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -305,40 +122,56 @@ button.yolo-skill-slash-rail-item {
   text-overflow: ellipsis;
 }
 
-.yolo-skill-slash-rail-item-count {
+.yolo-rail-menu-rail-item-count {
   flex-shrink: 0;
   color: var(--text-faint);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
-.yolo-skill-slash-rail-item:hover {
+/* 悬停必须弱于下面的 .is-active，否则划过未选类别时它会比当前类别更"像选中"。 */
+.yolo-rail-menu-rail-item:hover {
   background: color-mix(
     in srgb,
-    var(--background-modifier-hover) 70%,
+    var(--background-modifier-hover) 50%,
     transparent
   );
   color: var(--text-normal);
 }
 
-.yolo-skill-slash-rail-item.is-active {
+/* 单焦点双区模型的两种呈现，任一时刻只有一处读作焦点：
+ * - 焦点在 list（默认样式）：激活类别读作「已选标签」——左侧强调条 + 中性低对比
+ *   底色，明显区别于右栏那条 accent 实心 + ring 的焦点行。
+ * - 焦点在 rail（打开菜单的初始态）：激活类别升级为 accent 实心 + ring，强调条
+ *   收起；右栏高亮行同时完全隐去。 */
+.yolo-rail-menu-rail-item.is-active {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+.yolo-rail-menu-rail-item.is-active::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 6px;
+  left: 0;
+  width: 2px;
+  border-radius: 0 2px 2px 0;
+  background: var(--h1-color, var(--interactive-accent));
+}
+
+.yolo-rail-menu-rail-item.is-active .yolo-rail-menu-rail-item-icon {
+  color: var(--h1-color, var(--interactive-accent));
+}
+
+.yolo-rail-menu-panel[data-focus-zone='rail']
+  button.yolo-rail-menu-rail-item.is-active {
   background: color-mix(
     in srgb,
     var(--h1-color, var(--interactive-accent)) 14%,
     transparent
   );
-  color: var(--text-normal);
-  font-weight: var(--font-medium);
-}
-
-.yolo-skill-slash-rail-item.is-active .yolo-skill-slash-rail-item-icon {
-  color: var(--h1-color, var(--interactive-accent));
-}
-
-/* 单焦点双区模型的焦点指示：焦点在 rail 时，激活类别加 ring、右栏高亮行减弱
- * 为纯底色；焦点在 list 时反之（rail 激活项只保留底色作类别指示）。 */
-.yolo-skill-slash-panel[data-focus-zone='rail']
-  button.yolo-skill-slash-rail-item.is-active {
   box-shadow: inset 0 0 0 1px
     color-mix(
       in srgb,
@@ -347,17 +180,29 @@ button.yolo-skill-slash-rail-item {
     );
 }
 
-.yolo-skill-slash-panel[data-focus-zone='rail']
-  button.yolo-skill-slash-row[data-highlighted='true'] {
-  background: color-mix(
-    in srgb,
-    var(--h1-color, var(--interactive-accent)) 7%,
-    transparent
-  );
+.yolo-rail-menu-panel[data-focus-zone='rail']
+  .yolo-rail-menu-rail-item.is-active::before {
+  display: none;
+}
+
+.yolo-rail-menu-panel[data-focus-zone='rail']
+  button.yolo-rail-menu-row[data-highlighted='true'] {
+  background: transparent;
   box-shadow: none;
 }
 
-.yolo-skill-slash-list {
+/* 横排 tabs 没有焦点分区（焦点恒在列表），激活项就只是「已选标签」：中性填充
+ * 药丸，不需要竖排那条左侧强调条。 */
+.yolo-rail-menu-rail--horizontal .yolo-rail-menu-rail-item.is-active::before {
+  display: none;
+}
+
+.yolo-rail-menu-list {
+  --yolo-rail-menu-list-height: min(
+    320px,
+    var(--yolo-typeahead-available-height, 320px)
+  );
+
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
@@ -365,33 +210,29 @@ button.yolo-skill-slash-rail-item {
   gap: 2px;
   padding: 8px;
   overflow-y: auto;
-  max-height: min(320px, var(--yolo-typeahead-available-height, 320px));
+  max-height: var(--yolo-rail-menu-list-height);
   scrollbar-width: thin;
 }
 
-/* 根态双栏时把列表高度钉死：类别间条目数差异很大（技能十几条 vs 命令三条），
- * 若由内容撑高，←→/点击切类别时整个弹窗高度会坍缩跳动。内容不满时留白。 */
-.yolo-skill-slash-panel--two-pane .yolo-skill-slash-list {
-  height: min(320px, var(--yolo-typeahead-available-height, 320px));
+/* 横排 tabs 自己占掉一行（约 40px），列表从可用高度里扣掉它，整块才不超出。 */
+.yolo-rail-menu-panel--tabs .yolo-rail-menu-list {
+  --yolo-rail-menu-list-height: min(
+    280px,
+    max(0px, var(--yolo-typeahead-available-height, 320px) - 40px)
+  );
 }
 
-.yolo-skill-slash-group + .yolo-skill-slash-group {
-  margin-top: 4px;
-}
-
-.yolo-skill-slash-group-header {
-  padding: 6px 8px 4px;
-  color: color-mix(in srgb, var(--text-muted) 80%, transparent);
-  font-size: 10px;
-  font-weight: var(--font-bold);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  user-select: none;
+/* 根态（无论竖排还是横排类别选择器）把列表高度钉死：类别间条目数差异很大
+ * （技能十几条 vs 命令三条），若由内容撑高，切类别时整个弹窗高度会坍缩跳动。
+ * 内容不满时留白。过滤态没有类别可切，交给内容自然撑高。 */
+.yolo-rail-menu-panel--two-pane .yolo-rail-menu-list,
+.yolo-rail-menu-panel--tabs .yolo-rail-menu-list {
+  height: var(--yolo-rail-menu-list-height);
 }
 
 /* 同上：button. 作用域 + 显式重置全局按钮样式（height 不归零会把双行内容
  * 压到 --input-height 并裁掉描述）。 */
-button.yolo-skill-slash-row {
+button.yolo-rail-menu-row {
   display: flex;
   align-items: flex-start;
   gap: 10px;
@@ -409,8 +250,8 @@ button.yolo-skill-slash-row {
   cursor: pointer;
 }
 
-.yolo-skill-slash-row:hover,
-.yolo-skill-slash-row[data-highlighted='true'] {
+.yolo-rail-menu-row:hover,
+.yolo-rail-menu-row[data-highlighted='true'] {
   background: color-mix(
     in srgb,
     var(--h1-color, var(--interactive-accent)) 14%,
@@ -424,13 +265,13 @@ button.yolo-skill-slash-row {
     );
 }
 
-.yolo-skill-slash-row-icon {
+.yolo-rail-menu-row-icon {
   flex-shrink: 0;
   margin-top: 2px;
   color: var(--h1-color, var(--interactive-accent));
 }
 
-.yolo-skill-slash-row-text {
+.yolo-rail-menu-row-text {
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -438,7 +279,7 @@ button.yolo-skill-slash-row {
   flex: 1;
 }
 
-.yolo-skill-slash-row-name {
+.yolo-rail-menu-row-name {
   font-weight: 550;
   font-size: var(--font-ui-small);
   white-space: nowrap;
@@ -446,13 +287,53 @@ button.yolo-skill-slash-row {
   text-overflow: ellipsis;
 }
 
-.yolo-skill-slash-row-desc {
+.yolo-rail-menu-row-desc {
   font-size: var(--font-ui-smaller);
   color: var(--text-faint);
   line-height: 1.4;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* inline-meta 变体：副文本是路径 / provider / 助手简介这类短 meta，与标题同行。
+ * `@` 菜单的条目列表可长达二十行，两行式会把面板撑成两倍高。 */
+.yolo-rail-menu-row--inline-meta {
+  align-items: center;
+}
+
+.yolo-rail-menu-row--inline-meta .yolo-rail-menu-row-icon {
+  margin-top: 0;
+}
+
+.yolo-rail-menu-row--inline-meta .yolo-rail-menu-row-text {
+  flex-direction: row;
+  align-items: baseline;
+  gap: 8px;
+}
+
+/* 标题按内容宽收缩、meta 吃掉剩余宽度：长文件名先截断，路径仍可见。 */
+.yolo-rail-menu-row--inline-meta .yolo-rail-menu-row-name {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.yolo-rail-menu-row--inline-meta .yolo-rail-menu-row-desc {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+}
+
+.yolo-rail-menu-row-check {
+  flex-shrink: 0;
+  margin-left: auto;
+  color: var(--text-accent, var(--interactive-accent));
+}
+
+.yolo-rail-menu-empty {
+  padding: 10px 12px;
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
 }
 
 /* Smart Space Model Select - 精致的按钮设计 */

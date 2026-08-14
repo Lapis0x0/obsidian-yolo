@@ -19,16 +19,17 @@ import {
 import { SnippetEntry } from '../../../../../core/snippets/snippetsManager'
 import { MenuOption } from '../shared/LexicalMenu'
 import {
+  type RailMenuCategory,
+  type RailMenuItemProps,
+  RailMenuRow,
+  useRailTypeaheadMenu,
+} from '../shared/RailTypeaheadMenu'
+import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
 } from '../typeahead-menu/LexicalTypeaheadMenuPlugin'
 
 import { $createSkillNode } from './SkillNode'
-import {
-  type SkillSlashCategory,
-  type SkillSlashItemProps,
-  useSkillSlashMenu,
-} from './SkillSlashMenu'
 
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
 const COMPACT_COMMAND_ID = 'compact-context'
@@ -98,57 +99,38 @@ class SkillTypeaheadOption extends MenuOption {
   }
 }
 
-function SkillSlashOptionRow({
-  id,
-  isSelected,
-  onClick,
-  onMouseEnter,
-  option,
-}: SkillSlashItemProps<SkillTypeaheadOption>) {
+function SkillSlashOptionRow(props: RailMenuItemProps<SkillTypeaheadOption>) {
+  const { option } = props
   let iconNode: ReactNode = null
   switch (option.payload.kind) {
     case 'skill':
-      iconNode = <Sparkles size={15} className="yolo-skill-slash-row-icon" />
+      iconNode = <Sparkles size={15} className="yolo-rail-menu-row-icon" />
       break
     case 'snippet':
-      iconNode = <Zap size={15} className="yolo-skill-slash-row-icon" />
+      iconNode = <Zap size={15} className="yolo-rail-menu-row-icon" />
       break
     case 'command':
       iconNode =
         option.payload.command.id === 'open-plugin-manager' ? (
-          <Blocks size={15} className="yolo-skill-slash-row-icon" />
+          <Blocks size={15} className="yolo-rail-menu-row-icon" />
         ) : option.payload.command.id === 'open-mcp-servers' ? (
-          <Plug size={15} className="yolo-skill-slash-row-icon" />
+          <Plug size={15} className="yolo-rail-menu-row-icon" />
         ) : (
-          <Minimize2 size={15} className="yolo-skill-slash-row-icon" />
+          <Minimize2 size={15} className="yolo-rail-menu-row-icon" />
         )
       break
     case 'create-snippets-file':
-      iconNode = <FilePlus2 size={15} className="yolo-skill-slash-row-icon" />
+      iconNode = <FilePlus2 size={15} className="yolo-rail-menu-row-icon" />
       break
   }
 
   return (
-    <button
-      type="button"
-      className="yolo-skill-slash-row"
-      ref={(el) => option.setRefElement(el)}
-      role="option"
-      aria-selected={isSelected}
-      id={id}
-      onMouseDown={(event) => event.preventDefault()}
-      onMouseEnter={onMouseEnter}
-      onClick={onClick}
-      data-highlighted={isSelected ? 'true' : undefined}
-    >
-      {iconNode}
-      <span className="yolo-skill-slash-row-text">
-        <span className="yolo-skill-slash-row-name">{option.name}</span>
-        {option.subtitle && (
-          <span className="yolo-skill-slash-row-desc">{option.subtitle}</span>
-        )}
-      </span>
-    </button>
+    <RailMenuRow
+      {...props}
+      icon={iconNode}
+      name={option.name}
+      description={option.subtitle}
+    />
   )
 }
 
@@ -249,29 +231,28 @@ export default function SkillSlashPlugin({
     [allCommands],
   )
 
-  const categories = useMemo<SkillSlashCategory<SkillTypeaheadOption>[]>(
+  const categories = useMemo<RailMenuCategory<SkillTypeaheadOption>[]>(
     () => [
       {
         key: 'skill',
         label: skillCategoryLabel,
-        icon: (
-          <Sparkles size={13} className="yolo-skill-slash-rail-item-icon" />
-        ),
+        icon: <Sparkles size={13} className="yolo-rail-menu-rail-item-icon" />,
         options: skillOptions,
+        count: skillOptions.length,
       },
       {
         key: 'snippet',
         label: snippetCategoryLabel,
-        icon: <Zap size={13} className="yolo-skill-slash-rail-item-icon" />,
+        icon: <Zap size={13} className="yolo-rail-menu-rail-item-icon" />,
         options: snippetOptions,
+        count: snippetOptions.length,
       },
       {
         key: 'command',
         label: commandCategoryLabel,
-        icon: (
-          <Minimize2 size={13} className="yolo-skill-slash-rail-item-icon" />
-        ),
+        icon: <Minimize2 size={13} className="yolo-rail-menu-rail-item-icon" />,
         options: commandOptions,
+        count: commandOptions.length,
       },
     ],
     [
@@ -367,13 +348,13 @@ export default function SkillSlashPlugin({
       .map((entry) => entry.option)
   }, [allCommands, normalizedQuery, selectedSkillNameSet, skills, snippets])
 
-  const skillSlashMenu = useSkillSlashMenu({
+  const railMenu = useRailTypeaheadMenu({
     categories,
     flatOptions: filteredOptions,
     placement,
   })
 
-  const options = skillSlashMenu.displayOptions
+  const options = railMenu.displayOptions
 
   const onSelectOption = useCallback(
     (
@@ -486,11 +467,11 @@ export default function SkillSlashPlugin({
       onOpen={() => onMenuOpenChange?.(true)}
       onClose={() => {
         onMenuOpenChange?.(false)
-        skillSlashMenu.reset()
+        railMenu.reset()
       }}
-      customKeyHandlers={skillSlashMenu.customKeyHandlers}
+      customKeyHandlers={railMenu.customKeyHandlers}
       menuRenderFn={(anchorElementRef, itemProps) =>
-        skillSlashMenu.renderMenu({
+        railMenu.renderMenu({
           anchorElementRef,
           itemProps,
           menuContainer: menuContainerRef?.current,

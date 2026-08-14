@@ -1836,14 +1836,13 @@ export const zh: TranslationKeys = {
       inputLabel: '批注{index}',
     },
     mentionMenu: {
-      back: '返回上一级',
       entryCurrentFile: '当前文件',
       entryMode: '模式',
-      entrySkill: '技能',
       entryAssistant: '助手',
       entryModel: '模型',
       entryFile: '文件',
       entryFolder: '文件夹',
+      categoryEmpty: '暂无内容',
     },
     slashCommands: {
       compact: {

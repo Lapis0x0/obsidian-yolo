@@ -10,16 +10,15 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $createTextNode, COMMAND_PRIORITY_NORMAL, TextNode } from 'lexical'
 import {
-  ArrowLeft,
   Bot,
   Check,
-  ChevronRight,
   Cpu,
   FileIcon,
   FileText,
   FolderClosedIcon,
   MessageSquare,
 } from 'lucide-react'
+import { TFile } from 'obsidian'
 import {
   type ReactNode,
   type RefObject,
@@ -49,11 +48,13 @@ import {
 import { SearchableMentionable } from '../../../../../utils/fuzzy-search'
 import { CHAT_MODES, type ChatMode } from '../../ChatModeSelect'
 import { getMentionableIcon } from '../../utils/get-metionable-icon'
-import {
-  CascadingTypeaheadItemProps,
-  useCascadingTypeaheadMenu,
-} from '../shared/CascadingTypeaheadMenu'
 import { MenuOption, MenuTextMatch } from '../shared/LexicalMenu'
+import {
+  type RailMenuCategory,
+  type RailMenuItemProps,
+  RailMenuRow,
+  useRailTypeaheadMenu,
+} from '../shared/RailTypeaheadMenu'
 import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
@@ -104,6 +105,8 @@ const AtSignMentionsRegexAliasRegex = new RegExp(
 
 // At most, 20 suggestions are shown in the popup.
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
+// 过滤态里为助手/模式/模型保留的名额上限，见 flatOptions。
+const NON_FILE_RESULT_QUOTA = 10
 
 function getDisplayFileName(name: string): string {
   return name.toLowerCase().endsWith('.md') ? name.slice(0, -3) : name
@@ -118,33 +121,17 @@ function getFileParentFolderPath(filePath: string): string {
 }
 
 type MentionMenuMode = 'direct-search' | 'entry'
-type MentionMenuScope =
-  | 'root'
-  | 'assistant'
-  | 'file'
-  | 'folder'
-  | 'mode'
-  | 'model'
-type MentionEntryOptionType =
-  | 'current-file'
-  | 'assistant'
-  | 'file'
-  | 'folder'
-  | 'mode'
-  | 'model'
 type MentionChatMode = ChatMode
-type MentionMenuTransitionDirection = 'none' | 'forward' | 'back'
 
 type MentionTypeaheadOptionPayload =
   | {
-      kind: 'back'
+      /**
+       * 当前活动文件。它是叶子动作而不是类别，所以不进 rail，而是置顶在
+       * 「文件」类别列表的第一行——@ 打开后回车即插入当前文件，仍是最短路径。
+       */
+      kind: 'current-file'
       label: string
-    }
-  | {
-      kind: 'entry'
-      entryType: MentionEntryOptionType
-      label: string
-      subtitle?: string
+      mentionable: Mentionable
     }
   | {
       kind: 'assistant'
@@ -205,14 +192,14 @@ class MentionTypeaheadOption extends MenuOption {
     let name = ''
     let subtitle: string | null = null
 
-    if (payload.kind === 'back') {
-      key = 'entry:back'
+    if (payload.kind === 'current-file') {
+      const mentionable = payload.mentionable
+      key = `current-file:${mentionable.type === 'file' ? mentionable.file.path : ''}`
       name = payload.label
-      subtitle = null
-    } else if (payload.kind === 'entry') {
-      key = `entry:${payload.entryType}`
-      name = payload.label
-      subtitle = payload.subtitle ?? null
+      subtitle =
+        mentionable.type === 'file'
+          ? getDisplayFileName(mentionable.file.name)
+          : null
     } else if (payload.kind === 'assistant') {
       key = `assistant:${payload.assistant.id}`
       name = payload.assistant.name
@@ -254,142 +241,54 @@ class MentionTypeaheadOption extends MenuOption {
   }
 }
 
-function MentionsTypeaheadMenuItem({
-  id,
-  isSelected,
-  onClick,
-  onMouseEnter,
-  option,
-}: {
-  id: string
-  index: number
-  isSelected: boolean
-  onClick: () => void
-  onMouseEnter: (event: React.MouseEvent<HTMLElement>) => void
-  option: MentionTypeaheadOption
-}) {
+function MentionsTypeaheadMenuItem(
+  props: RailMenuItemProps<MentionTypeaheadOption>,
+) {
+  const { option } = props
   let iconNode: ReactNode = null
-  const isInlineMetaOption =
-    option.payload.kind === 'assistant' ||
-    option.payload.kind === 'mode' ||
-    (option.payload.kind === 'mentionable' &&
-      (option.payload.mentionable.type === 'model' ||
-        option.payload.mentionable.type === 'folder' ||
-        option.payload.mentionable.type === 'file') &&
-      Boolean(option.subtitle))
 
-  if (option.payload.kind === 'back') {
-    iconNode = (
-      <ArrowLeft size={14} className="yolo-smart-space-mention-option-icon" />
-    )
-  } else if (option.payload.kind === 'entry') {
-    if (option.payload.entryType === 'assistant') {
-      iconNode = (
-        <Bot size={14} className="yolo-smart-space-mention-option-icon" />
-      )
-    } else if (option.payload.entryType === 'mode') {
-      iconNode = (
-        <MessageSquare
-          size={14}
-          className="yolo-smart-space-mention-option-icon"
-        />
-      )
-    } else if (option.payload.entryType === 'model') {
-      iconNode = (
-        <Cpu size={14} className="yolo-smart-space-mention-option-icon" />
-      )
-    } else if (option.payload.entryType === 'file') {
-      iconNode = (
-        <FileIcon size={14} className="yolo-smart-space-mention-option-icon" />
-      )
-    } else if (option.payload.entryType === 'current-file') {
-      iconNode = (
-        <FileText size={14} className="yolo-smart-space-mention-option-icon" />
-      )
-    } else {
-      iconNode = (
-        <FolderClosedIcon
-          size={14}
-          className="yolo-smart-space-mention-option-icon"
-        />
-      )
-    }
+  if (option.payload.kind === 'current-file') {
+    iconNode = <FileText size={15} className="yolo-rail-menu-row-icon" />
   } else if (option.payload.kind === 'assistant') {
     iconNode = renderAssistantIcon(
       option.payload.assistant.icon,
-      14,
-      'yolo-smart-space-mention-option-icon',
+      15,
+      'yolo-rail-menu-row-icon',
     )
   } else if (option.payload.kind === 'mode') {
     iconNode =
       option.payload.mode === 'agent' ? (
-        <Bot size={14} className="yolo-smart-space-mention-option-icon" />
+        <Bot size={15} className="yolo-rail-menu-row-icon" />
       ) : (
-        <MessageSquare
-          size={14}
-          className="yolo-smart-space-mention-option-icon"
-        />
+        <MessageSquare size={15} className="yolo-rail-menu-row-icon" />
       )
   } else {
     const Icon = getMentionableIcon(option.payload.mentionable)
     if (Icon) {
-      iconNode = (
-        <Icon size={14} className="yolo-smart-space-mention-option-icon" />
-      )
+      iconNode = <Icon size={15} className="yolo-rail-menu-row-icon" />
     }
   }
 
+  const isCurrent =
+    ((option.payload.kind === 'assistant' || option.payload.kind === 'mode') &&
+      option.payload.isCurrent) ||
+    (option.payload.kind === 'mentionable' && option.payload.isSelected)
+
   return (
-    <button
-      type="button"
-      className={`yolo-popover-item yolo-smart-space-mention-option ${
-        isSelected ? 'active' : ''
-      }`}
-      ref={(el) => option.setRefElement(el)}
-      role="option"
-      aria-selected={isSelected}
-      id={id}
-      onMouseDown={(event) => event.preventDefault()}
-      onMouseEnter={onMouseEnter}
-      onClick={onClick}
-      data-highlighted={isSelected ? 'true' : undefined}
-    >
-      {iconNode}
-      <div
-        className={`yolo-smart-space-mention-option-text${
-          isInlineMetaOption
-            ? ' yolo-smart-space-mention-option-text--inline-meta'
-            : ''
-        }`}
-      >
-        <div className="yolo-smart-space-mention-option-name">
-          {option.name}
-        </div>
-        {option.subtitle && (
-          <div
-            className={`yolo-smart-space-mention-option-path${
-              isInlineMetaOption
-                ? ' yolo-smart-space-mention-option-inline-meta'
-                : ''
-            }`}
-          >
-            {option.subtitle}
-          </div>
-        )}
-      </div>
-      {((option.payload.kind === 'assistant' ||
-        option.payload.kind === 'mode') &&
-        option.payload.isCurrent) ||
-      (option.payload.kind === 'mentionable' && option.payload.isSelected) ? (
-        <Check size={12} className="yolo-smart-space-mention-option-check" />
-      ) : null}
-      {option.payload.kind === 'entry' && (
-        <ChevronRight
-          size={14}
-          className="yolo-smart-space-mention-option-expand"
-        />
-      )}
-    </button>
+    <RailMenuRow
+      {...props}
+      icon={iconNode}
+      name={option.name}
+      description={option.subtitle}
+      // @ 菜单的副文本是路径 / provider / 助手简介这类短 meta，排在标题同一行，
+      // 文件列表才不会被撑成两倍高；`/` 菜单的整句描述则换行。
+      inlineMeta
+      trailing={
+        isCurrent ? (
+          <Check size={13} className="yolo-rail-menu-row-check" />
+        ) : null
+      }
+    />
   )
 }
 
@@ -433,11 +332,6 @@ export default function NewMentionsPlugin({
   const { settings } = useSettings()
 
   const [queryString, setQueryString] = useState<string | null>(null)
-  const [menuScope, setMenuScope] = useState<MentionMenuScope>('root')
-  const [menuContentTransition, setMenuContentTransition] = useState<{
-    direction: MentionMenuTransitionDirection
-    nonce: number
-  }>({ direction: 'none', nonce: 0 })
   const { t } = useLanguage()
   const mentionableUnitLabels = useMemo(
     () => ({
@@ -456,21 +350,20 @@ export default function NewMentionsPlugin({
     }
   }, [onMenuOpenChange])
 
-  const animateMenuContent = useCallback(
-    (direction: MentionMenuTransitionDirection) => {
-      setMenuContentTransition((prev) => ({
-        direction,
-        nonce: prev.nonce + 1,
-      }))
-    },
-    [],
+  // 「当前文件」这一行的标题与图标要在菜单打开期间保持正确，所以活动文件是渲染
+  // 期读取的状态，而不是只在选中那一刻才去 workspace 取。
+  const [activeFile, setActiveFile] = useState<TFile | null>(() =>
+    app.workspace.getActiveFile(),
   )
-
   useEffect(() => {
-    if (queryString === null) {
-      setMenuScope('root')
+    const handleActiveLeafChange = () => {
+      setActiveFile(app.workspace.getActiveFile())
     }
-  }, [queryString])
+    app.workspace.on('active-leaf-change', handleActiveLeafChange)
+    return () => {
+      app.workspace.off('active-leaf-change', handleActiveLeafChange)
+    }
+  }, [app])
 
   const normalizedQuery = useMemo(
     () => (queryString ?? '').trim().toLowerCase(),
@@ -503,181 +396,204 @@ export default function NewMentionsPlugin({
       })),
     [models],
   )
-  const filteredModelMentionables = useMemo(() => {
-    if (!normalizedQuery) {
-      return modelMentionables
-    }
 
-    return modelMentionables.filter((model) => {
+  const matchesModelQuery = useCallback(
+    (model: MentionableModel, query: string) => {
       const providerId = model.providerId ?? ''
       const providerLabel = providerLabelById.get(providerId) ?? providerId
       return (
-        model.name.toLowerCase().includes(normalizedQuery) ||
-        model.modelId.toLowerCase().includes(normalizedQuery) ||
-        providerId.toLowerCase().includes(normalizedQuery) ||
-        providerLabel.toLowerCase().includes(normalizedQuery)
+        model.name.toLowerCase().includes(query) ||
+        model.modelId.toLowerCase().includes(query) ||
+        providerId.toLowerCase().includes(query) ||
+        providerLabel.toLowerCase().includes(query)
       )
-    })
-  }, [modelMentionables, normalizedQuery, providerLabelById])
+    },
+    [providerLabelById],
+  )
+
+  const toModelOption = useCallback(
+    (mentionable: MentionableModel) =>
+      new MentionTypeaheadOption({
+        kind: 'mentionable',
+        mentionable,
+        subtitle:
+          mentionable.providerId != null
+            ? (providerLabelById.get(mentionable.providerId) ??
+              mentionable.providerId)
+            : undefined,
+        isSelected: selectedModelIds.includes(mentionable.modelId),
+      }),
+    [providerLabelById, selectedModelIds],
+  )
+
+  const toAssistantOption = useCallback(
+    (assistant: Assistant) =>
+      new MentionTypeaheadOption({
+        kind: 'assistant',
+        assistant,
+        isCurrent: assistant.id === currentAssistantId,
+      }),
+    [currentAssistantId],
+  )
+
+  const chatModeEntries = useMemo(() => {
+    if (!onSelectChatMode) return []
+    const modeKeys: MentionChatMode[] = allowAgentModeOption
+      ? [...CHAT_MODES]
+      : ['ask']
+    return modeKeys.map((mode) => ({
+      mode,
+      label:
+        mode === 'agent'
+          ? t('chatMode.agent', 'Agent')
+          : t('chatMode.ask', 'Ask'),
+      subtitle:
+        mode === 'agent'
+          ? t('chatMode.agentDesc', 'Enable tool calling capabilities')
+          : t('chatMode.askDesc', 'Ask, refine, create'),
+    }))
+  }, [allowAgentModeOption, onSelectChatMode, t])
+
+  const toModeOption = useCallback(
+    (entry: { mode: MentionChatMode; label: string; subtitle: string }) =>
+      new MentionTypeaheadOption({
+        kind: 'mode',
+        mode: entry.mode,
+        label: entry.label,
+        subtitle: entry.subtitle,
+        isCurrent: entry.mode === (currentChatMode ?? 'ask'),
+      }),
+    [currentChatMode],
+  )
 
   const checkForSlashTriggerMatch = useBasicTypeaheadTriggerMatch('/', {
     minLength: 0,
   })
 
+  // queryString === null 即菜单未打开：此时不要去跑 vault 级的文件/文件夹扫描。
+  const isRootBrowse =
+    menuMode === 'entry' && queryString !== null && !normalizedQuery
+
   /**
-   * 根据一级 entry 类型构建对应的二级 option 列表（不含"返回上一级"）。
-   * 此函数被两条路径复用：
-   * 1) drill-down：用户点击 entry，setMenuScope('xxx')，主面板被替换为
-   *    [back, ...subOptions]
-   * 2) hover/键盘预览：右侧子面板独立渲染，直接使用本函数返回的列表
-   * 这样两条路径生成的 option 完全一致，避免行为漂移。 */
-  const getSubOptionsForEntry = useCallback(
-    (
-      entryType: MentionEntryOptionType,
-      subQuery: string,
-    ): MentionTypeaheadOption[] => {
-      const lowerQuery = subQuery.trim().toLowerCase()
+   * 根态各类别的条目。文件/文件夹都按 SUGGESTION_LIST_LENGTH_LIMIT 截断——根态
+   * 是「浏览最近/靠前的若干条」，真正要定位某个文件靠的是直接打字搜索（过滤态
+   * 覆盖文件、文件夹、助手、模式、模型全部五类）。
+   */
+  const currentFileOption = useMemo(() => {
+    if (!isRootBrowse || !activeFile) return null
+    return new MentionTypeaheadOption({
+      kind: 'current-file',
+      label: t('chat.mentionMenu.entryCurrentFile', '当前文件'),
+      mentionable: { type: 'file', file: activeFile },
+    })
+  }, [activeFile, isRootBrowse, t])
 
-      if (entryType === 'mode') {
-        const modeOptions: MentionChatMode[] = allowAgentModeOption
-          ? [...CHAT_MODES]
-          : ['ask']
-        return modeOptions
-          .map((mode) => {
-            const label =
-              mode === 'agent'
-                ? t('chatMode.agent', 'Agent')
-                : t('chatMode.ask', 'Ask')
-            const subtitle =
-              mode === 'agent'
-                ? t('chatMode.agentDesc', 'Enable tool calling capabilities')
-                : t('chatMode.askDesc', 'Ask, refine, create')
-            return { mode, label, subtitle }
-          })
-          .filter((option) => {
-            if (!lowerQuery) return true
-            return (
-              option.label.toLowerCase().includes(lowerQuery) ||
-              option.subtitle.toLowerCase().includes(lowerQuery)
-            )
-          })
-          .map(
-            (option) =>
-              new MentionTypeaheadOption({
-                kind: 'mode',
-                mode: option.mode,
-                label: option.label,
-                subtitle: option.subtitle,
-                isCurrent: option.mode === (currentChatMode ?? 'ask'),
-              }),
-          )
-      }
+  const fileCategoryOptions = useMemo(() => {
+    if (!isRootBrowse) return []
+    const fileOptions = results
+      .filter(
+        (result): result is SearchableMentionable & { type: 'file' } =>
+          result.type === 'file',
+      )
+      .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+      .map(
+        (mentionable) =>
+          new MentionTypeaheadOption({
+            kind: 'mentionable',
+            mentionable,
+            subtitle: getFileParentFolderPath(mentionable.file.path),
+          }),
+      )
+    return currentFileOption ? [currentFileOption, ...fileOptions] : fileOptions
+  }, [currentFileOption, isRootBrowse, results])
 
-      if (entryType === 'assistant') {
-        return assistants
-          .filter((assistant) => {
-            if (!lowerQuery) return true
-            const description = assistant.description ?? ''
-            return (
-              assistant.name.toLowerCase().includes(lowerQuery) ||
-              description.toLowerCase().includes(lowerQuery)
-            )
-          })
-          .map(
-            (assistant) =>
-              new MentionTypeaheadOption({
-                kind: 'assistant',
-                assistant,
-                isCurrent: assistant.id === currentAssistantId,
-              }),
-          )
-      }
-
-      if (entryType === 'model') {
-        const filtered = lowerQuery
-          ? modelMentionables.filter((model) => {
-              const providerId = model.providerId ?? ''
-              const providerLabel =
-                providerLabelById.get(providerId) ?? providerId
-              return (
-                model.name.toLowerCase().includes(lowerQuery) ||
-                model.modelId.toLowerCase().includes(lowerQuery) ||
-                providerId.toLowerCase().includes(lowerQuery) ||
-                providerLabel.toLowerCase().includes(lowerQuery)
-              )
-            })
-          : modelMentionables
-        return filtered.map(
-          (mentionable) =>
-            new MentionTypeaheadOption({
-              kind: 'mentionable',
-              mentionable,
-              subtitle:
-                mentionable.providerId != null
-                  ? (providerLabelById.get(mentionable.providerId) ??
-                    mentionable.providerId)
-                  : undefined,
-              isSelected: selectedModelIds.includes(mentionable.modelId),
-            }),
+  const folderCategoryOptions = useMemo(() => {
+    if (!isRootBrowse) return []
+    const folders = searchFoldersByQuery
+      ? searchFoldersByQuery('')
+      : results.filter(
+          (result): result is MentionableFolder => result.type === 'folder',
         )
-      }
+    return folders.slice(0, SUGGESTION_LIST_LENGTH_LIMIT).map(
+      (mentionable) =>
+        new MentionTypeaheadOption({
+          kind: 'mentionable',
+          mentionable,
+          subtitle: `/${mentionable.folder.path}`,
+        }),
+    )
+  }, [isRootBrowse, results, searchFoldersByQuery])
 
-      if (entryType === 'folder') {
-        // 优先用 searchFoldersByQuery（覆盖全 vault folder 树）；
-        // 未提供时回退到 results 里 folder 类型的 fallback（与重构前一致），
-        // drill-down 与 hover 预览复用同一路径，保证数据一致。
-        const folderMentionables: MentionableFolder[] = searchFoldersByQuery
-          ? searchFoldersByQuery(subQuery)
-          : results.filter(
-              (result): result is MentionableFolder => result.type === 'folder',
-            )
-        return folderMentionables.map(
-          (mentionable) =>
-            new MentionTypeaheadOption({
-              kind: 'mentionable',
-              mentionable,
-              subtitle: `/${mentionable.folder.path}`,
-            }),
-        )
-      }
-
-      if (entryType === 'file') {
-        const fileResults = searchResultByQuery(subQuery).filter(
-          (result): result is SearchableMentionable & { type: 'file' } =>
-            result.type === 'file',
-        )
-        return fileResults.map(
-          (mentionable) =>
-            new MentionTypeaheadOption({
-              kind: 'mentionable',
-              mentionable,
-              subtitle: getFileParentFolderPath(mentionable.file.path),
-            }),
-        )
-      }
-
-      // 'current-file' 是 leaf，不应该到这里。
-      return []
-    },
-    [
-      allowAgentModeOption,
-      assistants,
-      currentAssistantId,
-      currentChatMode,
-      modelMentionables,
-      providerLabelById,
-      results,
-      searchFoldersByQuery,
-      searchResultByQuery,
-      selectedModelIds,
-      t,
-    ],
-  )
-
-  const options = useMemo(() => {
-    if (queryString == null) {
-      return [] as MentionTypeaheadOption[]
+  const categories = useMemo<RailMenuCategory<MentionTypeaheadOption>[]>(() => {
+    if (menuMode !== 'entry') return []
+    const entries: RailMenuCategory<MentionTypeaheadOption>[] = [
+      {
+        key: 'file',
+        label: t('chat.mentionMenu.entryFile', '文件'),
+        icon: <FileIcon size={13} className="yolo-rail-menu-rail-item-icon" />,
+        options: fileCategoryOptions,
+      },
+      {
+        key: 'folder',
+        label: t('chat.mentionMenu.entryFolder', '文件夹'),
+        icon: (
+          <FolderClosedIcon
+            size={13}
+            className="yolo-rail-menu-rail-item-icon"
+          />
+        ),
+        options: folderCategoryOptions,
+      },
+    ]
+    if (chatModeEntries.length > 0) {
+      entries.push({
+        key: 'mode',
+        label: t('chat.mentionMenu.entryMode', '模式'),
+        icon: (
+          <MessageSquare size={13} className="yolo-rail-menu-rail-item-icon" />
+        ),
+        options: chatModeEntries.map(toModeOption),
+        count: chatModeEntries.length,
+      })
     }
+    if (assistants.length > 0) {
+      entries.push({
+        key: 'assistant',
+        label: t('chat.mentionMenu.entryAssistant', '助手'),
+        icon: <Bot size={13} className="yolo-rail-menu-rail-item-icon" />,
+        options: assistants.map(toAssistantOption),
+        count: assistants.length,
+      })
+    }
+    if (modelMentionables.length > 0) {
+      entries.push({
+        key: 'model',
+        label: t('chat.mentionMenu.entryModel', '模型'),
+        icon: <Cpu size={13} className="yolo-rail-menu-rail-item-icon" />,
+        options: modelMentionables.map(toModelOption),
+        count: modelMentionables.length,
+      })
+    }
+    return entries
+  }, [
+    assistants,
+    chatModeEntries,
+    fileCategoryOptions,
+    folderCategoryOptions,
+    menuMode,
+    modelMentionables,
+    t,
+    toAssistantOption,
+    toModeOption,
+    toModelOption,
+  ])
+
+  /**
+   * 过滤态的扁平列表。类别内搜索已取消，所以这里必须覆盖 rail 上的全部五类，
+   * 否则某些条目将没有任何可达路径。
+   */
+  const flatOptions = useMemo<MentionTypeaheadOption[] | null>(() => {
+    if (queryString == null) return []
 
     if (menuMode === 'direct-search') {
       return results
@@ -691,145 +607,82 @@ export default function NewMentionsPlugin({
         .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
     }
 
-    if (menuScope === 'root') {
-      if (normalizedQuery) {
-        const searchableMentionables = results
-          .filter(
-            (
-              result,
-            ): result is SearchableMentionable & { type: 'file' | 'folder' } =>
-              result.type === 'file' || result.type === 'folder',
-          )
-          .map(
-            (mentionable) =>
-              new MentionTypeaheadOption({
-                kind: 'mentionable',
-                mentionable,
-                subtitle:
-                  mentionable.type === 'file'
-                    ? getFileParentFolderPath(mentionable.file.path)
-                    : `/${mentionable.folder.path}`,
-              }),
-          )
+    if (!normalizedQuery) return null
 
-        const assistantOptions = assistants
-          .filter((assistant) => {
-            const description = assistant.description ?? ''
-            return (
-              assistant.name.toLowerCase().includes(normalizedQuery) ||
-              description.toLowerCase().includes(normalizedQuery)
-            )
-          })
-          .map(
-            (assistant) =>
-              new MentionTypeaheadOption({
-                kind: 'assistant',
-                assistant,
-                isCurrent: assistant.id === currentAssistantId,
-              }),
-          )
+    const searchableMentionables = results
+      .filter(
+        (
+          result,
+        ): result is SearchableMentionable & { type: 'file' | 'folder' } =>
+          result.type === 'file' || result.type === 'folder',
+      )
+      .map(
+        (mentionable) =>
+          new MentionTypeaheadOption({
+            kind: 'mentionable',
+            mentionable,
+            subtitle:
+              mentionable.type === 'file'
+                ? getFileParentFolderPath(mentionable.file.path)
+                : `/${mentionable.folder.path}`,
+          }),
+      )
 
-        const modelOptions = filteredModelMentionables.map(
-          (mentionable) =>
-            new MentionTypeaheadOption({
-              kind: 'mentionable',
-              mentionable,
-              subtitle:
-                mentionable.providerId != null
-                  ? (providerLabelById.get(mentionable.providerId) ??
-                    mentionable.providerId)
-                  : undefined,
-              isSelected: selectedModelIds.includes(mentionable.modelId),
-            }),
+    const assistantOptions = assistants
+      .filter((assistant) => {
+        const description = assistant.description ?? ''
+        return (
+          assistant.name.toLowerCase().includes(normalizedQuery) ||
+          description.toLowerCase().includes(normalizedQuery)
         )
-
-        return [
-          ...searchableMentionables,
-          ...assistantOptions,
-          ...modelOptions,
-        ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
-      }
-
-      const entryOptions: Array<{
-        entryType: MentionEntryOptionType
-        label: string
-      }> = [
-        {
-          entryType: 'current-file',
-          label: t('chat.mentionMenu.entryCurrentFile', '当前文件'),
-        },
-        {
-          entryType: 'assistant',
-          label: t('chat.mentionMenu.entryAssistant', '助手'),
-        },
-        {
-          entryType: 'file',
-          label: t('chat.mentionMenu.entryFile', '文件'),
-        },
-        {
-          entryType: 'folder',
-          label: t('chat.mentionMenu.entryFolder', '文件夹'),
-        },
-      ]
-      if (onSelectChatMode) {
-        entryOptions.splice(1, 0, {
-          entryType: 'mode',
-          label: t('chat.mentionMenu.entryMode', '模式'),
-        })
-      }
-      entryOptions.push({
-        entryType: 'model',
-        label: t('chat.mentionMenu.entryModel', '模型'),
       })
-      return entryOptions
-        .map(
-          (entry) =>
-            new MentionTypeaheadOption({
-              kind: 'entry',
-              entryType: entry.entryType,
-              label: entry.label,
-            }),
-        )
-        .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
-    }
+      .map(toAssistantOption)
 
-    // drill-down 二级面板：复用 getSubOptionsForEntry 保持与 hover 预览一致。
-    const scopeEntryMap: Record<
-      Exclude<MentionMenuScope, 'root'>,
-      MentionEntryOptionType
-    > = {
-      mode: 'mode',
-      assistant: 'assistant',
-      model: 'model',
-      folder: 'folder',
-      file: 'file',
-    }
-    const entryType = scopeEntryMap[menuScope]
-    const subOptions = getSubOptionsForEntry(entryType, queryString ?? '')
-    const backOption = new MentionTypeaheadOption({
-      kind: 'back',
-      label: t('chat.mentionMenu.back', '返回上一级'),
-    })
-    // folder scope 原实现没有 slice 上限，这里保留差异以避免行为变更。
-    if (menuScope === 'folder') {
-      return [backOption, ...subOptions]
-    }
-    return [backOption, ...subOptions].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+    const modeOptions = chatModeEntries
+      .filter(
+        (entry) =>
+          entry.label.toLowerCase().includes(normalizedQuery) ||
+          entry.subtitle.toLowerCase().includes(normalizedQuery),
+      )
+      .map(toModeOption)
+
+    const modelOptions = modelMentionables
+      .filter((model) => matchesModelQuery(model, normalizedQuery))
+      .map(toModelOption)
+
+    // 文件/文件夹的模糊搜索几乎总能塞满整个列表，直接拼接会把助手/模式/模型
+    // 挤出去——类别内搜索取消后，过滤态是它们唯一的可达路径，所以先给它们留
+    // 出配额，剩下的名额才归文件。
+    const others = [...assistantOptions, ...modeOptions, ...modelOptions]
+    const reserved = Math.min(others.length, NON_FILE_RESULT_QUOTA)
+    return [
+      ...searchableMentionables.slice(
+        0,
+        SUGGESTION_LIST_LENGTH_LIMIT - reserved,
+      ),
+      ...others,
+    ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
   }, [
     assistants,
-    currentAssistantId,
-    filteredModelMentionables,
-    getSubOptionsForEntry,
+    chatModeEntries,
+    matchesModelQuery,
     menuMode,
-    menuScope,
-    onSelectChatMode,
+    modelMentionables,
     normalizedQuery,
-    providerLabelById,
     queryString,
     results,
-    selectedModelIds,
-    t,
+    toAssistantOption,
+    toModeOption,
+    toModelOption,
   ])
+
+  const railMenu = useRailTypeaheadMenu({
+    categories,
+    flatOptions,
+    placement,
+  })
+
+  const options = railMenu.displayOptions
 
   const onSelectOption = useCallback(
     (
@@ -837,80 +690,6 @@ export default function NewMentionsPlugin({
       nodeToReplace: TextNode | null,
       closeMenu: () => void,
     ) => {
-      if (selectedOption.payload.kind === 'back') {
-        if (nodeToReplace) {
-          const triggerNode = $createTextNode('@')
-          nodeToReplace.replace(triggerNode)
-          triggerNode.selectEnd()
-        }
-        animateMenuContent('back')
-        setMenuScope('root')
-        return
-      }
-
-      if (selectedOption.payload.kind === 'entry') {
-        if (selectedOption.payload.entryType === 'current-file') {
-          const activeFile = app.workspace.getActiveFile()
-          if (!activeFile) {
-            closeMenu()
-            return
-          }
-          const currentFileMentionable: Mentionable = {
-            type: 'file',
-            file: activeFile,
-          }
-
-          if (mentionDisplayMode === 'badge') {
-            if (nodeToReplace) {
-              const emptyNode = $createTextNode('')
-              nodeToReplace.replace(emptyNode)
-              emptyNode.select()
-            }
-            onSelectMentionable?.(currentFileMentionable)
-            closeMenu()
-            return
-          }
-
-          const mentionNode = $createMentionNode(
-            getMentionableName(currentFileMentionable, {
-              unitLabels: mentionableUnitLabels,
-              currentFileLabel: t(
-                'chat.mentionMenu.entryCurrentFile',
-                '当前文件',
-              ),
-            }),
-            serializeMentionable(currentFileMentionable),
-          )
-          if (nodeToReplace) {
-            nodeToReplace.replace(mentionNode)
-          }
-          const spaceNode = $createTextNode(' ')
-          mentionNode.insertAfter(spaceNode)
-          spaceNode.select()
-          closeMenu()
-          return
-        }
-
-        const nextScope: MentionMenuScope =
-          selectedOption.payload.entryType === 'assistant'
-            ? 'assistant'
-            : selectedOption.payload.entryType === 'mode'
-              ? 'mode'
-              : selectedOption.payload.entryType === 'model'
-                ? 'model'
-                : selectedOption.payload.entryType === 'file'
-                  ? 'file'
-                  : 'folder'
-        if (nodeToReplace) {
-          const triggerNode = $createTextNode('@')
-          nodeToReplace.replace(triggerNode)
-          triggerNode.selectEnd()
-        }
-        animateMenuContent('forward')
-        setMenuScope(nextScope)
-        return
-      }
-
       if (selectedOption.payload.kind === 'assistant') {
         if (nodeToReplace) {
           const emptyNode = $createTextNode('')
@@ -933,22 +712,24 @@ export default function NewMentionsPlugin({
         return
       }
 
+      const mentionable = selectedOption.payload.mentionable
+
       if (mentionDisplayMode === 'badge') {
         if (nodeToReplace) {
           const emptyNode = $createTextNode('')
           nodeToReplace.replace(emptyNode)
           emptyNode.select()
         }
-        onSelectMentionable?.(selectedOption.payload.mentionable)
+        onSelectMentionable?.(mentionable)
         closeMenu()
         return
       }
 
       const mentionNode = $createMentionNode(
-        getMentionableName(selectedOption.payload.mentionable, {
+        getMentionableName(mentionable, {
           unitLabels: mentionableUnitLabels,
         }),
-        serializeMentionable(selectedOption.payload.mentionable),
+        serializeMentionable(mentionable),
       )
       if (nodeToReplace) {
         nodeToReplace.replace(mentionNode)
@@ -961,8 +742,6 @@ export default function NewMentionsPlugin({
       closeMenu()
     },
     [
-      animateMenuContent,
-      app,
       mentionDisplayMode,
       mentionableUnitLabels,
       onSelectAssistant,
@@ -971,34 +750,6 @@ export default function NewMentionsPlugin({
       t,
     ],
   )
-
-  const getCascadeEntryKey = useCallback(
-    (option: MentionTypeaheadOption): MentionEntryOptionType | null => {
-      if (
-        option.payload.kind !== 'entry' ||
-        option.payload.entryType === 'current-file'
-      ) {
-        return null
-      }
-      return option.payload.entryType
-    },
-    [],
-  )
-
-  const getCascadeSubOptions = useCallback(
-    (entry: MentionEntryOptionType) =>
-      getSubOptionsForEntry(entry, '').slice(0, SUGGESTION_LIST_LENGTH_LIMIT),
-    [getSubOptionsForEntry],
-  )
-
-  const cascadingMenu = useCascadingTypeaheadMenu({
-    enabled:
-      !normalizedQuery && menuMode !== 'direct-search' && menuScope === 'root',
-    getEntryKey: getCascadeEntryKey,
-    getSubOptions: getCascadeSubOptions,
-    options,
-    placement,
-  })
 
   const checkForMentionMatch = useCallback(
     (text: string) => {
@@ -1012,19 +763,7 @@ export default function NewMentionsPlugin({
     [checkForSlashTriggerMatch, editor],
   )
 
-  const getDefaultHighlightedIndex = useCallback(
-    (menuOptions: MentionTypeaheadOption[]) => {
-      if (menuScope === 'root' || menuMode !== 'entry') {
-        return 0
-      }
-      const firstOption = menuOptions[0]
-      if (firstOption?.payload.kind === 'back' && menuOptions.length > 1) {
-        return 1
-      }
-      return 0
-    },
-    [menuMode, menuScope],
-  )
+  const emptyLabel = t('chat.mentionMenu.categoryEmpty', '暂无内容')
 
   return (
     <LexicalTypeaheadMenuPlugin<MentionTypeaheadOption>
@@ -1033,32 +772,19 @@ export default function NewMentionsPlugin({
       triggerFn={checkForMentionMatch}
       options={options}
       commandPriority={COMMAND_PRIORITY_NORMAL}
-      getDefaultHighlightedIndex={getDefaultHighlightedIndex}
       onOpen={() => onMenuOpenChange?.(true)}
       onClose={() => {
         onMenuOpenChange?.(false)
-        cascadingMenu.reset()
+        railMenu.reset()
       }}
-      customKeyHandlers={cascadingMenu.customKeyHandlers}
+      customKeyHandlers={railMenu.customKeyHandlers}
       menuRenderFn={(anchorElementRef, itemProps) =>
-        cascadingMenu.renderMenu({
+        railMenu.renderMenu({
           anchorElementRef,
           itemProps,
-          mainListKey: `main:${menuContentTransition.nonce}`,
-          mainListTransition:
-            menuContentTransition.direction === 'none'
-              ? undefined
-              : menuContentTransition.direction,
           menuContainer: menuContainerRef?.current,
-          onMainListAnimationEnd: () =>
-            setMenuContentTransition((current) =>
-              current.direction === 'none'
-                ? current
-                : { ...current, direction: 'none' },
-            ),
-          renderItem: (
-            props: CascadingTypeaheadItemProps<MentionTypeaheadOption>,
-          ) => (
+          emptyLabel,
+          renderItem: (props) => (
             <MentionsTypeaheadMenuItem
               {...props}
               key={`${props.id}:${props.option.key}`}
