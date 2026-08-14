@@ -1,8 +1,8 @@
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import {
-  MAX_MODULE_CHAT_MODE_SKILLS,
   MAX_MODULE_CHAT_MODES_PER_MODULE,
+  MAX_MODULE_CHAT_MODE_SKILLS,
   ModuleChatModeRegistry,
   buildModuleChatModeFullId,
   buildModuleChatModeServerName,

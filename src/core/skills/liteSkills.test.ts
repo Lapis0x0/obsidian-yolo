@@ -1109,6 +1109,7 @@ describe('module chat mode skill scope', () => {
   const settings = { yolo: { baseDir: 'YOLO' } }
   const MODE_ID = 'module:learning:chat'
   const SKILL_PATH =
+    // eslint-disable-next-line obsidianmd/hardcoded-config-path -- Fixture literal mirroring a module-shipped skill path; no live vault to read configDir from.
     '.obsidian/plugins/yolo/modules/learning/1.0.0/outline-skill.md'
 
   afterEach(() => {

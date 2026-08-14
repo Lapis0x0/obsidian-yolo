@@ -456,10 +456,10 @@ function createObsidianModuleVaultCapability({
           return true
         }
         if (entry.children.length > 0) return false
-        // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated empty folder.
         // The folder has already been verified empty. Force deletion keeps
         // Obsidian's vault index in sync while avoiding its non-recursive
         // directory-removal path, which can raise ERR_FS_EISDIR.
+        // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- Exact rollback must permanently delete only the validated empty folder.
         await app.vault.delete(entry, true)
         return true
       })

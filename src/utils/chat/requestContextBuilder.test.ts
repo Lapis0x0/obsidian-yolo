@@ -52,6 +52,10 @@ const mockListLiteSkillEntries = listLiteSkillEntries as jest.MockedFunction<
 >
 const mockReadPromptSnapshotEntries = jest.mocked(readPromptSnapshotEntries)
 
+const MODULE_SKILL_FIXTURE_PATH =
+  // eslint-disable-next-line obsidianmd/hardcoded-config-path -- Fixture literal mirroring a module-shipped skill path; no live vault to read configDir from.
+  '.obsidian/plugins/yolo/modules/learning/1.0.0/outline.md'
+
 function createMockFile(path: string): InstanceType<typeof TFile> {
   const extension = path.split('.').pop() ?? ''
   return Object.assign(new TFile(), {
@@ -422,7 +426,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         name: 'outline-skill',
         description: 'Outline conventions',
         mode: 'lazy',
-        path: '.obsidian/plugins/yolo/modules/learning/1.0.0/outline.md',
+        path: MODULE_SKILL_FIXTURE_PATH,
         isReadOnly: true,
       },
       content: '# outline body',
@@ -438,7 +442,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         {
           name: 'outline-skill',
           description: 'Outline conventions',
-          path: '.obsidian/plugins/yolo/modules/learning/1.0.0/outline.md',
+          path: MODULE_SKILL_FIXTURE_PATH,
         },
       ],
       scope: { moduleChatModeId: 'module:learning:chat' },
@@ -458,7 +462,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
         name: 'outline-skill',
         description: 'Outline conventions',
         mode: 'lazy',
-        path: '.obsidian/plugins/yolo/modules/learning/1.0.0/outline.md',
+        path: MODULE_SKILL_FIXTURE_PATH,
         isReadOnly: true,
       },
       content: '# outline body',
@@ -475,7 +479,7 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
           {
             name: 'outline-skill',
             description: 'Outline conventions',
-            path: '.obsidian/plugins/yolo/modules/learning/1.0.0/outline.md',
+            path: MODULE_SKILL_FIXTURE_PATH,
           },
         ],
       },
@@ -3096,7 +3100,7 @@ describe('RequestContextBuilder module chat mode skill scope (D6)', () => {
         name: 'outline-skill',
         description: 'Outline conventions',
         mode: 'lazy',
-        path: '.obsidian/plugins/yolo/modules/learning/1.0.0/outline.md',
+        path: MODULE_SKILL_FIXTURE_PATH,
         isReadOnly: true,
       },
     ])

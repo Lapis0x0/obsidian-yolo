@@ -1,6 +1,7 @@
 import 'obsidian'
 
 declare module 'obsidian' {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions -- Declaration merging with Obsidian's own Keymap requires an interface.
   interface Keymap {
     /**
      * The root scope Obsidian dispatches key events into.

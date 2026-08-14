@@ -54,6 +54,12 @@ jest.mock('../../contexts/app-context', () => ({
   }),
 }))
 
+import type {
+  KeymapContext,
+  KeymapEventHandler,
+  KeymapEventListener,
+  Modifier,
+} from 'obsidian'
 import {
   Children,
   type ReactElement,
@@ -61,13 +67,6 @@ import {
   isValidElement,
 } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
-
-import type {
-  KeymapContext,
-  KeymapEventHandler,
-  KeymapEventListener,
-  Modifier,
-} from 'obsidian'
 
 import type { ChatConversationMetadata } from '../../database/json/chat/types'
 
@@ -1038,11 +1037,11 @@ describe('registerChatListMenuKeys', () => {
 })
 
 describe('navigateContextMenu', () => {
-  const button = () =>
+  const button = (): HTMLButtonElement & { focus: jest.Mock } =>
     ({
       disabled: false,
       focus: jest.fn(),
-    }) as unknown as HTMLButtonElement
+    }) as unknown as HTMLButtonElement & { focus: jest.Mock }
 
   it('moves from the active item to the next', () => {
     const first = button()

@@ -230,10 +230,9 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
         '--yolo-assistant-metadata-preview-hold-offset': '0px',
       })
       if (isPanelPreview) {
-        viewport.style.setProperty(
-          '--yolo-assistant-metadata-preview-viewport-height',
-          '0px',
-        )
+        viewport.setCssProps({
+          '--yolo-assistant-metadata-preview-viewport-height': '0px',
+        })
         setIsPreviewOverflowing(false)
       }
       return
