@@ -107,6 +107,16 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         )}
         placeholder="~/.local/bin/hermes"
       />
+      <CliPathRow
+        app={app}
+        runtimeId="pi"
+        name={t('settings.agent.piCliPathName', 'pi CLI path')}
+        desc={t(
+          'settings.agent.piCliPathDesc',
+          'Custom path to the pi executable — paste the output of "which pi". Leave empty to auto-detect. Stored on this device only.',
+        )}
+        placeholder="/opt/homebrew/bin/pi"
+      />
     </>
   )
 }

@@ -27,6 +27,7 @@ const documentSchema = z.object({
     'claude-code': z.array(modelSchema).optional(),
     codex: z.array(modelSchema).optional(),
     hermes: z.array(modelSchema).optional(),
+    pi: z.array(modelSchema).optional(),
   }),
 })
 

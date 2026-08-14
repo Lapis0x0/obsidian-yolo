@@ -96,6 +96,8 @@ export const it: DeepPartial<TranslationKeys> = {
       codexDescription: 'Codex su questo dispositivo',
       hermesLabel: 'Hermes',
       hermesDescription: 'Hermes su questo dispositivo',
+      piLabel: 'pi',
+      piDescription: 'pi su questo dispositivo',
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
@@ -781,6 +783,9 @@ export const it: DeepPartial<TranslationKeys> = {
       hermesCliPathName: 'Percorso CLI di Hermes',
       hermesCliPathDesc:
         'Percorso personalizzato dell\'eseguibile hermes — incolla l\'output di "which hermes". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      piCliPathName: 'Percorso CLI di pi',
+      piCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       cliPathMissing:
         'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',

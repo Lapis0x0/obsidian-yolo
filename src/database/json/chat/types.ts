@@ -9,7 +9,7 @@ export const CHAT_SCHEMA_VERSION = 1
 export type ChatConversationOrigin = 'user' | 'external-agent'
 
 export type ChatConversationCliSession = {
-  runtimeId: 'claude-code' | 'codex' | 'hermes'
+  runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi'
   nativeSessionId: string
   sessionPathHint?: string
 }

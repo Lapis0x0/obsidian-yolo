@@ -13,6 +13,7 @@ import {
   CliModelCatalogService,
   type CliModelCatalogSnapshot,
 } from './model-catalog'
+import { createPiRuntimeFactory } from './pi/factory'
 import type {
   CliSessionIndexEntry,
   CliSessionIndexMutator,
@@ -103,15 +104,18 @@ const isAbsoluteFileSystemPath = (path: string): boolean =>
 const defaultLoadRuntimeFactories = async (
   deps: CliRuntimeFactoriesLoaderDeps,
 ): Promise<CliRuntimeFactories> => {
-  const [claudeFactory, codexFactory, hermesFactory] = await Promise.all([
-    createClaudeRuntimeFactory(deps),
-    createCodexRuntimeFactory(deps),
-    createHermesRuntimeFactory(deps),
-  ])
+  const [claudeFactory, codexFactory, hermesFactory, piFactory] =
+    await Promise.all([
+      createClaudeRuntimeFactory(deps),
+      createCodexRuntimeFactory(deps),
+      createHermesRuntimeFactory(deps),
+      createPiRuntimeFactory(deps),
+    ])
   return {
     'claude-code': claudeFactory,
     codex: codexFactory,
     hermes: hermesFactory,
+    pi: piFactory,
   }
 }
 

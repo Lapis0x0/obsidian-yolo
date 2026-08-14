@@ -102,6 +102,27 @@ export const RUNTIME_CAPABILITIES: Record<
     skipsImageModelCapabilityCheck: true,
     supportsQueueWhileGenerating: false,
   },
+  pi: {
+    supportsPlanMode: false,
+    needsWarmup: false,
+    hasNativeSkills: false,
+    hasNativeMcpPanel: false,
+    hasPluginManagement: false,
+    hasAssistants: false,
+    supportsMessageRewrite: false,
+    supportsVaultExport: false,
+    supportsSubagentWatch: false,
+    // The model/reasoning picker still shows for pi via CliRuntimeControls
+    // (rendered unconditionally for every CLI runtime's main input) — these
+    // two flags only gate the *yolo-native* ModelSelect/ReasoningSelect and
+    // @model mention wiring, which is tied to YOLO's own model list and
+    // would conflict with pi's provider-native models if turned on here.
+    // Kept false, matching claude-code/codex.
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsQueueWhileGenerating: false,
+  },
 }
 
 /**

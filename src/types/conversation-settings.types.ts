@@ -10,12 +10,14 @@ export type ConversationOverrideSettings = {
     'claude-code'?: 'agent' | 'plan' | null
     codex?: 'agent' | 'plan' | null
     hermes?: 'agent' | 'plan' | null
+    pi?: 'agent' | 'plan' | null
   } | null
   /** Per-conversation CLI YOLO flag, keyed like settings `cliAgentYoloEnabledByRuntime`. */
   cliAgentYoloEnabledByRuntime?: {
     'claude-code'?: boolean | null
     codex?: boolean | null
     hermes?: boolean | null
+    pi?: boolean | null
   } | null
   temperature?: number | null
   top_p?: number | null

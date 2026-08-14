@@ -12,6 +12,8 @@ jest.mock('../../contexts/language-context', () => ({
           'sidebar.runtimeSelector.codexDescription': 'Codex on this device',
           'sidebar.runtimeSelector.hermesLabel': 'Hermes',
           'sidebar.runtimeSelector.hermesDescription': 'Hermes on this device',
+          'sidebar.runtimeSelector.piLabel': 'pi',
+          'sidebar.runtimeSelector.piDescription': 'pi on this device',
         }) as Record<string, string>
       )[key] ?? key,
   }),
@@ -28,6 +30,10 @@ jest.mock('../../assets/provider-icons/openai.svg', () => ({
 jest.mock('../../assets/provider-icons/hermes.svg', () => ({
   __esModule: true,
   default: 'hermes-logo',
+}))
+jest.mock('../../assets/provider-icons/pi.svg', () => ({
+  __esModule: true,
+  default: 'pi-logo',
 }))
 
 import { Platform } from 'obsidian'
@@ -51,11 +57,13 @@ describe('RuntimeSelector', () => {
       'claude-code',
       'codex',
       'hermes',
+      'pi',
     ])
     expect(resolveAvailableRuntimeId('yolo', true)).toBeUndefined()
     expect(resolveAvailableRuntimeId('claude-code', true)).toBe('claude-code')
     expect(resolveAvailableRuntimeId('codex', true)).toBe('codex')
     expect(resolveAvailableRuntimeId('hermes', true)).toBe('hermes')
+    expect(resolveAvailableRuntimeId('pi', true)).toBe('pi')
   })
 
   it('exposes no provider without desktop capability', () => {

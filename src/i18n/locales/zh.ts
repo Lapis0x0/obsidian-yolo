@@ -79,6 +79,8 @@ export const zh: TranslationKeys = {
       codexDescription: '本机 Codex 运行时',
       hermesLabel: 'Hermes',
       hermesDescription: '本机 Hermes 运行时',
+      piLabel: 'pi',
+      piDescription: '本机 pi 运行时',
     },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
@@ -723,6 +725,9 @@ export const zh: TranslationKeys = {
       hermesCliPathName: 'Hermes CLI 路径',
       hermesCliPathDesc:
         '自定义 hermes 可执行文件路径，可粘贴 which hermes 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      piCliPathName: 'pi CLI 路径',
+      piCliPathDesc:
+        '自定义 pi 可执行文件路径，可粘贴 which pi 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',

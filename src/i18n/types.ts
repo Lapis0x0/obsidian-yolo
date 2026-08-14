@@ -88,6 +88,8 @@ export type TranslationKeys = {
       codexDescription: string
       hermesLabel: string
       hermesDescription: string
+      piLabel: string
+      piDescription: string
     }
     chatList?: {
       searchPlaceholder?: string
@@ -589,6 +591,8 @@ export type TranslationKeys = {
       codexCliPathDesc?: string
       hermesCliPathName?: string
       hermesCliPathDesc?: string
+      piCliPathName?: string
+      piCliPathDesc?: string
       cliPathMissing?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string

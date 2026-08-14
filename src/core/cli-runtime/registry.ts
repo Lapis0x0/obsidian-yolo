@@ -1,6 +1,7 @@
 import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
 import hermesLogo from '../../assets/provider-icons/hermes.svg'
 import openaiLogo from '../../assets/provider-icons/openai.svg'
+import piLogo from '../../assets/provider-icons/pi.svg'
 
 import { RUNTIME_CAPABILITIES } from './capabilities'
 import type { ChatRuntimeCapabilities } from './capabilities'
@@ -55,6 +56,13 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       descriptionKey: 'sidebar.runtimeSelector.hermesDescription',
       icon: { src: hermesLogo, provider: 'hermes' },
       capabilities: RUNTIME_CAPABILITIES.hermes,
+    },
+    pi: {
+      id: 'pi',
+      labelKey: 'sidebar.runtimeSelector.piLabel',
+      descriptionKey: 'sidebar.runtimeSelector.piDescription',
+      icon: { src: piLogo, provider: 'pi' },
+      capabilities: RUNTIME_CAPABILITIES.pi,
     },
   }
 

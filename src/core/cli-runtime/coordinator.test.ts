@@ -92,6 +92,7 @@ const runtimeHarness = () => {
   const claudeRuntimes: TestRuntime[] = []
   const codexRuntimes: TestRuntime[] = []
   const hermesRuntimes: TestRuntime[] = []
+  const piRuntimes: TestRuntime[] = []
   const createClaudeRuntime = jest.fn(() => {
     const runtime = new TestRuntime('claude-code')
     claudeRuntimes.push(runtime)
@@ -107,18 +108,26 @@ const runtimeHarness = () => {
     hermesRuntimes.push(runtime)
     return runtime
   })
+  const createPiRuntime = jest.fn(() => {
+    const runtime = new TestRuntime('pi')
+    piRuntimes.push(runtime)
+    return runtime
+  })
   const factories: CliRuntimeFactories = {
     'claude-code': { create: createClaudeRuntime },
     codex: { create: createCodexRuntime },
     hermes: { create: createHermesRuntime },
+    pi: { create: createPiRuntime },
   }
   return {
     claudeRuntimes,
     codexRuntimes,
     hermesRuntimes,
+    piRuntimes,
     createClaudeRuntime,
     createCodexRuntime,
     createHermesRuntime,
+    createPiRuntime,
     factories,
   }
 }
