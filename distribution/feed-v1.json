@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 18,
+  "revision": 19,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.5.3",
+    "version": "1.6.5.4",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.3",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.4",
     "releaseNotes": {
-      "en": "## 1.6.5.3 Streaming Performance & Fixes ✨\n\n- Improved streaming performance for long replies, and added a fade-in animation to streamed text.\n- Pinned conversations in the history panel now use a persistent star at the end of the row.\n- Fixed history popover shortcuts and Esc not working in popout windows. (thanks @pjeby)\n- Improved the read tool's prompt for reading skills, raising read accuracy.\n- Added a transition animation when switching sections in the settings tabs.",
-      "zh": "## 1.6.5.3 流式生成性能与修复 ✨\n\n- 优化长回复流式生成的性能表现，为流式回复添加淡入动画。\n- 历史面板置顶态改用行尾常驻星标。\n- 修复独立窗口中历史弹层快捷键与 Esc 失效的问题。（感谢 @pjeby）\n- 优化 read 工具在 skills 读取方面的提示词，提高读取正确率。\n- 为设置页 tab 分区切换添加过渡动画。"
+      "en": "## 1.6.5.4 New CLI Runtimes & Menu Redesign 🚀\n\n- Added Hermes CLI and Pi as chat runtimes, alongside the existing Claude Code and Codex. (#572)\n- Redesigned the @ mention and / skill menus into a two-column category panel, which switches to horizontal categories in narrow containers.\n- Added an \"Update reminder\" toggle in settings so the update popup can be turned off. (#571)\n- Improved streaming text performance further.\n- Fixed the thinking preview jittering line by line before it reached its height limit.",
+      "zh": "## 1.6.5.4 新增 CLI 运行时与菜单改版 🚀\n\n- 新增 Hermes CLI 与 Pi 两个聊天运行时，与已有的 Claude Code、Codex 并列。（#572）\n- @ 提及与 / 技能菜单改版为双栏分类面板，窄容器下自动切换为横排分类。\n- 设置中新增「更新提醒」开关，可关闭更新弹窗。（#571）\n- 进一步优化流式文字生成的性能表现。\n- 修复思维链预览在长到上限前逐行抖动的问题。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.5.3/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.3/main.js",
-        "byteSize": 9206699,
-        "sha256": "ac6b8c5984ad6f84f709d1a303fc5fa9cb92050f213b4a0d7bddb7796fe7f264"
+        "mirrorPath": "core/1.6.5.4/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.4/main.js",
+        "byteSize": 9323356,
+        "sha256": "fa4a987e2202a484167a3374f7cffabc5894dabc2ba56bb9d0e8d26084da5b18"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.5.3/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.3/manifest.json",
+        "mirrorPath": "core/1.6.5.4/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.4/manifest.json",
         "byteSize": 330,
-        "sha256": "f84666222e25940e763a8cc62e9b8cf195fe54f4a80952d22f0b5c79368b9221"
+        "sha256": "ad9ab46b80c261c97965e012b18de5e0e7baf83492b96b7ebb3d11c88faea7ac"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.5.3/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.3/styles.css",
-        "byteSize": 626820,
-        "sha256": "eac24411a0118cffd1b7c4b35649bd250f44598e0bed22728a84cd96121922e4"
+        "mirrorPath": "core/1.6.5.4/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.4/styles.css",
+        "byteSize": 626975,
+        "sha256": "ea8c7c3a3724c76877e3b41adb4dc3d3c3886423e0c62ed04dc63429180bea48"
       }
     }
   },
