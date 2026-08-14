@@ -493,3 +493,17 @@ describe('PiCliRuntime — rewriteTurn', () => {
     await fs.rm(dir, { recursive: true, force: true })
   })
 })
+
+describe('PiCliRuntime — compact', () => {
+  it('sends the native compact RPC', async () => {
+    const runtime = createRuntime()
+    await runtime.ensureReady({})
+    const process = startedProcesses[0]
+    process.registerHandler('compact', () => ({ summary: 'ok' }))
+
+    await runtime.compact()
+
+    expect(process.requestsOf('compact')).toHaveLength(1)
+    await runtime.dispose()
+  })
+})

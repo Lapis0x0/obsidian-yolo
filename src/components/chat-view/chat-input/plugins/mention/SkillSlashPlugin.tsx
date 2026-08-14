@@ -202,18 +202,6 @@ export default function SkillSlashPlugin({
     [selectedSkillNames],
   )
 
-  const compactCommand = useMemo<SlashCommand>(
-    () => ({
-      id: COMPACT_COMMAND_ID,
-      name: t('chat.slashCommands.compact.label', '压缩上下文'),
-      description: t(
-        'chat.slashCommands.compact.description',
-        '手动压缩较早对话历史，并在新的上下文窗口中继续当前任务。',
-      ),
-    }),
-    [t],
-  )
-
   const skillCategoryLabel = t('chat.slashMenu.entrySkill', '技能')
   const snippetCategoryLabel = t('chat.slashMenu.entrySnippet', '快捷指令')
   const commandCategoryLabel = t('chat.slashMenu.categoryCommand', '命令')
@@ -223,10 +211,7 @@ export default function SkillSlashPlugin({
     '点击创建 snippets.md',
   )
 
-  const allCommands = useMemo(
-    () => [compactCommand, ...nativeCommands],
-    [compactCommand, nativeCommands],
-  )
+  const allCommands = nativeCommands
 
   const skillOptions = useMemo(
     () =>

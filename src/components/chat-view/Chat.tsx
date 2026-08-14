@@ -1672,11 +1672,22 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         : {}),
     }
   }, [activeCliConversationSnapshot?.contextUsage, t])
-  // `/` 菜单按运行时 capability 组装原生动作条目：hasPluginManagement 贡献
-  // 插件管理入口，hasNativeMcpPanel 贡献 MCP 状态入口；yolo 两者皆无。
+  // `/` 菜单按运行时 capability 组装原生动作条目：supportsContextCompaction
+  // 贡献压缩上下文，hasPluginManagement 贡献插件管理，hasNativeMcpPanel
+  // 贡献 MCP 状态；hermes 三者皆无。
   const nativeSlashCommands = useMemo<SlashCommand[]>(() => {
     const capabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
     const commands: SlashCommand[] = []
+    if (capabilities.supportsContextCompaction) {
+      commands.push({
+        id: 'compact-context',
+        name: t('chat.slashCommands.compact.label', '压缩上下文'),
+        description: t(
+          'chat.slashCommands.compact.description',
+          '手动压缩较早对话历史，并在新的上下文窗口中继续当前任务。',
+        ),
+      })
+    }
     if (capabilities.hasPluginManagement) {
       commands.push({
         id: 'open-plugin-manager',

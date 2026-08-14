@@ -168,6 +168,32 @@ describe('PiRpcTransport', () => {
     expect(sent).toEqual({ type: 'abort' })
   })
 
+  it('does not time out when timeoutMs is 0', async () => {
+    jest.useFakeTimers()
+    try {
+      const process = new FakeProcess()
+      const transport = new PiRpcTransport(process)
+
+      const resultPromise = transport.request('compact', {}, 0)
+      jest.advanceTimersByTime(60_000)
+
+      const sent = JSON.parse(process.writes[0]) as { id: string }
+      process.emitChunk(
+        `${JSON.stringify({
+          type: 'response',
+          command: 'compact',
+          success: true,
+          data: { summary: 'ok' },
+          id: sent.id,
+        })}\n`,
+      )
+
+      await expect(resultPromise).resolves.toEqual({ summary: 'ok' })
+    } finally {
+      jest.useRealTimers()
+    }
+  })
+
   it('rejects pending requests when the process exits', async () => {
     const process = new FakeProcess()
     const transport = new PiRpcTransport(process)

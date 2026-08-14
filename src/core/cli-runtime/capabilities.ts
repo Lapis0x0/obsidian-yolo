@@ -24,6 +24,8 @@ export type ChatRuntimeCapabilities = Readonly<{
   hasAssistants: boolean
   /** Supports rewriting an already-sent user turn (A17). */
   supportsMessageRewrite: boolean
+  /** Shows the `/` compact-context command. Hermes auto-compacts in-agent; ACP has no manual compact. */
+  supportsContextCompaction: boolean
   /** Supports exporting the conversation to the vault (B6, yolo only). */
   supportsVaultExport: boolean
   /** Subagent transcripts can be watched live, not just read once (C3). */
@@ -50,6 +52,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasPluginManagement: false,
     hasAssistants: true,
     supportsMessageRewrite: false,
+    supportsContextCompaction: true,
     supportsVaultExport: true,
     supportsSubagentWatch: false,
     supportsModelControl: true,
@@ -65,6 +68,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasPluginManagement: true,
     hasAssistants: false,
     supportsMessageRewrite: true,
+    supportsContextCompaction: true,
     supportsVaultExport: false,
     supportsSubagentWatch: false,
     supportsModelControl: false,
@@ -80,6 +84,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasPluginManagement: false,
     hasAssistants: false,
     supportsMessageRewrite: true,
+    supportsContextCompaction: true,
     supportsVaultExport: false,
     supportsSubagentWatch: true,
     supportsModelControl: false,
@@ -95,6 +100,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasPluginManagement: false,
     hasAssistants: false,
     supportsMessageRewrite: false,
+    supportsContextCompaction: false,
     supportsVaultExport: false,
     supportsSubagentWatch: false,
     supportsModelControl: false,
@@ -110,6 +116,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasPluginManagement: false,
     hasAssistants: false,
     supportsMessageRewrite: true,
+    supportsContextCompaction: true,
     supportsVaultExport: false,
     supportsSubagentWatch: false,
     // The model/reasoning picker still shows for pi via CliRuntimeControls

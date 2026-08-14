@@ -388,7 +388,9 @@ export class PiCliRuntime implements CliRuntime {
 
   async compact(): Promise<void> {
     if (!this.activeHandle) throw new Error('pi runtime is not ready.')
-    await this.activeHandle.transport.request('compact', {})
+    // Compaction waits on the summarization LLM call. Same as Codex:
+    // `timeoutMs = 0` disables the transport default (30s).
+    await this.activeHandle.transport.request('compact', {}, 0)
   }
 
   /** pi has no approval prompts in v1 — nothing is ever pending to answer. */
