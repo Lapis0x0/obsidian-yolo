@@ -1,7 +1,6 @@
 import type { App } from 'obsidian'
 
 import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
-
 import { getCliPathOverride } from '../cli-path-override'
 import { loadLoginShellEnvironment } from '../login-shell-env'
 import { includeActiveCliModel } from '../model-catalog'

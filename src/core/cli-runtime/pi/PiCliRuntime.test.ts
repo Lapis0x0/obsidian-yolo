@@ -17,10 +17,12 @@ jest.mock('../cli-path-override', () => ({
 jest.mock('../../../utils/platform/desktopNodeModule', () => ({
   loadDesktopNodeModule: async (specifier: string) => {
     switch (specifier) {
+      /* eslint-disable @typescript-eslint/no-require-imports, import/no-nodejs-modules -- stands in for the desktop-only loader this mock replaces; jest.mock's factory is hoisted above imports, so it cannot await a dynamic import */
       case 'node:fs/promises':
         return require('node:fs/promises')
       case 'node:path':
         return require('node:path')
+      /* eslint-enable @typescript-eslint/no-require-imports, import/no-nodejs-modules */
       default:
         throw new Error(`Unexpected desktop module: ${specifier}`)
     }
@@ -405,9 +407,11 @@ describe('PiCliRuntime — model configuration restoration', () => {
 
 describe('PiCliRuntime — rewriteTurn', () => {
   it('forks the session file before the edited user turn and prompts on the new session', async () => {
+    /* eslint-disable import/no-nodejs-modules -- exercises the desktop-only session-file fork against a real temp dir; runs in Jest/Node only */
     const fs = await import('node:fs/promises')
     const os = await import('node:os')
     const path = await import('node:path')
+    /* eslint-enable import/no-nodejs-modules */
     const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'pi-rewrite-'))
     const sourceFile = path.join(dir, 'source.jsonl')
     await fs.writeFile(sourceFile, '{}\n')

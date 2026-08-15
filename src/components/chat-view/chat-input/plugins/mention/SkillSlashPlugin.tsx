@@ -32,11 +32,10 @@ import {
 import { $createSkillNode } from './SkillNode'
 
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
-const COMPACT_COMMAND_ID = 'compact-context'
 const CREATE_SNIPPETS_FILE_COMMAND_ID = 'create-snippets-file'
 
 export type SlashCommand = {
-  id: typeof COMPACT_COMMAND_ID | 'open-plugin-manager' | 'open-mcp-servers'
+  id: 'compact-context' | 'open-plugin-manager' | 'open-mcp-servers'
   name: string
   description: string
 }

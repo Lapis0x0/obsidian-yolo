@@ -15,13 +15,13 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
-  RUNTIME_CAPABILITIES,
   type ChatRuntimeActions,
   type CliConversationSnapshot,
   type CliRuntimeModel,
   type CliRuntimeRunState,
   type CliSessionRef,
   type CliTurnConfiguration,
+  RUNTIME_CAPABILITIES,
 } from '../../core/cli-runtime'
 import type {
   ChatMessage,
