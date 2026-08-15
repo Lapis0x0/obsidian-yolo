@@ -52,11 +52,7 @@ import {
 import { subagentTaskRegistry } from './subagent/task-registry'
 import type { SubagentTaskRecord } from './subagent/types'
 import { SystemPromptSnapshotStore } from './systemPromptSnapshotStore'
-import {
-  AgentRunContext,
-  AgentRuntimeLoopConfig,
-  AgentRuntimeRunInput,
-} from './types'
+import { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from './types'
 
 export type AgentRunStatus =
   | 'idle'
@@ -144,7 +140,6 @@ export type AgentConversationRunSummarySubscriber = (
 type PendingApprovalRecoveryContext = {
   lastRunInput: AgentRuntimeRunInput
   lastLoopConfig: AgentRuntimeLoopConfig
-  lastRunContext: AgentRunContext | null
 }
 
 type ConversationEntry = {
@@ -169,11 +164,6 @@ type AgentRunEntry = {
   runToken: symbol | null
   lastRunInput: AgentRuntimeRunInput | null
   lastLoopConfig: AgentRuntimeLoopConfig | null
-  // Holds the citationRegistry for the run currently associated with this
-  // entry, so manual-approval/recovery paths (which call mcpManager.callTool
-  // directly, bypassing the loop-worker) can attach citations the same way
-  // auto-executed tool calls do.
-  lastRunContext: AgentRunContext | null
 }
 
 type ConversationPublishMode = 'immediate' | 'scheduled'
@@ -2076,8 +2066,6 @@ export class AgentService {
     runEntry.lastLoopConfig = loopConfig
 
     const citationRegistry = new CitationRegistry()
-    const runContext: AgentRunContext = { citationRegistry }
-    runEntry.lastRunContext = runContext
     // The visible-history prefix belongs to the run's original input. Keep
     // this anchor stable even when a queued user message becomes the source
     // for subsequent assistant/tool messages within the same runtime.
@@ -2086,7 +2074,6 @@ export class AgentService {
 
     const runtimeInput: AgentRuntimeRunInput = {
       ...input,
-      runContext,
       drainPendingUserMessages: () => {
         const queue = this.pendingUserMessagesByKey.get(runKey)
         if (!queue || queue.length === 0) {
@@ -2423,7 +2410,6 @@ export class AgentService {
       runToken: null,
       lastRunInput: null,
       lastLoopConfig: null,
-      lastRunContext: null,
       state: {
         conversationId,
         status: 'idle',
@@ -2537,7 +2523,6 @@ export class AgentService {
         conversationEntry.pendingApprovalRecoveryContext = {
           lastRunInput: defaultBranchEntry.lastRunInput,
           lastLoopConfig: defaultBranchEntry.lastLoopConfig,
-          lastRunContext: defaultBranchEntry.lastRunContext,
         }
       }
       runEntries.forEach((entry) => {
