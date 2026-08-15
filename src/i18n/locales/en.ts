@@ -608,10 +608,6 @@ export const en: TranslationKeys = {
       enableAllTools: 'Enable all',
       disableAllTools: 'Disable all',
       descriptionColumn: 'Description',
-      builtinFsListLabel: 'Read Vault',
-      builtinFsListDesc: 'List vault directory structure',
-      builtinFsSearchLabel: 'Search Vault',
-      builtinFsSearchDesc: 'Search vault files and content',
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc:
         'Read vault files, skills, or open web pages (browser://)',
@@ -2247,8 +2243,6 @@ export const en: TranslationKeys = {
         unknown: 'Unknown',
       },
       displayName: {
-        fs_list: 'List files',
-        fs_search: 'Search vault',
         fs_read: 'Read files',
         fs_edit: 'Text editing',
         fs_edit_ops: 'File Editing Toolset',
@@ -2265,13 +2259,6 @@ export const en: TranslationKeys = {
       },
       writeAction: {
         write: 'Write file',
-        delete: 'Delete',
-        create_dir: 'Create folder',
-        move: 'Move path',
-        // Legacy keys kept for rendering historical conversations.
-        create_file: 'Create file',
-        delete_file: 'Delete file',
-        delete_dir: 'Delete folder',
       },
       readMode: {
         full: 'Full',

@@ -127,3 +127,25 @@ export async function maybeWithInternalWrite<T>(
   }
   return task()
 }
+
+/**
+ * Chat-surface summary shared by both `file_editing` tools — `fs_edit` and
+ * `fs_write` render the same "which path" summary. Ported verbatim from the
+ * `toolName === 'fs_edit'` / `toolName === 'fs_write'` branches of
+ * `ToolMessage.tsx`'s private `getLocalToolSummaryText` (pre-D8). Wired into
+ * `TOOL_RENDERERS` as each tool's own `summary` field
+ * (phase2-migration.md D8) — retired write-action tool names (fs_delete,
+ * fs_create_dir, and their even older aliases) used to share this same
+ * branch but are deliberately NOT wired to it anymore (master.md decision
+ * 10): they have no registry entry, so they fall through to the generic
+ * "no summary" rendering instead.
+ */
+export const getFileEditingPathChatSummary = ({
+  argumentsObject,
+}: {
+  argumentsObject: Record<string, unknown> | null
+}): string | undefined => {
+  const path =
+    typeof argumentsObject?.path === 'string' ? argumentsObject.path : ''
+  return path || undefined
+}

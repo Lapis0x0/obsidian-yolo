@@ -620,10 +620,6 @@ export const it: DeepPartial<TranslationKeys> = {
       enableToolDisclosureDesc:
         'Gli strumenti opzionali partono con descrizioni brevi, poi caricano i dettagli completi quando servono. Consigliato quando sono abilitati molti strumenti MCP. Nota: questo meccanismo dipende dalle capacità di tool-use del modello — alcuni modelli potrebbero non riconoscere in modo affidabile gli strumenti caricati in questo modo.',
       descriptionColumn: 'Descrizione',
-      builtinFsListLabel: 'Leggi vault',
-      builtinFsListDesc: 'Elenca la struttura delle directory del vault',
-      builtinFsSearchLabel: 'Cerca nel vault',
-      builtinFsSearchDesc: 'Cerca file e contenuti nel vault',
       builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc:
         'Leggi file del vault, skill o pagine web aperte (browser://)',
@@ -2090,8 +2086,6 @@ export const it: DeepPartial<TranslationKeys> = {
         unknown: 'Sconosciuto',
       },
       displayName: {
-        fs_list: 'Elenca file',
-        fs_search: 'Cerca nel vault',
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
         fs_edit_ops: 'Set modifica file',
@@ -2108,13 +2102,6 @@ export const it: DeepPartial<TranslationKeys> = {
       },
       writeAction: {
         write: 'Scrivi file',
-        delete: 'Elimina',
-        create_dir: 'Crea cartella',
-        move: 'Sposta percorso',
-        // Chiavi legacy mantenute per le conversazioni storiche.
-        create_file: 'Crea file',
-        delete_file: 'Elimina file',
-        delete_dir: 'Elimina cartella',
       },
       readMode: {
         full: 'Intero testo',

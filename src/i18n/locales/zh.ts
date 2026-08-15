@@ -564,10 +564,6 @@ export const zh: TranslationKeys = {
       enableAllTools: '全部启用',
       disableAllTools: '全部停用',
       descriptionColumn: '描述',
-      builtinFsListLabel: '浏览目录',
-      builtinFsListDesc: '列出库内目录结构',
-      builtinFsSearchLabel: '搜索',
-      builtinFsSearchDesc: '搜索库内文件与内容',
       builtinFsReadLabel: '读取',
       builtinFsReadDesc: '读取库内文件、技能或已打开网页（browser://）',
       builtinContextPruneToolResultsLabel: '裁剪工具调用结果',
@@ -2106,8 +2102,6 @@ export const zh: TranslationKeys = {
         unknown: '未知状态',
       },
       displayName: {
-        fs_list: '列出文件',
-        fs_search: '搜索知识库',
         fs_read: '读取文件',
         fs_edit: '文本编辑',
         fs_edit_ops: '文件编辑工作集',
@@ -2124,13 +2118,6 @@ export const zh: TranslationKeys = {
       },
       writeAction: {
         write: '写入文件',
-        delete: '删除',
-        create_dir: '创建文件夹',
-        move: '移动路径',
-        // 旧键，保留用于显示历史会话。
-        create_file: '创建文件',
-        delete_file: '删除文件',
-        delete_dir: '删除文件夹',
       },
       readMode: {
         full: '全文',

@@ -1,4 +1,5 @@
 import type { McpTool } from '../../../../types/mcp.types'
+import { asStringArray } from '../../chat-summary-support'
 import type { I18nText } from '../../types'
 
 /**
@@ -31,6 +32,28 @@ export const LOAD_TOOL_SCHEMAS_TOOL_NAME = 'load_tool_schemas'
 export const LOAD_TOOL_SCHEMAS_CHAT_LABEL: I18nText = {
   key: 'settings.agent.builtinToolSearchLabel',
   fallback: 'Load Tool',
+}
+
+/**
+ * Chat-surface summary for `load_tool_schemas` — ported verbatim from the
+ * `toolName === 'load_tool_schemas'` branch of `ToolMessage.tsx`'s private
+ * `getLocalToolSummaryText` (pre-D8). Not part of `TOOL_RENDERERS` (this
+ * tool isn't a `BuiltinToolName` — see this file's own doc comment above),
+ * so `ToolMessage.tsx` calls it directly, next to how it already folds in
+ * `LOAD_TOOL_SCHEMAS_CHAT_LABEL` above.
+ */
+export const getLoadToolSchemasChatSummary = ({
+  argumentsObject,
+}: {
+  argumentsObject: Record<string, unknown> | null
+}): string | undefined => {
+  const servers = asStringArray(argumentsObject?.servers)
+  if (!servers || servers.length === 0) {
+    return undefined
+  }
+  const head = servers.slice(0, 2).join(', ')
+  const rest = servers.length - 2
+  return rest > 0 ? `${head} +${rest}` : head
 }
 
 /**

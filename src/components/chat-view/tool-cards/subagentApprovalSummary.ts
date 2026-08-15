@@ -49,23 +49,14 @@ export function buildSubagentApprovalSummary(
   const summary: SubagentApprovalSummary = { label: toolShortName }
 
   switch (toolShortName) {
+    // fs_list/fs_create/fs_delete/fs_move/fs_copy/fs_search retired
+    // (master.md decision 10) — no case for them here anymore; they now
+    // fall through to the generic `default` branch below like any other
+    // unknown/retired tool name.
     case 'fs_edit':
-    case 'fs_read':
-    case 'fs_list':
-    case 'fs_create':
-    case 'fs_delete':
-    case 'fs_move':
-    case 'fs_copy': {
+    case 'fs_read': {
       const path = stringArg(args, 'path') ?? stringArg(args, 'target')
       if (path) summary.detail = truncate(path)
-      break
-    }
-    case 'fs_search': {
-      const query = stringArg(args, 'query')
-      const scope = stringArg(args, 'scope')
-      if (query)
-        summary.detail = truncate(scope ? `${scope} | ${query}` : query)
-      else if (scope) summary.detail = scope
       break
     }
     case 'terminal_command':

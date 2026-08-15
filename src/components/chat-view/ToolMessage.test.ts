@@ -868,7 +868,16 @@ describe('ToolMessage headline helpers', () => {
     })
   })
 
-  it('uses file path as summary for delete headlines', () => {
+  // fs_delete/fs_create_dir/fs_move retired with the virtual bash tool
+  // (master.md decision 10, schema v79). D8/D10 deliberately drop their
+  // `getLocalToolSummaryText` branches along with the rest of the retired
+  // `if` chain: retired tool names no longer get a special-cased summary,
+  // only whatever `displayName` this test's own `labels` fixture still
+  // happens to carry (a real `getToolLabels()` call — unlike this hand-built
+  // fixture — no longer carries one either, so real historical conversations
+  // show the bare tool name; see D10's checklist for `ToolMessage.tsx`'s
+  // `displayNames` map).
+  it('has no summary for retired delete headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -883,11 +892,10 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Delete',
-      summaryText: 'docs/old-note.md',
     })
   })
 
-  it('uses folder path as summary for create-dir headlines', () => {
+  it('has no summary for retired create-dir headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -902,11 +910,10 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Create folder',
-      summaryText: 'docs/archive',
     })
   })
 
-  it('uses source and destination paths for move headlines', () => {
+  it('has no summary for retired move headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -922,7 +929,6 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Move path',
-      summaryText: 'docs/old.md -> docs/new.md',
     })
   })
 
