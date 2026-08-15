@@ -27,11 +27,10 @@ import {
  * runtime registry from drifting apart.
  */
 
-type Exact<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B
-  ? 1
-  : 2
-  ? true
-  : false
+type Exact<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2
+    ? true
+    : false
 
 const assertExact = <_T extends true>(): void => undefined
 
@@ -111,9 +110,11 @@ assertExact<
 
 describe('built-in tool registry literal preservation', () => {
   it('the runtime registry matches the pinned tool-name union', () => {
-    expect(listBuiltinTools().map((tool) => tool.name).sort()).toEqual(
-      [...EXPECTED_TOOL_NAMES].sort(),
-    )
+    expect(
+      listBuiltinTools()
+        .map((tool) => tool.name)
+        .sort(),
+    ).toEqual([...EXPECTED_TOOL_NAMES].sort())
   })
 
   it('the runtime registry matches the pinned capability-id union', () => {
