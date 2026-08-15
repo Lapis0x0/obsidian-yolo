@@ -433,8 +433,16 @@ export function useChatHistoryWindow({
      * items, which are rebuilt for every streaming token, revision and edit —
      * never for anything else. That is what makes it usable as the
      * acknowledgement that a requested page has actually landed.
+     *
+     * Includes the conversation because this hook is not remounted per
+     * conversation (see the reset-during-render above) and neither is the
+     * timeline's paging gate, which stays busy until this key moves past the
+     * one it paged for. Turn indices alone repeat across conversations, so a
+     * switch into a conversation whose initial range equals the range just
+     * paged to would satisfy that gate on arrival and refuse every further
+     * history load.
      */
-    historyWindowKey: `${window.startTurnIndex}-${window.endTurnIndex}`,
+    historyWindowKey: `${conversationId}:${window.startTurnIndex}-${window.endTurnIndex}`,
     hasEarlierMessages: window.startTurnIndex > 0,
     hasNewerMessages: totalTurns > 0 && window.endTurnIndex < totalTurns - 1,
     loadEarlier,

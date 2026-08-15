@@ -9,6 +9,7 @@ import {
 } from 'react'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 import type { PagingDirection } from './scroll/paging'
 import {
@@ -580,11 +581,17 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   // forced reflow for them. Observing also fires once, which covers the
   // initial state.
   useEffect(() => {
-    if (!scrollerElement || typeof ResizeObserver === 'undefined') {
+    if (!scrollerElement) {
+      return
+    }
+    // Popouts are separate BrowserWindows: the global `ResizeObserver` belongs
+    // to the main window and would observe an element from another realm.
+    const ObserverCtor = getNodeWindow(scrollerElement).ResizeObserver
+    if (typeof ObserverCtor === 'undefined') {
       return
     }
 
-    const observer = new ResizeObserver(() => {
+    const observer = new ObserverCtor(() => {
       growWindowIfViewportNotFilled()
     })
     observer.observe(scrollerElement)
@@ -865,11 +872,13 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       isPointerDownRef.current = false
     }
 
-    if (typeof ResizeObserver === 'undefined') {
+    // Same realm caveat as the viewport-fill observer above.
+    const ObserverCtor = ownerWindow?.ResizeObserver
+    if (typeof ObserverCtor === 'undefined') {
       return removeListeners
     }
 
-    const observer = new ResizeObserver(() => {
+    const observer = new ObserverCtor(() => {
       scheduleUserMessageViewport()
     })
     observer.observe(scrollerElement)
