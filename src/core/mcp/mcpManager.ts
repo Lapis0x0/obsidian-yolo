@@ -30,13 +30,9 @@ import type { SubagentParentContext } from '../agent/subagent/parent-context'
 import type { AgentRunContext } from '../agent/types'
 import type { RAGEngine } from '../rag/ragEngine'
 import { executeBuiltinTool } from '../tools/dispatcher'
-import { isBuiltinToolName } from '../tools/registry'
+import { getToolDefinition, isBuiltinToolName } from '../tools/registry'
 import type { ToolContext } from '../tools/types'
-import {
-  WEB_SCRAPE_TOOL_NAME,
-  WEB_SEARCH_TOOL_NAME,
-  isWebSearchToolReady,
-} from '../web-search'
+import { WEB_SCRAPE_TOOL_NAME, WEB_SEARCH_TOOL_NAME } from '../web-search'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import type { InProcessToolServer } from './inProcessToolServer'
@@ -147,10 +143,42 @@ export class McpManager {
     return requestToolName
   }
 
+  /**
+   * Two independent gates, applied in sequence: persisted user enablement
+   * (below, unchanged this batch — still keyed by the pre-D9 group/short
+   * names), then, for tools already migrated into the registry, that tool's
+   * own `isAvailable(ctx)` (master.md §3.1b / decision 18 — environment
+   * availability is separate from user authorization).
+   */
   private isLocalToolEnabled(toolName: string): boolean {
-    // Web tools share a single `web_ops` group switch. `web_search` needs a
-    // configured provider, while `web_scrape` can fall back to the generic
-    // static-HTML scraper when no provider is configured.
+    if (!this.isLocalToolPersistedEnabled(toolName)) {
+      return false
+    }
+
+    // Applied uniformly rather than per-tool-name-special-cased: any
+    // registered tool's `isAvailable` runs here, not just `web_search` /
+    // `terminal_command`. Today those are the only two definitions that
+    // declare one — `getToolDefinition(toolName)?.isAvailable` is `undefined`
+    // for everything else, which the `?.` short-circuits to "available".
+    if (isBuiltinToolName(toolName)) {
+      const definition = getToolDefinition(toolName)
+      if (
+        definition?.isAvailable &&
+        !definition.isAvailable({ settings: this.settings })
+      ) {
+        return false
+      }
+    }
+
+    return true
+  }
+
+  private isLocalToolPersistedEnabled(toolName: string): boolean {
+    // Web tools share a single `web_ops` group switch. This is enablement
+    // only — `web_search`'s provider-readiness check used to live here too,
+    // but as of D6 batch 5 it is the tool's own `isAvailable` (see
+    // `web_search/definition.ts`), applied generically above rather than
+    // special-cased in this function.
     if (
       toolName === WEB_SEARCH_TOOL_NAME ||
       toolName === WEB_SCRAPE_TOOL_NAME
@@ -160,14 +188,7 @@ export class McpManager {
           ?.disabled ?? false
       const splitToolDisabled =
         this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      if (groupDisabled || splitToolDisabled) return false
-      if (
-        toolName === WEB_SEARCH_TOOL_NAME &&
-        !isWebSearchToolReady(this.settings.webSearch)
-      ) {
-        return false
-      }
-      return true
+      return !(groupDisabled || splitToolDisabled)
     }
     if (LOCAL_FS_EDIT_TOOL_NAME_SET.has(toolName)) {
       const splitToolDisabled =

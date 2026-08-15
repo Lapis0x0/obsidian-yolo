@@ -135,4 +135,63 @@ describe('registry queries', () => {
     expect(isBuiltinToolName('fs_write')).toBe(true)
     expect(isBuiltinCapabilityId('file_editing')).toBe(true)
   })
+
+  // D6 batch 5 (web_access). Combined with web-access-equivalence.test.ts
+  // (which proves `executeBuiltinTool` itself produces the same result as
+  // the old switch case for both tools, including the `isAvailable`
+  // provider-readiness gate), this closes the same loop earlier batches
+  // closed: registered -> reached -> correct.
+  it('finds the web_access capability by id, with its dedicated settings entry (master.md §1.4c)', () => {
+    const capability = getCapability('web_access')
+    expect(capability?.id).toBe('web_access')
+    expect(capability?.tools.map((tool) => tool.name)).toEqual([
+      'web_search',
+      'web_scrape',
+    ])
+    expect(capability?.hasSettings).toBe(true)
+  })
+
+  it('maps web_search and web_scrape back to web_access', () => {
+    expect(getCapabilityForTool('web_search')?.id).toBe('web_access')
+    expect(getCapabilityForTool('web_scrape')?.id).toBe('web_access')
+  })
+
+  it('type-guards the D6 batch 5 tool names (web_search, web_scrape)', () => {
+    expect(isBuiltinToolName('web_search')).toBe(true)
+    expect(isBuiltinToolName('web_scrape')).toBe(true)
+    expect(isBuiltinCapabilityId('web_access')).toBe(true)
+  })
+
+  // D6 batch 6 (js_sandbox, terminal). Combined with
+  // js-eval-terminal-equivalence.test.ts (which proves `executeBuiltinTool`
+  // itself produces the same result as the old switch case for both tools,
+  // including `terminal_command`'s `isAvailable` platform gate — the one
+  // deliberate behavior change in this batch), this closes the same loop
+  // earlier batches closed: registered -> reached -> correct.
+  it('finds js_sandbox and terminal, each with their own dedicated settings entry', () => {
+    const jsSandbox = getCapability('js_sandbox')
+    expect(jsSandbox?.tools.map((tool) => tool.name)).toEqual(['js_eval'])
+    expect(jsSandbox?.hasSettings).toBe(true)
+
+    const terminal = getCapability('terminal')
+    expect(terminal?.tools.map((tool) => tool.name)).toEqual([
+      'terminal_command',
+    ])
+    expect(terminal?.hasSettings).toBe(true)
+    // master.md §3.1: terminal is one of two capabilities (with vault_shell)
+    // that forbid "always allow for this conversation".
+    expect(terminal?.approval.allowAlwaysAllow).toBe(false)
+  })
+
+  it('maps js_eval and terminal_command back to their capabilities', () => {
+    expect(getCapabilityForTool('js_eval')?.id).toBe('js_sandbox')
+    expect(getCapabilityForTool('terminal_command')?.id).toBe('terminal')
+  })
+
+  it('type-guards the D6 batch 6 tool names (js_eval, terminal_command)', () => {
+    expect(isBuiltinToolName('js_eval')).toBe(true)
+    expect(isBuiltinToolName('terminal_command')).toBe(true)
+    expect(isBuiltinCapabilityId('js_sandbox')).toBe(true)
+    expect(isBuiltinCapabilityId('terminal')).toBe(true)
+  })
 })

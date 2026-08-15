@@ -2,10 +2,13 @@ import { contextCompactionCapability } from './context-compaction'
 import { contextPruningCapability } from './context-pruning'
 import { fileEditingCapability } from './file-editing'
 import { fileReadingCapability } from './file-reading'
+import { jsSandboxCapability } from './js-sandbox'
 import { memoryCapability } from './memory'
 import { subagentDelegationCapability } from './subagent-delegation'
+import { terminalCapability } from './terminal'
 import { todoListCapability } from './todo-list'
 import { userQuestionsCapability } from './user-questions'
+import { webAccessCapability } from './web-access'
 
 /**
  * The single registration point for all built-in capabilities.
@@ -24,4 +27,7 @@ export const CAPABILITIES = [
   userQuestionsCapability,
   fileReadingCapability,
   fileEditingCapability,
+  webAccessCapability,
+  jsSandboxCapability,
+  terminalCapability,
 ] as const

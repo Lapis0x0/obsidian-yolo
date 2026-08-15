@@ -33,6 +33,10 @@ export const TOOL_RENDERERS = {
   fs_read: genericRenderer,
   fs_edit: genericRenderer,
   fs_write: genericRenderer,
+  web_search: genericRenderer,
+  web_scrape: genericRenderer,
+  js_eval: genericRenderer,
+  terminal_command: genericRenderer,
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

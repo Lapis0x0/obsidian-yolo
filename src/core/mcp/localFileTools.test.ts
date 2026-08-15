@@ -54,10 +54,10 @@ import {
   JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
   JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
   JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
+  buildJsSandboxProxyHandlers,
   formatJsSandboxToolText,
 } from './jsSandboxTool'
 import {
-  buildJsSandboxProxyHandlers,
   callLocalFileTool,
   getLocalFileTools,
   isLocalFsWriteToolName,
