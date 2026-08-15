@@ -90,7 +90,7 @@ const probeTool = defineTool({
 })
 assertExact<Exact<(typeof probeTool)['name'], 'probe_tool'>>()
 
-const probeCapability = defineCapability({
+const _probeCapability = defineCapability({
   id: 'probe_capability',
   label: { key: 'probe', fallback: 'probe' },
   category: 'context',
@@ -103,9 +103,9 @@ const probeCapability = defineCapability({
   hasSettings: false,
   tools: [probeTool],
 })
-assertExact<Exact<(typeof probeCapability)['id'], 'probe_capability'>>()
+assertExact<Exact<(typeof _probeCapability)['id'], 'probe_capability'>>()
 assertExact<
-  Exact<(typeof probeCapability)['tools'][number]['name'], 'probe_tool'>
+  Exact<(typeof _probeCapability)['tools'][number]['name'], 'probe_tool'>
 >()
 
 describe('built-in tool registry literal preservation', () => {
