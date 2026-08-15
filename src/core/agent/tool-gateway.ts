@@ -1698,6 +1698,24 @@ export class AgentToolGateway {
       return false
     }
 
+    if (!this.toolPreferences && !this.builtinCapabilityPreferences) {
+      // Non-Agent modes (`resolveChatModeRuntime`) deliberately supply no
+      // preference maps, so `allowedToolNames` — already derived from the
+      // assistant's enabled capabilities before the run started, minus
+      // `CHAT_BLOCKED_TOOL_NAMES` — is the only authoritative source, and
+      // the membership test above has already consulted it.
+      //
+      // Re-deriving enablement below would resolve every built-in against
+      // its capability's `defaultEnabled` instead of the grant it just
+      // passed, because `isAssistantToolEnabled` routes recognized built-in
+      // short names through `builtinCapabilityPreferences` and ignores
+      // `enabledToolNames` entirely (D9). That silently rejects every call
+      // to an enabled-but-default-off capability (`js_sandbox`, both
+      // context tools, `subagent_delegation`) in Ask / Quick Ask, while
+      // `selectAllowedTools` still advertises it to the model.
+      return true
+    }
+
     return isAssistantToolEnabled(
       {
         toolPreferences: this.toolPreferences,

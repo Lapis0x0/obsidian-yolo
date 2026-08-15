@@ -192,6 +192,50 @@ describe('AgentToolGateway', () => {
     })
   })
 
+  describe('non-Agent modes supply no preference maps', () => {
+    // `resolveChatModeRuntime` deliberately passes `toolPreferences` and
+    // `builtinCapabilityPreferences` as undefined outside Agent mode, so
+    // `allowedToolNames` is the only grant the gateway gets. Re-deriving
+    // built-in enablement there resolved each tool against its capability's
+    // `defaultEnabled` instead — silently rejecting every Ask / Quick Ask
+    // call to `js_sandbox`, both context tools, and `subagent_delegation`,
+    // all of which are `defaultEnabled: false` yet advertised to the model
+    // by `selectAllowedTools` once the user enables them.
+    const askModeGateway = (allowedToolNames: string[]) =>
+      new AgentToolGateway(
+        {
+          isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+          getJsSandboxSettings: jest.fn().mockReturnValue({}),
+        } as unknown as McpManager,
+        { allowedToolNames },
+      )
+
+    const call = (gateway: AgentToolGateway, name: string) =>
+      gateway.createToolMessage({
+        toolCallRequests: [{ id: 'tool-1', name, arguments: emptyArgs }],
+        conversationId: 'conv-1',
+      }).toolCalls[0]?.response
+
+    it.each([
+      'yolo_local__js_eval',
+      'yolo_local__context_compact',
+      'yolo_local__context_prune_tool_results',
+      'yolo_local__delegate_subagent',
+    ])('honors the grant for default-off capability tool %s', (name) => {
+      expect(call(askModeGateway([name]), name)?.status).not.toBe(
+        ToolCallResponseStatus.Rejected,
+      )
+    })
+
+    it('still rejects a tool the grant does not contain', () => {
+      const response = call(
+        askModeGateway(['yolo_local__js_eval']),
+        'yolo_local__fs_write',
+      )
+      expect(response?.status).toBe(ToolCallResponseStatus.Rejected)
+    })
+  })
+
   it('rejects malformed local write arguments before execution', async () => {
     const callTool = jest.fn()
     const mcpManager = {
