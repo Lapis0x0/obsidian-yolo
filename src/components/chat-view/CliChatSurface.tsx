@@ -493,6 +493,7 @@ export function CliChatSurface({
     loadEarlier,
     loadNewer,
     growWindowToFillViewport,
+    historyWindowKey,
     resetToLatest,
   } = useChatHistoryWindow({
     conversationId,
@@ -896,6 +897,7 @@ export function CliChatSurface({
       onLoadEarlier={loadEarlier}
       onLoadNewer={loadNewer}
       onGrowWindowToFillViewport={growWindowToFillViewport}
+      historyWindowKey={historyWindowKey}
       onForceScrollToBottom={handleForceScrollToBottom}
       hasStreamingMessages={isConversationBusy}
       scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}

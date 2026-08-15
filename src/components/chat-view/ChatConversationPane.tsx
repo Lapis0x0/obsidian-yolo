@@ -77,6 +77,7 @@ export type ChatConversationPaneProps = {
   onLoadEarlier?: () => void
   onLoadNewer?: () => void
   onGrowWindowToFillViewport?: () => void
+  historyWindowKey?: string
   bottomSpacerHeight?: number
 }
 
@@ -120,6 +121,7 @@ export function ChatConversationPane({
   onLoadEarlier,
   onLoadNewer,
   onGrowWindowToFillViewport,
+  historyWindowKey,
   bottomSpacerHeight,
 }: ChatConversationPaneProps) {
   const reduceMotion = useReducedMotion()
@@ -223,6 +225,7 @@ export function ChatConversationPane({
         onLoadEarlier={onLoadEarlier}
         onLoadNewer={onLoadNewer}
         onGrowWindowToFillViewport={onGrowWindowToFillViewport}
+        historyWindowKey={historyWindowKey}
         bottomSpacerHeight={bottomSpacerHeight}
       />
       {/* Animate only the empty-state layout transition. Internal composer

@@ -12,13 +12,11 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { PagingDirection } from './scroll/paging'
 import {
-  getKeyPagingDirection,
   getRetainedAnchorIndex,
   getScrollPagingDirection,
   getTouchPagingDirection,
   getWheelPagingDirection,
   isPagingInputClaimedByNestedScroller,
-  isTextEntryElement,
   resolvePagingLoad,
 } from './scroll/paging'
 import type { ScrollController } from './scroll/scrollController'
@@ -154,6 +152,12 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
    */
   onGrowWindowToFillViewport?: () => void
   /**
+   * Identity of the rendered turn range, from `useChatHistoryWindow`. Used to
+   * tell "the page I asked for has arrived" from "the items changed", which
+   * during streaming they do constantly without the window moving at all.
+   */
+  historyWindowKey?: string
+  /**
    * Additional bottom spacer height (px). Used to keep the last item from
    * being visually obscured by an absolute-positioned overlay (e.g. todo
    * panel / queued bubbles) anchored above the input box.
@@ -204,6 +208,19 @@ function setScrollContainerRef(
 const getEventElement = (event: Event): Element | null => {
   const target = event.target
   return target && 'tagName' in target ? (target as Element) : null
+}
+
+const SCROLLABLE_OVERFLOW_Y = new Set(['auto', 'scroll', 'overlay'])
+
+/**
+ * Whether this element actually scrolls, as opposed to merely overflowing its
+ * box. Resolved against the element's own view so it stays correct in a
+ * popout, where the global `window` belongs to a different document.
+ */
+const isScrollableElement = (element: Element): boolean => {
+  const view = element.ownerDocument.defaultView
+  const overflowY = view?.getComputedStyle(element).overflowY
+  return overflowY !== undefined && SCROLLABLE_OVERFLOW_Y.has(overflowY)
 }
 
 const getLoadMoreThreshold = (element: HTMLElement) =>
@@ -379,6 +396,7 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   onLoadEarlier,
   onLoadNewer,
   onGrowWindowToFillViewport,
+  historyWindowKey,
   bottomSpacerHeight = 0,
 }: ChatTimelineListProps<TItem>) {
   void overscanPx
@@ -390,26 +408,29 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   const renderItemRef = useRef(renderItem)
   renderItemRef.current = renderItem
   const pendingAnchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
-  // The items currently on screen, and the items a paging load has already
-  // been fired against. React commits the window a load asks for in a later
-  // task, so without this a single wheel gesture at 60Hz fires several loads
-  // into the gap before the first one lands — and two window transforms
-  // applied to one commit can leave a window with no turn in common with the
-  // DOM the anchor was captured from.
+  // The window on screen, and the window a paging load has already been fired
+  // against. React commits the window a load asks for in a later task, so
+  // without this a single wheel gesture at 60Hz fires several loads into the
+  // gap before the first one lands — and two window transforms applied to one
+  // commit can leave a window with no turn in common with the DOM the anchor
+  // was captured from, which is exactly the jump the anchor exists to prevent.
   //
-  // This is tracked from a layout effect rather than during render on purpose:
-  // a concurrent render can be interrupted or thrown away, and a render-phase
-  // write would hand the already-committed event listeners an array that never
-  // reached the DOM, releasing the gate on a load that had not landed.
+  // Keyed on the window rather than on `items`: `items` is rebuilt for every
+  // streaming token, revision and edit, so a commit that changed nothing about
+  // the window would release the gate on a load that had not landed yet.
   //
-  // Clearing takes care of itself. Any newly committed `items` — the load
-  // arriving, or streaming — stops matching, and while `items` is unchanged
-  // there is by definition nothing new to page to.
-  const committedItemsRef = useRef<readonly TItem[] | null>(null)
-  const pagedForItemsRef = useRef<readonly TItem[] | null>(null)
+  // Tracked from a layout effect rather than during render because a
+  // concurrent render can be interrupted or thrown away, and a render-phase
+  // write would hand the already-committed listeners a window that never
+  // reached the DOM.
+  //
+  // Clearing takes care of itself: the requested window arriving stops the two
+  // matching, and while the window is unchanged there is nothing new to page to.
+  const committedWindowKeyRef = useRef<string | undefined>(undefined)
+  const pagedForWindowKeyRef = useRef<string | undefined>(undefined)
   useLayoutEffect(() => {
-    committedItemsRef.current = items
-  }, [items])
+    committedWindowKeyRef.current = historyWindowKey
+  }, [historyWindowKey])
   // Scrollbar drags produce no directional input event of their own, so their
   // direction is read from the resulting scroll position — but only while a
   // pointer is actually held down on the scroller, which is what makes that
@@ -703,8 +724,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
           : hasNewerMessages && Boolean(onLoadNewer)
       const isBusy =
         (scrollController?.isSettling() ?? false) ||
-        (pagedForItemsRef.current !== null &&
-          pagedForItemsRef.current === committedItemsRef.current)
+        (pagedForWindowKeyRef.current !== undefined &&
+          pagedForWindowKeyRef.current === committedWindowKeyRef.current)
       if (!hasMore || isBusy) {
         return
       }
@@ -728,12 +749,17 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       })
       if (
         !load ||
-        isPagingInputClaimedByNestedScroller(target, scrollerElement, direction)
+        isPagingInputClaimedByNestedScroller(
+          target,
+          scrollerElement,
+          direction,
+          isScrollableElement,
+        )
       ) {
         return
       }
 
-      pagedForItemsRef.current = committedItemsRef.current
+      pagedForWindowKeyRef.current = committedWindowKeyRef.current
       if (load === 'earlier') {
         handleLoadEarlier()
       } else {
@@ -769,21 +795,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       const direction = getWheelPagingDirection(event.deltaY)
       if (direction) {
         requestPaging(direction, getEventElement(event))
-      }
-    }
-
-    // Keys reach here from focused controls inside messages as well as from
-    // the scroller itself, and the browser scrolls this container for both.
-    // Typing in an open message editor must not be mistaken for either.
-    const handleKeyDown = (event: KeyboardEvent) => {
-      const target = getEventElement(event)
-      if (isTextEntryElement(target)) {
-        return
-      }
-
-      const direction = getKeyPagingDirection(event.key, event.shiftKey)
-      if (direction) {
-        requestPaging(direction, target)
       }
     }
 
@@ -836,7 +847,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     scrollerElement.addEventListener('wheel', handleWheel, passive)
     scrollerElement.addEventListener('touchstart', handleTouchStart, passive)
     scrollerElement.addEventListener('touchmove', handleTouchMove, passive)
-    scrollerElement.addEventListener('keydown', handleKeyDown, passive)
     scrollerElement.addEventListener('pointerdown', handlePointerDown, passive)
     ownerDocument.addEventListener('pointerup', handlePointerUp, passive)
     ownerDocument.addEventListener('pointercancel', handlePointerUp, passive)
@@ -848,7 +858,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       scrollerElement.removeEventListener('wheel', handleWheel)
       scrollerElement.removeEventListener('touchstart', handleTouchStart)
       scrollerElement.removeEventListener('touchmove', handleTouchMove)
-      scrollerElement.removeEventListener('keydown', handleKeyDown)
       scrollerElement.removeEventListener('pointerdown', handlePointerDown)
       ownerDocument.removeEventListener('pointerup', handlePointerUp)
       ownerDocument.removeEventListener('pointercancel', handlePointerUp)

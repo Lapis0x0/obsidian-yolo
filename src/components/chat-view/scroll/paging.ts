@@ -20,6 +20,17 @@
  * that cannot scroll any further, where the browser reports no scrolling at
  * all — keeps producing input events, so they page again as soon as the
  * previous load settles.
+ *
+ * Keyboard scrolling is deliberately not one of these inputs. Its listener
+ * would have to live on the scroller, so it only ever sees keys that reached a
+ * focused element inside it — in a chat timeline, a message's own button,
+ * branch tab or editor. There Space activates the control, Home/End move
+ * within a composite widget, and arrows are often the widget's own navigation,
+ * so reading any of them as "load more" fires on input that was never about
+ * the conversation's scroll position. With focus anywhere else — the composer,
+ * the workspace — the listener never runs at all. The path is therefore either
+ * wrong or dead, and a reader who arrives at an edge by any means can page
+ * with a single wheel notch.
  */
 
 /** Which end of the rendered window the reader is asking to extend. */
@@ -66,67 +77,6 @@ export const getScrollPagingDirection = (
     return 'earlier'
   }
   return currentScrollTop > previousScrollTop ? 'newer' : null
-}
-
-/**
- * Keyboard scrolling. Reachable from any focused control inside the timeline,
- * not only from the scroller itself: the browser scrolls the nearest
- * scrollable ancestor for keys the focused element does not consume.
- */
-export const getKeyPagingDirection = (
-  key: string,
-  isShiftPressed: boolean,
-): PagingDirection | null => {
-  switch (key) {
-    case 'PageUp':
-    case 'ArrowUp':
-    case 'Home':
-      return 'earlier'
-    case 'PageDown':
-    case 'ArrowDown':
-    case 'End':
-      return 'newer'
-    case ' ':
-      return isShiftPressed ? 'earlier' : 'newer'
-    default:
-      return null
-  }
-}
-
-/**
- * The parts of an element these helpers need, stated structurally.
- *
- * Real DOM nodes satisfy it, and so do plain objects, which is what keeps
- * these decisions testable without a DOM. It also avoids `instanceof`
- * entirely — in an Obsidian popout the nodes belong to another document whose
- * constructors are not the ones in this realm.
- */
-export type PagingInputNode = {
-  tagName: string
-  scrollTop: number
-  scrollHeight: number
-  clientHeight: number
-  getAttribute(name: string): string | null
-  parentElement: PagingInputNode | null
-}
-
-/**
- * Whether typing into this element is what the key was for.
- */
-export const isTextEntryElement = (
-  element: PagingInputNode | null,
-): boolean => {
-  for (let node = element; node; node = node.parentElement) {
-    if (
-      node.tagName === 'INPUT' ||
-      node.tagName === 'TEXTAREA' ||
-      node.tagName === 'SELECT' ||
-      node.getAttribute('contenteditable') === 'true'
-    ) {
-      return true
-    }
-  }
-  return false
 }
 
 export type PagingRequest = {
@@ -183,11 +133,23 @@ export const resolvePagingLoad = ({
  * conversation just because the conversation happens to be sitting near an
  * edge, so an ancestor that can still move in the requested direction claims
  * the input.
+ *
+ * Overflowing is not the same as scrolling: a clamped preview or any wrapper
+ * with `overflow: hidden` is taller than its box and permanently pinned at
+ * `scrollTop` 0, and letting that claim the input would silently disable
+ * paging for everything inside it. `isScrollable` is supplied by the caller
+ * because answering it means reading computed style, which is a DOM concern
+ * and — in a popout — a question for that document's own view.
+ *
+ * Walks with `parentElement` and duck-typed scroll metrics rather than
+ * `instanceof`: in a popout the nodes belong to another document whose
+ * constructors are not this realm's.
  */
 export const isPagingInputClaimedByNestedScroller = (
-  target: PagingInputNode | null,
-  scrollerElement: PagingInputNode,
+  target: Element | null,
+  scrollerElement: Element,
   direction: PagingDirection,
+  isScrollable: (element: Element) => boolean,
 ): boolean => {
   let node = target
   while (node && node !== scrollerElement) {
@@ -197,7 +159,7 @@ export const isPagingInputClaimedByNestedScroller = (
         direction === 'earlier'
           ? node.scrollTop > 0
           : node.scrollTop < maxScrollTop
-      if (canMove) {
+      if (canMove && isScrollable(node)) {
         return true
       }
     }

@@ -427,6 +427,14 @@ export function useChatHistoryWindow({
 
   return {
     windowedGroupedChatMessages,
+    /**
+     * Identity of the turn range currently rendered. Changes exactly when
+     * paging, navigation or a reset moves an edge, and — unlike the timeline
+     * items, which are rebuilt for every streaming token, revision and edit —
+     * never for anything else. That is what makes it usable as the
+     * acknowledgement that a requested page has actually landed.
+     */
+    historyWindowKey: `${window.startTurnIndex}-${window.endTurnIndex}`,
     hasEarlierMessages: window.startTurnIndex > 0,
     hasNewerMessages: totalTurns > 0 && window.endTurnIndex < totalTurns - 1,
     loadEarlier,

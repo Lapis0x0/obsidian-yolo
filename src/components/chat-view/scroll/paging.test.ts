@@ -1,12 +1,10 @@
-import type { PagingDirection, PagingInputNode, PagingRequest } from './paging'
+import type { PagingDirection, PagingRequest } from './paging'
 import {
-  getKeyPagingDirection,
   getRetainedAnchorIndex,
   getScrollPagingDirection,
   getTouchPagingDirection,
   getWheelPagingDirection,
   isPagingInputClaimedByNestedScroller,
-  isTextEntryElement,
   resolvePagingLoad,
 } from './paging'
 
@@ -29,61 +27,36 @@ describe('input direction', () => {
     expect(getScrollPagingDirection(480, 500)).toBe('newer')
     expect(getScrollPagingDirection(500, 500)).toBeNull()
   })
-
-  it('maps the scrolling keys, with space reversing under shift', () => {
-    expect(getKeyPagingDirection('PageUp', false)).toBe('earlier')
-    expect(getKeyPagingDirection('Home', false)).toBe('earlier')
-    expect(getKeyPagingDirection('PageDown', false)).toBe('newer')
-    expect(getKeyPagingDirection('End', false)).toBe('newer')
-    expect(getKeyPagingDirection(' ', false)).toBe('newer')
-    expect(getKeyPagingDirection(' ', true)).toBe('earlier')
-    expect(getKeyPagingDirection('a', false)).toBeNull()
-    expect(getKeyPagingDirection('Enter', false)).toBeNull()
-  })
 })
 
-const node = (overrides: Partial<PagingInputNode> = {}): PagingInputNode => ({
-  tagName: 'DIV',
-  scrollTop: 0,
-  scrollHeight: 100,
-  clientHeight: 100,
-  getAttribute: () => null,
-  parentElement: null,
-  ...overrides,
-})
+type FakeElement = {
+  scrollTop: number
+  scrollHeight: number
+  clientHeight: number
+  parentElement: FakeElement | null
+}
+
+/** Only the scroll metrics the walk reads, so these stay DOM-free. */
+const node = (overrides: Partial<FakeElement> = {}): Element => {
+  const fake: FakeElement = {
+    scrollTop: 0,
+    scrollHeight: 100,
+    clientHeight: 100,
+    parentElement: null,
+    ...overrides,
+  }
+  return fake as unknown as Element
+}
 
 /** Links the given nodes parent-to-child and returns the innermost one. */
-const nest = (...nodes: PagingInputNode[]): PagingInputNode =>
+const nest = (...nodes: Element[]): Element =>
   nodes.reduce((parent, child) => {
-    child.parentElement = parent
+    ;(child as unknown as FakeElement).parentElement =
+      parent as unknown as FakeElement
     return child
   })
 
-describe('isTextEntryElement', () => {
-  it('recognises the places a scrolling key is really a typing key', () => {
-    expect(isTextEntryElement(node({ tagName: 'TEXTAREA' }))).toBe(true)
-    expect(isTextEntryElement(node({ tagName: 'INPUT' }))).toBe(true)
-    expect(isTextEntryElement(node({ tagName: 'SELECT' }))).toBe(true)
-    expect(isTextEntryElement(node({ getAttribute: () => 'true' }))).toBe(true)
-  })
-
-  it('looks up the tree, not just at the target itself', () => {
-    const target = nest(
-      node({ getAttribute: () => 'true' }),
-      node({ tagName: 'SPAN' }),
-    )
-    expect(isTextEntryElement(target)).toBe(true)
-  })
-
-  it('leaves ordinary content and controls alone', () => {
-    expect(isTextEntryElement(node({ tagName: 'BUTTON' }))).toBe(false)
-    expect(isTextEntryElement(node({ tagName: 'P' }))).toBe(false)
-    expect(isTextEntryElement(node({ getAttribute: () => 'false' }))).toBe(
-      false,
-    )
-    expect(isTextEntryElement(null)).toBe(false)
-  })
-})
+const alwaysScrollable = () => true
 
 describe('isPagingInputClaimedByNestedScroller', () => {
   it('lets a nested region with room left keep the input', () => {
@@ -92,14 +65,24 @@ describe('isPagingInputClaimedByNestedScroller', () => {
     const target = nest(
       scroller,
       node({ scrollTop: 200, scrollHeight: 600, clientHeight: 300 }),
-      node({ tagName: 'SPAN' }),
+      node(),
     )
 
     expect(
-      isPagingInputClaimedByNestedScroller(target, scroller, 'earlier'),
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'earlier',
+        alwaysScrollable,
+      ),
     ).toBe(true)
     expect(
-      isPagingInputClaimedByNestedScroller(target, scroller, 'newer'),
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'newer',
+        alwaysScrollable,
+      ),
     ).toBe(true)
   })
 
@@ -110,14 +93,24 @@ describe('isPagingInputClaimedByNestedScroller', () => {
     const target = nest(
       scroller,
       node({ scrollTop: 0, scrollHeight: 600, clientHeight: 300 }),
-      node({ tagName: 'SPAN' }),
+      node(),
     )
 
     expect(
-      isPagingInputClaimedByNestedScroller(target, scroller, 'earlier'),
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'earlier',
+        alwaysScrollable,
+      ),
     ).toBe(false)
     expect(
-      isPagingInputClaimedByNestedScroller(target, scroller, 'newer'),
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'newer',
+        alwaysScrollable,
+      ),
     ).toBe(true)
   })
 
@@ -126,11 +119,44 @@ describe('isPagingInputClaimedByNestedScroller', () => {
     const target = nest(
       scroller,
       node({ scrollTop: 0, scrollHeight: 300, clientHeight: 300 }),
-      node({ tagName: 'SPAN' }),
+      node(),
     )
 
     expect(
-      isPagingInputClaimedByNestedScroller(target, scroller, 'earlier'),
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'earlier',
+        alwaysScrollable,
+      ),
+    ).toBe(false)
+  })
+
+  it('does not let a merely overflowing region claim the input', () => {
+    // A clamped preview or `overflow: hidden` wrapper is taller than its box
+    // but pinned at the top forever; claiming would disable paging inside it.
+    const scroller = node()
+    const target = nest(
+      scroller,
+      node({ scrollTop: 0, scrollHeight: 600, clientHeight: 100 }),
+      node(),
+    )
+
+    expect(
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'newer',
+        alwaysScrollable,
+      ),
+    ).toBe(true)
+    expect(
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'newer',
+        () => false,
+      ),
     ).toBe(false)
   })
 
@@ -140,13 +166,23 @@ describe('isPagingInputClaimedByNestedScroller', () => {
       scrollHeight: 2000,
       clientHeight: 400,
     })
-    const target = nest(scroller, node({ tagName: 'SPAN' }))
+    const target = nest(scroller, node())
 
     expect(
-      isPagingInputClaimedByNestedScroller(target, scroller, 'earlier'),
+      isPagingInputClaimedByNestedScroller(
+        target,
+        scroller,
+        'earlier',
+        alwaysScrollable,
+      ),
     ).toBe(false)
     expect(
-      isPagingInputClaimedByNestedScroller(null, scroller, 'earlier'),
+      isPagingInputClaimedByNestedScroller(
+        null,
+        scroller,
+        'earlier',
+        alwaysScrollable,
+      ),
     ).toBe(false)
   })
 })
