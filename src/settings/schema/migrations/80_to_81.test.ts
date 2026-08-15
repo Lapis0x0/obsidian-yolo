@@ -443,4 +443,53 @@ describe('migrateFrom80To81', () => {
       ),
     ).toBe(false)
   })
+
+  /**
+   * ⚠️ DO NOT update this list when a new capability ships.
+   *
+   * It pins that `80_to_81` writes exactly the twelve capabilities that
+   * existed at v81 and nothing else — i.e. that it reads its frozen
+   * `V81_CAPABILITIES` snapshot rather than the live registry. Wiring it
+   * back to `listCapabilities()` would make a 13th capability appear here,
+   * and (because a capability with no legacy member entries resolves to
+   * `enabled: false`) would stamp that new capability off for every
+   * assistant of every user upgrading straight from v80. If this test fails
+   * after you added a capability, the fix is to restore the snapshot, not
+   * to extend this list.
+   */
+  const V81_CAPABILITY_IDS = [
+    'file_reading',
+    'vault_shell',
+    'file_editing',
+    'context_pruning',
+    'context_compaction',
+    'user_questions',
+    'todo_list',
+    'memory',
+    'web_access',
+    'js_sandbox',
+    'terminal',
+    'subagent_delegation',
+  ]
+
+  it('writes exactly the twelve v81 capabilities globally, never a later-added one', () => {
+    const result = runMigration({ version: 80 })
+
+    expect(
+      Object.keys(result.mcp?.builtinCapabilityOptions ?? {}).sort(),
+    ).toEqual([...V81_CAPABILITY_IDS].sort())
+  })
+
+  it('writes exactly the twelve v81 capabilities per assistant, never a later-added one', () => {
+    const result = runMigration({
+      version: 80,
+      assistants: [{ id: 'agent-1', toolPreferences: {} }],
+    })
+
+    expect(
+      Object.keys(
+        result.assistants?.[0]?.builtinCapabilityPreferences ?? {},
+      ).sort(),
+    ).toEqual([...V81_CAPABILITY_IDS].sort())
+  })
 })

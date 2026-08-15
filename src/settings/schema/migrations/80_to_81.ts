@@ -1,6 +1,3 @@
-import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
-import { McpManager } from '../../../core/mcp/mcpManager'
-import { listCapabilities } from '../../../core/tools/registry'
 import type { AssistantToolApprovalMode } from '../../../types/assistant.types'
 import type { SettingMigration } from '../setting.types'
 
@@ -47,23 +44,136 @@ const mostStrictApprovalMode = (
   )
 
 /**
- * The three synthetic "group" tool names the pre-capability global toggle
- * (`AgentToolsModal.tsx`'s `handleToggleBuiltinTool`) wrote alongside every
- * member's own short name. Only these three multi-tool capabilities ever had
- * one; every 1:1 capability's sole legacy key is just its one member tool's
- * own short name, already covered by `capability.tools`. Inlined here
- * (rather than imported from `core/tools/legacy-persistence-keys.ts`)
- * because that module is deleted as part of this same migration landing —
- * see that file's own former doc comment.
+ * The built-in server prefix every legacy `toolPreferences` /
+ * `enabledToolNames` entry for a built-in tool carried, frozen at its v80
+ * value (`LOCAL_FILE_TOOL_SERVER` + `McpManager.TOOL_NAME_DELIMITER`).
+ * Frozen for the same reason as `V81_CAPABILITIES` below, plus one of its
+ * own: importing `McpManager` here would drag the whole MCP runtime into
+ * the settings-migration module graph.
  */
-const LEGACY_GROUP_KEY_BY_CAPABILITY_ID: Readonly<Record<string, string>> = {
-  file_editing: 'fs_edit_ops',
-  memory: 'memory_ops',
-  web_access: 'web_ops',
-}
+const LEGACY_BUILTIN_FQN_PREFIX = 'yolo_local__'
 
-const isLocalFqn = (name: string, localServer: string): boolean =>
-  name.startsWith(`${localServer}${McpManager.TOOL_NAME_DELIMITER}`)
+/**
+ * The v80 -> v81 capability map, frozen as literal data.
+ *
+ * This deliberately does NOT read the live registry (`listCapabilities()`).
+ * A historical migration must describe the two schema versions it bridges,
+ * not whatever the product happens to look like when it runs — and here
+ * that difference is a real bug, not hygiene. `migrateAssistantBuiltinCapabilities`
+ * writes an entry for *every* capability it iterates, and a capability with
+ * no legacy member entries resolves to `enabled: false` (see that function's
+ * doc comment for why absent must mean off). So if a future release adds a
+ * 13th capability and a user upgrades to it straight from v80, reading the
+ * live registry here would stamp an explicit `enabled: false` for that new
+ * capability into every one of their assistants — silently shipping it
+ * disabled, un-recoverably, for exactly the users who update least often.
+ * Tool renames, capability splits and capability removals distort this
+ * migration's inputs the same way.
+ *
+ * `legacyGroupKey` is the synthetic "group" tool name the pre-capability
+ * global toggle (`AgentToolsModal.tsx`'s `handleToggleBuiltinTool`) wrote
+ * alongside every member's own short name; only these three multi-tool
+ * capabilities ever had one. Every other capability's sole legacy key is
+ * its one member tool's short name. (Previously read from
+ * `core/tools/legacy-persistence-keys.ts`, which is deleted as part of this
+ * same migration landing.)
+ *
+ * Values are transcribed from `core/tools/capabilities/*.ts` as of v81;
+ * `defaultEnabled` is deliberately absent because neither layer of this
+ * migration consults it.
+ */
+const DEFAULT_ALLOWED_MODES: readonly AssistantToolApprovalMode[] = [
+  'full_access',
+  'require_approval',
+]
+
+const V81_CAPABILITIES: readonly {
+  id: string
+  legacyGroupKey?: string
+  toolNames: readonly string[]
+  defaultMode: AssistantToolApprovalMode
+  allowedModes: readonly AssistantToolApprovalMode[]
+}[] = [
+  {
+    id: 'file_reading',
+    toolNames: ['fs_read'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'vault_shell',
+    toolNames: ['bash'],
+    defaultMode: 'dangerous_only',
+    // The only built-in capability with a third tier.
+    allowedModes: ['full_access', 'dangerous_only', 'require_approval'],
+  },
+  {
+    id: 'file_editing',
+    legacyGroupKey: 'fs_edit_ops',
+    toolNames: ['fs_edit', 'fs_write'],
+    defaultMode: 'require_approval',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'context_pruning',
+    toolNames: ['context_prune_tool_results'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'context_compaction',
+    toolNames: ['context_compact'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'user_questions',
+    toolNames: ['ask_user_question'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'todo_list',
+    toolNames: ['todo_write'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'memory',
+    legacyGroupKey: 'memory_ops',
+    toolNames: ['memory_add', 'memory_update', 'memory_delete'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'web_access',
+    legacyGroupKey: 'web_ops',
+    toolNames: ['web_search', 'web_scrape'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'js_sandbox',
+    toolNames: ['js_eval'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'terminal',
+    toolNames: ['terminal_command'],
+    defaultMode: 'require_approval',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+  {
+    id: 'subagent_delegation',
+    toolNames: ['delegate_subagent'],
+    defaultMode: 'full_access',
+    allowedModes: DEFAULT_ALLOWED_MODES,
+  },
+]
+
+const isLocalFqn = (name: string): boolean =>
+  name.startsWith(LEGACY_BUILTIN_FQN_PREFIX)
 
 /**
  * `settings.mcp.builtinToolOptions` (keyed by the old short tool/group
@@ -87,10 +197,10 @@ const migrateBuiltinToolOptions = (
     : {}
 
   const nextOptions: Record<string, unknown> = {}
-  for (const capability of listCapabilities()) {
+  for (const capability of V81_CAPABILITIES) {
     const legacyKeys: string[] = [
-      LEGACY_GROUP_KEY_BY_CAPABILITY_ID[capability.id],
-      ...capability.tools.map((tool) => tool.name),
+      capability.legacyGroupKey,
+      ...capability.toolNames,
     ].filter((key): key is string => typeof key === 'string')
 
     // Matches the pre-D9 runtime aggregation exactly
@@ -191,7 +301,6 @@ const migrateAssistantBuiltinCapabilities = (
   const legacyPreferences = isRecord(assistant.toolPreferences)
     ? assistant.toolPreferences
     : {}
-  const localServer = getLocalFileToolServerName()
   // The second legacy grant source, exactly as `getAssistantToolPreferences`
   // reads it: `enabledToolNames` entries are folded in *under*
   // `toolPreferences`, so they grant a tool but never override an explicit
@@ -206,21 +315,21 @@ const migrateAssistantBuiltinCapabilities = (
 
   const builtinCapabilityPreferences: Record<string, unknown> = {}
 
-  for (const capability of listCapabilities()) {
+  for (const capability of V81_CAPABILITIES) {
     const presentMembers: {
       enabled: boolean
       approvalMode: AssistantToolApprovalMode
     }[] = []
 
-    for (const tool of capability.tools) {
-      const fqn = `${localServer}${McpManager.TOOL_NAME_DELIMITER}${tool.name}`
+    for (const toolName of capability.toolNames) {
+      const fqn = `${LEGACY_BUILTIN_FQN_PREFIX}${toolName}`
       const entry = legacyPreferences[fqn]
       if (isRecord(entry)) {
         presentMembers.push({
           enabled: entry.enabled !== false,
           approvalMode: isApprovalMode(entry.approvalMode)
             ? entry.approvalMode
-            : capability.approval.defaultMode,
+            : capability.defaultMode,
         })
         continue
       }
@@ -229,7 +338,7 @@ const migrateAssistantBuiltinCapabilities = (
         // exactly this: enabled, at the tool's default approval mode.
         presentMembers.push({
           enabled: true,
-          approvalMode: capability.approval.defaultMode,
+          approvalMode: capability.defaultMode,
         })
       }
     }
@@ -241,14 +350,12 @@ const migrateAssistantBuiltinCapabilities = (
     let approvalMode =
       presentMembers.length > 0
         ? mostStrictApprovalMode(presentMembers.map((m) => m.approvalMode))
-        : capability.approval.defaultMode
+        : capability.defaultMode
 
     if (
-      !(capability.approval.allowedModes as readonly string[]).includes(
-        approvalMode,
-      )
+      !(capability.allowedModes as readonly string[]).includes(approvalMode)
     ) {
-      approvalMode = capability.approval.defaultMode
+      approvalMode = capability.defaultMode
     }
 
     builtinCapabilityPreferences[capability.id] = { enabled, approvalMode }
@@ -256,7 +363,7 @@ const migrateAssistantBuiltinCapabilities = (
 
   const nextToolPreferences: Record<string, unknown> = {}
   for (const [fqn, value] of Object.entries(legacyPreferences)) {
-    if (isLocalFqn(fqn, localServer)) continue
+    if (isLocalFqn(fqn)) continue
     nextToolPreferences[fqn] = value
   }
 
@@ -268,7 +375,7 @@ const migrateAssistantBuiltinCapabilities = (
 
   if (Array.isArray(assistant.enabledToolNames)) {
     next.enabledToolNames = assistant.enabledToolNames.filter(
-      (name) => typeof name === 'string' && !isLocalFqn(name, localServer),
+      (name) => typeof name === 'string' && !isLocalFqn(name),
     )
   }
 
