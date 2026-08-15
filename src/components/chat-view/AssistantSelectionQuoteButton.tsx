@@ -263,6 +263,13 @@ export default function AssistantSelectionQuoteButton({
     [conversationId, messageId, quotes],
   )
 
+  // Most assistant messages never get annotated: no quotes, no in-progress
+  // draft, no active selection overlay. Gate expensive layout reads
+  // (getBoundingClientRect via measureAnnotations) and viewport-broadcast
+  // participation behind these so idle instances stay fully inert.
+  const hasAnnotationsToTrack = messageQuotes.length > 0 || activeDraft !== null
+  const shouldTrackViewport = hasAnnotationsToTrack || selectionOverlay !== null
+
   const hideSelectionAction = useCallback(() => {
     selectionOverlayRef.current = null
     setIsSelectionActionVisible(false)
@@ -340,6 +347,15 @@ export default function AssistantSelectionQuoteButton({
   }, [disabled, hideSelectionAction])
 
   const measureAnnotations = useCallback(() => {
+    if (!hasAnnotationsToTrack) {
+      // Nothing to measure. Clear any stale positions without forcing a
+      // layout read; bail via functional updates so an already-empty state
+      // doesn't trigger a re-render.
+      setMarkerPositions((prev) => (prev.size === 0 ? prev : new Map()))
+      setActiveRects((prev) => (prev.length === 0 ? prev : []))
+      return
+    }
+
     const container = containerRef.current
     const content = contentRef.current
     if (!container || !content) return
@@ -382,7 +398,7 @@ export default function AssistantSelectionQuoteButton({
 
     setMarkerPositions(nextPositions)
     setActiveRects(nextActiveRects)
-  }, [activeDraft, messageQuotes])
+  }, [activeDraft, hasAnnotationsToTrack, messageQuotes])
 
   useEffect(() => {
     selectionOverlayRef.current = selectionOverlay
@@ -392,6 +408,26 @@ export default function AssistantSelectionQuoteButton({
     processSelectionRef.current = processSelection
     measureRef.current = measureAnnotations
   }, [measureAnnotations, processSelection])
+
+  // Stable across the component's lifetime: reads only refs, so it never
+  // needs to be re-added to `viewportListeners`. Whether it actually
+  // participates is controlled separately below by `shouldTrackViewport`.
+  const handleViewportChange = useCallback(() => {
+    if (selectionOverlayRef.current) processSelectionRef.current()
+    measureRef.current()
+  }, [])
+
+  // Only join the shared viewport broadcast while there is something this
+  // instance needs to react to (an open selection overlay, or annotations
+  // to keep positioned). This keeps a document scroll/resize from waking up
+  // every idle assistant message's callback.
+  useEffect(() => {
+    if (!shouldTrackViewport) return
+    viewportListeners.add(handleViewportChange)
+    return () => {
+      viewportListeners.delete(handleViewportChange)
+    }
+  }, [handleViewportChange, shouldTrackViewport])
 
   useEffect(() => {
     const doc = containerRef.current?.ownerDocument ?? document
@@ -522,13 +558,7 @@ export default function AssistantSelectionQuoteButton({
       finalizeSelection()
     }
 
-    const handleViewportChange = () => {
-      if (selectionOverlayRef.current) processSelectionRef.current()
-      measureRef.current()
-    }
-
     selectionListeners.add(handleSelectionChange)
-    viewportListeners.add(handleViewportChange)
     acquireDocumentListeners(doc)
     doc.addEventListener('pointerdown', handlePointerDown, true)
     doc.addEventListener('pointerup', handlePointerUp, true)
@@ -543,7 +573,6 @@ export default function AssistantSelectionQuoteButton({
     return () => {
       cancelFinalizeSelection()
       selectionListeners.delete(handleSelectionChange)
-      viewportListeners.delete(handleViewportChange)
       releaseDocumentListeners(doc)
       doc.removeEventListener('pointerdown', handlePointerDown, true)
       doc.removeEventListener('pointerup', handlePointerUp, true)
@@ -571,12 +600,13 @@ export default function AssistantSelectionQuoteButton({
 
   useLayoutEffect(() => {
     measureAnnotations()
+    if (!hasAnnotationsToTrack) return
     const content = contentRef.current
     if (!content) return
     const observer = new ResizeObserver(() => measureRef.current())
     observer.observe(content)
     return () => observer.disconnect()
-  }, [measureAnnotations])
+  }, [hasAnnotationsToTrack, measureAnnotations])
 
   useEffect(() => {
     if (!activeDraft) return
