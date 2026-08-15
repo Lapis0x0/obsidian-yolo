@@ -11,14 +11,11 @@ import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLoadToolSchemasTool,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
-import { FILE_EDIT_GROUP_TOOL_NAME } from '../tools/legacy-persistence-keys'
 
 import {
   formatSubagentModelOption,
@@ -47,43 +44,6 @@ export const isLoadToolSchemasToolName = (toolName: string): boolean => {
   } catch {
     return toolName === LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME
   }
-}
-
-export const expandAllowedToolNames = (
-  toolNames?: string[],
-): Set<string> | undefined => {
-  if (!toolNames) {
-    return undefined
-  }
-
-  const expanded = new Set<string>(toolNames)
-  const localServer = getLocalFileToolServerName()
-  const localFileEditTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}${FILE_EDIT_GROUP_TOOL_NAME}`
-  const localMemoryOpsTool = `${localServer}${McpManager.TOOL_NAME_DELIMITER}memory_ops`
-  const hasFileEditGroup =
-    expanded.has(localFileEditTool) || expanded.has(FILE_EDIT_GROUP_TOOL_NAME)
-  const hasMemoryOpsGroup =
-    expanded.has(localMemoryOpsTool) || expanded.has('memory_ops')
-
-  if (hasFileEditGroup) {
-    for (const splitToolName of LOCAL_FS_EDIT_TOOL_NAMES) {
-      expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-      )
-      expanded.add(splitToolName)
-    }
-  }
-
-  if (hasMemoryOpsGroup) {
-    for (const splitToolName of LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES) {
-      expanded.add(
-        `${localServer}${McpManager.TOOL_NAME_DELIMITER}${splitToolName}`,
-      )
-      expanded.add(splitToolName)
-    }
-  }
-
-  return expanded
 }
 
 export const isMemoryToolAvailable = (toolName: string): boolean => {
@@ -252,7 +212,15 @@ export const selectAllowedTools = async ({
   requestTools: RequestTool[] | undefined
   serverToolTokenBudgets: ReadonlyMap<string, number>
 }> => {
-  const normalizedAllowedToolNames = expandAllowedToolNames(allowedToolNames)
+  // Post-D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9),
+  // `allowedToolNames` is always a fully-expanded list of real tool FQNs —
+  // `getEnabledAssistantToolNames` and `resolveModuleCapabilityProfile`
+  // (its only producers) both expand capabilities/tiers into member tool
+  // names before this is ever called, so no virtual group name can appear
+  // here (decision 12: no virtual tool names anywhere in the system).
+  const normalizedAllowedToolNames = allowedToolNames
+    ? new Set(allowedToolNames)
+    : undefined
 
   const baseFiltered = applyDynamicToolDescriptions(
     availableTools.filter((tool) =>

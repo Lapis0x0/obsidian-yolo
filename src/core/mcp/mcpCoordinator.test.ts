@@ -54,7 +54,7 @@ describe('McpCoordinator module chat mode replay', () => {
       pluginId: 'test-plugin',
       getSettings: () =>
         ({
-          mcp: { servers: [], builtinToolOptions: {} },
+          mcp: { servers: [], builtinCapabilityOptions: {} },
           webSearch: {
             providers: [],
             defaultProviderId: undefined,

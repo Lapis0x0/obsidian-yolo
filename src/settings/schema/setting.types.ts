@@ -373,7 +373,17 @@ export const yoloSettingsSchema = z.object({
   mcp: z
     .object({
       servers: resilientArraySchema(mcpServerConfigSchema),
-      builtinToolOptions: mcpServerToolOptionsSchema.catch({}),
+      /**
+       * Keyed by `BuiltinCapabilityId` as of the `80_to_81` settings
+       * migration (D9, docs/plans/2026-08-15-tool-registry/phase2-migration.md
+       * D9) — was `builtinToolOptions`, keyed by the pre-capability short
+       * tool/group names. Reuses `mcpServerToolOptionsSchema` unchanged: this
+       * map carries more than `disabled` — `delegate_subagent`'s
+       * `allowedModelIds`/`preferredModelId` and `terminal_command`'s
+       * `blockedPrefixes` live here too, now under `subagent_delegation` /
+       * `terminal` respectively.
+       */
+      builtinCapabilityOptions: mcpServerToolOptionsSchema.catch({}),
       enableToolDisclosure: z.boolean().catch(false),
       localServer: z
         .object({
@@ -394,7 +404,7 @@ export const yoloSettingsSchema = z.object({
     })
     .catch({
       servers: [],
-      builtinToolOptions: {},
+      builtinCapabilityOptions: {},
       enableToolDisclosure: false,
       localServer: {
         enabled: false,

@@ -109,29 +109,27 @@ function AgentToolsModalContent({
     // capability's toggle and approval tier stay persisted either way, and
     // only the tool's presence in the model-facing catalog changes.
     const rows = buildBuiltinCapabilityRows({
-      toolOptions: settings.mcp.builtinToolOptions,
+      toolOptions: settings.mcp.builtinCapabilityOptions,
       t,
     })
     return groupCapabilityRowsByCategory(rows, t)
-  }, [settings.mcp.builtinToolOptions, t])
+  }, [settings.mcp.builtinCapabilityOptions, t])
 
   const handleToggleBuiltinTool = (
-    legacyPersistenceKeys: readonly string[],
+    capabilityId: BuiltinCapabilityId,
     enabled: boolean,
   ) => {
-    const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
-    for (const key of legacyPersistenceKeys) {
-      nextBuiltinToolOptions[key] = {
-        ...settings.mcp.builtinToolOptions[key],
-        disabled: !enabled,
-      }
-    }
-
     void setSettings({
       ...settings,
       mcp: {
         ...settings.mcp,
-        builtinToolOptions: nextBuiltinToolOptions,
+        builtinCapabilityOptions: {
+          ...settings.mcp.builtinCapabilityOptions,
+          [capabilityId]: {
+            ...settings.mcp.builtinCapabilityOptions[capabilityId],
+            disabled: !enabled,
+          },
+        },
       },
     })
   }
@@ -195,10 +193,7 @@ function AgentToolsModalContent({
                       <ObsidianToggle
                         value={row.enabled}
                         onChange={(enabled) =>
-                          handleToggleBuiltinTool(
-                            row.legacyPersistenceKeys,
-                            enabled,
-                          )
+                          handleToggleBuiltinTool(row.id, enabled)
                         }
                       />
                     </div>

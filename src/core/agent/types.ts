@@ -76,6 +76,20 @@ export type AgentRuntimeRunInput = {
       approvalMode?: AssistantToolApprovalMode
     }
   >
+  /**
+   * Per-capability enabled/approval state for built-in tools (D9,
+   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Sibling to
+   * `toolPreferences` above, which as of that migration only carries remote
+   * MCP tool state — built-in tool approval/enablement resolution
+   * (`AgentToolGateway.resolveApprovalMode`/`isToolAllowed`) needs both.
+   */
+  builtinCapabilityPreferences?: Record<
+    string,
+    {
+      enabled?: boolean
+      approvalMode?: AssistantToolApprovalMode
+    }
+  >
   toolServerPreferences?: Record<
     string,
     {

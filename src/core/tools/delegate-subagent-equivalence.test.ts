@@ -64,8 +64,8 @@ const buildSettings = (): YoloSettings =>
     mcp: {
       servers: [],
       enableToolDisclosure: false,
-      builtinToolOptions: {
-        delegate_subagent: {
+      builtinCapabilityOptions: {
+        subagent_delegation: {
           allowedModelIds: ['openai/gpt-5', 'openai/gpt-4.1-mini'],
           preferredModelId: 'openai/gpt-4.1-mini',
         },

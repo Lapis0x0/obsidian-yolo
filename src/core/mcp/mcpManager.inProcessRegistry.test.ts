@@ -33,7 +33,7 @@ describe('McpManager in-process tool server registry', () => {
       settings: {
         mcp: {
           servers: [],
-          builtinToolOptions: {},
+          builtinCapabilityOptions: {},
         },
         webSearch: {
           providers: [],

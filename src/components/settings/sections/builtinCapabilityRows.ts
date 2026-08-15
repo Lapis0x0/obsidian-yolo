@@ -2,7 +2,6 @@ import {
   BUILTIN_TOOL_CATEGORY_I18N,
   BUILTIN_TOOL_CATEGORY_ORDER,
 } from '../../../core/tools/categories'
-import { getLegacyPersistenceKeysForCapability } from '../../../core/tools/legacy-persistence-keys'
 import {
   type BuiltinCapabilityId,
   listCapabilities,
@@ -25,25 +24,19 @@ export type CapabilityRow = {
   label: string
   description: string
   /**
-   * Global enablement, computed from `settings.mcp.builtinToolOptions`
-   * exactly the way the pre-D7 group-row construction did: none of this
-   * capability's legacy persistence keys (the group key, if any, and every
-   * member tool's own short name) may be `disabled`. Per-assistant
-   * enablement is a separate concern (`AgentsSectionContent.tsx` reads it
-   * from the draft assistant's own `toolPreferences`, not from this field).
+   * Global enablement, read straight off
+   * `settings.mcp.builtinCapabilityOptions[capability.id].disabled` (D9,
+   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9 — this map is
+   * keyed by capability id as of the `80_to_81` migration, one entry per
+   * capability, no more group-key-plus-members aggregation needed). Per-
+   * assistant enablement is a separate concern
+   * (`AgentsSectionContent.tsx` reads it from the draft assistant's own
+   * `builtinCapabilityPreferences`, not from this field).
    */
   enabled: boolean
   hasSettings: boolean
   category: BuiltinToolCategory
   memberToolNames: readonly string[]
-  /**
-   * This capability's keys in the pre-D9 persistence shape — see
-   * `getLegacyPersistenceKeysForCapability`'s doc comment. Callers that need
-   * to read/write `settings.mcp.builtinToolOptions` (or, for a group
-   * capability, want its member tools' own FQNs) derive them from here
-   * instead of hand-listing the group name + member names again.
-   */
-  legacyPersistenceKeys: readonly string[]
 }
 
 export type TranslateFn = (keyPath: string, fallback?: string) => string
@@ -62,16 +55,11 @@ export function buildBuiltinCapabilityRows({
   toolOptions,
   t,
 }: {
-  toolOptions: YoloSettings['mcp']['builtinToolOptions']
+  toolOptions: YoloSettings['mcp']['builtinCapabilityOptions']
   t: TranslateFn
 }): readonly CapabilityRow[] {
   return listCapabilities().map((capability) => {
-    const legacyPersistenceKeys = getLegacyPersistenceKeysForCapability(
-      capability.id,
-    )
-    const enabled = legacyPersistenceKeys.every(
-      (key) => !(toolOptions[key]?.disabled ?? false),
-    )
+    const enabled = !(toolOptions[capability.id]?.disabled ?? false)
     return {
       // `listCapabilities()` returns the widened `readonly
       // BuiltinCapabilityDefinition[]` view (registry.ts's own doc comment
@@ -89,7 +77,6 @@ export function buildBuiltinCapabilityRows({
       hasSettings: capability.hasSettings,
       category: capability.category,
       memberToolNames: capability.tools.map((tool) => tool.name),
-      legacyPersistenceKeys,
     }
   })
 }

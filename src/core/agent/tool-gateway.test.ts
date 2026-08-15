@@ -202,8 +202,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_write'],
-      toolPreferences: {
-        yolo_local__fs_write: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -260,8 +260,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_write'],
-      toolPreferences: {
-        yolo_local__fs_write: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -312,8 +312,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_write'],
-      toolPreferences: {
-        yolo_local__fs_write: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -360,8 +360,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -406,8 +406,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -450,8 +450,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -494,8 +494,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__bash'],
-      toolPreferences: {
-        yolo_local__bash: {
+      builtinCapabilityPreferences: {
+        vault_shell: {
           enabled: true,
           approvalMode: 'dangerous_only',
         },
@@ -538,8 +538,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__bash'],
-      toolPreferences: {
-        yolo_local__bash: {
+      builtinCapabilityPreferences: {
+        vault_shell: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -610,8 +610,8 @@ describe('AgentToolGateway', () => {
     const gateway = new AgentToolGateway(mcpManager, {
       bypassToolApproval: true,
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -647,8 +647,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -685,8 +685,8 @@ describe('AgentToolGateway', () => {
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
       blockedCommandPrefixes: [],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -734,8 +734,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -797,8 +797,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -944,8 +944,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -1010,8 +1010,8 @@ describe('AgentToolGateway', () => {
     const gateway = new AgentToolGateway(mcpManager, {
       isSubagentChildRun: true,
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -1079,8 +1079,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -1673,8 +1673,8 @@ describe('AgentToolGateway', () => {
       // (non-module) chat mode and assistant run.
       const gateway = new AgentToolGateway(mcpManager, {
         allowedToolNames: ['yolo_local__bash'],
-        toolPreferences: {
-          yolo_local__bash: { enabled: true, approvalMode: 'full_access' },
+        builtinCapabilityPreferences: {
+          vault_shell: { enabled: true, approvalMode: 'full_access' },
         },
         bashReadOnly: false,
       })

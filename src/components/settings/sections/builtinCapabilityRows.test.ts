@@ -132,30 +132,30 @@ describe('buildBuiltinCapabilityRows enablement', () => {
     expect(fileEditing?.enabled).toBe(true)
   })
 
-  it('is disabled when the legacy group key is disabled', () => {
+  it('is disabled when its own capability-id key is disabled', () => {
     const rows = buildBuiltinCapabilityRows({
-      toolOptions: { fs_edit_ops: { disabled: true } },
+      toolOptions: { file_editing: { disabled: true } },
       t,
     })
     const fileEditing = rows.find((row) => row.id === 'file_editing')
     expect(fileEditing?.enabled).toBe(false)
   })
 
-  it('is disabled when any single member key is disabled, even if the group key is not', () => {
+  it('is disabled for a 1:1 capability when its own capability-id key is disabled', () => {
     const rows = buildBuiltinCapabilityRows({
-      toolOptions: { fs_write: { disabled: true } },
-      t,
-    })
-    const fileEditing = rows.find((row) => row.id === 'file_editing')
-    expect(fileEditing?.enabled).toBe(false)
-  })
-
-  it('is disabled for a 1:1 capability when its own short-name key is disabled', () => {
-    const rows = buildBuiltinCapabilityRows({
-      toolOptions: { bash: { disabled: true } },
+      toolOptions: { vault_shell: { disabled: true } },
       t,
     })
     const vaultShell = rows.find((row) => row.id === 'vault_shell')
     expect(vaultShell?.enabled).toBe(false)
+  })
+
+  it('a disabled key for an unrelated capability does not affect others', () => {
+    const rows = buildBuiltinCapabilityRows({
+      toolOptions: { vault_shell: { disabled: true } },
+      t,
+    })
+    const fileEditing = rows.find((row) => row.id === 'file_editing')
+    expect(fileEditing?.enabled).toBe(true)
   })
 })

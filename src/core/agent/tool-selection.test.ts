@@ -1,17 +1,7 @@
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { McpTool } from '../../types/mcp.types'
 
-import { expandAllowedToolNames, selectAllowedTools } from './tool-selection'
-
-describe('expandAllowedToolNames', () => {
-  it('expands the file editing group', () => {
-    const expanded = expandAllowedToolNames(['yolo_local__fs_edit_ops'])
-
-    expect(expanded).toBeDefined()
-    expect(expanded?.has('yolo_local__fs_edit')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_write')).toBe(true)
-  })
-})
+import { selectAllowedTools } from './tool-selection'
 
 describe('selectAllowedTools', () => {
   it('keeps full schemas for tools left in always mode', async () => {
@@ -82,8 +72,8 @@ describe('selectAllowedTools', () => {
       mcp: {
         servers: [],
         enableToolDisclosure: false,
-        builtinToolOptions: {
-          delegate_subagent: {
+        builtinCapabilityOptions: {
+          subagent_delegation: {
             allowedModelIds: ['openai/gpt-4.1-mini'],
             preferredModelId: 'openai/gpt-4.1-mini',
           },

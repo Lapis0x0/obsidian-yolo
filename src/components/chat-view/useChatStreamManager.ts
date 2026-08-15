@@ -41,10 +41,7 @@ import { getChatModelClient } from '../../core/llm/manager'
 import type { AutoPromotedTransportMode } from '../../core/llm/requestTransport'
 import type { ResponseDeliveryMode } from '../../core/llm/responseDeliveryMode'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
-import {
-  TERMINAL_COMMAND_TOOL_NAME,
-  getLocalFileToolServerName,
-} from '../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
@@ -110,6 +107,14 @@ const AUTO_CONTEXT_COMPACT_TOOL_FQN = getToolName(
   CONTEXT_COMPACT_TOOL_NAME,
 )
 
+// D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9):
+// `context_compact`'s owning capability id — `getCapabilityForTool` isn't
+// used here since this constant must survive even if the tool were ever
+// renamed independently of its capability; matches the hardcoded id already
+// used at the capability's own definition site
+// (`core/tools/capabilities/context-compaction.ts`).
+const AUTO_CONTEXT_COMPACT_CAPABILITY_ID = 'context_compaction'
+
 const AUTO_CONTEXT_COMPACT_TOOL_PREFERENCE: AssistantToolPreference = {
   enabled: true,
   approvalMode: 'full_access',
@@ -141,10 +146,15 @@ const enableAutoContextCompactionTool = (
       includeBuiltinTools: true,
     },
     allowedToolNames,
-    toolPreferences: {
-      ...(runtime.toolPreferences ?? {}),
-      [AUTO_CONTEXT_COMPACT_TOOL_FQN]: {
-        ...(runtime.toolPreferences?.[AUTO_CONTEXT_COMPACT_TOOL_FQN] ?? {}),
+    // `context_compact` is a built-in tool: its enabled/approval state is
+    // resolved from `builtinCapabilityPreferences`, not `toolPreferences`
+    // (D9) — forcing it on for auto-compaction must write there instead.
+    builtinCapabilityPreferences: {
+      ...(runtime.builtinCapabilityPreferences ?? {}),
+      [AUTO_CONTEXT_COMPACT_CAPABILITY_ID]: {
+        ...(runtime.builtinCapabilityPreferences?.[
+          AUTO_CONTEXT_COMPACT_CAPABILITY_ID
+        ] ?? {}),
         ...AUTO_CONTEXT_COMPACT_TOOL_PREFERENCE,
       },
     },
@@ -746,12 +756,13 @@ export function useChatStreamManager({
           allowedToolNames: chatModeRuntime.allowedToolNames,
           enableToolDisclosure: settings.mcp.enableToolDisclosure,
           toolPreferences: chatModeRuntime.toolPreferences,
+          builtinCapabilityPreferences:
+            chatModeRuntime.builtinCapabilityPreferences,
           toolServerPreferences: chatModeRuntime.toolServerPreferences,
           toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
           bypassToolApproval: chatModeRuntime.bypassToolApproval,
-          blockedCommandPrefixes: settings.mcp.builtinToolOptions[
-            TERMINAL_COMMAND_TOOL_NAME
-          ]?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
+          blockedCommandPrefixes: settings.mcp.builtinCapabilityOptions.terminal
+            ?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
           // The assistant selector stays populated in settings even while a
           // module chat mode is active (D4 hides it in the UI); its
           // workspace scope must not leak into a run where the assistant

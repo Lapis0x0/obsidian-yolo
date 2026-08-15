@@ -3,7 +3,7 @@ import { Assistant } from '../../types/assistant.types'
 
 import {
   buildAssistantToolPreferencesFromEnabledToolNames,
-  buildDefaultBuiltinToolPreferences,
+  buildDefaultBuiltinCapabilityPreferences,
   getAssistantToolPreferences,
 } from './tool-preferences'
 
@@ -26,7 +26,8 @@ export const createDefaultAssistant = (): Assistant => ({
   enableTools: true,
   includeBuiltinTools: true,
   enabledToolNames: [],
-  toolPreferences: buildDefaultBuiltinToolPreferences(),
+  toolPreferences: {},
+  builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
   toolServerPreferences: {},
   enabledSkills: [],
   skillPreferences: {},
@@ -53,6 +54,8 @@ const hasDefaultAssistantChanged = (
       JSON.stringify(normalized.enabledToolNames ?? []) ||
     JSON.stringify(current.toolPreferences ?? {}) !==
       JSON.stringify(normalized.toolPreferences ?? {}) ||
+    JSON.stringify(current.builtinCapabilityPreferences ?? {}) !==
+      JSON.stringify(normalized.builtinCapabilityPreferences ?? {}) ||
     JSON.stringify(current.toolServerPreferences ?? {}) !==
       JSON.stringify(normalized.toolServerPreferences ?? {}) ||
     JSON.stringify(current.enabledSkills ?? []) !==
@@ -88,6 +91,7 @@ const normalizeDefaultAssistant = (assistant: Assistant): Assistant => {
         : buildAssistantToolPreferencesFromEnabledToolNames(
             assistant.enabledToolNames,
           ),
+    builtinCapabilityPreferences: assistant.builtinCapabilityPreferences ?? {},
     toolServerPreferences: assistant.toolServerPreferences ?? {},
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},

@@ -205,10 +205,10 @@ export function AgentSection({ app }: AgentSectionProps) {
     // as `AgentToolsModal.tsx`'s `builtinToolGroups` — see that useMemo. This
     // flat overview and the modal it launches must stay in visible sync.
     return buildBuiltinCapabilityRows({
-      toolOptions: settings.mcp.builtinToolOptions,
+      toolOptions: settings.mcp.builtinCapabilityOptions,
       t,
     }).map((row) => ({ id: row.id, label: row.label, enabled: row.enabled }))
-  }, [settings.mcp.builtinToolOptions, t])
+  }, [settings.mcp.builtinCapabilityOptions, t])
 
   const allSkillEntries = useLiteSkillEntries(app, { settings })
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []

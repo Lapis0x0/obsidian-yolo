@@ -15,6 +15,7 @@ type AssistantRuntimeOptions = Pick<
   | 'enableTools'
   | 'includeBuiltinTools'
   | 'toolPreferences'
+  | 'builtinCapabilityPreferences'
   | 'toolServerPreferences'
 >
 
@@ -74,6 +75,7 @@ export type ChatModeRuntime = {
   loopConfig: AgentRuntimeLoopConfig
   allowedToolNames: string[] | undefined
   toolPreferences: Assistant['toolPreferences']
+  builtinCapabilityPreferences: Assistant['builtinCapabilityPreferences']
   toolServerPreferences: Assistant['toolServerPreferences']
   bypassToolApproval: boolean
   toolCapabilityMode: ToolCapabilityMode
@@ -171,6 +173,9 @@ export function resolveChatModeRuntime({
     },
     allowedToolNames,
     toolPreferences: isAgentMode ? assistant?.toolPreferences : undefined,
+    builtinCapabilityPreferences: isAgentMode
+      ? assistant?.builtinCapabilityPreferences
+      : undefined,
     toolServerPreferences: isAgentMode
       ? assistant?.toolServerPreferences
       : undefined,
@@ -215,6 +220,7 @@ function resolveModuleChatModeRuntime(
       ...moduleToolNames,
     ],
     toolPreferences: undefined,
+    builtinCapabilityPreferences: undefined,
     toolServerPreferences: undefined,
     bypassToolApproval: false,
     toolCapabilityMode: registered.mode.capability === 'none' ? 'ask' : 'agent',

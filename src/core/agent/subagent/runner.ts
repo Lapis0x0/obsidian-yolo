@@ -280,6 +280,7 @@ async function runChildAgent(
     mcpManager: parent.mcpManager,
     allowedToolNames: childAllowedToolNames,
     toolPreferences: parent.toolPreferences,
+    builtinCapabilityPreferences: parent.builtinCapabilityPreferences,
     toolServerPreferences: parent.toolServerPreferences,
     workspaceScope: parent.workspaceScope,
     allowedSkillPaths: parent.allowedSkillPaths,

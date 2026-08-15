@@ -21,6 +21,7 @@ export type SubagentParentContext = {
   conversationId: string
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
+  builtinCapabilityPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   workspaceScope?: AssistantWorkspaceScope
   allowedSkillPaths?: string[]
@@ -45,6 +46,7 @@ export function buildSubagentParentContext(
     conversationId: input.conversationId,
     allowedToolNames: input.allowedToolNames,
     toolPreferences: input.toolPreferences,
+    builtinCapabilityPreferences: input.builtinCapabilityPreferences,
     toolServerPreferences: input.toolServerPreferences,
     workspaceScope: input.workspaceScope,
     allowedSkillPaths: input.allowedSkillPaths,

@@ -63,10 +63,7 @@ import {
   getAssistantToolDisclosureMode,
   isAssistantToolEnabled,
 } from './tool-preferences'
-import {
-  expandAllowedToolNames,
-  isLoadToolSchemasToolName,
-} from './tool-selection'
+import { isLoadToolSchemasToolName } from './tool-selection'
 import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
 import type { AgentRunContext } from './types'
 import {
@@ -260,6 +257,17 @@ export class AgentToolGateway {
   private readonly toolsEnabled: boolean
   private readonly allowedToolNames?: Set<string>
   private readonly toolPreferences?: Record<string, AssistantToolPreference>
+  /**
+   * Per-capability enabled/approval state for built-in tools (D9,
+   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Sibling to
+   * `toolPreferences`, which since that migration only carries remote MCP
+   * tool state — every call below that resolves a *built-in* tool's approval
+   * mode or enablement must pass both.
+   */
+  private readonly builtinCapabilityPreferences?: Record<
+    string,
+    AssistantToolPreference
+  >
   private readonly toolServerPreferences?: Record<
     string,
     AssistantToolServerPreference
@@ -292,6 +300,7 @@ export class AgentToolGateway {
       toolsEnabled?: boolean
       allowedToolNames?: string[]
       toolPreferences?: Record<string, AssistantToolPreference>
+      builtinCapabilityPreferences?: Record<string, AssistantToolPreference>
       toolServerPreferences?: Record<string, AssistantToolServerPreference>
       enableToolDisclosure?: boolean
       workspaceScope?: AssistantWorkspaceScope
@@ -308,10 +317,14 @@ export class AgentToolGateway {
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
+    // Post-D9, `allowedToolNames` is always already a fully-expanded list of
+    // real tool FQNs (see `tool-selection.ts`'s `selectAllowedTools` for the
+    // same reasoning) — no virtual group name expansion needed here.
     this.allowedToolNames = options?.allowedToolNames
-      ? expandAllowedToolNames(options.allowedToolNames)
+      ? new Set(options.allowedToolNames)
       : undefined
     this.toolPreferences = options?.toolPreferences
+    this.builtinCapabilityPreferences = options?.builtinCapabilityPreferences
     this.toolServerPreferences = options?.toolServerPreferences
     this.enableToolDisclosure = options?.enableToolDisclosure ?? true
     this.workspaceScope = options?.workspaceScope
@@ -1537,6 +1550,7 @@ export class AgentToolGateway {
     return getAssistantToolApprovalMode(
       {
         toolPreferences: this.toolPreferences,
+        builtinCapabilityPreferences: this.builtinCapabilityPreferences,
         toolServerPreferences: this.toolServerPreferences,
         enabledToolNames: this.allowedToolNames
           ? [...this.allowedToolNames]
@@ -1657,6 +1671,7 @@ export class AgentToolGateway {
         getAssistantToolApprovalMode(
           {
             toolPreferences: this.toolPreferences,
+            builtinCapabilityPreferences: this.builtinCapabilityPreferences,
             toolServerPreferences: this.toolServerPreferences,
             enabledToolNames: this.allowedToolNames
               ? [...this.allowedToolNames]
@@ -1694,6 +1709,7 @@ export class AgentToolGateway {
     return isAssistantToolEnabled(
       {
         toolPreferences: this.toolPreferences,
+        builtinCapabilityPreferences: this.builtinCapabilityPreferences,
         enabledToolNames: [...this.allowedToolNames],
       },
       toolName,

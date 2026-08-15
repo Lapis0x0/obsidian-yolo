@@ -27,12 +27,11 @@ import type { AgentRunContext } from '../agent/types'
 import type { RAGEngine } from '../rag/ragEngine'
 import { executeBuiltinTool } from '../tools/dispatcher'
 import {
-  FILE_EDIT_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-} from '../tools/legacy-persistence-keys'
-import { getToolDefinition, isBuiltinToolName } from '../tools/registry'
+  getCapabilityForTool,
+  getToolDefinition,
+  isBuiltinToolName,
+} from '../tools/registry'
 import type { ToolContext } from '../tools/types'
-import { WEB_SCRAPE_TOOL_NAME, WEB_SEARCH_TOOL_NAME } from '../web-search'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import type { InProcessToolServer } from './inProcessToolServer'
@@ -41,20 +40,12 @@ import {
   getJsSandboxSettings,
 } from './jsSandboxSettings'
 import { disposeJsSandbox } from './jsSandboxTool'
-// eslint-disable-next-line import/order -- false positive: sibling group is contiguous; rule miscounts the blank line above this group
 import {
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
-
-const LOCAL_FS_EDIT_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-)
 import { McpOAuthController } from './mcpOAuthController'
 import type { McpOAuthClientProvider } from './mcpOAuthProvider'
 import type { McpRemoteTransportBackend } from './remoteTransport'
@@ -145,10 +136,9 @@ export class McpManager {
 
   /**
    * Two independent gates, applied in sequence: persisted user enablement
-   * (below, unchanged this batch — still keyed by the pre-D9 group/short
-   * names), then, for tools already migrated into the registry, that tool's
-   * own `isAvailable(ctx)` (master.md §3.1b / decision 18 — environment
-   * availability is separate from user authorization).
+   * (below), then, for tools already migrated into the registry, that
+   * tool's own `isAvailable(ctx)` (master.md §3.1b / decision 18 —
+   * environment availability is separate from user authorization).
    */
   private isLocalToolEnabled(toolName: string): boolean {
     if (!this.isLocalToolPersistedEnabled(toolName)) {
@@ -173,44 +163,27 @@ export class McpManager {
     return true
   }
 
+  /**
+   * As of the `80_to_81` settings migration (D9,
+   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9),
+   * `settings.mcp.builtinCapabilityOptions` is keyed by capability id — one
+   * entry per capability, no more group-key-plus-members aggregation. This
+   * collapses what used to be three special-cased group checks
+   * (`web_ops`/`fs_edit_ops`/`memory_ops`) plus a generic fallback into a
+   * single lookup through the tool's owning capability.
+   */
   private isLocalToolPersistedEnabled(toolName: string): boolean {
-    // Web tools share a single `web_ops` group switch. This is enablement
-    // only — `web_search`'s provider-readiness check used to live here too,
-    // but as of D6 batch 5 it is the tool's own `isAvailable` (see
-    // `web_search/definition.ts`), applied generically above rather than
-    // special-cased in this function.
-    if (
-      toolName === WEB_SEARCH_TOOL_NAME ||
-      toolName === WEB_SCRAPE_TOOL_NAME
-    ) {
-      const groupDisabled =
-        this.settings.mcp.builtinToolOptions[WEB_OPS_GROUP_TOOL_NAME]
-          ?.disabled ?? false
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      return !(groupDisabled || splitToolDisabled)
+    const capability = getCapabilityForTool(toolName)
+    if (!capability) {
+      // Unknown/retired local short name (e.g. a pre-v79 `fs_list`) — no
+      // capability owns it, so there is nothing to disable. Matches the
+      // pre-D9 fallthrough (`directDisabled` undefined => enabled).
+      return true
     }
-    if (LOCAL_FS_EDIT_TOOL_NAME_SET.has(toolName)) {
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      const groupedEditOpsDisabled =
-        this.settings.mcp.builtinToolOptions[FILE_EDIT_GROUP_TOOL_NAME]
-          ?.disabled ?? false
-      return !(splitToolDisabled || groupedEditOpsDisabled)
-    }
-    if (LOCAL_MEMORY_SPLIT_TOOL_NAME_SET.has(toolName)) {
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      const groupedMemoryOpsDisabled =
-        this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
-      return !(splitToolDisabled || groupedMemoryOpsDisabled)
-    }
-    const directDisabled =
-      this.settings.mcp.builtinToolOptions[toolName]?.disabled
-    if (typeof directDisabled === 'boolean') {
-      return !directDisabled
-    }
-    return true
+    return !(
+      this.settings.mcp.builtinCapabilityOptions[capability.id]?.disabled ??
+      false
+    )
   }
 
   constructor({

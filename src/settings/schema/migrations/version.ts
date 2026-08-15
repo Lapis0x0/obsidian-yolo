@@ -4,4 +4,4 @@
  * `setting.types.ts` (breaking that edge removes the migration→types→index
  * dependency cycles).
  */
-export const SETTINGS_SCHEMA_VERSION = 80
+export const SETTINGS_SCHEMA_VERSION = 81

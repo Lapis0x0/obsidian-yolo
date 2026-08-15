@@ -1,7 +1,6 @@
 import { App } from 'obsidian'
 
 import { DEFAULT_BLOCKED_PREFIXES } from '../../../core/agent/bash/command-classifier'
-import { TERMINAL_COMMAND_TOOL_NAME } from '../../../core/mcp/localFileTools'
 import type { BuiltinCapabilityId } from '../../../core/tools/registry'
 import YoloPlugin from '../../../main'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
@@ -33,12 +32,10 @@ export type CapabilitySettingsLauncherContext = {
 
 export type SettingsLauncher = (ctx: CapabilitySettingsLauncherContext) => void
 
-// Ported verbatim from the `tool.id === DELEGATE_SUBAGENT_TOOL_SHORT_NAME`
-// branch of `AgentToolsModal.tsx`'s settings-button `onClick` (:335-364).
-// Still reads/writes `settings.mcp.builtinToolOptions.delegate_subagent` —
-// the OLD short-tool-name persistence key. Migrating persistence to a
-// capability-id key is D9; this launcher must keep using the current key so
-// this phase stays zero-behavior-change.
+// Reads/writes `settings.mcp.builtinCapabilityOptions.subagent_delegation` —
+// the capability-id key as of the `80_to_81` settings migration (D9,
+// docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Was keyed by
+// the old short tool name `delegate_subagent` before that migration landed.
 const openSubagentSettings: SettingsLauncher = ({
   app,
   settings,
@@ -48,16 +45,16 @@ const openSubagentSettings: SettingsLauncher = ({
   new SubagentConfigModal(app, {
     title: t('settings.subagent.openSettings', 'Configure subagent models'),
     settings,
-    value: settings.mcp.builtinToolOptions.delegate_subagent ?? {},
+    value: settings.mcp.builtinCapabilityOptions.subagent_delegation ?? {},
     onChange: (next) =>
       void setSettings({
         ...settings,
         mcp: {
           ...settings.mcp,
-          builtinToolOptions: {
-            ...settings.mcp.builtinToolOptions,
-            delegate_subagent: {
-              ...settings.mcp.builtinToolOptions.delegate_subagent,
+          builtinCapabilityOptions: {
+            ...settings.mcp.builtinCapabilityOptions,
+            subagent_delegation: {
+              ...settings.mcp.builtinCapabilityOptions.subagent_delegation,
               ...next,
             },
           },
@@ -88,12 +85,10 @@ const openJsSandboxSettings: SettingsLauncher = ({
   }).open()
 }
 
-// Ported verbatim from the `tool.id === TERMINAL_COMMAND_TOOL_NAME` branch of
-// `AgentToolsModal.tsx`'s settings-button `onClick`. Still reads/writes
-// `settings.mcp.builtinToolOptions[TERMINAL_COMMAND_TOOL_NAME]` — the OLD
-// short-tool-name persistence key. Migrating persistence to a capability-id
-// key is D9; this launcher must keep using the current key so this phase
-// stays zero-behavior-change.
+// Reads/writes `settings.mcp.builtinCapabilityOptions.terminal` — the
+// capability-id key as of the `80_to_81` settings migration (D9,
+// docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Was keyed by
+// the old short tool name `terminal_command` before that migration landed.
 const openTerminalSettings: SettingsLauncher = ({
   app,
   settings,
@@ -105,17 +100,18 @@ const openTerminalSettings: SettingsLauncher = ({
       'settings.terminalCommand.openSettings',
       'Configure terminal command',
     ),
-    value: settings.mcp.builtinToolOptions[TERMINAL_COMMAND_TOOL_NAME]
-      ?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
+    value: settings.mcp.builtinCapabilityOptions.terminal?.blockedPrefixes ?? [
+      ...DEFAULT_BLOCKED_PREFIXES,
+    ],
     onChange: (next) =>
       void setSettings({
         ...settings,
         mcp: {
           ...settings.mcp,
-          builtinToolOptions: {
-            ...settings.mcp.builtinToolOptions,
-            [TERMINAL_COMMAND_TOOL_NAME]: {
-              ...settings.mcp.builtinToolOptions[TERMINAL_COMMAND_TOOL_NAME],
+          builtinCapabilityOptions: {
+            ...settings.mcp.builtinCapabilityOptions,
+            terminal: {
+              ...settings.mcp.builtinCapabilityOptions.terminal,
               blockedPrefixes: next,
             },
           },

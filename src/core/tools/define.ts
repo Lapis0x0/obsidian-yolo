@@ -18,11 +18,16 @@ import type {
  */
 
 /**
- * `Name` is inferred from the literal `name` field via the `const` type
- * parameter modifier (TS 5.0+), which is what keeps it a literal (e.g.
- * `'memory_add'`) instead of widening to `string`.
+ * `Name` is inferred from the literal `name` field and stays a literal (e.g.
+ * `'memory_add'`) rather than widening to `string`, because a type parameter
+ * *constrained to* `string` suppresses literal widening at its inference
+ * site. No `const` type-parameter modifier is needed (or used) for that —
+ * and it must not be added back: the repo's esbuild (0.17.3) predates TS 5.0
+ * `const` type parameters (0.17.5+), so it would type-check under tsc but
+ * fail `npm run build` at bundle time. `src/core/tools/literal-preservation.test-d.ts`
+ * pins the behavior this comment claims.
  */
-export const defineTool = <const Name extends string>(
+export const defineTool = <Name extends string>(
   def: Omit<BuiltinToolDefinition, 'name'> & { name: Name },
 ): BuiltinToolDefinition<Name> => def
 
@@ -35,8 +40,8 @@ export const defineTool = <const Name extends string>(
  * plain `string` and `BuiltinToolName` would silently lose its union.
  */
 export const defineCapability = <
-  const Id extends string,
-  const Tools extends readonly BuiltinToolDefinition[],
+  Id extends string,
+  Tools extends readonly BuiltinToolDefinition[],
 >(
   def: Omit<BuiltinCapabilityDefinition, 'id' | 'tools'> & {
     id: Id

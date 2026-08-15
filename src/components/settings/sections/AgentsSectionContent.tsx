@@ -30,7 +30,7 @@ import {
 } from '../../../core/agent/assistant-model'
 import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
-  buildDefaultBuiltinToolPreferences,
+  buildDefaultBuiltinCapabilityPreferences,
   buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
@@ -297,7 +297,8 @@ function createNewAgent(): Assistant {
     enableTools: true,
     includeBuiltinTools: true,
     enabledToolNames: [],
-    toolPreferences: buildDefaultBuiltinToolPreferences(),
+    toolPreferences: {},
+    builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
     toolServerPreferences: {},
     enabledSkills: [],
     skillPreferences: {},
@@ -316,6 +317,7 @@ function toDraftAgent(assistant: Assistant): Assistant {
     modelId: assistant.modelId || undefined,
     enabledToolNames: getExplicitlyEnabledAssistantToolNames(assistant),
     toolPreferences: getAssistantToolPreferences(assistant),
+    builtinCapabilityPreferences: assistant.builtinCapabilityPreferences ?? {},
     toolServerPreferences: assistant.toolServerPreferences ?? {},
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
@@ -326,6 +328,9 @@ function toDraftAgent(assistant: Assistant): Assistant {
   }
 }
 
+// Remote MCP tools only, post-D9: built-in tool state no longer lives in
+// `toolPreferences` at all (see `updateDraftBuiltinCapabilityPreferences`
+// below for the built-in counterpart).
 function updateDraftToolPreferences(
   assistant: Assistant,
   updater: (
@@ -345,6 +350,29 @@ function updateDraftToolPreferences(
     ...assistant,
     toolPreferences: nextToolPreferences,
     enabledToolNames: nextEnabledToolNames,
+  }
+}
+
+// Built-in capabilities only: writes a single capability's
+// `{ enabled, approvalMode }` entry in the draft's own
+// `builtinCapabilityPreferences` map. `updater` receives the capability's
+// *current effective* entry (explicit if present, else its registry
+// default) so callers can safely read-modify-write a single field without
+// clobbering the other.
+function updateDraftBuiltinCapabilityPreferences(
+  assistant: Assistant,
+  capabilityId: BuiltinCapabilityId,
+  updater: (
+    current: AssistantToolPreference | undefined,
+  ) => AssistantToolPreference,
+): Assistant {
+  const current = assistant.builtinCapabilityPreferences ?? {}
+  return {
+    ...assistant,
+    builtinCapabilityPreferences: {
+      ...current,
+      [capabilityId]: updater(current[capabilityId]),
+    },
   }
 }
 
@@ -581,30 +609,55 @@ export function AgentsSectionContent({
     setDraftAgent(null)
   }
 
-  const toggleTool = (toolNames: string[], enabled: boolean) => {
+  // `tools` mixes built-in capability rows (`capabilityId` set — a bulk
+  // toggle can span several) and MCP server tool rows (`capabilityId`
+  // undefined, `toggleTargets` always a single FQN). Each row is routed to
+  // its own persistence half: built-ins write
+  // `builtinCapabilityPreferences[capabilityId]`, everything else writes
+  // `toolPreferences[fqn]` — see `updateDraftBuiltinCapabilityPreferences` /
+  // `updateDraftToolPreferences`.
+  const toggleTool = (tools: AgentToolView[], enabled: boolean) => {
     setDraftAgent((prev) => {
       if (!prev) {
         return prev
       }
 
-      return updateDraftToolPreferences(prev, (current) => {
-        const next = { ...current }
-        for (const toolName of toolNames) {
-          next[toolName] = {
-            ...next[toolName],
-            enabled,
-            approvalMode:
-              next[toolName]?.approvalMode ??
-              getDefaultApprovalModeForTool(toolName),
-          }
+      let next = prev
+      for (const tool of tools) {
+        if (tool.capabilityId) {
+          const capabilityId = tool.capabilityId
+          next = updateDraftBuiltinCapabilityPreferences(
+            next,
+            capabilityId,
+            (current) => ({
+              enabled,
+              approvalMode:
+                current?.approvalMode ??
+                getDefaultApprovalModeForTool(tool.toggleTargets[0]),
+            }),
+          )
+          continue
         }
-        return next
-      })
+        next = updateDraftToolPreferences(next, (current) => {
+          const updated = { ...current }
+          for (const toolName of tool.toggleTargets) {
+            updated[toolName] = {
+              ...updated[toolName],
+              enabled,
+              approvalMode:
+                updated[toolName]?.approvalMode ??
+                getDefaultApprovalModeForTool(toolName),
+            }
+          }
+          return updated
+        })
+      }
+      return next
     })
   }
 
   const setToolApprovalMode = (
-    toolNames: string[],
+    tools: AgentToolView[],
     approvalMode: AssistantToolApprovalMode,
   ) => {
     setDraftAgent((prev) => {
@@ -612,17 +665,33 @@ export function AgentsSectionContent({
         return prev
       }
 
-      return updateDraftToolPreferences(prev, (current) => {
-        const next = { ...current }
-        for (const toolName of toolNames) {
-          next[toolName] = {
-            ...next[toolName],
-            enabled: next[toolName]?.enabled ?? true,
-            approvalMode,
-          }
+      let next = prev
+      for (const tool of tools) {
+        if (tool.capabilityId) {
+          const capabilityId = tool.capabilityId
+          next = updateDraftBuiltinCapabilityPreferences(
+            next,
+            capabilityId,
+            (current) => ({
+              enabled: current?.enabled ?? true,
+              approvalMode,
+            }),
+          )
+          continue
         }
-        return next
-      })
+        next = updateDraftToolPreferences(next, (current) => {
+          const updated = { ...current }
+          for (const toolName of tool.toggleTargets) {
+            updated[toolName] = {
+              ...updated[toolName],
+              enabled: updated[toolName]?.enabled ?? true,
+              approvalMode,
+            }
+          }
+          return updated
+        })
+      }
+      return next
     })
   }
 
@@ -794,7 +863,7 @@ export function AgentsSectionContent({
 
     if (includeBuiltinTools) {
       const rows = buildBuiltinCapabilityRows({
-        toolOptions: settings.mcp.builtinToolOptions,
+        toolOptions: settings.mcp.builtinCapabilityOptions,
         t,
       })
       for (const row of rows) {
@@ -804,18 +873,6 @@ export function AgentsSectionContent({
         if (presentMembers.length === 0) {
           continue
         }
-        // A capability with a legacy group key (file_editing/memory/
-        // web_access) has one more legacy persistence key than member tool
-        // — see `getLegacyPersistenceKeysForCapability`. 1:1 capabilities
-        // have exactly as many of each. This is how the pre-D7 group-vs-
-        // single-tool `fullName` distinction (`${server}__${GROUP_NAME}` vs
-        // the tool's own FQN) is reproduced without re-listing the three
-        // group names here.
-        const isGroupCapability =
-          row.legacyPersistenceKeys.length > row.memberToolNames.length
-        const fullNameShortName = isGroupCapability
-          ? row.legacyPersistenceKeys[0]
-          : presentMembers[0]
 
         const key = `__builtin:${row.category}`
         const title = t(
@@ -824,7 +881,10 @@ export function AgentsSectionContent({
         )
         const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
         group.tools.push({
-          fullName: getToolName(localFsServerName, fullNameShortName),
+          // Only used as a React list key — any present member's own FQN is
+          // fine, there is no group-vs-single-tool distinction to preserve
+          // post-D9 (decision 12: no virtual tool names anywhere).
+          fullName: getToolName(localFsServerName, presentMembers[0]),
           toggleTargets: presentMembers.map((name) =>
             getToolName(localFsServerName, name),
           ),
@@ -855,7 +915,7 @@ export function AgentsSectionContent({
     availableTools,
     draftAgent?.includeBuiltinTools,
     localFsServerName,
-    settings.mcp.builtinToolOptions,
+    settings.mcp.builtinCapabilityOptions,
     t,
   ])
 
@@ -1844,10 +1904,7 @@ export function AgentsSectionContent({
                               type="button"
                               className="yolo-agent-tool-group-bulk-toggle"
                               onClick={() =>
-                                toggleTool(
-                                  groupToggleTargets,
-                                  !allGroupToolsEnabled,
-                                )
+                                toggleTool(group.tools, !allGroupToolsEnabled)
                               }
                             >
                               {allGroupToolsEnabled
@@ -1928,7 +1985,7 @@ export function AgentsSectionContent({
                                           options={approvalOptions}
                                           onChange={(value) =>
                                             setToolApprovalMode(
-                                              tool.toggleTargets,
+                                              [tool],
                                               value as AssistantToolApprovalMode,
                                             )
                                           }
@@ -1941,7 +1998,7 @@ export function AgentsSectionContent({
                                   <ObsidianToggle
                                     value={Boolean(selected)}
                                     onChange={(value) =>
-                                      toggleTool(tool.toggleTargets, value)
+                                      toggleTool([tool], value)
                                     }
                                   />
                                 </div>

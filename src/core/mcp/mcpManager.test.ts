@@ -24,7 +24,7 @@ describe('McpManager mobile built-in tool behavior', () => {
 
   function createManager(
     openApplyReview: (state: unknown) => Promise<boolean> = jest.fn(),
-    builtinToolOptions: Record<string, { disabled?: boolean }> = {},
+    builtinCapabilityOptions: Record<string, { disabled?: boolean }> = {},
   ) {
     const file = Object.assign(new TFile(), {
       path: 'note.md',
@@ -48,7 +48,7 @@ describe('McpManager mobile built-in tool behavior', () => {
       settings: {
         mcp: {
           servers: [],
-          builtinToolOptions,
+          builtinCapabilityOptions,
         },
         webSearch: {
           providers: [],
@@ -99,11 +99,12 @@ describe('McpManager mobile built-in tool behavior', () => {
     )
   })
 
-  it('keeps file editing tools obeying only their own group switch', async () => {
+  it('disabling the file_editing capability hides all of its member tools', async () => {
+    // D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9):
+    // `builtinCapabilityOptions` is keyed by capability id, one entry per
+    // capability — no more separate group-key-plus-member-keys aggregation.
     const manager = createManager(jest.fn(), {
-      fs_edit_ops: { disabled: true },
-      fs_edit: { disabled: false },
-      fs_write: { disabled: false },
+      file_editing: { disabled: true },
     })
 
     const toolNames = (
@@ -255,7 +256,7 @@ describe('McpManager connected tool catalog', () => {
         vault: { adapter: {}, configDir: OBSIDIAN_CONFIG_DIR },
       } as unknown as App,
       settings: {
-        mcp: { servers: [], builtinToolOptions: {} },
+        mcp: { servers: [], builtinCapabilityOptions: {} },
       } as never,
       openApplyReview: jest.fn(),
       registerSettingsListener: () => () => {},
