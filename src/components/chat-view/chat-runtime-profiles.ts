@@ -1,4 +1,3 @@
-import { FILE_EDIT_GROUP_TOOL_NAME } from '../../core/agent/builtinToolUiMeta'
 import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
 import {
@@ -8,6 +7,7 @@ import {
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabilityProfile'
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
+import { FILE_EDIT_GROUP_TOOL_NAME } from '../../core/tools/legacy-persistence-keys'
 import type { Assistant } from '../../types/assistant.types'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'

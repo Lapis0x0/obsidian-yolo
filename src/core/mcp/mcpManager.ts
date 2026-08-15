@@ -21,15 +21,15 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
-import {
-  FILE_EDIT_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-} from '../agent/builtinToolUiMeta'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
 import type { AgentRunContext } from '../agent/types'
 import type { RAGEngine } from '../rag/ragEngine'
 import { executeBuiltinTool } from '../tools/dispatcher'
+import {
+  FILE_EDIT_GROUP_TOOL_NAME,
+  WEB_OPS_GROUP_TOOL_NAME,
+} from '../tools/legacy-persistence-keys'
 import { getToolDefinition, isBuiltinToolName } from '../tools/registry'
 import type { ToolContext } from '../tools/types'
 import { WEB_SCRAPE_TOOL_NAME, WEB_SEARCH_TOOL_NAME } from '../web-search'

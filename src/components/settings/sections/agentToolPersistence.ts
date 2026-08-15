@@ -1,14 +1,22 @@
-import {
-  getLocalFileToolServerName,
-  getLocalFileTools,
-} from '../../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
+import { listBuiltinTools } from '../../../core/tools/registry'
 import type { AssistantToolPreference } from '../../../types/assistant.types'
 import type { McpTool } from '../../../types/mcp.types'
 
+/**
+ * Derived from the built-in tool registry rather than from
+ * `getLocalFileTools()`: "is this a tool we recognize?" is a question about
+ * the registry, not about what happens to be runnable right now. Reading it
+ * off the model-facing catalog meant a capability whose tools were
+ * temporarily unavailable (today only `bash`, when the `bash-engine` runtime
+ * component is disabled) had its saved per-assistant preference silently
+ * pruned on the next save — i.e. runtime availability rewriting user config,
+ * which master.md decision 18 forbids.
+ */
 function getKnownBuiltinToolNames(): Set<string> {
   return new Set(
-    getLocalFileTools().map((tool) =>
+    listBuiltinTools().map((tool) =>
       getToolName(getLocalFileToolServerName(), tool.name),
     ),
   )

@@ -28,18 +28,6 @@ import {
   getAssistantModelSelectValue,
   modelIdFromAssistantModelSelectValue,
 } from '../../../core/agent/assistant-model'
-import {
-  BUILTIN_TOOL_CATEGORY_I18N,
-  BUILTIN_TOOL_CATEGORY_ORDER,
-  type BuiltinToolCategory,
-  FILE_EDIT_GROUP_TOOL_NAME,
-  MEMORY_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
-  getBuiltinToolCategory,
-  getBuiltinToolDisplayIndex,
-  getBuiltinToolUiMeta,
-} from '../../../core/agent/builtinToolUiMeta'
 import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
   buildDefaultBuiltinToolPreferences,
@@ -57,8 +45,6 @@ import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
 import {
   BASH_TOOL_NAME,
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../../../core/mcp/localFileTools'
 import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
@@ -72,6 +58,10 @@ import {
   getDisabledSkillNameSet,
   resolveAssistantSkillPolicy,
 } from '../../../core/skills/skillPolicy'
+import {
+  BUILTIN_TOOL_CATEGORY_I18N,
+  BUILTIN_TOOL_CATEGORY_ORDER,
+} from '../../../core/tools/categories'
 import { getCapability } from '../../../core/tools/registry'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { YoloSettings } from '../../../settings/schema/setting.types'
@@ -104,6 +94,7 @@ import {
   normalizeToolSelectionForPersistence,
 } from './agentToolPersistence'
 import { AgentWorkspaceScopeEditor } from './AgentWorkspaceScopeEditor'
+import { buildBuiltinCapabilityRows } from './builtinCapabilityRows'
 
 type AgentsSectionContentProps = {
   app: App
@@ -125,12 +116,6 @@ type SkillRowView = LiteSkillEntry & {
   enabled: boolean
   loadMode: AssistantSkillLoadMode
 }
-
-const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-)
-const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
 
 const AGENT_EDITOR_TABS: AgentEditorTab[] = [
   'profile',
@@ -754,9 +739,14 @@ export function AgentsSectionContent({
       string,
       { title: string; tools: AgentToolView[]; isBuiltin: boolean }
     >()
-    const localEditSplitToolTargets = new Set<string>()
-    const localMemorySplitToolTargets = new Set<string>()
-    const localWebSplitToolTargets = new Set<string>()
+    const includeBuiltinTools = draftAgent?.includeBuiltinTools !== false
+    // Which built-in tool *short* names are actually present in this
+    // request's tool catalog (`availableTools` — respects runtime
+    // availability, unlike the global settings pages' `getLocalFileTools()`;
+    // see `builtinCapabilityRows.ts`'s doc comment on that asymmetry).
+    // Populated only when built-in tools are included at all, matching the
+    // pre-D7 early-return.
+    const builtinToolNamesPresent = new Set<string>()
 
     availableTools.forEach((tool) => {
       let serverName = localFsServerName
@@ -772,107 +762,69 @@ export function AgentsSectionContent({
       }
 
       const isBuiltin = serverName === localFsServerName
-      if (isBuiltin && draftAgent?.includeBuiltinTools === false) {
-        return
-      }
-      if (isBuiltin && EDIT_FS_TOOL_NAME_SET.has(toolName)) {
-        localEditSplitToolTargets.add(tool.name)
-        return
-      }
-      if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
-        localMemorySplitToolTargets.add(tool.name)
-        return
-      }
-      if (isBuiltin && SPLIT_WEB_TOOL_NAME_SET.has(toolName)) {
-        localWebSplitToolTargets.add(tool.name)
+      if (isBuiltin) {
+        if (includeBuiltinTools) {
+          builtinToolNamesPresent.add(toolName)
+        }
         return
       }
 
-      const builtinCategory = isBuiltin
-        ? (getBuiltinToolCategory(toolName) ?? 'vault')
-        : null
-      const key = isBuiltin ? `__builtin:${builtinCategory}` : serverName
-      const title = isBuiltin
-        ? t(
-            BUILTIN_TOOL_CATEGORY_I18N[builtinCategory!].key,
-            BUILTIN_TOOL_CATEGORY_I18N[builtinCategory!].fallback,
-          )
-        : serverName
-      const builtinMeta = isBuiltin ? getBuiltinToolUiMeta(toolName) : null
-      const displayName = builtinMeta
-        ? t(builtinMeta.labelKey, builtinMeta.labelFallback)
-        : toolName
-      const description = builtinMeta
-        ? t(builtinMeta.descKey ?? '', builtinMeta.descFallback)
-        : tool.description || t('common.none', 'None')
-      const group = groups.get(key) ?? { title, tools: [], isBuiltin }
+      const key = serverName
+      const group = groups.get(key) ?? {
+        title: serverName,
+        tools: [],
+        isBuiltin: false,
+      }
       group.tools.push({
         fullName: tool.name,
         toggleTargets: [tool.name],
-        displayName,
-        description,
+        displayName: toolName,
+        description: tool.description || t('common.none', 'None'),
       })
       groups.set(key, group)
     })
 
-    const pushBuiltinGroupTool = (toolName: string, tool: AgentToolView) => {
-      const category = getBuiltinToolCategory(toolName) ?? 'vault'
-      const key = `__builtin:${category}`
-      const title = t(
-        BUILTIN_TOOL_CATEGORY_I18N[category].key,
-        BUILTIN_TOOL_CATEGORY_I18N[category].fallback,
-      )
-      const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
-      group.tools.push(tool)
-      groups.set(key, group)
-    }
-
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localEditSplitToolTargets.size > 0
-    ) {
-      const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
-      if (!fileEditMeta) {
-        throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
-      }
-      pushBuiltinGroupTool(FILE_EDIT_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${FILE_EDIT_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localEditSplitToolTargets],
-        displayName: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
-        description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
+    if (includeBuiltinTools) {
+      const rows = buildBuiltinCapabilityRows({
+        toolOptions: settings.mcp.builtinToolOptions,
+        t,
       })
-    }
+      for (const row of rows) {
+        const presentMembers = row.memberToolNames.filter((name) =>
+          builtinToolNamesPresent.has(name),
+        )
+        if (presentMembers.length === 0) {
+          continue
+        }
+        // A capability with a legacy group key (file_editing/memory/
+        // web_access) has one more legacy persistence key than member tool
+        // — see `getLegacyPersistenceKeysForCapability`. 1:1 capabilities
+        // have exactly as many of each. This is how the pre-D7 group-vs-
+        // single-tool `fullName` distinction (`${server}__${GROUP_NAME}` vs
+        // the tool's own FQN) is reproduced without re-listing the three
+        // group names here.
+        const isGroupCapability =
+          row.legacyPersistenceKeys.length > row.memberToolNames.length
+        const fullNameShortName = isGroupCapability
+          ? row.legacyPersistenceKeys[0]
+          : presentMembers[0]
 
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localMemorySplitToolTargets.size > 0
-    ) {
-      const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
-      if (!memoryOpsMeta) {
-        throw new Error('Missing built-in tool UI metadata for memory_ops')
+        const key = `__builtin:${row.category}`
+        const title = t(
+          BUILTIN_TOOL_CATEGORY_I18N[row.category].key,
+          BUILTIN_TOOL_CATEGORY_I18N[row.category].fallback,
+        )
+        const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
+        group.tools.push({
+          fullName: getToolName(localFsServerName, fullNameShortName),
+          toggleTargets: presentMembers.map((name) =>
+            getToolName(localFsServerName, name),
+          ),
+          displayName: row.label,
+          description: row.description,
+        })
+        groups.set(key, group)
       }
-      pushBuiltinGroupTool(MEMORY_OPS_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${MEMORY_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localMemorySplitToolTargets],
-        displayName: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
-        description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
-      })
-    }
-
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localWebSplitToolTargets.size > 0
-    ) {
-      const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
-      if (!webOpsMeta) {
-        throw new Error('Missing built-in tool UI metadata for web_ops')
-      }
-      pushBuiltinGroupTool(WEB_OPS_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${WEB_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localWebSplitToolTargets],
-        displayName: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
-        description: t(webOpsMeta.descKey ?? '', webOpsMeta.descFallback),
-      })
     }
 
     const builtinCategoryRank = new Map<string, number>(
@@ -889,23 +841,14 @@ export function AgentsSectionContent({
         if (rb !== undefined) return 1
         return a.localeCompare(b)
       })
-      .map(([key, value]) => {
-        const builtinCategory = key.startsWith('__builtin:')
-          ? (key.slice('__builtin:'.length) as BuiltinToolCategory)
-          : null
-        const tools = builtinCategory
-          ? value.tools.slice().sort((toolA, toolB) => {
-              const idA = parseToolName(toolA.fullName).toolName
-              const idB = parseToolName(toolB.fullName).toolName
-              return (
-                getBuiltinToolDisplayIndex(builtinCategory, idA) -
-                getBuiltinToolDisplayIndex(builtinCategory, idB)
-              )
-            })
-          : value.tools
-        return { key, ...value, tools }
-      })
-  }, [availableTools, draftAgent?.includeBuiltinTools, localFsServerName, t])
+      .map(([key, value]) => ({ key, ...value }))
+  }, [
+    availableTools,
+    draftAgent?.includeBuiltinTools,
+    localFsServerName,
+    settings.mcp.builtinToolOptions,
+    t,
+  ])
 
   const visibleToolsCount = useMemo(
     () => visibleToolGroups.reduce((sum, group) => sum + group.tools.length, 0),

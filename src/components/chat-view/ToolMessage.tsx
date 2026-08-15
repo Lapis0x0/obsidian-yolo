@@ -17,10 +17,6 @@ import {
   resolveDangerousBashApproval,
   subscribeDangerousBashApproval,
 } from '../../core/agent/bash/dangerousOperationGate'
-import {
-  BUILTIN_TOOL_UI_META,
-  getBuiltinToolUiMeta,
-} from '../../core/agent/builtinToolUiMeta'
 import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import {
@@ -35,6 +31,11 @@ import {
   parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import {
+  LOAD_TOOL_SCHEMAS_CHAT_LABEL,
+  LOAD_TOOL_SCHEMAS_TOOL_NAME,
+} from '../../core/tools/internal/load_tool_schemas/definition'
+import { listBuiltinTools } from '../../core/tools/registry'
 import {
   MOTION_DURATION_ENTER_S,
   MOTION_DURATION_EXIT_S,
@@ -129,7 +130,6 @@ type ToolRequestLike = {
 }
 
 const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  fs_write: 'Write file',
   fs_delete: 'Delete',
   fs_create_dir: 'Create folder',
   fs_move: 'Move path',
@@ -181,20 +181,29 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       ),
     },
     unknownStatus: translate('chat.toolCall.status.unknown', 'Unknown'),
-    // Every name registered in BUILTIN_TOOL_UI_META is wired here automatically
-    // so adding a new built-in tool only needs the meta entry (+ i18n keys),
-    // not a manual update of this map. fs_* write-action labels live in a
-    // separate translation namespace and stay as explicit overrides.
+    // Every registered tool's `chatLabel` (core/tools/registry.ts) is wired
+    // here automatically, so adding a new built-in tool only needs its
+    // `chatLabel` field (+ i18n keys), not a manual update of this map.
+    // `load_tool_schemas` isn't a registered tool (it's a protocol-internal
+    // tool — see its own doc comment) but is still user-visible mid-chat, so
+    // its label is folded in next to the registry-derived ones from its own
+    // standalone `LOAD_TOOL_SCHEMAS_CHAT_LABEL` export. `fs_write`'s own
+    // `chatLabel` already resolves to the same
+    // `chat.toolCall.writeAction.write` key/fallback this map used to
+    // hardcode, so it is not repeated below. The remaining retired fs_*
+    // write-action names (fs_delete/fs_create_dir/fs_move and their even
+    // older aliases) have no registry entry — they stay as explicit
+    // overrides purely to keep historical conversations renderable.
     displayNames: {
       ...Object.fromEntries(
-        Object.keys(BUILTIN_TOOL_UI_META).map((name) => [
-          name,
-          translateBuiltinToolLabel(name, translate),
+        listBuiltinTools().map((tool) => [
+          tool.name,
+          translate(tool.chatLabel.key, tool.chatLabel.fallback),
         ]),
       ),
-      fs_write: translate(
-        'chat.toolCall.writeAction.write',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_write,
+      [LOAD_TOOL_SCHEMAS_TOOL_NAME]: translate(
+        LOAD_TOOL_SCHEMAS_CHAT_LABEL.key,
+        LOAD_TOOL_SCHEMAS_CHAT_LABEL.fallback,
       ),
       fs_delete: translate(
         'chat.toolCall.writeAction.delete',
@@ -419,18 +428,6 @@ const extractSyntheticLiveTaskOutput = (
     stdout: typeof parsed.stdout === 'string' ? parsed.stdout : undefined,
     stderr: typeof parsed.stderr === 'string' ? parsed.stderr : undefined,
   }
-}
-
-const translateBuiltinToolLabel = (
-  toolName: string,
-  translate: TranslateFn,
-): string => {
-  const meta = getBuiltinToolUiMeta(toolName)
-  if (!meta) {
-    return toolName
-  }
-
-  return translate(meta.labelKey, meta.labelFallback)
 }
 
 const truncateText = (text: string, maxLength: number): string => {

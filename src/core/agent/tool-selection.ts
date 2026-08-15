@@ -18,8 +18,8 @@ import {
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+import { FILE_EDIT_GROUP_TOOL_NAME } from '../tools/legacy-persistence-keys'
 
-import { FILE_EDIT_GROUP_TOOL_NAME } from './builtinToolUiMeta'
 import {
   formatSubagentModelOption,
   resolveSubagentModelConfig,
