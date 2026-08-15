@@ -415,7 +415,10 @@ describe('CliChatSurface', () => {
       makeSnapshot({
         runtimeId: 'hermes',
         surfaceId: 'hermes:native/session-1',
-        sessionRef: { runtimeId: 'hermes', nativeSessionId: 'native/session-1' },
+        sessionRef: {
+          runtimeId: 'hermes',
+          nativeSessionId: 'native/session-1',
+        },
         messages: [makeUser('user-1', 'Prompt'), assistant, tool],
       }),
     )

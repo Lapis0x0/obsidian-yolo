@@ -242,9 +242,7 @@ describe('ACP session update aggregation — multi-turn fallback id scoping', ()
       } as SessionUpdate,
       'hermes',
     )
-    expect(second).toMatchObject([
-      { id: 'acp-assistant-m1@2', content: 'b' },
-    ])
+    expect(second).toMatchObject([{ id: 'acp-assistant-m1@2', content: 'b' }])
   })
 
   it('starts a new assistant message for text that arrives after tool calls', () => {

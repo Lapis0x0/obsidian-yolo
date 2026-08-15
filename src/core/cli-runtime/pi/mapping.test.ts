@@ -746,9 +746,9 @@ describe('pi rewrite checkpoints', () => {
   })
 
   it('keeps tool results that belong to the forked prefix', () => {
-    expect(collectPiForkRawEntries(linearHistory, 'a1').map((entry) => entry.id)).toEqual(
-      ['u1', 'a1', 't1'],
-    )
+    expect(
+      collectPiForkRawEntries(linearHistory, 'a1').map((entry) => entry.id),
+    ).toEqual(['u1', 'a1', 't1'])
   })
 
   it('writes a session header plus the forked raw entries', () => {
@@ -759,7 +759,10 @@ describe('pi rewrite checkpoints', () => {
       cwd: '/vault',
       parentSession: '/tmp/source.jsonl',
     })
-    const lines = content.trim().split('\n').map((line) => JSON.parse(line))
+    const lines = content
+      .trim()
+      .split('\n')
+      .map((line) => JSON.parse(line))
     expect(lines[0]).toMatchObject({
       type: 'session',
       id: 'fork-1',

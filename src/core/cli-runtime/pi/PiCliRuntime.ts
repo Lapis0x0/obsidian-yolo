@@ -269,7 +269,10 @@ export class PiCliRuntime implements CliRuntime {
         ...(images.length > 0 ? { images } : {}),
       })
       if (input.userMessageId) {
-        this.sentUserMessageIds = [...this.sentUserMessageIds, input.userMessageId]
+        this.sentUserMessageIds = [
+          ...this.sentUserMessageIds,
+          input.userMessageId,
+        ]
       }
     } catch (error) {
       this.turnTerminalEmitted = true
@@ -332,9 +335,7 @@ export class PiCliRuntime implements CliRuntime {
       content: input.content,
       userMessageId: input.userMessageId,
       ...(input.selectedSkills ? { selectedSkills: input.selectedSkills } : {}),
-      ...(this.activeSessionRef
-        ? { sessionRef: this.activeSessionRef }
-        : {}),
+      ...(this.activeSessionRef ? { sessionRef: this.activeSessionRef } : {}),
     })
   }
 
@@ -347,12 +348,12 @@ export class PiCliRuntime implements CliRuntime {
     resumeAt: string
     sourceFile: string
   }): Promise<CliSessionRef> {
-    const path = await loadDesktopNodeModule<typeof import('node:path')>(
-      'node:path',
-    )
-    const fs = await loadDesktopNodeModule<typeof import('node:fs/promises')>(
-      'node:fs/promises',
-    )
+    const path =
+      await loadDesktopNodeModule<typeof import('node:path')>('node:path')
+    const fs =
+      await loadDesktopNodeModule<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      )
     const sessionId = globalThis.crypto.randomUUID()
     const timestamp = new Date().toISOString()
     const sessionFile = path.join(

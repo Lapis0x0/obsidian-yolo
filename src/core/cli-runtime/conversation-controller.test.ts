@@ -313,10 +313,7 @@ describe('CliConversationController', () => {
       })
       runtime.emit({
         type: 'message_upsert',
-        message: assistantMessage(
-          'shared-stream',
-          `${content} continued`,
-        ),
+        message: assistantMessage('shared-stream', `${content} continued`),
       })
     }
     const controller = new CliConversationController(runtime)
@@ -448,7 +445,11 @@ describe('CliConversationController', () => {
         .getSnapshot()
         .messages.filter((message) => message.role === 'assistant')
         .map((message) => message.id),
-    ).toEqual(['stream', 'acp-request-call-1', expect.stringMatching(/^stream#/)])
+    ).toEqual([
+      'stream',
+      'acp-request-call-1',
+      expect.stringMatching(/^stream#/),
+    ])
   })
 
   it('presents a staged turn before provider readiness and scopes rejection', () => {

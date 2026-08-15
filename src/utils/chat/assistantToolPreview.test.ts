@@ -56,30 +56,36 @@ describe('assistantToolPreview helpers', () => {
 
   it('finds a real tool card for the assistant request ids even when it is not the next message', () => {
     expect(
-      hasMatchingToolMessageForRequests(['call-1'], [
-        {
-          role: 'assistant',
-          id: 'request-1',
-          content: '',
-          toolCallRequests: [{ id: 'call-1', name: 'ls' }],
-        },
-        {
-          role: 'assistant',
-          id: 'request-2',
-          content: '',
-          toolCallRequests: [{ id: 'call-2', name: 'search' }],
-        },
-        {
-          role: 'tool',
-          id: 'tool-1',
-          toolCalls: [
-            {
-              request: { id: 'call-1', name: 'ls' },
-              response: { status: ToolCallResponseStatus.Success, data: { type: 'text', text: 'ok' } },
-            },
-          ],
-        },
-      ]),
+      hasMatchingToolMessageForRequests(
+        ['call-1'],
+        [
+          {
+            role: 'assistant',
+            id: 'request-1',
+            content: '',
+            toolCallRequests: [{ id: 'call-1', name: 'ls' }],
+          },
+          {
+            role: 'assistant',
+            id: 'request-2',
+            content: '',
+            toolCallRequests: [{ id: 'call-2', name: 'search' }],
+          },
+          {
+            role: 'tool',
+            id: 'tool-1',
+            toolCalls: [
+              {
+                request: { id: 'call-1', name: 'ls' },
+                response: {
+                  status: ToolCallResponseStatus.Success,
+                  data: { type: 'text', text: 'ok' },
+                },
+              },
+            ],
+          },
+        ],
+      ),
     ).toBe(true)
     expect(hasMatchingToolMessageForRequests(['call-9'], [])).toBe(false)
   })

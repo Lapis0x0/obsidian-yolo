@@ -434,23 +434,20 @@ describe('PiCliRuntime — rewriteTurn', () => {
     const { PiSubprocess } = (await import('./process')) as unknown as {
       PiSubprocess: { start: jest.Mock }
     }
-    PiSubprocess.start = jest.fn(
-      async (options: { args: string[] }) => {
-        const child = new FakePiProcess()
-        startedProcesses.push(child)
-        const sessionArg = options.args.indexOf('--session')
-        const sessionTarget =
-          sessionArg >= 0 ? options.args[sessionArg + 1] : sourceFile
-        child.registerHandler('get_state', () => ({
-          sessionId:
-            sessionTarget === sourceFile ? 'sess-1' : 'forked-session',
-          sessionFile: sessionTarget,
-        }))
-        child.registerHandler('get_entries', () => history)
-        child.registerHandler('prompt', () => undefined)
-        return child
-      },
-    )
+    PiSubprocess.start = jest.fn(async (options: { args: string[] }) => {
+      const child = new FakePiProcess()
+      startedProcesses.push(child)
+      const sessionArg = options.args.indexOf('--session')
+      const sessionTarget =
+        sessionArg >= 0 ? options.args[sessionArg + 1] : sourceFile
+      child.registerHandler('get_state', () => ({
+        sessionId: sessionTarget === sourceFile ? 'sess-1' : 'forked-session',
+        sessionFile: sessionTarget,
+      }))
+      child.registerHandler('get_entries', () => history)
+      child.registerHandler('prompt', () => undefined)
+      return child
+    })
 
     const runtime = createRuntime()
     const sessionRef = {
