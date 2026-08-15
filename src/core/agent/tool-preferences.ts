@@ -5,48 +5,21 @@ import {
   AssistantToolPreference,
 } from '../../types/assistant.types'
 import type { McpTool } from '../../types/mcp.types'
-import { JS_SANDBOX_TOOL_NAME } from '../mcp/jsSandboxTool'
 import {
-  BASH_TOOL_NAME,
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
-  LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
   USER_FACING_LOCAL_TOOL_SHORT_NAMES,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 import { getMcpToolSchemaTokenCost } from '../mcp/toolCatalogTokenCache'
-import { FILE_EDIT_GROUP_TOOL_NAME } from '../tools/legacy-persistence-keys'
-import { getCapability } from '../tools/registry'
+import { getCapabilityForTool } from '../tools/registry'
 
 export const DEFAULT_ASSISTANT_TOOL_APPROVAL_MODE: AssistantToolApprovalMode =
   'require_approval'
 export const DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE: AssistantToolDisclosureMode =
   'always'
 export const SERVER_TOOL_DISCLOSURE_AUTO_TOKEN_THRESHOLD = 2000
-
-/**
- * 这些工具永远不允许"始终允许"（always-allow）模式。
- * UI 侧应隐藏这些工具的 allowForThisChat 按钮。
- */
-export const ALWAYS_ALLOW_DISABLED_TOOL_NAMES: readonly string[] = [
-  'terminal_command',
-  BASH_TOOL_NAME,
-]
-
-/**
- * local tool 中需要 require_approval 的工具名集合。
- * JS 隔离执行不在此集合中；它和终端命令一样服从 Agent 保存的审批模式。
- */
-const REQUIRE_APPROVAL_LOCAL_TOOLS: ReadonlySet<string> = new Set([
-  FILE_EDIT_GROUP_TOOL_NAME,
-  ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
-  'terminal_command',
-])
-
-const FULL_ACCESS_LOCAL_TOOLS: ReadonlySet<string> = new Set([
-  LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
-])
 
 export const resolveDefaultDisclosureModeForServer = (
   serverTokenBudget: number | undefined,
@@ -90,28 +63,21 @@ export const buildServerToolTokenBudgets = async (
 }
 
 /**
- * Built-in tools that default to **off** even when the user has never
- * customized preferences. Kept here as the single source of truth so both UI
- * and runtime read the same policy.
- */
-export const BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES: ReadonlySet<string> =
-  new Set([
-    'context_prune_tool_results',
-    'context_compact',
-    'delegate_subagent',
-    JS_SANDBOX_TOOL_NAME,
-    'terminal_command',
-  ])
-
-/**
  * Full set of user-facing built-in tool FQNs that default to on. Used by the
  * settings migration and `getDefaultEnabledForTool` to seed `toolPreferences`
  * for new or upgrading agents. Runtime never fills these in at read time —
  * `toolPreferences` is the single source of truth for per-agent state, and
  * the migration is the only path that writes defaults into it.
  *
- * Derived from {@link USER_FACING_LOCAL_TOOL_SHORT_NAMES} (which already
- * excludes the protocol-only `load_tool_schemas`) minus the deny-list above.
+ * D7 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D7 item 5):
+ * "default off" used to be a hand-maintained deny-list
+ * (`BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES`) that had to be kept in sync
+ * with each capability's own `defaultEnabled` by inspection. It is now read
+ * directly off the owning capability via `getCapabilityForTool` — every
+ * {@link USER_FACING_LOCAL_TOOL_SHORT_NAMES} entry (which already excludes
+ * the protocol-only `load_tool_schemas`) is a real `CAPABILITIES` member, so
+ * the `?? false` fallback only matters for a short name that somehow isn't
+ * registered, which the registry's own module-load assertions rule out.
  */
 const USER_FACING_LOCAL_TOOL_SHORT_NAME_SET: ReadonlySet<string> = new Set(
   USER_FACING_LOCAL_TOOL_SHORT_NAMES,
@@ -119,7 +85,7 @@ const USER_FACING_LOCAL_TOOL_SHORT_NAME_SET: ReadonlySet<string> = new Set(
 
 export const BUILTIN_DEFAULT_ENABLED_TOOL_FQNS: readonly string[] =
   USER_FACING_LOCAL_TOOL_SHORT_NAMES.filter(
-    (shortName) => !BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES.has(shortName),
+    (shortName) => getCapabilityForTool(shortName)?.defaultEnabled ?? false,
   ).map(
     (shortName) =>
       `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${shortName}`,
@@ -153,7 +119,7 @@ export const getDefaultEnabledForTool = (toolName: string): boolean => {
     if (!USER_FACING_LOCAL_TOOL_SHORT_NAME_SET.has(shortName)) {
       return false
     }
-    return !BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_NAMES.has(shortName)
+    return getCapabilityForTool(shortName)?.defaultEnabled ?? false
   } catch {
     return false
   }
@@ -186,6 +152,18 @@ export const getDefaultDisclosureModeForTool = (
   }
 }
 
+/**
+ * D7 (phase2-migration.md D7 items 5-7): this used to consult three
+ * independent side tables (`FULL_ACCESS_LOCAL_TOOLS`,
+ * `REQUIRE_APPROVAL_LOCAL_TOOLS`, plus a bash-specific `if`) that each had to
+ * be kept in sync with the capability model by hand. It now reads a single
+ * fact — the owning capability's `approval.defaultMode` — off the registry,
+ * via {@link getCapabilityForTool}. This is also where bash's old
+ * `parsedToolName === BASH_TOOL_NAME` special case (D6 batch 7) folds away:
+ * `bash` is `vault_shell`'s only member, so the generic lookup already
+ * returns `vault_shell`'s `dangerous_only` default for it — no separate
+ * branch needed.
+ */
 export const getDefaultApprovalModeForTool = (
   toolName: string,
 ): AssistantToolApprovalMode => {
@@ -195,32 +173,31 @@ export const getDefaultApprovalModeForTool = (
       return 'require_approval'
     }
 
-    if (FULL_ACCESS_LOCAL_TOOLS.has(parsedToolName)) {
+    // `load_tool_schemas` is the one local tool that is not a `CAPABILITIES`
+    // member (master.md §3.1: "内部协议工具（不属任何 capability）") — it's
+    // injected by the on-demand tool disclosure mechanism, not a
+    // user-configurable capability, so `getCapabilityForTool` can never
+    // resolve it. It has always run at `full_access` (the old
+    // `FULL_ACCESS_LOCAL_TOOLS` set's only member); that value is asserted
+    // explicitly here rather than falling through to the generic "unknown
+    // tool" default below, since the two happen to coincide only by
+    // coincidence.
+    if (parsedToolName === LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME) {
       return 'full_access'
     }
 
-    // bash's third tier (dangerous ops only) is its own default — read
-    // commands and mkdir run freely, rm/mv pause mid-script. See
-    // src/core/agent/bash/dangerousOperationGate.ts.
-    //
-    // D6 batch 7: this special case's structure is unchanged (its removal is
-    // D7's job, once the surrounding function itself becomes
-    // capability-driven — see master.md §3.7 / phase2-migration.md D7 row 6),
-    // but its *value* now comes from the `vault_shell` capability
-    // (`capabilities/vault-shell.ts`) rather than an independent literal, so
-    // this file and that capability cannot silently drift apart. The `??
-    // 'dangerous_only'` fallback only matters if the capability were ever
-    // absent from `CAPABILITIES`, which `registry.ts`'s own module-load
-    // assertions rule out for the real registry.
-    if (parsedToolName === BASH_TOOL_NAME) {
-      return (
-        getCapability('vault_shell')?.approval.defaultMode ?? 'dangerous_only'
-      )
+    const capability = getCapabilityForTool(parsedToolName)
+    if (capability) {
+      return capability.approval.defaultMode
     }
 
-    return REQUIRE_APPROVAL_LOCAL_TOOLS.has(parsedToolName)
-      ? 'require_approval'
-      : 'full_access'
+    // Unknown local tool short name — e.g. a retired name like
+    // `fs_list`/`fs_search` (see master.md decision 10) that can still show
+    // up in historical `toolPreferences` data. Matches the pre-refactor
+    // fallthrough (`REQUIRE_APPROVAL_LOCAL_TOOLS.has(...) ?
+    // 'require_approval' : 'full_access'`), which defaulted to full_access
+    // for any short name outside that explicit require-approval set.
+    return 'full_access'
   } catch {
     return DEFAULT_ASSISTANT_TOOL_APPROVAL_MODE
   }

@@ -43,10 +43,7 @@ import {
 } from '../../../core/agent/tool-preferences'
 import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection'
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
-import {
-  BASH_TOOL_NAME,
-  getLocalFileToolServerName,
-} from '../../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
@@ -62,7 +59,10 @@ import {
   BUILTIN_TOOL_CATEGORY_I18N,
   BUILTIN_TOOL_CATEGORY_ORDER,
 } from '../../../core/tools/categories'
-import { getCapability } from '../../../core/tools/registry'
+import {
+  type BuiltinCapabilityId,
+  listCapabilities,
+} from '../../../core/tools/registry'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import {
@@ -110,6 +110,14 @@ type AgentToolView = {
   toggleTargets: string[]
   displayName: string
   description: string
+  /**
+   * The owning built-in capability's id, for rows built from
+   * `buildBuiltinCapabilityRows` (undefined for MCP server tool rows, which
+   * have no capability). Used to look up this row's approval
+   * `allowedModes` (D7, phase2-migration.md D7 item 8) instead of a
+   * hardcoded two-option literal.
+   */
+  capabilityId?: BuiltinCapabilityId
 }
 
 type SkillRowView = LiteSkillEntry & {
@@ -822,6 +830,7 @@ export function AgentsSectionContent({
           ),
           displayName: row.label,
           description: row.description,
+          capabilityId: row.id,
         })
         groups.set(key, group)
       }
@@ -1143,25 +1152,19 @@ export function AgentsSectionContent({
     ],
     [t],
   )
-  // bash is the only tool with a third tier: dangerous operations only
-  // (read commands and mkdir run freely; rm/mv pause mid-script). See
-  // src/core/agent/bash/dangerousOperationGate.ts.
-  const bashToolFullName = useMemo(
-    () => getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
-    [],
-  )
-  // D6 batch 7: which tiers this dropdown offers now comes from the
-  // `vault_shell` capability's `approval.allowedModes`
-  // (`core/tools/capabilities/vault-shell.ts`) rather than an independent
-  // hardcoded three-item literal, so this file and that capability cannot
-  // silently drift apart. Displayed order is preserved from before this
-  // change (require -> dangerous -> full) rather than following
-  // `allowedModes`'s own declaration order, since reordering the dropdown is
-  // not one of this refactor's approved visible changes (master.md §5). The
-  // fallback list only matters if the capability were ever absent from
-  // `CAPABILITIES`, which `registry.ts`'s own module-load assertions rule
-  // out for the real registry.
-  const bashToolApprovalOptions = useMemo(() => {
+  // D7 (phase2-migration.md D7 item 8): every built-in row's approval
+  // dropdown offers exactly its own capability's `approval.allowedModes`.
+  // This replaces both the hardcoded two-item literal that all non-bash rows
+  // used to share and the separate bash-only three-item memo — `vault_shell`
+  // is no longer a special case in this file, it is simply the one
+  // capability whose `allowedModes` includes `dangerous_only`. The
+  // `toolApprovalOptions` literal above legitimately stays hardcoded: it
+  // serves the MCP *server*-level dropdown, and servers have no capability.
+  //
+  // Display order stays require -> dangerous -> full rather than following
+  // each capability's own `allowedModes` declaration order, since reordering
+  // the dropdown is not an approved visible change (master.md §5).
+  const capabilityApprovalOptionsById = useMemo(() => {
     const labelFor = (mode: AssistantToolApprovalMode): string => {
       switch (mode) {
         case 'require_approval':
@@ -1176,21 +1179,25 @@ export function AgentsSectionContent({
           return t('settings.agent.toolApprovalFullAccess', 'Full access')
       }
     }
-    const allowedModes = new Set<AssistantToolApprovalMode>(
-      getCapability('vault_shell')?.approval.allowedModes ?? [
-        'require_approval',
-        'dangerous_only',
-        'full_access',
-      ],
-    )
     const displayOrder: AssistantToolApprovalMode[] = [
       'require_approval',
       'dangerous_only',
       'full_access',
     ]
-    return displayOrder
-      .filter((mode) => allowedModes.has(mode))
-      .map((mode) => ({ value: mode, label: labelFor(mode) }))
+    const map = new Map<
+      BuiltinCapabilityId,
+      { value: AssistantToolApprovalMode; label: string }[]
+    >()
+    for (const capability of listCapabilities()) {
+      const allowedModes = new Set(capability.approval.allowedModes)
+      map.set(
+        capability.id as BuiltinCapabilityId,
+        displayOrder
+          .filter((mode) => allowedModes.has(mode))
+          .map((mode) => ({ value: mode, label: labelFor(mode) })),
+      )
+    }
+    return map
   }, [t])
   return (
     <div
@@ -1863,8 +1870,21 @@ export function AgentsSectionContent({
                               (target) =>
                                 isAssistantToolEnabled(draftAgent, target),
                             )
-                            const isBashTool = tool.toggleTargets.every(
-                              (target) => target === bashToolFullName,
+                            // Built-in rows offer their own capability's
+                            // allowed tiers; MCP server tool rows have no
+                            // capability and keep the generic two-tier list.
+                            const approvalOptions =
+                              (tool.capabilityId &&
+                                capabilityApprovalOptionsById.get(
+                                  tool.capabilityId,
+                                )) ||
+                              toolApprovalOptions
+                            // Only a capability that allows `dangerous_only`
+                            // can display it — today that is `vault_shell`
+                            // alone, but this reads the declaration rather
+                            // than naming bash (phase2-migration.md D7 item 8).
+                            const allowsDangerousOnly = approvalOptions.some(
+                              (option) => option.value === 'dangerous_only',
                             )
                             const approvalMode = !group.isBuiltin
                               ? 'require_approval'
@@ -1876,7 +1896,7 @@ export function AgentsSectionContent({
                                       ) === 'full_access',
                                   )
                                 ? 'full_access'
-                                : isBashTool &&
+                                : allowsDangerousOnly &&
                                     tool.toggleTargets.every(
                                       (target) =>
                                         getAssistantToolApprovalMode(
@@ -1905,11 +1925,7 @@ export function AgentsSectionContent({
                                       <div className="yolo-agent-tool-select">
                                         <SimpleSelect
                                           value={approvalMode}
-                                          options={
-                                            isBashTool
-                                              ? bashToolApprovalOptions
-                                              : toolApprovalOptions
-                                          }
+                                          options={approvalOptions}
                                           onChange={(value) =>
                                             setToolApprovalMode(
                                               tool.toggleTargets,

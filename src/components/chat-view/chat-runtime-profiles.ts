@@ -1,13 +1,10 @@
 import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
-import {
-  BASH_TOOL_NAME,
-  getLocalFileToolServerName,
-} from '../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabilityProfile'
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
-import { FILE_EDIT_GROUP_TOOL_NAME } from '../../core/tools/legacy-persistence-keys'
+import { getCapability } from '../../core/tools/registry'
 import type { Assistant } from '../../types/assistant.types'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
@@ -23,19 +20,40 @@ type AssistantRuntimeOptions = Pick<
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
 
-export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] = [
-  getToolName(getLocalFileToolServerName(), FILE_EDIT_GROUP_TOOL_NAME),
-  getToolName(getLocalFileToolServerName(), 'fs_edit'),
-  getToolName(getLocalFileToolServerName(), 'fs_write'),
-  // bash absorbed fs_delete/fs_create_dir/fs_move (path writes) — and,
-  // unlike those three, also vault search/read. Blocking it here in
-  // non-agent chat modes keeps their write ban intact and additionally
-  // withholds vault-wide read access, which is a stricter (but only
-  // sensible, since bash is a single tool) version of the prior behavior.
-  getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
-  getToolName(getLocalFileToolServerName(), 'terminal_command'),
-  getToolName(getLocalFileToolServerName(), 'todo_write'),
-]
+/**
+ * Capabilities withheld from non-Agent chat modes (Ask mode): file writes,
+ * the vault shell, the local terminal, and autonomous task planning — see
+ * master.md §3.1's "非 Agent 聊天模式屏蔽的能力" note.
+ *
+ * D7 (phase2-migration.md D7 item 9): this used to be a hand-listed array of
+ * 6 tool FQNs (the `fs_edit_ops` group name plus 5 member/tool names) that
+ * had to be kept in sync with the tool catalog by inspection. It is now
+ * derived from each blocked capability's own `tools` list, so adding a tool
+ * to (say) `file_editing` automatically extends the block — no second list
+ * to remember. `todo_list` is included here even though it wasn't one of
+ * the three capabilities master.md §3.1 names in its "非 Agent 聊天模式屏蔽"
+ * sentence: `todo_write`'s own description ("Agent mode only", see
+ * `capabilities/todo-list.ts`) documents that it has always been part of
+ * this block, and the pre-D7 6-FQN list did include it explicitly — the
+ * prose in §3.1 just undercounts by one.
+ */
+const CHAT_BLOCKED_CAPABILITY_IDS = [
+  'file_editing',
+  'vault_shell',
+  'terminal',
+  'todo_list',
+] as const
+
+export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] =
+  CHAT_BLOCKED_CAPABILITY_IDS.flatMap((capabilityId) => {
+    const capability = getCapability(capabilityId)
+    if (!capability) {
+      return []
+    }
+    return capability.tools.map((tool) =>
+      getToolName(getLocalFileToolServerName(), tool.name),
+    )
+  })
 
 /**
  * Explicit context-assembly policy produced by `resolveChatModeRuntime` and

@@ -17,7 +17,6 @@ import {
   resolveDangerousBashApproval,
   subscribeDangerousBashApproval,
 } from '../../core/agent/bash/dangerousOperationGate'
-import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import {
   getCliToolCallDisplayName,
@@ -35,7 +34,10 @@ import {
   LOAD_TOOL_SCHEMAS_CHAT_LABEL,
   LOAD_TOOL_SCHEMAS_TOOL_NAME,
 } from '../../core/tools/internal/load_tool_schemas/definition'
-import { listBuiltinTools } from '../../core/tools/registry'
+import {
+  getCapabilityForTool,
+  listBuiltinTools,
+} from '../../core/tools/registry'
 import {
   MOTION_DURATION_ENTER_S,
   MOTION_DURATION_EXIT_S,
@@ -1417,8 +1419,14 @@ function ToolCallItem({
     // rejects it anyway (see `AgentService.approveToolCall`).
     if (request.metadata?.approvalPolicy === 'always-require-user') return true
     try {
+      // D7 (phase2-migration.md D7 item 7): "always allow" is now a
+      // capability-level fact (`approval.allowAlwaysAllow`) rather than a
+      // hand-maintained tool-name list. Non-capability tools (third-party
+      // MCP tools, retired local tool names) resolve to `undefined` here,
+      // which correctly means "not disabled" — the pre-refactor list only
+      // ever named `bash` and `terminal_command`.
       const { toolName } = parseToolName(request.name)
-      return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
+      return getCapabilityForTool(toolName)?.approval.allowAlwaysAllow === false
     } catch {
       return false
     }

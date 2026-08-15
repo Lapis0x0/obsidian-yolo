@@ -1,6 +1,9 @@
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 
-import { resolveChatModeRuntime } from './chat-runtime-profiles'
+import {
+  CHAT_BLOCKED_TOOL_NAMES,
+  resolveChatModeRuntime,
+} from './chat-runtime-profiles'
 
 function moduleChatMode(
   overrides: Partial<RegisteredModuleChatModeV1['mode']> = {},
@@ -254,5 +257,56 @@ describe('resolveChatModeRuntime', () => {
     })
 
     expect(runtime.bypassToolApproval).toBe(false)
+  })
+
+  // D7 (phase2-migration.md D7 item 9): CHAT_BLOCKED_TOOL_NAMES used to be a
+  // hand-listed array of 6 tool FQNs (the fs_edit_ops group name plus 5
+  // member/tool names). It is now derived from 4 capability ids
+  // (file_editing, vault_shell, terminal, todo_list) via each capability's
+  // own `tools` list — todo_list is included even though master.md §3.1's
+  // "非 Agent 聊天模式屏蔽的能力" prose only names 3, because todo_write's own
+  // description ("Agent mode only") and the pre-D7 6-FQN list (which did
+  // include yolo_local__todo_write) both document that it was always meant
+  // to be blocked; the prose undercounts by one.
+  it('CHAT_BLOCKED_TOOL_NAMES blocks fs_edit, fs_write, bash, terminal_command, and todo_write', () => {
+    expect(CHAT_BLOCKED_TOOL_NAMES).toEqual(
+      expect.arrayContaining([
+        'yolo_local__fs_edit',
+        'yolo_local__fs_write',
+        'yolo_local__bash',
+        'yolo_local__terminal_command',
+        'yolo_local__todo_write',
+      ]),
+    )
+    expect(CHAT_BLOCKED_TOOL_NAMES).toHaveLength(5)
+  })
+
+  it('blocks todo_write in ask mode, same as the other four blocked tools', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'ask',
+      assistant,
+      assistantEnabledToolNames: [
+        'yolo_local__fs_read',
+        'yolo_local__todo_write',
+      ],
+    })
+
+    expect(runtime.allowedToolNames).toEqual(['yolo_local__fs_read'])
+  })
+
+  it('allows todo_write in agent mode', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'agent',
+      assistant,
+      assistantEnabledToolNames: [
+        'yolo_local__fs_read',
+        'yolo_local__todo_write',
+      ],
+    })
+
+    expect(runtime.allowedToolNames).toEqual([
+      'yolo_local__fs_read',
+      'yolo_local__todo_write',
+    ])
   })
 })

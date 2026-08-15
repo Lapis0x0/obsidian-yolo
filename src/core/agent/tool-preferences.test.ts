@@ -1,7 +1,12 @@
+import { USER_FACING_LOCAL_TOOL_SHORT_NAMES } from '../mcp/localFileTools'
+import { getCapabilityForTool, listCapabilities } from '../tools/registry'
+
 import {
+  BUILTIN_DEFAULT_ENABLED_TOOL_FQNS,
   buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
+  getDefaultApprovalModeForTool,
   getDefaultEnabledForTool,
   getEnabledAssistantToolNames,
   getExplicitlyEnabledAssistantToolNames,
@@ -95,6 +100,207 @@ describe('tool-preferences defaults', () => {
       expect(getDefaultEnabledForTool('yolo_local__unknown_tool')).toBe(false)
       expect(getDefaultEnabledForTool('yolo_local__fs_write_legacy')).toBe(
         false,
+      )
+    })
+
+    // D7 (phase2-migration.md D7 item 5): `defaultEnabled` used to be read
+    // off a hand-maintained deny-list (`BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_
+    // NAMES`) that had to be kept in sync with each capability's own
+    // `defaultEnabled` by inspection. This pins every user-facing tool's
+    // result against its owning capability's `defaultEnabled` directly, so a
+    // future capability whose `defaultEnabled` disagrees with its tools'
+    // `getDefaultEnabledForTool` result fails loudly here instead of via
+    // silent drift.
+    it("agrees with every registered capability's own defaultEnabled, for every user-facing tool", () => {
+      for (const shortName of USER_FACING_LOCAL_TOOL_SHORT_NAMES) {
+        const capability = getCapabilityForTool(shortName)
+        expect(capability).toBeDefined()
+        expect(getDefaultEnabledForTool(`yolo_local__${shortName}`)).toBe(
+          capability?.defaultEnabled,
+        )
+      }
+    })
+
+    it('the five capabilities that default off match master.md §3.1', () => {
+      const disabledCapabilityIds = listCapabilities()
+        .filter((capability) => !capability.defaultEnabled)
+        .map((capability) => capability.id)
+        .sort()
+      expect(disabledCapabilityIds).toEqual(
+        [
+          'context_compaction',
+          'context_pruning',
+          'js_sandbox',
+          'subagent_delegation',
+          'terminal',
+        ].sort(),
+      )
+    })
+  })
+
+  describe('BUILTIN_DEFAULT_ENABLED_TOOL_FQNS', () => {
+    it('includes exactly the tools of default-enabled capabilities', () => {
+      const expected = new Set(
+        listCapabilities()
+          .filter((capability) => capability.defaultEnabled)
+          .flatMap((capability) =>
+            capability.tools.map((tool) => `yolo_local__${tool.name}`),
+          ),
+      )
+      expect(new Set(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS)).toEqual(expected)
+    })
+
+    it('excludes the five default-off tools and includes fs_edit/fs_write', () => {
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__context_prune_tool_results',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__context_compact',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__delegate_subagent',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__js_eval',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__terminal_command',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).toContain('yolo_local__fs_edit')
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).toContain(
+        'yolo_local__fs_write',
+      )
+    })
+  })
+
+  // D7 (phase2-migration.md D7 items 5-7): pins every case the task's
+  // acceptance table calls out, now that `getDefaultApprovalModeForTool`
+  // reads `approval.defaultMode` off the owning capability instead of the
+  // three retired side tables (`FULL_ACCESS_LOCAL_TOOLS`,
+  // `REQUIRE_APPROVAL_LOCAL_TOOLS`, and the bash-specific `if`).
+  describe('getDefaultApprovalModeForTool', () => {
+    it('fs_edit: NEW value require_approval (master.md decision 17 — the one deliberate behavior change)', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_edit')).toBe(
+        'require_approval',
+      )
+    })
+
+    it('fs_write / terminal_command / the fs_edit_ops group name: require_approval, unchanged from before', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_write')).toBe(
+        'require_approval',
+      )
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__terminal_command'),
+      ).toBe('require_approval')
+    })
+
+    it('bash: dangerous_only, derived from vault_shell (no more BASH_TOOL_NAME special case)', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__bash')).toBe(
+        'dangerous_only',
+      )
+    })
+
+    it('load_tool_schemas: full_access (protocol-internal tool, not a CAPABILITIES member)', () => {
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__load_tool_schemas'),
+      ).toBe('full_access')
+    })
+
+    it('the rest default to full_access', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_read')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__memory_add')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__todo_write')).toBe(
+        'full_access',
+      )
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__ask_user_question'),
+      ).toBe('full_access')
+      expect(getDefaultApprovalModeForTool('yolo_local__web_search')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__web_scrape')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool(JS_SANDBOX_FQN)).toBe('full_access')
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__delegate_subagent'),
+      ).toBe('full_access')
+    })
+
+    it('an unknown local tool short name (e.g. a retired name like fs_list) falls back to full_access, matching the pre-refactor fallthrough', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_list')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_search')).toBe(
+        'full_access',
+      )
+    })
+
+    it('the legacy fs_edit_ops group-name FQN also falls back to full_access — it is not a registered tool name and no live call site ever passes it (see D7b report)', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_edit_ops')).toBe(
+        'full_access',
+      )
+    })
+
+    it('a non-local server tool always requires approval', () => {
+      expect(getDefaultApprovalModeForTool('some_server__some_tool')).toBe(
+        'require_approval',
+      )
+    })
+
+    it('a malformed tool name falls back to the module default (require_approval)', () => {
+      expect(getDefaultApprovalModeForTool('not_a_qualified_name')).toBe(
+        'require_approval',
+      )
+    })
+
+    it("agrees with every registered capability's own approval.defaultMode, for every one of its tools", () => {
+      for (const capability of listCapabilities()) {
+        for (const tool of capability.tools) {
+          expect(
+            getDefaultApprovalModeForTool(`yolo_local__${tool.name}`),
+          ).toBe(capability.approval.defaultMode)
+        }
+      }
+    })
+  })
+
+  // D7 (phase2-migration.md D7 item 7): `allowAlwaysAllow` used to be a
+  // hand-maintained two-item list (`ALWAYS_ALLOW_DISABLED_TOOL_NAMES`,
+  // consumed only by `ToolMessage.tsx`'s `isAlwaysAllowDisabled`). Pinned
+  // here at the data level, since that's a rendering hook rather than an
+  // exported function.
+  describe('capability approval.allowAlwaysAllow (consumed by ToolMessage.tsx)', () => {
+    it('only vault_shell and terminal disable always-allow', () => {
+      const disallowed = listCapabilities()
+        .filter((capability) => !capability.approval.allowAlwaysAllow)
+        .map((capability) => capability.id)
+        .sort()
+      expect(disallowed).toEqual(['terminal', 'vault_shell'].sort())
+    })
+
+    it('every other capability allows always-allow', () => {
+      const allowed = listCapabilities()
+        .filter((capability) => capability.approval.allowAlwaysAllow)
+        .map((capability) => capability.id)
+        .sort()
+      expect(allowed).toEqual(
+        [
+          'file_reading',
+          'file_editing',
+          'memory',
+          'context_compaction',
+          'context_pruning',
+          'todo_list',
+          'user_questions',
+          'web_access',
+          'js_sandbox',
+          'subagent_delegation',
+        ].sort(),
       )
     })
   })
