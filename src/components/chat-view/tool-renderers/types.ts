@@ -42,15 +42,33 @@ export type ToolRendererProps = {
 /**
  * A tool's chat-surface rendering strategy.
  *
- * `{ kind: 'generic' }` is an explicit opt-out meaning "no custom card; use
- * the default collapsed-card rendering" — distinct from a missing table
- * entry, which is a compile error (see `TOOL_RENDERERS`'s doc comment).
+ * Three kinds, because the existing card mount sites in ToolMessage.tsx come
+ * in exactly two custom shapes plus the default:
  *
- * `{ kind: 'custom', render }` may itself return `null` for a particular
- * call/state to fall back to the same default rendering — e.g.
- * `delegate_subagent`'s renderer returns `null` while the call is pending
- * approval, matching current behavior where the approval footer (not
- * `SubagentCard`) owns that state.
+ * - `{ kind: 'generic' }` — explicit opt-out meaning "no custom card; use the
+ *   default collapsed-card rendering". Distinct from a missing table entry,
+ *   which is a compile error (see `TOOL_RENDERERS`'s doc comment).
+ *
+ * - `{ kind: 'replace', render }` — renders *instead of* the whole tool-call
+ *   block. Modelled on `SubagentCard` (`ToolMessage.tsx:1520`), which
+ *   `return`s early and takes over the entire call's presentation.
+ *
+ * - `{ kind: 'body', render }` — renders *inside* the default collapsed
+ *   card's content area, below the parameters section. Modelled on
+ *   `LiveTaskCard` (`ToolMessage.tsx:1651`), which augments the generic card
+ *   rather than replacing it. Without this variant, terminal-like tools
+ *   (D6 batch 6) could not be expressed at all.
+ *
+ * Either `render` may return `null` for a particular call/state to fall back
+ * to the default rendering — e.g. `delegate_subagent`'s renderer returns
+ * `null` while pending approval, matching current behavior where the approval
+ * footer (not `SubagentCard`) owns that state.
+ *
+ * Deliberately NOT modelled here: `CliSubagentCard` (`ToolMessage.tsx:1541`).
+ * Its gate is `cliSubagent.presentation && actions && sessionRef` — a
+ * capability/state condition, not a tool name — so it is not a by-name
+ * concern and stays out of this table (phase2-migration.md D8: non-tool-name
+ * branches are preserved as-is).
  *
  * Not yet consumed: replacing ToolMessage.tsx's `if` chain with a lookup
  * against `TOOL_RENDERERS` is D8. This phase (D3/D4) only builds the
@@ -59,6 +77,10 @@ export type ToolRendererProps = {
 export type ToolRenderer =
   | { kind: 'generic' }
   | {
-      kind: 'custom'
+      kind: 'replace'
+      render: (props: ToolRendererProps) => ReactNode
+    }
+  | {
+      kind: 'body'
       render: (props: ToolRendererProps) => ReactNode
     }

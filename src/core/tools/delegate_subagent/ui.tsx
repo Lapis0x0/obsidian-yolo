@@ -84,7 +84,10 @@ const render = ({
   )
 }
 
+// `replace`, not `body`: SubagentCard takes over the entire tool-call block
+// (ToolMessage.tsx:1520 `return`s it directly), rather than augmenting the
+// default collapsed card the way LiveTaskCard does.
 export const delegateSubagentRenderer: ToolRenderer = {
-  kind: 'custom',
+  kind: 'replace',
   render,
 }
