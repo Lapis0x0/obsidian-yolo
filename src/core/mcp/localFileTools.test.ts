@@ -2086,6 +2086,39 @@ describe('YOLO user data root final defense', () => {
   })
 })
 
+describe('callLocalFileTool: dispatcher-level boundaries (D5 parity with executeBuiltinTool)', () => {
+  it('returns Aborted without touching the vault when signal is already aborted', async () => {
+    const getAbstractFileByPath = jest.fn()
+    const controller = new AbortController()
+    controller.abort()
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: { getAbstractFileByPath },
+      } as unknown as App,
+      toolName: 'fs_edit',
+      args: { path: 'note.md', oldText: 'x', newText: 'y' },
+      signal: controller.signal,
+    })
+
+    expect(result).toEqual({ status: ToolCallResponseStatus.Aborted })
+    expect(getAbstractFileByPath).not.toHaveBeenCalled()
+  })
+
+  it('returns an explicit error for an unknown tool name instead of throwing', async () => {
+    const result = await callLocalFileTool({
+      app: { vault: {} } as unknown as App,
+      toolName: 'not_a_real_tool',
+      args: {},
+    })
+
+    expect(result).toEqual({
+      status: ToolCallResponseStatus.Error,
+      error: 'Unknown local file tool: not_a_real_tool',
+    })
+  })
+})
+
 describe('fs_read wikilink resolution', () => {
   const makeMdFile = (path: string, size = 20, mtime = 1000): TFile =>
     Object.assign(new TFile(), {
