@@ -63,7 +63,6 @@ const ACTIVE_RUN_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
 
 const noop = (): void => undefined
 const noopToolMessageUpdate = (_message: ChatToolMessage): void => undefined
-const PENDING_RESPONSE_ESTIMATED_HEIGHT = 56
 
 export type CliChatSurfaceProps = {
   snapshot: CliConversationSnapshot
@@ -493,6 +492,7 @@ export function CliChatSurface({
     hasNewerMessages,
     loadEarlier,
     loadNewer,
+    growWindowToFillViewport,
     resetToLatest,
   } = useChatHistoryWindow({
     conversationId,
@@ -535,7 +535,6 @@ export function CliChatSurface({
         id: `pending-response:${pendingResponseUserMessageId}`,
         renderKey: `pending-response:${pendingResponseUserMessageId}`,
         sourceUserMessageId: pendingResponseUserMessageId,
-        estimatedHeight: PENDING_RESPONSE_ESTIMATED_HEIGHT,
         spacingBefore: 24,
         isPinnedForRender: true,
         isStreaming: true,
@@ -896,6 +895,7 @@ export function CliChatSurface({
       hasNewerMessages={hasNewerMessages}
       onLoadEarlier={loadEarlier}
       onLoadNewer={loadNewer}
+      onGrowWindowToFillViewport={growWindowToFillViewport}
       onForceScrollToBottom={handleForceScrollToBottom}
       hasStreamingMessages={isConversationBusy}
       scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}

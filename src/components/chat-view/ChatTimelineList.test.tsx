@@ -18,7 +18,6 @@ function makeUserItem(id: string): ChatTimelineItem {
     kind: 'user-message',
     id,
     renderKey: id,
-    estimatedHeight: 80,
     messageId: id,
     revision: 1,
   }
@@ -94,15 +93,14 @@ describe('ChatTimelineList windowed timeline', () => {
     expect(html).not.toContain('yolo-chat-timeline-bottom-spacer')
   })
 
-  it('renders only a non-visual sentinel for unloaded earlier history', () => {
+  it('renders nothing for unloaded history in either direction', () => {
     const html = renderList({
       items: [makeUserItem('a')],
       hasEarlierMessages: true,
       hasNewerMessages: true,
     })
 
-    expect(html).toContain('yolo-chat-history-window-sentinel')
-    expect(html).toContain('aria-hidden="true"')
+    expect(html).not.toContain('yolo-chat-history-window-sentinel')
     expect(html).not.toContain('Load earlier messages')
     expect(html).not.toContain('Load newer messages')
     expect(html).not.toContain('role="status"')

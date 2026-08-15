@@ -357,7 +357,6 @@ describe('CliChatSurface', () => {
       renderKey: 'user-1',
       messageId: 'user-1',
       revision: 1,
-      estimatedHeight: 80,
       spacingBefore: 0,
       isPinnedForRender: false,
       isStreaming: false,

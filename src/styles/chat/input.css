@@ -1863,13 +1863,6 @@ button.yolo-chat-quick-access-picker-row > svg {
   }
 }
 
-.yolo-chat-history-window-sentinel {
-  flex: 0 0 1px;
-  height: 1px;
-  overflow: hidden;
-  pointer-events: none;
-}
-
 @media (max-width: 768px) {
   .yolo-message-navigator {
     display: none;

@@ -21,7 +21,6 @@ export type ActiveConversationTailState = {
 type ChatTimelineBaseItem = {
   id: string
   renderKey: string
-  estimatedHeight: number
   spacingBefore?: number
   isActive?: boolean
   isEditable?: boolean

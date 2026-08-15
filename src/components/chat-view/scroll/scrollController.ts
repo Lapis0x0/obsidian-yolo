@@ -22,6 +22,13 @@ export type ScrollController = {
     resolve: ScrollTargetResolver,
     observe: Element | null,
   ): void
+  /**
+   * Drops an in-flight anchor correction. Needed when the reader's position is
+   * replaced outright rather than adjusted — a jump outranks the correction
+   * while it lasts, but the correction would otherwise resume and undo it the
+   * moment the jump settles.
+   */
+  cancelPreserveAnchor(): void
   submitFollowLiveEdge(resolve: ScrollTargetResolver): void
   cancelFollowLiveEdge(): void
   /**
@@ -190,6 +197,9 @@ export function createScrollController(): ScrollController {
     },
     submitPreserveAnchor(resolve, observe) {
       submitSettlementIntent('preserveAnchor', resolve, observe)
+    },
+    cancelPreserveAnchor() {
+      clearIntent('preserveAnchor')
     },
     submitFollowLiveEdge(resolve) {
       clearIntent('followLiveEdge')

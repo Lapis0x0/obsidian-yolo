@@ -363,6 +363,7 @@ export function YoloChatSurface({
     hasNewerMessages,
     loadEarlier,
     loadNewer,
+    growWindowToFillViewport,
     resetToLatest,
     jumpToUserMessage,
     windowNavigationKey,
@@ -1555,6 +1556,7 @@ export function YoloChatSurface({
       hasNewerMessages={hasNewerMessages}
       onLoadEarlier={loadEarlier}
       onLoadNewer={loadNewer}
+      onGrowWindowToFillViewport={growWindowToFillViewport}
       onForceScrollToBottom={handleForceScrollToBottom}
       hasStreamingMessages={hasStreamingMessages}
       scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}

@@ -1,5 +1,4 @@
 import type {
-  AssistantToolMessageGroup,
   ChatAssistantMessage,
   ChatSubagentResultMessage,
   ChatTerminalCommandResultMessage,
@@ -48,18 +47,6 @@ function makeToolMessage({
   }
 }
 
-function getAssistantGroupEstimate(group: AssistantToolMessageGroup): number {
-  const item = buildMessageTimelineItems({
-    groupedChatMessages: [group],
-  })[0]
-
-  if (!item || item.kind !== 'assistant-group') {
-    throw new Error('Expected assistant-group timeline item')
-  }
-
-  return item.estimatedHeight
-}
-
 describe('buildMessageTimelineItems', () => {
   it('hides standalone background tool result messages from the visible timeline', () => {
     const source = {
@@ -100,26 +87,6 @@ describe('buildMessageTimelineItems', () => {
     })
 
     expect(items).toEqual([])
-  })
-
-  it('estimates collapsed tool cards by count instead of response payload size', () => {
-    const smallPayloadEstimate = getAssistantGroupEstimate([
-      makeToolMessage({
-        id: 'small-tool',
-        toolCallCount: 12,
-        responseText: 'ok',
-      }),
-    ])
-    const largePayloadEstimate = getAssistantGroupEstimate([
-      makeToolMessage({
-        id: 'large-tool',
-        toolCallCount: 12,
-        responseText: 'x'.repeat(80_000),
-      }),
-    ])
-
-    expect(largePayloadEstimate).toBe(smallPayloadEstimate)
-    expect(largePayloadEstimate).toBeLessThan(1000)
   })
 })
 

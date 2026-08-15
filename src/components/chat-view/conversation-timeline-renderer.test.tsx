@@ -38,7 +38,6 @@ const assistantItem: ChatTimelineAssistantGroupItem = {
   groupId: assistant.id,
   messageIds: [assistant.id],
   revision: 1,
-  estimatedHeight: 100,
 }
 
 const makeContract = (): ConversationTimelineRendererContract => ({
