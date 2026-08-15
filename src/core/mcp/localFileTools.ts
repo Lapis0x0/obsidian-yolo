@@ -85,10 +85,7 @@ import {
 } from '../memory/memoryManager'
 import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
 import type { RAGEngine } from '../rag/ragEngine'
-import {
-  acquireRuntimeComponent,
-  isRuntimeComponentEnabled,
-} from '../runtime-components/runtimeComponentAccess'
+import { acquireRuntimeComponent } from '../runtime-components/runtimeComponentAccess'
 import { getLiteSkillDocumentByPath } from '../skills/liteSkills'
 import {
   getContextPrunableToolCallIds,
@@ -111,7 +108,6 @@ import {
   MAX_BATCH_READ_FILES,
   MAX_READ_MAX_LINES,
   OFFICE_READ_MAX_BYTES,
-  buildFsReadModalitySchema,
   getFsReadOperation,
   getOfficeDocumentKindFromExtension,
   isBrowserReadPath,
@@ -119,7 +115,17 @@ import {
   parseBrowserReadPageId,
   sliceLinesForFsReadOperation,
 } from '../tools/fs_read/schema-helpers'
+import {
+  LOAD_TOOL_SCHEMAS_TOOL_NAME as LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
+  getLoadToolSchemasTool,
+} from '../tools/internal/load_tool_schemas/definition'
 import { invokeMemoryTool } from '../tools/memory-tool-support'
+import {
+  type BuiltinToolName,
+  assertNoDuplicates,
+  getToolDefinition,
+  listBuiltinTools,
+} from '../tools/registry'
 import { enforceBuiltinToolSecurityBoundary } from '../tools/security-boundary'
 import {
   MAX_FILE_SIZE_BYTES,
@@ -134,6 +140,7 @@ import {
 import type {
   LocalToolCallResult,
   LocalToolCallResultMetadata,
+  ToolCatalogContext,
 } from '../tools/types'
 import {
   WEB_SCRAPE_TOOL_NAME,
@@ -147,7 +154,6 @@ import {
   JS_SANDBOX_TOOL_NAME,
   buildJsSandboxProxyHandlers,
   callJsSandboxTool,
-  getJsSandboxTool,
 } from './jsSandboxTool'
 import { LOCAL_FILE_TOOL_SERVER } from './localFileToolNames'
 import { parseToolName } from './tool-name-utils'
@@ -226,539 +232,99 @@ const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'memory_delete',
 ])
 
-export const LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME = 'load_tool_schemas'
+/**
+ * Re-exported for external callers (`core/agent/tool-selection.ts`,
+ * `core/agent/tool-preferences.ts`, `core/agent/tool-gateway.ts`) — the
+ * implementation moved to `core/tools/internal/load_tool_schemas/definition.ts`
+ * (D6b: it is a protocol-internal tool, not a `CAPABILITIES` member, so it
+ * lives in `internal/` rather than getting a `defineTool` entry — see that
+ * module's own doc comment). This is a plain re-export, not a registry
+ * lookup (master.md §3.5: compat exports may only forward a per-tool
+ * module's own constant, never round-trip through the registry).
+ */
+export { LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME, getLoadToolSchemasTool }
 
 /**
- * Standalone tool definition for `load_tool_schemas`. Used by the runtime to
- * inject the loader on demand (when `enableToolDisclosure=true` AND the
- * filtered tool set contains any `on_demand` tool). Not surfaced through
- * `getLocalFileTools()` to keep it out of the user-facing tool list.
+ * Model-facing catalog order, preserved verbatim from the pre-D6b literal
+ * array this function used to return directly (phase2-migration.md D6b —
+ * "顺序与内容逐条不变": the model's tool list must not silently reorder).
+ * Every registered `BuiltinToolName` must appear here exactly once; the
+ * module-load assertions below turn "forgot to add the new tool here" into
+ * an immediate throw instead of a silently incomplete catalog.
  */
-export function getLoadToolSchemasTool(): McpTool {
-  return {
-    name: LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
-    description:
-      'Load full schemas for all on-demand tools belonging to the given MCP servers, making them callable in the next turn. Pass MCP server names (the prefix before "__" in any stub tool name) — batch multiple servers when needed.',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        servers: {
-          type: 'array',
-          items: { type: 'string' },
-          minItems: 1,
-          description:
-            'MCP server names whose on-demand tools should be loaded (e.g. "context7", "deepwiki").',
-        },
-      },
-      required: ['servers'],
-    },
-  }
+const LOCAL_FILE_TOOL_CATALOG_ORDER: readonly BuiltinToolName[] = [
+  'context_prune_tool_results',
+  'context_compact',
+  'fs_read',
+  'fs_edit',
+  'fs_write',
+  BASH_TOOL_NAME,
+  'memory_add',
+  'memory_update',
+  'memory_delete',
+  WEB_SEARCH_TOOL_NAME,
+  WEB_SCRAPE_TOOL_NAME,
+  JS_SANDBOX_TOOL_NAME,
+  TERMINAL_COMMAND_TOOL_NAME,
+  'delegate_subagent',
+  'ask_user_question',
+  'todo_write',
+]
+
+assertNoDuplicates(
+  LOCAL_FILE_TOOL_CATALOG_ORDER,
+  'local file tool catalog order entry',
+)
+if (
+  LOCAL_FILE_TOOL_CATALOG_ORDER.length !== listBuiltinTools().length ||
+  listBuiltinTools().some(
+    (tool) =>
+      !(LOCAL_FILE_TOOL_CATALOG_ORDER as readonly string[]).includes(tool.name),
+  )
+) {
+  throw new Error(
+    'getLocalFileTools() catalog order is out of sync with the built-in tool registry (core/tools/registry.ts) — add the missing tool name to LOCAL_FILE_TOOL_CATALOG_ORDER.',
+  )
 }
 
 export function getLocalFileTools(options?: {
   vaultBasePath?: string
   chatModelModalities?: ChatModelModality[]
 }): McpTool[] {
-  const modalitySchema = buildFsReadModalitySchema(options?.chatModelModalities)
-  return [
-    {
-      name: 'context_prune_tool_results',
-      description:
-        'Exclude historical tool call results from future model-visible context without deleting chat history. Supports pruning selected calls or all prunable calls at once.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          mode: {
-            type: 'string',
-            enum: ['selected', 'all'],
-            description:
-              'Prune mode. Use selected to prune specific toolCallIds, or all to prune all historical prunable tool results.',
-          },
-          toolCallIds: {
-            type: 'array',
-            items: {
-              type: 'string',
-            },
-            description:
-              'Tool call ids to exclude from future prompt context when mode is selected.',
-          },
-          reason: {
-            type: 'string',
-            description: 'Optional short reason for pruning.',
-          },
-        },
-      },
-    },
-    {
-      name: 'context_compact',
-      description:
-        'Compact earlier conversation history into a summary and continue in a fresh context window while preserving visible chat history.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          reason: {
-            type: 'string',
-            description: 'Optional short reason for compacting.',
-          },
-          instruction: {
-            type: 'string',
-            description: 'Optional focus hint for the summary.',
-          },
-        },
-      },
-    },
-    {
-      name: 'fs_read',
-      description: [
-        'Read vault files, listed skills, or open web pages.',
-        '',
-        'paths: copy exactly from the source. Do not invent prefixes.',
-        '- vault file: vault-relative path',
-        '- skill: the path field in <available_skills>',
-        '- open page: browser://<page_id> from <browser_context>',
-        '- wikilink: [[Note#Heading]] or bare Note#^blockId (nested headings ok; .md optional). Exact vault path wins first.',
-        '',
-        'Omit range fields for a full read. Targeted read: startLine and optionally endLine or maxLines (1-based; PDF pages). Office files (.docx/.pptx/.xlsx) parse to markdown.',
-        '',
-        'browser://:',
-        '- copy page_id from <browser_context>; never invent browser://https://... or browser://domain/path',
-        '- do not call when <browser_context> is absent',
-        '- does not fetch internet content; use web_search or web_scrape when available',
-      ].join('\n'),
-      inputSchema: {
-        type: 'object',
-        properties: {
-          paths: {
-            type: 'array',
-            items: {
-              type: 'string',
-            },
-            description: `Copy each path exactly as given. Max ${MAX_BATCH_READ_FILES} items.`,
-          },
-          sourcePath: {
-            type: 'string',
-            description:
-              "Optional vault path of the note the wikilink targets are being resolved from, to match Obsidian's link-resolution rules (relative/shortest-path). Only affects wikilink-style paths entries; ignored otherwise. Omit to resolve against the vault-wide best match.",
-          },
-          startLine: {
-            type: 'integer',
-            description:
-              'Start line/page (1-based). Providing this selects a targeted read; omit all range fields for a full read.',
-          },
-          endLine: {
-            type: 'integer',
-            description:
-              'Inclusive end line/page. Requires startLine and cannot be combined with maxLines.',
-          },
-          maxLines: {
-            type: 'integer',
-            description:
-              'Maximum lines/pages to return. Requires startLine and cannot be combined with endLine. When both endLine and maxLines are omitted, text-like content defaults to 50 lines and PDFs default to one page.',
-          },
-          format: {
-            type: 'string',
-            enum: ['readable', 'key_visible_info'],
-            description:
-              'Browser pages only. key_visible_info (default): compact visible headings, text blocks, tables, code, and formulas — prefer for long pages. readable: fuller Markdown-like text.',
-          },
-          ...(modalitySchema ? { modality: modalitySchema } : {}),
-        },
-        required: ['paths'],
-      },
-    },
-    {
-      name: 'fs_edit',
-      description:
-        'Apply one targeted text edit to an existing file. You must provide path, newText, and exactly one locator: oldText for exact-text replacement, or startLine+endLine for line-range replacement. Do not call fs_edit with only path and newText. Do not provide both oldText and startLine/endLine. Use fs_write to create a new file, fill an empty file, or overwrite full file content. To make several edits in the same file, emit multiple fs_edit calls — the system automatically merges edits targeting the same file into one atomic review and write, so earlier edits cannot invalidate later ones.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative file path.',
-          },
-          newText: {
-            type: 'string',
-            description:
-              'Replacement text. This is not a standalone write request; it is only valid together with oldText or startLine+endLine.',
-          },
-          oldText: {
-            type: 'string',
-            description:
-              'Exact-text mode: the existing text to find and replace. Must match the file exactly once. Do not combine with startLine/endLine.',
-          },
-          startLine: {
-            type: 'integer',
-            description:
-              'Line-range mode: 1-based inclusive start line. Provide together with endLine; do not combine with oldText.',
-          },
-          endLine: {
-            type: 'integer',
-            description:
-              'Line-range mode: 1-based inclusive end line. Provide together with startLine; do not combine with oldText.',
-          },
-        },
-        required: ['path', 'newText'],
-      },
-    },
-    {
-      name: 'fs_write',
-      description:
-        'Create a file, or overwrite an existing file with new full content. Missing parent folders are created automatically. Use fs_edit instead when you only need to change part of an existing file.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          path: {
-            type: 'string',
-            description: 'Vault-relative file path.',
-          },
-          content: {
-            type: 'string',
-            description: 'Full file content.',
-          },
-        },
-        required: ['path', 'content'],
-      },
-    },
-    ...(isRuntimeComponentEnabled('bash-engine')
-      ? [
-          {
-            name: BASH_TOOL_NAME,
-            description:
-              'A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate `fs_read` tool — this shell has no read command. To search, use the `search [-n N] "query" [path]` command inside this shell (hybrid RAG + keyword retrieval). Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate `fs_edit` or `fs_write` tool instead.',
-            inputSchema: {
-              type: 'object',
-              properties: {
-                command: {
-                  type: 'string',
-                  description: 'The shell command line to run.',
-                },
-              },
-              required: ['command'],
-            },
-          } satisfies McpTool,
-        ]
-      : []),
-    {
-      name: 'memory_add',
-      description:
-        'Add memory entries to global or assistant memory. Supports single entry or batch items; category defaults to other and id is auto-assigned.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          content: {
-            type: 'string',
-            description: 'Memory content text to store.',
-          },
-          items: {
-            type: 'array',
-            description:
-              'Batch add items. Each item accepts content, optional category, and optional scope.',
-            items: {
-              type: 'object',
-              properties: {
-                content: {
-                  type: 'string',
-                },
-                category: {
-                  type: 'string',
-                },
-                scope: {
-                  type: 'string',
-                  enum: ['global', 'assistant'],
-                },
-              },
-              required: ['content'],
-            },
-          },
-          category: {
-            type: 'string',
-            description:
-              'Memory category. Use profile, preferences, or other. Defaults to other.',
-          },
-          scope: {
-            type: 'string',
-            enum: ['global', 'assistant'],
-            description:
-              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
-          },
-        },
-      },
-    },
-    {
-      name: 'memory_update',
-      description:
-        'Update an existing memory entry by id within global or assistant memory.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          id: {
-            type: 'string',
-            description: 'Memory id such as Profile_2 or Memory_4.',
-          },
-          new_content: {
-            type: 'string',
-            description: 'Replacement content for the target memory id.',
-          },
-          scope: {
-            type: 'string',
-            enum: ['global', 'assistant'],
-            description:
-              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
-          },
-        },
-        required: ['id', 'new_content'],
-      },
-    },
-    {
-      name: 'memory_delete',
-      description:
-        'Delete memory entries by id from global or assistant memory. Supports single id or batch ids.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          id: {
-            type: 'string',
-            description: 'Memory id such as Preference_1.',
-          },
-          ids: {
-            type: 'array',
-            items: {
-              type: 'string',
-            },
-            description:
-              'Batch delete ids. Each id must exist in the selected memory scope.',
-          },
-          scope: {
-            type: 'string',
-            enum: ['global', 'assistant'],
-            description:
-              'Memory scope. Defaults to assistant, and may fallback to global when assistant memory is unavailable.',
-          },
-        },
-      },
-    },
-    {
-      name: WEB_SEARCH_TOOL_NAME,
-      description:
-        'Search the web for up-to-date or specific information using the configured search provider. ' +
-        'Returns { answer?, items: [{ id, title, url, text }] }. ' +
-        'When citing a fact taken from a result, append `[citation,domain](id)` immediately after the sentence; ' +
-        'example: "The capital of France is Paris. [citation,example.com](abc123)".',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          query: {
-            type: 'string',
-            description: 'Natural language search query.',
-          },
-          topic: {
-            type: 'string',
-            enum: ['general', 'news', 'finance'],
-            description:
-              'Optional topic hint. Some providers (e.g. Tavily) use this to bias results; others ignore it.',
-          },
-        },
-        required: ['query'],
-      },
-    },
-    {
-      name: WEB_SCRAPE_TOOL_NAME,
-      description:
-        'Fetch the full content of a single web page (markdown when the provider supports it). ' +
-        'Use this only when search snippets are insufficient. Returns { url, title?, content }.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          url: {
-            type: 'string',
-            description: 'Absolute http(s) URL to fetch.',
-          },
-        },
-        required: ['url'],
-      },
-    },
-    getJsSandboxTool(),
-    {
-      name: TERMINAL_COMMAND_TOOL_NAME,
-      description:
-        'Run a command in the local OS shell. Desktop-only. ' +
-        'Uses PowerShell on Windows and a POSIX shell on macOS/Linux. ' +
-        'Use for terminal-style inspection or local CLI commands on the user’s machine. ' +
-        'For vault content search/read/inspection, prefer the bash tool instead — it is sandboxed to the vault and works on every platform. ' +
-        'By default, command runs as a one-shot process and completes when that process exits; ' +
-        'it does not keep shell state between calls. ' +
-        'Use background=true to create a persistent session for long-running or interactive commands; ' +
-        'session_id polls or continues an existing ' +
-        'session; input sends stdin to that session; kill=true terminates it. ' +
-        'Results separate stdout and stderr. ' +
-        'Use tail_lines or tail_bytes when polling verbose sessions to inspect recent logs only. ' +
-        'Avoid heredocs and full-screen TUI programs such as vim/top. Long-running ' +
-        'commands should use background=true; completion is pushed when finished. ' +
-        'Avoid frequent polling to check status. ' +
-        'The tool result is returned to you, but it does not automatically become a user-facing answer; to show the user the result, send a concise text summary of the relevant output.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          command: {
-            type: 'string',
-            description:
-              'Shell command to run. Omit when polling, sending input, or killing an existing session.',
-          },
-          session_id: {
-            type: 'integer',
-            description:
-              'Existing session id returned by a previous terminal_command call. Use it to poll, send input, or kill.',
-          },
-          input: {
-            type: 'string',
-            description:
-              'Text to write to the session stdin. Include a trailing newline when submitting interactive input.',
-          },
-          background: {
-            type: 'boolean',
-            description:
-              'Start the command in a dedicated session and return a session_id if it is still running after a short wait.',
-          },
-          cwd: {
-            type: 'string',
-            description:
-              'Absolute working directory for this command. Defaults to the current vault root when available.',
-          },
-          timeout: {
-            type: 'integer',
-            description:
-              'Maximum seconds to wait for foreground output before returning a live session_id. Defaults to 30.',
-          },
-          tail_lines: {
-            type: 'integer',
-            description:
-              'Return only the last N lines from stdout and stderr. Useful when polling verbose long-running sessions.',
-          },
-          tail_bytes: {
-            type: 'integer',
-            description:
-              'Return only the last N bytes from stdout and stderr. Cannot be combined with tail_lines.',
-          },
-          kill: {
-            type: 'boolean',
-            description: 'Terminate the given session_id.',
-          },
-        },
-      },
-    },
-    {
-      name: 'delegate_subagent',
-      description:
-        'Dispatch an isolated temporary sub-agent to work on a self-contained task asynchronously. ' +
-        'The sub-agent does not see the parent conversation; the prompt must include all necessary context. ' +
-        'Returns immediately with a taskId while the child runs in the background. ' +
-        'When complete, a follow-up background message starting with ' +
-        '[subagent_result taskId=...] will arrive for you to summarize or continue. ' +
-        'The child inherits your current model and allowed tools (except recursive delegation and user-interaction tools). ' +
-        'The tool result is returned to you, but it does not automatically become a user-facing answer; to show the user the result, send a concise text summary of the relevant output.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          description: {
-            type: 'string',
-            description:
-              'Short title for this dispatch (shown in the UI and tool summary).',
-          },
-          prompt: {
-            type: 'string',
-            description:
-              'Complete task instructions for the temporary sub-agent.',
-          },
-        },
-        required: ['description', 'prompt'],
-      },
-    },
-    {
-      name: 'ask_user_question',
-      description:
-        'Ask the user one or more structured questions when you are blocked by missing information that cannot be inferred from context or the vault. Group related questions in a single call instead of asking turn by turn. Use sparingly — never to confirm trivial actions. Prefer concrete options (single_select / multi_select) over free text for the main questions. The UI automatically appends an "Other" escape hatch to every single_select / multi_select (with a free-text input that lands in the answer as `otherText`), so you do NOT need to add your own "Other" / "其他" option. The trailing free_text catch-all is also useful when an open-ended answer is plausible (e.g. "Anything else to add? (optional)") — note that free_text answers are treated as optional and may come back empty. This call MUST be the only tool call in the turn; the agent run pauses until the user submits answers in a dedicated panel.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          questions: {
-            type: 'array',
-            minItems: 1,
-            description:
-              'One or more structured questions to ask the user. Group related questions together rather than splitting them across turns.',
-            items: {
-              type: 'object',
-              required: ['id', 'prompt', 'inputType'],
-              properties: {
-                id: {
-                  type: 'string',
-                  description:
-                    'Stable id used to key the answer back. Must be unique across the questions array.',
-                },
-                prompt: {
-                  type: 'string',
-                  description: 'The question text shown to the user.',
-                },
-                inputType: {
-                  type: 'string',
-                  enum: ['free_text', 'single_select', 'multi_select'],
-                  description:
-                    'free_text: open answer. single_select: pick exactly one option. multi_select: pick one or more options.',
-                },
-                options: {
-                  type: 'array',
-                  minItems: 2,
-                  description:
-                    'Required for single_select / multi_select. Each option has a stable id and a human-readable label. Disallowed for free_text. The id "__other__" is reserved — the UI appends its own "Other" entry, so do not include one yourself.',
-                  items: {
-                    type: 'object',
-                    required: ['id', 'label'],
-                    properties: {
-                      id: { type: 'string' },
-                      label: { type: 'string' },
-                    },
-                  },
-                },
-              },
-            },
-          },
-        },
-        required: ['questions'],
-      },
-    },
-    {
-      name: 'todo_write',
-      description:
-        'Update the todo list for the current agent run. Use proactively for multi-step tasks (≥3 steps) or when the user has multiple requests. Each call replaces the entire list; pass `[]` to clear. Keep at most one item in_progress (and exactly one while work is ongoing). Mark items completed immediately as you finish them.',
-      inputSchema: {
-        type: 'object',
-        properties: {
-          todos: {
-            type: 'array',
-            description:
-              'Complete replacement list of todo items. Pass [] to clear all todos.',
-            items: {
-              type: 'object',
-              properties: {
-                content: {
-                  type: 'string',
-                  description:
-                    'The work to do, as an action phrase. Examples: "Run tests", "Refactor the parser".',
-                },
-                status: {
-                  type: 'string',
-                  enum: ['pending', 'in_progress', 'completed'],
-                  description: 'Current status of the task.',
-                },
-              },
-              required: ['content', 'status'],
-            },
-          },
-        },
-        required: ['todos'],
-      },
-    },
-  ]
+  const catalogCtx: ToolCatalogContext = {
+    vaultBasePath: options?.vaultBasePath,
+    chatModelModalities: options?.chatModelModalities,
+  }
+  return LOCAL_FILE_TOOL_CATALOG_ORDER.filter((name) => {
+    // `bash`'s catalog-inclusion is gated by the `bash-engine` runtime
+    // component being enabled — the one tool whose presence here was ever
+    // conditional (see the pre-D6b literal array this replaced). That
+    // judgment now lives on the tool's own `isAvailable`
+    // (`core/tools/bash/definition.ts`) rather than a raw
+    // `isRuntimeComponentEnabled` call inline here, but this loop still has
+    // to consult it explicitly per-tool rather than applying `isAvailable`
+    // uniformly to every entry: `ToolCatalogContext` carries no `settings`
+    // snapshot, so a uniform pass would silently drop `web_search` (whose
+    // `isAvailable` needs `settings`) from every catalog built here —
+    // including the settings-page call sites (`AgentSection.tsx`,
+    // `AgentToolsModal.tsx`, `agentToolPersistence.ts`) that need the full,
+    // unfiltered list to render toggles regardless of runtime readiness
+    // (master.md decision 18). `web_search` / `terminal_command` /
+    // `js_eval` stay unconditionally listed here, exactly as before;
+    // environment-availability filtering for *them* happens downstream, in
+    // `McpManager.isLocalToolEnabled` (`core/mcp/mcpManager.ts`), which
+    // already calls every registered tool's `isAvailable` generically once
+    // real `settings` are available.
+    if (name !== BASH_TOOL_NAME) return true
+    const definition = getToolDefinition(name)
+    return definition?.isAvailable ? definition.isAvailable({}) : true
+  }).map((name) => {
+    const definition = getToolDefinition(name)
+    if (!definition) {
+      throw new Error(`Unknown built-in tool "${name}" in catalog order`)
+    }
+    return { name, ...definition.getMcpTool(catalogCtx) }
+  })
 }
 
 const getOptionalBooleanArg = (

@@ -114,6 +114,47 @@ describe('McpManager mobile built-in tool behavior', () => {
     expect(toolNames).not.toContain('yolo_local__fs_write')
   })
 
+  // D6b (docs/plans/2026-08-15-tool-registry/phase2-migration.md): proves
+  // `fs_read`'s dynamic `modality` schema field — the one thing that forced
+  // `BuiltinToolDefinition.getMcpTool` to be a function instead of a
+  // constant (master.md §3.3) — actually reaches the model through the real
+  // production call site (`McpManager.listAvailableTools` ->
+  // `getLocalFileTools({ chatModelModalities })`,
+  // `core/agent/llm-turn-executor.ts`'s own call passes
+  // `this.input.model.modalities` the same way), not just the registry's
+  // own unit tests.
+  it('projects fs_read modality schema per chatModelModalities through listAvailableTools', async () => {
+    const manager = createManager()
+
+    const getFsReadModalityEnum = (
+      tools: Awaited<ReturnType<typeof manager.listAvailableTools>>,
+    ) => {
+      const fsRead = tools.find((tool) => tool.name === 'yolo_local__fs_read')
+      const properties = (
+        fsRead?.inputSchema as { properties?: Record<string, unknown> }
+      )?.properties
+      return (properties?.modality as { enum?: string[] } | undefined)?.enum
+    }
+
+    const textOnly = await manager.listAvailableTools({
+      includeBuiltinTools: true,
+      chatModelModalities: [],
+    })
+    expect(getFsReadModalityEnum(textOnly)).toBeUndefined()
+
+    const visionModel = await manager.listAvailableTools({
+      includeBuiltinTools: true,
+      chatModelModalities: ['vision'],
+    })
+    expect(getFsReadModalityEnum(visionModel)).toEqual(['text', 'image'])
+
+    const pdfModel = await manager.listAvailableTools({
+      includeBuiltinTools: true,
+      chatModelModalities: ['pdf'],
+    })
+    expect(getFsReadModalityEnum(pdfModel)).toEqual(['text', 'pdf'])
+  })
+
   it('executes built-in tools on mobile', async () => {
     const manager = createManager()
 

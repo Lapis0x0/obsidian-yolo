@@ -12,18 +12,17 @@ import {
 } from '../../agent/bash/outputBudget'
 import { createVaultBashFileSystem } from '../../agent/bash/vaultBashFileSystem'
 import { createVaultBashSearch } from '../../agent/bash/vaultBashSearch'
-import { acquireRuntimeComponent } from '../../runtime-components/runtimeComponentAccess'
+import {
+  acquireRuntimeComponent,
+  isRuntimeComponentEnabled,
+} from '../../runtime-components/runtimeComponentAccess'
 import { defineTool } from '../define'
 import { getTextArg } from '../tool-args'
 
 // Schema copied verbatim from the `bash` entry in `getLocalFileTools()`
-// (`src/core/mcp/localFileTools.ts`). That array still wraps this literal in
-// `isRuntimeComponentEnabled('bash-engine') ? [...] : []` — this projection
-// is deliberately unconditional (`getMcpTool` only ever describes the
-// protocol shape; whether the tool is currently offered is a listing-time
-// concern that stays in `getLocalFileTools()` until D6b reconnects it to the
-// registry — see that migration doc's own note on why this batch does not
-// add an `isAvailable` gate for the runtime-component check).
+// (`src/core/mcp/localFileTools.ts`). `getMcpTool` only ever describes the
+// protocol shape — it stays unconditional; whether the tool is currently
+// offered is `isAvailable`'s job (see below, D6b).
 const BASH_MCP_TOOL: Omit<McpTool, 'name'> = {
   description:
     'A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate `fs_read` tool — this shell has no read command. To search, use the `search [-n N] "query" [path]` command inside this shell (hybrid RAG + keyword retrieval). Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate `fs_edit` or `fs_write` tool instead.',
@@ -42,14 +41,23 @@ const BASH_MCP_TOOL: Omit<McpTool, 'name'> = {
 export const bashDefinition = defineTool({
   name: 'bash',
   getMcpTool: () => BASH_MCP_TOOL,
-  // No `isAvailable` here (see comment above `BASH_MCP_TOOL`): the
-  // `bash-engine` runtime-component gate is not one of this batch's isAvailable
-  // dimensions (master.md §3.1b only documents provider readiness and
-  // platform as examples) and `getLocalFileTools()` still independently
-  // decides whether this tool's schema is offered at all. Adding a
-  // registry-level gate now would be a speculative, unrequested behavior
-  // surface — see this batch's own report for the considered-and-rejected
-  // reasoning.
+  // D6b: this tool's catalog-inclusion gate — previously
+  // `isRuntimeComponentEnabled('bash-engine')` embedded directly inside
+  // `getLocalFileTools()`'s array-building conditional — now lives here as
+  // this tool's own `isAvailable`, the same dimension `web_search`'s
+  // provider-readiness gate and `terminal_command`'s platform gate already
+  // use (master.md §3.1b). `getLocalFileTools()` still explicitly consults
+  // this (see that function's own comment) rather than applying `isAvailable`
+  // uniformly to every registered tool: `ToolCatalogContext` carries no
+  // `settings` snapshot, so a uniform pass there would silently drop
+  // `web_search` (whose `isAvailable` needs `settings`) from every catalog
+  // built without one — including the settings-page call sites that need the
+  // full, unfiltered tool list to render toggles regardless of runtime
+  // readiness (decision 18). `isRuntimeComponentEnabled` is a synchronous,
+  // side-effect-free global read (see its own doc comment) — exactly like
+  // `terminal_command`'s `Platform.isDesktop` check — so no `ToolContext`
+  // threading is needed for it.
+  isAvailable: () => isRuntimeComponentEnabled('bash-engine'),
   chatLabel: {
     key: 'settings.agent.builtinBashLabel',
     fallback: 'Bash (Vault Shell)',

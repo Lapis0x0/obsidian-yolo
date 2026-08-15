@@ -391,9 +391,58 @@ describe('bash static schema (getMcpTool)', () => {
     const { name: _name, ...liveBashRest } = liveBash!
     expect(bashDefinition.getMcpTool({})).toEqual(liveBashRest)
   })
+})
 
-  it('has no isAvailable gate at this layer (see bash/definition.ts for why)', () => {
-    expect(bashDefinition.isAvailable).toBeUndefined()
+// D6b: the `bash-engine` gate that used to live inline in
+// `getLocalFileTools()` (`isRuntimeComponentEnabled('bash-engine') ? [...] :
+// []`) now lives on `bashDefinition.isAvailable` — see that definition's own
+// doc comment for why `getLocalFileTools()` still has to consult it
+// explicitly (per-tool) rather than applying `isAvailable` uniformly.
+describe('bash isAvailable (D6b: bash-engine gate unified)', () => {
+  afterEach(() => {
+    setRuntimeComponentEnabledOverrideForTests(null)
+  })
+
+  it('reflects isRuntimeComponentEnabled("bash-engine")', () => {
+    setRuntimeComponentEnabledOverrideForTests(() => true)
+    expect(bashDefinition.isAvailable?.({})).toBe(true)
+
+    setRuntimeComponentEnabledOverrideForTests(() => false)
+    expect(bashDefinition.isAvailable?.({})).toBe(false)
+  })
+
+  it('getLocalFileTools() includes bash when bash-engine is enabled, and omits it when disabled — matching the pre-D6b conditional-array behavior', () => {
+    setRuntimeComponentEnabledOverrideForTests(() => true)
+    expect(getLocalFileTools().some((tool) => tool.name === 'bash')).toBe(true)
+
+    setRuntimeComponentEnabledOverrideForTests(() => false)
+    expect(getLocalFileTools().some((tool) => tool.name === 'bash')).toBe(false)
+  })
+
+  it('every other tool stays in the catalog regardless of bash-engine state (only bash is gated here)', () => {
+    setRuntimeComponentEnabledOverrideForTests(() => false)
+    const namesWithBashOff = getLocalFileTools().map((tool) => tool.name)
+    expect(namesWithBashOff).not.toContain('bash')
+    expect(namesWithBashOff).toEqual(
+      expect.arrayContaining([
+        'context_prune_tool_results',
+        'context_compact',
+        'fs_read',
+        'fs_edit',
+        'fs_write',
+        'memory_add',
+        'memory_update',
+        'memory_delete',
+        'web_search',
+        'web_scrape',
+        'js_eval',
+        'terminal_command',
+        'delegate_subagent',
+        'ask_user_question',
+        'todo_write',
+      ]),
+    )
+    expect(namesWithBashOff).toHaveLength(15)
   })
 })
 
