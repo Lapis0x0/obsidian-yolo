@@ -47,6 +47,14 @@ describe('registry queries', () => {
     ])
   })
 
+  it('finds the subagent_delegation capability by id', () => {
+    const capability = getCapability('subagent_delegation')
+    expect(capability?.id).toBe('subagent_delegation')
+    expect(capability?.tools.map((tool) => tool.name)).toEqual([
+      'delegate_subagent',
+    ])
+  })
+
   it('returns undefined for an unknown capability id', () => {
     expect(getCapability('not_a_real_capability')).toBeUndefined()
   })
@@ -57,19 +65,30 @@ describe('registry queries', () => {
     expect(getToolDefinition('memory_delete')?.name).toBe('memory_delete')
   })
 
+  it('finds delegate_subagent by name', () => {
+    expect(getToolDefinition('delegate_subagent')?.name).toBe(
+      'delegate_subagent',
+    )
+  })
+
   it('returns undefined for an unknown tool name', () => {
     expect(getToolDefinition('not_a_real_tool')).toBeUndefined()
   })
 
   it('maps a tool name back to its owning capability', () => {
     expect(getCapabilityForTool('memory_delete')?.id).toBe('memory')
+    expect(getCapabilityForTool('delegate_subagent')?.id).toBe(
+      'subagent_delegation',
+    )
     expect(getCapabilityForTool('not_a_real_tool')).toBeUndefined()
   })
 
   it('type-guards tool names and capability ids', () => {
     expect(isBuiltinToolName('memory_add')).toBe(true)
+    expect(isBuiltinToolName('delegate_subagent')).toBe(true)
     expect(isBuiltinToolName('not_a_real_tool')).toBe(false)
     expect(isBuiltinCapabilityId('memory')).toBe(true)
+    expect(isBuiltinCapabilityId('subagent_delegation')).toBe(true)
     expect(isBuiltinCapabilityId('not_a_real_capability')).toBe(false)
   })
 })

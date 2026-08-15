@@ -22,9 +22,17 @@ export type BuiltinCapabilityId = (typeof CAPABILITIES)[number]['id']
 export type BuiltinToolName =
   (typeof CAPABILITIES)[number]['tools'][number]['name']
 
-const BUILTIN_TOOLS: readonly BuiltinToolDefinition[] = CAPABILITIES.flatMap(
-  (capability) => capability.tools,
-)
+// `CAPABILITIES` is a heterogeneous tuple — each element has its own literal
+// `Id`/`Tools` type parameters (that's the whole point, see define.ts) — so
+// `.flatMap` over it directly cannot unify a single element type and fails
+// to typecheck once there is more than one capability. Widening to the
+// (structurally compatible) default-generic view here is a purely local,
+// runtime-only computation: it does not touch `BuiltinCapabilityId` /
+// `BuiltinToolName` above, which are computed at the type level straight
+// from `CAPABILITIES`'s own literal type, not from this array.
+const BUILTIN_TOOLS: readonly BuiltinToolDefinition[] = (
+  CAPABILITIES as readonly BuiltinCapabilityDefinition[]
+).flatMap((capability) => capability.tools)
 
 /**
  * Throws if `values` contains a duplicate. Exported so it can be unit tested

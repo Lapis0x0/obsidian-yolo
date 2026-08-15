@@ -1213,7 +1213,14 @@ export function getLocalFileTools(options?: {
   ]
 }
 
-const getTextArg = (args: Record<string, unknown>, key: string): string => {
+// Exported additively (same pattern as `asErrorMessage` / `getStringArrayArg`
+// above) so `src/core/tools/delegate_subagent/definition.ts` can reuse these
+// exact arg-parsing helpers instead of duplicating them. No existing export
+// or behavior changes.
+export const getTextArg = (
+  args: Record<string, unknown>,
+  key: string,
+): string => {
   const value = args[key]
   if (typeof value !== 'string') {
     throw new Error(`${key} must be a string.`)
@@ -1221,7 +1228,7 @@ const getTextArg = (args: Record<string, unknown>, key: string): string => {
   return value
 }
 
-const getOptionalTextArg = (
+export const getOptionalTextArg = (
   args: Record<string, unknown>,
   key: string,
 ): string | undefined => {
