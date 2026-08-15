@@ -65,7 +65,6 @@ import {
 } from './tool-preferences'
 import { isLoadToolSchemasToolName } from './tool-selection'
 import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
-import type { AgentRunContext } from './types'
 import {
   buildAllowedSkillPathSet,
   findPathOutsideScope,
@@ -276,7 +275,6 @@ export class AgentToolGateway {
   private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillPaths?: readonly string[]
   private readonly apiType?: LLMProviderApiType | null
-  private readonly runContext?: AgentRunContext
   private readonly subagentParentContext?: SubagentParentContext
   private readonly isSubagentChildRun: boolean
   private readonly toolApprovalConversationId?: string
@@ -306,7 +304,6 @@ export class AgentToolGateway {
       workspaceScope?: AssistantWorkspaceScope
       allowedSkillPaths?: string[]
       apiType?: LLMProviderApiType | null
-      runContext?: AgentRunContext
       subagentParentContext?: SubagentParentContext
       isSubagentChildRun?: boolean
       toolApprovalConversationId?: string
@@ -330,7 +327,6 @@ export class AgentToolGateway {
     this.workspaceScope = options?.workspaceScope
     this.allowedSkillPaths = options?.allowedSkillPaths
     this.apiType = options?.apiType
-    this.runContext = options?.runContext
     this.subagentParentContext = options?.subagentParentContext
     this.isSubagentChildRun = options?.isSubagentChildRun ?? false
     this.toolApprovalConversationId = options?.toolApprovalConversationId
@@ -1069,7 +1065,6 @@ export class AgentToolGateway {
           debugTraceId,
           workspaceScope: this.workspaceScope,
           allowedSkillPaths: this.allowedSkillPaths,
-          runContext: this.runContext,
           subagentParentContext: this.subagentParentContext,
           bashApprovalMode: this.isBashToolCall(entry.toolCall.request.name)
             ? this.resolveApprovalMode(entry.toolCall.request.name)
@@ -1114,7 +1109,6 @@ export class AgentToolGateway {
             debugTraceId,
             workspaceScope: this.workspaceScope,
             allowedSkillPaths: this.allowedSkillPaths,
-            runContext: this.runContext,
             subagentParentContext: this.subagentParentContext,
           }).then((response) => ({ entries: [entry], responses: [response] })),
         )
@@ -1145,7 +1139,6 @@ export class AgentToolGateway {
           debugTraceId,
           workspaceScope: this.workspaceScope,
           allowedSkillPaths: this.allowedSkillPaths,
-          runContext: this.runContext,
           subagentParentContext: this.subagentParentContext,
         }).then((response) => ({
           entries,
@@ -1269,7 +1262,6 @@ export class AgentToolGateway {
             debugTraceId,
             workspaceScope: this.workspaceScope,
             allowedSkillPaths: this.allowedSkillPaths,
-            runContext: this.runContext,
             subagentParentContext: this.subagentParentContext,
           }),
         )

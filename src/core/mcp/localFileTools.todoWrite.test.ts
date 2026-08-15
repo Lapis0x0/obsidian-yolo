@@ -1,17 +1,15 @@
 import { App } from 'obsidian'
 
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
-import { callLocalFileTool } from './localFileTools'
+import { executeBuiltinTool } from '../tools/dispatcher'
 
 const stubApp = {} as unknown as App
 
+// See the same note in `localFileTools.test.ts`: `callLocalFileTool` was
+// deleted with the old switch (D12); this suite now runs `todo_write`
+// through the registry dispatcher instead.
 const call = (args: Record<string, unknown>) =>
-  callLocalFileTool({
-    app: stubApp,
-    toolName: 'todo_write',
-    args,
-  })
+  executeBuiltinTool('todo_write', args, { app: stubApp })
 
 describe('todo_write tool (validation)', () => {
   it('returns success on a valid todo list', async () => {
