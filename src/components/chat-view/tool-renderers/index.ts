@@ -37,6 +37,7 @@ export const TOOL_RENDERERS = {
   web_scrape: genericRenderer,
   js_eval: genericRenderer,
   terminal_command: genericRenderer,
+  bash: genericRenderer,
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

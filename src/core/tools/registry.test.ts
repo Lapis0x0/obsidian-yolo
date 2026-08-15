@@ -194,4 +194,31 @@ describe('registry queries', () => {
     expect(isBuiltinCapabilityId('js_sandbox')).toBe(true)
     expect(isBuiltinCapabilityId('terminal')).toBe(true)
   })
+
+  // D6 batch 7 (vault_shell) — the last D6 batch. Combined with
+  // bash-equivalence.test.ts (which proves `executeBuiltinTool` itself
+  // produces the same result as the old `case BASH_TOOL_NAME` switch branch,
+  // including all three approval tiers and the `dangerous_only` interception
+  // behavior), this closes the same loop earlier batches closed: registered
+  // -> reached -> correct.
+  it('finds vault_shell, the only capability with a three-tier approval and no dedicated settings', () => {
+    const vaultShell = getCapability('vault_shell')
+    expect(vaultShell?.id).toBe('vault_shell')
+    expect(vaultShell?.tools.map((tool) => tool.name)).toEqual(['bash'])
+    expect(vaultShell?.hasSettings).toBe(false)
+    expect(vaultShell?.approval).toEqual({
+      defaultMode: 'dangerous_only',
+      allowedModes: ['full_access', 'dangerous_only', 'require_approval'],
+      allowAlwaysAllow: false,
+    })
+  })
+
+  it('maps bash back to vault_shell', () => {
+    expect(getCapabilityForTool('bash')?.id).toBe('vault_shell')
+  })
+
+  it('type-guards the D6 batch 7 tool name (bash)', () => {
+    expect(isBuiltinToolName('bash')).toBe(true)
+    expect(isBuiltinCapabilityId('vault_shell')).toBe(true)
+  })
 })

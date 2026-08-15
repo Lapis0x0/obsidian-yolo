@@ -167,4 +167,5 @@ export const CAPABILITY_SETTINGS_LAUNCHERS = {
   web_access: openWebSearchSettings,
   js_sandbox: openJsSandboxSettings,
   terminal: openTerminalSettings,
+  vault_shell: null,
 } satisfies Record<BuiltinCapabilityId, SettingsLauncher | null>

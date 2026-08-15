@@ -72,6 +72,7 @@ import {
   getDisabledSkillNameSet,
   resolveAssistantSkillPolicy,
 } from '../../../core/skills/skillPolicy'
+import { getCapability } from '../../../core/tools/registry'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import {
@@ -1206,26 +1207,48 @@ export function AgentsSectionContent({
     () => getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
     [],
   )
-  const bashToolApprovalOptions = useMemo(
-    () => [
-      {
-        value: 'require_approval',
-        label: t('settings.agent.toolApprovalRequire', 'Require approval'),
-      },
-      {
-        value: 'dangerous_only',
-        label: t(
-          'settings.agent.toolApprovalDangerousOnly',
-          'Approve dangerous operations',
-        ),
-      },
-      {
-        value: 'full_access',
-        label: t('settings.agent.toolApprovalFullAccess', 'Full access'),
-      },
-    ],
-    [t],
-  )
+  // D6 batch 7: which tiers this dropdown offers now comes from the
+  // `vault_shell` capability's `approval.allowedModes`
+  // (`core/tools/capabilities/vault-shell.ts`) rather than an independent
+  // hardcoded three-item literal, so this file and that capability cannot
+  // silently drift apart. Displayed order is preserved from before this
+  // change (require -> dangerous -> full) rather than following
+  // `allowedModes`'s own declaration order, since reordering the dropdown is
+  // not one of this refactor's approved visible changes (master.md §5). The
+  // fallback list only matters if the capability were ever absent from
+  // `CAPABILITIES`, which `registry.ts`'s own module-load assertions rule
+  // out for the real registry.
+  const bashToolApprovalOptions = useMemo(() => {
+    const labelFor = (mode: AssistantToolApprovalMode): string => {
+      switch (mode) {
+        case 'require_approval':
+          return t('settings.agent.toolApprovalRequire', 'Require approval')
+        case 'dangerous_only':
+          return t(
+            'settings.agent.toolApprovalDangerousOnly',
+            'Approve dangerous operations',
+          )
+        case 'full_access':
+        default:
+          return t('settings.agent.toolApprovalFullAccess', 'Full access')
+      }
+    }
+    const allowedModes = new Set<AssistantToolApprovalMode>(
+      getCapability('vault_shell')?.approval.allowedModes ?? [
+        'require_approval',
+        'dangerous_only',
+        'full_access',
+      ],
+    )
+    const displayOrder: AssistantToolApprovalMode[] = [
+      'require_approval',
+      'dangerous_only',
+      'full_access',
+    ]
+    return displayOrder
+      .filter((mode) => allowedModes.has(mode))
+      .map((mode) => ({ value: mode, label: labelFor(mode) }))
+  }, [t])
   return (
     <div
       ref={sectionRef}

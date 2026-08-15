@@ -16,6 +16,7 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 import { getMcpToolSchemaTokenCost } from '../mcp/toolCatalogTokenCache'
+import { getCapability } from '../tools/registry'
 
 import { FILE_EDIT_GROUP_TOOL_NAME } from './builtinToolUiMeta'
 
@@ -202,8 +203,20 @@ export const getDefaultApprovalModeForTool = (
     // bash's third tier (dangerous ops only) is its own default — read
     // commands and mkdir run freely, rm/mv pause mid-script. See
     // src/core/agent/bash/dangerousOperationGate.ts.
+    //
+    // D6 batch 7: this special case's structure is unchanged (its removal is
+    // D7's job, once the surrounding function itself becomes
+    // capability-driven — see master.md §3.7 / phase2-migration.md D7 row 6),
+    // but its *value* now comes from the `vault_shell` capability
+    // (`capabilities/vault-shell.ts`) rather than an independent literal, so
+    // this file and that capability cannot silently drift apart. The `??
+    // 'dangerous_only'` fallback only matters if the capability were ever
+    // absent from `CAPABILITIES`, which `registry.ts`'s own module-load
+    // assertions rule out for the real registry.
     if (parsedToolName === BASH_TOOL_NAME) {
-      return 'dangerous_only'
+      return (
+        getCapability('vault_shell')?.approval.defaultMode ?? 'dangerous_only'
+      )
     }
 
     return REQUIRE_APPROVAL_LOCAL_TOOLS.has(parsedToolName)
