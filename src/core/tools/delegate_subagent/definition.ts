@@ -1,8 +1,8 @@
 import type { McpTool } from '../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { resolveSubagentModelConfig } from '../../agent/subagent/model-config'
-import { getOptionalTextArg, getTextArg } from '../../mcp/localFileTools'
 import { defineTool } from '../define'
+import { getOptionalTextArg, getTextArg } from '../tool-args'
 
 // Schema copied verbatim from the `delegate_subagent` entry in
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts:1102`). Deliberately
@@ -65,10 +65,11 @@ export const delegateSubagentDefinition = defineTool({
   // delegation — see `subagent/constants.ts`'s
   // `SUBAGENT_BLOCKED_TOOL_SHORT_NAMES`), and this `execute` never calls
   // into `service.ts` or any other host singleton — only `ToolContext`
-  // injections and the two dynamic imports below (mirroring the original).
+  // injections and the one dynamic import below (mirroring the original).
   execute: async (args, ctx) => {
     const {
       subagentParentContext,
+      runSubagent,
       conversationId,
       settings,
       conversationMessages,
@@ -76,7 +77,7 @@ export const delegateSubagentDefinition = defineTool({
       signal,
     } = ctx
 
-    if (!subagentParentContext) {
+    if (!subagentParentContext || !runSubagent) {
       throw new Error(
         'delegate_subagent is only available during an active parent agent run.',
       )
@@ -132,7 +133,6 @@ export const delegateSubagentDefinition = defineTool({
       }
     }
 
-    const { runSubagent } = await import('../../agent/subagent/runner')
     const accepted = await runSubagent({
       description,
       prompt: taskPrompt,
@@ -142,6 +142,12 @@ export const delegateSubagentDefinition = defineTool({
         toolCallId: toolCallId ?? '',
         assistantMessageId,
       },
+      // Passed through unexamined — both `ctx.subagentParentContext` and this
+      // `parent` parameter are opaque at this file's boundary (see
+      // `OpaqueSubagentParentContext` and `ToolContext['runSubagent']` in
+      // `core/tools/types.ts`). The real `SubagentParentContext` shape is
+      // only recovered once, where `mcpManager.ts` injects the concrete
+      // `runSubagent` implementation into `ToolContext`.
       parent: subagentParentContext,
       childModel: {
         providerClient: selectedModelClient.providerClient,

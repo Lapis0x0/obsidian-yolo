@@ -1,14 +1,14 @@
 import type { McpTool } from '../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import type { MemoryScope } from '../../memory/memoryManager'
+import { memoryDelete } from '../../memory/memoryManager'
+import { defineTool } from '../define'
+import { invokeMemoryTool } from '../memory-tool-support'
 import {
   asErrorMessage,
   formatJsonResult,
   getStringArrayArg,
-  invokeMemoryTool,
-} from '../../mcp/localFileTools'
-import type { MemoryScope } from '../../memory/memoryManager'
-import { memoryDelete } from '../../memory/memoryManager'
-import { defineTool } from '../define'
+} from '../tool-args'
 
 // Schema copied verbatim from the `memory_delete` entry in
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts:959`).

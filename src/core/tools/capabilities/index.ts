@@ -1,15 +1,25 @@
+import { contextCompactionCapability } from './context-compaction'
+import { contextPruningCapability } from './context-pruning'
+import { fileReadingCapability } from './file-reading'
 import { memoryCapability } from './memory'
 import { subagentDelegationCapability } from './subagent-delegation'
+import { todoListCapability } from './todo-list'
+import { userQuestionsCapability } from './user-questions'
 
 /**
  * The single registration point for all built-in capabilities.
  *
- * This task's scope is D1 (skeleton) + D2 (`memory`) + D3
- * (`subagent_delegation`) — Phase 1's two skeleton-validating samples. The
- * remaining 10 capabilities land in D6. Once they do, add them here — this
- * is the only place a new capability needs to be registered.
+ * Phase 1 (D1-D4) registered the two skeleton-validating samples (`memory`,
+ * `subagent_delegation`). D6 migrates the remaining 10 capabilities in
+ * batches; this array grows with each batch. Once all of D6 lands, add them
+ * here — this is the only place a new capability needs to be registered.
  */
 export const CAPABILITIES = [
   memoryCapability,
   subagentDelegationCapability,
+  contextPruningCapability,
+  contextCompactionCapability,
+  todoListCapability,
+  userQuestionsCapability,
+  fileReadingCapability,
 ] as const

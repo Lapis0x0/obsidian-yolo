@@ -1,10 +1,9 @@
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { asErrorMessage } from '../mcp/localFileTools'
-import type { LocalToolCallResult } from '../mcp/localFileTools'
 
 import { getToolDefinition } from './registry'
 import { enforceBuiltinToolSecurityBoundary } from './security-boundary'
-import type { ToolContext } from './types'
+import { asErrorMessage } from './tool-args'
+import type { LocalToolCallResult, ToolContext } from './types'
 
 /**
  * The single execution entry point for built-in tools — replaces the

@@ -26,7 +26,6 @@ import type { ContentPart } from '../../types/llm/request'
 import { McpTool } from '../../types/mcp.types'
 import {
   ToolCallResponseStatus,
-  type ToolEditSummary,
   type ToolFsReadOperationSummary,
 } from '../../types/tool-call.types'
 import { uint8ArrayToBase64 } from '../../utils/base64'
@@ -35,7 +34,6 @@ import {
   deriveToolEditUndoStatus,
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
-import { isContextPrunableToolName } from '../../utils/chat/tool-context-pruning'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
@@ -46,10 +44,7 @@ import {
   type WikilinkReadSubpath,
   resolveWikilinkReadTarget,
 } from '../../utils/llm/resolve-wikilink-target'
-import {
-  type OfficeDocumentKind,
-  parseOfficeDocument,
-} from '../../utils/office'
+import { parseOfficeDocument } from '../../utils/office'
 import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
@@ -76,7 +71,6 @@ import type { TodoItem } from '../agent/todos-from-messages'
 import type { AgentRunContext } from '../agent/types'
 import {
   BROWSER_READ_PATH_PREFIX,
-  BUILTIN_SKILL_PATH_PREFIX,
   buildAllowedSkillPathSet,
   isCoveredBySkillPathExemption,
   isPathAllowedByScope,
@@ -88,7 +82,6 @@ import {
 } from '../browser/activeWebviewProbe'
 import {
   BrowserReadFailure,
-  type BrowserReadFormat,
   readActiveWebviewHtml,
   readActiveWebviewPage,
 } from '../browser/activeWebviewReader'
@@ -112,7 +105,40 @@ import {
   isRuntimeComponentEnabled,
 } from '../runtime-components/runtimeComponentAccess'
 import { getLiteSkillDocumentByPath } from '../skills/liteSkills'
+import {
+  getContextPrunableToolCallIds,
+  getContextPruneMode,
+} from '../tools/context_prune_tool_results/helpers'
+import {
+  BROWSER_READ_PATH_USAGE,
+  type FsReadOperation,
+  MAX_BATCH_READ_FILES,
+  MAX_READ_MAX_LINES,
+  OFFICE_READ_MAX_BYTES,
+  buildFsReadModalitySchema,
+  getFsReadOperation,
+  getOfficeDocumentKindFromExtension,
+  isBrowserReadPath,
+  normalizeFsReadPath,
+  parseBrowserReadPageId,
+  sliceLinesForFsReadOperation,
+} from '../tools/fs_read/schema-helpers'
+import { invokeMemoryTool } from '../tools/memory-tool-support'
 import { enforceBuiltinToolSecurityBoundary } from '../tools/security-boundary'
+import {
+  MAX_FILE_SIZE_BYTES,
+  asErrorMessage,
+  formatJsonResult,
+  getOptionalBoundedIntegerArg,
+  getOptionalTextArg,
+  getRecordArrayArg,
+  getStringArrayArg,
+  getTextArg,
+} from '../tools/tool-args'
+import type {
+  LocalToolCallResult,
+  LocalToolCallResultMetadata,
+} from '../tools/types'
 import {
   WEB_SCRAPE_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
@@ -158,63 +184,10 @@ export { recoverLikelyEscapedBackslashSequences }
 
 export const TERMINAL_COMMAND_TOOL_NAME = 'terminal_command'
 export const BASH_TOOL_NAME = 'bash'
-const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
-// fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES 是"快照阈值"
+// fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES（now in
+// `core/tools/tool-args.ts` — see this file's import block）是"快照阈值"
 // （超过则跳过 undo/review 快照），本常量是"绝对拒绝上限"（超过才真正拒绝编辑）。
 const MAX_EDIT_FILE_SIZE_BYTES = 16 * 1024 * 1024
-const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
-const MAX_BATCH_READ_FILES = 20
-const DEFAULT_READ_START_LINE = 1
-const DEFAULT_READ_MAX_LINES = 50
-const MAX_READ_MAX_LINES = 2000
-const MAX_READ_LINE_INDEX = 1_000_000
-const BROWSER_READ_PATH_USAGE =
-  'browser:// paths only read open Obsidian web pages by page_id copied exactly from <browser_context> (browser://page_<8 lowercase base36>_<8 lowercase base36>). Do not append URL paths to a page_id and do not use browser:// to open or fetch internet URLs. For internet access, use web_search or web_scrape when available; if those tools are unavailable, tell the user.'
-
-function getOfficeDocumentKindFromExtension(
-  extension: string | undefined,
-): OfficeDocumentKind | null {
-  const normalized = extension?.toLowerCase()
-  if (normalized === 'docx' || normalized === 'pptx' || normalized === 'xlsx') {
-    return normalized
-  }
-  return null
-}
-
-const getContextPrunableToolCallIds = (
-  messages: ChatMessage[] | undefined,
-  currentToolCallId?: string,
-): Set<string> => {
-  const acceptedToolCallIds = new Set<string>()
-
-  for (const message of messages ?? []) {
-    if (message.role !== 'tool') {
-      continue
-    }
-
-    if (
-      currentToolCallId &&
-      message.toolCalls.some(
-        (toolCall) => toolCall.request.id === currentToolCallId,
-      )
-    ) {
-      break
-    }
-
-    for (const toolCall of message.toolCalls) {
-      if (
-        isContextPrunableToolName(toolCall.request.name) &&
-        toolCall.response.status === ToolCallResponseStatus.Success &&
-        toolCall.response.data.type === 'text' &&
-        toolCall.request.id.trim().length > 0
-      ) {
-        acceptedToolCallIds.add(toolCall.request.id)
-      }
-    }
-  }
-
-  return acceptedToolCallIds
-}
 
 export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   BASH_TOOL_NAME,
@@ -247,70 +220,9 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
 export const USER_FACING_LOCAL_TOOL_SHORT_NAMES: readonly string[] =
   LOCAL_FILE_TOOL_SHORT_NAMES.filter((name) => name !== 'load_tool_schemas')
 type LocalFileToolName = (typeof LOCAL_FILE_TOOL_SHORT_NAMES)[number]
-type ContextPruneMode = 'selected' | 'all'
 // 'delete' | 'create_dir' | 'move' retired with fs_delete/fs_create_dir/fs_move
 // (see the bash tool, which now covers path operations via vaultFileOps.ts).
 type FsFileOpAction = 'write'
-
-// PDF read modality override. Omitted = default behavior (native PDF when the
-// chat model supports it, otherwise text). Concrete values are presented to
-// the model via a per-capability schema (see buildFsReadModalitySchema):
-//   - PDF-capable models: ['text', 'pdf']
-//   - vision-capable (non-PDF): ['text', 'image']
-//   - text-only: field is omitted from the schema entirely
-// The parser still accepts the full superset for resilience (see notes there).
-type FsReadModality = 'text' | 'image' | 'pdf'
-type FsReadOperation =
-  | {
-      type: 'full'
-      modality?: FsReadModality
-      format?: BrowserReadFormat
-    }
-  | {
-      type: 'lines'
-      startLine: number
-      endLine?: number
-      maxLines?: number
-      modality?: FsReadModality
-      format?: BrowserReadFormat
-    }
-
-// Exported additively (not previously exported) so `src/core/tools/types.ts`
-// can reuse this exact shape for `ToolContext['execute']`'s return type
-// instead of redeclaring it. No existing export or behavior changes.
-export type LocalToolCallResultMetadata = {
-  editSummary?: ToolEditSummary
-  fsReadOperation?: ToolFsReadOperationSummary
-  appliedAt?: number
-  truncated?: { totalBytes: number; omittedBytes: number }
-}
-
-export type LocalToolCallResult =
-  | {
-      status: ToolCallResponseStatus.Success
-      text: string
-      contentParts?: ContentPart[]
-      metadata?: LocalToolCallResultMetadata
-    }
-  | {
-      status: ToolCallResponseStatus.Rejected
-      reason?: string
-    }
-  | {
-      status: ToolCallResponseStatus.Error
-      error: string
-    }
-  | {
-      status: ToolCallResponseStatus.Aborted
-      /** 中断时已采集的部分输出（可选） */
-      data?: {
-        type: 'text'
-        text: string
-        metadata?: {
-          truncated?: { totalBytes: number; omittedBytes: number }
-        }
-      }
-    }
 
 type FsResultItem = {
   ok: boolean
@@ -356,17 +268,6 @@ const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'memory_update',
   'memory_delete',
 ])
-
-// Exported additively so `src/core/tools/*` definition files can reuse these
-// generic arg-parsing / formatting helpers instead of duplicating them.
-// `localFileTools.ts` keeps owning them for now (see master.md §7: retention
-// of tool-unrelated helpers here is out of scope for this project).
-export const asErrorMessage = (error: unknown): string => {
-  if (error instanceof Error) {
-    return error.message
-  }
-  return typeof error === 'string' ? error : JSON.stringify(error)
-}
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
   const clampedOffset = Math.max(0, Math.min(offset, content.length))
@@ -526,36 +427,11 @@ const buildFsEditReviewPayload = (
 const buildFsEditRejectedReason = (): string =>
   'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.'
 
-const normalizeFsReadPath = (path: string): string => {
-  const trimmed = path.trim()
-  if (trimmed.length === 0) {
-    throw new Error('Path is required.')
-  }
-  if (trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX)) {
-    return trimmed
-  }
-  if (trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
-    parseBrowserReadPageId(trimmed)
-    return trimmed
-  }
-  return validateVaultPath(trimmed)
-}
-
-export const isBrowserReadPath = (path: string): boolean =>
-  path.trim().startsWith(BROWSER_READ_PATH_PREFIX)
-
-export const parseBrowserReadPageId = (path: string): string => {
-  const trimmed = path.trim()
-  if (!trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
-    throw new Error('Not a browser read path.')
-  }
-  const pageId = trimmed.slice(BROWSER_READ_PATH_PREFIX.length).trim()
-  if (!BROWSER_PAGE_ID_PATTERN.test(pageId)) {
-    throw new Error(BROWSER_READ_PATH_USAGE)
-  }
-  return pageId
-}
-
+// The js_eval sandbox's browser-read path parser (an unrelated,
+// not-yet-migrated tool) — `parseBrowserReadPageId` and
+// `BROWSER_READ_PATH_USAGE` now live in `core/tools/fs_read/schema-helpers.ts`
+// (see this file's import block) since fs_read is their primary owner, and
+// this function imports them back from there.
 const normalizeBrowserReadPageId = (value: string): string => {
   const trimmed = value.trim()
   if (trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
@@ -567,117 +443,7 @@ const normalizeBrowserReadPageId = (value: string): string => {
   return trimmed
 }
 
-type FsReadLineSliceResult = {
-  outputContent: string
-  rawSelected: string
-  totalLines: number
-  returnedStartLine: number | null
-  returnedEndLine: number | null
-  hasMoreBelow: boolean
-  nextStartLine: number | null
-}
-
-const sliceLinesForFsReadOperation = (
-  lines: string[],
-  operation: FsReadOperation,
-): FsReadLineSliceResult => {
-  const totalLines = lines.length
-  if (operation.type === 'full') {
-    const outputContent = lines
-      .map((line, index) => `${index + 1}|${line}`)
-      .join('\n')
-    return {
-      outputContent,
-      rawSelected: lines.join('\n'),
-      totalLines,
-      returnedStartLine: totalLines > 0 ? 1 : null,
-      returnedEndLine: totalLines > 0 ? totalLines : null,
-      hasMoreBelow: false,
-      nextStartLine: null,
-    }
-  }
-
-  const startIndex = Math.min(Math.max(operation.startLine - 1, 0), totalLines)
-  const endExclusive = Math.min(
-    totalLines,
-    operation.endLine ??
-      startIndex + (operation.maxLines ?? DEFAULT_READ_MAX_LINES),
-  )
-  const selectedLines = lines.slice(startIndex, endExclusive)
-  const outputContent = selectedLines
-    .map((line, index) => `${startIndex + index + 1}|${line}`)
-    .join('\n')
-  const returnedCount = selectedLines.length
-  const hasMoreBelow = endExclusive < totalLines
-  return {
-    outputContent,
-    rawSelected: selectedLines.join('\n'),
-    totalLines,
-    returnedStartLine: returnedCount > 0 ? startIndex + 1 : null,
-    returnedEndLine: returnedCount > 0 ? startIndex + returnedCount : null,
-    hasMoreBelow,
-    nextStartLine: hasMoreBelow ? endExclusive + 1 : null,
-  }
-}
-
 export const LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME = 'load_tool_schemas'
-
-/**
- * Build the modality enum + description fragment exposed to the current chat
- * model in fs_read's schema.
- *
- *   - PDF-capable model      → ['text', 'pdf']
- *   - vision (non-PDF) model → ['text', 'image']
- *   - text-only model        → undefined (field is omitted from schema)
- *   - no model context       → ['text', 'image', 'pdf'] (superset; used by UI
- *                              listings and permission persistence — the LLM
- *                              never sees this branch because every runtime
- *                              call site threads the active model through)
- *
- * Image and pdf are mutually exclusive by product definition: image is only a
- * workaround for models lacking native PDF input, and pdf is meaningless on
- * models that can't accept it. Tailoring the enum per model collapses the
- * "model picks a value that has to be silently corrected" failure mode into
- * "the wrong value isn't representable to begin with."
- */
-const buildFsReadModalitySchema = (
-  modalities: ChatModelModality[] | undefined,
-): { type: 'string'; enum: string[]; description: string } | undefined => {
-  const isPdfCapable = modalities?.includes('pdf')
-  const isVisionCapable = modalities?.includes('vision')
-
-  if (!modalities) {
-    // Superset (UI / permission listing). Not seen by any live LLM call.
-    return {
-      type: 'string',
-      enum: ['text', 'image', 'pdf'],
-      description:
-        'PDF-only modality override. Omit for the default per active model. text = plain text extraction. image = render pages as images (only available on vision-capable, non-PDF-capable models). pdf = native PDF input (only available on PDF-capable models). Ignored for non-PDF files.',
-    }
-  }
-
-  if (isPdfCapable) {
-    return {
-      type: 'string',
-      enum: ['text', 'pdf'],
-      description:
-        'PDF-only modality override. Omit for default (= "pdf"). "text" = plain text extraction (cheap and fast; pick this only when the user explicitly asks for text-only). "pdf" = native PDF input (highest fidelity). Ignored for non-PDF files.',
-    }
-  }
-
-  if (isVisionCapable) {
-    return {
-      type: 'string',
-      enum: ['text', 'image'],
-      description:
-        'PDF-only modality override. Omit for default (= "text"). "text" = plain text extraction. "image" = render the requested pages as images — opt in ONLY when text is insufficient (formulas, figures, scans, complex layout); avoid for large page ranges. Ignored for non-PDF files.',
-    }
-  }
-
-  // Text-only model: no override is meaningful. Field is omitted from schema
-  // entirely so the model has no decision to make.
-  return undefined
-}
 
 /**
  * Standalone tool definition for `load_tool_schemas`. Used by the runtime to
@@ -1212,85 +978,6 @@ export function getLocalFileTools(options?: {
   ]
 }
 
-// Exported additively (same pattern as `asErrorMessage` / `getStringArrayArg`
-// above) so `src/core/tools/delegate_subagent/definition.ts` can reuse these
-// exact arg-parsing helpers instead of duplicating them. No existing export
-// or behavior changes.
-export const getTextArg = (
-  args: Record<string, unknown>,
-  key: string,
-): string => {
-  const value = args[key]
-  if (typeof value !== 'string') {
-    throw new Error(`${key} must be a string.`)
-  }
-  return value
-}
-
-export const getOptionalTextArg = (
-  args: Record<string, unknown>,
-  key: string,
-): string | undefined => {
-  const value = args[key]
-  if (value === undefined) {
-    return undefined
-  }
-  if (typeof value !== 'string') {
-    throw new Error(`${key} must be a string.`)
-  }
-  return value
-}
-
-const getOptionalIntegerArg = ({
-  args,
-  key,
-  defaultValue,
-  min,
-  max,
-}: {
-  args: Record<string, unknown>
-  key: string
-  defaultValue: number
-  min: number
-  max: number
-}): number => {
-  const value = args[key]
-  if (value === undefined) {
-    return defaultValue
-  }
-  if (typeof value !== 'number' || !Number.isInteger(value)) {
-    throw new Error(`${key} must be an integer.`)
-  }
-  if (value < min || value > max) {
-    throw new Error(`${key} must be between ${min} and ${max}.`)
-  }
-  return value
-}
-
-const getOptionalBoundedIntegerArg = ({
-  args,
-  key,
-  min,
-  max,
-}: {
-  args: Record<string, unknown>
-  key: string
-  min: number
-  max: number
-}): number | undefined => {
-  const value = args[key]
-  if (value === undefined) {
-    return undefined
-  }
-  if (typeof value !== 'number' || !Number.isInteger(value)) {
-    throw new Error(`${key} must be an integer.`)
-  }
-  if (value < min || value > max) {
-    throw new Error(`${key} must be between ${min} and ${max}.`)
-  }
-  return value
-}
-
 const getOptionalBooleanArg = (
   args: Record<string, unknown>,
   key: string,
@@ -1303,36 +990,6 @@ const getOptionalBooleanArg = (
     throw new Error(`${key} must be a boolean.`)
   }
   return value
-}
-
-export const getStringArrayArg = (
-  args: Record<string, unknown>,
-  key: string,
-): string[] => {
-  const value = args[key]
-  if (!Array.isArray(value)) {
-    throw new Error(`${key} must be an array of strings.`)
-  }
-  if (value.some((item) => typeof item !== 'string')) {
-    throw new Error(`${key} must be an array of strings.`)
-  }
-  return value
-}
-
-export const getRecordArrayArg = (
-  args: Record<string, unknown>,
-  key: string,
-): Record<string, unknown>[] => {
-  const value = args[key]
-  if (!Array.isArray(value)) {
-    throw new Error(`${key} must be an array.`)
-  }
-  return value.map((item, index) => {
-    if (typeof item !== 'object' || item === null) {
-      throw new Error(`${key}[${index}] must be an object.`)
-    }
-    return item as Record<string, unknown>
-  })
 }
 
 const assertContentSize = (content: string): void => {
@@ -1471,19 +1128,6 @@ const toJsSandboxVaultListEntry = (
   }
 }
 
-const getContextPruneMode = (
-  args: Record<string, unknown>,
-): ContextPruneMode => {
-  const value = args.mode
-  if (value === undefined) {
-    return 'selected'
-  }
-  if (value !== 'selected' && value !== 'all') {
-    throw new Error('mode must be one of: selected, all.')
-  }
-  return value
-}
-
 const asPositiveInteger = (value: unknown): number | undefined => {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
     return undefined
@@ -1589,134 +1233,6 @@ const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
   return {
     operations: [parseFlatFsEditArgs(args)],
   }
-}
-
-const getFsReadOperation = (args: Record<string, unknown>): FsReadOperation => {
-  if (args.operation !== undefined || args.type !== undefined) {
-    throw new Error(
-      'fs_read uses flat range parameters. Omit range fields for a full read, or pass startLine with optional endLine or maxLines.',
-    )
-  }
-
-  // Strict modality parsing: accept undefined / null / empty string (→ unset,
-  // use default per active model) or one of 'text' / 'image' / 'pdf'. Numbers,
-  // booleans, objects, arrays, and any other strings (including legacy 'auto')
-  // all reject.
-  //
-  // The schema presented to the model is tailored per model capability
-  // (see buildFsReadModalitySchema), so e.g. PDF-capable models only see
-  // ['text','pdf']. The parser accepts the full superset because (a) it
-  // doesn't have model context here, and (b) resolveModality below maps any
-  // request to a sensible effective modality given the active model — a
-  // model that somehow sends 'image' to a PDF-capable model gets upgraded to
-  // native PDF rather than rejected, which is the more conservative path.
-  const rawModalityValue = args.modality
-  let modality: FsReadModality | undefined
-  if (rawModalityValue !== undefined && rawModalityValue !== null) {
-    if (typeof rawModalityValue !== 'string') {
-      throw new Error(
-        "modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
-      )
-    }
-    const normalized = rawModalityValue.trim().toLowerCase()
-    if (normalized === '') {
-      // Empty string is treated as "not provided" → default behavior.
-    } else if (
-      normalized === 'text' ||
-      normalized === 'image' ||
-      normalized === 'pdf'
-    ) {
-      modality = normalized
-    } else {
-      throw new Error(
-        "modality must be 'text', 'image', or 'pdf' (or omitted for default behavior).",
-      )
-    }
-  }
-
-  let format: BrowserReadFormat | undefined
-  const rawFormatValue = args.format
-  if (rawFormatValue !== undefined && rawFormatValue !== null) {
-    if (typeof rawFormatValue !== 'string') {
-      throw new Error(
-        "format must be 'readable' or 'key_visible_info' (or omitted).",
-      )
-    }
-    const normalizedFormat = rawFormatValue.trim().toLowerCase()
-    if (normalizedFormat === '') {
-      // Empty string is treated as "not provided".
-    } else if (
-      normalizedFormat === 'readable' ||
-      normalizedFormat === 'key_visible_info'
-    ) {
-      format = normalizedFormat
-    } else {
-      throw new Error(
-        "format must be 'readable' or 'key_visible_info' (or omitted).",
-      )
-    }
-  }
-
-  const hasStartLine = args.startLine !== undefined
-  const hasEndLine = args.endLine !== undefined
-  const hasMaxLines = args.maxLines !== undefined
-  const hasRange = hasStartLine || hasEndLine || hasMaxLines
-
-  if (!hasRange) {
-    return { type: 'full', modality, format }
-  }
-
-  if (!hasStartLine) {
-    throw new Error('startLine is required when endLine or maxLines is set.')
-  }
-  if (hasEndLine && hasMaxLines) {
-    throw new Error('endLine and maxLines cannot be used together.')
-  }
-
-  const startLine = getOptionalIntegerArg({
-    args,
-    key: 'startLine',
-    defaultValue: DEFAULT_READ_START_LINE,
-    min: 1,
-    max: MAX_READ_LINE_INDEX,
-  })
-  const endLine = getOptionalBoundedIntegerArg({
-    args,
-    key: 'endLine',
-    min: 1,
-    max: MAX_READ_LINE_INDEX,
-  })
-  const maxLines = hasMaxLines
-    ? getOptionalIntegerArg({
-        args,
-        key: 'maxLines',
-        defaultValue: DEFAULT_READ_MAX_LINES,
-        min: 1,
-        max: MAX_READ_MAX_LINES,
-      })
-    : undefined
-
-  if (endLine !== undefined && endLine < startLine) {
-    throw new Error('endLine must be greater than or equal to startLine.')
-  }
-  if (endLine !== undefined && endLine - startLine + 1 > MAX_READ_MAX_LINES) {
-    throw new Error(
-      `Requested line range is too large. Maximum ${MAX_READ_MAX_LINES} lines per file.`,
-    )
-  }
-
-  return {
-    type: 'lines',
-    startLine,
-    endLine,
-    maxLines,
-    modality,
-    format,
-  }
-}
-
-export const formatJsonResult = (payload: unknown): string => {
-  return JSON.stringify(payload, null, 2)
 }
 
 const normalizeLocalToolName = (toolName: string): string => {
@@ -2152,33 +1668,6 @@ const executeFsFileOps = async ({
   }
 }
 
-// Exported additively so the new `src/core/tools/memory_*` definitions can
-// share this exact implementation with the still-live `callLocalFileTool`
-// switch below, instead of forking it. Used by all three memory tools alike,
-// so it stays put rather than moving into any single tool's directory.
-export async function invokeMemoryTool<T extends { filePath: string }>(
-  promptSourceWatcher: PromptSourceWatcher | undefined,
-  fn: (hooks: { onInternalWrite?: (path: string) => void }) => Promise<T>,
-): Promise<T> {
-  if (!promptSourceWatcher) {
-    return fn({})
-  }
-  let writePath: string | undefined
-  try {
-    return await fn({
-      onInternalWrite: (path) => {
-        writePath = path
-        promptSourceWatcher.markInternalWriteStart(path)
-      },
-    })
-  } finally {
-    if (writePath) {
-      await Promise.resolve()
-      promptSourceWatcher.markInternalWriteEnd(writePath)
-    }
-  }
-}
-
 async function maybeWithInternalWrite<T>(
   promptSourceWatcher: PromptSourceWatcher | undefined,
   path: string,
@@ -2260,6 +1749,15 @@ export async function callLocalFileTool({
 
     const name = toolName as LocalFileToolName
     switch (name) {
+      // 'context_prune_tool_results' and 'context_compact' below are now
+      // unreachable in practice — both are registered in `CAPABILITIES`
+      // (`src/core/tools/capabilities/index.ts`), so the delegation bridge
+      // above routes them to `executeBuiltinTool` before this switch is ever
+      // reached. Left in place rather than deleted, matching the precedent
+      // set by the still-present `memory_add`/`memory_update`/
+      // `memory_delete`/`delegate_subagent` cases below (D2/D3): tearing
+      // down this switch is a later-phase concern (master.md D6 "注意" /
+      // D7), not this batch's.
       case 'context_prune_tool_results': {
         const mode = getContextPruneMode(args)
 

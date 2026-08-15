@@ -1,8 +1,9 @@
 import type { McpTool } from '../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
-import { formatJsonResult, invokeMemoryTool } from '../../mcp/localFileTools'
 import { memoryUpdate } from '../../memory/memoryManager'
 import { defineTool } from '../define'
+import { invokeMemoryTool } from '../memory-tool-support'
+import { formatJsonResult } from '../tool-args'
 
 // Schema copied verbatim from the `memory_update` entry in
 // `getLocalFileTools()` (`src/core/mcp/localFileTools.ts:934`).

@@ -26,6 +26,11 @@ export const TOOL_RENDERERS = {
   memory_update: genericRenderer,
   memory_delete: genericRenderer,
   delegate_subagent: delegateSubagentRenderer,
+  context_prune_tool_results: genericRenderer,
+  context_compact: genericRenderer,
+  todo_write: genericRenderer,
+  ask_user_question: genericRenderer,
+  fs_read: genericRenderer,
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

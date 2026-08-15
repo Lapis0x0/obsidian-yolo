@@ -29,6 +29,9 @@ import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
 import type { AgentRunContext } from '../agent/types'
 import type { RAGEngine } from '../rag/ragEngine'
+import { executeBuiltinTool } from '../tools/dispatcher'
+import { isBuiltinToolName } from '../tools/registry'
+import type { ToolContext } from '../tools/types'
 import {
   WEB_SCRAPE_TOOL_NAME,
   WEB_SEARCH_TOOL_NAME,
@@ -1178,28 +1181,101 @@ export class McpManager {
         if (!this.isLocalToolEnabled(toolName)) {
           throw new Error(`Built-in tool ${toolName} is disabled`)
         }
-        const localResult = await callLocalFileTool({
-          app: this.app,
-          settings: this.settings,
-          openApplyReview: this.openApplyReview,
-          getRagEngine: this.getRagEngine,
-          conversationId,
-          conversationMessages,
-          roundId,
-          toolCallId: id,
-          toolName,
-          args: parsedArgs ?? {},
-          requireReview,
-          signal: compositeSignal,
-          chatModelId,
-          workspaceScope,
-          allowedSkillPaths,
-          runContext,
-          subagentParentContext,
-          promptSourceWatcher: this.promptSourceWatcher,
-          bashApprovalMode,
-          bashReadOnly,
-        })
+        // Strangler-pattern fork: tools migrated into the new registry
+        // (`core/tools/` — see `capabilities/index.ts`) execute exclusively
+        // through `executeBuiltinTool` from here on; everything not yet
+        // migrated (D6) keeps going through `callLocalFileTool`'s switch.
+        // This fork lives here — the single real call site of
+        // `callLocalFileTool` (`core/agent/file-tools.ts` is a re-export
+        // shim, not a second call site) — rather than inside
+        // `callLocalFileTool` itself, so the old implementation never has to
+        // import the new registry: that would point `core/mcp/localFileTools.ts`
+        // at `core/tools/dispatcher.ts` -> `core/tools/registry.ts` ->
+        // every migrated tool's `definition.ts`, which import shared helpers
+        // back out of `localFileTools.ts` — a real circular import, not just
+        // a lint nuisance (it already broke `fs_read`'s schema literal before
+        // this fork replaced the in-file bridge). Forking here instead keeps
+        // both paths as siblings below `McpManager`, so the dependency stays
+        // one-directional: `mcpManager.ts` -> `tools/dispatcher.ts` -> ... ->
+        // `<tool>/definition.ts` -> `localFileTools.ts` (helpers only, never
+        // back to dispatcher/registry).
+        const localResult = isBuiltinToolName(toolName)
+          ? await executeBuiltinTool(toolName, parsedArgs ?? {}, {
+              app: this.app,
+              settings: this.settings,
+              openApplyReview: this.openApplyReview,
+              getRagEngine: this.getRagEngine,
+              conversationId,
+              conversationMessages,
+              roundId,
+              toolCallId: id,
+              requireReview,
+              signal: compositeSignal,
+              chatModelId,
+              workspaceScope,
+              allowedSkillPaths,
+              // `runContext` is deliberately omitted — `ToolContext`
+              // doesn't carry it (see that type's doc comment in
+              // `core/tools/types.ts` for why it was dropped rather than
+              // opacified). The `callLocalFileTool` branch below still
+              // passes it unchanged; that path serves not-yet-migrated
+              // tools and its own parameter type is untouched by this.
+              subagentParentContext,
+              // Dependency injection, same lazy-accessor shape as
+              // `getRagEngine` above — `delegate_subagent` no longer
+              // imports `runner.ts` itself (see
+              // `ToolContext['runSubagent']`'s doc comment in
+              // `core/tools/types.ts`).
+              //
+              // The import is dynamic and lives *inside* the thunk for two
+              // reasons. (1) `runner.ts` transitively reaches
+              // `tool-preferences.ts`, which reads
+              // `McpManager.TOOL_NAME_DELIMITER` at module-evaluation time
+              // (`tool-preferences.ts:125`); a static top-level import here
+              // would recreate the module-init-order hazard that already
+              // broke `fs_read`'s schema literal earlier in this migration.
+              // (2) Keeping it in the thunk rather than awaiting it before
+              // every dispatch means tools that never delegate (i.e. all of
+              // them but one) don't pull in the subagent runtime at all.
+              // It is not an attempt to hide the dependency edge from the
+              // circular-dependency ratchet, which still records it.
+              //
+              // The cast is required because the declared parameter type
+              // keeps `parent` opaque (`unknown`) so every other tool's
+              // import graph stays clear of
+              // `core/agent/subagent/parent-context.ts`; this is the one
+              // place the real, narrower `SubagentParentContext` shape gets
+              // reconciled with it.
+              runSubagent: async (input) => {
+                const { runSubagent } = await import('../agent/subagent/runner')
+                return (runSubagent as ToolContext['runSubagent'])!(input)
+              },
+              promptSourceWatcher: this.promptSourceWatcher,
+              bashApprovalMode,
+              bashReadOnly,
+            })
+          : await callLocalFileTool({
+              app: this.app,
+              settings: this.settings,
+              openApplyReview: this.openApplyReview,
+              getRagEngine: this.getRagEngine,
+              conversationId,
+              conversationMessages,
+              roundId,
+              toolCallId: id,
+              toolName,
+              args: parsedArgs ?? {},
+              requireReview,
+              signal: compositeSignal,
+              chatModelId,
+              workspaceScope,
+              allowedSkillPaths,
+              runContext,
+              subagentParentContext,
+              promptSourceWatcher: this.promptSourceWatcher,
+              bashApprovalMode,
+              bashReadOnly,
+            })
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {
             status: ToolCallResponseStatus.Success,

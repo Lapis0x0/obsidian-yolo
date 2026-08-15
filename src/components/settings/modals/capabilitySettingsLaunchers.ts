@@ -76,4 +76,9 @@ const openSubagentSettings: SettingsLauncher = ({
 export const CAPABILITY_SETTINGS_LAUNCHERS = {
   memory: null,
   subagent_delegation: openSubagentSettings,
+  context_pruning: null,
+  context_compaction: null,
+  todo_list: null,
+  user_questions: null,
+  file_reading: null,
 } satisfies Record<BuiltinCapabilityId, SettingsLauncher | null>

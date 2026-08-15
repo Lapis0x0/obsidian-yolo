@@ -81,6 +81,12 @@ function makeCtx(overrides?: Partial<ToolContext>): ToolContext {
     conversationMessages: [],
     toolCallId: 'tool-call',
     subagentParentContext: {} as never,
+    // `delegate_subagent` now receives `runSubagent` via `ToolContext`
+    // injection (mcpManager.ts) instead of importing `runner.ts` itself —
+    // route the same mocked module binding through here so both the old
+    // (`callLocalFileTool`, which still dynamically imports `runner.ts`
+    // directly) and new paths exercise the identical mock.
+    runSubagent: runSubagent as unknown as ToolContext['runSubagent'],
     ...overrides,
   }
 }
