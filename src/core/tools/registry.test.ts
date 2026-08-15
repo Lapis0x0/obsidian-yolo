@@ -109,4 +109,30 @@ describe('registry queries', () => {
     expect(isBuiltinToolName('ask_user_question')).toBe(true)
     expect(isBuiltinToolName('fs_read')).toBe(true)
   })
+
+  // D6 batch 4 (file_editing). Combined with
+  // fs-edit-fs-write-equivalence.test.ts (which proves `executeBuiltinTool`
+  // itself produces the same result as the old switch case for both
+  // tools, including the approval path), this closes the same loop D6
+  // batches 1-3 closed: registered -> reached -> correct.
+  it('finds the file_editing capability by id, with its approval default flipped to require_approval (master.md decision 17)', () => {
+    const capability = getCapability('file_editing')
+    expect(capability?.id).toBe('file_editing')
+    expect(capability?.tools.map((tool) => tool.name)).toEqual([
+      'fs_edit',
+      'fs_write',
+    ])
+    expect(capability?.approval.defaultMode).toBe('require_approval')
+  })
+
+  it('maps fs_edit and fs_write back to file_editing', () => {
+    expect(getCapabilityForTool('fs_edit')?.id).toBe('file_editing')
+    expect(getCapabilityForTool('fs_write')?.id).toBe('file_editing')
+  })
+
+  it('type-guards the D6 batch 4 tool names (fs_edit, fs_write)', () => {
+    expect(isBuiltinToolName('fs_edit')).toBe(true)
+    expect(isBuiltinToolName('fs_write')).toBe(true)
+    expect(isBuiltinCapabilityId('file_editing')).toBe(true)
+  })
 })

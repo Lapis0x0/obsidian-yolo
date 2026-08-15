@@ -31,6 +31,8 @@ export const TOOL_RENDERERS = {
   todo_write: genericRenderer,
   ask_user_question: genericRenderer,
   fs_read: genericRenderer,
+  fs_edit: genericRenderer,
+  fs_write: genericRenderer,
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

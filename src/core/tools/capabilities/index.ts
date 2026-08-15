@@ -1,5 +1,6 @@
 import { contextCompactionCapability } from './context-compaction'
 import { contextPruningCapability } from './context-pruning'
+import { fileEditingCapability } from './file-editing'
 import { fileReadingCapability } from './file-reading'
 import { memoryCapability } from './memory'
 import { subagentDelegationCapability } from './subagent-delegation'
@@ -22,4 +23,5 @@ export const CAPABILITIES = [
   todoListCapability,
   userQuestionsCapability,
   fileReadingCapability,
+  fileEditingCapability,
 ] as const

@@ -9,7 +9,6 @@ import {
   requestUrl,
 } from 'obsidian'
 
-import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { buildPdfPageImageCacheKey } from '../../database/json/chat/imageCacheStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type {
@@ -29,11 +28,6 @@ import {
   type ToolFsReadOperationSummary,
 } from '../../types/tool-call.types'
 import { uint8ArrayToBase64 } from '../../utils/base64'
-import {
-  createToolEditSummary,
-  deriveToolEditUndoStatus,
-} from '../../utils/chat/editSummary'
-import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../utils/llm/extract-markdown-images'
 import {
@@ -86,8 +80,6 @@ import {
   readActiveWebviewPage,
 } from '../browser/activeWebviewReader'
 import {
-  type TextEditOperation,
-  type TextEditPlan,
   buildReplaceMatchErrorHint,
   materializeTextEditPlan,
   recoverLikelyEscapedBackslashSequences,
@@ -109,6 +101,18 @@ import {
   getContextPrunableToolCallIds,
   getContextPruneMode,
 } from '../tools/context_prune_tool_results/helpers'
+import {
+  buildFileChangeSummary,
+  maybeWithInternalWrite,
+} from '../tools/file-editing-support'
+import {
+  MAX_EDIT_FILE_SIZE_BYTES,
+  buildFsEditRejectedReason,
+  buildFsEditReviewPayload,
+  getFsEditPlan,
+  getFsEditSelectionRange,
+  waitForFsEditReview,
+} from '../tools/fs_edit/schema-helpers'
 import {
   BROWSER_READ_PATH_USAGE,
   type FsReadOperation,
@@ -184,10 +188,6 @@ export { recoverLikelyEscapedBackslashSequences }
 
 export const TERMINAL_COMMAND_TOOL_NAME = 'terminal_command'
 export const BASH_TOOL_NAME = 'bash'
-// fs_edit 读全文做替换的绝对内存防御上限。MAX_FILE_SIZE_BYTES（now in
-// `core/tools/tool-args.ts` — see this file's import block）是"快照阈值"
-// （超过则跳过 undo/review 快照），本常量是"绝对拒绝上限"（超过才真正拒绝编辑）。
-const MAX_EDIT_FILE_SIZE_BYTES = 16 * 1024 * 1024
 
 export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   BASH_TOOL_NAME,
@@ -231,20 +231,6 @@ type FsResultItem = {
   message: string
 }
 
-type FsEditReviewResult =
-  | {
-      status: ToolCallResponseStatus.Success
-      finalContent: string
-      review: NonNullable<ApplyViewResult['review']>
-    }
-  | {
-      status: ToolCallResponseStatus.Rejected
-      review: NonNullable<ApplyViewResult['review']>
-    }
-  | {
-      status: ToolCallResponseStatus.Aborted
-    }
-
 const LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION = {
   fs_write: 'write',
 } as const
@@ -268,164 +254,6 @@ const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'memory_update',
   'memory_delete',
 ])
-
-const offsetToSelectionPosition = (content: string, offset: number) => {
-  const clampedOffset = Math.max(0, Math.min(offset, content.length))
-  const before = content.slice(0, clampedOffset)
-  const lines = before.split('\n')
-
-  return {
-    line: Math.max(0, lines.length - 1),
-    ch: lines.at(-1)?.length ?? 0,
-  }
-}
-
-const getFsEditSelectionRange = (
-  content: string,
-  operationResults: ReturnType<
-    typeof materializeTextEditPlan
-  >['operationResults'],
-): ApplyViewState['selectionRange'] | undefined => {
-  const changedRanges = operationResults
-    .map((result) => {
-      if (!result.changed) {
-        return undefined
-      }
-      return result.matchedRange ?? result.newRange
-    })
-    .filter((range): range is NonNullable<typeof range> => Boolean(range))
-
-  if (changedRanges.length === 0) {
-    return undefined
-  }
-
-  const start = Math.min(...changedRanges.map((range) => range.start))
-  const end = Math.max(...changedRanges.map((range) => range.end))
-
-  return {
-    from: offsetToSelectionPosition(content, start),
-    to: offsetToSelectionPosition(content, end),
-  }
-}
-
-const waitForFsEditReview = async ({
-  openApplyReview,
-  file,
-  originalContent,
-  newContent,
-  reviewEdits,
-  selectionRange,
-  signal,
-}: {
-  openApplyReview: (state: ApplyViewState) => Promise<boolean>
-  file: TFile
-  originalContent: string
-  newContent: string
-  reviewEdits: ApplyViewState['reviewEdits']
-  selectionRange: ApplyViewState['selectionRange']
-  signal?: AbortSignal
-}): Promise<FsEditReviewResult> => {
-  if (signal?.aborted) {
-    return { status: ToolCallResponseStatus.Aborted }
-  }
-
-  let settled = false
-
-  const reviewResultPromise = new Promise<FsEditReviewResult>((resolve) => {
-    const settle = (result: FsEditReviewResult) => {
-      if (settled) return
-      settled = true
-      resolve(result)
-    }
-
-    void openApplyReview({
-      file,
-      originalContent,
-      newContent,
-      reviewEdits,
-      reviewMode: selectionRange ? 'selection-focus' : 'full',
-      selectionRange,
-      abortSignal: signal,
-      callbacks: {
-        onComplete: ({ finalContent, review }) => {
-          const resolvedReview = review ?? {
-            totalChanges: 1,
-            rejectedChanges: [],
-          }
-          settle(
-            finalContent === originalContent
-              ? {
-                  status: ToolCallResponseStatus.Rejected,
-                  review: resolvedReview,
-                }
-              : {
-                  status: ToolCallResponseStatus.Success,
-                  finalContent,
-                  review: resolvedReview,
-                },
-          )
-        },
-        onCancel: () => {
-          settle({ status: ToolCallResponseStatus.Aborted })
-        },
-      },
-    })
-      .then((opened) => {
-        if (!opened) {
-          settle({ status: ToolCallResponseStatus.Aborted })
-        }
-      })
-      .catch(() => {
-        settle({ status: ToolCallResponseStatus.Aborted })
-      })
-  })
-
-  if (!signal) {
-    return reviewResultPromise
-  }
-
-  return await Promise.race([
-    reviewResultPromise,
-    new Promise<FsEditReviewResult>((resolve) => {
-      signal.addEventListener(
-        'abort',
-        () => resolve({ status: ToolCallResponseStatus.Aborted }),
-        { once: true },
-      )
-    }),
-  ])
-}
-
-const FS_EDIT_REVIEW_PREVIEW_LENGTH = 40
-
-const buildFsEditReviewPreview = ({
-  originalText,
-  proposedText,
-}: {
-  originalText: string
-  proposedText: string
-}): string => {
-  const normalized = (proposedText || originalText).replace(/\s+/g, ' ').trim()
-  if (!normalized) return '(empty change)'
-  const characters = Array.from(normalized)
-  if (characters.length <= FS_EDIT_REVIEW_PREVIEW_LENGTH) return normalized
-  return `${characters.slice(0, FS_EDIT_REVIEW_PREVIEW_LENGTH - 1).join('')}…`
-}
-
-const buildFsEditReviewPayload = (
-  review: NonNullable<ApplyViewResult['review']>,
-) => {
-  const rejected = review.rejectedChanges.map((change) => ({
-    index: change.index,
-    preview: buildFsEditReviewPreview(change),
-  }))
-  return rejected.length === 0
-    ? { outcome: 'accepted' as const }
-    : { outcome: 'partially_rejected' as const, rejected }
-}
-
-const buildFsEditRejectedReason = (): string =>
-  'Explicit user decision: this change was rejected in the review UI. This is not an edit or matching failure. Do not retry it with another locator or tool this turn; acknowledge the decision and wait for the user.'
 
 // The js_eval sandbox's browser-read path parser (an unrelated,
 // not-yet-migrated tool) — `parseBrowserReadPageId` and
@@ -1128,113 +956,6 @@ const toJsSandboxVaultListEntry = (
   }
 }
 
-const asPositiveInteger = (value: unknown): number | undefined => {
-  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-    return undefined
-  }
-  return value
-}
-
-// Single source of truth for translating the flat model-facing fs_edit
-// arguments into an internal typed TextEditOperation. The edit mode is
-// inferred implicitly from which fields are present:
-//   - oldText present (and no startLine/endLine) -> exact replace
-//   - startLine + endLine present (and no oldText) -> line-range replace
-// Providing both groups, neither group, or malformed fields is rejected.
-const parseFlatFsEditArgs = (
-  args: Record<string, unknown>,
-): TextEditOperation => {
-  const hasOldText = args.oldText !== undefined && args.oldText !== null
-  const hasStartLine = args.startLine !== undefined && args.startLine !== null
-  const hasEndLine = args.endLine !== undefined && args.endLine !== null
-  const hasLineRange = hasStartLine || hasEndLine
-
-  if (hasOldText && hasLineRange) {
-    throw new Error(
-      'Provide either oldText (exact replace) or startLine+endLine (line range), not both.',
-    )
-  }
-  if (!hasOldText && !hasLineRange) {
-    throw new Error(
-      'Provide either oldText (exact replace) or startLine+endLine (line range).',
-    )
-  }
-
-  if (hasOldText) {
-    const oldText = getTextArg(args, 'oldText')
-    if (oldText.length === 0) {
-      throw new Error('oldText must not be empty.')
-    }
-    return {
-      type: 'replace',
-      oldText,
-      newText: getTextArg(args, 'newText'),
-    }
-  }
-
-  const startLine = asPositiveInteger(args.startLine)
-  if (!startLine) {
-    throw new Error('startLine must be a positive integer.')
-  }
-  const endLine = asPositiveInteger(args.endLine)
-  if (!endLine) {
-    throw new Error('endLine must be a positive integer.')
-  }
-
-  return {
-    type: 'replace_lines',
-    startLine,
-    endLine,
-    newText: getTextArg(args, 'newText'),
-  }
-}
-
-const coerceOperationObject = (operation: unknown): Record<string, unknown> => {
-  if (typeof operation === 'string') {
-    const trimmed = operation.trim()
-    if (trimmed.length > 0) {
-      try {
-        const parsed = JSON.parse(trimmed) as unknown
-        if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-          return parsed as Record<string, unknown>
-        }
-      } catch {
-        // fall through to the standard error below
-      }
-    }
-    throw new Error(
-      'operation must be a nested JSON object, not a string. Pass it directly as { "type": "...", ... } — do not wrap it in quotes or call JSON.stringify on it.',
-    )
-  }
-
-  if (!operation || typeof operation !== 'object' || Array.isArray(operation)) {
-    throw new Error(
-      'operation must be a nested JSON object like { "type": "...", ... }.',
-    )
-  }
-
-  return operation as Record<string, unknown>
-}
-
-const getFsEditPlan = (args: Record<string, unknown>): TextEditPlan => {
-  // Gateway-merged path: each element is one entry's flat args object.
-  const operationsValue = args.operations
-  if (Array.isArray(operationsValue)) {
-    if (operationsValue.length === 0) {
-      throw new Error('operations array must contain at least one operation.')
-    }
-    const operations = operationsValue.map((entry) =>
-      parseFlatFsEditArgs(coerceOperationObject(entry)),
-    )
-    return { operations }
-  }
-
-  // Model-facing path: the flat args themselves describe a single edit.
-  return {
-    operations: [parseFlatFsEditArgs(args)],
-  }
-}
-
 const normalizeLocalToolName = (toolName: string): string => {
   if (!toolName.includes('__')) {
     return toolName
@@ -1463,98 +1184,6 @@ export function parseLocalFsActionFromToolArgs({
   return null
 }
 
-/**
- * Build an editSummary (+ chat-undo snapshot + review snapshot) for a
- * file content change (create/overwrite/delete) and accumulate it into a
- * single-file result. Returns the metadata for the tool response.
- */
-const buildFileChangeSummary = async ({
-  app,
-  settings,
-  path,
-  beforeContent,
-  afterContent,
-  beforeExists,
-  afterExists,
-  conversationId,
-  roundId,
-  toolCallId,
-  appliedAt,
-}: {
-  app: App
-  settings?: YoloSettings
-  path: string
-  beforeContent: string
-  afterContent: string
-  beforeExists: boolean
-  afterExists: boolean
-  conversationId?: string
-  roundId?: string
-  toolCallId?: string
-  appliedAt: number
-}): Promise<LocalToolCallResultMetadata | undefined> => {
-  let editSummary = createToolEditSummary({
-    path,
-    beforeContent,
-    afterContent,
-    beforeExists,
-    afterExists,
-    reviewRoundId: roundId,
-  })
-
-  if (toolCallId && editSummary) {
-    editUndoSnapshotStore.set({
-      toolCallId,
-      path,
-      beforeContent,
-      afterContent,
-      beforeExists,
-      afterExists,
-      appliedAt,
-    })
-  }
-
-  if (conversationId && roundId && editSummary) {
-    const snapshot = await upsertEditReviewSnapshot({
-      app,
-      conversationId,
-      roundId,
-      filePath: path,
-      beforeContent,
-      afterContent,
-      beforeExists,
-      afterExists,
-      settings,
-    })
-    editSummary = {
-      ...editSummary,
-      files: editSummary.files.map((file) => ({
-        ...file,
-        addedLines: snapshot.addedLines,
-        removedLines: snapshot.removedLines,
-        reviewRoundId: roundId,
-      })),
-      totalAddedLines: snapshot.addedLines,
-      totalRemovedLines: snapshot.removedLines,
-    }
-  }
-
-  if (!editSummary) {
-    return undefined
-  }
-
-  return {
-    editSummary: {
-      files: editSummary.files,
-      totalFiles: editSummary.files.length,
-      totalAddedLines: editSummary.totalAddedLines,
-      totalRemovedLines: editSummary.totalRemovedLines,
-      undoStatus: deriveToolEditUndoStatus(editSummary.files),
-    },
-    appliedAt,
-  }
-}
-
 const executeFsFileOps = async ({
   app,
   settings,
@@ -1666,17 +1295,6 @@ const executeFsFileOps = async ({
       error: asErrorMessage(error),
     }
   }
-}
-
-async function maybeWithInternalWrite<T>(
-  promptSourceWatcher: PromptSourceWatcher | undefined,
-  path: string,
-  task: () => Promise<T>,
-): Promise<T> {
-  if (promptSourceWatcher?.isWatchedPath(path)) {
-    return promptSourceWatcher.withInternalWrite(path, task)
-  }
-  return task()
 }
 
 export async function callLocalFileTool({

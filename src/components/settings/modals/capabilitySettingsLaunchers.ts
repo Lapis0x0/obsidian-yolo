@@ -81,4 +81,5 @@ export const CAPABILITY_SETTINGS_LAUNCHERS = {
   todo_list: null,
   user_questions: null,
   file_reading: null,
+  file_editing: null,
 } satisfies Record<BuiltinCapabilityId, SettingsLauncher | null>

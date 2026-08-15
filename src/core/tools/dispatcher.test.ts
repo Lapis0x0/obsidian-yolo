@@ -82,19 +82,29 @@ describe('executeBuiltinTool: workspace-scope second line of defense', () => {
     }
   })
 
-  it('lets an in-scope path through the boundary (falls through to the not-yet-migrated-tool error, proving the check passed rather than blocking)', async () => {
+  // fs_write is registered as of D6 batch 4 (previously it fell through to
+  // the "not yet migrated" unknown-tool error, which is what these two
+  // tests used to assert on as an indirect proxy for "the boundary check
+  // passed rather than blocking"). Now that it actually executes, a minimal
+  // working vault mock lets the assertion be direct: the call really
+  // succeeds end-to-end instead of merely failing with a different error.
+  const makeWritableVaultApp = (): App =>
+    ({
+      vault: {
+        getAbstractFileByPath: jest.fn().mockReturnValue(null),
+        createFolder: jest.fn().mockResolvedValue(undefined),
+        create: jest.fn().mockResolvedValue(undefined),
+      },
+    }) as unknown as App
+
+  it('lets an in-scope path through the boundary and actually executes the tool', async () => {
     const result = await executeBuiltinTool(
       'fs_write',
       { path: 'Notes/a.md', content: 'ok' },
-      makeCtx({ workspaceScope: allowNotes }),
+      makeCtx({ app: makeWritableVaultApp(), workspaceScope: allowNotes }),
     )
 
-    // fs_write is not registered yet (D6) — reaching the unknown-tool error
-    // instead of the scope error proves the boundary check itself passed.
-    expect(result).toEqual({
-      status: ToolCallResponseStatus.Error,
-      error: 'Unknown local file tool: fs_write',
-    })
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
   })
 
   it('is a no-op when scope is disabled', async () => {
@@ -102,14 +112,12 @@ describe('executeBuiltinTool: workspace-scope second line of defense', () => {
       'fs_write',
       { path: 'secret/a.md', content: 'ok' },
       makeCtx({
+        app: makeWritableVaultApp(),
         workspaceScope: { enabled: false, include: ['Notes'], exclude: [] },
       }),
     )
 
-    expect(result).toEqual({
-      status: ToolCallResponseStatus.Error,
-      error: 'Unknown local file tool: fs_write',
-    })
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
   })
 })
 
