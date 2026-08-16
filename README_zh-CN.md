@@ -180,4 +180,4 @@
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Lapis0x0/obsidian-yolo&type=Date)](https://star-history.com/#Lapis0x0/obsidian-yolo&Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=Lapis0x0/obsidian-yolo&type=Date)](https://star-history.dera.page/#Lapis0x0/obsidian-yolo&type=date)
