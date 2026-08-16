@@ -1,17 +1,19 @@
-## 1.6.5.4 New CLI Runtimes & Menu Redesign 🚀
+## 1.6.5.5 PDF Annotations & Smoother Generation 📌
 
-- Added Hermes CLI and Pi as chat runtimes, alongside the existing Claude Code and Codex. (#572)
-- Redesigned the @ mention and / skill menus into a two-column category panel, which switches to horizontal categories in narrow containers.
-- Added an "Update reminder" toggle in settings so the update popup can be turned off. (#571)
-- Improved streaming text performance further.
-- Fixed the thinking preview jittering line by line before it reached its height limit.
+- PDF reader now supports annotating selections: quote several passages in a single message and write a separate note for each.
+- Reduced UI stuttering during generation by cutting main-thread work. (#573)
+- Fixed chat history repeatedly reloading during long streaming tasks, which could freeze the interface. (#573)
+- Reworked the starlight animation shown at Max reasoning effort.
+- Modules can now ship complete skill packages alongside their release artifacts.
+- Rebuilt the registration pipeline for built-in tools and skills so it is easier to maintain.
 
 ---
 
-## 1.6.5.4 新增 CLI 运行时与菜单改版 🚀
+## 1.6.5.5 PDF 批注与更顺滑的生成体验 📌
 
-- 新增 Hermes CLI 与 Pi 两个聊天运行时，与已有的 Claude Code、Codex 并列。（#572）
-- @ 提及与 / 技能菜单改版为双栏分类面板，窄容器下自动切换为横排分类。
-- 设置中新增「更新提醒」开关，可关闭更新弹窗。（#571）
-- 进一步优化流式文字生成的性能表现。
-- 修复思维链预览在长到上限前逐行抖动的问题。
+- PDF 阅读器支持选区批注：可在一条消息中引用多处原文并逐条撰写批注。
+- 优化生成时的界面卡顿，减少主线程占用。（#573）
+- 修复长时间任务流式输出时聊天记录反复重新加载、可能导致界面卡死的问题。（#573）
+- 重做推理强度为 Max 时的星光动画设计。
+- 模块可随产物发布完整 skill 包。
+- 重构内置工具与 skills 的注册维护管线，降低维护难度。
