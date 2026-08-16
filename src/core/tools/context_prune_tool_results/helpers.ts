@@ -2,11 +2,8 @@ import type { ChatMessage } from '../../../types/chat'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { isContextPrunableToolName } from '../../../utils/chat/tool-context-pruning'
 
-// `context_prune_tool_results` is this helper's only consumer besides the
-// still-live `callLocalFileTool` switch case for the same tool — a
-// single-tool helper, so it lives alongside the tool's own definition
-// (phase2-migration.md D6 "注意"). `localFileTools.ts` imports these back
-// from here — see that file's import block.
+// `context_prune_tool_results` is this helper's only consumer, so it lives
+// alongside that tool's own definition (phase2-migration.md D6 "注意").
 
 export type ContextPruneMode = 'selected' | 'all'
 

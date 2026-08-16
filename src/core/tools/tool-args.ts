@@ -1,16 +1,8 @@
 // Generic tool-argument parsing and result-formatting helpers shared by more
-// than one built-in tool implementation (both migrated `core/tools/*`
-// definitions and the still-live `callLocalFileTool` switch in
-// `core/mcp/localFileTools.ts`). Kept here — not inside any single tool's
+// than one built-in tool definition. Kept here — not inside any single tool's
 // directory — because each of these has multiple consumers (see
 // phase2-migration.md D6 "注意": "谁用它谁收留" only moves a helper into a
 // tool's own directory when that tool is its *only* consumer).
-//
-// `localFileTools.ts` imports these back from here (see that file's own
-// import block) rather than this module reaching back into it. That
-// direction is required to keep `core/tools/*` from re-entering the
-// pre-existing circular dependency between `core/mcp/mcpManager.ts` and
-// `core/agent/*` (docs/plans/2026-08-15-tool-registry/master.md, D6a fix).
 
 export const asErrorMessage = (error: unknown): string => {
   if (error instanceof Error) {

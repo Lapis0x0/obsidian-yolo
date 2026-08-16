@@ -20,16 +20,18 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - `modules/<id>/` owns an independently built product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
 - `src/core/agent/` owns the shared native agent runtime, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat run through `AgentService.run`; permissions come from `resolveChatModeRuntime`.
 - `src/core/ai/single-turn.ts` is the low-latency path for Smart Space and Write Assist. Do not route these features through the agent runtime or introduce another orchestration path.
-- `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and tool capabilities.
+- `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path.
+- `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and MCP capabilities.
 - `src/features/` contains host-shipped cross-cutting features. `src/database/`, `src/settings/`, and `src/styles/` own host persistence, settings, and global styles.
 
 ## Module Boundaries
 
 - Put a large, optional product capability in `modules/` when it can be installed, enabled, and released independently. Keep small or inherently host-integrated capabilities in `src/features/`.
 - A module may depend on the versioned Host API and its declared package dependencies. It must not import `src/core/`, `src/components/`, `YoloPlugin`, or `obsidian` directly.
-- First-party modules follow the same boundary as external modules. Repository co-location does not grant access to host implementation details.
+- First-party modules get no access to host implementation details from repository co-location.
 - Add a capability to the Host API only when it is broadly useful to modules. Keep module-specific policy and behavior inside the owning module.
 - Core must not import module source or bundle module implementation into the host artifact. Communicate only through registration, manifests, and Host API contracts.
+- A module ships skills as packages: declared files are projected on activation into `<YOLO base>/modules/<moduleId>/skills/<package>/` and are then ordinary Vault skills. Do not introduce a module-skill path protocol.
 - Treat versioned `entry.js`, module `style.css`, generated manifest metadata (hashes, sizes, and URLs), and `modules/bundled.json` as build outputs. Change source or compatibility declarations, run `npm run module:build`, and commit the regenerated artifacts rather than editing generated metadata.
 
 ## Critical Cross-Cutting Constraints
@@ -43,19 +45,20 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the host or module.
 - PGlite cannot use its default `node:fs` path in Obsidian. `DatabaseManager.ts` lazily loads its data, WASM, and vector extension and supplies them during initialization; preserve the build shims for `process` and `import.meta.url`.
-- `src/utils/chat/responseGenerator.ts` was removed. Do not recreate a parallel chat or agent orchestration path.
+- Do not create a second chat or agent orchestration path.
 
 ### Chat Runtime Invariants
 
 - Agent conversation state is structurally shared: a message object's reference changes if and only if its content changes. Never mutate messages or state arrays in place; dev builds deep-freeze published snapshots to catch this.
-- All scroll writes in chat surfaces go through the scroll controller in `src/components/chat-view/scroll/`. Never set `scrollTop` directly.
+- While a message is generating, its content and reasoning live in `assistantRenderStreamStore`, not in the conversation snapshot; snapshots fold the stream back only at semantic boundaries. Never publish per-token conversation snapshots.
+- All scroll writes in chat surfaces go through the scroll controller in `src/components/chat-view/scroll/`; never set `scrollTop` directly, and never infer user intent from it — paging direction comes from the input event, position only gates the edge.
 
 ### Popout / Multi-window
 
 Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm, but each window has its own `document`, `window`, and keymap. Global `document` / `window` are the **main** window.
 
-- View-local DOM work (portals, listeners, `requestAnimationFrame`, `getComputedStyle`, `activeElement`, timers) must use the node's `ownerDocument` / `defaultView`. Use `src/utils/dom/window-context.ts`; do not default to the globals.
-- Keyboard, Escape layering, and menus belong to Obsidian's keymap: `Scope` + `app.keymap.pushScope` / `popScope`, or `Menu` / `Modal`. Do not build a parallel stack with React `onKeyDown` plus Radix/document-capture Escape. That stack only sees keys that reach a node in that document; in a popout the host often consumes the same keys at capture (and Radix's listener is usually on the main `document`), so shortcuts and Esc layering work in the main window and fail in the popout.
+- View-local DOM work (portals, listeners, `requestAnimationFrame`, `ResizeObserver`, `IntersectionObserver`, `getComputedStyle`, `activeElement`, timers) must use the node's `ownerDocument` / `defaultView`. Use `src/utils/dom/window-context.ts`; do not default to the globals.
+- Keyboard, Escape layering, and menus belong to Obsidian's keymap (`Scope` + `app.keymap.pushScope` / `popScope`, `Menu`, `Modal`). A React `onKeyDown` plus Radix/document-capture stack only sees keys that reach a node in that document, so it works in the main window and fails in the popout.
 - Overlay, shortcut, and portal behavior is not done until it has been checked in a popout, not only the main window.
 
 ### Database Schema Changes

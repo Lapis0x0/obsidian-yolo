@@ -10,13 +10,8 @@ import { validateVaultPath } from '../../mcp/vaultFileOps'
 import { getOptionalBoundedIntegerArg } from '../tool-args'
 
 // fs_read-exclusive schema/parsing helpers, types, and limits. Everything in
-// this file has exactly one consumer — `fs_read` — counting the still-live
-// `callLocalFileTool` switch case and duplicate schema literal for the same
-// tool in `core/mcp/localFileTools.ts` (phase2-migration.md D6 "注意":
-// single-tool helpers move into that tool's own directory).
-// `localFileTools.ts` imports these back from here — see that file's import
-// block — rather than this module reaching back into it, per the D6a fix
-// (docs/plans/2026-08-15-tool-registry/master.md).
+// this file has exactly one consumer — `fs_read` — so it lives in that
+// tool's own directory (phase2-migration.md D6 "注意").
 
 export const MAX_BATCH_READ_FILES = 20
 export const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024

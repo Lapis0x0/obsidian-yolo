@@ -9,12 +9,9 @@ import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
 
 /**
  * The two safety-critical checks that live outside every built-in tool's own
- * logic (master.md §3.4). Extracted verbatim from `callLocalFileTool`
- * (`src/core/mcp/localFileTools.ts`, formerly inline at the top of its
- * `try` block) so `dispatcher.ts` and the still-live `callLocalFileTool`
- * switch can share one implementation instead of two that could drift.
+ * logic (master.md §3.4). `dispatcher.ts` is the only caller.
  *
- * Throws with the exact same messages the inline checks used to throw.
+ * Throws with the exact same messages the pre-registry inline checks threw.
  * Callers must run this inside the same try/catch that normalizes thrown
  * errors into a tool error result — it does not catch anything itself.
  *

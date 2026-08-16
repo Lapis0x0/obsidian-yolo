@@ -6,20 +6,13 @@ import { asErrorMessage } from './tool-args'
 import type { LocalToolCallResult, ToolContext } from './types'
 
 /**
- * The single execution entry point for built-in tools — replaces the
- * `switch (toolName)` body of `callLocalFileTool`
- * (`src/core/mcp/localFileTools.ts:2194`). Both this dispatcher and the
- * still-live `callLocalFileTool` switch call the same
- * `enforceBuiltinToolSecurityBoundary` (see `./security-boundary.ts`) so the
- * two safety-critical checks it performs can never drift between the two
- * call paths while both exist (D6 migrates the remaining tools off
- * `callLocalFileTool` and removes it; this dispatcher is the only caller
- * from then on).
+ * The single execution entry point for built-in tools, and the only caller of
+ * `enforceBuiltinToolSecurityBoundary` (see `./security-boundary.ts`).
  *
  * Full step list (master.md §3.4 / phase1-skeleton.md D1):
  *   1. `signal.aborted` check
- *   2. workspace-scope second line of defense (shared with `callLocalFileTool`)
- *   3. YOLO user-data-root isolation (shared with `callLocalFileTool`)
+ *   2. workspace-scope second line of defense
+ *   3. YOLO user-data-root isolation
  *   4. registry lookup; unknown tool -> explicit error
  *   5. execute + normalize thrown errors
  */

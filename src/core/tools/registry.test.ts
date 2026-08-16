@@ -92,16 +92,9 @@ describe('registry queries', () => {
     expect(isBuiltinCapabilityId('not_a_real_capability')).toBe(false)
   })
 
-  // D6 batches 1-3. `McpManager.callTool`'s fork (`core/mcp/mcpManager.ts`,
-  // the local-tool branch) is `isBuiltinToolName(toolName) ?
-  // executeBuiltinTool(...) : callLocalFileTool(...)` — so this being `true`
-  // for all five is what actually routes them through the new dispatcher at
-  // runtime rather than silently falling back to the old switch. Combined
-  // with the per-tool equivalence suites (context-tools-equivalence.test.ts,
-  // todo-and-questions-equivalence.test.ts, fs-read-equivalence.test.ts),
-  // which prove `executeBuiltinTool` itself produces the same result as the
-  // old switch case, this closes the loop: registered -> reached ->
-  // correct.
+  // `McpManager.callTool` gates its local-tool branch on
+  // `isBuiltinToolName` (`core/mcp/mcpManager.ts`), so this guard returning
+  // `true` is what actually makes a registered tool reachable at runtime.
   it('type-guards the D6 batch 1-3 tool names (context_prune_tool_results, context_compact, todo_write, ask_user_question, fs_read)', () => {
     expect(isBuiltinToolName('context_prune_tool_results')).toBe(true)
     expect(isBuiltinToolName('context_compact')).toBe(true)

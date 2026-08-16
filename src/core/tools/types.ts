@@ -124,9 +124,7 @@ export type ToolAvailabilityContext = {
  * `runContext` (dropped entirely, not opacified: it had zero readers on
  * either side — `callLocalFileTool` itself destructured it straight into
  * `_runContext` — so there was no live shape to hide, only a dead field to
- * remove; see `callLocalFileTool`'s own parameter type in
- * `localFileTools.ts`, which still carries it unchanged since that path
- * still serves not-yet-migrated tools). Every other field's type,
+ * remove). Every other field's type,
  * optionality, and comment is copied verbatim. Do NOT narrow this to a
  * per-tool slice here — that's an explicit non-goal for this phase (see
  * master.md decision 5 / §7).

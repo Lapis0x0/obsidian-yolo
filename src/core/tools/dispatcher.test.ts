@@ -1,17 +1,10 @@
 // Exercises `executeBuiltinTool`'s own responsibilities (master.md §3.4):
-// abort short-circuit, the two security-boundary checks it shares with
-// `callLocalFileTool` via `enforceBuiltinToolSecurityBoundary`
+// abort short-circuit, the two `enforceBuiltinToolSecurityBoundary` checks
 // (./security-boundary.ts), unknown-tool-name handling, and normalizing a
 // thrown error into an Error-status result. Per phase2-migration.md D5,
-// these boundaries are verified through the dispatcher, not per tool.
-//
-// `memory-equivalence.test.ts` already covers `executeBuiltinTool` producing
-// the same result as `callLocalFileTool` for a registered tool (success,
-// validation-error, unknown-tool-name); this file focuses on the boundary
-// checks themselves, including tool names not yet migrated into the
-// registry (D6) — the security boundary must reject them before registry
-// lookup ever runs, exactly as `callLocalFileTool`'s inline checks ran
-// before its `switch`.
+// these boundaries are verified through the dispatcher, not per tool — the
+// security boundary must reject a call before registry lookup ever runs,
+// including for names that are not registered at all.
 
 jest.mock('obsidian')
 
