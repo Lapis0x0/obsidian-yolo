@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 19,
+  "revision": 20,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.5.4",
+    "version": "1.6.5.5",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.4",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.5",
     "releaseNotes": {
-      "en": "## 1.6.5.4 New CLI Runtimes & Menu Redesign 🚀\n\n- Added Hermes CLI and Pi as chat runtimes, alongside the existing Claude Code and Codex. (#572)\n- Redesigned the @ mention and / skill menus into a two-column category panel, which switches to horizontal categories in narrow containers.\n- Added an \"Update reminder\" toggle in settings so the update popup can be turned off. (#571)\n- Improved streaming text performance further.\n- Fixed the thinking preview jittering line by line before it reached its height limit.",
-      "zh": "## 1.6.5.4 新增 CLI 运行时与菜单改版 🚀\n\n- 新增 Hermes CLI 与 Pi 两个聊天运行时，与已有的 Claude Code、Codex 并列。（#572）\n- @ 提及与 / 技能菜单改版为双栏分类面板，窄容器下自动切换为横排分类。\n- 设置中新增「更新提醒」开关，可关闭更新弹窗。（#571）\n- 进一步优化流式文字生成的性能表现。\n- 修复思维链预览在长到上限前逐行抖动的问题。"
+      "en": "## 1.6.5.5 PDF Annotations & Smoother Generation 📌\n\n- PDF reader now supports annotating selections: quote several passages in a single message and write a separate note for each.\n- Reduced UI stuttering during generation by cutting main-thread work. (#573)\n- Fixed chat history repeatedly reloading during long streaming tasks, which could freeze the interface. (#573)\n- Reworked the starlight animation shown at Max reasoning effort.\n- Modules can now ship complete skill packages alongside their release artifacts.\n- Rebuilt the registration pipeline for built-in tools and skills so it is easier to maintain.",
+      "zh": "## 1.6.5.5 PDF 批注与更顺滑的生成体验 📌\n\n- PDF 阅读器支持选区批注：可在一条消息中引用多处原文并逐条撰写批注。\n- 优化生成时的界面卡顿，减少主线程占用。（#573）\n- 修复长时间任务流式输出时聊天记录反复重新加载、可能导致界面卡死的问题。（#573）\n- 重做推理强度为 Max 时的星光动画设计。\n- 模块可随产物发布完整 skill 包。\n- 重构内置工具与 skills 的注册维护管线，降低维护难度。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.5.4/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.4/main.js",
-        "byteSize": 9323356,
-        "sha256": "fa4a987e2202a484167a3374f7cffabc5894dabc2ba56bb9d0e8d26084da5b18"
+        "mirrorPath": "core/1.6.5.5/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.5/main.js",
+        "byteSize": 9341415,
+        "sha256": "6230aca3cbbfe0baff184572439f8b53d39ddaa2e6be48ec1fce03257ee0cbfb"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.5.4/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.4/manifest.json",
+        "mirrorPath": "core/1.6.5.5/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.5/manifest.json",
         "byteSize": 330,
-        "sha256": "ad9ab46b80c261c97965e012b18de5e0e7baf83492b96b7ebb3d11c88faea7ac"
+        "sha256": "bab66aaad93cdfc40c30ca6ce22ee3d12f6b9e8d45803d94df9114a7cbe5f546"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.5.4/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.4/styles.css",
-        "byteSize": 626975,
-        "sha256": "ea8c7c3a3724c76877e3b41adb4dc3d3c3886423e0c62ed04dc63429180bea48"
+        "mirrorPath": "core/1.6.5.5/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.5/styles.css",
+        "byteSize": 632263,
+        "sha256": "7e1936183f9ddbf46a4692b785090f44e7dd1e85c436bbec17562fe69cb3f1df"
       }
     }
   },
