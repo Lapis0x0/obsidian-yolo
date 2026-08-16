@@ -53,6 +53,7 @@ import {
   collectToolCallIdsFromGroupedMessages,
   reuseShallowEqualMap,
 } from '../../utils/chat/tool-result-index'
+import { getNodeWindow } from '../../utils/dom/window-context'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
@@ -72,6 +73,7 @@ import type {
 } from './conversation-surface-contract'
 import { ConversationSurface } from './ConversationSurface'
 import { syncRenderedLatexSelection } from './latex-copy'
+import { LiveEdgeFollowProvider } from './live-edge-follow-context'
 import MessageNavigator from './MessageNavigator'
 import type { MessageNavigatorAnchor } from './MessageNavigator'
 import {
@@ -240,7 +242,7 @@ export type YoloChatSurfaceProps = {
   releaseHighlightIds: (ids: Iterable<string>) => void
 
   // 领域动作
-  persistConversation: YoloChatSessionActions['persistConversation']
+  persistActiveBranchSelection: YoloChatSessionActions['persistActiveBranchSelection']
   updateHistoricalUserMessage: YoloChatSessionActions['updateHistoricalUserMessage']
   finalizeHistoricalUserMessageEdit: YoloChatSessionActions['finalizeHistoricalUserMessageEdit']
   dismissHistoricalUserMessage: YoloChatSessionActions['dismissHistoricalUserMessage']
@@ -323,7 +325,7 @@ export function YoloChatSurface({
   handleQuoteAssistantSelection,
   handleDeleteAssistantQuote,
   releaseHighlightIds,
-  persistConversation,
+  persistActiveBranchSelection,
   updateHistoricalUserMessage,
   finalizeHistoricalUserMessageEdit,
   dismissHistoricalUserMessage,
@@ -627,10 +629,11 @@ export function YoloChatSurface({
   }, [autoScrollToBottom, chatMessages])
   const handleForceScrollToBottom = useCallback(() => {
     resetToLatest()
-    requestAnimationFrame(() => {
+    // popout 是独立 BrowserWindow：帧调度必须取滚动容器所属窗口。
+    getNodeWindow(chatMessagesRef.current).requestAnimationFrame(() => {
       forceScrollToBottom()
     })
-  }, [forceScrollToBottom, resetToLatest])
+  }, [chatMessagesRef, forceScrollToBottom, resetToLatest])
   const handleNavigateToUserMessage = useCallback(
     (messageId: string) => {
       setNavigatorViewport((currentViewport) => ({
@@ -692,7 +695,9 @@ export function YoloChatSurface({
         return
       }
 
-      latexSelectionSyncFrameRef.current = requestAnimationFrame(() => {
+      latexSelectionSyncFrameRef.current = getNodeWindow(
+        chatMessagesElement,
+      ).requestAnimationFrame(() => {
         syncLatexSelectionInView()
       })
     }
@@ -707,7 +712,9 @@ export function YoloChatSurface({
       doc.removeEventListener('mouseup', scheduleLatexSelectionSync)
       doc.removeEventListener('keyup', scheduleLatexSelectionSync)
       if (latexSelectionSyncFrameRef.current !== null) {
-        cancelAnimationFrame(latexSelectionSyncFrameRef.current)
+        getNodeWindow(chatMessagesElement).cancelAnimationFrame(
+          latexSelectionSyncFrameRef.current,
+        )
         latexSelectionSyncFrameRef.current = null
       }
     }
@@ -900,12 +907,14 @@ export function YoloChatSurface({
       }
       activeBranchByUserMessageIdRef.current = next
       setActiveBranchByUserMessageId(next)
-      void persistConversation(chatMessagesStateRef.current)
+      // 只写 `activeBranchByUserMessageId` 这一项元数据。顺带写一份 messages
+      // 快照会用一份可能落后整个生成阶段的正文覆盖数据库——见
+      // `persistActiveBranchSelection`。
+      void persistActiveBranchSelection()
     },
     [
       activeBranchByUserMessageIdRef,
-      chatMessagesStateRef,
-      persistConversation,
+      persistActiveBranchSelection,
       setActiveBranchByUserMessageId,
     ],
   )
@@ -1549,61 +1558,64 @@ export function YoloChatSurface({
     ) : undefined
 
   return (
-    <ConversationSurface
-      chatMode={chatMode}
-      yoloEnabled={yoloEnabled}
-      showEmptyState={showEmptyState}
-      groupedChatMessagesLength={groupedChatMessages.length}
-      isAutoFollowEnabled={isAutoFollowEnabled}
-      currentConversationId={currentConversationId}
-      chatTimelineItems={stableChatTimelineItems}
-      timelineRenderVersion={chatTimelineRenderVersion}
-      chatMessagesRef={chatMessagesRef}
-      onScrollContainerChange={setChatMessagesElement}
-      onBottomSentinelChange={setChatBottomSentinelElement}
-      scrollController={scrollController}
-      timelineRendererContract={yoloTimelineRendererContract}
-      editingAssistantMessageId={editingAssistantMessageId}
-      hasEarlierMessages={hasEarlierMessages}
-      hasNewerMessages={hasNewerMessages}
-      onLoadEarlier={loadEarlier}
-      onLoadNewer={loadNewer}
-      onGrowWindowToFillViewport={growWindowToFillViewport}
-      historyWindowKey={historyWindowKey}
-      onForceScrollToBottom={handleForceScrollToBottom}
-      hasStreamingMessages={hasStreamingMessages}
-      scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
-      scrollToBottomWhileStreamingLabel={t(
-        'chat.scrollToBottomWhileStreaming',
-        '回到底部继续跟随',
-      )}
-      emptyStateAskTitle={t('chat.emptyState.askTitle', '先想清楚，再落笔')}
-      emptyStateAgentTitle={t('chat.emptyState.agentTitle', '让 AI 去执行')}
-      emptyStateAgentFullTitle={t(
-        'chat.emptyState.agentFullTitle',
-        '让 AI 自主执行 · YOLO 模式',
-      )}
-      emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
-      emptyStateModuleContent={emptyStateModuleContent}
-      emptyStateAskDescription={t(
-        'chat.emptyState.askDescription',
-        '适合提问、润色与改写，专注表达本身',
-      )}
-      emptyStateAgentDescription={t(
-        'chat.emptyState.agentDescription',
-        '启用工具链，处理搜索、读写与多步骤任务',
-      )}
-      emptyStateAgentFullDescription={t(
-        'chat.emptyState.agentFullDescription',
-        '自动放行工具调用，处理搜索、读写与多步骤任务',
-      )}
-      onUserMessageViewportChange={setNavigatorViewport}
-      windowNavigationKey={windowNavigationKey || undefined}
-      windowNavigationTargetMessageId={windowNavigationTargetMessageId}
-      messageNavigatorContent={messageNavigatorContent}
-      bottomSpacerHeight={bottomSpacerHeight}
-      footerContent={footerContent}
-    />
+    // 流式正文不再随会话快照到达，跟随由播放器在可见帧 commit 后直接触发。
+    <LiveEdgeFollowProvider onFollowLiveEdge={autoScrollToBottom}>
+      <ConversationSurface
+        chatMode={chatMode}
+        yoloEnabled={yoloEnabled}
+        showEmptyState={showEmptyState}
+        groupedChatMessagesLength={groupedChatMessages.length}
+        isAutoFollowEnabled={isAutoFollowEnabled}
+        currentConversationId={currentConversationId}
+        chatTimelineItems={stableChatTimelineItems}
+        timelineRenderVersion={chatTimelineRenderVersion}
+        chatMessagesRef={chatMessagesRef}
+        onScrollContainerChange={setChatMessagesElement}
+        onBottomSentinelChange={setChatBottomSentinelElement}
+        scrollController={scrollController}
+        timelineRendererContract={yoloTimelineRendererContract}
+        editingAssistantMessageId={editingAssistantMessageId}
+        hasEarlierMessages={hasEarlierMessages}
+        hasNewerMessages={hasNewerMessages}
+        onLoadEarlier={loadEarlier}
+        onLoadNewer={loadNewer}
+        onGrowWindowToFillViewport={growWindowToFillViewport}
+        historyWindowKey={historyWindowKey}
+        onForceScrollToBottom={handleForceScrollToBottom}
+        hasStreamingMessages={hasStreamingMessages}
+        scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
+        scrollToBottomWhileStreamingLabel={t(
+          'chat.scrollToBottomWhileStreaming',
+          '回到底部继续跟随',
+        )}
+        emptyStateAskTitle={t('chat.emptyState.askTitle', '先想清楚，再落笔')}
+        emptyStateAgentTitle={t('chat.emptyState.agentTitle', '让 AI 去执行')}
+        emptyStateAgentFullTitle={t(
+          'chat.emptyState.agentFullTitle',
+          '让 AI 自主执行 · YOLO 模式',
+        )}
+        emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
+        emptyStateModuleContent={emptyStateModuleContent}
+        emptyStateAskDescription={t(
+          'chat.emptyState.askDescription',
+          '适合提问、润色与改写，专注表达本身',
+        )}
+        emptyStateAgentDescription={t(
+          'chat.emptyState.agentDescription',
+          '启用工具链，处理搜索、读写与多步骤任务',
+        )}
+        emptyStateAgentFullDescription={t(
+          'chat.emptyState.agentFullDescription',
+          '自动放行工具调用，处理搜索、读写与多步骤任务',
+        )}
+        onUserMessageViewportChange={setNavigatorViewport}
+        windowNavigationKey={windowNavigationKey || undefined}
+        windowNavigationTargetMessageId={windowNavigationTargetMessageId}
+        messageNavigatorContent={messageNavigatorContent}
+        bottomSpacerHeight={bottomSpacerHeight}
+        footerContent={footerContent}
+      />
+    </LiveEdgeFollowProvider>
   )
 }
 

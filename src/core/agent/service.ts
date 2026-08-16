@@ -2,6 +2,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import {
+  ChatAssistantMessage,
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
   ChatMessage,
@@ -28,6 +29,11 @@ import {
 } from '../mcp/localFileTools'
 import { parseToolName } from '../mcp/tool-name-utils'
 
+import {
+  type AssistantRenderStreamListener,
+  AssistantRenderStreamStore,
+  type AssistantRenderStreamValue,
+} from './assistantRenderStreamStore'
 import {
   type BackgroundTaskEvent,
   backgroundTaskCompletionBus,
@@ -166,12 +172,12 @@ type AgentRunEntry = {
   lastLoopConfig: AgentRuntimeLoopConfig | null
 }
 
-type ConversationPublishMode = 'immediate' | 'scheduled'
-
-type PendingScheduledConversationPublish = {
-  rafId: number | null
-  timeoutId: ReturnType<typeof setTimeout>
-}
+/**
+ * `stream-only`：本次运行时快照只改变了生成中 assistant 消息的 content /
+ * reasoning。权威状态照常更新，但不发布会话快照——这些字节走 assistant render
+ * stream 直达展示层，会话订阅者保留上一次结构折回值。
+ */
+type ConversationPublishMode = 'immediate' | 'stream-only'
 
 type AgentServiceOptions = {
   getSettings?: () => YoloSettings
@@ -345,18 +351,74 @@ const sameCompactionState = (
   )
 }
 
-const isDisplayOnlyAssistantChange = (
+// 唯一允许绕开会话快照、走 assistant render stream 的字段。
+const ASSISTANT_RENDER_STREAM_FIELDS: ReadonlySet<string> = new Set([
+  'content',
+  'reasoning',
+])
+
+/**
+ * 正面判定：两条 assistant 消息除 content / reasoning 外逐字段相等，且两侧都
+ * 处于 streaming。遍历键集合而不是列举要排除的字段，`ChatAssistantMessage`
+ * 将来新增的任何字段都会自动落到"语义事件"一侧，而不是被默默当成展示态。
+ */
+const isAssistantRenderStreamOnlyChange = (
   previousMessage: ChatMessage,
   nextMessage: ChatMessage,
+): boolean => {
+  if (
+    previousMessage.role !== 'assistant' ||
+    nextMessage.role !== 'assistant'
+  ) {
+    return false
+  }
+  if (
+    previousMessage.metadata?.generationState !== 'streaming' ||
+    nextMessage.metadata?.generationState !== 'streaming'
+  ) {
+    return false
+  }
+
+  const previousFields = previousMessage as unknown as Record<string, unknown>
+  const nextFields = nextMessage as unknown as Record<string, unknown>
+  for (const key of new Set([
+    ...Object.keys(previousFields),
+    ...Object.keys(nextFields),
+  ])) {
+    if (ASSISTANT_RENDER_STREAM_FIELDS.has(key)) {
+      continue
+    }
+    if (previousFields[key] !== nextFields[key]) {
+      return false
+    }
+  }
+  return true
+}
+
+/**
+ * 等价于 `value.trim().length > 0`，但不复制整串：正文的每个 delta 都会走到
+ * 这里，`trim()` 会让判定退化成随正文长度增长的 O(n) 复制。
+ */
+const hasVisibleText = (value: string): boolean => /\S/.test(value)
+
+/**
+ * 首次出现的正文 / 思考文本是结构事件：树上多处 gate 依赖"这条消息有没有正文
+ * 或思考"（shell 是否显示、思考块是否还在 thinking 态、答案项的类名）。让第一段
+ * 文本随快照折回一次，这些 gate 仍由快照决定，叶子只负责其后的纯增量。
+ *
+ * 判据必须与那些 gate 完全一致——它们一律是 `trim().length > 0`。按 `length`
+ * 判定会在 provider 第一段吐出 `"\n"` / 空格时错位：折回一次快照，但快照里
+ * `content.trim()` 仍为空，gate 保持 false；等真正的第一个可见字符到来时
+ * `length === 0` 已经不成立，只走 stream，于是整段生成期间 gate 都不会翻转。
+ */
+const hasFirstRenderStreamFieldAppearance = (
+  previousMessage: ChatAssistantMessage,
+  nextMessage: ChatAssistantMessage,
 ): boolean =>
-  previousMessage.role === 'assistant' &&
-  nextMessage.role === 'assistant' &&
-  previousMessage.id === nextMessage.id &&
-  previousMessage.metadata?.generationState === 'streaming' &&
-  nextMessage.metadata?.generationState === 'streaming' &&
-  previousMessage.metadata === nextMessage.metadata &&
-  previousMessage.annotations === nextMessage.annotations &&
-  previousMessage.toolCallRequests === nextMessage.toolCallRequests
+  (!hasVisibleText(previousMessage.content) &&
+    hasVisibleText(nextMessage.content)) ||
+  (!hasVisibleText(previousMessage.reasoning ?? '') &&
+    hasVisibleText(nextMessage.reasoning ?? ''))
 
 const getRuntimeSnapshotPublishMode = (
   previousState: AgentConversationState,
@@ -375,7 +437,7 @@ const getRuntimeSnapshotPublishMode = (
     return 'immediate'
   }
 
-  let displayOnlyAssistantChanges = 0
+  let renderStreamOnlyChanges = 0
 
   for (let index = 0; index < previousState.messages.length; index += 1) {
     const previousMessage = previousState.messages[index]
@@ -383,17 +445,25 @@ const getRuntimeSnapshotPublishMode = (
     if (previousMessage === nextMessage) {
       continue
     }
-    if (!isDisplayOnlyAssistantChange(previousMessage, nextMessage)) {
+    if (!isAssistantRenderStreamOnlyChange(previousMessage, nextMessage)) {
+      return 'immediate'
+    }
+    if (
+      hasFirstRenderStreamFieldAppearance(
+        previousMessage as ChatAssistantMessage,
+        nextMessage as ChatAssistantMessage,
+      )
+    ) {
       return 'immediate'
     }
 
-    displayOnlyAssistantChanges += 1
-    if (displayOnlyAssistantChanges > 1) {
+    renderStreamOnlyChanges += 1
+    if (renderStreamOnlyChanges > 1) {
       return 'immediate'
     }
   }
 
-  return displayOnlyAssistantChanges === 1 ? 'scheduled' : 'immediate'
+  return renderStreamOnlyChanges === 1 ? 'stream-only' : 'immediate'
 }
 
 // Dev-only enforcement of the reference-identity contract: published state
@@ -876,10 +946,6 @@ export class AgentService {
   private persistTimers = new Map<string, ReturnType<typeof setTimeout>>()
   private persistenceChains = new Map<string, Promise<void>>()
   private lastPersistedAt = new Map<string, number>()
-  private pendingScheduledConversationPublishes = new Map<
-    string,
-    PendingScheduledConversationPublish
-  >()
   private droppedConversationIds = new Set<string>()
   /** pending background task results per conversation (queued while streaming) */
   private pendingBackgroundTaskResults = new Map<
@@ -914,8 +980,36 @@ export class AgentService {
    */
   private readonly systemPromptSnapshotStore = new SystemPromptSnapshotStore()
   private readonly promptSourceWatcher = new PromptSourceWatcher()
+  /**
+   * 生成中 assistant 消息的展示态流。通道所有权在这里而不是 ChatSessionController：
+   * 后者每个 ChatView 一份，会让多窗口各存一份缓冲；而 runtime 快照、中断、
+   * tool boundary、完成、分支这些生命周期都由本单例掌握。
+   */
+  private readonly assistantRenderStreams = new AssistantRenderStreamStore()
 
   constructor(private readonly options: AgentServiceOptions = {}) {}
+
+  getAssistantRenderStream(
+    conversationId: string,
+    messageId: string,
+  ): AssistantRenderStreamValue | undefined {
+    return this.assistantRenderStreams.getAssistantRenderStream(
+      conversationId,
+      messageId,
+    )
+  }
+
+  subscribeAssistantRenderStream(
+    conversationId: string,
+    messageId: string,
+    listener: AssistantRenderStreamListener,
+  ): () => void {
+    return this.assistantRenderStreams.subscribeAssistantRenderStream(
+      conversationId,
+      messageId,
+      listener,
+    )
+  }
 
   /** Shared system-prompt snapshot store, injected into RCB at construction. */
   getSystemPromptSnapshotStore(): SystemPromptSnapshotStore {
@@ -938,7 +1032,7 @@ export class AgentService {
   dropConversation(conversationId: string): void {
     this.droppedConversationIds.add(conversationId)
     this.evictSystemPromptSnapshot(conversationId)
-    this.cancelScheduledConversationPublish(conversationId)
+    this.assistantRenderStreams.dropConversation(conversationId)
     this.cancelPersistTimer(conversationId)
 
     const entry = this.conversationEntries.get(conversationId)
@@ -2553,20 +2647,26 @@ export class AgentService {
     this.schedulePersistence(state, persistReason)
   }
 
-  // Renders the current state without touching disk. Streaming-delta publishes
-  // use this directly: the runtime has already classified them as display-only
-  // (see `getRuntimeSnapshotPublishMode`), so persisting them would let frame
-  // cadence drive vault writes. Any semantic event that follows publishes
-  // immediately and carries the same text, so nothing is lost by skipping them.
-  // Run summaries follow the same routing: every summary input (run status,
-  // pending approval, running tool call, awaiting user input, activity) only
-  // changes through events classified as immediate, so display-only publishes
-  // cannot change a summary and skip the notification entirely.
+  // Renders the current state without touching disk. Every publish that reaches
+  // here is a semantic event: pure content/reasoning deltas are classified as
+  // `stream-only` (see `getRuntimeSnapshotPublishMode`) and never get this far,
+  // so neither vault writes nor run-summary notifications can be driven by frame
+  // cadence. The semantic event that follows a delta burst carries the same text,
+  // so nothing is lost by not publishing the deltas themselves.
   private publishConversationSnapshot(
     conversationId: string,
   ): AgentConversationState {
-    this.cancelScheduledConversationPublish(conversationId)
     const entry = this.getOrCreateConversationEntry(conversationId)
+    // 发布事务的固定顺序：
+    //   权威状态（调用方已更新）
+    //   → 把最终 content / reasoning 写入 render stream
+    //   → 发布结构快照
+    //   → 定格相关 stream（无订阅者时回收）
+    // 定格必须排在结构快照之后：terminal 是"这条流之后不会再有值"的承诺，
+    // 在快照落地前发布就等于对订阅者宣告了一个尚未成立的终点。
+    const streamingMessageIds = this.syncAssistantRenderStreamValues(
+      entry.state,
+    )
     const state = this.cloneState(entry.state)
     if (process.env.NODE_ENV !== 'production') {
       deepFreezeForDev(state)
@@ -2577,6 +2677,12 @@ export class AgentService {
     for (const subscriber of this.stateFeedSubscribers) {
       subscriber(state)
     }
+    // 终态在这里统一收口：中断 / 完成 / error / 消息被替换或删除 / 分支切换
+    // 都会走到某一次结构发布，不需要各自调用。
+    this.assistantRenderStreams.markTerminalExcept(
+      conversationId,
+      streamingMessageIds,
+    )
     return state
   }
 
@@ -2584,61 +2690,59 @@ export class AgentService {
     conversationId: string,
     publishMode: ConversationPublishMode,
   ): void {
-    if (publishMode === 'scheduled') {
-      this.scheduleConversationPublish(conversationId)
+    if (publishMode === 'stream-only') {
+      // 纯展示增量：权威状态已经更新，只把字节推给 render stream 的订阅者。
+      // 会话订阅者保留上一次结构折回值——那仍是一个合法、一致、可持久化的
+      // 历史切片，下一个语义事件会带着最新文本一起折回。这条路径按定义没有
+      // 消息离开 streaming，因此不涉及定格：终态只在结构发布里发生。
+      this.syncAssistantRenderStreamValues(
+        this.getOrCreateConversationEntry(conversationId).state,
+      )
       return
     }
     this.notifyConversationSubscribers(conversationId)
   }
 
-  private scheduleConversationPublish(conversationId: string): void {
-    if (this.pendingScheduledConversationPublishes.has(conversationId)) {
-      return
-    }
-
-    let rafId: number | null = null
-    const publish = () => {
-      const pending =
-        this.pendingScheduledConversationPublishes.get(conversationId)
-      if (!pending) {
-        return
+  /**
+   * 把每条 assistant 消息当前的 content / reasoning 写进 render stream，返回
+   * 仍在生成的消息 id（供随后的定格使用）。
+   *
+   * 已经收尾的消息同样要写：provider 的最终结果可能与最后一个 delta 不同
+   * （最终 reasoning 被规范化、正文被补全或重写），terminal 必须定格在最终值
+   * 而不是最后一个 delta。只写"流还没定格"的条目——历史消息与已回收的世代
+   * 不会因为一次结构发布被凭空拉起一条新流。
+   */
+  private syncAssistantRenderStreamValues(
+    state: AgentConversationState,
+  ): ReadonlySet<string> {
+    const streamingMessageIds = new Set<string>()
+    for (const message of state.messages) {
+      if (message.role !== 'assistant') {
+        continue
       }
-      if (
-        pending.rafId !== null &&
-        typeof globalThis.cancelAnimationFrame === 'function'
+      // 会话没在跑就不可能有活的流。这一条同时覆盖了"最后一条消息的
+      // generationState 没被终态化"的历史数据与异常收尾，避免条目泄漏。
+      const isStreaming =
+        state.status === 'running' &&
+        message.metadata?.generationState === 'streaming'
+      if (isStreaming) {
+        streamingMessageIds.add(message.id)
+      } else if (
+        !this.assistantRenderStreams.hasUnsettledStream(
+          state.conversationId,
+          message.id,
+        )
       ) {
-        globalThis.cancelAnimationFrame(pending.rafId)
+        continue
       }
-      clearTimeout(pending.timeoutId)
-      this.pendingScheduledConversationPublishes.delete(conversationId)
-      this.publishConversationSnapshot(conversationId)
+      this.assistantRenderStreams.publish({
+        conversationId: state.conversationId,
+        messageId: message.id,
+        content: message.content,
+        reasoning: message.reasoning ?? '',
+      })
     }
-
-    if (typeof globalThis.requestAnimationFrame === 'function') {
-      rafId = globalThis.requestAnimationFrame(publish)
-    }
-    const timeoutId = setTimeout(publish, 16)
-
-    this.pendingScheduledConversationPublishes.set(conversationId, {
-      rafId,
-      timeoutId,
-    })
-  }
-
-  private cancelScheduledConversationPublish(conversationId: string): void {
-    const pending =
-      this.pendingScheduledConversationPublishes.get(conversationId)
-    if (!pending) {
-      return
-    }
-    if (
-      pending.rafId !== null &&
-      typeof globalThis.cancelAnimationFrame === 'function'
-    ) {
-      globalThis.cancelAnimationFrame(pending.rafId)
-    }
-    clearTimeout(pending.timeoutId)
-    this.pendingScheduledConversationPublishes.delete(conversationId)
+    return streamingMessageIds
   }
 
   private cancelPersistTimer(conversationId: string): void {

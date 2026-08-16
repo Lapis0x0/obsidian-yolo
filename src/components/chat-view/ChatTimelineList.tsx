@@ -443,7 +443,12 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   const lastUserMessageViewportRef = useRef<UserMessageViewportState | null>(
     null,
   )
-  const userMessageViewportFrameRef = useRef<number | null>(null)
+  // rAF 句柄归发起它的窗口所有：popout 是独立 BrowserWindow，用全局 rAF 驱动
+  // 滚动视口上报会被主窗口的可见性节流，且句柄也不能跨窗口取消。
+  const userMessageViewportFrameRef = useRef<{
+    window: Window & typeof globalThis
+    id: number
+  } | null>(null)
   const appliedWindowNavigationKeyRef = useRef<number | undefined>(undefined)
   const pendingWindowNavigationRef = useRef<{
     key: number
@@ -558,16 +563,21 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    userMessageViewportFrameRef.current = window.requestAnimationFrame(() => {
-      userMessageViewportFrameRef.current = null
-      emitUserMessageViewport()
-    })
-  }, [emitUserMessageViewport])
+    const ownerWindow = getNodeWindow(scrollerElement)
+    userMessageViewportFrameRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.requestAnimationFrame(() => {
+        userMessageViewportFrameRef.current = null
+        emitUserMessageViewport()
+      }),
+    }
+  }, [emitUserMessageViewport, scrollerElement])
 
   useEffect(
     () => () => {
-      if (userMessageViewportFrameRef.current !== null) {
-        window.cancelAnimationFrame(userMessageViewportFrameRef.current)
+      const pendingFrame = userMessageViewportFrameRef.current
+      if (pendingFrame !== null) {
+        pendingFrame.window.cancelAnimationFrame(pendingFrame.id)
         userMessageViewportFrameRef.current = null
       }
     },

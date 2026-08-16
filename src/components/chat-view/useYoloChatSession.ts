@@ -116,6 +116,9 @@ export type UseYoloChatSessionParams = {
   createOrUpdateConversationImmediately: ReturnType<
     typeof useChatHistory
   >['createOrUpdateConversationImmediately']
+  updateConversationActiveBranches: ReturnType<
+    typeof useChatHistory
+  >['updateConversationActiveBranches']
   getConversationById: ReturnType<typeof useChatHistory>['getConversationById']
   chatList: ReturnType<typeof useChatHistory>['chatList']
 
@@ -252,6 +255,7 @@ export function useYoloChatSession({
   onConversationContextChange,
   createOrUpdateConversation,
   createOrUpdateConversationImmediately,
+  updateConversationActiveBranches,
   getConversationById,
   chatList,
   submitChatMutation,
@@ -492,6 +496,29 @@ export function useYoloChatSession({
       conversationReasoningLevelRef,
     ],
   )
+
+  /**
+   * 分支切换只改这一项元数据，因此只写这一项。
+   *
+   * 附带写一份 UI 手里的 messages 是数据覆盖风险：生成期间正文走 assistant
+   * render stream，UI 快照可能落后整个生成阶段，而这条写入与 AgentService 的
+   * 最终持久化不共享同一条串行链——它若后落地，数据库就会留下被截断的正文。
+   */
+  const persistActiveBranchSelection = useCallback(async () => {
+    try {
+      await updateConversationActiveBranches(
+        currentConversationId,
+        activeBranchByUserMessageIdRef.current,
+      )
+    } catch (error) {
+      new Notice('Failed to save chat history')
+      console.error('Failed to save active branch selection', error)
+    }
+  }, [
+    activeBranchByUserMessageIdRef,
+    currentConversationId,
+    updateConversationActiveBranches,
+  ])
 
   const persistConversationImmediately = useCallback(
     async (
@@ -1411,6 +1438,7 @@ export function useYoloChatSession({
     buildAssistantGroupBoundaryMessageIdsAfterUserRemoval,
     persistConversation,
     persistConversationImmediately,
+    persistActiveBranchSelection,
     isUserMessageEffectivelyEmpty,
     updateHistoricalUserMessage,
     finalizeHistoricalUserMessageEdit,

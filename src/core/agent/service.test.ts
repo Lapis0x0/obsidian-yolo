@@ -26,10 +26,6 @@ type AgentServiceInternals = {
   runEntriesByKey: Map<string, unknown>
   foregroundToolAbortersByConversation: Map<string, unknown>
   persistTimers: Map<string, unknown>
-  pendingScheduledConversationPublishes: Map<
-    string,
-    { rafId: number | null; timeoutId: ReturnType<typeof setTimeout> }
-  >
   pendingBackgroundTaskResults: Map<string, unknown>
   autoRunScheduled: Set<string>
   pendingUserMessagesByKey: Map<string, unknown>
@@ -412,7 +408,7 @@ describe('AgentService abort handling', () => {
   })
 })
 
-describe('AgentService streaming publish coalescing', () => {
+describe('AgentService assistant render stream separation', () => {
   const makeStreamingAssistantMessage = (
     content: string,
     options?: Partial<Extract<ChatMessage, { role: 'assistant' }>>,
@@ -439,7 +435,7 @@ describe('AgentService streaming publish coalescing', () => {
     jest.useRealTimers()
   })
 
-  it('coalesces streaming assistant display updates into one bounded frame publish', async () => {
+  it('keeps pure display deltas out of the conversation snapshot and routes them to the render stream', async () => {
     const service = new AgentService()
     const publishedStates: ChatMessage[][] = []
     service.subscribe(
@@ -465,7 +461,7 @@ describe('AgentService streaming publish coalescing', () => {
     // Streaming deltas replace the message reference immutably (matching the
     // real runtime's contract) rather than mutating one shared object, so
     // each snapshot below is a distinct object with the same metadata
-    // reference — a display-only content change.
+    // reference — a render-stream-only content change.
     const firstAssistantMessage = makeStreamingAssistantMessage('a') as Extract<
       ChatMessage,
       { role: 'assistant' }
@@ -478,18 +474,255 @@ describe('AgentService streaming publish coalescing', () => {
     runtime.emitSnapshot([userMessage, secondAssistantMessage])
     const thirdAssistantMessage = { ...secondAssistantMessage, content: 'abc' }
     runtime.emitSnapshot([userMessage, thirdAssistantMessage])
+
+    // No frame publish, no timer publish: the snapshot keeps the last
+    // structural fold value...
+    jest.advanceTimersByTime(64)
     expect(publishedStates).toHaveLength(2)
     expect(firstPublishedAssistant).toMatchObject({
       role: 'assistant',
       content: 'a',
     })
 
-    jest.advanceTimersByTime(16)
+    // ...while the render stream and the authoritative state both carry the
+    // latest text.
+    expect(
+      service.getAssistantRenderStream(
+        'conv-streaming-publish',
+        'assistant-streaming',
+      ),
+    ).toMatchObject({ content: 'abc', phase: 'streaming', revision: 1 })
+    expect(
+      service.getState('conv-streaming-publish').messages.at(-1),
+    ).toMatchObject({ role: 'assistant', content: 'abc' })
 
-    expect(publishedStates).toHaveLength(3)
+    runtime.resolveRun()
+    await runPromise
+
+    // The terminal fold carries the same text and settles the stream.
     expect(publishedStates.at(-1)?.at(-1)).toMatchObject({
       role: 'assistant',
       content: 'abc',
+    })
+    expect(
+      service.getAssistantRenderStream(
+        'conv-streaming-publish',
+        'assistant-streaming',
+      ),
+    ).toBeUndefined()
+  })
+
+  it('folds the first appearance of content back into the snapshot', async () => {
+    const service = new AgentService()
+    const publishedStates: ChatMessage[][] = []
+    service.subscribe(
+      'conv-first-appearance',
+      (state) => {
+        publishedStates.push(state.messages)
+      },
+      { emitCurrent: false },
+    )
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-first-appearance',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-first-appearance', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    // The shell arrives with no text at all — the tree's "does this message
+    // render anything" gates read the snapshot, so the first real character
+    // has to fold back even though it is a display-only field.
+    const shell = makeStreamingAssistantMessage('') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, shell])
+    const publishesAfterShell = publishedStates.length
+
+    runtime.emitSnapshot([userMessage, { ...shell, content: 'H' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell + 1)
+    expect(publishedStates.at(-1)?.at(-1)).toMatchObject({ content: 'H' })
+
+    runtime.emitSnapshot([userMessage, { ...shell, content: 'He' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell + 1)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  // 折回判据必须与树上的展示 gate 完全一致（它们一律是 `trim().length > 0`）。
+  // 按 `length` 判定时，provider 先吐出的换行/空格会白白消耗掉唯一一次折回，
+  // 等真正的第一个可见字符到来时反而只走 stream，gate 整段生成期间不翻转。
+  it('folds on the first visible character, not on leading whitespace', async () => {
+    const service = new AgentService()
+    const publishedStates: ChatMessage[][] = []
+    service.subscribe(
+      'conv-whitespace-first',
+      (state) => {
+        publishedStates.push(state.messages)
+      },
+      { emitCurrent: false },
+    )
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-whitespace-first',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-whitespace-first', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const shell = makeStreamingAssistantMessage('') as Extract<
+      ChatMessage,
+      { role: 'assistant' }
+    >
+    runtime.emitSnapshot([userMessage, shell])
+    const publishesAfterShell = publishedStates.length
+
+    // 纯空白：树上没有任何 gate 会因此翻转，不该消耗折回。
+    runtime.emitSnapshot([userMessage, { ...shell, content: '\n' }])
+    runtime.emitSnapshot([userMessage, { ...shell, content: '\n ' }])
+    runtime.emitSnapshot([userMessage, { ...shell, content: '\n \n\n' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell)
+
+    // 第一个可见字符：这才是 gate 翻转的时刻，必须折回一次。
+    runtime.emitSnapshot([userMessage, { ...shell, content: '\n \n\nH' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell + 1)
+    expect(publishedStates.at(-1)?.at(-1)).toMatchObject({
+      content: '\n \n\nH',
+    })
+
+    // 之后回到纯增量。
+    runtime.emitSnapshot([userMessage, { ...shell, content: '\n \n\nHe' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell + 1)
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('folds on the first visible reasoning character, not on leading whitespace', async () => {
+    const service = new AgentService()
+    const publishedStates: ChatMessage[][] = []
+    service.subscribe(
+      'conv-whitespace-reasoning',
+      (state) => {
+        publishedStates.push(state.messages)
+      },
+      { emitCurrent: false },
+    )
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-whitespace-reasoning',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-whitespace-reasoning', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const shell = makeStreamingAssistantMessage('', {
+      reasoning: '',
+    }) as Extract<ChatMessage, { role: 'assistant' }>
+    runtime.emitSnapshot([userMessage, shell])
+    const publishesAfterShell = publishedStates.length
+
+    runtime.emitSnapshot([userMessage, { ...shell, reasoning: '\n\n' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell)
+
+    runtime.emitSnapshot([userMessage, { ...shell, reasoning: '\n\nT' }])
+    expect(publishedStates).toHaveLength(publishesAfterShell + 1)
+    expect(publishedStates.at(-1)?.at(-1)).toMatchObject({
+      reasoning: '\n\nT',
+    })
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  // 事务顺序：最终值 → 结构快照 → 定格。终态值必须是最终值本身，而不是最后
+  // 一个 delta——provider 的最终结果可能重写正文、规范化 reasoning。
+  it('settles the stream on the final value, after the structural snapshot', async () => {
+    const service = new AgentService()
+    const events: string[] = []
+    service.subscribe(
+      'conv-terminal-final',
+      (state) => {
+        const last = state.messages.at(-1)
+        events.push(
+          `snapshot:${last?.role === 'assistant' ? last.content : ''}`,
+        )
+      },
+      { emitCurrent: false },
+    )
+    service.subscribeAssistantRenderStream(
+      'conv-terminal-final',
+      'assistant-streaming',
+      (value) => {
+        events.push(`stream:${value.phase}:${value.content}`)
+      },
+    )
+
+    const userMessage = makeUserMessage('u1', 'hello')
+    const runPromise = service.run({
+      conversationId: 'conv-terminal-final',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: buildBaseRunInput('conv-terminal-final', [userMessage]),
+    })
+    const runtime = runtimeInstances[0]
+
+    const streamingAssistant = makeStreamingAssistantMessage('ab', {
+      reasoning: 'raw  reasoning\n\n',
+    }) as Extract<ChatMessage, { role: 'assistant' }>
+    runtime.emitSnapshot([userMessage, streamingAssistant])
+    runtime.emitSnapshot([
+      userMessage,
+      { ...streamingAssistant, content: 'abc' },
+    ])
+
+    const eventsBeforeFinal = events.length
+
+    // provider 收尾：最终正文与 reasoning 都与最后一个 delta 不同。
+    runtime.emitSnapshot([
+      userMessage,
+      {
+        ...streamingAssistant,
+        content: 'abc final',
+        reasoning: 'normalized reasoning',
+        metadata: { generationState: 'completed' as const },
+      },
+    ])
+
+    expect(events.slice(eventsBeforeFinal)).toEqual([
+      'stream:streaming:abc final',
+      'snapshot:abc final',
+      'stream:terminal:abc final',
+    ])
+    expect(
+      service.getAssistantRenderStream(
+        'conv-terminal-final',
+        'assistant-streaming',
+      ),
+    ).toMatchObject({
+      content: 'abc final',
+      reasoning: 'normalized reasoning',
+      phase: 'terminal',
     })
 
     runtime.resolveRun()
@@ -536,8 +769,8 @@ describe('AgentService streaming publish coalescing', () => {
     >
     expect(activeSummaries.get('conv-summary-routing')?.isActive).toBe(true)
 
-    // Pure display deltas: coalesced into a frame publish that must reach
-    // state subscribers but not run summary subscribers.
+    // Pure display deltas reach neither state subscribers nor run summary
+    // subscribers: they travel on the render stream instead.
     const stateCallsBeforeDeltas = stateSubscriber.mock.calls.length
     runtime.emitSnapshot([
       userMessage,
@@ -547,8 +780,8 @@ describe('AgentService streaming publish coalescing', () => {
       userMessage,
       { ...firstAssistantMessage, content: 'abc' },
     ])
-    jest.advanceTimersByTime(16)
-    expect(stateSubscriber.mock.calls.length).toBe(stateCallsBeforeDeltas + 1)
+    jest.advanceTimersByTime(64)
+    expect(stateSubscriber.mock.calls.length).toBe(stateCallsBeforeDeltas)
     expect(summarySubscriber).toHaveBeenCalledTimes(callsAfterFirstSnapshot)
 
     // Completion is a semantic event again.
@@ -830,10 +1063,6 @@ describe('AgentService dropConversation', () => {
       abort: foregroundAbort,
     })
 
-    internals.pendingScheduledConversationPublishes.set('conv-drop', {
-      rafId: null,
-      timeoutId: setTimeout(() => undefined, 100),
-    })
     internals.autoRunScheduled.add('conv-drop')
     internals.pendingBackgroundTaskResults.set('conv-drop', [])
     internals.pendingUserMessagesByKey.set('conv-drop::default', [
@@ -857,9 +1086,6 @@ describe('AgentService dropConversation', () => {
     })
     expect(internals.conversationEntries.has('conv-drop')).toBe(false)
     expect(internals.persistTimers.has('conv-drop')).toBe(false)
-    expect(
-      internals.pendingScheduledConversationPublishes.has('conv-drop'),
-    ).toBe(false)
     expect(internals.autoRunScheduled.has('conv-drop')).toBe(false)
     expect(internals.pendingBackgroundTaskResults.has('conv-drop')).toBe(false)
     expect(internals.pendingUserMessagesByKey.has('conv-drop::default')).toBe(

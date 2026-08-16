@@ -74,6 +74,7 @@ import { ObsidianIcon } from '../common/ObsidianIcon'
 
 // removed Prompt Templates feature
 
+import { AssistantRenderStreamProvider } from './assistant-render-stream-context'
 import {
   CHAT_MODES,
   CLAUDE_CODE_CHAT_MODES,
@@ -312,6 +313,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    updateConversationActiveBranches,
     createOrTouchCliConversation,
     deleteConversation,
     getConversationById,
@@ -1184,8 +1186,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     queuedUserMessages,
     serializeMessageModelMap,
     normalizeAssistantGroupBoundaryMessageIds,
-    persistConversation,
     persistConversationImmediately,
+    persistActiveBranchSelection,
     updateHistoricalUserMessage,
     finalizeHistoricalUserMessageEdit,
     dismissHistoricalUserMessage,
@@ -1202,6 +1204,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     onConversationContextChange: props.onConversationContextChange,
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    updateConversationActiveBranches,
     getConversationById,
     chatList,
     submitChatMutation,
@@ -1975,121 +1978,135 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   )
 
   return (
-    <div
-      ref={handleContainerRef}
-      className={`${containerClassName}${
-        activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
-      }`}
-      style={containerStyle}
-    >
-      {header}
-      {activeView === 'composer' ? (
-        <div className="yolo-chat-composer-wrapper">
-          <Composer onNavigateChat={() => onChangeView?.('chat')} />
-        </div>
-      ) : isCliRuntimeActive &&
-        cliConversationController &&
-        activeCliConversationSnapshot &&
-        cliRuntimeScope ? (
-        <CliChatSurface
-          key={activeCliConversationSnapshot.surfaceId}
-          snapshot={activeCliConversationSnapshot}
-          presentedDraft={cliOperationSnapshot?.presentedDraft ?? null}
-          showEmptyState={activeSurfaceEmpty}
-          actions={cliChatRuntimeActions ?? cliRuntimeScope.chatRuntimeActions}
-          footerContent={mainInputFooter}
-          emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
-          onRewriteUserMessage={handleCliUserMessageRewrite}
-          onPresentedDraftHandled={consumePresentedCliDraft}
-          cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
-          assistantQuotes={inputMessage.mentionables.filter(
-            (mentionable): mentionable is MentionableAssistantQuote =>
-              mentionable.type === 'assistant-quote',
-          )}
-          onQuoteAssistantSelection={handleQuoteAssistantSelection}
-          onDeleteAssistantQuote={handleDeleteAssistantQuote}
-        />
-      ) : (
-        <YoloChatSurface
-          chatMode={chatMode}
-          yoloEnabled={yoloEnabled}
-          showEmptyState={showEmptyState}
-          currentConversationId={currentConversationId}
-          editingAssistantMessageId={editingAssistantMessageId}
-          setEditingAssistantMessageId={setEditingAssistantMessageId}
-          emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
-          emptyStateModuleContent={emptyStateModuleContent}
-          bottomSpacerHeight={inputOverlayHeight}
-          footerContent={mainInputFooter}
-          runtimeActions={runtimeActions}
-          autoScrollToBottomRef={autoScrollToBottomRef}
-          forceScrollToBottomRef={forceScrollToBottomRef}
-          chatMessages={chatMessages}
-          chatMessagesStateRef={chatMessagesStateRef}
-          chatTimelineReadModel={chatTimelineReadModel}
-          activeBranchByUserMessageId={activeBranchByUserMessageId}
-          activeBranchByUserMessageIdRef={activeBranchByUserMessageIdRef}
-          setActiveBranchByUserMessageId={setActiveBranchByUserMessageId}
-          effectiveCompactionState={effectiveCompactionState}
-          pendingCompactionAnchorMessageId={pendingCompactionAnchorMessageId}
-          queryProgress={queryProgress}
-          currentConversationRunSummary={currentConversationRunSummary}
-          isCurrentConversationRunActive={isCurrentConversationRunActive}
-          isApplying={applyMutation.isPending}
-          activeApplyRequestKey={activeApplyRequestKey}
-          undoingEditSummaryTarget={undoingEditSummaryTarget}
-          messageModelMap={messageModelMap}
-          setMessageModelMap={setMessageModelMap}
-          messageReasoningMap={messageReasoningMap}
-          setMessageReasoningMap={setMessageReasoningMap}
-          setChatMessages={setChatMessages}
-          conversationModelId={conversationModelId}
-          setConversationModelId={setConversationModelId}
-          conversationModelIdRef={conversationModelIdRef}
-          conversationAssistantId={conversationAssistantId}
-          reasoningLevel={reasoningLevel}
-          setReasoningLevel={setReasoningLevel}
-          conversationReasoningLevelRef={conversationReasoningLevelRef}
-          selectedAssistantTimeContextEnabled={
-            selectedAssistantTimeContextEnabled
-          }
-          getReasoningLevelForModelId={getReasoningLevelForModelId}
-          persistReasoningLevelForModel={persistReasoningLevelForModel}
-          normalizeReasoningLevel={normalizeReasoningLevel}
-          setInputMessage={setInputMessage}
-          focusedMessageId={focusedMessageId}
-          setFocusedMessageId={setFocusedMessageId}
-          inputMessageId={inputMessage.id}
-          activeAssistantQuotes={activeAssistantQuotes}
-          chatUserInputRefs={chatUserInputRefs}
-          registerChatUserInputRef={registerChatUserInputRef}
-          handleQuoteAssistantSelection={handleQuoteAssistantSelection}
-          handleDeleteAssistantQuote={handleDeleteAssistantQuote}
-          releaseHighlightIds={releaseHighlightIds}
-          persistConversation={persistConversation}
-          updateHistoricalUserMessage={updateHistoricalUserMessage}
-          finalizeHistoricalUserMessageEdit={finalizeHistoricalUserMessageEdit}
-          dismissHistoricalUserMessage={dismissHistoricalUserMessage}
-          handleAssistantMessageEditSave={handleAssistantMessageEditSave}
-          handleAssistantMessageEditCancel={handleAssistantMessageEditCancel}
-          handleAssistantMessageGroupDelete={handleAssistantMessageGroupDelete}
-          handleHistoricalUserMessageDelete={handleHistoricalUserMessageDelete}
-          handleAssistantMessageGroupBranch={handleAssistantMessageGroupBranch}
-          handleChatModeChange={handleChatModeChange}
-          handleUserMessageSubmit={handleUserMessageSubmit}
-          handleRecoverPendingToolCall={handleRecoverPendingToolCall}
-          handleRecoverAnswerUserQuestion={handleRecoverAnswerUserQuestion}
-          handleAssistantMessageGroupRetry={handleAssistantMessageGroupRetry}
-          handleAssistantErrorContinue={handleAssistantErrorContinue}
-          handleApply={handleApply}
-          handleUndoEditSummary={handleUndoEditSummary}
-          handleOpenEditSummaryFile={handleOpenEditSummaryFile}
-          handleToolMessageUpdate={handleToolMessageUpdate}
-          handleToolCallResponseUpdate={handleToolCallResponseUpdate}
-          handleContinueResponse={handleContinueResponse}
-        />
-      )}
-    </div>
+    // 生成中的 assistant 正文/思考走展示流而不是会话快照，入口在这里注入，
+    // 让 markdown 渲染链底部的叶子不必依赖 plugin context。
+    <AssistantRenderStreamProvider access={agentService}>
+      <div
+        ref={handleContainerRef}
+        className={`${containerClassName}${
+          activeSurfaceEmpty ? ' yolo-chat-container--empty-state' : ''
+        }`}
+        style={containerStyle}
+      >
+        {header}
+        {activeView === 'composer' ? (
+          <div className="yolo-chat-composer-wrapper">
+            <Composer onNavigateChat={() => onChangeView?.('chat')} />
+          </div>
+        ) : isCliRuntimeActive &&
+          cliConversationController &&
+          activeCliConversationSnapshot &&
+          cliRuntimeScope ? (
+          <CliChatSurface
+            key={activeCliConversationSnapshot.surfaceId}
+            snapshot={activeCliConversationSnapshot}
+            presentedDraft={cliOperationSnapshot?.presentedDraft ?? null}
+            showEmptyState={activeSurfaceEmpty}
+            actions={
+              cliChatRuntimeActions ?? cliRuntimeScope.chatRuntimeActions
+            }
+            footerContent={mainInputFooter}
+            emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+            onRewriteUserMessage={handleCliUserMessageRewrite}
+            onPresentedDraftHandled={consumePresentedCliDraft}
+            cachedModels={cliModelCatalog.get(activeRuntimeId) ?? []}
+            assistantQuotes={inputMessage.mentionables.filter(
+              (mentionable): mentionable is MentionableAssistantQuote =>
+                mentionable.type === 'assistant-quote',
+            )}
+            onQuoteAssistantSelection={handleQuoteAssistantSelection}
+            onDeleteAssistantQuote={handleDeleteAssistantQuote}
+          />
+        ) : (
+          <YoloChatSurface
+            chatMode={chatMode}
+            yoloEnabled={yoloEnabled}
+            showEmptyState={showEmptyState}
+            currentConversationId={currentConversationId}
+            editingAssistantMessageId={editingAssistantMessageId}
+            setEditingAssistantMessageId={setEditingAssistantMessageId}
+            emptyStateWorkspaceTitle={workspaceEmptyStateTitle}
+            emptyStateModuleContent={emptyStateModuleContent}
+            bottomSpacerHeight={inputOverlayHeight}
+            footerContent={mainInputFooter}
+            runtimeActions={runtimeActions}
+            autoScrollToBottomRef={autoScrollToBottomRef}
+            forceScrollToBottomRef={forceScrollToBottomRef}
+            chatMessages={chatMessages}
+            chatMessagesStateRef={chatMessagesStateRef}
+            chatTimelineReadModel={chatTimelineReadModel}
+            activeBranchByUserMessageId={activeBranchByUserMessageId}
+            activeBranchByUserMessageIdRef={activeBranchByUserMessageIdRef}
+            setActiveBranchByUserMessageId={setActiveBranchByUserMessageId}
+            effectiveCompactionState={effectiveCompactionState}
+            pendingCompactionAnchorMessageId={pendingCompactionAnchorMessageId}
+            queryProgress={queryProgress}
+            currentConversationRunSummary={currentConversationRunSummary}
+            isCurrentConversationRunActive={isCurrentConversationRunActive}
+            isApplying={applyMutation.isPending}
+            activeApplyRequestKey={activeApplyRequestKey}
+            undoingEditSummaryTarget={undoingEditSummaryTarget}
+            messageModelMap={messageModelMap}
+            setMessageModelMap={setMessageModelMap}
+            messageReasoningMap={messageReasoningMap}
+            setMessageReasoningMap={setMessageReasoningMap}
+            setChatMessages={setChatMessages}
+            conversationModelId={conversationModelId}
+            setConversationModelId={setConversationModelId}
+            conversationModelIdRef={conversationModelIdRef}
+            conversationAssistantId={conversationAssistantId}
+            reasoningLevel={reasoningLevel}
+            setReasoningLevel={setReasoningLevel}
+            conversationReasoningLevelRef={conversationReasoningLevelRef}
+            selectedAssistantTimeContextEnabled={
+              selectedAssistantTimeContextEnabled
+            }
+            getReasoningLevelForModelId={getReasoningLevelForModelId}
+            persistReasoningLevelForModel={persistReasoningLevelForModel}
+            normalizeReasoningLevel={normalizeReasoningLevel}
+            setInputMessage={setInputMessage}
+            focusedMessageId={focusedMessageId}
+            setFocusedMessageId={setFocusedMessageId}
+            inputMessageId={inputMessage.id}
+            activeAssistantQuotes={activeAssistantQuotes}
+            chatUserInputRefs={chatUserInputRefs}
+            registerChatUserInputRef={registerChatUserInputRef}
+            handleQuoteAssistantSelection={handleQuoteAssistantSelection}
+            handleDeleteAssistantQuote={handleDeleteAssistantQuote}
+            releaseHighlightIds={releaseHighlightIds}
+            persistActiveBranchSelection={persistActiveBranchSelection}
+            updateHistoricalUserMessage={updateHistoricalUserMessage}
+            finalizeHistoricalUserMessageEdit={
+              finalizeHistoricalUserMessageEdit
+            }
+            dismissHistoricalUserMessage={dismissHistoricalUserMessage}
+            handleAssistantMessageEditSave={handleAssistantMessageEditSave}
+            handleAssistantMessageEditCancel={handleAssistantMessageEditCancel}
+            handleAssistantMessageGroupDelete={
+              handleAssistantMessageGroupDelete
+            }
+            handleHistoricalUserMessageDelete={
+              handleHistoricalUserMessageDelete
+            }
+            handleAssistantMessageGroupBranch={
+              handleAssistantMessageGroupBranch
+            }
+            handleChatModeChange={handleChatModeChange}
+            handleUserMessageSubmit={handleUserMessageSubmit}
+            handleRecoverPendingToolCall={handleRecoverPendingToolCall}
+            handleRecoverAnswerUserQuestion={handleRecoverAnswerUserQuestion}
+            handleAssistantMessageGroupRetry={handleAssistantMessageGroupRetry}
+            handleAssistantErrorContinue={handleAssistantErrorContinue}
+            handleApply={handleApply}
+            handleUndoEditSummary={handleUndoEditSummary}
+            handleOpenEditSummaryFile={handleOpenEditSummaryFile}
+            handleToolMessageUpdate={handleToolMessageUpdate}
+            handleToolCallResponseUpdate={handleToolCallResponseUpdate}
+            handleContinueResponse={handleContinueResponse}
+          />
+        )}
+      </div>
+    </AssistantRenderStreamProvider>
   )
 })
 

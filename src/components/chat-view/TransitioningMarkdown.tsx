@@ -4,16 +4,23 @@ import { CitationSource } from '../../core/agent/citationRegistry'
 
 import { ObsidianMarkdown } from './ObsidianMarkdown'
 import StreamingMarkdown from './StreamingMarkdown'
+import type { StreamingContentSource } from './useAssistantRenderStream'
 
 type GenerationState = 'streaming' | 'completed' | 'aborted' | 'error'
 
 const TransitioningMarkdown = memo(function TransitioningMarkdown({
   content,
+  contentSource = null,
   scale = 'base',
   generationState,
   citationSources,
 }: {
   content: string
+  /**
+   * 生成中的命令式文本源。只在 streaming 分支下传给 StreamingMarkdown：
+   * 流结束后源会被上游置空，`content` 恰好等于终态文本，播放缓冲无缝接管。
+   */
+  contentSource?: StreamingContentSource | null
   scale?: 'xs' | 'sm' | 'base'
   generationState?: GenerationState
   citationSources?: CitationSource[]
@@ -34,6 +41,7 @@ const TransitioningMarkdown = memo(function TransitioningMarkdown({
     return (
       <StreamingMarkdown
         content={content}
+        contentSource={contentSource}
         scale={scale}
         animateIncrementalText
         citationSources={citationSources}

@@ -287,6 +287,63 @@ export async function* streamResolvedAgentRunEvents({
   let previous = createEmptySnapshotTracker()
   let settled = false
 
+  // 会话快照只在语义边界发布，纯 token 增量走 assistant render stream。模块侧
+  // 的 `text` 事件仍然要保持逐块的增量粒度，所以这里额外订阅当前 assistant
+  // 消息的展示流；两条通道共用同一份 `assistantTextById` 游标，delta 不会重复。
+  const renderStream: {
+    messageId: string | null
+    unsubscribe: (() => void) | null
+  } = { messageId: null, unsubscribe: null }
+
+  const pushAssistantText = ({
+    messageId,
+    text,
+    streaming,
+  }: {
+    messageId: string
+    text: string
+    streaming: boolean
+  }) => {
+    const previousText = previous.assistantTextById.get(messageId) ?? ''
+    if (previousText === text) {
+      return
+    }
+    previous.assistantTextById.set(messageId, text)
+    queue.push({
+      type: 'text',
+      conversationId,
+      messageId,
+      text,
+      delta: text.startsWith(previousText)
+        ? text.slice(previousText.length)
+        : '',
+      streaming,
+    })
+  }
+
+  const followRenderStream = (messageId: string | null) => {
+    if (messageId === renderStream.messageId) {
+      return
+    }
+    renderStream.unsubscribe?.()
+    renderStream.unsubscribe = null
+    renderStream.messageId = messageId
+    if (!messageId) {
+      return
+    }
+    renderStream.unsubscribe = agentService.subscribeAssistantRenderStream(
+      conversationId,
+      messageId,
+      (value) => {
+        pushAssistantText({
+          messageId: value.messageId,
+          text: value.content,
+          streaming: value.phase === 'streaming',
+        })
+      },
+    )
+  }
+
   const unsubscribe = agentService.subscribe(
     conversationId,
     (state) => {
@@ -299,6 +356,10 @@ export async function* streamResolvedAgentRunEvents({
       for (const event of nextEvents.events) {
         queue.push(event)
       }
+      followRenderStream(
+        findAssistantMessageForUser(state.messages, sourceUserMessageId)?.id ??
+          null,
+      )
       if (
         state.status === 'completed' ||
         state.status === 'aborted' ||
@@ -338,6 +399,7 @@ export async function* streamResolvedAgentRunEvents({
       agentService.abortConversation(conversationId)
     }
     unsubscribe()
+    renderStream.unsubscribe?.()
   }
 }
 

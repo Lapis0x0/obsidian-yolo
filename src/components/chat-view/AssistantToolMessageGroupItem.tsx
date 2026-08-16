@@ -1137,6 +1137,11 @@ function AssistantToolMessageGroupItem({
                           !message.toolCallRequests?.length)) && (
                         <AssistantMessageReasoning
                           reasoning={message.reasoning ?? ''}
+                          conversationId={effectiveConversationId}
+                          messageId={message.id}
+                          isGenerating={
+                            message.metadata?.generationState === 'streaming'
+                          }
                           hasAnswerContent={message.content.trim().length > 0}
                           generationState={reasoningGenerationState}
                           reasoningDurationMs={
@@ -1162,7 +1167,12 @@ function AssistantToolMessageGroupItem({
                         }
                       />
                     )}
-                    {(message.content.trim().length > 0 ||
+                    {/* 生成中的正文走 assistant render stream，快照里只有
+                        最近一次结构折回值。因此只要这条消息还在生成就必须挂着
+                        内容叶子——否则第一段流没有订阅者，正文要等到下一个语义
+                        事件才会出现。 */}
+                    {(message.metadata?.generationState === 'streaming' ||
+                      message.content.trim().length > 0 ||
                       shouldShowAssistantToolPreview) && (
                       <AssistantMessageContent
                         messageId={message.id}

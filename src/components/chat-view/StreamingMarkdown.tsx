@@ -28,6 +28,7 @@ import { MOTION_DURATION_ENTER_S } from '../../styles/tokens/motion'
 import { getNodeWindow } from '../../utils/dom/window-context'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
 
+import { useLiveEdgeFollow } from './live-edge-follow-context'
 import { type MarkdownBlockSplit, splitMarkdownBlocks } from './streamingBlocks'
 import {
   normalizeDisplayMathDelimiters,
@@ -38,9 +39,17 @@ import {
   type RevealSegment,
   createStreamingRevealPlugin,
 } from './streamingReveal'
+import type { StreamingContentSource } from './useAssistantRenderStream'
 
 type StreamingMarkdownProps = {
   content: string
+  /**
+   * Imperative target for a live stream. When present, `content` is only the
+   * initial/fallback value: token arrival writes the target ref and schedules
+   * the playback loop without ever entering React, so the single React beat in
+   * the streaming path is this component's ~30Hz reveal frame.
+   */
+  contentSource?: StreamingContentSource | null
   scale?: 'xs' | 'sm' | 'base'
   animateIncrementalText?: boolean
   /**
@@ -406,12 +415,14 @@ const MarkdownBlock = memo(function MarkdownBlock({
 
 const StreamingMarkdown = memo(function StreamingMarkdown({
   content,
+  contentSource = null,
   scale = 'base',
   animateIncrementalText = false,
   draining = false,
   onDrained,
   citationSources,
 }: StreamingMarkdownProps) {
+  const followLiveEdge = useLiveEdgeFollow()
   const [displayedContent, setDisplayedContent] = useState(content)
   // Bumped by the reveal loop while the fade window is still draining, so the
   // tail keeps settling on frames that add no characters.
@@ -433,6 +444,8 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
   drainingRef.current = draining
   const onDrainedRef = useRef(onDrained)
   onDrainedRef.current = onDrained
+  const followLiveEdgeRef = useRef(followLiveEdge)
+  followLiveEdgeRef.current = followLiveEdge
 
   const cancelRevealAnimation = useCallback(() => {
     if (animationFrameRef.current !== null) {
@@ -551,6 +564,8 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
       if (nextContent !== current) {
         displayedContentRef.current = nextContent
         setDisplayedContent(nextContent)
+        // 可见内容变长了才通知跟随。回调引用稳定，不参与依赖。
+        followLiveEdgeRef.current()
       }
 
       // The loop runs on even when this frame caught up with the target: the
@@ -569,6 +584,8 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
       displayedContentRef.current = nextContent
       targetContentRef.current = nextContent
       setDisplayedContent(nextContent)
+      // 减少动效 / 重写路径同样是"可见内容变了"，跟随通知不能只挂在播放循环上。
+      followLiveEdgeRef.current()
       if (drainingRef.current) {
         onDrainedRef.current?.()
       }
@@ -576,35 +593,49 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
     [cancelRevealAnimation],
   )
 
-  useEffect(() => {
-    if (!animateIncrementalText || prefersReducedMotion(containerRef.current)) {
-      revealImmediately(content)
-      return
-    }
+  const applyTargetContent = useCallback(
+    (nextTarget: string) => {
+      if (
+        !animateIncrementalText ||
+        prefersReducedMotion(containerRef.current)
+      ) {
+        revealImmediately(nextTarget)
+        return
+      }
 
-    // A rewrite (retry, edit, citation rewrite) breaks the prefix relationship
-    // the buffer depends on, so there is nothing meaningful left to play out.
-    // The loop still gets scheduled: whatever the fade window was holding needs
-    // a frame to settle on, and no other content change is coming to give it one.
-    const currentDisplayed = displayedContentRef.current
-    if (
-      content.length < currentDisplayed.length ||
-      !content.startsWith(currentDisplayed)
-    ) {
-      revealImmediately(content)
+      // A rewrite (retry, edit, citation rewrite) breaks the prefix relationship
+      // the buffer depends on, so there is nothing meaningful left to play out.
+      // The loop still gets scheduled: whatever the fade window was holding needs
+      // a frame to settle on, and no other content change is coming to give it one.
+      const currentDisplayed = displayedContentRef.current
+      if (
+        nextTarget.length < currentDisplayed.length ||
+        !nextTarget.startsWith(currentDisplayed)
+      ) {
+        revealImmediately(nextTarget)
+        scheduleRevealAnimation()
+        return
+      }
+
+      targetContentRef.current = nextTarget
       scheduleRevealAnimation()
+    },
+    [animateIncrementalText, revealImmediately, scheduleRevealAnimation],
+  )
+
+  useEffect(() => {
+    if (!contentSource) {
+      applyTargetContent(content)
       return
     }
 
-    targetContentRef.current = content
-    scheduleRevealAnimation()
-  }, [
-    animateIncrementalText,
-    content,
-    draining,
-    revealImmediately,
-    scheduleRevealAnimation,
-  ])
+    // 命令式源：这里读到的就是最新值，所以 render → effect 之间不存在丢更新
+    // 窗口；订阅回调只改写目标，可见帧仍然由上面的 rAF 播放循环决定。
+    applyTargetContent(contentSource.getContent())
+    return contentSource.subscribe(() => {
+      applyTargetContent(contentSource.getContent())
+    })
+  }, [applyTargetContent, content, contentSource, draining])
 
   useEffect(() => {
     return () => {

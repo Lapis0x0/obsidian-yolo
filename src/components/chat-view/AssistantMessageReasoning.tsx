@@ -17,6 +17,7 @@ import { getNodeWindow } from '../../utils/dom/window-context'
 import DotLoader from '../common/DotLoader'
 
 import TransitioningMarkdown from './TransitioningMarkdown'
+import { useAssistantStreamedReasoning } from './useAssistantRenderStream'
 
 type ReasoningStage = 'requesting' | 'thinking' | 'settled'
 
@@ -137,29 +138,49 @@ const useThrottledReasoningRollText = (value: string, enabled: boolean) => {
 }
 
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
-  reasoning,
+  reasoning: snapshotReasoning,
   hasAnswerContent,
   generationState,
   reasoningDurationMs,
   previewLines = 1,
+  conversationId,
+  messageId,
+  isGenerating = false,
 }: {
   reasoning: string
   hasAnswerContent: boolean
+  /** 思考块自身的展示态；与消息是否还在生成不是一回事。 */
   generationState?: 'streaming' | 'completed' | 'aborted' | 'error'
   reasoningDurationMs?: number
   /** 预览视口的最大可见行数；>1 时切换为随内容长高的面板形态。 */
   previewLines?: number
+  /**
+   * 生成中的思考文本走 assistant render stream。三者都给出时本组件自行订阅；
+   * 缺省（例如正文内联的 `<think>` 块）时仍以 props 为准。
+   */
+  conversationId?: string
+  messageId?: string
+  isGenerating?: boolean
 }) {
   const { t } = useLanguage()
   const [isExpanded, setIsExpanded] = useState(false)
   const hasUserInteracted = useRef(false)
+  const rootRef = useRef<HTMLDivElement | null>(null)
+
+  const isStreaming = generationState === 'streaming'
+  const reasoning = useAssistantStreamedReasoning({
+    conversationId,
+    messageId,
+    isStreaming: isGenerating,
+    reasoning: snapshotReasoning,
+    ownerNodeRef: rootRef,
+  })
 
   const hasReasoningText = useMemo(
     () => reasoning.trim().length > 0,
     [reasoning],
   )
   const previousReasoning = useRef(reasoning)
-  const isStreaming = generationState === 'streaming'
   const [showActivity, setShowActivity] = useState(
     () => isStreaming && (!hasAnswerContent || !hasReasoningText),
   )
@@ -393,6 +414,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
 
   return (
     <div
+      ref={rootRef}
       className={`yolo-assistant-message-metadata yolo-assistant-message-metadata--${stage}${showBody ? ' is-expanded' : ''}${showActivity ? ' is-active' : ''}${showPreview ? ' has-preview' : ''}`}
       data-stage={stage}
     >

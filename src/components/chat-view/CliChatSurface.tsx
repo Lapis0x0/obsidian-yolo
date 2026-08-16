@@ -32,6 +32,7 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 import AssistantErrorCard from './AssistantErrorCard'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
@@ -45,6 +46,7 @@ import type { AcceptedCliDraft } from './cliChatIntegration'
 import { buildCliSubagentReadModel } from './cliSubagentReadModel'
 import type { ConversationTimelineRendererContract } from './conversation-surface-contract'
 import { ConversationSurface } from './ConversationSurface'
+import { LiveEdgeFollowProvider } from './live-edge-follow-context'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import {
@@ -635,8 +637,11 @@ export function CliChatSurface({
   }, [autoScrollToBottom, snapshot.messages])
   const handleForceScrollToBottom = useCallback(() => {
     resetToLatest()
-    requestAnimationFrame(() => forceScrollToBottom())
-  }, [forceScrollToBottom, resetToLatest])
+    // popout 是独立 BrowserWindow：帧调度必须取滚动容器所属窗口。
+    getNodeWindow(chatMessagesRef.current).requestAnimationFrame(() =>
+      forceScrollToBottom(),
+    )
+  }, [chatMessagesRef, forceScrollToBottom, resetToLatest])
   const handledPresentedMessageIdRef = useRef<string | null>(null)
   useLayoutEffect(() => {
     if (
@@ -877,57 +882,61 @@ export function CliChatSurface({
   )
 
   return (
-    <ConversationSurface
-      chatMode="agent"
-      yoloEnabled={false}
-      showEmptyState={showEmptyState}
-      groupedChatMessagesLength={windowedGroupedChatMessages.length}
-      isAutoFollowEnabled={isAutoFollowEnabled}
-      currentConversationId={conversationId}
-      chatTimelineItems={stableTimelineItems}
-      timelineRenderVersion={renderVersion}
-      chatMessagesRef={chatMessagesRef}
-      onScrollContainerChange={setChatMessagesElement}
-      onBottomSentinelChange={setBottomSentinelElement}
-      scrollController={scrollController}
-      timelineRendererContract={timelineRendererContract}
-      editingAssistantMessageId={null}
-      hasEarlierMessages={hasEarlierMessages}
-      hasNewerMessages={hasNewerMessages}
-      onLoadEarlier={loadEarlier}
-      onLoadNewer={loadNewer}
-      onGrowWindowToFillViewport={growWindowToFillViewport}
-      historyWindowKey={historyWindowKey}
-      onForceScrollToBottom={handleForceScrollToBottom}
-      hasStreamingMessages={isConversationBusy}
-      scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
-      scrollToBottomWhileStreamingLabel={t(
-        'chat.scrollToBottomWhileStreaming',
-        '回到底部继续跟随',
-      )}
-      emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
-      emptyStateAgentTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
-      emptyStateAgentFullTitle={t(
-        'chat.cliSurface.emptyTitle',
-        '使用 CLI Agent',
-      )}
-      emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
-      emptyStateAskDescription={t(
-        'chat.cliSurface.emptyDescription',
-        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
-      )}
-      emptyStateAgentDescription={t(
-        'chat.cliSurface.emptyDescription',
-        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
-      )}
-      emptyStateAgentFullDescription={t(
-        'chat.cliSurface.emptyDescription',
-        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
-      )}
-      emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
-      emptyStateIconMode="cli"
-      footerContent={footerContent}
-    />
+    // CLI 消息经由 CLI runtime 快照而非 agent render stream，但这一层的
+    // markdown 播放器共用同一套跟随通道，缺省 no-op 会让流式跟随失效。
+    <LiveEdgeFollowProvider onFollowLiveEdge={autoScrollToBottom}>
+      <ConversationSurface
+        chatMode="agent"
+        yoloEnabled={false}
+        showEmptyState={showEmptyState}
+        groupedChatMessagesLength={windowedGroupedChatMessages.length}
+        isAutoFollowEnabled={isAutoFollowEnabled}
+        currentConversationId={conversationId}
+        chatTimelineItems={stableTimelineItems}
+        timelineRenderVersion={renderVersion}
+        chatMessagesRef={chatMessagesRef}
+        onScrollContainerChange={setChatMessagesElement}
+        onBottomSentinelChange={setBottomSentinelElement}
+        scrollController={scrollController}
+        timelineRendererContract={timelineRendererContract}
+        editingAssistantMessageId={null}
+        hasEarlierMessages={hasEarlierMessages}
+        hasNewerMessages={hasNewerMessages}
+        onLoadEarlier={loadEarlier}
+        onLoadNewer={loadNewer}
+        onGrowWindowToFillViewport={growWindowToFillViewport}
+        historyWindowKey={historyWindowKey}
+        onForceScrollToBottom={handleForceScrollToBottom}
+        hasStreamingMessages={isConversationBusy}
+        scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
+        scrollToBottomWhileStreamingLabel={t(
+          'chat.scrollToBottomWhileStreaming',
+          '回到底部继续跟随',
+        )}
+        emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
+        emptyStateAgentTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
+        emptyStateAgentFullTitle={t(
+          'chat.cliSurface.emptyTitle',
+          '使用 CLI Agent',
+        )}
+        emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
+        emptyStateAskDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+        )}
+        emptyStateAgentDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+        )}
+        emptyStateAgentFullDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+        )}
+        emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
+        emptyStateIconMode="cli"
+        footerContent={footerContent}
+      />
+    </LiveEdgeFollowProvider>
   )
 }
 
