@@ -168,22 +168,31 @@ describe('snapshotModuleChatMode', () => {
 
   it('accepts and freezes a valid skills array', () => {
     const snapshot = snapshotModuleChatMode(
-      baseMode({ skills: ['outline-skill.md', 'plan-skill.md'] }),
+      baseMode({ skills: ['skills/outline/SKILL.md', 'skills/plan/SKILL.md'] }),
     )
-    expect(snapshot.skills).toEqual(['outline-skill.md', 'plan-skill.md'])
+    expect(snapshot.skills).toEqual([
+      'skills/outline/SKILL.md',
+      'skills/plan/SKILL.md',
+    ])
     expect(Object.isFrozen(snapshot.skills)).toBe(true)
   })
 
-  it('rejects a skill file name containing a directory separator', () => {
+  it('rejects a flat skill file name that is not a package entry', () => {
     expect(() =>
-      snapshotModuleChatMode(baseMode({ skills: ['dir/outline.md'] })),
-    ).toThrow(/must be a flat file name/)
+      snapshotModuleChatMode(baseMode({ skills: ['outline-skill.md'] })),
+    ).toThrow(/must be a package path ending in "SKILL\.md"/)
   })
 
-  it('rejects a skill file name with unsafe characters', () => {
+  it('rejects a package path whose entry file is not SKILL.md', () => {
     expect(() =>
-      snapshotModuleChatMode(baseMode({ skills: ['../escape.md'] })),
-    ).toThrow(/must be a safe flat file name/)
+      snapshotModuleChatMode(baseMode({ skills: ['skills/outline/index.md'] })),
+    ).toThrow(/must be a package path ending in "SKILL\.md"/)
+  })
+
+  it('rejects a skill path with unsafe characters', () => {
+    expect(() =>
+      snapshotModuleChatMode(baseMode({ skills: ['../escape/SKILL.md'] })),
+    ).toThrow(/must be a safe relative artifact path/)
   })
 
   it('rejects a non-string skill entry', () => {
@@ -192,18 +201,41 @@ describe('snapshotModuleChatMode', () => {
     ).toThrow(/must be a string/)
   })
 
-  it('rejects duplicate skill file names', () => {
+  it('rejects duplicate skill paths', () => {
     expect(() =>
       snapshotModuleChatMode(
-        baseMode({ skills: ['outline.md', 'outline.md'] }),
+        baseMode({
+          skills: ['skills/outline/SKILL.md', 'skills/outline/SKILL.md'],
+        }),
       ),
     ).toThrow(/is duplicated/)
+  })
+
+  it('rejects two packages that would claim the same vault directory', () => {
+    expect(() =>
+      snapshotModuleChatMode(
+        baseMode({
+          skills: ['skills/outline/SKILL.md', 'extra/outline/SKILL.md'],
+        }),
+      ),
+    ).toThrow(/package "outline" is declared twice/)
+  })
+
+  // Distinct manifest paths, one projected directory on macOS and Windows.
+  it('rejects two packages that collide only on a case-insensitive filesystem', () => {
+    expect(() =>
+      snapshotModuleChatMode(
+        baseMode({
+          skills: ['skills/outline/SKILL.md', 'extra/Outline/SKILL.md'],
+        }),
+      ),
+    ).toThrow(/package "Outline" is declared twice/)
   })
 
   it(`rejects more than ${MAX_MODULE_CHAT_MODE_SKILLS} skills`, () => {
     const skills = Array.from(
       { length: MAX_MODULE_CHAT_MODE_SKILLS + 1 },
-      (_, index) => `skill-${index}.md`,
+      (_, index) => `skills/skill-${index}/SKILL.md`,
     )
     expect(() => snapshotModuleChatMode(baseMode({ skills }))).toThrow(
       new RegExp(`must not exceed ${MAX_MODULE_CHAT_MODE_SKILLS}`),

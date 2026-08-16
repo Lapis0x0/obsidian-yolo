@@ -40,10 +40,16 @@ export {
   type RegisteredModuleChatModeV1,
 } from './moduleChatModeRegistry'
 export {
-  createModuleChatModeSkillResolver,
-  type ModuleChatModeSkillResolverOptions,
-  type ModuleChatModeSkillResolverV1,
-} from './moduleChatModeSkills'
+  createModuleSkillMaterializer,
+  createObsidianModuleSkillProjectionVault,
+  planModuleSkillPackages,
+  resolveModuleSkillPackageName,
+  resolveModuleSkillVaultPath,
+  type ModuleSkillMaterializerOptions,
+  type ModuleSkillMaterializerV1,
+  type ModuleSkillPackagePlan,
+  type ModuleSkillProjectionVaultV1,
+} from './moduleSkillMaterializer'
 export {
   ModuleConfigCapabilityProvider,
   type ModuleConfigBackend,

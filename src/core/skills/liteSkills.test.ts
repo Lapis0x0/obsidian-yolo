@@ -5,7 +5,6 @@ import {
   configureModuleChatModeSkillSource,
   getLiteSkillDocument,
   getLiteSkillDocumentByPath,
-  getLiteSkillPackageSource,
   getManagedSkillScanDirs,
   getSkillScanDirs,
   humanizeSkillName,
@@ -986,106 +985,6 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     expect(names).toContain('Other Name')
   })
 
-  it('exposes every package resource without flattening its paths', async () => {
-    const app = makeAdapterApp({
-      listings: {
-        'YOLO/skills': {
-          files: [],
-          folders: ['YOLO/skills/resourceful'],
-        },
-        'YOLO/skills/resourceful': {
-          files: ['YOLO/skills/resourceful/SKILL.md'],
-          folders: [
-            'YOLO/skills/resourceful/assets',
-            'YOLO/skills/resourceful/references',
-          ],
-        },
-        'YOLO/skills/resourceful/assets': {
-          files: ['YOLO/skills/resourceful/assets/icon.png'],
-          folders: [],
-        },
-        'YOLO/skills/resourceful/references': {
-          files: ['YOLO/skills/resourceful/references/guide.md'],
-          folders: [],
-        },
-      },
-      fileContents: {
-        'YOLO/skills/resourceful/SKILL.md': [
-          '---',
-          'name: resourceful',
-          'description: Uses package resources.',
-          '---',
-        ].join('\n'),
-        'YOLO/skills/resourceful/assets/icon.png': 'binary-path-placeholder',
-        'YOLO/skills/resourceful/references/guide.md': '# Guide',
-      },
-    })
-
-    const source = await getLiteSkillPackageSource({
-      app,
-      name: 'resourceful',
-      settings,
-    })
-
-    expect(source?.entry.name).toBe('resourceful')
-    expect(source?.resources).toHaveLength(3)
-    expect(source?.resources).toEqual(
-      expect.arrayContaining([
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/resourceful/SKILL.md',
-          relativePath: 'SKILL.md',
-        },
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/resourceful/assets/icon.png',
-          relativePath: 'assets/icon.png',
-        },
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/resourceful/references/guide.md',
-          relativePath: 'references/guide.md',
-        },
-      ]),
-    )
-  })
-
-  it('materializes a root Markdown skill as a SKILL.md resource', async () => {
-    const app = makeAdapterApp({
-      listings: {
-        'YOLO/skills': {
-          files: ['YOLO/skills/readable-filename.md'],
-          folders: [],
-        },
-      },
-      fileContents: {
-        'YOLO/skills/readable-filename.md': [
-          '---',
-          'name: readable-skill',
-          'description: A single file.',
-          '---',
-        ].join('\n'),
-      },
-    })
-
-    await expect(
-      getLiteSkillPackageSource({
-        app,
-        name: 'readable-skill',
-        settings,
-      }),
-    ).resolves.toMatchObject({
-      entry: { path: 'YOLO/skills/readable-filename.md' },
-      resources: [
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/readable-filename.md',
-          relativePath: 'SKILL.md',
-        },
-      ],
-    })
-  })
-
   it('resolves builtin skill documents by canonical path', async () => {
     const app = makeAdapterApp({
       listings: {
@@ -1108,9 +1007,9 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
 describe('module chat mode skill scope', () => {
   const settings = { yolo: { baseDir: 'YOLO' } }
   const MODE_ID = 'module:learning:chat'
-  const SKILL_PATH =
-    // eslint-disable-next-line obsidianmd/hardcoded-config-path -- Fixture literal mirroring a module-shipped skill path; no live vault to read configDir from.
-    '.obsidian/plugins/yolo/modules/learning/1.0.0/outline-skill.md'
+  const DECLARED_SKILL = 'skills/outline-skill/SKILL.md'
+  // Where the activation-time projection writes the module's package.
+  const SKILL_PATH = 'YOLO/modules/learning/skills/outline-skill/SKILL.md'
 
   afterEach(() => {
     configureModuleChatModeSkillSource(null)
@@ -1121,11 +1020,11 @@ describe('module chat mode skill scope', () => {
   ): ModuleChatModeSkillSourceV1 => ({
     getMode: (fullModeId) =>
       fullModeId === MODE_ID
-        ? { moduleId: 'learning', skillFileNames: ['outline-skill.md'] }
+        ? { moduleId: 'learning', skillPaths: [DECLARED_SKILL] }
         : undefined,
     listModeIds: () => [MODE_ID],
-    resolveSkillPath: async (moduleId, fileName) =>
-      moduleId === 'learning' && fileName === 'outline-skill.md'
+    resolveSkillPath: (moduleId, declaredSkillPath) =>
+      moduleId === 'learning' && declaredSkillPath === DECLARED_SKILL
         ? SKILL_PATH
         : null,
     ...overrides,
@@ -1281,7 +1180,7 @@ describe('module chat mode skill scope', () => {
           fullModeId === MODE_ID
             ? {
                 moduleId: 'learning',
-                skillFileNames: ['missing-skill.md', 'outline-skill.md'],
+                skillPaths: ['skills/missing/SKILL.md', DECLARED_SKILL],
               }
             : undefined,
       }),

@@ -97,10 +97,11 @@ import {
   ObsidianModuleUiCapabilityProvider,
   ObsidianModuleVaultCapabilityProvider,
   createDevModuleCatalogOverlay,
-  createModuleChatModeSkillResolver,
+  createModuleSkillMaterializer,
   createObsidianModuleConfigBackendFactory,
   createObsidianModuleConfigCreateIfAbsent,
   createObsidianModuleIntentBackend,
+  createObsidianModuleSkillProjectionVault,
   createOfficialModuleArtifactDownloader,
   createOfficialModuleCatalogSource,
   createOfficialModuleCompatibilityProvider,
@@ -109,6 +110,7 @@ import {
   managedModuleDataNamespace,
   migrateLearningLegacyInstallIntent,
   parseModuleArtifactManifest,
+  resolveModuleSkillVaultPath,
   runExclusive as runManagedModuleDataExclusive,
   selectModuleManifestVariant,
 } from './core/modules'
@@ -128,6 +130,9 @@ import {
 import {
   getYoloBaseDir,
   getYoloJsonDbRootDir,
+  getYoloModuleDir,
+  getYoloModuleSkillsDir,
+  getYoloModulesRootDir,
   hasHiddenYoloBaseDirSegment,
   resolveExternalYoloBaseDir,
 } from './core/paths/yoloPaths'
@@ -4242,6 +4247,21 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
             }),
           })
         : null
+    // Skill packages a module ships live under the plugin directory, which
+    // Obsidian does not index — nothing there is reachable by the agent's
+    // Vault-backed read tools. Activation projects each declared package into
+    // `<yolo base>/modules/<moduleId>/skills/<package>/`, after which module
+    // skills are ordinary Vault skill packages with no special addressing.
+    // Every path is resolved from current settings on each call so a base
+    // directory change takes effect without a restart.
+    const moduleSkillMaterializer = createModuleSkillMaterializer({
+      vault: createObsidianModuleSkillProjectionVault(this.app),
+      store,
+      getSkillsDir: (moduleId) =>
+        getYoloModuleSkillsDir(moduleId, this.settings),
+      getModuleDir: (moduleId) => getYoloModuleDir(moduleId, this.settings),
+      getModulesRootDir: () => getYoloModulesRootDir(this.settings),
+    })
     const services = createProductionModuleServices({
       store,
       deviceStateStore,
@@ -4254,6 +4274,25 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       runtimeReservation,
       intentStore,
       artifactArrivalGrace,
+      skillProjection: {
+        materialize: (moduleId, artifact, signal) =>
+          moduleSkillMaterializer.materialize(
+            moduleId,
+            artifact,
+            // A module's modes may share a package; the projection is
+            // per-module, so declarations are unioned.
+            [
+              ...new Set(
+                this.moduleChatModeRegistry
+                  .getSnapshot()
+                  .filter((entry) => entry.moduleId === moduleId)
+                  .flatMap((entry) => entry.mode.skills ?? []),
+              ),
+            ],
+            signal,
+          ),
+        remove: (moduleId) => moduleSkillMaterializer.remove(moduleId),
+      },
       ...(devModuleCatalogOverlay
         ? {
             catalogSource: devModuleCatalogOverlay.catalogSource,
@@ -4270,6 +4309,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       },
       reportActivationError: (moduleId, error) => {
         console.error(`[YOLO] Module "${moduleId}" activation failed`, error)
+      },
+      reportSkillProjectionError: (moduleId, error) => {
+        console.error(
+          `[YOLO] Module "${moduleId}" skill projection failed; its modes are active without those skills`,
+          error,
+        )
       },
       reportStartupError: (error, moduleId) => {
         console.error(
@@ -4297,18 +4342,12 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       },
     })
 
-    // D6: bridges the module chat mode registry into the skills subsystem —
+    // Bridges the module chat mode registry into the skills subsystem —
     // `LiteSkillRegistryService` reads `this.moduleChatModeRegistry`'s
     // snapshot fresh on every scoped list/get call (no separate cache), and
-    // resolves each mode's declared skill file names through the same
-    // verified-artifact + `ModuleStore` trusted path resolution `assets`
-    // uses (`servicesReference.current?.getVerifiedArtifact`), never from
-    // manifest/module-supplied path fragments.
-    const chatModeSkillResolver = createModuleChatModeSkillResolver({
-      store,
-      getVerifiedArtifact: (moduleId) =>
-        servicesReference.current?.getVerifiedArtifact(moduleId),
-    })
+    // each declaration resolves to the Vault path the activation-time
+    // projection wrote it to, derived by the same function the materializer
+    // uses so read and write can never diverge.
     configureModuleChatModeSkillSource({
       getMode: (fullModeId) => {
         const entry = this.moduleChatModeRegistry
@@ -4319,14 +4358,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         }
         return {
           moduleId: entry.moduleId,
-          skillFileNames: entry.mode.skills ?? [],
+          skillPaths: entry.mode.skills ?? [],
         }
       },
       listModeIds: () =>
         this.moduleChatModeRegistry
           .getSnapshot()
           .map((entry) => entry.fullModeId),
-      resolveSkillPath: chatModeSkillResolver.resolveSkillPath,
+      resolveSkillPath: (moduleId, declaredSkillPath) =>
+        resolveModuleSkillVaultPath(
+          getYoloModuleSkillsDir(moduleId, this.settings),
+          declaredSkillPath,
+        ),
     })
   }
 

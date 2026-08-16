@@ -7,6 +7,7 @@ module.exports = {
     '^.+.tsx?$': ['ts-jest', { isolatedModules: true }],
     '^.+\\.m?js$': '<rootDir>/scripts/jest-esm-transform.cjs',
     '\\.svg$': '<rootDir>/scripts/jest-svg-transform.cjs',
+    '\\.md$': '<rootDir>/scripts/jest-md-transform.cjs',
   },
   // Only the ESM-only markdown parsing chain and the ACP SDK (also ESM-only)
   // need transpiling; everything else in node_modules stays untransformed.

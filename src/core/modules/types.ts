@@ -188,13 +188,17 @@ export type YoloModuleChatModeV1 = Readonly<{
    * for the lifetime of the mode's contribution. */
   tools?: readonly YoloModuleChatModeToolV1[]
   /**
-   * Skills that apply within this mode: flat `role: 'data'` artifact file
-   * names declared in `module.config.json`'s `dataFiles` (and therefore
-   * present in this module's verified manifest). Resolved through the
-   * module's trusted verified-artifact + `ModuleStore` version root — never
-   * from a manifest- or module-supplied path fragment. Effective only while
-   * this mode is active: skills declared here are not visible in ordinary
-   * (non-module) chat modes, and a same-named user/vault skill always wins.
+   * Skill packages that apply within this mode. Each entry is the
+   * artifact-relative path of a package's `SKILL.md` (e.g.
+   * `skills/coach/SKILL.md`); every `role: 'data'` file the verified manifest
+   * declares inside that directory is part of the package. On activation the
+   * host copies the package out of the (unindexed) plugin directory into
+   * `<yolo base>/modules/<moduleId>/skills/<package>/`, so the skill and all
+   * its resources behave exactly like an imported or hand-written Vault skill
+   * package and are reachable by ordinary agent read tools. Effective only
+   * while this mode is active: skills declared here are not visible in
+   * ordinary (non-module) chat modes, and a same-named user/vault skill
+   * always wins.
    */
   skills?: readonly string[]
 }>

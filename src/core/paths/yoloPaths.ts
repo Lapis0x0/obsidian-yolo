@@ -8,6 +8,13 @@ export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
 export const YOLO_VECTOR_DB_FILE_NAME = '.yolo_vector_db.tar.gz'
 export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
 export const YOLO_LEARNING_SUBDIR = 'learning'
+// Host-owned projection root for artifacts a module ships and the rest of the
+// app must reach through ordinary Vault paths (currently: skill packages, see
+// `moduleSkillMaterializer.ts`). Deliberately visible/indexed — a dot-prefixed
+// directory would be invisible to Obsidian's file index and therefore to the
+// agent's read tools, which is the whole reason the projection exists.
+export const YOLO_MODULES_SUBDIR = 'modules'
+export const YOLO_MODULE_SKILLS_SUBDIR = 'skills'
 export const YOLO_LEARNING_SRS_DIR_NAME = 'learning-srs'
 export const YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME = 'anki-import-journals'
 // Visible root for user data that must survive vault sync (Obsidian Sync,
@@ -141,6 +148,34 @@ export const getYoloLearningDir = (
   settings?: YoloSettingsLike | null,
 ): string => {
   return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_LEARNING_SUBDIR}`)
+}
+
+/** Root of every module's host-owned Vault projection. */
+export const getYoloModulesRootDir = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_MODULES_SUBDIR}`)
+}
+
+/**
+ * One module's host-owned Vault projection root. `moduleId` must already be a
+ * validated module id (`assertModuleId`); these helpers only assemble paths.
+ */
+export const getYoloModuleDir = (
+  moduleId: string,
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(`${getYoloModulesRootDir(settings)}/${moduleId}`)
+}
+
+/** Where a module's shipped skill packages are projected as real Vault files. */
+export const getYoloModuleSkillsDir = (
+  moduleId: string,
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(
+    `${getYoloModuleDir(moduleId, settings)}/${YOLO_MODULE_SKILLS_SUBDIR}`,
+  )
 }
 
 export const getYoloJsonDbRootDir = (

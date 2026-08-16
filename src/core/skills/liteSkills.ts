@@ -51,7 +51,8 @@ export type LiteSkillScope = Readonly<{
  * module chat mode registry. */
 export type ModuleChatModeSkillModeSourceV1 = Readonly<{
   moduleId: string
-  skillFileNames: readonly string[]
+  /** Artifact-relative `SKILL.md` paths — see `YoloModuleChatModeV1.skills`. */
+  skillPaths: readonly string[]
 }>
 
 /**
@@ -72,11 +73,11 @@ export type ModuleChatModeSkillSourceV1 = Readonly<{
    * scope) to search across modes, since a path alone already identifies
    * its file unambiguously. */
   listModeIds(): readonly string[]
-  /** Resolves one declared data-artifact file name to an absolute,
-   * adapter-relative path through the module's trusted verified-artifact
-   * manifest + `ModuleStore` version root. `null` when the module isn't
-   * currently active or its manifest has no matching `role: 'data'` file. */
-  resolveSkillPath(moduleId: string, fileName: string): Promise<string | null>
+  /** Vault path the module's declared skill package was projected to (see
+   * `moduleSkillMaterializer.ts`). `null` when the declaration is not a valid
+   * package path. Pure path derivation from host-owned settings — the file
+   * itself only exists while the module is active and materialized. */
+  resolveSkillPath(moduleId: string, declaredSkillPath: string): string | null
 }>
 
 let moduleChatModeSkillSource: ModuleChatModeSkillSourceV1 | null = null
@@ -88,23 +89,6 @@ export function configureModuleChatModeSkillSource(
   source: ModuleChatModeSkillSourceV1 | null,
 ): void {
   moduleChatModeSkillSource = source
-}
-
-export type LiteSkillPackageResource =
-  | {
-      kind: 'vault'
-      relativePath: string
-      path: string
-    }
-  | {
-      kind: 'builtin'
-      relativePath: typeof SKILL_PACKAGE_ENTRY_FILE_NAME
-      content: string
-    }
-
-export type LiteSkillPackageSource = {
-  entry: LiteSkillEntry
-  resources: LiteSkillPackageResource[]
 }
 
 export const SKILL_PACKAGE_ENTRY_FILE_NAME = 'SKILL.md'
@@ -386,14 +370,16 @@ const buildSkillRegistry = async ({
 
 /**
  * Builds the read-only skill records a module chat mode currently
- * contributes — resolving each declared file name through the trusted
- * module skill source and parsing its frontmatter exactly like a vault
- * skill file (module version-directory paths are outside the vault's file
- * index, so `file` is always `null`, forcing the same
- * `app.vault.adapter.read` fallback already used for other non-indexed
- * paths). A file name that fails to resolve (module inactive, no matching
- * `role: 'data'` artifact) or fails to parse is skipped and logged — one bad
- * declaration must not blank out the mode's other skills.
+ * contributes. A module's packages are projected into the vault on
+ * activation (`moduleSkillMaterializer.ts`), so each record is an ordinary
+ * vault skill file here — same frontmatter parsing, same `TFile` lookup, and
+ * therefore the same reachability from `fs_read`/`bash` as a user-authored
+ * package. Only `isReadOnly` differs: the projection is derived from the
+ * verified artifact and is rewritten on the next activation.
+ *
+ * A declaration that does not resolve (module inactive, projection missing)
+ * or fails to parse is skipped and logged — one bad declaration must not
+ * blank out the mode's other skills.
  */
 const buildModuleSkillRecords = async (
   app: App,
@@ -408,21 +394,22 @@ const buildModuleSkillRecords = async (
     return []
   }
   const records: SkillRegistryRecord[] = []
-  for (const fileName of mode.skillFileNames) {
+  for (const declaredSkillPath of mode.skillPaths) {
     try {
-      const path = await source.resolveSkillPath(mode.moduleId, fileName)
+      const path = source.resolveSkillPath(mode.moduleId, declaredSkillPath)
       if (!path) {
         continue
       }
-      const frontmatter = await resolveSkillFrontmatter(app, path, null)
+      const file = app.vault.getFileByPath(path)
+      const frontmatter = await resolveSkillFrontmatter(app, path, file)
       const entry = toLiteSkillEntry({ path, frontmatter, isReadOnly: true })
       if (!entry) {
         continue
       }
-      records.push({ entry, file: null })
+      records.push({ entry, file })
     } catch (error) {
       console.warn(
-        `[YOLO] Failed to load module chat mode skill "${fileName}" for "${fullModeId}"`,
+        `[YOLO] Failed to load module chat mode skill "${declaredSkillPath}" for "${fullModeId}"`,
         error,
       )
     }
@@ -778,81 +765,6 @@ export async function getLiteSkillDocumentByPath({
     }
   }
   return null
-}
-
-const listPackageResourcePaths = async (
-  adapter: App['vault']['adapter'],
-  packageDir: string,
-): Promise<string[]> => {
-  const paths: string[] = []
-  const collect = async (dir: string): Promise<void> => {
-    const listing = await adapter.list(dir)
-    paths.push(...listing.files.map((path) => normalizePath(path)))
-    for (const folder of listing.folders) {
-      await collect(normalizePath(folder))
-    }
-  }
-  await collect(packageDir)
-  return paths.sort((a, b) => a.localeCompare(b))
-}
-
-/**
- * Resolve the complete package behind a canonical frontmatter name. Vault
- * resources are returned as paths so downstream materializers can preserve
- * text and binary files with the adapter operation appropriate to each file.
- */
-export async function getLiteSkillPackageSource({
-  app,
-  name,
-  settings,
-}: {
-  app: App
-  name?: string
-  settings?: SkillSettings
-}): Promise<LiteSkillPackageSource | null> {
-  const document = await getLiteSkillDocument({ app, name, settings })
-  if (!document) {
-    return null
-  }
-
-  if (document.entry.path.startsWith('builtin://')) {
-    return {
-      entry: document.entry,
-      resources: [
-        {
-          kind: 'builtin',
-          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
-          content: document.content,
-        },
-      ],
-    }
-  }
-
-  const packageDir = getSkillPackageDirPath(document.entry.path)
-  if (!packageDir) {
-    return {
-      entry: document.entry,
-      resources: [
-        {
-          kind: 'vault',
-          path: document.entry.path,
-          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
-        },
-      ],
-    }
-  }
-  const prefix = `${packageDir}/`
-  const resources = (
-    await listPackageResourcePaths(app.vault.adapter, packageDir)
-  ).map(
-    (path): LiteSkillPackageResource => ({
-      kind: 'vault',
-      path,
-      relativePath: path.slice(prefix.length),
-    }),
-  )
-
-  return { entry: document.entry, resources }
 }
 
 /**

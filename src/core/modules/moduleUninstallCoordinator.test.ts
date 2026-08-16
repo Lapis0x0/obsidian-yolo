@@ -48,4 +48,58 @@ describe('ModuleUninstallCoordinator', () => {
     expect(removeState).toHaveBeenCalledTimes(1)
     expect(remove).toHaveBeenCalledWith('learning', '1.0.0')
   })
+
+  test('drops the vault skill projection even when no device state remains', async () => {
+    const removeSkillProjection = jest.fn(async () => undefined)
+    const coordinator = new ModuleUninstallCoordinator({
+      artifactStore: { removeVersionArtifacts: jest.fn() },
+      deviceStateStore: {
+        runExclusive: async (_id, operation) =>
+          operation({
+            read: async () => null,
+            write: async (next) => next,
+            remove: async () => undefined,
+          }),
+      },
+      intentStore: { get: async () => 'uninstalled' },
+      manager: { refresh: async () => undefined },
+      runtime: {
+        deactivate: async () => undefined,
+        runWithModuleQuiesced: async (_id, operation) => operation(),
+      },
+      platform: 'desktop',
+      removeSkillProjection,
+    })
+
+    await expect(coordinator.uninstall('learning')).resolves.toBeUndefined()
+    expect(removeSkillProjection).toHaveBeenCalledWith('learning')
+  })
+
+  test('does not touch the projection when the intent is not uninstalled', async () => {
+    const removeSkillProjection = jest.fn(async () => undefined)
+    const coordinator = new ModuleUninstallCoordinator({
+      artifactStore: { removeVersionArtifacts: jest.fn() },
+      deviceStateStore: {
+        runExclusive: async (_id, operation) =>
+          operation({
+            read: async () => null,
+            write: async (next) => next,
+            remove: async () => undefined,
+          }),
+      },
+      intentStore: { get: async () => 'enabled' },
+      manager: { refresh: async () => undefined },
+      runtime: {
+        deactivate: async () => undefined,
+        runWithModuleQuiesced: async (_id, operation) => operation(),
+      },
+      platform: 'desktop',
+      removeSkillProjection,
+    })
+
+    await expect(coordinator.uninstall('learning')).rejects.toThrow(
+      /requires uninstalled intent/,
+    )
+    expect(removeSkillProjection).not.toHaveBeenCalled()
+  })
 })

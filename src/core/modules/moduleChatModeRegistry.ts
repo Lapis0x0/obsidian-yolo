@@ -1,5 +1,6 @@
 import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import { RESERVED_MODULE_MODE_SERVER_PREFIX } from '../mcp/tool-name-utils'
+import { SKILL_PACKAGE_ENTRY_FILE_NAME } from '../skills/liteSkills'
 
 import {
   MAX_MODULE_AGENT_TOOLS,
@@ -7,7 +8,11 @@ import {
   snapshotModuleAgentToolBase,
 } from './moduleAgent'
 import { snapshotLocalizedText } from './moduleI18n'
-import { normalizeModuleArtifactFilePath } from './moduleStore'
+import { resolveModuleSkillPackageName } from './moduleSkillMaterializer'
+import {
+  canonicalArtifactPath,
+  normalizeModuleArtifactFilePath,
+} from './moduleStore'
 import type {
   YoloModuleAgentCapabilityV1,
   YoloModuleChatModeToolV1,
@@ -157,16 +162,15 @@ function sameAvailability(
  * description, inputSchema, handler) so the two tool contracts cannot
  * validate divergently, then layers on `requiresApproval`.
  *
- * `skills` validation here is format-only: each entry must be a safe flat
- * file name (reusing `normalizeModuleArtifactFilePath`'s rules — the same
- * ones a manifest `role: 'data'` artifact file name must satisfy), deduped
- * and capped. Cross-checking a name against the module's actual verified
- * manifest (does a `role: 'data'` file with this name exist?) cannot happen
- * here — this function runs synchronously inside `chat.registerMode(...)`,
- * called from the module's own `activate()`, before the module's
- * `VerifiedModuleArtifact` is published (see `moduleChatModeSkills.ts`'s
- * doc comment for the exact ordering). That check happens lazily, on demand,
- * wherever a mode's skills are actually consumed.
+ * `skills` validation here is format-only: each entry must be a safe
+ * artifact-relative package path ending in `SKILL.md` (reusing
+ * `normalizeModuleArtifactFilePath`'s rules), deduped and capped.
+ * Cross-checking an entry against the module's actual verified manifest
+ * (does a `role: 'data'` file exist at this path?) cannot happen here — this
+ * function runs synchronously inside `chat.registerMode(...)`, called from
+ * the module's own `activate()`, before the module's `VerifiedModuleArtifact`
+ * is published. That check happens once the artifact is published, when the
+ * package is projected into the Vault (`moduleSkillMaterializer.ts`).
  */
 export function snapshotModuleChatMode(
   mode: YoloModuleChatModeV1,
@@ -225,30 +229,43 @@ function snapshotChatModeSkills(skills: readonly string[]): readonly string[] {
     )
   }
   const seen = new Set<string>()
+  // Canonical keys, matching `planModuleSkillPackages`: two declarations that
+  // differ only in case or Unicode form are distinct manifest paths but one
+  // projected directory on macOS and Windows.
+  const packageNames = new Set<string>()
   const normalized = skills.map((skill) => {
     if (typeof skill !== 'string') {
-      throw new TypeError('Module chat mode skill file name must be a string')
+      throw new TypeError('Module chat mode skill path must be a string')
     }
-    let normalizedName: string
+    let normalizedPath: string
     try {
-      normalizedName = normalizeModuleArtifactFilePath(skill)
+      normalizedPath = normalizeModuleArtifactFilePath(skill)
     } catch {
       throw new Error(
-        `Module chat mode skill file name "${skill}" must be a safe flat file name`,
+        `Module chat mode skill path "${skill}" must be a safe relative artifact path`,
       )
     }
-    if (normalizedName.includes('/')) {
+    const packageName = resolveModuleSkillPackageName(normalizedPath)
+    if (!packageName) {
       throw new Error(
-        `Module chat mode skill "${skill}" must be a flat file name (no directories)`,
+        `Module chat mode skill "${skill}" must be a package path ending in "${SKILL_PACKAGE_ENTRY_FILE_NAME}"`,
       )
     }
-    if (seen.has(normalizedName)) {
+    const canonicalPath = canonicalArtifactPath(normalizedPath)
+    const packageKey = canonicalArtifactPath(packageName)
+    if (seen.has(canonicalPath)) {
       throw new Error(
-        `Module chat mode skill "${normalizedName}" is duplicated`,
+        `Module chat mode skill "${normalizedPath}" is duplicated`,
       )
     }
-    seen.add(normalizedName)
-    return normalizedName
+    if (packageNames.has(packageKey)) {
+      throw new Error(
+        `Module chat mode skill package "${packageName}" is declared twice`,
+      )
+    }
+    seen.add(canonicalPath)
+    packageNames.add(packageKey)
+    return normalizedPath
   })
   return Object.freeze(normalized)
 }

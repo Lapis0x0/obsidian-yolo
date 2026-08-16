@@ -44,7 +44,38 @@ export type ModuleActivationCoordinatorOptions = Readonly<{
     VerifiedModuleArtifactRegistry,
     'publish' | 'clear' | 'clearAll'
   >
+  /**
+   * Projects the module's declared skill packages into the Vault. This is the
+   * only seam where both halves of the input exist: the module's chat modes
+   * (and therefore their `skills` declarations) are committed by
+   * `runtime.activate`, and the verified artifact is published here. It runs
+   * inside the activation's abort/timeout scope.
+   *
+   * A projection failure never fails the activation. Skills are one of the
+   * things a module contributes, and by this point the module is already
+   * live: reporting it as failed would advertise a running module as broken,
+   * and `moduleStartupReconciler` skips the retry for anything the runtime
+   * reports active, so the module would stay in that split state for the rest
+   * of the session. Instead the affected modes come up without those skills,
+   * the error goes to `reportSkillProjectionError`, and the next activation
+   * (restart, or disable then enable) reconciles the projection from the
+   * artifact again.
+   *
+   * Deactivation deliberately leaves the projection in place; only uninstall
+   * clears it. An installed-but-disabled module still has its artifact on
+   * disk, so a projection that tracks the artifact is the consistent state,
+   * and rewriting the whole tree on every toggle would only manufacture Vault
+   * sync churn.
+   */
+  materializeSkills?: (
+    moduleId: string,
+    artifact: VerifiedModuleArtifact,
+    signal: AbortSignal,
+  ) => Promise<void>
   reportActivationError?: (moduleId: string, error: unknown) => void
+  /** Diagnostic channel for `materializeSkills`; see above for why it is
+   * kept apart from `reportActivationError`. */
+  reportSkillProjectionError?: (moduleId: string, error: unknown) => void
 }>
 
 export type ModuleActivationResult = Readonly<{
@@ -88,8 +119,12 @@ export class ModuleActivationCoordinator {
         (typeof options.verifiedArtifactRegistry.publish !== 'function' ||
           typeof options.verifiedArtifactRegistry.clear !== 'function' ||
           typeof options.verifiedArtifactRegistry.clearAll !== 'function')) ||
+      (options.materializeSkills !== undefined &&
+        typeof options.materializeSkills !== 'function') ||
       (options.reportActivationError !== undefined &&
-        typeof options.reportActivationError !== 'function')
+        typeof options.reportActivationError !== 'function') ||
+      (options.reportSkillProjectionError !== undefined &&
+        typeof options.reportSkillProjectionError !== 'function')
     ) {
       throw new Error('Module activation coordinator options are invalid')
     }
@@ -323,6 +358,26 @@ export class ModuleActivationCoordinator {
         descriptor.version,
         artifact,
       )
+      try {
+        const projection = this.options.materializeSkills?.(
+          descriptor.id,
+          artifact,
+          controller.signal,
+        )
+        // Raced against the signal rather than awaited outright: the
+        // projection talks to the Vault adapter, and a request that never
+        // settles would otherwise outlive the abort and hold the whole
+        // startup open. The signal it also receives lets it stop between
+        // steps; this bounds the wait even when it cannot.
+        if (projection) await withAbort(projection, controller.signal)
+      } catch (error) {
+        // An aborted projection (activation timeout, plugin unload) is not a
+        // defect of the module and there is no one to act on it; the next
+        // activation reconciles the projection either way.
+        if (!controller.signal.aborted) {
+          this.reportSkillProjectionError(descriptor.id, error)
+        }
+      }
     } catch (error) {
       this.options.verifiedArtifactRegistry?.clear(descriptor.id)
       if (timedOut) {
@@ -338,6 +393,14 @@ export class ModuleActivationCoordinator {
       clearTimeout(timeout)
       parentSignal.removeEventListener('abort', abortFromParent)
       this.controllers.delete(controller)
+    }
+  }
+
+  private reportSkillProjectionError(moduleId: string, error: unknown): void {
+    try {
+      this.options.reportSkillProjectionError?.(moduleId, error)
+    } catch {
+      // Diagnostics cannot undo an activation that already succeeded.
     }
   }
 
@@ -376,14 +439,15 @@ function snapshotDescriptor(
 }
 
 function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(abortedError())
   return new Promise<T>((resolve, reject) => {
     const onAbort = () => {
       cleanup()
       reject(abortedError())
     }
     const cleanup = () => signal.removeEventListener('abort', onAbort)
-    signal.addEventListener('abort', onAbort, { once: true })
+    // Attached before the aborted check so that an operation abandoned by the
+    // race is still observed: losing it later is expected, an unhandled
+    // rejection is not.
     void operation.then(
       (value) => {
         cleanup()
@@ -394,6 +458,11 @@ function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
         reject(error instanceof Error ? error : new Error(String(error)))
       },
     )
+    if (signal.aborted) {
+      reject(abortedError())
+      return
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
   })
 }
 

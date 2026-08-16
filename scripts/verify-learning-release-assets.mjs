@@ -3,6 +3,12 @@ import { appendFile, readFile, readdir, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import {
+  assertReleaseAssetUniqueness,
+  deriveReleaseAssetName,
+  isSafeArtifactSegment,
+} from './module-release-assets.mjs'
+
 const sha256 = (bytes) => createHash('sha256').update(bytes).digest('hex')
 
 export async function cleanupOwnedDraftRelease({
@@ -157,14 +163,21 @@ export async function verifyLearningReleaseAssets({
     }
     for (const file of variant.files) {
       validateDeclaration(file, variant.platform)
-      expectedNames.add(file.path)
-      const prior = declarations.get(file.path)
+      expectedNames.add(file.name)
+      const prior = declarations.get(file.name)
       if (prior && JSON.stringify(prior) !== JSON.stringify(file)) {
         throw new Error(`${file.path} has inconsistent cross-platform metadata`)
       }
-      declarations.set(file.path, file)
+      declarations.set(file.name, file)
     }
+    // Run on the variant's own declaration array, never on `declarations`:
+    // that map is keyed by asset name and collapses a repeated declaration,
+    // while the Host parses each variant's file list as it stands and rejects
+    // a duplicate path or name there. Checking only the collapsed form would
+    // let a manifest the Host refuses to install pass every release gate.
+    assertReleaseAssetUniqueness(variant.files, variant.platform)
   }
+  assertReleaseAssetUniqueness(declarations.values(), 'Release manifest')
 
   assertSetEqual(
     new Set(remoteAssets.keys()),
@@ -272,11 +285,21 @@ export async function verifyLearningReleaseAssets({
 }
 
 function validateDeclaration(file, platform) {
-  if (!file || typeof file.path !== 'string' || file.path !== file.name) {
+  if (
+    !file ||
+    typeof file.path !== 'string' ||
+    typeof file.name !== 'string' ||
+    !isSafeArtifactSegment(file.name)
+  ) {
     throw new Error(`${platform} contains an invalid file name/path`)
   }
-  if (path.posix.basename(file.path) !== file.path) {
-    throw new Error(`${platform} contains a non-flat asset path: ${file.path}`)
+  // The installed path may be nested; the Release asset name is its flat fold.
+  if (
+    file.name !== deriveReleaseAssetName(file.path, `${platform} asset path`)
+  ) {
+    throw new Error(
+      `${platform} asset name does not fold its path: ${file.path}`,
+    )
   }
   if (!Number.isSafeInteger(file.byteSize) || file.byteSize <= 0) {
     throw new Error(`${file.path} has invalid byteSize`)

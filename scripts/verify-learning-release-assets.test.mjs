@@ -103,6 +103,97 @@ test('independently verifies published release assets', async () => {
   }
 })
 
+test('verifies a nested artifact uploaded under its folded asset name', async () => {
+  const fixture = await createFixture({ skillPath: 'skills/coach/SKILL.md' })
+  try {
+    const metadata = await verifyLearningReleaseAssets({
+      repository,
+      tag,
+      releaseId,
+      targetCommit: 'test-commit',
+      assetDir: fixture.directory,
+      metadataOut: fixture.metadataPath,
+      token: 'test-token',
+      apiBase,
+      downloadBase,
+      fetchImpl: fixture.fetchImpl,
+    })
+
+    const skill = metadata.assets.find(
+      ({ name }) => name === 'skills__coach__SKILL.md',
+    )
+    assert.ok(skill, 'the folded asset must be verified')
+    assert.equal(
+      skill.url,
+      `${downloadBase}/${encodeURIComponent(tag)}/skills__coach__SKILL.md`,
+    )
+  } finally {
+    await rm(fixture.directory, { recursive: true, force: true })
+  }
+})
+
+for (const [label, options, error] of [
+  [
+    'a name that does not fold its path',
+    { skillDeclarationOverride: { name: 'SKILL.md' } },
+    /does not fold its path/,
+  ],
+  [
+    'a name that is not a flat segment',
+    { skillDeclarationOverride: { name: 'skills/coach/SKILL.md' } },
+    /invalid file name\/path/,
+  ],
+  [
+    'a path that escapes the version directory',
+    {
+      skillDeclarationOverride: {
+        path: 'skills/../../SKILL.md',
+        name: 'skills__..__..__SKILL.md',
+      },
+    },
+    /safe relative/,
+  ],
+  [
+    'two artifacts whose paths only differ by case',
+    { duplicateSkillCase: true },
+    /duplicate artifact path/,
+  ],
+  [
+    // The Host parses each variant's file list as it stands and refuses the
+    // repeat, so a check that folds the list by asset name first — and
+    // silently collapses the repeat — would pass an uninstallable release.
+    'the same artifact twice inside one variant',
+    { duplicateSkillDeclaration: true },
+    /duplicate artifact path/,
+  ],
+]) {
+  test(`rejects a manifest declaring ${label}`, async () => {
+    const fixture = await createFixture({
+      skillPath: 'skills/coach/SKILL.md',
+      ...options,
+    })
+    try {
+      await assert.rejects(
+        verifyLearningReleaseAssets({
+          repository,
+          tag,
+          releaseId,
+          targetCommit: 'test-commit',
+          assetDir: fixture.directory,
+          metadataOut: fixture.metadataPath,
+          token: 'test-token',
+          apiBase,
+          downloadBase,
+          fetchImpl: fixture.fetchImpl,
+        }),
+        error,
+      )
+    } finally {
+      await rm(fixture.directory, { recursive: true, force: true })
+    }
+  })
+}
+
 test('rejects an undeclared remote asset', async () => {
   const fixture = await createFixture({ extraAsset: true })
   try {
@@ -224,15 +315,29 @@ async function createFixture({
   corruptEntryDownload = false,
   draft = true,
   draftDownloadTag,
+  skillPath,
+  skillDeclarationOverride,
+  duplicateSkillCase = false,
+  duplicateSkillDeclaration = false,
 } = {}) {
   const directory = await mkdtemp(path.join(os.tmpdir(), 'learning-release-'))
   const entry = Buffer.from('export default true\n')
   const style = Buffer.from('.learning { display: block; }\n')
+  const skill = Buffer.from('---\nname: coach\n---\nCoach the learner.\n')
   const encodedTag = encodeURIComponent(tag)
   const url = (name) =>
     `${downloadBase}/${encodedTag}/${encodeURIComponent(name)}`
   const releaseUrl = (name) =>
     `${downloadBase}/${draftDownloadTag ?? encodedTag}/${encodeURIComponent(name)}`
+  // A nested artifact installs at its path and uploads under the flat fold.
+  const skillName = skillPath?.split('/').join('__')
+  const skillDeclaration = skillPath
+    ? {
+        ...declaration('data', skillName, skill, url(skillName)),
+        path: skillPath,
+        ...skillDeclarationOverride,
+      }
+    : null
   const manifest = {
     schemaVersion: 1,
     id: 'learning',
@@ -247,6 +352,17 @@ async function createFixture({
       files: [
         declaration('entry', 'entry.js', entry, url('entry.js')),
         declaration('style', 'style.css', style, url('style.css')),
+        ...(skillDeclaration ? [skillDeclaration] : []),
+        ...(duplicateSkillCase
+          ? [
+              {
+                ...skillDeclaration,
+                path: 'skills/Coach/SKILL.md',
+                name: 'skills__Coach__SKILL.md',
+              },
+            ]
+          : []),
+        ...(duplicateSkillDeclaration ? [{ ...skillDeclaration }] : []),
       ],
     })),
   }
@@ -275,6 +391,7 @@ async function createFixture({
     ['module.json', moduleBytes],
     ['release-note.md', releaseNote],
     ['style.css', style],
+    ...(skillPath ? [[skillName, skill]] : []),
   ])
   for (const [name, bytes] of assets) {
     await writeFile(path.join(directory, name), bytes)

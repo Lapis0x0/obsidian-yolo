@@ -16,6 +16,12 @@ import esbuild from 'esbuild'
 import React from 'react'
 import * as jsxRuntime from 'react/jsx-runtime'
 
+import {
+  assertReleaseAssetUniqueness,
+  canonicalArtifactKey,
+  deriveReleaseAssetName,
+} from './module-release-assets.mjs'
+
 const repositoryRoot = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   '..',
@@ -71,6 +77,9 @@ if (options.releaseTag && selectedDefinitions.length !== 1) {
 if (options.metafileOutput && selectedDefinitions.length !== 1) {
   throw new Error('--metafile-output requires exactly one --module')
 }
+if (options.layout === 'flat' && !options.outputDir) {
+  throw new Error('--layout flat requires --output-dir')
+}
 if (options.releaseTag && options.moduleId) {
   const official = officialModuleById.get(options.moduleId)
   if (!official)
@@ -121,6 +130,7 @@ for (const moduleDefinition of selectedDefinitions) {
     await buildModule({
       ...moduleDefinition,
       artifactDir: options.outputDir,
+      layout: options.layout ?? 'tree',
       releaseTag: options.releaseTag ?? moduleDefinition.releaseTag,
     }),
   )
@@ -241,12 +251,11 @@ async function loadOfficialModules() {
 }
 
 /**
- * `module.config.json`'s optional `dataFiles: string[]` declares flat,
- * top-level `role: 'data'` artifacts (e.g. a skill Markdown file) that ship
- * verbatim from `modules/<id>/src/<fileName>` — no subdirectories, no
- * transform, matching the Release protocol's flat asset-directory upload and
- * the host's manifest-driven trusted path resolution (see
- * `src/core/modules/moduleChatModeSkills.ts`).
+ * `module.config.json`'s optional `dataFiles: string[]` declares `role: 'data'`
+ * artifacts (e.g. a skill package) that ship verbatim from
+ * `modules/<id>/src/<path>` — no transform. An entry is an installed artifact
+ * path, so it may be nested (`skills/coach/SKILL.md`); the flat Release asset
+ * name is derived from it (see `scripts/module-release-assets.mjs`).
  */
 async function resolveModuleDataFileAssets(moduleId, moduleDir, dataFiles) {
   if (dataFiles === undefined) return []
@@ -255,39 +264,35 @@ async function resolveModuleDataFileAssets(moduleId, moduleDir, dataFiles) {
   }
   const seen = new Set()
   const assets = []
-  for (const fileName of dataFiles) {
-    if (
-      typeof fileName !== 'string' ||
-      !fileName ||
-      fileName.includes('/') ||
-      fileName.includes('\\')
-    ) {
-      throw new Error(
-        `${moduleId} module.config.json dataFiles entry must be a flat file name: ${JSON.stringify(fileName)}`,
-      )
-    }
-    if (fileName === 'style.css') {
+  for (const filePath of dataFiles) {
+    // Throws for absolute, escaping, unsafe, over-deep, or unfoldable paths.
+    deriveReleaseAssetName(
+      filePath,
+      `${moduleId} module.config.json dataFiles entry`,
+    )
+    if (filePath === 'style.css') {
       throw new Error(
         `${moduleId} module.config.json dataFiles must not reuse the style.css name`,
       )
     }
-    if (seen.has(fileName)) {
+    const canonical = canonicalArtifactKey(filePath)
+    if (seen.has(canonical)) {
       throw new Error(
-        `${moduleId} module.config.json dataFiles has a duplicate entry: ${fileName}`,
+        `${moduleId} module.config.json dataFiles has a duplicate entry: ${filePath}`,
       )
     }
-    seen.add(fileName)
-    const dataSource = path.join(moduleDir, 'src', fileName)
+    seen.add(canonical)
+    const dataSource = path.join(moduleDir, 'src', filePath)
     const exists = await access(dataSource).then(
       () => true,
       () => false,
     )
     if (!exists) {
       throw new Error(
-        `${moduleId} declares dataFiles entry missing from src/: ${fileName}`,
+        `${moduleId} declares dataFiles entry missing from src/: ${filePath}`,
       )
     }
-    assets.push({ role: 'data', source: fileName, path: fileName })
+    assets.push({ role: 'data', source: filePath, path: filePath })
   }
   return assets
 }
@@ -353,6 +358,7 @@ async function buildModule({
   assets = [],
   artifactDir: outputDir,
   declarationPath,
+  layout = 'tree',
   releaseTag,
   workers = {},
 }) {
@@ -407,12 +413,24 @@ async function buildModule({
   })
   assertModuleBoundary(id, entryResult.metafile)
 
+  // `tree` writes every artifact at its installed path, which is what the Host
+  // reads from `<plugin>/modules/<id>/<version>/`. `flat` writes it at its
+  // Release asset name, which is the only shape a GitHub Release can hold.
+  const plan = [{ role: 'entry', path: 'entry.js' }, ...assets].map((asset) => {
+    const name = deriveReleaseAssetName(asset.path, `${id} artifact file path`)
+    return { ...asset, name, output: layout === 'flat' ? name : asset.path }
+  })
+  assertReleaseAssetUniqueness(plan, id)
+
   await Promise.all(
-    assets.map(async (asset) => {
+    plan.map(async (asset) => {
+      if (asset.role === 'entry') return
+      const outfile = path.join(artifactDir, asset.output)
+      await mkdir(path.dirname(outfile), { recursive: true })
       if (asset.role === 'style') {
         await esbuild.build({
           entryPoints: [path.join(sourceDir, asset.source)],
-          outfile: path.join(artifactDir, asset.path),
+          outfile,
           bundle: true,
           minify: true,
           legalComments: 'none',
@@ -421,30 +439,24 @@ async function buildModule({
       }
       if (asset.role === 'data') {
         // Ships verbatim — no bundling/transform for a data artifact (e.g. a
-        // module chat mode skill Markdown file).
-        await copyFile(
-          path.join(sourceDir, asset.source),
-          path.join(artifactDir, asset.path),
-        )
+        // module chat mode skill package).
+        await copyFile(path.join(sourceDir, asset.source), outfile)
         return
       }
       throw new Error(`Unsupported module asset role: ${asset.role}`)
     }),
   )
 
-  const entryFile = await describeArtifactFile(artifactDir, 'entry', 'entry.js')
-  const assetFiles = await Promise.all(
-    assets.map((asset) =>
-      describeArtifactFile(artifactDir, asset.role, asset.path),
-    ),
-  )
   const tag = releaseTag ?? `module-${id}-v${version}`
   const releaseRoot = `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${encodeURIComponent(tag)}`
-  const files = [entryFile, ...assetFiles].map((file) => ({
-    ...file,
-    url: `${releaseRoot}/${file.name}`,
-    storage: 'module',
-  }))
+  const files = await Promise.all(
+    plan.map(async (asset) => ({
+      ...(await describeArtifactFile(artifactDir, asset)),
+      url: `${releaseRoot}/${encodeURIComponent(asset.name)}`,
+      storage: 'module',
+    })),
+  )
+  const entryFile = files.find((file) => file.role === 'entry')
   const manifest = {
     schemaVersion: 1,
     id,
@@ -568,7 +580,8 @@ function parseOptions(args) {
       option !== '--module' &&
       option !== '--output-dir' &&
       option !== '--release-tag' &&
-      option !== '--metafile-output'
+      option !== '--metafile-output' &&
+      option !== '--layout'
     ) {
       throw new Error(`Unknown option: ${option}`)
     }
@@ -581,19 +594,27 @@ function parseOptions(args) {
       '--output-dir': 'outputDir',
       '--release-tag': 'releaseTag',
       '--metafile-output': 'metafileOutput',
+      '--layout': 'layout',
     }[option]
     options[key] = value
     index += 1
   }
+  if (
+    options.layout &&
+    options.layout !== 'tree' &&
+    options.layout !== 'flat'
+  ) {
+    throw new Error(`--layout must be tree or flat: ${options.layout}`)
+  }
   return options
 }
 
-async function describeArtifactFile(artifactDir, role, relativePath) {
-  const bytes = await readFile(path.join(artifactDir, relativePath))
+async function describeArtifactFile(artifactDir, asset) {
+  const bytes = await readFile(path.join(artifactDir, asset.output))
   return {
-    role,
-    name: path.basename(relativePath),
-    path: relativePath,
+    role: asset.role,
+    name: asset.name,
+    path: asset.path,
     byteSize: bytes.byteLength,
     sha256: createHash('sha256').update(bytes).digest('hex'),
   }

@@ -100,10 +100,22 @@ export type ProductionModuleServicesOptions = Readonly<{
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
+  /** Vault projection of module-shipped skill packages; see
+   * `moduleSkillMaterializer.ts`. Absent in tests and headless composition. */
+  skillProjection?: Readonly<{
+    materialize: NonNullable<
+      ModuleActivationCoordinatorOptions['materializeSkills']
+    >
+    remove: (moduleId: string) => Promise<void>
+  }>
   verifiedArtifactRegistry?: VerifiedModuleArtifactRegistry
   reportCleanupError?: (error: unknown) => void
   reportRefreshError?: (error: unknown) => void
   reportActivationError?: (moduleId: string, error: unknown) => void
+  /** Kept apart from `reportActivationError`: a skill projection that fails
+   * leaves the module active, so it must not surface as an activation
+   * failure. See `ModuleActivationCoordinatorOptions.materializeSkills`. */
+  reportSkillProjectionError?: (moduleId: string, error: unknown) => void
   reportStartupError?: (error: unknown, moduleId?: string) => void
 }>
 
@@ -204,9 +216,15 @@ export function createProductionModuleServices(
     runtime: runtimeReservation,
     intentStateSource,
     verifiedArtifactRegistry,
+    ...(options.skillProjection
+      ? { materializeSkills: options.skillProjection.materialize }
+      : {}),
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportActivationError
       ? { reportActivationError: options.reportActivationError }
+      : {}),
+    ...(options.reportSkillProjectionError
+      ? { reportSkillProjectionError: options.reportSkillProjectionError }
       : {}),
   })
   const installedStateSource = new ModuleDeviceStateInstalledStateSource({
@@ -276,6 +294,9 @@ export function createProductionModuleServices(
     manager,
     runtime: runtimeReservation,
     platform: options.platform,
+    ...(options.skillProjection
+      ? { removeSkillProjection: options.skillProjection.remove }
+      : {}),
   })
   const startupIntentStore = options.intentStore
   const startupReconciler = new ModuleStartupReconciler({
@@ -685,6 +706,9 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     typeof options.intentStore?.subscribeAll !== 'function' ||
     (options.activationLoader !== undefined &&
       typeof options.activationLoader.load !== 'function') ||
+    (options.skillProjection !== undefined &&
+      (typeof options.skillProjection.materialize !== 'function' ||
+        typeof options.skillProjection.remove !== 'function')) ||
     (options.verifiedArtifactRegistry !== undefined &&
       !(
         options.verifiedArtifactRegistry instanceof
@@ -704,6 +728,8 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       typeof options.reportRefreshError !== 'function') ||
     (options.reportActivationError !== undefined &&
       typeof options.reportActivationError !== 'function') ||
+    (options.reportSkillProjectionError !== undefined &&
+      typeof options.reportSkillProjectionError !== 'function') ||
     (options.reportStartupError !== undefined &&
       typeof options.reportStartupError !== 'function')
   ) {

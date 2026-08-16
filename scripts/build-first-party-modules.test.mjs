@@ -198,20 +198,113 @@ test('module.config.json dataFiles ship as flat role:data artifacts (D6 skills p
   }
 })
 
-test('module.config.json rejects a dataFiles entry that is not a flat file name', async () => {
-  const moduleId = 'zz-datafiles-nested-fixture'
-  await assert.rejects(
-    buildDataFilesFixture(moduleId, {
-      dataFiles: ['nested/skill.md'],
-      skipWritingSkillFile: true,
-    }),
-    /flat file name/,
-  )
-  await rm(path.join(repositoryRoot, 'modules', moduleId), {
-    recursive: true,
-    force: true,
+test('nested dataFiles install at their path and upload under a folded name', async () => {
+  const moduleId = 'zz-datafiles-tree-fixture'
+  const fixture = await buildDataFilesFixture(moduleId, {
+    dataFiles: ['skills/coach/SKILL.md', 'skills/coach/references/fsrs.md'],
   })
+  try {
+    assert.deepEqual(await listFiles(fixture.artifactDir), [
+      'entry.js',
+      'module.json',
+      'skills/coach/SKILL.md',
+      'skills/coach/references/fsrs.md',
+    ])
+
+    const manifest = JSON.parse(
+      await readFile(path.join(fixture.artifactDir, 'module.json'), 'utf8'),
+    )
+    for (const variant of manifest.variants) {
+      const files = variant.files.filter(({ role }) => role === 'data')
+      assert.deepEqual(
+        files.map(({ path: filePath, name }) => [filePath, name]),
+        [
+          ['skills/coach/SKILL.md', 'skills__coach__SKILL.md'],
+          [
+            'skills/coach/references/fsrs.md',
+            'skills__coach__references__fsrs.md',
+          ],
+        ],
+      )
+      for (const file of files) {
+        const bytes = await readFile(path.join(fixture.artifactDir, file.path))
+        assert.equal(bytes.toString('utf8'), fixture.skillContent)
+        assert.equal(file.byteSize, bytes.byteLength)
+        assert.equal(file.sha256, hash(bytes))
+        assert.equal(
+          file.url,
+          `https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-${moduleId}-v0.0.1/${file.name}`,
+        )
+      }
+    }
+  } finally {
+    await fixture.cleanup()
+  }
 })
+
+test('--layout flat stages nested artifacts under their Release asset name', async () => {
+  const moduleId = 'zz-datafiles-flat-fixture'
+  const fixture = await buildDataFilesFixture(moduleId, {
+    dataFiles: ['skills/coach/SKILL.md'],
+    layout: 'flat',
+  })
+  try {
+    assert.deepEqual(await listFiles(fixture.artifactDir), [
+      'entry.js',
+      'module.json',
+      'skills__coach__SKILL.md',
+    ])
+
+    const manifest = JSON.parse(
+      await readFile(path.join(fixture.artifactDir, 'module.json'), 'utf8'),
+    )
+    const [file] = manifest.variants[0].files.filter(
+      ({ role }) => role === 'data',
+    )
+    // The staged bytes are the artifact's bytes: layout never changes identity.
+    const bytes = await readFile(path.join(fixture.artifactDir, file.name))
+    assert.equal(file.path, 'skills/coach/SKILL.md')
+    assert.equal(file.name, 'skills__coach__SKILL.md')
+    assert.equal(file.sha256, hash(bytes))
+  } finally {
+    await fixture.cleanup()
+  }
+})
+
+for (const [label, dataFiles, error] of [
+  ['escapes the module source tree', ['../outside.md'], /safe relative/],
+  ['is absolute', ['/etc/passwd'], /safe relative/],
+  ['uses a Windows separator', ['skills\\coach.md'], /safe relative/],
+  [
+    'is not foldable into a flat name',
+    ['skills__coach.md'],
+    /must not contain "__"/,
+  ],
+  [
+    'only differs from another entry by case',
+    ['skills/coach.md', 'skills/Coach.md'],
+    /duplicate entry/,
+  ],
+  [
+    'only differs from another entry by directory case',
+    ['skills/coach/SKILL.md', 'skills/Coach/SKILL.md'],
+    /duplicate entry/,
+  ],
+  [
+    'reuses a Release-level asset name',
+    ['release-note.md'],
+    /artifact file is reserved/,
+  ],
+]) {
+  test(`module.config.json rejects a dataFiles entry that ${label}`, async () => {
+    const moduleId = 'zz-datafiles-invalid-fixture'
+    await assert.rejects(buildDataFilesFixture(moduleId, { dataFiles }), error)
+    await rm(path.join(repositoryRoot, 'modules', moduleId), {
+      recursive: true,
+      force: true,
+    })
+  })
+}
 
 test('module.config.json rejects a dataFiles entry missing from src/', async () => {
   const moduleId = 'zz-datafiles-missing-fixture'
@@ -238,7 +331,7 @@ test('module.config.json rejects a dataFiles entry missing from src/', async () 
  */
 async function buildDataFilesFixture(
   moduleId,
-  { dataFiles, skipWritingSkillFile = false },
+  { dataFiles, skipWritingSkillFile = false, layout },
 ) {
   const moduleDir = path.join(repositoryRoot, 'modules', moduleId)
   const root = await mkdtemp(
@@ -277,7 +370,12 @@ async function buildDataFilesFixture(
     )
     if (!skipWritingSkillFile) {
       for (const fileName of dataFiles) {
-        await writeFile(path.join(moduleDir, 'src', fileName), skillContent)
+        // Only write sources the file system can hold: invalid-path fixtures
+        // must fail on the declaration, never on a stray write.
+        if (!/^[A-Za-z0-9][A-Za-z0-9._+/-]*$/.test(fileName)) continue
+        const source = path.join(moduleDir, 'src', fileName)
+        await mkdir(path.dirname(source), { recursive: true })
+        await writeFile(source, skillContent)
       }
     }
 
@@ -289,6 +387,7 @@ async function buildDataFilesFixture(
         moduleId,
         '--output-dir',
         artifactDir,
+        ...(layout ? ['--layout', layout] : []),
       ],
       { cwd: repositoryRoot },
     )
@@ -391,6 +490,23 @@ async function waitForResponse(responses, id) {
     await new Promise((resolve) => setTimeout(resolve, 0))
   }
   assert.fail(`Worker did not respond to request ${String(id)}`)
+}
+
+/** Lists every file under `directory` as a sorted, POSIX-relative path. */
+async function listFiles(directory, prefix = '') {
+  const entries = await readdir(directory, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const relative = prefix ? `${prefix}/${entry.name}` : entry.name
+    if (entry.isDirectory()) {
+      files.push(
+        ...(await listFiles(path.join(directory, entry.name), relative)),
+      )
+      continue
+    }
+    files.push(relative)
+  }
+  return files.sort()
 }
 
 function hash(bytes) {

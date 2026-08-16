@@ -398,7 +398,15 @@ function assertExactKeys(
   if (missing) throw new Error(`${label} is missing field "${missing}"`)
 }
 
-function canonicalArtifactPath(value: string): string {
+/**
+ * Identity form of an artifact-relative path: two paths that canonicalize the
+ * same are the same file on a case-insensitive or Unicode-folding filesystem.
+ * Exported because every place that keys on a path — manifest duplicate
+ * detection here, chat mode skill declarations, and the Vault skill
+ * projection — must agree on one definition, or a collision one of them
+ * rejects sails through another.
+ */
+export function canonicalArtifactPath(value: string): string {
   return value.normalize('NFKC').toLowerCase()
 }
 
