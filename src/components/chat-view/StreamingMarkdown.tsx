@@ -80,6 +80,13 @@ const DRAIN_MIN_CHARS_PER_SECOND = 200
 // 同步增长。所以按感知下限取 30fps。
 const REVEAL_FRAME_INTERVAL_MS = 1000 / 30
 
+// 判据的容差，不能省。1000/30 恰好是 60Hz 与 120Hz 帧周期的整数倍（2 帧 / 4
+// 帧），于是「够不够一个播出间隔」正好压在显示帧边界上，timestamp 的亚毫秒抖动
+// 会让它有一半概率被判成还差一点，只能整整多等一帧——实测在 120Hz 上稳定退化成
+// 41.6ms，即声称 30Hz、实跑 24Hz。留半个 120Hz 帧的余量让压线那帧确定性放行；
+// 这个量仍小于常见刷新率的帧周期，不会让循环提前一整帧。
+const REVEAL_FRAME_TOLERANCE_MS = 1000 / 120 / 2
+
 function prefersReducedMotion(node: HTMLElement | null): boolean {
   return getNodeWindow(node).matchMedia('(prefers-reduced-motion: reduce)')
     .matches
@@ -428,7 +435,7 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
           : timestamp - lastFrameTimeRef.current
       if (
         sinceLastFrame !== null &&
-        sinceLastFrame < REVEAL_FRAME_INTERVAL_MS
+        sinceLastFrame < REVEAL_FRAME_INTERVAL_MS - REVEAL_FRAME_TOLERANCE_MS
       ) {
         animationFrameRef.current = ownerWindow.requestAnimationFrame(tick)
         return
