@@ -41,7 +41,9 @@ const splitLeadingBackgroundBridge = (
 
   return {
     hasBridge: index > 0,
-    foregroundGroup: group.slice(index),
+    // 没有 bridge 时直接沿用入参数组：read model 对未变化的 group 做了结构
+    // 共享，切片会白白丢掉这份引用稳定性。
+    foregroundGroup: index === 0 ? group : group.slice(index),
   }
 }
 
@@ -124,6 +126,36 @@ export function buildForegroundAgentVisualTurnPlan(
   }
 
   return { footerByMessageId }
+}
+
+const sameMessages = (
+  a: AssistantToolMessageGroup,
+  b: AssistantToolMessageGroup,
+): boolean =>
+  a.length === b.length && a.every((message, index) => message === b[index])
+
+/**
+ * 复用上一份 plan 中内容未变的 footer。时间线行的 render version 用
+ * `inlineInfoMessages` 的对象身份判断是否需要重渲，footer 每帧换新数组会让
+ * 全部 assistant 行在流式期间持续重渲直到 commit 阶段的 DOM diff。
+ *
+ * `next` 必须是刚构建、尚未被其他地方持有的 plan。
+ */
+export function reuseForegroundAgentVisualTurnPlan(
+  previous: ForegroundAgentVisualTurnPlan,
+  next: ForegroundAgentVisualTurnPlan,
+): ForegroundAgentVisualTurnPlan {
+  for (const [messageId, footer] of next.footerByMessageId) {
+    const previousFooter = previous.footerByMessageId.get(messageId)
+    if (
+      previousFooter &&
+      previousFooter.suppress === footer.suppress &&
+      sameMessages(previousFooter.inlineInfoMessages, footer.inlineInfoMessages)
+    ) {
+      next.footerByMessageId.set(messageId, previousFooter)
+    }
+  }
+  return next
 }
 
 export function getForegroundAgentFooterForGroup(

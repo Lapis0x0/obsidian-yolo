@@ -35,9 +35,11 @@ import type {
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import type { ForegroundAgentVisualTurnPlan } from '../../utils/chat/foregroundAgentVisualTurns'
 import {
   buildForegroundAgentVisualTurnPlan,
   getForegroundAgentFooterForGroup,
+  reuseForegroundAgentVisualTurnPlan,
 } from '../../utils/chat/foregroundAgentVisualTurns'
 import {
   getMentionableKey,
@@ -867,10 +869,19 @@ export function YoloChatSurface({
   // 后台任务结果在渲染上会接回对应 tool card，且 subagent/terminal result
   // standalone group 会被 timeline 过滤掉；因此必须在过滤前的 grouped
   // messages 上决定“视觉回合”的 footer 归属。
-  const foregroundAgentVisualTurnPlan = useMemo(
-    () => buildForegroundAgentVisualTurnPlan(groupedChatMessages),
-    [groupedChatMessages],
-  )
+  const foregroundAgentVisualTurnPlanRef =
+    useRef<ForegroundAgentVisualTurnPlan | null>(null)
+  const foregroundAgentVisualTurnPlan = useMemo(() => {
+    const next = buildForegroundAgentVisualTurnPlan(groupedChatMessages)
+    const stable = foregroundAgentVisualTurnPlanRef.current
+      ? reuseForegroundAgentVisualTurnPlan(
+          foregroundAgentVisualTurnPlanRef.current,
+          next,
+        )
+      : next
+    foregroundAgentVisualTurnPlanRef.current = stable
+    return stable
+  }, [groupedChatMessages])
 
   const handleAssistantGroupEditStart = useCallback(
     (messageId: string) => {
