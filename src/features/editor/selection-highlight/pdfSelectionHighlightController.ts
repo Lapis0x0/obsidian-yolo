@@ -62,6 +62,17 @@ import {
 
 const HIGHLIGHT_NAME = 'yolo-pdf-selection'
 
+/**
+ * The annotation bubble and its comment editor are mounted inside the PDF
+ * page element, so every event they raise looks like it came from a `pdf`
+ * workspace leaf. They are chat-owned UI, not the document — anything that
+ * asks "did the user go back to editing a real document?" must exclude them,
+ * or focusing the comment input reads as leaving chat. See
+ * `useChatHighlightSession`, the one consumer.
+ */
+export const PDF_ANNOTATION_UI_SELECTOR =
+  '.yolo-pdf-annotation-marker, .yolo-pdf-annotation-editor'
+
 export type PdfAnnotationLabels = {
   commentPlaceholder: string
   saveLabel: string
