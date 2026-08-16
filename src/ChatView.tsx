@@ -71,6 +71,8 @@ export class ChatView extends ItemView {
   private cliRuntimeScope: CliRuntimeScope | undefined
   private cliRuntimeScopeInitialization: Promise<void> | null = null
   private cliRuntimeScopeDisposal: Promise<void> | null = null
+  // See `consumeLastPdfQuoteAnnotationNumber`.
+  private lastPdfQuoteAnnotationNumber?: number
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -491,6 +493,44 @@ export class ChatView extends ItemView {
     this.chatRef.current?.clearSelectionFromChat()
   }
 
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * "Existing leaf" path — see `chatViewNavigator.addPdfQuoteToChat`. Returns
+   * the annotation number chat assigned so the caller can render it on the
+   * PDF-side bubble; `undefined` only if the chat React tree isn't mounted
+   * yet (should not happen on this path, since a leaf that resolved as
+   * "existing" already has a live ChatRef).
+   */
+  addPdfQuoteToChat(selectedBlock: MentionableBlockData): number | undefined {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    return this.chatRef.current?.addPdfQuoteToChat(selectedBlock)
+  }
+
+  /**
+   * The one deps channel the PDF-side bubble editor uses to patch or remove
+   * its mentionable's comment (architecture decision B, see `ChatRef.updatePdfQuoteMention`).
+   */
+  updatePdfQuoteMention(
+    highlightId: string,
+    patch: { comment: string } | null,
+  ): void {
+    this.chatRef.current?.updatePdfQuoteMention(highlightId, patch)
+  }
+
+  /**
+   * "New leaf" path for PDF quote annotation: `onOpen` applies the pending
+   * `pdfQuoteBlock` payload (via `applyDeferredPayload`) and stashes the
+   * annotation number chat assigned here, since the payload is consumed
+   * entirely inside `onOpen` before `chatViewNavigator.addPdfQuoteToChat`
+   * gets a chance to read it back. Single-slot: each freshly created leaf
+   * only ever applies one pending payload once.
+   */
+  consumeLastPdfQuoteAnnotationNumber(): number | undefined {
+    const value = this.lastPdfQuoteAnnotationNumber
+    this.lastPdfQuoteAnnotationNumber = undefined
+    return value
+  }
+
   addFileToChat(file: TFile) {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.addFileToChat(file)
@@ -720,6 +760,15 @@ export class ChatView extends ItemView {
 
     if (payload.imageToAdd) {
       chatRef.addImageToChat(payload.imageToAdd)
+    }
+
+    if (payload.pdfQuoteBlock) {
+      // No `focusMessage()`: focus belongs to the PDF-side comment editor that
+      // opens right after this — see `chatViewNavigator.addPdfQuoteToChat`.
+      this.lastPdfQuoteAnnotationNumber = chatRef.addPdfQuoteToChat(
+        payload.pdfQuoteBlock,
+      )
+      return
     }
 
     if (payload.prefillText !== undefined && payload.selectedBlock) {

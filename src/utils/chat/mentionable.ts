@@ -50,6 +50,8 @@ export const serializeMentionable = (
         contentUnit: mentionable.contentUnit,
         tableRowCount: mentionable.tableRowCount,
         tableColumnCount: mentionable.tableColumnCount,
+        comment: mentionable.comment,
+        annotationNumber: mentionable.annotationNumber,
       }
     case 'assistant-quote':
       return {
@@ -210,6 +212,8 @@ export const deserializeMentionable = (
           contentUnit: mentionable.contentUnit,
           tableRowCount: mentionable.tableRowCount,
           tableColumnCount: mentionable.tableColumnCount,
+          comment: mentionable.comment,
+          annotationNumber: mentionable.annotationNumber,
         }
       }
       case 'assistant-quote': {
@@ -357,7 +361,20 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
         mentionable.pageNumber !== undefined
           ? `:p${mentionable.pageNumber}`
           : ''
-      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+      // PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-
+      // quotes.md): two distinct annotations can select the same repeated
+      // substring on the same page, which otherwise collide on identical
+      // file/line/page/contentHash. `annotationNumber` is only ever set on
+      // annotated blocks (see its definition in types/mentionable.ts), so
+      // appending it here is additive and never runs for plain blocks —
+      // the key format below is byte-for-byte unchanged when it's absent,
+      // which existing add-to-sidebar references and deserialized history
+      // both depend on for stable mentionable identity.
+      const annotationTag =
+        mentionable.annotationNumber !== undefined
+          ? `:a${mentionable.annotationNumber}`
+          : ''
+      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}${annotationTag}`
     }
     case 'assistant-quote':
       return mentionable.id

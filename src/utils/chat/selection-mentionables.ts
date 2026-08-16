@@ -69,17 +69,39 @@ export const createAssistantQuoteMentionable = ({
   }
 }
 
+/**
+ * Highest `annotationNumber` currently reserved in `mentionables`, across
+ * every mentionable kind that participates in the shared annotation pool
+ * (assistant-quote and PDF-quote blocks — see docs/plans/2026-08-16-pdf-
+ * annotation-quotes.md, architecture decision A). The number pool is shared
+ * so a fresh annotation — of either kind — can never collide with an
+ * existing "批注N" in the same input.
+ */
 export const getMaxAssistantQuoteNumber = (
-  mentionables: Mentionable[],
+  mentionables: readonly Mentionable[],
 ): number => {
   const quotes = mentionables.filter(
     (mentionable): mentionable is MentionableAssistantQuote =>
       mentionable.type === 'assistant-quote',
   )
-  return quotes.reduce(
-    (highest, quote) => Math.max(highest, quote.annotationNumber ?? 0),
-    quotes.length,
+  const numberedMentionables: Array<
+    MentionableAssistantQuote | MentionableBlock
+  > = [
+    ...quotes,
+    ...mentionables.filter(
+      (mentionable): mentionable is MentionableBlock =>
+        mentionable.type === 'block' &&
+        mentionable.annotationNumber !== undefined,
+    ),
+  ]
+  const highestAnnotationNumber = numberedMentionables.reduce(
+    (highest, item) => Math.max(highest, item.annotationNumber ?? 0),
+    0,
   )
+  // Legacy safety net: quotes persisted before annotationNumber existed have
+  // no number at all — reserve at least one slot per quote so a freshly
+  // numbered one can't collide with an unlabeled legacy quote.
+  return Math.max(highestAnnotationNumber, quotes.length)
 }
 
 export const addOrUpdateMentionable = (

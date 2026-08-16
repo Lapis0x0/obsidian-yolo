@@ -162,6 +162,24 @@ export type ChatRef = {
   ) => void
   syncSelectionToChat: (selectedBlock: MentionableBlockData) => void
   syncSelectionToInput: (selectedBlock: MentionableBlockData) => void
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * Inserts `selectedBlock` as a numbered "批注N" mentionable and returns the
+   * assigned number — chat is the only side allowed to assign it (architecture
+   * decision A). Used by `ChatView.addPdfQuoteToChat` for the "existing leaf"
+   * path; the "new leaf" path instead seeds it via `PendingChatOpenPayload`
+   * and reads the number back through `ChatView.consumeLastPdfQuoteAnnotationNumber`.
+   */
+  addPdfQuoteToChat: (selectedBlock: MentionableBlockData) => number
+  /**
+   * The single deps channel the PDF-side bubble editor uses to patch or
+   * remove its mentionable's comment (architecture decision B). `patch: null`
+   * removes the mentionable.
+   */
+  updatePdfQuoteMention: (
+    highlightId: string,
+    patch: { comment: string } | null,
+  ) => void
   syncWebSelectionToInput: (selection: MentionableWebSelection) => void
   clearSelectionFromChat: () => void
   addFileToChat: (file: TFile) => void
@@ -667,6 +685,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     registerChatUserInputRef,
     handleQuoteAssistantSelection,
     handleDeleteAssistantQuote,
+    handleQuotePdfSelection,
+    updatePdfQuoteMention,
     syncSelectionMentionable,
     syncSelectionMentionableToInput,
     syncWebSelectionMentionableToInput,
@@ -1505,6 +1525,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     },
     syncSelectionToInput: (selectedBlock: MentionableBlockData) => {
       syncSelectionMentionableToInput(selectedBlock)
+    },
+    addPdfQuoteToChat: (selectedBlock: MentionableBlockData) =>
+      handleQuotePdfSelection(selectedBlock),
+    updatePdfQuoteMention: (
+      highlightId: string,
+      patch: { comment: string } | null,
+    ) => {
+      updatePdfQuoteMention(highlightId, patch)
     },
     syncWebSelectionToInput: (selection: MentionableWebSelection) => {
       syncWebSelectionMentionableToInput(selection)

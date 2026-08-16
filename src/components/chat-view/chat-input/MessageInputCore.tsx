@@ -208,7 +208,9 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
     const getInlineMentionName = useCallback(
       (mentionable: Mentionable, assistantQuoteNumber?: number) => {
         if (
-          mentionable.type === 'assistant-quote' &&
+          (mentionable.type === 'assistant-quote' ||
+            (mentionable.type === 'block' &&
+              mentionable.annotationNumber !== undefined)) &&
           assistantQuoteNumber !== undefined
         ) {
           return t('chat.assistantQuote.inputLabel', '批注{index}').replace(
@@ -938,7 +940,8 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         mentionDisplayMode === 'inline' ? INLINE_MENTIONABLE_TYPES : []
       const reservedAssistantQuoteNumbers = new Set(
         inlineMentionables.flatMap((mentionable) =>
-          mentionable.type === 'assistant-quote' &&
+          (mentionable.type === 'assistant-quote' ||
+            mentionable.type === 'block') &&
           mentionable.annotationNumber !== undefined
             ? [mentionable.annotationNumber]
             : [],
@@ -962,7 +965,9 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
             mentionable.type === 'assistant-quote'
               ? (mentionable.annotationNumber ??
                 getFallbackAssistantQuoteNumber())
-              : undefined,
+              : mentionable.type === 'block'
+                ? mentionable.annotationNumber
+                : undefined,
         }))
       const mentionablesByKey = new Map(
         mentionablesToMirror.map((entry) => [

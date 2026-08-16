@@ -16,6 +16,7 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
+import { getMaxAssistantQuoteNumber } from '../../utils/chat/selection-mentionables'
 
 type AssistantQuotePayload = Pick<
   MentionableAssistantQuote,
@@ -640,12 +641,9 @@ export default function AssistantSelectionQuoteButton({
 
   const handleCreateQuote = useCallback(() => {
     if (!selectionOverlay) return
-    const annotationNumber =
-      quotes.reduce(
-        (highest, quote, index) =>
-          Math.max(highest, quote.annotationNumber ?? index + 1),
-        0,
-      ) + 1
+    // Shared pool with PDF-quote blocks — see selection-mentionables.ts and
+    // docs/plans/2026-08-16-pdf-annotation-quotes.md architecture decision A.
+    const annotationNumber = getMaxAssistantQuoteNumber(quotes) + 1
     const draft: ActiveDraft = {
       id: uuidv4(),
       annotationNumber,

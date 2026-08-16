@@ -236,6 +236,43 @@ export function useChatInputController({
   const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
   const inputMessageRef = useRef(inputMessage)
   const assistantQuoteSequenceRef = useRef(new Map<string, number>())
+
+  /**
+   * Highest annotation number already spoken for on `targetMessageId`.
+   *
+   * The sequence only moves forward while annotations exist, so deleting one
+   * never renumbers its siblings — the model must not see "批注2" point at
+   * different text than it did a turn ago.
+   */
+  const resolveKnownAnnotationSequence = useCallback(
+    (targetMessageId: string, targetMentionables: Mentionable[]): number =>
+      Math.max(
+        assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
+        getMaxAssistantQuoteNumber(targetMentionables),
+      ),
+    [],
+  )
+
+  /**
+   * Drop the high-water mark once `remaining` holds no numbered annotation, so
+   * the next one starts back at 批注1. Without it an input emptied by sending —
+   * or by deleting its last annotation — would keep handing out ever-larger
+   * numbers, leaving a lone "批注4" with no 1–3 anywhere.
+   *
+   * Called from the delete paths rather than from allocation: deletion is an
+   * explicit user action whose post-state is known exactly here, whereas
+   * allocation reads `inputMessageRef`, which only refreshes on render — a
+   * momentarily stale read there would look like "no annotations left" and
+   * silently restart the numbering mid-message.
+   */
+  const releaseAnnotationSequenceIfEmpty = useCallback(
+    (targetMessageId: string, remaining: Mentionable[]) => {
+      if (getMaxAssistantQuoteNumber(remaining) === 0) {
+        assistantQuoteSequenceRef.current.delete(targetMessageId)
+      }
+    },
+    [],
+  )
   const getLatestInputMessage = useCallback(
     () => inputDraftHolder.get(),
     [inputDraftHolder],
@@ -370,9 +407,9 @@ export function useChatInputController({
             mentionable.type === 'assistant-quote',
         )
         .findIndex((mentionable) => mentionable.id === id)
-      const knownSequence = Math.max(
-        assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
-        getMaxAssistantQuoteNumber(targetMentionables),
+      const knownSequence = resolveKnownAnnotationSequence(
+        targetMessageId,
+        targetMentionables,
       )
       const resolvedAnnotationNumber =
         existingQuote?.annotationNumber ??
@@ -405,6 +442,7 @@ export function useChatInputController({
       chatMessagesStateRef,
       focusedMessageId,
       inputMessage.id,
+      resolveKnownAnnotationSequence,
     ],
   )
 
@@ -427,10 +465,11 @@ export function useChatInputController({
           )?.mentionables ?? [])
       assistantQuoteSequenceRef.current.set(
         targetMessageId,
-        Math.max(
-          assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
-          getMaxAssistantQuoteNumber(targetMentionables),
-        ),
+        resolveKnownAnnotationSequence(targetMessageId, targetMentionables),
+      )
+      releaseAnnotationSequenceIfEmpty(
+        targetMessageId,
+        removeQuote(targetMentionables),
       )
 
       if (targetsInput) {
@@ -453,6 +492,172 @@ export function useChatInputController({
       chatMessagesStateRef,
       focusedMessageId,
       inputMessage.id,
+      releaseAnnotationSequenceIfEmpty,
+      resolveKnownAnnotationSequence,
+      setChatMessages,
+      setInputMessage,
+    ],
+  )
+
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * Inserts a `block` mentionable that carries an `annotationNumber` — drawn
+   * from the same shared pool as assistant-quote annotations (architecture
+   * decision A) — plus an empty `comment` for the PDF-side bubble editor to
+   * fill in. Returns the resolved number so the caller (ultimately
+   * `pdfSelectionHighlightController`) can render "批注N" on the bubble
+   * without ever assigning the number itself.
+   *
+   * Deliberately does NOT go through `addMentionableToFocusedMessage` /
+   * `addOrUpdateMentionable`: that path dedupes blocks by `getMentionableKey`
+   * at insertion time, which is correct for the existing add-to-sidebar
+   * "reference this text" flow but wrong here — two distinct annotations
+   * that happen to select the same repeated substring on a page (same
+   * file/line/page/contentHash) must both survive as separate mentionables,
+   * the same way assistant quotes stay distinct via their own `id`. This is
+   * only half the fix, though: `getMentionableKey`'s `block` branch also
+   * folds `annotationNumber` into the key, so every *other* place that keys
+   * blocks (input-mirroring in `MessageInputCore`, delete-by-key) treats
+   * same-text annotations as distinct too — without that, both entries
+   * would survive in this array but collide everywhere downstream.
+   */
+  const handleQuotePdfSelection = useCallback(
+    (selectedBlock: MentionableBlockData): number => {
+      const targetsInput =
+        !focusedMessageId || focusedMessageId === inputMessage.id
+      const targetMessageId = targetsInput ? inputMessage.id : focusedMessageId
+      const targetMentionables = targetsInput
+        ? inputMessageRef.current.mentionables
+        : (chatMessagesStateRef.current.find(
+            (message): message is ChatUserMessage =>
+              message.role === 'user' && message.id === targetMessageId,
+          )?.mentionables ?? [])
+      const knownSequence = resolveKnownAnnotationSequence(
+        targetMessageId,
+        targetMentionables,
+      )
+      const annotationNumber = knownSequence + 1
+      assistantQuoteSequenceRef.current.set(targetMessageId, annotationNumber)
+
+      const mentionable = createSelectionBlockMentionable({
+        ...selectedBlock,
+        source: 'selection-pinned',
+        comment: selectedBlock.comment ?? '',
+        annotationNumber,
+      })
+
+      setAddedBlockKey(null)
+      if (targetsInput) {
+        setInputMessage((prevInputMessage) => ({
+          ...prevInputMessage,
+          mentionables: [...prevInputMessage.mentionables, mentionable],
+          promptContent: null,
+        }))
+      } else {
+        setChatMessages((prevChatHistory) =>
+          prevChatHistory.map((message) =>
+            message.id === targetMessageId && message.role === 'user'
+              ? {
+                  ...message,
+                  mentionables: [...message.mentionables, mentionable],
+                  promptContent: null,
+                }
+              : message,
+          ),
+        )
+      }
+      return annotationNumber
+    },
+    [
+      chatMessagesStateRef,
+      focusedMessageId,
+      inputMessage.id,
+      resolveKnownAnnotationSequence,
+      setChatMessages,
+      setInputMessage,
+    ],
+  )
+
+  /**
+   * The one deps channel between the PDF-side bubble editor (rendered
+   * imperatively by `pdfSelectionHighlightController`, not React) and chat
+   * mentionable state — architecture decision B. `patch: null` removes the
+   * mentionable (bubble right-click delete, or Esc on a still-new draft);
+   * otherwise patches its `comment` on every keystroke, mirroring
+   * `handleCommentChange` for assistant quotes.
+   *
+   * Targets whichever message actually holds a `block` mentionable with this
+   * `highlightId` — the main input, or one of the historical user messages —
+   * found by searching, not by `focusedMessageId`. The bubble can be edited
+   * long after focus has moved to a different message (or a different chat
+   * leaf entirely — see `chatViewNavigator.updatePdfQuoteMention`, which
+   * broadcasts to every open leaf and relies on this search to no-op on the
+   * ones that don't own the id).
+   */
+  const updatePdfQuoteMention = useCallback(
+    (highlightId: string, patch: { comment: string } | null) => {
+      const hasHighlight = (mentionables: Mentionable[]): boolean =>
+        mentionables.some(
+          (mentionable) =>
+            mentionable.type === 'block' &&
+            mentionable.highlightId === highlightId,
+        )
+      const applyPatch = (mentionables: Mentionable[]): Mentionable[] => {
+        if (patch === null) {
+          return mentionables.filter(
+            (mentionable) =>
+              !(
+                mentionable.type === 'block' &&
+                mentionable.highlightId === highlightId
+              ),
+          )
+        }
+        return mentionables.map((mentionable) =>
+          mentionable.type === 'block' &&
+          mentionable.highlightId === highlightId
+            ? { ...mentionable, comment: patch.comment }
+            : mentionable,
+        )
+      }
+
+      if (hasHighlight(inputMessageRef.current.mentionables)) {
+        if (patch === null) {
+          releaseAnnotationSequenceIfEmpty(
+            inputMessageRef.current.id,
+            applyPatch(inputMessageRef.current.mentionables),
+          )
+        }
+        setInputMessage((prevInputMessage) => ({
+          ...prevInputMessage,
+          mentionables: applyPatch(prevInputMessage.mentionables),
+        }))
+        return
+      }
+
+      if (patch === null) {
+        const owner = chatMessagesStateRef.current.find(
+          (message): message is ChatUserMessage =>
+            message.role === 'user' && hasHighlight(message.mentionables),
+        )
+        if (owner) {
+          releaseAnnotationSequenceIfEmpty(
+            owner.id,
+            applyPatch(owner.mentionables),
+          )
+        }
+      }
+
+      setChatMessages((prevChatHistory) =>
+        prevChatHistory.map((message) =>
+          message.role === 'user' && hasHighlight(message.mentionables)
+            ? { ...message, mentionables: applyPatch(message.mentionables) }
+            : message,
+        ),
+      )
+    },
+    [
+      chatMessagesStateRef,
+      releaseAnnotationSequenceIfEmpty,
       setChatMessages,
       setInputMessage,
     ],
@@ -1583,6 +1788,8 @@ export function useChatInputController({
     addMentionableToFocusedMessage,
     handleQuoteAssistantSelection,
     handleDeleteAssistantQuote,
+    handleQuotePdfSelection,
+    updatePdfQuoteMention,
 
     buildSelectionMentionable,
     removeSelectionMentionable,

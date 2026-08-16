@@ -364,6 +364,78 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     )
   })
 
+  it('adds index and <comment> to a PDF selection carrying a batch annotation', async () => {
+    const pdf = createMockFile('docs/paper.pdf')
+    const app = createMockApp({
+      files: [pdf],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compilePlainUserMessagePrompt({
+      prompt: 'What does annotation 1 mean?',
+      mentionables: [
+        {
+          type: 'block',
+          file: pdf,
+          content: 'Selected PDF text',
+          startLine: 0,
+          endLine: 0,
+          pageNumber: 3,
+          source: 'selection-pinned',
+          comment: 'Explain this clause.',
+          annotationNumber: 1,
+        },
+      ],
+    })
+
+    expect(getTextContent(result.promptContent)).toContain(
+      [
+        '<user_selected_content path="docs/paper.pdf" page="3" index="1">',
+        '```docs/paper.pdf (page 3)',
+        'Selected PDF text',
+        '```',
+        '<comment>',
+        'Explain this clause.',
+        '</comment>',
+        '</user_selected_content>',
+      ].join('\n'),
+    )
+  })
+
+  it('omits index and <comment> for a PDF selection without a comment (byte-identical to the pre-annotation format)', async () => {
+    const pdf = createMockFile('docs/paper.pdf')
+    const app = createMockApp({
+      files: [pdf],
+      fileContents: new Map(),
+    })
+    const builder = new RequestContextBuilder(app as never, settings)
+
+    const result = await builder.compilePlainUserMessagePrompt({
+      prompt: 'Summarize this page',
+      mentionables: [
+        {
+          type: 'block',
+          file: pdf,
+          content: 'Selected PDF text',
+          startLine: 0,
+          endLine: 0,
+          pageNumber: 3,
+        },
+      ],
+    })
+
+    expect(getTextContent(result.promptContent)).toContain(
+      [
+        '<user_selected_content path="docs/paper.pdf" page="3">',
+        '```docs/paper.pdf (page 3)',
+        'Selected PDF text',
+        '```',
+        '</user_selected_content>',
+      ].join('\n'),
+    )
+  })
+
   it('reuses file mention compilation for plain prompts', async () => {
     const explicitFile = createMockFile('notes/explicit.md')
     const app = createMockApp({

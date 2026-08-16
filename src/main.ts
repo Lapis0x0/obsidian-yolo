@@ -834,6 +834,11 @@ export default class YoloPlugin extends Plugin {
             selectedBlock,
           )
         },
+        addPdfQuoteToChat: async (selectedBlock) =>
+          await this.getChatViewNavigator().addPdfQuoteToChat(selectedBlock),
+        updatePdfQuoteMention: (highlightId, patch) => {
+          this.getChatViewNavigator().updatePdfQuoteMention(highlightId, patch)
+        },
         openChatWithSelectionAndSend: async (
           selectedBlock,
           text,

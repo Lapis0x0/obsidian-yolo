@@ -262,6 +262,11 @@ function compactInlineMentionable(
     contentUnit: mentionable.contentUnit,
     tableRowCount: mentionable.tableRowCount,
     tableColumnCount: mentionable.tableColumnCount,
+    // Identity-bearing for PDF annotations: `getMentionableKey` folds
+    // `annotationNumber` into the block key, so dropping it here would make
+    // the compacted token's key disagree with the one computed from chat
+    // state — which reads as a dangling pasted block reference.
+    annotationNumber: mentionable.annotationNumber,
   }
 }
 

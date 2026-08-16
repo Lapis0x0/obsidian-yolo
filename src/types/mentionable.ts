@@ -52,6 +52,12 @@ export type MentionableBlockData = {
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
   tableRowCount?: number
   tableColumnCount?: number
+  // PDF multi-quote annotation (see docs/plans/2026-08-16-pdf-annotation-quotes.md).
+  // Both are set together by the chat side when a PDF selection is turned into
+  // a numbered annotation via the PDF "quote" button; plain (non-annotated)
+  // blocks — including the existing add-to-sidebar path — never set these.
+  comment?: string
+  annotationNumber?: number
 }
 export type MentionableBlock = MentionableBlockData & {
   type: 'block'
@@ -174,6 +180,8 @@ export type SerializedMentionableBlock = {
   contentUnit?: 'characters' | 'words' | 'wordsCharacters'
   tableRowCount?: number
   tableColumnCount?: number
+  comment?: string
+  annotationNumber?: number
 }
 export type SerializedMentionableAssistantQuote = {
   type: 'assistant-quote'

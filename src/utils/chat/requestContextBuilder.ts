@@ -1648,11 +1648,30 @@ ${selections
   private buildUserSelectedContentPrompt(blocks: MentionableBlock[]): string {
     return blocks
       .map(
-        ({ file, content, startLine, endLine, pageNumber, contentFormat }) => {
+        (
+          {
+            file,
+            content,
+            startLine,
+            endLine,
+            pageNumber,
+            contentFormat,
+            comment,
+            annotationNumber,
+          },
+          index,
+        ) => {
           const attrs = [`path="${escapeXmlAttr(file.path)}"`]
           if (pageNumber !== undefined) {
             attrs.push(`page="${pageNumber}"`)
-            return `<user_selected_content ${attrs.join(' ')}>\n\`\`\`${file.path} (page ${pageNumber})\n${content}\n\`\`\`\n</user_selected_content>\n`
+            const trimmedComment = comment?.trim()
+            if (trimmedComment) {
+              attrs.push(`index="${annotationNumber ?? index + 1}"`)
+            }
+            const commentSuffix = trimmedComment
+              ? `\n<comment>\n${trimmedComment}\n</comment>`
+              : ''
+            return `<user_selected_content ${attrs.join(' ')}>\n\`\`\`${file.path} (page ${pageNumber})\n${content}\n\`\`\`${commentSuffix}\n</user_selected_content>\n`
           }
 
           attrs.push(`startLine="${startLine}"`, `endLine="${endLine}"`)
