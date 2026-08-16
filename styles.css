@@ -14245,7 +14245,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 }
 
 .yolo-reasoning-popover__header-current.is-max {
-  color: #c084fc;
+  color: var(--interactive-accent);
   font-weight: 600;
   text-shadow: none;
 }
@@ -14256,8 +14256,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   color: var(--text-normal);
 }
 
+/* Re-assert the accent: the `.theme-dark` rule above has equal specificity and
+   would otherwise win on source order. */
 .theme-dark .yolo-reasoning-popover__header-current.is-max {
-  color: #c084fc;
+  color: var(--interactive-accent);
 }
 
 .yolo-reasoning-popover__header-current--up {
@@ -14325,6 +14327,17 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   --yolo-reasoning-slider-thumb-size: 24px;
   --yolo-reasoning-slider-track-height: 22px;
   --yolo-reasoning-slider-radius: 6px;
+  /* Max-state field. Mixing toward a dark floor rather than using the accent
+     raw guarantees the field stays darker than the white cells painted on it,
+     which is the only source of contrast the twinkle has. */
+  --yolo-reasoning-field: color-mix(
+    in srgb,
+    var(--interactive-accent) 82%,
+    #2a2440
+  );
+  /* Shifts the field/dither dissolve toward "smarter". Inherited by the spark
+     canvas, which reads it rather than duplicating the constant. */
+  --yolo-reasoning-fade: 12%;
   position: relative;
   display: grid;
   grid-template-columns: repeat(var(--yolo-segment-count), minmax(0, 1fr));
@@ -14376,6 +14389,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   position: absolute;
   inset: 0;
   z-index: 1;
+  /* The canvas renders no text; `color` is how the field color reaches the
+     renderer — the platform resolves the color-mix() to a plain rgb() that can
+     go straight into fillStyle. */
+  color: var(--yolo-reasoning-field);
   width: 100%;
   height: 100%;
   border-radius: inherit;
@@ -14386,10 +14403,6 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 
 .yolo-reasoning-slider.is-max .yolo-reasoning-slider__spark-canvas {
   opacity: 1;
-}
-
-.theme-dark .yolo-reasoning-slider__spark-canvas {
-  filter: brightness(1.4) saturate(1.12);
 }
 
 .yolo-reasoning-slider.is-dragging .yolo-reasoning-slider__fill {

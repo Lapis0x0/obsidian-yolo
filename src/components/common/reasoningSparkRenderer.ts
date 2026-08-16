@@ -1,239 +1,202 @@
-type RenderTarget = {
-  framebuffer: WebGLFramebuffer
-  texture: WebGLTexture
-}
+/**
+ * The Max-state mosaic on the reasoning slider.
+ *
+ * Two passes over one grid:
+ *
+ * - The field is a flood: on entering Max a front sweeps right→left and the
+ *   field arrives one cell at a time, so the leading edge is scattered squares
+ *   that coalesce into a solid field behind it.
+ * - On top of the field, sparks. Each spark is born at the "smarter" end and
+ *   runs leftward cell by cell, wandering across rows, lighting most (not all)
+ *   of the cells it crosses; a lit cell flares fast and cools slowly, so a
+ *   spark reads as a short streak with an ember tail. Sparks die after a
+ *   random distance, so the far end sees only the few that make it that far.
+ *
+ * Independent per-cell twinkling was tried first and reads as static noise:
+ * with no correlation between neighbouring cells or successive moments the eye
+ * finds no direction in it. Sparks carry the direction; the wander, skip, and
+ * random reach are what keep it from reading as a mechanical scan.
+ *
+ * The field pass is a smooth opacity ramp with no dithering: the granularity
+ * belongs to the spark pass. Dithering the field itself eats holes in the bar.
+ *
+ * CSS owns the color (`--yolo-reasoning-field`, carried in through the canvas's
+ * own `color`), so the accent follows the theme with no color logic here.
+ */
 
-type SparkUniforms = {
-  time: WebGLUniformLocation | null
-  elapsed: WebGLUniformLocation | null
-  active: WebGLUniformLocation | null
-  previous: WebGLUniformLocation | null
-}
-
-type BlurUniforms = {
-  source: WebGLUniformLocation | null
-  direction: WebGLUniformLocation | null
-  resolution: WebGLUniformLocation | null
-}
-
-type CompositeUniforms = {
-  scene: WebGLUniformLocation | null
-  glow: WebGLUniformLocation | null
-}
-
-const VERTEX_SHADER = `#version 300 es
-layout(location = 0) in vec2 a_position;
-out vec2 v_uv;
-
-void main() {
-  v_uv = a_position * 0.5 + 0.5;
-  gl_Position = vec4(a_position, 0.0, 1.0);
-}
-`
-
-const SPARK_SHADER = `#version 300 es
-precision highp float;
-
-in vec2 v_uv;
-out vec4 outColor;
-
-uniform float u_time;
-uniform float u_elapsed;
-uniform float u_active;
-uniform sampler2D u_previous;
-
-float hash21(vec2 value) {
-  value = fract(value * vec2(123.34, 456.21));
-  value += dot(value, value + 45.32);
-  return fract(value.x * value.y);
-}
-
-void main() {
-  vec2 uv = v_uv;
-  float leftFade = smoothstep(0.0, 0.42, uv.x);
-  vec3 previous = texture(u_previous, uv).rgb;
-  vec3 color = previous * 0.9 * leftFade;
-
-  if (u_active > 0.5) {
-    vec2 grid = uv * vec2(72.0, 5.0);
-    vec2 cellId = floor(grid);
-    vec2 inCell = abs(fract(grid) - 0.5);
-    float seed = hash21(cellId);
-    float cellShape = smoothstep(0.37, 0.28, max(inCell.x * 0.86, inCell.y));
-
-    float cellDelay = seed * 1.05;
-    float age = max(u_elapsed - cellDelay, 0.0);
-    float ignited = step(0.001, age);
-    float speed = 0.88 + seed * 0.28;
-    float travelProgress = 1.0 - pow(
-      1.0 - clamp(age / 2.35, 0.0, 1.0),
-      3.0
-    );
-    float front = max(
-      1.0 - travelProgress * speed - (seed - 0.5) * 0.035,
-      0.025
-    );
-    float tailLength = max(1.0 - front, 0.001);
-    float insideTrail = step(front - 0.004, uv.x);
-    float distanceFromRight = clamp((1.0 - uv.x) / tailLength, 0.0, 1.0);
-    float brightness = pow(max(1.0 - distanceFromRight, 0.0), 0.64);
-    brightness = max(brightness, 0.055 * ignited) * insideTrail;
-    brightness *= 1.0 - smoothstep(0.93, 1.03, distanceFromRight);
-
-    float energyRamp = mix(0.22, 0.52, min(u_elapsed / 1.0, 1.0));
-    float tempo = mix(0.82, 1.0, min(u_elapsed / 1.45, 1.0));
-    float pulseA = sin(uv.x * 29.0 + u_time * 13.0 * tempo + seed * 6.1);
-    float pulseB = sin(uv.x * 19.0 + u_time * 7.0 * tempo + seed * 3.2);
-    float pulseC = sin(uv.x * 47.0 + u_time * 21.0 * tempo + seed * 9.4);
-    float flicker = smoothstep(
-      0.06,
-      0.9,
-      (pulseA + pulseB * 0.48 + pulseC * 0.22) * 0.34 + 0.5
-    );
-
-    float rhythmA = sin(distanceFromRight * 15.0 - u_time * 4.6 + seed * 2.7);
-    float rhythmB = sin(distanceFromRight * 8.0 - u_time * 2.3 + seed * 4.8);
-    float rhythm = smoothstep(-0.2, 0.52, rhythmA)
-      * (rhythmB * 0.5 + 0.5);
-
-    float waveAge = max(
-      age - (1.0 - uv.x) / max(speed, 0.001),
-      0.0
-    );
-    float arrivalFlash = step(0.0, waveAge) * exp(-waveAge * 3.4);
-    float verticalShape = pow(
-      max(1.0 - pow(abs(uv.y - 0.5) * 1.55, 2.0), 0.0),
-      0.7
-    );
-
-    float sparkPhase = fract(u_time * (0.34 + seed * 0.14) + seed * 7.0);
-    float sparkX = 1.0 - sparkPhase * tailLength;
-    float sparkY = 0.5 + sin(sparkPhase * 10.0 + seed * 6.2) * 0.27;
-    float spark = smoothstep(0.016, 0.0, abs(uv.x - sparkX))
-      * smoothstep(0.19, 0.0, abs(uv.y - sparkY))
-      * pow(1.0 - sparkPhase, 2.0)
-      * energyRamp;
-
-    float edge = exp(-pow((uv.x - front) * 19.0, 2.0))
-      * (0.28 + flicker * rhythm * 1.15)
-      * energyRamp;
-    float energy = brightness * verticalShape
-      * (flicker * 0.44 + rhythm * 0.34 + arrivalFlash * 0.48);
-    energy += edge * verticalShape + spark * 0.58 * insideTrail;
-    energy *= cellShape * leftFade * energyRamp;
-
-    vec3 ember = vec3(0.22, 0.055, 0.48);
-    vec3 violet = vec3(0.62, 0.25, 1.0);
-    vec3 hot = vec3(1.0, 0.9, 1.0);
-    float purpleHeat = clamp(
-      brightness + arrivalFlash * 0.2 + spark * 0.18,
-      0.0,
-      1.0
-    );
-    float whiteHot = clamp(arrivalFlash * 0.72 + spark, 0.0, 1.0);
-    vec3 sparkColor = mix(ember, violet, purpleHeat);
-    sparkColor = mix(sparkColor, hot, pow(whiteHot, 3.0) * 0.48);
-
-    float maxCore = exp(-pow((uv.x - 0.985) * 21.0, 2.0))
-      * (0.78 + sin(u_time * 3.1) * 0.12);
-    color += sparkColor * energy * 0.2;
-    color += hot * maxCore * verticalShape * 0.065;
-  }
-
-  outColor = vec4(min(color, vec3(1.8)), 1.0);
-}
-`
-
-const BLUR_SHADER = `#version 300 es
-precision highp float;
-
-in vec2 v_uv;
-out vec4 outColor;
-
-uniform sampler2D u_source;
-uniform vec2 u_direction;
-uniform vec2 u_resolution;
-
-vec3 sampleGlow(vec2 uv) {
-  vec3 color = texture(u_source, uv).rgb;
-  float peak = max(color.r, max(color.g, color.b));
-  float brightPass = u_direction.x > 0.5
-    ? smoothstep(0.12, 0.38, peak)
-    : 1.0;
-  return color * brightPass;
-}
-
-void main() {
-  vec2 offset = u_direction / u_resolution;
-  vec3 color = sampleGlow(v_uv) * 0.227027;
-  color += sampleGlow(v_uv + offset * 1.4) * 0.194595;
-  color += sampleGlow(v_uv - offset * 1.4) * 0.194595;
-  color += sampleGlow(v_uv + offset * 3.0) * 0.121622;
-  color += sampleGlow(v_uv - offset * 3.0) * 0.121622;
-  color += sampleGlow(v_uv + offset * 5.2) * 0.07027;
-  color += sampleGlow(v_uv - offset * 5.2) * 0.07027;
-  outColor = vec4(color, 1.0);
-}
-`
-
-const COMPOSITE_SHADER = `#version 300 es
-precision highp float;
-
-in vec2 v_uv;
-out vec4 outColor;
-
-uniform sampler2D u_scene;
-uniform sampler2D u_glow;
-
-void main() {
-  vec3 scene = texture(u_scene, v_uv).rgb;
-  vec3 glow = texture(u_glow, v_uv).rgb;
-  vec3 sceneEnergy = 1.0 - exp(-scene * 1.08);
-  vec3 glowEnergy = 1.0 - exp(-glow * 1.2);
-  float sceneIntensity = max(sceneEnergy.r, max(sceneEnergy.g, sceneEnergy.b));
-  float glowIntensity = max(glowEnergy.r, max(glowEnergy.g, glowEnergy.b));
-
-  vec3 sceneColor = sceneEnergy / max(sceneIntensity, 0.001);
-
-  vec3 glowColor = glowEnergy / max(glowIntensity, 0.001);
-  glowColor = mix(glowColor, vec3(0.82, 0.56, 1.0), 0.28);
-
-  float sceneAlpha = pow(clamp(sceneIntensity, 0.0, 1.0), 0.5) * 0.9;
-  float glowAlpha = pow(clamp(glowIntensity, 0.0, 1.0), 0.68) * 0.3;
-  float alpha = sceneAlpha + glowAlpha * (1.0 - sceneAlpha);
-  vec3 color = (
-    sceneColor * sceneAlpha
-    + glowColor * glowAlpha * (1.0 - sceneAlpha)
-  ) / max(alpha, 0.001);
-
-  outColor = vec4(color, clamp(alpha, 0.0, 0.92));
-}
-`
-
-const FADE_OUT_MS = 360
 const MAX_DPR = 2
+/** Keep painting this long after deactivation so the CSS opacity fade has live
+ * frames to fade out, instead of a frozen last frame. */
+const FADE_OUT_MS = 360
+
+/**
+ * Rows are fixed, columns are derived: the cells have to stay roughly square,
+ * and the slider's width varies by surface (the sidebar popover is ~246px, the
+ * settings panel is wider). A fixed column count would stretch the grid into
+ * slivers or slabs depending on where it renders.
+ */
+const ROWS = 5
+const CELL_GAP_RATIO = 0.18
+
+/** Fallback when the custom property is missing (detached node, jsdom). */
+const DEFAULT_FADE = 0.12
+const FALLBACK_FIELD = 'rgb(109, 82, 208)'
+
+/** Seconds for the flood front to cross the full width. */
+const SWEEP_S = 2.3
+/** Per-cell arrival scatter — this is what makes the front edge ragged. */
+const ARRIVAL_JITTER_S = 0.18
+/** A cell settles into the field before sparks can light it. */
+const SPARK_DELAY_S = 0.1
+
+/** Sparks born per second at the "smarter" end. */
+const SPARK_RATE = 10.5
+/** Spark speed range, in cells per second. */
+const SPARK_SPEED_MIN = 8
+const SPARK_SPEED_MAX = 18
+/** Chance per cell that a spark steps to a neighbouring row. */
+const SPARK_WANDER = 0.76
+/** Chance per cell that a spark passes without lighting it. */
+const SPARK_SKIP = 0.3
+/** Mean distance a spark travels, as a share of the width, and its spread. */
+const SPARK_REACH = 0.7
+const SPARK_REACH_JITTER = 0.6
+/** Ember envelope: fast attack, slow release. */
+const SPARK_ATTACK = 45
+const SPARK_RELEASE = 5
+const SPARK_PEAK = 0.9
+/**
+ * Sparks live on the field: their brightness follows the field's opacity,
+ * dropping out well before the field itself dissolves into the track. Below
+ * the lower bound nothing is drawn — a lit cell over the bare track reads as
+ * noise, not as part of the effect.
+ */
+const SPARK_FIELD_MIN = 0.02
+const SPARK_FIELD_FULL = 0.8
+/** Resting glow on every cell — the faint grid texture under the sparks. */
+const CELL_REST = 0.05
+/**
+ * Hard ceiling on the white overlay. White over the field is the one thing
+ * here that can out-contrast everything else, so the ceiling stays low —
+ * near-opaque white on a saturated field reads as a harsh checkerboard rather
+ * than a shimmer.
+ */
+const CELL_CEILING = 0.62
+
+/** Longest frame delta the spawner will honour, so a stalled tab doesn't
+ * release a burst of sparks on resume. */
+const MAX_SPAWN_STEP_S = 0.05
+/**
+ * How far back the spark system is pre-run when the grid is (re)built. The
+ * flood front covers the right third of the bar in ~0.3s, far ahead of any
+ * spark born at activation, so a cold start reveals a solid slab of field
+ * with the sparks trailing in a second later. Pre-running past the longest
+ * spark lifetime (reach / slowest speed) means the front uncovers a field
+ * already at its steady-state ember density.
+ */
+const WARM_UP_S = 8
+
+type FieldCell = {
+  x: number
+  y: number
+  width: number
+  height: number
+  /** Seconds before the flood front reaches this cell. */
+  arrival: number
+  /** Settled opacity, dissolving toward the "faster" end. */
+  alpha: number
+}
+
+type SparkCell = {
+  x: number
+  y: number
+  width: number
+  height: number
+  /**
+   * Seconds before this cell is shown. Sparks light cells regardless (they
+   * run ahead of activation, see WARM_UP_S); the flood decides when the
+   * result becomes visible.
+   */
+  ready: number
+  /** Brightness scale from the field's opacity here; 0 = never drawn. */
+  dim: number
+  /** Elapsed seconds when this cell was last lit; -Infinity if never. */
+  litAt: number
+}
+
+type Spark = {
+  row: number
+  /** Elapsed seconds at birth. */
+  born: number
+  /** Column position at birth (may start slightly off the right edge). */
+  origin: number
+  /** Cells per second. */
+  speed: number
+  /** Next column the spark will cross. */
+  nextCol: number
+  /** Column position at which the spark dies. */
+  dieAt: number
+}
+
+function hash(col: number, row: number, salt: number): number {
+  const value = Math.sin(col * 127.1 + row * 311.7 + salt * 74.7) * 43758.5453
+  return value - Math.floor(value)
+}
+
+function smoothstep(edge0: number, edge1: number, x: number): number {
+  const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)))
+  return t * t * (3 - 2 * t)
+}
+
+/**
+ * Settled field opacity across the bar. The long dissolve toward "faster" is
+ * what remains visible once the flood has finished.
+ */
+function fieldProfile(x: number, fade: number): number {
+  const stops: [number, number][] = [
+    [0.04 + fade, 0],
+    [0.26 + fade, 0.34],
+    [0.52 + fade, 0.82],
+    [0.78 + fade, 1],
+  ]
+  if (x <= stops[0][0]) return 0
+  for (let i = 1; i < stops.length; i++) {
+    const [prevX, prevValue] = stops[i - 1]
+    const [nextX, nextValue] = stops[i]
+    if (x > nextX) continue
+    const t = (x - prevX) / (nextX - prevX)
+    return prevValue + (nextValue - prevValue) * t
+  }
+  return 1
+}
+
+/**
+ * The front decelerates as it travels (ease-out cubic), so `arrival` is that
+ * curve inverted: the time at which the front reaches `x`.
+ */
+function arrivalAt(x: number): number {
+  return SWEEP_S * (1 - Math.cbrt(x))
+}
 
 export class ReasoningSparkRenderer {
   private readonly ownerDocument: Document
   private readonly ownerWindow: Window
   private readonly resizeObserver: ResizeObserver
-  private gl: WebGL2RenderingContext | null = null
-  private sparkProgram: WebGLProgram | null = null
-  private blurProgram: WebGLProgram | null = null
-  private compositeProgram: WebGLProgram | null = null
-  private vao: WebGLVertexArrayObject | null = null
-  private vertexBuffer: WebGLBuffer | null = null
-  private sparkUniforms: SparkUniforms | null = null
-  private blurUniforms: BlurUniforms | null = null
-  private compositeUniforms: CompositeUniforms | null = null
-  private simulationA: RenderTarget | null = null
-  private simulationB: RenderTarget | null = null
-  private blurA: RenderTarget | null = null
-  private blurB: RenderTarget | null = null
+  private readonly context: CanvasRenderingContext2D | null
+  private fieldCells: FieldCell[] = []
+  /** Row-major, `columns` per row. */
+  private sparkCells: SparkCell[] = []
+  private columns = 0
+  private sparks: Spark[] = []
+  private spawnDebt = 0
+  private lastSpawnElapsed = 0
+  /** Set whenever the grid is rebuilt; the next frame pre-runs the sparks. */
+  private sparksCold = true
+  private fieldColor = FALLBACK_FIELD
+  private fade = DEFAULT_FADE
   private animationFrame: number | null = null
   private active = false
   private destroyed = false
-  private contextLost = false
   private activationStartedAt = 0
   private pausedAt: number | null = null
   private stopAfter = 0
@@ -243,13 +206,9 @@ export class ReasoningSparkRenderer {
     const ownerWindow = this.ownerDocument.defaultView
     if (!ownerWindow) throw new Error('Canvas has no owner window')
     this.ownerWindow = ownerWindow
+    this.context = canvas.getContext('2d')
     this.resizeObserver = new ownerWindow.ResizeObserver(this.handleResize)
     this.resizeObserver.observe(canvas)
-    this.canvas.addEventListener('webglcontextlost', this.handleContextLost)
-    this.canvas.addEventListener(
-      'webglcontextrestored',
-      this.handleContextRestored,
-    )
     this.ownerDocument.addEventListener(
       'visibilitychange',
       this.handleVisibilityChange,
@@ -264,8 +223,8 @@ export class ReasoningSparkRenderer {
     if (active) {
       this.activationStartedAt = now
       this.stopAfter = Number.POSITIVE_INFINITY
-      if (!this.ensureInitialized()) return
-      this.clearSimulation()
+      this.readStyle()
+      this.measure()
       this.startLoop()
       return
     }
@@ -279,53 +238,18 @@ export class ReasoningSparkRenderer {
     this.destroyed = true
     this.stopLoop()
     this.resizeObserver.disconnect()
-    this.canvas.removeEventListener('webglcontextlost', this.handleContextLost)
-    this.canvas.removeEventListener(
-      'webglcontextrestored',
-      this.handleContextRestored,
-    )
     this.ownerDocument.removeEventListener(
       'visibilitychange',
       this.handleVisibilityChange,
     )
-    this.destroyResources()
-    this.gl = null
+    this.fieldCells = []
+    this.sparkCells = []
+    this.sparks = []
   }
 
   private readonly handleResize = (): void => {
-    if (!this.gl || this.contextLost) return
-    const rect = this.canvas.getBoundingClientRect()
-    if (rect.width <= 0 || rect.height <= 0) return
-    const dpr = Math.min(this.ownerWindow.devicePixelRatio || 1, MAX_DPR)
-    const width = Math.max(1, Math.round(rect.width * dpr))
-    const height = Math.max(1, Math.round(rect.height * dpr))
-    const sizeChanged =
-      this.canvas.width !== width || this.canvas.height !== height
-    if (!sizeChanged && this.simulationA) return
-    if (sizeChanged) {
-      this.canvas.width = width
-      this.canvas.height = height
-    }
-    this.createRenderTargets()
+    this.measure()
     if (this.active) this.startLoop()
-  }
-
-  private readonly handleContextLost = (event: Event): void => {
-    event.preventDefault()
-    this.contextLost = true
-    this.stopLoop()
-    this.clearResourceReferences()
-  }
-
-  private readonly handleContextRestored = (): void => {
-    this.contextLost = false
-    if (!this.gl || !this.createResources()) return
-    this.handleResize()
-    if (this.active) {
-      this.activationStartedAt = this.ownerWindow.performance.now()
-      this.clearSimulation()
-      this.startLoop()
-    }
   }
 
   private readonly handleVisibilityChange = (): void => {
@@ -343,214 +267,111 @@ export class ReasoningSparkRenderer {
     if (this.active || now < this.stopAfter) this.startLoop()
   }
 
-  private ensureInitialized(): boolean {
-    if (this.gl && this.sparkProgram && this.simulationA) return true
-
-    const gl = this.canvas.getContext('webgl2', {
-      alpha: true,
-      antialias: false,
-      depth: false,
-      stencil: false,
-      premultipliedAlpha: false,
-      preserveDrawingBuffer: false,
-      powerPreference: 'low-power',
-    })
-    if (!gl) return false
-    this.gl = gl
-    if (!this.createResources()) return false
-    this.handleResize()
-    return this.simulationA !== null
-  }
-
-  private createResources(): boolean {
-    const gl = this.gl
-    if (!gl) return false
-    this.destroyResources()
-    this.gl = gl
-
-    this.sparkProgram = this.createProgram(VERTEX_SHADER, SPARK_SHADER)
-    this.blurProgram = this.createProgram(VERTEX_SHADER, BLUR_SHADER)
-    this.compositeProgram = this.createProgram(VERTEX_SHADER, COMPOSITE_SHADER)
-    if (!this.sparkProgram || !this.blurProgram || !this.compositeProgram) {
-      this.destroyResources()
-      this.gl = gl
-      return false
-    }
-
-    this.vao = gl.createVertexArray()
-    this.vertexBuffer = gl.createBuffer()
-    if (!this.vao || !this.vertexBuffer) {
-      this.destroyResources()
-      this.gl = gl
-      return false
-    }
-    gl.bindVertexArray(this.vao)
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer)
-    gl.bufferData(
-      gl.ARRAY_BUFFER,
-      new Float32Array([-1, -1, 1, -1, -1, 1, -1, 1, 1, -1, 1, 1]),
-      gl.STATIC_DRAW,
+  /**
+   * The canvas renders no text, so its `color` is free to carry the field
+   * color in — and unlike reading the custom property directly, the platform
+   * hands back a fully resolved color function that `fillStyle` accepts. The
+   * fade offset rides along the same way, so the field profile here and the
+   * CSS that documents it can't drift apart.
+   *
+   * Read once per activation: the slider only lives as long as its popover, so
+   * an accent change lands the next time it opens.
+   */
+  private readStyle(): void {
+    const computed = this.ownerWindow.getComputedStyle(this.canvas)
+    // Chromium resolves color-mix() to `color(srgb ...)`, not `rgb(...)`, and
+    // fillStyle takes either — so hand the string over as-is rather than
+    // sniffing its format.
+    const color = computed.color.trim()
+    this.fieldColor = color && color !== 'transparent' ? color : FALLBACK_FIELD
+    const parsed = Number.parseFloat(
+      computed.getPropertyValue('--yolo-reasoning-fade'),
     )
-    gl.enableVertexAttribArray(0)
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0)
-
-    this.sparkUniforms = {
-      time: gl.getUniformLocation(this.sparkProgram, 'u_time'),
-      elapsed: gl.getUniformLocation(this.sparkProgram, 'u_elapsed'),
-      active: gl.getUniformLocation(this.sparkProgram, 'u_active'),
-      previous: gl.getUniformLocation(this.sparkProgram, 'u_previous'),
-    }
-    this.blurUniforms = {
-      source: gl.getUniformLocation(this.blurProgram, 'u_source'),
-      direction: gl.getUniformLocation(this.blurProgram, 'u_direction'),
-      resolution: gl.getUniformLocation(this.blurProgram, 'u_resolution'),
-    }
-    this.compositeUniforms = {
-      scene: gl.getUniformLocation(this.compositeProgram, 'u_scene'),
-      glow: gl.getUniformLocation(this.compositeProgram, 'u_glow'),
-    }
-    return true
+    this.fade = Number.isFinite(parsed) ? parsed / 100 : DEFAULT_FADE
   }
 
-  private createProgram(
-    vertexSource: string,
-    fragmentSource: string,
-  ): WebGLProgram | null {
-    const gl = this.gl
-    if (!gl) return null
-    const vertexShader = this.compileShader(gl.VERTEX_SHADER, vertexSource)
-    const fragmentShader = this.compileShader(
-      gl.FRAGMENT_SHADER,
-      fragmentSource,
+  /**
+   * Everything that depends only on cell position — placement, arrival,
+   * brightness scales — is resolved here, so a frame is left with an
+   * exponential or two and a `fillRect` per cell.
+   */
+  private measure(): void {
+    const rect = this.canvas.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) return
+    const dpr = Math.min(this.ownerWindow.devicePixelRatio || 1, MAX_DPR)
+    this.canvas.width = Math.max(1, Math.round(rect.width * dpr))
+    this.canvas.height = Math.max(1, Math.round(rect.height * dpr))
+
+    const cellHeight = this.canvas.height / ROWS
+    const columns = Math.max(2, Math.round(this.canvas.width / cellHeight))
+    const cellWidth = this.canvas.width / columns
+    // Proportional gap with only a sub-pixel floor: a fixed floor eats the
+    // cell itself once the grid gets dense.
+    const gap = Math.max(
+      dpr * 0.5,
+      Math.min(cellWidth, cellHeight) * CELL_GAP_RATIO,
     )
-    if (!vertexShader || !fragmentShader) {
-      if (vertexShader) gl.deleteShader(vertexShader)
-      if (fragmentShader) gl.deleteShader(fragmentShader)
-      return null
-    }
 
-    const program = gl.createProgram()
-    if (!program) {
-      gl.deleteShader(vertexShader)
-      gl.deleteShader(fragmentShader)
-      return null
-    }
-    gl.attachShader(program, vertexShader)
-    gl.attachShader(program, fragmentShader)
-    gl.linkProgram(program)
-    gl.deleteShader(vertexShader)
-    gl.deleteShader(fragmentShader)
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      console.error(
-        '[YOLO] Failed to link reasoning spark shader',
-        gl.getProgramInfoLog(program),
-      )
-      gl.deleteProgram(program)
-      return null
-    }
-    return program
-  }
+    const fieldCells: FieldCell[] = []
+    const sparkCells: SparkCell[] = []
+    for (let row = 0; row < ROWS; row++) {
+      for (let col = 0; col < columns; col++) {
+        const x = col / (columns - 1)
+        const arrival = arrivalAt(x) + hash(col, row, 3) * ARRIVAL_JITTER_S
 
-  private compileShader(type: number, source: string): WebGLShader | null {
-    const gl = this.gl
-    if (!gl) return null
-    const shader = gl.createShader(type)
-    if (!shader) return null
-    gl.shaderSource(shader, source)
-    gl.compileShader(shader)
-    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-      console.error(
-        '[YOLO] Failed to compile reasoning spark shader',
-        gl.getShaderInfoLog(shader),
-      )
-      gl.deleteShader(shader)
-      return null
-    }
-    return shader
-  }
+        // Field cells tile with no gap, so behind the front they read as one
+        // continuous field rather than a grid. Snap edges to device pixels so
+        // they meet exactly.
+        const left = Math.round(col * cellWidth)
+        const top = Math.round(row * cellHeight)
+        const alpha = fieldProfile(x, this.fade)
+        if (alpha > 0.012) {
+          fieldCells.push({
+            x: left,
+            y: top,
+            width: Math.round((col + 1) * cellWidth) - left,
+            height: Math.round((row + 1) * cellHeight) - top,
+            arrival,
+            alpha,
+          })
+        }
 
-  private createRenderTargets(): void {
-    const gl = this.gl
-    if (!gl || this.canvas.width <= 0 || this.canvas.height <= 0) return
-    this.destroyRenderTargets()
-    this.simulationA = this.createRenderTarget()
-    this.simulationB = this.createRenderTarget()
-    this.blurA = this.createRenderTarget()
-    this.blurB = this.createRenderTarget()
-    if (!this.simulationA || !this.simulationB || !this.blurA || !this.blurB) {
-      this.destroyRenderTargets()
-      return
+        // Round each inset edge independently rather than rounding the gap:
+        // rounding the gap first costs up to a whole device pixel off every
+        // side, which is a lot when a cell is only ~9 device pixels wide.
+        const insetLeft = Math.round(col * cellWidth + gap / 2)
+        const insetTop = Math.round(row * cellHeight + gap / 2)
+        sparkCells.push({
+          x: insetLeft,
+          y: insetTop,
+          width: Math.max(
+            1,
+            Math.round((col + 1) * cellWidth - gap / 2) - insetLeft,
+          ),
+          height: Math.max(
+            1,
+            Math.round((row + 1) * cellHeight - gap / 2) - insetTop,
+          ),
+          ready: arrival + SPARK_DELAY_S,
+          dim: smoothstep(SPARK_FIELD_MIN, SPARK_FIELD_FULL, alpha),
+          litAt: Number.NEGATIVE_INFINITY,
+        })
+      }
     }
-    this.clearSimulation()
-  }
-
-  private createRenderTarget(): RenderTarget | null {
-    const gl = this.gl
-    if (!gl) return null
-    const framebuffer = gl.createFramebuffer()
-    const texture = gl.createTexture()
-    if (!framebuffer || !texture) {
-      if (framebuffer) gl.deleteFramebuffer(framebuffer)
-      if (texture) gl.deleteTexture(texture)
-      return null
-    }
-
-    gl.bindTexture(gl.TEXTURE_2D, texture)
-    gl.texImage2D(
-      gl.TEXTURE_2D,
-      0,
-      gl.RGBA,
-      this.canvas.width,
-      this.canvas.height,
-      0,
-      gl.RGBA,
-      gl.UNSIGNED_BYTE,
-      null,
-    )
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE)
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer)
-    gl.framebufferTexture2D(
-      gl.FRAMEBUFFER,
-      gl.COLOR_ATTACHMENT0,
-      gl.TEXTURE_2D,
-      texture,
-      0,
-    )
-    if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
-      gl.deleteFramebuffer(framebuffer)
-      gl.deleteTexture(texture)
-      return null
-    }
-    return { framebuffer, texture }
-  }
-
-  private clearSimulation(): void {
-    const gl = this.gl
-    if (!gl) return
-    gl.clearColor(0, 0, 0, 1)
-    for (const target of [
-      this.simulationA,
-      this.simulationB,
-      this.blurA,
-      this.blurB,
-    ]) {
-      if (!target) continue
-      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer)
-      gl.clear(gl.COLOR_BUFFER_BIT)
-    }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
+    this.fieldCells = fieldCells
+    this.sparkCells = sparkCells
+    this.columns = columns
+    // Sparks index into the old grid; the next frame re-seeds them on this one.
+    this.sparksCold = true
   }
 
   private startLoop(): void {
     if (
       this.animationFrame !== null ||
       this.destroyed ||
-      this.contextLost ||
+      !this.context ||
       this.ownerDocument.hidden ||
-      !this.simulationA
+      this.fieldCells.length === 0
     ) {
       return
     }
@@ -563,123 +384,112 @@ export class ReasoningSparkRenderer {
     this.animationFrame = null
   }
 
+  private spawnSpark(elapsed: number): void {
+    const columns = this.columns
+    const reach =
+      columns *
+      SPARK_REACH *
+      (1 + (Math.random() - 0.5) * 2 * SPARK_REACH_JITTER)
+    this.sparks.push({
+      row: Math.floor(Math.random() * ROWS),
+      born: elapsed,
+      // A little past the edge, so sparks born on the same frame don't enter
+      // in lockstep.
+      origin: columns - 1 + Math.random() * 1.5,
+      speed:
+        SPARK_SPEED_MIN + Math.random() * (SPARK_SPEED_MAX - SPARK_SPEED_MIN),
+      nextCol: columns - 1,
+      dieAt: columns - 1 - reach,
+    })
+  }
+
+  /** Replay the spark system over the WARM_UP_S seconds leading up to `elapsed`. */
+  private warmUpSparks(elapsed: number): void {
+    this.sparks = []
+    this.spawnDebt = 0
+    this.lastSpawnElapsed = elapsed - WARM_UP_S
+    for (let t = this.lastSpawnElapsed; t < elapsed; t += MAX_SPAWN_STEP_S) {
+      this.advanceSparks(t)
+    }
+    this.sparksCold = false
+  }
+
+  /**
+   * Advance every spark to `elapsed`, lighting the cells it crossed. Position
+   * is analytic in elapsed time rather than integrated per frame, so a paused
+   * tab or a dropped frame just skips ahead instead of drifting.
+   */
+  private advanceSparks(elapsed: number): void {
+    const step = Math.min(
+      MAX_SPAWN_STEP_S,
+      Math.max(0, elapsed - this.lastSpawnElapsed),
+    )
+    this.lastSpawnElapsed = elapsed
+    this.spawnDebt += SPARK_RATE * step
+    while (this.spawnDebt >= 1) {
+      this.spawnDebt -= 1
+      this.spawnSpark(elapsed)
+    }
+
+    const columns = this.columns
+    const cells = this.sparkCells
+    this.sparks = this.sparks.filter((spark) => {
+      const position = spark.origin - spark.speed * (elapsed - spark.born)
+      while (position <= spark.nextCol && spark.nextCol >= 0) {
+        if (Math.random() >= SPARK_SKIP) {
+          cells[spark.row * columns + spark.nextCol].litAt = elapsed
+        }
+        if (Math.random() < SPARK_WANDER) {
+          const direction = Math.random() < 0.5 ? -1 : 1
+          spark.row = Math.max(0, Math.min(ROWS - 1, spark.row + direction))
+        }
+        spark.nextCol--
+      }
+      return spark.nextCol >= 0 && position > spark.dieAt
+    })
+  }
+
   private readonly render = (now: number): void => {
     this.animationFrame = null
-    const gl = this.gl
-    if (
-      !gl ||
-      !this.sparkProgram ||
-      !this.blurProgram ||
-      !this.compositeProgram ||
-      !this.vao ||
-      !this.sparkUniforms ||
-      !this.blurUniforms ||
-      !this.compositeUniforms ||
-      !this.simulationA ||
-      !this.simulationB ||
-      !this.blurA ||
-      !this.blurB
-    ) {
-      return
+    const ctx = this.context
+    if (!ctx) return
+
+    ctx.clearRect(0, 0, this.canvas.width, this.canvas.height)
+    const elapsed = (now - this.activationStartedAt) / 1000
+
+    ctx.fillStyle = this.fieldColor
+    for (const cell of this.fieldCells) {
+      const age = elapsed - cell.arrival
+      if (age <= 0) continue
+      // Land fast (~125ms) so an arriving cell reads as a square dropping in,
+      // not as a slow tint.
+      const alpha = cell.alpha * Math.min(1, age * 8)
+      if (alpha <= 0.012) continue
+      ctx.globalAlpha = alpha
+      ctx.fillRect(cell.x, cell.y, cell.width, cell.height)
     }
 
-    gl.viewport(0, 0, this.canvas.width, this.canvas.height)
-    gl.bindVertexArray(this.vao)
-    gl.disable(gl.BLEND)
+    if (this.sparksCold) this.warmUpSparks(elapsed)
+    this.advanceSparks(elapsed)
 
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.simulationB.framebuffer)
-    gl.useProgram(this.sparkProgram)
-    gl.uniform1f(this.sparkUniforms.time, now / 1000)
-    gl.uniform1f(
-      this.sparkUniforms.elapsed,
-      Math.max(0, (now - this.activationStartedAt) / 1000),
-    )
-    gl.uniform1f(this.sparkUniforms.active, this.active ? 1 : 0)
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, this.simulationA.texture)
-    gl.uniform1i(this.sparkUniforms.previous, 0)
-    gl.drawArrays(gl.TRIANGLES, 0, 6)
-
-    gl.useProgram(this.blurProgram)
-    gl.uniform2f(
-      this.blurUniforms.resolution,
-      this.canvas.width,
-      this.canvas.height,
-    )
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.blurA.framebuffer)
-    gl.bindTexture(gl.TEXTURE_2D, this.simulationB.texture)
-    gl.uniform1i(this.blurUniforms.source, 0)
-    gl.uniform2f(this.blurUniforms.direction, 1, 0)
-    gl.drawArrays(gl.TRIANGLES, 0, 6)
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.blurB.framebuffer)
-    gl.bindTexture(gl.TEXTURE_2D, this.blurA.texture)
-    gl.uniform2f(this.blurUniforms.direction, 0, 1)
-    gl.drawArrays(gl.TRIANGLES, 0, 6)
-
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null)
-    gl.useProgram(this.compositeProgram)
-    gl.activeTexture(gl.TEXTURE0)
-    gl.bindTexture(gl.TEXTURE_2D, this.simulationB.texture)
-    gl.uniform1i(this.compositeUniforms.scene, 0)
-    gl.activeTexture(gl.TEXTURE1)
-    gl.bindTexture(gl.TEXTURE_2D, this.blurB.texture)
-    gl.uniform1i(this.compositeUniforms.glow, 1)
-    gl.drawArrays(gl.TRIANGLES, 0, 6)
-
-    const previous = this.simulationA
-    this.simulationA = this.simulationB
-    this.simulationB = previous
+    ctx.fillStyle = '#ffffff'
+    for (const cell of this.sparkCells) {
+      if (cell.dim <= 0 || elapsed <= cell.ready) continue
+      const age = elapsed - cell.litAt
+      const alpha = Math.min(
+        CELL_CEILING,
+        cell.dim *
+          (CELL_REST +
+            SPARK_PEAK *
+              Math.exp(-age * SPARK_RELEASE) *
+              (1 - Math.exp(-age * SPARK_ATTACK))),
+      )
+      if (alpha <= 0.012) continue
+      ctx.globalAlpha = alpha
+      ctx.fillRect(cell.x, cell.y, cell.width, cell.height)
+    }
+    ctx.globalAlpha = 1
 
     if (this.active || now < this.stopAfter) this.startLoop()
-  }
-
-  private destroyRenderTargets(): void {
-    const gl = this.gl
-    if (gl) {
-      for (const target of [
-        this.simulationA,
-        this.simulationB,
-        this.blurA,
-        this.blurB,
-      ]) {
-        if (!target) continue
-        gl.deleteFramebuffer(target.framebuffer)
-        gl.deleteTexture(target.texture)
-      }
-    }
-    this.simulationA = null
-    this.simulationB = null
-    this.blurA = null
-    this.blurB = null
-  }
-
-  private destroyResources(): void {
-    const gl = this.gl
-    this.destroyRenderTargets()
-    if (gl) {
-      if (this.sparkProgram) gl.deleteProgram(this.sparkProgram)
-      if (this.blurProgram) gl.deleteProgram(this.blurProgram)
-      if (this.compositeProgram) gl.deleteProgram(this.compositeProgram)
-      if (this.vao) gl.deleteVertexArray(this.vao)
-      if (this.vertexBuffer) gl.deleteBuffer(this.vertexBuffer)
-    }
-    this.clearResourceReferences()
-  }
-
-  private clearResourceReferences(): void {
-    this.sparkProgram = null
-    this.blurProgram = null
-    this.compositeProgram = null
-    this.vao = null
-    this.vertexBuffer = null
-    this.sparkUniforms = null
-    this.blurUniforms = null
-    this.compositeUniforms = null
-    this.simulationA = null
-    this.simulationB = null
-    this.blurA = null
-    this.blurB = null
   }
 }
