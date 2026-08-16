@@ -24,7 +24,6 @@ import remarkMath from 'remark-math'
 
 import { useApp } from '../../contexts/app-context'
 import { CitationSource } from '../../core/agent/citationRegistry'
-import { MOTION_DURATION_ENTER_S } from '../../styles/tokens/motion'
 import { getNodeWindow } from '../../utils/dom/window-context'
 import { openMarkdownFile, openPdfFileAtPage } from '../../utils/obsidian'
 
@@ -35,10 +34,6 @@ import {
   preserveUnclosedMathSource,
   renderStreamingMath,
 } from './streamingMath'
-import {
-  type RevealSegment,
-  createStreamingRevealPlugin,
-} from './streamingReveal'
 import type { StreamingContentSource } from './useAssistantRenderStream'
 
 type StreamingMarkdownProps = {
@@ -80,44 +75,14 @@ const REVEAL_RATE_SMOOTHING_TAU_MS = 200
 const DRAIN_TARGET_LATENCY_MS = 120
 const DRAIN_MIN_CHARS_PER_SECOND = 200
 
-// Streamed text is not motion: it has no trajectory for the eye to track, so
-// two characters landing every 33ms is indistinguishable from one landing every
-// 16ms. Playing it out at half the display's rate halves everything a frame
-// costs — and most of that is not the reveal but the trailing block's re-parse,
-// which is paid with or without it and grows with the block's length.
+// 播出帧决定字符多久释放一批。文字不是运动物体，没有轨迹可追，每 33ms 冒两个
+// 字与每 16ms 冒一个字在感知上等价；而一帧最贵的开销是尾块重解析，它与释放频率
+// 同步增长。所以按感知下限取 30fps。
 const REVEAL_FRAME_INTERVAL_MS = 1000 / 30
-
-// A played-out frame reveals at most REVEAL_MAX_CHARS_PER_SECOND / 30 ≈ 40
-// characters; this leaves room for dropped frames while still catching the bulk
-// jumps that should not animate at all.
-const MAX_REVEAL_CHARS = 120
-
-// How long a character stays inside the fade window. Mirrors the L2 entrance
-// duration; the fade runs from JS rather than CSS because its phase has to come
-// from the characters' age, not from when an element happened to mount — see
-// streamingReveal.ts.
-const REVEAL_FADE_MS = MOTION_DURATION_ENTER_S * 1000
-const REVEAL_INITIAL_OPACITY = 0.2
-
-/** Eases like --yolo-anim-ease-out (easeOutQuint): quick start, slow settle. */
-function revealOpacity(ageMs: number): number {
-  const progress = Math.min(1, Math.max(0, ageMs / REVEAL_FADE_MS))
-  const eased = 1 - Math.pow(1 - progress, 5)
-  return REVEAL_INITIAL_OPACITY + (1 - REVEAL_INITIAL_OPACITY) * eased
-}
 
 function prefersReducedMotion(node: HTMLElement | null): boolean {
   return getNodeWindow(node).matchMedia('(prefers-reduced-motion: reduce)')
     .matches
-}
-
-/** One frame's worth of streamed characters, and when they arrived. */
-type RevealEntry = { from: number; time: number }
-
-type RevealState = {
-  blockIndex: number
-  length: number
-  entries: RevealEntry[]
 }
 
 // Strict scheme match so web-search citations (https URLs that happen to
@@ -381,29 +346,15 @@ const MARKDOWN_COMPONENTS: Components = {
  * One top-level markdown block. Memoized on its source text so that a streamed
  * frame only re-parses the block the model is still writing into, instead of
  * the whole answer.
- *
- * `segments` describes the fade window in this block's own source: the
- * characters past `segments[0].from` are still settling and render at the
- * opacity their age maps to. It is only passed to the trailing block, so a
- * block that the stream has moved past re-renders once without it and sheds its
- * spans.
  */
 const MarkdownBlock = memo(function MarkdownBlock({
   content,
-  segments,
 }: {
   content: string
-  segments?: RevealSegment[]
 }) {
-  const rehypePlugins = useMemo(
-    () => (segments ? [createStreamingRevealPlugin(segments)] : undefined),
-    [segments],
-  )
-
   return (
     <ReactMarkdown
       remarkPlugins={REMARK_PLUGINS}
-      rehypePlugins={rehypePlugins}
       skipHtml
       urlTransform={transformCitationUrl}
       components={MARKDOWN_COMPONENTS}
@@ -424,18 +375,10 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
 }: StreamingMarkdownProps) {
   const followLiveEdge = useLiveEdgeFollow()
   const [displayedContent, setDisplayedContent] = useState(content)
-  // Bumped by the reveal loop while the fade window is still draining, so the
-  // tail keeps settling on frames that add no characters.
-  const [, setRevealClock] = useState(0)
   const displayedContentRef = useRef(content)
   const targetContentRef = useRef(content)
   const containerRef = useRef<HTMLDivElement>(null)
   const splitCacheRef = useRef<MarkdownBlockSplit | null>(null)
-  const revealStateRef = useRef<RevealState>({
-    blockIndex: -1,
-    length: 0,
-    entries: [],
-  })
   const animationFrameRef = useRef<number | null>(null)
   const animationWindowRef = useRef<Window | null>(null)
   const lastFrameTimeRef = useRef<number | null>(null)
@@ -476,20 +419,6 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
       }
     }
 
-    // Emptying the buffer is not the end of the work: the tail it left behind
-    // has to reach full opacity, or a pause between chunks — a tool call, a
-    // thinking gap, the end of the answer — freezes half-revealed text on
-    // screen. Renders one more frame of the window and reports whether the
-    // characters in it have all settled.
-    const settleTail = (): boolean => {
-      const entries = revealStateRef.current.entries
-      if (entries.length === 0) {
-        return true
-      }
-      setRevealClock((clock) => clock + 1)
-      return entries.every((entry) => Date.now() - entry.time >= REVEAL_FADE_MS)
-    }
-
     const tick = (timestamp: number) => {
       // rAF still fires every display frame; only every second or third one
       // does any work. Skipped frames cost a callback and nothing else.
@@ -510,12 +439,9 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
       const current = displayedContentRef.current
       const backlog = target.length - current.length
 
+      // 缓冲放空即收工：可见内容已经等于目标，没有还在结算的尾巴。
       if (backlog <= 0) {
-        if (settleTail()) {
-          finish()
-          return
-        }
-        animationFrameRef.current = ownerWindow.requestAnimationFrame(tick)
+        finish()
         return
       }
 
@@ -655,56 +581,6 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
     return split.blocks
   }, [displayedContent])
 
-  // The fade window, rebuilt every frame. Each entry is a frame's worth of
-  // characters and the moment they arrived; entries older than REVEAL_FADE_MS
-  // have settled and drop out, which is what bounds the number of wrapped
-  // nodes. Where the trailing block stood on the previous frame is carried in
-  // the same ref, and both are written in an effect rather than during render
-  // because StrictMode renders twice and would record the same chunk twice.
-  const trailingBlockIndex = blocks.length - 1
-  const trailingBlockLength = blocks[trailingBlockIndex]?.length ?? 0
-  const revealState = revealStateRef.current
-  const sameBlock = revealState.blockIndex === trailingBlockIndex
-  const previousTrailingLength = sameBlock ? revealState.length : 0
-  const now = Date.now()
-
-  // A jump far larger than a frame's worth of characters is not the stream
-  // writing — it is reduced motion, a refocus catch-up, or a rewrite dropping
-  // the whole answer in at once. Wrapping thousands of characters for a reveal
-  // nobody asked for is exactly the cost the block split just removed, so those
-  // frames render plain and the tail they land on settles with them.
-  const revealing =
-    animateIncrementalText &&
-    trailingBlockLength - previousTrailingLength <= MAX_REVEAL_CHARS &&
-    !prefersReducedMotion(containerRef.current)
-
-  const revealEntries: RevealEntry[] = revealing
-    ? [
-        ...(sameBlock ? revealState.entries : []).filter(
-          (entry) => now - entry.time < REVEAL_FADE_MS,
-        ),
-        ...(trailingBlockLength > previousTrailingLength
-          ? [{ from: previousTrailingLength, time: now }]
-          : []),
-      ]
-    : []
-
-  const revealSegments =
-    revealEntries.length > 0
-      ? revealEntries.map((entry) => ({
-          from: entry.from,
-          opacity: revealOpacity(now - entry.time),
-        }))
-      : undefined
-
-  useEffect(() => {
-    revealStateRef.current = {
-      blockIndex: trailingBlockIndex,
-      length: trailingBlockLength,
-      entries: revealEntries,
-    }
-  })
-
   return (
     <div
       ref={containerRef}
@@ -716,11 +592,7 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
           // remount the trailing block on every streamed character, which
           // flickers and drops rendered math. Memoization on `content` is what
           // decides whether a block re-renders.
-          <MarkdownBlock
-            key={index}
-            content={block}
-            segments={index === trailingBlockIndex ? revealSegments : undefined}
-          />
+          <MarkdownBlock key={index} content={block} />
         ))}
       </CitationSourcesContext.Provider>
     </div>

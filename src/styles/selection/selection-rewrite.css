@@ -104,8 +104,8 @@
 }
 
 /* 动画豁免：filter 不在「只动画 opacity / transform」的允许列表内。blur 在
-   合成阶段完成，不触发重排也不影响布局，模糊消散是显影质感的构成本身。与
-   chat 流式的 yolo-stream-reveal 同源。 */
+   合成阶段完成，不触发重排也不影响布局，模糊消散是显影质感的构成本身。
+   注意这是改写候选的一次性入场，与 chat 流式无关——聊天正文刻意不做逐字淡入。 */
 .yolo-selection-rewrite-candidate-reveal {
   animation: yolo-selection-rewrite-text-resolve 180ms var(--yolo-anim-ease-out)
     both;

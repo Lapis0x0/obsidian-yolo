@@ -15071,14 +15071,6 @@ button.yolo-chat-user-input-file-badge-delete:focus-visible,
   }
 }
 
-/* 流式 markdown 的显影尾巴 - 由 streamingReveal 的 rehype 插件包裹，透明度作为
-   内联样式逐帧写入（见 StreamingMarkdown 的 revealOpacity）。这里刻意不放动画：
-   相位取自字符的年龄，而 CSS 动画的相位取自元素挂载时刻，react-markdown 按序号
-   复用节点，两者对不上。降级由 JS 侧的 prefers-reduced-motion 判断负责。 */
-.yolo-stream-reveal {
-  display: inline;
-}
-
 .yolo-dot-loader-minimal {
   display: inline-flex;
   gap: 4px;
@@ -24400,8 +24392,8 @@ body.yolo-quick-ask-global-interaction * {
 }
 
 /* 动画豁免：filter 不在「只动画 opacity / transform」的允许列表内。blur 在
-   合成阶段完成，不触发重排也不影响布局，模糊消散是显影质感的构成本身。与
-   chat 流式的 yolo-stream-reveal 同源。 */
+   合成阶段完成，不触发重排也不影响布局，模糊消散是显影质感的构成本身。
+   注意这是改写候选的一次性入场，与 chat 流式无关——聊天正文刻意不做逐字淡入。 */
 .yolo-selection-rewrite-candidate-reveal {
   animation: yolo-selection-rewrite-text-resolve 180ms var(--yolo-anim-ease-out)
     both;

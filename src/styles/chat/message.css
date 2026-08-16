@@ -419,14 +419,6 @@
   }
 }
 
-/* 流式 markdown 的显影尾巴 - 由 streamingReveal 的 rehype 插件包裹，透明度作为
-   内联样式逐帧写入（见 StreamingMarkdown 的 revealOpacity）。这里刻意不放动画：
-   相位取自字符的年龄，而 CSS 动画的相位取自元素挂载时刻，react-markdown 按序号
-   复用节点，两者对不上。降级由 JS 侧的 prefers-reduced-motion 判断负责。 */
-.yolo-stream-reveal {
-  display: inline;
-}
-
 .yolo-dot-loader-minimal {
   display: inline-flex;
   gap: 4px;
