@@ -2,6 +2,7 @@ import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import {
   buildAllowedSkillPathSet,
+  describePathDenial,
   findPathOutsideScope,
   findPathWithinExcludedRoot,
 } from '../agent/workspaceScope'
@@ -33,6 +34,31 @@ export function enforceBuiltinToolSecurityBoundary(
     allowedSkillPaths?: readonly string[]
   },
 ): void {
+  // The YOLO user-data root (`<baseDir>/data`: chat history, module
+  // settings/intent — see `ensureUserDataRootDir` in
+  // `core/paths/yoloManagedData.ts`) must stay invisible to agent tools,
+  // unconditionally and regardless of workspace scope. Before that data
+  // moved out of the hidden `.yolo_json_db` directory, it could never be
+  // reached this way at all — dot directories are never indexed into the
+  // `TFile` tree fs_* tools resolve paths against. This reproduces that
+  // same invisibility now that the root is a normal, visible folder.
+  // Reported as a plain not-found, matching a genuine miss, so nothing
+  // about "this path is specially hidden" leaks to the model.
+  //
+  // Checked BEFORE workspace scope so that a path which is both hidden and
+  // out of scope keeps the not-found disguise: the scope message would
+  // otherwise confirm the path as a real, merely-restricted location, which
+  // is exactly what hiding it is meant to prevent. This is the same
+  // hidden-wins-first priority `resolvePathVisibility` encodes.
+  const offendingUserDataPath = findPathWithinExcludedRoot(
+    toolName,
+    args,
+    (path) => isWithinYoloUserDataRoot(path, settings),
+  )
+  if (offendingUserDataPath !== null) {
+    throw new Error(describePathDenial('hidden', offendingUserDataPath))
+  }
+
   // Final defense: reject any fs_* call whose path args fall outside the
   // agent's workspace scope. The gateway performs the same check up front
   // for UI Rejected status, but we re-validate here so manual-approval /
@@ -45,28 +71,7 @@ export function enforceBuiltinToolSecurityBoundary(
       exemptPaths,
     })
     if (offendingPath !== null) {
-      throw new Error(
-        `Path "${offendingPath}" is outside this agent's workspace scope.`,
-      )
+      throw new Error(describePathDenial('out-of-scope', offendingPath))
     }
-  }
-
-  // The YOLO user-data root (`<baseDir>/data`: chat history, module
-  // settings/intent — see `ensureUserDataRootDir` in
-  // `core/paths/yoloManagedData.ts`) must stay invisible to agent tools,
-  // unconditionally and regardless of workspace scope. Before that data
-  // moved out of the hidden `.yolo_json_db` directory, it could never be
-  // reached this way at all — dot directories are never indexed into the
-  // `TFile` tree fs_* tools resolve paths against. This reproduces that
-  // same invisibility now that the root is a normal, visible folder.
-  // Reported as a plain not-found, matching a genuine miss, so nothing
-  // about "this path is specially hidden" leaks to the model.
-  const offendingUserDataPath = findPathWithinExcludedRoot(
-    toolName,
-    args,
-    (path) => isWithinYoloUserDataRoot(path, settings),
-  )
-  if (offendingUserDataPath !== null) {
-    throw new Error(`File not found: ${offendingUserDataPath}`)
   }
 }

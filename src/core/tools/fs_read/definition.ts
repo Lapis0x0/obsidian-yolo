@@ -28,9 +28,9 @@ import { renderPdfPagesToImages } from '../../../utils/pdf/renderPdfPagesToImage
 import { PdfSliceError, slicePdfPages } from '../../../utils/pdf/slicePdfPages'
 import {
   buildAllowedSkillPathSet,
-  isCoveredBySkillPathExemption,
-  isPathAllowedByScope,
+  describePathDenial,
   normalizeSkillPathForExemption,
+  resolvePathVisibility,
 } from '../../agent/workspaceScope'
 import { findWebviewHandleByPageId } from '../../browser/activeWebviewProbe'
 import {
@@ -38,7 +38,6 @@ import {
   readActiveWebviewPage,
 } from '../../browser/activeWebviewReader'
 import { validateVaultPath } from '../../mcp/vaultFileOps'
-import { isWithinYoloUserDataRoot } from '../../paths/yoloPaths'
 import { getLiteSkillDocumentByPath } from '../../skills/liteSkills'
 import { defineTool } from '../define'
 import {
@@ -410,50 +409,35 @@ export const fsReadDefinition = defineTool({
         }
       }
 
-      // The YOLO user-data root (`<baseDir>/data`: chat history, module
-      // settings/intent) must stay invisible to agent tools exactly like its
-      // hidden pre-migration location (`.yolo_json_db`) was — see
-      // `ensureUserDataRootDir` in `core/paths/yoloManagedData.ts`. Dot
-      // directories were never indexed into the `TFile` tree at all, so this
-      // exact-match/wikilink resolution above could never have hit them;
-      // this check reproduces that invisibility explicitly now that the
-      // root is visible. Reported as a plain not-found — same wording as a
-      // genuine miss — so no new information ("this path is specially
-      // hidden") leaks to the model. Checked before the workspace-scope
-      // gate so it applies unconditionally, regardless of whether workspace
-      // scope is even enabled.
+      // Both the YOLO user-data root and workspace-scope checks live here
+      // rather than relying solely on the dispatcher's top-level raw-string
+      // scan (`enforceBuiltinToolSecurityBoundary`): a wikilink target's
+      // resolved `file.path` may never have appeared as a literal string in
+      // `args` (master.md §5's "解析级检查"), so this is the only place that
+      // scan can happen. Applies uniformly to exact-match and
+      // wikilink-resolved entries; files inside an allowed skill package
+      // keep the same exemption they had under `findPathOutsideScope`'s
+      // `exemptPaths` option.
       //
-      // This re-check is required *here*, not just in the dispatcher's
-      // top-level `enforceBuiltinToolSecurityBoundary`: `file.path` may be a
-      // wikilink-resolved path that never appeared as a literal string in
-      // `args` (master.md §5's "解析级检查").
-      if (isWithinYoloUserDataRoot(file.path, settings)) {
+      // The judgment itself (`resolvePathVisibility`) is evaluated against
+      // `file.path` — the real, resolved location — because that's what
+      // actually needs guarding. But the *message* passed to
+      // `describePathDenial` is the original `path` the agent supplied
+      // (which may be an unresolved wikilink like "[[Secret]]"), never
+      // `file.path`. Echoing the resolved path here was issue #577: it let
+      // an agent that had no way to know a wikilink resolved outside its
+      // workspace scope learn the real path anyway, purely from the denial
+      // message.
+      const visibility = resolvePathVisibility(file.path, {
+        scope: workspaceScope,
+        settings,
+        exemptPaths: allowedSkillPathSet,
+      })
+      if (visibility !== 'visible') {
         results.push({
           path,
           ok: false,
-          error: `File not found: "${path}".`,
-        })
-        continue
-      }
-
-      // Scope enforcement for fs_read lives here rather than relying solely
-      // on the dispatcher's top-level raw-string check, for the same reason
-      // as above: wikilink targets aren't literal paths until resolved.
-      // Applies uniformly to exact-match and wikilink-resolved entries.
-      // Files inside an allowed skill package keep the same exemption they
-      // had under findPathOutsideScope's exemptPaths option.
-      if (
-        workspaceScope?.enabled &&
-        !isPathAllowedByScope(file.path, workspaceScope) &&
-        !(
-          allowedSkillPathSet &&
-          isCoveredBySkillPathExemption(file.path, allowedSkillPathSet)
-        )
-      ) {
-        results.push({
-          path,
-          ok: false,
-          error: `Path "${file.path}" is outside this agent's workspace scope.`,
+          error: describePathDenial(visibility, path),
         })
         continue
       }

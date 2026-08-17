@@ -97,13 +97,13 @@ export function AgentWorkspaceScopeEditor({
           <div className="yolo-agent-workspace-toggle-title">
             {t(
               'settings.agent.workspace.enableTitle',
-              'Restrict directory access',
+              'Limit autonomous working range',
             )}
           </div>
           <div className="yolo-agent-workspace-toggle-desc">
             {t(
               'settings.agent.workspace.enableDesc',
-              'When off, this agent can access the entire vault. When on, the rules below apply.',
+              'When off, the agent can browse and edit anywhere in the vault on its own. When on, its own browsing and edits stay within the ranges below — files you @ mention or have open are never restricted.',
             )}
           </div>
         </div>
@@ -112,10 +112,10 @@ export function AgentWorkspaceScopeEditor({
 
       <ScopeGroup
         variant="include"
-        title={t('settings.agent.workspace.includeTitle', 'Allow')}
+        title={t('settings.agent.workspace.includeTitle', 'Work within')}
         description={t(
           'settings.agent.workspace.includeDesc',
-          'Only read/write files under these paths',
+          'The agent browses and edits only inside these paths on its own',
         )}
         badge={t('settings.agent.workspace.includeBadge', 'INCLUDE')}
         addLabel={t('common.add', 'Add')}
@@ -126,16 +126,16 @@ export function AgentWorkspaceScopeEditor({
         onRemove={removeInclude}
         emptyHint={t(
           'settings.agent.workspace.includeEmpty',
-          'Leave empty to allow everything except the exclude list below.',
+          'Leave empty to allow everywhere except the paths kept out below.',
         )}
       />
 
       <ScopeGroup
         variant="exclude"
-        title={t('settings.agent.workspace.excludeTitle', 'Deny')}
+        title={t('settings.agent.workspace.excludeTitle', 'Keep out')}
         description={t(
           'settings.agent.workspace.excludeDesc',
-          'Excluded from the allow range (higher priority)',
+          "Off-limits to the agent's own browsing and edits, even inside the paths above",
         )}
         badge={t('settings.agent.workspace.excludeBadge', 'EXCLUDE')}
         addLabel={t('common.add', 'Add')}
@@ -144,8 +144,18 @@ export function AgentWorkspaceScopeEditor({
         vault={vault}
         onAdd={addExclude}
         onRemove={removeExclude}
-        emptyHint={t('settings.agent.workspace.excludeEmpty', 'No exclusions.')}
+        emptyHint={t(
+          'settings.agent.workspace.excludeEmpty',
+          'Nothing kept out.',
+        )}
       />
+
+      <div className="yolo-agent-workspace-footnote">
+        {t(
+          'settings.agent.workspace.toolBypassNotice',
+          'Agents with terminal commands or third-party MCP tools enabled can go around this range — it is not a security boundary.',
+        )}
+      </div>
     </div>
   )
 }

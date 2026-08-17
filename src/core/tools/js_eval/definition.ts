@@ -38,17 +38,38 @@ export const jsEvalDefinition = defineTool({
   contextPrunable: true,
   // Ported verbatim from the `case JS_SANDBOX_TOOL_NAME` branch of
   // `callLocalFileTool` (`src/core/mcp/localFileTools.ts`), minus the abort
-  // check / workspace-scope / YOLO-data-root guards and the outer try/catch
-  // that normalizes thrown errors to an Error-status result — those are
-  // dispatcher responsibilities (master.md §3.4), not tool semantics.
+  // check and the outer try/catch that normalizes thrown errors to an
+  // Error-status result — those are dispatcher responsibilities
+  // (master.md §3.4), not tool semantics.
+  //
+  // Workspace-scope and YOLO-data-root enforcement are NOT dispatcher
+  // responsibilities for this tool: `js_eval`'s only argument is opaque
+  // `code`, so the dispatcher's raw-argument path scan
+  // (`enforceBuiltinToolSecurityBoundary`) never sees a path to check —
+  // any vault path the code touches only exists inside `$vault.*` proxy
+  // calls the Worker makes back to the host. `workspaceScope` and
+  // `allowedSkillPaths` are threaded through to `buildJsSandboxProxyHandlers`
+  // below so those proxy handlers (in `jsSandboxTool.ts`) can enforce it
+  // per-call, the same way `fs_read`'s per-resolved-path check does for
+  // wikilinks (issue #577 follow-up: `$vault.readText`/`readBinary`/`list`
+  // used to only guard the YOLO user-data root, not workspace scope at all).
   execute: async (args, ctx) => {
-    const { app, settings, getRagEngine, signal } = ctx
+    const {
+      app,
+      settings,
+      getRagEngine,
+      signal,
+      workspaceScope,
+      allowedSkillPaths,
+    } = ctx
     const jsSandboxSettings = getJsSandboxSettings(settings)
     const proxyHandlers = buildJsSandboxProxyHandlers(
       app,
       jsSandboxSettings,
       getRagEngine,
       settings,
+      workspaceScope,
+      allowedSkillPaths,
     )
     return callJsSandboxTool({
       app,

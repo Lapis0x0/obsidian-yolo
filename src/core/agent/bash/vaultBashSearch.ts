@@ -8,7 +8,31 @@ import type {
   BashSearchCallback,
   BashSearchResultEntry,
 } from '../../runtime-components/contracts'
-import { isPathAllowedByScope } from '../workspaceScope'
+import { resolvePathVisibility } from '../workspaceScope'
+
+// Scope filtering happens after retrieval, so out-of-scope hits can outrank
+// in-scope ones and leave the caller short. With a scope active we therefore
+// ask for the service's full cap and slice down to what the caller wanted:
+// search should look the same to the agent whether or not a scope is set.
+//
+// Asking for the cap is free rather than a tradeoff. The keyword sweep reads
+// every markdown file and matches it before `maxResults` slices the ranking
+// (`vaultSearchService.ts`'s `getMarkdownFiles()` loop), so the request size
+// changes nothing about the work done — only how much of the finished
+// ranking comes back.
+//
+// One request, never a grow-and-retry loop: re-running would redo that whole
+// sweep for candidates it already had, and it could not tell when to stop
+// anyway — the RAG branch truncates raw hits and *then* aggregates them per
+// file, so a short list never implies the candidates were exhausted.
+//
+// The semantic side is deliberately left alone (no `ragLimit` override): its
+// candidate pool is capped by the vector store's `ef_search`, not by what we
+// request, so widening the request cannot widen the pool — filtered-out RAG
+// hits are simply lost, and hybrid ranking leans on the keyword side to make
+// up the count. Raising `ef_search` is the only real lever there and it costs
+// proportional graph traversal, so it stays out of scope here.
+const SEARCH_MAX_REQUEST = 300
 
 /**
  * Host implementation behind the bash tool's custom `search` command:
@@ -19,7 +43,11 @@ import { isPathAllowedByScope } from '../workspaceScope'
  * Workspace scope is enforced here, not in the component: the fs callbacks
  * gate every path the shell touches (see `vaultBashFileSystem.ts`), but the
  * search index is queried vault-wide, so both the scope argument and each
- * result path must be checked against the same rules.
+ * result path must be checked against the same rules. The same check also
+ * carries the YOLO user-data root: `vaultSearchService` filters it out of its
+ * filename and folder sweeps, but its content sweep builds its own
+ * `getMarkdownFiles()` list without that filter, so this is the layer that
+ * actually keeps user-data content out of agent-visible search results.
  */
 export function createVaultBashSearch({
   app,
@@ -35,14 +63,25 @@ export function createVaultBashSearch({
   signal?: AbortSignal
 }): BashSearchCallback {
   return async ({ query, scopePath, maxResults }) => {
-    if (
-      scopePath !== undefined &&
-      workspaceScope?.enabled &&
-      !isPathAllowedByScope(scopePath, workspaceScope)
-    ) {
-      return {
-        status: 'error',
-        message: `path is outside the allowed workspace scope: '${scopePath}'`,
+    // `hidden` is judged unconditionally — the YOLO user-data root stays
+    // invisible whether or not a workspace scope is configured — and keeps
+    // its not-found disguise instead of being reported as a scope violation.
+    if (scopePath !== undefined) {
+      const visibility = resolvePathVisibility(scopePath, {
+        scope: workspaceScope,
+        settings,
+      })
+      if (visibility === 'hidden') {
+        return {
+          status: 'error',
+          message: `no such file or directory: '${scopePath}'`,
+        }
+      }
+      if (visibility === 'out-of-scope') {
+        return {
+          status: 'error',
+          message: `path is outside the allowed workspace scope: '${scopePath}'`,
+        }
       }
     }
 
@@ -53,7 +92,8 @@ export function createVaultBashSearch({
       args: {
         query,
         path: scopePath,
-        maxResults,
+        maxResults:
+          workspaceScope?.enabled === true ? SEARCH_MAX_REQUEST : maxResults,
         mode: 'hybrid',
       },
       signal,
@@ -68,9 +108,15 @@ export function createVaultBashSearch({
     const entries: BashSearchResultEntry[] = []
     for (const result of outcome.results) {
       if (entries.length >= maxResults) break
+      // Unconditional again: the search index is queried vault-wide, and
+      // `vaultSearchService`'s own hidden filter covers its filename/folder
+      // sweeps but not its content sweep, so this is the layer that keeps
+      // user-data content out of agent-visible results.
       if (
-        workspaceScope?.enabled &&
-        !isPathAllowedByScope(result.path, workspaceScope)
+        resolvePathVisibility(result.path, {
+          scope: workspaceScope,
+          settings,
+        }) !== 'visible'
       ) {
         continue
       }

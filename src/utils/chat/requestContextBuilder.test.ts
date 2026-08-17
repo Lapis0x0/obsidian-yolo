@@ -2463,14 +2463,17 @@ describe('RequestContextBuilder system prompt freezing', () => {
 
     const systemContent = getSystemContent(messages)
     expect(systemContent).toContain(`<workspace_scope>
-- Included paths: Notes, Projects
-- Excluded paths: Notes/Private`)
+- Included paths: Notes, Projects`)
     expect(systemContent).toContain(
       'If the task requires an out-of-scope path, tell the user about the workspace restriction.',
     )
+    // #577: exclude paths must never be surfaced to the model — the tool
+    // layer enforces them regardless of what the prompt says.
+    expect(systemContent).not.toContain('Notes/Private')
+    expect(systemContent).not.toContain('Excluded paths')
   })
 
-  it('describes exclude-only scope as allowing all other vault paths', async () => {
+  it('describes exclude-only scope without leaking the excluded paths', async () => {
     const settings = {
       ...baseSettings,
       currentAssistantId: 'agent-1',
@@ -2500,8 +2503,15 @@ describe('RequestContextBuilder system prompt freezing', () => {
     })
 
     const systemContent = getSystemContent(messages)
-    expect(systemContent).toContain('- Included paths: all vault paths')
-    expect(systemContent).toContain('- Excluded paths: Private')
+    expect(systemContent).toContain('<workspace_scope>')
+    expect(systemContent).toContain(
+      'Some vault paths are outside your working range.',
+    )
+    // #577: exclude paths must never be surfaced to the model — the tool
+    // layer enforces them regardless of what the prompt says.
+    expect(systemContent).not.toContain('Private')
+    expect(systemContent).not.toContain('Included paths')
+    expect(systemContent).not.toContain('Excluded paths')
   })
 
   it('omits an enabled but unrestricted workspace scope', async () => {

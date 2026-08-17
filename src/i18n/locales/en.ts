@@ -672,18 +672,22 @@ export const en: TranslationKeys = {
       editorTabSkills: 'Skills',
       editorTabWorkspace: 'Workspace',
       workspace: {
-        enableTitle: 'Restrict directory access',
+        enableTitle: 'Limit autonomous working range',
         enableDesc:
-          'When off, this agent can access the entire vault. When on, only the rules below apply.',
-        includeTitle: 'Allow',
-        includeDesc: 'Only read/write files under these paths',
+          'When off, the agent can browse and edit anywhere in the vault on its own. When on, its own browsing and edits stay within the ranges below — files you @ mention or have open are never restricted.',
+        includeTitle: 'Work within',
+        includeDesc:
+          'The agent browses and edits only inside these paths on its own',
         includeBadge: 'INCLUDE',
         includeEmpty:
-          'Leave empty to allow everything except the exclude list below.',
-        excludeTitle: 'Deny',
-        excludeDesc: 'Excluded from the allow range (higher priority)',
+          'Leave empty to allow everywhere except the paths kept out below.',
+        excludeTitle: 'Keep out',
+        excludeDesc:
+          "Off-limits to the agent's own browsing and edits, even inside the paths above",
         excludeBadge: 'EXCLUDE',
-        excludeEmpty: 'No exclusions.',
+        excludeEmpty: 'Nothing kept out.',
+        toolBypassNotice:
+          'Agents with terminal commands or third-party MCP tools enabled can go around this range — it is not a security boundary.',
       },
       editorTabModel: 'Model',
       editorName: 'Name',

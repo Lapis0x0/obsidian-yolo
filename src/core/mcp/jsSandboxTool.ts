@@ -14,10 +14,18 @@ import type {
   JsSandboxSettings,
   YoloSettings,
 } from '../../settings/schema/setting.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
-import { BROWSER_READ_PATH_PREFIX } from '../agent/workspaceScope'
+import {
+  BROWSER_READ_PATH_PREFIX,
+  buildAllowedSkillPathSet,
+  describePathDenial,
+  isCoveredBySkillPathExemption,
+  isVisibleForTraversal,
+  resolvePathVisibility,
+} from '../agent/workspaceScope'
 import {
   BROWSER_PAGE_ID_PATTERN,
   findWebviewHandleByPageId,
@@ -2323,6 +2331,8 @@ const resolveFolderByPath = (
   app: App,
   rawPath: string | undefined,
   settings?: YoloSettings,
+  scope?: AssistantWorkspaceScope,
+  exemptPaths?: ReadonlySet<string>,
 ): { folder: TFolder; normalizedPath: string } => {
   const trimmedPath = rawPath?.trim()
   // Treat "/" as vault root for better model compatibility.
@@ -2336,6 +2346,20 @@ const resolveFolderByPath = (
   // "Folder not found" a genuinely missing path would get.
   if (isWithinYoloUserDataRoot(normalizedPath, settings)) {
     throw new Error(`Folder not found: ${normalizedPath}`)
+  }
+  // `$vault.list(path)` is an explicit request for a specific folder (not
+  // an enumeration of a folder's children — that's `isExcluded` in
+  // `collectVaultChildEntries` below), so an out-of-scope target is refused
+  // outright rather than silently emptied. `isVisibleForTraversal` (not the
+  // stricter `resolvePathVisibility`) so an ancestor of an include rule
+  // stays listable — the agent needs to be able to descend toward it,
+  // mirroring the bash tool's `ls`.
+  if (
+    scope?.enabled &&
+    !isVisibleForTraversal(normalizedPath, scope) &&
+    !(exemptPaths && isCoveredBySkillPathExemption(normalizedPath, exemptPaths))
+  ) {
+    throw new Error(describePathDenial('out-of-scope', trimmedPath, 'folder'))
   }
   const abstractFile = app.vault.getAbstractFileByPath(normalizedPath)
 
@@ -2580,8 +2604,13 @@ export function buildJsSandboxProxyHandlers(
   config: JsSandboxSettings,
   getRagEngine?: () => Promise<RAGEngine>,
   settings?: YoloSettings,
+  workspaceScope?: AssistantWorkspaceScope,
+  allowedSkillPaths?: readonly string[],
 ): JsSandboxProxyHandlers {
   const handlers: JsSandboxProxyHandlers = {}
+  const exemptPaths = allowedSkillPaths
+    ? buildAllowedSkillPathSet(allowedSkillPaths)
+    : undefined
 
   if (config.allowVaultRead || config.allowDbQuery) {
     const configuredVaultKb =
@@ -2604,17 +2633,31 @@ export function buildJsSandboxProxyHandlers(
           app,
           path,
           settings,
+          workspaceScope,
+          exemptPaths,
         )
         const recursive = options?.recursive === true
         // The list crosses the sandbox/host boundary as one array. Keep a hard
         // fuse for pathological vaults while leaving normal large-vault stats
         // practical inside the JS execution.
+        //
+        // Unlike an explicitly requested folder (`resolveFolderByPath`
+        // above), a *child* the caller never named is silently dropped
+        // rather than erroring — reporting "this entry exists but you can't
+        // see it" would itself leak information the scope is supposed to
+        // withhold. `isVisibleForTraversal` (not the stricter
+        // `resolvePathVisibility`) so a child that's only an ancestor of an
+        // include rule still appears (and gets descended into for
+        // `recursive`), matching the bash tool's directory listing.
         const entries = collectVaultChildEntries({
           folder,
           depth: recursive ? Number.POSITIVE_INFINITY : 1,
           maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
           isExcluded: (childPath) =>
-            isWithinYoloUserDataRoot(childPath, settings),
+            isWithinYoloUserDataRoot(childPath, settings) ||
+            (workspaceScope?.enabled
+              ? !isVisibleForTraversal(childPath, workspaceScope)
+              : false),
         })
         if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
           throw new Error(
@@ -2629,11 +2672,23 @@ export function buildJsSandboxProxyHandlers(
 
     handlers.vaultReadText = async (path: string) => {
       const normalized = normalizePath(path)
-      // The YOLO user-data root must stay invisible to agent tools; see the
-      // matching fs_read check for the full rationale. Reported via the
-      // same `null` this handler already uses for a genuine miss.
-      if (isWithinYoloUserDataRoot(normalized, settings)) {
+      // Explicit request for one specific file: `hidden` gets the same
+      // `null` this handler already uses for a genuine miss (see the
+      // matching fs_read check for the full rationale), but `out-of-scope`
+      // throws rather than returning null — null is this handler's
+      // established "file does not exist" signal, and silently returning
+      // it here would let the model conclude the file is missing when it
+      // actually just isn't allowed, rather than telling it plainly.
+      const visibility = resolvePathVisibility(normalized, {
+        scope: workspaceScope,
+        settings,
+        exemptPaths,
+      })
+      if (visibility === 'hidden') {
         return null
+      }
+      if (visibility === 'out-of-scope') {
+        throw new Error(describePathDenial('out-of-scope', path))
       }
       const file = app.vault.getAbstractFileByPath(normalized)
       // Contract: return null ONLY when the file truly does not exist
@@ -2670,10 +2725,18 @@ export function buildJsSandboxProxyHandlers(
     if (config.allowVaultRead) {
       handlers.vaultReadBinary = async (path: string) => {
         const normalized = normalizePath(path)
-        // The YOLO user-data root must stay invisible to agent tools; see
-        // the matching fs_read check for the full rationale.
-        if (isWithinYoloUserDataRoot(normalized, settings)) {
+        // Same contract as vaultReadText above: hidden -> null (genuine-miss
+        // disguise), out-of-scope -> throw (never disguised as missing).
+        const visibility = resolvePathVisibility(normalized, {
+          scope: workspaceScope,
+          settings,
+          exemptPaths,
+        })
+        if (visibility === 'hidden') {
           return null
+        }
+        if (visibility === 'out-of-scope') {
+          throw new Error(describePathDenial('out-of-scope', path))
         }
         const file = app.vault.getAbstractFileByPath(normalized)
         // Same contract as readText: null only for "file does not exist".
@@ -2840,7 +2903,20 @@ export function buildJsSandboxProxyHandlers(
         const query = typeof params.query === 'string' ? params.query : ''
         const limit = clampLimit(params.limit)
         const results = await engine.processQuery({ query, limit })
-        return results
+        // The RAG index covers the whole vault and every row carries the
+        // chunk's actual text, so an unfiltered `$db.search` is a read path
+        // straight around workspace scope — the same hole `$vault.readText`
+        // had above. Retrieval is an enumeration the caller never named a
+        // path for, so denied rows are dropped silently (matching
+        // `$vault.list`'s children) rather than raising.
+        return results.filter(
+          (row) =>
+            resolvePathVisibility(row.path, {
+              scope: workspaceScope,
+              settings,
+              exemptPaths,
+            }) === 'visible',
+        )
       }
 
       throw new Error(`unknown db method: ${method}`)

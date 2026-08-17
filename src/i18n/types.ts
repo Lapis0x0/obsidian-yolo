@@ -508,6 +508,7 @@ export type TranslationKeys = {
         excludeDesc?: string
         excludeBadge?: string
         excludeEmpty?: string
+        toolBypassNotice?: string
       }
       editorTabModel?: string
       editorName?: string

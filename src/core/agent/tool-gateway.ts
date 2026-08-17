@@ -67,6 +67,7 @@ import { isLoadToolSchemasToolName } from './tool-selection'
 import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
 import {
   buildAllowedSkillPathSet,
+  describePathDenial,
   findPathOutsideScope,
 } from './workspaceScope'
 
@@ -870,7 +871,7 @@ export class AgentToolGateway {
     if (pathOutsideScope !== null) {
       return {
         status: ToolCallResponseStatus.Rejected,
-        reason: `Path "${pathOutsideScope}" is outside this agent's workspace scope. Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.`,
+        reason: `${describePathDenial('out-of-scope', pathOutsideScope)} Do not attempt to bypass this restriction. If the task requires this path, tell the user that it is outside the configured workspace scope.`,
       }
     }
 

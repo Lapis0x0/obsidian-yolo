@@ -2,9 +2,11 @@ import { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import {
   collectToolCallPaths,
+  describePathDenial,
   findPathOutsideScope,
   isPathAllowedByScope,
   isWorkspaceScopeActive,
+  resolvePathVisibility,
 } from './workspaceScope'
 
 const scope = (
@@ -213,5 +215,102 @@ describe('findPathOutsideScope', () => {
         scope({ include: ['Notes'] }),
       ),
     ).toBeNull()
+  })
+})
+
+describe('resolvePathVisibility', () => {
+  const settings = { yolo: { baseDir: 'YOLO' } }
+
+  it('is visible when no scope or settings constrain the path', () => {
+    expect(resolvePathVisibility('Notes/a.md', {})).toBe('visible')
+  })
+
+  it('is hidden for a path inside the YOLO user-data root, regardless of scope', () => {
+    expect(
+      resolvePathVisibility('YOLO/data/chats/v1_abc.json', { settings }),
+    ).toBe('hidden')
+    // Hidden wins even when scope would otherwise allow the path.
+    expect(
+      resolvePathVisibility('YOLO/data/chats/v1_abc.json', {
+        settings,
+        scope: scope({ include: ['YOLO'] }),
+      }),
+    ).toBe('hidden')
+    // ...and even when scope is disabled entirely.
+    expect(
+      resolvePathVisibility('YOLO/data/chats/v1_abc.json', {
+        settings,
+        scope: scope({ enabled: false, include: ['YOLO'] }),
+      }),
+    ).toBe('hidden')
+  })
+
+  it('is out-of-scope for a real path excluded by workspace scope', () => {
+    expect(
+      resolvePathVisibility('Private/secret.md', {
+        scope: scope({ include: ['Notes'] }),
+      }),
+    ).toBe('out-of-scope')
+  })
+
+  it('is visible for a path allowed by scope', () => {
+    expect(
+      resolvePathVisibility('Notes/a.md', {
+        scope: scope({ include: ['Notes'] }),
+      }),
+    ).toBe('visible')
+  })
+
+  it('is visible when scope excludes the path but a skill exemption covers it', () => {
+    const exemptPaths = new Set(['Skills/pkg/SKILL.md'])
+    expect(
+      resolvePathVisibility('Skills/pkg/reference.md', {
+        scope: scope({ include: ['Notes'] }),
+        exemptPaths,
+      }),
+    ).toBe('visible')
+  })
+
+  it('does not let a skill exemption override the hidden check', () => {
+    const exemptPaths = new Set(['YOLO/data/SKILL.md'])
+    expect(
+      resolvePathVisibility('YOLO/data/chats/v1_abc.json', {
+        settings,
+        scope: scope({ include: ['Notes'] }),
+        exemptPaths,
+      }),
+    ).toBe('hidden')
+  })
+})
+
+describe('describePathDenial', () => {
+  it('disguises a hidden path as a genuine miss, defaulting to "file"', () => {
+    expect(describePathDenial('hidden', 'YOLO/data/chats/v1_abc.json')).toBe(
+      'File not found: YOLO/data/chats/v1_abc.json',
+    )
+  })
+
+  it('disguises a hidden folder using the folder wording when asked', () => {
+    expect(describePathDenial('hidden', 'YOLO/data', 'folder')).toBe(
+      'Folder not found: YOLO/data',
+    )
+  })
+
+  it('explicitly denies an out-of-scope path rather than disguising it as missing', () => {
+    expect(describePathDenial('out-of-scope', 'Private/secret.md')).toBe(
+      'Path "Private/secret.md" is outside this agent\'s workspace scope.',
+    )
+  })
+
+  it('echoes exactly the string it was given, never a resolved path (issue #577)', () => {
+    // The caller is responsible for passing the agent's raw, unresolved
+    // input (e.g. a wikilink) rather than whatever it resolved to — this
+    // just pins that the function itself performs no substitution.
+    expect(describePathDenial('out-of-scope', '[[Secret]]')).toBe(
+      'Path "[[Secret]]" is outside this agent\'s workspace scope.',
+    )
+    expect(describePathDenial('hidden', '[[Secret]]')).toBe(
+      'File not found: [[Secret]]',
+    )
   })
 })

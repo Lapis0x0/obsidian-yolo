@@ -34,7 +34,7 @@ export const YOLO_SYNC_POINTER_FILE_NAME = '.yolo_sync'
 export const LEGACY_JSON_DB_DIR_NAME = '.smtcmp_json_db'
 export const LEGACY_VECTOR_DB_FILE_NAME = '.smtcmp_vector_db.tar.gz'
 
-type YoloSettingsLike = {
+export type YoloSettingsLike = {
   yolo?: {
     baseDir?: string
   }

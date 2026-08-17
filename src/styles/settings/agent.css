@@ -1908,6 +1908,13 @@ button.yolo-agent-chip--more:hover {
   flex-direction: column;
 }
 
+.yolo-agent-workspace-footnote {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.5;
+  padding: 0 2px;
+}
+
 .yolo-agent-workspace-row {
   display: flex;
   align-items: center;
