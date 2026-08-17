@@ -5,6 +5,7 @@ import { ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useLanguage } from '../../contexts/language-context'
 import { AssistantToolMessageGroup } from '../../types/chat'
 import { ResponseUsage } from '../../types/llm/response'
+import { getNodeBody, getNodeWindow } from '../../utils/dom/window-context'
 
 import {
   LLMDebugIconButton,
@@ -302,12 +303,16 @@ export default function LLMResponseInlineInfo({
     requests,
   } = useLLMResponseInfo(messages)
 
-  const containerRef = useRef<HTMLDivElement>(null)
+  // The content node lives in state, not a ref: the tooltip's open state is
+  // Radix-internal, so hovering never re-renders this component. A ref read
+  // during render would still be `null` from the first render and the Portal
+  // would fall back to the global (main-window) `document.body`, putting the
+  // tooltip in the wrong window whenever the chat is in a popout.
+  const [container, setContainer] = useState<HTMLDivElement | null>(null)
   const ghostRefs = useRef<Array<HTMLDivElement | null>>([])
   const [levelIndex, setLevelIndex] = useState(0)
 
   useLayoutEffect(() => {
-    const container = containerRef.current
     if (!container) {
       return
     }
@@ -328,10 +333,10 @@ export default function LLMResponseInlineInfo({
     }
 
     pickLevel()
-    const observer = new ResizeObserver(pickLevel)
+    const observer = new (getNodeWindow(container).ResizeObserver)(pickLevel)
     observer.observe(container)
     return () => observer.disconnect()
-  }, [usage, durationMs, totalUsage, requestCount])
+  }, [container, usage, durationMs, totalUsage, requestCount])
 
   const debugTraceIds = useMemo(
     () => getLLMDebugTraceIdsForMessages(messages),
@@ -381,7 +386,7 @@ export default function LLMResponseInlineInfo({
       <Tooltip.Root>
         <Tooltip.Trigger asChild>
           <div className="yolo-llm-inline-info">
-            <div className="yolo-llm-inline-info-content" ref={containerRef}>
+            <div className="yolo-llm-inline-info-content" ref={setContainer}>
               {renderItems(inlineInputs, LEVELS[levelIndex])}
             </div>
             <div className="yolo-llm-inline-info-ghosts" aria-hidden="true">
@@ -400,7 +405,7 @@ export default function LLMResponseInlineInfo({
           </div>
         </Tooltip.Trigger>
         <Tooltip.Portal
-          container={containerRef.current?.ownerDocument?.body ?? undefined}
+          container={container ? getNodeBody(container) : undefined}
         >
           <Tooltip.Content
             className="yolo-tooltip-content yolo-llm-inline-info-tooltip-content"
