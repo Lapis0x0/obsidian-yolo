@@ -174,4 +174,4 @@ Los registros de desarrollo se actualizan regularmente en el [blog](https://www.
 
 ## Historial de estrellas
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Lapis0x0/obsidian-yolo&type=Date)](https://star-history.com/#Lapis0x0/obsidian-yolo&Type=Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=Lapis0x0/obsidian-yolo&type=Date)](https://star-history.dera.page/#Lapis0x0/obsidian-yolo&type=date)
