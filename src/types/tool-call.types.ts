@@ -99,6 +99,16 @@ export type ToolEditSummary = {
   totalFiles: number
   totalAddedLines: number
   totalRemovedLines: number
+  /**
+   * False when the totals themselves are incomplete — i.e. some file's lines
+   * could not be counted at all, so summing the files under-reports the turn.
+   *
+   * This is NOT the same as every file having `lineStatsAvailable: false`: a
+   * provider that only reports turn-wide insertions/deletions (Claude CLI)
+   * marks each file unavailable while the totals stay exact. Omitted means the
+   * totals are trustworthy.
+   */
+  totalLineStatsAvailable?: boolean
   undoStatus: ToolEditUndoStatus
 }
 

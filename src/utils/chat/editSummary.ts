@@ -44,6 +44,8 @@ export type GroupEditSummary = {
   totalFiles: number
   totalAddedLines: number
   totalRemovedLines: number
+  /** 见 `ToolEditSummary.totalLineStatsAvailable`。false 时不展示合计行数。 */
+  totalLineStatsAvailable: boolean
   undoStatus: ToolEditUndoStatus
   hasUndoableFiles: boolean
 }
@@ -289,6 +291,8 @@ export const createToolEditSummary = ({
     totalFiles: 1,
     totalAddedLines: addedLines,
     totalRemovedLines: removedLines,
+    // 单文件摘要的合计就是这个文件本身，文件的行数算不出来，合计也就无从谈起。
+    totalLineStatsAvailable: lineStatsAvailable,
     undoStatus: deriveToolEditUndoStatus(files),
   }
 }
@@ -478,6 +482,12 @@ export const collectGroupEditSummary = (
     totalFiles: files.length,
     totalAddedLines: files.reduce((sum, file) => sum + file.addedLines, 0),
     totalRemovedLines: files.reduce((sum, file) => sum + file.removedLines, 0),
+    // 合计是逐文件求和，所以只要有一个文件的行数没算出来，合计就是残缺的。
+    // 注意不能用 files.every(lineStatsAvailable)：只报告整轮 insertions/deletions
+    // 的 provider（Claude CLI）把每个文件标成不可用，合计却是准确的。
+    totalLineStatsAvailable: entries.every(
+      ({ summary }) => summary.totalLineStatsAvailable !== false,
+    ),
     undoStatus,
     hasUndoableFiles: entries.some(({ summary }) =>
       summary.files.some((file) => file.undoStatus === 'available'),

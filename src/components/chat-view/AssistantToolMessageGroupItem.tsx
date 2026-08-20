@@ -32,7 +32,10 @@ import {
   hasMatchingToolMessageForRequests,
   shouldRenderAssistantToolPreview,
 } from '../../utils/chat/assistantToolPreview'
-import type { GroupEditSummary } from '../../utils/chat/editSummary'
+import type {
+  FileChangeStats,
+  GroupEditSummary,
+} from '../../utils/chat/editSummary'
 import {
   collectGroupEditSummary,
   countFileChangeStats,
@@ -912,12 +915,15 @@ function AssistantToolMessageGroupItem({
       .join('|')
   }, [baseGroupEditSummary])
 
-  // Cached per-file {addedLines, removedLines} derived from the cumulative
-  // first→latest snapshot diff. Keyed by snapshotFetchKey entries so it
-  // survives re-renders of baseGroupEditSummary that don't touch the file
-  // set (e.g. tool-call entries appended during the same round).
+  // Cached per-file stats derived from the cumulative first→latest snapshot
+  // diff. Keyed by snapshotFetchKey entries so it survives re-renders of
+  // baseGroupEditSummary that don't touch the file set (e.g. tool-call entries
+  // appended during the same round). Carries `lineStatsAvailable` along with
+  // the numbers: the recomputation can come back unavailable (oversized file
+  // or diff timeout), and applying its 0/0 while leaving the original
+  // availability flag alone would render a confident, wrong "0".
   const [enrichedFileCounts, setEnrichedFileCounts] = useState<
-    Record<string, { addedLines: number; removedLines: number }>
+    Record<string, FileChangeStats>
   >({})
 
   useEffect(() => {
@@ -964,8 +970,7 @@ function AssistantToolMessageGroupItem({
         return [key, counts] as const
       })
 
-      const next: Record<string, { addedLines: number; removedLines: number }> =
-        {}
+      const next: Record<string, FileChangeStats> = {}
       for (const entry of entries) {
         if (entry) {
           next[entry[0]] = entry[1]
@@ -997,6 +1002,7 @@ function AssistantToolMessageGroupItem({
         ...file,
         addedLines: enriched.addedLines,
         removedLines: enriched.removedLines,
+        lineStatsAvailable: enriched.lineStatsAvailable,
       }
     })
     return {
@@ -1007,6 +1013,11 @@ function AssistantToolMessageGroupItem({
         (sum, file) => sum + file.removedLines,
         0,
       ),
+      // 合计跟着补齐后的逐文件数字一起重算，所以可用性也要重新判断：补齐结果
+      // 里只要有一个文件算不出行数，这里的合计就是残缺的。
+      totalLineStatsAvailable:
+        baseGroupEditSummary.totalLineStatsAvailable &&
+        files.every((file) => file.lineStatsAvailable),
     }
   }, [baseGroupEditSummary, enrichedFileCounts])
 

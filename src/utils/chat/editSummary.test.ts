@@ -361,6 +361,93 @@ describe('editSummary helpers', () => {
     expect(summary?.files[0].lineStatsAvailable).toBe(false)
   })
 
+  it('marks group totals unusable when a file could not be counted', () => {
+    // 合计是逐文件求和，算不出行数的文件贡献 0，合计就少算了——不能让标题
+    // 拿这个残缺的和去冒充完整数字。
+    const unavailable = createToolEditSummary({
+      path: 'huge.md',
+      beforeContent: 'a',
+      afterContent: 'b',
+      counts: { addedLines: 0, removedLines: 0, lineStatsAvailable: false },
+    })
+
+    const result = collectGroupEditSummary([
+      { role: 'assistant', id: 'assistant-1', content: 'done' },
+      {
+        role: 'tool',
+        id: 'tool-1',
+        toolCalls: [
+          {
+            request: { id: 'call-1', name: 'yolo_local__fs_edit' },
+            response: {
+              status: ToolCallResponseStatus.Success,
+              data: {
+                type: 'text',
+                text: '{}',
+                metadata: { editSummary: unavailable },
+              },
+            },
+          },
+        ],
+      },
+    ] as AssistantToolMessageGroup)
+
+    expect(result?.totalLineStatsAvailable).toBe(false)
+  })
+
+  it('keeps group totals usable for providers that only report turn-wide stats', () => {
+    // Claude CLI 只拿得到整轮的 insertions/deletions，于是把每个文件标成
+    // 不可用、把整轮数字放进合计。这种情况下合计是准确的，不能被误伤。
+    const turnWide = {
+      files: [
+        {
+          path: 'a.md',
+          addedLines: 12,
+          removedLines: 3,
+          lineStatsAvailable: false,
+          operation: 'edit' as const,
+          undoStatus: 'unavailable' as const,
+        },
+        {
+          path: 'b.md',
+          addedLines: 0,
+          removedLines: 0,
+          lineStatsAvailable: false,
+          operation: 'edit' as const,
+          undoStatus: 'unavailable' as const,
+        },
+      ],
+      totalFiles: 2,
+      totalAddedLines: 12,
+      totalRemovedLines: 3,
+      undoStatus: 'unavailable' as const,
+    }
+
+    const result = collectGroupEditSummary([
+      { role: 'assistant', id: 'assistant-1', content: 'done' },
+      {
+        role: 'tool',
+        id: 'tool-1',
+        toolCalls: [
+          {
+            request: { id: 'call-1', name: 'yolo_local__fs_edit' },
+            response: {
+              status: ToolCallResponseStatus.Success,
+              data: {
+                type: 'text',
+                text: '{}',
+                metadata: { editSummary: turnWide },
+              },
+            },
+          },
+        ],
+      },
+    ] as AssistantToolMessageGroup)
+
+    expect(result?.totalLineStatsAvailable).toBe(true)
+    expect(result?.files.every((file) => !file.lineStatsAvailable)).toBe(true)
+  })
+
   it('derives partial undo status when file states diverge', () => {
     expect(
       deriveToolEditUndoStatus([
