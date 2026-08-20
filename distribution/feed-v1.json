@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 20,
+  "revision": 21,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.5.5",
+    "version": "1.6.5.6",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.5",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5.6",
     "releaseNotes": {
-      "en": "## 1.6.5.5 PDF Annotations & Smoother Generation 📌\n\n- PDF reader now supports annotating selections: quote several passages in a single message and write a separate note for each.\n- Reduced UI stuttering during generation by cutting main-thread work. (#573)\n- Fixed chat history repeatedly reloading during long streaming tasks, which could freeze the interface. (#573)\n- Reworked the starlight animation shown at Max reasoning effort.\n- Modules can now ship complete skill packages alongside their release artifacts.\n- Rebuilt the registration pipeline for built-in tools and skills so it is easier to maintain.",
-      "zh": "## 1.6.5.5 PDF 批注与更顺滑的生成体验 📌\n\n- PDF 阅读器支持选区批注：可在一条消息中引用多处原文并逐条撰写批注。\n- 优化生成时的界面卡顿，减少主线程占用。（#573）\n- 修复长时间任务流式输出时聊天记录反复重新加载、可能导致界面卡死的问题。（#573）\n- 重做推理强度为 Max 时的星光动画设计。\n- 模块可随产物发布完整 skill 包。\n- 重构内置工具与 skills 的注册维护管线，降低维护难度。"
+      "en": "## 1.6.5.6 Multi-Agent Hermes & Editing Without Freezes ⚡\n\n### Agent & Hermes CLI\n\n- Hermes CLI can now switch between multiple agents, and supports manual context compaction.\n- Fixed Obsidian freezing or becoming unresponsive while the agent edited files — line-count stats and edit review no longer run an unbounded full-file diff on the main thread. (#420)\n- Agent workspace scope no longer sends excluded paths to the model, and the `js_eval` bypass for reading them is closed. (#577)\n\n### Chat experience\n\n- Restored the streaming reveal trail on assistant output, with opacity interpolation handed to the browser for smoother, cheaper animation.\n- Hovering the token counter in a popout window no longer shows the tooltip in the main window. (#576)\n\n### Reading & knowledge base\n\n- Fixed PDF annotations where the number marker disappeared right after creation and the note input sometimes never appeared.\n- Knowledge base indexing on an outdated Obsidian installer no longer fails with `extension \"vector\" is not available`; it now tells you to update the client instead. (#579)",
+      "zh": "## 1.6.5.6 Hermes 多 Agent 与不再卡死的文件编辑 ⚡\n\n### Agent 与 Hermes CLI\n\n- Hermes CLI 支持切换多个 agent，并接入手动压缩上下文。\n- 修复 Agent 编辑文件时整个 Obsidian 可能卡死无响应的问题：行数统计与编辑评审不再在主线程上跑无上限的全文 diff。（#420）\n- Agent 工作范围不再把排除路径发给模型，并堵住 `js_eval` 绕过读取的通道。（#577）\n\n### 对话体验\n\n- 重新为流式正文加回显影尾巴，透明度插值交给浏览器，动画更顺滑、开销更低。\n- 弹出窗口中悬停 token 统计时，浮层不再显示到主窗口。（#576）\n\n### 阅读与知识库\n\n- 修复 PDF 批注创建后编号标记立即消失、批注输入框有时完全不出现的问题。\n- 知识库索引在旧版 Obsidian installer 下不再报 `extension \"vector\" is not available`，改为直接提示更新客户端。（#579）"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.5.5/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.5/main.js",
-        "byteSize": 9341415,
-        "sha256": "6230aca3cbbfe0baff184572439f8b53d39ddaa2e6be48ec1fce03257ee0cbfb"
+        "mirrorPath": "core/1.6.5.6/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.6/main.js",
+        "byteSize": 9361899,
+        "sha256": "88bcba2f4a320096419af4b5a3b4e7c294d992fc944677c9fc26b4b906ada3fe"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.5.5/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.5/manifest.json",
+        "mirrorPath": "core/1.6.5.6/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.6/manifest.json",
         "byteSize": 330,
-        "sha256": "bab66aaad93cdfc40c30ca6ce22ee3d12f6b9e8d45803d94df9114a7cbe5f546"
+        "sha256": "f6b0ead4703cf20616f1d5dc360053a843bcb0938011bb18bcf89f2d6e5d6f84"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.5.5/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.5/styles.css",
-        "byteSize": 632263,
-        "sha256": "7e1936183f9ddbf46a4692b785090f44e7dd1e85c436bbec17562fe69cb3f1df"
+        "mirrorPath": "core/1.6.5.6/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5.6/styles.css",
+        "byteSize": 633880,
+        "sha256": "3d08a13499fe3794421bbcf316e27013524d0e42b49f11a1d01e507019d71425"
       }
     }
   },
