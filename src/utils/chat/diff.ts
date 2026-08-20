@@ -4,6 +4,18 @@ import {
   LineRangeMapping,
 } from 'vscode-diff'
 
+/**
+ * 评审视图的 diff 上限。同样不能用 vscode-diff 的「不限时」（0），否则超大
+ * 文档打开评审时会冻住主线程；但这里给的额度远比行数统计
+ * （`editSummary.ts` 的 `LINE_STATS_MAX_COMPUTATION_MS`）宽松：块的划分质量
+ * 直接决定评审能不能按段拆分、拆得对不对，是用户逐条接受/拒绝的依据，而不是
+ * 一个展示用的数字。评审又是用户主动触发的一次性计算，不在 agent 的热路径上。
+ *
+ * 超时的代价是块变粗：`review-model.ts` 的段落拆分要求块内原文段数与新文段数
+ * 相等才逐段拆，块一粗就更容易对不上，退化成整块一个评审项。
+ */
+const REVIEW_DIFF_MAX_COMPUTATION_MS = 1000
+
 export type InlineDiffToken = {
   type: 'same' | 'add' | 'del'
   text: string
@@ -60,7 +72,7 @@ export function createDiffBlocks(
   const advOptions: ILinesDiffComputerOptions = {
     ignoreTrimWhitespace: false,
     computeMoves: true,
-    maxComputationTimeMs: 0,
+    maxComputationTimeMs: REVIEW_DIFF_MAX_COMPUTATION_MS,
   }
   const advDiffComputer = new AdvancedLinesDiffComputer()
   const advLineChanges = advDiffComputer.computeDiff(
@@ -112,7 +124,7 @@ export function createLineDiffBlocks(
   const advOptions: ILinesDiffComputerOptions = {
     ignoreTrimWhitespace: false,
     computeMoves: true,
-    maxComputationTimeMs: 0,
+    maxComputationTimeMs: REVIEW_DIFF_MAX_COMPUTATION_MS,
   }
   const advDiffComputer = new AdvancedLinesDiffComputer()
 
@@ -807,7 +819,7 @@ export function createInlineDiffLines(
   const advOptions: ILinesDiffComputerOptions = {
     ignoreTrimWhitespace: false,
     computeMoves: false,
-    maxComputationTimeMs: 0,
+    maxComputationTimeMs: REVIEW_DIFF_MAX_COMPUTATION_MS,
   }
   const advDiffComputer = new AdvancedLinesDiffComputer()
   const advLineChanges = advDiffComputer.computeDiff(

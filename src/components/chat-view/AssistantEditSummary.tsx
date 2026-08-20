@@ -86,7 +86,12 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
               '{count} file(s) changed',
             ).replace('{count}', String(summary.totalFiles))}
           </span>
-          {renderDeltaPair(summary.totalAddedLines, summary.totalRemovedLines)}
+          {summary.totalLineStatsAvailable
+            ? renderDeltaPair(
+                summary.totalAddedLines,
+                summary.totalRemovedLines,
+              )
+            : null}
         </div>
         {showUndo ? (
           <button

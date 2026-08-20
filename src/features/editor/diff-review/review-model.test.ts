@@ -128,6 +128,40 @@ describe('review plan materialization', () => {
     ).toBe(original)
   })
 
+  it('falls back to a whole-document edit instead of diffing a huge file', () => {
+    // vscode-diff 的行对齐在大输入上不接受 timeout，实测 20000 行全量重写要
+    // 17 秒。超限时不跑 diff，改用整篇替换，评审计划仍然可用、可还原。
+    const original = Array.from(
+      { length: 5001 },
+      (_, i) => `原始第 ${i} 行`,
+    ).join('\n')
+    const incoming = Array.from(
+      { length: 5001 },
+      (_, i) => `修改第 ${i} 行`,
+    ).join('\n')
+
+    const started = Date.now()
+    const plan = buildSnapshotReviewPlan(original, incoming)
+    const elapsed = Date.now() - started
+
+    expect(plan.content).toBe(incoming)
+    expect(plan.suggestions.length).toBeGreaterThan(0)
+    expect(elapsed).toBeLessThan(500)
+
+    const restore = ChangeSet.of(
+      plan.suggestions.map((suggestion) =>
+        resolveSuggestionChange(plan.content, suggestion),
+      ),
+      plan.content.length,
+    )
+    expect(applyChanges(plan.content, restore)).toBe(original)
+  })
+
+  it('reports no suggestions when huge content is identical', () => {
+    const huge = Array.from({ length: 5001 }, (_, i) => `第 ${i} 行`).join('\n')
+    expect(buildSnapshotReviewPlan(huge, huge).suggestions).toEqual([])
+  })
+
   it('restores every pending item from materialized ranges', () => {
     const original = 'one\ntwo\nthree\nfour'
     const plan = buildSnapshotReviewPlan(original, 'ONE\ntwo\ninserted\nthree')

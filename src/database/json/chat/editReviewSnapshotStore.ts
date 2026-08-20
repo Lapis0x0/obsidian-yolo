@@ -14,6 +14,12 @@ export type EditReviewSnapshot = {
   afterExists: boolean
   addedLines: number
   removedLines: number
+  /**
+   * 行数是否可信。规模过大或 diff 超时的快照拿不到准确行数，UI 据此隐藏
+   * `+N/-M`。旧快照没有这个字段，读取时按 true 兜底（它们写入时能算出数字，
+   * 就说明当时没有触发这两种情况）。
+   */
+  lineStatsAvailable: boolean
   createdAt: number
   updatedAt: number
 }
@@ -92,6 +98,7 @@ const readSnapshotStore = async (
           ...snapshot,
           beforeExists: snapshot.beforeExists ?? true,
           afterExists: snapshot.afterExists ?? true,
+          lineStatsAvailable: snapshot.lineStatsAvailable ?? true,
         },
       ]),
     ) as Record<string, EditReviewSnapshot>
@@ -197,6 +204,7 @@ export const upsertEditReviewSnapshot = async ({
       afterExists,
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
+      lineStatsAvailable: counts.lineStatsAvailable,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }
@@ -233,6 +241,34 @@ export const readEditReviewSnapshot = async ({
 }): Promise<EditReviewSnapshot | null> => {
   const store = await readSnapshotStore(app, conversationId, settings)
   return store.snapshots[buildSnapshotKey(roundId, filePath)] ?? null
+}
+
+/**
+ * 一次读盘取出多个快照。
+ *
+ * `readEditReviewSnapshot` 每调用一次就要把整个会话的快照库读盘并 `JSON.parse`
+ * 一遍，而这个库存着该会话每个 (轮次, 文件) 的前后全文，可以到数 MB。调用方
+ * 需要多个快照时逐个调用，就是把同一份大 JSON 反复解析，全在主线程上。
+ */
+export const readEditReviewSnapshots = async ({
+  app,
+  conversationId,
+  keys,
+  settings,
+}: {
+  app: App
+  conversationId: string
+  keys: ReadonlyArray<{ roundId: string; filePath: string }>
+  settings?: YoloSettingsLike | null
+}): Promise<Array<EditReviewSnapshot | null>> => {
+  if (keys.length === 0) {
+    return []
+  }
+  const store = await readSnapshotStore(app, conversationId, settings)
+  return keys.map(
+    ({ roundId, filePath }) =>
+      store.snapshots[buildSnapshotKey(roundId, filePath)] ?? null,
+  )
 }
 
 export const deleteEditReviewSnapshotStore = async (

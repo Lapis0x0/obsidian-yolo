@@ -212,7 +212,10 @@ import {
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
-import { buildSnapshotReviewPlan } from './features/editor/diff-review/review-model'
+import {
+  buildReviewPlanFromEdits,
+  buildSnapshotReviewPlan,
+} from './features/editor/diff-review/review-model'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
 import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
@@ -2070,9 +2073,20 @@ export default class YoloPlugin extends Plugin {
     // If the diff that the overlay would display has zero modified blocks,
     // skip the overlay entirely — otherwise the UI renders "0/0" with every
     // button disabled and no auto-close path, stranding the user.
-    const reviewSuggestions = buildSnapshotReviewPlan(
-      state.originalContent,
-      state.newContent,
+    //
+    // 这里必须和 overlay 构造时的取法一致，否则预检说「有改动」而 overlay 算出
+    // 空计划（或反过来）。`fs_edit` 在打开评审前不写文件，所以此刻文件内容就是
+    // `originalContent`，正是 overlay 用 `reviewEdits` 的前提条件。走这一支还
+    // 顺带避开了一次全量 diff：`fs_edit` 每次走审批都会到这里，而 vscode-diff
+    // 的行对齐在大文件上不接受 timeout（见 editSummary.ts 的
+    // LINE_STATS_MAX_LINES），只为判断「有没有改动」就可能冻住主线程十几秒。
+    const exactPlan =
+      state.viewMode !== 'applied-review' && state.reviewEdits
+        ? buildReviewPlanFromEdits(state.originalContent, state.reviewEdits)
+        : null
+    const reviewSuggestions = (
+      exactPlan ??
+      buildSnapshotReviewPlan(state.originalContent, state.newContent)
     ).suggestions
     if (reviewSuggestions.length === 0) {
       if (state.originalContent !== state.newContent) {

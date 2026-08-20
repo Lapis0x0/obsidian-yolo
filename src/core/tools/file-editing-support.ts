@@ -2,9 +2,11 @@ import type { App } from 'obsidian'
 
 import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import type { ToolEditSummary } from '../../types/tool-call.types'
 import {
   createToolEditSummary,
   deriveToolEditUndoStatus,
+  hasFileContentChanged,
 } from '../../utils/chat/editSummary'
 import { editUndoSnapshotStore } from '../../utils/chat/editUndoSnapshotStore'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
@@ -55,16 +57,14 @@ export const buildFileChangeSummary = async ({
   toolCallId?: string
   appliedAt: number
 }): Promise<LocalToolCallResultMetadata | undefined> => {
-  let editSummary = createToolEditSummary({
-    path,
+  const changed = hasFileContentChanged({
     beforeContent,
     afterContent,
     beforeExists,
     afterExists,
-    reviewRoundId: roundId,
   })
 
-  if (toolCallId && editSummary) {
+  if (toolCallId && changed) {
     editUndoSnapshotStore.set({
       toolCallId,
       path,
@@ -76,7 +76,12 @@ export const buildFileChangeSummary = async ({
     })
   }
 
-  if (conversationId && roundId && editSummary) {
+  // 有会话上下文时，最终展示的行数来自 review 快照（它统计的是本轮累计，而
+  // 不是本次编辑），会把 `createToolEditSummary` 自己算的数字整个覆盖掉。所以
+  // 先拿到快照，再用它的数字建摘要——否则同一份内容要跑两次全文 diff，其中
+  // 一次的结果算完就被丢弃。
+  let editSummary: ToolEditSummary | undefined
+  if (changed && conversationId && roundId) {
     const snapshot = await upsertEditReviewSnapshot({
       app,
       conversationId,
@@ -88,17 +93,28 @@ export const buildFileChangeSummary = async ({
       afterExists,
       settings,
     })
-    editSummary = {
-      ...editSummary,
-      files: editSummary.files.map((file) => ({
-        ...file,
+    editSummary = createToolEditSummary({
+      path,
+      beforeContent,
+      afterContent,
+      beforeExists,
+      afterExists,
+      reviewRoundId: roundId,
+      counts: {
         addedLines: snapshot.addedLines,
         removedLines: snapshot.removedLines,
-        reviewRoundId: roundId,
-      })),
-      totalAddedLines: snapshot.addedLines,
-      totalRemovedLines: snapshot.removedLines,
-    }
+        lineStatsAvailable: snapshot.lineStatsAvailable,
+      },
+    })
+  } else {
+    editSummary = createToolEditSummary({
+      path,
+      beforeContent,
+      afterContent,
+      beforeExists,
+      afterExists,
+      reviewRoundId: roundId,
+    })
   }
 
   if (!editSummary) {
