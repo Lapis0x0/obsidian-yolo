@@ -856,7 +856,9 @@ describe('AcpCliRuntime', () => {
         brokenFallbackNewSessionCalls += 1
         throw new Error('default profile session/new failed')
       })
-      const resolveHost = jest.fn(async () => createHostFor(brokenFallbackAgent))
+      const resolveHost = jest.fn(async () =>
+        createHostFor(brokenFallbackAgent),
+      )
 
       const runtime = new AcpCliRuntime('hermes', {
         cwd: '/vault',

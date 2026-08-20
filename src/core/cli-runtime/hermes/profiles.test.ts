@@ -173,7 +173,8 @@ describe('discoverHermesProfiles', () => {
 
   it('honors HERMES_HOME as the root when resolving profiles/', async () => {
     mockedReaddir.mockImplementation(async (dir) => {
-      if (String(dir) === '/opt/hermes-home/profiles') return direntsFor(['work'])
+      if (String(dir) === '/opt/hermes-home/profiles')
+        return direntsFor(['work'])
       throw new Error('ENOENT')
     })
 
@@ -189,9 +190,7 @@ describe('discoverHermesProfiles', () => {
 
   it('resolves Windows paths for the profiles directory', async () => {
     mockedReaddir.mockImplementation(async (dir) => {
-      if (
-        String(dir) === 'C:\\Users\\me\\AppData\\Local\\hermes\\profiles'
-      ) {
+      if (String(dir) === 'C:\\Users\\me\\AppData\\Local\\hermes\\profiles') {
         return direntsFor(['work'])
       }
       throw new Error('ENOENT')
@@ -209,7 +208,8 @@ describe('discoverHermesProfiles', () => {
 
   it('falls back to the id when profile.yaml has an empty or non-string name', async () => {
     mockedReaddir.mockImplementation(async (dir) => {
-      if (String(dir) === '/home/me/.hermes/profiles') return direntsFor(['work'])
+      if (String(dir) === '/home/me/.hermes/profiles')
+        return direntsFor(['work'])
       throw new Error('ENOENT')
     })
     mockedReadFile.mockImplementation(async (candidate: string) => {

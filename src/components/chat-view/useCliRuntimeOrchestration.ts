@@ -662,8 +662,7 @@ export function useCliRuntimeOrchestration({
         requestedProfileId: profileId,
         currentProfileId: hermesProfileId,
         hasMessages:
-          (cliConversationController?.getSnapshot().messages.length ?? 0) >
-          0,
+          (cliConversationController?.getSnapshot().messages.length ?? 0) > 0,
       })
       if (action === 'noop') return
       if (action === 'new-conversation') {

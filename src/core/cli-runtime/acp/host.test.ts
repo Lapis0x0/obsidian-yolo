@@ -42,9 +42,7 @@ describe('AcpHostPool', () => {
     const pool = new AcpHostPool(createOptions)
     const host = await pool.acquire('profile-a')
     await pool.acquire('profile-a') // second reference to the same key
-    const disposeSpy = jest
-      .spyOn(host, 'dispose')
-      .mockResolvedValue(undefined)
+    const disposeSpy = jest.spyOn(host, 'dispose').mockResolvedValue(undefined)
 
     pool.release('profile-a')
     expect(disposeSpy).not.toHaveBeenCalled()

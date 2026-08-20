@@ -210,9 +210,7 @@ export const buildChatTimelineItems = ({
       divider.anchorMessageId,
     )
     if (anchored) anchored.push(divider)
-    else sessionFallbackDividersByAnchor.set(divider.anchorMessageId, [
-      divider,
-    ])
+    else sessionFallbackDividersByAnchor.set(divider.anchorMessageId, [divider])
   }
   const insertSessionFallbackDividers = (anchorMessageId: string | null) => {
     for (const divider of sessionFallbackDividersByAnchor.get(

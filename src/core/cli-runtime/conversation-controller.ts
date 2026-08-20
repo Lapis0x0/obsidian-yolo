@@ -1008,8 +1008,7 @@ export class CliConversationController {
                     ...(this.snapshot.sessionFallbackBoundaries ?? []),
                     {
                       id: `${event.ref.runtimeId}-fallback-${event.ref.nativeSessionId}`,
-                      afterMessageId:
-                        this.snapshot.messages.at(-1)?.id ?? null,
+                      afterMessageId: this.snapshot.messages.at(-1)?.id ?? null,
                       requestedRef: event.fallbackFrom!,
                     },
                   ],

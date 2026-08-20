@@ -221,7 +221,9 @@ type AcpHostPoolEntry = {
 export class AcpHostPool {
   private readonly entries = new Map<string, AcpHostPoolEntry>()
 
-  constructor(private readonly createOptions: (key: string) => AcpHostOptions) {}
+  constructor(
+    private readonly createOptions: (key: string) => AcpHostOptions,
+  ) {}
 
   /** Resolves `key`'s host, creating it on first use, and increments its reference count. */
   acquire = async (key: string): Promise<AcpHost> => {

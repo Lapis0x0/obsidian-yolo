@@ -510,7 +510,6 @@ export function CliChatSurface({
     return () => {
       cancelled = true
     }
-     
   }, [cliRuntimeScope, sessionFallbackBoundaries.length > 0])
   const isConversationBusy =
     snapshot.isCompacting === true || ACTIVE_RUN_STATES.has(snapshot.runState)

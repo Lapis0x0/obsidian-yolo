@@ -54,9 +54,7 @@ export function renderConversationTimelineItem(
     // unreachable profile.
     return (
       <div className="yolo-chat-compaction-divider">
-        <div className="yolo-chat-compaction-divider__title">
-          {item.title}
-        </div>
+        <div className="yolo-chat-compaction-divider__title">{item.title}</div>
         <div className="yolo-chat-compaction-divider__line" />
         <div className="yolo-chat-compaction-divider__content">
           <div className="yolo-chat-compaction-divider__description">

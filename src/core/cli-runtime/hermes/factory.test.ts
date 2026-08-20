@@ -147,8 +147,7 @@ describe('createHermesRuntimeFactory', () => {
     const pool = hostPoolInstances[0]
 
     factory.create({ app, vaultPath: '/vault', profileId: 'work' })
-    const options = AcpCliRuntimeMock.mock
-      .calls[0][1] as CapturedRuntimeOptions
+    const options = AcpCliRuntimeMock.mock.calls[0][1] as CapturedRuntimeOptions
 
     const primaryHost = await options.resolveHost()
     const fallbackHost = await options.sessionRecovery!.resolveHost()
@@ -166,8 +165,7 @@ describe('createHermesRuntimeFactory', () => {
     const pool = hostPoolInstances[0]
 
     factory.create({ app, vaultPath: '/vault', profileId: 'work' })
-    const options = AcpCliRuntimeMock.mock
-      .calls[0][1] as CapturedRuntimeOptions
+    const options = AcpCliRuntimeMock.mock.calls[0][1] as CapturedRuntimeOptions
 
     await options.resolveHost()
     await options.sessionRecovery!.resolveHost()
@@ -186,8 +184,7 @@ describe('createHermesRuntimeFactory', () => {
     const pool = hostPoolInstances[0]
 
     factory.create({ app, vaultPath: '/vault', profileId: 'work' })
-    const options = AcpCliRuntimeMock.mock
-      .calls[0][1] as CapturedRuntimeOptions
+    const options = AcpCliRuntimeMock.mock.calls[0][1] as CapturedRuntimeOptions
 
     await options.resolveHost()
     options.releaseHost!()

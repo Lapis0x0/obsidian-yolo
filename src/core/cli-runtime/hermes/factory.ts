@@ -32,23 +32,22 @@ export const createHermesRuntimeFactory = async (
   const { AcpCliRuntime } = await import('../acp/AcpCliRuntime')
   const { AcpHostPool } = await import('../acp/host')
 
-  const resolveProcessOptionsForProfile =
-    (profileId: string) => async () => {
-      const env = (await loadLoginShellEnvironment()) as NodeJS.ProcessEnv
-      const cliPathOverride = getCliPathOverride(deps.app, 'hermes')
-      const resolved = await resolveHermesCommand(
-        env,
-        process.platform,
-        cliPathOverride,
-        profileId,
-      )
-      if (!resolved) throw new Error(NOT_FOUND_MESSAGE)
-      return {
-        command: resolved.command,
-        args: resolved.args,
-        cwd: deps.vaultPath,
-      }
+  const resolveProcessOptionsForProfile = (profileId: string) => async () => {
+    const env = (await loadLoginShellEnvironment()) as NodeJS.ProcessEnv
+    const cliPathOverride = getCliPathOverride(deps.app, 'hermes')
+    const resolved = await resolveHermesCommand(
+      env,
+      process.platform,
+      cliPathOverride,
+      profileId,
+    )
+    if (!resolved) throw new Error(NOT_FOUND_MESSAGE)
+    return {
+      command: resolved.command,
+      args: resolved.args,
+      cwd: deps.vaultPath,
     }
+  }
 
   const hostPool = new AcpHostPool((profileId) => ({
     runtimeId: 'hermes',
@@ -80,7 +79,9 @@ export const createHermesRuntimeFactory = async (
         // Resuming a session whose profile no longer loads (deleted,
         // corrupted sessions.db, ...) falls back to a fresh session under
         // the default profile rather than failing the conversation outright.
-        sessionRecovery: { resolveHost: () => acquire(HERMES_DEFAULT_PROFILE_ID) },
+        sessionRecovery: {
+          resolveHost: () => acquire(HERMES_DEFAULT_PROFILE_ID),
+        },
         releaseHost: () => {
           for (const [key, count] of acquiredKeyCounts) {
             for (let index = 0; index < count; index += 1) {

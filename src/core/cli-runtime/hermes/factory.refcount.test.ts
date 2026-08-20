@@ -69,10 +69,12 @@ describe('createHermesRuntimeFactory ref-count leak regression (real AcpHostPool
     // pool key. Pre-fix, `releaseHost()` tracked acquired keys in a `Set`
     // and released each distinct key only once, leaking one reference here
     // and keeping the Hermes subprocess alive forever.
-    const factory = await createHermesRuntimeFactory({ app, vaultPath: '/vault' })
+    const factory = await createHermesRuntimeFactory({
+      app,
+      vaultPath: '/vault',
+    })
     factory.create({ app, vaultPath: '/vault' }) // no profileId -> 'default'
-    const options = AcpCliRuntimeMock.mock
-      .calls[0][1] as CapturedRuntimeOptions
+    const options = AcpCliRuntimeMock.mock.calls[0][1] as CapturedRuntimeOptions
 
     const primaryHost = await options.resolveHost()
     const fallbackHost = await options.sessionRecovery!.resolveHost()
@@ -90,7 +92,10 @@ describe('createHermesRuntimeFactory ref-count leak regression (real AcpHostPool
   })
 
   it('only releases what this runtime instance itself acquired, leaving a separate holder of the same key untouched', async () => {
-    const factory = await createHermesRuntimeFactory({ app, vaultPath: '/vault' })
+    const factory = await createHermesRuntimeFactory({
+      app,
+      vaultPath: '/vault',
+    })
     // Two independent conversation surfaces, both on the default profile —
     // e.g. two Hermes conversations open at once, neither ever hitting
     // recovery. Both end up sharing the same pooled 'default' host.

@@ -119,7 +119,9 @@ describe('renderConversationTimelineItem', () => {
     // But renders the item's own copy, not the contract's shared
     // compaction copy.
     expect(html).toContain('Switched to default')
-    expect(html).toContain('The original agent &quot;work&quot; is unavailable.')
+    expect(html).toContain(
+      'The original agent &quot;work&quot; is unavailable.',
+    )
     expect(html).not.toContain('Divider description')
   })
 })

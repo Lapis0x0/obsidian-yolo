@@ -800,7 +800,10 @@ describe('CLI chat integration', () => {
       > = {
         sessionRef: { runtimeId: 'codex', nativeSessionId: 'fresh-sess' },
         sessionFallbackBoundaries: [
-          fallbackBoundary({ runtimeId: 'codex', nativeSessionId: 'gone-sess' }),
+          fallbackBoundary({
+            runtimeId: 'codex',
+            nativeSessionId: 'gone-sess',
+          }),
         ],
       }
       expect(resolveHermesSessionFallbackUpdate('codex', snapshot)).toBeNull()
@@ -814,9 +817,7 @@ describe('CLI chat integration', () => {
         sessionRef: null,
         sessionFallbackBoundaries: [],
       }
-      expect(
-        resolveHermesSessionFallbackUpdate('hermes', snapshot),
-      ).toBeNull()
+      expect(resolveHermesSessionFallbackUpdate('hermes', snapshot)).toBeNull()
     })
 
     it('returns null when the bound session carries no fallback boundary', () => {
@@ -831,9 +832,7 @@ describe('CLI chat integration', () => {
         },
         sessionFallbackBoundaries: [],
       }
-      expect(
-        resolveHermesSessionFallbackUpdate('hermes', snapshot),
-      ).toBeNull()
+      expect(resolveHermesSessionFallbackUpdate('hermes', snapshot)).toBeNull()
     })
 
     it('resets hermesProfileId to the default (undefined) and builds a default-profile cliSession when a fallback occurred', () => {

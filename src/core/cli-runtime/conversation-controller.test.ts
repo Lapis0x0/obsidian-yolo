@@ -1267,9 +1267,9 @@ describe('CliConversationController', () => {
       })
       const controller = new CliConversationController(runtime)
 
-      await expect(
-        controller.hydrateSession(requestedRef),
-      ).rejects.toThrow('CLI runtime hydrated a different session.')
+      await expect(controller.hydrateSession(requestedRef)).rejects.toThrow(
+        'CLI runtime hydrated a different session.',
+      )
     })
 
     it('ensureReady binds a fallback session_bound event, updates sessionRef, and anchors the boundary after existing messages', async () => {
