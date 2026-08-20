@@ -1,4 +1,4 @@
-import { type App, getLanguage, normalizePath } from 'obsidian'
+import { type App, normalizePath } from 'obsidian'
 
 import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import {
@@ -6,7 +6,6 @@ import {
   type RuntimeComponentLease,
 } from '../core/runtime-components/contracts'
 import { acquireRuntimeComponent } from '../core/runtime-components/runtimeComponentAccess'
-import { type Language, createTranslationFunction } from '../i18n'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
 import {
@@ -55,9 +54,7 @@ export class DatabaseManager {
         } catch (error) {
           if (isPgliteAbort(error)) throw new PGLiteAbortedException()
           if (isPgliteUnsupportedEnvironment(error)) {
-            throw new PgliteUnsupportedEnvironmentException(
-              translateUnsupportedEnvironmentMessage(),
-            )
+            throw new PgliteUnsupportedEnvironmentException()
           }
           console.error(
             '[YOLO] Existing vector snapshot could not be opened; creating a new database.',
@@ -72,9 +69,7 @@ export class DatabaseManager {
         } catch (error) {
           if (isPgliteAbort(error)) throw new PGLiteAbortedException()
           if (isPgliteUnsupportedEnvironment(error)) {
-            throw new PgliteUnsupportedEnvironmentException(
-              translateUnsupportedEnvironmentMessage(),
-            )
+            throw new PgliteUnsupportedEnvironmentException()
           }
           throw error
         }
@@ -230,22 +225,5 @@ function isPgliteAbort(error: unknown): boolean {
 function isPgliteUnsupportedEnvironment(error: unknown): boolean {
   return (
     error instanceof Error && error.name === 'PgliteUnsupportedEnvironmentError'
-  )
-}
-
-function resolveObsidianLanguage(): Language {
-  const rawLanguage = String(getLanguage() ?? '')
-    .trim()
-    .toLowerCase()
-  if (rawLanguage.startsWith('zh')) return 'zh'
-  if (rawLanguage.startsWith('it')) return 'it'
-  return 'en'
-}
-
-function translateUnsupportedEnvironmentMessage(): string {
-  const t = createTranslationFunction(resolveObsidianLanguage())
-  return t(
-    'settings.rag.pgliteUnsupportedEnvironment',
-    'Your Obsidian installation is out of date and is missing the browser APIs (Response / DecompressionStream) required to build the knowledge base index. Please download and install the latest Obsidian client from obsidian.md and try again.',
   )
 }

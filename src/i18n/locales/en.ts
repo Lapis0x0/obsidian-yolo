@@ -1385,8 +1385,6 @@ export const en: TranslationKeys = {
         'PGlite runtime preparation failed. Retry downloading or clear the local cache before using knowledge base features again.',
       pgliteSummaryMissing:
         'PGlite runtime resources have not been prepared yet. They will be downloaded automatically on first knowledge base use, and you can also prepare them here manually.',
-      pgliteUnsupportedEnvironment:
-        'Your Obsidian installation is out of date and is missing the browser APIs (Response / DecompressionStream) required to build the knowledge base index. Please download and install the latest Obsidian client from obsidian.md and try again.',
       pgliteDownloadingFile: 'Downloading',
       // Index progress header/status
       indexProgressTitle: 'Retrieval-augmented generation index progress',

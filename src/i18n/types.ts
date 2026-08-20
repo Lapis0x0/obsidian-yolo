@@ -1079,7 +1079,6 @@ export type TranslationKeys = {
       pgliteSummaryDownloading?: string
       pgliteSummaryFailed?: string
       pgliteSummaryMissing?: string
-      pgliteUnsupportedEnvironment?: string
       pgliteDownloadingFile?: string
       // Index progress header/status
       indexProgressTitle?: string

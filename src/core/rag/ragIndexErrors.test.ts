@@ -46,11 +46,9 @@ describe('classifyRagIndexError - DatabaseSaveFailedError', () => {
 describe('classifyRagIndexError - PgliteUnsupportedEnvironmentException', () => {
   it('classifies PgliteUnsupportedEnvironmentException as permanent', () => {
     // Missing Response/DecompressionStream (#270, #579) won't resolve by
-    // retrying; the run should land on `failed` with actionable copy telling
-    // the user to update Obsidian, not thrash on auto-retry.
-    const error = new PgliteUnsupportedEnvironmentException(
-      'Please update Obsidian.',
-    )
+    // retrying; the run should land on `failed` and point the user at the
+    // installer update modal, not thrash on auto-retry.
+    const error = new PgliteUnsupportedEnvironmentException()
     expect(classifyRagIndexError(error)).toBe('permanent')
     expect(isTransientRagIndexError(error)).toBe(false)
   })

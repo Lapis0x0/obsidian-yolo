@@ -37,8 +37,8 @@
       "descriptionKey": "settings.modules.runtimeComponents.pgliteEngine.description",
       "impactKey": "settings.modules.runtimeComponents.pgliteEngine.impact",
       "entry": "runtime-components/pglite-engine/dist/entry.js",
-      "byteSize": 1291023,
-      "sha256": "267e3e349eca084e0bc6744e39b91f22f5ddab1b79a3fc19e22855340849dc52"
+      "byteSize": 1291351,
+      "sha256": "dc57e5e0137029247e530bccd76f1107ebbc481b244b2c4437403d0d483c0166"
     },
     {
       "id": "tokenizer",

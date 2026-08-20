@@ -192,7 +192,10 @@ import {
   normalizePluginVersion,
 } from './core/update/updateChecker'
 import type { DatabaseManager } from './database/DatabaseManager'
-import { PGLiteAbortedException } from './database/exception'
+import {
+  PGLiteAbortedException,
+  PgliteUnsupportedEnvironmentException,
+} from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
 import { pruneImageCache } from './database/json/chat/imageCacheStore'
 import { prunePdfTextCache } from './database/json/chat/pdfTextCacheStore'
@@ -3983,7 +3986,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
           return this.dbManager
         } catch (error) {
           this.dbManagerInitPromise = null
-          if (error instanceof PGLiteAbortedException) {
+          if (
+            error instanceof PGLiteAbortedException ||
+            error instanceof PgliteUnsupportedEnvironmentException
+          ) {
             const { InstallerUpdateRequiredModal } = await import(
               './components/modals/InstallerUpdateRequiredModal'
             )
