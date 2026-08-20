@@ -4,6 +4,7 @@ import {
   clearAllEditReviewSnapshotStores,
   deleteEditReviewSnapshotStore,
   readEditReviewSnapshot,
+  readEditReviewSnapshots,
   upsertEditReviewSnapshot,
 } from './editReviewSnapshotStore'
 
@@ -243,5 +244,55 @@ describe('editReviewSnapshotStore', () => {
         filePath: 'note.md',
       }),
     ).resolves.toBeNull()
+  })
+
+  it('reads many snapshots with a single store read', async () => {
+    const { app, adapter } = createApp()
+
+    await upsertEditReviewSnapshot({
+      app,
+      conversationId: 'conv-1',
+      roundId: 'round-1',
+      filePath: 'a.md',
+      beforeContent: 'a',
+      afterContent: ['a', 'a2'].join('\n'),
+    })
+    await upsertEditReviewSnapshot({
+      app,
+      conversationId: 'conv-1',
+      roundId: 'round-2',
+      filePath: 'b.md',
+      beforeContent: 'b',
+      afterContent: ['b', 'b2'].join('\n'),
+    })
+
+    const readSpy = jest.spyOn(adapter, 'read')
+    const snapshots = await readEditReviewSnapshots({
+      app,
+      conversationId: 'conv-1',
+      keys: [
+        { roundId: 'round-1', filePath: 'a.md' },
+        { roundId: 'round-2', filePath: 'b.md' },
+        { roundId: 'round-3', filePath: 'missing.md' },
+      ],
+    })
+
+    expect(snapshots).toMatchObject([
+      { filePath: 'a.md', afterContent: ['a', 'a2'].join('\n') },
+      { filePath: 'b.md', afterContent: ['b', 'b2'].join('\n') },
+      null,
+    ])
+    // 逐个 readEditReviewSnapshot 会把整个快照库读盘并 JSON.parse 一遍/次。
+    expect(readSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('reads nothing from disk when no keys are requested', async () => {
+    const { app, adapter } = createApp()
+    const readSpy = jest.spyOn(adapter, 'read')
+
+    await expect(
+      readEditReviewSnapshots({ app, conversationId: 'conv-1', keys: [] }),
+    ).resolves.toEqual([])
+    expect(readSpy).not.toHaveBeenCalled()
   })
 })

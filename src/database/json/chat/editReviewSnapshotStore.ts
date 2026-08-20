@@ -235,6 +235,34 @@ export const readEditReviewSnapshot = async ({
   return store.snapshots[buildSnapshotKey(roundId, filePath)] ?? null
 }
 
+/**
+ * 一次读盘取出多个快照。
+ *
+ * `readEditReviewSnapshot` 每调用一次就要把整个会话的快照库读盘并 `JSON.parse`
+ * 一遍，而这个库存着该会话每个 (轮次, 文件) 的前后全文，可以到数 MB。调用方
+ * 需要多个快照时逐个调用，就是把同一份大 JSON 反复解析，全在主线程上。
+ */
+export const readEditReviewSnapshots = async ({
+  app,
+  conversationId,
+  keys,
+  settings,
+}: {
+  app: App
+  conversationId: string
+  keys: ReadonlyArray<{ roundId: string; filePath: string }>
+  settings?: YoloSettingsLike | null
+}): Promise<Array<EditReviewSnapshot | null>> => {
+  if (keys.length === 0) {
+    return []
+  }
+  const store = await readSnapshotStore(app, conversationId, settings)
+  return keys.map(
+    ({ roundId, filePath }) =>
+      store.snapshots[buildSnapshotKey(roundId, filePath)] ?? null,
+  )
+}
+
 export const deleteEditReviewSnapshotStore = async (
   app: App,
   conversationId: string,

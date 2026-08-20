@@ -6,6 +6,7 @@ import {
   countFileChangeStats,
   createToolEditSummary,
   deriveToolEditUndoStatus,
+  hasFileContentChanged,
 } from './editSummary'
 import { editUndoSnapshotStore } from './editUndoSnapshotStore'
 
@@ -189,6 +190,115 @@ describe('editSummary helpers', () => {
       totalAddedLines: 1,
       totalRemovedLines: 0,
     })
+  })
+
+  it('uses caller-provided counts instead of recomputing the diff', () => {
+    const summary = createToolEditSummary({
+      path: 'note.md',
+      beforeContent: ['one', 'two', 'three'].join('\n'),
+      afterContent: ['one', 'dos', 'tres'].join('\n'),
+      counts: { addedLines: 40, removedLines: 2 },
+    })
+
+    expect(summary).toMatchObject({
+      totalAddedLines: 40,
+      totalRemovedLines: 2,
+      files: [{ addedLines: 40, removedLines: 2 }],
+    })
+  })
+
+  it('still reports no summary for unchanged content even with counts given', () => {
+    expect(
+      createToolEditSummary({
+        path: 'note.md',
+        beforeContent: 'same',
+        afterContent: 'same',
+        counts: { addedLines: 9, removedLines: 9 },
+      }),
+    ).toBeUndefined()
+  })
+
+  it('detects whether content changed without computing line stats', () => {
+    expect(
+      hasFileContentChanged({ beforeContent: 'a', afterContent: 'a' }),
+    ).toBe(false)
+    expect(
+      hasFileContentChanged({ beforeContent: 'a', afterContent: 'b' }),
+    ).toBe(true)
+    // 内容相同但存在性不同（创建/删除空文件）仍然算变了。
+    expect(
+      hasFileContentChanged({
+        beforeContent: '',
+        afterContent: '',
+        beforeExists: false,
+        afterExists: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('keeps per-file net deltas independent when several files are edited', () => {
+    // 净增删按 (first, latest) 这对快照缓存；这里确保缓存不会在文件之间串味，
+    // 并且重复调用给出一致结果。
+    const makeGroup = (
+      entries: Array<{ toolCallId: string; path: string }>,
+    ): AssistantToolMessageGroup =>
+      [
+        { role: 'assistant', id: 'assistant-1', content: 'done' },
+        {
+          role: 'tool',
+          id: 'tool-1',
+          toolCalls: entries.map(({ toolCallId, path }) => ({
+            request: { id: toolCallId, name: 'yolo_local__fs_edit' },
+            response: {
+              status: ToolCallResponseStatus.Success,
+              data: {
+                type: 'text',
+                text: '{}',
+                metadata: {
+                  editSummary: createToolEditSummary({
+                    path,
+                    beforeContent: 'placeholder',
+                    afterContent: 'placeholder changed',
+                  }),
+                },
+              },
+            },
+          })),
+        },
+      ] as AssistantToolMessageGroup
+
+    editUndoSnapshotStore.set({
+      toolCallId: 'call-a',
+      path: 'a.md',
+      beforeContent: 'a',
+      afterContent: ['a', 'a2', 'a3'].join('\n'),
+      beforeExists: true,
+      afterExists: true,
+      appliedAt: 1,
+    })
+    editUndoSnapshotStore.set({
+      toolCallId: 'call-b',
+      path: 'b.md',
+      beforeContent: ['b', 'b2', 'b3'].join('\n'),
+      afterContent: 'b',
+      beforeExists: true,
+      afterExists: true,
+      appliedAt: 2,
+    })
+
+    const group = makeGroup([
+      { toolCallId: 'call-a', path: 'a.md' },
+      { toolCallId: 'call-b', path: 'b.md' },
+    ])
+
+    const first = collectGroupEditSummary(group)
+    const second = collectGroupEditSummary(group)
+
+    expect(first?.files).toMatchObject([
+      { path: 'a.md', addedLines: 2, removedLines: 0 },
+      { path: 'b.md', addedLines: 0, removedLines: 2 },
+    ])
+    expect(second?.files).toEqual(first?.files)
   })
 
   it('derives partial undo status when file states diverge', () => {

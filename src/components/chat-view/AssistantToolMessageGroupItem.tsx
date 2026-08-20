@@ -17,7 +17,7 @@ import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
-import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import { readEditReviewSnapshots } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
@@ -929,44 +929,40 @@ function AssistantToolMessageGroupItem({
     const files = baseGroupEditSummary.files
 
     void (async () => {
-      const entries = await Promise.all(
-        files.map(async (file) => {
-          const [firstSnapshot, latestSnapshot] = await Promise.all([
-            readEditReviewSnapshot({
-              app,
-              conversationId,
-              roundId: file.firstRoundId,
-              filePath: file.path,
-              settings,
-            }),
-            readEditReviewSnapshot({
-              app,
-              conversationId,
-              roundId: file.latestRoundId,
-              filePath: file.path,
-              settings,
-            }),
-          ])
-
-          if (!firstSnapshot || !latestSnapshot) {
-            return null
-          }
-
-          const counts = countFileChangeStats({
-            beforeContent: firstSnapshot.beforeContent,
-            afterContent: latestSnapshot.afterContent,
-            beforeExists: firstSnapshot.beforeExists,
-            afterExists: latestSnapshot.afterExists,
-          })
-
-          const key = `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
-          return [key, counts] as const
-        }),
-      )
+      // 一次读盘取出所有需要的快照。逐个 readEditReviewSnapshot 会把整个会话
+      // 的快照库（含每个文件的前后全文）读盘并 JSON.parse 2×N 遍，全在主线程。
+      const snapshots = await readEditReviewSnapshots({
+        app,
+        conversationId,
+        keys: files.flatMap((file) => [
+          { roundId: file.firstRoundId, filePath: file.path },
+          { roundId: file.latestRoundId, filePath: file.path },
+        ]),
+        settings,
+      })
 
       if (cancelled) {
         return
       }
+
+      const entries = files.map((file, index) => {
+        const firstSnapshot = snapshots[index * 2]
+        const latestSnapshot = snapshots[index * 2 + 1]
+
+        if (!firstSnapshot || !latestSnapshot) {
+          return null
+        }
+
+        const counts = countFileChangeStats({
+          beforeContent: firstSnapshot.beforeContent,
+          afterContent: latestSnapshot.afterContent,
+          beforeExists: firstSnapshot.beforeExists,
+          afterExists: latestSnapshot.afterExists,
+        })
+
+        const key = `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
+        return [key, counts] as const
+      })
 
       const next: Record<string, { addedLines: number; removedLines: number }> =
         {}
