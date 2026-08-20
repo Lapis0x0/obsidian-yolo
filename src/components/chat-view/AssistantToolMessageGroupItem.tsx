@@ -1013,11 +1013,20 @@ function AssistantToolMessageGroupItem({
         (sum, file) => sum + file.removedLines,
         0,
       ),
-      // 合计跟着补齐后的逐文件数字一起重算，所以可用性也要重新判断：补齐结果
-      // 里只要有一个文件算不出行数，这里的合计就是残缺的。
+      // 合计跟着补齐后的逐文件数字一起重算，所以补齐结果算不出行数时合计也就
+      // 残缺了。只看「被补齐覆盖过的」文件：没被覆盖的文件其可用性已经体现在
+      // baseGroupEditSummary.totalLineStatsAvailable 里，而用 files.every()
+      // 会误伤只报告整轮增删的 provider（Claude CLI 把每个文件都标成不可用，
+      // 合计却是准确的）。
       totalLineStatsAvailable:
         baseGroupEditSummary.totalLineStatsAvailable &&
-        files.every((file) => file.lineStatsAvailable),
+        baseGroupEditSummary.files.every((file) => {
+          const enriched =
+            enrichedFileCounts[
+              `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
+            ]
+          return !enriched || enriched.lineStatsAvailable
+        }),
     }
   }, [baseGroupEditSummary, enrichedFileCounts])
 
