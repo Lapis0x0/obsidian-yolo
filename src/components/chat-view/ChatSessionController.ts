@@ -996,6 +996,9 @@ export class ChatSessionController {
             ...(result.sessionRef.sessionPathHint
               ? { sessionPathHint: result.sessionRef.sessionPathHint }
               : {}),
+            ...(result.sessionRef.profileId
+              ? { profileId: result.sessionRef.profileId }
+              : {}),
           },
           this.preferencesController.getSnapshot().conversationOverrides,
         )

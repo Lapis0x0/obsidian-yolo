@@ -24,7 +24,12 @@ export type ChatRuntimeCapabilities = Readonly<{
   hasAssistants: boolean
   /** Supports rewriting an already-sent user turn (A17). */
   supportsMessageRewrite: boolean
-  /** Shows the `/` compact-context command. Hermes auto-compacts in-agent; ACP has no manual compact. */
+  /**
+   * Shows the `/` compact-context command. Hermes supports it through its
+   * `/compress` slash command, sent as a plain ACP prompt (see
+   * `AcpAgentProfile.compactCommand`); other ACP agents get it only once
+   * their own profile supplies a compact command.
+   */
   supportsContextCompaction: boolean
   /** Supports exporting the conversation to the vault (B6, yolo only). */
   supportsVaultExport: boolean
@@ -100,7 +105,7 @@ export const RUNTIME_CAPABILITIES: Record<
     hasPluginManagement: false,
     hasAssistants: false,
     supportsMessageRewrite: false,
-    supportsContextCompaction: false,
+    supportsContextCompaction: true,
     supportsVaultExport: false,
     supportsSubagentWatch: false,
     supportsModelControl: false,

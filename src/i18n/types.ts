@@ -1708,6 +1708,12 @@ export type TranslationKeys = {
       cancelError?: string
       openError?: string
       transitionError?: string
+      sessionFallbackDividerTitle?: string
+      sessionFallbackDividerDescription?: string
+      sessionFallbackUnknownProfile?: string
+    }
+    hermesProfileSelector?: {
+      accessibleLabel?: string
     }
     cliControls?: {
       defaultModel?: string

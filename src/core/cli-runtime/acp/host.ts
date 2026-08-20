@@ -199,23 +199,80 @@ export class AcpHost {
 }
 /* eslint-enable @typescript-eslint/no-deprecated */
 
+type AcpHostPoolEntry = {
+  host: AcpHost
+  refCount: number
+}
+
+/**
+ * Keyed, reference-counted pool of `AcpHost`s. One key holds one live
+ * subprocess+connection, shared by every caller currently holding a
+ * reference to it; the host is disposed once the last reference is
+ * released. Agent-agnostic: the key is an opaque string chosen entirely by
+ * the caller (e.g. `hermes/factory.ts` keys by Hermes profile id) — this
+ * pool has no notion of what it represents.
+ *
+ * Keying replaces the single shared host this pool used to hand out
+ * unconditionally: two callers that need genuinely different agent
+ * processes (e.g. two Hermes profiles open in different surfaces at once)
+ * must not be forced to share one, since disposing it to switch would sever
+ * whichever turn the other caller had in flight.
+ */
 export class AcpHostPool {
-  private host: AcpHost | null = null
+  private readonly entries = new Map<string, AcpHostPoolEntry>()
 
-  constructor(private readonly options: AcpHostOptions) {}
+  constructor(private readonly createOptions: (key: string) => AcpHostOptions) {}
 
-  readonly acquire: AcpHostResolver = async () => {
-    this.host ??= new AcpHost(this.options)
-    return this.host
+  /** Resolves `key`'s host, creating it on first use, and increments its reference count. */
+  acquire = async (key: string): Promise<AcpHost> => {
+    const entry = this.getOrCreateEntry(key)
+    entry.refCount += 1
+    return entry.host
   }
 
-  async warm(): Promise<void> {
-    await (await this.acquire()).ensureReady()
+  /**
+   * Releases one reference acquired via `acquire(key)`. Disposes and evicts
+   * `key`'s host once no reference remains. A mismatched or already-released
+   * key is a no-op (dispose() calling this defensively, or a runtime that
+   * never actually acquired a host).
+   */
+  release(key: string): void {
+    const entry = this.entries.get(key)
+    if (!entry) return
+    entry.refCount -= 1
+    if (entry.refCount > 0) return
+    this.entries.delete(key)
+    void entry.host.dispose()
+  }
+
+  /**
+   * Ensures `key`'s host exists and is connected, without acquiring a
+   * reference to it. A warmed host has no owner yet, so this must not go
+   * through `acquire`/`release`: bumping and immediately dropping the
+   * reference count would dispose the freshly-started process the instant
+   * `warm()` returns, defeating the point of warming it up. The host stays
+   * in the pool, unowned (`refCount: 0`), until a real `acquire()` claims it
+   * or `dispose()` tears the whole pool down.
+   */
+  async warm(key: string): Promise<void> {
+    const entry = this.getOrCreateEntry(key)
+    await entry.host.ensureReady()
   }
 
   async dispose(): Promise<void> {
-    const host = this.host
-    this.host = null
-    if (host) await host.dispose()
+    const entries = [...this.entries.values()]
+    this.entries.clear()
+    await Promise.allSettled(entries.map((entry) => entry.host.dispose()))
+  }
+
+  private getOrCreateEntry(key: string): AcpHostPoolEntry {
+    const existing = this.entries.get(key)
+    if (existing) return existing
+    const created: AcpHostPoolEntry = {
+      host: new AcpHost(this.createOptions(key)),
+      refCount: 0,
+    }
+    this.entries.set(key, created)
+    return created
   }
 }

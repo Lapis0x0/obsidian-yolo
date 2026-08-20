@@ -18,6 +18,7 @@ import type {
   CliRuntimeModel,
   CliRuntimeRunState,
   CliRuntimeSkill,
+  CliSessionFallbackBoundary,
   CliSessionHydration,
   CliSessionOverlay,
   CliSessionRef,
@@ -36,6 +37,14 @@ export type CliConversationSnapshot = Readonly<{
   messages: readonly ChatMessage[]
   /** Ordered provider-native compaction events derived from the CLI session. */
   compactionBoundaries: readonly CliCompactionBoundary[]
+  /**
+   * Ordered "resumed session couldn't be reached, started a fresh one
+   * instead" notices anchored into the transcript. See
+   * `AcpCliRuntimeOptions.sessionRecovery`. Optional (unlike
+   * `compactionBoundaries`) so existing snapshot fixtures that predate this
+   * field stay valid; treat a missing value the same as an empty array.
+   */
+  sessionFallbackBoundaries?: readonly CliSessionFallbackBoundary[]
   sessionRef: CliSessionRef | null
   runState: CliRuntimeRunState
   /** True only while a provider-native context compaction is in flight. */
@@ -138,6 +147,31 @@ const retainAnchoredCompactionBoundaries = (
   messages: readonly ChatMessage[],
 ): readonly CliCompactionBoundary[] =>
   normalizeCompactionBoundaries(boundaries, messages)
+
+const normalizeSessionFallbackBoundaries = (
+  boundaries: readonly CliSessionFallbackBoundary[],
+  messages: readonly ChatMessage[],
+): readonly CliSessionFallbackBoundary[] => {
+  const messageIds = new Set(messages.map((message) => message.id))
+  const normalized: CliSessionFallbackBoundary[] = []
+  const indexById = new Map<string, number>()
+  for (const boundary of boundaries) {
+    if (
+      boundary.afterMessageId !== null &&
+      !messageIds.has(boundary.afterMessageId)
+    ) {
+      continue
+    }
+    const index = indexById.get(boundary.id)
+    if (index === undefined) {
+      indexById.set(boundary.id, normalized.length)
+      normalized.push(boundary)
+    } else {
+      normalized[index] = boundary
+    }
+  }
+  return Object.freeze(normalized)
+}
 
 const getCurrentTurnConfiguration = (
   configuration: CliRuntimeConfiguration | null | undefined,
@@ -371,7 +405,10 @@ export class CliConversationController {
       const hydration = await operation.runtime.openSession(ref)
       if (!this.isCurrent(operation)) return null
       this.assertRuntimeRef(hydration.ref)
-      if (!isSameSession(ref, hydration.ref)) {
+      const isFallback =
+        hydration.sessionFallback !== undefined &&
+        isSameSession(hydration.sessionFallback.requestedRef, ref)
+      if (!isFallback && !isSameSession(ref, hydration.ref)) {
         throw new Error('CLI runtime hydrated a different session.')
       }
       const restored = restoreMessages
@@ -385,6 +422,18 @@ export class CliConversationController {
         : (restored as readonly ChatMessage[])
       if (!this.isCurrent(operation)) return null
       this.restoredCacheHitRate = overlay?.lastCacheHitRate ?? null
+      const sessionFallbackBoundaries = isFallback
+        ? normalizeSessionFallbackBoundaries(
+            [
+              {
+                id: `${hydration.ref.runtimeId}-fallback-${hydration.ref.nativeSessionId}`,
+                afterMessageId: messages.at(-1)?.id ?? null,
+                requestedRef: hydration.sessionFallback!.requestedRef,
+              },
+            ],
+            messages,
+          )
+        : Object.freeze([])
       this.publish({
         ...this.snapshot,
         messages: normalizeMessages(messages),
@@ -392,6 +441,7 @@ export class CliConversationController {
           hydration.compactionBoundaries ?? [],
           messages,
         ),
+        sessionFallbackBoundaries,
         turnConfigurationByUserMessageId:
           overlay?.turnConfigurationByUserMessageId ?? Object.freeze({}),
         sessionRef: hydration.ref,
@@ -515,6 +565,10 @@ export class CliConversationController {
       messages,
       compactionBoundaries: retainAnchoredCompactionBoundaries(
         this.snapshot.compactionBoundaries,
+        messages,
+      ),
+      sessionFallbackBoundaries: normalizeSessionFallbackBoundaries(
+        this.snapshot.sessionFallbackBoundaries ?? [],
         messages,
       ),
       turnConfigurationByUserMessageId: setTurnConfiguration(
@@ -893,6 +947,7 @@ export class CliConversationController {
       runtimeId: this.runtime.runtimeId,
       messages: Object.freeze([]),
       compactionBoundaries: Object.freeze([]),
+      sessionFallbackBoundaries: Object.freeze([]),
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: ref,
       runState: 'idle',
@@ -929,14 +984,40 @@ export class CliConversationController {
         return
       }
       if (this.bindingEpoch === conversationEpoch) {
+        const isFallback =
+          event.fallbackFrom !== undefined &&
+          this.bindingTarget !== null &&
+          this.bindingTarget !== undefined &&
+          isSameSession(this.bindingTarget, event.fallbackFrom)
         if (
           this.bindingTarget &&
-          !isSameSession(this.bindingTarget, event.ref)
+          !isSameSession(this.bindingTarget, event.ref) &&
+          !isFallback
         ) {
           return
         }
         this.acceptingEvents = true
-        this.publish({ ...this.snapshot, sessionRef: event.ref, error: null })
+        this.publish({
+          ...this.snapshot,
+          sessionRef: event.ref,
+          error: null,
+          ...(isFallback
+            ? {
+                sessionFallbackBoundaries: normalizeSessionFallbackBoundaries(
+                  [
+                    ...(this.snapshot.sessionFallbackBoundaries ?? []),
+                    {
+                      id: `${event.ref.runtimeId}-fallback-${event.ref.nativeSessionId}`,
+                      afterMessageId:
+                        this.snapshot.messages.at(-1)?.id ?? null,
+                      requestedRef: event.fallbackFrom!,
+                    },
+                  ],
+                  this.snapshot.messages,
+                ),
+              }
+            : {}),
+        })
         return
       }
       if (this.acceptingEvents && !this.snapshot.sessionRef) {
@@ -1092,6 +1173,10 @@ export class CliConversationController {
           messages: frozenMessages,
           compactionBoundaries: retainAnchoredCompactionBoundaries(
             this.snapshot.compactionBoundaries,
+            frozenMessages,
+          ),
+          sessionFallbackBoundaries: normalizeSessionFallbackBoundaries(
+            this.snapshot.sessionFallbackBoundaries ?? [],
             frozenMessages,
           ),
         })
@@ -1279,6 +1364,7 @@ export class CliConversationController {
       runtimeId: runtime.runtimeId,
       messages: Object.freeze([]),
       compactionBoundaries: Object.freeze([]),
+      sessionFallbackBoundaries: Object.freeze([]),
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: null,
       runState: 'idle',

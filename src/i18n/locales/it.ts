@@ -1834,6 +1834,13 @@ export const it: DeepPartial<TranslationKeys> = {
       openError: 'Impossibile aprire la sessione CLI: {message}',
       transitionError:
         'Impossibile lasciare la sessione CLI corrente: {message}',
+      sessionFallbackDividerTitle: 'Passato al profilo predefinito',
+      sessionFallbackDividerDescription:
+        'L\'agente originale "{profile}" non è disponibile, quindi questa conversazione è passata al profilo predefinito: i messaggi precedenti non fanno parte della sua memoria.',
+      sessionFallbackUnknownProfile: 'precedente',
+    },
+    hermesProfileSelector: {
+      accessibleLabel: 'Profilo Hermes: {profile}',
     },
     cliControls: {
       defaultModel: 'Modello predefinito di {provider}',

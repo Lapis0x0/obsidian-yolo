@@ -926,6 +926,9 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     activeHistoryConversationId,
     transitionCliSession,
     createFreshCliConversation,
+    hermesProfileId,
+    setHermesProfileId,
+    switchHermesProfile,
     consumeAcceptedCliDraft,
     consumePresentedCliDraft,
     handleCliModeSelectChange,
@@ -978,6 +981,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setCliConversationId,
     setCliChatMode,
     setCliYoloEnabled,
+    setHermesProfileId,
     transitionCliSession,
     activeHistoryConversationId,
   }
@@ -1225,6 +1229,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
     updateConversationActiveBranches,
+    createOrTouchCliConversation,
     getConversationById,
     chatList,
     submitChatMutation,
@@ -1286,6 +1291,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     setCliYoloEnabled,
     setCliConversationController,
     setCliConversationId,
+    hermesProfileId,
+    setHermesProfileId,
     transitionCliSession,
     createFreshCliConversation,
   })
@@ -1627,6 +1634,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       setWorkspaceWideHeaderHeight={setWorkspaceWideHeaderHeight}
       conversationAssistantId={conversationAssistantId}
       handleConversationAssistantSelect={handleConversationAssistantSelect}
+      hermesProfileId={hermesProfileId}
+      handleHermesProfileSelect={switchHermesProfile}
       handleNewChat={handleNewChat}
       handleExportChatToVault={handleExportChatToVault}
       currentConversationId={currentConversationId}
@@ -1705,7 +1714,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   }, [activeCliConversationSnapshot?.contextUsage, t])
   // `/` 菜单按运行时 capability 组装原生动作条目：supportsContextCompaction
   // 贡献压缩上下文，hasPluginManagement 贡献插件管理，hasNativeMcpPanel
-  // 贡献 MCP 状态；hermes 三者皆无。
+  // 贡献 MCP 状态；hermes 仅支持压缩上下文（`/compress`），无插件管理与 MCP 状态。
   const nativeSlashCommands = useMemo<SlashCommand[]>(() => {
     const capabilities = RUNTIME_CAPABILITIES[activeRuntimeId]
     const commands: SlashCommand[] = []
@@ -2028,6 +2037,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           <CliChatSurface
             key={activeCliConversationSnapshot.surfaceId}
             snapshot={activeCliConversationSnapshot}
+            cliRuntimeScope={cliRuntimeScope}
             presentedDraft={cliOperationSnapshot?.presentedDraft ?? null}
             showEmptyState={activeSurfaceEmpty}
             actions={

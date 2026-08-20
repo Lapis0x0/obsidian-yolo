@@ -26,4 +26,12 @@ export type AcpAgentProfile = Readonly<{
     env: NodeJS.ProcessEnv,
     cliPathOverride?: string,
   ): Promise<AcpResolvedCommand | null>
+  /**
+   * Slash command text this agent understands as a manual-compaction
+   * trigger (e.g. Hermes's `/compress`), sent as an ordinary
+   * `session/prompt`. `AcpCliRuntime` has no ACP-level compaction call to
+   * make, so this is the only lever `compact()` has; agents that don't
+   * expose one leave it `undefined` and `compact()` throws.
+   */
+  compactCommand?: string
 }>

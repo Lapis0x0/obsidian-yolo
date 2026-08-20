@@ -2,6 +2,8 @@ import { FileSystemAdapter, Platform } from 'obsidian'
 
 import type { CliRuntimeFactories } from './coordinator'
 import { createDesktopCliRuntimeCoordinator } from './coordinator'
+import { discoverHermesProfiles } from './hermes/profiles'
+import { loadLoginShellEnvironment } from './login-shell-env'
 import type { CliSessionIndexStore } from './session-index'
 import type {
   CliRuntime,
@@ -9,6 +11,22 @@ import type {
   CliRuntimeEventListener,
   CliRuntimeId,
 } from './types'
+
+jest.mock('./hermes/profiles', () => ({
+  HERMES_DEFAULT_PROFILE_ID: 'default',
+  discoverHermesProfiles: jest.fn(async () => [
+    { id: 'default', displayName: 'default' },
+  ]),
+}))
+jest.mock('./login-shell-env', () => ({
+  loadLoginShellEnvironment: jest.fn(async () => ({
+    PATH: '/login-shell/bin',
+    HERMES_HOME: '/login-shell/.hermes',
+  })),
+}))
+
+const mockedDiscoverHermesProfiles = jest.mocked(discoverHermesProfiles)
+const mockedLoadLoginShellEnvironment = jest.mocked(loadLoginShellEnvironment)
 
 class TestFileSystemAdapter extends FileSystemAdapter {
   constructor(private readonly basePath: string) {
@@ -149,6 +167,8 @@ describe('CLI runtime coordinator', () => {
 
   beforeEach(() => {
     Platform.isDesktop = true
+    mockedDiscoverHermesProfiles.mockClear()
+    mockedLoadLoginShellEnvironment.mockClear()
   })
 
   afterEach(() => {
@@ -556,5 +576,84 @@ describe('CLI runtime coordinator', () => {
     await expect(dispose).rejects.toThrow('claude dispose failed')
     expect(completeHarness.codexRuntimes[0].dispose).toHaveBeenCalledTimes(1)
     expect(complete.coordinator.dispose()).toBe(dispose)
+  })
+
+  it('listHermesProfiles() discovers profiles through the login-shell environment, not bare process.env', async () => {
+    // macOS GUI apps (Obsidian included) don't inherit shell-rc exports like
+    // a custom `HERMES_HOME` — command resolution and process launch already
+    // go through `loadLoginShellEnvironment()` (see `hermes/factory.ts`).
+    // Profile discovery used to read `process.env` directly instead, so a
+    // user with `HERMES_HOME` set only in their shell rc would see the
+    // wrong (or missing) profiles in the picker even though the actual
+    // Hermes process launches against the right root.
+    const originalHermesHome = process.env.HERMES_HOME
+    process.env.HERMES_HOME = '/process-env/.hermes'
+    try {
+      const { coordinator } = await createCoordinator()
+      const scope = coordinator.createScope()
+
+      const profiles = await scope.listHermesProfiles()
+
+      expect(mockedLoadLoginShellEnvironment).toHaveBeenCalledTimes(1)
+      expect(mockedDiscoverHermesProfiles).toHaveBeenCalledWith(
+        expect.objectContaining({ HERMES_HOME: '/login-shell/.hermes' }),
+      )
+      // Never the raw process.env value, proving the login-shell snapshot
+      // (not process.env) is what actually gets used.
+      expect(mockedDiscoverHermesProfiles).not.toHaveBeenCalledWith(
+        expect.objectContaining({ HERMES_HOME: '/process-env/.hermes' }),
+      )
+      expect(profiles).toEqual([{ id: 'default', displayName: 'default' }])
+
+      await scope.dispose()
+      await coordinator.dispose()
+    } finally {
+      if (originalHermesHome === undefined) {
+        delete process.env.HERMES_HOME
+      } else {
+        process.env.HERMES_HOME = originalHermesHome
+      }
+    }
+  })
+
+  it('listHermesProfiles() memoizes the login-shell environment resolution but always rescans the profile directory', async () => {
+    // `loadLoginShellEnvironment()` synchronously spawns `zsh -ilc`, which
+    // blocks Obsidian's render thread — `HermesProfileSelector` calls this
+    // on every mount and every popover open, so resolving it fresh each time
+    // caused a visible stall. The fix must still rescan the profile
+    // directory (`discoverHermesProfiles`) on every call so a profile
+    // created/deleted after the first call shows up immediately — only the
+    // environment resolution itself is cached.
+    const { coordinator } = await createCoordinator()
+    const scope = coordinator.createScope()
+
+    mockedDiscoverHermesProfiles.mockResolvedValueOnce([
+      { id: 'default', displayName: 'default' },
+    ])
+    const first = await scope.listHermesProfiles()
+    expect(first).toEqual([{ id: 'default', displayName: 'default' }])
+
+    mockedDiscoverHermesProfiles.mockResolvedValueOnce([
+      { id: 'default', displayName: 'default' },
+      { id: 'work', displayName: 'Work' },
+    ])
+    const second = await scope.listHermesProfiles()
+    expect(second).toEqual([
+      { id: 'default', displayName: 'default' },
+      { id: 'work', displayName: 'Work' },
+    ])
+
+    // The memoization must live on the coordinator's shared workspace, not
+    // on one scope — a second scope (a second Chat view, for instance) must
+    // still reuse the cached environment instead of resolving its own.
+    const otherScope = coordinator.createScope()
+    await otherScope.listHermesProfiles()
+
+    expect(mockedDiscoverHermesProfiles).toHaveBeenCalledTimes(3)
+    expect(mockedLoadLoginShellEnvironment).toHaveBeenCalledTimes(1)
+
+    await otherScope.dispose()
+    await scope.dispose()
+    await coordinator.dispose()
   })
 })

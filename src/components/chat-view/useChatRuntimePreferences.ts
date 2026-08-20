@@ -67,6 +67,7 @@ export type CliRuntimeSwitchLateState = {
   setCliConversationId: Dispatch<SetStateAction<string | null>>
   setCliChatMode: Dispatch<SetStateAction<CliChatMode>>
   setCliYoloEnabled: Dispatch<SetStateAction<boolean>>
+  setHermesProfileId: Dispatch<SetStateAction<string | undefined>>
   transitionCliSession: (
     action: (isCurrent: () => boolean) => void | Promise<void>,
   ) => Promise<boolean>
@@ -544,6 +545,12 @@ export function useChatRuntimePreferences({
               cliLate.cliModelCatalog.get(runtimeId) ?? [],
             ),
           )
+          // A genuinely fresh controller (no bound session yet) always
+          // starts at the default profile — switching runtimes carries no
+          // profile memory. A cache-hit resumed controller (session already
+          // bound) keeps whatever `hermesProfileId` already reflects; it was
+          // set correctly when that controller was created/hydrated.
+          if (runtimeId === 'hermes') cliLate.setHermesProfileId(undefined)
         }
         const nextCliConversationId = uuidv4()
         cliLate.setCliConversationController(controller)

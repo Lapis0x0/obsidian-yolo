@@ -18,3 +18,4 @@ export type {
   CliConversationSnapshot,
 } from './conversation-controller'
 export type { CliRuntimeScope } from './coordinator'
+export type { HermesProfile } from './hermes/profiles'

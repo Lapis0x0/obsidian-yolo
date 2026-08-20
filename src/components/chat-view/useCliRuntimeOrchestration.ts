@@ -49,7 +49,11 @@ import {
   isCliConversationActive,
   openCliSession,
   prepareCliConversation,
+  registerCliConversationProfileId,
   resolveActiveCliConversationSnapshot,
+  resolveCliSessionRefProfileId,
+  resolveHermesProfileSwitchAction,
+  resolveHermesSessionFallbackUpdate,
   rewriteCliConversationTurn,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
@@ -226,6 +230,19 @@ export function useCliRuntimeOrchestration({
   const [cliConversationId, setCliConversationId] = useState<string | null>(
     () =>
       seededCliConversationId ?? (cliConversationController ? uuidv4() : null),
+  )
+  // Which Hermes profile the current conversation is (or will be, once a
+  // session binds) tied to. `undefined` means the default profile — the
+  // whole feature is designed so a single-profile user never has this
+  // state deviate from "undefined", matching `CliSessionRef.profileId`'s
+  // own convention. Synced from a resumed session's stored profile on
+  // seeded restore / history load (see `setHermesProfileId` below), and
+  // set explicitly by `switchHermesProfile`.
+  const [hermesProfileId, setHermesProfileId] = useState<string | undefined>(
+    () =>
+      initialActiveRuntimeId === 'hermes'
+        ? seededCliSessionRef?.profileId
+        : undefined,
   )
   const [cliConversationSnapshot, setCliConversationSnapshot] =
     useState<CliConversationSnapshot | null>(
@@ -455,11 +472,46 @@ export function useCliRuntimeOrchestration({
           permissionProfile: cliPermissionProfileRef.current,
         })
         if (!isCurrentRestore()) return
+        const restoredConversationId = seededCliConversationId ?? uuidv4()
         setCliConversationController(result.controller)
-        setCliConversationId(seededCliConversationId ?? uuidv4())
+        setCliConversationId(restoredConversationId)
         lastCliRuntimeIdRef.current = seededRef.runtimeId
         setRequestedRuntimeId(seededRef.runtimeId)
         activeRuntimeIdRef.current = seededRef.runtimeId
+        // A resumed session's own ref is authoritative on which Hermes
+        // profile it lives under — unless a fallback occurred, in the
+        // `openSession()` peek above or in `prepareCliConversation()`'s own
+        // `ensureReady()` load, because the requested profile no longer
+        // resolves (see `AcpCliRuntimeOptions.sessionRecovery`). Either way
+        // the *fallback* session is what's actually live and must be
+        // reflected in both the header and conversation storage, not the
+        // now-dead requested profile — so this reads the controller's
+        // settled snapshot, not just the first load's hydration, to catch a
+        // fallback from either load (see `resolveHermesSessionFallbackUpdate`).
+        const fallbackUpdate = resolveHermesSessionFallbackUpdate(
+          seededRef.runtimeId,
+          result.controller.getSnapshot(),
+        )
+        setHermesProfileId(
+          fallbackUpdate
+            ? fallbackUpdate.hermesProfileId
+            : seededRef.runtimeId === 'hermes'
+              ? seededRef.profileId
+              : undefined,
+        )
+        if (fallbackUpdate) {
+          void createOrTouchCliConversation(
+            restoredConversationId,
+            fallbackUpdate.cliSession,
+            conversationOverridesRef.current.get(restoredConversationId) ??
+              conversationOverrides,
+          ).catch((error: unknown) => {
+            console.error(
+              '[YOLO] Failed to persist Hermes fallback session',
+              error,
+            )
+          })
+        }
         if (result.overlayError) {
           console.warn('[YOLO] Failed to restore CLI conversation metadata', {
             conversationId: seededCliConversationId,
@@ -494,6 +546,8 @@ export function useCliRuntimeOrchestration({
     cliConversationController,
     cliOperationCoordinator,
     cliRuntimeScope,
+    conversationOverrides,
+    createOrTouchCliConversation,
     seededCliConversationId,
     seededCliSessionRef,
     settings,
@@ -527,7 +581,10 @@ export function useCliRuntimeOrchestration({
   )
 
   const createFreshCliConversation = useCallback(
-    (runtimeId: CliRuntimeId): CliConversationController | null => {
+    (
+      runtimeId: CliRuntimeId,
+      profileId?: string,
+    ): CliConversationController | null => {
       if (!cliRuntimeScope) return null
       conversationOverridesRef.current.set(
         activeHistoryConversationId,
@@ -537,7 +594,14 @@ export function useCliRuntimeOrchestration({
         cliConversationController?.getSnapshot().runtimeId === runtimeId
           ? cliConversationController.getSnapshot().configuration
           : null
-      const controller = cliRuntimeScope.createConversationRuntime(runtimeId)
+      const controller = cliRuntimeScope.createConversationRuntime(
+        runtimeId,
+        profileId,
+      )
+      if (runtimeId === 'hermes') {
+        if (profileId) registerCliConversationProfileId(controller, profileId)
+        setHermesProfileId(profileId)
+      }
       const preference = previousConfiguration
         ? {
             modelId: previousConfiguration.modelId,
@@ -577,6 +641,72 @@ export function useCliRuntimeOrchestration({
       cliRuntimeScope,
       conversationOverrides,
       updateSettings,
+    ],
+  )
+
+  /**
+   * Hermes profile switch from the header selector. Design (not a fallback
+   * heuristic — see the feature's spec): an empty conversation (no messages
+   * yet) swaps its runtime/controller in place and keeps presenting as the
+   * same on-screen conversation, since nothing has been persisted for it
+   * yet; a conversation that already has messages instead starts a brand
+   * new one under the chosen profile — profiles are separate Hermes
+   * memories (separate `HERMES_HOME` directories/session databases), so
+   * there is no in-place history migration to perform.
+   */
+  const switchHermesProfile = useCallback(
+    (profileId: string | undefined) => {
+      if (!cliRuntimeScope) return
+      const action = resolveHermesProfileSwitchAction({
+        activeRuntimeId,
+        requestedProfileId: profileId,
+        currentProfileId: hermesProfileId,
+        hasMessages:
+          (cliConversationController?.getSnapshot().messages.length ?? 0) >
+          0,
+      })
+      if (action === 'noop') return
+      if (action === 'new-conversation') {
+        void transitionCliSession((isCurrent) => {
+          if (!isCurrent()) return
+          createFreshCliConversation('hermes', profileId)
+        })
+        return
+      }
+      void transitionCliSession((isCurrent) => {
+        if (!isCurrent()) return
+        const previousConfiguration =
+          cliConversationController?.getSnapshot().runtimeId === 'hermes'
+            ? cliConversationController.getSnapshot().configuration
+            : null
+        const controller = cliRuntimeScope.createConversationRuntime(
+          'hermes',
+          profileId,
+        )
+        if (profileId) registerCliConversationProfileId(controller, profileId)
+        const preference = previousConfiguration
+          ? {
+              modelId: previousConfiguration.modelId,
+              reasoningEffort: previousConfiguration.reasoningEffort,
+            }
+          : resolveCliRuntimePreference(
+              cliPreferenceSettingsRef.current,
+              'hermes',
+              cliModelCatalog.get('hermes') ?? [],
+            )
+        controller.stageConfiguration(preference)
+        setCliConversationController(controller)
+        setHermesProfileId(profileId)
+      })
+    },
+    [
+      activeRuntimeId,
+      cliConversationController,
+      cliModelCatalog,
+      cliRuntimeScope,
+      createFreshCliConversation,
+      hermesProfileId,
+      transitionCliSession,
     ],
   )
 
@@ -710,10 +840,10 @@ export function useCliRuntimeOrchestration({
         console.error('Failed to persist CLI mode preference', error)
       })
       const sessionRef = controller?.getSnapshot().sessionRef
-      if (sessionRef && isCliRuntime(activeRuntimeId)) {
+      if (sessionRef && controller && isCliRuntime(activeRuntimeId)) {
         void createOrTouchCliConversation(
           preferenceConversationId,
-          sessionRef,
+          resolveCliSessionRefProfileId(controller, sessionRef),
           nextOverrides,
         ).catch((error: unknown) => {
           console.error('Failed to persist CLI conversation preference', error)
@@ -1116,6 +1246,9 @@ export function useCliRuntimeOrchestration({
                       sessionPathHint: rewriteResult.sessionRef.sessionPathHint,
                     }
                   : {}),
+                ...(rewriteResult.sessionRef.profileId
+                  ? { profileId: rewriteResult.sessionRef.profileId }
+                  : {}),
               },
               conversationOverridesRef.current.get(cliConversationId) ??
                 conversationOverrides,
@@ -1185,6 +1318,10 @@ export function useCliRuntimeOrchestration({
 
     transitionCliSession,
     createFreshCliConversation,
+
+    hermesProfileId,
+    setHermesProfileId,
+    switchHermesProfile,
 
     consumeAcceptedCliDraft,
     consumePresentedCliDraft,

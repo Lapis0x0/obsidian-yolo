@@ -26,6 +26,12 @@ export type CliSessionRef = {
   runtimeId: CliRuntimeId
   nativeSessionId: string
   sessionPathHint?: string
+  /**
+   * Hermes profile this session lives under (its `HERMES_HOME/profiles/<id>`
+   * directory, or `'default'` for the root profile). Undefined for runtimes
+   * without a profile concept.
+   */
+  profileId?: string
 }
 
 export type ConversationRef = YoloConversationRef | CliSessionRef
@@ -37,6 +43,12 @@ export type CliSessionHydration = {
   ref: CliSessionRef
   messages: ChatMessage[]
   compactionBoundaries: CliCompactionBoundary[]
+  /**
+   * Set when the requested session could not be resumed (`loadSession`
+   * failed) and this hydration bound a fresh fallback session instead of
+   * `requestedRef`. `ref` above is the fallback session actually bound.
+   */
+  sessionFallback?: Readonly<{ requestedRef: CliSessionRef }>
 }
 
 export type CliCompactionBoundary = Readonly<{
@@ -46,6 +58,20 @@ export type CliCompactionBoundary = Readonly<{
   trigger?: 'manual' | 'auto'
   preTokens?: number
   postTokens?: number
+}>
+
+/**
+ * Anchors a "resumed session couldn't be reached, started a fresh one
+ * instead" notice to a point in the transcript, mirroring
+ * `CliCompactionBoundary`'s anchoring. Populated when `openSession`/
+ * `ensureReady` recovers via `AcpCliRuntimeOptions.sessionRecovery`.
+ */
+export type CliSessionFallbackBoundary = Readonly<{
+  id: string
+  /** Visible transcript message immediately preceding this native event. */
+  afterMessageId: string | null
+  /** The provider-native session that could not be resumed. */
+  requestedRef: CliSessionRef
 }>
 
 export type CliSubagentRef = Readonly<{
@@ -198,6 +224,12 @@ export type CliRuntimeEvent =
   | {
       type: 'session_bound'
       ref: CliSessionRef
+      /**
+       * Set when this bind is a recovery fallback: `ref` above is a fresh
+       * session, and `fallbackFrom` is the originally requested session that
+       * could not be resumed.
+       */
+      fallbackFrom?: CliSessionRef
     }
   | {
       type: 'message_upsert'
@@ -313,6 +345,13 @@ export type CliRuntime = {
 export type CliRuntimeFactoryDeps = Readonly<{
   app: App
   vaultPath: string
+  /**
+   * Profile to launch this runtime instance under, for runtimes with a
+   * profile concept (currently Hermes only; see `CliSessionRef.profileId`).
+   * Ignored by factories without one. Undefined means "use that runtime's
+   * own default".
+   */
+  profileId?: string
 }>
 
 /**

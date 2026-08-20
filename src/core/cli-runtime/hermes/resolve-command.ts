@@ -111,20 +111,28 @@ export const findHermesExecutable = async (
 }
 
 /**
- * Resolves the Hermes executable and its ACP launch args (`hermes acp`).
- * `cliPathOverride` (Settings → Agent) takes priority; falls back to
- * PATH/common-install-dir auto-detection. Returns `null` when Hermes cannot
- * be found at all.
+ * Resolves the Hermes executable and its ACP launch args
+ * (`hermes -p <profileId> acp`). `cliPathOverride` (Settings → Agent) takes
+ * priority; falls back to PATH/common-install-dir auto-detection. Returns
+ * `null` when Hermes cannot be found at all.
+ *
+ * `profileId` is always required and always forwarded as `-p`, including for
+ * `'default'` — `hermes -p default acp` is confirmed equivalent to omitting
+ * `-p` entirely, so there is no special case to omit it. Without this,
+ * Hermes falls back to whatever profile the user last selected via
+ * `hermes profile use` in a terminal (a process-wide sticky default this
+ * plugin must not depend on).
  */
 export const resolveHermesCommand = async (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
-  cliPathOverride?: string,
+  cliPathOverride: string | undefined,
+  profileId: string,
 ): Promise<AcpResolvedCommand | null> => {
   const home = firstEnvironmentValue(env, 'HOME', 'USERPROFILE') ?? homedir()
   const command =
     (await resolveConfiguredExecutable(cliPathOverride, home, platform)) ??
     (await findHermesExecutable(env, platform))
   if (!command) return null
-  return { command, args: ['acp'] }
+  return { command, args: ['-p', profileId, 'acp'] }
 }

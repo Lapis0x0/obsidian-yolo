@@ -1998,6 +1998,13 @@ export const en: TranslationKeys = {
       cancelError: 'Could not stop the CLI run: {message}',
       openError: 'Could not open the CLI session: {message}',
       transitionError: 'Could not leave the current CLI session: {message}',
+      sessionFallbackDividerTitle: 'Switched to default',
+      sessionFallbackDividerDescription:
+        'The original agent "{profile}" is unavailable, so this conversation switched to default — earlier messages are not in its memory.',
+      sessionFallbackUnknownProfile: 'previous',
+    },
+    hermesProfileSelector: {
+      accessibleLabel: 'Hermes profile: {profile}',
     },
     cliControls: {
       defaultModel: '{provider} default model',

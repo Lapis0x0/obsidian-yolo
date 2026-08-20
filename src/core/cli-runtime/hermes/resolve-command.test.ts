@@ -71,8 +71,12 @@ describe('resolveHermesCommand', () => {
         { PATH: '/usr/bin', HOME: '/home/me' },
         'linux',
         '/opt/custom/hermes',
+        'default',
       ),
-    ).resolves.toEqual({ command: '/opt/custom/hermes', args: ['acp'] })
+    ).resolves.toEqual({
+      command: '/opt/custom/hermes',
+      args: ['-p', 'default', 'acp'],
+    })
   })
 
   it('falls through to auto-detection when the override does not exist', async () => {
@@ -86,14 +90,15 @@ describe('resolveHermesCommand', () => {
         { PATH: '/usr/bin', HOME: '/home/me' },
         'linux',
         '/does/not/exist/hermes',
+        'default',
       ),
     ).resolves.toEqual({
       command: '/home/me/.local/bin/hermes',
-      args: ['acp'],
+      args: ['-p', 'default', 'acp'],
     })
   })
 
-  it('launches with the acp subcommand once a binary is found', async () => {
+  it('always passes -p explicitly, including for the default profile', async () => {
     mockedAccess.mockImplementation(async (candidate) => {
       if (String(candidate) === '/usr/local/bin/hermes') return
       throw new Error('ENOENT')
@@ -103,13 +108,42 @@ describe('resolveHermesCommand', () => {
       resolveHermesCommand(
         { PATH: '/usr/local/bin', HOME: '/home/me' },
         'darwin',
+        undefined,
+        'default',
       ),
-    ).resolves.toEqual({ command: '/usr/local/bin/hermes', args: ['acp'] })
+    ).resolves.toEqual({
+      command: '/usr/local/bin/hermes',
+      args: ['-p', 'default', 'acp'],
+    })
+  })
+
+  it('passes a non-default profile id through to -p', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      if (String(candidate) === '/usr/local/bin/hermes') return
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      resolveHermesCommand(
+        { PATH: '/usr/local/bin', HOME: '/home/me' },
+        'darwin',
+        undefined,
+        'work',
+      ),
+    ).resolves.toEqual({
+      command: '/usr/local/bin/hermes',
+      args: ['-p', 'work', 'acp'],
+    })
   })
 
   it('returns null when Hermes cannot be found at all', async () => {
     await expect(
-      resolveHermesCommand({ PATH: '/usr/bin', HOME: '/home/me' }, 'linux'),
+      resolveHermesCommand(
+        { PATH: '/usr/bin', HOME: '/home/me' },
+        'linux',
+        undefined,
+        'default',
+      ),
     ).resolves.toBeNull()
   })
 })

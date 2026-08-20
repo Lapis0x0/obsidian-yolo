@@ -263,9 +263,13 @@ export const buildAcpPlanMessage = (plan: Plan): ChatAssistantMessage => ({
 })
 
 /**
- * `live`: streaming a turn this client itself just sent — the prompt's own
- * `user_message_chunk` echo is redundant with the local optimistic user
- * message and is suppressed.
+ * `live`: streaming a prompt this client itself just sent — every
+ * `user_message_chunk` echo is suppressed unconditionally. For a normal
+ * turn it is redundant with the local optimistic user message; for a
+ * synthetic prompt the runtime injects on its own (e.g. `compact()`
+ * sending Hermes's `/compress`) there never was a local user message to
+ * begin with, and none should appear — suppressing the echo either way is
+ * exactly what both cases need.
  * `replay`: hydrating a stored session via `session/load` — there is no
  * local user message to fall back on, so `user_message_chunk` is the only
  * source of user turns and must be aggregated into `ChatUserMessage`s.

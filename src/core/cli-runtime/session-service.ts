@@ -97,6 +97,11 @@ export class CliSessionService {
           : existing?.sessionPathHint
             ? { sessionPathHint: existing.sessionPathHint }
             : {}),
+        ...(hydration.ref.profileId
+          ? { profileId: hydration.ref.profileId }
+          : existing?.profileId
+            ? { profileId: existing.profileId }
+            : {}),
       }),
     )
   }
@@ -217,6 +222,7 @@ export class CliSessionService {
         ...(nextRef.sessionPathHint
           ? { sessionPathHint: nextRef.sessionPathHint }
           : {}),
+        ...(nextRef.profileId ? { profileId: nextRef.profileId } : {}),
       }),
     )
   }

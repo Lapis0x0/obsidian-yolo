@@ -169,4 +169,71 @@ describe('buildChatTimelineItems', () => {
         .flatMap((item) => item.messageIds),
     ).toEqual([assistant.id])
   })
+
+  it('inserts a session-fallback divider at its anchor with its own copy', () => {
+    const assistant = makeAssistantMessage('assistant-1')
+
+    const items = buildChatTimelineItems({
+      groupedChatMessages: [[assistant]],
+      compactionDividerAnchorMessageIds: [],
+      latestCompaction: null,
+      sessionFallbackDividers: [
+        {
+          id: 'fallback-1-divider',
+          anchorMessageId: assistant.id,
+          title: 'Switched to default',
+          description: 'The original agent "work" is unavailable.',
+        },
+      ],
+    })
+
+    const fallbackItems = items.filter(
+      (item) => item.kind === 'session-fallback-divider',
+    )
+    expect(fallbackItems).toEqual([
+      expect.objectContaining({
+        id: 'fallback-1-divider',
+        anchorMessageId: assistant.id,
+        title: 'Switched to default',
+        description: 'The original agent "work" is unavailable.',
+      }),
+    ])
+  })
+
+  it('splits an assistant render slice at a session-fallback anchor', () => {
+    const firstAssistant = makeAssistantMessage('assistant-1')
+    const tool = makeToolMessage({
+      id: 'tool-1',
+      toolCallCount: 1,
+      responseText: 'ok',
+    })
+    const secondAssistant = makeAssistantMessage('assistant-2')
+
+    const items = buildChatTimelineItems({
+      groupedChatMessages: [[firstAssistant, tool, secondAssistant]],
+      compactionDividerAnchorMessageIds: [],
+      latestCompaction: null,
+      sessionFallbackDividers: [
+        {
+          id: 'fallback-1-divider',
+          anchorMessageId: tool.id,
+          title: 'Switched to default',
+          description: 'The original agent "work" is unavailable.',
+        },
+      ],
+    })
+
+    const assistantItems = items.filter(
+      (item) => item.kind === 'assistant-group',
+    )
+    expect(assistantItems).toHaveLength(2)
+    const dividerIndex = items.findIndex(
+      (item) => item.kind === 'session-fallback-divider',
+    )
+    expect(dividerIndex).toBeGreaterThan(0)
+    expect(items[dividerIndex - 1]).toMatchObject({
+      kind: 'assistant-group',
+      messageIds: [firstAssistant.id, tool.id],
+    })
+  })
 })

@@ -12,6 +12,8 @@ export type ChatConversationCliSession = {
   runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi'
   nativeSessionId: string
   sessionPathHint?: string
+  /** Hermes profile this session lives under (see `CliSessionRef.profileId`). */
+  profileId?: string
 }
 
 export const getChatConversationOrigin = (

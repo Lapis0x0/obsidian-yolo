@@ -42,6 +42,30 @@ export type AcpCliRuntimeOptions = Readonly<{
   clientName?: string
   resolveHost?: AcpHostResolver
   createProcess?: AcpHostOptions['createProcess']
+  /**
+   * Agent-provided manual-compaction slash command (see
+   * `AcpAgentProfile.compactCommand`). Absent means the connected agent has
+   * no such affordance and `compact()` throws.
+   */
+  compactCommand?: string
+  /**
+   * Optional recovery for when resuming a stored session fails to load
+   * (e.g. the process/place it lived in is no longer reachable).
+   * `AcpCliRuntime` has no notion of what `resolveHost` here represents (a
+   * Hermes profile, etc) — it only knows that when `loadSession` throws, it
+   * can ask this for a different host and start a fresh session there
+   * instead of failing outright. Supplied by the owning factory (e.g.
+   * `hermes/factory.ts`, which points it at the default-profile host).
+   */
+  sessionRecovery?: Readonly<{ resolveHost: AcpHostResolver }>
+  /**
+   * Paired with `resolveHost`/`sessionRecovery.resolveHost` for pooled
+   * hosts: called once during `dispose()` to release every reference this
+   * runtime instance acquired, so a shared pool (e.g. Hermes's per-profile
+   * `AcpHostPool`) can reclaim hosts once nothing still binds them. No-op
+   * when hosts are not pooled (`resolveHost` absent).
+   */
+  releaseHost?: () => void
 }>
 
 type PendingApproval = {
@@ -84,12 +108,26 @@ export class AcpCliRuntime implements CliRuntime {
    * itself before the first turn. Loading history twice on the one occasion
    * a stored conversation is reopened is the accepted cost of never silently
    * skipping the load a fresh host generation needs.
+   *
+   * `ref` is always a session to resume (there is no "start fresh" call
+   * here), so resolving/readying the host is inside the same recovery net as
+   * `loadSession` below: the most common trigger for recovery is a deleted
+   * Hermes profile, and `hermes -p <deleted> acp` exits *before* the ACP
+   * handshake completes — i.e. `getHost()` itself throws, not `loadSession`.
+   * A recovery failure still propagates as-is; only `sessionRecovery` being
+   * absent (a runtime with no fallback) rethrows the original error.
    */
   async openSession(ref: CliSessionRef): Promise<CliSessionHydration> {
     if (ref.runtimeId !== this.runtimeId) {
       throw new Error(`Cannot open a non-${this.runtimeId} session.`)
     }
-    const host = await this.getHost()
+    let host: AcpHost
+    try {
+      host = await this.getHost()
+    } catch (error) {
+      if (!this.options.sessionRecovery) throw error
+      return this.recoverSession(ref)
+    }
     if (!host.capabilities?.loadSession) {
       // Agent can't replay history; ensureReady will start a fresh session.
       return { ref, messages: [], compactionBoundaries: [] }
@@ -114,15 +152,30 @@ export class AcpCliRuntime implements CliRuntime {
         }),
       )
       this.captureModelState(response)
-    } finally {
+    } catch (error) {
       unregister()
+      if (!this.options.sessionRecovery) throw error
+      return this.recoverSession(ref)
     }
+    unregister()
     return { ref, messages, compactionBoundaries: [] }
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
     const previousHost = this.host
-    const host = await this.getHost()
+    let host: AcpHost
+    try {
+      host = await this.getHost()
+    } catch (error) {
+      // A brand-new session (no `sessionRef`) has nothing to recover into —
+      // only a resume in progress falls back to `sessionRecovery`. Same
+      // trigger as `openSession`'s doc comment: the host can fail before an
+      // ACP session is even in play (e.g. a deleted Hermes profile's process
+      // exiting pre-handshake).
+      if (!input.sessionRef || !this.options.sessionRecovery) throw error
+      await this.bindRecoveredSession(input.sessionRef)
+      return
+    }
     if (
       this.activeSessionRef &&
       input.sessionRef?.nativeSessionId ===
@@ -148,14 +201,20 @@ export class AcpCliRuntime implements CliRuntime {
       throw new Error(`Cannot resume a non-${this.runtimeId} session.`)
     }
     if (host.capabilities?.loadSession) {
-      const response = await host.call((connection) =>
-        connection.loadSession({
-          sessionId: input.sessionRef!.nativeSessionId,
-          cwd: this.options.cwd,
-          mcpServers: [],
-        }),
-      )
-      this.captureModelState(response)
+      try {
+        const response = await host.call((connection) =>
+          connection.loadSession({
+            sessionId: input.sessionRef!.nativeSessionId,
+            cwd: this.options.cwd,
+            mcpServers: [],
+          }),
+        )
+        this.captureModelState(response)
+      } catch (error) {
+        if (!this.options.sessionRecovery) throw error
+        await this.bindRecoveredSession(input.sessionRef)
+        return
+      }
     }
     this.bindSession(host, input.sessionRef)
   }
@@ -251,6 +310,47 @@ export class AcpCliRuntime implements CliRuntime {
     )
   }
 
+  /**
+   * ACP has no dedicated compaction call, so this sends the agent's
+   * compaction slash command (`AcpAgentProfile.compactCommand`, e.g.
+   * Hermes's `/compress`) as an ordinary `session/prompt`. The live
+   * aggregator already suppresses the resulting `user_message_chunk` echo
+   * (see `mapping.ts`), so this never renders as a user turn; the agent's
+   * text reply — success summary or failure reason — still renders as a
+   * normal assistant message.
+   *
+   * Hermes reports no structured compaction event, only prose whose wording
+   * may change at any time, so this never parses the reply to judge success.
+   * It synthesizes `compaction_boundary` once the round trip resolves
+   * without throwing; a failed compression still draws the divider, with
+   * the reason left visible in the reply above it.
+   */
+  async compact(): Promise<void> {
+    if (!this.activeSessionRef) {
+      throw new Error(`${this.runtimeId} runtime is not ready.`)
+    }
+    const compactCommand = this.options.compactCommand
+    if (!compactCommand) {
+      throw new Error(`${this.runtimeId} does not support compaction.`)
+    }
+    const host = await this.getHost()
+    const sessionId = this.activeSessionRef.nativeSessionId
+    this.aggregator.beginTurn()
+    await host.call((connection) =>
+      connection.prompt({
+        sessionId,
+        prompt: toAcpPromptBlocks(compactCommand),
+      }),
+    )
+    this.emit({
+      type: 'compaction_boundary',
+      boundary: {
+        id: `${this.runtimeId}-compact-${Date.now()}`,
+        trigger: 'manual',
+      },
+    })
+  }
+
   async cancel(): Promise<void> {
     if (!this.activeSessionRef) return
     // Set before releasing pending approvals: an agent that reacts to the
@@ -303,7 +403,10 @@ export class AcpCliRuntime implements CliRuntime {
     this.pendingApprovals.clear()
     const host = this.host
     this.host = null
-    if (host && this.ownsHost) await host.dispose()
+    if (host) {
+      if (this.ownsHost) await host.dispose()
+      else this.options.releaseHost?.()
+    }
     this.listeners.clear()
   }
 
@@ -311,7 +414,11 @@ export class AcpCliRuntime implements CliRuntime {
     for (const listener of this.listeners) listener(event)
   }
 
-  private bindSession(host: AcpHost, ref: CliSessionRef): void {
+  private bindSession(
+    host: AcpHost,
+    ref: CliSessionRef,
+    fallbackFrom?: CliSessionRef,
+  ): void {
     this.unregisterSession?.()
     this.aggregator.reset()
     this.activeSessionRef = ref
@@ -323,7 +430,62 @@ export class AcpCliRuntime implements CliRuntime {
       },
       onRequestPermission: (request) => this.handleRequestPermission(request),
     })
-    this.emit({ type: 'session_bound', ref })
+    this.emit({
+      type: 'session_bound',
+      ref,
+      ...(fallbackFrom ? { fallbackFrom } : {}),
+    })
+  }
+
+  /**
+   * `openSession`'s recovery path: the requested session's host is
+   * unreachable, so this tries `sessionRecovery.resolveHost()` and starts a
+   * brand-new session there instead. The candidate host only becomes
+   * `this.host` (via `attachHost`) once starting that session actually
+   * succeeds — `host.call()` already readies the connection on its own, so
+   * nothing here needs to touch runtime state before that succeeds. A
+   * candidate that itself fails to produce a session must leave `this.host`,
+   * its fatal listener, and any live session binding exactly as they were:
+   * publishing a broken host as the primary one would strand a retry on it
+   * instead of letting it re-resolve (and reuse, if still good) the original
+   * host.
+   */
+  private async recoverSession(
+    requestedRef: CliSessionRef,
+  ): Promise<CliSessionHydration> {
+    const host = await this.options.sessionRecovery!.resolveHost()
+    const response = await host.call((connection) =>
+      connection.newSession({ cwd: this.options.cwd, mcpServers: [] }),
+    )
+    await this.attachHost(host, false)
+    this.captureModelState(response)
+    const ref: CliSessionRef = {
+      runtimeId: this.runtimeId,
+      nativeSessionId: response.sessionId,
+    }
+    return {
+      ref,
+      messages: [],
+      compactionBoundaries: [],
+      sessionFallback: { requestedRef },
+    }
+  }
+
+  /** `ensureReady`'s recovery path: same idea as `recoverSession`, but binds the fresh session live instead of returning a read-only peek. */
+  private async bindRecoveredSession(
+    requestedRef: CliSessionRef,
+  ): Promise<void> {
+    const host = await this.options.sessionRecovery!.resolveHost()
+    const response = await host.call((connection) =>
+      connection.newSession({ cwd: this.options.cwd, mcpServers: [] }),
+    )
+    await this.attachHost(host, false)
+    this.captureModelState(response)
+    this.bindSession(
+      host,
+      { runtimeId: this.runtimeId, nativeSessionId: response.sessionId },
+      requestedRef,
+    )
   }
 
   private async handleRequestPermission(
@@ -348,25 +510,37 @@ export class AcpCliRuntime implements CliRuntime {
     if (this.disposed) {
       throw new Error(`${this.runtimeId} CLI runtime has been disposed.`)
     }
-    const host = this.host
-      ? this.host
-      : this.options.resolveHost
-        ? await this.options.resolveHost()
-        : new AcpHost({
-            runtimeId: this.runtimeId,
-            clientName: this.options.clientName ?? 'obsidian-yolo',
-            resolveProcessOptions: async () => ({
-              command: this.options.command ?? '',
-              args: this.options.args ?? [],
-              cwd: this.options.cwd,
-              env: this.options.env,
-            }),
-            createProcess: this.options.createProcess,
-          })
+    if (this.host) {
+      await this.host.ensureReady()
+      return this.host
+    }
+    const host = this.options.resolveHost
+      ? await this.options.resolveHost()
+      : new AcpHost({
+          runtimeId: this.runtimeId,
+          clientName: this.options.clientName ?? 'obsidian-yolo',
+          resolveProcessOptions: async () => ({
+            command: this.options.command ?? '',
+            args: this.options.args ?? [],
+            cwd: this.options.cwd,
+            env: this.options.env,
+          }),
+          createProcess: this.options.createProcess,
+        })
+    return this.attachHost(host, !this.options.resolveHost)
+  }
+
+  /**
+   * Publishes `host` as `this.host` (unless it already is) and readies it.
+   * Shared by `getHost()` and the `sessionRecovery` fallback paths so a
+   * switch to a different host is picked up by every subsequent call
+   * (`sendTurn`, `cancel`, ...), not just the one that triggered the switch.
+   */
+  private async attachHost(host: AcpHost, ownsHost: boolean): Promise<AcpHost> {
     if (this.host !== host) {
       this.detachFatal?.()
       this.host = host
-      this.ownsHost = !this.options.resolveHost
+      this.ownsHost = ownsHost
       this.detachFatal = host.onFatal((error) => this.handleHostFatal(error))
     }
     await host.ensureReady()

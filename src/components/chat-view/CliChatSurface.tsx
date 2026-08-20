@@ -19,6 +19,7 @@ import {
   type CliConversationSnapshot,
   type CliRuntimeModel,
   type CliRuntimeRunState,
+  type CliRuntimeScope,
   type CliSessionRef,
   type CliTurnConfiguration,
   RUNTIME_CAPABILITIES,
@@ -68,6 +69,8 @@ const noopToolMessageUpdate = (_message: ChatToolMessage): void => undefined
 
 export type CliChatSurfaceProps = {
   snapshot: CliConversationSnapshot
+  /** Resolves display names for `snapshot.sessionFallbackBoundaries`' notices. */
+  cliRuntimeScope?: CliRuntimeScope
   presentedDraft: AcceptedCliDraft | null
   showEmptyState: boolean
   actions: ChatRuntimeActions
@@ -460,6 +463,7 @@ const buildRunSummary = ({
 
 export function CliChatSurface({
   snapshot,
+  cliRuntimeScope,
   presentedDraft,
   showEmptyState,
   actions,
@@ -477,6 +481,37 @@ export function CliChatSurface({
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
+  const sessionFallbackBoundaries = snapshot.sessionFallbackBoundaries ?? []
+  // Resolves the unreachable profile's display name for the fallback
+  // notice. Fetched lazily — only conversations that actually hit a
+  // recovery pay for it — and best-effort: a profile deleted after causing
+  // the very fallback being described may no longer be discoverable, in
+  // which case the notice falls back to showing its raw id.
+  const [hermesProfileDisplayNames, setHermesProfileDisplayNames] = useState<
+    ReadonlyMap<string, string>
+  >(new Map())
+  useEffect(() => {
+    if (!cliRuntimeScope || sessionFallbackBoundaries.length === 0) return
+    let cancelled = false
+    void cliRuntimeScope
+      .listHermesProfiles()
+      .then((profiles) => {
+        if (cancelled) return
+        setHermesProfileDisplayNames(
+          new Map(profiles.map((profile) => [profile.id, profile.displayName])),
+        )
+      })
+      .catch((error: unknown) => {
+        console.error(
+          '[YOLO] Failed to resolve Hermes profile names for session fallback notice',
+          error,
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+     
+  }, [cliRuntimeScope, sessionFallbackBoundaries.length > 0])
   const isConversationBusy =
     snapshot.isCompacting === true || ACTIVE_RUN_STATES.has(snapshot.runState)
   const canRewriteUserMessage =
@@ -512,6 +547,29 @@ export function CliChatSurface({
   const pendingCompactionAnchorMessageId = snapshot.isCompacting
     ? (messages.at(-1)?.id ?? null)
     : null
+  const sessionFallbackDividers = useMemo(
+    () =>
+      sessionFallbackBoundaries.map((boundary) => {
+        const profileId = boundary.requestedRef.profileId
+        const profileName =
+          (profileId ? hermesProfileDisplayNames.get(profileId) : undefined) ??
+          profileId ??
+          t('chat.cliSurface.sessionFallbackUnknownProfile', 'previous')
+        return {
+          id: `${boundary.id}-divider`,
+          anchorMessageId: boundary.afterMessageId,
+          title: t(
+            'chat.cliSurface.sessionFallbackDividerTitle',
+            'Switched to default',
+          ),
+          description: t(
+            'chat.cliSurface.sessionFallbackDividerDescription',
+            'The original agent "{profile}" is unavailable, so this conversation switched to default — earlier messages are not in its memory.',
+          ).replace('{profile}', profileName),
+        }
+      }),
+    [hermesProfileDisplayNames, sessionFallbackBoundaries, t],
+  )
   const timelineItems = useMemo(() => {
     const items = buildChatTimelineItems({
       groupedChatMessages: windowedGroupedChatMessages,
@@ -527,6 +585,7 @@ export function CliChatSurface({
       })),
       latestCompaction: null,
       pendingCompactionAnchorMessageId,
+      sessionFallbackDividers,
       activeEditableMessageId: null,
       activeStreamingMessageId,
     })
@@ -557,6 +616,7 @@ export function CliChatSurface({
     pendingCompactionAnchorMessageId,
     pendingResponseUserMessageId,
     readModel,
+    sessionFallbackDividers,
     snapshot.compactionBoundaries,
     windowedGroupedChatMessages,
   ])

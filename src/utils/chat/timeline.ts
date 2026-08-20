@@ -130,6 +130,19 @@ type BuildChatTimelineItemsParams = {
   }[]
   latestCompaction: ChatConversationCompaction | null
   pendingCompactionAnchorMessageId?: string | null
+  /**
+   * "Resumed session couldn't be reached, started a fresh one instead"
+   * notices (see `CliSessionFallbackBoundary` / `ChatTimelineSessionFallbackDividerItem`).
+   * Anchored and inserted the same way as `compactionDividers`, but kept as
+   * a separate stream since the two boundary kinds are unrelated events
+   * that happen to share one divider visual.
+   */
+  sessionFallbackDividers?: readonly {
+    id: string
+    anchorMessageId: string | null
+    title: string
+    description: string
+  }[]
   queryProgress?: QueryProgressState
   showContinueResponseButton?: boolean
   activeEditableMessageId?: string | null
@@ -145,6 +158,7 @@ export const buildChatTimelineItems = ({
   compactionDividers,
   latestCompaction,
   pendingCompactionAnchorMessageId = null,
+  sessionFallbackDividers = [],
   queryProgress,
   showContinueResponseButton = false,
   activeEditableMessageId = null,
@@ -184,6 +198,40 @@ export const buildChatTimelineItems = ({
       })
     }
   }
+  const sessionFallbackAnchorMessageIdSet = new Set(
+    sessionFallbackDividers.map((divider) => divider.anchorMessageId),
+  )
+  const sessionFallbackDividersByAnchor = new Map<
+    string | null,
+    Array<(typeof sessionFallbackDividers)[number]>
+  >()
+  for (const divider of sessionFallbackDividers) {
+    const anchored = sessionFallbackDividersByAnchor.get(
+      divider.anchorMessageId,
+    )
+    if (anchored) anchored.push(divider)
+    else sessionFallbackDividersByAnchor.set(divider.anchorMessageId, [
+      divider,
+    ])
+  }
+  const insertSessionFallbackDividers = (anchorMessageId: string | null) => {
+    for (const divider of sessionFallbackDividersByAnchor.get(
+      anchorMessageId,
+    ) ?? []) {
+      items.push({
+        kind: 'session-fallback-divider',
+        id: divider.id,
+        renderKey: divider.id,
+        anchorMessageId,
+        title: divider.title,
+        description: divider.description,
+      })
+    }
+  }
+  const insertBoundaryDividers = (anchorMessageId: string | null) => {
+    insertCompactionDividers(anchorMessageId)
+    insertSessionFallbackDividers(anchorMessageId)
+  }
   const messagesById = new Map<
     string,
     ChatUserMessage | AssistantToolMessageGroup[number]
@@ -206,7 +254,7 @@ export const buildChatTimelineItems = ({
     activeStreamingMessageId,
   })
 
-  insertCompactionDividers(null)
+  insertBoundaryDividers(null)
 
   const insertPendingItem = (anchorMessageId: string) => {
     if (
@@ -265,12 +313,15 @@ export const buildChatTimelineItems = ({
 
       groupMessages.forEach((message) => {
         currentSlice.push(message)
-        if (!compactionAnchorMessageIdSet.has(message.id)) {
+        if (
+          !compactionAnchorMessageIdSet.has(message.id) &&
+          !sessionFallbackAnchorMessageIdSet.has(message.id)
+        ) {
           return
         }
 
         pushCurrentGroup()
-        insertCompactionDividers(message.id)
+        insertBoundaryDividers(message.id)
       })
 
       pushCurrentGroup()
@@ -279,7 +330,7 @@ export const buildChatTimelineItems = ({
 
     items.push(item)
     insertPendingItem(item.id)
-    insertCompactionDividers(item.id)
+    insertBoundaryDividers(item.id)
   })
 
   if (queryProgress && queryProgress.type !== 'idle') {

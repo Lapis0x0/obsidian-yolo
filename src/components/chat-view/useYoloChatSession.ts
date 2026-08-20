@@ -59,6 +59,7 @@ import {
   beginChatRuntimeNavigation,
   openCliSessionForNavigation,
   prepareCliConversation,
+  resolveHermesSessionFallbackUpdate,
 } from './cliChatIntegration'
 import {
   type PrePlanCliModeMemory,
@@ -119,6 +120,9 @@ export type UseYoloChatSessionParams = {
   updateConversationActiveBranches: ReturnType<
     typeof useChatHistory
   >['updateConversationActiveBranches']
+  createOrTouchCliConversation: ReturnType<
+    typeof useChatHistory
+  >['createOrTouchCliConversation']
   getConversationById: ReturnType<typeof useChatHistory>['getConversationById']
   chatList: ReturnType<typeof useChatHistory>['chatList']
 
@@ -234,11 +238,14 @@ export type UseYoloChatSessionParams = {
     SetStateAction<CliConversationController | null>
   >
   setCliConversationId: Dispatch<SetStateAction<string | null>>
+  hermesProfileId: string | undefined
+  setHermesProfileId: Dispatch<SetStateAction<string | undefined>>
   transitionCliSession: (
     action: (isCurrent: () => boolean) => void | Promise<void>,
   ) => Promise<boolean>
   createFreshCliConversation: (
     runtimeId: CliRuntimeId,
+    profileId?: string,
   ) => CliConversationController | null
 }
 
@@ -256,6 +263,7 @@ export function useYoloChatSession({
   createOrUpdateConversation,
   createOrUpdateConversationImmediately,
   updateConversationActiveBranches,
+  createOrTouchCliConversation,
   getConversationById,
   chatList,
   submitChatMutation,
@@ -317,6 +325,8 @@ export function useYoloChatSession({
   setCliYoloEnabled,
   setCliConversationController,
   setCliConversationId,
+  hermesProfileId,
+  setHermesProfileId,
   transitionCliSession,
   createFreshCliConversation,
 }: UseYoloChatSessionParams) {
@@ -893,7 +903,7 @@ export function useYoloChatSession({
           ref,
           isCurrent: isCurrentNavigation,
         })
-        if (!result) return
+        if (!result || !result.hydration) return
         const modePreference = resolveCliModePreference(
           settings,
           ref.runtimeId,
@@ -913,6 +923,29 @@ export function useYoloChatSession({
         persistChatRuntimePreference(ref.runtimeId)
         setCliConversationController(result.controller)
         setCliConversationId(conversationId)
+        // A historical CLI session's own `ChatConversationCliSession` is
+        // authoritative on which Hermes profile it lives under; no record
+        // means the default profile (see `ChatConversationCliSession.profileId`).
+        // Unless a fallback occurred — in the `openCliSessionForNavigation()`
+        // peek above or in `prepareCliConversation()`'s own `ensureReady()`
+        // load — because the stored profile no longer resolves (see
+        // `AcpCliRuntimeOptions.sessionRecovery`). Either way the *fallback*
+        // session is what's actually live, so both the header and
+        // conversation storage must reflect it instead of the now-dead
+        // requested profile — this reads the controller's settled snapshot,
+        // not just the first load's hydration, to catch a fallback from
+        // either load (see `resolveHermesSessionFallbackUpdate`).
+        const fallbackUpdate = resolveHermesSessionFallbackUpdate(
+          ref.runtimeId,
+          result.controller.getSnapshot(),
+        )
+        setHermesProfileId(
+          fallbackUpdate
+            ? fallbackUpdate.hermesProfileId
+            : ref.runtimeId === 'hermes'
+              ? ref.profileId
+              : undefined,
+        )
         const restoredOverrides = overrides ?? null
         setConversationOverrides(restoredOverrides)
         conversationOverridesRef.current.set(conversationId, restoredOverrides)
@@ -924,6 +957,18 @@ export function useYoloChatSession({
           ref.runtimeId,
           modePreference.mode,
         )
+        if (fallbackUpdate) {
+          void createOrTouchCliConversation(
+            conversationId,
+            fallbackUpdate.cliSession,
+            restoredOverrides,
+          ).catch((error: unknown) => {
+            console.error(
+              '[YOLO] Failed to persist Hermes fallback session',
+              error,
+            )
+          })
+        }
         if (result.overlayError) {
           console.warn('[YOLO] Failed to restore CLI conversation metadata', {
             conversationId,
@@ -957,6 +1002,7 @@ export function useYoloChatSession({
       activeRuntimeIdRef,
       cliRuntimeAvailable,
       cliRuntimeScope,
+      createOrTouchCliConversation,
       persistChatRuntimePreference,
       settings,
       t,
@@ -965,6 +1011,7 @@ export function useYoloChatSession({
       lastCliRuntimeIdRef,
       setCliConversationController,
       setCliConversationId,
+      setHermesProfileId,
       setConversationOverrides,
       conversationOverridesRef,
       setCliChatMode,
@@ -1033,7 +1080,13 @@ export function useYoloChatSession({
       if (activeRuntimeId !== 'yolo') {
         void transitionCliSession((isCurrent) => {
           if (!isCurrent() || !isLatestNavigation()) return
-          createFreshCliConversation(activeRuntimeId)
+          // "+ New chat" starts a fresh conversation under whichever Hermes
+          // profile is currently active — it is not a profile switch, so it
+          // must not silently fall back to default.
+          createFreshCliConversation(
+            activeRuntimeId,
+            activeRuntimeId === 'hermes' ? hermesProfileId : undefined,
+          )
           if (selectedBlock) {
             const mentionableBlock =
               createSelectionBlockMentionable(selectedBlock)
@@ -1105,6 +1158,7 @@ export function useYoloChatSession({
       activeRuntimeId,
       transitionCliSession,
       createFreshCliConversation,
+      hermesProfileId,
       setInputMessage,
       setCurrentConversationId,
       conversationAssistantId,

@@ -1885,6 +1885,13 @@ export const zh: TranslationKeys = {
       cancelError: '无法停止 CLI 运行：{message}',
       openError: '无法打开 CLI 会话：{message}',
       transitionError: '无法离开当前 CLI 会话：{message}',
+      sessionFallbackDividerTitle: '已切换到 default',
+      sessionFallbackDividerDescription:
+        '原 agent「{profile}」不可用，已切换到 default，此前的对话不在它的记忆中。',
+      sessionFallbackUnknownProfile: '此前的',
+    },
+    hermesProfileSelector: {
+      accessibleLabel: 'Hermes agent：{profile}',
     },
     cliControls: {
       defaultModel: '{provider} 默认模型',

@@ -1207,4 +1207,110 @@ describe('CliConversationController', () => {
       'does not support reconnecting MCP servers',
     )
   })
+
+  describe('session recovery fallback', () => {
+    it('hydrateSession accepts a flagged fallback ref instead of throwing, and anchors a boundary', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('gone-sess', 'hermes')
+      const fallbackRef = session('fresh-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: fallbackRef,
+        messages: [],
+        compactionBoundaries: [],
+        sessionFallback: { requestedRef },
+      })
+      const controller = new CliConversationController(runtime)
+
+      const hydration = await controller.hydrateSession(requestedRef)
+
+      expect(hydration).toMatchObject({ ref: fallbackRef })
+      expect(controller.getSnapshot().sessionRef).toEqual(fallbackRef)
+      expect(controller.getSnapshot().sessionFallbackBoundaries).toEqual([
+        expect.objectContaining({ afterMessageId: null, requestedRef }),
+      ])
+    })
+
+    it('hydrateSession anchors the fallback boundary after the restored history, not at the top of the transcript', async () => {
+      // Unlike the previous test (empty history, where `afterMessageId: null`
+      // is coincidentally correct too), this hydrates a session that already
+      // has messages — the regression case: the boundary must land after the
+      // last restored message, not unconditionally at `null`/the very top.
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('gone-sess', 'hermes')
+      const fallbackRef = session('fresh-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: fallbackRef,
+        messages: [userMessage('user-1'), assistantMessage('assistant-1')],
+        compactionBoundaries: [],
+        sessionFallback: { requestedRef },
+      })
+      const controller = new CliConversationController(runtime)
+
+      await controller.hydrateSession(requestedRef)
+
+      expect(controller.getSnapshot().sessionFallbackBoundaries).toEqual([
+        expect.objectContaining({
+          afterMessageId: 'assistant-1',
+          requestedRef,
+        }),
+      ])
+    })
+
+    it('hydrateSession still throws on a mismatched ref when it is not flagged as a fallback', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('requested-sess', 'hermes')
+      const otherRef = session('other-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: otherRef,
+        messages: [],
+        compactionBoundaries: [],
+      })
+      const controller = new CliConversationController(runtime)
+
+      await expect(
+        controller.hydrateSession(requestedRef),
+      ).rejects.toThrow('CLI runtime hydrated a different session.')
+    })
+
+    it('ensureReady binds a fallback session_bound event, updates sessionRef, and anchors the boundary after existing messages', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('gone-sess', 'hermes')
+      const fallbackRef = session('fresh-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: requestedRef,
+        messages: [userMessage('user-1'), assistantMessage('assistant-1')],
+        compactionBoundaries: [],
+      })
+      // Simulates AcpCliRuntime.ensureReady()'s recovery path: it binds the
+      // fallback session live instead of the one the caller asked to resume.
+      runtime.ensureReadyImpl = async () => {
+        runtime.emit({
+          type: 'session_bound',
+          ref: fallbackRef,
+          fallbackFrom: requestedRef,
+        })
+      }
+      const controller = new CliConversationController(runtime)
+
+      await controller.hydrateSession(requestedRef)
+      await controller.ensureReady()
+
+      const snapshot = controller.getSnapshot()
+      expect(snapshot.sessionRef).toEqual(fallbackRef)
+      expect(snapshot.sessionFallbackBoundaries).toEqual([
+        expect.objectContaining({
+          afterMessageId: 'assistant-1',
+          requestedRef,
+        }),
+      ])
+    })
+
+    it('a session_bound event with no fallbackFrom never records a fallback boundary', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+
+      expect(controller.getSnapshot().sessionFallbackBoundaries).toEqual([])
+    })
+  })
 })

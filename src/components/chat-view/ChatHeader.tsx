@@ -30,6 +30,7 @@ import type { MentionableBlockData } from '../../types/mentionable'
 import { AssistantSelector } from './AssistantSelector'
 import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { ChatListDropdown } from './ChatListDropdown'
+import { HermesProfileSelector } from './HermesProfileSelector'
 import { RuntimeSelector } from './RuntimeSelector'
 import ViewToggle from './ViewToggle'
 
@@ -58,6 +59,9 @@ export type ChatHeaderProps = {
 
   conversationAssistantId: string
   handleConversationAssistantSelect: (assistantId: string) => void
+  /** `undefined` means the default Hermes profile. Ignored by non-Hermes runtimes. */
+  hermesProfileId: string | undefined
+  handleHermesProfileSelect: (profileId: string | undefined) => void
   handleNewChat: (selectedBlock?: MentionableBlockData) => void
   handleExportChatToVault: (conversationId: string) => void
   currentConversationId: string
@@ -113,6 +117,8 @@ export function ChatHeader({
   setWorkspaceWideHeaderHeight,
   conversationAssistantId,
   handleConversationAssistantSelect,
+  hermesProfileId,
+  handleHermesProfileSelect,
   handleNewChat,
   handleExportChatToVault,
   currentConversationId,
@@ -239,6 +245,15 @@ export function ChatHeader({
               onAssistantChange={(assistant) => {
                 handleConversationAssistantSelect(assistant.id)
               }}
+            />
+          ) : null}
+          {activeRuntimeId === 'hermes' &&
+          !isModuleChatMode(chatMode) &&
+          cliRuntimeScope ? (
+            <HermesProfileSelector
+              cliRuntimeScope={cliRuntimeScope}
+              currentProfileId={hermesProfileId}
+              onProfileChange={handleHermesProfileSelect}
             />
           ) : null}
           <div className="yolo-chat-header-buttons">

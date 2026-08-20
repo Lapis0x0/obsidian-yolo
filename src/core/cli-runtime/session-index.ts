@@ -49,6 +49,7 @@ export const cliSessionIndexEntrySchema = z.object({
   runtimeId: cliRuntimeIdSchema,
   nativeSessionId: z.string().min(1),
   sessionPathHint: z.string().min(1).optional(),
+  profileId: z.string().min(1).optional(),
   turnOverlays: z.array(cliTurnOverlaySchema).optional(),
   turnEditSummaryByUserMessageId: z
     .record(z.string(), toolEditSummarySchema)
@@ -99,6 +100,7 @@ export const toCliSessionRef = (
   runtimeId: entry.runtimeId,
   nativeSessionId: entry.nativeSessionId,
   ...(entry.sessionPathHint ? { sessionPathHint: entry.sessionPathHint } : {}),
+  ...(entry.profileId ? { profileId: entry.profileId } : {}),
 })
 
 export const createCliSessionIndexEntry = ({

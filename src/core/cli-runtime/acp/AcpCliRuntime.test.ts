@@ -6,6 +6,7 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type { CliRuntimeEvent } from '../types'
 
 import { AcpCliRuntime } from './AcpCliRuntime'
+import { AcpHost } from './host'
 import type { AcpProcessExitListener, AcpProcessLike } from './process'
 
 // `transport.ts` loads `node:stream` through `loadDesktopNodeModule`, which
@@ -66,17 +67,36 @@ class FakeAcpAgent implements AcpProcessLike {
   private dispatch(message: RpcMessage): void {
     const handler = this.handlers.get(message.method as string)
     if (!handler) return
-    const result = handler(message)
-    if (message.id === undefined) return
-    if (result instanceof Promise) {
-      void result.then((value) => this.respond(message.id!, value))
-    } else {
-      this.respond(message.id, result)
+    try {
+      const result = handler(message)
+      if (message.id === undefined) return
+      if (result instanceof Promise) {
+        result.then(
+          (value) => this.respond(message.id!, value),
+          (error: unknown) => this.respondError(message.id!, error),
+        )
+      } else {
+        this.respond(message.id, result)
+      }
+    } catch (error) {
+      if (message.id !== undefined) this.respondError(message.id, error)
     }
   }
 
   respond(id: string | number, result: unknown): void {
     this.send({ jsonrpc: '2.0', id, result })
+  }
+
+  /** Simulates a JSON-RPC error response, e.g. a `session/load` that fails because the session is gone. */
+  respondError(id: string | number, error: unknown): void {
+    this.send({
+      jsonrpc: '2.0',
+      id,
+      error: {
+        code: -32000,
+        message: error instanceof Error ? error.message : String(error),
+      },
+    })
   }
 
   notify(method: string, params: Record<string, unknown>): void {
@@ -149,16 +169,48 @@ const wireServerRequestReplies = (agent: FakeAcpAgent): void => {
   })
 }
 
-const createRuntime = (agent: FakeAcpAgent) =>
+const createRuntime = (agent: FakeAcpAgent, compactCommand?: string) =>
   new AcpCliRuntime('hermes', {
     cwd: '/vault',
     createProcess: async () => agent,
+    ...(compactCommand ? { compactCommand } : {}),
   })
 
 const collectEvents = (runtime: AcpCliRuntime): CliRuntimeEvent[] => {
   const events: CliRuntimeEvent[] = []
   runtime.subscribe((event) => events.push(event))
   return events
+}
+
+const createHostFor = (agent: FakeAcpAgent) =>
+  new AcpHost({
+    runtimeId: 'hermes',
+    clientName: 'test',
+    resolveProcessOptions: async () => ({
+      command: '/bin/agent',
+      args: [],
+      cwd: '/vault',
+    }),
+    createProcess: async () => agent,
+  })
+
+/**
+ * A runtime wired with two distinct hosts, mirroring `hermes/factory.ts`'s
+ * `resolveHost` (this session's own profile) vs `sessionRecovery.resolveHost`
+ * (the default-profile fallback) — never the same host, so a test can tell
+ * which one actually served a given call.
+ */
+const createRuntimeWithRecovery = (
+  primaryAgent: FakeAcpAgent,
+  fallbackAgent: FakeAcpAgent,
+) => {
+  const primaryHost = createHostFor(primaryAgent)
+  const fallbackHost = createHostFor(fallbackAgent)
+  return new AcpCliRuntime('hermes', {
+    cwd: '/vault',
+    resolveHost: async () => primaryHost,
+    sessionRecovery: { resolveHost: async () => fallbackHost },
+  })
 }
 
 describe('AcpCliRuntime', () => {
@@ -472,5 +524,420 @@ describe('AcpCliRuntime', () => {
     await new Promise((resolve) => setTimeout(resolve, 0))
 
     expect(spawnedAgent?.shutdownCalled).toBe(true)
+  })
+
+  describe('compact()', () => {
+    it('sends the agent compact command as a prompt, suppresses its user echo, and emits a compaction boundary without touching run_state', async () => {
+      const agent = new FakeAcpAgent()
+      agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+      const promptedTexts: string[] = []
+      agent.on('session/prompt', (message) => {
+        const params = message.params as {
+          sessionId: string
+          prompt: { type: string; text?: string }[]
+        }
+        promptedTexts.push(...params.prompt.map((block) => block.text ?? ''))
+        // Hermes echoes the prompt back as a user_message_chunk, then
+        // replies with a plain-text summary — no structured compaction
+        // event exists on the wire.
+        agent.notify('session/update', {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'user_message_chunk',
+            content: { type: 'text', text: '/compress' },
+          },
+        })
+        agent.notify('session/update', {
+          sessionId: params.sessionId,
+          update: {
+            sessionUpdate: 'agent_message_chunk',
+            content: {
+              type: 'text',
+              text: 'Context compressed: 42 -> 8 messages',
+            },
+          },
+        })
+        return { stopReason: 'end_turn' }
+      })
+
+      const runtime = createRuntime(agent, '/compress')
+      const events = collectEvents(runtime)
+      await runtime.ensureReady({})
+
+      await runtime.compact()
+
+      expect(promptedTexts).toEqual(['/compress'])
+      // No synthetic user turn ever renders for the compact prompt.
+      expect(
+        events.some(
+          (event) =>
+            event.type === 'message_upsert' && event.message.role === 'user',
+        ),
+      ).toBe(false)
+      // The agent's reply still renders normally, so a failure reason stays visible.
+      expect(
+        events.some(
+          (event) =>
+            event.type === 'message_upsert' &&
+            event.message.role === 'assistant' &&
+            event.message.content === 'Context compressed: 42 -> 8 messages',
+        ),
+      ).toBe(true)
+      expect(events).toContainEqual({
+        type: 'compaction_boundary',
+        boundary: expect.objectContaining({ trigger: 'manual' }) as unknown,
+      })
+      // compact() reuses the ordinary prompt round trip but never emits
+      // run_state — the conversation controller already tracks compaction
+      // via `isCompacting`, and run_state stays reserved for real turns.
+      expect(events.some((event) => event.type === 'run_state')).toBe(false)
+      await runtime.dispose()
+    })
+
+    it('throws when the connected agent has no configured compact command', async () => {
+      const agent = new FakeAcpAgent()
+      agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+
+      const runtime = createRuntime(agent)
+      await runtime.ensureReady({})
+
+      await expect(runtime.compact()).rejects.toThrow(
+        /does not support compaction/,
+      )
+      await runtime.dispose()
+    })
+  })
+
+  describe('sessionRecovery', () => {
+    it('openSession() falls back to a fresh session on the recovery host when loadSession fails, and flags it', async () => {
+      const primaryAgent = new FakeAcpAgent()
+      primaryAgent.on('session/load', () => {
+        throw new Error('session not found')
+      })
+      const fallbackAgent = new FakeAcpAgent()
+      fallbackAgent.on('session/new', () => ({ sessionId: 'fallback-sess' }))
+
+      const runtime = createRuntimeWithRecovery(primaryAgent, fallbackAgent)
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+      }
+      const hydration = await runtime.openSession(requestedRef)
+
+      expect(hydration.ref).toEqual({
+        runtimeId: 'hermes',
+        nativeSessionId: 'fallback-sess',
+      })
+      expect(hydration.messages).toEqual([])
+      expect(hydration.sessionFallback).toEqual({ requestedRef })
+      await runtime.dispose()
+    })
+
+    it('ensureReady() falls back live, binding the fresh session and flagging the bind as a fallback', async () => {
+      const primaryAgent = new FakeAcpAgent()
+      primaryAgent.on('session/load', () => {
+        throw new Error('session not found')
+      })
+      const fallbackAgent = new FakeAcpAgent()
+      fallbackAgent.on('session/new', () => ({ sessionId: 'fallback-sess' }))
+      let promptedOnFallback = false
+      fallbackAgent.on('session/prompt', () => {
+        promptedOnFallback = true
+        return { stopReason: 'end_turn' }
+      })
+      let promptedOnPrimary = false
+      primaryAgent.on('session/prompt', () => {
+        promptedOnPrimary = true
+        return { stopReason: 'end_turn' }
+      })
+
+      const runtime = createRuntimeWithRecovery(primaryAgent, fallbackAgent)
+      const events = collectEvents(runtime)
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+      }
+      await runtime.ensureReady({ sessionRef: requestedRef })
+
+      expect(events).toContainEqual({
+        type: 'session_bound',
+        ref: { runtimeId: 'hermes', nativeSessionId: 'fallback-sess' },
+        fallbackFrom: requestedRef,
+      })
+
+      // Every subsequent call (sendTurn included) must go through the host
+      // the runtime actually switched to, not the original, unreachable one.
+      await runtime.sendTurn({ content: 'hi' })
+      expect(promptedOnFallback).toBe(true)
+      expect(promptedOnPrimary).toBe(false)
+      await runtime.dispose()
+    })
+
+    it('still throws when loadSession fails and no sessionRecovery is configured', async () => {
+      const agent = new FakeAcpAgent()
+      agent.on('session/load', () => {
+        throw new Error('session not found')
+      })
+
+      const runtime = createRuntime(agent)
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+      }
+      await expect(runtime.openSession(requestedRef)).rejects.toThrow(
+        /session not found/,
+      )
+      await runtime.dispose()
+    })
+
+    // Regression coverage for the main real-world trigger: a deleted Hermes
+    // profile makes `hermes -p <deleted> acp` exit *before* the ACP
+    // handshake completes, so the failure surfaces from resolving/readying
+    // the primary host itself — never from `session/load`, which is never
+    // reached. The two tests above (which fail an already-connected fake
+    // host's `session/load`) do not exercise this at all.
+    it('openSession() falls back to recovery when the primary host fails to resolve, not just when loadSession fails', async () => {
+      const fallbackAgent = new FakeAcpAgent()
+      fallbackAgent.on('session/new', () => ({ sessionId: 'fallback-sess' }))
+      const fallbackHost = createHostFor(fallbackAgent)
+
+      const runtime = new AcpCliRuntime('hermes', {
+        cwd: '/vault',
+        resolveHost: async () => {
+          throw new Error("Profile 'deleted-profile' does not exist.")
+        },
+        sessionRecovery: { resolveHost: async () => fallbackHost },
+      })
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+        profileId: 'deleted-profile',
+      }
+      const hydration = await runtime.openSession(requestedRef)
+
+      expect(hydration.ref).toEqual({
+        runtimeId: 'hermes',
+        nativeSessionId: 'fallback-sess',
+      })
+      expect(hydration.sessionFallback).toEqual({ requestedRef })
+      await runtime.dispose()
+    })
+
+    it('ensureReady() falls back live when the primary host fails to initialize (agent exits before the ACP handshake completes)', async () => {
+      const primaryAgent = new FakeAcpAgent()
+      // Overrides the constructor's default `initialize` handler so the
+      // handshake itself fails, mirroring a deleted profile's process dying
+      // before it ever gets there — the session is never even loaded.
+      primaryAgent.on('initialize', () => {
+        throw new Error("Profile 'deleted-profile' does not exist.")
+      })
+      const fallbackAgent = new FakeAcpAgent()
+      fallbackAgent.on('session/new', () => ({ sessionId: 'fallback-sess' }))
+      let promptedOnFallback = false
+      fallbackAgent.on('session/prompt', () => {
+        promptedOnFallback = true
+        return { stopReason: 'end_turn' }
+      })
+
+      const runtime = createRuntimeWithRecovery(primaryAgent, fallbackAgent)
+      const events = collectEvents(runtime)
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+        profileId: 'deleted-profile',
+      }
+      await runtime.ensureReady({ sessionRef: requestedRef })
+
+      expect(events).toContainEqual({
+        type: 'session_bound',
+        ref: { runtimeId: 'hermes', nativeSessionId: 'fallback-sess' },
+        fallbackFrom: requestedRef,
+      })
+      await runtime.sendTurn({ content: 'hi' })
+      expect(promptedOnFallback).toBe(true)
+      await runtime.dispose()
+    })
+
+    it('ensureReady() still throws when starting a brand-new session (no sessionRef) and the primary host fails, even with sessionRecovery configured', async () => {
+      // A new session has nothing to recover *into* — `sessionRecovery`
+      // exists to resume a specific stored session under a different host,
+      // not to silently redirect a fresh conversation the user never asked
+      // to move.
+      const runtime = new AcpCliRuntime('hermes', {
+        cwd: '/vault',
+        resolveHost: async () => {
+          throw new Error('primary host unavailable')
+        },
+        sessionRecovery: {
+          resolveHost: async () => {
+            throw new Error('fallback should never be consulted')
+          },
+        },
+      })
+
+      await expect(runtime.ensureReady({})).rejects.toThrow(
+        /primary host unavailable/,
+      )
+      await runtime.dispose()
+    })
+
+    it('propagates the error, rather than swallowing it, when recovery itself fails', async () => {
+      const runtime = new AcpCliRuntime('hermes', {
+        cwd: '/vault',
+        resolveHost: async () => {
+          throw new Error("Profile 'deleted-profile' does not exist.")
+        },
+        sessionRecovery: {
+          resolveHost: async () => {
+            throw new Error('default profile is also unreachable')
+          },
+        },
+      })
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+        profileId: 'deleted-profile',
+      }
+
+      await expect(runtime.openSession(requestedRef)).rejects.toThrow(
+        /default profile is also unreachable/,
+      )
+      await runtime.dispose()
+    })
+
+    it('ensureReady() propagates the error, rather than swallowing it, when recovery itself fails', async () => {
+      const runtime = new AcpCliRuntime('hermes', {
+        cwd: '/vault',
+        resolveHost: async () => {
+          throw new Error("Profile 'deleted-profile' does not exist.")
+        },
+        sessionRecovery: {
+          resolveHost: async () => {
+            throw new Error('default profile is also unreachable')
+          },
+        },
+      })
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+        profileId: 'deleted-profile',
+      }
+
+      await expect(
+        runtime.ensureReady({ sessionRef: requestedRef }),
+      ).rejects.toThrow(/default profile is also unreachable/)
+      await runtime.dispose()
+    })
+
+    // Regression coverage: `recoverSession`/`bindRecoveredSession` used to
+    // call `attachHost()` (which swaps `this.host`, detaches the original
+    // host's fatal listener, and attaches one on the candidate) *before*
+    // starting a session on the candidate host. A candidate that resolves
+    // fine but whose `session/new` itself fails then left the runtime
+    // permanently pointed at that broken host: a retry would try to load
+    // the original profile's session on the *wrong* (default) host instead
+    // of re-resolving the original, and the original host's own crashes
+    // would stop surfacing. These two tests pin the fixed sequencing: the
+    // candidate must fully succeed before anything about `this.host` is
+    // touched.
+    it('openSession(): a recovery candidate whose newSession() fails leaves the primary host untouched, so a retry resolves the primary profile host again', async () => {
+      const primaryAgent = new FakeAcpAgent()
+      let primaryLoadCalls = 0
+      primaryAgent.on('session/load', () => {
+        primaryLoadCalls += 1
+        if (primaryLoadCalls === 1) throw new Error('session not found')
+        return {}
+      })
+      const primaryHost = createHostFor(primaryAgent)
+
+      const brokenFallbackAgent = new FakeAcpAgent()
+      let brokenFallbackNewSessionCalls = 0
+      brokenFallbackAgent.on('session/new', () => {
+        brokenFallbackNewSessionCalls += 1
+        throw new Error('default profile session/new failed')
+      })
+      const resolveHost = jest.fn(async () => createHostFor(brokenFallbackAgent))
+
+      const runtime = new AcpCliRuntime('hermes', {
+        cwd: '/vault',
+        resolveHost: async () => primaryHost,
+        sessionRecovery: { resolveHost },
+      })
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+        profileId: 'deleted-profile',
+      }
+
+      await expect(runtime.openSession(requestedRef)).rejects.toThrow(
+        /default profile session\/new failed/,
+      )
+      expect(primaryLoadCalls).toBe(1)
+      expect(brokenFallbackNewSessionCalls).toBe(1)
+      expect(resolveHost).toHaveBeenCalledTimes(1)
+
+      // Retry: must resolve the primary profile host again — the failed
+      // attempt above must not have adopted the broken candidate as
+      // `this.host`.
+      const retryHydration = await runtime.openSession(requestedRef)
+
+      expect(retryHydration.ref).toEqual(requestedRef)
+      expect(retryHydration.sessionFallback).toBeUndefined()
+      expect(primaryLoadCalls).toBe(2)
+      // The retry never needed recovery at all — proof it went straight to
+      // the primary host rather than the still-broken fallback.
+      expect(resolveHost).toHaveBeenCalledTimes(1)
+      expect(brokenFallbackNewSessionCalls).toBe(1)
+
+      await runtime.dispose()
+    })
+
+    it('ensureReady(): a recovery candidate whose newSession() fails leaves this.host, the fatal listener, and the session binding untouched', async () => {
+      const primaryAgent = new FakeAcpAgent()
+      primaryAgent.on('session/load', () => {
+        throw new Error('session not found')
+      })
+      const primaryHost = createHostFor(primaryAgent)
+
+      const brokenFallbackAgent = new FakeAcpAgent()
+      brokenFallbackAgent.on('session/new', () => {
+        throw new Error('default profile session/new failed')
+      })
+
+      const runtime = new AcpCliRuntime('hermes', {
+        cwd: '/vault',
+        resolveHost: async () => primaryHost,
+        sessionRecovery: {
+          resolveHost: async () => createHostFor(brokenFallbackAgent),
+        },
+      })
+      const events = collectEvents(runtime)
+      const requestedRef = {
+        runtimeId: 'hermes' as const,
+        nativeSessionId: 'gone-sess',
+        profileId: 'deleted-profile',
+      }
+
+      await expect(
+        runtime.ensureReady({ sessionRef: requestedRef }),
+      ).rejects.toThrow(/default profile session\/new failed/)
+
+      // Binding untouched: no session was ever actually bound, so a send
+      // must still fail with "not ready" instead of silently trying to
+      // dispatch onto a half-adopted host/session.
+      await expect(runtime.sendTurn({ content: 'hi' })).rejects.toThrow(
+        /is not ready/,
+      )
+
+      // Fatal listener untouched: a crash on the *primary* host must still
+      // surface through the runtime, proving the failed recovery attempt
+      // never replaced it with one on the broken candidate.
+      primaryAgent.emitExit(1)
+      expect(events).toContainEqual(
+        expect.objectContaining({ type: 'run_state', state: 'error' }),
+      )
+
+      await runtime.dispose()
+    })
   })
 })
