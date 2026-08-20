@@ -46,3 +46,23 @@ export class DatabaseSaveFailedError extends DatabaseException {
     this.cause = cause
   }
 }
+
+/**
+ * Raised when the host environment lacks the `Response` /
+ * `DecompressionStream` Web APIs PGlite needs to load the vector extension —
+ * typically a stale Obsidian installer build (see #270, #579). Without this
+ * check, PGlite silently skips loading the extension and every later query
+ * fails with an opaque `extension "vector" is not available`; this exception
+ * lets the host point the user at the installer update modal instead.
+ *
+ * Classified as `permanent` for retry-policy purposes — retrying immediately
+ * can't help, the environment is what it is until the user updates Obsidian.
+ */
+export class PgliteUnsupportedEnvironmentException extends DatabaseException {
+  constructor(
+    message = 'PGlite requires the Response and DecompressionStream Web APIs, which this Obsidian installer does not provide',
+  ) {
+    super(message)
+    this.name = 'PgliteUnsupportedEnvironmentException'
+  }
+}

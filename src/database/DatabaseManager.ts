@@ -8,7 +8,11 @@ import {
 import { acquireRuntimeComponent } from '../core/runtime-components/runtimeComponentAccess'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
-import { DatabaseSaveFailedError, PGLiteAbortedException } from './exception'
+import {
+  DatabaseSaveFailedError,
+  PGLiteAbortedException,
+  PgliteUnsupportedEnvironmentException,
+} from './exception'
 import { VectorManager } from './modules/vector/VectorManager'
 import { loadPgliteRuntimeFromDisk } from './runtime/loadPgliteRuntimeFromDisk'
 
@@ -49,6 +53,9 @@ export class DatabaseManager {
           this.session = await lease.api.createSession({ resources, snapshot })
         } catch (error) {
           if (isPgliteAbort(error)) throw new PGLiteAbortedException()
+          if (isPgliteUnsupportedEnvironment(error)) {
+            throw new PgliteUnsupportedEnvironmentException()
+          }
           console.error(
             '[YOLO] Existing vector snapshot could not be opened; creating a new database.',
             error,
@@ -61,6 +68,9 @@ export class DatabaseManager {
           this.session = await lease.api.createSession({ resources })
         } catch (error) {
           if (isPgliteAbort(error)) throw new PGLiteAbortedException()
+          if (isPgliteUnsupportedEnvironment(error)) {
+            throw new PgliteUnsupportedEnvironmentException()
+          }
           throw error
         }
       }
@@ -205,5 +215,15 @@ function isPgliteAbort(error: unknown): boolean {
   return (
     error instanceof Error &&
     error.message.includes('Aborted(). Build with -sASSERTIONS for more info.')
+  )
+}
+
+// The pglite-engine runtime component is a separately bundled script (see
+// runtime-components/pglite-engine); its errors cross into host code as
+// plain Error objects, not shared class instances, so we recognize this one
+// by the stable `.name` it sets rather than `instanceof`.
+function isPgliteUnsupportedEnvironment(error: unknown): boolean {
+  return (
+    error instanceof Error && error.name === 'PgliteUnsupportedEnvironmentError'
   )
 }
