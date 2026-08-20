@@ -103,6 +103,7 @@ export const buildFileChangeSummary = async ({
       counts: {
         addedLines: snapshot.addedLines,
         removedLines: snapshot.removedLines,
+        lineStatsAvailable: snapshot.lineStatsAvailable,
       },
     })
   } else {

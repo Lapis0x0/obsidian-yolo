@@ -14,6 +14,12 @@ export type EditReviewSnapshot = {
   afterExists: boolean
   addedLines: number
   removedLines: number
+  /**
+   * 行数是否可信。规模过大或 diff 超时的快照拿不到准确行数，UI 据此隐藏
+   * `+N/-M`。旧快照没有这个字段，读取时按 true 兜底（它们写入时能算出数字，
+   * 就说明当时没有触发这两种情况）。
+   */
+  lineStatsAvailable: boolean
   createdAt: number
   updatedAt: number
 }
@@ -92,6 +98,7 @@ const readSnapshotStore = async (
           ...snapshot,
           beforeExists: snapshot.beforeExists ?? true,
           afterExists: snapshot.afterExists ?? true,
+          lineStatsAvailable: snapshot.lineStatsAvailable ?? true,
         },
       ]),
     ) as Record<string, EditReviewSnapshot>
@@ -197,6 +204,7 @@ export const upsertEditReviewSnapshot = async ({
       afterExists,
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
+      lineStatsAvailable: counts.lineStatsAvailable,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }

@@ -49,23 +49,52 @@ export type GroupEditSummary = {
 }
 
 /**
+ * 行数统计的结果。`lineStatsAvailable` 为 false 表示这次没能算出可信的行数，
+ * 此时 `addedLines` / `removedLines` 无意义——`AssistantEditSummary` 会据此
+ * 不渲染 `+N/-M`。撤销和评审都不依赖它。
+ */
+export type FileChangeStats = {
+  addedLines: number
+  removedLines: number
+  lineStatsAvailable: boolean
+}
+
+const UNAVAILABLE_LINE_STATS: FileChangeStats = {
+  addedLines: 0,
+  removedLines: 0,
+  lineStatsAvailable: false,
+}
+
+/**
  * 行数统计跑在主线程上，产出的只是聊天卡片上的 `+N/-M`。
  *
  * vscode-diff 把 `maxComputationTimeMs: 0` 解释为「不限时」
  * （`advancedLinesDiffComputer.js` → `InfiniteTimeout`），而 Myers 是
- * O(N·D)：改动行数接近总行数时退化成 O(N²)。实测「4000 行、前一半全部重写」
- * 这种输入不限时要 13 秒，期间整个 Obsidian 主线程（连窗口按钮）都冻结。
+ * O(N·D)：改动行数接近总行数时退化成 O(N²)。不限时的话「4000 行、前一半全部
+ * 重写」实测要 13 秒，期间整个 Obsidian 主线程（连窗口按钮）都冻结。
  *
  * 注意这个值不是耗时上界：vscode-diff 只在算法的检查点上看时间，两次检查之间
  * 有一整段不可中断的工作。同一输入下把上限设成 25ms 和设成 200ms 实耗几乎一样
  * （都是那一段的长度，实测约 115ms），所以它的作用是「从不限时变成有限」，而不是
  * 「压到 100ms 以内」。取 100ms 是取一个足够宽松的值，让值得精确统计的常规改动
  * （300~2000 行的编辑实测 3~32ms）绝不会被截断。
- *
- * 超时后 vscode-diff 是按区段降级而不是整体放弃，行数统计因此几乎不受影响：
- * 上面那个输入在有上限时仍然给出与不限时完全相同的 +2000/-2000。
  */
 const LINE_STATS_MAX_COMPUTATION_MS = 100
+
+/**
+ * 单侧行数上限，超过就不统计。
+ *
+ * 上面那个时间上限管不住行对齐：vscode-diff 只给「两侧合计 < 1700 行」的
+ * dynamic-programming 路径传了 timeout，超过这个规模走的是
+ * `myersDiffingAlgorithm.compute(sequence1, sequence2)`——没有 timeout 参数，
+ * 行对齐会一直跑到算完。实测全量重写：2000 行 99ms、5000 行 520ms、
+ * 10000 行 1.6 秒、20000 行 17.7 秒。
+ *
+ * 代价取决于改动量 D，而 D 只有算完才知道，所以只能按输入规模保守截断。取 2000
+ * 行是因为它把最坏情况压在 ~100ms：markdown 笔记极少超过这个长度，而超长文件
+ * （通常是代码或数据）损失的只是一个展示数字。
+ */
+const LINE_STATS_MAX_LINES = 2000
 
 const LINE_DIFF_OPTIONS: ILinesDiffComputerOptions = {
   ignoreTrimWhitespace: false,
@@ -76,17 +105,32 @@ const LINE_DIFF_OPTIONS: ILinesDiffComputerOptions = {
 export const countChangedLines = (
   beforeContent: string,
   afterContent: string,
-) => {
+): FileChangeStats => {
   const beforeLines = beforeContent.split('\n')
   const afterLines = afterContent.split('\n')
+
+  if (
+    beforeLines.length > LINE_STATS_MAX_LINES ||
+    afterLines.length > LINE_STATS_MAX_LINES
+  ) {
+    return UNAVAILABLE_LINE_STATS
+  }
+
   const diffComputer = new AdvancedLinesDiffComputer()
-  const changes = diffComputer.computeDiff(
+  const result = diffComputer.computeDiff(
     beforeLines,
     afterLines,
     LINE_DIFF_OPTIONS,
-  ).changes
+  )
 
-  return changes.reduce(
+  // `hitTimeout` 只说明结果是近似的，没说近似到什么程度：超时若发生在行对齐
+  // 完成之前，vscode-diff 会退化成「整份文件全部替换」，把只改了一行的编辑报成
+  // 全删全增。宁可不给数字，也不给一个看起来精确的错数字。
+  if (result.hitTimeout) {
+    return UNAVAILABLE_LINE_STATS
+  }
+
+  return result.changes.reduce<FileChangeStats>(
     (acc, change) => {
       acc.removedLines +=
         change.originalRange.endLineNumberExclusive -
@@ -96,7 +140,7 @@ export const countChangedLines = (
         change.modifiedRange.startLineNumber
       return acc
     },
-    { addedLines: 0, removedLines: 0 },
+    { addedLines: 0, removedLines: 0, lineStatsAvailable: true },
   )
 }
 
@@ -114,15 +158,17 @@ export const countFileChangeStats = ({
   afterContent: string
   beforeExists?: boolean
   afterExists?: boolean
-}) => {
+}): FileChangeStats => {
   if (!beforeExists && !afterExists) {
-    return { addedLines: 0, removedLines: 0 }
+    return { addedLines: 0, removedLines: 0, lineStatsAvailable: true }
   }
 
+  // 纯创建/纯删除不需要 diff，数行即可，无论多大都能给出准确数字。
   if (!beforeExists) {
     return {
       addedLines: countContentLines(afterContent),
       removedLines: 0,
+      lineStatsAvailable: true,
     }
   }
 
@@ -130,6 +176,7 @@ export const countFileChangeStats = ({
     return {
       addedLines: 0,
       removedLines: countContentLines(beforeContent),
+      lineStatsAvailable: true,
     }
   }
 
@@ -203,7 +250,7 @@ export const createToolEditSummary = ({
    * 已经算好的行数。调用方手上已有统计结果时传进来，避免为同一份内容重复跑
    * 一次全文 diff。
    */
-  counts?: { addedLines: number; removedLines: number }
+  counts?: FileChangeStats
 }): ToolEditSummary | undefined => {
   if (
     !hasFileContentChanged({
@@ -216,7 +263,7 @@ export const createToolEditSummary = ({
     return undefined
   }
 
-  const { addedLines, removedLines } =
+  const { addedLines, removedLines, lineStatsAvailable } =
     counts ??
     countFileChangeStats({
       beforeContent,
@@ -230,6 +277,7 @@ export const createToolEditSummary = ({
       path,
       addedLines,
       removedLines,
+      lineStatsAvailable,
       operation: deriveToolEditOperation({ beforeExists, afterExists }),
       undoStatus: 'available',
       reviewRoundId,
@@ -284,13 +332,13 @@ const aggregateUndoStatus = (
  */
 const snapshotPairChangeStatsCache = new WeakMap<
   EditUndoSnapshot,
-  WeakMap<EditUndoSnapshot, { addedLines: number; removedLines: number }>
+  WeakMap<EditUndoSnapshot, FileChangeStats>
 >()
 
 const countSnapshotPairChangeStats = (
   firstSnapshot: EditUndoSnapshot,
   latestSnapshot: EditUndoSnapshot,
-): { addedLines: number; removedLines: number } => {
+): FileChangeStats => {
   let byLatest = snapshotPairChangeStatsCache.get(firstSnapshot)
   if (!byLatest) {
     byLatest = new WeakMap()
@@ -392,12 +440,13 @@ export const collectGroupEditSummary = (
       value.latestToolCallId,
       path,
     )
-    const counts =
+    const counts: FileChangeStats =
       firstSnapshot && latestSnapshot
         ? countSnapshotPairChangeStats(firstSnapshot, latestSnapshot)
         : {
             addedLines: value.addedLines,
             removedLines: value.removedLines,
+            lineStatsAvailable: value.lineStatsAvailable,
           }
     const operation =
       firstSnapshot && latestSnapshot
@@ -412,7 +461,9 @@ export const collectGroupEditSummary = (
       addedLines: counts.addedLines,
       removedLines: counts.removedLines,
       operation,
-      lineStatsAvailable: value.lineStatsAvailable,
+      // 累计统计是重算的，它自己的可用性说了算；只有在拿不到快照、退回逐次
+      // 数字时，才沿用逐次统计聚合出来的可用性。
+      lineStatsAvailable: counts.lineStatsAvailable,
       undoStatus: aggregateUndoStatus(value.statuses),
       firstRoundId: value.firstRoundId,
       latestRoundId: value.latestRoundId,

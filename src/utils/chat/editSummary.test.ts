@@ -197,7 +197,7 @@ describe('editSummary helpers', () => {
       path: 'note.md',
       beforeContent: ['one', 'two', 'three'].join('\n'),
       afterContent: ['one', 'dos', 'tres'].join('\n'),
-      counts: { addedLines: 40, removedLines: 2 },
+      counts: { addedLines: 40, removedLines: 2, lineStatsAvailable: true },
     })
 
     expect(summary).toMatchObject({
@@ -213,7 +213,7 @@ describe('editSummary helpers', () => {
         path: 'note.md',
         beforeContent: 'same',
         afterContent: 'same',
-        counts: { addedLines: 9, removedLines: 9 },
+        counts: { addedLines: 9, removedLines: 9, lineStatsAvailable: true },
       }),
     ).toBeUndefined()
   })
@@ -301,6 +301,66 @@ describe('editSummary helpers', () => {
     expect(second?.files).toEqual(first?.files)
   })
 
+  it('gives up on line stats instead of guessing when the file is too large', () => {
+    // vscode-diff 只给「两侧合计 <1700 行」的 DP 路径传了 timeout，更大的输入
+    // 走无上限的 Myers 行对齐（实测 20000 行全量重写要 17 秒）。超过规模上限时
+    // 宁可不给数字，也不能让主线程跑到算完。
+    const before = Array.from({ length: 2001 }, (_, i) => `原始第 ${i} 行`)
+    const after = Array.from({ length: 2001 }, (_, i) => `修改第 ${i} 行`)
+
+    const started = Date.now()
+    const stats = countFileChangeStats({
+      beforeContent: before.join('\n'),
+      afterContent: after.join('\n'),
+    })
+
+    expect(stats.lineStatsAvailable).toBe(false)
+    // 没有真的去跑 diff——同规模的全量重写在有 timeout 时也要上百毫秒。
+    expect(Date.now() - started).toBeLessThan(50)
+  })
+
+  it('still counts oversized creates and deletes, which need no diff', () => {
+    const huge = Array.from({ length: 5000 }, (_, i) => `第 ${i} 行`).join('\n')
+
+    expect(
+      countFileChangeStats({
+        beforeContent: '',
+        afterContent: huge,
+        beforeExists: false,
+        afterExists: true,
+      }),
+    ).toEqual({ addedLines: 5000, removedLines: 0, lineStatsAvailable: true })
+
+    expect(
+      countFileChangeStats({
+        beforeContent: huge,
+        afterContent: '',
+        beforeExists: true,
+        afterExists: false,
+      }),
+    ).toEqual({ addedLines: 0, removedLines: 5000, lineStatsAvailable: true })
+  })
+
+  it('reports available line stats for ordinary edits', () => {
+    expect(
+      countFileChangeStats({
+        beforeContent: ['one', 'two', 'three'].join('\n'),
+        afterContent: ['one', 'dos', 'three'].join('\n'),
+      }),
+    ).toEqual({ addedLines: 1, removedLines: 1, lineStatsAvailable: true })
+  })
+
+  it('hides the delta on the summary when line stats are unavailable', () => {
+    const summary = createToolEditSummary({
+      path: 'note.md',
+      beforeContent: 'a',
+      afterContent: 'b',
+      counts: { addedLines: 0, removedLines: 0, lineStatsAvailable: false },
+    })
+
+    expect(summary?.files[0].lineStatsAvailable).toBe(false)
+  })
+
   it('derives partial undo status when file states diverge', () => {
     expect(
       deriveToolEditUndoStatus([
@@ -321,6 +381,7 @@ describe('editSummary helpers', () => {
     ).toEqual({
       addedLines: 0,
       removedLines: 2,
+      lineStatsAvailable: true,
     })
   })
 })
