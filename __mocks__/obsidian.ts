@@ -45,6 +45,7 @@ export class FileSystemAdapter {
   }
 }
 export const normalizePath = jest.fn((path: string) => path)
+export const getLanguage = jest.fn(() => 'en')
 
 // Faithful-enough mock of Obsidian's resolveSubpath for tests: supports
 // nested heading chains ("#A#B") via ancestor-path matching, and block refs

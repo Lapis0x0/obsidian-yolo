@@ -1,4 +1,4 @@
-import { type App, normalizePath } from 'obsidian'
+import { type App, getLanguage, normalizePath } from 'obsidian'
 
 import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import {
@@ -6,9 +6,14 @@ import {
   type RuntimeComponentLease,
 } from '../core/runtime-components/contracts'
 import { acquireRuntimeComponent } from '../core/runtime-components/runtimeComponentAccess'
+import { type Language, createTranslationFunction } from '../i18n'
 import { yieldToMain } from '../utils/common/yield-to-main'
 
-import { DatabaseSaveFailedError, PGLiteAbortedException } from './exception'
+import {
+  DatabaseSaveFailedError,
+  PGLiteAbortedException,
+  PgliteUnsupportedEnvironmentException,
+} from './exception'
 import { VectorManager } from './modules/vector/VectorManager'
 import { loadPgliteRuntimeFromDisk } from './runtime/loadPgliteRuntimeFromDisk'
 
@@ -49,6 +54,11 @@ export class DatabaseManager {
           this.session = await lease.api.createSession({ resources, snapshot })
         } catch (error) {
           if (isPgliteAbort(error)) throw new PGLiteAbortedException()
+          if (isPgliteUnsupportedEnvironment(error)) {
+            throw new PgliteUnsupportedEnvironmentException(
+              translateUnsupportedEnvironmentMessage(),
+            )
+          }
           console.error(
             '[YOLO] Existing vector snapshot could not be opened; creating a new database.',
             error,
@@ -61,6 +71,11 @@ export class DatabaseManager {
           this.session = await lease.api.createSession({ resources })
         } catch (error) {
           if (isPgliteAbort(error)) throw new PGLiteAbortedException()
+          if (isPgliteUnsupportedEnvironment(error)) {
+            throw new PgliteUnsupportedEnvironmentException(
+              translateUnsupportedEnvironmentMessage(),
+            )
+          }
           throw error
         }
       }
@@ -205,5 +220,32 @@ function isPgliteAbort(error: unknown): boolean {
   return (
     error instanceof Error &&
     error.message.includes('Aborted(). Build with -sASSERTIONS for more info.')
+  )
+}
+
+// The pglite-engine runtime component is a separately bundled script (see
+// runtime-components/pglite-engine); its errors cross into host code as
+// plain Error objects, not shared class instances, so we recognize this one
+// by the stable `.name` it sets rather than `instanceof`.
+function isPgliteUnsupportedEnvironment(error: unknown): boolean {
+  return (
+    error instanceof Error && error.name === 'PgliteUnsupportedEnvironmentError'
+  )
+}
+
+function resolveObsidianLanguage(): Language {
+  const rawLanguage = String(getLanguage() ?? '')
+    .trim()
+    .toLowerCase()
+  if (rawLanguage.startsWith('zh')) return 'zh'
+  if (rawLanguage.startsWith('it')) return 'it'
+  return 'en'
+}
+
+function translateUnsupportedEnvironmentMessage(): string {
+  const t = createTranslationFunction(resolveObsidianLanguage())
+  return t(
+    'settings.rag.pgliteUnsupportedEnvironment',
+    'Your Obsidian installation is out of date and is missing the browser APIs (Response / DecompressionStream) required to build the knowledge base index. Please download and install the latest Obsidian client from obsidian.md and try again.',
   )
 }

@@ -21,6 +21,7 @@ import {
 import { setRuntimeComponentAcquirerForTests } from '../core/runtime-components/runtimeComponentAccess'
 
 import { DatabaseManager } from './DatabaseManager'
+import { PgliteUnsupportedEnvironmentException } from './exception'
 
 describe('DatabaseManager runtime component ownership', () => {
   it('waits for vector work, saves, closes, then releases its long lease', async () => {
@@ -90,5 +91,42 @@ describe('DatabaseManager runtime component ownership', () => {
     expect(writeBinary).toHaveBeenCalledTimes(2)
     expect(close).toHaveBeenCalledTimes(1)
     expect(release).toHaveBeenCalledTimes(1)
+  })
+
+  it('translates a PgliteUnsupportedEnvironmentError into a clear exception', async () => {
+    // The pglite-engine runtime component throws this plain, named error
+    // (see runtime-components/pglite-engine/src/entry.ts) when Response or
+    // DecompressionStream is missing — a stale Obsidian installer build, per
+    // #270 and #579 — instead of letting the vector extension load fail
+    // silently and surface later as an opaque postgres error.
+    const createSession = jest.fn(async () => {
+      const error = new Error('PGlite requires Response/DecompressionStream.')
+      error.name = 'PgliteUnsupportedEnvironmentError'
+      throw error
+    })
+    setRuntimeComponentAcquirerForTests(
+      async <I extends RuntimeComponentId>(
+        id: I,
+      ): Promise<RuntimeComponentLease<I>> => {
+        if (id !== 'pglite-engine') throw new Error('Unexpected component')
+        return {
+          api: { createSession, dispose: async () => undefined },
+          release: jest.fn(),
+        } as unknown as RuntimeComponentLease<I>
+      },
+    )
+    const app = {
+      vault: {
+        configDir: 'config',
+        adapter: {
+          exists: jest.fn(async () => false),
+          writeBinary: jest.fn(async () => undefined),
+        },
+      },
+    }
+
+    await expect(
+      DatabaseManager.create(app as never, 'runtime/pglite/current'),
+    ).rejects.toBeInstanceOf(PgliteUnsupportedEnvironmentException)
   })
 })

@@ -1289,6 +1289,8 @@ export const zh: TranslationKeys = {
         'PGlite 运行时准备失败。请重试下载，或清理本地缓存后再重新使用知识库能力。',
       pgliteSummaryMissing:
         'PGlite 运行时资源尚未准备。首次使用知识库功能时会自动下载，也可以在这里手动提前准备。',
+      pgliteUnsupportedEnvironment:
+        '当前 Obsidian 版本过旧，缺少构建知识库索引所需的浏览器能力（Response / DecompressionStream）。请前往 obsidian.md 下载并安装最新版 Obsidian 客户端后重试。',
       pgliteDownloadingFile: '正在下载',
       // Index progress header/status
       indexProgressTitle: 'RAG 索引进度',

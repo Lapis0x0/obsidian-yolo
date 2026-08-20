@@ -1276,6 +1276,8 @@ export const it: DeepPartial<TranslationKeys> = {
         'La preparazione del runtime PGlite non è riuscita. Riprova il download oppure svuota la cache locale prima di usare di nuovo le funzioni knowledge base.',
       pgliteSummaryMissing:
         'Le risorse runtime di PGlite non sono ancora state preparate. Verranno scaricate automaticamente al primo uso della knowledge base, oppure puoi prepararle qui manualmente.',
+      pgliteUnsupportedEnvironment:
+        'La tua installazione di Obsidian non è aggiornata e le mancano le API del browser (Response / DecompressionStream) necessarie per costruire l’indice della knowledge base. Scarica e installa l’ultima versione del client Obsidian da obsidian.md e riprova.',
       pgliteDownloadingFile: 'Download',
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',

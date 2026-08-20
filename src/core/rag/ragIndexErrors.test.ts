@@ -1,4 +1,7 @@
-import { DatabaseSaveFailedError } from '../../database/exception'
+import {
+  DatabaseSaveFailedError,
+  PgliteUnsupportedEnvironmentException,
+} from '../../database/exception'
 
 import {
   RagIndexIncompleteError,
@@ -37,5 +40,18 @@ describe('classifyRagIndexError - DatabaseSaveFailedError', () => {
     expect(error.cause).toBe(cause)
     expect(error.name).toBe('DatabaseSaveFailedError')
     expect(error.message).toContain('disk full')
+  })
+})
+
+describe('classifyRagIndexError - PgliteUnsupportedEnvironmentException', () => {
+  it('classifies PgliteUnsupportedEnvironmentException as permanent', () => {
+    // Missing Response/DecompressionStream (#270, #579) won't resolve by
+    // retrying; the run should land on `failed` with actionable copy telling
+    // the user to update Obsidian, not thrash on auto-retry.
+    const error = new PgliteUnsupportedEnvironmentException(
+      'Please update Obsidian.',
+    )
+    expect(classifyRagIndexError(error)).toBe('permanent')
+    expect(isTransientRagIndexError(error)).toBe(false)
   })
 })

@@ -6,6 +6,25 @@ import workerSource from 'virtual:pglite-worker-script'
 
 import { createVectorStore } from './vectorStore'
 
+/**
+ * PGlite's vector extension loader decompresses the extension bundle with
+ * `new Response(stream).blob()` internally. When `Response` or
+ * `DecompressionStream` is missing (seen on stale Obsidian installer builds,
+ * see #270 and #579), that call throws and PGlite silently skips loading the
+ * extension — every later query then fails with an opaque
+ * `extension "vector" is not available`. Checking for these Web APIs up
+ * front turns that into a clear, named error the host can recognize by
+ * `.name` and translate into actionable copy before any PGlite work starts.
+ */
+class PgliteUnsupportedEnvironmentError extends Error {
+  constructor() {
+    super(
+      'PGlite requires the Response and DecompressionStream Web APIs to load the vector extension, and this environment is missing at least one of them.',
+    )
+    this.name = 'PgliteUnsupportedEnvironmentError'
+  }
+}
+
 type PgliteClient = PGlite | PGliteWorker
 type MigratableDatabase = PgliteDatabase & {
   dialect: {
@@ -98,6 +117,12 @@ globalThis.__yolo_register_runtime_component__({
         snapshot?: Blob
       }) {
         if (disposed) throw new Error('PGlite engine is disposed')
+        if (
+          typeof Response !== 'function' ||
+          typeof DecompressionStream !== 'function'
+        ) {
+          throw new PgliteUnsupportedEnvironmentError()
+        }
         const { resources } = options
         const baseOptions: Record<string, unknown> = {
           ...(options.snapshot ? { loadDataDir: options.snapshot } : {}),
