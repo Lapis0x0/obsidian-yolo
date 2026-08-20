@@ -31,6 +31,9 @@
   --yolo-anim-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* 退场曲线：加速离开。 */
   --yolo-anim-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* 匀速：仅用于遮蔽性动画（如流式显影尾巴），需要均匀的亮度斜坡而非
+     入场曲线的前重后轻。暂无 JS 侧消费者，故 motion.ts 未设镜像常量。 */
+  --yolo-anim-ease-linear: linear;
 }
 
 /*
