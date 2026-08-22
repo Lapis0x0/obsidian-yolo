@@ -9,7 +9,13 @@ export const VECTOR_DATABASE_VERSION = 1
 export const VECTOR_DATABASE_NAME_PREFIX = 'yolo-vector:'
 export const CHUNKS_STORE = 'chunks'
 export const MODEL_INDEX = 'model'
-export const MODEL_PATH_INDEX = 'model_path'
+/**
+ * Compound index on `[model, path, mtime]`. Carrying `mtime` in the key lets
+ * `getFileMtimes` walk a key cursor over the index entries alone instead of
+ * deserializing every record (each of which carries a full vector + content)
+ * just to read two small fields.
+ */
+export const MODEL_PATH_INDEX = 'model_path_mtime'
 
 export const vectorDatabaseName = (namespaceId: string): string =>
   `${VECTOR_DATABASE_NAME_PREFIX}${namespaceId}`
@@ -62,7 +68,7 @@ export function openVectorDatabase(
         autoIncrement: true,
       })
       store.createIndex(MODEL_INDEX, 'model', { unique: false })
-      store.createIndex(MODEL_PATH_INDEX, ['model', 'path'], {
+      store.createIndex(MODEL_PATH_INDEX, ['model', 'path', 'mtime'], {
         unique: false,
       })
     }
@@ -77,6 +83,17 @@ export function openVectorDatabase(
       resolve(request.result)
     }
   })
+}
+
+/**
+ * Key range matching every compound key that starts with `prefix`. IndexedDB
+ * orders keys by type (number < date < string < binary < array) and arrays
+ * lexicographically, so `[...prefix]` sorts before and `[...prefix, []]`
+ * sorts after every longer key sharing that prefix whose next component is
+ * a number, string, or date — which is all this schema ever stores.
+ */
+export function compoundKeyPrefixRange(prefix: IDBValidKey[]): IDBKeyRange {
+  return IDBKeyRange.bound(prefix, [...prefix, []])
 }
 
 export function requestResult<T>(request: IDBRequest<T>): Promise<T> {

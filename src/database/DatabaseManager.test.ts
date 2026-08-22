@@ -1,3 +1,5 @@
+// Installs IDBKeyRange (used by the store's compound-key ranges) as a global.
+import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 
 import { DatabaseManager } from './DatabaseManager'

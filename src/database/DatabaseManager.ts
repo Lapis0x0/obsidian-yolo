@@ -71,8 +71,8 @@ export class DatabaseManager {
 
     // Neither of these gates readiness: persistence is a best-effort browser
     // storage hint, and the legacy-file sweep only tidies up artifacts from
-    // the retired PGlite backend. Run them after the store is usable so a
-    // slow/failing cleanup never delays `create()`'s caller.
+    // the retired PGlite backend. Both swallow their own failures; they are
+    // awaited only so `create()` resolving means the sweep has happened.
     await tryPersistStorage()
     await cleanupLegacyVectorDbArtifacts(app, settings, pluginDir)
   }

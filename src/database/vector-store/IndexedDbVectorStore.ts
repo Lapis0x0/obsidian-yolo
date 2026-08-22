@@ -13,6 +13,7 @@ import {
   MODEL_INDEX,
   MODEL_PATH_INDEX,
   type NewChunkRecord,
+  compoundKeyPrefixRange,
   requestResult,
   transactionCompletion,
   vectorDbError,
@@ -81,13 +82,15 @@ export class IndexedDbVectorStore implements VectorStore {
     modelId: string,
   ): Promise<Readonly<Record<string, number>>> {
     const tx = this.db.transaction(CHUNKS_STORE, 'readonly')
-    const index = tx.objectStore(CHUNKS_STORE).index(MODEL_INDEX)
+    const index = tx.objectStore(CHUNKS_STORE).index(MODEL_PATH_INDEX)
     const result: Record<string, number> = Object.create(null) as Record<
       string,
       number
     >
+    // Key cursor over `[model, path, mtime]`: reads index entries only, never
+    // the (vector + content carrying) record values.
     await new Promise<void>((resolve, reject) => {
-      const request = index.openCursor(modelId)
+      const request = index.openKeyCursor(compoundKeyPrefixRange([modelId]))
       request.onerror = () =>
         reject(vectorDbError('mtime scan failed', request.error))
       request.onsuccess = () => {
@@ -96,10 +99,10 @@ export class IndexedDbVectorStore implements VectorStore {
           resolve()
           return
         }
-        const record = cursor.value as ChunkRecord
-        const existing = result[record.path]
-        if (existing === undefined || record.mtime > existing) {
-          result[record.path] = record.mtime
+        const [, path, mtime] = cursor.key as [string, string, number]
+        const existing = result[path]
+        if (existing === undefined || mtime > existing) {
+          result[path] = mtime
         }
         cursor.continue()
       }
@@ -124,7 +127,7 @@ export class IndexedDbVectorStore implements VectorStore {
     > = []
     for (const path of paths) {
       const records = (await requestResult(
-        index.getAll([modelId, path]),
+        index.getAll(compoundKeyPrefixRange([modelId, path])),
       )) as ChunkRecord[]
       for (const record of records) {
         results.push({
@@ -160,7 +163,7 @@ export class IndexedDbVectorStore implements VectorStore {
     const modelPathIndex = store.index(MODEL_PATH_INDEX)
     for (const path of paths) {
       const keys = await requestResult(
-        modelPathIndex.getAllKeys([modelId, path]),
+        modelPathIndex.getAllKeys(compoundKeyPrefixRange([modelId, path])),
       )
       for (const key of keys) {
         await requestResult(store.delete(key))
