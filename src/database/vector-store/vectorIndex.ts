@@ -1,5 +1,7 @@
 import type { VectorMetaData } from '../../core/runtime-components/contracts'
 
+import { quantizeRowInt8 } from './quantization'
+
 const INITIAL_CAPACITY_ROWS = 1024
 /** Compact once tombstoned rows exceed this fraction of the live matrix. */
 const COMPACT_TOMBSTONE_RATIO = 0.25
@@ -13,11 +15,27 @@ export type VectorIndexRow = Readonly<{
 }>
 
 /**
- * In-memory, per-embedding-model index: a flat row-major `Float32Array`
- * matrix plus parallel `ids`/`paths`/`metadata` arrays. Deletions are
- * tombstoned (not shifted) so in-flight scans stay valid; once tombstones
- * exceed {@link COMPACT_TOMBSTONE_RATIO} of the matrix, `append` compacts
- * them away.
+ * In-memory, per-embedding-model index: a flat row-major `Int8Array`
+ * matrix plus a parallel `scales: Float32Array` (one float32 scale per
+ * row) and parallel `ids`/`paths`/`metadata` arrays. This is the index's
+ * only matrix representation — there is no float32 in-memory path, no
+ * size threshold, and no platform branching: a 1536-dim model that would
+ * cost ~6KB/row as float32 costs ~1.5KB/row here, which matters most on
+ * memory-constrained mobile WebViews but is applied unconditionally
+ * everywhere for a single, simplest-possible representation.
+ *
+ * Each row is quantized on `append` via `quantizeRowInt8` (per-row
+ * symmetric scalar quantization: `scale_i = max_j |x_ij|`,
+ * `q_ij = round(x_ij / scale_i * 127)`) — see `quantization.ts` for the
+ * error bound. The on-disk `chunks` store is untouched by this: it keeps
+ * the full-precision float32 vector as the lossless source of truth, and
+ * `IndexedDbVectorStore.performSimilaritySearch` rescores int8 scan
+ * candidates against those float32 vectors before returning an exact
+ * similarity, so no query result is ever only as precise as int8.
+ *
+ * Deletions are tombstoned (not shifted) so in-flight scans stay valid;
+ * once tombstones exceed {@link COMPACT_TOMBSTONE_RATIO} of the matrix,
+ * `append` compacts them away.
  *
  * Not thread-safe / re-entrant across await points by design: callers must
  * only mutate between the yield boundaries of a query scan (see `topK.ts`),
@@ -27,7 +45,9 @@ export class VectorIndex {
   readonly dimension: number
   private capacityRows = 0
   size = 0
-  matrix: Float32Array = new Float32Array(0)
+  matrix: Int8Array = new Int8Array(0)
+  /** Per-row dequantization scale, parallel to `matrix`'s rows. */
+  scales: Float32Array = new Float32Array(0)
   ids: number[] = []
   paths: string[] = []
   metadataList: VectorMetaData[] = []
@@ -56,7 +76,11 @@ export class VectorIndex {
     }
     this.ensureCapacity(1)
     const rowIndex = this.size
-    this.matrix.set(row.vector, rowIndex * this.dimension)
+    this.scales[rowIndex] = quantizeRowInt8(
+      row.vector,
+      this.matrix,
+      rowIndex * this.dimension,
+    )
     this.ids[rowIndex] = row.id
     this.paths[rowIndex] = row.path
     this.metadataList[rowIndex] = row.metadata
@@ -118,9 +142,12 @@ export class VectorIndex {
     let newCapacity =
       this.capacityRows === 0 ? INITIAL_CAPACITY_ROWS : this.capacityRows
     while (newCapacity < needed) newCapacity *= 2
-    const newMatrix = new Float32Array(newCapacity * this.dimension)
+    const newMatrix = new Int8Array(newCapacity * this.dimension)
     newMatrix.set(this.matrix)
     this.matrix = newMatrix
+    const newScales = new Float32Array(newCapacity)
+    newScales.set(this.scales)
+    this.scales = newScales
     const newTombstones = new Uint8Array(newCapacity)
     newTombstones.set(this.tombstones)
     this.tombstones = newTombstones
@@ -130,7 +157,8 @@ export class VectorIndex {
   private compact(): void {
     const newSize = this.size - this.tombstoneCount
     const newCapacity = Math.max(newSize, 1)
-    const newMatrix = new Float32Array(newCapacity * this.dimension)
+    const newMatrix = new Int8Array(newCapacity * this.dimension)
+    const newScales = new Float32Array(newCapacity)
     const newIds: number[] = []
     const newPaths: string[] = []
     const newMetadata: VectorMetaData[] = []
@@ -147,6 +175,7 @@ export class VectorIndex {
         ),
         writeIndex * this.dimension,
       )
+      newScales[writeIndex] = this.scales[readIndex]
       const id = this.ids[readIndex]
       const path = this.paths[readIndex]
       newIds[writeIndex] = id
@@ -160,6 +189,7 @@ export class VectorIndex {
     }
 
     this.matrix = newMatrix
+    this.scales = newScales
     this.ids = newIds
     this.paths = newPaths
     this.metadataList = newMetadata

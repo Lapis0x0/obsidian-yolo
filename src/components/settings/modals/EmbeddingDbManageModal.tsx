@@ -14,6 +14,7 @@ import {
   DatabaseProvider,
   useDatabase,
 } from '../../../contexts/database-context'
+import { useLanguage } from '../../../contexts/language-context'
 import {
   SettingsProvider,
   useSettings,
@@ -44,6 +45,19 @@ const indexProgressPercent = (progress: IndexProgress | undefined): number => {
   return Math.round(
     ((progress.completedChunks ?? 0) / (progress.totalChunks ?? 1)) * 100,
   )
+}
+
+// The in-memory VectorIndex always stores int8 rows (1 byte/dimension) plus
+// a 4-byte float32 scale per row (see `src/database/vector-store/vectorIndex.ts`);
+// this estimates that footprint from the model's configured dimension. Not
+// derived from `getEmbeddingStats` (which reports on-disk float32 bytes), so
+// there's no reason to touch that contract for this purely-local estimate.
+const inMemoryIndexMb = (
+  rowCount: number,
+  dimension: number | undefined,
+): number | null => {
+  if (dimension === undefined) return null
+  return (rowCount * (dimension + 4)) / 1000 / 1000
 }
 
 export class EmbeddingDbManageModal extends ReactModal<EmbeddingDbManagerModalComponentWrapperProps> {
@@ -102,6 +116,7 @@ function EmbeddingDbManageModalComponent({
 }) {
   const { getVectorManager } = useDatabase()
   const { settings } = useSettings()
+  const { t } = useLanguage()
   const [indexProgressMap, setIndexProgressMap] = useState<
     Map<string, IndexProgress>
   >(new Map())
@@ -234,42 +249,52 @@ function EmbeddingDbManageModalComponent({
             <th>Model</th>
             <th>Total embeddings</th>
             <th>Size (MB)</th>
+            <th>
+              {t('settings.rag.inMemoryIndexEstimate', 'In-memory index (MB)')}
+            </th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {stats.map((stat) => (
-            <tr key={stat.model}>
-              <td>{stat.model}</td>
-              <td>{stat.rowCount}</td>
-              <td>{(stat.totalDataBytes / 1000 / 1000).toFixed(2)}</td>
-              {indexProgressMap.get(stat.model) ? (
-                <td className="yolo-settings-embedding-db-manage-actions-loading">
-                  <Loader2 className="yolo-spinner" size={14} />
-                  <div>
-                    {indexProgressPercent(indexProgressMap.get(stat.model))}%
-                  </div>
-                </td>
-              ) : (
-                <td className="yolo-settings-embedding-db-manage-actions">
-                  <button
-                    className="clickable-icon"
-                    aria-label="Rebuild index"
-                    onClick={() => handleRebuildIndex(stat.model)}
-                  >
-                    <PickaxeIcon size={16} />
-                  </button>
-                  <button
-                    className="clickable-icon"
-                    aria-label="Remove index"
-                    onClick={() => handleRemoveIndex(stat.model)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
+          {stats.map((stat) => {
+            const dimension = settings.embeddingModels.find(
+              (embeddingModel) => embeddingModel.id === stat.model,
+            )?.dimension
+            const estimateMb = inMemoryIndexMb(stat.rowCount, dimension)
+            return (
+              <tr key={stat.model}>
+                <td>{stat.model}</td>
+                <td>{stat.rowCount}</td>
+                <td>{(stat.totalDataBytes / 1000 / 1000).toFixed(2)}</td>
+                <td>{estimateMb === null ? '-' : estimateMb.toFixed(2)}</td>
+                {indexProgressMap.get(stat.model) ? (
+                  <td className="yolo-settings-embedding-db-manage-actions-loading">
+                    <Loader2 className="yolo-spinner" size={14} />
+                    <div>
+                      {indexProgressPercent(indexProgressMap.get(stat.model))}%
+                    </div>
+                  </td>
+                ) : (
+                  <td className="yolo-settings-embedding-db-manage-actions">
+                    <button
+                      className="clickable-icon"
+                      aria-label="Rebuild index"
+                      onClick={() => handleRebuildIndex(stat.model)}
+                    >
+                      <PickaxeIcon size={16} />
+                    </button>
+                    <button
+                      className="clickable-icon"
+                      aria-label="Remove index"
+                      onClick={() => handleRemoveIndex(stat.model)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                )}
+              </tr>
+            )
+          })}
         </tbody>
       </table>
     </div>

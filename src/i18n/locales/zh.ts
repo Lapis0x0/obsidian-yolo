@@ -1180,6 +1180,7 @@ export const zh: TranslationKeys = {
         '指定要从索引中排除文件的全局模式（每行一个）。例如：使用"notes/**"排除notes文件夹中的所有文件。留空以不排除任何内容。更改后需要"重建整个库索引"。',
       testPatterns: '测试模式',
       manageEmbeddingDatabase: '管理嵌入数据库',
+      inMemoryIndexEstimate: '内存索引（MB）',
       manage: '管理',
       rebuildIndex: '重建索引',
       rebuildFromScratch: '从头重建',

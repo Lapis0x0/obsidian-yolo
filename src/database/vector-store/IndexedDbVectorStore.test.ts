@@ -441,6 +441,179 @@ describe('IndexedDbVectorStore', () => {
         store.close()
       }
     })
+
+    it('returns the exact float32 rescored similarity, not the int8-approximate scan score', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        // A 3-way (non axis-aligned) embedding: quantizing it to int8 loses
+        // information in every component, not just a single dominant one,
+        // so the int8 scan's approximate score provably differs from the
+        // exact float32 dot product below (diff ~5e-4, confirmed offline).
+        const rawEmbedding = [0.6, 0.5, 0.4]
+        const rawQuery = [0.7, 0.2, 0.1]
+        await store.insertVectors([
+          insert({ path: 'a.md', embedding: rawEmbedding, dimension: 3 }),
+        ])
+
+        const results = await store.performSimilaritySearch(
+          rawQuery,
+          { id: MODEL_A, dimension: 3 },
+          { minSimilarity: -1, limit: 10 },
+        )
+
+        const normalize = (v: number[]): number[] => {
+          const norm = Math.sqrt(v.reduce((s, x) => s + x * x, 0))
+          return v.map((x) => x / norm)
+        }
+        const nEmbedding = normalize(rawEmbedding)
+        const nQuery = normalize(rawQuery)
+        const expectedExact = nEmbedding.reduce(
+          (s, x, i) => s + x * nQuery[i],
+          0,
+        )
+
+        expect(results).toHaveLength(1)
+        expect(results[0].similarity).toBeCloseTo(expectedExact, 6)
+      } finally {
+        store.close()
+      }
+    })
+
+    it('rescues a true top-limit row that the int8 scan under-ranked, via the widened candidate window', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        // Fixed 8-dim query/rows (generated offline) where row36's exact
+        // cosine similarity beats row16's, but int8 quantization's rounding
+        // error flips that order for their *approximate* scan scores:
+        //   exact:  14 > 26 > 8 > 12 > 36 > 16
+        //   approx: 14 > 26 > 8 > 12 > 16 > 36
+        // A naive top-5 taken directly from the int8 scan (no widened
+        // window) would keep row16 and drop row36 — wrong. The widened
+        // candidate window (`max(limit*4, 32)`, comfortably >= this
+        // dataset's 6 rows) pulls row36 in as a candidate too, and the
+        // float32 rescore then restores the correct exact order.
+        const query = [
+          0.3401840681576168, 0.44217376675867825, -0.5658130768935278,
+          0.21741690537008418, -0.5624539149298328, 0.06779534071673557,
+          0.006484845538099068, -0.01870676811487791,
+        ]
+        const rowsById: Record<string, number[]> = {
+          'row14.md': [
+            0.43635666893858177, 0.24053611108948944, -0.4667686154276863,
+            0.02765760619661362, -0.37645881716345236, -0.4600080470180685,
+            0.41815088750997437, -0.07013233305046293,
+          ],
+          'row26.md': [
+            -0.0678745711198131, 0.2369251161661632, -0.42130066785899134,
+            0.4431149050244007, -0.4004586386484396, 0.02251815623730606,
+            0.4876504587947706, -0.40833479099936654,
+          ],
+          'row8.md': [
+            0.08934015886167916, 0.40663777525105965, -0.5019935144517905,
+            0.007459602612135602, -0.08724821188974084, 0.04945169208293895,
+            0.5299237409944824, -0.532666903358222,
+          ],
+          'row12.md': [
+            0.5024294335631057, 0.0888181825164134, -0.01001101202554831,
+            0.38813205687130564, -0.4456959899300151, -0.30180090505572843,
+            -0.2631000687043237, 0.47956118788600793,
+          ],
+          'row36.md': [
+            -0.41282700507906067, -0.05542082841598303, -0.3879277102479401,
+            0.48451565097630994, -0.35737258136098315, -0.5567818382789729,
+            -0.042086121516437036, -0.04203156273220412,
+          ],
+          'row16.md': [
+            0.32180688928483403, 0.38879404906043014, 0.22841130845050622,
+            0.6614066071832606, -0.10755836554959254, -0.48621204115490413,
+            0.08332139503489583, 0.027123453614743376,
+          ],
+        }
+
+        await store.insertVectors(
+          Object.entries(rowsById).map(([path, embedding]) =>
+            insert({ path, embedding, dimension: 8 }),
+          ),
+        )
+
+        const results = await store.performSimilaritySearch(
+          query,
+          { id: MODEL_A, dimension: 8 },
+          { minSimilarity: -1, limit: 5 },
+        )
+
+        expect(results.map((r) => r.path)).toEqual([
+          'row14.md',
+          'row26.md',
+          'row8.md',
+          'row12.md',
+          'row36.md',
+        ])
+      } finally {
+        store.close()
+      }
+    })
+
+    it('applies minSimilarity strictly on the exact score, dropping a row whose approx score alone would have passed', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        // Same row36/query pair as above: its exact score (~0.323665) and
+        // int8-approximate scan score (~0.323691) straddle this threshold.
+        // The scan's own filter (loosened by INT8_SCAN_SLACK) lets it
+        // through as a candidate, but the exact rescore must still cut it.
+        const query = [
+          0.3401840681576168, 0.44217376675867825, -0.5658130768935278,
+          0.21741690537008418, -0.5624539149298328, 0.06779534071673557,
+          0.006484845538099068, -0.01870676811487791,
+        ]
+        const embedding = [
+          -0.41282700507906067, -0.05542082841598303, -0.3879277102479401,
+          0.48451565097630994, -0.35737258136098315, -0.5567818382789729,
+          -0.042086121516437036, -0.04203156273220412,
+        ]
+        await store.insertVectors([
+          insert({ path: 'row36.md', embedding, dimension: 8 }),
+        ])
+
+        const results = await store.performSimilaritySearch(
+          query,
+          { id: MODEL_A, dimension: 8 },
+          { minSimilarity: 0.32368, limit: 10 },
+        )
+
+        expect(results).toEqual([])
+      } finally {
+        store.close()
+      }
+    })
+
+    it('applies scope filters on top of the int8-scan + rescore path', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        await store.insertVectors([
+          insert({ path: 'docs/a.md', embedding: [0.6, 0.5, 0.4] }),
+          insert({ path: 'other/b.md', embedding: [0.6, 0.5, 0.4] }),
+        ])
+
+        const results = await store.performSimilaritySearch(
+          [0.7, 0.2, 0.1],
+          { id: MODEL_A, dimension: 3 },
+          {
+            minSimilarity: -1,
+            limit: 10,
+            scope: { files: [], folders: ['docs'] },
+          },
+        )
+
+        expect(results.map((r) => r.path)).toEqual(['docs/a.md'])
+      } finally {
+        store.close()
+      }
+    })
   })
 
   it('persists data across store instances backed by the same underlying database', async () => {

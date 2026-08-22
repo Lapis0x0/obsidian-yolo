@@ -24,6 +24,28 @@ const DESKTOP_IDLE_UNLOAD_MS = 15 * 60 * 1000
 const MOBILE_IDLE_UNLOAD_MS = 5 * 60 * 1000
 const IDLE_CHECK_INTERVAL_MS = 60 * 1000
 
+/**
+ * How many int8-scan results to pull as rescoring candidates, relative to
+ * the caller's real `limit`. The int8 scan only ranks approximately, so a
+ * true top-`limit` row can be scanned into a slightly lower position;
+ * over-fetching a wider window and then rescoring+re-sorting exactly
+ * (below) corrects that before truncating to `limit`. The `* 4` factor and
+ * `32` floor are both empirical safety margins, not derived from the
+ * quantization error bound (unlike `INT8_SCAN_SLACK` in `topK.ts`, which
+ * bounds the score error itself rather than a rank-order shift).
+ */
+const CANDIDATE_WINDOW_MULTIPLIER = 4
+const CANDIDATE_WINDOW_MIN = 32
+
+/** Exact dot product of two equal-length vectors (cosine similarity when both are unit-length). */
+function dotProduct(a: Float32Array, b: Float32Array): number {
+  let dot = 0
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i]
+  }
+  return dot
+}
+
 export type IndexedDbVectorStoreOptions = Readonly<{
   /** Test-only override; defaults to `Platform.isMobile`. */
   isMobile?: boolean
@@ -336,39 +358,59 @@ export class IndexedDbVectorStore implements VectorStore {
         }
       : undefined
 
+    // Over-fetch candidates from the approximate int8 scan; a negative
+    // limit already means "unlimited" and needs no widening.
+    const candidateLimit =
+      options.limit < 0
+        ? options.limit
+        : Math.max(
+            options.limit * CANDIDATE_WINDOW_MULTIPLIER,
+            CANDIDATE_WINDOW_MIN,
+          )
+
     const top = await topKSearch({
       matrix: index.matrix,
+      scales: index.scales,
       dimension: index.dimension,
       size: index.size,
       isTombstoned: (rowIndex) => index.isTombstoned(rowIndex),
       filter,
       queryVector: normalizedQuery,
-      limit: options.limit,
+      limit: candidateLimit,
       minSimilarity: options.minSimilarity,
     })
     if (top.length === 0) return []
 
+    // The scan above only ranked by an approximate int8 score. Rescore
+    // every candidate against its exact float32 vector (already fetched
+    // here to get `content`, so this is free), then apply the caller's
+    // exact strict `> minSimilarity` and truncate to the real `limit` —
+    // both intentionally deferred until this point.
     const ids = top.map((row) => index.ids[row.rowIndex])
     const records = await this.getByIds(ids)
     const recordById = new Map(records.map((record) => [record.id, record]))
 
-    const results: Array<VectorSelect & { similarity: number }> = []
-    for (const { rowIndex, score } of top) {
+    const rescored: Array<VectorSelect & { similarity: number }> = []
+    for (const { rowIndex } of top) {
       const record = recordById.get(index.ids[rowIndex])
       if (!record) continue
-      results.push({
-        id: record.id,
-        path: record.path,
-        mtime: record.mtime,
-        content: record.content,
-        content_hash: record.content_hash,
-        model: record.model,
-        dimension: record.dimension,
-        metadata: record.metadata,
-        similarity: score,
-      })
+      const similarity = dotProduct(record.vector, normalizedQuery)
+      if (similarity > options.minSimilarity) {
+        rescored.push({
+          id: record.id,
+          path: record.path,
+          mtime: record.mtime,
+          content: record.content,
+          content_hash: record.content_hash,
+          model: record.model,
+          dimension: record.dimension,
+          metadata: record.metadata,
+          similarity,
+        })
+      }
     }
-    return results
+    rescored.sort((a, b) => b.similarity - a.similarity)
+    return options.limit < 0 ? rescored : rescored.slice(0, options.limit)
   }
 
   private async getByIds(ids: number[]): Promise<ChunkRecord[]> {
@@ -412,10 +454,14 @@ export class IndexedDbVectorStore implements VectorStore {
   /**
    * Streams every row for `modelId` into a fresh in-memory index via a
    * cursor (never `getAll`, to avoid holding two copies of the whole model
-   * in memory at once). Rows whose stored dimension doesn't match are
-   * skipped rather than aborting the whole load — mirroring the PGlite
-   * baseline's per-query `eq(dimension, ...)` filter, which simply excludes
-   * them instead of erroring.
+   * in memory at once). Each cursor value's float32 vector is quantized to
+   * int8 by `index.append` and then discarded, so the full float32 matrix
+   * for the model never materializes in memory at all — peak memory here
+   * is the (already 4x-smaller) int8 matrix plus at most one in-flight
+   * cursor record. Rows whose stored dimension doesn't match are skipped
+   * rather than aborting the whole load — mirroring the PGlite baseline's
+   * per-query `eq(dimension, ...)` filter, which simply excludes them
+   * instead of erroring.
    */
   private async loadIndexFromDb(
     modelId: string,

@@ -2,6 +2,11 @@ import { VectorIndex } from './vectorIndex'
 
 const meta = { startLine: 1, endLine: 1 }
 
+/** Dequantizes a single-dimension row back to its approximate float value. */
+function dequantizeRow(index: VectorIndex, rowIndex: number): number {
+  return (index.matrix[rowIndex] * index.scales[rowIndex]) / 127
+}
+
 describe('VectorIndex', () => {
   it('appends rows and tracks them by path', () => {
     const index = new VectorIndex(2)
@@ -29,7 +34,9 @@ describe('VectorIndex', () => {
     expect(index.paths).toEqual(['a.md', 'a.md', 'b.md'])
     expect(index.pathToRows.get('a.md')).toEqual([0, 1])
     expect(index.pathToRows.get('b.md')).toEqual([2])
-    expect([...index.matrix.subarray(0, 2)]).toEqual([1, 0])
+    // [1, 0] quantizes exactly: scale 1, components +-127/0.
+    expect([...index.matrix.subarray(0, 2)]).toEqual([127, 0])
+    expect(index.scales[0]).toBe(1)
   })
 
   it('is idempotent when the same id is appended twice', () => {
@@ -73,7 +80,8 @@ describe('VectorIndex', () => {
     }
     expect(index.size).toBe(2000)
     expect(index.matrix[0]).toBe(0)
-    expect(index.matrix[1999]).toBe(1999)
+    expect(index.scales[1999]).toBeCloseTo(1999)
+    expect(dequantizeRow(index, 1999)).toBeCloseTo(1999, 0)
   })
 
   describe('tombstoneById', () => {
@@ -159,13 +167,13 @@ describe('VectorIndex', () => {
       expect(index.tombstoneCount).toBe(0) // compacted away
       expect(index.size).toBe(total - 6)
 
-      // Surviving rows keep their id/path/vector association.
+      // Surviving rows keep their id/path/vector (and scale) association.
       for (let i = 6; i < total; i++) {
         const rows = index.pathToRows.get(`f${i}.md`)
         expect(rows).toBeDefined()
         const rowIndex = rows![0]
         expect(index.ids[rowIndex]).toBe(i)
-        expect(index.matrix[rowIndex]).toBe(i)
+        expect(dequantizeRow(index, rowIndex)).toBeCloseTo(i, 0)
       }
 
       // Further tombstoning by id still works after compaction re-indexed rows.

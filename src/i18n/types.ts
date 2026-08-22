@@ -993,6 +993,7 @@ export type TranslationKeys = {
       excludePatternsDesc: string
       testPatterns: string
       manageEmbeddingDatabase: string
+      inMemoryIndexEstimate?: string
       manage: string
       rebuildIndex: string
       rebuildFromScratch?: string
