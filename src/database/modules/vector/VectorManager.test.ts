@@ -76,8 +76,6 @@ const setupManager = (
   }
   ;(manager as unknown as ManagerInternals).repository =
     repository as unknown as ManagerInternals['repository']
-  manager.setSaveCallback(async () => undefined)
-  manager.setVacuumCallback(async () => undefined)
   return { manager, repository, app, inserted }
 }
 
@@ -311,8 +309,6 @@ describe('VectorManager.reconcile', () => {
     }
     ;(manager as unknown as { repository: typeof repository }).repository =
       repository
-    manager.setSaveCallback(async () => undefined)
-    manager.setVacuumCallback(async () => undefined)
 
     await manager.reconcile(embeddingModel, baseConfig, {
       scope: { kind: 'all' },

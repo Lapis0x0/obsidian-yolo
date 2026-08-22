@@ -1,229 +1,155 @@
 import { type App, normalizePath } from 'obsidian'
 
-import { ensureVectorDbPath } from '../core/paths/yoloManagedData'
 import {
-  type PgliteEngineSession,
-  type RuntimeComponentLease,
-} from '../core/runtime-components/contracts'
-import { acquireRuntimeComponent } from '../core/runtime-components/runtimeComponentAccess'
-import { yieldToMain } from '../utils/common/yield-to-main'
+  getLegacyVectorDbPath,
+  getYoloVectorDbPath,
+} from '../core/paths/yoloPaths'
+import { resolveVaultDatabaseNamespaceId } from '../core/storage/vaultDatabaseNamespace'
 
-import {
-  DatabaseSaveFailedError,
-  PGLiteAbortedException,
-  PgliteUnsupportedEnvironmentException,
-} from './exception'
 import { VectorManager } from './modules/vector/VectorManager'
-import { loadPgliteRuntimeFromDisk } from './runtime/loadPgliteRuntimeFromDisk'
+import { IndexedDbVectorStore } from './vector-store/IndexedDbVectorStore'
+import {
+  openVectorDatabase,
+  vectorDatabaseName,
+} from './vector-store/vectorDatabase'
 
+type YoloSettingsLike = Readonly<{ yolo?: { baseDir?: string } }>
+
+export type DatabaseManagerCreateOptions = Readonly<{
+  /** Test-only overrides. */
+  indexedDB?: IDBFactory
+  createNamespaceId?: () => string
+  isMobile?: boolean
+}>
+
+/**
+ * Owns the RAG vector store's lifecycle: resolves this vault's IndexedDB
+ * namespace, opens the database, and wraps it in a `VectorManager`. Every
+ * chunk write (`insertVectors`, `deleteVectorsBy*`, ...) persists to
+ * IndexedDB immediately — there is no snapshot/save step to run, unlike the
+ * PGlite-backed predecessor this replaces.
+ */
 export class DatabaseManager {
-  private session: PgliteEngineSession | null = null
-  private lease: RuntimeComponentLease<'pglite-engine'> | null = null
   private vectorManager: VectorManager | null = null
+  private store: IndexedDbVectorStore | null = null
   private cleanupPromise: Promise<void> | null = null
 
-  private constructor(
-    private readonly app: App,
-    private readonly dbPath: string,
-    private readonly runtimeDir: string,
-  ) {}
+  private constructor() {}
 
   static async create(
     app: App,
-    runtimeDir: string,
-    settings?: { yolo?: { baseDir?: string } } | null,
+    settings?: YoloSettingsLike | null,
     pluginDir?: string,
+    options: DatabaseManagerCreateOptions = {},
   ): Promise<DatabaseManager> {
-    void pluginDir
-    const dbPath = await ensureVectorDbPath(app, settings ?? null)
-    const manager = new DatabaseManager(app, dbPath, normalizePath(runtimeDir))
-    await manager.initialize()
+    const manager = new DatabaseManager()
+    await manager.initialize(app, settings ?? null, pluginDir, options)
     return manager
   }
 
-  private async initialize(): Promise<void> {
-    const resources = await this.loadPGliteResources()
-    const lease = await acquireRuntimeComponent('pglite-engine')
-    this.lease = lease
-    let createdNewDatabase = false
-    try {
-      const snapshot = await this.readSnapshot()
-      if (snapshot) {
-        try {
-          this.session = await lease.api.createSession({ resources, snapshot })
-        } catch (error) {
-          if (isPgliteAbort(error)) throw new PGLiteAbortedException()
-          if (isPgliteUnsupportedEnvironment(error)) {
-            throw new PgliteUnsupportedEnvironmentException()
-          }
-          console.error(
-            '[YOLO] Existing vector snapshot could not be opened; creating a new database.',
-            error,
-          )
-        }
-      }
-      if (!this.session) {
-        createdNewDatabase = true
-        try {
-          this.session = await lease.api.createSession({ resources })
-        } catch (error) {
-          if (isPgliteAbort(error)) throw new PGLiteAbortedException()
-          if (isPgliteUnsupportedEnvironment(error)) {
-            throw new PgliteUnsupportedEnvironmentException()
-          }
-          throw error
-        }
-      }
-      this.vectorManager = new VectorManager(this.app, this.session.vectorStore)
-      this.vectorManager.setSaveCallback(() => this.save())
-      this.vectorManager.setVacuumCallback(() => this.vacuum())
-
-      if (createdNewDatabase || this.session.migrationChanged) {
-        try {
-          await this.save()
-        } catch (error) {
-          console.warn(
-            '[YOLO] Initial database save failed; continuing without snapshot.',
-            error,
-          )
-        }
-      }
-
-      try {
-        const deleted = await this.session.cleanupLegacyStaging()
-        if (deleted > 0) {
-          console.debug(
-            `[YOLO] Dropped ${deleted} legacy staging row(s) from embeddings.`,
-          )
-          await this.vacuum()
-          try {
-            await this.save()
-          } catch (error) {
-            console.warn(
-              '[YOLO] Save after legacy staging cleanup failed; snapshot is stale.',
-              error,
-            )
-          }
-        }
-      } catch (error) {
-        console.warn('[YOLO] Failed to clean up legacy staging rows', error)
-      }
-      console.debug('YOLO database initialized.')
-    } catch (error) {
-      await this.session?.close().catch(() => undefined)
-      this.session = null
-      this.lease?.release()
-      this.lease = null
-      throw error
+  private async initialize(
+    app: App,
+    settings: YoloSettingsLike | null,
+    pluginDir: string | undefined,
+    options: DatabaseManagerCreateOptions,
+  ): Promise<void> {
+    const namespaceId = resolveVaultDatabaseNamespaceId(app, {
+      createNamespaceId: options.createNamespaceId,
+    })
+    const indexedDB = options.indexedDB ?? globalThis.indexedDB
+    if (!indexedDB) {
+      throw new Error(
+        'YOLO vector store is unavailable: IndexedDB is unavailable',
+      )
     }
+    const db = await openVectorDatabase(
+      indexedDB,
+      vectorDatabaseName(namespaceId),
+    )
+    this.store = new IndexedDbVectorStore(db, { isMobile: options.isMobile })
+    this.vectorManager = new VectorManager(app, this.store)
+
+    // Neither of these gates readiness: persistence is a best-effort browser
+    // storage hint, and the legacy-file sweep only tidies up artifacts from
+    // the retired PGlite backend. Run them after the store is usable so a
+    // slow/failing cleanup never delays `create()`'s caller.
+    await tryPersistStorage()
+    await cleanupLegacyVectorDbArtifacts(app, settings, pluginDir)
   }
 
   getVectorManager(): VectorManager {
-    if (!this.vectorManager) throw new Error('Database is not initialized')
+    if (!this.vectorManager) {
+      throw new Error('Database is not initialized')
+    }
     return this.vectorManager
   }
 
-  async vacuum(): Promise<void> {
-    await this.session?.vacuum()
-  }
-
-  async save(): Promise<void> {
-    if (!this.session) return
-    try {
-      await yieldToMain()
-      const snapshot = await this.session.dump()
-      await yieldToMain()
-      const bytes = await snapshot.arrayBuffer()
-      await yieldToMain()
-      await this.app.vault.adapter.writeBinary(this.dbPath, bytes)
-    } catch (error) {
-      console.error('Error saving database:', error)
-      throw new DatabaseSaveFailedError(error)
-    }
-  }
-
+  /** Waits for in-flight vector work, then closes the database. Idempotent. */
   cleanup(): Promise<void> {
     if (!this.cleanupPromise) {
-      this.cleanupPromise = this.cleanupUnlocked(false)
+      this.cleanupPromise = this.cleanupUnlocked()
     }
     return this.cleanupPromise
   }
 
+  /** Same as {@link cleanup}; kept as a distinct name for quiesce-participant call sites. */
   quiesceAndCleanup(): Promise<void> {
-    if (!this.cleanupPromise) {
-      this.cleanupPromise = this.cleanupUnlocked(true)
-    }
-    return this.cleanupPromise
+    return this.cleanup()
   }
 
-  private async cleanupUnlocked(requireSave: boolean): Promise<void> {
-    // DatabaseManager is the long-session owner. It stops new VectorManager
-    // work and waits for in-flight RAG/index operations before checkpointing,
-    // closing the session, and finally releasing the runtime lease.
+  private async cleanupUnlocked(): Promise<void> {
     await this.vectorManager?.quiesce()
-    let saveError: unknown
+    this.vectorManager = null
+    this.store?.close()
+    this.store = null
+  }
+}
+
+async function tryPersistStorage(): Promise<void> {
+  try {
+    const persisted = await globalThis.navigator?.storage?.persist?.()
+    console.debug(`[YOLO] navigator.storage.persist(): ${String(persisted)}`)
+  } catch (error) {
+    console.debug('[YOLO] navigator.storage.persist() failed', error)
+  }
+}
+
+/**
+ * One-time, idempotent sweep of artifacts left behind by the retired
+ * PGlite-backed vector store: the vault-stored snapshot file (current and
+ * legacy locations) and the WASM runtime it downloaded into the plugin
+ * directory. Failures are non-fatal — this is tidying up, not part of
+ * bringing the new store online.
+ */
+async function cleanupLegacyVectorDbArtifacts(
+  app: App,
+  settings: YoloSettingsLike | null,
+  pluginDir: string | undefined,
+): Promise<void> {
+  const legacyFiles = [getYoloVectorDbPath(settings), getLegacyVectorDbPath()]
+  for (const path of legacyFiles) {
     try {
-      await this.save()
+      if (await app.vault.adapter.exists(path)) {
+        await app.vault.adapter.remove(path)
+      }
     } catch (error) {
-      saveError = error
       console.warn(
-        '[YOLO] Save during cleanup failed; closing without persisting.',
+        `[YOLO] Failed to remove legacy vector database file "${path}"`,
         error,
       )
     }
-    this.vectorManager = null
-    try {
-      await this.session?.close()
-    } finally {
-      this.session = null
-      this.lease?.release()
-      this.lease = null
-    }
-    if (requireSave && saveError) {
-      throw saveError instanceof Error
-        ? saveError
-        : new Error('Unknown database save failure')
-    }
   }
 
-  private async readSnapshot(): Promise<Blob | undefined> {
-    try {
-      if (!(await this.app.vault.adapter.exists(this.dbPath))) return undefined
-      const bytes = await this.app.vault.adapter.readBinary(this.dbPath)
-      return new Blob([bytes], { type: 'application/x-gzip' })
-    } catch (error) {
-      console.error('loadExistingDatabase error', error)
-      return undefined
+  if (!pluginDir) return
+  const legacyRuntimeDir = normalizePath(`${pluginDir}/runtime/pglite`)
+  try {
+    if (await app.vault.adapter.exists(legacyRuntimeDir)) {
+      await app.vault.adapter.rmdir(legacyRuntimeDir, true)
     }
+  } catch (error) {
+    console.warn(
+      `[YOLO] Failed to remove legacy PGlite runtime directory "${legacyRuntimeDir}"`,
+      error,
+    )
   }
-
-  private async loadPGliteResources(): Promise<
-    Awaited<ReturnType<typeof loadPgliteRuntimeFromDisk>>
-  > {
-    try {
-      return await loadPgliteRuntimeFromDisk(this.app, this.runtimeDir)
-    } catch (error) {
-      console.error('Error loading PGlite resources:', error)
-      console.error('Runtime dir:', this.runtimeDir)
-      console.error('Vault config dir:', this.app.vault.configDir)
-      throw error
-    }
-  }
-}
-
-function isPgliteAbort(error: unknown): boolean {
-  return (
-    error instanceof Error &&
-    error.message.includes('Aborted(). Build with -sASSERTIONS for more info.')
-  )
-}
-
-// The pglite-engine runtime component is a separately bundled script (see
-// runtime-components/pglite-engine); its errors cross into host code as
-// plain Error objects, not shared class instances, so we recognize this one
-// by the stable `.name` it sets rather than `instanceof`.
-function isPgliteUnsupportedEnvironment(error: unknown): boolean {
-  return (
-    error instanceof Error && error.name === 'PgliteUnsupportedEnvironmentError'
-  )
 }

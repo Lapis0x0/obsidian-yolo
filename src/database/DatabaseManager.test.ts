@@ -1,132 +1,156 @@
-jest.mock('../core/paths/yoloManagedData', () => ({
-  ensureVectorDbPath: jest.fn(async () => 'YOLO/json_db/vector-db.gz'),
-}))
-
-jest.mock('./runtime/loadPgliteRuntimeFromDisk', () => ({
-  loadPgliteRuntimeFromDisk: jest.fn(async () => ({
-    fsBundle: new Blob(),
-    pgliteWasmModule: {} as WebAssembly.Module,
-    initdbWasmModule: {} as WebAssembly.Module,
-    vectorExtensionBlob: new Blob(),
-    vectorExtensionBundlePath: new URL('blob:test'),
-  })),
-}))
-
-import {
-  type PgliteEngineSession,
-  type RuntimeComponentId,
-  type RuntimeComponentLease,
-  type VectorStore,
-} from '../core/runtime-components/contracts'
-import { setRuntimeComponentAcquirerForTests } from '../core/runtime-components/runtimeComponentAccess'
+import { IDBFactory } from 'fake-indexeddb'
 
 import { DatabaseManager } from './DatabaseManager'
-import { PgliteUnsupportedEnvironmentException } from './exception'
 
-describe('DatabaseManager runtime component ownership', () => {
-  it('waits for vector work, saves, closes, then releases its long lease', async () => {
-    let finishSearch!: () => void
-    const searchPending = new Promise<void>((resolve) => {
-      finishSearch = resolve
-    })
-    const vectorStore = {
-      performSimilaritySearch: jest.fn(async () => {
-        await searchPending
-        return []
-      }),
-    } as unknown as VectorStore
-    const dump = jest.fn(async () => new Blob([new Uint8Array([1, 2, 3])]))
-    const close = jest.fn(async () => undefined)
-    const session: PgliteEngineSession = {
-      vectorStore,
-      migrationChanged: false,
-      cleanupLegacyStaging: async () => 0,
-      vacuum: async () => undefined,
-      dump,
-      close,
-    }
-    const release = jest.fn()
-    const createSession = jest.fn(async () => session)
-    setRuntimeComponentAcquirerForTests(
-      async <I extends RuntimeComponentId>(
-        id: I,
-      ): Promise<RuntimeComponentLease<I>> => {
-        if (id !== 'pglite-engine') throw new Error('Unexpected component')
-        return {
-          api: { createSession, dispose: async () => undefined },
-          release,
-        } as unknown as RuntimeComponentLease<I>
-      },
-    )
-    const writeBinary = jest.fn(async () => undefined)
-    const app = {
-      vault: {
-        configDir: 'config',
-        adapter: {
-          exists: jest.fn(async () => false),
-          writeBinary,
-        },
-      },
-    }
+const NAMESPACE_A = '11111111-1111-4111-8111-111111111111'
+const NAMESPACE_B = '22222222-2222-4222-8222-222222222222'
+
+class FakeAppLocalStorage {
+  private readonly values = new Map<string, unknown>()
+
+  loadLocalStorage(key: string): unknown {
+    return this.values.get(key) ?? null
+  }
+
+  saveLocalStorage(key: string, value: unknown): void {
+    this.values.set(key, value)
+  }
+}
+
+function createFakeApp(existingPaths: Iterable<string> = []) {
+  const app = new FakeAppLocalStorage() as FakeAppLocalStorage & {
+    vault: { adapter: Record<string, jest.Mock> }
+  }
+  const paths = new Set(existingPaths)
+  const exists = jest.fn(async (path: string) => paths.has(path))
+  const remove = jest.fn(async (path: string) => {
+    paths.delete(path)
+  })
+  const rmdir = jest.fn(async () => undefined)
+  app.vault = { adapter: { exists, remove, rmdir } }
+  return { app, exists, remove, rmdir, paths }
+}
+
+describe('DatabaseManager', () => {
+  it('waits for in-flight vector work, then closes the database, on cleanup', async () => {
+    const { app } = createFakeApp()
     const manager = await DatabaseManager.create(
       app as never,
-      'runtime/pglite/current',
+      { yolo: { baseDir: 'YOLO' } },
+      undefined,
+      {
+        indexedDB: new IDBFactory(),
+        createNamespaceId: () => NAMESPACE_A,
+      },
     )
-    const search = manager
-      .getVectorManager()
-      .performSimilaritySearch(
-        [1, 0, 0],
-        { id: 'test', dimension: 3, getEmbedding: async () => [] },
-        { minSimilarity: 0, limit: 1 },
-      )
-    const cleanup = manager.quiesceAndCleanup()
-    await Promise.resolve()
-    expect(close).not.toHaveBeenCalled()
-    expect(release).not.toHaveBeenCalled()
 
-    finishSearch()
-    await search
-    await cleanup
-    expect(dump).toHaveBeenCalledTimes(2)
-    expect(writeBinary).toHaveBeenCalledTimes(2)
-    expect(close).toHaveBeenCalledTimes(1)
-    expect(release).toHaveBeenCalledTimes(1)
+    const store = (manager as unknown as { store: { close: () => void } }).store
+    const closeSpy = jest.spyOn(store, 'close')
+
+    const vectorManager = manager.getVectorManager()
+    const searchPromise = vectorManager.performSimilaritySearch(
+      [1, 0, 0],
+      { id: 'test-model', dimension: 3, getEmbedding: async () => [] },
+      { minSimilarity: 0, limit: 1 },
+    )
+    // performSimilaritySearch runs synchronously up to its first await, which
+    // is enough to increment VectorManager's active-operation count. cleanup()
+    // must therefore wait for it — close() must not have fired yet.
+    const cleanupPromise = manager.cleanup()
+    expect(closeSpy).not.toHaveBeenCalled()
+
+    await searchPromise
+    await cleanupPromise
+
+    expect(closeSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('translates a PgliteUnsupportedEnvironmentError into a clear exception', async () => {
-    // The pglite-engine runtime component throws this plain, named error
-    // (see runtime-components/pglite-engine/src/entry.ts) when Response or
-    // DecompressionStream is missing — a stale Obsidian installer build, per
-    // #270 and #579 — instead of letting the vector extension load fail
-    // silently and surface later as an opaque postgres error.
-    const createSession = jest.fn(async () => {
-      const error = new Error('PGlite requires Response/DecompressionStream.')
-      error.name = 'PgliteUnsupportedEnvironmentError'
-      throw error
-    })
-    setRuntimeComponentAcquirerForTests(
-      async <I extends RuntimeComponentId>(
-        id: I,
-      ): Promise<RuntimeComponentLease<I>> => {
-        if (id !== 'pglite-engine') throw new Error('Unexpected component')
-        return {
-          api: { createSession, dispose: async () => undefined },
-          release: jest.fn(),
-        } as unknown as RuntimeComponentLease<I>
+  it('is idempotent: repeat cleanup() calls reuse the same in-flight/completed promise', async () => {
+    const { app } = createFakeApp()
+    const manager = await DatabaseManager.create(
+      app as never,
+      { yolo: { baseDir: 'YOLO' } },
+      undefined,
+      {
+        indexedDB: new IDBFactory(),
+        createNamespaceId: () => NAMESPACE_A,
       },
     )
-    const app = {
-      vault: {
-        configDir: 'config',
-        adapter: {
-          exists: jest.fn(async () => false),
-          writeBinary: jest.fn(async () => undefined),
-        },
-      },
-    }
+    const store = (manager as unknown as { store: { close: () => void } }).store
+    const closeSpy = jest.spyOn(store, 'close')
 
-    await expect(
-      DatabaseManager.create(app as never, 'runtime/pglite/current'),
-    ).rejects.toBeInstanceOf(PgliteUnsupportedEnvironmentException)
+    await Promise.all([manager.cleanup(), manager.quiesceAndCleanup()])
+    expect(closeSpy).toHaveBeenCalledTimes(1)
+  })
+
+  it('sweeps legacy PGlite artifacts (vault snapshot files + plugin runtime dir) on init', async () => {
+    const { app, exists, remove, rmdir } = createFakeApp([
+      'YOLO/.yolo_vector_db.tar.gz',
+      '.smtcmp_vector_db.tar.gz',
+      'plugins/yolo/runtime/pglite',
+    ])
+    const pluginDir = 'plugins/yolo'
+
+    const manager = await DatabaseManager.create(
+      app as never,
+      { yolo: { baseDir: 'YOLO' } },
+      pluginDir,
+      {
+        indexedDB: new IDBFactory(),
+        createNamespaceId: () => NAMESPACE_B,
+      },
+    )
+
+    expect(exists).toHaveBeenCalledWith('YOLO/.yolo_vector_db.tar.gz')
+    expect(exists).toHaveBeenCalledWith('.smtcmp_vector_db.tar.gz')
+    expect(remove).toHaveBeenCalledWith('YOLO/.yolo_vector_db.tar.gz')
+    expect(remove).toHaveBeenCalledWith('.smtcmp_vector_db.tar.gz')
+    expect(exists).toHaveBeenCalledWith('plugins/yolo/runtime/pglite')
+    expect(rmdir).toHaveBeenCalledWith('plugins/yolo/runtime/pglite', true)
+
+    await manager.cleanup()
+  })
+
+  it('is idempotent: a second init with nothing left over touches remove/rmdir zero times', async () => {
+    const { app, remove, rmdir } = createFakeApp() // nothing exists
+    const manager = await DatabaseManager.create(
+      app as never,
+      { yolo: { baseDir: 'YOLO' } },
+      'plugins/yolo',
+      {
+        indexedDB: new IDBFactory(),
+        createNamespaceId: () => NAMESPACE_A,
+      },
+    )
+
+    expect(remove).not.toHaveBeenCalled()
+    expect(rmdir).not.toHaveBeenCalled()
+
+    await manager.cleanup()
+  })
+
+  it('does not fail init when legacy artifact cleanup errors (logs and continues)', async () => {
+    const { app, exists } = createFakeApp(['YOLO/.yolo_vector_db.tar.gz'])
+    app.vault.adapter.remove = jest.fn(async () => {
+      throw new Error('disk error')
+    })
+    const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => {})
+
+    const manager = await DatabaseManager.create(
+      app as never,
+      { yolo: { baseDir: 'YOLO' } },
+      undefined,
+      {
+        indexedDB: new IDBFactory(),
+        createNamespaceId: () => NAMESPACE_B,
+      },
+    )
+
+    expect(exists).toHaveBeenCalled()
+    expect(warnSpy).toHaveBeenCalled()
+    expect(manager.getVectorManager()).toBeTruthy()
+
+    warnSpy.mockRestore()
+    await manager.cleanup()
   })
 })

@@ -192,10 +192,6 @@ import {
   normalizePluginVersion,
 } from './core/update/updateChecker'
 import type { DatabaseManager } from './database/DatabaseManager'
-import {
-  PGLiteAbortedException,
-  PgliteUnsupportedEnvironmentException,
-} from './database/exception'
 import { ChatManager } from './database/json/chat/ChatManager'
 import { pruneImageCache } from './database/json/chat/imageCacheStore'
 import { prunePdfTextCache } from './database/json/chat/pdfTextCacheStore'
@@ -1001,8 +997,6 @@ export default class YoloPlugin extends Plugin {
       this.ragCoordinator = new RagCoordinator({
         app: this.app,
         getSettings: () => this.settings,
-        ensureRuntimeReady: async () =>
-          (await this.getPGliteRuntimeManager()).ensureReady(),
         getDbManager: () => this.getDbManager(),
       })
     }
@@ -3374,24 +3368,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       : normalizedSettings
 
     if (yoloBaseDirChanged) {
-      if (this.dbManager) {
-        // Snapshot the in-memory DB to the OLD location before relocating.
-        // If this fails (#408 OOM, disk full, etc.), the move would carry a
-        // stale snapshot to the new location and silently lose embeddings —
-        // abort the relocation and keep the user on the previous root.
-        try {
-          await this.dbManager.save()
-        } catch (error) {
-          console.error(
-            '[YOLO] Failed to snapshot vector database before base-dir change; aborting move.',
-            error,
-          )
-          new Notice(
-            'Failed to snapshot YOLO vector database. Keeping previous YOLO root folder.',
-          )
-          return false
-        }
-      }
       const relocation = await runManagedModuleDataExclusive(
         this.app.vault,
         managedModuleDataNamespace('learning', 'managed-data'),
@@ -3987,28 +3963,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     if (!this.dbManagerInitPromise) {
       this.dbManagerInitPromise = (async () => {
         try {
-          const runtime = await (
-            await this.getPGliteRuntimeManager()
-          ).ensureReady()
           const { DatabaseManager } = await import('./database/DatabaseManager')
           this.dbManager = await DatabaseManager.create(
             this.app,
-            runtime.dir,
             this.settings,
             this.manifest.dir ? normalizePath(this.manifest.dir) : undefined,
           )
           return this.dbManager
         } catch (error) {
           this.dbManagerInitPromise = null
-          if (
-            error instanceof PGLiteAbortedException ||
-            error instanceof PgliteUnsupportedEnvironmentException
-          ) {
-            const { InstallerUpdateRequiredModal } = await import(
-              './components/modals/InstallerUpdateRequiredModal'
-            )
-            new InstallerUpdateRequiredModal(this.app).open()
-          }
           throw error
         }
       })()
