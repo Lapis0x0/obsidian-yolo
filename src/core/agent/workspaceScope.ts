@@ -404,12 +404,25 @@ function intersectRule(a: ScopeRule, b: ScopeRule): ScopeRule | null {
  *   when that merge is what turns an otherwise-empty intersection into a
  *   real (exempt-paths-only) scope, so an exempted skill file stays
  *   retrievable even when the workspace and path scopes would otherwise
- *   share nothing.
+ *   share nothing. When an explicit `pathScope` is also given, only exempt
+ *   paths that themselves fall inside `pathScope` (an exact `files` match or
+ *   under a `folders` subtree) are merged in — an exemption never lets a
+ *   query escape a caller-supplied path restriction (e.g.
+ *   `vault_search({path: "Private"})`), it only lets it escape
+ *   `workspace.include`.
  * - `exclude` is `workspace.exclude` (only when `workspace.enabled`; a
  *   disabled workspace contributes no rules at all) unioned with the YOLO
  *   user-data root, which is always excluded — even when `workspace` is
  *   undefined or disabled — mirroring `resolvePathVisibility`'s
- *   unconditional hidden-root check.
+ *   unconditional hidden-root check. A normalized `workspace.exclude` rule
+ *   of `''` (the user entered `/`) means "exclude everything", so that case
+ *   short-circuits to `{ empty: true }` before any of the above is computed.
+ *   Symmetrically, a normalized `workspace.include` rule of `''` matches
+ *   every path (same as `matchesRule`), so it is treated as "no include
+ *   restriction at all" rather than literally intersected — an `include`
+ *   array that merely *contains* `''` alongside other rules is still fully
+ *   unrestricted, since `''` alone already matches everything those other
+ *   rules would.
  */
 export function buildRagScopeForWorkspace({
   pathScope,
@@ -423,12 +436,28 @@ export function buildRagScopeForWorkspace({
   exemptPaths?: ReadonlySet<string>
 }): RagWorkspaceScopeResult {
   const workspaceEnabled = workspace?.enabled ?? false
-  const workspaceInclude = workspaceEnabled
+  const workspaceIncludeRaw = workspaceEnabled
     ? workspace!.include.map(normalize)
     : []
-  const workspaceExclude = workspaceEnabled
+  // A root rule ('' after normalizing '/') matches every path on its own
+  // (see `matchesRule`), so its presence anywhere in `include` makes the
+  // whole list equivalent to "no include restriction" — not a literal rule
+  // to intersect against, which would instead match nothing (see the class
+  // doc above and Codex finding 1.7).
+  const workspaceInclude = workspaceIncludeRaw.includes('')
+    ? []
+    : workspaceIncludeRaw
+
+  const workspaceExcludeRaw = workspaceEnabled
     ? workspace!.exclude.map(normalize)
     : []
+  if (workspaceExcludeRaw.includes('')) {
+    // A root exclude rule excludes every path; no include/exempt carve-out
+    // can rescue that, so short-circuit before computing anything else.
+    return { empty: true }
+  }
+  const workspaceExclude = workspaceExcludeRaw
+
   const hiddenRoot = normalize(getYoloUserDataRootDir(settings))
   const exclude = Array.from(new Set([...workspaceExclude, hiddenRoot]))
 
@@ -436,6 +465,18 @@ export function buildRagScopeForWorkspace({
   const pathFolders = (pathScope?.folders ?? []).map(normalize)
   const hasPathScope = pathFiles.length > 0 || pathFolders.length > 0
   const hasWorkspaceInclude = workspaceInclude.length > 0
+
+  // Whether a raw exempt path (as given by the caller) falls inside the
+  // caller-supplied `pathScope` — an exact `files` hit, or nested under a
+  // `folders` subtree. Only meaningful when `hasPathScope`; callers check
+  // that themselves before using this.
+  const isExemptWithinPathScope = (rawExemptPath: string): boolean => {
+    const normalizedExempt = normalize(rawExemptPath)
+    if (pathFiles.includes(normalizedExempt)) return true
+    return pathFolders.some((folder) =>
+      normalizedExempt.startsWith(`${folder}/`),
+    )
+  }
 
   let files: string[]
   let folders: string[]
@@ -475,18 +516,25 @@ export function buildRagScopeForWorkspace({
     files = [...resultFiles]
     folders = [...resultFolders]
 
-    if (
-      files.length === 0 &&
-      folders.length === 0 &&
-      !(exemptPaths && exemptPaths.size > 0)
-    ) {
-      return { empty: true }
+    if (files.length === 0 && folders.length === 0) {
+      // An empty pathScope ∩ workspace.include intersection is only
+      // rescued by an exempt path that itself falls inside `pathScope` —
+      // see the class doc's `exemptPaths` bullet.
+      const hasQualifyingExempt =
+        !!exemptPaths &&
+        Array.from(exemptPaths).some((path) => isExemptWithinPathScope(path))
+      if (!hasQualifyingExempt) {
+        return { empty: true }
+      }
     }
   }
 
   if (hasWorkspaceInclude && exemptPaths && exemptPaths.size > 0) {
     const fileSet = new Set(files)
     for (const path of exemptPaths) {
+      // An explicit pathScope caps which exempt paths may bypass
+      // workspace.include: only ones already inside pathScope qualify.
+      if (hasPathScope && !isExemptWithinPathScope(path)) continue
       fileSet.add(path)
     }
     files = [...fileSet]

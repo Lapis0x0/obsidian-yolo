@@ -23,9 +23,20 @@ jest.mock('../../../utils/pdf/extractPdfText', () => ({
   extractPdfText: jest.fn(),
 }))
 
+// Installs IDBKeyRange (used by the real store's compound-key ranges) as a
+// global, for the "real store" describe block below (Codex finding 1.2/3.1
+// coverage: rollback must be verified against a real repository, not only a
+// mocked one — see `09-c3-codex-fixes.md` section B).
+import 'fake-indexeddb/auto'
+import { IDBFactory } from 'fake-indexeddb'
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 
 import { sha256HexPrefix16 } from '../../../utils/common/content-hash'
+import { IndexedDbVectorStore } from '../../vector-store/IndexedDbVectorStore'
+import {
+  openVectorDatabase,
+  vectorDatabaseName,
+} from '../../vector-store/vectorDatabase'
 
 import { VectorManager } from './VectorManager'
 
@@ -765,5 +776,275 @@ describe('VectorManager.reconcile', () => {
       totalFilesSeen[totalFilesSeen.length - 1],
     )
     expect(completedFilesSeen[completedFilesSeen.length - 1]).toBe(70)
+  })
+})
+
+// ---- Real-store coverage for the C3 Codex fixes (sections B and C of
+// 09-c3-codex-fixes.md) — a mocked repository can't prove "no row survives"
+// or "no duplicate row", so these exercise the real IndexedDB-backed store.
+async function openRealStore(
+  namespaceId: string,
+): Promise<IndexedDbVectorStore> {
+  const indexedDB = new IDBFactory()
+  const db = await openVectorDatabase(
+    indexedDB,
+    vectorDatabaseName(namespaceId),
+  )
+  return new IndexedDbVectorStore(db)
+}
+
+describe('VectorManager.reconcile — file-batch rollback against a real store (Codex 1.2 / 3.1)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('leaves no row behind for a file whose second sub-batch is interrupted by abort', async () => {
+    // File "a.md" splits into two chunks (A-run, B-run). embeddingConcurrency
+    // 1 forces each chunk into its own adaptive sub-batch, so the first
+    // chunk's row is actually committed via insertVectors before the second
+    // chunk's abort is observed — exactly the "half a file written" scenario
+    // finding 1.2 describes.
+    const store = await openRealStore('rollback-abort')
+    try {
+      const controller = new AbortController()
+      const content = `${'A'.repeat(900)}\n\n${'B'.repeat(900)}`
+      const app = {
+        vault: {
+          getFiles: jest.fn().mockReturnValue([
+            {
+              path: 'a.md',
+              extension: 'md',
+              stat: { mtime: 100, size: content.length },
+            },
+          ]),
+          cachedRead: jest.fn().mockResolvedValue(content),
+        },
+      }
+      const manager = new VectorManager(app as never, store)
+      const model = {
+        id: 'rollback-model',
+        dimension: 3,
+        getEmbedding: jest.fn(async (text: string) => {
+          if (text.includes('B')) {
+            // Simulates the abort landing while the second sub-batch's
+            // request is in flight, after the first sub-batch already
+            // committed its row.
+            controller.abort()
+          }
+          return [0.1, 0.2, 0.3]
+        }),
+      }
+
+      await expect(
+        manager.reconcile(
+          model as never,
+          { ...baseConfig, embeddingConcurrency: 1 },
+          { scope: { kind: 'all' }, signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' })
+
+      expect(
+        await store.listChunksForPaths('rollback-model', ['a.md']),
+      ).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('leaves no row behind for a file when insertVectors throws on a later sub-batch', async () => {
+    const store = await openRealStore('rollback-insert-error')
+    try {
+      const content = `${'A'.repeat(900)}\n\n${'B'.repeat(900)}`
+      const app = {
+        vault: {
+          getFiles: jest.fn().mockReturnValue([
+            {
+              path: 'a.md',
+              extension: 'md',
+              stat: { mtime: 100, size: content.length },
+            },
+          ]),
+          cachedRead: jest.fn().mockResolvedValue(content),
+        },
+      }
+      const manager = new VectorManager(app as never, store)
+      const model = {
+        id: 'rollback-model-2',
+        dimension: 3,
+        getEmbedding: jest.fn().mockResolvedValue([0.1, 0.2, 0.3]),
+      }
+
+      const originalInsert = store.insertVectors.bind(store)
+      let insertCalls = 0
+      jest.spyOn(store, 'insertVectors').mockImplementation(async (rows) => {
+        insertCalls += 1
+        if (insertCalls === 2) {
+          throw new Error('quota exceeded')
+        }
+        return originalInsert(rows)
+      })
+
+      await expect(
+        manager.reconcile(
+          model as never,
+          { ...baseConfig, embeddingConcurrency: 1 },
+          { scope: { kind: 'all' } },
+        ),
+      ).rejects.toThrow(/quota exceeded/)
+
+      expect(
+        await store.listChunksForPaths('rollback-model-2', ['a.md']),
+      ).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('does not roll back an earlier, already-completed file batch when a later batch aborts', async () => {
+    // 70 single-chunk files split into two file batches (64 + 6, per
+    // FILE_BATCH_MAX_FILES). Batch 1 fully commits; batch 2 aborts partway
+    // through. Only batch 2's files should be rolled back.
+    const store = await openRealStore('rollback-batch-scope')
+    try {
+      const controller = new AbortController()
+      const files = Array.from({ length: 70 }, (_, i) => ({
+        path: `f${i}.md`,
+        content: `content ${i}`,
+      }))
+      const fileContent = new Map(files.map((f) => [f.path, f.content]))
+      const app = {
+        vault: {
+          getFiles: jest.fn().mockReturnValue(
+            files.map((f) => ({
+              path: f.path,
+              extension: 'md',
+              stat: { mtime: 100, size: f.content.length },
+            })),
+          ),
+          cachedRead: jest.fn(
+            async (file: { path: string }) => fileContent.get(file.path) ?? '',
+          ),
+        },
+      }
+      const manager = new VectorManager(app as never, store)
+      const model = {
+        id: 'rollback-batch-scope-model',
+        dimension: 3,
+        getEmbedding: jest.fn(async (text: string) => {
+          // f65 is the second file of batch 2 (f64..f69); abort mid-batch-2,
+          // after f64 already committed.
+          if (text === 'content 65') {
+            controller.abort()
+          }
+          return [0.1, 0.2, 0.3]
+        }),
+      }
+
+      await expect(
+        manager.reconcile(
+          model as never,
+          { ...baseConfig, embeddingConcurrency: 1 },
+          { scope: { kind: 'all' }, signal: controller.signal },
+        ),
+      ).rejects.toMatchObject({ name: 'AbortError' })
+
+      // Batch 1 (f0..f63) is untouched by batch 2's rollback.
+      const batch1Paths = files.slice(0, 64).map((f) => f.path)
+      const batch1Rows = await store.listChunksForPaths(
+        'rollback-batch-scope-model',
+        batch1Paths,
+      )
+      expect(batch1Rows).toHaveLength(64)
+
+      // Batch 2 (f64..f69) was rolled back wholesale, including f64 which had
+      // already committed before the abort was observed.
+      const batch2Paths = files.slice(64).map((f) => f.path)
+      const batch2Rows = await store.listChunksForPaths(
+        'rollback-batch-scope-model',
+        batch2Paths,
+      )
+      expect(batch2Rows).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+})
+
+describe('VectorManager write serialization across models (Codex 1.3)', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('makes a second reconcile for the same model wait for the first, avoiding a duplicate row', async () => {
+    const store = await openRealStore('serialize-test')
+    try {
+      const app = {
+        vault: {
+          getFiles: jest
+            .fn()
+            .mockReturnValue([
+              { path: 'a.md', extension: 'md', stat: { mtime: 100, size: 11 } },
+            ]),
+          cachedRead: jest.fn().mockResolvedValue('hello world'),
+        },
+      }
+      const manager = new VectorManager(app as never, store)
+
+      let releaseGate: () => void = () => undefined
+      const gate = new Promise<void>((resolve) => {
+        releaseGate = resolve
+      })
+      let firstStarted: () => void = () => undefined
+      const firstStartedPromise = new Promise<void>((resolve) => {
+        firstStarted = resolve
+      })
+      const order: string[] = []
+      let embedCalls = 0
+      const model = {
+        id: 'serialize-model',
+        dimension: 3,
+        getEmbedding: jest.fn(async () => {
+          embedCalls += 1
+          if (embedCalls === 1) {
+            order.push('first-start')
+            firstStarted()
+            await gate
+            order.push('first-end')
+          } else {
+            order.push(`embed-${embedCalls}`)
+          }
+          return [0.1, 0.2, 0.3]
+        }),
+      }
+
+      const firstRun = manager.reconcile(model as never, baseConfig, {
+        scope: { kind: 'all' },
+      })
+      // Queued synchronously behind `firstRun` by `enqueueForModel` — this
+      // call cannot start its own work until `firstRun`'s promise settles,
+      // regardless of when the gate below is released.
+      const secondRun = manager.reconcile(model as never, baseConfig, {
+        scope: { kind: 'all' },
+      })
+
+      await firstStartedPromise
+      // At this point only the first reconcile has done any work; the
+      // second is still fully blocked on the first's chain.
+      expect(order).toEqual(['first-start'])
+
+      releaseGate()
+      await firstRun
+      await secondRun
+
+      // The second reconcile only ran after the first committed, so it saw
+      // the file as already indexed (matching mtime) and never re-embedded
+      // it — no duplicate row, and only one embedding call total.
+      expect(order).toEqual(['first-start', 'first-end'])
+      expect(embedCalls).toBe(1)
+      const rows = await store.listChunksForPaths('serialize-model', ['a.md'])
+      expect(rows).toHaveLength(1)
+    } finally {
+      store.close()
+    }
   })
 })

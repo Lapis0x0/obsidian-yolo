@@ -1,7 +1,25 @@
 import { yieldToMain } from '../../utils/common/yield-to-main'
 
-/** How many rows to scan between yields to the main thread. */
-const DEFAULT_YIELD_EVERY = 5000
+/**
+ * Yield budget in scanned dot-product *components* (rows × dimension)
+ * rather than rows: a fixed row-count yield interval makes each slice's
+ * wall-clock cost scale linearly with dimension (a 3072-dim slice does 2x
+ * the multiply-adds of a 1536-dim one for the same row count), so higher-
+ * dimension models would stall the renderer between yields for
+ * proportionally longer. 4,000,000 components is about 2,600 rows at
+ * 1536-dim or 1,300 rows at 3072-dim — comparable per-slice duration
+ * either way.
+ */
+const YIELD_COMPONENT_BUDGET = 4_000_000
+/** Floor on rows-per-slice regardless of dimension, so a pathological tiny dimension doesn't yield every row. */
+const MIN_YIELD_EVERY_ROWS = 64
+
+function defaultYieldEvery(dimension: number): number {
+  return Math.max(
+    MIN_YIELD_EVERY_ROWS,
+    Math.floor(YIELD_COMPONENT_BUDGET / Math.max(dimension, 1)),
+  )
+}
 
 /**
  * How much to loosen the scan-time `minSimilarity` filter below the
@@ -13,6 +31,14 @@ const DEFAULT_YIELD_EVERY = 5000
  * caller gets a chance to rescore it against the original float32
  * vector; it does not relax the final threshold, which callers must
  * still apply as a strict `> minSimilarity` after rescoring.
+ *
+ * The theoretical worst case (`‖query‖₁ · scale / 254`, both vectors
+ * unit-length) can exceed this fixed value at high dimension, but is not
+ * reached in practice: per-component quantization errors are roughly
+ * independent and mostly cancel in the dot-product sum rather than adding
+ * in the same direction every time. Empirically the resulting score error
+ * has a standard deviation on the order of 1e-3, so 0.02 is a conservative
+ * margin of several dozen standard deviations, not a tight worst-case bound.
  */
 export const INT8_SCAN_SLACK = 0.02
 
@@ -47,6 +73,64 @@ export type TopKSearchParams = Readonly<{
 }>
 
 /**
+ * Bounded min-heap of the top `capacity` rows by score, so a scan with a
+ * limited `limit` never allocates or sorts more candidates than it can
+ * possibly return. `capacity <= 0` accepts nothing (matches `limit === 0`
+ * returning no results).
+ */
+class BoundedTopKHeap {
+  private readonly heap: TopKRow[] = []
+
+  constructor(private readonly capacity: number) {}
+
+  push(row: TopKRow): void {
+    if (this.capacity <= 0) return
+    if (this.heap.length < this.capacity) {
+      this.heap.push(row)
+      this.siftUp(this.heap.length - 1)
+      return
+    }
+    if (row.score <= this.heap[0].score) return
+    this.heap[0] = row
+    this.siftDown(0)
+  }
+
+  /** Drains the heap into descending-score order. */
+  toSortedDescending(): TopKRow[] {
+    return [...this.heap].sort((a, b) => b.score - a.score)
+  }
+
+  private siftUp(index: number): void {
+    let i = index
+    while (i > 0) {
+      const parent = (i - 1) >> 1
+      if (this.heap[parent].score <= this.heap[i].score) break
+      ;[this.heap[parent], this.heap[i]] = [this.heap[i], this.heap[parent]]
+      i = parent
+    }
+  }
+
+  private siftDown(index: number): void {
+    let i = index
+    const n = this.heap.length
+    for (;;) {
+      const left = i * 2 + 1
+      const right = i * 2 + 2
+      let smallest = i
+      if (left < n && this.heap[left].score < this.heap[smallest].score) {
+        smallest = left
+      }
+      if (right < n && this.heap[right].score < this.heap[smallest].score) {
+        smallest = right
+      }
+      if (smallest === i) break
+      ;[this.heap[smallest], this.heap[i]] = [this.heap[i], this.heap[smallest]]
+      i = smallest
+    }
+  }
+}
+
+/**
  * Linear asymmetric dot-product scan over a flat, per-row int8-quantized
  * matrix: each row is `q_ij` with a per-row float32 `scale_i`, the query
  * stays float32, and `score ≈ (Σ_j q_ij * query_j) * scale_i / 127`. The
@@ -58,6 +142,12 @@ export type TopKSearchParams = Readonly<{
  * pass that produces the exact value. Pure and side-effect free beyond
  * yielding to the main thread, so it can be moved into a Worker later
  * without touching call sites.
+ *
+ * For a bounded `limit`, matching rows are kept in a `BoundedTopKHeap`
+ * (capacity = `limit`) instead of an unbounded array, so a permissive
+ * threshold over a large index never allocates/sorts more candidates than
+ * `limit` can use. `limit < 0` (unlimited) still collects everything and
+ * sorts once at the end, since there is no bound to size a heap to.
  */
 export async function topKSearch(params: TopKSearchParams): Promise<TopKRow[]> {
   const {
@@ -70,14 +160,16 @@ export async function topKSearch(params: TopKSearchParams): Promise<TopKRow[]> {
     queryVector,
     limit,
     minSimilarity,
-    yieldEvery = DEFAULT_YIELD_EVERY,
+    yieldEvery = defaultYieldEvery(dimension),
   } = params
 
   // Scan-time-only threshold, loosened by INT8_SCAN_SLACK; see that
   // constant's doc for why the exact `minSimilarity` isn't applied here.
   const scanThreshold = minSimilarity - INT8_SCAN_SLACK
 
-  const results: TopKRow[] = []
+  const bounded = limit >= 0
+  const heap = bounded ? new BoundedTopKHeap(limit) : null
+  const unboundedResults: TopKRow[] = []
   let scannedSinceYield = 0
 
   for (let rowIndex = 0; rowIndex < size; rowIndex++) {
@@ -89,7 +181,8 @@ export async function topKSearch(params: TopKSearchParams): Promise<TopKRow[]> {
       }
       const score = (dot * scales[rowIndex]) / 127
       if (score > scanThreshold) {
-        results.push({ rowIndex, score })
+        if (heap) heap.push({ rowIndex, score })
+        else unboundedResults.push({ rowIndex, score })
       }
     }
 
@@ -100,8 +193,9 @@ export async function topKSearch(params: TopKSearchParams): Promise<TopKRow[]> {
     }
   }
 
-  results.sort((a, b) => b.score - a.score)
-  return limit >= 0 ? results.slice(0, limit) : results
+  if (heap) return heap.toSortedDescending()
+  unboundedResults.sort((a, b) => b.score - a.score)
+  return unboundedResults
 }
 
 /** L2-normalizes a vector. The zero vector is returned unchanged (norm 0 would divide by zero). */

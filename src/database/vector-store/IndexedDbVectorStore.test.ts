@@ -3,9 +3,16 @@ import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 
 import type { VectorInsert } from '../../core/runtime-components/contracts'
+import { yieldToMain } from '../../utils/common/yield-to-main'
 
 import { IndexedDbVectorStore } from './IndexedDbVectorStore'
 import { openVectorDatabase, vectorDatabaseName } from './vectorDatabase'
+import { VectorIndex } from './vectorIndex'
+
+jest.mock('../../utils/common/yield-to-main', () => ({
+  yieldToMain: jest.fn(() => Promise.resolve()),
+}))
+const yieldToMainMock = yieldToMain as jest.MockedFunction<typeof yieldToMain>
 
 const MODEL_A = 'model-a'
 const MODEL_B = 'model-b'
@@ -13,12 +20,13 @@ const MODEL_B = 'model-b'
 async function openStore(
   indexedDB: IDBFactory,
   namespaceId = 'test-namespace',
+  options: ConstructorParameters<typeof IndexedDbVectorStore>[1] = {},
 ): Promise<IndexedDbVectorStore> {
   const db = await openVectorDatabase(
     indexedDB,
     vectorDatabaseName(namespaceId),
   )
-  return new IndexedDbVectorStore(db)
+  return new IndexedDbVectorStore(db, options)
 }
 
 function insert(
@@ -159,7 +167,7 @@ describe('IndexedDbVectorStore', () => {
     }
   })
 
-  it('reports per-model row counts and approximate byte sizes', async () => {
+  it('reports per-model row counts and vectorBytes (rowCount * dimension * 4) via index-only reads', async () => {
     const indexedDB = new IDBFactory()
     const store = await openStore(indexedDB)
     try {
@@ -168,30 +176,40 @@ describe('IndexedDbVectorStore', () => {
           path: 'a.md',
           model: MODEL_A,
           dimension: 3,
+          embedding: [1, 0, 0],
           content: 'hello',
         }),
         insert({
           path: 'b.md',
           model: MODEL_A,
           dimension: 3,
+          embedding: [0, 1, 0],
           content: 'world!',
         }),
-        insert({ path: 'a.md', model: MODEL_B, dimension: 4, content: 'x' }),
+        insert({
+          path: 'a.md',
+          model: MODEL_B,
+          dimension: 4,
+          embedding: [1, 0, 0, 0],
+          content: 'x',
+        }),
       ])
 
       const stats = await store.getEmbeddingStats()
       expect(stats).toEqual([
-        {
-          model: MODEL_A,
-          rowCount: 2,
-          totalDataBytes: 3 * 4 + 5 * 2 + (3 * 4 + 6 * 2),
-        },
-        {
-          model: MODEL_B,
-          rowCount: 1,
-          totalDataBytes: 4 * 4 + 1 * 2,
-        },
+        { model: MODEL_A, rowCount: 2, vectorBytes: 2 * 3 * 4 },
+        { model: MODEL_B, rowCount: 1, vectorBytes: 1 * 4 * 4 },
       ])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('reports an empty array of stats for an empty store', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      expect(await store.getEmbeddingStats()).toEqual([])
     } finally {
       store.close()
     }
@@ -639,6 +657,177 @@ describe('IndexedDbVectorStore', () => {
       await expect(
         store.insertVectors([insert({ path: 'a.md', embedding: undefined })]),
       ).rejects.toThrow(/requires an embedding/)
+    } finally {
+      store.close()
+    }
+  })
+
+  it('rejects insertVectors when an embedding length does not match its declared dimension, before writing anything', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      await expect(
+        store.insertVectors([
+          insert({ path: 'good.md' }),
+          // insert()'s default embedding is length 3; declaring dimension 4
+          // for it is the mismatch under test.
+          insert({ path: 'bad.md', dimension: 4 }),
+        ]),
+      ).rejects.toThrow(/does not match declared dimension/)
+
+      // Nothing committed, not even "good.md" (which would have been valid
+      // on its own) — validation runs as a pass over the whole batch before
+      // the write transaction opens (Codex finding 1.5).
+      expect(
+        await store.listChunksForPaths(MODEL_A, ['good.md', 'bad.md']),
+      ).toEqual([])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('rejects a query vector whose length does not match the model dimension', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      await expect(
+        store.performSimilaritySearch(
+          [1, 0],
+          { id: MODEL_A, dimension: 3 },
+          { minSimilarity: -1, limit: 10 },
+        ),
+      ).rejects.toThrow(/does not match model dimension/)
+    } finally {
+      store.close()
+    }
+  })
+
+  it('reloads the in-memory index when the requested dimension differs from what is loaded (Codex 1.4)', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      await store.insertVectors([
+        insert({ path: 'a.md', dimension: 3, embedding: [1, 0, 0] }),
+      ])
+      const first = await store.performSimilaritySearch(
+        [1, 0, 0],
+        { id: MODEL_A, dimension: 3 },
+        { minSimilarity: -1, limit: 10 },
+      )
+      expect(first.map((r) => r.path)).toEqual(['a.md'])
+
+      // The model's configured dimension changes (no truncate/unload in
+      // between) and a new row is inserted at the new dimension.
+      await store.insertVectors([
+        insert({ path: 'b.md', dimension: 4, embedding: [0, 0, 0, 1] }),
+      ])
+
+      // A dimension-4 query must see b.md via a freshly loaded dimension-4
+      // index — not silently keep serving the stale dimension-3 index
+      // cached by the first search.
+      const second = await store.performSimilaritySearch(
+        [0, 0, 0, 1],
+        { id: MODEL_A, dimension: 4 },
+        { minSimilarity: -1, limit: 10 },
+      )
+      expect(second.map((r) => r.path)).toEqual(['b.md'])
+    } finally {
+      store.close()
+    }
+  })
+
+  it('reserves exact capacity from the row count before loading, so the load never grows the matrix', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      const rows = Array.from({ length: 50 }, (_, i) =>
+        insert({ path: `f${i}.md` }),
+      )
+      await store.insertVectors(rows)
+
+      const reserveSpy = jest.spyOn(VectorIndex.prototype, 'reserve')
+      try {
+        const results = await store.performSimilaritySearch(
+          [1, 0, 0],
+          { id: MODEL_A, dimension: 3 },
+          { minSimilarity: -1, limit: 50 },
+        )
+        expect(results).toHaveLength(50)
+        expect(reserveSpy).toHaveBeenCalledWith(50)
+      } finally {
+        reserveSpy.mockRestore()
+      }
+    } finally {
+      store.close()
+    }
+  })
+
+  it('returns the right rows when a delete past the compaction threshold lands mid-scan', async () => {
+    // Regression for Codex finding 1.1: the scan yields, a concurrent delete
+    // tombstones >25% of the rows (all of them *before* the hits, so a
+    // compaction would shift the hits' row indices), and the scan resumes.
+    // Compaction must be deferred until the scan ends, and the candidate ids
+    // must be resolved before that deferred compaction remaps the rows.
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB, 'mid-scan', { scanYieldEvery: 20 })
+    try {
+      const fillers = Array.from({ length: 30 }, (_, i) =>
+        insert({ path: `filler-${i}.md`, embedding: [0, 1, 0] }),
+      )
+      const hits = Array.from({ length: 10 }, (_, i) =>
+        insert({ path: `hit-${i}.md`, embedding: [1, 0, 0] }),
+      )
+      await store.insertVectors([...fillers, ...hits])
+
+      // Load the index with a plain query first so the racy query below
+      // starts scanning immediately.
+      await store.performSimilaritySearch(
+        [0, 0, 1],
+        { id: MODEL_A, dimension: 3 },
+        { minSimilarity: -1, limit: 1 },
+      )
+
+      yieldToMainMock.mockImplementationOnce(async () => {
+        await store.deleteVectorsByPaths(
+          MODEL_A,
+          fillers.map((row) => row.path),
+        )
+      })
+      const results = await store.performSimilaritySearch(
+        [1, 0, 0],
+        { id: MODEL_A, dimension: 3 },
+        { minSimilarity: 0.5, limit: 10 },
+      )
+      expect(results.map((r) => r.path).sort()).toEqual(
+        hits.map((row) => row.path).sort(),
+      )
+      // The deferred compaction ran once the scan released the index.
+      const stats = await store.getEmbeddingStats()
+      expect(stats.find((s) => s.model === MODEL_A)?.rowCount).toBe(10)
+    } finally {
+      store.close()
+    }
+  })
+
+  it('brackets each search with beginScan/endScan on the loaded index', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      await store.insertVectors([insert({ path: 'a.md' })])
+      const beginSpy = jest.spyOn(VectorIndex.prototype, 'beginScan')
+      const endSpy = jest.spyOn(VectorIndex.prototype, 'endScan')
+      try {
+        await store.performSimilaritySearch(
+          [1, 0, 0],
+          { id: MODEL_A, dimension: 3 },
+          { minSimilarity: -1, limit: 10 },
+        )
+        expect(beginSpy).toHaveBeenCalledTimes(1)
+        expect(endSpy).toHaveBeenCalledTimes(1)
+      } finally {
+        beginSpy.mockRestore()
+        endSpy.mockRestore()
+      }
     } finally {
       store.close()
     }

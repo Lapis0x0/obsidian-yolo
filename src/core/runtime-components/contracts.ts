@@ -108,7 +108,7 @@ export type VectorStore = Readonly<{
     },
   ): Promise<Array<VectorSelect & { similarity: number }>>
   getEmbeddingStats(): Promise<
-    Array<{ model: string; rowCount: number; totalDataBytes: number }>
+    Array<{ model: string; rowCount: number; vectorBytes: number }>
   >
 }>
 

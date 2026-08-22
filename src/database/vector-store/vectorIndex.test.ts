@@ -135,6 +135,10 @@ describe('VectorIndex', () => {
       const removed = index.tombstoneByPath('a.md')
       expect([...removed].sort()).toEqual([1, 2])
       expect(index.pathToRows.has('a.md')).toBe(false)
+      // Tombstoning alone never compacts (see `maybeCompact`); the caller
+      // must ask for it explicitly once its whole delete batch is done.
+      expect(index.tombstoneCount).toBe(2)
+      index.maybeCompact()
       // Removing 2/3 rows crosses the compaction threshold, so b.md's row
       // may have been remapped to a new index — check by id, not position.
       const bRows = index.pathToRows.get('b.md')
@@ -149,7 +153,7 @@ describe('VectorIndex', () => {
   })
 
   describe('compaction', () => {
-    it('reclaims tombstoned rows once they exceed 25% and preserves live data', () => {
+    it('does not compact on tombstone alone; maybeCompact reclaims rows past 25% and preserves live data', () => {
       const index = new VectorIndex(1)
       const total = 20
       for (let i = 0; i < total; i++) {
@@ -160,10 +164,16 @@ describe('VectorIndex', () => {
           vector: new Float32Array([i]),
         })
       }
-      // Tombstone 6/20 = 30% > 25% threshold to trigger compaction on the last call.
+      // Tombstone 6/20 = 30% > 25% threshold, but tombstoning alone never
+      // compacts anymore (see Codex finding 1.1/2.6 — compaction is deferred
+      // to an explicit `maybeCompact()` call so it can never fire mid-scan).
       for (let i = 0; i < 6; i++) {
         index.tombstoneById(i)
       }
+      expect(index.tombstoneCount).toBe(6)
+      expect(index.size).toBe(total)
+
+      index.maybeCompact()
       expect(index.tombstoneCount).toBe(0) // compacted away
       expect(index.size).toBe(total - 6)
 
@@ -178,6 +188,126 @@ describe('VectorIndex', () => {
 
       // Further tombstoning by id still works after compaction re-indexed rows.
       expect(index.tombstoneById(6)).toBe(true)
+    })
+
+    it('maybeCompact is a no-op below the tombstone ratio threshold', () => {
+      const index = new VectorIndex(1)
+      for (let i = 0; i < 20; i++) {
+        index.append({
+          id: i,
+          path: `f${i}.md`,
+          metadata: meta,
+          vector: new Float32Array([i]),
+        })
+      }
+      // 4/20 = 20% < 25% threshold.
+      for (let i = 0; i < 4; i++) {
+        index.tombstoneById(i)
+      }
+      index.maybeCompact()
+      expect(index.tombstoneCount).toBe(4)
+      expect(index.size).toBe(20)
+    })
+  })
+
+  describe('beginScan / endScan', () => {
+    it('defers compaction while a scan is active, then compacts once it ends', () => {
+      const index = new VectorIndex(1)
+      const total = 20
+      for (let i = 0; i < total; i++) {
+        index.append({
+          id: i,
+          path: `f${i}.md`,
+          metadata: meta,
+          vector: new Float32Array([i]),
+        })
+      }
+
+      index.beginScan()
+      for (let i = 0; i < 6; i++) {
+        index.tombstoneById(i)
+      }
+      index.maybeCompact()
+      // A scan is active: maybeCompact must not touch the matrix, even
+      // though the tombstone ratio (30%) is past the threshold — otherwise
+      // the scan's captured matrix/scales/ids arrays would be remapped out
+      // from under it (Codex finding 1.1).
+      expect(index.tombstoneCount).toBe(6)
+      expect(index.size).toBe(total)
+
+      index.endScan()
+      // The last `endScan()` (active count back to 0) triggers the deferred
+      // compaction automatically.
+      expect(index.tombstoneCount).toBe(0)
+      expect(index.size).toBe(total - 6)
+    })
+
+    it('only compacts once every nested scan has ended', () => {
+      const index = new VectorIndex(1)
+      for (let i = 0; i < 20; i++) {
+        index.append({
+          id: i,
+          path: `f${i}.md`,
+          metadata: meta,
+          vector: new Float32Array([i]),
+        })
+      }
+      index.beginScan()
+      index.beginScan()
+      for (let i = 0; i < 6; i++) index.tombstoneById(i)
+      index.endScan()
+      expect(index.tombstoneCount).toBe(6) // one scan still active
+      index.endScan()
+      expect(index.tombstoneCount).toBe(0) // now compacted
+    })
+  })
+
+  describe('reserve', () => {
+    it('pre-allocates capacity so subsequent appends never grow the matrix', () => {
+      const index = new VectorIndex(2)
+      index.reserve(100)
+      const matrixBeforeAppends = index.matrix
+      for (let i = 0; i < 100; i++) {
+        index.append({
+          id: i,
+          path: `f${i}.md`,
+          metadata: meta,
+          vector: new Float32Array([i, i]),
+        })
+      }
+      // Same underlying typed array identity: no `growTo` reallocation
+      // happened during the appends, because `reserve` already sized it.
+      expect(index.matrix).toBe(matrixBeforeAppends)
+      expect(index.size).toBe(100)
+    })
+
+    it('is a no-op when the requested capacity is already available', () => {
+      const index = new VectorIndex(1)
+      index.append({
+        id: 1,
+        path: 'a.md',
+        metadata: meta,
+        vector: new Float32Array([1]),
+      })
+      const matrixBefore = index.matrix
+      index.reserve(1) // already within the initial capacity
+      expect(index.matrix).toBe(matrixBefore)
+    })
+  })
+
+  describe('capacity growth strategy', () => {
+    it('doubles capacity below the doubling ceiling', () => {
+      const index = new VectorIndex(1)
+      // INITIAL_CAPACITY_ROWS is 1024; appending past it should double to 2048.
+      for (let i = 0; i < 1025; i++) {
+        index.append({
+          id: i,
+          path: `f${i}.md`,
+          metadata: meta,
+          vector: new Float32Array([i]),
+        })
+      }
+      expect(index.matrix.length).toBe(2048)
     })
   })
 })

@@ -416,8 +416,24 @@ describe('buildRagScopeForWorkspace', () => {
     ).toEqual({ empty: true })
   })
 
-  it('rescues an otherwise-empty intersection with an exempt skill path', () => {
+  it('does not rescue an otherwise-empty intersection with an exempt path outside the explicit pathScope', () => {
+    // The exempt path lives under YOLO/skills, not under pathScope's
+    // "Private" folder, so it must not escape the caller's explicit path
+    // restriction even though it would otherwise be exempt from
+    // workspace.include (Codex finding 1.6).
     const exemptPaths = new Set(['YOLO/skills/demo/SKILL.md'])
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Private'] },
+        workspace: scope({ include: ['Notes'] }),
+        settings,
+        exemptPaths,
+      }),
+    ).toEqual({ empty: true })
+  })
+
+  it('rescues an otherwise-empty intersection only when the exempt path falls inside the explicit pathScope', () => {
+    const exemptPaths = new Set(['Private/skills/demo/SKILL.md'])
     expect(
       buildRagScopeForWorkspace({
         pathScope: { files: [], folders: ['Private'] },
@@ -427,7 +443,7 @@ describe('buildRagScopeForWorkspace', () => {
       }),
     ).toEqual({
       scope: {
-        files: ['YOLO/skills/demo/SKILL.md'],
+        files: ['Private/skills/demo/SKILL.md'],
         folders: [],
         exclude: [hiddenRoot],
       },
@@ -477,5 +493,50 @@ describe('buildRagScopeForWorkspace', () => {
     ).toEqual({
       scope: { files: [], folders: [], exclude: [hiddenRoot] },
     })
+  })
+
+  it('treats a root include rule ("/") as no include restriction at all', () => {
+    // Normalizes to '' — matchesRule's own root semantics say '' matches
+    // every path, so the whole include list must behave as unrestricted
+    // rather than literally intersecting against a rule nothing can match
+    // (Codex finding 1.7).
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({ include: ['/'] }),
+        settings,
+      }),
+    ).toEqual({
+      scope: { files: [], folders: [], exclude: [hiddenRoot] },
+    })
+
+    // Still unrestricted even mixed with other include rules, and even
+    // against an explicit pathScope — '/' alone already matches everything
+    // those other rules would.
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Projects'] },
+        workspace: scope({ include: ['/', 'Notes'] }),
+        settings,
+      }),
+    ).toEqual({
+      scope: { files: [], folders: ['Projects'], exclude: [hiddenRoot] },
+    })
+  })
+
+  it('treats a root exclude rule ("/") as excluding everything', () => {
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({ exclude: ['/'] }),
+        settings,
+      }),
+    ).toEqual({ empty: true })
+
+    // Even a matching include can't rescue it — exclude wins.
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({ include: ['Notes'], exclude: ['/'] }),
+        settings,
+      }),
+    ).toEqual({ empty: true })
   })
 })

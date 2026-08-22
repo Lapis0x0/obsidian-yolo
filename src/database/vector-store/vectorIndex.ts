@@ -5,6 +5,15 @@ import { quantizeRowInt8 } from './quantization'
 const INITIAL_CAPACITY_ROWS = 1024
 /** Compact once tombstoned rows exceed this fraction of the live matrix. */
 const COMPACT_TOMBSTONE_RATIO = 0.25
+/**
+ * Below this many rows, `ensureCapacity` still doubles (cheap in absolute
+ * terms and keeps small indexes' growth-count low). At or above it, doubling
+ * would overshoot by up to 100% of a now-large matrix (see Codex finding
+ * 2.1: 500k rows at 3072-dim int8 is already ~1.5GiB, and a transient
+ * double-during-grow peak would add another ~1.5GiB), so growth switches to
+ * a proportional +25% (rounded up to whole rows, at least +1024).
+ */
+const DOUBLE_GROWTH_CEILING_ROWS = 65536
 
 export type VectorIndexRow = Readonly<{
   id: number
@@ -33,9 +42,17 @@ export type VectorIndexRow = Readonly<{
  * candidates against those float32 vectors before returning an exact
  * similarity, so no query result is ever only as precise as int8.
  *
- * Deletions are tombstoned (not shifted) so in-flight scans stay valid;
- * once tombstones exceed {@link COMPACT_TOMBSTONE_RATIO} of the matrix,
- * `append` compacts them away.
+ * Deletions are tombstoned (not shifted) so in-flight scans stay valid.
+ * `tombstoneRow` only records the tombstone; it never compacts. Compaction
+ * — which remaps every row-parallel array (`ids`, `paths`, tombstones) and
+ * would corrupt an in-flight `topKSearch` scan holding the pre-remap arrays
+ * (see `beginScan`'s doc) — only ever runs from `maybeCompact()`, which
+ * callers invoke once after a whole delete batch (and which itself refuses
+ * to compact while a scan is active). `append`'s capacity growth
+ * (`ensureCapacity`) is unaffected by this: growing copies every row into a
+ * same-order, same-index new set of arrays, so a scan holding the old
+ * (smaller) arrays keeps scoring exactly the rows it started with — nothing
+ * needs to be paused or invalidated for a grow, only for a compact.
  *
  * Not thread-safe / re-entrant across await points by design: callers must
  * only mutate between the yield boundaries of a query scan (see `topK.ts`),
@@ -57,9 +74,57 @@ export class VectorIndex {
   readonly pathToRows = new Map<string, number[]>()
   private readonly idToRow = new Map<number, number>()
   lastQueryAt = Date.now()
+  /** Number of `topKSearch` scans currently in flight against this index. */
+  private activeScans = 0
 
   constructor(dimension: number) {
     this.dimension = dimension
+  }
+
+  /**
+   * Call before starting a `topKSearch` scan over this index's row-parallel
+   * arrays; pair with `endScan()` in a `finally`. While any scan is active,
+   * `maybeCompact()` is a no-op, so the arrays a scan captured at its start
+   * stay valid (same row-index meaning) for its whole duration even across
+   * its internal yield points — see the class doc above.
+   */
+  beginScan(): void {
+    this.activeScans += 1
+  }
+
+  /** Releases one `beginScan()`; triggers a deferred compaction once no scan remains active. */
+  endScan(): void {
+    this.activeScans = Math.max(0, this.activeScans - 1)
+    if (this.activeScans === 0) this.maybeCompact()
+  }
+
+  /**
+   * Compacts away tombstoned rows if warranted: no scan is currently active
+   * AND tombstones exceed {@link COMPACT_TOMBSTONE_RATIO} of the matrix.
+   * Callers that tombstone a whole batch (`IndexedDbVectorStore`'s
+   * `deleteVectorsByIds`/`deleteVectorsByPaths`) call this once after the
+   * batch instead of letting every single tombstone re-check the ratio.
+   */
+  maybeCompact(): void {
+    if (this.activeScans > 0) return
+    if (
+      this.size > 0 &&
+      this.tombstoneCount / this.size > COMPACT_TOMBSTONE_RATIO
+    ) {
+      this.compact()
+    }
+  }
+
+  /**
+   * Pre-allocates capacity for exactly `rows` rows in one shot, skipping the
+   * incremental doubling/25% growth `ensureCapacity` would otherwise apply
+   * across many `append` calls. Used by `loadIndexFromDb`, which already
+   * knows the row count up front via `count()`. A no-op if `rows` is already
+   * within the current capacity.
+   */
+  reserve(rows: number): void {
+    if (rows <= this.capacityRows) return
+    this.growTo(rows)
   }
 
   isTombstoned(rowIndex: number): boolean {
@@ -104,9 +169,10 @@ export class VectorIndex {
     const rows = this.pathToRows.get(path)
     if (!rows) return []
     // Resolve to ids up front, then tombstone by id (not by the row indices
-    // captured here): a compaction triggered partway through this loop
-    // remaps every row index, so continuing to use the pre-captured indices
-    // would tombstone the wrong (remapped) rows.
+    // captured here): tombstoning never compacts by itself (see
+    // `tombstoneRow`), but resolving ids first keeps this correct
+    // independent of that — and matches `tombstoneById`'s own id-keyed
+    // lookup instead of relying on row-index stability at all.
     const ids = rows.map((rowIndex) => this.ids[rowIndex])
     const removedIds: number[] = []
     for (const id of ids) {
@@ -115,6 +181,12 @@ export class VectorIndex {
     return removedIds
   }
 
+  /**
+   * Only records the tombstone bookkeeping — never compacts (see the class
+   * doc and `maybeCompact()`). Callers that need compaction to actually
+   * happen call `maybeCompact()` themselves once their whole delete batch
+   * is tombstoned.
+   */
   private tombstoneRow(rowIndex: number, id: number): boolean {
     if (this.tombstones[rowIndex] === 1) return false
     this.tombstones[rowIndex] = 1
@@ -127,12 +199,6 @@ export class VectorIndex {
       if (at !== -1) rows.splice(at, 1)
       if (rows.length === 0) this.pathToRows.delete(path)
     }
-    if (
-      this.size > 0 &&
-      this.tombstoneCount / this.size > COMPACT_TOMBSTONE_RATIO
-    ) {
-      this.compact()
-    }
     return true
   }
 
@@ -141,7 +207,17 @@ export class VectorIndex {
     if (needed <= this.capacityRows) return
     let newCapacity =
       this.capacityRows === 0 ? INITIAL_CAPACITY_ROWS : this.capacityRows
-    while (newCapacity < needed) newCapacity *= 2
+    while (newCapacity < needed) {
+      newCapacity =
+        newCapacity < DOUBLE_GROWTH_CEILING_ROWS
+          ? newCapacity * 2
+          : newCapacity + Math.max(Math.ceil(newCapacity * 0.25), 1024)
+    }
+    this.growTo(newCapacity)
+  }
+
+  /** Reallocates every row-parallel typed array to `newCapacity` rows, preserving existing rows at their existing indices. */
+  private growTo(newCapacity: number): void {
     const newMatrix = new Int8Array(newCapacity * this.dimension)
     newMatrix.set(this.matrix)
     this.matrix = newMatrix

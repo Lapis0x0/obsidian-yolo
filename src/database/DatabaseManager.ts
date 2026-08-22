@@ -2,7 +2,7 @@ import { type App, normalizePath } from 'obsidian'
 
 import {
   getLegacyVectorDbPath,
-  getYoloVectorDbPath,
+  getLegacyYoloVectorDbArchivePath,
 } from '../core/paths/yoloPaths'
 import { resolveVaultDatabaseNamespaceId } from '../core/storage/vaultDatabaseNamespace'
 
@@ -121,7 +121,10 @@ async function cleanupLegacyVectorDbArtifacts(
   settings: YoloSettingsLike | null,
   pluginDir: string | undefined,
 ): Promise<void> {
-  const legacyFiles = [getYoloVectorDbPath(settings), getLegacyVectorDbPath()]
+  const legacyFiles = [
+    getLegacyYoloVectorDbArchivePath(settings),
+    getLegacyVectorDbPath(),
+  ]
   for (const path of legacyFiles) {
     try {
       if (await app.vault.adapter.exists(path)) {

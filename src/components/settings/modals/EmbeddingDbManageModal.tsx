@@ -137,7 +137,7 @@ function EmbeddingDbManageModalComponent({
       return settings.embeddingModels.map((embeddingModel) => ({
         model: embeddingModel.id,
         rowCount: statsMap.get(embeddingModel.id)?.rowCount ?? 0,
-        totalDataBytes: statsMap.get(embeddingModel.id)?.totalDataBytes ?? 0,
+        vectorBytes: statsMap.get(embeddingModel.id)?.vectorBytes ?? 0,
       }))
     },
   })
@@ -248,7 +248,7 @@ function EmbeddingDbManageModalComponent({
           <tr>
             <th>Model</th>
             <th>Total embeddings</th>
-            <th>Size (MB)</th>
+            <th>{t('settings.rag.vectorDataSize', 'Vector data (MB)')}</th>
             <th>
               {t('settings.rag.inMemoryIndexEstimate', 'In-memory index (MB)')}
             </th>
@@ -265,7 +265,7 @@ function EmbeddingDbManageModalComponent({
               <tr key={stat.model}>
                 <td>{stat.model}</td>
                 <td>{stat.rowCount}</td>
-                <td>{(stat.totalDataBytes / 1000 / 1000).toFixed(2)}</td>
+                <td>{(stat.vectorBytes / 1e6).toFixed(2)}</td>
                 <td>{estimateMb === null ? '-' : estimateMb.toFixed(2)}</td>
                 {indexProgressMap.get(stat.model) ? (
                   <td className="yolo-settings-embedding-db-manage-actions-loading">

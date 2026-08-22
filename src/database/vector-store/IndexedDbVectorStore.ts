@@ -49,6 +49,12 @@ function dotProduct(a: Float32Array, b: Float32Array): number {
 export type IndexedDbVectorStoreOptions = Readonly<{
   /** Test-only override; defaults to `Platform.isMobile`. */
   isMobile?: boolean
+  /**
+   * Test-only override for how many rows `topKSearch` scans between yields
+   * (defaults to its dimension-based budget). Lets a test force a yield
+   * inside a small scan so it can interleave a delete with it.
+   */
+  scanYieldEvery?: number
 }>
 
 /**
@@ -60,8 +66,16 @@ export type IndexedDbVectorStoreOptions = Readonly<{
  */
 export class IndexedDbVectorStore implements VectorStore {
   private readonly indexes = new Map<string, VectorIndex>()
-  private readonly loadingIndexes = new Map<string, Promise<VectorIndex>>()
+  // Tracks the dimension each in-flight load was requested for, so a second
+  // request for a different dimension while a load is already in flight
+  // can tell it isn't reusable (see `ensureIndexLoaded`) without waiting for
+  // it to resolve first.
+  private readonly loadingIndexes = new Map<
+    string,
+    { dimension: number; promise: Promise<VectorIndex> }
+  >()
   private readonly idleThresholdMs: number
+  private readonly scanYieldEvery: number | undefined
   private idleTimer: ReturnType<typeof setInterval> | null = null
   private closed = false
 
@@ -70,6 +84,7 @@ export class IndexedDbVectorStore implements VectorStore {
     options: IndexedDbVectorStoreOptions = {},
   ) {
     const isMobile = options.isMobile ?? Platform.isMobile
+    this.scanYieldEvery = options.scanYieldEvery
     this.idleThresholdMs = isMobile
       ? MOBILE_IDLE_UNLOAD_MS
       : DESKTOP_IDLE_UNLOAD_MS
@@ -173,8 +188,12 @@ export class IndexedDbVectorStore implements VectorStore {
       await requestResult(store.delete(id))
     }
     await transactionCompletion(tx)
+    // Tombstone the whole batch first, then compact each touched index at
+    // most once — not once per id — via `maybeCompact()` (see
+    // `VectorIndex`'s class doc for why per-delete compaction was removed).
     for (const index of this.indexes.values()) {
       for (const id of ids) index.tombstoneById(id)
+      index.maybeCompact()
     }
   }
 
@@ -195,6 +214,7 @@ export class IndexedDbVectorStore implements VectorStore {
     const index = this.indexes.get(modelId)
     if (index) {
       for (const path of paths) index.tombstoneByPath(path)
+      index.maybeCompact()
     }
   }
 
@@ -217,15 +237,27 @@ export class IndexedDbVectorStore implements VectorStore {
 
   async insertVectors(data: VectorInsert[]): Promise<void> {
     if (data.length === 0) return
-    const tx = this.db.transaction(CHUNKS_STORE, 'readwrite')
-    const store = tx.objectStore(CHUNKS_STORE)
-    const inserted: Array<{ id: number; row: NewChunkRecord }> = []
+    // Validate every row before opening the write transaction: a dimension
+    // mismatch caught only inside `VectorIndex.append` (called after the
+    // transaction already committed, from the per-row loop below) would
+    // leave a durable row committed to IndexedDB despite the "insert"
+    // failing — see Codex finding 1.5.
     for (const item of data) {
       if (!item.embedding || item.embedding.length === 0) {
         throw new Error(
           `insertVectors requires an embedding for every row (missing for "${item.path}")`,
         )
       }
+      if (item.embedding.length !== item.dimension) {
+        throw new Error(
+          `insertVectors: embedding length ${item.embedding.length} does not match declared dimension ${item.dimension} (path "${item.path}")`,
+        )
+      }
+    }
+    const tx = this.db.transaction(CHUNKS_STORE, 'readwrite')
+    const store = tx.objectStore(CHUNKS_STORE)
+    const inserted: Array<{ id: number; row: NewChunkRecord }> = []
+    for (const item of data) {
       const row: NewChunkRecord = {
         model: item.model,
         path: item.path,
@@ -234,7 +266,8 @@ export class IndexedDbVectorStore implements VectorStore {
         content_hash: item.content_hash ?? null,
         dimension: item.dimension,
         metadata: item.metadata,
-        vector: l2Normalize(item.embedding),
+        // Non-null: validated above, before the transaction was opened.
+        vector: l2Normalize(item.embedding as number[]),
       }
       // The `chunks` store's key is an autoIncrement number, so the
       // generated key is always a number despite IDBValidKey's wider type.
@@ -280,17 +313,27 @@ export class IndexedDbVectorStore implements VectorStore {
     await transactionCompletion(tx)
   }
 
+  /**
+   * Reports per-model row counts and `vectorBytes` (`rowCount * dimension *
+   * 4`, i.e. the on-disk float32 vector payload's size — a performance-over-
+   * precision estimate, not an exact byte count of the whole record).
+   * Previously this used `store.openCursor()` and read every `cursor.value`
+   * purely to count rows and sum byte estimates — at hundreds of thousands
+   * of chunks that meant deserializing a full vector + content string per
+   * row just to compute a count (see Codex finding 2.4). Instead: enumerate
+   * distinct model ids via a unique key cursor over `MODEL_INDEX`, then
+   * `index.count(modelId)` for the row count (index-only, no record read)
+   * and one `index.openCursor(modelId)` — stopped after its first result —
+   * purely to read that one row's `dimension`.
+   */
   async getEmbeddingStats(): Promise<
-    Array<{ model: string; rowCount: number; totalDataBytes: number }>
+    Array<{ model: string; rowCount: number; vectorBytes: number }>
   > {
     const tx = this.db.transaction(CHUNKS_STORE, 'readonly')
-    const store = tx.objectStore(CHUNKS_STORE)
-    const statsByModel = new Map<
-      string,
-      { rowCount: number; totalDataBytes: number }
-    >()
+    const modelIndex = tx.objectStore(CHUNKS_STORE).index(MODEL_INDEX)
+    const modelIds: string[] = []
     await new Promise<void>((resolve, reject) => {
-      const request = store.openCursor()
+      const request = modelIndex.openKeyCursor(null, 'nextunique')
       request.onerror = () =>
         reject(vectorDbError('stats scan failed', request.error))
       request.onsuccess = () => {
@@ -299,22 +342,36 @@ export class IndexedDbVectorStore implements VectorStore {
           resolve()
           return
         }
-        const record = cursor.value as ChunkRecord
-        const existing = statsByModel.get(record.model) ?? {
-          rowCount: 0,
-          totalDataBytes: 0,
-        }
-        existing.rowCount += 1
-        existing.totalDataBytes +=
-          record.dimension * 4 + record.content.length * 2
-        statsByModel.set(record.model, existing)
+        modelIds.push(cursor.key as string)
         cursor.continue()
       }
     })
+
+    const stats: Array<{
+      model: string
+      rowCount: number
+      vectorBytes: number
+    }> = []
+    for (const model of modelIds) {
+      const rowCount = await requestResult(modelIndex.count(model))
+      const dimension = await new Promise<number>((resolve, reject) => {
+        const request = modelIndex.openCursor(model)
+        request.onerror = () =>
+          reject(vectorDbError('stats scan failed', request.error))
+        request.onsuccess = () => {
+          const cursor = request.result
+          resolve(cursor ? (cursor.value as ChunkRecord).dimension : 0)
+        }
+      })
+      stats.push({
+        model,
+        rowCount,
+        vectorBytes: rowCount * dimension * 4,
+      })
+    }
+
     await transactionCompletion(tx)
-    return [...statsByModel.entries()]
-      .map(([model, stats]) => ({ model, ...stats }))
-      .sort((a, b) => a.model.localeCompare(b.model))
+    return stats.sort((a, b) => a.model.localeCompare(b.model))
   }
 
   async performSimilaritySearch(
@@ -326,6 +383,11 @@ export class IndexedDbVectorStore implements VectorStore {
       scope?: { files: string[]; folders: string[]; exclude?: string[] }
     },
   ): Promise<Array<VectorSelect & { similarity: number }>> {
+    if (queryVector.length !== embeddingModel.dimension) {
+      throw new Error(
+        `performSimilaritySearch: query vector length ${queryVector.length} does not match model dimension ${embeddingModel.dimension}`,
+      )
+    }
     const index = await this.ensureIndexLoaded(
       embeddingModel.id,
       embeddingModel.dimension,
@@ -368,31 +430,46 @@ export class IndexedDbVectorStore implements VectorStore {
             CANDIDATE_WINDOW_MIN,
           )
 
-    const top = await topKSearch({
-      matrix: index.matrix,
-      scales: index.scales,
-      dimension: index.dimension,
-      size: index.size,
-      isTombstoned: (rowIndex) => index.isTombstoned(rowIndex),
-      filter,
-      queryVector: normalizedQuery,
-      limit: candidateLimit,
-      minSimilarity: options.minSimilarity,
-    })
-    if (top.length === 0) return []
+    // `beginScan`/`endScan` bracket the scan so a concurrent delete's
+    // tombstoning can't trigger a mid-scan `compact()` that remaps `ids`/
+    // `paths`/tombstones out from under this scan's captured `matrix`/
+    // `scales` (see `VectorIndex`'s class doc and Codex finding 1.1).
+    // The row indices the scan returns are only meaningful while the scan
+    // is still registered: `endScan()` may compact synchronously and remap
+    // every row, so candidate ids are resolved inside the bracket and only
+    // ids (never row indices) are used after it.
+    index.beginScan()
+    let candidateIds: number[]
+    try {
+      const top = await topKSearch({
+        matrix: index.matrix,
+        scales: index.scales,
+        dimension: index.dimension,
+        size: index.size,
+        isTombstoned: (rowIndex) => index.isTombstoned(rowIndex),
+        filter,
+        queryVector: normalizedQuery,
+        limit: candidateLimit,
+        minSimilarity: options.minSimilarity,
+        yieldEvery: this.scanYieldEvery,
+      })
+      candidateIds = top.map((row) => index.ids[row.rowIndex])
+    } finally {
+      index.endScan()
+    }
+    if (candidateIds.length === 0) return []
 
     // The scan above only ranked by an approximate int8 score. Rescore
     // every candidate against its exact float32 vector (already fetched
     // here to get `content`, so this is free), then apply the caller's
     // exact strict `> minSimilarity` and truncate to the real `limit` —
     // both intentionally deferred until this point.
-    const ids = top.map((row) => index.ids[row.rowIndex])
-    const records = await this.getByIds(ids)
+    const records = await this.getByIds(candidateIds)
     const recordById = new Map(records.map((record) => [record.id, record]))
 
     const rescored: Array<VectorSelect & { similarity: number }> = []
-    for (const { rowIndex } of top) {
-      const record = recordById.get(index.ids[rowIndex])
+    for (const id of candidateIds) {
+      const record = recordById.get(id)
       if (!record) continue
       const similarity = dotProduct(record.vector, normalizedQuery)
       if (similarity > options.minSimilarity) {
@@ -413,41 +490,74 @@ export class IndexedDbVectorStore implements VectorStore {
     return options.limit < 0 ? rescored : rescored.slice(0, options.limit)
   }
 
+  /**
+   * Fetches every id in one readonly transaction. All `get` requests are
+   * issued synchronously (via `.map`, before any is awaited) so they run
+   * against the same transaction concurrently rather than one at a time —
+   * `store.get(id)` returns an `IDBRequest` immediately, and `requestResult`
+   * attaches its listeners synchronously too, so nothing here actually
+   * awaits before every request has been issued (see Codex finding 2.5).
+   * `Promise.all` preserves the input `ids` order in its result array
+   * regardless of which request's underlying event fires first.
+   */
   private async getByIds(ids: number[]): Promise<ChunkRecord[]> {
     if (ids.length === 0) return []
     const tx = this.db.transaction(CHUNKS_STORE, 'readonly')
     const store = tx.objectStore(CHUNKS_STORE)
-    const records: ChunkRecord[] = []
-    for (const id of ids) {
-      const record = (await requestResult(store.get(id))) as
-        | ChunkRecord
-        | undefined
-      if (record) records.push(record)
-    }
+    const requests = ids.map(
+      (id) => requestResult(store.get(id)) as Promise<ChunkRecord | undefined>,
+    )
+    const results = await Promise.all(requests)
     await transactionCompletion(tx)
-    return records
+    return results.filter((record): record is ChunkRecord => !!record)
   }
 
+  /**
+   * Returns the loaded (or in-flight-loading) index for `modelId`, reloading
+   * from scratch whenever the request is for a different `dimension` than
+   * what's already loaded/loading — an existing index never silently serves
+   * a different dimension's queries (see Codex finding 1.4: an index keyed
+   * only by model id, with no dimension check, would keep an in-memory index
+   * built for a superseded dimension after the model's configured dimension
+   * changes, so both queries and future inserts for the new dimension would
+   * be applied against the stale index instead of a fresh one).
+   */
   private ensureIndexLoaded(
     modelId: string,
     dimension: number,
   ): Promise<VectorIndex> {
     const existing = this.indexes.get(modelId)
-    if (existing) return Promise.resolve(existing)
+    if (existing) {
+      if (existing.dimension === dimension) return Promise.resolve(existing)
+      this.indexes.delete(modelId)
+    }
     const inFlight = this.loadingIndexes.get(modelId)
-    if (inFlight) return inFlight
+    if (inFlight) {
+      if (inFlight.dimension === dimension) return inFlight.promise
+      // A load for a different dimension is already in flight. Let it run
+      // to completion undisturbed (its `.then` below only installs itself
+      // into `this.indexes`/`this.loadingIndexes` if it's still the
+      // current entry for `modelId`), and start a fresh load for the
+      // dimension actually requested here.
+      this.loadingIndexes.delete(modelId)
+    }
 
-    const promise = this.loadIndexFromDb(modelId, dimension)
-      .then((index) => {
+    const promise = this.loadIndexFromDb(modelId, dimension).then(
+      (index) => {
+        if (this.loadingIndexes.get(modelId)?.promise === promise) {
+          this.loadingIndexes.delete(modelId)
+        }
         this.indexes.set(modelId, index)
-        this.loadingIndexes.delete(modelId)
         return index
-      })
-      .catch((error: unknown) => {
-        this.loadingIndexes.delete(modelId)
+      },
+      (error: unknown) => {
+        if (this.loadingIndexes.get(modelId)?.promise === promise) {
+          this.loadingIndexes.delete(modelId)
+        }
         throw error
-      })
-    this.loadingIndexes.set(modelId, promise)
+      },
+    )
+    this.loadingIndexes.set(modelId, { dimension, promise })
     return promise
   }
 
@@ -462,6 +572,13 @@ export class IndexedDbVectorStore implements VectorStore {
    * rather than aborting the whole load — mirroring the PGlite baseline's
    * per-query `eq(dimension, ...)` filter, which simply excludes them
    * instead of erroring.
+   *
+   * Capacity is `reserve()`d up front from `index.count(modelId)` (an
+   * index-only count, no record reads) so the append loop below never has
+   * to grow the matrix mid-load — `count()` may modestly overcount rows
+   * whose stored dimension won't match (mismatched rows are skipped, not
+   * appended), which just means `reserve` pre-allocates a few rows more
+   * than strictly needed, not fewer.
    */
   private async loadIndexFromDb(
     modelId: string,
@@ -470,6 +587,8 @@ export class IndexedDbVectorStore implements VectorStore {
     const index = new VectorIndex(dimension)
     const tx = this.db.transaction(CHUNKS_STORE, 'readonly')
     const idbIndex = tx.objectStore(CHUNKS_STORE).index(MODEL_INDEX)
+    const rowCount = await requestResult(idbIndex.count(modelId))
+    index.reserve(rowCount)
     await new Promise<void>((resolve, reject) => {
       const request = idbIndex.openCursor(modelId)
       request.onerror = () =>

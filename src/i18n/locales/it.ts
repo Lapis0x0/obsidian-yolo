@@ -1157,6 +1157,7 @@ export const it: DeepPartial<TranslationKeys> = {
         "Pattern glob per i file da escludere dall'indice (uno per riga).",
       testPatterns: 'Testa pattern',
       manageEmbeddingDatabase: 'Gestisci database embedding',
+      vectorDataSize: 'Dati vettoriali (MB)',
       inMemoryIndexEstimate: 'Indice in memoria (MB)',
       manage: 'Gestisci',
       rebuildIndex: 'Ricostruisci indice',

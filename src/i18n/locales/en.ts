@@ -1260,6 +1260,7 @@ export const en: TranslationKeys = {
         "Specify glob patterns to exclude files from indexing (one per line); for example, use 'notes/**' for all files in the notes folder, leave empty to exclude nothing, and rebuild the entire vault index after changes.",
       testPatterns: 'Test patterns',
       manageEmbeddingDatabase: 'Manage embedding database',
+      vectorDataSize: 'Vector data (MB)',
       inMemoryIndexEstimate: 'In-memory index (MB)',
       manage: 'Manage',
       rebuildIndex: 'Rebuild index',

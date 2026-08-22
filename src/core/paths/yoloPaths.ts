@@ -5,7 +5,11 @@ export const YOLO_SKILLS_SUBDIR = 'skills'
 export const YOLO_SKILLS_INDEX_FILE_NAME = 'Skills.md'
 export const YOLO_SNIPPETS_FILE_NAME = 'snippets.md'
 export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
-export const YOLO_VECTOR_DB_FILE_NAME = '.yolo_vector_db.tar.gz'
+// Cleanup-only: the retired PGlite-backed vector store used to snapshot here.
+// The only remaining reader of this name is `DatabaseManager`'s legacy-artifact
+// sweep (`cleanupLegacyVectorDbArtifacts`) — nothing writes it anymore, so
+// don't reuse it as if it were a live storage path.
+export const LEGACY_YOLO_VECTOR_DB_ARCHIVE_FILE_NAME = '.yolo_vector_db.tar.gz'
 export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
 export const YOLO_LEARNING_SUBDIR = 'learning'
 // Host-owned projection root for artifacts a module ships and the rest of the
@@ -200,19 +204,22 @@ export const isWithinYoloUserDataRoot = (
   return normalized === root || normalized.startsWith(`${root}/`)
 }
 
-export const getYoloVectorDbPath = (
+/** Cleanup-only path for the retired PGlite vector store's tarball snapshot; see the file name's own doc comment. */
+export const getLegacyYoloVectorDbArchivePath = (
   settings?: YoloSettingsLike | null,
 ): string => {
   return normalizePath(
-    `${getYoloBaseDir(settings)}/${YOLO_VECTOR_DB_FILE_NAME}`,
+    `${getYoloBaseDir(settings)}/${LEGACY_YOLO_VECTOR_DB_ARCHIVE_FILE_NAME}`,
   )
 }
 
 // The vault-stored `data.json` mirror sits under `yolo.baseDir` for UX
-// consistency with other plugin files (.yolo_json_db, .yolo_vector_db.tar.gz).
-// A sibling pointer file at vault root (`.yolo_sync`) records where this
-// path is, so other devices can locate the mirror without needing the synced
-// `baseDir` value upfront — breaking the bootstrap circular dependency.
+// consistency with other plugin files (`.yolo_json_db`; the vector store
+// itself is IndexedDB-backed and has no vault-file counterpart — see
+// `src/database/vector-store/`). A sibling pointer file at vault root
+// (`.yolo_sync`) records where this path is, so other devices can locate the
+// mirror without needing the synced `baseDir` value upfront — breaking the
+// bootstrap circular dependency.
 export const getYoloDataJsonPath = (
   settings?: YoloSettingsLike | null,
 ): string => {

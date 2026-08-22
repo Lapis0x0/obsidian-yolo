@@ -7,5 +7,6 @@ export type EmbeddingModelClient = {
 export type EmbeddingDbStats = {
   model: string
   rowCount: number
-  totalDataBytes: number
+  /** `rowCount * dimension * 4` — the on-disk float32 vector payload's estimated size in bytes. */
+  vectorBytes: number
 }
