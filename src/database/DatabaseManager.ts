@@ -92,11 +92,6 @@ export class DatabaseManager {
     return this.cleanupPromise
   }
 
-  /** Same as {@link cleanup}; kept as a distinct name for quiesce-participant call sites. */
-  quiesceAndCleanup(): Promise<void> {
-    return this.cleanup()
-  }
-
   private async cleanupUnlocked(): Promise<void> {
     await this.vectorManager?.quiesce()
     this.vectorManager = null
@@ -141,15 +136,23 @@ async function cleanupLegacyVectorDbArtifacts(
   }
 
   if (!pluginDir) return
-  const legacyRuntimeDir = normalizePath(`${pluginDir}/runtime/pglite`)
-  try {
-    if (await app.vault.adapter.exists(legacyRuntimeDir)) {
-      await app.vault.adapter.rmdir(legacyRuntimeDir, true)
+  const legacyRuntimeDirs = [
+    normalizePath(`${pluginDir}/runtime/pglite`),
+    // Orphaned runtime-component cache: the generic installer only manages
+    // components it is asked about, it never prunes ids that are no longer
+    // in the registry, so this has to be swept here.
+    normalizePath(`${pluginDir}/runtime/components/pglite-engine`),
+  ]
+  for (const dir of legacyRuntimeDirs) {
+    try {
+      if (await app.vault.adapter.exists(dir)) {
+        await app.vault.adapter.rmdir(dir, true)
+      }
+    } catch (error) {
+      console.warn(
+        `[YOLO] Failed to remove legacy PGlite runtime directory "${dir}"`,
+        error,
+      )
     }
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to remove legacy PGlite runtime directory "${legacyRuntimeDir}"`,
-      error,
-    )
   }
 }

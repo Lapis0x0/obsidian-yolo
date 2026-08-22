@@ -133,7 +133,6 @@ export default tseslint.config(
       '*.sublime-workspace',
       'Reference',
       'c9/',
-      'compile-migration.js',
       'coverage',
       'Design',
       'esbuild.config.mjs',

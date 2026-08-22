@@ -7,7 +7,6 @@ import {
   ensureJsonDbRootDir,
   ensureLearningJsonDbRootDir,
   ensureUserDataRootDir,
-  ensureVectorDbPath,
   extractYoloDataMeta,
   readVaultDataJson,
   relocateYoloManagedData,
@@ -904,25 +903,6 @@ describe('yoloManagedData', () => {
     await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
   })
 
-  test('migrates legacy vector db into YOLO root', async () => {
-    const adapter = new MockAdapter()
-    const app = createMockApp(adapter)
-    const payload = new Uint8Array([1, 2, 3]).buffer
-    await adapter.writeBinary('.smtcmp_vector_db.tar.gz', payload)
-
-    const targetPath = await ensureVectorDbPath(app, {
-      yolo: { baseDir: 'Config/YOLO' },
-    })
-
-    expect(targetPath).toBe('Config/YOLO/.yolo_vector_db.tar.gz')
-    await expect(
-      adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz'),
-    ).resolves.toBe(true)
-    await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(
-      false,
-    )
-  })
-
   test('relocates managed data when YOLO base dir changes', async () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
@@ -930,10 +910,6 @@ describe('yoloManagedData', () => {
     await adapter.write(
       'YOLO/.yolo_json_db/chats/v1_abc.json',
       '{"id":"abc","title":"Moved"}',
-    )
-    await adapter.writeBinary(
-      'YOLO/.yolo_vector_db.tar.gz',
-      new Uint8Array([9, 9]).buffer,
     )
 
     const migrated = await relocateYoloManagedData({
@@ -946,13 +922,7 @@ describe('yoloManagedData', () => {
     await expect(
       adapter.exists('Config/YOLO/.yolo_json_db/chats/v1_abc.json'),
     ).resolves.toBe(true)
-    await expect(
-      adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz'),
-    ).resolves.toBe(true)
     await expect(adapter.exists('YOLO/.yolo_json_db')).resolves.toBe(false)
-    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
-      false,
-    )
   })
 
   test('rejects a configured root nested inside the default managed-data tree', async () => {
@@ -1005,41 +975,6 @@ describe('yoloManagedData', () => {
     ).resolves.toBe(false)
   })
 
-  test('rolls back chat relocation when vector relocation fails', async () => {
-    const adapter = new MockAdapter()
-    const app = createMockApp(adapter)
-    await adapter.mkdir('YOLO/.yolo_json_db/chats')
-    await adapter.write(
-      'YOLO/.yolo_json_db/chats/v1_abc.json',
-      '{"id":"abc","title":"Moved"}',
-    )
-    await adapter.writeBinary(
-      'YOLO/.yolo_vector_db.tar.gz',
-      new Uint8Array([9, 9]).buffer,
-    )
-    adapter.failWriteBinary('Config/YOLO/.yolo_vector_db.tar.gz')
-
-    const migrated = await relocateYoloManagedData({
-      app,
-      fromSettings: { yolo: { baseDir: 'YOLO' } },
-      toSettings: { yolo: { baseDir: 'Config/YOLO' } },
-    })
-
-    expect(migrated).toBe(false)
-    await expect(
-      adapter.exists('YOLO/.yolo_json_db/chats/v1_abc.json'),
-    ).resolves.toBe(true)
-    await expect(
-      adapter.exists('Config/YOLO/.yolo_json_db/chats/v1_abc.json'),
-    ).resolves.toBe(false)
-    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
-      true,
-    )
-    await expect(
-      adapter.exists('Config/YOLO/.yolo_vector_db.tar.gz'),
-    ).resolves.toBe(false)
-  })
-
   test('merges legacy managed data into existing yolo target on startup', async () => {
     const adapter = new MockAdapter()
     const app = createMockApp(adapter)
@@ -1052,10 +987,6 @@ describe('yoloManagedData', () => {
     await adapter.write(
       '.smtcmp_json_db/chats/v1_legacy.json',
       '{"id":"legacy","title":"Legacy"}',
-    )
-    await adapter.writeBinary(
-      '.smtcmp_vector_db.tar.gz',
-      new Uint8Array([1, 2, 3]).buffer,
     )
 
     const migrated = await relocateYoloManagedData({
@@ -1071,13 +1002,7 @@ describe('yoloManagedData', () => {
     await expect(
       adapter.exists('YOLO/.yolo_json_db/chats/v1_legacy.json'),
     ).resolves.toBe(true)
-    await expect(adapter.exists('YOLO/.yolo_vector_db.tar.gz')).resolves.toBe(
-      true,
-    )
     await expect(adapter.exists('.smtcmp_json_db')).resolves.toBe(false)
-    await expect(adapter.exists('.smtcmp_vector_db.tar.gz')).resolves.toBe(
-      false,
-    )
   })
 })
 

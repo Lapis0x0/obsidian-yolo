@@ -11,7 +11,6 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - `npm run lint:check` / `npm run lint:fix` - Check or fix Prettier and ESLint
 - `npm test` - Run the full Jest suite; use `npx jest <test-file> --runInBand` for serial debugging
 - `npm run styles:build` - Regenerate the host `styles.css` from `src/styles/**`
-- `npx drizzle-kit generate --name <name>` then `npm run migrate:compile` - Generate and compile database migrations
 
 ## Architecture
 
@@ -44,7 +43,7 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 ### Runtime Boundaries
 
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the host or module.
-- PGlite cannot use its default `node:fs` path in Obsidian. `DatabaseManager.ts` lazily loads its data, WASM, and vector extension and supplies them during initialization; preserve the build shims for `process` and `import.meta.url`.
+- The RAG vector store is IndexedDB-backed (`src/database/vector-store/`); schema v1 is final — a schema change requires bumping `VECTOR_DATABASE_VERSION` and adding an upgrade path in `vectorDatabase.ts`.
 - Do not create a second chat or agent orchestration path.
 
 ### Chat Runtime Invariants
@@ -60,13 +59,6 @@ Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm,
 - View-local DOM work (portals, listeners, `requestAnimationFrame`, `ResizeObserver`, `IntersectionObserver`, `getComputedStyle`, `activeElement`, timers) must use the node's `ownerDocument` / `defaultView`. Use `src/utils/dom/window-context.ts`; do not default to the globals.
 - Keyboard, Escape layering, and menus belong to Obsidian's keymap (`Scope` + `app.keymap.pushScope` / `popScope`, `Menu`, `Modal`). A React `onKeyDown` plus Radix/document-capture stack only sees keys that reach a node in that document, so it works in the main window and fails in the popout.
 - Overlay, shortcut, and portal behavior is not done until it has been checked in a popout, not only the main window.
-
-### Database Schema Changes
-
-1. Edit `src/database/schema.ts`.
-2. Run `npx drizzle-kit generate --name <migration-name>`.
-3. Review the generated files in `drizzle/`.
-4. Run `npm run migrate:compile` to update `src/database/migrations.json`.
 
 ## Obsidian and Style Constraints
 

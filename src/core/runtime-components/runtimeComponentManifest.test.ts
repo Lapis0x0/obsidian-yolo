@@ -39,7 +39,7 @@ describe('runtime component manifest', () => {
         components: [
           { ...descriptor, entry: '../entry.js' },
           { ...descriptor, id: 'pdf-engine' },
-          { ...descriptor, id: 'pglite-engine' },
+          { ...descriptor, id: 'bash-engine' },
         ],
       }),
     ).toThrow('invalid')

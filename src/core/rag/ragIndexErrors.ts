@@ -1,8 +1,4 @@
 import {
-  DatabaseSaveFailedError,
-  PgliteUnsupportedEnvironmentException,
-} from '../../database/exception'
-import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
   LLMBaseUrlNotSetException,
@@ -75,21 +71,6 @@ export const classifyRagIndexError = (error: unknown): RagIndexFailureKind => {
     error instanceof LLMAPIKeyInvalidException ||
     error instanceof LLMBaseUrlNotSetException
   ) {
-    return 'permanent'
-  }
-
-  // dumpDataDir OOM (#408) and similar persistence failures: classify as
-  // permanent so the run records as `failed` and the user sees actionable
-  // feedback. Retrying immediately wouldn't help — the snapshot is just as
-  // big — and we don't want to thrash an OOM condition with auto-retries.
-  if (error instanceof DatabaseSaveFailedError) {
-    return 'permanent'
-  }
-
-  // Missing Response/DecompressionStream (#270, #579): the environment won't
-  // change on its own, so retrying wastes embedding calls until the user
-  // updates Obsidian. Classify as permanent so the run surfaces as `failed`.
-  if (error instanceof PgliteUnsupportedEnvironmentException) {
     return 'permanent'
   }
 

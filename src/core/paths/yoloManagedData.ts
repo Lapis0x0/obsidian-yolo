@@ -11,13 +11,11 @@ import {
   YOLO_MODULE_INTENT_DIR_NAME,
   YOLO_MODULE_SETTINGS_DIR_NAME,
   getLegacyJsonDbRootDir,
-  getLegacyVectorDbPath,
   getYoloBaseDir,
   getYoloDataJsonPath,
   getYoloJsonDbRootDir,
   getYoloSyncPointerPath,
   getYoloUserDataRootDir,
-  getYoloVectorDbPath,
 } from './yoloPaths'
 
 /**
@@ -401,36 +399,6 @@ const migrateJsonDirectory = async (
   }
 
   await cleanupJsonDirectory(app, sourceDir)
-}
-
-const migrateBinaryFile = async (
-  app: App,
-  sourcePath: string,
-  targetPath: string,
-): Promise<void> => {
-  try {
-    const content = await app.vault.adapter.readBinary(sourcePath)
-    await ensureParentDir(app, targetPath)
-    await app.vault.adapter.writeBinary(targetPath, content)
-  } catch (error) {
-    await removePathIfExists(app, targetPath)
-    throw error
-  }
-
-  await removePathIfExists(app, sourcePath)
-}
-
-const mergeBinaryFile = async (
-  app: App,
-  sourcePath: string,
-  targetPath: string,
-): Promise<void> => {
-  await ensureParentDir(app, targetPath)
-  if (await app.vault.adapter.exists(targetPath)) {
-    await removePathIfExists(app, sourcePath)
-    return
-  }
-  await migrateBinaryFile(app, sourcePath, targetPath)
 }
 
 const findFirstExistingPath = async (
@@ -838,33 +806,6 @@ export const ensureLearningJsonDbRootDir = async (
   return targetRoot
 }
 
-export const ensureVectorDbPath = async (
-  app: App,
-  settings: YoloSettingsLike | null,
-): Promise<string> => {
-  await ensureDir(app, getYoloBaseDir(settings))
-  const targetPath = getYoloVectorDbPath(settings)
-  if (await app.vault.adapter.exists(targetPath)) {
-    return targetPath
-  }
-
-  const legacyPath = getLegacyVectorDbPath()
-  if (!(await app.vault.adapter.exists(legacyPath))) {
-    return targetPath
-  }
-
-  try {
-    await migrateBinaryFile(app, legacyPath, targetPath)
-    return targetPath
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to migrate vector database from "${legacyPath}" to "${targetPath}", fallback to legacy location.`,
-      error,
-    )
-    return legacyPath
-  }
-}
-
 const relocateJsonDbRootDir = async ({
   app,
   sourceCandidates,
@@ -920,35 +861,6 @@ const relocateJsonDbRootDir = async ({
   }
 }
 
-const relocateVectorDbFile = async ({
-  app,
-  sourceCandidates,
-  targetPath,
-}: {
-  app: App
-  sourceCandidates: string[]
-  targetPath: string
-}): Promise<boolean> => {
-  const sourcePath = await findFirstExistingPath(
-    app,
-    sourceCandidates.filter((candidate) => candidate !== targetPath),
-  )
-  if (!sourcePath) {
-    return true
-  }
-
-  try {
-    await mergeBinaryFile(app, sourcePath, targetPath)
-    return true
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to relocate vector database from "${sourcePath}" to "${targetPath}".`,
-      error,
-    )
-    return false
-  }
-}
-
 // Move the optional vault-stored `data.json` mirror alongside `baseDir`
 // changes. Failure is non-fatal — the mirror is best-effort and the next
 // successful `writeVaultDataJson` will overwrite the target anyway.
@@ -996,10 +908,8 @@ export const relocateYoloManagedData = async ({
   toSettings?: YoloSettingsLike | null
 }): Promise<boolean> => {
   const currentJsonDir = getYoloJsonDbRootDir(fromSettings)
-  const currentVectorPath = getYoloVectorDbPath(fromSettings)
   const currentUserDataDir = getYoloUserDataRootDir(fromSettings)
   const targetJsonDir = getYoloJsonDbRootDir(toSettings)
-  const targetVectorPath = getYoloVectorDbPath(toSettings)
   const targetUserDataDir = getYoloUserDataRootDir(toSettings)
   if (targetJsonDir.startsWith(`${currentJsonDir}/`)) {
     console.warn(
@@ -1016,7 +926,6 @@ export const relocateYoloManagedData = async ({
 
   await ensureDir(app, getYoloBaseDir(toSettings))
   const sourceJsonCandidates = [currentJsonDir, getLegacyJsonDbRootDir()]
-  const sourceVectorCandidates = [currentVectorPath, getLegacyVectorDbPath()]
   const sourceUserDataCandidates = [currentUserDataDir]
 
   const jsonSucceeded = await relocateJsonDbRootDir({
@@ -1047,40 +956,6 @@ export const relocateYoloManagedData = async ({
     if (!rolledBackJson) {
       console.warn(
         `[YOLO] Failed to roll back chat storage after user data relocation failed. Source root: "${targetJsonDir}".`,
-      )
-    }
-    return false
-  }
-
-  const vectorSucceeded = await relocateVectorDbFile({
-    app,
-    sourceCandidates: sourceVectorCandidates,
-    targetPath: targetVectorPath,
-  })
-  if (!vectorSucceeded) {
-    const rolledBackUserData = await relocateJsonDbRootDir({
-      app,
-      sourceCandidates: [targetUserDataDir],
-      targetDir: getYoloUserDataRootDir(fromSettings),
-      preferNewerMerge: true,
-      transform: makeAnkiJournalSrsPathTransform(
-        targetUserDataDir,
-        getYoloUserDataRootDir(fromSettings),
-      ),
-    })
-    if (!rolledBackUserData) {
-      console.warn(
-        `[YOLO] Failed to roll back user data after vector relocation failed. Source root: "${targetUserDataDir}".`,
-      )
-    }
-    const rolledBackJson = await relocateJsonDbRootDir({
-      app,
-      sourceCandidates: [targetJsonDir],
-      targetDir: getYoloJsonDbRootDir(fromSettings),
-    })
-    if (!rolledBackJson) {
-      console.warn(
-        `[YOLO] Failed to roll back chat storage after vector relocation failed. Source root: "${targetJsonDir}".`,
       )
     }
     return false

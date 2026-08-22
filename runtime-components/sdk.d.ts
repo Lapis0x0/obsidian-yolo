@@ -1,8 +1,4 @@
-export type RuntimeComponentId =
-  | 'tokenizer'
-  | 'pdf-engine'
-  | 'pglite-engine'
-  | 'bash-engine'
+export type RuntimeComponentId = 'tokenizer' | 'pdf-engine' | 'bash-engine'
 
 export type RuntimeComponentDefinition<TApi = unknown> = Readonly<{
   id: RuntimeComponentId

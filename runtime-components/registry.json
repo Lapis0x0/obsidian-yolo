@@ -28,19 +28,6 @@
       "sha256": "a224786bbf62622d86b7a0cc5146445609e2b1e364b7f6d1c8b8cc345d22c3ee"
     },
     {
-      "id": "pglite-engine",
-      "platforms": [
-        "desktop",
-        "mobile"
-      ],
-      "nameKey": "settings.modules.runtimeComponents.pgliteEngine.name",
-      "descriptionKey": "settings.modules.runtimeComponents.pgliteEngine.description",
-      "impactKey": "settings.modules.runtimeComponents.pgliteEngine.impact",
-      "entry": "runtime-components/pglite-engine/dist/entry.js",
-      "byteSize": 1291351,
-      "sha256": "dc57e5e0137029247e530bccd76f1107ebbc481b244b2c4437403d0d483c0166"
-    },
-    {
       "id": "tokenizer",
       "platforms": [
         "desktop",

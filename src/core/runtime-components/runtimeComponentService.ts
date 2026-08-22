@@ -95,7 +95,13 @@ export class RuntimeComponentService {
       intentStore: RuntimeComponentIntentStore
       deviceStateStore: RuntimeComponentDeviceStateStore
       scheduleIdle?(callback: () => void): () => void
-      reportError?(id: RuntimeComponentId, error: unknown): void
+      /**
+       * `id` is a `RuntimeComponentId` for a failure scoped to one
+       * component, or the `'runtime'` sentinel for failures that span the
+       * whole runtime-component subsystem (e.g. disposing every component
+       * on service `stop()`).
+       */
+      reportError?(id: RuntimeComponentId | 'runtime', error: unknown): void
     }>,
   ) {
     for (const descriptor of options.registry.components) {
@@ -285,7 +291,7 @@ export class RuntimeComponentService {
     this.retryTimers.clear()
     for (const id of this.records.keys()) this.options.runtime.beginQuiesce(id)
     void this.options.runtime.dispose().catch((error) => {
-      this.options.reportError?.('pglite-engine', error)
+      this.options.reportError?.('runtime', error)
     })
   }
 

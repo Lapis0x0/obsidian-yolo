@@ -354,12 +354,6 @@ export const it: DeepPartial<TranslationKeys> = {
           impact:
             'Disattivandolo, la lettura PDF e gli strumenti pagina non funzionano.',
         },
-        pgliteEngine: {
-          name: 'Motore PGlite',
-          description: 'Archivia e cerca l’indice locale della knowledge base.',
-          impact:
-            'Disattivandolo, indicizzazione e ricerca semantica non funzionano.',
-        },
         bashEngine: {
           name: 'Motore Bash',
           description:
@@ -1199,17 +1193,12 @@ export const it: DeepPartial<TranslationKeys> = {
       basicCardTitle: 'Knowledge base',
       basicCardDesc:
         "Controlla l'indicizzazione della knowledge base, il modello di embedding e le relative azioni di manutenzione.",
-      resourceCardTitle: 'Risorse PGlite',
-      resourceCardDesc:
-        'Gestisce le risorse runtime del database necessarie alla base di conoscenza.',
       scopeCardTitle: 'Ambito di ricerca',
       scopeCardDesc:
         "Specifica quali cartelle includere o escludere dall'indicizzazione.",
       maintenanceCardTitle: 'Stato e manutenzione',
       maintenanceCardDesc:
         'Mostra lo stato corrente della knowledge base e consente le operazioni di manutenzione necessarie.',
-      maintenanceUnavailableHint:
-        "Prepara prima le risorse PGlite qui sopra per usare la manutenzione dell'indice o il database embedding.",
       currentStatus: 'Stato corrente',
       currentStatusDesc:
         "Quando la knowledge base è attiva, l'indice viene mantenuto in background in base all'impostazione di aggiornamento automatico.",
@@ -1234,49 +1223,6 @@ export const it: DeepPartial<TranslationKeys> = {
         'Vai alle impostazioni per gestire indice, ambito, stato e opzioni avanzate.',
       composerEntryDesc:
         'L’indicizzazione della knowledge base ora è gestita nella pagina impostazioni; qui resta solo un accesso rapido.',
-      pgliteStatusCurrent: 'Stato attuale',
-      pgliteStatusSource: 'Origine risorsa',
-      pgliteStatusPath: 'Percorso risorsa',
-      pgliteStatusCheckedAt: 'Ultimo controllo',
-      pgliteStatusVersion: 'Versione runtime',
-      pgliteStatusReadyAt: 'Ultima preparazione',
-      pgliteStatusReason: 'Dettagli',
-      pgliteStateUnchecked: 'Non registrato',
-      pgliteStateChecking: 'Controllo in corso',
-      pgliteStateMissing: 'Non scaricato',
-      pgliteStateDownloading: 'Download in corso',
-      pgliteStateUnavailable: 'Non disponibile',
-      pgliteStateFailed: 'Preparazione fallita',
-      pgliteStateReady: 'Pronto',
-      pgliteSourceRemote: 'Cache remota',
-      pgliteSourceBundled: 'Incluso nel plugin',
-      pgliteSourceLocalCache: 'Cache locale',
-      pgliteDeliveryManual: 'Download manuale',
-      pgliteDownload: 'Scarica risorse',
-      pgliteRedownload: 'Scarica di nuovo',
-      pgliteRecheck: 'Controlla di nuovo',
-      pgliteDeleteLocal: 'Elimina risorse locali',
-      pgliteDownloadPlaceholder:
-        'Qui verrà collegato il punto di download manuale delle risorse PGlite remote.',
-      pgliteDeletePlaceholder:
-        'Qui verrà collegato il punto di eliminazione delle risorse locali di PGlite.',
-      pgliteDownloadingUnknownFile: 'file runtime',
-      pgliteInlineErrorTitle: 'Download non riuscito',
-      pgliteSummaryReadyRemote:
-        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
-      pgliteSummaryReadyBundled:
-        'Il plugin sta ancora usando risorse PGlite integrate. Dopo il passaggio alla distribuzione remota, questa scheda mostrerà lo stato della cache locale e ospiterà il download manuale.',
-      pgliteSummaryUnavailable:
-        'Le risorse runtime di PGlite non sono disponibili. La manutenzione dell’indice e la gestione del database embedding resteranno disabilitate finché le risorse non saranno pronte.',
-      pgliteSummaryReady:
-        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
-      pgliteSummaryDownloading:
-        'Le risorse runtime di PGlite sono in preparazione. Al termine del download, la manutenzione dell’indice e la gestione del database embedding torneranno disponibili automaticamente.',
-      pgliteSummaryFailed:
-        'La preparazione del runtime PGlite non è riuscita. Riprova il download oppure svuota la cache locale prima di usare di nuovo le funzioni knowledge base.',
-      pgliteSummaryMissing:
-        'Le risorse runtime di PGlite non sono ancora state preparate. Verranno scaricate automaticamente al primo uso della knowledge base, oppure puoi prepararle qui manualmente.',
-      pgliteDownloadingFile: 'Download',
       indexProgressTitle: 'Progresso indicizzazione',
       indexing: 'Indicizzazione in corso...',
       notStarted: 'Non iniziato',
@@ -2231,10 +2177,6 @@ export const it: DeepPartial<TranslationKeys> = {
     continueFailed: 'Indicizzazione ripresa fallita.',
     openYoloNewChatFailed:
       'Impossibile aprire la finestra chat YOLO; prova prima dal palette comandi.',
-    pgliteUnavailable:
-      'Runtime PGlite non disponibile; riprova a scaricare le risorse runtime.',
-    downloadingPglite:
-      'Download delle risorse runtime PGlite in corso; il primo utilizzo della knowledge base potrebbe richiedere un momento…',
     updatingIndex: 'Aggiornamento indice vault in corso…',
     indexUpdated: 'Indice vault aggiornato.',
     indexUpdateFailed: 'Aggiornamento indice vault fallito.',

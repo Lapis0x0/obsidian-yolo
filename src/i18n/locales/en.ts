@@ -331,11 +331,6 @@ export const en: TranslationKeys = {
           description: 'Extracts text, renders pages, and prepares PDF ranges.',
           impact: 'Turning this off disables PDF reading and page tools.',
         },
-        pgliteEngine: {
-          name: 'PGlite engine',
-          description: 'Stores and searches the local knowledge-base index.',
-          impact: 'Turning this off disables indexing and semantic search.',
-        },
         bashEngine: {
           name: 'Bash engine',
           description:
@@ -1308,17 +1303,12 @@ export const en: TranslationKeys = {
       basicCardTitle: 'Knowledge base',
       basicCardDesc:
         'Control knowledge base indexing, the embedding model, and related maintenance actions.',
-      resourceCardTitle: 'PGlite Resources',
-      resourceCardDesc:
-        'Manage the database runtime resources required by the knowledge base.',
       scopeCardTitle: 'Index scope',
       scopeCardDesc:
         'Choose which folders should be included in or excluded from indexing.',
       maintenanceCardTitle: 'Status & maintenance',
       maintenanceCardDesc:
         'Review the current knowledge base status and run maintenance actions when needed.',
-      maintenanceUnavailableHint:
-        'Prepare PGlite resources above before running index maintenance or embedding database management.',
       currentStatus: 'Current status',
       currentStatusDesc:
         'Once enabled, the knowledge base maintains its index in the background according to the auto-update setting.',
@@ -1343,49 +1333,6 @@ export const en: TranslationKeys = {
         'Go to settings to manage indexing, scope, status, and advanced options.',
       composerEntryDesc:
         'Knowledge base indexing is now managed from the settings page, and this view keeps a quick shortcut.',
-      pgliteStatusCurrent: 'Current status',
-      pgliteStatusSource: 'Resource source',
-      pgliteStatusPath: 'Resource path',
-      pgliteStatusCheckedAt: 'Last checked',
-      pgliteStatusVersion: 'Runtime version',
-      pgliteStatusReadyAt: 'Last prepared',
-      pgliteStatusReason: 'Details',
-      pgliteStateUnchecked: 'Not recorded',
-      pgliteStateChecking: 'Checking',
-      pgliteStateMissing: 'Not downloaded',
-      pgliteStateDownloading: 'Downloading',
-      pgliteStateUnavailable: 'Unavailable',
-      pgliteStateFailed: 'Failed',
-      pgliteStateReady: 'Ready',
-      pgliteSourceRemote: 'Remote cache',
-      pgliteSourceBundled: 'Bundled with plugin',
-      pgliteSourceLocalCache: 'Local cache',
-      pgliteDeliveryManual: 'Manual download',
-      pgliteDownload: 'Download resources',
-      pgliteRedownload: 'Download again',
-      pgliteRecheck: 'Check again',
-      pgliteDeleteLocal: 'Delete local resources',
-      pgliteDownloadPlaceholder:
-        'The manual download entry point for remote PGlite resources will be wired here.',
-      pgliteDeletePlaceholder:
-        'The local PGlite resource deletion entry point will be wired here.',
-      pgliteDownloadingUnknownFile: 'runtime file',
-      pgliteInlineErrorTitle: 'Download failed',
-      pgliteSummaryReadyRemote:
-        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
-      pgliteSummaryReadyBundled:
-        'The plugin is still using bundled PGlite resources. After remote distribution is introduced, this card will show local cache status and host the manual download entry.',
-      pgliteSummaryUnavailable:
-        'PGlite runtime resources are unavailable. Index maintenance and embedding database management will remain disabled until resources are ready.',
-      pgliteSummaryReady:
-        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
-      pgliteSummaryDownloading:
-        'PGlite runtime resources are being prepared. Once the download completes, index maintenance and embedding database management will become available automatically.',
-      pgliteSummaryFailed:
-        'PGlite runtime preparation failed. Retry downloading or clear the local cache before using knowledge base features again.',
-      pgliteSummaryMissing:
-        'PGlite runtime resources have not been prepared yet. They will be downloaded automatically on first knowledge base use, and you can also prepare them here manually.',
-      pgliteDownloadingFile: 'Downloading',
       // Index progress header/status
       indexProgressTitle: 'Retrieval-augmented generation index progress',
       indexing: 'In progress',
@@ -2389,10 +2336,6 @@ export const en: TranslationKeys = {
     continueFailed: 'Resumed index failed.',
     openYoloNewChatFailed:
       'Failed to open the YOLO chat window; try the command palette first.',
-    pgliteUnavailable:
-      'PGlite runtime unavailable; retry downloading the runtime assets.',
-    downloadingPglite:
-      'Downloading PGlite runtime assets; first-time knowledge base usage may take a moment…',
     updatingIndex: 'Updating vault index…',
     indexUpdated: 'Vault index updated.',
     indexUpdateFailed: 'Vault index update failed.',

@@ -199,8 +199,6 @@ import type {
   ReconcileResult,
   VectorManager,
 } from './database/modules/vector/VectorManager'
-import type { PGliteRuntimeManager } from './database/runtime/PGliteRuntimeManager'
-import { PGLITE_RUNTIME_VERSION } from './database/runtime/pgliteRuntimeMetadata'
 import {
   ChatLeafPlacement,
   ChatLeafSessionManager,
@@ -306,9 +304,6 @@ export default class YoloPlugin extends Plugin {
   dbManager: DatabaseManager | null = null
   private dbManagerInitPromise: Promise<DatabaseManager> | null = null
   private timeoutIds: ReturnType<typeof setTimeout>[] = [] // Use ReturnType instead of number
-  private pgliteRuntimeManager: PGliteRuntimeManager | null = null
-  private pgliteRuntimeManagerInitPromise: Promise<PGliteRuntimeManager> | null =
-    null
   private isContinuationInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
@@ -652,35 +647,6 @@ export default class YoloPlugin extends Plugin {
         this.getGeminiOAuthService(provider.id)
       }
     }
-  }
-
-  async getPGliteRuntimeManager(): Promise<PGliteRuntimeManager> {
-    if (!this.pgliteRuntimeManager) {
-      this.pgliteRuntimeManagerInitPromise ??= (async () => {
-        try {
-          const { PGliteRuntimeManager } = await import(
-            './database/runtime/PGliteRuntimeManager'
-          )
-          if (this.isUnloaded) {
-            throw new Error('[YOLO] Plugin unloaded during PGlite warmup')
-          }
-          this.pgliteRuntimeManager = new PGliteRuntimeManager({
-            app: this.app,
-            pluginId: this.manifest.id,
-            pluginDir: this.manifest.dir
-              ? normalizePath(this.manifest.dir)
-              : undefined,
-            runtimeVersion: PGLITE_RUNTIME_VERSION,
-          })
-          return this.pgliteRuntimeManager
-        } catch (error) {
-          this.pgliteRuntimeManagerInitPromise = null
-          throw error
-        }
-      })()
-    }
-
-    return this.pgliteRuntimeManager ?? this.pgliteRuntimeManagerInitPromise!
   }
 
   private getQuickAskController(): QuickAskController {
@@ -4439,19 +4405,6 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       reportError: (id, error) => {
         console.error(`[YOLO] Runtime component "${id}" failed`, error)
       },
-    })
-    service.registerQuiesceParticipant('pglite-engine', async () => {
-      this.ragIndexService?.cancelActiveRun()
-      await this.ragIndexService?.waitForIdle()
-      this.ragCoordinator?.cleanup()
-      const pending = this.dbManagerInitPromise
-      if (pending) await pending.catch(() => undefined)
-      try {
-        await this.dbManager?.quiesceAndCleanup()
-      } finally {
-        this.dbManager = null
-        this.dbManagerInitPromise = null
-      }
     })
     this.runtimeComponentService = service
     setRuntimeComponentService(service)

@@ -81,15 +81,16 @@ describe('DatabaseManager', () => {
     const store = (manager as unknown as { store: { close: () => void } }).store
     const closeSpy = jest.spyOn(store, 'close')
 
-    await Promise.all([manager.cleanup(), manager.quiesceAndCleanup()])
+    await Promise.all([manager.cleanup(), manager.cleanup()])
     expect(closeSpy).toHaveBeenCalledTimes(1)
   })
 
-  it('sweeps legacy PGlite artifacts (vault snapshot files + plugin runtime dir) on init', async () => {
+  it('sweeps legacy PGlite artifacts (vault snapshot files + plugin runtime dirs) on init', async () => {
     const { app, exists, remove, rmdir } = createFakeApp([
       'YOLO/.yolo_vector_db.tar.gz',
       '.smtcmp_vector_db.tar.gz',
       'plugins/yolo/runtime/pglite',
+      'plugins/yolo/runtime/components/pglite-engine',
     ])
     const pluginDir = 'plugins/yolo'
 
@@ -109,6 +110,15 @@ describe('DatabaseManager', () => {
     expect(remove).toHaveBeenCalledWith('.smtcmp_vector_db.tar.gz')
     expect(exists).toHaveBeenCalledWith('plugins/yolo/runtime/pglite')
     expect(rmdir).toHaveBeenCalledWith('plugins/yolo/runtime/pglite', true)
+    // Orphaned runtime-component cache: the generic installer never prunes
+    // ids that fall out of the registry, so this has to be swept here too.
+    expect(exists).toHaveBeenCalledWith(
+      'plugins/yolo/runtime/components/pglite-engine',
+    )
+    expect(rmdir).toHaveBeenCalledWith(
+      'plugins/yolo/runtime/components/pglite-engine',
+      true,
+    )
 
     await manager.cleanup()
   })

@@ -1,8 +1,4 @@
-export type RuntimeComponentId =
-  | 'tokenizer'
-  | 'pdf-engine'
-  | 'pglite-engine'
-  | 'bash-engine'
+export type RuntimeComponentId = 'tokenizer' | 'pdf-engine' | 'bash-engine'
 
 export type TokenizerComponentApi = Readonly<{
   count(text: string): number
@@ -106,31 +102,6 @@ export type VectorStore = Readonly<{
   getEmbeddingStats(): Promise<
     Array<{ model: string; rowCount: number; totalDataBytes: number }>
   >
-}>
-
-export type PgliteRuntimeResources = Readonly<{
-  fsBundle: Blob
-  pgliteWasmModule: WebAssembly.Module
-  initdbWasmModule: WebAssembly.Module
-  vectorExtensionBlob: Blob
-  vectorExtensionBundlePath: URL
-}>
-
-export type PgliteEngineSession = Readonly<{
-  vectorStore: VectorStore
-  migrationChanged: boolean
-  cleanupLegacyStaging(): Promise<number>
-  vacuum(): Promise<void>
-  dump(): Promise<Blob>
-  close(): Promise<void>
-}>
-
-export type PgliteEngineComponentApi = Readonly<{
-  createSession(options: {
-    resources: PgliteRuntimeResources
-    snapshot?: Blob
-  }): Promise<PgliteEngineSession>
-  dispose(): Promise<void>
 }>
 
 /**
@@ -271,7 +242,6 @@ export type BashEngineComponentApi = Readonly<{
 export type RuntimeComponentApiMap = {
   tokenizer: TokenizerComponentApi
   'pdf-engine': PdfEngineComponentApi
-  'pglite-engine': PgliteEngineComponentApi
   'bash-engine': BashEngineComponentApi
 }
 

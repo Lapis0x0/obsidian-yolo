@@ -9,8 +9,6 @@ import {
   RagIndexBusyError,
   type RagIndexRunSnapshot,
 } from '../../../core/rag/ragIndexService'
-import type { PGliteRuntimeStatus } from '../../../database/runtime/PGliteRuntimeManager'
-import { PGLITE_RUNTIME_VERSION } from '../../../database/runtime/pgliteRuntimeMetadata'
 import YoloPlugin from '../../../main'
 import { findFilesMatchingPatterns } from '../../../utils/glob-utils'
 import {
@@ -109,11 +107,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     null,
   )
   const [fileAnimationKey, setFileAnimationKey] = useState(0)
-  const [isCheckingPgliteResources, setIsCheckingPgliteResources] =
-    useState(false)
-  const [isRunningPgliteAction, setIsRunningPgliteAction] = useState(false)
-  const [pgliteResourceStatus, setPgliteResourceStatus] =
-    useState<PGliteRuntimeStatus | null>(null)
   const isRagEnabled = settings.ragOptions.enabled ?? true
   const isAutoUpdateEnabled = settings.ragOptions.autoUpdateEnabled ?? true
   const isIndexPdfEnabled = settings.ragOptions.indexPdf ?? true
@@ -186,55 +179,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     },
     [setSettings],
   )
-
-  const refreshPgliteResourceStatus = useCallback(async () => {
-    setIsCheckingPgliteResources(true)
-
-    try {
-      // Must stay lightweight: getStatus uses readCurrentFile (small JSON) +
-      // hasAllRuntimeFiles (exists() only). Do NOT introduce readBinary / SHA here.
-      const runtimeManager = await plugin.getPGliteRuntimeManager()
-      const result = await runtimeManager.getStatus()
-      setPgliteResourceStatus(result)
-    } catch (error: unknown) {
-      console.error('Failed to inspect PGlite resources', error)
-      const runtimeManager = await plugin.getPGliteRuntimeManager()
-      setPgliteResourceStatus({
-        kind: 'failed',
-        expectedVersion: PGLITE_RUNTIME_VERSION,
-        dir: runtimeManager.getRuntimeRootDir(),
-        checkedAt: Date.now(),
-        reason: error instanceof Error ? error.message : String(error),
-      })
-    } finally {
-      setIsCheckingPgliteResources(false)
-    }
-  }, [plugin])
-
-  useEffect(() => {
-    void refreshPgliteResourceStatus()
-  }, [refreshPgliteResourceStatus])
-
-  useEffect(() => {
-    if (
-      pgliteResourceStatus?.kind !== 'downloading' &&
-      !isRunningPgliteAction
-    ) {
-      return
-    }
-
-    const intervalId = window.setInterval(() => {
-      void refreshPgliteResourceStatus()
-    }, 500)
-
-    return () => {
-      window.clearInterval(intervalId)
-    }
-  }, [
-    isRunningPgliteAction,
-    pgliteResourceStatus?.kind,
-    refreshPgliteResourceStatus,
-  ])
 
   const parseIntegerInput = (value: string) => {
     const trimmed = value.trim()
@@ -513,120 +457,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     yoloBaseDir,
   ])
 
-  const pgliteStatusLabel = useMemo(() => {
-    if (isCheckingPgliteResources && pgliteResourceStatus === null) {
-      return t('settings.rag.pgliteStateChecking', 'Checking')
-    }
-    switch (pgliteResourceStatus?.kind) {
-      case 'missing':
-        return t('settings.rag.pgliteStateMissing', 'Not downloaded')
-      case 'downloading':
-        return t('settings.rag.pgliteStateDownloading', 'Downloading')
-      case 'ready':
-        return t('settings.rag.pgliteStateReady', 'Ready')
-      case 'failed':
-        return t('settings.rag.pgliteStateFailed', 'Failed')
-      default:
-        return t('settings.rag.pgliteStateUnchecked', 'Not recorded')
-    }
-  }, [isCheckingPgliteResources, pgliteResourceStatus, t])
-
-  const pgliteStatusTone =
-    pgliteResourceStatus?.kind === 'ready'
-      ? 'is-ready'
-      : pgliteResourceStatus?.kind === 'missing' ||
-          pgliteResourceStatus?.kind === 'downloading'
-        ? 'is-warning'
-        : 'is-danger'
-
-  const canUseIndexMaintenance = pgliteResourceStatus?.kind === 'ready'
-  const pglitePrimaryActionLabel =
-    pgliteResourceStatus?.kind === 'ready'
-      ? t('settings.rag.pgliteRedownload', 'Download again')
-      : t('settings.rag.pgliteDownload', 'Download resources')
-  const pgliteSummaryText =
-    pgliteResourceStatus?.kind === 'ready'
-      ? t(
-          'settings.rag.pgliteSummaryReady',
-          'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
-        )
-      : pgliteResourceStatus?.kind === 'downloading'
-        ? t(
-            'settings.rag.pgliteSummaryDownloading',
-            'PGlite runtime resources are being prepared. Once the download finishes, indexing and embedding database management will become available.',
-          )
-        : pgliteResourceStatus?.kind === 'failed'
-          ? t(
-              'settings.rag.pgliteSummaryFailed',
-              'PGlite runtime preparation failed. Retry downloading or remove the local cache before using knowledge base features again.',
-            )
-          : t(
-              'settings.rag.pgliteSummaryMissing',
-              'PGlite runtime resources have not been prepared yet. The plugin will auto-download them on first knowledge base use, and you can also prepare them here manually.',
-            )
-  const pgliteDownloadProgress =
-    pgliteResourceStatus?.kind === 'downloading' &&
-    pgliteResourceStatus.totalFiles > 0
-      ? Math.round(
-          (Math.max(0, pgliteResourceStatus.currentFileIndex - 1) /
-            pgliteResourceStatus.totalFiles) *
-            100,
-        )
-      : null
-  const pgliteDownloadDetail =
-    pgliteResourceStatus?.kind === 'downloading'
-      ? `${t('settings.rag.pgliteDownloadingFile', 'Downloading')}: ${
-          pgliteResourceStatus.currentFile ??
-          t('settings.rag.pgliteDownloadingUnknownFile', 'runtime file')
-        } (${pgliteResourceStatus.currentFileIndex}/${
-          pgliteResourceStatus.totalFiles
-        })`
-      : null
-  const pgliteFailureReason =
-    pgliteResourceStatus?.kind === 'failed' ? pgliteResourceStatus.reason : null
-  const runPgliteAction = useCallback(() => {
-    setIsRunningPgliteAction(true)
-
-    void (async () => {
-      try {
-        const runtimeManager = await plugin.getPGliteRuntimeManager()
-        if (pgliteResourceStatus?.kind === 'ready') {
-          new Notice(
-            t(
-              'notices.downloadingPglite',
-              'Downloading PGlite runtime assets. This may take a moment...',
-            ),
-          )
-          await runtimeManager.redownload()
-        } else {
-          await refreshPgliteResourceStatus()
-          new Notice(
-            t(
-              'notices.downloadingPglite',
-              'Downloading PGlite runtime assets. This may take a moment...',
-            ),
-          )
-          await runtimeManager.ensureReady()
-        }
-        await refreshPgliteResourceStatus()
-      } catch (error: unknown) {
-        console.error('Failed to run PGlite runtime action', error)
-        new Notice(
-          error instanceof Error
-            ? error.message
-            : t(
-                'notices.pgliteUnavailable',
-                'PGlite runtime is unavailable. Please retry downloading the runtime assets.',
-              ),
-          5000,
-        )
-        await refreshPgliteResourceStatus()
-      } finally {
-        setIsRunningPgliteAction(false)
-      }
-    })()
-  }, [pgliteResourceStatus?.kind, plugin, refreshPgliteResourceStatus, t])
-
   const runIndexJob = useCallback(
     async ({ mode, successNotice, failureNotice }: IndexJob) => {
       try {
@@ -843,58 +673,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       </div>
       <div className="yolo-rag-layout">
         <RAGCard
-          title={t('settings.rag.resourceCardTitle', 'PGlite 资源')}
-          description={t(
-            'settings.rag.resourceCardDesc',
-            '管理知识库运行所需的数据库运行时资源。',
-          )}
-          actions={
-            <ObsidianButton
-              text={pglitePrimaryActionLabel}
-              onClick={() => runPgliteAction()}
-              disabled={
-                isCheckingPgliteResources ||
-                isRunningPgliteAction ||
-                pgliteResourceStatus?.kind === 'downloading'
-              }
-            />
-          }
-        >
-          <div className="yolo-rag-resource-summary">
-            <span className={`yolo-rag-status-pill ${pgliteStatusTone}`}>
-              {pgliteStatusLabel}
-            </span>
-          </div>
-
-          {pgliteDownloadDetail ? (
-            <div className="yolo-rag-inline-status">
-              <div className="yolo-rag-inline-status-text">
-                {pgliteDownloadDetail}
-              </div>
-              <div className="yolo-rag-inline-progress" aria-hidden="true">
-                <div
-                  className="yolo-rag-inline-progress-bar"
-                  style={{ width: `${pgliteDownloadProgress ?? 0}%` }}
-                />
-              </div>
-            </div>
-          ) : null}
-
-          {pgliteFailureReason ? (
-            <div className="yolo-rag-inline-status yolo-rag-inline-status--error">
-              <div className="yolo-rag-inline-status-title">
-                {t('settings.rag.pgliteInlineErrorTitle', '下载失败')}
-              </div>
-              <div className="yolo-rag-inline-status-text">
-                {pgliteFailureReason}
-              </div>
-            </div>
-          ) : null}
-
-          <div className="yolo-muted-note">{pgliteSummaryText}</div>
-        </RAGCard>
-
-        <RAGCard
           title={t('settings.rag.basicCardTitle', '知识库')}
           description={t(
             'settings.rag.basicCardDesc',
@@ -990,15 +768,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </ObsidianSetting>
 
-          {!canUseIndexMaintenance && isRagEnabled && (
-            <div className="yolo-muted-note">
-              {t(
-                'settings.rag.maintenanceUnavailableHint',
-                '请先在上方准备好 PGlite 资源，再执行索引维护或嵌入数据库管理。',
-              )}
-            </div>
-          )}
-
           {isRagEnabled && (
             <>
               <ObsidianSetting
@@ -1044,7 +813,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 <div className="yolo-flex-row-gap-8 yolo-rag-maintenance-actions">
                   <ObsidianButton
                     text={t('settings.rag.manage')}
-                    disabled={!canUseIndexMaintenance}
                     onClick={() => {
                       new EmbeddingDbManageModal(app, plugin).open()
                     }}
@@ -1092,7 +860,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       <>
                         <ObsidianButton
                           text={primaryLabel}
-                          disabled={isIndexing || !canUseIndexMaintenance}
+                          disabled={isIndexing}
                           onClick={() => {
                             void runIndexJob({
                               mode: primaryMode,
@@ -1107,7 +875,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                               'settings.rag.rebuildFromScratch',
                               '从头重建',
                             )}
-                            disabled={isIndexing || !canUseIndexMaintenance}
+                            disabled={isIndexing}
                             onClick={() => {
                               new ConfirmModal(app, {
                                 title: t(

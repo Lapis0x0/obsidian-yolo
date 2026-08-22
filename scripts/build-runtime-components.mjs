@@ -12,12 +12,7 @@ process.chdir(root)
 const production = process.argv.includes('--production')
 const check = process.argv.includes('--check')
 const componentRoot = path.resolve('runtime-components')
-const allowedIds = new Set([
-  'tokenizer',
-  'pdf-engine',
-  'pglite-engine',
-  'bash-engine',
-])
+const allowedIds = new Set(['tokenizer', 'pdf-engine', 'bash-engine'])
 const nodeBuiltins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
@@ -56,17 +51,10 @@ for (const entry of entries.sort((left, right) =>
     sourcemap: false,
     metafile: true,
     write: !check,
-    inject:
-      entry.name === 'pglite-engine'
-        ? [path.resolve('runtime-components/import-meta-url-shim.ts')]
-        : [],
     define: {
       'process.env.NODE_ENV': JSON.stringify(
         production ? 'production' : 'development',
       ),
-      ...(entry.name === 'pglite-engine'
-        ? { 'import.meta.url': 'import_meta_url' }
-        : {}),
     },
     plugins: componentPlugins(entry.name),
     logLevel: 'silent',
@@ -199,66 +187,6 @@ function componentPlugins(componentId) {
       },
     })
   }
-  if (componentId === 'pglite-engine') {
-    plugins.push(pgliteShimPlugin(), {
-      name: 'runtime-pglite-worker',
-      setup(build) {
-        build.onResolve({ filter: /^virtual:pglite-migrations$/ }, () => ({
-          path: 'pglite-migrations',
-          namespace: 'runtime-generated',
-        }))
-        build.onLoad(
-          { filter: /^pglite-migrations$/, namespace: 'runtime-generated' },
-          async () => ({
-            contents: `export default ${await readFile(
-              path.resolve('runtime-components/pglite-engine/migrations.json'),
-              'utf8',
-            )}`,
-            loader: 'js',
-          }),
-        )
-        build.onResolve({ filter: /^virtual:pglite-worker-script$/ }, () => ({
-          path: 'pglite-worker',
-          namespace: 'runtime-worker',
-        }))
-        build.onLoad(
-          { filter: /^pglite-worker$/, namespace: 'runtime-worker' },
-          async () => {
-            const result = await esbuild.build({
-              entryPoints: [
-                path.resolve(
-                  'runtime-components/pglite-engine/src/pglite-worker.ts',
-                ),
-              ],
-              bundle: true,
-              write: false,
-              platform: 'browser',
-              format: 'iife',
-              target: 'es2020',
-              inject: [
-                path.resolve('runtime-components/import-meta-url-shim.ts'),
-              ],
-              define: {
-                'import.meta.url': 'import_meta_url',
-                'process.env.NODE_ENV': JSON.stringify(
-                  production ? 'production' : 'development',
-                ),
-              },
-              plugins: [pgliteShimPlugin()],
-              minify: production,
-              logLevel: 'silent',
-            })
-            return {
-              contents: `export default ${JSON.stringify(
-                result.outputFiles[0]?.text ?? '',
-              )}`,
-              loader: 'js',
-            }
-          },
-        )
-      },
-    })
-  }
   return plugins
 }
 
@@ -290,18 +218,6 @@ function bashEngineZlibStubPlugin() {
   }
 }
 
-function pgliteShimPlugin() {
-  return {
-    name: 'runtime-pglite-browser-shim',
-    setup(build) {
-      build.onLoad({ filter: /@electric-sql[\\/]+pglite/ }, async (args) => ({
-        contents: `const process = {};\n${await readFile(args.path, 'utf8')}`,
-        loader: 'js',
-      }))
-    },
-  }
-}
-
 function verifyBoundary(componentId, metafile) {
   const componentPrefix = `runtime-components/${componentId}/`
   for (const [input, data] of Object.entries(metafile.inputs)) {
@@ -327,14 +243,7 @@ function verifyBoundary(componentId, metafile) {
           `Runtime component ${componentId} imports forbidden dependency ${imported.path}`,
         )
       }
-      const approvedPgliteDynamicImport =
-        componentId === 'pglite-engine' &&
-        normalized.startsWith('node_modules/@electric-sql/pglite/')
-      if (
-        imported.kind === 'dynamic-import' &&
-        !imported.external &&
-        !approvedPgliteDynamicImport
-      ) {
+      if (imported.kind === 'dynamic-import' && !imported.external) {
         throw new Error(
           `Runtime component ${componentId} contains an unapproved dynamic import in ${input}: ${imported.path}`,
         )
@@ -343,8 +252,7 @@ function verifyBoundary(componentId, metafile) {
     if (
       normalized.startsWith('runtime-components/') &&
       !normalized.startsWith(componentPrefix) &&
-      normalized !== 'runtime-components/sdk.d.ts' &&
-      normalized !== 'runtime-components/import-meta-url-shim.ts'
+      normalized !== 'runtime-components/sdk.d.ts'
     ) {
       throw new Error(
         `Runtime component ${componentId} imports another component: ${input}`,

@@ -9,10 +9,7 @@ const forbidden = [
   'node_modules/pdfjs-dist/',
   'node_modules/pdf-lib/',
   'node_modules/@pdf-lib/',
-  'node_modules/@electric-sql/pglite/',
-  'node_modules/drizzle-orm/',
   'inline-pdfjs-worker',
-  'inline-pglite-worker',
 ]
 for (const dependency of forbidden) {
   const match = inputs.find((input) => input.includes(dependency))
@@ -24,10 +21,6 @@ for (const dependency of forbidden) {
 const expectedClosures = {
   tokenizer: ['node_modules/gpt-tokenizer/'],
   'pdf-engine': ['node_modules/pdfjs-dist/', 'node_modules/pdf-lib/'],
-  'pglite-engine': [
-    'node_modules/@electric-sql/pglite/',
-    'node_modules/drizzle-orm/pglite/',
-  ],
 }
 for (const [componentId, dependencies] of Object.entries(expectedClosures)) {
   const metafile = JSON.parse(

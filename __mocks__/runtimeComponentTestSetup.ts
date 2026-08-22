@@ -20,7 +20,9 @@ setRuntimeComponentAcquirerForTests(
     } else if (id === 'pdf-engine') {
       api = createPdfApi() as RuntimeComponentApiMap[I]
     } else {
-      throw new Error('PGlite test component is not configured')
+      throw new Error(
+        `Runtime component "${String(id)}" is not configured in tests`,
+      )
     }
     return {
       api,
