@@ -30,6 +30,22 @@ type EmbeddingDbManagerModalComponentWrapperProps = {
   plugin: YoloPlugin
 }
 
+// Percent is file-based: totalFiles is known up front (unlike totalChunks,
+// which now only reflects chunks discovered so far and isn't a stable
+// denominator once reconcile streams by file batch). Fall back to the chunk
+// formula only when totalFiles is unavailable.
+const indexProgressPercent = (progress: IndexProgress | undefined): number => {
+  if (!progress) return 0
+  if ((progress.totalFiles ?? 0) > 0) {
+    return Math.round(
+      ((progress.completedFiles ?? 0) / progress.totalFiles) * 100,
+    )
+  }
+  return Math.round(
+    ((progress.completedChunks ?? 0) / (progress.totalChunks ?? 1)) * 100,
+  )
+}
+
 export class EmbeddingDbManageModal extends ReactModal<EmbeddingDbManagerModalComponentWrapperProps> {
   constructor(app: App, plugin: YoloPlugin) {
     super({
@@ -231,13 +247,7 @@ function EmbeddingDbManageModalComponent({
                 <td className="yolo-settings-embedding-db-manage-actions-loading">
                   <Loader2 className="yolo-spinner" size={14} />
                   <div>
-                    {Math.round(
-                      ((indexProgressMap.get(stat.model)?.completedChunks ??
-                        0) /
-                        (indexProgressMap.get(stat.model)?.totalChunks ?? 1)) *
-                        100,
-                    )}
-                    %
+                    {indexProgressPercent(indexProgressMap.get(stat.model))}%
                   </div>
                 </td>
               ) : (

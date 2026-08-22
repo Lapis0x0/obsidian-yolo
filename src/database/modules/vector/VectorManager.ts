@@ -39,6 +39,16 @@ import {
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
+// Bounded file-batch sizing for streaming reconcile: a batch of files is
+// chunkified, diffed, and embedded together, then the next batch starts.
+// This caps the number of DesiredChunk objects (full chunk text + metadata)
+// resident in memory at once to one batch instead of the whole vault.
+const FILE_BATCH_MAX_CHUNKS = 256
+const FILE_BATCH_MAX_FILES = 64
+// Removed paths are deleted ahead of the file-batch loop, in batches of this
+// many paths per listChunksForPaths/planReconcile/deleteVectorsByIds round.
+const REMOVED_PATHS_BATCH_SIZE = 256
+
 /** Opaque handle for the YOLO-root-aware PDF text cache. */
 type YoloSettingsLike = {
   yolo?: {
@@ -215,12 +225,35 @@ export class VectorManager {
       }
       const removedFilesCount = removedPaths.length
 
-      // 5. Chunkify and read actual for the diff scope.
-      const diffPaths = [...filesToChunkify.map((f) => f.path), ...removedPaths]
-
       if (filesToChunkify.length === 0 && removedPaths.length === 0) {
         // Nothing to do (truncateModel above already persisted, if any).
         return { permanentFailedPaths: [], chunkifyFailedPaths: [] }
+      }
+
+      // 5. Removed paths are deleted first, in bounded batches so a large
+      // removal set never forces one unbounded listChunksForPaths call.
+      // planReconcile([], actual) with an empty desired set deletes every
+      // actual row for these paths -- same semantics as a combined diff.
+      for (let i = 0; i < removedPaths.length; i += REMOVED_PATHS_BATCH_SIZE) {
+        if (signal?.aborted) {
+          throw new DOMException('Indexing cancelled by user', 'AbortError')
+        }
+        const batchPaths = removedPaths.slice(i, i + REMOVED_PATHS_BATCH_SIZE)
+        const actualRows = await this.repository.listChunksForPaths(
+          embeddingModel.id,
+          batchPaths,
+        )
+        const actual = actualRows.map((row) => ({
+          id: row.id,
+          path: row.path,
+          contentHash: row.content_hash,
+          metadata: row.metadata,
+          mtime: row.mtime,
+        }))
+        const plan = planReconcile([], actual)
+        if (plan.toDeleteIds.length > 0) {
+          await this.repository.deleteVectorsByIds(plan.toDeleteIds)
+        }
       }
 
       const textSplitter = RecursiveCharacterTextSplitter.fromLanguage(
@@ -228,9 +261,14 @@ export class VectorManager {
         { chunkSize: config.chunkSize },
       )
 
-      const desired: DesiredChunk[] = []
+      // Chunkify failures are soft (self-healing): the file is excluded from
+      // that batch's diff (its old index is preserved and mtime not
+      // advanced), so the next reconcile retries it. We log details for
+      // diagnostics and report the paths up to the caller, but never throw or
+      // pop a modal here.
       const failedFiles: { path: string; error: string }[] = []
       let completedFilesCount = 0
+      let totalChunksDiscovered = 0
       const folderProgress: Record<
         string,
         {
@@ -276,58 +314,156 @@ export class VectorManager {
         }
       }
 
-      const maybeYield = createYieldController(10)
-      for (const file of filesToChunkify) {
-        if (signal?.aborted) {
-          throw new DOMException('Indexing cancelled by user', 'AbortError')
-        }
-        await maybeYield()
-
-        const folder = folderOf(file.path)
+      // Merge the run-level counters into a full IndexProgress snapshot. Used
+      // both while chunkifying (currentFile advances per file) and while
+      // embedding (currentFile/waitingForRateLimit come from the embedder).
+      const reportProgress = (snapshot: {
+        completedChunks: number
+        totalChunks: number
+        currentFile?: string
+        currentFolder?: string
+        waitingForRateLimit?: boolean
+      }) =>
         onProgress?.({
-          completedChunks: 0,
-          totalChunks: 0,
+          ...snapshot,
           totalFiles: filesToChunkify.length,
           completedFiles: completedFilesCount,
-          currentFile: file.path,
-          currentFolder: folder,
           folderProgress,
           newFilesCount,
           updatedFilesCount,
           removedFilesCount,
         })
 
-        try {
-          const fileChunks = await this.chunkifyFile(
-            file,
-            textSplitter,
-            config.chunkSize,
-            signal,
-            config.settings ?? null,
-          )
-          desired.push(...fileChunks)
-          folderProgress[folder].completedFiles += 1
-          folderProgress[folder].totalChunks += fileChunks.length
-          for (const anc of ancestorsOf(folder).slice(1)) {
-            folderProgress[anc].totalChunks += fileChunks.length
+      // 6. Chunkify, diff, and embed in bounded file batches. The embedder is
+      // created once so its adaptive batch size, cumulative completedChunks,
+      // and classified failedChunks persist across every file batch -- the
+      // failure aggregation (rollback / throw) happens once, at the very end
+      // of this method, over the failures accumulated across all batches.
+      const embedder = this.createChunkEmbedder(embeddingModel, {
+        signal,
+        maxConcurrency: config.embeddingConcurrency,
+        onProgress: (snapshot) =>
+          reportProgress({ ...snapshot, totalChunks: totalChunksDiscovered }),
+      })
+
+      const maybeYield = createYieldController(10)
+      let wholeBatchFailed = false
+      let fileIdx = 0
+      while (fileIdx < filesToChunkify.length) {
+        const batchDesired: DesiredChunk[] = []
+        const batchAttemptedPaths: string[] = []
+        const batchFailedPaths = new Set<string>()
+
+        while (
+          fileIdx < filesToChunkify.length &&
+          batchAttemptedPaths.length < FILE_BATCH_MAX_FILES &&
+          batchDesired.length < FILE_BATCH_MAX_CHUNKS
+        ) {
+          const file = filesToChunkify[fileIdx]
+          fileIdx += 1
+          if (signal?.aborted) {
+            throw new DOMException('Indexing cancelled by user', 'AbortError')
           }
-          completedFilesCount += 1
-        } catch (error) {
-          if (error instanceof DOMException && error.name === 'AbortError') {
-            throw error
-          }
-          failedFiles.push({
-            path: file.path,
-            error: error instanceof Error ? error.message : 'Unknown error',
+          await maybeYield()
+
+          const folder = folderOf(file.path)
+          reportProgress({
+            completedChunks: embedder.completedChunks,
+            totalChunks: totalChunksDiscovered,
+            currentFile: file.path,
+            currentFolder: folder,
           })
+
+          batchAttemptedPaths.push(file.path)
+          try {
+            const fileChunks = await this.chunkifyFile(
+              file,
+              textSplitter,
+              config.chunkSize,
+              signal,
+              config.settings ?? null,
+            )
+            batchDesired.push(...fileChunks)
+            totalChunksDiscovered += fileChunks.length
+            folderProgress[folder].completedFiles += 1
+            folderProgress[folder].totalChunks += fileChunks.length
+            for (const anc of ancestorsOf(folder).slice(1)) {
+              folderProgress[anc].totalChunks += fileChunks.length
+            }
+          } catch (error) {
+            if (error instanceof DOMException && error.name === 'AbortError') {
+              throw error
+            }
+            batchFailedPaths.add(file.path)
+            failedFiles.push({
+              path: file.path,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            })
+          }
+        }
+
+        // Critical: exclude failed-to-chunkify paths from this batch's diff.
+        // Their `desired` is empty (chunking threw) but their existing rows
+        // must NOT be treated as "no longer desired" -- that would silently
+        // delete a user's index after a transient I/O error. Skip them; the
+        // next reconcile retries.
+        const safeBatchPaths = batchAttemptedPaths.filter(
+          (p) => !batchFailedPaths.has(p),
+        )
+        const actualRows = truncate
+          ? []
+          : await this.repository.listChunksForPaths(
+              embeddingModel.id,
+              safeBatchPaths,
+            )
+        const actual = actualRows.map((row) => ({
+          id: row.id,
+          path: row.path,
+          contentHash: row.content_hash,
+          metadata: row.metadata,
+          mtime: row.mtime,
+        }))
+        const plan = planReconcile(batchDesired, actual)
+
+        // Apply deletions and mtime bumps before embedding so that on-disk
+        // state converges monotonically toward `desired`.
+        if (plan.toDeleteIds.length > 0) {
+          await this.repository.deleteVectorsByIds(plan.toDeleteIds)
+        }
+        if (plan.toBumpMtime.length > 0) {
+          await this.repository.bumpMtimeByIds(plan.toBumpMtime)
+        }
+
+        const { wholeBatchFailed: batchWholeFailed } = await embedder.embed(
+          plan.toEmbed,
+        )
+        completedFilesCount += batchAttemptedPaths.length
+        reportProgress({
+          completedChunks: embedder.completedChunks,
+          totalChunks: totalChunksDiscovered,
+        })
+
+        if (batchWholeFailed) {
+          // Stop processing further batches; the failure aggregation below
+          // decides whether this surfaces as a transient retry or a hard
+          // failure. Later files are left un-chunkified / un-embedded.
+          wholeBatchFailed = true
+          break
         }
       }
 
-      // Chunkify failures are soft (self-healing): the files are excluded from the
-      // diff (their old index is preserved and mtime not advanced), so the next
-      // reconcile retries them. We log details for diagnostics and report the
-      // paths up to the caller, but never throw or pop a modal here.
-      const chunkifyFailedPaths = failedFiles.map((f) => f.path)
+      if (filesToChunkify.length === 0) {
+        // Deletion-only run (no files to chunkify): report the resting state
+        // once so the UI doesn't see stale in-flight progress from a
+        // previous run.
+        reportProgress({ completedChunks: 0, totalChunks: 0 })
+      }
+
+      // Chunkify failures are soft (self-healing): the file is excluded from
+      // that batch's diff (its old index is preserved and mtime not
+      // advanced), so the next reconcile retries it. We log details for
+      // diagnostics and report the paths up to the caller, but never throw or
+      // pop a modal here.
       if (failedFiles.length > 0) {
         const errorDetails = failedFiles
           .map(({ path, error }) => `File: ${path}\nError: ${error}`)
@@ -336,74 +472,106 @@ export class VectorManager {
           `[YOLO] Failed to chunkify ${failedFiles.length} file(s) (will retry next reconcile):\n\n${errorDetails}`,
         )
       }
+      const chunkifyFailedPaths = failedFiles.map((f) => f.path)
 
-      // 6. Read actual rows over the diff scope and plan.
+      // ---- Failure aggregation + classification-based routing ----
       //
-      // Critical: exclude failed-to-chunkify paths from the diff. Their `desired`
-      // is empty (chunking threw) but their existing rows must NOT be treated as
-      // "no longer desired" — that would silently delete a user's index after a
-      // transient I/O error. Skip them; next reconcile will retry.
-      const failedPaths = new Set(failedFiles.map((f) => f.path))
-      const safeDiffPaths = diffPaths.filter((p) => !failedPaths.has(p))
-      const actualRows = truncate
-        ? []
-        : await this.repository.listChunksForPaths(
-            embeddingModel.id,
-            safeDiffPaths,
+      // Aggregate per-chunk failures (accumulated across every file batch) by
+      // file. A file is rolled back if it has ANY transient failure (even
+      // mixed transient+permanent): keeping its successful/reused chunks
+      // would stamp the current mtime and let the transient gap be frozen
+      // forever (MAX-mtime skip). Files whose failures are exclusively
+      // permanent/unknown can never index fully, so we keep their successful
+      // chunks (stable mtime, no flapping) and surface a persistent,
+      // actionable warning instead of retrying forever.
+      const failedChunks = embedder.failedChunks
+      let softPermanentFailedPaths: string[] = []
+      if (failedChunks.length > 0) {
+        const failuresByPath = new Map<string, RagIndexFailureKind[]>()
+        for (const chunk of failedChunks) {
+          const bucket = failuresByPath.get(chunk.path)
+          if (bucket) bucket.push(chunk.kind)
+          else failuresByPath.set(chunk.path, [chunk.kind])
+        }
+
+        const rollbackPaths: string[] = []
+        const permanentFailedPaths: string[] = []
+        for (const [path, kinds] of failuresByPath) {
+          if (kinds.some((kind) => kind === 'transient')) {
+            rollbackPaths.push(path)
+          } else {
+            permanentFailedPaths.push(path)
+          }
+        }
+
+        if (rollbackPaths.length > 0) {
+          // This run is incomplete and will retry (RagIndexIncompleteError
+          // below). Roll back BOTH transient AND permanent-failed files:
+          // - transient: must be re-embedded;
+          // - permanent: leaving its partial success would stamp the current
+          //   mtime and let the file be silently skipped on the retry,
+          //   freezing the gap. Re-evaluate it next run; a permanent-only
+          //   file is then surfaced (below) once a clean run completes.
+          // Delete each file's ENTIRE row set (incl. reused/bumped chunks
+          // from the apply step above), so no surviving row carries the
+          // current mtime. (rollbackPaths and permanentFailedPaths are
+          // disjoint by construction.)
+          await this.repository.deleteVectorsByPaths(embeddingModel.id, [
+            ...rollbackPaths,
+            ...permanentFailedPaths,
+          ])
+        }
+
+        // Persistent "keep + warn" is valid ONLY for a fully-processed run
+        // with no transient retry in flight. On an early stop
+        // (wholeBatchFailed) the run is incomplete and surfaces via the
+        // throw below; on a transient retry the permanent files were just
+        // rolled back for re-evaluation. Either way, suppress the partial
+        // report here to avoid a misleading "the rest is indexed" message /
+        // a frozen gap.
+        if (
+          permanentFailedPaths.length > 0 &&
+          rollbackPaths.length === 0 &&
+          !wholeBatchFailed
+        ) {
+          softPermanentFailedPaths = permanentFailedPaths
+          const errorDetails = failedChunks
+            .filter(
+              (chunk) =>
+                !failuresByPath
+                  .get(chunk.path)
+                  ?.some((kind) => kind === 'transient'),
+            )
+            .map((chunk) => `File: ${chunk.path}\nError: ${chunk.error}`)
+            .join('\n\n')
+          console.warn(
+            `[YOLO] ${permanentFailedPaths.length} file(s) could not be indexed (kept partial results, will not retry):\n\n${errorDetails}`,
           )
-      const actual = actualRows.map((row) => ({
-        id: row.id,
-        path: row.path,
-        contentHash: row.content_hash,
-        metadata: row.metadata,
-        mtime: row.mtime,
-      }))
-      const plan = planReconcile(desired, actual)
+        }
 
-      // 7. Apply deletions and mtime bumps before embedding so that on-disk
-      //    state converges monotonically toward `desired`.
-      if (plan.toDeleteIds.length > 0) {
-        await this.repository.deleteVectorsByIds(plan.toDeleteIds)
-      }
-      if (plan.toBumpMtime.length > 0) {
-        await this.repository.bumpMtimeByIds(plan.toBumpMtime)
+        if (rollbackPaths.length > 0) {
+          throw new RagIndexIncompleteError([
+            ...rollbackPaths,
+            ...permanentFailedPaths,
+          ])
+        }
       }
 
-      if (plan.toEmbed.length === 0) {
-        onProgress?.({
-          completedChunks: 0,
-          totalChunks: 0,
-          totalFiles: filesToChunkify.length,
-          completedFiles: completedFilesCount,
-          folderProgress,
-          newFilesCount,
-          updatedFilesCount,
-          removedFilesCount,
-        })
-        return { permanentFailedPaths: [], chunkifyFailedPaths }
+      // Early stop with no transient failures to retry: the cause is
+      // permanent/unknown (e.g. invalid API key) and later batches were
+      // never attempted. Throw so the run is recorded as failed (no false
+      // success, no retry for a permanent cause); the caller surfaces the
+      // details.
+      if (wholeBatchFailed) {
+        throw new Error(
+          'Embedding halted: an entire batch failed to embed and indexing was stopped before completing all chunks.',
+        )
       }
 
-      // 8. Embed in batches with rate-limit aware retry.
-      const { permanentFailedPaths } = await this.embedAndInsertBatches(
-        plan.toEmbed,
-        embeddingModel,
-        {
-          signal,
-          maxConcurrency: config.embeddingConcurrency,
-          onProgress: (snapshot) =>
-            onProgress?.({
-              ...snapshot,
-              totalFiles: filesToChunkify.length,
-              completedFiles: completedFilesCount,
-              folderProgress,
-              newFilesCount,
-              updatedFilesCount,
-              removedFilesCount,
-            }),
-        },
-      )
-
-      return { permanentFailedPaths, chunkifyFailedPaths }
+      return {
+        permanentFailedPaths: softPermanentFailedPaths,
+        chunkifyFailedPaths,
+      }
     } finally {
       releaseOperation()
     }
@@ -595,8 +763,17 @@ export class VectorManager {
     return chunks
   }
 
-  private async embedAndInsertBatches(
-    toEmbed: DesiredChunk[],
+  /**
+   * Create a per-run chunk embedder. Its adaptive batch size, cumulative
+   * `completedChunks`, and classified `failedChunks` persist across every
+   * `embed()` call, so one reconcile run can process many bounded file
+   * batches without losing rate-limit backoff state or double-counting
+   * progress. `embed()` never rolls back or throws for per-chunk failures
+   * (only for user-initiated abort) — the caller (`reconcile()`) performs the
+   * end-of-run failure aggregation over `failedChunks` once, after every
+   * batch has been attempted.
+   */
+  private createChunkEmbedder(
     embeddingModel: EmbeddingModelClient,
     options: {
       signal?: AbortSignal
@@ -612,9 +789,19 @@ export class VectorManager {
         waitingForRateLimit?: boolean
       }) => void
     },
-  ): Promise<{ permanentFailedPaths: string[] }> {
+  ): {
+    embed: (toEmbed: DesiredChunk[]) => Promise<{ wholeBatchFailed: boolean }>
+    readonly completedChunks: number
+    readonly failedChunks: {
+      path: string
+      metadata: VectorMetaData
+      error: string
+      kind: RagIndexFailureKind
+    }[]
+  } {
     const { signal, onProgress } = options
-    const totalChunks = toEmbed.length
+
+    // Cumulative across every `embed()` call in this run.
     let completedChunks = 0
     const failedChunks: {
       path: string
@@ -622,34 +809,9 @@ export class VectorManager {
       error: string
       kind: RagIndexFailureKind
     }[] = []
-    const fileBoundaries: Array<{ path: string; endChunk: number }> = []
-    let cumulative = 0
-    for (const chunk of toEmbed) {
-      cumulative += 1
-      const last = fileBoundaries[fileBoundaries.length - 1]
-      if (last && last.path === chunk.path) {
-        last.endChunk = cumulative
-      } else {
-        fileBoundaries.push({ path: chunk.path, endChunk: cumulative })
-      }
-    }
-    let fileCursor = 0
+    // Persists across calls so a file split across two progress ticks within
+    // the same batch isn't re-reported.
     let lastReportedFile: string | null = null
-    const currentFile = () => {
-      while (
-        fileCursor < fileBoundaries.length - 1 &&
-        completedChunks > fileBoundaries[fileCursor].endChunk
-      ) {
-        fileCursor += 1
-      }
-      return fileBoundaries[fileCursor]?.path
-    }
-    const nextReportedFile = () => {
-      const f = currentFile()
-      if (!f || f === lastReportedFile) return undefined
-      lastReportedFile = f
-      return f
-    }
 
     const MAX_BATCH_SIZE = Math.max(
       1,
@@ -660,260 +822,223 @@ export class VectorManager {
     const MIN_BATCH_SIZE = Math.min(10, MAX_BATCH_SIZE)
     let currentBatchSize = MAX_BATCH_SIZE
 
-    const embedOne = async (
-      chunk: DesiredChunk,
-    ): Promise<VectorInsert | null> => {
-      if (signal?.aborted) return null
-      try {
-        return await backOff(
-          async () => {
-            if (signal?.aborted) {
-              throw new DOMException('Indexing cancelled by user', 'AbortError')
-            }
-            if (chunk.content.length === 0) {
-              throw new Error(`Chunk content is empty in file: ${chunk.path}`)
-            }
-            if (chunk.content.includes('\x00')) {
-              throw new Error(
-                `Chunk content contains null bytes in file: ${chunk.path}`,
-              )
-            }
-            const embedding = await embeddingModel.getEmbedding(chunk.content)
-            completedChunks += 1
-            onProgress?.({
-              completedChunks,
-              totalChunks,
-              currentFile: nextReportedFile(),
-            })
-            return {
-              path: chunk.path,
-              mtime: chunk.mtime,
-              content: chunk.content,
-              content_hash: chunk.contentHash,
-              model: embeddingModel.id,
-              dimension: embeddingModel.dimension,
-              embedding,
-              metadata: chunk.metadata,
-            }
-          },
-          {
-            numOfAttempts: 6,
-            startingDelay: 1500,
-            timeMultiple: 2,
-            maxDelay: 30000,
-            retry: (error) => {
-              if (signal?.aborted) return false
-              if (!isTransientRagIndexError(error)) return false
-              const status =
-                typeof error === 'object' &&
-                error !== null &&
-                'status' in error &&
-                typeof (error as { status?: unknown }).status === 'number'
-                  ? (error as { status: number }).status
-                  : undefined
-              const message =
-                error instanceof Error ? error.message.toLowerCase() : ''
-              const waiting = status === 429 || message.includes('rate limit')
-              if (waiting) {
-                const f = currentFile() ?? chunk.path
-                lastReportedFile = f
-                onProgress?.({
-                  completedChunks,
-                  totalChunks,
-                  currentFile: f,
-                  waitingForRateLimit: true,
-                })
+    const embed = async (
+      toEmbed: DesiredChunk[],
+    ): Promise<{ wholeBatchFailed: boolean }> => {
+      const totalChunks = toEmbed.length
+
+      // Track which file a given position in `toEmbed` belongs to, so
+      // progress can report the currently-embedding file without an O(n)
+      // scan per chunk. Scoped to this call: a file batch never splits a
+      // single file across two `embed()` calls.
+      const fileBoundaries: Array<{ path: string; endChunk: number }> = []
+      let cumulative = 0
+      for (const chunk of toEmbed) {
+        cumulative += 1
+        const last = fileBoundaries[fileBoundaries.length - 1]
+        if (last && last.path === chunk.path) {
+          last.endChunk = cumulative
+        } else {
+          fileBoundaries.push({ path: chunk.path, endChunk: cumulative })
+        }
+      }
+      let fileCursor = 0
+      let completedInCall = 0
+      const currentFile = () => {
+        while (
+          fileCursor < fileBoundaries.length - 1 &&
+          completedInCall > fileBoundaries[fileCursor].endChunk
+        ) {
+          fileCursor += 1
+        }
+        return fileBoundaries[fileCursor]?.path
+      }
+      const nextReportedFile = () => {
+        const f = currentFile()
+        if (!f || f === lastReportedFile) return undefined
+        lastReportedFile = f
+        return f
+      }
+
+      const embedOne = async (
+        chunk: DesiredChunk,
+      ): Promise<VectorInsert | null> => {
+        if (signal?.aborted) return null
+        try {
+          return await backOff(
+            async () => {
+              if (signal?.aborted) {
+                throw new DOMException(
+                  'Indexing cancelled by user',
+                  'AbortError',
+                )
               }
-              return true
+              if (chunk.content.length === 0) {
+                throw new Error(`Chunk content is empty in file: ${chunk.path}`)
+              }
+              if (chunk.content.includes('\x00')) {
+                throw new Error(
+                  `Chunk content contains null bytes in file: ${chunk.path}`,
+                )
+              }
+              const embedding = await embeddingModel.getEmbedding(chunk.content)
+              completedChunks += 1
+              completedInCall += 1
+              onProgress?.({
+                completedChunks,
+                totalChunks,
+                currentFile: nextReportedFile(),
+              })
+              return {
+                path: chunk.path,
+                mtime: chunk.mtime,
+                content: chunk.content,
+                content_hash: chunk.contentHash,
+                model: embeddingModel.id,
+                dimension: embeddingModel.dimension,
+                embedding,
+                metadata: chunk.metadata,
+              }
             },
-          },
-        )
-      } catch (error) {
-        failedChunks.push({
-          path: chunk.path,
-          metadata: chunk.metadata,
-          error: error instanceof Error ? error.message : 'Unknown error',
-          // Classify the original error object (status/code/instanceof), not a
-          // stringified message, so transient vs permanent is reliable.
-          kind: classifyRagIndexError(error),
-        })
-        return null
+            {
+              numOfAttempts: 6,
+              startingDelay: 1500,
+              timeMultiple: 2,
+              maxDelay: 30000,
+              retry: (error) => {
+                if (signal?.aborted) return false
+                if (!isTransientRagIndexError(error)) return false
+                const status =
+                  typeof error === 'object' &&
+                  error !== null &&
+                  'status' in error &&
+                  typeof (error as { status?: unknown }).status === 'number'
+                    ? (error as { status: number }).status
+                    : undefined
+                const message =
+                  error instanceof Error ? error.message.toLowerCase() : ''
+                const waiting = status === 429 || message.includes('rate limit')
+                if (waiting) {
+                  const f = currentFile() ?? chunk.path
+                  lastReportedFile = f
+                  onProgress?.({
+                    completedChunks,
+                    totalChunks,
+                    currentFile: f,
+                    waitingForRateLimit: true,
+                  })
+                }
+                return true
+              },
+            },
+          )
+        } catch (error) {
+          failedChunks.push({
+            path: chunk.path,
+            metadata: chunk.metadata,
+            error: error instanceof Error ? error.message : 'Unknown error',
+            // Classify the original error object (status/code/instanceof), not a
+            // stringified message, so transient vs permanent is reliable.
+            kind: classifyRagIndexError(error),
+          })
+          return null
+        }
       }
-    }
 
-    // Set when a whole batch fails to embed and we stop early, leaving later
-    // batches unattempted. Such a run is NOT complete and must never be treated
-    // as success (see the post-loop handling below).
-    let wholeBatchFailed = false
-    // Soft permanent failures (files whose successful chunks are kept, but which
-    // can never index fully and are not retried). Surfaced to the caller via the
-    // return value — never thrown, never popped as a modal.
-    const softPermanentFailedPaths: string[] = []
-    for (
-      let batchStart = 0;
-      batchStart < toEmbed.length;
-      batchStart += currentBatchSize
-    ) {
-      const batch = toEmbed.slice(batchStart, batchStart + currentBatchSize)
-      if (signal?.aborted) {
-        throw new DOMException('Indexing cancelled by user', 'AbortError')
-      }
-      await yieldToMain()
+      // Set when a whole (adaptive) sub-batch fails to embed and we stop
+      // early, leaving the rest of this call's chunks (and, per the caller,
+      // any later file batches) unattempted. Such a run is NOT complete and
+      // must never be treated as success (see reconcile()'s aggregation).
+      let wholeBatchFailed = false
+      for (
+        let batchStart = 0;
+        batchStart < toEmbed.length;
+        batchStart += currentBatchSize
+      ) {
+        const batch = toEmbed.slice(batchStart, batchStart + currentBatchSize)
+        if (signal?.aborted) {
+          throw new DOMException('Indexing cancelled by user', 'AbortError')
+        }
+        await yieldToMain()
 
-      let validRows: VectorInsert[] = []
-      let attempt = 0
-      while (attempt < 2) {
-        attempt += 1
-        // Record where this attempt's failures begin. If the whole attempt
-        // fails and we retry, we discard them (below) so only the FINAL
-        // attempt's failures drive rollback/warning — otherwise a batch that
-        // fails attempt 1 but succeeds attempt 2 would still be rolled back.
-        const failureStart = failedChunks.length
-        const results = await Promise.all(batch.map((c) => embedOne(c)))
-        validRows = results.filter((r): r is VectorInsert => r !== null)
-        if (validRows.length > 0) {
-          if (
-            validRows.length !== batch.length &&
-            currentBatchSize > MIN_BATCH_SIZE
-          ) {
+        let validRows: VectorInsert[] = []
+        let attempt = 0
+        while (attempt < 2) {
+          attempt += 1
+          // Record where this attempt's failures begin. If the whole attempt
+          // fails and we retry, we discard them (below) so only the FINAL
+          // attempt's failures drive rollback/warning — otherwise a batch that
+          // fails attempt 1 but succeeds attempt 2 would still be rolled back.
+          const failureStart = failedChunks.length
+          const results = await Promise.all(batch.map((c) => embedOne(c)))
+          validRows = results.filter((r): r is VectorInsert => r !== null)
+          if (validRows.length > 0) {
+            if (
+              validRows.length !== batch.length &&
+              currentBatchSize > MIN_BATCH_SIZE
+            ) {
+              currentBatchSize = Math.max(
+                MIN_BATCH_SIZE,
+                Math.floor(currentBatchSize / 2),
+              )
+            } else if (
+              validRows.length === batch.length &&
+              currentBatchSize < MAX_BATCH_SIZE
+            ) {
+              currentBatchSize = Math.min(MAX_BATCH_SIZE, currentBatchSize + 4)
+            }
+            break
+          }
+          if (attempt < 2) {
+            // Discard this failed attempt's records before retrying.
+            failedChunks.splice(failureStart)
             currentBatchSize = Math.max(
               MIN_BATCH_SIZE,
               Math.floor(currentBatchSize / 2),
             )
-          } else if (
-            validRows.length === batch.length &&
-            currentBatchSize < MAX_BATCH_SIZE
-          ) {
-            currentBatchSize = Math.min(MAX_BATCH_SIZE, currentBatchSize + 4)
+            await yieldToMain()
           }
+        }
+
+        if (signal?.aborted) {
+          if (validRows.length > 0) {
+            await this.repository.insertVectors(validRows)
+          }
+          throw new DOMException('Indexing cancelled by user', 'AbortError')
+        }
+
+        if (validRows.length === 0 && batch.length > 0) {
+          // Whole batch failed (e.g. full network outage or invalid API key).
+          // Stop embedding and let the caller fall through to the unified
+          // failure aggregation at the end of the run: if the failures are
+          // transient it throws RagIndexIncompleteError (→ retry); if purely
+          // permanent/unknown the caller's post-loop guard throws so the run
+          // is recorded as failed rather than silently succeeding with later
+          // batches left unprocessed.
+          wholeBatchFailed = true
           break
         }
-        if (attempt < 2) {
-          // Discard this failed attempt's records before retrying.
-          failedChunks.splice(failureStart)
-          currentBatchSize = Math.max(
-            MIN_BATCH_SIZE,
-            Math.floor(currentBatchSize / 2),
-          )
-          await yieldToMain()
-        }
+        await this.repository.insertVectors(validRows)
+        onProgress?.({
+          completedChunks,
+          totalChunks,
+          waitingForRateLimit: false,
+        })
+
+        batchStart += batch.length - currentBatchSize
       }
 
-      if (signal?.aborted) {
-        if (validRows.length > 0) {
-          await this.repository.insertVectors(validRows)
-        }
-        throw new DOMException('Indexing cancelled by user', 'AbortError')
-      }
-
-      if (validRows.length === 0 && batch.length > 0) {
-        // Whole batch failed (e.g. full network outage or invalid API key).
-        // Stop embedding and fall through to the unified failure aggregation
-        // below: if the failures are transient it throws RagIndexIncomplete-
-        // Error (→ retry); if purely permanent/unknown the post-loop guard
-        // throws so the run is recorded as failed rather than silently
-        // succeeding with later batches left unprocessed.
-        wholeBatchFailed = true
-        break
-      }
-      await this.repository.insertVectors(validRows)
-      onProgress?.({
-        completedChunks,
-        totalChunks,
-        waitingForRateLimit: false,
-      })
-
-      batchStart += batch.length - currentBatchSize
+      return { wholeBatchFailed }
     }
 
-    // ---- Failure aggregation + classification-based routing ----
-    //
-    // Aggregate per-chunk failures by file. A file is rolled back if it has
-    // ANY transient failure (even mixed transient+permanent): keeping its
-    // successful/reused chunks would stamp the current mtime and let the
-    // transient gap be frozen forever (MAX-mtime skip). Files whose failures
-    // are exclusively permanent/unknown can never index fully, so we keep
-    // their successful chunks (stable mtime, no flapping) and surface a
-    // persistent, actionable warning instead of retrying forever.
-    if (failedChunks.length > 0) {
-      const failuresByPath = new Map<string, RagIndexFailureKind[]>()
-      for (const chunk of failedChunks) {
-        const bucket = failuresByPath.get(chunk.path)
-        if (bucket) bucket.push(chunk.kind)
-        else failuresByPath.set(chunk.path, [chunk.kind])
-      }
-
-      const rollbackPaths: string[] = []
-      const permanentFailedPaths: string[] = []
-      for (const [path, kinds] of failuresByPath) {
-        if (kinds.some((kind) => kind === 'transient')) {
-          rollbackPaths.push(path)
-        } else {
-          permanentFailedPaths.push(path)
-        }
-      }
-
-      if (rollbackPaths.length > 0) {
-        // This run is incomplete and will retry (RagIndexIncompleteError
-        // below). Roll back BOTH transient AND permanent-failed files:
-        // - transient: must be re-embedded;
-        // - permanent: leaving its partial success would stamp the current
-        //   mtime and let the file be silently skipped on the retry, freezing
-        //   the gap. Re-evaluate it next run; a permanent-only file is then
-        //   surfaced (below) once a clean run completes.
-        // Delete each file's ENTIRE row set (incl. reused/bumped chunks from
-        // step 7), so no surviving row carries the current mtime.
-        // (rollbackPaths and permanentFailedPaths are disjoint by construction.)
-        await this.repository.deleteVectorsByPaths(embeddingModel.id, [
-          ...rollbackPaths,
-          ...permanentFailedPaths,
-        ])
-      }
-
-      // Persistent "keep + warn" is valid ONLY for a fully-processed run with
-      // no transient retry in flight. On an early stop (wholeBatchFailed) the
-      // run is incomplete and surfaces via the throw below; on a transient
-      // retry the permanent files were just rolled back for re-evaluation.
-      // Either way, suppress the partial report here to avoid a misleading
-      // "the rest is indexed" message / a frozen gap.
-      if (
-        permanentFailedPaths.length > 0 &&
-        rollbackPaths.length === 0 &&
-        !wholeBatchFailed
-      ) {
-        softPermanentFailedPaths.push(...permanentFailedPaths)
-        const errorDetails = failedChunks
-          .filter(
-            (chunk) =>
-              !failuresByPath
-                .get(chunk.path)
-                ?.some((kind) => kind === 'transient'),
-          )
-          .map((chunk) => `File: ${chunk.path}\nError: ${chunk.error}`)
-          .join('\n\n')
-        console.warn(
-          `[YOLO] ${permanentFailedPaths.length} file(s) could not be indexed (kept partial results, will not retry):\n\n${errorDetails}`,
-        )
-      }
-
-      if (rollbackPaths.length > 0) {
-        throw new RagIndexIncompleteError([
-          ...rollbackPaths,
-          ...permanentFailedPaths,
-        ])
-      }
+    return {
+      embed,
+      get completedChunks() {
+        return completedChunks
+      },
+      get failedChunks() {
+        return failedChunks
+      },
     }
-
-    // Early stop with no transient failures to retry: the cause is
-    // permanent/unknown (e.g. invalid API key) and later batches were never
-    // attempted. Throw so the run is recorded as failed (no false success,
-    // no retry for a permanent cause); the caller surfaces the details.
-    if (wholeBatchFailed) {
-      throw new Error(
-        'Embedding halted: an entire batch failed to embed and indexing was stopped before completing all chunks.',
-      )
-    }
-
-    return { permanentFailedPaths: softPermanentFailedPaths }
   }
 }

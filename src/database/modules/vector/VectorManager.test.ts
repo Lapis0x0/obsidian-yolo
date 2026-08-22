@@ -629,4 +629,141 @@ describe('VectorManager.reconcile', () => {
       'a.md',
     ])
   })
+
+  // ---- Streaming reconcile: bounded file-batch behavior ----
+  //
+  // These files cut into two file batches: the first FILE_BATCH_MAX_FILES
+  // (64) files land in batch 1, the remaining 6 in batch 2. Content is a
+  // short unique string per file so each chunkifies to exactly one chunk,
+  // keeping the FILE_BATCH_MAX_CHUNKS (256) threshold irrelevant here.
+  const manyFiles = (count: number) =>
+    Array.from({ length: count }, (_, i) => ({
+      path: `f${i}.md`,
+      mtime: 100,
+      content: `content ${i}`,
+    }))
+
+  it('lists chunks per file batch, not once for the whole run', async () => {
+    const files = manyFiles(70)
+    const { manager, repository } = setupManager(files, [])
+
+    await manager.reconcile(embeddingModel, baseConfig, {
+      scope: { kind: 'all' },
+    })
+
+    expect(repository.listChunksForPaths).toHaveBeenCalledTimes(2)
+    const [, batch1Paths] = repository.listChunksForPaths.mock.calls[0] as [
+      string,
+      string[],
+    ]
+    const [, batch2Paths] = repository.listChunksForPaths.mock.calls[1] as [
+      string,
+      string[],
+    ]
+    expect(batch1Paths).toEqual(files.slice(0, 64).map((f) => f.path))
+    expect(batch2Paths).toEqual(files.slice(64).map((f) => f.path))
+  })
+
+  it('rolls back a permanent-only file from batch 1 when batch 2 hits a transient failure', async () => {
+    const files = manyFiles(70)
+    const { manager, repository } = setupManager(files, [])
+    // f10 (batch 1) fails permanently; f66 (batch 2) fails transiently; all
+    // other files embed successfully.
+    ;(embeddingModel as unknown as { getEmbedding: jest.Mock }).getEmbedding =
+      jest.fn(async (content: string) => {
+        if (content === 'content 10') {
+          throw Object.assign(new Error('bad request'), { status: 400 })
+        }
+        if (content === 'content 66') {
+          throw Object.assign(new Error('service unavailable'), {
+            status: 503,
+          })
+        }
+        return [0.1, 0.2, 0.3]
+      })
+
+    let thrown: unknown
+    await manager
+      .reconcile(embeddingModel, baseConfig, { scope: { kind: 'all' } })
+      .catch((error: unknown) => {
+        thrown = error
+      })
+
+    expect(thrown).toMatchObject({ name: 'RagIndexIncompleteError' })
+    expect(repository.deleteVectorsByPaths).toHaveBeenCalledTimes(1)
+    const [model, paths] = repository.deleteVectorsByPaths.mock.calls[0] as [
+      string,
+      string[],
+    ]
+    expect(model).toBe('test-model')
+    // Both the batch-1 permanent-only file and the batch-2 transient file are
+    // rolled back together, even though they were embedded in different
+    // file-batch calls.
+    expect([...paths].sort()).toEqual(['f10.md', 'f66.md'])
+  })
+
+  it('leaves the second file batch un-chunkified and un-embedded when batch 1 wholly fails', async () => {
+    const files = manyFiles(70)
+    const { manager, repository, app } = setupManager(files, [])
+    ;(embeddingModel as unknown as { getEmbedding: jest.Mock }).getEmbedding =
+      jest
+        .fn()
+        .mockRejectedValue(
+          Object.assign(new Error('service unavailable'), { status: 503 }),
+        )
+
+    await expect(
+      manager.reconcile(
+        embeddingModel,
+        { ...baseConfig, embeddingConcurrency: 1 },
+        { scope: { kind: 'all' } },
+      ),
+    ).rejects.toMatchObject({ name: 'RagIndexIncompleteError' })
+
+    // Only batch 1's 64 files were ever read; batch 2 (f64..f69) was never
+    // chunkified because the run stopped after batch 1's whole-batch failure.
+    expect(app.vault.cachedRead).toHaveBeenCalledTimes(64)
+    const readPaths = (app.vault.cachedRead as jest.Mock).mock.calls.map(
+      (call) => (call[0] as { path: string }).path,
+    )
+    expect(readPaths).not.toContain('f64.md')
+    // With embeddingConcurrency=1 the first chunk (f0) is its own sub-batch;
+    // it is attempted twice (the outer attempt<2 retry) before the call is
+    // treated as a whole-batch failure and embedding stops — no other chunk
+    // in batch 1 (f1..f63) or batch 2 is ever attempted.
+    expect(
+      (embeddingModel as unknown as { getEmbedding: jest.Mock }).getEmbedding,
+    ).toHaveBeenCalledTimes(2)
+    expect(repository.insertVectors).not.toHaveBeenCalled()
+  })
+
+  it('reports completedFiles monotonically via onProgress, ending at totalFiles', async () => {
+    const files = manyFiles(70)
+    const { manager } = setupManager(files, [])
+    const completedFilesSeen: number[] = []
+    const totalFilesSeen: number[] = []
+
+    const result = await manager.reconcile(embeddingModel, baseConfig, {
+      scope: { kind: 'all' },
+      onProgress: (progress) => {
+        completedFilesSeen.push(progress.completedFiles ?? 0)
+        totalFilesSeen.push(progress.totalFiles)
+      },
+    })
+
+    expect(result).toEqual({
+      permanentFailedPaths: [],
+      chunkifyFailedPaths: [],
+    })
+    expect(completedFilesSeen.length).toBeGreaterThan(0)
+    for (let i = 1; i < completedFilesSeen.length; i++) {
+      expect(completedFilesSeen[i]).toBeGreaterThanOrEqual(
+        completedFilesSeen[i - 1],
+      )
+    }
+    expect(completedFilesSeen[completedFilesSeen.length - 1]).toBe(
+      totalFilesSeen[totalFilesSeen.length - 1],
+    )
+    expect(completedFilesSeen[completedFilesSeen.length - 1]).toBe(70)
+  })
 })

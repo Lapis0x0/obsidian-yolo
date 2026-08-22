@@ -316,6 +316,18 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     ) {
       return 100
     }
+    // Percent is file-based: totalFiles is known up front (unlike totalChunks,
+    // which now only reflects chunks discovered so far and isn't a stable
+    // denominator once reconcile streams by file batch). Fall back to the
+    // chunk formula only when totalFiles is unavailable (e.g. legacy
+    // snapshots without file counts).
+    if (progressSource && (progressSource.totalFiles ?? 0) > 0) {
+      const pct = Math.round(
+        ((progressSource.completedFiles ?? 0) / progressSource.totalFiles) *
+          100,
+      )
+      return Math.max(0, Math.min(100, pct))
+    }
     if (!progressSource || progressSource.totalChunks <= 0) {
       return 0
     }

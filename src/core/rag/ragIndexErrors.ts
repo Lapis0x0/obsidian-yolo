@@ -12,7 +12,7 @@ export type RagIndexFailureKind =
   | 'unknown'
 
 /**
- * Raised by `embedAndInsertBatches` when one or more files had transient
+ * Raised by `VectorManager.reconcile` when one or more files had transient
  * embedding failures and were rolled back to 0 rows. It is always classified
  * as `transient` so the run-level retry path (exponential backoff) is
  * activated — without relying on message-string matching.

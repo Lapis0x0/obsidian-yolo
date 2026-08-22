@@ -2522,7 +2522,7 @@ export default class YoloPlugin extends Plugin {
             retryPolicy: 'transient',
             onProgress: (progress) => {
               notice.setMessage(
-                `Indexing chunks: ${progress.completedChunks} / ${progress.totalChunks}${
+                `Indexing files: ${progress.completedFiles ?? 0} / ${progress.totalFiles} (chunks: ${progress.completedChunks})${
                   progress.waitingForRateLimit
                     ? '\n(waiting for rate limit to reset)'
                     : ''
@@ -2569,7 +2569,7 @@ export default class YoloPlugin extends Plugin {
             retryPolicy: 'none',
             onProgress: (progress) => {
               notice.setMessage(
-                `Indexing chunks: ${progress.completedChunks} / ${progress.totalChunks}${
+                `Indexing files: ${progress.completedFiles ?? 0} / ${progress.totalFiles} (chunks: ${progress.completedChunks})${
                   progress.waitingForRateLimit
                     ? '\n(waiting for rate limit to reset)'
                     : ''
