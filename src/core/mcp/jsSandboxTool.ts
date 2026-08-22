@@ -21,6 +21,7 @@ import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
 import {
   BROWSER_READ_PATH_PREFIX,
   buildAllowedSkillPathSet,
+  buildRagScopeForWorkspace,
   describePathDenial,
   isCoveredBySkillPathExemption,
   isVisibleForTraversal,
@@ -2899,16 +2900,36 @@ export function buildJsSandboxProxyHandlers(
       params: Record<string, unknown>,
     ) => {
       if (method === 'search') {
-        const engine = await getRagEngine()
         const query = typeof params.query === 'string' ? params.query : ''
         const limit = clampLimit(params.limit)
-        const results = await engine.processQuery({ query, limit })
+        // Pre-filter at the vector-store scan, not just the post-filter
+        // below: `$db.search` has no path argument of its own, so its scope
+        // is entirely the assistant's workspace scope (no `pathScope` to
+        // intersect against). `empty` means the workspace scope and the
+        // always-on hidden-root exclude leave nothing queryable, so skip the
+        // query (and its embedding computation) outright.
+        const ragScopeResult = buildRagScopeForWorkspace({
+          workspace: workspaceScope,
+          settings,
+          exemptPaths,
+        })
+        if ('empty' in ragScopeResult) {
+          return []
+        }
+        const engine = await getRagEngine()
+        const results = await engine.processQuery({
+          query,
+          limit,
+          scope: ragScopeResult.scope,
+        })
         // The RAG index covers the whole vault and every row carries the
         // chunk's actual text, so an unfiltered `$db.search` is a read path
         // straight around workspace scope — the same hole `$vault.readText`
         // had above. Retrieval is an enumeration the caller never named a
         // path for, so denied rows are dropped silently (matching
-        // `$vault.list`'s children) rather than raising.
+        // `$vault.list`'s children) rather than raising. This post-filter is
+        // cheap defense in depth on top of the pre-filter above, not a
+        // substitute for it.
         return results.filter(
           (row) =>
             resolvePathVisibility(row.path, {

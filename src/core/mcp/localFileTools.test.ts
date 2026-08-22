@@ -466,6 +466,55 @@ describe('js sandbox vault list handler', () => {
       expect(JSON.stringify(rows)).not.toContain('shh')
     })
 
+    it('pre-filters db.search at the vector-store scan by passing the workspace scope to processQuery', async () => {
+      const root = makeFolder('', [])
+      const processQuery = jest.fn().mockResolvedValue([])
+      const handlers = buildJsSandboxProxyHandlers(
+        makeApp(root, []),
+        { allowDbQuery: true },
+        () => Promise.resolve({ processQuery } as never),
+        undefined,
+        scope,
+      )
+      if (!handlers.dbQuery) throw new Error('expected dbQuery handler')
+
+      await handlers.dbQuery('search', { query: 'secret' })
+
+      // No `pathScope` here — db.search has no path argument — so the scope
+      // passed to the vector store is derived purely from the workspace
+      // scope, plus the always-on hidden user-data root exclude.
+      expect(processQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: {
+            files: ['Notes'],
+            folders: ['Notes'],
+            exclude: ['YOLO/data'],
+          },
+        }),
+      )
+    })
+
+    it('still excludes the hidden user-data root from db.search when no workspace scope is configured', async () => {
+      const root = makeFolder('', [])
+      const processQuery = jest.fn().mockResolvedValue([])
+      const handlers = buildJsSandboxProxyHandlers(
+        makeApp(root, []),
+        { allowDbQuery: true },
+        () => Promise.resolve({ processQuery } as never),
+        undefined,
+        undefined,
+      )
+      if (!handlers.dbQuery) throw new Error('expected dbQuery handler')
+
+      await handlers.dbQuery('search', { query: 'secret' })
+
+      expect(processQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          scope: { files: [], folders: [], exclude: ['YOLO/data'] },
+        }),
+      )
+    })
+
     it('exempts an allowed skill path from workspace scope for vault.readText', async () => {
       const skillFile = makeFile('Skills/pkg/reference.md')
       const root = makeFolder('', [skillFile])

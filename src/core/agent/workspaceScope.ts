@@ -3,6 +3,7 @@ import { normalizePath } from 'obsidian'
 import { AssistantWorkspaceScope } from '../../types/assistant.types'
 import {
   type YoloSettingsLike,
+  getYoloUserDataRootDir,
   isWithinYoloUserDataRoot,
 } from '../paths/yoloPaths'
 
@@ -327,4 +328,169 @@ export function findPathWithinExcludedRoot(
     if (isExcluded(path)) return path
   }
   return null
+}
+
+/** A caller-supplied path restriction to narrow RAG retrieval, e.g. a single
+ * file or folder subtree resolved from `vault_search`'s `path` argument
+ * (see `pathToRagScope` in `vaultSearchService.ts`). Same shape as
+ * `VectorStore.performSimilaritySearch`'s `scope.files`/`scope.folders`. */
+export type RagPathScope = { files: string[]; folders: string[] }
+
+export type RagWorkspaceScopeResult =
+  | { scope: { files: string[]; folders: string[]; exclude: string[] } }
+  | { empty: true }
+
+/** One path-restriction rule, tagged with how it matches a candidate path.
+ * `exact` matches only the identical path (mirrors `scope.files`); `subtree`
+ * matches strict descendants via a `value/` prefix, never the value itself
+ * (mirrors `scope.folders`). A workspace include rule (`matchesRule`'s
+ * equal-or-prefix semantics) decomposes into one of each. */
+type ScopeRule = { value: string; matchKind: 'exact' | 'subtree' }
+
+/**
+ * Intersects two path-restriction rules, keeping the narrower (deeper) one
+ * when they nest and dropping the pair when neither is a prefix of the
+ * other. Used to compute `pathScope ∩ workspace.include` in
+ * `buildRagScopeForWorkspace`: each side is a union of such rules, so the
+ * full intersection is the union of every pairwise `intersectRule` result.
+ */
+function intersectRule(a: ScopeRule, b: ScopeRule): ScopeRule | null {
+  if (a.matchKind === 'exact' && b.matchKind === 'exact') {
+    return a.value === b.value ? { value: a.value, matchKind: 'exact' } : null
+  }
+  if (a.matchKind === 'exact' && b.matchKind === 'subtree') {
+    return a.value.startsWith(`${b.value}/`)
+      ? { value: a.value, matchKind: 'exact' }
+      : null
+  }
+  if (a.matchKind === 'subtree' && b.matchKind === 'exact') {
+    return b.value.startsWith(`${a.value}/`)
+      ? { value: b.value, matchKind: 'exact' }
+      : null
+  }
+  // Both subtree: whichever root is deeper (a descendant of the other, or
+  // equal) is the narrower, correct intersection; unrelated roots share no
+  // paths.
+  if (a.value === b.value) return { value: a.value, matchKind: 'subtree' }
+  if (b.value.startsWith(`${a.value}/`))
+    return { value: b.value, matchKind: 'subtree' }
+  if (a.value.startsWith(`${b.value}/`))
+    return { value: a.value, matchKind: 'subtree' }
+  return null
+}
+
+/**
+ * Builds the `{ files, folders, exclude }` scope that RAG retrieval — the
+ * vector-store scan predicate and `vaultSearchService`'s keyword sweeps —
+ * should apply for one query, combining an assistant's workspace scope with
+ * an optional caller-supplied `pathScope` (a single file or folder the
+ * caller already narrowed the search to).
+ *
+ * - `include` (the returned `files`/`folders`) is `pathScope ∩
+ *   workspace.include`: a prefix-set intersection where, for every rule pair
+ *   drawn from each side, the deeper of two nesting roots is kept and
+ *   unrelated (non-nesting) pairs contribute nothing (`intersectRule`). If
+ *   only one side has rules, that side's rules pass through unchanged; if
+ *   neither does, there is no include restriction (empty `files`/`folders`,
+ *   meaning "everything"). If both sides have rules but every pairwise
+ *   intersection is empty — the two restrictions share no path — the
+ *   query can return no results at all, so callers get `{ empty: true }`
+ *   and should short-circuit rather than run a query that can only come
+ *   back empty (skipping, in particular, the cost of computing a query
+ *   embedding).
+ * - `exemptPaths` (the skill-package exemption `resolvePathVisibility`
+ *   already carries) are merged into `files` whenever `workspace.include`
+ *   is non-empty — matching `isPathAllowedByScope`'s carve-out — including
+ *   when that merge is what turns an otherwise-empty intersection into a
+ *   real (exempt-paths-only) scope, so an exempted skill file stays
+ *   retrievable even when the workspace and path scopes would otherwise
+ *   share nothing.
+ * - `exclude` is `workspace.exclude` (only when `workspace.enabled`; a
+ *   disabled workspace contributes no rules at all) unioned with the YOLO
+ *   user-data root, which is always excluded — even when `workspace` is
+ *   undefined or disabled — mirroring `resolvePathVisibility`'s
+ *   unconditional hidden-root check.
+ */
+export function buildRagScopeForWorkspace({
+  pathScope,
+  workspace,
+  settings,
+  exemptPaths,
+}: {
+  pathScope?: RagPathScope
+  workspace?: AssistantWorkspaceScope
+  settings?: YoloSettingsLike | null
+  exemptPaths?: ReadonlySet<string>
+}): RagWorkspaceScopeResult {
+  const workspaceEnabled = workspace?.enabled ?? false
+  const workspaceInclude = workspaceEnabled
+    ? workspace!.include.map(normalize)
+    : []
+  const workspaceExclude = workspaceEnabled
+    ? workspace!.exclude.map(normalize)
+    : []
+  const hiddenRoot = normalize(getYoloUserDataRootDir(settings))
+  const exclude = Array.from(new Set([...workspaceExclude, hiddenRoot]))
+
+  const pathFiles = (pathScope?.files ?? []).map(normalize)
+  const pathFolders = (pathScope?.folders ?? []).map(normalize)
+  const hasPathScope = pathFiles.length > 0 || pathFolders.length > 0
+  const hasWorkspaceInclude = workspaceInclude.length > 0
+
+  let files: string[]
+  let folders: string[]
+
+  if (!hasPathScope && !hasWorkspaceInclude) {
+    files = []
+    folders = []
+  } else if (!hasWorkspaceInclude) {
+    files = [...pathFiles]
+    folders = [...pathFolders]
+  } else if (!hasPathScope) {
+    files = [...workspaceInclude]
+    folders = [...workspaceInclude]
+  } else {
+    const setA: ScopeRule[] = [
+      ...pathFiles.map((value) => ({ value, matchKind: 'exact' as const })),
+      ...pathFolders.map((value) => ({
+        value,
+        matchKind: 'subtree' as const,
+      })),
+    ]
+    const setB: ScopeRule[] = workspaceInclude.flatMap((value) => [
+      { value, matchKind: 'exact' as const },
+      { value, matchKind: 'subtree' as const },
+    ])
+
+    const resultFiles = new Set<string>()
+    const resultFolders = new Set<string>()
+    for (const a of setA) {
+      for (const b of setB) {
+        const result = intersectRule(a, b)
+        if (!result) continue
+        if (result.matchKind === 'exact') resultFiles.add(result.value)
+        else resultFolders.add(result.value)
+      }
+    }
+    files = [...resultFiles]
+    folders = [...resultFolders]
+
+    if (
+      files.length === 0 &&
+      folders.length === 0 &&
+      !(exemptPaths && exemptPaths.size > 0)
+    ) {
+      return { empty: true }
+    }
+  }
+
+  if (hasWorkspaceInclude && exemptPaths && exemptPaths.size > 0) {
+    const fileSet = new Set(files)
+    for (const path of exemptPaths) {
+      fileSet.add(path)
+    }
+    files = [...fileSet]
+  }
+
+  return { scope: { files, folders, exclude } }
 }

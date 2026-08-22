@@ -301,7 +301,7 @@ export class IndexedDbVectorStore implements VectorStore {
     options: {
       minSimilarity: number
       limit: number
-      scope?: { files: string[]; folders: string[] }
+      scope?: { files: string[]; folders: string[]; exclude?: string[] }
     },
   ): Promise<Array<VectorSelect & { similarity: number }>> {
     const index = await this.ensureIndexLoaded(
@@ -312,13 +312,25 @@ export class IndexedDbVectorStore implements VectorStore {
 
     const normalizedQuery = l2Normalize(queryVector)
     const scope = options.scope
+    const exclude = scope?.exclude ?? []
     const hasScope =
-      !!scope && (scope.files.length > 0 || scope.folders.length > 0)
+      !!scope &&
+      (scope.files.length > 0 || scope.folders.length > 0 || exclude.length > 0)
     const filesSet = hasScope ? new Set(scope.files) : null
     const folders = hasScope ? scope.folders : []
+    const hasInclude = hasScope && (filesSet!.size > 0 || folders.length > 0)
     const filter = hasScope
       ? (rowIndex: number): boolean => {
           const path = index.paths[rowIndex]
+          // Exclude always wins, even over an explicit include match — same
+          // priority as `workspaceScope.ts`'s `matchesRule`/
+          // `isPathAllowedByScope`.
+          if (
+            exclude.some((rule) => path === rule || path.startsWith(`${rule}/`))
+          ) {
+            return false
+          }
+          if (!hasInclude) return true
           if (filesSet!.has(path)) return true
           return folders.some((folder) => path.startsWith(`${folder}/`))
         }

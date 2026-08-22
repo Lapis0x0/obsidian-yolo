@@ -132,6 +132,7 @@ export class RAGEngine {
     scope?: {
       files: string[]
       folders: string[]
+      exclude?: string[]
     }
     /** Override settings.ragOptions.minSimilarity when set */
     minSimilarity?: number

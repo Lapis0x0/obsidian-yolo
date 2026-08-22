@@ -299,6 +299,85 @@ describe('IndexedDbVectorStore', () => {
       }
     })
 
+    it('excludes rows matching scope.exclude even with no include restriction', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        await store.insertVectors([
+          insert({ path: 'Private/secret.md', embedding: [1, 0, 0] }),
+          insert({ path: 'Notes/a.md', embedding: [1, 0, 0] }),
+        ])
+
+        const results = await store.performSimilaritySearch(
+          [1, 0, 0],
+          { id: MODEL_A, dimension: 3 },
+          {
+            minSimilarity: -1,
+            limit: 10,
+            scope: { files: [], folders: [], exclude: ['Private'] },
+          },
+        )
+
+        expect(results.map((r) => r.path)).toEqual(['Notes/a.md'])
+      } finally {
+        store.close()
+      }
+    })
+
+    it('lets scope.exclude override a matching scope.folders include', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        await store.insertVectors([
+          insert({ path: 'Projects/public.md', embedding: [1, 0, 0] }),
+          insert({ path: 'Projects/Private/secret.md', embedding: [1, 0, 0] }),
+        ])
+
+        const results = await store.performSimilaritySearch(
+          [1, 0, 0],
+          { id: MODEL_A, dimension: 3 },
+          {
+            minSimilarity: -1,
+            limit: 10,
+            scope: {
+              files: [],
+              folders: ['Projects'],
+              exclude: ['Projects/Private'],
+            },
+          },
+        )
+
+        expect(results.map((r) => r.path)).toEqual(['Projects/public.md'])
+      } finally {
+        store.close()
+      }
+    })
+
+    it('lets scope.exclude override an explicit scope.files entry for a single file', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        await store.insertVectors([
+          insert({ path: 'a.md', embedding: [1, 0, 0] }),
+          insert({ path: 'b.md', embedding: [1, 0, 0] }),
+        ])
+
+        const results = await store.performSimilaritySearch(
+          [1, 0, 0],
+          { id: MODEL_A, dimension: 3 },
+          {
+            minSimilarity: -1,
+            limit: 10,
+            scope: { files: ['a.md', 'b.md'], folders: [], exclude: ['a.md'] },
+          },
+        )
+
+        expect(results.map((r) => r.path)).toEqual(['b.md'])
+      } finally {
+        store.close()
+      }
+    })
+
     it('treats an empty scope (no files, no folders) as unscoped', async () => {
       const indexedDB = new IDBFactory()
       const store = await openStore(indexedDB)

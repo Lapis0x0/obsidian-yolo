@@ -1,6 +1,7 @@
 import { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import {
+  buildRagScopeForWorkspace,
   collectToolCallPaths,
   describePathDenial,
   findPathOutsideScope,
@@ -312,5 +313,169 @@ describe('describePathDenial', () => {
     expect(describePathDenial('hidden', '[[Secret]]')).toBe(
       'File not found: [[Secret]]',
     )
+  })
+})
+
+describe('buildRagScopeForWorkspace', () => {
+  const settings = { yolo: { baseDir: 'YOLO' } }
+  const hiddenRoot = 'YOLO/data'
+
+  it('excludes only the hidden root when there is no pathScope or workspace', () => {
+    expect(buildRagScopeForWorkspace({ settings })).toEqual({
+      scope: { files: [], folders: [], exclude: [hiddenRoot] },
+    })
+  })
+
+  it('passes pathScope through unchanged when there is no workspace include', () => {
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Projects'] },
+        settings,
+      }),
+    ).toEqual({
+      scope: { files: [], folders: ['Projects'], exclude: [hiddenRoot] },
+    })
+  })
+
+  it('passes workspace.include through unchanged when there is no pathScope', () => {
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({ include: ['Notes'], exclude: ['Notes/Private'] }),
+        settings,
+      }),
+    ).toEqual({
+      scope: {
+        files: ['Notes'],
+        folders: ['Notes'],
+        exclude: ['Notes/Private', hiddenRoot],
+      },
+    })
+  })
+
+  it('keeps the deeper root when pathScope and workspace.include nest', () => {
+    // pathScope narrows to a folder the caller already resolved
+    // (`vault_search`'s `path` argument); workspace.include is broader, so
+    // the intersection is the deeper (pathScope) folder.
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Projects/Client'] },
+        workspace: scope({ include: ['Projects'] }),
+        settings,
+      }),
+    ).toEqual({
+      scope: {
+        files: [],
+        folders: ['Projects/Client'],
+        exclude: [hiddenRoot],
+      },
+    })
+
+    // The other way around: workspace.include is the deeper root. A
+    // workspace rule is ambiguous (it may denote a file or a folder), so it
+    // decomposes into both an exact-match and a subtree reading; the
+    // subtree reading nests inside pathScope's folder as before, and here
+    // the exact reading *also* survives because "Projects/Client" itself is
+    // a strict descendant of "Projects" — i.e. pathScope's folder rule
+    // already covers that literal path too. Both are harmless: no real
+    // vector row is ever literally named "Projects/Client" (paths always
+    // carry a file extension), so the `files` entry is a no-op in practice.
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Projects'] },
+        workspace: scope({ include: ['Projects/Client'] }),
+        settings,
+      }),
+    ).toEqual({
+      scope: {
+        files: ['Projects/Client'],
+        folders: ['Projects/Client'],
+        exclude: [hiddenRoot],
+      },
+    })
+  })
+
+  it('keeps a single file when it falls inside the other side’s folder', () => {
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: ['Projects/a.md'], folders: [] },
+        workspace: scope({ include: ['Projects'] }),
+        settings,
+      }),
+    ).toEqual({
+      scope: { files: ['Projects/a.md'], folders: [], exclude: [hiddenRoot] },
+    })
+  })
+
+  it('returns empty when pathScope and workspace.include share no path', () => {
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Private'] },
+        workspace: scope({ include: ['Notes'] }),
+        settings,
+      }),
+    ).toEqual({ empty: true })
+  })
+
+  it('rescues an otherwise-empty intersection with an exempt skill path', () => {
+    const exemptPaths = new Set(['YOLO/skills/demo/SKILL.md'])
+    expect(
+      buildRagScopeForWorkspace({
+        pathScope: { files: [], folders: ['Private'] },
+        workspace: scope({ include: ['Notes'] }),
+        settings,
+        exemptPaths,
+      }),
+    ).toEqual({
+      scope: {
+        files: ['YOLO/skills/demo/SKILL.md'],
+        folders: [],
+        exclude: [hiddenRoot],
+      },
+    })
+  })
+
+  it('merges exempt paths into files whenever workspace.include is non-empty', () => {
+    const exemptPaths = new Set(['YOLO/skills/demo/SKILL.md'])
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({ include: ['Notes'] }),
+        settings,
+        exemptPaths,
+      }),
+    ).toEqual({
+      scope: {
+        files: ['Notes', 'YOLO/skills/demo/SKILL.md'],
+        folders: ['Notes'],
+        exclude: [hiddenRoot],
+      },
+    })
+  })
+
+  it('does not add exempt paths when workspace.include is empty (already unrestricted)', () => {
+    const exemptPaths = new Set(['YOLO/skills/demo/SKILL.md'])
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({ exclude: ['Private'] }),
+        settings,
+        exemptPaths,
+      }),
+    ).toEqual({
+      scope: { files: [], folders: [], exclude: ['Private', hiddenRoot] },
+    })
+  })
+
+  it('contributes only the hidden root for a disabled workspace, ignoring its rules', () => {
+    expect(
+      buildRagScopeForWorkspace({
+        workspace: scope({
+          enabled: false,
+          include: ['Notes'],
+          exclude: ['Private'],
+        }),
+        settings,
+      }),
+    ).toEqual({
+      scope: { files: [], folders: [], exclude: [hiddenRoot] },
+    })
   })
 })

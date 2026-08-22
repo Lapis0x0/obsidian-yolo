@@ -162,19 +162,19 @@ describe('createVaultBashSearch', () => {
     }
   })
 
-  it('requests the full cap once when a scope is active, and leaves the semantic pool alone', async () => {
+  it('requests exactly maxResults, even with a scope active — pre-filtering happens at the retrieval layer now', async () => {
     const workspaceScope: AssistantWorkspaceScope = {
       enabled: true,
       include: ['notes'],
       exclude: [],
     }
-    // Every hit is out of scope. A grow-and-retry loop would re-run the search
-    // here, but the keyword sweep reads the whole vault per call and cannot
-    // report whether candidates remain — so one full-cap request is the whole
-    // budget, and it costs the same as a small one.
+    // `runVaultSearchStructured` now applies workspace scope before
+    // retrieval (RAG scan predicate + keyword sweep filters), so there is no
+    // over-request to compensate for post-filtering trimming the ranking —
+    // every hit it returns is already in scope.
     mockRunVaultSearchStructured.mockResolvedValue(
       successOutcome([
-        { kind: 'file', path: 'private/out.md', source: 'keyword' },
+        { kind: 'file', path: 'notes/out.md', source: 'keyword' },
       ]),
     )
     const search = createVaultBashSearch({
@@ -186,18 +186,16 @@ describe('createVaultBashSearch', () => {
     const outcome = await search({ query: 'q', maxResults: 20 })
 
     expect(mockRunVaultSearchStructured).toHaveBeenCalledTimes(1)
-    // Exact args: no `ragLimit` override. The semantic candidate pool is
-    // capped by the vector store's `ef_search`, so requesting more could not
-    // widen it — the user's own `ragOptions.limit` stays in force.
     expect(mockRunVaultSearchStructured).toHaveBeenCalledWith(
       expect.objectContaining({
-        args: { query: 'q', path: undefined, maxResults: 300, mode: 'hybrid' },
+        workspaceScope,
+        args: { query: 'q', path: undefined, maxResults: 20, mode: 'hybrid' },
       }),
     )
     expect(outcome).toEqual({
       status: 'success',
       notice: undefined,
-      results: [],
+      results: [{ kind: 'file', path: 'notes/out.md' }],
     })
   })
 

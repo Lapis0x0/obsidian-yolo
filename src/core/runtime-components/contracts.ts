@@ -96,7 +96,15 @@ export type VectorStore = Readonly<{
     options: {
       minSimilarity: number
       limit: number
-      scope?: { files: string[]; folders: string[] }
+      /**
+       * Declarative scan predicate applied while walking the in-memory
+       * index (never a function, so it stays serializable across a future
+       * Worker boundary). `exclude` uses the same equal-or-prefix rule
+       * semantics as `workspaceScope.ts`'s `matchesRule` and always wins
+       * over `files`/`folders` — a row matching any exclude rule is
+       * dropped even if it also matches an explicit include entry.
+       */
+      scope?: { files: string[]; folders: string[]; exclude?: string[] }
     },
   ): Promise<Array<VectorSelect & { similarity: number }>>
   getEmbeddingStats(): Promise<

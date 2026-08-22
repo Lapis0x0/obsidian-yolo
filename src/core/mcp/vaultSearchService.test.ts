@@ -3,6 +3,7 @@ jest.mock('obsidian')
 import { App, TFile, TFolder } from 'obsidian'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import { runVaultSearch } from './vaultSearchService'
@@ -357,6 +358,76 @@ describe('runVaultSearch', () => {
         },
       ],
     })
+  })
+
+  it('passes the assistant workspace scope through to the RAG query, intersected with the requested path', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const workspaceScope: AssistantWorkspaceScope = {
+      enabled: true,
+      include: ['Notes'],
+      exclude: [],
+    }
+    const processQuery = jest.fn().mockResolvedValue([])
+
+    await runVaultSearch({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+        },
+      } as unknown as App,
+      settings: {
+        yolo: { baseDir: 'YOLO' },
+        ragOptions: { enabled: true, limit: 10 },
+        embeddingModelId: 'test-embedding',
+      } as unknown as YoloSettings,
+      getRagEngine: async () => ({ processQuery }) as unknown as RAGEngine,
+      workspaceScope,
+      args: { mode: 'rag', query: 'note' },
+    })
+
+    expect(processQuery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        scope: {
+          files: ['Notes'],
+          folders: ['Notes'],
+          exclude: ['YOLO/data'],
+        },
+      }),
+    )
+  })
+
+  it('short-circuits to an empty RAG result without querying when the path scope and workspace scope share no path', async () => {
+    const root = Object.assign(new TFolder(), { path: '' })
+    const dirFolder = Object.assign(new TFolder(), { path: 'Private' })
+    const workspaceScope: AssistantWorkspaceScope = {
+      enabled: true,
+      include: ['Notes'],
+      exclude: [],
+    }
+    const processQuery = jest.fn()
+
+    const result = await runVaultSearch({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getAbstractFileByPath: jest.fn().mockReturnValue(dirFolder),
+        },
+      } as unknown as App,
+      settings: {
+        yolo: { baseDir: 'YOLO' },
+        ragOptions: { enabled: true, limit: 10 },
+        embeddingModelId: 'test-embedding',
+      } as unknown as YoloSettings,
+      getRagEngine: async () => ({ processQuery }) as unknown as RAGEngine,
+      workspaceScope,
+      args: { mode: 'rag', query: 'note', path: 'Private' },
+    })
+
+    expect(processQuery).not.toHaveBeenCalled()
+    expect(result.status).toBe('success')
+    if (result.status === 'success') {
+      expect(JSON.parse(result.text)).toMatchObject({ results: [] })
+    }
   })
 
   it('returns aborted immediately when the signal is already aborted', async () => {

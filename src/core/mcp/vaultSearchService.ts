@@ -1,7 +1,11 @@
 import { App, TFile, TFolder } from 'obsidian'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import {
+  buildRagScopeForWorkspace,
+  resolvePathVisibility,
+} from '../agent/workspaceScope'
 import type { RAGEngine } from '../rag/ragEngine'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import {
@@ -369,6 +373,8 @@ const collectKeywordSearchResults = async ({
   maxResults,
   caseSensitive,
   signal,
+  workspaceScope,
+  exemptPaths,
 }: {
   app: App
   settings?: YoloSettings
@@ -378,7 +384,15 @@ const collectKeywordSearchResults = async ({
   maxResults: number
   caseSensitive: boolean
   signal?: AbortSignal
+  workspaceScope?: AssistantWorkspaceScope
+  exemptPaths?: ReadonlySet<string>
 }): Promise<LegacySearchItem[]> => {
+  const isVisible = (path: string): boolean =>
+    resolvePathVisibility(path, {
+      scope: workspaceScope,
+      settings,
+      exemptPaths,
+    }) === 'visible'
   const queryForMatch = caseSensitive ? query : query.toLowerCase()
   const queryTokens = Array.from(
     new Set(
@@ -459,7 +473,7 @@ const collectKeywordSearchResults = async ({
     const files = app.vault
       .getFiles()
       .filter((file) => isPathInSearchScope(file.path, scopeTarget))
-      .filter((file) => !isWithinYoloUserDataRoot(file.path, settings))
+      .filter((file) => isVisible(file.path))
       .map((file) => file.path)
       .map((path) => ({
         path,
@@ -499,7 +513,7 @@ const collectKeywordSearchResults = async ({
       .filter((entry): entry is TFolder => entry instanceof TFolder)
       .filter((folder) => folder.path.length > 0)
       .filter((folder) => isPathInSearchScope(folder.path, scopeTarget))
-      .filter((folder) => !isWithinYoloUserDataRoot(folder.path, settings))
+      .filter((folder) => isVisible(folder.path))
       .map((folder) => folder.path)
       .map((path) => ({
         path,
@@ -537,6 +551,12 @@ const collectKeywordSearchResults = async ({
     const searchableFiles = app.vault
       .getMarkdownFiles()
       .filter((file) => isPathInSearchScope(file.path, scopeTarget))
+      // Unlike the files/dirs sweeps above, this one used to have no
+      // hidden-root/workspace-scope filter at all — `vaultBashSearch.ts`'s
+      // per-result post-filter was the only thing keeping user-data content
+      // and out-of-scope files out of agent-visible content search. Filtering
+      // here too means those files are never read in the first place.
+      .filter((file) => isVisible(file.path))
       .sort((a, b) => a.path.localeCompare(b.path))
     const contentMatches: Array<{
       kind: 'content_match'
@@ -623,12 +643,16 @@ export async function runVaultSearchStructured({
   getRagEngine,
   args,
   signal,
+  workspaceScope,
+  exemptPaths,
 }: {
   app: App
   settings?: YoloSettings
   getRagEngine?: () => Promise<RAGEngine>
   args: Record<string, unknown>
   signal?: AbortSignal
+  workspaceScope?: AssistantWorkspaceScope
+  exemptPaths?: ReadonlySet<string>
 }): Promise<VaultSearchStructuredOutcome> {
   if (signal?.aborted) {
     return { status: 'aborted' }
@@ -681,6 +705,8 @@ export async function runVaultSearchStructured({
         maxResults,
         caseSensitive,
         signal,
+        workspaceScope,
+        exemptPaths,
       })
       if (signal?.aborted) {
         return { status: 'aborted' }
@@ -720,22 +746,38 @@ export async function runVaultSearchStructured({
       )
     }
 
-    const ragEngine = await getRagEngine()
-    const ragScope = pathToRagScope(scopeTarget)
-
-    const effectiveRagLimit = Math.min(
-      ragLimitArg ?? settings.ragOptions.limit,
-      RAG_FETCH_LIMIT_MAX,
-    )
-
-    const ragRows = await ragEngine.processQuery({
-      query,
-      scope: ragScope,
-      minSimilarity: ragMinSimilarity,
-      limit: effectiveRagLimit,
+    // Combine the caller's path scope (a single file/folder resolved from
+    // `path`) with the assistant's workspace scope *before* querying, so a
+    // narrow workspace scope doesn't just post-filter a whole-vault top-K —
+    // see `buildRagScopeForWorkspace`'s doc comment. `empty` means the two
+    // restrictions share no path at all, so the query can only ever come
+    // back empty: skip it outright (including the embedding computation).
+    const ragScopeResult = buildRagScopeForWorkspace({
+      pathScope: pathToRagScope(scopeTarget),
+      workspace: workspaceScope,
+      settings,
+      exemptPaths,
     })
 
-    const ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+    let ragMapped: SuperSearchResult[]
+    if ('empty' in ragScopeResult) {
+      ragMapped = []
+    } else {
+      const ragEngine = await getRagEngine()
+      const effectiveRagLimit = Math.min(
+        ragLimitArg ?? settings.ragOptions.limit,
+        RAG_FETCH_LIMIT_MAX,
+      )
+
+      const ragRows = await ragEngine.processQuery({
+        query,
+        scope: ragScopeResult.scope,
+        minSimilarity: ragMinSimilarity,
+        limit: effectiveRagLimit,
+      })
+
+      ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+    }
 
     if (effectiveMode === 'rag') {
       const effectiveScope: VaultSearchScope =
@@ -761,6 +803,8 @@ export async function runVaultSearchStructured({
       maxResults,
       caseSensitive,
       signal,
+      workspaceScope,
+      exemptPaths,
     })
     if (signal?.aborted) {
       return { status: 'aborted' }
@@ -775,6 +819,8 @@ export async function runVaultSearchStructured({
       maxResults,
       caseSensitive,
       signal,
+      workspaceScope,
+      exemptPaths,
     })
     if (signal?.aborted) {
       return { status: 'aborted' }
@@ -788,6 +834,8 @@ export async function runVaultSearchStructured({
       maxResults,
       caseSensitive,
       signal,
+      workspaceScope,
+      exemptPaths,
     })
     if (signal?.aborted) {
       return { status: 'aborted' }
@@ -827,6 +875,8 @@ export async function runVaultSearch(options: {
   getRagEngine?: () => Promise<RAGEngine>
   args: Record<string, unknown>
   signal?: AbortSignal
+  workspaceScope?: AssistantWorkspaceScope
+  exemptPaths?: ReadonlySet<string>
 }): Promise<VaultSearchOutcome> {
   const outcome = await runVaultSearchStructured(options)
   if (outcome.status !== 'success') {

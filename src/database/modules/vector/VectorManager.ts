@@ -124,6 +124,7 @@ export class VectorManager {
       scope?: {
         files: string[]
         folders: string[]
+        exclude?: string[]
       }
     },
   ): Promise<
