@@ -381,4 +381,89 @@ describe('LocalEmbeddingModelManager', () => {
     expect(settled).toBe(true)
     await downloadPromise
   })
+
+  it('download() for an entry mid-removal waits for rm() to finish before writing files', async () => {
+    const manager = createManager()
+    await manager.download(ENTRY)
+    expect(manager.getState('test-model')).toEqual({ status: 'ready' })
+
+    const order: string[] = []
+    let resolveRm: () => void = () => undefined
+    const rmStarted = new Promise<void>((resolveStarted) => {
+      const originalRm = fakeFs.promises.rm.getMockImplementation()!
+      fakeFs.promises.rm.mockImplementationOnce(async (...args) => {
+        order.push('rm-start')
+        resolveStarted()
+        await new Promise<void>((resolve) => {
+          resolveRm = resolve
+        })
+        const result = await originalRm(...args)
+        order.push('rm-end')
+        return result
+      })
+    })
+    mockDownload.mockImplementationOnce(
+      async ({ destPath, expectedByteSize }) => {
+        order.push('redownload')
+        fakeFs.files.set(destPath, String(expectedByteSize))
+      },
+    )
+
+    const removePromise = manager.remove('test-model')
+    await rmStarted
+    // Fires while `rm()` is still pending — must not start writing files
+    // until the removal it raced against has fully settled.
+    const redownloadPromise = manager.download(ENTRY)
+    // Give any wrongly-unguarded microtask a chance to run before releasing
+    // the removal.
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(order).toEqual(['rm-start'])
+
+    resolveRm()
+    await removePromise
+    await redownloadPromise
+
+    expect(order).toEqual(['rm-start', 'rm-end', 'redownload'])
+    expect(manager.getState('test-model')).toEqual({ status: 'ready' })
+  })
+
+  it('a download queued behind another shows status downloading immediately, and reverts to not-installed if cancelled before its turn', async () => {
+    const manager = createManager()
+    let resolveFirst: () => void = () => undefined
+    const firstStarted = new Promise<void>((resolveStarted) => {
+      mockDownload.mockImplementationOnce(
+        async ({ destPath, expectedByteSize }) => {
+          resolveStarted()
+          await new Promise<void>((resolve) => {
+            resolveFirst = resolve
+          })
+          fakeFs.files.set(destPath, String(expectedByteSize))
+        },
+      )
+    })
+
+    const first = manager.download(ENTRY)
+    await firstStarted
+    const second = manager.download(SECOND_ENTRY)
+
+    // Queued, not yet running — but already visible as downloading rather
+    // than the misleading `not-installed`.
+    expect(manager.getState('second-model')).toEqual({
+      status: 'downloading',
+      receivedBytes: 0,
+      totalBytes: SECOND_ENTRY.totalBytes,
+      currentFile: '',
+    })
+
+    manager.cancelDownload('second-model')
+    resolveFirst()
+    await first
+    await second
+
+    expect(manager.getState('second-model')).toEqual({
+      status: 'not-installed',
+    })
+    expect(mockDownload).toHaveBeenCalledTimes(1)
+  })
 })

@@ -62,6 +62,15 @@ export class LocalEmbeddingModelManager {
   private states: ReadonlyMap<string, LocalEmbeddingModelState>
   private readonly listeners = new Set<() => void>()
   private readonly downloadJobs = new Map<string, DownloadJob>()
+  /**
+   * One in-flight `rm()` per catalog id (or the same shared promise for
+   * every id during `removeAll()`) — `download()`'s `run()` awaits its
+   * entry's removal before touching disk, and `runScan()` skips any entry
+   * with one pending, so a delete/download race (or a stale on-disk
+   * manifest read mid-delete) can never write into a directory `rm()` is
+   * still clearing, or resurrect a model `remove()` just deleted.
+   */
+  private readonly removals = new Map<string, Promise<void>>()
   private downloadChain: Promise<void> = Promise.resolve()
   private scanPromise: Promise<void> | null = null
 
@@ -157,6 +166,13 @@ export class LocalEmbeddingModelManager {
     // eslint-disable-next-line import/no-nodejs-modules -- every caller of this method gates on Platform.isDesktop
     const fs = await import('node:fs')
     for (const entry of this.catalog) {
+      // A download/removal already owns this entry's on-disk state — let it
+      // finish rather than reading a manifest mid-write/mid-delete and
+      // clobbering an in-progress `downloading`/being-removed state with a
+      // stale `ready`.
+      if (this.downloadJobs.has(entry.id) || this.removals.has(entry.id)) {
+        continue
+      }
       try {
         const manifestPath = this.fullPath(this.manifestVaultPath(entry))
         const raw = await fs.promises.readFile(manifestPath, 'utf8')
@@ -239,6 +255,12 @@ export class LocalEmbeddingModelManager {
    * already has a queued-or-running job returns that same job's promise
    * instead of enqueueing a second one (which would leak the first job's
    * `AbortController` and let two `runDownload` calls race the same files).
+   *
+   * State flips to `downloading` immediately, before the job's turn in the
+   * global (concurrency-1) chain actually comes up — otherwise a model
+   * queued behind another still reads as `not-installed` in the UI, which
+   * offers a misleading "download" button and no way to cancel until it
+   * starts running.
    */
   download(entry: LocalEmbeddingCatalogEntry): Promise<void> {
     if (!Platform.isDesktop) {
@@ -250,8 +272,25 @@ export class LocalEmbeddingModelManager {
     if (existing) return existing.promise
 
     const controller = new AbortController()
+    this.setState(entry.id, {
+      status: 'downloading',
+      receivedBytes: 0,
+      totalBytes: entry.totalBytes,
+      currentFile: '',
+    })
     const run = async (): Promise<void> => {
-      if (controller.signal.aborted) return
+      // A `remove()`/`removeAll()` for this entry may still be clearing its
+      // directory (e.g. the user deleted it, then immediately re-downloaded
+      // it) — wait for that to finish before `runDownload` starts writing
+      // into the same directory.
+      const pendingRemoval = this.removals.get(entry.id)
+      if (pendingRemoval) await pendingRemoval.catch(() => undefined)
+      if (controller.signal.aborted) {
+        // Cancelled while still queued, before it ever got to run —
+        // `runDownload` never ran to reset this itself.
+        this.setState(entry.id, NOT_INSTALLED)
+        return
+      }
       await this.runDownload(entry, controller.signal)
     }
     const jobPromise = this.downloadChain.then(run, run)
@@ -411,6 +450,25 @@ export class LocalEmbeddingModelManager {
       job.controller.abort()
       await job.promise.catch(() => undefined)
     }
+    // Registered before the `rm()` itself starts (not just awaited after)
+    // so a `download()` call that lands while this is running — including
+    // one for the very entry being removed — sees it via `this.removals`
+    // and waits its turn instead of racing the delete.
+    const removal = this.performRemoval(catalogId, entry)
+    this.removals.set(catalogId, removal)
+    try {
+      await removal
+    } finally {
+      if (this.removals.get(catalogId) === removal) {
+        this.removals.delete(catalogId)
+      }
+    }
+  }
+
+  private async performRemoval(
+    catalogId: string,
+    entry: LocalEmbeddingCatalogEntry,
+  ): Promise<void> {
     // eslint-disable-next-line import/no-nodejs-modules -- every caller of this method gates on Platform.isDesktop
     const fs = await import('node:fs')
     const dir = this.fullPath(normalizePath(`${this.rootPath()}/${entry.id}`))
@@ -424,6 +482,20 @@ export class LocalEmbeddingModelManager {
     const jobs = [...this.downloadJobs.values()]
     for (const job of jobs) job.controller.abort()
     await Promise.all(jobs.map((job) => job.promise.catch(() => undefined)))
+    const removal = this.performRemovalAll()
+    for (const entry of this.catalog) this.removals.set(entry.id, removal)
+    try {
+      await removal
+    } finally {
+      for (const entry of this.catalog) {
+        if (this.removals.get(entry.id) === removal) {
+          this.removals.delete(entry.id)
+        }
+      }
+    }
+  }
+
+  private async performRemovalAll(): Promise<void> {
     // eslint-disable-next-line import/no-nodejs-modules -- every caller of this method gates on Platform.isDesktop
     const fs = await import('node:fs')
     await fs.promises.rm(this.fullPath(this.rootPath()), {
