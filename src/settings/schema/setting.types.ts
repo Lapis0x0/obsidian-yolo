@@ -6,6 +6,7 @@ import {
 } from '../../constants'
 import { CLI_RUNTIME_IDS } from '../../core/cli-runtime/types'
 import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConfig'
+import { DEFAULT_LOCAL_EMBEDDING_ENDPOINT } from '../../core/rag/local-embedding/constants'
 import { webSearchSettingsSchema } from '../../core/web-search/types'
 import { assistantSchema } from '../../types/assistant.types'
 import { chatModelSchema } from '../../types/chat-model.types'
@@ -72,6 +73,13 @@ export const knowledgeBaseSchema = z.object({
   exclude: z.array(z.string()).catch([]),
 })
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>
+
+const localEmbeddingSettingsSchema = z.object({
+  endpoint: z.string().catch(DEFAULT_LOCAL_EMBEDDING_ENDPOINT),
+})
+export type LocalEmbeddingSettings = z.infer<
+  typeof localEmbeddingSettingsSchema
+>
 
 /**
  * `knowledgeBases` validation runs in two stages:
@@ -443,6 +451,17 @@ export const yoloSettingsSchema = z.object({
    * IndexedDB-backed vector store already requires a from-scratch rebuild).
    */
   knowledgeBases: knowledgeBasesFieldSchema,
+
+  /**
+   * Local (on-device) embedding model download settings — see
+   * docs/plans/08-22-local-embedding/00-plan.md §3.4. `endpoint` is the
+   * Hugging Face Hub-compatible host model files are resolved against
+   * (`${endpoint}/${hfRepo}/resolve/${revision}/${file}`); a purely additive
+   * field with a schema default, so it needs no migration entry of its own.
+   */
+  localEmbedding: localEmbeddingSettingsSchema.catch({
+    endpoint: DEFAULT_LOCAL_EMBEDDING_ENDPOINT,
+  }),
 
   // MCP configuration
   mcp: z
