@@ -1066,6 +1066,7 @@ export const zh: TranslationKeys = {
       batchHint: '批量添加使用默认参数，可在添加后单独调整',
       fetchModelsFailed: '获取模型失败',
       embeddingModelsFirst: '嵌入模型优先显示',
+      localEmbeddingProviderLabel: '本地（设备端）',
       reasoningType: '模型类型',
       reasoningTypeDesc: '不确定时，OpenAI 推理更为通用',
       reasoningTypeNone: '非推理模型/默认',

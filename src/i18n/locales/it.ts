@@ -1053,6 +1053,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'I modelli aggiunti in blocco usano le impostazioni predefinite; regolali singolarmente in seguito.',
       fetchModelsFailed: 'Impossibile recuperare i modelli',
       embeddingModelsFirst: 'Modelli embedding (prima)',
+      localEmbeddingProviderLabel: 'Locale (sul dispositivo)',
       reasoningType: 'Tipo di ragionamento',
       reasoningTypeDesc: 'Nel dubbio, scegli OpenAI reasoning.',
       reasoningTypeNone: 'Modello non ragionante / predefinito',

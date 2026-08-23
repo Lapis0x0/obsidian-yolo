@@ -1140,6 +1140,7 @@ export const en: TranslationKeys = {
         'Batch-added models use default settings; fine-tune each one afterwards.',
       fetchModelsFailed: 'Failed to fetch models',
       embeddingModelsFirst: 'Embedding models are listed first',
+      localEmbeddingProviderLabel: 'Local (on-device)',
       reasoningType: 'Model type',
       reasoningTypeDesc: 'When unsure, OpenAI reasoning is the safer pick.',
       reasoningTypeNone: 'Non-reasoning model / default',

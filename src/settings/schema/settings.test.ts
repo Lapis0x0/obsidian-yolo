@@ -1,4 +1,5 @@
 import { DEFAULT_LOCAL_MCP_SERVER_PORT } from '../../core/mcp/localMcpServerConfig'
+import { LOCAL_EMBEDDING_PROVIDER_ID } from '../../core/rag/local-embedding/constants'
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
@@ -534,6 +535,45 @@ describe('parseYoloSettings', () => {
     ])
     expect(result.currentAssistantId).toBeUndefined()
     expect(result.quickAskAssistantId).toBeUndefined()
+  })
+
+  it('keeps yolo-local embedding models even though no matching provider record exists', () => {
+    // `yolo-local` (docs/plans/08-22-local-embedding/00-plan.md §3.5) is a
+    // reserved providerId for on-device embedding models — it deliberately
+    // never has a `settings.providers` entry. Regression test for a bug
+    // where `normalizeYoloSettingsReferences` treated that as "orphaned" and
+    // silently deleted the model on every settings save.
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      providers: [
+        {
+          id: 'openai',
+          presetType: 'openai',
+          apiKey: 'token',
+        },
+      ],
+      embeddingModels: [
+        {
+          providerId: LOCAL_EMBEDDING_PROVIDER_ID,
+          id: 'local/bge-small-en-v1.5',
+          model: 'bge-small-en-v1.5',
+          name: 'BGE Small (English)',
+          dimension: 384,
+        },
+      ],
+      embeddingModelId: 'local/bge-small-en-v1.5',
+    })
+
+    expect(result.embeddingModels).toEqual([
+      {
+        providerId: LOCAL_EMBEDDING_PROVIDER_ID,
+        id: 'local/bge-small-en-v1.5',
+        model: 'bge-small-en-v1.5',
+        name: 'BGE Small (English)',
+        dimension: 384,
+      },
+    ])
+    expect(result.embeddingModelId).toBe('local/bge-small-en-v1.5')
   })
 
   it('preserves legacy learning settings as an opaque handoff payload', () => {

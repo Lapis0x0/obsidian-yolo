@@ -23,6 +23,7 @@ import {
 import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import { LOCAL_EMBEDDING_PROVIDER_ID } from '../../../core/rag/local-embedding/constants'
 import { RagIndexServiceSnapshot } from '../../../core/rag/ragIndexService'
 import YoloPlugin from '../../../main'
 import { KnowledgeBase } from '../../../settings/schema/setting.types'
@@ -476,7 +477,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         )
         if (groupModels.length === 0) return null
         return {
-          label: providerId,
+          label:
+            providerId === LOCAL_EMBEDDING_PROVIDER_ID
+              ? (t('settings.models.localEmbeddingProviderLabel') ??
+                'Local (on-device)')
+              : providerId,
           options: groupModels.map((model) => {
             const baseLabel = model.name || model.model || model.id
             const badge = RECOMMENDED_MODELS_FOR_EMBEDDING.includes(model.id)

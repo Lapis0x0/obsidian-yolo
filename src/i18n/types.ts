@@ -888,6 +888,9 @@ export type TranslationKeys = {
       batchHint?: string
       fetchModelsFailed?: string
       embeddingModelsFirst?: string
+      // local (on-device) embedding models — providerId `yolo-local`, no
+      // matching `settings.providers` entry (docs/plans/08-22-local-embedding)
+      localEmbeddingProviderLabel?: string
       // reasoning UI
       reasoningType?: string
       reasoningTypeDesc?: string
