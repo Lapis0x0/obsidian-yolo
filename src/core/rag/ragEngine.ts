@@ -95,6 +95,11 @@ export class RAGEngine {
   }
 
   cleanup() {
+    // Local embedding clients hold a live Worker session + runtime-component
+    // lease (`core/rag/local-embedding/client.ts`); release it immediately
+    // rather than leaving it to its own idle timeout. Remote provider
+    // clients have no `dispose` and this is a no-op for them.
+    void this.embeddingModel?.dispose?.()
     this.embeddingModel = null
     this.vectorManager = null
   }
@@ -102,10 +107,16 @@ export class RAGEngine {
   // TODO: use addSettingsChangeListener
   setSettings(settings: YoloSettings) {
     this.settings = settings
+    const previousEmbeddingModel = this.embeddingModel
     this.embeddingModel = getEmbeddingModelClient({
       settings,
       embeddingModelId: settings.embeddingModelId,
     })
+    // See `cleanup()` — every settings save recreates the client (it's
+    // stateless config, cheap for remote providers), so the previous one's
+    // session (if any) must be released here too, not just on engine
+    // teardown.
+    void previousEmbeddingModel?.dispose?.()
   }
 
   /**
@@ -238,6 +249,6 @@ export class RAGEngine {
     if (!this.embeddingModel) {
       throw new Error('Embedding model is not set')
     }
-    return this.embeddingModel.getEmbedding(query)
+    return this.embeddingModel.getEmbedding(query, { kind: 'query' })
   }
 }

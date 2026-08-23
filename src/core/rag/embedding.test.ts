@@ -1,4 +1,5 @@
 import { getEmbeddingModelClient } from './embedding'
+import { LOCAL_EMBEDDING_PROVIDER_ID } from './local-embedding/constants'
 
 const mockGetEmbedding = jest.fn()
 
@@ -6,6 +7,22 @@ jest.mock('../llm/manager', () => ({
   getProviderClient: jest.fn(() => ({
     getEmbedding: mockGetEmbedding,
   })),
+}))
+
+const mockLocalGetEmbedding = jest.fn()
+const mockLocalDispose = jest.fn()
+const mockCreateLocalEmbeddingClient = jest.fn((..._args: unknown[]) => ({
+  getEmbedding: mockLocalGetEmbedding,
+  dispose: mockLocalDispose,
+}))
+const mockGetLocalEmbeddingModelManager = jest.fn()
+
+jest.mock('./local-embedding/client', () => ({
+  createLocalEmbeddingClient: (...args: unknown[]) =>
+    mockCreateLocalEmbeddingClient(...args),
+}))
+jest.mock('./local-embedding/access', () => ({
+  getLocalEmbeddingModelManager: () => mockGetLocalEmbeddingModelManager(),
 }))
 
 const baseModel = {
@@ -97,5 +114,97 @@ describe('getEmbeddingModelClient', () => {
     await expect(client.getEmbedding('hello')).rejects.toThrow(
       /returned 768-dimensional vector/,
     )
+  })
+
+  describe('yolo-local routing', () => {
+    const localModel = {
+      id: 'local/bge-small-en-v1.5',
+      providerId: LOCAL_EMBEDDING_PROVIDER_ID,
+      model: 'bge-small-en-v1.5',
+      name: 'BGE Small (English)',
+      dimension: 384,
+    }
+    const localSettings: any = {
+      providers: [],
+      embeddingModels: [localModel],
+    }
+
+    beforeEach(() => {
+      mockLocalGetEmbedding.mockReset()
+      mockLocalDispose.mockReset()
+      mockCreateLocalEmbeddingClient.mockClear()
+      mockGetLocalEmbeddingModelManager.mockReset()
+      mockGetLocalEmbeddingModelManager.mockReturnValue({ fakeManager: true })
+    })
+
+    it('routes providerId=yolo-local to createLocalEmbeddingClient instead of getProviderClient', async () => {
+      mockLocalGetEmbedding.mockResolvedValue(new Array(384).fill(0))
+
+      const client = getEmbeddingModelClient({
+        settings: localSettings,
+        embeddingModelId: 'local/bge-small-en-v1.5',
+      })
+      await client.getEmbedding('hello', { kind: 'query' })
+
+      expect(mockGetEmbedding).not.toHaveBeenCalled()
+      expect(mockCreateLocalEmbeddingClient).toHaveBeenCalledWith(
+        expect.objectContaining({
+          catalogEntry: expect.objectContaining({ id: 'bge-small-en-v1.5' }),
+          manager: { fakeManager: true },
+        }),
+      )
+      expect(mockLocalGetEmbedding).toHaveBeenCalledWith('hello', {
+        kind: 'query',
+      })
+    })
+
+    it('applies the same hard dimension check to local results as remote ones', async () => {
+      mockLocalGetEmbedding.mockResolvedValue(new Array(111).fill(0))
+
+      const client = getEmbeddingModelClient({
+        settings: localSettings,
+        embeddingModelId: 'local/bge-small-en-v1.5',
+      })
+
+      await expect(client.getEmbedding('hello')).rejects.toThrow(
+        /returned 111-dimensional vector/,
+      )
+    })
+
+    it('exposes dispose() that delegates to the local client', async () => {
+      const client = getEmbeddingModelClient({
+        settings: localSettings,
+        embeddingModelId: 'local/bge-small-en-v1.5',
+      })
+
+      await client.dispose?.()
+
+      expect(mockLocalDispose).toHaveBeenCalledTimes(1)
+    })
+
+    it('throws a clear error when the catalog entry is unknown', () => {
+      const settings: any = {
+        providers: [],
+        embeddingModels: [{ ...localModel, model: 'does-not-exist' }],
+      }
+
+      expect(() =>
+        getEmbeddingModelClient({
+          settings,
+          embeddingModelId: 'local/bge-small-en-v1.5',
+        }),
+      ).toThrow(/catalog entry "does-not-exist" not found/)
+    })
+
+    it('throws a clear error when the local embedding manager is unavailable (mobile)', () => {
+      mockGetLocalEmbeddingModelManager.mockReturnValue(null)
+
+      expect(() =>
+        getEmbeddingModelClient({
+          settings: localSettings,
+          embeddingModelId: 'local/bge-small-en-v1.5',
+        }),
+      ).toThrow(/not available on this platform/)
+    })
   })
 })

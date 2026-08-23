@@ -1070,7 +1070,10 @@ export class VectorManager {
                   `Chunk content contains null bytes in file: ${chunk.path}`,
                 )
               }
-              const embedding = await embeddingModel.getEmbedding(chunk.content)
+              const embedding = await embeddingModel.getEmbedding(
+                chunk.content,
+                { kind: 'document' },
+              )
               completedChunks += 1
               completedInCall += 1
               onProgress?.({
