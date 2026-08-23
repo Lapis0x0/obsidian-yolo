@@ -60,58 +60,6 @@ export type LocalEmbeddingCatalogEntry = Readonly<{
 
 export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
   {
-    id: 'bge-small-en-v1.5',
-    hfRepo: 'Xenova/bge-small-en-v1.5',
-    revision: 'ea104dacec62c0de699686887e3f920caeb4f3e3',
-    displayName: 'BGE Small (English)',
-    languages: ['en'],
-    license: 'MIT',
-    dimension: 384,
-    maxTokens: 512,
-    pooling: 'mean',
-    normalize: true,
-    files: [
-      {
-        path: 'config.json',
-        byteSize: 683,
-        sha256:
-          'fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350',
-      },
-      {
-        path: 'tokenizer.json',
-        byteSize: 711396,
-        sha256:
-          'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66',
-      },
-      {
-        path: 'tokenizer_config.json',
-        byteSize: 366,
-        sha256:
-          '9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3',
-      },
-      {
-        path: 'special_tokens_map.json',
-        byteSize: 125,
-        sha256:
-          'b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3',
-      },
-      {
-        path: 'onnx/model_quantized.onnx',
-        byteSize: 34014426,
-        sha256:
-          '6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4',
-      },
-    ],
-    totalBytes: 34726996,
-    // BAAI's official prefix table and the Xenova Transformers.js usage
-    // example both use this instruction for retrieval queries; passages are
-    // embedded with no prefix.
-    prefixes: {
-      query: 'Represent this sentence for searching relevant passages: ',
-      document: '',
-    },
-  },
-  {
     id: 'multilingual-e5-small',
     hfRepo: 'Xenova/multilingual-e5-small',
     revision: '761b726dd34fb83930e26aab4e9ac3899aa1fa78',
@@ -162,6 +110,58 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
       document: 'passage: ',
     },
     recommended: true,
+  },
+  {
+    id: 'bge-small-en-v1.5',
+    hfRepo: 'Xenova/bge-small-en-v1.5',
+    revision: 'ea104dacec62c0de699686887e3f920caeb4f3e3',
+    displayName: 'BGE Small (English)',
+    languages: ['en'],
+    license: 'MIT',
+    dimension: 384,
+    maxTokens: 512,
+    pooling: 'mean',
+    normalize: true,
+    files: [
+      {
+        path: 'config.json',
+        byteSize: 683,
+        sha256:
+          'fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350',
+      },
+      {
+        path: 'tokenizer.json',
+        byteSize: 711396,
+        sha256:
+          'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66',
+      },
+      {
+        path: 'tokenizer_config.json',
+        byteSize: 366,
+        sha256:
+          '9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3',
+      },
+      {
+        path: 'special_tokens_map.json',
+        byteSize: 125,
+        sha256:
+          'b6d346be366a7d1d48332dbc9fdf3bf8960b5d879522b7799ddba59e76237ee3',
+      },
+      {
+        path: 'onnx/model_quantized.onnx',
+        byteSize: 34014426,
+        sha256:
+          '6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4',
+      },
+    ],
+    totalBytes: 34726996,
+    // BAAI's official prefix table and the Xenova Transformers.js usage
+    // example both use this instruction for retrieval queries; passages are
+    // embedded with no prefix.
+    prefixes: {
+      query: 'Represent this sentence for searching relevant passages: ',
+      document: '',
+    },
   },
   {
     id: 'bge-small-zh-v1.5',

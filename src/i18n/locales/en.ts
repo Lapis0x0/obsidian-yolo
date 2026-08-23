@@ -1325,7 +1325,7 @@ export const en: TranslationKeys = {
     },
     knowledgeBases: {
       title: 'Knowledge bases',
-      new: 'New',
+      new: 'New knowledge base',
       emptyState: 'No knowledge bases yet',
       count: '{{n}} knowledge base(s)',
       queuedCount: '{{n}} knowledge base(s) queued',

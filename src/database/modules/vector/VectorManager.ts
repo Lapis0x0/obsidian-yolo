@@ -731,8 +731,15 @@ export class VectorManager {
     // success, no retry for a permanent cause); the caller surfaces the
     // details.
     if (wholeBatchFailed) {
+      // Carry the underlying embedding error with the halt: it is the only
+      // place the cause is reported (this branch deliberately skips the
+      // per-file warning above), so without it the run surfaces as "failed"
+      // with nothing — in the UI or the console — saying why.
+      const cause = failedChunks[failedChunks.length - 1]?.error
       throw new Error(
-        'Embedding halted: an entire batch failed to embed and indexing was stopped before completing all chunks.',
+        `Embedding halted: an entire batch failed to embed and indexing was stopped before completing all chunks.${
+          cause ? ` Last error: ${cause}` : ''
+        }`,
       )
     }
 

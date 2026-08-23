@@ -839,7 +839,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             ) : null
           ) : knowledgeBases.length === 0 ? (
             <ObsidianButton
-              text={t('settings.knowledgeBases.new', '新建')}
+              text={t('settings.knowledgeBases.new', '新建知识库')}
               cta
               onClick={() => handleOpenKbModal()}
             />
@@ -969,10 +969,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
       <div className={`yolo-kb-content${!isRagEnabled ? ' is-disabled' : ''}`}>
         <>
-          <div className="yolo-kb-divider-label">
-            {t('settings.knowledgeBases.title', '知识库')}
+          <div className="yolo-kb-divider-label yolo-kb-divider-label--with-action">
+            <span className="yolo-kb-divider-label-text">
+              {t('settings.knowledgeBases.title', '知识库')}
+            </span>
+            <span className="yolo-kb-divider-label-line" aria-hidden="true" />
             <ObsidianButton
-              text={t('settings.knowledgeBases.new', '新建')}
+              text={t('settings.knowledgeBases.new', '新建知识库')}
               cta
               className="yolo-kb-new-button"
               onClick={() => handleOpenKbModal()}
@@ -1195,7 +1198,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 <Plus size={28} />
               </div>
               <div className="yolo-agent-create-card-text">
-                {t('settings.knowledgeBases.new', '新建')}
+                {t('settings.knowledgeBases.new', '新建知识库')}
               </div>
             </article>
           </div>

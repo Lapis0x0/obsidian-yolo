@@ -1,5 +1,9 @@
 /// <reference lib="webworker" />
 
+// Must be evaluated before Transformers.js and onnxruntime-web — keep this
+// import first; see the module for why.
+import './browserEnv'
+
 import {
   AutoModel,
   AutoTokenizer,

@@ -1223,7 +1223,7 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     knowledgeBases: {
       title: 'Knowledge base',
-      new: 'Nuova',
+      new: 'Nuova knowledge base',
       emptyState: 'Nessuna knowledge base ancora creata',
       count: '{{n}} knowledge base',
       queuedCount: '{{n}} knowledge base in coda',

@@ -1244,7 +1244,7 @@ export const zh: TranslationKeys = {
     },
     knowledgeBases: {
       title: '知识库',
-      new: '新建',
+      new: '新建知识库',
       emptyState: '还没有知识库',
       count: '{{n}} 个知识库',
       queuedCount: '{{n}} 个知识库排队中',

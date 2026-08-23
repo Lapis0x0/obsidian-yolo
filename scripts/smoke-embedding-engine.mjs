@@ -24,24 +24,19 @@
  *   npm run runtime:build
  *   node scripts/smoke-embedding-engine.mjs --model-dir /tmp/embedding-smoke-model
  *
- * Two things stand in for what only a real browser/Electron Worker
- * provides, both confined to this test harness (never touching the shipped
- * `worker.ts`/`entry.ts` source):
+ * One thing stands in for what only a real browser/Electron Worker
+ * provides, confined to this test harness (never touching the shipped
+ * `worker.ts`/`entry.ts` source): Node's dynamic `import()` rejects `blob:`
+ * URLs outright ("Only URLs with a scheme in: file, data, and node are
+ * supported"), which real Chromium/Electron Workers support, so
+ * `URL.createObjectURL` is swapped here for a `data:` URL encoder and
+ * onnxruntime-web's `import()` of its `.mjs` loader still resolves.
  *
- *  1. Node's dynamic `import()` rejects `blob:` URLs outright ("Only URLs
- *     with a scheme in: file, data, and node are supported"); real
- *     Chromium/Electron Workers support it. `URL.createObjectURL` is
- *     swapped here for a `data:` URL encoder so onnxruntime-web's
- *     `import()` of its `.mjs` loader still resolves.
- *  2. Transformers.js's own environment probe (`src/env.js`) treats
- *     `process?.release?.name === 'node'` as "running under Node", which
- *     selects the (browser-build-ignored, empty) `onnxruntime-node` stub
- *     instead of `onnxruntime-web`. A real Electron Worker doesn't expose
- *     Node's `process` global (no `nodeIntegrationInWorker`), so
- *     `globalThis.process` is hidden for the duration of the worker
- *     bundle's synchronous eval *and* its async init/embed lifetime
- *     (onnxruntime-web's Emscripten-generated `.mjs` loader does its own,
- *     separate `ENVIRONMENT_IS_NODE` check, dynamically imported later).
+ * Node's `process` global is NOT hidden here: Obsidian's desktop Workers
+ * expose one too (`nodeIntegrationInWorker`), and `browserEnv.ts` in the
+ * worker bundle deletes it on load precisely because Transformers.js would
+ * otherwise pick its `onnxruntime-node` binding. Running this harness with
+ * `process` in place is what keeps that shim covered.
  */
 import { readFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -131,9 +126,16 @@ globalThis.self.postMessage = (message) => {
 }
 globalThis.self.onmessage = null
 
+// The worker bundle deletes `globalThis.process` itself (`browserEnv.ts`);
+// keep a reference so this harness can still use it afterwards.
 const realProcess = globalThis.process
-delete globalThis.process
 ;(0, eval)(workerSource)
+if (globalThis.process !== undefined) {
+  console.error(
+    'SMOKE TEST FAILED: worker bundle did not hide `process`; Transformers.js will select onnxruntime-node',
+  )
+  realProcess.exit(1)
+}
 
 function waitFor(predicate, timeoutMs) {
   return new Promise((resolve, reject) => {

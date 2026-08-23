@@ -117,6 +117,30 @@ function crashError(message: string): EmbeddingWorkerErrorInfo {
   return { name: 'WorkerCrashed', message, stage: 'unknown' }
 }
 
+/**
+ * Carries everything an `ErrorEvent` knows into the RPC error payload.
+ *
+ * `event.message` alone is routinely useless here: a failure inside a nested
+ * worker (the pthreads onnxruntime-web spawns for multi-threaded wasm)
+ * reaches this handler as `"Uncaught [object ErrorEvent]"`, with the real
+ * cause only in `filename`/`lineno` — and nothing else in the host ever sees
+ * this event, so whatever is dropped here is lost for good. `event.error` is
+ * usually null for cross-scope errors, but carries a real stack when the
+ * throw happened in this worker's own scope.
+ */
+function crashErrorFromEvent(event: ErrorEvent): EmbeddingWorkerErrorInfo {
+  const where = event.filename
+    ? ` (${event.filename}:${event.lineno}:${event.colno})`
+    : ''
+  const cause = event.error instanceof Error ? event.error : null
+  return {
+    name: 'WorkerCrashed',
+    message: `${event.message || 'Embedding worker crashed'}${where}`,
+    ...(cause?.stack ? { stack: cause.stack } : {}),
+    stage: 'unknown',
+  }
+}
+
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
@@ -153,7 +177,7 @@ class EmbeddingWorkerClient {
       waiter.resolve(response)
     }
     this.worker.onerror = (event: ErrorEvent) => {
-      this.invalidate(crashError(event.message || 'Embedding worker crashed'))
+      this.invalidate(crashErrorFromEvent(event))
     }
     this.worker.onmessageerror = () => {
       this.invalidate(

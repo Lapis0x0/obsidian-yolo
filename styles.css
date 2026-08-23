@@ -3326,7 +3326,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
 .yolo-kb-divider-label {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--size-4-2);
   margin: var(--size-4-5) 0 var(--size-4-2);
   color: var(--text-faint);
@@ -3336,9 +3336,16 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   text-transform: uppercase;
 }
 
-.yolo-kb-divider-label::after {
+.yolo-kb-divider-label:not(.yolo-kb-divider-label--with-action)::after {
   content: '';
   flex: 1 1 auto;
+  height: 1px;
+  background: var(--background-modifier-border);
+}
+
+.yolo-kb-divider-label-line {
+  flex: 1 1 auto;
+  min-width: 0;
   height: 1px;
   background: var(--background-modifier-border);
 }
@@ -3356,8 +3363,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 }
 
 .yolo-kb-new-button {
-  order: 1;
-  margin-left: auto;
+  flex-shrink: 0;
   text-transform: none;
   letter-spacing: normal;
 }
@@ -3898,6 +3904,7 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 /* ================= advanced settings section ================= */
 
 .yolo-rag-card {
+  margin-top: var(--size-4-3);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
   background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
