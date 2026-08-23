@@ -214,6 +214,35 @@ export class RuntimeComponentService {
     }
   }
 
+  /**
+   * Reads one declared asset's bytes for a component (e.g. an ONNX Runtime
+   * WASM binary), ensuring the component's artifacts are installed first.
+   * Unlike `acquire`, this never touches the script loader/runtime — it only
+   * hands back bytes the host injects into a component through a callback
+   * (see `readRuntimeComponentAsset`), so `entry.js` is never executed as a
+   * side effect of reading an asset.
+   */
+  async readAsset(id: RuntimeComponentId, name: string): Promise<Uint8Array> {
+    const record = this.requireRecord(id)
+    const asset = record.descriptor.assets?.find((a) => a.name === name)
+    if (!asset) {
+      throw new Error(`Runtime component "${id}" has no asset "${name}"`)
+    }
+    if (!record.enabled) {
+      throw new Error(`Runtime component "${id}" is disabled`)
+    }
+    if (record.status === 'failed') {
+      throw new Error(
+        record.error ?? `Runtime component "${id}" failed to initialize`,
+      )
+    }
+    await this.ensureInstalledWithFailureHandling(record, true)
+    if (!record.enabled || this.options.runtime.isQuiescing(id)) {
+      throw new Error(`Runtime component "${id}" is quiescing`)
+    }
+    return this.options.store.readAsset(record.descriptor, asset)
+  }
+
   setEnabled(id: RuntimeComponentId, enabled: boolean): Promise<void> {
     return this.enqueueTransition(id, async () => {
       if (enabled) {

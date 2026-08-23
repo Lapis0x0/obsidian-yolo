@@ -170,4 +170,67 @@ describe('RuntimeComponentInstaller', () => {
     )
     await expect(installer.verifyInstalled(descriptor)).resolves.toBeUndefined()
   })
+
+  it('installs, repairs, and reads back declared assets alongside entry.js', async () => {
+    const entryBytes = new TextEncoder().encode('trusted component entry')
+    const assetBytes = new TextEncoder().encode('fake wasm bytes')
+    const entryDigest = new Uint8Array(
+      await globalThis.crypto.subtle.digest('SHA-256', entryBytes),
+    )
+    const assetDigest = new Uint8Array(
+      await globalThis.crypto.subtle.digest('SHA-256', assetBytes),
+    )
+    const toHex = (bytes: Uint8Array) =>
+      [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('')
+    const descriptor: RuntimeComponentDescriptor = {
+      id: 'embedding-engine',
+      platforms: ['desktop'],
+      nameKey: 'name',
+      descriptionKey: 'description',
+      impactKey: 'impact',
+      entry: 'runtime-components/embedding-engine/dist/entry.js',
+      byteSize: entryBytes.byteLength,
+      sha256: toHex(entryDigest),
+      assets: [
+        {
+          name: 'ort-wasm-simd-threaded.wasm',
+          path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm',
+          byteSize: assetBytes.byteLength,
+          sha256: toHex(assetDigest),
+        },
+      ],
+    }
+    const adapter = new MemoryAdapter()
+    const store = new RuntimeComponentStore(
+      adapter as unknown as DataAdapter,
+      { id: 'yolo', dir: 'config/plugins/yolo' },
+      'config',
+    )
+    const download = jest.fn(async ({ asset }: { asset?: { name: string } }) =>
+      asset ? assetBytes.slice() : entryBytes.slice(),
+    )
+    const installer = new RuntimeComponentInstaller({
+      store,
+      download,
+      subtleCrypto: globalThis.crypto.subtle,
+    })
+
+    await installer.ensure(descriptor)
+    expect(download).toHaveBeenCalledTimes(2)
+    await expect(installer.verifyInstalled(descriptor)).resolves.toBeUndefined()
+    await expect(
+      store.readAsset(descriptor, descriptor.assets![0]),
+    ).resolves.toEqual(assetBytes)
+
+    // Corrupt just the asset; verifyInstalled/repair must catch and fix it
+    // without needing the entry.js to be damaged too.
+    await adapter.writeBinary(
+      store.assetPath(descriptor, descriptor.assets![0]),
+      new Uint8Array(assetBytes.byteLength).fill(9).buffer,
+    )
+    await expect(installer.verifyInstalled(descriptor)).rejects.toThrow()
+    await installer.ensure(descriptor)
+    expect(download).toHaveBeenCalledTimes(4)
+    await expect(installer.verifyInstalled(descriptor)).resolves.toBeUndefined()
+  })
 })

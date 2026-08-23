@@ -29,7 +29,7 @@ describe('RuntimeComponentService desired intent', () => {
     const events: string[] = []
     let enabled = true
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: {
         hasPlausibleEntry: async () => false,
@@ -88,7 +88,7 @@ describe('RuntimeComponentService desired intent', () => {
   it('does not change the local runtime when desired-intent persistence fails', async () => {
     const participant = jest.fn(async () => undefined)
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: {} as never,
       installer: {} as never,
@@ -121,7 +121,7 @@ describe('RuntimeComponentService desired intent', () => {
       create: () => ({ count: (text: string) => text.length, dispose() {} }),
     }))
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: {
         hasPlausibleEntry: async () => true,
@@ -144,6 +144,53 @@ describe('RuntimeComponentService desired intent', () => {
     expect(load).toHaveBeenCalledTimes(1)
   })
 
+  it('readAsset ensures artifacts are installed once, then reads the named asset', async () => {
+    const embeddingDescriptor: RuntimeComponentDescriptor = {
+      ...descriptor,
+      id: 'embedding-engine',
+      platforms: ['desktop'],
+      entry: 'runtime-components/embedding-engine/dist/entry.js',
+      sha256: 'c'.repeat(64),
+      assets: [
+        {
+          name: 'ort-wasm-simd-threaded.wasm',
+          path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm',
+          byteSize: 4,
+          sha256: 'd'.repeat(64),
+        },
+      ],
+    }
+    const verifyInstalled = jest.fn(async () => undefined)
+    const readAsset = jest.fn(async () => new Uint8Array([1, 2, 3, 4]))
+    const service = new RuntimeComponentService({
+      registry: { schemaVersion: 2, components: [embeddingDescriptor] },
+      platform: 'desktop',
+      store: {
+        hasPlausibleEntry: async () => true,
+        readAsset,
+      } as never,
+      installer: { verifyInstalled } as never,
+      loader: {} as never,
+      runtime: new RuntimeComponentRuntime(),
+      intentStore: {} as never,
+      deviceStateStore: { write: async () => undefined } as never,
+    })
+
+    const bytes = await service.readAsset(
+      'embedding-engine',
+      'ort-wasm-simd-threaded.wasm',
+    )
+    expect(bytes).toEqual(new Uint8Array([1, 2, 3, 4]))
+    expect(readAsset).toHaveBeenCalledWith(
+      embeddingDescriptor,
+      embeddingDescriptor.assets![0],
+    )
+
+    await expect(
+      service.readAsset('embedding-engine', 'not-a-declared-asset'),
+    ).rejects.toThrow('has no asset')
+  })
+
   it('keeps disabled state when disable races an initial activation', async () => {
     let finishVerification!: () => void
     const verification = new Promise<void>((resolve) => {
@@ -152,7 +199,7 @@ describe('RuntimeComponentService desired intent', () => {
     let desiredEnabled = true
     const load = jest.fn()
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: {
         hasPlausibleEntry: async () => true,
@@ -202,7 +249,7 @@ describe('RuntimeComponentService desired intent', () => {
     )
     const service = new RuntimeComponentService({
       registry: {
-        schemaVersion: 1,
+        schemaVersion: 2,
         components: [descriptor, pdfDescriptor],
       },
       platform: 'desktop',
@@ -249,7 +296,7 @@ describe('RuntimeComponentService desired intent', () => {
     const ensure = jest.fn().mockRejectedValue(new Error('network timeout'))
     const write = jest.fn(async (state: Record<string, unknown>) => state)
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: { hasPlausibleEntry: async () => false } as never,
       installer: { ensure } as never,
@@ -288,7 +335,7 @@ describe('RuntimeComponentService desired intent', () => {
       .fn()
       .mockRejectedValue(new Error('Downloaded component SHA-256 mismatch'))
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: { hasPlausibleEntry: async () => false } as never,
       installer: { ensure } as never,
@@ -310,7 +357,7 @@ describe('RuntimeComponentService desired intent', () => {
     const retryAt = Date.now() + 60_000
     const ensure = jest.fn().mockResolvedValue(undefined)
     const service = new RuntimeComponentService({
-      registry: { schemaVersion: 1, components: [descriptor] },
+      registry: { schemaVersion: 2, components: [descriptor] },
       platform: 'desktop',
       store: { hasPlausibleEntry: async () => false } as never,
       installer: { ensure } as never,

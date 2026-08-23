@@ -35,11 +35,57 @@ describe('runtime component manifest', () => {
   it('rejects paths that are not the one fixed entry for the component', () => {
     expect(() =>
       parseRuntimeComponentRegistry({
-        schemaVersion: 1,
+        schemaVersion: 2,
         components: [
           { ...descriptor, entry: '../entry.js' },
           { ...descriptor, id: 'pdf-engine' },
           { ...descriptor, id: 'bash-engine' },
+          { ...descriptor, id: 'embedding-engine' },
+        ],
+      }),
+    ).toThrow('invalid')
+  })
+
+  it('accepts an optional assets list and rejects malformed entries', () => {
+    const forId = (id: string) => ({
+      ...descriptor,
+      id,
+      entry: `runtime-components/${id}/dist/entry.js`,
+    })
+    const withAssets = {
+      ...forId('embedding-engine'),
+      assets: [
+        {
+          name: 'ort-wasm-simd-threaded.wasm',
+          path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm',
+          byteSize: 1024,
+          sha256: 'b'.repeat(64),
+        },
+      ],
+    }
+    expect(() =>
+      parseRuntimeComponentRegistry({
+        schemaVersion: 2,
+        components: [
+          withAssets,
+          forId('pdf-engine'),
+          forId('bash-engine'),
+          forId('tokenizer'),
+        ],
+      }),
+    ).not.toThrow()
+
+    expect(() =>
+      parseRuntimeComponentRegistry({
+        schemaVersion: 2,
+        components: [
+          {
+            ...withAssets,
+            assets: [{ ...withAssets.assets[0], path: 'wrong/path' }],
+          },
+          forId('pdf-engine'),
+          forId('bash-engine'),
+          forId('tokenizer'),
         ],
       }),
     ).toThrow('invalid')

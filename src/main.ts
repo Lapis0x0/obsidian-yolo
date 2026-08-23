@@ -154,6 +154,7 @@ import {
   RuntimeComponentStore,
   createRuntimeComponentDownloader,
   resolveRuntimeComponentArtifactSources,
+  resolveRuntimeComponentAssetSources,
   setRuntimeComponentService,
 } from './core/runtime-components'
 import {
@@ -4392,6 +4393,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const remoteDownload = createRuntimeComponentDownloader()
     const download = async ({
       descriptor,
+      asset,
       source,
       signal,
     }: Parameters<typeof remoteDownload>[0]): Promise<Uint8Array> => {
@@ -4404,12 +4406,15 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       if (process.env.NODE_ENV !== 'production') {
         return new Uint8Array(
           await this.app.vault.adapter.readBinary(
-            normalizePath(`${store.pluginDir}/${descriptor.entry}`),
+            normalizePath(
+              `${store.pluginDir}/${asset ? asset.path : descriptor.entry}`,
+            ),
           ),
         )
       }
       return remoteDownload({
         descriptor,
+        ...(asset ? { asset } : {}),
         source,
         ...(signal ? { signal } : {}),
       })
@@ -4421,11 +4426,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         ? {
             resolveDownloadSources: (
               descriptor: (typeof BAKED_RUNTIME_COMPONENT_REGISTRY.components)[number],
+              asset?: NonNullable<(typeof descriptor)['assets']>[number],
             ) =>
-              resolveRuntimeComponentArtifactSources(
-                descriptor,
-                BAKED_PLUGIN_VERSION,
-              ),
+              asset
+                ? resolveRuntimeComponentAssetSources(
+                    descriptor,
+                    asset,
+                    BAKED_PLUGIN_VERSION,
+                  )
+                : resolveRuntimeComponentArtifactSources(
+                    descriptor,
+                    BAKED_PLUGIN_VERSION,
+                  ),
           }
         : {}),
       reportCleanupError: (error) => {

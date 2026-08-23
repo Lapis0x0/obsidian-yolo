@@ -2,6 +2,22 @@ import type { RuntimeComponentId } from './contracts'
 
 export type RuntimeComponentPlatform = 'desktop' | 'mobile'
 
+/**
+ * A file the component needs alongside `entry.js` (WASM binaries, etc.) that
+ * isn't executable JS and isn't loaded via `<script>`. `path` is always
+ * `runtime-components/<id>/dist/assets/<name>` — the one fixed location the
+ * build script writes to, mirroring how `entry` has exactly one valid value
+ * per component. The host installs it next to `entry.js` and hands its bytes
+ * to the component only through an injected callback (see
+ * `readRuntimeComponentAsset`); the component never reads it directly.
+ */
+export type RuntimeComponentAssetDescriptor = Readonly<{
+  name: string
+  path: string
+  byteSize: number
+  sha256: string
+}>
+
 export type RuntimeComponentDescriptor = Readonly<{
   id: RuntimeComponentId
   platforms: readonly RuntimeComponentPlatform[]
@@ -11,10 +27,12 @@ export type RuntimeComponentDescriptor = Readonly<{
   entry: string
   byteSize: number
   sha256: string
+  /** Absent (or empty) for components with no attached assets. */
+  assets?: readonly RuntimeComponentAssetDescriptor[]
 }>
 
 export type RuntimeComponentRegistry = Readonly<{
-  schemaVersion: 1
+  schemaVersion: 2
   components: readonly RuntimeComponentDescriptor[]
 }>
 
@@ -22,8 +40,56 @@ const IDS = new Set<RuntimeComponentId>([
   'tokenizer',
   'pdf-engine',
   'bash-engine',
+  'embedding-engine',
 ])
 export const MAX_RUNTIME_COMPONENT_BYTES = 16 * 1024 * 1024
+/** WASM assets (e.g. ONNX Runtime) run much larger than a component's own entry.js. */
+export const MAX_RUNTIME_COMPONENT_ASSET_BYTES = 64 * 1024 * 1024
+const ASSET_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/
+
+const SHA256_PATTERN = /^[a-f0-9]{64}$/
+
+function parseAssets(
+  value: unknown,
+  componentId: string,
+  label: string,
+): readonly RuntimeComponentAssetDescriptor[] | undefined {
+  if (value === undefined) return undefined
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`${label} has an invalid assets list`)
+  }
+  const names = new Set<string>()
+  const assets = value.map((candidate, index) => {
+    const asset = record(candidate, `${label} asset ${index}`)
+    exactKeys(
+      asset,
+      ['name', 'path', 'byteSize', 'sha256'],
+      `${label} asset ${index}`,
+    )
+    if (
+      typeof asset.name !== 'string' ||
+      !ASSET_NAME_PATTERN.test(asset.name) ||
+      names.has(asset.name) ||
+      asset.path !==
+        `runtime-components/${componentId}/dist/assets/${asset.name}` ||
+      !Number.isSafeInteger(asset.byteSize) ||
+      (asset.byteSize as number) <= 0 ||
+      (asset.byteSize as number) > MAX_RUNTIME_COMPONENT_ASSET_BYTES ||
+      typeof asset.sha256 !== 'string' ||
+      !SHA256_PATTERN.test(asset.sha256)
+    ) {
+      throw new Error(`${label} asset ${index} is invalid`)
+    }
+    names.add(asset.name)
+    return Object.freeze({
+      name: asset.name,
+      path: asset.path,
+      byteSize: asset.byteSize as number,
+      sha256: asset.sha256,
+    })
+  })
+  return Object.freeze(assets)
+}
 
 export function parseRuntimeComponentRegistry(
   value: unknown,
@@ -34,12 +100,14 @@ export function parseRuntimeComponentRegistry(
     ['schemaVersion', 'components'],
     'Runtime component registry',
   )
-  if (registry.schemaVersion !== 1 || !Array.isArray(registry.components)) {
+  if (registry.schemaVersion !== 2 || !Array.isArray(registry.components)) {
     throw new Error('Runtime component registry is invalid')
   }
   const ids = new Set<string>()
   const components = registry.components.map((candidate, index) => {
     const descriptor = record(candidate, `Runtime component ${index}`)
+    const keys = Object.keys(descriptor)
+    const hasAssets = keys.includes('assets')
     exactKeys(
       descriptor,
       [
@@ -51,6 +119,7 @@ export function parseRuntimeComponentRegistry(
         'entry',
         'byteSize',
         'sha256',
+        ...(hasAssets ? (['assets'] as const) : []),
       ],
       `Runtime component ${index}`,
     )
@@ -73,10 +142,15 @@ export function parseRuntimeComponentRegistry(
       (descriptor.byteSize as number) <= 0 ||
       (descriptor.byteSize as number) > MAX_RUNTIME_COMPONENT_BYTES ||
       typeof descriptor.sha256 !== 'string' ||
-      !/^[a-f0-9]{64}$/.test(descriptor.sha256)
+      !SHA256_PATTERN.test(descriptor.sha256)
     ) {
       throw new Error(`Runtime component ${index} is invalid`)
     }
+    const assets = parseAssets(
+      descriptor.assets,
+      descriptor.id,
+      `Runtime component ${index}`,
+    )
     ids.add(descriptor.id)
     return Object.freeze({
       id: descriptor.id as RuntimeComponentId,
@@ -89,13 +163,14 @@ export function parseRuntimeComponentRegistry(
       entry: descriptor.entry,
       byteSize: descriptor.byteSize as number,
       sha256: descriptor.sha256,
+      ...(assets ? { assets } : {}),
     })
   })
   if (components.length !== IDS.size) {
     throw new Error('Runtime component registry is incomplete')
   }
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     components: Object.freeze(components),
   })
 }
@@ -123,6 +198,40 @@ export function resolveRuntimeComponentArtifactSources(
   return Object.freeze([
     runtimeComponentMirrorUrl(descriptor, bakedVersion),
     runtimeComponentReleaseUrl(descriptor, bakedVersion),
+  ])
+}
+
+/**
+ * Same two-mirror scheme as the entry (`{ver}/{id}/assets/{name}` on the
+ * Cloudflare mirror, `{ver}/{path}` on Git Raw) — see
+ * `resolveRuntimeComponentArtifactSources`.
+ */
+export function runtimeComponentAssetReleaseUrl(
+  descriptor: RuntimeComponentDescriptor,
+  asset: RuntimeComponentAssetDescriptor,
+  bakedVersion: string,
+): string {
+  assertRuntimeComponentVersion(bakedVersion)
+  return `https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/${bakedVersion}/${asset.path}`
+}
+
+export function runtimeComponentAssetMirrorUrl(
+  descriptor: RuntimeComponentDescriptor,
+  asset: RuntimeComponentAssetDescriptor,
+  bakedVersion: string,
+): string {
+  assertRuntimeComponentVersion(bakedVersion)
+  return `https://updates.yoloapp.dev/runtime-components/${bakedVersion}/${descriptor.id}/assets/${asset.name}`
+}
+
+export function resolveRuntimeComponentAssetSources(
+  descriptor: RuntimeComponentDescriptor,
+  asset: RuntimeComponentAssetDescriptor,
+  bakedVersion: string,
+): readonly string[] {
+  return Object.freeze([
+    runtimeComponentAssetMirrorUrl(descriptor, asset, bakedVersion),
+    runtimeComponentAssetReleaseUrl(descriptor, asset, bakedVersion),
   ])
 }
 
