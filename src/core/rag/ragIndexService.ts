@@ -201,8 +201,6 @@ export class RagIndexService {
   private readonly subscribers = new Set<RagIndexSubscriber>()
 
   private activeKbId: string | null = null
-  /** Generation of the run currently occupying `activeKbId` — see `waiters`. */
-  private activeGeneration: number | null = null
   private currentAbortController: AbortController | null = null
 
   /** FIFO of knowledge base ids waiting behind the active run. */
@@ -517,7 +515,6 @@ export class RagIndexService {
     attempt: 'new' | 'automatic-retry',
   ): Promise<void> {
     this.activeKbId = kbId
-    this.activeGeneration = generation
     const controller = new AbortController()
     this.currentAbortController = controller
 
@@ -569,6 +566,10 @@ export class RagIndexService {
             waitingForRateLimit: progress.waitingForRateLimit,
           })
           void this.persistSnapshots()
+          // Progress arrives once per embedding batch; subscribers (settings
+          // cards, activity bar) render live percentages from these snapshots.
+          this.publishActivity()
+          this.emit()
           options.onProgress?.(progress)
         },
       )
@@ -628,7 +629,6 @@ export class RagIndexService {
       this.settleWaiters(kbId, generation, error, 'reject')
     } finally {
       this.activeKbId = null
-      this.activeGeneration = null
       this.currentAbortController = null
       this.publishActivity()
       this.emit()

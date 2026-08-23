@@ -3269,6 +3269,43 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   background: var(--background-modifier-hover) !important;
 }
 
+/* Compact overflow menu — matches the knowledge-base settings mock, not the
+   taller Agent card menu. Shared surface classes stay; this only tightens
+   density so a 3-row menu doesn't read as a fat panel. */
+.yolo-kb-menu-popover {
+  min-width: 176px;
+  border-radius: 7px;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-list {
+  padding: 4px;
+  gap: 0;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-item {
+  min-height: unset;
+  padding: 5px 9px;
+  border-radius: 5px;
+  gap: 9px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-sep {
+  margin: 4px 2px;
+}
+
 /* ================= section dividers ================= */
 
 .yolo-kb-divider-label {
@@ -3327,7 +3364,9 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
 .yolo-kb-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  /* auto-fill keeps empty tracks, so a lone "new" card stays one column
+     wide instead of stretching across the row (auto-fit would collapse). */
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: var(--size-4-3);
 }
 
@@ -3420,9 +3459,22 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   gap: 5px;
   min-width: 0;
   max-width: 100%;
+}
+
+.yolo-kb-card-meta-item svg {
+  flex-shrink: 0;
+  opacity: 0.65;
+}
+
+.yolo-kb-card-meta-text {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.yolo-kb-card-meta-text b {
+  color: inherit;
+  font-weight: var(--font-medium);
 }
 
 .yolo-kb-card-meta-attn {
@@ -6663,7 +6715,9 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-agent-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* auto-fill keeps empty tracks, so a lone "new" card stays one column
+     wide instead of stretching across the row (auto-fit would collapse). */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--size-4-3);
 }
 

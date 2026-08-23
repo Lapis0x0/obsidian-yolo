@@ -218,6 +218,24 @@ export function describeScope(
   }
 }
 
+/** Folder/file names for a knowledge-base card's compact scope line
+ * ("仅 工作/、项目/"), last path segment, folders keep a trailing slash. */
+export function includeScopeLabels(
+  rules: readonly ScopeRule[],
+  kindOf: (path: string) => ScopePathKind,
+): string[] {
+  const labels: string[] = []
+  for (const rule of rules) {
+    if (rule.kind !== 'include') continue
+    const path = normalizeScopePath(rule.path)
+    const base =
+      path === '' ? '' : path.slice(Math.max(0, path.lastIndexOf('/') + 1))
+    if (base === '') continue
+    labels.push(kindOf(path) === 'file' ? base : `${base}/`)
+  }
+  return labels
+}
+
 /** Whether a concrete file path survives `rules` — the same judgment the
  * backends make. */
 export function matchesScope(

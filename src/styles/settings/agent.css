@@ -1056,7 +1056,9 @@ button.yolo-agent-chip--more:hover {
 
 .yolo-agent-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  /* auto-fill keeps empty tracks, so a lone "new" card stays one column
+     wide instead of stretching across the row (auto-fit would collapse). */
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: var(--size-4-3);
 }
 

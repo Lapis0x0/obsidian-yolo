@@ -5,6 +5,7 @@ import {
   describeScope,
   effectiveState,
   estimateFiles,
+  includeScopeLabels,
   ruleDisabledReason,
   rulesFromWorkspaceScope,
   workspaceScopeFromRules,
@@ -185,6 +186,23 @@ describe('describeScope', () => {
       kindOf,
     )
     expect(description.include).toEqual({ folders: 1, files: 1, total: 2 })
+  })
+})
+
+describe('includeScopeLabels', () => {
+  const kindOf = (path: string) => (path.endsWith('.md') ? 'file' : 'folder')
+
+  it('uses the last path segment and keeps a trailing slash on folders', () => {
+    expect(
+      includeScopeLabels(
+        [include('工作'), include('项目/进行中'), include('Inbox/todo.md')],
+        kindOf,
+      ),
+    ).toEqual(['工作/', '进行中/', 'todo.md'])
+  })
+
+  it('skips include of the vault root, which has no display name', () => {
+    expect(includeScopeLabels([include('')], asFolders)).toEqual([])
   })
 })
 
