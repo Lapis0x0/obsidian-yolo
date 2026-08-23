@@ -192,6 +192,7 @@ export const estimateContextBreakdown = async ({
     apiType,
     enableToolDisclosure,
     jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+    settings: mcpManager.getSettingsSnapshot(),
   })
 
   const runtimeModePrompt = buildToolCapabilityPrompt({

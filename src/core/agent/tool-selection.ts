@@ -10,12 +10,14 @@ import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
+  BASH_TOOL_NAME,
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   getLoadToolSchemasTool,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+import { buildBashToolDescription } from '../tools/bash/definition'
 
 import {
   formatSubagentModelOption,
@@ -111,10 +113,11 @@ export const buildRequestTools = (
 }
 
 /**
- * Rewrite tools whose schema depends on global settings. Currently only
- * `js_eval`, whose description and `timeoutMs` input bound both name the
- * exact `settings.jsSandbox` values in effect (network / vault read / $db /
- * external scripts / browser page reads + per-call timeout cap).
+ * Rewrite tools whose schema depends on global settings: `js_eval` (its
+ * description and `timeoutMs` bound name the exact `settings.jsSandbox`
+ * values in effect, and `$db.search` lists the knowledge bases), `bash`
+ * (`search --kb` lists the knowledge bases) and `delegate_subagent` (model
+ * options).
  *
  * The tool list from `listAvailableTools` is cached and settings-agnostic —
  * this is the single bridge that rebuilds the live tool spec. Every consumer
@@ -130,14 +133,25 @@ export function applyDynamicToolDescriptions(
   },
 ): McpTool[] {
   const jsSandboxFqn = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${JS_SANDBOX_TOOL_NAME}`
+  const bashFqn = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${BASH_TOOL_NAME}`
   const delegateSubagentFqn = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}delegate_subagent`
   return tools.map((tool) => {
     if (tool.name === jsSandboxFqn) {
-      const live = getJsSandboxTool(ctx.jsSandboxSettings)
+      const live = getJsSandboxTool(
+        ctx.jsSandboxSettings,
+        ctx.settings?.knowledgeBases,
+      )
       return {
         ...tool,
         description: live.description,
         inputSchema: live.inputSchema,
+      }
+    }
+
+    if (tool.name === bashFqn && ctx.settings) {
+      return {
+        ...tool,
+        description: buildBashToolDescription(ctx.settings.knowledgeBases),
       }
     }
 

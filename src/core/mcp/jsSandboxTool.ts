@@ -12,6 +12,7 @@ import {
 
 import type {
   JsSandboxSettings,
+  KnowledgeBase,
   YoloSettings,
 } from '../../settings/schema/setting.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
@@ -1435,7 +1436,10 @@ self.addEventListener('message', (event) => {
 postToParent({ type: 'ready' })
 `
 
-export function getJsSandboxTool(settings?: JsSandboxSettings | null): McpTool {
+export function getJsSandboxTool(
+  settings?: JsSandboxSettings | null,
+  knowledgeBases?: readonly KnowledgeBase[],
+): McpTool {
   const effectiveTimeoutCap = clampAgentTimeoutCap(settings?.timeoutMs)
   const effectiveTimeoutDefault = Math.min(
     JS_SANDBOX_DEFAULT_TIMEOUT_MS,
@@ -1443,7 +1447,7 @@ export function getJsSandboxTool(settings?: JsSandboxSettings | null): McpTool {
   )
   return {
     name: JS_SANDBOX_TOOL_NAME,
-    description: buildJsSandboxToolDescription(settings ?? {}),
+    description: buildJsSandboxToolDescription(settings ?? {}, knowledgeBases),
     inputSchema: {
       type: 'object',
       properties: {

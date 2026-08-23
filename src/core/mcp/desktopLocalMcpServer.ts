@@ -6,6 +6,7 @@ import { BAKED_PLUGIN_VERSION } from '../../constants/bakedVersion'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 import type { AgentService } from '../agent/service'
+import { describeKnowledgeBaseCatalog } from '../rag/knowledgeBaseCatalog'
 import type { RagKnowledgeAccess } from '../rag/ragAccess'
 
 import {
@@ -52,18 +53,6 @@ const MAX_REQUEST_BODY_BYTES = 1024 * 1024
 const MAX_SESSIONS = 16
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000
 
-const buildKnowledgeBaseCatalog = (settings: YoloSettings): string => {
-  if (settings.knowledgeBases.length === 0) {
-    return 'No knowledge bases are configured — rag/hybrid search falls back to keyword search.'
-  }
-  return settings.knowledgeBases
-    .map((kb) => {
-      const description = kb.description?.trim()
-      return `- ${kb.name}${description ? ` - ${description}` : ''}`
-    })
-    .join('\n')
-}
-
 const buildSearchInputSchema = (settings: YoloSettings) => ({
   mode: z
     .enum(['keyword', 'rag', 'hybrid'])
@@ -86,7 +75,7 @@ const buildSearchInputSchema = (settings: YoloSettings) => ({
     .string()
     .optional()
     .describe(
-      `Restrict semantic (rag/hybrid) search to one knowledge base by name (case-insensitive). Omit to merge top results across every knowledge base. Available knowledge bases:\n${buildKnowledgeBaseCatalog(settings)}`,
+      `Restrict semantic (rag/hybrid) search to one knowledge base by name (case-insensitive). ${describeKnowledgeBaseCatalog(settings.knowledgeBases)}`,
     ),
 })
 
@@ -249,8 +238,8 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
     return this.enqueueLifecycle(async () => {
       const previous = this.currentSettings.mcp.localServer
       const previousAgentCatalog = buildAgentCatalog(this.currentSettings)
-      const previousKnowledgeBaseCatalog = buildKnowledgeBaseCatalog(
-        this.currentSettings,
+      const previousKnowledgeBaseCatalog = describeKnowledgeBaseCatalog(
+        this.currentSettings.knowledgeBases,
       )
       this.currentSettings = settings
       const next = settings.mcp.localServer
@@ -292,7 +281,8 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
         this.refreshAgentTools()
       }
       if (
-        previousKnowledgeBaseCatalog !== buildKnowledgeBaseCatalog(settings)
+        previousKnowledgeBaseCatalog !==
+        describeKnowledgeBaseCatalog(settings.knowledgeBases)
       ) {
         this.refreshSearchTools()
       }

@@ -477,6 +477,7 @@ export function useChatStreamManager({
         apiType: manualApiType,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+        settings,
       })
       const runtimeModePrompt = buildToolCapabilityPrompt({
         mode: chatModeRuntime.toolCapabilityMode,
