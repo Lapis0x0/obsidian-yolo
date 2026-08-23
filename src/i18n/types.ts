@@ -499,14 +499,6 @@ export type TranslationKeys = {
       workspace?: {
         enableTitle?: string
         enableDesc?: string
-        includeTitle?: string
-        includeDesc?: string
-        includeBadge?: string
-        includeEmpty?: string
-        excludeTitle?: string
-        excludeDesc?: string
-        excludeBadge?: string
-        excludeEmpty?: string
         toolBypassNotice?: string
       }
       editorTabModel?: string
@@ -969,6 +961,62 @@ export type TranslationKeys = {
       noChatModelsConfigured: string
       noEmbeddingModelsConfigured: string
     }
+    /** Unified scope editor (RAG index scope + agent workspace scope). */
+    scope?: {
+      editRange?: string
+      currentRules?: string
+      rulesCount?: string
+      noRules?: {
+        rag?: string
+        agent?: string
+      }
+      include?: string
+      exclude?: string
+      clearMark?: string
+      clickAgainToClear?: string
+      follows?: string
+      reasonExcludedAncestor?: string
+      reasonIncludedAncestor?: string
+      reset?: string
+      resetTitle?: string
+      onlyWithRules?: string
+      searchFolders?: string
+      searchFoldersOrFiles?: string
+      noMatch?: {
+        rag?: string
+        agent?: string
+      }
+      noRuleYet?: string
+      fileLabel?: string
+      fileCount?: string
+      modalTitle?: {
+        rag?: string
+        agent?: string
+      }
+      modalSubtitle?: {
+        rag?: string
+        agent?: string
+      }
+      status?: {
+        rag?: {
+          all?: string
+          only?: string
+        }
+        agent?: {
+          all?: string
+          only?: string
+        }
+        excludeSuffix?: string
+        excludeWithinSuffix?: string
+        folders?: string
+        files?: string
+        joiner?: string
+        estimate?: {
+          rag?: string
+          agent?: string
+        }
+      }
+    }
     rag: {
       title: string
       desc?: string
@@ -987,11 +1035,7 @@ export type TranslationKeys = {
       limitDesc: string
       embeddingConcurrency: string
       embeddingConcurrencyDesc: string
-      includePatterns: string
-      includePatternsDesc: string
-      excludePatterns: string
-      excludePatternsDesc: string
-      testPatterns: string
+      /** Label of the "show which files the current scope matches" action. */
       manageEmbeddingDatabase: string
       vectorDataSize?: string
       inMemoryIndexEstimate?: string
@@ -1001,17 +1045,6 @@ export type TranslationKeys = {
       rebuildFromScratchConfirm?: string
       continueIndex?: string
       continueIndexNow?: string
-      // UI additions
-      selectedFolders?: string
-      excludedFolders?: string
-      selectFoldersPlaceholder?: string
-      selectFilesOrFoldersPlaceholder?: string
-      selectExcludeFoldersPlaceholder?: string
-      conflictNoteDefaultInclude?: string
-      conflictExact?: string
-      conflictParentExclude?: string
-      conflictChildExclude?: string
-      conflictRule?: string
       // Auto update additions
       autoUpdate?: string
       autoUpdateDesc?: string

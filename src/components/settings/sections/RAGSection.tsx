@@ -10,11 +10,6 @@ import {
   type RagIndexRunSnapshot,
 } from '../../../core/rag/ragIndexService'
 import YoloPlugin from '../../../main'
-import { findFilesMatchingPatterns } from '../../../utils/glob-utils'
-import {
-  folderPathsToIncludePatterns,
-  includePatternsToFolderPaths,
-} from '../../../utils/rag-utils'
 import { IndexProgress } from '../../chat-view/QueryProgress'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import {
@@ -26,10 +21,15 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { IndexProgressRing } from '../IndexProgressRing'
-import { FolderSelectionList } from '../inputs/FolderSelectionList'
 import { EmbeddingDbManageModal } from '../modals/EmbeddingDbManageModal'
-import { ExcludedFilesModal } from '../modals/ExcludedFilesModal'
-import { IncludedFilesModal } from '../modals/IncludedFilesModal'
+import {
+  type ScopeRule,
+  defaultRagScopeRules,
+  ragOptionsFromRules,
+  rulesFromRagOptions,
+} from '../scope/scopeRules'
+import { ScopeSummary } from '../scope/ScopeSummary'
+import { collectScopeCandidateFiles } from '../scope/scopeVault'
 
 type RAGSectionProps = {
   app: App
@@ -449,25 +449,40 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     ],
   )
 
-  const includeFolders = useMemo(
-    () => includePatternsToFolderPaths(settings.ragOptions.includePatterns),
-    [settings.ragOptions.includePatterns],
-  )
-
   const yoloBaseDir = useMemo(() => getYoloBaseDir(settings), [settings])
 
-  const excludeFolders = useMemo(() => {
-    const userFolders = includePatternsToFolderPaths(
-      settings.ragOptions.excludePatterns,
-    )
-    if (!settings.ragOptions.excludeYoloBaseDir) return userFolders
-    if (userFolders.includes(yoloBaseDir)) return userFolders
-    return [yoloBaseDir, ...userFolders]
-  }, [
-    settings.ragOptions.excludePatterns,
-    settings.ragOptions.excludeYoloBaseDir,
-    yoloBaseDir,
-  ])
+  // The YOLO folder's dedicated flag is surfaced as an ordinary exclude rule,
+  // so the editor only ever deals with one flat rule list.
+  const scopeRules = useMemo(
+    () => rulesFromRagOptions(settings.ragOptions, yoloBaseDir),
+    [settings.ragOptions, yoloBaseDir],
+  )
+  const defaultScopeRules = useMemo(
+    () => defaultRagScopeRules(yoloBaseDir),
+    [yoloBaseDir],
+  )
+
+  const scopeCandidateFiles = useMemo(
+    () =>
+      collectScopeCandidateFiles(
+        plugin.app.vault,
+        isIndexPdfEnabled ? ['md', 'pdf'] : ['md'],
+      ),
+    [plugin.app.vault, isIndexPdfEnabled],
+  )
+
+  const handleScopeChange = useCallback(
+    (nextRules: ScopeRule[]) => {
+      applySettingsUpdate({
+        ...settings,
+        ragOptions: {
+          ...settings.ragOptions,
+          ...ragOptionsFromRules(nextRules, yoloBaseDir),
+        },
+      })
+    },
+    [applySettingsUpdate, settings, yoloBaseDir],
+  )
 
   const runIndexJob = useCallback(
     async ({ mode, successNotice, failureNotice }: IndexJob) => {
@@ -616,24 +631,6 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     yoloBaseDir,
     t,
   ])
-
-  const conflictInfo = useMemo(() => {
-    const inc = includeFolders
-    const exc = excludeFolders
-    const isParentOrSame = (parent: string, child: string) => {
-      if (parent === '') return true
-      if (child === parent) return true
-      return child.startsWith(parent + '/')
-    }
-    const exactConflicts = inc.filter((f) => exc.includes(f))
-    const includeUnderExcluded = inc
-      .filter((f) => exc.some((e) => isParentOrSame(e, f)))
-      .filter((f) => !exactConflicts.includes(f))
-    const excludeWithinIncluded = exc
-      .filter((e) => inc.some((f) => isParentOrSame(f, e)))
-      .filter((e) => !exactConflicts.includes(e))
-    return { exactConflicts, includeUnderExcluded, excludeWithinIncluded }
-  }, [includeFolders, excludeFolders])
 
   const embeddingModelOptionGroups = useMemo<
     ObsidianDropdownOptionGroup[]
@@ -975,172 +972,19 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               title={t('settings.rag.scopeCardTitle', '索引范围')}
               description={t(
                 'settings.rag.scopeCardDesc',
-                '选择哪些文件夹应参与知识库索引，哪些应被排除。',
+                '决定哪些文件夹会进入知识库索引。子文件夹默认跟随父级；排除优先于包含。',
               )}
             >
-              <div className="yolo-rag-scope-group">
-                <ObsidianSetting
-                  name={t('settings.rag.includePatterns')}
-                  desc={t('settings.rag.includePatternsDesc')}
-                  className="yolo-rag-scope-group-setting"
-                >
-                  <ObsidianButton
-                    text={t('settings.rag.testPatterns')}
-                    onClick={() => {
-                      void (async () => {
-                        const patterns = settings.ragOptions.includePatterns
-                        const includedFiles = await findFilesMatchingPatterns(
-                          patterns,
-                          plugin.app.vault,
-                        )
-                        new IncludedFilesModal(
-                          app,
-                          includedFiles,
-                          patterns,
-                        ).open()
-                      })().catch((error) => {
-                        console.error('Failed to test include patterns', error)
-                      })
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <div className="yolo-rag-scope-group-body">
-                  <FolderSelectionList
-                    app={app}
-                    vault={plugin.app.vault}
-                    title={t('settings.rag.selectedFolders', '已选择的文件夹')}
-                    value={includeFolders}
-                    onChange={(folders: string[]) => {
-                      const patterns = folderPathsToIncludePatterns(folders)
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          includePatterns: patterns,
-                        },
-                      })
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="yolo-rag-scope-group">
-                <ObsidianSetting
-                  name={t('settings.rag.excludePatterns')}
-                  desc={t('settings.rag.excludePatternsDesc')}
-                  className="yolo-rag-scope-group-setting"
-                >
-                  <ObsidianButton
-                    text={t('settings.rag.testPatterns')}
-                    onClick={() => {
-                      void (async () => {
-                        const basePatterns = settings.ragOptions.excludePatterns
-                        const patterns = settings.ragOptions.excludeYoloBaseDir
-                          ? [
-                              ...basePatterns,
-                              ...folderPathsToIncludePatterns([yoloBaseDir]),
-                            ]
-                          : basePatterns
-                        const excludedFiles = await findFilesMatchingPatterns(
-                          patterns,
-                          plugin.app.vault,
-                        )
-                        new ExcludedFilesModal(app, excludedFiles).open()
-                      })().catch((error) => {
-                        console.error('Failed to test exclude patterns', error)
-                      })
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <div className="yolo-rag-scope-group-body">
-                  <FolderSelectionList
-                    app={app}
-                    vault={plugin.app.vault}
-                    title={t('settings.rag.excludedFolders', '已排除的文件夹')}
-                    placeholder={t(
-                      'settings.rag.selectExcludeFoldersPlaceholder',
-                      '点击此处选择要排除的文件夹（留空则不排除）',
-                    )}
-                    value={excludeFolders}
-                    onChange={(folders: string[]) => {
-                      const yoloRemoved =
-                        settings.ragOptions.excludeYoloBaseDir &&
-                        !folders.includes(yoloBaseDir)
-                      const userFolders = settings.ragOptions.excludeYoloBaseDir
-                        ? folders.filter((f) => f !== yoloBaseDir)
-                        : folders
-                      const patterns = folderPathsToIncludePatterns(userFolders)
-                      applySettingsUpdate({
-                        ...settings,
-                        ragOptions: {
-                          ...settings.ragOptions,
-                          excludePatterns: patterns,
-                          excludeYoloBaseDir: yoloRemoved
-                            ? false
-                            : settings.ragOptions.excludeYoloBaseDir,
-                        },
-                      })
-                    }}
-                  />
-                </div>
-              </div>
-
-              {(includeFolders.length === 0 ||
-                conflictInfo.exactConflicts.length > 0 ||
-                conflictInfo.includeUnderExcluded.length > 0 ||
-                conflictInfo.excludeWithinIncluded.length > 0) && (
-                <div className="yolo-muted-note">
-                  {includeFolders.length === 0 && (
-                    <div>
-                      {t(
-                        'settings.rag.conflictNoteDefaultInclude',
-                        '提示：当前未选择包含文件夹，默认包含全部。若设置了排除文件夹，则排除将优先生效。',
-                      )}
-                    </div>
-                  )}
-                  {conflictInfo.exactConflicts.length > 0 && (
-                    <div>
-                      {t(
-                        'settings.rag.conflictExact',
-                        '以下文件夹同时被包含与排除，最终将被排除：',
-                      )}{' '}
-                      {conflictInfo.exactConflicts
-                        .map((f) => (f === '' ? '/' : f))
-                        .join(', ')}
-                    </div>
-                  )}
-                  {conflictInfo.includeUnderExcluded.length > 0 && (
-                    <div>
-                      {t(
-                        'settings.rag.conflictParentExclude',
-                        '以下包含的文件夹位于已排除的上级之下，最终将被排除：',
-                      )}{' '}
-                      {conflictInfo.includeUnderExcluded
-                        .map((f) => (f === '' ? '/' : f))
-                        .join(', ')}
-                    </div>
-                  )}
-                  {conflictInfo.excludeWithinIncluded.length > 0 && (
-                    <div>
-                      {t(
-                        'settings.rag.conflictChildExclude',
-                        '以下排除的子文件夹位于包含文件夹之下（局部排除将生效）：',
-                      )}{' '}
-                      {conflictInfo.excludeWithinIncluded
-                        .map((f) => (f === '' ? '/' : f))
-                        .join(', ')}
-                    </div>
-                  )}
-                  <div>
-                    {t(
-                      'settings.rag.conflictRule',
-                      '当包含与排除重叠时，以排除为准。',
-                    )}
-                  </div>
-                </div>
-              )}
+              <ScopeSummary
+                app={app}
+                vault={plugin.app.vault}
+                rules={scopeRules}
+                allowFiles={false}
+                variant="rag"
+                candidateFiles={scopeCandidateFiles}
+                defaultRules={defaultScopeRules}
+                onChange={handleScopeChange}
+              />
             </RAGCard>
 
             <RAGCard title={t('settings.rag.advanced', '高级设置')}>

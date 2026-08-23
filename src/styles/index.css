@@ -6,6 +6,7 @@
 @import './settings/provider-picker.css';
 @import './settings/mcp.css';
 @import './settings/rag.css';
+@import './settings/scope.css';
 @import './settings/assistants.css';
 @import './settings/tabs.css';
 @import './settings/agent.css';

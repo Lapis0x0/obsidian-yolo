@@ -1055,13 +1055,6 @@ select.yolo-module-settings-select {
   color: var(--text-success);
 }
 
-/* Muted small text/note */
-.yolo-muted-note {
-  margin: 4px 0 8px 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
 .yolo-text-faint-small {
   color: var(--text-faint);
   font-size: 12px;
@@ -1072,198 +1065,8 @@ select.yolo-module-settings-select {
   display: flex;
   gap: 8px;
 }
-.yolo-actions-right-gap-8 {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .yolo-clickable {
   cursor: pointer;
-}
-
-/* List reset & scroll panel */
-.yolo-list-reset {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.yolo-scroll-panel {
-  max-height: 300px;
-  overflow: auto;
-}
-
-/* Folder picker */
-.yolo-folder-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.yolo-folder-empty {
-  padding: 8px;
-  opacity: 0.7;
-}
-.yolo-folder-row {
-  cursor: pointer;
-  border-radius: 0;
-  box-shadow: none;
-  border: 0;
-}
-.yolo-folder-row.is-file {
-  cursor: default;
-}
-.yolo-folder-row.is-file:hover {
-  background-color: transparent;
-}
-.yolo-folder-row.is-disabled {
-  cursor: not-allowed;
-}
-.yolo-folder-row:not(.is-disabled):hover {
-  background-color: var(--background-modifier-hover);
-}
-.yolo-icon-placeholder {
-  display: inline-block;
-  width: 16px;
-}
-.yolo-provider-expand-btn.no-children {
-  visibility: hidden;
-}
-.yolo-folder-name {
-  outline: none;
-  box-shadow: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  color: var(--text-normal);
-  border-radius: 0;
-  pointer-events: none;
-}
-.yolo-folder-row.is-disabled .yolo-folder-name {
-  color: var(--text-faint);
-}
-
-.yolo-tree-root,
-.yolo-tree-children {
-  list-style: none;
-  margin: 0;
-  padding-left: 0;
-}
-
-.yolo-tree-children {
-  margin-left: 0;
-}
-
-.yolo-tree-item {
-  margin: 0;
-}
-
-.yolo-tree-guides {
-  display: flex;
-  align-self: stretch;
-  pointer-events: none;
-  flex: 0 0 auto;
-  margin-right: 4px;
-}
-
-.yolo-tree-guide {
-  position: relative;
-  width: 16px;
-  flex: 0 0 16px;
-}
-
-.yolo-tree-guide::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-0.5px);
-  border-left: 1px solid var(--background-modifier-border);
-}
-
-.yolo-tree-guide.is-empty::before {
-  display: none;
-}
-
-.yolo-tree-guide-branch::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 16px;
-  transform: translate(-0.5px, -0.5px);
-  border-top: 1px solid var(--background-modifier-border);
-}
-
-.yolo-tree-guide-branch::before {
-  bottom: -12px;
-}
-
-.yolo-tree-guide-branch.is-last::before {
-  bottom: 50%;
-}
-
-.yolo-tree-icon {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-}
-
-.yolo-folder-row:not(.is-disabled):hover .yolo-tree-icon {
-  color: var(--text-normal);
-}
-
-.yolo-folder-row.is-disabled .yolo-tree-icon {
-  color: var(--text-faint);
-}
-
-/* Indent helpers using CSS variables for depth */
-.yolo-depth {
-  --yolo-depth: 0;
-}
-.yolo-depth-0 {
-  --yolo-depth: 0;
-}
-.yolo-depth-1 {
-  --yolo-depth: 1;
-}
-.yolo-depth-2 {
-  --yolo-depth: 2;
-}
-.yolo-depth-3 {
-  --yolo-depth: 3;
-}
-.yolo-depth-4 {
-  --yolo-depth: 4;
-}
-.yolo-depth-5 {
-  --yolo-depth: 5;
-}
-.yolo-depth-6 {
-  --yolo-depth: 6;
-}
-.yolo-depth-7 {
-  --yolo-depth: 7;
-}
-.yolo-depth-8 {
-  --yolo-depth: 8;
-}
-.yolo-depth-9 {
-  --yolo-depth: 9;
-}
-.yolo-depth-10 {
-  --yolo-depth: 10;
-}
-
-/* Folder picker row indent (base 8px + depth*12px) */
-.yolo-indent-folder {
-  padding-left: calc(8px + var(--yolo-depth) * 12px);
-}
-
-/* RAG index list indent (base 16px + depth*12px) */
-.yolo-indent-list {
-  margin-left: calc(16px + var(--yolo-depth) * 12px);
 }
 
 .yolo-split-button {
@@ -3327,34 +3130,6 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   padding-bottom: 0;
 }
 
-.yolo-rag-scope-group {
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
-  border-radius: var(--radius-m);
-  background: color-mix(
-    in srgb,
-    var(--background-primary) 72%,
-    var(--background-secondary) 28%
-  );
-  margin-bottom: var(--size-4-3);
-  overflow: hidden;
-}
-
-.yolo-rag-scope-group:last-of-type {
-  margin-bottom: var(--size-4-3);
-}
-
-.yolo-rag-scope-group-setting.setting-item {
-  border: none !important;
-  background: transparent !important;
-  margin-bottom: 0;
-  padding: var(--size-4-3) !important;
-}
-
-.yolo-rag-scope-group-body {
-  padding: 0 var(--size-4-3) var(--size-4-3);
-}
-
 .yolo-rag-resource-summary {
   display: flex;
   flex-wrap: wrap;
@@ -3673,6 +3448,682 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+/*
+ * Unified scope editor: the settings-page summary (`yolo-scope-summary`) and
+ * the editor modal (`yolo-scope-editor`) share the status sentence, the
+ * include/exclude badges, and the two-state colour language:
+ *   solid 2/3px bar = a rule set on this row,
+ *   translucent bar = the row follows an ancestor.
+ * Colours come from Obsidian variables only, so themes stay in charge.
+ */
+
+/* ================= shared atoms ================= */
+
+.yolo-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.yolo-scope-badge.is-include {
+  background: rgba(var(--color-green-rgb), 0.14);
+  color: var(--color-green);
+}
+
+.yolo-scope-badge.is-exclude {
+  background: rgba(var(--color-red-rgb), 0.12);
+  color: var(--color-red);
+}
+
+.yolo-scope-badge svg {
+  flex: 0 0 auto;
+}
+
+.yolo-scope-status {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.yolo-scope-status-main {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-scope-status-dot {
+  color: var(--text-faint);
+}
+
+.yolo-scope-status--inline {
+  margin-top: 4px;
+}
+
+.yolo-scope-status--block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.yolo-scope-status--block .yolo-scope-status-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-status--block.is-only .yolo-scope-status-icon {
+  color: var(--interactive-accent);
+}
+
+.yolo-scope-status-text {
+  flex: 1;
+  min-width: 0;
+}
+
+button.yolo-scope-status-reset {
+  flex: 0 0 auto;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  color: var(--interactive-accent);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.yolo-scope-status-reset:hover {
+  background: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+/* The one-shot pulse that makes "whole vault -> only these" visible. Scale
+ * only; the element is remounted on each flip so the animation replays. */
+.yolo-scope-status--block.is-flip {
+  animation: yolo-scope-status-pulse var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-scope-status-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.025);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.yolo-scope-crumb-segment,
+.yolo-scope-crumb-separator {
+  color: var(--text-faint);
+}
+
+.yolo-scope-crumb-separator {
+  opacity: 0.7;
+  margin: 0 1px;
+}
+
+.yolo-scope-crumb-leaf {
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+/* ================= settings-page summary ================= */
+
+.yolo-scope-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.yolo-scope-summary.is-disabled .yolo-scope-status,
+.yolo-scope-summary.is-disabled .yolo-scope-rules {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.yolo-scope-summary-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.yolo-scope-summary-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.yolo-scope-summary-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-edit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.yolo-scope-rules {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.yolo-scope-rule-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 8px 0 14px;
+  font-size: var(--font-ui-small);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-scope-rule-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.yolo-scope-rule-row.is-include::before {
+  background: var(--color-green);
+}
+
+.yolo-scope-rule-row.is-exclude::before {
+  background: var(--color-red);
+}
+
+.yolo-scope-rule-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-rule-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-scope-rule-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+button.yolo-scope-rule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex: 0 0 auto;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.yolo-scope-rule-remove:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-rule-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.yolo-scope-rules-empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-scope-rules-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 10px;
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-scope-rules-footer > span {
+  flex: 1;
+}
+
+button.yolo-scope-rules-clear {
+  padding: 2px 9px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+button.yolo-scope-rules-clear:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-rules-clear:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* ================= editor modal ================= */
+
+/* The modal is capped by Obsidian's max-height; let the tree absorb the
+   shrink so `.modal-content` itself never grows a scrollbar. */
+.yolo-scope-editor-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: var(--size-4-2);
+}
+
+.yolo-scope-editor {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  width: min(580px, 100%);
+}
+
+.yolo-scope-editor > * {
+  flex: 0 0 auto;
+}
+
+.yolo-scope-editor > .yolo-scope-tree {
+  flex: 1 1 auto;
+  min-height: 160px;
+}
+
+.yolo-scope-editor-title {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yolo-scope-editor-subtitle {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.yolo-scope-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yolo-scope-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-form-field);
+  color: var(--text-faint);
+}
+
+.yolo-scope-search:focus-within {
+  border-color: var(--interactive-accent);
+}
+
+.yolo-scope-search input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-scope-search input:focus,
+.yolo-scope-search input:focus-visible {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+button.yolo-scope-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+button.yolo-scope-filter.is-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: rgba(var(--color-accent-rgb), 0.06);
+}
+
+.yolo-scope-tree {
+  max-height: 340px;
+  overflow: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
+.yolo-scope-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.yolo-scope-tree-item {
+  margin: 0;
+}
+
+.yolo-scope-children {
+  margin-left: 20px;
+}
+
+.yolo-scope-tree-empty {
+  border: 1px dashed var(--background-modifier-border-hover);
+  border-radius: var(--radius-m);
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-scope-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 6px 0 4px;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-scope-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.yolo-scope-row.is-effective-include::before {
+  background: rgba(var(--color-green-rgb), 0.45);
+}
+
+.yolo-scope-row.is-effective-exclude::before {
+  background: rgba(var(--color-red-rgb), 0.45);
+}
+
+.yolo-scope-row.has-rule.is-effective-include::before {
+  background: var(--color-green);
+}
+
+.yolo-scope-row.has-rule.is-effective-exclude::before {
+  background: var(--color-red);
+}
+
+.yolo-scope-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-scope-row.is-effective-exclude .yolo-scope-row-name,
+.yolo-scope-row.is-effective-exclude .yolo-scope-row-icon {
+  color: var(--text-faint);
+}
+
+button.yolo-scope-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 6px;
+  flex: 0 0 auto;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.yolo-scope-row-toggle:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-row-toggle.is-blank {
+  visibility: hidden;
+}
+
+.yolo-scope-row-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-scope-highlight {
+  background: rgba(var(--color-accent-rgb), 0.24);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.yolo-scope-row-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-follows {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-marks {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--background-primary);
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-feedback);
+}
+
+.yolo-scope-row:hover .yolo-scope-row-marks,
+.yolo-scope-row:focus-within .yolo-scope-row-marks,
+.yolo-scope-row.has-rule .yolo-scope-row-marks {
+  opacity: 1;
+}
+
+button.yolo-scope-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-left: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+button.yolo-scope-mark:first-child {
+  border-left: none;
+}
+
+button.yolo-scope-mark:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-mark.is-include.is-active {
+  background: rgba(var(--color-green-rgb), 0.16);
+  color: var(--color-green);
+  font-weight: var(--font-semibold);
+}
+
+button.yolo-scope-mark.is-exclude.is-active {
+  background: rgba(var(--color-red-rgb), 0.14);
+  color: var(--color-red);
+  font-weight: var(--font-semibold);
+}
+
+button.yolo-scope-mark:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.yolo-scope-editor-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  flex-wrap: wrap;
+}
+
+.yolo-scope-editor-counts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-scope-editor-estimate {
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-scope-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* ================= mobile ================= */
+
+body.is-mobile .yolo-scope-row {
+  height: 44px;
+  font-size: var(--font-ui-medium);
+  cursor: pointer;
+}
+
+body.is-mobile .yolo-scope-rule-row {
+  min-height: 44px;
+}
+
+body.is-mobile .yolo-scope-tree {
+  max-height: none;
+}
+
+body.is-mobile .yolo-scope-children {
+  margin-left: 16px;
+}
+
+body.is-mobile .yolo-scope-filter-label {
+  display: none;
+}
+
+body.is-mobile .yolo-scope-summary-head {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+body.is-mobile button.yolo-scope-edit-button {
+  justify-content: center;
+  width: 100%;
 }
 /* Template Section Styles */
 .yolo-templates-container {
@@ -4280,42 +4731,6 @@ button.yolo-assistant-selector-footer-btn:hover {
 .yolo-assistant-selector-footer-btn svg {
   color: var(--text-muted);
   flex-shrink: 0;
-}
-
-/* Folder Picker: flatten rows and remove container visuals */
-.yolo-folder-picker .yolo-provider-header {
-  background-color: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 4px 8px;
-  gap: 8px;
-}
-
-.yolo-folder-picker .yolo-provider-header:hover {
-  background-color: var(--background-modifier-hover) !important;
-}
-
-.yolo-folder-picker .yolo-provider-header * {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-.yolo-folder-picker [role='button']:focus,
-.yolo-folder-picker [role='button']:focus-visible,
-.yolo-folder-picker [role='button']:active {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.yolo-folder-picker .yolo-provider-expand-btn {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
 }
 
 /* ===== Added for review fixes: move inline styles to CSS ===== */
@@ -6802,270 +7217,11 @@ button.yolo-agent-chip--more:hover {
   line-height: 1.5;
 }
 
-.yolo-agent-workspace-group {
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  overflow: hidden;
-  background: var(--background-primary);
-  transition: opacity 0.15s ease;
-}
-
-.yolo-agent-workspace-group.is-disabled {
-  opacity: 0.55;
-  pointer-events: none;
-}
-
-.yolo-agent-workspace-group--include {
-  border-color: color-mix(
-    in srgb,
-    var(--color-green) 35%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-group--exclude {
-  border-color: color-mix(
-    in srgb,
-    var(--color-red) 35%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-group-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--background-secondary);
-  border-bottom: 1px solid var(--background-modifier-border);
-  flex-wrap: wrap;
-}
-
-.yolo-agent-workspace-group--include .yolo-agent-workspace-group-head {
-  background: color-mix(
-    in srgb,
-    var(--color-green) 8%,
-    var(--background-primary)
-  );
-  border-bottom-color: color-mix(
-    in srgb,
-    var(--color-green) 20%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-group--exclude .yolo-agent-workspace-group-head {
-  background: color-mix(
-    in srgb,
-    var(--color-red) 8%,
-    var(--background-primary)
-  );
-  border-bottom-color: color-mix(
-    in srgb,
-    var(--color-red) 20%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-smaller);
-  font-weight: var(--font-medium);
-  padding: 3px 8px;
-  border-radius: 999px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  letter-spacing: 0.04em;
-}
-
-.yolo-agent-workspace-group--include .yolo-agent-workspace-badge {
-  color: var(--color-green);
-  border-color: color-mix(
-    in srgb,
-    var(--color-green) 30%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-group--exclude .yolo-agent-workspace-badge {
-  color: var(--color-red);
-  border-color: color-mix(
-    in srgb,
-    var(--color-red) 30%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-group-title {
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-medium);
-  color: var(--text-normal);
-}
-
-.yolo-agent-workspace-group-desc {
-  flex: 1;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  min-width: 120px;
-}
-
-.yolo-agent-workspace-add {
-  display: inline-flex !important;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 10px !important;
-  border-radius: var(--radius-s) !important;
-  background: var(--background-primary) !important;
-  background-color: var(--background-primary) !important;
-  border: 1px solid var(--background-modifier-border) !important;
-  box-shadow: none !important;
-  color: var(--text-normal);
-  font-size: var(--font-ui-smaller);
-  font-weight: var(--font-medium);
-  cursor: pointer;
-  transition: all 0.15s ease;
-}
-
-.yolo-agent-workspace-add:hover:not(:disabled) {
-  background: var(--background-modifier-hover) !important;
-  box-shadow: none !important;
-}
-
-.yolo-agent-workspace-add:disabled {
-  cursor: not-allowed;
-  opacity: 0.6;
-}
-
-.yolo-agent-workspace-group--include .yolo-agent-workspace-add {
-  color: var(--color-green);
-  border-color: color-mix(
-    in srgb,
-    var(--color-green) 30%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-group--exclude .yolo-agent-workspace-add {
-  color: var(--color-red);
-  border-color: color-mix(
-    in srgb,
-    var(--color-red) 30%,
-    var(--background-modifier-border)
-  );
-}
-
-.yolo-agent-workspace-empty {
-  padding: 16px 14px;
-  text-align: center;
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-  font-family: var(--font-monospace);
-}
-
-.yolo-agent-workspace-rows {
-  display: flex;
-  flex-direction: column;
-}
-
 .yolo-agent-workspace-footnote {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   line-height: 1.5;
   padding: 0 2px;
-}
-
-.yolo-agent-workspace-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 14px;
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-
-.yolo-agent-workspace-row:last-child {
-  border-bottom: none;
-}
-
-.yolo-agent-workspace-row-icon {
-  display: inline-flex;
-  width: 18px;
-  height: 18px;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  color: var(--text-muted);
-}
-
-.yolo-agent-workspace-group--include .yolo-agent-workspace-row-icon {
-  color: var(--color-green);
-}
-
-.yolo-agent-workspace-group--exclude .yolo-agent-workspace-row-icon {
-  color: var(--color-red);
-}
-
-.yolo-agent-workspace-row-path {
-  flex: 1;
-  min-width: 0;
-  font-family: var(--font-monospace);
-  font-size: var(--font-ui-small);
-  color: var(--text-normal);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.yolo-agent-workspace-row-kind {
-  font-family: var(--font-monospace);
-  font-size: 10px;
-  color: var(--text-muted);
-  padding: 2px 7px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: 999px;
-  background: var(--background-primary);
-  flex: 0 0 auto;
-}
-
-.yolo-agent-workspace-row-remove {
-  display: inline-flex !important;
-  align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  padding: 0 !important;
-  border-radius: var(--radius-s) !important;
-  background: transparent !important;
-  background-color: transparent !important;
-  border: none !important;
-  box-shadow: none !important;
-  color: var(--text-muted);
-  cursor: pointer;
-  opacity: 0.4;
-  transition: all 0.15s ease;
-  flex: 0 0 auto;
-}
-
-.yolo-agent-workspace-row:hover .yolo-agent-workspace-row-remove {
-  opacity: 1;
-}
-
-.yolo-agent-workspace-row-remove:hover:not(:disabled) {
-  background: var(--background-modifier-hover) !important;
-  color: var(--color-red);
-}
-
-.yolo-agent-workspace-row-remove:disabled {
-  cursor: not-allowed;
-  opacity: 0.3;
-}
-
-.yolo-agent-workspace-row-remove svg {
-  display: block;
-  width: 14px;
-  height: 14px;
 }
 
 .yolo-js-exec-modal {

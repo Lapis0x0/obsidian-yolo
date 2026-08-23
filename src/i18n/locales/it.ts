@@ -685,17 +685,6 @@ export const it: DeepPartial<TranslationKeys> = {
         enableTitle: "Limita l'ambito di lavoro autonomo",
         enableDesc:
           "Se disattivato, l'agent può esplorare e modificare l'intero vault in autonomia. Se attivo, le sue azioni autonome di navigazione e modifica restano entro gli ambiti qui sotto — i file che menzioni con @ o che hai aperto non sono mai limitati.",
-        includeTitle: 'Lavora entro',
-        includeDesc:
-          "L'agent esplora e modifica solo all'interno di questi percorsi in autonomia",
-        includeBadge: 'INCLUDE',
-        includeEmpty:
-          'Lascia vuoto per consentire tutto tranne i percorsi esclusi sotto.',
-        excludeTitle: 'Tieni fuori',
-        excludeDesc:
-          "Fuori portata per la navigazione e la modifica autonome dell'agent, anche entro i percorsi sopra",
-        excludeBadge: 'EXCLUDE',
-        excludeEmpty: 'Nessuna esclusione.',
         toolBypassNotice:
           'Gli agent con comandi da terminale o strumenti MCP di terze parti abilitati possono aggirare questo ambito: non è un confine di sicurezza.',
       },
@@ -1129,6 +1118,63 @@ export const it: DeepPartial<TranslationKeys> = {
       noChatModelsConfigured: 'Nessun modello chat configurato',
       noEmbeddingModelsConfigured: 'Nessun modello embedding configurato',
     },
+    scope: {
+      editRange: 'Modifica ambito',
+      currentRules: 'Regole correnti',
+      rulesCount: '{{n}} regole',
+      noRules: {
+        rag: "Nessuna regola: viene indicizzato l'intero vault",
+        agent: "Nessuna regola: l'intero vault è disponibile",
+      },
+      include: 'Includi',
+      exclude: 'Escludi',
+      clearMark: 'Rimuovi il contrassegno',
+      clickAgainToClear: 'Clicca di nuovo per rimuovere',
+      follows: 'Segue «{{name}}»',
+      reasonExcludedAncestor: 'La cartella superiore «{{name}}» è già esclusa',
+      reasonIncludedAncestor: 'Già inclusa dalla cartella superiore «{{name}}»',
+      reset: 'Reimposta',
+      resetTitle:
+        "Ripristina l'ambito predefinito e rimuovi tutte le regole personalizzate",
+      onlyWithRules: 'Solo con regole',
+      searchFolders: 'Cerca cartelle…',
+      searchFoldersOrFiles: 'Cerca cartelle o file…',
+      noMatch: {
+        rag: 'Nessuna cartella corrispondente',
+        agent: 'Nessuna cartella o file corrispondente',
+      },
+      noRuleYet: 'Ancora nessuna regola',
+      fileLabel: 'File',
+      fileCount: '{{n}} file',
+      modalTitle: {
+        rag: "Modifica l'ambito di indicizzazione",
+        agent: "Modifica l'ambito dello spazio di lavoro",
+      },
+      modalSubtitle: {
+        rag: 'Passa il mouse su una cartella per contrassegnarla Includi / Escludi; clicca di nuovo per rimuovere.',
+        agent:
+          'Puoi arrivare al singolo file; i file seguono la loro cartella per impostazione predefinita.',
+      },
+      status: {
+        rag: {
+          all: "Indicizza l'intero vault",
+          only: 'Indicizza solo {{items}}',
+        },
+        agent: {
+          all: "L'intero vault è disponibile",
+          only: 'Disponibili solo {{items}}',
+        },
+        excludeSuffix: ', escludendo {{items}}',
+        excludeWithinSuffix: ', escludendo {{items}} al suo interno',
+        folders: '{{n}} cartelle',
+        files: '{{n}} file',
+        joiner: ', ',
+        estimate: {
+          rag: '≈ {{n}} / {{total}} note',
+          agent: '{{n}} / {{total}} file raggiungibili',
+        },
+      },
+    },
     rag: {
       title: 'RAG (Retrieval Augmented Generation)',
       desc: "Gestisci gli indici della knowledge base. Il RAG viene attivato automaticamente quando l'Agent usa lo strumento Ricerca in modalità Ibrida o RAG.",
@@ -1149,13 +1195,6 @@ export const it: DeepPartial<TranslationKeys> = {
       embeddingConcurrency: 'Concorrenza embedding',
       embeddingConcurrencyDesc:
         "Numero massimo di richieste di embedding in parallelo durante l'indicizzazione (1–24, predefinito 10). Riducilo se il provider restituisce errori 429 / limite di frequenza.",
-      includePatterns: 'Pattern di inclusione',
-      includePatternsDesc:
-        "Pattern glob per i file da includere nell'indice (uno per riga).",
-      excludePatterns: 'Pattern di esclusione',
-      excludePatternsDesc:
-        "Pattern glob per i file da escludere dall'indice (uno per riga).",
-      testPatterns: 'Testa pattern',
       manageEmbeddingDatabase: 'Gestisci database embedding',
       vectorDataSize: 'Dati vettoriali (MB)',
       inMemoryIndexEstimate: 'Indice in memoria (MB)',
@@ -1166,19 +1205,6 @@ export const it: DeepPartial<TranslationKeys> = {
         "Verranno eliminati tutti i vettori esistenti del modello di embedding corrente e l'intero vault verrà reindicizzato, con possibili numerose chiamate API. Continuare?",
       continueIndex: 'Continua indicizzazione',
       continueIndexNow: 'Continua ora',
-      selectedFolders: 'Cartelle selezionate',
-      excludedFolders: 'Cartelle escluse',
-      selectFoldersPlaceholder: 'Seleziona cartelle...',
-      selectFilesOrFoldersPlaceholder: 'Seleziona file o cartelle...',
-      selectExcludeFoldersPlaceholder: 'Seleziona cartelle da escludere...',
-      conflictNoteDefaultInclude: 'Nota: per default tutti i file sono inclusi',
-      conflictExact:
-        'Conflitto: questo percorso è sia incluso che escluso esplicitamente',
-      conflictParentExclude:
-        'Conflitto: una cartella genitore è esclusa, quindi questa inclusione è inefficace',
-      conflictChildExclude:
-        'Conflitto: cartelle figlio sono incluse, quindi questa esclusione è parzialmente inefficace',
-      conflictRule: 'Regola di conflitto',
       autoUpdate: 'Aggiornamento automatico',
       autoUpdateDesc:
         "Quando è attivo, aggiorna incrementalmente l'indice in background dopo le modifiche ai documenti.",
@@ -1197,7 +1223,7 @@ export const it: DeepPartial<TranslationKeys> = {
         "Controlla l'indicizzazione della knowledge base, il modello di embedding e le relative azioni di manutenzione.",
       scopeCardTitle: 'Ambito di ricerca',
       scopeCardDesc:
-        "Specifica quali cartelle includere o escludere dall'indicizzazione.",
+        "Decide quali cartelle entrano nell'indice della knowledge base. Le sottocartelle seguono la cartella superiore; l'esclusione ha la precedenza sull'inclusione.",
       maintenanceCardTitle: 'Stato e manutenzione',
       maintenanceCardDesc:
         'Mostra lo stato corrente della knowledge base e consente le operazioni di manutenzione necessarie.',

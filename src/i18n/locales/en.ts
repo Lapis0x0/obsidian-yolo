@@ -670,17 +670,6 @@ export const en: TranslationKeys = {
         enableTitle: 'Limit autonomous working range',
         enableDesc:
           'When off, the agent can browse and edit anywhere in the vault on its own. When on, its own browsing and edits stay within the ranges below — files you @ mention or have open are never restricted.',
-        includeTitle: 'Work within',
-        includeDesc:
-          'The agent browses and edits only inside these paths on its own',
-        includeBadge: 'INCLUDE',
-        includeEmpty:
-          'Leave empty to allow everywhere except the paths kept out below.',
-        excludeTitle: 'Keep out',
-        excludeDesc:
-          "Off-limits to the agent's own browsing and edits, even inside the paths above",
-        excludeBadge: 'EXCLUDE',
-        excludeEmpty: 'Nothing kept out.',
         toolBypassNotice:
           'Agents with terminal commands or third-party MCP tools enabled can go around this range — it is not a security boundary.',
       },
@@ -1232,6 +1221,62 @@ export const en: TranslationKeys = {
       noChatModelsConfigured: 'No chat models configured',
       noEmbeddingModelsConfigured: 'No embedding models configured',
     },
+    scope: {
+      editRange: 'Edit scope',
+      currentRules: 'Current rules',
+      rulesCount: '{{n}} rule(s)',
+      noRules: {
+        rag: 'No rules — the whole vault is indexed',
+        agent: 'No rules — the whole vault is available',
+      },
+      include: 'Include',
+      exclude: 'Exclude',
+      clearMark: 'Clear mark',
+      clickAgainToClear: 'Click again to clear',
+      follows: 'Follows "{{name}}"',
+      reasonExcludedAncestor: 'Parent "{{name}}" is already excluded',
+      reasonIncludedAncestor: 'Already included by parent "{{name}}"',
+      reset: 'Reset',
+      resetTitle: 'Restore the default scope and clear all custom rules',
+      onlyWithRules: 'Only with rules',
+      searchFolders: 'Search folders…',
+      searchFoldersOrFiles: 'Search folders or files…',
+      noMatch: {
+        rag: 'No matching folders',
+        agent: 'No matching folders or files',
+      },
+      noRuleYet: 'No rules yet',
+      fileLabel: 'File',
+      fileCount: '{{n}} file(s)',
+      modalTitle: {
+        rag: 'Edit index scope',
+        agent: 'Edit workspace scope',
+      },
+      modalSubtitle: {
+        rag: 'Hover any folder to mark it Include / Exclude; click again to clear.',
+        agent:
+          'You can go down to a single file; files follow their folder by default.',
+      },
+      status: {
+        rag: {
+          all: 'Indexing the whole vault',
+          only: 'Indexing only {{items}}',
+        },
+        agent: {
+          all: 'The whole vault is available',
+          only: 'Only {{items}} available',
+        },
+        excludeSuffix: ', excluding {{items}}',
+        excludeWithinSuffix: ', excluding {{items}} inside',
+        folders: '{{n}} folder(s)',
+        files: '{{n}} file(s)',
+        joiner: ', ',
+        estimate: {
+          rag: '≈ {{n}} / {{total}} notes',
+          agent: '{{n}} / {{total}} files reachable',
+        },
+      },
+    },
     rag: {
       title: 'Knowledge base',
       desc: 'Manage knowledge base indexing. RAG is invoked automatically when the Agent uses the Search tool in Hybrid or RAG mode.',
@@ -1252,13 +1297,6 @@ export const en: TranslationKeys = {
       embeddingConcurrency: 'Embedding concurrency',
       embeddingConcurrencyDesc:
         'Maximum parallel embedding requests during indexing (1–24, default 10). Lower this if the embedding provider returns 429 / rate-limit errors (e.g. Azure S0 tier or per-minute-quota free tiers).',
-      includePatterns: 'Include patterns',
-      includePatternsDesc:
-        "Specify glob patterns to include files in indexing (one per line); for example, use 'notes/**' for all files in the notes folder, leave empty to include all files, and rebuild the entire vault index after changes.",
-      excludePatterns: 'Exclude patterns',
-      excludePatternsDesc:
-        "Specify glob patterns to exclude files from indexing (one per line); for example, use 'notes/**' for all files in the notes folder, leave empty to exclude nothing, and rebuild the entire vault index after changes.",
-      testPatterns: 'Test patterns',
       manageEmbeddingDatabase: 'Manage embedding database',
       vectorDataSize: 'Vector data (MB)',
       inMemoryIndexEstimate: 'In-memory index (MB)',
@@ -1269,25 +1307,6 @@ export const en: TranslationKeys = {
         'This will clear all existing vectors for the current embedding model and re-index the entire vault, which may incur many embedding API calls. Continue?',
       continueIndex: 'Continue indexing',
       continueIndexNow: 'Continue now',
-      // UI additions
-      selectedFolders: 'Selected folders',
-      excludedFolders: 'Excluded folders',
-      selectFoldersPlaceholder:
-        'Click here to select folders (leave empty to include all)',
-      selectFilesOrFoldersPlaceholder:
-        'Click here to pick files or folders (leave empty for the entire vault)',
-      selectExcludeFoldersPlaceholder:
-        'Click here to select folders to exclude (leave empty to exclude nothing)',
-      conflictNoteDefaultInclude:
-        'Tip: no include folders are selected, so all are included by default; if exclude folders are set, exclusion takes precedence.',
-      conflictExact:
-        'The following folders are both included and excluded; they will be excluded:',
-      conflictParentExclude:
-        'The following included folders are under excluded parents and will be excluded:',
-      conflictChildExclude:
-        'The following excluded subfolders are under included folders (partial exclusion applies):',
-      conflictRule:
-        'When include and exclude overlap, exclusion takes precedence.',
       // Auto update
       autoUpdate: 'Auto update index',
       autoUpdateDesc:
@@ -1307,7 +1326,7 @@ export const en: TranslationKeys = {
         'Control knowledge base indexing, the embedding model, and related maintenance actions.',
       scopeCardTitle: 'Index scope',
       scopeCardDesc:
-        'Choose which folders should be included in or excluded from indexing.',
+        'Decides which folders go into the knowledge base index. Subfolders follow their parent by default; exclude beats include.',
       maintenanceCardTitle: 'Status & maintenance',
       maintenanceCardDesc:
         'Review the current knowledge base status and run maintenance actions when needed.',

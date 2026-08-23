@@ -619,14 +619,6 @@ export const zh: TranslationKeys = {
         enableTitle: '限制自主工作范围',
         enableDesc:
           '关闭时，该 Agent 可在整个 vault 中自主浏览与编辑；开启后，它的自主浏览与编辑将被限定在下方范围内 —— 你 @ 引用的文件与当前打开的文件不受此限制。',
-        includeTitle: '工作范围',
-        includeDesc: 'Agent 仅在这些路径内自主浏览与编辑',
-        includeBadge: 'INCLUDE',
-        includeEmpty: '留空则除下方排除路径外全部允许。',
-        excludeTitle: '排除范围',
-        excludeDesc: '即使在上方路径内，也不允许 Agent 自主浏览或编辑这些路径',
-        excludeBadge: 'EXCLUDE',
-        excludeEmpty: '暂无排除项。',
         toolBypassNotice:
           '若该 Agent 启用了终端命令或第三方 MCP 工具，此范围可被绕过，不构成安全边界。',
       },
@@ -1152,6 +1144,61 @@ export const zh: TranslationKeys = {
       noChatModelsConfigured: '未配置聊天模型',
       noEmbeddingModelsConfigured: '未配置嵌入模型',
     },
+    scope: {
+      editRange: '编辑范围',
+      currentRules: '当前规则',
+      rulesCount: '{{n}} 条规则',
+      noRules: {
+        rag: '没有规则，索引整个库',
+        agent: '没有规则，整个库可用',
+      },
+      include: '包含',
+      exclude: '排除',
+      clearMark: '清除标记',
+      clickAgainToClear: '再点一次取消',
+      follows: '跟随「{{name}}」',
+      reasonExcludedAncestor: '父级「{{name}}」已排除',
+      reasonIncludedAncestor: '已由父级「{{name}}」包含',
+      reset: '重置',
+      resetTitle: '恢复默认范围，清除所有自定义规则',
+      onlyWithRules: '只看有规则的',
+      searchFolders: '搜索文件夹…',
+      searchFoldersOrFiles: '搜索文件夹或文件…',
+      noMatch: {
+        rag: '没有匹配的文件夹',
+        agent: '没有匹配的文件夹或文件',
+      },
+      noRuleYet: '还没有任何规则',
+      fileLabel: '文件',
+      fileCount: '{{n}} 个文件',
+      modalTitle: {
+        rag: '编辑索引范围',
+        agent: '编辑工作区作用域',
+      },
+      modalSubtitle: {
+        rag: '悬停任意文件夹标记 包含 / 排除；再点一次取消。',
+        agent: '可以精确到单个文件；文件默认跟随所在文件夹。',
+      },
+      status: {
+        rag: {
+          all: '索引整个库',
+          only: '仅索引 {{items}}',
+        },
+        agent: {
+          all: '整个库可用',
+          only: '仅开放 {{items}}',
+        },
+        excludeSuffix: '，排除 {{items}}',
+        excludeWithinSuffix: '，其中排除 {{items}}',
+        folders: '{{n}} 个文件夹',
+        files: '{{n}} 个文件',
+        joiner: '、',
+        estimate: {
+          rag: '约 {{n}} / {{total}} 篇',
+          agent: '可访问 {{n}} / {{total}} 个文件',
+        },
+      },
+    },
     rag: {
       title: '知识库',
       desc: '管理知识库索引，当 Agent 使用「搜索」工具并选择混合 & RAG 模式时，会自动调用 RAG 能力。',
@@ -1172,13 +1219,6 @@ export const zh: TranslationKeys = {
       embeddingConcurrency: '嵌入并发数',
       embeddingConcurrencyDesc:
         '建立索引时的最大并发嵌入请求数（1–24，默认 10）。如果嵌入服务返回 429 / 频率限制错误（例如 Azure S0 等级或按分钟限额的免费档），请调低此值。',
-      includePatterns: '包含模式',
-      includePatternsDesc:
-        '指定要在索引中包含文件的全局模式（每行一个）。例如：使用"notes/**"包含notes文件夹中的所有文件。留空以包含所有文件。更改后需要"重建整个库索引"。',
-      excludePatterns: '排除模式',
-      excludePatternsDesc:
-        '指定要从索引中排除文件的全局模式（每行一个）。例如：使用"notes/**"排除notes文件夹中的所有文件。留空以不排除任何内容。更改后需要"重建整个库索引"。',
-      testPatterns: '测试模式',
       manageEmbeddingDatabase: '管理嵌入数据库',
       vectorDataSize: '向量数据（MB）',
       inMemoryIndexEstimate: '内存索引（MB）',
@@ -1189,22 +1229,6 @@ export const zh: TranslationKeys = {
         '将清空当前嵌入模型已有的全部向量并重新索引整个知识库，可能产生大量 embedding 调用。继续？',
       continueIndex: '继续索引',
       continueIndexNow: '立即继续',
-      // UI additions
-      selectedFolders: '已选择的文件夹',
-      excludedFolders: '已排除的文件夹',
-      selectFoldersPlaceholder: '点击此处选择文件夹（留空则默认包含全部）',
-      selectFilesOrFoldersPlaceholder:
-        '点击此处选择文件或文件夹（留空表示全库）',
-      selectExcludeFoldersPlaceholder:
-        '点击此处选择要排除的文件夹（留空则不排除）',
-      conflictNoteDefaultInclude:
-        '提示：当前未选择包含文件夹，默认包含全部。若设置了排除文件夹，则排除将优先生效。',
-      conflictExact: '以下文件夹同时被包含与排除，最终将被排除：',
-      conflictParentExclude:
-        '以下包含的文件夹位于已排除的上级之下，最终将被排除：',
-      conflictChildExclude:
-        '以下排除的子文件夹位于包含文件夹之下（局部排除将生效）：',
-      conflictRule: '当包含与排除重叠时，以排除为准。',
       // Auto update
       autoUpdate: '自动更新索引',
       autoUpdateDesc: '开启后会在文档发生变化时于后台自动增量更新索引。',
@@ -1219,7 +1243,8 @@ export const zh: TranslationKeys = {
       basicCardTitle: '知识库',
       basicCardDesc: '控制知识库索引的启用状态、嵌入模型与相关维护操作。',
       scopeCardTitle: '索引范围',
-      scopeCardDesc: '指定知识库索引要包含或排除的文件夹范围。',
+      scopeCardDesc:
+        '决定哪些文件夹会进入知识库索引。子文件夹默认跟随父级；排除优先于包含。',
       maintenanceCardTitle: '状态与维护',
       maintenanceCardDesc: '查看知识库当前状态，并在需要时执行维护操作。',
       currentStatus: '当前状态',

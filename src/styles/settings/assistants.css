@@ -604,42 +604,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   flex-shrink: 0;
 }
 
-/* Folder Picker: flatten rows and remove container visuals */
-.yolo-folder-picker .yolo-provider-header {
-  background-color: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 4px 8px;
-  gap: 8px;
-}
-
-.yolo-folder-picker .yolo-provider-header:hover {
-  background-color: var(--background-modifier-hover) !important;
-}
-
-.yolo-folder-picker .yolo-provider-header * {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-.yolo-folder-picker [role='button']:focus,
-.yolo-folder-picker [role='button']:focus-visible,
-.yolo-folder-picker [role='button']:active {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.yolo-folder-picker .yolo-provider-expand-btn {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-}
-
 /* ===== Added for review fixes: move inline styles to CSS ===== */
 
 /* Wide modal (instead of setting width via JS) */

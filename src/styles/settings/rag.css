@@ -55,34 +55,6 @@
   padding-bottom: 0;
 }
 
-.yolo-rag-scope-group {
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
-  border-radius: var(--radius-m);
-  background: color-mix(
-    in srgb,
-    var(--background-primary) 72%,
-    var(--background-secondary) 28%
-  );
-  margin-bottom: var(--size-4-3);
-  overflow: hidden;
-}
-
-.yolo-rag-scope-group:last-of-type {
-  margin-bottom: var(--size-4-3);
-}
-
-.yolo-rag-scope-group-setting.setting-item {
-  border: none !important;
-  background: transparent !important;
-  margin-bottom: 0;
-  padding: var(--size-4-3) !important;
-}
-
-.yolo-rag-scope-group-body {
-  padding: 0 var(--size-4-3) var(--size-4-3);
-}
-
 .yolo-rag-resource-summary {
   display: flex;
   flex-wrap: wrap;
