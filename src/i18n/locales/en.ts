@@ -1280,10 +1280,6 @@ export const en: TranslationKeys = {
     rag: {
       title: 'Knowledge base',
       desc: 'Manage knowledge base indexing. RAG is invoked automatically when the Agent uses the Search tool in Hybrid or RAG mode.',
-      enableRag: 'Enable knowledge base indexing',
-      enableRagDesc: 'Build indexes for documents within the selected scope.',
-      partialFailureSummary: 'Done · {{count}} file(s) could not be indexed',
-      embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
       chunkSizeDesc:
@@ -1297,75 +1293,75 @@ export const en: TranslationKeys = {
       embeddingConcurrency: 'Embedding concurrency',
       embeddingConcurrencyDesc:
         'Maximum parallel embedding requests during indexing (1–24, default 10). Lower this if the embedding provider returns 429 / rate-limit errors (e.g. Azure S0 tier or per-minute-quota free tiers).',
-      manageEmbeddingDatabase: 'Manage embedding database',
       vectorDataSize: 'Vector data (MB)',
       inMemoryIndexEstimate: 'In-memory index (MB)',
       manage: 'Manage',
-      rebuildIndex: 'Rebuild index',
-      rebuildFromScratch: 'Rebuild from scratch',
-      rebuildFromScratchConfirm:
-        'This will clear all existing vectors for the current embedding model and re-index the entire vault, which may incur many embedding API calls. Continue?',
-      continueIndex: 'Continue indexing',
-      continueIndexNow: 'Continue now',
-      // Auto update
-      autoUpdate: 'Auto update index',
-      autoUpdateDesc:
-        'When enabled, incrementally update the index in the background after documents change.',
+      advanced: 'Advanced settings',
       indexPdf: 'Index PDF files',
       indexPdfDesc:
         'Extract and index PDF text for the knowledge base. The first full rebuild may take longer; turn off for very large vaults if you do not need PDF retrieval.',
-      autoUpdateInterval: 'Minimum interval (hours)',
-      autoUpdateIntervalDesc:
-        'Only trigger auto update after this interval to avoid frequent re-indexing.',
-      manualUpdateNow: 'Update now',
-      manualUpdateNowDesc:
-        'Run an incremental update immediately and record the last updated time.',
-      advanced: 'Advanced settings',
-      basicCardTitle: 'Knowledge base',
-      basicCardDesc:
-        'Control knowledge base indexing, the embedding model, and related maintenance actions.',
-      scopeCardTitle: 'Index scope',
-      scopeCardDesc:
-        'Decides which folders go into the knowledge base index. Subfolders follow their parent by default; exclude beats include.',
-      maintenanceCardTitle: 'Status & maintenance',
-      maintenanceCardDesc:
-        'Review the current knowledge base status and run maintenance actions when needed.',
-      currentStatus: 'Current status',
-      currentStatusDesc:
-        'Once enabled, the knowledge base maintains its index in the background according to the auto-update setting.',
-      lastIndexedAt: 'Last synced',
-      lastIndexedAtDesc:
-        'The most recent time indexing or a background sync completed successfully.',
-      maintenanceActions: 'Maintenance actions',
-      deleteIndex: 'Delete current index',
-      deleteIndexConfirm:
-        'Delete all index data for the currently selected embedding model?',
-      deleteIndexSuccess: 'The current index has been deleted.',
-      deleteIndexFailed: 'Failed to delete the current index.',
-      statusDisabled: 'Disabled',
-      statusSyncing: 'Background sync in progress',
-      statusRuntimeRequired: 'Waiting for database resources',
-      statusReady: 'Enabled',
-      statusEmpty: 'No index has been built yet',
       selectEmbeddingModelFirst:
         'Select an embedding model before enabling knowledge base indexing.',
-      openKnowledgeSettings: 'Open knowledge base settings',
-      openKnowledgeSettingsDesc:
-        'Go to settings to manage indexing, scope, status, and advanced options.',
-      composerEntryDesc:
-        'Knowledge base indexing is now managed from the settings page, and this view keeps a quick shortcut.',
-      // Index progress header/status
-      indexProgressTitle: 'Retrieval-augmented generation index progress',
-      indexing: 'In progress',
-      notStarted: 'Not started',
       waitingRateLimit: 'Waiting for rate limit to reset...',
       preparingProgress: 'Preparing index...',
-      notIndexedYet: 'Not indexed yet',
-      indexComplete: 'Index complete',
-      indexIncomplete: 'Last index did not finish',
-      retryNow: 'Retry now',
-      waitingRetry: 'Waiting to retry...',
       cancelIndex: 'Cancel',
+      // Status bar (RAGSection)
+      indexingDisabled: 'Knowledge base indexing is off',
+      indexingDisabledSub:
+        "The Agent's Search tool will only use keyword search; the rest of this page is dimmed.",
+      indexingProgress: 'Indexing {{kb}}',
+      indexedCount: '{{n}} document(s) indexed',
+      autoUpdate: 'Auto update',
+      updateNow: 'Update now',
+      previousRunInterrupted: 'The previous index run did not finish.',
+    },
+    knowledgeBases: {
+      title: 'Knowledge bases',
+      new: 'New',
+      emptyState: 'No knowledge bases yet',
+      count: '{{n}} knowledge base(s)',
+      queuedCount: '{{n}} knowledge base(s) queued',
+      pendingCount: '{{n}} pending update(s)',
+      attentionCount: '{{n}} knowledge base(s) need attention',
+      embeddingModelLine: 'Embedding model {{model}}',
+      embeddingModelShelf: 'Embedding model',
+      embeddingModelShelfDesc:
+        'Shared by all knowledge bases · changing it requires a full rebuild',
+      embeddingModelApiRow: 'API model',
+      stateReady: 'Ready',
+      stateIndexing: 'Indexing',
+      statePending: 'Pending update',
+      stateQueued: 'Queued',
+      stateAttention: 'Needs attention',
+      docs: 'Docs',
+      chunks: 'Chunks',
+      pendingFiles: '{{n}} file(s) changed',
+      enableAndIndex: 'Enable and index',
+      disable: 'Disable indexing',
+      rebuildThis: 'Rebuild this base',
+      rebuildAll: 'Rebuild all indexes',
+      manageDataTitle: 'Manage index data',
+      noIndexedData: 'No index has been built yet',
+      delete: 'Delete knowledge base',
+      deleteConfirm:
+        'This deletes the knowledge base "{{name}}" and all of its index data. This cannot be undone.',
+      createTitle: 'New knowledge base',
+      editTitle: 'Knowledge base · {{name}}',
+      fieldName: 'Name',
+      fieldNameDesc: 'The display name of this knowledge base',
+      fieldDescription: 'Description',
+      fieldDescriptionDesc:
+        "Describe what this base mainly contains. This text is given to the model to help it pick the right knowledge base to search; it's optional.",
+      fieldDescriptionPlaceholder:
+        'e.g. Daily meeting notes and current project docs',
+      scopeTitle: 'Scope',
+      scopeDesc: 'Decides which folders go into this knowledge base.',
+      nameRequired: 'Enter a name for the knowledge base',
+      nameDuplicate: 'A knowledge base with this name already exists',
+      saveFailed: 'Failed to save the knowledge base',
+      deleteTitle: 'Delete knowledge base',
+      deleteFailed: 'Failed to delete the knowledge base',
+      rebuildFailed: 'Failed to rebuild the index',
     },
     mcp: {
       title: 'Custom tools (MCP)',
@@ -1674,13 +1670,6 @@ export const en: TranslationKeys = {
       captureRawRequestDebug: 'Enable LLM request debugging',
       captureRawRequestDebugDesc:
         'When enabled, each AI response shows a Debug button (in the info bar and the more-actions menu) that lets you view or export the raw LLM, tool-call, and web-search requests and responses for that turn. Captured data is kept in memory for the current Obsidian session only and is cleared on restart. API keys are redacted in the export, but the original conversation content is included.',
-      captureRawRequestDebugExcludeLogsTitle:
-        'Exclude debug logs from knowledge base?',
-      captureRawRequestDebugExcludeLogsMessage:
-        'Debug logs may contain raw conversation and tool contents. Add {{path}} to the knowledge base exclude list so they are not indexed by RAG?',
-      captureRawRequestDebugExcludeLogsCta: 'Exclude logs',
-      captureRawRequestDebugExcludeLogsSuccess:
-        '{{path}} has been excluded from the knowledge base.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',

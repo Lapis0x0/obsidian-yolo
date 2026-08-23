@@ -1020,12 +1020,8 @@ export type TranslationKeys = {
     rag: {
       title: string
       desc?: string
-      enableRag: string
-      enableRagDesc: string
-      partialFailureSummary?: string
       indexPdf?: string
       indexPdfDesc?: string
-      embeddingModel: string
       embeddingModelDesc: string
       chunkSize: string
       chunkSizeDesc: string
@@ -1035,60 +1031,68 @@ export type TranslationKeys = {
       limitDesc: string
       embeddingConcurrency: string
       embeddingConcurrencyDesc: string
-      /** Label of the "show which files the current scope matches" action. */
-      manageEmbeddingDatabase: string
       vectorDataSize?: string
       inMemoryIndexEstimate?: string
       manage: string
-      rebuildIndex: string
-      rebuildFromScratch?: string
-      rebuildFromScratchConfirm?: string
-      continueIndex?: string
-      continueIndexNow?: string
-      // Auto update additions
-      autoUpdate?: string
-      autoUpdateDesc?: string
-      autoUpdateInterval?: string
-      autoUpdateIntervalDesc?: string
-      manualUpdateNow?: string
-      manualUpdateNowDesc?: string
       advanced?: string
-      basicCardTitle?: string
-      basicCardDesc?: string
-      scopeCardTitle?: string
-      scopeCardDesc?: string
-      maintenanceCardTitle?: string
-      maintenanceCardDesc?: string
-      currentStatus?: string
-      currentStatusDesc?: string
-      lastIndexedAt?: string
-      lastIndexedAtDesc?: string
-      maintenanceActions?: string
-      deleteIndex?: string
-      deleteIndexConfirm?: string
-      deleteIndexSuccess?: string
-      deleteIndexFailed?: string
-      statusDisabled?: string
-      statusSyncing?: string
-      statusRuntimeRequired?: string
-      statusReady?: string
-      statusEmpty?: string
       selectEmbeddingModelFirst?: string
-      openKnowledgeSettings?: string
-      openKnowledgeSettingsDesc?: string
-      composerEntryDesc?: string
-      // Index progress header/status
-      indexProgressTitle?: string
-      indexing?: string
-      notStarted?: string
       waitingRateLimit?: string
       preparingProgress?: string
-      notIndexedYet?: string
-      indexComplete?: string
-      indexIncomplete?: string
-      retryNow?: string
-      waitingRetry?: string
       cancelIndex?: string
+      // Status bar (RAGSection)
+      indexingDisabled?: string
+      indexingDisabledSub?: string
+      indexingProgress?: string
+      indexedCount?: string
+      autoUpdate?: string
+      updateNow?: string
+      previousRunInterrupted?: string
+    }
+    knowledgeBases: {
+      title: string
+      new: string
+      emptyState?: string
+      count?: string
+      queuedCount?: string
+      pendingCount?: string
+      attentionCount?: string
+      embeddingModelLine?: string
+      embeddingModelShelf?: string
+      embeddingModelShelfDesc?: string
+      embeddingModelApiRow?: string
+      // Per-card state labels
+      stateReady?: string
+      stateIndexing?: string
+      statePending?: string
+      stateQueued?: string
+      stateAttention?: string
+      docs?: string
+      chunks?: string
+      pendingFiles?: string
+      enableAndIndex?: string
+      disable?: string
+      rebuildThis?: string
+      rebuildAll?: string
+      manageDataTitle?: string
+      noIndexedData?: string
+      delete?: string
+      deleteConfirm?: string
+      // Create/edit modal
+      createTitle?: string
+      editTitle?: string
+      fieldName?: string
+      fieldNameDesc?: string
+      fieldDescription?: string
+      fieldDescriptionDesc?: string
+      fieldDescriptionPlaceholder?: string
+      scopeTitle?: string
+      scopeDesc?: string
+      nameRequired?: string
+      nameDuplicate?: string
+      saveFailed?: string
+      deleteTitle?: string
+      deleteFailed?: string
+      rebuildFailed?: string
     }
     mcp: {
       title: string
@@ -1345,10 +1349,6 @@ export type TranslationKeys = {
       resetAgentsSuccess?: string
       captureRawRequestDebug?: string
       captureRawRequestDebugDesc?: string
-      captureRawRequestDebugExcludeLogsTitle?: string
-      captureRawRequestDebugExcludeLogsMessage?: string
-      captureRawRequestDebugExcludeLogsCta?: string
-      captureRawRequestDebugExcludeLogsSuccess?: string
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string

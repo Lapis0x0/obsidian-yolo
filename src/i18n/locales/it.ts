@@ -1176,13 +1176,8 @@ export const it: DeepPartial<TranslationKeys> = {
       },
     },
     rag: {
-      title: 'RAG (Retrieval Augmented Generation)',
+      title: 'Knowledge base',
       desc: "Gestisci gli indici della knowledge base. Il RAG viene attivato automaticamente quando l'Agent usa lo strumento Ricerca in modalità Ibrida o RAG.",
-      enableRag: 'Abilita RAG',
-      enableRagDesc:
-        "Crea l'indice per i documenti inclusi nell'ambito selezionato.",
-      partialFailureSummary: 'Completato · {{count}} file non indicizzabili',
-      embeddingModel: 'Modello embedding',
       embeddingModelDesc:
         'Modello usato per generare embeddings per la ricerca semantica.',
       chunkSize: 'Dimensione chunk',
@@ -1195,73 +1190,76 @@ export const it: DeepPartial<TranslationKeys> = {
       embeddingConcurrency: 'Concorrenza embedding',
       embeddingConcurrencyDesc:
         "Numero massimo di richieste di embedding in parallelo durante l'indicizzazione (1–24, predefinito 10). Riducilo se il provider restituisce errori 429 / limite di frequenza.",
-      manageEmbeddingDatabase: 'Gestisci database embedding',
       vectorDataSize: 'Dati vettoriali (MB)',
       inMemoryIndexEstimate: 'Indice in memoria (MB)',
       manage: 'Gestisci',
-      rebuildIndex: 'Ricostruisci indice',
-      rebuildFromScratch: 'Ricostruisci da zero',
-      rebuildFromScratchConfirm:
-        "Verranno eliminati tutti i vettori esistenti del modello di embedding corrente e l'intero vault verrà reindicizzato, con possibili numerose chiamate API. Continuare?",
-      continueIndex: 'Continua indicizzazione',
-      continueIndexNow: 'Continua ora',
-      autoUpdate: 'Aggiornamento automatico',
-      autoUpdateDesc:
-        "Quando è attivo, aggiorna incrementalmente l'indice in background dopo le modifiche ai documenti.",
+      advanced: 'Impostazioni avanzate',
       indexPdf: 'Indicizza file PDF',
       indexPdfDesc:
         'Estrae e indicizza il testo dei PDF per la knowledge base. La prima ricostruzione completa può richiedere più tempo; disattiva per vault molto grandi se non ti serve il recupero sui PDF.',
-      autoUpdateInterval: 'Intervallo aggiornamento automatico',
-      autoUpdateIntervalDesc:
-        "Tempo di attesa (in millisecondi) dopo che un file viene modificato prima di aggiornare l'indice.",
-      manualUpdateNow: 'Aggiorna ora',
-      manualUpdateNowDesc:
-        "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
-      advanced: 'Impostazioni avanzate',
-      basicCardTitle: 'Knowledge base',
-      basicCardDesc:
-        "Controlla l'indicizzazione della knowledge base, il modello di embedding e le relative azioni di manutenzione.",
-      scopeCardTitle: 'Ambito di ricerca',
-      scopeCardDesc:
-        "Decide quali cartelle entrano nell'indice della knowledge base. Le sottocartelle seguono la cartella superiore; l'esclusione ha la precedenza sull'inclusione.",
-      maintenanceCardTitle: 'Stato e manutenzione',
-      maintenanceCardDesc:
-        'Mostra lo stato corrente della knowledge base e consente le operazioni di manutenzione necessarie.',
-      currentStatus: 'Stato corrente',
-      currentStatusDesc:
-        "Quando la knowledge base è attiva, l'indice viene mantenuto in background in base all'impostazione di aggiornamento automatico.",
-      lastIndexedAt: 'Ultima sincronizzazione',
-      lastIndexedAtDesc:
-        "L'ultima volta in cui l'indicizzazione o una sincronizzazione in background è terminata con successo.",
-      maintenanceActions: 'Azioni di manutenzione',
-      deleteIndex: 'Elimina indice corrente',
-      deleteIndexConfirm:
-        "Vuoi eliminare tutti i dati d'indice per il modello di embedding attualmente selezionato?",
-      deleteIndexSuccess: "L'indice corrente è stato eliminato.",
-      deleteIndexFailed: "Impossibile eliminare l'indice corrente.",
-      statusDisabled: 'Disattivato',
-      statusSyncing: 'Sincronizzazione in background',
-      statusRuntimeRequired: 'In attesa delle risorse database',
-      statusReady: 'Attivo',
-      statusEmpty: 'Nessun indice disponibile',
       selectEmbeddingModelFirst:
         "Seleziona prima un modello di embedding, poi attiva l'indicizzazione della knowledge base.",
-      openKnowledgeSettings: 'Apri impostazioni knowledge base',
-      openKnowledgeSettingsDesc:
-        'Vai alle impostazioni per gestire indice, ambito, stato e opzioni avanzate.',
-      composerEntryDesc:
-        'L’indicizzazione della knowledge base ora è gestita nella pagina impostazioni; qui resta solo un accesso rapido.',
-      indexProgressTitle: 'Progresso indicizzazione',
-      indexing: 'Indicizzazione in corso...',
-      notStarted: 'Non iniziato',
       waitingRateLimit: 'In attesa del reset del limite di frequenza...',
       preparingProgress: 'Preparazione indicizzazione...',
-      notIndexedYet: 'Non ancora indicizzato',
-      indexComplete: 'Indicizzazione completata',
-      indexIncomplete: 'Ultima indicizzazione non completata',
-      retryNow: 'Riprova ora',
-      waitingRetry: 'In attesa di un nuovo tentativo...',
       cancelIndex: 'Annulla',
+      // Status bar (RAGSection)
+      indexingDisabled: "L'indicizzazione della knowledge base è disattivata",
+      indexingDisabledSub:
+        "Lo strumento Ricerca dell'Agent userà solo la ricerca per parole chiave; il resto della pagina è disattivato.",
+      indexingProgress: 'Indicizzazione di {{kb}} in corso',
+      indexedCount: '{{n}} documento/i indicizzati',
+      autoUpdate: 'Aggiornamento automatico',
+      updateNow: 'Aggiorna ora',
+      previousRunInterrupted:
+        "L'ultima indicizzazione non è terminata correttamente.",
+    },
+    knowledgeBases: {
+      title: 'Knowledge base',
+      new: 'Nuova',
+      emptyState: 'Nessuna knowledge base ancora creata',
+      count: '{{n}} knowledge base',
+      queuedCount: '{{n}} knowledge base in coda',
+      pendingCount: '{{n}} aggiornamento/i in sospeso',
+      attentionCount: '{{n}} knowledge base richiedono attenzione',
+      embeddingModelLine: 'Modello embedding {{model}}',
+      embeddingModelShelf: 'Modello embedding',
+      embeddingModelShelfDesc:
+        'Condiviso da tutte le knowledge base · cambiarlo richiede una ricostruzione completa',
+      embeddingModelApiRow: 'Modello API',
+      stateReady: 'Pronta',
+      stateIndexing: 'In indicizzazione',
+      statePending: 'Aggiornamento in sospeso',
+      stateQueued: 'In coda',
+      stateAttention: 'Richiede attenzione',
+      docs: 'Documenti',
+      chunks: 'Chunk',
+      pendingFiles: '{{n}} file modificati',
+      enableAndIndex: 'Attiva e indicizza',
+      disable: 'Disattiva indicizzazione',
+      rebuildThis: 'Ricostruisci questa base',
+      rebuildAll: 'Ricostruisci tutti gli indici',
+      manageDataTitle: 'Gestisci dati indicizzati',
+      noIndexedData: 'Nessun indice disponibile',
+      delete: 'Elimina knowledge base',
+      deleteConfirm:
+        'Verranno eliminati la knowledge base "{{name}}" e tutti i suoi dati indicizzati. L\'operazione non è reversibile.',
+      createTitle: 'Nuova knowledge base',
+      editTitle: 'Knowledge base · {{name}}',
+      fieldName: 'Nome',
+      fieldNameDesc: 'Il nome visualizzato di questa knowledge base',
+      fieldDescription: 'Descrizione',
+      fieldDescriptionDesc:
+        'Descrivi cosa contiene principalmente questa base. Questo testo viene fornito al modello per aiutarlo a scegliere la knowledge base giusta da consultare; è facoltativo.',
+      fieldDescriptionPlaceholder:
+        'Es. Verbali riunioni quotidiane e documenti dei progetti in corso',
+      scopeTitle: 'Ambito',
+      scopeDesc: 'Decide quali cartelle entrano in questa knowledge base.',
+      nameRequired: 'Inserisci un nome per la knowledge base',
+      nameDuplicate: 'Esiste già una knowledge base con questo nome',
+      saveFailed: 'Impossibile salvare la knowledge base',
+      deleteTitle: 'Elimina knowledge base',
+      deleteFailed: 'Impossibile eliminare la knowledge base',
+      rebuildFailed: "Impossibile ricostruire l'indice",
     },
     mcp: {
       title: 'Strumenti personalizzati (MCP)',
@@ -1519,13 +1517,6 @@ export const it: DeepPartial<TranslationKeys> = {
       captureRawRequestDebug: 'Abilita debug richieste LLM',
       captureRawRequestDebugDesc:
         "Quando attivo, ogni risposta del modello mostra un pulsante Debug (nella barra info e nel menu Altre azioni) che consente di consultare o esportare le richieste e risposte raw di LLM, chiamate strumento e ricerche web di quel turno. I dati catturati restano in memoria solo per la sessione corrente di Obsidian e vengono cancellati al riavvio. Le chiavi API sono offuscate nell'export, ma il contenuto originale della conversazione è incluso.",
-      captureRawRequestDebugExcludeLogsTitle:
-        'Escludere i log di debug dalla knowledge base?',
-      captureRawRequestDebugExcludeLogsMessage:
-        'I log di debug possono contenere il contenuto raw della conversazione e degli strumenti. Aggiungere {{path}} alla lista di esclusione della knowledge base per evitare che vengano indicizzati dal RAG?',
-      captureRawRequestDebugExcludeLogsCta: 'Escludi log',
-      captureRawRequestDebugExcludeLogsSuccess:
-        '{{path}} è stato escluso dalla knowledge base.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
