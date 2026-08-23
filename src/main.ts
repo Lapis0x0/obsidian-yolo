@@ -2727,9 +2727,19 @@ export default class YoloPlugin extends Plugin {
     this.moduleUpdateController = null
     this.moduleService?.dispose()
     this.moduleService = null
+
+    // RagEngine cleanup — must run before `runtimeComponentService.stop()`
+    // below so the local embedding session's `embedding-engine` lease is
+    // released before that component is marked quiescing.
+    this.ragIndexService?.cleanup()
+    this.ragIndexService = null
+    this.ragCoordinator?.cleanup()
+    this.ragCoordinator = null
+
     setRuntimeComponentService(null)
     this.runtimeComponentService?.stop()
     this.runtimeComponentService = null
+    void this.localEmbeddingModelManager?.dispose()
     setLocalEmbeddingModelManager(null)
     this.localEmbeddingModelManager = null
     this.distributionFeedClient = null
@@ -2769,12 +2779,6 @@ export default class YoloPlugin extends Plugin {
       clearTimeout(id)
     })
     this.timeoutIds = []
-
-    // RagEngine cleanup
-    this.ragIndexService?.cleanup()
-    this.ragIndexService = null
-    this.ragCoordinator?.cleanup()
-    this.ragCoordinator = null
 
     // Promise cleanup
     this.dbManagerInitPromise = null
