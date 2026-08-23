@@ -1256,6 +1256,49 @@ export const it: DeepPartial<TranslationKeys> = {
       manageRefresh: 'Aggiorna',
       manageRemoveIndex: 'Rimuovi indice',
       removeIndexFailed: "Impossibile rimuovere l'indice",
+      localEmbedding: {
+        groupLabel: 'Locale',
+        groupDesc:
+          "Esegui l'embedding interamente su questo dispositivo. Nessuna chiave API richiesta.",
+        desktopOnly:
+          'I modelli di embedding locali sono disponibili solo su desktop.',
+        metaLine: '{{dimension}} dim · {{languages}} · {{size}}',
+        download: 'Scarica',
+        downloadingLine:
+          'Download di {{file}} in corso — {{percent}}% ({{received}} / {{total}})',
+        verifying: 'Verifica dei file…',
+        failedLine: 'Download non riuscito: {{error}}',
+        readyLine: 'Scaricato',
+        current: 'Attuale',
+        viewSource: 'Mostra origine',
+        hideSource: 'Nascondi origine',
+        sourceRepoLabel: 'Repository',
+        sourceRevisionLabel: 'Revisione',
+        sourceFilesLabel: 'File',
+        deleteCurrentConfirmTitle: 'Eliminare il modello di embedding attuale?',
+        deleteCurrentConfirmMessage:
+          '"{{name}}" è il modello di embedding attualmente in uso. Eliminandone i file, la ricerca con embedding locale sarà disabilitata finché non scegli un altro modello. L\'operazione non è reversibile.',
+        endpointLabel: 'Origine download',
+        endpointCustomOption: 'Personalizzato',
+        endpointCustomPlaceholder: 'https://example.com',
+        storageUsed: '{{size}} usati su disco',
+        manageDownloaded: 'Gestisci modelli scaricati',
+        manageDownloadedConfirmTitle: 'Rimuovere tutti i modelli scaricati?',
+        manageDownloadedConfirmMessage:
+          'Verranno eliminati dal disco tutti i modelli di embedding locali scaricati. Potrai scaricarli di nuovo in seguito.',
+        engineModelNotDownloaded: 'Modello di embedding locale non scaricato',
+        engineModelNotDownloadedSub:
+          "Scarica il modello nelle impostazioni della Knowledge Base per usare l'embedding locale.",
+        engineDownloadAction: 'Vai alle impostazioni',
+        engineComponentDisabled: 'Il motore di embedding locale è disattivato',
+        engineComponentDisabledSub:
+          "Attiva il motore di embedding per usare l'embedding locale.",
+        engineEnableAction: 'Attiva',
+        engineEnableFailed: 'Impossibile attivare il motore di embedding',
+        engineNonDesktop: "L'embedding locale non è disponibile",
+        engineNonDesktopSub:
+          'I modelli di embedding locali funzionano solo su desktop.',
+      },
       delete: 'Elimina knowledge base',
       deleteConfirm:
         'Verranno eliminati la knowledge base "{{name}}" e tutti i suoi dati indicizzati. L\'operazione non è reversibile.',

@@ -1106,6 +1106,42 @@ export type TranslationKeys = {
       manageRefresh?: string
       manageRemoveIndex?: string
       removeIndexFailed?: string
+      // Local embedding model shelf
+      localEmbedding?: {
+        groupLabel?: string
+        groupDesc?: string
+        desktopOnly?: string
+        metaLine?: string
+        download?: string
+        downloadingLine?: string
+        verifying?: string
+        failedLine?: string
+        readyLine?: string
+        current?: string
+        viewSource?: string
+        hideSource?: string
+        sourceRepoLabel?: string
+        sourceRevisionLabel?: string
+        sourceFilesLabel?: string
+        deleteCurrentConfirmTitle?: string
+        deleteCurrentConfirmMessage?: string
+        endpointLabel?: string
+        endpointCustomOption?: string
+        endpointCustomPlaceholder?: string
+        storageUsed?: string
+        manageDownloaded?: string
+        manageDownloadedConfirmTitle?: string
+        manageDownloadedConfirmMessage?: string
+        engineModelNotDownloaded?: string
+        engineModelNotDownloadedSub?: string
+        engineDownloadAction?: string
+        engineComponentDisabled?: string
+        engineComponentDisabledSub?: string
+        engineEnableAction?: string
+        engineEnableFailed?: string
+        engineNonDesktop?: string
+        engineNonDesktopSub?: string
+      }
     }
     mcp: {
       title: string

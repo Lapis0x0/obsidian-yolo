@@ -1358,6 +1358,47 @@ export const en: TranslationKeys = {
       manageRefresh: 'Refresh',
       manageRemoveIndex: 'Remove index',
       removeIndexFailed: 'Failed to remove index',
+      localEmbedding: {
+        groupLabel: 'Local',
+        groupDesc:
+          'Run embedding entirely on this device. No API key required.',
+        desktopOnly: 'Local embedding models are only available on desktop.',
+        metaLine: '{{dimension}} dims · {{languages}} · {{size}}',
+        download: 'Download',
+        downloadingLine:
+          'Downloading {{file}} — {{percent}}% ({{received}} / {{total}})',
+        verifying: 'Verifying files…',
+        failedLine: 'Download failed: {{error}}',
+        readyLine: 'Downloaded',
+        current: 'Current',
+        viewSource: 'View source',
+        hideSource: 'Hide source',
+        sourceRepoLabel: 'Repository',
+        sourceRevisionLabel: 'Revision',
+        sourceFilesLabel: 'Files',
+        deleteCurrentConfirmTitle: 'Delete the current embedding model?',
+        deleteCurrentConfirmMessage:
+          '"{{name}}" is your active embedding model. Deleting its files disables local embedding search until you choose another model. This cannot be undone.',
+        endpointLabel: 'Download source',
+        endpointCustomOption: 'Custom',
+        endpointCustomPlaceholder: 'https://example.com',
+        storageUsed: '{{size}} used on disk',
+        manageDownloaded: 'Manage downloaded models',
+        manageDownloadedConfirmTitle: 'Remove all downloaded models?',
+        manageDownloadedConfirmMessage:
+          'This deletes every downloaded local embedding model from disk. You can download them again later.',
+        engineModelNotDownloaded: 'Local embedding model not downloaded',
+        engineModelNotDownloadedSub:
+          'Download the model in Knowledge Base settings to use local embedding.',
+        engineDownloadAction: 'Go to settings',
+        engineComponentDisabled: 'Local embedding engine is disabled',
+        engineComponentDisabledSub:
+          'Enable the embedding engine to use local embedding.',
+        engineEnableAction: 'Enable',
+        engineEnableFailed: 'Failed to enable the embedding engine',
+        engineNonDesktop: 'Local embedding is unavailable',
+        engineNonDesktopSub: 'Local embedding models only run on desktop.',
+      },
       delete: 'Delete knowledge base',
       deleteConfirm:
         'This deletes the knowledge base "{{name}}" and all of its index data. This cannot be undone.',
