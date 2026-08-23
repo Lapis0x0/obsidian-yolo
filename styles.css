@@ -3163,6 +3163,22 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   color: var(--text-muted);
 }
 
+/* Local-embedding engine takeover — the status bar's only other "not the
+   plain ready/busy line" state, see the `.yolo-local-embedding-*` block
+   below for the shelf this state points users toward. */
+.yolo-kb-status-bar.is-warn {
+  border-color: rgba(var(--color-orange-rgb), 0.4);
+}
+
+.yolo-kb-status-bar.is-warn .yolo-kb-status-dot {
+  background: var(--color-orange);
+  box-shadow: 0 0 0 3px rgba(var(--color-orange-rgb), 0.14);
+}
+
+.yolo-kb-status-bar.is-warn .yolo-kb-status-line {
+  color: var(--color-orange);
+}
+
 .yolo-kb-status-text {
   flex: 1 1 auto;
   min-width: 0;
@@ -3571,6 +3587,195 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
   gap: var(--size-4-2);
 }
 
+/* ================= local embedding shelf ================= */
+
+.yolo-local-embedding-group {
+  margin-bottom: var(--size-4-3);
+}
+
+.yolo-local-embedding-desktop-only {
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-local-embedding-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  margin-bottom: var(--size-4-2);
+}
+
+.yolo-local-embedding-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--size-4-3);
+  padding: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+}
+
+.yolo-local-embedding-row.is-current {
+  border-color: rgba(var(--color-green-rgb), 0.35);
+}
+
+.yolo-local-embedding-row-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.yolo-local-embedding-row-name {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-local-embedding-hf-link {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+}
+
+.yolo-local-embedding-hf-link:hover {
+  color: var(--text-muted);
+}
+
+.yolo-local-embedding-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+}
+
+.yolo-local-embedding-tag.is-recommended {
+  background: rgba(var(--color-accent-rgb), 0.14);
+  color: var(--text-accent);
+}
+
+.yolo-local-embedding-row-meta {
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-local-embedding-row-status {
+  margin-top: var(--size-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-local-embedding-row-status.is-ready {
+  color: var(--color-green);
+}
+
+.yolo-local-embedding-row-status.is-error {
+  color: var(--color-red);
+}
+
+.yolo-local-embedding-progress {
+  width: 100%;
+  height: 4px;
+  margin-bottom: var(--size-2-1);
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+
+.yolo-local-embedding-progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--interactive-accent);
+  transition: width 200ms ease;
+}
+
+.yolo-local-embedding-disclosure {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: var(--size-2-2);
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+.yolo-local-embedding-disclosure:hover {
+  color: var(--text-muted);
+}
+
+.yolo-local-embedding-source {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: var(--size-2-2);
+  padding: var(--size-2-2) var(--size-2-3);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-local-embedding-source div {
+  display: flex;
+  gap: var(--size-2-2);
+}
+
+.yolo-local-embedding-source span {
+  flex-shrink: 0;
+  color: var(--text-faint);
+}
+
+.yolo-local-embedding-source code {
+  overflow-wrap: anywhere;
+  color: var(--text-muted);
+  font-size: inherit;
+}
+
+.yolo-local-embedding-row-side {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--size-2-2);
+}
+
+.yolo-local-embedding-footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-2-3);
+  padding: var(--size-4-2) var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-local-embedding-footer-label {
+  color: var(--text-faint);
+}
+
+.yolo-local-embedding-footer-spacer {
+  flex: 1 1 auto;
+}
+
+.yolo-local-embedding-footer-storage {
+  white-space: nowrap;
+}
+
 /* ================= advanced settings section ================= */
 
 .yolo-rag-card {
@@ -3634,6 +3839,15 @@ button.yolo-mcp-tool-description-toggle.is-expanded {
 
   .yolo-kb-grid {
     grid-template-columns: 1fr;
+  }
+
+  .yolo-local-embedding-row {
+    flex-direction: column;
+  }
+
+  .yolo-local-embedding-row-side {
+    width: 100%;
+    justify-content: flex-end;
   }
 }
 /*

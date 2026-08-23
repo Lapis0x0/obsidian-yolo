@@ -50,6 +50,11 @@ import {
 } from '../scope/scopeRules'
 import { resolveScopePathKind } from '../scope/scopeVault'
 
+import {
+  LocalEmbeddingShelf,
+  useLocalEmbeddingEngineIssue,
+} from './rag/LocalEmbeddingShelf'
+
 type RAGSectionProps = {
   app: App
   plugin: YoloPlugin
@@ -494,14 +499,25 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       .filter((group): group is ObsidianDropdownOptionGroup => group !== null)
   }, [settings.embeddingModels, settings.providers, t])
 
+  const currentEmbeddingModel = settings.embeddingModels.find(
+    (m) => m.id === settings.embeddingModelId,
+  )
   const currentEmbeddingModelLabel = useMemo(() => {
-    const model = settings.embeddingModels.find(
-      (m) => m.id === settings.embeddingModelId,
-    )
-    return model
-      ? model.name || model.model || model.id
+    return currentEmbeddingModel
+      ? currentEmbeddingModel.name ||
+          currentEmbeddingModel.model ||
+          currentEmbeddingModel.id
       : settings.embeddingModelId
-  }, [settings.embeddingModels, settings.embeddingModelId])
+  }, [currentEmbeddingModel, settings.embeddingModelId])
+
+  // The only scenario where local-embedding engine info surfaces in the
+  // status bar: the currently selected model is local and can't actually
+  // run right now (not downloaded / component disabled / mobile). See
+  // docs/plans/08-22-local-embedding/00-plan.md §3.6.
+  const localEmbeddingIssue = useLocalEmbeddingEngineIssue(
+    plugin,
+    currentEmbeddingModel,
+  )
 
   // The embedding model row previews a selection locally — switching models
   // means every knowledge base's existing vectors stop matching (a de facto
@@ -602,9 +618,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         )}
       </div>
 
-      {/* Status bar: main toggle + one-line status + primary actions. */}
+      {/* Status bar: main toggle + one-line status + primary actions. The
+          local-embedding engine's health is not its own row — it only ever
+          takes over this one status line, when the currently selected model
+          is local and can't actually run right now. See
+          docs/plans/08-22-local-embedding/00-plan.md §3.6. */}
       <div
-        className={`yolo-kb-status-bar${isIndexing ? ' is-busy' : ''}${!isRagEnabled ? ' is-off' : ''}`}
+        className={`yolo-kb-status-bar${isIndexing ? ' is-busy' : ''}${!isRagEnabled ? ' is-off' : ''}${isRagEnabled && localEmbeddingIssue ? ' is-warn' : ''}`}
       >
         <span className="yolo-kb-status-dot" />
         <div className="yolo-kb-status-text">
@@ -618,6 +638,41 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   'settings.rag.indexingDisabledSub',
                   'Agent 的「搜索」工具将只使用关键词检索；页面其余内容灰显。',
                 )}
+              </div>
+            </>
+          ) : localEmbeddingIssue ? (
+            <>
+              <div className="yolo-kb-status-line">
+                {localEmbeddingIssue.kind === 'not-downloaded'
+                  ? t(
+                      'settings.knowledgeBases.localEmbedding.engineModelNotDownloaded',
+                      '本地嵌入模型尚未下载',
+                    )
+                  : localEmbeddingIssue.kind === 'component-disabled'
+                    ? t(
+                        'settings.knowledgeBases.localEmbedding.engineComponentDisabled',
+                        '本地嵌入引擎已禁用',
+                      )
+                    : t(
+                        'settings.knowledgeBases.localEmbedding.engineNonDesktop',
+                        '本地嵌入不可用',
+                      )}
+              </div>
+              <div className="yolo-kb-status-sub">
+                {localEmbeddingIssue.kind === 'not-downloaded'
+                  ? t(
+                      'settings.knowledgeBases.localEmbedding.engineModelNotDownloadedSub',
+                      '请在知识库设置中下载模型后再使用本地嵌入。',
+                    )
+                  : localEmbeddingIssue.kind === 'component-disabled'
+                    ? t(
+                        'settings.knowledgeBases.localEmbedding.engineComponentDisabledSub',
+                        '请启用嵌入引擎后再使用本地嵌入。',
+                      )
+                    : t(
+                        'settings.knowledgeBases.localEmbedding.engineNonDesktopSub',
+                        '本地嵌入模型仅支持桌面端运行。',
+                      )}
               </div>
             </>
           ) : knowledgeBases.length === 0 ? (
@@ -708,7 +763,57 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 }
               }}
             />
-          ) : knowledgeBases.length === 0 ? (
+          ) : localEmbeddingIssue?.kind === 'not-downloaded' ? (
+            <ObsidianButton
+              text={t(
+                'settings.knowledgeBases.localEmbedding.engineDownloadAction',
+                '前往设置',
+              )}
+              cta
+              onClick={() => {
+                plugin
+                  .getLocalEmbeddingModelManager()
+                  .download(localEmbeddingIssue.entry)
+                  .catch((error: unknown) => {
+                    if (
+                      error instanceof DOMException &&
+                      error.name === 'AbortError'
+                    )
+                      return
+                    console.error(
+                      '[YOLO] Local embedding model download failed:',
+                      error,
+                    )
+                  })
+              }}
+            />
+          ) : localEmbeddingIssue?.kind === 'component-disabled' ? (
+            <ObsidianButton
+              text={t(
+                'settings.knowledgeBases.localEmbedding.engineEnableAction',
+                '启用',
+              )}
+              cta
+              onClick={() => {
+                plugin
+                  .getRuntimeComponentService()
+                  .setEnabled('embedding-engine', true)
+                  .catch((error: unknown) => {
+                    console.error(
+                      '[YOLO] Failed to enable embedding-engine:',
+                      error,
+                    )
+                    new Notice(
+                      t(
+                        'settings.knowledgeBases.localEmbedding.engineEnableFailed',
+                        '启用嵌入引擎失败',
+                      ),
+                    )
+                  })
+              }}
+            />
+          ) : localEmbeddingIssue?.kind ===
+            'non-desktop' ? null : knowledgeBases.length === 0 ? (
             <ObsidianButton
               text={t('settings.knowledgeBases.new', '新建')}
               cta
@@ -1071,12 +1176,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             </article>
           </div>
 
-          {/* Embedding model shelf: API models only. The "local" group (a
-              curated download list with per-model lifecycle: download /
-              cancel / remove) is a separate, not-yet-landed workstream — see
-              docs/plans/08-22-local-embedding/00-plan.md. Do not add
-              local-embedding settings fields here; this row only selects
-              among already-configured API embedding models. */}
+          {/* Embedding model shelf: the API row below only selects among
+              already-configured API embedding models — provider/key setup
+              stays on the Models tab. The "本地" group right after it is
+              `LocalEmbeddingShelf`, a curated download list with its own
+              per-model lifecycle; local embedding models are deliberately
+              not a normal Provider entry (no API key/base URL), see
+              docs/plans/08-22-local-embedding/00-plan.md §3.5-§3.7. */}
           <div className="yolo-kb-divider-label yolo-kb-divider-label--sub">
             {t('settings.knowledgeBases.embeddingModelShelf', '嵌入模型')}
             <span className="yolo-kb-divider-label-faint">
@@ -1110,6 +1216,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               />
             </div>
           </ObsidianSetting>
+
+          <LocalEmbeddingShelf app={app} plugin={plugin} />
 
           <section className="yolo-rag-card">
             <div
