@@ -220,4 +220,68 @@ describe('createLocalEmbeddingClient', () => {
     await client.getEmbedding('b')
     expect(createSession).toHaveBeenCalledTimes(2)
   })
+
+  it('shares a single session across two clients for the same catalog id', async () => {
+    const clientA = makeClient()
+    const clientB = makeClient()
+
+    await Promise.all([clientA.getEmbedding('a'), clientB.getEmbedding('b')])
+
+    expect(createSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps the shared session alive when one of two clients disposes, and tears it down once the last one does', async () => {
+    const clientA = makeClient()
+    const clientB = makeClient()
+    await Promise.all([clientA.getEmbedding('a'), clientB.getEmbedding('b')])
+
+    await clientA.dispose()
+    expect(sessionDispose).not.toHaveBeenCalled()
+    expect(release).not.toHaveBeenCalled()
+
+    // clientB still holds a reference — getEmbedding must keep working
+    // against the same (never recreated) session.
+    await clientB.getEmbedding('c')
+    expect(createSession).toHaveBeenCalledTimes(1)
+
+    await clientB.dispose()
+    expect(sessionDispose).toHaveBeenCalledTimes(1)
+    expect(release).toHaveBeenCalledTimes(1)
+  })
+
+  it('dispose() is idempotent and every getEmbedding() call after it rejects without touching the session', async () => {
+    const client = makeClient()
+    await client.getEmbedding('a')
+
+    await client.dispose()
+    await client.dispose() // must not double-release or throw
+
+    await expect(client.getEmbedding('b')).rejects.toThrow(/disposed/)
+    expect(createSession).toHaveBeenCalledTimes(1)
+  })
+
+  it('releases the runtime component lease even when session.dispose() throws', async () => {
+    sessionDispose.mockRejectedValueOnce(new Error('worker already dead'))
+    const client = makeClient()
+    await client.getEmbedding('a')
+
+    await client.dispose()
+
+    expect(release).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops a session that fails mid-embed and creates a fresh one for the next call', async () => {
+    embed.mockRejectedValueOnce(new Error('inference failed'))
+    const client = makeClient()
+
+    await expect(client.getEmbedding('a')).rejects.toThrow('inference failed')
+    // The broken session must have been torn down as part of the failure,
+    // not left around to fail every subsequent call until the idle timer
+    // eventually recycles it 10 minutes later.
+    expect(release).toHaveBeenCalledTimes(1)
+
+    const result = await client.getEmbedding('b')
+    expect(createSession).toHaveBeenCalledTimes(2)
+    expect(result).toEqual([0, 1, 2])
+  })
 })
