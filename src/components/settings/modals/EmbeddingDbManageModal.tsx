@@ -21,7 +21,10 @@ import {
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
 import YoloPlugin from '../../../main'
 import { KnowledgeBase } from '../../../settings/schema/setting.types'
-import { EmbeddingDbStats } from '../../../types/embedding'
+import {
+  EmbeddingDbStats,
+  EmbeddingModelClient,
+} from '../../../types/embedding'
 import { ReactModal } from '../../common/ReactModal'
 
 type EmbeddingDbManagerModalComponentWrapperProps = {
@@ -126,11 +129,17 @@ function KnowledgeBaseStatsTable({ kb }: { kb: KnowledgeBase }) {
 
   const handleRemoveIndex = (modelId: string) => {
     void (async () => {
-      const embeddingModel = getEmbeddingModelClient({
-        settings,
-        embeddingModelId: modelId,
-      })
+      // Created inside the `try` (nullable outside it) — `getEmbeddingModelClient`
+      // throws synchronously for a stale/removed model (e.g. a `yolo-local`
+      // catalog entry that's been deleted), and that must still land on the
+      // same `catch`/`finally` as every other failure here instead of
+      // skipping the user-facing Notice and the stats refetch.
+      let embeddingModel: EmbeddingModelClient | null = null
       try {
+        embeddingModel = getEmbeddingModelClient({
+          settings,
+          embeddingModelId: modelId,
+        })
         await (await getVectorManager(kb.id)).clearAllVectors(embeddingModel)
       } catch (error) {
         console.error(error)
@@ -141,7 +150,7 @@ function KnowledgeBaseStatsTable({ kb }: { kb: KnowledgeBase }) {
         // Scoped to this one call — for `yolo-local` it holds a
         // runtime-component lease that must be released here rather than
         // left to the 10-minute idle timeout.
-        await embeddingModel.dispose?.()
+        await embeddingModel?.dispose?.()
         await refetch().catch((error) => {
           console.error('Failed to refresh embedding DB stats:', error)
         })
