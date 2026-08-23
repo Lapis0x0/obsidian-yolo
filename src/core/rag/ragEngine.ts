@@ -5,7 +5,10 @@ import {
   ReconcileResult,
   VectorManager,
 } from '../../database/modules/vector/VectorManager'
-import { YoloSettings } from '../../settings/schema/setting.types'
+import {
+  KnowledgeBase,
+  YoloSettings,
+} from '../../settings/schema/setting.types'
 import { EmbeddingModelClient } from '../../types/embedding'
 import type { VectorSelect } from '../runtime-components'
 
@@ -33,21 +36,46 @@ export const dedupeRagQueryResults = (
 }
 
 // TODO: do we really need this class? It seems like unnecessary abstraction.
+/** One instance per knowledge base — `kbId` selects both which vector store
+ * this engine talks to (via the `VectorManager` passed in) and which
+ * `KnowledgeBase.include`/`exclude` rules `updateVaultIndex` applies. The
+ * engine re-reads its `KnowledgeBase` from current settings on every index
+ * run rather than caching it, so an edit to a base's scope in the settings
+ * UI takes effect on the next run without recreating the engine. */
 export class RAGEngine {
   private app: App
   private settings: YoloSettings
+  private readonly kbId: string
   private vectorManager: VectorManager | null = null
   private embeddingModel: EmbeddingModelClient | null = null
   private indexUpdateQueue: Promise<void> = Promise.resolve()
 
-  constructor(app: App, settings: YoloSettings, vectorManager: VectorManager) {
+  constructor(
+    app: App,
+    settings: YoloSettings,
+    vectorManager: VectorManager,
+    kbId: string,
+  ) {
     this.app = app
     this.settings = settings
+    this.kbId = kbId
     this.vectorManager = vectorManager
     this.embeddingModel = getEmbeddingModelClient({
       settings,
       embeddingModelId: settings.embeddingModelId,
     })
+  }
+
+  getKnowledgeBaseId(): string {
+    return this.kbId
+  }
+
+  private getKnowledgeBase(): KnowledgeBase {
+    const kb = this.settings.knowledgeBases.find((k) => k.id === this.kbId)
+    if (!kb) {
+      throw new Error(`Knowledge base "${this.kbId}" no longer exists`)
+    }
+    return kb
   }
 
   cleanup() {
@@ -87,14 +115,13 @@ export class RAGEngine {
       if (!this.vectorManager) {
         throw new Error('Vector manager is not set')
       }
+      const kb = this.getKnowledgeBase()
       return await this.vectorManager.reconcile(
         this.embeddingModel,
         {
           chunkSize: this.settings.ragOptions.chunkSize,
-          excludePatterns: this.settings.ragOptions.excludePatterns,
-          excludeYoloBaseDir:
-            this.settings.ragOptions.excludeYoloBaseDir ?? true,
-          includePatterns: this.settings.ragOptions.includePatterns,
+          include: kb.include,
+          exclude: kb.exclude,
           indexPdf: this.settings.ragOptions.indexPdf ?? true,
           embeddingConcurrency: this.settings.ragOptions.embeddingConcurrency,
           settings: this.settings,
@@ -119,6 +146,28 @@ export class RAGEngine {
       () => undefined,
     )
     return await queuedRun
+  }
+
+  /**
+   * Cheap dry-run count of what a `sync` reconcile would touch — no
+   * chunkify, no embed, no write. Backs the settings UI's "N 个待更新" pill
+   * and per-card "N 个文件已修改" line; see
+   * {@link VectorManager.countPendingChanges}.
+   */
+  async countPendingChanges(): Promise<{ changed: number; total: number }> {
+    if (!this.vectorManager) {
+      throw new Error('Vector manager is not set')
+    }
+    const kb = this.getKnowledgeBase()
+    return await this.vectorManager.countPendingChanges(
+      this.settings.embeddingModelId,
+      {
+        chunkSize: this.settings.ragOptions.chunkSize,
+        include: kb.include,
+        exclude: kb.exclude,
+        indexPdf: this.settings.ragOptions.indexPdf ?? true,
+      },
+    )
   }
 
   async processQuery({

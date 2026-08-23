@@ -136,13 +136,12 @@ import {
   hasHiddenYoloBaseDirSegment,
   resolveExternalYoloBaseDir,
 } from './core/paths/yoloPaths'
+import type { RagKnowledgeAccess } from './core/rag/ragAccess'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
-import type { RAGEngine } from './core/rag/ragEngine'
 import {
-  RagIndexBusyError,
-  RagIndexRunSnapshot,
   RagIndexService,
+  RagIndexServiceSnapshot,
 } from './core/rag/ragIndexService'
 import {
   BAKED_RUNTIME_COMPONENT_REGISTRY,
@@ -904,13 +903,14 @@ export default class YoloPlugin extends Plugin {
       this.ragAutoUpdateService = new RagAutoUpdateService({
         getSettings: () => this.settings,
         setSettings: (settings) => this.setSettings(settings),
-        runIndex: async (request) => {
+        runIndex: async (kbId, request) => {
           // Background auto-update never surfaces partial failures (product
           // decision: settings page shows them durably via the snapshot). The
           // reconcile result is intentionally discarded here.
           const indexService = this.getRagIndexService()
-          const snapshot = indexService.getSnapshot()
-          await indexService.runIndex(
+          const snapshot = indexService.getRunSnapshot(kbId)
+          await indexService.run(
+            kbId,
             {
               mode: 'sync',
               scope: request,
@@ -923,16 +923,17 @@ export default class YoloPlugin extends Plugin {
               : 'new',
           )
         },
-        getRetryCount: () => this.getRagIndexService().getSnapshot().retryCount,
-        markRetryScheduled: (input) =>
-          this.getRagIndexService().markRetryScheduled({
+        getRetryCount: (kbId) =>
+          this.getRagIndexService().getRunSnapshot(kbId).retryCount,
+        markRetryScheduled: (kbId, input) =>
+          this.getRagIndexService().markRetryScheduled(kbId, {
             mode: 'sync',
             retryAt: input.retryAt,
             retryCount: input.retryCount,
             failureMessage: input.failureMessage,
           }),
-        clearRetryScheduled: () =>
-          this.getRagIndexService().clearRetryScheduled(),
+        clearRetryScheduled: (kbId) =>
+          this.getRagIndexService().clearRetryScheduled(kbId),
       })
     }
     return this.ragAutoUpdateService
@@ -942,7 +943,7 @@ export default class YoloPlugin extends Plugin {
     if (!this.ragIndexService) {
       this.ragIndexService = new RagIndexService({
         app: this.app,
-        getRagEngine: () => this.getRagCoordinator().getRagEngine(),
+        getRagEngine: (kbId) => this.getRagCoordinator().getRagEngine(kbId),
         activityRegistry: this.getBackgroundActivityRegistry(),
         isRagEnabled: () => !!this.settings?.ragOptions?.enabled,
         t: (key, fallback) => this.t(key, fallback),
@@ -969,6 +970,17 @@ export default class YoloPlugin extends Plugin {
     return this.ragCoordinator
   }
 
+  /** The single DI surface retrieval consumers (MCP `vault_search`, `bash
+   * search`, `$db.search`, agent tool context) use to reach knowledge bases —
+   * see `core/rag/ragAccess.ts`. */
+  private getRagAccess(): RagKnowledgeAccess {
+    const coordinator = this.getRagCoordinator()
+    return {
+      listKnowledgeBases: () => coordinator.listKnowledgeBases(),
+      getRagEngine: (kbId) => coordinator.getRagEngine(kbId),
+    }
+  }
+
   private async getMcpCoordinator(): Promise<McpCoordinator> {
     if (!this.mcpCoordinator) {
       const agentService = await this.warmupAgentService()
@@ -981,7 +993,7 @@ export default class YoloPlugin extends Plugin {
         registerSettingsListener: (
           listener: (settings: YoloSettings) => void,
         ) => this.addSettingsChangeListener(listener),
-        getRagEngine: () => this.getRAGEngine(),
+        ragAccess: this.getRagAccess(),
         promptSourceWatcher: agentService.getPromptSourceWatcher(),
         moduleChatModeRegistry: this.moduleChatModeRegistry,
       })
@@ -999,7 +1011,7 @@ export default class YoloPlugin extends Plugin {
       getSettings: () => this.settings,
       getAgentService: () => this.warmupAgentService(),
       getMcpManager: () => this.getMcpManager(),
-      getRagEngine: () => this.getRAGEngine(),
+      ragAccess: this.getRagAccess(),
       openConversation: (conversationId) =>
         this.openChatView({ initialConversationId: conversationId }),
     })
@@ -2227,29 +2239,33 @@ export default class YoloPlugin extends Plugin {
     })
     this.app.workspace.onLayoutReady(() => {
       if (!this.settings?.ragOptions?.enabled) return
-      const snapshot = this.getRagIndexSnapshot()
-      if (
-        snapshot.status !== 'retry_scheduled' ||
-        snapshot.retryPolicy !== 'transient'
-      ) {
-        return
-      }
       const hasValidEmbeddingModel =
         !!this.settings?.embeddingModelId &&
         this.settings.embeddingModels.some(
           (m) => m.id === this.settings.embeddingModelId,
         )
-      if (
-        hasValidEmbeddingModel &&
-        this.settings.ragOptions.autoUpdateEnabled &&
-        snapshot.trigger === 'auto'
-      ) {
-        this.getRagAutoUpdateService().restoreRetryScheduled(
-          snapshot.retryAt,
-          STARTUP_GRACE_MS,
-        )
-      } else if (hasValidEmbeddingModel && snapshot.trigger === 'manual') {
-        this.getRagIndexService().restoreRetryScheduledRun(STARTUP_GRACE_MS)
+      if (!hasValidEmbeddingModel) return
+      const indexService = this.getRagIndexService()
+      for (const kb of this.settings.knowledgeBases) {
+        const snapshot = indexService.getRunSnapshot(kb.id)
+        if (
+          snapshot.status !== 'retry_scheduled' ||
+          snapshot.retryPolicy !== 'transient'
+        ) {
+          continue
+        }
+        if (
+          this.settings.ragOptions.autoUpdateEnabled &&
+          snapshot.trigger === 'auto'
+        ) {
+          this.getRagAutoUpdateService().restoreRetryScheduled(
+            kb.id,
+            snapshot.retryAt,
+            STARTUP_GRACE_MS,
+          )
+        } else if (snapshot.trigger === 'manual') {
+          indexService.restoreRetryScheduledRun(kb.id, STARTUP_GRACE_MS)
+        }
       }
     })
 
@@ -2513,24 +2529,34 @@ export default class YoloPlugin extends Plugin {
       id: 'rebuild-vault-index',
       name: this.t('commands.rebuildVaultIndex'),
       callback: async () => {
+        const knowledgeBases = this.settings.knowledgeBases
+        if (knowledgeBases.length === 0) return
         const notice = new Notice(this.t('notices.rebuildingIndex'), 0)
         try {
-          const result = await this.getRagIndexService().runIndex({
-            mode: 'rebuild',
-            scope: { kind: 'all' },
-            trigger: 'manual',
-            retryPolicy: 'transient',
-            onProgress: (progress) => {
-              notice.setMessage(
-                `Indexing files: ${progress.completedFiles ?? 0} / ${progress.totalFiles} (chunks: ${progress.completedChunks})${
-                  progress.waitingForRateLimit
-                    ? '\n(waiting for rate limit to reset)'
-                    : ''
-                }`,
-              )
-            },
-          })
-          const skipped = result.permanentFailedPaths.length
+          const indexService = this.getRagIndexService()
+          const results = await Promise.all(
+            knowledgeBases.map((kb) =>
+              indexService.run(kb.id, {
+                mode: 'rebuild',
+                scope: { kind: 'all' },
+                trigger: 'manual',
+                retryPolicy: 'transient',
+                onProgress: (progress) => {
+                  notice.setMessage(
+                    `${kb.name}: ${progress.completedFiles ?? 0} / ${progress.totalFiles} (chunks: ${progress.completedChunks})${
+                      progress.waitingForRateLimit
+                        ? '\n(waiting for rate limit to reset)'
+                        : ''
+                    }`,
+                  )
+                },
+              }),
+            ),
+          )
+          const skipped = results.reduce(
+            (sum, r) => sum + r.permanentFailedPaths.length,
+            0,
+          )
           notice.setMessage(
             skipped > 0
               ? this.t(
@@ -2540,14 +2566,8 @@ export default class YoloPlugin extends Plugin {
               : this.t('notices.rebuildComplete'),
           )
         } catch (error) {
-          if (error instanceof RagIndexBusyError) {
-            notice.setMessage(
-              this.t('statusBar.ragAutoUpdateRunning', '知识库索引正在运行'),
-            )
-          } else {
-            console.error(error)
-            notice.setMessage(this.t('notices.rebuildFailed'))
-          }
+          console.error(error)
+          notice.setMessage(this.t('notices.rebuildFailed'))
         } finally {
           this.registerTimeout(() => {
             notice.hide()
@@ -2560,24 +2580,34 @@ export default class YoloPlugin extends Plugin {
       id: 'update-vault-index',
       name: this.t('commands.updateVaultIndex'),
       callback: async () => {
+        const knowledgeBases = this.settings.knowledgeBases
+        if (knowledgeBases.length === 0) return
         const notice = new Notice(this.t('notices.updatingIndex'), 0)
         try {
-          const result = await this.getRagIndexService().runIndex({
-            mode: 'sync',
-            scope: { kind: 'all' },
-            trigger: 'manual',
-            retryPolicy: 'none',
-            onProgress: (progress) => {
-              notice.setMessage(
-                `Indexing files: ${progress.completedFiles ?? 0} / ${progress.totalFiles} (chunks: ${progress.completedChunks})${
-                  progress.waitingForRateLimit
-                    ? '\n(waiting for rate limit to reset)'
-                    : ''
-                }`,
-              )
-            },
-          })
-          const skipped = result.permanentFailedPaths.length
+          const indexService = this.getRagIndexService()
+          const results = await Promise.all(
+            knowledgeBases.map((kb) =>
+              indexService.run(kb.id, {
+                mode: 'sync',
+                scope: { kind: 'all' },
+                trigger: 'manual',
+                retryPolicy: 'none',
+                onProgress: (progress) => {
+                  notice.setMessage(
+                    `${kb.name}: ${progress.completedFiles ?? 0} / ${progress.totalFiles} (chunks: ${progress.completedChunks})${
+                      progress.waitingForRateLimit
+                        ? '\n(waiting for rate limit to reset)'
+                        : ''
+                    }`,
+                  )
+                },
+              }),
+            ),
+          )
+          const skipped = results.reduce(
+            (sum, r) => sum + r.permanentFailedPaths.length,
+            0,
+          )
           notice.setMessage(
             skipped > 0
               ? this.t(
@@ -2587,14 +2617,8 @@ export default class YoloPlugin extends Plugin {
               : this.t('notices.indexUpdated'),
           )
         } catch (error) {
-          if (error instanceof RagIndexBusyError) {
-            notice.setMessage(
-              this.t('statusBar.ragAutoUpdateRunning', '知识库索引正在运行'),
-            )
-          } else {
-            console.error(error)
-            notice.setMessage(this.t('notices.indexUpdateFailed'))
-          }
+          console.error(error)
+          notice.setMessage(this.t('notices.indexUpdateFailed'))
         } finally {
           this.registerTimeout(() => {
             notice.hide()
@@ -3408,18 +3432,33 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.ragCoordinator?.updateSettings(settingsToApply)
 
     // When RAG is disabled, stop all pending auto-update timers and clear
-    // any retry_scheduled state so the background-activity UI disappears.
+    // any retry_scheduled state (per knowledge base) so the
+    // background-activity UI disappears.
     const ragIsEnabled = settingsToApply.ragOptions.enabled
     const autoUpdateWasEnabled = previousSettings.ragOptions.autoUpdateEnabled
     const autoUpdateIsEnabled = settingsToApply.ragOptions.autoUpdateEnabled
     if (!ragIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
-      await this.ragIndexService?.resetRetryState()
-      this.ragIndexService?.refreshActivity()
+      if (this.ragIndexService) {
+        const indexService = this.ragIndexService
+        await Promise.all(
+          settingsToApply.knowledgeBases.map((kb) =>
+            indexService.resetRetryState(kb.id),
+          ),
+        )
+        indexService.refreshActivity()
+      }
     } else if (autoUpdateWasEnabled && !autoUpdateIsEnabled) {
       this.ragAutoUpdateService?.cleanup()
-      if (this.ragIndexService?.getSnapshot().trigger === 'auto') {
-        await this.ragIndexService.resetRetryState()
+      if (this.ragIndexService) {
+        const indexService = this.ragIndexService
+        await Promise.all(
+          settingsToApply.knowledgeBases
+            .filter(
+              (kb) => indexService.getRunSnapshot(kb.id).trigger === 'auto',
+            )
+            .map((kb) => indexService.resetRetryState(kb.id)),
+        )
       }
     }
 
@@ -4470,42 +4509,81 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     }
   }
 
-  async tryGetVectorManager(): Promise<VectorManager | null> {
+  /** One `VectorManager` per configured knowledge base, best-effort — a base
+   * whose store fails to open is skipped (and logged) rather than failing
+   * the whole call, since callers use this to sweep a deleted model/provider
+   * id out of every base's vectors, not to open any one specific base. */
+  async tryGetVectorManagers(): Promise<VectorManager[]> {
     try {
       const dbManager = await this.getDbManager()
-      return dbManager.getVectorManager()
+      const results = await Promise.all(
+        this.settings.knowledgeBases.map(async (kb) => {
+          try {
+            return await dbManager.getVectorManager(kb.id)
+          } catch (error) {
+            console.warn(
+              `[YOLO] Failed to open vector manager for knowledge base "${kb.id}", skipping.`,
+              error,
+            )
+            return null
+          }
+        }),
+      )
+      return results.filter((vm): vm is VectorManager => vm !== null)
     } catch (error) {
       console.warn(
-        '[YOLO] Failed to initialize vector manager, skip vector-dependent operations.',
+        '[YOLO] Failed to initialize database manager, skip vector-dependent operations.',
         error,
       )
-      return null
+      return []
     }
   }
 
-  async getRAGEngine(): Promise<RAGEngine> {
-    return this.getRagCoordinator().getRagEngine()
+  /**
+   * Cheap dry-run count of pending changes for one knowledge base — no
+   * chunkify, no embed, no write. Returns `{ changed: 0, total: 0 }` if the
+   * base's vector store can't be opened (mirrors `tryGetVectorManagers`'
+   * fail-open behavior) so a broken base never crashes the status bar.
+   */
+  async countPendingChanges(
+    kbId: string,
+  ): Promise<{ changed: number; total: number }> {
+    try {
+      return await (
+        await this.getRagCoordinator().getRagEngine(kbId)
+      ).countPendingChanges()
+    } catch (error) {
+      console.warn(
+        `[YOLO] Failed to count pending changes for knowledge base "${kbId}".`,
+        error,
+      )
+      return { changed: 0, total: 0 }
+    }
   }
 
-  async runRagIndex(options: {
-    mode: 'rebuild' | 'sync'
-    scope: import('./core/rag/reconciler').ReconcileScope
-    trigger: 'manual' | 'auto'
-    retryPolicy: 'none' | 'transient'
-    onProgress?: (
-      progress: import('./components/chat-view/QueryProgress').IndexProgress,
-    ) => void
-  }): Promise<ReconcileResult> {
-    return await this.getRagIndexService().runIndex(options)
+  async runRagIndex(
+    kbId: string,
+    options: {
+      mode: 'rebuild' | 'sync'
+      scope: import('./core/rag/reconciler').ReconcileScope
+      trigger: 'manual' | 'auto'
+      retryPolicy: 'none' | 'transient'
+      onProgress?: (
+        progress: import('./components/chat-view/QueryProgress').IndexProgress,
+      ) => void
+    },
+  ): Promise<ReconcileResult> {
+    return await this.getRagIndexService().run(kbId, options)
   }
 
-  /** Re-issue the previously failed run. Falls back to a full sync reconcile. */
-  async retryRagIndex(): Promise<void> {
-    const snapshot = this.getRagIndexSnapshot()
+  /** Re-issue the previously failed run for one knowledge base. Falls back
+   * to a full sync reconcile (path scopes are not persisted). */
+  async retryRagIndex(kbId: string): Promise<void> {
+    const snapshot = this.getRagIndexService().getRunSnapshot(kbId)
     if (snapshot.mode === null) {
       return
     }
-    await this.runRagIndex({
+    await this.runRagIndex(kbId, {
       mode: snapshot.mode,
       scope: { kind: 'all' },
       trigger: 'manual',
@@ -4514,17 +4592,37 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
   }
 
   subscribeToRagIndexRuns(
-    listener: (snapshot: RagIndexRunSnapshot) => void,
+    listener: (snapshot: RagIndexServiceSnapshot) => void,
   ): () => void {
     return this.getRagIndexService().subscribe(listener)
   }
 
-  getRagIndexSnapshot(): RagIndexRunSnapshot {
+  getRagIndexSnapshot(): RagIndexServiceSnapshot {
     return this.getRagIndexService().getSnapshot()
   }
 
-  cancelRagIndex(): void {
-    this.getRagIndexService().cancelActiveRun()
+  /** No `kbId`: cancel the active run and clear the whole queue. One
+   * `kbId`: cancel/dequeue just that base's run. */
+  cancelRagIndex(kbId?: string): void {
+    this.getRagIndexService().cancel(kbId)
+  }
+
+  /** Removes one knowledge base: cancels any active/queued index run for it,
+   * drops it from settings, then permanently deletes its vector database.
+   * The only path that should ever delete a knowledge base's data — settings
+   * changes alone never do this (see `setSettings`). */
+  async deleteKnowledgeBase(kbId: string): Promise<void> {
+    this.getRagIndexService().cancel(kbId)
+    await this.getRagIndexService().forgetKnowledgeBase(kbId)
+    await this.getRagCoordinator().closeRagEngine(kbId)
+    const dbManager = await this.getDbManager()
+    await dbManager.deleteKnowledgeBase(kbId)
+    await this.setSettings({
+      ...this.settings,
+      knowledgeBases: this.settings.knowledgeBases.filter(
+        (kb) => kb.id !== kbId,
+      ),
+    })
   }
 
   async getMcpManager(): Promise<McpManager> {

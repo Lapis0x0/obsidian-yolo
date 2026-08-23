@@ -14,11 +14,18 @@ const baseSettings = {
   embeddingModelId: 'test-embedding-model',
   ragOptions: {
     chunkSize: 500,
-    excludePatterns: [],
-    includePatterns: [],
     minSimilarity: 0.3,
     limit: 20,
   },
+  knowledgeBases: [
+    {
+      id: 'test-kb',
+      name: 'test-kb',
+      description: '',
+      include: [],
+      exclude: [],
+    },
+  ],
 }
 
 const waitForNextTick = async () =>
@@ -102,6 +109,7 @@ describe('RAGEngine', () => {
       {} as never,
       baseSettings as never,
       vectorManager as never,
+      'test-kb',
     )
     const progressEvents: QueryProgressState[] = []
 

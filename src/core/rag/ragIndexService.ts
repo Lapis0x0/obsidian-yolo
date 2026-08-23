@@ -23,6 +23,7 @@ type AppWithLocalStorage = App & {
 export type RagIndexRunStatus =
   | 'idle'
   | 'running'
+  | 'queued'
   | 'retry_scheduled'
   | 'failed'
   | 'completed'
@@ -74,15 +75,23 @@ export type RagIndexRunSnapshot = {
   permanentFailedPaths?: string[]
 }
 
+/** One knowledge base runs at a time; every other queued or scheduled base is
+ * visible here so the UI can show "N 个知识库等待" without polling each one. */
+export type RagIndexServiceSnapshot = {
+  runs: Record<string, RagIndexRunSnapshot>
+  activeKbId: string | null
+  queuedKbIds: string[]
+}
+
 type RagIndexServiceDeps = {
   app: App
-  getRagEngine: () => Promise<RAGEngine>
+  getRagEngine: (kbId: string) => Promise<RAGEngine>
   activityRegistry: BackgroundActivityRegistry
   isRagEnabled: () => boolean
   t: (key: string, fallback?: string) => string
 }
 
-type RagIndexSubscriber = (snapshot: RagIndexRunSnapshot) => void
+type RagIndexSubscriber = (snapshot: RagIndexServiceSnapshot) => void
 
 const STORAGE_KEY = 'yolo_rag_index_run'
 const RETRY_ACTIVITY_ID = 'rag:index'
@@ -138,26 +147,74 @@ const writeLocalStorage = async (
   await Promise.resolve(appWithLocalStorage.saveLocalStorage(key, value))
 }
 
-export class RagIndexBusyError extends Error {
-  constructor() {
-    super('RAG index is already running.')
-    this.name = 'RagIndexBusyError'
+/** `rebuild` absorbs a queued `sync` (a truncate-and-rebuild already covers
+ * whatever a plain sync would have done); scope merges to `all` unless both
+ * sides are `paths`, in which case the path sets union. */
+const mergeRunOptions = (
+  existing: RagIndexRunOptions,
+  incoming: RagIndexRunOptions,
+): RagIndexRunOptions => {
+  const mode: RagIndexRunMode =
+    existing.mode === 'rebuild' || incoming.mode === 'rebuild'
+      ? 'rebuild'
+      : 'sync'
+  const scope: ReconcileScope =
+    existing.scope.kind === 'all' || incoming.scope.kind === 'all'
+      ? { kind: 'all' }
+      : {
+          kind: 'paths',
+          paths: Array.from(
+            new Set([...existing.scope.paths, ...incoming.scope.paths]),
+          ),
+        }
+  return {
+    mode,
+    scope,
+    // A manual trigger anywhere in the merge keeps the run manual (surfaces
+    // failures via retry UI rather than silently swallowing them like auto).
+    trigger:
+      existing.trigger === 'manual' || incoming.trigger === 'manual'
+        ? 'manual'
+        : 'auto',
+    retryPolicy:
+      existing.retryPolicy === 'transient' ||
+      incoming.retryPolicy === 'transient'
+        ? 'transient'
+        : 'none',
+    // Only the run that is actually about to execute keeps a progress
+    // callback; a superseded queue entry's callback would never fire again.
+    onProgress: incoming.onProgress ?? existing.onProgress,
   }
 }
 
 export class RagIndexService {
   private readonly app: App
-  private readonly getRagEngine: () => Promise<RAGEngine>
+  private readonly getRagEngine: (kbId: string) => Promise<RAGEngine>
   private readonly activityRegistry: BackgroundActivityRegistry
   private readonly isRagEnabled: () => boolean
   private readonly t: (key: string, fallback?: string) => string
 
-  private snapshot: RagIndexRunSnapshot = defaultSnapshot()
+  private snapshots = new Map<string, RagIndexRunSnapshot>()
   private readonly subscribers = new Set<RagIndexSubscriber>()
+
+  private activeKbId: string | null = null
   private currentAbortController: AbortController | null = null
+
+  /** FIFO of knowledge base ids waiting behind the active run. */
+  private queue: string[] = []
+  private queuedOptions = new Map<string, RagIndexRunOptions>()
+  private waiters = new Map<
+    string,
+    {
+      resolve: (result: ReconcileResult) => void
+      reject: (error: unknown) => void
+    }[]
+  >()
+
+  private retryTimers = new Map<string, ReturnType<typeof setTimeout>>()
+  private retryOptions = new Map<string, RagIndexRunOptions>()
+
   private initPromise: Promise<void> | null = null
-  private retryTimer: ReturnType<typeof setTimeout> | null = null
-  private retryOptions: RagIndexRunOptions | null = null
 
   constructor(deps: RagIndexServiceDeps) {
     this.app = deps.app
@@ -175,35 +232,41 @@ export class RagIndexService {
           return
         }
         try {
-          const parsed = JSON.parse(raw) as Partial<RagIndexRunSnapshot>
-          this.snapshot = {
-            ...defaultSnapshot(),
-            ...parsed,
-          }
-          if (this.snapshot.status === 'running') {
-            const shouldRecover =
-              this.snapshot.retryPolicy === 'transient' &&
-              this.snapshot.mode !== null &&
-              this.snapshot.trigger !== null
-            this.snapshot = {
-              ...this.snapshot,
-              status: shouldRecover ? 'retry_scheduled' : 'failed',
-              // Interrupted runs always resume as 'sync' so the reconcile loop
-              // skips chunks already in the DB instead of truncating. Users who
-              // truly want a fresh rebuild trigger it explicitly from the UI.
-              mode: shouldRecover ? 'sync' : this.snapshot.mode,
-              retryAt: shouldRecover
-                ? Date.now() + INTERRUPTED_RETRY_DELAY_MS
-                : undefined,
-              failureKind: shouldRecover ? 'transient' : 'unknown',
-              failureMessage: this.t(
-                'settings.rag.previousRunInterrupted',
-                '上次索引未正常完成。',
-              ),
-              updatedAt: Date.now(),
+          const parsed = JSON.parse(raw) as Record<
+            string,
+            Partial<RagIndexRunSnapshot>
+          >
+          for (const [kbId, partial] of Object.entries(parsed)) {
+            let snapshot: RagIndexRunSnapshot = {
+              ...defaultSnapshot(),
+              ...partial,
             }
-            await this.persistSnapshot()
+            if (snapshot.status === 'running') {
+              const shouldRecover =
+                snapshot.retryPolicy === 'transient' &&
+                snapshot.mode !== null &&
+                snapshot.trigger !== null
+              snapshot = {
+                ...snapshot,
+                status: shouldRecover ? 'retry_scheduled' : 'failed',
+                // Interrupted runs always resume as 'sync' so the reconcile
+                // loop skips chunks already in the DB instead of truncating.
+                // Users who truly want a fresh rebuild trigger it explicitly.
+                mode: shouldRecover ? 'sync' : snapshot.mode,
+                retryAt: shouldRecover
+                  ? Date.now() + INTERRUPTED_RETRY_DELAY_MS
+                  : undefined,
+                failureKind: shouldRecover ? 'transient' : 'unknown',
+                failureMessage: this.t(
+                  'settings.rag.previousRunInterrupted',
+                  '上次索引未正常完成。',
+                ),
+                updatedAt: Date.now(),
+              }
+            }
+            this.snapshots.set(kbId, snapshot)
           }
+          await this.persistSnapshots()
           this.publishActivity()
           this.emit()
         } catch (error) {
@@ -216,49 +279,74 @@ export class RagIndexService {
 
   subscribe(subscriber: RagIndexSubscriber): () => void {
     this.subscribers.add(subscriber)
-    subscriber({ ...this.snapshot })
+    subscriber(this.getSnapshot())
     return () => {
       this.subscribers.delete(subscriber)
     }
   }
 
-  getSnapshot(): RagIndexRunSnapshot {
-    return { ...this.snapshot }
+  getSnapshot(): RagIndexServiceSnapshot {
+    return {
+      runs: Object.fromEntries(this.snapshots),
+      activeKbId: this.activeKbId,
+      queuedKbIds: [...this.queue],
+    }
   }
 
-  isRunning(): boolean {
-    return this.snapshot.status === 'running'
+  getRunSnapshot(kbId: string): RagIndexRunSnapshot {
+    return this.snapshots.get(kbId) ?? defaultSnapshot()
   }
 
-  cancelActiveRun(): void {
-    this.currentAbortController?.abort()
+  isRunning(kbId?: string): boolean {
+    if (kbId === undefined) return this.activeKbId !== null
+    return this.activeKbId === kbId
+  }
+
+  /** No `kbId`: cancel the active run and drop every queued run. One
+   * `kbId`: cancel it if active, or drop it from the queue if only queued. */
+  cancel(kbId?: string): void {
+    if (kbId === undefined) {
+      this.currentAbortController?.abort()
+      for (const queuedKbId of this.queue) {
+        this.settleWaiters(queuedKbId, new Error('cancelled'), 'reject')
+      }
+      this.queue = []
+      this.queuedOptions.clear()
+      return
+    }
+    if (this.activeKbId === kbId) {
+      this.currentAbortController?.abort()
+      return
+    }
+    if (this.queue.includes(kbId)) {
+      this.queue = this.queue.filter((id) => id !== kbId)
+      this.queuedOptions.delete(kbId)
+      this.settleWaiters(kbId, new Error('cancelled'), 'reject')
+      this.emit()
+    }
   }
 
   onOnline(): void {
-    const options = this.retryOptions
-    if (
-      !this.retryTimer ||
-      !options ||
-      this.snapshot.status !== 'retry_scheduled'
-    ) {
-      return
+    // Snapshot entries before iterating: armRetryTimer() re-inserts the same
+    // key into `retryOptions` (via clearRetryTimer's delete + its own set),
+    // and a live Map iterator revisits a key that's deleted and re-added
+    // during iteration — looping over the Map directly here would spin
+    // forever re-arming the same knowledge base's retry.
+    for (const [kbId, options] of [...this.retryOptions]) {
+      if (this.snapshots.get(kbId)?.status !== 'retry_scheduled') continue
+      this.clearRetryTimer(kbId)
+      this.armRetryTimer(kbId, options, 0)
     }
-    this.clearRetryTimer()
-    this.armRetryTimer(options, 0)
   }
 
   async waitForIdle(): Promise<void> {
-    if (!this.currentAbortController) return
+    if (this.activeKbId === null && this.queue.length === 0) return
     await new Promise<void>((resolve) => {
       const unsubscribe = this.subscribe(() => {
-        if (this.currentAbortController) return
+        if (this.activeKbId !== null || this.queue.length > 0) return
         unsubscribe()
         resolve()
       })
-      if (!this.currentAbortController) {
-        unsubscribe()
-        resolve()
-      }
     })
   }
 
@@ -267,44 +355,95 @@ export class RagIndexService {
    * losslessly because we don't persist the path list — they fall back to a
    * full sync, which is correct (sync is idempotent and self-converging).
    */
-  restoreRetryScheduledRun(minDelayMs = 0): void {
+  restoreRetryScheduledRun(kbId: string, minDelayMs = 0): void {
+    const snapshot = this.snapshots.get(kbId)
     if (
-      this.snapshot.status !== 'retry_scheduled' ||
-      this.snapshot.trigger !== 'manual' ||
-      this.snapshot.retryPolicy !== 'transient' ||
-      this.snapshot.mode === null
+      !snapshot ||
+      snapshot.status !== 'retry_scheduled' ||
+      snapshot.trigger !== 'manual' ||
+      snapshot.retryPolicy !== 'transient' ||
+      snapshot.mode === null
     ) {
       return
     }
 
     this.scheduleRetry(
+      kbId,
       {
-        mode: this.snapshot.mode,
+        mode: snapshot.mode,
         scope: { kind: 'all' },
-        trigger: this.snapshot.trigger,
-        retryPolicy: this.snapshot.retryPolicy,
+        trigger: snapshot.trigger,
+        retryPolicy: snapshot.retryPolicy,
       },
       minDelayMs,
     )
   }
 
-  async runIndex(
+  /**
+   * Enqueues (or runs immediately, if idle) an index pass for one knowledge
+   * base. Never throws "busy" — a request against a base that's already
+   * active or queued merges into that pending run (see `mergeRunOptions`)
+   * and this resolves once that merged run actually finishes.
+   */
+  async run(
+    kbId: string,
     options: RagIndexRunOptions,
     attempt: 'new' | 'automatic-retry' = 'new',
   ): Promise<ReconcileResult> {
     await this.initialize()
-    if (this.currentAbortController) {
-      throw new RagIndexBusyError()
-    }
-    this.clearRetryTimer()
+    this.clearRetryTimer(kbId)
 
-    const runId = createRunId()
+    const resultPromise = new Promise<ReconcileResult>((resolve, reject) => {
+      const list = this.waiters.get(kbId) ?? []
+      list.push({ resolve, reject })
+      this.waiters.set(kbId, list)
+    })
+
+    if (this.activeKbId === null) {
+      void this.startRun(kbId, options, attempt)
+    } else if (this.activeKbId === kbId) {
+      // Already running this base: fold this request in as a follow-up run
+      // rather than merging into the in-flight one (which may already have
+      // read stale scope/options) — queue it to run right after.
+      this.enqueue(kbId, options)
+    } else {
+      this.enqueue(kbId, options)
+    }
+
+    return resultPromise
+  }
+
+  private enqueue(kbId: string, options: RagIndexRunOptions): void {
+    const existing = this.queuedOptions.get(kbId)
+    this.queuedOptions.set(
+      kbId,
+      existing ? mergeRunOptions(existing, options) : options,
+    )
+    if (!this.queue.includes(kbId)) {
+      this.queue.push(kbId)
+    }
+    this.snapshots.set(kbId, {
+      ...(this.snapshots.get(kbId) ?? defaultSnapshot()),
+      status: 'queued',
+      updatedAt: Date.now(),
+    })
+    this.emit()
+  }
+
+  private async startRun(
+    kbId: string,
+    options: RagIndexRunOptions,
+    attempt: 'new' | 'automatic-retry',
+  ): Promise<void> {
+    this.activeKbId = kbId
     const controller = new AbortController()
     this.currentAbortController = controller
 
+    const runId = createRunId()
     const startedAt = Date.now()
-    this.snapshot = {
-      ...this.snapshot,
+    const previous = this.snapshots.get(kbId) ?? defaultSnapshot()
+    this.snapshots.set(kbId, {
+      ...previous,
       runId,
       trigger: options.trigger,
       retryPolicy: options.retryPolicy,
@@ -317,12 +456,12 @@ export class RagIndexService {
       failureMessage: undefined,
       failureHttpStatus: undefined,
       retryAt: undefined,
-      retryCount: attempt === 'automatic-retry' ? this.snapshot.retryCount : 0,
-    }
-    await this.persistSnapshot()
+      retryCount: attempt === 'automatic-retry' ? previous.retryCount : 0,
+    })
+    await this.persistSnapshots()
 
     try {
-      const ragEngine = await this.getRagEngine()
+      const ragEngine = await this.getRagEngine(kbId)
       const result = await ragEngine.updateVaultIndex(
         {
           scope: options.scope,
@@ -330,31 +469,31 @@ export class RagIndexService {
           signal: controller.signal,
         },
         (queryProgress) => {
-          if (queryProgress.type !== 'indexing') {
-            return
-          }
+          if (queryProgress.type !== 'indexing') return
           const progress = queryProgress.indexProgress
-          this.snapshot = {
-            ...this.snapshot,
+          const current = this.snapshots.get(kbId) ?? defaultSnapshot()
+          this.snapshots.set(kbId, {
+            ...current,
             updatedAt: Date.now(),
             currentFile: progress.currentFile,
             lastCompletedFile:
               (progress.completedFiles ?? 0) > 0
-                ? (progress.currentFile ?? this.snapshot.lastCompletedFile)
-                : this.snapshot.lastCompletedFile,
+                ? (progress.currentFile ?? current.lastCompletedFile)
+                : current.lastCompletedFile,
             totalFiles: progress.totalFiles,
             completedFiles: progress.completedFiles,
             totalChunks: progress.totalChunks,
             completedChunks: progress.completedChunks,
             waitingForRateLimit: progress.waitingForRateLimit,
-          }
-          void this.persistSnapshot()
+          })
+          void this.persistSnapshots()
           options.onProgress?.(progress)
         },
       )
 
-      this.snapshot = {
-        ...this.snapshot,
+      const completed = this.snapshots.get(kbId) ?? defaultSnapshot()
+      this.snapshots.set(kbId, {
+        ...completed,
         status: 'completed',
         updatedAt: Date.now(),
         failureKind: undefined,
@@ -370,22 +509,20 @@ export class RagIndexService {
           result.permanentFailedPaths.length > 0
             ? result.permanentFailedPaths
             : undefined,
-      }
-      await this.persistSnapshot()
-      return result
+      })
+      await this.persistSnapshots()
+      this.settleWaiters(kbId, result, 'resolve')
     } catch (error) {
       const failure = describeRagIndexError(error)
       const failureKind = failure.kind
+      const current = this.snapshots.get(kbId) ?? defaultSnapshot()
       const nextRetry =
         failureKind === 'transient' && options.retryPolicy === 'transient'
-          ? getNextAutomaticRetry(
-              this.snapshot.retryCount,
-              MANUAL_RETRY_SCHEDULE,
-            )
+          ? getNextAutomaticRetry(current.retryCount, MANUAL_RETRY_SCHEDULE)
           : null
       const shouldScheduleRetry = nextRetry !== null
-      this.snapshot = {
-        ...this.snapshot,
+      this.snapshots.set(kbId, {
+        ...current,
         status:
           failureKind === 'aborted'
             ? 'idle'
@@ -397,32 +534,64 @@ export class RagIndexService {
         failureMessage: failure.message,
         failureHttpStatus: failure.httpStatus,
         waitingForRateLimit: false,
-        retryCount: nextRetry?.retryCount ?? this.snapshot.retryCount,
+        retryCount: nextRetry?.retryCount ?? current.retryCount,
         retryAt: shouldScheduleRetry
           ? Date.now() + nextRetry.delayMs
           : undefined,
-      }
-      await this.persistSnapshot()
+      })
+      await this.persistSnapshots()
       if (shouldScheduleRetry && options.trigger === 'manual') {
-        this.scheduleRetry(options)
+        this.scheduleRetry(kbId, options)
       }
-      throw error
+      this.settleWaiters(kbId, error, 'reject')
     } finally {
+      this.activeKbId = null
       this.currentAbortController = null
       this.publishActivity()
       this.emit()
+      this.runNextQueued()
     }
   }
 
-  async markRetryScheduled(input: {
-    mode: RagIndexRunMode
-    retryAt: number
-    retryCount: number
-    failureMessage?: string
-  }): Promise<void> {
+  private runNextQueued(): void {
+    const nextKbId = this.queue.shift()
+    if (nextKbId === undefined) return
+    const options = this.queuedOptions.get(nextKbId)
+    this.queuedOptions.delete(nextKbId)
+    if (!options) return
+    void this.startRun(nextKbId, options, 'new')
+  }
+
+  private settleWaiters(
+    kbId: string,
+    value: unknown,
+    kind: 'resolve' | 'reject',
+  ): void {
+    const list = this.waiters.get(kbId)
+    if (!list) return
+    this.waiters.delete(kbId)
+    for (const waiter of list) {
+      if (kind === 'resolve') {
+        waiter.resolve(value as ReconcileResult)
+      } else {
+        waiter.reject(value)
+      }
+    }
+  }
+
+  async markRetryScheduled(
+    kbId: string,
+    input: {
+      mode: RagIndexRunMode
+      retryAt: number
+      retryCount: number
+      failureMessage?: string
+    },
+  ): Promise<void> {
     await this.initialize()
-    this.snapshot = {
-      ...this.snapshot,
+    const current = this.snapshots.get(kbId) ?? defaultSnapshot()
+    this.snapshots.set(kbId, {
+      ...current,
       mode: input.mode,
       trigger: 'auto',
       retryPolicy: 'transient',
@@ -432,38 +601,39 @@ export class RagIndexService {
       failureKind: 'transient',
       failureMessage: input.failureMessage,
       retryCount: input.retryCount,
-    }
-    await this.persistSnapshot()
+    })
+    await this.persistSnapshots()
   }
 
-  async clearRetryScheduled(): Promise<void> {
+  async clearRetryScheduled(kbId: string): Promise<void> {
     await this.initialize()
-    if (this.snapshot.status !== 'retry_scheduled') {
+    const current = this.snapshots.get(kbId)
+    if (!current || current.status !== 'retry_scheduled') {
       return
     }
-    this.clearRetryTimer()
-    this.snapshot = {
-      ...this.snapshot,
+    this.clearRetryTimer(kbId)
+    this.snapshots.set(kbId, {
+      ...current,
       status: 'idle',
       updatedAt: Date.now(),
       retryAt: undefined,
       failureKind: undefined,
       failureMessage: undefined,
       waitingForRateLimit: false,
-    }
-    await this.persistSnapshot()
+    })
+    await this.persistSnapshots()
   }
 
-  async resetRetryState(): Promise<void> {
+  async resetRetryState(kbId: string): Promise<void> {
     await this.initialize()
-    this.clearRetryTimer()
-    this.snapshot = {
-      ...this.snapshot,
+    this.clearRetryTimer(kbId)
+    const current = this.snapshots.get(kbId) ?? defaultSnapshot()
+    this.snapshots.set(kbId, {
+      ...current,
       status:
-        this.snapshot.status === 'retry_scheduled' ||
-        this.snapshot.status === 'failed'
+        current.status === 'retry_scheduled' || current.status === 'failed'
           ? 'idle'
-          : this.snapshot.status,
+          : current.status,
       retryPolicy: 'none',
       retryCount: 0,
       retryAt: undefined,
@@ -472,125 +642,166 @@ export class RagIndexService {
       failureHttpStatus: undefined,
       waitingForRateLimit: false,
       updatedAt: Date.now(),
-    }
-    await this.persistSnapshot()
+    })
+    await this.persistSnapshots()
   }
 
   refreshActivity(): void {
     this.publishActivity()
   }
 
+  /** Drops a knowledge base's run state entirely — cancels/dequeues it first,
+   * then removes its snapshot and retry timer. Used when the base itself is
+   * deleted from settings. */
+  async forgetKnowledgeBase(kbId: string): Promise<void> {
+    this.cancel(kbId)
+    this.clearRetryTimer(kbId)
+    this.snapshots.delete(kbId)
+    await this.persistSnapshots()
+    this.publishActivity()
+    this.emit()
+  }
+
   cleanup(): void {
-    this.clearRetryTimer()
+    for (const kbId of this.retryTimers.keys()) {
+      this.clearRetryTimer(kbId)
+    }
     this.currentAbortController?.abort()
     this.currentAbortController = null
     this.subscribers.clear()
     this.activityRegistry.remove(RETRY_ACTIVITY_ID)
   }
 
-  private async persistSnapshot(): Promise<void> {
+  private async persistSnapshots(): Promise<void> {
     await writeLocalStorage(
       this.app,
       STORAGE_KEY,
-      JSON.stringify(this.snapshot),
+      JSON.stringify(Object.fromEntries(this.snapshots)),
     )
     this.publishActivity()
     this.emit()
   }
 
-  private scheduleRetry(options: RagIndexRunOptions, minDelayMs = 0): void {
-    this.clearRetryTimer()
-    const delayMs = Math.max(
-      (this.snapshot.retryAt ?? Date.now()) - Date.now(),
-      minDelayMs,
-    )
-    this.armRetryTimer(options, delayMs)
+  private scheduleRetry(
+    kbId: string,
+    options: RagIndexRunOptions,
+    minDelayMs = 0,
+  ): void {
+    this.clearRetryTimer(kbId)
+    const retryAt = this.snapshots.get(kbId)?.retryAt ?? Date.now()
+    const delayMs = Math.max(retryAt - Date.now(), minDelayMs)
+    this.armRetryTimer(kbId, options, delayMs)
   }
 
-  private armRetryTimer(options: RagIndexRunOptions, delayMs: number): void {
-    this.retryOptions = options
-    this.retryTimer = setTimeout(() => {
-      this.retryTimer = null
-      this.retryOptions = null
-      void this.runIndex(options, 'automatic-retry').catch((error: unknown) => {
-        console.error('[YOLO] Failed to rerun scheduled RAG index:', error)
-      })
+  private armRetryTimer(
+    kbId: string,
+    options: RagIndexRunOptions,
+    delayMs: number,
+  ): void {
+    this.retryOptions.set(kbId, options)
+    const timer = setTimeout(() => {
+      this.retryTimers.delete(kbId)
+      this.retryOptions.delete(kbId)
+      // Retries re-enter the same FIFO as any other request — a retry never
+      // bypasses another knowledge base's in-flight run.
+      void this.run(kbId, options, 'automatic-retry').catch(
+        (error: unknown) => {
+          console.error('[YOLO] Failed to rerun scheduled RAG index:', error)
+        },
+      )
     }, delayMs)
+    this.retryTimers.set(kbId, timer)
   }
 
-  private clearRetryTimer(): void {
-    if (this.retryTimer) clearTimeout(this.retryTimer)
-    this.retryTimer = null
-    this.retryOptions = null
+  private clearRetryTimer(kbId: string): void {
+    const timer = this.retryTimers.get(kbId)
+    if (timer) clearTimeout(timer)
+    this.retryTimers.delete(kbId)
+    this.retryOptions.delete(kbId)
   }
 
+  /** Single aggregate activity entry across every knowledge base: the active
+   * run's own progress when one is running, otherwise a summary of whichever
+   * bases are waiting on a retry or have failed. */
   private publishActivity(): void {
-    if (
-      !this.isRagEnabled() ||
-      this.snapshot.status === 'idle' ||
-      this.snapshot.status === 'completed'
-    ) {
+    if (!this.isRagEnabled()) {
       this.activityRegistry.remove(RETRY_ACTIVITY_ID)
       return
     }
 
-    const title = this.buildActivityTitle()
-    const detail = this.buildActivityDetail()
-    this.activityRegistry.upsert({
-      id: RETRY_ACTIVITY_ID,
-      kind: 'rag-index',
-      title,
-      detail,
-      status:
-        this.snapshot.status === 'retry_scheduled'
-          ? 'waiting'
-          : this.snapshot.status === 'failed'
-            ? 'failed'
-            : 'running',
-      updatedAt: Date.now(),
-      action: { type: 'open-knowledge-settings' },
-    })
+    if (this.activeKbId) {
+      const snapshot = this.snapshots.get(this.activeKbId) ?? defaultSnapshot()
+      this.activityRegistry.upsert({
+        id: RETRY_ACTIVITY_ID,
+        kind: 'rag-index',
+        title: this.buildActiveTitle(snapshot),
+        detail: this.buildActiveDetail(snapshot),
+        status: 'running',
+        updatedAt: Date.now(),
+        action: { type: 'open-knowledge-settings' },
+      })
+      return
+    }
+
+    const retrying = [...this.snapshots.values()].filter(
+      (s) => s.status === 'retry_scheduled',
+    )
+    const failed = [...this.snapshots.values()].filter(
+      (s) => s.status === 'failed',
+    )
+    if (retrying.length > 0) {
+      this.activityRegistry.upsert({
+        id: RETRY_ACTIVITY_ID,
+        kind: 'rag-index',
+        title: this.t('statusBar.ragAutoUpdateRunning', '知识库等待重试'),
+        detail:
+          retrying.length === 1
+            ? (retrying[0].failureMessage ?? this.t('common.retry', '重试'))
+            : `${retrying.length} ${this.t('settings.knowledgeBases.count', '个知识库')}`,
+        status: 'waiting',
+        updatedAt: Date.now(),
+        action: { type: 'open-knowledge-settings' },
+      })
+      return
+    }
+    if (failed.length > 0) {
+      this.activityRegistry.upsert({
+        id: RETRY_ACTIVITY_ID,
+        kind: 'rag-index',
+        title: this.t('statusBar.ragAutoUpdateFailed', '知识库索引失败'),
+        detail:
+          failed.length === 1
+            ? (failed[0].failureMessage ??
+              this.t(
+                'statusBar.ragAutoUpdateFailedDetail',
+                '最近一次后台同步失败，请稍后重试。',
+              ))
+            : `${failed.length} ${this.t('settings.knowledgeBases.count', '个知识库')}`,
+        status: 'failed',
+        updatedAt: Date.now(),
+        action: { type: 'open-knowledge-settings' },
+      })
+      return
+    }
+    this.activityRegistry.remove(RETRY_ACTIVITY_ID)
   }
 
-  private buildActivityTitle(): string {
-    if (this.snapshot.status === 'retry_scheduled') {
-      return this.t('statusBar.ragAutoUpdateRunning', '知识库等待重试')
-    }
-    if (this.snapshot.status === 'failed') {
-      return this.t('statusBar.ragAutoUpdateFailed', '知识库索引失败')
-    }
-    if (this.snapshot.mode === 'rebuild') {
+  private buildActiveTitle(snapshot: RagIndexRunSnapshot): string {
+    if (snapshot.mode === 'rebuild') {
       return this.t('notices.rebuildingIndex', '正在重建知识库索引')
     }
     return this.t('statusBar.ragAutoUpdateRunning', '知识库正在后台更新')
   }
 
-  private buildActivityDetail(): string {
-    if (this.snapshot.status === 'retry_scheduled') {
-      const retryAtLabel = this.snapshot.retryAt
-        ? new Date(this.snapshot.retryAt).toLocaleTimeString()
-        : this.t('common.retry', '重试')
-      return this.snapshot.failureMessage
-        ? `${this.snapshot.failureMessage} · ${retryAtLabel}`
-        : retryAtLabel
-    }
-    if (this.snapshot.status === 'failed') {
-      return (
-        this.snapshot.failureMessage ??
-        this.t(
-          'statusBar.ragAutoUpdateFailedDetail',
-          '最近一次后台同步失败，请稍后重试。',
-        )
-      )
-    }
-    if (this.snapshot.waitingForRateLimit) {
+  private buildActiveDetail(snapshot: RagIndexRunSnapshot): string {
+    if (snapshot.waitingForRateLimit) {
       return this.t(
         'settings.rag.waitingRateLimit',
         'Waiting for rate limit to reset...',
       )
     }
-    if (this.snapshot.currentFile) {
-      return this.snapshot.currentFile
+    if (snapshot.currentFile) {
+      return snapshot.currentFile
     }
     return this.t(
       'statusBar.ragAutoUpdateRunningDetail',
@@ -599,7 +810,7 @@ export class RagIndexService {
   }
 
   private emit(): void {
-    const snapshot = { ...this.snapshot }
+    const snapshot = this.getSnapshot()
     for (const subscriber of this.subscribers) {
       subscriber(snapshot)
     }
