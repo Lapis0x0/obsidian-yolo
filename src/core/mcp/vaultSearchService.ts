@@ -10,6 +10,7 @@ import {
   type RagKnowledgeAccess,
   findKnowledgeBaseByName,
 } from '../rag/ragAccess'
+import { mergeRagQueryResults } from '../rag/ragQueryMerge'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import {
   type AggregatedSearchResult,
@@ -240,6 +241,13 @@ const getSemanticSearchUnavailableReason = ({
   }
   if (!settings.embeddingModelId?.trim()) {
     return 'No embedding model configured. Fell back to keyword search.'
+  }
+  if (
+    !settings.embeddingModels.some(
+      (model) => model.id === settings.embeddingModelId,
+    )
+  ) {
+    return 'The configured embedding model no longer exists. Fell back to keyword search.'
   }
   if (ragAccess.listKnowledgeBases().length === 0) {
     return 'No knowledge bases are configured. Fell back to keyword search.'
@@ -796,31 +804,25 @@ export async function runVaultSearchStructured({
       const perKbResults = await Promise.all(
         targetKnowledgeBases.map(async (kb) => {
           const ragEngine = await ragAccess.getRagEngine(kb.id)
-          const ragRows = await ragEngine.processQuery({
+          return (await ragEngine.processQuery({
             query,
             scope: ragScopeResult.scope,
             minSimilarity: ragMinSimilarity,
             limit: effectiveRagLimit,
-          })
-          return mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+          })) as RagEmbeddingRow[]
         }),
       )
       // Overlapping knowledge bases (a folder included by more than one kb)
-      // can each return the same chunk — dedupe by (path, chunk position)
-      // after sorting so the highest-similarity copy wins, then cap to the
-      // limit. Two rows for the same chunk have the same similarity anyway
-      // (same embedding), but sorting first keeps this correct regardless.
-      const seenChunks = new Set<string>()
-      ragMapped = perKbResults
-        .flat()
-        .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
-        .filter((result) => {
-          const chunkKey = `${result.path} ${result.startLine} ${result.endLine}`
-          if (seenChunks.has(chunkKey)) return false
-          seenChunks.add(chunkKey)
-          return true
-        })
-        .slice(0, effectiveRagLimit)
+      // can each return the same chunk — dedupe on the *raw* rows (by exact
+      // chunk position, including PDF page) before mapping to the display
+      // shape. Deduping after `mapRagRowsToSuper` would be wrong: that
+      // mapping collapses a PDF row's `startLine`/`endLine` down to its page
+      // number, so two distinct chunks on the same page would collide.
+      const mergedRawRows = mergeRagQueryResults(
+        perKbResults,
+        effectiveRagLimit,
+      )
+      ragMapped = mapRagRowsToSuper(mergedRawRows, 'rag')
     }
 
     if (effectiveMode === 'rag') {

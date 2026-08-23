@@ -444,8 +444,20 @@ describe('js sandbox vault list handler', () => {
     it('drops out-of-scope rows from db.search', async () => {
       const root = makeFolder('', [])
       const processQuery = jest.fn().mockResolvedValue([
-        { id: 1, path: 'Notes/a.md', content: 'in scope', similarity: 0.9 },
-        { id: 2, path: 'Private/secret.md', content: 'shh', similarity: 0.8 },
+        {
+          id: 1,
+          path: 'Notes/a.md',
+          content: 'in scope',
+          similarity: 0.9,
+          metadata: { startLine: 1, endLine: 5 },
+        },
+        {
+          id: 2,
+          path: 'Private/secret.md',
+          content: 'shh',
+          similarity: 0.8,
+          metadata: { startLine: 1, endLine: 5 },
+        },
       ])
       const handlers = buildJsSandboxProxyHandlers(
         makeApp(root, []),

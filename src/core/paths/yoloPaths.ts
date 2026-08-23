@@ -72,6 +72,25 @@ export const getYoloBaseDir = (settings?: YoloSettingsLike | null): string => {
   return normalizeVaultRelativeDir(settings?.yolo?.baseDir)
 }
 
+/**
+ * True when `path` is the YOLO base directory itself or nested inside it.
+ * Every knowledge base excludes this directory unconditionally, regardless
+ * of its own include/exclude rules — it's an always-on rule, not a per-base
+ * toggle. Callers that compute "what would a sync touch" or "how many files
+ * does this scope match" outside the actual index write path (pending-change
+ * counts, the scope-estimate UI, auto-update dirty tracking) must apply this
+ * too, or they'll report/act on files the real indexer would never write —
+ * see `VectorManager.listIndexableFiles`, the one place this exclusion was
+ * previously applied.
+ */
+export const isWithinYoloBaseDir = (
+  path: string,
+  settings?: YoloSettingsLike | null,
+): boolean => {
+  const yoloBaseDir = getYoloBaseDir(settings)
+  return path === yoloBaseDir || path.startsWith(`${yoloBaseDir}/`)
+}
+
 /** True when a vault-relative path contains a segment Obsidian will not index. */
 export const hasHiddenYoloBaseDirSegment = (value: string): boolean =>
   normalizePath(value.trim())

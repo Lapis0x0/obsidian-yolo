@@ -123,6 +123,9 @@ const defaultSnapshot = (): RagIndexRunSnapshot => ({
 const createRunId = (): string =>
   `rag-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
 
+const waiterKey = (kbId: string, generation: number): string =>
+  `${kbId}#${generation}`
+
 const readLocalStorage = async (
   app: App,
   key: string,
@@ -198,11 +201,26 @@ export class RagIndexService {
   private readonly subscribers = new Set<RagIndexSubscriber>()
 
   private activeKbId: string | null = null
+  /** Generation of the run currently occupying `activeKbId` — see `waiters`. */
+  private activeGeneration: number | null = null
   private currentAbortController: AbortController | null = null
 
   /** FIFO of knowledge base ids waiting behind the active run. */
   private queue: string[] = []
-  private queuedOptions = new Map<string, RagIndexRunOptions>()
+  private queuedEntries = new Map<
+    string,
+    { options: RagIndexRunOptions; generation: number }
+  >()
+  /** Last generation number issued per kbId — a monotonic counter, not a
+   * "current" value (a finished run's generation stays retired). */
+  private lastGeneration = new Map<string, number>()
+  /**
+   * Waiters keyed by `${kbId}#${generation}`, not just `kbId`. A `run()` call
+   * against a base that's already active folds into a *follow-up* run (see
+   * `run`'s comment) rather than the in-flight one — if waiters were bucketed
+   * by kbId alone, the in-flight run's completion would incorrectly resolve
+   * waiters that are actually waiting on that not-yet-started follow-up.
+   */
   private waiters = new Map<
     string,
     {
@@ -303,26 +321,75 @@ export class RagIndexService {
   }
 
   /** No `kbId`: cancel the active run and drop every queued run. One
-   * `kbId`: cancel it if active, or drop it from the queue if only queued. */
+   * `kbId`: cancel it if active, or drop it from the queue if only queued.
+   * Either way also drops any *queued follow-up* for that base (a second
+   * `run()` call against an already-active base) and its armed retry timer —
+   * cancelling an active base must not leave a follow-up run to silently
+   * fire right after, and must not leave a stale retry armed for a base the
+   * caller just asked to stop. */
   cancel(kbId?: string): void {
     if (kbId === undefined) {
       this.currentAbortController?.abort()
-      for (const queuedKbId of this.queue) {
-        this.settleWaiters(queuedKbId, new Error('cancelled'), 'reject')
+      this.dequeueAll()
+      for (const id of this.retryTimers.keys()) {
+        this.clearRetryTimer(id)
       }
-      this.queue = []
-      this.queuedOptions.clear()
       return
     }
     if (this.activeKbId === kbId) {
       this.currentAbortController?.abort()
+      this.dequeueOne(kbId)
+      this.clearRetryTimer(kbId)
       return
     }
     if (this.queue.includes(kbId)) {
-      this.queue = this.queue.filter((id) => id !== kbId)
-      this.queuedOptions.delete(kbId)
-      this.settleWaiters(kbId, new Error('cancelled'), 'reject')
+      this.dequeueOne(kbId)
+      this.clearRetryTimer(kbId)
       this.emit()
+    }
+  }
+
+  /** Cancels/dequeues `kbId` (same as `cancel(kbId)`) and waits until it is
+   * fully idle — including the in-flight `startRun` call's own `catch`/
+   * `finally` settling, which runs asynchronously after `abort()` and would
+   * otherwise race a caller that immediately deletes the base's snapshot or
+   * database. Callers that need to safely remove a knowledge base must await
+   * this before touching anything the active run's completion handler still
+   * writes to (see `forgetKnowledgeBase`). */
+  async cancelAndWait(kbId: string): Promise<void> {
+    this.cancel(kbId)
+    await this.waitForKbIdle(kbId)
+  }
+
+  async waitForKbIdle(kbId: string): Promise<void> {
+    if (this.activeKbId !== kbId && !this.queue.includes(kbId)) return
+    await new Promise<void>((resolve) => {
+      const unsubscribe = this.subscribe(() => {
+        if (this.activeKbId === kbId || this.queue.includes(kbId)) return
+        unsubscribe()
+        resolve()
+      })
+    })
+  }
+
+  private dequeueOne(kbId: string): void {
+    if (!this.queue.includes(kbId)) return
+    this.queue = this.queue.filter((id) => id !== kbId)
+    const entry = this.queuedEntries.get(kbId)
+    this.queuedEntries.delete(kbId)
+    if (entry) {
+      this.settleWaiters(
+        kbId,
+        entry.generation,
+        new Error('cancelled'),
+        'reject',
+      )
+    }
+  }
+
+  private dequeueAll(): void {
+    for (const queuedKbId of [...this.queue]) {
+      this.dequeueOne(queuedKbId)
     }
   }
 
@@ -393,32 +460,44 @@ export class RagIndexService {
     await this.initialize()
     this.clearRetryTimer(kbId)
 
+    const shouldStartImmediately = this.activeKbId === null
+    const generation = shouldStartImmediately
+      ? this.nextGeneration(kbId)
+      : // Already running (or queued behind) this base: fold this request in
+        // as a follow-up run rather than merging into the in-flight one
+        // (which may already have read stale scope/options) — queue it to
+        // run right after, under whichever generation that follow-up
+        // already has (or a fresh one if this is the first follow-up).
+        this.enqueue(kbId, options)
+
     const resultPromise = new Promise<ReconcileResult>((resolve, reject) => {
-      const list = this.waiters.get(kbId) ?? []
+      const key = waiterKey(kbId, generation)
+      const list = this.waiters.get(key) ?? []
       list.push({ resolve, reject })
-      this.waiters.set(kbId, list)
+      this.waiters.set(key, list)
     })
 
-    if (this.activeKbId === null) {
-      void this.startRun(kbId, options, attempt)
-    } else if (this.activeKbId === kbId) {
-      // Already running this base: fold this request in as a follow-up run
-      // rather than merging into the in-flight one (which may already have
-      // read stale scope/options) — queue it to run right after.
-      this.enqueue(kbId, options)
-    } else {
-      this.enqueue(kbId, options)
+    if (shouldStartImmediately) {
+      void this.startRun(kbId, generation, options, attempt)
     }
 
     return resultPromise
   }
 
-  private enqueue(kbId: string, options: RagIndexRunOptions): void {
-    const existing = this.queuedOptions.get(kbId)
-    this.queuedOptions.set(
-      kbId,
-      existing ? mergeRunOptions(existing, options) : options,
-    )
+  private nextGeneration(kbId: string): number {
+    const next = (this.lastGeneration.get(kbId) ?? 0) + 1
+    this.lastGeneration.set(kbId, next)
+    return next
+  }
+
+  /** Returns the generation this request's waiter should attach to. */
+  private enqueue(kbId: string, options: RagIndexRunOptions): number {
+    const existing = this.queuedEntries.get(kbId)
+    const generation = existing?.generation ?? this.nextGeneration(kbId)
+    this.queuedEntries.set(kbId, {
+      options: existing ? mergeRunOptions(existing.options, options) : options,
+      generation,
+    })
     if (!this.queue.includes(kbId)) {
       this.queue.push(kbId)
     }
@@ -428,14 +507,17 @@ export class RagIndexService {
       updatedAt: Date.now(),
     })
     this.emit()
+    return generation
   }
 
   private async startRun(
     kbId: string,
+    generation: number,
     options: RagIndexRunOptions,
     attempt: 'new' | 'automatic-retry',
   ): Promise<void> {
     this.activeKbId = kbId
+    this.activeGeneration = generation
     const controller = new AbortController()
     this.currentAbortController = controller
 
@@ -511,7 +593,7 @@ export class RagIndexService {
             : undefined,
       })
       await this.persistSnapshots()
-      this.settleWaiters(kbId, result, 'resolve')
+      this.settleWaiters(kbId, generation, result, 'resolve')
     } catch (error) {
       const failure = describeRagIndexError(error)
       const failureKind = failure.kind
@@ -543,9 +625,10 @@ export class RagIndexService {
       if (shouldScheduleRetry && options.trigger === 'manual') {
         this.scheduleRetry(kbId, options)
       }
-      this.settleWaiters(kbId, error, 'reject')
+      this.settleWaiters(kbId, generation, error, 'reject')
     } finally {
       this.activeKbId = null
+      this.activeGeneration = null
       this.currentAbortController = null
       this.publishActivity()
       this.emit()
@@ -556,20 +639,22 @@ export class RagIndexService {
   private runNextQueued(): void {
     const nextKbId = this.queue.shift()
     if (nextKbId === undefined) return
-    const options = this.queuedOptions.get(nextKbId)
-    this.queuedOptions.delete(nextKbId)
-    if (!options) return
-    void this.startRun(nextKbId, options, 'new')
+    const entry = this.queuedEntries.get(nextKbId)
+    this.queuedEntries.delete(nextKbId)
+    if (!entry) return
+    void this.startRun(nextKbId, entry.generation, entry.options, 'new')
   }
 
   private settleWaiters(
     kbId: string,
+    generation: number,
     value: unknown,
     kind: 'resolve' | 'reject',
   ): void {
-    const list = this.waiters.get(kbId)
+    const key = waiterKey(kbId, generation)
+    const list = this.waiters.get(key)
     if (!list) return
-    this.waiters.delete(kbId)
+    this.waiters.delete(key)
     for (const waiter of list) {
       if (kind === 'resolve') {
         waiter.resolve(value as ReconcileResult)
@@ -654,7 +739,11 @@ export class RagIndexService {
    * then removes its snapshot and retry timer. Used when the base itself is
    * deleted from settings. */
   async forgetKnowledgeBase(kbId: string): Promise<void> {
-    this.cancel(kbId)
+    // Must fully await the abort before deleting the snapshot: an active
+    // run's catch/finally writes a fresh (aborted) snapshot for `kbId` after
+    // `abort()` returns, asynchronously. Deleting the snapshot first would
+    // just have it revived by that write landing afterward.
+    await this.cancelAndWait(kbId)
     this.clearRetryTimer(kbId)
     this.snapshots.delete(kbId)
     await this.persistSnapshots()
@@ -757,7 +846,10 @@ export class RagIndexService {
         detail:
           retrying.length === 1
             ? (retrying[0].failureMessage ?? this.t('common.retry', '重试'))
-            : `${retrying.length} ${this.t('settings.knowledgeBases.count', '个知识库')}`,
+            : this.t('settings.knowledgeBases.count', '{{n}} 个知识库').replace(
+                '{{n}}',
+                String(retrying.length),
+              ),
         status: 'waiting',
         updatedAt: Date.now(),
         action: { type: 'open-knowledge-settings' },
@@ -776,7 +868,10 @@ export class RagIndexService {
                 'statusBar.ragAutoUpdateFailedDetail',
                 '最近一次后台同步失败，请稍后重试。',
               ))
-            : `${failed.length} ${this.t('settings.knowledgeBases.count', '个知识库')}`,
+            : this.t('settings.knowledgeBases.count', '{{n}} 个知识库').replace(
+                '{{n}}',
+                String(failed.length),
+              ),
         status: 'failed',
         updatedAt: Date.now(),
         action: { type: 'open-knowledge-settings' },

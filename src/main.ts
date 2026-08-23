@@ -4607,22 +4607,29 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     this.getRagIndexService().cancel(kbId)
   }
 
-  /** Removes one knowledge base: cancels any active/queued index run for it,
-   * drops it from settings, then permanently deletes its vector database.
-   * The only path that should ever delete a knowledge base's data — settings
-   * changes alone never do this (see `setSettings`). */
+  /** Removes one knowledge base: saves settings without it first (data
+   * deletion never starts unless this succeeds — a save conflict/failure
+   * must leave the base's data intact, not delete data behind a config that
+   * failed to update), then cancels any active/queued index run for it and
+   * permanently deletes its vector database. The only path that should ever
+   * delete a knowledge base's data — settings changes alone never do this
+   * (see `setSettings`). */
   async deleteKnowledgeBase(kbId: string): Promise<void> {
-    this.getRagIndexService().cancel(kbId)
-    await this.getRagIndexService().forgetKnowledgeBase(kbId)
-    await this.getRagCoordinator().closeRagEngine(kbId)
-    const dbManager = await this.getDbManager()
-    await dbManager.deleteKnowledgeBase(kbId)
-    await this.setSettings({
+    const saved = await this.setSettings({
       ...this.settings,
       knowledgeBases: this.settings.knowledgeBases.filter(
         (kb) => kb.id !== kbId,
       ),
     })
+    if (!saved) {
+      throw new Error(
+        `Failed to save settings before deleting knowledge base "${kbId}"`,
+      )
+    }
+    await this.getRagIndexService().forgetKnowledgeBase(kbId)
+    await this.getRagCoordinator().closeRagEngine(kbId)
+    const dbManager = await this.getDbManager()
+    await dbManager.deleteKnowledgeBase(kbId)
   }
 
   async getMcpManager(): Promise<McpManager> {

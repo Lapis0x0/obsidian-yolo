@@ -121,12 +121,29 @@ export function deleteVectorDatabase(
       reject(vectorDbError('database delete failed', error))
       return
     }
-    request.onsuccess = () => resolve()
-    request.onerror = () => reject(vectorDbError('database delete failed'))
-    // A stray open connection blocking the delete is not fatal to the
-    // caller (the knowledge base's own connection is always closed before
-    // this is called) — resolve rather than hang forever.
-    request.onblocked = () => resolve()
+    let settled = false
+    request.onsuccess = () => {
+      if (settled) return
+      settled = true
+      resolve()
+    }
+    request.onerror = () => {
+      if (settled) return
+      settled = true
+      reject(vectorDbError('database delete failed'))
+    }
+    // The caller is expected to close every connection it owns before
+    // calling this (`DatabaseManager.deleteKnowledgeBase` closes its own
+    // connection first). A block here means some other connection is still
+    // open — the data has NOT been deleted, so treat it as a failure rather
+    // than pretending success; the delete request itself is left pending
+    // (IndexedDB will still fire onsuccess/onerror once unblocked, but this
+    // promise has already settled by then and the caller should retry).
+    request.onblocked = () => {
+      if (settled) return
+      settled = true
+      reject(vectorDbError('database delete was blocked by an open connection'))
+    }
   })
 }
 

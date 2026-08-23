@@ -54,7 +54,7 @@ const SESSION_IDLE_TTL_MS = 30 * 60 * 1000
 
 const buildKnowledgeBaseCatalog = (settings: YoloSettings): string => {
   if (settings.knowledgeBases.length === 0) {
-    return 'No knowledge bases are configured — semantic search covers the whole vault.'
+    return 'No knowledge bases are configured — rag/hybrid search falls back to keyword search.'
   }
   return settings.knowledgeBases
     .map((kb) => {
@@ -552,7 +552,7 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
         if (result.status === 'aborted') {
           return textResult('Search was cancelled.', true)
         }
-        return textResult('Search failed.', true)
+        return textResult(result.error, true)
       },
     )
 

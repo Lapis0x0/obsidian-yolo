@@ -4,6 +4,7 @@ import { IDBFactory } from 'fake-indexeddb'
 
 import { DatabaseManager } from './DatabaseManager'
 import type { IndexedDbVectorStore } from './vector-store/IndexedDbVectorStore'
+import { vectorDatabaseName } from './vector-store/vectorDatabase'
 
 const NAMESPACE_A = '11111111-1111-4111-8111-111111111111'
 const NAMESPACE_B = '22222222-2222-4222-8222-222222222222'
@@ -141,7 +142,7 @@ describe('DatabaseManager', () => {
     await manager.cleanup()
   })
 
-  it('deleteKnowledgeBase closes the connection and drops the database, freeing the id for reopen with empty data', async () => {
+  it('deleteKnowledgeBase closes the connection and drops the database', async () => {
     const { app } = createFakeApp()
     const indexedDB = new IDBFactory()
     const manager = await DatabaseManager.create(
@@ -171,11 +172,59 @@ describe('DatabaseManager', () => {
 
     await manager.deleteKnowledgeBase('kb-a')
 
-    // Reopening the same kbId after deletion starts from an empty store.
+    const remainingDbNames = (await indexedDB.databases()).map((d) => d.name)
+    expect(remainingDbNames).not.toContain(
+      vectorDatabaseName(NAMESPACE_A, 'kb-a'),
+    )
+
+    await manager.cleanup()
+  })
+
+  it('permanently blocks a deleted knowledge base id from reopening — ids are never reused, so a stale caller racing the delete must not revive it', async () => {
+    const { app } = createFakeApp()
+    const indexedDB = new IDBFactory()
+    const manager = await DatabaseManager.create(
+      app as never,
+      { yolo: { baseDir: 'YOLO' } },
+      undefined,
+      {
+        indexedDB,
+        createNamespaceId: () => NAMESPACE_A,
+      },
+    )
+
     await manager.getVectorManager('kb-a')
-    const reopenedStore = await storeOf(manager, 'kb-a')
-    const mtimes = await reopenedStore.getFileMtimes('test-model')
-    expect(Object.keys(mtimes)).toHaveLength(0)
+    await manager.deleteKnowledgeBase('kb-a')
+
+    // A caller that still holds "kb-a" (a queued index run, an in-flight
+    // search) must not silently reopen a fresh empty database for it.
+    await expect(manager.getVectorManager('kb-a')).rejects.toThrow(/deleted/i)
+
+    await manager.cleanup()
+  })
+
+  it('deleteKnowledgeBase waits for a concurrent in-flight open before closing and deleting', async () => {
+    const { app } = createFakeApp()
+    const indexedDB = new IDBFactory()
+    const manager = await DatabaseManager.create(
+      app as never,
+      { yolo: { baseDir: 'YOLO' } },
+      undefined,
+      {
+        indexedDB,
+        createNamespaceId: () => NAMESPACE_A,
+      },
+    )
+
+    // Kick off an open but don't await it yet — deleteKnowledgeBase races it.
+    const openPromise = manager.getVectorManager('kb-a')
+    await manager.deleteKnowledgeBase('kb-a')
+
+    // The racing open still resolves (it started before the delete), but the
+    // connection it produced must not be left dangling in the cache — a
+    // second call for the same id must see it as deleted, not cached-open.
+    await openPromise
+    await expect(manager.getVectorManager('kb-a')).rejects.toThrow(/deleted/i)
 
     await manager.cleanup()
   })

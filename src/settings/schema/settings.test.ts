@@ -636,4 +636,62 @@ describe('parseYoloSettings', () => {
     ])
     expect(result.embeddingModelId).toBe('openai/text-embedding-3-large')
   })
+
+  it('defaults knowledgeBases to an empty array for empty input, including after the 81->82 migration', () => {
+    const empty = parseYoloSettings({})
+    expect(empty.knowledgeBases).toEqual([])
+
+    // A pre-multi-kb settings blob (version 81, no `knowledgeBases` key) runs
+    // through migrateFrom81To82, which deliberately does not synthesize one
+    // (see 81_to_82.test.ts) — the field is filled in by the schema default.
+    const migrated = parseYoloSettings({ version: 81 })
+    expect(migrated.knowledgeBases).toEqual([])
+  })
+
+  it('trims knowledge base names and drops an entry missing a required id while keeping valid siblings', () => {
+    const result = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      knowledgeBases: [
+        {
+          id: 'kb-a',
+          name: '  Notes  ',
+          description: '',
+          include: [],
+          exclude: [],
+        },
+        { id: 'kb-b', name: 'Second' }, // missing `description`/`include`/`exclude` — survive via `.catch()`
+        { name: 'no id at all' }, // missing required `id` — dropped by resilientArraySchema
+      ],
+    })
+
+    expect(result.knowledgeBases).toEqual([
+      { id: 'kb-a', name: 'Notes', description: '', include: [], exclude: [] },
+      { id: 'kb-b', name: 'Second', description: '', include: [], exclude: [] },
+    ])
+  })
+
+  it('falls back to full settings defaults when two knowledge bases share an id or name', () => {
+    const byId = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      chatModelId: 'should-be-discarded',
+      knowledgeBases: [
+        { id: 'dup', name: 'A', description: '', include: [], exclude: [] },
+        { id: 'dup', name: 'B', description: '', include: [], exclude: [] },
+      ],
+    })
+    // A duplicate fails the whole field, which fails the whole settings
+    // parse (see knowledgeBasesFieldSchema's doc comment) — parseYoloSettings
+    // then falls back to full defaults, same as any other unparseable field.
+    expect(byId.knowledgeBases).toEqual([])
+    expect(byId.chatModelId).toBe('')
+
+    const byName = parseYoloSettings({
+      version: SETTINGS_SCHEMA_VERSION,
+      knowledgeBases: [
+        { id: 'a', name: 'Same', description: '', include: [], exclude: [] },
+        { id: 'b', name: 'same', description: '', include: [], exclude: [] }, // case-insensitive collision
+      ],
+    })
+    expect(byName.knowledgeBases).toEqual([])
+  })
 })

@@ -51,6 +51,12 @@ export class DatabaseManager {
   private readonly openPromises = new Map<string, Promise<VectorManager>>()
   private closed = false
   private cleanupPromise: Promise<void> | null = null
+  /** Ids permanently removed via `deleteKnowledgeBase`. A knowledge base id
+   * is never reused, so once here it stays here — this blocks a `getVectorManager`
+   * call that races the delete (settings-driven deletion vs. an in-flight
+   * tool call or queued index run against the same id) from reopening a
+   * database that's being (or has been) permanently dropped. */
+  private readonly deletedKbIds = new Set<string>()
 
   private constructor() {}
 
@@ -105,6 +111,9 @@ export class DatabaseManager {
     if (this.closed) {
       throw new Error('Database is not initialized')
     }
+    if (this.deletedKbIds.has(kbId)) {
+      throw new Error(`Knowledge base "${kbId}" has been deleted`)
+    }
     const existing = this.knowledgeBases.get(kbId)
     if (existing) {
       return existing.vectorManager
@@ -139,6 +148,15 @@ export class DatabaseManager {
    * database connection without deleting its data. Idempotent; a no-op if
    * the base was never opened. */
   async closeKnowledgeBase(kbId: string): Promise<void> {
+    // A concurrent getVectorManager(kbId) may be mid-open — its connection
+    // hasn't landed in `knowledgeBases` yet, so without this we'd see
+    // nothing to close and return immediately, leaving that connection
+    // dangling (or, worse, racing a caller that deletes the database right
+    // after this resolves). Let it finish (or fail) first.
+    const inFlight = this.openPromises.get(kbId)
+    if (inFlight) {
+      await inFlight.catch(() => undefined)
+    }
     const opened = this.knowledgeBases.get(kbId)
     if (!opened) return
     this.knowledgeBases.delete(kbId)
@@ -147,8 +165,12 @@ export class DatabaseManager {
   }
 
   /** Closes (if open) and permanently deletes one knowledge base's IndexedDB
-   * database. Used when a knowledge base is removed from settings. */
+   * database. Used when a knowledge base is removed from settings. Marks
+   * `kbId` as deleted *before* closing/deleting so a `getVectorManager` call
+   * racing this (a queued index run, an in-flight search tool call) can't
+   * reopen the database while — or after — it's being dropped. */
   async deleteKnowledgeBase(kbId: string): Promise<void> {
+    this.deletedKbIds.add(kbId)
     await this.closeKnowledgeBase(kbId)
     if (!this.indexedDB) return
     await deleteVectorDatabase(

@@ -684,4 +684,112 @@ describe('RagIndexService', () => {
 
     resolveA()
   })
+
+  it('does not resolve a same-kb follow-up run when the active run for that kb completes', async () => {
+    // Regression for waiters previously bucketed by kbId alone: a second
+    // run() against an already-active base must become a follow-up run with
+    // its own waiter, not resolve off the in-flight run's completion.
+    const resolvers: Array<() => void> = []
+    const updateVaultIndex = jest.fn().mockImplementation(async () => {
+      await new Promise<void>((resolve) => {
+        resolvers.push(resolve)
+      })
+      return { permanentFailedPaths: [], chunkifyFailedPaths: [] }
+    })
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    const runA1 = service.run('kb-a', {
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'none',
+    })
+    await waitForNextTick()
+    expect(service.getSnapshot().activeKbId).toBe('kb-a')
+
+    const runA2 = service.run('kb-a', {
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'none',
+    })
+    await waitForNextTick()
+    expect(service.getSnapshot().queuedKbIds).toEqual(['kb-a'])
+
+    resolvers[0]()
+    await runA1
+    await waitForNextTick()
+
+    // The follow-up run has started (second call), but must not have
+    // resolved off the first run's completion.
+    expect(updateVaultIndex).toHaveBeenCalledTimes(2)
+    const pendingSentinel = Symbol('pending')
+    const raceResult = await Promise.race([
+      runA2,
+      new Promise((resolve) => setTimeout(() => resolve(pendingSentinel), 10)),
+    ])
+    expect(raceResult).toBe(pendingSentinel)
+
+    resolvers[1]()
+    await expect(runA2).resolves.toEqual({
+      permanentFailedPaths: [],
+      chunkifyFailedPaths: [],
+    })
+  })
+
+  it('cancelAndWait cancels both the active run and its own queued follow-up', async () => {
+    const updateVaultIndex = jest.fn().mockImplementation(
+      async ({ signal }: { signal?: AbortSignal }) =>
+        await new Promise((_resolve, reject) => {
+          signal?.addEventListener('abort', () => {
+            reject(new DOMException('aborted', 'AbortError'))
+          })
+        }),
+    )
+    const service = new RagIndexService({
+      app: {
+        loadLocalStorage: jest.fn().mockReturnValue(null),
+        saveLocalStorage: jest.fn(),
+      } as never,
+      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      activityRegistry: new BackgroundActivityRegistry(),
+      isRagEnabled: () => true,
+      t: (_key, fallback) => fallback ?? '',
+    })
+
+    await service.initialize()
+    const runA1 = service.run('kb-a', {
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'none',
+    })
+    await waitForNextTick()
+    const runA2 = service.run('kb-a', {
+      mode: 'sync',
+      scope: { kind: 'all' },
+      trigger: 'auto',
+      retryPolicy: 'none',
+    })
+    await waitForNextTick()
+    expect(service.getSnapshot().activeKbId).toBe('kb-a')
+    expect(service.getSnapshot().queuedKbIds).toEqual(['kb-a'])
+
+    await service.cancelAndWait('kb-a')
+
+    await expect(runA1).rejects.toBeTruthy()
+    await expect(runA2).rejects.toBeTruthy()
+    expect(service.getSnapshot().activeKbId).toBeNull()
+    expect(service.getSnapshot().queuedKbIds).toEqual([])
+  })
 })

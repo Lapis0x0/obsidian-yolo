@@ -73,6 +73,64 @@ export const knowledgeBaseSchema = z.object({
 })
 export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>
 
+/**
+ * `knowledgeBases` validation runs in two stages:
+ * 1. `resilientArraySchema` drops any item that fails `knowledgeBaseSchema`
+ *    outright (missing `id`, wrong types, ...) — same as every other
+ *    settings array, so one corrupted entry never blocks the rest.
+ * 2. This `.superRefine` then validates the survivors as a set: `name` must
+ *    be non-empty after trimming, and both `id` and the trimmed,
+ *    case-insensitive `name` must be unique — `name` is the model-facing
+ *    selector `vault_search`'s `knowledgeBase` argument matches against (see
+ *    `knowledgeBaseSchema`'s doc comment), so two bases sharing one make
+ *    that argument ambiguous.
+ *
+ * Unlike stage 1, a violation here fails the whole `knowledgeBases` field
+ * instead of silently dropping the offending entry. That is deliberate: it
+ * is what lets `import-config.ts`'s `safeParse` (and `main.ts`'s
+ * `setSettings`) surface a clear "duplicate knowledge base" error instead of
+ * silently discarding one of the two. On the disk-load path
+ * (`parseYoloSettings`), a failure here falls back to full schema defaults
+ * like any other unparseable settings field — pre-existing, systemic
+ * behavior, not specific to this field.
+ */
+const knowledgeBasesFieldSchema = resilientArraySchema(knowledgeBaseSchema)
+  .transform((items) =>
+    items.map((item) => ({ ...item, name: item.name.trim() })),
+  )
+  .superRefine((items, ctx) => {
+    const seenIds = new Set<string>()
+    const seenNames = new Set<string>()
+    items.forEach((item, index) => {
+      if (item.name.length === 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Knowledge base at index ${index} has an empty name`,
+          path: [index, 'name'],
+        })
+        return
+      }
+      if (seenIds.has(item.id)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate knowledge base id "${item.id}"`,
+          path: [index, 'id'],
+        })
+      }
+      seenIds.add(item.id)
+
+      const nameKey = item.name.toLowerCase()
+      if (seenNames.has(nameKey)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Duplicate knowledge base name "${item.name}"`,
+          path: [index, 'name'],
+        })
+      }
+      seenNames.add(nameKey)
+    })
+  })
+
 type TabCompletionOptionDefaults = {
   multipleCandidatesEnabled: boolean
   idleTriggerEnabled: boolean
@@ -384,7 +442,7 @@ export const yoloSettingsSchema = z.object({
    * migration — upgrading users start at `[]` and create their own (the
    * IndexedDB-backed vector store already requires a from-scratch rebuild).
    */
-  knowledgeBases: resilientArraySchema(knowledgeBaseSchema),
+  knowledgeBases: knowledgeBasesFieldSchema,
 
   // MCP configuration
   mcp: z

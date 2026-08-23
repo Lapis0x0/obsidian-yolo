@@ -24,6 +24,11 @@ export class RagCoordinator {
 
   private readonly ragEngines = new Map<string, RAGEngine>()
   private readonly ragEngineInitPromises = new Map<string, Promise<RAGEngine>>()
+  /** Bumped by `closeRagEngine`. An init that started before a close must not
+   * populate the cache after that close resolves — otherwise a `getRagEngine`
+   * caller racing a `closeRagEngine`/delete would revive an engine on a
+   * database that's being (or has been) closed or deleted out from under it. */
+  private readonly closeGenerations = new Map<string, number>()
 
   constructor(deps: RagCoordinatorDeps) {
     this.app = deps.app
@@ -47,6 +52,7 @@ export class RagCoordinator {
       return inFlight
     }
 
+    const generationAtStart = this.closeGenerations.get(kbId) ?? 0
     const initPromise = (async () => {
       try {
         const dbManager = await this.getDbManager()
@@ -57,7 +63,14 @@ export class RagCoordinator {
           vectorManager,
           kbId,
         )
-        this.ragEngines.set(kbId, ragEngine)
+        // A close (or delete) that started after this init began must win:
+        // don't resurrect the cache with an engine built on a connection
+        // that's being (or has been) torn down.
+        if ((this.closeGenerations.get(kbId) ?? 0) === generationAtStart) {
+          this.ragEngines.set(kbId, ragEngine)
+        } else {
+          ragEngine.cleanup()
+        }
         return ragEngine
       } finally {
         this.ragEngineInitPromises.delete(kbId)
@@ -73,6 +86,7 @@ export class RagCoordinator {
    * caller has already deleted its database) or its config changes enough
    * that a fresh engine should be created next time it's needed. */
   async closeRagEngine(kbId: string): Promise<void> {
+    this.closeGenerations.set(kbId, (this.closeGenerations.get(kbId) ?? 0) + 1)
     this.ragEngines.delete(kbId)
     this.ragEngineInitPromises.delete(kbId)
     const dbManager = await this.getDbManager()

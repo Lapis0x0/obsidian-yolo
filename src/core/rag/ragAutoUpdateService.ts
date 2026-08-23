@@ -5,6 +5,7 @@ import {
   YoloSettings,
 } from '../../settings/schema/setting.types'
 import { matchesIncludeExcludeScope } from '../../utils/scope-match'
+import { isWithinYoloBaseDir } from '../paths/yoloPaths'
 import {
   type AutomaticRetrySchedule,
   MAX_AUTOMATIC_RETRIES,
@@ -212,6 +213,9 @@ class RagAutoUpdateWorker {
     const isPdf =
       lower.endsWith('.pdf') && (settings.ragOptions.indexPdf ?? true)
     if (!isMd && !isPdf) {
+      return false
+    }
+    if (isWithinYoloBaseDir(path, settings)) {
       return false
     }
     const kb = this.deps.getKnowledgeBase()

@@ -40,6 +40,7 @@ import {
   type RagKnowledgeAccess,
   findKnowledgeBaseByName,
 } from '../rag/ragAccess'
+import { mergeRagQueryResults } from '../rag/ragQueryMerge'
 import {
   BROWSER_READ_PATH_USAGE,
   parseBrowserReadPageId,
@@ -2957,10 +2958,10 @@ export function buildJsSandboxProxyHandlers(
             })
           }),
         )
-        const results = perKbResults
-          .flat()
-          .sort((a, b) => b.similarity - a.similarity)
-          .slice(0, limit)
+        // Overlapping knowledge bases can each return the identical chunk —
+        // dedupe by exact chunk position (same as vault_search's merge)
+        // before truncating to `limit`, not just sort+slice.
+        const results = mergeRagQueryResults(perKbResults, limit)
         // The RAG index covers the whole vault and every row carries the
         // chunk's actual text, so an unfiltered `$db.search` is a read path
         // straight around workspace scope — the same hole `$vault.readText`

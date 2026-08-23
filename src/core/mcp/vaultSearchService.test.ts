@@ -81,6 +81,66 @@ describe('runVaultSearch', () => {
     }
   })
 
+  it('falls back to keyword when the configured embedding model no longer exists', async () => {
+    // Stale reference: the settings' embeddingModelId still points at a
+    // model id that was since removed from embeddingModels (e.g. its
+    // provider was deleted). Semantic search must not silently query with a
+    // model that no longer resolves — it should fall back to keyword with a
+    // reason that says so, not claim the vault has no knowledge bases.
+    const root = Object.assign(new TFolder(), { path: '' })
+    const file = Object.assign(new TFile(), {
+      path: 'note.md',
+      stat: { size: 20 },
+    })
+    const getRagEngine = jest.fn()
+
+    const result = await runVaultSearch({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+          getFiles: jest.fn().mockReturnValue([file]),
+          getAllLoadedFiles: jest.fn().mockReturnValue([root]),
+          getMarkdownFiles: jest.fn().mockReturnValue([file]),
+        },
+      } as unknown as App,
+      settings: {
+        ragOptions: { enabled: true, limit: 10 },
+        embeddingModelId: 'deleted-model',
+        embeddingModels: [{ id: 'some-other-model' }],
+      } as unknown as YoloSettings,
+      ragAccess: {
+        listKnowledgeBases: () => [
+          {
+            id: 'kb-a',
+            name: 'kb-a',
+            description: '',
+            include: [],
+            exclude: [],
+          },
+        ],
+        getRagEngine,
+      },
+      args: {
+        scope: 'files',
+        query: 'note',
+      },
+    })
+
+    expect(getRagEngine).not.toHaveBeenCalled()
+    expect(result.status).toBe('success')
+    if (result.status !== 'success') {
+      throw new Error('expected success')
+    }
+    const parsed = JSON.parse(result.text) as {
+      effectiveMode: string
+      fallbackReason: string
+    }
+    expect(parsed.effectiveMode).toBe('keyword')
+    expect(parsed.fallbackReason).toBe(
+      'The configured embedding model no longer exists. Fell back to keyword search.',
+    )
+  })
+
   it('rejects rag mode scoped to files or dirs', async () => {
     const root = Object.assign(new TFolder(), { path: '' })
 
@@ -93,6 +153,7 @@ describe('runVaultSearch', () => {
       settings: {
         ragOptions: { enabled: true, limit: 10 },
         embeddingModelId: 'test-embedding',
+        embeddingModels: [{ id: 'test-embedding' }],
       } as unknown as YoloSettings,
       ragAccess: ragAccessOf({ processQuery: jest.fn() }),
       args: {
@@ -304,6 +365,7 @@ describe('runVaultSearch', () => {
           limit: 10,
         },
         embeddingModelId: 'test-embedding',
+        embeddingModels: [{ id: 'test-embedding' }],
       } as unknown as YoloSettings,
       ragAccess: ragAccessOf({
         processQuery: jest.fn().mockResolvedValue([
@@ -426,6 +488,7 @@ describe('runVaultSearch', () => {
       settings: {
         ragOptions: { enabled: true, limit: 3 },
         embeddingModelId: 'test-embedding',
+        embeddingModels: [{ id: 'test-embedding' }],
       } as unknown as YoloSettings,
       ragAccess,
       args: {
@@ -471,6 +534,7 @@ describe('runVaultSearch', () => {
         yolo: { baseDir: 'YOLO' },
         ragOptions: { enabled: true, limit: 10 },
         embeddingModelId: 'test-embedding',
+        embeddingModels: [{ id: 'test-embedding' }],
       } as unknown as YoloSettings,
       ragAccess: ragAccessOf({ processQuery }),
       workspaceScope,
@@ -509,6 +573,7 @@ describe('runVaultSearch', () => {
         yolo: { baseDir: 'YOLO' },
         ragOptions: { enabled: true, limit: 10 },
         embeddingModelId: 'test-embedding',
+        embeddingModels: [{ id: 'test-embedding' }],
       } as unknown as YoloSettings,
       ragAccess: ragAccessOf({ processQuery }),
       workspaceScope,

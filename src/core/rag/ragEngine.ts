@@ -19,13 +19,29 @@ type RagQueryResult = VectorSelect & {
   similarity: number
 }
 
+/**
+ * Identifies one chunk's position for dedup purposes: PDF rows carry a page
+ * number in addition to (and distinct from) their `startLine`/`endLine` —
+ * two different chunks on the same PDF page share a page number but not a
+ * line range, so the key must include all three or same-page chunks would
+ * collide. Exported for `mergeRagQueryResults` (cross-knowledge-base merge)
+ * to reuse the identical key on raw rows, before any display-mapping step
+ * collapses `page` into `startLine`/`endLine` (see `vaultSearchService.ts`'s
+ * `mapRagRowsToSuper`, which does exactly that for the UI-facing shape).
+ */
+export const ragChunkKey = (row: {
+  path: string
+  metadata: { page?: number; startLine: number; endLine: number }
+}): string =>
+  `${row.path}:${row.metadata.page ?? ''}:${row.metadata.startLine}:${row.metadata.endLine}`
+
 export const dedupeRagQueryResults = (
   rows: RagQueryResult[],
 ): RagQueryResult[] => {
   const deduped = new Map<string, RagQueryResult>()
 
   for (const row of rows) {
-    const key = `${row.path}:${row.metadata.page ?? ''}:${row.metadata.startLine}:${row.metadata.endLine}`
+    const key = ragChunkKey(row)
     const existing = deduped.get(key)
     if (!existing || row.similarity > existing.similarity) {
       deduped.set(key, row)
@@ -166,6 +182,7 @@ export class RAGEngine {
         include: kb.include,
         exclude: kb.exclude,
         indexPdf: this.settings.ragOptions.indexPdf ?? true,
+        settings: this.settings,
       },
     )
   }

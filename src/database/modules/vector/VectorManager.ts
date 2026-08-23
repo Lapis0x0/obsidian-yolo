@@ -3,7 +3,7 @@ import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
 import { App, TFile } from 'obsidian'
 
 import { IndexProgress } from '../../../components/chat-view/QueryProgress'
-import { getYoloBaseDir } from '../../../core/paths/yoloPaths'
+import { isWithinYoloBaseDir } from '../../../core/paths/yoloPaths'
 import {
   RagIndexFailureKind,
   RagIndexIncompleteError,
@@ -809,11 +809,8 @@ export class VectorManager {
     })
     // The YOLO base directory is excluded unconditionally — every knowledge
     // base's engine, not a per-base rule the UI can toggle.
-    const yoloBaseDir = getYoloBaseDir(config.settings)
-    const yoloBaseDirPrefix = `${yoloBaseDir}/`
     files = files.filter(
-      (file) =>
-        file.path !== yoloBaseDir && !file.path.startsWith(yoloBaseDirPrefix),
+      (file) => !isWithinYoloBaseDir(file.path, config.settings),
     )
     files = files.filter((file) =>
       matchesIncludeExcludeScope(file.path, config.include, config.exclude),

@@ -2,6 +2,7 @@ jest.mock('obsidian', () => ({
   TAbstractFile: class {},
   TFile: class {},
   TFolder: class {},
+  normalizePath: (path: string) => path,
 }))
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
@@ -140,6 +141,78 @@ describe('RagAutoUpdateService', () => {
 
     expect(runIndex).not.toHaveBeenCalled()
     cleanup()
+  })
+
+  it('tracks and flushes two differently-scoped knowledge bases independently', async () => {
+    // Each knowledge base gets its own RagAutoUpdateWorker keyed by kbId — a
+    // path that only matches one base's include/exclude scope must dirty
+    // (and later flush) only that base's worker, never the other's.
+    const settings = {
+      embeddingModelId: 'test-embed',
+      embeddingModels: [{ id: 'test-embed' }],
+      ragOptions: {
+        enabled: true,
+        autoUpdateEnabled: true,
+        lastAutoUpdateAt: 0,
+        indexPdf: true,
+      },
+      knowledgeBases: [
+        {
+          id: 'kb-a',
+          name: 'kb-a',
+          description: '',
+          include: ['FolderA'],
+          exclude: [],
+        },
+        {
+          id: 'kb-b',
+          name: 'kb-b',
+          description: '',
+          include: ['FolderB'],
+          exclude: [],
+        },
+      ],
+    } as unknown as YoloSettings
+    const retryCounts = new Map<string, number>()
+    const runIndex = jest.fn().mockResolvedValue(undefined)
+    const setSettings = jest.fn().mockResolvedValue(undefined)
+    const markRetryScheduled = jest.fn().mockResolvedValue(undefined)
+    const clearRetryScheduled = jest.fn().mockResolvedValue(undefined)
+
+    const service = new RagAutoUpdateService({
+      getSettings: () => settings,
+      setSettings,
+      runIndex,
+      getRetryCount: (kbId: string) => retryCounts.get(kbId) ?? 0,
+      markRetryScheduled,
+      clearRetryScheduled,
+    })
+
+    // Only kb-a's scope matches this path — kb-b's worker must stay idle.
+    service.onVaultPathChanged('FolderA/note.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledWith('kb-a', {
+      kind: 'paths',
+      paths: ['FolderA/note.md'],
+    })
+
+    runIndex.mockClear()
+
+    // Now a path only kb-b's scope matches — must flush kb-b alone.
+    service.onVaultPathChanged('FolderB/note.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledWith('kb-b', {
+      kind: 'paths',
+      paths: ['FolderB/note.md'],
+    })
+
+    service.cleanup()
   })
 
   it('runs sooner when the window blurs after a short grace period', async () => {
