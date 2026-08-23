@@ -126,11 +126,11 @@ function KnowledgeBaseStatsTable({ kb }: { kb: KnowledgeBase }) {
 
   const handleRemoveIndex = (modelId: string) => {
     void (async () => {
+      const embeddingModel = getEmbeddingModelClient({
+        settings,
+        embeddingModelId: modelId,
+      })
       try {
-        const embeddingModel = getEmbeddingModelClient({
-          settings,
-          embeddingModelId: modelId,
-        })
         await (await getVectorManager(kb.id)).clearAllVectors(embeddingModel)
       } catch (error) {
         console.error(error)
@@ -138,6 +138,10 @@ function KnowledgeBaseStatsTable({ kb }: { kb: KnowledgeBase }) {
           t('settings.knowledgeBases.removeIndexFailed', '移除索引失败'),
         )
       } finally {
+        // Scoped to this one call — for `yolo-local` it holds a
+        // runtime-component lease that must be released here rather than
+        // left to the 10-minute idle timeout.
+        await embeddingModel.dispose?.()
         await refetch().catch((error) => {
           console.error('Failed to refresh embedding DB stats:', error)
         })
