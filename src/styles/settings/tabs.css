@@ -2,7 +2,12 @@
    Settings Tabs Styles
    ======================================== */
 
+/* Obsidian 的设置内容区自带纵向内边距（1.13 起为 48px/64px），核心设置页
+   靠它自身滚动所以那只是呼吸感。我们在里面另起了一层滚动容器
+   (.yolo-settings-tabs-content)，外层 padding 就退化成不会滚动的死框，
+   白占约 110px 高。纵向留白由我们自己的容器提供，让它随内容滚动。 */
 .modal.mod-settings .vertical-tab-content:has(> .yolo-settings-tabs-container) {
+  padding-block: 0;
   padding-inline: 0;
 }
 
@@ -13,6 +18,7 @@
   height: 100%;
   align-items: center;
   container-type: inline-size;
+  padding-top: var(--size-4-4);
 }
 
 .yolo-settings-tabs-nav {
