@@ -405,4 +405,50 @@ describe('RuntimeComponentService desired intent', () => {
     })
     service.stop()
   })
+
+  it('has no record for a desktop-only component on mobile, and refuses to acquire or read it', async () => {
+    const embeddingDescriptor: RuntimeComponentDescriptor = {
+      ...descriptor,
+      id: 'embedding-engine',
+      platforms: ['desktop'],
+      entry: 'runtime-components/embedding-engine/dist/entry.js',
+      sha256: 'c'.repeat(64),
+    }
+    const service = new RuntimeComponentService({
+      registry: {
+        schemaVersion: 2,
+        components: [descriptor, embeddingDescriptor],
+      },
+      platform: 'mobile',
+      store: { hasPlausibleEntry: async () => false } as never,
+      installer: {
+        ensure: async () => undefined,
+        verifyInstalled: async () => undefined,
+      } as never,
+      loader: {} as never,
+      runtime: new RuntimeComponentRuntime(),
+      intentStore: {
+        isEnabled: async () => true,
+        disable: async () => undefined,
+        enable: async () => undefined,
+        subscribe: () => () => undefined,
+      } as never,
+      deviceStateStore: { write: async () => undefined } as never,
+    })
+
+    expect(
+      service
+        .getSnapshot()
+        .some((record) => record.descriptor.id === 'embedding-engine'),
+    ).toBe(false)
+    // The desktop-only-but-mobile-platform component simply never appears
+    // in the snapshot, but a caller that names it directly must still get a
+    // clear rejection rather than an undefined/silent failure.
+    await expect(service.acquire('embedding-engine')).rejects.toThrow(
+      'unavailable on this platform',
+    )
+    await expect(
+      service.readAsset('embedding-engine', 'model.wasm'),
+    ).rejects.toThrow('unavailable on this platform')
+  })
 })
