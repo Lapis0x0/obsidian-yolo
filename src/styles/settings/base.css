@@ -194,6 +194,37 @@ select.yolo-module-settings-select {
   padding: var(--size-4-2);
 }
 
+/* One section per knowledge base — the root above used to wrap a single
+ * global stats table; now it lists one table per kb, separated by a rule. */
+.yolo-settings-embedding-db-manage-kb + .yolo-settings-embedding-db-manage-kb {
+  margin-top: var(--size-4-4);
+  padding-top: var(--size-4-4);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-settings-embedding-db-manage-kb-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+}
+
+.yolo-settings-embedding-db-manage-kb-name {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-settings-embedding-db-manage-empty {
+  padding: var(--size-4-2) 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-settings-embedding-db-manage-last-updated {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
 .yolo-settings-embedding-db-manage-header {
   display: flex;
   align-items: center;

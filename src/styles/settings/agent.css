@@ -1335,6 +1335,12 @@ button.yolo-agent-chip--more:hover {
   color: var(--text-muted);
 }
 
+.yolo-agent-card-menu-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--background-modifier-border);
+}
+
 .yolo-agent-card-menu-danger {
   color: var(--text-error);
 }
