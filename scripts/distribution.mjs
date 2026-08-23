@@ -6,6 +6,8 @@ import { pathToFileURL } from 'node:url'
 import nacl from 'tweetnacl'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 
+import { isValidRuntimeComponentAssetName } from './runtimeComponentAssetName.mjs'
+
 if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
   setGlobalDispatcher(new EnvHttpProxyAgent())
 }
@@ -525,23 +527,47 @@ export async function describeRuntimeComponentArtifacts(options) {
     }
     verifyBytes(bytes, artifact)
     artifacts.push(artifact)
+    for (const asset of descriptor.assets) {
+      const assetCanonicalUrl = `https://raw.githubusercontent.com/${repository}/${version}/${asset.path}`
+      const assetBytes = await downloadUrl(assetCanonicalUrl, token, fetchImpl)
+      const assetArtifact = {
+        name: asset.name,
+        mirrorPath: `runtime-components/${version}/${descriptor.id}/assets/${asset.name}`,
+        canonicalUrl: assetCanonicalUrl,
+        byteSize: asset.byteSize,
+        sha256: asset.sha256,
+        bytes: assetBytes,
+      }
+      verifyBytes(assetBytes, assetArtifact)
+      artifacts.push(assetArtifact)
+    }
   }
   return artifacts
 }
 
+/**
+ * Reads a runtime component registry tagged on an arbitrary published Core
+ * version — including old releases, which only ever wrote schema v1 (no
+ * `assets`). v1 is normalized to `assets: []`; v2's `assets` (if present)
+ * is validated with the same rules as the host's own parser
+ * (`RuntimeComponentAssetDescriptor` in `runtimeComponentManifest.ts`).
+ * Unlike that host parser, this does NOT require every currently-known
+ * component id to be present — a historical tag's registry legitimately
+ * only lists whichever components existed as of that tag.
+ */
 function validateRuntimeComponentRegistry(registry) {
   if (
     !registry ||
     typeof registry !== 'object' ||
     Array.isArray(registry) ||
-    registry.schemaVersion !== 1 ||
+    (registry.schemaVersion !== 1 && registry.schemaVersion !== 2) ||
     !Array.isArray(registry.components) ||
     registry.components.length === 0
   ) {
     throw new Error('Runtime component registry is invalid')
   }
   const ids = new Set()
-  for (const descriptor of registry.components) {
+  return registry.components.map((descriptor) => {
     if (
       !descriptor ||
       typeof descriptor !== 'object' ||
@@ -559,8 +585,39 @@ function validateRuntimeComponentRegistry(registry) {
       throw new Error('Runtime component registry is invalid')
     }
     ids.add(descriptor.id)
+    const assets =
+      registry.schemaVersion === 2
+        ? validateRuntimeComponentAssets(descriptor.id, descriptor.assets)
+        : []
+    return { ...descriptor, assets }
+  })
+}
+
+function validateRuntimeComponentAssets(componentId, assets) {
+  if (assets === undefined) return []
+  if (!Array.isArray(assets) || assets.length === 0) {
+    throw new Error('Runtime component registry is invalid')
   }
-  return registry.components
+  const names = new Set()
+  for (const asset of assets) {
+    if (
+      !asset ||
+      typeof asset !== 'object' ||
+      Array.isArray(asset) ||
+      !isValidRuntimeComponentAssetName(asset.name) ||
+      names.has(asset.name) ||
+      asset.path !==
+        `runtime-components/${componentId}/dist/assets/${asset.name}` ||
+      !Number.isSafeInteger(asset.byteSize) ||
+      asset.byteSize <= 0 ||
+      typeof asset.sha256 !== 'string' ||
+      !SHA256.test(asset.sha256)
+    ) {
+      throw new Error('Runtime component registry is invalid')
+    }
+    names.add(asset.name)
+  }
+  return assets
 }
 
 function describeAsset(repository, tag, name, mirrorPath, bytes) {

@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url'
 
 import esbuild from 'esbuild'
 
+import { isValidRuntimeComponentAssetName } from './runtimeComponentAssetName.mjs'
+
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 process.chdir(root)
 
@@ -267,7 +269,7 @@ function validateConfig(value, directoryName) {
     hasAssets &&
     (!Array.isArray(value.assets) ||
       value.assets.length === 0 ||
-      value.assets.some((name) => typeof name !== 'string' || !name) ||
+      value.assets.some((name) => !isValidRuntimeComponentAssetName(name)) ||
       new Set(value.assets).size !== value.assets.length)
   ) {
     throw new Error(

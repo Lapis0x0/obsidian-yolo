@@ -198,3 +198,205 @@ test('rejects a runtime component that differs from its tagged registry', async 
     /integrity mismatch/,
   )
 })
+
+test('reads a historical schema-v1 registry with no assets field at all', async () => {
+  // A pre-P0 release only ever wrote schema v1 — no `assets` key on any
+  // component. `describeRuntimeComponentArtifacts` reads whichever Core
+  // version is requested (not necessarily the current one), so it must
+  // keep working against these old tags going forward.
+  const version = '1.6.0'
+  const repository = 'Lapis0x0/obsidian-yolo'
+  const bytes = Buffer.from('old entry')
+  const sha256 = createHash('sha256').update(bytes).digest('hex')
+  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const registry = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 1,
+      components: [
+        {
+          id: 'tokenizer',
+          entry: 'runtime-components/tokenizer/dist/entry.js',
+          byteSize: bytes.byteLength,
+          sha256,
+        },
+      ],
+    }),
+  )
+  const responses = new Map([
+    [`${root}/registry.json`, registry],
+    [
+      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/tokenizer/dist/entry.js`,
+      bytes,
+    ],
+  ])
+  const fetchImpl = async (url) => {
+    const body = responses.get(url)
+    return body ? new Response(body) : new Response('missing', { status: 404 })
+  }
+
+  const artifacts = await describeRuntimeComponentArtifacts({
+    repository,
+    version,
+    fetchImpl,
+  })
+
+  assert.equal(artifacts.length, 1)
+  assert.equal(artifacts[0].name, 'entry.js')
+})
+
+test('mirrors a schema-v2 registry component together with its declared assets', async () => {
+  const version = '1.8.0'
+  const repository = 'Lapis0x0/obsidian-yolo'
+  const entryBytes = Buffer.from('embedding entry')
+  const entrySha256 = createHash('sha256').update(entryBytes).digest('hex')
+  const wasmBytes = Buffer.from('fake wasm bytes')
+  const wasmSha256 = createHash('sha256').update(wasmBytes).digest('hex')
+  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const assetPath =
+    'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm'
+  const registry = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 2,
+      components: [
+        {
+          id: 'embedding-engine',
+          entry: 'runtime-components/embedding-engine/dist/entry.js',
+          byteSize: entryBytes.byteLength,
+          sha256: entrySha256,
+          assets: [
+            {
+              name: 'ort-wasm-simd-threaded.wasm',
+              path: assetPath,
+              byteSize: wasmBytes.byteLength,
+              sha256: wasmSha256,
+            },
+          ],
+        },
+      ],
+    }),
+  )
+  const responses = new Map([
+    [`${root}/registry.json`, registry],
+    [
+      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/embedding-engine/dist/entry.js`,
+      entryBytes,
+    ],
+    [
+      `https://raw.githubusercontent.com/${repository}/${version}/${assetPath}`,
+      wasmBytes,
+    ],
+  ])
+  const fetchImpl = async (url) => {
+    const body = responses.get(url)
+    return body ? new Response(body) : new Response('missing', { status: 404 })
+  }
+
+  const artifacts = await describeRuntimeComponentArtifacts({
+    repository,
+    version,
+    fetchImpl,
+  })
+
+  assert.equal(artifacts.length, 2)
+  assert.equal(artifacts[0].name, 'entry.js')
+  assert.equal(
+    artifacts[0].mirrorPath,
+    'runtime-components/1.8.0/embedding-engine/entry.js',
+  )
+  assert.equal(artifacts[1].name, 'ort-wasm-simd-threaded.wasm')
+  assert.equal(
+    artifacts[1].mirrorPath,
+    'runtime-components/1.8.0/embedding-engine/assets/ort-wasm-simd-threaded.wasm',
+  )
+  assert.equal(artifacts[1].sha256, wasmSha256)
+  assert.deepEqual(artifacts[1].bytes, wasmBytes)
+})
+
+test('rejects a v2 asset whose downloaded bytes do not match its declared hash', async () => {
+  const version = '1.8.0'
+  const repository = 'Lapis0x0/obsidian-yolo'
+  const entryBytes = Buffer.from('embedding entry')
+  const entrySha256 = createHash('sha256').update(entryBytes).digest('hex')
+  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const assetPath =
+    'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm'
+  const registry = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 2,
+      components: [
+        {
+          id: 'embedding-engine',
+          entry: 'runtime-components/embedding-engine/dist/entry.js',
+          byteSize: entryBytes.byteLength,
+          sha256: entrySha256,
+          assets: [
+            {
+              name: 'ort-wasm-simd-threaded.wasm',
+              path: assetPath,
+              byteSize: 3,
+              sha256: createHash('sha256').update('abc').digest('hex'),
+            },
+          ],
+        },
+      ],
+    }),
+  )
+  const responses = new Map([
+    [`${root}/registry.json`, registry],
+    [
+      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/embedding-engine/dist/entry.js`,
+      entryBytes,
+    ],
+    // Bytes actually served for the asset don't match the registry's
+    // declared size/hash — the mirror must refuse to publish it.
+    [
+      `https://raw.githubusercontent.com/${repository}/${version}/${assetPath}`,
+      Buffer.from('tampered bytes'),
+    ],
+  ])
+  const fetchImpl = async (url) => {
+    const body = responses.get(url)
+    return body ? new Response(body) : new Response('missing', { status: 404 })
+  }
+
+  await assert.rejects(
+    describeRuntimeComponentArtifacts({ repository, version, fetchImpl }),
+    /integrity mismatch/,
+  )
+})
+
+test('rejects a v2 registry with a path-traversing asset name', async () => {
+  const version = '1.8.0'
+  const repository = 'Lapis0x0/obsidian-yolo'
+  const entryBytes = Buffer.from('embedding entry')
+  const entrySha256 = createHash('sha256').update(entryBytes).digest('hex')
+  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  const registry = Buffer.from(
+    JSON.stringify({
+      schemaVersion: 2,
+      components: [
+        {
+          id: 'embedding-engine',
+          entry: 'runtime-components/embedding-engine/dist/entry.js',
+          byteSize: entryBytes.byteLength,
+          sha256: entrySha256,
+          assets: [
+            {
+              name: '../entry.js',
+              path: 'runtime-components/embedding-engine/dist/assets/../entry.js',
+              byteSize: 3,
+              sha256: createHash('sha256').update('abc').digest('hex'),
+            },
+          ],
+        },
+      ],
+    }),
+  )
+  const fetchImpl = async (url) =>
+    new Response(url === `${root}/registry.json` ? registry : 'xyz')
+
+  await assert.rejects(
+    describeRuntimeComponentArtifacts({ repository, version, fetchImpl }),
+    /Runtime component registry is invalid/,
+  )
+})
