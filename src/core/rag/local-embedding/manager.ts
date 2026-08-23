@@ -36,6 +36,12 @@ function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
 }
 
+type DownloadJob = Readonly<{
+  /** Resolves/rejects once `runDownload` has fully settled for this job. */
+  promise: Promise<void>
+  controller: AbortController
+}>
+
 /**
  * Owns local embedding model weights on disk: download (resumable,
  * SHA-256-verified), removal, and an in-memory installed/downloading/failed
@@ -53,10 +59,10 @@ export class LocalEmbeddingModelManager {
   private readonly pluginDir: string
   private readonly getEndpoint: () => string
   private readonly catalog: readonly LocalEmbeddingCatalogEntry[]
-  private readonly states = new Map<string, LocalEmbeddingModelState>()
+  private states: ReadonlyMap<string, LocalEmbeddingModelState>
   private readonly listeners = new Set<() => void>()
-  private readonly downloadControllers = new Map<string, AbortController>()
-  private downloadQueue: Promise<void> = Promise.resolve()
+  private readonly downloadJobs = new Map<string, DownloadJob>()
+  private downloadChain: Promise<void> = Promise.resolve()
   private scanPromise: Promise<void> | null = null
 
   constructor(options: {
@@ -70,9 +76,11 @@ export class LocalEmbeddingModelManager {
     this.pluginDir = resolveModulePluginDir(options.manifest, options.configDir)
     this.getEndpoint = options.getEndpoint
     this.catalog = options.catalog ?? LOCAL_EMBEDDING_CATALOG
+    const initial = new Map<string, LocalEmbeddingModelState>()
     for (const entry of this.catalog) {
-      this.states.set(entry.id, NOT_INSTALLED)
+      initial.set(entry.id, NOT_INSTALLED)
     }
+    this.states = initial
   }
 
   // ---- state store (useSyncExternalStore-compatible) ----------------------
@@ -90,8 +98,16 @@ export class LocalEmbeddingModelManager {
     return () => this.listeners.delete(listener)
   }
 
+  /**
+   * Replaces `states` with a new `Map` on every change (never mutates the
+   * previous one in place) — `getSnapshot()`'s return value must change
+   * identity whenever content changes, since `useSyncExternalStore` decides
+   * whether to re-render by reference equality alone.
+   */
   private setState(catalogId: string, state: LocalEmbeddingModelState): void {
-    this.states.set(catalogId, state)
+    const next = new Map(this.states)
+    next.set(catalogId, state)
+    this.states = next
     for (const listener of this.listeners) listener()
   }
 
@@ -194,6 +210,11 @@ export class LocalEmbeddingModelManager {
         `Local embedding model "${entry.displayName}" is not installed`,
       )
     }
+    if (!entry.files.some((declared) => declared.path === file)) {
+      throw new Error(
+        `"${file}" is not a declared file of local embedding model "${entry.displayName}"`,
+      )
+    }
     // eslint-disable-next-line import/no-nodejs-modules -- every caller of this method gates on Platform.isDesktop
     const fs = await import('node:fs')
     const bytes = await fs.promises.readFile(
@@ -210,39 +231,65 @@ export class LocalEmbeddingModelManager {
    * Downloads every declared file for `entry`, verifying size+SHA-256 as
    * each lands, then writes `manifest.json` to mark the install complete.
    * Concurrency is capped at 1 across all catalog entries — a second
-   * `download()` call (for the same or a different entry) queues behind
-   * whichever is already running. Calling `download()` again for an entry
-   * that's already `downloading` is a no-op (observe via `subscribe`).
+   * `download()` call for a *different* entry queues behind whichever is
+   * already running.
+   *
+   * A job is tracked per catalog id from the moment it's queued (not just
+   * once it starts running): calling `download()` again for an entry that
+   * already has a queued-or-running job returns that same job's promise
+   * instead of enqueueing a second one (which would leak the first job's
+   * `AbortController` and let two `runDownload` calls race the same files).
    */
-  async download(entry: LocalEmbeddingCatalogEntry): Promise<void> {
+  download(entry: LocalEmbeddingCatalogEntry): Promise<void> {
     if (!Platform.isDesktop) {
-      throw new Error('Local embedding models are only available on desktop')
+      return Promise.reject(
+        new Error('Local embedding models are only available on desktop'),
+      )
     }
-    if (this.getState(entry.id).status === 'downloading') return
+    const existing = this.downloadJobs.get(entry.id)
+    if (existing) return existing.promise
 
     const controller = new AbortController()
-    this.downloadControllers.set(entry.id, controller)
     const run = async (): Promise<void> => {
       if (controller.signal.aborted) return
       await this.runDownload(entry, controller.signal)
     }
-    const task = this.downloadQueue.then(run, run)
-    this.downloadQueue = task.then(
+    const jobPromise = this.downloadChain.then(run, run)
+    this.downloadChain = jobPromise.then(
       () => undefined,
       () => undefined,
     )
-    try {
-      await task
-    } finally {
-      if (this.downloadControllers.get(entry.id) === controller) {
-        this.downloadControllers.delete(entry.id)
-      }
-    }
+    const job: DownloadJob = { promise: jobPromise, controller }
+    this.downloadJobs.set(entry.id, job)
+    // `.finally()`'s own returned promise re-rejects when `jobPromise`
+    // does; without the `.catch()` here that becomes a second, unhandled
+    // rejection for every caller who already handles the one on
+    // `jobPromise` itself (returned below).
+    void jobPromise
+      .finally(() => {
+        if (this.downloadJobs.get(entry.id) === job) {
+          this.downloadJobs.delete(entry.id)
+        }
+      })
+      .catch(() => undefined)
+    return jobPromise
   }
 
   /** Aborts an in-progress or queued-but-not-yet-started download. No-op if none is active. */
   cancelDownload(catalogId: string): void {
-    this.downloadControllers.get(catalogId)?.abort()
+    this.downloadJobs.get(catalogId)?.controller.abort()
+  }
+
+  /**
+   * Aborts every in-flight/queued download job and waits for each to
+   * settle. Call once, from `main.ts`'s `onunload`, before the manager
+   * instance is discarded — otherwise an in-flight `runDownload` keeps
+   * writing to disk after nothing references the manager anymore.
+   */
+  async dispose(): Promise<void> {
+    const jobs = [...this.downloadJobs.values()]
+    for (const job of jobs) job.controller.abort()
+    await Promise.all(jobs.map((job) => job.promise.catch(() => undefined)))
   }
 
   private async runDownload(
@@ -271,6 +318,26 @@ export class LocalEmbeddingModelManager {
         const destPath = this.fullPath(
           normalizePath(`${this.revisionDirVaultPath(entry)}/${file.path}`),
         )
+        // `destPath` only exists once `downloadFileResumable` has verified
+        // its size+SHA-256 and renamed the `.partial` file onto it, so a
+        // matching size here means this file already completed on a
+        // previous attempt — skip re-downloading it so a model-level retry
+        // (e.g. after a later file's transient failure) doesn't re-fetch
+        // everything from byte 0.
+        const alreadyComplete = await fs.promises
+          .stat(destPath)
+          .then((stat) => stat.isFile() && stat.size === file.byteSize)
+          .catch(() => false)
+        if (alreadyComplete) {
+          receivedBeforeCurrentFile += file.byteSize
+          this.setState(entry.id, {
+            status: 'downloading',
+            receivedBytes: receivedBeforeCurrentFile,
+            totalBytes: entry.totalBytes,
+            currentFile: file.path,
+          })
+          continue
+        }
         const partialPath = `${destPath}.partial`
         const url = `${endpoint}/${entry.hfRepo}/resolve/${entry.revision}/${file.path}`
         await downloadFileResumable({
@@ -335,7 +402,15 @@ export class LocalEmbeddingModelManager {
     if (!Platform.isDesktop) return
     const entry = this.catalog.find((candidate) => candidate.id === catalogId)
     if (!entry) return
-    this.cancelDownload(catalogId)
+    // Abort and wait for the job to fully settle (including `runDownload`'s
+    // own cleanup) before touching disk — otherwise an in-flight download
+    // can still be mid-write when `rm` runs, then recreate the directory
+    // and re-mark the model `ready` right after removal.
+    const job = this.downloadJobs.get(catalogId)
+    if (job) {
+      job.controller.abort()
+      await job.promise.catch(() => undefined)
+    }
     // eslint-disable-next-line import/no-nodejs-modules -- every caller of this method gates on Platform.isDesktop
     const fs = await import('node:fs')
     const dir = this.fullPath(normalizePath(`${this.rootPath()}/${entry.id}`))
@@ -346,10 +421,11 @@ export class LocalEmbeddingModelManager {
   /** Removes every installed local embedding model's on-disk weights. */
   async removeAll(): Promise<void> {
     if (!Platform.isDesktop) return
+    const jobs = [...this.downloadJobs.values()]
+    for (const job of jobs) job.controller.abort()
+    await Promise.all(jobs.map((job) => job.promise.catch(() => undefined)))
     // eslint-disable-next-line import/no-nodejs-modules -- every caller of this method gates on Platform.isDesktop
     const fs = await import('node:fs')
-    for (const controller of this.downloadControllers.values())
-      controller.abort()
     await fs.promises.rm(this.fullPath(this.rootPath()), {
       recursive: true,
       force: true,

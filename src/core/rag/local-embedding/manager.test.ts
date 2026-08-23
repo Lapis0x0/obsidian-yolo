@@ -259,4 +259,126 @@ describe('LocalEmbeddingModelManager', () => {
       /not installed/,
     )
   })
+
+  it("readModelFile rejects a path that is not one of the entry's declared files", async () => {
+    const manager = createManager()
+    await manager.download(ENTRY)
+    await expect(
+      manager.readModelFile(ENTRY, '../../../etc/passwd'),
+    ).rejects.toThrow(/not a declared file/)
+  })
+
+  it('getSnapshot() returns a new Map reference on every state change (useSyncExternalStore correctness)', async () => {
+    const manager = createManager()
+    const snapshots: ReadonlyMap<string, unknown>[] = [manager.getSnapshot()]
+    manager.subscribe(() => snapshots.push(manager.getSnapshot()))
+
+    await manager.download(ENTRY)
+
+    // download() alone drives multiple setState calls (downloading ->
+    // verifying -> ready); every one of them must be a distinct Map
+    // reference, not the same Map mutated in place, or `useSyncExternalStore`
+    // subscribers in the P3 UI never re-render.
+    expect(snapshots.length).toBeGreaterThan(1)
+    expect(new Set(snapshots).size).toBe(snapshots.length)
+  })
+
+  it('download() called again for an entry that is still queued returns the same job instead of enqueueing a second one', async () => {
+    const manager = createManager()
+    let resolveFirst: () => void = () => undefined
+    const firstStarted = new Promise<void>((resolveStarted) => {
+      mockDownload.mockImplementationOnce(
+        async ({ destPath, expectedByteSize }) => {
+          resolveStarted()
+          await new Promise<void>((resolve) => {
+            resolveFirst = resolve
+          })
+          fakeFs.files.set(destPath, String(expectedByteSize))
+        },
+      )
+    })
+    let secondEntryCallCount = 0
+    mockDownload.mockImplementation(async ({ destPath, expectedByteSize }) => {
+      secondEntryCallCount += 1
+      fakeFs.files.set(destPath, String(expectedByteSize))
+    })
+
+    const first = manager.download(ENTRY)
+    await firstStarted
+    // Both calls target SECOND_ENTRY while it's still queued behind ENTRY —
+    // must dedupe to the same job rather than queuing two runs of it.
+    const secondA = manager.download(SECOND_ENTRY)
+    const secondB = manager.download(SECOND_ENTRY)
+    expect(secondA).toBe(secondB)
+
+    resolveFirst()
+    await Promise.all([first, secondA, secondB])
+
+    expect(secondEntryCallCount).toBe(1)
+    expect(manager.getState('second-model')).toEqual({ status: 'ready' })
+  })
+
+  it('remove() aborts an in-flight download and waits for it to settle before touching disk', async () => {
+    const manager = createManager()
+    const order: string[] = []
+    let started: () => void = () => undefined
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    mockDownload.mockImplementationOnce(async ({ signal }) => {
+      started()
+      await new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          // Real `downloadFileResumable` doesn't settle synchronously on
+          // abort — `writeStream.destroy()` and friends still run first.
+          // Delaying by a microtask makes this test meaningful: it fails
+          // against the pre-fix `remove()`, which called `rm()` right after
+          // `cancelDownload()` without waiting for the job to settle.
+          queueMicrotask(() => {
+            order.push('download-settled')
+            reject(new DOMException('Download aborted', 'AbortError'))
+          })
+        })
+      })
+    })
+    const originalRm = fakeFs.promises.rm.getMockImplementation()!
+    fakeFs.promises.rm.mockImplementation(async (...args) => {
+      order.push('rm-called')
+      return originalRm(...args)
+    })
+
+    const downloadPromise = manager.download(ENTRY)
+    await startedPromise
+    await manager.remove('test-model')
+    await downloadPromise
+
+    expect(order).toEqual(['download-settled', 'rm-called'])
+  })
+
+  it('dispose() aborts every job and waits for all of them to settle', async () => {
+    const manager = createManager()
+    let started: () => void = () => undefined
+    const startedPromise = new Promise<void>((resolve) => {
+      started = resolve
+    })
+    let settled = false
+    mockDownload.mockImplementationOnce(async ({ signal }) => {
+      started()
+      await new Promise<void>((_resolve, reject) => {
+        signal?.addEventListener('abort', () => {
+          queueMicrotask(() => {
+            settled = true
+            reject(new DOMException('Download aborted', 'AbortError'))
+          })
+        })
+      })
+    })
+
+    const downloadPromise = manager.download(ENTRY)
+    await startedPromise
+    await manager.dispose()
+
+    expect(settled).toBe(true)
+    await downloadPromise
+  })
 })
