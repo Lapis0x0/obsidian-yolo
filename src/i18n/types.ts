@@ -1077,6 +1077,8 @@ export type TranslationKeys = {
       noIndexedData?: string
       delete?: string
       deleteConfirm?: string
+      lastUpdated?: string
+      setAsCurrent?: string
       // Create/edit modal
       createTitle?: string
       editTitle?: string
@@ -1093,6 +1095,13 @@ export type TranslationKeys = {
       deleteTitle?: string
       deleteFailed?: string
       rebuildFailed?: string
+      // Manage data modal
+      manageModelColumn?: string
+      manageEmbeddingsColumn?: string
+      manageActionsColumn?: string
+      manageRefresh?: string
+      manageRemoveIndex?: string
+      removeIndexFailed?: string
     }
     mcp: {
       title: string
