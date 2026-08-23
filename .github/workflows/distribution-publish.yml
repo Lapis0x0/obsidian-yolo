@@ -52,6 +52,8 @@ jobs:
           npx jest src/core/distribution --runInBand
           node --test scripts/distribution.test.mjs
           node --test scripts/release.test.mjs
+          node --test scripts/runtimeComponentAssetName.test.mjs
+          node --test scripts/runtimeComponentReleaseAssets.test.mjs
           git diff --check
 
       - name: Detect metadata change

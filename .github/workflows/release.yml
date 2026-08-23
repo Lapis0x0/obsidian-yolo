@@ -61,6 +61,7 @@ jobs:
           mkdir core-release
           cp main.js manifest.json styles.css core-release/
           cp latest-release-note.md core-release/release-note.md
+          node scripts/runtimeComponentReleaseAssets.mjs core-release
 
       - name: Require a monotonically newer Core version
         env:

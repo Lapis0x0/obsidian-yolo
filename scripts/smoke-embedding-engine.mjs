@@ -133,7 +133,6 @@ globalThis.self.onmessage = null
 
 const realProcess = globalThis.process
 delete globalThis.process
- 
 ;(0, eval)(workerSource)
 
 function waitFor(predicate, timeoutMs) {

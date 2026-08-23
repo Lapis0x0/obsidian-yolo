@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto'
 import { appendFile, readFile, readdir } from 'node:fs/promises'
 import path from 'node:path'
 
+import { listRuntimeComponentReleaseAssets } from './runtimeComponentReleaseAssets.mjs'
+
 const args = parseArgs(process.argv.slice(2))
 const token = process.env.GH_TOKEN || process.env.GITHUB_TOKEN
 if (!token) throw new Error('GH_TOKEN is required')
@@ -15,11 +17,13 @@ assertEqual(release.tag_name, args.tag, 'Release tag')
 assertEqual(release.target_commitish, args['target-commit'], 'target commit')
 assertEqual(release.draft, expectedDraft, 'draft state')
 assertEqual(release.prerelease, false, 'prerelease state')
+const runtimeComponentAssets = await listRuntimeComponentReleaseAssets()
 const expectedNames = new Set([
   'main.js',
   'manifest.json',
   'release-note.md',
   'styles.css',
+  ...runtimeComponentAssets.map((asset) => asset.releaseName),
 ])
 const localEntries = await readdir(args['asset-dir'], { withFileTypes: true })
 if (localEntries.some((entry) => !entry.isFile())) {
