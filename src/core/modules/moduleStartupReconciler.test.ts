@@ -396,6 +396,24 @@ describe('ModuleStartupReconciler', () => {
     expect(harness.runtime.isActive('notes')).toBe(false)
   })
 
+  test('ignores a source event that leaves the intent unchanged', async () => {
+    const harness = createHarness({ notes: 'enabled' })
+    await harness.reconciler.start()
+    expect(harness.runtime.isActive('notes')).toBe(true)
+    harness.ensureModuleReady.mockClear()
+
+    // Obsidian replays a `create` for every indexed file while the vault
+    // finishes loading, so the intent file republishes an unchanged value
+    // after the module is already running.
+    harness.emit('notes')
+    await harness.reconciler.whenIdle()
+
+    expect(harness.ensureModuleReady).not.toHaveBeenCalled()
+    expect(harness.reportError).not.toHaveBeenCalled()
+    expect(harness.activateModule).not.toHaveBeenCalled()
+    expect(harness.runtime.deactivate).not.toHaveBeenCalled()
+  })
+
   test('deduplicates repeated source ids', async () => {
     const harness = createHarness({ notes: 'enabled' }, [
       'notes',
