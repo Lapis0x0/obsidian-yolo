@@ -2,14 +2,10 @@ import {
   ScopeRule,
   applyRule,
   buildFolderFileCounts,
-  defaultRagScopeRules,
   describeScope,
   effectiveState,
   estimateFiles,
-  isSameRules,
-  ragOptionsFromRules,
   ruleDisabledReason,
-  rulesFromRagOptions,
   rulesFromWorkspaceScope,
   workspaceScopeFromRules,
 } from './scopeRules'
@@ -230,69 +226,6 @@ describe('buildFolderFileCounts', () => {
     expect(counts.get('Work/Weekly')).toBe(1)
     expect(counts.get('Diary')).toBe(1)
     expect(counts.get('Missing')).toBeUndefined()
-  })
-})
-
-describe('RAG option conversion', () => {
-  it('surfaces the YOLO base dir flag as an ordinary exclude rule', () => {
-    const rules = rulesFromRagOptions(
-      {
-        includePatterns: ['Work/**', 'Work/*'],
-        excludePatterns: ['Diary/**', 'Diary/*'],
-        excludeYoloBaseDir: true,
-      },
-      'YOLO',
-    )
-    expect(rules).toEqual([include('Work'), exclude('YOLO'), exclude('Diary')])
-  })
-
-  it('round-trips rules through RAG options without changing the flag', () => {
-    const ragOptions = {
-      includePatterns: ['Work/**', 'Work/*'],
-      excludePatterns: ['Diary/**', 'Diary/*'],
-      excludeYoloBaseDir: true,
-    }
-    const rules = rulesFromRagOptions(ragOptions, 'YOLO')
-    const next = ragOptionsFromRules(rules, 'YOLO')
-    expect(next.excludeYoloBaseDir).toBe(true)
-    expect(rulesFromRagOptions({ ...ragOptions, ...next }, 'YOLO')).toEqual(
-      rules,
-    )
-  })
-
-  it('clears the flag when the YOLO exclude rule is removed', () => {
-    const ragOptions = {
-      includePatterns: [],
-      excludePatterns: [],
-      excludeYoloBaseDir: true,
-    }
-    const rules = rulesFromRagOptions(ragOptions, 'YOLO')
-    const next = ragOptionsFromRules(applyRule(rules, 'YOLO', null), 'YOLO')
-    expect(next.excludeYoloBaseDir).toBe(false)
-    expect(next.excludePatterns).toEqual([])
-  })
-
-  it('turns an explicit YOLO exclude rule back into the flag, never a pattern', () => {
-    const next = ragOptionsFromRules([exclude('YOLO')], 'YOLO')
-    expect(next.excludeYoloBaseDir).toBe(true)
-    expect(next.excludePatterns).toEqual([])
-  })
-
-  it('resetting to the default rules restores the YOLO exclusion', () => {
-    const edited = [include('Work'), exclude('Work/Weekly')]
-    const next = ragOptionsFromRules(defaultRagScopeRules('YOLO'), 'YOLO')
-    expect(next).toEqual({
-      includePatterns: [],
-      excludePatterns: [],
-      excludeYoloBaseDir: true,
-    })
-    expect(isSameRules(edited, defaultRagScopeRules('YOLO'))).toBe(false)
-    expect(
-      isSameRules(
-        rulesFromRagOptions({ ...next }, 'YOLO'),
-        defaultRagScopeRules('YOLO'),
-      ),
-    ).toBe(true)
   })
 })
 

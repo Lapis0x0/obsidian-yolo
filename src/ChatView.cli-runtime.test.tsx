@@ -81,9 +81,6 @@ jest.mock('./contexts/mcp-context', () => ({
 jest.mock('./contexts/plugin-context', () => ({
   PluginProvider: passthroughProvider,
 }))
-jest.mock('./contexts/rag-context', () => ({
-  RAGProvider: passthroughProvider,
-}))
 jest.mock('./contexts/settings-context', () => ({
   SettingsProvider: passthroughProvider,
 }))

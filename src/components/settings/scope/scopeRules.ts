@@ -1,8 +1,4 @@
 import { AssistantWorkspaceScope } from '../../../types/assistant.types'
-import {
-  folderPathsToIncludePatterns,
-  includePatternsToFolderPaths,
-} from '../../../utils/rag-utils'
 
 /**
  * Pure semantics for the unified scope editor.
@@ -273,80 +269,18 @@ export function buildFolderFileCounts(
 }
 
 /* ------------------------------------------------------------------ */
-/* RAG persistence                                                      */
+/* include/exclude-array persistence                                    */
 /* ------------------------------------------------------------------ */
-
-export type RagScopeOptions = {
-  includePatterns: string[]
-  excludePatterns: string[]
-  excludeYoloBaseDir?: boolean
-}
 
 /**
- * RAG stores glob patterns plus a separate `excludeYoloBaseDir` flag whose
- * folder is derived from the current settings; the editor sees one flat rule
- * list, with the YOLO folder appearing as an ordinary exclude rule.
+ * Shared by every consumer whose scope is stored as plain `include`/
+ * `exclude` path arrays — the agent workspace (`AssistantWorkspaceScope`)
+ * and knowledge bases (`KnowledgeBase`) alike. RAG's index scope used to be
+ * glob patterns plus a separate `excludeYoloBaseDir` flag; that conversion
+ * is gone now that the YOLO base dir is excluded unconditionally by the
+ * engine (`getYoloBaseDir`), outside any UI rule, and each knowledge base
+ * stores `include`/`exclude` directly in this same shape.
  */
-export function rulesFromRagOptions(
-  ragOptions: RagScopeOptions,
-  yoloBaseDir: string,
-): ScopeRule[] {
-  const includes = includePatternsToFolderPaths(ragOptions.includePatterns)
-  const userExcludes = includePatternsToFolderPaths(ragOptions.excludePatterns)
-  const normalizedBaseDir = normalizeScopePath(yoloBaseDir)
-  const excludes =
-    ragOptions.excludeYoloBaseDir && !userExcludes.includes(normalizedBaseDir)
-      ? [normalizedBaseDir, ...userExcludes]
-      : userExcludes
-  return [
-    ...includes.map((path) => ({
-      path: normalizeScopePath(path),
-      kind: 'include' as const,
-    })),
-    ...excludes.map((path) => ({
-      path: normalizeScopePath(path),
-      kind: 'exclude' as const,
-    })),
-  ]
-}
-
-/** The RAG default scope: nothing but the YOLO folder kept out. */
-export function defaultRagScopeRules(yoloBaseDir: string): ScopeRule[] {
-  return [{ path: normalizeScopePath(yoloBaseDir), kind: 'exclude' }]
-}
-
-/** Inverse of `rulesFromRagOptions`. The YOLO folder's exclude rule *is* the
- * `excludeYoloBaseDir` flag: present ⇔ flag on, and it is never written as a
- * pattern. */
-export function ragOptionsFromRules(
-  rules: readonly ScopeRule[],
-  yoloBaseDir: string,
-): Required<
-  Pick<
-    RagScopeOptions,
-    'includePatterns' | 'excludePatterns' | 'excludeYoloBaseDir'
-  >
-> {
-  const normalizedBaseDir = normalizeScopePath(yoloBaseDir)
-  const includes = rules
-    .filter((rule) => rule.kind === 'include')
-    .map((rule) => normalizeScopePath(rule.path))
-  const excludes = rules
-    .filter((rule) => rule.kind === 'exclude')
-    .map((rule) => normalizeScopePath(rule.path))
-  return {
-    includePatterns: folderPathsToIncludePatterns(includes),
-    excludePatterns: folderPathsToIncludePatterns(
-      excludes.filter((path) => path !== normalizedBaseDir),
-    ),
-    excludeYoloBaseDir: excludes.includes(normalizedBaseDir),
-  }
-}
-
-/* ------------------------------------------------------------------ */
-/* Agent workspace persistence                                          */
-/* ------------------------------------------------------------------ */
-
 export function rulesFromWorkspaceScope(
   scope: Pick<AssistantWorkspaceScope, 'include' | 'exclude'>,
 ): ScopeRule[] {

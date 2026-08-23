@@ -20,7 +20,6 @@ import { DialogContainerProvider } from './contexts/dialog-container-context'
 import { LanguageProvider } from './contexts/language-context'
 import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
-import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
 import type { CliRuntimeScope } from './core/cli-runtime/coordinator'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
@@ -342,56 +341,52 @@ export class ChatView extends ItemView {
                   <DatabaseProvider
                     getDatabaseManager={() => this.plugin.getDbManager()}
                   >
-                    <RAGProvider
-                      getRAGEngine={() => this.plugin.getRAGEngine()}
+                    <McpProvider
+                      getMcpManager={() => this.plugin.getMcpManager()}
                     >
-                      <McpProvider
-                        getMcpManager={() => this.plugin.getMcpManager()}
-                      >
-                        <QueryClientProvider client={queryClient}>
-                          <React.StrictMode>
-                            <DialogContainerProvider
-                              container={
-                                this.containerEl.children[1] as HTMLElement
-                              }
-                            >
-                              <ChatSidebarTabs
-                                chatRef={this.chatRef}
-                                placement={placement}
-                                initialChatProps={{
-                                  ...(this.initialChatProps ?? {}),
-                                  cliRuntimeScope: this.cliRuntimeScope,
-                                  seededRuntimeSnapshot,
-                                }}
-                                onConversationContextChange={(context) => {
-                                  const manager =
-                                    this.plugin.getChatLeafSessionManager()
-                                  manager.updateLeafSummary(this.leaf, context)
-                                  this.updateRestoredConversationFromContext(
-                                    context,
-                                  )
-                                  // Only a persisted conversation has a
-                                  // rename path (ChatRef.renameCurrentConversation
-                                  // no-ops otherwise) — gate the pane title's
-                                  // click-to-edit affordance on the same flag.
-                                  this.currentConversationRenamable = Boolean(
-                                    context.currentConversationPersisted,
-                                  )
-                                  this.updateDisplayTitle(
-                                    context.currentConversationTitle,
-                                  )
-                                  this.syncHeaderTitleElement()
-                                  void this.persistLeafViewState(context)
-                                }}
-                                onRuntimeSnapshotChange={(snapshot) => {
-                                  this.runtimeSnapshot = snapshot
-                                }}
-                              />
-                            </DialogContainerProvider>
-                          </React.StrictMode>
-                        </QueryClientProvider>
-                      </McpProvider>
-                    </RAGProvider>
+                      <QueryClientProvider client={queryClient}>
+                        <React.StrictMode>
+                          <DialogContainerProvider
+                            container={
+                              this.containerEl.children[1] as HTMLElement
+                            }
+                          >
+                            <ChatSidebarTabs
+                              chatRef={this.chatRef}
+                              placement={placement}
+                              initialChatProps={{
+                                ...(this.initialChatProps ?? {}),
+                                cliRuntimeScope: this.cliRuntimeScope,
+                                seededRuntimeSnapshot,
+                              }}
+                              onConversationContextChange={(context) => {
+                                const manager =
+                                  this.plugin.getChatLeafSessionManager()
+                                manager.updateLeafSummary(this.leaf, context)
+                                this.updateRestoredConversationFromContext(
+                                  context,
+                                )
+                                // Only a persisted conversation has a
+                                // rename path (ChatRef.renameCurrentConversation
+                                // no-ops otherwise) — gate the pane title's
+                                // click-to-edit affordance on the same flag.
+                                this.currentConversationRenamable = Boolean(
+                                  context.currentConversationPersisted,
+                                )
+                                this.updateDisplayTitle(
+                                  context.currentConversationTitle,
+                                )
+                                this.syncHeaderTitleElement()
+                                void this.persistLeafViewState(context)
+                              }}
+                              onRuntimeSnapshotChange={(snapshot) => {
+                                this.runtimeSnapshot = snapshot
+                              }}
+                            />
+                          </DialogContainerProvider>
+                        </React.StrictMode>
+                      </QueryClientProvider>
+                    </McpProvider>
                   </DatabaseProvider>
                 </DarkModeProvider>
               </SettingsProvider>
