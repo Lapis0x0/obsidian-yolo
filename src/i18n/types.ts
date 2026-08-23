@@ -1128,6 +1128,7 @@ export type TranslationKeys = {
         endpointLabel?: string
         endpointCustomOption?: string
         endpointCustomPlaceholder?: string
+        endpointCustomInvalid?: string
         storageUsed?: string
         manageDownloaded?: string
         manageDownloadedConfirmTitle?: string
@@ -1135,12 +1136,22 @@ export type TranslationKeys = {
         engineModelNotDownloaded?: string
         engineModelNotDownloadedSub?: string
         engineDownloadAction?: string
+        engineModelDownloadingLine?: string
+        engineModelVerifying?: string
+        engineModelFailedLine?: string
         engineComponentDisabled?: string
         engineComponentDisabledSub?: string
         engineEnableAction?: string
         engineEnableFailed?: string
+        engineComponentFailed?: string
+        engineComponentPreparing?: string
         engineNonDesktop?: string
         engineNonDesktopSub?: string
+        languageNames?: {
+          en?: string
+          zh?: string
+          multilingual?: string
+        }
       }
     }
     mcp: {

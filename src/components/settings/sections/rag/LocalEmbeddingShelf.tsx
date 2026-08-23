@@ -50,18 +50,57 @@ function formatBytes(bytes: number): string {
   return `${value.toFixed(digits)} ${units[unitIndex]}`
 }
 
+export type LocalEmbeddingEngineIssueKind =
+  | 'non-desktop'
+  | 'model-not-downloaded'
+  | 'model-failed'
+  | 'model-downloading'
+  | 'model-verifying'
+  | 'component-disabled'
+  | 'component-failed'
+  | 'component-preparing'
+
+export type LocalEmbeddingEngineIssueAction =
+  | 'download'
+  | 'cancel'
+  | 'retry-download'
+  | 'enable'
+  | 'retry-component'
+
 export type LocalEmbeddingEngineIssue = Readonly<{
-  kind: 'non-desktop' | 'not-downloaded' | 'component-disabled'
+  kind: LocalEmbeddingEngineIssueKind
   entry: LocalEmbeddingCatalogEntry
+  action?: LocalEmbeddingEngineIssueAction
+  /** Populated for `model-failed`. */
+  error?: string
+  /** Populated for `model-downloading` — 0-100, rounded. */
+  percent?: number
 }>
 
+type Translate = (key: string, fallback?: string) => string
+
+/** `t('settings.knowledgeBases.localEmbedding.<key>', fallback)` with
+ * `{{var}}` interpolation — the one place both the shelf and the status-bar
+ * copy helper below resolve this namespace's strings from. */
+function localEmbeddingTranslator(t: Translate) {
+  return (
+    key: string,
+    fallback: string,
+    vars?: Record<string, string | number>,
+  ) => {
+    const raw = t(`settings.knowledgeBases.localEmbedding.${key}`, fallback)
+    return vars ? format(raw, vars) : raw
+  }
+}
+
 /**
- * Detects the 3 states where the *currently selected* embedding model is a
- * local one that can't actually run right now — used by `RAGSection`'s
- * status bar to take over its one status line instead of adding a second,
- * per docs/plans/08-22-local-embedding/00-plan.md §3.6 ("运行环境异常" is the
- * only scenario where engine info appears in the status bar). Returns `null`
- * whenever the current model isn't local, or is local and healthy.
+ * Health check for the *currently selected* embedding model: healthy means
+ * "model ready, `embedding-engine` component enabled, component status in
+ * {ready, active, loading}" — anything else is a `LocalEmbeddingEngineIssue`
+ * for `RAGSection`'s status bar to take over its one status line with
+ * (instead of adding a second), per
+ * docs/plans/08-22-local-embedding/00-plan.md §3.6. `null` whenever the
+ * current model isn't local, or is local and healthy.
  */
 export function useLocalEmbeddingEngineIssue(
   plugin: YoloPlugin,
@@ -96,20 +135,131 @@ export function useLocalEmbeddingEngineIssue(
     const entry = getLocalEmbeddingCatalogEntry(currentModel.model)
     if (!entry) return null
     if (!Platform.isDesktop) return { kind: 'non-desktop', entry }
+
+    const state = modelSnapshot.get(entry.id) ?? { status: 'not-installed' }
+    if (state.status === 'downloading') {
+      return {
+        kind: 'model-downloading',
+        entry,
+        action: 'cancel',
+        percent:
+          state.totalBytes > 0
+            ? Math.min(
+                100,
+                Math.round((state.receivedBytes / state.totalBytes) * 100),
+              )
+            : 0,
+      }
+    }
+    if (state.status === 'verifying') {
+      return { kind: 'model-verifying', entry }
+    }
+    if (state.status === 'failed') {
+      return {
+        kind: 'model-failed',
+        entry,
+        action: 'retry-download',
+        error: state.error,
+      }
+    }
+    if (state.status === 'not-installed') {
+      return { kind: 'model-not-downloaded', entry, action: 'download' }
+    }
+
+    // `state.status === 'ready'` from here — the model itself is fine, so
+    // any remaining issue is with the `embedding-engine` component.
     const record = runtimeSnapshot.find(
       (r) => r.descriptor.id === 'embedding-engine',
     )
-    if (record && !record.enabled) return { kind: 'component-disabled', entry }
-    const state = modelSnapshot.get(entry.id)
-    if (
-      !state ||
-      state.status === 'not-installed' ||
-      state.status === 'failed'
-    ) {
-      return { kind: 'not-downloaded', entry }
+    if (!record) return null
+    if (!record.enabled) {
+      return { kind: 'component-disabled', entry, action: 'enable' }
+    }
+    if (record.status === 'failed') {
+      return { kind: 'component-failed', entry, action: 'retry-component' }
+    }
+    if (!['ready', 'active', 'loading'].includes(record.status)) {
+      return { kind: 'component-preparing', entry }
     }
     return null
   }, [currentModel, modelSnapshot, runtimeSnapshot])
+}
+
+/**
+ * Status-bar copy + action-button label for one `LocalEmbeddingEngineIssue`
+ * — kept as one small mapping here (not a growing ternary chain in
+ * `RAGSection`) so the status bar's JSX only has to render whatever this
+ * returns.
+ */
+export function describeLocalEmbeddingEngineIssue(
+  issue: LocalEmbeddingEngineIssue,
+  t: Translate,
+): { line: string; sub: string | null; actionLabel: string | null } {
+  const tr = localEmbeddingTranslator(t)
+  switch (issue.kind) {
+    case 'non-desktop':
+      return {
+        line: tr('engineNonDesktop', '本地嵌入不可用'),
+        sub: tr('engineNonDesktopSub', '本地嵌入模型仅支持桌面端运行。'),
+        actionLabel: null,
+      }
+    case 'model-not-downloaded':
+      return {
+        line: tr('engineModelNotDownloaded', '本地嵌入模型尚未下载'),
+        sub: tr(
+          'engineModelNotDownloadedSub',
+          '请在知识库设置中下载模型后再使用本地嵌入。',
+        ),
+        actionLabel: tr('engineDownloadAction', '下载模型'),
+      }
+    case 'model-failed':
+      return {
+        line: tr('engineModelFailedLine', '本地嵌入模型下载失败：{{error}}', {
+          error: issue.error ?? '',
+        }),
+        sub: null,
+        actionLabel: t('common.retry', '重试'),
+      }
+    case 'model-downloading':
+      return {
+        line: tr(
+          'engineModelDownloadingLine',
+          '本地嵌入模型下载中 {{percent}}%',
+          {
+            percent: issue.percent ?? 0,
+          },
+        ),
+        sub: null,
+        actionLabel: t('common.cancel', '取消'),
+      }
+    case 'model-verifying':
+      return {
+        line: tr('engineModelVerifying', '正在校验本地嵌入模型文件…'),
+        sub: null,
+        actionLabel: null,
+      }
+    case 'component-disabled':
+      return {
+        line: tr('engineComponentDisabled', '本地嵌入引擎已禁用'),
+        sub: tr(
+          'engineComponentDisabledSub',
+          '请启用嵌入引擎后再使用本地嵌入。',
+        ),
+        actionLabel: tr('engineEnableAction', '启用'),
+      }
+    case 'component-failed':
+      return {
+        line: tr('engineComponentFailed', '本地嵌入引擎初始化失败'),
+        sub: null,
+        actionLabel: t('common.retry', '重试'),
+      }
+    case 'component-preparing':
+      return {
+        line: tr('engineComponentPreparing', '本地嵌入引擎准备中…'),
+        sub: null,
+        actionLabel: null,
+      }
+  }
 }
 
 type LocalEmbeddingShelfProps = {
@@ -127,16 +277,21 @@ type LocalEmbeddingShelfProps = {
  * they're backed by the `embedding-engine` runtime component.
  */
 export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
-  const { settings, setSettings } = useSettings()
+  const { settings, updateSettings } = useSettings()
   const { t } = useLanguage()
+  const tr = useMemo(() => localEmbeddingTranslator(t), [t])
 
+  // Every write here goes through `updateSettings`'s `(prev) => next`
+  // updater rather than closing over the `settings` this render saw —
+  // otherwise an update that lands while another settings write elsewhere
+  // is in flight would overwrite it with a stale full snapshot.
   const applySettingsUpdate = (
-    nextSettings: typeof settings,
+    updater: (prev: typeof settings) => typeof settings,
     errorMessage?: string,
   ) => {
     void (async () => {
       try {
-        await setSettings(nextSettings)
+        await updateSettings(updater)
       } catch (error: unknown) {
         const message =
           errorMessage ?? t('notices.settingsUpdateFailed', '设置更新失败')
@@ -173,40 +328,33 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
     currentModel?.providerId === LOCAL_EMBEDDING_PROVIDER_ID &&
     currentModel?.model === entry.id
 
-  const tr = (
-    key: string,
-    fallback: string,
-    vars?: Record<string, string | number>,
-  ) => {
-    const raw = t(`settings.knowledgeBases.localEmbedding.${key}`, fallback)
-    return vars ? format(raw, vars) : raw
-  }
-
   const handleSetCurrent = (entry: LocalEmbeddingCatalogEntry) => {
     const baseId = generateModelId(LOCAL_EMBEDDING_PROVIDER_ID, entry.id)
-    const existing = settings.embeddingModels.find(
-      (m) =>
-        m.providerId === LOCAL_EMBEDDING_PROVIDER_ID && m.model === entry.id,
-    )
-    if (existing) {
-      applySettingsUpdate({ ...settings, embeddingModelId: existing.id })
-      return
-    }
-    const id = ensureUniqueModelId(
-      settings.embeddingModels.map((m) => m.id),
-      baseId,
-    )
-    const record: EmbeddingModel = {
-      providerId: LOCAL_EMBEDDING_PROVIDER_ID,
-      id,
-      model: entry.id,
-      name: entry.displayName,
-      dimension: entry.dimension,
-    }
-    applySettingsUpdate({
-      ...settings,
-      embeddingModels: [...settings.embeddingModels, record],
-      embeddingModelId: id,
+    applySettingsUpdate((prev) => {
+      const existing = prev.embeddingModels.find(
+        (m) =>
+          m.providerId === LOCAL_EMBEDDING_PROVIDER_ID && m.model === entry.id,
+      )
+      if (existing) {
+        return { ...prev, embeddingModelId: existing.id }
+      }
+      const id = ensureUniqueModelId(
+        prev.embeddingModels.map((m) => m.id),
+        baseId,
+      )
+      const record: EmbeddingModel = {
+        providerId: LOCAL_EMBEDDING_PROVIDER_ID,
+        id,
+        model: entry.id,
+        name: entry.displayName,
+        dimension: entry.dimension,
+        nativeDimension: entry.dimension,
+      }
+      return {
+        ...prev,
+        embeddingModels: [...prev.embeddingModels, record],
+        embeddingModelId: id,
+      }
     })
   }
 
@@ -249,6 +397,7 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
     endpoint === DEFAULT_LOCAL_EMBEDDING_ENDPOINT ||
     endpoint === HF_MIRROR_LOCAL_EMBEDDING_ENDPOINT
   const [customDraft, setCustomDraft] = useState(isKnownPreset ? '' : endpoint)
+  const [customDraftError, setCustomDraftError] = useState<string | null>(null)
   const [showCustomEndpoint, setShowCustomEndpoint] = useState(!isKnownPreset)
   useEffect(() => {
     const known =
@@ -256,7 +405,36 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
       endpoint === HF_MIRROR_LOCAL_EMBEDDING_ENDPOINT
     setShowCustomEndpoint(!known)
     if (!known) setCustomDraft(endpoint)
+    setCustomDraftError(null)
   }, [endpoint])
+
+  // Local draft only — committed on blur (see `commitCustomEndpoint`), not
+  // on every keystroke, so a half-typed URL never becomes the live download
+  // source.
+  const commitCustomEndpoint = () => {
+    const trimmed = customDraft.trim()
+    let parsed: URL
+    try {
+      parsed = new URL(trimmed)
+    } catch {
+      setCustomDraftError(
+        tr('endpointCustomInvalid', '请输入合法的 http/https 地址'),
+      )
+      return
+    }
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      setCustomDraftError(
+        tr('endpointCustomInvalid', '请输入合法的 http/https 地址'),
+      )
+      return
+    }
+    setCustomDraftError(null)
+    const normalized = trimmed.replace(/\/+$/, '')
+    applySettingsUpdate((prev) => ({
+      ...prev,
+      localEmbedding: { ...prev.localEmbedding, endpoint: normalized },
+    }))
+  }
 
   const storageUsedBytes = useMemo(
     () =>
@@ -268,12 +446,32 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
   )
 
   const handleManageDownloaded = () => {
+    // Removing everything also deletes the current model's files if it's a
+    // local one — reuse the same "you'll lose search until you pick another
+    // model" warning as the per-card delete-current confirm instead of the
+    // generic "remove downloaded models" copy.
+    const currentEntry =
+      currentModel?.providerId === LOCAL_EMBEDDING_PROVIDER_ID
+        ? getLocalEmbeddingCatalogEntry(currentModel.model)
+        : undefined
+    const currentWillBeDeleted =
+      !!currentEntry && modelSnapshot.get(currentEntry.id)?.status === 'ready'
     new ConfirmModal(app, {
-      title: tr('manageDownloadedConfirmTitle', '移除全部已下载模型？'),
-      message: tr(
-        'manageDownloadedConfirmMessage',
-        '将删除磁盘上所有已下载的本地嵌入模型，之后可以重新下载。',
-      ),
+      title:
+        currentWillBeDeleted && currentEntry
+          ? tr('deleteCurrentConfirmTitle', '删除当前使用的嵌入模型？')
+          : tr('manageDownloadedConfirmTitle', '移除全部已下载模型？'),
+      message:
+        currentWillBeDeleted && currentEntry
+          ? tr(
+              'deleteCurrentConfirmMessage',
+              '"{{name}}" 是当前使用的嵌入模型。删除其文件后，本地嵌入检索将不可用，直到你选择其他模型。此操作不可撤销。',
+              { name: currentEntry.displayName },
+            )
+          : tr(
+              'manageDownloadedConfirmMessage',
+              '将删除磁盘上所有已下载的本地嵌入模型，之后可以重新下载。',
+            ),
       ctaText: t('common.delete', '删除'),
       onConfirm: () => {
         manager.removeAll().catch((error: unknown) => {
@@ -350,7 +548,9 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
                     '{{dimension}} 维 · {{languages}} · {{size}}',
                     {
                       dimension: entry.dimension,
-                      languages: entry.languages.join(', '),
+                      languages: entry.languages
+                        .map((code) => tr(`languageNames.${code}`, code))
+                        .join(', '),
                       size: formatBytes(entry.totalBytes),
                     },
                   )}
@@ -360,7 +560,7 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
                     <div className="yolo-local-embedding-progress">
                       <span
                         style={{
-                          width: `${state.totalBytes > 0 ? Math.min(100, Math.round((state.receivedBytes / state.totalBytes) * 100)) : 0}%`,
+                          transform: `scaleX(${state.totalBytes > 0 ? Math.min(1, state.receivedBytes / state.totalBytes) : 0})`,
                         }}
                       />
                     </div>
@@ -419,19 +619,26 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
                 </button>
                 {expanded && (
                   <div className="yolo-local-embedding-source">
-                    <div>
+                    <div className="yolo-local-embedding-source-row">
                       <span>{tr('sourceRepoLabel', '仓库')}</span>
                       <code>{entry.hfRepo}</code>
                     </div>
-                    <div>
+                    <div className="yolo-local-embedding-source-row">
                       <span>{tr('sourceRevisionLabel', '版本')}</span>
-                      <code>{entry.revision.slice(0, 12)}</code>
+                      <code>{entry.revision}</code>
                     </div>
-                    <div>
+                    <div className="yolo-local-embedding-source-files">
                       <span>{tr('sourceFilesLabel', '文件')}</span>
-                      <code>
-                        {entry.files.map((file) => file.path).join(', ')}
-                      </code>
+                      <ul>
+                        {entry.files.map((file) => (
+                          <li key={file.path}>
+                            <code>{file.path}</code>
+                            <span className="yolo-local-embedding-source-file-meta">
+                              {formatBytes(file.byteSize)} · {file.sha256}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   </div>
                 )}
@@ -512,30 +719,33 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
               return
             }
             setShowCustomEndpoint(false)
-            applySettingsUpdate({
-              ...settings,
-              localEmbedding: { ...settings.localEmbedding, endpoint: value },
-            })
+            setCustomDraftError(null)
+            applySettingsUpdate((prev) => ({
+              ...prev,
+              localEmbedding: { ...prev.localEmbedding, endpoint: value },
+            }))
           }}
         />
         {showCustomEndpoint && (
-          <ObsidianTextInput
-            value={customDraft}
-            placeholder={tr('endpointCustomPlaceholder', 'https://example.com')}
-            onChange={(value) => {
-              setCustomDraft(value)
-              const trimmed = value.trim().replace(/\/+$/, '')
-              if (/^https?:\/\/.+/i.test(trimmed)) {
-                applySettingsUpdate({
-                  ...settings,
-                  localEmbedding: {
-                    ...settings.localEmbedding,
-                    endpoint: trimmed,
-                  },
-                })
-              }
-            }}
-          />
+          <span className="yolo-local-embedding-endpoint-custom">
+            <ObsidianTextInput
+              value={customDraft}
+              placeholder={tr(
+                'endpointCustomPlaceholder',
+                'https://example.com',
+              )}
+              onChange={(value) => {
+                setCustomDraft(value)
+                if (customDraftError) setCustomDraftError(null)
+              }}
+              onBlur={commitCustomEndpoint}
+            />
+            {customDraftError && (
+              <span className="yolo-local-embedding-endpoint-error">
+                {customDraftError}
+              </span>
+            )}
+          </span>
         )}
         <span className="yolo-local-embedding-footer-spacer" />
         <span className="yolo-local-embedding-footer-storage">

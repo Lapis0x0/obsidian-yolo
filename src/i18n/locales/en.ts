@@ -1382,6 +1382,7 @@ export const en: TranslationKeys = {
         endpointLabel: 'Download source',
         endpointCustomOption: 'Custom',
         endpointCustomPlaceholder: 'https://example.com',
+        endpointCustomInvalid: 'Enter a valid http/https address',
         storageUsed: '{{size}} used on disk',
         manageDownloaded: 'Manage downloaded models',
         manageDownloadedConfirmTitle: 'Remove all downloaded models?',
@@ -1390,14 +1391,26 @@ export const en: TranslationKeys = {
         engineModelNotDownloaded: 'Local embedding model not downloaded',
         engineModelNotDownloadedSub:
           'Download the model in Knowledge Base settings to use local embedding.',
-        engineDownloadAction: 'Go to settings',
+        engineDownloadAction: 'Download model',
+        engineModelDownloadingLine:
+          'Local embedding model downloading {{percent}}%',
+        engineModelVerifying: 'Verifying local embedding model files…',
+        engineModelFailedLine:
+          'Local embedding model download failed: {{error}}',
         engineComponentDisabled: 'Local embedding engine is disabled',
         engineComponentDisabledSub:
           'Enable the embedding engine to use local embedding.',
         engineEnableAction: 'Enable',
         engineEnableFailed: 'Failed to enable the embedding engine',
+        engineComponentFailed: 'Local embedding engine failed to initialize',
+        engineComponentPreparing: 'Local embedding engine is preparing…',
         engineNonDesktop: 'Local embedding is unavailable',
         engineNonDesktopSub: 'Local embedding models only run on desktop.',
+        languageNames: {
+          en: 'English',
+          zh: 'Chinese',
+          multilingual: 'Multilingual',
+        },
       },
       delete: 'Delete knowledge base',
       deleteConfirm:

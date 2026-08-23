@@ -1281,6 +1281,7 @@ export const it: DeepPartial<TranslationKeys> = {
         endpointLabel: 'Origine download',
         endpointCustomOption: 'Personalizzato',
         endpointCustomPlaceholder: 'https://example.com',
+        endpointCustomInvalid: 'Inserisci un indirizzo http/https valido',
         storageUsed: '{{size}} usati su disco',
         manageDownloaded: 'Gestisci modelli scaricati',
         manageDownloadedConfirmTitle: 'Rimuovere tutti i modelli scaricati?',
@@ -1289,15 +1290,30 @@ export const it: DeepPartial<TranslationKeys> = {
         engineModelNotDownloaded: 'Modello di embedding locale non scaricato',
         engineModelNotDownloadedSub:
           "Scarica il modello nelle impostazioni della Knowledge Base per usare l'embedding locale.",
-        engineDownloadAction: 'Vai alle impostazioni',
+        engineDownloadAction: 'Scarica modello',
+        engineModelDownloadingLine:
+          'Download del modello di embedding locale {{percent}}%',
+        engineModelVerifying:
+          'Verifica dei file del modello di embedding locale…',
+        engineModelFailedLine:
+          'Download del modello di embedding locale non riuscito: {{error}}',
         engineComponentDisabled: 'Il motore di embedding locale è disattivato',
         engineComponentDisabledSub:
           "Attiva il motore di embedding per usare l'embedding locale.",
         engineEnableAction: 'Attiva',
         engineEnableFailed: 'Impossibile attivare il motore di embedding',
+        engineComponentFailed:
+          'Inizializzazione del motore di embedding locale non riuscita',
+        engineComponentPreparing:
+          'Il motore di embedding locale si sta preparando…',
         engineNonDesktop: "L'embedding locale non è disponibile",
         engineNonDesktopSub:
           'I modelli di embedding locali funzionano solo su desktop.',
+        languageNames: {
+          en: 'Inglese',
+          zh: 'Cinese',
+          multilingual: 'Multilingua',
+        },
       },
       delete: 'Elimina knowledge base',
       deleteConfirm:

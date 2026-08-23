@@ -51,7 +51,9 @@ import {
 import { resolveScopePathKind } from '../scope/scopeVault'
 
 import {
+  type LocalEmbeddingEngineIssue,
   LocalEmbeddingShelf,
+  describeLocalEmbeddingEngineIssue,
   useLocalEmbeddingEngineIssue,
 } from './rag/LocalEmbeddingShelf'
 
@@ -461,12 +463,23 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     [indexSnapshot.runs],
   )
 
+  // `yolo-local` models get their own "本地" shelf (`LocalEmbeddingShelf`)
+  // right below this row — excluded here so there's exactly one entry point
+  // to pick/manage a local model, not two.
+  const apiEmbeddingModels = useMemo(
+    () =>
+      settings.embeddingModels.filter(
+        (model) => model.providerId !== LOCAL_EMBEDDING_PROVIDER_ID,
+      ),
+    [settings.embeddingModels],
+  )
+
   const embeddingModelOptionGroups = useMemo<
     ObsidianDropdownOptionGroup[]
   >(() => {
     const providerOrder = settings.providers.map((p) => p.id)
     const providerIdsInModels = Array.from(
-      new Set(settings.embeddingModels.map((model) => model.providerId)),
+      new Set(apiEmbeddingModels.map((model) => model.providerId)),
     )
     const orderedProviderIds = [
       ...providerOrder.filter((id) => providerIdsInModels.includes(id)),
@@ -477,16 +490,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
     return orderedProviderIds
       .map<ObsidianDropdownOptionGroup | null>((providerId) => {
-        const groupModels = settings.embeddingModels.filter(
+        const groupModels = apiEmbeddingModels.filter(
           (model) => model.providerId === providerId,
         )
         if (groupModels.length === 0) return null
         return {
-          label:
-            providerId === LOCAL_EMBEDDING_PROVIDER_ID
-              ? (t('settings.models.localEmbeddingProviderLabel') ??
-                'Local (on-device)')
-              : providerId,
+          label: providerId,
           options: groupModels.map((model) => {
             const baseLabel = model.name || model.model || model.id
             const badge = RECOMMENDED_MODELS_FOR_EMBEDDING.includes(model.id)
@@ -497,7 +506,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         }
       })
       .filter((group): group is ObsidianDropdownOptionGroup => group !== null)
-  }, [settings.embeddingModels, settings.providers, t])
+  }, [apiEmbeddingModels, settings.providers, t])
 
   const currentEmbeddingModel = settings.embeddingModels.find(
     (m) => m.id === settings.embeddingModelId,
@@ -517,6 +526,61 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const localEmbeddingIssue = useLocalEmbeddingEngineIssue(
     plugin,
     currentEmbeddingModel,
+  )
+  const localEmbeddingIssueCopy = useMemo(
+    () =>
+      localEmbeddingIssue
+        ? describeLocalEmbeddingEngineIssue(localEmbeddingIssue, t)
+        : null,
+    [localEmbeddingIssue, t],
+  )
+  const handleLocalEmbeddingIssueAction = useCallback(
+    (issue: LocalEmbeddingEngineIssue) => {
+      switch (issue.action) {
+        case 'download':
+        case 'retry-download':
+          plugin
+            .getLocalEmbeddingModelManager()
+            .download(issue.entry)
+            .catch((error: unknown) => {
+              if (error instanceof DOMException && error.name === 'AbortError')
+                return
+              console.error(
+                '[YOLO] Local embedding model download failed:',
+                error,
+              )
+            })
+          return
+        case 'cancel':
+          plugin.getLocalEmbeddingModelManager().cancelDownload(issue.entry.id)
+          return
+        case 'enable':
+          plugin
+            .getRuntimeComponentService()
+            .setEnabled('embedding-engine', true)
+            .catch((error: unknown) => {
+              console.error('[YOLO] Failed to enable embedding-engine:', error)
+              new Notice(
+                t(
+                  'settings.knowledgeBases.localEmbedding.engineEnableFailed',
+                  '启用嵌入引擎失败',
+                ),
+              )
+            })
+          return
+        case 'retry-component':
+          plugin
+            .getRuntimeComponentService()
+            .retry('embedding-engine')
+            .catch((error: unknown) => {
+              console.error('[YOLO] Failed to retry embedding-engine:', error)
+            })
+          return
+        default:
+          return
+      }
+    },
+    [plugin, t],
   )
 
   // The embedding model row previews a selection locally — switching models
@@ -640,40 +704,16 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 )}
               </div>
             </>
-          ) : localEmbeddingIssue ? (
+          ) : localEmbeddingIssueCopy ? (
             <>
               <div className="yolo-kb-status-line">
-                {localEmbeddingIssue.kind === 'not-downloaded'
-                  ? t(
-                      'settings.knowledgeBases.localEmbedding.engineModelNotDownloaded',
-                      '本地嵌入模型尚未下载',
-                    )
-                  : localEmbeddingIssue.kind === 'component-disabled'
-                    ? t(
-                        'settings.knowledgeBases.localEmbedding.engineComponentDisabled',
-                        '本地嵌入引擎已禁用',
-                      )
-                    : t(
-                        'settings.knowledgeBases.localEmbedding.engineNonDesktop',
-                        '本地嵌入不可用',
-                      )}
+                {localEmbeddingIssueCopy.line}
               </div>
-              <div className="yolo-kb-status-sub">
-                {localEmbeddingIssue.kind === 'not-downloaded'
-                  ? t(
-                      'settings.knowledgeBases.localEmbedding.engineModelNotDownloadedSub',
-                      '请在知识库设置中下载模型后再使用本地嵌入。',
-                    )
-                  : localEmbeddingIssue.kind === 'component-disabled'
-                    ? t(
-                        'settings.knowledgeBases.localEmbedding.engineComponentDisabledSub',
-                        '请启用嵌入引擎后再使用本地嵌入。',
-                      )
-                    : t(
-                        'settings.knowledgeBases.localEmbedding.engineNonDesktopSub',
-                        '本地嵌入模型仅支持桌面端运行。',
-                      )}
-              </div>
+              {localEmbeddingIssueCopy.sub && (
+                <div className="yolo-kb-status-sub">
+                  {localEmbeddingIssueCopy.sub}
+                </div>
+              )}
             </>
           ) : knowledgeBases.length === 0 ? (
             <div className="yolo-kb-status-line">
@@ -763,57 +803,17 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 }
               }}
             />
-          ) : localEmbeddingIssue?.kind === 'not-downloaded' ? (
-            <ObsidianButton
-              text={t(
-                'settings.knowledgeBases.localEmbedding.engineDownloadAction',
-                '前往设置',
-              )}
-              cta
-              onClick={() => {
-                plugin
-                  .getLocalEmbeddingModelManager()
-                  .download(localEmbeddingIssue.entry)
-                  .catch((error: unknown) => {
-                    if (
-                      error instanceof DOMException &&
-                      error.name === 'AbortError'
-                    )
-                      return
-                    console.error(
-                      '[YOLO] Local embedding model download failed:',
-                      error,
-                    )
-                  })
-              }}
-            />
-          ) : localEmbeddingIssue?.kind === 'component-disabled' ? (
-            <ObsidianButton
-              text={t(
-                'settings.knowledgeBases.localEmbedding.engineEnableAction',
-                '启用',
-              )}
-              cta
-              onClick={() => {
-                plugin
-                  .getRuntimeComponentService()
-                  .setEnabled('embedding-engine', true)
-                  .catch((error: unknown) => {
-                    console.error(
-                      '[YOLO] Failed to enable embedding-engine:',
-                      error,
-                    )
-                    new Notice(
-                      t(
-                        'settings.knowledgeBases.localEmbedding.engineEnableFailed',
-                        '启用嵌入引擎失败',
-                      ),
-                    )
-                  })
-              }}
-            />
-          ) : localEmbeddingIssue?.kind ===
-            'non-desktop' ? null : knowledgeBases.length === 0 ? (
+          ) : localEmbeddingIssue ? (
+            localEmbeddingIssueCopy?.actionLabel ? (
+              <ObsidianButton
+                text={localEmbeddingIssueCopy.actionLabel}
+                cta
+                onClick={() =>
+                  handleLocalEmbeddingIssueAction(localEmbeddingIssue)
+                }
+              />
+            ) : null
+          ) : knowledgeBases.length === 0 ? (
             <ObsidianButton
               text={t('settings.knowledgeBases.new', '新建')}
               cta
