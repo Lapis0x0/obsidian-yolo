@@ -1,4 +1,8 @@
-export type RuntimeComponentId = 'tokenizer' | 'pdf-engine' | 'bash-engine'
+export type RuntimeComponentId =
+  | 'tokenizer'
+  | 'pdf-engine'
+  | 'bash-engine'
+  | 'embedding-engine'
 
 export type TokenizerComponentApi = Readonly<{
   count(text: string): number
@@ -250,10 +254,60 @@ export type BashEngineComponentApi = Readonly<{
   dispose(): void
 }>
 
+/**
+ * Result of `EmbeddingEngineComponentApi.probeEnvironment()`, checked before
+ * `createSession` is attempted. Synchronous and side-effect free — it only
+ * inspects capability flags (`crossOriginIsolated`, `navigator.gpu`, WASM
+ * SIMD support) already available on `globalThis`, mirroring the old PGlite
+ * component's "capability probe before install-time failure" precedent.
+ */
+export type EmbeddingEngineEnvironmentProbe =
+  | Readonly<{ ok: true; webgpu: boolean; threads: number }>
+  | Readonly<{
+      ok: false
+      reason: 'no-wasm-simd' | 'no-worker' | 'no-response'
+    }>
+
+export type EmbeddingEngineSpec = Readonly<{
+  dimension: number
+  pooling: 'mean' | 'cls'
+  normalize: boolean
+  maxTokens: number
+}>
+
+/**
+ * Callbacks injected by the host so the component never touches the network
+ * or the vault directly. `loadWasm` reads a runtime-component asset (see
+ * `readRuntimeComponentAsset`); `loadModelFile` reads a file from the
+ * `LocalEmbeddingModelManager`-owned model directory (host-only, P2).
+ */
+export type EmbeddingEngineCreateSessionOptions = Readonly<{
+  loadWasm(name: string): Promise<Uint8Array>
+  loadModelFile(file: string): Promise<Uint8Array>
+  spec: EmbeddingEngineSpec
+  device?: 'wasm' | 'webgpu'
+  signal?: AbortSignal
+}>
+
+export type EmbeddingSession = Readonly<{
+  /** Returns vectors already pooled/normalized per `EmbeddingEngineSpec`. */
+  embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>
+  dispose(): void
+}>
+
+export type EmbeddingEngineComponentApi = Readonly<{
+  probeEnvironment(): EmbeddingEngineEnvironmentProbe
+  createSession(
+    options: EmbeddingEngineCreateSessionOptions,
+  ): Promise<EmbeddingSession>
+  dispose(): void
+}>
+
 export type RuntimeComponentApiMap = {
   tokenizer: TokenizerComponentApi
   'pdf-engine': PdfEngineComponentApi
   'bash-engine': BashEngineComponentApi
+  'embedding-engine': EmbeddingEngineComponentApi
 }
 
 export type RuntimeComponentDefinition<

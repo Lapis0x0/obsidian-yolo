@@ -301,6 +301,11 @@ export const zh: TranslationKeys = {
             '为 bash 工具提供虚拟 shell，用于检索与整理 vault 文件。',
           impact: '关闭后 bash 工具将不可用，模型将无法检索或整理 vault 文件。',
         },
+        embeddingEngine: {
+          name: '嵌入引擎',
+          description: '在本地设备上运行嵌入模型，实现私密、离线的索引构建。',
+          impact: '关闭后本地嵌入模型将不可用，RAG 将回退到远程嵌入服务。',
+        },
         statuses: {
           missing: '等待安装',
           downloading: '正在下载',

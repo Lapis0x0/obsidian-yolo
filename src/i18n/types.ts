@@ -288,6 +288,7 @@ export type TranslationKeys = {
         tokenizer: { name: string; description: string; impact: string }
         pdfEngine: { name: string; description: string; impact: string }
         bashEngine: { name: string; description: string; impact: string }
+        embeddingEngine: { name: string; description: string; impact: string }
         statuses: {
           missing: string
           downloading: string

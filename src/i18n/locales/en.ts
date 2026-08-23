@@ -338,6 +338,13 @@ export const en: TranslationKeys = {
           impact:
             'Turning this off disables the bash tool; the model loses vault search and file organization.',
         },
+        embeddingEngine: {
+          name: 'Embedding engine',
+          description:
+            'Runs local embedding models on-device for private, offline indexing.',
+          impact:
+            'Turning this off disables local embedding models; RAG falls back to a remote embedding provider.',
+        },
         statuses: {
           missing: 'Waiting to install',
           downloading: 'Downloading',

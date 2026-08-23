@@ -361,6 +361,13 @@ export const it: DeepPartial<TranslationKeys> = {
           impact:
             'Disattivandolo, lo strumento bash non è disponibile e il modello perde la ricerca e l’organizzazione dei file.',
         },
+        embeddingEngine: {
+          name: 'Motore di embedding',
+          description:
+            'Esegue modelli di embedding locali sul dispositivo per un’indicizzazione privata e offline.',
+          impact:
+            'Disattivandolo, i modelli di embedding locali non sono disponibili; il RAG utilizza un provider di embedding remoto.',
+        },
         statuses: {
           missing: 'In attesa di installazione',
           downloading: 'Download in corso',

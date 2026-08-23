@@ -560,6 +560,8 @@ function runtimeComponentIcon(componentId: string): string {
       return 'binary'
     case 'bash-engine':
       return 'terminal'
+    case 'embedding-engine':
+      return 'vector-square'
     default:
       return 'component'
   }
