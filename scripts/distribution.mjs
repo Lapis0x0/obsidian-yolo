@@ -7,6 +7,7 @@ import nacl from 'tweetnacl'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 
 import { isValidRuntimeComponentAssetName } from './runtimeComponentAssetName.mjs'
+import { resolveRuntimeComponentAssetSource } from './runtimeComponentAssetSources.mjs'
 
 if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
   setGlobalDispatcher(new EnvHttpProxyAgent())
@@ -528,12 +529,22 @@ export async function describeRuntimeComponentArtifacts(options) {
     verifyBytes(bytes, artifact)
     artifacts.push(artifact)
     for (const asset of descriptor.assets) {
-      const assetCanonicalUrl = `https://raw.githubusercontent.com/${repository}/${version}/${asset.path}`
-      const assetBytes = await downloadUrl(assetCanonicalUrl, token, fetchImpl)
+      // Unlike entry.js, assets are gitignored build outputs (see
+      // .gitignore) — never committed, so nothing exists at
+      // `{version}/{asset.path}` on any Git ref to download. Read the same
+      // local bytes `npm run runtime:build` would produce instead (CI has
+      // already run `npm ci`, so `node_modules` is present), and verify
+      // them against the registry's declared byteSize/sha256 before
+      // trusting them — a corrupt or mismatched local install must fail
+      // loudly here rather than silently publishing bad bytes.
+      const assetSourcePath = path.resolve(
+        resolveRuntimeComponentAssetSource(descriptor.id, asset.name),
+      )
+      const assetBytes = await readFile(assetSourcePath)
       const assetArtifact = {
         name: asset.name,
         mirrorPath: `runtime-components/${version}/${descriptor.id}/assets/${asset.name}`,
-        canonicalUrl: assetCanonicalUrl,
+        canonicalUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(version)}/${encodeURIComponent(`${descriptor.id}-${asset.name}`)}`,
         byteSize: asset.byteSize,
         sha256: asset.sha256,
         bytes: assetBytes,

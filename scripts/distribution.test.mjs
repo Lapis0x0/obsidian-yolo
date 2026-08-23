@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { createHash } from 'node:crypto'
+import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
 import {
@@ -245,15 +246,23 @@ test('reads a historical schema-v1 registry with no assets field at all', async 
 })
 
 test('mirrors a schema-v2 registry component together with its declared assets', async () => {
+  // Unlike entry.js, an asset is never fetched over HTTP — it's read from
+  // the same local file `npm run runtime:build` copies it from (see
+  // runtimeComponentAssetSources.mjs), so this reads the *real*
+  // node_modules/onnxruntime-web file and declares its *real* byteSize/
+  // sha256 in the registry fixture, rather than trying to fake bytes
+  // through fetchImpl.
+  const assetBytes = await readFile(
+    'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs',
+  )
+  const assetSha256 = createHash('sha256').update(assetBytes).digest('hex')
   const version = '1.8.0'
   const repository = 'Lapis0x0/obsidian-yolo'
   const entryBytes = Buffer.from('embedding entry')
   const entrySha256 = createHash('sha256').update(entryBytes).digest('hex')
-  const wasmBytes = Buffer.from('fake wasm bytes')
-  const wasmSha256 = createHash('sha256').update(wasmBytes).digest('hex')
   const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
   const assetPath =
-    'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm'
+    'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.mjs'
   const registry = Buffer.from(
     JSON.stringify({
       schemaVersion: 2,
@@ -265,10 +274,10 @@ test('mirrors a schema-v2 registry component together with its declared assets',
           sha256: entrySha256,
           assets: [
             {
-              name: 'ort-wasm-simd-threaded.wasm',
+              name: 'ort-wasm-simd-threaded.mjs',
               path: assetPath,
-              byteSize: wasmBytes.byteLength,
-              sha256: wasmSha256,
+              byteSize: assetBytes.byteLength,
+              sha256: assetSha256,
             },
           ],
         },
@@ -280,10 +289,6 @@ test('mirrors a schema-v2 registry component together with its declared assets',
     [
       `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/embedding-engine/dist/entry.js`,
       entryBytes,
-    ],
-    [
-      `https://raw.githubusercontent.com/${repository}/${version}/${assetPath}`,
-      wasmBytes,
     ],
   ])
   const fetchImpl = async (url) => {
@@ -303,16 +308,26 @@ test('mirrors a schema-v2 registry component together with its declared assets',
     artifacts[0].mirrorPath,
     'runtime-components/1.8.0/embedding-engine/entry.js',
   )
-  assert.equal(artifacts[1].name, 'ort-wasm-simd-threaded.wasm')
+  assert.equal(artifacts[1].name, 'ort-wasm-simd-threaded.mjs')
   assert.equal(
     artifacts[1].mirrorPath,
-    'runtime-components/1.8.0/embedding-engine/assets/ort-wasm-simd-threaded.wasm',
+    'runtime-components/1.8.0/embedding-engine/assets/ort-wasm-simd-threaded.mjs',
   )
-  assert.equal(artifacts[1].sha256, wasmSha256)
-  assert.deepEqual(artifacts[1].bytes, wasmBytes)
+  assert.equal(
+    artifacts[1].canonicalUrl,
+    'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.8.0/embedding-engine-ort-wasm-simd-threaded.mjs',
+  )
+  assert.equal(artifacts[1].sha256, assetSha256)
+  assert.deepEqual(artifacts[1].bytes, assetBytes)
 })
 
-test('rejects a v2 asset whose downloaded bytes do not match its declared hash', async () => {
+test('rejects a v2 asset whose local bytes do not match its declared hash', async () => {
+  // The registry declares a fabricated size/hash for a real, unmodified
+  // local file (node_modules/onnxruntime-web's actual
+  // ort-wasm-simd-threaded.wasm) — a stand-in for "the registry drifted
+  // from what npm run runtime:build actually produces locally". Since
+  // assets are read straight from disk (not fetched), this exercises the
+  // same `verifyBytes` guard without needing to fake a network response.
   const version = '1.8.0'
   const repository = 'Lapis0x0/obsidian-yolo'
   const entryBytes = Buffer.from('embedding entry')
@@ -346,12 +361,6 @@ test('rejects a v2 asset whose downloaded bytes do not match its declared hash',
     [
       `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/embedding-engine/dist/entry.js`,
       entryBytes,
-    ],
-    // Bytes actually served for the asset don't match the registry's
-    // declared size/hash — the mirror must refuse to publish it.
-    [
-      `https://raw.githubusercontent.com/${repository}/${version}/${assetPath}`,
-      Buffer.from('tampered bytes'),
     ],
   ])
   const fetchImpl = async (url) => {

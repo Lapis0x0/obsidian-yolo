@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import esbuild from 'esbuild'
 
 import { isValidRuntimeComponentAssetName } from './runtimeComponentAssetName.mjs'
+import { resolveRuntimeComponentAssetSource } from './runtimeComponentAssetSources.mjs'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 process.chdir(root)
@@ -24,16 +25,6 @@ const nodeBuiltins = new Set([
   ...builtinModules,
   ...builtinModules.map((name) => `node:${name}`),
 ])
-
-// Source files for embedding-engine's declared assets — copied into
-// `dist/assets/` by `syncComponentAssets` (never hand-placed). These are the
-// SIMD-threaded ONNX Runtime Web WASM binaries matching the pinned
-// `onnxruntime-web` version (see package.json) that `@huggingface/transformers`
-// expects.
-const COMPONENT_ASSET_SOURCES = {
-  'embedding-engine': (name) =>
-    path.resolve(`node_modules/onnxruntime-web/dist/${name}`),
-}
 
 const entries = await readdir(componentRoot, { withFileTypes: true })
 const components = []
@@ -161,17 +152,13 @@ for (const entry of entries.sort((left, right) =>
 async function syncComponentAssets(componentId, componentDir, config) {
   const declared = config.assets ?? []
   if (declared.length === 0) return []
-  const resolveSource = COMPONENT_ASSET_SOURCES[componentId]
-  if (!resolveSource) {
-    throw new Error(
-      `Runtime component "${componentId}" declares assets but has no known asset source mapping`,
-    )
-  }
   const assetsDir = path.join(componentDir, 'dist', 'assets')
   const descriptors = []
   if (!check) await mkdir(assetsDir, { recursive: true })
   for (const name of declared) {
-    const sourcePath = resolveSource(name)
+    const sourcePath = path.resolve(
+      resolveRuntimeComponentAssetSource(componentId, name),
+    )
     const bytes = await readFile(sourcePath)
     const destPath = path.join(assetsDir, name)
     if (check) {
