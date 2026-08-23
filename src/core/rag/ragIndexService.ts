@@ -93,7 +93,9 @@ type RagIndexServiceDeps = {
 
 type RagIndexSubscriber = (snapshot: RagIndexServiceSnapshot) => void
 
-const STORAGE_KEY = 'yolo_rag_index_run'
+// Keyed per knowledge base (`Record<kbId, RagIndexRunSnapshot>`); the
+// single-run shape released earlier lived under `yolo_rag_index_run`.
+const STORAGE_KEY = 'yolo_rag_index_runs'
 const RETRY_ACTIVITY_ID = 'rag:index'
 const INTERRUPTED_RETRY_DELAY_MS = 15 * 1000
 const MANUAL_RETRY_SCHEDULE = [
@@ -531,6 +533,15 @@ export class RagIndexService {
       status: 'running',
       startedAt,
       updatedAt: startedAt,
+      // Progress fields belong to this run; don't let the previous run's
+      // totals show as a 100% flash before the first progress tick.
+      currentFile: undefined,
+      lastCompletedFile: undefined,
+      totalFiles: undefined,
+      completedFiles: undefined,
+      totalChunks: undefined,
+      completedChunks: undefined,
+      waitingForRateLimit: undefined,
       failureKind: undefined,
       failureMessage: undefined,
       failureHttpStatus: undefined,
@@ -554,7 +565,9 @@ export class RagIndexService {
           this.snapshots.set(kbId, {
             ...current,
             updatedAt: Date.now(),
-            currentFile: progress.currentFile,
+            // The embedder only names a file when it changes; keep the last
+            // one so the status line doesn't blink back to "preparing".
+            currentFile: progress.currentFile ?? current.currentFile,
             lastCompletedFile:
               (progress.completedFiles ?? 0) > 0
                 ? (progress.currentFile ?? current.lastCompletedFile)

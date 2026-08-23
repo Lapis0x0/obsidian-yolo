@@ -512,6 +512,17 @@
   line-height: 1;
 }
 
+.yolo-index-ring-pct {
+  font-size: 10px;
+  letter-spacing: -0.02em;
+}
+
+.yolo-index-ring-sym {
+  margin-left: 1px;
+  font-size: 7px;
+  color: var(--text-muted);
+}
+
 @media (max-width: 640px) {
   .yolo-kb-status-bar {
     flex-wrap: wrap;

@@ -878,11 +878,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 >
                   {isThisIndexing && (
                     <div className="yolo-kb-card-ring">
-                      <IndexProgressRing
-                        percent={ringPercentFor(run, true)}
-                        size={28}
-                        strokeWidth={3}
-                      />
+                      <IndexProgressRing percent={ringPercentFor(run, true)} />
                     </div>
                   )}
                   <div className="yolo-kb-card-top">

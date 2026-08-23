@@ -15,7 +15,7 @@ describe('RagIndexService', () => {
     // reconcile loop skips chunks already in the DB instead of truncating.
     // Users who really want a fresh rebuild trigger it explicitly from the UI.
     const saved: Record<string, string> = {
-      yolo_rag_index_run: JSON.stringify({
+      yolo_rag_index_runs: JSON.stringify({
         'kb-a': {
           runId: 'old-run',
           status: 'running',
@@ -61,7 +61,7 @@ describe('RagIndexService', () => {
 
   it('restores an interrupted sync as sync (idempotent)', async () => {
     const saved: Record<string, string> = {
-      yolo_rag_index_run: JSON.stringify({
+      yolo_rag_index_runs: JSON.stringify({
         'kb-a': {
           runId: 'old-run',
           status: 'running',
@@ -96,7 +96,7 @@ describe('RagIndexService', () => {
 
   it('restores interrupted non-retryable runs as failed on initialize', async () => {
     const saved: Record<string, string> = {
-      yolo_rag_index_run: JSON.stringify({
+      yolo_rag_index_runs: JSON.stringify({
         'kb-a': {
           runId: 'old-run',
           status: 'running',
@@ -520,7 +520,7 @@ describe('RagIndexService', () => {
 
   it('resets an exhausted retry episode only on explicit reset', async () => {
     const saved: Record<string, string> = {
-      yolo_rag_index_run: JSON.stringify({
+      yolo_rag_index_runs: JSON.stringify({
         'kb-a': {
           runId: 'failed-run',
           status: 'failed',

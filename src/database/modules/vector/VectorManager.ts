@@ -385,6 +385,12 @@ export class VectorManager {
     // pop a modal here.
     const failedFiles: { path: string; error: string }[] = []
     let completedFilesCount = 0
+    // Files of the batch currently being embedded that are already settled:
+    // those needing no embedding, plus those the embedder has finished
+    // (approximated by chunk order — see `completedFilesInCall`). Folded into
+    // `completedFiles` so the percentage advances within a file batch instead
+    // of jumping once per 64 files.
+    let inBatchCompletedFiles = 0
     let totalChunksDiscovered = 0
     const folderProgress: Record<
       string,
@@ -444,7 +450,7 @@ export class VectorManager {
       onProgress?.({
         ...snapshot,
         totalFiles: filesToChunkify.length,
-        completedFiles: completedFilesCount,
+        completedFiles: completedFilesCount + inBatchCompletedFiles,
         folderProgress,
         newFilesCount,
         updatedFilesCount,
@@ -456,11 +462,16 @@ export class VectorManager {
     // and classified failedChunks persist across every file batch -- the
     // failure aggregation (rollback / throw) happens once, at the very end
     // of this method, over the failures accumulated across all batches.
+    // Files in the current batch with nothing to embed (unchanged or
+    // chunkify-failed); set before each `embedder.embed` call.
+    let batchSettledFiles = 0
     const embedder = this.createChunkEmbedder(embeddingModel, {
       signal,
       maxConcurrency: config.embeddingConcurrency,
-      onProgress: (snapshot) =>
-        reportProgress({ ...snapshot, totalChunks: totalChunksDiscovered }),
+      onProgress: ({ completedFilesInCall, ...snapshot }) => {
+        inBatchCompletedFiles = batchSettledFiles + completedFilesInCall
+        reportProgress({ ...snapshot, totalChunks: totalChunksDiscovered })
+      },
     })
 
     const maybeYield = createYieldController(10)
@@ -572,10 +583,15 @@ export class VectorManager {
           await this.repository.bumpMtimeByIds(plan.toBumpMtime)
         }
 
+        batchSettledFiles =
+          batchAttemptedPaths.length -
+          new Set(plan.toEmbed.map((chunk) => chunk.path)).size
+        inBatchCompletedFiles = batchSettledFiles
         const { wholeBatchFailed: batchWholeFailed } = await embedder.embed(
           plan.toEmbed,
         )
         completedFilesCount += batchAttemptedPaths.length
+        inBatchCompletedFiles = 0
         reportProgress({
           completedChunks: embedder.completedChunks,
           totalChunks: totalChunksDiscovered,
@@ -945,6 +961,9 @@ export class VectorManager {
       onProgress?: (snapshot: {
         completedChunks: number
         totalChunks: number
+        /** Files of this `embed()` call whose chunks are all done, by chunk
+         * order — an approximation under concurrency, but monotonic. */
+        completedFilesInCall: number
         currentFile?: string
         waitingForRateLimit?: boolean
       }) => void
@@ -1004,6 +1023,16 @@ export class VectorManager {
       }
       let fileCursor = 0
       let completedInCall = 0
+      let completedFileCursor = 0
+      const completedFilesInCall = () => {
+        while (
+          completedFileCursor < fileBoundaries.length &&
+          fileBoundaries[completedFileCursor].endChunk <= completedInCall
+        ) {
+          completedFileCursor += 1
+        }
+        return completedFileCursor
+      }
       const currentFile = () => {
         while (
           fileCursor < fileBoundaries.length - 1 &&
@@ -1047,6 +1076,7 @@ export class VectorManager {
               onProgress?.({
                 completedChunks,
                 totalChunks,
+                completedFilesInCall: completedFilesInCall(),
                 currentFile: nextReportedFile(),
               })
               return {
@@ -1084,6 +1114,7 @@ export class VectorManager {
                   onProgress?.({
                     completedChunks,
                     totalChunks,
+                    completedFilesInCall: completedFilesInCall(),
                     currentFile: f,
                     waitingForRateLimit: true,
                   })
@@ -1187,6 +1218,7 @@ export class VectorManager {
         onProgress?.({
           completedChunks,
           totalChunks,
+          completedFilesInCall: completedFilesInCall(),
           waitingForRateLimit: false,
         })
 
