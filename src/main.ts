@@ -136,6 +136,8 @@ import {
   hasHiddenYoloBaseDirSegment,
   resolveExternalYoloBaseDir,
 } from './core/paths/yoloPaths'
+import { setLocalEmbeddingModelManager } from './core/rag/local-embedding/access'
+import { LocalEmbeddingModelManager } from './core/rag/local-embedding/manager'
 import type { RagKnowledgeAccess } from './core/rag/ragAccess'
 import { RagAutoUpdateService } from './core/rag/ragAutoUpdateService'
 import { RagCoordinator } from './core/rag/ragCoordinator'
@@ -327,6 +329,7 @@ export default class YoloPlugin extends Plugin {
   private mcpCoordinator: McpCoordinator | null = null
   private moduleService: ModuleService | null = null
   private runtimeComponentService: RuntimeComponentService | null = null
+  private localEmbeddingModelManager: LocalEmbeddingModelManager | null = null
   private distributionFeedClient: DistributionFeedClient | null = null
   private moduleUpdateController: ModuleUpdateController | null = null
   private moduleRuntime: ModuleRuntime | null = null
@@ -2156,6 +2159,7 @@ export default class YoloPlugin extends Plugin {
     this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
     this.initializeRuntimeComponentSystem()
+    this.initializeLocalEmbedding()
     if (process.env.NODE_ENV === 'development') {
       this.addCommand({
         id: 'dev-activate-host-api-conformance-module',
@@ -2726,6 +2730,8 @@ export default class YoloPlugin extends Plugin {
     setRuntimeComponentService(null)
     this.runtimeComponentService?.stop()
     this.runtimeComponentService = null
+    setLocalEmbeddingModelManager(null)
+    this.localEmbeddingModelManager = null
     this.distributionFeedClient = null
     this.learningModuleSettingsHandoff = null
     this.learningLegacyInstallMigration = null
@@ -4459,6 +4465,29 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     })
     this.runtimeComponentService = service
     setRuntimeComponentService(service)
+  }
+
+  private initializeLocalEmbedding(): void {
+    const manager = new LocalEmbeddingModelManager({
+      adapter: this.app.vault.adapter,
+      manifest: this.manifest,
+      configDir: this.app.vault.configDir,
+      getEndpoint: () => this.settings.localEmbedding.endpoint,
+    })
+    this.localEmbeddingModelManager = manager
+    setLocalEmbeddingModelManager(manager)
+    if (Platform.isDesktop) {
+      void manager.scanInstalled().catch((error) => {
+        console.error('[YOLO] Local embedding model scan failed', error)
+      })
+    }
+  }
+
+  getLocalEmbeddingModelManager(): LocalEmbeddingModelManager {
+    if (!this.localEmbeddingModelManager) {
+      throw new Error('Local embedding model manager not initialized')
+    }
+    return this.localEmbeddingModelManager
   }
 
   private activateModules(): void {
