@@ -284,4 +284,17 @@ describe('createLocalEmbeddingClient', () => {
     expect(createSession).toHaveBeenCalledTimes(2)
     expect(result).toEqual([0, 1, 2])
   })
+
+  it('tears down and rejects once the manager reports the model no longer ready, instead of continuing to serve a stale session', async () => {
+    const client = makeClient()
+    await client.getEmbedding('a')
+    expect(sessionDispose).not.toHaveBeenCalled()
+
+    // Simulates the model being deleted (or "remove all") while its session
+    // is still loaded/idle in the Worker.
+    jest.spyOn(manager, 'getState').mockReturnValue({ status: 'not-installed' })
+
+    await expect(client.getEmbedding('b')).rejects.toThrow(/not installed/)
+    expect(sessionDispose).toHaveBeenCalledTimes(1)
+  })
 })

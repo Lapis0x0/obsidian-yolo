@@ -157,6 +157,18 @@ async function createSession(shared: SharedSession): Promise<SessionHandle> {
 
 async function ensureSession(shared: SharedSession): Promise<EmbeddingSession> {
   clearIdleTimer(shared)
+  // A cached session is only trustworthy while the manager still reports
+  // the model `ready` — deleting it (or "remove all") while a session is
+  // loaded/idle must not leave a live Worker that keeps happily embedding
+  // against files the manager just erased, with the UI showing "not
+  // downloaded" the whole time. Re-check on every acquire, not just at
+  // session-creation time.
+  if (
+    shared.sessionPromise &&
+    shared.manager.getState(shared.catalogEntry.id).status !== 'ready'
+  ) {
+    await teardownSession(shared)
+  }
   if (!shared.sessionPromise) {
     shared.sessionPromise = createSession(shared).catch((error: unknown) => {
       shared.sessionPromise = null
