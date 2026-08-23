@@ -279,11 +279,14 @@ export type EmbeddingEngineSpec = Readonly<{
  * Callbacks injected by the host so the component never touches the network
  * or the vault directly. `loadWasm` reads a runtime-component asset (see
  * `readRuntimeComponentAsset`); `loadModelFile` reads a file from the
- * `LocalEmbeddingModelManager`-owned model directory (host-only, P2).
+ * `LocalEmbeddingModelManager`-owned model directory (host-only, P2). Both
+ * receive `createSession`'s own `signal` so a caller that aborts while
+ * assets/model files are still loading (network fetch, vault read) can
+ * cancel that work instead of it running to completion unobserved.
  */
 export type EmbeddingEngineCreateSessionOptions = Readonly<{
-  loadWasm(name: string): Promise<Uint8Array>
-  loadModelFile(file: string): Promise<Uint8Array>
+  loadWasm(name: string, signal?: AbortSignal): Promise<Uint8Array>
+  loadModelFile(file: string, signal?: AbortSignal): Promise<Uint8Array>
   spec: EmbeddingEngineSpec
   device?: 'wasm' | 'webgpu'
   signal?: AbortSignal
@@ -292,7 +295,14 @@ export type EmbeddingEngineCreateSessionOptions = Readonly<{
 export type EmbeddingSession = Readonly<{
   /** Returns vectors already pooled/normalized per `EmbeddingEngineSpec`. */
   embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>
-  dispose(): void
+  /**
+   * Resolves once the underlying ORT/WebGPU session and Worker have been
+   * torn down. Async because real cleanup is: ask the Worker to dispose the
+   * model, wait for its ack (bounded by a short timeout), then terminate —
+   * not just `Worker.terminate()`, which reclaims the JS realm without ever
+   * running the library's own resource-release lifecycle.
+   */
+  dispose(): Promise<void>
 }>
 
 export type EmbeddingEngineComponentApi = Readonly<{
@@ -300,7 +310,8 @@ export type EmbeddingEngineComponentApi = Readonly<{
   createSession(
     options: EmbeddingEngineCreateSessionOptions,
   ): Promise<EmbeddingSession>
-  dispose(): void
+  /** Disposes every session still open under this engine instance. */
+  dispose(): Promise<void>
 }>
 
 export type RuntimeComponentApiMap = {

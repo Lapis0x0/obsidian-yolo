@@ -1,6 +1,7 @@
 import workerSource from 'virtual:embedding-worker-script'
 
 import {
+  type EmbeddingWorkerErrorInfo,
   type EmbeddingWorkerRequest,
   type EmbeddingWorkerResponse,
   OPTIONAL_MODEL_FILES,
@@ -27,22 +28,22 @@ type EmbeddingEngineEnvironmentProbe =
       reason: 'no-wasm-simd' | 'no-worker' | 'no-response'
     }>
 type EmbeddingEngineCreateSessionOptions = Readonly<{
-  loadWasm(name: string): Promise<Uint8Array>
-  loadModelFile(file: string): Promise<Uint8Array>
+  loadWasm(name: string, signal?: AbortSignal): Promise<Uint8Array>
+  loadModelFile(file: string, signal?: AbortSignal): Promise<Uint8Array>
   spec: EmbeddingEngineSpec
   device?: EmbeddingEngineDevice
   signal?: AbortSignal
 }>
 type EmbeddingSession = Readonly<{
   embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>
-  dispose(): void
+  dispose(): Promise<void>
 }>
 type EmbeddingEngineComponentApi = Readonly<{
   probeEnvironment(): EmbeddingEngineEnvironmentProbe
   createSession(
     options: EmbeddingEngineCreateSessionOptions,
   ): Promise<EmbeddingSession>
-  dispose(): void
+  dispose(): Promise<void>
 }>
 
 // Minimal WASM SIMD probe module: `(func (result v128) i32.const 0
@@ -53,6 +54,9 @@ const WASM_SIMD_PROBE = new Uint8Array([
   0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 10, 1, 8,
   0, 65, 0, 253, 15, 253, 98, 11,
 ])
+
+/** How long `dispose()` waits for the worker's own cleanup RPC to ack before force-terminating. */
+const DISPOSE_TIMEOUT_MS = 3000
 
 function probeEnvironment(): EmbeddingEngineEnvironmentProbe {
   if (typeof Worker === 'undefined') return { ok: false, reason: 'no-worker' }
@@ -86,24 +90,44 @@ function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
   )
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
-}
-
 function abortError(message: string): DOMException {
   return new DOMException(message, 'AbortError')
 }
 
+function workerErrorToError(info: EmbeddingWorkerErrorInfo): Error {
+  const suffix = info.device
+    ? ` (stage: ${info.stage}, device: ${info.device})`
+    : ` (stage: ${info.stage})`
+  const error = new Error(`${info.message}${suffix}`)
+  error.name = info.name
+  if (info.stack) error.stack = info.stack
+  return error
+}
+
+function crashError(message: string): EmbeddingWorkerErrorInfo {
+  return { name: 'WorkerCrashed', message, stage: 'unknown' }
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * Owns the Worker's lifecycle. Once `dead` (crashed, aborted, or disposed)
+ * it never recovers — every subsequent call fails immediately instead of
+ * silently hanging, which is what plain `postMessage` to a torn-down Worker
+ * would otherwise do (the returned Promise would never settle).
+ */
 class EmbeddingWorkerClient {
   private readonly worker: Worker
   private readonly workerUrl: string
   private requestSeq = 0
-  private disposed = false
+  private dead = false
   private readonly pending = new Map<
     number,
     {
       resolve: (response: EmbeddingWorkerResponse) => void
-      reject: (error: unknown) => void
+      reject: (error: Error) => void
     }
   >()
 
@@ -120,21 +144,64 @@ class EmbeddingWorkerClient {
       waiter.resolve(response)
     }
     this.worker.onerror = (event: ErrorEvent) => {
-      const error = new Error(event.message || 'Embedding worker crashed')
-      for (const waiter of this.pending.values()) waiter.reject(error)
-      this.pending.clear()
+      this.invalidate(crashError(event.message || 'Embedding worker crashed'))
     }
+    this.worker.onmessageerror = () => {
+      this.invalidate(
+        crashError('Embedding worker sent an unparseable message'),
+      )
+    }
+  }
+
+  /** Atomically tears the worker down and fails everything pending/future. */
+  private invalidate(errorInfo: EmbeddingWorkerErrorInfo): void {
+    if (this.dead) return
+    this.dead = true
+    try {
+      this.worker.terminate()
+    } catch {
+      // Already gone; nothing to do.
+    }
+    URL.revokeObjectURL(this.workerUrl)
+    const error = workerErrorToError(errorInfo)
+    for (const waiter of this.pending.values()) waiter.reject(error)
+    this.pending.clear()
   }
 
   private call(
     request: EmbeddingWorkerRequest,
     transfer: Transferable[] = [],
+    signal?: AbortSignal,
   ): Promise<EmbeddingWorkerResponse> {
-    if (this.disposed) {
-      return Promise.reject(new Error('Embedding worker is disposed'))
+    if (this.dead) {
+      return Promise.reject(
+        new Error('Embedding worker session is no longer usable'),
+      )
+    }
+    if (signal?.aborted) {
+      return Promise.reject(abortError('Embedding request aborted'))
     }
     return new Promise((resolve, reject) => {
-      this.pending.set(request.requestId, { resolve, reject })
+      const onAbort = (): void => {
+        this.pending.delete(request.requestId)
+        reject(abortError('Embedding request aborted'))
+        // ORT can't safely cancel a run already in flight, so an abort
+        // invalidates the whole session rather than leaving it half-used.
+        this.invalidate({
+          name: 'AbortError',
+          message: 'Embedding session aborted',
+          stage: 'unknown',
+        })
+      }
+      const settle = (fn: () => void): void => {
+        signal?.removeEventListener('abort', onAbort)
+        fn()
+      }
+      signal?.addEventListener('abort', onAbort, { once: true })
+      this.pending.set(request.requestId, {
+        resolve: (response) => settle(() => resolve(response)),
+        reject: (error) => settle(() => reject(error)),
+      })
       this.worker.postMessage(request, transfer)
     })
   }
@@ -147,33 +214,48 @@ class EmbeddingWorkerClient {
   async request(
     request: EmbeddingWorkerRequest,
     transfer: Transferable[] = [],
+    signal?: AbortSignal,
   ): Promise<Extract<EmbeddingWorkerResponse, { ok: true }>> {
-    const response = await this.call(request, transfer)
-    if (!response.ok) throw new Error(response.error)
+    const response = await this.call(request, transfer, signal)
+    if (!response.ok) throw workerErrorToError(response.error)
     return response
   }
 
-  dispose(): void {
-    if (this.disposed) return
-    this.disposed = true
-    this.worker.terminate()
-    URL.revokeObjectURL(this.workerUrl)
-    for (const waiter of this.pending.values()) {
-      waiter.reject(new Error('Embedding session disposed'))
-    }
-    this.pending.clear()
+  /**
+   * Real cleanup RPC: ask the worker to dispose the ORT/model session and
+   * revoke its own Blob URLs, wait briefly for the ack, then terminate.
+   * `terminate()` alone (the old behavior) reclaims the Worker's JS realm
+   * but never runs the library's own `dispose()` lifecycle, and left a
+   * "send dispose" step that nothing ever called.
+   */
+  async dispose(): Promise<void> {
+    if (this.dead) return
+    const ackOrTimeout = Promise.race([
+      this.call({ type: 'dispose', requestId: this.nextRequestId() }).then(
+        () => undefined,
+        () => undefined,
+      ),
+      sleep(DISPOSE_TIMEOUT_MS),
+    ])
+    await ackOrTimeout
+    this.invalidate({
+      name: 'Error',
+      message: 'Embedding session disposed',
+      stage: 'dispose',
+    })
   }
 }
 
 async function loadNamed(
   names: readonly string[],
-  load: (name: string) => Promise<Uint8Array>,
+  load: (name: string, signal?: AbortSignal) => Promise<Uint8Array>,
   required: boolean,
+  signal?: AbortSignal,
 ): Promise<Array<readonly [string, Uint8Array]>> {
   const entries = await Promise.all(
     names.map(async (name) => {
       try {
-        return [name, await load(name)] as const
+        return [name, await load(name, signal)] as const
       } catch (error) {
         if (required) throw error
         return null
@@ -183,6 +265,23 @@ async function loadNamed(
   return entries.filter(
     (entry): entry is readonly [string, Uint8Array] => entry !== null,
   )
+}
+
+/** Rejects with an AbortError as soon as `signal` fires, otherwise never settles. */
+function abortSignal(
+  signal: AbortSignal | undefined,
+  message: string,
+): { promise: Promise<never>; cancel(): void } {
+  if (!signal) return { promise: new Promise(() => undefined), cancel() {} }
+  let onAbort: () => void = () => undefined
+  const promise = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(abortError(message))
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
+  return {
+    promise,
+    cancel: () => signal.removeEventListener('abort', onAbort),
+  }
 }
 
 globalThis.__yolo_register_runtime_component__({
@@ -208,12 +307,44 @@ globalThis.__yolo_register_runtime_component__({
           throw abortError('Embedding session creation aborted')
         }
 
-        const [wasmEntries, requiredModelEntries, optionalModelEntries] =
-          await Promise.all([
-            loadNamed(WASM_ASSET_NAMES, options.loadWasm, true),
-            loadNamed(REQUIRED_MODEL_FILES, options.loadModelFile, true),
-            loadNamed(OPTIONAL_MODEL_FILES, options.loadModelFile, false),
-          ])
+        const device: EmbeddingEngineDevice =
+          options.device ?? (probe.webgpu ? 'webgpu' : 'wasm')
+
+        const abort = abortSignal(
+          options.signal,
+          'Embedding session creation aborted',
+        )
+        let wasmEntries: Array<readonly [string, Uint8Array]>
+        let requiredModelEntries: Array<readonly [string, Uint8Array]>
+        let optionalModelEntries: Array<readonly [string, Uint8Array]>
+        try {
+          ;[wasmEntries, requiredModelEntries, optionalModelEntries] =
+            await Promise.race([
+              Promise.all([
+                loadNamed(
+                  WASM_ASSET_NAMES,
+                  options.loadWasm,
+                  true,
+                  options.signal,
+                ),
+                loadNamed(
+                  REQUIRED_MODEL_FILES,
+                  options.loadModelFile,
+                  true,
+                  options.signal,
+                ),
+                loadNamed(
+                  OPTIONAL_MODEL_FILES,
+                  options.loadModelFile,
+                  false,
+                  options.signal,
+                ),
+              ]),
+              abort.promise,
+            ])
+        } finally {
+          abort.cancel()
+        }
         if (options.signal?.aborted) {
           throw abortError('Embedding session creation aborted')
         }
@@ -245,20 +376,25 @@ globalThis.__yolo_register_runtime_component__({
               wasm,
               modelFiles,
               spec: options.spec,
-              device: options.device,
+              device,
               numThreads: probe.threads,
             },
             transfer,
+            options.signal,
           )
           if (initResponse.type !== 'init-result') {
             throw new Error('Unexpected embedding worker response to init')
           }
         } catch (error) {
           activeSessions.delete(client)
-          client.dispose()
-          throw new Error(
-            `Embedding session initialization failed: ${describeError(error)}`,
-          )
+          await client.dispose()
+          throw error instanceof DOMException && error.name === 'AbortError'
+            ? error
+            : new Error(
+                `Embedding session initialization failed: ${
+                  error instanceof Error ? error.message : String(error)
+                }`,
+              )
         }
 
         let sessionDisposed = false
@@ -271,30 +407,35 @@ globalThis.__yolo_register_runtime_component__({
               throw new Error('Embedding session is disposed')
             }
             if (signal?.aborted) throw abortError('Embedding aborted')
-            const response = await client.request({
-              type: 'embed',
-              requestId: client.nextRequestId(),
-              texts,
-            })
+            const response = await client.request(
+              {
+                type: 'embed',
+                requestId: client.nextRequestId(),
+                texts,
+              },
+              [],
+              signal,
+            )
             if (response.type !== 'embed-result') {
               throw new Error('Unexpected embedding worker response to embed')
             }
             return response.vectors.map((buffer) => new Float32Array(buffer))
           },
-          dispose(): void {
+          async dispose(): Promise<void> {
             if (sessionDisposed) return
             sessionDisposed = true
             activeSessions.delete(client)
-            client.dispose()
+            await client.dispose()
           },
         })
       },
 
-      dispose(): void {
+      async dispose(): Promise<void> {
         if (disposed) return
         disposed = true
-        for (const client of [...activeSessions]) client.dispose()
+        const clients = [...activeSessions]
         activeSessions.clear()
+        await Promise.all(clients.map((client) => client.dispose()))
       },
     })
   },

@@ -21,7 +21,7 @@ export type EmbeddingWorkerInitRequest = Readonly<{
   /** Model file name (e.g. `config.json`, `onnx/model_quantized.onnx`) -> raw bytes (transferred). */
   modelFiles: Readonly<Record<string, ArrayBuffer>>
   spec: EmbeddingWorkerSpec
-  device?: 'wasm' | 'webgpu'
+  device: 'wasm' | 'webgpu'
   numThreads: number
 }>
 
@@ -41,6 +41,30 @@ export type EmbeddingWorkerRequest =
   | EmbeddingWorkerEmbedRequest
   | EmbeddingWorkerDisposeRequest
 
+/**
+ * Every stage a worker-side failure can be attributed to, threaded through
+ * `describeError()` in `worker.ts` so the main thread (and whatever surfaces
+ * the error to the user/logs) gets more than a bare message string.
+ */
+export type EmbeddingWorkerErrorStage =
+  | 'install-cache'
+  | 'install-wasm'
+  | 'load-tokenizer'
+  | 'load-model'
+  | 'tokenize'
+  | 'inference'
+  | 'pooling'
+  | 'dispose'
+  | 'unknown'
+
+export type EmbeddingWorkerErrorInfo = Readonly<{
+  name: string
+  message: string
+  stack?: string
+  stage: EmbeddingWorkerErrorStage
+  device?: 'wasm' | 'webgpu'
+}>
+
 export type EmbeddingWorkerResponse =
   | Readonly<{
       type: 'init-result'
@@ -52,7 +76,7 @@ export type EmbeddingWorkerResponse =
       type: 'init-result'
       requestId: number
       ok: false
-      error: string
+      error: EmbeddingWorkerErrorInfo
     }>
   | Readonly<{
       type: 'embed-result'
@@ -65,9 +89,15 @@ export type EmbeddingWorkerResponse =
       type: 'embed-result'
       requestId: number
       ok: false
-      error: string
+      error: EmbeddingWorkerErrorInfo
     }>
   | Readonly<{ type: 'dispose-result'; requestId: number; ok: true }>
+  | Readonly<{
+      type: 'dispose-result'
+      requestId: number
+      ok: false
+      error: EmbeddingWorkerErrorInfo
+    }>
 
 /**
  * The fixed file set a "standard" Transformers.js text-embedding ONNX export

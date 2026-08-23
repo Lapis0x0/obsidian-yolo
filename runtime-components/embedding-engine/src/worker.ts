@@ -1,29 +1,51 @@
 /// <reference lib="webworker" />
 
-import { env, pipeline } from '@huggingface/transformers'
+import {
+  AutoModel,
+  AutoTokenizer,
+  type Tensor,
+  env,
+  mean_pooling,
+} from '@huggingface/transformers'
 
+import { toErrorInfo } from './errorInfo'
+import { matchDeclaredModelFile } from './modelFileMatcher'
 import type {
   EmbeddingWorkerDisposeRequest,
   EmbeddingWorkerEmbedRequest,
+  EmbeddingWorkerErrorStage,
   EmbeddingWorkerInitRequest,
   EmbeddingWorkerRequest,
   EmbeddingWorkerResponse,
   EmbeddingWorkerSpec,
 } from './protocol'
+import { createRequestQueue } from './requestQueue'
 
 declare const self: DedicatedWorkerGlobalScope
 
-// A minimal function returned by `pipeline('feature-extraction', ...)`; typed
-// narrowly here instead of importing Transformers.js's full pipeline types,
-// which vary by task and aren't worth threading through this file.
-type FeatureExtractor = (
-  texts: string[],
-  options: { pooling: 'mean' | 'cls'; normalize: boolean },
-) => Promise<{ tolist(): number[][] }>
+/**
+ * Arbitrary but fixed `pretrained_model_name_or_path` handed to
+ * `AutoTokenizer.from_pretrained` / `AutoModel.from_pretrained`. Never
+ * resolves to a real HF repo — `installCustomCache` intercepts every file
+ * Transformers.js tries to load for it (see `modelFileMatcher.ts` for why
+ * the exact value doesn't matter, only its presence as a path segment).
+ */
+const MODEL_ID = 'yolo-local-embedding-model'
 
-let extractor: FeatureExtractor | null = null
-let spec: EmbeddingWorkerSpec | null = null
+type Tokenizer = Awaited<ReturnType<typeof AutoTokenizer.from_pretrained>>
+type Model = Awaited<ReturnType<typeof AutoModel.from_pretrained>>
+
+type Session = Readonly<{
+  tokenizer: Tokenizer
+  model: Model
+  spec: EmbeddingWorkerSpec
+  device: 'wasm' | 'webgpu'
+}>
+
+let session: Session | null = null
+let disposed = false
 const wasmObjectUrls: string[] = []
+const queue = createRequestQueue()
 
 function post(
   response: EmbeddingWorkerResponse,
@@ -32,8 +54,19 @@ function post(
   self.postMessage(response, transfer)
 }
 
-function describeError(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
+function postError(
+  base: { requestId: number },
+  type: 'init-result' | 'embed-result' | 'dispose-result',
+  error: unknown,
+  stage: EmbeddingWorkerErrorStage,
+  device?: 'wasm' | 'webgpu',
+): void {
+  post({
+    type,
+    requestId: base.requestId,
+    ok: false,
+    error: toErrorInfo(error, stage, device),
+  } as EmbeddingWorkerResponse)
 }
 
 /**
@@ -47,11 +80,18 @@ function describeError(error: unknown): string {
  * it throws "both local and remote models are disabled" before ever trying
  * the cache), so that flag combination below is intentional, not a network
  * escape hatch.
+ *
+ * Returns a `release()` callback: once `AutoTokenizer.from_pretrained` and
+ * `AutoModel.from_pretrained` both resolve, every file they need has
+ * already been read out of `files` (both calls are fully awaited before
+ * `release()` runs), so the raw injected bytes — which can be a
+ * non-trivial fraction of a large model's total memory footprint — no
+ * longer need to stay resident for the life of the session.
  */
 function installCustomCache(
   modelFiles: Readonly<Record<string, ArrayBuffer>>,
-): void {
-  const files = new Map<string, Uint8Array>(
+): () => void {
+  let files: Map<string, Uint8Array> | null = new Map(
     Object.entries(modelFiles).map(([name, buffer]) => [
       name,
       new Uint8Array(buffer),
@@ -65,17 +105,26 @@ function installCustomCache(
   env.useCustomCache = true
   env.customCache = {
     async match(request: RequestInfo | string): Promise<Response | undefined> {
+      if (!files) return undefined
       const url = typeof request === 'string' ? request : request.url
-      for (const [name, bytes] of files) {
-        if (url.endsWith(name)) return new Response(bytes.slice())
-      }
-      return undefined
+      const name = matchDeclaredModelFile(url, files.keys())
+      if (name === undefined) return undefined
+      const bytes = files.get(name)
+      if (!bytes) return undefined
+      // Each declared file is matched by exactly one candidate string per
+      // `getModelFile` call (the local-path candidate always hits first),
+      // so handing back the live backing bytes without copying is safe:
+      // no other in-flight `match()` result aliases the same buffer.
+      return new Response(bytes)
     },
     async put(): Promise<void> {
       // No-op: every file the worker needs was injected upfront in `init`;
       // there is nothing left to persist after a (guaranteed) cache hit.
     },
   } as typeof env.customCache
+  return () => {
+    files = null
+  }
 }
 
 const wasmUrlCache = new Map<string, string>()
@@ -136,91 +185,163 @@ function installWasmPaths(
 }
 
 async function handleInit(request: EmbeddingWorkerInitRequest): Promise<void> {
+  let releaseModelBytes: (() => void) | null = null
   try {
-    installCustomCache(request.modelFiles)
-
-    const requestedDevice = request.device ?? 'wasm'
-    let resolvedDevice = requestedDevice
-    installWasmPaths(request.wasm, request.numThreads, requestedDevice)
-    try {
-      extractor = (await pipeline(
-        'feature-extraction',
-        'yolo-local-embedding-model',
-        {
-          device: requestedDevice,
-          dtype: 'q8',
-        },
-      )) as unknown as FeatureExtractor
-    } catch (error) {
-      if (requestedDevice !== 'webgpu') throw error
-      // WebGPU init can fail for reasons `probeEnvironment` can't see ahead
-      // of time (adapter request denied, lost device, etc.) — fall back to
-      // wasm once, per the plan's "webgpu 失败回退 wasm 一次".
-      resolvedDevice = 'wasm'
-      installWasmPaths(request.wasm, request.numThreads, 'wasm')
-      extractor = (await pipeline(
-        'feature-extraction',
-        'yolo-local-embedding-model',
-        {
-          device: 'wasm',
-          dtype: 'q8',
-        },
-      )) as unknown as FeatureExtractor
-    }
-    spec = request.spec
-    post({
-      type: 'init-result',
-      requestId: request.requestId,
-      ok: true,
-      device: resolvedDevice,
-    })
+    releaseModelBytes = installCustomCache(request.modelFiles)
   } catch (error) {
-    post({
-      type: 'init-result',
-      requestId: request.requestId,
-      ok: false,
-      error: describeError(error),
-    })
+    postError(request, 'init-result', error, 'install-cache')
+    return
   }
+
+  let tokenizer: Tokenizer
+  try {
+    tokenizer = await AutoTokenizer.from_pretrained(MODEL_ID)
+  } catch (error) {
+    releaseModelBytes()
+    postError(request, 'init-result', error, 'load-tokenizer')
+    return
+  }
+
+  const requestedDevice = request.device
+  let resolvedDevice = requestedDevice
+  let model: Model
+  try {
+    installWasmPaths(request.wasm, request.numThreads, requestedDevice)
+    model = await AutoModel.from_pretrained(MODEL_ID, {
+      device: requestedDevice,
+      dtype: 'q8',
+    })
+  } catch (firstError) {
+    if (requestedDevice !== 'webgpu') {
+      releaseModelBytes()
+      postError(
+        request,
+        'init-result',
+        firstError,
+        'load-model',
+        requestedDevice,
+      )
+      return
+    }
+    // WebGPU init can fail for reasons `probeEnvironment` can't see ahead
+    // of time (adapter request denied, lost device, etc.) — fall back to
+    // wasm once, per the plan's "webgpu 失败回退 wasm 一次".
+    resolvedDevice = 'wasm'
+    try {
+      installWasmPaths(request.wasm, request.numThreads, 'wasm')
+      model = await AutoModel.from_pretrained(MODEL_ID, {
+        device: 'wasm',
+        dtype: 'q8',
+      })
+    } catch (secondError) {
+      releaseModelBytes()
+      postError(request, 'init-result', secondError, 'load-model', 'wasm')
+      return
+    }
+  }
+
+  releaseModelBytes()
+  session = { tokenizer, model, spec: request.spec, device: resolvedDevice }
+  post({
+    type: 'init-result',
+    requestId: request.requestId,
+    ok: true,
+    device: resolvedDevice,
+  })
 }
 
 async function handleEmbed(
   request: EmbeddingWorkerEmbedRequest,
 ): Promise<void> {
+  const active = session
+  if (!active) {
+    postError(
+      request,
+      'embed-result',
+      new Error('Embedding session is not initialized'),
+      'inference',
+    )
+    return
+  }
+  const { tokenizer, model, spec, device } = active
   try {
-    if (!extractor || !spec) {
-      throw new Error('Embedding session is not initialized')
-    }
-    const output = await extractor([...request.texts], {
-      pooling: spec.pooling,
-      normalize: spec.normalize,
+    const inputs: { attention_mask: Tensor } = tokenizer([...request.texts], {
+      padding: true,
+      truncation: true,
+      max_length: spec.maxTokens,
     })
-    const nested = output.tolist()
-    const vectors = nested.map((row) => Float32Array.from(row).buffer)
+
+    const outputs: {
+      last_hidden_state?: Tensor
+      logits?: Tensor
+      token_embeddings?: Tensor
+    } = await model(inputs)
+    let result =
+      outputs.last_hidden_state ?? outputs.logits ?? outputs.token_embeddings
+    if (!result) {
+      throw new Error('Model produced no usable output tensor')
+    }
+
+    result =
+      spec.pooling === 'mean'
+        ? mean_pooling(result, inputs.attention_mask)
+        : result.slice(null, 0)
+    if (spec.normalize) result = result.normalize(2, -1)
+
+    const nested = result.tolist() as number[][]
+    if (nested.length !== request.texts.length) {
+      throw new Error(
+        `Embedding worker returned ${nested.length} vectors for ${request.texts.length} input texts`,
+      )
+    }
+    const vectors = nested.map((row, index) => {
+      const vector = Float32Array.from(row)
+      if (vector.length !== spec.dimension) {
+        throw new Error(
+          `Embedding dimension mismatch at index ${index}: expected ${spec.dimension}, got ${vector.length}`,
+        )
+      }
+      return vector.buffer
+    })
     post(
       { type: 'embed-result', requestId: request.requestId, ok: true, vectors },
       vectors,
     )
   } catch (error) {
-    post({
-      type: 'embed-result',
-      requestId: request.requestId,
-      ok: false,
-      error: describeError(error),
-    })
+    postError(request, 'embed-result', error, 'inference', device)
   }
 }
 
-function handleDispose(request: EmbeddingWorkerDisposeRequest): void {
-  extractor = null
-  spec = null
-  for (const url of wasmObjectUrls.splice(0)) URL.revokeObjectURL(url)
-  post({ type: 'dispose-result', requestId: request.requestId, ok: true })
+async function handleDispose(
+  request: EmbeddingWorkerDisposeRequest,
+): Promise<void> {
+  const active = session
+  session = null
+  try {
+    if (active) await active.model.dispose()
+    for (const url of wasmObjectUrls.splice(0)) URL.revokeObjectURL(url)
+    disposed = true
+    post({ type: 'dispose-result', requestId: request.requestId, ok: true })
+  } catch (error) {
+    disposed = true
+    postError(request, 'dispose-result', error, 'dispose', active?.device)
+  }
 }
 
 self.onmessage = (event: MessageEvent<EmbeddingWorkerRequest>): void => {
   const request = event.data
-  if (request.type === 'init') void handleInit(request)
-  else if (request.type === 'embed') void handleEmbed(request)
-  else if (request.type === 'dispose') handleDispose(request)
+  if (disposed && request.type !== 'dispose') {
+    postError(
+      request,
+      request.type === 'init' ? 'init-result' : 'embed-result',
+      new Error('Embedding worker session is disposed'),
+      'unknown',
+    )
+    return
+  }
+  void queue.enqueue(() => {
+    if (request.type === 'init') return handleInit(request)
+    if (request.type === 'embed') return handleEmbed(request)
+    return handleDispose(request)
+  })
 }
