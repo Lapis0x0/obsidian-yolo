@@ -99,6 +99,7 @@ function KnowledgeBaseModalContent({
   const scopeCandidateFiles = collectScopeCandidateFiles(
     plugin.app.vault,
     isIndexPdfEnabled ? ['md', 'pdf'] : ['md'],
+    settings,
   )
 
   const handleScopeChange = (nextRules: ScopeRule[]) => {
@@ -214,7 +215,7 @@ function KnowledgeBaseModalContent({
             app={app}
             vault={plugin.app.vault}
             rules={scopeRules}
-            allowFiles={true}
+            allowFiles={false}
             variant="rag"
             candidateFiles={scopeCandidateFiles}
             defaultRules={[]}

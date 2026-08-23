@@ -210,6 +210,20 @@
   letter-spacing: normal;
 }
 
+/* ================= disabled-state content dimming ================= */
+
+/* Indexing off: the rest of the tab stays mounted (state, scroll position,
+   expanded "advanced settings" ...) but reads as inactive — grayed out and
+   non-interactive — rather than disappearing outright. */
+.yolo-kb-content {
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-kb-content.is-disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
 /* ================= knowledge base grid & card ================= */
 
 .yolo-kb-grid {
@@ -218,36 +232,14 @@
   gap: var(--size-4-3);
 }
 
+/* `.yolo-kb-card` builds on top of `.yolo-agent-card` (+ `--clickable`) —
+   see the JSX, which applies both classes. Border, gradient background,
+   padding, hover/focus state, and transition all come from that shared base;
+   this only adds what a knowledge base card needs beyond a generic one. */
 .yolo-kb-card {
-  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-2);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--background-primary) 94%, transparent) 0%,
-    color-mix(in srgb, var(--background-secondary) 88%, transparent) 100%
-  );
-  padding: var(--size-4-3);
-  cursor: pointer;
-  transition:
-    border-color 160ms ease,
-    background-color 160ms ease,
-    box-shadow 180ms ease;
-}
-
-.yolo-kb-card:hover,
-.yolo-kb-card:focus-within {
-  border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
-  background: color-mix(
-    in srgb,
-    var(--interactive-accent) 8%,
-    var(--background-secondary)
-  );
-  box-shadow: 0 0 0 1px
-    color-mix(in srgb, var(--interactive-accent) 14%, transparent);
 }
 
 .yolo-kb-card.is-indexing .yolo-kb-card-name {
@@ -422,6 +414,12 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
+.yolo-kb-embedding-model-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+}
+
 /* ================= advanced settings section ================= */
 
 .yolo-rag-card {
@@ -429,12 +427,13 @@
   border-radius: var(--radius-m);
   background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
   padding: var(--size-4-3);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-shadow: 0 1px 2px var(--background-modifier-box-shadow);
 }
 
 /* ================= index progress ring (status bar + card overlay) ================= */
 
 .yolo-index-ring {
+  position: relative;
   flex-shrink: 0;
 }
 
@@ -448,6 +447,17 @@
 
 .yolo-index-ring-fill {
   stroke: var(--interactive-accent);
+}
+
+.yolo-index-ring-label {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  line-height: 1;
 }
 
 @media (max-width: 640px) {

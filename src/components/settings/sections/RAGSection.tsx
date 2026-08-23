@@ -1,13 +1,6 @@
-import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import {
-  Database,
-  MoreHorizontal,
-  Pickaxe,
-  Plus,
-  RefreshCw,
-  Trash2,
-} from 'lucide-react'
-import { App, Notice } from 'obsidian'
+import dayjs from 'dayjs'
+import { Database, MoreHorizontal, Plus } from 'lucide-react'
+import { App, Menu, Notice } from 'obsidian'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { RECOMMENDED_MODELS_FOR_EMBEDDING } from '../../../constants'
@@ -16,6 +9,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { RagIndexServiceSnapshot } from '../../../core/rag/ragIndexService'
 import YoloPlugin from '../../../main'
 import { KnowledgeBase } from '../../../settings/schema/setting.types'
+import { getNodeWindow } from '../../../utils/dom/window-context'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import {
   ObsidianDropdown,
@@ -26,7 +20,10 @@ import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { IndexProgressRing } from '../IndexProgressRing'
-import { EmbeddingDbManageModal } from '../modals/EmbeddingDbManageModal'
+import {
+  EmbeddingDbManageModal,
+  inMemoryIndexMb,
+} from '../modals/EmbeddingDbManageModal'
 import { KnowledgeBaseModal } from '../modals/KnowledgeBaseModal'
 import { estimateFiles, rulesFromWorkspaceScope } from '../scope/scopeRules'
 import { ScopeStatusText } from '../scope/ScopeStatusText'
@@ -43,18 +40,18 @@ type RAGSectionProps = {
 type KbData = {
   docCount: number
   chunkCount: number
-  bytes: number
+  /** In-memory index size estimate (MB) — same int8 formula as
+   * `EmbeddingDbManageModal`'s table, not the on-disk float32 `vectorBytes`. */
+  estimateMb: number
   pendingChanged: number
 }
 
 const EMPTY_KB_DATA: KbData = {
   docCount: 0,
   chunkCount: 0,
-  bytes: 0,
+  estimateMb: 0,
   pendingChanged: 0,
 }
-
-const formatMb = (bytes: number): string => (bytes / 1e6).toFixed(1)
 
 /** File-based percent for a running/completed run — mirrors the previous
  * single-run RAGSection's ring computation, applied per knowledge base. */
@@ -85,9 +82,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     () => plugin.getRagIndexSnapshot(),
   )
   const [kbData, setKbData] = useState<Record<string, KbData>>({})
-  const [portalContainer, setPortalContainer] = useState<HTMLElement>()
+  // Popout-safe realm for this section's own timers (debounce, throttle) —
+  // captured from the mounted node rather than the bare global `window`, so
+  // scheduling still targets the right window when this settings tab is open
+  // in a popout. See `src/utils/dom/window-context.ts`.
+  const sectionWindowRef = useRef<Window & typeof globalThis>(window)
   const sectionRef = useCallback((node: HTMLDivElement | null) => {
-    setPortalContainer(node?.ownerDocument.body)
+    sectionWindowRef.current = getNodeWindow(node)
   }, [])
 
   const isRagEnabled = settings.ragOptions.enabled ?? true
@@ -108,6 +109,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       return
     }
     const dbManager = await plugin.getDbManager()
+    const currentDimension = settings.embeddingModels.find(
+      (model) => model.id === settings.embeddingModelId,
+    )?.dimension
     const entries = await Promise.all(
       knowledgeBases.map(async (kb): Promise<[string, KbData]> => {
         try {
@@ -120,12 +124,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
           const modelStats = stats.find(
             (s) => s.model === settings.embeddingModelId,
           )
+          const rowCount = modelStats?.rowCount ?? 0
           return [
             kb.id,
             {
               docCount,
-              chunkCount: modelStats?.rowCount ?? 0,
-              bytes: modelStats?.vectorBytes ?? 0,
+              chunkCount: rowCount,
+              estimateMb: inMemoryIndexMb(rowCount, currentDimension) ?? 0,
               pendingChanged: pending.changed,
             },
           ]
@@ -139,7 +144,12 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       }),
     )
     setKbData(Object.fromEntries(entries))
-  }, [plugin, knowledgeBases, settings.embeddingModelId])
+  }, [
+    plugin,
+    knowledgeBases,
+    settings.embeddingModelId,
+    settings.embeddingModels,
+  ])
 
   const knowledgeBaseScopeKey = useMemo(
     () =>
@@ -173,7 +183,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     let timer: number | null = null
     const scheduleRefresh = () => {
       if (timer !== null) return
-      timer = window.setTimeout(() => {
+      timer = sectionWindowRef.current.setTimeout(() => {
         timer = null
         void refreshKbData()
       }, 2000)
@@ -182,7 +192,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
 
     const refs = events.map((name) => (vault as any).on(name, scheduleRefresh))
     return () => {
-      if (timer !== null) window.clearTimeout(timer)
+      if (timer !== null) sectionWindowRef.current.clearTimeout(timer)
 
       refs.forEach((ref: any) => vault.offref(ref))
     }
@@ -227,10 +237,11 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       if (!sharedChanged && !scopeChanged) continue
       const timers = syncTimersRef.current
       const existingTimer = timers.get(kb.id)
-      if (existingTimer !== undefined) window.clearTimeout(existingTimer)
+      if (existingTimer !== undefined)
+        sectionWindowRef.current.clearTimeout(existingTimer)
       timers.set(
         kb.id,
-        window.setTimeout(() => {
+        sectionWindowRef.current.setTimeout(() => {
           timers.delete(kb.id)
           plugin
             .runRagIndex(kb.id, {
@@ -260,7 +271,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   useEffect(() => {
     const timers = syncTimersRef.current
     return () => {
-      for (const timer of timers.values()) window.clearTimeout(timer)
+      for (const timer of timers.values())
+        sectionWindowRef.current.clearTimeout(timer)
     }
   }, [])
 
@@ -393,6 +405,17 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       : settings.embeddingModelId
   }, [settings.embeddingModels, settings.embeddingModelId])
 
+  // The embedding model row previews a selection locally — switching models
+  // means every knowledge base's existing vectors stop matching (a de facto
+  // full rebuild), so a dropdown pick alone must never apply it. A separate
+  // "set as current" confirm step is required; this tracks that pending pick.
+  const [pendingEmbeddingModelId, setPendingEmbeddingModelId] = useState(
+    settings.embeddingModelId,
+  )
+  useEffect(() => {
+    setPendingEmbeddingModelId(settings.embeddingModelId)
+  }, [settings.embeddingModelId])
+
   // Candidate files a scope is measured against — shared across every
   // knowledge base card's ScopeStatusText estimate (same set ScopeSummary
   // itself uses inside the config modal).
@@ -401,8 +424,9 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
       collectScopeCandidateFiles(
         plugin.app.vault,
         isIndexPdfEnabled ? ['md', 'pdf'] : ['md'],
+        settings,
       ),
-    [plugin.app.vault, isIndexPdfEnabled],
+    [plugin.app.vault, isIndexPdfEnabled, settings],
   )
 
   const [showAdvancedRagSettings, setShowAdvancedRagSettings] = useState(false)
@@ -481,6 +505,69 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     }).open()
   }
 
+  // Native Obsidian `Menu` rather than the Radix dropdown used elsewhere on
+  // this page — a React+Radix stack only sees keys/clicks reaching a node in
+  // its own document, which breaks in an Obsidian popout window. `Menu` goes
+  // through Obsidian's own keymap and works in both.
+  const openStatusMenu = (event: MouseEvent) => {
+    const menu = new Menu()
+    menu.addItem((item) =>
+      item
+        .setTitle(t('settings.knowledgeBases.rebuildAll', '重建全部索引'))
+        .setIcon('refresh-cw')
+        .onClick(() => {
+          for (const kb of knowledgeBases) {
+            void runIndexJob(kb.id, 'rebuild', {
+              successNotice: t('notices.rebuildComplete'),
+              failureNotice: t('notices.rebuildFailed'),
+            })
+          }
+        }),
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle(t('settings.rag.manage', '管理索引数据…'))
+        .setIcon('database')
+        .onClick(() => new EmbeddingDbManageModal(app, plugin).open()),
+    )
+    menu.addSeparator()
+    menu.addItem((item) =>
+      item
+        .setTitle(t('settings.knowledgeBases.disable', '关闭知识库索引'))
+        .setIcon('power-off')
+        .onClick(() => {
+          plugin.cancelRagIndex()
+          applySettingsUpdate({
+            ...settings,
+            ragOptions: { ...settings.ragOptions, enabled: false },
+          })
+        }),
+    )
+    menu.showAtMouseEvent(event)
+  }
+
+  const openCardMenu = (event: MouseEvent, kb: KnowledgeBase) => {
+    const menu = new Menu()
+    menu.addItem((item) =>
+      item
+        .setTitle(t('settings.knowledgeBases.rebuildThis', '重建此库'))
+        .setIcon('pickaxe')
+        .onClick(() => {
+          void runIndexJob(kb.id, 'rebuild', {
+            successNotice: t('notices.rebuildComplete'),
+            failureNotice: t('notices.rebuildFailed'),
+          })
+        }),
+    )
+    menu.addItem((item) =>
+      item
+        .setTitle(t('settings.knowledgeBases.delete', '删除知识库'))
+        .setIcon('trash-2')
+        .onClick(() => handleDeleteKb(kb)),
+    )
+    menu.showAtMouseEvent(event)
+  }
+
   return (
     <div className="yolo-settings-section" ref={sectionRef}>
       <div className="yolo-settings-header">
@@ -511,6 +598,10 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                 )}
               </div>
             </>
+          ) : knowledgeBases.length === 0 ? (
+            <div className="yolo-kb-status-line">
+              {t('settings.knowledgeBases.emptyState', '还没有知识库')}
+            </div>
           ) : isIndexing && activeRun ? (
             <>
               <div className="yolo-kb-status-line">
@@ -567,7 +658,41 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
           )}
         </div>
         <div className="yolo-kb-status-actions">
-          {isRagEnabled ? (
+          {!isRagEnabled ? (
+            <ObsidianButton
+              text={t(
+                'settings.knowledgeBases.enableAndIndex',
+                '开启并建立索引',
+              )}
+              cta
+              onClick={() => {
+                if (!settings.embeddingModelId) {
+                  new Notice(
+                    t(
+                      'settings.rag.selectEmbeddingModelFirst',
+                      '请先选择嵌入模型，再启用知识库索引。',
+                    ),
+                  )
+                  return
+                }
+                applySettingsUpdate({
+                  ...settings,
+                  ragOptions: { ...settings.ragOptions, enabled: true },
+                })
+                for (const kb of knowledgeBases) {
+                  void runIndexJob(kb.id, 'sync', {
+                    failureNotice: t('notices.indexUpdateFailed'),
+                  })
+                }
+              }}
+            />
+          ) : knowledgeBases.length === 0 ? (
+            <ObsidianButton
+              text={t('settings.knowledgeBases.new', '新建')}
+              cta
+              onClick={() => handleOpenKbModal()}
+            />
+          ) : (
             <>
               <span className="yolo-kb-status-auto">
                 {t('settings.rag.autoUpdate', '自动更新')}
@@ -602,107 +727,20 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   }}
                 />
               )}
-              <DropdownMenu.Root>
-                <DropdownMenu.Trigger className="yolo-kb-status-menu-trigger">
-                  <MoreHorizontal size={16} />
-                </DropdownMenu.Trigger>
-                <DropdownMenu.Portal container={portalContainer}>
-                  <DropdownMenu.Content
-                    className="yolo-agent-card-menu-popover"
-                    align="end"
-                    sideOffset={8}
-                  >
-                    <ul className="yolo-agent-card-menu-list">
-                      <DropdownMenu.Item
-                        asChild
-                        onSelect={() => {
-                          for (const kb of knowledgeBases) {
-                            void runIndexJob(kb.id, 'rebuild', {
-                              successNotice: t('notices.rebuildComplete'),
-                              failureNotice: t('notices.rebuildFailed'),
-                            })
-                          }
-                        }}
-                      >
-                        <li className="yolo-agent-card-menu-item">
-                          <span className="yolo-agent-card-menu-icon">
-                            <RefreshCw size={16} />
-                          </span>
-                          {t(
-                            'settings.knowledgeBases.rebuildAll',
-                            '重建全部索引',
-                          )}
-                        </li>
-                      </DropdownMenu.Item>
-                      <DropdownMenu.Item
-                        asChild
-                        onSelect={() =>
-                          new EmbeddingDbManageModal(app, plugin).open()
-                        }
-                      >
-                        <li className="yolo-agent-card-menu-item">
-                          <span className="yolo-agent-card-menu-icon">
-                            <Database size={16} />
-                          </span>
-                          {t('settings.rag.manage', '管理索引数据…')}
-                        </li>
-                      </DropdownMenu.Item>
-                      <li
-                        className="yolo-agent-card-menu-sep"
-                        role="separator"
-                      />
-                      <DropdownMenu.Item
-                        asChild
-                        onSelect={() =>
-                          applySettingsUpdate({
-                            ...settings,
-                            ragOptions: {
-                              ...settings.ragOptions,
-                              enabled: false,
-                            },
-                          })
-                        }
-                      >
-                        <li className="yolo-agent-card-menu-item yolo-agent-card-menu-danger">
-                          {t(
-                            'settings.knowledgeBases.disable',
-                            '关闭知识库索引',
-                          )}
-                        </li>
-                      </DropdownMenu.Item>
-                    </ul>
-                  </DropdownMenu.Content>
-                </DropdownMenu.Portal>
-              </DropdownMenu.Root>
+              <button
+                type="button"
+                className="yolo-kb-status-menu-trigger"
+                aria-label={t('common.configure', 'Configure')}
+                onClick={(event) => openStatusMenu(event.nativeEvent)}
+              >
+                <MoreHorizontal size={16} />
+              </button>
             </>
-          ) : (
-            <ObsidianButton
-              text={t(
-                'settings.knowledgeBases.enableAndIndex',
-                '开启并建立索引',
-              )}
-              cta
-              onClick={() => {
-                if (!settings.embeddingModelId) {
-                  new Notice(
-                    t(
-                      'settings.rag.selectEmbeddingModelFirst',
-                      '请先选择嵌入模型，再启用知识库索引。',
-                    ),
-                  )
-                  return
-                }
-                applySettingsUpdate({
-                  ...settings,
-                  ragOptions: { ...settings.ragOptions, enabled: true },
-                })
-              }}
-            />
           )}
         </div>
       </div>
 
-      {isRagEnabled && (
+      <div className={`yolo-kb-content${!isRagEnabled ? ' is-disabled' : ''}`}>
         <>
           <div className="yolo-kb-divider-label">
             {t('settings.knowledgeBases.title', '知识库')}
@@ -726,11 +764,13 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               const isNeedsAttention =
                 !isThisIndexing &&
                 (run?.status === 'failed' || run?.status === 'retry_scheduled')
+              const lastUpdatedAt =
+                run?.status === 'completed' ? run.updatedAt : undefined
 
               return (
                 <article
                   key={kb.id}
-                  className={`yolo-kb-card${isThisIndexing ? ' is-indexing' : ''}`}
+                  className={`yolo-agent-card yolo-agent-card--clickable yolo-kb-card${isThisIndexing ? ' is-indexing' : ''}`}
                   role="button"
                   tabIndex={0}
                   onClick={() => handleOpenKbModal(kb.id)}
@@ -803,63 +843,22 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                           </div>
                         )}
                       </div>
-                      <DropdownMenu.Root>
-                        <DropdownMenu.Trigger
-                          className="yolo-agent-card-menu-trigger"
-                          onClick={(event) => event.stopPropagation()}
+                      <button
+                        type="button"
+                        className="yolo-agent-card-menu-trigger"
+                        aria-label={t('common.configure', 'Configure')}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          openCardMenu(event.nativeEvent, kb)
+                        }}
+                      >
+                        <span
+                          className="yolo-agent-card-menu-trigger-dots"
+                          aria-hidden="true"
                         >
-                          <span
-                            className="yolo-agent-card-menu-trigger-dots"
-                            aria-hidden="true"
-                          >
-                            ...
-                          </span>
-                        </DropdownMenu.Trigger>
-                        <DropdownMenu.Portal container={portalContainer}>
-                          <DropdownMenu.Content
-                            className="yolo-agent-card-menu-popover"
-                            align="end"
-                            sideOffset={8}
-                            onClick={(event) => event.stopPropagation()}
-                          >
-                            <ul className="yolo-agent-card-menu-list">
-                              <DropdownMenu.Item
-                                asChild
-                                onSelect={() => {
-                                  void runIndexJob(kb.id, 'rebuild', {
-                                    successNotice: t('notices.rebuildComplete'),
-                                    failureNotice: t('notices.rebuildFailed'),
-                                  })
-                                }}
-                              >
-                                <li className="yolo-agent-card-menu-item">
-                                  <span className="yolo-agent-card-menu-icon">
-                                    <Pickaxe size={16} />
-                                  </span>
-                                  {t(
-                                    'settings.knowledgeBases.rebuildThis',
-                                    '重建此库',
-                                  )}
-                                </li>
-                              </DropdownMenu.Item>
-                              <DropdownMenu.Item
-                                asChild
-                                onSelect={() => handleDeleteKb(kb)}
-                              >
-                                <li className="yolo-agent-card-menu-item yolo-agent-card-menu-danger">
-                                  <span className="yolo-agent-card-menu-icon">
-                                    <Trash2 size={16} />
-                                  </span>
-                                  {t(
-                                    'settings.knowledgeBases.delete',
-                                    '删除知识库',
-                                  )}
-                                </li>
-                              </DropdownMenu.Item>
-                            </ul>
-                          </DropdownMenu.Content>
-                        </DropdownMenu.Portal>
-                      </DropdownMenu.Root>
+                          ...
+                        </span>
+                      </button>
                     </div>
                     <div className="yolo-kb-card-meta">
                       <span className="yolo-kb-card-meta-item">
@@ -878,6 +877,17 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                           ).replace('{{n}}', String(data.pendingChanged))}
                         </span>
                       )}
+                      {lastUpdatedAt !== undefined && (
+                        <span className="yolo-kb-card-meta-item">
+                          {t(
+                            'settings.knowledgeBases.lastUpdated',
+                            '最近更新 {{time}}',
+                          ).replace(
+                            '{{time}}',
+                            dayjs(lastUpdatedAt).format('YYYY-MM-DD HH:mm'),
+                          )}
+                        </span>
+                      )}
                     </div>
                   </div>
                   <div className="yolo-kb-card-foot">
@@ -893,7 +903,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                         </span>
                       </div>
                       <div className="yolo-kb-card-num">
-                        <b>{formatMb(data.bytes)}</b>
+                        <b>{data.estimateMb.toFixed(1)}</b>
                         <span>MB</span>
                       </div>
                     </div>
@@ -942,13 +952,24 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             desc={t('settings.rag.embeddingModelDesc')}
             className="yolo-settings-card"
           >
-            <ObsidianDropdown
-              value={settings.embeddingModelId}
-              groupedOptions={embeddingModelOptionGroups}
-              onChange={(value) =>
-                applySettingsUpdate({ ...settings, embeddingModelId: value })
-              }
-            />
+            <div className="yolo-kb-embedding-model-row">
+              <ObsidianDropdown
+                value={pendingEmbeddingModelId}
+                groupedOptions={embeddingModelOptionGroups}
+                onChange={setPendingEmbeddingModelId}
+              />
+              <ObsidianButton
+                text={t('settings.knowledgeBases.setAsCurrent', '设为当前')}
+                cta
+                disabled={pendingEmbeddingModelId === settings.embeddingModelId}
+                onClick={() =>
+                  applySettingsUpdate({
+                    ...settings,
+                    embeddingModelId: pendingEmbeddingModelId,
+                  })
+                }
+              />
+            </div>
           </ObsidianSetting>
 
           <section className="yolo-rag-card">
@@ -1116,7 +1137,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             )}
           </section>
         </>
-      )}
+      </div>
     </div>
   )
 }

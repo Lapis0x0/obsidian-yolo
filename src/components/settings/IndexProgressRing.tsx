@@ -58,6 +58,13 @@ export function IndexProgressRing({
           style={{ transition: 'stroke-dashoffset 200ms ease' }}
         />
       </svg>
+      <span
+        className="yolo-index-ring-label"
+        aria-hidden="true"
+        style={{ fontSize: Math.max(7, Math.round(size * 0.32)) }}
+      >
+        {Math.round(clamped)}
+      </span>
     </div>
   )
 }
