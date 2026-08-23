@@ -91,6 +91,20 @@ function parseAssets(
   return Object.freeze(assets)
 }
 
+/**
+ * Parses a runtime component registry — schema v1 (no `assets`, the shape
+ * every registry had before this component's `assets` extension) or v2 —
+ * normalizing either into the current `RuntimeComponentRegistry` shape.
+ * Deliberately does NOT require every currently-known component id to be
+ * present: this function's job is "is this a well-formed registry", not "is
+ * this *the* current baked registry" — see
+ * `assertCompleteRuntimeComponentRegistry` for the latter, which is what
+ * `bakedRuntimeComponentRegistry.ts` actually needs (the host only ever
+ * loads its own freshly-built registry, always complete and always v2).
+ * Kept separate so a well-formed *historical* registry — schema v1, or a v2
+ * registry from a tag that only had some of today's components — parses
+ * successfully too.
+ */
 export function parseRuntimeComponentRegistry(
   value: unknown,
 ): RuntimeComponentRegistry {
@@ -100,7 +114,10 @@ export function parseRuntimeComponentRegistry(
     ['schemaVersion', 'components'],
     'Runtime component registry',
   )
-  if (registry.schemaVersion !== 2 || !Array.isArray(registry.components)) {
+  if (
+    (registry.schemaVersion !== 1 && registry.schemaVersion !== 2) ||
+    !Array.isArray(registry.components)
+  ) {
     throw new Error('Runtime component registry is invalid')
   }
   const ids = new Set<string>()
@@ -108,6 +125,11 @@ export function parseRuntimeComponentRegistry(
     const descriptor = record(candidate, `Runtime component ${index}`)
     const keys = Object.keys(descriptor)
     const hasAssets = keys.includes('assets')
+    if (registry.schemaVersion === 1 && hasAssets) {
+      throw new Error(
+        `Runtime component ${index} declares assets under schema v1`,
+      )
+    }
     exactKeys(
       descriptor,
       [
@@ -166,13 +188,27 @@ export function parseRuntimeComponentRegistry(
       ...(assets ? { assets } : {}),
     })
   })
-  if (components.length !== IDS.size) {
-    throw new Error('Runtime component registry is incomplete')
-  }
   return Object.freeze({
     schemaVersion: 2,
     components: Object.freeze(components),
   })
+}
+
+/**
+ * Asserts `registry` is the CURRENT baked registry: exactly one descriptor
+ * per id in `IDS`, no more, no fewer. Only `bakedRuntimeComponentRegistry.ts`
+ * needs this — the host always ships a freshly-built registry that must
+ * cover every component it knows about — so it's split out from the generic
+ * `parseRuntimeComponentRegistry` above, which also has to accept a
+ * historical registry (schema v1, or a v2 tag predating a newer component)
+ * that legitimately lists fewer ids.
+ */
+export function assertCompleteRuntimeComponentRegistry(
+  registry: RuntimeComponentRegistry,
+): void {
+  if (registry.components.length !== IDS.size) {
+    throw new Error('Runtime component registry is incomplete')
+  }
 }
 
 export function runtimeComponentReleaseUrl(

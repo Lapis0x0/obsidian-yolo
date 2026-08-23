@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 import {
+  assertCompleteRuntimeComponentRegistry,
   parseRuntimeComponentRegistry,
   resolveRuntimeComponentArtifactSources,
   runtimeComponentReleaseUrl,
@@ -30,6 +31,58 @@ describe('runtime component manifest', () => {
     )
     const registry = parseRuntimeComponentRegistry(raw)
     expect(registry.components.length).toBeGreaterThan(0)
+    expect(() => assertCompleteRuntimeComponentRegistry(registry)).not.toThrow()
+  })
+
+  it('reads a historical schema-v1 registry (no assets field anywhere)', () => {
+    const registry = parseRuntimeComponentRegistry({
+      schemaVersion: 1,
+      components: [descriptor],
+    })
+    expect(registry.schemaVersion).toBe(2)
+    expect(registry.components).toHaveLength(1)
+    expect(registry.components[0]?.assets).toBeUndefined()
+    // A historical tag's registry legitimately lists fewer components than
+    // today's IDS set — that's fine for the generic parse; only the current
+    // baked registry is required to be complete.
+    expect(() => assertCompleteRuntimeComponentRegistry(registry)).toThrow(
+      'incomplete',
+    )
+  })
+
+  it('rejects a schema-v1 registry that declares assets on a component', () => {
+    expect(() =>
+      parseRuntimeComponentRegistry({
+        schemaVersion: 1,
+        components: [
+          {
+            ...descriptor,
+            assets: [
+              {
+                name: 'x.wasm',
+                path: 'runtime-components/tokenizer/dist/assets/x.wasm',
+                byteSize: 1,
+                sha256: 'a'.repeat(64),
+              },
+            ],
+          },
+        ],
+      }),
+    ).toThrow('schema v1')
+  })
+
+  it('flags an incomplete v2 registry only via the explicit completeness check', () => {
+    // A single, otherwise well-formed component is a valid *registry* on
+    // its own — completeness is a stricter, separate requirement that only
+    // applies to the registry the host bakes into its own build.
+    const registry = parseRuntimeComponentRegistry({
+      schemaVersion: 2,
+      components: [descriptor],
+    })
+    expect(registry.components).toHaveLength(1)
+    expect(() => assertCompleteRuntimeComponentRegistry(registry)).toThrow(
+      'incomplete',
+    )
   })
 
   it('rejects paths that are not the one fixed entry for the component', () => {

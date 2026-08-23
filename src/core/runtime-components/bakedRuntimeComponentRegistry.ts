@@ -1,6 +1,11 @@
 import registryJson from '../../../runtime-components/registry.json'
 
-import { parseRuntimeComponentRegistry } from './runtimeComponentManifest'
+import {
+  assertCompleteRuntimeComponentRegistry,
+  parseRuntimeComponentRegistry,
+} from './runtimeComponentManifest'
 
-export const BAKED_RUNTIME_COMPONENT_REGISTRY =
-  parseRuntimeComponentRegistry(registryJson)
+const parsed = parseRuntimeComponentRegistry(registryJson)
+assertCompleteRuntimeComponentRegistry(parsed)
+
+export const BAKED_RUNTIME_COMPONENT_REGISTRY = parsed
