@@ -34,7 +34,14 @@ const PROXY_ENV_KEYS = [
 const envHasProxy = (env: NodeJS.ProcessEnv): boolean =>
   PROXY_ENV_KEYS.some((key) => typeof env[key] === 'string' && env[key]?.trim())
 
-const getDesktopProxyAgent = async (): Promise<
+/**
+ * Exported for `core/rag/local-embedding/download.ts`: local embedding model
+ * files are large (tens to hundreds of MB) and must go through the same
+ * proxy policy as every other desktop outbound request (local/private
+ * destinations bypass, explicit env proxy wins, otherwise defer to the
+ * system proxy) rather than a second bespoke resolver.
+ */
+export const getDesktopProxyAgent = async (): Promise<
   RequestOptions['agent'] | undefined
 > => {
   if (desktopProxyAgent !== undefined) {
