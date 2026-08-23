@@ -403,7 +403,7 @@ button.yolo-scope-filter {
 button.yolo-scope-filter.is-active {
   border-color: var(--interactive-accent);
   color: var(--interactive-accent);
-  background: rgba(var(--color-accent-rgb), 0.06);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
 }
 
 .yolo-scope-tree {
@@ -524,7 +524,7 @@ button.yolo-scope-row-toggle.is-blank {
 }
 
 .yolo-scope-highlight {
-  background: rgba(var(--color-accent-rgb), 0.24);
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
   color: inherit;
   border-radius: 2px;
   padding: 0 1px;

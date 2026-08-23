@@ -1,6 +1,12 @@
 import { Check, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
-import { App, Notice, Platform } from 'obsidian'
-import { useEffect, useMemo, useState, useSyncExternalStore } from 'react'
+import { Notice, Platform } from 'obsidian'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import { useLanguage } from '../../../../contexts/language-context'
 import { useSettings } from '../../../../contexts/settings-context'
@@ -24,9 +30,9 @@ import {
 import { ObsidianButton } from '../../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../../common/ObsidianDropdown'
 import { ObsidianTextInput } from '../../../common/ObsidianTextInput'
-import { ConfirmModal } from '../../../modals/ConfirmModal'
 
 const CUSTOM_ENDPOINT_SENTINEL = '__custom__'
+const DELETE_CONFIRM_TIMEOUT_MS = 3000
 
 /** `str` with every `{{key}}` in `vars` substituted — the interpolation
  * scheme every i18n string in this file uses. */
@@ -263,7 +269,6 @@ export function describeLocalEmbeddingEngineIssue(
 }
 
 type LocalEmbeddingShelfProps = {
-  app: App
   plugin: YoloPlugin
 }
 
@@ -276,7 +281,7 @@ type LocalEmbeddingShelfProps = {
  * normal Provider entry — local embedding models have no API key/base URL,
  * they're backed by the `embedding-engine` runtime component.
  */
-export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
+export function LocalEmbeddingShelf({ plugin }: LocalEmbeddingShelfProps) {
   const { settings, updateSettings } = useSettings()
   const { t } = useLanguage()
   const tr = useMemo(() => localEmbeddingTranslator(t), [t])
@@ -370,26 +375,35 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
     })
   }
 
-  const handleDelete = (entry: LocalEmbeddingCatalogEntry) => {
-    const doDelete = () => {
-      manager.remove(entry.id).catch((error: unknown) => {
-        console.error('[YOLO] Failed to remove local embedding model:', error)
-      })
+  const [confirmingDeleteId, setConfirmingDeleteId] = useState<string | null>(
+    null,
+  )
+  const deleteConfirmTimerRef = useRef<number | null>(null)
+  const clearDeleteConfirmTimer = () => {
+    if (deleteConfirmTimerRef.current !== null) {
+      window.clearTimeout(deleteConfirmTimerRef.current)
+      deleteConfirmTimerRef.current = null
     }
-    if (isCurrent(entry)) {
-      new ConfirmModal(app, {
-        title: tr('deleteCurrentConfirmTitle', '删除当前使用的嵌入模型？'),
-        message: tr(
-          'deleteCurrentConfirmMessage',
-          '"{{name}}" 是当前使用的嵌入模型。删除其文件后，本地嵌入检索将不可用，直到你选择其他模型。此操作不可撤销。',
-          { name: entry.displayName },
-        ),
-        ctaText: t('common.delete', '删除'),
-        onConfirm: doDelete,
-      }).open()
+  }
+  useEffect(() => () => clearDeleteConfirmTimer(), [])
+
+  const handleDelete = (entry: LocalEmbeddingCatalogEntry) => {
+    if (confirmingDeleteId !== entry.id) {
+      clearDeleteConfirmTimer()
+      setConfirmingDeleteId(entry.id)
+      deleteConfirmTimerRef.current = window.setTimeout(() => {
+        setConfirmingDeleteId((current) =>
+          current === entry.id ? null : current,
+        )
+        deleteConfirmTimerRef.current = null
+      }, DELETE_CONFIRM_TIMEOUT_MS)
       return
     }
-    doDelete()
+    clearDeleteConfirmTimer()
+    setConfirmingDeleteId(null)
+    manager.remove(entry.id).catch((error: unknown) => {
+      console.error('[YOLO] Failed to remove local embedding model:', error)
+    })
   }
 
   const endpoint = settings.localEmbedding.endpoint
@@ -436,276 +450,213 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
     }))
   }
 
-  const storageUsedBytes = useMemo(
-    () =>
-      LOCAL_EMBEDDING_CATALOG.reduce((sum, entry) => {
-        const state = modelSnapshot.get(entry.id)
-        return state?.status === 'ready' ? sum + entry.totalBytes : sum
-      }, 0),
-    [modelSnapshot],
+  const groupHeader = (
+    <div className="yolo-kb-ml-group">
+      <b>{tr('groupLabel', '本地')}</b>
+      {tr('groupDesc', '在你的设备上运行，笔记内容不出本机')}
+    </div>
   )
-
-  const handleManageDownloaded = () => {
-    // Removing everything also deletes the current model's files if it's a
-    // local one — reuse the same "you'll lose search until you pick another
-    // model" warning as the per-card delete-current confirm instead of the
-    // generic "remove downloaded models" copy.
-    const currentEntry =
-      currentModel?.providerId === LOCAL_EMBEDDING_PROVIDER_ID
-        ? getLocalEmbeddingCatalogEntry(currentModel.model)
-        : undefined
-    const currentWillBeDeleted =
-      !!currentEntry && modelSnapshot.get(currentEntry.id)?.status === 'ready'
-    new ConfirmModal(app, {
-      title:
-        currentWillBeDeleted && currentEntry
-          ? tr('deleteCurrentConfirmTitle', '删除当前使用的嵌入模型？')
-          : tr('manageDownloadedConfirmTitle', '移除全部已下载模型？'),
-      message:
-        currentWillBeDeleted && currentEntry
-          ? tr(
-              'deleteCurrentConfirmMessage',
-              '"{{name}}" 是当前使用的嵌入模型。删除其文件后，本地嵌入检索将不可用，直到你选择其他模型。此操作不可撤销。',
-              { name: currentEntry.displayName },
-            )
-          : tr(
-              'manageDownloadedConfirmMessage',
-              '将删除磁盘上所有已下载的本地嵌入模型，之后可以重新下载。',
-            ),
-      ctaText: t('common.delete', '删除'),
-      onConfirm: () => {
-        manager.removeAll().catch((error: unknown) => {
-          console.error(
-            '[YOLO] Failed to remove all local embedding models:',
-            error,
-          )
-        })
-      },
-    }).open()
-  }
 
   if (!Platform.isDesktop) {
     return (
-      <div className="yolo-local-embedding-group is-disabled">
-        <div className="yolo-kb-divider-label yolo-kb-divider-label--sub">
-          {tr('groupLabel', '本地')}
+      <>
+        {groupHeader}
+        <div className="yolo-kb-ml-row">
+          <div className="yolo-kb-ml-main">
+            <div className="yolo-kb-ml-meta">
+              {tr('desktopOnly', '本地嵌入模型仅支持桌面端。')}
+            </div>
+          </div>
         </div>
-        <div className="yolo-local-embedding-desktop-only">
-          {tr('desktopOnly', '本地嵌入模型仅支持桌面端。')}
-        </div>
-      </div>
+      </>
     )
   }
 
+  const percentOf = (received: number, total: number) =>
+    total > 0 ? Math.min(100, Math.round((received / total) * 100)) : 0
+
   return (
-    <div className="yolo-local-embedding-group">
-      <div className="yolo-kb-divider-label yolo-kb-divider-label--sub">
-        {tr('groupLabel', '本地')}
-        <span className="yolo-kb-divider-label-faint">
-          {tr('groupDesc', '完全在本机运行嵌入计算，无需 API Key。')}
-        </span>
-      </div>
+    <>
+      {groupHeader}
+      {LOCAL_EMBEDDING_CATALOG.map((entry) => {
+        const state: LocalEmbeddingModelState = modelSnapshot.get(entry.id) ?? {
+          status: 'not-installed',
+        }
+        const expanded = expandedIds.has(entry.id)
+        const current = isCurrent(entry)
+        const sizeLabel = formatBytes(entry.totalBytes)
 
-      <div className="yolo-local-embedding-list">
-        {LOCAL_EMBEDDING_CATALOG.map((entry) => {
-          const state: LocalEmbeddingModelState = modelSnapshot.get(
-            entry.id,
-          ) ?? { status: 'not-installed' }
-          const expanded = expandedIds.has(entry.id)
-          const current = isCurrent(entry)
-
-          return (
-            <div
-              key={entry.id}
-              className={`yolo-local-embedding-row${current ? ' is-current' : ''}`}
-            >
-              <div className="yolo-local-embedding-row-main">
-                <div className="yolo-local-embedding-row-name">
-                  {entry.displayName}
-                  <a
-                    href={`https://huggingface.co/${entry.hfRepo}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="yolo-local-embedding-hf-link"
-                    aria-label={entry.hfRepo}
-                  >
-                    <ExternalLink size={12} />
-                  </a>
-                  {entry.recommended && (
-                    <span className="yolo-local-embedding-tag is-recommended">
-                      {t('settings.defaults.recommendedBadge', '推荐')}
-                    </span>
-                  )}
-                  {current && (
-                    <span className="yolo-kb-status-pill green">
-                      <Check size={10} /> {tr('current', '当前使用')}
-                    </span>
-                  )}
-                </div>
-                <div className="yolo-local-embedding-row-meta">
-                  {tr(
-                    'metaLine',
-                    '{{dimension}} 维 · {{languages}} · {{size}}',
-                    {
-                      dimension: entry.dimension,
-                      languages: entry.languages
-                        .map((code) => tr(`languageNames.${code}`, code))
-                        .join(', '),
-                      size: formatBytes(entry.totalBytes),
-                    },
-                  )}
-                </div>
-                {state.status === 'downloading' && (
-                  <div className="yolo-local-embedding-row-status">
-                    <div className="yolo-local-embedding-progress">
+        return (
+          <div
+            key={entry.id}
+            className={`yolo-kb-ml-row${current ? ' is-current' : ''}`}
+          >
+            <div className="yolo-kb-ml-main">
+              <div className="yolo-kb-ml-name">
+                {entry.hfRepo}
+                <a
+                  href={`https://huggingface.co/${entry.hfRepo}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="yolo-kb-ml-hf"
+                  aria-label={entry.hfRepo}
+                >
+                  <ExternalLink size={12} />
+                </a>
+                {entry.languages.map((code) => (
+                  <span key={code} className="yolo-kb-ml-tag">
+                    {tr(`languageNames.${code}`, code)}
+                  </span>
+                ))}
+                {entry.recommended && (
+                  <span className="yolo-kb-ml-tag is-accent">
+                    {t('settings.defaults.recommendedBadge', '推荐')}
+                  </span>
+                )}
+              </div>
+              <div className="yolo-kb-ml-meta">
+                {state.status === 'downloading' ? (
+                  <>
+                    <span className="yolo-kb-ml-progress">
                       <span
                         style={{
-                          transform: `scaleX(${state.totalBytes > 0 ? Math.min(1, state.receivedBytes / state.totalBytes) : 0})`,
+                          transform: `scaleX(${percentOf(state.receivedBytes, state.totalBytes) / 100})`,
                         }}
                       />
-                    </div>
+                    </span>
                     {tr(
                       'downloadingLine',
-                      '正在下载 {{file}} — {{percent}}%（{{received}} / {{total}}）',
+                      '下载中 {{percent}}% · {{received}} / {{total}}',
                       {
-                        file: state.currentFile,
-                        percent:
-                          state.totalBytes > 0
-                            ? Math.min(
-                                100,
-                                Math.round(
-                                  (state.receivedBytes / state.totalBytes) *
-                                    100,
-                                ),
-                              )
-                            : 0,
+                        percent: percentOf(
+                          state.receivedBytes,
+                          state.totalBytes,
+                        ),
                         received: formatBytes(state.receivedBytes),
                         total: formatBytes(state.totalBytes),
                       },
                     )}
-                  </div>
-                )}
-                {state.status === 'verifying' && (
-                  <div className="yolo-local-embedding-row-status">
-                    {tr('verifying', '正在校验文件…')}
-                  </div>
-                )}
-                {state.status === 'ready' && (
-                  <div className="yolo-local-embedding-row-status is-ready">
-                    {tr('readyLine', '已下载')}
-                  </div>
+                  </>
+                ) : (
+                  <span>
+                    {tr('metaLine', '{{dimension}} 维 · {{size}}', {
+                      dimension: entry.dimension,
+                      size: sizeLabel,
+                    })}
+                    {state.status === 'ready' &&
+                      ` · ${tr('readyLine', '已下载')}`}
+                    {state.status === 'verifying' &&
+                      ` · ${tr('verifying', '正在校验文件…')}`}
+                  </span>
                 )}
                 {state.status === 'failed' && (
-                  <div className="yolo-local-embedding-row-status is-error">
+                  <span className="yolo-kb-ml-error">
                     {tr('failedLine', '下载失败：{{error}}', {
                       error: state.error,
                     })}
-                  </div>
+                  </span>
                 )}
-
-                <button
-                  type="button"
-                  className="yolo-local-embedding-disclosure"
+                <span
+                  role="button"
+                  tabIndex={0}
+                  className="yolo-kb-ml-source-toggle"
+                  aria-expanded={expanded}
                   onClick={() => toggleExpanded(entry.id)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      toggleExpanded(entry.id)
+                    }
+                  }}
                 >
+                  {tr('viewSource', '来源')}
                   {expanded ? (
-                    <ChevronDown size={12} />
+                    <ChevronDown size={11} />
                   ) : (
-                    <ChevronRight size={12} />
+                    <ChevronRight size={11} />
                   )}
-                  {expanded
-                    ? tr('hideSource', '收起来源')
-                    : tr('viewSource', '查看来源')}
-                </button>
-                {expanded && (
-                  <div className="yolo-local-embedding-source">
-                    <div className="yolo-local-embedding-source-row">
-                      <span>{tr('sourceRepoLabel', '仓库')}</span>
-                      <code>{entry.hfRepo}</code>
-                    </div>
-                    <div className="yolo-local-embedding-source-row">
-                      <span>{tr('sourceRevisionLabel', '版本')}</span>
-                      <code>{entry.revision}</code>
-                    </div>
-                    <div className="yolo-local-embedding-source-files">
-                      <span>{tr('sourceFilesLabel', '文件')}</span>
-                      <ul>
-                        {entry.files.map((file) => (
-                          <li key={file.path}>
-                            <code>{file.path}</code>
-                            <span className="yolo-local-embedding-source-file-meta">
-                              {formatBytes(file.byteSize)} · {file.sha256}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  </div>
-                )}
+                </span>
               </div>
-              <div className="yolo-local-embedding-row-side">
-                {state.status === 'not-installed' && (
-                  <ObsidianButton
-                    text={tr('download', '下载')}
-                    icon="download"
-                    onClick={() => handleDownload(entry)}
-                  />
-                )}
-                {state.status === 'downloading' && (
-                  <ObsidianButton
-                    text={t('common.cancel', '取消')}
-                    icon="x"
-                    onClick={() => manager.cancelDownload(entry.id)}
-                  />
-                )}
-                {state.status === 'failed' && (
-                  <>
-                    <ObsidianButton
-                      text={t('common.retry', '重试')}
-                      icon="rotate-cw"
-                      onClick={() => handleDownload(entry)}
-                    />
-                    <ObsidianButton
-                      icon="trash-2"
-                      tooltip={t('common.delete', '删除')}
-                      onClick={() => handleDelete(entry)}
-                    />
-                  </>
-                )}
-                {state.status === 'ready' && !current && (
-                  <>
-                    <ObsidianButton
-                      text={t(
-                        'settings.knowledgeBases.setAsCurrent',
-                        '设为当前',
-                      )}
-                      cta
-                      onClick={() => handleSetCurrent(entry)}
-                    />
-                    <ObsidianButton
-                      icon="trash-2"
-                      tooltip={t('common.delete', '删除')}
-                      onClick={() => handleDelete(entry)}
-                    />
-                  </>
-                )}
-                {state.status === 'ready' && current && (
-                  <ObsidianButton
-                    icon="trash-2"
-                    tooltip={t('common.delete', '删除')}
-                    onClick={() => handleDelete(entry)}
-                  />
-                )}
-              </div>
+              {expanded && (
+                <dl className="yolo-kb-ml-source">
+                  <dt>{tr('sourceRepoLabel', '仓库')}</dt>
+                  <dd>
+                    <code>{entry.hfRepo}</code>
+                  </dd>
+                  <dt>{tr('sourceRevisionLabel', '版本')}</dt>
+                  <dd>
+                    <code>{entry.revision}</code>
+                  </dd>
+                  <dt>{tr('sourceFilesLabel', '文件')}</dt>
+                  <dd>
+                    {entry.files.map((file) => (
+                      <div key={file.path} className="yolo-kb-ml-source-file">
+                        <code>{file.path}</code>
+                        <span>
+                          {formatBytes(file.byteSize)} · {file.sha256}
+                        </span>
+                      </div>
+                    ))}
+                  </dd>
+                </dl>
+              )}
             </div>
-          )
-        })}
-      </div>
+            <div className="yolo-kb-ml-side">
+              {state.status === 'not-installed' && (
+                <ObsidianButton
+                  text={tr('download', '下载')}
+                  onClick={() => handleDownload(entry)}
+                />
+              )}
+              {state.status === 'downloading' && (
+                <ObsidianButton
+                  text={t('common.cancel', '取消')}
+                  className="yolo-kb-ml-ghost"
+                  onClick={() => manager.cancelDownload(entry.id)}
+                />
+              )}
+              {state.status === 'failed' && (
+                <ObsidianButton
+                  text={t('common.retry', '重试')}
+                  onClick={() => handleDownload(entry)}
+                />
+              )}
+              {state.status === 'ready' && current && (
+                <span className="yolo-kb-ml-current">
+                  <Check size={10} strokeWidth={2.4} />
+                  {tr('current', '当前使用')}
+                </span>
+              )}
+              {state.status === 'ready' && !current && (
+                <ObsidianButton
+                  text={t('settings.knowledgeBases.setAsCurrent', '设为当前')}
+                  className="yolo-kb-ml-ghost"
+                  onClick={() => handleSetCurrent(entry)}
+                />
+              )}
+              {(state.status === 'ready' || state.status === 'failed') && (
+                <ObsidianButton
+                  icon="trash-2"
+                  className={
+                    confirmingDeleteId === entry.id
+                      ? 'yolo-kb-ml-icon-confirming'
+                      : 'yolo-kb-ml-icon'
+                  }
+                  tooltip={
+                    confirmingDeleteId === entry.id
+                      ? tr('confirmDelete', '再次点击确认删除')
+                      : t('common.delete', '删除')
+                  }
+                  onClick={() => handleDelete(entry)}
+                />
+              )}
+            </div>
+          </div>
+        )
+      })}
 
-      <div className="yolo-local-embedding-footer">
-        <span className="yolo-local-embedding-footer-label">
-          {tr('endpointLabel', '下载源')}
-        </span>
+      <div className="yolo-kb-ml-foot">
+        {tr('endpointLabel', '下载源')}
         <ObsidianDropdown
           value={showCustomEndpoint ? CUSTOM_ENDPOINT_SENTINEL : endpoint}
           options={{
@@ -727,7 +678,7 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
           }}
         />
         {showCustomEndpoint && (
-          <span className="yolo-local-embedding-endpoint-custom">
+          <span className="yolo-kb-ml-endpoint-custom">
             <ObsidianTextInput
               value={customDraft}
               placeholder={tr(
@@ -741,24 +692,13 @@ export function LocalEmbeddingShelf({ app, plugin }: LocalEmbeddingShelfProps) {
               onBlur={commitCustomEndpoint}
             />
             {customDraftError && (
-              <span className="yolo-local-embedding-endpoint-error">
+              <span className="yolo-kb-ml-endpoint-error">
                 {customDraftError}
               </span>
             )}
           </span>
         )}
-        <span className="yolo-local-embedding-footer-spacer" />
-        <span className="yolo-local-embedding-footer-storage">
-          {tr('storageUsed', '已占用 {{size}}', {
-            size: formatBytes(storageUsedBytes),
-          })}
-        </span>
-        <ObsidianButton
-          text={tr('manageDownloaded', '管理已下载模型')}
-          disabled={storageUsedBytes === 0}
-          onClick={handleManageDownloaded}
-        />
       </div>
-    </div>
+    </>
   )
 }

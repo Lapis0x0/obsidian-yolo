@@ -78,6 +78,19 @@ const EMPTY_KB_DATA: KbData = {
   pendingChanged: 0,
 }
 
+/** The API row only lists API embedding models. When the current model is
+ *  local, keep the last API pick (or the first available API model) so the
+ *  dropdown never goes blank just because a local model is in use. */
+function resolvePendingApiEmbeddingModelId(
+  currentId: string,
+  apiModels: readonly { id: string }[],
+  pendingId: string,
+): string {
+  if (apiModels.some((model) => model.id === currentId)) return currentId
+  if (apiModels.some((model) => model.id === pendingId)) return pendingId
+  return apiModels[0]?.id ?? ''
+}
+
 /** File-based percent for a running/completed run — mirrors the previous
  * single-run RAGSection's ring computation, applied per knowledge base. */
 function ringPercentFor(
@@ -583,16 +596,27 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
     [plugin, t],
   )
 
-  // The embedding model row previews a selection locally — switching models
-  // means every knowledge base's existing vectors stop matching (a de facto
-  // full rebuild), so a dropdown pick alone must never apply it. A separate
-  // "set as current" confirm step is required; this tracks that pending pick.
-  const [pendingEmbeddingModelId, setPendingEmbeddingModelId] = useState(
-    settings.embeddingModelId,
+  // The API row previews a selection locally — switching models means every
+  // knowledge base's existing vectors stop matching (a de facto full rebuild),
+  // so a dropdown pick alone must never apply it. A separate "set as current"
+  // confirm step is required. This tracks that pending *API* pick and must
+  // not be overwritten by a local model id (those live in the shelf below).
+  const [pendingEmbeddingModelId, setPendingEmbeddingModelId] = useState(() =>
+    resolvePendingApiEmbeddingModelId(
+      settings.embeddingModelId,
+      apiEmbeddingModels,
+      '',
+    ),
   )
   useEffect(() => {
-    setPendingEmbeddingModelId(settings.embeddingModelId)
-  }, [settings.embeddingModelId])
+    setPendingEmbeddingModelId((prev) =>
+      resolvePendingApiEmbeddingModelId(
+        settings.embeddingModelId,
+        apiEmbeddingModels,
+        prev,
+      ),
+    )
+  }, [apiEmbeddingModels, settings.embeddingModelId])
 
   const [showAdvancedRagSettings, setShowAdvancedRagSettings] = useState(false)
   const [chunkSizeInput, setChunkSizeInput] = useState(
@@ -1192,32 +1216,60 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               )}
             </span>
           </div>
-          <ObsidianSetting
-            name={t('settings.knowledgeBases.embeddingModelApiRow', 'API 模型')}
-            desc={t('settings.rag.embeddingModelDesc')}
-            className="yolo-settings-card"
-          >
-            <div className="yolo-kb-embedding-model-row">
-              <ObsidianDropdown
-                value={pendingEmbeddingModelId}
-                groupedOptions={embeddingModelOptionGroups}
-                onChange={setPendingEmbeddingModelId}
-              />
-              <ObsidianButton
-                text={t('settings.knowledgeBases.setAsCurrent', '设为当前')}
-                cta
-                disabled={pendingEmbeddingModelId === settings.embeddingModelId}
-                onClick={() =>
-                  applySettingsUpdate({
-                    ...settings,
-                    embeddingModelId: pendingEmbeddingModelId,
-                  })
-                }
-              />
+          <div className="yolo-kb-model-list">
+            <div
+              className={`yolo-kb-ml-row${
+                currentEmbeddingModel &&
+                currentEmbeddingModel.providerId !== LOCAL_EMBEDDING_PROVIDER_ID
+                  ? ' is-current'
+                  : ''
+              }`}
+            >
+              <div className="yolo-kb-ml-main">
+                <div className="yolo-kb-ml-name is-plain">
+                  {t(
+                    'settings.knowledgeBases.embeddingModelApiRow',
+                    'API 模型',
+                  )}
+                  <ObsidianDropdown
+                    value={pendingEmbeddingModelId}
+                    groupedOptions={embeddingModelOptionGroups}
+                    onChange={setPendingEmbeddingModelId}
+                  />
+                </div>
+                <div className="yolo-kb-ml-meta">
+                  {t(
+                    'settings.knowledgeBases.embeddingModelApiRowMeta',
+                    '{{dimension}} 维 · 按 token 计费 · 密钥与自定义模型在「模型」标签页管理',
+                  ).replace(
+                    '{{dimension}}',
+                    String(
+                      settings.embeddingModels.find(
+                        (m) => m.id === pendingEmbeddingModelId,
+                      )?.dimension ?? '—',
+                    ),
+                  )}
+                </div>
+              </div>
+              <div className="yolo-kb-ml-side">
+                <ObsidianButton
+                  text={t('settings.knowledgeBases.setAsCurrent', '设为当前')}
+                  className="yolo-kb-ml-ghost"
+                  disabled={
+                    !pendingEmbeddingModelId ||
+                    pendingEmbeddingModelId === settings.embeddingModelId
+                  }
+                  onClick={() =>
+                    applySettingsUpdate({
+                      ...settings,
+                      embeddingModelId: pendingEmbeddingModelId,
+                    })
+                  }
+                />
+              </div>
             </div>
-          </ObsidianSetting>
-
-          <LocalEmbeddingShelf app={app} plugin={plugin} />
+            <LocalEmbeddingShelf plugin={plugin} />
+          </div>
 
           <section className="yolo-rag-card">
             <div

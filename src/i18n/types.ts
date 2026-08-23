@@ -1064,6 +1064,7 @@ export type TranslationKeys = {
       embeddingModelShelf?: string
       embeddingModelShelfDesc?: string
       embeddingModelApiRow?: string
+      embeddingModelApiRowMeta?: string
       // Per-card state labels
       stateReady?: string
       stateIndexing?: string
@@ -1119,20 +1120,14 @@ export type TranslationKeys = {
         readyLine?: string
         current?: string
         viewSource?: string
-        hideSource?: string
         sourceRepoLabel?: string
         sourceRevisionLabel?: string
         sourceFilesLabel?: string
-        deleteCurrentConfirmTitle?: string
-        deleteCurrentConfirmMessage?: string
+        confirmDelete?: string
         endpointLabel?: string
         endpointCustomOption?: string
         endpointCustomPlaceholder?: string
         endpointCustomInvalid?: string
-        storageUsed?: string
-        manageDownloaded?: string
-        manageDownloadedConfirmTitle?: string
-        manageDownloadedConfirmMessage?: string
         engineModelNotDownloaded?: string
         engineModelNotDownloadedSub?: string
         engineDownloadAction?: string

@@ -1336,6 +1336,8 @@ export const en: TranslationKeys = {
       embeddingModelShelfDesc:
         'Shared by all knowledge bases · changing it requires a full rebuild',
       embeddingModelApiRow: 'API model',
+      embeddingModelApiRowMeta:
+        '{{dimension}} dims · billed per token · keys and custom models live on the Models tab',
       setAsCurrent: 'Set as current',
       stateReady: 'Ready',
       stateIndexing: 'Indexing',
@@ -1360,34 +1362,24 @@ export const en: TranslationKeys = {
       removeIndexFailed: 'Failed to remove index',
       localEmbedding: {
         groupLabel: 'Local',
-        groupDesc:
-          'Run embedding entirely on this device. No API key required.',
+        groupDesc: 'Runs on your device — your notes never leave this machine.',
         desktopOnly: 'Local embedding models are only available on desktop.',
-        metaLine: '{{dimension}} dims · {{languages}} · {{size}}',
+        metaLine: '{{dimension}} dims · {{size}}',
         download: 'Download',
-        downloadingLine:
-          'Downloading {{file}} — {{percent}}% ({{received}} / {{total}})',
+        downloadingLine: 'Downloading {{percent}}% · {{received}} / {{total}}',
         verifying: 'Verifying files…',
         failedLine: 'Download failed: {{error}}',
         readyLine: 'Downloaded',
         current: 'Current',
-        viewSource: 'View source',
-        hideSource: 'Hide source',
+        viewSource: 'Source',
         sourceRepoLabel: 'Repository',
         sourceRevisionLabel: 'Revision',
         sourceFilesLabel: 'Files',
-        deleteCurrentConfirmTitle: 'Delete the current embedding model?',
-        deleteCurrentConfirmMessage:
-          '"{{name}}" is your active embedding model. Deleting its files disables local embedding search until you choose another model. This cannot be undone.',
+        confirmDelete: 'Click again to delete',
         endpointLabel: 'Download source',
         endpointCustomOption: 'Custom',
         endpointCustomPlaceholder: 'https://example.com',
         endpointCustomInvalid: 'Enter a valid http/https address',
-        storageUsed: '{{size}} used on disk',
-        manageDownloaded: 'Manage downloaded models',
-        manageDownloadedConfirmTitle: 'Remove all downloaded models?',
-        manageDownloadedConfirmMessage:
-          'This deletes every downloaded local embedding model from disk. You can download them again later.',
         engineModelNotDownloaded: 'Local embedding model not downloaded',
         engineModelNotDownloadedSub:
           'Download the model in Knowledge Base settings to use local embedding.',

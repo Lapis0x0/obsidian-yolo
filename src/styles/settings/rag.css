@@ -65,8 +65,8 @@
 }
 
 /* Local-embedding engine takeover — the status bar's only other "not the
-   plain ready/busy line" state, see the `.yolo-local-embedding-*` block
-   below for the shelf this state points users toward. */
+   plain ready/busy line" state, see the `.yolo-kb-ml-*` block below
+   for the shelf this state points users toward. */
 .yolo-kb-status-bar.is-warn {
   border-color: rgba(var(--color-orange-rgb), 0.4);
 }
@@ -288,9 +288,9 @@
 }
 
 /* `.yolo-kb-card` builds on top of `.yolo-agent-card` (+ `--clickable`) —
-   see the JSX, which applies both classes. Border, gradient background,
-   padding, hover/focus state, and transition all come from that shared base;
-   this only adds what a knowledge base card needs beyond a generic one. */
+   see the JSX, which applies both classes. Border, background, padding,
+   hover/focus state, and transition come from that shared base; this only
+   adds what a knowledge base card needs beyond a generic one. */
 .yolo-kb-card {
   display: flex;
   flex-direction: column;
@@ -482,237 +482,316 @@
   border-top: 1px solid var(--background-modifier-border);
 }
 
-.yolo-kb-embedding-model-row {
-  display: flex;
-  align-items: center;
-  gap: var(--size-4-2);
-}
+/* ================= embedding model shelf (API row + local group) =================
+   One bordered list, mirroring docs/plans/knowledge-base-settings-designs.html:
+   the API row stays a single dropdown line; the curated local models are
+   browsable rows, each carrying its own download lifecycle; a footer row
+   holds the download source and on-disk usage. */
 
-/* ================= local embedding shelf ================= */
-
-.yolo-local-embedding-group {
-  margin-bottom: var(--size-4-3);
-}
-
-.yolo-local-embedding-desktop-only {
-  padding: var(--size-4-3);
+.yolo-kb-model-list {
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  background: var(--background-secondary);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
+  background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
+  box-shadow: 0 1px 2px var(--background-modifier-box-shadow);
+  overflow: hidden;
 }
 
-.yolo-local-embedding-list {
+.yolo-kb-ml-row {
   display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-  margin-bottom: var(--size-4-2);
-}
-
-.yolo-local-embedding-row {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
   gap: var(--size-4-3);
-  padding: var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-secondary);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
 }
 
-.yolo-local-embedding-row.is-current {
-  border-color: rgba(var(--color-green-rgb), 0.35);
+.yolo-kb-ml-row:last-child {
+  border-bottom: none;
 }
 
-.yolo-local-embedding-row-main {
-  min-width: 0;
+.yolo-kb-ml-row.is-current {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-accent) 55%, transparent);
+  border-bottom-color: transparent;
+}
+
+.yolo-kb-ml-main {
   flex: 1 1 auto;
+  min-width: 0;
 }
 
-.yolo-local-embedding-row-name {
+.yolo-kb-ml-name {
   display: flex;
-  align-items: center;
   flex-wrap: wrap;
-  gap: var(--size-2-2);
+  align-items: center;
+  gap: 7px;
   color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: 12.5px;
+  font-weight: var(--font-bold);
+}
+
+.yolo-kb-ml-name.is-plain {
+  font-family: inherit;
   font-size: var(--font-ui-small);
   font-weight: var(--font-semibold);
 }
 
-.yolo-local-embedding-hf-link {
+/* Native <select> min-content is the longest option; flex items default to
+   `min-width: auto`, which would ignore a smaller `width`. Zero the minimum
+   so the cap actually holds. */
+.yolo-kb-ml-name.is-plain > div {
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.yolo-kb-ml-name.is-plain select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-hf {
   display: inline-flex;
   align-items: center;
   color: var(--text-faint);
+  opacity: 0.6;
 }
 
-.yolo-local-embedding-hf-link:hover {
-  color: var(--text-muted);
+.yolo-kb-ml-hf:hover {
+  color: var(--text-accent);
+  opacity: 1;
 }
 
-.yolo-local-embedding-tag {
+.yolo-kb-ml-tag {
   padding: 1px 7px;
   border-radius: 999px;
   background: var(--background-modifier-border);
   color: var(--text-muted);
+  font-family: var(--font-interface);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-medium);
 }
 
-.yolo-local-embedding-tag.is-recommended {
-  background: rgba(var(--color-accent-rgb), 0.14);
+.yolo-kb-ml-tag.is-accent {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
   color: var(--text-accent);
 }
 
-.yolo-local-embedding-row-meta {
+.yolo-kb-ml-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
   margin-top: 3px;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
 }
 
-.yolo-local-embedding-row-status {
-  margin-top: var(--size-2-2);
-  color: var(--text-muted);
-  font-size: var(--font-ui-smaller);
+.yolo-kb-ml-error {
+  color: var(--text-error);
 }
 
-.yolo-local-embedding-row-status.is-ready {
-  color: var(--color-green);
-}
-
-.yolo-local-embedding-row-status.is-error {
-  color: var(--color-red);
-}
-
-.yolo-local-embedding-progress {
-  width: 100%;
+.yolo-kb-ml-progress {
+  display: block;
+  flex-shrink: 0;
+  width: 130px;
   height: 4px;
-  margin-bottom: var(--size-2-1);
   border-radius: 999px;
   background: var(--background-modifier-border);
   overflow: hidden;
 }
 
-.yolo-local-embedding-progress span {
+.yolo-kb-ml-progress span {
   display: block;
   width: 100%;
   height: 100%;
   border-radius: inherit;
   background: var(--interactive-accent);
   /* `scaleX`, not `width` — animating layout properties is disallowed (see
-     src/styles/tokens/motion.css); the fill's actual extent is set via
-     `transform: scaleX(<progress>)` inline from JS. */
+     src/styles/tokens/motion.css); the fill's extent is set inline via
+     `transform: scaleX(<progress>)`. */
   transform: scaleX(0);
   transform-origin: left;
   transition: transform var(--yolo-anim-duration-feedback)
     var(--yolo-anim-ease-out);
 }
 
-.yolo-local-embedding-disclosure {
+.yolo-kb-ml-source-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  margin-top: var(--size-2-2);
-  padding: 0;
-  border: none;
-  background: none;
+  gap: 1px;
   color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
   cursor: pointer;
 }
 
-.yolo-local-embedding-disclosure:hover {
+.yolo-kb-ml-source-toggle:hover {
   color: var(--text-muted);
 }
 
-.yolo-local-embedding-source {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: var(--size-2-2);
+.yolo-kb-ml-source {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px var(--size-4-2);
+  margin: var(--size-2-2) 0 0;
   padding: var(--size-2-2) var(--size-2-3);
   border-radius: var(--radius-s);
   background: var(--background-primary);
   font-size: var(--font-ui-smaller);
 }
 
-.yolo-local-embedding-source div {
-  display: flex;
-  gap: var(--size-2-2);
-}
-
-.yolo-local-embedding-source span {
-  flex-shrink: 0;
+.yolo-kb-ml-source dt {
   color: var(--text-faint);
 }
 
-.yolo-local-embedding-source code {
-  overflow-wrap: anywhere;
-  color: var(--text-muted);
-  font-size: inherit;
-}
-
-.yolo-local-embedding-source-files ul {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
+.yolo-kb-ml-source dd {
   min-width: 0;
   margin: 0;
-  padding: 0;
-  list-style: none;
 }
 
-.yolo-local-embedding-source-files li {
+.yolo-kb-ml-source code {
+  color: var(--text-muted);
+  font-size: inherit;
+  overflow-wrap: anywhere;
+}
+
+.yolo-kb-ml-source-file {
   display: flex;
   flex-direction: column;
-  gap: 1px;
   min-width: 0;
 }
 
-.yolo-local-embedding-source-file-meta {
-  overflow-wrap: anywhere;
-  color: var(--text-faint);
+.yolo-kb-ml-source-file + .yolo-kb-ml-source-file {
+  margin-top: 4px;
 }
 
-.yolo-local-embedding-row-side {
+.yolo-kb-ml-source-file span {
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.yolo-kb-ml-side {
   display: flex;
   flex-shrink: 0;
   align-items: center;
   gap: var(--size-2-2);
 }
 
-.yolo-local-embedding-footer {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-2-3);
-  padding: var(--size-4-2) var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: var(--background-secondary);
-  color: var(--text-muted);
+/* Compact row actions — the design's `btn sm`; Obsidian's default 30px
+   button makes every row read as a form field. */
+.yolo-kb-ml-side button {
+  height: 26px;
+  padding: 0 10px;
   font-size: var(--font-ui-smaller);
 }
 
-.yolo-local-embedding-footer-label {
-  color: var(--text-faint);
-}
-
-.yolo-local-embedding-footer-spacer {
-  flex: 1 1 auto;
-}
-
-.yolo-local-embedding-footer-storage {
+.yolo-kb-ml-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1.5px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
   white-space: nowrap;
 }
 
-.yolo-local-embedding-endpoint-custom {
+/* Secondary row actions (取消 / 设为当前) read as quiet text
+   buttons next to the single primary 下载; icon-only delete is a bare glyph.
+   Confirming delete matches chat-history: the icon turns red until the
+   second click (or the 3s timeout). */
+.yolo-kb-ml-ghost,
+.yolo-kb-ml-icon,
+.yolo-kb-ml-icon-confirming {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.yolo-kb-ml-ghost,
+.yolo-kb-ml-icon {
+  color: var(--text-muted);
+}
+
+.yolo-kb-ml-icon-confirming {
+  color: var(--color-red) !important;
+}
+
+.yolo-kb-ml-ghost:hover,
+.yolo-kb-ml-icon:hover,
+.yolo-kb-ml-icon-confirming:hover {
+  background: var(--background-modifier-hover) !important;
+}
+
+.yolo-kb-ml-ghost:hover,
+.yolo-kb-ml-icon:hover {
+  color: var(--text-normal);
+}
+
+.yolo-kb-ml-icon-confirming:hover {
+  color: var(--color-red) !important;
+}
+
+.yolo-kb-ml-icon,
+.yolo-kb-ml-icon-confirming {
+  padding: 0 6px;
+}
+
+.yolo-kb-ml-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-group b {
+  color: var(--text-muted);
+  font-weight: var(--font-bold);
+  letter-spacing: 0.07em;
+}
+
+.yolo-kb-ml-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: 9px var(--size-4-3);
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-foot > div {
+  flex: 0 0 130px;
+  width: 130px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.yolo-kb-ml-foot select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-endpoint-custom {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 
-.yolo-local-embedding-endpoint-error {
+.yolo-kb-ml-endpoint-error {
   color: var(--text-error);
   font-size: var(--font-ui-smaller);
 }
@@ -782,12 +861,12 @@
     grid-template-columns: 1fr;
   }
 
-  .yolo-local-embedding-row {
+  .yolo-kb-ml-row {
     flex-direction: column;
+    align-items: stretch;
   }
 
-  .yolo-local-embedding-row-side {
-    width: 100%;
+  .yolo-kb-ml-side {
     justify-content: flex-end;
   }
 }

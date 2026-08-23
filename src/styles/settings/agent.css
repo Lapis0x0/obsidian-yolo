@@ -1066,11 +1066,7 @@ button.yolo-agent-chip--more:hover {
   position: relative;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--background-primary) 94%, transparent) 0%,
-    color-mix(in srgb, var(--background-secondary) 88%, transparent) 100%
-  );
+  background: var(--background-primary);
   padding: var(--size-4-3);
   min-height: 136px;
   transition:
