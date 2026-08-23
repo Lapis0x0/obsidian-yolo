@@ -1,0 +1,262 @@
+#!/usr/bin/env node
+/**
+ * Runs the real `embedding-engine` worker bundle end-to-end against a real
+ * ONNX text-embedding model (not a mock), outside Obsidian — the closest
+ * thing to a browser/Electron Worker this repo can exercise from a plain
+ * `node` invocation.
+ *
+ * Usage:
+ *   node scripts/smoke-embedding-engine.mjs --model-dir <dir> [options]
+ *
+ * <dir> must contain the files `runtime-components/embedding-engine/src/protocol.ts`
+ * declares in `REQUIRED_MODEL_FILES` / `OPTIONAL_MODEL_FILES`:
+ *   config.json, tokenizer.json, onnx/model_quantized.onnx  (required)
+ *   tokenizer_config.json, special_tokens_map.json           (optional)
+ *
+ * To fetch a small real model for this (~23 MB, q8 all-MiniLM-L6-v2):
+ *   mkdir -p /tmp/embedding-smoke-model/onnx
+ *   BASE=https://huggingface.co/Xenova/all-MiniLM-L6-v2/resolve/main
+ *   curl -fL "$BASE/config.json" -o /tmp/embedding-smoke-model/config.json
+ *   curl -fL "$BASE/tokenizer.json" -o /tmp/embedding-smoke-model/tokenizer.json
+ *   curl -fL "$BASE/tokenizer_config.json" -o /tmp/embedding-smoke-model/tokenizer_config.json
+ *   curl -fL "$BASE/special_tokens_map.json" -o /tmp/embedding-smoke-model/special_tokens_map.json
+ *   curl -fL "$BASE/onnx/model_quantized.onnx" -o /tmp/embedding-smoke-model/onnx/model_quantized.onnx
+ *   npm run runtime:build
+ *   node scripts/smoke-embedding-engine.mjs --model-dir /tmp/embedding-smoke-model
+ *
+ * Two things stand in for what only a real browser/Electron Worker
+ * provides, both confined to this test harness (never touching the shipped
+ * `worker.ts`/`entry.ts` source):
+ *
+ *  1. Node's dynamic `import()` rejects `blob:` URLs outright ("Only URLs
+ *     with a scheme in: file, data, and node are supported"); real
+ *     Chromium/Electron Workers support it. `URL.createObjectURL` is
+ *     swapped here for a `data:` URL encoder so onnxruntime-web's
+ *     `import()` of its `.mjs` loader still resolves.
+ *  2. Transformers.js's own environment probe (`src/env.js`) treats
+ *     `process?.release?.name === 'node'` as "running under Node", which
+ *     selects the (browser-build-ignored, empty) `onnxruntime-node` stub
+ *     instead of `onnxruntime-web`. A real Electron Worker doesn't expose
+ *     Node's `process` global (no `nodeIntegrationInWorker`), so
+ *     `globalThis.process` is hidden for the duration of the worker
+ *     bundle's synchronous eval *and* its async init/embed lifetime
+ *     (onnxruntime-web's Emscripten-generated `.mjs` loader does its own,
+ *     separate `ENVIRONMENT_IS_NODE` check, dynamically imported later).
+ */
+import { readFile } from 'node:fs/promises'
+import path from 'node:path'
+import { fileURLToPath } from 'node:url'
+import { parseArgs } from 'node:util'
+
+import esbuild from 'esbuild'
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+
+const { values: args } = parseArgs({
+  options: {
+    'model-dir': { type: 'string' },
+    dimension: { type: 'string', default: '384' },
+    pooling: { type: 'string', default: 'mean' },
+    normalize: { type: 'string', default: 'true' },
+    'max-tokens': { type: 'string', default: '256' },
+    device: { type: 'string', default: 'wasm' },
+    text: { type: 'string', default: 'hello' },
+  },
+})
+
+if (!args['model-dir']) {
+  console.error(
+    'Usage: node scripts/smoke-embedding-engine.mjs --model-dir <dir> [--dimension 384] [--pooling mean] [--normalize true] [--max-tokens 256] [--device wasm] [--text hello]',
+  )
+  process.exitCode = 1
+  process.exit()
+}
+const modelDir = path.resolve(args['model-dir'])
+const spec = {
+  dimension: Number(args.dimension),
+  pooling: args.pooling,
+  normalize: args.normalize !== 'false',
+  maxTokens: Number(args['max-tokens']),
+}
+const device = args.device
+
+console.log(`Model directory: ${modelDir}`)
+console.log(`Spec: ${JSON.stringify(spec)}, device: ${device}`)
+
+console.log('Bundling worker.ts...')
+const result = await esbuild.build({
+  entryPoints: [
+    path.join(root, 'runtime-components/embedding-engine/src/worker.ts'),
+  ],
+  bundle: true,
+  platform: 'browser',
+  format: 'iife',
+  target: 'es2020',
+  minify: false,
+  write: false,
+  conditions: ['onnxruntime-web-use-extern-wasm'],
+  define: { 'process.env.NODE_ENV': JSON.stringify('development') },
+  logLevel: 'silent',
+})
+const workerSource = result.outputFiles[0].text
+console.log(`Worker bundle: ${(workerSource.length / 1024).toFixed(1)} KB`)
+
+class TestBlob {
+  constructor(parts, options) {
+    this.parts = parts.map((part) =>
+      part instanceof Uint8Array ? part : new Uint8Array(part),
+    )
+    this.type = options?.type ?? ''
+  }
+}
+globalThis.URL.createObjectURL = (blob) => {
+  const total = blob.parts.reduce((sum, part) => sum + part.byteLength, 0)
+  const merged = new Uint8Array(total)
+  let offset = 0
+  for (const part of blob.parts) {
+    merged.set(part, offset)
+    offset += part.byteLength
+  }
+  return `data:${blob.type};base64,${Buffer.from(merged).toString('base64')}`
+}
+globalThis.URL.revokeObjectURL = () => {}
+globalThis.Blob = TestBlob
+
+const responses = []
+globalThis.self = globalThis
+globalThis.self.postMessage = (message) => {
+  responses.push(message)
+}
+globalThis.self.onmessage = null
+
+const realProcess = globalThis.process
+delete globalThis.process
+ 
+;(0, eval)(workerSource)
+
+function waitFor(predicate, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    const start = Date.now()
+    const tick = () => {
+      const match = responses.find(predicate)
+      if (match) return resolve(match)
+      if (Date.now() - start > timeoutMs) {
+        return reject(new Error('Timed out waiting for worker response'))
+      }
+      setTimeout(tick, 20)
+    }
+    tick()
+  })
+}
+
+function formatWorkerError(error) {
+  if (!error || typeof error !== 'object') return String(error)
+  const device = error.device ? `, device: ${error.device}` : ''
+  return `${error.message} (stage: ${error.stage}${device})`
+}
+
+async function readAssetsInto(target, names, sourceDir) {
+  for (const name of names) {
+    const bytes = await readFile(path.join(sourceDir, name))
+    target[name] = bytes.buffer.slice(
+      bytes.byteOffset,
+      bytes.byteOffset + bytes.byteLength,
+    )
+  }
+}
+
+async function main() {
+  const wasm = {}
+  await readAssetsInto(
+    wasm,
+    [
+      'ort-wasm-simd-threaded.wasm',
+      'ort-wasm-simd-threaded.mjs',
+      'ort-wasm-simd-threaded.jsep.wasm',
+      'ort-wasm-simd-threaded.jsep.mjs',
+    ],
+    path.join(root, 'runtime-components/embedding-engine/dist/assets'),
+  )
+
+  const modelFiles = {}
+  await readAssetsInto(
+    modelFiles,
+    ['config.json', 'tokenizer.json', 'onnx/model_quantized.onnx'],
+    modelDir,
+  )
+  for (const optional of ['tokenizer_config.json', 'special_tokens_map.json']) {
+    try {
+      await readAssetsInto(modelFiles, [optional], modelDir)
+    } catch {
+      console.log(`(optional file not present, skipping: ${optional})`)
+    }
+  }
+
+  console.log('Sending init...')
+  globalThis.self.onmessage({
+    data: {
+      type: 'init',
+      requestId: 1,
+      wasm,
+      modelFiles,
+      spec,
+      device,
+      numThreads: 1,
+    },
+  })
+  const initResult = await waitFor(
+    (message) => message.type === 'init-result' && message.requestId === 1,
+    120_000,
+  )
+  if (!initResult.ok) {
+    throw new Error(`init failed: ${formatWorkerError(initResult.error)}`)
+  }
+  console.log(`init ok, device: ${initResult.device}`)
+
+  console.log(`Sending embed(['${args.text}'])...`)
+  globalThis.self.onmessage({
+    data: { type: 'embed', requestId: 2, texts: [args.text] },
+  })
+  const embedResult = await waitFor(
+    (message) => message.type === 'embed-result' && message.requestId === 2,
+    60_000,
+  )
+  if (!embedResult.ok) {
+    throw new Error(`embed failed: ${formatWorkerError(embedResult.error)}`)
+  }
+  const vector = new Float32Array(embedResult.vectors[0])
+  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0))
+  console.log('dimension:', vector.length)
+  console.log('norm:', norm)
+  console.log('first 5 values:', Array.from(vector.slice(0, 5)))
+
+  console.log('Sending dispose...')
+  globalThis.self.onmessage({ data: { type: 'dispose', requestId: 3 } })
+  const disposeResult = await waitFor(
+    (message) => message.type === 'dispose-result' && message.requestId === 3,
+    30_000,
+  )
+  if (!disposeResult.ok) {
+    throw new Error(`dispose failed: ${formatWorkerError(disposeResult.error)}`)
+  }
+  console.log('dispose ok')
+
+  if (vector.length !== spec.dimension) {
+    throw new Error(
+      `expected dimension ${spec.dimension}, got ${vector.length}`,
+    )
+  }
+  if (spec.normalize && Math.abs(norm - 1) > 0.01) {
+    throw new Error(`expected unit-normalized vector, got norm ${norm}`)
+  }
+  console.log('SMOKE TEST PASSED')
+}
+
+main()
+  .catch((error) => {
+    console.error('SMOKE TEST FAILED:', error)
+    realProcess.exitCode = 1
+  })
+  .finally(() => {
+    globalThis.process = realProcess
+  })
