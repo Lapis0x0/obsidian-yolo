@@ -288,6 +288,14 @@ export type EmbeddingEngineCreateSessionOptions = Readonly<{
   loadWasm(name: string, signal?: AbortSignal): Promise<Uint8Array>
   loadModelFile(file: string, signal?: AbortSignal): Promise<Uint8Array>
   spec: EmbeddingEngineSpec
+  /**
+   * `'webgpu'` is kept in the type for forward compatibility but is not
+   * supported in this release — `createSession` rejects it rather than
+   * silently falling back to `'wasm'`, since the component doesn't ship the
+   * JSEP/WebGPU wasm variant as a declared asset. Omit this option (or pass
+   * `'wasm'` explicitly) until WebGPU support returns in a future release
+   * alongside fp16 `dtype`.
+   */
   device?: 'wasm' | 'webgpu'
   signal?: AbortSignal
 }>

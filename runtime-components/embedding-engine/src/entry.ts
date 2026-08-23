@@ -20,6 +20,15 @@ type EmbeddingEngineSpec = Readonly<{
   normalize: boolean
   maxTokens: number
 }>
+/**
+ * The type stays a union for forward compatibility with the host's public
+ * `EmbeddingEngineCreateSessionOptions.device` contract, but `createSession`
+ * below only supports `'wasm'` in this release — a `'webgpu'` request is
+ * rejected rather than silently downgraded, since this component doesn't
+ * ship the JSEP/WebGPU wasm variant as a declared asset (see
+ * `WASM_ASSET_NAMES` in `protocol.ts`). WebGPU support (plus fp16 `dtype`)
+ * is planned to return together in a future release.
+ */
 type EmbeddingEngineDevice = 'wasm' | 'webgpu'
 type EmbeddingEngineEnvironmentProbe =
   | Readonly<{ ok: true; webgpu: boolean; threads: number }>
@@ -307,8 +316,12 @@ globalThis.__yolo_register_runtime_component__({
           throw abortError('Embedding session creation aborted')
         }
 
-        const device: EmbeddingEngineDevice =
-          options.device ?? (probe.webgpu ? 'webgpu' : 'wasm')
+        const requestedDevice: EmbeddingEngineDevice = options.device ?? 'wasm'
+        if (requestedDevice !== 'wasm') {
+          throw new Error(
+            `Embedding engine device "${requestedDevice}" is not supported in this release; only "wasm" is available (WebGPU + fp16 dtype support is planned for a future release)`,
+          )
+        }
 
         const abort = abortSignal(
           options.signal,
@@ -376,7 +389,7 @@ globalThis.__yolo_register_runtime_component__({
               wasm,
               modelFiles,
               spec: options.spec,
-              device,
+              device: requestedDevice,
               numThreads: probe.threads,
             },
             transfer,

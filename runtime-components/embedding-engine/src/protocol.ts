@@ -21,7 +21,16 @@ export type EmbeddingWorkerInitRequest = Readonly<{
   /** Model file name (e.g. `config.json`, `onnx/model_quantized.onnx`) -> raw bytes (transferred). */
   modelFiles: Readonly<Record<string, ArrayBuffer>>
   spec: EmbeddingWorkerSpec
-  device: 'wasm' | 'webgpu'
+  /**
+   * Only `'wasm'` is supported in this release — the JSEP/WebGPU wasm
+   * variant is not shipped as a declared asset (see `WASM_ASSET_NAMES`
+   * below), so there is nothing for a `'webgpu'` request to load. `entry.ts`
+   * rejects a `'webgpu'` `createSession` request before a worker is ever
+   * spun up. WebGPU support (plus fp16 `dtype`) is planned to return
+   * together in a future release, at which point this widens back to
+   * `'wasm' | 'webgpu'`.
+   */
+  device: 'wasm'
   numThreads: number
 }>
 
@@ -62,7 +71,7 @@ export type EmbeddingWorkerErrorInfo = Readonly<{
   message: string
   stack?: string
   stage: EmbeddingWorkerErrorStage
-  device?: 'wasm' | 'webgpu'
+  device?: 'wasm'
 }>
 
 export type EmbeddingWorkerResponse =
@@ -70,7 +79,7 @@ export type EmbeddingWorkerResponse =
       type: 'init-result'
       requestId: number
       ok: true
-      device: 'wasm' | 'webgpu'
+      device: 'wasm'
     }>
   | Readonly<{
       type: 'init-result'
@@ -124,11 +133,14 @@ export const OPTIONAL_MODEL_FILES: readonly string[] = [
  * Matches `component.config.json`'s declared `assets` names. onnxruntime-web
  * dynamically `import()`s the `.mjs` loader alongside its `.wasm` binary
  * (see `ju()`/`instantiateWasm` in `ort.min.mjs`) — both must be present for
- * either the plain-wasm or the WebGPU/JSEP backend to initialize.
+ * the plain-wasm backend to initialize.
+ *
+ * The JSEP/WebGPU variant (`ort-wasm-simd-threaded.jsep.{wasm,mjs}`, ~21MB)
+ * is deliberately not declared here in this release — `device` is `'wasm'`
+ * only (see `EmbeddingWorkerInitRequest`), so shipping it would just be
+ * unused weight. It returns as a declared asset alongside WebGPU support.
  */
 export const WASM_ASSET_NAMES: readonly string[] = [
   'ort-wasm-simd-threaded.wasm',
   'ort-wasm-simd-threaded.mjs',
-  'ort-wasm-simd-threaded.jsep.wasm',
-  'ort-wasm-simd-threaded.jsep.mjs',
 ]

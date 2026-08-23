@@ -59,14 +59,13 @@ const { values: args } = parseArgs({
     pooling: { type: 'string', default: 'mean' },
     normalize: { type: 'string', default: 'true' },
     'max-tokens': { type: 'string', default: '256' },
-    device: { type: 'string', default: 'wasm' },
     text: { type: 'string', default: 'hello' },
   },
 })
 
 if (!args['model-dir']) {
   console.error(
-    'Usage: node scripts/smoke-embedding-engine.mjs --model-dir <dir> [--dimension 384] [--pooling mean] [--normalize true] [--max-tokens 256] [--device wasm] [--text hello]',
+    'Usage: node scripts/smoke-embedding-engine.mjs --model-dir <dir> [--dimension 384] [--pooling mean] [--normalize true] [--max-tokens 256] [--text hello]',
   )
   process.exitCode = 1
   process.exit()
@@ -78,7 +77,10 @@ const spec = {
   normalize: args.normalize !== 'false',
   maxTokens: Number(args['max-tokens']),
 }
-const device = args.device
+// This release's worker only supports the 'wasm' device — see
+// `EmbeddingWorkerInitRequest` in protocol.ts. WebGPU/JSEP returns in a
+// future release.
+const device = 'wasm'
 
 console.log(`Model directory: ${modelDir}`)
 console.log(`Spec: ${JSON.stringify(spec)}, device: ${device}`)
@@ -169,12 +171,7 @@ async function main() {
   const wasm = {}
   await readAssetsInto(
     wasm,
-    [
-      'ort-wasm-simd-threaded.wasm',
-      'ort-wasm-simd-threaded.mjs',
-      'ort-wasm-simd-threaded.jsep.wasm',
-      'ort-wasm-simd-threaded.jsep.mjs',
-    ],
+    ['ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.mjs'],
     path.join(root, 'runtime-components/embedding-engine/dist/assets'),
   )
 

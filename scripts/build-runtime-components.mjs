@@ -151,6 +151,12 @@ for (const entry of entries.sort((left, right) =>
  * overwriting, matching how `entry.js`/`meta.json` are checked above.
  * Components with no declared assets are untouched (no `dist/assets`
  * directory is created), preserving old behavior exactly.
+ *
+ * `dist/assets/` is gitignored (see `.gitignore`) — a fresh checkout has no
+ * local copy at all until `npm run runtime:build` has run once. `--check`
+ * distinguishes that from real drift: a missing local asset gets a "run the
+ * build first" error, not a synchronization-mismatch error, since there is
+ * nothing to compare against yet.
  */
 async function syncComponentAssets(componentId, componentDir, config) {
   const declared = config.assets ?? []
@@ -169,7 +175,17 @@ async function syncComponentAssets(componentId, componentDir, config) {
     const bytes = await readFile(sourcePath)
     const destPath = path.join(assetsDir, name)
     if (check) {
-      const installed = await readFile(destPath)
+      let installed
+      try {
+        installed = await readFile(destPath)
+      } catch (error) {
+        if (error?.code === 'ENOENT') {
+          throw new Error(
+            `Runtime component "${componentId}" has no local dist/assets/${name} — run "npm run runtime:build" first`,
+          )
+        }
+        throw error
+      }
       if (!sameBytes(installed, bytes)) {
         throw new Error(
           `Runtime component asset is not synchronized: ${componentId}/${name}`,

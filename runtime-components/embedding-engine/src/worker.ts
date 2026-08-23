@@ -39,7 +39,7 @@ type Session = Readonly<{
   tokenizer: Tokenizer
   model: Model
   spec: EmbeddingWorkerSpec
-  device: 'wasm' | 'webgpu'
+  device: 'wasm'
 }>
 
 let session: Session | null = null
@@ -59,7 +59,7 @@ function postError(
   type: 'init-result' | 'embed-result' | 'dispose-result',
   error: unknown,
   stage: EmbeddingWorkerErrorStage,
-  device?: 'wasm' | 'webgpu',
+  device?: 'wasm',
 ): void {
   post({
     type,
@@ -150,21 +150,19 @@ function urlForWasmAsset(
 /**
  * onnxruntime-web's `env.wasm.wasmPaths` takes a single `{ wasm, mjs }` pair
  * (`WasmFilePaths` in `onnxruntime-common`'s `env.d.ts`) — NOT a
- * filename-keyed map, despite the shape being easy to mistake for one. The
- * caller must pick which build variant that pair points at: the JSEP build
- * (`ort-wasm-simd-threaded.jsep.{wasm,mjs}`) carries the WebGPU/WebNN
- * execution-provider glue and is required whenever WebGPU is requested; the
- * plain build is used otherwise.
+ * filename-keyed map, despite the shape being easy to mistake for one. Only
+ * the plain-wasm build variant is shipped in this release (see
+ * `WASM_ASSET_NAMES` in `protocol.ts`); the JSEP/WebGPU variant
+ * (`ort-wasm-simd-threaded.jsep.{wasm,mjs}`) returns alongside WebGPU
+ * device support in a future release.
  */
 function installWasmPaths(
   wasm: Readonly<Record<string, ArrayBuffer>>,
   numThreads: number,
-  device: 'wasm' | 'webgpu',
 ): void {
-  const suffix = device === 'webgpu' ? '.jsep' : ''
   const wasmPaths = {
-    wasm: urlForWasmAsset(wasm, `ort-wasm-simd-threaded${suffix}.wasm`),
-    mjs: urlForWasmAsset(wasm, `ort-wasm-simd-threaded${suffix}.mjs`),
+    wasm: urlForWasmAsset(wasm, 'ort-wasm-simd-threaded.wasm'),
+    mjs: urlForWasmAsset(wasm, 'ort-wasm-simd-threaded.mjs'),
   }
   const onnx = env.backends.onnx as unknown as {
     wasm: {
@@ -202,51 +200,26 @@ async function handleInit(request: EmbeddingWorkerInitRequest): Promise<void> {
     return
   }
 
-  const requestedDevice = request.device
-  let resolvedDevice = requestedDevice
   let model: Model
   try {
-    installWasmPaths(request.wasm, request.numThreads, requestedDevice)
+    installWasmPaths(request.wasm, request.numThreads)
     model = await AutoModel.from_pretrained(MODEL_ID, {
-      device: requestedDevice,
+      device: 'wasm',
       dtype: 'q8',
     })
-  } catch (firstError) {
-    if (requestedDevice !== 'webgpu') {
-      releaseModelBytes()
-      postError(
-        request,
-        'init-result',
-        firstError,
-        'load-model',
-        requestedDevice,
-      )
-      return
-    }
-    // WebGPU init can fail for reasons `probeEnvironment` can't see ahead
-    // of time (adapter request denied, lost device, etc.) — fall back to
-    // wasm once, per the plan's "webgpu 失败回退 wasm 一次".
-    resolvedDevice = 'wasm'
-    try {
-      installWasmPaths(request.wasm, request.numThreads, 'wasm')
-      model = await AutoModel.from_pretrained(MODEL_ID, {
-        device: 'wasm',
-        dtype: 'q8',
-      })
-    } catch (secondError) {
-      releaseModelBytes()
-      postError(request, 'init-result', secondError, 'load-model', 'wasm')
-      return
-    }
+  } catch (error) {
+    releaseModelBytes()
+    postError(request, 'init-result', error, 'load-model', 'wasm')
+    return
   }
 
   releaseModelBytes()
-  session = { tokenizer, model, spec: request.spec, device: resolvedDevice }
+  session = { tokenizer, model, spec: request.spec, device: 'wasm' }
   post({
     type: 'init-result',
     requestId: request.requestId,
     ok: true,
-    device: resolvedDevice,
+    device: 'wasm',
   })
 }
 
