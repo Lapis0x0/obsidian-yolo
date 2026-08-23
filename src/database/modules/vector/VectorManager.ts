@@ -1,6 +1,5 @@
 import { backOff } from 'exponential-backoff'
 import { RecursiveCharacterTextSplitter } from 'langchain/text_splitter'
-import { minimatch } from 'minimatch'
 import { App, TFile } from 'obsidian'
 
 import { IndexProgress } from '../../../components/chat-view/QueryProgress'
@@ -36,6 +35,7 @@ import {
   PDF_INDEX_MAX_PAGES,
   extractPdfText,
 } from '../../../utils/pdf/extractPdfText'
+import { matchesIncludeExcludeScope } from '../../../utils/scope-match'
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
 
@@ -58,15 +58,15 @@ type YoloSettingsLike = {
 
 export type ReconcileConfig = {
   chunkSize: number
-  includePatterns: string[]
-  excludePatterns: string[]
   /**
-   * When true, files under the plugin's YOLO base directory (resolved from
-   * `settings.yolo.baseDir`) are excluded from indexing in addition to
-   * `excludePatterns`. Path resolution is dynamic per call; toggling
-   * `yolo.baseDir` updates the filter without any settings migration.
+   * Normalized vault-relative paths (folder or file, no glob syntax) — the
+   * knowledge base's `include`/`exclude` rules, matched with the same
+   * semantics as `components/settings/scope/scopeRules.ts`: any exclude hit
+   * wins; an empty `include` means everything; otherwise the path must hit
+   * an include rule. See `matchesIncludeExcludeScope`.
    */
-  excludeYoloBaseDir?: boolean
+  include: string[]
+  exclude: string[]
   /** When false, PDFs are excluded from the desired set (and existing PDF rows are removed). */
   indexPdf: boolean
   /**
@@ -219,17 +219,24 @@ export class VectorManager {
     }
   }
 
-  private async reconcileInternal(
-    embeddingModel: EmbeddingModelClient,
+  /**
+   * Steps shared by `reconcile`'s planning phase and the cheap dry-run
+   * `countPendingChanges`: the candidate file universe for `scope`, an
+   * mtime-based partition into "needs chunkifying" vs. "stable", and the
+   * paths that dropped out of scope entirely. Read-only — no chunkify, no
+   * embed, no write.
+   */
+  private computeCandidateDiff(
     config: ReconcileConfig,
-    options: ReconcileOptions,
-  ): Promise<ReconcileResult> {
-    const { signal, scope, truncate, onProgress } = options
-
-    if (truncate) {
-      await this.repository.truncateModel(embeddingModel.id)
-    }
-
+    scope: ReconcileScope,
+    storedMtimes: Readonly<Record<string, number>> | null,
+  ): {
+    candidateFiles: TFile[]
+    filesToChunkify: TFile[]
+    newFilesCount: number
+    updatedFilesCount: number
+    removedPaths: string[]
+  } {
     // 1. Determine the candidate file universe for this reconcile pass.
     const allCandidates = this.listIndexableFiles(config)
     const candidateFiles =
@@ -242,15 +249,10 @@ export class VectorManager {
     const candidateSet = new Set(candidateFiles.map((f) => f.path))
 
     // 2. mtime map (used to skip unchanged files and to find removed paths).
-    const storedMtimes = truncate
-      ? null
-      : await this.repository.getFileMtimes(embeddingModel.id)
     const mtimeMap =
       storedMtimes === null
         ? new Map<string, number>()
-        : storedMtimes instanceof Map
-          ? storedMtimes
-          : new Map(Object.entries(storedMtimes))
+        : new Map(Object.entries(storedMtimes))
 
     // 3. Partition candidates by mtime.
     //
@@ -275,17 +277,69 @@ export class VectorManager {
       // else: stable, leave actual rows alone.
     }
 
-    // 4. Removed paths: in actual but no longer a candidate (and within scope).
+    // 4. Removed paths: in actual but no longer a candidate (and within
+    // scope). When `storedMtimes` is null (truncate, or no prior index) the
+    // mtime map is empty, so this naturally comes out empty too.
     const removedPaths: string[] = []
-    if (!truncate) {
-      const inScope = (path: string): boolean =>
-        scope.kind === 'all' ? true : scope.paths.includes(path)
-      for (const path of mtimeMap.keys()) {
-        if (!candidateSet.has(path) && inScope(path)) {
-          removedPaths.push(path)
-        }
+    const inScope = (path: string): boolean =>
+      scope.kind === 'all' ? true : scope.paths.includes(path)
+    for (const path of mtimeMap.keys()) {
+      if (!candidateSet.has(path) && inScope(path)) {
+        removedPaths.push(path)
       }
     }
+
+    return {
+      candidateFiles,
+      filesToChunkify,
+      newFilesCount,
+      updatedFilesCount,
+      removedPaths,
+    }
+  }
+
+  /**
+   * Cheap dry-run count of what a `sync` reconcile would touch for one
+   * knowledge base — the same mtime-based candidate/removed diff `reconcile`
+   * uses to decide which files to chunkify, but stops there: no chunkify, no
+   * embed, no write. Backs the settings UI's "N 个待更新" pill and per-card
+   * "N 个文件已修改" line, which recompute this on Tab mount, after each
+   * index run, and on a throttled vault-event timer.
+   */
+  async countPendingChanges(
+    embeddingModelId: string,
+    config: ReconcileConfig,
+  ): Promise<{ changed: number; total: number }> {
+    const release = this.enterOperation()
+    try {
+      const storedMtimes = await this.repository.getFileMtimes(embeddingModelId)
+      const { candidateFiles, filesToChunkify, removedPaths } =
+        this.computeCandidateDiff(config, { kind: 'all' }, storedMtimes)
+      return {
+        changed: filesToChunkify.length + removedPaths.length,
+        total: candidateFiles.length,
+      }
+    } finally {
+      release()
+    }
+  }
+
+  private async reconcileInternal(
+    embeddingModel: EmbeddingModelClient,
+    config: ReconcileConfig,
+    options: ReconcileOptions,
+  ): Promise<ReconcileResult> {
+    const { signal, scope, truncate, onProgress } = options
+
+    if (truncate) {
+      await this.repository.truncateModel(embeddingModel.id)
+    }
+
+    const storedMtimes = truncate
+      ? null
+      : await this.repository.getFileMtimes(embeddingModel.id)
+    const { filesToChunkify, newFilesCount, updatedFilesCount, removedPaths } =
+      this.computeCandidateDiff(config, scope, storedMtimes)
     const removedFilesCount = removedPaths.length
 
     if (filesToChunkify.length === 0 && removedPaths.length === 0) {
@@ -708,6 +762,19 @@ export class VectorManager {
     }
   }
 
+  /** Distinct indexed file count for one model — the "文档" number on a
+   * knowledge base card, as opposed to `getEmbeddingStats`'s chunk-level
+   * `rowCount`. */
+  async getIndexedFileCount(embeddingModelId: string): Promise<number> {
+    const release = this.enterOperation()
+    try {
+      const mtimes = await this.repository.getFileMtimes(embeddingModelId)
+      return Object.keys(mtimes).length
+    } finally {
+      release()
+    }
+  }
+
   async quiesce(): Promise<void> {
     this.acceptingOperations = false
     if (this.activeOperations === 0) return
@@ -740,24 +807,17 @@ export class VectorManager {
       if (config.indexPdf && ext === 'pdf') return true
       return false
     })
-    if (config.excludeYoloBaseDir) {
-      const yoloBaseDir = getYoloBaseDir(config.settings)
-      const prefix = `${yoloBaseDir}/`
-      files = files.filter(
-        (file) => file.path !== yoloBaseDir && !file.path.startsWith(prefix),
-      )
-    }
+    // The YOLO base directory is excluded unconditionally — every knowledge
+    // base's engine, not a per-base rule the UI can toggle.
+    const yoloBaseDir = getYoloBaseDir(config.settings)
+    const yoloBaseDirPrefix = `${yoloBaseDir}/`
     files = files.filter(
       (file) =>
-        !config.excludePatterns.some((pattern) =>
-          minimatch(file.path, pattern),
-        ),
+        file.path !== yoloBaseDir && !file.path.startsWith(yoloBaseDirPrefix),
     )
-    if (config.includePatterns.length > 0) {
-      files = files.filter((file) =>
-        config.includePatterns.some((pattern) => minimatch(file.path, pattern)),
-      )
-    }
+    files = files.filter((file) =>
+      matchesIncludeExcludeScope(file.path, config.include, config.exclude),
+    )
     return files
   }
 

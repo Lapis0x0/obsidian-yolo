@@ -70,9 +70,13 @@ const setupManager = (
     },
   }
   const manager = new VectorManager(app as never, {} as never)
-  const mtimeMap = new Map(existingRows.map((r) => [r.path, r.mtime]))
+  // `IndexedDbVectorStore.getFileMtimes` returns a plain Record, not a Map —
+  // match that shape here so this mock stays a faithful stand-in.
+  const mtimeRecord = Object.fromEntries(
+    existingRows.map((r) => [r.path, r.mtime]),
+  )
   const repository = {
-    getFileMtimes: jest.fn().mockResolvedValue(mtimeMap),
+    getFileMtimes: jest.fn().mockResolvedValue(mtimeRecord),
     listChunksForPaths: jest.fn(async (_modelId: string, paths: string[]) => {
       const set = new Set(paths)
       return existingRows.filter((r) => set.has(r.path))
@@ -98,8 +102,8 @@ const embeddingModel = {
 
 const baseConfig = {
   chunkSize: 1000,
-  includePatterns: [],
-  excludePatterns: [],
+  include: [],
+  exclude: [],
   indexPdf: false,
 }
 
@@ -213,7 +217,7 @@ describe('VectorManager.reconcile', () => {
     )
     await manager.reconcile(
       embeddingModel,
-      { ...baseConfig, excludePatterns: ['docs/**'] },
+      { ...baseConfig, exclude: ['docs'] },
       { scope: { kind: 'all' } },
     )
     expect(repository.deleteVectorsByIds).toHaveBeenCalledWith([9])
@@ -311,7 +315,7 @@ describe('VectorManager.reconcile', () => {
     }
     const manager = new VectorManager(app as never, {} as never)
     const repository = {
-      getFileMtimes: jest.fn().mockResolvedValue(new Map()),
+      getFileMtimes: jest.fn().mockResolvedValue({}),
       listChunksForPaths: jest.fn().mockResolvedValue([]),
       deleteVectorsByIds: jest.fn().mockResolvedValue(undefined),
       bumpMtimeByIds: jest.fn().mockResolvedValue(undefined),
@@ -788,7 +792,7 @@ async function openRealStore(
   const indexedDB = new IDBFactory()
   const db = await openVectorDatabase(
     indexedDB,
-    vectorDatabaseName(namespaceId),
+    vectorDatabaseName(namespaceId, 'test-kb'),
   )
   return new IndexedDbVectorStore(db)
 }

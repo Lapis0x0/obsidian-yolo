@@ -21,10 +21,11 @@ async function openStore(
   indexedDB: IDBFactory,
   namespaceId = 'test-namespace',
   options: ConstructorParameters<typeof IndexedDbVectorStore>[1] = {},
+  kbId = 'test-kb',
 ): Promise<IndexedDbVectorStore> {
   const db = await openVectorDatabase(
     indexedDB,
-    vectorDatabaseName(namespaceId),
+    vectorDatabaseName(namespaceId, kbId),
   )
   return new IndexedDbVectorStore(db, options)
 }

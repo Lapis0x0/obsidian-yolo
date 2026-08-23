@@ -9,6 +9,8 @@ import { resolveVaultDatabaseNamespaceId } from '../core/storage/vaultDatabaseNa
 import { VectorManager } from './modules/vector/VectorManager'
 import { IndexedDbVectorStore } from './vector-store/IndexedDbVectorStore'
 import {
+  deleteVectorDatabase,
+  legacySingleVectorDatabaseName,
   openVectorDatabase,
   vectorDatabaseName,
 } from './vector-store/vectorDatabase'
@@ -22,16 +24,32 @@ export type DatabaseManagerCreateOptions = Readonly<{
   isMobile?: boolean
 }>
 
+type OpenKnowledgeBase = {
+  store: IndexedDbVectorStore
+  vectorManager: VectorManager
+}
+
 /**
- * Owns the RAG vector store's lifecycle: resolves this vault's IndexedDB
- * namespace, opens the database, and wraps it in a `VectorManager`. Every
- * chunk write (`insertVectors`, `deleteVectorsBy*`, ...) persists to
- * IndexedDB immediately — there is no snapshot/save step to run, unlike the
- * PGlite-backed predecessor this replaces.
+ * Owns the RAG vector stores' lifecycle: resolves this vault's IndexedDB
+ * namespace, and lazily opens one IndexedDB database per knowledge base
+ * (`vectorDatabaseName(namespaceId, kbId)`), each wrapped in its own
+ * `VectorManager`. Every chunk write (`insertVectors`, `deleteVectorsBy*`,
+ * ...) persists to IndexedDB immediately — there is no snapshot/save step to
+ * run.
+ *
+ * No knowledge base is opened eagerly at startup: `getVectorManager(kbId)`
+ * opens and caches on first use, `closeKnowledgeBase` releases one without
+ * deleting its data, and `deleteKnowledgeBase` closes and permanently drops
+ * it (used when a knowledge base is removed from settings).
  */
 export class DatabaseManager {
-  private vectorManager: VectorManager | null = null
-  private store: IndexedDbVectorStore | null = null
+  private app: App | null = null
+  private namespaceId = ''
+  private indexedDB: IDBFactory | null = null
+  private isMobile: boolean | undefined
+  private readonly knowledgeBases = new Map<string, OpenKnowledgeBase>()
+  private readonly openPromises = new Map<string, Promise<VectorManager>>()
+  private closed = false
   private cleanupPromise: Promise<void> | null = null
 
   private constructor() {}
@@ -62,29 +80,85 @@ export class DatabaseManager {
         'YOLO vector store is unavailable: IndexedDB is unavailable',
       )
     }
-    const db = await openVectorDatabase(
-      indexedDB,
-      vectorDatabaseName(namespaceId),
-    )
-    this.store = new IndexedDbVectorStore(db, { isMobile: options.isMobile })
-    this.vectorManager = new VectorManager(app, this.store)
+    this.app = app
+    this.namespaceId = namespaceId
+    this.indexedDB = indexedDB
+    this.isMobile = options.isMobile
 
     // Neither of these gates readiness: persistence is a best-effort browser
-    // storage hint, and the legacy-file sweep only tidies up artifacts from
-    // the retired PGlite backend. Both swallow their own failures; they are
-    // awaited only so `create()` resolving means the sweep has happened.
+    // storage hint, and the legacy-artifact sweep only tidies up remnants
+    // from the retired PGlite backend and this backend's pre-multi-base
+    // single-store shape. Both swallow their own failures; they are awaited
+    // only so `create()` resolving means the sweep has happened.
     await tryPersistStorage()
-    await cleanupLegacyVectorDbArtifacts(app, settings, pluginDir)
+    await cleanupLegacyVectorDbArtifacts(
+      app,
+      settings,
+      pluginDir,
+      indexedDB,
+      namespaceId,
+    )
   }
 
-  getVectorManager(): VectorManager {
-    if (!this.vectorManager) {
+  /** Lazily opens (and caches) the vector store for one knowledge base. */
+  async getVectorManager(kbId: string): Promise<VectorManager> {
+    if (this.closed) {
       throw new Error('Database is not initialized')
     }
-    return this.vectorManager
+    const existing = this.knowledgeBases.get(kbId)
+    if (existing) {
+      return existing.vectorManager
+    }
+    const inFlight = this.openPromises.get(kbId)
+    if (inFlight) {
+      return inFlight
+    }
+
+    const openPromise = (async () => {
+      if (!this.indexedDB || !this.app) {
+        throw new Error('Database is not initialized')
+      }
+      const db = await openVectorDatabase(
+        this.indexedDB,
+        vectorDatabaseName(this.namespaceId, kbId),
+      )
+      const store = new IndexedDbVectorStore(db, { isMobile: this.isMobile })
+      const vectorManager = new VectorManager(this.app, store)
+      this.knowledgeBases.set(kbId, { store, vectorManager })
+      return vectorManager
+    })()
+    this.openPromises.set(kbId, openPromise)
+    try {
+      return await openPromise
+    } finally {
+      this.openPromises.delete(kbId)
+    }
   }
 
-  /** Waits for in-flight vector work, then closes the database. Idempotent. */
+  /** Waits for in-flight vector work, then closes this knowledge base's
+   * database connection without deleting its data. Idempotent; a no-op if
+   * the base was never opened. */
+  async closeKnowledgeBase(kbId: string): Promise<void> {
+    const opened = this.knowledgeBases.get(kbId)
+    if (!opened) return
+    this.knowledgeBases.delete(kbId)
+    await opened.vectorManager.quiesce()
+    opened.store.close()
+  }
+
+  /** Closes (if open) and permanently deletes one knowledge base's IndexedDB
+   * database. Used when a knowledge base is removed from settings. */
+  async deleteKnowledgeBase(kbId: string): Promise<void> {
+    await this.closeKnowledgeBase(kbId)
+    if (!this.indexedDB) return
+    await deleteVectorDatabase(
+      this.indexedDB,
+      vectorDatabaseName(this.namespaceId, kbId),
+    )
+  }
+
+  /** Waits for in-flight vector work, then closes every open database.
+   * Idempotent. */
   cleanup(): Promise<void> {
     if (!this.cleanupPromise) {
       this.cleanupPromise = this.cleanupUnlocked()
@@ -93,10 +167,9 @@ export class DatabaseManager {
   }
 
   private async cleanupUnlocked(): Promise<void> {
-    await this.vectorManager?.quiesce()
-    this.vectorManager = null
-    this.store?.close()
-    this.store = null
+    this.closed = true
+    const kbIds = [...this.knowledgeBases.keys()]
+    await Promise.all(kbIds.map((kbId) => this.closeKnowledgeBase(kbId)))
   }
 }
 
@@ -110,16 +183,20 @@ async function tryPersistStorage(): Promise<void> {
 }
 
 /**
- * One-time, idempotent sweep of artifacts left behind by the retired
- * PGlite-backed vector store: the vault-stored snapshot file (current and
- * legacy locations) and the WASM runtime it downloaded into the plugin
- * directory. Failures are non-fatal — this is tidying up, not part of
- * bringing the new store online.
+ * One-time, idempotent sweep of artifacts left behind by two retired
+ * shapes: the PGlite-backed vector store (vault-stored snapshot file,
+ * current and legacy locations, plus the WASM runtime it downloaded into
+ * the plugin directory), and this IndexedDB backend's own pre-multi-base
+ * single-store database (`yolo-vector:<ns>`, never shipped in a release —
+ * see `legacySingleVectorDatabaseName`'s doc comment). Failures are
+ * non-fatal — this is tidying up, not part of bringing the store online.
  */
 async function cleanupLegacyVectorDbArtifacts(
   app: App,
   settings: YoloSettingsLike | null,
   pluginDir: string | undefined,
+  indexedDB: IDBFactory,
+  namespaceId: string,
 ): Promise<void> {
   const legacyFiles = [
     getLegacyYoloVectorDbArchivePath(settings),
@@ -136,6 +213,18 @@ async function cleanupLegacyVectorDbArtifacts(
         error,
       )
     }
+  }
+
+  try {
+    await deleteVectorDatabase(
+      indexedDB,
+      legacySingleVectorDatabaseName(namespaceId),
+    )
+  } catch (error) {
+    console.warn(
+      '[YOLO] Failed to remove legacy single-store vector database',
+      error,
+    )
   }
 
   if (!pluginDir) return

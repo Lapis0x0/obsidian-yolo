@@ -17,7 +17,19 @@ export const MODEL_INDEX = 'model'
  */
 export const MODEL_PATH_INDEX = 'model_path_mtime'
 
-export const vectorDatabaseName = (namespaceId: string): string =>
+/**
+ * One IndexedDB database per (vault namespace, knowledge base) pair — each
+ * knowledge base is an independent vector store. `kbId` is the knowledge
+ * base's own id (`KnowledgeBase.id`), not any prior single-store namespace.
+ */
+export const vectorDatabaseName = (namespaceId: string, kbId: string): string =>
+  `${VECTOR_DATABASE_NAME_PREFIX}${namespaceId}:${kbId}`
+
+/** The single-store name this backend used before multi-knowledge-base
+ * support (this schema's IndexedDB backend has never shipped in a release —
+ * see `cleanupLegacyVectorDbArtifacts` in `DatabaseManager.ts`, which sweeps
+ * it unconditionally rather than migrating it). */
+export const legacySingleVectorDatabaseName = (namespaceId: string): string =>
   `${VECTOR_DATABASE_NAME_PREFIX}${namespaceId}`
 
 /** On-disk record shape. `vector` is stored L2-normalized. */
@@ -94,6 +106,28 @@ export function openVectorDatabase(
  */
 export function compoundKeyPrefixRange(prefix: IDBValidKey[]): IDBKeyRange {
   return IDBKeyRange.bound(prefix, [...prefix, []])
+}
+
+/** Deletes an IndexedDB database by name, resolving even if it doesn't exist. */
+export function deleteVectorDatabase(
+  indexedDB: IDBFactory,
+  databaseName: string,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    let request: IDBOpenDBRequest
+    try {
+      request = indexedDB.deleteDatabase(databaseName)
+    } catch (error) {
+      reject(vectorDbError('database delete failed', error))
+      return
+    }
+    request.onsuccess = () => resolve()
+    request.onerror = () => reject(vectorDbError('database delete failed'))
+    // A stray open connection blocking the delete is not fatal to the
+    // caller (the knowledge base's own connection is always closed before
+    // this is called) — resolve rather than hang forever.
+    request.onblocked = () => resolve()
+  })
 }
 
 export function requestResult<T>(request: IDBRequest<T>): Promise<T> {
