@@ -43,15 +43,6 @@ const ragOptionsSchema = z.object({
    * or per-minute-quota free tiers). Clamped to [1, 24] at the call site.
    */
   embeddingConcurrency: z.number().catch(10),
-  excludePatterns: z.array(z.string()).catch([]),
-  /**
-   * When true, the plugin's YOLO base directory (resolved dynamically from
-   * `yolo.baseDir`) is excluded from indexing on top of `excludePatterns`.
-   * The UI surfaces this as a removable chip in the exclude folder list;
-   * deleting that chip flips this flag to false and persists the choice.
-   */
-  excludeYoloBaseDir: z.boolean().catch(true),
-  includePatterns: z.array(z.string()).catch([]),
   /** When true, index `.pdf` files for RAG (text extraction). */
   indexPdf: z.boolean().catch(true),
   // auto update options
@@ -59,6 +50,28 @@ const ragOptionsSchema = z.object({
   autoUpdateIntervalHours: z.number().catch(0),
   lastAutoUpdateAt: z.number().catch(0),
 })
+
+/**
+ * One independently-indexed knowledge base: its own vector store
+ * (`yolo-vector:<vaultNs>:<kbId>`), scoped to `include`/`exclude` (same
+ * semantics as `scopeRules.ts`: any exclude wins; empty `include` = whole
+ * vault; otherwise a path must match an include rule). All knowledge bases
+ * share the single global `embeddingModelId` and the maintenance knobs left
+ * on `ragOptions` (chunkSize, minSimilarity, limit, embeddingConcurrency,
+ * indexPdf, autoUpdate*). `name` is the model-facing selector for
+ * `vault_search`'s `knowledgeBase` argument (matched case-insensitively,
+ * trimmed) — keep it unique. `description` is optional, model-facing
+ * context for picking the right base; never shown to the user as anything
+ * but their own words.
+ */
+export const knowledgeBaseSchema = z.object({
+  id: z.string(),
+  name: z.string().catch(''),
+  description: z.string().catch(''),
+  include: z.array(z.string()).catch([]),
+  exclude: z.array(z.string()).catch([]),
+})
+export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>
 
 type TabCompletionOptionDefaults = {
   multipleCandidatesEnabled: boolean
@@ -360,14 +373,18 @@ export const yoloSettingsSchema = z.object({
     minSimilarity: 0.0,
     limit: 10,
     embeddingConcurrency: 10,
-    excludePatterns: [],
-    excludeYoloBaseDir: true,
-    includePatterns: [],
     indexPdf: true,
     autoUpdateEnabled: true,
     autoUpdateIntervalHours: 0,
     lastAutoUpdateAt: 0,
   }),
+
+  /**
+   * Independently-indexed knowledge bases. Never auto-populated by
+   * migration — upgrading users start at `[]` and create their own (the
+   * IndexedDB-backed vector store already requires a from-scratch rebuild).
+   */
+  knowledgeBases: resilientArraySchema(knowledgeBaseSchema),
 
   // MCP configuration
   mcp: z
@@ -583,8 +600,6 @@ export const yoloSettingsSchema = z.object({
       manualContextFolders: z.array(z.string()).optional(),
       // folders that should be fully injected into continuation context
       referenceRuleFolders: z.array(z.string()).optional(),
-      // folders used as the scoped knowledge base for RAG retrieval
-      knowledgeBaseFolders: z.array(z.string()).optional(),
       // override sampling parameters specifically for continuation
       temperature: z.number().min(0).max(2).optional(),
       topP: z.number().min(0).max(1).optional(),
@@ -680,7 +695,6 @@ export const yoloSettingsSchema = z.object({
       manualContextEnabled: false,
       manualContextFolders: [],
       referenceRuleFolders: [],
-      knowledgeBaseFolders: [],
       stream: true,
       maxContinuationChars: 8000,
       enableTabCompletion: false,

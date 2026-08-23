@@ -106,6 +106,7 @@ export const HOST_SETTINGS_CLASSIFICATIONS = [
   hostSetting('pluginUpdateNoticeEnabled', '插件更新提醒'),
   hostSetting('pluginUpdateAutoDownloadEnabled', '插件自动下载更新'),
   hostSetting('ragOptions', '知识库设置'),
+  hostSetting('knowledgeBases', '知识库配置'),
   hostSetting('mcp', 'MCP 工具'),
   hostSetting('jsSandbox', 'JS 沙箱权限'),
   hostSetting('webSearch', '联网搜索'),
