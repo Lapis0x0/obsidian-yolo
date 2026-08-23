@@ -11,8 +11,8 @@
       "descriptionKey": "settings.modules.runtimeComponents.bashEngine.description",
       "impactKey": "settings.modules.runtimeComponents.bashEngine.impact",
       "entry": "runtime-components/bash-engine/dist/entry.js",
-      "byteSize": 1279196,
-      "sha256": "1797c24e23f62885705d0aef617728b139583586bd3d47dd574a0e45ed49fbd6"
+      "byteSize": 1279381,
+      "sha256": "4d3486fab4f01c5c82964e2c0678cc4d90b58cc1bbf43c5b877f521ce3e6d35a"
     },
     {
       "id": "pdf-engine",
