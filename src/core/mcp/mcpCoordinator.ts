@@ -7,7 +7,7 @@ import {
   type RegisteredModuleChatModeV1,
   createModuleChatModeToolServer,
 } from '../modules/moduleChatModeRegistry'
-import type { RAGEngine } from '../rag/ragEngine'
+import type { RagKnowledgeAccess } from '../rag/ragAccess'
 
 import { McpManager } from './mcpManager'
 
@@ -32,7 +32,7 @@ type McpCoordinatorDeps = {
   registerSettingsListener: (
     listener: (settings: YoloSettings) => void,
   ) => () => void
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   promptSourceWatcher?: PromptSourceWatcher
   /**
    * Source of module chat mode declarations to replay onto the MCP manager
@@ -50,7 +50,7 @@ export class McpCoordinator {
   private readonly registerSettingsListener: (
     listener: (settings: YoloSettings) => void,
   ) => () => void
-  private readonly getRagEngine?: () => Promise<RAGEngine>
+  private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private readonly moduleChatModeRegistry?: ModuleChatModeRegistrySource
 
@@ -71,7 +71,7 @@ export class McpCoordinator {
     this.getSettings = deps.getSettings
     this.openApplyReview = deps.openApplyReview
     this.registerSettingsListener = deps.registerSettingsListener
-    this.getRagEngine = deps.getRagEngine
+    this.ragAccess = deps.ragAccess
     this.promptSourceWatcher = deps.promptSourceWatcher
     this.moduleChatModeRegistry = deps.moduleChatModeRegistry
   }
@@ -90,7 +90,7 @@ export class McpCoordinator {
             settings: this.getSettings(),
             openApplyReview: this.openApplyReview,
             registerSettingsListener: this.registerSettingsListener,
-            getRagEngine: this.getRagEngine,
+            ragAccess: this.ragAccess,
             promptSourceWatcher: this.promptSourceWatcher,
           })
           await manager.initialize()

@@ -207,6 +207,9 @@ export type BashSearchCallback = (
     query: string
     scopePath?: string
     maxResults: number
+    /** `--kb <name>`: restrict to one knowledge base by name (case-
+     * insensitive). Undefined = merge results across every knowledge base. */
+    knowledgeBase?: string
   }>,
 ) => Promise<BashSearchOutcome>
 

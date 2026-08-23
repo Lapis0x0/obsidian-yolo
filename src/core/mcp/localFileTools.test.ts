@@ -450,7 +450,18 @@ describe('js sandbox vault list handler', () => {
       const handlers = buildJsSandboxProxyHandlers(
         makeApp(root, []),
         { allowDbQuery: true },
-        () => Promise.resolve({ processQuery } as never),
+        {
+          listKnowledgeBases: () => [
+            {
+              id: 'kb-a',
+              name: 'kb-a',
+              description: '',
+              include: [],
+              exclude: [],
+            },
+          ],
+          getRagEngine: () => Promise.resolve({ processQuery } as never),
+        },
         undefined,
         scope,
       )
@@ -472,7 +483,18 @@ describe('js sandbox vault list handler', () => {
       const handlers = buildJsSandboxProxyHandlers(
         makeApp(root, []),
         { allowDbQuery: true },
-        () => Promise.resolve({ processQuery } as never),
+        {
+          listKnowledgeBases: () => [
+            {
+              id: 'kb-a',
+              name: 'kb-a',
+              description: '',
+              include: [],
+              exclude: [],
+            },
+          ],
+          getRagEngine: () => Promise.resolve({ processQuery } as never),
+        },
         undefined,
         scope,
       )
@@ -500,7 +522,18 @@ describe('js sandbox vault list handler', () => {
       const handlers = buildJsSandboxProxyHandlers(
         makeApp(root, []),
         { allowDbQuery: true },
-        () => Promise.resolve({ processQuery } as never),
+        {
+          listKnowledgeBases: () => [
+            {
+              id: 'kb-a',
+              name: 'kb-a',
+              description: '',
+              include: [],
+              exclude: [],
+            },
+          ],
+          getRagEngine: () => Promise.resolve({ processQuery } as never),
+        },
         undefined,
         undefined,
       )

@@ -57,7 +57,7 @@ export const jsEvalDefinition = defineTool({
     const {
       app,
       settings,
-      getRagEngine,
+      ragAccess,
       signal,
       workspaceScope,
       allowedSkillPaths,
@@ -66,7 +66,7 @@ export const jsEvalDefinition = defineTool({
     const proxyHandlers = buildJsSandboxProxyHandlers(
       app,
       jsSandboxSettings,
-      getRagEngine,
+      ragAccess,
       settings,
       workspaceScope,
       allowedSkillPaths,

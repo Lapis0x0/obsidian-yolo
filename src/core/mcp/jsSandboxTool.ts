@@ -36,7 +36,10 @@ import {
   readActiveWebviewHtml,
 } from '../browser/activeWebviewReader'
 import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
-import type { RAGEngine } from '../rag/ragEngine'
+import {
+  type RagKnowledgeAccess,
+  findKnowledgeBaseByName,
+} from '../rag/ragAccess'
 import {
   BROWSER_READ_PATH_USAGE,
   parseBrowserReadPageId,
@@ -723,7 +726,7 @@ function buildScope(rawVars) {
     $tags: Array.isArray(rawVars && rawVars.$tags) ? rawVars.$tags : [],
     $utils: htmlUtilsAllowed ? SANDBOX_UTILS_WITH_HTML : SANDBOX_UTILS,
     $db: caps.allowDbQuery ? {
-      search: (query, limit) => proxyCall('db_query', { method: 'search', query, limit })
+      search: (query, limit, knowledgeBase) => proxyCall('db_query', { method: 'search', query, limit, knowledgeBase })
     } : undefined,
     $browser: browserReadAllowed ? {
       readHtml: (pageId) => proxyCall('browser_read_html', { pageId })
@@ -2603,7 +2606,7 @@ function assertJsSandboxFetchAllowed(
 export function buildJsSandboxProxyHandlers(
   app: App,
   config: JsSandboxSettings,
-  getRagEngine?: () => Promise<RAGEngine>,
+  ragAccess?: RagKnowledgeAccess,
   settings?: YoloSettings,
   workspaceScope?: AssistantWorkspaceScope,
   allowedSkillPaths?: readonly string[],
@@ -2874,7 +2877,7 @@ export function buildJsSandboxProxyHandlers(
     }
   }
 
-  if (config.allowDbQuery && getRagEngine) {
+  if (config.allowDbQuery && ragAccess) {
     const configuredLimit =
       typeof config.dbQueryMaxLimit === 'number' &&
       Number.isFinite(config.dbQueryMaxLimit) &&
@@ -2902,6 +2905,10 @@ export function buildJsSandboxProxyHandlers(
       if (method === 'search') {
         const query = typeof params.query === 'string' ? params.query : ''
         const limit = clampLimit(params.limit)
+        const knowledgeBaseArg =
+          typeof params.knowledgeBase === 'string'
+            ? params.knowledgeBase.trim()
+            : undefined
         // Pre-filter at the vector-store scan, not just the post-filter
         // below: `$db.search` has no path argument of its own, so its scope
         // is entirely the assistant's workspace scope (no `pathScope` to
@@ -2916,12 +2923,44 @@ export function buildJsSandboxProxyHandlers(
         if ('empty' in ragScopeResult) {
           return []
         }
-        const engine = await getRagEngine()
-        const results = await engine.processQuery({
-          query,
-          limit,
-          scope: ragScopeResult.scope,
-        })
+
+        const allKnowledgeBases = ragAccess.listKnowledgeBases()
+        let targetKnowledgeBases = allKnowledgeBases
+        if (knowledgeBaseArg) {
+          const match = findKnowledgeBaseByName(
+            allKnowledgeBases,
+            knowledgeBaseArg,
+          )
+          if (!match) {
+            const available = allKnowledgeBases.map((kb) => kb.name).join(', ')
+            throw new Error(
+              available
+                ? `Unknown knowledge base "${knowledgeBaseArg}". Available: ${available}.`
+                : `Unknown knowledge base "${knowledgeBaseArg}". No knowledge bases are configured.`,
+            )
+          }
+          targetKnowledgeBases = [match]
+        }
+        if (targetKnowledgeBases.length === 0) {
+          return []
+        }
+
+        // No `knowledgeBase`: query every knowledge base and merge by
+        // similarity, same as `vault_search`'s union behavior.
+        const perKbResults = await Promise.all(
+          targetKnowledgeBases.map(async (kb) => {
+            const engine = await ragAccess.getRagEngine(kb.id)
+            return engine.processQuery({
+              query,
+              limit,
+              scope: ragScopeResult.scope,
+            })
+          }),
+        )
+        const results = perKbResults
+          .flat()
+          .sort((a, b) => b.similarity - a.similarity)
+          .slice(0, limit)
         // The RAG index covers the whole vault and every row carries the
         // chunk's actual text, so an unfiltered `$db.search` is a read path
         // straight around workspace scope — the same hole `$vault.readText`

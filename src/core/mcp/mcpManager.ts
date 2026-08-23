@@ -23,7 +23,7 @@ import {
 } from '../../types/tool-call.types'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
-import type { RAGEngine } from '../rag/ragEngine'
+import type { RagKnowledgeAccess } from '../rag/ragAccess'
 import { executeBuiltinTool } from '../tools/dispatcher'
 import {
   getCapabilityForTool,
@@ -78,7 +78,7 @@ export class McpManager {
   private readonly app: App
   private readonly oauthController: McpOAuthController
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
-  private readonly getRagEngine?: () => Promise<RAGEngine>
+  private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private settings: YoloSettings
   private unsubscribeFromSettings: () => void
@@ -190,7 +190,7 @@ export class McpManager {
     settings,
     openApplyReview,
     registerSettingsListener,
-    getRagEngine,
+    ragAccess,
     promptSourceWatcher,
   }: {
     app: App
@@ -200,13 +200,13 @@ export class McpManager {
     registerSettingsListener: (
       listener: (settings: YoloSettings) => void,
     ) => () => void
-    getRagEngine?: () => Promise<RAGEngine>
+    ragAccess?: RagKnowledgeAccess
     promptSourceWatcher?: PromptSourceWatcher
   }) {
     this.app = app
     this.oauthController = new McpOAuthController(app, pluginId)
     this.openApplyReview = openApplyReview
-    this.getRagEngine = getRagEngine
+    this.ragAccess = ragAccess
     this.promptSourceWatcher = promptSourceWatcher
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
@@ -1189,7 +1189,7 @@ export class McpManager {
             app: this.app,
             settings: this.settings,
             openApplyReview: this.openApplyReview,
-            getRagEngine: this.getRagEngine,
+            ragAccess: this.ragAccess,
             conversationId,
             conversationMessages,
             roundId,
@@ -1206,7 +1206,7 @@ export class McpManager {
             // that signature along with it.
             subagentParentContext,
             // Dependency injection, same lazy-accessor shape as
-            // `getRagEngine` above — `delegate_subagent` no longer
+            // `ragAccess` above — `delegate_subagent` no longer
             // imports `runner.ts` itself (see
             // `ToolContext['runSubagent']`'s doc comment in
             // `core/tools/types.ts`).

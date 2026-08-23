@@ -84,7 +84,7 @@ export const bashDefinition = defineTool({
       app,
       settings,
       workspaceScope,
-      getRagEngine,
+      ragAccess,
       signal,
       toolCallId,
       bashApprovalMode,
@@ -122,7 +122,7 @@ export const bashDefinition = defineTool({
         search: createVaultBashSearch({
           app,
           settings,
-          getRagEngine,
+          ragAccess,
           workspaceScope,
           signal,
         }),

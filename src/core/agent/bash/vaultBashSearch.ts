@@ -3,7 +3,7 @@ import type { App } from 'obsidian'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { AssistantWorkspaceScope } from '../../../types/assistant.types'
 import { runVaultSearchStructured } from '../../mcp/vaultSearchService'
-import type { RAGEngine } from '../../rag/ragEngine'
+import type { RagKnowledgeAccess } from '../../rag/ragAccess'
 import type {
   BashSearchCallback,
   BashSearchResultEntry,
@@ -33,17 +33,17 @@ import { resolvePathVisibility } from '../workspaceScope'
 export function createVaultBashSearch({
   app,
   settings,
-  getRagEngine,
+  ragAccess,
   workspaceScope,
   signal,
 }: {
   app: App
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   workspaceScope?: AssistantWorkspaceScope
   signal?: AbortSignal
 }): BashSearchCallback {
-  return async ({ query, scopePath, maxResults }) => {
+  return async ({ query, scopePath, maxResults, knowledgeBase }) => {
     // `hidden` is judged unconditionally — the YOLO user-data root stays
     // invisible whether or not a workspace scope is configured — and keeps
     // its not-found disguise instead of being reported as a scope violation.
@@ -69,13 +69,14 @@ export function createVaultBashSearch({
     const outcome = await runVaultSearchStructured({
       app,
       settings,
-      getRagEngine,
+      ragAccess,
       workspaceScope,
       args: {
         query,
         path: scopePath,
         maxResults,
         mode: 'hybrid',
+        knowledgeBase,
       },
       signal,
     })

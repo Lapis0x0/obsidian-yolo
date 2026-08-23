@@ -22,7 +22,7 @@ import type {
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentAcceptedResult } from '../agent/subagent/types'
 import type { BaseLLMProvider } from '../llm/base'
-import type { RAGEngine } from '../rag/ragEngine'
+import type { RagKnowledgeAccess } from '../rag/ragAccess'
 
 /** A translatable piece of UI text: an i18n key plus its English fallback. */
 export type I18nText = {
@@ -133,7 +133,7 @@ export type ToolContext = {
   app: App
   settings?: YoloSettings
   openApplyReview?: (state: ApplyViewState) => Promise<boolean>
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   conversationId?: string
   conversationMessages?: ChatMessage[]
   roundId?: string
@@ -151,7 +151,7 @@ export type ToolContext = {
   subagentParentContext?: OpaqueSubagentParentContext
   /**
    * Host-provided capability to dispatch a subagent run — the same
-   * dependency-injection shape as `openApplyReview` / `getRagEngine` above
+   * dependency-injection shape as `openApplyReview` / `ragAccess` above
    * (master.md decision 5: `ToolContext` is DI; tools consume host
    * capabilities through it rather than importing the implementation
    * themselves). `delegate_subagent` is this field's only consumer.

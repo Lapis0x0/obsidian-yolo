@@ -71,6 +71,7 @@ describe('DesktopLocalMcpServer', () => {
         localServer: { enabled: true, port, token: TOKEN },
       },
       assistants: [],
+      knowledgeBases: [],
     } as unknown as YoloSettings
     const unavailable = async (): Promise<never> => {
       throw new Error('Not used by this test')
@@ -80,7 +81,7 @@ describe('DesktopLocalMcpServer', () => {
       getSettings: () => settings,
       getAgentService: unavailable,
       getMcpManager: unavailable,
-      getRagEngine: unavailable,
+      ragAccess: { listKnowledgeBases: () => [], getRagEngine: unavailable },
       openConversation: async () => undefined,
     })
     const consoleSpy = jest.spyOn(console, 'error').mockImplementation()
@@ -121,7 +122,8 @@ describe('DesktopLocalMcpServer', () => {
         },
       ],
       currentAssistantId: 'research-agent',
-    } as YoloSettings
+      knowledgeBases: [],
+    } as unknown as YoloSettings
     const unavailable = async (): Promise<never> => {
       throw new Error('Not used by this test')
     }
@@ -130,7 +132,7 @@ describe('DesktopLocalMcpServer', () => {
       getSettings: () => settings,
       getAgentService: unavailable,
       getMcpManager: unavailable,
-      getRagEngine: unavailable,
+      ragAccess: { listKnowledgeBases: () => [], getRagEngine: unavailable },
       openConversation: async () => undefined,
     })
     const url = new URL(`http://127.0.0.1:${port}/mcp`)

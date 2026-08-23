@@ -147,7 +147,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
       ? 'Do not use $db for images/PDF/audio/binary; use $vault.readBinary(path) for those.'
       : 'Do not use $db for images/PDF/audio/binary — those are out of scope.'
     enabled.push(
-      `Text only, markdown-focused. await $db.search(query, limit?) -> [{path,content,similarity,...}] (knowledge-base RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; default ${dbDefaultLimit} results, requested limit is clamped to ${dbLimit}; throws when the vault has no index). ${textReadHint} ${binaryHint}`,
+      `Text only, markdown-focused. await $db.search(query, limit?, knowledgeBase?) -> [{path,content,similarity,...}] (knowledge-base RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; default ${dbDefaultLimit} results, requested limit is clamped to ${dbLimit}; omit knowledgeBase to merge top results across every knowledge base, or pass a knowledge base name to restrict to one; throws when the vault has no knowledge bases). ${textReadHint} ${binaryHint}`,
     )
   }
 

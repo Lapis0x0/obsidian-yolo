@@ -6,7 +6,10 @@ import {
   buildRagScopeForWorkspace,
   resolvePathVisibility,
 } from '../agent/workspaceScope'
-import type { RAGEngine } from '../rag/ragEngine'
+import {
+  type RagKnowledgeAccess,
+  findKnowledgeBaseByName,
+} from '../rag/ragAccess'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import {
   type AggregatedSearchResult,
@@ -224,12 +227,12 @@ const getVaultSearchMode = (args: Record<string, unknown>): VaultSearchMode => {
 
 const getSemanticSearchUnavailableReason = ({
   settings,
-  getRagEngine,
+  ragAccess,
 }: {
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
 }): string | null => {
-  if (!getRagEngine || !settings) {
+  if (!ragAccess || !settings) {
     return 'Semantic search is not available in this context.'
   }
   if (!settings.ragOptions.enabled) {
@@ -237,6 +240,9 @@ const getSemanticSearchUnavailableReason = ({
   }
   if (!settings.embeddingModelId?.trim()) {
     return 'No embedding model configured. Fell back to keyword search.'
+  }
+  if (ragAccess.listKnowledgeBases().length === 0) {
+    return 'No knowledge bases are configured. Fell back to keyword search.'
   }
   return null
 }
@@ -640,7 +646,7 @@ const collectKeywordSearchResults = async ({
 export async function runVaultSearchStructured({
   app,
   settings,
-  getRagEngine,
+  ragAccess,
   args,
   signal,
   workspaceScope,
@@ -648,7 +654,7 @@ export async function runVaultSearchStructured({
 }: {
   app: App
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   args: Record<string, unknown>
   signal?: AbortSignal
   workspaceScope?: AssistantWorkspaceScope
@@ -685,10 +691,11 @@ export async function runVaultSearchStructured({
       min: 1,
       max: RAG_FETCH_LIMIT_MAX,
     })
+    const knowledgeBaseArg = getOptionalTextArg(args, 'knowledgeBase')?.trim()
     const semanticUnavailableReason =
       requestedMode === 'keyword'
         ? null
-        : getSemanticSearchUnavailableReason({ settings, getRagEngine })
+        : getSemanticSearchUnavailableReason({ settings, ragAccess })
     const effectiveMode: VaultSearchMode =
       requestedMode === 'hybrid' && semanticUnavailableReason
         ? 'keyword'
@@ -735,8 +742,23 @@ export async function runVaultSearchStructured({
     if (!query) {
       throw new Error('query is required for rag/hybrid mode.')
     }
-    if (!getRagEngine || !settings) {
+    if (!ragAccess || !settings) {
       throw new Error('Semantic search is not available in this context.')
+    }
+
+    const allKnowledgeBases = ragAccess.listKnowledgeBases()
+    let targetKnowledgeBases = allKnowledgeBases
+    if (knowledgeBaseArg) {
+      const match = findKnowledgeBaseByName(allKnowledgeBases, knowledgeBaseArg)
+      if (!match) {
+        const available = allKnowledgeBases.map((kb) => kb.name).join(', ')
+        throw new Error(
+          available
+            ? `Unknown knowledge base "${knowledgeBaseArg}". Available: ${available}.`
+            : `Unknown knowledge base "${knowledgeBaseArg}". No knowledge bases are configured.`,
+        )
+      }
+      targetKnowledgeBases = [match]
     }
 
     const rawScope = args.scope
@@ -760,23 +782,45 @@ export async function runVaultSearchStructured({
     })
 
     let ragMapped: SuperSearchResult[]
-    if ('empty' in ragScopeResult) {
+    if ('empty' in ragScopeResult || targetKnowledgeBases.length === 0) {
       ragMapped = []
     } else {
-      const ragEngine = await getRagEngine()
       const effectiveRagLimit = Math.min(
         ragLimitArg ?? settings.ragOptions.limit,
         RAG_FETCH_LIMIT_MAX,
       )
 
-      const ragRows = await ragEngine.processQuery({
-        query,
-        scope: ragScopeResult.scope,
-        minSimilarity: ragMinSimilarity,
-        limit: effectiveRagLimit,
-      })
-
-      ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+      // No `knowledgeBase` argument: query every knowledge base and merge by
+      // similarity — each base's own `processQuery` call already applies
+      // `minSimilarity`, so this only needs to fuse and cap the union.
+      const perKbResults = await Promise.all(
+        targetKnowledgeBases.map(async (kb) => {
+          const ragEngine = await ragAccess.getRagEngine(kb.id)
+          const ragRows = await ragEngine.processQuery({
+            query,
+            scope: ragScopeResult.scope,
+            minSimilarity: ragMinSimilarity,
+            limit: effectiveRagLimit,
+          })
+          return mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+        }),
+      )
+      // Overlapping knowledge bases (a folder included by more than one kb)
+      // can each return the same chunk — dedupe by (path, chunk position)
+      // after sorting so the highest-similarity copy wins, then cap to the
+      // limit. Two rows for the same chunk have the same similarity anyway
+      // (same embedding), but sorting first keeps this correct regardless.
+      const seenChunks = new Set<string>()
+      ragMapped = perKbResults
+        .flat()
+        .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+        .filter((result) => {
+          const chunkKey = `${result.path} ${result.startLine} ${result.endLine}`
+          if (seenChunks.has(chunkKey)) return false
+          seenChunks.add(chunkKey)
+          return true
+        })
+        .slice(0, effectiveRagLimit)
     }
 
     if (effectiveMode === 'rag') {
@@ -872,7 +916,7 @@ export async function runVaultSearchStructured({
 export async function runVaultSearch(options: {
   app: App
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   args: Record<string, unknown>
   signal?: AbortSignal
   workspaceScope?: AssistantWorkspaceScope

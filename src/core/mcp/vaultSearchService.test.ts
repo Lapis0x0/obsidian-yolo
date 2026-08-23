@@ -4,9 +4,19 @@ import { App, TFile, TFolder } from 'obsidian'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import type { RagKnowledgeAccess } from '../rag/ragAccess'
 import type { RAGEngine } from '../rag/ragEngine'
 
 import { runVaultSearch } from './vaultSearchService'
+
+// A single-knowledge-base stub: enough for `runVaultSearchStructured`'s
+// no-`knowledgeBase`-argument merge path to find one base and query it.
+const ragAccessOf = (engine: unknown): RagKnowledgeAccess => ({
+  listKnowledgeBases: () => [
+    { id: 'kb-a', name: 'kb-a', description: '', include: [], exclude: [] },
+  ],
+  getRagEngine: async () => engine as RAGEngine,
+})
 
 describe('runVaultSearch', () => {
   it('defaults to hybrid and falls back to keyword with an explicit reason', async () => {
@@ -84,8 +94,7 @@ describe('runVaultSearch', () => {
         ragOptions: { enabled: true, limit: 10 },
         embeddingModelId: 'test-embedding',
       } as unknown as YoloSettings,
-      getRagEngine: async () =>
-        ({ processQuery: jest.fn() }) as unknown as RAGEngine,
+      ragAccess: ragAccessOf({ processQuery: jest.fn() }),
       args: {
         mode: 'rag',
         scope: 'files',
@@ -296,29 +305,28 @@ describe('runVaultSearch', () => {
         },
         embeddingModelId: 'test-embedding',
       } as unknown as YoloSettings,
-      getRagEngine: async () =>
-        ({
-          processQuery: jest.fn().mockResolvedValue([
-            {
-              path: 'workflow-a.md',
-              content: 'workflow intro chunk',
-              metadata: { startLine: 1, endLine: 2 },
-              similarity: 0.91,
-            },
-            {
-              path: 'workflow-b.md',
-              content: 'workflow b chunk',
-              metadata: { startLine: 3, endLine: 4 },
-              similarity: 0.89,
-            },
-            {
-              path: 'workflow-a.md',
-              content: 'workflow appendix chunk',
-              metadata: { startLine: 10, endLine: 12 },
-              similarity: 0.82,
-            },
-          ]),
-        }) as unknown as RAGEngine,
+      ragAccess: ragAccessOf({
+        processQuery: jest.fn().mockResolvedValue([
+          {
+            path: 'workflow-a.md',
+            content: 'workflow intro chunk',
+            metadata: { startLine: 1, endLine: 2 },
+            similarity: 0.91,
+          },
+          {
+            path: 'workflow-b.md',
+            content: 'workflow b chunk',
+            metadata: { startLine: 3, endLine: 4 },
+            similarity: 0.89,
+          },
+          {
+            path: 'workflow-a.md',
+            content: 'workflow appendix chunk',
+            metadata: { startLine: 10, endLine: 12 },
+            similarity: 0.82,
+          },
+        ]),
+      }),
       args: {
         mode: 'hybrid',
         query: 'workflow',
@@ -360,6 +368,90 @@ describe('runVaultSearch', () => {
     })
   })
 
+  it('dedupes the same chunk returned by two overlapping knowledge bases before truncating to the limit', async () => {
+    // kb-a and kb-b both cover 'shared/dup.md' (e.g. one base's include
+    // folder nests inside the other's), so an unscoped `vault_search` query
+    // gets the identical highest-similarity row back from both engines. Each
+    // base also has one lower-similarity chunk the other doesn't index.
+    //
+    // `ragOptions.limit` is 3 and there are 3 truly distinct chunks (dup,
+    // only-a, only-b). If the merge truncates to the limit *before*
+    // deduping, the duplicate eats a second slot and `only-b` (the lowest
+    // similarity, sorted last) gets dropped even though it should have made
+    // the cut. Deduping first keeps all three.
+    const root = Object.assign(new TFolder(), { path: '' })
+    const dupChunk = {
+      path: 'shared/dup.md',
+      content: 'duplicated chunk content',
+      metadata: { startLine: 5, endLine: 8 },
+      similarity: 0.9,
+    }
+    const ragAccess: RagKnowledgeAccess = {
+      listKnowledgeBases: () => [
+        { id: 'kb-a', name: 'kb-a', description: '', include: [], exclude: [] },
+        { id: 'kb-b', name: 'kb-b', description: '', include: [], exclude: [] },
+      ],
+      getRagEngine: async (kbId: string) =>
+        ({
+          processQuery: jest.fn().mockResolvedValue(
+            kbId === 'kb-a'
+              ? [
+                  dupChunk,
+                  {
+                    path: 'only-a.md',
+                    content: 'only in kb-a',
+                    metadata: { startLine: 1, endLine: 2 },
+                    similarity: 0.85,
+                  },
+                ]
+              : [
+                  dupChunk,
+                  {
+                    path: 'only-b.md',
+                    content: 'only in kb-b',
+                    metadata: { startLine: 1, endLine: 2 },
+                    similarity: 0.8,
+                  },
+                ],
+          ),
+        }) as unknown as RAGEngine,
+    }
+
+    const result = await runVaultSearch({
+      app: {
+        vault: {
+          getRoot: jest.fn().mockReturnValue(root),
+        },
+      } as unknown as App,
+      settings: {
+        ragOptions: { enabled: true, limit: 3 },
+        embeddingModelId: 'test-embedding',
+      } as unknown as YoloSettings,
+      ragAccess,
+      args: {
+        mode: 'rag',
+        query: 'dup',
+        maxResults: 10,
+      },
+    })
+
+    expect(result.status).toBe('success')
+    if (result.status !== 'success') {
+      throw new Error('expected success')
+    }
+
+    const parsed = JSON.parse(result.text) as {
+      results: Array<{ path: string; hitCount?: number }>
+    }
+    expect(parsed.results.map((r) => r.path).sort()).toEqual([
+      'only-a.md',
+      'only-b.md',
+      'shared/dup.md',
+    ])
+    const dupGroup = parsed.results.find((r) => r.path === 'shared/dup.md')
+    expect(dupGroup).toMatchObject({ hitCount: 1 })
+  })
+
   it('passes the assistant workspace scope through to the RAG query, intersected with the requested path', async () => {
     const root = Object.assign(new TFolder(), { path: '' })
     const workspaceScope: AssistantWorkspaceScope = {
@@ -380,7 +472,7 @@ describe('runVaultSearch', () => {
         ragOptions: { enabled: true, limit: 10 },
         embeddingModelId: 'test-embedding',
       } as unknown as YoloSettings,
-      getRagEngine: async () => ({ processQuery }) as unknown as RAGEngine,
+      ragAccess: ragAccessOf({ processQuery }),
       workspaceScope,
       args: { mode: 'rag', query: 'note' },
     })
@@ -418,7 +510,7 @@ describe('runVaultSearch', () => {
         ragOptions: { enabled: true, limit: 10 },
         embeddingModelId: 'test-embedding',
       } as unknown as YoloSettings,
-      getRagEngine: async () => ({ processQuery }) as unknown as RAGEngine,
+      ragAccess: ragAccessOf({ processQuery }),
       workspaceScope,
       args: { mode: 'rag', query: 'note', path: 'Private' },
     })
