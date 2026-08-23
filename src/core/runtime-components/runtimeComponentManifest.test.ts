@@ -7,6 +7,9 @@ import {
   assertCompleteRuntimeComponentRegistry,
   parseRuntimeComponentRegistry,
   resolveRuntimeComponentArtifactSources,
+  resolveRuntimeComponentAssetSources,
+  runtimeComponentAssetMirrorUrl,
+  runtimeComponentAssetReleaseUrl,
   runtimeComponentReleaseUrl,
 } from './runtimeComponentManifest'
 
@@ -162,6 +165,53 @@ describe('runtime component manifest', () => {
     ).toEqual([
       'https://updates.yoloapp.dev/runtime-components/1.6.1.4/tokenizer/entry.js',
       'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/1.6.1.4/runtime-components/tokenizer/dist/entry.js',
+    ])
+  })
+
+  it('falls back to a GitHub Release attachment for an asset, not Git Raw', () => {
+    const embeddingEngine = {
+      ...descriptor,
+      id: 'embedding-engine',
+      entry: 'runtime-components/embedding-engine/dist/entry.js',
+    }
+    const asset = {
+      name: 'ort-wasm-simd-threaded.wasm',
+      path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm',
+      byteSize: 1024,
+      sha256: 'b'.repeat(64),
+    }
+    // Unlike entry.js, assets are gitignored build outputs — never
+    // committed — so the fallback can't be Git Raw (`{ver}/{asset.path}`
+    // would 404 on every tag). It must be a GitHub Release attachment,
+    // named `{id}-{name}` so two components can't collide on a shared
+    // asset filename (e.g. both shipping `ort-wasm-simd-threaded.wasm`).
+    expect(
+      runtimeComponentAssetReleaseUrl(
+        embeddingEngine as never,
+        asset,
+        '1.6.1.4',
+      ),
+    ).toBe(
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.4/embedding-engine-ort-wasm-simd-threaded.wasm',
+    )
+    expect(
+      runtimeComponentAssetMirrorUrl(
+        embeddingEngine as never,
+        asset,
+        '1.6.1.4',
+      ),
+    ).toBe(
+      'https://updates.yoloapp.dev/runtime-components/1.6.1.4/embedding-engine/assets/ort-wasm-simd-threaded.wasm',
+    )
+    expect(
+      resolveRuntimeComponentAssetSources(
+        embeddingEngine as never,
+        asset,
+        '1.6.1.4',
+      ),
+    ).toEqual([
+      'https://updates.yoloapp.dev/runtime-components/1.6.1.4/embedding-engine/assets/ort-wasm-simd-threaded.wasm',
+      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.4/embedding-engine-ort-wasm-simd-threaded.wasm',
     ])
   })
 })

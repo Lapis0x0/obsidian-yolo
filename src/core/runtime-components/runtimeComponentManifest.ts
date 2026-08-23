@@ -238,9 +238,14 @@ export function resolveRuntimeComponentArtifactSources(
 }
 
 /**
- * Same two-mirror scheme as the entry (`{ver}/{id}/assets/{name}` on the
- * Cloudflare mirror, `{ver}/{path}` on Git Raw) — see
- * `resolveRuntimeComponentArtifactSources`.
+ * Unlike `runtimeComponentReleaseUrl`, this can't point at Git Raw:
+ * `dist/assets/*` is gitignored (see `.gitignore`) — a component's declared
+ * assets are large, reproducible build outputs, never committed, so
+ * nothing exists at `{bakedVersion}/{asset.path}` on any Git ref. The
+ * fallback is instead a GitHub Release attachment uploaded at release time
+ * (see `.github/workflows/release.yml`), named `{descriptor.id}-{name}` to
+ * disambiguate assets that share a filename across components (e.g. two
+ * components both shipping an `ort-wasm-simd-threaded.wasm`).
  */
 export function runtimeComponentAssetReleaseUrl(
   descriptor: RuntimeComponentDescriptor,
@@ -248,7 +253,7 @@ export function runtimeComponentAssetReleaseUrl(
   bakedVersion: string,
 ): string {
   assertRuntimeComponentVersion(bakedVersion)
-  return `https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/${bakedVersion}/${asset.path}`
+  return `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${bakedVersion}/${descriptor.id}-${asset.name}`
 }
 
 export function runtimeComponentAssetMirrorUrl(
