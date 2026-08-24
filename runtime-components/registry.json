@@ -23,20 +23,20 @@
       "descriptionKey": "settings.modules.runtimeComponents.embeddingEngine.description",
       "impactKey": "settings.modules.runtimeComponents.embeddingEngine.impact",
       "entry": "runtime-components/embedding-engine/dist/entry.js",
-      "byteSize": 843153,
-      "sha256": "f509302003d1d35ee1a725b89df8c651af5d467712d6a04a15be7868aaddcf67",
+      "byteSize": 488557,
+      "sha256": "daf3a389d309da4018f835be7170f3e87207ef276338c2ecc95273ae06831910",
       "assets": [
         {
           "name": "ort-wasm-simd-threaded.wasm",
           "path": "runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm",
-          "byteSize": 11133407,
-          "sha256": "f061472c6e77d6d50d079aacdc0ff9b63fee287ddd2cbf46cf62438d3891de2b"
+          "byteSize": 12942611,
+          "sha256": "f4f290847a4df02d0b93cdbf39b4b0e71acefbe80573e7e6b9342a7abd7b290a"
         },
         {
           "name": "ort-wasm-simd-threaded.mjs",
           "path": "runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.mjs",
-          "byteSize": 20856,
-          "sha256": "43c25054b6b9ac000f786c65545ff83a45f871e0e310e8c2f4d48a363bb66db4"
+          "byteSize": 24180,
+          "sha256": "5f2cd914554830762579c372d0211614c1e3f40ab3f6c0cfcf0900343229071d"
         }
       ]
     },
