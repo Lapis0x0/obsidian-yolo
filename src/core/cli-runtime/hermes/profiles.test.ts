@@ -62,11 +62,11 @@ describe('discoverHermesProfiles', () => {
     ])
   })
 
-  it('reads the default profile display name from the root profile.yaml', async () => {
+  it("reads the default profile display name from the root profile.yaml's display_name", async () => {
     mockedReaddir.mockRejectedValue(new Error('ENOENT'))
     mockedReadFile.mockImplementation(async (candidate: string) => {
       if (String(candidate) === '/home/me/.hermes/profile.yaml') {
-        return 'name: Home Base\n'
+        return 'display_name: \u592a\u4e00\n'
       }
       throw new Error('ENOENT')
     })
@@ -74,11 +74,32 @@ describe('discoverHermesProfiles', () => {
     await expect(
       discoverHermesProfiles({ HOME: '/home/me' }, 'linux'),
     ).resolves.toEqual([
-      { id: HERMES_DEFAULT_PROFILE_ID, displayName: 'Home Base' },
+      { id: HERMES_DEFAULT_PROFILE_ID, displayName: '\u592a\u4e00' },
     ])
   })
 
-  it('lists profiles under profiles/, sorted, falling back to id when profile.yaml has no name', async () => {
+  it("prefers Bot Mode's ui_meta title over display_name, as Hermes itself does", async () => {
+    mockedReaddir.mockRejectedValue(new Error('ENOENT'))
+    mockedReadFile.mockImplementation(async (candidate: string) => {
+      if (String(candidate) === '/home/me/.hermes/profile.yaml') {
+        return [
+          'display_name: Renamed In Dashboard',
+          'ui_meta:',
+          '  hermes-bots:',
+          '    title: \u592a\u4e00',
+        ].join('\n')
+      }
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      discoverHermesProfiles({ HOME: '/home/me' }, 'linux'),
+    ).resolves.toEqual([
+      { id: HERMES_DEFAULT_PROFILE_ID, displayName: '\u592a\u4e00' },
+    ])
+  })
+
+  it('lists profiles under profiles/, sorted, falling back to id when profile.yaml names none', async () => {
     mockedReaddir.mockImplementation(async (dir) => {
       if (String(dir) === '/home/me/.hermes/profiles') {
         return direntsFor(['work', 'research'])
@@ -87,7 +108,7 @@ describe('discoverHermesProfiles', () => {
     })
     mockedReadFile.mockImplementation(async (candidate: string) => {
       if (String(candidate) === '/home/me/.hermes/profiles/work/profile.yaml') {
-        return 'name: Work Agent\n'
+        return 'display_name: Work Agent\n'
       }
       throw new Error('ENOENT')
     })
@@ -206,7 +227,7 @@ describe('discoverHermesProfiles', () => {
     ])
   })
 
-  it('falls back to the id when profile.yaml has an empty or non-string name', async () => {
+  it('falls back to the id when both display fields are blank', async () => {
     mockedReaddir.mockImplementation(async (dir) => {
       if (String(dir) === '/home/me/.hermes/profiles')
         return direntsFor(['work'])
@@ -214,7 +235,12 @@ describe('discoverHermesProfiles', () => {
     })
     mockedReadFile.mockImplementation(async (candidate: string) => {
       if (String(candidate) === '/home/me/.hermes/profiles/work/profile.yaml') {
-        return 'name: "   "\n'
+        return [
+          'display_name: "   "',
+          'ui_meta:',
+          '  hermes-bots:',
+          '    title: ""',
+        ].join('\n')
       }
       throw new Error('ENOENT')
     })

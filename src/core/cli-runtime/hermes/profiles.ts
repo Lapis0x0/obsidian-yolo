@@ -55,9 +55,13 @@ const joinPath = (platform: NodeJS.Platform, ...segments: string[]): string =>
   platform === 'win32' ? path.win32.join(...segments) : path.join(...segments)
 
 /**
- * Reads a profile directory's display name from its `profile.yaml`. Returns
- * `null` when the file is missing, unreadable, or carries no usable `name`
- * field — callers fall back to the profile id in that case.
+ * Reads a profile directory's display name from its `profile.yaml`, using
+ * Hermes's own precedence: the desktop Bot Mode title
+ * (`ui_meta['hermes-bots'].title`, written by the bots panel through
+ * `profiles.configure`) wins over the core-level `display_name`
+ * (`hermes profile rename` / dashboard). Both are presentation-only free
+ * text — the profile id stays the identity everywhere else. Returns `null`
+ * when the file is missing, unreadable, or carries neither field.
  */
 const readProfileDisplayName = async (
   profileDir: string,
@@ -69,13 +73,25 @@ const readProfileDisplayName = async (
       'utf8',
     )
     const parsed: unknown = parseYaml(contents)
-    const name =
-      parsed && typeof parsed === 'object' && 'name' in parsed
-        ? (parsed as { name: unknown }).name
+    if (!parsed || typeof parsed !== 'object') return null
+    const { ui_meta: uiMeta, display_name: displayName } = parsed as {
+      ui_meta?: unknown
+      display_name?: unknown
+    }
+    const botMode =
+      uiMeta && typeof uiMeta === 'object'
+        ? (uiMeta as Record<string, unknown>)['hermes-bots']
         : undefined
-    if (typeof name !== 'string') return null
-    const trimmed = name.trim()
-    return trimmed.length > 0 ? trimmed : null
+    const botTitle =
+      botMode && typeof botMode === 'object'
+        ? (botMode as { title?: unknown }).title
+        : undefined
+    for (const candidate of [botTitle, displayName]) {
+      if (typeof candidate !== 'string') continue
+      const trimmed = candidate.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+    return null
   } catch {
     return null
   }
