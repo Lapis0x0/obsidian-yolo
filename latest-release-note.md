@@ -1,3 +1,9 @@
+## 1.6.6.1 Hotfix 🛠️
+
+### 🛠️ Hotfix
+
+- Fixed first-run knowledge base setup: with indexing off, embedding models stayed greyed out, so you couldn't pick one to turn indexing back on. The notes below are from 1.6.6.
+
 ## 1.6.6 Offline Embeddings & Multiple Knowledge Bases 📚
 
 ### Knowledge base & RAG
@@ -18,6 +24,12 @@
 - Fixed a false "module operation failed" error shown at startup even when the module was actually running fine.
 
 ---
+
+## 1.6.6.1 Hotfix 🛠️
+
+### 🛠️ 热修复
+
+- 修复关闭知识库索引时无法选择/下载嵌入模型，导致无法重新开启索引的问题。以下为 1.6.6 的更新内容。
 
 ## 1.6.6 离线 Embedding 与多知识库 📚
 
