@@ -328,9 +328,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   // live instead of sitting at 0 until completion.
   const anyRunRunning = useMemo(
     () =>
-      Object.values(indexSnapshot.runs).some(
-        (run) => run.status === 'running',
-      ),
+      Object.values(indexSnapshot.runs).some((run) => run.status === 'running'),
     [indexSnapshot],
   )
   useEffect(() => {
@@ -798,7 +796,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               <div className="yolo-kb-status-sub">
                 {t(
                   'settings.rag.indexingDisabledSub',
-                  'Agent 的「搜索」工具将只使用关键词检索；页面其余内容灰显。',
+                  'Agent 的「搜索」工具将只使用关键词检索。可先选择嵌入模型，再开启索引。',
                 )}
               </div>
             </>
@@ -1049,8 +1047,8 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
         </div>
       </div>
 
-      <div className={`yolo-kb-content${!isRagEnabled ? ' is-disabled' : ''}`}>
-        <>
+      <div className="yolo-kb-content">
+        <div className={!isRagEnabled ? 'yolo-kb-dimmed' : undefined}>
           <div className="yolo-kb-divider-label yolo-kb-divider-label--with-action">
             <span className="yolo-kb-divider-label-text">
               {t('settings.knowledgeBases.title', '知识库')}
@@ -1299,243 +1297,236 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               </div>
             </article>
           </div>
+        </div>
 
-          {/* Embedding model shelf: the API row below only selects among
+        {/* Embedding model shelf: the API row below only selects among
               already-configured API embedding models — provider/key setup
               stays on the Models tab. The "本地" group right after it is
               `LocalEmbeddingShelf`, a curated download list with its own
               per-model lifecycle; local embedding models are deliberately
               not a normal Provider entry (no API key/base URL), see
               docs/plans/08-22-local-embedding/00-plan.md §3.5-§3.7. */}
-          <div className="yolo-kb-divider-label yolo-kb-divider-label--sub">
-            {t('settings.knowledgeBases.embeddingModelShelf', '嵌入模型')}
-            <span className="yolo-kb-divider-label-faint">
-              {t(
-                'settings.knowledgeBases.embeddingModelShelfDesc',
-                '所有知识库共用 · 更换需重建索引',
-              )}
-            </span>
-          </div>
-          <div className="yolo-kb-model-list">
-            <div
-              className={`yolo-kb-ml-row${
-                currentEmbeddingModel &&
-                currentEmbeddingModel.providerId !== LOCAL_EMBEDDING_PROVIDER_ID
-                  ? ' is-current'
-                  : ''
-              }`}
-            >
-              <div className="yolo-kb-ml-main">
-                <div className="yolo-kb-ml-name is-plain">
-                  {t(
-                    'settings.knowledgeBases.embeddingModelApiRow',
-                    'API 模型',
-                  )}
-                  <ObsidianDropdown
-                    value={pendingEmbeddingModelId}
-                    groupedOptions={embeddingModelOptionGroups}
-                    onChange={setPendingEmbeddingModelId}
-                  />
-                </div>
-                <div className="yolo-kb-ml-meta">
-                  {t(
-                    'settings.knowledgeBases.embeddingModelApiRowMeta',
-                    '{{dimension}} 维 · 按 token 计费 · 密钥与自定义模型在「模型」标签页管理',
-                  ).replace(
-                    '{{dimension}}',
-                    String(
-                      settings.embeddingModels.find(
-                        (m) => m.id === pendingEmbeddingModelId,
-                      )?.dimension ?? '—',
-                    ),
-                  )}
-                </div>
+        <div className="yolo-kb-divider-label yolo-kb-divider-label--sub">
+          {t('settings.knowledgeBases.embeddingModelShelf', '嵌入模型')}
+          <span className="yolo-kb-divider-label-faint">
+            {t(
+              'settings.knowledgeBases.embeddingModelShelfDesc',
+              '所有知识库共用 · 更换需重建索引',
+            )}
+          </span>
+        </div>
+        <div className="yolo-kb-model-list">
+          <div
+            className={`yolo-kb-ml-row${
+              currentEmbeddingModel &&
+              currentEmbeddingModel.providerId !== LOCAL_EMBEDDING_PROVIDER_ID
+                ? ' is-current'
+                : ''
+            }`}
+          >
+            <div className="yolo-kb-ml-main">
+              <div className="yolo-kb-ml-name is-plain">
+                {t('settings.knowledgeBases.embeddingModelApiRow', 'API 模型')}
+                <ObsidianDropdown
+                  value={pendingEmbeddingModelId}
+                  groupedOptions={embeddingModelOptionGroups}
+                  onChange={setPendingEmbeddingModelId}
+                />
               </div>
-              <div className="yolo-kb-ml-side">
-                <ObsidianButton
-                  text={t('settings.knowledgeBases.setAsCurrent', '设为当前')}
-                  className="yolo-kb-ml-ghost"
-                  disabled={
-                    !pendingEmbeddingModelId ||
-                    pendingEmbeddingModelId === settings.embeddingModelId
-                  }
-                  onClick={() =>
+              <div className="yolo-kb-ml-meta">
+                {t(
+                  'settings.knowledgeBases.embeddingModelApiRowMeta',
+                  '{{dimension}} 维 · 按 token 计费 · 密钥与自定义模型在「模型」标签页管理',
+                ).replace(
+                  '{{dimension}}',
+                  String(
+                    settings.embeddingModels.find(
+                      (m) => m.id === pendingEmbeddingModelId,
+                    )?.dimension ?? '—',
+                  ),
+                )}
+              </div>
+            </div>
+            <div className="yolo-kb-ml-side">
+              <ObsidianButton
+                text={t('settings.knowledgeBases.setAsCurrent', '设为当前')}
+                className="yolo-kb-ml-ghost"
+                disabled={
+                  !pendingEmbeddingModelId ||
+                  pendingEmbeddingModelId === settings.embeddingModelId
+                }
+                onClick={() =>
+                  applySettingsUpdate({
+                    ...settings,
+                    embeddingModelId: pendingEmbeddingModelId,
+                  })
+                }
+              />
+            </div>
+          </div>
+          <LocalEmbeddingShelf plugin={plugin} />
+        </div>
+
+        <section className="yolo-rag-card">
+          <div
+            className={`yolo-settings-advanced-toggle yolo-clickable${
+              showAdvancedRagSettings ? ' is-expanded' : ''
+            }`}
+            onClick={() => setShowAdvancedRagSettings((prev) => !prev)}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault()
+                setShowAdvancedRagSettings((prev) => !prev)
+              }
+            }}
+          >
+            <span className="yolo-settings-advanced-toggle-icon">▶</span>
+            {t('settings.rag.advanced', '高级设置')}
+          </div>
+
+          {showAdvancedRagSettings && (
+            <>
+              <ObsidianSetting
+                name={t('settings.rag.indexPdf', '索引 PDF')}
+                desc={t(
+                  'settings.rag.indexPdfDesc',
+                  '为知识库提取并索引 PDF 文本；首次全库重建可能较慢。大型仓库若不需要可关闭。',
+                )}
+                className="yolo-settings-card"
+              >
+                <ObsidianToggle
+                  value={isIndexPdfEnabled}
+                  onChange={(value) =>
                     applySettingsUpdate({
                       ...settings,
-                      embeddingModelId: pendingEmbeddingModelId,
+                      ragOptions: { ...settings.ragOptions, indexPdf: value },
                     })
                   }
                 />
-              </div>
-            </div>
-            <LocalEmbeddingShelf plugin={plugin} />
-          </div>
+              </ObsidianSetting>
 
-          <section className="yolo-rag-card">
-            <div
-              className={`yolo-settings-advanced-toggle yolo-clickable${
-                showAdvancedRagSettings ? ' is-expanded' : ''
-              }`}
-              onClick={() => setShowAdvancedRagSettings((prev) => !prev)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  setShowAdvancedRagSettings((prev) => !prev)
-                }
-              }}
-            >
-              <span className="yolo-settings-advanced-toggle-icon">▶</span>
-              {t('settings.rag.advanced', '高级设置')}
-            </div>
-
-            {showAdvancedRagSettings && (
-              <>
-                <ObsidianSetting
-                  name={t('settings.rag.indexPdf', '索引 PDF')}
-                  desc={t(
-                    'settings.rag.indexPdfDesc',
-                    '为知识库提取并索引 PDF 文本；首次全库重建可能较慢。大型仓库若不需要可关闭。',
-                  )}
-                  className="yolo-settings-card"
-                >
-                  <ObsidianToggle
-                    value={isIndexPdfEnabled}
-                    onChange={(value) =>
+              <ObsidianSetting
+                name={t('settings.rag.chunkSize')}
+                desc={t('settings.rag.chunkSizeDesc')}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={chunkSizeInput}
+                  placeholder="1000"
+                  onChange={(value) => {
+                    setChunkSizeInput(value)
+                    const chunkSize = parseIntegerInput(value)
+                    if (chunkSize !== null) {
                       applySettingsUpdate({
                         ...settings,
-                        ragOptions: { ...settings.ragOptions, indexPdf: value },
+                        ragOptions: { ...settings.ragOptions, chunkSize },
                       })
                     }
-                  />
-                </ObsidianSetting>
+                  }}
+                  onBlur={() => {
+                    if (parseIntegerInput(chunkSizeInput) === null) {
+                      setChunkSizeInput(String(settings.ragOptions.chunkSize))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
 
-                <ObsidianSetting
-                  name={t('settings.rag.chunkSize')}
-                  desc={t('settings.rag.chunkSizeDesc')}
-                  className="yolo-settings-card"
-                >
-                  <ObsidianTextInput
-                    value={chunkSizeInput}
-                    placeholder="1000"
-                    onChange={(value) => {
-                      setChunkSizeInput(value)
-                      const chunkSize = parseIntegerInput(value)
-                      if (chunkSize !== null) {
-                        applySettingsUpdate({
-                          ...settings,
-                          ragOptions: { ...settings.ragOptions, chunkSize },
-                        })
-                      }
-                    }}
-                    onBlur={() => {
-                      if (parseIntegerInput(chunkSizeInput) === null) {
-                        setChunkSizeInput(String(settings.ragOptions.chunkSize))
-                      }
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <ObsidianSetting
-                  name={t('settings.rag.minSimilarity')}
-                  desc={t('settings.rag.minSimilarityDesc')}
-                  className="yolo-settings-card"
-                >
-                  <ObsidianTextInput
-                    value={minSimilarityInput}
-                    placeholder="0.0"
-                    onChange={(value) => {
-                      setMinSimilarityInput(value)
-                      const minSimilarity = parseFloatInput(value)
-                      if (minSimilarity !== null) {
-                        applySettingsUpdate({
-                          ...settings,
-                          ragOptions: { ...settings.ragOptions, minSimilarity },
-                        })
-                      }
-                    }}
-                    onBlur={() => {
-                      if (parseFloatInput(minSimilarityInput) === null) {
-                        setMinSimilarityInput(
-                          String(settings.ragOptions.minSimilarity),
-                        )
-                      }
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <ObsidianSetting
-                  name={t('settings.rag.limit')}
-                  desc={t('settings.rag.limitDesc')}
-                  className="yolo-settings-card"
-                >
-                  <ObsidianTextInput
-                    value={limitInput}
-                    placeholder="10"
-                    onChange={(value) => {
-                      setLimitInput(value)
-                      const limit = parseIntegerInput(value)
-                      if (limit !== null) {
-                        applySettingsUpdate({
-                          ...settings,
-                          ragOptions: { ...settings.ragOptions, limit },
-                        })
-                      }
-                    }}
-                    onBlur={() => {
-                      if (parseIntegerInput(limitInput) === null) {
-                        setLimitInput(String(settings.ragOptions.limit))
-                      }
-                    }}
-                  />
-                </ObsidianSetting>
-
-                <ObsidianSetting
-                  name={t('settings.rag.embeddingConcurrency')}
-                  desc={t('settings.rag.embeddingConcurrencyDesc')}
-                  className="yolo-settings-card"
-                >
-                  <ObsidianTextInput
-                    value={embeddingConcurrencyInput}
-                    placeholder="10"
-                    onChange={(value) => {
-                      setEmbeddingConcurrencyInput(value)
-                      const parsed = parseIntegerInput(value)
-                      if (parsed !== null) {
-                        const clamped = Math.max(1, Math.min(24, parsed))
-                        applySettingsUpdate({
-                          ...settings,
-                          ragOptions: {
-                            ...settings.ragOptions,
-                            embeddingConcurrency: clamped,
-                          },
-                        })
-                      }
-                    }}
-                    onBlur={() => {
-                      const parsed = parseIntegerInput(
-                        embeddingConcurrencyInput,
+              <ObsidianSetting
+                name={t('settings.rag.minSimilarity')}
+                desc={t('settings.rag.minSimilarityDesc')}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={minSimilarityInput}
+                  placeholder="0.0"
+                  onChange={(value) => {
+                    setMinSimilarityInput(value)
+                    const minSimilarity = parseFloatInput(value)
+                    if (minSimilarity !== null) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: { ...settings.ragOptions, minSimilarity },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    if (parseFloatInput(minSimilarityInput) === null) {
+                      setMinSimilarityInput(
+                        String(settings.ragOptions.minSimilarity),
                       )
-                      if (parsed === null) {
-                        setEmbeddingConcurrencyInput(
-                          String(
-                            settings.ragOptions.embeddingConcurrency ?? 10,
-                          ),
-                        )
-                        return
-                      }
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.rag.limit')}
+                desc={t('settings.rag.limitDesc')}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={limitInput}
+                  placeholder="10"
+                  onChange={(value) => {
+                    setLimitInput(value)
+                    const limit = parseIntegerInput(value)
+                    if (limit !== null) {
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: { ...settings.ragOptions, limit },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    if (parseIntegerInput(limitInput) === null) {
+                      setLimitInput(String(settings.ragOptions.limit))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+
+              <ObsidianSetting
+                name={t('settings.rag.embeddingConcurrency')}
+                desc={t('settings.rag.embeddingConcurrencyDesc')}
+                className="yolo-settings-card"
+              >
+                <ObsidianTextInput
+                  value={embeddingConcurrencyInput}
+                  placeholder="10"
+                  onChange={(value) => {
+                    setEmbeddingConcurrencyInput(value)
+                    const parsed = parseIntegerInput(value)
+                    if (parsed !== null) {
                       const clamped = Math.max(1, Math.min(24, parsed))
-                      if (clamped !== parsed) {
-                        setEmbeddingConcurrencyInput(String(clamped))
-                      }
-                    }}
-                  />
-                </ObsidianSetting>
-              </>
-            )}
-          </section>
-        </>
+                      applySettingsUpdate({
+                        ...settings,
+                        ragOptions: {
+                          ...settings.ragOptions,
+                          embeddingConcurrency: clamped,
+                        },
+                      })
+                    }
+                  }}
+                  onBlur={() => {
+                    const parsed = parseIntegerInput(embeddingConcurrencyInput)
+                    if (parsed === null) {
+                      setEmbeddingConcurrencyInput(
+                        String(settings.ragOptions.embeddingConcurrency ?? 10),
+                      )
+                      return
+                    }
+                    const clamped = Math.max(1, Math.min(24, parsed))
+                    if (clamped !== parsed) {
+                      setEmbeddingConcurrencyInput(String(clamped))
+                    }
+                  }}
+                />
+              </ObsidianSetting>
+            </>
+          )}
+        </section>
       </div>
     </div>
   )

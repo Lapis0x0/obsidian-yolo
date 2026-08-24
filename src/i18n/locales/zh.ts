@@ -1236,7 +1236,7 @@ export const zh: TranslationKeys = {
       // Status bar (RAGSection)
       indexingDisabled: '知识库索引已关闭',
       indexingDisabledSub:
-        'Agent 的「搜索」工具将只使用关键词检索；页面其余内容灰显。',
+        'Agent 的「搜索」工具将只使用关键词检索。可先选择嵌入模型，再开启索引。',
       indexingProgress: '正在索引 {{kb}}',
       indexedCount: '已索引 {{n}} 篇',
       autoUpdate: '自动更新',

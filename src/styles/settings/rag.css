@@ -271,16 +271,13 @@
 
 /* ================= disabled-state content dimming ================= */
 
-/* Indexing off: the rest of the tab stays mounted (state, scroll position,
-   expanded "advanced settings" ...) but reads as inactive — grayed out and
-   non-interactive — rather than disappearing outright. */
-.yolo-kb-content {
-  transition: opacity var(--yolo-anim-duration-feedback) ease;
-}
-
-.yolo-kb-content.is-disabled {
+/* Indexing off: knowledge-base cards stay mounted (state, scroll) but
+   read as inactive. The embedding-model shelf stays fully interactive so
+   a first-run user can pick/download a model before turning indexing on. */
+.yolo-kb-dimmed {
   opacity: 0.5;
   pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
 }
 
 /* ================= knowledge base grid & card ================= */

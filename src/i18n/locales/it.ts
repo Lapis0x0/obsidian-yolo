@@ -1214,7 +1214,7 @@ export const it: DeepPartial<TranslationKeys> = {
       // Status bar (RAGSection)
       indexingDisabled: "L'indicizzazione della knowledge base è disattivata",
       indexingDisabledSub:
-        "Lo strumento Ricerca dell'Agent userà solo la ricerca per parole chiave; il resto della pagina è disattivato.",
+        "Lo strumento Ricerca dell'Agent userà solo la ricerca per parole chiave. Scegli un modello di embedding qui sotto, poi attiva l'indicizzazione.",
       indexingProgress: 'Indicizzazione di {{kb}} in corso',
       indexedCount: '{{n}} documento/i indicizzati',
       autoUpdate: 'Aggiornamento automatico',

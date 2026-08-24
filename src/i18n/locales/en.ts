@@ -1317,7 +1317,7 @@ export const en: TranslationKeys = {
       // Status bar (RAGSection)
       indexingDisabled: 'Knowledge base indexing is off',
       indexingDisabledSub:
-        "The Agent's Search tool will only use keyword search; the rest of this page is dimmed.",
+        "The Agent's Search tool will only use keyword search. Choose an embedding model below, then turn indexing on.",
       indexingProgress: 'Indexing {{kb}}',
       indexedCount: '{{n}} document(s) indexed',
       autoUpdate: 'Auto update',
