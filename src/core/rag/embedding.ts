@@ -39,6 +39,7 @@ function buildLocalEmbedding(
 ): {
   getEmbedding: RawGetEmbedding
   dispose: () => void | Promise<void>
+  releaseIdleSession: () => void | Promise<void>
 } {
   // `model` holds the catalog slug for local entries — see
   // `docs/plans/08-22-local-embedding/00-plan.md` §3.5 and
@@ -59,6 +60,7 @@ function buildLocalEmbedding(
   return {
     getEmbedding: (text, options) => client.getEmbedding(text, options),
     dispose: () => client.dispose(),
+    releaseIdleSession: () => client.releaseIdleSession(),
   }
 }
 
@@ -77,17 +79,23 @@ export const getEmbeddingModelClient = ({
   }
 
   const isLocal = embeddingModel.providerId === LOCAL_EMBEDDING_PROVIDER_ID
-  const { getEmbedding: rawGetEmbedding, dispose } = isLocal
+  const {
+    getEmbedding: rawGetEmbedding,
+    dispose,
+    releaseIdleSession,
+  } = isLocal
     ? buildLocalEmbedding(embeddingModel)
     : {
         getEmbedding: buildRemoteEmbedding(settings, embeddingModel),
         dispose: undefined,
+        releaseIdleSession: undefined,
       }
 
   return {
     id: embeddingModel.id,
     dimension: embeddingModel.dimension,
     dispose,
+    releaseIdleSession,
     getEmbedding: async (text, options) => {
       const vector = await rawGetEmbedding(text, options)
       if (vector.length !== embeddingModel.dimension) {

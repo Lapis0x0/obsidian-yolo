@@ -1313,6 +1313,7 @@ export const en: TranslationKeys = {
       waitingRateLimit: 'Waiting for rate limit to reset...',
       preparingProgress: 'Preparing index...',
       cancelIndex: 'Cancel',
+      cancellingIndex: 'Cancelling…',
       // Status bar (RAGSection)
       indexingDisabled: 'Knowledge base indexing is off',
       indexingDisabledSub:

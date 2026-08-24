@@ -1210,6 +1210,7 @@ export const it: DeepPartial<TranslationKeys> = {
       waitingRateLimit: 'In attesa del reset del limite di frequenza...',
       preparingProgress: 'Preparazione indicizzazione...',
       cancelIndex: 'Annulla',
+      cancellingIndex: 'Annullamento…',
       // Status bar (RAGSection)
       indexingDisabled: "L'indicizzazione della knowledge base è disattivata",
       indexingDisabledSub:

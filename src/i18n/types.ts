@@ -1043,6 +1043,7 @@ export type TranslationKeys = {
       waitingRateLimit?: string
       preparingProgress?: string
       cancelIndex?: string
+      cancellingIndex?: string
       // Status bar (RAGSection)
       indexingDisabled?: string
       indexingDisabledSub?: string

@@ -22,6 +22,16 @@ export type EmbeddingModelClient = {
    * timeout.
    */
   dispose?: () => void | Promise<void>
+  /**
+   * Present only for local embedding clients — tears down the live Worker
+   * session immediately without invalidating the client (unlike `dispose`,
+   * a subsequent `getEmbedding` call transparently recreates a session).
+   * Callers that abort/cancel an in-progress index run should call this so
+   * a heavy model's session doesn't sit at full memory for the rest of its
+   * idle-teardown window (`IDLE_DISPOSE_MS` in `local-embedding/client.ts`)
+   * after the work it was loaded for stopped.
+   */
+  releaseIdleSession?: () => void | Promise<void>
 }
 
 export type EmbeddingDbStats = {

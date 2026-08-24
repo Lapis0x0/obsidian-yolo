@@ -761,7 +761,10 @@ describe('RagIndexService', () => {
         loadLocalStorage: jest.fn().mockReturnValue(null),
         saveLocalStorage: jest.fn(),
       } as never,
-      getRagEngine: jest.fn().mockResolvedValue({ updateVaultIndex }),
+      getRagEngine: jest.fn().mockResolvedValue({
+        updateVaultIndex,
+        releaseEmbeddingIdleSession: jest.fn(),
+      }),
       activityRegistry: new BackgroundActivityRegistry(),
       isRagEnabled: () => true,
       t: (_key, fallback) => fallback ?? '',

@@ -1232,6 +1232,7 @@ export const zh: TranslationKeys = {
       waitingRateLimit: '等待速率限制重置...',
       preparingProgress: '正在准备索引...',
       cancelIndex: '取消',
+      cancellingIndex: '取消中…',
       // Status bar (RAGSection)
       indexingDisabled: '知识库索引已关闭',
       indexingDisabledSub:

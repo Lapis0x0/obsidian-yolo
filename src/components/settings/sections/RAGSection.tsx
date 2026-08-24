@@ -517,6 +517,15 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   const isIndexing = activeKbId !== null
   const queuedCount = indexSnapshot.queuedKbIds.length
 
+  // Cancelling an active run now force-tears-down the embedding session
+  // (see `ragIndexService.ts`), which is fast but not instant — a stuck
+  // Worker can take a few seconds to force-terminate. Without this, the
+  // button just sits there looking unresponsive for that whole window.
+  const [isCancellingIndex, setIsCancellingIndex] = useState(false)
+  useEffect(() => {
+    if (!isIndexing) setIsCancellingIndex(false)
+  }, [isIndexing])
+
   const totalDocs = useMemo(
     () =>
       knowledgeBases.reduce(
@@ -927,8 +936,16 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
               </span>
               {isIndexing ? (
                 <ObsidianButton
-                  text={t('settings.rag.cancelIndex', '取消')}
-                  onClick={() => plugin.cancelRagIndex()}
+                  text={
+                    isCancellingIndex
+                      ? t('settings.rag.cancellingIndex', '取消中…')
+                      : t('settings.rag.cancelIndex', '取消')
+                  }
+                  disabled={isCancellingIndex}
+                  onClick={() => {
+                    setIsCancellingIndex(true)
+                    plugin.cancelRagIndex()
+                  }}
                 />
               ) : (
                 <ObsidianButton

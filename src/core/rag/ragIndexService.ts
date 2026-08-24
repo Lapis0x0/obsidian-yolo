@@ -330,6 +330,9 @@ export class RagIndexService {
   cancel(kbId?: string): void {
     if (kbId === undefined) {
       this.currentAbortController?.abort()
+      if (this.activeKbId !== null) {
+        this.releaseEmbeddingIdleSessionEagerly(this.activeKbId)
+      }
       this.dequeueAll()
       for (const id of this.retryTimers.keys()) {
         this.clearRetryTimer(id)
@@ -338,6 +341,7 @@ export class RagIndexService {
     }
     if (this.activeKbId === kbId) {
       this.currentAbortController?.abort()
+      this.releaseEmbeddingIdleSessionEagerly(kbId)
       this.dequeueOne(kbId)
       this.clearRetryTimer(kbId)
       return
@@ -347,6 +351,23 @@ export class RagIndexService {
       this.clearRetryTimer(kbId)
       this.emit()
     }
+  }
+
+  /**
+   * `abort()` only unblocks the reconcile loop's *own* checkpoints — it
+   * never reaches the local embedding engine's session-creation or
+   * `embed()` calls (`local-embedding/client.ts` doesn't thread a signal
+   * into either), so a cold model load or a slow batch keeps running
+   * regardless. Tearing the session down here forces it: `session.dispose()`
+   * force-terminates the Worker within `DISPOSE_TIMEOUT_MS` even if it's
+   * stuck mid-call, which rejects whatever the reconcile loop was awaiting
+   * and actually unblocks `cancel()` instead of leaving it looking inert
+   * until the stuck call finishes on its own.
+   */
+  private releaseEmbeddingIdleSessionEagerly(kbId: string): void {
+    void this.getRagEngine(kbId).then((engine) =>
+      engine.releaseEmbeddingIdleSession(),
+    )
   }
 
   /** Cancels/dequeues `kbId` (same as `cancel(kbId)`) and waits until it is
@@ -550,8 +571,9 @@ export class RagIndexService {
     })
     await this.persistSnapshots()
 
+    let ragEngine: RAGEngine | undefined
     try {
-      const ragEngine = await this.getRagEngine(kbId)
+      ragEngine = await this.getRagEngine(kbId)
       const result = await ragEngine.updateVaultIndex(
         {
           scope: options.scope,
@@ -638,6 +660,12 @@ export class RagIndexService {
       await this.persistSnapshots()
       if (shouldScheduleRetry && options.trigger === 'manual') {
         this.scheduleRetry(kbId, options)
+      }
+      if (failureKind === 'aborted') {
+        // A cancelled run leaves the embedding client idling for the rest
+        // of its idle-teardown window otherwise — fine for the small
+        // models, wasteful for a multi-GB one (Qwen3-Embedding fp16).
+        void ragEngine?.releaseEmbeddingIdleSession()
       }
       this.settleWaiters(kbId, generation, error, 'reject')
     } finally {

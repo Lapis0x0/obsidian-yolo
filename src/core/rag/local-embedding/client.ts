@@ -35,6 +35,15 @@ export type LocalEmbeddingSessionClient = Readonly<{
     options?: { kind?: 'query' | 'document' },
   ): Promise<number[]>
   dispose(): Promise<void>
+  /**
+   * Tears down the live Worker session now (same effect as the idle timer
+   * eventually firing) without invalidating the client — the next
+   * `getEmbedding()` call transparently recreates one. For a cancelled
+   * index run on a heavy model (e.g. Qwen3-Embedding, several GB resident),
+   * waiting out the full `IDLE_DISPOSE_MS` window after cancel just holds
+   * that memory for nothing.
+   */
+  releaseIdleSession(): Promise<void>
 }>
 
 /**
@@ -329,6 +338,10 @@ export function createLocalEmbeddingClient(options: {
       disposed = true
       releasePromise = releaseSharedSession(shared)
       return releasePromise
+    },
+    releaseIdleSession(): Promise<void> {
+      if (disposed) return Promise.resolve()
+      return teardownSession(shared)
     },
   })
 }

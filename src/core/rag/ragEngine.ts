@@ -94,6 +94,17 @@ export class RAGEngine {
     return kb
   }
 
+  /**
+   * Tears down the embedding model's live session (if any) without
+   * invalidating this engine — unlike `cleanup()`, the engine stays usable
+   * for a later index run or query. Called after an aborted/cancelled
+   * index run so a heavy local model doesn't idle at full memory for the
+   * rest of its idle-teardown window. No-op for remote providers.
+   */
+  async releaseEmbeddingIdleSession(): Promise<void> {
+    await this.embeddingModel?.releaseIdleSession?.()
+  }
+
   cleanup() {
     // Local embedding clients hold a live Worker session + runtime-component
     // lease (`core/rag/local-embedding/client.ts`); release it immediately
