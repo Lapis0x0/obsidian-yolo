@@ -11,7 +11,7 @@ const formatDelta = (value: number, sign: '+' | '-') => {
   return `${sign}${value}`
 }
 
-const renderDeltaPair = (addedLines: number, removedLines: number) => {
+export const renderDeltaPair = (addedLines: number, removedLines: number) => {
   const items: Array<ReactElement> = []
 
   if (addedLines > 0) {

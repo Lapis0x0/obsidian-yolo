@@ -18318,12 +18318,21 @@ button.yolo-mermaid-modal-control:disabled {
  * 与工具标题、思考标题同属活动层，统一使用 text-muted；正文保持 text-normal，
  * 参数与详情继续使用 text-faint。 */
 .yolo-tool-run-summary__text {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: inherit;
   color: var(--text-muted);
+}
+
+/* 编辑段的增删行数：放在 __text 之外的固定宽度兄弟节点，这样整行过长触发
+ * 省略号截断时，被吃掉的是前面的文字，而不是最该被看到的 +N/-M。 */
+.yolo-tool-run-summary__stats {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 右侧展开箭头：默认隐藏、hover/聚焦浮现，与 .yolo-toolcall-header-icon--expand

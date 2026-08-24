@@ -2019,6 +2019,9 @@ export type TranslationKeys = {
       search?: string
       web?: string
       edit?: string
+      editedFile?: string
+      createdFile?: string
+      deletedFile?: string
       virtualTerminal?: string
       terminal?: string
       command?: string

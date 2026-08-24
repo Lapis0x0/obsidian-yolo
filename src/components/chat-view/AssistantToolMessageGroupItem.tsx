@@ -27,6 +27,7 @@ import {
   ChatToolMessage,
 } from '../../types/chat'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
+import type { ToolEditOperation } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import {
   hasMatchingToolMessageForRequests,
@@ -41,7 +42,7 @@ import {
   countFileChangeStats,
 } from '../../utils/chat/editSummary'
 
-import AssistantEditSummary from './AssistantEditSummary'
+import AssistantEditSummary, { renderDeltaPair } from './AssistantEditSummary'
 import AssistantErrorCard from './AssistantErrorCard'
 import AssistantGroupEditor from './AssistantGroupEditor'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
@@ -419,21 +420,92 @@ type ToolRunSegment = {
    */
   boundaryIndex: number | null
   bucketCounts: Partial<Record<ToolRunSummaryBucket, number>>
+  /**
+   * 本段里已成功完成的文件编辑聚合（复用 footer 用的同一套按路径去重 + 净差异
+   * 逻辑）。为 null 表示本段没有任何编辑调用已经成功返回——可能是纯只读段，
+   * 也可能是编辑还在跑/失败了，这两种情况都退回普通的分桶计数文案。
+   */
+  editSummary: GroupEditSummary | null
   requiresUserAction: boolean
 }
 
-const buildToolRunSummaryText = (
+const getFileBaseName = (path: string): string => {
+  const segments = path.split('/')
+  return segments[segments.length - 1] || path
+}
+
+const EDIT_FILE_SUMMARY_LABELS: Record<
+  ToolEditOperation,
+  { key: string; fallback: string }
+> = {
+  edit: { key: 'chat.toolRunSummary.editedFile', fallback: 'Edited {name}' },
+  create: {
+    key: 'chat.toolRunSummary.createdFile',
+    fallback: 'Created {name}',
+  },
+  delete: {
+    key: 'chat.toolRunSummary.deletedFile',
+    fallback: 'Deleted {name}',
+  },
+}
+
+/**
+ * 摘要行的文案分两部分：`clauses`（纯文本短语，逗号/·拼接）和 `stats`
+ * （行尾带色的 +N/-M，渲染成 JSX 而不是字符串)。是否点名文件、要不要带数字，
+ * 完全由 `editSummary` 是否存在、`totalFiles`、`totalLineStatsAvailable` 决定：
+ * - 没有已完成的编辑 → 跟以前完全一样的分桶计数，`·` 拼接。
+ * - 恰好 1 个文件 → 点名该文件（按 create/edit/delete 换动词），逗号拼接。
+ * - ≥2 个文件 → 不点名，只报数量，逗号拼接。
+ * - 数字是否可信只看 `totalLineStatsAvailable`（footer 已验证过这个字段在
+ *   「CLI 只按 turn 报总量」的场景下依然准确，不能逐文件判断）。
+ */
+const buildToolRunSummaryDisplay = (
   segment: ToolRunSegment,
   t: (keyPath: string, fallback?: string) => string,
-): string =>
-  TOOL_RUN_SUMMARY_BUCKET_ORDER.flatMap((bucket) => {
+): { clauses: string[]; separator: string; stats: [number, number] | null } => {
+  const { editSummary } = segment
+  const clauses: string[] = []
+
+  if (editSummary && editSummary.totalFiles === 1) {
+    const file = editSummary.files[0]
+    const label = EDIT_FILE_SUMMARY_LABELS[file.operation]
+    clauses.push(
+      t(label.key, label.fallback).replace(
+        '{name}',
+        getFileBaseName(file.path),
+      ),
+    )
+  } else if (editSummary && editSummary.totalFiles >= 2) {
+    const label = TOOL_RUN_SUMMARY_LABELS.edit
+    clauses.push(
+      t(label.key, label.fallback).replace(
+        '{count}',
+        String(editSummary.totalFiles),
+      ),
+    )
+  }
+
+  TOOL_RUN_SUMMARY_BUCKET_ORDER.forEach((bucket) => {
+    if (bucket === 'edit' && editSummary) {
+      return
+    }
     const count = segment.bucketCounts[bucket]
     if (!count) {
-      return []
+      return
     }
     const label = TOOL_RUN_SUMMARY_LABELS[bucket]
-    return [t(label.key, label.fallback).replace('{count}', String(count))]
-  }).join(' · ')
+    clauses.push(t(label.key, label.fallback).replace('{count}', String(count)))
+  })
+
+  return {
+    clauses,
+    separator: editSummary ? ', ' : ' · ',
+    stats:
+      editSummary && editSummary.totalLineStatsAvailable
+        ? [editSummary.totalAddedLines, editSummary.totalRemovedLines]
+        : null,
+  }
+}
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
@@ -768,6 +840,7 @@ function AssistantToolMessageGroupItem({
             endIndex: lastMemberIndex,
             boundaryIndex,
             bucketCounts,
+            editSummary: collectGroupEditSummary(toolMessages),
             requiresUserAction: toolCalls.some(
               (call) =>
                 call.response.status ===
@@ -1283,6 +1356,10 @@ function AssistantToolMessageGroupItem({
             if (messageIndex !== toolRunSegment.startIndex) {
               return isSegmentExpanded ? renderedMessage : null
             }
+            const summaryDisplay = buildToolRunSummaryDisplay(
+              toolRunSegment,
+              t,
+            )
             return (
               <Fragment key={`tool-run-${toolRunSegment.key}`}>
                 <button
@@ -1294,8 +1371,13 @@ function AssistantToolMessageGroupItem({
                   onClick={() => toggleToolRunSegment(toolRunSegment.key)}
                 >
                   <span className="yolo-tool-run-summary__text">
-                    {buildToolRunSummaryText(toolRunSegment, t)}
+                    {summaryDisplay.clauses.join(summaryDisplay.separator)}
                   </span>
+                  {summaryDisplay.stats && (
+                    <span className="yolo-tool-run-summary__stats">
+                      {renderDeltaPair(...summaryDisplay.stats)}
+                    </span>
+                  )}
                   <ChevronRight
                     size={14}
                     className="yolo-tool-run-summary__chevron"
