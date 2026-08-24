@@ -8,10 +8,23 @@
  * Usage:
  *   node scripts/smoke-embedding-engine.mjs --model-dir <dir> [options]
  *
+ * Pass --text more than once to embed a real batch (e.g. --text short
+ * --text "a much longer sentence...") — this is the only way to exercise
+ * padding at all; a batch of one never pads, so it can't catch a
+ * `last-token` pooling / `padding_side` mismatch.
+ *
  * <dir> must contain the files `runtime-components/embedding-engine/src/protocol.ts`
  * declares in `REQUIRED_MODEL_FILES` / `OPTIONAL_MODEL_FILES`:
- *   config.json, tokenizer.json, onnx/model_quantized.onnx  (required)
+ *   config.json, tokenizer.json                              (required)
  *   tokenizer_config.json, special_tokens_map.json           (optional)
+ *   the ONNX weight file(s) matching --dtype (see below)     (required)
+ *
+ * --dtype selects which ONNX weight `worker.ts` asks Transformers.js to
+ * load (default 'q8'); --weights-file names the weight file relative to
+ * <dir> (default 'onnx/model_quantized.onnx'), and --weights-data-file
+ * names a second file for dtypes whose weights are split into a small
+ * header + a separate large data file (e.g. fp16's
+ * `onnx/model_fp16.onnx` + `onnx/model_fp16.onnx_data`).
  *
  * To fetch a small real model for this (~23 MB, q8 all-MiniLM-L6-v2):
  *   mkdir -p /tmp/embedding-smoke-model/onnx
@@ -54,13 +67,19 @@ const { values: args } = parseArgs({
     pooling: { type: 'string', default: 'mean' },
     normalize: { type: 'string', default: 'true' },
     'max-tokens': { type: 'string', default: '256' },
-    text: { type: 'string', default: 'hello' },
+    text: { type: 'string', multiple: true, default: ['hello'] },
+    dtype: { type: 'string', default: 'q8' },
+    'weights-file': {
+      type: 'string',
+      default: 'onnx/model_quantized.onnx',
+    },
+    'weights-data-file': { type: 'string', default: '' },
   },
 })
 
 if (!args['model-dir']) {
   console.error(
-    'Usage: node scripts/smoke-embedding-engine.mjs --model-dir <dir> [--dimension 384] [--pooling mean] [--normalize true] [--max-tokens 256] [--text hello]',
+    'Usage: node scripts/smoke-embedding-engine.mjs --model-dir <dir> [--dimension 384] [--pooling mean] [--normalize true] [--max-tokens 256] [--text hello] [--text "..." ...] [--dtype q8] [--weights-file onnx/model_quantized.onnx] [--weights-data-file <path>]',
   )
   process.exitCode = 1
   process.exit()
@@ -71,7 +90,10 @@ const spec = {
   pooling: args.pooling,
   normalize: args.normalize !== 'false',
   maxTokens: Number(args['max-tokens']),
+  dtype: args.dtype,
 }
+const weightsFile = args['weights-file']
+const weightsDataFile = args['weights-data-file'] || null
 // This release's worker only supports the 'wasm' device — see
 // `EmbeddingWorkerInitRequest` in protocol.ts. WebGPU/JSEP returns in a
 // future release.
@@ -179,7 +201,12 @@ async function main() {
   const modelFiles = {}
   await readAssetsInto(
     modelFiles,
-    ['config.json', 'tokenizer.json', 'onnx/model_quantized.onnx'],
+    [
+      'config.json',
+      'tokenizer.json',
+      weightsFile,
+      ...(weightsDataFile ? [weightsDataFile] : []),
+    ],
     modelDir,
   )
   for (const optional of ['tokenizer_config.json', 'special_tokens_map.json']) {
@@ -211,9 +238,9 @@ async function main() {
   }
   console.log(`init ok, device: ${initResult.device}`)
 
-  console.log(`Sending embed(['${args.text}'])...`)
+  console.log(`Sending embed(${JSON.stringify(args.text)})...`)
   globalThis.self.onmessage({
-    data: { type: 'embed', requestId: 2, texts: [args.text] },
+    data: { type: 'embed', requestId: 2, texts: args.text },
   })
   const embedResult = await waitFor(
     (message) => message.type === 'embed-result' && message.requestId === 2,
@@ -222,11 +249,16 @@ async function main() {
   if (!embedResult.ok) {
     throw new Error(`embed failed: ${formatWorkerError(embedResult.error)}`)
   }
-  const vector = new Float32Array(embedResult.vectors[0])
-  const norm = Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0))
-  console.log('dimension:', vector.length)
-  console.log('norm:', norm)
-  console.log('first 5 values:', Array.from(vector.slice(0, 5)))
+  const vectors = embedResult.vectors.map((raw) => new Float32Array(raw))
+  const norms = vectors.map((vector) =>
+    Math.sqrt(vector.reduce((sum, value) => sum + value * value, 0)),
+  )
+  vectors.forEach((vector, index) => {
+    console.log(`[${index}] "${args.text[index]}"`)
+    console.log('  dimension:', vector.length)
+    console.log('  norm:', norms[index])
+    console.log('  first 5 values:', Array.from(vector.slice(0, 5)))
+  })
 
   console.log('Sending dispose...')
   globalThis.self.onmessage({ data: { type: 'dispose', requestId: 3 } })
@@ -239,14 +271,18 @@ async function main() {
   }
   console.log('dispose ok')
 
-  if (vector.length !== spec.dimension) {
-    throw new Error(
-      `expected dimension ${spec.dimension}, got ${vector.length}`,
-    )
-  }
-  if (spec.normalize && Math.abs(norm - 1) > 0.01) {
-    throw new Error(`expected unit-normalized vector, got norm ${norm}`)
-  }
+  vectors.forEach((vector, index) => {
+    if (vector.length !== spec.dimension) {
+      throw new Error(
+        `[${index}] expected dimension ${spec.dimension}, got ${vector.length}`,
+      )
+    }
+    if (spec.normalize && Math.abs(norms[index] - 1) > 0.01) {
+      throw new Error(
+        `[${index}] expected unit-normalized vector, got norm ${norms[index]}`,
+      )
+    }
+  })
   console.log('SMOKE TEST PASSED')
 }
 

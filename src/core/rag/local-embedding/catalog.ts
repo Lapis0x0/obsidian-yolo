@@ -41,8 +41,10 @@ export type LocalEmbeddingCatalogEntry = Readonly<{
   license: string
   dimension: number
   maxTokens: number
-  pooling: 'mean' | 'cls'
+  pooling: 'mean' | 'cls' | 'last-token'
   normalize: boolean
+  /** ONNX weight precision — defaults to `'q8'` when omitted. See `DTYPE_WEIGHT_FILES` in `protocol.ts`. */
+  dtype?: 'q8' | 'fp16'
   files: readonly LocalEmbeddingCatalogFile[]
   /** `Σ files[].byteSize` — asserted by `catalog.test.ts`, used for download progress totals. */
   totalBytes: number
@@ -54,8 +56,6 @@ export type LocalEmbeddingCatalogEntry = Readonly<{
    * usage example).
    */
   prefixes?: Readonly<{ query: string; document: string }>
-  /** Shown as a default suggestion in the P3 model picker. */
-  recommended?: boolean
 }>
 
 export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
@@ -109,7 +109,6 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
       query: 'query: ',
       document: 'passage: ',
     },
-    recommended: true,
   },
   {
     id: 'bge-small-en-v1.5',
@@ -309,6 +308,75 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     prefixes: {
       query: 'search_query: ',
       document: 'search_document: ',
+    },
+  },
+  {
+    id: 'qwen3-embedding-0.6b',
+    hfRepo: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
+    revision: 'c25a394dd583836952667c12f008335071b3f43d',
+    displayName: 'Qwen3 Embedding (0.6B)',
+    languages: ['multilingual'],
+    license: 'Apache-2.0',
+    dimension: 1024,
+    maxTokens: 8192,
+    // Decoder-only (Qwen3 LLM lineage): the embedding is the last token's
+    // hidden state, not a mean/cls pool over all tokens. This only produces
+    // the right vector when the tokenizer left-pads — see the worker's
+    // `last-token` branch and the `tokenizer_config.json` assertion in
+    // catalog.test.ts for this entry.
+    pooling: 'last-token',
+    normalize: true,
+    // Int8 dynamic quantization measurably drifts this model's vectors
+    // depending on batch composition (cosine similarity as low as 0.95
+    // between the same text embedded alone vs. batched with dissimilar
+    // text); fp16 keeps it clean (cosine similarity 1.0, matching fp32) at
+    // roughly half fp32's weight size. See P2 follow-up investigation notes.
+    dtype: 'fp16',
+    files: [
+      {
+        path: 'config.json',
+        byteSize: 1576,
+        sha256:
+          '66a10929782f3c9a3cd5dec90e2a95c60e05736134a63cd54479eeae80bed175',
+      },
+      {
+        path: 'tokenizer.json',
+        byteSize: 11423705,
+        sha256:
+          'def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a',
+      },
+      {
+        path: 'tokenizer_config.json',
+        byteSize: 9731,
+        sha256:
+          '977648852447cb6587327ff3205b0a84cf2fc9f05621d6c8e88a497caafab2e1',
+      },
+      {
+        path: 'special_tokens_map.json',
+        byteSize: 613,
+        sha256:
+          '76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd',
+      },
+      {
+        path: 'onnx/model_fp16.onnx',
+        byteSize: 583522,
+        sha256:
+          'f376cf065d912675dd559270e19361367ebc28c938b9811dd61d5834c78d0834',
+      },
+      {
+        path: 'onnx/model_fp16.onnx_data',
+        byteSize: 1199927296,
+        sha256:
+          '06fbfded30166e3a33fe5252d7002ed1c370a4ec1bf45aba778cdf6cf7d31439',
+      },
+    ],
+    totalBytes: 1211946443,
+    // Qwen3-Embedding's official usage: queries get an instruction prompt,
+    // documents get none (see the model's own retrieval example).
+    prefixes: {
+      query:
+        'Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:',
+      document: '',
     },
   },
 ]

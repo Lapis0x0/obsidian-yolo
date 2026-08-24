@@ -209,7 +209,7 @@ async function handleInit(request: EmbeddingWorkerInitRequest): Promise<void> {
     installWasmPaths(request.wasm, request.numThreads)
     model = await AutoModel.from_pretrained(MODEL_ID, {
       device: 'wasm',
-      dtype: 'q8',
+      dtype: request.spec.dtype ?? 'q8',
     })
   } catch (error) {
     releaseModelBytes()
@@ -259,10 +259,18 @@ async function handleEmbed(
       throw new Error('Model produced no usable output tensor')
     }
 
-    result =
-      spec.pooling === 'mean'
-        ? mean_pooling(result, inputs.attention_mask)
-        : result.slice(null, 0)
+    if (spec.pooling === 'mean') {
+      result = mean_pooling(result, inputs.attention_mask)
+    } else if (spec.pooling === 'last-token') {
+      // Positional index, not attention-mask-aware — only correct when the
+      // tokenizer pads on the left (every row's real last token then lands
+      // at index -1 regardless of its length). Catalog entries using this
+      // pooling must ship a `tokenizer_config.json` with `padding_side:
+      // "left"` (see catalog.test.ts's per-entry assertion for this).
+      result = result.slice(null, -1)
+    } else {
+      result = result.slice(null, 0)
+    }
     if (spec.normalize) result = result.normalize(2, -1)
 
     const nested = result.tolist() as number[][]

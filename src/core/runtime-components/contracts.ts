@@ -270,9 +270,10 @@ export type EmbeddingEngineEnvironmentProbe =
 
 export type EmbeddingEngineSpec = Readonly<{
   dimension: number
-  pooling: 'mean' | 'cls'
+  pooling: 'mean' | 'cls' | 'last-token'
   normalize: boolean
   maxTokens: number
+  dtype?: 'q8' | 'fp16'
 }>
 
 /**
@@ -293,8 +294,9 @@ export type EmbeddingEngineCreateSessionOptions = Readonly<{
    * supported in this release — `createSession` rejects it rather than
    * silently falling back to `'wasm'`, since the component doesn't ship the
    * JSEP/WebGPU wasm variant as a declared asset. Omit this option (or pass
-   * `'wasm'` explicitly) until WebGPU support returns in a future release
-   * alongside fp16 `dtype`.
+   * `'wasm'` explicitly) until WebGPU support returns in a future release.
+   * `dtype` (on `EmbeddingEngineSpec` above) is independent of device and
+   * already supported on `'wasm'`.
    */
   device?: 'wasm' | 'webgpu'
   signal?: AbortSignal

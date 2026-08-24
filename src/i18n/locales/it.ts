@@ -1307,6 +1307,10 @@ export const it: DeepPartial<TranslationKeys> = {
           zh: 'Cinese',
           multilingual: 'Multilingua',
         },
+        dtypeBadge: {
+          q8: 'INT8',
+          fp16: 'FP16',
+        },
       },
       delete: 'Elimina knowledge base',
       deleteConfirm:

@@ -8,9 +8,10 @@
 
 export type EmbeddingWorkerSpec = Readonly<{
   dimension: number
-  pooling: 'mean' | 'cls'
+  pooling: 'mean' | 'cls' | 'last-token'
   normalize: boolean
   maxTokens: number
+  dtype?: 'q8' | 'fp16'
 }>
 
 export type EmbeddingWorkerInitRequest = Readonly<{
@@ -26,9 +27,9 @@ export type EmbeddingWorkerInitRequest = Readonly<{
    * variant is not shipped as a declared asset (see `WASM_ASSET_NAMES`
    * below), so there is nothing for a `'webgpu'` request to load. `entry.ts`
    * rejects a `'webgpu'` `createSession` request before a worker is ever
-   * spun up. WebGPU support (plus fp16 `dtype`) is planned to return
-   * together in a future release, at which point this widens back to
-   * `'wasm' | 'webgpu'`.
+   * spun up. `dtype` (see `EmbeddingDtype` below) is independent of device —
+   * WebGPU support is what's planned to return in a future release, at which
+   * point this widens back to `'wasm' | 'webgpu'`.
    */
   device: 'wasm'
   numThreads: number
@@ -113,21 +114,38 @@ export type EmbeddingWorkerResponse =
  * carries (HF repos following the Xenova/onnx-community convention). P2's
  * catalog (`src/core/rag/local-embedding/catalog.ts`) must publish exactly
  * these names in each entry's `files` list for `loadModelFile` to satisfy
- * them. `config.json` / `tokenizer.json` / the q8 ONNX weight are required;
- * the rest are optional (fast tokenizers commonly fold everything into
- * tokenizer.json, so `tokenizer_config.json` / `special_tokens_map.json` are
- * requested best-effort and simply omitted from the worker's cache if
- * missing).
+ * them. `config.json` / `tokenizer.json` are always required; the ONNX
+ * weight file(s) are dtype-dependent (see `DTYPE_WEIGHT_FILES` below) so
+ * they're declared optional here and each catalog entry brings whichever
+ * ones its own `dtype` needs. The rest are optional too (fast tokenizers
+ * commonly fold everything into tokenizer.json, so `tokenizer_config.json` /
+ * `special_tokens_map.json` are requested best-effort and simply omitted
+ * from the worker's cache if missing).
  */
 export const REQUIRED_MODEL_FILES: readonly string[] = [
   'config.json',
   'tokenizer.json',
-  'onnx/model_quantized.onnx',
 ]
 export const OPTIONAL_MODEL_FILES: readonly string[] = [
   'tokenizer_config.json',
   'special_tokens_map.json',
+  'onnx/model_quantized.onnx',
+  'onnx/model_fp16.onnx',
+  'onnx/model_fp16.onnx_data',
 ]
+
+export type EmbeddingDtype = 'q8' | 'fp16'
+/**
+ * transformers.js 按 dtype 请求的 ONNX 权重文件名后缀不同
+ * （见 @huggingface/transformers 的 DEFAULT_DTYPE_SUFFIX_MAPPING）。
+ * catalog 条目必须按自己声明的 dtype 在 files 里带上对应文件。
+ */
+export const DTYPE_WEIGHT_FILES: Readonly<
+  Record<EmbeddingDtype, readonly string[]>
+> = {
+  q8: ['onnx/model_quantized.onnx'],
+  fp16: ['onnx/model_fp16.onnx', 'onnx/model_fp16.onnx_data'],
+}
 
 /**
  * Matches `component.config.json`'s declared `assets` names. onnxruntime-web

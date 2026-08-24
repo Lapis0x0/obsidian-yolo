@@ -508,11 +508,11 @@ export function LocalEmbeddingShelf({ plugin }: LocalEmbeddingShelfProps) {
                     {tr(`languageNames.${code}`, code)}
                   </span>
                 ))}
-                {entry.recommended && (
-                  <span className="yolo-kb-ml-tag is-accent">
-                    {t('settings.defaults.recommendedBadge', '推荐')}
-                  </span>
-                )}
+                <span className="yolo-kb-ml-tag">
+                  {entry.dtype === 'fp16'
+                    ? tr('dtypeBadge.fp16', 'FP16')
+                    : tr('dtypeBadge.q8', 'INT8')}
+                </span>
               </div>
               <div className="yolo-kb-ml-meta">
                 {state.status === 'downloading' ? (

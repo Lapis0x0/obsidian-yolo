@@ -1403,6 +1403,10 @@ export const en: TranslationKeys = {
           zh: 'Chinese',
           multilingual: 'Multilingual',
         },
+        dtypeBadge: {
+          q8: 'INT8',
+          fp16: 'FP16',
+        },
       },
       delete: 'Delete knowledge base',
       deleteConfirm:

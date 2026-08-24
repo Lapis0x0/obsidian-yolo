@@ -1318,6 +1318,10 @@ export const zh: TranslationKeys = {
           zh: '中文',
           multilingual: '多语言',
         },
+        dtypeBadge: {
+          q8: 'INT8',
+          fp16: 'FP16',
+        },
       },
       delete: '删除知识库',
       deleteConfirm:

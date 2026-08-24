@@ -1,4 +1,5 @@
 import {
+  DTYPE_WEIGHT_FILES,
   OPTIONAL_MODEL_FILES,
   REQUIRED_MODEL_FILES,
 } from '../../../../runtime-components/embedding-engine/src/protocol'
@@ -70,13 +71,28 @@ describe('LOCAL_EMBEDDING_CATALOG', () => {
     },
   )
 
-  it('has exactly one recommended entry', () => {
-    const recommended = LOCAL_EMBEDDING_CATALOG.filter(
-      (entry) => entry.recommended,
-    )
-    expect(recommended).toHaveLength(1)
-    expect(recommended[0]?.id).toBe('multilingual-e5-small')
-  })
+  it.each(
+    LOCAL_EMBEDDING_CATALOG.filter(
+      (entry) => entry.pooling === 'last-token',
+    ).map((entry) => [entry.id, entry] as const),
+  )(
+    '%s: last-token pooling entries declare tokenizer_config.json (padding_side source)',
+    (_id, entry) => {
+      const declaredPaths = new Set(entry.files.map((file) => file.path))
+      expect(declaredPaths.has('tokenizer_config.json')).toBe(true)
+    },
+  )
+
+  it.each(LOCAL_EMBEDDING_CATALOG.map((entry) => [entry.id, entry] as const))(
+    "%s: declared files include every weight file its dtype's DTYPE_WEIGHT_FILES entry requires",
+    (_id, entry) => {
+      const declaredPaths = new Set(entry.files.map((file) => file.path))
+      const requiredWeightFiles = DTYPE_WEIGHT_FILES[entry.dtype ?? 'q8']
+      for (const weightFile of requiredWeightFiles) {
+        expect(declaredPaths.has(weightFile)).toBe(true)
+      }
+    },
+  )
 
   it('getLocalEmbeddingCatalogEntry finds an entry by id', () => {
     expect(getLocalEmbeddingCatalogEntry('bge-m3')?.hfRepo).toBe(

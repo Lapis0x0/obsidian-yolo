@@ -145,6 +145,7 @@ async function createSession(shared: SharedSession): Promise<SessionHandle> {
         pooling: catalogEntry.pooling,
         normalize: catalogEntry.normalize,
         maxTokens: catalogEntry.maxTokens,
+        dtype: catalogEntry.dtype,
       },
       device: 'wasm',
     })

@@ -1147,6 +1147,10 @@ export type TranslationKeys = {
           zh?: string
           multilingual?: string
         }
+        dtypeBadge?: {
+          q8?: string
+          fp16?: string
+        }
       }
     }
     mcp: {
