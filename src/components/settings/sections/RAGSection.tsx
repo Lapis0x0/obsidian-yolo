@@ -1,5 +1,6 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import dayjs from 'dayjs'
+import { useReducedMotion } from 'framer-motion'
 import {
   Ban,
   Clock,
@@ -27,6 +28,7 @@ import { LOCAL_EMBEDDING_PROVIDER_ID } from '../../../core/rag/local-embedding/c
 import { RagIndexServiceSnapshot } from '../../../core/rag/ragIndexService'
 import YoloPlugin from '../../../main'
 import { KnowledgeBase } from '../../../settings/schema/setting.types'
+import { MOTION_DURATION_ENTER_S } from '../../../styles/tokens/motion'
 import { getNodeWindow } from '../../../utils/dom/window-context'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import {
@@ -76,6 +78,49 @@ const EMPTY_KB_DATA: KbData = {
   chunkCount: 0,
   estimateMb: 0,
   pendingChanged: 0,
+}
+
+/** easeOutQuint — the JS mirror of `MOTION_EASE_OUT`. */
+const easeOutQuint = (t: number) => 1 - Math.pow(1 - t, 5)
+
+/**
+ * Tweens a stat from its previous value to the new one so live-indexing
+ * numbers roll instead of jumping. rAF runs on the node's own window
+ * (popout-safe); reduced motion degrades to an instant jump.
+ */
+function AnimatedNumber({
+  value,
+  format,
+}: {
+  value: number
+  format: (n: number) => string
+}) {
+  const reducedMotion = useReducedMotion()
+  const [display, setDisplay] = useState(value)
+  const previousRef = useRef(value)
+  const nodeRef = useRef<HTMLSpanElement>(null)
+
+  useEffect(() => {
+    const from = previousRef.current
+    previousRef.current = value
+    if (reducedMotion || from === value) {
+      setDisplay(value)
+      return
+    }
+    const win = getNodeWindow(nodeRef.current)
+    const durationMs = MOTION_DURATION_ENTER_S * 1000
+    const start = win.performance.now()
+    let raf = 0
+    const tick = (now: number) => {
+      const t = Math.min(1, (now - start) / durationMs)
+      setDisplay(from + (value - from) * easeOutQuint(t))
+      if (t < 1) raf = win.requestAnimationFrame(tick)
+    }
+    raf = win.requestAnimationFrame(tick)
+    return () => win.cancelAnimationFrame(raf)
+  }, [value, reducedMotion])
+
+  return <span ref={nodeRef}>{format(display)}</span>
 }
 
 /** The API row only lists API embedding models. When the current model is
@@ -276,6 +321,26 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   useEffect(() => {
     void refreshKbData()
   }, [refreshKbData, knowledgeBaseScopeKey])
+
+  // While a run is active, vectors land in IndexedDB batch by batch
+  // (VectorManager flushes per adaptive batch), so poll the same cheap stats
+  // on the vault-event cadence to let the card's doc/chunk/MB numbers grow
+  // live instead of sitting at 0 until completion.
+  const anyRunRunning = useMemo(
+    () =>
+      Object.values(indexSnapshot.runs).some(
+        (run) => run.status === 'running',
+      ),
+    [indexSnapshot],
+  )
+  useEffect(() => {
+    if (!anyRunRunning) return
+    const win = sectionWindowRef.current
+    const timer = win.setInterval(() => {
+      void refreshKbData()
+    }, 2000)
+    return () => win.clearInterval(timer)
+  }, [anyRunRunning, refreshKbData])
 
   const previousRunningKbIdsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
@@ -1164,17 +1229,32 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   <div className="yolo-kb-card-foot">
                     <div className="yolo-kb-card-nums">
                       <div className="yolo-kb-card-num">
-                        <b>{data.docCount}</b>
+                        <b>
+                          <AnimatedNumber
+                            value={data.docCount}
+                            format={(n) => String(Math.round(n))}
+                          />
+                        </b>
                         <span>{t('settings.knowledgeBases.docs', '文档')}</span>
                       </div>
                       <div className="yolo-kb-card-num">
-                        <b>{data.chunkCount}</b>
+                        <b>
+                          <AnimatedNumber
+                            value={data.chunkCount}
+                            format={(n) => String(Math.round(n))}
+                          />
+                        </b>
                         <span>
                           {t('settings.knowledgeBases.chunks', '向量块')}
                         </span>
                       </div>
                       <div className="yolo-kb-card-num">
-                        <b>{data.estimateMb.toFixed(1)}</b>
+                        <b>
+                          <AnimatedNumber
+                            value={data.estimateMb}
+                            format={(n) => n.toFixed(1)}
+                          />
+                        </b>
                         <span>MB</span>
                       </div>
                     </div>
