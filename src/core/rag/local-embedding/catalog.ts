@@ -58,7 +58,130 @@ export type LocalEmbeddingCatalogEntry = Readonly<{
   prefixes?: Readonly<{ query: string; document: string }>
 }>
 
+/**
+ * Display/download order in the settings UI mirrors this array order — it's
+ * a deliberate ranking (best general-purpose multilingual pick first, down
+ * to the smallest single-language specialists), not insertion history. See
+ * the P2 follow-up "本地 embedding 目录排序" note for the reasoning behind
+ * each tier.
+ */
 export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
+  {
+    id: 'bge-m3',
+    hfRepo: 'Xenova/bge-m3',
+    revision: '4de13258303883538bd53b696b452bf8099f0858',
+    displayName: 'BGE-M3',
+    languages: ['multilingual'],
+    license: 'MIT',
+    dimension: 1024,
+    maxTokens: 8192,
+    pooling: 'cls',
+    normalize: true,
+    files: [
+      {
+        path: 'config.json',
+        byteSize: 770,
+        sha256:
+          '734a79bf12d388c1467a4e3ab625f45de7f6906cffcfb93a1eca1787504bed95',
+      },
+      {
+        path: 'tokenizer.json',
+        byteSize: 17082821,
+        sha256:
+          '6710678b12670bc442b99edc952c4d996ae309a7020c1fa0096dd245c2faf790',
+      },
+      {
+        path: 'tokenizer_config.json',
+        byteSize: 1173,
+        sha256:
+          '7e4c1cc848840aeccdd763458c18dd525eb0f795c992e00ebe9c28554e7db2d4',
+      },
+      {
+        path: 'special_tokens_map.json',
+        byteSize: 964,
+        sha256:
+          '8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835',
+      },
+      {
+        path: 'onnx/model_quantized.onnx',
+        byteSize: 569694530,
+        sha256:
+          '0826f8c1ab9edf1801db86c61919d4d108e8bfc0b809ec823ad366882ff0b77d',
+      },
+    ],
+    totalBytes: 586780258,
+    // BGE-M3's dense-retrieval usage example embeds queries and documents
+    // identically — no instruction prefix, unlike the bge-*-v1.5 family.
+  },
+  {
+    id: 'qwen3-embedding-0.6b',
+    hfRepo: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
+    revision: 'c25a394dd583836952667c12f008335071b3f43d',
+    displayName: 'Qwen3 Embedding (0.6B)',
+    languages: ['multilingual'],
+    license: 'Apache-2.0',
+    dimension: 1024,
+    maxTokens: 8192,
+    // Decoder-only (Qwen3 LLM lineage): the embedding is the last token's
+    // hidden state, not a mean/cls pool over all tokens. This only produces
+    // the right vector when the tokenizer left-pads — see the worker's
+    // `last-token` branch and the `tokenizer_config.json` assertion in
+    // catalog.test.ts for this entry.
+    pooling: 'last-token',
+    normalize: true,
+    // Int8 dynamic quantization measurably drifts this model's vectors
+    // depending on batch composition (cosine similarity as low as 0.95
+    // between the same text embedded alone vs. batched with dissimilar
+    // text); fp16 keeps it clean (cosine similarity 1.0, matching fp32) at
+    // roughly half fp32's weight size. See P2 follow-up investigation notes.
+    dtype: 'fp16',
+    files: [
+      {
+        path: 'config.json',
+        byteSize: 1576,
+        sha256:
+          '66a10929782f3c9a3cd5dec90e2a95c60e05736134a63cd54479eeae80bed175',
+      },
+      {
+        path: 'tokenizer.json',
+        byteSize: 11423705,
+        sha256:
+          'def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a',
+      },
+      {
+        path: 'tokenizer_config.json',
+        byteSize: 9731,
+        sha256:
+          '977648852447cb6587327ff3205b0a84cf2fc9f05621d6c8e88a497caafab2e1',
+      },
+      {
+        path: 'special_tokens_map.json',
+        byteSize: 613,
+        sha256:
+          '76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd',
+      },
+      {
+        path: 'onnx/model_fp16.onnx',
+        byteSize: 583522,
+        sha256:
+          'f376cf065d912675dd559270e19361367ebc28c938b9811dd61d5834c78d0834',
+      },
+      {
+        path: 'onnx/model_fp16.onnx_data',
+        byteSize: 1199927296,
+        sha256:
+          '06fbfded30166e3a33fe5252d7002ed1c370a4ec1bf45aba778cdf6cf7d31439',
+      },
+    ],
+    totalBytes: 1211946443,
+    // Qwen3-Embedding's official usage: queries get an instruction prompt,
+    // documents get none (see the model's own retrieval example).
+    prefixes: {
+      query:
+        'Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:',
+      document: '',
+    },
+  },
   {
     id: 'multilingual-e5-small',
     hfRepo: 'Xenova/multilingual-e5-small',
@@ -108,6 +231,57 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     prefixes: {
       query: 'query: ',
       document: 'passage: ',
+    },
+  },
+  {
+    id: 'nomic-embed-text-v1.5',
+    hfRepo: 'nomic-ai/nomic-embed-text-v1.5',
+    revision: 'e9b6763023c676ca8431644204f50c2b100d9aab',
+    displayName: 'Nomic Embed Text v1.5',
+    languages: ['en'],
+    license: 'Apache-2.0',
+    dimension: 768,
+    maxTokens: 8192,
+    pooling: 'mean',
+    normalize: true,
+    files: [
+      {
+        path: 'config.json',
+        byteSize: 2538,
+        sha256:
+          '9ab00bd92cee80a569f708140b7b6c1661a65891ff3765b1519e181ba2f2c92b',
+      },
+      {
+        path: 'tokenizer.json',
+        byteSize: 711396,
+        sha256:
+          'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66',
+      },
+      {
+        path: 'tokenizer_config.json',
+        byteSize: 1191,
+        sha256:
+          'd7e0000bcc80134debd2222220427e6bf5fa20a669f40a0d0d1409cc18e0a9bc',
+      },
+      {
+        path: 'special_tokens_map.json',
+        byteSize: 695,
+        sha256:
+          '5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a',
+      },
+      {
+        path: 'onnx/model_quantized.onnx',
+        byteSize: 137296292,
+        sha256:
+          'b4342336debaea79de872370664b0aaeb67dea4605513d00ee236ea871a81f27',
+      },
+    ],
+    totalBytes: 138012112,
+    // Nomic's model card: text *must* carry a task-instruction prefix; RAG
+    // maps to its `search_document` / `search_query` tasks.
+    prefixes: {
+      query: 'search_query: ',
+      document: 'search_document: ',
     },
   },
   {
@@ -209,173 +383,6 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     // BAAI's official prefix table (same table as the English v1.5 models).
     prefixes: {
       query: '为这个句子生成表示以用于检索相关文章：',
-      document: '',
-    },
-  },
-  {
-    id: 'bge-m3',
-    hfRepo: 'Xenova/bge-m3',
-    revision: '4de13258303883538bd53b696b452bf8099f0858',
-    displayName: 'BGE-M3',
-    languages: ['multilingual'],
-    license: 'MIT',
-    dimension: 1024,
-    maxTokens: 8192,
-    pooling: 'cls',
-    normalize: true,
-    files: [
-      {
-        path: 'config.json',
-        byteSize: 770,
-        sha256:
-          '734a79bf12d388c1467a4e3ab625f45de7f6906cffcfb93a1eca1787504bed95',
-      },
-      {
-        path: 'tokenizer.json',
-        byteSize: 17082821,
-        sha256:
-          '6710678b12670bc442b99edc952c4d996ae309a7020c1fa0096dd245c2faf790',
-      },
-      {
-        path: 'tokenizer_config.json',
-        byteSize: 1173,
-        sha256:
-          '7e4c1cc848840aeccdd763458c18dd525eb0f795c992e00ebe9c28554e7db2d4',
-      },
-      {
-        path: 'special_tokens_map.json',
-        byteSize: 964,
-        sha256:
-          '8c785abebea9ae3257b61681b4e6fd8365ceafde980c21970d001e834cf10835',
-      },
-      {
-        path: 'onnx/model_quantized.onnx',
-        byteSize: 569694530,
-        sha256:
-          '0826f8c1ab9edf1801db86c61919d4d108e8bfc0b809ec823ad366882ff0b77d',
-      },
-    ],
-    totalBytes: 586780258,
-    // BGE-M3's dense-retrieval usage example embeds queries and documents
-    // identically — no instruction prefix, unlike the bge-*-v1.5 family.
-  },
-  {
-    id: 'nomic-embed-text-v1.5',
-    hfRepo: 'nomic-ai/nomic-embed-text-v1.5',
-    revision: 'e9b6763023c676ca8431644204f50c2b100d9aab',
-    displayName: 'Nomic Embed Text v1.5',
-    languages: ['en'],
-    license: 'Apache-2.0',
-    dimension: 768,
-    maxTokens: 8192,
-    pooling: 'mean',
-    normalize: true,
-    files: [
-      {
-        path: 'config.json',
-        byteSize: 2538,
-        sha256:
-          '9ab00bd92cee80a569f708140b7b6c1661a65891ff3765b1519e181ba2f2c92b',
-      },
-      {
-        path: 'tokenizer.json',
-        byteSize: 711396,
-        sha256:
-          'd241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66',
-      },
-      {
-        path: 'tokenizer_config.json',
-        byteSize: 1191,
-        sha256:
-          'd7e0000bcc80134debd2222220427e6bf5fa20a669f40a0d0d1409cc18e0a9bc',
-      },
-      {
-        path: 'special_tokens_map.json',
-        byteSize: 695,
-        sha256:
-          '5d5b662e421ea9fac075174bb0688ee0d9431699900b90662acd44b2a350503a',
-      },
-      {
-        path: 'onnx/model_quantized.onnx',
-        byteSize: 137296292,
-        sha256:
-          'b4342336debaea79de872370664b0aaeb67dea4605513d00ee236ea871a81f27',
-      },
-    ],
-    totalBytes: 138012112,
-    // Nomic's model card: text *must* carry a task-instruction prefix; RAG
-    // maps to its `search_document` / `search_query` tasks.
-    prefixes: {
-      query: 'search_query: ',
-      document: 'search_document: ',
-    },
-  },
-  {
-    id: 'qwen3-embedding-0.6b',
-    hfRepo: 'onnx-community/Qwen3-Embedding-0.6B-ONNX',
-    revision: 'c25a394dd583836952667c12f008335071b3f43d',
-    displayName: 'Qwen3 Embedding (0.6B)',
-    languages: ['multilingual'],
-    license: 'Apache-2.0',
-    dimension: 1024,
-    maxTokens: 8192,
-    // Decoder-only (Qwen3 LLM lineage): the embedding is the last token's
-    // hidden state, not a mean/cls pool over all tokens. This only produces
-    // the right vector when the tokenizer left-pads — see the worker's
-    // `last-token` branch and the `tokenizer_config.json` assertion in
-    // catalog.test.ts for this entry.
-    pooling: 'last-token',
-    normalize: true,
-    // Int8 dynamic quantization measurably drifts this model's vectors
-    // depending on batch composition (cosine similarity as low as 0.95
-    // between the same text embedded alone vs. batched with dissimilar
-    // text); fp16 keeps it clean (cosine similarity 1.0, matching fp32) at
-    // roughly half fp32's weight size. See P2 follow-up investigation notes.
-    dtype: 'fp16',
-    files: [
-      {
-        path: 'config.json',
-        byteSize: 1576,
-        sha256:
-          '66a10929782f3c9a3cd5dec90e2a95c60e05736134a63cd54479eeae80bed175',
-      },
-      {
-        path: 'tokenizer.json',
-        byteSize: 11423705,
-        sha256:
-          'def76fb086971c7867b829c23a26261e38d9d74e02139253b38aeb9df8b4b50a',
-      },
-      {
-        path: 'tokenizer_config.json',
-        byteSize: 9731,
-        sha256:
-          '977648852447cb6587327ff3205b0a84cf2fc9f05621d6c8e88a497caafab2e1',
-      },
-      {
-        path: 'special_tokens_map.json',
-        byteSize: 613,
-        sha256:
-          '76862e765266b85aa9459767e33cbaf13970f327a0e88d1c65846c2ddd3a1ecd',
-      },
-      {
-        path: 'onnx/model_fp16.onnx',
-        byteSize: 583522,
-        sha256:
-          'f376cf065d912675dd559270e19361367ebc28c938b9811dd61d5834c78d0834',
-      },
-      {
-        path: 'onnx/model_fp16.onnx_data',
-        byteSize: 1199927296,
-        sha256:
-          '06fbfded30166e3a33fe5252d7002ed1c370a4ec1bf45aba778cdf6cf7d31439',
-      },
-    ],
-    totalBytes: 1211946443,
-    // Qwen3-Embedding's official usage: queries get an instruction prompt,
-    // documents get none (see the model's own retrieval example).
-    prefixes: {
-      query:
-        'Instruct: Given a web search query, retrieve relevant passages that answer the query\nQuery:',
       document: '',
     },
   },

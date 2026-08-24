@@ -492,7 +492,7 @@ export function LocalEmbeddingShelf({ plugin }: LocalEmbeddingShelfProps) {
             className={`yolo-kb-ml-row${current ? ' is-current' : ''}`}
           >
             <div className="yolo-kb-ml-main">
-              <div className="yolo-kb-ml-name">
+              <div className="yolo-kb-ml-name is-plain">
                 {entry.hfRepo}
                 <a
                   href={`https://huggingface.co/${entry.hfRepo}`}

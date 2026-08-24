@@ -514,6 +514,15 @@
   border-bottom: none;
 }
 
+/* `.yolo-kb-model-list` clips to a rounded rect, but `.is-current`'s inset
+   box-shadow is drawn on this row's own (square) border-box — without a
+   matching radius here, the highlight's corner shows a hard right angle
+   poking into the container's curve. */
+.yolo-kb-ml-row:first-child {
+  border-top-left-radius: var(--radius-m);
+  border-top-right-radius: var(--radius-m);
+}
+
 .yolo-kb-ml-row.is-current {
   background: color-mix(in srgb, var(--color-accent) 10%, transparent);
   box-shadow: inset 0 0 0 1px
