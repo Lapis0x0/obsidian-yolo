@@ -4,10 +4,11 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 
 ## Commands
 
-- `npm run dev` - Build first-party modules, then watch the host app, host styles, and dev-vault artifacts
-- `npm run build` - Production build with host and module type checking
-- `npm run type:check` / `npm run module:typecheck` - Type-check the host or first-party modules
+- `npm run dev` - Build runtime components and first-party modules, then watch the host app, host styles, and dev-vault artifacts
+- `npm run build` - Production build with host, module, and runtime component type checking
+- `npm run type:check` / `npm run module:typecheck` / `npm run runtime:typecheck` - Type-check the host, first-party modules, or runtime components
 - `npm run module:build` - Rebuild first-party module artifacts and the bundled module catalog
+- `npm run runtime:build` / `npm run runtime:verify` - Rebuild runtime component artifacts and their registry, or verify the host bundle doesn't statically pull in a runtime component's dependencies
 - `npm run lint:check` / `npm run lint:fix` - Check or fix Prettier and ESLint
 - `npm test` - Run the full Jest suite; use `npx jest <test-file> --runInBand` for serial debugging
 - `npm run styles:build` - Regenerate the host `styles.css` from `src/styles/**`
@@ -17,6 +18,7 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - `src/main.ts` owns the host plugin lifecycle. `src/ChatView.tsx` and `src/components/chat-view/` own the main chat surface.
 - `src/core/modules/` owns module discovery, installation, loading, activation, lifecycle, and the versioned Host API. `modules/host-sdk.d.ts` is the module-facing API contract.
 - `modules/<id>/` owns an independently built product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
+- `src/core/runtime-components/` owns discovery, download, and lifecycle of on-demand runtime components (heavy native/WASM engines). `runtime-components/<id>/` at the repo root owns each component's source and build output; `runtime-components/sdk.d.ts` is the component-facing contract.
 - `src/core/agent/` owns the shared native agent runtime, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat run through `AgentService.run`; permissions come from `resolveChatModeRuntime`.
 - `src/core/ai/single-turn.ts` is the low-latency path for Smart Space and Write Assist. Do not route these features through the agent runtime or introduce another orchestration path.
 - `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path.
@@ -43,6 +45,7 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 ### Runtime Boundaries
 
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the host or module.
+- Never statically import a heavy or native/WASM dependency closure into the host or a module (e.g. tokenizer, PDF, bash, or embedding libraries). Package it as a runtime component under `runtime-components/` instead; `npm run runtime:verify` fails the build if one leaks into the host bundle.
 - The RAG vector store is IndexedDB-backed (`src/database/vector-store/`); schema v1 is final — a schema change requires bumping `VECTOR_DATABASE_VERSION` and adding an upgrade path in `vectorDatabase.ts`.
 - Do not create a second chat or agent orchestration path.
 
@@ -76,6 +79,7 @@ Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm,
 
 - Host code: run `npm run type:check` and relevant tests.
 - Module code: run `npm run module:typecheck`, relevant tests, `npm --prefix modules/<id> run test:boundary` when available, and `npm run module:build`.
+- Runtime component code: run `npm run runtime:typecheck`, relevant tests, `npm run runtime:build`, and `npm run runtime:verify`.
 - Host CSS: run `npm run styles:build`. Module CSS is rebuilt by the module build.
 - Run `npm run build` for changes that affect production bundling, module boundaries, runtime loading, or cross-platform behavior.
 - Dependency hygiene: `npm run deps:check` enforces the circular-dependency ratchet; after removing cycles, tighten the baseline with `npm run deps:baseline`.
