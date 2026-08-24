@@ -54,9 +54,10 @@
 
 ## What's New
 
-- **`1.6`**: Adds CLI chat—on desktop, drive the Claude Code or Codex you are already signed in to from the same chat surface.
-
-- **`1.6`**: Introduces the new Learning Mode—turn any topic and reference materials into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map. Built-in FSRS spaced repetition and Anki `.apkg` import help turn knowledge into a sustainable review workflow.
+- **`1.6`**
+  - **On-device local embedding models and multiple knowledge bases**: index without any API key, split and manage knowledge bases independently, and let the Agent auto-pick the right one by name.
+  - **CLI chat**: on desktop, drive the Claude Code, Codex, Hermes, or Pi CLI you're already signed into from the same chat surface.
+  - **The new Learning Mode**: turn any topic and reference material into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map, backed by FSRS spaced repetition and Anki `.apkg` import for sustainable long-term review.
 
 - **`1.5`**: Introduces a new Agent runtime that turns AI from Q&A into active collaboration—with full tool calling, MCP, Skills, desktop Bash, subagents, and web search—plus smarter long-session context and memory, refreshed hybrid RAG, focus/PDF awareness, and multi-window chat with background Agents.
 

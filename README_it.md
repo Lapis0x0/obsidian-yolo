@@ -54,9 +54,10 @@
 
 ## Novita recenti
 
-- **`1.6`**: Aggiunge la chat CLI: su desktop puoi pilotare Claude Code o Codex già autenticati sul tuo dispositivo dalla stessa interfaccia di chat.
-
-- **`1.6`**: Introduce la nuova Modalità di apprendimento: trasforma qualsiasi argomento e materiale di riferimento in un progetto di studio personalizzato con scalette strutturate, concetti chiave, flashcard e una mappa interattiva delle conoscenze. La ripetizione dilazionata FSRS integrata e l'importazione di pacchetti Anki `.apkg` aiutano a trasformare le conoscenze in un percorso di ripasso sostenibile.
+- **`1.6`**
+  - **Modelli di embedding locali on-device e knowledge base multiple**: indicizza senza alcuna chiave API, suddividi e gestisci le knowledge base in modo indipendente, e lascia che l'Agent scelga automaticamente quella giusta in base al nome.
+  - **Chat CLI**: su desktop puoi pilotare Claude Code, Codex, Hermes o Pi CLI già autenticati sul tuo dispositivo dalla stessa interfaccia di chat.
+  - **La nuova Modalità di apprendimento**: trasforma qualsiasi argomento e materiale di riferimento in un progetto di studio personalizzato con scalette strutturate, concetti chiave, flashcard e una mappa interattiva delle conoscenze, supportata dalla ripetizione dilazionata FSRS e dall'importazione di pacchetti Anki `.apkg` per un ripasso sostenibile nel lungo periodo.
 
 - **`1.5`**: Introduce un nuovo runtime Agent che trasforma l'AI da semplice Q&A in collaborazione attiva—con tool calling completo, MCP, Skills, Bash desktop, subagent e ricerca web—oltre a contesto e memoria per sessioni lunghe, RAG ibrido rinnovato, sincronizzazione del focus e consapevolezza PDF, e chat multi-finestra con Agent in background.
 
