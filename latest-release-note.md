@@ -1,37 +1,39 @@
-## 1.6.5.6 Multi-Agent Hermes & Editing Without Freezes ⚡
+## 1.6.6 Offline Embeddings & Multiple Knowledge Bases 📚
 
-### Agent & Hermes CLI
+### Knowledge base & RAG
 
-- Hermes CLI can now switch between multiple agents, and supports manual context compaction.
-- Fixed Obsidian freezing or becoming unresponsive while the agent edited files — line-count stats and edit review no longer run an unbounded full-file diff on the main thread. (#420)
-- Agent workspace scope no longer sends excluded paths to the model, and the `js_eval` bypass for reading them is closed. (#577)
+- Local embedding inference: download a model on desktop and build the knowledge base index fully offline, no third-party API required.
+- Knowledge base rework: manage multiple independent knowledge bases, with a refreshed settings design.
+- Rebuilt the RAG vector store on a flat IndexedDB layout, cutting the performance cost and stutter of building and maintaining the index.
+- Knowledge base indexing scope and Agent workspace file selection now share one unified folder-scope editor.
 
-### Chat experience
+### Agent & chat
 
-- Restored the streaming reveal trail on assistant output, with opacity interpolation handed to the browser for smoother, cheaper animation.
-- Hovering the token counter in a popout window no longer shows the tooltip in the main window. (#576)
+- Collapsed tool-call summaries now name the edited file and show colored +added/-removed line counts, instead of a bare edit count.
+- The Hermes agent picker now shows the custom name you gave an agent, not just its default label.
 
-### Reading & knowledge base
+### Settings & stability
 
-- Fixed PDF annotations where the number marker disappeared right after creation and the note input sometimes never appeared.
-- Knowledge base indexing on an outdated Obsidian installer no longer fails with `extension "vector" is not available`; it now tells you to update the client instead. (#579)
+- Fixed the settings page being clipped by blank space top and bottom in Obsidian 1.13's settings window — about 19% more usable height.
+- Fixed a false "module operation failed" error shown at startup even when the module was actually running fine.
 
 ---
 
-## 1.6.5.6 Hermes 多 Agent 与不再卡死的文件编辑 ⚡
+## 1.6.6 离线 Embedding 与多知识库 📚
 
-### Agent 与 Hermes CLI
+### 知识库与 RAG
 
-- Hermes CLI 支持切换多个 agent，并接入手动压缩上下文。
-- 修复 Agent 编辑文件时整个 Obsidian 可能卡死无响应的问题：行数统计与编辑评审不再在主线程上跑无上限的全文 diff。（#420）
-- Agent 工作范围不再把排除路径发给模型，并堵住 `js_eval` 绕过读取的通道。（#577）
+- 支持本地推理运行 embedding 模型：桌面端下载模型后即可离线构建知识库索引，无需第三方 API。
+- 知识库重构：支持管理多个独立知识库，设置样式同步优化。
+- 重构 RAG 向量库为 IndexedDB 扁平储存方案，大幅降低索引建立与维护的性能消耗与卡顿。
+- 知识库索引范围与 Agent 工作区文件选择组件合并为统一的文件夹作用域编辑器。
 
-### 对话体验
+### Agent 与对话
 
-- 重新为流式正文加回显影尾巴，透明度插值交给浏览器，动画更顺滑、开销更低。
-- 弹出窗口中悬停 token 统计时，浮层不再显示到主窗口。（#576）
+- 工具调用折叠摘要现在会点名具体编辑的文件，并展示彩色的增删行数，而不是只报一个编辑次数。
+- Hermes agent 选择器现在会显示你为 agent 设置的自定义名称，而不只是默认名。
 
-### 阅读与知识库
+### 设置与稳定性
 
-- 修复 PDF 批注创建后编号标记立即消失、批注输入框有时完全不出现的问题。
-- 知识库索引在旧版 Obsidian installer 下不再报 `extension "vector" is not available`，改为直接提示更新客户端。（#579）
+- 修复设置页在 Obsidian 1.13 设置窗口中被上下空白截断的问题，可视内容区增加约 19%。
+- 修复启动后模块实际运行正常，却误报"模块操作失败"的问题。
