@@ -175,6 +175,7 @@ export type TranslationKeys = {
     supportYolo: {
       name: string
       desc: string
+      afdian: string
       buyMeACoffee: string
       reportBug: string
       featureRequest: string

@@ -201,8 +201,15 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           className="yolo-settings-support-yolo"
         >
           <ObsidianButton
-            text={t('settings.supportYolo.buyMeACoffee')}
+            text={t('settings.supportYolo.afdian')}
             onClick={() => openExternalLink('https://afdian.com/a/lapis0x0')}
+            cta
+          />
+          <ObsidianButton
+            text={t('settings.supportYolo.buyMeACoffee')}
+            onClick={() =>
+              openExternalLink('https://buymeacoffee.com/lapis0x0')
+            }
             cta
           />
           <ObsidianButton

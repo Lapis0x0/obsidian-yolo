@@ -166,7 +166,8 @@ export const zh: TranslationKeys = {
     supportYolo: {
       name: '支持 YOLO',
       desc: '如果你觉得 YOLO 有价值，请考虑支持它的开发！',
-      buyMeACoffee: '爱发电',
+      afdian: '爱发电',
+      buyMeACoffee: 'Buy Me a Coffee',
       reportBug: '报 Bug',
       featureRequest: '提需求',
     },

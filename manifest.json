@@ -6,6 +6,9 @@
   "description": "Agent-native AI assistant — chat, write, search, orchestrate, all in one.",
   "author": "Lapix0x0",
   "authorUrl": "https://github.com/Lapis0x0",
-  "fundingUrl": "https://afdian.com/a/lapis0x0",
+  "fundingUrl": {
+    "爱发电": "https://afdian.com/a/lapis0x0",
+    "Buy Me a Coffee": "https://buymeacoffee.com/lapis0x0"
+  },
   "isDesktopOnly": false
 }
