@@ -1,5 +1,6 @@
 jest.mock('obsidian', () => ({
   ItemView: class {},
+  TextFileView: class {},
   normalizePath: (path: string) =>
     path.replace(/\\/g, '/').replace(/\/{2,}/g, '/'),
 }))

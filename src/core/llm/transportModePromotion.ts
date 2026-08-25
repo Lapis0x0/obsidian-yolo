@@ -1,18 +1,14 @@
 import { Notice, getLanguage } from 'obsidian'
 
-import { type Language, createTranslationFunction } from '../../i18n'
+import {
+  createTranslationFunction,
+  resolveLanguageFromLocale,
+} from '../../i18n'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 
 import type { AutoPromotedTransportMode } from './requestTransport'
 
-const resolveObsidianLanguage = (): Language => {
-  const rawLanguage = String(getLanguage() ?? '')
-    .trim()
-    .toLowerCase()
-  if (rawLanguage.startsWith('zh')) return 'zh'
-  if (rawLanguage.startsWith('it')) return 'it'
-  return 'en'
-}
+const resolveObsidianLanguage = () => resolveLanguageFromLocale(getLanguage())
 
 export const promoteProviderTransportModeToObsidian = async ({
   getSettings,

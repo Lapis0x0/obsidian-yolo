@@ -9,19 +9,31 @@ import type {
   YoloModuleActionToastV1,
   YoloModuleChatModeToolV1,
   YoloModuleChatModeV1,
+  YoloModuleFileMenuActionV1,
+  YoloModuleFileViewContextV1,
+  YoloModuleFileViewInstanceV1,
+  YoloModuleFileViewV1,
   YoloModuleI18nV1,
+  YoloModuleKeymapBindingV1,
+  YoloModuleKeymapModifierV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleRuntimeRegistration,
 } from '../src/core/modules/types'
 
 declare global {
   const yolo: YoloModuleRuntimeRegistration
-  type YoloModuleHostApiVersion = '1.7.0'
+  type YoloModuleHostApiVersion = '1.8.0'
   type YoloModuleHostApiV1 = YoloHostApiV1
   type YoloModuleHostActionToastV1 = YoloModuleActionToastV1
   type YoloModuleHostChatModeV1 = YoloModuleChatModeV1
   type YoloModuleHostChatModeToolV1 = YoloModuleChatModeToolV1
+  type YoloModuleHostFileMenuActionV1 = YoloModuleFileMenuActionV1
+  type YoloModuleHostFileViewContextV1 = YoloModuleFileViewContextV1
+  type YoloModuleHostFileViewInstanceV1 = YoloModuleFileViewInstanceV1
+  type YoloModuleHostFileViewV1 = YoloModuleFileViewV1
   type YoloModuleHostI18nV1 = YoloModuleI18nV1
+  type YoloModuleHostKeymapBindingV1 = YoloModuleKeymapBindingV1
+  type YoloModuleHostKeymapModifierV1 = YoloModuleKeymapModifierV1
   type YoloModuleHostLocalizedTextV1 = LocalizedTextV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1
   type YoloModuleHostSettingsContributionV1 = YoloModuleSettingsContributionV1

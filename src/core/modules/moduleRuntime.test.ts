@@ -1,4 +1,4 @@
-jest.mock('obsidian', () => ({ ItemView: class {} }))
+jest.mock('obsidian', () => ({ ItemView: class {}, TextFileView: class {} }))
 
 import { BackgroundActivityRegistry } from '../background/backgroundActivityRegistry'
 
@@ -187,7 +187,7 @@ describe('ModuleRuntime', () => {
     await runtime.activate({
       id: 'config-timing',
       activate: (host) => {
-        expect(YOLO_HOST_API_VERSION).toBe('1.7.0')
+        expect(YOLO_HOST_API_VERSION).toBe('1.8.0')
         expect(host.version).toBe(1)
         expect(typeof host.lifecycle.whenActive).toBe('function')
         expect(() => host.config.getSnapshot()).toThrow('config is unavailable')

@@ -233,7 +233,12 @@ import { TabCompletionController } from './features/editor/tab-completion/tabCom
 import type { ContinuationModelOverride } from './features/editor/write-assist/writeAssistController'
 import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
-import { type Language, createTranslationFunction, loadLocale } from './i18n'
+import {
+  type Language,
+  createTranslationFunction,
+  loadLocale,
+  resolveLanguageFromLocale,
+} from './i18n'
 import {
   YoloSettings,
   yoloSettingsSchema,
@@ -1118,12 +1123,7 @@ export default class YoloPlugin extends Plugin {
   }
 
   private resolveObsidianLanguage(): Language {
-    const rawLanguage = String(getLanguage() ?? '')
-      .trim()
-      .toLowerCase()
-    if (rawLanguage.startsWith('zh')) return 'zh'
-    if (rawLanguage.startsWith('it')) return 'it'
-    return 'en'
+    return resolveLanguageFromLocale(getLanguage())
   }
 
   private warnIfInstallationIncomplete() {

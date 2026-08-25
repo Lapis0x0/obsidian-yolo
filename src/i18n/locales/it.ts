@@ -2503,4 +2503,8 @@ export const it: DeepPartial<TranslationKeys> = {
     manualInstallOnGitHub:
       'Non riesci ad aggiornare? Installa manualmente da GitHub',
   },
+  moduleFileView: {
+    inactivePlaceholder:
+      'Questo tipo di file è fornito da un modulo attualmente non attivo.',
+  },
 }

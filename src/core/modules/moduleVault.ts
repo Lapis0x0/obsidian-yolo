@@ -782,7 +782,7 @@ function describeFile(file: TFile): YoloModuleVaultFileV1 {
   })
 }
 
-function describeEntry(entry: TFile | TFolder): YoloModuleVaultEntryV1 {
+export function describeEntry(entry: TFile | TFolder): YoloModuleVaultEntryV1 {
   return entry instanceof TFile
     ? describeFile(entry)
     : Object.freeze({ kind: 'folder', path: entry.path, name: entry.name })

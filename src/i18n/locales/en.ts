@@ -2753,4 +2753,8 @@ export const en: TranslationKeys = {
     updateInCommunityPlugins: 'Update in community plugins',
     manualInstallOnGitHub: "Can't update? Install manually from GitHub",
   },
+  moduleFileView: {
+    inactivePlaceholder:
+      'This file type is provided by a module that is not currently active.',
+  },
 }

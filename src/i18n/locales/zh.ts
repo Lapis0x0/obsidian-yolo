@@ -2596,4 +2596,7 @@ export const zh: TranslationKeys = {
     updateInCommunityPlugins: '在社区插件中更新',
     manualInstallOnGitHub: '无法更新？前往 GitHub 手动安装',
   },
+  moduleFileView: {
+    inactivePlaceholder: '该文件类型由一个当前未启用的模块提供。',
+  },
 }

@@ -42,10 +42,84 @@ export type YoloModuleOpenViewOptionsV1 = Readonly<{
   state?: Readonly<Record<string, unknown>>
 }>
 
+export type YoloModuleFileViewFileV1 = Readonly<{
+  path: string
+  basename: string
+  extension: string
+}>
+
+export type YoloModuleKeymapModifierV1 =
+  | 'Mod'
+  | 'Ctrl'
+  | 'Meta'
+  | 'Shift'
+  | 'Alt'
+
+export type YoloModuleKeymapBindingV1 = Readonly<{
+  modifiers: readonly YoloModuleKeymapModifierV1[]
+  /** Obsidian keymap key vocabulary, e.g. 'Escape'. */
+  key: string
+  /** Return true to consume the key; any other result lets Obsidian continue. */
+  // eslint-disable-next-line @typescript-eslint/no-invalid-void-type -- void must stay a union member so a handler with no return statement (the common case) type-checks without an explicit `return undefined`.
+  handler(): boolean | void
+}>
+
+export type YoloModuleFileViewContextV1 = Readonly<{
+  /** View content root, already attached to the leaf; build all DOM inside it. */
+  contentEl: HTMLElement
+  getFile(): YoloModuleFileViewFileV1 | null
+  /** Popout-safe: always the document/window currently owning contentEl. */
+  getDocument(): Document
+  getWindow(): Window
+  /** Debounced persist; host serializes via instance.getViewData(). */
+  requestSave(): void
+  /** Push an Obsidian keymap scope above the view (popout-safe). Returns a disposer. */
+  pushKeymapScope(
+    bindings: readonly YoloModuleKeymapBindingV1[],
+  ): ModuleDisposer
+}>
+
+export type YoloModuleFileViewInstanceV1 = Readonly<{
+  /** TextFileView semantics: clear=true when a different file loads. May run
+   * before the DOM is visible and repeatedly (external modify); must be
+   * idempotent. */
+  setViewData(data: string, clear: boolean): void
+  /** Must reflect live editing state without requiring blur first. */
+  getViewData(): string
+  clear(): void
+  onResize?(): void
+  /** Release all DOM, listeners, observers, rAF. Called on view close and on
+   * window migration (host rebuilds via factory afterwards). */
+  dispose(): void
+}>
+
+export type YoloModuleFileViewV1 = Readonly<{
+  /** Workspace view type id, unique across the app. */
+  viewType: string
+  /** File extensions without leading dot, e.g. ['yoloboard']. */
+  extensions: readonly string[]
+  name: LocalizedTextV1
+  icon: string
+  factory(context: YoloModuleFileViewContextV1): YoloModuleFileViewInstanceV1
+}>
+
+export type YoloModuleFileMenuActionV1 = Readonly<{
+  id: string
+  title: LocalizedTextV1
+  icon: string
+  appliesTo: 'file' | 'folder'
+  /** For 'file' targets: show only for these extensions (no dot). Ignored
+   * for folders. */
+  extensions?: readonly string[]
+  onSelect(entry: YoloModuleVaultEntryV1): void | Promise<void>
+}>
+
 export type YoloModuleWorkspaceV1 = {
   registerView(view: YoloModuleViewV1): void
   registerRibbonAction(action: YoloModuleRibbonActionV1): void
   registerCommand(command: YoloModuleCommandV1): void
+  registerFileView(view: YoloModuleFileViewV1): void
+  registerFileMenuAction(action: YoloModuleFileMenuActionV1): void
   openView(options?: YoloModuleOpenViewOptionsV1): Promise<void>
 }
 

@@ -8,9 +8,26 @@ jest.mock('obsidian', () => ({
       ).getViewType()
     }
   },
+  TextFileView: class {
+    contentEl = { firstChild: null, appendChild: () => undefined }
+    containerEl = { onWindowMigrated: () => () => undefined }
+    requestSave = () => undefined
+  },
+  TFile: class {
+    name: string
+    constructor(public path: string) {
+      this.name = path.split('/').pop() ?? path
+    }
+  },
+  TFolder: class {
+    name: string
+    constructor(public path: string) {
+      this.name = path.split('/').pop() ?? path
+    }
+  },
 }))
 
-import type { Plugin, WorkspaceLeaf } from 'obsidian'
+import { type Plugin, TFolder, type WorkspaceLeaf } from 'obsidian'
 
 import { LocaleStore } from '../i18n/localeStore'
 
@@ -24,12 +41,32 @@ const view = {
   render: () => null,
 }
 
+const fileView = {
+  viewType: 'module-file-view',
+  extensions: ['yoloboard'],
+  name: 'Module file view',
+  icon: 'layout-grid',
+  factory: jest.fn(),
+}
+
+/** Every registrar in this file constructs a ModuleFileMenuRegistry, which
+ * registers a plugin-lifetime `workspace.on('file-menu', ...)` listener —
+ * so every plugin mock needs a minimal, real `workspace.on`/`registerEvent`
+ * even in tests that only exercise plain views/commands/ribbon actions. */
+const withWorkspaceEvents = <T extends { workspace?: object }>(
+  app: T,
+): T & { workspace: object } => ({
+  ...app,
+  workspace: { on: jest.fn(() => ({})), ...(app.workspace ?? {}) },
+})
+
 describe('ObsidianModuleContributionRegistrar', () => {
   it('provides the view declaration during the ItemView base constructor', () => {
     const registerView = jest.fn()
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace: {} },
+      app: withWorkspaceEvents({ workspace: {} }),
       registerView,
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     registrar.commit('notes', { view }, new ModuleLifecycleScope())
 
@@ -56,8 +93,9 @@ describe('ObsidianModuleContributionRegistrar', () => {
       revealLeaf: jest.fn(async () => undefined),
     }
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace },
+      app: withWorkspaceEvents({ workspace }),
       registerView,
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     const first = new ModuleLifecycleScope()
     registrar.commit('notes', { view }, first)
@@ -86,8 +124,9 @@ describe('ObsidianModuleContributionRegistrar', () => {
     }
     const registerView = jest.fn()
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace },
+      app: withWorkspaceEvents({ workspace }),
       registerView,
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     registrar.commit('notes', { view }, new ModuleLifecycleScope())
 
@@ -112,8 +151,9 @@ describe('ObsidianModuleContributionRegistrar', () => {
       revealLeaf: jest.fn(),
     }
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace },
+      app: withWorkspaceEvents({ workspace }),
       registerView: jest.fn(),
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     registrar.commit('notes', { view }, new ModuleLifecycleScope())
 
@@ -146,8 +186,9 @@ describe('ObsidianModuleContributionRegistrar', () => {
       revealLeaf: jest.fn(async () => undefined),
     }
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace },
+      app: withWorkspaceEvents({ workspace }),
       registerView: jest.fn(),
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     registrar.commit('notes', { view }, new ModuleLifecycleScope())
 
@@ -183,8 +224,9 @@ describe('ObsidianModuleContributionRegistrar', () => {
       revealLeaf: jest.fn(async () => undefined),
     }
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace },
+      app: withWorkspaceEvents({ workspace }),
       registerView: jest.fn(),
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     registrar.commit('notes', { view }, new ModuleLifecycleScope())
     let active = true
@@ -205,7 +247,8 @@ describe('ObsidianModuleContributionRegistrar', () => {
 
   it('rejects modules without a registered view', async () => {
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace: {} },
+      app: withWorkspaceEvents({ workspace: {} }),
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
 
     await expect(registrar.openView('service-only')).rejects.toThrow(
@@ -219,10 +262,11 @@ describe('ObsidianModuleContributionRegistrar', () => {
     const removeCommand = jest.fn()
     const lifecycle = new ModuleLifecycleScope()
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace: {} },
+      app: withWorkspaceEvents({ workspace: {} }),
       manifest: { id: 'yolo' },
       addCommand,
       removeCommand,
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
 
     registrar.commit(
@@ -249,10 +293,11 @@ describe('ObsidianModuleContributionRegistrar', () => {
     const consoleError = jest.spyOn(console, 'error').mockImplementation()
     const addCommand = jest.fn()
     const registrar = new ObsidianModuleContributionRegistrar({
-      app: { workspace: {} },
+      app: withWorkspaceEvents({ workspace: {} }),
       manifest: { id: 'yolo' },
       addCommand,
       removeCommand: jest.fn(),
+      registerEvent: jest.fn(),
     } as unknown as Plugin)
     registrar.commit(
       'learning',
@@ -296,11 +341,12 @@ describe('ObsidianModuleContributionRegistrar', () => {
     const lifecycle = new ModuleLifecycleScope()
     const registrar = new ObsidianModuleContributionRegistrar(
       {
-        app: { workspace: { trigger } },
+        app: withWorkspaceEvents({ workspace: { trigger } }),
         addCommand,
         addRibbonIcon,
         registerView,
         removeCommand: jest.fn(),
+        registerEvent: jest.fn(),
       } as unknown as Plugin,
       locales,
     )
@@ -347,5 +393,141 @@ describe('ObsidianModuleContributionRegistrar', () => {
     expect(trigger).toHaveBeenCalledWith('layout-change')
     lifecycle.dispose()
     expect(ribbon.remove).toHaveBeenCalledTimes(1)
+  })
+
+  it('registers a module file view and its extensions as a plugin-lifetime slot', () => {
+    const registerView = jest.fn()
+    const registerExtensions = jest.fn()
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: withWorkspaceEvents({ workspace: {} }),
+      registerView,
+      registerExtensions,
+      registerEvent: jest.fn(),
+    } as unknown as Plugin)
+
+    registrar.commit(
+      'whiteboard',
+      { fileViews: [fileView] },
+      new ModuleLifecycleScope(),
+    )
+
+    expect(registerView).toHaveBeenCalledWith(
+      fileView.viewType,
+      expect.any(Function),
+    )
+    expect(registerExtensions).toHaveBeenCalledWith(
+      fileView.extensions,
+      fileView.viewType,
+    )
+  })
+
+  it('rejects a second module claiming an already-registered file view type or extension', () => {
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: withWorkspaceEvents({ workspace: {} }),
+      registerView: jest.fn(),
+      registerExtensions: jest.fn(),
+      registerEvent: jest.fn(),
+    } as unknown as Plugin)
+    registrar.commit(
+      'whiteboard',
+      { fileViews: [fileView] },
+      new ModuleLifecycleScope(),
+    )
+
+    expect(() =>
+      registrar.commit(
+        'intruder',
+        { fileViews: [{ ...fileView, extensions: ['other'] }] },
+        new ModuleLifecycleScope(),
+      ),
+    ).toThrow(`Module file view type "${fileView.viewType}" is already registered`)
+
+    expect(() =>
+      registrar.commit(
+        'intruder',
+        {
+          fileViews: [{ ...fileView, viewType: 'intruder-view' }],
+        },
+        new ModuleLifecycleScope(),
+      ),
+    ).toThrow(
+      `Module file view extension "${fileView.extensions[0]}" is already registered to view type "${fileView.viewType}"`,
+    )
+  })
+
+  it('detaches file-view leaves on deactivate for a module with no plain view', () => {
+    const detachLeavesOfType = jest.fn()
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: withWorkspaceEvents({ workspace: { detachLeavesOfType } }),
+      registerView: jest.fn(),
+      registerExtensions: jest.fn(),
+      registerEvent: jest.fn(),
+    } as unknown as Plugin)
+    registrar.commit(
+      'whiteboard',
+      { fileViews: [fileView] },
+      new ModuleLifecycleScope(),
+    )
+
+    registrar.deactivate('whiteboard', true)
+
+    expect(detachLeavesOfType).toHaveBeenCalledWith(fileView.viewType)
+  })
+
+  it('wires committed file menu actions into the plugin-lifetime file-menu listener', () => {
+    let fileMenuHandler:
+      | ((menu: unknown, file: unknown, source: string) => void)
+      | undefined
+    const on = jest.fn(
+      (name: string, cb: typeof fileMenuHandler): object => {
+        if (name === 'file-menu') fileMenuHandler = cb
+        return {}
+      },
+    )
+    const registrar = new ObsidianModuleContributionRegistrar({
+      app: { workspace: { on } },
+      registerEvent: jest.fn(),
+    } as unknown as Plugin)
+    const onSelect = jest.fn()
+    registrar.commit(
+      'whiteboard',
+      {
+        fileMenuActions: [
+          {
+            id: 'open-in-board',
+            title: 'Open in Whiteboard',
+            icon: 'layout-grid',
+            appliesTo: 'folder',
+            onSelect,
+          },
+        ],
+      },
+      new ModuleLifecycleScope(),
+    )
+
+    const clicks: Array<() => void> = []
+    const menu = {
+      addItem: (cb: (item: unknown) => void) => {
+        const item = {
+          setTitle: () => item,
+          setIcon: () => item,
+          onClick: (fn: () => void) => {
+            clicks.push(fn)
+            return item
+          },
+        }
+        cb(item)
+      },
+    }
+    const folder = new (TFolder as unknown as {
+      new (path: string): InstanceType<typeof TFolder>
+    })('notes')
+    fileMenuHandler?.(menu, folder, 'test')
+
+    expect(clicks).toHaveLength(1)
+    clicks[0]()
+    expect(onSelect).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'folder', path: 'notes' }),
+    )
   })
 })

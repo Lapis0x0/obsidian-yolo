@@ -42,6 +42,16 @@ function getNestedString(
   return typeof current === 'string' ? current : undefined
 }
 
+/** Maps a raw locale tag (Obsidian `getLanguage()` / LocaleStore) to a supported host Language. */
+export function resolveLanguageFromLocale(
+  locale: string | null | undefined,
+): Language {
+  const normalized = (locale ?? '').trim().toLowerCase()
+  if (normalized.startsWith('zh')) return 'zh'
+  if (normalized.startsWith('it')) return 'it'
+  return 'en'
+}
+
 export function createTranslationFunction(language: Language) {
   const t = getTranslation(language)
 

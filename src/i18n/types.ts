@@ -2399,4 +2399,10 @@ export type TranslationKeys = {
     updateInCommunityPlugins: string
     manualInstallOnGitHub: string
   }
+
+  // Module-provided file views (e.g. a module registering a custom file
+  // extension via workspace.registerFileView)
+  moduleFileView: {
+    inactivePlaceholder: string
+  }
 }
