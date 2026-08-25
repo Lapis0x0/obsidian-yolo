@@ -1,0 +1,17 @@
+{
+  "id": "whiteboard",
+  "icon": "layout-grid",
+  "localizations": {
+    "en": {
+      "name": "YOLO Whiteboard",
+      "description": "An infinite canvas for spatial thinking: place note, text, and PDF cards, connect them, and read/annotate PDFs alongside your notes."
+    },
+    "zh": {
+      "name": "YOLO 白板",
+      "description": "用于空间化思考的无限画布：摆放笔记、便签与 PDF 卡片，建立连线，并在笔记旁阅读与标注 PDF。"
+    }
+  },
+  "hostApi": "^1.6.0",
+  "platforms": ["desktop", "mobile"],
+  "dataSchemas": {}
+}

@@ -1,0 +1,22 @@
+{
+  "name": "@obsidian-yolo/whiteboard",
+  "version": "0.1.0",
+  "private": true,
+  "yoloModule": {
+    "previewVersion": "0.1.0",
+    "previewTag": "module-whiteboard-v0.1.0"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest --config ../../jest.config.js --runInBand --testPathPattern=modules/whiteboard/src",
+    "build": "node ../../scripts/build-first-party-modules.mjs --module whiteboard",
+    "test:boundary": "node --test ../../scripts/check-whiteboard-module-boundary.test.mjs"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/jest": "^29.5.13",
+    "@types/node": "^16.11.6",
+    "@types/react": "^18.3.10",
+    "@types/react-dom": "^18.3.0"
+  }
+}

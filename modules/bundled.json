@@ -36,6 +36,32 @@
         "byteSize": 1910,
         "sha256": "741283bb3978eaadd3bd5212e19cb71d7f4a3b6e81772a2c486378a6991033bb"
       }
+    },
+    {
+      "id": "whiteboard",
+      "version": "0.1.0",
+      "icon": "layout-grid",
+      "localizations": {
+        "en": {
+          "name": "YOLO Whiteboard",
+          "description": "An infinite canvas for spatial thinking: place note, text, and PDF cards, connect them, and read/annotate PDFs alongside your notes."
+        },
+        "zh": {
+          "name": "YOLO 白板",
+          "description": "用于空间化思考的无限画布：摆放笔记、便签与 PDF 卡片，建立连线，并在笔记旁阅读与标注 PDF。"
+        }
+      },
+      "hostApi": "^1.6.0",
+      "dataSchemas": {},
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/module.json",
+      "manifest": {
+        "byteSize": 1786,
+        "sha256": "ea4b4b0be4a737bab99b3e2b5ec1ee5e0261cd50e0becfb6a305e48805a4c46f"
+      }
     }
   ]
 }

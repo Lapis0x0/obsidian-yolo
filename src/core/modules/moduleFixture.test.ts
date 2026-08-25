@@ -91,12 +91,15 @@ describe('host API conformance artifact boundary', () => {
         manifest: { byteSize: number; sha256: string }
       }>
     }
-    expect(bundled).toEqual({
-      schemaVersion: 1,
-      modules: [
-        expect.objectContaining({ id: 'learning', version: learningVersion }),
-      ],
-    })
+    expect(bundled.schemaVersion).toBe(1)
+    expect(bundled.modules.map(({ id }) => id).sort()).toEqual([
+      'learning',
+      'whiteboard',
+    ])
+    const bundledLearning = bundled.modules.find(({ id }) => id === 'learning')
+    expect(bundledLearning).toEqual(
+      expect.objectContaining({ id: 'learning', version: learningVersion }),
+    )
 
     const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
@@ -109,7 +112,7 @@ describe('host API conformance artifact boundary', () => {
     const source = entry.toString('utf8')
     expect(manifest.id).toBe('learning')
     expect(manifest.version).toBe(learningVersion)
-    expect(bundled.modules[0]?.manifest).toEqual({
+    expect(bundledLearning?.manifest).toEqual({
       byteSize: manifestBytes.byteLength,
       sha256: createHash('sha256').update(manifestBytes).digest('hex'),
     })
@@ -162,9 +165,9 @@ describe('host API conformance artifact boundary', () => {
   it('preserves real Learning build schema declarations through the catalog parser', () => {
     const bundledModule = (
       JSON.parse(readFileSync('modules/bundled.json', 'utf8')) as {
-        modules: Array<{ manifestUrl: string }>
+        modules: Array<{ id: string; manifestUrl: string }>
       }
-    ).modules[0]
+    ).modules.find(({ id }) => id === 'learning')!
     const manifestBytes = readFileSync(path.join(learningDir, 'module.json'))
     const manifest = parseModuleArtifactManifest(
       JSON.parse(manifestBytes.toString('utf8')),
