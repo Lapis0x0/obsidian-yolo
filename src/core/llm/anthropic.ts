@@ -81,6 +81,72 @@ const parseHostedSearchQuery = (partialJson: string): string | undefined => {
   }
 }
 
+const SUPPORTED_IMAGE_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+]
+
+function validateImageType(mimeType: string) {
+  if (!SUPPORTED_IMAGE_TYPES.includes(mimeType)) {
+    throw new Error(
+      `Anthropic does not support image type ${mimeType}. Supported types: ${SUPPORTED_IMAGE_TYPES.join(
+        ', ',
+      )}`,
+    )
+  }
+}
+
+/**
+ * A `user` request message's content in Anthropic's own shape.
+ *
+ * Module-level rather than a method because the Claude Agent SDK path
+ * (`core/llm/claude-sdk/`) sends the very same blocks to the very same model
+ * family through a subprocess instead of HTTP — the translation is a property
+ * of Anthropic's wire format, not of this transport.
+ */
+export function parseUserMessageContent(
+  message: Extract<RequestMessage, { role: 'user' }>,
+): string | (TextBlockParam | ImageBlockParam | DocumentBlockParam)[] {
+  if (!Array.isArray(message.content)) {
+    return message.content
+  }
+  return message.content.map(
+    (part): TextBlockParam | ImageBlockParam | DocumentBlockParam => {
+      switch (part.type) {
+        case 'text':
+          return { type: 'text', text: part.text }
+        case 'image_url': {
+          const { mimeType, base64Data } = parseImageDataUrl(part.image_url.url)
+          validateImageType(mimeType)
+          return {
+            type: 'image',
+            source: {
+              data: base64Data,
+              media_type: mimeType as Base64ImageSource['media_type'],
+              type: 'base64',
+            },
+          }
+        }
+        case 'document': {
+          // Native PDF support via Anthropic's document block. The 'pdf'
+          // modality gate upstream guarantees this only reaches models that
+          // advertise native PDF support.
+          return {
+            type: 'document',
+            source: {
+              type: 'base64',
+              media_type: part.mediaType,
+              data: part.data,
+            },
+          }
+        }
+      }
+    },
+  )
+}
+
 export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   private browserClient: Anthropic
   private obsidianClient: Anthropic
@@ -670,45 +736,7 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
   protected parseRequestMessage(message: RequestMessage): MessageParam | null {
     switch (message.role) {
       case 'user': {
-        if (Array.isArray(message.content)) {
-          const content = message.content.map(
-            (part): TextBlockParam | ImageBlockParam | DocumentBlockParam => {
-              switch (part.type) {
-                case 'text':
-                  return { type: 'text', text: part.text }
-                case 'image_url': {
-                  const { mimeType, base64Data } = parseImageDataUrl(
-                    part.image_url.url,
-                  )
-                  AnthropicProvider.validateImageType(mimeType)
-                  return {
-                    type: 'image',
-                    source: {
-                      data: base64Data,
-                      media_type: mimeType as Base64ImageSource['media_type'],
-                      type: 'base64',
-                    },
-                  }
-                }
-                case 'document': {
-                  // Native PDF support via Anthropic's document block. The
-                  // 'pdf' modality gate upstream guarantees this only reaches
-                  // models that advertise native PDF support.
-                  return {
-                    type: 'document',
-                    source: {
-                      type: 'base64',
-                      media_type: part.mediaType,
-                      data: part.data,
-                    },
-                  }
-                }
-              }
-            },
-          )
-          return { role: 'user', content }
-        }
-        return { role: 'user', content: message.content }
+        return { role: 'user', content: parseUserMessageContent(message) }
       }
       case 'assistant': {
         const anthropicToolCalls = message.tool_calls?.map(
@@ -1046,22 +1074,6 @@ https://github.com/glowingjade/obsidian-smart-composer/issues/286`,
       )
     }
     return systemMessage
-  }
-
-  private static validateImageType(mimeType: string) {
-    const SUPPORTED_IMAGE_TYPES = [
-      'image/jpeg',
-      'image/png',
-      'image/gif',
-      'image/webp',
-    ]
-    if (!SUPPORTED_IMAGE_TYPES.includes(mimeType)) {
-      throw new Error(
-        `Anthropic does not support image type ${mimeType}. Supported types: ${SUPPORTED_IMAGE_TYPES.join(
-          ', ',
-        )}`,
-      )
-    }
   }
 
   private static parseRequestTool(tool: RequestTool): AnthropicTool {

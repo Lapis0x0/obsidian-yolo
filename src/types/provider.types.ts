@@ -30,6 +30,7 @@ export const providerPresetTypeSchema = z.enum([
   'openai',
   'chatgpt-oauth',
   'gemini-oauth',
+  'claude-oauth',
   'anthropic',
   'gemini',
   'deepseek',
@@ -110,6 +111,7 @@ const DEFAULT_PROVIDER_API_TYPE_BY_PRESET: Record<
   openai: 'openai-responses',
   'chatgpt-oauth': 'openai-responses',
   'gemini-oauth': 'gemini',
+  'claude-oauth': 'anthropic',
   anthropic: 'anthropic',
   gemini: 'gemini',
   deepseek: 'openai-compatible',
@@ -151,6 +153,10 @@ export function getSupportedApiTypesForPresetType(
   ])
 
   switch (presetType) {
+    case 'claude-oauth':
+      // Served by the Claude Agent SDK rather than any HTTP endpoint, so
+      // there is no alternate API type to switch to.
+      break
     case 'anthropic':
       defaults.add('openai-compatible')
       break

@@ -9,6 +9,7 @@ import {
   normalizeChatConversationCompactionState,
 } from '../../types/chat'
 import type { RequestMessage, RequestTool } from '../../types/llm/request'
+import type { ProviderExecutedToolCall } from '../../types/llm/response'
 import type { ReasoningLevel } from '../../types/reasoning'
 import {
   ToolCallRequest,
@@ -29,6 +30,7 @@ import {
 } from './compaction'
 import { AgentLlmTurnExecutor } from './llm-turn-executor'
 import { createAgentLoopWorker } from './loop-worker'
+import { buildProviderToolRunMessage } from './provider-tool-run'
 import {
   applyRepeatedReadCallGuard,
   createRepeatedReadCallGuardState,
@@ -277,10 +279,25 @@ export class NativeAgentRuntime implements AgentRuntime {
                       : undefined,
                   resumeAssistantMessage: resumedMessageForTurn,
                   geminiTools: input.geminiTools,
+                  ...(input.session ? { session: input.session } : {}),
+                  ...(input.nativeToolPolicy
+                    ? { nativeToolPolicy: input.nativeToolPolicy }
+                    : {}),
+                  ...(input.session ? { session: input.session } : {}),
+                  ...(input.nativeToolPolicy
+                    ? { nativeToolPolicy: input.nativeToolPolicy }
+                    : {}),
                   systemPromptOverride: input.systemPromptOverride,
                   onAssistantMessage: (assistantMessage) => {
                     this.upsertAssistantMessage(assistantMessage)
                     this.notifySubscribers()
+                  },
+                  onProviderToolRun: (calls) => {
+                    this.upsertProviderToolRun({
+                      calls,
+                      input,
+                      sourceUserMessageId: currentSourceUserMessageId,
+                    })
                   },
                 })
 
@@ -649,6 +666,13 @@ export class NativeAgentRuntime implements AgentRuntime {
         this.upsertAssistantMessage(assistantMessage)
         this.notifySubscribers()
       },
+      onProviderToolRun: (calls) => {
+        this.upsertProviderToolRun({
+          calls,
+          input,
+          sourceUserMessageId: input.sourceUserMessageId,
+        })
+      },
     })
 
     await llmTurnExecutor.run()
@@ -659,6 +683,38 @@ export class NativeAgentRuntime implements AgentRuntime {
     this.subscribers.forEach((callback) => {
       callback(snapshot)
     })
+  }
+
+  /**
+   * Place, or update, a run of tools the provider executed itself. The
+   * executor has already sealed the assistant message before it and opened the
+   * one after, so this only has to land between them — which appending does,
+   * because the message that follows has not been created yet.
+   */
+  private upsertProviderToolRun({
+    calls,
+    input,
+    sourceUserMessageId,
+  }: {
+    calls: ProviderExecutedToolCall[]
+    input: AgentRuntimeRunInput
+    sourceUserMessageId?: string
+  }): void {
+    this.replaceToolMessage(
+      buildProviderToolRunMessage({
+        calls,
+        conversationId: input.conversationId,
+        branchId: input.branchId,
+        sourceUserMessageId,
+        branchModelId: input.model.id,
+        branchLabel:
+          input.branchLabel ??
+          input.model.name ??
+          input.model.model ??
+          input.model.id,
+      }),
+    )
+    this.notifySubscribers()
   }
 
   private upsertAssistantMessage(message: ChatAssistantMessage): void {

@@ -971,6 +971,7 @@ export const en: TranslationKeys = {
         openai: 'Reasoning · Multimodal',
         chatgptOAuth: 'ChatGPT Plus / Pro',
         anthropic: 'Chat · Reasoning',
+        claudeOAuth: 'Claude Code login',
         gemini: 'Multimodal',
         geminiOAuth: 'Google account',
         mistral: 'Chat · Embedding',
@@ -1082,6 +1083,18 @@ export const en: TranslationKeys = {
       geminiOAuthDisconnectedHelp:
         'Not connected. Connect to use Gemini quota from your Google account.',
       geminiOAuthProject: 'project',
+      claudeOauthTitle: 'Claude OAuth',
+      claudeOauthTokenName: 'OAuth token',
+      claudeOauthTokenDesc:
+        'Run "claude setup-token" in a terminal and paste the token here to chat on your Claude subscription. This provider runs a local claude subprocess, so it is desktop-only. Paste a new token once it expires.',
+      claudeOauthClear: 'Clear',
+      claudeOauthAutoLogin: 'Auto login',
+      claudeOauthAutoLoginConnecting: 'Waiting for browser login...',
+      claudeOauthAutoLoginSuccess: 'Claude login connected.',
+      claudeOauthAutoLoginDesktopOnly:
+        'Automated login is only available on desktop.',
+      claudeOauthAutoLoginWindowsNotice:
+        'A terminal window opened to complete login. Paste the printed token into the field below once it finishes.',
     },
     models: {
       title: 'Models',

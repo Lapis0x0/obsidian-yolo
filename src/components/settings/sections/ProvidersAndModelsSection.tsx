@@ -37,6 +37,8 @@ import { resolveProviderDisplayBaseUrl } from '../../../utils/llm/provider-base-
 import { providerSupportsEmbedding } from '../../../utils/llm/provider-config'
 import { openExternalLink } from '../../../utils/openExternalLink'
 import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianSetting } from '../../common/ObsidianSetting'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
 import { AddEmbeddingModelModal } from '../modals/AddEmbeddingModelModal'
@@ -557,6 +559,144 @@ function GeminiOAuthPanel({
   )
 }
 
+function ClaudeOAuthPanel({
+  app,
+  provider,
+}: {
+  app: App
+  provider: LLMProvider
+}) {
+  const { t } = useLanguage()
+  const { updateSettings } = useSettings()
+  const token = provider.apiKey ?? ''
+  const [connecting, setConnecting] = useState(false)
+  const abortRef = useRef<AbortController | null>(null)
+
+  const handleChange = (next: string) => {
+    void updateSettings((current) => ({
+      ...current,
+      providers: current.providers.map((p) =>
+        p.id === provider.id ? { ...p, apiKey: next } : p,
+      ),
+    }))
+  }
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort()
+    }
+  }, [])
+
+  const handleAutoLogin = () => {
+    const execute = async () => {
+      setConnecting(true)
+      const abortController = new AbortController()
+      abortRef.current = abortController
+      const { runClaudeSetupToken } = await import(
+        '../../../core/cli-runtime/claude/setupToken'
+      )
+      const result = await runClaudeSetupToken(app, abortController.signal)
+      handleChange(result.token)
+      new Notice(
+        t(
+          'settings.providers.claudeOauthAutoLoginSuccess',
+          'Claude login connected.',
+        ),
+      )
+    }
+
+    void execute()
+      .catch((error: unknown) => {
+        if (error instanceof Error && error.name === 'AbortError') {
+          return
+        }
+        console.error('[YOLO] Failed to auto-login Claude OAuth:', error)
+        new Notice(
+          error instanceof Error
+            ? error.message
+            : 'Failed to auto-login Claude OAuth.',
+        )
+      })
+      .finally(() => {
+        abortRef.current = null
+        setConnecting(false)
+      })
+  }
+
+  const handleOpenTerminal = () => {
+    const execute = async () => {
+      const { openClaudeSetupTokenTerminal } = await import(
+        '../../../core/cli-runtime/claude/setupToken'
+      )
+      await openClaudeSetupTokenTerminal(app)
+      new Notice(
+        t(
+          'settings.providers.claudeOauthAutoLoginWindowsNotice',
+          'A terminal window opened to complete login. Paste the printed token into the field below once it finishes.',
+        ),
+        10000,
+      )
+    }
+
+    void execute().catch((error: unknown) => {
+      console.error('[YOLO] Failed to open Claude login terminal:', error)
+      new Notice(
+        error instanceof Error
+          ? error.message
+          : 'Failed to open Claude login terminal.',
+      )
+    })
+  }
+
+  return (
+    <div className="yolo-models-subsection">
+      <div className="yolo-models-subsection-header">
+        <span>{t('settings.providers.claudeOauthTitle', 'Claude OAuth')}</span>
+        <button
+          type="button"
+          onClick={Platform.isWin ? handleOpenTerminal : handleAutoLogin}
+          className="yolo-add-model-btn"
+          disabled={connecting || !Platform.isDesktop}
+          title={
+            Platform.isDesktop
+              ? undefined
+              : t(
+                  'settings.providers.claudeOauthAutoLoginDesktopOnly',
+                  'Automated login is only available on desktop.',
+                )
+          }
+        >
+          {connecting
+            ? t(
+                'settings.providers.claudeOauthAutoLoginConnecting',
+                'Waiting for browser login...',
+              )
+            : t('settings.providers.claudeOauthAutoLogin', 'Auto login')}
+        </button>
+      </div>
+      <ObsidianSetting
+        name={t('settings.providers.claudeOauthTokenName', 'OAuth token')}
+        desc={t(
+          'settings.providers.claudeOauthTokenDesc',
+          'Run "claude setup-token" in a terminal and paste the token here. This quota is only usable through Claude Code chat mode — it will not appear in any model list. Paste a new token once it expires.',
+        )}
+      >
+        <ObsidianTextInput
+          type="password"
+          value={token}
+          placeholder="sk-ant-oat..."
+          onChange={handleChange}
+        />
+        <ObsidianButton
+          text={t('settings.providers.claudeOauthClear', 'Clear')}
+          onClick={() => handleChange('')}
+          disabled={!token}
+        />
+      </ObsidianSetting>
+    </div>
+  )
+}
+
 function ProviderSectionItem({
   provider,
   app,
@@ -581,6 +721,7 @@ function ProviderSectionItem({
 }: ProviderSectionItemProps) {
   const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
   const isGeminiOAuth = provider.presetType === 'gemini-oauth'
+  const isClaudeOAuth = provider.presetType === 'claude-oauth'
   const displayBaseUrl = getProviderDisplayBaseUrl(provider)
   const chatModelsLabel = `${chatModels.length} ${t('settings.providers.chatModels').replace(/^个/, '')}`
   const embeddingModelsLabel = `${embeddingModels.length} ${t('settings.providers.embeddingModels').replace(/^个/, '')}`
@@ -752,6 +893,7 @@ function ProviderSectionItem({
           {isGeminiOAuth && (
             <GeminiOAuthPanel plugin={plugin} provider={provider} />
           )}
+          {isClaudeOAuth && <ClaudeOAuthPanel app={app} provider={provider} />}
           <ChatModelsTable
             provider={provider}
             app={app}

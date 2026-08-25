@@ -2,6 +2,7 @@ import { DEFAULT_MODEL_REQUEST_TIMEOUT_MS } from '../../settings/schema/setting.
 import { ChatModel } from '../../types/chat-model.types'
 import {
   LLMRequestBase,
+  NativeToolPolicy,
   RequestTool,
   RequestToolChoice,
 } from '../../types/llm/request'
@@ -11,6 +12,7 @@ import {
   ProviderMetadata,
   ResponseUsage,
 } from '../../types/llm/response'
+import { ProviderSessionAccessor } from '../../types/provider-session.types'
 import { LLMProvider } from '../../types/provider.types'
 import {
   type ToolCallArgumentDiagnostics,
@@ -86,6 +88,14 @@ type SingleTurnExecutionInput = {
     useUrlContext?: boolean
   }
   debugTraceId?: string
+  /**
+   * Conversation-scoped session handle for providers that run their own
+   * native session (see `LLMOptions.session`). Left unset by the lightweight
+   * helper calls, which have no conversation behind them.
+   */
+  session?: ProviderSessionAccessor
+  /** See `LLMOptions.nativeToolPolicy`. */
+  nativeToolPolicy?: NativeToolPolicy
   /**
    * `standard` (default): forward the model as-configured, including any
    * hosted tools, reasoning, and custom-parameter injections.
@@ -252,6 +262,8 @@ export async function executeSingleTurn({
   streamFallbackRecoveryEnabled = true,
   geminiTools,
   debugTraceId,
+  session,
+  nativeToolPolicy,
   purpose = 'standard',
   reasoningPolicy = 'configured',
   onStreamDelta,
@@ -332,6 +344,8 @@ export async function executeSingleTurn({
             signal: requestController.signal,
             debugTraceId,
             geminiTools: effectiveProviderOptions.geminiTools,
+            ...(session ? { session } : {}),
+            ...(nativeToolPolicy ? { nativeToolPolicy } : {}),
           },
         ),
       )
@@ -440,6 +454,8 @@ export async function executeSingleTurn({
           signal: streamController.signal,
           debugTraceId,
           geminiTools: effectiveProviderOptions.geminiTools,
+          ...(session ? { session } : {}),
+          ...(nativeToolPolicy ? { nativeToolPolicy } : {}),
         },
       )
 

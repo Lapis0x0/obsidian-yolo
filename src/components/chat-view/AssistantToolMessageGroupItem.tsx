@@ -1356,10 +1356,7 @@ function AssistantToolMessageGroupItem({
             if (messageIndex !== toolRunSegment.startIndex) {
               return isSegmentExpanded ? renderedMessage : null
             }
-            const summaryDisplay = buildToolRunSummaryDisplay(
-              toolRunSegment,
-              t,
-            )
+            const summaryDisplay = buildToolRunSummaryDisplay(toolRunSegment, t)
             return (
               <Fragment key={`tool-run-${toolRunSegment.key}`}>
                 <button

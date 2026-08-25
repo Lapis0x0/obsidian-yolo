@@ -32,6 +32,7 @@ type ExecFileCallback = (
 
 const processSupport: ClaudeProcessSupport = {
   cliPath: '/usr/local/bin/claude',
+  nodePath: null,
   env: { PATH: '/usr/local/bin' },
   createAbortController: () => new AbortController(),
   spawnClaudeCodeProcess:

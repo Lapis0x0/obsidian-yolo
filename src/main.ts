@@ -61,6 +61,10 @@ import { CLI_RUNTIME_IDS } from './core/cli-runtime/types'
 import { DistributionFeedClient } from './core/distribution/distributionFeedClient'
 import { localeStore } from './core/i18n/localeStore'
 import {
+  bindClaudeSdkHost,
+  unbindClaudeSdkHost,
+} from './core/llm/claude-sdk/host'
+import {
   isLLMDebugCaptureEnabled,
   setLLMDebugCaptureEnabled,
 } from './core/llm/debugCapture'
@@ -2156,6 +2160,7 @@ export default class YoloPlugin extends Plugin {
   async onload() {
     this.isUnloaded = false
     this.cliRuntimeCapabilityError = null
+    bindClaudeSdkHost(this.app)
     this.actionToastController = mountActionToast()
     this.initializeModuleSystem()
     this.initializeRuntimeComponentSystem()
@@ -2719,6 +2724,7 @@ export default class YoloPlugin extends Plugin {
   onunload() {
     this.isUnloaded = true
     clearAllChatGPTOAuthServices()
+    unbindClaudeSdkHost()
     this.disposeCliRuntimeCoordinator()
     this.liteSkillRegistryDispose?.()
     this.liteSkillRegistryDispose = null

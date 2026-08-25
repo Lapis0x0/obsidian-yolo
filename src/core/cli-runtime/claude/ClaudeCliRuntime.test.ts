@@ -458,6 +458,7 @@ const createSdk = () => {
 
 const processSupport: ClaudeProcessSupport = {
   cliPath: '/opt/homebrew/bin/claude',
+  nodePath: null,
   env: { PATH: '/opt/homebrew/bin:/usr/bin' },
   createAbortController: () => new AbortController(),
   spawnClaudeCodeProcess: jest.fn(),

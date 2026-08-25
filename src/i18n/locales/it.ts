@@ -995,6 +995,19 @@ export const it: DeepPartial<TranslationKeys> = {
       geminiOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare la quota Gemini del tuo account Google.',
       geminiOAuthProject: 'progetto',
+      claudeOauthTitle: 'Claude OAuth',
+      claudeOauthTokenName: 'Token OAuth',
+      claudeOauthTokenDesc:
+        'Esegui "claude setup-token" in un terminale e incolla qui il token per chattare con il tuo abbonamento Claude. Questo provider avvia un sottoprocesso claude locale, quindi è disponibile solo su desktop. Incolla un nuovo token quando scade.',
+      claudeOauthClear: 'Cancella',
+      claudeOauthAutoLogin: 'Accesso automatico',
+      claudeOauthAutoLoginConnecting:
+        "Accesso in corso, completa l'autorizzazione nel browser…",
+      claudeOauthAutoLoginSuccess: 'Accesso Claude connesso.',
+      claudeOauthAutoLoginDesktopOnly:
+        "L'accesso automatico è disponibile solo su desktop.",
+      claudeOauthAutoLoginWindowsNotice:
+        "È stata aperta una finestra del terminale per completare l'accesso. Incolla il token stampato nel campo qui sotto una volta terminato.",
     },
     models: {
       title: 'Modelli',

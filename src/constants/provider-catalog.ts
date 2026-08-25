@@ -80,6 +80,13 @@ export const PROVIDER_CATALOG: Record<
     category: 'main',
     logo: anthropicLogo,
   },
+  'claude-oauth': {
+    monogram: 'An',
+    tint: 'amber',
+    category: 'main',
+    oauth: true,
+    logo: anthropicLogo,
+  },
   gemini: {
     monogram: 'Ge',
     tint: 'teal',
@@ -234,6 +241,7 @@ const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
   'openai',
   'chatgpt-oauth',
   'anthropic',
+  'claude-oauth',
   'gemini',
   'gemini-oauth',
   'xai',

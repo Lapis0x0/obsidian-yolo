@@ -831,6 +831,15 @@ export type TranslationKeys = {
       geminiOAuthExpires?: string
       geminiOAuthDisconnectedHelp?: string
       geminiOAuthProject?: string
+      claudeOauthTitle?: string
+      claudeOauthTokenName?: string
+      claudeOauthTokenDesc?: string
+      claudeOauthClear?: string
+      claudeOauthAutoLogin?: string
+      claudeOauthAutoLoginConnecting?: string
+      claudeOauthAutoLoginSuccess?: string
+      claudeOauthAutoLoginDesktopOnly?: string
+      claudeOauthAutoLoginWindowsNotice?: string
     }
     models: {
       title: string

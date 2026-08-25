@@ -77,6 +77,23 @@ export function getResponseStreamingMode(
   return 'auto'
 }
 
+/**
+ * True for providers that keep the conversation's transcript inside their own
+ * runtime and compact it themselves.
+ *
+ * YOLO's own context management — the auto-compaction prompt and the
+ * `context_compact` tool it asks the model to call — has nothing to act on for
+ * these: the messages it would compact are YOLO's copy, while the context that
+ * actually fills up lives in the provider's session. Worse, the prompt asks
+ * for a tool the provider's own agent loop never sees, so it would be an
+ * instruction that can only be ignored.
+ */
+export function providerOwnsConversationContext(
+  provider: Pick<LLMProvider, 'presetType'>,
+): boolean {
+  return provider.presetType === 'claude-oauth'
+}
+
 export function providerSupportsEmbedding(provider: LLMProvider): boolean {
   if (isNativeBedrockProvider(provider)) {
     return true

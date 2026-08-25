@@ -7,6 +7,8 @@ import {
   ChatUserMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
+import type { NativeToolPolicy } from '../../types/llm/request'
+import type { ProviderSessionAccessor } from '../../types/provider-session.types'
 import { LLMProvider, LLMProviderApiType } from '../../types/provider.types'
 import { ReasoningLevel } from '../../types/reasoning'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
@@ -119,6 +121,14 @@ export type AgentRuntimeRunInput = {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  /**
+   * Session handle for a provider that keeps a native session of its own (see
+   * `LLMOptions.session`). Absent for every stateless provider and for runs
+   * with no conversation record behind them.
+   */
+  session?: ProviderSessionAccessor
+  /** See `LLMOptions.nativeToolPolicy`. */
+  nativeToolPolicy?: NativeToolPolicy
   autoContextCompaction?: {
     chatOptions: AutoContextCompactionChatOptions
     maxContextTokens?: number

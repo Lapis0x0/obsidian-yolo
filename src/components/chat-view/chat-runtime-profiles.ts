@@ -6,6 +6,7 @@ import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabil
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 import { getCapability } from '../../core/tools/registry'
 import type { Assistant } from '../../types/assistant.types'
+import type { NativeToolPolicy } from '../../types/llm/request'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
 import { isAgentChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
@@ -184,6 +185,21 @@ export function resolveChatModeRuntime({
     bashReadOnly: false,
     contextPolicy: BUILT_IN_CONTEXT_POLICY,
   }
+}
+
+/**
+ * The same mode promise, expressed for a provider that runs its own tools.
+ *
+ * Providers with a native runtime never reach the tool gateway or the approval
+ * UI, so the chat mode has to reach them as a policy they can enforce inside
+ * their own loop. Ask stays read-only rather than tool-less: the promise is
+ * "do not change my vault", not "do not look at it".
+ */
+export function resolveNativeToolPolicy(
+  runtime: ChatModeRuntime,
+): NativeToolPolicy {
+  if (runtime.toolCapabilityMode !== 'agent') return 'read-only'
+  return runtime.bypassToolApproval ? 'unrestricted' : 'edit'
 }
 
 /**

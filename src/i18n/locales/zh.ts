@@ -908,6 +908,7 @@ export const zh: TranslationKeys = {
         openai: '推理 · 多模态',
         chatgptOAuth: 'ChatGPT Plus / Pro',
         anthropic: '对话 · 推理',
+        claudeOAuth: 'Claude Code 登录',
         gemini: '多模态',
         geminiOAuth: 'Google 账号',
         mistral: '对话 · 嵌入',
@@ -1011,6 +1012,17 @@ export const zh: TranslationKeys = {
       geminiOAuthDisconnectedHelp:
         '未连接。连接后即可使用你的 Google 账号 Gemini 配额。',
       geminiOAuthProject: '项目',
+      claudeOauthTitle: 'Claude OAuth',
+      claudeOauthTokenName: 'OAuth Token',
+      claudeOauthTokenDesc:
+        '在终端运行 "claude setup-token"，将得到的 token 粘贴到这里，即可用你的 Claude 订阅额度对话。该 provider 在本机运行 claude 子进程，仅桌面端可用；token 过期后需重新生成并粘贴。',
+      claudeOauthClear: '清除',
+      claudeOauthAutoLogin: '自动登录',
+      claudeOauthAutoLoginConnecting: '登录中，请在浏览器完成授权…',
+      claudeOauthAutoLoginSuccess: 'Claude 登录成功。',
+      claudeOauthAutoLoginDesktopOnly: '自动登录仅在桌面端可用。',
+      claudeOauthAutoLoginWindowsNotice:
+        '已打开终端窗口完成登录，请把最终打印出的 token 粘贴到下方输入框。',
     },
     models: {
       title: '模型',

@@ -7,6 +7,7 @@ import { AzureOpenAIProvider } from './azureOpenaiProvider'
 import { BaseLLMProvider } from './base'
 import { BedrockProvider } from './bedrockProvider'
 import { ChatGPTOAuthProvider } from './chatgptOAuthProvider'
+import { ClaudeOAuthProvider } from './claudeOAuthProvider'
 import { DeepSeekAnthropicProvider } from './deepseekAnthropicProvider'
 import { DeepSeekStudioProvider } from './deepseekStudioProvider'
 import { LLMModelNotFoundException } from './exception'
@@ -65,6 +66,9 @@ function createProviderClient({
       })
     }
     case 'anthropic': {
+      if (provider.presetType === 'claude-oauth') {
+        return new ClaudeOAuthProvider(provider)
+      }
       if (provider.presetType === 'moonshot') {
         return new MoonshotAnthropicProvider(provider as never, {
           requestPolicy,

@@ -126,6 +126,17 @@ export const PROVIDER_PRESET_INFO = {
       RESPONSE_STREAMING_MODE_SETTING,
     ],
   },
+  'claude-oauth': {
+    label: 'Claude OAuth',
+    defaultProviderId: 'claude-oauth',
+    requireApiKey: false,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    // Runs a local `claude` subprocess through the Claude Agent SDK rather
+    // than issuing HTTP requests (see ClaudeOAuthProvider), so transport and
+    // streaming settings have nothing to act on here.
+    additionalSettings: [],
+  },
   gemini: {
     label: 'Gemini',
     defaultProviderId: 'gemini',

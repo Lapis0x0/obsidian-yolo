@@ -45,6 +45,7 @@ import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
+import { useChatManager } from '../../hooks/useJsonManagers'
 import type { AssistantToolPreference } from '../../types/assistant.types'
 import {
   ChatConversationCompaction,
@@ -60,6 +61,10 @@ import {
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
+import {
+  providerOwnsConversationContext,
+  resolveChatModelProvider,
+} from '../../utils/llm/provider-config'
 import { ErrorModal } from '../modals/ErrorModal'
 
 import { ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
@@ -67,7 +72,12 @@ import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 import {
   type ChatModeRuntime,
   resolveChatModeRuntime,
+  resolveNativeToolPolicy,
 } from './chat-runtime-profiles'
+import {
+  createProviderSessionAccessor,
+  resolveTurnIdentity,
+} from './providerSessionAccessor'
 import { useAgentConversationState } from './useAgentConversationState'
 import type { ContextBreakdownInputs } from './useContextBreakdown'
 
@@ -243,6 +253,7 @@ export function useChatStreamManager({
   const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
   const { getMcpManager } = useMcp()
+  const chatManager = useChatManager()
 
   const moduleChatModeRegistry = plugin.getModuleChatModeRegistry()
   const moduleChatModeSnapshot = useSyncExternalStore(
@@ -702,6 +713,9 @@ export function useChatStreamManager({
         // mode's own declared skills (scoped by `moduleChatModeId`) plus
         // every enabled vault skill. Built-in modes keep the exact prior
         // behavior: no assistant selected means no skills.
+        const { turnId, parentTurnId } = resolveTurnIdentity(
+          requestMessages ?? chatMessages,
+        )
         const isModuleMode = isModuleChatMode(chatMode)
         const skillScope = chatModeRuntime.moduleChatModeId
           ? { moduleChatModeId: chatModeRuntime.moduleChatModeId }
@@ -728,13 +742,18 @@ export function useChatStreamManager({
         const loopConfig = chatModeRuntime.loopConfig
         const buildAutoContextCompactionInput = (
           model: AgentRuntimeRunInput['model'],
-        ): AgentRuntimeRunInput['autoContextCompaction'] =>
-          autoContextCompactionOptions.autoContextCompactionEnabled
+        ): AgentRuntimeRunInput['autoContextCompaction'] => {
+          const modelProvider = resolveChatModelProvider(settings, model)
+          if (modelProvider && providerOwnsConversationContext(modelProvider)) {
+            return undefined
+          }
+          return autoContextCompactionOptions.autoContextCompactionEnabled
             ? {
                 chatOptions: autoContextCompactionOptions,
                 maxContextTokens: resolveEffectiveMaxContextTokens(model),
               }
             : undefined
+        }
         const requestParams = {
           deliveryMode,
           temperature: conversationOverrides?.temperature ?? modelTemperature,
@@ -793,6 +812,21 @@ export function useChatStreamManager({
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,
           },
+          // Only providers that keep a native session ever read these; for
+          // every other provider they are inert, so they are built
+          // unconditionally rather than by sniffing the selected provider.
+          // The accessor loads lazily, so an unused one costs nothing.
+          ...(turnId
+            ? {
+                session: createProviderSessionAccessor({
+                  chatManager,
+                  conversationId,
+                  turnId,
+                  parentTurnId,
+                }),
+              }
+            : {}),
+          nativeToolPolicy: resolveNativeToolPolicy(chatModeRuntime),
           sourceUserMessageId: assistantContinuation?.sourceUserMessageId,
           continueAssistantMessageId: assistantContinuation?.assistantMessageId,
         }
