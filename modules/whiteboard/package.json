@@ -12,7 +12,13 @@
     "build": "node ../../scripts/build-first-party-modules.mjs --module whiteboard",
     "test:boundary": "node --test ../../scripts/check-whiteboard-module-boundary.test.mjs"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@codemirror/commands": "^6.11.0",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.5.1",
+    "@codemirror/view": "^6.36.2"
+  },
   "devDependencies": {
     "@types/jest": "^29.5.13",
     "@types/node": "^16.11.6",

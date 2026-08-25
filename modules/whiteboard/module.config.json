@@ -11,7 +11,7 @@
       "description": "用于空间化思考的无限画布：摆放笔记、便签与 PDF 卡片，建立连线，并在笔记旁阅读与标注 PDF。"
     }
   },
-  "hostApi": "^1.6.0",
+  "hostApi": "^1.8.0",
   "platforms": ["desktop", "mobile"],
   "dataSchemas": {}
 }

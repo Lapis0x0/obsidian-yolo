@@ -51,7 +51,7 @@
           "description": "用于空间化思考的无限画布：摆放笔记、便签与 PDF 卡片，建立连线，并在笔记旁阅读与标注 PDF。"
         }
       },
-      "hostApi": "^1.6.0",
+      "hostApi": "^1.8.0",
       "dataSchemas": {},
       "platforms": [
         "desktop",
@@ -59,8 +59,8 @@
       ],
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/module.json",
       "manifest": {
-        "byteSize": 1786,
-        "sha256": "ea4b4b0be4a737bab99b3e2b5ec1ee5e0261cd50e0becfb6a305e48805a4c46f"
+        "byteSize": 1800,
+        "sha256": "f426afd300b7a7d0cce4de12f7a325df8c4336de5c5bc3c1ed20e52f2002275a"
       }
     }
   ]
