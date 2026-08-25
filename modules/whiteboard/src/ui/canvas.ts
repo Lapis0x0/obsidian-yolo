@@ -35,8 +35,9 @@ import {
   parseBoard,
   serializeBoard,
 } from '../domain/fileFormat'
-import { moveCard, removeCard } from '../domain/operations'
+import { moveCard, removeCard, updateCard } from '../domain/operations'
 import { cardsInMarquee, marqueeRectFromPoints } from '../domain/selection'
+import { type MissingNoteCard, planNoteCardSelfHeal } from '../domain/selfHeal'
 import { type CanvasView, type VirtualCardRect, VirtualizationEngine, computeWorldViewportRect } from '../domain/virtualization'
 import { createWhiteboardTranslation } from '../i18n'
 
@@ -188,6 +189,16 @@ export class WhiteboardCanvas {
   private lastRawData = ''
   private parseFailed = false
 
+  // Content-freshness (W3-B): a vault-wide `modify` subscription, live for
+  // the leaf's whole lifetime (set up once in ensureDom, released in
+  // dispose) — a note card's backing file can change from outside this
+  // whiteboard (another leaf, another app) and the mounted card should pick
+  // it up without requiring the whole `.yoloboard` file to reload. Scoped
+  // to '' (vault-wide) rather than per-card because cards can reference
+  // files anywhere; see handleBackingFileModified for the actual filtering
+  // (mounted note cards only, and never the one currently being edited).
+  private vaultSubscriptionDisposer: (() => void) | null = null
+
   private domReady = false
   private rootEl: HTMLElement | null = null
   private viewportEl!: HTMLElement
@@ -238,6 +249,7 @@ export class WhiteboardCanvas {
     this.parseFailed = false
     this.board = result.board
     this.syncBoardIndex()
+    this.selfHealMissingNoteCards()
     this.rebuildEdgesSvg()
     this.view = viewFromCamera(this.board.camera)
     this.applyTransform()
@@ -319,6 +331,8 @@ export class WhiteboardCanvas {
     this.viewportEl?.removeEventListener('wheel', this.onWheel)
     win.removeEventListener('pointermove', this.onPointerMove)
     win.removeEventListener('pointerup', this.onPointerUp)
+    this.vaultSubscriptionDisposer?.()
+    this.vaultSubscriptionDisposer = null
 
     this.teardownAllCards()
     this.rootEl?.remove()
@@ -389,6 +403,7 @@ export class WhiteboardCanvas {
     this.edgesGroupEl = edgesGroup
 
     this.setupInteraction()
+    this.setupVaultSubscription()
     this.preheat()
 
     this.lastRecomputeTime = 0
@@ -403,6 +418,18 @@ export class WhiteboardCanvas {
     win.addEventListener('pointermove', this.onPointerMove)
     win.addEventListener('pointerup', this.onPointerUp)
     this.viewportEl.addEventListener('wheel', this.onWheel, { passive: false })
+  }
+
+  /** Content-freshness (p1-design §1.2): scoped to the whole vault ('' —
+   * see moduleVault.ts's `doesPathAffectScope`) because a note card's
+   * backing file can live anywhere; `handleBackingFileModified` does the
+   * actual per-card filtering. Set up once per leaf lifetime alongside the
+   * pointer listeners; released in `dispose()`. */
+  private setupVaultSubscription(): void {
+    this.vaultSubscriptionDisposer = this.host.vault.subscribe('', (event) => {
+      if (event.type !== 'modify') return
+      this.handleBackingFileModified(event.entry.path)
+    })
   }
 
   /**
@@ -1303,6 +1330,86 @@ export class WhiteboardCanvas {
 
   private syncBoardIndex(): void {
     this.boardCardsById = new Map(this.board.cards.map((card) => [card.id, card]))
+  }
+
+  // ---------------------------------------------------------------------
+  // Self-heal (p1-design §1.2, "自愈层"): run once per setViewData, right
+  // after a board finishes parsing. Only note cards are covered in M1 — a
+  // pdf card's relocation has no vault API to enumerate PDFs the way
+  // `listMarkdownFiles()` does for notes (out of scope; the actual decision
+  // of *which* cards get relocated lives in domain/selfHeal.ts so it's
+  // unit-testable without a vault fixture). A card with zero or multiple
+  // same-basename candidates is left alone — it keeps rendering as the
+  // existing "file missing" placeholder (renderMissingFilePlaceholder)
+  // rather than risk repointing to the wrong note.
+  // ---------------------------------------------------------------------
+
+  private selfHealMissingNoteCards(): void {
+    const missing: MissingNoteCard[] = []
+    for (const card of this.board.cards) {
+      if (card.type !== 'note') continue
+      const entry = this.host.vault.getEntry(card.file)
+      if (entry && entry.kind === 'file') continue
+      missing.push({ cardId: card.id, file: card.file })
+    }
+    if (missing.length === 0) return
+
+    const relocations = planNoteCardSelfHeal(missing, this.host.vault.listMarkdownFiles())
+    if (relocations.length === 0) return
+
+    let board = this.board
+    for (const relocation of relocations) {
+      board = updateCard(board, relocation.cardId, { file: relocation.file })
+    }
+    this.board = board
+    this.syncBoardIndex()
+    this.context.requestSave()
+  }
+
+  // ---------------------------------------------------------------------
+  // Content-freshness (p1-design §1.2, "内容时效"): a mounted note card's
+  // static preview reflects an external edit to its backing file without
+  // requiring the whole `.yoloboard` to reload. Two guards keep this from
+  // fighting the edit lifecycle:
+  //   - a card currently in edit mode is skipped entirely — the live
+  //     editor's content is authoritative and must never be silently
+  //     replaced out from under a typing user;
+  //   - `runtime.noteText === text` short-circuits the render for the
+  //     redundant modify event `finishEdit`'s own `writeText` triggers,
+  //     without needing an "ignore my own write" time-window flag.
+  // ---------------------------------------------------------------------
+
+  private handleBackingFileModified(path: string): void {
+    if (this.parseFailed) return
+    for (const [id, card] of this.boardCardsById) {
+      if (card.type !== 'note' || card.file !== path) continue
+      if (this.editing?.cardId === id) continue
+      const runtime = this.runtimeByCardId.get(id)
+      if (!runtime?.el) continue // not currently mounted
+      void this.refreshMountedNoteCard(id, runtime, path)
+    }
+  }
+
+  private async refreshMountedNoteCard(
+    id: CardId,
+    runtime: CardRuntime,
+    path: string,
+  ): Promise<void> {
+    let text: string
+    try {
+      text = await this.host.vault.readText(path)
+    } catch (error) {
+      this.reportError('readText (modify refresh)', error)
+      return
+    }
+    // The card may have unmounted, been superseded, or entered edit mode
+    // while the read above was in flight.
+    if (this.runtimeByCardId.get(id) !== runtime) return
+    if (this.editing?.cardId === id) return
+    if (runtime.noteText === text) return // no real change — short-circuit
+    runtime.noteText = text
+    runtime.missingFile = false
+    await this.renderMarkdownInto(id, runtime, text, path)
   }
 
   private showError(issues: readonly BoardParseIssue[]): void {

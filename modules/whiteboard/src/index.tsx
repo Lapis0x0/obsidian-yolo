@@ -12,6 +12,8 @@
 // point is fixed at that path (scripts/build-first-party-modules.mjs), not
 // because it uses JSX.
 
+import { createWhiteboard } from './host/createWhiteboard'
+import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import { createWhiteboardLocalizedText } from './i18n'
 import { WhiteboardCanvas } from './ui/canvas'
 
@@ -36,6 +38,26 @@ yolo.registerModule({
           dispose: () => canvas.dispose(),
         }
       },
+    })
+
+    // Event-layer reference resilience (p1-design §1.2): keeps every
+    // `.yoloboard` file's card references correct across renames/moves for
+    // as long as the module is active, independent of any open leaf.
+    host.lifecycle.add(registerWhiteboardRenameRewriter(host))
+
+    // Creation entries (p1-design §5): command creates at the vault root;
+    // the folder context menu action creates inside the target folder.
+    host.workspace.registerCommand({
+      id: 'new-whiteboard',
+      name: createWhiteboardLocalizedText('command.newWhiteboard'),
+      callback: () => createWhiteboard(host, ''),
+    })
+    host.workspace.registerFileMenuAction({
+      id: 'whiteboard-new-in-folder',
+      title: createWhiteboardLocalizedText('command.newWhiteboard'),
+      icon: 'layout-grid',
+      appliesTo: 'folder',
+      onSelect: (entry) => createWhiteboard(host, entry.path),
     })
   },
 })

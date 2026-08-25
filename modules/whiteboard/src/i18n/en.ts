@@ -3,6 +3,12 @@ export const en = {
     name: 'YOLO Whiteboard',
     open: 'Open whiteboard',
   },
+  command: {
+    newWhiteboard: 'New whiteboard',
+  },
+  file: {
+    newWhiteboardBaseName: 'Whiteboard',
+  },
   card: {
     missingFile: 'File missing',
     missingFileHint: 'This card refers to "{path}", which no longer exists.',
@@ -12,5 +18,6 @@ export const en = {
   error: {
     title: 'Could not read this whiteboard',
     hint: 'The file could not be parsed. It has not been modified — fix it outside the whiteboard and reopen.',
+    createFailed: 'Could not create a new whiteboard.',
   },
 }

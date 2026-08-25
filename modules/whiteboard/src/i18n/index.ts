@@ -10,7 +10,10 @@ import { zh } from './zh'
 
 export type WhiteboardLocale = 'en' | 'zh'
 export type WhiteboardTranslation = (key: string, fallback?: string) => string
-export type WhiteboardLocalizedTextKey = 'module.name' | 'module.open'
+export type WhiteboardLocalizedTextKey =
+  | 'module.name'
+  | 'module.open'
+  | 'command.newWhiteboard'
 
 export const WHITEBOARD_LOCALES = ['en', 'zh'] as const
 const resources = { en, zh } as const
