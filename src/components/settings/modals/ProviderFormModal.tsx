@@ -24,6 +24,7 @@ import {
 import {
   getRequestTransportModeValue,
   getResponseStreamingMode,
+  providerSupportsPromptCaching,
   providerSupportsTransportModeSelection,
   reconcileEmbeddingModelsForProviderUpdate,
 } from '../../../utils/llm/provider-config'
@@ -267,7 +268,7 @@ function ProviderFormComponent({
     | (typeof providerTypeInfo.additionalSettings)[number]
     | typeof PROMPT_CACHING_SETTING
   const baseAdditionalSettings: AdditionalSettingEntry[] =
-    formData.apiType === 'anthropic'
+    providerSupportsPromptCaching(formData)
       ? [PROMPT_CACHING_SETTING, ...providerTypeInfo.additionalSettings]
       : [...providerTypeInfo.additionalSettings]
   const visibleAdditionalSettings = baseAdditionalSettings.filter(

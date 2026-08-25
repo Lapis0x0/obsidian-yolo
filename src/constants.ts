@@ -63,8 +63,9 @@ export const RESPONSE_STREAMING_MODE_SETTING = {
     'Control whether this provider uses streaming or non-streaming responses.',
 }
 
-// Surfaced dynamically when a provider's apiType is 'anthropic'
-// (native Anthropic or Anthropic-compatible endpoints like Moonshot/Kimi).
+// Surfaced dynamically for providers whose Anthropic payload YOLO builds
+// itself (native Anthropic or Anthropic-compatible endpoints like
+// Moonshot/Kimi) — see providerSupportsPromptCaching.
 export const PROMPT_CACHING_SETTING = {
   label: 'Prompt caching',
   key: 'promptCaching',

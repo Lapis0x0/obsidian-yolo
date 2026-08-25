@@ -153,6 +153,21 @@ export function providerSupportsTransportModeSelection(
   return !isNativeBedrockProvider(provider as LLMProvider)
 }
 
+/**
+ * Prompt caching is a property of the Anthropic request YOLO builds itself: the
+ * toggle only decides whether `cache_control` breakpoints get attached to the
+ * system prompt, tool list and history it sends. Providers served by the Claude
+ * Agent SDK never get such a payload — caching there is decided inside the
+ * SDK's own agent loop — so the toggle would have nothing to act on.
+ */
+export function providerSupportsPromptCaching(
+  provider: Pick<LLMProvider, 'presetType' | 'apiType'>,
+): boolean {
+  return (
+    provider.apiType === 'anthropic' && provider.presetType !== 'claude-oauth'
+  )
+}
+
 export function providerSupportsGeminiTools(provider: LLMProvider): boolean {
   return (
     provider.apiType === 'gemini' || provider.apiType === 'openai-compatible'
