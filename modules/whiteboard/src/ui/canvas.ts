@@ -352,6 +352,22 @@ export class WhiteboardCanvas {
     const root = doc.createElement('div')
     root.className = ROOT_CLASS
 
+    // The host does not auto-apply a module's style.css artifact — a module
+    // owns its own style injection (same pattern as modules/learning's
+    // inline <style> render). Mounted under the view root so it lives in
+    // the view's Document (popout-correct: a <style> in the main window
+    // does nothing for a popout's document) and is torn down with the root
+    // on dispose. Filled asynchronously; layout self-corrects on the next
+    // visibility recompute once the rules land.
+    const styleEl = doc.createElement('style')
+    root.appendChild(styleEl)
+    void this.host.assets
+      .readText('style.css')
+      .then((css) => {
+        styleEl.textContent = css
+      })
+      .catch((error: unknown) => this.reportError('style load', error))
+
     const viewport = doc.createElement('div')
     viewport.className = VIEWPORT_CLASS
     const world = doc.createElement('div')
