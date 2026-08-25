@@ -345,6 +345,17 @@ export class ModuleActivationCoordinator {
         artifact.entryBytes,
         controller.signal,
       )
+      // Published before runtime.activate, not after: activation commits the
+      // module's contributions, which can synchronously build file-view
+      // instances for already-open leaves — module code running there must
+      // be able to read its own assets (e.g. style.css). The artifact is
+      // already fully verified at this point, and the catch below clears the
+      // registry if activation fails.
+      this.options.verifiedArtifactRegistry?.publish(
+        descriptor.id,
+        descriptor.version,
+        artifact,
+      )
       await this.options.runtime.activate(
         definition,
         descriptor.version,
@@ -353,11 +364,6 @@ export class ModuleActivationCoordinator {
       if (this.disposed || parentSignal.aborted || controller.signal.aborted) {
         throw new Error(`Module "${descriptor.id}" activation was aborted`)
       }
-      this.options.verifiedArtifactRegistry?.publish(
-        descriptor.id,
-        descriptor.version,
-        artifact,
-      )
       try {
         const projection = this.options.materializeSkills?.(
           descriptor.id,

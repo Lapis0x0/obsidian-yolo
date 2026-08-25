@@ -1,7 +1,10 @@
 import type { VerifiedModuleArtifact } from './moduleArtifactVerifier'
 import { assertModuleId } from './moduleStore'
 
-/** Tracks only artifacts whose exact version completed runtime activation. */
+/** Tracks the artifact for each module whose exact version is activating or
+ * active — published just before runtime activation begins (module code
+ * running during activation commit may read its own assets) and cleared on
+ * activation failure or uninstall. */
 export class VerifiedModuleArtifactRegistry {
   private readonly artifacts = new Map<string, VerifiedModuleArtifact>()
 
