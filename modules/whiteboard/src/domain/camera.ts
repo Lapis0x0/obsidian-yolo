@@ -79,6 +79,18 @@ export function dragPan(
   }
 }
 
+/** Inverse of the view transform: a viewport-relative screen point -> the
+ * world-space point currently under it. Factored out of `zoomAtPoint`
+ * (which computes the same thing inline) so ../domain/selection.ts's
+ * marquee-selection math can convert its screen-space drag rectangle into
+ * world coordinates for card hit-testing without duplicating the formula. */
+export function screenToWorld(view: CanvasView, point: ScreenPoint): ScreenPoint {
+  return {
+    x: (point.x - view.tx) / view.scale,
+    y: (point.y - view.ty) / view.scale,
+  }
+}
+
 /** `.yoloboard`'s persisted `camera` field -> the canvas's live view state. */
 export function viewFromCamera(camera: Camera): CanvasView {
   return { tx: camera.x, ty: camera.y, scale: camera.scale }

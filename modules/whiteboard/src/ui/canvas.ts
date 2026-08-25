@@ -20,22 +20,30 @@
 // must keep working when its leaf is dragged into an Obsidian popout
 // BrowserWindow, which has its own realm.
 
-import { cameraFromView, dragPan, panByWheel, viewFromCamera, zoomAtPoint } from '../domain/camera'
+import { cameraFromView, dragPan, panByWheel, screenToWorld, viewFromCamera, zoomAtPoint } from '../domain/camera'
+import type { ScreenPoint } from '../domain/camera'
 import { planCardCommit } from '../domain/commit'
+import { buildEdgePathD, computeEdgeGeometry, resolveEdgeSides } from '../domain/edges'
 import {
   type Board,
   type BoardCard,
   type BoardParseIssue,
   type CardId,
+  type Edge,
+  type EdgeId,
   emptyBoard,
   parseBoard,
   serializeBoard,
 } from '../domain/fileFormat'
-import { type CanvasView, VirtualizationEngine, computeWorldViewportRect } from '../domain/virtualization'
+import { moveCard, removeCard } from '../domain/operations'
+import { cardsInMarquee, marqueeRectFromPoints } from '../domain/selection'
+import { type CanvasView, type VirtualCardRect, VirtualizationEngine, computeWorldViewportRect } from '../domain/virtualization'
 import { createWhiteboardTranslation } from '../i18n'
 
 import {
   CAMERA_SETTLE_MS,
+  DEGRADE_SCALE_THRESHOLD,
+  DRAG_THRESHOLD_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
   MOUNT_QUOTA_PER_FRAME,
   RECOMPUTE_INTERVAL_MS,
@@ -44,6 +52,9 @@ import {
   VIEWPORT_BUFFER_PX,
 } from './constants'
 import { type WhiteboardEditorHandle, mountWhiteboardEditor } from './editor'
+import { degradedCardTitle, isDegradedScale } from './lod'
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
 
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
@@ -51,12 +62,21 @@ const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
 const VIEWPORT_PANNING_CLASS = 'yolo-whiteboard-viewport-panning'
 const WORLD_CLASS = 'yolo-whiteboard-world'
 const WORLD_INTERACTING_CLASS = 'yolo-whiteboard-world-interacting'
+const WORLD_DEGRADED_CLASS = 'yolo-whiteboard-world-degraded'
 const CARD_CLASS = 'yolo-whiteboard-card'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
+const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
+const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
 const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
+const CARD_DEGRADED_TITLE_CLASS = 'yolo-whiteboard-card-degraded-title'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_PDF_PLACEHOLDER_CLASS = 'yolo-whiteboard-card-pdf-placeholder'
 const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
+const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
+const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
+const EDGE_PATH_CLASS = 'yolo-whiteboard-edge-path'
+const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
+const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'
 const EDITOR_HOST_CLASS = 'yolo-whiteboard-editor-host'
 const ERROR_CLASS = 'yolo-whiteboard-error'
 const ERROR_VISIBLE_CLASS = 'yolo-whiteboard-error-visible'
@@ -76,16 +96,56 @@ type CardRuntime = {
   noteText: string | null
 }
 
-type DragState = Readonly<{
+type EditingState = Readonly<{
+  cardId: CardId
+  editor: WhiteboardEditorHandle
+  scopeDisposer: () => void
+}>
+
+// -- pointer interaction state --------------------------------------------
+// One of three mutually-exclusive gestures a left-button (or middle-button)
+// press can start, decided at pointerdown by where it landed (canvas.ts's
+// onPointerDown): panning the camera, marquee-selecting cards, or
+// pressing-and-maybe-dragging a card. `interaction` holds whichever is
+// active; `null` when the pointer is up.
+
+type PanInteraction = Readonly<{
+  kind: 'pan'
   origin: CanvasView
   startX: number
   startY: number
 }>
 
-type EditingState = Readonly<{
-  cardId: CardId
-  editor: WhiteboardEditorHandle
-  scopeDisposer: () => void
+/** Screen-space (viewport-local) coordinates — see startMarquee()'s doc
+ * comment for why both `originLocal` and `originClient` are tracked. */
+type MarqueeInteraction = Readonly<{
+  kind: 'marquee'
+  originLocal: ScreenPoint
+  originClient: ScreenPoint
+}>
+
+/**
+ * A press on a card that hasn't yet crossed `DRAG_THRESHOLD_PX`: still
+ * ambiguous between "click to edit" (pointerup with `dragging === false`)
+ * and "drag to move" (crossed the threshold, `dragging === true`). `ids`/
+ * `startPositions` are populated only once dragging begins (see
+ * `beginCardDrag`) — they cover every currently-selected card (a group
+ * drag), or just `cardId` alone if it wasn't already selected.
+ */
+type CardInteraction = {
+  readonly kind: 'card'
+  readonly cardId: CardId
+  readonly startClient: ScreenPoint
+  dragging: boolean
+  ids: CardId[]
+  readonly startPositions: Map<CardId, Readonly<{ x: number; y: number }>>
+}
+
+type Interaction = PanInteraction | MarqueeInteraction | CardInteraction
+
+type EdgeDomEntry = Readonly<{
+  path: SVGPathElement
+  label: SVGTextElement | null
 }>
 
 /**
@@ -102,8 +162,28 @@ export class WhiteboardCanvas {
   private readonly pinnedIds = new Set<CardId>()
 
   private view: CanvasView = { tx: 0, ty: 0, scale: 1 }
-  private dragState: DragState | null = null
+  private interaction: Interaction | null = null
   private editing: EditingState | null = null
+
+  // Selection (W3-A): UI state, not board data — never serialized. A
+  // non-empty selection pushes a keymap scope (Delete/Backspace/Escape);
+  // editing a card always clears the selection first (see enterEditMode),
+  // so the two states never overlap and their keymap scopes never compete
+  // for the same Backspace/Escape keystroke (a card being edited is never
+  // also in `selectedIds`).
+  private selectedIds = new Set<CardId>()
+  private selectionScopeDisposer: (() => void) | null = null
+  private marqueeEl: HTMLElement | null = null
+
+  // Edges (W3-A): a single SVG overlay drawn into the world layer, redrawn
+  // wholesale on structural change (rebuildEdgesSvg) and per-path on card
+  // position change (redrawEdgesForCards) — see those methods' doc
+  // comments for the mount-independent, DOM-measurement-free approach.
+  private edgesGroupEl: SVGGElement | null = null
+  private boardEdgesById = new Map<EdgeId, Edge>()
+  private edgeIndexByCardId = new Map<CardId, Set<EdgeId>>()
+  private readonly edgeElsById = new Map<EdgeId, EdgeDomEntry>()
+  private readonly arrowMarkerId = `yolo-whiteboard-edge-arrow-${Math.random().toString(36).slice(2)}`
 
   private lastRawData = ''
   private parseFailed = false
@@ -118,6 +198,9 @@ export class WhiteboardCanvas {
   private interactingTimer: number | null = null
   private settleTimer: number | null = null
   private lastRecomputeTime = 0
+  /** Current zoom-degrade state, updated only at recomputeVisibility's ~70ms
+   * throttle (see updateDegradedState) — not evaluated per frame. */
+  private degraded = false
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -155,6 +238,7 @@ export class WhiteboardCanvas {
     this.parseFailed = false
     this.board = result.board
     this.syncBoardIndex()
+    this.rebuildEdgesSvg()
     this.view = viewFromCamera(this.board.camera)
     this.applyTransform()
     this.showCanvas()
@@ -258,6 +342,37 @@ export class WhiteboardCanvas {
     viewport.className = VIEWPORT_CLASS
     const world = doc.createElement('div')
     world.className = WORLD_CLASS
+
+    // Edges overlay: one SVG covering the whole (unbounded) world layer.
+    // `overflow: visible` on a nominally 1x1px element lets paths be drawn
+    // anywhere in world coordinates (including negative x/y) without
+    // needing a viewBox that tracks board extent — see style.css's
+    // .yolo-whiteboard-edges. Inserted before any card so it paints behind
+    // them (position:absolute children with no z-index stack in DOM order).
+    const edgesSvg = doc.createElementNS(SVG_NS, 'svg')
+    edgesSvg.setAttribute('class', EDGES_SVG_CLASS)
+    const defs = doc.createElementNS(SVG_NS, 'defs')
+    const marker = doc.createElementNS(SVG_NS, 'marker')
+    marker.setAttribute('id', this.arrowMarkerId)
+    marker.setAttribute('markerWidth', '8')
+    marker.setAttribute('markerHeight', '8')
+    marker.setAttribute('refX', '7')
+    marker.setAttribute('refY', '4')
+    // auto-start-reverse: the same marker, reused for both marker-start and
+    // marker-end (an edge's `arrow: 'both'`), points outward correctly at
+    // each end without needing two separate marker defs.
+    marker.setAttribute('orient', 'auto-start-reverse')
+    marker.setAttribute('markerUnits', 'userSpaceOnUse')
+    const arrowPath = doc.createElementNS(SVG_NS, 'path')
+    arrowPath.setAttribute('class', EDGE_ARROW_CLASS)
+    arrowPath.setAttribute('d', 'M0,0 L8,4 L0,8 Z')
+    marker.appendChild(arrowPath)
+    defs.appendChild(marker)
+    edgesSvg.appendChild(defs)
+    const edgesGroup = doc.createElementNS(SVG_NS, 'g')
+    edgesSvg.appendChild(edgesGroup)
+    world.appendChild(edgesSvg)
+
     viewport.appendChild(world)
     root.appendChild(viewport)
 
@@ -271,6 +386,7 @@ export class WhiteboardCanvas {
     this.viewportEl = viewport
     this.worldEl = world
     this.errorEl = error
+    this.edgesGroupEl = edgesGroup
 
     this.setupInteraction()
     this.preheat()
@@ -312,48 +428,95 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Camera: pointer-drag pan (left-drag from empty canvas, or middle-drag
-  // from anywhere) + wheel (plain = two-axis pan, ctrl/cmd = cursor-anchored
-  // zoom — the ctrl/cmd-wheel signature is also how Chrome/Safari report
-  // trackpad pinch gestures, so this one branch covers both per p1-design
-  // §3). Interaction only ever touches `this.view` + the world element's
-  // `transform` directly (no reflow); the camera is folded into `board` and
-  // persisted only once the gesture settles (see `scheduleCameraSettle`).
+  // Pointer interaction dispatch. A left-button press decides its gesture
+  // at pointerdown by where it landed:
+  //   - on a card not currently being edited -> a `CardInteraction`,
+  //     ambiguous between click-to-edit and drag-to-move until it crosses
+  //     DRAG_THRESHOLD_PX (see `updateCardInteraction`/`beginCardDrag`);
+  //   - on empty canvas with Alt held -> pan (an alt+left-drag path for
+  //     trackpad users with no middle button);
+  //   - on empty canvas otherwise -> marquee selection.
+  // Middle-button always pans, from anywhere (including over a card).
+  // Wheel handles both plain two-axis pan and ctrl/cmd-anchored zoom (the
+  // ctrl/cmd-wheel signature is also how Chrome/Safari report trackpad
+  // pinch). All three gestures only ever touch `this.view` + per-element
+  // `transform`/`left`/`top` directly (no reflow); the camera is folded
+  // into `board` and persisted only once a pan/zoom gesture settles (see
+  // `scheduleCameraSettle`); a card drag/marquee commits immediately on
+  // pointerup instead (no settle debounce — those are already discrete,
+  // single-shot gestures, unlike the continuous wheel/pointer-pan stream).
   // -----------------------------------------------------------------------
 
   private readonly onPointerDown = (e: PointerEvent): void => {
     if (this.parseFailed) return
     const target = e.target
-    const onCard = target instanceof Element && target.closest(`.${CARD_CLASS}`) !== null
+    // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Element.closest()'s generic return type defaults to `Element` here (no type argument to infer it from); the assertion is required for `.dataset` below to type-check under tsc even though this lint rule's own type resolution disagrees.
+    const cardEl = target instanceof Element ? (target.closest(`.${CARD_CLASS}`) as HTMLElement | null) : null
+    const cardId = cardEl?.dataset.cardId ?? null
+
     if (e.button === 1) {
       // Middle-click always pans, even starting from a card.
       e.preventDefault()
-    } else if (e.button !== 0 || onCard) {
+      this.startPan(e)
       return
     }
-    this.dragState = { origin: { ...this.view }, startX: e.clientX, startY: e.clientY }
-    this.viewportEl.classList.add(VIEWPORT_PANNING_CLASS)
-    this.viewportEl.setPointerCapture(e.pointerId)
-    this.markInteracting()
+    if (e.button !== 0) return
+
+    if (cardId !== null) {
+      // The card currently being edited owns its own pointer handling
+      // (native text selection/cursor placement inside its CM6 editor) —
+      // don't intercept.
+      if (this.editing?.cardId === cardId) return
+      this.interaction = {
+        kind: 'card',
+        cardId,
+        startClient: { x: e.clientX, y: e.clientY },
+        dragging: false,
+        ids: [],
+        startPositions: new Map(),
+      }
+      this.viewportEl.setPointerCapture(e.pointerId)
+      return
+    }
+
+    if (e.altKey) {
+      this.startPan(e)
+      return
+    }
+    this.startMarquee(e)
   }
 
   private readonly onPointerMove = (e: PointerEvent): void => {
-    if (!this.dragState) return
-    this.view = dragPan(
-      this.dragState.origin,
-      { x: this.dragState.startX, y: this.dragState.startY },
-      { x: e.clientX, y: e.clientY },
-    )
-    this.applyTransform()
-    this.markInteracting()
-    this.scheduleCameraSettle()
+    const interaction = this.interaction
+    if (!interaction) return
+    switch (interaction.kind) {
+      case 'pan':
+        this.updatePan(interaction, e)
+        break
+      case 'marquee':
+        this.updateMarquee(interaction, e)
+        break
+      case 'card':
+        this.updateCardInteraction(interaction, e)
+        break
+    }
   }
 
-  private readonly onPointerUp = (): void => {
-    if (!this.dragState) return
-    this.dragState = null
-    this.viewportEl.classList.remove(VIEWPORT_PANNING_CLASS)
-    this.commitCameraNow()
+  private readonly onPointerUp = (e: PointerEvent): void => {
+    const interaction = this.interaction
+    if (!interaction) return
+    this.interaction = null
+    switch (interaction.kind) {
+      case 'pan':
+        this.finishPan()
+        break
+      case 'marquee':
+        this.finishMarquee(interaction, e)
+        break
+      case 'card':
+        this.finishCardInteraction(interaction, e)
+        break
+    }
   }
 
   private readonly onWheel = (e: WheelEvent): void => {
@@ -412,6 +575,293 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
+  // Pan gesture (middle-drag anywhere, or Alt+left-drag from empty canvas).
+  // -----------------------------------------------------------------------
+
+  private startPan(e: PointerEvent): void {
+    this.interaction = { kind: 'pan', origin: { ...this.view }, startX: e.clientX, startY: e.clientY }
+    this.viewportEl.classList.add(VIEWPORT_PANNING_CLASS)
+    this.viewportEl.setPointerCapture(e.pointerId)
+    this.markInteracting()
+  }
+
+  private updatePan(interaction: PanInteraction, e: PointerEvent): void {
+    this.view = dragPan(
+      interaction.origin,
+      { x: interaction.startX, y: interaction.startY },
+      { x: e.clientX, y: e.clientY },
+    )
+    this.applyTransform()
+    this.markInteracting()
+    this.scheduleCameraSettle()
+  }
+
+  private finishPan(): void {
+    this.viewportEl.classList.remove(VIEWPORT_PANNING_CLASS)
+    this.commitCameraNow()
+  }
+
+  // -----------------------------------------------------------------------
+  // Marquee selection (left-drag from empty canvas). The overlay div lives
+  // in the *viewport* layer (a sibling of the scaled/panned world layer),
+  // so it's drawn in plain screen coordinates and never needs to account
+  // for the camera transform itself — only its two corner points get
+  // converted to world space, once, at pointerup (p1-design's W3-A task
+  // brief allows either a live per-move highlight or a single hit-test at
+  // release; this takes the latter, cheaper option — repainting a
+  // dashed-rectangle overlay already gives the user drag feedback, and
+  // hit-testing every card on every pointermove has no payoff for M1's
+  // board sizes).
+  // -----------------------------------------------------------------------
+
+  private startMarquee(e: PointerEvent): void {
+    const rect = this.viewportEl.getBoundingClientRect()
+    const originLocal = { x: e.clientX - rect.left, y: e.clientY - rect.top }
+    this.interaction = { kind: 'marquee', originLocal, originClient: { x: e.clientX, y: e.clientY } }
+    this.viewportEl.setPointerCapture(e.pointerId)
+    const doc = this.context.getDocument()
+    const el = doc.createElement('div')
+    el.className = MARQUEE_CLASS
+    this.viewportEl.appendChild(el)
+    this.marqueeEl = el
+    this.applyMarqueeRect(originLocal, originLocal)
+  }
+
+  /** `originClient` is the raw pointerdown screen position (page-relative,
+   * comparable across pointermove events without re-querying
+   * getBoundingClientRect on every one); `originLocal` is that same instant
+   * converted once to viewport-local coordinates. Since the viewport itself
+   * doesn't move mid-gesture, the current local position is just
+   * `originLocal` plus how far the pointer has moved since. */
+  private currentMarqueePoint(interaction: MarqueeInteraction, e: PointerEvent): ScreenPoint {
+    return {
+      x: interaction.originLocal.x + (e.clientX - interaction.originClient.x),
+      y: interaction.originLocal.y + (e.clientY - interaction.originClient.y),
+    }
+  }
+
+  private updateMarquee(interaction: MarqueeInteraction, e: PointerEvent): void {
+    this.applyMarqueeRect(interaction.originLocal, this.currentMarqueePoint(interaction, e))
+  }
+
+  private applyMarqueeRect(a: ScreenPoint, b: ScreenPoint): void {
+    if (!this.marqueeEl) return
+    this.marqueeEl.style.transform = `translate(${Math.min(a.x, b.x)}px, ${Math.min(a.y, b.y)}px)`
+    this.marqueeEl.style.width = `${Math.abs(a.x - b.x)}px`
+    this.marqueeEl.style.height = `${Math.abs(a.y - b.y)}px`
+  }
+
+  private finishMarquee(interaction: MarqueeInteraction, e: PointerEvent): void {
+    const current = this.currentMarqueePoint(interaction, e)
+    this.marqueeEl?.remove()
+    this.marqueeEl = null
+    const worldA = screenToWorld(this.view, interaction.originLocal)
+    const worldB = screenToWorld(this.view, current)
+    // A zero-size marquee (a plain click on empty canvas, no movement)
+    // naturally selects nothing here, subsuming "click empty clears
+    // selection" without a separate code path.
+    this.setSelection(cardsInMarquee(this.board.cards, marqueeRectFromPoints(worldA, worldB)))
+  }
+
+  // -----------------------------------------------------------------------
+  // Card press: click-to-edit vs. drag-to-move, disambiguated by
+  // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) clears
+  // the selection and enters edit mode — unchanged from the pre-W3-A
+  // behavior, just re-homed from a per-card `click` listener into this
+  // central pointerup handler so it can share the threshold check with
+  // dragging. A drag moves either just the pressed card, or the whole
+  // current selection if the pressed card was already part of it (and
+  // never enters edit mode). Position updates during drag write only
+  // `transform` on the affected card elements (compositor-friendly, no
+  // layout write) — `left`/`top` are reconciled to the final board values
+  // once on drop, matching how a freshly-mounted card is positioned.
+  // -----------------------------------------------------------------------
+
+  private updateCardInteraction(interaction: CardInteraction, e: PointerEvent): void {
+    if (!interaction.dragging) {
+      const dx = e.clientX - interaction.startClient.x
+      const dy = e.clientY - interaction.startClient.y
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+      this.beginCardDrag(interaction)
+    }
+    this.updateCardDragPositions(interaction, e)
+  }
+
+  private beginCardDrag(interaction: CardInteraction): void {
+    interaction.dragging = true
+    if (!this.selectedIds.has(interaction.cardId)) {
+      this.setSelection([interaction.cardId])
+    }
+    interaction.ids = Array.from(this.selectedIds)
+    for (const id of interaction.ids) {
+      const card = this.boardCardsById.get(id)
+      if (!card) continue
+      interaction.startPositions.set(id, { x: card.x, y: card.y })
+      // Exempt every dragged card from virtualization unmount for the
+      // duration of the drag (mirrors the existing editing-card pin).
+      this.pinnedIds.add(id)
+      this.runtimeByCardId.get(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
+    }
+  }
+
+  private worldDelta(interaction: CardInteraction, e: PointerEvent): Readonly<{ dx: number; dy: number }> {
+    return {
+      dx: (e.clientX - interaction.startClient.x) / this.view.scale,
+      dy: (e.clientY - interaction.startClient.y) / this.view.scale,
+    }
+  }
+
+  private updateCardDragPositions(interaction: CardInteraction, e: PointerEvent): void {
+    const { dx, dy } = this.worldDelta(interaction, e)
+    const overrides = new Map<CardId, Readonly<{ x: number; y: number }>>()
+    for (const id of interaction.ids) {
+      const start = interaction.startPositions.get(id)
+      if (!start) continue
+      overrides.set(id, { x: start.x + dx, y: start.y + dy })
+      const el = this.runtimeByCardId.get(id)?.el
+      if (el) el.style.transform = `translate(${dx}px, ${dy}px)`
+    }
+    this.redrawEdgesForCards(new Set(interaction.ids), overrides)
+  }
+
+  private finishCardInteraction(interaction: CardInteraction, e: PointerEvent): void {
+    if (!interaction.dragging) {
+      this.clearSelection()
+      const card = this.boardCardsById.get(interaction.cardId)
+      if (card && card.type !== 'pdf') this.enterEditMode(interaction.cardId)
+      return
+    }
+
+    const { dx, dy } = this.worldDelta(interaction, e)
+    if (dx !== 0 || dy !== 0) {
+      this.board = moveCard(this.board, interaction.ids, dx, dy)
+      this.syncBoardIndex()
+      this.context.requestSave()
+    }
+    for (const id of interaction.ids) {
+      this.pinnedIds.delete(id)
+      const el = this.runtimeByCardId.get(id)?.el
+      if (!el) continue
+      el.classList.remove(CARD_DRAGGING_CLASS)
+      // A literal-string style assignment is disallowed (obsidianmd/
+      // no-static-styles-assignment) even for a reset; setCssProps is the
+      // sanctioned escape hatch (Obsidian and Style Constraints, CLAUDE.md).
+      el.setCssProps({ transform: '' })
+      const card = this.boardCardsById.get(id)
+      if (card) {
+        el.style.left = `${card.x}px`
+        el.style.top = `${card.y}px`
+      }
+    }
+    this.redrawEdgesForCards(new Set(interaction.ids))
+    // Dragged cards may have moved on/off screen — re-evaluate mount state
+    // immediately rather than waiting for the next throttled recompute
+    // (mirrors onResize()'s direct call).
+    this.recomputeVisibility()
+    this.drainQueues()
+  }
+
+  // -----------------------------------------------------------------------
+  // Selection (W3-A). `selectedIds` is UI state only — never touches
+  // `board` or triggers requestSave by itself. Pushes/pops a keymap scope
+  // exactly when the selection transitions to/from empty, so
+  // Delete/Backspace/Escape are only ever intercepted while there's
+  // something to act on (and, by construction, never while a card is being
+  // edited — see the class-field doc comment on `selectedIds`).
+  // -----------------------------------------------------------------------
+
+  private setSelection(ids: readonly CardId[]): void {
+    const next = new Set(ids)
+    for (const id of this.selectedIds) {
+      if (!next.has(id)) this.runtimeByCardId.get(id)?.el?.classList.remove(CARD_SELECTED_CLASS)
+    }
+    for (const id of next) {
+      if (!this.selectedIds.has(id)) this.runtimeByCardId.get(id)?.el?.classList.add(CARD_SELECTED_CLASS)
+    }
+    const hadSelection = this.selectedIds.size > 0
+    this.selectedIds = next
+    const hasSelection = next.size > 0
+    if (hasSelection && !hadSelection) this.pushSelectionKeymapScope()
+    else if (!hasSelection && hadSelection) this.popSelectionKeymapScope()
+  }
+
+  private clearSelection(): void {
+    if (this.selectedIds.size > 0) this.setSelection([])
+  }
+
+  private pushSelectionKeymapScope(): void {
+    this.selectionScopeDisposer = this.context.pushKeymapScope([
+      {
+        modifiers: [],
+        key: 'Backspace',
+        handler: () => {
+          this.deleteSelectedCards()
+          return true
+        },
+      },
+      {
+        modifiers: [],
+        key: 'Delete',
+        handler: () => {
+          this.deleteSelectedCards()
+          return true
+        },
+      },
+      {
+        modifiers: [],
+        key: 'Escape',
+        handler: () => {
+          this.clearSelection()
+          return true
+        },
+      },
+    ])
+  }
+
+  private popSelectionKeymapScope(): void {
+    this.selectionScopeDisposer?.()
+    this.selectionScopeDisposer = null
+  }
+
+  private deleteSelectedCards(): void {
+    if (this.parseFailed || this.selectedIds.size === 0) return
+    const ids = Array.from(this.selectedIds)
+    let board = this.board
+    for (const id of ids) {
+      if (board.cards.some((card) => card.id === id)) board = removeCard(board, id)
+    }
+    this.board = board
+    this.syncBoardIndex()
+    for (const id of ids) this.purgeCardRuntime(id)
+    this.clearSelection()
+    // Deleting cards cascades edge removal (operations.ts's removeCard) —
+    // the edge *set* changed, not just endpoint positions, so a full
+    // rebuild (rather than redrawEdgesForCards) is the correct/simplest
+    // response; edge mutations are rare in M1 (no add/remove-edge UI, only
+    // this cascade), so its cost is a non-issue.
+    this.rebuildEdgesSvg()
+    this.context.requestSave()
+  }
+
+  /** Fully removes a card no longer present in `board` (as opposed to
+   * `unmountCard`, which keeps its runtime entry around — minus the DOM —
+   * for a card that's merely scrolled off-screen but still valid). Keeps
+   * the virtualization engine's bookkeeping in sync via `markUnmounted`
+   * since a removed card is absent from the `cards` array `recompute()`
+   * iterates, so it would otherwise never be queued for unmount on its
+   * own. */
+  private purgeCardRuntime(id: CardId): void {
+    const runtime = this.runtimeByCardId.get(id)
+    if (runtime) {
+      runtime.renderer?.unload()
+      runtime.el?.remove()
+    }
+    this.runtimeByCardId.delete(id)
+    this.pinnedIds.delete(id)
+    this.engine.markUnmounted(id)
+  }
+
+  // -----------------------------------------------------------------------
   // Virtualization loop
   // -----------------------------------------------------------------------
 
@@ -433,6 +883,19 @@ export class WhiteboardCanvas {
       VIEWPORT_BUFFER_PX,
     )
     this.engine.recompute(this.board.cards, rect, this.pinnedIds)
+    this.updateDegradedState()
+  }
+
+  /** Toggles the zoom-degrade CSS class at this method's ~70ms throttle
+   * (recomputeVisibility's caller), not per frame — p1-design §3's
+   * "阈值切换时机放在相机 settle 或节流点，不逐帧判断切换". This throttle
+   * point (rather than only the longer 300ms camera-settle debounce) keeps
+   * a deliberate zoom-out gesture feeling responsive. */
+  private updateDegradedState(): void {
+    const next = isDegradedScale(this.view.scale, DEGRADE_SCALE_THRESHOLD)
+    if (next === this.degraded) return
+    this.degraded = next
+    this.worldEl.classList.toggle(WORLD_DEGRADED_CLASS, next)
   }
 
   private drainQueues(): void {
@@ -458,17 +921,27 @@ export class WhiteboardCanvas {
     el.style.width = `${card.w}px`
     el.style.height = `${card.h}px`
     el.dataset.cardId = id
+    // Re-apply selection state — a selected card can unmount (scrolled
+    // off-screen) and remount without its selection ever changing.
+    if (this.selectedIds.has(id)) el.classList.add(CARD_SELECTED_CLASS)
 
     const body = doc.createElement('div')
     body.className = CARD_BODY_CLASS
     el.appendChild(body)
 
-    // Card dragging/selection isn't in M1 scope (p1-design §6); a plain
-    // click is the only gesture a card handles, and only note/text cards
-    // are editable.
-    if (card.type !== 'pdf') {
-      el.addEventListener('click', () => this.enterEditMode(id))
-    }
+    // Degraded (low-zoom) title block: always built, CSS-only toggled
+    // against the full markdown body via the world element's
+    // WORLD_DEGRADED_CLASS (updateDegradedState) — see style.css. Computed
+    // once from card data at mount time; card title-affecting fields
+    // (file/markdown) never change post-mount in M1, only position does.
+    const degradedTitle = doc.createElement('div')
+    degradedTitle.className = CARD_DEGRADED_TITLE_CLASS
+    degradedTitle.textContent = degradedCardTitle(card)
+    el.appendChild(degradedTitle)
+
+    // Click-to-edit vs. drag-to-move is disambiguated centrally in
+    // onPointerDown/Move/Up (DRAG_THRESHOLD_PX) rather than a per-card
+    // `click` listener, so the same gesture can also drive dragging.
 
     this.worldEl.appendChild(el)
     this.runtimeByCardId.set(id, {
@@ -597,6 +1070,123 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
+  // Edges: a single SVG overlay in the world layer draws every edge
+  // (p1-design §3: "世界层内单个 SVG overlay 画全部 edges...只在 edges 或
+  // 端点卡片位移时重绘（不进逐帧路径）"). Two redraw paths:
+  //   - `rebuildEdgesSvg` — full rebuild, for a structural change (a new
+  //     file loaded, or a card delete cascading edge removal). Rare in M1
+  //     (no edge create/edit UI yet), so its cost is a non-issue.
+  //   - `redrawEdgesForCards` — updates only the `d`/label position of
+  //     edges incident to the given card ids, via `edgeIndexByCardId`.
+  //     Used on every card-drag pointermove (with live override positions)
+  //     and once more after a drag commits (against the final board data).
+  // Endpoint coordinates always come from board data (via
+  // `effectiveCardRect`), never the DOM — an edge still draws correctly
+  // even when one of its endpoint cards isn't currently mounted
+  // (virtualization) or is mid-drag (temporary override coordinates).
+  // -----------------------------------------------------------------------
+
+  private rebuildEdgesSvg(): void {
+    this.clearEdgesSvg()
+    this.boardEdgesById = new Map(this.board.edges.map((edge) => [edge.id, edge]))
+    for (const edge of this.board.edges) {
+      this.indexEdgeIncidence(edge)
+      this.createEdgeDom(edge)
+      this.redrawEdge(edge.id)
+    }
+  }
+
+  private clearEdgesSvg(): void {
+    this.edgesGroupEl?.replaceChildren()
+    this.edgeElsById.clear()
+    this.boardEdgesById = new Map()
+    this.edgeIndexByCardId = new Map()
+  }
+
+  private indexEdgeIncidence(edge: Edge): void {
+    this.addEdgeIndex(edge.from, edge.id)
+    this.addEdgeIndex(edge.to, edge.id)
+  }
+
+  private addEdgeIndex(cardId: CardId, edgeId: EdgeId): void {
+    let ids = this.edgeIndexByCardId.get(cardId)
+    if (!ids) {
+      ids = new Set()
+      this.edgeIndexByCardId.set(cardId, ids)
+    }
+    ids.add(edgeId)
+  }
+
+  private createEdgeDom(edge: Edge): void {
+    if (!this.edgesGroupEl) return
+    const doc = this.context.getDocument()
+    const path = doc.createElementNS(SVG_NS, 'path')
+    path.setAttribute('class', EDGE_PATH_CLASS)
+    if (edge.arrow === 'end' || edge.arrow === 'both') {
+      path.setAttribute('marker-end', `url(#${this.arrowMarkerId})`)
+    }
+    if (edge.arrow === 'both') {
+      path.setAttribute('marker-start', `url(#${this.arrowMarkerId})`)
+    }
+    this.edgesGroupEl.appendChild(path)
+
+    let label: SVGTextElement | null = null
+    if (edge.label && edge.label.trim().length > 0) {
+      label = doc.createElementNS(SVG_NS, 'text')
+      label.setAttribute('class', EDGE_LABEL_CLASS)
+      label.setAttribute('text-anchor', 'middle')
+      label.setAttribute('dominant-baseline', 'middle')
+      label.textContent = edge.label
+      this.edgesGroupEl.appendChild(label)
+    }
+
+    this.edgeElsById.set(edge.id, { path, label })
+  }
+
+  /** Board-data rect for `id`, or its live drag position from `overrides`
+   * when provided (see `updateCardDragPositions`) — the single lookup both
+   * `redrawEdge` call sites (live drag, and the post-commit redraw against
+   * final data) go through. */
+  private effectiveCardRect(
+    id: CardId,
+    overrides?: ReadonlyMap<CardId, Readonly<{ x: number; y: number }>>,
+  ): VirtualCardRect | null {
+    const card = this.boardCardsById.get(id)
+    if (!card) return null
+    const override = overrides?.get(id)
+    return override ? { id: card.id, x: override.x, y: override.y, w: card.w, h: card.h } : card
+  }
+
+  private redrawEdge(edgeId: EdgeId, overrides?: ReadonlyMap<CardId, Readonly<{ x: number; y: number }>>): void {
+    const edge = this.boardEdgesById.get(edgeId)
+    const dom = this.edgeElsById.get(edgeId)
+    if (!edge || !dom) return
+    const from = this.effectiveCardRect(edge.from, overrides)
+    const to = this.effectiveCardRect(edge.to, overrides)
+    if (!from || !to) return // dangling edges are rejected at parse time; stay defensive
+    const { fromSide, toSide } = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
+    const geometry = computeEdgeGeometry(from, to, fromSide, toSide)
+    dom.path.setAttribute('d', buildEdgePathD(geometry))
+    if (dom.label) {
+      dom.label.setAttribute('x', String(geometry.label.x))
+      dom.label.setAttribute('y', String(geometry.label.y))
+    }
+  }
+
+  private redrawEdgesForCards(
+    cardIds: ReadonlySet<CardId>,
+    overrides?: ReadonlyMap<CardId, Readonly<{ x: number; y: number }>>,
+  ): void {
+    const edgeIds = new Set<EdgeId>()
+    for (const id of cardIds) {
+      const incident = this.edgeIndexByCardId.get(id)
+      if (!incident) continue
+      for (const edgeId of incident) edgeIds.add(edgeId)
+    }
+    for (const edgeId of edgeIds) this.redrawEdge(edgeId, overrides)
+  }
+
+  // -----------------------------------------------------------------------
   // Edit lifecycle: click -> live CM6 editor; blur (native, or a
   // programmatic `.blur()` from Escape / a card switch / teardown) -> the
   // single `finishEdit` commit path. Never write back from anywhere else —
@@ -693,6 +1283,11 @@ export class WhiteboardCanvas {
 
   private teardownAllCards(): void {
     this.forceCommitActiveEdit()
+    this.interaction = null
+    this.marqueeEl?.remove()
+    this.marqueeEl = null
+    this.popSelectionKeymapScope()
+    this.selectedIds = new Set()
     for (const runtime of this.runtimeByCardId.values()) {
       runtime.renderer?.unload()
       runtime.renderer = null
@@ -703,6 +1298,7 @@ export class WhiteboardCanvas {
     this.runtimeByCardId.clear()
     this.pinnedIds.clear()
     this.engine.reset()
+    this.clearEdgesSvg()
   }
 
   private syncBoardIndex(): void {

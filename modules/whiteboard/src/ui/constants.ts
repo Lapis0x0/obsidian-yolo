@@ -31,3 +31,15 @@ export const INTERACTING_CLASS_TIMEOUT_MS = 250
  * it's folded into the board and persisted (p1-design §3: "手势结束（而非
  * 逐帧）把 camera 写回 board 并 requestSave"). */
 export const CAMERA_SETTLE_MS = 300
+
+/** Pointer movement (screen px) beyond which a press-and-move gesture that
+ * started on a card is treated as a drag rather than a click-to-edit
+ * (docs/plans/08-25-yolo-whiteboard/p1-design.md's W3-A task brief: "~4px"). */
+export const DRAG_THRESHOLD_PX = 4
+
+/** World scale below which cards render a degraded (title-only) preview
+ * instead of their full markdown, to skip text layout cost while zoomed far
+ * out (p1-design §3: "补齐 spike 未移植项：缩放阈值降级"). Checked at the
+ * same ~70ms throttle as recomputeVisibility, not per frame — see
+ * canvas.ts's updateDegradedState(). */
+export const DEGRADE_SCALE_THRESHOLD = 0.35

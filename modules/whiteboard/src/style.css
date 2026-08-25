@@ -21,7 +21,11 @@
   position: absolute;
   inset: 0;
   overflow: hidden;
-  cursor: grab;
+  /* A left-drag from empty canvas is marquee-select (W3-A), not pan — pan
+   * is middle-drag (anywhere) or Alt+left-drag from empty canvas, so the
+   * base cursor no longer implies "grab to pan"; VIEWPORT_PANNING_CLASS
+   * still shows grabbing while an actual pan gesture is in progress. */
+  cursor: default;
   touch-action: none;
 }
 
@@ -59,13 +63,41 @@
   background: var(--background-primary);
   box-shadow: var(--shadow-s);
   contain: layout style paint;
-  cursor: pointer;
+  cursor: grab;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-card-editing {
   cursor: text;
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 2px var(--interactive-accent);
+}
+
+/* --- selection / drag (W3-A) --------------------------------------------- */
+
+.yolo-whiteboard-card.yolo-whiteboard-card-selected {
+  border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 1px var(--interactive-accent);
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-card-dragging {
+  cursor: grabbing;
+  will-change: transform;
+  /* Bring the dragged card above its siblings while it's being moved —
+   * cards otherwise stack in plain DOM/mount order (no general z-order
+   * model in M1). */
+  z-index: 1;
+}
+
+/* Marquee-select overlay div, drawn in the viewport (screen-space) layer —
+ * see ui/canvas.ts's startMarquee(). */
+.yolo-whiteboard-marquee {
+  position: absolute;
+  left: 0;
+  top: 0;
+  border: 1px solid var(--interactive-accent);
+  background: var(--interactive-accent);
+  opacity: 0.12;
+  pointer-events: none;
 }
 
 .yolo-whiteboard-card-body {
@@ -111,6 +143,74 @@
 .yolo-whiteboard-card-hint {
   font-size: 12px;
   color: var(--text-faint);
+}
+
+/* --- degraded (low-zoom) card preview (W3-A) -----------------------------
+ * Below DEGRADE_SCALE_THRESHOLD (ui/constants.ts), the world element gets
+ * yolo-whiteboard-world-degraded and every card swaps its rendered markdown
+ * body for a plain title block — CSS-only visibility toggle, no DOM
+ * mount/unmount (ui/canvas.ts's updateDegradedState()). */
+
+.yolo-whiteboard-card-degraded-title {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 6px 10px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-normal);
+  text-align: center;
+}
+
+.yolo-whiteboard-world.yolo-whiteboard-world-degraded .yolo-whiteboard-card-body {
+  display: none;
+}
+
+.yolo-whiteboard-world.yolo-whiteboard-world-degraded .yolo-whiteboard-card-degraded-title {
+  display: flex;
+}
+
+/* --- edges (W3-A) ----------------------------------------------------------
+ * One SVG overlay in the world layer draws every edge (ui/canvas.ts's
+ * rebuildEdgesSvg/redrawEdgesForCards). `overflow: visible` on a nominally
+ * 1x1px element lets paths be drawn anywhere in world coordinates,
+ * including negative x/y, without a viewBox that would need to track board
+ * extent. Coordinates are world units, so edges scale with zoom exactly
+ * like everything else in the world layer (cards included). */
+
+.yolo-whiteboard-edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-edge-path {
+  fill: none;
+  stroke: var(--text-faint);
+  stroke-width: 1.5;
+}
+
+.yolo-whiteboard-edge-arrow {
+  fill: var(--text-faint);
+}
+
+.yolo-whiteboard-edge-label {
+  font-size: 11px;
+  fill: var(--text-normal);
+  /* Halo behind the text so it stays legible crossing the curve/other
+   * edges, without measuring a background rect via getBBox(). */
+  paint-order: stroke;
+  stroke: var(--background-primary);
+  stroke-width: 3px;
+  stroke-linejoin: round;
 }
 
 /* --- error state ---------------------------------------------------------

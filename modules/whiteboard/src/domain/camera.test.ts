@@ -3,6 +3,7 @@ import {
   clampScale,
   dragPan,
   panByWheel,
+  screenToWorld,
   viewFromCamera,
   zoomAtPoint,
 } from './camera'
@@ -84,6 +85,24 @@ describe('dragPan', () => {
     const origin = { tx: 0, ty: 0, scale: 0.42 }
     const next = dragPan(origin, { x: 0, y: 0 }, { x: 100, y: 100 })
     expect(next.scale).toBe(0.42)
+  })
+})
+
+describe('screenToWorld', () => {
+  it('is the identity at scale 1 with no pan', () => {
+    expect(screenToWorld({ tx: 0, ty: 0, scale: 1 }, { x: 42, y: 17 })).toEqual({ x: 42, y: 17 })
+  })
+
+  it('accounts for pan and scale', () => {
+    expect(screenToWorld({ tx: 100, ty: -50, scale: 2 }, { x: 300, y: 150 })).toEqual({ x: 100, y: 100 })
+  })
+
+  it('inverts zoomAtPoint: the cursor world point matches before and after a zoom', () => {
+    const view = { tx: 10, ty: -5, scale: 1.25 }
+    const cursor = { x: 200, y: 120 }
+    const before = screenToWorld(view, cursor)
+    const after = zoomAtPoint(view, cursor, -50, { min: 0.08, max: 2.5 })
+    expect(screenToWorld(after, cursor)).toEqual(before)
   })
 })
 
