@@ -108,6 +108,15 @@ export class ModuleFileViewSlot {
  * setViewData — so getViewData() can never regress to '' (and silently wipe
  * the user's file) while the owning module happens to be inactive.
  */
+/**
+ * Obsidian's View base constructor calls `getViewType()` before the subclass
+ * constructor body — and therefore before TS parameter properties like
+ * `this.slot` — has run. Construction is synchronous, so
+ * `createModuleFileView` parks the slot here for the duration of
+ * `new HostModuleFileView(...)` and the slot accessors below fall back to it.
+ */
+let constructingSlot: ModuleFileViewSlot | null = null
+
 class HostModuleFileView extends TextFileView {
   private instance: YoloModuleFileViewInstanceV1 | null = null
   private cachedData = ''
@@ -125,16 +134,28 @@ class HostModuleFileView extends TextFileView {
     super(leaf)
   }
 
+  /** `this.slot` is undefined while the base View constructor is still
+   * running (see `constructingSlot`) — every slot read in a method Obsidian
+   * may call from that constructor must go through here. */
+  private resolveSlot(): ModuleFileViewSlot {
+    const slot = (this.slot as ModuleFileViewSlot | undefined) ?? constructingSlot
+    if (!slot) {
+      throw new Error('HostModuleFileView slot is not available')
+    }
+    return slot
+  }
+
   getViewType(): string {
-    return this.slot.viewType
+    return this.resolveSlot().viewType
   }
 
   getDisplayText(): string {
-    return this.file?.basename ?? this.slot.getName()
+    return this.file?.basename ?? this.resolveSlot().getName()
   }
 
   getIcon(): string {
-    return this.slot.get()?.icon ?? this.slot.icon
+    const slot = this.resolveSlot()
+    return slot.get()?.icon ?? slot.icon
   }
 
   onOpen(): Promise<void> {
@@ -359,7 +380,12 @@ export function createModuleFileView(
   plugin: Plugin,
   slot: ModuleFileViewSlot,
 ): TextFileView {
-  return new HostModuleFileView(leaf, plugin, slot)
+  constructingSlot = slot
+  try {
+    return new HostModuleFileView(leaf, plugin, slot)
+  } finally {
+    constructingSlot = null
+  }
 }
 
 /**

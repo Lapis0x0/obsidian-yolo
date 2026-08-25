@@ -78,6 +78,11 @@ jest.mock('obsidian', () => {
     file: InstanceType<typeof TFile> | null = null
     requestSave = jest.fn()
     constructor(public leaf: unknown) {
+      // Real Obsidian's View base constructor calls getViewType() before the
+      // subclass constructor body (and TS parameter properties) have run —
+      // replicated here so a subclass reading not-yet-assigned fields from
+      // getViewType() fails in tests the way it fails in the app.
+      ;(this as { getViewType?: () => string }).getViewType?.()
       this.contentEl = new FakeElement('div')
       let migrateCb: (() => void) | null = null
       this.containerEl = {
