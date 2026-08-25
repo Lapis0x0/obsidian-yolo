@@ -44,7 +44,9 @@ export class FileSystemAdapter {
     return ''
   }
 }
-export const normalizePath = jest.fn((path: string) => path)
+// Real Obsidian normalizes the empty path to '/'; replicate that so callers
+// that must not leak '/' into vault-relative paths get caught by tests.
+export const normalizePath = jest.fn((path: string) => (path === '' ? '/' : path))
 
 // Faithful-enough mock of Obsidian's resolveSubpath for tests: supports
 // nested heading chains ("#A#B") via ancestor-path matching, and block refs

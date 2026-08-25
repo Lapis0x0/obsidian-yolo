@@ -223,14 +223,13 @@ function createObsidianModuleVaultCapability({
   const api: YoloModuleVaultV1 = Object.freeze({
     getEntry: (path) => {
       assertAvailable()
-      const entry = app.vault.getAbstractFileByPath(
-        normalizeModuleVaultPath(path, true),
-      )
+      const entry = getIndexedEntry(app, normalizeModuleVaultPath(path, true))
       return isVaultEntry(entry) ? describeEntry(entry) : null
     },
     listChildren: (folderPath) => {
       assertAvailable()
-      const entry = app.vault.getAbstractFileByPath(
+      const entry = getIndexedEntry(
+        app,
         normalizeModuleVaultPath(folderPath, true),
       )
       if (!(entry instanceof TFolder)) return Object.freeze([])
@@ -243,7 +242,7 @@ function createObsidianModuleVaultCapability({
     stat: async (rawPath) => {
       assertAvailable()
       const path = normalizeModuleVaultPath(rawPath, true)
-      const indexed = app.vault.getAbstractFileByPath(path)
+      const indexed = getIndexedEntry(app, path)
       if (isVaultEntry(indexed)) return describeEntry(indexed)
       const entry = await app.vault.adapter.stat(path)
       assertAvailable()
@@ -252,7 +251,7 @@ function createObsidianModuleVaultCapability({
     list: async (rawPath) => {
       assertAvailable()
       const path = normalizeModuleVaultPath(rawPath, true)
-      const indexed = app.vault.getAbstractFileByPath(path)
+      const indexed = getIndexedEntry(app, path)
       if (indexed instanceof TFolder) {
         return Object.freeze(indexed.children.map(describeEntry))
       }
@@ -743,11 +742,15 @@ export function normalizeModuleVaultPath(
   if (segments.some((segment) => segment === '.' || segment === '..')) {
     throw new Error('Module vault path must not contain dot segments')
   }
-  const normalized = normalizePath(segments.join('/'))
-  if (!allowRoot && normalized === '') {
-    throw new Error('Module vault path must not be empty')
+  if (segments.length === 0) {
+    // Host API represents the vault root as '' — never hand '' to Obsidian's
+    // normalizePath, which turns it into '/'.
+    if (!allowRoot) {
+      throw new Error('Module vault path must not be empty')
+    }
+    return ''
   }
-  return normalized
+  return normalizePath(segments.join('/'))
 }
 
 function normalizeEventPath(path: string): string {
@@ -766,6 +769,14 @@ function doesPathAffectScope(path: string, scopePath: string): boolean {
     normalizedPath.startsWith(`${scopePath}/`) ||
     scopePath.startsWith(`${normalizedPath}/`)
   )
+}
+
+/** The Host API represents the vault root as '', but Obsidian indexes the
+ * root TFolder under '/', so a plain getAbstractFileByPath('') misses it. */
+function getIndexedEntry(app: App, path: string) {
+  return path === ''
+    ? app.vault.getRoot()
+    : app.vault.getAbstractFileByPath(path)
 }
 
 function isVaultEntry(entry: unknown): entry is TFile | TFolder {
