@@ -50,6 +50,18 @@
   <a href="https://www.atlascloud.ai/console/coding-plan"><b>Scopri il Coding Plan →</b></a>
 </td>
 </tr>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://go.apimart.ai/gh-obsidian-yolo">
+    <img src="./assets/sponsor-apimart.png" alt="APIMart" width="163">
+  </a>
+</td>
+<td valign="middle">
+  Grazie a <b><a href="https://go.apimart.ai/gh-obsidian-yolo">APIMart</a></b> per aver sponsorizzato questo progetto! APIMart è una piattaforma API a basso costo per la generazione di immagini e video con l'AI: GPT-Image-2 da 0,006 $ per immagine, oltre 160 immagini per dollaro. Un'unica API asincrona copre immagini e video: invii il task, ottieni un ID e recuperi il risultato tramite polling o callback. Elabora decine di migliaia di immagini in batch senza timeout e cambi modello senza toccare il codice. Pagamento a consumo, nessun canone mensile: registrati qui per iniziare.
+  <br><br>
+  <a href="https://go.apimart.ai/gh-obsidian-yolo"><b>Registrati su APIMart →</b></a>
+</td>
+</tr>
 </table>
 
 ## Novita recenti

@@ -904,6 +904,7 @@ export const zh: TranslationKeys = {
       badgeOpenAiCompatible: 'OpenAI 兼容',
       badgeNative: '原生协议',
       badgeOAuth: 'OAuth',
+      badgeSponsor: '赞助商',
       badgeAdded: '已添加',
       kind: {
         openai: '推理 · 多模态',
@@ -942,6 +943,7 @@ export const zh: TranslationKeys = {
       providerIdDesc: '为此提供商指定一个用于设置中的 ID，仅供你自己区分使用。',
       providerIdPlaceholder: 'my-custom-provider',
       apiKey: 'API 密钥',
+      getApiKey: '获取 API 密钥',
       apiKeyDesc: '（如不需要可留空）',
       apiKeyPlaceholder: '输入你的 API 密钥',
       baseUrl: '基础 URL',

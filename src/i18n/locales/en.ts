@@ -967,6 +967,7 @@ export const en: TranslationKeys = {
       badgeOpenAiCompatible: 'OpenAI compatible',
       badgeNative: 'Native protocol',
       badgeOAuth: 'OAuth',
+      badgeSponsor: 'Sponsor',
       badgeAdded: 'Added',
       kind: {
         openai: 'Reasoning · Multimodal',
@@ -1007,6 +1008,7 @@ export const en: TranslationKeys = {
         'Choose an ID to identify this provider in your settings. This is just for your reference.',
       providerIdPlaceholder: 'Example: my-custom-provider',
       apiKey: 'API key',
+      getApiKey: 'Get API key',
       apiKeyDesc: 'Leave empty if not required.',
       apiKeyPlaceholder: 'Enter your API key',
       baseUrl: 'Base URL',

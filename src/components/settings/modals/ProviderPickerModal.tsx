@@ -248,6 +248,11 @@ function ProviderPickerComponent({
                             'Native protocol',
                           )}
                     </span>
+                    {catalog.sponsor && (
+                      <span className="yolo-pp-badge yolo-pp-badge--rose">
+                        {t('settings.providers.badgeSponsor', 'Sponsor')}
+                      </span>
+                    )}
                     {catalog.oauth && (
                       <span className="yolo-pp-badge yolo-pp-badge--teal">
                         {t('settings.providers.badgeOAuth', 'OAuth')}

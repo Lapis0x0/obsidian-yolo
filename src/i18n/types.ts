@@ -751,6 +751,7 @@ export type TranslationKeys = {
       badgeOpenAiCompatible?: string
       badgeNative?: string
       badgeOAuth?: string
+      badgeSponsor: string
       badgeAdded?: string
       kind?: Record<string, string>
       providersCount: string
@@ -770,6 +771,7 @@ export type TranslationKeys = {
       providerIdDesc: string
       providerIdPlaceholder: string
       apiKey: string
+      getApiKey: string
       apiKeyDesc: string
       apiKeyPlaceholder: string
       baseUrl: string

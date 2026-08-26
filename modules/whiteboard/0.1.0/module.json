@@ -1,0 +1,57 @@
+{
+  "schemaVersion": 1,
+  "id": "whiteboard",
+  "version": "0.1.0",
+  "hostApi": "^1.8.0",
+  "dataSchemas": {},
+  "variants": [
+    {
+      "platform": "desktop",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 537446,
+          "sha256": "c54a6b927e284cef010ec72159dfa14d6a3aed3c1f77e46a96042ea619721f3b",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/entry.js",
+          "storage": "module"
+        },
+        {
+          "role": "style",
+          "name": "style.css",
+          "path": "style.css",
+          "byteSize": 3371,
+          "sha256": "105679bebd2a56378e63a20cba140a38c24d5e0236d58b34f869774577a0bb45",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/style.css",
+          "storage": "module"
+        }
+      ]
+    },
+    {
+      "platform": "mobile",
+      "entry": "entry.js",
+      "files": [
+        {
+          "role": "entry",
+          "name": "entry.js",
+          "path": "entry.js",
+          "byteSize": 537446,
+          "sha256": "c54a6b927e284cef010ec72159dfa14d6a3aed3c1f77e46a96042ea619721f3b",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/entry.js",
+          "storage": "module"
+        },
+        {
+          "role": "style",
+          "name": "style.css",
+          "path": "style.css",
+          "byteSize": 3371,
+          "sha256": "105679bebd2a56378e63a20cba140a38c24d5e0236d58b34f869774577a0bb45",
+          "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/style.css",
+          "storage": "module"
+        }
+      ]
+    }
+  ]
+}
