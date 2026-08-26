@@ -1,4 +1,3 @@
-import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { SerializedEditorState } from 'lexical'
 import { FilePlus2 } from 'lucide-react'
 import { Notice } from 'obsidian'
@@ -27,10 +26,6 @@ import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { openSnippetsFileInVault } from '../../../core/snippets/snippetsFile'
 import type { SnippetEntry } from '../../../core/snippets/snippetsManager'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
-import {
-  MOTION_DURATION_EXIT_S,
-  MOTION_EASE_OUT,
-} from '../../../styles/tokens/motion'
 import { ChatSelectedSkill } from '../../../types/chat'
 import { ChatModel } from '../../../types/chat-model.types'
 import { Mentionable } from '../../../types/mentionable'
@@ -221,7 +216,6 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
     const app = useApp()
     const { t } = useLanguage()
     const { settings, setSettings } = useSettings()
-    const reduceMotion = useReducedMotion()
     const mentionDisplayMode =
       settings.chatOptions.mentionDisplayMode ?? 'inline'
     const rememberedInputHeight = useMemo(() => {
@@ -969,29 +963,17 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             </div>
           </div>
         )}
-        <AnimatePresence initial={false} mode="popLayout">
-          {showQuickAccess && !compact ? (
-            <motion.div
-              key="quick-access"
-              className="yolo-chat-quick-access-motion"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{
-                duration: reduceMotion ? 0 : MOTION_DURATION_EXIT_S,
-                ease: MOTION_EASE_OUT,
-              }}
-            >
-              <ChatQuickAccess
-                skills={availableSkills}
-                snippets={availableSnippets}
-                onSelectSkill={handleQuickAccessSkillSelect}
-                onSelectSnippet={handleQuickAccessSnippetSelect}
-                onPopoverOpenChange={onControlPopoverOpenChange}
-              />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
+        {showQuickAccess && !compact ? (
+          <div className="yolo-chat-quick-access-motion">
+            <ChatQuickAccess
+              skills={availableSkills}
+              snippets={availableSnippets}
+              onSelectSkill={handleQuickAccessSkillSelect}
+              onSelectSnippet={handleQuickAccessSnippetSelect}
+              onPopoverOpenChange={onControlPopoverOpenChange}
+            />
+          </div>
+        ) : null}
       </div>
     )
   },

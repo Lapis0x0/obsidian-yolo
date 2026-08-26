@@ -598,6 +598,17 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-chat-quick-access-motion {
   width: 100%;
+  animation: yolo-chat-quick-access-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-chat-quick-access-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 button.yolo-chat-quick-access-entry,
@@ -970,6 +981,15 @@ button.yolo-chat-quick-access-picker-row > svg {
   position: relative;
   /* 工具栏与 Obsidian 面板底栏（词数/字符数等）之间留一点呼吸感 */
   padding-bottom: 4px;
+}
+
+/*
+ * Empty↔docked FLIP Play. Invert 帧把 inline transition:none 摁在 transform 上；
+ * 这一帧松手后由这条过渡收到 0。时长走 L2 enter token：L3 的 spring 只存在于
+ * JS，这里和会话列表补位一样是 CSS 近似，只动 transform。
+ */
+.yolo-chat-footer--dock-flipping {
+  transition: transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
 .yolo-chat-floating-actions {
