@@ -1,23 +1,22 @@
 # Feature Map
 
-这份文档是写给 coding agent（Claude Code、Codex 等）看的，不是给人看的入门文档——目录职责和模块边界已经由 `AGENTS.md` 承担，这里不重复。它的作用是让「产品行为 ↔ 代码位置 ↔ 怎么验证」这条映射可以直接查到，而不用每次接到涉及某个产品面的任务都从头 grep 摸索。下面每条记录都写清楚：这个行为在哪触发、真正实现它的文件是哪些（对照当前代码树核实过，不是靠命名猜的）、改动之后怎么验证。把它当索引用，不是教程：一旦发现和代码对不上，以代码为准，并顺手把这份文档改对。
+目录职责和模块边界已经由 `AGENTS.md` 承担，这里不重复。它的作用是让「产品行为 ↔ 代码位置 ↔ 怎么验证」这条映射可以直接查到，而不用每次接到涉及某个产品面的任务都从头 grep 摸索。下面每条记录都写清楚：这个行为在哪触发、真正实现它的文件是哪些（对照当前代码树核实过，不是靠命名猜的）、改动之后怎么验证。把它当索引用，不是教程：一旦发现和代码对不上，以代码为准，并顺手把这份文档改对。
 
 ## Chat surfaces
 
-下面两个入口的 Ask/Agent 模式都通过 `AgentService.run` (`src/core/agent/service.ts`) 派发；每次调用拿到的运行时权限由 `resolveChatModeRuntime` 计算 (`src/components/chat-view/chat-runtime-profiles.ts`，被 `src/core/agent/tool-gateway.ts` 消费)。Quick Ask 另外还有第三档模式（续写），完全不走 `AgentService`——见下方对应条目。
+下面两个入口（Quick Ask、Chat 视图）的 Ask/Agent 模式都通过 `AgentService.run` (`src/core/agent/service.ts`) 派发；每次调用拿到的运行时权限由 `resolveChatModeRuntime` 计算 (`src/components/chat-view/chat-runtime-profiles.ts`，被 `src/core/agent/tool-gateway.ts` 消费)。Quick Ask 另外还有第三档模式（续写），完全不走 `AgentService`——见下方对应条目。
 
 ### Quick Ask
 - 触发方式：编辑器内快捷键/命令唤起的浮层，由 `QuickAskController`（`src/features/editor/quick-ask/quickAskController.ts`）在 `src/main.ts` 中挂载。面板本体 `src/components/panels/quick-ask/QuickAskPanel.tsx` 有三档模式（`QuickAskVisibleMode = 'ask' | 'agent' | 'continue'`，`src/features/editor/quick-ask/quickAsk.types.ts`）：Ask/Agent 两档走 `AgentService.run`；「续写」档不走 agent runtime，而是通过 `plugin.continueWriting()` 调用下面「灵光写作 / Sparkle」一节的 `ContinuationController`。三档是同一面板内切换，不是三个独立入口。
 - 核心代码：`src/features/editor/quick-ask/`（唤起、锚点定位、生命周期）+ UI 在 `QuickAskPanel.tsx`、`QuickAskWidget.tsx`。
 - 依赖子系统：Ask/Agent 档走 `AgentService`（`plugin.getAgentService()`）+ `assistantRenderStreamStore`（流式渲染，见下）；续写档走 `ContinuationController`（`src/features/editor/continuation/continuationController.ts`）→ `executeSingleTurn`（`src/core/ai/single-turn.ts`）。
-- 历史注记：曾经独立存在的「Smart Space」续写产品概念已在 `35d3bda7` 退役，其续写能力并入了 Quick Ask 的第三档模式；随后一次改名清理已经把 `WriteAssistController`/`SmartSpaceQuickActionsSettings.tsx` 等遗留命名统一改成了 `ContinuationController`/`ContinuationQuickActionsSettings.tsx`（含 i18n key、CSS `--smart-space` 变体、持久化设置字段 `smartSpaceQuickActions`→`continuationQuickActions` 的 v83→v84 迁移），代码里不应该再出现 Smart Space 相关命名。
 - 验证路径：dev vault 手测，在任意笔记编辑器内分别触发 Quick Ask 的 Ask/Agent/续写三档。
 
-### Sidebar / Agent Chat（同一视图，两种模式）
-- 触发方式：主聊天视图，入口在 `src/ChatView.tsx`；界面主体是 `src/components/chat-view/Chat.tsx`。不是两个独立入口，而是同一视图下 `ChatMode`（`'ask' | 'agent'`，定义于 `src/components/chat-view/chat-input/ChatModeSelect.tsx`）切换出的两种能力集——Ask 模式屏蔽写文件/vault shell/终端/todo 等能力（`CHAT_BLOCKED_CAPABILITY_IDS`，`chat-runtime-profiles.ts`）。
+### Chat 视图（侧边栏 / 标签页 / 分屏 / 独立窗口）
+- 触发方式：只有一个视图类型 `CHAT_VIEW_TYPE`（`src/ChatView.tsx`，挂载 `src/components/chat-view/Chat.tsx`），通过 `plugin.openChatView({ placement })` 打开到四种 Obsidian leaf 位置之一——`ChatLeafPlacement = 'sidebar' | 'split' | 'tab' | 'window'`（`src/features/chat/chatLeafSessionManager.ts`）。对应四个命令：`open-new-chat`（侧栏）、`open-chat-tab`、`open-chat-split`、`open-chat-window`（`src/main.ts`），实际打开/复用/新建 leaf 的逻辑在 `ChatViewNavigator`（`src/features/chat/chatViewNavigator.ts`）。四种挂载位置是同一份功能，不是四个不同的产品面；`ChatMode` 不是挂载位置的一部分，是下面这条正交的能力轴。
 - 核心代码：`src/components/chat-view/`（`ChatSessionController.ts` 管理会话状态与 `AgentService` 订阅、`ChatConversationPane.tsx`/`ChatTimelineList.tsx` 渲染时间线）。
-- 依赖子系统：`AgentService`、`resolveChatModeRuntime`、模块自定义聊天模式（`RegisteredModuleChatModeV1`，见「模块系统」）也接入同一个 `ChatMode` 类型体系。
-- 验证路径：dev vault 手测，分别在 Ask/Agent 模式下发消息，确认能力屏蔽符合模式预期；关键状态机有 `ChatSessionController.test.ts`。
+- 依赖子系统：任一挂载位置内部都叠加同一层 `ChatMode`（`'ask' | 'agent' | ModuleChatModeId`，定义于 `ChatModeSelect.tsx`）切换出的能力集——Ask 模式屏蔽写文件/vault shell/终端/todo 等能力（`CHAT_BLOCKED_CAPABILITY_IDS`，`chat-runtime-profiles.ts`）；`AgentService`、`resolveChatModeRuntime`、模块自定义聊天模式（`RegisteredModuleChatModeV1`，见「模块系统」）都接入同一个 `ChatMode` 类型体系。挂载到独立窗口（`placement: 'window'`）时叠加下方「Popout / 多窗口」一节的约束。
+- 验证路径：dev vault 手测——四种 placement 各自打开/复用 leaf 是否正确（`chatViewNavigator.test.ts` 覆盖对应状态机），以及任一 placement 下 Ask/Agent 两种 ChatMode 的能力屏蔽是否符合预期（`ChatSessionController.test.ts`）。
 
 ### Streaming 渲染约束（跨 Ask/Agent 模式的所有入口）
 - 生成中的内容/推理不进会话快照，活在 `assistantRenderStreamStore`（`src/core/agent/assistantRenderStreamStore.ts`）里；快照只在语义边界折叠回去。改流式渲染前务必先读这个文件，不要引入逐 token 发布会话快照的路径。
