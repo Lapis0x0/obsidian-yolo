@@ -1,5 +1,10 @@
 import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
 import { assertCliRuntimeAvailable } from '../desktop'
+import {
+  type CliSpawnSpec,
+  killCliChild,
+  resolveCliSpawnSpec,
+} from '../windows-spawn'
 
 type ChildProcess = import('node:child_process').ChildProcess
 
@@ -22,44 +27,6 @@ export type CodexProcessOptions = {
   spawnCwd?: string
   launchArgs?: string[]
   env?: Record<string, string>
-}
-
-type SpawnSpec = {
-  command: string
-  args: string[]
-  killProcessTree: boolean
-  windowsVerbatimArguments: boolean
-}
-
-const quoteWindowsShellArgument = (value: string): string => {
-  if (!value.length) return '""'
-  if (!/[\s"&<>|{}^=;!'+,`~()%@[\]]/u.test(value)) return value
-  return `"${value.replace(/"/g, '""')}"`
-}
-
-const resolveSpawnSpec = (
-  command: string,
-  launchArgs: string[] = [],
-): SpawnSpec => {
-  const args = [...launchArgs, 'app-server', '--listen', 'stdio://']
-  if (process.platform !== 'win32' || !command.toLowerCase().endsWith('.cmd')) {
-    return {
-      command,
-      args,
-      killProcessTree: false,
-      windowsVerbatimArguments: false,
-    }
-  }
-
-  const shellCommand = [command, ...args]
-    .map(quoteWindowsShellArgument)
-    .join(' ')
-  return {
-    command: process.env.ComSpec || process.env.comspec || 'cmd.exe',
-    args: ['/d', '/s', '/c', `"${shellCommand}"`],
-    killProcessTree: true,
-    windowsVerbatimArguments: true,
-  }
 }
 
 const getProcessEnv = async (
@@ -89,7 +56,7 @@ export class CodexAppServerProcess implements CodexProcessLike {
 
   private constructor(
     private readonly child: ChildProcess,
-    private readonly spawnSpec: SpawnSpec,
+    private readonly spawnSpec: CliSpawnSpec,
     private readonly spawn: typeof import('node:child_process').spawn,
   ) {
     this.started = new Promise<void>((resolve, reject) => {
@@ -139,7 +106,12 @@ export class CodexAppServerProcess implements CodexProcessLike {
         'Codex CLI was not found. Install Codex, or set a custom CLI path in Settings → Agent, then retry.',
       )
     }
-    const spec = resolveSpawnSpec(command, options.launchArgs)
+    const spec = resolveCliSpawnSpec(command, [
+      ...(options.launchArgs ?? []),
+      'app-server',
+      '--listen',
+      'stdio://',
+    ])
     const child = spawn(spec.command, spec.args, {
       cwd: options.spawnCwd ?? options.cwd,
       env: await getProcessEnv(options.env),
@@ -185,18 +157,7 @@ export class CodexAppServerProcess implements CodexProcessLike {
   async shutdown(): Promise<void> {
     if (this.termination || this.child.exitCode !== null || this.child.killed)
       return
-    if (
-      process.platform === 'win32' &&
-      this.spawnSpec.killProcessTree &&
-      typeof this.child.pid === 'number'
-    ) {
-      this.spawn('taskkill.exe', ['/pid', String(this.child.pid), '/t', '/f'], {
-        stdio: 'ignore',
-        windowsHide: true,
-      }).on('error', () => undefined)
-      return
-    }
-    this.child.kill('SIGTERM')
+    killCliChild(this.child, this.spawnSpec, this.spawn)
   }
 
   private signalExit(code: number | null, signal: NodeJS.Signals | null): void {

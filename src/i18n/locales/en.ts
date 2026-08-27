@@ -764,16 +764,16 @@ export const en: TranslationKeys = {
       cliRuntimesBlockTitle: 'CLI runtimes',
       claudeCliPathName: 'Claude Code CLI path',
       claudeCliPathDesc:
-        'Custom path to the claude executable — paste the output of "which claude". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the claude executable — paste the output of "which claude" ("where claude" on Windows). Leave empty to auto-detect. Stored on this device only.',
       codexCliPathName: 'Codex CLI path',
       codexCliPathDesc:
         'Custom path to the codex executable — paste the output of "which codex" ("where codex" on Windows). Leave empty to auto-detect. Stored on this device only.',
       hermesCliPathName: 'Hermes CLI path',
       hermesCliPathDesc:
-        'Custom path to the hermes executable — paste the output of "which hermes". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the hermes executable — paste the output of "which hermes" ("where hermes" on Windows). Leave empty to auto-detect. Stored on this device only.',
       piCliPathName: 'Pi CLI path',
       piCliPathDesc:
-        'Custom path to the pi executable — paste the output of "which pi". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the pi executable — paste the output of "which pi" ("where pi" on Windows). Leave empty to auto-detect. Stored on this device only.',
       cliPathMissing:
         'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',

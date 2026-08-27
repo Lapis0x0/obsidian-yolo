@@ -709,16 +709,16 @@ export const zh: TranslationKeys = {
       cliRuntimesBlockTitle: 'CLI 运行时',
       claudeCliPathName: 'Claude Code CLI 路径',
       claudeCliPathDesc:
-        '自定义 claude 可执行文件路径，可粘贴 which claude 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+        '自定义 claude 可执行文件路径，可粘贴 which claude（Windows 为 where claude）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       codexCliPathName: 'Codex CLI 路径',
       codexCliPathDesc:
         '自定义 codex 可执行文件路径，可粘贴 which codex（Windows 为 where codex）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       hermesCliPathName: 'Hermes CLI 路径',
       hermesCliPathDesc:
-        '自定义 hermes 可执行文件路径，可粘贴 which hermes 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+        '自定义 hermes 可执行文件路径，可粘贴 which hermes（Windows 为 where hermes）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       piCliPathName: 'Pi CLI 路径',
       piCliPathDesc:
-        '自定义 pi 可执行文件路径，可粘贴 which pi 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+        '自定义 pi 可执行文件路径，可粘贴 which pi（Windows 为 where pi）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',

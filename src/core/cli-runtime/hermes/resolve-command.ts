@@ -5,6 +5,7 @@ import * as path from 'node:path'
 /* eslint-enable import/no-nodejs-modules */
 
 import type { AcpResolvedCommand } from '../acp/agent-profile'
+import { resolveWindowsSpawnablePath } from '../windows-spawn'
 
 const firstEnvironmentValue = (
   env: NodeJS.ProcessEnv,
@@ -57,7 +58,7 @@ const resolveConfiguredExecutable = async (
   if (!trimmed) return null
   const expanded =
     platform === 'win32' ? trimmed : expandHomePath(trimmed, home)
-  return (await existingFile(expanded)) ? expanded : null
+  return resolveWindowsSpawnablePath(expanded, existingFile, platform)
 }
 
 /**

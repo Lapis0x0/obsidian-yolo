@@ -767,16 +767,16 @@ export const it: DeepPartial<TranslationKeys> = {
       cliRuntimesBlockTitle: 'Runtime CLI',
       claudeCliPathName: 'Percorso CLI di Claude Code',
       claudeCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude" ("where claude" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       codexCliPathName: 'Percorso CLI di Codex',
       codexCliPathDesc:
         'Percorso personalizzato dell\'eseguibile codex — incolla l\'output di "which codex" ("where codex" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       hermesCliPathName: 'Percorso CLI di Hermes',
       hermesCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile hermes — incolla l\'output di "which hermes". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile hermes — incolla l\'output di "which hermes" ("where hermes" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       piCliPathName: 'Percorso CLI di Pi',
       piCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi" ("where pi" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       cliPathMissing:
         'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',

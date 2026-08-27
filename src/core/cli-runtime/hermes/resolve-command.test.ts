@@ -136,6 +136,31 @@ describe('resolveHermesCommand', () => {
     })
   })
 
+  it('rewrites a Git Bash which-hermes override to the sibling .cmd', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      const path = String(candidate)
+      if (
+        path === 'C:\\Users\\me\\AppData\\Roaming\\Python\\Scripts\\hermes' ||
+        path === 'C:\\Users\\me\\AppData\\Roaming\\Python\\Scripts\\hermes.cmd'
+      ) {
+        return
+      }
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      resolveHermesCommand(
+        { USERPROFILE: 'C:\\Users\\me' },
+        'win32',
+        'C:\\Users\\me\\AppData\\Roaming\\Python\\Scripts\\hermes',
+        'default',
+      ),
+    ).resolves.toEqual({
+      command: 'C:\\Users\\me\\AppData\\Roaming\\Python\\Scripts\\hermes.cmd',
+      args: ['-p', 'default', 'acp'],
+    })
+  })
+
   it('returns null when Hermes cannot be found at all', async () => {
     await expect(
       resolveHermesCommand(
