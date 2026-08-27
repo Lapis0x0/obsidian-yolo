@@ -2,6 +2,8 @@
 
 YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and independently shipped product modules such as FSRS-based Learning.
 
+For a behavior ↔ code-location ↔ verification-path index (complements this file's directory-ownership rules, doesn't restate them), see `FEATURE_MAP.md`.
+
 ## Commands
 
 - `npm run dev` - Build runtime components and first-party modules, then watch the host app, host styles, and dev-vault artifacts
