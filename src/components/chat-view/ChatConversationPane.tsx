@@ -43,7 +43,7 @@ const FOOTER_DOCK_FLIPPING_CLASS = 'yolo-chat-footer--dock-flipping'
 function useEmptyStateDockFlip(
   showEmptyState: boolean,
   reduceMotion: boolean | null,
-): RefObject<HTMLDivElement | null> {
+): RefObject<HTMLDivElement> {
   const footerRef = useRef<HTMLDivElement>(null)
   const prevShowEmptyStateRef = useRef(showEmptyState)
   const prevTopRef = useRef<number | null>(null)
