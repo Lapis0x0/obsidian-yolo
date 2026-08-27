@@ -2,7 +2,7 @@ import { App } from 'obsidian'
 
 import { DEFAULT_BLOCKED_PREFIXES } from '../../../core/agent/bash/command-classifier'
 import type { BuiltinCapabilityId } from '../../../core/tools/registry'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 
 import { JsSandboxConfigModal } from './JsSandboxConfigModal'

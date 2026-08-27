@@ -1,21 +1,21 @@
 import { App } from 'obsidian'
-import React from 'react'
+import React, { type ComponentType } from 'react'
 
 import { SettingsProvider } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
-import { SelectionChatActionsSettingsContent } from '../SelectionChatActionsSettings'
 
 type SelectionChatActionsModalComponentProps = {
   plugin: YoloPlugin
+  Content: ComponentType
 }
 
 export class SelectionChatActionsModal extends ReactModal<SelectionChatActionsModalComponentProps> {
-  constructor(app: App, plugin: YoloPlugin) {
+  constructor(app: App, plugin: YoloPlugin, Content: ComponentType) {
     super({
       app: app,
       Component: SelectionChatActionsModalComponentWrapper,
-      props: { plugin },
+      props: { plugin, Content },
       options: {
         title: plugin.t(
           'settings.selectionChat.quickActionsTitle',
@@ -30,6 +30,7 @@ export class SelectionChatActionsModal extends ReactModal<SelectionChatActionsMo
 
 function SelectionChatActionsModalComponentWrapper({
   plugin,
+  Content,
   onClose: _onClose,
 }: SelectionChatActionsModalComponentProps & { onClose: () => void }) {
   return (
@@ -40,7 +41,7 @@ function SelectionChatActionsModalComponentWrapper({
         plugin.addSettingsChangeListener(listener)
       }
     >
-      <SelectionChatActionsSettingsContent />
+      <Content />
     </SettingsProvider>
   )
 }

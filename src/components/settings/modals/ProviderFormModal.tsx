@@ -8,7 +8,7 @@ import {
 } from '../../../constants'
 import { PROVIDER_CATALOG } from '../../../constants/provider-catalog'
 import { useLanguage } from '../../../contexts/language-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   LLMProvider,
   LLMProviderPresetType,

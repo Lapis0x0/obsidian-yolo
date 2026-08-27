@@ -16,7 +16,7 @@ import {
   JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   resolveJsSandboxOutputMaxBytes,
-} from './jsSandboxTool'
+} from './jsSandboxLimits'
 
 export const JS_SANDBOX_BASE_DESCRIPTION =
   'Execute JavaScript in an isolated classic Worker and return JSON. Each call uses a fresh Worker; re-import/recreate state inside the same call. Single expressions are auto-returned; multi-statement code needs an explicit return. No DOM/document/Image; use Worker APIs (Blob, Response, Request, OffscreenCanvas, createImageBitmap, etc.).' +

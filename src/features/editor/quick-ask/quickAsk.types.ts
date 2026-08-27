@@ -1,5 +1,7 @@
 import type { Mentionable, MentionableBlock } from '../../../types/mentionable'
 
+export const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
+
 export type QuickAskVisibleMode = 'ask' | 'agent' | 'continue'
 export type QuickAskLaunchMode = QuickAskVisibleMode
 

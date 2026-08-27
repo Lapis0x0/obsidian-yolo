@@ -9,7 +9,7 @@ import React, {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 import { SETTINGS_ACTIVE_TAB_STORAGE_KEY } from '../../utils/openPluginSettingsTab'
 
 import { AgentTab } from './tabs/AgentTab'

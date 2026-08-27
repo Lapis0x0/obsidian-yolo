@@ -271,7 +271,11 @@ export function ContinuationQuickActionsSettings({
   ).replace('{count}', String(quickActions.length))
 
   const handleOpenModal = () => {
-    const modal = new ContinuationQuickActionsModal(plugin.app, plugin)
+    const modal = new ContinuationQuickActionsModal(
+      plugin.app,
+      plugin,
+      ContinuationQuickActionsSettingsContent,
+    )
     modal.open()
   }
 

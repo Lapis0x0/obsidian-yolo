@@ -10,7 +10,7 @@ import {
   type WebSearchProviderOptions,
   webSearchProviderOptionsSchema,
 } from '../../../core/web-search'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'

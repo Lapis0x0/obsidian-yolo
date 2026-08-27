@@ -11,10 +11,6 @@ import { type ReactNode, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import {
-  type JsSandboxSettings,
-  normalizeJsSandboxConfig,
-} from '../../../core/mcp/jsSandboxSettings'
-import {
   JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
   JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
   JS_SANDBOX_BROWSER_READ_MIN_KB,
@@ -27,7 +23,11 @@ import {
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
   JS_SANDBOX_VAULT_READ_MIN_KB,
-} from '../../../core/mcp/jsSandboxTool'
+} from '../../../core/mcp/jsSandboxLimits'
+import {
+  type JsSandboxSettings,
+  normalizeJsSandboxConfig,
+} from '../../../core/mcp/jsSandboxSettings'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'

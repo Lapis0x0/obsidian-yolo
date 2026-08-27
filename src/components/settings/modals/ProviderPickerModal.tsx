@@ -11,7 +11,7 @@ import {
   ProviderPickerCategory,
 } from '../../../constants/provider-catalog'
 import { useLanguage } from '../../../contexts/language-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   LLMProviderPresetType,
   getDefaultApiTypeForPresetType,

@@ -21,7 +21,7 @@ import {
   LOCAL_EMBEDDING_PROVIDER_ID,
 } from '../../../../core/rag/local-embedding/constants'
 import type { LocalEmbeddingModelState } from '../../../../core/rag/local-embedding/manager'
-import YoloPlugin from '../../../../main'
+import type YoloPlugin from '../../../../main'
 import { EmbeddingModel } from '../../../../types/embedding-model.types'
 import {
   ensureUniqueModelId,

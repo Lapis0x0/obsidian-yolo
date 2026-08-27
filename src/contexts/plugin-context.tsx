@@ -3,7 +3,7 @@
 // 流式文本叶子间接引入，必须在 CJS 环境里也能求值。
 import { type ReactNode, createContext, useContext } from 'react'
 
-import YoloPlugin from '../main'
+import type YoloPlugin from '../main'
 
 // Plugin context
 const PluginContext = createContext<YoloPlugin | undefined>(undefined)

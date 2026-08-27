@@ -1,124 +1,187 @@
-// Circular dependency ratchet.
+// Two-layer circular dependency guard:
+// 1. Static runtime graph (type-only and dynamic imports excluded) must be
+//    completely acyclic.
+// 2. Logical runtime graph (type-only excluded, dynamic imports kept) is
+//    compared as direct cyclic edges against a narrow baseline.
 //
-// Compares the current set of circular dependency groups in `src/`
-// (as reported by madge) against the recorded baseline in
-// `scripts/circular-deps-baseline.json`. Cycles are compared as
-// normalized paths, not just counted — removing one known cycle while
-// introducing a new one keeps the count flat but still fails the check.
-//
-//   - Any cycle not in the baseline -> fail (new circular dependency).
-//   - Fewer cycles than baseline    -> fail (baseline is stale; tighten it
-//     with `npm run deps:baseline` so the ratchet can't loosen again later).
-//   - Exactly the baseline set      -> pass.
-//
-// Usage:
-//   node scripts/check-circular.mjs            # compare against baseline
-//   node scripts/check-circular.mjs --update    # rewrite the baseline file
+// `--update` is prune-only: it removes logical edges that no longer exist but
+// refuses to absorb additions. A new allowance requires an explicit,
+// reviewable edit to the baseline file.
 
 import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const rootDir = path.resolve(__dirname, '..')
+const scriptDir = path.dirname(fileURLToPath(import.meta.url))
+const rootDir = path.resolve(scriptDir, '..')
 const baselinePath = path.join(rootDir, 'scripts/circular-deps-baseline.json')
-
 const shouldUpdate = process.argv.includes('--update')
 
-async function findCircularDependencies() {
+async function buildGraph({ skipAsyncImports }) {
   const madge = (await import('madge')).default
   const result = await madge(path.join(rootDir, 'src'), {
     fileExtensions: ['ts', 'tsx'],
     tsConfig: path.join(rootDir, 'tsconfig.json'),
     excludeRegExp: [/\.test\.(ts|tsx)$/],
+    detectiveOptions: {
+      ts: { skipTypeImports: true, skipAsyncImports },
+      tsx: { skipTypeImports: true, skipAsyncImports },
+    },
   })
-  return result.circular()
+  return result.obj()
 }
 
-// A cycle is a loop, so madge may report the same cycle starting from any of
-// its members. Rotate it so the lexicographically smallest member comes
-// first (direction preserved) to get a stable identity.
-function cycleKey(cycle) {
-  let smallestIndex = 0
-  for (let i = 1; i < cycle.length; i += 1) {
-    if (cycle[i] < cycle[smallestIndex]) smallestIndex = i
+function findCyclicComponents(graph) {
+  let nextIndex = 0
+  const stack = []
+  const onStack = new Set()
+  const indices = new Map()
+  const lowLinks = new Map()
+  const components = []
+
+  const visit = (node) => {
+    indices.set(node, nextIndex)
+    lowLinks.set(node, nextIndex)
+    nextIndex += 1
+    stack.push(node)
+    onStack.add(node)
+
+    for (const dependency of graph[node] ?? []) {
+      if (!indices.has(dependency)) {
+        visit(dependency)
+        lowLinks.set(
+          node,
+          Math.min(lowLinks.get(node), lowLinks.get(dependency)),
+        )
+      } else if (onStack.has(dependency)) {
+        lowLinks.set(
+          node,
+          Math.min(lowLinks.get(node), indices.get(dependency)),
+        )
+      }
+    }
+
+    if (lowLinks.get(node) !== indices.get(node)) return
+
+    const component = []
+    let member
+    do {
+      member = stack.pop()
+      onStack.delete(member)
+      component.push(member)
+    } while (member !== node)
+
+    const isSelfCycle =
+      component.length === 1 &&
+      (graph[component[0]] ?? []).includes(component[0])
+    if (component.length > 1 || isSelfCycle) {
+      components.push(component.sort())
+    }
   }
-  return [...cycle.slice(smallestIndex), ...cycle.slice(0, smallestIndex)].join(
-    ' -> ',
+
+  for (const node of Object.keys(graph).sort()) {
+    if (!indices.has(node)) visit(node)
+  }
+  return components.sort((left, right) => right.length - left.length)
+}
+
+function getCyclicEdges(graph, components) {
+  const edges = []
+  for (const component of components) {
+    const members = new Set(component)
+    for (const from of component) {
+      for (const to of graph[from] ?? []) {
+        if (members.has(to)) edges.push(`${from} -> ${to}`)
+      }
+    }
+  }
+  return edges.sort()
+}
+
+function printComponents(label, components, edges) {
+  console.error(
+    `${label}: ${components.length} cyclic component(s), ${edges.length} direct cyclic edge(s).`,
   )
+  for (const component of components.slice(0, 5)) {
+    console.error(`  - ${component.join(', ')}`)
+  }
 }
 
 async function readBaseline() {
   try {
-    const raw = await readFile(baselinePath, 'utf-8')
-    return JSON.parse(raw)
+    return JSON.parse(await readFile(baselinePath, 'utf8'))
   } catch (error) {
     if (error.code === 'ENOENT') return null
     throw error
   }
 }
 
-async function writeBaseline(cycleKeys) {
-  const content = {
-    // Generated by `npm run deps:baseline`.
-    // Command: npx madge --circular --extensions ts,tsx --ts-config tsconfig.json src/ (excluding *.test.ts(x))
-    cycles: cycleKeys.length,
-    cycleKeys: [...cycleKeys].sort(),
-  }
-  await writeFile(baselinePath, `${JSON.stringify(content, null, 2)}\n`)
+async function writeBaseline(logicalCyclicEdges) {
+  await writeFile(
+    baselinePath,
+    `${JSON.stringify({ logicalCyclicEdges }, null, 2)}\n`,
+  )
 }
 
-const cycles = await findCircularDependencies()
-const cycleKeys = cycles.map(cycleKey)
-const cycleCount = cycleKeys.length
+const staticGraph = await buildGraph({ skipAsyncImports: true })
+const staticComponents = findCyclicComponents(staticGraph)
+const staticEdges = getCyclicEdges(staticGraph, staticComponents)
+
+if (staticComponents.length > 0) {
+  printComponents(
+    'Static runtime dependency check failed',
+    staticComponents,
+    staticEdges,
+  )
+  console.error('Break every static runtime cycle before committing.')
+  process.exit(1)
+}
+console.log('Static runtime dependency check passed: graph is acyclic.')
+
+const logicalGraph = await buildGraph({ skipAsyncImports: false })
+const logicalComponents = findCyclicComponents(logicalGraph)
+const logicalEdges = getCyclicEdges(logicalGraph, logicalComponents)
+const baseline = await readBaseline()
+
+if (!baseline || !Array.isArray(baseline.logicalCyclicEdges)) {
+  console.error(
+    `No valid logical-cycle baseline found at ${path.relative(rootDir, baselinePath)}.`,
+  )
+  process.exit(1)
+}
+
+const baselineEdges = new Set(baseline.logicalCyclicEdges)
+const currentEdges = new Set(logicalEdges)
+const addedEdges = logicalEdges.filter((edge) => !baselineEdges.has(edge))
+const removedEdges = baseline.logicalCyclicEdges.filter(
+  (edge) => !currentEdges.has(edge),
+)
+
+if (addedEdges.length > 0) {
+  console.error(
+    `Logical dependency ratchet failed: ${addedEdges.length} new direct cyclic edge(s).`,
+  )
+  for (const edge of addedEdges.slice(0, 10)) console.error(`  + ${edge}`)
+  console.error(
+    'Fix the dependency direction. The prune-only baseline command will not accept additions.',
+  )
+  process.exit(1)
+}
 
 if (shouldUpdate) {
-  await writeBaseline(cycleKeys)
+  await writeBaseline(logicalEdges)
   console.log(
-    `Baseline updated: ${cycleCount} circular dependency group(s) recorded.`,
+    `Logical dependency baseline pruned: ${logicalEdges.length} direct cyclic edge(s) remain.`,
   )
   process.exit(0)
 }
 
-const baseline = await readBaseline()
-if (
-  !baseline ||
-  typeof baseline.cycles !== 'number' ||
-  !Array.isArray(baseline.cycleKeys)
-) {
-  console.error(
-    `No valid baseline found at ${path.relative(rootDir, baselinePath)}. Run \`npm run deps:baseline\` to create one.`,
+if (removedEdges.length > 0) {
+  console.warn(
+    `Logical dependency baseline can be tightened: ${removedEdges.length} recorded edge(s) no longer exist. Run \`npm run deps:baseline\` to prune them.`,
   )
-  process.exit(1)
-}
-
-const baselineKeySet = new Set(baseline.cycleKeys)
-const addedCycles = cycleKeys.filter((key) => !baselineKeySet.has(key))
-
-if (addedCycles.length > 0) {
-  console.error(
-    `Circular dependency ratchet failed: ${addedCycles.length} cycle group(s) ` +
-      `not present in the baseline of ${baseline.cycles}.`,
-  )
-  console.error('New cycle(s):')
-  for (const key of addedCycles.slice(0, 5)) {
-    console.error(`  - ${key}`)
-  }
-  console.error('Fix the new circular dependency before committing.')
-  process.exit(1)
-}
-
-if (cycleCount < baseline.cycles) {
-  console.error(
-    `Circular dependency ratchet is stale: ${cycleCount} cycle group(s) found, ` +
-      `fewer than the recorded baseline of ${baseline.cycles}.`,
-  )
-  console.error(
-    'Tighten the baseline by running `npm run deps:baseline`, then commit the updated file.',
-  )
-  process.exit(1)
 }
 
 console.log(
-  `Circular dependency ratchet passed: ${cycleCount} cycle group(s), matching baseline.`,
+  `Logical dependency ratchet passed: ${logicalComponents.length} allowed component(s), ${logicalEdges.length} direct cyclic edge(s).`,
 )

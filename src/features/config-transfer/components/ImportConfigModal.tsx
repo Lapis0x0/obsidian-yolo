@@ -6,7 +6,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import type { ModuleDataEnvelope } from '../../../core/modules/moduleSettingsStore'
 import { writeObsidianModuleConfigEnvelopes } from '../../../core/modules/obsidianModuleConfigBackend'
 import { MODULE_CONFIG_TRANSFER_KEY } from '../../../core/persistence/persistentDataRegistry'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { migrateYoloSettingsData } from '../../../settings/schema/settings'
 import { EXCLUDED_KEYS, EXPORTABLE_CONFIG_KEYS } from '../config-keys'
 import {

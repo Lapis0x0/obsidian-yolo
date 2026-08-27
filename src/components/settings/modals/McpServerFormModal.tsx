@@ -22,7 +22,7 @@ import * as z from 'zod'
 import { useLanguage } from '../../../contexts/language-context'
 import { renameAssistantToolPreferencesServer } from '../../../core/agent/tool-preferences'
 import { validateServerName } from '../../../core/mcp/tool-name-utils'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   McpServerParameters,
   getMcpServerNamesFromInput,

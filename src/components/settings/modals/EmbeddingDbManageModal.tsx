@@ -19,7 +19,7 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { KnowledgeBase } from '../../../settings/schema/setting.types'
 import {
   EmbeddingDbStats,

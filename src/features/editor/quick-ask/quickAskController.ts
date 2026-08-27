@@ -20,6 +20,7 @@ import type {
   QuickAskSelectionScope,
   QuickAskShowOptions,
 } from './quickAsk.types'
+import { QUICK_ASK_CURSOR_MARKER } from './quickAsk.types'
 
 type QuickAskWidgetPayload = {
   pos: number
@@ -59,8 +60,6 @@ type QuickAskControllerDeps = {
 
 const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
 const DEFAULT_QUICK_ASK_CONTEXT_AFTER_CHARS = 2000
-export const QUICK_ASK_CURSOR_MARKER = '<<CURSOR>>'
-
 const quickAskWidgetEffect = StateEffect.define<QuickAskWidgetPayload | null>()
 
 const quickAskOverlayPlugin = ViewPlugin.fromClass(

@@ -170,6 +170,7 @@ import {
   prewarmLiteSkillRegistry,
   updateLiteSkillRegistrySettings,
 } from './core/skills/liteSkills'
+import type { ToolContext } from './core/tools/types'
 import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
@@ -1003,6 +1004,10 @@ export default class YoloPlugin extends Plugin {
         ) => this.addSettingsChangeListener(listener),
         ragAccess: this.getRagAccess(),
         promptSourceWatcher: agentService.getPromptSourceWatcher(),
+        runSubagent: async (input) => {
+          const { runSubagent } = await import('./core/agent/subagent/runner')
+          return (runSubagent as NonNullable<ToolContext['runSubagent']>)(input)
+        },
         moduleChatModeRegistry: this.moduleChatModeRegistry,
       })
     }

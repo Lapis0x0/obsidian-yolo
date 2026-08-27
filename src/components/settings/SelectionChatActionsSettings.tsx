@@ -149,7 +149,11 @@ export function SelectionChatActionsSettings({
     ),
   )
   const handleOpenModal = () => {
-    const modal = new SelectionChatActionsModal(plugin.app, plugin)
+    const modal = new SelectionChatActionsModal(
+      plugin.app,
+      plugin,
+      SelectionChatActionsSettingsContent,
+    )
     modal.open()
   }
 

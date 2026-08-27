@@ -1,21 +1,21 @@
 import { App } from 'obsidian'
-import React from 'react'
+import React, { type ComponentType } from 'react'
 
 import { SettingsProvider } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
-import { ContinuationQuickActionsSettingsContent } from '../ContinuationQuickActionsSettings'
 
 type ContinuationQuickActionsModalComponentProps = {
   plugin: YoloPlugin
+  Content: ComponentType
 }
 
 export class ContinuationQuickActionsModal extends ReactModal<ContinuationQuickActionsModalComponentProps> {
-  constructor(app: App, plugin: YoloPlugin) {
+  constructor(app: App, plugin: YoloPlugin, Content: ComponentType) {
     super({
       app: app,
       Component: ContinuationQuickActionsModalComponentWrapper,
-      props: { plugin },
+      props: { plugin, Content },
       options: {
         title: plugin.t(
           'settings.continuationQuickActions.quickActionsModalTitle',
@@ -30,6 +30,7 @@ export class ContinuationQuickActionsModal extends ReactModal<ContinuationQuickA
 
 function ContinuationQuickActionsModalComponentWrapper({
   plugin,
+  Content,
   onClose: _onClose,
 }: ContinuationQuickActionsModalComponentProps & { onClose: () => void }) {
   return (
@@ -40,7 +41,7 @@ function ContinuationQuickActionsModalComponentWrapper({
         plugin.addSettingsChangeListener(listener)
       }
     >
-      <ContinuationQuickActionsSettingsContent />
+      <Content />
     </SettingsProvider>
   )
 }

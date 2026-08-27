@@ -30,11 +30,11 @@ import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
-import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAskController'
+import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAsk.types'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
 import {

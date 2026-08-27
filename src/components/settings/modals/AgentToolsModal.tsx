@@ -8,7 +8,7 @@ import {
   useSettings,
 } from '../../../contexts/settings-context'
 import type { BuiltinCapabilityId } from '../../../core/tools/registry'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { CollapsibleToolDescription } from '../common/CollapsibleToolDescription'

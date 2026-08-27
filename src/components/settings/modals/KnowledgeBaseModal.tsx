@@ -6,7 +6,7 @@ import {
   SettingsProvider,
   useSettings,
 } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { KnowledgeBase } from '../../../settings/schema/setting.types'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
