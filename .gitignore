@@ -15,7 +15,7 @@ vendor/
 main.js
 meta.json
 worker-meta.json
-main.css
+styles.css
 
 # Runtime component assets (e.g. embedding-engine's onnxruntime-web wasm
 # binaries) are large, reproducible build outputs copied from node_modules —
