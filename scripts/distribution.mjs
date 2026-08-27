@@ -1,3 +1,4 @@
+import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
@@ -18,6 +19,15 @@ const FEED_PATH = path.resolve('distribution/feed-v1.json')
 const SIGNATURE_PATH = path.resolve('distribution/feed-v1.sig')
 const CATALOG_PATH = path.resolve('modules/catalog-v1.json')
 const DEFAULT_PAGES_DIR = path.resolve('.distribution-pages')
+const DEFAULT_R2_BUCKET = 'yolo-updates'
+const R2_CONTENT_TYPES = new Map([
+  ['.js', 'application/javascript'],
+  ['.mjs', 'application/javascript'],
+  ['.json', 'application/json'],
+  ['.css', 'text/css'],
+  ['.wasm', 'application/wasm'],
+  ['.sig', 'text/plain'],
+])
 const KEY_ID = 'yolo-distribution-2026-01'
 const CORE_TAG = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,3}$/
 const MODULE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
@@ -220,6 +230,62 @@ export async function verifyPagesDeployment(options = {}) {
     verifyBytes(Buffer.from(await response.arrayBuffer()), asset)
   }
   return { revision: feed.revision }
+}
+
+/**
+ * Pushes a snapshot built by `buildPagesSnapshot` to the R2 bucket backing
+ * `updates.yoloapp.dev`. R2 has no bulk-sync command, so each file is PUT
+ * individually with the same Cache-Control semantics the old Pages `_headers`
+ * file declared (immutable content is versioned by path; the Feed itself is
+ * revalidated on every request). The `_headers` file is Pages-only and is not
+ * uploaded.
+ */
+export async function uploadSnapshotToR2(options = {}) {
+  const bucket = options.bucket ?? DEFAULT_R2_BUCKET
+  const sourceDir = path.resolve(options.sourceDir ?? DEFAULT_PAGES_DIR)
+  const run = options.run ?? runWrangler
+  const files = await listFilesRecursive(sourceDir)
+  for (const relativePath of files) {
+    if (relativePath === '_headers') continue
+    const cacheControl =
+      relativePath === 'feed-v1.json' || relativePath === 'feed-v1.sig'
+        ? 'public, max-age=0, must-revalidate'
+        : 'public, max-age=31536000, immutable'
+    const contentType =
+      R2_CONTENT_TYPES.get(path.extname(relativePath)) ??
+      'application/octet-stream'
+    run([
+      'r2',
+      'object',
+      'put',
+      `${bucket}/${relativePath}`,
+      `--file=${path.join(sourceDir, relativePath)}`,
+      `--content-type=${contentType}`,
+      `--cache-control=${cacheControl}`,
+      '--remote',
+    ])
+  }
+  return { bucket, uploaded: files.filter((file) => file !== '_headers') }
+}
+
+function runWrangler(args) {
+  execFileSync('npx', ['--no-install', 'wrangler', ...args], {
+    stdio: 'inherit',
+  })
+}
+
+async function listFilesRecursive(dir, base = dir) {
+  const entries = await readdir(dir, { withFileTypes: true })
+  const files = []
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name)
+    if (entry.isDirectory()) {
+      files.push(...(await listFilesRecursive(fullPath, base)))
+    } else if (entry.isFile()) {
+      files.push(path.relative(base, fullPath))
+    }
+  }
+  return files
 }
 
 export async function buildDesiredSnapshot({
@@ -872,8 +938,18 @@ async function main(args) {
     console.log(`Verified Pages revision ${result.revision}`)
     return
   }
+  if (command === 'upload-r2') {
+    const result = await uploadSnapshotToR2({
+      bucket: values.get('bucket'),
+      sourceDir: values.get('source-dir'),
+    })
+    console.log(
+      `Uploaded ${result.uploaded.length} files to R2 bucket ${result.bucket}`,
+    )
+    return
+  }
   throw new Error(
-    'Usage: distribution.mjs <assert-new-release|reconcile|build-pages|verify-pages> [options]',
+    'Usage: distribution.mjs <assert-new-release|reconcile|build-pages|verify-pages|upload-r2> [options]',
   )
 }
 
