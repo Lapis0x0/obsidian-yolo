@@ -20,7 +20,7 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - `modules/<id>/` owns an independently built product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
 - `src/core/runtime-components/` owns discovery, download, and lifecycle of on-demand runtime components (heavy native/WASM engines). `runtime-components/<id>/` at the repo root owns each component's source and build output; `runtime-components/sdk.d.ts` is the component-facing contract.
 - `src/core/agent/` owns the shared native agent runtime, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat run through `AgentService.run`; permissions come from `resolveChatModeRuntime`.
-- `src/core/ai/single-turn.ts` is the low-latency path for Smart Space and Write Assist. Do not route these features through the agent runtime or introduce another orchestration path.
+- `src/core/ai/single-turn.ts` is the low-latency path for Sparkle (tab completion, selection rewrite, continuation). Do not route these features through the agent runtime or introduce another orchestration path.
 - `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path.
 - `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and MCP capabilities.
 - `src/features/` contains host-shipped cross-cutting features. `src/database/`, `src/settings/`, and `src/styles/` own host persistence, settings, and global styles.

@@ -230,8 +230,8 @@ import {
   type StartSelectionRewriteOptions,
 } from './features/editor/selection-rewrite/selectionRewriteController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
-import type { ContinuationModelOverride } from './features/editor/write-assist/writeAssistController'
-import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
+import type { ContinuationModelOverride } from './features/editor/continuation/continuationController'
+import { ContinuationController } from './features/editor/continuation/continuationController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
 import {
@@ -347,7 +347,7 @@ export default class YoloPlugin extends Plugin {
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private liteSkillRegistryDispose: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
-  private writeAssistController: WriteAssistController | null = null
+  private continuationController: ContinuationController | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -2104,9 +2104,9 @@ export default class YoloPlugin extends Plugin {
     return false
   }
 
-  private getWriteAssistController(): WriteAssistController {
-    if (!this.writeAssistController) {
-      this.writeAssistController = new WriteAssistController({
+  private getContinuationController(): ContinuationController {
+    if (!this.continuationController) {
+      this.continuationController = new ContinuationController({
         app: this.app,
         getSettings: () => this.settings,
         setSettings: (newSettings) => this.setSettings(newSettings),
@@ -2138,7 +2138,7 @@ export default class YoloPlugin extends Plugin {
           ),
       })
     }
-    return this.writeAssistController
+    return this.continuationController
   }
 
   private cancelTabCompletionRequest() {
@@ -2778,7 +2778,7 @@ export default class YoloPlugin extends Plugin {
     this.diffReviewController = null
     this.selectionRewriteController?.destroy()
     this.selectionRewriteController = null
-    this.writeAssistController = null
+    this.continuationController = null
 
     // clear all timers
     this.timeoutIds.forEach((id) => {
@@ -4717,7 +4717,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     mentionables: (MentionableFile | MentionableFolder)[] | undefined,
     modelOverride: ContinuationModelOverride,
   ) {
-    return this.getWriteAssistController().handleContinueWriting(
+    return this.getContinuationController().handleContinueWriting(
       editor,
       customPrompt,
       mentionables,
