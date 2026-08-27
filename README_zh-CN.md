@@ -86,7 +86,7 @@
 |------|------|
 | 🖥️ CLI Agent（桌面端） | 复用本机已登录的 Claude Code / Codex，直接在 Obsidian 里和 CLI Agent 对话 |
 | 🔌 外部 Agent 支持 | 通过 MCP，让 Hermes、OpenClaw 等外部 Agent 使用 YOLO 的 Vault 搜索，或派遣已配置的 YOLO Agent 执行任务 |
-| ⚡ Quick Ask 与 Smart Space | 无需离开编辑器即可提问、修改和续写内容 |
+| ⚡ Quick Ask | 无需离开编辑器即可提问、修改和续写内容 |
 | 🔎 Vault RAG | 检索整个 Vault，让回答建立在你自己的笔记之上 |
 | 🪟 多窗口对话 | 在独立对话窗口中并行处理不同任务与上下文 |
 | 🧠 记忆系统 | 让 YOLO 记住你的偏好、习惯与长期上下文，让连续对话更稳定、更懂你 |

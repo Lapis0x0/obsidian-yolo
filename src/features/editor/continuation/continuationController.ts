@@ -208,7 +208,7 @@ export class ContinuationController {
           }
         } catch (error) {
           console.warn(
-            'Failed to include mentioned files for Smart Space continuation',
+            'Failed to include mentioned files for continuation',
             error,
           )
         }

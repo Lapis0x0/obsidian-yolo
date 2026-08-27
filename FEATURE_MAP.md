@@ -10,7 +10,7 @@
 - 触发方式：编辑器内快捷键/命令唤起的浮层，由 `QuickAskController`（`src/features/editor/quick-ask/quickAskController.ts`）在 `src/main.ts` 中挂载。面板本体 `src/components/panels/quick-ask/QuickAskPanel.tsx` 有三档模式（`QuickAskVisibleMode = 'ask' | 'agent' | 'continue'`，`src/features/editor/quick-ask/quickAsk.types.ts`）：Ask/Agent 两档走 `AgentService.run`；「续写」档不走 agent runtime，而是通过 `plugin.continueWriting()` 调用下面「灵光写作 / Sparkle」一节的 `ContinuationController`。三档是同一面板内切换，不是三个独立入口。
 - 核心代码：`src/features/editor/quick-ask/`（唤起、锚点定位、生命周期）+ UI 在 `QuickAskPanel.tsx`、`QuickAskWidget.tsx`。
 - 依赖子系统：Ask/Agent 档走 `AgentService`（`plugin.getAgentService()`）+ `assistantRenderStreamStore`（流式渲染，见下）；续写档走 `ContinuationController`（`src/features/editor/continuation/continuationController.ts`）→ `executeSingleTurn`（`src/core/ai/single-turn.ts`）。
-- 历史注记：曾经独立存在的「Smart Space」续写产品概念已在 `35d3bda7` 退役，其续写能力并入了 Quick Ask 的第三档模式。代码里仍有 `SmartSpaceQuickActionsSettings.tsx` 等旧命名的设置组件，那是未跟进改名的历史残留，不代表 Smart Space 作为独立功能还存在。
+- 历史注记：曾经独立存在的「Smart Space」续写产品概念已在 `35d3bda7` 退役，其续写能力并入了 Quick Ask 的第三档模式；随后一次改名清理已经把 `WriteAssistController`/`SmartSpaceQuickActionsSettings.tsx` 等遗留命名统一改成了 `ContinuationController`/`ContinuationQuickActionsSettings.tsx`（含 i18n key、CSS `--smart-space` 变体、持久化设置字段 `smartSpaceQuickActions`→`continuationQuickActions` 的 v83→v84 迁移），代码里不应该再出现 Smart Space 相关命名。
 - 验证路径：dev vault 手测，在任意笔记编辑器内分别触发 Quick Ask 的 Ask/Agent/续写三档。
 
 ### Sidebar / Agent Chat（同一视图，两种模式）

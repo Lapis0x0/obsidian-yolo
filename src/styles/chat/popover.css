@@ -170,7 +170,7 @@
 }
 
 /* default 变体下的 group-label / separator / list / item 样式集中在这里。
-   --smart-space 变体的同名元素样式集中在 src/styles/panels/smart-space.css。
+   --continuation 变体的同名元素样式集中在 src/styles/panels/continuation.css。
    两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */
 .yolo-popover-surface--default .yolo-popover-group-label {
   display: block;

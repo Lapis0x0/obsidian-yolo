@@ -17,8 +17,8 @@ import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ObsidianToggle } from '../common/ObsidianToggle'
 import { ReasoningPanel } from '../common/ReasoningPanel'
 import { SimpleSelect } from '../common/SimpleSelect'
+import { ContinuationQuickActionsSettings } from '../settings/ContinuationQuickActionsSettings'
 import { SelectionChatActionsSettings } from '../settings/SelectionChatActionsSettings'
-import { SmartSpaceQuickActionsSettings } from '../settings/SmartSpaceQuickActionsSettings'
 
 type ComposerProps = {
   onNavigateChat?: () => void
@@ -449,16 +449,19 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               <section className="yolo-composer-section">
                 <header className="yolo-composer-heading">
                   <div className="yolo-composer-heading-title">
-                    {t('settings.smartSpace.quickActionsTitle', '续写预设')}
+                    {t(
+                      'settings.continuationQuickActions.quickActionsTitle',
+                      '续写预设',
+                    )}
                   </div>
                   <div className="yolo-composer-heading-desc">
                     {t(
-                      'settings.smartSpace.quickActionsDesc',
+                      'settings.continuationQuickActions.quickActionsDesc',
                       '自定义续写模式下显示的快捷选项和提示词。',
                     )}
                   </div>
                 </header>
-                <SmartSpaceQuickActionsSettings variant="composer" />
+                <ContinuationQuickActionsSettings variant="composer" />
               </section>
             )}
 

@@ -1,9 +1,9 @@
-/* The Smart Space floating panel itself was removed (superseded by Quick
- * Ask's "continue" mode). What remains here is CSS that other live
- * components still depend on: the shared `--smart-space` popover variant's
- * rail typeahead menu (chat input `/` and `@` menus, Quick Ask), the Quick
- * Ask model select button, and the Smart Space quick-action *settings
- * editor* (still used — Quick Ask's continue mode reads the same presets).
+/* This file backs the shared `--continuation` popover variant (formerly
+ * `--smart-space`, renamed once the standalone Smart Space panel was
+ * retired into Quick Ask's "continue" mode). It holds: the rail typeahead
+ * menu (chat input `/` and `@` menus, Quick Ask), the Quick Ask model select
+ * button, and the continuation quick-action *settings* editor (Quick Ask's
+ * continue mode reads the same presets).
  * See src/styles/README.md before adding anything new here. */
 /*
  * 输入框 typeahead 菜单的双栏面板，`/`（技能 / 快捷指令 / 命令）与
@@ -336,15 +336,15 @@ button.yolo-rail-menu-row {
   color: var(--text-muted);
 }
 
-/* Smart Space Model Select - 精致的按钮设计 */
-.yolo-smart-space-model-select {
+/* Continuation Model Select - 精致的按钮设计 */
+.yolo-continuation-model-select {
   display: flex;
   align-items: center;
   flex: 0 1 auto;
   min-width: 0;
 }
 
-.yolo-smart-space-model-select .yolo-chat-input-model-select {
+.yolo-continuation-model-select .yolo-chat-input-model-select {
   font-size: var(--font-ui-smaller);
   padding: 5px 9px 5px 10px;
   height: auto;
@@ -358,9 +358,9 @@ button.yolo-rail-menu-row {
   box-shadow: none;
 }
 
-.yolo-smart-space-model-select .yolo-chat-input-model-select:hover,
-.yolo-smart-space-model-select .yolo-chat-input-model-select:focus,
-.yolo-smart-space-model-select .yolo-chat-input-model-select:focus-visible {
+.yolo-continuation-model-select .yolo-chat-input-model-select:hover,
+.yolo-continuation-model-select .yolo-chat-input-model-select:focus,
+.yolo-continuation-model-select .yolo-chat-input-model-select:focus-visible {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 85%,
@@ -378,7 +378,7 @@ button.yolo-rail-menu-row {
   outline: none;
 }
 
-.yolo-smart-space-model-select
+.yolo-continuation-model-select
   .yolo-chat-input-model-select[data-state='open'] {
   border-color: var(--h1-color, var(--interactive-accent));
   background: color-mix(
@@ -397,7 +397,7 @@ button.yolo-rail-menu-row {
     inset 0 1px 0 rgba(255, 255, 255, 0.1);
 }
 
-.yolo-smart-space-model-select .yolo-chat-input-model-select__model-name {
+.yolo-continuation-model-select .yolo-chat-input-model-select__model-name {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-medium);
   white-space: nowrap;
@@ -407,7 +407,7 @@ button.yolo-rail-menu-row {
   line-height: 1.3;
 }
 
-.yolo-smart-space-model-select .yolo-chat-input-model-select__icon {
+.yolo-continuation-model-select .yolo-chat-input-model-select__icon {
   margin-left: 5px;
   display: flex;
   align-items: center;
@@ -415,40 +415,40 @@ button.yolo-rail-menu-row {
   transition: all 0.2s ease;
 }
 
-.yolo-smart-space-model-select
+.yolo-continuation-model-select
   .yolo-chat-input-model-select:hover
   .yolo-chat-input-model-select__icon,
-.yolo-smart-space-model-select
+.yolo-continuation-model-select
   .yolo-chat-input-model-select:focus
   .yolo-chat-input-model-select__icon,
-.yolo-smart-space-model-select
+.yolo-continuation-model-select
   .yolo-chat-input-model-select:focus-visible
   .yolo-chat-input-model-select__icon {
   opacity: 0.75;
 }
 
-.yolo-smart-space-model-select
+.yolo-continuation-model-select
   .yolo-chat-input-model-select[data-state='open']
   .yolo-chat-input-model-select__icon {
   opacity: 1;
   color: var(--h1-color, var(--interactive-accent));
 }
 
-/* --smart-space 变体下 model-select-list 的容器样式。
+/* --continuation 变体下 model-select-list 的容器样式。
    --default 变体的对应规则在 src/styles/chat/popover.css。 */
-.yolo-popover-surface--smart-space .yolo-model-select-list {
+.yolo-popover-surface--continuation .yolo-model-select-list {
   max-height: 380px;
   overflow-y: auto;
   scrollbar-width: thin;
   padding: 0;
 }
 
-.yolo-popover-surface--smart-space .yolo-model-select-list::-webkit-scrollbar,
+.yolo-popover-surface--continuation .yolo-model-select-list::-webkit-scrollbar,
 .yolo-popover-surface--default .yolo-model-select-list::-webkit-scrollbar {
   width: 8px;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list::-webkit-scrollbar-track,
 .yolo-popover-surface--default
   .yolo-model-select-list::-webkit-scrollbar-track {
@@ -456,7 +456,7 @@ button.yolo-rail-menu-row {
   margin: 8px 0;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list::-webkit-scrollbar-thumb {
   background: color-mix(
     in srgb,
@@ -476,7 +476,7 @@ button.yolo-rail-menu-row {
   background-clip: padding-box;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list::-webkit-scrollbar-thumb:hover {
   background: color-mix(
     in srgb,
@@ -492,7 +492,7 @@ button.yolo-rail-menu-row {
   background-clip: padding-box;
 }
 
-.yolo-popover-surface--smart-space .yolo-popover-group-label {
+.yolo-popover-surface--continuation .yolo-popover-group-label {
   display: block;
   margin: 0;
   padding: 8px 12px 6px 12px;
@@ -505,7 +505,7 @@ button.yolo-rail-menu-row {
   opacity: 0.8;
 }
 
-.yolo-popover-surface--smart-space .yolo-popover-group-separator {
+.yolo-popover-surface--continuation .yolo-popover-group-separator {
   height: 1px;
   background: linear-gradient(
     to right,
@@ -518,7 +518,7 @@ button.yolo-rail-menu-row {
   margin: 6px 0;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list
   > .yolo-popover-item {
   position: relative;
@@ -537,24 +537,24 @@ button.yolo-rail-menu-row {
   outline: none;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list
   > .yolo-popover-item:first-child {
   border-top-left-radius: 12px;
   border-top-right-radius: 12px;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list
   > .yolo-popover-item:last-child {
   border-bottom-left-radius: 12px;
   border-bottom-right-radius: 12px;
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list
   > .yolo-popover-item:hover,
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list
   > .yolo-popover-item[data-highlighted] {
   background: color-mix(
@@ -565,7 +565,7 @@ button.yolo-rail-menu-row {
   color: var(--text-normal);
 }
 
-.yolo-popover-surface--smart-space
+.yolo-popover-surface--continuation
   .yolo-model-select-list
   > .yolo-popover-item:active {
   transform: scale(0.98);
@@ -765,12 +765,12 @@ button.yolo-rail-menu-row {
   position: fixed;
 }
 
-/* Smart Space Quick Actions Settings */
-.yolo-smart-space-settings {
+/* Continuation Quick Actions Settings */
+.yolo-continuation-settings {
   margin-top: var(--size-4-3);
 }
 
-.yolo-smart-space-settings-row {
+.yolo-continuation-settings-row {
   display: flex;
   align-items: center;
   gap: var(--size-4-3);
@@ -778,14 +778,14 @@ button.yolo-rail-menu-row {
   flex-wrap: wrap;
 }
 
-.yolo-smart-space-settings-row .yolo-settings-desc {
+.yolo-continuation-settings-row .yolo-settings-desc {
   margin: 0;
   flex: 1 1 140px;
   min-width: 0;
 }
 
-.yolo-smart-space-settings-row .setting-item-control,
-.yolo-smart-space-settings-row button {
+.yolo-continuation-settings-row .setting-item-control,
+.yolo-continuation-settings-row button {
   margin-left: auto;
 }
 
@@ -1091,27 +1091,27 @@ button.yolo-rail-menu-row {
 }
 
 /* Override button styles for consistency with Obsidian */
-.yolo-smart-space-settings .setting-item-control button {
+.yolo-continuation-settings .setting-item-control button {
   margin-left: 0;
 }
 
-.yolo-smart-space-settings .setting-item {
+.yolo-continuation-settings .setting-item {
   flex-wrap: wrap;
   column-gap: var(--size-4-3);
   row-gap: var(--size-2-2);
 }
 
-.yolo-smart-space-settings .setting-item-info {
+.yolo-continuation-settings .setting-item-info {
   min-width: 0;
   flex: 1 1 220px;
 }
 
-.yolo-smart-space-settings .setting-item-control {
+.yolo-continuation-settings .setting-item-control {
   max-width: 100%;
   margin-left: auto;
 }
 
-.yolo-smart-space-trigger-setting .setting-item-control select {
+.yolo-continuation-trigger-setting .setting-item-control select {
   width: 220px;
 }
 

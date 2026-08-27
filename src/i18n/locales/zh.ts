@@ -319,7 +319,7 @@ export const zh: TranslationKeys = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: '续写预设',
       quickActionsDesc: '自定义续写模式下显示的快捷选项和提示词',
       quickActionsModalTitle: 'Quick Ask 续写预设',
@@ -341,7 +341,7 @@ export const zh: TranslationKeys = {
       actionIcon: '图标',
       actionIconDesc: '选择一个图标',
       actionEnabled: '启用',
-      actionEnabledDesc: '是否在 Smart Space 中显示此选项',
+      actionEnabledDesc: '是否在续写预设中显示此选项',
       moveUp: '上移',
       moveDown: '下移',
       duplicate: '复制',

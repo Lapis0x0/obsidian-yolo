@@ -701,10 +701,11 @@ export const yoloSettingsSchema = z.object({
       // length preset for tab completion prompt constraints
       tabCompletionLengthPreset: z.enum(['short', 'medium', 'long']).optional(),
       // Quick Ask "continue" mode quick actions (chips shown when the
-      // continue mode input is empty). Key name predates the Quick Ask
-      // "continue" mode (it originally belonged to the now-removed Smart
-      // Space panel); kept as-is to avoid a settings migration.
-      smartSpaceQuickActions: z
+      // continue mode input is empty). Renamed from smartSpaceQuickActions
+      // in v83->v84 — that name predated the Quick Ask "continue" mode and
+      // referenced the now-removed Smart Space panel it originally belonged
+      // to.
+      continuationQuickActions: z
         .array(
           z.object({
             id: z.string(),
@@ -783,7 +784,7 @@ export const yoloSettingsSchema = z.object({
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
       tabCompletionConstraints: '',
       tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
-      smartSpaceQuickActions: undefined,
+      continuationQuickActions: undefined,
       selectionChatActions: undefined,
       enableQuickAsk: true,
       quickAskTrigger: '@',

@@ -88,7 +88,7 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
 |--------------|-------------|
 | 🖥️ Agent CLI (desktop) | Riutilizza Claude Code / Codex già autenticati sul tuo dispositivo e dialoga con l'agent CLI direttamente dentro Obsidian |
 | 🔌 Supporto per Agent esterni | Collega client MCP come Hermes e OpenClaw alla ricerca nel Vault di YOLO oppure delega attività a un Agent YOLO configurato |
-| ⚡ Quick Ask e Smart Space | Chiedi, modifica e continua a scrivere senza lasciare l'editor |
+| ⚡ Quick Ask | Chiedi, modifica e continua a scrivere senza lasciare l'editor |
 | 🔎 Vault RAG | Cerca nell'intero Vault per ottenere risposte fondate sui tuoi appunti |
 | 🪟 Chat Multi-Finestra | Gestisci in parallelo attività e contesti diversi in finestre di chat indipendenti |
 | 🧠 Sistema di memoria | Permette a YOLO di ricordare preferenze, abitudini e contesto a lungo termine per conversazioni piu coerenti |

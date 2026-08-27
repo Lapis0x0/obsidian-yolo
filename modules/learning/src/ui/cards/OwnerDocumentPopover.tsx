@@ -9,7 +9,7 @@ import {
 type ContentProps = ComponentPropsWithoutRef<typeof Popover.Content> & {
   anchorRef?: RefObject<Node | null>
   container?: HTMLElement
-  variant?: 'default' | 'smart-space'
+  variant?: 'default' | 'continuation'
   minWidth?: number | string
   maxWidth?: number | string
   maxHeight?: number | string

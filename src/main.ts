@@ -211,6 +211,8 @@ import {
 } from './features/chat/chatLeafSessionManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
+import type { ContinuationModelOverride } from './features/editor/continuation/continuationController'
+import { ContinuationController } from './features/editor/continuation/continuationController'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildReviewPlanFromEdits,
@@ -230,8 +232,6 @@ import {
   type StartSelectionRewriteOptions,
 } from './features/editor/selection-rewrite/selectionRewriteController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
-import type { ContinuationModelOverride } from './features/editor/continuation/continuationController'
-import { ContinuationController } from './features/editor/continuation/continuationController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
 import {

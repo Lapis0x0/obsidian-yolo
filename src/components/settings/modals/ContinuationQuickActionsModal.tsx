@@ -4,21 +4,21 @@ import React from 'react'
 import { SettingsProvider } from '../../../contexts/settings-context'
 import YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
-import { SmartSpaceQuickActionsSettingsContent } from '../SmartSpaceQuickActionsSettings'
+import { ContinuationQuickActionsSettingsContent } from '../ContinuationQuickActionsSettings'
 
-type SmartSpaceQuickActionsModalComponentProps = {
+type ContinuationQuickActionsModalComponentProps = {
   plugin: YoloPlugin
 }
 
-export class SmartSpaceQuickActionsModal extends ReactModal<SmartSpaceQuickActionsModalComponentProps> {
+export class ContinuationQuickActionsModal extends ReactModal<ContinuationQuickActionsModalComponentProps> {
   constructor(app: App, plugin: YoloPlugin) {
     super({
       app: app,
-      Component: SmartSpaceQuickActionsModalComponentWrapper,
+      Component: ContinuationQuickActionsModalComponentWrapper,
       props: { plugin },
       options: {
         title: plugin.t(
-          'settings.smartSpace.quickActionsModalTitle',
+          'settings.continuationQuickActions.quickActionsModalTitle',
           'Quick Ask continuation presets',
         ),
       },
@@ -28,10 +28,10 @@ export class SmartSpaceQuickActionsModal extends ReactModal<SmartSpaceQuickActio
   }
 }
 
-function SmartSpaceQuickActionsModalComponentWrapper({
+function ContinuationQuickActionsModalComponentWrapper({
   plugin,
   onClose: _onClose,
-}: SmartSpaceQuickActionsModalComponentProps & { onClose: () => void }) {
+}: ContinuationQuickActionsModalComponentProps & { onClose: () => void }) {
   return (
     <SettingsProvider
       settings={plugin.settings}
@@ -40,7 +40,7 @@ function SmartSpaceQuickActionsModalComponentWrapper({
         plugin.addSettingsChangeListener(listener)
       }
     >
-      <SmartSpaceQuickActionsSettingsContent />
+      <ContinuationQuickActionsSettingsContent />
     </SettingsProvider>
   )
 }

@@ -358,7 +358,7 @@ export const en: TranslationKeys = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: 'Continue writing presets',
       quickActionsDesc:
         'Customize the quick actions and prompts shown in Quick Ask’s continue mode',

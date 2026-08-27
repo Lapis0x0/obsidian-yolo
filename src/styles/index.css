@@ -33,7 +33,7 @@
 @import './chat/cli-chat-surface.css';
 @import './chat/runtime-badge.css';
 
-@import './panels/smart-space.css';
+@import './panels/continuation.css';
 @import './panels/quick-ask.css';
 
 @import './selection/selection-chat.css';

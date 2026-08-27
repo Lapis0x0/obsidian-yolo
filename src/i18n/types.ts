@@ -1481,7 +1481,7 @@ export type TranslationKeys = {
       interactionSectionTitle?: string
       maintenanceSectionTitle?: string
     }
-    smartSpace?: {
+    continuationQuickActions?: {
       quickActionsTitle: string
       quickActionsDesc: string
       quickActionsModalTitle?: string

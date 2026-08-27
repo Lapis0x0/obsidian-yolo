@@ -155,8 +155,8 @@ export function SelectionChatActionsSettings({
 
   if (variant === 'composer') {
     return (
-      <div className="yolo-smart-space-settings">
-        <div className="yolo-smart-space-settings-row">
+      <div className="yolo-continuation-settings">
+        <div className="yolo-continuation-settings-row">
           <div className="yolo-settings-desc">{actionsCountLabel}</div>
           <ObsidianButton
             text={t('settings.selectionChat.configureActions', '配置快捷指令')}
@@ -168,7 +168,7 @@ export function SelectionChatActionsSettings({
   }
 
   return (
-    <div className="yolo-smart-space-settings">
+    <div className="yolo-continuation-settings">
       <ObsidianSetting
         name={t(
           'settings.selectionChat.quickActionsTitle',
@@ -519,7 +519,7 @@ export function SelectionChatActionsSettingsContent() {
   }
 
   return (
-    <div className="yolo-smart-space-settings">
+    <div className="yolo-continuation-settings">
       <ObsidianSetting
         name={t(
           'settings.selectionChat.quickActionsTitle',

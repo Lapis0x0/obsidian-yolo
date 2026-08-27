@@ -2,15 +2,16 @@
 
 ## 1. 按职责分目录，不按"哪里先用"
 
-历史上 `panels/smart-space.css` 长期堆放了和 SmartSpace 面板无关的 popover、
-dropdown、滚动条共享样式（因为 SmartSpace 是这些样式最早的消费者），
+历史上 `panels/smart-space.css`（现已随 Smart Space 面板退役改名为
+`panels/continuation.css`）长期堆放了和 Smart Space 面板无关的 popover、
+dropdown、滚动条共享样式（因为 Smart Space 是这些样式最早的消费者），
 是典型的"以首个调用者命名"反模式，导致后续所有人都要绕开或踩坑。
 
 **新增样式时的判断顺序：**
 1. 它属于某个跨组件的**视觉系统**（popover、按钮、表单等）→ 找/建独立目录
    （现有：`popover/`）。
 2. 它属于某个**功能模块**（chat、settings、panels 下的具体面板）→ 放进对应子目录。
-3. **不要**因为「我现在的功能是 SmartSpace」就把通用样式塞进 `smart-space.css`。
+3. **不要**因为「我现在的功能是续写/Quick Ask」就把通用样式塞进 `continuation.css`。
 
 ## 2. 命名前缀
 

@@ -330,7 +330,7 @@ export function useRailTypeaheadMenu<TOption extends MenuOption>({
       <div className="yolo-rail-menu-popover" data-placement={placement}>
         <div
           ref={setPanelEl}
-          className={`yolo-popover-surface yolo-popover-surface--smart-space yolo-rail-menu-panel${
+          className={`yolo-popover-surface yolo-popover-surface--continuation yolo-rail-menu-panel${
             showRail ? ' yolo-rail-menu-panel--two-pane' : ''
           }${showTabs ? ' yolo-rail-menu-panel--tabs' : ''}`}
           // 焦点分区只存在于竖排 rail 的双栏布局；横排 tabs 下焦点恒在列表。

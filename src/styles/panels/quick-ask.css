@@ -159,7 +159,7 @@
 }
 
 /* "Continue" mode preset menu — a detached Quick-Ask-style popover below the
-   composer (YoloPopoverContent, smart-space variant), replacing the old inline
+   composer (YoloPopoverContent, continuation variant), replacing the old inline
    chip row. Sizing lives here per the popover surface ownership rules. */
 .yolo-quick-ask-continue-menu {
   display: flex;

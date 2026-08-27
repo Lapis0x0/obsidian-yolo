@@ -381,7 +381,7 @@ export const it: DeepPartial<TranslationKeys> = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: 'Preset di continuazione scrittura',
       quickActionsDesc:
         'Personalizza le azioni rapide e i prompt mostrati nella modalità di continuazione di Quick Ask',
