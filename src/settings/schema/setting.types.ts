@@ -754,12 +754,14 @@ export const yoloSettingsSchema = z.object({
       quickAskContextBeforeChars: z.number().int().min(0).optional(),
       // quick ask context chars after cursor
       quickAskContextAfterChars: z.number().int().min(0).optional(),
-      // Knowledge base the Sparkle panel's similar-notes list searches.
-      // Undefined — the default — means every configured knowledge base,
-      // merged; a value restricts the search to that one base. An id whose
-      // base no longer exists degrades back to "every base" at query time
-      // (see `core/rag/similarNotes.ts`).
-      similarNotesKnowledgeBaseId: z.string().optional(),
+      // Knowledge bases the Sparkle panel's similar-notes list searches.
+      // Undefined — the default — means every configured base, merged, and
+      // stays that way as bases are added: "all" is a rule here, not a
+      // snapshot of the ids that existed when the user chose it. A non-empty
+      // list restricts the search to those bases; ids whose bases no longer
+      // exist are dropped, and a selection left empty degrades back to "every
+      // base" at query time (see `core/rag/similarNotes.ts`).
+      similarNotesKnowledgeBaseIds: z.array(z.string()).optional(),
       // whether a failed streaming primary request should recover once with non-stream fallback
       streamFallbackRecoveryEnabled: z.boolean().optional(),
       // timeout for the primary request before recovery is considered
@@ -798,7 +800,7 @@ export const yoloSettingsSchema = z.object({
       quickAskAutoDockToTopRight: true,
       quickAskContextBeforeChars: 5000,
       quickAskContextAfterChars: 2000,
-      similarNotesKnowledgeBaseId: undefined,
+      similarNotesKnowledgeBaseIds: undefined,
       streamFallbackRecoveryEnabled: true,
       primaryRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
     }),

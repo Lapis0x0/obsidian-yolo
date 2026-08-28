@@ -124,24 +124,27 @@ export function aggregateSimilarNotes(
  * range. Costs no embedding call: every base reuses the source note's own
  * stored chunk vectors (see `RAGEngine.findSimilarChunks`).
  *
- * `scopeKbId` of `undefined` — the default — means every configured base;
- * a base id that no longer exists degrades to the same thing rather than
- * failing, since the id only lives in settings and can outlive its base.
+ * `scopeKbIds` of `undefined` — the default — means every configured base,
+ * and keeps meaning that as bases are added: "all" is a rule, not a snapshot
+ * of the ids that existed when the user picked it. Ids whose bases no longer
+ * exist are dropped rather than failing, since ids live in settings and can
+ * outlive their base; a selection that ends up empty degrades to every base,
+ * so the panel never silently searches nothing.
  */
 export async function findSimilarNotes({
   ragAccess,
   settings,
   path,
-  scopeKbId,
+  scopeKbIds,
 }: {
   ragAccess: RagKnowledgeAccess
   settings: YoloSettings
   path: string
-  scopeKbId?: string
+  scopeKbIds?: string[]
 }): Promise<SimilarNotesOutcome> {
   const allKnowledgeBases = ragAccess.listKnowledgeBases()
-  const selected = scopeKbId
-    ? allKnowledgeBases.filter((kb) => kb.id === scopeKbId)
+  const selected = scopeKbIds
+    ? allKnowledgeBases.filter((kb) => scopeKbIds.includes(kb.id))
     : []
   const knowledgeBases = selected.length > 0 ? selected : allKnowledgeBases
 

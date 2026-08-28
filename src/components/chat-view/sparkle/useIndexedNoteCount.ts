@@ -13,11 +13,11 @@ import { useSettings } from '../../../contexts/settings-context'
  * while it is still being read.
  */
 export function useIndexedNoteCount({
-  scopeKbId,
+  scopeKbIds,
   visible,
   refreshToken,
 }: {
-  scopeKbId?: string
+  scopeKbIds?: string[]
   visible: boolean
   refreshToken: number
 }): number | null {
@@ -27,10 +27,17 @@ export function useIndexedNoteCount({
   const generationRef = useRef(0)
 
   const embeddingModelId = settings.embeddingModelId
-  const kbIds = settings.knowledgeBases
-    .filter((kb) => !scopeKbId || kb.id === scopeKbId)
+  // Mirrors `findSimilarNotes`: no selection, or a selection that matches no
+  // surviving base, counts every base — the row must describe the scope the
+  // search actually ran against.
+  const selectedIds = settings.knowledgeBases
+    .filter((kb) => scopeKbIds?.includes(kb.id) ?? false)
     .map((kb) => kb.id)
-    .join('\n')
+  const kbIds = (
+    selectedIds.length > 0
+      ? selectedIds
+      : settings.knowledgeBases.map((kb) => kb.id)
+  ).join('\n')
 
   useEffect(() => {
     if (!visible) return

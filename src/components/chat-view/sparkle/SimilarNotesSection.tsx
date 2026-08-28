@@ -1,18 +1,21 @@
-import { ChevronDown, RefreshCw } from 'lucide-react'
+import { ChevronDown } from 'lucide-react'
 import { Notice } from 'obsidian'
-import React, { useCallback, useMemo, useState } from 'react'
+import React, { useCallback, useRef, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
-import { SimpleSelect } from '../../common/SimpleSelect'
 import { useActiveFile } from '../hooks/useActiveFile'
 
+import ScopeSelect from './ScopeSelect'
 import SimilarNoteCard from './SimilarNoteCard'
 import { useIndexedNoteCount } from './useIndexedNoteCount'
 import { useSimilarNotes } from './useSimilarNotes'
 
-const ALL_KNOWLEDGE_BASES = '__all__'
+/** Display name of the note a result set belongs to. */
+function sourceBasename(path: string): string {
+  return (path.split('/').pop() ?? path).replace(/\.[^.]+$/, '')
+}
 
 const SimilarNotesSection: React.FC<{
   visible: boolean
@@ -22,40 +25,32 @@ const SimilarNotesSection: React.FC<{
   const plugin = usePlugin()
   const { settings, updateSettings } = useSettings()
   const file = useActiveFile()
+  const sectionRef = useRef<HTMLElement | null>(null)
   const [collapsed, setCollapsed] = useState(false)
   const [refreshToken, setRefreshToken] = useState(0)
   const [indexing, setIndexing] = useState(false)
 
-  const scopeKbId = settings.continuationOptions.similarNotesKnowledgeBaseId
-  const state = useSimilarNotes({ file, visible, refreshToken })
-  const indexedCount = useIndexedNoteCount({ scopeKbId, visible, refreshToken })
+  const scopeKbIds = settings.continuationOptions.similarNotesKnowledgeBaseIds
+  const state = useSimilarNotes({
+    file,
+    visible,
+    refreshToken,
+    hostRef: sectionRef,
+  })
+  const indexedCount = useIndexedNoteCount({
+    scopeKbIds,
+    visible,
+    refreshToken,
+  })
 
   const refresh = useCallback(() => setRefreshToken((n) => n + 1), [])
 
-  const scopeOptions = useMemo(
-    () => [
-      {
-        value: ALL_KNOWLEDGE_BASES,
-        label: t(
-          'sparkle.similarNotes.allKnowledgeBases',
-          'All knowledge bases',
-        ),
-      },
-      ...settings.knowledgeBases.map((kb) => ({
-        value: kb.id,
-        label: kb.name,
-      })),
-    ],
-    [settings.knowledgeBases, t],
-  )
-
-  const handleScopeChange = (value: string) => {
+  const handleScopeChange = (nextIds: string[] | undefined) => {
     void updateSettings((current) => ({
       ...current,
       continuationOptions: {
         ...current.continuationOptions,
-        similarNotesKnowledgeBaseId:
-          value === ALL_KNOWLEDGE_BASES ? undefined : value,
+        similarNotesKnowledgeBaseIds: nextIds,
       },
     }))
   }
@@ -82,6 +77,9 @@ const SimilarNotesSection: React.FC<{
       setIndexing(false)
     }
   }
+
+  const bodyKey =
+    state.status === 'ready' ? `ready:${state.path}` : state.status
 
   const notes = state.status === 'ready' ? state.notes : []
   const bestSimilarity = notes[0]?.similarity ?? 0
@@ -218,7 +216,7 @@ const SimilarNotesSection: React.FC<{
                 key={note.path}
                 note={note}
                 bestSimilarity={bestSimilarity}
-                sourcePath={file?.path ?? ''}
+                sourcePath={state.status === 'ready' ? state.path : ''}
               />
             ))}
           </div>
@@ -227,7 +225,11 @@ const SimilarNotesSection: React.FC<{
   })()
 
   return (
-    <section className="yolo-sparkle-section" data-collapsed={collapsed}>
+    <section
+      ref={sectionRef}
+      className="yolo-sparkle-section"
+      data-collapsed={collapsed}
+    >
       <div className="yolo-sparkle-section-header">
         <button
           type="button"
@@ -243,14 +245,6 @@ const SimilarNotesSection: React.FC<{
             <span className="yolo-sparkle-section-count">{notes.length}</span>
           ) : null}
         </button>
-        <button
-          type="button"
-          className="clickable-icon yolo-sparkle-section-action"
-          aria-label={t('sparkle.similarNotes.refresh', 'Refresh')}
-          onClick={refresh}
-        >
-          <RefreshCw size={14} />
-        </button>
       </div>
       {collapsed ? null : (
         <>
@@ -258,11 +252,10 @@ const SimilarNotesSection: React.FC<{
             <span className="yolo-sparkle-scope-label">
               {t('sparkle.similarNotes.scope', 'Scope')}
             </span>
-            <SimpleSelect
-              value={scopeKbId ?? ALL_KNOWLEDGE_BASES}
-              options={scopeOptions}
+            <ScopeSelect
+              knowledgeBases={settings.knowledgeBases}
+              selectedIds={scopeKbIds}
               onChange={handleScopeChange}
-              align="start"
             />
             {indexedCount === null ? null : (
               <>
@@ -284,13 +277,19 @@ const SimilarNotesSection: React.FC<{
               {t('sparkle.similarNotes.change', 'Change')}
             </button>
           </div>
-          {file && state.status === 'ready' ? (
+          {state.status === 'ready' ? (
             <div className="yolo-sparkle-source-row">
               {t('sparkle.similarNotes.basedOn', 'Based on')}{' '}
-              <span className="yolo-sparkle-source-name">{file.basename}</span>
+              <span className="yolo-sparkle-source-name">
+                {sourceBasename(state.path)}
+              </span>
             </div>
           ) : null}
-          {body}
+          {/* Keyed so React remounts on a real content change and the enter
+              animation replays; a re-render for the same results does not. */}
+          <div className="yolo-sparkle-section-body" key={bodyKey}>
+            {body}
+          </div>
         </>
       )}
     </section>

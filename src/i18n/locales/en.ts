@@ -2560,9 +2560,9 @@ export const en: TranslationKeys = {
     },
     similarNotes: {
       title: 'Similar notes',
-      refresh: 'Refresh',
       scope: 'Scope',
       allKnowledgeBases: 'All knowledge bases',
+      someKnowledgeBases: '{count} knowledge bases',
       indexedCount: '{count} notes indexed',
       change: 'Change',
       basedOn: 'Based on',

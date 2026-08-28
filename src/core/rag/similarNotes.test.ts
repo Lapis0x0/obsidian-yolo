@@ -165,7 +165,7 @@ describe('findSimilarNotes', () => {
       ]),
       settings,
       path: 'source.md',
-      scopeKbId: 'kb1',
+      scopeKbIds: ['kb1'],
     })
 
     expect(outcome.kind).toBe('ready')
@@ -173,19 +173,68 @@ describe('findSimilarNotes', () => {
     expect(outcome.notes.map((n) => n.path)).toEqual(['a.md'])
   })
 
-  it('falls back to every knowledge base when the scoped one is gone', async () => {
+  it('searches exactly the selected subset of knowledge bases', async () => {
+    const outcome = await findSimilarNotes({
+      ragAccess: makeAccess([
+        { id: 'kb1', rows: [row({ path: 'a.md', similarity: 0.5 })] },
+        { id: 'kb2', rows: [row({ path: 'b.md', similarity: 0.9 })] },
+        { id: 'kb3', rows: [row({ path: 'c.md', similarity: 0.7 })] },
+      ]),
+      settings,
+      path: 'source.md',
+      scopeKbIds: ['kb1', 'kb3'],
+    })
+
+    expect(outcome.kind).toBe('ready')
+    if (outcome.kind !== 'ready') return
+    expect(outcome.notes.map((n) => n.path)).toEqual(['c.md', 'a.md'])
+  })
+
+  it('drops ids whose knowledge base is gone but keeps the survivors', async () => {
+    const outcome = await findSimilarNotes({
+      ragAccess: makeAccess([
+        { id: 'kb1', rows: [row({ path: 'a.md', similarity: 0.5 })] },
+        { id: 'kb2', rows: [row({ path: 'b.md', similarity: 0.9 })] },
+      ]),
+      settings,
+      path: 'source.md',
+      scopeKbIds: ['kb1', 'deleted-kb'],
+    })
+
+    expect(outcome.kind).toBe('ready')
+    if (outcome.kind !== 'ready') return
+    expect(outcome.notes.map((n) => n.path)).toEqual(['a.md'])
+  })
+
+  it('falls back to every knowledge base when no selected id survives', async () => {
     const outcome = await findSimilarNotes({
       ragAccess: makeAccess([
         { id: 'kb1', rows: [row({ path: 'a.md', similarity: 0.5 })] },
       ]),
       settings,
       path: 'source.md',
-      scopeKbId: 'deleted-kb',
+      scopeKbIds: ['deleted-kb'],
     })
 
     expect(outcome.kind).toBe('ready')
     if (outcome.kind !== 'ready') return
     expect(outcome.notes.map((n) => n.path)).toEqual(['a.md'])
+  })
+
+  it('falls back to every knowledge base when the selection is empty', async () => {
+    const outcome = await findSimilarNotes({
+      ragAccess: makeAccess([
+        { id: 'kb1', rows: [row({ path: 'a.md', similarity: 0.5 })] },
+        { id: 'kb2', rows: [row({ path: 'b.md', similarity: 0.9 })] },
+      ]),
+      settings,
+      path: 'source.md',
+      scopeKbIds: [],
+    })
+
+    expect(outcome.kind).toBe('ready')
+    if (outcome.kind !== 'ready') return
+    expect(outcome.notes.map((n) => n.path)).toEqual(['b.md', 'a.md'])
   })
 
   it('reports the source as indexable when it falls inside a base scope', async () => {

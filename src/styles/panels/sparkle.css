@@ -134,6 +134,27 @@ button.yolo-sparkle-section-toggle:focus-visible {
   flex: 0 0 auto;
 }
 
+/*
+ * 内容入场。切笔记时结果整体换掉，直接替换会读成"闪一下"；这里让新内容淡入
+ * 落位。只有 key 变化（真的换了一批结果）才会重放，同一批结果的重渲染不会。
+ * reduced-motion 由 tokens/motion.css 的全局兜底接管。
+ */
+.yolo-sparkle-section-body {
+  animation: yolo-sparkle-body-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-sparkle-body-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
 /* 范围行：一行小字，不是一个占满宽度的选择框 -------------------------- */
 
 .yolo-sparkle-scope-row {
@@ -148,11 +169,15 @@ button.yolo-sparkle-section-toggle:focus-visible {
   color: var(--text-muted);
 }
 
-.yolo-sparkle-scope-row .yolo-simple-select__trigger {
-  width: auto;
-  min-height: 0;
-  padding: 0;
+button.yolo-sparkle-scope-trigger {
+  display: flex;
+  align-items: center;
   gap: 2px;
+  width: auto;
+  max-width: 60%;
+  min-height: 0;
+  height: auto;
+  padding: 0;
   border: none;
   border-radius: 0;
   background: none;
@@ -161,17 +186,64 @@ button.yolo-sparkle-section-toggle:focus-visible {
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
+  cursor: pointer;
 }
 
-.yolo-sparkle-scope-row .yolo-simple-select__trigger:hover,
-.yolo-sparkle-scope-row .yolo-simple-select__trigger:focus,
-.yolo-sparkle-scope-row .yolo-simple-select__trigger:focus-visible,
-.yolo-sparkle-scope-row .yolo-simple-select__trigger[data-state='open'] {
+button.yolo-sparkle-scope-trigger:hover,
+button.yolo-sparkle-scope-trigger:focus,
+button.yolo-sparkle-scope-trigger:focus-visible,
+button.yolo-sparkle-scope-trigger[data-state='open'] {
   background-color: transparent;
   border: none;
   box-shadow: none;
   color: var(--text-accent);
   outline: none;
+}
+
+.yolo-sparkle-scope-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 范围 popover：chips 自动换行，不做固定列数 —— 库名长度差异很大。 */
+.yolo-sparkle-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  padding: var(--size-4-2);
+}
+
+button.yolo-sparkle-scope-chip {
+  max-width: 100%;
+  height: auto;
+  padding: var(--size-2-1) var(--size-2-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.6;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.yolo-sparkle-scope-chip:hover {
+  background-color: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+button.yolo-sparkle-scope-chip[data-selected='true'] {
+  border-color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
+  color: var(--text-accent);
+  font-weight: var(--font-medium);
 }
 
 .yolo-sparkle-scope-label,

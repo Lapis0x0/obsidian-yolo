@@ -2415,9 +2415,9 @@ export const zh: TranslationKeys = {
     },
     similarNotes: {
       title: '相似笔记',
-      refresh: '刷新',
       scope: '范围',
       allKnowledgeBases: '全部知识库',
+      someKnowledgeBases: '{count} 个知识库',
       indexedCount: '{count} 篇已索引',
       change: '更改',
       basedOn: '基于当前笔记',

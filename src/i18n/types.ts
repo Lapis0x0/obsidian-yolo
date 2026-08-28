@@ -2231,9 +2231,9 @@ export type TranslationKeys = {
     }
     similarNotes?: {
       title?: string
-      refresh?: string
       scope?: string
       allKnowledgeBases?: string
+      someKnowledgeBases?: string
       indexedCount?: string
       change?: string
       basedOn?: string
