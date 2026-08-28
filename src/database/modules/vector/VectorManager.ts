@@ -191,6 +191,22 @@ export class VectorManager {
   }
 
   /**
+   * Background similarity level for this knowledge base — what "unrelated"
+   * scores here, so a raw cosine can be read as a strength. See
+   * {@link VectorStore.getSimilarityBaseline}.
+   */
+  async getSimilarityBaseline(
+    embeddingModel: EmbeddingModelClient,
+  ): Promise<{ mean: number; std: number } | null> {
+    const release = this.enterOperation()
+    try {
+      return await this.repository.getSimilarityBaseline(embeddingModel)
+    } finally {
+      release()
+    }
+  }
+
+  /**
    * Every stored chunk vector for one file — the source side of
    * "find notes similar to this one", which pools them instead of embedding
    * the note again. See {@link VectorStore.listVectorsForPath}.

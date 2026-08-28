@@ -82,7 +82,6 @@ const SimilarNotesSection: React.FC<{
     state.status === 'ready' ? `ready:${state.path}` : state.status
 
   const notes = state.status === 'ready' ? state.notes : []
-  const bestSimilarity = notes[0]?.similarity ?? 0
 
   const body = (() => {
     switch (state.status) {
@@ -215,7 +214,6 @@ const SimilarNotesSection: React.FC<{
               <SimilarNoteCard
                 key={note.path}
                 note={note}
-                bestSimilarity={bestSimilarity}
                 sourcePath={state.status === 'ready' ? state.path : ''}
               />
             ))}

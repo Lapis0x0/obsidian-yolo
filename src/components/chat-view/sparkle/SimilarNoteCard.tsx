@@ -23,17 +23,6 @@ function folderTrail(path: string): string {
 }
 
 /**
- * Relative strength within the current result list, mapped to 0–1. The
- * absolute cosine value is never shown: it means nothing to a reader, and
- * differs per embedding model. Ranking carries the signal; this only shades
- * the bar.
- */
-function relativeStrength(similarity: number, best: number): number {
-  if (best <= 0) return 0
-  return Math.max(0, Math.min(1, similarity / best))
-}
-
-/**
  * Chunks keep the note's own blank lines, and a chunk can be ~1000
  * characters — pasted verbatim that turns one passage into a wall with gaps.
  * Runs of blank lines collapse to one; the line clamp in CSS caps the height.
@@ -43,24 +32,18 @@ function condenseSnippet(content: string): string {
 }
 
 /** At least one tick always fills — a shown passage is never "zero strength". */
-function filledTicks(similarity: number, best: number): number {
-  return Math.max(
-    1,
-    Math.round(relativeStrength(similarity, best) * SNIPPET_TICKS),
-  )
+function filledTicks(strength: number): number {
+  return Math.max(1, Math.round(strength * SNIPPET_TICKS))
 }
 
 const SimilarNoteCard: React.FC<{
   note: SimilarNote
-  bestSimilarity: number
   sourcePath: string
-}> = ({ note, bestSimilarity, sourcePath }) => {
+}> = ({ note, sourcePath }) => {
   const app = useApp()
   const plugin = usePlugin()
   const { t } = useLanguage()
   const [expanded, setExpanded] = useState(false)
-
-  const strength = relativeStrength(note.similarity, bestSimilarity)
 
   /**
    * Always opens in a new tab. The panel's results are keyed to the active
@@ -131,7 +114,9 @@ const SimilarNoteCard: React.FC<{
     >
       <div
         className="yolo-similar-note-card-strength"
-        style={{ opacity: 0.35 + strength * 0.65 }}
+        /* Absolute, not list-relative: a weak set draws every bar faint
+           instead of pinning whichever card happens to be first to full. */
+        style={{ opacity: note.strength }}
         aria-hidden="true"
       />
       <div className="yolo-similar-note-card-body">
@@ -200,9 +185,7 @@ const SimilarNoteCard: React.FC<{
                     <span
                       key={tick}
                       className="yolo-similar-note-snippet-tick"
-                      data-filled={
-                        tick < filledTicks(snippet.similarity, bestSimilarity)
-                      }
+                      data-filled={tick < filledTicks(snippet.strength)}
                     />
                   ))}
                 </div>

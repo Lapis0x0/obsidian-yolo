@@ -25,9 +25,54 @@ export const SIMILAR_NOTES_CHUNK_LIMIT = 60
  */
 export const SIMILAR_NOTES_MIN_SIMILARITY = 0
 
+/**
+ * Standard deviations above the knowledge base's background similarity at
+ * which a result reads as barely related, and as strongly related. Measured
+ * across a real vault: genuinely related notes land at 3-5σ, thin ones at
+ * ~2.5σ. Expressed in σ rather than raw cosine on purpose — cosine's scale is
+ * a property of the embedding model, σ is not.
+ */
+const STRENGTH_Z_FLOOR = 1.5
+const STRENGTH_Z_CEILING = 4
+/** Faintest a shown result is drawn: still visible, clearly not a match. */
+const STRENGTH_MIN = 0.15
+
+/**
+ * How far above background a similarity sits, in standard deviations. Without
+ * a baseline (an index too small to sample) there is nothing to normalize
+ * against, so everything reads as mid-strength rather than pretending.
+ */
+export function zScore(
+  similarity: number,
+  baseline: { mean: number; std: number } | null,
+): number {
+  if (!baseline || baseline.std <= 0) {
+    return (STRENGTH_Z_FLOOR + STRENGTH_Z_CEILING) / 2
+  }
+  return (similarity - baseline.mean) / baseline.std
+}
+
+/**
+ * A z-score as a 0-1 display strength. This is deliberately *not* normalized
+ * against the best result in the list: doing that pins the top card to full
+ * strength whatever its absolute quality, so a set of six weak matches looks
+ * exactly like a set of six strong ones.
+ */
+export function strengthFromZScore(z: number): number {
+  const span = STRENGTH_Z_CEILING - STRENGTH_Z_FLOOR
+  const clamped = Math.max(0, Math.min(1, (z - STRENGTH_Z_FLOOR) / span))
+  return STRENGTH_MIN + clamped * (1 - STRENGTH_MIN)
+}
+
+/** A chunk row carrying its baseline-normalized display strength. */
+export type ScoredChunk = RagQueryResult & { strength: number }
+
 export type SimilarNoteSnippet = {
   content: string
+  /** Raw cosine — kept for debugging; nothing user-facing reads it. */
   similarity: number
+  /** 0-1 display strength, normalized against the corpus baseline. */
+  strength: number
   startLine: number
   endLine: number
   page?: number
@@ -37,6 +82,8 @@ export type SimilarNote = {
   path: string
   /** The note's best chunk similarity — what the list is ranked by. */
   similarity: number
+  /** 0-1 display strength of that best chunk. */
+  strength: number
   snippets: SimilarNoteSnippet[]
 }
 
@@ -88,10 +135,10 @@ export function isPathIndexableByKnowledgeBase(
  * order, because inside one note reading order beats score order.
  */
 export function aggregateSimilarNotes(
-  rows: readonly RagQueryResult[],
+  rows: readonly ScoredChunk[],
   options: { maxNotes: number; maxSnippets: number },
 ): SimilarNote[] {
-  const byPath = new Map<string, RagQueryResult[]>()
+  const byPath = new Map<string, ScoredChunk[]>()
   for (const row of rows) {
     const existing = byPath.get(row.path)
     if (existing) existing.push(row)
@@ -100,22 +147,28 @@ export function aggregateSimilarNotes(
 
   const notes: SimilarNote[] = []
   for (const [path, pathRows] of byPath) {
-    const ranked = [...pathRows].sort((a, b) => b.similarity - a.similarity)
+    const ranked = [...pathRows].sort((a, b) => b.strength - a.strength)
     const snippets = ranked
       .slice(0, options.maxSnippets)
       .sort((a, b) => a.metadata.startLine - b.metadata.startLine)
       .map((row) => ({
         content: row.content,
         similarity: row.similarity,
+        strength: row.strength,
         startLine: row.metadata.startLine,
         endLine: row.metadata.endLine,
         page: row.metadata.page,
       }))
-    notes.push({ path, similarity: ranked[0].similarity, snippets })
+    notes.push({
+      path,
+      similarity: ranked[0].similarity,
+      strength: ranked[0].strength,
+      snippets,
+    })
   }
 
   return notes
-    .sort((a, b) => b.similarity - a.similarity)
+    .sort((a, b) => b.strength - a.strength)
     .slice(0, options.maxNotes)
 }
 
@@ -148,19 +201,27 @@ export async function findSimilarNotes({
     : []
   const knowledgeBases = selected.length > 0 ? selected : allKnowledgeBases
 
-  const rowGroups: RagQueryResult[][] = []
+  const rowGroups: ScoredChunk[][] = []
   // Sequential on purpose: each base loads its own in-memory vector index on
   // first query, and this panel stays open, so serializing keeps the load
   // peak to one base at a time.
   for (const kb of knowledgeBases) {
     const engine = await ragAccess.getRagEngine(kb.id)
-    const rows = await engine.findSimilarChunks({
+    const found = await engine.findSimilarChunks({
       path,
       limit: SIMILAR_NOTES_CHUNK_LIMIT,
       minSimilarity: SIMILAR_NOTES_MIN_SIMILARITY,
     })
-    if (rows === null) continue
-    rowGroups.push(rows)
+    if (found === null) continue
+    // Normalize inside the base that produced the row: each knowledge base
+    // has its own background level, and only the normalized score is
+    // comparable across them.
+    rowGroups.push(
+      found.rows.map((row) => ({
+        ...row,
+        strength: strengthFromZScore(zScore(row.similarity, found.baseline)),
+      })),
+    )
   }
 
   if (rowGroups.length === 0) {
@@ -172,7 +233,11 @@ export async function findSimilarNotes({
     }
   }
 
-  const merged = mergeRagQueryResults(rowGroups, SIMILAR_NOTES_CHUNK_LIMIT)
+  const merged = mergeRagQueryResults(
+    rowGroups,
+    SIMILAR_NOTES_CHUNK_LIMIT,
+    (row) => row.strength,
+  )
   return {
     kind: 'ready',
     notes: aggregateSimilarNotes(merged, {

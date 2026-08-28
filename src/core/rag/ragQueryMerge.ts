@@ -26,10 +26,15 @@ type RagRowForMerge = {
 export function mergeRagQueryResults<T extends RagRowForMerge>(
   rowGroups: T[][],
   limit: number,
+  /**
+   * What to rank by. Defaults to the raw similarity, which is comparable
+   * across knowledge bases only when they share an embedding model *and* a
+   * corpus — the similar-notes panel overrides it with a baseline-normalized
+   * score so bases with different background similarity can be interleaved.
+   */
+  scoreOf: (row: T) => number = (row) => row.similarity ?? 0,
 ): T[] {
-  const sorted = rowGroups
-    .flat()
-    .sort((a, b) => (b.similarity ?? 0) - (a.similarity ?? 0))
+  const sorted = rowGroups.flat().sort((a, b) => scoreOf(b) - scoreOf(a))
   const seen = new Set<string>()
   const result: T[] = []
   for (const row of sorted) {

@@ -20,6 +20,16 @@ export type RagQueryResult = VectorSelect & {
 }
 
 /**
+ * `findSimilarChunks`' output: the ranked chunks plus the knowledge base's
+ * background similarity, which is what turns a raw cosine into a statement
+ * about strength. `baseline` is `null` only for an index too small to sample.
+ */
+export type SimilarChunkResults = {
+  rows: RagQueryResult[]
+  baseline: { mean: number; std: number } | null
+}
+
+/**
  * Identifies one chunk's position for dedup purposes: PDF rows carry a page
  * number in addition to (and distinct from) their `startLine`/`endLine` —
  * two different chunks on the same PDF page share a page number but not a
@@ -304,7 +314,7 @@ export class RAGEngine {
     path: string
     limit: number
     minSimilarity: number
-  }): Promise<RagQueryResult[] | null> {
+  }): Promise<SimilarChunkResults | null> {
     if (!this.embeddingModel) {
       throw new Error('Embedding model is not set')
     }
@@ -332,7 +342,13 @@ export class RAGEngine {
         scope: { files: [], folders: [], exclude: [path] },
       },
     )
-    return dedupeRagQueryResults(rows)
+    // The corpus baseline travels with the rows: a raw cosine says nothing on
+    // its own — what "unrelated" scores differs per embedding model — so the
+    // caller needs both to tell a strong match from a merely top-ranked one.
+    const baseline = await this.vectorManager.getSimilarityBaseline(
+      this.embeddingModel,
+    )
+    return { rows: dedupeRagQueryResults(rows), baseline }
   }
 
   private async getQueryEmbedding(query: string): Promise<number[]> {
