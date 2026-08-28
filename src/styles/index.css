@@ -35,6 +35,7 @@
 
 @import './panels/continuation.css';
 @import './panels/quick-ask.css';
+@import './panels/sparkle.css';
 
 @import './selection/selection-chat.css';
 @import './selection/selection-rewrite.css';

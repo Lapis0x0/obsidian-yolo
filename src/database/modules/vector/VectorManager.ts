@@ -191,6 +191,23 @@ export class VectorManager {
   }
 
   /**
+   * Every stored chunk vector for one file — the source side of
+   * "find notes similar to this one", which pools them instead of embedding
+   * the note again. See {@link VectorStore.listVectorsForPath}.
+   */
+  async listVectorsForPath(
+    modelId: string,
+    path: string,
+  ): Promise<Float32Array[]> {
+    const release = this.enterOperation()
+    try {
+      return await this.repository.listVectorsForPath(modelId, path)
+    } finally {
+      release()
+    }
+  }
+
+  /**
    * Reconcile the index for one model namespace against the current vault and
    * configuration. Single entry point for all index writes:
    *
@@ -788,6 +805,17 @@ export class VectorManager {
   /** Distinct indexed file count for one model — the "文档" number on a
    * knowledge base card, as opposed to `getEmbeddingStats`'s chunk-level
    * `rowCount`. */
+  /** Every file path with at least one indexed chunk for this model. */
+  async listIndexedPaths(embeddingModelId: string): Promise<string[]> {
+    const release = this.enterOperation()
+    try {
+      const mtimes = await this.repository.getFileMtimes(embeddingModelId)
+      return Object.keys(mtimes)
+    } finally {
+      release()
+    }
+  }
+
   async getIndexedFileCount(embeddingModelId: string): Promise<number> {
     const release = this.enterOperation()
     try {

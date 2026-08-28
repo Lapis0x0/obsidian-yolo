@@ -2552,6 +2552,47 @@ export const en: TranslationKeys = {
     statusGenerating: 'Generating...',
   },
 
+  sparkle: {
+    settings: {
+      open: 'Sparkle settings',
+      title: 'Sparkle settings',
+      back: 'Back',
+    },
+    similarNotes: {
+      title: 'Similar notes',
+      refresh: 'Refresh',
+      scope: 'Scope',
+      allKnowledgeBases: 'All knowledge bases',
+      indexedCount: '{count} notes indexed',
+      change: 'Change',
+      basedOn: 'Based on',
+      insertLink: 'Insert link at cursor',
+      insertUnavailable: 'No active markdown editor',
+      expandSnippets: 'Show matching passages',
+      collapseSnippets: 'Hide matching passages',
+      noActiveNote: 'No note is open',
+      noActiveNoteHint: 'Open a note to see what it relates to.',
+      noEmbeddingModel: 'No embedding model configured',
+      noEmbeddingModelHint:
+        'Similar notes need an embedding model to compare notes with.',
+      configure: 'Configure',
+      notIndexed: 'This note has not been indexed yet',
+      notIndexedHint:
+        'Similar notes come from the vector index. Index this note to see what it relates to.',
+      indexThisNote: 'Index this note',
+      indexing: 'Indexing…',
+      indexFailed: 'Failed to index this note',
+      outOfScope: 'This note is outside every knowledge base',
+      outOfScopeHint:
+        'Add its folder to a knowledge base to include it in similar notes.',
+      openKnowledgeBaseSettings: 'Open knowledge base settings',
+      empty: 'No similar notes in this scope',
+      emptyHint: 'Widen the scope to search more knowledge bases.',
+      error: 'Could not load similar notes',
+      retry: 'Retry',
+    },
+  },
+
   chatMode: {
     ask: 'Ask',
     askDesc: 'Ask, refine, create',

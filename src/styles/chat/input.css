@@ -821,7 +821,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   text-align: center;
 }
 
-.yolo-chat-container--sidebar > .yolo-chat-composer-wrapper,
+/* .yolo-chat-composer-wrapper 不在此列：它现在只包 SparklePanel，而 SparklePanel
+ * 的每个子视图都自带横向内边距。再补一层就会和 .view-content 的内边距叠成双重
+ * 缩进，让灵光写作的内容比同级的 .yolo-chat-header 各窄 12px。 */
 .yolo-chat-container--sidebar > .yolo-chat-footer,
 .yolo-chat-container--sidebar > .yolo-chat-user-input-files,
 .yolo-chat-container--sidebar > .yolo-chat-input-wrapper {
@@ -989,7 +991,8 @@ button.yolo-chat-quick-access-picker-row > svg {
  * JS，这里和会话列表补位一样是 CSS 近似，只动 transform。
  */
 .yolo-chat-footer--dock-flipping {
-  transition: transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-chat-floating-actions {

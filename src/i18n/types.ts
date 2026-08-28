@@ -2222,6 +2222,45 @@ export type TranslationKeys = {
     statusGenerating?: string
   }
 
+  // Sparkle sidebar page
+  sparkle?: {
+    settings?: {
+      open?: string
+      title?: string
+      back?: string
+    }
+    similarNotes?: {
+      title?: string
+      refresh?: string
+      scope?: string
+      allKnowledgeBases?: string
+      indexedCount?: string
+      change?: string
+      basedOn?: string
+      insertLink?: string
+      insertUnavailable?: string
+      expandSnippets?: string
+      collapseSnippets?: string
+      noActiveNote?: string
+      noActiveNoteHint?: string
+      noEmbeddingModel?: string
+      noEmbeddingModelHint?: string
+      configure?: string
+      notIndexed?: string
+      notIndexedHint?: string
+      indexThisNote?: string
+      indexing?: string
+      indexFailed?: string
+      outOfScope?: string
+      outOfScopeHint?: string
+      openKnowledgeBaseSettings?: string
+      empty?: string
+      emptyHint?: string
+      error?: string
+      retry?: string
+    }
+  }
+
   // Chat Mode Select
   chatMode?: {
     ask?: string

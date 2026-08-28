@@ -180,6 +180,19 @@ export class IndexedDbVectorStore implements VectorStore {
     return results
   }
 
+  async listVectorsForPath(
+    modelId: string,
+    path: string,
+  ): Promise<Float32Array[]> {
+    const tx = this.db.transaction(CHUNKS_STORE, 'readonly')
+    const index = tx.objectStore(CHUNKS_STORE).index(MODEL_PATH_INDEX)
+    const records = (await requestResult(
+      index.getAll(compoundKeyPrefixRange([modelId, path])),
+    )) as ChunkRecord[]
+    await transactionCompletion(tx)
+    return records.map((record) => record.vector)
+  }
+
   async deleteVectorsByIds(ids: number[]): Promise<void> {
     if (ids.length === 0) return
     const tx = this.db.transaction(CHUNKS_STORE, 'readwrite')

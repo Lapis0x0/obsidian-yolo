@@ -88,6 +88,13 @@ export type VectorStore = Readonly<{
       Pick<VectorSelect, 'id' | 'path' | 'mtime' | 'content_hash' | 'metadata'>
     >
   >
+  /**
+   * Every stored chunk vector for one file, in insertion order. Vectors are
+   * L2-normalized at write time (`insertVectors`), so callers can pool them
+   * directly. Empty when the file has no rows for this model — i.e. it is
+   * not indexed in this knowledge base.
+   */
+  listVectorsForPath(modelId: string, path: string): Promise<Float32Array[]>
   deleteVectorsByIds(ids: number[]): Promise<void>
   deleteVectorsByPaths(modelId: string, paths: string[]): Promise<void>
   bumpMtimeByIds(updates: Array<{ id: number; mtime: number }>): Promise<void>

@@ -1,4 +1,4 @@
-import { Download, History, Plus } from 'lucide-react'
+import { Download, History, Plus, Settings } from 'lucide-react'
 import type {
   Dispatch,
   MutableRefObject,
@@ -32,6 +32,7 @@ import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { ChatListDropdown } from './ChatListDropdown'
 import { HermesProfileSelector } from './HermesProfileSelector'
 import { RuntimeSelector } from './RuntimeSelector'
+import type { SparkleView } from './sparkle/SparklePanel'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
@@ -40,6 +41,8 @@ export type ChatHeaderProps = {
   isSidebarPlacement: boolean
   activeView: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
+  sparkleView: SparkleView
+  onChangeSparkleView: (view: SparkleView) => void
   activeRuntimeId: ChatRuntimeId
   handleRuntimeChange: (runtimeId: ChatRuntimeId) => void
   lastCliRuntimeIdRef: MutableRefObject<CliRuntimeId>
@@ -105,6 +108,8 @@ export function ChatHeader({
   isSidebarPlacement,
   activeView,
   onChangeView,
+  sparkleView,
+  onChangeSparkleView,
   activeRuntimeId,
   handleRuntimeChange,
   lastCliRuntimeIdRef,
@@ -321,6 +326,27 @@ export function ChatHeader({
             >
               <History size={18} />
             </ChatListDropdown>
+          </div>
+        </div>
+      )}
+      {activeView === 'composer' && (
+        <div className="yolo-chat-header-right">
+          <div className="yolo-chat-header-buttons">
+            <button
+              type="button"
+              className={`clickable-icon${
+                sparkleView === 'settings' ? ' is-active' : ''
+              }`}
+              aria-label={t('sparkle.settings.open', 'Sparkle settings')}
+              aria-pressed={sparkleView === 'settings'}
+              onClick={() =>
+                onChangeSparkleView(
+                  sparkleView === 'settings' ? 'main' : 'settings',
+                )
+              }
+            >
+              <Settings size={18} />
+            </button>
           </div>
         </div>
       )}

@@ -981,8 +981,10 @@ export default class YoloPlugin extends Plugin {
 
   /** The single DI surface retrieval consumers (MCP `vault_search`, `bash
    * search`, `$db.search`, agent tool context) use to reach knowledge bases —
-   * see `core/rag/ragAccess.ts`. */
-  private getRagAccess(): RagKnowledgeAccess {
+   * see `core/rag/ragAccess.ts`. Public because the Sparkle panel's
+   * similar-notes list is a retrieval consumer too — it reaches knowledge
+   * bases through the same surface rather than the coordinator directly. */
+  getRagAccess(): RagKnowledgeAccess {
     const coordinator = this.getRagCoordinator()
     return {
       listKnowledgeBases: () => coordinator.listKnowledgeBases(),

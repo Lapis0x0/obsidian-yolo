@@ -1,26 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
-import { useSettings } from '../../contexts/settings-context'
+import { useLanguage } from '../../../contexts/language-context'
+import { useSettings } from '../../../contexts/settings-context'
 import {
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type TabCompletionTrigger,
-} from '../../settings/schema/setting.types'
-import type { YoloSettings } from '../../settings/schema/setting.types'
-import { getModelDisplayName } from '../../utils/model-id-utils'
-import { ObsidianButton } from '../common/ObsidianButton'
-import { ObsidianDropdown } from '../common/ObsidianDropdown'
-import { ObsidianTextArea } from '../common/ObsidianTextArea'
-import { ObsidianTextInput } from '../common/ObsidianTextInput'
-import { ObsidianToggle } from '../common/ObsidianToggle'
-import { ReasoningPanel } from '../common/ReasoningPanel'
-import { SimpleSelect } from '../common/SimpleSelect'
-import { ContinuationQuickActionsSettings } from '../settings/ContinuationQuickActionsSettings'
-import { SelectionChatActionsSettings } from '../settings/SelectionChatActionsSettings'
+} from '../../../settings/schema/setting.types'
+import type { YoloSettings } from '../../../settings/schema/setting.types'
+import { getModelDisplayName } from '../../../utils/model-id-utils'
+import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
+import { ObsidianTextArea } from '../../common/ObsidianTextArea'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { ReasoningPanel } from '../../common/ReasoningPanel'
+import { SimpleSelect } from '../../common/SimpleSelect'
+import { ContinuationQuickActionsSettings } from '../../settings/ContinuationQuickActionsSettings'
+import { SelectionChatActionsSettings } from '../../settings/SelectionChatActionsSettings'
 
-type ComposerProps = {
+type SparkleSettingsProps = {
   onNavigateChat?: () => void
 }
 
@@ -30,7 +30,7 @@ type NumberInputState = {
   [key: string]: string
 }
 
-const Composer: React.FC<ComposerProps> = (_props) => {
+const SparkleSettings: React.FC<SparkleSettingsProps> = (_props) => {
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
   const composerRef = useRef<HTMLDivElement>(null)
@@ -1158,4 +1158,4 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   )
 }
 
-export default Composer
+export default SparkleSettings
