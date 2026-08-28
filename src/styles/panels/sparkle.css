@@ -22,21 +22,93 @@
   min-height: 0;
   height: 100%;
   overflow-y: auto;
+  /* 视图入场是从边缘滑进来的，横向溢出必须裁掉，否则侧栏会在这 220ms 里
+     多出一条横向滚动条。 */
+  overflow-x: hidden;
 }
 
-/* 设置视图返回行 ------------------------------------------------------- */
-
-.yolo-sparkle-settings-header {
+/*
+ * 主视图 ⇄ 设置视图的切换。这层壳存在的唯一理由是承载入场位移，所以它把
+ * flex 语义原样透传下去（设置页的 .yolo-composer-container 靠 flex: 1 和
+ * height: 100% 撑满并管自己的滚动，中间插一层不透传就会塌）。
+ *
+ * 只做位移不做淡入：这是 drill-in，不是内容替换。24px 在 ~350px 宽的侧栏里
+ * 足够读出方向，又不会让内容像是从很远的地方飞进来。
+ * reduced-motion 由 tokens/motion.css 的全局兜底接管。
+ */
+.yolo-sparkle-view {
   display: flex;
-  align-items: center;
-  gap: var(--size-4-1);
-  padding: var(--size-4-2) var(--size-4-3) 0;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  animation: yolo-sparkle-view-enter-forward var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 
-.yolo-sparkle-settings-title {
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-semibold);
-  color: var(--text-normal);
+.yolo-sparkle-view[data-view='main'] {
+  animation-name: yolo-sparkle-view-enter-back;
+}
+
+@keyframes yolo-sparkle-view-enter-forward {
+  from {
+    transform: translateX(24px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes yolo-sparkle-view-enter-back {
+  from {
+    transform: translateX(-24px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* 设置开关（chat header 里的齿轮 ⇄ 返回） ------------------------------ */
+
+/*
+ * 同一个按钮既进设置也出设置，所以图标要把当前状态说清楚：齿轮与返回箭头
+ * 叠在同一个 grid 格子里交接，一个顺时针旋出、另一个逆时针旋入，读起来像
+ * 一个图形形变而不是两次闪现。
+ *
+ * 承载状态的是图标外面这层槽位，不是 svg 本身：Obsidian `app.css` 里
+ * `.clickable-icon svg` / `:hover svg` / `:active svg` / `.is-active svg`
+ * 四条规则都在按元素级设 svg 的 opacity——那是图标亮度与按压反馈的归属。
+ * 直接给 svg 写 opacity 会跟它逐条对抗，实测抢一半的后果是隐藏的那个图标
+ * 在 hover 时浮出来，变成「齿轮里套着另一个图标」。槽位是本插件自己的元素，
+ * 宿主不碰，opacity 与 transform 两路都能干净地做完整交接。
+ */
+
+.yolo-sparkle-settings-toggle-icon {
+  display: grid;
+  place-items: center;
+}
+
+.yolo-sparkle-settings-toggle-gear,
+.yolo-sparkle-settings-toggle-back {
+  grid-area: 1 / 1;
+  display: flex;
+  transition:
+    opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in),
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-sparkle-settings-toggle-back {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+}
+
+.is-open > .yolo-sparkle-settings-toggle-gear {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.6);
+}
+
+.is-open > .yolo-sparkle-settings-toggle-back {
+  opacity: 1;
+  transform: none;
 }
 
 /* Section 壳 ---------------------------------------------------------- */
@@ -246,40 +318,36 @@ button.yolo-sparkle-scope-chip[data-selected='true'] {
   font-weight: var(--font-medium);
 }
 
-.yolo-sparkle-scope-label,
-.yolo-sparkle-scope-separator {
+.yolo-sparkle-scope-label {
   flex: 0 0 auto;
 }
 
-.yolo-sparkle-scope-meta {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-button.yolo-sparkle-scope-link {
+/* popover 底部的管理入口：整宽一行、与 chips 之间一条分隔线，读作「这组
+   选项之外的动作」而不是又一个 chip。 */
+button.yolo-sparkle-scope-manage {
   display: block;
-  flex: 0 0 auto;
+  width: 100%;
   height: auto;
-  padding: 0;
+  padding: var(--size-2-2) var(--size-4-2);
+  border: none;
+  border-top: 1px solid var(--background-modifier-border);
+  border-radius: 0;
   background: none;
   background-color: transparent;
-  border: none;
-  border-radius: 0;
   box-shadow: none;
-  color: var(--text-accent);
+  color: var(--text-muted);
   font-size: var(--font-ui-smaller);
+  text-align: left;
   cursor: pointer;
 }
 
-button.yolo-sparkle-scope-link:hover,
-button.yolo-sparkle-scope-link:focus,
-button.yolo-sparkle-scope-link:focus-visible {
-  background-color: transparent;
+button.yolo-sparkle-scope-manage:hover,
+button.yolo-sparkle-scope-manage:focus,
+button.yolo-sparkle-scope-manage:focus-visible {
+  background-color: var(--background-modifier-hover);
   box-shadow: none;
+  color: var(--text-normal);
   outline: none;
-  text-decoration: underline;
 }
 
 .yolo-sparkle-source-row {

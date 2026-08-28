@@ -199,11 +199,18 @@ const SimilarNotesSection: React.FC<{
                   'No similar notes in this scope',
                 )}
               </div>
+              {/* 语料规模只在这里有落点：常态下 575 和 432 不改变用户的下
+                  一步，空手而归时它才回答「是没找到，还是根本没多少可找」。 */}
               <div className="yolo-sparkle-empty-body">
-                {t(
-                  'sparkle.similarNotes.emptyHint',
-                  'Widen the scope to search more knowledge bases.',
-                )}
+                {indexedCount === null
+                  ? t(
+                      'sparkle.similarNotes.emptyHint',
+                      'Widen the scope to search more knowledge bases.',
+                    )
+                  : t(
+                      'sparkle.similarNotes.emptyHintSearched',
+                      'Searched {count} indexed notes. Widen the scope to search more knowledge bases.',
+                    ).replace('{count}', String(indexedCount))}
               </div>
             </div>
           )
@@ -239,7 +246,9 @@ const SimilarNotesSection: React.FC<{
           <span className="yolo-sparkle-section-title">
             {t('sparkle.similarNotes.title', 'Similar notes')}
           </span>
-          {state.status === 'ready' && notes.length > 0 ? (
+          {/* 只在折叠时报数：展开时下面就是这几张卡片，标题上的数字是复读；
+              折叠后它是「里面还有没有东西」的唯一信息来源。 */}
+          {collapsed && state.status === 'ready' && notes.length > 0 ? (
             <span className="yolo-sparkle-section-count">{notes.length}</span>
           ) : null}
         </button>
@@ -254,26 +263,8 @@ const SimilarNotesSection: React.FC<{
               knowledgeBases={settings.knowledgeBases}
               selectedIds={scopeKbIds}
               onChange={handleScopeChange}
+              onManageKnowledgeBases={onOpenKnowledgeBaseSettings}
             />
-            {indexedCount === null ? null : (
-              <>
-                <span className="yolo-sparkle-scope-separator">·</span>
-                <span className="yolo-sparkle-scope-meta">
-                  {t(
-                    'sparkle.similarNotes.indexedCount',
-                    '{count} notes indexed',
-                  ).replace('{count}', String(indexedCount))}
-                </span>
-              </>
-            )}
-            <span className="yolo-sparkle-scope-separator">·</span>
-            <button
-              type="button"
-              className="yolo-sparkle-scope-link"
-              onClick={onOpenKnowledgeBaseSettings}
-            >
-              {t('sparkle.similarNotes.change', 'Change')}
-            </button>
           </div>
           {state.status === 'ready' ? (
             <div className="yolo-sparkle-source-row">

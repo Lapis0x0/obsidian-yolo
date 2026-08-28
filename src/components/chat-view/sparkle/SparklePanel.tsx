@@ -1,9 +1,7 @@
-import { ArrowLeft } from 'lucide-react'
 import { Scope } from 'obsidian'
 import React, { useEffect, useRef, useState } from 'react'
 
 import { useApp } from '../../../contexts/app-context'
-import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { openPluginSettingsTab } from '../../../utils/openPluginSettingsTab'
 
@@ -24,7 +22,6 @@ const SparklePanel: React.FC<{
 }> = ({ view, onBack, onNavigateChat }) => {
   const app = useApp()
   const plugin = usePlugin()
-  const { t } = useLanguage()
   const containerRef = useRef<HTMLDivElement>(null)
   const [visible, setVisible] = useState(false)
 
@@ -60,31 +57,26 @@ const SparklePanel: React.FC<{
 
   return (
     <div className="yolo-sparkle-panel" ref={containerRef}>
-      {view === 'settings' ? (
-        <>
-          <div className="yolo-sparkle-settings-header">
-            <button
-              type="button"
-              className="clickable-icon"
-              aria-label={t('sparkle.settings.back', 'Back')}
-              onClick={onBack}
-            >
-              <ArrowLeft size={16} />
-            </button>
-            <span className="yolo-sparkle-settings-title">
-              {t('sparkle.settings.title', 'Sparkle settings')}
-            </span>
-          </div>
+      {/* 设置是主视图的下一层，不是并列的另一个页签——头部图标已经用
+          齿轮 ⇄ ← 这么说了，正文必须说同一件事。所以过渡用位移语汇：从右边
+          推进来是「进下一层」，从左边推进来是「退回上一层」。key 换树，
+          入场动画随之重放。
+
+          位移之外不碰 opacity：淡入是「内容变了」的语汇，归相似笔记自己的
+          .yolo-sparkle-section-body（换笔记时重放）。两层各说各的事，同时
+          发生也不会叠成一次读不懂的双重淡入。 */}
+      <div className="yolo-sparkle-view" key={view} data-view={view}>
+        {view === 'settings' ? (
           <SparkleSettings onNavigateChat={onNavigateChat} />
-        </>
-      ) : (
-        <SimilarNotesSection
-          visible={visible}
-          onOpenKnowledgeBaseSettings={() =>
-            openPluginSettingsTab(app, plugin, 'knowledge')
-          }
-        />
-      )}
+        ) : (
+          <SimilarNotesSection
+            visible={visible}
+            onOpenKnowledgeBaseSettings={() =>
+              openPluginSettingsTab(app, plugin, 'knowledge')
+            }
+          />
+        )}
+      </div>
     </div>
   )
 }

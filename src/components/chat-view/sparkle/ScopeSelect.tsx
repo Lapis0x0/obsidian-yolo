@@ -25,7 +25,8 @@ const ScopeSelect: React.FC<{
   /** `undefined` means every base. Never an empty array. */
   selectedIds?: string[]
   onChange: (selectedIds: string[] | undefined) => void
-}> = ({ knowledgeBases, selectedIds, onChange }) => {
+  onManageKnowledgeBases: () => void
+}> = ({ knowledgeBases, selectedIds, onChange, onManageKnowledgeBases }) => {
   const { t } = useLanguage()
   const [isOpen, setIsOpen] = useState(false)
   // The open popover edits a draft, not the setting. Committing per chip
@@ -137,6 +138,23 @@ const ScopeSelect: React.FC<{
             </button>
           ))}
         </div>
+        {/* 管理知识库是低频维护动作，归属在范围这里而不是常驻在范围行上：
+            紧挨着范围显示的第二个入口会被读成「改范围」，而改范围正是上面
+            这排 chips 做的事。走 handleOpenChange 关闭，顺带提交草稿——用户
+            可能刚调完范围才想起要去加内容。 */}
+        <button
+          type="button"
+          className="yolo-sparkle-scope-manage"
+          onClick={() => {
+            handleOpenChange(false)
+            onManageKnowledgeBases()
+          }}
+        >
+          {t(
+            'sparkle.similarNotes.manageKnowledgeBases',
+            'Manage knowledge bases…',
+          )}
+        </button>
       </YoloDropdownContent>
     </DropdownMenu.Root>
   )

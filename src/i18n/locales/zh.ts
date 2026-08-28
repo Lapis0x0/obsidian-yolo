@@ -2410,7 +2410,6 @@ export const zh: TranslationKeys = {
   sparkle: {
     settings: {
       open: '灵光写作设置',
-      title: '灵光写作设置',
       back: '返回',
     },
     similarNotes: {
@@ -2418,8 +2417,7 @@ export const zh: TranslationKeys = {
       scope: '范围',
       allKnowledgeBases: '全部知识库',
       someKnowledgeBases: '{count} 个知识库',
-      indexedCount: '{count} 篇已索引',
-      change: '更改',
+      manageKnowledgeBases: '管理知识库…',
       basedOn: '基于当前笔记',
       insertLink: '在光标处插入链接',
       insertUnavailable: '没有正在编辑的笔记',
@@ -2440,6 +2438,8 @@ export const zh: TranslationKeys = {
       openKnowledgeBaseSettings: '前往知识库设置',
       empty: '当前范围内没有相似笔记',
       emptyHint: '可以放宽检索范围，检索更多知识库。',
+      emptyHintSearched:
+        '已在 {count} 篇已索引笔记中查找。可以放宽检索范围，检索更多知识库。',
       error: '相似笔记加载失败',
       retry: '重试',
     },

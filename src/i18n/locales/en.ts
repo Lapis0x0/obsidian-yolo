@@ -2555,7 +2555,6 @@ export const en: TranslationKeys = {
   sparkle: {
     settings: {
       open: 'Sparkle settings',
-      title: 'Sparkle settings',
       back: 'Back',
     },
     similarNotes: {
@@ -2563,8 +2562,7 @@ export const en: TranslationKeys = {
       scope: 'Scope',
       allKnowledgeBases: 'All knowledge bases',
       someKnowledgeBases: '{count} knowledge bases',
-      indexedCount: '{count} notes indexed',
-      change: 'Change',
+      manageKnowledgeBases: 'Manage knowledge bases…',
       basedOn: 'Based on',
       insertLink: 'Insert link at cursor',
       insertUnavailable: 'No active markdown editor',
@@ -2588,6 +2586,8 @@ export const en: TranslationKeys = {
       openKnowledgeBaseSettings: 'Open knowledge base settings',
       empty: 'No similar notes in this scope',
       emptyHint: 'Widen the scope to search more knowledge bases.',
+      emptyHintSearched:
+        'Searched {count} indexed notes. Widen the scope to search more knowledge bases.',
       error: 'Could not load similar notes',
       retry: 'Retry',
     },

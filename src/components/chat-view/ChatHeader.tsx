@@ -1,4 +1,4 @@
-import { Download, History, Plus, Settings } from 'lucide-react'
+import { ArrowLeft, Download, History, Plus, Settings } from 'lucide-react'
 import type {
   Dispatch,
   MutableRefObject,
@@ -337,7 +337,11 @@ export function ChatHeader({
               className={`clickable-icon${
                 sparkleView === 'settings' ? ' is-active' : ''
               }`}
-              aria-label={t('sparkle.settings.open', 'Sparkle settings')}
+              aria-label={
+                sparkleView === 'settings'
+                  ? t('sparkle.settings.back', 'Back')
+                  : t('sparkle.settings.open', 'Sparkle settings')
+              }
               aria-pressed={sparkleView === 'settings'}
               onClick={() =>
                 onChangeSparkleView(
@@ -345,7 +349,22 @@ export function ChatHeader({
                 )
               }
             >
-              <Settings size={18} />
+              {/* 齿轮与返回箭头同格堆叠、互相交接：这个按钮既是设置入口也是
+                  设置出口，图标自己交代当前按下去会发生什么，设置视图因此
+                  不再需要一行返回栏。 */}
+              <span
+                className={`yolo-sparkle-settings-toggle-icon${
+                  sparkleView === 'settings' ? ' is-open' : ''
+                }`}
+                aria-hidden="true"
+              >
+                <span className="yolo-sparkle-settings-toggle-gear">
+                  <Settings size={18} />
+                </span>
+                <span className="yolo-sparkle-settings-toggle-back">
+                  <ArrowLeft size={18} />
+                </span>
+              </span>
             </button>
           </div>
         </div>

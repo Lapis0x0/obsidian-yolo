@@ -2226,7 +2226,6 @@ export type TranslationKeys = {
   sparkle?: {
     settings?: {
       open?: string
-      title?: string
       back?: string
     }
     similarNotes?: {
@@ -2234,8 +2233,7 @@ export type TranslationKeys = {
       scope?: string
       allKnowledgeBases?: string
       someKnowledgeBases?: string
-      indexedCount?: string
-      change?: string
+      manageKnowledgeBases?: string
       basedOn?: string
       insertLink?: string
       insertUnavailable?: string
@@ -2256,6 +2254,7 @@ export type TranslationKeys = {
       openKnowledgeBaseSettings?: string
       empty?: string
       emptyHint?: string
+      emptyHintSearched?: string
       error?: string
       retry?: string
     }
