@@ -219,12 +219,20 @@ export function runtimeComponentReleaseUrl(
   return `https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/${bakedVersion}/${descriptor.entry}`
 }
 
+/**
+ * The mirror is content-addressed, unlike the two GitHub fallbacks below.
+ * Runtime component bytes change far more rarely than Core does — naming the
+ * mirror path after the Core version that happens to ship them made every
+ * Core release store another byte-identical copy (the embedding engine's WASM
+ * alone is ~13 MB), forever, since nothing prunes superseded versions. The
+ * registry already declares the sha256, so the bytes can name themselves.
+ * The fallbacks can't: `entry.js` is only reachable through a Git ref and an
+ * asset only through a Release attachment, both named by Core tag.
+ */
 export function runtimeComponentMirrorUrl(
   descriptor: RuntimeComponentDescriptor,
-  bakedVersion: string,
 ): string {
-  assertRuntimeComponentVersion(bakedVersion)
-  return `https://updates.yoloapp.dev/runtime-components/${bakedVersion}/${descriptor.id}/entry.js`
+  return `https://updates.yoloapp.dev/runtime-components/sha256/${descriptor.sha256}/entry.js`
 }
 
 export function resolveRuntimeComponentArtifactSources(
@@ -232,7 +240,7 @@ export function resolveRuntimeComponentArtifactSources(
   bakedVersion: string,
 ): readonly string[] {
   return Object.freeze([
-    runtimeComponentMirrorUrl(descriptor, bakedVersion),
+    runtimeComponentMirrorUrl(descriptor),
     runtimeComponentReleaseUrl(descriptor, bakedVersion),
   ])
 }
@@ -256,13 +264,11 @@ export function runtimeComponentAssetReleaseUrl(
   return `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${bakedVersion}/${descriptor.id}-${asset.name}`
 }
 
+/** Content-addressed for the same reason as `runtimeComponentMirrorUrl`. */
 export function runtimeComponentAssetMirrorUrl(
-  descriptor: RuntimeComponentDescriptor,
   asset: RuntimeComponentAssetDescriptor,
-  bakedVersion: string,
 ): string {
-  assertRuntimeComponentVersion(bakedVersion)
-  return `https://updates.yoloapp.dev/runtime-components/${bakedVersion}/${descriptor.id}/assets/${asset.name}`
+  return `https://updates.yoloapp.dev/runtime-components/sha256/${asset.sha256}/${asset.name}`
 }
 
 export function resolveRuntimeComponentAssetSources(
@@ -271,7 +277,7 @@ export function resolveRuntimeComponentAssetSources(
   bakedVersion: string,
 ): readonly string[] {
   return Object.freeze([
-    runtimeComponentAssetMirrorUrl(descriptor, asset, bakedVersion),
+    runtimeComponentAssetMirrorUrl(asset),
     runtimeComponentAssetReleaseUrl(descriptor, asset, bakedVersion),
   ])
 }

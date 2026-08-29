@@ -168,7 +168,7 @@ test('loads runtime components only from the selected Core tag', async () => {
 
   assert.equal(
     artifact.mirrorPath,
-    'runtime-components/1.7.0/tokenizer/entry.js',
+    `runtime-components/sha256/${sha256}/entry.js`,
   )
   assert.equal(artifact.sha256, sha256)
   assert.deepEqual(artifact.bytes, bytes)
@@ -306,12 +306,12 @@ test('mirrors a schema-v2 registry component together with its declared assets',
   assert.equal(artifacts[0].name, 'entry.js')
   assert.equal(
     artifacts[0].mirrorPath,
-    'runtime-components/1.8.0/embedding-engine/entry.js',
+    `runtime-components/sha256/${entrySha256}/entry.js`,
   )
   assert.equal(artifacts[1].name, 'ort-wasm-simd-threaded.mjs')
   assert.equal(
     artifacts[1].mirrorPath,
-    'runtime-components/1.8.0/embedding-engine/assets/ort-wasm-simd-threaded.mjs',
+    `runtime-components/sha256/${assetSha256}/ort-wasm-simd-threaded.mjs`,
   )
   assert.equal(
     artifacts[1].canonicalUrl,

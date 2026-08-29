@@ -61,8 +61,7 @@ function useEmptyStateDockFlip(
 
     if (depChanged) {
       // Drop an in-flight invert so Last is the new flex rest position.
-      el.style.transition = 'none'
-      el.style.transform = ''
+      el.setCssProps({ transition: 'none', transform: '' })
       el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
     }
 
@@ -73,7 +72,7 @@ function useEmptyStateDockFlip(
     if (depChanged && firstTop != null && !reduceMotion) {
       const delta = firstTop - lastTop
       if (Math.abs(delta) >= DOCK_FLIP_EPSILON_PX) {
-        el.style.transform = `translateY(${delta}px)`
+        el.setCssProps({ transform: `translateY(${delta}px)` })
         pendingPlayRef.current = true
       }
     }
@@ -83,8 +82,7 @@ function useEmptyStateDockFlip(
     }
     return () => {
       pendingPlayRef.current = false
-      el.style.transition = 'none'
-      el.style.transform = ''
+      el.setCssProps({ transition: 'none', transform: '' })
       el.classList.remove(FOOTER_DOCK_FLIPPING_CLASS)
       // Do not restore prevTopRef: it already holds Last, which is First for
       // the reverse empty↔docked flip. React 18 StrictMode only replays mount.
@@ -102,8 +100,7 @@ function useEmptyStateDockFlip(
     }
 
     el.classList.add(FOOTER_DOCK_FLIPPING_CLASS)
-    el.style.transition = ''
-    el.style.transform = ''
+    el.setCssProps({ transition: '', transform: '' })
 
     const onEnd = (event: TransitionEvent) => {
       if (event.target !== el || event.propertyName !== 'transform') {

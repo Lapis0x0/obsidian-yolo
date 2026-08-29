@@ -1,8 +1,8 @@
 # YOLO releases
 
 GitHub Release is the immutable archive. The signed current Feed and the
-Cloudflare Pages mirror are generated after publication; never edit or upload
-them by hand.
+Cloudflare R2 mirror behind `updates.yoloapp.dev` are generated after
+publication; never edit or upload them by hand.
 
 ## Core
 
@@ -49,10 +49,10 @@ Required Actions secrets:
 
 `download-stats.yml` publishes the combined GitHub Release and Cloudflare
 mirror request total to the `download-metrics` branch once per day. In addition
-to `Account Cloudflare Pages Edit`, `CLOUDFLARE_API_TOKEN` needs `Zone Analytics
-Read` limited to `yoloapp.dev`.
+to `Account Workers R2 Storage Edit`, `CLOUDFLARE_API_TOKEN` needs `Zone
+Analytics Read` limited to `yoloapp.dev`.
 
-Before the first run, create the Direct Upload Pages project `yolo-updates`,
-bind `updates.yoloapp.dev`, and add the two Cloudflare secrets. Then run
-`distribution-publish.yml` once and verify its summary before releasing the
-first Core version that consumes the signed Feed.
+Before the first run, create the R2 bucket `yolo-updates`, bind
+`updates.yoloapp.dev` to it as a custom domain, and add the two Cloudflare
+secrets. Then run `distribution-publish.yml` once and verify its summary before
+releasing the first Core version that consumes the signed Feed.

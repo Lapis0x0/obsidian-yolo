@@ -586,7 +586,7 @@ export async function describeRuntimeComponentArtifacts(options) {
     const bytes = await downloadUrl(canonicalUrl, token, fetchImpl)
     const artifact = {
       name: 'entry.js',
-      mirrorPath: `runtime-components/${version}/${descriptor.id}/entry.js`,
+      mirrorPath: `runtime-components/sha256/${descriptor.sha256}/entry.js`,
       canonicalUrl,
       byteSize: descriptor.byteSize,
       sha256: descriptor.sha256,
@@ -609,7 +609,7 @@ export async function describeRuntimeComponentArtifacts(options) {
       const assetBytes = await readFile(assetSourcePath)
       const assetArtifact = {
         name: asset.name,
-        mirrorPath: `runtime-components/${version}/${descriptor.id}/assets/${asset.name}`,
+        mirrorPath: `runtime-components/sha256/${asset.sha256}/${asset.name}`,
         canonicalUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(version)}/${encodeURIComponent(`${descriptor.id}-${asset.name}`)}`,
         byteSize: asset.byteSize,
         sha256: asset.sha256,

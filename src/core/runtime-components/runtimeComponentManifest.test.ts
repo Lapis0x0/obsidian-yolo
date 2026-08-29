@@ -159,13 +159,23 @@ describe('runtime component manifest', () => {
     ).toThrow('numeric Git tag')
   })
 
-  it('prefers the latest-only Cloudflare mirror and preserves Git Raw fallback', () => {
+  it('prefers the content-addressed mirror and preserves Git Raw fallback', () => {
     expect(
       resolveRuntimeComponentArtifactSources(descriptor as never, '1.6.1.4'),
     ).toEqual([
-      'https://updates.yoloapp.dev/runtime-components/1.6.1.4/tokenizer/entry.js',
+      `https://updates.yoloapp.dev/runtime-components/sha256/${'a'.repeat(64)}/entry.js`,
       'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/1.6.1.4/runtime-components/tokenizer/dist/entry.js',
     ])
+  })
+
+  it('keeps one mirror path for bytes shipped by several Core versions', () => {
+    // The whole point of addressing the mirror by sha256: a component that
+    // did not change between two Core releases must not be stored twice.
+    expect(
+      resolveRuntimeComponentArtifactSources(descriptor as never, '1.6.1.4')[0],
+    ).toBe(
+      resolveRuntimeComponentArtifactSources(descriptor as never, '1.7.0')[0],
+    )
   })
 
   it('falls back to a GitHub Release attachment for an asset, not Git Raw', () => {
@@ -194,14 +204,8 @@ describe('runtime component manifest', () => {
     ).toBe(
       'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.4/embedding-engine-ort-wasm-simd-threaded.wasm',
     )
-    expect(
-      runtimeComponentAssetMirrorUrl(
-        embeddingEngine as never,
-        asset,
-        '1.6.1.4',
-      ),
-    ).toBe(
-      'https://updates.yoloapp.dev/runtime-components/1.6.1.4/embedding-engine/assets/ort-wasm-simd-threaded.wasm',
+    expect(runtimeComponentAssetMirrorUrl(asset)).toBe(
+      `https://updates.yoloapp.dev/runtime-components/sha256/${'b'.repeat(64)}/ort-wasm-simd-threaded.wasm`,
     )
     expect(
       resolveRuntimeComponentAssetSources(
@@ -210,7 +214,7 @@ describe('runtime component manifest', () => {
         '1.6.1.4',
       ),
     ).toEqual([
-      'https://updates.yoloapp.dev/runtime-components/1.6.1.4/embedding-engine/assets/ort-wasm-simd-threaded.wasm',
+      `https://updates.yoloapp.dev/runtime-components/sha256/${'b'.repeat(64)}/ort-wasm-simd-threaded.wasm`,
       'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.4/embedding-engine-ort-wasm-simd-threaded.wasm',
     ])
   })
