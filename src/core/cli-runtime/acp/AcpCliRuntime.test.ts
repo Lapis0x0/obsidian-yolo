@@ -412,6 +412,55 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
+  it("takes the approval buttons away on the click, not on the agent's next event", async () => {
+    const agent = new FakeAcpAgent()
+    wireServerRequestReplies(agent)
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    agent.on('session/prompt', async (message) => {
+      const params = message.params as { sessionId: string }
+      // The agent reports nothing about the tool afterwards — nothing else
+      // would clear the pending card if the runtime did not republish it.
+      await agent.request('session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call-1',
+          title: 'Run npm test',
+          kind: 'execute',
+        },
+        options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }],
+      })
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+    const turnPromise = runtime.sendTurn({ content: 'run the tests' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    await runtime.respondApproval({
+      requestId: 'call-1',
+      decision: 'approve_once',
+    })
+    const onClick = [...events]
+
+    const cardStatuses = onClick.flatMap((event) =>
+      event.type === 'message_upsert' &&
+      event.message.role === 'tool' &&
+      event.message.id === 'acp-result-call-1'
+        ? [event.message.toolCalls[0].response.status]
+        : [],
+    )
+    expect(cardStatuses).toEqual([
+      ToolCallResponseStatus.PendingApproval,
+      ToolCallResponseStatus.Running,
+    ])
+    expect(onClick.at(-1)).toEqual({ type: 'run_state', state: 'running' })
+
+    await turnPromise
+    await runtime.dispose()
+  })
+
   it('resolves pending approvals as cancelled and interrupts the agent on cancel()', async () => {
     const agent = new FakeAcpAgent()
     wireServerRequestReplies(agent)

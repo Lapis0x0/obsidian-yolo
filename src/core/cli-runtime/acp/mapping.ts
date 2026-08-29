@@ -149,6 +149,19 @@ const buildAcpEditSummary = (
   }
 }
 
+/**
+ * The tool card's identity — republishing this id with a different response
+ * replaces the card in place rather than adding a second one.
+ */
+export const buildAcpToolMessage = (
+  request: ToolCallRequest,
+  response: ToolCallResponse,
+): ChatToolMessage => ({
+  role: 'tool',
+  id: `acp-result-${request.id}`,
+  toolCalls: [{ request, response }],
+})
+
 const toolPair = ({
   request,
   response,
@@ -163,11 +176,7 @@ const toolPair = ({
     toolCallRequests: [request],
     metadata: { generationState: 'completed' },
   },
-  {
-    role: 'tool',
-    id: `acp-result-${request.id}`,
-    toolCalls: [{ request, response }],
-  },
+  buildAcpToolMessage(request, response),
 ]
 
 export type AcpToolCallState = {

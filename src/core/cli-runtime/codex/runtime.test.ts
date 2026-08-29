@@ -899,6 +899,96 @@ describe('CodexCliRuntime', () => {
     ).toHaveLength(1)
   })
 
+  it('takes the approval buttons away on the click, not on the next event', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'turn/started',
+      params: { threadId: 'thread-1', turn: { id: 'turn-1' } },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        itemId: 'item-1',
+        command: 'echo hi',
+      },
+    })
+
+    // Codex acknowledges nothing on the answer — without a republished card
+    // the footer would survive until the command's own item arrives.
+    await runtime.respondApproval({
+      requestId: 'item-1',
+      decision: 'approve_once',
+    })
+
+    const cardStatuses = events.flatMap((event) =>
+      event.type === 'message_upsert' && event.message.role === 'tool'
+        ? [event.message.toolCalls[0].response.status]
+        : [],
+    )
+    expect(cardStatuses).toEqual([
+      ToolCallResponseStatus.PendingApproval,
+      ToolCallResponseStatus.Running,
+    ])
+    expect(events.at(-1)).toEqual({ type: 'run_state', state: 'running' })
+    await runtime.dispose()
+  })
+
+  it('marks a rejected approval card rejected right away', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'turn/started',
+      params: { threadId: 'thread-1', turn: { id: 'turn-1' } },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      id: 8,
+      method: 'item/fileChange/requestApproval',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        itemId: 'item-2',
+        changes: {},
+      },
+    })
+
+    await runtime.respondApproval({
+      requestId: 'item-2',
+      decision: 'reject',
+    })
+
+    const lastCard = events
+      .flatMap((event) =>
+        event.type === 'message_upsert' && event.message.role === 'tool'
+          ? [event.message]
+          : [],
+      )
+      .at(-1)
+    expect(lastCard?.toolCalls[0].response.status).toBe(
+      ToolCallResponseStatus.Rejected,
+    )
+    await runtime.dispose()
+  })
+
   it('starts a native thread without discovering external sessions', async () => {
     const process = new RpcFakeProcess()
     const runtime = new CodexCliRuntime({

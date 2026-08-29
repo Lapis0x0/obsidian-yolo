@@ -219,6 +219,19 @@ const buildFileChangeEditSummary = (
   }
 }
 
+/**
+ * The tool card's identity — republishing this id with a different response
+ * replaces the card in place rather than adding a second one.
+ */
+export const buildCodexToolMessage = (
+  request: ToolCallRequest,
+  response: ToolCallResponse,
+): ChatToolMessage => ({
+  role: 'tool',
+  id: `codex-result-${request.id}`,
+  toolCalls: [{ request, response }],
+})
+
 const toolPair = ({
   request,
   response,
@@ -233,11 +246,7 @@ const toolPair = ({
     toolCallRequests: [request],
     metadata: { generationState: 'completed' },
   },
-  {
-    role: 'tool',
-    id: `codex-result-${request.id}`,
-    toolCalls: [{ request, response }],
-  },
+  buildCodexToolMessage(request, response),
 ]
 
 /**

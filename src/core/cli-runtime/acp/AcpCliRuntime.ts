@@ -5,6 +5,10 @@ import type {
 } from '@agentclientprotocol/sdk'
 
 import type { ChatMessage } from '../../../types/chat'
+import {
+  type ToolCallRequest,
+  ToolCallResponseStatus,
+} from '../../../types/tool-call.types'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -25,6 +29,7 @@ import type {
 import { AcpHost, type AcpHostOptions, type AcpHostResolver } from './host'
 import {
   AcpSessionAggregator,
+  buildAcpToolMessage,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModelState,
@@ -73,6 +78,8 @@ export type AcpCliRuntimeOptions = Readonly<{
 type PendingApproval = {
   options: readonly PermissionOption[]
   resolve: (response: RequestPermissionResponse) => void
+  /** The card's own request, kept so settling can republish it in place. */
+  toolCallRequest: ToolCallRequest
 }
 
 /**
@@ -374,6 +381,24 @@ export class AcpCliRuntime implements CliRuntime {
     if (!pending) return false
     this.pendingApprovals.delete(response.requestId)
     const optionId = resolveApprovalOptionId(pending.options, response.decision)
+    // The approval footer is gated purely on the card's response status, and
+    // ACP acknowledges nothing when the outcome is delivered — the next event
+    // is whatever the agent decides to send next. Republishing the card with a
+    // settled status is what takes the buttons away on the click itself.
+    this.emit({
+      type: 'message_upsert',
+      message: buildAcpToolMessage(
+        pending.toolCallRequest,
+        optionId
+          ? { status: ToolCallResponseStatus.Running }
+          : { status: ToolCallResponseStatus.Rejected },
+      ),
+    })
+    this.emit({
+      type: 'run_state',
+      state:
+        this.pendingApprovals.size > 0 ? 'waiting_for_approval' : 'running',
+    })
     pending.resolve(
       optionId
         ? { outcome: { outcome: 'selected', optionId } }
@@ -510,6 +535,7 @@ export class AcpCliRuntime implements CliRuntime {
       this.pendingApprovals.set(request.toolCall.toolCallId, {
         options: request.options,
         resolve,
+        toolCallRequest: tool.toolCalls[0].request,
       })
     })
   }
