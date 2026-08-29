@@ -48,6 +48,7 @@ For a behavior ↔ code-location ↔ verification-path index (complements this f
 
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the host or module.
 - Never statically import a heavy or native/WASM dependency closure into the host or a module (e.g. tokenizer, PDF, bash, or embedding libraries). Package it as a runtime component under `runtime-components/` instead; `npm run runtime:verify` fails the build if one leaks into the host bundle.
+- Runtime component build outputs (`runtime-components/*/dist/`) are never committed. `registry.json` is the committed contract: it declares each artifact's `byteSize`/`sha256`, and the bytes are published content-addressed to the permanent, append-only `runtime-assets` Release and mirrored to R2. Never delete or overwrite an attachment there — shipped versions baked those hashes. Change source, run `npm run runtime:build`, and commit the regenerated `registry.json`.
 - The RAG vector store is IndexedDB-backed (`src/database/vector-store/`); schema v1 is final — a schema change requires bumping `VECTOR_DATABASE_VERSION` and adding an upgrade path in `vectorDatabase.ts`.
 - Do not create a second chat or agent orchestration path.
 

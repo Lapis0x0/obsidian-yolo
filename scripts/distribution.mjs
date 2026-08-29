@@ -8,7 +8,10 @@ import nacl from 'tweetnacl'
 import { EnvHttpProxyAgent, setGlobalDispatcher } from 'undici'
 
 import { isValidRuntimeComponentAssetName } from './runtimeComponentAssetName.mjs'
-import { resolveRuntimeComponentAssetSource } from './runtimeComponentAssetSources.mjs'
+import {
+  RUNTIME_ASSET_TAG,
+  listRegistryRuntimeAssets,
+} from './runtimeComponentReleaseAssets.mjs'
 
 if (process.env.HTTP_PROXY || process.env.HTTPS_PROXY) {
   setGlobalDispatcher(new EnvHttpProxyAgent())
@@ -567,9 +570,11 @@ export async function describeRuntimeComponentArtifacts(options) {
   if (!CORE_TAG.test(version)) {
     throw new Error('Runtime component Core version is invalid')
   }
-  const tagRoot = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
+  // `registry.json` stays committed — it is the contract that declares each
+  // artifact's byteSize/sha256 — so the tag tells us exactly what this Core
+  // version shipped with.
   const registryBytes = await downloadUrl(
-    `${tagRoot}/registry.json`,
+    `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/registry.json`,
     token,
     fetchImpl,
   )
@@ -581,43 +586,24 @@ export async function describeRuntimeComponentArtifacts(options) {
   }
   const components = validateRuntimeComponentRegistry(registry)
   const artifacts = []
-  for (const descriptor of components) {
-    const canonicalUrl = `https://raw.githubusercontent.com/${repository}/${version}/${descriptor.entry}`
+  // The bytes themselves come from the permanent `runtime-assets` Release,
+  // never from this checkout: reconcile runs on main, which may be many
+  // component rebuilds ahead of the Core version being mirrored, so local
+  // `dist/` is simply the wrong bytes. Content addressing makes the Release
+  // correct for any version, current or historical.
+  for (const entry of listRegistryRuntimeAssets({ components })) {
+    const canonicalUrl = `https://github.com/${repository}/releases/download/${RUNTIME_ASSET_TAG}/${encodeURIComponent(entry.releaseName)}`
     const bytes = await downloadUrl(canonicalUrl, token, fetchImpl)
     const artifact = {
-      name: 'entry.js',
-      mirrorPath: `runtime-components/sha256/${descriptor.sha256}/entry.js`,
+      name: entry.name,
+      mirrorPath: `runtime-components/sha256/${entry.sha256}/${entry.name}`,
       canonicalUrl,
-      byteSize: descriptor.byteSize,
-      sha256: descriptor.sha256,
+      byteSize: entry.byteSize,
+      sha256: entry.sha256,
       bytes,
     }
     verifyBytes(bytes, artifact)
     artifacts.push(artifact)
-    for (const asset of descriptor.assets) {
-      // Unlike entry.js, assets are gitignored build outputs (see
-      // .gitignore) — never committed, so nothing exists at
-      // `{version}/{asset.path}` on any Git ref to download. Read the same
-      // local bytes `npm run runtime:build` would produce instead (CI has
-      // already run `npm ci`, so `node_modules` is present), and verify
-      // them against the registry's declared byteSize/sha256 before
-      // trusting them — a corrupt or mismatched local install must fail
-      // loudly here rather than silently publishing bad bytes.
-      const assetSourcePath = path.resolve(
-        resolveRuntimeComponentAssetSource(descriptor.id, asset.name),
-      )
-      const assetBytes = await readFile(assetSourcePath)
-      const assetArtifact = {
-        name: asset.name,
-        mirrorPath: `runtime-components/sha256/${asset.sha256}/${asset.name}`,
-        canonicalUrl: `https://github.com/${repository}/releases/download/${encodeURIComponent(version)}/${encodeURIComponent(`${descriptor.id}-${asset.name}`)}`,
-        byteSize: asset.byteSize,
-        sha256: asset.sha256,
-        bytes: assetBytes,
-      }
-      verifyBytes(assetBytes, assetArtifact)
-      artifacts.push(assetArtifact)
-    }
   }
   return artifacts
 }

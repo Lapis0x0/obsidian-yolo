@@ -10,6 +10,7 @@ import {
   resolveRuntimeComponentAssetSources,
   runtimeComponentAssetMirrorUrl,
   runtimeComponentAssetReleaseUrl,
+  runtimeComponentMirrorUrl,
   runtimeComponentReleaseUrl,
 } from './runtimeComponentManifest'
 
@@ -147,75 +148,55 @@ describe('runtime component manifest', () => {
     ).toThrow('invalid')
   })
 
-  it('builds only immutable numeric-tag URLs', () => {
-    expect(runtimeComponentReleaseUrl(descriptor as never, '1.6.1.4')).toBe(
-      'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/1.6.1.4/runtime-components/tokenizer/dist/entry.js',
+  it('addresses entry.js by its own hash, not by a Core version', () => {
+    expect(runtimeComponentReleaseUrl(descriptor as never)).toBe(
+      `https://github.com/Lapis0x0/obsidian-yolo/releases/download/runtime-assets/${'a'.repeat(64)}-entry.js`,
     )
-    expect(() =>
-      runtimeComponentReleaseUrl(descriptor as never, 'main'),
-    ).toThrow('numeric Git tag')
-    expect(() =>
-      runtimeComponentReleaseUrl(descriptor as never, 'latest'),
-    ).toThrow('numeric Git tag')
-  })
-
-  it('prefers the content-addressed mirror and preserves Git Raw fallback', () => {
-    expect(
-      resolveRuntimeComponentArtifactSources(descriptor as never, '1.6.1.4'),
-    ).toEqual([
+    expect(runtimeComponentMirrorUrl(descriptor as never)).toBe(
       `https://updates.yoloapp.dev/runtime-components/sha256/${'a'.repeat(64)}/entry.js`,
-      'https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/1.6.1.4/runtime-components/tokenizer/dist/entry.js',
-    ])
-  })
-
-  it('keeps one mirror path for bytes shipped by several Core versions', () => {
-    // The whole point of addressing the mirror by sha256: a component that
-    // did not change between two Core releases must not be stored twice.
-    expect(
-      resolveRuntimeComponentArtifactSources(descriptor as never, '1.6.1.4')[0],
-    ).toBe(
-      resolveRuntimeComponentArtifactSources(descriptor as never, '1.7.0')[0],
     )
   })
 
-  it('falls back to a GitHub Release attachment for an asset, not Git Raw', () => {
-    const embeddingEngine = {
-      ...descriptor,
-      id: 'embedding-engine',
-      entry: 'runtime-components/embedding-engine/dist/entry.js',
+  it('prefers the mirror and falls back to the runtime-assets Release', () => {
+    expect(resolveRuntimeComponentArtifactSources(descriptor as never)).toEqual(
+      [
+        `https://updates.yoloapp.dev/runtime-components/sha256/${'a'.repeat(64)}/entry.js`,
+        `https://github.com/Lapis0x0/obsidian-yolo/releases/download/runtime-assets/${'a'.repeat(64)}-entry.js`,
+      ],
+    )
+  })
+
+  it('stores one copy of bytes shipped by several Core versions', () => {
+    // The point of content addressing on both sources: a component that did
+    // not change between two Core releases is stored — and downloaded — once.
+    // Neither URL mentions a version, so there is nothing left to duplicate.
+    for (const url of resolveRuntimeComponentArtifactSources(
+      descriptor as never,
+    )) {
+      expect(url).not.toMatch(/1\.6\.1\.4|1\.7\.0/)
     }
+  })
+
+  it('resolves an asset from the same store as an entry, by its own hash', () => {
     const asset = {
       name: 'ort-wasm-simd-threaded.wasm',
       path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm',
       byteSize: 1024,
       sha256: 'b'.repeat(64),
     }
-    // Unlike entry.js, assets are gitignored build outputs — never
-    // committed — so the fallback can't be Git Raw (`{ver}/{asset.path}`
-    // would 404 on every tag). It must be a GitHub Release attachment,
-    // named `{id}-{name}` so two components can't collide on a shared
-    // asset filename (e.g. both shipping `ort-wasm-simd-threaded.wasm`).
-    expect(
-      runtimeComponentAssetReleaseUrl(
-        embeddingEngine as never,
-        asset,
-        '1.6.1.4',
-      ),
-    ).toBe(
-      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.4/embedding-engine-ort-wasm-simd-threaded.wasm',
+
+    // An asset is not a special case any more: `dist/` is gitignored whole,
+    // so entry.js and assets alike are published to `runtime-assets` and
+    // mirrored to R2 under the identical `{sha256}/{name}` shape.
+    expect(runtimeComponentAssetReleaseUrl(asset)).toBe(
+      `https://github.com/Lapis0x0/obsidian-yolo/releases/download/runtime-assets/${'b'.repeat(64)}-ort-wasm-simd-threaded.wasm`,
     )
-    expect(runtimeComponentAssetMirrorUrl(asset)).toBe(
+    expect(runtimeComponentAssetMirrorUrl(asset)).toEqual(
       `https://updates.yoloapp.dev/runtime-components/sha256/${'b'.repeat(64)}/ort-wasm-simd-threaded.wasm`,
     )
-    expect(
-      resolveRuntimeComponentAssetSources(
-        embeddingEngine as never,
-        asset,
-        '1.6.1.4',
-      ),
-    ).toEqual([
+    expect(resolveRuntimeComponentAssetSources(asset)).toEqual([
       `https://updates.yoloapp.dev/runtime-components/sha256/${'b'.repeat(64)}/ort-wasm-simd-threaded.wasm`,
-      'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.1.4/embedding-engine-ort-wasm-simd-threaded.wasm',
+      `https://github.com/Lapis0x0/obsidian-yolo/releases/download/runtime-assets/${'b'.repeat(64)}-ort-wasm-simd-threaded.wasm`,
     ])
   })
 })

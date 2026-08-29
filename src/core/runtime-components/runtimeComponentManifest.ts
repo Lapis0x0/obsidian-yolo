@@ -211,23 +211,44 @@ export function assertCompleteRuntimeComponentRegistry(
   }
 }
 
+/**
+ * Every runtime component artifact — each component's `entry.js` and every
+ * declared asset — is attached to one permanent, append-only Release,
+ * `runtime-assets`, under a content-addressed name. Nothing here is
+ * versioned by Core, and that is the point: `dist/` is gitignored (see
+ * `.gitignore`), so there is nothing to fetch from a tagged Git ref, and
+ * naming the bytes after the Core version that happened to ship them made
+ * every Core release store another byte-identical copy (the embedding
+ * engine's WASM alone is ~13 MB) forever, since nothing prunes superseded
+ * versions.
+ *
+ * The URL never has to be trusted: the registry baked into this build
+ * declares each artifact's byteSize and sha256, and `RuntimeComponentInstaller`
+ * verifies the downloaded bytes against them before anything is promoted
+ * out of staging. The hash is the contract; the URL only answers "where".
+ *
+ * Mirrors `RUNTIME_ASSET_TAG` / `runtimeAssetReleaseName` in
+ * `scripts/runtimeComponentReleaseAssets.mjs` (which owns the upload side
+ * and can't be imported here — it would pull build tooling into the host
+ * bundle). The two are cross-checked by a consistency test in
+ * `scripts/runtimeComponentReleaseAssets.test.mjs`.
+ */
+const RUNTIME_ASSET_TAG = 'runtime-assets'
+
+function runtimeAssetReleaseUrl(sha256: string, name: string): string {
+  return `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${RUNTIME_ASSET_TAG}/${sha256}-${name}`
+}
+
 export function runtimeComponentReleaseUrl(
   descriptor: RuntimeComponentDescriptor,
-  bakedVersion: string,
 ): string {
-  assertRuntimeComponentVersion(bakedVersion)
-  return `https://raw.githubusercontent.com/Lapis0x0/obsidian-yolo/${bakedVersion}/${descriptor.entry}`
+  return runtimeAssetReleaseUrl(descriptor.sha256, 'entry.js')
 }
 
 /**
- * The mirror is content-addressed, unlike the two GitHub fallbacks below.
- * Runtime component bytes change far more rarely than Core does — naming the
- * mirror path after the Core version that happens to ship them made every
- * Core release store another byte-identical copy (the embedding engine's WASM
- * alone is ~13 MB), forever, since nothing prunes superseded versions. The
- * registry already declares the sha256, so the bytes can name themselves.
- * The fallbacks can't: `entry.js` is only reachable through a Git ref and an
- * asset only through a Release attachment, both named by Core tag.
+ * The mirror is content-addressed for the same reason the Release
+ * attachment above is, and lands on the identical `{sha256}/{name}` shape —
+ * one artifact, one set of bytes, two interchangeable places to get them.
  */
 export function runtimeComponentMirrorUrl(
   descriptor: RuntimeComponentDescriptor,
@@ -237,34 +258,19 @@ export function runtimeComponentMirrorUrl(
 
 export function resolveRuntimeComponentArtifactSources(
   descriptor: RuntimeComponentDescriptor,
-  bakedVersion: string,
 ): readonly string[] {
   return Object.freeze([
     runtimeComponentMirrorUrl(descriptor),
-    runtimeComponentReleaseUrl(descriptor, bakedVersion),
+    runtimeComponentReleaseUrl(descriptor),
   ])
 }
 
-/**
- * Unlike `runtimeComponentReleaseUrl`, this can't point at Git Raw:
- * `dist/assets/*` is gitignored (see `.gitignore`) — a component's declared
- * assets are large, reproducible build outputs, never committed, so
- * nothing exists at `{bakedVersion}/{asset.path}` on any Git ref. The
- * fallback is instead a GitHub Release attachment uploaded at release time
- * (see `.github/workflows/release.yml`), named `{descriptor.id}-{name}` to
- * disambiguate assets that share a filename across components (e.g. two
- * components both shipping an `ort-wasm-simd-threaded.wasm`).
- */
 export function runtimeComponentAssetReleaseUrl(
-  descriptor: RuntimeComponentDescriptor,
   asset: RuntimeComponentAssetDescriptor,
-  bakedVersion: string,
 ): string {
-  assertRuntimeComponentVersion(bakedVersion)
-  return `https://github.com/Lapis0x0/obsidian-yolo/releases/download/${bakedVersion}/${descriptor.id}-${asset.name}`
+  return runtimeAssetReleaseUrl(asset.sha256, asset.name)
 }
 
-/** Content-addressed for the same reason as `runtimeComponentMirrorUrl`. */
 export function runtimeComponentAssetMirrorUrl(
   asset: RuntimeComponentAssetDescriptor,
 ): string {
@@ -272,20 +278,12 @@ export function runtimeComponentAssetMirrorUrl(
 }
 
 export function resolveRuntimeComponentAssetSources(
-  descriptor: RuntimeComponentDescriptor,
   asset: RuntimeComponentAssetDescriptor,
-  bakedVersion: string,
 ): readonly string[] {
   return Object.freeze([
     runtimeComponentAssetMirrorUrl(asset),
-    runtimeComponentAssetReleaseUrl(descriptor, asset, bakedVersion),
+    runtimeComponentAssetReleaseUrl(asset),
   ])
-}
-
-function assertRuntimeComponentVersion(version: string): void {
-  if (!/^\d+\.\d+\.\d+(?:\.\d+)?$/.test(version)) {
-    throw new Error('Production runtime components require a numeric Git tag')
-  }
 }
 
 function record(value: unknown, label: string): Record<string, unknown> {

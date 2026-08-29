@@ -17,13 +17,14 @@ meta.json
 worker-meta.json
 styles.css
 
-# Runtime component assets (e.g. embedding-engine's onnxruntime-web wasm
-# binaries) are large, reproducible build outputs copied from node_modules —
-# never commit them. `dist/entry.js` and `registry.json` (which records each
-# asset's byteSize/sha256) stay tracked; distribution mirrors/uploads the
-# actual bytes at release time. See scripts/build-runtime-components.mjs and
-# scripts/distribution.mjs.
-runtime-components/*/dist/assets/
+# Runtime component build outputs — every component's `entry.js` and any
+# declared assets (e.g. embedding-engine's onnxruntime-web wasm binaries).
+# Reproducible from source, so committing them stores bytes we can always
+# regenerate; `registry.json` stays tracked and records each artifact's
+# byteSize/sha256, which is what actually pins what shipped. The bytes are
+# published to the permanent `runtime-assets` Release and mirrored to R2.
+# See scripts/build-runtime-components.mjs and scripts/runtime-assets.mjs.
+runtime-components/*/dist/
 
 # Exclude sourcemaps
 *.map

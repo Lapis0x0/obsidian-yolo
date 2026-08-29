@@ -129,12 +129,15 @@ test('rebuilds the complete current snapshot from published Releases', async () 
   )
 })
 
-test('loads runtime components only from the selected Core tag', async () => {
+test('takes the artifact set from the selected Core tag, the bytes from the store', async () => {
+  // The tag still decides *which* artifacts a Core version shipped — that is
+  // what its committed registry.json records. Only the bytes moved: they come
+  // from the version-independent `runtime-assets` store, so reconcile running
+  // on main can mirror any released version correctly.
   const version = '1.7.0'
   const repository = 'Lapis0x0/obsidian-yolo'
   const bytes = Buffer.from('runtime entry')
   const sha256 = createHash('sha256').update(bytes).digest('hex')
-  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
   const registry = Buffer.from(
     JSON.stringify({
       schemaVersion: 1,
@@ -148,17 +151,9 @@ test('loads runtime components only from the selected Core tag', async () => {
       ],
     }),
   )
-  const responses = new Map([
-    [`${root}/registry.json`, registry],
-    [
-      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/tokenizer/dist/entry.js`,
-      bytes,
-    ],
-  ])
-  const fetchImpl = async (url) => {
-    const body = responses.get(url)
-    return body ? new Response(body) : new Response('missing', { status: 404 })
-  }
+  const fetchImpl = runtimeAssetFetch(repository, version, registry, {
+    [`${sha256}-entry.js`]: bytes,
+  })
 
   const [artifact] = await describeRuntimeComponentArtifacts({
     repository,
@@ -200,6 +195,26 @@ test('rejects a runtime component that differs from its tagged registry', async 
   )
 })
 
+/**
+ * Serves the tagged `registry.json` over Git Raw and every artifact out of
+ * the permanent `runtime-assets` Release, keyed by its content-addressed
+ * attachment name — the two places `describeRuntimeComponentArtifacts` now
+ * reads from.
+ */
+function runtimeAssetFetch(repository, version, registry, attachments) {
+  const registryUrl = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/registry.json`
+  const releaseRoot = `https://github.com/${repository}/releases/download/runtime-assets/`
+  return async (url) => {
+    if (url === registryUrl) return new Response(registry)
+    if (url.startsWith(releaseRoot)) {
+      const body =
+        attachments[decodeURIComponent(url.slice(releaseRoot.length))]
+      if (body) return new Response(body)
+    }
+    return new Response('missing', { status: 404 })
+  }
+}
+
 test('reads a historical schema-v1 registry with no assets field at all', async () => {
   // A pre-P0 release only ever wrote schema v1 — no `assets` key on any
   // component. `describeRuntimeComponentArtifacts` reads whichever Core
@@ -209,7 +224,6 @@ test('reads a historical schema-v1 registry with no assets field at all', async 
   const repository = 'Lapis0x0/obsidian-yolo'
   const bytes = Buffer.from('old entry')
   const sha256 = createHash('sha256').update(bytes).digest('hex')
-  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
   const registry = Buffer.from(
     JSON.stringify({
       schemaVersion: 1,
@@ -223,17 +237,9 @@ test('reads a historical schema-v1 registry with no assets field at all', async 
       ],
     }),
   )
-  const responses = new Map([
-    [`${root}/registry.json`, registry],
-    [
-      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/tokenizer/dist/entry.js`,
-      bytes,
-    ],
-  ])
-  const fetchImpl = async (url) => {
-    const body = responses.get(url)
-    return body ? new Response(body) : new Response('missing', { status: 404 })
-  }
+  const fetchImpl = runtimeAssetFetch(repository, version, registry, {
+    [`${sha256}-entry.js`]: bytes,
+  })
 
   const artifacts = await describeRuntimeComponentArtifacts({
     repository,
@@ -246,23 +252,12 @@ test('reads a historical schema-v1 registry with no assets field at all', async 
 })
 
 test('mirrors a schema-v2 registry component together with its declared assets', async () => {
-  // Unlike entry.js, an asset is never fetched over HTTP — it's read from
-  // the same local file `npm run runtime:build` copies it from (see
-  // runtimeComponentAssetSources.mjs), so this reads the *real*
-  // node_modules/onnxruntime-web file and declares its *real* byteSize/
-  // sha256 in the registry fixture, rather than trying to fake bytes
-  // through fetchImpl.
-  const assetBytes = await readFile(
-    'node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.mjs',
-  )
-  const assetSha256 = createHash('sha256').update(assetBytes).digest('hex')
   const version = '1.8.0'
   const repository = 'Lapis0x0/obsidian-yolo'
   const entryBytes = Buffer.from('embedding entry')
   const entrySha256 = createHash('sha256').update(entryBytes).digest('hex')
-  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
-  const assetPath =
-    'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.mjs'
+  const assetBytes = Buffer.from('wasm glue')
+  const assetSha256 = createHash('sha256').update(assetBytes).digest('hex')
   const registry = Buffer.from(
     JSON.stringify({
       schemaVersion: 2,
@@ -275,7 +270,7 @@ test('mirrors a schema-v2 registry component together with its declared assets',
           assets: [
             {
               name: 'ort-wasm-simd-threaded.mjs',
-              path: assetPath,
+              path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.mjs',
               byteSize: assetBytes.byteLength,
               sha256: assetSha256,
             },
@@ -284,17 +279,10 @@ test('mirrors a schema-v2 registry component together with its declared assets',
       ],
     }),
   )
-  const responses = new Map([
-    [`${root}/registry.json`, registry],
-    [
-      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/embedding-engine/dist/entry.js`,
-      entryBytes,
-    ],
-  ])
-  const fetchImpl = async (url) => {
-    const body = responses.get(url)
-    return body ? new Response(body) : new Response('missing', { status: 404 })
-  }
+  const fetchImpl = runtimeAssetFetch(repository, version, registry, {
+    [`${entrySha256}-entry.js`]: entryBytes,
+    [`${assetSha256}-ort-wasm-simd-threaded.mjs`]: assetBytes,
+  })
 
   const artifacts = await describeRuntimeComponentArtifacts({
     repository,
@@ -302,11 +290,17 @@ test('mirrors a schema-v2 registry component together with its declared assets',
     fetchImpl,
   })
 
+  // An asset is no longer a special case: entry.js and assets are fetched
+  // from the same content-addressed store and mirrored under the same shape.
   assert.equal(artifacts.length, 2)
   assert.equal(artifacts[0].name, 'entry.js')
   assert.equal(
     artifacts[0].mirrorPath,
     `runtime-components/sha256/${entrySha256}/entry.js`,
+  )
+  assert.equal(
+    artifacts[0].canonicalUrl,
+    `https://github.com/${repository}/releases/download/runtime-assets/${entrySha256}-entry.js`,
   )
   assert.equal(artifacts[1].name, 'ort-wasm-simd-threaded.mjs')
   assert.equal(
@@ -315,26 +309,20 @@ test('mirrors a schema-v2 registry component together with its declared assets',
   )
   assert.equal(
     artifacts[1].canonicalUrl,
-    'https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.8.0/embedding-engine-ort-wasm-simd-threaded.mjs',
+    `https://github.com/${repository}/releases/download/runtime-assets/${assetSha256}-ort-wasm-simd-threaded.mjs`,
   )
-  assert.equal(artifacts[1].sha256, assetSha256)
   assert.deepEqual(artifacts[1].bytes, assetBytes)
 })
 
-test('rejects a v2 asset whose local bytes do not match its declared hash', async () => {
-  // The registry declares a fabricated size/hash for a real, unmodified
-  // local file (node_modules/onnxruntime-web's actual
-  // ort-wasm-simd-threaded.wasm) — a stand-in for "the registry drifted
-  // from what npm run runtime:build actually produces locally". Since
-  // assets are read straight from disk (not fetched), this exercises the
-  // same `verifyBytes` guard without needing to fake a network response.
+test('rejects an asset whose published bytes do not match its declared hash', async () => {
+  // The registry pins a hash the store does not actually hold — a stand-in
+  // for a wrong or tampered attachment. Nothing may be mirrored on the
+  // strength of the URL alone.
   const version = '1.8.0'
   const repository = 'Lapis0x0/obsidian-yolo'
   const entryBytes = Buffer.from('embedding entry')
   const entrySha256 = createHash('sha256').update(entryBytes).digest('hex')
-  const root = `https://raw.githubusercontent.com/${repository}/${version}/runtime-components`
-  const assetPath =
-    'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm'
+  const declaredAssetSha256 = createHash('sha256').update('abc').digest('hex')
   const registry = Buffer.from(
     JSON.stringify({
       schemaVersion: 2,
@@ -347,26 +335,20 @@ test('rejects a v2 asset whose local bytes do not match its declared hash', asyn
           assets: [
             {
               name: 'ort-wasm-simd-threaded.wasm',
-              path: assetPath,
+              path: 'runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm',
               byteSize: 3,
-              sha256: createHash('sha256').update('abc').digest('hex'),
+              sha256: declaredAssetSha256,
             },
           ],
         },
       ],
     }),
   )
-  const responses = new Map([
-    [`${root}/registry.json`, registry],
-    [
-      `https://raw.githubusercontent.com/${repository}/${version}/runtime-components/embedding-engine/dist/entry.js`,
-      entryBytes,
-    ],
-  ])
-  const fetchImpl = async (url) => {
-    const body = responses.get(url)
-    return body ? new Response(body) : new Response('missing', { status: 404 })
-  }
+  const fetchImpl = runtimeAssetFetch(repository, version, registry, {
+    [`${entrySha256}-entry.js`]: entryBytes,
+    [`${declaredAssetSha256}-ort-wasm-simd-threaded.wasm`]:
+      Buffer.from('not abc'),
+  })
 
   await assert.rejects(
     describeRuntimeComponentArtifacts({ repository, version, fetchImpl }),

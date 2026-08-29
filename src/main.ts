@@ -4452,15 +4452,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
               asset?: NonNullable<(typeof descriptor)['assets']>[number],
             ) =>
               asset
-                ? resolveRuntimeComponentAssetSources(
-                    descriptor,
-                    asset,
-                    BAKED_PLUGIN_VERSION,
-                  )
-                : resolveRuntimeComponentArtifactSources(
-                    descriptor,
-                    BAKED_PLUGIN_VERSION,
-                  ),
+                ? resolveRuntimeComponentAssetSources(asset)
+                : resolveRuntimeComponentArtifactSources(descriptor),
           }
         : {}),
       reportCleanupError: (error) => {

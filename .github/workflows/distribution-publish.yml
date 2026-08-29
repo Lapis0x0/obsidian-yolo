@@ -35,6 +35,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Every artifact any published version can ask for must still be
+      # attached. Runs here rather than in the release workflow because this
+      # checkout has the full tag history the referenced set is derived from.
+      - name: Audit runtime component artifact completeness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/runtime-assets.mjs audit
+
       - name: Reconcile GitHub Release state into signed metadata
         env:
           GH_TOKEN: ${{ github.token }}
