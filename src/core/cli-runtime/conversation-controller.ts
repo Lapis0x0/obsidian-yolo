@@ -233,6 +233,39 @@ const replaceOptimisticUserMessage = (
   return Object.freeze(next)
 }
 
+/**
+ * A transcript that is not being generated into must not contain a message
+ * still marked `streaming` — every consumer reads that flag as "tokens are
+ * still arriving" and keeps the streaming markdown/reasoning renderers
+ * engaged while suppressing finished-message affordances such as the
+ * selection-quote overlay.
+ *
+ * Runtimes that already finalize their own messages (claude-code, codex) pass
+ * through untouched; ACP agents and pi only ever emit `streaming`, so without
+ * this their turns would stay "generating" forever. Owned here because this is
+ * the layer that holds both the run state and the messages it applies to.
+ */
+const settleStreamingAssistantMessages = (
+  messages: readonly ChatMessage[],
+  generationState: 'completed' | 'aborted',
+): readonly ChatMessage[] => {
+  let changed = false
+  const settled = messages.map((message) => {
+    if (
+      message.role !== 'assistant' ||
+      message.metadata?.generationState !== 'streaming'
+    ) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      metadata: { ...message.metadata, generationState },
+    }
+  })
+  return changed ? Object.freeze(settled) : messages
+}
+
 const appendAssistantError = (
   snapshot: CliConversationSnapshot,
   errorMessage: string,
@@ -436,7 +469,12 @@ export class CliConversationController {
         : Object.freeze([])
       this.publish({
         ...this.snapshot,
-        messages: normalizeMessages(messages),
+        // Hydrated history is finished by definition — nothing in it can still
+        // be generating, whatever `generationState` the replay mapping emitted.
+        messages: settleStreamingAssistantMessages(
+          normalizeMessages(messages),
+          'completed',
+        ),
         compactionBoundaries: normalizeCompactionBoundaries(
           hydration.compactionBoundaries ?? [],
           messages,
@@ -1191,10 +1229,22 @@ export class CliConversationController {
       this.currentTurnMessageIds.clear()
       this.currentTurnMetrics = null
     }
+    const messages =
+      event.state === 'completed' ||
+      event.state === 'aborted' ||
+      event.state === 'error'
+        ? settleStreamingAssistantMessages(
+            this.snapshot.messages,
+            event.state === 'aborted' ? 'aborted' : 'completed',
+          )
+        : this.snapshot.messages
     if (event.state === 'error' && event.error) {
       this.publish({
         ...this.snapshot,
-        messages: appendAssistantError(this.snapshot, event.error),
+        messages: appendAssistantError(
+          { ...this.snapshot, messages },
+          event.error,
+        ),
         runState: 'error',
         error: event.error,
       })
@@ -1202,6 +1252,7 @@ export class CliConversationController {
     }
     this.publish({
       ...this.snapshot,
+      messages,
       runState: event.state,
       error: event.error ?? null,
       ...(event.state !== 'running' &&

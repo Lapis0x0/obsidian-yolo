@@ -1208,6 +1208,107 @@ describe('CliConversationController', () => {
     )
   })
 
+  describe('settling messages left in streaming', () => {
+    const streamingAssistant = (
+      id: string,
+      content = id,
+    ): ChatAssistantMessage => ({
+      ...assistantMessage(id, content),
+      metadata: { generationState: 'streaming' },
+    })
+
+    it('settles streaming assistant messages when the run completes', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      const settled = assistantMessage('acp-assistant-done', 'earlier turn')
+      runtime.emit({ type: 'message_upsert', message: settled })
+      runtime.emit({
+        type: 'message_upsert',
+        message: streamingAssistant('acp-assistant-live', 'hello'),
+      })
+      expect(controller.getSnapshot().messages.at(-1)?.metadata).toEqual({
+        generationState: 'streaming',
+      })
+
+      runtime.emit({ type: 'run_state', state: 'completed' })
+
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        id: 'acp-assistant-live',
+        content: 'hello',
+        metadata: { generationState: 'completed' },
+      })
+      // Structural sharing: only the message whose content changed is replaced.
+      expect(controller.getSnapshot().messages[0]).toBe(settled)
+    })
+
+    it('settles streaming assistant messages as aborted when the run is cancelled', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({
+        type: 'message_upsert',
+        message: streamingAssistant('acp-assistant-live', 'partial'),
+      })
+
+      runtime.emit({ type: 'run_state', state: 'aborted' })
+
+      expect(controller.getSnapshot().messages.at(-1)?.metadata).toEqual({
+        generationState: 'aborted',
+      })
+    })
+
+    it('settles the partial answer alongside the appended error message', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({
+        type: 'message_upsert',
+        message: streamingAssistant('acp-assistant-live', 'partial'),
+      })
+
+      runtime.emit({
+        type: 'run_state',
+        state: 'error',
+        error: 'native failure',
+      })
+
+      expect(controller.getSnapshot().messages).toMatchObject([
+        {
+          id: 'acp-assistant-live',
+          metadata: { generationState: 'completed' },
+        },
+        {
+          metadata: {
+            generationState: 'error',
+            errorMessage: 'native failure',
+          },
+        },
+      ])
+    })
+
+    it('settles replayed history that hydrates as streaming', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const ref = session('resume-me', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref,
+        messages: [
+          userMessage('acp-user-1', 'hi'),
+          streamingAssistant('acp-assistant-1', 'replayed'),
+        ],
+        compactionBoundaries: [],
+      })
+      const controller = new CliConversationController(runtime)
+      await controller.hydrateSession(ref)
+
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        id: 'acp-assistant-1',
+        content: 'replayed',
+        metadata: { generationState: 'completed' },
+      })
+    })
+  })
+
   describe('session recovery fallback', () => {
     it('hydrateSession accepts a flagged fallback ref instead of throwing, and anchors a boundary', async () => {
       const runtime = new FakeCliRuntime('hermes')
