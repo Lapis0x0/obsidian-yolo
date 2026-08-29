@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 25,
+  "revision": 26,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.6.2",
+    "version": "1.6.7",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.6.2",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.7",
     "releaseNotes": {
-      "en": "## 1.6.6.2\n\n- Added a Claude OAuth provider that lets you chat directly using your Claude Code subscription quota, with improved prompt caching support for Anthropic-based providers.\n- Added a Buy Me a Coffee funding option alongside 爱发电.\n- Fixed pi and Hermes CLI agents failing to start on Windows.\n- Fixed the \"Activity & Reminders\" popover appearing automatically after enabling the Learning module, with no way to dismiss it.\n- Improved the transition animation performance of the empty-state chat input.",
-      "zh": "## 1.6.6.2\n\n- 新增 Claude OAuth Provider，可直接使用 Claude Code 订阅额度对话，并增强了 Anthropic 系 Provider 的 Prompt Caching 支持。\n- 赞助方式新增 Buy Me a Coffee，与爱发电并列。\n- 修复 Windows 上 pi 与 Hermes CLI 智能体无法启动的问题。\n- 修复开启学习模块后，右下角「活动与提醒」浮层会自动弹出且无法关闭的问题。\n- 优化空会话状态下聊天输入框过渡动画的性能表现。"
+      "en": "## 1.6.7 Similar Notes & CLI Polish 🔗\n\n- Added Similar Notes to the Sparkle sidebar: it surfaces related notes for whatever you are writing, scoped to any combination of knowledge bases, and opens a result in a background tab so you keep your place.\n- Approving a CLI agent's tool call now registers immediately, and the waiting state always matches the card you acted on.\n- Hermes and pi now show the context window ring, and the token / duration bar under a reply is no longer empty.\n- Fixed Hermes and pi replies staying stuck in the generating state after they finished, which made them impossible to select or quote.\n- Fixed pi replies losing their line breaks.\n- Updates and runtime components now download from Cloudflare R2, and a component's bytes are stored once instead of once per release.",
+      "zh": "## 1.6.7 相似笔记与 CLI 体验打磨 🔗\n\n- 灵光写作侧边栏新增「相似笔记」：基于当前笔记推荐关联内容，范围可多选知识库，点击结果在后台标签页打开，不打断当前写作。\n- CLI 智能体的审批结果现在即时生效，等待状态始终与你操作的那张卡片一致。\n- Hermes 与 pi 接入上下文窗口占用环，回复底部的 token / 耗时信息栏不再为空。\n- 修复 Hermes / pi 回答结束后仍被判定为生成中，导致无法选中或引用回复的问题。\n- 修复 pi 回复换行被错误移除的问题。\n- 更新与运行组件改由 Cloudflare R2 分发，同一份组件只存一份，不再随每次发版重复存储。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.6.2/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.6.2/main.js",
-        "byteSize": 9419889,
-        "sha256": "a1f0a8c90de4fc411a66c6e58dadc739127b495936243ae936f7861dee983909"
+        "mirrorPath": "core/1.6.7/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.7/main.js",
+        "byteSize": 9455947,
+        "sha256": "17aba9cc5e7bde10a55bfc33fc9d36d7f189ec701f4b52807490c81e9ad56f00"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.6.2/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.6.2/manifest.json",
-        "byteSize": 413,
-        "sha256": "66b295e241bcc3d663725c2787416881a05ad02f1d32694e7d25515ca45bce7b"
+        "mirrorPath": "core/1.6.7/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.7/manifest.json",
+        "byteSize": 411,
+        "sha256": "0b5e8b5a49aa6e4312d4595c5cdc03cdd97fe7bac28cb05bf4f852848ce7a74b"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.6.2/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.6.2/styles.css",
-        "byteSize": 651203,
-        "sha256": "d8ef4b7649f8b435790e4e7bdd8e0648d46b202d8dd8906cbea3d058d3b32e96"
+        "mirrorPath": "core/1.6.7/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.7/styles.css",
+        "byteSize": 667804,
+        "sha256": "31e6b524ad41961883d815ce826cf8813637093e6a6c32c4f17d9d6a61ce1b4d"
       }
     }
   },
