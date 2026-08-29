@@ -30,11 +30,19 @@ For a behavior ↔ code-location ↔ verification-path index (complements this f
 ## Module and Runtime Component Boundaries
 
 - Placement: a large, optional product capability that can be installed, enabled, and released independently goes in `modules/`; a heavy or native/WASM dependency closure goes in `runtime-components/`; anything small or inherently host-integrated stays in `src/features/`.
+
+### Modules
+
 - A module may depend on the versioned Host API and its declared package dependencies. It must not import `src/core/`, `src/components/`, `YoloPlugin`, or `obsidian` directly — repository co-location grants first-party modules no additional access.
 - Add a capability to the Host API only when it is broadly useful to modules. Keep module-specific policy and behavior inside the owning module.
 - Core must not import module source or bundle module implementation into the host artifact. Communicate only through registration, manifests, and Host API contracts.
 - A module ships skills as packages: declared files are projected on activation into `<YOLO base>/modules/<moduleId>/skills/<package>/` and are then ordinary Vault skills. Do not introduce a module-skill path protocol.
 - Treat versioned `entry.js`, module `style.css`, generated manifest metadata (hashes, sizes, and URLs), and `modules/bundled.json` as build outputs. Change source or compatibility declarations, run `npm run module:build`, and commit the regenerated artifacts rather than editing generated metadata.
+
+### Runtime Components
+
+- Never statically import a heavy or native/WASM dependency closure into the host or a module (e.g. tokenizer, PDF, bash, or embedding libraries); `npm run runtime:verify` fails the build if one leaks into the host bundle.
+- Build outputs (`runtime-components/*/dist/`) are never committed; `registry.json` is the committed contract declaring each artifact's `byteSize`/`sha256`. The bytes are published content-addressed to the permanent, append-only `runtime-assets` Release and mirrored to R2 — never delete or overwrite an attachment there, since shipped versions baked those hashes.
 
 ## Critical Cross-Cutting Constraints
 
@@ -46,8 +54,6 @@ For a behavior ↔ code-location ↔ verification-path index (complements this f
 ### Runtime Boundaries
 
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the host or module.
-- Never statically import a heavy or native/WASM dependency closure into the host or a module (e.g. tokenizer, PDF, bash, or embedding libraries). Package it as a runtime component under `runtime-components/` instead; `npm run runtime:verify` fails the build if one leaks into the host bundle.
-- Runtime component build outputs (`runtime-components/*/dist/`) are never committed. `registry.json` is the committed contract: it declares each artifact's `byteSize`/`sha256`, and the bytes are published content-addressed to the permanent, append-only `runtime-assets` Release and mirrored to R2. Never delete or overwrite an attachment there — shipped versions baked those hashes. Change source, run `npm run runtime:build`, and commit the regenerated `registry.json`.
 - The RAG vector store is IndexedDB-backed (`src/database/vector-store/`); schema v1 is final — a schema change requires bumping `VECTOR_DATABASE_VERSION` and adding an upgrade path in `vectorDatabase.ts`.
 - Do not create a second chat or agent orchestration path.
 
