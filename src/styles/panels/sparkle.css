@@ -25,12 +25,23 @@
   /* 视图入场是从边缘滑进来的，横向溢出必须裁掉，否则侧栏会在这 220ms 里
      多出一条横向滚动条。 */
   overflow-x: hidden;
+  /* 滚动条贴边。滚动容器是这一层，而它的右边界被宿主 .view-content 的横向
+     内边距（--size-4-3）往里推了一截，滚动条于是悬在内容中间而不是贴着面板
+     边缘。做法和 .yolo-chat-messages 那条一样：用负 margin 把边框盒推回叶子
+     边缘（滚动条画在边框边上），再用等量内边距把内容缩回原处——卡片仍与
+     .yolo-chat-header 左右对齐，只是滚动条挪到了它右边。 */
+  margin-inline-end: calc(var(--size-4-3) * -1);
+  padding-inline-end: var(--size-4-3);
 }
 
 /*
- * 主视图 ⇄ 设置视图的切换。这层壳存在的唯一理由是承载入场位移，所以它把
- * flex 语义原样透传下去（设置页的 .yolo-composer-container 靠 flex: 1 和
- * height: 100% 撑满并管自己的滚动，中间插一层不透传就会塌）。
+ * 主视图 ⇄ 设置视图的切换。这层壳承载入场位移，同时要把两个视图各自的滚动
+ * 模型说清楚——它们本来就不一样：
+ *
+ * 主视图（相似笔记）是内容高度，由 .yolo-sparkle-panel 统一滚动。所以这层
+ * 壳默认不可收缩：一旦给它 flex-shrink + min-height: 0，它就会被压到面板
+ * 高度，.yolo-sparkle-section 的 overflow: hidden 把超出的卡片直接裁掉，
+ * 面板自身又因为内容没超出而不出滚动条——列表看起来就是「截断且划不动」。
  *
  * 只做位移不做淡入：这是 drill-in，不是内容替换。24px 在 ~350px 宽的侧栏里
  * 足够读出方向，又不会让内容像是从很远的地方飞进来。
@@ -39,10 +50,19 @@
 .yolo-sparkle-view {
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
-  min-height: 0;
+  flex: 0 0 auto;
   animation: yolo-sparkle-view-enter-forward var(--yolo-anim-duration-enter)
     var(--yolo-anim-ease-out);
+}
+
+/*
+ * 设置视图相反：它自带内部滚动容器（.yolo-composer-scroll），必须被压到面板
+ * 高度才有得滚，所以这里把 flex 语义原样透传下去（.yolo-composer-container
+ * 靠 flex: 1 和 height: 100% 撑满，中间插一层不透传就会塌）。
+ */
+.yolo-sparkle-view[data-view='settings'] {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .yolo-sparkle-view[data-view='main'] {
