@@ -27,11 +27,10 @@ For a behavior ↔ code-location ↔ verification-path index (complements this f
 - `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and MCP capabilities.
 - `src/features/` contains host-shipped cross-cutting features. `src/database/`, `src/settings/`, and `src/styles/` own host persistence, settings, and global styles.
 
-## Module Boundaries
+## Module and Runtime Component Boundaries
 
-- Put a large, optional product capability in `modules/` when it can be installed, enabled, and released independently. Keep small or inherently host-integrated capabilities in `src/features/`.
-- A module may depend on the versioned Host API and its declared package dependencies. It must not import `src/core/`, `src/components/`, `YoloPlugin`, or `obsidian` directly.
-- First-party modules get no access to host implementation details from repository co-location.
+- Placement: a large, optional product capability that can be installed, enabled, and released independently goes in `modules/`; a heavy or native/WASM dependency closure goes in `runtime-components/`; anything small or inherently host-integrated stays in `src/features/`.
+- A module may depend on the versioned Host API and its declared package dependencies. It must not import `src/core/`, `src/components/`, `YoloPlugin`, or `obsidian` directly — repository co-location grants first-party modules no additional access.
 - Add a capability to the Host API only when it is broadly useful to modules. Keep module-specific policy and behavior inside the owning module.
 - Core must not import module source or bundle module implementation into the host artifact. Communicate only through registration, manifests, and Host API contracts.
 - A module ships skills as packages: declared files are projected on activation into `<YOLO base>/modules/<moduleId>/skills/<package>/` and are then ordinary Vault skills. Do not introduce a module-skill path protocol.
