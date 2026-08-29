@@ -35,10 +35,12 @@ fully distribute Core before tagging modules that need its Host API.
 ## Automation and recovery
 
 The distribution workflow reconstructs the complete current snapshot from all
-published stable Releases. A dispatch only wakes it; manual and hourly runs use
-the same reconcile path. Cloudflare failure never removes a Release or the
-GitHub Raw Feed fallback. Rerun `distribution-publish.yml`; do not recreate or
-overwrite a Release.
+published stable Releases. It only ever runs on `workflow_dispatch` — the two
+release workflows fire one at the end of a release, and there is no schedule,
+so nothing reconciles on its own. A dispatch only wakes it; every run takes the
+same reconcile path. Cloudflare failure never removes a Release or the GitHub
+Raw Feed fallback. Rerun `distribution-publish.yml` yourself; do not recreate
+or overwrite a Release.
 
 Required Actions secrets:
 
