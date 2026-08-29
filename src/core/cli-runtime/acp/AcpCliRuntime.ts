@@ -28,6 +28,8 @@ import {
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModelState,
+  mapAcpTurnUsage,
+  mapAcpUsageUpdate,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
   upsertAcpMessage,
@@ -270,6 +272,7 @@ export class AcpCliRuntime implements CliRuntime {
     this.aggregator.beginTurn()
     this.emit({ type: 'run_state', state: 'running' })
     this.turnInFlight = true
+    const startedAt = Date.now()
     try {
       const result = await host.call((connection) =>
         connection.prompt({
@@ -284,20 +287,18 @@ export class AcpCliRuntime implements CliRuntime {
       // outcome can only be `aborted`, regardless of what `stopReason` the
       // (possibly racing) prompt response reports.
       const aborted = this.cancelRequested || result.stopReason === 'cancelled'
+      // Before the terminal run state, which closes the turn's metrics window.
+      // ACP has no turn-duration field, so it is measured around the prompt
+      // call the same way Codex measures its own.
+      this.emit({
+        type: 'turn_metrics',
+        durationMs: Math.max(0, Date.now() - startedAt),
+        ...(result.usage ? { usage: mapAcpTurnUsage(result.usage) } : {}),
+      })
       this.emit({
         type: 'run_state',
         state: aborted ? 'aborted' : 'completed',
       })
-      if (result.usage) {
-        this.emit({
-          type: 'turn_metrics',
-          usage: {
-            prompt_tokens: result.usage.inputTokens,
-            completion_tokens: result.usage.outputTokens,
-            total_tokens: result.usage.totalTokens,
-          },
-        })
-      }
     } catch (error) {
       this.turnInFlight = false
       throw error
@@ -424,6 +425,13 @@ export class AcpCliRuntime implements CliRuntime {
     this.activeSessionRef = ref
     this.unregisterSession = host.registerSession(ref.nativeSessionId, {
       onUpdate: (update) => {
+        // Carries context pressure rather than transcript content, so it never
+        // reaches the message aggregator.
+        if (update.sessionUpdate === 'usage_update') {
+          const usage = mapAcpUsageUpdate(update)
+          if (usage) this.emit({ type: 'context_usage', usage })
+          return
+        }
         for (const message of this.aggregator.apply(update, this.runtimeId)) {
           this.emit({ type: 'message_upsert', message })
         }

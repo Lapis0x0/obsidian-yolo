@@ -1227,8 +1227,8 @@ describe('CliConversationController', () => {
         type: 'message_upsert',
         message: streamingAssistant('acp-assistant-live', 'hello'),
       })
-      expect(controller.getSnapshot().messages.at(-1)?.metadata).toEqual({
-        generationState: 'streaming',
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        metadata: { generationState: 'streaming' },
       })
 
       runtime.emit({ type: 'run_state', state: 'completed' })
@@ -1253,8 +1253,8 @@ describe('CliConversationController', () => {
 
       runtime.emit({ type: 'run_state', state: 'aborted' })
 
-      expect(controller.getSnapshot().messages.at(-1)?.metadata).toEqual({
-        generationState: 'aborted',
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        metadata: { generationState: 'aborted' },
       })
     })
 

@@ -14,6 +14,7 @@ import {
   AcpSessionAggregator,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
+  mapAcpUsageUpdate,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
 } from './mapping'
@@ -523,5 +524,34 @@ describe('toAcpPromptBlocks', () => {
         },
       ]),
     ).toThrow(/does not support PDF attachments/)
+  })
+})
+
+describe('mapAcpUsageUpdate', () => {
+  it('maps used/size onto the context ring inputs', () => {
+    expect(
+      mapAcpUsageUpdate({
+        used: 12_345,
+        size: 200_000,
+      }),
+    ).toEqual({ promptTokens: 12_345, maxContextTokens: 200_000 })
+  })
+
+  it('keeps the used count when the agent reports no window size', () => {
+    expect(
+      mapAcpUsageUpdate({
+        used: 4_096,
+        size: 0,
+      }),
+    ).toEqual({ promptTokens: 4_096, maxContextTokens: null })
+  })
+
+  it('drops an unusable used count rather than showing a wrong ring', () => {
+    expect(
+      mapAcpUsageUpdate({
+        used: Number.NaN,
+        size: 200_000,
+      }),
+    ).toBeNull()
   })
 })
