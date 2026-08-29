@@ -44,7 +44,6 @@ import {
   type CodexHostResolver,
 } from './host'
 import {
-  buildCodexToolMessage,
   buildPendingToolMessages,
   mapCodexItem,
   mapCodexRawToolCall,
@@ -82,8 +81,6 @@ type PendingServerRequest = {
   request: CodexServerRequest
   toolCallId: string
   kind: 'approval' | 'question'
-  /** The card's own request, kept so settling can republish it in place. */
-  toolCallRequest: ToolCallRequest
 }
 
 type CodexSubagentWatch = {
@@ -617,24 +614,12 @@ export class CodexCliRuntime implements CliRuntime {
     })
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
+  async respondApproval(
+    response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingRequests.get(response.requestId)
-    if (!pending || pending.kind !== 'approval') return false
+    if (!pending || pending.kind !== 'approval') return null
     this.deletePendingRequest(pending)
-    this.settleRequestCard(
-      pending,
-      response.decision === 'reject'
-        ? { status: ToolCallResponseStatus.Rejected }
-        : // A permission grant has no follow-up item of its own; a command or
-          // file change is about to report through its own item, which
-          // replaces this card the moment it arrives.
-          pending.request.method === 'item/permissions/requestApproval'
-          ? {
-              status: ToolCallResponseStatus.Success,
-              data: { type: 'text', text: '' },
-            }
-          : { status: ToolCallResponseStatus.Running },
-    )
     const host = await this.getHost()
     if (pending.request.method === 'item/permissions/requestApproval') {
       if (response.decision === 'reject') {
@@ -655,23 +640,32 @@ export class CodexCliRuntime implements CliRuntime {
         decision: approvalDecision(response.decision),
       })
     }
-    return true
+    if (response.decision === 'reject') {
+      return { status: ToolCallResponseStatus.Rejected }
+    }
+    // A permission grant has no follow-up item of its own, so this is where
+    // that card ends; a command or file change is about to report through its
+    // own item, which replaces the card the moment it arrives.
+    return pending.request.method === 'item/permissions/requestApproval'
+      ? {
+          status: ToolCallResponseStatus.Success,
+          data: { type: 'text', text: '' },
+        }
+      : { status: ToolCallResponseStatus.Running }
   }
 
-  async respondQuestion(response: CliQuestionResponse): Promise<boolean> {
+  async respondQuestion(
+    response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingRequests.get(response.requestId)
-    if (!pending || pending.kind !== 'question') return false
+    if (!pending || pending.kind !== 'question') return null
     this.deletePendingRequest(pending)
-    this.settleRequestCard(pending, {
-      status:
-        response.answer === null || response.answer === undefined
-          ? ToolCallResponseStatus.Rejected
-          : ToolCallResponseStatus.Running,
-    })
     ;(await this.getHost()).respond(pending.request.id, {
       answers: toCodexQuestionAnswers(response.answer),
     })
-    return true
+    return response.answer === null || response.answer === undefined
+      ? { status: ToolCallResponseStatus.Rejected }
+      : { status: ToolCallResponseStatus.Running }
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -1139,11 +1133,9 @@ export class CodexCliRuntime implements CliRuntime {
         request,
         toolCallId: itemId,
         kind: 'approval',
-        toolCallRequest: tool.toolCalls[0].request,
       })
       this.emit({ type: 'message_upsert', message: assistant })
       this.emit({ type: 'message_upsert', message: tool })
-      this.emit({ type: 'run_state', state: 'waiting_for_approval' })
       return
     }
     if (request.method === 'item/tool/requestUserInput') {
@@ -1205,11 +1197,9 @@ export class CodexCliRuntime implements CliRuntime {
         request,
         toolCallId: itemId,
         kind: 'question',
-        toolCallRequest: tool.toolCalls[0].request,
       })
       this.emit({ type: 'message_upsert', message: assistant })
       this.emit({ type: 'message_upsert', message: tool })
-      this.emit({ type: 'run_state', state: 'waiting_for_user' })
       return
     }
     void this.getHost().then((host) =>
@@ -1219,32 +1209,6 @@ export class CodexCliRuntime implements CliRuntime {
         `Unsupported Codex request: ${request.method}`,
       ),
     )
-  }
-
-  /**
-   * The approval / question footer is gated purely on the card's response
-   * status, and Codex acknowledges nothing when a request is answered — its
-   * next event is the tool's own output. Republishing the card with a settled
-   * status is what takes the buttons away at the moment of the click instead
-   * of whenever the next event happens to arrive.
-   */
-  private settleRequestCard(
-    pending: PendingServerRequest,
-    response: ToolCallResponse,
-  ): void {
-    this.emit({
-      type: 'message_upsert',
-      message: buildCodexToolMessage(pending.toolCallRequest, response),
-    })
-    const stillPending = new Set(this.pendingRequests.values())
-    this.emit({
-      type: 'run_state',
-      state: [...stillPending].some((entry) => entry.kind === 'question')
-        ? 'waiting_for_user'
-        : stillPending.size > 0
-          ? 'waiting_for_approval'
-          : 'running',
-    })
   }
 
   private registerPendingRequest(

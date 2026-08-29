@@ -219,11 +219,8 @@ const buildFileChangeEditSummary = (
   }
 }
 
-/**
- * The tool card's identity — republishing this id with a different response
- * replaces the card in place rather than adding a second one.
- */
-export const buildCodexToolMessage = (
+/** The tool card's identity — one owner for the `codex-result-` id. */
+const buildCodexToolMessage = (
   request: ToolCallRequest,
   response: ToolCallResponse,
 ): ChatToolMessage => ({

@@ -1,5 +1,6 @@
 import type { App } from 'obsidian'
 
+import type { ToolCallResponse } from '../../../types/tool-call.types'
 import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
 import { getCliPathOverride } from '../cli-path-override'
 import { loadLoginShellEnvironment } from '../login-shell-env'
@@ -401,13 +402,17 @@ export class PiCliRuntime implements CliRuntime {
   }
 
   /** pi has no approval prompts in v1 — nothing is ever pending to answer. */
-  async respondApproval(_response: CliApprovalResponse): Promise<boolean> {
-    return false
+  async respondApproval(
+    _response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
   /** pi has no user-question prompts in v1 — nothing is ever pending to answer. */
-  async respondQuestion(_response: CliQuestionResponse): Promise<boolean> {
-    return false
+  async respondQuestion(
+    _response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {

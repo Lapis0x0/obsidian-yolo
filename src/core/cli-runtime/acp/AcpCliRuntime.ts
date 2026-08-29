@@ -6,7 +6,7 @@ import type {
 
 import type { ChatMessage } from '../../../types/chat'
 import {
-  type ToolCallRequest,
+  type ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
 import type {
@@ -29,7 +29,6 @@ import type {
 import { AcpHost, type AcpHostOptions, type AcpHostResolver } from './host'
 import {
   AcpSessionAggregator,
-  buildAcpToolMessage,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModelState,
@@ -78,8 +77,6 @@ export type AcpCliRuntimeOptions = Readonly<{
 type PendingApproval = {
   options: readonly PermissionOption[]
   resolve: (response: RequestPermissionResponse) => void
-  /** The card's own request, kept so settling can republish it in place. */
-  toolCallRequest: ToolCallRequest
 }
 
 /**
@@ -376,39 +373,30 @@ export class AcpCliRuntime implements CliRuntime {
     await host.call((connection) => connection.cancel({ sessionId }))
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
+  async respondApproval(
+    response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingApprovals.get(response.requestId)
-    if (!pending) return false
+    if (!pending) return null
     this.pendingApprovals.delete(response.requestId)
     const optionId = resolveApprovalOptionId(pending.options, response.decision)
-    // The approval footer is gated purely on the card's response status, and
-    // ACP acknowledges nothing when the outcome is delivered — the next event
-    // is whatever the agent decides to send next. Republishing the card with a
-    // settled status is what takes the buttons away on the click itself.
-    this.emit({
-      type: 'message_upsert',
-      message: buildAcpToolMessage(
-        pending.toolCallRequest,
-        optionId
-          ? { status: ToolCallResponseStatus.Running }
-          : { status: ToolCallResponseStatus.Rejected },
-      ),
-    })
-    this.emit({
-      type: 'run_state',
-      state:
-        this.pendingApprovals.size > 0 ? 'waiting_for_approval' : 'running',
-    })
     pending.resolve(
       optionId
         ? { outcome: { outcome: 'selected', optionId } }
         : buildCancelledApprovalOutcome(),
     )
-    return true
+    // No matching option means the outcome went out as cancelled, so the tool
+    // is not about to run.
+    return optionId
+      ? { status: ToolCallResponseStatus.Running }
+      : { status: ToolCallResponseStatus.Rejected }
   }
 
-  async respondQuestion(_response: CliQuestionResponse): Promise<boolean> {
-    return false
+  /** ACP has no user-question request — nothing is ever pending to answer. */
+  async respondQuestion(
+    _response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -530,12 +518,10 @@ export class AcpCliRuntime implements CliRuntime {
     )
     this.emit({ type: 'message_upsert', message: assistant })
     this.emit({ type: 'message_upsert', message: tool })
-    this.emit({ type: 'run_state', state: 'waiting_for_approval' })
     return new Promise<RequestPermissionResponse>((resolve) => {
       this.pendingApprovals.set(request.toolCall.toolCallId, {
         options: request.options,
         resolve,
-        toolCallRequest: tool.toolCalls[0].request,
       })
     })
   }

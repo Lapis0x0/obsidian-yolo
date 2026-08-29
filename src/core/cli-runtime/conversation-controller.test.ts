@@ -3,7 +3,10 @@ import type {
   ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+} from '../../types/tool-call.types'
 
 import { CliConversationController } from './conversation-controller'
 import type {
@@ -163,12 +166,16 @@ class FakeCliRuntime implements CliRuntime {
     return this.compactImpl()
   }
 
-  async respondApproval(_response: CliApprovalResponse): Promise<boolean> {
-    return false
+  async respondApproval(
+    _response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
-  async respondQuestion(_response: CliQuestionResponse): Promise<boolean> {
-    return false
+  async respondQuestion(
+    _response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -339,6 +346,84 @@ describe('CliConversationController', () => {
         content: 'tool test continued',
       },
     ])
+  })
+
+  describe('approval card lifecycle', () => {
+    const pendingCard = (
+      status: ToolCallResponse['status'],
+      id = 'call-1',
+    ): ChatToolMessage => ({
+      role: 'tool',
+      id: `tool-${id}`,
+      toolCalls: [
+        {
+          request: { id, name: 'ls' },
+          response: { status } as ToolCallResponse,
+        },
+      ],
+    })
+    const cardStatus = (controller: CliConversationController, id = 'call-1') =>
+      controller
+        .getSnapshot()
+        .messages.flatMap((message) =>
+          message.role === 'tool' ? message.toolCalls : [],
+        )
+        .find((toolCall) => toolCall.request.id === id)?.response.status
+
+    it('derives the waiting run state from the card, not from the runtime', async () => {
+      const runtime = new FakeCliRuntime('codex')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({ type: 'run_state', state: 'running' })
+
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.PendingApproval),
+      })
+      expect(controller.getSnapshot().runState).toBe('waiting_for_approval')
+
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.AwaitingUserInput, 'q-1'),
+      })
+      expect(controller.getSnapshot().runState).toBe('waiting_for_user')
+    })
+
+    it('settles the answered card and lets the run state follow it back', async () => {
+      const runtime = new FakeCliRuntime('codex')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({ type: 'run_state', state: 'running' })
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.PendingApproval),
+      })
+
+      controller.settleToolCard('call-1', {
+        status: ToolCallResponseStatus.Running,
+      })
+
+      expect(cardStatus(controller)).toBe(ToolCallResponseStatus.Running)
+      expect(controller.getSnapshot().runState).toBe('running')
+    })
+
+    it('aborts an unanswered card when the turn ends, whatever the runtime did', async () => {
+      const runtime = new FakeCliRuntime('codex')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({ type: 'run_state', state: 'running' })
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.PendingApproval),
+      })
+
+      // A runtime whose cancel() only interrupts the provider leaves the card
+      // behind; the buttons would otherwise stay on screen forever.
+      runtime.emit({ type: 'run_state', state: 'aborted' })
+
+      expect(cardStatus(controller)).toBe(ToolCallResponseStatus.Aborted)
+      expect(controller.getSnapshot().runState).toBe('aborted')
+    })
   })
 
   it('appends a new assistant bubble when text continues after tools', async () => {
@@ -793,14 +878,9 @@ describe('CliConversationController', () => {
     expect(runtime.readyInputs).toEqual([{ sessionRef: ref }])
     expect(controller.getSnapshot().sessionRef).toEqual(ref)
 
-    const states = [
-      'running',
-      'waiting_for_approval',
-      'waiting_for_user',
-      'completed',
-      'aborted',
-      'error',
-    ] as const
+    // Waiting states are not reported by runtimes any more — they are derived
+    // from the cards (see the approval-lifecycle tests below).
+    const states = ['running', 'completed', 'aborted', 'error'] as const
     for (const state of states) {
       runtime.emit({
         type: 'run_state',

@@ -383,15 +383,11 @@ describe('AcpCliRuntime', () => {
 
     // Let the requestPermission round-trip reach AcpCliRuntime before responding.
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(events).toContainEqual({
-      type: 'run_state',
-      state: 'waiting_for_approval',
-    })
     const responded = await runtime.respondApproval({
       requestId: 'call-1',
       decision: 'approve_for_session',
     })
-    expect(responded).toBe(true)
+    expect(responded).toEqual({ status: ToolCallResponseStatus.Running })
 
     await turnPromise
     expect(permissionOutcome).toEqual({
@@ -412,14 +408,12 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
-  it("takes the approval buttons away on the click, not on the agent's next event", async () => {
+  it('answers an approval with the state its card becomes, not by republishing it', async () => {
     const agent = new FakeAcpAgent()
     wireServerRequestReplies(agent)
     agent.on('session/new', () => ({ sessionId: 'sess-1' }))
     agent.on('session/prompt', async (message) => {
       const params = message.params as { sessionId: string }
-      // The agent reports nothing about the tool afterwards — nothing else
-      // would clear the pending card if the runtime did not republish it.
       await agent.request('session/request_permission', {
         sessionId: params.sessionId,
         toolCall: {
@@ -437,25 +431,24 @@ describe('AcpCliRuntime', () => {
     await runtime.ensureReady({})
     const turnPromise = runtime.sendTurn({ content: 'run the tests' })
     await new Promise((resolve) => setTimeout(resolve, 10))
-
-    await runtime.respondApproval({
-      requestId: 'call-1',
-      decision: 'approve_once',
-    })
-    const onClick = [...events]
-
-    const cardStatuses = onClick.flatMap((event) =>
-      event.type === 'message_upsert' &&
-      event.message.role === 'tool' &&
-      event.message.id === 'acp-result-call-1'
-        ? [event.message.toolCalls[0].response.status]
-        : [],
+    // The waiting run state is derived from the card, never announced.
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: 'run_state',
+        state: 'waiting_for_approval',
+      }),
     )
-    expect(cardStatuses).toEqual([
-      ToolCallResponseStatus.PendingApproval,
-      ToolCallResponseStatus.Running,
-    ])
-    expect(onClick.at(-1)).toEqual({ type: 'run_state', state: 'running' })
+    const eventsBeforeAnswer = events.length
+
+    // The settled state is the return value — the host publishes it (see
+    // `CliRuntime.respondApproval`).
+    await expect(
+      runtime.respondApproval({
+        requestId: 'call-1',
+        decision: 'approve_once',
+      }),
+    ).resolves.toEqual({ status: ToolCallResponseStatus.Running })
+    expect(events).toHaveLength(eventsBeforeAnswer)
 
     await turnPromise
     await runtime.dispose()

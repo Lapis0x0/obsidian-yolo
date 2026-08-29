@@ -243,9 +243,15 @@ class DesktopCliRuntimeWorkspace {
   private hermesLoginShellEnvironmentPromise: Promise<NodeJS.ProcessEnv> | null =
     null
 
-  readonly chatRuntimeActions = createCliChatRuntimeActions((ref) =>
-    this.resolveConversationRuntime(ref),
-  )
+  readonly chatRuntimeActions = createCliChatRuntimeActions((ref) => {
+    const record = this.resolveConversationRecord(ref)
+    if (!record) return undefined
+    return {
+      runtime: record.runtime,
+      settleToolCard: (toolCallId, response) =>
+        record.controller.settleToolCard(toolCallId, response),
+    }
+  })
 
   constructor(
     private readonly adapter: FileSystemAdapter,
@@ -430,13 +436,13 @@ class DesktopCliRuntimeWorkspace {
     )
   }
 
-  private resolveConversationRuntime(
+  private resolveConversationRecord(
     ref: CliSessionRef,
-  ): CliRuntime | undefined {
+  ): ConversationRuntimeRecord | undefined {
     return [...this.conversations].find((record) => {
       const selectedRef = record.controller.getSnapshot().sessionRef
       return selectedRef !== null && isSameSession(selectedRef, ref)
-    })?.runtime
+    })
   }
 
   dispose(): Promise<void> {

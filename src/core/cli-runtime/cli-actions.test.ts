@@ -1,5 +1,14 @@
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+} from '../../types/tool-call.types'
+
 import { createCliChatRuntimeActions } from './cli-actions'
 import type { CliRuntime } from './types'
+
+const settleToolCard = jest.fn()
+
+beforeEach(() => settleToolCard.mockClear())
 
 const conversation = {
   runtimeId: 'codex',
@@ -14,8 +23,16 @@ const createRuntime = (): jest.Mocked<CliRuntime> =>
     ensureReady: jest.fn(),
     sendTurn: jest.fn(),
     cancel: jest.fn(async () => undefined),
-    respondApproval: jest.fn(async () => true),
-    respondQuestion: jest.fn(async () => true),
+    respondApproval: jest.fn(
+      async (): Promise<ToolCallResponse | null> => ({
+        status: ToolCallResponseStatus.Running,
+      }),
+    ),
+    respondQuestion: jest.fn(
+      async (): Promise<ToolCallResponse | null> => ({
+        status: ToolCallResponseStatus.Running,
+      }),
+    ),
     subscribe: jest.fn(() => () => undefined),
     dispose: jest.fn(),
   }) as unknown as jest.Mocked<CliRuntime>
@@ -23,7 +40,10 @@ const createRuntime = (): jest.Mocked<CliRuntime> =>
 describe('createCliChatRuntimeActions', () => {
   it('maps tool approvals and rejection to the provider runtime', async () => {
     const runtime = createRuntime()
-    const actions = createCliChatRuntimeActions(() => runtime)
+    const actions = createCliChatRuntimeActions(() => ({
+      runtime,
+      settleToolCard,
+    }))
 
     await expect(
       actions.approveTool({ conversation, toolCallId: 'approval-1' }),
@@ -46,11 +66,53 @@ describe('createCliChatRuntimeActions', () => {
     ])
   })
 
+  it('settles the answered card in the host, whatever the runtime does', async () => {
+    // This is the guarantee that used to be re-implemented in every adapter:
+    // answering takes the buttons away here, on the click, for all of them.
+    const runtime = createRuntime()
+    runtime.respondApproval.mockResolvedValueOnce({
+      status: ToolCallResponseStatus.Rejected,
+    })
+    const actions = createCliChatRuntimeActions(() => ({
+      runtime,
+      settleToolCard,
+    }))
+
+    await actions.rejectTool({ conversation, toolCallId: 'approval-1' })
+    await actions.answerQuestion({
+      conversation,
+      toolCallId: 'question-1',
+      payload: { type: 'user_answers', answers: [] },
+    })
+
+    expect(settleToolCard.mock.calls).toEqual([
+      ['approval-1', { status: ToolCallResponseStatus.Rejected }],
+      ['question-1', { status: ToolCallResponseStatus.Running }],
+    ])
+  })
+
+  it('leaves the card untouched when the request is already stale', async () => {
+    const runtime = createRuntime()
+    runtime.respondApproval.mockResolvedValueOnce(null)
+    const actions = createCliChatRuntimeActions(() => ({
+      runtime,
+      settleToolCard,
+    }))
+
+    await expect(
+      actions.approveTool({ conversation, toolCallId: 'gone' }),
+    ).resolves.toEqual({ kind: 'stale' })
+    expect(settleToolCard).not.toHaveBeenCalled()
+  })
+
   it('reports stale provider requests without treating them as success', async () => {
     const runtime = createRuntime()
-    runtime.respondApproval.mockResolvedValueOnce(false)
-    runtime.respondQuestion.mockResolvedValueOnce(false)
-    const actions = createCliChatRuntimeActions(() => runtime)
+    runtime.respondApproval.mockResolvedValueOnce(null)
+    runtime.respondQuestion.mockResolvedValueOnce(null)
+    const actions = createCliChatRuntimeActions(() => ({
+      runtime,
+      settleToolCard,
+    }))
 
     await expect(
       actions.rejectTool({ conversation, toolCallId: 'stale-approval' }),
@@ -66,7 +128,10 @@ describe('createCliChatRuntimeActions', () => {
 
   it('answers questions and cancels an accepted question by ending the turn', async () => {
     const runtime = createRuntime()
-    const actions = createCliChatRuntimeActions(() => runtime)
+    const actions = createCliChatRuntimeActions(() => ({
+      runtime,
+      settleToolCard,
+    }))
     const payload = { type: 'user_answers', answers: [] }
 
     await expect(
@@ -89,7 +154,10 @@ describe('createCliChatRuntimeActions', () => {
 
   it('uses runtime cancellation for run and tool aborts', async () => {
     const runtime = createRuntime()
-    const actions = createCliChatRuntimeActions(() => runtime)
+    const actions = createCliChatRuntimeActions(() => ({
+      runtime,
+      settleToolCard,
+    }))
 
     await actions.cancelRun(conversation)
     await expect(

@@ -149,11 +149,8 @@ const buildAcpEditSummary = (
   }
 }
 
-/**
- * The tool card's identity — republishing this id with a different response
- * replaces the card in place rather than adding a second one.
- */
-export const buildAcpToolMessage = (
+/** The tool card's identity — one owner for the `acp-result-` id. */
+const buildAcpToolMessage = (
   request: ToolCallRequest,
   response: ToolCallResponse,
 ): ChatToolMessage => ({

@@ -1,5 +1,7 @@
 import { FileSystemAdapter, Platform } from 'obsidian'
 
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
+
 import type { CliRuntimeFactories } from './coordinator'
 import { createDesktopCliRuntimeCoordinator } from './coordinator'
 import { discoverHermesProfiles } from './hermes/profiles'
@@ -89,11 +91,11 @@ class TestRuntime implements CliRuntime {
   async rewriteTurn() {}
 
   async respondApproval() {
-    return true
+    return null
   }
 
   async respondQuestion() {
-    return true
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -456,7 +458,21 @@ describe('CLI runtime coordinator', () => {
       runState: 'running',
     })
 
-    runtime.emit({ type: 'run_state', state: 'waiting_for_approval' })
+    // A pending card is what puts the run into `waiting_for_approval` — the
+    // state is derived from it, so monitoring keeps seeing a live run.
+    runtime.emit({
+      type: 'message_upsert',
+      message: {
+        role: 'tool',
+        id: 'tool-1',
+        toolCalls: [
+          {
+            request: { id: 'call-1', name: 'ls' },
+            response: { status: ToolCallResponseStatus.PendingApproval },
+          },
+        ],
+      },
+    })
     expect(summaries[summaries.length - 1].get('conversation-a')).toEqual({
       conversationId: 'conversation-a',
       runtimeId: 'claude-code',

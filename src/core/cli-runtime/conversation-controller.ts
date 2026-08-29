@@ -2,7 +2,11 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import type { ResponseUsage } from '../../types/llm/response'
-import type { ToolEditSummary } from '../../types/tool-call.types'
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+  type ToolEditSummary,
+} from '../../types/tool-call.types'
 
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
@@ -261,6 +265,114 @@ const settleStreamingAssistantMessages = (
     return {
       ...message,
       metadata: { ...message.metadata, generationState },
+    }
+  })
+  return changed ? Object.freeze(settled) : messages
+}
+
+const PENDING_INTERACTION_STATUSES = [
+  ToolCallResponseStatus.PendingApproval,
+  ToolCallResponseStatus.AwaitingUserInput,
+] as const
+
+const isPendingInteraction = (response: ToolCallResponse): boolean =>
+  (
+    PENDING_INTERACTION_STATUSES as readonly ToolCallResponse['status'][]
+  ).includes(response.status)
+
+/**
+ * The run state while a card waits for the user is not something a runtime has
+ * to remember to announce: a card sitting at `PendingApproval` /
+ * `AwaitingUserInput` *is* the run waiting. Deriving it from the transcript is
+ * what makes it impossible for an adapter to forget — and it cannot disagree
+ * with what the user sees, because it is read off the same messages.
+ *
+ * Only a live turn is reinterpreted; an idle or finished snapshot keeps the
+ * state the runtime reported.
+ */
+const deriveRunState = (
+  runState: CliRuntimeRunState,
+  messages: readonly ChatMessage[],
+): CliRuntimeRunState => {
+  if (
+    runState !== 'running' &&
+    runState !== 'waiting_for_approval' &&
+    runState !== 'waiting_for_user'
+  ) {
+    return runState
+  }
+  let waiting: CliRuntimeRunState = 'running'
+  // Only the current turn can hold a live request, so the scan stops at the
+  // user message that opened it rather than walking the whole transcript.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === 'user') break
+    if (message?.role !== 'tool') continue
+    for (const { response } of message.toolCalls) {
+      if (response.status === ToolCallResponseStatus.AwaitingUserInput) {
+        return 'waiting_for_user'
+      }
+      if (response.status === ToolCallResponseStatus.PendingApproval) {
+        waiting = 'waiting_for_approval'
+      }
+    }
+  }
+  return waiting
+}
+
+/**
+ * A turn cannot end with a question still on screen. Settling here covers
+ * every runtime at once — including the ones whose `cancel()` only interrupts
+ * the provider and never touched their own cards.
+ */
+const abortPendingInteractions = (
+  messages: readonly ChatMessage[],
+): readonly ChatMessage[] => {
+  let changed = false
+  const settled = messages.map((message) => {
+    if (message.role !== 'tool') return message
+    if (
+      !message.toolCalls.some(({ response }) => isPendingInteraction(response))
+    ) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) =>
+        isPendingInteraction(toolCall.response)
+          ? {
+              ...toolCall,
+              response: { status: ToolCallResponseStatus.Aborted } as const,
+            }
+          : toolCall,
+      ),
+    }
+  })
+  return changed ? Object.freeze(settled) : messages
+}
+
+const settleToolCallResponse = (
+  messages: readonly ChatMessage[],
+  toolCallId: string,
+  response: ToolCallResponse,
+): readonly ChatMessage[] => {
+  let changed = false
+  const settled = messages.map((message) => {
+    if (
+      message.role !== 'tool' ||
+      !message.toolCalls.some((toolCall) => toolCall.request.id === toolCallId)
+    ) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) =>
+        toolCall.request.id === toolCallId
+          ? { ...toolCall, response }
+          : toolCall,
+      ),
     }
   })
   return changed ? Object.freeze(settled) : messages
@@ -722,6 +834,24 @@ export class CliConversationController {
       if (this.isCurrent(operation)) this.publishError(error)
       throw error
     }
+  }
+
+  /**
+   * Publishes the settled state of an approval / question card the user just
+   * answered — see `CliRuntime.respondApproval`. The runtime declares what the
+   * card becomes; applying it is the host's own job, so no adapter can leave
+   * the buttons on screen waiting for the provider's next event. The run state
+   * follows from the card itself (`deriveRunState`), so there is nothing else
+   * to publish here.
+   */
+  settleToolCard(toolCallId: string, response: ToolCallResponse): void {
+    const messages = settleToolCallResponse(
+      this.snapshot.messages,
+      toolCallId,
+      response,
+    )
+    if (messages === this.snapshot.messages) return
+    this.publish({ ...this.snapshot, messages })
   }
 
   /**
@@ -1220,22 +1350,24 @@ export class CliConversationController {
       }
       return
     }
-    if (
-      event.state !== 'running' &&
-      event.state !== 'waiting_for_approval' &&
-      event.state !== 'waiting_for_user'
-    ) {
+    if (event.state !== 'running') {
       this.pendingOptimisticUserMessageId = null
       this.currentTurnMessageIds.clear()
-      this.currentTurnMetrics = null
+      // The metrics window deliberately stays open past the terminal state: a
+      // runtime that reports usage and duration as two separate events (Codex,
+      // pi) would otherwise lose whichever one loses the race, silently. It is
+      // reset when the next turn opens, which is the only moment the previous
+      // turn's metrics stop being the right answer.
     }
     const messages =
       event.state === 'completed' ||
       event.state === 'aborted' ||
       event.state === 'error'
-        ? settleStreamingAssistantMessages(
-            this.snapshot.messages,
-            event.state === 'aborted' ? 'aborted' : 'completed',
+        ? abortPendingInteractions(
+            settleStreamingAssistantMessages(
+              this.snapshot.messages,
+              event.state === 'aborted' ? 'aborted' : 'completed',
+            ),
           )
         : this.snapshot.messages
     if (event.state === 'error' && event.error) {
@@ -1255,11 +1387,7 @@ export class CliConversationController {
       messages,
       runState: event.state,
       error: event.error ?? null,
-      ...(event.state !== 'running' &&
-      event.state !== 'waiting_for_approval' &&
-      event.state !== 'waiting_for_user'
-        ? { isCompacting: false }
-        : {}),
+      ...(event.state !== 'running' ? { isCompacting: false } : {}),
     })
   }
 
@@ -1431,7 +1559,10 @@ export class CliConversationController {
 
   private publish(snapshot: CliConversationSnapshot): void {
     if (this.disposed) return
-    this.snapshot = Object.freeze(snapshot)
+    const runState = deriveRunState(snapshot.runState, snapshot.messages)
+    this.snapshot = Object.freeze(
+      runState === snapshot.runState ? snapshot : { ...snapshot, runState },
+    )
     this.notify()
   }
 
