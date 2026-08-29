@@ -46,17 +46,35 @@ const SimilarNoteCard: React.FC<{
   const [expanded, setExpanded] = useState(false)
 
   /**
-   * Always opens in a new tab. The panel's results are keyed to the active
+   * Opens in a background tab. The panel's results are keyed to the active
    * file, so reusing the current leaf would replace the note the list was
-   * computed from — you lose both the source and the way back. A modifier
-   * still picks its own pane type (split / window).
+   * computed from — you lose both the source and the way back. Staying on the
+   * source note also keeps the list stable while you queue up several results.
+   * A modifier still picks its own pane type (split / window) and, being an
+   * explicit "take me there", focuses it.
+   *
+   * `getLeaf('tab')` already activates the new tab when Obsidian's
+   * "Always focus new tabs" is on, and `openFile({ active: false })` only
+   * declines to activate — it never undoes that. Handing the active leaf back
+   * in the same synchronous block is what keeps the tab bar from flicking to
+   * the new tab and back; nothing is painted in between.
    */
   const handleOpen = (event: React.MouseEvent) => {
-    void app.workspace.openLinkText(
-      note.path,
-      sourcePath,
-      Keymap.isModEvent(event.nativeEvent) || 'tab',
-    )
+    const modPaneType = Keymap.isModEvent(event.nativeEvent)
+    if (modPaneType) {
+      void app.workspace.openLinkText(note.path, sourcePath, modPaneType)
+      return
+    }
+    // Results come from the index, which can lag a delete or rename.
+    // openLinkText would answer a stale path by creating a new note.
+    const file = app.vault.getFileByPath(note.path)
+    if (!file) return
+    const source = app.workspace.getMostRecentLeaf()
+    const leaf = app.workspace.getLeaf('tab')
+    if (source && source !== leaf) {
+      app.workspace.setActiveLeaf(source)
+    }
+    void leaf.openFile(file, { active: false })
   }
 
   const handleHover = (event: React.MouseEvent) => {
