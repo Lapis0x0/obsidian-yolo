@@ -6,23 +6,26 @@ For a behavior ↔ code-location ↔ verification-path index (complements this f
 
 ## Commands
 
+Verify what you touched: host code → type-check + relevant tests; module code → module typecheck, tests, `npm --prefix modules/<id> run test:boundary` when available, and module build; runtime component code → runtime typecheck, tests, build, and verify; host CSS → styles build (module CSS is rebuilt by the module build).
+
 - `npm run dev` - Build runtime components and first-party modules, then watch the host app, host styles, and dev-vault artifacts
-- `npm run build` - Production build with host, module, and runtime component type checking
+- `npm run build` - Production build with host, module, and runtime component type checking; run for changes affecting production bundling, module boundaries, runtime loading, or cross-platform behavior
 - `npm run type:check` / `npm run module:typecheck` / `npm run runtime:typecheck` - Type-check the host, first-party modules, or runtime components
 - `npm run module:build` - Rebuild first-party module artifacts and the bundled module catalog
 - `npm run runtime:build` / `npm run runtime:verify` - Rebuild runtime component artifacts and their registry, or verify the host bundle doesn't statically pull in a runtime component's dependencies
 - `npm run lint:check` / `npm run lint:fix` - Check or fix Prettier and ESLint
 - `npm test` - Run the full Jest suite; use `npx jest <test-file> --runInBand` for serial debugging
 - `npm run styles:build` - Regenerate the host `styles.css` from `src/styles/**`
+- `npm run deps:check` - Enforce the circular-dependency ratchet; after removing cycles, tighten the baseline with `npm run deps:baseline`
 
 ## Architecture
 
 - `src/main.ts` owns the host plugin lifecycle. `src/ChatView.tsx` and `src/components/chat-view/` own the main chat surface.
 - `src/core/modules/` owns module discovery, installation, loading, activation, lifecycle, and the versioned Host API. `modules/host-sdk.d.ts` is the module-facing API contract.
-- `modules/<id>/` owns an independently built product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
-- `src/core/runtime-components/` owns discovery, download, and lifecycle of on-demand runtime components (heavy native/WASM engines). `runtime-components/<id>/` at the repo root owns each component's source and build output; `runtime-components/sdk.d.ts` is the component-facing contract.
+- `modules/<id>/` owns everything in a product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
+- `src/core/runtime-components/` owns discovery, download, and lifecycle of on-demand runtime components. `runtime-components/<id>/` at the repo root owns each component's source and build output; `runtime-components/sdk.d.ts` is the component-facing contract.
 - `src/core/agent/` owns the shared native agent runtime, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat run through `AgentService.run`; permissions come from `resolveChatModeRuntime`.
-- `src/core/ai/single-turn.ts` is the low-latency path for Sparkle (tab completion, selection rewrite, continuation). Do not route these features through the agent runtime or introduce another orchestration path.
+- `src/core/ai/single-turn.ts` is the low-latency path for Sparkle (tab completion, selection rewrite, continuation). Do not route these features through the agent runtime.
 - `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path.
 - `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and MCP capabilities.
 - `src/features/` contains host-shipped cross-cutting features. `src/database/`, `src/settings/`, and `src/styles/` own host persistence, settings, and global styles.
@@ -82,12 +85,3 @@ Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm,
 - Never hardcode user-visible text; route it through i18n, and resolve the current locale at use time rather than caching a locale-bound translator.
 - Animate only `opacity` and `transform`, with durations and easings from `src/styles/tokens/motion.css` / `motion.ts` (paired files — keep both in sync). Animating layout properties requires an inline exemption comment.
 - CSS animations get reduced-motion handling for free from a global fallback; do not add per-component disable blocks. JS-driven animations (framer-motion / WAAPI) must degrade via `useReducedMotion`.
-
-## Verification
-
-- Host code: run `npm run type:check` and relevant tests.
-- Module code: run `npm run module:typecheck`, relevant tests, `npm --prefix modules/<id> run test:boundary` when available, and `npm run module:build`.
-- Runtime component code: run `npm run runtime:typecheck`, relevant tests, `npm run runtime:build`, and `npm run runtime:verify`.
-- Host CSS: run `npm run styles:build`. Module CSS is rebuilt by the module build.
-- Run `npm run build` for changes that affect production bundling, module boundaries, runtime loading, or cross-platform behavior.
-- Dependency hygiene: `npm run deps:check` enforces the circular-dependency ratchet; after removing cycles, tighten the baseline with `npm run deps:baseline`.
