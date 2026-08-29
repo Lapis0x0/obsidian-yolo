@@ -82,6 +82,12 @@ export class PiCliRuntime implements CliRuntime {
   private turnTerminalEmitted = true
   private cancelRequested = false
   private contextWindowHint: number | null = null
+  /**
+   * pi's `prompt` response only acknowledges acceptance, so turn duration is
+   * measured from here to `agent_settled` — pi reports no duration of its own
+   * (Codex and Hermes are measured locally the same way).
+   */
+  private turnStartedAt: number | null = null
   private readonly mappingState: PiMappingState = createPiMappingState()
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private models: CliRuntimeModel[] | null = null
@@ -257,6 +263,7 @@ export class PiCliRuntime implements CliRuntime {
     resetPiMappingState(this.mappingState)
     this.turnTerminalEmitted = false
     this.cancelRequested = false
+    this.turnStartedAt = Date.now()
     this.emit({ type: 'run_state', state: 'running' })
 
     try {
@@ -526,6 +533,15 @@ export class PiCliRuntime implements CliRuntime {
       this.turnTerminalEmitted = true
       const state = this.cancelRequested ? 'aborted' : 'completed'
       this.cancelRequested = false
+      if (this.turnStartedAt !== null) {
+        // Before the terminal run state, which closes the turn's metrics
+        // window in CliConversationController.
+        this.emit({
+          type: 'turn_metrics',
+          durationMs: Math.max(0, Date.now() - this.turnStartedAt),
+        })
+        this.turnStartedAt = null
+      }
       this.emit({ type: 'run_state', state })
     }
   }
@@ -614,10 +630,14 @@ export class PiCliRuntime implements CliRuntime {
     // predating the `provider/modelId` encoding) can't be applied safely —
     // leave pi on its current model rather than sending a broken request.
     if (!decoded) return
-    await handle.transport.request('set_model', {
+    // The response is the full Model object, which carries the new model's
+    // context window — the ring's denominator has to follow the switch.
+    const model = await handle.transport.request('set_model', {
       provider: decoded.provider,
       modelId: decoded.modelId,
     })
+    const window = extractPiContextWindow(model)
+    if (window !== null) this.contextWindowHint = window
     this.appliedModelId = this.modelId
     this.appliedThinkingLevel = null
   }

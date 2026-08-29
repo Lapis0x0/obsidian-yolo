@@ -7,6 +7,7 @@ import {
   decodePiModelId,
   encodePiModelId,
   extractPiContextUsage,
+  extractPiContextWindow,
   extractPiCurrentModelState,
   extractPiSessionIdentity,
   extractPiUsage,
@@ -53,6 +54,35 @@ describe('mapPiEvent — message_update delta aggregation', () => {
         message: expect.objectContaining({
           id: 'pi-assistant-stream-0',
           content: 'Hello',
+        }),
+      },
+    ])
+  })
+
+  it('preserves newline-only and whitespace-edged deltas verbatim', () => {
+    // Regression: deltas were read through a trimming helper, so newline-only
+    // chunks were dropped and edge whitespace was eaten — collapsing every
+    // Markdown block (headings, lists, fences) into one paragraph.
+    const state = createPiMappingState()
+    const emit = (delta: string) =>
+      mapPiEvent(
+        {
+          type: 'message_update',
+          assistantMessageEvent: { type: 'text_delta', delta },
+        },
+        state,
+        null,
+      )
+    emit('Hello')
+    emit('\n\n')
+    emit('**bold**')
+    emit('\n')
+    emit(' tail')
+    expect(emit('!')).toEqual([
+      {
+        type: 'message_upsert',
+        message: expect.objectContaining({
+          content: 'Hello\n\n**bold**\n tail!',
         }),
       },
     ])
@@ -138,42 +168,132 @@ describe('mapPiEvent — message_update delta aggregation', () => {
     ])
   })
 
-  it('emits turn_metrics and context_usage from cumulative usage', () => {
+  it('emits turn_metrics and context_usage from message_end usage', () => {
+    // The streaming event carries no usage at all — pi's RPC layer strips
+    // `message_update` down to its delta.
     const state = createPiMappingState()
+    expect(
+      mapPiEvent(
+        {
+          type: 'message_update',
+          assistantMessageEvent: { text_delta: 'x' },
+        },
+        state,
+        200_000,
+      ),
+    ).not.toContainEqual(expect.objectContaining({ type: 'turn_metrics' }))
+
     const events = mapPiEvent(
       {
-        type: 'message_update',
-        assistantMessageEvent: { text_delta: 'x' },
-        usage: {
-          input: 100,
-          output: 20,
-          cacheRead: 40,
-          cacheWrite: 0,
-          totalTokens: 120,
-          cost: 0.01,
+        type: 'message_end',
+        message: {
+          role: 'assistant',
+          usage: {
+            input: 100,
+            output: 20,
+            cacheRead: 40,
+            cacheWrite: 0,
+            totalTokens: 160,
+            cost: { total: 0.01 },
+          },
         },
       },
       state,
       200_000,
     )
 
+    // pi's `input` excludes cache reads/writes; `prompt_tokens` and the
+    // context ring both mean the whole prompt, so the cache halves fold in.
     expect(events).toContainEqual({
       type: 'turn_metrics',
       usage: {
-        prompt_tokens: 100,
+        prompt_tokens: 140,
         completion_tokens: 20,
-        total_tokens: 120,
+        total_tokens: 160,
         cache_read_input_tokens: 40,
       },
     })
     expect(events).toContainEqual({
       type: 'context_usage',
       usage: {
-        promptTokens: 100,
+        promptTokens: 140,
         maxContextTokens: 200_000,
-        cacheHitRate: 0.4,
+        cacheHitRate: 40 / 140,
       },
     })
+  })
+
+  it('bills the whole turn but rings only the latest call', () => {
+    const state = createPiMappingState()
+    const messageEnd = (usage: Record<string, number>) => ({
+      type: 'message_end',
+      message: { role: 'assistant', usage },
+    })
+    mapPiEvent(
+      messageEnd({ input: 100, output: 20, cacheRead: 0, totalTokens: 120 }),
+      state,
+      200_000,
+    )
+    const events = mapPiEvent(
+      messageEnd({
+        input: 30,
+        output: 50,
+        cacheRead: 120,
+        totalTokens: 200,
+      }),
+      state,
+      200_000,
+    )
+
+    // Footer: everything the turn billed across both LLM calls.
+    expect(events).toContainEqual({
+      type: 'turn_metrics',
+      usage: {
+        prompt_tokens: 250,
+        completion_tokens: 70,
+        total_tokens: 320,
+        cache_read_input_tokens: 120,
+      },
+    })
+    // Ring: how full the window is now — the second call's prompt only.
+    expect(events).toContainEqual({
+      type: 'context_usage',
+      usage: {
+        promptTokens: 150,
+        maxContextTokens: 200_000,
+        cacheHitRate: 120 / 150,
+      },
+    })
+  })
+
+  it('starts a fresh usage total on the next turn', () => {
+    const state = createPiMappingState()
+    mapPiEvent(
+      {
+        type: 'message_end',
+        message: { role: 'assistant', usage: { input: 100, output: 20 } },
+      },
+      state,
+      null,
+    )
+    resetPiMappingState(state)
+    const events = mapPiEvent(
+      {
+        type: 'message_end',
+        message: { role: 'assistant', usage: { input: 10, output: 5 } },
+      },
+      state,
+      null,
+    )
+    expect(events).toContainEqual(
+      expect.objectContaining({
+        type: 'turn_metrics',
+        usage: expect.objectContaining({
+          prompt_tokens: 10,
+          completion_tokens: 5,
+        }),
+      }),
+    )
   })
 })
 
@@ -422,6 +542,44 @@ describe('extractPiUsage / extractPiContextUsage', () => {
       promptTokens: 10,
       maxContextTokens: null,
     })
+  })
+
+  it('never reports a cache hit rate above 100%', () => {
+    // Real shape from a long cached session: `input` is the uncached
+    // remainder only, so `cacheRead / input` would be 3727%.
+    const usage = { input: 1595, output: 3954, cacheRead: 59456 }
+    expect(extractPiUsage(usage)).toMatchObject({
+      prompt_tokens: 61051,
+      cache_read_input_tokens: 59456,
+    })
+    const context = extractPiContextUsage(usage, 200_000)
+    expect(context?.promptTokens).toBe(61051)
+    expect(context?.cacheHitRate).toBeCloseTo(59456 / 61051)
+  })
+})
+
+describe('extractPiContextWindow', () => {
+  it('reads the window off a get_state / set_model Model object', () => {
+    // `get_state` answers with `{ model: Model, ... }` and `set_model` with the
+    // bare Model — the window is never a top-level field of the state itself.
+    expect(
+      extractPiContextWindow({ model: { id: 'x', contextWindow: 200_000 } }),
+    ).toBe(200_000)
+    expect(extractPiContextWindow({ id: 'x', contextWindow: 128_000 })).toBe(
+      128_000,
+    )
+  })
+
+  it('reads the window off get_session_stats contextUsage', () => {
+    expect(
+      extractPiContextWindow({
+        contextUsage: { tokens: 60_000, contextWindow: 200_000, percent: 30 },
+      }),
+    ).toBe(200_000)
+  })
+
+  it('returns null when no model is configured', () => {
+    expect(extractPiContextWindow({ model: null })).toBeNull()
   })
 })
 
