@@ -93,18 +93,141 @@
   cursor: grab;
 }
 
-.yolo-whiteboard-card.yolo-whiteboard-card-editing {
-  cursor: text;
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px var(--interactive-accent);
-}
-
-/* --- selection / drag (W3-A) --------------------------------------------- */
-
+/* One accent ring, at one weight, for both states. Editing used to draw a
+ * heavier one, which made the band 3px against a 260px card — Obsidian's own
+ * 3px sits on a 400px card, so ours read half again as thick at the same
+ * apparent card size. A ring is chrome: what matters is its share of the
+ * card's width, not its pixel count, exactly as with the dot grid.
+ *
+ * The two states are not told apart by weight because they never were:
+ * Obsidian has no separate editing ring either. Editing is already
+ * unmistakable from the caret, the live-preview markup and the text cursor,
+ * and a second thickness tier only competes with them. */
+.yolo-whiteboard-card.yolo-whiteboard-card-editing,
 .yolo-whiteboard-card.yolo-whiteboard-card-selected {
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 1px var(--interactive-accent);
 }
+
+.yolo-whiteboard-card.yolo-whiteboard-card-editing {
+  cursor: text;
+}
+
+/* --- resize handles (W3-C) ------------------------------------------------
+ * One layer for the whole board, parked over the hovered card by
+ * ui/canvas.ts's placeInteractionLayer(). It lives inside the world layer,
+ * so it is in world coordinates like the cards — which is why every handle
+ * dimension is multiplied by --yolo-whiteboard-zoom-multiplier (1/sqrt(scale),
+ * written per zoom change by applyHandleScale()). Both custom properties are
+ * set on the world element from ui/constants.ts.
+ *
+ * The handles are invisible: they are hit areas, not decoration. The card's
+ * own accent ring already says which card the pointer is on, and eight
+ * visible dots at every hover would be noise on a dense board. The cursor is
+ * what tells the user a handle is under the pointer. */
+
+.yolo-whiteboard-interaction-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* The layer must never eat a click meant for the card beneath it; only its
+   * handle children take pointer events. */
+  pointer-events: none;
+  /* Cards are appended to the world layer as they mount, i.e. after this
+   * element, so plain DOM order would bury it. 2 clears the 1 a dragged card
+   * lifts itself to. */
+  z-index: 2;
+}
+
+.yolo-whiteboard-interaction-layer.yolo-whiteboard-interaction-layer-hidden {
+  display: none;
+}
+
+.yolo-whiteboard-resizer {
+  --yolo-whiteboard-resizer-extent: calc(
+    var(--yolo-whiteboard-resizer-size) *
+      var(--yolo-whiteboard-zoom-multiplier, 1)
+  );
+  --yolo-whiteboard-resizer-offset: calc(
+    var(--yolo-whiteboard-resizer-extent) * -0.5
+  );
+  position: absolute;
+  width: var(--yolo-whiteboard-resizer-extent);
+  height: var(--yolo-whiteboard-resizer-extent);
+  pointer-events: auto;
+}
+
+/* Each handle straddles the border it drags: half outside the card, half in.
+ * An entirely-outside handle would be unreachable at low zoom, where half of
+ * 20px is already only a few screen pixels. */
+
+.yolo-whiteboard-resizer[data-resize='top'],
+.yolo-whiteboard-resizer[data-resize='bottom'] {
+  left: 0;
+  right: 0;
+  width: auto;
+  cursor: ns-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='left'],
+.yolo-whiteboard-resizer[data-resize='right'] {
+  top: 0;
+  bottom: 0;
+  height: auto;
+  cursor: ew-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='top'] {
+  top: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='bottom'] {
+  bottom: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='left'] {
+  left: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='right'] {
+  right: var(--yolo-whiteboard-resizer-offset);
+}
+
+/* Corners come after the edges so they win the overlap: a press in the
+ * corner should resize both axes, not whichever edge happens to be later in
+ * the DOM. */
+
+.yolo-whiteboard-resizer[data-resize='topleft'],
+.yolo-whiteboard-resizer[data-resize='bottomright'] {
+  cursor: nwse-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='topright'],
+.yolo-whiteboard-resizer[data-resize='bottomleft'] {
+  cursor: nesw-resize;
+}
+
+.yolo-whiteboard-resizer[data-resize='topleft'],
+.yolo-whiteboard-resizer[data-resize='topright'] {
+  top: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='bottomleft'],
+.yolo-whiteboard-resizer[data-resize='bottomright'] {
+  bottom: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='topleft'],
+.yolo-whiteboard-resizer[data-resize='bottomleft'] {
+  left: var(--yolo-whiteboard-resizer-offset);
+}
+
+.yolo-whiteboard-resizer[data-resize='topright'],
+.yolo-whiteboard-resizer[data-resize='bottomright'] {
+  right: var(--yolo-whiteboard-resizer-offset);
+}
+
+/* --- drag (W3-A) ---------------------------------------------------------- */
 
 .yolo-whiteboard-card.yolo-whiteboard-card-dragging {
   cursor: grabbing;
@@ -139,8 +262,31 @@
   height: 100%;
 }
 
+/* The body is the scroll container while reading, and a padded scroll
+ * container puts its scrollbar on the border box — outside the padding — so
+ * it already sits against the card's edge. Editing nests a second scroller
+ * (CodeMirror's) inside that padding, which pushed the scrollbar 10px in.
+ *
+ * So the inset moves from the container to the content for as long as the
+ * editor is mounted: `.cm-scroller` then spans the card's full width and its
+ * scrollbar lands where the reading one does, while the text keeps exactly
+ * the same offset it had a moment earlier — clicking into a card must not
+ * shift what is written in it. */
 .yolo-whiteboard-editor-host {
   overflow: auto;
+  padding: 0;
+}
+
+/* The inset lands on CodeMirror's scroll container, not on its content: a
+ * scrollbar is laid out at the inner border edge and padding does not push it
+ * inwards, so a padded scroll container gives an inset text and an edge-hugging
+ * scrollbar at once — exactly what the reading state already gets from the
+ * card body. Putting it on `.cm-content` instead would also lose to Obsidian's
+ * own `.markdown-source-view.mod-cm6 .cm-content { padding: 0 }` (0,3,0 against
+ * our 0,2,0); nothing styles the scroller's padding, so nothing has to be
+ * fought here. */
+.yolo-whiteboard-editor-host .cm-scroller {
+  padding: 6px 10px;
 }
 
 .yolo-whiteboard-editor-host .cm-editor {

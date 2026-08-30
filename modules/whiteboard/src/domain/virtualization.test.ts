@@ -5,7 +5,13 @@ import {
   computeWorldViewportRect,
 } from './virtualization'
 
-function card(id: string, x: number, y: number, w = 100, h = 100): VirtualCardRect {
+function card(
+  id: string,
+  x: number,
+  y: number,
+  w = 100,
+  h = 100,
+): VirtualCardRect {
   return { id, x, y, w, h }
 }
 
@@ -13,10 +19,20 @@ const NO_PINS = new Set<string>()
 
 describe('computeWorldViewportRect', () => {
   it('projects the screen viewport into world space at scale 1 with no pan', () => {
-    const rect = computeWorldViewportRect(800, 600, { tx: 0, ty: 0, scale: 1 }, 0)
+    const rect = computeWorldViewportRect(
+      800,
+      600,
+      { tx: 0, ty: 0, scale: 1 },
+      0,
+    )
     // Normalize -0 (from `-tx / scale` with tx=0): equal to 0, distinct only
     // under Object.is, which toEqual uses.
-    expect({ left: rect.left || 0, top: rect.top || 0, right: rect.right, bottom: rect.bottom }).toEqual({
+    expect({
+      left: rect.left || 0,
+      top: rect.top || 0,
+      right: rect.right,
+      bottom: rect.bottom,
+    }).toEqual({
       left: 0,
       top: 0,
       right: 800,
@@ -25,13 +41,23 @@ describe('computeWorldViewportRect', () => {
   })
 
   it('adds a buffer band in screen pixels, converted to world space by dividing by scale', () => {
-    const rect = computeWorldViewportRect(800, 600, { tx: 0, ty: 0, scale: 2 }, 400)
+    const rect = computeWorldViewportRect(
+      800,
+      600,
+      { tx: 0, ty: 0, scale: 2 },
+      400,
+    )
     // buffer 400px / scale 2 = 200 world units on every side
     expect(rect).toEqual({ left: -200, top: -200, right: 600, bottom: 500 })
   })
 
   it('accounts for pan (tx, ty)', () => {
-    const rect = computeWorldViewportRect(800, 600, { tx: 100, ty: -50, scale: 1 }, 0)
+    const rect = computeWorldViewportRect(
+      800,
+      600,
+      { tx: 100, ty: -50, scale: 1 },
+      0,
+    )
     expect(rect).toEqual({ left: -100, top: 50, right: 700, bottom: 650 })
   })
 })
@@ -139,12 +165,15 @@ describe('VirtualizationEngine', () => {
     engine.recompute([card('offscreen', 1000, 1000)], viewport, NO_PINS)
     expect(engine.isPendingMount('offscreen')).toBe(false)
 
-    engine.recomputeAllVisible([card('offscreen', 1000, 1000), card('onscreen', 0, 0)])
+    engine.recomputeAllVisible([
+      card('offscreen', 1000, 1000),
+      card('onscreen', 0, 0),
+    ])
     expect(engine.isPendingMount('offscreen')).toBe(true)
     expect(engine.isPendingMount('onscreen')).toBe(true)
   })
 
-  it('reset clears queued mounts/unmounts without touching already-mounted state', () => {
+  it('reset clears the queues and the mounted set alike', () => {
     const engine = new VirtualizationEngine()
     engine.recompute([card('a', 0, 0)], viewport, NO_PINS)
     engine.drain(10, 10)
@@ -155,7 +184,22 @@ describe('VirtualizationEngine', () => {
     const { toMount, toUnmount } = engine.drain(10, 10)
     expect(toMount).toEqual([])
     expect(toUnmount).toEqual([])
-    expect(engine.mounted.has('a')).toBe(true) // reset only clears queues, not mounted state
+    expect(engine.mounted.has('a')).toBe(false)
+  })
+
+  // The caller resets precisely because it has just destroyed every card's
+  // DOM. An engine that still believed those cards were mounted would see
+  // them as already-mounted on the next pass, queue nothing, and leave a
+  // reloaded board empty.
+  it('mounts everything again after a reset, as a torn-down view needs', () => {
+    const engine = new VirtualizationEngine()
+    const cards = [card('a', 0, 0), card('b', 10, 10)]
+    engine.recompute(cards, viewport, NO_PINS)
+    expect(engine.drain(10, 10).toMount).toEqual(['a', 'b'])
+
+    engine.reset()
+    engine.recompute(cards, viewport, NO_PINS)
+    expect(engine.drain(10, 10).toMount).toEqual(['a', 'b'])
   })
 
   it('markMounted/markUnmounted let a caller bypass the normal diff', () => {

@@ -112,3 +112,37 @@ export const GRID_WORLD_STEP_PX = NEW_CARD_SIZE.w / GRID_CELLS_PER_CARD
  * to differ from a value that visibly works. See canvas.ts's applyGrid().
  */
 export const GRID_MIN_SCREEN_STEP_PX = 10
+
+/**
+ * Smallest a card may be dragged, in grid cells.
+ *
+ * Obsidian Canvas enforces no floor at all — `node.resize({width: 1})` sticks,
+ * collapsing a node into a line that cannot be grabbed again. Expressed in
+ * cells rather than pixels for the same reason the grid itself is: it is the
+ * ratio to a card that carries meaning, so a future change to the default
+ * card size drags the floor along with it instead of silently orphaning it.
+ *
+ * 4x3 is the smallest rectangle that still holds one line of 13px body text
+ * with its 6px/10px padding and border — below that a card cannot show its
+ * own content, which is the point at which "small" turns into "broken".
+ */
+const MIN_CARD_CELLS = Object.freeze({ w: 4, h: 3 })
+
+export const MIN_CARD_SIZE = Object.freeze({
+  w: GRID_WORLD_STEP_PX * MIN_CARD_CELLS.w,
+  h: GRID_WORLD_STEP_PX * MIN_CARD_CELLS.h,
+})
+
+/**
+ * Resize-handle size in screen pixels at 1:1 zoom.
+ *
+ * The handle is laid out in world space (it lives in the transformed layer
+ * with the cards), so the canvas divides this by the square root of the scale
+ * — Obsidian Canvas's own law, measured off its `--zoom-multiplier` across
+ * the zoom range: 1/sqrt(scale) exactly, at every sample. The effect is a
+ * handle whose *screen* size is 20*sqrt(scale): ~9px zoomed right out, 20px
+ * at 1:1, ~28px zoomed right in. Constant world size would make it
+ * ungrabbable when zoomed out; constant screen size would make it swallow the
+ * card when zoomed in. See canvas.ts's applyHandleScale().
+ */
+export const RESIZE_HANDLE_PX = 20

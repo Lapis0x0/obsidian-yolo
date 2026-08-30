@@ -53,14 +53,29 @@ type ObsidianMarkdownEditorClass = new (
  * Obsidian's own listeners read `editor` off it. Leaving them out throws
  * inside Obsidian on the first keystroke. They are why this shape is Obsidian's
  * public `MarkdownFileInfo` rather than the smallest thing that constructs.
+ *
+ * `syncScroll` is called back on every scroll: in a Markdown *view* it keeps
+ * the source and preview panes aligned. An embedded editor has no second pane
+ * to align with, so there is nothing to do — but the method has to exist, or
+ * scrolling inside the editor throws on each event.
+ *
+ * `editMode` is the component itself. Obsidian assigns whichever owner has
+ * focus to `workspace.activeEditor` and reads `editMode.sourceMode` off it to
+ * drive the View menu's preview/source checkmarks, so leaving it out throws
+ * on every focus change. It is the component and not a stand-in because that
+ * is the relationship a real Markdown view has — `view.editMode` is
+ * `view.editor.editorComponent` — and the component already carries a real
+ * `sourceMode`.
  */
 type MarkdownEditorOwner = {
   app: App
   file: TFile | null
   editor: unknown
+  editMode: unknown
   hoverPopover: null
   getMode(): 'source'
   onMarkdownScroll(): void
+  syncScroll(): void
 }
 
 export type ObsidianMarkdownEditorHandle = {
@@ -243,16 +258,19 @@ export function createObsidianMarkdownEditor(
     app,
     file: file instanceof TFile ? file : null,
     editor: null,
+    editMode: null,
     hoverPopover: null,
     getMode: () => 'source',
     onMarkdownScroll: () => undefined,
+    syncScroll: () => undefined,
   }
 
   const instance = new EditorClass(app, options.container, owner)
   assertMarkdownEditorInstance(instance)
-  // Only available once constructed, and needed before the first edit —
-  // see MarkdownEditorOwner.
+  // Only available once constructed, and needed before the first edit and the
+  // first focus respectively — see MarkdownEditorOwner.
   owner.editor = instance.editor
+  owner.editMode = instance
 
   let destroyed = false
   const read = (): string => instance.editor.getValue()
@@ -294,6 +312,13 @@ export function createObsidianMarkdownEditor(
       if (destroyed) return
       destroyed = true
       if (onBlur) instance.cm.contentDOM.removeEventListener('blur', handleBlur)
+      // Obsidian points `workspace.activeEditor` at whichever owner has focus
+      // and only clears it when one of its own views unloads. Nothing unloads
+      // this one, so without this it keeps a live reference to a destroyed
+      // editor and the container it was mounted in, and the next menu update
+      // reads editing state off an editor that is gone.
+      const workspace = app.workspace as unknown as { activeEditor: unknown }
+      if (workspace.activeEditor === owner) workspace.activeEditor = null
       instance.destroy()
     },
   }

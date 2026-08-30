@@ -58,6 +58,13 @@ import {
   replaceCard,
   updateCard,
 } from '../domain/operations'
+import {
+  type CardRect,
+  RESIZE_HANDLES,
+  type ResizeHandle,
+  rectOfCard,
+  resizeRect,
+} from '../domain/resize'
 import { cardsInMarquee, marqueeRectFromPoints } from '../domain/selection'
 import { type MissingNoteCard, planNoteCardSelfHeal } from '../domain/selfHeal'
 import {
@@ -77,9 +84,11 @@ import {
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
+  MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
   RECOMPUTE_INTERVAL_MS,
+  RESIZE_HANDLE_PX,
   SCALE_BOUNDS,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
@@ -100,6 +109,10 @@ const WORLD_CLASS = 'yolo-whiteboard-world'
 const WORLD_INTERACTING_CLASS = 'yolo-whiteboard-world-interacting'
 const WORLD_DEGRADED_CLASS = 'yolo-whiteboard-world-degraded'
 const CARD_CLASS = 'yolo-whiteboard-card'
+const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
+const INTERACTION_LAYER_HIDDEN_CLASS =
+  'yolo-whiteboard-interaction-layer-hidden'
+const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
@@ -182,7 +195,28 @@ type CardInteraction = {
   readonly startPositions: Map<CardId, Readonly<{ x: number; y: number }>>
 }
 
-type Interaction = PanInteraction | MarqueeInteraction | CardInteraction
+/**
+ * A press on one of the eight resize handles. Like `CardInteraction` it stays
+ * ambiguous until `DRAG_THRESHOLD_PX`: the handles straddle the card's border,
+ * so their inner half sits on top of the card, and a plain click there has to
+ * still mean what a click on the card means (enter edit) rather than landing
+ * in a dead zone. `startRect` is the card's rect at press time — every frame
+ * is computed from it, never from the previous frame (see `resizeRect`).
+ */
+type ResizeInteraction = {
+  readonly kind: 'resize'
+  readonly cardId: CardId
+  readonly handle: ResizeHandle
+  readonly startClient: ScreenPoint
+  readonly startRect: CardRect
+  dragging: boolean
+}
+
+type Interaction =
+  | PanInteraction
+  | MarqueeInteraction
+  | CardInteraction
+  | ResizeInteraction
 
 type EdgeDomEntry = Readonly<{
   path: SVGPathElement
@@ -215,6 +249,21 @@ export class WhiteboardCanvas {
   private selectedIds = new Set<CardId>()
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
+
+  // Resize (W3-C): one shared handle layer for the whole board, parked over
+  // whichever card the pointer is on, rather than eight handles per mounted
+  // card — at a few hundred mounted cards that would be thousands of nodes
+  // that only ever matter for one of them. Obsidian Canvas's own
+  // `.canvas-node-interaction-layer` works the same way.
+  private interactionLayerEl: HTMLElement | null = null
+  private hoveredCardId: CardId | null = null
+  /** The card the layer is currently parked on — `interactionLayerTarget()`
+   * as last applied, which is what a press on a handle resizes. */
+  private layerCardId: CardId | null = null
+  /** Scale the handle counter-scale was last written for; the CSS variable
+   * is only rewritten when the zoom actually changed, so panning (which
+   * writes `transform` every frame) doesn't invalidate the handles' style. */
+  private appliedHandleScale: number | null = null
 
   // Edges (W3-A): a single SVG overlay drawn into the world layer, redrawn
   // wholesale on structural change (rebuildEdgesSvg) and per-path on card
@@ -290,6 +339,7 @@ export class WhiteboardCanvas {
       this.parseFailed = true
       this.board = emptyBoard()
       this.boardCardsById = new Map()
+      this.setHoveredCard(null)
       this.showError(result.issues)
       return
     }
@@ -305,6 +355,9 @@ export class WhiteboardCanvas {
     this.zoomGlide = null
     this.lastGlideTime = null
     this.applyTransform()
+    // Cards were all torn down above: whatever the layer was parked on is
+    // either gone or somewhere else now.
+    this.refreshInteractionLayer()
     this.showCanvas()
     this.recomputeVisibility()
     this.drainQueues()
@@ -464,6 +517,18 @@ export class WhiteboardCanvas {
     edgesSvg.appendChild(edgesGroup)
     world.appendChild(edgesSvg)
 
+    // Built once and reused: mounted last so it sits above every card, and
+    // parked (hidden) until the pointer is actually on a card.
+    const interactionLayer = doc.createElement('div')
+    interactionLayer.className = `${INTERACTION_LAYER_CLASS} ${INTERACTION_LAYER_HIDDEN_CLASS}`
+    for (const handle of RESIZE_HANDLES) {
+      const resizer = doc.createElement('div')
+      resizer.className = RESIZER_CLASS
+      resizer.dataset.resize = handle
+      interactionLayer.appendChild(resizer)
+    }
+    world.appendChild(interactionLayer)
+
     viewport.appendChild(world)
     root.appendChild(viewport)
 
@@ -478,6 +543,16 @@ export class WhiteboardCanvas {
     this.worldEl = world
     this.errorEl = error
     this.edgesGroupEl = edgesGroup
+    this.interactionLayerEl = interactionLayer
+    // A freshly built world element carries none of the old one's inline
+    // custom properties, so both handle variables have to be written again.
+    // The size is pushed from here rather than hard-coded in the stylesheet
+    // so it stays next to the doc comment explaining the counter-scale law.
+    this.appliedHandleScale = null
+    world.style.setProperty(
+      '--yolo-whiteboard-resizer-size',
+      `${RESIZE_HANDLE_PX}px`,
+    )
 
     this.setupInteraction()
     this.setupVaultSubscription()
@@ -567,6 +642,11 @@ export class WhiteboardCanvas {
       return
     }
     if (e.button !== 0) return
+
+    // Handles sit above the cards, so this has to come first — the press
+    // that starts a resize lands on the handle, never on the card.
+    const handle = this.resizeHandleFromEventTarget(e.target)
+    if (handle !== null && this.startResize(handle, e)) return
 
     if (cardId !== null) {
       // The card currently being edited owns its own pointer handling
@@ -692,7 +772,10 @@ export class WhiteboardCanvas {
 
   private readonly onPointerMove = (e: PointerEvent): void => {
     const interaction = this.interaction
-    if (!interaction) return
+    if (!interaction) {
+      this.updateHover(e)
+      return
+    }
     switch (interaction.kind) {
       case 'pan':
         this.updatePan(interaction, e)
@@ -703,7 +786,109 @@ export class WhiteboardCanvas {
       case 'card':
         this.updateCardInteraction(interaction, e)
         break
+      case 'resize':
+        this.updateResize(interaction, e)
+        break
     }
+  }
+
+  /**
+   * Parks the handle layer on whichever card the pointer is over.
+   *
+   * Only runs when no gesture is in flight: during one, the layer is either
+   * the thing being dragged (resize) or deliberately out of the way, and
+   * re-deciding which card is hovered from a pointer that has been captured
+   * would fight the gesture.
+   *
+   * The handles themselves count as "still on the card" — they overhang its
+   * border, so a pointer travelling out onto one must not be read as having
+   * left, or the layer would vanish from under the pointer on its way to
+   * grab it.
+   */
+  private updateHover(e: PointerEvent): void {
+    if (this.parseFailed) return
+    const target = e.target
+    const onHandle =
+      target instanceof Element && target.classList.contains(RESIZER_CLASS)
+    this.setHoveredCard(
+      onHandle ? this.hoveredCardId : this.cardIdFromEventTarget(target),
+    )
+  }
+
+  private setHoveredCard(cardId: CardId | null): void {
+    if (cardId === this.hoveredCardId) return
+    this.hoveredCardId = cardId
+    this.updateInteractionLayer()
+  }
+
+  /**
+   * The card whose handles are showing.
+   *
+   * Two sources, in this order: the card under the pointer, and — when the
+   * pointer is not on one — the card that is selected. Hover alone was not
+   * enough. A selected card is the one the user has said they are working on,
+   * and half of every handle overhangs its border, so with hover as the only
+   * trigger that outer half could never be approached from outside the card:
+   * the handles only existed once the pointer was already past them. Hover
+   * still wins where the two disagree, so a card can be resized without
+   * selecting it first.
+   *
+   * Only a lone selection counts. With several cards selected there is no
+   * single rectangle for the handles to belong to, and resizing a
+   * multi-selection is a different gesture with its own semantics that the
+   * board does not have yet.
+   *
+   * A card being edited is not excluded. It was at first, to keep the handles
+   * from swallowing a click meant to place the caret near an edge — but that
+   * trade is the wrong way round: it costs the ability to resize the one card
+   * the user is actually working on, to protect a gesture that has the whole
+   * rest of the card to land in. Obsidian Canvas keeps all eight handles live
+   * on a node being edited too.
+   */
+  private interactionLayerTarget(): CardId | null {
+    return (
+      this.hoveredCardId ??
+      (this.selectedIds.size === 1
+        ? (this.selectedIds.values().next().value ?? null)
+        : null)
+    )
+  }
+
+  /**
+   * Parks the layer on whatever `interactionLayerTarget` now resolves to.
+   *
+   * `force` re-reads the target's rect even when the target is unchanged, for
+   * the callers that moved the card rather than changed which one it is.
+   * Without that distinction this would be a no-op for the overwhelming
+   * majority of calls — a pointer crossing one card fires hundreds of moves
+   * that all resolve to it, and each would otherwise rewrite four inline
+   * styles.
+   */
+  private updateInteractionLayer(force = false): void {
+    const id = this.interactionLayerTarget()
+    const card = id === null ? null : this.boardCardsById.get(id)
+    const next = card ? id : null
+    if (next === this.layerCardId && !force) return
+    this.layerCardId = next
+    const layer = this.interactionLayerEl
+    if (!layer) return
+    layer.classList.toggle(INTERACTION_LAYER_HIDDEN_CLASS, !card)
+    if (card) this.placeInteractionLayer(rectOfCard(card))
+  }
+
+  /** Re-parks the layer after something other than hover or selection moved
+   * the card it is on (a drag, a board reload, a card removal). */
+  private refreshInteractionLayer(): void {
+    this.updateInteractionLayer(true)
+  }
+
+  private placeInteractionLayer(rect: CardRect): void {
+    const layer = this.interactionLayerEl
+    if (!layer) return
+    layer.style.left = `${rect.x}px`
+    layer.style.top = `${rect.y}px`
+    layer.style.width = `${rect.w}px`
+    layer.style.height = `${rect.h}px`
   }
 
   private readonly onPointerUp = (e: PointerEvent): void => {
@@ -720,16 +905,35 @@ export class WhiteboardCanvas {
       case 'card':
         this.finishCardInteraction(interaction, e)
         break
+      case 'resize':
+        this.finishResize(interaction, e)
+        break
     }
   }
 
   private readonly onWheel = (e: WheelEvent): void => {
     if (this.parseFailed) return
-    e.preventDefault()
+    // Zoom stays a canvas gesture wherever the pointer is, including over an
+    // open editor — it is about the board, not about what is under the
+    // cursor. (Obsidian Canvas zooms over a focused node too.)
     if (e.ctrlKey || e.metaKey) {
+      e.preventDefault()
       this.zoomBy(e.deltaY, this.viewportPointFromEvent(e))
       return
     }
+    // Plain wheel inside the card being edited belongs to that card: its text
+    // can be taller than it is, and a user who has clicked in to type means
+    // to move through the text, not the board. Left unhandled entirely (no
+    // preventDefault) so the editor's own scroller sees a normal event.
+    // Only the card being edited, not any card under the pointer: on a canvas
+    // the wheel pans, and you click into a card first to scroll it.
+    if (
+      this.editing &&
+      this.cardIdFromEventTarget(e.target) === this.editing.cardId
+    ) {
+      return
+    }
+    e.preventDefault()
     this.view = panByWheel(this.view, e.deltaX, e.deltaY)
     this.applyTransform()
     this.markInteracting()
@@ -825,6 +1029,25 @@ export class WhiteboardCanvas {
   private applyTransform(): void {
     this.worldEl.style.transform = `translate(${this.view.tx}px, ${this.view.ty}px) scale(${this.view.scale})`
     this.applyGrid()
+    this.applyHandleScale()
+  }
+
+  /**
+   * Counter-scales the resize handles, which live in the world layer and
+   * would otherwise be scaled along with the cards.
+   *
+   * 1/sqrt(scale) rather than 1/scale: see RESIZE_HANDLE_PX. Skipped unless
+   * the zoom actually changed, because this writes a custom property the
+   * handles' sizes are computed from, and panning calls this method every
+   * frame without touching the scale.
+   */
+  private applyHandleScale(): void {
+    if (this.appliedHandleScale === this.view.scale) return
+    this.appliedHandleScale = this.view.scale
+    this.worldEl.style.setProperty(
+      '--yolo-whiteboard-zoom-multiplier',
+      String(1 / Math.sqrt(this.view.scale)),
+    )
   }
 
   /**
@@ -1031,6 +1254,117 @@ export class WhiteboardCanvas {
   // once on drop, matching how a freshly-mounted card is positioned.
   // -----------------------------------------------------------------------
 
+  // -----------------------------------------------------------------------
+  // Resize (W3-C): eight handles on one shared layer that follows the
+  // pointer's card. A press on a handle is ambiguous exactly the way a press
+  // on a card is — the handles straddle the border, so their inner half
+  // overlaps the card, and a click there that never moves must still open
+  // the editor rather than do nothing. Once it does move, every frame writes
+  // `left`/`top`/`width`/`height` on the one card being resized: unlike a
+  // drag (which can ride on `transform`), a resize changes layout by
+  // definition, and one card's layout is a cost worth paying for the card
+  // showing its real content the whole way. The board is written once, on
+  // pointerup.
+  // -----------------------------------------------------------------------
+
+  /** The handle a press landed on, or null if it landed anywhere else. */
+  private resizeHandleFromEventTarget(
+    target: EventTarget | null,
+  ): ResizeHandle | null {
+    if (!(target instanceof Element)) return null
+    if (!target.classList.contains(RESIZER_CLASS)) return null
+    const handle = (target as HTMLElement).dataset.resize
+    return RESIZE_HANDLES.find((candidate) => candidate === handle) ?? null
+  }
+
+  /** False when there is nothing to resize (the hovered card went away
+   * between hover and press), so the caller can fall through. */
+  private startResize(handle: ResizeHandle, e: PointerEvent): boolean {
+    const cardId = this.layerCardId
+    const card = cardId === null ? null : this.boardCardsById.get(cardId)
+    if (!card || cardId === null) return false
+    // Keeps the press from moving focus. Without it, grabbing a handle on the
+    // card you are writing in blurs its editor, which commits and closes it —
+    // adjusting a card's width should not cost you the caret you were at.
+    e.preventDefault()
+    this.interaction = {
+      kind: 'resize',
+      cardId,
+      handle,
+      startClient: { x: e.clientX, y: e.clientY },
+      startRect: rectOfCard(card),
+      dragging: false,
+    }
+    this.viewportEl.setPointerCapture(e.pointerId)
+    return true
+  }
+
+  private updateResize(interaction: ResizeInteraction, e: PointerEvent): void {
+    if (!interaction.dragging) {
+      const dx = e.clientX - interaction.startClient.x
+      const dy = e.clientY - interaction.startClient.y
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+      interaction.dragging = true
+      // Exempt from virtualization unmount for the gesture's duration, the
+      // same way a dragged card is: a card being resized must not vanish
+      // because a corner of it wandered out of the buffer band.
+      this.pinnedIds.add(interaction.cardId)
+    }
+    this.applyResizeRect(interaction, this.resizedRect(interaction, e))
+  }
+
+  private resizedRect(
+    interaction: ResizeInteraction,
+    e: PointerEvent,
+  ): CardRect {
+    return resizeRect(
+      interaction.startRect,
+      interaction.handle,
+      (e.clientX - interaction.startClient.x) / this.view.scale,
+      (e.clientY - interaction.startClient.y) / this.view.scale,
+      MIN_CARD_SIZE,
+    )
+  }
+
+  /** Live (uncommitted) geometry for the card, its handles and its edges. */
+  private applyResizeRect(
+    interaction: ResizeInteraction,
+    rect: CardRect,
+  ): void {
+    const el = this.runtimeByCardId.get(interaction.cardId)?.el
+    if (el) {
+      el.style.left = `${rect.x}px`
+      el.style.top = `${rect.y}px`
+      el.style.width = `${rect.w}px`
+      el.style.height = `${rect.h}px`
+    }
+    this.placeInteractionLayer(rect)
+    this.redrawEdgesForCards(
+      new Set([interaction.cardId]),
+      new Map([[interaction.cardId, rect]]),
+    )
+  }
+
+  private finishResize(interaction: ResizeInteraction, e: PointerEvent): void {
+    if (!interaction.dragging) {
+      // A click, not a drag: the handle overlaps the card, so this means
+      // what the same click on the card means.
+      this.clearSelection()
+      const card = this.boardCardsById.get(interaction.cardId)
+      if (card && card.type !== 'pdf') this.enterEditMode(interaction.cardId)
+      return
+    }
+
+    this.pinnedIds.delete(interaction.cardId)
+    const rect = this.resizedRect(interaction, e)
+    this.board = updateCard(this.board, interaction.cardId, rect)
+    this.syncBoardIndex()
+    this.context.requestSave()
+    this.applyResizeRect(interaction, rect)
+    // The card's footprint changed, so its mount state may have too.
+    this.recomputeVisibility()
+  }
+
   private updateCardInteraction(
     interaction: CardInteraction,
     e: PointerEvent,
@@ -1076,15 +1410,25 @@ export class WhiteboardCanvas {
     e: PointerEvent,
   ): void {
     const { dx, dy } = this.worldDelta(interaction, e)
-    const overrides = new Map<CardId, Readonly<{ x: number; y: number }>>()
+    const overrides = new Map<CardId, CardRect>()
     for (const id of interaction.ids) {
       const start = interaction.startPositions.get(id)
-      if (!start) continue
-      overrides.set(id, { x: start.x + dx, y: start.y + dy })
+      const card = this.boardCardsById.get(id)
+      if (!start || !card) continue
+      overrides.set(id, {
+        x: start.x + dx,
+        y: start.y + dy,
+        w: card.w,
+        h: card.h,
+      })
       const el = this.runtimeByCardId.get(id)?.el
       if (el) el.style.transform = `translate(${dx}px, ${dy}px)`
     }
     this.redrawEdgesForCards(new Set(interaction.ids), overrides)
+    // The handle layer sits in the same world space as the cards but is not
+    // one of them, so a drag has to carry it along explicitly.
+    const dragged = overrides.get(this.layerCardId ?? '')
+    if (dragged) this.placeInteractionLayer(dragged)
   }
 
   private finishCardInteraction(
@@ -1120,6 +1464,7 @@ export class WhiteboardCanvas {
       }
     }
     this.redrawEdgesForCards(new Set(interaction.ids))
+    this.refreshInteractionLayer()
     // Dragged cards may have moved on/off screen — re-evaluate mount state
     // immediately rather than waiting for the next throttled recompute
     // (mirrors onResize()'s direct call).
@@ -1151,6 +1496,8 @@ export class WhiteboardCanvas {
     const hasSelection = next.size > 0
     if (hasSelection && !hadSelection) this.pushSelectionKeymapScope()
     else if (!hasSelection && hadSelection) this.popSelectionKeymapScope()
+    // Selection is one of the two things that decides where the handles are.
+    this.updateInteractionLayer()
   }
 
   private clearSelection(): void {
@@ -1212,6 +1559,7 @@ export class WhiteboardCanvas {
     this.syncBoardIndex()
     for (const id of ids) this.purgeCardRuntime(id)
     this.clearSelection()
+    this.refreshInteractionLayer()
     // Deleting cards cascades edge removal (operations.ts's removeCard) —
     // the edge *set* changed, not just endpoint positions, so a full
     // rebuild (rather than redrawEdgesForCards) is the correct/simplest
@@ -1705,19 +2053,17 @@ export class WhiteboardCanvas {
    * final data) go through. */
   private effectiveCardRect(
     id: CardId,
-    overrides?: ReadonlyMap<CardId, Readonly<{ x: number; y: number }>>,
+    overrides?: ReadonlyMap<CardId, CardRect>,
   ): VirtualCardRect | null {
     const card = this.boardCardsById.get(id)
     if (!card) return null
     const override = overrides?.get(id)
-    return override
-      ? { id: card.id, x: override.x, y: override.y, w: card.w, h: card.h }
-      : card
+    return override ? { id: card.id, ...override } : card
   }
 
   private redrawEdge(
     edgeId: EdgeId,
-    overrides?: ReadonlyMap<CardId, Readonly<{ x: number; y: number }>>,
+    overrides?: ReadonlyMap<CardId, CardRect>,
   ): void {
     const edge = this.boardEdgesById.get(edgeId)
     const dom = this.edgeElsById.get(edgeId)
@@ -1741,7 +2087,7 @@ export class WhiteboardCanvas {
 
   private redrawEdgesForCards(
     cardIds: ReadonlySet<CardId>,
-    overrides?: ReadonlyMap<CardId, Readonly<{ x: number; y: number }>>,
+    overrides?: ReadonlyMap<CardId, CardRect>,
   ): void {
     const edgeIds = new Set<EdgeId>()
     for (const id of cardIds) {

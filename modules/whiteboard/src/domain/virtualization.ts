@@ -98,8 +98,19 @@ export class VirtualizationEngine {
     return this.mountQueueSet.has(id)
   }
 
-  /** Forces the next `recompute()` call to run even if throttled elsewhere. */
+  /**
+   * Forgets everything: no card is mounted, nothing is queued.
+   *
+   * For the caller that has just torn down every card's DOM (canvas.ts's
+   * `teardownAllCards`, on a board reload). Clearing only the queues would
+   * leave `mountedIds` claiming cards that no longer exist in the document,
+   * and the next `recompute()` would then see every card as already mounted
+   * and queue nothing — a board reloaded in place (an external edit, a sync,
+   * our own self-heal write-back) would come up empty until the whole view
+   * was rebuilt.
+   */
   reset(): void {
+    this.mountedIds.clear()
     this.mountQueue.length = 0
     this.unmountQueue.length = 0
     this.mountQueueSet.clear()
