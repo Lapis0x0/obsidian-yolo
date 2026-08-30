@@ -71,6 +71,8 @@ import {
   DEGRADE_SCALE_THRESHOLD,
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
+  GRID_MIN_SCREEN_STEP_PX,
+  GRID_WORLD_STEP_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
@@ -718,6 +720,37 @@ export class WhiteboardCanvas {
 
   private applyTransform(): void {
     this.worldEl.style.transform = `translate(${this.view.tx}px, ${this.view.ty}px) scale(${this.view.scale})`
+    this.applyGrid()
+  }
+
+  /**
+   * Places the dot grid. It is painted on the viewport (screen space), not
+   * inside the world layer, because a world-space grid would be scaled by
+   * the camera along with everything else — dots would swell into blobs
+   * zoomed in and vanish zoomed out. Instead the lattice is positioned by
+   * hand: spacing tracks the camera scale, the tile origin tracks the camera
+   * translation, and the dot itself (style.css owns its size and colour)
+   * stays constant on screen. The result is anchored to world coordinates —
+   * it pans with the board and spreads as you zoom in — which is the whole
+   * point of a grid rather than a decorative backdrop.
+   *
+   * Writing background-position per frame repaints the viewport. That is
+   * paint only (no reflow) and the card layer above it remains a composited
+   * transform, so the pan path keeps its compositor fast-path; it is also
+   * what Obsidian's own canvas does, and there is no way to keep a grid
+   * locked to world coordinates without moving it every frame.
+   */
+  private applyGrid(): void {
+    const { scale, tx, ty } = this.view
+    const doublings = Math.max(
+      0,
+      Math.ceil(
+        Math.log2(GRID_MIN_SCREEN_STEP_PX / (GRID_WORLD_STEP_PX * scale)),
+      ),
+    )
+    const step = GRID_WORLD_STEP_PX * 2 ** doublings * scale
+    this.viewportEl.style.backgroundSize = `${step}px ${step}px`
+    this.viewportEl.style.backgroundPosition = `${tx}px ${ty}px`
   }
 
   // will-change only while actively interacting (S1/S2 finding: a permanent

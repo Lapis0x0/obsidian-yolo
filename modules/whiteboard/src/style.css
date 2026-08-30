@@ -27,6 +27,18 @@
    * still shows grabbing while an actual pan gesture is in progress. */
   cursor: default;
   touch-action: none;
+  /* Dot grid. This rule owns the dot's size and colour only — its spacing
+   * (background-size) and origin (background-position) are written every
+   * frame by canvas.ts's applyGrid(), which is what keeps the lattice
+   * anchored to world coordinates through pan and zoom. --canvas-dot-pattern
+   * is Obsidian's own canvas dot colour, so a theme that restyles Canvas
+   * restyles this too. The 0.7px radius is likewise Obsidian Canvas's, read
+   * off the <circle> in its svg.canvas-background pattern. */
+  background-image: radial-gradient(
+    circle at 0.7px 0.7px,
+    var(--canvas-dot-pattern, var(--background-modifier-border)) 0.7px,
+    transparent 0
+  );
 }
 
 .yolo-whiteboard-viewport.yolo-whiteboard-viewport-panning {
@@ -73,7 +85,10 @@
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m, 6px);
   background: var(--background-primary);
-  box-shadow: var(--shadow-s);
+  /* No resting shadow: against the dot grid a card reads as a card from its
+   * opaque fill and border alone, and --shadow-s at card scale is a heavy
+   * halo that turns a dense board into visual noise. box-shadow stays
+   * reserved for the selected/editing/dragging rings below. */
   contain: layout style paint;
   cursor: grab;
 }

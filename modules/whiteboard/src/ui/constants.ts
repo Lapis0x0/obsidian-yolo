@@ -52,3 +52,19 @@ export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 180 })
 /** World-space stagger between cards created by one multi-file drop, so
  * three dropped notes read as three cards rather than one. */
 export const DROP_STAGGER_PX = 24
+
+/** Dot-grid spacing in world units — the finest the lattice ever gets. */
+export const GRID_WORLD_STEP_PX = 20
+
+/** On-screen spacing the grid refuses to go below. The visible step is
+ * GRID_WORLD_STEP_PX doubled as many times as it takes to clear this floor,
+ * which is what keeps the grid a grid across the whole zoom range: at
+ * SCALE_BOUNDS.min a fixed 20-unit step would land dots 1.6px apart, i.e. a
+ * grey wash. See canvas.ts's applyGrid().
+ *
+ * 10 is Obsidian Canvas's own floor, measured off the `<pattern>` tile in
+ * its svg.canvas-background across the zoom range: it runs the same scheme
+ * (same 20-unit base step, same power-of-two level switching), so matching
+ * the floor makes our grid track its density at every zoom rather than
+ * sitting a level sparser through the zoomed-out half. */
+export const GRID_MIN_SCREEN_STEP_PX = 10
