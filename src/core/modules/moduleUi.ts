@@ -3,21 +3,26 @@ import {
   Component,
   Keymap,
   MarkdownRenderer,
+  Menu,
   Notice,
   TFile,
   htmlToMarkdown,
 } from 'obsidian'
 
+import { getDraggedVaultItems } from '../../utils/obsidian-drag'
+
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { assertModuleId } from './moduleStore'
-import { normalizeModuleVaultPath } from './moduleVault'
+import { describeEntry, normalizeModuleVaultPath } from './moduleVault'
 import type {
   YoloModuleActionToastV1,
   YoloModuleConfirmOptionsV1,
   YoloModuleHoverLinkOptionsV1,
   YoloModuleMarkdownRendererV1,
+  YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleUiV1,
+  YoloModuleVaultEntryV1,
 } from './types'
 
 export type ModuleUiCapabilityActivationV1 = Readonly<{
@@ -46,6 +51,8 @@ export const UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER: ModuleUiCapabilityProvid
         createMarkdownRenderer: unavailable,
         htmlToMarkdown: unavailable,
         isModEvent: unavailable,
+        showMenu: unavailable,
+        resolveDropEntries: unavailable,
         openLink: async () => unavailable(),
         openFileAt: async () => unavailable(),
         hoverLink: unavailable,
@@ -113,6 +120,7 @@ export class ObsidianModuleUiCapabilityProvider
     let activationComplete = false
     const pendingConfirms = new Set<PendingConfirm>()
     const renderers = new Set<OwnedRenderer>()
+    const openMenus = new Set<Menu>()
     const actionToastTokens = new Map<string, object>()
 
     const inactiveError = (): Error =>
@@ -143,6 +151,14 @@ export class ObsidianModuleUiCapabilityProvider
           errors.push(error)
         }
       }
+      for (const menu of [...openMenus]) {
+        try {
+          menu.hide()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      openMenus.clear()
       for (const id of actionToastTokens.keys()) {
         try {
           this.actionToasts?.dismiss(id)
@@ -300,6 +316,45 @@ export class ObsidianModuleUiCapabilityProvider
         assertActive()
         requireEvent(event, 'Modifier event')
         return Boolean(Keymap.isModEvent(event))
+      },
+      showMenu: (event: MouseEvent, items: readonly YoloModuleMenuItemV1[]) => {
+        assertActive()
+        requireEvent(event, 'Menu event')
+        const snapshots = snapshotMenuItems(items)
+        const menu = new Menu()
+        for (const item of snapshots) {
+          if (item.kind === 'separator') {
+            menu.addSeparator()
+            continue
+          }
+          menu.addItem((menuItem) => {
+            menuItem.setTitle(item.title)
+            if (item.icon !== undefined) menuItem.setIcon(item.icon)
+            menuItem.onClick(() => {
+              // A menu can outlive the module that opened it only by a frame
+              // or two, but selecting an item after deactivation would run
+              // module code against torn-down capabilities.
+              if (!active || !activationComplete) return
+              void item.onSelect()
+            })
+          })
+        }
+        openMenus.add(menu)
+        menu.onHide(() => {
+          openMenus.delete(menu)
+        })
+        // Obsidian derives the owning window from the event, which is what
+        // makes this correct inside a popout.
+        menu.showAtMouseEvent(event)
+      },
+      resolveDropEntries: (
+        event: DragEvent,
+      ): readonly YoloModuleVaultEntryV1[] => {
+        assertActive()
+        requireEvent(event, 'Drop event')
+        return Object.freeze(
+          getDraggedVaultItems(this.app).map((item) => describeEntry(item)),
+        )
       },
       openLink: (linktext: string, sourcePath: string, newLeaf?: boolean) => {
         assertActive()
@@ -463,6 +518,42 @@ function snapshotHoverLinkOptions(
   requireString(snapshot.linktext, 'Hover link text')
   requireString(snapshot.sourcePath, 'Hover link source path')
   return snapshot
+}
+
+/**
+ * Copies menu items into host-owned frozen data before anything is shown.
+ * The module's array (and each item in it) can be mutated at any time; the
+ * menu must reflect what was passed at call time, and `onSelect` is captured
+ * so a later mutation cannot swap in a different callback.
+ */
+function snapshotMenuItems(
+  items: readonly YoloModuleMenuItemV1[],
+): readonly YoloModuleMenuItemV1[] {
+  if (!Array.isArray(items)) {
+    throw new TypeError('Menu items must be an array')
+  }
+  return Object.freeze(
+    items.map((item) => {
+      if (!item || typeof item !== 'object') {
+        throw new TypeError('Menu item must be an object')
+      }
+      if (item.kind === 'separator') {
+        return Object.freeze({ kind: 'separator' as const })
+      }
+      requireNonEmptyString(item.title, 'Menu item title')
+      requireOptionalString(item.icon, 'Menu item icon')
+      if (typeof item.onSelect !== 'function') {
+        throw new TypeError('Menu item onSelect must be a function')
+      }
+      const onSelect = item.onSelect
+      return Object.freeze({
+        kind: 'item' as const,
+        title: item.title,
+        icon: item.icon,
+        onSelect,
+      })
+    }),
+  )
 }
 
 function requireOptionalString(value: unknown, label: string): void {

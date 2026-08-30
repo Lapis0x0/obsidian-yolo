@@ -1,7 +1,7 @@
-// Structured board operations — the six primitives (`addCard`, `updateCard`,
-// `removeCard`, `moveCard`, `addEdge`, `removeEdge`) that are the *only*
-// sanctioned way to change a Board in 1.0 (docs/plans/08-25-yolo-whiteboard/
-// p1-design.md §1.1). This is also the land for the AI-driven editing
+// Structured board operations — the primitives (`addCard`, `updateCard`,
+// `replaceCard`, `removeCard`, `moveCard`, `addEdge`, `removeEdge`) that are
+// the *only* sanctioned way to change a Board in 1.0
+// (docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1). This is also the land for the AI-driven editing
 // primitives promised for a later milestone, so keep this the single choke
 // point for board mutation rather than letting callers hand-edit `Board`
 // object literals.
@@ -50,12 +50,44 @@ export function updateCard(board: Board, id: CardId, patch: CardPatch): Board {
   return { ...board, cards }
 }
 
+/**
+ * Swaps one card for another that keeps its id — the "same card, different
+ * identity" operation, used when a text card is converted into a note card.
+ *
+ * `updateCard` cannot express it (`id` and `type` are immutable there) and
+ * remove-then-add cannot either: `removeCard` cascades edge removal, so a
+ * card that was wired to three others would come back an island. Position
+ * and edges are untouched here by construction — only the card object at
+ * that index changes.
+ *
+ * Deliberately general rather than a `convertCardToNote`: further
+ * conversions will follow (a note demoted back to text, a card repointed at
+ * another file), and one primitive per conversion would grow the operation
+ * set without adding meaning.
+ */
+export function replaceCard(board: Board, id: CardId, next: BoardCard): Board {
+  if (next.id !== id) {
+    throw new Error(
+      `replaceCard: replacement id "${next.id}" must equal "${id}"`,
+    )
+  }
+  const index = board.cards.findIndex((card) => card.id === id)
+  if (index === -1) throw new Error(`replaceCard: card "${id}" not found`)
+  if (shallowEqual(board.cards[index], next)) return board
+
+  const cards = board.cards.slice()
+  cards[index] = next
+  return { ...board, cards }
+}
+
 export function removeCard(board: Board, id: CardId): Board {
   if (!board.cards.some((card) => card.id === id)) {
     throw new Error(`removeCard: card "${id}" not found`)
   }
   const cards = board.cards.filter((card) => card.id !== id)
-  const hasIncidentEdges = board.edges.some((edge) => edge.from === id || edge.to === id)
+  const hasIncidentEdges = board.edges.some(
+    (edge) => edge.from === id || edge.to === id,
+  )
   const edges = hasIncidentEdges
     ? board.edges.filter((edge) => edge.from !== id && edge.to !== id)
     : board.edges

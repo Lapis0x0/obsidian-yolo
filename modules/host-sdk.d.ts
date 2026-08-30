@@ -16,13 +16,15 @@ import type {
   YoloModuleI18nV1,
   YoloModuleKeymapBindingV1,
   YoloModuleKeymapModifierV1,
+  YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleRuntimeRegistration,
+  YoloModuleVaultEntryV1,
 } from '../src/core/modules/types'
 
 declare global {
   const yolo: YoloModuleRuntimeRegistration
-  type YoloModuleHostApiVersion = '1.8.0'
+  type YoloModuleHostApiVersion = '1.9.0'
   type YoloModuleHostApiV1 = YoloHostApiV1
   type YoloModuleHostActionToastV1 = YoloModuleActionToastV1
   type YoloModuleHostChatModeV1 = YoloModuleChatModeV1
@@ -35,9 +37,11 @@ declare global {
   type YoloModuleHostKeymapBindingV1 = YoloModuleKeymapBindingV1
   type YoloModuleHostKeymapModifierV1 = YoloModuleKeymapModifierV1
   type YoloModuleHostLocalizedTextV1 = LocalizedTextV1
+  type YoloModuleHostMenuItemV1 = YoloModuleMenuItemV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1
   type YoloModuleHostSettingsContributionV1 = YoloModuleSettingsContributionV1
   type YoloModuleHostModelSnapshotV1 = YoloModuleModelSnapshotV1
+  type YoloModuleHostVaultEntryV1 = YoloModuleVaultEntryV1
   type YoloModuleHostWorkerV1 = YoloModuleWorkerV1
 }
 

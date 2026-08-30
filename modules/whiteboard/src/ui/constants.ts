@@ -43,3 +43,12 @@ export const DRAG_THRESHOLD_PX = 4
  * same ~70ms throttle as recomputeVisibility, not per frame — see
  * canvas.ts's updateDegradedState(). */
 export const DEGRADE_SCALE_THRESHOLD = 0.35
+
+/** Size a card is created at. Deliberately at the small end of what the
+ * spikes' boards used (226-334 wide) — an empty card should not take half
+ * the screen; the user resizes the ones that grow. */
+export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 180 })
+
+/** World-space stagger between cards created by one multi-file drop, so
+ * three dropped notes read as three cards rather than one. */
+export const DROP_STAGGER_PX = 24

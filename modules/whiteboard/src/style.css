@@ -37,6 +37,18 @@
   display: none;
 }
 
+/* Drop target hint: an inset ring rather than a border, so acquiring it
+ * cannot reflow the canvas underneath. */
+.yolo-whiteboard-viewport.yolo-whiteboard-viewport-drop-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+  background-color: var(--interactive-accent);
+  opacity: 0.06;
+}
+
 .yolo-whiteboard-world {
   position: absolute;
   left: 0;
@@ -166,11 +178,13 @@
   text-align: center;
 }
 
-.yolo-whiteboard-world.yolo-whiteboard-world-degraded .yolo-whiteboard-card-body {
+.yolo-whiteboard-world.yolo-whiteboard-world-degraded
+  .yolo-whiteboard-card-body {
   display: none;
 }
 
-.yolo-whiteboard-world.yolo-whiteboard-world-degraded .yolo-whiteboard-card-degraded-title {
+.yolo-whiteboard-world.yolo-whiteboard-world-degraded
+  .yolo-whiteboard-card-degraded-title {
   display: flex;
 }
 

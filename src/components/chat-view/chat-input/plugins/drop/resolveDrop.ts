@@ -1,6 +1,7 @@
 import { App, FileSystemAdapter, Platform, TFile, TFolder } from 'obsidian'
 
 import { Mentionable } from '../../../../../types/mentionable'
+import { getDraggedVaultItems } from '../../../../../utils/obsidian-drag'
 
 const OBSIDIAN_OPEN_PREFIX = 'obsidian://open?'
 
@@ -97,34 +98,6 @@ export function resolveDrop(
   }
 
   return { mentionables, files }
-}
-
-/** Obsidian's internal drag state. Not public API — accessed defensively. */
-type ObsidianDraggable = {
-  file?: unknown
-  files?: unknown[]
-}
-
-function getDraggedVaultItems(app: App): (TFile | TFolder)[] {
-  const draggable = (
-    app as unknown as { dragManager?: { draggable?: ObsidianDraggable } }
-  ).dragManager?.draggable
-  if (!draggable) {
-    return []
-  }
-
-  const candidates: unknown[] = []
-  if (draggable.file) {
-    candidates.push(draggable.file)
-  }
-  if (Array.isArray(draggable.files)) {
-    candidates.push(...draggable.files)
-  }
-
-  return candidates.filter(
-    (candidate): candidate is TFile | TFolder =>
-      candidate instanceof TFile || candidate instanceof TFolder,
-  )
 }
 
 function extractCandidateUrls(dataTransfer: DataTransfer): string[] {

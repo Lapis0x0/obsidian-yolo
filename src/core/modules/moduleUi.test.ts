@@ -21,6 +21,57 @@ const createElement = (): HTMLElement =>
     },
   }) as unknown as HTMLElement
 
+type MenuItemSpec = { title?: string; icon?: string; click?: () => void }
+
+const menus: MockMenu[] = []
+
+class MockMenu {
+  readonly items: MenuItemSpec[] = []
+  readonly separators: number[] = []
+  readonly hide = jest.fn(() => {
+    this.hidden = true
+    this.onHideCallback?.()
+  })
+  readonly showAtMouseEvent = jest.fn()
+  hidden = false
+  private onHideCallback: (() => void) | undefined
+
+  constructor() {
+    menus.push(this)
+  }
+
+  addItem(build: (item: unknown) => void): this {
+    const spec: MenuItemSpec = {}
+    const item = {
+      setTitle: (title: string) => {
+        spec.title = title
+        return item
+      },
+      setIcon: (icon: string) => {
+        spec.icon = icon
+        return item
+      },
+      onClick: (click: () => void) => {
+        spec.click = click
+        return item
+      },
+    }
+    build(item)
+    this.items.push(spec)
+    return this
+  }
+
+  addSeparator(): this {
+    this.separators.push(this.items.length)
+    return this
+  }
+
+  onHide(callback: () => void): this {
+    this.onHideCallback = callback
+    return this
+  }
+}
+
 jest.mock('obsidian', () => ({
   App: jest.fn(),
   Component: jest.fn().mockImplementation(() => ({
@@ -29,8 +80,10 @@ jest.mock('obsidian', () => ({
   })),
   Keymap: { isModEvent: keymapIsModEvent },
   MarkdownRenderer: { render: markdownRender },
+  Menu: jest.fn().mockImplementation(() => new MockMenu()),
   Notice: jest.fn().mockImplementation(notice),
   TFile: class {},
+  TFolder: class {},
   htmlToMarkdown: convertHtmlToMarkdown,
   normalizePath: (path: string) => path,
 }))
@@ -58,7 +111,7 @@ class MockConfirmModal {
   }
 }
 
-import { type App, TFile } from 'obsidian'
+import { type App, TFile, TFolder } from 'obsidian'
 
 import { ModuleLifecycleScope } from './lifecycleScope'
 import { ObsidianModuleUiCapabilityProvider } from './moduleUi'
@@ -73,6 +126,7 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     modals.length = 0
+    menus.length = 0
     markdownRender.mockImplementation(() => Promise.resolve())
   })
 
@@ -295,6 +349,120 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     expect(container.textContent).toBe('original')
   })
 
+  it('opens a native menu from module-supplied data and closes it on disposal', async () => {
+    const { lifecycle, ui } = create()
+    const onSelect = jest.fn()
+    const event = { type: 'contextmenu' } as MouseEvent
+
+    ui.showMenu(event, [
+      { title: 'Convert to note', icon: 'file-plus', onSelect },
+      { kind: 'separator' },
+      { title: 'Delete', onSelect: jest.fn() },
+    ])
+
+    const [menu] = menus
+    expect(menu.items.map((item) => item.title)).toEqual([
+      'Convert to note',
+      'Delete',
+    ])
+    expect(menu.items[0].icon).toBe('file-plus')
+    // The event itself is what tells Obsidian which window owns the menu.
+    expect(menu.showAtMouseEvent).toHaveBeenCalledWith(event)
+
+    menu.items[0].click?.()
+    expect(onSelect).toHaveBeenCalledTimes(1)
+
+    lifecycle.dispose()
+    expect(menu.hide).toHaveBeenCalledTimes(1)
+
+    // A selection that lands after teardown must not run module code.
+    menu.items[1].click?.()
+    expect(onSelect).toHaveBeenCalledTimes(1)
+  })
+
+  it('snapshots menu items so later mutation cannot change what was shown', () => {
+    const { lifecycle, ui } = create()
+    const original = jest.fn()
+    const swapped = jest.fn()
+    const item = { title: 'Original', onSelect: original }
+
+    ui.showMenu({ type: 'contextmenu' } as MouseEvent, [item])
+    item.title = 'Swapped'
+    item.onSelect = swapped
+
+    const [menu] = menus
+    expect(menu.items[0].title).toBe('Original')
+    menu.items[0].click?.()
+    expect(original).toHaveBeenCalledTimes(1)
+    expect(swapped).not.toHaveBeenCalled()
+    lifecycle.dispose()
+  })
+
+  it('rejects malformed menu items before showing anything', () => {
+    const { lifecycle, ui } = create()
+    const event = { type: 'contextmenu' } as MouseEvent
+
+    expect(() =>
+      ui.showMenu(event, [{ title: '  ', onSelect: jest.fn() }]),
+    ).toThrow('Menu item title')
+    expect(() =>
+      ui.showMenu(event, [
+        { title: 'No handler' } as unknown as {
+          title: string
+          onSelect(): void
+        },
+      ]),
+    ).toThrow('onSelect')
+    expect(menus).toHaveLength(0)
+    lifecycle.dispose()
+  })
+
+  it('resolves a drop into vault entries from Obsidian drag state', () => {
+    const file = Object.assign(new TFile(), {
+      path: 'notes/card.md',
+      name: 'card.md',
+      stat: { ctime: 1, mtime: 2 },
+    })
+    const folder = Object.assign(new TFolder(), {
+      path: 'notes',
+      name: 'notes',
+    })
+    const dragApp = {
+      workspace: { openLinkText, trigger },
+      dragManager: { draggable: { files: [file, folder] } },
+    } as unknown as App
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new ObsidianModuleUiCapabilityProvider({
+      app: dragApp,
+      createConfirmModal: (modalApp, options) =>
+        new MockConfirmModal(modalApp, options),
+    }).create('whiteboard', lifecycle)
+    activation.activate()
+
+    const entries = activation.api.resolveDropEntries({
+      type: 'drop',
+    } as DragEvent)
+
+    expect(entries).toEqual([
+      {
+        kind: 'file',
+        path: 'notes/card.md',
+        name: 'card.md',
+        ctime: 1,
+        mtime: 2,
+      },
+      { kind: 'folder', path: 'notes', name: 'notes' },
+    ])
+    expect(Object.isFrozen(entries)).toBe(true)
+    lifecycle.dispose()
+  })
+
+  it('resolves a drop that carries nothing from the vault into an empty list', () => {
+    const { lifecycle, ui } = create()
+    expect(ui.resolveDropEntries({ type: 'drop' } as DragEvent)).toEqual([])
+    lifecycle.dispose()
+  })
+
   it('rejects every new capability call after disposal', async () => {
     const { lifecycle, ui } = create()
     lifecycle.dispose()
@@ -315,6 +483,10 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
       }),
     ).toThrow('no longer active')
     expect(() => ui.openLink('late', '', false)).toThrow('no longer active')
+    expect(() => ui.showMenu({} as MouseEvent, [])).toThrow('no longer active')
+    expect(() => ui.resolveDropEntries({} as DragEvent)).toThrow(
+      'no longer active',
+    )
     expect(openLinkText).not.toHaveBeenCalled()
   })
 

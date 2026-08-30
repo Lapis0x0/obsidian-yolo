@@ -352,6 +352,22 @@ export type YoloModuleHoverLinkOptionsV1 = Readonly<{
   sourcePath: string
 }>
 
+/**
+ * One entry in a module-requested context menu. A separator carries nothing
+ * else; an item is pure data — a module never touches a menu object, so the
+ * menu's lifetime, keyboard layering, and owning window all stay with the
+ * host (see `YoloModuleUiV1.showMenu`).
+ */
+export type YoloModuleMenuItemV1 =
+  | Readonly<{
+      kind?: 'item'
+      /** Already localized: the module resolves its own locale at call time. */
+      title: string
+      icon?: string
+      onSelect(): void | Promise<void>
+    }>
+  | Readonly<{ kind: 'separator' }>
+
 export type YoloModuleUiV1 = {
   notice(message: string): void
   showActionToast(toast: YoloModuleActionToastV1): void
@@ -359,6 +375,29 @@ export type YoloModuleUiV1 = {
   createMarkdownRenderer(): YoloModuleMarkdownRendererV1
   htmlToMarkdown(html: string): string
   isModEvent(event: MouseEvent): boolean
+  /**
+   * Opens a native context menu at the given mouse event's position.
+   *
+   * The event is required rather than a coordinate pair because it is also
+   * what tells the host which window the menu belongs to — a module view can
+   * live in an Obsidian popout, which has its own document, and a module that
+   * computed its own coordinates would sooner or later open the menu on the
+   * wrong screen. Menus opened this way are closed when the module deactivates.
+   */
+  showMenu(event: MouseEvent, items: readonly YoloModuleMenuItemV1[]): void
+  /**
+   * Resolves a drop event into the vault entries it carries, or an empty list
+   * when it carries none.
+   *
+   * A drag that started inside Obsidian leaves no usable vault path in the
+   * `DataTransfer`; the authoritative source is Obsidian's private drag
+   * state, which a module can never reach on its own. Returning vault
+   * entries rather than raw drag data is also what keeps this surface stable:
+   * when dropping a file from outside the vault becomes supported, the host
+   * can import it and return it as an entry, with no change on the module
+   * side. Files from outside the vault currently resolve to nothing.
+   */
+  resolveDropEntries(event: DragEvent): readonly YoloModuleVaultEntryV1[]
   openLink(
     linktext: string,
     sourcePath: string,

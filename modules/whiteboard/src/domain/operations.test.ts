@@ -1,4 +1,10 @@
-import { type Board, type BoardCard, type Edge, type TextCard, emptyBoard } from './fileFormat'
+import {
+  type Board,
+  type BoardCard,
+  type Edge,
+  type TextCard,
+  emptyBoard,
+} from './fileFormat'
 import {
   type CardPatch,
   addCard,
@@ -6,10 +12,14 @@ import {
   moveCard,
   removeCard,
   removeEdge,
+  replaceCard,
   updateCard,
 } from './operations'
 
-function textCard(id: string, overrides: Partial<Omit<TextCard, 'id' | 'type'>> = {}): TextCard {
+function textCard(
+  id: string,
+  overrides: Partial<Omit<TextCard, 'id' | 'type'>> = {},
+): TextCard {
   return {
     id,
     type: 'text',
@@ -23,7 +33,12 @@ function textCard(id: string, overrides: Partial<Omit<TextCard, 'id' | 'type'>> 
   }
 }
 
-function edge(id: string, from: string, to: string, overrides: Partial<Edge> = {}): Edge {
+function edge(
+  id: string,
+  from: string,
+  to: string,
+  overrides: Partial<Edge> = {},
+): Edge {
   return { id, from, to, arrow: 'end', extra: {}, ...overrides }
 }
 
@@ -83,6 +98,46 @@ describe('updateCard', () => {
     expect(() =>
       updateCard(board, 'c1', { type: 'note' } as unknown as CardPatch),
     ).toThrow(/id.*type|type.*id/i)
+  })
+})
+
+describe('replaceCard', () => {
+  it('swaps the card in place and leaves its edges intact', () => {
+    const c1 = textCard('c1')
+    const c2 = textCard('c2')
+    const wire = edge('e1', 'c1', 'c2')
+    const board = boardWith([c1, c2], [wire])
+
+    const promoted: BoardCard = {
+      id: 'c1',
+      type: 'note',
+      x: c1.x,
+      y: c1.y,
+      w: c1.w,
+      h: c1.h,
+      file: 'Board Cards/Untitled.md',
+      extra: {},
+    }
+    const next = replaceCard(board, 'c1', promoted)
+
+    expect(next.cards[0]).toBe(promoted)
+    expect(next.cards[1]).toBe(c2)
+    // The reason this primitive exists: remove-then-add would drop this.
+    expect(next.edges).toBe(board.edges)
+  })
+
+  it('returns the same board when the replacement is identical', () => {
+    const c1 = textCard('c1')
+    const board = boardWith([c1])
+    expect(replaceCard(board, 'c1', { ...c1 })).toBe(board)
+  })
+
+  it('refuses to change the id or replace a card that is not there', () => {
+    const board = boardWith([textCard('c1')])
+    expect(() => replaceCard(board, 'c1', textCard('c2'))).toThrow('must equal')
+    expect(() => replaceCard(board, 'missing', textCard('missing'))).toThrow(
+      'not found',
+    )
   })
 })
 
@@ -155,13 +210,18 @@ describe('addEdge', () => {
   })
 
   it('throws on a duplicate edge id', () => {
-    const board = boardWith([textCard('c1'), textCard('c2')], [edge('e1', 'c1', 'c2')])
+    const board = boardWith(
+      [textCard('c1'), textCard('c2')],
+      [edge('e1', 'c1', 'c2')],
+    )
     expect(() => addEdge(board, edge('e1', 'c1', 'c2'))).toThrow(/duplicate/i)
   })
 
   it('throws when an endpoint card does not exist', () => {
     const board = boardWith([textCard('c1')])
-    expect(() => addEdge(board, edge('e1', 'c1', 'missing'))).toThrow(/not found/i)
+    expect(() => addEdge(board, edge('e1', 'c1', 'missing'))).toThrow(
+      /not found/i,
+    )
   })
 })
 
@@ -169,7 +229,10 @@ describe('removeEdge', () => {
   it('removes the edge, keeping other edges referentially unchanged', () => {
     const e1 = edge('e1', 'c1', 'c2')
     const e2 = edge('e2', 'c2', 'c3')
-    const board = boardWith([textCard('c1'), textCard('c2'), textCard('c3')], [e1, e2])
+    const board = boardWith(
+      [textCard('c1'), textCard('c2'), textCard('c3')],
+      [e1, e2],
+    )
     const next = removeEdge(board, 'e1')
     expect(next.edges).toEqual([e2])
     expect(next.edges[0]).toBe(e2)

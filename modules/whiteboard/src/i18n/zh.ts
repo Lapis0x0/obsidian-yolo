@@ -8,9 +8,17 @@ export const zh = {
   },
   menu: {
     newWhiteboard: '新建 YOLO 白板',
+    newCard: '新建卡片',
+    convertToNote: '转为笔记',
+    deleteCard: '删除',
   },
   file: {
     newWhiteboardBaseName: '白板',
+    newNoteBaseName: '未命名',
+  },
+  notice: {
+    convertedToNote: '卡片已保存为 {path}',
+    dropUnsupported: '白板目前只能接收 Markdown 笔记。',
   },
   card: {
     missingFile: '文件丢失',
@@ -22,5 +30,7 @@ export const zh = {
     title: '无法读取此白板',
     hint: '文件解析失败，内容未被修改——请在白板外修复后重新打开。',
     createFailed: '新建白板失败。',
+    convertFailed: '无法把这张卡片转为笔记。',
+    dropFailed: '无法把拖入的文件加到白板上。',
   },
 }

@@ -10,9 +10,17 @@ export const en = {
     // The folder context menu sits next to Obsidian core's own "New canvas"
     // item with no plugin prefix, so this entry names the product.
     newWhiteboard: 'New YOLO whiteboard',
+    newCard: 'New card',
+    convertToNote: 'Convert to note',
+    deleteCard: 'Delete',
   },
   file: {
     newWhiteboardBaseName: 'Whiteboard',
+    newNoteBaseName: 'Untitled',
+  },
+  notice: {
+    convertedToNote: 'Card saved as {path}',
+    dropUnsupported: 'Only markdown notes can be dropped onto a whiteboard.',
   },
   card: {
     missingFile: 'File missing',
@@ -24,5 +32,7 @@ export const en = {
     title: 'Could not read this whiteboard',
     hint: 'The file could not be parsed. It has not been modified — fix it outside the whiteboard and reopen.',
     createFailed: 'Could not create a new whiteboard.',
+    convertFailed: 'Could not convert this card into a note.',
+    dropFailed: 'Could not add the dropped file to this whiteboard.',
   },
 }
