@@ -112,9 +112,13 @@ import {
   ModuleFileViewSlot,
   createModuleFileView,
 } from './moduleFileView'
-import type { YoloModuleFileViewInstanceV1, YoloModuleFileViewV1 } from './types'
+import type {
+  YoloModuleFileViewInstanceV1,
+  YoloModuleFileViewV1,
+} from './types'
 
-const makeLocales = (initial = 'en') => new LocaleStore({ readLocale: () => initial })
+const makeLocales = (initial = 'en') =>
+  new LocaleStore({ readLocale: () => initial })
 
 describe('ModuleFileViewSlot', () => {
   const board: YoloModuleFileViewV1 = {
@@ -233,7 +237,9 @@ function makeFactory(): {
 
 function makePlugin(): Plugin {
   return {
-    app: { keymap: { scope: new Scope(), pushScope: jest.fn(), popScope: jest.fn() } },
+    app: {
+      keymap: { scope: new Scope(), pushScope: jest.fn(), popScope: jest.fn() },
+    },
   } as unknown as Plugin
 }
 
@@ -255,7 +261,11 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
       makeLocales(),
     )
     const plugin = makePlugin()
-    const hostView = createModuleFileView({} as never, plugin, slot) as unknown as {
+    const hostView = createModuleFileView(
+      {} as never,
+      plugin,
+      slot,
+    ) as unknown as {
       onOpen(): Promise<void>
       onClose(): Promise<void>
       getViewData(): string
@@ -360,7 +370,7 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
       icon: 'layout-grid',
       factory: (context) => {
         const handler = jest.fn(() => true)
-        context.pushKeymapScope([{ modifiers: [], key: 'Escape', handler }])
+        context.registerKeymap([{ modifiers: [], key: 'Escape', handler }])
         return factory(context)
       },
     }
@@ -376,9 +386,12 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
     const hostView = createModuleFileView({} as never, plugin, slot)
     void (hostView as unknown as { onOpen(): Promise<void> }).onOpen()
 
+    // Bindings live on the view's own scope, which Obsidian consults only
+    // while this leaf is active — never pushed above the whole app.
     // eslint-disable-next-line @typescript-eslint/unbound-method -- Read as a jest.fn() call-recorder, never invoked unbound.
     const pushScope = plugin.app.keymap.pushScope as jest.Mock
-    expect(pushScope).toHaveBeenCalledTimes(1)
+    expect(pushScope).not.toHaveBeenCalled()
+    expect((hostView as unknown as { scope: unknown }).scope).toBeTruthy()
     expect(registerSpy).toHaveBeenCalledTimes(1)
     const wrappedHandler = registerSpy.mock.calls[0]?.[2] as () => unknown
     expect(wrappedHandler()).toBe(false)
@@ -389,9 +402,9 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
 type MenuItemHandle = { title: string; onClick: () => void }
 
 function makeFile(path: string) {
-  return new (TFile as unknown as { new (path: string): InstanceType<typeof TFile> })(
-    path,
-  )
+  return new (TFile as unknown as {
+    new (path: string): InstanceType<typeof TFile>
+  })(path)
 }
 
 function makeFolder(path: string) {

@@ -124,7 +124,6 @@ class HostModuleFileView extends TextFileView {
   private closed = true
   private unsubscribeSlot: (() => void) | null = null
   private windowMigratedDisposer: (() => void) | null = null
-  private readonly activeKeymapScopes = new Set<Scope>()
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -138,7 +137,8 @@ class HostModuleFileView extends TextFileView {
    * running (see `constructingSlot`) — every slot read in a method Obsidian
    * may call from that constructor must go through here. */
   private resolveSlot(): ModuleFileViewSlot {
-    const slot = (this.slot as ModuleFileViewSlot | undefined) ?? constructingSlot
+    const slot =
+      (this.slot as ModuleFileViewSlot | undefined) ?? constructingSlot
     if (!slot) {
       throw new Error('HostModuleFileView slot is not available')
     }
@@ -177,7 +177,7 @@ class HostModuleFileView extends TextFileView {
     this.windowMigratedDisposer?.()
     this.windowMigratedDisposer = null
     this.disposeInstance()
-    this.forceCloseKeymapScopes()
+    this.releaseKeymapScope()
     return Promise.resolve()
   }
 
@@ -322,17 +322,24 @@ class HostModuleFileView extends TextFileView {
       getDocument: () => getNodeDocument(this.contentEl),
       getWindow: () => getNodeWindow(this.contentEl),
       requestSave: () => this.requestSave(),
-      pushKeymapScope: (bindings) => this.pushKeymapScope(bindings),
+      registerKeymap: (bindings) => this.registerKeymap(bindings),
     })
   }
 
-  private pushKeymapScope(
+  /**
+   * One scope per view, created on first use and handed to Obsidian through
+   * `View.scope` — the workspace consults `activeLeaf.view.scope` on every
+   * key, so these bindings arm and disarm with the leaf's focus at no cost
+   * to us. Separate `registerKeymap` calls add and remove their own
+   * registrations on that one scope (there is nothing to stack: the scope's
+   * lifetime is the view's).
+   */
+  private registerKeymap(
     bindings: readonly YoloModuleKeymapBindingV1[],
   ): ModuleDisposer {
     const validated = validateKeymapBindings(bindings)
-    const app = this.hostPlugin.app
-    const scope = new Scope(app.keymap.scope)
-    for (const binding of validated) {
+    const scope = (this.scope ??= new Scope(this.hostPlugin.app.scope))
+    const registered = validated.map((binding) =>
       scope.register([...binding.modifiers], binding.key, () => {
         let consumed = false
         try {
@@ -341,30 +348,20 @@ class HostModuleFileView extends TextFileView {
           this.reportError('keymap handler', error)
         }
         return consumed ? false : undefined
-      })
-    }
-    app.keymap.pushScope(scope)
-    this.activeKeymapScopes.add(scope)
+      }),
+    )
     let active = true
     return () => {
       if (!active) return
       active = false
-      app.keymap.popScope(scope)
-      this.activeKeymapScopes.delete(scope)
+      for (const handler of registered) scope.unregister(handler)
     }
   }
 
-  private forceCloseKeymapScopes(): void {
-    if (this.activeKeymapScopes.size === 0) return
-    const app = this.hostPlugin.app
-    for (const scope of this.activeKeymapScopes) {
-      try {
-        app.keymap.popScope(scope)
-      } catch (error) {
-        this.reportError('keymap scope cleanup', error)
-      }
-    }
-    this.activeKeymapScopes.clear()
+  /** The scope is reachable only through this view, so dropping it releases
+   * every binding a module left behind. */
+  private releaseKeymapScope(): void {
+    this.scope = null
   }
 
   private reportError(stage: string, error: unknown): void {
@@ -487,10 +484,8 @@ function isValidInstance(
 ): value is YoloModuleFileViewInstanceV1 {
   return (
     Boolean(value) &&
-    typeof (value as YoloModuleFileViewInstanceV1).setViewData ===
-      'function' &&
-    typeof (value as YoloModuleFileViewInstanceV1).getViewData ===
-      'function' &&
+    typeof (value as YoloModuleFileViewInstanceV1).setViewData === 'function' &&
+    typeof (value as YoloModuleFileViewInstanceV1).getViewData === 'function' &&
     typeof (value as YoloModuleFileViewInstanceV1).clear === 'function' &&
     typeof (value as YoloModuleFileViewInstanceV1).dispose === 'function'
   )

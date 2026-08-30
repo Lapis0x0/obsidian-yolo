@@ -73,10 +73,23 @@ export type YoloModuleFileViewContextV1 = Readonly<{
   getWindow(): Window
   /** Debounced persist; host serializes via instance.getViewData(). */
   requestSave(): void
-  /** Push an Obsidian keymap scope above the view (popout-safe). Returns a disposer. */
-  pushKeymapScope(
-    bindings: readonly YoloModuleKeymapBindingV1[],
-  ): ModuleDisposer
+  /**
+   * Register hotkeys that are live only while this view's leaf is the active
+   * one (Obsidian's `View.scope`; popout-safe). Returns a disposer.
+   *
+   * View-scoped rather than app-wide on purpose: a view's keys are about the
+   * thing the user is looking at. Bindings pushed above the whole app stay
+   * armed after the user clicks into another leaf, which turns an innocent
+   * Delete or Mod+Z somewhere else into an edit of a file they are not even
+   * looking at.
+   *
+   * Registrations from separate calls coexist on one scope, and Obsidian
+   * resolves a key bound twice to whichever binding was registered *first* —
+   * a later registration cannot shadow an earlier one, so overlapping keys
+   * are the caller's to keep apart. Keys the handlers do not consume fall
+   * through to Obsidian.
+   */
+  registerKeymap(bindings: readonly YoloModuleKeymapBindingV1[]): ModuleDisposer
 }>
 
 export type YoloModuleFileViewInstanceV1 = Readonly<{

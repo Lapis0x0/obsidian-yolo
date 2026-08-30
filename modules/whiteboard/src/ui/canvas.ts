@@ -57,6 +57,7 @@ import {
   parseBoard,
   serializeBoard,
 } from '../domain/fileFormat'
+import { BoardHistory } from '../domain/history'
 import { cardNoteBaseName, generateCardNoteFileName } from '../domain/naming'
 import {
   addCard,
@@ -168,6 +169,9 @@ type EditingState = {
   readonly cardId: CardId
   readonly editor: YoloModuleHostMarkdownEditorV1
   readonly scopeDisposer: () => void
+  /** Identifies this editing session to the history, so its many commits
+   * (throttled writes plus the final flush) fold into one undo step. */
+  readonly historyKey: string
   /** Pending throttled write of what is currently in the editor; see
    * `scheduleEditPersist`. */
   persistTimer: number | null
@@ -287,6 +291,13 @@ export class WhiteboardCanvas {
   private readonly runtimeByCardId = new Map<CardId, CardRuntime>()
   private readonly engine = new VirtualizationEngine()
   private readonly pinnedIds = new Set<CardId>()
+
+  /** Undo/redo over board content. Seeded on load, pushed by
+   * `applyBoardChange`, and never touched by camera movement (see
+   * `applyHistoryBoard`). */
+  private readonly history = new BoardHistory()
+  private viewKeymapDisposer: (() => void) | null = null
+  private editSessionCounter = 0
 
   private view: CanvasView = { tx: 0, ty: 0, scale: 1 }
   private interaction: Interaction | null = null
@@ -410,6 +421,11 @@ export class WhiteboardCanvas {
     this.board = result.board
     this.syncBoardIndex()
     this.selfHealMissingNoteCards()
+    // Baseline for undo, taken after self-heal so the repaired board is the
+    // oldest state anyone can get back to. Reset rather than extended: this
+    // is a different file, or the same file rewritten from outside, and
+    // pushing the previous content over it is how an undo destroys data.
+    this.history.reset(this.board)
     this.rebuildEdgesSvg()
     this.view = viewFromCamera(this.board.camera)
     // A glide aimed at the previous board's camera has nothing to say about
@@ -509,6 +525,8 @@ export class WhiteboardCanvas {
     win.removeEventListener('pointerup', this.onPointerUp)
     this.vaultSubscriptionDisposer?.()
     this.vaultSubscriptionDisposer = null
+    this.viewKeymapDisposer?.()
+    this.viewKeymapDisposer = null
 
     this.teardownAllCards()
     this.rootEl?.remove()
@@ -636,6 +654,7 @@ export class WhiteboardCanvas {
     )
 
     this.setupInteraction()
+    this.registerViewKeymap()
     this.setupVaultSubscription()
     this.preheat()
 
@@ -774,9 +793,14 @@ export class WhiteboardCanvas {
    */
   private readonly onDoubleClick = (e: MouseEvent): void => {
     if (this.parseFailed) return
-    // A double-click on a card belongs to that card's editor: the first
-    // click already opened it, and the second places the cursor.
-    if (this.cardIdFromEventTarget(e.target) !== null) return
+    const cardId = this.cardIdFromEventTarget(e.target)
+    if (cardId !== null) {
+      // Inside the editor this is a word selection, not a request to open
+      // what is already open.
+      if (this.editing?.cardId === cardId) return
+      this.editCard(cardId)
+      return
+    }
     this.createTextCardAt(this.worldPointFromEvent(e))
   }
 
@@ -1341,12 +1365,15 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Card press: click-to-edit vs. drag-to-move, disambiguated by
-  // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) clears
-  // the selection and enters edit mode — unchanged from the pre-W3-A
-  // behavior, just re-homed from a per-card `click` listener into this
-  // central pointerup handler so it can share the threshold check with
-  // dragging. A drag moves either just the pressed card, or the whole
+  // Card press: click-to-select vs. drag-to-move, disambiguated by
+  // DRAG_THRESHOLD_PX. A plain click (never crosses the threshold) selects
+  // the card; editing is a second, deliberate step — double-click, or Enter
+  // on the selection (W3-E, matching Obsidian Canvas). Selecting first is
+  // what makes a single click safe: the card can then be dragged, deleted,
+  // resized or wired up without a caret landing in it and an editor
+  // mounting on every glance. A brand-new card is the exception and opens
+  // straight into editing — there is nothing in it to select.
+  // A drag moves either just the pressed card, or the whole
   // current selection if the pressed card was already part of it (and
   // never enters edit mode). Position updates during drag write only
   // `transform` on the affected card elements (compositor-friendly, no
@@ -1449,17 +1476,13 @@ export class WhiteboardCanvas {
     if (!interaction.dragging) {
       // A click, not a drag: the handle overlaps the card, so this means
       // what the same click on the card means.
-      this.clearSelection()
-      const card = this.boardCardsById.get(interaction.cardId)
-      if (card && card.type !== 'pdf') this.enterEditMode(interaction.cardId)
+      this.setSelection([interaction.cardId])
       return
     }
 
     this.pinnedIds.delete(interaction.cardId)
     const rect = this.resizedRect(interaction, e)
-    this.board = updateCard(this.board, interaction.cardId, rect)
-    this.syncBoardIndex()
-    this.context.requestSave()
+    this.applyBoardChange(updateCard(this.board, interaction.cardId, rect))
     this.applyResizeRect(interaction, rect)
     // The card's footprint changed, so its mount state may have too.
     this.recomputeVisibility()
@@ -1667,7 +1690,10 @@ export class WhiteboardCanvas {
     const target = interaction.target ?? created
     if (!target) return
 
-    this.board =
+    // One history step for the whole gesture: `createCardForConnection` has
+    // already put its card on `this.board` without committing, so the card
+    // and the edge that justified it are undone together.
+    this.applyBoardChange(
       interaction.edgeId === null
         ? addEdge(this.board, this.connectedEdge(interaction, target))
         : updateEdge(
@@ -1676,10 +1702,9 @@ export class WhiteboardCanvas {
             interaction.movingEnd === 'from'
               ? { from: target.cardId, fromSide: target.side }
               : { to: target.cardId, toSide: target.side },
-          )
-    this.syncBoardIndex()
+          ),
+    )
     this.rebuildEdgesSvg()
-    this.context.requestSave()
 
     if (created) {
       this.recomputeVisibility()
@@ -1801,17 +1826,13 @@ export class WhiteboardCanvas {
     e: PointerEvent,
   ): void {
     if (!interaction.dragging) {
-      this.clearSelection()
-      const card = this.boardCardsById.get(interaction.cardId)
-      if (card && card.type !== 'pdf') this.enterEditMode(interaction.cardId)
+      this.setSelection([interaction.cardId])
       return
     }
 
     const { dx, dy } = this.worldDelta(interaction, e)
     if (dx !== 0 || dy !== 0) {
-      this.board = moveCard(this.board, interaction.ids, dx, dy)
-      this.syncBoardIndex()
-      this.context.requestSave()
+      this.applyBoardChange(moveCard(this.board, interaction.ids, dx, dy))
     }
     for (const id of interaction.ids) {
       this.pinnedIds.delete(id)
@@ -1835,6 +1856,79 @@ export class WhiteboardCanvas {
     // (mirrors onResize()'s direct call).
     this.recomputeVisibility()
     this.drainQueues()
+  }
+
+  // -----------------------------------------------------------------------
+  // Board mutation and history (W3-E).
+  //
+  // Every content change goes through `applyBoardChange`: it is what keeps
+  // "changed the board", "recorded a step", and "asked the host to save" from
+  // ever drifting apart. Two things deliberately do not go through it — the
+  // camera (a viewpoint, not content: an undo that moves the viewport is the
+  // least welcome kind) and note-card self-heal (the view repairing a stale
+  // reference, not something the user did).
+  // -----------------------------------------------------------------------
+
+  private applyBoardChange(next: Board, historyKey?: string): void {
+    if (next === this.board) return
+    this.board = next
+    this.syncBoardIndex()
+    this.history.push(next, historyKey)
+    this.context.requestSave()
+  }
+
+  private undo(): void {
+    this.applyHistoryBoard(this.history.undo())
+  }
+
+  private redo(): void {
+    this.applyHistoryBoard(this.history.redo())
+  }
+
+  /**
+   * Puts a snapshot back on screen.
+   *
+   * Structural sharing does the diffing for us: a card the undone change
+   * never touched is the very same object, so it keeps the DOM and the
+   * rendered Markdown it already has, and only what actually differs is
+   * dropped and re-mounted by the normal virtualization path. Undoing one
+   * card's move on a 300-card board therefore re-renders one card.
+   */
+  private applyHistoryBoard(next: Board | null): void {
+    if (!next || this.parseFailed) return
+    const previous = this.boardCardsById
+    // The snapshot's camera is discarded: see this section's doc comment.
+    this.board = { ...next, camera: cameraFromView(this.view) }
+    this.syncBoardIndex()
+    for (const [id, card] of previous) {
+      if (this.boardCardsById.get(id) !== card) this.purgeCardRuntime(id)
+    }
+    this.clearSelection()
+    this.rebuildEdgesSvg()
+    this.refreshInteractionLayer()
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.context.requestSave()
+  }
+
+  /** Undo/redo live on the view's own keymap, so they are armed exactly
+   * while this board is the leaf being looked at. While a card's editor has
+   * the caret, they belong to that editor — CodeMirror has its own history,
+   * and the text being typed is not a board change yet. */
+  private registerViewKeymap(): void {
+    const run = (action: () => void) => () => {
+      if (this.editing) return false
+      action()
+      return true
+    }
+    const undo = run(() => this.undo())
+    const redo = run(() => this.redo())
+    this.viewKeymapDisposer = this.context.registerKeymap([
+      { modifiers: ['Mod'], key: 'Z', handler: undo },
+      { modifiers: ['Mod', 'Shift'], key: 'Z', handler: redo },
+      // Windows' second redo binding, which Obsidian Canvas also carries.
+      { modifiers: ['Mod'], key: 'Y', handler: redo },
+    ])
   }
 
   // -----------------------------------------------------------------------
@@ -1902,7 +1996,7 @@ export class WhiteboardCanvas {
   }
 
   private pushSelectionKeymapScope(): void {
-    this.selectionScopeDisposer = this.context.pushKeymapScope([
+    this.selectionScopeDisposer = this.context.registerKeymap([
       {
         modifiers: [],
         key: 'Backspace',
@@ -1917,6 +2011,15 @@ export class WhiteboardCanvas {
         handler: () => {
           this.deleteSelection()
           return true
+        },
+      },
+      {
+        modifiers: [],
+        key: 'Enter',
+        handler: () => {
+          if (this.selectedIds.size !== 1) return false
+          const id = this.selectedIds.values().next().value
+          return id !== undefined && this.editCard(id)
         },
       },
       {
@@ -1952,10 +2055,9 @@ export class WhiteboardCanvas {
       if (board.edges.some((edge) => edge.id === id))
         board = removeEdge(board, id)
     }
-    this.board = board
+    this.applyBoardChange(board)
     this.setEdgeSelection([])
     this.rebuildEdgesSvg()
-    this.context.requestSave()
   }
 
   private deleteCards(ids: readonly CardId[]): void {
@@ -1970,8 +2072,7 @@ export class WhiteboardCanvas {
       if (board.cards.some((card) => card.id === id))
         board = removeCard(board, id)
     }
-    this.board = board
-    this.syncBoardIndex()
+    this.applyBoardChange(board)
     for (const id of ids) this.purgeCardRuntime(id)
     this.clearSelection()
     this.refreshInteractionLayer()
@@ -1979,7 +2080,6 @@ export class WhiteboardCanvas {
     // the edge *set* changed, not just endpoint positions, so a full
     // rebuild (rather than redrawEdgesForCards) is the correct response.
     this.rebuildEdgesSvg()
-    this.context.requestSave()
   }
 
   // -----------------------------------------------------------------------
@@ -2005,8 +2105,7 @@ export class WhiteboardCanvas {
       markdown: '',
       extra: {},
     }
-    this.board = addCard(this.board, card)
-    this.syncBoardIndex()
+    this.applyBoardChange(addCard(this.board, card))
     this.clearSelection()
     // The card has to exist in the DOM before an editor can be mounted into
     // it, and mounting is normally driven by the rAF loop. Draining now
@@ -2035,11 +2134,9 @@ export class WhiteboardCanvas {
         extra: {},
       })
     }
-    this.board = board
-    this.syncBoardIndex()
+    this.applyBoardChange(board)
     this.recomputeVisibility()
     this.drainQueues()
-    this.context.requestSave()
   }
 
   /**
@@ -2096,8 +2193,7 @@ export class WhiteboardCanvas {
         file: path,
         extra: latest.extra,
       }
-      this.board = replaceCard(this.board, latest.id, note)
-      this.syncBoardIndex()
+      this.applyBoardChange(replaceCard(this.board, latest.id, note))
       // The card's content now comes from a file rather than from the board,
       // so its mounted preview has to be rebuilt against the new source.
       this.purgeCardRuntime(latest.id)
@@ -2137,6 +2233,11 @@ export class WhiteboardCanvas {
   private nextEdgeId(): EdgeId {
     const uuid = this.context.getWindow().crypto.randomUUID()
     return `e-${uuid}`
+  }
+
+  private nextEditSessionId(): number {
+    this.editSessionCounter += 1
+    return this.editSessionCounter
   }
 
   private worldPointFromEvent(e: MouseEvent): ScreenPoint {
@@ -2555,6 +2656,16 @@ export class WhiteboardCanvas {
   // (p1-design §3).
   // -----------------------------------------------------------------------
 
+  /** Opens a card for editing if that card is editable. False when it is not
+   * (a PDF card has no text surface), so a key binding can decline instead of
+   * silently swallowing the keystroke. */
+  private editCard(id: CardId): boolean {
+    const card = this.boardCardsById.get(id)
+    if (!card || card.type === 'pdf') return false
+    this.enterEditMode(id)
+    return true
+  }
+
   private enterEditMode(id: CardId): void {
     if (this.parseFailed) return
     const card = this.boardCardsById.get(id)
@@ -2574,6 +2685,11 @@ export class WhiteboardCanvas {
       // through the exact same path before this one takes over.
       this.editing.editor.blur()
     }
+    // A card being edited is never also selected (see `selectedIds`). Cleared
+    // after the blur above, which selects the card it just left. Keeping the
+    // two apart is what stops the selection's own bindings from stealing
+    // Enter and Escape from the editor — the keys they mean most.
+    this.clearSelection()
 
     const initialText =
       card.type === 'note' ? (runtime.noteText ?? '') : card.markdown
@@ -2594,7 +2710,7 @@ export class WhiteboardCanvas {
       onChange: () => this.scheduleEditPersist(id),
       onBlur: (text) => this.finishEdit(id, text),
     })
-    const scopeDisposer = this.context.pushKeymapScope([
+    const scopeDisposer = this.context.registerKeymap([
       {
         modifiers: [],
         key: 'Escape',
@@ -2604,7 +2720,13 @@ export class WhiteboardCanvas {
         },
       },
     ])
-    this.editing = { cardId: id, editor, scopeDisposer, persistTimer: null }
+    this.editing = {
+      cardId: id,
+      editor,
+      scopeDisposer,
+      historyKey: `edit-${this.nextEditSessionId()}`,
+      persistTimer: null,
+    }
     editor.focus()
   }
 
@@ -2627,13 +2749,13 @@ export class WhiteboardCanvas {
     editing.persistTimer = win.setTimeout(() => {
       editing.persistTimer = null
       if (this.editing !== editing) return
-      this.commitCardText(id, editing.editor.getValue())
+      this.commitCardText(id, editing.editor.getValue(), editing.historyKey)
     }, EDIT_PERSIST_THROTTLE_MS)
   }
 
   /** Writes a card's text to wherever that card's content lives — the note
    * file for a note card, the board for a text card. */
-  private commitCardText(id: CardId, text: string): void {
+  private commitCardText(id: CardId, text: string, historyKey?: string): void {
     const action = planCardCommit(this.board, id, text)
     switch (action.kind) {
       case 'writeNoteFile': {
@@ -2645,9 +2767,7 @@ export class WhiteboardCanvas {
         break
       }
       case 'updateBoard':
-        this.board = action.board
-        this.syncBoardIndex()
-        this.context.requestSave()
+        this.applyBoardChange(action.board, historyKey)
         break
       case 'noop':
         break
@@ -2670,9 +2790,15 @@ export class WhiteboardCanvas {
     runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
 
     // Final flush: the throttled writes may have left the last keystrokes
-    // unpersisted, and a no-op commit costs nothing.
-    this.commitCardText(id, text)
+    // unpersisted, and a no-op commit costs nothing. Still under the
+    // session's history key — the whole session is one step to undo.
+    this.commitCardText(id, text, editing.historyKey)
     void this.renderCardPreview(id)
+    // Leaving the editor lands on the card, not on nothing: Escape steps
+    // out to the selected card and only a second Escape clears it. A blur
+    // caused by pressing somewhere else is overwritten by whatever that
+    // press selects, a moment later in the same gesture.
+    if (this.boardCardsById.has(id)) this.setSelection([id])
   }
 
   /** Commits the active edit (if any) through the single `finishEdit` path
@@ -2746,6 +2872,9 @@ export class WhiteboardCanvas {
     for (const relocation of relocations) {
       board = updateCard(board, relocation.cardId, { file: relocation.file })
     }
+    // Not a history step: this is the view repairing a stale reference, not
+    // something the user did, and it runs before the baseline snapshot is
+    // taken (see setViewData).
     this.board = board
     this.syncBoardIndex()
     this.context.requestSave()
