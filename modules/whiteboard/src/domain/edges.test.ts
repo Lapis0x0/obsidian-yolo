@@ -4,6 +4,9 @@ import {
   autoEdgeSides,
   buildEdgePathD,
   computeEdgeGeometry,
+  findConnectTarget,
+  oppositeSide,
+  rectAnchoredAt,
   resolveEdgeSides,
 } from './edges'
 import type { VirtualCardRect } from './virtualization'
@@ -127,5 +130,84 @@ describe('buildEdgePathD', () => {
       label: { x: 25, y: 25 },
     }
     expect(buildEdgePathD(geometry)).toBe('M 0 0 C 10 0, 40 50, 50 50')
+  })
+})
+
+describe('oppositeSide', () => {
+  it('pairs each side with the one facing it', () => {
+    expect(oppositeSide('top')).toBe('bottom')
+    expect(oppositeSide('bottom')).toBe('top')
+    expect(oppositeSide('left')).toBe('right')
+    expect(oppositeSide('right')).toBe('left')
+  })
+})
+
+describe('findConnectTarget', () => {
+  const card = rect('a', 0, 0, 100, 100)
+
+  it('finds nothing over open canvas', () => {
+    expect(findConnectTarget({ x: 500, y: 500 }, [card], 12)).toBeNull()
+  })
+
+  it('anchors to the nearest side of the card the pointer is inside', () => {
+    // Just inside the left border, vertically centered.
+    expect(findConnectTarget({ x: 5, y: 50 }, [card], 12)).toEqual({
+      cardId: 'a',
+      side: 'left',
+    })
+    expect(findConnectTarget({ x: 50, y: 5 }, [card], 12)).toEqual({
+      cardId: 'a',
+      side: 'top',
+    })
+  })
+
+  it('still anchors from just outside the card, within the snap band', () => {
+    expect(findConnectTarget({ x: -10, y: 50 }, [card], 12)).toEqual({
+      cardId: 'a',
+      side: 'left',
+    })
+    expect(findConnectTarget({ x: -13, y: 50 }, [card], 12)).toBeNull()
+  })
+
+  it('picks the near side of a wide card rather than the one the pointer drifted past', () => {
+    const wide = rect('w', 0, 0, 400, 100)
+    // Dropped on the far right half: the right connection point is nearest.
+    expect(findConnectTarget({ x: 380, y: 50 }, [wide], 12)).toEqual({
+      cardId: 'w',
+      side: 'right',
+    })
+  })
+
+  it('prefers the card whose connection point is closest when two overlap', () => {
+    // Both cards contain the point; 'near' has its left connection point at
+    // x=90 against the other's right one at x=100.
+    const near = rect('near', 90, 0, 100, 100)
+    expect(findConnectTarget({ x: 92, y: 50 }, [card, near], 12)).toEqual({
+      cardId: 'near',
+      side: 'left',
+    })
+  })
+})
+
+describe('rectAnchoredAt', () => {
+  const size = { w: 100, h: 60 }
+
+  it('places the card so the named side\'s connection point lands on the drop', () => {
+    for (const side of ['top', 'right', 'bottom', 'left'] as const) {
+      const placed = rectAnchoredAt({ x: 200, y: 300 }, side, size)
+      expect(anchorPoint({ id: 'new', ...placed }, side)).toEqual({
+        x: 200,
+        y: 300,
+      })
+    }
+  })
+
+  it('keeps the requested size', () => {
+    expect(rectAnchoredAt({ x: 0, y: 0 }, 'left', size)).toEqual({
+      x: 0,
+      y: -30,
+      w: 100,
+      h: 60,
+    })
   })
 })

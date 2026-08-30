@@ -1,5 +1,6 @@
 // Structured board operations — the primitives (`addCard`, `updateCard`,
-// `replaceCard`, `removeCard`, `moveCard`, `addEdge`, `removeEdge`) that are
+// `replaceCard`, `removeCard`, `moveCard`, `addEdge`, `updateEdge`,
+// `removeEdge`) that are
 // the *only* sanctioned way to change a Board in 1.0
 // (docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1). This is also the land for the AI-driven editing
 // primitives promised for a later milestone, so keep this the single choke
@@ -13,7 +14,14 @@
 // (an id that doesn't exist, a duplicate id, an edge pointing at a missing
 // card, …) throws a descriptive Error rather than silently no-oping.
 
-import type { Board, BoardCard, CardId, Edge, EdgeId } from './fileFormat'
+import type {
+  Board,
+  BoardCard,
+  CardId,
+  CardSide,
+  Edge,
+  EdgeId,
+} from './fileFormat'
 
 /** Fields `updateCard` may patch. `id`/`type` are immutable — see `updateCard`. */
 export type CardPatch = Readonly<{
@@ -24,6 +32,14 @@ export type CardPatch = Readonly<{
   file?: string
   markdown?: string
   page?: number
+}>
+
+/** Fields `updateEdge` may patch — one end of the edge, or both. */
+export type EdgePatch = Readonly<{
+  from?: CardId
+  to?: CardId
+  fromSide?: CardSide
+  toSide?: CardSide
 }>
 
 export function addCard(board: Board, card: BoardCard): Board {
@@ -126,6 +142,30 @@ export function addEdge(board: Board, edge: Edge): Board {
     throw new Error(`addEdge: "to" card "${edge.to}" not found`)
   }
   return { ...board, edges: [...board.edges, edge] }
+}
+
+/**
+ * Repoints one end of an edge — what dragging an existing connection's
+ * endpoint onto another card means. Only the endpoints are patchable: an
+ * edge's arrow and label are content, and belong to the editing surfaces
+ * that own them rather than to the gesture that re-wires it.
+ */
+export function updateEdge(board: Board, id: EdgeId, patch: EdgePatch): Board {
+  const index = board.edges.findIndex((edge) => edge.id === id)
+  if (index === -1) throw new Error(`updateEdge: edge "${id}" not found`)
+
+  const current = board.edges[index]
+  const next: Edge = { ...current, ...patch }
+  for (const endpoint of [next.from, next.to]) {
+    if (!board.cards.some((card) => card.id === endpoint)) {
+      throw new Error(`updateEdge: card "${endpoint}" not found`)
+    }
+  }
+  if (shallowEqual(current, next)) return board
+
+  const edges = board.edges.slice()
+  edges[index] = next
+  return { ...board, edges }
 }
 
 export function removeEdge(board: Board, id: EdgeId): Board {

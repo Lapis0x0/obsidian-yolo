@@ -193,6 +193,72 @@
   right: var(--yolo-whiteboard-resizer-offset);
 }
 
+/* Connection points (W3-D): one per side, nested inside that side's handle
+ * and taking over its middle — the rest of the handle still resizes. The dot
+ * is drawn by ::after so the hit area stays a full handle-sized square while
+ * the visible circle can fade in and out; it appears on hovering the handle
+ * it belongs to (Obsidian Canvas's rule, and the reason a card at rest shows
+ * no dots at all), and stays lit for the side a connection is being dragged
+ * from, where pointer capture has taken :hover away. */
+
+.yolo-whiteboard-connection-point {
+  position: absolute;
+  width: var(--yolo-whiteboard-resizer-extent);
+  height: var(--yolo-whiteboard-resizer-extent);
+  pointer-events: auto;
+  cursor: pointer;
+}
+
+.yolo-whiteboard-connection-point[data-side='top'],
+.yolo-whiteboard-connection-point[data-side='bottom'] {
+  left: calc(50% - var(--yolo-whiteboard-resizer-extent) / 2);
+}
+
+.yolo-whiteboard-connection-point[data-side='left'],
+.yolo-whiteboard-connection-point[data-side='right'] {
+  top: calc(50% - var(--yolo-whiteboard-resizer-extent) / 2);
+}
+
+.yolo-whiteboard-connection-point[data-side='top'] {
+  top: 1px;
+}
+
+.yolo-whiteboard-connection-point[data-side='bottom'] {
+  bottom: 1px;
+}
+
+.yolo-whiteboard-connection-point[data-side='left'] {
+  left: 1px;
+}
+
+.yolo-whiteboard-connection-point[data-side='right'] {
+  right: 1px;
+}
+
+.yolo-whiteboard-connection-point::after {
+  content: ' ';
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  border-radius: 50%;
+  background-color: var(--interactive-accent);
+  border: 3px solid var(--background-modifier-border);
+  opacity: 0;
+}
+
+.yolo-whiteboard-resizer:hover .yolo-whiteboard-connection-point::after,
+.yolo-whiteboard-interaction-layer[data-connecting='top']
+  .yolo-whiteboard-connection-point[data-side='top']::after,
+.yolo-whiteboard-interaction-layer[data-connecting='right']
+  .yolo-whiteboard-connection-point[data-side='right']::after,
+.yolo-whiteboard-interaction-layer[data-connecting='bottom']
+  .yolo-whiteboard-connection-point[data-side='bottom']::after,
+.yolo-whiteboard-interaction-layer[data-connecting='left']
+  .yolo-whiteboard-connection-point[data-side='left']::after {
+  opacity: 1;
+}
+
 /* Corners come after the edges so they win the overlap: a press in the
  * corner should resize both axes, not whichever edge happens to be later in
  * the DOM. */
@@ -371,10 +437,68 @@
   fill: none;
   stroke: var(--text-faint);
   stroke-width: 1.5;
+  pointer-events: none;
+}
+
+/* The grabbable width of an edge. A curve 1.5 units wide is not something a
+ * pointer can be asked to hit, so every edge carries a transparent stroke
+ * wide enough to aim at — counter-scaled like the resize handles, because
+ * how close a pointer can get to a line is a fact about the screen, not
+ * about the board. */
+
+.yolo-whiteboard-edge-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: calc(16 * var(--yolo-whiteboard-zoom-multiplier, 1));
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+.yolo-whiteboard-edge-hit:active {
+  cursor: grabbing;
+}
+
+/* Hovering the hit path thickens the edge it belongs to (its immediate
+ * sibling — see createEdgeDom's element order), which is the only signal
+ * that a line is a thing you can grab. */
+
+.yolo-whiteboard-edge-hit:hover + .yolo-whiteboard-edge-path,
+.yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
+  stroke-width: 3;
+}
+
+.yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
+  stroke: var(--interactive-accent);
+}
+
+/* The connection being dragged, and the real edge it stands in for while it
+ * is being re-attached. */
+
+.yolo-whiteboard-edge-preview {
+  fill: none;
+  stroke: var(--interactive-accent);
+  stroke-width: 1.5;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-edge-hidden {
+  display: none;
 }
 
 .yolo-whiteboard-edge-arrow {
   fill: var(--text-faint);
+  /* Takes the color of whichever path referenced the marker, so a selected
+   * edge's arrowhead follows its line instead of every edge on the board
+   * sharing one marker's color. Ignored where unsupported, leaving the line
+   * above as the answer. */
+  fill: context-stroke;
+}
+
+/* The card a connection would land on if the pointer were released now. */
+
+.yolo-whiteboard-card.yolo-whiteboard-card-connect-target {
+  box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
 .yolo-whiteboard-edge-label {

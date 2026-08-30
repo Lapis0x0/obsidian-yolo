@@ -146,3 +146,15 @@ export const MIN_CARD_SIZE = Object.freeze({
  * card when zoomed in. See canvas.ts's applyHandleScale().
  */
 export const RESIZE_HANDLE_PX = 20
+
+/**
+ * How far outside a card a connection drag still counts as landing on it, in
+ * world units.
+ *
+ * A band, not a point, because the pointer that is *at* a card's border is
+ * ambiguous by a pixel or two, and the connection points sit on the border.
+ * 12 is Obsidian Canvas's 15 scaled to our card (its default node is 400
+ * units wide to our 260) — the figure that matters is how big the band is
+ * relative to the card it forgives you for missing.
+ */
+export const CONNECT_SNAP_WORLD_PX = 12

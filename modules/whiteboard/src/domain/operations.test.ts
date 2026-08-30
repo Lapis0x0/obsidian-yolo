@@ -14,6 +14,7 @@ import {
   removeEdge,
   replaceCard,
   updateCard,
+  updateEdge,
 } from './operations'
 
 function textCard(
@@ -241,5 +242,38 @@ describe('removeEdge', () => {
   it('throws for an unknown edge id', () => {
     const board = boardWith([textCard('c1')])
     expect(() => removeEdge(board, 'missing')).toThrow(/not found/i)
+  })
+})
+
+describe('updateEdge', () => {
+  const board = boardWith(
+    [textCard('c1'), textCard('c2'), textCard('c3')],
+    [edge('e1', 'c1', 'c2', { fromSide: 'right', toSide: 'left' })],
+  )
+
+  it('repoints one end, leaving the other alone', () => {
+    const next = updateEdge(board, 'e1', { to: 'c3', toSide: 'top' })
+    expect(next.edges[0]).toMatchObject({
+      from: 'c1',
+      fromSide: 'right',
+      to: 'c3',
+      toSide: 'top',
+    })
+  })
+
+  it('returns the same board when the patch changes nothing', () => {
+    expect(updateEdge(board, 'e1', { to: 'c2', toSide: 'left' })).toBe(board)
+  })
+
+  it('throws when the new endpoint card does not exist', () => {
+    expect(() => updateEdge(board, 'e1', { to: 'missing' })).toThrow(
+      /not found/i,
+    )
+  })
+
+  it('throws for an unknown edge id', () => {
+    expect(() => updateEdge(board, 'missing', { to: 'c3' })).toThrow(
+      /not found/i,
+    )
   })
 })

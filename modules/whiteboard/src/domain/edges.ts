@@ -13,10 +13,16 @@
 // (temporary coordinates the caller passes in), so this module only ever
 // sees plain rectangles, never live elements.
 
-import type { CardSide } from './fileFormat'
+import type { CardId, CardSide } from './fileFormat'
+import type { CardRect, CardSize } from './resize'
 import type { VirtualCardRect } from './virtualization'
 
 export type Point = Readonly<{ x: number; y: number }>
+
+/** One end of an edge: a card and the side of it the edge meets. */
+export type SideAnchor = Readonly<{ cardId: CardId; side: CardSide }>
+
+export const CARD_SIDES: readonly CardSide[] = ['top', 'right', 'bottom', 'left']
 
 export type EdgeGeometry = Readonly<{
   start: Point
@@ -41,6 +47,19 @@ const SIDE_NORMALS: Readonly<Record<CardSide, Point>> = {
   right: { x: 1, y: 0 },
   bottom: { x: 0, y: 1 },
   left: { x: -1, y: 0 },
+}
+
+const OPPOSITE_SIDES: Readonly<Record<CardSide, CardSide>> = {
+  top: 'bottom',
+  right: 'left',
+  bottom: 'top',
+  left: 'right',
+}
+
+/** The side facing back the way the given one points — the side a card
+ * dropped in front of an anchor should present to it. */
+export function oppositeSide(side: CardSide): CardSide {
+  return OPPOSITE_SIDES[side]
 }
 
 /** Midpoint of the given side of a card rect, in world coordinates — the
@@ -125,6 +144,70 @@ export function computeEdgeGeometry(
   const c1 = extrapolate(start, fromSide, distance)
   const c2 = extrapolate(end, toSide, distance)
   return { start, end, c1, c2, label: cubicBezierPointAt(start, c1, c2, end, 0.5) }
+}
+
+/**
+ * Where a connection drag would land if it ended at `point`: the nearest
+ * connection point of any card the pointer is inside of (or within `snapPx`
+ * of), or null when it is over open canvas.
+ *
+ * Two stages, both from Obsidian Canvas's own rule: a card only becomes a
+ * candidate once the pointer is inside its rect grown by `snapPx` — so a
+ * drag passing near a card does not get yanked into it — and the side is then
+ * whichever of the four connection points is closest, which is why dropping
+ * on the far half of a wide card still anchors to the near edge.
+ *
+ * `cards` is the candidate set the caller has already excluded the drag's
+ * fixed end from: an edge with both ends on one card is not a connection.
+ */
+export function findConnectTarget(
+  point: Point,
+  cards: readonly VirtualCardRect[],
+  snapPx: number,
+): SideAnchor | null {
+  let best: SideAnchor | null = null
+  let bestDistance = Infinity
+  for (const card of cards) {
+    if (
+      point.x < card.x - snapPx ||
+      point.x > card.x + card.w + snapPx ||
+      point.y < card.y - snapPx ||
+      point.y > card.y + card.h + snapPx
+    ) {
+      continue
+    }
+    for (const side of CARD_SIDES) {
+      const anchor = anchorPoint(card, side)
+      const distance = Math.hypot(anchor.x - point.x, anchor.y - point.y)
+      if (distance >= bestDistance) continue
+      bestDistance = distance
+      best = { cardId: card.id, side }
+    }
+  }
+  return best
+}
+
+/**
+ * The rect for a card of `size` placed so that its `side` connection point
+ * sits exactly on `point` — where a card created by dropping a connection on
+ * open canvas goes, so the new card meets the incoming edge head-on instead
+ * of being centered on the drop and pierced by it.
+ */
+export function rectAnchoredAt(
+  point: Point,
+  side: CardSide,
+  size: CardSize,
+): CardRect {
+  switch (side) {
+    case 'top':
+      return { x: point.x - size.w / 2, y: point.y, ...size }
+    case 'bottom':
+      return { x: point.x - size.w / 2, y: point.y - size.h, ...size }
+    case 'left':
+      return { x: point.x, y: point.y - size.h / 2, ...size }
+    case 'right':
+      return { x: point.x - size.w, y: point.y - size.h / 2, ...size }
+  }
 }
 
 /** SVG path `d` attribute for the cubic bezier described by `geometry`. */

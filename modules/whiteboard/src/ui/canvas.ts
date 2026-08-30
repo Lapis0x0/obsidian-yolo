@@ -33,8 +33,14 @@ import {
 import type { ScreenPoint } from '../domain/camera'
 import { planCardCommit } from '../domain/commit'
 import {
+  CARD_SIDES,
+  type SideAnchor,
+  anchorPoint,
   buildEdgePathD,
   computeEdgeGeometry,
+  findConnectTarget,
+  oppositeSide,
+  rectAnchoredAt,
   resolveEdgeSides,
 } from '../domain/edges'
 import {
@@ -42,6 +48,7 @@ import {
   type BoardCard,
   type BoardParseIssue,
   type CardId,
+  type CardSide,
   type Edge,
   type EdgeId,
   type NoteCard,
@@ -53,10 +60,13 @@ import {
 import { cardNoteBaseName, generateCardNoteFileName } from '../domain/naming'
 import {
   addCard,
+  addEdge,
   moveCard,
   removeCard,
+  removeEdge,
   replaceCard,
   updateCard,
+  updateEdge,
 } from '../domain/operations'
 import {
   type CardRect,
@@ -77,6 +87,7 @@ import { createWhiteboardTranslation } from '../i18n'
 
 import {
   CAMERA_SETTLE_MS,
+  CONNECT_SNAP_WORLD_PX,
   DEGRADE_SCALE_THRESHOLD,
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
@@ -113,6 +124,7 @@ const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
 const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
+const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
@@ -120,12 +132,17 @@ const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_DEGRADED_TITLE_CLASS = 'yolo-whiteboard-card-degraded-title'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_PDF_PLACEHOLDER_CLASS = 'yolo-whiteboard-card-pdf-placeholder'
+const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
 const EDGE_PATH_CLASS = 'yolo-whiteboard-edge-path'
+const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
 const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'
+const EDGE_SELECTED_CLASS = 'yolo-whiteboard-edge-selected'
+const EDGE_HIDDEN_CLASS = 'yolo-whiteboard-edge-hidden'
+const EDGE_PREVIEW_CLASS = 'yolo-whiteboard-edge-preview'
 const EDITOR_HOST_CLASS = 'yolo-whiteboard-editor-host'
 const ERROR_CLASS = 'yolo-whiteboard-error'
 const ERROR_VISIBLE_CLASS = 'yolo-whiteboard-error-visible'
@@ -212,14 +229,49 @@ type ResizeInteraction = {
   dragging: boolean
 }
 
+/**
+ * A connection being dragged: either a new edge pulled out of a card's
+ * connection point, or an existing edge's endpoint pulled off the card it was
+ * attached to. One gesture, because they differ in nothing a pointer can
+ * tell — one end is pinned, the other follows the pointer and snaps to
+ * whatever it lands on — and only in what the drop commits.
+ *
+ * Ambiguous below `DRAG_THRESHOLD_PX` like the other two press gestures: on
+ * an existing edge a press that never moves selects it (Obsidian Canvas puts
+ * both on the line the same way), and on a connection point it is a fumbled
+ * grab that should leave no trace.
+ *
+ * `candidates` is snapshotted at press time: cards cannot move during a
+ * connection drag, so the drop target is searched over a fixed set rather
+ * than re-derived from the board on every pointermove.
+ */
+type ConnectInteraction = {
+  readonly kind: 'connect'
+  /** The end that stays put, and the side it is anchored to. */
+  readonly anchor: SideAnchor
+  /** Which end of the edge is following the pointer. A new edge always
+   * drags its `to` end — you pull the arrow out towards where it points. */
+  readonly movingEnd: 'from' | 'to'
+  /** The edge being re-attached, or null when this drag is creating one. */
+  readonly edgeId: EdgeId | null
+  readonly startClient: ScreenPoint
+  readonly candidates: readonly VirtualCardRect[]
+  dragging: boolean
+  target: SideAnchor | null
+}
+
 type Interaction =
   | PanInteraction
   | MarqueeInteraction
   | CardInteraction
   | ResizeInteraction
+  | ConnectInteraction
 
 type EdgeDomEntry = Readonly<{
   path: SVGPathElement
+  /** Transparent fat stroke under `path`: a 1.5-unit curve is not something
+   * a pointer can be asked to hit. */
+  hit: SVGPathElement
   label: SVGTextElement | null
 }>
 
@@ -247,6 +299,11 @@ export class WhiteboardCanvas {
   // for the same Backspace/Escape keystroke (a card being edited is never
   // also in `selectedIds`).
   private selectedIds = new Set<CardId>()
+  /** Edges are selected the same way and share the keymap scope, but never
+   * at the same time as cards: the two are different kinds of object, and
+   * Delete acting on "whatever was selected last" is the only reading of a
+   * mixed selection anyone would expect. */
+  private selectedEdgeIds = new Set<EdgeId>()
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
@@ -273,6 +330,11 @@ export class WhiteboardCanvas {
   private boardEdgesById = new Map<EdgeId, Edge>()
   private edgeIndexByCardId = new Map<CardId, Set<EdgeId>>()
   private readonly edgeElsById = new Map<EdgeId, EdgeDomEntry>()
+  /** The in-flight connection's curve. A sibling of the edges group rather
+   * than a child, so `rebuildEdgesSvg`'s wholesale replaceChildren never
+   * takes it out from under a live gesture. */
+  private previewPathEl: SVGPathElement | null = null
+  private connectTargetCardId: CardId | null = null
   private readonly arrowMarkerId = `yolo-whiteboard-edge-arrow-${Math.random().toString(36).slice(2)}`
 
   private lastRawData = ''
@@ -515,6 +577,10 @@ export class WhiteboardCanvas {
     edgesSvg.appendChild(defs)
     const edgesGroup = doc.createElementNS(SVG_NS, 'g')
     edgesSvg.appendChild(edgesGroup)
+    const preview = doc.createElementNS(SVG_NS, 'path')
+    preview.setAttribute('class', `${EDGE_PREVIEW_CLASS} ${EDGE_HIDDEN_CLASS}`)
+    preview.setAttribute('marker-end', `url(#${this.arrowMarkerId})`)
+    edgesSvg.appendChild(preview)
     world.appendChild(edgesSvg)
 
     // Built once and reused: mounted last so it sits above every card, and
@@ -525,6 +591,20 @@ export class WhiteboardCanvas {
       const resizer = doc.createElement('div')
       resizer.className = RESIZER_CLASS
       resizer.dataset.resize = handle
+      // The four side handles carry the connection point for that side,
+      // nested inside them rather than laid out separately — the dot and the
+      // handle want the same spot, so the only way for both to be reachable
+      // is for one to sit on the other. Which of the two a press means is
+      // then decided by the element it actually landed on (Obsidian Canvas
+      // nests `.canvas-node-connection-point` in its resizers for exactly
+      // this reason).
+      const side = CARD_SIDES.find((candidate) => candidate === handle)
+      if (side) {
+        const connectionPoint = doc.createElement('div')
+        connectionPoint.className = CONNECTION_POINT_CLASS
+        connectionPoint.dataset.side = side
+        resizer.appendChild(connectionPoint)
+      }
       interactionLayer.appendChild(resizer)
     }
     world.appendChild(interactionLayer)
@@ -543,6 +623,7 @@ export class WhiteboardCanvas {
     this.worldEl = world
     this.errorEl = error
     this.edgesGroupEl = edgesGroup
+    this.previewPathEl = preview
     this.interactionLayerEl = interactionLayer
     // A freshly built world element carries none of the old one's inline
     // custom properties, so both handle variables have to be written again.
@@ -643,8 +724,12 @@ export class WhiteboardCanvas {
     }
     if (e.button !== 0) return
 
-    // Handles sit above the cards, so this has to come first — the press
-    // that starts a resize lands on the handle, never on the card.
+    // The interaction layer sits above the cards, so it has to come first —
+    // the press that starts a resize or a connection lands on it, never on
+    // the card. Connection points are nested inside the side handles, so
+    // they have to be asked about first in turn.
+    const side = this.connectionSideFromEventTarget(e.target)
+    if (side !== null && this.startConnect(side, e)) return
     const handle = this.resizeHandleFromEventTarget(e.target)
     if (handle !== null && this.startResize(handle, e)) return
 
@@ -664,6 +749,11 @@ export class WhiteboardCanvas {
       this.viewportEl.setPointerCapture(e.pointerId)
       return
     }
+
+    // Edges paint behind the cards, so a press only reaches one where no
+    // card covers it — which is exactly where pressing it can mean the edge.
+    const edgeId = this.edgeIdFromEventTarget(e.target)
+    if (edgeId !== null && this.startEdgeReattach(edgeId, e)) return
 
     if (e.altKey) {
       this.startPan(e)
@@ -789,6 +879,9 @@ export class WhiteboardCanvas {
       case 'resize':
         this.updateResize(interaction, e)
         break
+      case 'connect':
+        this.updateConnect(interaction, e)
+        break
     }
   }
 
@@ -800,18 +893,19 @@ export class WhiteboardCanvas {
    * re-deciding which card is hovered from a pointer that has been captured
    * would fight the gesture.
    *
-   * The handles themselves count as "still on the card" — they overhang its
-   * border, so a pointer travelling out onto one must not be read as having
-   * left, or the layer would vanish from under the pointer on its way to
-   * grab it.
+   * The layer itself counts as "still on the card" — its handles overhang
+   * the card's border and its connection points sit on it, so a pointer
+   * travelling out onto one must not be read as having left, or the layer
+   * would vanish from under the pointer on its way to grab it.
    */
   private updateHover(e: PointerEvent): void {
     if (this.parseFailed) return
     const target = e.target
-    const onHandle =
-      target instanceof Element && target.classList.contains(RESIZER_CLASS)
+    const onLayer =
+      target instanceof Element &&
+      target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
     this.setHoveredCard(
-      onHandle ? this.hoveredCardId : this.cardIdFromEventTarget(target),
+      onLayer ? this.hoveredCardId : this.cardIdFromEventTarget(target),
     )
   }
 
@@ -907,6 +1001,9 @@ export class WhiteboardCanvas {
         break
       case 'resize':
         this.finishResize(interaction, e)
+        break
+      case 'connect':
+        this.finishConnect(interaction, e)
         break
     }
   }
@@ -1234,7 +1331,10 @@ export class WhiteboardCanvas {
     const worldB = screenToWorld(this.view, current)
     // A zero-size marquee (a plain click on empty canvas, no movement)
     // naturally selects nothing here, subsuming "click empty clears
-    // selection" without a separate code path.
+    // selection" without a separate code path. Edges are not marquee-
+    // selectable (a band drawn across the canvas is about the cards it
+    // covers), but a marquee still ends whatever edge selection was up.
+    this.setEdgeSelection([])
     this.setSelection(
       cardsInMarquee(this.board.cards, marqueeRectFromPoints(worldA, worldB)),
     )
@@ -1365,6 +1465,271 @@ export class WhiteboardCanvas {
     this.recomputeVisibility()
   }
 
+  // -----------------------------------------------------------------------
+  // Connections (W3-D): drag a card's connection point to another card to
+  // wire them up, or drag an existing edge's endpoint to re-wire it
+  // (p1-design §3: "锚定边默认按两卡相对位置自动选，拖动连线端点可手动改").
+  //
+  // Both ends are written explicitly on an edge made this way. The format
+  // allows omitting a side (= re-picked from relative position at render
+  // time), but that is the right default for an edge nobody placed by hand —
+  // one the user pulled out of a specific dot onto a specific side should
+  // keep the shape they drew, not re-route itself the next time a card moves.
+  //
+  // The drop target is found geometrically (domain/edges.ts's
+  // `findConnectTarget`), not by hit-testing the DOM: a target card may not
+  // be mounted at all, and the snap band reaches past a card's border where
+  // there is no element to hit.
+  //
+  // Dropping on open canvas creates a text card there and connects it —
+  // Obsidian offers a menu at this point, but its three options are its three
+  // node types; ours has one, and a menu with one item is a speed bump in
+  // front of the gesture's whole purpose.
+  // -----------------------------------------------------------------------
+
+  /** The connection point a press landed on, or null for anything else. */
+  private connectionSideFromEventTarget(
+    target: EventTarget | null,
+  ): CardSide | null {
+    if (!(target instanceof Element)) return null
+    if (!target.classList.contains(CONNECTION_POINT_CLASS)) return null
+    const side = (target as HTMLElement).dataset.side
+    return CARD_SIDES.find((candidate) => candidate === side) ?? null
+  }
+
+  private edgeIdFromEventTarget(target: EventTarget | null): EdgeId | null {
+    if (!(target instanceof Element)) return null
+    if (!target.classList.contains(EDGE_HIT_CLASS)) return null
+    return (target as SVGPathElement).dataset.edgeId ?? null
+  }
+
+  /** False when the card the layer was parked on is gone, so the caller can
+   * fall through to the gesture the press would otherwise have been. */
+  private startConnect(side: CardSide, e: PointerEvent): boolean {
+    const cardId = this.layerCardId
+    if (cardId === null || !this.boardCardsById.has(cardId)) return false
+    // Same reason as startResize: a press on the layer must not blur the
+    // editor of the card it is parked on.
+    e.preventDefault()
+    // Pointer capture moves :hover off the dot for the rest of the drag, and
+    // a connection visibly starting from nothing reads as a glitch.
+    if (this.interactionLayerEl)
+      this.interactionLayerEl.dataset.connecting = side
+    this.beginConnect({ cardId, side }, 'to', null, e)
+    return true
+  }
+
+  /**
+   * A press on an edge grabs whichever of its two ends is nearer — the same
+   * press that, without movement, selects it. There is no separate endpoint
+   * handle to aim at: the end you meant is the one you pressed next to.
+   */
+  private startEdgeReattach(edgeId: EdgeId, e: PointerEvent): boolean {
+    const edge = this.boardEdgesById.get(edgeId)
+    const from = edge && this.boardCardsById.get(edge.from)
+    const to = edge && this.boardCardsById.get(edge.to)
+    if (!edge || !from || !to) return false
+    const sides = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
+    const world = this.worldPointFromEvent(e)
+    const toFrom = distanceBetween(world, anchorPoint(from, sides.fromSide))
+    const toTo = distanceBetween(world, anchorPoint(to, sides.toSide))
+    const movingEnd = toFrom <= toTo ? 'from' : 'to'
+    const anchor: SideAnchor =
+      movingEnd === 'from'
+        ? { cardId: edge.to, side: sides.toSide }
+        : { cardId: edge.from, side: sides.fromSide }
+    this.beginConnect(anchor, movingEnd, edgeId, e)
+    return true
+  }
+
+  private beginConnect(
+    anchor: SideAnchor,
+    movingEnd: 'from' | 'to',
+    edgeId: EdgeId | null,
+    e: PointerEvent,
+  ): void {
+    this.interaction = {
+      kind: 'connect',
+      anchor,
+      movingEnd,
+      edgeId,
+      startClient: { x: e.clientX, y: e.clientY },
+      candidates: this.board.cards.filter((card) => card.id !== anchor.cardId),
+      dragging: false,
+      target: null,
+    }
+    this.viewportEl.setPointerCapture(e.pointerId)
+  }
+
+  private updateConnect(
+    interaction: ConnectInteraction,
+    e: PointerEvent,
+  ): void {
+    if (!interaction.dragging) {
+      const dx = e.clientX - interaction.startClient.x
+      const dy = e.clientY - interaction.startClient.y
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+      interaction.dragging = true
+      // The edge being re-attached is replaced by the preview for the
+      // duration, so its old shape doesn't hang there contradicting it.
+      if (interaction.edgeId !== null) {
+        this.setEdgeHidden(interaction.edgeId, true)
+      }
+    }
+    const world = this.worldPointFromEvent(e)
+    interaction.target = findConnectTarget(
+      world,
+      interaction.candidates,
+      CONNECT_SNAP_WORLD_PX,
+    )
+    this.setConnectTarget(interaction.target?.cardId ?? null)
+    this.drawConnectPreview(interaction, world)
+  }
+
+  /** The in-flight curve: from the pinned end to the snapped target, or to a
+   * zero-size rect at the pointer when there is nothing to snap to (whose
+   * anchor point is the pointer itself, whatever side it is asked for). */
+  private drawConnectPreview(
+    interaction: ConnectInteraction,
+    world: ScreenPoint,
+  ): void {
+    const preview = this.previewPathEl
+    const anchorCard = this.boardCardsById.get(interaction.anchor.cardId)
+    if (!preview || !anchorCard) return
+    const target = interaction.target
+    const targetCard = target ? this.boardCardsById.get(target.cardId) : null
+    const free: VirtualCardRect =
+      target && targetCard
+        ? targetCard
+        : { id: '', x: world.x, y: world.y, w: 0, h: 0 }
+    const freeSide =
+      target && targetCard ? target.side : oppositeSide(interaction.anchor.side)
+    const geometry =
+      interaction.movingEnd === 'to'
+        ? computeEdgeGeometry(
+            anchorCard,
+            free,
+            interaction.anchor.side,
+            freeSide,
+          )
+        : computeEdgeGeometry(
+            free,
+            anchorCard,
+            freeSide,
+            interaction.anchor.side,
+          )
+    preview.setAttribute('d', buildEdgePathD(geometry))
+    preview.classList.remove(EDGE_HIDDEN_CLASS)
+  }
+
+  private setConnectTarget(cardId: CardId | null): void {
+    if (cardId === this.connectTargetCardId) return
+    const previous = this.connectTargetCardId
+    if (previous !== null) {
+      this.runtimeByCardId
+        .get(previous)
+        ?.el?.classList.remove(CARD_CONNECT_TARGET_CLASS)
+    }
+    this.connectTargetCardId = cardId
+    if (cardId !== null) {
+      this.runtimeByCardId
+        .get(cardId)
+        ?.el?.classList.add(CARD_CONNECT_TARGET_CLASS)
+    }
+  }
+
+  private finishConnect(
+    interaction: ConnectInteraction,
+    e: PointerEvent,
+  ): void {
+    this.setConnectTarget(null)
+    this.previewPathEl?.classList.add(EDGE_HIDDEN_CLASS)
+    if (this.interactionLayerEl) {
+      delete this.interactionLayerEl.dataset.connecting
+    }
+    if (interaction.edgeId !== null) {
+      this.setEdgeHidden(interaction.edgeId, false)
+    }
+
+    if (!interaction.dragging) {
+      // A press that never moved: on an edge that means selecting it, and on
+      // a connection point it means nothing at all.
+      if (interaction.edgeId !== null) {
+        this.setEdgeSelection([interaction.edgeId])
+      }
+      return
+    }
+
+    const created =
+      interaction.target === null
+        ? this.createCardForConnection(interaction, this.worldPointFromEvent(e))
+        : null
+    const target = interaction.target ?? created
+    if (!target) return
+
+    this.board =
+      interaction.edgeId === null
+        ? addEdge(this.board, this.connectedEdge(interaction, target))
+        : updateEdge(
+            this.board,
+            interaction.edgeId,
+            interaction.movingEnd === 'from'
+              ? { from: target.cardId, fromSide: target.side }
+              : { to: target.cardId, toSide: target.side },
+          )
+    this.syncBoardIndex()
+    this.rebuildEdgesSvg()
+    this.context.requestSave()
+
+    if (created) {
+      this.recomputeVisibility()
+      this.drainQueues()
+      this.enterEditMode(created.cardId)
+    }
+  }
+
+  private connectedEdge(
+    interaction: ConnectInteraction,
+    target: SideAnchor,
+  ): Edge {
+    const { anchor, movingEnd } = interaction
+    const from = movingEnd === 'to' ? anchor : target
+    const to = movingEnd === 'to' ? target : anchor
+    return {
+      id: this.nextEdgeId(),
+      from: from.cardId,
+      to: to.cardId,
+      fromSide: from.side,
+      toSide: to.side,
+      arrow: 'end',
+      extra: {},
+    }
+  }
+
+  /** The card a connection dropped on open canvas lands on, placed so the
+   * incoming edge meets its facing side. Added to the board here; the edge
+   * to it, and the editor on it, follow in `finishConnect`. */
+  private createCardForConnection(
+    interaction: ConnectInteraction,
+    drop: ScreenPoint,
+  ): SideAnchor | null {
+    if (this.parseFailed) return null
+    const side = oppositeSide(interaction.anchor.side)
+    const rect = rectAnchoredAt(drop, side, NEW_CARD_SIZE)
+    const card: TextCard = {
+      id: this.nextCardId(),
+      type: 'text',
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      w: rect.w,
+      h: rect.h,
+      markdown: '',
+      extra: {},
+    }
+    this.board = addCard(this.board, card)
+    return { cardId: card.id, side }
+  }
+
   private updateCardInteraction(
     interaction: CardInteraction,
     e: PointerEvent,
@@ -1482,6 +1847,7 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   private setSelection(ids: readonly CardId[]): void {
+    if (ids.length > 0) this.setEdgeSelection([])
     const next = new Set(ids)
     for (const id of this.selectedIds) {
       if (!next.has(id))
@@ -1491,17 +1857,48 @@ export class WhiteboardCanvas {
       if (!this.selectedIds.has(id))
         this.runtimeByCardId.get(id)?.el?.classList.add(CARD_SELECTED_CLASS)
     }
-    const hadSelection = this.selectedIds.size > 0
     this.selectedIds = next
-    const hasSelection = next.size > 0
-    if (hasSelection && !hadSelection) this.pushSelectionKeymapScope()
-    else if (!hasSelection && hadSelection) this.popSelectionKeymapScope()
+    this.syncSelectionKeymapScope()
     // Selection is one of the two things that decides where the handles are.
     this.updateInteractionLayer()
   }
 
+  private setEdgeSelection(ids: readonly EdgeId[]): void {
+    if (ids.length > 0) this.setSelection([])
+    const next = new Set(ids)
+    for (const id of this.selectedEdgeIds) {
+      if (!next.has(id)) this.markEdgeSelected(id, false)
+    }
+    for (const id of next) {
+      if (!this.selectedEdgeIds.has(id)) this.markEdgeSelected(id, true)
+    }
+    this.selectedEdgeIds = next
+    this.syncSelectionKeymapScope()
+  }
+
+  private markEdgeSelected(id: EdgeId, selected: boolean): void {
+    this.edgeElsById
+      .get(id)
+      ?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
+  }
+
+  /** Clears both kinds of selection — what a click on empty canvas, or
+   * entering a card's editor, means. */
   private clearSelection(): void {
     if (this.selectedIds.size > 0) this.setSelection([])
+    if (this.selectedEdgeIds.size > 0) this.setEdgeSelection([])
+  }
+
+  /** One scope for both kinds of selection, pushed while either is non-empty
+   * and popped when both are. */
+  private syncSelectionKeymapScope(): void {
+    const hasSelection =
+      this.selectedIds.size > 0 || this.selectedEdgeIds.size > 0
+    if (hasSelection && !this.selectionScopeDisposer) {
+      this.pushSelectionKeymapScope()
+    } else if (!hasSelection && this.selectionScopeDisposer) {
+      this.popSelectionKeymapScope()
+    }
   }
 
   private pushSelectionKeymapScope(): void {
@@ -1510,7 +1907,7 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Backspace',
         handler: () => {
-          this.deleteSelectedCards()
+          this.deleteSelection()
           return true
         },
       },
@@ -1518,7 +1915,7 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Delete',
         handler: () => {
-          this.deleteSelectedCards()
+          this.deleteSelection()
           return true
         },
       },
@@ -1538,9 +1935,27 @@ export class WhiteboardCanvas {
     this.selectionScopeDisposer = null
   }
 
-  private deleteSelectedCards(): void {
+  /** Only one of the two selections is ever non-empty (see `selectedEdgeIds`). */
+  private deleteSelection(): void {
+    if (this.selectedEdgeIds.size > 0) {
+      this.deleteEdges(Array.from(this.selectedEdgeIds))
+      return
+    }
     if (this.selectedIds.size === 0) return
     this.deleteCards(Array.from(this.selectedIds))
+  }
+
+  private deleteEdges(ids: readonly EdgeId[]): void {
+    if (this.parseFailed || ids.length === 0) return
+    let board = this.board
+    for (const id of ids) {
+      if (board.edges.some((edge) => edge.id === id))
+        board = removeEdge(board, id)
+    }
+    this.board = board
+    this.setEdgeSelection([])
+    this.rebuildEdgesSvg()
+    this.context.requestSave()
   }
 
   private deleteCards(ids: readonly CardId[]): void {
@@ -1562,9 +1977,7 @@ export class WhiteboardCanvas {
     this.refreshInteractionLayer()
     // Deleting cards cascades edge removal (operations.ts's removeCard) —
     // the edge *set* changed, not just endpoint positions, so a full
-    // rebuild (rather than redrawEdgesForCards) is the correct/simplest
-    // response; edge mutations are rare in M1 (no add/remove-edge UI, only
-    // this cascade), so its cost is a non-issue.
+    // rebuild (rather than redrawEdgesForCards) is the correct response.
     this.rebuildEdgesSvg()
     this.context.requestSave()
   }
@@ -1719,6 +2132,11 @@ export class WhiteboardCanvas {
   private nextCardId(): CardId {
     const uuid = this.context.getWindow().crypto.randomUUID()
     return `c-${uuid}`
+  }
+
+  private nextEdgeId(): EdgeId {
+    const uuid = this.context.getWindow().crypto.randomUUID()
+    return `e-${uuid}`
   }
 
   private worldPointFromEvent(e: MouseEvent): ScreenPoint {
@@ -1976,8 +2394,9 @@ export class WhiteboardCanvas {
   // (p1-design §3: "世界层内单个 SVG overlay 画全部 edges...只在 edges 或
   // 端点卡片位移时重绘（不进逐帧路径）"). Two redraw paths:
   //   - `rebuildEdgesSvg` — full rebuild, for a structural change (a new
-  //     file loaded, or a card delete cascading edge removal). Rare in M1
-  //     (no edge create/edit UI yet), so its cost is a non-issue.
+  //     file loaded, an edge drawn or deleted, or a card delete cascading
+  //     edge removal). Costs one pass over the board's edges, and only ever
+  //     runs on a discrete user action — never during a gesture.
   //   - `redrawEdgesForCards` — updates only the `d`/label position of
   //     edges incident to the given card ids, via `edgeIndexByCardId`.
   //     Used on every card-drag pointermove (with live override positions)
@@ -1998,6 +2417,7 @@ export class WhiteboardCanvas {
       this.createEdgeDom(edge)
       this.redrawEdge(edge.id)
     }
+    this.restoreEdgeSelection()
   }
 
   private clearEdgesSvg(): void {
@@ -2024,6 +2444,13 @@ export class WhiteboardCanvas {
   private createEdgeDom(edge: Edge): void {
     if (!this.edgesGroupEl) return
     const doc = this.context.getDocument()
+    // Hit path first so the visible one paints over it; it is transparent,
+    // and the only element of the pair a pointer can land on.
+    const hit = doc.createElementNS(SVG_NS, 'path')
+    hit.setAttribute('class', EDGE_HIT_CLASS)
+    hit.dataset.edgeId = edge.id
+    this.edgesGroupEl.appendChild(hit)
+
     const path = doc.createElementNS(SVG_NS, 'path')
     path.setAttribute('class', EDGE_PATH_CLASS)
     if (edge.arrow === 'end' || edge.arrow === 'both') {
@@ -2044,7 +2471,16 @@ export class WhiteboardCanvas {
       this.edgesGroupEl.appendChild(label)
     }
 
-    this.edgeElsById.set(edge.id, { path, label })
+    this.edgeElsById.set(edge.id, { path, hit, label })
+  }
+
+  /** Takes an edge off the canvas without touching the board — the preview
+   * stands in for it while its endpoint is being dragged. */
+  private setEdgeHidden(edgeId: EdgeId, hidden: boolean): void {
+    const dom = this.edgeElsById.get(edgeId)
+    if (!dom) return
+    dom.path.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
+    dom.label?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
   }
 
   /** Board-data rect for `id`, or its live drag position from `overrides`
@@ -2059,6 +2495,17 @@ export class WhiteboardCanvas {
     if (!card) return null
     const override = overrides?.get(id)
     return override ? { id: card.id, ...override } : card
+  }
+
+  /** Drops selected ids whose edge is gone and re-applies the class to the
+   * rest, after a rebuild has replaced every path element. */
+  private restoreEdgeSelection(): void {
+    const surviving = Array.from(this.selectedEdgeIds).filter((id) =>
+      this.boardEdgesById.has(id),
+    )
+    this.selectedEdgeIds = new Set(surviving)
+    for (const id of surviving) this.markEdgeSelected(id, true)
+    this.syncSelectionKeymapScope()
   }
 
   private redrawEdge(
@@ -2078,7 +2525,9 @@ export class WhiteboardCanvas {
       edge.toSide,
     )
     const geometry = computeEdgeGeometry(from, to, fromSide, toSide)
-    dom.path.setAttribute('d', buildEdgePathD(geometry))
+    const d = buildEdgePathD(geometry)
+    dom.path.setAttribute('d', d)
+    dom.hit.setAttribute('d', d)
     if (dom.label) {
       dom.label.setAttribute('x', String(geometry.label.x))
       dom.label.setAttribute('y', String(geometry.label.y))
@@ -2387,4 +2836,8 @@ export class WhiteboardCanvas {
   private reportError(stage: string, error: unknown): void {
     console.error(`[YOLO Whiteboard] ${stage} failed`, error)
   }
+}
+
+function distanceBetween(a: ScreenPoint, b: ScreenPoint): number {
+  return Math.hypot(a.x - b.x, a.y - b.y)
 }
