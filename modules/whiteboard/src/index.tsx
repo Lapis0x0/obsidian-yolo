@@ -54,7 +54,7 @@ yolo.registerModule({
     })
     host.workspace.registerFileMenuAction({
       id: 'whiteboard-new-in-folder',
-      title: createWhiteboardLocalizedText('command.newWhiteboard'),
+      title: createWhiteboardLocalizedText('menu.newWhiteboard'),
       icon: 'layout-grid',
       appliesTo: 'folder',
       onSelect: (entry) => createWhiteboard(host, entry.path),

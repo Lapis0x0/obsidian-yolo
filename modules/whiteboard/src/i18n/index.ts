@@ -14,6 +14,7 @@ export type WhiteboardLocalizedTextKey =
   | 'module.name'
   | 'module.open'
   | 'command.newWhiteboard'
+  | 'menu.newWhiteboard'
 
 export const WHITEBOARD_LOCALES = ['en', 'zh'] as const
 const resources = { en, zh } as const

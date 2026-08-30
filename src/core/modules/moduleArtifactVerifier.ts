@@ -36,6 +36,21 @@ export type VerifiedModuleArtifact = Readonly<{
   entryBytes: Uint8Array
 }>
 
+/**
+ * Verifies an artifact that is already on disk, before it is loaded.
+ *
+ * The integrity rule is split by boundary: bytes crossing the network are
+ * pinned to the catalog's descriptor (see ModuleArtifactInstaller's staging
+ * verification), while bytes at rest are only checked for *self-consistency*
+ * — every file against the manifest sitting next to it. Re-pinning an
+ * installed manifest to the descriptor's remembered SHA-256 would add no
+ * defense (anything able to rewrite a module's bytes can rewrite the
+ * unverified host bundle next to them) and would permanently brick any
+ * version whose bytes are legitimately rebuilt in place, which is exactly
+ * what the dev install channel does on every `npm run module:build`.
+ * The descriptor is still cross-checked structurally below, so an artifact
+ * that is simply the wrong one is still rejected.
+ */
 export async function verifyInstalledModuleArtifact(
   store: ModuleArtifactReadStore,
   descriptor: ModuleArtifactDescriptor,
@@ -44,12 +59,6 @@ export async function verifyInstalledModuleArtifact(
   const manifestBytes = await store.readManifestBytes(
     descriptor.id,
     descriptor.version,
-  )
-  await verifyModuleBytes(
-    manifestBytes,
-    descriptor.manifest,
-    `Module "${descriptor.id}" manifest`,
-    subtleCrypto,
   )
   const manifest = parseModuleArtifactManifest(
     JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(manifestBytes)),

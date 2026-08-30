@@ -87,6 +87,33 @@ describe('verifyInstalledModuleArtifact', () => {
     )
   })
 
+  it('loads a self-consistent artifact whose bytes no longer match the descriptor digest', async () => {
+    // The dev install channel rebuilds a version's bytes in place, so an
+    // installed manifest legitimately stops matching the SHA-256 the
+    // descriptor remembers from install time. At rest only self-consistency
+    // is required: every file still has to match the manifest next to it.
+    const rebuilt = fixture()
+    rebuilt.descriptor.manifest.sha256 = 'a'.repeat(64)
+    rebuilt.descriptor.manifest.byteSize = 1
+
+    const artifact = await verifyInstalledModuleArtifact(
+      rebuilt.store,
+      rebuilt.descriptor,
+      webcrypto.subtle as unknown as SubtleCrypto,
+    )
+    expect(new TextDecoder().decode(artifact.entryBytes)).toBe('mobile')
+
+    const tampered = fixture()
+    tampered.store.readEntryBytes = async () => encode('tampered')
+    await expect(
+      verifyInstalledModuleArtifact(
+        tampered.store,
+        tampered.descriptor,
+        webcrypto.subtle as unknown as SubtleCrypto,
+      ),
+    ).rejects.toThrow('SHA-256 mismatch')
+  })
+
   it('rejects descriptor metadata and file closure drift', async () => {
     const descriptorMismatch = fixture()
     await expect(
@@ -120,8 +147,6 @@ describe('verifyInstalledModuleArtifact', () => {
     ) as { variants: Array<{ files: Array<{ storage: string }> }> }
     manifest.variants[1].files[0].storage = 'device'
     const manifestBytes = encode(manifest)
-    device.descriptor.manifest.byteSize = manifestBytes.byteLength
-    device.descriptor.manifest.sha256 = hash(manifestBytes)
     device.store.readManifestBytes = async () => manifestBytes
 
     await expect(

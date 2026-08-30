@@ -796,7 +796,14 @@ function describeFile(file: TFile): YoloModuleVaultFileV1 {
 export function describeEntry(entry: TFile | TFolder): YoloModuleVaultEntryV1 {
   return entry instanceof TFile
     ? describeFile(entry)
-    : Object.freeze({ kind: 'folder', path: entry.path, name: entry.name })
+    : Object.freeze({
+        kind: 'folder',
+        // Obsidian indexes the root folder under '/', but the Host API
+        // represents the vault root as '' — modules feed these paths straight
+        // back into the vault API, which rejects '/' as non vault-relative.
+        path: entry.path === '/' ? '' : entry.path,
+        name: entry.name,
+      })
 }
 
 function freezeEvent(

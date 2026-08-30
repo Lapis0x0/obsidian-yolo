@@ -6,6 +6,9 @@ export const zh = {
   command: {
     newWhiteboard: '新建白板',
   },
+  menu: {
+    newWhiteboard: '新建 YOLO 白板',
+  },
   file: {
     newWhiteboardBaseName: '白板',
   },

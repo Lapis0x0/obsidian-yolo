@@ -15,6 +15,7 @@ import { ModuleLifecycleScope } from './lifecycleScope'
 import {
   ObsidianModuleVaultCapabilityProvider,
   UNAVAILABLE_MODULE_VAULT_CAPABILITY_PROVIDER,
+  describeEntry,
   normalizeModuleVaultPath,
 } from './moduleVault'
 
@@ -131,6 +132,17 @@ describe('normalizeModuleVaultPath', () => {
     expect(() => normalizeModuleVaultPath(42 as unknown as string)).toThrow(
       'must be a string',
     )
+  })
+})
+
+describe('describeEntry', () => {
+  it("reports Obsidian's root folder as the Host API root path ''", () => {
+    // Root paths handed to modules must round-trip back into the vault API,
+    // which rejects '/' as non vault-relative.
+    const root = createFolder('/', [])
+    const described = describeEntry(root)
+    expect(described.path).toBe('')
+    expect(() => normalizeModuleVaultPath(described.path, true)).not.toThrow()
   })
 })
 

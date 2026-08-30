@@ -6,6 +6,11 @@ export const en = {
   command: {
     newWhiteboard: 'New whiteboard',
   },
+  menu: {
+    // The folder context menu sits next to Obsidian core's own "New canvas"
+    // item with no plugin prefix, so this entry names the product.
+    newWhiteboard: 'New YOLO whiteboard',
+  },
   file: {
     newWhiteboardBaseName: 'Whiteboard',
   },
