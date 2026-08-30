@@ -76,7 +76,11 @@ import {
   rectOfCard,
   resizeRect,
 } from '../domain/resize'
-import { cardsInMarquee, marqueeRectFromPoints } from '../domain/selection'
+import {
+  cardAtPoint,
+  cardsInMarquee,
+  marqueeRectFromPoints,
+} from '../domain/selection'
 import { type MissingNoteCard, planNoteCardSelfHeal } from '../domain/selfHeal'
 import {
   type CanvasView,
@@ -793,7 +797,13 @@ export class WhiteboardCanvas {
    */
   private readonly onDoubleClick = (e: MouseEvent): void => {
     if (this.parseFailed) return
-    const cardId = this.cardIdFromEventTarget(e.target)
+    const world = this.worldPointFromEvent(e)
+    // Which card this landed on has to come from geometry, not from
+    // `e.target`: the press that preceded it captured the pointer on the
+    // viewport, and capture retargets every mouse event after it to the
+    // capturing element — measured in a real window, `dblclick` on a card
+    // arrives naming `.yolo-whiteboard-viewport`, never the card.
+    const cardId = cardAtPoint(this.board.cards, world)
     if (cardId !== null) {
       // Inside the editor this is a word selection, not a request to open
       // what is already open.
@@ -801,7 +811,7 @@ export class WhiteboardCanvas {
       this.editCard(cardId)
       return
     }
-    this.createTextCardAt(this.worldPointFromEvent(e))
+    this.createTextCardAt(world)
   }
 
   private readonly onContextMenu = (e: MouseEvent): void => {
