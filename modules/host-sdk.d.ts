@@ -16,6 +16,8 @@ import type {
   YoloModuleI18nV1,
   YoloModuleKeymapBindingV1,
   YoloModuleKeymapModifierV1,
+  YoloModuleMarkdownEditorOptionsV1,
+  YoloModuleMarkdownEditorV1,
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleRuntimeRegistration,
@@ -37,6 +39,8 @@ declare global {
   type YoloModuleHostKeymapBindingV1 = YoloModuleKeymapBindingV1
   type YoloModuleHostKeymapModifierV1 = YoloModuleKeymapModifierV1
   type YoloModuleHostLocalizedTextV1 = LocalizedTextV1
+  type YoloModuleHostMarkdownEditorV1 = YoloModuleMarkdownEditorV1
+  type YoloModuleHostMarkdownEditorOptionsV1 = YoloModuleMarkdownEditorOptionsV1
   type YoloModuleHostMenuItemV1 = YoloModuleMenuItemV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1
   type YoloModuleHostSettingsContributionV1 = YoloModuleSettingsContributionV1

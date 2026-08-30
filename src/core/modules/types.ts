@@ -345,6 +345,37 @@ export type YoloModuleMarkdownRendererV1 = {
   unload(): void
 }
 
+export type YoloModuleMarkdownEditorOptionsV1 = Readonly<{
+  container: HTMLElement
+  value: string
+  /**
+   * The vault path the content is written in the context of: what `[[links]]`
+   * resolve against, where a pasted attachment is filed. It does not have to
+   * be the file the text is stored in, or a Markdown file at all — content
+   * that lives inside some other document passes that document's path.
+   */
+  sourcePath: string
+  onChange?: (text: string) => void
+  onBlur?: (text: string) => void
+}>
+
+/**
+ * A live-preview Markdown editor: Obsidian's own, with its keymaps, link
+ * completion, paste handling and rendered formatting.
+ *
+ * Persistence is entirely the caller's — the editor never writes to the
+ * vault, not even when `sourcePath` names a real file. Content reaches the
+ * module through `onChange`/`onBlur` and it decides what to do with it.
+ */
+export type YoloModuleMarkdownEditorV1 = {
+  getValue(): string
+  setValue(text: string): void
+  focus(): void
+  blur(): void
+  hasFocus(): boolean
+  destroy(): void
+}
+
 export type YoloModuleHoverLinkOptionsV1 = Readonly<{
   event: MouseEvent
   targetEl: HTMLElement
@@ -373,6 +404,25 @@ export type YoloModuleUiV1 = {
   showActionToast(toast: YoloModuleActionToastV1): void
   confirm(options: YoloModuleConfirmOptionsV1): Promise<boolean>
   createMarkdownRenderer(): YoloModuleMarkdownRendererV1
+  /**
+   * Mounts an editable, live-preview Markdown editor into `options.container`.
+   *
+   * The counterpart to `createMarkdownRenderer` for content the user edits in
+   * place. It is Obsidian's own editor rather than a plain text area, so it
+   * carries the whole editing experience — rendered formatting, `[[` link
+   * completion, the user's keymaps and editor settings, paste handling — none
+   * of which a module could reproduce and all of which users expect anywhere
+   * they type Markdown inside Obsidian.
+   *
+   * Reaching Obsidian's editor requires an API it does not publish, so this
+   * throws when a future Obsidian no longer exposes it. There is deliberately
+   * no degraded editor behind it: a fallback nobody exercises is a fallback
+   * that does not work, and a module silently dropping to a worse editor hides
+   * exactly the breakage we need to see.
+   */
+  createMarkdownEditor(
+    options: YoloModuleMarkdownEditorOptionsV1,
+  ): YoloModuleMarkdownEditorV1
   htmlToMarkdown(html: string): string
   isModEvent(event: MouseEvent): boolean
   /**

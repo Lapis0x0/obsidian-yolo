@@ -14,10 +14,16 @@ import { getDraggedVaultItems } from '../../utils/obsidian-drag'
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { assertModuleId } from './moduleStore'
 import { describeEntry, normalizeModuleVaultPath } from './moduleVault'
+import {
+  type ObsidianMarkdownEditorHandle,
+  createObsidianMarkdownEditor,
+} from './obsidianMarkdownEditor'
 import type {
   YoloModuleActionToastV1,
   YoloModuleConfirmOptionsV1,
   YoloModuleHoverLinkOptionsV1,
+  YoloModuleMarkdownEditorOptionsV1,
+  YoloModuleMarkdownEditorV1,
   YoloModuleMarkdownRendererV1,
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
@@ -49,6 +55,7 @@ export const UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER: ModuleUiCapabilityProvid
         showActionToast: unavailable,
         confirm: async () => unavailable(),
         createMarkdownRenderer: unavailable,
+        createMarkdownEditor: unavailable,
         htmlToMarkdown: unavailable,
         isModEvent: unavailable,
         showMenu: unavailable,
@@ -120,6 +127,7 @@ export class ObsidianModuleUiCapabilityProvider
     let activationComplete = false
     const pendingConfirms = new Set<PendingConfirm>()
     const renderers = new Set<OwnedRenderer>()
+    const editors = new Set<ObsidianMarkdownEditorHandle>()
     const openMenus = new Set<Menu>()
     const actionToastTokens = new Map<string, object>()
 
@@ -151,6 +159,17 @@ export class ObsidianModuleUiCapabilityProvider
           errors.push(error)
         }
       }
+      // An editor the module never got round to destroying would keep an
+      // Obsidian editor — with its listeners and keymap — alive past the
+      // module that owns it.
+      for (const editor of [...editors]) {
+        try {
+          editor.destroy()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      editors.clear()
       for (const menu of [...openMenus]) {
         try {
           menu.hide()
@@ -306,6 +325,49 @@ export class ObsidianModuleUiCapabilityProvider
         }
         renderers.add(renderer)
         return Object.freeze(renderer)
+      },
+      createMarkdownEditor: (options: YoloModuleMarkdownEditorOptionsV1) => {
+        assertActive()
+        requireElement(options?.container, 'Markdown editor container')
+        requireString(options.value, 'Markdown editor value')
+        requireString(options.sourcePath, 'Markdown editor source path')
+        requireOptionalFunction(options.onChange, 'Markdown editor onChange')
+        requireOptionalFunction(options.onBlur, 'Markdown editor onBlur')
+
+        // Callbacks are guarded rather than merely forwarded: an editor can
+        // outlive activation by a beat (a blur fires as the workspace tears
+        // down), and a module that has stopped must not be called back into.
+        const notify =
+          (callback: ((text: string) => void) | undefined) =>
+          (text: string): void => {
+            if (!active || !activationComplete) return
+            callback?.(text)
+          }
+
+        const handle = createObsidianMarkdownEditor(this.app, {
+          container: options.container,
+          value: options.value,
+          sourcePath: normalizeModuleVaultPath(options.sourcePath),
+          ...(options.onChange ? { onChange: notify(options.onChange) } : {}),
+          ...(options.onBlur ? { onBlur: notify(options.onBlur) } : {}),
+        })
+        editors.add(handle)
+
+        const editor: YoloModuleMarkdownEditorV1 = {
+          getValue: () => handle.getValue(),
+          setValue: (text: string) => {
+            requireString(text, 'Markdown editor value')
+            handle.setValue(text)
+          },
+          focus: () => handle.focus(),
+          blur: () => handle.blur(),
+          hasFocus: () => handle.hasFocus(),
+          destroy: () => {
+            editors.delete(handle)
+            handle.destroy()
+          },
+        }
+        return Object.freeze(editor)
       },
       htmlToMarkdown: (html: string) => {
         assertActive()
@@ -558,6 +620,11 @@ function snapshotMenuItems(
 
 function requireOptionalString(value: unknown, label: string): void {
   if (value !== undefined) requireString(value, label)
+}
+
+function requireOptionalFunction(value: unknown, label: string): void {
+  if (value !== undefined && typeof value !== 'function')
+    throw new TypeError(`${label} must be a function`)
 }
 
 function requireString(value: unknown, label: string): asserts value is string {

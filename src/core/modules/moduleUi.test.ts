@@ -88,6 +88,42 @@ jest.mock('obsidian', () => ({
   normalizePath: (path: string) => path,
 }))
 
+// The editor itself is Obsidian's and cannot exist under jest; what this file
+// covers is the host's side of it — argument checking, post-deactivation
+// guarding, and that a leaked editor is destroyed with the module.
+type FakeEditor = {
+  options: { value: string; sourcePath: string }
+  onChange?: (text: string) => void
+  onBlur?: (text: string) => void
+  destroyed: boolean
+}
+const createdEditors: FakeEditor[] = []
+jest.mock('./obsidianMarkdownEditor', () => ({
+  createObsidianMarkdownEditor: jest.fn(
+    (_app: unknown, options: FakeEditor['options'] & Partial<FakeEditor>) => {
+      const editor: FakeEditor = {
+        options,
+        onChange: options.onChange,
+        onBlur: options.onBlur,
+        destroyed: false,
+      }
+      createdEditors.push(editor)
+      return {
+        getValue: () => editor.options.value,
+        setValue: (text: string) => {
+          editor.options = { ...editor.options, value: text }
+        },
+        focus: jest.fn(),
+        blur: jest.fn(),
+        hasFocus: () => false,
+        destroy: () => {
+          editor.destroyed = true
+        },
+      }
+    },
+  ),
+}))
+
 type ModalOptions = {
   title: string
   message: string
@@ -127,6 +163,7 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     jest.clearAllMocks()
     modals.length = 0
     menus.length = 0
+    createdEditors.length = 0
     markdownRender.mockImplementation(() => Promise.resolve())
   })
 
@@ -499,5 +536,82 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     }).create('learning', lifecycle)
     expect(() => activation.api.notice('early')).toThrow('UI is not active')
     lifecycle.dispose()
+  })
+
+  describe('createMarkdownEditor', () => {
+    const editorOptions = () => ({
+      container: createElement(),
+      value: '# card',
+      sourcePath: 'boards/ideas.yoloboard',
+    })
+
+    it('mounts an editor and exposes it through the module handle', () => {
+      const { lifecycle, ui } = create()
+      const editor = ui.createMarkdownEditor(editorOptions())
+
+      expect(createdEditors).toHaveLength(1)
+      expect(createdEditors[0].options.sourcePath).toBe(
+        'boards/ideas.yoloboard',
+      )
+      expect(editor.getValue()).toBe('# card')
+      editor.setValue('changed')
+      expect(editor.getValue()).toBe('changed')
+      lifecycle.dispose()
+    })
+
+    it('validates its arguments', () => {
+      const { lifecycle, ui } = create()
+      const valid = editorOptions()
+
+      expect(() =>
+        ui.createMarkdownEditor({ ...valid, value: 1 as unknown as string }),
+      ).toThrow('must be a string')
+      expect(() =>
+        ui.createMarkdownEditor({
+          ...valid,
+          container: null as unknown as HTMLElement,
+        }),
+      ).toThrow('Markdown editor container')
+      expect(() =>
+        ui.createMarkdownEditor({
+          ...valid,
+          onChange: 'nope' as unknown as () => void,
+        }),
+      ).toThrow('must be a function')
+      expect(createdEditors).toHaveLength(0)
+      lifecycle.dispose()
+    })
+
+    // An editor can outlive activation by a beat — a blur fires as the
+    // workspace tears down — and must not call back into a stopped module.
+    it('stops delivering callbacks once the module is gone', () => {
+      const onChange = jest.fn()
+      const onBlur = jest.fn()
+      const { lifecycle, ui } = create()
+      ui.createMarkdownEditor({ ...editorOptions(), onChange, onBlur })
+
+      createdEditors[0].onChange?.('while active')
+      expect(onChange).toHaveBeenCalledWith('while active')
+
+      lifecycle.dispose()
+      createdEditors[0].onChange?.('after dispose')
+      createdEditors[0].onBlur?.('after dispose')
+      expect(onChange).toHaveBeenCalledTimes(1)
+      expect(onBlur).not.toHaveBeenCalled()
+    })
+
+    it('destroys an editor the module left behind, and only once', () => {
+      const { lifecycle, ui } = create()
+      const kept = ui.createMarkdownEditor(editorOptions())
+      const released = ui.createMarkdownEditor(editorOptions())
+
+      released.destroy()
+      expect(createdEditors[1].destroyed).toBe(true)
+      expect(createdEditors[0].destroyed).toBe(false)
+
+      lifecycle.dispose()
+      expect(createdEditors[0].destroyed).toBe(true)
+      expect(() => kept.destroy()).not.toThrow()
+    })
   })
 })
