@@ -55,7 +55,7 @@
           "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
         }
       },
-      "hostApi": "^1.9.0",
+      "hostApi": "^1.8.0",
       "dataSchemas": {},
       "platforms": [
         "desktop",
@@ -64,7 +64,7 @@
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/module.json",
       "manifest": {
         "byteSize": 1800,
-        "sha256": "b218ce4b25cc661db36fa1bd4e75e601322954d9b0fd82d4ad985045d7de13a8"
+        "sha256": "02e0c21f10a015c1b0450311a1bc2ef916094581c66ade8245c70dbbd19e15c2"
       }
     }
   ]
