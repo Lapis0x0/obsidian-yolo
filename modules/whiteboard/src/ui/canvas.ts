@@ -58,7 +58,7 @@ import {
   serializeBoard,
 } from '../domain/fileFormat'
 import { BoardHistory } from '../domain/history'
-import { cardNoteBaseName, generateCardNoteFileName } from '../domain/naming'
+import { cardNoteContent, generateCardNoteFileName } from '../domain/naming'
 import {
   addCard,
   addEdge,
@@ -112,7 +112,11 @@ import {
   ZOOM_GLIDE_EPSILON_DOUBLINGS,
   ZOOM_GLIDE_TAU_MS,
 } from './constants'
-import { degradedCardTitle, isDegradedScale } from './lod'
+import {
+  basenameWithoutExtension,
+  degradedCardTitle,
+  isDegradedScale,
+} from './lod'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -134,6 +138,7 @@ const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
 const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
+const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
 const CARD_DEGRADED_TITLE_CLASS = 'yolo-whiteboard-card-degraded-title'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_PDF_PLACEHOLDER_CLASS = 'yolo-whiteboard-card-pdf-placeholder'
@@ -2153,10 +2158,9 @@ export class WhiteboardCanvas {
    * Turns a text card into a note card backed by a real vault file.
    *
    * The card keeps its id, position, and edges (`replaceCard`); only its
-   * identity changes. Its markdown is written verbatim — including the
-   * heading the file name came from, because a conversion that silently
-   * rewrote the user's text would be a worse surprise than a duplicated
-   * title.
+   * identity changes. Its markdown is written as `cardNoteContent` splits
+   * it: the leading heading that named the file does not also stay in the
+   * body, because from here on the card shows that name as its title.
    */
   private convertCardToNote(id: CardId): void {
     if (this.parseFailed) return
@@ -2173,7 +2177,10 @@ export class WhiteboardCanvas {
   }
 
   private async writeCardNote(card: TextCard): Promise<void> {
-    const markdown = card.markdown
+    const { baseName, body } = cardNoteContent(
+      card.markdown,
+      this.t('file.newNoteBaseName'),
+    )
     try {
       // No ensureFolder: the board's own folder exists by definition.
       const folderPath = this.boardFolderPath()
@@ -2183,12 +2190,9 @@ export class WhiteboardCanvas {
           .filter((entry) => entry.kind === 'file')
           .map((entry) => entry.name),
       )
-      const fileName = generateCardNoteFileName(
-        cardNoteBaseName(markdown, this.t('file.newNoteBaseName')),
-        existingNames,
-      )
+      const fileName = generateCardNoteFileName(baseName, existingNames)
       const path = folderPath ? `${folderPath}/${fileName}` : fileName
-      await this.host.vault.createText(path, markdown)
+      await this.host.vault.createText(path, body)
 
       // The board may have moved on while the file was being written.
       const latest = this.boardCardsById.get(card.id)
@@ -2346,6 +2350,25 @@ export class WhiteboardCanvas {
     // Re-apply selection state — a selected card can unmount (scrolled
     // off-screen) and remount without its selection ever changing.
     if (this.selectedIds.has(id)) el.classList.add(CARD_SELECTED_CLASS)
+
+    // A file-backed card carries its title in its file name, not in its
+    // text: Obsidian's convention is that a note's name *is* its title, so a
+    // note dragged onto the board would otherwise arrive as a body with
+    // nothing naming it. Drawn as card chrome and never written into the
+    // file — the card is a live reference to someone's note, and a board
+    // that displays a note must not rewrite it to do so.
+    //
+    // It stays through edit mode, which is where this parts ways with
+    // Obsidian Canvas: Canvas's in-card title is the embed's own inline
+    // title, so it disappears the moment the embed is swapped for an editor
+    // (measured), and Canvas covers that with a second label outside the
+    // card. One title that never moves beats two that take turns.
+    if (card.type !== 'text') {
+      const title = doc.createElement('div')
+      title.className = CARD_TITLE_CLASS
+      title.textContent = basenameWithoutExtension(card.file)
+      el.appendChild(title)
+    }
 
     const body = doc.createElement('div')
     body.className = CARD_BODY_CLASS

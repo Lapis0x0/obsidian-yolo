@@ -1,5 +1,5 @@
 import {
-  cardNoteBaseName,
+  cardNoteContent,
   generateBoardFileName,
   generateCardNoteFileName,
 } from './naming'
@@ -42,27 +42,58 @@ describe('generateBoardFileName', () => {
   })
 })
 
-describe('cardNoteBaseName', () => {
-  it('takes a leading markdown heading and falls back otherwise', () => {
-    expect(cardNoteBaseName('# Reading list\n\nbody', 'Untitled')).toBe(
-      'Reading list',
-    )
-    expect(cardNoteBaseName('###### Deep\n', 'Untitled')).toBe('Deep')
+describe('cardNoteContent', () => {
+  it('takes a leading markdown heading as the name and drops it from the body', () => {
+    expect(cardNoteContent('# Reading list\n\nbody', 'Untitled')).toEqual({
+      baseName: 'Reading list',
+      body: 'body',
+    })
+    expect(cardNoteContent('###### Deep\n', 'Untitled')).toEqual({
+      baseName: 'Deep',
+      body: '',
+    })
+    expect(cardNoteContent('# Only a title', 'Untitled')).toEqual({
+      baseName: 'Only a title',
+      body: '',
+    })
+  })
+
+  it('keeps CRLF text intact around the heading it removes', () => {
+    expect(cardNoteContent('# Title\r\n\r\nbody\r\nmore', 'Untitled')).toEqual({
+      baseName: 'Title',
+      body: 'body\r\nmore',
+    })
+  })
+
+  it('leaves the text alone when no heading named the file', () => {
     // Ordinary prose is not a heading — a whole sentence must not become a
-    // file name.
-    expect(cardNoteBaseName('Reading list\n# later', 'Untitled')).toBe(
-      'Untitled',
-    )
-    expect(cardNoteBaseName('#NoSpace', 'Untitled')).toBe('Untitled')
-    expect(cardNoteBaseName('', 'Untitled')).toBe('Untitled')
+    // file name, and the prose must stay in the note.
+    expect(cardNoteContent('Reading list\n# later', 'Untitled')).toEqual({
+      baseName: 'Untitled',
+      body: 'Reading list\n# later',
+    })
+    expect(cardNoteContent('#NoSpace', 'Untitled')).toEqual({
+      baseName: 'Untitled',
+      body: '#NoSpace',
+    })
+    expect(cardNoteContent('', 'Untitled')).toEqual({
+      baseName: 'Untitled',
+      body: '',
+    })
   })
 
   it('strips characters a vault file name cannot carry', () => {
-    expect(cardNoteBaseName('# a/b:c*d?e"f<g>h|i', 'Untitled')).toBe(
+    expect(cardNoteContent('# a/b:c*d?e"f<g>h|i', 'Untitled').baseName).toBe(
       'a b c d e f g h i',
     )
-    expect(cardNoteBaseName('# ...', 'Untitled')).toBe('Untitled')
-    expect(cardNoteBaseName('# trailing.', 'Untitled')).toBe('trailing')
+    expect(cardNoteContent('# trailing.', 'Untitled').baseName).toBe('trailing')
+  })
+
+  it('keeps a heading that sanitized away to nothing — it named no file', () => {
+    expect(cardNoteContent('# ...\n\nbody', 'Untitled')).toEqual({
+      baseName: 'Untitled',
+      body: '# ...\n\nbody',
+    })
   })
 })
 
