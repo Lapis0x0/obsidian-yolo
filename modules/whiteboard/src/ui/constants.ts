@@ -53,6 +53,13 @@ export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 180 })
  * three dropped notes read as three cards rather than one. */
 export const DROP_STAGGER_PX = 24
 
+/** How long an in-progress card edit may sit unwritten. Blur used to be the
+ * only write point, which left everything typed since the card was opened
+ * living in the editor and nowhere else; this bounds what a crash costs.
+ * Throttled rather than per-keystroke because a note card's write is a real
+ * file write, and the board's own save is debounced downstream anyway. */
+export const EDIT_PERSIST_THROTTLE_MS = 400
+
 /** Dot-grid spacing in world units — the finest the lattice ever gets. */
 export const GRID_WORLD_STEP_PX = 20
 

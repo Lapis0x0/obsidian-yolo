@@ -71,6 +71,7 @@ import {
   DEGRADE_SCALE_THRESHOLD,
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
+  EDIT_PERSIST_THROTTLE_MS,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
@@ -81,7 +82,6 @@ import {
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
 } from './constants'
-import { type WhiteboardEditorHandle, mountWhiteboardEditor } from './editor'
 import { degradedCardTitle, isDegradedScale } from './lod'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -129,11 +129,14 @@ type CardRuntime = {
   noteText: string | null
 }
 
-type EditingState = Readonly<{
-  cardId: CardId
-  editor: WhiteboardEditorHandle
-  scopeDisposer: () => void
-}>
+type EditingState = {
+  readonly cardId: CardId
+  readonly editor: YoloModuleHostMarkdownEditorV1
+  readonly scopeDisposer: () => void
+  /** Pending throttled write of what is currently in the editor; see
+   * `scheduleEditPersist`. */
+  persistTimer: number | null
+}
 
 // -- pointer interaction state --------------------------------------------
 // One of three mutually-exclusive gestures a left-button (or middle-button)
@@ -317,7 +320,7 @@ export class WhiteboardCanvas {
       board = { ...board, camera }
     }
     if (this.editing) {
-      const liveText = this.editing.editor.view.state.doc.toString()
+      const liveText = this.editing.editor.getValue()
       const action = planCardCommit(board, this.editing.cardId, liveText)
       if (action.kind === 'updateBoard') board = action.board
     }
@@ -1089,7 +1092,7 @@ export class WhiteboardCanvas {
     if (this.editing && ids.includes(this.editing.cardId)) {
       // Commit through the one blur path before the card stops existing,
       // rather than leaving an editor mounted on a deleted card.
-      this.editing.editor.view.contentDOM.blur()
+      this.editing.editor.blur()
     }
     let board = this.board
     for (const id of ids) {
@@ -1185,7 +1188,7 @@ export class WhiteboardCanvas {
     if (this.editing?.cardId === id) {
       // Commit the live text first so the note is written from what the user
       // currently sees, not from the last committed snapshot.
-      this.editing.editor.view.contentDOM.blur()
+      this.editing.editor.blur()
     }
     const current = this.boardCardsById.get(id)
     if (!current || current.type !== 'text') return
@@ -1668,7 +1671,7 @@ export class WhiteboardCanvas {
       if (this.editing.cardId === id) return
       // Force a real DOM blur on the previously-active editor so it commits
       // through the exact same path before this one takes over.
-      this.editing.editor.view.contentDOM.blur()
+      this.editing.editor.blur()
     }
 
     const initialText =
@@ -1680,46 +1683,66 @@ export class WhiteboardCanvas {
     runtime.bodyEl.classList.add(EDITOR_HOST_CLASS)
     this.pinnedIds.add(id)
 
-    const doc = this.context.getDocument()
-    const editor = mountWhiteboardEditor(
-      runtime.bodyEl,
-      doc,
-      initialText,
-      (text) => this.finishEdit(id, text),
-    )
+    const editor = this.host.ui.createMarkdownEditor({
+      container: runtime.bodyEl,
+      value: initialText,
+      // What `[[links]]` in this card resolve against, and where an attachment
+      // pasted into it is filed. A note card is its own document; a text card
+      // lives inside the board file, so "here" is the board.
+      sourcePath: card.type === 'note' ? card.file : this.sourcePathForBoard(),
+      onChange: () => this.scheduleEditPersist(id),
+      onBlur: (text) => this.finishEdit(id, text),
+    })
     const scopeDisposer = this.context.pushKeymapScope([
       {
         modifiers: [],
         key: 'Escape',
         handler: () => {
-          editor.view.contentDOM.blur()
+          editor.blur()
           return true
         },
       },
     ])
-    this.editing = { cardId: id, editor, scopeDisposer }
+    this.editing = { cardId: id, editor, scopeDisposer, persistTimer: null }
+    editor.focus()
   }
 
-  private finishEdit(id: CardId, text: string): void {
+  /**
+   * Persists in-progress edits without waiting for the user to leave the card.
+   *
+   * Blur alone used to be the only write point, which meant everything typed
+   * since the card was opened was held in the editor and nowhere else — a
+   * crash mid-edit lost it. Throttled rather than per-keystroke because the
+   * board's own save is debounced downstream anyway, and a note card's write
+   * is a real file write.
+   */
+  private scheduleEditPersist(id: CardId): void {
     const editing = this.editing
-    if (!editing || editing.cardId !== id) return // stale callback: already exited some other way
-    this.editing = null
-    editing.scopeDisposer()
-    editing.editor.destroy()
-    this.pinnedIds.delete(id)
+    if (!editing || editing.cardId !== id) return
+    // Leading edge already scheduled: the timer reads the editor when it
+    // fires, so it always writes the latest text and never needs restarting.
+    if (editing.persistTimer !== null) return
+    const win = this.context.getWindow()
+    editing.persistTimer = win.setTimeout(() => {
+      editing.persistTimer = null
+      if (this.editing !== editing) return
+      this.commitCardText(id, editing.editor.getValue())
+    }, EDIT_PERSIST_THROTTLE_MS)
+  }
 
-    const runtime = this.runtimeByCardId.get(id)
-    runtime?.el?.classList.remove(CARD_EDITING_CLASS)
-    runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
-
+  /** Writes a card's text to wherever that card's content lives — the note
+   * file for a note card, the board for a text card. */
+  private commitCardText(id: CardId, text: string): void {
     const action = planCardCommit(this.board, id, text)
     switch (action.kind) {
-      case 'writeNoteFile':
+      case 'writeNoteFile': {
+        const runtime = this.runtimeByCardId.get(id)
         if (runtime) runtime.noteText = action.markdown
         void this.host.vault
           .writeText(action.file, action.markdown)
           .catch((error: unknown) => this.reportError('writeText', error))
         break
+      }
       case 'updateBoard':
         this.board = action.board
         this.syncBoardIndex()
@@ -1728,6 +1751,26 @@ export class WhiteboardCanvas {
       case 'noop':
         break
     }
+  }
+
+  private finishEdit(id: CardId, text: string): void {
+    const editing = this.editing
+    if (!editing || editing.cardId !== id) return // stale callback: already exited some other way
+    this.editing = null
+    if (editing.persistTimer !== null) {
+      this.context.getWindow().clearTimeout(editing.persistTimer)
+    }
+    editing.scopeDisposer()
+    editing.editor.destroy()
+    this.pinnedIds.delete(id)
+
+    const runtime = this.runtimeByCardId.get(id)
+    runtime?.el?.classList.remove(CARD_EDITING_CLASS)
+    runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
+
+    // Final flush: the throttled writes may have left the last keystrokes
+    // unpersisted, and a no-op commit costs nothing.
+    this.commitCardText(id, text)
     void this.renderCardPreview(id)
   }
 
@@ -1737,7 +1780,7 @@ export class WhiteboardCanvas {
    * write-back logic. */
   private forceCommitActiveEdit(): void {
     if (!this.editing) return
-    this.editing.editor.view.contentDOM.blur()
+    this.editing.editor.blur()
   }
 
   // -----------------------------------------------------------------------

@@ -43,15 +43,22 @@ type ObsidianMarkdownEditorClass = new (
 ) => ObsidianMarkdownEditorInstance
 
 /**
- * What the component reads back from whoever mounted it. Deliberately the
- * minimum that makes it run: it asks for the editing mode, reports scrolling,
- * and resolves links and attachment paths against `file`. It never asks the
- * owner to save — persistence is not this component's job (see
- * `YoloModuleMarkdownEditorV1`).
+ * What the component reads back from whoever mounted it. It asks for the
+ * editing mode, reports scrolling, and resolves links and attachment paths
+ * against `file`. It never asks the owner to save — persistence is not this
+ * component's job (see `YoloModuleMarkdownEditorV1`).
+ *
+ * `editor` and `hoverPopover` are not read by the component itself: an edit
+ * broadcasts a workspace event carrying the owner as the editing context, and
+ * Obsidian's own listeners read `editor` off it. Leaving them out throws
+ * inside Obsidian on the first keystroke. They are why this shape is Obsidian's
+ * public `MarkdownFileInfo` rather than the smallest thing that constructs.
  */
 type MarkdownEditorOwner = {
   app: App
   file: TFile | null
+  editor: unknown
+  hoverPopover: null
   getMode(): 'source'
   onMarkdownScroll(): void
 }
@@ -235,12 +242,17 @@ export function createObsidianMarkdownEditor(
   const owner: MarkdownEditorOwner = {
     app,
     file: file instanceof TFile ? file : null,
+    editor: null,
+    hoverPopover: null,
     getMode: () => 'source',
     onMarkdownScroll: () => undefined,
   }
 
   const instance = new EditorClass(app, options.container, owner)
   assertMarkdownEditorInstance(instance)
+  // Only available once constructed, and needed before the first edit —
+  // see MarkdownEditorOwner.
+  owner.editor = instance.editor
 
   let destroyed = false
   const read = (): string => instance.editor.getValue()
