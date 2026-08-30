@@ -8,6 +8,26 @@
 /** Camera scale clamp range. */
 export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 2.5 })
 
+/** Wheel delta that doubles the zoom. 300 is Obsidian Canvas's own figure,
+ * measured by driving its canvas with wheel events of four different sizes
+ * and solving for the exponent — it came out identical at every size, so its
+ * zoom is delta-proportional exactly like ours and only the rate differed. */
+export const WHEEL_DELTA_PER_ZOOM_DOUBLING = 300
+
+/** Time constant of the glide the camera takes toward the zoom a gesture
+ * asked for, rather than snapping to it. Measured off Obsidian Canvas by
+ * sampling its transform every frame through one wheel notch: the remaining
+ * distance decays by ~0.876 per frame on a 120Hz display, i.e. e-folding
+ * every ~63ms, and the whole glide is over in ~255ms. Short enough that the
+ * easing reads as weight rather than lag — twice this already feels floaty.
+ * See canvas.ts's advanceZoomGlide(). */
+export const ZOOM_GLIDE_TAU_MS = 63
+
+/** Remaining distance, in doublings, below which the glide is finished and
+ * the camera snaps to its target — an exponential approach never arrives, and
+ * a hundredth of a doubling is a fifth of a pixel on a 260px card. */
+export const ZOOM_GLIDE_EPSILON_DOUBLINGS = 0.01
+
 /** Screen-pixel buffer band around the viewport for virtualization, divided
  * by scale before use so its on-screen width stays constant across zoom
  * levels (see domain/virtualization.ts's computeWorldViewportRect). */
@@ -60,18 +80,35 @@ export const DROP_STAGGER_PX = 24
  * file write, and the board's own save is debounced downstream anyway. */
 export const EDIT_PERSIST_THROTTLE_MS = 400
 
-/** Dot-grid spacing in world units — the finest the lattice ever gets. */
-export const GRID_WORLD_STEP_PX = 20
-
-/** On-screen spacing the grid refuses to go below. The visible step is
- * GRID_WORLD_STEP_PX doubled as many times as it takes to clear this floor,
- * which is what keeps the grid a grid across the whole zoom range: at
- * SCALE_BOUNDS.min a fixed 20-unit step would land dots 1.6px apart, i.e. a
- * grey wash. See canvas.ts's applyGrid().
+/**
+ * How many grid cells a default card spans.
  *
- * 10 is Obsidian Canvas's own floor, measured off the `<pattern>` tile in
- * its svg.canvas-background across the zoom range: it runs the same scheme
- * (same 20-unit base step, same power-of-two level switching), so matching
- * the floor makes our grid track its density at every zoom rather than
- * sitting a level sparser through the zoomed-out half. */
+ * The grid is fixed by this ratio rather than by an absolute world spacing
+ * because the ratio is what the eye actually judges — and unlike a spacing,
+ * it does not move with the camera: dot spacing and card size both scale, so
+ * `step / cardWidth` is the same at every zoom. Two boards agree visually
+ * when they agree here, whatever they are zoomed to.
+ *
+ * 20 is Obsidian Canvas's figure for its default card — a 400-unit card on a
+ * 20-unit grid. (Its default *text* node, 250x60, would give 12.5, but that
+ * is a one-line sticky rather than a card, and its own file cards do not
+ * follow it.)
+ */
+const GRID_CELLS_PER_CARD = 20
+
+/** Dot-grid spacing in world units — the finest the lattice ever gets. */
+export const GRID_WORLD_STEP_PX = NEW_CARD_SIZE.w / GRID_CELLS_PER_CARD
+
+/**
+ * On-screen spacing the grid refuses to go below. The visible step is
+ * GRID_WORLD_STEP_PX doubled as many times as it takes to clear this floor.
+ *
+ * This is what keeps the grid a grid once the cards it belongs to are no
+ * longer the thing being looked at: zoomed all the way out, an unbounded
+ * 13-unit step would land dots ~1px apart, which is not a grid but a grey
+ * wash. 10 is Obsidian Canvas's floor, measured off the `<pattern>` tile in
+ * its svg.canvas-background across the zoom range — a lower bound in screen
+ * pixels is a legibility limit, not a matter of taste, so there is no reason
+ * to differ from a value that visibly works. See canvas.ts's applyGrid().
+ */
 export const GRID_MIN_SCREEN_STEP_PX = 10

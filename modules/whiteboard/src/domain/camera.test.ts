@@ -1,11 +1,13 @@
 import {
+  approachScale,
   cameraFromView,
   clampScale,
   dragPan,
   panByWheel,
+  scaleAfterWheel,
   screenToWorld,
+  viewAnchoredAt,
   viewFromCamera,
-  zoomAtPoint,
 } from './camera'
 
 describe('clampScale', () => {
@@ -29,35 +31,91 @@ describe('clampScale', () => {
   })
 })
 
-describe('zoomAtPoint', () => {
+describe('scaleAfterWheel', () => {
   const bounds = { min: 0.08, max: 2.5 }
 
-  it('keeps the world point under the cursor fixed on screen across a zoom', () => {
-    const view = { tx: 0, ty: 0, scale: 1 }
-    const cursor = { x: 400, y: 300 }
-    const worldXBefore = (cursor.x - view.tx) / view.scale
-    const worldYBefore = (cursor.y - view.ty) / view.scale
-
-    const next = zoomAtPoint(view, cursor, -100, bounds)
-
-    const worldXAfter = (cursor.x - next.tx) / next.scale
-    const worldYAfter = (cursor.y - next.ty) / next.scale
-    expect(worldXAfter).toBeCloseTo(worldXBefore, 10)
-    expect(worldYAfter).toBeCloseTo(worldYBefore, 10)
+  it('doubles the scale over exactly one delta-per-doubling of travel', () => {
+    expect(scaleAfterWheel(1, -300, 300, bounds)).toBeCloseTo(2, 10)
+    expect(scaleAfterWheel(1, 300, 300, bounds)).toBeCloseTo(0.5, 10)
   })
 
-  it('zooms in for a negative deltaY and out for a positive one', () => {
-    const view = { tx: 0, ty: 0, scale: 1 }
-    const zoomedIn = zoomAtPoint(view, { x: 0, y: 0 }, -100, bounds)
-    const zoomedOut = zoomAtPoint(view, { x: 0, y: 0 }, 100, bounds)
-    expect(zoomedIn.scale).toBeGreaterThan(1)
-    expect(zoomedOut.scale).toBeLessThan(1)
+  it('is proportional in doublings, so the same delta means the same zoom at any scale', () => {
+    const atOne = scaleAfterWheel(1, -150, 300, bounds) / 1
+    const atQuarter = scaleAfterWheel(0.25, -150, 300, bounds) / 0.25
+    expect(atQuarter).toBeCloseTo(atOne, 10)
   })
 
-  it('clamps the resulting scale to bounds', () => {
-    const view = { tx: 0, ty: 0, scale: 2.4 }
-    const next = zoomAtPoint(view, { x: 0, y: 0 }, -10000, bounds)
-    expect(next.scale).toBe(bounds.max)
+  it('splits into the same total as one large step', () => {
+    const once = scaleAfterWheel(1, -200, 300, bounds)
+    const twice = scaleAfterWheel(
+      scaleAfterWheel(1, -100, 300, bounds),
+      -100,
+      300,
+      bounds,
+    )
+    expect(twice).toBeCloseTo(once, 10)
+  })
+
+  it('clamps to bounds', () => {
+    expect(scaleAfterWheel(2.4, -10000, 300, bounds)).toBe(bounds.max)
+    expect(scaleAfterWheel(0.1, 10000, 300, bounds)).toBe(bounds.min)
+  })
+})
+
+describe('viewAnchoredAt', () => {
+  it('puts the anchored world point exactly under its screen point', () => {
+    const screen = { x: 400, y: 300 }
+    const world = { x: 120, y: -40 }
+    for (const scale of [0.08, 0.5, 1, 1.7, 2.5]) {
+      const view = viewAnchoredAt(screen, world, scale)
+      expect(screenToWorld(view, screen).x).toBeCloseTo(world.x, 10)
+      expect(screenToWorld(view, screen).y).toBeCloseTo(world.y, 10)
+    }
+  })
+
+  // Why the glide re-derives from the anchor every frame instead of stepping.
+  it('holds the anchor across a whole sequence of intermediate scales', () => {
+    const screen = { x: 250, y: 180 }
+    const world = { x: -33.5, y: 91.25 }
+    for (const scale of [1, 1.1, 1.35, 1.62, 1.9, 2]) {
+      expect(
+        screenToWorld(viewAnchoredAt(screen, world, scale), screen).x,
+      ).toBeCloseTo(world.x, 10)
+    }
+  })
+})
+
+describe('approachScale', () => {
+  it('covers ~63% of the remaining doublings in one time constant', () => {
+    const next = approachScale(1, 4, 160, 160) // 1 -> 4 is two doublings
+    expect(Math.log2(next)).toBeCloseTo(2 * (1 - Math.exp(-1)), 6)
+  })
+
+  it('converges toward the target without overshooting it', () => {
+    let scale = 1
+    for (let i = 0; i < 200; i++) scale = approachScale(scale, 2.5, 16.7, 160)
+    expect(scale).toBeCloseTo(2.5, 6)
+    expect(scale).toBeLessThanOrEqual(2.5)
+  })
+
+  // Frame times chosen to sum to exactly the same 480ms both ways, so any
+  // difference is the function's and not the test's arithmetic.
+  it('moves the same distance per unit time whatever the frame rate', () => {
+    let slow = 1
+    for (let i = 0; i < 30; i++) slow = approachScale(slow, 4, 16, 160)
+    let fast = 1
+    for (let i = 0; i < 60; i++) fast = approachScale(fast, 4, 8, 160)
+    expect(fast).toBeCloseTo(slow, 10)
+  })
+
+  it('is symmetric in log space: zooming out mirrors zooming in', () => {
+    const inward = Math.log2(approachScale(1, 2, 50, 160))
+    const outward = Math.log2(approachScale(1, 0.5, 50, 160))
+    expect(outward).toBeCloseTo(-inward, 10)
+  })
+
+  it('arrives immediately when there is no time constant to spread it over', () => {
+    expect(approachScale(1, 2, 16, 0)).toBe(2)
   })
 })
 
@@ -90,19 +148,25 @@ describe('dragPan', () => {
 
 describe('screenToWorld', () => {
   it('is the identity at scale 1 with no pan', () => {
-    expect(screenToWorld({ tx: 0, ty: 0, scale: 1 }, { x: 42, y: 17 })).toEqual({ x: 42, y: 17 })
+    expect(screenToWorld({ tx: 0, ty: 0, scale: 1 }, { x: 42, y: 17 })).toEqual(
+      { x: 42, y: 17 },
+    )
   })
 
   it('accounts for pan and scale', () => {
-    expect(screenToWorld({ tx: 100, ty: -50, scale: 2 }, { x: 300, y: 150 })).toEqual({ x: 100, y: 100 })
+    expect(
+      screenToWorld({ tx: 100, ty: -50, scale: 2 }, { x: 300, y: 150 }),
+    ).toEqual({ x: 100, y: 100 })
   })
 
-  it('inverts zoomAtPoint: the cursor world point matches before and after a zoom', () => {
+  it('inverts viewAnchoredAt: the cursor world point matches before and after a zoom', () => {
     const view = { tx: 10, ty: -5, scale: 1.25 }
     const cursor = { x: 200, y: 120 }
     const before = screenToWorld(view, cursor)
-    const after = zoomAtPoint(view, cursor, -50, { min: 0.08, max: 2.5 })
-    expect(screenToWorld(after, cursor)).toEqual(before)
+    const scale = scaleAfterWheel(view.scale, -50, 300, { min: 0.08, max: 2.5 })
+    const after = viewAnchoredAt(cursor, before, scale)
+    expect(screenToWorld(after, cursor).x).toBeCloseTo(before.x, 10)
+    expect(screenToWorld(after, cursor).y).toBeCloseTo(before.y, 10)
   })
 })
 

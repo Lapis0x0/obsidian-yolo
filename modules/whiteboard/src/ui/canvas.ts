@@ -21,12 +21,14 @@
 // BrowserWindow, which has its own realm.
 
 import {
+  approachScale,
   cameraFromView,
   dragPan,
   panByWheel,
+  scaleAfterWheel,
   screenToWorld,
+  viewAnchoredAt,
   viewFromCamera,
-  zoomAtPoint,
 } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { planCardCommit } from '../domain/commit'
@@ -81,6 +83,9 @@ import {
   SCALE_BOUNDS,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
+  WHEEL_DELTA_PER_ZOOM_DOUBLING,
+  ZOOM_GLIDE_EPSILON_DOUBLINGS,
+  ZOOM_GLIDE_TAU_MS,
 } from './constants'
 import { degradedCardTitle, isDegradedScale } from './lod'
 
@@ -244,6 +249,14 @@ export class WhiteboardCanvas {
   private interactingTimer: number | null = null
   private settleTimer: number | null = null
   private lastRecomputeTime = 0
+  /** Zoom the wheel has asked for but the camera has not reached yet, with
+   * the point the gesture grabbed. Null when the camera is at rest. */
+  private zoomGlide: {
+    targetScale: number
+    screen: ScreenPoint
+    world: ScreenPoint
+  } | null = null
+  private lastGlideTime: number | null = null
   /** Current zoom-degrade state, updated only at recomputeVisibility's ~70ms
    * throttle (see updateDegradedState) — not evaluated per frame. */
   private degraded = false
@@ -287,6 +300,10 @@ export class WhiteboardCanvas {
     this.selfHealMissingNoteCards()
     this.rebuildEdgesSvg()
     this.view = viewFromCamera(this.board.camera)
+    // A glide aimed at the previous board's camera has nothing to say about
+    // this one, and would drag the new view away from where it opened.
+    this.zoomGlide = null
+    this.lastGlideTime = null
     this.applyTransform()
     this.showCanvas()
     this.recomputeVisibility()
@@ -710,15 +727,99 @@ export class WhiteboardCanvas {
     if (this.parseFailed) return
     e.preventDefault()
     if (e.ctrlKey || e.metaKey) {
-      const rect = this.viewportEl.getBoundingClientRect()
-      const cursor = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-      this.view = zoomAtPoint(this.view, cursor, e.deltaY, SCALE_BOUNDS)
-    } else {
-      this.view = panByWheel(this.view, e.deltaX, e.deltaY)
+      this.zoomBy(e.deltaY, this.viewportPointFromEvent(e))
+      return
     }
+    this.view = panByWheel(this.view, e.deltaX, e.deltaY)
     this.applyTransform()
     this.markInteracting()
     this.scheduleCameraSettle()
+  }
+
+  /**
+   * Aims the camera at a new zoom, anchored on the point under the cursor.
+   *
+   * The camera glides there over the next few frames rather than arriving at
+   * once (see `advanceZoomGlide`), so consecutive notches accumulate against
+   * the *target* rather than wherever the glide currently is — otherwise
+   * spinning the wheel would fight the easing and cover less ground the
+   * faster it was spun. The anchor is re-taken from the live view each time,
+   * which is what lets the cursor move mid-gesture and still zoom about
+   * wherever it now points.
+   */
+  private zoomBy(deltaY: number, cursor: ScreenPoint): void {
+    const targetScale = scaleAfterWheel(
+      this.zoomGlide?.targetScale ?? this.view.scale,
+      deltaY,
+      WHEEL_DELTA_PER_ZOOM_DOUBLING,
+      SCALE_BOUNDS,
+    )
+    const anchor = { screen: cursor, world: screenToWorld(this.view, cursor) }
+    if (this.prefersReducedMotion()) {
+      this.zoomGlide = null
+      this.view = viewAnchoredAt(anchor.screen, anchor.world, targetScale)
+      this.applyTransform()
+      this.markInteracting()
+      this.scheduleCameraSettle()
+      return
+    }
+    this.zoomGlide = { ...anchor, targetScale }
+  }
+
+  /**
+   * Moves the camera one frame closer to the zoom the last gesture asked for.
+   *
+   * Driven from the rAF loop rather than by the input events themselves: the
+   * motion has to continue after the wheel stops, which is the whole point of
+   * gliding — a gesture ends with the camera still travelling, the way it does
+   * everywhere else in Obsidian.
+   */
+  private advanceZoomGlide(now: number): void {
+    const glide = this.zoomGlide
+    if (!glide) return
+    // A first frame, or one after the tab was backgrounded, has no meaningful
+    // elapsed time; treat it as a single 60Hz frame rather than teleporting.
+    const elapsed =
+      this.lastGlideTime === null
+        ? 16.7
+        : Math.min(now - this.lastGlideTime, 100)
+    this.lastGlideTime = now
+
+    const next = approachScale(
+      this.view.scale,
+      glide.targetScale,
+      elapsed,
+      ZOOM_GLIDE_TAU_MS,
+    )
+    const settled =
+      Math.abs(Math.log2(next / glide.targetScale)) <
+      ZOOM_GLIDE_EPSILON_DOUBLINGS
+    this.view = viewAnchoredAt(
+      glide.screen,
+      glide.world,
+      settled ? glide.targetScale : next,
+    )
+    this.applyTransform()
+    this.markInteracting()
+    if (settled) {
+      this.zoomGlide = null
+      this.lastGlideTime = null
+      this.scheduleCameraSettle()
+    }
+  }
+
+  /** Viewport-relative position of a mouse event. */
+  private viewportPointFromEvent(e: MouseEvent): ScreenPoint {
+    const rect = this.viewportEl.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
+  }
+
+  /** Resolved per gesture rather than cached: the setting can change while a
+   * view is open, and this runs once per wheel gesture, not per frame. */
+  private prefersReducedMotion(): boolean {
+    return this.context
+      .getWindow()
+      .matchMedia('(prefers-reduced-motion: reduce)').matches
   }
 
   private applyTransform(): void {
@@ -783,7 +884,15 @@ export class WhiteboardCanvas {
       this.settleTimer = null
     }
     if (this.parseFailed) return
-    const camera = cameraFromView(this.view)
+    // Mid-glide, the view is a frame on the way to somewhere; what the user
+    // asked for is the target. Persisting the intermediate one would reopen
+    // the board half-way through a zoom the gesture had already finished.
+    const glide = this.zoomGlide
+    const camera = cameraFromView(
+      glide
+        ? viewAnchoredAt(glide.screen, glide.world, glide.targetScale)
+        : this.view,
+    )
     const current = this.board.camera
     if (
       camera.x === current.x &&
@@ -1265,11 +1374,7 @@ export class WhiteboardCanvas {
   }
 
   private worldPointFromEvent(e: MouseEvent): ScreenPoint {
-    const rect = this.viewportEl.getBoundingClientRect()
-    return screenToWorld(this.view, {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    })
+    return screenToWorld(this.view, this.viewportPointFromEvent(e))
   }
 
   private cardIdFromEventTarget(target: EventTarget | null): CardId | null {
@@ -1302,6 +1407,7 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   private readonly frame = (now: number): void => {
+    this.advanceZoomGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
       this.recomputeVisibility()
       this.lastRecomputeTime = now

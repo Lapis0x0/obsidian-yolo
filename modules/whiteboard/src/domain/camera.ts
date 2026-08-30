@@ -30,33 +30,77 @@ export function clampScale(scale: number, bounds: ScaleBounds): number {
 }
 
 /**
- * Cursor-anchored zoom: recomputes (tx, ty, scale) so the world point
- * currently under `cursor` (a viewport-relative screen point) stays under
- * the cursor after the scale change. `deltaY` is the wheel event's raw
- * value (positive = zoom out, matching native wheel semantics); the
- * exponential factor mirrors the spike's tuning (`Math.exp(-deltaY * 0.01)`,
- * chosen there for a natural-feeling trackpad/mouse-wheel zoom speed).
+ * The scale a wheel event asks for, expressed as doublings.
+ *
+ * Zoom is naturally logarithmic — what a gesture means is "twice as close",
+ * not "0.7 more" — so the tuning knob is how much wheel delta it takes to
+ * double, which stays meaningful at every zoom level. `deltaY` is the event's
+ * raw value (positive = zoom out, matching native wheel semantics).
+ *
+ * The spike's original `Math.exp(-deltaY * 0.01)` was tuned against a
+ * trackpad, which emits many tiny deltas; it works out to a doubling every 69
+ * units, so a single mouse-wheel notch (120) multiplied the scale by 3.3 and
+ * two notches crossed the entire zoom range.
  */
-export function zoomAtPoint(
-  view: CanvasView,
-  cursor: ScreenPoint,
+export function scaleAfterWheel(
+  scale: number,
   deltaY: number,
+  deltaPerDoubling: number,
   bounds: ScaleBounds,
+): number {
+  return clampScale(scale * 2 ** (-deltaY / deltaPerDoubling), bounds)
+}
+
+/**
+ * The view that puts `world` under `screen` at the given scale.
+ *
+ * Cursor-anchored zoom stated as a position rather than a step: the caller
+ * holds the point the gesture grabbed, and every intermediate scale on the
+ * way to the target re-derives the translation from it. Deriving each frame
+ * from the anchor rather than accumulating deltas is what keeps the grabbed
+ * point exactly under the cursor throughout, with no drift to accumulate.
+ */
+export function viewAnchoredAt(
+  screen: ScreenPoint,
+  world: ScreenPoint,
+  scale: number,
 ): CanvasView {
-  const worldX = (cursor.x - view.tx) / view.scale
-  const worldY = (cursor.y - view.ty) / view.scale
-  const factor = Math.exp(-deltaY * 0.01)
-  const scale = clampScale(view.scale * factor, bounds)
   return {
-    tx: cursor.x - worldX * scale,
-    ty: cursor.y - worldY * scale,
+    tx: screen.x - world.x * scale,
+    ty: screen.y - world.y * scale,
     scale,
   }
 }
 
+/**
+ * One frame of exponential approach from `current` toward `target`.
+ *
+ * Interpolated in log space, for the same reason the wheel is: halfway
+ * between 0.5x and 2x should look like 1x, not 1.25x. `tauMs` is the time
+ * constant — the delay after which roughly 63% of the remaining distance is
+ * covered — and `dtMs` is the elapsed frame time, so the motion is identical
+ * on a 60Hz and a 120Hz display instead of running twice as fast on one.
+ */
+export function approachScale(
+  current: number,
+  target: number,
+  dtMs: number,
+  tauMs: number,
+): number {
+  if (tauMs <= 0 || dtMs <= 0) return target
+  const alpha = 1 - Math.exp(-dtMs / tauMs)
+  return (
+    2 ** (Math.log2(current) + (Math.log2(target) - Math.log2(current)) * alpha)
+  )
+}
+
 /** Plain two-axis wheel pan (no modifier held): screen deltas subtract
  * directly from the translation, scale unchanged. */
-export function panByWheel(view: CanvasView, deltaX: number, deltaY: number): CanvasView {
+export function panByWheel(
+  view: CanvasView,
+  deltaX: number,
+  deltaY: number,
+): CanvasView {
   return { ...view, tx: view.tx - deltaX, ty: view.ty - deltaY }
 }
 
@@ -84,7 +128,10 @@ export function dragPan(
  * (which computes the same thing inline) so ../domain/selection.ts's
  * marquee-selection math can convert its screen-space drag rectangle into
  * world coordinates for card hit-testing without duplicating the formula. */
-export function screenToWorld(view: CanvasView, point: ScreenPoint): ScreenPoint {
+export function screenToWorld(
+  view: CanvasView,
+  point: ScreenPoint,
+): ScreenPoint {
   return {
     x: (point.x - view.tx) / view.scale,
     y: (point.y - view.ty) / view.scale,
