@@ -1,6 +1,10 @@
 import type { NoteCard, PdfCard, TextCard } from '../domain/fileFormat'
 
-import { basenameWithoutExtension, degradedCardTitle, isDegradedScale } from './lod'
+import {
+  basenameWithoutExtension,
+  degradedCardTitle,
+  isDegradedScale,
+} from './lod'
 
 describe('isDegradedScale', () => {
   it('is true below the threshold', () => {
@@ -36,11 +40,30 @@ function noteCard(file: string): NoteCard {
 }
 
 function pdfCard(file: string): PdfCard {
-  return { id: 'c2', type: 'pdf', x: 0, y: 0, w: 100, h: 100, file, page: 1, extra: {} }
+  return {
+    id: 'c2',
+    type: 'pdf',
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 100,
+    file,
+    page: 1,
+    extra: {},
+  }
 }
 
 function textCard(markdown: string): TextCard {
-  return { id: 'c3', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown, extra: {} }
+  return {
+    id: 'c3',
+    type: 'text',
+    x: 0,
+    y: 0,
+    w: 100,
+    h: 100,
+    markdown,
+    extra: {},
+  }
 }
 
 describe('degradedCardTitle', () => {
@@ -53,11 +76,23 @@ describe('degradedCardTitle', () => {
   })
 
   it('shows a text card first line, trimmed', () => {
-    expect(degradedCardTitle(textCard('  hello world  \nsecond line'))).toBe('hello world')
+    expect(degradedCardTitle(textCard('  hello world  \nsecond line'))).toBe(
+      'hello world',
+    )
   })
 
   it('shows the whole markdown when it has no newline', () => {
     expect(degradedCardTitle(textCard('single line'))).toBe('single line')
+  })
+
+  it('drops a leading heading marker — the line is shown as a title, not as markdown', () => {
+    expect(degradedCardTitle(textCard('# 测试\n\nbody'))).toBe('测试')
+    expect(degradedCardTitle(textCard('###### deep'))).toBe('deep')
+  })
+
+  it('keeps markers that are not headings, and a hash that is not one', () => {
+    expect(degradedCardTitle(textCard('- 买牛奶'))).toBe('- 买牛奶')
+    expect(degradedCardTitle(textCard('#tag 起头'))).toBe('#tag 起头')
   })
 
   it('truncates a long text card first line', () => {

@@ -430,19 +430,66 @@
  * body for a plain title block — CSS-only visibility toggle, no DOM
  * mount/unmount (ui/canvas.ts's updateDegradedState()). */
 
+/* Sized in world units, like everything else in the world layer — the title
+ * shrinks with the card rather than being counter-scaled, so what matters is
+ * its share of the card, not its pixel count. 32px is Obsidian Canvas's own
+ * figure (measured off its low-zoom placeholder); against our 13px body it
+ * is an even stronger jump than Canvas's 32-over-16, which is the point —
+ * this line is the only thing carrying a card while its markdown is gone.
+ *
+ * The wash is Canvas's too, down to the declaration: at this zoom a board is
+ * a field of cards, and white-on-white leaves nothing but the hairline border
+ * to separate a card from the canvas. Canvas washes the card with 10% of
+ * `--canvas-color` (its per-node colour, #c0c0c0 by default) rather than
+ * swapping the background outright, so it lands right in both themes and
+ * stays this faint — 10% of a mid grey, not of black. */
 .yolo-whiteboard-card-degraded-title {
   display: none;
   align-items: center;
   justify-content: center;
   height: 100%;
-  padding: 6px 10px;
+  padding: 8px 12px;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
+  font-size: 32px;
   font-weight: 600;
+  line-height: 1.25;
   color: var(--text-normal);
   text-align: center;
+  background: color-mix(
+    in oklch,
+    var(--canvas-color, var(--background-modifier-border)) 10%,
+    transparent
+  );
+}
+
+/* A card with nothing to show a title from is empty — the only card whose
+ * degraded title is blank (a note/pdf card always has a file name, a text
+ * card its first line). Rather than a blank rectangle it gets the same mark
+ * Canvas draws for one: a faint stack of lines standing in for text.
+ *
+ * The mark keeps its own proportions instead of being stretched to the
+ * card's: it is a drawing of text, and text does not get wider because its
+ * card did. Canvas gets this from SVG — a square icon inside a 40%-by-40%
+ * box, scaled to *fit* it (`preserveAspectRatio` meet), so a node twice as
+ * wide leaves the icon the same size and just adds space around it. The same
+ * rule here is `mask-size: contain` over a 40%-by-40% box: the drawing scales
+ * to whichever of the two the card is short of, never past it.
+ *
+ * Drawn as a mask rather than a background image so its colour comes from a
+ * theme token instead of being baked into the data URI (same technique as
+ * src/styles/chat/popover.css). Three rounded bars of uneven length — the
+ * conventional "some text lives here" mark, and what Canvas's own
+ * `align-left` icon looks like. */
+.yolo-whiteboard-card-degraded-title:empty::after {
+  content: '';
+  width: 40%;
+  height: 40%;
+  background-color: var(--canvas-color, var(--text-faint));
+  opacity: 0.3;
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect x='3' y='5' width='18' height='2' rx='1'/%3E%3Crect x='3' y='11' width='12' height='2' rx='1'/%3E%3Crect x='3' y='17' width='14' height='2' rx='1'/%3E%3C/svg%3E");
+  mask-size: contain;
+  mask-repeat: no-repeat;
+  mask-position: center;
 }
 
 .yolo-whiteboard-world.yolo-whiteboard-world-degraded
