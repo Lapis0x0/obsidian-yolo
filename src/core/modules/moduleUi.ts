@@ -15,6 +15,10 @@ import type { ModuleLifecycleScope } from './lifecycleScope'
 import { assertModuleId } from './moduleStore'
 import { describeEntry, normalizeModuleVaultPath } from './moduleVault'
 import {
+  type ObsidianMarkdownContentViewHandle,
+  createObsidianMarkdownContentView,
+} from './obsidianMarkdownContentView'
+import {
   type ObsidianMarkdownEditorHandle,
   createObsidianMarkdownEditor,
 } from './obsidianMarkdownEditor'
@@ -22,6 +26,8 @@ import type {
   YoloModuleActionToastV1,
   YoloModuleConfirmOptionsV1,
   YoloModuleHoverLinkOptionsV1,
+  YoloModuleMarkdownContentViewOptionsV1,
+  YoloModuleMarkdownContentViewV1,
   YoloModuleMarkdownEditorOptionsV1,
   YoloModuleMarkdownEditorV1,
   YoloModuleMarkdownRendererV1,
@@ -55,6 +61,7 @@ export const UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER: ModuleUiCapabilityProvid
         showActionToast: unavailable,
         confirm: async () => unavailable(),
         createMarkdownRenderer: unavailable,
+        createMarkdownContentView: unavailable,
         createMarkdownEditor: unavailable,
         htmlToMarkdown: unavailable,
         isModEvent: unavailable,
@@ -127,6 +134,7 @@ export class ObsidianModuleUiCapabilityProvider
     let activationComplete = false
     const pendingConfirms = new Set<PendingConfirm>()
     const renderers = new Set<OwnedRenderer>()
+    const contentViews = new Set<ObsidianMarkdownContentViewHandle>()
     const editors = new Set<ObsidianMarkdownEditorHandle>()
     const openMenus = new Set<Menu>()
     const actionToastTokens = new Map<string, object>()
@@ -159,6 +167,17 @@ export class ObsidianModuleUiCapabilityProvider
           errors.push(error)
         }
       }
+      // A content view the module never got round to destroying would keep a
+      // loaded Obsidian component — vault listeners, a size observer, a
+      // pending render — alive past the module that owns it.
+      for (const view of [...contentViews]) {
+        try {
+          view.destroy()
+        } catch (error) {
+          errors.push(error)
+        }
+      }
+      contentViews.clear()
       // An editor the module never got round to destroying would keep an
       // Obsidian editor — with its listeners and keymap — alive past the
       // module that owns it.
@@ -325,6 +344,33 @@ export class ObsidianModuleUiCapabilityProvider
         }
         renderers.add(renderer)
         return Object.freeze(renderer)
+      },
+      createMarkdownContentView: (
+        options: YoloModuleMarkdownContentViewOptionsV1,
+      ) => {
+        assertActive()
+        requireElement(options?.container, 'Markdown content view container')
+        requireString(options.value, 'Markdown content view value')
+        requireString(options.sourcePath, 'Markdown content view source path')
+
+        const handle = createObsidianMarkdownContentView(this.app, {
+          container: options.container,
+          value: options.value,
+          sourcePath: normalizeModuleVaultPath(options.sourcePath),
+        })
+        contentViews.add(handle)
+
+        const view: YoloModuleMarkdownContentViewV1 = {
+          setValue: (text: string) => {
+            requireString(text, 'Markdown content view value')
+            handle.setValue(text)
+          },
+          destroy: () => {
+            contentViews.delete(handle)
+            handle.destroy()
+          },
+        }
+        return Object.freeze(view)
       },
       createMarkdownEditor: (options: YoloModuleMarkdownEditorOptionsV1) => {
         assertActive()

@@ -358,6 +358,38 @@ export type YoloModuleMarkdownRendererV1 = {
   unload(): void
 }
 
+export type YoloModuleMarkdownContentViewOptionsV1 = Readonly<{
+  container: HTMLElement
+  /**
+   * The vault path this content belongs to: what `[[links]]` and embeds inside
+   * it resolve against. It does not have to be the file the text is stored in,
+   * or a Markdown file at all — content that lives inside some other document
+   * (a card stored in a board, say) passes that document's path, exactly as
+   * `YoloModuleMarkdownEditorOptionsV1` does.
+   */
+  sourcePath: string
+  value: string
+}>
+
+/**
+ * A read-only Markdown surface for a whole document.
+ *
+ * Obsidian's own preview: it keeps only the sections around the scroll
+ * position mounted and fakes the height of the rest, so a container holding a
+ * five-thousand-line note costs what one screenful of it costs. That is the
+ * whole reason it exists next to `createMarkdownRenderer`, which renders a
+ * fragment in one pass and is the right tool for a fragment.
+ *
+ * Nothing about the windowing reaches the module — no resize hook, no scroll
+ * hook. The view watches its own container and re-picks its window when the
+ * size changes; a module that had to remember to call back would be a module
+ * that could forget.
+ */
+export type YoloModuleMarkdownContentViewV1 = {
+  setValue(text: string): void
+  destroy(): void
+}
+
 export type YoloModuleMarkdownEditorOptionsV1 = Readonly<{
   container: HTMLElement
   value: string
@@ -416,7 +448,25 @@ export type YoloModuleUiV1 = {
   notice(message: string): void
   showActionToast(toast: YoloModuleActionToastV1): void
   confirm(options: YoloModuleConfirmOptionsV1): Promise<boolean>
+  /**
+   * Renders a Markdown *fragment* into a container, in one pass.
+   *
+   * For a whole document — anything that can grow past a screenful — use
+   * `createMarkdownContentView` instead: this one keeps everything it renders
+   * in the DOM.
+   */
   createMarkdownRenderer(): YoloModuleMarkdownRendererV1
+  /**
+   * Mounts a windowed, read-only Markdown preview into `options.container` —
+   * see `YoloModuleMarkdownContentViewV1`.
+   *
+   * Obsidian does not publish the component that carries the windowing, so
+   * this throws when a future Obsidian no longer exposes it. As with
+   * `createMarkdownEditor` there is deliberately nothing degraded behind it.
+   */
+  createMarkdownContentView(
+    options: YoloModuleMarkdownContentViewOptionsV1,
+  ): YoloModuleMarkdownContentViewV1
   /**
    * Mounts an editable, live-preview Markdown editor into `options.container`.
    *

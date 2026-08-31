@@ -124,6 +124,31 @@ jest.mock('./obsidianMarkdownEditor', () => ({
   ),
 }))
 
+// Same shape of stand-in as the editor above, and for the same reason: the
+// preview component is Obsidian's, so what this file covers is the host's
+// side of it.
+type FakeContentView = {
+  options: { value: string; sourcePath: string }
+  destroyed: boolean
+}
+const createdContentViews: FakeContentView[] = []
+jest.mock('./obsidianMarkdownContentView', () => ({
+  createObsidianMarkdownContentView: jest.fn(
+    (_app: unknown, options: FakeContentView['options']) => {
+      const view: FakeContentView = { options, destroyed: false }
+      createdContentViews.push(view)
+      return {
+        setValue: (text: string) => {
+          view.options = { ...view.options, value: text }
+        },
+        destroy: () => {
+          view.destroyed = true
+        },
+      }
+    },
+  ),
+}))
+
 type ModalOptions = {
   title: string
   message: string
@@ -164,6 +189,7 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     modals.length = 0
     menus.length = 0
     createdEditors.length = 0
+    createdContentViews.length = 0
     markdownRender.mockImplementation(() => Promise.resolve())
   })
 
@@ -536,6 +562,61 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     }).create('learning', lifecycle)
     expect(() => activation.api.notice('early')).toThrow('UI is not active')
     lifecycle.dispose()
+  })
+
+  describe('createMarkdownContentView', () => {
+    const viewOptions = () => ({
+      container: createElement(),
+      value: '# card',
+      sourcePath: 'boards/ideas.yoloboard',
+    })
+
+    it('mounts a content view and exposes it through the module handle', () => {
+      const { lifecycle, ui } = create()
+      const view = ui.createMarkdownContentView(viewOptions())
+
+      expect(createdContentViews).toHaveLength(1)
+      expect(createdContentViews[0].options.sourcePath).toBe(
+        'boards/ideas.yoloboard',
+      )
+      view.setValue('changed')
+      expect(createdContentViews[0].options.value).toBe('changed')
+      lifecycle.dispose()
+    })
+
+    it('validates its arguments', () => {
+      const { lifecycle, ui } = create()
+      const valid = viewOptions()
+
+      expect(() =>
+        ui.createMarkdownContentView({
+          ...valid,
+          value: 1 as unknown as string,
+        }),
+      ).toThrow('must be a string')
+      expect(() =>
+        ui.createMarkdownContentView({
+          ...valid,
+          container: null as unknown as HTMLElement,
+        }),
+      ).toThrow('Markdown content view container')
+      expect(createdContentViews).toHaveLength(0)
+      lifecycle.dispose()
+    })
+
+    it('destroys a view the module left behind, and only once', () => {
+      const { lifecycle, ui } = create()
+      const kept = ui.createMarkdownContentView(viewOptions())
+      const released = ui.createMarkdownContentView(viewOptions())
+
+      released.destroy()
+      expect(createdContentViews[1].destroyed).toBe(true)
+      expect(createdContentViews[0].destroyed).toBe(false)
+
+      lifecycle.dispose()
+      expect(createdContentViews[0].destroyed).toBe(true)
+      expect(() => kept.destroy()).not.toThrow()
+    })
   })
 
   describe('createMarkdownEditor', () => {
