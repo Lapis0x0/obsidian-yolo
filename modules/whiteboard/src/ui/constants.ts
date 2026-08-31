@@ -14,6 +14,10 @@ export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 2.5 })
  * zoom is delta-proportional exactly like ours and only the rate differed. */
 export const WHEEL_DELTA_PER_ZOOM_DOUBLING = 300
 
+/** Screen-space margin kept around the content when the camera fits to all
+ * nodes or to the selection (Shift+1 / Shift+2). */
+export const FIT_CAMERA_PADDING_PX = 48
+
 /** Time constant of the glide the camera takes toward the zoom a gesture
  * asked for, rather than snapping to it. Measured off Obsidian Canvas by
  * sampling its transform every frame through one wheel notch: the remaining

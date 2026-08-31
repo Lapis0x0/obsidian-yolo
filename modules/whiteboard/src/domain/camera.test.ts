@@ -3,9 +3,11 @@ import {
   cameraFromView,
   clampScale,
   dragPan,
+  fitViewToBounds,
   panByWheel,
   scaleAfterWheel,
   screenToWorld,
+  unionRect,
   viewAnchoredAt,
   viewFromCamera,
 } from './camera'
@@ -182,5 +184,60 @@ describe('viewFromCamera / cameraFromView round-trip', () => {
       ty: 2,
       scale: 3,
     })
+  })
+})
+
+describe('unionRect', () => {
+  it('returns null for no rects', () => {
+    expect(unionRect([])).toBeNull()
+  })
+
+  it('covers rects that are far apart', () => {
+    expect(
+      unionRect([
+        { x: -300, y: -160, w: 180, h: 200 },
+        { x: 43000, y: 47280, w: 446, h: 1104 },
+      ]),
+    ).toEqual({ x: -300, y: -160, w: 43746, h: 48544 })
+  })
+})
+
+describe('fitViewToBounds', () => {
+  const scaleBounds = { min: 0.08, max: 2.5 }
+  const viewport = { width: 1000, height: 800 }
+
+  it('centers the bounds and picks the tighter axis', () => {
+    const view = fitViewToBounds(
+      { x: 0, y: 0, w: 2000, h: 400 },
+      viewport,
+      48,
+      scaleBounds,
+    )
+    // Width is the tight axis: (1000 - 96) / 2000.
+    expect(view.scale).toBeCloseTo(0.452, 10)
+    // Content center lands on the viewport center.
+    expect(view.tx + 1000 * view.scale).toBeCloseTo(500, 10)
+    expect(view.ty + 200 * view.scale).toBeCloseTo(400, 10)
+  })
+
+  it('never zooms in past 1:1 for small content', () => {
+    const view = fitViewToBounds(
+      { x: 10, y: 10, w: 100, h: 80 },
+      viewport,
+      48,
+      scaleBounds,
+    )
+    expect(view.scale).toBe(1)
+  })
+
+  it('goes below the wheel-zoom floor when that is what fitting takes', () => {
+    const view = fitViewToBounds(
+      { x: 0, y: 0, w: 1e6, h: 1e6 },
+      viewport,
+      48,
+      scaleBounds,
+    )
+    expect(view.scale).toBeCloseTo((800 - 96) / 1e6, 10)
+    expect(view.scale).toBeLessThan(scaleBounds.min)
   })
 })

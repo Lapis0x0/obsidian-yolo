@@ -138,6 +138,58 @@ export function screenToWorld(
   }
 }
 
+export type WorldRect = Readonly<{ x: number; y: number; w: number; h: number }>
+
+/** Smallest rect covering all of `rects`; null when there are none. */
+export function unionRect(rects: readonly WorldRect[]): WorldRect | null {
+  if (rects.length === 0) return null
+  let minX = Infinity
+  let minY = Infinity
+  let maxX = -Infinity
+  let maxY = -Infinity
+  for (const r of rects) {
+    minX = Math.min(minX, r.x)
+    minY = Math.min(minY, r.y)
+    maxX = Math.max(maxX, r.x + r.w)
+    maxY = Math.max(maxY, r.y + r.h)
+  }
+  return { x: minX, y: minY, w: maxX - minX, h: maxY - minY }
+}
+
+/**
+ * The view that centers `bounds` in a viewport of the given size, zoomed out
+ * just enough to fit with `paddingPx` of screen space on every side.
+ *
+ * Fitting never zooms *in* past 1:1 — matching Obsidian Canvas, where
+ * zoom-to-fit on a single small card frames it at natural size rather than
+ * blowing it up. It may however zoom *out* below `scaleBounds.min`: that
+ * floor bounds interactive wheel zoom, but the whole point of fit-to-all is
+ * to frame content however far it is spread — stopping at the floor would
+ * center a wide board with every cluster off screen.
+ */
+export function fitViewToBounds(
+  bounds: WorldRect,
+  viewport: Readonly<{ width: number; height: number }>,
+  paddingPx: number,
+  scaleBounds: ScaleBounds,
+): CanvasView {
+  const availW = Math.max(1, viewport.width - paddingPx * 2)
+  const availH = Math.max(1, viewport.height - paddingPx * 2)
+  const raw = Math.min(
+    availW / Math.max(1, bounds.w),
+    availH / Math.max(1, bounds.h),
+    1,
+  )
+  const scale = Number.isFinite(raw)
+    ? Math.min(raw, scaleBounds.max)
+    : scaleBounds.min
+  return {
+    tx: (viewport.width - bounds.w * scale) / 2 - bounds.x * scale,
+    ty: (viewport.height - bounds.h * scale) / 2 - bounds.y * scale,
+    scale,
+  }
+}
+
 /** `.yoloboard`'s persisted `camera` field -> the canvas's live view state. */
 export function viewFromCamera(camera: Camera): CanvasView {
   return { tx: camera.x, ty: camera.y, scale: camera.scale }

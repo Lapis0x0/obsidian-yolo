@@ -24,9 +24,11 @@ import {
   approachScale,
   cameraFromView,
   dragPan,
+  fitViewToBounds,
   panByWheel,
   scaleAfterWheel,
   screenToWorld,
+  unionRect,
   viewAnchoredAt,
   viewFromCamera,
 } from '../domain/camera'
@@ -103,6 +105,7 @@ import {
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
   EDIT_PERSIST_THROTTLE_MS,
+  FIT_CAMERA_PADDING_PX,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
@@ -1977,12 +1980,56 @@ export class WhiteboardCanvas {
     }
     const undo = run(() => this.undo())
     const redo = run(() => this.redo())
+    // Obsidian Canvas's camera keys. Zoom-to-selection declines (falls
+    // through to Obsidian) when nothing is selected, same as Canvas.
+    const fitAll = () => {
+      if (this.editing) return false
+      return this.fitCameraToNodes(this.board.nodes)
+    }
+    const fitSelection = () => {
+      if (this.editing) return false
+      const selected = this.board.nodes.filter((node) =>
+        this.selectedIds.has(node.id),
+      )
+      if (selected.length === 0) return false
+      return this.fitCameraToNodes(selected)
+    }
     this.viewKeymapDisposer = this.context.registerKeymap([
       { modifiers: ['Mod'], key: 'Z', handler: undo },
       { modifiers: ['Mod', 'Shift'], key: 'Z', handler: redo },
       // Windows' second redo binding, which Obsidian Canvas also carries.
       { modifiers: ['Mod'], key: 'Y', handler: redo },
+      { modifiers: ['Shift'], key: '1', handler: fitAll },
+      { modifiers: ['Shift'], key: '2', handler: fitSelection },
     ])
+  }
+
+  /** Jumps the camera to frame `nodes` (zoom to fit / zoom to selection).
+   * A deliberate teleport, not a glide: the destination can be tens of
+   * thousands of pixels away, where an animated transit is pure noise. */
+  private fitCameraToNodes(nodes: readonly BoardNode[]): boolean {
+    const bounds = unionRect(
+      nodes.map((node) => ({
+        x: node.x,
+        y: node.y,
+        w: node.w,
+        h: node.h,
+      })),
+    )
+    if (!bounds) return false
+    const rect = this.viewportEl.getBoundingClientRect()
+    this.zoomGlide = null
+    this.lastGlideTime = null
+    this.view = fitViewToBounds(
+      bounds,
+      { width: rect.width, height: rect.height },
+      FIT_CAMERA_PADDING_PX,
+      SCALE_BOUNDS,
+    )
+    this.applyTransform()
+    this.markInteracting()
+    this.commitCameraNow()
+    return true
   }
 
   // -----------------------------------------------------------------------
