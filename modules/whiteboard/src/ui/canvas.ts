@@ -143,6 +143,8 @@ import {
   FIT_CAMERA_PADDING_PX,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
+  GROUP_LABEL_CENTER_OFFSET_PX,
+  GROUP_LABEL_INSET_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
   MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
@@ -502,6 +504,20 @@ export class WhiteboardCanvas {
   private editSessionCounter = 0
 
   private view: CanvasView = { tx: 0, ty: 0, scale: 1 }
+  /**
+   * What the last press landed on — the only trustworthy answer to "what was
+   * clicked" this canvas has.
+   *
+   * Every drag it starts captures the pointer on the viewport, and capture
+   * retargets the mouse events synthesised afterwards: measured in a real
+   * window, `click` and `dblclick` arrive naming `.yolo-whiteboard-viewport`
+   * and never the element that was actually pressed. `pointerdown` is the
+   * last event that still names it. (Obsidian Canvas keeps no such record
+   * because it never captures — it tracks its drags on the window instead —
+   * which is why its own double-click can simply ask whether `e.target` is
+   * the canvas surface.)
+   */
+  private pressedTarget: EventTarget | null = null
   private interaction: Interaction | null = null
   private editing: EditingState | null = null
 
@@ -1062,6 +1078,9 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   private readonly onPointerDown = (e: PointerEvent): void => {
+    // Recorded before any early return: this is the record of what was
+    // pressed, not of what the press went on to do (see `pressedTarget`).
+    this.pressedTarget = e.target
     if (this.parseFailed) return
     // The toolbar and the edge-label field sit above the canvas in the same
     // viewport element these listeners are on: a press on one of them is not
@@ -1129,33 +1148,44 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Double-click on empty canvas creates a card.
+   * Double-click opens whatever was double-clicked: a card's editor, a group's
+   * or an edge's label field — and only on the board's own surface, a new card.
    *
    * `dblclick` rather than a click counter read off `pointerdown`: measured
    * in a real Obsidian window, `pointerdown.detail` is 0 on both presses of
    * a double-click (only `mousedown` carries the count), while `dblclick`
    * arrives intact — the marquee's pointer capture, the reason for doubting
-   * it, does not suppress it.
+   * it, does not suppress it. What it does suppress is the event's own
+   * `target`, so every question below is asked of `pressedTarget` instead.
    */
   private readonly onDoubleClick = (e: MouseEvent): void => {
     if (this.parseFailed) return
-    if (this.isOverlayTarget(e.target)) return
+    const target = this.pressedTarget
+    if (this.isOverlayTarget(target)) return
     // A group's label is the one part of a group a pointer can reach (the
     // frame itself is pointer-transparent — see style.css), and double-clicking
     // it renames the group. Obsidian Canvas puts the same gesture on the same
     // element, wiring its label's `dblclick` straight to `focusLabel`.
-    const groupId = this.groupLabelIdFromEventTarget(e.target)
+    const groupId = this.groupLabelIdFromEventTarget(target)
     if (groupId !== null) {
       this.openGroupLabelEditor(groupId)
       return
     }
+    // An edge carries its label on the line, so the line is where one asks
+    // for it — the same gesture the toolbar's "label" button performs.
+    const edgeId = this.edgeIdFromEventTarget(target)
+    if (edgeId !== null) {
+      this.openEdgeLabelEditor(edgeId)
+      return
+    }
     const world = this.worldPointFromEvent(e)
-    // Which card this landed on has to come from geometry, not from
-    // `e.target`: the press that preceded it captured the pointer on the
-    // viewport, and capture retargets every mouse event after it to the
-    // capturing element — measured in a real window, `dblclick` on a card
-    // arrives naming `.yolo-whiteboard-viewport`, never the card.
-    const nodeId = nodeAtPoint(this.cardNodes, world)
+    // Geometry first, DOM second: the interaction layer stands in front of
+    // the card it is parked on, so a double-click over a resize handle or a
+    // connection point names the layer and only the point resolves it; and a
+    // card's title hangs above its frame, outside the rect geometry knows
+    // about, so only the DOM resolves that.
+    const nodeId =
+      nodeAtPoint(this.cardNodes, world) ?? this.nodeIdFromEventTarget(target)
     if (nodeId !== null) {
       // Inside the editor this is a word selection, not a request to open
       // what is already open.
@@ -1163,6 +1193,12 @@ export class WhiteboardCanvas {
       this.editCard(nodeId)
       return
     }
+    // Creating is what a double-click on *nothing* means, so it needs the
+    // press to have landed on the board itself — Obsidian Canvas's own guard
+    // (`if (e.targetNode !== this.wrapperEl) return`). Without it every
+    // element this method declined to handle would fall through to creating
+    // a stray card.
+    if (target !== this.viewportEl && target !== this.worldEl) return
     this.createTextCardAt(world)
   }
 
@@ -2072,10 +2108,18 @@ export class WhiteboardCanvas {
     return NODE_SIDES.find((candidate) => candidate === side) ?? null
   }
 
+  /** The edge a press landed on — its hit path, or the label riding on it.
+   * The label is part of the edge and answers as one: pressing it selects and
+   * drags that edge, double-clicking it edits the label it already shows. */
   private edgeIdFromEventTarget(target: EventTarget | null): EdgeId | null {
     if (!(target instanceof Element)) return null
-    if (!target.classList.contains(EDGE_HIT_CLASS)) return null
-    return (target as SVGPathElement).dataset.edgeId ?? null
+    if (
+      !target.classList.contains(EDGE_HIT_CLASS) &&
+      !target.classList.contains(EDGE_LABEL_CLASS)
+    ) {
+      return null
+    }
+    return (target as SVGElement).dataset.edgeId ?? null
   }
 
   /** False when the card the layer was parked on is gone, so the caller can
@@ -3212,24 +3256,31 @@ export class WhiteboardCanvas {
   private positionLabelInput(): void {
     const session = this.labelSession
     if (!session) return
-    const point =
-      session.target.kind === 'edge'
-        ? this.edgeAnchorPoint(session.target.id)
-        : this.groupLabelAnchorPoint(session.target.id)
+    const isEdge = session.target.kind === 'edge'
+    const point = isEdge
+      ? this.edgeAnchorPoint(session.target.id)
+      : this.groupLabelAnchorPoint(session.target.id)
     if (!point) return
-    session.input.place({
-      x: point.x * this.view.scale + this.view.tx,
-      y: point.y * this.view.scale + this.view.ty,
-    })
+    session.input.place(
+      {
+        x: point.x * this.view.scale + this.view.tx,
+        y: point.y * this.view.scale + this.view.ty,
+      },
+      // An edge label is centred on its curve; a group label starts at the
+      // point below, so the field that stands in for it does too.
+      isEdge ? 'center' : 'left',
+    )
   }
 
-  /** Where a group's label sits: just inside its top-left corner, offset by
-   * half the field so `InlineTextInput`'s own centring lands it over the
-   * label row rather than on the corner. */
+  /** Where a group's label starts: just above its top edge, indented from its
+   * left one — the two offsets style.css lays the label out with. */
   private groupLabelAnchorPoint(nodeId: NodeId): ScreenPoint | null {
     const group = this.nodesById.get(nodeId)
     if (!group) return null
-    return { x: group.x + group.w / 2, y: group.y }
+    return {
+      x: group.x + GROUP_LABEL_INSET_PX,
+      y: group.y - GROUP_LABEL_CENTER_OFFSET_PX,
+    }
   }
 
   /** An empty group label removes the attribute rather than storing `""` —
@@ -4005,16 +4056,24 @@ export class WhiteboardCanvas {
     // naming it), and a web card its URL — the only thing about a page we can
     // know without asking the page.
     //
-    // It stays through edit mode, which is where this parts ways with
-    // Obsidian Canvas: Canvas's in-card title is the embed's own inline
-    // title, so it disappears the moment the embed is swapped for an editor
-    // (measured), and Canvas covers that with a second label outside the
-    // card. One title that never moves beats two that take turns.
+    // Drawn *above* the card, not in it (style.css), and there through edit
+    // mode. Obsidian Canvas shows the same name twice: a label above the node
+    // and, inside it, the embed's own inline title — which disappears the
+    // moment the embed is swapped for an editor (measured). One title that
+    // never moves beats two that take turns, and outside is where it belongs,
+    // because a name that came from outside the content is a label on the box
+    // rather than a line of it.
+    //
+    // A text card gets none: its first line is its own title, and repeating
+    // it above the card would be the duplication this arrangement exists to
+    // avoid.
     //
     // Canvas replaces a link node's URL with the page's own title once the
     // webview reports one; a sandboxed cross-origin iframe never will, so the
-    // URL is what the card says. Also a drag handle: a focused web card's body
-    // belongs to the page (see the content mask), and this row does not.
+    // URL is what the card says. Also a drag handle — a focused web card's
+    // body belongs to the page (see the content mask) and this does not, and
+    // it stays one from outside the box because hit-testing walks the DOM
+    // (`nodeIdFromEventTarget`), not the geometry.
     const chromeTitle =
       node.type === 'file'
         ? basenameWithoutExtension(node.file)
@@ -4524,6 +4583,7 @@ export class WhiteboardCanvas {
     if (edge.label && edge.label.trim().length > 0) {
       label = doc.createElementNS(SVG_NS, 'text')
       label.setAttribute('class', EDGE_LABEL_CLASS)
+      label.dataset.edgeId = edge.id
       label.setAttribute('text-anchor', 'middle')
       label.setAttribute('dominant-baseline', 'middle')
       label.textContent = edge.label

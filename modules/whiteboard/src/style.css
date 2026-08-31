@@ -130,7 +130,12 @@
 
 .yolo-whiteboard-card {
   position: absolute;
-  overflow: hidden;
+  /* The card does not clip: its title hangs above it (see
+   * .yolo-whiteboard-card-title). Clipping moved to the two children that
+   * fill the box, which is where it was doing the work anyway — the body and
+   * the degraded block both take the card's radius so content still stops at
+   * the rounded corners. */
+  overflow: visible;
   display: flex;
   flex-direction: column;
   border: 1px solid var(--background-modifier-border);
@@ -143,7 +148,10 @@
    * opaque fill and border alone, and --shadow-s at card scale is a heavy
    * halo that turns a dense board into visual noise. box-shadow stays
    * reserved for the selected/editing/dragging rings below. */
-  contain: layout style paint;
+  /* `paint` would clip to the border box exactly as overflow did, title
+   * included; layout and style containment are what the dense-board budget
+   * actually wanted. */
+  contain: layout style;
   cursor: grab;
 }
 
@@ -242,11 +250,14 @@
   z-index: -1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  /* The label sits above the frame, so neither overflow nor `paint`
+   * containment may clip to the border box. A group has no content of its
+   * own to spill, so nothing is lost by it. */
+  overflow: visible;
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l, 10px);
   background: color-mix(in oklch, var(--yolo-whiteboard-color) 8%, transparent);
-  contain: layout style paint;
+  contain: layout style;
   pointer-events: none;
 }
 
@@ -274,8 +285,15 @@
  * a group's label belongs to the group, so it shrinks with it rather than
  * being counter-scaled into a constant screen size. */
 .yolo-whiteboard-group-label {
-  flex: 0 0 auto;
-  padding: 6px 12px;
+  /* Above the frame, not in it — the same rule a card's title follows, and
+   * for a group it also gives back the strip of interior the label used to
+   * cover, which was interior a card could be dropped into. */
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 1px);
+  /* Vertical slop only: the text is the handle, and horizontal padding would
+   * push it out of line with a card title's left edge. */
+  padding: 2px 0;
   overflow: hidden;
   font-size: 20px;
   font-weight: 600;
@@ -286,9 +304,9 @@
   /* The group's only handle: what selects it, what drags it (carrying the
    * nodes inside), and what a double-click renames. */
   pointer-events: auto;
-  /* `max-content` rather than the label's full row: an empty or short label
-   * should not make the whole width of the frame grabbable, or the frame's
-   * pointer-transparency would be undone along its top edge. */
+  /* `max-content` rather than the frame's full width: an empty or short label
+   * should not make a grabbable bar the length of the group, in a band the
+   * pointer otherwise passes straight through. */
   width: max-content;
   max-width: 100%;
   min-width: 2em;
@@ -508,21 +526,35 @@
 }
 
 /* A file-backed card's title (ui/canvas.ts's mountCard): its file's name,
- * drawn as chrome above the body in both the reading and the editing state.
+ * drawn above the card rather than inside it.
  *
- * Sized and weighted like a heading rather than like a label, because that
- * is what it is — the note's title, which just happens to live in the file
- * name instead of in the text. */
+ * Outside, because the card's box is for the card's content. A name that
+ * comes from outside the content — a file name, a URL — is a label on the
+ * box, not a line of it: inside, it spends the card's scarcest resource
+ * (height) on something the body will often say again in its own first
+ * heading, and it makes a note on the board look unlike the same note
+ * anywhere else in Obsidian.
+ *
+ * Obsidian Canvas draws a label here too, but keeps its embed's inline title
+ * inside as well, so the same name appears twice. Ours appears once, and the
+ * degraded block below is the same title in the one state where a label this
+ * small would be unreadable — hence the rule that hides this one there.
+ *
+ * Still a child of the node element, so `closest('[data-node-id]')` resolves
+ * a press on it to the card: this row is a drag handle, and for a web card
+ * whose body belongs to the page it is the only one. */
 .yolo-whiteboard-card-title {
-  flex: 0 0 auto;
-  padding: 8px 10px 4px;
+  position: absolute;
+  left: 2px;
+  bottom: calc(100% + 3px);
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   line-height: 1.3;
-  color: var(--text-normal);
+  color: var(--text-muted);
 }
 
 /* An editing card puts a text cursor over itself, but the title is chrome and
@@ -544,6 +576,8 @@
   flex: 1 1 auto;
   min-height: 0;
   overflow: hidden;
+  /* The card no longer clips, so the box that fills it has to. */
+  border-radius: inherit;
   font-size: 13px;
 }
 
@@ -724,6 +758,8 @@
  * stays this faint — 10% of a mid grey, not of black. */
 .yolo-whiteboard-card-degraded-title {
   display: none;
+  /* Fills the card, which no longer clips for it. */
+  border-radius: inherit;
   align-items: center;
   justify-content: center;
   height: 100%;
@@ -888,6 +924,16 @@
   stroke: var(--background-primary);
   stroke-width: 3px;
   stroke-linejoin: round;
+  /* Reachable like the hit path under it (the svg is pointer-transparent):
+   * the label is part of its edge, so pressing it grabs that edge. Without
+   * this, a label wider than the hit stroke has dead ends hanging off the
+   * line. */
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.yolo-whiteboard-edge-label:active {
+  cursor: grabbing;
 }
 
 /* --- selection toolbar (P3 batch 3) --------------------------------------

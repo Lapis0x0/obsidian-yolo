@@ -18,6 +18,10 @@ import type { ScreenPoint } from '../domain/camera'
 
 const INPUT_CLASS = 'yolo-whiteboard-inline-input'
 
+/** Which corner of the field the point it is placed at refers to — see
+ * `place`. */
+export type InlineTextInputAlign = 'center' | 'left'
+
 export type InlineTextInputOptions = Readonly<{
   value: string
   placeholder: string
@@ -61,11 +65,18 @@ export class InlineTextInput {
     input.select()
   }
 
-  place(point: ScreenPoint): void {
-    // The second translate centres the field on the point (the edge's own
-    // label anchor). It is written here rather than in the stylesheet because
-    // a `transform` written from script replaces the whole property.
-    this.el.style.transform = `translate(${point.x}px, ${point.y}px) translate(-50%, -50%)`
+  /**
+   * Puts the field on `point`, sitting on it the way the label it stands in
+   * for sits on the same point: centred for an edge label (which is centred
+   * on its curve), starting at it for a group label (which is left-aligned
+   * above its frame).
+   */
+  place(point: ScreenPoint, align: InlineTextInputAlign = 'center'): void {
+    // The second translate is what applies that alignment. It is written here
+    // rather than in the stylesheet because a `transform` written from script
+    // replaces the whole property.
+    const origin = align === 'left' ? '0, -50%' : '-50%, -50%'
+    this.el.style.transform = `translate(${point.x}px, ${point.y}px) translate(${origin})`
   }
 
   contains(node: Node): boolean {

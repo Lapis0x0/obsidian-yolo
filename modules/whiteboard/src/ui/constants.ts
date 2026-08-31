@@ -18,6 +18,22 @@ export const WHEEL_DELTA_PER_ZOOM_DOUBLING = 300
  * nodes or to the selection (Shift+1 / Shift+2). */
 export const FIT_CAMERA_PADDING_PX = 48
 
+/**
+ * World-space distance from a group's top edge up to the middle of its label,
+ * which sits above the frame (style.css's `.yolo-whiteboard-group-label`).
+ *
+ * Read off that rule: 1px gap + 2px padding + half of a 20px/1.3 line box.
+ * The rename field is centred on the point this yields, so it lands over the
+ * label it replaces; nothing else measures the label, and measuring it per
+ * camera frame to avoid one constant would be a layout read on the hot path.
+ */
+export const GROUP_LABEL_CENTER_OFFSET_PX = 16
+
+/** World-space indent of that label from the group's left edge — the other
+ * half of the same rule's placement, and the point the rename field starts
+ * at (it is left-aligned above the frame, not centred on it). */
+export const GROUP_LABEL_INSET_PX = 2
+
 /** Time constant of the glide the camera takes toward where a gesture asked
  * it to go, rather than snapping there. Measured off Obsidian Canvas by
  * sampling its transform every frame through one wheel notch: the remaining
