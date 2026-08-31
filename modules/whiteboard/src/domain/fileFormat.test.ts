@@ -163,6 +163,37 @@ describe('parseBoard / serializeBoard', () => {
     expect(board.nodes[0]).toMatchObject({ type: 'group' })
   })
 
+  describe('locked', () => {
+    it('round-trips a locked board', () => {
+      const raw = JSON.stringify({ version: 1, locked: true, nodes: [] })
+      const board = requireOk(parseBoard(raw))
+      expect(board.locked).toBe(true)
+      expect(JSON.parse(serializeBoard(board)).locked).toBe(true)
+    })
+
+    it('omits the field entirely for an unlocked board', () => {
+      const board = requireOk(parseBoard(JSON.stringify({ version: 1 })))
+      expect(board.locked).toBeUndefined()
+      expect('locked' in JSON.parse(serializeBoard(board))).toBe(false)
+    })
+
+    it('does not treat `locked` as an unknown field', () => {
+      const board = requireOk(
+        parseBoard(JSON.stringify({ version: 1, locked: true })),
+      )
+      expect(board.extra).toEqual({})
+    })
+
+    it('opens editable when the value is anything but a literal true', () => {
+      for (const value of [false, 'true', 1, null, {}]) {
+        const board = requireOk(
+          parseBoard(JSON.stringify({ version: 1, locked: value })),
+        )
+        expect(board.locked).toBeUndefined()
+      }
+    })
+  })
+
   describe('unknown-field forward compatibility', () => {
     it('preserves and round-trips unknown fields at the file, node, and edge level', () => {
       const raw = JSON.stringify({

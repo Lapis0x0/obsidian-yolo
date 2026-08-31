@@ -21,6 +21,14 @@
 // BrowserWindow, which has its own realm.
 
 import {
+  ALIGN_EDGES,
+  type AlignEdge,
+  DISTRIBUTE_AXES,
+  type DistributeAxis,
+  alignRects,
+  distributeRects,
+} from '../domain/arrange'
+import {
   approachScale,
   cameraFromView,
   dragPan,
@@ -54,9 +62,12 @@ import {
   type Board,
   type BoardNode,
   type BoardParseIssue,
+  DEFAULT_CAMERA,
   type Edge,
   type EdgeId,
   type FileNode,
+  type GroupNode,
+  type LinkNode,
   type NodeColor,
   type NodeId,
   type NodeSide,
@@ -65,12 +76,18 @@ import {
   parseBoard,
   serializeBoard,
 } from '../domain/fileFormat'
+import {
+  groupRectForNodes,
+  nodesInsideGroup,
+  nodesToDragWith,
+} from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import {
   type FileNodeKind,
   basenameWithoutExtension,
   cardNoteContent,
   fileNodeKind,
+  folderPathOf,
   generateCardNoteFileName,
   isMarkdownPath,
 } from '../domain/naming'
@@ -81,6 +98,7 @@ import {
   removeEdge,
   removeNode,
   replaceNode,
+  setNodePositions,
   updateEdge,
   updateNode,
 } from '../domain/operations'
@@ -104,8 +122,10 @@ import {
   VirtualizationEngine,
   computeWorldViewportRect,
 } from '../domain/virtualization'
+import { takePendingFit } from '../host/pendingFit'
 import { createWhiteboardTranslation } from '../i18n'
 
+import { CardMenu } from './cardMenu'
 import {
   CAMERA_SETTLE_MS,
   CONNECT_SNAP_WORLD_PX,
@@ -135,6 +155,11 @@ import {
 import { InlineTextInput } from './inlineTextInput'
 import { degradedNodeTitle, nextDegradedState } from './lod'
 import {
+  PromptOverlay,
+  type PromptOverlayOptions,
+  type PromptSuggestion,
+} from './promptOverlay'
+import {
   SelectionToolbar,
   type ToolbarAction,
   type ToolbarModel,
@@ -150,6 +175,54 @@ const ARROW_MENU_KEYS: Readonly<Record<ArrowDirection, string>> = {
   backward: 'menu.arrowBackward',
   both: 'menu.arrowBoth',
 }
+
+/** i18n key and icon per alignment (domain/arrange.ts's `AlignEdge`). */
+const ALIGN_MENU: Readonly<
+  Record<AlignEdge, Readonly<{ key: string; icon: string }>>
+> = {
+  left: { key: 'menu.alignLeft', icon: 'align-start-vertical' },
+  center: { key: 'menu.alignCenter', icon: 'align-center-vertical' },
+  right: { key: 'menu.alignRight', icon: 'align-end-vertical' },
+  top: { key: 'menu.alignTop', icon: 'align-start-horizontal' },
+  middle: { key: 'menu.alignMiddle', icon: 'align-center-horizontal' },
+  bottom: { key: 'menu.alignBottom', icon: 'align-end-horizontal' },
+}
+
+const DISTRIBUTE_MENU: Readonly<
+  Record<DistributeAxis, Readonly<{ key: string; icon: string }>>
+> = {
+  horizontal: {
+    key: 'menu.distributeHorizontal',
+    icon: 'align-horizontal-distribute-center',
+  },
+  vertical: {
+    key: 'menu.distributeVertical',
+    icon: 'align-vertical-distribute-center',
+  },
+}
+
+/**
+ * Size of a group created around a selection is derived from that selection
+ * (domain/groups.ts), so this is only the fallback a group gets when it is
+ * created around nothing — which cannot happen today, but keeps the geometry
+ * total.
+ */
+const MIN_GROUP_SIZE = Object.freeze({ w: 200, h: 160 })
+
+/**
+ * How many web cards keep a live page while off screen (p3-canvas-parity §六's
+ * D13 scope revision).
+ *
+ * An `<iframe>` removed from the document tree loses its browsing context, and
+ * re-inserting it reloads the page from the top — every scroll position, form
+ * field and session in it gone. So a web card that scrolls out of the viewport
+ * is hidden rather than destroyed. Each survivor is a whole live page (its own
+ * JavaScript, timers, sockets and media), which is why the pool is small: six
+ * background pages is already a real cost, and a board with more than six web
+ * cards in play at once is not the case this exists for. Past the cap the
+ * least-recently-seen card is destroyed for real.
+ */
+const WEB_FRAME_POOL_CAPACITY = 6
 
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
@@ -184,6 +257,12 @@ const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
   'yolo-whiteboard-card-unsupported-placeholder'
 const GROUP_CLASS = 'yolo-whiteboard-group'
 const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
+/** A web card parked in the hidden pool: out of the viewport, out of sight,
+ * still in the document so its page stays alive. See WEB_FRAME_POOL_CAPACITY. */
+const CARD_POOLED_CLASS = 'yolo-whiteboard-card-pooled'
+/** On the root while `board.locked` — what the stylesheet keys the read-only
+ * treatment off, mirroring Obsidian Canvas's `mod-readonly`. */
+const LOCKED_CLASS = 'yolo-whiteboard-locked'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -245,6 +324,13 @@ type NodeRuntime = {
    * the body holds nothing that needs releasing.
    */
   releaseContent: (() => void) | null
+  /**
+   * The URL this card's live web frame was built for, or null when its body
+   * holds anything else. Set only for web cards, and the flag that decides
+   * whether an unmount parks the card in the hidden pool instead of tearing it
+   * down (see WEB_FRAME_POOL_CAPACITY and `unmountNode`).
+   */
+  webFrameUrl: string | null
   missingFile: boolean
   /** Last known content for a *note* card (its backing file's text), cached
    * because note-card content never lives in `board` (p1-design §1.2) — this
@@ -285,6 +371,11 @@ type MarqueeInteraction = Readonly<{
   kind: 'marquee'
   originLocal: ScreenPoint
   originClient: ScreenPoint
+  /** Shift was held at press: the band adds to the selection rather than
+   * replacing it, and `baseIds` is what it adds to. Snapshotted here because
+   * the live selection is cleared as the band is drawn. */
+  additive: boolean
+  baseIds: readonly NodeId[]
 }>
 
 /**
@@ -299,6 +390,9 @@ type NodeInteraction = {
   readonly kind: 'card'
   readonly nodeId: NodeId
   readonly startClient: ScreenPoint
+  /** Shift was held: a press that never moves toggles this card in and out of
+   * the selection instead of replacing it. */
+  readonly additive: boolean
   dragging: boolean
   ids: NodeId[]
   readonly startPositions: Map<NodeId, Readonly<{ x: number; y: number }>>
@@ -439,11 +533,35 @@ export class WhiteboardCanvas {
    * connect) — Obsidian Canvas hides its menu the same way, and a toolbar that
    * follows a card being dragged is a toolbar in the way. */
   private toolbarSuppressed = false
-  /** The edge whose label is being typed, and the field it is typed in. */
-  private edgeLabelSession: Readonly<{
-    edgeId: EdgeId
+  /**
+   * The label being typed and the field it is typed in — an edge's, or a
+   * group's.
+   *
+   * One session rather than one per kind: only one label can be edited at a
+   * time, both hang a one-line field off a point on the board, and both have
+   * to hold off the selection's keymap scope while they have the caret. What
+   * differs is only where the field sits and what the text is committed to,
+   * which is what `target` selects.
+   */
+  private labelSession: Readonly<{
+    target:
+      | Readonly<{ kind: 'edge'; id: EdgeId }>
+      | Readonly<{ kind: 'group'; id: NodeId }>
     input: InlineTextInput
   }> | null = null
+
+  // Creation surfaces (P3 batch 3 wave B): the bottom bar, and the panel that
+  // asks which file or what URL before a card can be made.
+  private cardMenu: CardMenu | null = null
+  private prompt: PromptOverlay | null = null
+
+  /**
+   * Web cards holding a live page while off screen, least-recently-seen
+   * first: a Set iterates in insertion order, and every re-park deletes before
+   * it adds, so the iteration order *is* the LRU order and the first entry is
+   * always the one to evict. See WEB_FRAME_POOL_CAPACITY.
+   */
+  private readonly webFramePool = new Set<NodeId>()
 
   // Resize (W3-C): one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
@@ -566,10 +684,18 @@ export class WhiteboardCanvas {
     this.zoomGlide = null
     this.lastGlideTime = null
     this.applyTransform()
+    this.applyLockedState()
     // Cards were all torn down above: whatever the layer was parked on is
     // either gone or somewhere else now.
     this.refreshInteractionLayer()
     this.showCanvas()
+    // A board that has just been imported has never been framed against a real
+    // viewport; this is the one open where its stored camera is a placeholder
+    // rather than where the user left off (host/pendingFit.ts). Done after
+    // showCanvas so the viewport has its real size to fit against.
+    if (takePendingFit(this.sourcePathForBoard())) {
+      this.fitCameraToNodes(this.board.nodes)
+    }
     this.recomputeVisibility()
     this.drainQueues()
   }
@@ -623,7 +749,7 @@ export class WhiteboardCanvas {
     this.drainQueues()
     // The toolbar is clamped against the viewport's size, which just changed.
     this.positionToolbar()
-    this.positionEdgeLabelInput()
+    this.positionLabelInput()
   }
 
   /**
@@ -664,8 +790,12 @@ export class WhiteboardCanvas {
     this.viewKeymapDisposer?.()
     this.viewKeymapDisposer = null
 
-    this.edgeLabelSession?.input.close()
-    this.edgeLabelSession = null
+    this.labelSession?.input.close()
+    this.labelSession = null
+    this.prompt?.close()
+    this.prompt = null
+    this.cardMenu?.destroy()
+    this.cardMenu = null
     this.toolbar?.destroy()
     this.toolbar = null
     this.teardownAllCards()
@@ -788,6 +918,32 @@ export class WhiteboardCanvas {
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
     this.toolbar = new SelectionToolbar(doc, viewport)
+    // The creation bar and the file/URL prompt live in the toolbar's overlay
+    // layer, which exists for exactly this (see SelectionToolbar.overlay): one
+    // `isOverlayTarget` check then keeps a press on any of this chrome from
+    // also being a press on the board behind it.
+    this.cardMenu = new CardMenu(doc, this.toolbar.overlay, [
+      {
+        label: this.t('cardMenu.newCard'),
+        icon: 'sticky-note',
+        onSelect: () => this.createTextCardAt(this.viewportCenterWorld()),
+      },
+      {
+        label: this.t('cardMenu.addNote'),
+        icon: 'file-text',
+        onSelect: () => this.promptForNoteCard(),
+      },
+      {
+        label: this.t('cardMenu.addMedia'),
+        icon: 'file-image',
+        onSelect: () => this.promptForMediaCard(),
+      },
+      {
+        label: this.t('cardMenu.newWebCard'),
+        icon: 'external-link',
+        onSelect: () => this.promptForWebCard(),
+      },
+    ])
     // A freshly built world element carries none of the old one's inline
     // custom properties, so both handle variables have to be written again.
     // The size is pushed from here rather than hard-coded in the stylesheet
@@ -929,6 +1085,7 @@ export class WhiteboardCanvas {
         kind: 'card',
         nodeId,
         startClient: { x: e.clientX, y: e.clientY },
+        additive: e.shiftKey,
         dragging: false,
         ids: [],
         startPositions: new Map(),
@@ -962,6 +1119,15 @@ export class WhiteboardCanvas {
   private readonly onDoubleClick = (e: MouseEvent): void => {
     if (this.parseFailed) return
     if (this.isOverlayTarget(e.target)) return
+    // A group's label is the one part of a group a pointer can reach (the
+    // frame itself is pointer-transparent — see style.css), and double-clicking
+    // it renames the group. Obsidian Canvas puts the same gesture on the same
+    // element, wiring its label's `dblclick` straight to `focusLabel`.
+    const groupId = this.groupLabelIdFromEventTarget(e.target)
+    if (groupId !== null) {
+      this.openGroupLabelEditor(groupId)
+      return
+    }
     const world = this.worldPointFromEvent(e)
     // Which card this landed on has to come from geometry, not from
     // `e.target`: the press that preceded it captured the pointer on the
@@ -989,35 +1155,158 @@ export class WhiteboardCanvas {
     e.preventDefault()
 
     if (nodeId === null) {
-      const point = this.worldPointFromEvent(e)
-      this.host.ui.showMenu(e, [
-        {
-          title: this.t('menu.newCard'),
-          icon: 'plus',
-          onSelect: () => this.createTextCardAt(point),
-        },
-      ])
+      this.host.ui.showMenu(
+        e,
+        this.canvasMenuItems(this.worldPointFromEvent(e)),
+      )
       return
     }
 
     const card = this.nodesById.get(nodeId)
     if (!card) return
-    this.host.ui.showMenu(e, [
-      ...(card.type === 'text'
-        ? [
-            {
-              title: this.t('menu.convertToNote'),
-              icon: 'file-plus',
-              onSelect: () => this.convertCardToNote(nodeId),
-            },
-          ]
-        : []),
+    // A right-click on a card that is already part of the selection acts on
+    // the whole selection; on one that is not, it takes over the selection
+    // first, so what the menu will do is what the user can see is selected.
+    if (!this.selectedIds.has(nodeId)) this.setSelection([nodeId])
+    this.host.ui.showMenu(e, this.selectionMenuItems())
+  }
+
+  /**
+   * The empty-canvas menu: everything the creation bar offers, created at the
+   * point that was clicked rather than at the middle of the screen, plus the
+   * two board-wide actions that have nowhere else to live.
+   *
+   * Obsidian Canvas's `showCreationMenu(menu, pos, size)` is the same list
+   * (card / note / media / website), and its lock likewise appears as a
+   * checked item in a menu rather than as a control of its own.
+   */
+  private canvasMenuItems(point: ScreenPoint): YoloModuleHostMenuItemV1[] {
+    const creation: YoloModuleHostMenuItemV1[] = this.canCreate
+      ? [
+          {
+            title: this.t('menu.newCard'),
+            icon: 'sticky-note',
+            onSelect: () => this.createTextCardAt(point),
+          },
+          {
+            title: this.t('cardMenu.addNote'),
+            icon: 'file-text',
+            onSelect: () => this.promptForNoteCard(),
+          },
+          {
+            title: this.t('cardMenu.addMedia'),
+            icon: 'file-image',
+            onSelect: () => this.promptForMediaCard(),
+          },
+          {
+            title: this.t('cardMenu.newWebCard'),
+            icon: 'external-link',
+            onSelect: () => this.promptForWebCard(),
+          },
+          { kind: 'separator' },
+        ]
+      : []
+    return [
+      ...creation,
       {
+        title: this.t('menu.resetCamera'),
+        icon: 'locate-fixed',
+        onSelect: () => this.resetCamera(),
+      },
+      {
+        title: this.isLocked
+          ? this.t('menu.unlockBoard')
+          : this.t('menu.lockBoard'),
+        icon: this.isLocked ? 'lock-open' : 'lock',
+        onSelect: () => this.setLocked(!this.isLocked),
+      },
+    ]
+  }
+
+  /**
+   * What can be done to the current node selection — one list, shown both by a
+   * right-click on a selected card and by the floating toolbar's "more"
+   * button, so the two can never drift apart.
+   *
+   * Obsidian Canvas splits these across its selection context menu (delete,
+   * create group) and its floating menu's align submenu; with no submenus in
+   * the Host API's menu model, they become one list with separators, which is
+   * the same grouping Canvas gets from its `setSection` calls.
+   */
+  private selectionMenuItems(): YoloModuleHostMenuItemV1[] {
+    const ids = Array.from(this.selectedIds)
+    if (ids.length === 0) return []
+    const single = ids.length === 1 ? this.nodesById.get(ids[0]) : null
+    const items: YoloModuleHostMenuItemV1[] = []
+
+    if (this.canEdit && single?.type === 'text') {
+      items.push({
+        title: this.t('menu.convertToNote'),
+        icon: 'file-plus',
+        onSelect: () => this.convertCardToNote(single.id),
+      })
+    }
+    if (this.canEdit && ids.length > 1) {
+      items.push({
+        title: this.t('menu.createGroup'),
+        icon: 'group',
+        onSelect: () => this.createGroupFromSelection(),
+      })
+    }
+
+    // Aligning needs at least two things to agree on a line; distributing
+    // needs at least three, so there is a gap to divide (domain/arrange.ts).
+    const targets = this.arrangeTargets().length
+    if (this.canEdit && targets > 1) {
+      items.push({ kind: 'separator' })
+      for (const edge of ALIGN_EDGES) {
+        items.push({
+          title: this.t(ALIGN_MENU[edge].key),
+          icon: ALIGN_MENU[edge].icon,
+          onSelect: () => this.alignSelection(edge),
+        })
+      }
+    }
+    if (this.canEdit && targets > 2) {
+      items.push({ kind: 'separator' })
+      for (const axis of DISTRIBUTE_AXES) {
+        items.push({
+          title: this.t(DISTRIBUTE_MENU[axis].key),
+          icon: DISTRIBUTE_MENU[axis].icon,
+          onSelect: () => this.distributeSelection(axis),
+        })
+      }
+    }
+
+    if (single?.type === 'group') {
+      items.push({ kind: 'separator' })
+      items.push({
+        title: this.t('menu.zoomToSelection'),
+        icon: 'zoom-in',
+        onSelect: () => {
+          this.fitCameraToNodes(
+            this.board.nodes.filter((node) => this.selectedIds.has(node.id)),
+          )
+        },
+      })
+      if (this.canEdit) {
+        items.push({
+          title: this.t('menu.renameGroup'),
+          icon: 'pencil',
+          onSelect: () => this.openGroupLabelEditor(single.id),
+        })
+      }
+    }
+
+    if (this.canEdit) {
+      items.push({ kind: 'separator' })
+      items.push({
         title: this.t('menu.deleteCard'),
         icon: 'trash-2',
-        onSelect: () => this.deleteNodes([nodeId]),
-      },
-    ])
+        onSelect: () => this.deleteNodes(ids),
+      })
+    }
+    return items
   }
 
   // -- drag and drop ------------------------------------------------------
@@ -1026,7 +1315,7 @@ export class WhiteboardCanvas {
   // during dragover the browser hides the DataTransfer contents.
 
   private readonly onDragOver = (e: DragEvent): void => {
-    if (this.parseFailed) return
+    if (!this.canCreate) return
     e.preventDefault()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     this.viewportEl.classList.add(VIEWPORT_DROP_ACTIVE_CLASS)
@@ -1042,7 +1331,7 @@ export class WhiteboardCanvas {
 
   private readonly onDrop = (e: DragEvent): void => {
     this.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
-    if (this.parseFailed) return
+    if (!this.canCreate) return
     e.preventDefault()
     const entries = this.host.ui.resolveDropEntries(e)
     if (entries.length === 0) return
@@ -1147,6 +1436,10 @@ export class WhiteboardCanvas {
    * on a node being edited too.
    */
   private interactionLayerTarget(): NodeId | null {
+    // Nothing on a locked board can be resized or wired up, so the layer has
+    // no card to belong to — the same conclusion Obsidian Canvas reaches by
+    // hiding `.canvas-node-resizer` under `.mod-readonly`.
+    if (this.isLocked) return null
     return (
       this.hoveredNodeId ??
       (this.selectedIds.size === 1
@@ -1339,7 +1632,7 @@ export class WhiteboardCanvas {
     // re-projected whenever the camera moves. Both are no-ops when nothing is
     // selected and nothing is being typed, which is the common case.
     this.positionToolbar()
-    this.positionEdgeLabelInput()
+    this.positionLabelInput()
   }
 
   /**
@@ -1490,6 +1783,8 @@ export class WhiteboardCanvas {
       kind: 'marquee',
       originLocal,
       originClient: { x: e.clientX, y: e.clientY },
+      additive: e.shiftKey,
+      baseIds: Array.from(this.selectedIds),
     }
     this.viewportEl.setPointerCapture(e.pointerId)
     const doc = this.context.getDocument()
@@ -1548,8 +1843,15 @@ export class WhiteboardCanvas {
     // selectable (a band drawn across the canvas is about the cards it
     // covers), but a marquee still ends whatever edge selection was up.
     this.setEdgeSelection([])
+    const hits = nodesInMarquee(
+      this.board.nodes,
+      marqueeRectFromPoints(worldA, worldB),
+    )
+    // Shift makes the band add rather than replace — a union, not a toggle:
+    // dragging over something already selected must not deselect it, or a
+    // second band drawn across the same area would undo the first.
     this.setSelection(
-      nodesInMarquee(this.board.nodes, marqueeRectFromPoints(worldA, worldB)),
+      interaction.additive ? [...interaction.baseIds, ...hits] : hits,
     )
   }
 
@@ -1596,6 +1898,7 @@ export class WhiteboardCanvas {
   /** False when there is nothing to resize (the hovered card went away
    * between hover and press), so the caller can fall through. */
   private startResize(handle: ResizeHandle, e: PointerEvent): boolean {
+    if (!this.canEdit) return false
     const nodeId = this.layerNodeId
     const card = nodeId === null ? null : this.nodesById.get(nodeId)
     if (!card || nodeId === null) return false
@@ -1671,6 +1974,10 @@ export class WhiteboardCanvas {
 
     this.pinnedIds.delete(interaction.nodeId)
     const rect = this.resizedRect(interaction, e)
+    // A group's contents deliberately stay where they are: growing a frame is
+    // how more cards are taken in and shrinking it is how they are let go,
+    // which is only possible if resizing moves nothing (Obsidian Canvas's
+    // group resize behaves identically).
     this.applyBoardChange(updateNode(this.board, interaction.nodeId, rect))
     this.applyResizeRect(interaction, rect)
     // The card's footprint changed, so its mount state may have too.
@@ -1718,6 +2025,7 @@ export class WhiteboardCanvas {
   /** False when the card the layer was parked on is gone, so the caller can
    * fall through to the gesture the press would otherwise have been. */
   private startConnect(side: NodeSide, e: PointerEvent): boolean {
+    if (!this.canEdit) return false
     const nodeId = this.layerNodeId
     if (nodeId === null || !this.nodesById.has(nodeId)) return false
     // Same reason as startResize: a press on the layer must not blur the
@@ -1929,7 +2237,7 @@ export class WhiteboardCanvas {
     interaction: ConnectInteraction,
     drop: ScreenPoint,
   ): SideAnchor | null {
-    if (this.parseFailed) return null
+    if (!this.canEdit) return null
     const side = oppositeSide(interaction.anchor.side)
     const rect = rectAnchoredAt(drop, side, NEW_CARD_SIZE)
     const node: TextNode = {
@@ -1950,6 +2258,10 @@ export class WhiteboardCanvas {
     interaction: NodeInteraction,
     e: PointerEvent,
   ): void {
+    // A locked board still lets a press select (Obsidian Canvas's read-only
+    // canvas does too — its selection menu keeps "zoom to selection"), it just
+    // never becomes a drag.
+    if (this.isLocked) return
     if (!interaction.dragging) {
       const dx = e.clientX - interaction.startClient.x
       const dy = e.clientY - interaction.startClient.y
@@ -1959,12 +2271,20 @@ export class WhiteboardCanvas {
     this.updateNodeDragPositions(interaction, e)
   }
 
+  /**
+   * Freezes what this drag moves.
+   *
+   * Resolved once, here, rather than per frame: a group carries whatever sits
+   * inside it (domain/groups.ts), and re-asking as the group travels would
+   * pick up every card it passed over and drop the ones it had left behind.
+   * Obsidian Canvas takes the same snapshot at the same moment.
+   */
   private beginNodeDrag(interaction: NodeInteraction): void {
     interaction.dragging = true
     if (!this.selectedIds.has(interaction.nodeId)) {
       this.setSelection([interaction.nodeId])
     }
-    interaction.ids = Array.from(this.selectedIds)
+    interaction.ids = nodesToDragWith(this.selectedIds, this.board.nodes)
     for (const id of interaction.ids) {
       const card = this.nodesById.get(id)
       if (!card) continue
@@ -2017,7 +2337,8 @@ export class WhiteboardCanvas {
     e: PointerEvent,
   ): void {
     if (!interaction.dragging) {
-      this.setSelection([interaction.nodeId])
+      if (interaction.additive) this.toggleSelection(interaction.nodeId)
+      else this.setSelection([interaction.nodeId])
       return
     }
 
@@ -2108,7 +2429,9 @@ export class WhiteboardCanvas {
    * and the text being typed is not a board change yet. */
   private registerViewKeymap(): void {
     const run = (action: () => void) => () => {
-      if (this.editing) return false
+      // A locked board has nothing to undo into: every step that could have
+      // been recorded is a step the lock refused.
+      if (this.editing || this.isLocked) return false
       action()
       return true
     }
@@ -2128,6 +2451,16 @@ export class WhiteboardCanvas {
       if (selected.length === 0) return false
       return this.fitCameraToNodes(selected)
     }
+    // Back to the origin at 1:1. Obsidian Canvas binds no key to its own
+    // (weaker) reset — Shift+1 and Shift+2 are the only two camera keys it
+    // has — so Shift+0 is ours to choose, and it belongs to the same Shift+digit
+    // family as the two fits while reading as the "100%" that Mod+0 means in
+    // every browser.
+    const home = () => {
+      if (this.editing) return false
+      this.resetCamera()
+      return true
+    }
     this.viewKeymapDisposer = this.context.registerKeymap([
       { modifiers: ['Mod'], key: 'Z', handler: undo },
       { modifiers: ['Mod', 'Shift'], key: 'Z', handler: redo },
@@ -2135,6 +2468,7 @@ export class WhiteboardCanvas {
       { modifiers: ['Mod'], key: 'Y', handler: redo },
       { modifiers: ['Shift'], key: '1', handler: fitAll },
       { modifiers: ['Shift'], key: '2', handler: fitSelection },
+      { modifiers: ['Shift'], key: '0', handler: home },
     ])
   }
 
@@ -2166,6 +2500,86 @@ export class WhiteboardCanvas {
     return true
   }
 
+  /**
+   * Puts the camera back where a new board starts: the world origin, at 1:1.
+   *
+   * Obsidian Canvas has no such action. Its "reset zoom" control — measured on
+   * a running 1.13.7 — is `zoomBy(-zoom)`: it returns the scale to 1 and
+   * leaves the position exactly where it was, which is no help at all to
+   * someone who has panned into empty space. Fit-to-all (Shift+1) already
+   * answers "show me everything"; this answers the other half, "take me back",
+   * and it has a fixed destination because our world origin means something —
+   * it is where a new board is centred and where an imported one is parked.
+   */
+  private resetCamera(): void {
+    this.zoomGlide = null
+    this.lastGlideTime = null
+    this.view = viewFromCamera(DEFAULT_CAMERA)
+    this.applyTransform()
+    this.markInteracting()
+    this.commitCameraNow()
+    this.recomputeVisibility()
+    this.drainQueues()
+  }
+
+  // -----------------------------------------------------------------------
+  // Read-only lock (P3 batch 3 wave B, feature 6).
+  //
+  // One flag gates every path that would change the board; pan, zoom, hover
+  // and selection are untouched, because looking around a locked board is the
+  // whole point of locking it. Obsidian Canvas draws the same line (verified
+  // on 1.13.7: its `readonly` gates deleteSelection, double-click creation,
+  // the creation context menu, `startEditing` and `handleSelectionDrag`, and
+  // appears nowhere in its pan/zoom handlers).
+  //
+  // Two deliberate differences from Canvas:
+  //   - it lives in the file (domain/fileFormat.ts's `locked`), not in a
+  //     machine-local side store;
+  //   - it hides the creation bar. Canvas leaves its card menu live on a
+  //     read-only canvas, which lets a locked board still be added to; a lock
+  //     that does not stop the most obvious way of changing a board is not a
+  //     lock.
+  //
+  // Not a history step: locking is a mode, not content. It joins the camera
+  // and self-heal as the things that write the board without going through
+  // `applyBoardChange` — an undo that silently unlocked a board would be a
+  // surprising way to lose the protection.
+  // -----------------------------------------------------------------------
+
+  private get isLocked(): boolean {
+    return this.board.locked === true
+  }
+
+  /** Whether the board can be changed at all — the single test every mutating
+   * path starts with, so a new one cannot forget half of it. */
+  private get canEdit(): boolean {
+    return !this.parseFailed && !this.isLocked
+  }
+
+  private setLocked(locked: boolean): void {
+    if (this.parseFailed || this.isLocked === locked) return
+    // Anything mid-flight belongs to the state being left.
+    this.forceCommitActiveEdit()
+    this.labelSession?.input.close()
+    this.prompt?.close()
+    this.board = locked
+      ? { ...this.board, locked: true }
+      : { ...this.board, locked: undefined }
+    this.context.requestSave()
+    this.applyLockedState()
+  }
+
+  /** Pushes the lock into everything that reflects it. Also called on load,
+   * for a board that arrives already locked. */
+  private applyLockedState(): void {
+    this.rootEl?.classList.toggle(LOCKED_CLASS, this.isLocked)
+    // The handles are hidden by CSS, but the layer must also stop being parked
+    // on a card, or a press would still find a handle to grab.
+    this.refreshInteractionLayer()
+    this.refreshCardMenu()
+    this.refreshToolbar()
+  }
+
   // -----------------------------------------------------------------------
   // Selection (W3-A). `selectedIds` is UI state only — never touches
   // `board` or triggers requestSave by itself. Pushes/pops a keymap scope
@@ -2192,6 +2606,14 @@ export class WhiteboardCanvas {
     // Selection is one of the two things that decides where the handles are.
     this.updateInteractionLayer()
     this.refreshToolbar()
+  }
+
+  /** Adds a node to the selection, or takes it out if it was already in —
+   * what Shift+click on a card means. */
+  private toggleSelection(id: NodeId): void {
+    const next = new Set(this.selectedIds)
+    if (!next.delete(id)) next.add(id)
+    this.setSelection(Array.from(next))
   }
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
@@ -2227,8 +2649,9 @@ export class WhiteboardCanvas {
     // A label being typed belongs to the edge that was selected when it
     // opened; deselecting that edge ends the session (committing, the same as
     // a blur would).
-    if (this.edgeLabelSession && !next.has(this.edgeLabelSession.edgeId)) {
-      this.edgeLabelSession.input.close()
+    const session = this.labelSession
+    if (session?.target.kind === 'edge' && !next.has(session.target.id)) {
+      session.input.close()
     }
     this.refreshToolbar()
   }
@@ -2251,10 +2674,12 @@ export class WhiteboardCanvas {
   private syncSelectionKeymapScope(): void {
     const hasSelection =
       (this.selectedIds.size > 0 || this.selectedEdgeIds.size > 0) &&
-      // While an edge label is being typed, Backspace/Delete/Escape belong to
-      // the field, not to the selection behind it — the same rule that keeps
-      // the card editor and the selection scope from ever being armed at once.
-      this.edgeLabelSession === null
+      // While a label is being typed or a creation prompt is open,
+      // Backspace/Delete/Escape belong to that field, not to the selection
+      // behind it — the same rule that keeps the card editor and the selection
+      // scope from ever being armed at once.
+      this.labelSession === null &&
+      this.prompt === null
     if (hasSelection && !this.selectionScopeDisposer) {
       this.pushSelectionKeymapScope()
     } else if (!hasSelection && this.selectionScopeDisposer) {
@@ -2398,8 +2823,13 @@ export class WhiteboardCanvas {
     const actions: ToolbarAction[] = []
     // Editing is the one action a degraded card cannot take (D8: its content
     // is not built at this zoom), so the button goes away rather than being
-    // offered and declining.
-    if (single && this.isEditableNode(single) && !this.degraded) {
+    // offered and declining. A locked board offers it for nothing either.
+    if (
+      single &&
+      this.isEditableNode(single) &&
+      !this.degraded &&
+      this.canEdit
+    ) {
       actions.push({
         label: this.t('toolbar.edit'),
         icon: 'pencil',
@@ -2409,26 +2839,8 @@ export class WhiteboardCanvas {
     actions.push({
       label: this.t('toolbar.more'),
       icon: 'ellipsis',
-      onSelect: (event) => {
-        const ids = nodes.map((node) => node.id)
-        this.host.ui.showMenu(event, [
-          ...(single?.type === 'text'
-            ? [
-                {
-                  title: this.t('menu.convertToNote'),
-                  icon: 'file-plus',
-                  onSelect: () => this.convertCardToNote(single.id),
-                },
-                { kind: 'separator' as const },
-              ]
-            : []),
-          {
-            title: this.t('menu.deleteCard'),
-            icon: 'trash-2',
-            onSelect: () => this.deleteNodes(ids),
-          },
-        ])
-      },
+      onSelect: (event) =>
+        this.host.ui.showMenu(event, this.selectionMenuItems()),
     })
 
     return {
@@ -2513,7 +2925,7 @@ export class WhiteboardCanvas {
     ids: readonly NodeId[],
     color: NodeColor | undefined,
   ): void {
-    if (this.parseFailed) return
+    if (!this.canEdit) return
     let board = this.board
     for (const id of ids) {
       if ((this.nodesById.get(id)?.color ?? undefined) === color) continue
@@ -2528,7 +2940,7 @@ export class WhiteboardCanvas {
   }
 
   private applyColorToEdge(edgeId: EdgeId, color: NodeColor | undefined): void {
-    if (this.parseFailed) return
+    if (!this.canEdit) return
     const board = updateEdge(this.board, edgeId, { color })
     if (board === this.board) return
     this.applyBoardChange(board)
@@ -2558,7 +2970,7 @@ export class WhiteboardCanvas {
   }
 
   private setEdgeEnds(edgeId: EdgeId, direction: ArrowDirection): void {
-    if (this.parseFailed) return
+    if (!this.canEdit) return
     const { fromEnd, toEnd } = arrowEnds(direction)
     const board = updateEdge(this.board, edgeId, { fromEnd, toEnd })
     if (board === this.board) return
@@ -2582,33 +2994,79 @@ export class WhiteboardCanvas {
     path.removeAttribute(attribute)
   }
 
-  // -- edge label ---------------------------------------------------------
+  // -- inline labels (edge, group) ----------------------------------------
+  // Both hang the same one-line field (ui/inlineTextInput.ts) off a point on
+  // the board and follow the camera. A group's label is edited this way rather
+  // than as a `contenteditable` on the label itself (which is how Obsidian
+  // Canvas does it): the board already has one way to type a label, and a
+  // second one that behaves differently — world-scaled text, a different
+  // commit rule — would be a second thing to learn for no gain.
 
   private openEdgeLabelEditor(edgeId: EdgeId): void {
-    const overlay = this.toolbar?.overlay
     const edge = this.boardEdgesById.get(edgeId)
-    if (!overlay || !edge) return
-    this.edgeLabelSession?.input.close()
+    if (!edge || !this.canEdit) return
+    this.openLabelEditor(
+      { kind: 'edge', id: edgeId },
+      edge.label ?? '',
+      this.t('edge.labelPlaceholder'),
+      this.t('toolbar.edgeLabel'),
+    )
+  }
+
+  private openGroupLabelEditor(nodeId: NodeId): void {
+    const group = this.nodesById.get(nodeId)
+    if (!group || group.type !== 'group' || !this.canEdit) return
+    this.openLabelEditor(
+      { kind: 'group', id: nodeId },
+      group.label ?? '',
+      this.t('group.labelPlaceholder'),
+      this.t('menu.renameGroup'),
+    )
+  }
+
+  private openLabelEditor(
+    target: Readonly<{ kind: 'edge' | 'group'; id: string }>,
+    value: string,
+    placeholder: string,
+    ariaLabel: string,
+  ): void {
+    const overlay = this.toolbar?.overlay
+    if (!overlay) return
+    this.labelSession?.input.close()
     this.toolbar?.closePopover()
     const input = new InlineTextInput(this.context.getDocument(), overlay, {
-      value: edge.label ?? '',
-      placeholder: this.t('edge.labelPlaceholder'),
-      ariaLabel: this.t('toolbar.edgeLabel'),
-      onCommit: (value) => this.commitEdgeLabel(edgeId, value),
+      value,
+      placeholder,
+      ariaLabel,
+      onCommit: (text) =>
+        target.kind === 'edge'
+          ? this.commitEdgeLabel(target.id, text)
+          : this.commitGroupLabel(target.id, text),
       onClose: () => {
-        this.edgeLabelSession = null
+        this.labelSession = null
         this.syncSelectionKeymapScope()
       },
     })
-    this.edgeLabelSession = { edgeId, input }
+    this.labelSession = {
+      target:
+        target.kind === 'edge'
+          ? { kind: 'edge', id: target.id }
+          : { kind: 'group', id: target.id },
+      input,
+    }
     this.syncSelectionKeymapScope()
-    this.positionEdgeLabelInput()
+    this.positionLabelInput()
   }
 
-  private positionEdgeLabelInput(): void {
-    const session = this.edgeLabelSession
+  /** Re-projects the open field onto the world point it belongs to — the
+   * midpoint of an edge's curve, or the top-left of a group's label row. */
+  private positionLabelInput(): void {
+    const session = this.labelSession
     if (!session) return
-    const point = this.edgeAnchorPoint(session.edgeId)
+    const point =
+      session.target.kind === 'edge'
+        ? this.edgeAnchorPoint(session.target.id)
+        : this.groupLabelAnchorPoint(session.target.id)
     if (!point) return
     session.input.place({
       x: point.x * this.view.scale + this.view.tx,
@@ -2616,10 +3074,35 @@ export class WhiteboardCanvas {
     })
   }
 
+  /** Where a group's label sits: just inside its top-left corner, offset by
+   * half the field so `InlineTextInput`'s own centring lands it over the
+   * label row rather than on the corner. */
+  private groupLabelAnchorPoint(nodeId: NodeId): ScreenPoint | null {
+    const group = this.nodesById.get(nodeId)
+    if (!group) return null
+    return { x: group.x + group.w / 2, y: group.y }
+  }
+
+  /** An empty group label removes the attribute rather than storing `""` —
+   * the same rule an edge label follows. */
+  private commitGroupLabel(nodeId: NodeId, value: string): void {
+    if (!this.canEdit) return
+    const group = this.nodesById.get(nodeId)
+    if (!group || group.type !== 'group') return
+    const label = value.trim().length > 0 ? value : undefined
+    const board = updateNode(this.board, nodeId, { label })
+    if (board === this.board) return
+    this.applyBoardChange(board)
+    const labelEl = this.runtimeByNodeId
+      .get(nodeId)
+      ?.el?.querySelector(`.${GROUP_LABEL_CLASS}`)
+    if (labelEl) labelEl.textContent = label ?? ''
+  }
+
   /** An empty label removes the attribute rather than storing `""` — an edge
    * with a blank label and one with no label are the same edge. */
   private commitEdgeLabel(edgeId: EdgeId, value: string): void {
-    if (this.parseFailed || !this.boardEdgesById.has(edgeId)) return
+    if (!this.canEdit || !this.boardEdgesById.has(edgeId)) return
     const label = value.trim().length > 0 ? value : undefined
     const board = updateEdge(this.board, edgeId, { label })
     if (board === this.board) return
@@ -2659,7 +3142,7 @@ export class WhiteboardCanvas {
   }
 
   private deleteEdges(ids: readonly EdgeId[]): void {
-    if (this.parseFailed || ids.length === 0) return
+    if (!this.canEdit || ids.length === 0) return
     let board = this.board
     for (const id of ids) {
       if (board.edges.some((edge) => edge.id === id))
@@ -2671,7 +3154,7 @@ export class WhiteboardCanvas {
   }
 
   private deleteNodes(ids: readonly NodeId[]): void {
-    if (this.parseFailed || ids.length === 0) return
+    if (!this.canEdit || ids.length === 0) return
     if (this.editing && ids.includes(this.editing.nodeId)) {
       // Commit through the one blur path before the card stops existing,
       // rather than leaving an editor mounted on a deleted card.
@@ -2702,12 +3185,174 @@ export class WhiteboardCanvas {
   // when a card earns a file, rather than every stray double-click leaving
   // an empty note in the vault.
 
+  /**
+   * The world point the creation bar's buttons place a card on: the middle of
+   * what is currently on screen.
+   *
+   * Obsidian Canvas's own `posCenter()` for the same three buttons. Placing a
+   * card somewhere precise is the canvas context menu's job — it creates at the
+   * point that was right-clicked, exactly as Canvas's `showCreationMenu(menu,
+   * pos, size)` does.
+   */
+  private viewportCenterWorld(): ScreenPoint {
+    return screenToWorld(this.view, {
+      x: this.viewportEl.clientWidth / 2,
+      y: this.viewportEl.clientHeight / 2,
+    })
+  }
+
+  /** Whether a new card can be made at all right now — the shared gate behind
+   * the creation bar, the creation menu items, and double-click-to-create. A
+   * degraded card's content is not built (D8) and it cannot be edited, so
+   * creating one there would leave an invisible empty card and no editor. */
+  private get canCreate(): boolean {
+    return this.canEdit && !this.degraded
+  }
+
+  private refreshCardMenu(): void {
+    this.cardMenu?.setAvailable(this.canCreate)
+  }
+
+  // -- creation prompts ---------------------------------------------------
+  // Three of the four creation entries need a value before they can act. Each
+  // opens the same panel (ui/promptOverlay.ts); what differs is the list it
+  // filters and what the chosen value becomes.
+
+  /** Opens a prompt, replacing any already open. Closing is this view's own
+   * bookkeeping, so callers describe only what they are asking for. */
+  private openPrompt(options: Omit<PromptOverlayOptions, 'onClose'>): void {
+    const overlay = this.toolbar?.overlay
+    if (!overlay || !this.canCreate) return
+    this.prompt?.close()
+    this.toolbar?.closePopover()
+    this.prompt = new PromptOverlay(this.context.getDocument(), overlay, {
+      ...options,
+      onClose: () => {
+        this.prompt = null
+        this.syncSelectionKeymapScope()
+      },
+    })
+    // While the panel has the caret, Delete/Escape/Enter belong to it — the
+    // same rule that keeps the selection's bindings off an open label field.
+    this.syncSelectionKeymapScope()
+  }
+
+  private promptForNoteCard(): void {
+    const center = this.viewportCenterWorld()
+    this.openPrompt({
+      title: this.t('prompt.addNoteTitle'),
+      placeholder: this.t('prompt.searchPlaceholder'),
+      mode: {
+        kind: 'pick',
+        suggestions: this.host.vault
+          .listMarkdownFiles()
+          .map((file) => this.suggestionForPath(file.path)),
+        emptyText: this.t('prompt.noMatches'),
+      },
+      onSubmit: (path) => this.addFileCards([path], center),
+    })
+  }
+
+  private promptForMediaCard(): void {
+    const center = this.viewportCenterWorld()
+    this.openPrompt({
+      title: this.t('prompt.addMediaTitle'),
+      placeholder: this.t('prompt.searchPlaceholder'),
+      mode: {
+        kind: 'pick',
+        suggestions: this.collectMediaPaths('').map((path) =>
+          this.suggestionForPath(path),
+        ),
+        emptyText: this.t('prompt.noMedia'),
+      },
+      onSubmit: (path) => this.addFileCards([path], center),
+    })
+  }
+
+  private promptForWebCard(): void {
+    const center = this.viewportCenterWorld()
+    this.openPrompt({
+      title: this.t('prompt.newWebCardTitle'),
+      placeholder: this.t('prompt.urlPlaceholder'),
+      mode: { kind: 'text' },
+      onSubmit: (url) => this.createLinkCardAt(url, center),
+    })
+  }
+
+  private suggestionForPath(path: string): PromptSuggestion {
+    const folder = folderPathOf(path)
+    return {
+      value: path,
+      title: basenameWithoutExtension(path),
+      // The containing folder, so two notes of the same name are told apart.
+      ...(folder ? { detail: folder } : {}),
+    }
+  }
+
+  /**
+   * Every image, audio and video file in the vault, depth-first from
+   * `folderPath`.
+   *
+   * The Host API lists markdown files directly (`listMarkdownFiles`) but has
+   * nothing equivalent for media, so this walks the tree the same way
+   * `host/importCanvasFile.ts` already walks it looking for `.canvas` files.
+   * The kinds come from the same table the renderer dispatches on
+   * (domain/naming.ts's `fileNodeKind`), so "you can pick it" and "it renders"
+   * cannot disagree.
+   */
+  private collectMediaPaths(folderPath: string): string[] {
+    const paths: string[] = []
+    for (const entry of this.host.vault.listChildren(folderPath)) {
+      if (entry.kind === 'folder') {
+        paths.push(...this.collectMediaPaths(entry.path))
+        continue
+      }
+      const kind = fileNodeKind(entry.path)
+      if (kind === 'image' || kind === 'audio' || kind === 'video') {
+        paths.push(entry.path)
+      }
+    }
+    return paths
+  }
+
+  /**
+   * Creates a web card for `url`, centred on `world`.
+   *
+   * A bare host ("example.com") is given `https://`, because a URL typed
+   * without a scheme is still a URL the user meant — and the card only ever
+   * loads http(s) anyway (WEB_URL_PATTERN), so a value that cannot be made
+   * into one is refused here rather than becoming a card that says it is not a
+   * web address.
+   */
+  private createLinkCardAt(url: string, world: ScreenPoint): void {
+    if (!this.canCreate) return
+    const normalized = WEB_URL_PATTERN.test(url) ? url : `https://${url}`
+    if (!WEB_URL_PATTERN.test(normalized)) {
+      this.host.ui.notice(this.t('notice.invalidUrl'))
+      return
+    }
+    const node: LinkNode = {
+      id: this.nextNodeId(),
+      type: 'link',
+      x: Math.round(world.x - NEW_CARD_SIZE.w / 2),
+      y: Math.round(world.y - NEW_CARD_SIZE.h / 2),
+      w: NEW_CARD_SIZE.w,
+      h: NEW_CARD_SIZE.h,
+      url: normalized,
+      extra: {},
+    }
+    this.applyBoardChange(addNode(this.board, node))
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.setSelection([node.id])
+  }
+
   /** Creates an empty text card centered on `world` and opens it for typing. */
   private createTextCardAt(world: ScreenPoint): void {
-    if (this.parseFailed) return
     // Below the LOD threshold enterEditMode declines, which would leave this
-    // gesture producing an invisible empty card with no editor.
-    if (this.degraded) return
+    // gesture producing an invisible empty card with no editor; a locked board
+    // takes no new cards at all. Both live in `canCreate`.
+    if (!this.canCreate) return
     const node: TextNode = {
       id: this.nextNodeId(),
       type: 'text',
@@ -2734,7 +3379,7 @@ export class WhiteboardCanvas {
    * card each becomes is decided at render time from its extension, so this
    * is one path for notes, images, audio and video alike. */
   private addFileCards(paths: readonly string[], world: ScreenPoint): void {
-    if (this.parseFailed || paths.length === 0) return
+    if (!this.canEdit || paths.length === 0) return
     let board = this.board
     for (const [index, path] of paths.entries()) {
       const offset = index * DROP_STAGGER_PX
@@ -2754,6 +3399,99 @@ export class WhiteboardCanvas {
     this.drainQueues()
   }
 
+  // -----------------------------------------------------------------------
+  // Groups, alignment and distribution (P3 batch 3 wave B, features 3 and 5).
+  //
+  // The geometry is in domain/ (groups.ts, arrange.ts) and unit-tested there;
+  // what is left here is turning a selection into rectangles, handing them
+  // over, and committing the answer as a single board change — one user
+  // action, one undo step.
+  // -----------------------------------------------------------------------
+
+  /**
+   * Wraps the current selection in a new group.
+   *
+   * The group is added *before* the nodes it encloses in board order, because
+   * board order is paint order and a group is a frame behind its contents
+   * (style.css gives groups a negative z-index for the same reason). It then
+   * becomes the selection, since it is the thing that was just made.
+   */
+  private createGroupFromSelection(): void {
+    if (!this.canEdit) return
+    const nodes = this.board.nodes.filter((node) =>
+      this.selectedIds.has(node.id),
+    )
+    const rect = groupRectForNodes(nodes)
+    if (!rect) return
+    const group: GroupNode = {
+      id: this.nextNodeId(),
+      type: 'group',
+      x: Math.round(rect.x),
+      y: Math.round(rect.y),
+      w: Math.max(MIN_GROUP_SIZE.w, Math.round(rect.w)),
+      h: Math.max(MIN_GROUP_SIZE.h, Math.round(rect.h)),
+      extra: {},
+    }
+    this.applyBoardChange({
+      ...this.board,
+      nodes: [group, ...this.board.nodes],
+    })
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.setSelection([group.id])
+  }
+
+  /**
+   * The nodes an align or distribute acts on.
+   *
+   * Normally the selection. The exception is a lone selected group, where the
+   * target is what the group *holds* — Obsidian Canvas does exactly this, and
+   * it is what makes a group worth having: tidying a cluster becomes "select
+   * its frame, align", rather than rubber-banding its members first.
+   */
+  private arrangeTargets(): readonly BoardNode[] {
+    const selected = this.board.nodes.filter((node) =>
+      this.selectedIds.has(node.id),
+    )
+    if (selected.length === 1 && selected[0].type === 'group') {
+      const contained = new Set(nodesInsideGroup(selected[0], this.board.nodes))
+      return this.board.nodes.filter((node) => contained.has(node.id))
+    }
+    return selected
+  }
+
+  private alignSelection(edge: AlignEdge): void {
+    this.applyArrangement(alignRects(this.arrangeTargets(), edge))
+  }
+
+  private distributeSelection(axis: DistributeAxis): void {
+    this.applyArrangement(distributeRects(this.arrangeTargets(), axis))
+  }
+
+  /** Commits a batch of new positions and brings the canvas back in step with
+   * them. `setNodePositions` returns the same board when nothing moved, so an
+   * align that changes nothing records no history step and redraws nothing. */
+  private applyArrangement(
+    positions: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
+  ): void {
+    if (!this.canEdit || positions.size === 0) return
+    const next = setNodePositions(this.board, positions)
+    if (next === this.board) return
+    this.applyBoardChange(next)
+    for (const id of positions.keys()) {
+      const el = this.runtimeByNodeId.get(id)?.el
+      const node = this.nodesById.get(id)
+      if (!el || !node) continue
+      el.style.left = `${node.x}px`
+      el.style.top = `${node.y}px`
+    }
+    this.redrawEdgesForNodes(new Set(positions.keys()))
+    this.refreshInteractionLayer()
+    this.positionToolbar()
+    this.recomputeVisibility()
+    this.drainQueues()
+  }
+
   /**
    * Turns a text card into a note card backed by a real vault file.
    *
@@ -2763,7 +3501,7 @@ export class WhiteboardCanvas {
    * body, because from here on the card shows that name as its title.
    */
   private convertCardToNote(id: NodeId): void {
-    if (this.parseFailed) return
+    if (!this.canEdit) return
     const card = this.nodesById.get(id)
     if (!card || card.type !== 'text') return
     if (this.editing?.nodeId === id) {
@@ -2874,6 +3612,15 @@ export class WhiteboardCanvas {
     )
   }
 
+  /** The group whose label this event landed on, or null for anything else. */
+  private groupLabelIdFromEventTarget(
+    target: EventTarget | null,
+  ): NodeId | null {
+    if (!(target instanceof Element)) return null
+    if (!target.classList.contains(GROUP_LABEL_CLASS)) return null
+    return this.nodeIdFromEventTarget(target)
+  }
+
   /** Matched on the data attribute rather than on a class, because both
    * kinds of mounted node carry it (a card and a group frame) and every
    * gesture that asks "which node is this" means either. */
@@ -2900,6 +3647,7 @@ export class WhiteboardCanvas {
     this.runtimeByNodeId.delete(id)
     this.pinnedIds.delete(id)
     this.contentSyncQueue.delete(id)
+    this.webFramePool.delete(id)
     this.engine.markUnmounted(id)
   }
 
@@ -2958,9 +3706,12 @@ export class WhiteboardCanvas {
       if (!runtime.el || this.editing?.nodeId === id) continue
       this.contentSyncQueue.add(id)
     }
-    // A degraded card cannot be edited (see enterEditMode), so the toolbar's
-    // edit button appears and disappears with this state.
+    // A degraded card cannot be edited (see enterEditMode) and no new card can
+    // be made at this zoom (see `canCreate`), so the toolbar's edit button and
+    // the whole creation bar appear and disappear with this state — rather
+    // than staying on screen offering what would be declined.
     this.refreshToolbar()
+    this.refreshCardMenu()
   }
 
   private drainQueues(): void {
@@ -3005,8 +3756,14 @@ export class WhiteboardCanvas {
       void this.renderCardPreview(id)
       return
     }
-    // Destroyed, not parked — the same rule an off-screen card follows
-    // (p3-canvas-parity D13); the card's title block is what stands in for it.
+    // A web card keeps its live page through a degrade for the same reason it
+    // keeps it through an unmount (see WEB_FRAME_POOL_CAPACITY): the body is
+    // already hidden by the degraded world's own CSS, and the frame stays in
+    // the document, so nothing is lost and nothing is rebuilt on the way back.
+    if (runtime.webFrameUrl !== null) return
+    // Everything else is destroyed, not parked — the same rule an off-screen
+    // card follows (p3-canvas-parity D13); the card's title block is what
+    // stands in for it.
     this.destroyCardContent(runtime)
     runtime.bodyEl.replaceChildren()
   }
@@ -3018,6 +3775,13 @@ export class WhiteboardCanvas {
   private mountNode(id: NodeId): void {
     const node = this.nodesById.get(id)
     const existing = this.runtimeByNodeId.get(id)
+    // A web card that never really left (it was parked in the hidden pool)
+    // comes back by being shown again — rebuilding it would be exactly the
+    // page reload the pool exists to prevent.
+    if (existing?.el && this.webFramePool.has(id)) {
+      this.revealPooledCard(id)
+      return
+    }
     if (!node || existing?.el) return
 
     const doc = this.context.getDocument()
@@ -3053,6 +3817,7 @@ export class WhiteboardCanvas {
         contentView: null,
         contentSourcePath: null,
         releaseContent: null,
+        webFrameUrl: null,
         missingFile: false,
         noteText: null,
       })
@@ -3115,6 +3880,7 @@ export class WhiteboardCanvas {
       contentView: null,
       contentSourcePath: null,
       releaseContent: null,
+      webFrameUrl: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
     })
@@ -3129,14 +3895,78 @@ export class WhiteboardCanvas {
     // virtualization engine, but stay defensive: only the commit path
     // (finishEdit) ever destroys a live editor.
     if (this.editing?.nodeId === id) return
-    // Destroy rather than park (p3-canvas-parity D13): an off-screen card
-    // keeps nothing but its cached text, and a detach pool would have to
-    // manage capacity, invalidation and content sync to earn its keep.
+    // A web card is hidden, not destroyed — see WEB_FRAME_POOL_CAPACITY.
+    if (runtime.webFrameUrl !== null) {
+      this.poolWebCard(id, runtime)
+      return
+    }
+    // Everything else is destroyed rather than parked (p3-canvas-parity D13):
+    // an off-screen card keeps nothing but its cached text, and a detach pool
+    // would have to manage capacity, invalidation and content sync to earn its
+    // keep. Only the web card's *state* (scroll position, form contents, a
+    // login) makes that bargain worth taking.
     this.destroyCardContent(runtime)
     this.contentSyncQueue.delete(id)
     runtime.el.remove()
     runtime.el = null
     runtime.bodyEl = null
+  }
+
+  // -----------------------------------------------------------------------
+  // Web-card hidden pool (p3-canvas-parity §六, D13's scope revision).
+  //
+  // Obsidian Canvas parks an off-screen node by detaching its content element
+  // and keeping the instance. That works for a markdown embed and not for an
+  // iframe: taking a frame out of the document tree destroys its browsing
+  // context, and putting it back reloads the page from scratch. So a web card
+  // is hidden in place instead — still in the document, so the page keeps
+  // running, just not painted.
+  //
+  // `display: none` is enough: it stops layout, paint and hit-testing for the
+  // card while leaving the frame attached, which is the only thing the
+  // browsing context's survival depends on.
+  // -----------------------------------------------------------------------
+
+  private poolWebCard(id: NodeId, runtime: NodeRuntime): void {
+    runtime.el?.classList.add(CARD_POOLED_CLASS)
+    this.contentSyncQueue.delete(id)
+    // Delete before adding so a re-parked card moves to the back of the queue:
+    // insertion order is the LRU order (see `webFramePool`).
+    this.webFramePool.delete(id)
+    this.webFramePool.add(id)
+    this.evictExcessWebCards()
+  }
+
+  private revealPooledCard(id: NodeId): void {
+    const runtime = this.runtimeByNodeId.get(id)
+    const node = this.nodesById.get(id)
+    this.webFramePool.delete(id)
+    if (!runtime?.el) return
+    runtime.el.classList.remove(CARD_POOLED_CLASS)
+    // The card sat out however much moved while it was hidden: an undo, an
+    // align, a colour change on a multi-selection. Its geometry and its
+    // selection state are re-applied from the board rather than trusted.
+    if (node) {
+      runtime.el.style.left = `${node.x}px`
+      runtime.el.style.top = `${node.y}px`
+      runtime.el.style.width = `${node.w}px`
+      runtime.el.style.height = `${node.h}px`
+      applyColorToElement(runtime.el, node.color)
+    }
+    runtime.el.classList.toggle(CARD_SELECTED_CLASS, this.selectedIds.has(id))
+    runtime.el.classList.toggle(CARD_FOCUSED_CLASS, this.focusedNodeId === id)
+  }
+
+  /** Destroys the least-recently-seen pooled cards until the pool is within
+   * capacity. Eviction is a real teardown: the page goes, and the card is
+   * rebuilt from its URL the next time it is on screen. */
+  private evictExcessWebCards(): void {
+    while (this.webFramePool.size > WEB_FRAME_POOL_CAPACITY) {
+      const oldest = this.webFramePool.values().next().value
+      if (oldest === undefined) return
+      this.webFramePool.delete(oldest)
+      this.purgeNodeRuntime(oldest)
+    }
   }
 
   /**
@@ -3148,6 +3978,7 @@ export class WhiteboardCanvas {
     runtime.contentView?.destroy()
     runtime.contentView = null
     runtime.contentSourcePath = null
+    runtime.webFrameUrl = null
     const release = runtime.releaseContent
     runtime.releaseContent = null
     if (release) {
@@ -3382,6 +4213,12 @@ export class WhiteboardCanvas {
    * not be.
    */
   private renderWebFrameInto(runtime: NodeRuntime, url: string): void {
+    // Already showing this exact page: leave it alone. Without this, coming
+    // back from a degraded zoom (which re-runs the render path for every
+    // mounted card) would tear down and reload every web card on screen —
+    // the reload the hidden pool exists to avoid, arrived at from the other
+    // direction.
+    if (runtime.webFrameUrl === url) return
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl
     if (!bodyEl) return
@@ -3402,9 +4239,12 @@ export class WhiteboardCanvas {
     frame.src = url
     bodyEl.replaceChildren(frame)
     bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
+    runtime.webFrameUrl = url
     // A detached frame keeps its page (and its timers, media and sockets)
     // running until it is collected; navigating it away first is what ends
-    // them when the card scrolls off or degrades.
+    // them. Reached only on a real teardown now — the node was deleted, the
+    // board closed, or the card was evicted from the pool — because an
+    // ordinary unmount parks the card instead.
     runtime.releaseContent = () => {
       frame.src = 'about:blank'
       frame.remove()
@@ -3624,11 +4464,10 @@ export class WhiteboardCanvas {
   }
 
   private enterEditMode(id: NodeId): void {
-    if (this.parseFailed) return
     // Degraded cards render as a title block with the body hidden (D8), so
     // an editor mounted now would be invisible; zooming back in is the way
-    // to edit.
-    if (this.degraded) return
+    // to edit. A locked board is not edited at all.
+    if (!this.canCreate) return
     const node = this.nodesById.get(id)
     if (!node || !this.isEditableNode(node)) return
     const runtime = this.runtimeByNodeId.get(id)
@@ -3791,6 +4630,7 @@ export class WhiteboardCanvas {
     this.runtimeByNodeId.clear()
     this.pinnedIds.clear()
     this.contentSyncQueue.clear()
+    this.webFramePool.clear()
     this.engine.reset()
     this.clearEdgesSvg()
   }

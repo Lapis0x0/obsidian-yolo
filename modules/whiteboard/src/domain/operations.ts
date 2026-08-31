@@ -138,6 +138,41 @@ export function moveNodes(
   return { ...board, nodes }
 }
 
+/**
+ * Moves nodes to absolute positions, each to its own.
+ *
+ * `moveNodes` cannot express this: it applies one shared delta, which is what
+ * a drag is, whereas aligning or distributing a selection gives every node a
+ * different destination. Doing it as a batch rather than a loop of
+ * `updateNode` calls is what makes the whole rearrangement one board change,
+ * and so one undo step.
+ *
+ * A node whose entry matches where it already is contributes nothing, and a
+ * batch in which none of them moved returns the original board — so an align
+ * that changes nothing records no history step.
+ */
+export function setNodePositions(
+  board: Board,
+  positions: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
+): Board {
+  if (positions.size === 0) return board
+  for (const id of positions.keys()) {
+    if (!board.nodes.some((node) => node.id === id)) {
+      throw new Error(`setNodePositions: node "${id}" not found`)
+    }
+  }
+  let changed = false
+  const nodes = board.nodes.map((node) => {
+    const position = positions.get(node.id)
+    if (!position || (position.x === node.x && position.y === node.y)) {
+      return node
+    }
+    changed = true
+    return { ...node, x: position.x, y: position.y }
+  })
+  return changed ? { ...board, nodes } : board
+}
+
 export function addEdge(board: Board, edge: Edge): Board {
   if (!edge.id) throw new Error('addEdge: edge id must be non-empty')
   if (board.edges.some((existing) => existing.id === edge.id)) {

@@ -63,8 +63,8 @@
       ],
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/module.json",
       "manifest": {
-        "byteSize": 1800,
-        "sha256": "e1be9db4ffd825fb8901712a757f1fd87714c0f093388440265dd1b377dbbc3f"
+        "byteSize": 1802,
+        "sha256": "8173a12a33e8b0248202e04abeae8b652d1dda547da66a35b1da7c79a3f40075"
       }
     }
   ]

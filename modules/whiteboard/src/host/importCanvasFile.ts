@@ -17,6 +17,8 @@ import {
 } from '../domain/naming'
 import { createWhiteboardTranslation } from '../i18n'
 
+import { markPendingFit } from './pendingFit'
+
 export type CanvasImportOutcome =
   | Readonly<{ ok: true; path: string; nodes: number; edges: number }>
   | Readonly<{
@@ -84,6 +86,10 @@ export async function importCanvasFile(
     )
     return { ok: false, reason: 'write-failed' }
   }
+  // The camera written above is a guess made without a viewport (see
+  // domain/canvasImport.ts); this asks the view to replace it with a real fit
+  // the first time the board is actually looked at. See host/pendingFit.ts.
+  markPendingFit(boardPath)
   return {
     ok: true,
     path: boardPath,

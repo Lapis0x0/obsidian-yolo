@@ -18,6 +18,35 @@ export const zh = {
     arrowForward: '终点箭头',
     arrowBackward: '起点箭头',
     arrowBoth: '双向箭头',
+    createGroup: '将选中项建组',
+    renameGroup: '重命名分组',
+    zoomToSelection: '缩放到选中',
+    resetCamera: '回到原点',
+    lockBoard: '锁定白板',
+    unlockBoard: '解除锁定',
+    alignLeft: '左对齐',
+    alignCenter: '水平居中对齐',
+    alignRight: '右对齐',
+    alignTop: '顶端对齐',
+    alignMiddle: '垂直居中对齐',
+    alignBottom: '底端对齐',
+    distributeHorizontal: '水平等距分布',
+    distributeVertical: '垂直等距分布',
+  },
+  cardMenu: {
+    newCard: '添加卡片',
+    addNote: '添加笔记',
+    addMedia: '添加媒体文件',
+    newWebCard: '添加网页',
+  },
+  prompt: {
+    addNoteTitle: '向白板添加笔记',
+    addMediaTitle: '向白板添加媒体文件',
+    newWebCardTitle: '向白板添加网页',
+    searchPlaceholder: '输入以搜索……',
+    urlPlaceholder: 'https://example.com',
+    noMatches: '没有匹配的文件。',
+    noMedia: '库中没有图片、音频或视频。',
   },
   toolbar: {
     color: '设置颜色',
@@ -39,6 +68,9 @@ export const zh = {
   edge: {
     labelPlaceholder: '为这条连线加标签',
   },
+  group: {
+    labelPlaceholder: '为这个分组命名',
+  },
   file: {
     newWhiteboardBaseName: '白板',
     newNoteBaseName: '未命名',
@@ -55,6 +87,7 @@ export const zh = {
     imported: '已导入为 {path}',
     importedAll: '已导入 {imported} 个 Canvas 文件，{failed} 个无法读取。',
     importNoneFound: '库中没有找到 Canvas 文件。',
+    invalidUrl: '只能添加 http 和 https 地址。',
   },
   card: {
     missingFile: '文件丢失',

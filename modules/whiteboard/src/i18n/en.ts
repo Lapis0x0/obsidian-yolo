@@ -20,6 +20,36 @@ export const en = {
     arrowForward: 'Arrow at the end',
     arrowBackward: 'Arrow at the start',
     arrowBoth: 'Arrows at both ends',
+    createGroup: 'Group selection',
+    renameGroup: 'Rename group',
+    zoomToSelection: 'Zoom to selection',
+    resetCamera: 'Back to origin',
+    lockBoard: 'Lock whiteboard',
+    unlockBoard: 'Unlock whiteboard',
+    alignLeft: 'Align left',
+    alignCenter: 'Align horizontal centres',
+    alignRight: 'Align right',
+    alignTop: 'Align top',
+    alignMiddle: 'Align vertical centres',
+    alignBottom: 'Align bottom',
+    distributeHorizontal: 'Distribute horizontally',
+    distributeVertical: 'Distribute vertically',
+  },
+  // The creation bar along the bottom of the canvas (P3 batch 3, surface 3).
+  cardMenu: {
+    newCard: 'Add card',
+    addNote: 'Add note',
+    addMedia: 'Add media file',
+    newWebCard: 'Add web page',
+  },
+  prompt: {
+    addNoteTitle: 'Add a note to this whiteboard',
+    addMediaTitle: 'Add a media file to this whiteboard',
+    newWebCardTitle: 'Add a web page to this whiteboard',
+    searchPlaceholder: 'Type to search…',
+    urlPlaceholder: 'https://example.com',
+    noMatches: 'No matching file.',
+    noMedia: 'This vault has no images, audio or video.',
   },
   // Floating toolbar over the current selection (P3 batch 3).
   toolbar: {
@@ -43,6 +73,9 @@ export const en = {
   edge: {
     labelPlaceholder: 'Label this connection',
   },
+  group: {
+    labelPlaceholder: 'Name this group',
+  },
   file: {
     newWhiteboardBaseName: 'Whiteboard',
     newNoteBaseName: 'Untitled',
@@ -61,6 +94,7 @@ export const en = {
     importedAll:
       'Imported {imported} Canvas file(s); {failed} could not be read.',
     importNoneFound: 'No Canvas files found in this vault.',
+    invalidUrl: 'Only http and https addresses can be added.',
   },
   card: {
     missingFile: 'File missing',

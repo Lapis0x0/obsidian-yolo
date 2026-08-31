@@ -139,6 +139,23 @@ export type Camera = Readonly<{
 export type Board = Readonly<{
   version: 1
   camera: Camera
+  /**
+   * Read-only lock: while set, the board can be looked at and moved around
+   * but not changed (ui/canvas.ts's `isLocked` gate).
+   *
+   * A third deliberate deviation from Canvas, alongside `camera`. Canvas keeps
+   * its lock out of the `.canvas` file too, in a machine-local side store
+   * (`app.saveLocalStorage("canvas-" + path)`, verified against 1.13.7) — it
+   * has to, because `.canvas` is a shared open format with nowhere to put it.
+   * `.yoloboard` is our own format for exactly this class of state, and a lock
+   * that lives in the file is one the board carries with it: sync it to
+   * another device, or hand it to someone else, and it is still locked. A
+   * machine-local lock is invisible everywhere but the machine that set it.
+   *
+   * Absent rather than `false` when the board is unlocked, so a board that has
+   * never been locked serializes exactly as it did before this field existed.
+   */
+  locked?: boolean
   nodes: readonly BoardNode[]
   edges: readonly Edge[]
   /** Unknown top-level fields, round-tripped on write. */
@@ -272,6 +289,10 @@ export function parseBoard(raw: string): BoardParseResult {
   const board: Board = {
     version: YOLOBOARD_SCHEMA_VERSION,
     camera: parseCamera(json.camera),
+    // Only a literal `true` locks a board: anything else — absent, false, or
+    // a value of the wrong type — is a board that opens editable, which is
+    // the safe direction for a field to be misread in.
+    ...(json.locked === true ? { locked: true } : {}),
     nodes,
     edges,
     extra: extractExtra(json, TOP_LEVEL_KEYS),
@@ -284,6 +305,9 @@ export function serializeBoard(board: Board): string {
   const out: Record<string, unknown> = {
     version: board.version,
     camera: { x: board.camera.x, y: board.camera.y, scale: board.camera.scale },
+    // `undefined` is dropped by JSON.stringify, so an unlocked board writes no
+    // `locked` key at all rather than a redundant `false`.
+    locked: board.locked ? true : undefined,
     nodes: board.nodes.map(serializeNode),
     edges: board.edges.map(serializeEdge),
     ...board.extra,
@@ -600,7 +624,13 @@ function parseCamera(raw: unknown): Camera {
 
 // --- shared helpers ------------------------------------------------------
 
-const TOP_LEVEL_KEYS = ['version', 'camera', 'nodes', 'edges'] as const
+const TOP_LEVEL_KEYS = [
+  'version',
+  'camera',
+  'locked',
+  'nodes',
+  'edges',
+] as const
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)

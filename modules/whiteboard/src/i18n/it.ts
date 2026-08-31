@@ -18,6 +18,35 @@ export const it = {
     arrowForward: 'Freccia alla fine',
     arrowBackward: "Freccia all'inizio",
     arrowBoth: 'Frecce a entrambe le estremità',
+    createGroup: 'Raggruppa la selezione',
+    renameGroup: 'Rinomina gruppo',
+    zoomToSelection: 'Zoom sulla selezione',
+    resetCamera: "Torna all'origine",
+    lockBoard: 'Blocca lavagna',
+    unlockBoard: 'Sblocca lavagna',
+    alignLeft: 'Allinea a sinistra',
+    alignCenter: 'Allinea al centro orizzontale',
+    alignRight: 'Allinea a destra',
+    alignTop: 'Allinea in alto',
+    alignMiddle: 'Allinea al centro verticale',
+    alignBottom: 'Allinea in basso',
+    distributeHorizontal: 'Distribuisci orizzontalmente',
+    distributeVertical: 'Distribuisci verticalmente',
+  },
+  cardMenu: {
+    newCard: 'Aggiungi scheda',
+    addNote: 'Aggiungi nota',
+    addMedia: 'Aggiungi file multimediale',
+    newWebCard: 'Aggiungi pagina web',
+  },
+  prompt: {
+    addNoteTitle: 'Aggiungi una nota a questa lavagna',
+    addMediaTitle: 'Aggiungi un file multimediale a questa lavagna',
+    newWebCardTitle: 'Aggiungi una pagina web a questa lavagna',
+    searchPlaceholder: 'Digita per cercare…',
+    urlPlaceholder: 'https://example.com',
+    noMatches: 'Nessun file corrispondente.',
+    noMedia: 'Questo vault non contiene immagini, audio o video.',
   },
   toolbar: {
     color: 'Imposta colore',
@@ -39,6 +68,9 @@ export const it = {
   edge: {
     labelPlaceholder: 'Etichetta questo collegamento',
   },
+  group: {
+    labelPlaceholder: 'Dai un nome a questo gruppo',
+  },
   file: {
     newWhiteboardBaseName: 'Lavagna',
     newNoteBaseName: 'Senza titolo',
@@ -57,6 +89,7 @@ export const it = {
     importedAll:
       'Importati {imported} file Canvas; {failed} non sono stati letti.',
     importNoneFound: 'Nessun file Canvas trovato in questo vault.',
+    invalidUrl: 'Si possono aggiungere solo indirizzi http e https.',
   },
   card: {
     missingFile: 'File mancante',

@@ -106,7 +106,9 @@ export type ToolbarColorControl = Readonly<{
 }>
 
 export type ToolbarModel = Readonly<{
-  color: ToolbarColorControl
+  /** Absent when the selection cannot be recoloured — a locked board. The
+   * palette button is then not drawn at all, rather than drawn and inert. */
+  color?: ToolbarColorControl
   actions: readonly ToolbarAction[]
 }>
 
@@ -204,11 +206,13 @@ export class SelectionToolbar {
       this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
       return
     }
-    this.paletteButtonEl = this.appendButton({
-      label: model.color.label,
-      icon: 'palette',
-      onSelect: () => this.togglePopover(),
-    })
+    this.paletteButtonEl = model.color
+      ? this.appendButton({
+          label: model.color.label,
+          icon: 'palette',
+          onSelect: () => this.togglePopover(),
+        })
+      : null
     for (const action of model.actions) this.appendButton(action)
     this.el.classList.remove(TOOLBAR_HIDDEN_CLASS)
   }
@@ -216,7 +220,7 @@ export class SelectionToolbar {
   /** Reflects a colour the caller just applied, without rebuilding the
    * toolbar — picking a second colour from an open popover has to be possible. */
   setCurrentColor(color: string | undefined): void {
-    if (!this.model) return
+    if (!this.model?.color) return
     this.model = {
       ...this.model,
       color: { ...this.model.color, current: color },
@@ -314,7 +318,7 @@ export class SelectionToolbar {
 
   private openPopover(): void {
     const model = this.model
-    if (!model) return
+    if (!model?.color) return
     const popover = this.doc.createElement('div')
     popover.className = POPOVER_CLASS
 
@@ -353,7 +357,7 @@ export class SelectionToolbar {
     swatch.dataset.color = options.value ?? ''
     swatch.addEventListener('click', (event) => {
       event.preventDefault()
-      this.model?.color.onPick(options.value)
+      this.model?.color?.onPick(options.value)
     })
     popover.appendChild(swatch)
     return swatch
@@ -381,7 +385,7 @@ export class SelectionToolbar {
     input.value = customColorInputValue(control.current)
     input.addEventListener('change', () => {
       const hex = normalizeHex(input.value)
-      if (hex) this.model?.color.onPick(hex)
+      if (hex) this.model?.color?.onPick(hex)
     })
     swatch.appendChild(input)
     popover.appendChild(swatch)
@@ -389,7 +393,7 @@ export class SelectionToolbar {
 
   private markActiveSwatch(): void {
     const popover = this.popoverEl
-    const current = this.model?.color.current
+    const current = this.model?.color?.current
     if (!popover) return
     const resolved = resolveColor(current)
     // `null` = no plain swatch can match, which is the custom case: the empty

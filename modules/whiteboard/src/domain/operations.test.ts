@@ -13,6 +13,7 @@ import {
   removeEdge,
   removeNode,
   replaceNode,
+  setNodePositions,
   updateEdge,
   updateNode,
 } from './operations'
@@ -208,6 +209,65 @@ describe('moveNodes', () => {
   it('throws for an unknown card id', () => {
     const board = boardWith([textCard('c1')])
     expect(() => moveNodes(board, ['missing'], 1, 1)).toThrow(/not found/i)
+  })
+})
+
+describe('setNodePositions', () => {
+  it('moves each node to its own position in one board change', () => {
+    const board = boardWith([textCard('c1'), textCard('c2')])
+    const next = setNodePositions(
+      board,
+      new Map([
+        ['c1', { x: 10, y: 20 }],
+        ['c2', { x: 300, y: 0 }],
+      ]),
+    )
+    expect(next.nodes[0]).toMatchObject({ x: 10, y: 20 })
+    expect(next.nodes[1]).toMatchObject({ x: 300, y: 0 })
+  })
+
+  it('keeps untouched nodes referentially identical', () => {
+    const c2 = textCard('c2')
+    const board = boardWith([textCard('c1'), c2])
+    const next = setNodePositions(board, new Map([['c1', { x: 5, y: 5 }]]))
+    expect(next.nodes[1]).toBe(c2)
+  })
+
+  it('returns the same board when nothing actually moves', () => {
+    const board = boardWith([textCard('c1', { x: 7, y: 8 })])
+    expect(setNodePositions(board, new Map([['c1', { x: 7, y: 8 }]]))).toBe(
+      board,
+    )
+  })
+
+  it('returns the same board for an empty batch', () => {
+    const board = boardWith([textCard('c1')])
+    expect(setNodePositions(board, new Map())).toBe(board)
+  })
+
+  it('preserves everything about a node but its position', () => {
+    const board = boardWith([
+      textCard('c1', { text: 'kept', color: '3', w: 42, extra: { k: 1 } }),
+    ])
+    const next = setNodePositions(board, new Map([['c1', { x: 1, y: 2 }]]))
+    expect(next.nodes[0]).toEqual({
+      id: 'c1',
+      type: 'text',
+      x: 1,
+      y: 2,
+      w: 42,
+      h: 100,
+      text: 'kept',
+      color: '3',
+      extra: { k: 1 },
+    })
+  })
+
+  it('throws for an unknown node rather than silently skipping it', () => {
+    const board = boardWith([textCard('c1')])
+    expect(() =>
+      setNodePositions(board, new Map([['missing', { x: 0, y: 0 }]])),
+    ).toThrow(/not found/)
   })
 })
 
