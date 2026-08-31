@@ -46,6 +46,25 @@ export function renderConversationTimelineItem(
     )
   }
 
+  if (item.kind === 'session-fallback-divider') {
+    // Structurally identical to the compaction divider above (see
+    // `ChatTimelineSessionFallbackDividerItem`'s doc comment) — same
+    // classes, but per-item text instead of the surface-wide
+    // `contract.compaction` copy, since each notice names a different
+    // unreachable profile.
+    return (
+      <div className="yolo-chat-compaction-divider">
+        <div className="yolo-chat-compaction-divider__title">{item.title}</div>
+        <div className="yolo-chat-compaction-divider__line" />
+        <div className="yolo-chat-compaction-divider__content">
+          <div className="yolo-chat-compaction-divider__description">
+            {item.description}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
   if (item.kind === 'user-message') {
     const message = contract.messagesById.get(item.messageId)
     return message?.role === 'user'

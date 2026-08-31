@@ -1,180 +1,13 @@
-import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
 import type {
   AssistantToolMessageGroup,
-  ChatAssistantMessage,
   ChatConversationCompaction,
-  ChatToolMessage,
   ChatUserMessage,
 } from '../../types/chat'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
-const USER_MESSAGE_ESTIMATED_HEIGHT = 92
-const ASSISTANT_GROUP_ESTIMATED_HEIGHT = 180
-const COMPACTION_ESTIMATED_HEIGHT = 72
-const QUERY_PROGRESS_ESTIMATED_HEIGHT = 84
-const CONTINUE_RESPONSE_ESTIMATED_HEIGHT = 52
-const BOTTOM_ANCHOR_ESTIMATED_HEIGHT = 8
 const TIMELINE_START_SPACING = 12
 const USER_TO_ASSISTANT_SPACING = 24
-const USER_MESSAGE_MAX_ESTIMATED_HEIGHT = 420
-const ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT = 2800
-const TOOL_MESSAGE_MAX_ESTIMATED_HEIGHT = 720
-const TOOL_MESSAGE_BASE_ESTIMATED_HEIGHT = 24
-const COLLAPSED_TOOL_CALL_ESTIMATED_HEIGHT = 34
-
-function clampEstimatedHeight(
-  value: number,
-  { min, max }: { min: number; max: number },
-): number {
-  return Math.max(min, Math.min(max, Math.ceil(value)))
-}
-
-function countMatches(content: string, pattern: RegExp): number {
-  return content.match(pattern)?.length ?? 0
-}
-
-function estimateMarkdownTextHeight(
-  content: string,
-  {
-    baseHeight,
-    charsPerLine,
-    lineHeight,
-    maxHeight,
-  }: {
-    baseHeight: number
-    charsPerLine: number
-    lineHeight: number
-    maxHeight: number
-  },
-): number {
-  const trimmed = content.trim()
-  if (!trimmed) {
-    return baseHeight
-  }
-
-  const explicitLineCount = trimmed.split('\n').length
-  const wrappedLineCount = Math.ceil(trimmed.length / charsPerLine)
-  const effectiveLineCount = Math.max(explicitLineCount, wrappedLineCount)
-  const paragraphCount = countMatches(trimmed, /\n\s*\n/g) + 1
-  const headingCount = countMatches(trimmed, /^#{1,6}\s/gm)
-  const listItemCount = countMatches(trimmed, /^\s*(?:[-*+]|\d+\.)\s/gm)
-  const quoteCount = countMatches(trimmed, /^\s*>\s/gm)
-  const codeFenceCount = Math.floor(countMatches(trimmed, /^```/gm) / 2)
-
-  const estimated =
-    baseHeight +
-    effectiveLineCount * lineHeight +
-    paragraphCount * 10 +
-    headingCount * 18 +
-    listItemCount * 6 +
-    quoteCount * 8 +
-    codeFenceCount * 120
-
-  return clampEstimatedHeight(estimated, {
-    min: baseHeight,
-    max: maxHeight,
-  })
-}
-
-function estimateUserMessageHeight(message: ChatUserMessage): number {
-  const text = editorStateToPlainText(message.content)
-  const mentionableCount = message.mentionables.length
-  const selectedSkillCount = message.selectedSkills?.length ?? 0
-  const estimated =
-    estimateMarkdownTextHeight(text, {
-      baseHeight: USER_MESSAGE_ESTIMATED_HEIGHT,
-      charsPerLine: 34,
-      lineHeight: 18,
-      maxHeight: USER_MESSAGE_MAX_ESTIMATED_HEIGHT,
-    }) +
-    mentionableCount * 22 +
-    selectedSkillCount * 18
-
-  return clampEstimatedHeight(estimated, {
-    min: USER_MESSAGE_ESTIMATED_HEIGHT,
-    max: USER_MESSAGE_MAX_ESTIMATED_HEIGHT,
-  })
-}
-
-function estimateAssistantMessageHeight(message: ChatAssistantMessage): number {
-  const contentHeight = estimateMarkdownTextHeight(message.content, {
-    baseHeight: 96,
-    charsPerLine: 38,
-    lineHeight: 20,
-    maxHeight: ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT,
-  })
-  const reasoningHeight = message.reasoning
-    ? estimateMarkdownTextHeight(message.reasoning, {
-        baseHeight: 54,
-        charsPerLine: 42,
-        lineHeight: 18,
-        maxHeight: 520,
-      })
-    : 0
-  const annotationHeight = (message.annotations?.length ?? 0) * 42
-  const toolRequestHeight = (message.toolCallRequests?.length ?? 0) * 36
-
-  return contentHeight + reasoningHeight + annotationHeight + toolRequestHeight
-}
-
-function estimateToolMessageHeight(message: ChatToolMessage): number {
-  const toolCallCount = message.toolCalls.length
-  const estimated =
-    TOOL_MESSAGE_BASE_ESTIMATED_HEIGHT +
-    toolCallCount * COLLAPSED_TOOL_CALL_ESTIMATED_HEIGHT
-  return clampEstimatedHeight(estimated, {
-    min: 72,
-    max: TOOL_MESSAGE_MAX_ESTIMATED_HEIGHT,
-  })
-}
-
-function estimateAssistantGroupHeight(
-  messages: AssistantToolMessageGroup,
-): number {
-  const estimated = messages.reduce((sum, message) => {
-    if (message.role === 'assistant') {
-      return sum + estimateAssistantMessageHeight(message)
-    }
-
-    if (
-      message.role === 'external_agent_result' ||
-      message.role === 'subagent_result' ||
-      message.role === 'terminal_command_result'
-    ) {
-      return sum + 120
-    }
-
-    return sum + estimateToolMessageHeight(message)
-  }, 0)
-
-  return clampEstimatedHeight(estimated + 20, {
-    min: ASSISTANT_GROUP_ESTIMATED_HEIGHT,
-    max: ASSISTANT_GROUP_MAX_ESTIMATED_HEIGHT,
-  })
-}
-
-export const getDefaultTimelineEstimatedHeight = (
-  item: ChatTimelineItem,
-): number => {
-  switch (item.kind) {
-    case 'user-message':
-      return USER_MESSAGE_ESTIMATED_HEIGHT
-    case 'assistant-group':
-      return ASSISTANT_GROUP_ESTIMATED_HEIGHT
-    case 'compaction-divider':
-    case 'compaction-pending':
-      return COMPACTION_ESTIMATED_HEIGHT
-    case 'query-progress':
-      return QUERY_PROGRESS_ESTIMATED_HEIGHT
-    case 'pending-response':
-      return 56
-    case 'continue-response':
-      return CONTINUE_RESPONSE_ESTIMATED_HEIGHT
-    case 'bottom-anchor':
-      return BOTTOM_ANCHOR_ESTIMATED_HEIGHT
-  }
-}
 
 type BuildMessageTimelineItemsParams = {
   groupedChatMessages: (ChatUserMessage | AssistantToolMessageGroup)[]
@@ -248,7 +81,6 @@ export const buildMessageTimelineItems = ({
           kind: 'assistant-group',
           id: firstMessageId,
           renderKey: firstMessageId,
-          estimatedHeight: estimateAssistantGroupHeight(messageOrGroup),
           spacingBefore,
           groupId: firstMessageId,
           messageIds: messageOrGroup.map((message) => message.id),
@@ -264,7 +96,6 @@ export const buildMessageTimelineItems = ({
         kind: 'user-message',
         id: messageOrGroup.id,
         renderKey: messageOrGroup.id,
-        estimatedHeight: estimateUserMessageHeight(messageOrGroup),
         spacingBefore,
         messageId: messageOrGroup.id,
         revision: getMessageRevision(revisionsById, messageOrGroup.id),
@@ -280,7 +111,6 @@ export const buildMessageTimelineItems = ({
       kind: 'bottom-anchor',
       id: 'bottom-anchor',
       renderKey: 'bottom-anchor',
-      estimatedHeight: BOTTOM_ANCHOR_ESTIMATED_HEIGHT,
       isPinnedForRender: true,
     })
   }
@@ -300,6 +130,19 @@ type BuildChatTimelineItemsParams = {
   }[]
   latestCompaction: ChatConversationCompaction | null
   pendingCompactionAnchorMessageId?: string | null
+  /**
+   * "Resumed session couldn't be reached, started a fresh one instead"
+   * notices (see `CliSessionFallbackBoundary` / `ChatTimelineSessionFallbackDividerItem`).
+   * Anchored and inserted the same way as `compactionDividers`, but kept as
+   * a separate stream since the two boundary kinds are unrelated events
+   * that happen to share one divider visual.
+   */
+  sessionFallbackDividers?: readonly {
+    id: string
+    anchorMessageId: string | null
+    title: string
+    description: string
+  }[]
   queryProgress?: QueryProgressState
   showContinueResponseButton?: boolean
   activeEditableMessageId?: string | null
@@ -315,6 +158,7 @@ export const buildChatTimelineItems = ({
   compactionDividers,
   latestCompaction,
   pendingCompactionAnchorMessageId = null,
+  sessionFallbackDividers = [],
   queryProgress,
   showContinueResponseButton = false,
   activeEditableMessageId = null,
@@ -349,11 +193,42 @@ export const buildChatTimelineItems = ({
         kind: 'compaction-divider',
         id: divider.id,
         renderKey: divider.id,
-        estimatedHeight: COMPACTION_ESTIMATED_HEIGHT,
         anchorMessageId,
         compaction: divider.compaction,
       })
     }
+  }
+  const sessionFallbackAnchorMessageIdSet = new Set(
+    sessionFallbackDividers.map((divider) => divider.anchorMessageId),
+  )
+  const sessionFallbackDividersByAnchor = new Map<
+    string | null,
+    Array<(typeof sessionFallbackDividers)[number]>
+  >()
+  for (const divider of sessionFallbackDividers) {
+    const anchored = sessionFallbackDividersByAnchor.get(
+      divider.anchorMessageId,
+    )
+    if (anchored) anchored.push(divider)
+    else sessionFallbackDividersByAnchor.set(divider.anchorMessageId, [divider])
+  }
+  const insertSessionFallbackDividers = (anchorMessageId: string | null) => {
+    for (const divider of sessionFallbackDividersByAnchor.get(
+      anchorMessageId,
+    ) ?? []) {
+      items.push({
+        kind: 'session-fallback-divider',
+        id: divider.id,
+        renderKey: divider.id,
+        anchorMessageId,
+        title: divider.title,
+        description: divider.description,
+      })
+    }
+  }
+  const insertBoundaryDividers = (anchorMessageId: string | null) => {
+    insertCompactionDividers(anchorMessageId)
+    insertSessionFallbackDividers(anchorMessageId)
   }
   const messagesById = new Map<
     string,
@@ -377,7 +252,7 @@ export const buildChatTimelineItems = ({
     activeStreamingMessageId,
   })
 
-  insertCompactionDividers(null)
+  insertBoundaryDividers(null)
 
   const insertPendingItem = (anchorMessageId: string) => {
     if (
@@ -392,7 +267,6 @@ export const buildChatTimelineItems = ({
       kind: 'compaction-pending',
       id: `${pendingCompactionAnchorMessageId}-compact-pending`,
       renderKey: `${pendingCompactionAnchorMessageId}-compact-pending`,
-      estimatedHeight: COMPACTION_ESTIMATED_HEIGHT,
       anchorMessageId: pendingCompactionAnchorMessageId,
       isPinnedForRender: true,
     })
@@ -437,12 +311,15 @@ export const buildChatTimelineItems = ({
 
       groupMessages.forEach((message) => {
         currentSlice.push(message)
-        if (!compactionAnchorMessageIdSet.has(message.id)) {
+        if (
+          !compactionAnchorMessageIdSet.has(message.id) &&
+          !sessionFallbackAnchorMessageIdSet.has(message.id)
+        ) {
           return
         }
 
         pushCurrentGroup()
-        insertCompactionDividers(message.id)
+        insertBoundaryDividers(message.id)
       })
 
       pushCurrentGroup()
@@ -451,7 +328,7 @@ export const buildChatTimelineItems = ({
 
     items.push(item)
     insertPendingItem(item.id)
-    insertCompactionDividers(item.id)
+    insertBoundaryDividers(item.id)
   })
 
   if (queryProgress && queryProgress.type !== 'idle') {
@@ -459,7 +336,6 @@ export const buildChatTimelineItems = ({
       kind: 'query-progress',
       id: 'query-progress',
       renderKey: 'query-progress',
-      estimatedHeight: QUERY_PROGRESS_ESTIMATED_HEIGHT,
       isPinnedForRender: true,
     })
   }
@@ -469,7 +345,6 @@ export const buildChatTimelineItems = ({
       kind: 'continue-response',
       id: 'continue-response',
       renderKey: 'continue-response',
-      estimatedHeight: CONTINUE_RESPONSE_ESTIMATED_HEIGHT,
       isPinnedForRender: true,
     })
   }
@@ -478,7 +353,6 @@ export const buildChatTimelineItems = ({
     kind: 'bottom-anchor',
     id: 'bottom-anchor',
     renderKey: 'bottom-anchor',
-    estimatedHeight: BOTTOM_ANCHOR_ESTIMATED_HEIGHT,
     isPinnedForRender: true,
   })
 

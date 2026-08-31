@@ -28,6 +28,8 @@
   --pp-amber-fg: oklch(0.4 0.1 75);
   --pp-teal-bg: oklch(0.94 0.04 195);
   --pp-teal-fg: oklch(0.36 0.1 195);
+  --pp-rose-bg: oklch(0.94 0.04 15);
+  --pp-rose-fg: oklch(0.44 0.14 15);
 
   --pp-radius: 8px;
   --pp-radius-sm: 6px;
@@ -83,6 +85,8 @@ body.theme-dark .yolo-provider-picker {
   --pp-amber-fg: oklch(0.82 0.1 75);
   --pp-teal-bg: oklch(0.26 0.06 195);
   --pp-teal-fg: oklch(0.8 0.08 195);
+  --pp-rose-bg: oklch(0.28 0.07 15);
+  --pp-rose-fg: oklch(0.84 0.1 15);
 }
 
 /* ── Toolbar: search + count ─────────────────────────────────────────── */
@@ -459,6 +463,11 @@ body.theme-dark .yolo-pp-badge--mute {
 .yolo-pp-badge--teal {
   background: var(--pp-teal-bg);
   color: var(--pp-teal-fg);
+}
+
+.yolo-pp-badge--rose {
+  background: var(--pp-rose-bg);
+  color: var(--pp-rose-fg);
 }
 
 .yolo-pp-badge--purple {

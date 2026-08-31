@@ -7,48 +7,51 @@ import {
   SettingsProvider,
   useSettings,
 } from '../../../contexts/settings-context'
-import { DEFAULT_BLOCKED_PREFIXES } from '../../../core/agent/bash/command-classifier'
-import {
-  BUILTIN_TOOL_CATEGORY_I18N,
-  BUILTIN_TOOL_CATEGORY_ORDER,
-  BuiltinToolCategory,
-  FILE_EDIT_GROUP_TOOL_NAME,
-  MEMORY_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
-  getBuiltinToolCategory,
-  getBuiltinToolDisplayIndex,
-  getBuiltinToolUiMeta,
-} from '../../../core/agent/builtinToolUiMeta'
-import { DELEGATE_SUBAGENT_TOOL_SHORT_NAME } from '../../../core/agent/subagent/constants'
-import { JS_SANDBOX_TOOL_NAME } from '../../../core/mcp/jsSandboxTool'
-import {
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-  TERMINAL_COMMAND_TOOL_NAME,
-  getLocalFileTools,
-} from '../../../core/mcp/localFileTools'
-import YoloPlugin from '../../../main'
+import type { BuiltinCapabilityId } from '../../../core/tools/registry'
+import type YoloPlugin from '../../../main'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
 import { CollapsibleToolDescription } from '../common/CollapsibleToolDescription'
+import {
+  buildBuiltinCapabilityRows,
+  groupCapabilityRowsByCategory,
+} from '../sections/builtinCapabilityRows'
 import { McpSection } from '../sections/McpSection'
 
-import { JsSandboxConfigModal } from './JsSandboxConfigModal'
-import { SubagentConfigModal } from './SubagentConfigModal'
-import { TerminalCommandConfigModal } from './TerminalCommandConfigModal'
-import { WebSearchSettingsModal } from './WebSearchSettingsModal'
+import { CAPABILITY_SETTINGS_LAUNCHERS } from './capabilitySettingsLaunchers'
 
 type AgentToolsModalProps = {
   app: App
   plugin: YoloPlugin
 }
 
-const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-)
-const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
+/**
+ * aria-label text for the settings-button of each capability that declares
+ * `hasSettings: true`. Kept local to this modal (its only consumer) rather
+ * than folded into `CAPABILITY_SETTINGS_LAUNCHERS` — that table's job is
+ * "which modal opens", a behavior concern; this is presentation text for a
+ * single button in a single view.
+ */
+const CAPABILITY_SETTINGS_BUTTON_ARIA_LABEL: Partial<
+  Record<BuiltinCapabilityId, { key: string; fallback: string }>
+> = {
+  web_access: {
+    key: 'settings.webSearch.openSettings',
+    fallback: 'Configure web search providers',
+  },
+  js_sandbox: {
+    key: 'settings.jsSandbox.openSettings',
+    fallback: 'Configure analysis sandbox',
+  },
+  terminal: {
+    key: 'settings.terminalCommand.openSettings',
+    fallback: 'Configure terminal command',
+  },
+  subagent_delegation: {
+    key: 'settings.subagent.openSettings',
+    fallback: 'Configure subagent models',
+  },
+}
 
 export class AgentToolsModal extends ReactModal<AgentToolsModalProps> {
   constructor(app: App, plugin: YoloPlugin) {
@@ -94,132 +97,39 @@ function AgentToolsModalContent({
   const { settings, setSettings } = useSettings()
 
   const builtinToolGroups = useMemo(() => {
-    const toolOptions = settings.mcp.builtinToolOptions
-    const tools = getLocalFileTools()
-      .filter(
-        (tool) =>
-          !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
-          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
-          !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
-      )
-      .map((tool) => {
-        const meta = getBuiltinToolUiMeta(tool.name)
-        return {
-          id: tool.name,
-          label: meta ? t(meta.labelKey, meta.labelFallback) : tool.name,
-          description: meta
-            ? t(meta.descKey ?? '', meta.descFallback)
-            : tool.description,
-          enabled: !(toolOptions[tool.name]?.disabled ?? false),
-          hasSettings:
-            tool.name === JS_SANDBOX_TOOL_NAME ||
-            tool.name === TERMINAL_COMMAND_TOOL_NAME ||
-            tool.name === DELEGATE_SUBAGENT_TOOL_SHORT_NAME,
-        }
-      })
+    // Every registered capability is listed unconditionally: this page shows
+    // what the user has *authorized*, which is independent of whether a
+    // capability's tools happen to be runnable right now (master.md decision
+    // 18 + its D7 ruling). Pre-D7 this list was derived from
+    // `getLocalFileTools()`, so disabling the `bash-engine` runtime component
+    // also made the Vault Shell row disappear — while the equivalent gates on
+    // `web_search` / `terminal_command` (which live downstream in
+    // `McpManager.isLocalToolEnabled`) always left their rows visible. That
+    // asymmetry is resolved here in favor of always showing the row; the
+    // capability's toggle and approval tier stay persisted either way, and
+    // only the tool's presence in the model-facing catalog changes.
+    const rows = buildBuiltinCapabilityRows({
+      toolOptions: settings.mcp.builtinCapabilityOptions,
+      t,
+    })
+    return groupCapabilityRowsByCategory(rows, t)
+  }, [settings.mcp.builtinCapabilityOptions, t])
 
-    const editSplitToolEnabled = LOCAL_FS_EDIT_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[FILE_EDIT_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
-    if (!fileEditMeta) {
-      throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
-    }
-    const fileEditTool = {
-      id: FILE_EDIT_GROUP_TOOL_NAME,
-      label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
-      description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
-      enabled: editSplitToolEnabled,
-      hasSettings: false,
-    }
-
-    const memorySplitToolEnabled = LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[MEMORY_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
-    if (!memoryOpsMeta) {
-      throw new Error('Missing built-in tool UI metadata for memory_ops')
-    }
-    const memoryOpsTool = {
-      id: MEMORY_OPS_GROUP_TOOL_NAME,
-      label: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
-      description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
-      enabled: memorySplitToolEnabled,
-      hasSettings: false,
-    }
-
-    const webSplitToolEnabled = WEB_OPS_SPLIT_ACTION_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[WEB_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
-    if (!webOpsMeta) {
-      throw new Error('Missing built-in tool UI metadata for web_ops')
-    }
-    const webOpsTool = {
-      id: WEB_OPS_GROUP_TOOL_NAME,
-      label: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
-      description: t(webOpsMeta.descKey ?? '', webOpsMeta.descFallback),
-      enabled: webSplitToolEnabled,
-      hasSettings: true,
-    }
-
-    const allTools = [...tools, fileEditTool, memoryOpsTool, webOpsTool]
-
-    const byCategory = new Map<BuiltinToolCategory, typeof allTools>()
-    for (const category of BUILTIN_TOOL_CATEGORY_ORDER) {
-      byCategory.set(category, [])
-    }
-    for (const tool of allTools) {
-      const category = getBuiltinToolCategory(tool.id) ?? 'vault'
-      byCategory.get(category)!.push(tool)
-    }
-
-    return BUILTIN_TOOL_CATEGORY_ORDER.map((category) => ({
-      category,
-      title: t(
-        BUILTIN_TOOL_CATEGORY_I18N[category].key,
-        BUILTIN_TOOL_CATEGORY_I18N[category].fallback,
-      ),
-      tools: (byCategory.get(category) ?? []).slice().sort((a, b) => {
-        return (
-          getBuiltinToolDisplayIndex(category, a.id) -
-          getBuiltinToolDisplayIndex(category, b.id)
-        )
-      }),
-    })).filter((group) => group.tools.length > 0)
-  }, [settings.mcp.builtinToolOptions, t])
-
-  const handleToggleBuiltinTool = (toolName: string, enabled: boolean) => {
-    const targets =
-      toolName === FILE_EDIT_GROUP_TOOL_NAME
-        ? [FILE_EDIT_GROUP_TOOL_NAME, ...LOCAL_FS_EDIT_TOOL_NAMES]
-        : toolName === MEMORY_OPS_GROUP_TOOL_NAME
-          ? [
-              MEMORY_OPS_GROUP_TOOL_NAME,
-              ...LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-            ]
-          : toolName === WEB_OPS_GROUP_TOOL_NAME
-            ? [WEB_OPS_GROUP_TOOL_NAME, ...WEB_OPS_SPLIT_ACTION_TOOL_NAMES]
-            : [toolName]
-    const nextBuiltinToolOptions = { ...settings.mcp.builtinToolOptions }
-    for (const target of targets) {
-      nextBuiltinToolOptions[target] = {
-        ...settings.mcp.builtinToolOptions[target],
-        disabled: !enabled,
-      }
-    }
-
+  const handleToggleBuiltinTool = (
+    capabilityId: BuiltinCapabilityId,
+    enabled: boolean,
+  ) => {
     void setSettings({
       ...settings,
       mcp: {
         ...settings.mcp,
-        builtinToolOptions: nextBuiltinToolOptions,
+        builtinCapabilityOptions: {
+          ...settings.mcp.builtinCapabilityOptions,
+          [capabilityId]: {
+            ...settings.mcp.builtinCapabilityOptions[capabilityId],
+            disabled: !enabled,
+          },
+        },
       },
     })
   }
@@ -248,135 +158,48 @@ function AgentToolsModalContent({
               <div>{t('settings.mcp.enabled', 'Enabled')}</div>
             </div>
             <div className="yolo-mcp-server yolo-builtin-tools-table-body">
-              {group.tools.map((tool) => (
-                <div
-                  key={tool.id}
-                  className="yolo-mcp-server-row yolo-builtin-tools-table-row"
-                >
-                  <div className="yolo-mcp-server-name">{tool.label}</div>
-                  <div className="yolo-mcp-server-status yolo-builtin-tools-table-description">
-                    <CollapsibleToolDescription
-                      description={tool.description}
-                    />
-                  </div>
-                  <div />
-                  <div className="yolo-builtin-tools-table-control">
-                    {tool.hasSettings ? (
-                      <button
-                        type="button"
-                        className="clickable-icon"
-                        aria-label={
-                          tool.id === JS_SANDBOX_TOOL_NAME
-                            ? t(
-                                'settings.jsSandbox.openSettings',
-                                'Configure analysis sandbox',
-                              )
-                            : tool.id === TERMINAL_COMMAND_TOOL_NAME
-                              ? t(
-                                  'settings.terminalCommand.openSettings',
-                                  'Configure terminal command',
-                                )
-                              : tool.id === DELEGATE_SUBAGENT_TOOL_SHORT_NAME
-                                ? t(
-                                    'settings.subagent.openSettings',
-                                    'Configure subagent models',
-                                  )
-                                : t(
-                                    'settings.webSearch.openSettings',
-                                    'Configure web search providers',
-                                  )
+              {group.rows.map((row) => {
+                const ariaLabel = CAPABILITY_SETTINGS_BUTTON_ARIA_LABEL[row.id]
+                const launcher = CAPABILITY_SETTINGS_LAUNCHERS[row.id]
+                return (
+                  <div
+                    key={row.id}
+                    className="yolo-mcp-server-row yolo-builtin-tools-table-row"
+                  >
+                    <div className="yolo-mcp-server-name">{row.label}</div>
+                    <div className="yolo-mcp-server-status yolo-builtin-tools-table-description">
+                      <CollapsibleToolDescription
+                        description={row.description}
+                      />
+                    </div>
+                    <div />
+                    <div className="yolo-builtin-tools-table-control">
+                      {row.hasSettings && launcher ? (
+                        <button
+                          type="button"
+                          className="clickable-icon"
+                          aria-label={
+                            ariaLabel
+                              ? t(ariaLabel.key, ariaLabel.fallback)
+                              : ''
+                          }
+                          onClick={() =>
+                            launcher({ app, settings, setSettings, t, plugin })
+                          }
+                        >
+                          <Settings size={16} />
+                        </button>
+                      ) : null}
+                      <ObsidianToggle
+                        value={row.enabled}
+                        onChange={(enabled) =>
+                          handleToggleBuiltinTool(row.id, enabled)
                         }
-                        onClick={() => {
-                          if (tool.id === JS_SANDBOX_TOOL_NAME) {
-                            new JsSandboxConfigModal(app, {
-                              title: t(
-                                'settings.jsSandbox.openSettings',
-                                'Configure analysis sandbox',
-                              ),
-                              value: settings.jsSandbox,
-                              onChange: (next) =>
-                                void setSettings({
-                                  ...settings,
-                                  jsSandbox: next,
-                                }),
-                            }).open()
-                            return
-                          }
-                          if (tool.id === TERMINAL_COMMAND_TOOL_NAME) {
-                            new TerminalCommandConfigModal(app, {
-                              title: t(
-                                'settings.terminalCommand.openSettings',
-                                'Configure terminal command',
-                              ),
-                              value: settings.mcp.builtinToolOptions[
-                                TERMINAL_COMMAND_TOOL_NAME
-                              ]?.blockedPrefixes ?? [
-                                ...DEFAULT_BLOCKED_PREFIXES,
-                              ],
-                              onChange: (next) =>
-                                void setSettings({
-                                  ...settings,
-                                  mcp: {
-                                    ...settings.mcp,
-                                    builtinToolOptions: {
-                                      ...settings.mcp.builtinToolOptions,
-                                      [TERMINAL_COMMAND_TOOL_NAME]: {
-                                        ...settings.mcp.builtinToolOptions[
-                                          TERMINAL_COMMAND_TOOL_NAME
-                                        ],
-                                        blockedPrefixes: next,
-                                      },
-                                    },
-                                  },
-                                }),
-                            }).open()
-                            return
-                          }
-                          if (tool.id === DELEGATE_SUBAGENT_TOOL_SHORT_NAME) {
-                            new SubagentConfigModal(app, {
-                              title: t(
-                                'settings.subagent.openSettings',
-                                'Configure subagent models',
-                              ),
-                              settings,
-                              value:
-                                settings.mcp.builtinToolOptions[
-                                  DELEGATE_SUBAGENT_TOOL_SHORT_NAME
-                                ] ?? {},
-                              onChange: (next) =>
-                                void setSettings({
-                                  ...settings,
-                                  mcp: {
-                                    ...settings.mcp,
-                                    builtinToolOptions: {
-                                      ...settings.mcp.builtinToolOptions,
-                                      [DELEGATE_SUBAGENT_TOOL_SHORT_NAME]: {
-                                        ...settings.mcp.builtinToolOptions[
-                                          DELEGATE_SUBAGENT_TOOL_SHORT_NAME
-                                        ],
-                                        ...next,
-                                      },
-                                    },
-                                  },
-                                }),
-                            }).open()
-                            return
-                          }
-                          new WebSearchSettingsModal(app, plugin).open()
-                        }}
-                      >
-                        <Settings size={16} />
-                      </button>
-                    ) : null}
-                    <ObsidianToggle
-                      value={tool.enabled}
-                      onChange={(enabled) =>
-                        handleToggleBuiltinTool(tool.id, enabled)
-                      }
-                    />
+                      />
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         </div>

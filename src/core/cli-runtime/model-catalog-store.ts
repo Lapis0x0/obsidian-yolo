@@ -7,6 +7,7 @@ import {
 } from '../paths/yoloManagedData'
 
 import type { CliModelCatalogStore } from './model-catalog'
+import { CLI_RUNTIME_IDS } from './types'
 import type { CliRuntimeId, CliRuntimeModel } from './types'
 
 const FILE_NAME = 'cli_model_catalog.json'
@@ -25,6 +26,8 @@ const documentSchema = z.object({
   providers: z.object({
     'claude-code': z.array(modelSchema).optional(),
     codex: z.array(modelSchema).optional(),
+    hermes: z.array(modelSchema).optional(),
+    pi: z.array(modelSchema).optional(),
   }),
 })
 
@@ -43,7 +46,7 @@ export class VaultCliModelCatalogStore implements CliModelCatalogStore {
       JSON.parse(await this.app.vault.adapter.read(path)),
     )
     return new Map(
-      (['claude-code', 'codex'] as const).flatMap((runtimeId) => {
+      CLI_RUNTIME_IDS.flatMap((runtimeId) => {
         const models = document.providers[runtimeId]
         return models ? [[runtimeId, models] as const] : []
       }),

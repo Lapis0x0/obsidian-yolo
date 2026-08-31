@@ -3,6 +3,8 @@ import type { Math } from 'mdast-util-math'
 import { finishRenderMath, renderMath } from 'obsidian'
 import type { Plugin } from 'unified'
 
+import { getNodeWindow } from '../../utils/dom/window-context'
+
 type MarkdownNode = {
   type: string
   children?: MarkdownNode[]
@@ -63,6 +65,13 @@ function isEscaped(source: string, index: number): boolean {
 }
 
 export function normalizeDisplayMathDelimiters(markdown: string): string {
+  // This runs on every streamed frame over the whole document. Without a `$$`
+  // there is nothing to normalize and the scan would rebuild the entire string
+  // for an identical result.
+  if (!markdown.includes('$$')) {
+    return markdown
+  }
+
   let displayMathOpen = false
   let fence: { marker: string; length: number } | null = null
 
@@ -148,6 +157,11 @@ export function normalizeDisplayMathDelimiters(markdown: string): string {
 let finishScheduled = false
 let finishInProgress = false
 let finishRequested = false
+// 最近一次请求补排版的窗口。`finishRenderMath()` 是进程级的，所以这个批处理
+// 闸门也是模块级单例；但驱动它的那一帧必须来自实际渲染发生的窗口——popout 是
+// 独立 BrowserWindow，主窗口被最小化时它的 rAF 会停摆，公式就永远补不上第二遍
+// 排版。
+let pendingFinishWindow: (Window & typeof globalThis) | null = null
 
 async function flushRenderedMath(): Promise<void> {
   finishScheduled = false
@@ -160,20 +174,23 @@ async function flushRenderedMath(): Promise<void> {
     console.warn('[YOLO] Failed to finish streaming math render', error)
   } finally {
     finishInProgress = false
-    if (finishRequested) {
-      scheduleFinishRenderMath()
+    if (finishRequested && pendingFinishWindow) {
+      scheduleFinishRenderMath(pendingFinishWindow)
     }
   }
 }
 
-function scheduleFinishRenderMath(): void {
+function scheduleFinishRenderMath(
+  ownerWindow: Window & typeof globalThis,
+): void {
   finishRequested = true
+  pendingFinishWindow = ownerWindow
   if (finishScheduled || finishInProgress) {
     return
   }
 
   finishScheduled = true
-  requestAnimationFrame(() => {
+  ownerWindow.requestAnimationFrame(() => {
     void flushRenderedMath()
   })
 }
@@ -186,7 +203,7 @@ export function renderStreamingMath(
   try {
     const renderedMath = renderMath(source, display)
     container.replaceChildren(renderedMath)
-    scheduleFinishRenderMath()
+    scheduleFinishRenderMath(getNodeWindow(container))
   } catch (error) {
     console.warn('[YOLO] Failed to render streaming math', error)
   }

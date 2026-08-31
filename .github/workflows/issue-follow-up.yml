@@ -1,0 +1,52 @@
+name: Issue Follow-up
+
+on:
+  schedule:
+    - cron: '30 2 * * *'
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  # 只处理带 needs-info 的 issue：7 天无回复标记 stale 并提醒，再 7 天无回复关闭。
+  stale:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/stale@v9
+        with:
+          any-of-labels: 'needs-info'
+          stale-issue-label: 'stale'
+          days-before-stale: 7
+          days-before-close: 7
+          days-before-pr-stale: -1
+          days-before-pr-close: -1
+          remove-stale-when-updated: true
+          labels-to-remove-when-unstale: 'needs-info'
+          stale-issue-message: |
+            This issue is waiting for more information from the reporter (see the questions above). It will be closed automatically if there is no reply within 7 days — any comment keeps it open.
+
+            这个 issue 正在等待提问者补充信息（见上方追问）。7 天内没有回复将自动关闭；回复任意内容即可保持开启。
+          close-issue-message: |
+            Closed automatically because the requested information was not provided. Reply with the missing details and we will reopen it.
+
+            由于长时间未收到所需信息，已自动关闭。补充信息后直接回复，我们会重新打开处理。
+
+  # 提问者本人回复后，立即摘掉 needs-info / stale，脱离自动关闭流程。
+  clear-needs-info:
+    if: >
+      github.event_name == 'issue_comment' &&
+      !github.event.issue.pull_request &&
+      github.event.comment.user.login == github.event.issue.user.login &&
+      contains(github.event.issue.labels.*.name, 'needs-info')
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          gh issue edit "$NUMBER" --repo "$REPO" --remove-label needs-info || true
+          gh issue edit "$NUMBER" --repo "$REPO" --remove-label stale || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NUMBER: ${{ github.event.issue.number }}
+          REPO: ${{ github.repository }}

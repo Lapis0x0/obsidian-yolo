@@ -1,10 +1,6 @@
 import cx from 'clsx'
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
-import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-} from 'lucide-react'
+import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {
   memo,
@@ -21,11 +17,6 @@ import {
   resolveDangerousBashApproval,
   subscribeDangerousBashApproval,
 } from '../../core/agent/bash/dangerousOperationGate'
-import {
-  BUILTIN_TOOL_UI_META,
-  getBuiltinToolUiMeta,
-} from '../../core/agent/builtinToolUiMeta'
-import { ALWAYS_ALLOW_DISABLED_TOOL_NAMES } from '../../core/agent/tool-preferences'
 import { CLAUDE_EXIT_PLAN_MODE_TOOL } from '../../core/cli-runtime/claude/exitPlanMode'
 import {
   getCliToolCallDisplayName,
@@ -39,6 +30,17 @@ import {
   parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import {
+  LOAD_TOOL_SCHEMAS_CHAT_LABEL,
+  LOAD_TOOL_SCHEMAS_TOOL_NAME,
+  getLoadToolSchemasChatSummary,
+} from '../../core/tools/internal/load_tool_schemas/definition'
+import {
+  getCapabilityForTool,
+  isBuiltinToolName,
+  listBuiltinTools,
+} from '../../core/tools/registry'
+import { summarizeShellCommand } from '../../core/tools/shell-command-summary'
 import {
   MOTION_DURATION_ENTER_S,
   MOTION_DURATION_EXIT_S,
@@ -72,7 +74,7 @@ import {
 } from './runtime-action-handlers'
 import { CliSubagentCard } from './tool-cards/CliSubagentCard'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'
-import { SubagentCard } from './tool-cards/SubagentCard'
+import { type ToolRenderer, getToolRenderer } from './tool-renderers'
 import {
   type ToolDisplayInfo,
   getToolHeadlineParts,
@@ -132,26 +134,8 @@ type ToolRequestLike = {
   metadata?: ToolCallRequest['metadata']
 }
 
-const DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES: Record<string, string> = {
-  fs_write: 'Write file',
-  fs_delete: 'Delete',
-  fs_create_dir: 'Create folder',
-  fs_move: 'Move path',
-  // Legacy tool names kept for displaying historical conversations.
-  fs_create_file: 'Create file',
-  fs_delete_file: 'Delete file',
-  fs_delete_dir: 'Delete folder',
-}
-
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
   write: 'Write file',
-  delete: 'Delete',
-  create_dir: 'Create folder',
-  move: 'Move path',
-  // Legacy actions kept for displaying historical conversations.
-  create_file: 'Create file',
-  delete_file: 'Delete file',
-  delete_dir: 'Delete folder',
 }
 
 export const getToolLabels = (t?: TranslateFn): ToolLabels => {
@@ -185,45 +169,40 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       ),
     },
     unknownStatus: translate('chat.toolCall.status.unknown', 'Unknown'),
-    // Every name registered in BUILTIN_TOOL_UI_META is wired here automatically
-    // so adding a new built-in tool only needs the meta entry (+ i18n keys),
-    // not a manual update of this map. fs_* write-action labels live in a
-    // separate translation namespace and stay as explicit overrides.
+    // Every registered tool's `chatLabel` (core/tools/registry.ts) is wired
+    // here automatically, so adding a new built-in tool only needs its
+    // `chatLabel` field (+ i18n keys), not a manual update of this map.
+    // `load_tool_schemas` isn't a registered tool (it's a protocol-internal
+    // tool — see its own doc comment) but is still user-visible mid-chat, so
+    // its label is folded in next to the registry-derived ones from its own
+    // standalone `LOAD_TOOL_SCHEMAS_CHAT_LABEL` export. `fs_write`'s own
+    // `chatLabel` already resolves to the same
+    // `chat.toolCall.writeAction.write` key/fallback this map used to
+    // hardcode, so it is not repeated below.
+    //
+    // Retired fs_* write-action tool names (fs_list, fs_search, fs_delete,
+    // fs_create_dir, fs_move, and their even older fs_create_file /
+    // fs_delete_file / fs_delete_dir aliases) used to get their own explicit
+    // overrides here purely to keep historical conversations rendering a
+    // friendly label. D8/D10 (master.md decision 10) deliberately drop that:
+    // they now fall through to the `?? toolName` default just below, same as
+    // any other retired or third-party tool name — self-consistent with how
+    // module tools and remote MCP tools have always rendered, and with how
+    // this same map already treats every OTHER retired tool. The only
+    // user-visible effect is on conversations from before 2026-08-08 (schema
+    // v79, when the virtual `bash` tool retired these): their headline shows
+    // the bare tool name instead of a translated label. Parameters, results,
+    // and status render unaffected either way.
     displayNames: {
       ...Object.fromEntries(
-        Object.keys(BUILTIN_TOOL_UI_META).map((name) => [
-          name,
-          translateBuiltinToolLabel(name, translate),
+        listBuiltinTools().map((tool) => [
+          tool.name,
+          translate(tool.chatLabel.key, tool.chatLabel.fallback),
         ]),
       ),
-      fs_write: translate(
-        'chat.toolCall.writeAction.write',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_write,
-      ),
-      fs_delete: translate(
-        'chat.toolCall.writeAction.delete',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete,
-      ),
-      fs_create_dir: translate(
-        'chat.toolCall.writeAction.create_dir',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_dir,
-      ),
-      fs_move: translate(
-        'chat.toolCall.writeAction.move',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_move,
-      ),
-      // Legacy tool names — keep rendering historical conversations.
-      fs_create_file: translate(
-        'chat.toolCall.writeAction.create_file',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_create_file,
-      ),
-      fs_delete_file: translate(
-        'chat.toolCall.writeAction.delete_file',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_file,
-      ),
-      fs_delete_dir: translate(
-        'chat.toolCall.writeAction.delete_dir',
-        DEFAULT_LOCAL_FILE_TOOL_DISPLAY_NAMES.fs_delete_dir,
+      [LOAD_TOOL_SCHEMAS_TOOL_NAME]: translate(
+        LOAD_TOOL_SCHEMAS_CHAT_LABEL.key,
+        LOAD_TOOL_SCHEMAS_CHAT_LABEL.fallback,
       ),
       // Skill bodies are read through fs_read, but expose their product-level
       // meaning in the transcript rather than the transport implementation.
@@ -232,35 +211,15 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
         'Open skill',
       ),
     },
+    // Only `write` remains: it's the sole action `parseLocalFsActionFromToolArgs`
+    // can still produce (`fs_write` is the only entry left in
+    // `LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION`). The retired delete/create_dir/move
+    // (and even older create_file/delete_file/delete_dir) action labels are
+    // dropped for the same reason as the retired `displayNames` entries above.
     writeActionLabels: {
       write: translate(
         'chat.toolCall.writeAction.write',
         DEFAULT_WRITE_ACTION_LABELS.write,
-      ),
-      delete: translate(
-        'chat.toolCall.writeAction.delete',
-        DEFAULT_WRITE_ACTION_LABELS.delete,
-      ),
-      create_dir: translate(
-        'chat.toolCall.writeAction.create_dir',
-        DEFAULT_WRITE_ACTION_LABELS.create_dir,
-      ),
-      move: translate(
-        'chat.toolCall.writeAction.move',
-        DEFAULT_WRITE_ACTION_LABELS.move,
-      ),
-      // Legacy actions — keep rendering historical conversations.
-      create_file: translate(
-        'chat.toolCall.writeAction.create_file',
-        DEFAULT_WRITE_ACTION_LABELS.create_file,
-      ),
-      delete_file: translate(
-        'chat.toolCall.writeAction.delete_file',
-        DEFAULT_WRITE_ACTION_LABELS.delete_file,
-      ),
-      delete_dir: translate(
-        'chat.toolCall.writeAction.delete_dir',
-        DEFAULT_WRITE_ACTION_LABELS.delete_dir,
       ),
     },
     readFull: translate('chat.toolCall.readMode.full', 'Full'),
@@ -376,6 +335,34 @@ const isVirtualBashRequest = (request: ToolRequestLike): boolean => {
   }
 }
 
+/**
+ * Looks up this request's `TOOL_RENDERERS` entry — but only for local
+ * built-in tools, mirroring the `serverName === localServerName` gate
+ * `getToolDisplayInfo` already uses (D8: "内置工具查 TOOL_RENDERERS，其余走
+ * generic", master.md's own framing for this gate after D8). Returns `null`
+ * for remote MCP tools, retired local tool names, and any request whose name
+ * doesn't parse — `getToolRenderer` itself already degrades unknown names to
+ * `genericRenderer`, but that's the wrong answer here: a *remote* tool that
+ * happens to share a short name with a built-in one (e.g. some other
+ * server's own "bash") must never pick up the built-in's custom card.
+ */
+const getLocalBuiltinToolRenderer = (
+  request: ToolRequestLike,
+): ToolRenderer | null => {
+  try {
+    const { serverName, toolName } = parseToolName(request.name)
+    if (serverName !== getLocalFileToolServerName()) {
+      return null
+    }
+    return getToolRenderer(toolName)
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+    return null
+  }
+}
+
 const extractLegacyExternalAgentArgs = (
   rawArguments?: ToolCallRequest['arguments'],
 ): { command?: string; workingDirectory?: string } | undefined => {
@@ -389,16 +376,6 @@ const extractLegacyExternalAgentArgs = (
       : undefined
   if (!prompt && !workingDirectory) return undefined
   return { command: prompt, workingDirectory }
-}
-
-const extractSubagentArgs = (
-  rawArguments?: ToolCallRequest['arguments'],
-): { title?: string } | undefined => {
-  const parsed = getToolCallArgumentsObject(rawArguments)
-  if (!parsed) return undefined
-  const title =
-    typeof parsed.description === 'string' ? parsed.description : undefined
-  return title ? { title } : undefined
 }
 
 const extractTerminalCommandArgs = (
@@ -423,18 +400,6 @@ const extractSyntheticLiveTaskOutput = (
     stdout: typeof parsed.stdout === 'string' ? parsed.stdout : undefined,
     stderr: typeof parsed.stderr === 'string' ? parsed.stderr : undefined,
   }
-}
-
-const translateBuiltinToolLabel = (
-  toolName: string,
-  translate: TranslateFn,
-): string => {
-  const meta = getBuiltinToolUiMeta(toolName)
-  if (!meta) {
-    return toolName
-  }
-
-  return translate(meta.labelKey, meta.labelFallback)
 }
 
 const truncateText = (text: string, maxLength: number): string => {
@@ -471,151 +436,6 @@ export const getToolResultDisplayText = ({
     0,
     TOOL_RESULT_DISPLAY_MAX_CHARS,
   )}\n\n[Display shortened by ${hiddenChars} characters. The assistant received the full tool result.]`
-}
-
-const SHELL_COMMAND_SUMMARY_MAX_CHARS = 80
-const SHELL_COMMAND_SUMMARY_SIMPLE_MAX_CHARS = 48
-const SHELL_COMMAND_SUMMARY_MAX_NAMES = 5
-const SHELL_COMMAND_KEYWORDS = new Set([
-  'case',
-  'do',
-  'done',
-  'elif',
-  'else',
-  'esac',
-  'fi',
-  'for',
-  'function',
-  'if',
-  'in',
-  'select',
-  'then',
-  'until',
-  'while',
-])
-const SHELL_COMMAND_CONTROL_HEADS = new Set([
-  'case',
-  'for',
-  'function',
-  'if',
-  'select',
-  'until',
-  'while',
-])
-const SHELL_COMMAND_WRAPPERS = new Set([
-  'builtin',
-  'command',
-  'env',
-  'exec',
-  'nohup',
-  'sudo',
-  'time',
-])
-
-const summarizeShellCommand = (
-  command: string,
-  options: { streaming: boolean },
-): string | undefined => {
-  const preview = command.trim().replace(/\s+/g, ' ')
-  if (!preview) return undefined
-
-  if (
-    !options.streaming &&
-    preview.length <= SHELL_COMMAND_SUMMARY_SIMPLE_MAX_CHARS
-  ) {
-    return preview
-  }
-
-  const simplePreview = summarizeSimpleShellCommand(command)
-  if (!options.streaming && simplePreview) {
-    return simplePreview
-  }
-
-  const commandNames = extractShellCommandNames(command)
-  if (commandNames.length === 0) {
-    return truncateText(preview, SHELL_COMMAND_SUMMARY_MAX_CHARS)
-  }
-
-  const visibleNames = commandNames.slice(0, SHELL_COMMAND_SUMMARY_MAX_NAMES)
-  const hiddenCount = commandNames.length - visibleNames.length
-  return `${visibleNames.join(', ')}${hiddenCount > 0 ? ` +${hiddenCount}` : ''}`
-}
-
-const summarizeSimpleShellCommand = (command: string): string | undefined => {
-  const preview = command.trim().replace(/\s+/g, ' ')
-  if (!preview || /[;&|<>(){}\n]/.test(command)) {
-    return undefined
-  }
-
-  const rawWords = preview
-    .split(/\s+/)
-    .map((word) => word.replace(/^['"]+|['",]+$/g, ''))
-    .filter(Boolean)
-
-  let commandIndex = -1
-  for (let i = 0; i < rawWords.length; i++) {
-    const word = rawWords[i]
-    if (SHELL_COMMAND_KEYWORDS.has(word)) continue
-    if (SHELL_COMMAND_WRAPPERS.has(word)) continue
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) continue
-    if (word.startsWith('-') || word.startsWith('$')) continue
-    if (!/^[A-Za-z0-9_.:/-]+$/.test(word)) continue
-    commandIndex = i
-    break
-  }
-
-  if (commandIndex < 0) {
-    return undefined
-  }
-
-  const words = [...rawWords]
-  words[commandIndex] =
-    words[commandIndex].split('/').pop() ?? words[commandIndex]
-  return truncateText(
-    words.slice(commandIndex).join(' '),
-    SHELL_COMMAND_SUMMARY_MAX_CHARS,
-  )
-}
-
-const extractShellCommandNames = (command: string): string[] => {
-  const names: string[] = []
-  const seen = new Set<string>()
-  const segments = command.replace(/\$\(/g, ';').split(/[;&|(){}\n]+/)
-
-  for (const segment of segments) {
-    const name = extractCommandNameFromShellSegment(segment)
-    if (!name || seen.has(name)) continue
-    seen.add(name)
-    names.push(name)
-  }
-
-  return names
-}
-
-const extractCommandNameFromShellSegment = (
-  segment: string,
-): string | undefined => {
-  const words = segment
-    .trim()
-    .split(/\s+/)
-    .map((word) => word.replace(/^['"]+|['",]+$/g, ''))
-    .filter(Boolean)
-
-  if (SHELL_COMMAND_CONTROL_HEADS.has(words[0])) {
-    return undefined
-  }
-
-  for (const word of words) {
-    if (SHELL_COMMAND_KEYWORDS.has(word)) continue
-    if (SHELL_COMMAND_WRAPPERS.has(word)) continue
-    if (/^[A-Za-z_][A-Za-z0-9_]*=/.test(word)) continue
-    if (word.startsWith('-') || word.startsWith('$')) continue
-    if (!/^[A-Za-z0-9_.:/-]+$/.test(word)) continue
-    const basename = word.split('/').pop() ?? word
-    return basename
-  }
-
-  return undefined
 }
 
 const mapTerminalCommandResultStatus = (
@@ -685,35 +505,6 @@ const getToolCallParametersText = (
     return JSON.stringify(parsed, null, 2)
   }
   return getToolCallArgumentsText(rawArguments) ?? noParametersLabel
-}
-
-const asStringArray = (value: unknown): string[] | null => {
-  if (!Array.isArray(value)) {
-    return null
-  }
-  if (value.some((item) => typeof item !== 'string')) {
-    return null
-  }
-  return value
-}
-
-const asInteger = (value: unknown): number | undefined => {
-  return Number.isInteger(value) ? (value as number) : undefined
-}
-
-const FS_READ_VISIBLE_PATH_LIMIT_BEFORE_OMISSION = 4
-
-const summarizeFsReadPaths = (paths: string[]): string => {
-  if (paths.length <= FS_READ_VISIBLE_PATH_LIMIT_BEFORE_OMISSION) {
-    return paths.join(', ')
-  }
-
-  const visiblePaths = paths.slice(
-    0,
-    FS_READ_VISIBLE_PATH_LIMIT_BEFORE_OMISSION,
-  )
-  const hiddenCount = paths.length - visiblePaths.length
-  return `${visiblePaths.join(', ')} +${hiddenCount}`
 }
 
 const getFsReadOperationSummary = ({
@@ -867,6 +658,19 @@ const getDelegateSubagentSummary = ({
   return `${title} | ${collapsedMain}`
 }
 
+/**
+ * By-name summary dispatch (D8, phase2-migration.md). Replaced a ~12-branch
+ * `if (toolName === 'x')` chain with a lookup into `TOOL_RENDERERS`
+ * (`getToolRenderer(toolName).summary`) — the same exhaustive wiring table
+ * `ToolMessage.tsx` uses below for custom card rendering.
+ *
+ * Retired tool names (`fs_list`, `fs_search`, `fs_delete`, `fs_create_dir`,
+ * `fs_move`, and their even older `fs_create_file`/`fs_delete_file`/
+ * `fs_delete_dir` aliases) have no registry entry, so they fall straight
+ * through to the final dead-but-harmless fallback below and render with no
+ * summary text at all (master.md decision 10 — deliberately not preserved;
+ * see that decision's argument for why).
+ */
 const getLocalToolSummaryText = ({
   toolName,
   argumentsObject,
@@ -878,188 +682,37 @@ const getLocalToolSummaryText = ({
   rawArguments?: ToolCallRequest['arguments']
   labels: ToolLabels
 }): string | undefined => {
-  if (toolName === 'fs_list') {
-    const targetPath =
-      typeof argumentsObject?.path === 'string' &&
-      argumentsObject.path.trim().length > 0
-        ? argumentsObject.path
-        : '/'
-    return targetPath
+  // `load_tool_schemas` is a protocol-internal tool (not a `CAPABILITIES`
+  // member — see its own definition's doc comment), so it has no
+  // `TOOL_RENDERERS` entry and is handled here explicitly, next to how
+  // `displayNames` above folds in its `LOAD_TOOL_SCHEMAS_CHAT_LABEL`.
+  if (toolName === LOAD_TOOL_SCHEMAS_TOOL_NAME) {
+    return getLoadToolSchemasChatSummary({ argumentsObject })
   }
 
-  if (toolName === 'fs_search') {
-    const scope =
-      typeof argumentsObject?.scope === 'string' ? argumentsObject.scope : 'all'
-    const query =
-      typeof argumentsObject?.query === 'string' ? argumentsObject.query : ''
-    if (query.trim().length === 0) {
-      return scope
+  if (isBuiltinToolName(toolName)) {
+    const summary = getToolRenderer(toolName).summary?.({
+      argumentsObject,
+      labels,
+    })
+    if (summary !== undefined) {
+      return summary
     }
-    return `${scope} | ${truncateText(query, 60)}`
   }
 
-  if (toolName === 'web_search') {
-    const query =
-      typeof argumentsObject?.query === 'string' ? argumentsObject.query : ''
-    if (query.trim().length === 0) {
-      return undefined
-    }
-    const topic =
-      typeof argumentsObject?.topic === 'string'
-        ? argumentsObject.topic.trim()
-        : ''
-    const queryText = truncateText(query, 60)
-    return topic ? `${topic} | ${queryText}` : queryText
-  }
-
-  if (toolName === 'todo_write') {
-    const rawTodos = Array.isArray(argumentsObject?.todos)
-      ? (argumentsObject.todos as unknown[])
-      : []
-    const todos = rawTodos.filter(
-      (
-        item,
-      ): item is {
-        content: string
-        status: 'pending' | 'in_progress' | 'completed'
-      } => {
-        if (!item || typeof item !== 'object') return false
-        const record = item as Record<string, unknown>
-        return (
-          typeof record.content === 'string' &&
-          (record.status === 'pending' ||
-            record.status === 'in_progress' ||
-            record.status === 'completed')
-        )
-      },
-    )
-    if (todos.length === 0) return labels.todoWriteCleared
-    const inProgress = todos.find((todo) => todo.status === 'in_progress')
-    if (inProgress) return truncateText(inProgress.content, 60)
-    const total = todos.length
-    const done = todos.filter((todo) => todo.status === 'completed').length
-    if (done === total) return labels.todoWriteAllCompleted(total)
-    if (done === 0) return labels.todoWriteCreated(total)
-    return labels.todoWriteProgress(done, total)
-  }
-
-  if (toolName === 'web_scrape') {
-    const url =
-      typeof argumentsObject?.url === 'string' ? argumentsObject.url : ''
-    return url ? truncateText(url, 80) : undefined
-  }
-
-  if (toolName === 'terminal_command') {
-    const command =
-      typeof argumentsObject?.command === 'string'
-        ? argumentsObject.command.trim()
-        : ''
-    if (command) {
-      return summarizeShellCommand(command, {
-        streaming: argumentsObject?.background === true,
-      })
-    }
-
-    const sessionId = asInteger(argumentsObject?.session_id)
-    if (typeof sessionId !== 'number') {
-      return undefined
-    }
-
-    if (argumentsObject?.kill === true) {
-      return labels.terminalCommandSessionKill(sessionId)
-    }
-
-    const input =
-      typeof argumentsObject?.input === 'string'
-        ? argumentsObject.input.trim()
-        : ''
-    if (input) {
-      const preview = truncateText(input.replace(/\s+/g, ' '), 60)
-      return labels.terminalCommandSessionInput(sessionId, preview)
-    }
-
-    return labels.terminalCommandSessionPoll(sessionId)
-  }
-
-  if (toolName === 'bash') {
-    const command =
-      typeof argumentsObject?.command === 'string'
-        ? argumentsObject.command.trim()
-        : ''
-    return command
-      ? summarizeShellCommand(command, { streaming: false })
-      : undefined
-  }
-
-  if (toolName === 'js_eval') {
-    const code =
-      typeof argumentsObject?.code === 'string' ? argumentsObject.code : ''
-    const preview = code.trim().replace(/\s+/g, ' ')
-    return preview ? truncateText(preview, 80) : undefined
-  }
-
-  if (toolName === 'load_tool_schemas') {
-    const servers = asStringArray(argumentsObject?.servers)
-    if (!servers || servers.length === 0) {
-      return undefined
-    }
-    const head = servers.slice(0, 2).join(', ')
-    const rest = servers.length - 2
-    return rest > 0 ? `${head} +${rest}` : head
-  }
-
-  if (toolName === 'fs_read') {
-    const paths = asStringArray(argumentsObject?.paths)
-    if (!paths || paths.length === 0) {
-      return undefined
-    }
-    return summarizeFsReadPaths(paths)
-  }
-
-  if (toolName === 'fs_edit') {
-    const path =
-      typeof argumentsObject?.path === 'string' ? argumentsObject.path : ''
-    return path || undefined
-  }
-
-  if (
-    toolName === 'fs_write' ||
-    toolName === 'fs_delete' ||
-    toolName === 'fs_create_dir' ||
-    // Legacy tool names from historical conversations.
-    toolName === 'fs_create_file' ||
-    toolName === 'fs_delete_file' ||
-    toolName === 'fs_delete_dir'
-  ) {
-    const path =
-      typeof argumentsObject?.path === 'string' ? argumentsObject.path : ''
-    return path || undefined
-  }
-
-  if (toolName === 'fs_move') {
-    const oldPath =
-      typeof argumentsObject?.oldPath === 'string'
-        ? argumentsObject.oldPath
-        : ''
-    const newPath =
-      typeof argumentsObject?.newPath === 'string'
-        ? argumentsObject.newPath
-        : ''
-
-    if (oldPath && newPath) {
-      return `${oldPath} -> ${newPath}`
-    }
-
-    return oldPath || newPath || undefined
-  }
-
+  // Dead-but-harmless fallback: `parseLocalFsActionFromToolArgs` only ever
+  // returns a non-null action for the literal tool name `fs_write` (the
+  // sole entry in `LOCAL_FS_SPLIT_ACTION_TOOL_TO_ACTION`), and `fs_write` is
+  // always caught by the registry lookup above — so `action` can never be
+  // non-null here in practice. Kept anyway to stay consistent with
+  // `getToolDisplayInfo`'s parallel (and equally dead-for-fs_write) use of
+  // the same helper just below.
   const action = parseLocalFsActionFromToolArgs({
     toolName,
     args: getToolCallArgumentsObject(rawArguments),
   })
   if (action) {
-    const actionLabel = labels.writeActionLabels[action] ?? action
-    return actionLabel
+    return labels.writeActionLabels[action] ?? action
   }
 
   return undefined
@@ -1417,13 +1070,25 @@ function ToolCallItem({
   const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
   const isAlwaysAllowDisabled = useMemo(() => {
     if (isExitPlanMode) return true
+    // Module chat mode tools declared `requiresApproval: true` are an
+    // unconditional per-call confirmation gate (see `tool-gateway.ts`'s
+    // `attachModuleChatModeSnapshot`) — the "always allow this
+    // conversation" option would be misleading since the service layer
+    // rejects it anyway (see `AgentService.approveToolCall`).
+    if (request.metadata?.approvalPolicy === 'always-require-user') return true
     try {
+      // D7 (phase2-migration.md D7 item 7): "always allow" is now a
+      // capability-level fact (`approval.allowAlwaysAllow`) rather than a
+      // hand-maintained tool-name list. Non-capability tools (third-party
+      // MCP tools, retired local tool names) resolve to `undefined` here,
+      // which correctly means "not disabled" — the pre-refactor list only
+      // ever named `bash` and `terminal_command`.
       const { toolName } = parseToolName(request.name)
-      return ALWAYS_ALLOW_DISABLED_TOOL_NAMES.includes(toolName)
+      return getCapabilityForTool(toolName)?.approval.allowAlwaysAllow === false
     } catch {
       return false
     }
-  }, [isExitPlanMode, request.name])
+  }, [isExitPlanMode, request.metadata?.approvalPolicy, request.name])
   const pendingAllowLabel = isExitPlanMode
     ? toolLabels.approvePlan
     : toolLabels.allow
@@ -1507,27 +1172,28 @@ function ToolCallItem({
     }
   }, [effectiveStatus, renderCompactionPendingHint, showCompactionPendingHint])
 
-  if (
-    isDelegateSubagentRequest(request) &&
-    effectiveStatus !== ToolCallResponseStatus.PendingApproval
-  ) {
-    const syntheticLiveTaskOutput = extractSyntheticLiveTaskOutput(
-      request.arguments,
-    )
-    return (
-      <SubagentCard
-        toolCallId={request.id}
-        response={response}
-        conversationId={conversationId}
-        args={extractSubagentArgs(request.arguments)}
-        subagentResult={subagentResult}
-        initialStdout={syntheticLiveTaskOutput.stdout}
-        initialStderr={syntheticLiveTaskOutput.stderr}
-        onAbort={() => {
-          void handleAbort()
-        }}
-      />
-    )
+  // `kind: 'replace'` renderers (currently: only `delegate_subagent`'s
+  // `SubagentCard`) take over the entire tool-call block — see
+  // `tool-renderers/types.ts`'s doc comment. `render()` returns `null` while
+  // pending approval (matching the pre-D8 `effectiveStatus !==
+  // PendingApproval` guard this replaced — see `delegate_subagent/ui.tsx`'s
+  // own doc comment), in which case we fall through to the normal
+  // header/approval-footer rendering below exactly as before.
+  const localToolRenderer = getLocalBuiltinToolRenderer(request)
+  if (localToolRenderer?.kind === 'replace') {
+    const rendered = localToolRenderer.render({
+      toolCallId: request.id,
+      request,
+      response,
+      conversationId,
+      subagentResult,
+      onAbort: () => {
+        void handleAbort()
+      },
+    })
+    if (rendered !== null) {
+      return rendered
+    }
   }
 
   if (
@@ -1633,6 +1299,12 @@ function ToolCallItem({
             response.status === ToolCallResponseStatus.Success
               ? getToolResultDisplayText({ response })
               : ''
+          // `kind: 'body'` renderers (currently: only `terminal_command`'s
+          // `LiveTaskCard` mount, via `core/tools/terminal_command/ui.tsx`)
+          // render *inside* this card's content area rather than replacing
+          // it — see `tool-renderers/types.ts`'s doc comment.
+          const bodyRenderer =
+            localToolRenderer?.kind === 'body' ? localToolRenderer : null
 
           return (
             <div
@@ -1645,7 +1317,23 @@ function ToolCallItem({
                   <ObsidianCodeBlock language="json" content={parameters} />
                 </div>
               )}
-              {isTerminalLikeRequest ? (
+              {bodyRenderer ? (
+                bodyRenderer.render({
+                  toolCallId: request.id,
+                  request,
+                  response: effectiveTerminalResponse,
+                  conversationId,
+                  terminalCommandResult,
+                  onAbort: () => {
+                    void handleAbort()
+                  },
+                })
+              ) : isTerminalLikeRequest ? (
+                // CLI `command_execution` capability calls and the legacy
+                // `delegate_external_agent` tool name also render through
+                // `LiveTaskCard`, but neither is tool-name-indexed, so both
+                // stay as this inline branch rather than a `TOOL_RENDERERS`
+                // entry (D8: non-tool-name branches stay as-is).
                 <LiveTaskCard
                   toolCallId={request.id}
                   response={effectiveTerminalResponse}

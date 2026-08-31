@@ -16,6 +16,18 @@ export const it = {
     unsupportedFileType:
       'Tipo di file non supportato: {ext} (supportati PDF, Word, Markdown, testo)',
     fileTooLarge: 'File troppo grande: {size}MB (limite 20MB)',
+    backgroundTitle: 'Apprendimento: generazione del progetto',
+    backgroundKnowledgeDetail: 'Capitolo {current}/{total}',
+    backgroundCardsDetail: 'Generazione delle carte in corso',
+    alreadyRunning:
+      'È già in corso la generazione di un altro progetto di apprendimento. Attendi il completamento oppure controllane lo stato di avanzamento.',
+    resumeBannerTitle: 'Generazione incompleta',
+    resumeBannerDetail: '{completed}/{total} capitoli generati',
+    resumeAction: 'Continua da dove si è interrotta',
+    resumeInProgress: 'Ripresa in corso…',
+    resumeFailed: 'Ripresa non riuscita: {error}',
+    resumeUnavailable:
+      'Questo progetto è precedente al supporto per la ripresa della generazione e non può essere continuato automaticamente.',
   },
   background: {
     reviewTitle: 'YOLO Learning',
@@ -215,6 +227,7 @@ export const it = {
   outlineBuilder: {
     chapterRequired: 'È necessario almeno un capitolo valido',
     generatingPoint: 'Generazione in corso',
+    generatedCount: 'Generati {count}',
     knowledgeComplete: 'Punti di conoscenza generati',
     newChapter: 'Nuovo capitolo',
     newChapterContract:

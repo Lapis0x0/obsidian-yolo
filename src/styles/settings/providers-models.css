@@ -890,6 +890,19 @@
   align-items: center;
 }
 
+/* "Get API key" affordance next to a field label — pushed to the trailing edge
+   so the label keeps reading as the row's heading. */
+.yolo-provider-field-header-link {
+  margin-left: auto;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+.yolo-provider-field-header-link:hover {
+  text-decoration: underline;
+}
+
 .yolo-provider-field-body {
   display: flex;
   flex-direction: column;

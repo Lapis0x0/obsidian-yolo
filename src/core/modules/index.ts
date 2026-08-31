@@ -28,6 +28,29 @@ export {
   type ModuleAssetsCapabilityProviderV1,
 } from './moduleAssets'
 export {
+  MAX_MODULE_CHAT_MODES_PER_MODULE,
+  MODULE_CHAT_MODE_LOCAL_ID_RE,
+  ModuleChatModeRegistry,
+  buildModuleChatModeFullId,
+  buildModuleChatModeServerName,
+  createModuleChatModeToolServer,
+  snapshotModuleChatMode,
+  type ModuleChatModeAvailabilityV1,
+  type ModuleChatModeContributionSinkV1,
+  type RegisteredModuleChatModeV1,
+} from './moduleChatModeRegistry'
+export {
+  createModuleSkillMaterializer,
+  createObsidianModuleSkillProjectionVault,
+  planModuleSkillPackages,
+  resolveModuleSkillPackageName,
+  resolveModuleSkillVaultPath,
+  type ModuleSkillMaterializerOptions,
+  type ModuleSkillMaterializerV1,
+  type ModuleSkillPackagePlan,
+  type ModuleSkillProjectionVaultV1,
+} from './moduleSkillMaterializer'
+export {
   ModuleConfigCapabilityProvider,
   type ModuleConfigBackend,
   type ModuleConfigCapabilityActivationV1,
@@ -148,9 +171,13 @@ export {
   type ModuleVaultCapabilityProviderV1,
 } from './moduleVault'
 export {
+  CoreModuleChatCapabilityProvider,
   CoreModuleHostCapabilityProvider,
+  UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER,
   UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
   UNAVAILABLE_MODULE_PRIVATE_STORAGE_CAPABILITY_PROVIDER,
+  type ModuleChatCapabilityProviderOptions,
+  type ModuleChatCapabilityProviderV1,
   type ModuleConfigCapabilityProviderV1,
   type ModuleHostCapabilityActivationV1,
   type ModuleHostCapabilityProviderV1,
@@ -200,10 +227,20 @@ export {
 } from './officialModuleCompatibilityProvider'
 export {
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
+  assertCompatibilityPlatform,
+  createOfficialModuleCatalogSource,
   createProductionModuleServices,
+  type ModuleCatalogResolutionSource,
   type ProductionModuleServices,
   type ProductionModuleServicesOptions,
 } from './productionModuleServices'
+export {
+  createDevModuleCatalogOverlay,
+  createMergedModuleCatalogSource,
+  type DevModuleCatalogOverlay,
+  type DevModuleCatalogOverlayOptions,
+  type MergedModuleCatalogSourceOptions,
+} from './devModuleCatalogSource'
 export {
   ModuleArtifactMissingError,
   ModuleStore,
@@ -274,6 +311,9 @@ export type {
   YoloModuleAgentV1,
   YoloModuleAssetsV1,
   YoloModuleCapabilitiesV1,
+  YoloModuleChatModeToolV1,
+  YoloModuleChatModeV1,
+  YoloModuleChatV1,
   YoloModuleCommandV1,
   YoloModuleLifecycle,
   YoloModuleOpenViewOptionsV1,

@@ -398,7 +398,15 @@ function assertExactKeys(
   if (missing) throw new Error(`${label} is missing field "${missing}"`)
 }
 
-function canonicalArtifactPath(value: string): string {
+/**
+ * Identity form of an artifact-relative path: two paths that canonicalize the
+ * same are the same file on a case-insensitive or Unicode-folding filesystem.
+ * Exported because every place that keys on a path — manifest duplicate
+ * detection here, chat mode skill declarations, and the Vault skill
+ * projection — must agree on one definition, or a collision one of them
+ * rejects sails through another.
+ */
+export function canonicalArtifactPath(value: string): string {
   return value.normalize('NFKC').toLowerCase()
 }
 
@@ -549,6 +557,28 @@ export class ModuleStore {
     assertModulePathSegment(version, 'Module version')
     const relativePath = normalizeModuleArtifactFilePath(entryPath)
     return await this.readBytes(
+      `${this.pluginDir}/modules/${moduleId}/${version}/${relativePath}`,
+    )
+  }
+
+  /**
+   * The trusted absolute (adapter-relative) path for a declared artifact
+   * file, without reading it. Same root-construction rule as
+   * `readEntryBytes` — callers that only need a path (e.g. module chat mode
+   * skill resolution, which hands the path to a text reader elsewhere) must
+   * go through this instead of concatenating `pluginDir`/manifest fields
+   * themselves, so every module-artifact path in the host is built exactly
+   * one way.
+   */
+  resolveEntryPath(
+    moduleId: string,
+    version: string,
+    entryPath: string,
+  ): string {
+    assertModuleId(moduleId, 'Module id')
+    assertModulePathSegment(version, 'Module version')
+    const relativePath = normalizeModuleArtifactFilePath(entryPath)
+    return normalizePortablePath(
       `${this.pluginDir}/modules/${moduleId}/${version}/${relativePath}`,
     )
   }

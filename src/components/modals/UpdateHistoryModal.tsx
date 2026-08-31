@@ -13,7 +13,7 @@ import {
 } from '../../core/update/updateChecker'
 import { useModuleUpdates } from '../../hooks/useModuleUpdates'
 import { usePluginUpdatePrimaryCta } from '../../hooks/usePluginUpdatePrimaryCta'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 import { ReactModal } from '../common/ReactModal'
 import { UpdateChangelogSections } from '../update/UpdateChangelogSections'
 import {

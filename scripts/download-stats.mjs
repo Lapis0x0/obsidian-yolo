@@ -58,6 +58,34 @@ export function selectWindowsToRefresh(
   )
 }
 
+const CORE_MAIN_JS_PATTERN = /^\/core\/([^/]+)\/main\.js$/
+
+export function extractCoreVersionMainJsCounts(groups) {
+  if (!Array.isArray(groups)) {
+    throw new Error('Cloudflare Analytics groups are invalid')
+  }
+  const counts = {}
+  for (const group of groups) {
+    const status = group?.dimensions?.edgeResponseStatus
+    const match = CORE_MAIN_JS_PATTERN.exec(
+      group?.dimensions?.clientRequestPath ?? '',
+    )
+    const count = group?.count
+    if (
+      !match ||
+      !Number.isSafeInteger(count) ||
+      count < 0 ||
+      !Number.isSafeInteger(status) ||
+      status < 200 ||
+      status >= 300
+    ) {
+      continue
+    }
+    counts[match[1]] = (counts[match[1]] ?? 0) + count
+  }
+  return counts
+}
+
 export function sumCloudflareGroups(groups) {
   if (!Array.isArray(groups)) {
     throw new Error('Cloudflare Analytics groups are invalid')
@@ -123,9 +151,19 @@ export async function updateDownloadStats(options = {}) {
   const windows = buildDateWindows(MIRROR_LAUNCHED_AT, now)
   const selected = selectWindowsToRefresh(windows, state.cloudflareDaily)
   const cloudflareDaily = { ...state.cloudflareDaily }
+  const coreVersionDaily = { ...state.coreVersionDaily }
+  const feedDaily = { ...state.feedDaily }
 
   for (const window of selected) {
-    cloudflareDaily[window.date] = await fetchCloudflareAssetCount({
+    const groups = await fetchCloudflareAssetGroups({
+      token,
+      zoneId,
+      window,
+      fetchImpl,
+    })
+    cloudflareDaily[window.date] = sumCloudflareGroups(groups)
+    coreVersionDaily[window.date] = extractCoreVersionMainJsCounts(groups)
+    feedDaily[window.date] = await fetchCloudflareFeedMetrics({
       token,
       zoneId,
       window,
@@ -153,6 +191,8 @@ export async function updateDownloadStats(options = {}) {
       cloudflareTotal,
       total,
       cloudflareDaily,
+      coreVersionDaily,
+      feedDaily,
     },
     badge: buildBadge(total),
   }
@@ -177,7 +217,12 @@ async function findZoneId({ token, accountId, fetchImpl }) {
   return body.result[0].id
 }
 
-async function fetchCloudflareAssetCount({ token, zoneId, window, fetchImpl }) {
+async function fetchCloudflareAssetGroups({
+  token,
+  zoneId,
+  window,
+  fetchImpl,
+}) {
   const query = `
     query DownloadAssets($zoneTag: string!, $from: Time!, $to: Time!) {
       viewer {
@@ -213,6 +258,75 @@ async function fetchCloudflareAssetCount({ token, zoneId, window, fetchImpl }) {
       variables: { zoneTag: zoneId, from: window.from, to: window.to },
     }),
   })
+  const groups = await readAnalyticsGroups(response)
+  if (!Array.isArray(groups)) {
+    throw new Error('Cloudflare Analytics groups are invalid')
+  }
+  return groups
+}
+
+async function fetchCloudflareFeedMetrics({
+  token,
+  zoneId,
+  window,
+  fetchImpl,
+}) {
+  const query = `
+    query FeedRequests($zoneTag: string!, $from: Time!, $to: Time!) {
+      viewer {
+        zones(filter: { zoneTag: $zoneTag }) {
+          httpRequestsAdaptiveGroups(
+            limit: 10000
+            filter: {
+              datetime_geq: $from
+              datetime_lt: $to
+              clientRequestHTTPHost: "updates.yoloapp.dev"
+              clientRequestHTTPMethodName: "GET"
+              requestSource: "eyeball"
+              clientRequestPath: "/feed-v1.json"
+              edgeResponseStatus_geq: 200
+              edgeResponseStatus_lt: 400
+            }
+          ) {
+            count
+            dimensions {
+              clientIP
+            }
+          }
+        }
+      }
+    }
+  `
+  const response = await fetchImpl(CLOUDFLARE_GRAPHQL_API, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      query,
+      variables: { zoneTag: zoneId, from: window.from, to: window.to },
+    }),
+  })
+  const groups = await readAnalyticsGroups(response)
+  if (!Array.isArray(groups)) {
+    throw new Error('Cloudflare Analytics feed metrics are invalid')
+  }
+  let requests = 0
+  const clientIps = new Set()
+  for (const group of groups) {
+    const count = group?.count
+    const clientIp = group?.dimensions?.clientIP
+    if (!Number.isSafeInteger(count) || count < 0 || !clientIp) {
+      throw new Error('Cloudflare Analytics feed metrics are invalid')
+    }
+    requests += count
+    clientIps.add(clientIp)
+  }
+  return { requests, uniques: clientIps.size }
+}
+
+async function readAnalyticsGroups(response) {
   const body = await readJsonResponse(response, 'Cloudflare Analytics')
   if (Array.isArray(body.errors) && body.errors.length > 0) {
     throw new Error(
@@ -225,7 +339,7 @@ async function fetchCloudflareAssetCount({ token, zoneId, window, fetchImpl }) {
   if (!Array.isArray(zones) || zones.length !== 1) {
     throw new Error('Cloudflare Analytics returned an unexpected zone result')
   }
-  return sumCloudflareGroups(zones[0].httpRequestsAdaptiveGroups)
+  return zones[0].httpRequestsAdaptiveGroups
 }
 
 async function fetchGitHubReleaseAssetTotal({ repository, token, fetchImpl }) {
@@ -278,18 +392,45 @@ function validateState(state) {
   if (
     !state ||
     state.schemaVersion !== 1 ||
-    !state.cloudflareDaily ||
-    typeof state.cloudflareDaily !== 'object' ||
-    Array.isArray(state.cloudflareDaily) ||
-    Object.entries(state.cloudflareDaily).some(
-      ([date, count]) =>
-        !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
-        !Number.isSafeInteger(count) ||
-        count < 0,
-    )
+    !isDateKeyedRecord(state.cloudflareDaily, (count) =>
+      isNonNegativeInteger(count),
+    ) ||
+    (state.coreVersionDaily !== undefined &&
+      !isDateKeyedRecord(
+        state.coreVersionDaily,
+        (versions) =>
+          isPlainObject(versions) &&
+          Object.values(versions).every(isNonNegativeInteger),
+      )) ||
+    (state.feedDaily !== undefined &&
+      !isDateKeyedRecord(
+        state.feedDaily,
+        (metrics) =>
+          isPlainObject(metrics) &&
+          isNonNegativeInteger(metrics.requests) &&
+          isNonNegativeInteger(metrics.uniques),
+      ))
   ) {
     throw new Error('Download statistics state is invalid')
   }
+}
+
+function isDateKeyedRecord(value, isValidEntry) {
+  return (
+    isPlainObject(value) &&
+    Object.entries(value).every(
+      ([date, entry]) =>
+        /^\d{4}-\d{2}-\d{2}$/.test(date) && isValidEntry(entry),
+    )
+  )
+}
+
+function isPlainObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function isNonNegativeInteger(value) {
+  return Number.isSafeInteger(value) && value >= 0
 }
 
 async function runCli() {

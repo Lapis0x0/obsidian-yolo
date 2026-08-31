@@ -63,6 +63,32 @@ export type HostedWebSearchCall = {
   results: { title?: string; url: string }[]
 }
 
+/**
+ * A tool the provider ran inside its own runtime. There is no tool call for
+ * the agent to execute — this is the receipt of work already done, carried
+ * through so the UI can show what the provider did on the user's behalf.
+ *
+ * Unlike `HostedWebSearchCall`, which the provider attaches to the response as
+ * a whole, a run of these happens *somewhere* in the response: text before it
+ * and text after it are separate parts of the answer. It therefore travels as
+ * a positional signal on the stream — see `providerToolRun` — not as metadata
+ * on the finished message, which could only ever be rendered in one fixed
+ * place.
+ */
+export type ProviderExecutedToolCall = {
+  id: string
+  name: string
+  /** Raw tool input as the provider's runtime reported it. */
+  input?: Record<string, unknown>
+  /**
+   * `running` until the provider's runtime reports the tool finished. A turn
+   * that ends with calls still `running` was interrupted.
+   */
+  status: 'running' | 'success' | 'error'
+  /** Result the provider's runtime fed back to its own model, if reported. */
+  resultText?: string
+}
+
 export type ProviderMetadata = {
   gemini?: {
     parts: GeminiAssistantPart[]
@@ -92,6 +118,18 @@ type StreamingChoice = {
     annotations?: Annotation[]
     tool_calls?: ToolCallDelta[]
     providerMetadata?: ProviderMetadata
+    /**
+     * One run of tools the provider executed itself, at this point in the
+     * stream. Every chunk carries the run's full call list, so the latest
+     * value supersedes; the run is identified by its first call's id, and a
+     * run id not seen before opens a new one.
+     *
+     * Receiving a run splits the assistant message: what streamed before it
+     * is one message, the run is a tool message of its own, and what streams
+     * after starts a new message. That is what puts the tool cards between
+     * the two halves of the answer instead of ahead of both.
+     */
+    providerToolRun?: ProviderExecutedToolCall[]
   }
   error?: Error
 }

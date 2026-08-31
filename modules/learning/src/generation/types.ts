@@ -58,6 +58,15 @@ export type GenerationProgress = {
   chapterIndex: number
   chapterTitle: string
   status: 'pending' | 'generating' | 'completed' | 'error'
-  currentKnowledgePointTitle?: string
+  /** Number of knowledge points emitted so far for this chapter's knowledge run. */
+  emittedCount?: number
   error?: string
+}
+
+export type KnowledgePointGenerationEvent = {
+  chapterIndex: number
+  chapterTitle: string
+  kpIndex: number
+  kpId: string
+  title: string
 }

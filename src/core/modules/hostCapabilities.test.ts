@@ -3,8 +3,23 @@ import {
   BackgroundActivityRegistry,
 } from '../background/backgroundActivityRegistry'
 
-import { CoreModuleHostCapabilityProvider } from './hostCapabilities'
+import {
+  CoreModuleChatCapabilityProvider,
+  CoreModuleHostCapabilityProvider,
+} from './hostCapabilities'
 import { ModuleLifecycleScope } from './lifecycleScope'
+import type { YoloModuleChatModeV1 } from './types'
+
+const baseChatMode = (
+  overrides: Partial<YoloModuleChatModeV1> = {},
+): YoloModuleChatModeV1 =>
+  ({
+    id: 'chat',
+    label: 'Learning',
+    personaPrompt: 'You are a helpful tutor.',
+    capability: 'vault-read',
+    ...overrides,
+  }) as YoloModuleChatModeV1
 
 describe('CoreModuleHostCapabilityProvider', () => {
   it('creates and activates module assets with the owning lifecycle', async () => {
@@ -472,9 +487,149 @@ describe('CoreModuleHostCapabilityProvider', () => {
     await expect(
       activation.capabilities.privateStorage.deviceLocal.readText('state.json'),
     ).rejects.toThrow('private storage capability is unavailable')
+    expect(() =>
+      activation.capabilities.chat.registerMode(baseChatMode()),
+    ).toThrow('chat capability is unavailable')
     await expect(activation.prepare()).resolves.toBeUndefined()
     expect(() => activation.activate()).not.toThrow()
     activation.commit()
+    lifecycle.dispose()
+  })
+
+  it('wires the chat provider into capabilities/commit/activate', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const add = jest.fn()
+    const remove = jest.fn()
+    const activation = new CoreModuleHostCapabilityProvider({
+      backgroundActivities: new BackgroundActivityRegistry(),
+      chat: new CoreModuleChatCapabilityProvider({ sink: { add, remove } }),
+    }).create('learning', lifecycle)
+
+    activation.capabilities.chat.registerMode(baseChatMode())
+    expect(add).not.toHaveBeenCalled()
+    activation.activate()
+    activation.commit()
+
+    expect(add).toHaveBeenCalledWith(
+      'learning',
+      expect.objectContaining({ id: 'chat' }),
+    )
+    lifecycle.dispose()
+    expect(remove).toHaveBeenCalledWith('learning', 'chat')
+  })
+})
+
+describe('CoreModuleChatCapabilityProvider', () => {
+  it('stages immutable mode declarations and publishes them by module on commit', () => {
+    const add = jest.fn()
+    const remove = jest.fn()
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add, remove },
+    }).create('learning', lifecycle)
+    const declaration = baseChatMode()
+
+    activation.api.registerMode(declaration)
+    ;(declaration as { personaPrompt: string }).personaPrompt = 'Changed'
+    expect(add).not.toHaveBeenCalled()
+    activation.activate()
+    activation.commit()
+
+    expect(add).toHaveBeenCalledWith(
+      'learning',
+      expect.objectContaining({ personaPrompt: 'You are a helpful tutor.' }),
+    )
+    expect(Object.isFrozen(add.mock.calls[0][1])).toBe(true)
+    lifecycle.dispose()
+    expect(remove).toHaveBeenCalledWith('learning', 'chat')
+  })
+
+  it('rejects registerMode after commit', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+    }).create('learning', lifecycle)
+    activation.activate()
+    activation.commit()
+
+    expect(() => activation.api.registerMode(baseChatMode())).toThrow(
+      'already committed',
+    )
+    lifecycle.dispose()
+  })
+
+  it('rejects a duplicate mode id within the same module', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+    }).create('learning', lifecycle)
+
+    activation.api.registerMode(baseChatMode())
+    expect(() => activation.api.registerMode(baseChatMode())).toThrow(
+      'Duplicate module chat mode id',
+    )
+    lifecycle.dispose()
+  })
+
+  it('rejects registering more than the per-module cap', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+    }).create('learning', lifecycle)
+
+    activation.api.registerMode(baseChatMode({ id: 'a' }))
+    activation.api.registerMode(baseChatMode({ id: 'b' }))
+    activation.api.registerMode(baseChatMode({ id: 'c' }))
+    activation.api.registerMode(baseChatMode({ id: 'd' }))
+    expect(() =>
+      activation.api.registerMode(baseChatMode({ id: 'e' })),
+    ).toThrow('cannot register more than 4 chat modes')
+    lifecycle.dispose()
+  })
+
+  it('does not leak a partially staged registration on activation failure', () => {
+    const add = jest.fn()
+    const remove = jest.fn()
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add, remove },
+    }).create('learning', lifecycle)
+
+    activation.api.registerMode(baseChatMode())
+    // Activation fails before commit (e.g. a later capability throws) —
+    // the module runtime disposes the lifecycle without ever calling commit.
+    lifecycle.dispose()
+
+    expect(add).not.toHaveBeenCalled()
+    expect(remove).not.toHaveBeenCalled()
+    expect(() => activation.api.registerMode(baseChatMode())).toThrow(
+      'no longer active',
+    )
+  })
+
+  it('rejects registerMode after disposal', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+    }).create('learning', lifecycle)
+
+    lifecycle.dispose()
+    expect(() => activation.api.registerMode(baseChatMode())).toThrow(
+      'no longer active',
+    )
+  })
+
+  it('rejects double commit and double activate', () => {
+    const lifecycle = new ModuleLifecycleScope()
+    const activation = new CoreModuleChatCapabilityProvider({
+      sink: { add: jest.fn(), remove: jest.fn() },
+    }).create('learning', lifecycle)
+
+    activation.activate()
+    activation.commit()
+
+    expect(() => activation.activate()).toThrow('already active')
+    expect(() => activation.commit()).toThrow('already committed')
     lifecycle.dispose()
   })
 })

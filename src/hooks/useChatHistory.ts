@@ -69,6 +69,17 @@ type UseChatHistory = {
     assistantGroupBoundaryMessageIds?: string[],
     options?: { touchUpdatedAt?: boolean },
   ) => Promise<void>
+  /**
+   * 字段级更新：只写会话行上的 `activeBranchByUserMessageId`，不碰 messages。
+   *
+   * 分支选择是纯 UI 元数据，而 messages 的权威来源在生成期间是 AgentService。
+   * 让分支切换顺带写一份 UI 手里的 messages 快照，就等于用一份可能落后整个
+   * 生成阶段的正文覆盖数据库——两条写入不共享同一条串行链，谁后落地谁说了算。
+   */
+  updateConversationActiveBranches: (
+    id: string,
+    activeBranchByUserMessageId: ReadonlyMap<string, string>,
+  ) => Promise<void>
   createOrTouchCliConversation: (
     id: string,
     cliSession: ChatConversationCliSession,
@@ -168,6 +179,12 @@ export function useChatHistory(): UseChatHistory {
     ): Promise<void> => {
       const serializedMessages = messages.map(serializeChatMessage)
       const existingConversation = await chatManager.findById(id)
+      // 「一条消息都没有」不等于「这个会话不该存在」：从未发过消息的新会话不建行，
+      // 但已存在的会话被清空后仍然是同一个会话，必须把空消息写回去，否则重新加载
+      // 会把删掉的消息复活。判据是会话行在不在，不是消息数。
+      if (messages.length === 0 && !existingConversation) {
+        return
+      }
       const normalizedCompaction =
         normalizeChatConversationCompactionState(compaction)
       const existingCompaction = normalizeChatConversationCompactionState(
@@ -338,6 +355,48 @@ export function useChatHistory(): UseChatHistory {
       )
     },
     [debouncedCreateOrUpdateConversation, persistConversationInternal],
+  )
+
+  const updateConversationActiveBranches = useCallback(
+    async (
+      id: string,
+      activeBranchByUserMessageId: ReadonlyMap<string, string>,
+    ): Promise<void> => {
+      const existingConversation = await chatManager.findById(id)
+      // 会话行还没建立时无事可做：分支选择留在内存里，下一次完整持久化会
+      // 连同 messages 一起写出去。
+      if (!existingConversation) {
+        return
+      }
+      // 与完整持久化同一套裁剪规则，只是按数据库行里的 user 消息判定——
+      // 这次写入的对象就是这一行，能被它引用的键也只有它自己的消息。
+      const validUserMessageIds = new Set(
+        existingConversation.messages
+          .filter((message) => message.role === 'user')
+          .map((message) => message.id),
+      )
+      const entries = Array.from(activeBranchByUserMessageId.entries()).filter(
+        ([userMessageId, branchId]) =>
+          validUserMessageIds.has(userMessageId) && branchId.trim().length > 0,
+      )
+      const nextActiveBranchByUserMessageId =
+        entries.length > 0 ? Object.fromEntries(entries) : undefined
+      if (
+        isEqual(
+          existingConversation.activeBranchByUserMessageId ?? null,
+          nextActiveBranchByUserMessageId ?? null,
+        )
+      ) {
+        return
+      }
+
+      await chatManager.updateChat(id, {
+        activeBranchByUserMessageId: nextActiveBranchByUserMessageId,
+      })
+      emitChatHistoryUpdated()
+      await fetchChatList()
+    },
+    [chatManager, emitChatHistoryUpdated, fetchChatList],
   )
 
   const createOrTouchCliConversation = useCallback(
@@ -622,6 +681,7 @@ export function useChatHistory(): UseChatHistory {
   return {
     createOrUpdateConversation,
     createOrUpdateConversationImmediately,
+    updateConversationActiveBranches,
     createOrTouchCliConversation,
     deleteConversation,
     getChatMessagesById,

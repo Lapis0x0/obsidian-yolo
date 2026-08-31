@@ -1,217 +1,828 @@
-.yolo-rag-layout {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-4-4);
-}
+/*
+ * Knowledge base settings tab: status dashboard (status bar + card grid +
+ * per-kb config modal) plus the shared advanced-settings section. Status
+ * colour language (green/blue/amber/red) comes from Obsidian's native
+ * `--color-*` variables, mirroring the pattern already established in
+ * `scope.css` — themes stay in charge, this file only picks which token.
+ */
 
-.yolo-rag-card {
+/* ================= status bar ================= */
+
+.yolo-kb-status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-3);
+  margin-bottom: var(--size-4-4);
+  padding: var(--size-4-3) var(--size-4-4);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);
-  background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
-  padding: var(--size-4-3);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  background: var(--background-secondary);
+  transition: border-color 160ms ease;
 }
 
-.yolo-rag-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: var(--size-4-3);
-  margin-bottom: var(--size-4-3);
+.yolo-kb-status-dot {
+  flex-shrink: 0;
+  width: 9px;
+  height: 9px;
+  margin: 0 2px;
+  border-radius: 50%;
+  background: var(--color-green);
+  box-shadow: 0 0 0 3px rgba(var(--color-green-rgb), 0.14);
 }
 
-.yolo-rag-card-header-copy {
+.yolo-kb-status-bar.is-busy {
+  border-color: rgba(var(--color-blue-rgb), 0.4);
+}
+
+.yolo-kb-status-bar.is-busy .yolo-kb-status-dot {
+  background: var(--color-blue);
+  box-shadow: 0 0 0 3px rgba(var(--color-blue-rgb), 0.14);
+  animation: yolo-kb-status-dot-pulse 1.4s ease infinite;
+}
+
+.yolo-kb-status-bar.is-busy .yolo-kb-status-line {
+  color: var(--color-blue);
+}
+
+@keyframes yolo-kb-status-dot-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.4;
+  }
+}
+
+.yolo-kb-status-bar.is-off .yolo-kb-status-dot {
+  background: var(--text-faint);
+  box-shadow: none;
+}
+
+.yolo-kb-status-bar.is-off .yolo-kb-status-line {
+  color: var(--text-muted);
+}
+
+/* Local-embedding engine takeover — the status bar's only other "not the
+   plain ready/busy line" state, see the `.yolo-kb-ml-*` block below
+   for the shelf this state points users toward. */
+.yolo-kb-status-bar.is-warn {
+  border-color: rgba(var(--color-orange-rgb), 0.4);
+}
+
+.yolo-kb-status-bar.is-warn .yolo-kb-status-dot {
+  background: var(--color-orange);
+  box-shadow: 0 0 0 3px rgba(var(--color-orange-rgb), 0.14);
+}
+
+.yolo-kb-status-bar.is-warn .yolo-kb-status-line {
+  color: var(--color-orange);
+}
+
+.yolo-kb-status-text {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
-.yolo-rag-card-title {
-  color: var(--text-normal);
-  font-size: var(--h3-size);
-  line-height: var(--line-height-tight);
-  font-weight: var(--h3-weight);
-}
-
-.yolo-rag-card-description {
-  margin-top: var(--size-2-1);
-  color: var(--text-muted);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
-}
-
-.yolo-rag-card-actions {
+.yolo-kb-status-line {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: flex-end;
-  gap: var(--size-4-2);
-}
-
-.yolo-rag-card-body > .setting-item:first-child {
-  border-top: none;
-  padding-top: 0;
-}
-
-.yolo-rag-card-body > .setting-item:last-child {
-  padding-bottom: 0;
-}
-
-.yolo-rag-scope-group {
-  border: 1px solid
-    color-mix(in srgb, var(--background-modifier-border) 45%, transparent);
-  border-radius: var(--radius-m);
-  background: color-mix(
-    in srgb,
-    var(--background-primary) 72%,
-    var(--background-secondary) 28%
-  );
-  margin-bottom: var(--size-4-3);
-  overflow: hidden;
-}
-
-.yolo-rag-scope-group:last-of-type {
-  margin-bottom: var(--size-4-3);
-}
-
-.yolo-rag-scope-group-setting.setting-item {
-  border: none !important;
-  background: transparent !important;
-  margin-bottom: 0;
-  padding: var(--size-4-3) !important;
-}
-
-.yolo-rag-scope-group-body {
-  padding: 0 var(--size-4-3) var(--size-4-3);
-}
-
-.yolo-rag-resource-summary {
-  display: flex;
   flex-wrap: wrap;
-  gap: var(--size-4-2);
-  margin-bottom: var(--size-4-3);
+  gap: var(--size-2-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
 }
 
-.yolo-rag-status-pill {
+.yolo-kb-status-sub {
+  margin-top: 2px;
+  overflow: hidden;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-mono {
+  font-family: var(--font-monospace);
+}
+
+.yolo-kb-status-pill {
   display: inline-flex;
   align-items: center;
-  min-height: 28px;
-  padding: 0 10px;
+  gap: 5px;
+  padding: 1.5px 9px;
   border-radius: 999px;
-  border: 1px solid var(--background-modifier-border);
-  background: color-mix(in srgb, var(--background-secondary) 90%, transparent);
-  color: var(--text-muted);
   font-size: var(--font-ui-smaller);
-  font-weight: var(--font-medium);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
 }
 
-.yolo-rag-status-pill.is-ready {
-  color: var(--text-success);
-  border-color: color-mix(in srgb, var(--text-success) 25%, transparent);
-  background: color-mix(in srgb, var(--text-success) 8%, transparent);
-}
-
-.yolo-rag-status-pill.is-warning {
-  color: var(--text-warning);
-  border-color: color-mix(in srgb, var(--text-warning) 25%, transparent);
-  background: color-mix(in srgb, var(--text-warning) 10%, transparent);
-}
-
-.yolo-rag-status-pill.is-danger {
-  color: var(--text-error);
-  border-color: color-mix(in srgb, var(--text-error) 25%, transparent);
-  background: color-mix(in srgb, var(--text-error) 10%, transparent);
-}
-
-.yolo-rag-inline-status {
-  display: flex;
-  flex-direction: column;
-  gap: var(--size-2-2);
-  margin-bottom: var(--size-4-3);
-  padding: var(--size-4-2) var(--size-4-3);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  background: color-mix(in srgb, var(--background-secondary) 55%, transparent);
-}
-
-.yolo-rag-inline-status--error {
-  border-color: color-mix(in srgb, var(--text-error) 25%, transparent);
-  background: color-mix(in srgb, var(--text-error) 8%, transparent);
-}
-
-.yolo-rag-inline-status-title {
-  color: var(--text-error);
-  font-size: var(--font-ui-small);
-  font-weight: var(--font-medium);
-}
-
-.yolo-rag-inline-status-text {
-  color: var(--text-normal);
-  font-size: var(--font-ui-small);
-  line-height: var(--line-height-normal);
-  word-break: break-word;
-}
-
-.yolo-rag-inline-progress {
-  overflow: hidden;
-  width: 100%;
+.yolo-kb-status-pill::before {
+  content: '';
+  width: 6px;
   height: 6px;
-  border-radius: 999px;
-  background: color-mix(
-    in srgb,
-    var(--background-modifier-border) 65%,
-    transparent
-  );
+  border-radius: 50%;
+  background: currentColor;
 }
 
-.yolo-rag-inline-progress-bar {
-  height: 100%;
-  border-radius: inherit;
-  background: var(--interactive-accent);
-  transition: width 160ms ease;
+.yolo-kb-status-pill.green {
+  background: rgba(var(--color-green-rgb), 0.14);
+  color: var(--color-green);
 }
 
-/* RAG maintenance row: title + inline status + actions */
-.yolo-rag-maintenance-setting .setting-item-info {
-  flex: 1 1 auto;
-  min-width: 0;
+.yolo-kb-status-pill.blue {
+  background: rgba(var(--color-blue-rgb), 0.14);
+  color: var(--color-blue);
 }
 
-.yolo-rag-maintenance-setting .setting-item-name.yolo-setting-name-row {
+.yolo-kb-status-pill.amber {
+  background: rgba(var(--color-orange-rgb), 0.14);
+  color: var(--color-orange);
+}
+
+.yolo-kb-status-pill.red {
+  background: rgba(var(--color-red-rgb), 0.13);
+  color: var(--color-red);
+}
+
+.yolo-kb-status-actions {
   display: flex;
+  flex-shrink: 0;
   align-items: center;
   gap: var(--size-4-3);
-  width: 100%;
-  min-width: 0;
 }
 
-.yolo-rag-maintenance-setting
-  .setting-item-name.yolo-setting-name-row
-  .yolo-setting-name-extra {
+.yolo-kb-status-auto {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-2);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  white-space: nowrap;
+}
+
+.yolo-kb-status-menu-trigger {
+  width: 32px;
+  height: 32px;
+  border: none !important;
+  border-radius: var(--radius-s);
+  background: transparent !important;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: none !important;
+  transition:
+    color 120ms ease,
+    background-color 120ms ease;
+}
+
+.yolo-kb-status-menu-trigger:hover,
+.yolo-kb-status-menu-trigger:focus-visible {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+}
+
+/* Compact overflow menu — matches the knowledge-base settings mock, not the
+   taller Agent card menu. Shared surface classes stay; this only tightens
+   density so a 3-row menu doesn't read as a fat panel. */
+.yolo-kb-menu-popover {
+  min-width: 176px;
+  border-radius: 7px;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-list {
+  padding: 4px;
+  gap: 0;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-item {
+  min-height: unset;
+  padding: 5px 9px;
+  border-radius: 5px;
+  gap: 9px;
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-icon svg {
+  width: 14px;
+  height: 14px;
+}
+
+.yolo-kb-menu-popover .yolo-agent-card-menu-sep {
+  margin: 4px 2px;
+}
+
+/* ================= section dividers ================= */
+
+.yolo-kb-divider-label {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-2);
+  margin: var(--size-4-5) 0 var(--size-4-2);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.yolo-kb-divider-label:not(.yolo-kb-divider-label--with-action)::after {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background: var(--background-modifier-border);
+}
+
+.yolo-kb-divider-label-line {
   flex: 1 1 auto;
   min-width: 0;
-  display: flex;
-  justify-content: flex-end;
+  height: 1px;
+  background: var(--background-modifier-border);
 }
 
-.yolo-rag-maintenance-setting .setting-item-control {
-  align-items: center;
-  justify-content: flex-end;
-  flex: 0 0 auto;
+.yolo-kb-divider-label--sub {
+  margin-top: var(--size-4-6);
 }
 
-.yolo-index-inline-status {
+.yolo-kb-divider-label-faint {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-normal, normal);
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+.yolo-kb-new-button {
+  flex-shrink: 0;
+  text-transform: none;
+  letter-spacing: normal;
+}
+
+/* ================= disabled-state content dimming ================= */
+
+/* Indexing off: knowledge-base cards stay mounted (state, scroll) but
+   read as inactive. The embedding-model shelf stays fully interactive so
+   a first-run user can pick/download a model before turning indexing on. */
+.yolo-kb-dimmed {
+  opacity: 0.5;
+  pointer-events: none;
+  transition: opacity var(--yolo-anim-duration-feedback) ease;
+}
+
+/* ================= knowledge base grid & card ================= */
+
+.yolo-kb-grid {
+  display: grid;
+  /* auto-fill keeps empty tracks, so a lone "new" card stays one column
+     wide instead of stretching across the row (auto-fit would collapse). */
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--size-4-3);
+}
+
+/* `.yolo-kb-card` builds on top of `.yolo-agent-card` (+ `--clickable`) —
+   see the JSX, which applies both classes. Border, background, padding,
+   hover/focus state, and transition come from that shared base; this only
+   adds what a knowledge base card needs beyond a generic one. */
+.yolo-kb-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.yolo-kb-card.is-indexing .yolo-kb-card-name {
+  padding-right: 40px;
+}
+
+.yolo-kb-card-ring {
+  position: absolute;
+  top: var(--size-4-2);
+  right: var(--size-4-2);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.yolo-kb-card-top {
+  display: flex;
+  flex-direction: column;
+}
+
+.yolo-kb-card-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+
+.yolo-kb-card-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-s);
+  background: color-mix(in srgb, var(--interactive-accent) 16%, transparent);
+  color: color-mix(in srgb, var(--interactive-accent) 88%, white 12%);
+}
+
+.yolo-kb-card-title {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yolo-kb-card-name {
   display: flex;
   align-items: center;
-  gap: var(--size-2-3);
-  flex: 0 1 auto;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  line-height: 1.2;
+}
+
+.yolo-kb-card-desc {
+  margin-top: 2px;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: var(--line-height-normal);
+}
+
+.yolo-kb-card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px var(--size-4-3);
+  margin-top: var(--size-4-2);
+  padding-top: var(--size-2-3);
+  border-top: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-card-meta-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
   min-width: 0;
   max-width: 100%;
 }
 
-.yolo-rag-maintenance-actions {
-  flex: 0 0 auto;
+.yolo-kb-card-meta-item svg {
+  flex-shrink: 0;
+  opacity: 0.65;
 }
 
+.yolo-kb-card-meta-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-kb-card-meta-text b {
+  color: inherit;
+  font-weight: var(--font-medium);
+}
+
+.yolo-kb-card-meta-attn {
+  color: var(--color-orange);
+}
+
+.yolo-kb-card-foot {
+  margin-top: auto;
+}
+
+.yolo-kb-card-nums {
+  display: flex;
+  gap: var(--size-4-4);
+}
+
+.yolo-kb-card-num {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.yolo-kb-card-num b {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  line-height: 1.2;
+}
+
+.yolo-kb-card-num span {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+/* ================= knowledge base config modal ================= */
+
+.yolo-kb-modal {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+}
+
+.yolo-kb-modal-title {
+  font-size: var(--h3-size);
+  font-weight: var(--h3-weight);
+  color: var(--text-normal);
+}
+
+.yolo-kb-modal-body {
+  display: flex;
+  flex-direction: column;
+}
+
+.yolo-kb-modal-name-error {
+  margin: calc(var(--size-2-2) * -1) 0 var(--size-2-2);
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-modal-scope-section {
+  margin-top: var(--size-4-4);
+  padding-top: var(--size-4-3);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-kb-modal-scope-title {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-medium);
+}
+
+.yolo-kb-modal-scope-desc {
+  margin-top: 2px;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  line-height: var(--line-height-normal);
+}
+
+.yolo-kb-modal-scope-section .yolo-scope-summary {
+  margin-top: var(--size-4-2);
+}
+
+.yolo-kb-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--size-4-2);
+  margin-top: var(--size-4-4);
+  padding-top: var(--size-4-3);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+/* ================= embedding model shelf (API row + local group) =================
+   One bordered list, mirroring docs/plans/knowledge-base-settings-designs.html:
+   the API row stays a single dropdown line; the curated local models are
+   browsable rows, each carrying its own download lifecycle; a footer row
+   holds the download source and on-disk usage. */
+
+.yolo-kb-model-list {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
+  box-shadow: 0 1px 2px var(--background-modifier-box-shadow);
+  overflow: hidden;
+}
+
+.yolo-kb-ml-row {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-3);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-kb-ml-row:last-child {
+  border-bottom: none;
+}
+
+/* `.yolo-kb-model-list` clips to a rounded rect, but `.is-current`'s inset
+   box-shadow is drawn on this row's own (square) border-box — without a
+   matching radius here, the highlight's corner shows a hard right angle
+   poking into the container's curve. */
+.yolo-kb-ml-row:first-child {
+  border-top-left-radius: var(--radius-m);
+  border-top-right-radius: var(--radius-m);
+}
+
+.yolo-kb-ml-row.is-current {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+  box-shadow: inset 0 0 0 1px
+    color-mix(in srgb, var(--color-accent) 55%, transparent);
+  border-bottom-color: transparent;
+}
+
+.yolo-kb-ml-main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.yolo-kb-ml-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-normal);
+  font-family: var(--font-monospace);
+  font-size: 12.5px;
+  font-weight: var(--font-bold);
+}
+
+.yolo-kb-ml-name.is-plain {
+  font-family: inherit;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+}
+
+/* Native <select> min-content is the longest option; flex items default to
+   `min-width: auto`, which would ignore a smaller `width`. Zero the minimum
+   so the cap actually holds. */
+.yolo-kb-ml-name.is-plain > div {
+  flex: 0 0 220px;
+  width: 220px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.yolo-kb-ml-name.is-plain select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-hf {
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-faint);
+  opacity: 0.6;
+}
+
+.yolo-kb-ml-hf:hover {
+  color: var(--text-accent);
+  opacity: 1;
+}
+
+.yolo-kb-ml-tag {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+  font-family: var(--font-interface);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-medium);
+}
+
+.yolo-kb-ml-tag.is-accent {
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--text-accent);
+}
+
+.yolo-kb-ml-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 9px;
+  margin-top: 3px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-error {
+  color: var(--text-error);
+}
+
+.yolo-kb-ml-progress {
+  display: block;
+  flex-shrink: 0;
+  width: 130px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  overflow: hidden;
+}
+
+.yolo-kb-ml-progress span {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--interactive-accent);
+  /* `scaleX`, not `width` — animating layout properties is disallowed (see
+     src/styles/tokens/motion.css); the fill's extent is set inline via
+     `transform: scaleX(<progress>)`. */
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--yolo-anim-duration-feedback)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-kb-ml-source-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 1px;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.yolo-kb-ml-source-toggle:hover {
+  color: var(--text-muted);
+}
+
+.yolo-kb-ml-source {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px var(--size-4-2);
+  margin: var(--size-2-2) 0 0;
+  padding: var(--size-2-2) var(--size-2-3);
+  border-radius: var(--radius-s);
+  background: var(--background-primary);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-source dt {
+  color: var(--text-faint);
+}
+
+.yolo-kb-ml-source dd {
+  min-width: 0;
+  margin: 0;
+}
+
+.yolo-kb-ml-source code {
+  color: var(--text-muted);
+  font-size: inherit;
+  overflow-wrap: anywhere;
+}
+
+.yolo-kb-ml-source-file {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.yolo-kb-ml-source-file + .yolo-kb-ml-source-file {
+  margin-top: 4px;
+}
+
+.yolo-kb-ml-source-file span {
+  color: var(--text-faint);
+  overflow-wrap: anywhere;
+}
+
+.yolo-kb-ml-side {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--size-2-2);
+}
+
+/* Compact row actions — the design's `btn sm`; Obsidian's default 30px
+   button makes every row read as a form field. */
+.yolo-kb-ml-side button {
+  height: 26px;
+  padding: 0 10px;
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-current {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1.5px 9px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent) 14%, transparent);
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+/* Secondary row actions (取消 / 设为当前) read as quiet text
+   buttons next to the single primary 下载; icon-only delete is a bare glyph.
+   Confirming delete matches chat-history: the icon turns red until the
+   second click (or the 3s timeout). */
+.yolo-kb-ml-ghost,
+.yolo-kb-ml-icon,
+.yolo-kb-ml-icon-confirming {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.yolo-kb-ml-ghost,
+.yolo-kb-ml-icon {
+  color: var(--text-muted);
+}
+
+.yolo-kb-ml-icon-confirming {
+  color: var(--color-red) !important;
+}
+
+.yolo-kb-ml-ghost:hover,
+.yolo-kb-ml-icon:hover,
+.yolo-kb-ml-icon-confirming:hover {
+  background: var(--background-modifier-hover) !important;
+}
+
+.yolo-kb-ml-ghost:hover,
+.yolo-kb-ml-icon:hover {
+  color: var(--text-normal);
+}
+
+.yolo-kb-ml-icon-confirming:hover {
+  color: var(--color-red) !important;
+}
+
+.yolo-kb-ml-icon,
+.yolo-kb-ml-icon-confirming {
+  padding: 0 6px;
+}
+
+.yolo-kb-ml-group {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-group b {
+  color: var(--text-muted);
+  font-weight: var(--font-bold);
+  letter-spacing: 0.07em;
+}
+
+.yolo-kb-ml-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-2);
+  padding: 9px var(--size-4-3);
+  border-top: 1px solid var(--background-modifier-border);
+  background: var(--background-primary-alt);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-foot > div {
+  flex: 0 0 130px;
+  width: 130px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.yolo-kb-ml-foot select {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-kb-ml-endpoint-custom {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.yolo-kb-ml-endpoint-error {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+/* ================= advanced settings section ================= */
+
+.yolo-rag-card {
+  margin-top: var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: color-mix(in srgb, var(--background-secondary) 86%, white 12%);
+  padding: var(--size-4-3);
+  box-shadow: 0 1px 2px var(--background-modifier-box-shadow);
+}
+
+/* ================= index progress ring (status bar + card overlay) ================= */
+
 .yolo-index-ring {
+  position: relative;
   flex-shrink: 0;
 }
 
@@ -227,178 +838,48 @@
   stroke: var(--interactive-accent);
 }
 
-.yolo-index-current-file {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: inline-flex;
-  align-items: center;
-  gap: var(--size-2-2);
-  font-size: var(--font-ui-smaller);
-  color: var(--text-faint);
-  font-family: var(--font-monospace);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.yolo-index-current-file-prefix {
-  flex: 0 0 4ch;
-  width: 4ch;
-  text-align: right;
-  color: var(--text-muted);
-}
-
-.yolo-index-current-file-viewport {
-  position: relative;
-  flex: 0 0 clamp(18ch, 24vw, 30ch);
-  width: clamp(18ch, 24vw, 30ch);
-  min-width: clamp(18ch, 24vw, 30ch);
-  max-width: clamp(18ch, 24vw, 30ch);
-  height: 1.35em;
-  overflow: hidden;
-}
-
-.yolo-index-current-file-text {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.yolo-index-current-file-text.is-entering,
-.yolo-index-current-file-text.is-leaving {
+.yolo-index-ring-label {
   position: absolute;
   inset: 0;
-}
-
-.yolo-index-current-file-text.is-entering {
-  animation: yolo-index-file-enter 120ms var(--yolo-anim-ease-out);
-}
-
-.yolo-index-current-file-text.is-leaving {
-  animation: yolo-index-file-leave 120ms var(--yolo-anim-ease-out);
-}
-
-@keyframes yolo-index-file-enter {
-  from {
-    opacity: 0.35;
-    transform: translateY(5px);
-    filter: blur(1px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-}
-
-@keyframes yolo-index-file-leave {
-  from {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
-
-  to {
-    opacity: 0;
-    transform: translateY(-5px);
-    filter: blur(1px);
-  }
-}
-
-@media (max-width: 900px) {
-  .yolo-rag-card-header {
-    flex-direction: column;
-  }
-
-  .yolo-rag-card-actions {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .yolo-rag-maintenance-setting .setting-item {
-    align-items: flex-start;
-  }
-
-  .yolo-rag-maintenance-setting .setting-item-name.yolo-setting-name-row {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .yolo-rag-maintenance-setting
-    .setting-item-name.yolo-setting-name-row
-    .yolo-setting-name-extra {
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .yolo-index-current-file-viewport {
-    flex: 1 1 auto;
-    width: min(100%, 30ch);
-    min-width: 0;
-    max-width: min(100%, 30ch);
-  }
-
-  .yolo-rag-maintenance-setting .setting-item-control {
-    width: 100%;
-    justify-content: flex-start;
-  }
-}
-
-/* Durable "X files could not be indexed" notice shown under the maintenance
- * status after a completed run with permanent failures. Non-modal, expandable. */
-.yolo-rag-permanent-failures {
-  margin-top: 8px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.yolo-rag-permanent-failures-summary {
   display: flex;
   align-items: center;
-  gap: 6px;
-  width: 100%;
-  padding: 6px 8px;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
-  color: var(--text-warning);
-  font-size: var(--font-ui-small);
-  text-align: left;
-  cursor: pointer;
+  justify-content: center;
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+  line-height: 1;
 }
 
-.yolo-rag-permanent-failures-summary:hover {
-  background: var(--background-modifier-hover);
+.yolo-index-ring-pct {
+  font-size: 10px;
+  letter-spacing: -0.02em;
 }
 
-.yolo-rag-permanent-failures-text {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.yolo-rag-permanent-failures-caret {
-  flex: 0 0 auto;
+.yolo-index-ring-sym {
+  margin-left: 1px;
+  font-size: 7px;
   color: var(--text-muted);
 }
 
-.yolo-rag-permanent-failures-list {
-  margin: 0;
-  padding: 6px 8px 6px 24px;
-  max-height: 180px;
-  overflow-y: auto;
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  background: var(--background-secondary);
-  font-size: var(--font-ui-smaller);
-  color: var(--text-muted);
-}
+@media (max-width: 640px) {
+  .yolo-kb-status-bar {
+    flex-wrap: wrap;
+  }
 
-.yolo-rag-permanent-failures-list li {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  .yolo-kb-status-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .yolo-kb-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .yolo-kb-ml-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .yolo-kb-ml-side {
+    justify-content: flex-end;
+  }
 }

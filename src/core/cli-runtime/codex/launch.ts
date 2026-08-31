@@ -6,6 +6,8 @@ import * as path from 'node:path'
 import { promisify } from 'node:util'
 /* eslint-enable import/no-nodejs-modules */
 
+import { resolveWindowsSpawnablePath } from '../windows-spawn'
+
 export type ResolvedCodexLaunch = {
   command?: string
   launchArgs?: string[]
@@ -79,7 +81,7 @@ const resolveConfiguredExecutable = async (
   if (!trimmed) return null
   const expanded =
     platform === 'win32' ? trimmed : expandHomePath(trimmed, home, platform)
-  return (await existingFile(expanded)) ? expanded : null
+  return resolveWindowsSpawnablePath(expanded, existingFile, platform)
 }
 
 export const findCodexExecutable = async (

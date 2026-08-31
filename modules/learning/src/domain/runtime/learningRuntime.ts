@@ -1,4 +1,3 @@
-import type { ProjectEventBus } from '../projectEventBus'
 import { getTotalDueCards } from '../stats/learningStatsService'
 
 import {
@@ -24,7 +23,6 @@ export class LearningRuntime<
   private srsStore: Srs | null = null
   private statsService: Stats | null = null
   private unsubscribeStats: (() => void) | null = null
-  private eventBus: ProjectEventBus | null = null
   private readonly generationControllers = new Set<AbortController>()
   private disposed = false
 
@@ -90,14 +88,6 @@ export class LearningRuntime<
     return this.srsStore ? this.srsStore.runExclusive(operation) : operation()
   }
 
-  setEventBus(bus: ProjectEventBus | null): void {
-    if (!this.disposed) this.eventBus = bus
-  }
-
-  getEventBus(): ProjectEventBus | null {
-    return this.eventBus
-  }
-
   setNavigationHandler(handler: LearningNavigationHandler | null): void {
     this.navigation.setHandler(handler)
   }
@@ -132,7 +122,6 @@ export class LearningRuntime<
     this.ports.background?.remove(LEARNING_REVIEW_REMINDER_ID)
     this.statsService?.dispose()
     this.statsService = null
-    this.eventBus = null
     this.navigation.dispose()
   }
 

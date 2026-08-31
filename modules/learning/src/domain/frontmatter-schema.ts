@@ -34,10 +34,30 @@ export const projectFrontmatterSchema = z.object({
     .optional(),
   /** Optional ordered list of chapter slugs. If omitted, derived from folder order. */
   chapters: z.array(z.string()).optional(),
+  /**
+   * The level and output language the generation run was started with.
+   * Persisted so an interrupted generation can be resumed after Obsidian
+   * restarts. Absent on projects created before resume support existed —
+   * such projects cannot be resumed automatically.
+   */
+  level: z.string().min(1).optional(),
+  outputLanguage: z.string().min(1).optional(),
 })
 
 export const chapterKnowledgeFrontmatterSchema = z.object({
   title: z.string().min(1),
+  /**
+   * The chapter's generation contract, persisted so a resumed generation run
+   * can rebuild the full-outline context the knowledge-point prompt needs.
+   * Absent on chapters created before resume support existed.
+   */
+  contract: z.string().optional(),
+  /**
+   * Whether this chapter's knowledge-point stage has finished. Used by
+   * resume to tell "interrupted mid-run" apart from "knowledge done, cards
+   * still missing" without guessing from content alone.
+   */
+  complete: z.boolean().optional(),
 })
 
 export const chapterCardsFrontmatterSchema = z.object({

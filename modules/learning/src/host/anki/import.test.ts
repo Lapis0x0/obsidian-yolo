@@ -280,9 +280,7 @@ describe('Host Anki import service', () => {
     )
     expect(h.vault.emptyFolderRemovals).toEqual([])
     expect(h.vault.trashPath).not.toHaveBeenCalled()
-    expect(h.vault.files.has('Root/data/learning-srs/deck.json')).toBe(
-      true,
-    )
+    expect(h.vault.files.has('Root/data/learning-srs/deck.json')).toBe(true)
     expect(h.synchronized.files.size).toBe(0)
     expect(h.runExclusive).toHaveBeenCalledTimes(1)
     expect(h.runExclusive).toHaveBeenCalledWith(
@@ -406,8 +404,7 @@ describe('Host Anki import service', () => {
       const ownedPath = `${projectPath}/owned.md`
       const pinnedSrsPath = `Pinned/.yolo_json_db/learning-srs/${projectSlug}.json`
       const currentSrsPath = `Root/data/learning-srs/${projectSlug}.json`
-      const journalRoot =
-        location === 'current' ? 'Root/data' : 'Old/data'
+      const journalRoot = location === 'current' ? 'Root/data' : 'Old/data'
       const journalDirectory = `${journalRoot}/anki-import-journals`
       const journalPath = `${journalDirectory}/${projectSlug}.json`
       const createdFiles = confirmed ? [indexPath] : [ownedPath]
@@ -497,12 +494,8 @@ describe('Host Anki import service', () => {
     release()
     await relocation
     await expect(committing).resolves.toBe('Root/learning/deck')
-    expect(
-      h.vault.files.has('Moved/data/learning-srs/deck.json'),
-    ).toBe(true)
-    expect(h.vault.files.has('Root/data/learning-srs/deck.json')).toBe(
-      false,
-    )
+    expect(h.vault.files.has('Moved/data/learning-srs/deck.json')).toBe(true)
+    expect(h.vault.files.has('Root/data/learning-srs/deck.json')).toBe(false)
     expect(h.vault.exactFileRemovals[0]).toMatch(
       /^Moved\/data\/anki-import-journals\/.+\.json$/,
     )

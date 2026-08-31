@@ -121,7 +121,7 @@ test('distribution treats dispatch as a wake-up and reconciles full state', asyn
   assert.doesNotMatch(distributionSource, /force.push|--force/)
 })
 
-test('distribution keeps Pages best-effort and outside the release gate', async () => {
+test('distribution keeps the R2 mirror best-effort and outside the release gate', async () => {
   const distributionSource = await readFile(
     path.resolve('.github/workflows/distribution-publish.yml'),
     'utf8',
@@ -131,26 +131,31 @@ test('distribution keeps Pages best-effort and outside the release gate', async 
   })
   const steps = distributionWorkflow.jobs.reconcile.steps
   const check = steps.find(
-    ({ name }) => name === 'Check current Pages deployment',
+    ({ name }) => name === 'Check current mirror content',
   )
   const buildPages = steps.find(
-    ({ name }) => name === 'Build latest-only Pages snapshot',
+    ({ name }) => name === 'Build latest-only mirror snapshot',
   )
   const deployPages = steps.find(
-    ({ name }) => name === 'Deploy Cloudflare Pages snapshot',
+    ({ name }) => name === 'Upload latest-only snapshot to R2',
   )
   const verifyAfterDeploy = steps.find(
     ({ name }) => name === 'Verify deployed revision and assets',
   )
 
+  assert.ok(check)
+  assert.ok(buildPages)
+  assert.ok(deployPages)
   assert.equal(check['continue-on-error'], true)
   assert.equal(buildPages['continue-on-error'], true)
   assert.equal(deployPages['continue-on-error'], true)
+  assert.match(deployPages.if, /steps\.pages\.outcome != 'success'/)
   assert.match(deployPages.if, /steps\.pages_build\.outcome == 'success'/)
+  assert.equal(deployPages.run, 'node scripts/distribution.mjs upload-r2')
   assert.equal(verifyAfterDeploy, undefined)
   assert.match(distributionSource, /verification deferred to a later reconcile/)
   assert.doesNotMatch(
     distributionSource,
-    /echo '- Cloudflare Pages mirror: verified'/,
+    /echo '- Cloudflare R2 mirror: verified'/,
   )
 })

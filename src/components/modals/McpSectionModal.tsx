@@ -1,7 +1,7 @@
 import { App } from 'obsidian'
 
 import { SettingsProvider } from '../../contexts/settings-context'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 import { ReactModal } from '../common/ReactModal'
 import { McpSection } from '../settings/sections/McpSection'
 

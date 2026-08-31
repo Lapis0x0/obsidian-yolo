@@ -2,35 +2,50 @@
 
 YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and independently shipped product modules such as FSRS-based Learning.
 
+For a behavior ↔ code-location ↔ verification-path index (complements this file's directory-ownership rules, doesn't restate them), see `FEATURE_MAP.md`.
+
 ## Commands
 
-- `npm run dev` - Build first-party modules, then watch the host app, host styles, and dev-vault artifacts
-- `npm run build` - Production build with host and module type checking
-- `npm run type:check` / `npm run module:typecheck` - Type-check the host or first-party modules
+Verify what you touched: host code → type-check + relevant tests; module code → module typecheck, tests, `npm --prefix modules/<id> run test:boundary` when available, and module build; runtime component code → runtime typecheck, tests, build, and verify; host CSS → styles build (module CSS is rebuilt by the module build).
+
+- `npm run dev` - Build runtime components and first-party modules, then watch the host app, host styles, and dev-vault artifacts
+- `npm run build` - Production build with host, module, and runtime component type checking; run for changes affecting production bundling, module boundaries, runtime loading, or cross-platform behavior
+- `npm run type:check` / `npm run module:typecheck` / `npm run runtime:typecheck` - Type-check the host, first-party modules, or runtime components
 - `npm run module:build` - Rebuild first-party module artifacts and the bundled module catalog
+- `npm run runtime:build` / `npm run runtime:verify` - Rebuild runtime component artifacts and their registry, or verify the host bundle doesn't statically pull in a runtime component's dependencies
 - `npm run lint:check` / `npm run lint:fix` - Check or fix Prettier and ESLint
 - `npm test` - Run the full Jest suite; use `npx jest <test-file> --runInBand` for serial debugging
 - `npm run styles:build` - Regenerate the host `styles.css` from `src/styles/**`
-- `npx drizzle-kit generate --name <name>` then `npm run migrate:compile` - Generate and compile database migrations
+- `npm run deps:check` - Enforce the circular-dependency ratchet; after removing cycles, tighten the baseline with `npm run deps:baseline`
 
 ## Architecture
 
 - `src/main.ts` owns the host plugin lifecycle. `src/ChatView.tsx` and `src/components/chat-view/` own the main chat surface.
 - `src/core/modules/` owns module discovery, installation, loading, activation, lifecycle, and the versioned Host API. `modules/host-sdk.d.ts` is the module-facing API contract.
-- `modules/<id>/` owns an independently built product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
+- `modules/<id>/` owns everything in a product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
+- `src/core/runtime-components/` owns discovery, download, and lifecycle of on-demand runtime components. `runtime-components/<id>/` at the repo root owns each component's source and build output; `runtime-components/sdk.d.ts` is the component-facing contract.
 - `src/core/agent/` owns the shared native agent runtime, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat run through `AgentService.run`; permissions come from `resolveChatModeRuntime`.
-- `src/core/ai/single-turn.ts` is the low-latency path for Smart Space and Write Assist. Do not route these features through the agent runtime or introduce another orchestration path.
-- `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and tool capabilities.
+- `src/core/ai/single-turn.ts` is the low-latency path for Sparkle (tab completion, selection rewrite, continuation). Do not route these features through the agent runtime.
+- `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path.
+- `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and MCP capabilities.
 - `src/features/` contains host-shipped cross-cutting features. `src/database/`, `src/settings/`, and `src/styles/` own host persistence, settings, and global styles.
 
-## Module Boundaries
+## Module and Runtime Component Boundaries
 
-- Put a large, optional product capability in `modules/` when it can be installed, enabled, and released independently. Keep small or inherently host-integrated capabilities in `src/features/`.
-- A module may depend on the versioned Host API and its declared package dependencies. It must not import `src/core/`, `src/components/`, `YoloPlugin`, or `obsidian` directly.
-- First-party modules follow the same boundary as external modules. Repository co-location does not grant access to host implementation details.
+- Placement: a large, optional product capability that can be installed, enabled, and released independently goes in `modules/`; a heavy or native/WASM dependency closure goes in `runtime-components/`; anything small or inherently host-integrated stays in `src/features/`.
+
+### Modules
+
+- A module may depend on the versioned Host API and its declared package dependencies. It must not import `src/core/`, `src/components/`, `YoloPlugin`, or `obsidian` directly — repository co-location grants first-party modules no additional access.
 - Add a capability to the Host API only when it is broadly useful to modules. Keep module-specific policy and behavior inside the owning module.
 - Core must not import module source or bundle module implementation into the host artifact. Communicate only through registration, manifests, and Host API contracts.
+- A module ships skills as packages: declared files are projected on activation into `<YOLO base>/modules/<moduleId>/skills/<package>/` and are then ordinary Vault skills. Do not introduce a module-skill path protocol.
 - Treat versioned `entry.js`, module `style.css`, generated manifest metadata (hashes, sizes, and URLs), and `modules/bundled.json` as build outputs. Change source or compatibility declarations, run `npm run module:build`, and commit the regenerated artifacts rather than editing generated metadata.
+
+### Runtime Components
+
+- Never statically import a heavy or native/WASM dependency closure into the host or a module (e.g. tokenizer, PDF, bash, or embedding libraries); `npm run runtime:verify` fails the build if one leaks into the host bundle.
+- Build outputs (`runtime-components/*/dist/`) are never committed; `registry.json` is the committed contract declaring each artifact's `byteSize`/`sha256`. The bytes are published content-addressed to the permanent, append-only `runtime-assets` Release and mirrored to R2 — never delete or overwrite an attachment there, since shipped versions baked those hashes.
 
 ## Critical Cross-Cutting Constraints
 
@@ -42,20 +57,22 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 ### Runtime Boundaries
 
 - Never statically import desktop-only dependencies (`node:*`, `proxy-agent`, `shell-env`, local servers, child processes, stream adapters, etc.). Load them with `await import(...)` inside desktop-only branches so mobile can load the host or module.
-- PGlite cannot use its default `node:fs` path in Obsidian. `DatabaseManager.ts` lazily loads its data, WASM, and vector extension and supplies them during initialization; preserve the build shims for `process` and `import.meta.url`.
-- `src/utils/chat/responseGenerator.ts` was removed. Do not recreate a parallel chat or agent orchestration path.
+- The RAG vector store is IndexedDB-backed (`src/database/vector-store/`); schema v1 is final — a schema change requires bumping `VECTOR_DATABASE_VERSION` and adding an upgrade path in `vectorDatabase.ts`.
+- Do not create a second chat or agent orchestration path.
 
 ### Chat Runtime Invariants
 
 - Agent conversation state is structurally shared: a message object's reference changes if and only if its content changes. Never mutate messages or state arrays in place; dev builds deep-freeze published snapshots to catch this.
-- All scroll writes in chat surfaces go through the scroll controller in `src/components/chat-view/scroll/`. Never set `scrollTop` directly.
+- While a message is generating, its content and reasoning live in `assistantRenderStreamStore`, not in the conversation snapshot; snapshots fold the stream back only at semantic boundaries. Never publish per-token conversation snapshots.
+- All scroll writes in chat surfaces go through the scroll controller in `src/components/chat-view/scroll/`; never set `scrollTop` directly, and never infer user intent from it — paging direction comes from the input event, position only gates the edge.
 
-### Database Schema Changes
+### Popout / Multi-window
 
-1. Edit `src/database/schema.ts`.
-2. Run `npx drizzle-kit generate --name <migration-name>`.
-3. Review the generated files in `drizzle/`.
-4. Run `npm run migrate:compile` to update `src/database/migrations.json`.
+Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm, but each window has its own `document`, `window`, and keymap. Global `document` / `window` are the **main** window.
+
+- View-local DOM work (portals, listeners, `requestAnimationFrame`, `ResizeObserver`, `IntersectionObserver`, `getComputedStyle`, `activeElement`, timers) must use the node's `ownerDocument` / `defaultView`. Use `src/utils/dom/window-context.ts`; do not default to the globals.
+- Keyboard, Escape layering, and menus belong to Obsidian's keymap (`Scope` + `app.keymap.pushScope` / `popScope`, `Menu`, `Modal`). A React `onKeyDown` plus Radix/document-capture stack only sees keys that reach a node in that document, so it works in the main window and fails in the popout.
+- Overlay, shortcut, and portal behavior is not done until it has been checked in a popout, not only the main window.
 
 ## Obsidian and Style Constraints
 
@@ -68,10 +85,3 @@ YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance
 - Never hardcode user-visible text; route it through i18n, and resolve the current locale at use time rather than caching a locale-bound translator.
 - Animate only `opacity` and `transform`, with durations and easings from `src/styles/tokens/motion.css` / `motion.ts` (paired files — keep both in sync). Animating layout properties requires an inline exemption comment.
 - CSS animations get reduced-motion handling for free from a global fallback; do not add per-component disable blocks. JS-driven animations (framer-motion / WAAPI) must degrade via `useReducedMotion`.
-
-## Verification
-
-- Host code: run `npm run type:check` and relevant tests.
-- Module code: run `npm run module:typecheck`, relevant tests, `npm --prefix modules/<id> run test:boundary` when available, and `npm run module:build`.
-- Host CSS: run `npm run styles:build`. Module CSS is rebuilt by the module build.
-- Run `npm run build` for changes that affect production bundling, module boundaries, runtime loading, or cross-platform behavior.

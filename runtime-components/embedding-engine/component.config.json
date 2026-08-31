@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 2,
+  "id": "embedding-engine",
+  "platforms": ["desktop"],
+  "nameKey": "settings.modules.runtimeComponents.embeddingEngine.name",
+  "descriptionKey": "settings.modules.runtimeComponents.embeddingEngine.description",
+  "impactKey": "settings.modules.runtimeComponents.embeddingEngine.impact",
+  "entry": "dist/entry.js",
+  "assets": ["ort-wasm-simd-threaded.wasm", "ort-wasm-simd-threaded.mjs"]
+}

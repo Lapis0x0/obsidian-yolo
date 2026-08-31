@@ -11,6 +11,7 @@ import type {
   CliTurnConfiguration,
 } from '../../core/cli-runtime'
 import { buildCliTurnContent } from '../../core/cli-runtime'
+import type { ChatConversationCliSession } from '../../database/json/chat/types'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ContentPart } from '../../types/llm/request'
@@ -21,6 +22,114 @@ import { resolveCliRuntimePreference } from './cliRuntimePreferences'
 
 const ACTIVE_CLI_RUN_STATES: ReadonlySet<CliConversationSnapshot['runState']> =
   new Set(['running', 'waiting_for_approval', 'waiting_for_user'])
+
+/**
+ * Remembers which Hermes profile a controller was created for, so a freshly
+ * bound `CliSessionRef` (which never carries `profileId` itself — ACP is
+ * profile-agnostic; see `AcpCliRuntimeOptions.sessionRecovery`'s doc comment)
+ * can be stamped with it before persisting. Absent entry means the runtime's
+ * own default profile, matching `CliSessionRef.profileId`'s convention of
+ * "undefined = default".
+ */
+const requestedProfileIdByController = new WeakMap<
+  CliConversationController,
+  string
+>()
+
+export const registerCliConversationProfileId = (
+  controller: CliConversationController,
+  profileId: string,
+): void => {
+  requestedProfileIdByController.set(controller, profileId)
+}
+
+/**
+ * Stamps the controller's remembered profile onto `ref` if `ref` does not
+ * already carry one. A session-recovery fallback (`sessionFallbackBoundaries`
+ * non-empty) always lands on the default profile regardless of what was
+ * originally requested (see `hermes/factory.ts`), so this forgets the stale
+ * request once recovery is observed — later calls correctly persist "default"
+ * (an absent `profileId`) instead of the unreachable original profile.
+ */
+export const resolveCliSessionRefProfileId = (
+  controller: CliConversationController,
+  ref: CliSessionRef,
+): CliSessionRef => {
+  if (ref.profileId) return ref
+  const snapshot = controller.getSnapshot()
+  if ((snapshot.sessionFallbackBoundaries?.length ?? 0) > 0) {
+    requestedProfileIdByController.delete(controller)
+    return ref
+  }
+  const profileId = requestedProfileIdByController.get(controller)
+  return profileId ? { ...ref, profileId } : ref
+}
+
+/**
+ * Reconciles `hermesProfileId` (the header's currently-displayed profile)
+ * and the conversation's persisted `ChatConversationCliSession` after a
+ * restore has fully settled — for the two seed/history-load call sites
+ * (`useCliRuntimeOrchestration.ts`'s seeded restore effect,
+ * `useYoloChatSession.ts`'s `loadCliConversation`), both of which call this
+ * with `controller.getSnapshot()` taken *after* `prepareCliConversation()`
+ * (i.e. after its `ensureReady()`) resolves — not with the one-shot
+ * `CliSessionHydration` from `openSession()`/`hydrateSession()` alone.
+ *
+ * A session-recovery fallback (see `AcpCliRuntimeOptions.sessionRecovery`)
+ * can occur at either of two independent loads: the initial
+ * `openSession()`/`hydrateSession()` peek, or the second, separate load
+ * `ensureReady()` performs when `prepareCliConversation()` binds the
+ * session live (e.g. the requested profile's process died, or its host got
+ * deleted, in the gap between the two loads). Both loads publish into the
+ * same controller snapshot (`sessionRef` + `sessionFallbackBoundaries` —
+ * see `CliConversationController.hydrateSession`/`ensureReadyNow`), so
+ * reading the snapshot after both have run is the only way to catch a
+ * fallback that happened on either one, rather than only the first.
+ *
+ * Returns `null` when there is nothing to reconcile: either the runtime
+ * isn't Hermes, there is no bound session, or no fallback boundary was ever
+ * recorded. Returns a fallback update when `sessionFallbackBoundaries` is
+ * non-empty — some requested profile's session couldn't be resumed and
+ * Hermes fell back to a fresh session under the default profile instead; in
+ * that case the *actually bound* session (`snapshot.sessionRef`) is what's
+ * live, not the dead requested profile, so both the header and conversation
+ * storage must be updated to match it.
+ *
+ * `snapshot.sessionRef` never carries a `profileId` on a fallback — ACP
+ * stays agent-agnostic and has no notion of Hermes profiles (see
+ * `AcpCliRuntimeOptions.sessionRecovery`'s doc comment) — which is exactly
+ * the "default" convention `hermesProfileId`/`CliSessionRef.profileId`
+ * already use, so this never needs to invent the value `undefined`.
+ */
+export const resolveHermesSessionFallbackUpdate = (
+  runtimeId: CliRuntimeId,
+  snapshot: Pick<
+    CliConversationSnapshot,
+    'sessionRef' | 'sessionFallbackBoundaries'
+  >,
+): {
+  hermesProfileId: undefined
+  cliSession: ChatConversationCliSession
+} | null => {
+  if (
+    runtimeId !== 'hermes' ||
+    !snapshot.sessionRef ||
+    (snapshot.sessionFallbackBoundaries?.length ?? 0) === 0
+  ) {
+    return null
+  }
+  const sessionRef = snapshot.sessionRef
+  return {
+    hermesProfileId: undefined,
+    cliSession: {
+      runtimeId: sessionRef.runtimeId,
+      nativeSessionId: sessionRef.nativeSessionId,
+      ...(sessionRef.sessionPathHint
+        ? { sessionPathHint: sessionRef.sessionPathHint }
+        : {}),
+    },
+  }
+}
 
 const toError = (error: unknown): Error =>
   error instanceof Error
@@ -435,6 +544,32 @@ export const shouldClearAcceptedCliDraft = ({
   currentDraftRevision === acceptedDraft.draftRevision &&
   currentDraft.id === acceptedDraft.userMessage.id
 
+/**
+ * The header profile selector's switch semantics (see the feature's design
+ * notes): an empty conversation swaps its profile in place — nothing has
+ * been persisted for it yet, so there is nothing to lose — while a
+ * conversation that already has messages instead starts a brand new one
+ * under the chosen profile, since a Hermes profile is a separate memory
+ * store (separate `HERMES_HOME`), not a label that can be relabelled onto
+ * existing history. `'noop'` covers both "not on Hermes" and "already on
+ * the requested profile".
+ */
+export const resolveHermesProfileSwitchAction = ({
+  activeRuntimeId,
+  requestedProfileId,
+  currentProfileId,
+  hasMessages,
+}: {
+  activeRuntimeId: ChatRuntimeId
+  requestedProfileId: string | undefined
+  currentProfileId: string | undefined
+  hasMessages: boolean
+}): 'noop' | 'swap-in-place' | 'new-conversation' => {
+  if (activeRuntimeId !== 'hermes') return 'noop'
+  if (requestedProfileId === currentProfileId) return 'noop'
+  return hasMessages ? 'new-conversation' : 'swap-in-place'
+}
+
 export const openCliSession = async ({
   scope,
   ref,
@@ -566,16 +701,20 @@ export const submitCliComposerTurn = async ({
   if (!snapshot.sessionRef) {
     throw new Error('CLI runtime accepted a turn without binding a session.')
   }
+  const sessionRef = resolveCliSessionRefProfileId(
+    controller,
+    snapshot.sessionRef,
+  )
   let overlayError: Error | null = null
   try {
     await scope.sessionService.recordUserDisplay(
-      snapshot.sessionRef,
+      sessionRef,
       content,
       getLatestUserMessage(snapshot, stampedUserMessage),
       getTurnConfiguration(snapshot),
     )
     await scope.sessionService.recordOpenedSession({
-      ref: snapshot.sessionRef,
+      ref: sessionRef,
       messages: [...snapshot.messages],
       compactionBoundaries: [...(snapshot.compactionBoundaries ?? [])],
     })
@@ -583,7 +722,7 @@ export const submitCliComposerTurn = async ({
     overlayError = toError(error)
   }
   return {
-    sessionRef: snapshot.sessionRef,
+    sessionRef,
     userMessage: stampedUserMessage,
     overlayError,
   }
@@ -662,10 +801,11 @@ export const rewriteCliConversationTurn = async ({
     content,
     selectedSkills: stampedUserMessage.selectedSkills,
   })
-  const sessionRef = controller.getSnapshot().sessionRef
-  if (!sessionRef) {
+  const boundSessionRef = controller.getSnapshot().sessionRef
+  if (!boundSessionRef) {
     throw new Error('CLI runtime rewrote a turn without binding a session.')
   }
+  const sessionRef = resolveCliSessionRefProfileId(controller, boundSessionRef)
 
   let overlayError: Error | null = null
   try {

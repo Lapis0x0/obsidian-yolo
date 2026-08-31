@@ -16,6 +16,8 @@ export type TranslationKeys = {
     openNewChatTab: string
     openNewChatSplit: string
     openNewChatWindow: string
+    openChatHistory?: string
+    exportCurrentConversationToVault?: string
     addSelectionToChat: string
     addFileToChat: string
     addFolderToChat: string
@@ -89,6 +91,10 @@ export type TranslationKeys = {
       claudeCodeDescription: string
       codexLabel: string
       codexDescription: string
+      hermesLabel: string
+      hermesDescription: string
+      piLabel: string
+      piDescription: string
     }
     chatList?: {
       searchPlaceholder?: string
@@ -107,8 +113,17 @@ export type TranslationKeys = {
       archived?: string
       hideArchived?: string
       exportConversation?: string
+      exportShort?: string
       moreActions?: string
       confirmDelete?: string
+      openHistory?: string
+      legend?: {
+        navigate?: string
+        open?: string
+        delete?: string
+        pin?: string
+        rename?: string
+      }
     }
     chat?: {
       exportSuccess?: string
@@ -166,6 +181,7 @@ export type TranslationKeys = {
     supportYolo: {
       name: string
       desc: string
+      afdian: string
       buyMeACoffee: string
       reportBug: string
       featureRequest: string
@@ -278,8 +294,8 @@ export type TranslationKeys = {
         description: string
         tokenizer: { name: string; description: string; impact: string }
         pdfEngine: { name: string; description: string; impact: string }
-        pgliteEngine: { name: string; description: string; impact: string }
         bashEngine: { name: string; description: string; impact: string }
+        embeddingEngine: { name: string; description: string; impact: string }
         statuses: {
           missing: string
           downloading: string
@@ -439,10 +455,6 @@ export type TranslationKeys = {
       enableAllTools?: string
       disableAllTools?: string
       descriptionColumn?: string
-      builtinFsListLabel?: string
-      builtinFsListDesc?: string
-      builtinFsSearchLabel?: string
-      builtinFsSearchDesc?: string
       builtinFsReadLabel?: string
       builtinFsReadDesc?: string
       builtinContextPruneToolResultsLabel?: string
@@ -496,14 +508,7 @@ export type TranslationKeys = {
       workspace?: {
         enableTitle?: string
         enableDesc?: string
-        includeTitle?: string
-        includeDesc?: string
-        includeBadge?: string
-        includeEmpty?: string
-        excludeTitle?: string
-        excludeDesc?: string
-        excludeBadge?: string
-        excludeEmpty?: string
+        toolBypassNotice?: string
       }
       editorTabModel?: string
       editorName?: string
@@ -581,6 +586,10 @@ export type TranslationKeys = {
       claudeCliPathDesc?: string
       codexCliPathName?: string
       codexCliPathDesc?: string
+      hermesCliPathName?: string
+      hermesCliPathDesc?: string
+      piCliPathName?: string
+      piCliPathDesc?: string
       cliPathMissing?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string
@@ -705,9 +714,12 @@ export type TranslationKeys = {
         grok?: string
         zhipu?: string
         exa?: string
+        anysearch?: string
       }
       fieldName?: string
       fieldApiKey?: string
+      fieldApiKeyOptional?: string
+      anysearchApiKeyDesc?: string
       fieldDepth?: string
       fieldSearchUrl?: string
       fieldScrapeUrl?: string
@@ -746,6 +758,7 @@ export type TranslationKeys = {
       badgeOpenAiCompatible?: string
       badgeNative?: string
       badgeOAuth?: string
+      badgeSponsor: string
       badgeAdded?: string
       kind?: Record<string, string>
       providersCount: string
@@ -765,6 +778,7 @@ export type TranslationKeys = {
       providerIdDesc: string
       providerIdPlaceholder: string
       apiKey: string
+      getApiKey: string
       apiKeyDesc: string
       apiKeyPlaceholder: string
       baseUrl: string
@@ -827,6 +841,15 @@ export type TranslationKeys = {
       geminiOAuthExpires?: string
       geminiOAuthDisconnectedHelp?: string
       geminiOAuthProject?: string
+      claudeOauthTitle?: string
+      claudeOauthTokenName?: string
+      claudeOauthTokenDesc?: string
+      claudeOauthClear?: string
+      claudeOauthAutoLogin?: string
+      claudeOauthAutoLoginConnecting?: string
+      claudeOauthAutoLoginSuccess?: string
+      claudeOauthAutoLoginDesktopOnly?: string
+      claudeOauthAutoLoginWindowsNotice?: string
     }
     tts?: {
       title?: string
@@ -992,6 +1015,9 @@ export type TranslationKeys = {
       batchHint?: string
       fetchModelsFailed?: string
       embeddingModelsFirst?: string
+      // local (on-device) embedding models — providerId `yolo-local`, no
+      // matching `settings.providers` entry (docs/plans/08-22-local-embedding)
+      localEmbeddingProviderLabel?: string
       // reasoning UI
       reasoningType?: string
       reasoningTypeDesc?: string
@@ -1066,15 +1092,67 @@ export type TranslationKeys = {
       noChatModelsConfigured: string
       noEmbeddingModelsConfigured: string
     }
+    /** Unified scope editor (RAG index scope + agent workspace scope). */
+    scope?: {
+      editRange?: string
+      currentRules?: string
+      rulesCount?: string
+      noRules?: {
+        rag?: string
+        agent?: string
+      }
+      include?: string
+      exclude?: string
+      clearMark?: string
+      clickAgainToClear?: string
+      follows?: string
+      reasonExcludedAncestor?: string
+      reasonIncludedAncestor?: string
+      reset?: string
+      resetTitle?: string
+      onlyWithRules?: string
+      searchFolders?: string
+      searchFoldersOrFiles?: string
+      noMatch?: {
+        rag?: string
+        agent?: string
+      }
+      noRuleYet?: string
+      fileLabel?: string
+      fileCount?: string
+      modalTitle?: {
+        rag?: string
+        agent?: string
+      }
+      modalSubtitle?: {
+        rag?: string
+        agent?: string
+      }
+      status?: {
+        rag?: {
+          all?: string
+          only?: string
+        }
+        agent?: {
+          all?: string
+          only?: string
+        }
+        excludeSuffix?: string
+        excludeWithinSuffix?: string
+        folders?: string
+        files?: string
+        joiner?: string
+        estimate?: {
+          rag?: string
+          agent?: string
+        }
+      }
+    }
     rag: {
       title: string
       desc?: string
-      enableRag: string
-      enableRagDesc: string
-      partialFailureSummary?: string
       indexPdf?: string
       indexPdfDesc?: string
-      embeddingModel: string
       embeddingModelDesc: string
       chunkSize: string
       chunkSizeDesc: string
@@ -1084,110 +1162,124 @@ export type TranslationKeys = {
       limitDesc: string
       embeddingConcurrency: string
       embeddingConcurrencyDesc: string
-      includePatterns: string
-      includePatternsDesc: string
-      excludePatterns: string
-      excludePatternsDesc: string
-      testPatterns: string
-      manageEmbeddingDatabase: string
+      vectorDataSize?: string
+      inMemoryIndexEstimate?: string
       manage: string
-      rebuildIndex: string
-      rebuildFromScratch?: string
-      rebuildFromScratchConfirm?: string
-      continueIndex?: string
-      continueIndexNow?: string
-      // UI additions
-      selectedFolders?: string
-      excludedFolders?: string
-      selectFoldersPlaceholder?: string
-      selectFilesOrFoldersPlaceholder?: string
-      selectExcludeFoldersPlaceholder?: string
-      conflictNoteDefaultInclude?: string
-      conflictExact?: string
-      conflictParentExclude?: string
-      conflictChildExclude?: string
-      conflictRule?: string
-      // Auto update additions
-      autoUpdate?: string
-      autoUpdateDesc?: string
-      autoUpdateInterval?: string
-      autoUpdateIntervalDesc?: string
-      manualUpdateNow?: string
-      manualUpdateNowDesc?: string
       advanced?: string
-      basicCardTitle?: string
-      basicCardDesc?: string
-      resourceCardTitle?: string
-      resourceCardDesc?: string
-      scopeCardTitle?: string
-      scopeCardDesc?: string
-      maintenanceCardTitle?: string
-      maintenanceCardDesc?: string
-      maintenanceUnavailableHint?: string
-      currentStatus?: string
-      currentStatusDesc?: string
-      lastIndexedAt?: string
-      lastIndexedAtDesc?: string
-      maintenanceActions?: string
-      deleteIndex?: string
-      deleteIndexConfirm?: string
-      deleteIndexSuccess?: string
-      deleteIndexFailed?: string
-      statusDisabled?: string
-      statusSyncing?: string
-      statusRuntimeRequired?: string
-      statusReady?: string
-      statusEmpty?: string
       selectEmbeddingModelFirst?: string
-      openKnowledgeSettings?: string
-      openKnowledgeSettingsDesc?: string
-      composerEntryDesc?: string
-      pgliteStatusCurrent?: string
-      pgliteStatusSource?: string
-      pgliteStatusPath?: string
-      pgliteStatusCheckedAt?: string
-      pgliteStatusVersion?: string
-      pgliteStatusReadyAt?: string
-      pgliteStatusReason?: string
-      pgliteStateUnchecked?: string
-      pgliteStateChecking?: string
-      pgliteStateMissing?: string
-      pgliteStateDownloading?: string
-      pgliteStateUnavailable?: string
-      pgliteStateFailed?: string
-      pgliteStateReady?: string
-      pgliteSourceRemote?: string
-      pgliteSourceBundled?: string
-      pgliteSourceLocalCache?: string
-      pgliteDeliveryManual?: string
-      pgliteDownload?: string
-      pgliteRedownload?: string
-      pgliteRecheck?: string
-      pgliteDeleteLocal?: string
-      pgliteDownloadPlaceholder?: string
-      pgliteDeletePlaceholder?: string
-      pgliteDownloadingUnknownFile?: string
-      pgliteInlineErrorTitle?: string
-      pgliteSummaryReadyRemote?: string
-      pgliteSummaryReadyBundled?: string
-      pgliteSummaryUnavailable?: string
-      pgliteSummaryReady?: string
-      pgliteSummaryDownloading?: string
-      pgliteSummaryFailed?: string
-      pgliteSummaryMissing?: string
-      pgliteDownloadingFile?: string
-      // Index progress header/status
-      indexProgressTitle?: string
-      indexing?: string
-      notStarted?: string
       waitingRateLimit?: string
       preparingProgress?: string
-      notIndexedYet?: string
-      indexComplete?: string
-      indexIncomplete?: string
-      retryNow?: string
-      waitingRetry?: string
       cancelIndex?: string
+      cancellingIndex?: string
+      // Status bar (RAGSection)
+      indexingDisabled?: string
+      indexingDisabledSub?: string
+      indexingProgress?: string
+      indexedCount?: string
+      autoUpdate?: string
+      updateNow?: string
+      previousRunInterrupted?: string
+    }
+    knowledgeBases: {
+      title: string
+      new: string
+      emptyState?: string
+      count?: string
+      queuedCount?: string
+      pendingCount?: string
+      attentionCount?: string
+      embeddingModelLine?: string
+      embeddingModelShelf?: string
+      embeddingModelShelfDesc?: string
+      embeddingModelApiRow?: string
+      embeddingModelApiRowMeta?: string
+      // Per-card state labels
+      stateReady?: string
+      stateIndexing?: string
+      statePending?: string
+      stateQueued?: string
+      stateAttention?: string
+      docs?: string
+      chunks?: string
+      pendingFiles?: string
+      enableAndIndex?: string
+      disable?: string
+      rebuildThis?: string
+      rebuildAll?: string
+      manageDataTitle?: string
+      noIndexedData?: string
+      delete?: string
+      deleteConfirm?: string
+      lastUpdated?: string
+      setAsCurrent?: string
+      // Create/edit modal
+      createTitle?: string
+      editTitle?: string
+      fieldName?: string
+      fieldNameDesc?: string
+      fieldDescription?: string
+      fieldDescriptionDesc?: string
+      fieldDescriptionPlaceholder?: string
+      scopeTitle?: string
+      scopeDesc?: string
+      nameRequired?: string
+      nameDuplicate?: string
+      saveFailed?: string
+      deleteTitle?: string
+      deleteFailed?: string
+      rebuildFailed?: string
+      // Manage data modal
+      manageModelColumn?: string
+      manageEmbeddingsColumn?: string
+      manageActionsColumn?: string
+      manageRefresh?: string
+      manageRemoveIndex?: string
+      removeIndexFailed?: string
+      // Local embedding model shelf
+      localEmbedding?: {
+        groupLabel?: string
+        groupDesc?: string
+        desktopOnly?: string
+        metaLine?: string
+        download?: string
+        downloadingLine?: string
+        verifying?: string
+        failedLine?: string
+        readyLine?: string
+        current?: string
+        viewSource?: string
+        sourceRepoLabel?: string
+        sourceRevisionLabel?: string
+        sourceFilesLabel?: string
+        confirmDelete?: string
+        endpointLabel?: string
+        endpointCustomOption?: string
+        endpointCustomPlaceholder?: string
+        endpointCustomInvalid?: string
+        engineModelNotDownloaded?: string
+        engineModelNotDownloadedSub?: string
+        engineDownloadAction?: string
+        engineModelDownloadingLine?: string
+        engineModelVerifying?: string
+        engineModelFailedLine?: string
+        engineComponentDisabled?: string
+        engineComponentDisabledSub?: string
+        engineEnableAction?: string
+        engineEnableFailed?: string
+        engineComponentFailed?: string
+        engineComponentPreparing?: string
+        engineNonDesktop?: string
+        engineNonDesktopSub?: string
+        languageNames?: {
+          en?: string
+          zh?: string
+          multilingual?: string
+        }
+        dtypeBadge?: {
+          q8?: string
+          fp16?: string
+        }
+      }
     }
     mcp: {
       title: string
@@ -1409,6 +1501,8 @@ export type TranslationKeys = {
     }
     etc: {
       title: string
+      pluginUpdateNotice?: string
+      pluginUpdateNoticeDesc?: string
       pluginAutoUpdate?: string
       pluginAutoUpdateDesc?: string
       pluginAutoUpdateDescUnavailable?: string
@@ -1442,10 +1536,6 @@ export type TranslationKeys = {
       resetAgentsSuccess?: string
       captureRawRequestDebug?: string
       captureRawRequestDebugDesc?: string
-      captureRawRequestDebugExcludeLogsTitle?: string
-      captureRawRequestDebugExcludeLogsMessage?: string
-      captureRawRequestDebugExcludeLogsCta?: string
-      captureRawRequestDebugExcludeLogsSuccess?: string
       yoloBaseDir?: string
       yoloBaseDirDesc?: string
       yoloBaseDirPlaceholder?: string
@@ -1506,7 +1596,7 @@ export type TranslationKeys = {
       interactionSectionTitle?: string
       maintenanceSectionTitle?: string
     }
-    smartSpace?: {
+    continuationQuickActions?: {
       quickActionsTitle: string
       quickActionsDesc: string
       quickActionsModalTitle?: string
@@ -2048,6 +2138,17 @@ export type TranslationKeys = {
     sendMessage: string
     newChat: string
     untitledConversation?: string
+    paneTitle?: {
+      renameAriaLabel?: string
+      editingAriaLabel?: string
+    }
+    /** ⋯ pane menu (view header, `ItemView.onPaneMenu`) — issue #567 Step 2. */
+    paneMenu?: {
+      rename?: string
+      deleteConfirmTitle?: string
+      /** {title} is replaced client-side with the conversation's display title. */
+      deleteConfirmMessage?: string
+    }
     continueResponse?: string
     messageNavigator?: {
       title?: string
@@ -2122,14 +2223,13 @@ export type TranslationKeys = {
       inputLabel?: string
     }
     mentionMenu?: {
-      back?: string
       entryCurrentFile?: string
       entryMode?: string
-      entrySkill?: string
       entryAssistant?: string
       entryModel?: string
       entryFile?: string
       entryFolder?: string
+      categoryEmpty?: string
     }
     slashCommands?: {
       compact?: {
@@ -2148,6 +2248,8 @@ export type TranslationKeys = {
     slashMenu?: {
       entrySkill?: string
       entrySnippet?: string
+      categoryCommand?: string
+      categoryEmpty?: string
       createSnippetsFile?: string
     }
     emptyState?: {
@@ -2171,6 +2273,12 @@ export type TranslationKeys = {
       cancelError?: string
       openError?: string
       transitionError?: string
+      sessionFallbackDividerTitle?: string
+      sessionFallbackDividerDescription?: string
+      sessionFallbackUnknownProfile?: string
+    }
+    hermesProfileSelector?: {
+      accessibleLabel?: string
     }
     cliControls?: {
       defaultModel?: string
@@ -2358,8 +2466,6 @@ export type TranslationKeys = {
         unknown?: string
       }
       displayName?: {
-        fs_list?: string
-        fs_search?: string
         fs_read?: string
         fs_edit?: string
         fs_edit_ops?: string
@@ -2376,13 +2482,6 @@ export type TranslationKeys = {
       }
       writeAction?: {
         write?: string
-        delete?: string
-        create_dir?: string
-        move?: string
-        // Legacy keys kept for rendering historical conversations.
-        create_file?: string
-        delete_file?: string
-        delete_dir?: string
       }
       readMode?: {
         full?: string
@@ -2428,6 +2527,9 @@ export type TranslationKeys = {
       search?: string
       web?: string
       edit?: string
+      editedFile?: string
+      createdFile?: string
+      deletedFile?: string
       virtualTerminal?: string
       terminal?: string
       command?: string
@@ -2502,8 +2604,6 @@ export type TranslationKeys = {
     continueComplete?: string
     continueFailed?: string
     openYoloNewChatFailed: string
-    pgliteUnavailable: string
-    downloadingPglite: string
     updatingIndex: string
     indexUpdated: string
     indexUpdateFailed: string
@@ -2616,6 +2716,44 @@ export type TranslationKeys = {
     statusRequesting?: string
     statusThinking?: string
     statusGenerating?: string
+  }
+
+  // Sparkle sidebar page
+  sparkle?: {
+    settings?: {
+      open?: string
+      back?: string
+    }
+    similarNotes?: {
+      title?: string
+      scope?: string
+      allKnowledgeBases?: string
+      someKnowledgeBases?: string
+      manageKnowledgeBases?: string
+      basedOn?: string
+      insertLink?: string
+      insertUnavailable?: string
+      expandSnippets?: string
+      collapseSnippets?: string
+      noActiveNote?: string
+      noActiveNoteHint?: string
+      noEmbeddingModel?: string
+      noEmbeddingModelHint?: string
+      configure?: string
+      notIndexed?: string
+      notIndexedHint?: string
+      indexThisNote?: string
+      indexing?: string
+      indexFailed?: string
+      outOfScope?: string
+      outOfScopeHint?: string
+      openKnowledgeBaseSettings?: string
+      empty?: string
+      emptyHint?: string
+      emptyHintSearched?: string
+      error?: string
+      retry?: string
+    }
   }
 
   // Chat Mode Select

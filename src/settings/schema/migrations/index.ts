@@ -76,18 +76,24 @@ import { migrateFrom75To76 } from './75_to_76'
 import { migrateFrom76To77 } from './76_to_77'
 import { migrateFrom77To78 } from './77_to_78'
 import { migrateFrom78To79 } from './78_to_79'
+import { migrateFrom79To80 } from './79_to_80'
 import { migrateFrom7To8 } from './7_to_8'
+import { migrateFrom80To81 } from './80_to_81'
+import { migrateFrom81To82 } from './81_to_82'
+import { migrateFrom82To83 } from './82_to_83'
+import { migrateFrom83To84 } from './83_to_84'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
 /**
- * This branch intentionally has no fork-only migration after upstream v79.
- * Voice settings rely on schema defaults. If a future voice change genuinely
- * needs a new migration, explain that need and obtain explicit user approval
- * before adding the new highest version. Version-collision gaps are accepted;
- * do not replay or backfill skipped upstream migrations.
+ * This branch intentionally has no fork-only migration after upstream's
+ * current schema version. Voice settings rely on schema defaults. If a future
+ * voice change genuinely needs a migration, explain that need and obtain
+ * explicit user approval before adding the new highest version. Historical
+ * version-collision gaps remain accepted; do not replay or backfill skipped
+ * upstream migrations.
  */
-export const SETTINGS_SCHEMA_VERSION = 79
+export { SETTINGS_SCHEMA_VERSION } from './version'
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [
   {
@@ -484,5 +490,30 @@ export const SETTING_MIGRATIONS: SettingMigration[] = [
     fromVersion: 78,
     toVersion: 79,
     migrate: migrateFrom78To79,
+  },
+  {
+    fromVersion: 79,
+    toVersion: 80,
+    migrate: migrateFrom79To80,
+  },
+  {
+    fromVersion: 80,
+    toVersion: 81,
+    migrate: migrateFrom80To81,
+  },
+  {
+    fromVersion: 81,
+    toVersion: 82,
+    migrate: migrateFrom81To82,
+  },
+  {
+    fromVersion: 82,
+    toVersion: 83,
+    migrate: migrateFrom82To83,
+  },
+  {
+    fromVersion: 83,
+    toVersion: 84,
+    migrate: migrateFrom83To84,
   },
 ]

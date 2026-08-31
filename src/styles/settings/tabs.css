@@ -2,8 +2,12 @@
    Settings Tabs Styles
    ======================================== */
 
-.modal.mod-settings
-  .vertical-tab-content:has(> .yolo-settings-tabs-container) {
+/* Obsidian 的设置内容区自带纵向内边距（1.13 起为 48px/64px），核心设置页
+   靠它自身滚动所以那只是呼吸感。我们在里面另起了一层滚动容器
+   (.yolo-settings-tabs-content)，外层 padding 就退化成不会滚动的死框，
+   白占约 110px 高。纵向留白由我们自己的容器提供，让它随内容滚动。 */
+.modal.mod-settings .vertical-tab-content:has(> .yolo-settings-tabs-container) {
+  padding-block: 0;
   padding-inline: 0;
 }
 
@@ -14,6 +18,7 @@
   height: 100%;
   align-items: center;
   container-type: inline-size;
+  padding-top: var(--size-4-4);
 }
 
 .yolo-settings-tabs-nav {
@@ -151,6 +156,8 @@
   /* `both-edges` reserves a phantom gutter on the left too, so the
      centered settings body does not shift when the scrollbar appears. */
   scrollbar-gutter: stable both-edges;
+  /* 内容入场时的横向位移不应让垂直滚动容器长出横向滚动条。 */
+  overflow-x: hidden;
   padding-inline: 0;
   box-sizing: border-box;
   padding-bottom: var(--size-4-4);
@@ -162,15 +169,44 @@
     transparent;
 }
 
+/* L2 入场：换 tab 时旧内容直接让位，只给新内容一段入场。
+   不做新旧共存的 crossfade —— 各 tab 内容高度差异极大，两份 DOM 同时在场
+   需要绝对定位，会让滚动容器高度塌陷跳动。
+   位移方向与 glider 的滑动方向一致：往右切的 tab 从右侧落位。 */
 .yolo-settings-tabs-body {
   display: flex;
   flex: 1 0 auto;
   flex-direction: column;
-  width: min(
-    calc(100% - var(--size-4-4) - var(--size-4-4)),
-    700px
-  );
+  width: min(calc(100% - var(--size-4-4) - var(--size-4-4)), 700px);
   margin-inline: auto;
+  animation: yolo-settings-tab-content-enter-forward
+    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+}
+
+.yolo-settings-tabs-body[data-enter-direction='backward'] {
+  animation-name: yolo-settings-tab-content-enter-backward;
+}
+
+@keyframes yolo-settings-tab-content-enter-forward {
+  from {
+    opacity: 0;
+    transform: translate3d(8px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes yolo-settings-tab-content-enter-backward {
+  from {
+    opacity: 0;
+    transform: translate3d(-8px, 0, 0);
+  }
+  to {
+    opacity: 1;
+    transform: translate3d(0, 0, 0);
+  }
 }
 
 .yolo-settings-tabs-content::-webkit-scrollbar {

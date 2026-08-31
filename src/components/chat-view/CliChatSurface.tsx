@@ -14,13 +14,15 @@ import {
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import type {
-  ChatRuntimeActions,
-  CliConversationSnapshot,
-  CliRuntimeModel,
-  CliRuntimeRunState,
-  CliSessionRef,
-  CliTurnConfiguration,
+import {
+  type ChatRuntimeActions,
+  type CliConversationSnapshot,
+  type CliRuntimeModel,
+  type CliRuntimeRunState,
+  type CliRuntimeScope,
+  type CliSessionRef,
+  type CliTurnConfiguration,
+  RUNTIME_CAPABILITIES,
 } from '../../core/cli-runtime'
 import type {
   ChatMessage,
@@ -31,6 +33,7 @@ import type { ChatTimelineItem } from '../../types/chat-timeline'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
 import type { GroupEditSummary } from '../../utils/chat/editSummary'
 import { buildChatTimelineItems } from '../../utils/chat/timeline'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 import AssistantErrorCard from './AssistantErrorCard'
 import AssistantMessageReasoning from './AssistantMessageReasoning'
@@ -44,6 +47,7 @@ import type { AcceptedCliDraft } from './cliChatIntegration'
 import { buildCliSubagentReadModel } from './cliSubagentReadModel'
 import type { ConversationTimelineRendererContract } from './conversation-surface-contract'
 import { ConversationSurface } from './ConversationSurface'
+import { LiveEdgeFollowProvider } from './live-edge-follow-context'
 import { useAutoScroll } from './useAutoScroll'
 import { useChatHistoryWindow } from './useChatHistoryWindow'
 import {
@@ -62,10 +66,11 @@ const ACTIVE_RUN_STATES: ReadonlySet<CliRuntimeRunState> = new Set([
 
 const noop = (): void => undefined
 const noopToolMessageUpdate = (_message: ChatToolMessage): void => undefined
-const PENDING_RESPONSE_ESTIMATED_HEIGHT = 56
 
 export type CliChatSurfaceProps = {
   snapshot: CliConversationSnapshot
+  /** Resolves display names for `snapshot.sessionFallbackBoundaries`' notices. */
+  cliRuntimeScope?: CliRuntimeScope
   presentedDraft: AcceptedCliDraft | null
   showEmptyState: boolean
   actions: ChatRuntimeActions
@@ -186,6 +191,7 @@ function CliUserMessage({
   message,
   isFocused,
   isActionDisabled,
+  canEdit,
   onFocus,
   onSubmit,
   runtimeId,
@@ -198,6 +204,7 @@ function CliUserMessage({
   message: ChatUserMessage
   isFocused: boolean
   isActionDisabled: boolean
+  canEdit: boolean
   onFocus: () => void
   onSubmit: (
     editedMessage: ChatUserMessage,
@@ -251,6 +258,7 @@ function CliUserMessage({
       displayMentionables={displayMessage.mentionables}
       isFocused={isFocused}
       isActionDisabled={isActionDisabled}
+      canEdit={canEdit}
       chatUserInputRef={noop}
       onInputChange={(content) =>
         setDraft((current) => ({
@@ -455,6 +463,7 @@ const buildRunSummary = ({
 
 export function CliChatSurface({
   snapshot,
+  cliRuntimeScope,
   presentedDraft,
   showEmptyState,
   actions,
@@ -472,8 +481,40 @@ export function CliChatSurface({
   const [focusedUserMessageId, setFocusedUserMessageId] = useState<
     string | null
   >(null)
+  const sessionFallbackBoundaries = snapshot.sessionFallbackBoundaries ?? []
+  // Resolves the unreachable profile's display name for the fallback
+  // notice. Fetched lazily — only conversations that actually hit a
+  // recovery pay for it — and best-effort: a profile deleted after causing
+  // the very fallback being described may no longer be discoverable, in
+  // which case the notice falls back to showing its raw id.
+  const [hermesProfileDisplayNames, setHermesProfileDisplayNames] = useState<
+    ReadonlyMap<string, string>
+  >(new Map())
+  useEffect(() => {
+    if (!cliRuntimeScope || sessionFallbackBoundaries.length === 0) return
+    let cancelled = false
+    void cliRuntimeScope
+      .listHermesProfiles()
+      .then((profiles) => {
+        if (cancelled) return
+        setHermesProfileDisplayNames(
+          new Map(profiles.map((profile) => [profile.id, profile.displayName])),
+        )
+      })
+      .catch((error: unknown) => {
+        console.error(
+          '[YOLO] Failed to resolve Hermes profile names for session fallback notice',
+          error,
+        )
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cliRuntimeScope, sessionFallbackBoundaries.length > 0])
   const isConversationBusy =
     snapshot.isCompacting === true || ACTIVE_RUN_STATES.has(snapshot.runState)
+  const canRewriteUserMessage =
+    RUNTIME_CAPABILITIES[snapshot.runtimeId].supportsMessageRewrite
   const cliSubagentReadModel = useMemo(
     () => buildCliSubagentReadModel(snapshot.messages, snapshot.runtimeId),
     [snapshot.messages, snapshot.runtimeId],
@@ -487,6 +528,8 @@ export function CliChatSurface({
     hasNewerMessages,
     loadEarlier,
     loadNewer,
+    growWindowToFillViewport,
+    historyWindowKey,
     resetToLatest,
   } = useChatHistoryWindow({
     conversationId,
@@ -503,6 +546,29 @@ export function CliChatSurface({
   const pendingCompactionAnchorMessageId = snapshot.isCompacting
     ? (messages.at(-1)?.id ?? null)
     : null
+  const sessionFallbackDividers = useMemo(
+    () =>
+      sessionFallbackBoundaries.map((boundary) => {
+        const profileId = boundary.requestedRef.profileId
+        const profileName =
+          (profileId ? hermesProfileDisplayNames.get(profileId) : undefined) ??
+          profileId ??
+          t('chat.cliSurface.sessionFallbackUnknownProfile', 'previous')
+        return {
+          id: `${boundary.id}-divider`,
+          anchorMessageId: boundary.afterMessageId,
+          title: t(
+            'chat.cliSurface.sessionFallbackDividerTitle',
+            'Switched to default',
+          ),
+          description: t(
+            'chat.cliSurface.sessionFallbackDividerDescription',
+            'The original agent "{profile}" is unavailable, so this conversation switched to default — earlier messages are not in its memory.',
+          ).replace('{profile}', profileName),
+        }
+      }),
+    [hermesProfileDisplayNames, sessionFallbackBoundaries, t],
+  )
   const timelineItems = useMemo(() => {
     const items = buildChatTimelineItems({
       groupedChatMessages: windowedGroupedChatMessages,
@@ -518,6 +584,7 @@ export function CliChatSurface({
       })),
       latestCompaction: null,
       pendingCompactionAnchorMessageId,
+      sessionFallbackDividers,
       activeEditableMessageId: null,
       activeStreamingMessageId,
     })
@@ -529,7 +596,6 @@ export function CliChatSurface({
         id: `pending-response:${pendingResponseUserMessageId}`,
         renderKey: `pending-response:${pendingResponseUserMessageId}`,
         sourceUserMessageId: pendingResponseUserMessageId,
-        estimatedHeight: PENDING_RESPONSE_ESTIMATED_HEIGHT,
         spacingBefore: 24,
         isPinnedForRender: true,
         isStreaming: true,
@@ -549,6 +615,7 @@ export function CliChatSurface({
     pendingCompactionAnchorMessageId,
     pendingResponseUserMessageId,
     readModel,
+    sessionFallbackDividers,
     snapshot.compactionBoundaries,
     windowedGroupedChatMessages,
   ])
@@ -629,8 +696,11 @@ export function CliChatSurface({
   }, [autoScrollToBottom, snapshot.messages])
   const handleForceScrollToBottom = useCallback(() => {
     resetToLatest()
-    requestAnimationFrame(() => forceScrollToBottom())
-  }, [forceScrollToBottom, resetToLatest])
+    // popout 是独立 BrowserWindow：帧调度必须取滚动容器所属窗口。
+    getNodeWindow(chatMessagesRef.current).requestAnimationFrame(() =>
+      forceScrollToBottom(),
+    )
+  }, [chatMessagesRef, forceScrollToBottom, resetToLatest])
   const handledPresentedMessageIdRef = useRef<string | null>(null)
   useLayoutEffect(() => {
     if (
@@ -678,9 +748,13 @@ export function CliChatSurface({
           <CliUserMessage
             key={message.id}
             message={message}
-            isFocused={focusedUserMessageId === message.id}
+            isFocused={
+              canRewriteUserMessage && focusedUserMessageId === message.id
+            }
             isActionDisabled={isConversationBusy}
+            canEdit={canRewriteUserMessage}
             onSubmit={(editedMessage, configuration) => {
+              if (!canRewriteUserMessage) return
               if (
                 editorStateToPlainText(editedMessage.content).trim() === '' &&
                 editedMessage.mentionables.length === 0
@@ -697,7 +771,7 @@ export function CliChatSurface({
               })
             }}
             onFocus={() => {
-              if (!isConversationBusy) {
+              if (!isConversationBusy && canRewriteUserMessage) {
                 setFocusedUserMessageId(message.id)
               }
             }}
@@ -753,6 +827,7 @@ export function CliChatSurface({
         },
         getAssistantActionOverrides: (_messageGroup, timelineItem) => ({
           showRetryAction:
+            canRewriteUserMessage &&
             getSourceUserMessageForGroup(
               snapshot.messages,
               timelineItem.messageIds,
@@ -823,6 +898,7 @@ export function CliChatSurface({
         handleOpenEditSummaryFile,
         cachedModels,
         cliSubagentReadModel.presentationsByToolCallId,
+        canRewriteUserMessage,
         isConversationBusy,
         onHistoricalUserMessageControlPopoverOpenChange,
         onDeleteAssistantQuote,
@@ -865,55 +941,61 @@ export function CliChatSurface({
   )
 
   return (
-    <ConversationSurface
-      chatMode="agent"
-      yoloEnabled={false}
-      showEmptyState={showEmptyState}
-      groupedChatMessagesLength={windowedGroupedChatMessages.length}
-      isAutoFollowEnabled={isAutoFollowEnabled}
-      currentConversationId={conversationId}
-      chatTimelineItems={stableTimelineItems}
-      timelineRenderVersion={renderVersion}
-      chatMessagesRef={chatMessagesRef}
-      onScrollContainerChange={setChatMessagesElement}
-      onBottomSentinelChange={setBottomSentinelElement}
-      scrollController={scrollController}
-      timelineRendererContract={timelineRendererContract}
-      editingAssistantMessageId={null}
-      hasEarlierMessages={hasEarlierMessages}
-      hasNewerMessages={hasNewerMessages}
-      onLoadEarlier={loadEarlier}
-      onLoadNewer={loadNewer}
-      onForceScrollToBottom={handleForceScrollToBottom}
-      hasStreamingMessages={isConversationBusy}
-      scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
-      scrollToBottomWhileStreamingLabel={t(
-        'chat.scrollToBottomWhileStreaming',
-        '回到底部继续跟随',
-      )}
-      emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
-      emptyStateAgentTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
-      emptyStateAgentFullTitle={t(
-        'chat.cliSurface.emptyTitle',
-        '使用 CLI Agent',
-      )}
-      emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
-      emptyStateAskDescription={t(
-        'chat.cliSurface.emptyDescription',
-        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
-      )}
-      emptyStateAgentDescription={t(
-        'chat.cliSurface.emptyDescription',
-        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
-      )}
-      emptyStateAgentFullDescription={t(
-        'chat.cliSurface.emptyDescription',
-        '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
-      )}
-      emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
-      emptyStateIconMode="cli"
-      footerContent={footerContent}
-    />
+    // CLI 消息经由 CLI runtime 快照而非 agent render stream，但这一层的
+    // markdown 播放器共用同一套跟随通道，缺省 no-op 会让流式跟随失效。
+    <LiveEdgeFollowProvider onFollowLiveEdge={autoScrollToBottom}>
+      <ConversationSurface
+        chatMode="agent"
+        yoloEnabled={false}
+        showEmptyState={showEmptyState}
+        groupedChatMessagesLength={windowedGroupedChatMessages.length}
+        isAutoFollowEnabled={isAutoFollowEnabled}
+        currentConversationId={conversationId}
+        chatTimelineItems={stableTimelineItems}
+        timelineRenderVersion={renderVersion}
+        chatMessagesRef={chatMessagesRef}
+        onScrollContainerChange={setChatMessagesElement}
+        onBottomSentinelChange={setBottomSentinelElement}
+        scrollController={scrollController}
+        timelineRendererContract={timelineRendererContract}
+        editingAssistantMessageId={null}
+        hasEarlierMessages={hasEarlierMessages}
+        hasNewerMessages={hasNewerMessages}
+        onLoadEarlier={loadEarlier}
+        onLoadNewer={loadNewer}
+        onGrowWindowToFillViewport={growWindowToFillViewport}
+        historyWindowKey={historyWindowKey}
+        onForceScrollToBottom={handleForceScrollToBottom}
+        hasStreamingMessages={isConversationBusy}
+        scrollToBottomLabel={t('chat.scrollToBottom', '回到底部')}
+        scrollToBottomWhileStreamingLabel={t(
+          'chat.scrollToBottomWhileStreaming',
+          '回到底部继续跟随',
+        )}
+        emptyStateAskTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
+        emptyStateAgentTitle={t('chat.cliSurface.emptyTitle', '使用 CLI Agent')}
+        emptyStateAgentFullTitle={t(
+          'chat.cliSurface.emptyTitle',
+          '使用 CLI Agent',
+        )}
+        emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
+        emptyStateAskDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+        )}
+        emptyStateAgentDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+        )}
+        emptyStateAgentFullDescription={t(
+          'chat.cliSurface.emptyDescription',
+          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+        )}
+        emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
+        emptyStateIconMode="cli"
+        footerContent={footerContent}
+      />
+    </LiveEdgeFollowProvider>
   )
 }
 

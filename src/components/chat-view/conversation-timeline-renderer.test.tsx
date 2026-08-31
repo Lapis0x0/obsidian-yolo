@@ -2,7 +2,10 @@ import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
 import type { ChatAssistantMessage } from '../../types/chat'
-import type { ChatTimelineAssistantGroupItem } from '../../types/chat-timeline'
+import type {
+  ChatTimelineAssistantGroupItem,
+  ChatTimelineSessionFallbackDividerItem,
+} from '../../types/chat-timeline'
 
 jest.mock('./AssistantToolMessageGroupItem', () => ({
   __esModule: true,
@@ -38,7 +41,6 @@ const assistantItem: ChatTimelineAssistantGroupItem = {
   groupId: assistant.id,
   messageIds: [assistant.id],
   revision: 1,
-  estimatedHeight: 100,
 }
 
 const makeContract = (): ConversationTimelineRendererContract => ({
@@ -92,5 +94,34 @@ describe('renderConversationTimelineItem', () => {
     expect(
       renderConversationTimelineItem(unknownItem, makeContract()),
     ).toBeNull()
+  })
+
+  it('renders a session-fallback divider with its own per-item copy, reusing the compaction divider structure', () => {
+    const sessionFallbackItem: ChatTimelineSessionFallbackDividerItem = {
+      kind: 'session-fallback-divider',
+      id: 'fallback-1-divider',
+      renderKey: 'fallback-1-divider',
+      anchorMessageId: assistant.id,
+      title: 'Switched to default',
+      description: 'The original agent "work" is unavailable.',
+    }
+
+    const html = renderToStaticMarkup(
+      <>
+        {renderConversationTimelineItem(sessionFallbackItem, makeContract())}
+      </>,
+    )
+
+    // Reuses the exact compaction-divider CSS structure/classes.
+    expect(html).toContain('yolo-chat-compaction-divider')
+    expect(html).toContain('yolo-chat-compaction-divider__title')
+    expect(html).toContain('yolo-chat-compaction-divider__description')
+    // But renders the item's own copy, not the contract's shared
+    // compaction copy.
+    expect(html).toContain('Switched to default')
+    expect(html).toContain(
+      'The original agent &quot;work&quot; is unavailable.',
+    )
+    expect(html).not.toContain('Divider description')
   })
 })

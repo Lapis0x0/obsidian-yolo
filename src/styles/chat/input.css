@@ -526,7 +526,6 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-chat-container--centered {
   --yolo-chat-content-max-width: min(720px, calc(100% - var(--size-4-6)));
-  --yolo-chat-typeahead-max-width: 400px;
   --yolo-chat-host-inline-padding: var(--size-4-3);
 }
 
@@ -599,6 +598,17 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-chat-quick-access-motion {
   width: 100%;
+  animation: yolo-chat-quick-access-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-chat-quick-access-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 button.yolo-chat-quick-access-entry,
@@ -811,7 +821,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   text-align: center;
 }
 
-.yolo-chat-container--sidebar > .yolo-chat-composer-wrapper,
+/* .yolo-chat-composer-wrapper 不在此列：它现在只包 SparklePanel，而 SparklePanel
+ * 的每个子视图都自带横向内边距。再补一层就会和 .view-content 的内边距叠成双重
+ * 缩进，让灵光写作的内容比同级的 .yolo-chat-header 各窄 12px。 */
 .yolo-chat-container--sidebar > .yolo-chat-footer,
 .yolo-chat-container--sidebar > .yolo-chat-user-input-files,
 .yolo-chat-container--sidebar > .yolo-chat-input-wrapper {
@@ -906,7 +918,6 @@ button.yolo-chat-quick-access-picker-row > svg {
     0 10px 28px
       color-mix(in srgb, var(--background-modifier-box-shadow) 10%, transparent),
     0 1px 0 color-mix(in srgb, white 10%, transparent) inset;
-  backdrop-filter: blur(12px);
 }
 
 .yolo-chat-container--workspace-wide-header
@@ -972,6 +983,16 @@ button.yolo-chat-quick-access-picker-row > svg {
   position: relative;
   /* 工具栏与 Obsidian 面板底栏（词数/字符数等）之间留一点呼吸感 */
   padding-bottom: 4px;
+}
+
+/*
+ * Empty↔docked FLIP Play. Invert 帧把 inline transition:none 摁在 transform 上；
+ * 这一帧松手后由这条过渡收到 0。时长走 L2 enter token：L3 的 spring 只存在于
+ * JS，这里和会话列表补位一样是 CSS 近似，只动 transform。
+ */
+.yolo-chat-footer--dock-flipping {
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-chat-floating-actions {
@@ -1865,13 +1886,6 @@ button.yolo-chat-quick-access-picker-row > svg {
   }
 }
 
-.yolo-chat-history-window-sentinel {
-  flex: 0 0 1px;
-  height: 1px;
-  overflow: hidden;
-  pointer-events: none;
-}
-
 @media (max-width: 768px) {
   .yolo-message-navigator {
     display: none;
@@ -2036,7 +2050,6 @@ button.yolo-chat-quick-access-picker-row > svg {
   color: var(--text-normal);
   box-shadow: 0 10px 24px
     color-mix(in srgb, var(--background-modifier-box-shadow) 18%, transparent);
-  backdrop-filter: blur(10px);
   transition:
     transform var(--yolo-anim-duration-feedback) ease,
     border-color var(--yolo-anim-duration-feedback) ease,
@@ -2256,7 +2269,6 @@ button.yolo-assistant-annotation-marker.is-active {
   color: var(--text-normal);
   box-shadow: 0 10px 24px
     color-mix(in srgb, var(--background-modifier-box-shadow) 16%, transparent);
-  backdrop-filter: blur(8px);
   z-index: 8;
   pointer-events: none;
   opacity: 0;
@@ -3185,6 +3197,14 @@ button.yolo-assistant-annotation-marker.is-active {
     var(--interactive-accent-hover) 14%,
     transparent
   );
+}
+
+/* Module chat mode empty state icon (`ObsidianIcon`, setIcon-produced —
+ * sized via CSS, unlike the lucide-react icons above which size via a `size`
+ * prop on the SVG itself). */
+.yolo-chat-empty-state-module-icon svg {
+  width: 18px;
+  height: 18px;
 }
 
 @keyframes yolo-chat-empty-icon-in {
@@ -4270,7 +4290,7 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 }
 
 .yolo-reasoning-popover__header-current.is-max {
-  color: #c084fc;
+  color: var(--interactive-accent);
   font-weight: 600;
   text-shadow: none;
 }
@@ -4281,8 +4301,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   color: var(--text-normal);
 }
 
+/* Re-assert the accent: the `.theme-dark` rule above has equal specificity and
+   would otherwise win on source order. */
 .theme-dark .yolo-reasoning-popover__header-current.is-max {
-  color: #c084fc;
+  color: var(--interactive-accent);
 }
 
 .yolo-reasoning-popover__header-current--up {
@@ -4350,6 +4372,17 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   --yolo-reasoning-slider-thumb-size: 24px;
   --yolo-reasoning-slider-track-height: 22px;
   --yolo-reasoning-slider-radius: 6px;
+  /* Max-state field. Mixing toward a dark floor rather than using the accent
+     raw guarantees the field stays darker than the white cells painted on it,
+     which is the only source of contrast the twinkle has. */
+  --yolo-reasoning-field: color-mix(
+    in srgb,
+    var(--interactive-accent) 82%,
+    #2a2440
+  );
+  /* Shifts the field/dither dissolve toward "smarter". Inherited by the spark
+     canvas, which reads it rather than duplicating the constant. */
+  --yolo-reasoning-fade: 12%;
   position: relative;
   display: grid;
   grid-template-columns: repeat(var(--yolo-segment-count), minmax(0, 1fr));
@@ -4401,6 +4434,10 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   position: absolute;
   inset: 0;
   z-index: 1;
+  /* The canvas renders no text; `color` is how the field color reaches the
+     renderer — the platform resolves the color-mix() to a plain rgb() that can
+     go straight into fillStyle. */
+  color: var(--yolo-reasoning-field);
   width: 100%;
   height: 100%;
   border-radius: inherit;
@@ -4411,10 +4448,6 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
 
 .yolo-reasoning-slider.is-max .yolo-reasoning-slider__spark-canvas {
   opacity: 1;
-}
-
-.theme-dark .yolo-reasoning-slider__spark-canvas {
-  filter: brightness(1.4) saturate(1.12);
 }
 
 .yolo-reasoning-slider.is-dragging .yolo-reasoning-slider__fill {

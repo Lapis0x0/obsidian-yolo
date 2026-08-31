@@ -1,8 +1,16 @@
 import { App, TFile, TFolder } from 'obsidian'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
-import type { RAGEngine } from '../rag/ragEngine'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
+import {
+  buildRagScopeForWorkspace,
+  resolvePathVisibility,
+} from '../agent/workspaceScope'
+import {
+  type RagKnowledgeAccess,
+  findKnowledgeBaseByName,
+} from '../rag/ragAccess'
+import { mergeRagQueryResults } from '../rag/ragQueryMerge'
 import { type SuperSearchResult, fuseRrfHybrid } from '../search/hybridSearch'
 import {
   type AggregatedSearchResult,
@@ -220,12 +228,12 @@ const getVaultSearchMode = (args: Record<string, unknown>): VaultSearchMode => {
 
 const getSemanticSearchUnavailableReason = ({
   settings,
-  getRagEngine,
+  ragAccess,
 }: {
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
 }): string | null => {
-  if (!getRagEngine || !settings) {
+  if (!ragAccess || !settings) {
     return 'Semantic search is not available in this context.'
   }
   if (!settings.ragOptions.enabled) {
@@ -233,6 +241,16 @@ const getSemanticSearchUnavailableReason = ({
   }
   if (!settings.embeddingModelId?.trim()) {
     return 'No embedding model configured. Fell back to keyword search.'
+  }
+  if (
+    !settings.embeddingModels.some(
+      (model) => model.id === settings.embeddingModelId,
+    )
+  ) {
+    return 'The configured embedding model no longer exists. Fell back to keyword search.'
+  }
+  if (ragAccess.listKnowledgeBases().length === 0) {
+    return 'No knowledge bases are configured. Fell back to keyword search.'
   }
   return null
 }
@@ -369,6 +387,8 @@ const collectKeywordSearchResults = async ({
   maxResults,
   caseSensitive,
   signal,
+  workspaceScope,
+  exemptPaths,
 }: {
   app: App
   settings?: YoloSettings
@@ -378,7 +398,15 @@ const collectKeywordSearchResults = async ({
   maxResults: number
   caseSensitive: boolean
   signal?: AbortSignal
+  workspaceScope?: AssistantWorkspaceScope
+  exemptPaths?: ReadonlySet<string>
 }): Promise<LegacySearchItem[]> => {
+  const isVisible = (path: string): boolean =>
+    resolvePathVisibility(path, {
+      scope: workspaceScope,
+      settings,
+      exemptPaths,
+    }) === 'visible'
   const queryForMatch = caseSensitive ? query : query.toLowerCase()
   const queryTokens = Array.from(
     new Set(
@@ -459,7 +487,7 @@ const collectKeywordSearchResults = async ({
     const files = app.vault
       .getFiles()
       .filter((file) => isPathInSearchScope(file.path, scopeTarget))
-      .filter((file) => !isWithinYoloUserDataRoot(file.path, settings))
+      .filter((file) => isVisible(file.path))
       .map((file) => file.path)
       .map((path) => ({
         path,
@@ -499,7 +527,7 @@ const collectKeywordSearchResults = async ({
       .filter((entry): entry is TFolder => entry instanceof TFolder)
       .filter((folder) => folder.path.length > 0)
       .filter((folder) => isPathInSearchScope(folder.path, scopeTarget))
-      .filter((folder) => !isWithinYoloUserDataRoot(folder.path, settings))
+      .filter((folder) => isVisible(folder.path))
       .map((folder) => folder.path)
       .map((path) => ({
         path,
@@ -537,6 +565,12 @@ const collectKeywordSearchResults = async ({
     const searchableFiles = app.vault
       .getMarkdownFiles()
       .filter((file) => isPathInSearchScope(file.path, scopeTarget))
+      // Unlike the files/dirs sweeps above, this one used to have no
+      // hidden-root/workspace-scope filter at all — `vaultBashSearch.ts`'s
+      // per-result post-filter was the only thing keeping user-data content
+      // and out-of-scope files out of agent-visible content search. Filtering
+      // here too means those files are never read in the first place.
+      .filter((file) => isVisible(file.path))
       .sort((a, b) => a.path.localeCompare(b.path))
     const contentMatches: Array<{
       kind: 'content_match'
@@ -620,15 +654,19 @@ const collectKeywordSearchResults = async ({
 export async function runVaultSearchStructured({
   app,
   settings,
-  getRagEngine,
+  ragAccess,
   args,
   signal,
+  workspaceScope,
+  exemptPaths,
 }: {
   app: App
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   args: Record<string, unknown>
   signal?: AbortSignal
+  workspaceScope?: AssistantWorkspaceScope
+  exemptPaths?: ReadonlySet<string>
 }): Promise<VaultSearchStructuredOutcome> {
   if (signal?.aborted) {
     return { status: 'aborted' }
@@ -661,10 +699,11 @@ export async function runVaultSearchStructured({
       min: 1,
       max: RAG_FETCH_LIMIT_MAX,
     })
+    const knowledgeBaseArg = getOptionalTextArg(args, 'knowledgeBase')?.trim()
     const semanticUnavailableReason =
       requestedMode === 'keyword'
         ? null
-        : getSemanticSearchUnavailableReason({ settings, getRagEngine })
+        : getSemanticSearchUnavailableReason({ settings, ragAccess })
     const effectiveMode: VaultSearchMode =
       requestedMode === 'hybrid' && semanticUnavailableReason
         ? 'keyword'
@@ -681,6 +720,8 @@ export async function runVaultSearchStructured({
         maxResults,
         caseSensitive,
         signal,
+        workspaceScope,
+        exemptPaths,
       })
       if (signal?.aborted) {
         return { status: 'aborted' }
@@ -709,8 +750,23 @@ export async function runVaultSearchStructured({
     if (!query) {
       throw new Error('query is required for rag/hybrid mode.')
     }
-    if (!getRagEngine || !settings) {
+    if (!ragAccess || !settings) {
       throw new Error('Semantic search is not available in this context.')
+    }
+
+    const allKnowledgeBases = ragAccess.listKnowledgeBases()
+    let targetKnowledgeBases = allKnowledgeBases
+    if (knowledgeBaseArg) {
+      const match = findKnowledgeBaseByName(allKnowledgeBases, knowledgeBaseArg)
+      if (!match) {
+        const available = allKnowledgeBases.map((kb) => kb.name).join(', ')
+        throw new Error(
+          available
+            ? `Unknown knowledge base "${knowledgeBaseArg}". Available: ${available}.`
+            : `Unknown knowledge base "${knowledgeBaseArg}". No knowledge bases are configured.`,
+        )
+      }
+      targetKnowledgeBases = [match]
     }
 
     const rawScope = args.scope
@@ -720,22 +776,54 @@ export async function runVaultSearchStructured({
       )
     }
 
-    const ragEngine = await getRagEngine()
-    const ragScope = pathToRagScope(scopeTarget)
-
-    const effectiveRagLimit = Math.min(
-      ragLimitArg ?? settings.ragOptions.limit,
-      RAG_FETCH_LIMIT_MAX,
-    )
-
-    const ragRows = await ragEngine.processQuery({
-      query,
-      scope: ragScope,
-      minSimilarity: ragMinSimilarity,
-      limit: effectiveRagLimit,
+    // Combine the caller's path scope (a single file/folder resolved from
+    // `path`) with the assistant's workspace scope *before* querying, so a
+    // narrow workspace scope doesn't just post-filter a whole-vault top-K —
+    // see `buildRagScopeForWorkspace`'s doc comment. `empty` means the two
+    // restrictions share no path at all, so the query can only ever come
+    // back empty: skip it outright (including the embedding computation).
+    const ragScopeResult = buildRagScopeForWorkspace({
+      pathScope: pathToRagScope(scopeTarget),
+      workspace: workspaceScope,
+      settings,
+      exemptPaths,
     })
 
-    const ragMapped = mapRagRowsToSuper(ragRows as RagEmbeddingRow[], 'rag')
+    let ragMapped: SuperSearchResult[]
+    if ('empty' in ragScopeResult || targetKnowledgeBases.length === 0) {
+      ragMapped = []
+    } else {
+      const effectiveRagLimit = Math.min(
+        ragLimitArg ?? settings.ragOptions.limit,
+        RAG_FETCH_LIMIT_MAX,
+      )
+
+      // No `knowledgeBase` argument: query every knowledge base and merge by
+      // similarity — each base's own `processQuery` call already applies
+      // `minSimilarity`, so this only needs to fuse and cap the union.
+      const perKbResults = await Promise.all(
+        targetKnowledgeBases.map(async (kb) => {
+          const ragEngine = await ragAccess.getRagEngine(kb.id)
+          return (await ragEngine.processQuery({
+            query,
+            scope: ragScopeResult.scope,
+            minSimilarity: ragMinSimilarity,
+            limit: effectiveRagLimit,
+          })) as RagEmbeddingRow[]
+        }),
+      )
+      // Overlapping knowledge bases (a folder included by more than one kb)
+      // can each return the same chunk — dedupe on the *raw* rows (by exact
+      // chunk position, including PDF page) before mapping to the display
+      // shape. Deduping after `mapRagRowsToSuper` would be wrong: that
+      // mapping collapses a PDF row's `startLine`/`endLine` down to its page
+      // number, so two distinct chunks on the same page would collide.
+      const mergedRawRows = mergeRagQueryResults(
+        perKbResults,
+        effectiveRagLimit,
+      )
+      ragMapped = mapRagRowsToSuper(mergedRawRows, 'rag')
+    }
 
     if (effectiveMode === 'rag') {
       const effectiveScope: VaultSearchScope =
@@ -761,6 +849,8 @@ export async function runVaultSearchStructured({
       maxResults,
       caseSensitive,
       signal,
+      workspaceScope,
+      exemptPaths,
     })
     if (signal?.aborted) {
       return { status: 'aborted' }
@@ -775,6 +865,8 @@ export async function runVaultSearchStructured({
       maxResults,
       caseSensitive,
       signal,
+      workspaceScope,
+      exemptPaths,
     })
     if (signal?.aborted) {
       return { status: 'aborted' }
@@ -788,6 +880,8 @@ export async function runVaultSearchStructured({
       maxResults,
       caseSensitive,
       signal,
+      workspaceScope,
+      exemptPaths,
     })
     if (signal?.aborted) {
       return { status: 'aborted' }
@@ -818,16 +912,17 @@ export async function runVaultSearchStructured({
 
 /**
  * `vault_search` MCP entry point: same orchestration as
- * `runVaultSearchStructured`, serialized into the legacy fs_search JSON
- * response shape (`fallbackReason: undefined` is dropped by JSON.stringify,
- * matching the historical output byte-for-byte).
+ * `runVaultSearchStructured`, serialized into the JSON response shape
+ * (`fallbackReason: undefined` is dropped by JSON.stringify).
  */
 export async function runVaultSearch(options: {
   app: App
   settings?: YoloSettings
-  getRagEngine?: () => Promise<RAGEngine>
+  ragAccess?: RagKnowledgeAccess
   args: Record<string, unknown>
   signal?: AbortSignal
+  workspaceScope?: AssistantWorkspaceScope
+  exemptPaths?: ReadonlySet<string>
 }): Promise<VaultSearchOutcome> {
   const outcome = await runVaultSearchStructured(options)
   if (outcome.status !== 'success') {
@@ -836,7 +931,7 @@ export async function runVaultSearch(options: {
   return {
     status: 'success',
     text: formatJsonResult({
-      tool: 'fs_search',
+      tool: 'vault_search',
       requestedMode: outcome.requestedMode,
       effectiveMode: outcome.effectiveMode,
       fallbackReason: outcome.fallbackReason,

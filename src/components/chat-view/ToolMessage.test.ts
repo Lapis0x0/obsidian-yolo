@@ -178,6 +178,43 @@ describe('ToolMessage rendering', () => {
     expect(mockedSubagentCard).not.toHaveBeenCalled()
     expect(markup).toContain('Allow')
     expect(markup).toContain('Reject')
+    // Baseline: this tool call has no persisted approvalPolicy, so the
+    // split "allow for this chat" dropdown renders normally.
+    expect(markup).toContain('yolo-split-button')
+  })
+
+  it('hides the "allow for this chat" dropdown for a persisted always-require-user approval policy', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(ToolMessage, {
+        message: {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'tool-1',
+                name: 'module-mode-learning-chat__start_course_generation',
+                arguments: createCompleteToolCallArguments({ value: {} }),
+                metadata: { approvalPolicy: 'always-require-user' },
+              },
+              response: {
+                status: ToolCallResponseStatus.PendingApproval,
+              },
+            },
+          ],
+        },
+        conversationId: 'conversation-1',
+        onMessageUpdate: () => {},
+      }),
+    )
+
+    expect(markup).toContain('Allow')
+    expect(markup).toContain('Reject')
+    // The SplitButton (and its "allow for this chat" menu option) must not
+    // render at all — approvalPolicy: 'always-require-user' degrades it to
+    // a single plain "Allow" button. See `AgentService.approveToolCall`'s
+    // matching server-side rejection of allowForConversation for this call.
+    expect(markup).not.toContain('yolo-split-button')
   })
 
   it('does not render hidden parameters or result content while collapsed', () => {
@@ -831,7 +868,16 @@ describe('ToolMessage headline helpers', () => {
     })
   })
 
-  it('uses file path as summary for delete headlines', () => {
+  // fs_delete/fs_create_dir/fs_move retired with the virtual bash tool
+  // (master.md decision 10, schema v79). D8/D10 deliberately drop their
+  // `getLocalToolSummaryText` branches along with the rest of the retired
+  // `if` chain: retired tool names no longer get a special-cased summary,
+  // only whatever `displayName` this test's own `labels` fixture still
+  // happens to carry (a real `getToolLabels()` call — unlike this hand-built
+  // fixture — no longer carries one either, so real historical conversations
+  // show the bare tool name; see D10's checklist for `ToolMessage.tsx`'s
+  // `displayNames` map).
+  it('has no summary for retired delete headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -846,11 +892,10 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Delete',
-      summaryText: 'docs/old-note.md',
     })
   })
 
-  it('uses folder path as summary for create-dir headlines', () => {
+  it('has no summary for retired create-dir headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -865,11 +910,10 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Create folder',
-      summaryText: 'docs/archive',
     })
   })
 
-  it('uses source and destination paths for move headlines', () => {
+  it('has no summary for retired move headlines (only whatever displayName this fixture supplies)', () => {
     expect(
       getHeadlineDisplayInfo({
         request: {
@@ -885,7 +929,6 @@ describe('ToolMessage headline helpers', () => {
       }),
     ).toEqual({
       displayName: 'Move path',
-      summaryText: 'docs/old.md -> docs/new.md',
     })
   })
 

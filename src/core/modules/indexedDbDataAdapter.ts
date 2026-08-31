@@ -1,5 +1,7 @@
 import type { App, ListedFiles, Stat } from 'obsidian'
 
+import { resolveVaultDatabaseNamespaceId } from '../storage/vaultDatabaseNamespace'
+
 import { MAX_MODULE_PRIVATE_LIST_ENTRIES } from './modulePrivateStorage'
 
 // This backend is unshipped, so v1 is defined directly with its final schema.
@@ -9,8 +11,7 @@ const PARENT_KIND_INDEX = 'by-parent-kind'
 const DATABASE_NAME_PREFIX = 'yolo-module-device-local:'
 const LIST_QUERY_LIMIT = MAX_MODULE_PRIVATE_LIST_ENTRIES + 1
 
-export const MODULE_DEVICE_LOCAL_DATABASE_NAMESPACE_KEY =
-  'yolo-module-device-local-database-namespace'
+export { VAULT_DATABASE_NAMESPACE_KEY as MODULE_DEVICE_LOCAL_DATABASE_NAMESPACE_KEY } from '../storage/vaultDatabaseNamespace'
 
 type AppLocalStorage = Pick<App, 'loadLocalStorage' | 'saveLocalStorage'>
 
@@ -51,6 +52,13 @@ type StoredRecord =
 export type IndexedDbDataAdapterOptions = Readonly<{
   indexedDB?: IDBFactory | null
   createNamespaceId?: () => string
+  /**
+   * Overrides how many immediate children a listing reads before it stops.
+   * Only tests set this: filling a folder past the real cap costs seconds of
+   * fake-IndexedDB writes, while the behaviour under test is that the bound
+   * holds at all, not what its size happens to be.
+   */
+  listQueryLimit?: number
 }>
 
 /** A vault-isolated DataAdapter subset backed by one IndexedDB record per path. */
@@ -93,7 +101,7 @@ export class IndexedDbDataAdapter {
       const children = await listChildKeys(
         store.index(PARENT_KIND_INDEX),
         normalizedPath,
-        LIST_QUERY_LIMIT,
+        this.options.listQueryLimit ?? LIST_QUERY_LIMIT,
       )
       for (const child of children) {
         if (child.kind === 'folder') folders.push(child.path)
@@ -446,43 +454,17 @@ export class IndexedDbDataAdapter {
   }
 
   private resolveNamespaceId(): string {
-    let stored: unknown
     try {
-      stored = this.app.loadLocalStorage(
-        MODULE_DEVICE_LOCAL_DATABASE_NAMESPACE_KEY,
-      )
+      return resolveVaultDatabaseNamespaceId(this.app, {
+        createNamespaceId: this.options.createNamespaceId,
+      })
     } catch (error) {
-      throw indexedDbError('vault database namespace read failed', error)
-    }
-    if (stored !== null && stored !== undefined) {
-      if (!isNamespaceId(stored)) {
-        throw new Error(
-          'Module device-local storage is unavailable: vault database namespace is malformed',
-        )
-      }
-      return stored
-    }
-
-    let namespaceId: string
-    try {
-      namespaceId = (this.options.createNamespaceId ?? createNamespaceId)()
-    } catch (error) {
-      throw indexedDbError('vault database namespace generation failed', error)
-    }
-    if (!isNamespaceId(namespaceId)) {
-      throw new Error(
-        'Module device-local storage is unavailable: generated vault database namespace is malformed',
+      throw indexedDbError(
+        error instanceof Error
+          ? error.message
+          : 'vault database namespace error',
       )
     }
-    try {
-      this.app.saveLocalStorage(
-        MODULE_DEVICE_LOCAL_DATABASE_NAMESPACE_KEY,
-        namespaceId,
-      )
-    } catch (error) {
-      throw indexedDbError('vault database namespace write failed', error)
-    }
-    return namespaceId
   }
 }
 
@@ -776,28 +758,6 @@ function isNormalizedPath(path: string): boolean {
 
 function isTimestamp(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0
-}
-
-function isNamespaceId(value: unknown): value is string {
-  return (
-    typeof value === 'string' &&
-    /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(
-      value,
-    )
-  )
-}
-
-function createNamespaceId(): string {
-  const cryptoApi = globalThis.crypto
-  if (!cryptoApi?.getRandomValues)
-    throw new Error('secure randomness is unavailable')
-  const bytes = cryptoApi.getRandomValues(new Uint8Array(16))
-  bytes[6] = (bytes[6] & 0x0f) | 0x40
-  bytes[8] = (bytes[8] & 0x3f) | 0x80
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, '0'))
-  return `${hex.slice(0, 4).join('')}-${hex.slice(4, 6).join('')}-${hex
-    .slice(6, 8)
-    .join('')}-${hex.slice(8, 10).join('')}-${hex.slice(10).join('')}`
 }
 
 function toStat(record: StoredRecord): Stat {

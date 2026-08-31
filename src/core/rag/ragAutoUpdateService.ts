@@ -1,7 +1,11 @@
-import { minimatch } from 'minimatch'
 import { TAbstractFile, TFile, TFolder } from 'obsidian'
 
-import { YoloSettings } from '../../settings/schema/setting.types'
+import {
+  KnowledgeBase,
+  YoloSettings,
+} from '../../settings/schema/setting.types'
+import { matchesIncludeExcludeScope } from '../../utils/scope-match'
+import { isWithinYoloBaseDir } from '../paths/yoloPaths'
 import {
   type AutomaticRetrySchedule,
   MAX_AUTOMATIC_RETRIES,
@@ -19,7 +23,9 @@ export type AutoUpdateRunRequest =
   | { kind: 'all' }
   | { kind: 'paths'; paths: string[] }
 
-type RagAutoUpdateServiceDeps = {
+type RagAutoUpdateWorkerDeps = {
+  kbId: string
+  getKnowledgeBase: () => KnowledgeBase | undefined
   getSettings: () => YoloSettings
   setSettings: (settings: YoloSettings) => Promise<boolean>
   runIndex: (request: AutoUpdateRunRequest) => Promise<void>
@@ -32,7 +38,14 @@ type RagAutoUpdateServiceDeps = {
   clearRetryScheduled: () => Promise<void>
 }
 
-export class RagAutoUpdateService {
+/**
+ * Debounced, retrying auto-update state machine for one knowledge base.
+ * `RagAutoUpdateService` below owns one of these per configured base — the
+ * logic here is unchanged from the pre-multi-knowledge-base single-instance
+ * version, just parameterized by `kbId` so each base's dirty paths, retry
+ * backoff, and cooldown are entirely independent of every other base's.
+ */
+class RagAutoUpdateWorker {
   private static readonly EDIT_IDLE_WINDOW_MS = 5 * 60 * 1000
   private static readonly WINDOW_BLUR_GRACE_MS = 15 * 1000
   private static readonly SUCCESS_COOLDOWN_MS = 2 * 60 * 1000
@@ -42,16 +55,7 @@ export class RagAutoUpdateService {
     30 * 60_000,
   ] as const satisfies AutomaticRetrySchedule
 
-  private readonly getSettings: () => YoloSettings
-  private readonly setSettings: (settings: YoloSettings) => Promise<boolean>
-  private readonly runIndex: (request: AutoUpdateRunRequest) => Promise<void>
-  private readonly getRetryCount: () => number
-  private readonly markRetryScheduled: (input: {
-    retryAt: number
-    retryCount: number
-    failureMessage?: string
-  }) => Promise<void>
-  private readonly clearRetryScheduled: () => Promise<void>
+  private readonly deps: RagAutoUpdateWorkerDeps
 
   private autoUpdateTimer: ReturnType<typeof setTimeout> | null = null
   private isAutoUpdating = false
@@ -65,13 +69,8 @@ export class RagAutoUpdateService {
   /** True while a transient-failure retry timer is pending (for onOnline). */
   private hasPendingTransientRetry = false
 
-  constructor(deps: RagAutoUpdateServiceDeps) {
-    this.getSettings = deps.getSettings
-    this.setSettings = deps.setSettings
-    this.runIndex = deps.runIndex
-    this.getRetryCount = deps.getRetryCount
-    this.markRetryScheduled = deps.markRetryScheduled
-    this.clearRetryScheduled = deps.clearRetryScheduled
+  constructor(deps: RagAutoUpdateWorkerDeps) {
+    this.deps = deps
   }
 
   cleanup() {
@@ -87,7 +86,7 @@ export class RagAutoUpdateService {
   }
 
   restoreRetryScheduled(retryAt?: number, minDelayMs = 0): void {
-    const settings = this.getSettings()
+    const settings = this.deps.getSettings()
     if (!this.isAutoUpdateEnabled(settings)) return
 
     this.hasRecoveredRetry = true
@@ -107,7 +106,7 @@ export class RagAutoUpdateService {
   ) {
     try {
       if (file instanceof TFile) {
-        const settings = this.getSettings()
+        const settings = this.deps.getSettings()
         if (file.extension === 'md') {
           this.markDirty(file.path)
           return
@@ -146,7 +145,7 @@ export class RagAutoUpdateService {
         ? Number.POSITIVE_INFINITY
         : Date.now() - this.lastRelevantEditAt
 
-    if (elapsedSinceEdit < RagAutoUpdateService.WINDOW_BLUR_GRACE_MS) {
+    if (elapsedSinceEdit < RagAutoUpdateWorker.WINDOW_BLUR_GRACE_MS) {
       return
     }
 
@@ -174,6 +173,7 @@ export class RagAutoUpdateService {
     ) {
       return false
     }
+    if (!this.deps.getKnowledgeBase()) return false
     // Skip auto-update when no valid embedding model is configured so that
     // fresh installations don't immediately surface a confusing error.
     const id = settings.embeddingModelId
@@ -184,13 +184,10 @@ export class RagAutoUpdateService {
   }
 
   private markDirty(path: string, options?: { requiresFullScan?: boolean }) {
-    const settings = this.getSettings()
+    const settings = this.deps.getSettings()
     if (!this.isAutoUpdateEnabled(settings)) return
-    if (this.getRetryCount() >= MAX_AUTOMATIC_RETRIES) return
-    if (
-      !options?.requiresFullScan &&
-      !this.isPathSelectedByIncludeExclude(path, settings)
-    ) {
+    if (this.deps.getRetryCount() >= MAX_AUTOMATIC_RETRIES) return
+    if (!options?.requiresFullScan && !this.isPathSelected(path, settings)) {
       return
     }
 
@@ -207,13 +204,10 @@ export class RagAutoUpdateService {
       return
     }
 
-    this.scheduleAutoUpdate(RagAutoUpdateService.EDIT_IDLE_WINDOW_MS)
+    this.scheduleAutoUpdate(RagAutoUpdateWorker.EDIT_IDLE_WINDOW_MS)
   }
 
-  private isPathSelectedByIncludeExclude(
-    path: string,
-    settings: YoloSettings,
-  ): boolean {
+  private isPathSelected(path: string, settings: YoloSettings): boolean {
     const lower = path.toLowerCase()
     const isMd = lower.endsWith('.md')
     const isPdf =
@@ -221,11 +215,12 @@ export class RagAutoUpdateService {
     if (!isMd && !isPdf) {
       return false
     }
-    const { includePatterns = [], excludePatterns = [] } =
-      settings?.ragOptions ?? {}
-    if (excludePatterns.some((p) => minimatch(path, p))) return false
-    if (!includePatterns || includePatterns.length === 0) return true
-    return includePatterns.some((p) => minimatch(path, p))
+    if (isWithinYoloBaseDir(path, settings)) {
+      return false
+    }
+    const kb = this.deps.getKnowledgeBase()
+    if (!kb) return false
+    return matchesIncludeExcludeScope(path, kb.include, kb.exclude)
   }
 
   private scheduleAutoUpdate(delayMs: number) {
@@ -252,10 +247,10 @@ export class RagAutoUpdateService {
     if (
       this.lastRunFinishedAt !== null &&
       Date.now() - this.lastRunFinishedAt <
-        RagAutoUpdateService.SUCCESS_COOLDOWN_MS
+        RagAutoUpdateWorker.SUCCESS_COOLDOWN_MS
     ) {
       this.scheduleAutoUpdate(
-        RagAutoUpdateService.SUCCESS_COOLDOWN_MS -
+        RagAutoUpdateWorker.SUCCESS_COOLDOWN_MS -
           (Date.now() - this.lastRunFinishedAt),
       )
       return
@@ -276,14 +271,14 @@ export class RagAutoUpdateService {
       this.requiresFullScan = false
       this.hasPendingChangesDuringRun = false
       this.hasRecoveredRetry = false
-      await this.clearRetryScheduled()
+      await this.deps.clearRetryScheduled()
       const request: AutoUpdateRunRequest =
         requiresFullScanSnapshot || recoveredRetrySnapshot
           ? { kind: 'all' }
           : { kind: 'paths', paths: [...pendingSnapshot] }
-      await this.runIndex(request)
-      const settings = this.getSettings()
-      await this.setSettings({
+      await this.deps.runIndex(request)
+      const settings = this.deps.getSettings()
+      await this.deps.setSettings({
         ...settings,
         ragOptions: {
           ...settings.ragOptions,
@@ -308,10 +303,10 @@ export class RagAutoUpdateService {
       const wasAllScope = requiresFullScanSnapshot || recoveredRetrySnapshot
 
       if (failureKind === 'transient') {
-        const nextRetry = this.isAutoUpdateEnabled(this.getSettings())
+        const nextRetry = this.isAutoUpdateEnabled(this.deps.getSettings())
           ? getNextAutomaticRetry(
-              this.getRetryCount(),
-              RagAutoUpdateService.RETRY_SCHEDULE,
+              this.deps.getRetryCount(),
+              RagAutoUpdateWorker.RETRY_SCHEDULE,
             )
           : null
         if (!nextRetry) {
@@ -331,7 +326,7 @@ export class RagAutoUpdateService {
           // 'paths' scope: pendingSnapshot was already restored above.
           this.hasRecoveredRetry = false
         }
-        await this.markRetryScheduled({
+        await this.deps.markRetryScheduled({
           retryAt,
           retryCount: nextRetry.retryCount,
           failureMessage: this.lastRunError,
@@ -353,8 +348,115 @@ export class RagAutoUpdateService {
         !hasScheduledTransientRetry &&
         (shouldRescheduleDirtyWork || this.hasPendingChangesDuringRun)
       ) {
-        this.scheduleAutoUpdate(RagAutoUpdateService.EDIT_IDLE_WINDOW_MS)
+        this.scheduleAutoUpdate(RagAutoUpdateWorker.EDIT_IDLE_WINDOW_MS)
       }
+    }
+  }
+}
+
+type RagAutoUpdateServiceDeps = {
+  getSettings: () => YoloSettings
+  setSettings: (settings: YoloSettings) => Promise<boolean>
+  runIndex: (kbId: string, request: AutoUpdateRunRequest) => Promise<void>
+  getRetryCount: (kbId: string) => number
+  markRetryScheduled: (
+    kbId: string,
+    input: { retryAt: number; retryCount: number; failureMessage?: string },
+  ) => Promise<void>
+  clearRetryScheduled: (kbId: string) => Promise<void>
+}
+
+/**
+ * Fans every vault-change/lifecycle event out to one `RagAutoUpdateWorker`
+ * per configured knowledge base — each base debounces, retries, and cools
+ * down entirely independently, since each has its own include/exclude scope
+ * and its own index run queue slot (`RagIndexService`'s FIFO still ensures
+ * only one base's *index run* executes at a time; the workers here only
+ * decide *when to ask* for one).
+ */
+export class RagAutoUpdateService {
+  private readonly deps: RagAutoUpdateServiceDeps
+  private readonly workers = new Map<string, RagAutoUpdateWorker>()
+
+  constructor(deps: RagAutoUpdateServiceDeps) {
+    this.deps = deps
+  }
+
+  private getOrCreateWorker(kbId: string): RagAutoUpdateWorker {
+    const existing = this.workers.get(kbId)
+    if (existing) return existing
+    const worker = new RagAutoUpdateWorker({
+      kbId,
+      getKnowledgeBase: () =>
+        this.deps.getSettings().knowledgeBases.find((kb) => kb.id === kbId),
+      getSettings: this.deps.getSettings,
+      setSettings: this.deps.setSettings,
+      runIndex: (request) => this.deps.runIndex(kbId, request),
+      getRetryCount: () => this.deps.getRetryCount(kbId),
+      markRetryScheduled: (input) => this.deps.markRetryScheduled(kbId, input),
+      clearRetryScheduled: () => this.deps.clearRetryScheduled(kbId),
+    })
+    this.workers.set(kbId, worker)
+    return worker
+  }
+
+  /** Prunes workers for knowledge bases no longer in settings and lazily
+   * creates workers for newly-added ones. Called before any fan-out so the
+   * worker set always matches current settings. */
+  private syncWorkers(): void {
+    const currentIds = new Set(
+      this.deps.getSettings().knowledgeBases.map((kb) => kb.id),
+    )
+    for (const [kbId, worker] of this.workers) {
+      if (!currentIds.has(kbId)) {
+        worker.cleanup()
+        this.workers.delete(kbId)
+      }
+    }
+    for (const kbId of currentIds) {
+      this.getOrCreateWorker(kbId)
+    }
+  }
+
+  cleanup() {
+    for (const worker of this.workers.values()) {
+      worker.cleanup()
+    }
+    this.workers.clear()
+  }
+
+  /** Called once per knowledge base at startup, from the persisted index-run
+   * snapshot's own `retryAt`/`trigger` for that base. */
+  restoreRetryScheduled(kbId: string, retryAt?: number, minDelayMs = 0): void {
+    this.getOrCreateWorker(kbId).restoreRetryScheduled(retryAt, minDelayMs)
+  }
+
+  onVaultFileChanged(
+    file: TAbstractFile,
+    changeType: 'create' | 'modify' | 'delete' | 'rename' = 'modify',
+  ) {
+    this.syncWorkers()
+    for (const worker of this.workers.values()) {
+      worker.onVaultFileChanged(file, changeType)
+    }
+  }
+
+  onVaultPathChanged(path: string, options?: { requiresFullScan?: boolean }) {
+    this.syncWorkers()
+    for (const worker of this.workers.values()) {
+      worker.onVaultPathChanged(path, options)
+    }
+  }
+
+  onWindowBlur() {
+    for (const worker of this.workers.values()) {
+      worker.onWindowBlur()
+    }
+  }
+
+  onOnline() {
+    for (const worker of this.workers.values()) {
+      worker.onOnline()
     }
   }
 }

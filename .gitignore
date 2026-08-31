@@ -14,7 +14,17 @@ vendor/
 # They should be uploaded to GitHub releases instead.
 main.js
 meta.json
-main.css
+worker-meta.json
+styles.css
+
+# Runtime component build outputs — every component's `entry.js` and any
+# declared assets (e.g. embedding-engine's onnxruntime-web wasm binaries).
+# Reproducible from source, so committing them stores bytes we can always
+# regenerate; `registry.json` stays tracked and records each artifact's
+# byteSize/sha256, which is what actually pins what shipped. The bytes are
+# published to the permanent `runtime-assets` Release and mirrored to R2.
+# See scripts/build-runtime-components.mjs and scripts/runtime-assets.mjs.
+runtime-components/*/dist/
 
 # Exclude sourcemaps
 *.map

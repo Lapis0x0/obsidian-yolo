@@ -209,6 +209,77 @@ export class ChatViewNavigator {
     targetLeaf.view.focusMessage()
   }
 
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md,
+   * architecture decision A). `selectedBlock` must already carry a
+   * `highlightId` (the pinned PDF highlight was created by the caller before
+   * this is invoked). Chat assigns the `annotationNumber` and returns it so
+   * `pdfSelectionHighlightController` can render "批注N" on the bubble.
+   *
+   * Two paths, both returning the number:
+   *  - existing chat leaf: call the imperative `ChatView.addPdfQuoteToChat`
+   *    directly, like `addSelectionBlockToChat` does for its existing-leaf
+   *    branch.
+   *  - no chat leaf yet: seed it via `PendingChatOpenPayload.pdfQuoteBlock`
+   *    instead — `ChatView.onOpen` fully awaits `applyDeferredPayload` before
+   *    `createChatLeaf`'s `setViewState` resolves, so by the time we get here
+   *    the number has already been assigned and stashed on the view.
+   */
+  async addPdfQuoteToChat(
+    selectedBlock: MentionableBlockData,
+  ): Promise<number | undefined> {
+    const data: MentionableBlockData = {
+      ...selectedBlock,
+      source: 'selection-pinned',
+    }
+
+    const existingLeaf = this.resolveTargetChatLeaf()
+    if (existingLeaf && existingLeaf.view instanceof ChatView) {
+      await this.activateChatLeaf(existingLeaf)
+      // Deliberately no `focusMessage()` here, unlike `addSelectionBlockToChat`:
+      // the user is annotating on the PDF, and the bubble's comment editor
+      // takes focus a frame later. Focusing chat too would race it — whichever
+      // ran last won, which is why the caret sometimes jumped to the chat input
+      // mid-typing.
+      return existingLeaf.view.addPdfQuoteToChat(data)
+    }
+
+    const targetLeaf = await this.createChatLeaf('sidebar', {
+      pdfQuoteBlock: data,
+    })
+    if (!targetLeaf || !(targetLeaf.view instanceof ChatView)) {
+      return undefined
+    }
+
+    await this.activateChatLeaf(targetLeaf)
+    return targetLeaf.view.consumeLastPdfQuoteAnnotationNumber()
+  }
+
+  /**
+   * The one deps channel the PDF-side bubble editor uses to patch or remove
+   * its mentionable's comment (architecture decision B). The mention can live
+   * in any open chat leaf's input or history — not necessarily
+   * `resolveTargetChatLeaf()`'s (the "last interacted" leaf) — so this
+   * broadcasts to every open chat leaf and lets each one's
+   * `ChatView.updatePdfQuoteMention` search its own state by `highlightId`
+   * (see `useChatInputController.updatePdfQuoteMention`) and no-op if it
+   * doesn't own the id. No-ops entirely if the chat leaf that owns this
+   * mention is no longer open — mirrors how the bubble itself is torn down
+   * by `pdfSelectionHighlightController.pruneDetachedLeaves`.
+   */
+  updatePdfQuoteMention(
+    highlightId: string,
+    patch: { comment: string } | null,
+  ): void {
+    for (const leaf of this.plugin.app.workspace.getLeavesOfType(
+      CHAT_VIEW_TYPE,
+    )) {
+      if (leaf.view instanceof ChatView) {
+        leaf.view.updatePdfQuoteMention(highlightId, patch)
+      }
+    }
+  }
+
   async openChatWithSelectionAndPrefill(
     selectedBlock: MentionableBlockData,
     text: string,

@@ -1,8 +1,6 @@
 export type LearningVaultFileSnapshot = {
   readonly path: string
   readonly content: string
-  /** Adapter-owned identity used to detect delete-and-recreate races. */
-  readonly identity: unknown
 }
 
 export type LearningVaultWrittenFile = {

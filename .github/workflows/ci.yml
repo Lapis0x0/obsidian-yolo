@@ -17,6 +17,8 @@ jobs:
       - run: npm ci
       - name: Type check
         run: npm run type:check
+      - name: Circular dependency ratchet
+        run: npm run deps:check
       - name: Lint check
         run: npm run lint:check
       - name: Test

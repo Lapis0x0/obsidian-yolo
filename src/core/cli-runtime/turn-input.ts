@@ -96,6 +96,10 @@ const describeMentionable = (
       return `<vault_file path=${JSON.stringify(mentionable.file.path)} />`
     case 'folder':
       return `<vault_folder path=${JSON.stringify(mentionable.folder.path)} />`
+    // Absolute host path, outside the vault cwd — the agent reaches it with
+    // its own filesystem tools.
+    case 'local-folder':
+      return `<local_folder path=${JSON.stringify(mentionable.path)} />`
     case 'block':
       return section(
         'vault_selection',

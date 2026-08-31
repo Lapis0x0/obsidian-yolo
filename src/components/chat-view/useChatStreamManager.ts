@@ -1,6 +1,12 @@
 import { UseMutationResult, useMutation } from '@tanstack/react-query'
 import { Platform, TFile } from 'obsidian'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useSyncExternalStore,
+} from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useMcp } from '../../contexts/mcp-context'
@@ -35,19 +41,16 @@ import { getChatModelClient } from '../../core/llm/manager'
 import type { AutoPromotedTransportMode } from '../../core/llm/requestTransport'
 import type { ResponseDeliveryMode } from '../../core/llm/responseDeliveryMode'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
-import {
-  TERMINAL_COMMAND_TOOL_NAME,
-  getLocalFileToolServerName,
-} from '../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
+import { useChatManager } from '../../hooks/useJsonManagers'
 import type { AssistantToolPreference } from '../../types/assistant.types'
 import {
   ChatConversationCompaction,
   ChatConversationCompactionState,
   ChatMessage,
-  ChatToolMessage,
 } from '../../types/chat'
 import { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import {
@@ -58,24 +61,27 @@ import {
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
+import {
+  providerOwnsConversationContext,
+  resolveChatModelProvider,
+} from '../../utils/llm/provider-config'
 import { ErrorModal } from '../modals/ErrorModal'
 
-import { ChatMode } from './chat-input/ChatModeSelect'
+import { ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
 import {
   type ChatModeRuntime,
   resolveChatModeRuntime,
+  resolveNativeToolPolicy,
 } from './chat-runtime-profiles'
+import {
+  createProviderSessionAccessor,
+  resolveTurnIdentity,
+} from './providerSessionAccessor'
+import { useAgentConversationState } from './useAgentConversationState'
 import type { ContextBreakdownInputs } from './useContextBreakdown'
 
 type UseChatStreamManagerParams = {
-  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
-  setCompactionState: React.Dispatch<
-    React.SetStateAction<ChatConversationCompactionState>
-  >
-  setPendingCompactionAnchorMessageId: React.Dispatch<
-    React.SetStateAction<string | null>
-  >
   autoScrollToBottom: () => void
   requestContextBuilder: RequestContextBuilder
   currentConversationId: string
@@ -89,14 +95,6 @@ type UseChatStreamManagerParams = {
   assistantIdOverride?: string
   compaction?: ChatConversationCompactionState
   onRunSettled?: (result: { aborted: boolean; failed: boolean }) => void
-}
-
-type ActiveBranchRun = {
-  branchId: string
-  branchConversationId: string
-  sourceUserMessageId: string
-  branchModelId: string
-  branchLabel: string
 }
 
 type BranchRetryTarget = {
@@ -118,6 +116,14 @@ const AUTO_CONTEXT_COMPACT_TOOL_FQN = getToolName(
   getLocalFileToolServerName(),
   CONTEXT_COMPACT_TOOL_NAME,
 )
+
+// D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9):
+// `context_compact`'s owning capability id — `getCapabilityForTool` isn't
+// used here since this constant must survive even if the tool were ever
+// renamed independently of its capability; matches the hardcoded id already
+// used at the capability's own definition site
+// (`core/tools/capabilities/context-compaction.ts`).
+const AUTO_CONTEXT_COMPACT_CAPABILITY_ID = 'context_compaction'
 
 const AUTO_CONTEXT_COMPACT_TOOL_PREFERENCE: AssistantToolPreference = {
   enabled: true,
@@ -150,10 +156,15 @@ const enableAutoContextCompactionTool = (
       includeBuiltinTools: true,
     },
     allowedToolNames,
-    toolPreferences: {
-      ...(runtime.toolPreferences ?? {}),
-      [AUTO_CONTEXT_COMPACT_TOOL_FQN]: {
-        ...(runtime.toolPreferences?.[AUTO_CONTEXT_COMPACT_TOOL_FQN] ?? {}),
+    // `context_compact` is a built-in tool: its enabled/approval state is
+    // resolved from `builtinCapabilityPreferences`, not `toolPreferences`
+    // (D9) — forcing it on for auto-compaction must write there instead.
+    builtinCapabilityPreferences: {
+      ...(runtime.builtinCapabilityPreferences ?? {}),
+      [AUTO_CONTEXT_COMPACT_CAPABILITY_ID]: {
+        ...(runtime.builtinCapabilityPreferences?.[
+          AUTO_CONTEXT_COMPACT_CAPABILITY_ID
+        ] ?? {}),
         ...AUTO_CONTEXT_COMPACT_TOOL_PREFERENCE,
       },
     },
@@ -183,10 +194,6 @@ export type UseChatStreamManager = {
       compactionOverride?: ChatConversationCompactionState
     }
   >
-}
-
-const isRunSummaryActive = (summary: AgentConversationRunSummary): boolean => {
-  return summary.isActive
 }
 
 /**
@@ -227,55 +234,7 @@ const buildChatContextualInjections = ({
   return injections
 }
 
-const annotateBranchMessages = (
-  messages: ChatMessage[],
-  branch: ActiveBranchRun,
-  branchState: AgentConversationState,
-): ChatMessage[] => {
-  const branchRunSummary = buildAgentConversationRunSummary(branchState)
-
-  return messages.map((message) => {
-    if (message.role === 'assistant') {
-      return {
-        ...message,
-        metadata: {
-          ...message.metadata,
-          sourceUserMessageId: branch.sourceUserMessageId,
-          branchId: branch.branchId,
-          branchModelId: branch.branchModelId,
-          branchLabel: branch.branchLabel,
-          branchConversationId: branch.branchConversationId,
-          branchRunStatus: branchState.status,
-          branchWaitingApproval: branchRunSummary.isWaitingApproval,
-        },
-      }
-    }
-
-    if (message.role === 'tool') {
-      const toolMessage: ChatToolMessage = {
-        ...message,
-        metadata: {
-          ...message.metadata,
-          sourceUserMessageId: branch.sourceUserMessageId,
-          branchId: branch.branchId,
-          branchModelId: branch.branchModelId,
-          branchLabel: branch.branchLabel,
-          branchConversationId: branch.branchConversationId,
-          branchRunStatus: branchState.status,
-          branchWaitingApproval: branchRunSummary.isWaitingApproval,
-        },
-      }
-      return toolMessage
-    }
-
-    return message
-  })
-}
-
 export function useChatStreamManager({
-  setChatMessages,
-  setCompactionState,
-  setPendingCompactionAnchorMessageId,
   autoScrollToBottom,
   requestContextBuilder,
   currentConversationId,
@@ -294,112 +253,48 @@ export function useChatStreamManager({
   const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
   const { getMcpManager } = useMcp()
+  const chatManager = useChatManager()
+
+  const moduleChatModeRegistry = plugin.getModuleChatModeRegistry()
+  const moduleChatModeSnapshot = useSyncExternalStore(
+    moduleChatModeRegistry.subscribe,
+    moduleChatModeRegistry.getSnapshot,
+  )
+  // `chatMode` here is always an *effective* value (see
+  // `resolveEffectiveChatMode` in `useYoloChatSession`) — an unavailable
+  // module id never reaches this hook as `'agent'` is substituted upstream.
+  // Still guard on a registered+available match so a stale mode id (e.g. a
+  // module disabled between render and this lookup) degrades to the
+  // built-in branch of `resolveChatModeRuntime` instead of throwing.
+  const resolveModuleChatMode = useCallback(() => {
+    if (!isModuleChatMode(chatMode)) return undefined
+    return moduleChatModeSnapshot.find(
+      (entry) =>
+        entry.fullModeId === chatMode &&
+        entry.availability.status === 'available',
+    )
+  }, [chatMode, moduleChatModeSnapshot])
 
   const activeStreamAbortControllersRef = useRef<Map<string, AbortController>>(
-    new Map(),
-  )
-  const activeBranchRunsRef = useRef<Map<string, ActiveBranchRun>>(new Map())
-  const branchStateMapRef = useRef<Map<string, AgentConversationState>>(
     new Map(),
   )
   const baseConversationMessagesRef = useRef<ChatMessage[]>([])
   const baseCompactionStateRef = useRef<ChatConversationCompactionState>(
     compaction ?? [],
   )
-  const [currentConversationRunSummary, setCurrentConversationRunSummary] =
-    useState<AgentConversationRunSummary>(() =>
-      plugin.getAgentService().getConversationRunSummary(currentConversationId),
-    )
-
-  const buildVisibleConversationMessages = useCallback(
-    (baseMessages: ChatMessage[]): ChatMessage[] => {
-      const activeBranches = Array.from(activeBranchRunsRef.current.values())
-      if (activeBranches.length === 0) {
-        return baseMessages
-      }
-
-      const result: ChatMessage[] = []
-      for (const message of baseMessages) {
-        result.push(message)
-        if (message.role !== 'user') {
-          continue
-        }
-
-        for (const branch of activeBranches) {
-          if (branch.sourceUserMessageId !== message.id) {
-            continue
-          }
-          const branchState = branchStateMapRef.current.get(
-            branch.branchConversationId,
-          )
-          if (!branchState) {
-            continue
-          }
-          const anchorIndex = branchState.messages.findIndex(
-            (candidate) => candidate.id === branch.sourceUserMessageId,
-          )
-          const responseMessages =
-            anchorIndex >= 0
-              ? branchState.messages.slice(anchorIndex + 1)
-              : branchState.messages
-          result.push(
-            ...annotateBranchMessages(responseMessages, branch, branchState),
-          )
-        }
-      }
-
-      return result
-    },
-    [],
+  // Pure shadow of AgentService's run status for `currentConversationId` — no
+  // write path bypasses AgentService for this value (unlike `chatMessages`/
+  // `compactionState`/`pendingCompactionAnchorMessageId`, which still have
+  // legitimate direct writes elsewhere and stay as-is; see the 2026-08-11
+  // architecture-governance audit). Safe to source purely from the
+  // subscription instead of a manually-forwarded `useState`.
+  const agentConversationState = useAgentConversationState(
+    plugin.getAgentService(),
+    currentConversationId,
   )
-
-  const syncVisibleConversationState = useCallback(
-    (baseMessages?: ChatMessage[]) => {
-      const resolvedBaseMessages =
-        baseMessages ?? baseConversationMessagesRef.current
-      const visibleMessages =
-        buildVisibleConversationMessages(resolvedBaseMessages)
-      setChatMessages(visibleMessages)
-
-      const branchSummaries = Array.from(
-        activeBranchRunsRef.current.values(),
-      ).map((branch) => {
-        const state = branchStateMapRef.current.get(branch.branchConversationId)
-        return state ? buildAgentConversationRunSummary(state) : null
-      })
-      const activeSummaries = branchSummaries.filter(
-        (summary): summary is AgentConversationRunSummary =>
-          summary !== null && isRunSummaryActive(summary),
-      )
-      if (activeSummaries.length > 0) {
-        const anchorMessageIds = new Set(
-          activeSummaries.flatMap((summary) =>
-            summary.anchorMessageId ? [summary.anchorMessageId] : [],
-          ),
-        )
-        const hasWaitingApproval = activeSummaries.some(
-          (summary) => summary.isWaitingApproval,
-        )
-        const hasWaitingUserInput = activeSummaries.some(
-          (summary) => summary.isWaitingUserInput,
-        )
-        setCurrentConversationRunSummary({
-          conversationId: currentConversationId,
-          anchorMessageId:
-            anchorMessageIds.size === 1
-              ? anchorMessageIds.values().next().value
-              : undefined,
-          status: 'running',
-          isRunning: activeSummaries.some((summary) => summary.isRunning),
-          isActive: true,
-          isAbortable: activeSummaries.some((summary) => summary.isAbortable),
-          isQueueable: activeSummaries.some((summary) => summary.isQueueable),
-          isWaitingApproval: hasWaitingApproval,
-          isWaitingUserInput: hasWaitingUserInput,
-        })
-      }
-    },
-    [buildVisibleConversationMessages, currentConversationId, setChatMessages],
+  const currentConversationRunSummary = useMemo(
+    () => buildAgentConversationRunSummary(agentConversationState),
+    [agentConversationState],
   )
 
   const handleAutoPromoteTransportMode = useCallback(
@@ -427,22 +322,21 @@ export function useChatStreamManager({
         return
       }
 
-      if (activeBranchRunsRef.current.size === 0) {
-        setCurrentConversationRunSummary(runSummary)
-      }
-      syncVisibleConversationState(state.messages)
-      setCompactionState(state.compaction ?? [])
-      setPendingCompactionAnchorMessageId(
-        state.pendingCompactionAnchorMessageId ?? null,
-      )
-      if (!runSummary.isActive && activeBranchRunsRef.current.size === 0) {
+      // The `chatMessages`/`compactionState`/`pendingCompactionAnchorMessageId`
+      // mirror into React state used to happen here — it's now
+      // `ChatSessionController`'s own independent AgentService subscription
+      // (see docs/plans/2026-08-11-arch-governance-step3-chat-state-ownership.md,
+      // "分期 C1"). This effect keeps its own subscription only for
+      // `baseConversationMessagesRef`/`baseCompactionStateRef` (read by
+      // `compactConversation`/`submitChatMutation` below) and the
+      // auto-scroll trigger.
+      if (!runSummary.isActive) {
         return
       }
 
-      const visibleMessages = buildVisibleConversationMessages(state.messages)
       if (
-        visibleMessages.length > 0 &&
-        !visibleMessages.some(
+        state.messages.length > 0 &&
+        !state.messages.some(
           (message) =>
             message.role === 'assistant' &&
             message.metadata?.generationState === 'streaming',
@@ -452,14 +346,11 @@ export function useChatStreamManager({
       }
     }
 
-    // Reset summary on conversation switch — syncConversationState below
-    // bails out early for fresh/idle conversations and would otherwise leave
-    // stale flags (e.g. isWaitingUserInput) from the previous conversation
-    // bleeding into the new one's input-box guards.
-    setCurrentConversationRunSummary(
-      agentService.getConversationRunSummary(currentConversationId),
-    )
-
+    // `currentConversationRunSummary` no longer needs a reset here: it's
+    // sourced from `useAgentConversationState`, which re-derives a fresh
+    // snapshot for the new `currentConversationId` synchronously during
+    // render (see that hook) — no stale-flag carryover from the previous
+    // conversation to guard against.
     syncConversationState(agentService.getState(currentConversationId))
 
     const unsubscribe = agentService.subscribe(
@@ -471,15 +362,7 @@ export function useChatStreamManager({
     return () => {
       unsubscribe()
     }
-  }, [
-    autoScrollToBottom,
-    currentConversationId,
-    plugin,
-    setCompactionState,
-    setPendingCompactionAnchorMessageId,
-    buildVisibleConversationMessages,
-    syncVisibleConversationState,
-  ])
+  }, [autoScrollToBottom, currentConversationId, plugin])
 
   const abortConversationRun = useCallback(
     (conversationId: string) => {
@@ -503,8 +386,14 @@ export function useChatStreamManager({
             (assistant) => assistant.id === effectiveAssistantId,
           ) || null
         : null
+      // Module chat modes never inherit an assistant's default model —
+      // ChatContextPolicy.useAssistant === false cuts the assistant out of
+      // model resolution entirely. A user's own in-session model pick
+      // (`modelId`) still always wins.
       const requestedModelId =
-        modelId || selectedAssistant?.modelId || settings.chatModelId
+        modelId ||
+        (isModuleChatMode(chatMode) ? undefined : selectedAssistant?.modelId) ||
+        settings.chatModelId
 
       let resolvedClient: ReturnType<typeof getChatModelClient>
       try {
@@ -538,6 +427,7 @@ export function useChatStreamManager({
           assistant: selectedAssistant,
           assistantEnabledToolNames:
             getEnabledAssistantToolNames(selectedAssistant),
+          moduleChatMode: resolveModuleChatMode(),
         }),
         autoContextCompactionOptions.autoContextCompactionEnabled,
       )
@@ -598,6 +488,7 @@ export function useChatStreamManager({
         apiType: manualApiType,
         enableToolDisclosure: settings.mcp.enableToolDisclosure,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+        settings,
       })
       const runtimeModePrompt = buildToolCapabilityPrompt({
         mode: chatModeRuntime.toolCapabilityMode,
@@ -614,6 +505,10 @@ export function useChatStreamManager({
           compaction: manualCompaction,
           contextualInjections: manualContextualInjections,
           runtimeModePrompt,
+          modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
+          modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+          moduleChatModeId: chatModeRuntime.moduleChatModeId,
+          contextPolicy: chatModeRuntime.contextPolicy,
           // Reuse the frozen snapshot; never create one outside the real request.
           systemPromptSnapshotMode: 'reuse',
         })
@@ -654,6 +549,10 @@ export function useChatStreamManager({
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: manualContextualInjections,
+            modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
+            modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+            moduleChatModeId: chatModeRuntime.moduleChatModeId,
+            contextPolicy: chatModeRuntime.contextPolicy,
           })
       } catch (error) {
         console.warn(
@@ -680,6 +579,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      resolveModuleChatMode,
       yoloEnabled,
       currentConversationId,
       currentFileOverride,
@@ -738,7 +638,11 @@ export function useChatStreamManager({
           : null
 
         const requestedModelId =
-          modelId || selectedAssistant?.modelId || settings.chatModelId
+          modelId ||
+          (isModuleChatMode(chatMode)
+            ? undefined
+            : selectedAssistant?.modelId) ||
+          settings.chatModelId
         const targetModelIds = assistantContinuation?.modelId
           ? [assistantContinuation.modelId]
           : branchTarget?.branchModelId?.trim()
@@ -789,18 +693,6 @@ export function useChatStreamManager({
         const modelTopP = resolvedClient.model.topP
         const modelMaxTokens = resolvedClient.model.maxOutputTokens
         const effectiveModel = resolvedClient.model
-        const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
-        const enabledSkillEntries = selectedAssistant
-          ? (await listLiteSkillEntries(app, { settings })).filter((skill) =>
-              isSkillEnabledForAssistant({
-                assistant: selectedAssistant,
-                skillName: skill.name,
-                disabledSkillNames,
-              }),
-            )
-          : []
-        const allowedSkillPaths = enabledSkillEntries.map((skill) => skill.path)
-
         const autoContextCompactionOptions =
           resolveAutoContextCompactionChatOptions(settings.chatOptions)
         const chatModeRuntime = enableAutoContextCompactionTool(
@@ -810,22 +702,58 @@ export function useChatStreamManager({
             assistant: selectedAssistant,
             assistantEnabledToolNames:
               getEnabledAssistantToolNames(selectedAssistant),
+            moduleChatMode: resolveModuleChatMode(),
           }),
           autoContextCompactionOptions.autoContextCompactionEnabled,
         )
+
+        const disabledSkillNames = settings.skills?.disabledSkillIds ?? []
+        // Module chat modes bypass assistant skill preferences entirely
+        // (ChatContextPolicy.useAssistant === false): the allowed set is the
+        // mode's own declared skills (scoped by `moduleChatModeId`) plus
+        // every enabled vault skill. Built-in modes keep the exact prior
+        // behavior: no assistant selected means no skills.
+        const { turnId, parentTurnId } = resolveTurnIdentity(
+          requestMessages ?? chatMessages,
+        )
+        const isModuleMode = isModuleChatMode(chatMode)
+        const skillScope = chatModeRuntime.moduleChatModeId
+          ? { moduleChatModeId: chatModeRuntime.moduleChatModeId }
+          : undefined
+        const enabledSkillEntries =
+          isModuleMode || selectedAssistant
+            ? (
+                await listLiteSkillEntries(app, {
+                  settings,
+                  scope: skillScope,
+                })
+              ).filter((skill) =>
+                isSkillEnabledForAssistant({
+                  assistant: isModuleMode ? null : selectedAssistant,
+                  skillName: skill.name,
+                  disabledSkillNames,
+                }),
+              )
+            : []
+        const allowedSkillPaths = enabledSkillEntries.map((skill) => skill.path)
 
         const mcpManager = await getMcpManager()
 
         const loopConfig = chatModeRuntime.loopConfig
         const buildAutoContextCompactionInput = (
           model: AgentRuntimeRunInput['model'],
-        ): AgentRuntimeRunInput['autoContextCompaction'] =>
-          autoContextCompactionOptions.autoContextCompactionEnabled
+        ): AgentRuntimeRunInput['autoContextCompaction'] => {
+          const modelProvider = resolveChatModelProvider(settings, model)
+          if (modelProvider && providerOwnsConversationContext(modelProvider)) {
+            return undefined
+          }
+          return autoContextCompactionOptions.autoContextCompactionEnabled
             ? {
                 chatOptions: autoContextCompactionOptions,
                 maxContextTokens: resolveEffectiveMaxContextTokens(model),
               }
             : undefined
+        }
         const requestParams = {
           deliveryMode,
           temperature: conversationOverrides?.temperature ?? modelTemperature,
@@ -848,15 +776,28 @@ export function useChatStreamManager({
           allowedToolNames: chatModeRuntime.allowedToolNames,
           enableToolDisclosure: settings.mcp.enableToolDisclosure,
           toolPreferences: chatModeRuntime.toolPreferences,
+          builtinCapabilityPreferences:
+            chatModeRuntime.builtinCapabilityPreferences,
           toolServerPreferences: chatModeRuntime.toolServerPreferences,
           toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
           bypassToolApproval: chatModeRuntime.bypassToolApproval,
-          blockedCommandPrefixes: settings.mcp.builtinToolOptions[
-            TERMINAL_COMMAND_TOOL_NAME
-          ]?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
-          workspaceScope:
-            resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
+          blockedCommandPrefixes: settings.mcp.builtinCapabilityOptions.terminal
+            ?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
+          // The assistant selector stays populated in settings even while a
+          // module chat mode is active (D4 hides it in the UI); its
+          // workspace scope must not leak into a run where the assistant
+          // otherwise takes no part at all.
+          workspaceScope: isModuleMode
+            ? undefined
+            : resolveWorkspaceScopeForRuntimeInput(selectedAssistant),
           allowedSkillPaths,
+          bashReadOnly: chatModeRuntime.bashReadOnly,
+          moduleToolApprovalPolicies:
+            chatModeRuntime.moduleToolApprovalPolicies,
+          modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
+          modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+          moduleChatModeId: chatModeRuntime.moduleChatModeId,
+          contextPolicy: chatModeRuntime.contextPolicy,
           requestParams,
           contextualInjections: buildChatContextualInjections({
             app,
@@ -871,6 +812,21 @@ export function useChatStreamManager({
             useWebSearch: conversationOverrides?.useWebSearch ?? false,
             useUrlContext: conversationOverrides?.useUrlContext ?? false,
           },
+          // Only providers that keep a native session ever read these; for
+          // every other provider they are inert, so they are built
+          // unconditionally rather than by sniffing the selected provider.
+          // The accessor loads lazily, so an unused one costs nothing.
+          ...(turnId
+            ? {
+                session: createProviderSessionAccessor({
+                  chatManager,
+                  conversationId,
+                  turnId,
+                  parentTurnId,
+                }),
+              }
+            : {}),
+          nativeToolPolicy: resolveNativeToolPolicy(chatModeRuntime),
           sourceUserMessageId: assistantContinuation?.sourceUserMessageId,
           continueAssistantMessageId: assistantContinuation?.assistantMessageId,
         }
@@ -1068,7 +1024,9 @@ export function useChatStreamManager({
           ) || null
         : null
       const requestedModelId =
-        modelId || selectedAssistant?.modelId || settings.chatModelId
+        modelId ||
+        (isModuleChatMode(chatMode) ? undefined : selectedAssistant?.modelId) ||
+        settings.chatModelId
 
       let resolvedClient: ReturnType<typeof getChatModelClient>
       try {
@@ -1099,6 +1057,7 @@ export function useChatStreamManager({
         assistant: selectedAssistant,
         assistantEnabledToolNames:
           getEnabledAssistantToolNames(selectedAssistant),
+        moduleChatMode: resolveModuleChatMode(),
       })
       const provider = settings.providers.find(
         (p) => p.id === effectiveModel.providerId,
@@ -1120,6 +1079,10 @@ export function useChatStreamManager({
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+        modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
+        modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+        moduleChatModeId: chatModeRuntime.moduleChatModeId,
+        contextPolicy: chatModeRuntime.contextPolicy,
         contextualInjections: buildChatContextualInjections({
           app,
           includeFocusSync: resolveAssistantIncludeCurrentFileContent(
@@ -1135,6 +1098,7 @@ export function useChatStreamManager({
       app,
       assistantIdOverride,
       chatMode,
+      resolveModuleChatMode,
       yoloEnabled,
       compaction,
       currentConversationId,

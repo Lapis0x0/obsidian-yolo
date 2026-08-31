@@ -6,6 +6,7 @@ import type {
 
 import { ModuleLifecycleScope } from './lifecycleScope'
 import { CoreModuleAgentCapabilityProvider } from './moduleAgent'
+import type { YoloModuleAgentToolV1 } from './types'
 
 const collect = async <T>(values: AsyncIterable<T>): Promise<T[]> => {
   const result: T[] = []
@@ -464,5 +465,391 @@ describe('CoreModuleAgentCapabilityProvider', () => {
 
     expect(receivedSignal?.aborted).toBe(true)
     lifecycle.dispose()
+  })
+
+  describe('module agent tools', () => {
+    const echoTool: YoloModuleAgentToolV1 = {
+      name: 'emit_card',
+      description: 'Emit a card',
+      inputSchema: { type: 'object', properties: {} },
+      handler: async (input) => ({ content: JSON.stringify(input) }),
+    }
+
+    const makeActivation = (agent: YoloAgentApi, moduleId = 'learning') => {
+      const lifecycle = new ModuleLifecycleScope()
+      const activation = new CoreModuleAgentCapabilityProvider({
+        isDebugCaptureEnabled: () => false,
+        getAgentApi: async () => agent,
+      }).create(moduleId, lifecycle)
+      activation.activate()
+      return { activation, lifecycle }
+    }
+
+    it.each([
+      [
+        'name violating ^[a-z][a-z0-9_]*$',
+        [{ ...echoTool, name: 'Emit-Card' }],
+        '^[a-z][a-z0-9_]*$',
+      ],
+      ['duplicate names', [echoTool, { ...echoTool }], 'duplicated'],
+      [
+        'empty description',
+        [{ ...echoTool, description: '  ' }],
+        'description must be a non-empty string',
+      ],
+      [
+        'non-object input schema',
+        [
+          {
+            ...echoTool,
+            inputSchema: [] as unknown as Record<string, unknown>,
+          },
+        ],
+        'input schema must be an object',
+      ],
+      [
+        'non-function handler',
+        [
+          {
+            ...echoTool,
+            handler:
+              'not-a-function' as unknown as YoloModuleAgentToolV1['handler'],
+          },
+        ],
+        'handler must be a function',
+      ],
+      [
+        'more than 16 tools',
+        Array.from({ length: 17 }, (_, i) => ({
+          ...echoTool,
+          name: `emit_card_${i}`,
+        })),
+        'must not exceed 16',
+      ],
+    ])('rejects tools with %s', (_label, tools, expectedMessage) => {
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* () {
+          yield* [] as YoloAgentEvent[]
+        },
+      })
+
+      expect(() =>
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools,
+        }),
+      ).toThrow(expectedMessage)
+    })
+
+    it('registers a run-scoped in-process server with the module tools and disposes nothing itself (that lives in agent-api.ts)', async () => {
+      let received: YoloAgentRunRequest | undefined
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          received = request
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools: [echoTool],
+        }),
+      )
+
+      const inProcessServer = received?.tools?.inProcessServer
+      expect(inProcessServer?.name).toMatch(/^module-learning-.+$/)
+      expect(inProcessServer?.server.listTools()).toEqual([
+        {
+          name: 'emit_card',
+          description: 'Emit a card',
+          inputSchema: { type: 'object', properties: {} },
+        },
+      ])
+      // The requested allowedToolNames stay capability-scoped (empty for
+      // 'none'); agent-api.ts is responsible for unioning in the
+      // in-process server's tool names — see agent-api.test.ts.
+      expect(received?.tools?.allowedToolNames).toEqual([])
+    })
+
+    it('uses a distinct server name per stream call to avoid registration collisions on concurrent runs', async () => {
+      const requests: YoloAgentRunRequest[] = []
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          requests.push(request)
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      await collect(
+        activation.api.stream({
+          prompt: 'First',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools: [echoTool],
+        }),
+      )
+      await collect(
+        activation.api.stream({
+          prompt: 'Second',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools: [echoTool],
+        }),
+      )
+
+      const names = requests.map((r) => r.tools?.inProcessServer?.name)
+      expect(names[0]).toBeDefined()
+      expect(names[1]).toBeDefined()
+      expect(names[0]).not.toBe(names[1])
+    })
+
+    it("maps the handler's { content, isError } result onto the core ToolCallResponse shape", async () => {
+      const tools: YoloModuleAgentToolV1[] = [
+        {
+          name: 'emit_card',
+          description: 'Emit a card',
+          inputSchema: { type: 'object' },
+          handler: async (input) =>
+            input.fail
+              ? { content: 'validation failed', isError: true }
+              : { content: 'ok' },
+        },
+      ]
+      let received: YoloAgentRunRequest | undefined
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          received = request
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools,
+        }),
+      )
+
+      const server = received!.tools!.inProcessServer!.server
+      await expect(
+        server.callTool({
+          toolName: 'emit_card',
+          args: {},
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toEqual({
+        status: 'success',
+        data: { type: 'text', text: 'ok' },
+      })
+      await expect(
+        server.callTool({
+          toolName: 'emit_card',
+          args: { fail: true },
+          signal: new AbortController().signal,
+        }),
+      ).resolves.toEqual({ status: 'error', error: 'validation failed' })
+    })
+
+    it('serializes concurrent handler invocations in arrival order, across tools and past failures', async () => {
+      const events: string[] = []
+      let active = 0
+      const record = async (label: string, fail = false) => {
+        active += 1
+        expect(active).toBe(1)
+        events.push(`start:${label}`)
+        await new Promise((resolve) => setTimeout(resolve, 5))
+        events.push(`end:${label}`)
+        active -= 1
+        if (fail) throw new Error(`${label} failed`)
+        return { content: label }
+      }
+      const tools: YoloModuleAgentToolV1[] = [
+        {
+          name: 'emit_knowledge_point',
+          description: 'Emit a knowledge point',
+          inputSchema: { type: 'object' },
+          handler: (input) => record(String(input.label), input.fail === true),
+        },
+        {
+          name: 'emit_card',
+          description: 'Emit a card',
+          inputSchema: { type: 'object' },
+          handler: (input) => record(String(input.label)),
+        },
+      ]
+      let received: YoloAgentRunRequest | undefined
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          received = request
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools,
+        }),
+      )
+
+      const server = received!.tools!.inProcessServer!.server
+      const signal = new AbortController().signal
+      const results = await Promise.allSettled([
+        server.callTool({
+          toolName: 'emit_knowledge_point',
+          args: { label: 'a' },
+          signal,
+        }),
+        server.callTool({
+          toolName: 'emit_knowledge_point',
+          args: { label: 'b', fail: true },
+          signal,
+        }),
+        server.callTool({
+          toolName: 'emit_card',
+          args: { label: 'c' },
+          signal,
+        }),
+      ])
+
+      expect(events).toEqual([
+        'start:a',
+        'end:a',
+        'start:b',
+        'end:b',
+        'start:c',
+        'end:c',
+      ])
+      expect(results.map((result) => result.status)).toEqual([
+        'fulfilled',
+        'rejected',
+        'fulfilled',
+      ])
+    })
+
+    it('lets a thrown handler error propagate (the registry converts it to an Error-status response)', async () => {
+      const tools: YoloModuleAgentToolV1[] = [
+        {
+          name: 'emit_card',
+          description: 'Emit a card',
+          inputSchema: { type: 'object' },
+          handler: async () => {
+            throw new Error('boom')
+          },
+        },
+      ]
+      let received: YoloAgentRunRequest | undefined
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          received = request
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools,
+        }),
+      )
+
+      const server = received!.tools!.inProcessServer!.server
+      await expect(
+        server.callTool({
+          toolName: 'emit_card',
+          args: {},
+          signal: new AbortController().signal,
+        }),
+      ).rejects.toThrow('boom')
+    })
+
+    it('shows the module tool by its bare name in tool events instead of "unknown"', async () => {
+      let inProcessServerName = ''
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          inProcessServerName = request.tools!.inProcessServer!.name
+          yield {
+            type: 'tool',
+            conversationId: 'private',
+            toolCallId: 'call-1',
+            name: `${inProcessServerName}__emit_card`,
+            status: 'completed',
+          }
+          yield { type: 'completed', conversationId: 'private', text: 'ok' }
+        },
+      })
+
+      const output = await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools: [echoTool],
+        }),
+      )
+
+      expect(output[0]).toMatchObject({
+        type: 'tool',
+        name: 'emit_card',
+        status: 'completed',
+      })
+    })
+
+    it("keeps the module's own tool name out of error-message sanitization while still redacting unrelated internal names", async () => {
+      let inProcessServerName = ''
+      const { activation } = makeActivation({
+        run: jest.fn(),
+        abort: jest.fn(),
+        stream: async function* (request) {
+          inProcessServerName = request.tools!.inProcessServer!.name
+          yield {
+            type: 'error',
+            conversationId: 'private',
+            message: `Tool ${inProcessServerName}__emit_card failed after yolo_local__bash also failed`,
+          }
+        },
+      })
+
+      const output = await collect(
+        activation.api.stream({
+          prompt: 'Question',
+          systemPrompt: 'System',
+          capability: 'none',
+          tools: [echoTool],
+        }),
+      )
+
+      expect(output).toEqual([
+        {
+          type: 'error',
+          message: 'Tool emit_card failed after internal tool also failed',
+        },
+      ])
+    })
   })
 })

@@ -64,6 +64,7 @@ jest.mock('./UserMessageItem', () => ({
   default: ({
     message,
     isActionDisabled,
+    canEdit,
     showReasoningSelect,
     showModelControl,
     showPlaceholder,
@@ -71,6 +72,7 @@ jest.mock('./UserMessageItem', () => ({
   }: {
     message: ChatUserMessage
     isActionDisabled?: boolean
+    canEdit?: boolean
     showReasoningSelect?: boolean
     showModelControl?: boolean
     showPlaceholder?: boolean
@@ -82,6 +84,7 @@ jest.mock('./UserMessageItem', () => ({
     return (
       <div
         data-action-disabled={String(isActionDisabled)}
+        data-can-edit={String(canEdit !== false)}
         data-reasoning-select={String(showReasoningSelect)}
         data-model-control={String(showModelControl)}
         data-placeholder={String(showPlaceholder)}
@@ -354,7 +357,6 @@ describe('CliChatSurface', () => {
       renderKey: 'user-1',
       messageId: 'user-1',
       revision: 1,
-      estimatedHeight: 80,
       spacingBefore: 0,
       isPinnedForRender: false,
       isStreaming: false,
@@ -405,6 +407,38 @@ describe('CliChatSurface', () => {
     expect(html).toContain('data-model-control="false"')
     expect(html).toContain('data-placeholder="false"')
     expect(html).toContain('data-agent-mode="false"')
+    expect(html).toContain('data-can-edit="true"')
+  })
+
+  it('does not offer historical edit or regenerate when the runtime cannot rewrite', () => {
+    const html = renderSurface(
+      makeSnapshot({
+        runtimeId: 'hermes',
+        surfaceId: 'hermes:native/session-1',
+        sessionRef: {
+          runtimeId: 'hermes',
+          nativeSessionId: 'native/session-1',
+        },
+        messages: [makeUser('user-1', 'Prompt'), assistant, tool],
+      }),
+    )
+
+    expect(html).toContain('data-can-edit="false"')
+    expect(html).not.toContain('Regenerate')
+  })
+
+  it('offers historical edit when the runtime can rewrite', () => {
+    const html = renderSurface(
+      makeSnapshot({
+        runtimeId: 'pi',
+        surfaceId: 'pi:native/session-1',
+        sessionRef: { runtimeId: 'pi', nativeSessionId: 'native/session-1' },
+        messages: [makeUser('user-1', 'Prompt'), assistant, tool],
+      }),
+    )
+
+    expect(html).toContain('data-can-edit="true"')
+    expect(html).toContain('Regenerate')
   })
 
   it('does not bind a new running turn to the previous assistant footer', () => {

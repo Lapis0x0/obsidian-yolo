@@ -16,6 +16,17 @@ export const zh = {
     unsupportedFileType:
       '不支持的文件类型：{ext}（支持 PDF、Word、Markdown、文本）',
     fileTooLarge: '文件过大：{size}MB（上限 20MB）',
+    backgroundTitle: '学习模式：正在生成项目',
+    backgroundKnowledgeDetail: '第 {current}/{total} 章',
+    backgroundCardsDetail: '正在生成卡片',
+    alreadyRunning:
+      '已有一个学习项目正在生成，请等待完成后再试，或查看其进度。',
+    resumeBannerTitle: '生成尚未完成',
+    resumeBannerDetail: '已生成 {completed}/{total} 章',
+    resumeAction: '从当前章继续',
+    resumeInProgress: '正在继续生成…',
+    resumeFailed: '继续生成失败：{error}',
+    resumeUnavailable: '该项目创建于支持断点续传之前，无法自动继续生成。',
   },
   background: {
     reviewTitle: 'YOLO Learning',
@@ -208,6 +219,7 @@ export const zh = {
   outlineBuilder: {
     chapterRequired: '至少需要一个有效章节',
     generatingPoint: '正在生成',
+    generatedCount: '已生成 {count} 条',
     knowledgeComplete: '知识点生成完成',
     newChapter: '新章节',
     newChapterContract: '说明本章覆盖范围、边界和预计知识点。',

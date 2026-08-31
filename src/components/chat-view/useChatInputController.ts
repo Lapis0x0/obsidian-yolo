@@ -1,4 +1,4 @@
-import { App, Notice, TFile, TFolder } from 'obsidian'
+import { Notice, TFile, TFolder } from 'obsidian'
 import {
   Dispatch,
   MutableRefObject,
@@ -9,25 +9,24 @@ import {
   useState,
 } from 'react'
 import { flushSync } from 'react-dom'
-import { v4 as uuidv4 } from 'uuid'
 
+import { useApp } from '../../contexts/app-context'
+import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
+import { useSettings } from '../../contexts/settings-context'
 import { resolveAssistantTimeContextEnabled } from '../../core/agent/assistant-capabilities'
-import type { AgentService } from '../../core/agent/service'
+import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
   type ChatRuntimeId,
   type CliChatMode,
   type CliConversationController,
   type CliRuntimeScope,
-  buildCliEnvironmentContext,
+  RUNTIME_CAPABILITIES,
+  isCliRuntime,
 } from '../../core/cli-runtime'
-import type { useChatHistory } from '../../hooks/useChatHistory'
 import type { YoloSettings } from '../../settings/schema/setting.types'
-import type { Assistant } from '../../types/assistant.types'
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
-import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type {
-  CurrentFileViewState,
   Mentionable,
   MentionableAssistantQuote,
   MentionableBlock,
@@ -50,7 +49,6 @@ import {
   getMaxAssistantQuoteNumber,
   isSyncSelectionMentionable,
 } from '../../utils/chat/selection-mentionables'
-import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 import { ClaudePluginManagerModal } from '../settings/modals/ClaudePluginManagerModal'
 import { McpServerStatusModal } from '../settings/modals/McpServerStatusModal'
 
@@ -60,13 +58,13 @@ import type {
   ChatUserInputRef,
 } from './chat-input/ChatUserInput'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
+import type { ChatSessionController } from './ChatSessionController'
 import {
   type CliChatOperationCoordinator,
-  type CliChatOperationSnapshot,
   isCliConversationActive,
   prepareCliConversation,
-  submitCliComposerTurn,
 } from './cliChatIntegration'
+import type { ConversationPreferencesController } from './ConversationPreferencesController'
 
 const extractSelectedModelIds = (mentionables: Mentionable[]): string[] => {
   const seen = new Set<string>()
@@ -81,121 +79,55 @@ const extractSelectedModelIds = (mentionables: Mentionable[]): string[] => {
   return modelIds
 }
 
-type HandleUserMessageSubmitArgs = {
-  inputChatMessages: ChatMessage[]
-  requestChatMessages?: ChatMessage[]
-  retryBranchTarget?: {
-    branchId: string
-    sourceUserMessageId: string
-    branchModelId?: string
-    branchLabel?: string
-  }
-  persistedMessageModelMap?: Map<string, string>
+/**
+ * `message.content`/`mentionables`/`selectedSkills` 全空即视为空消息。纯
+ * 函数——不经 hook，供本文件直接调用（`useYoloChatSession.ts` 保留一份
+ * 独立实现，见其文件内注释：两处都是同一逻辑的五行纯函数，共享会造成一条
+ * controller/hook 之外的横向依赖，得不偿失）。
+ */
+function isUserMessageEffectivelyEmpty(
+  message: Pick<ChatUserMessage, 'content' | 'mentionables' | 'selectedSkills'>,
+): boolean {
+  const textContent = message.content
+    ? editorStateToPlainText(message.content).trim()
+    : ''
+  return (
+    textContent.length === 0 &&
+    message.mentionables.length === 0 &&
+    (message.selectedSkills?.length ?? 0) === 0
+  )
 }
 
 /**
- * 提交/编辑/CLI 运行时切换等一旦就绪才能提供的依赖。这些值大多来自
- * useCliRuntimeOrchestration、useChatStreamManager、会话领域函数（步骤 4
- * 前仍在 Chat.tsx），而 useChatInputController 必须在它们之前调用（CLI
- * hook 反过来消费本 hook 的 getLatestInputMessage/replaceInputMessage）。
- * 通过一个稳定的 ref 注入，Chat.tsx 在每次渲染的稍后位置写入最新值——
- * 与既有的 `mainInputSubmitStateRef`/`useLatestRef` 惯例完全一致，只是
- * ref 的创建挪到了 hook 内部，写入仍在 Chat.tsx 完成。
+ * 提交/中止/压缩收归 `ChatSessionController` 后（架构治理第三步分期
+ * C2），剩余字段全部是**真正**在 hook 调用顺序上晚于本 hook 才产生的值——
+ * CLI 编排（useCliRuntimeOrchestration）、选区高亮会话
+ * （useChatHighlightSession）、运行态摘要（useChatStreamManager）。偏好/
+ * 消息态/持久化/环境类字段已清零：`app`/`settings`/`t` 本 hook 直接调用
+ * `useApp()`/`useSettings()`/`useLanguage()`；`activeFile`/`activeViewState`/
+ * `currentConversationId`/`assistantGroupBoundaryMessageIds`/
+ * `queuedMessageEditState`/`chatMountedRef`/`getReasoningLevelForModelId`/
+ * `persistReasoningLevelForModel` 在 Chat.tsx 中产生于本 hook 调用之前，
+ * 直接作为 `UseChatInputControllerParams` 的普通字段传入；消息编辑/持久化
+ * 工具（`updateHistoricalUserMessage`/`persist`/
+ * `buildAssistantGroupBoundaryMessageIdsAfterUserRemoval`）改为直接调用
+ * `sessionController` 的公开命令。
  */
 export type ChatInputLateState = {
-  reasoningLevel: ReasoningLevel
-  updateHistoricalUserMessage: (
-    messageId: string,
-    updater: (message: ChatUserMessage) => ChatUserMessage,
-  ) => void
   releaseHighlightIds: (ids: Iterable<string>) => void
-  isUserMessageEffectivelyEmpty: (
-    message: Pick<
-      ChatUserMessage,
-      'content' | 'mentionables' | 'selectedSkills'
-    >,
-  ) => boolean
-  buildAssistantGroupBoundaryMessageIdsAfterUserRemoval: (
-    sourceMessages: ChatMessage[],
-    nextMessages: ChatMessage[],
-    existingBoundaryMessageIds: readonly string[],
-  ) => string[]
-  assistantGroupBoundaryMessageIds: string[]
-  setAssistantGroupBoundaryMessageIds: Dispatch<SetStateAction<string[]>>
-  persistConversation: (
-    messages: ChatMessage[],
-    assistantGroupBoundaryIdsOverride?: readonly string[],
-  ) => Promise<void>
-  deleteConversation: (id: string) => Promise<void>
-  currentConversationId: string
-  setMessageModelMap: Dispatch<SetStateAction<Map<string, string>>>
-  setMessageReasoningMap: Dispatch<SetStateAction<Map<string, ReasoningLevel>>>
-  activeBranchByUserMessageIdRef: MutableRefObject<Map<string, string>>
-  setActiveBranchByUserMessageId: Dispatch<SetStateAction<Map<string, string>>>
-  activeFile: TFile | null
-  activeViewState: CurrentFileViewState | undefined
-  agentService: AgentService
-  app: App
-  chatMessages: ChatMessage[]
-  cliChatMode: CliChatMode
-  cliConversationId: string | null
   commitSentSelectionHighlights: (mentionables: Mentionable[]) => void
-  conversationModelId: string
-  conversationOverrides: ConversationOverrideSettings | null
+  cliChatMode: CliChatMode
   cliConversationController: CliConversationController | null
   cliOperationCoordinator: CliChatOperationCoordinator | null
   cliRuntimeScope: CliRuntimeScope | undefined
-  currentConversationRunSummary: {
-    isActive: boolean
-    isWaitingApproval: boolean
-    isWaitingUserInput: boolean
-    isQueueable: boolean
-  }
-  createOrTouchCliConversation: ReturnType<
-    typeof useChatHistory
-  >['createOrTouchCliConversation']
-  displayedChatMessages: ChatMessage[]
-  handleUserMessageSubmit: (
-    args: HandleUserMessageSubmitArgs,
-  ) => void | Promise<void>
-  generateConversationTitle: ReturnType<
-    typeof useChatHistory
-  >['generateConversationTitle']
-  syncCliConversationTitle: (conversationId: string, title: string) => void
-  messageModelMap: Map<string, string>
-  queuedMessageEditState: {
-    preservedInputMessage: ChatUserMessage
-    preservedReasoningLevel: ReasoningLevel
-  } | null
-  setQueuedMessageEditState: Dispatch<
-    SetStateAction<{
-      preservedInputMessage: ChatUserMessage
-      preservedReasoningLevel: ReasoningLevel
-    } | null>
-  >
-  selectedAssistant: Assistant | null
-  settings: YoloSettings
-  t: (keyPath: string, fallback?: string) => string
   cliYoloEnabled: boolean
-  setCliConversationId: Dispatch<SetStateAction<string | null>>
-  consumeAcceptedCliDraft: (
-    acceptedDraft: NonNullable<CliChatOperationSnapshot['acceptedDraft']>,
-  ) => void
-  conversationReasoningLevelRef: MutableRefObject<Map<string, ReasoningLevel>>
-  setReasoningLevel: Dispatch<SetStateAction<ReasoningLevel>>
-  chatMountedRef: MutableRefObject<boolean>
-  handleManualContextCompaction: () => Promise<void>
   cliPreferenceSettingsRef: MutableRefObject<YoloSettings>
   /** Forces the CLI skills list to re-fetch, e.g. after the Claude plugin manager mutates plugins. */
   refreshCliSkills: () => void
-  abortConversationRun: (conversationId: string) => void
-  setConversationModelId: Dispatch<SetStateAction<string>>
-  conversationModelIdRef: MutableRefObject<Map<string, string>>
-  getReasoningLevelForModelId: (modelId?: string | null) => ReasoningLevel
-  persistReasoningLevelForModel: (
-    modelId: string,
-    level: ReasoningLevel,
-  ) => Promise<void>
+  currentConversationRunSummary: Pick<
+    AgentConversationRunSummary,
+    'isActive' | 'isQueueable' | 'isWaitingApproval' | 'isWaitingUserInput'
+  >
 }
 
 export type UseChatInputControllerParams = {
@@ -207,6 +139,34 @@ export type UseChatInputControllerParams = {
   buildNewInputMessage: (reasoningLevel: ReasoningLevel) => ChatUserMessage
   chatMessagesStateRef: MutableRefObject<ChatMessage[]>
   setChatMessages: Dispatch<SetStateAction<ChatMessage[]>>
+  /**
+   * 会话级偏好七件套的唯一 owner——跨渲染稳定的 controller 实例（在
+   * useChatRuntimePreferences 中构造，早于本 hook 调用），事件处理器直接
+   * 调用其命令 API，不再经 lateStateRef 读写。见架构治理第三步分期 C1。
+   */
+  preferencesController: ConversationPreferencesController
+  /**
+   * 消息态八件套 + 提交/中止/压缩命令的唯一 owner——同样构造于本 hook 调用
+   * 之前，事件处理器直接调用其命令 API。见架构治理第三步分期 C2。
+   */
+  sessionController: ChatSessionController
+  currentConversationId: string
+  assistantGroupBoundaryMessageIds: string[]
+  queuedMessageEditState: {
+    preservedInputMessage: ChatUserMessage
+    preservedReasoningLevel: ReasoningLevel
+  } | null
+  setQueuedMessageEditState: Dispatch<
+    SetStateAction<{
+      preservedInputMessage: ChatUserMessage
+      preservedReasoningLevel: ReasoningLevel
+    } | null>
+  >
+  getReasoningLevelForModelId: (modelId?: string | null) => ReasoningLevel
+  persistReasoningLevelForModel: (
+    modelId: string,
+    level: ReasoningLevel,
+  ) => Promise<void>
 }
 
 /**
@@ -215,10 +175,13 @@ export type UseChatInputControllerParams = {
  *
  * 本 hook 必须在 useCliRuntimeOrchestration 之前调用——后者消费本 hook
  * 的 getLatestInputMessage/replaceInputMessage/inputDraftRevisionRef。
- * 但 handleMainInputSubmit 等处理器反过来需要 CLI/会话侧在本 hook 调用
- * 之后才产生的值,因此这些处理器一律通过 `lateStateRef` 读取——Chat.tsx
- * 在渲染的稍后位置（CLI hook、会话动作、useChatStreamManager 都已就绪
- * 之后）写入最新快照,写入时机与既有 `mainInputSubmitStateRef` 完全一致。
+ * 提交/中止/压缩自身已收归 `sessionController`（架构治理第三步分期
+ * C2）：`handleMainInputSubmit`/`handleMainInputAbort` 只做草稿采集 +
+ * 结果到 UI 反应（Notice/输入框重建）的翻译，控制器方法内部按依赖顺序
+ * 普通函数调用，不受 hooks 顺序限制。剩余处理器（CLI 编排相关的
+ * slash 命令分支等）仍需要 CLI 编排 hook 在本 hook 之后才产生的值,
+ * 经 `ChatInputLateState`（现已大幅缩减）读取——Chat.tsx 在渲染的稍后
+ * 位置（CLI hook 就绪之后）写入最新快照。
  */
 export function useChatInputController({
   seededInputMessage,
@@ -229,8 +192,19 @@ export function useChatInputController({
   buildNewInputMessage,
   chatMessagesStateRef,
   setChatMessages,
+  preferencesController,
+  sessionController,
+  currentConversationId,
+  assistantGroupBoundaryMessageIds,
+  queuedMessageEditState,
+  setQueuedMessageEditState,
+  getReasoningLevelForModelId,
+  persistReasoningLevelForModel,
 }: UseChatInputControllerParams) {
   const plugin = usePlugin()
+  const app = useApp()
+  const { settings } = useSettings()
+  const { t } = useLanguage()
   // 供 handleMainInputRunSlashCommand 打开的原生动作弹窗读取「当前」运行时——
   // 弹窗的 isActive() 在异步/稍后调用时需要实时值，不能依赖闭包捕获的
   // activeRuntimeId（每次渲染才更新一次）。写入方式与 chatMessagesStateRef 等
@@ -262,6 +236,43 @@ export function useChatInputController({
   const [inputReplacementVersion, setInputReplacementVersion] = useState(0)
   const inputMessageRef = useRef(inputMessage)
   const assistantQuoteSequenceRef = useRef(new Map<string, number>())
+
+  /**
+   * Highest annotation number already spoken for on `targetMessageId`.
+   *
+   * The sequence only moves forward while annotations exist, so deleting one
+   * never renumbers its siblings — the model must not see "批注2" point at
+   * different text than it did a turn ago.
+   */
+  const resolveKnownAnnotationSequence = useCallback(
+    (targetMessageId: string, targetMentionables: Mentionable[]): number =>
+      Math.max(
+        assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
+        getMaxAssistantQuoteNumber(targetMentionables),
+      ),
+    [],
+  )
+
+  /**
+   * Drop the high-water mark once `remaining` holds no numbered annotation, so
+   * the next one starts back at 批注1. Without it an input emptied by sending —
+   * or by deleting its last annotation — would keep handing out ever-larger
+   * numbers, leaving a lone "批注4" with no 1–3 anywhere.
+   *
+   * Called from the delete paths rather than from allocation: deletion is an
+   * explicit user action whose post-state is known exactly here, whereas
+   * allocation reads `inputMessageRef`, which only refreshes on render — a
+   * momentarily stale read there would look like "no annotations left" and
+   * silently restart the numbering mid-message.
+   */
+  const releaseAnnotationSequenceIfEmpty = useCallback(
+    (targetMessageId: string, remaining: Mentionable[]) => {
+      if (getMaxAssistantQuoteNumber(remaining) === 0) {
+        assistantQuoteSequenceRef.current.delete(targetMessageId)
+      }
+    },
+    [],
+  )
   const getLatestInputMessage = useCallback(
     () => inputDraftHolder.get(),
     [inputDraftHolder],
@@ -396,9 +407,9 @@ export function useChatInputController({
             mentionable.type === 'assistant-quote',
         )
         .findIndex((mentionable) => mentionable.id === id)
-      const knownSequence = Math.max(
-        assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
-        getMaxAssistantQuoteNumber(targetMentionables),
+      const knownSequence = resolveKnownAnnotationSequence(
+        targetMessageId,
+        targetMentionables,
       )
       const resolvedAnnotationNumber =
         existingQuote?.annotationNumber ??
@@ -431,6 +442,7 @@ export function useChatInputController({
       chatMessagesStateRef,
       focusedMessageId,
       inputMessage.id,
+      resolveKnownAnnotationSequence,
     ],
   )
 
@@ -453,10 +465,11 @@ export function useChatInputController({
           )?.mentionables ?? [])
       assistantQuoteSequenceRef.current.set(
         targetMessageId,
-        Math.max(
-          assistantQuoteSequenceRef.current.get(targetMessageId) ?? 0,
-          getMaxAssistantQuoteNumber(targetMentionables),
-        ),
+        resolveKnownAnnotationSequence(targetMessageId, targetMentionables),
+      )
+      releaseAnnotationSequenceIfEmpty(
+        targetMessageId,
+        removeQuote(targetMentionables),
       )
 
       if (targetsInput) {
@@ -479,6 +492,172 @@ export function useChatInputController({
       chatMessagesStateRef,
       focusedMessageId,
       inputMessage.id,
+      releaseAnnotationSequenceIfEmpty,
+      resolveKnownAnnotationSequence,
+      setChatMessages,
+      setInputMessage,
+    ],
+  )
+
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * Inserts a `block` mentionable that carries an `annotationNumber` — drawn
+   * from the same shared pool as assistant-quote annotations (architecture
+   * decision A) — plus an empty `comment` for the PDF-side bubble editor to
+   * fill in. Returns the resolved number so the caller (ultimately
+   * `pdfSelectionHighlightController`) can render "批注N" on the bubble
+   * without ever assigning the number itself.
+   *
+   * Deliberately does NOT go through `addMentionableToFocusedMessage` /
+   * `addOrUpdateMentionable`: that path dedupes blocks by `getMentionableKey`
+   * at insertion time, which is correct for the existing add-to-sidebar
+   * "reference this text" flow but wrong here — two distinct annotations
+   * that happen to select the same repeated substring on a page (same
+   * file/line/page/contentHash) must both survive as separate mentionables,
+   * the same way assistant quotes stay distinct via their own `id`. This is
+   * only half the fix, though: `getMentionableKey`'s `block` branch also
+   * folds `annotationNumber` into the key, so every *other* place that keys
+   * blocks (input-mirroring in `MessageInputCore`, delete-by-key) treats
+   * same-text annotations as distinct too — without that, both entries
+   * would survive in this array but collide everywhere downstream.
+   */
+  const handleQuotePdfSelection = useCallback(
+    (selectedBlock: MentionableBlockData): number => {
+      const targetsInput =
+        !focusedMessageId || focusedMessageId === inputMessage.id
+      const targetMessageId = targetsInput ? inputMessage.id : focusedMessageId
+      const targetMentionables = targetsInput
+        ? inputMessageRef.current.mentionables
+        : (chatMessagesStateRef.current.find(
+            (message): message is ChatUserMessage =>
+              message.role === 'user' && message.id === targetMessageId,
+          )?.mentionables ?? [])
+      const knownSequence = resolveKnownAnnotationSequence(
+        targetMessageId,
+        targetMentionables,
+      )
+      const annotationNumber = knownSequence + 1
+      assistantQuoteSequenceRef.current.set(targetMessageId, annotationNumber)
+
+      const mentionable = createSelectionBlockMentionable({
+        ...selectedBlock,
+        source: 'selection-pinned',
+        comment: selectedBlock.comment ?? '',
+        annotationNumber,
+      })
+
+      setAddedBlockKey(null)
+      if (targetsInput) {
+        setInputMessage((prevInputMessage) => ({
+          ...prevInputMessage,
+          mentionables: [...prevInputMessage.mentionables, mentionable],
+          promptContent: null,
+        }))
+      } else {
+        setChatMessages((prevChatHistory) =>
+          prevChatHistory.map((message) =>
+            message.id === targetMessageId && message.role === 'user'
+              ? {
+                  ...message,
+                  mentionables: [...message.mentionables, mentionable],
+                  promptContent: null,
+                }
+              : message,
+          ),
+        )
+      }
+      return annotationNumber
+    },
+    [
+      chatMessagesStateRef,
+      focusedMessageId,
+      inputMessage.id,
+      resolveKnownAnnotationSequence,
+      setChatMessages,
+      setInputMessage,
+    ],
+  )
+
+  /**
+   * The one deps channel between the PDF-side bubble editor (rendered
+   * imperatively by `pdfSelectionHighlightController`, not React) and chat
+   * mentionable state — architecture decision B. `patch: null` removes the
+   * mentionable (bubble right-click delete, or Esc on a still-new draft);
+   * otherwise patches its `comment` on every keystroke, mirroring
+   * `handleCommentChange` for assistant quotes.
+   *
+   * Targets whichever message actually holds a `block` mentionable with this
+   * `highlightId` — the main input, or one of the historical user messages —
+   * found by searching, not by `focusedMessageId`. The bubble can be edited
+   * long after focus has moved to a different message (or a different chat
+   * leaf entirely — see `chatViewNavigator.updatePdfQuoteMention`, which
+   * broadcasts to every open leaf and relies on this search to no-op on the
+   * ones that don't own the id).
+   */
+  const updatePdfQuoteMention = useCallback(
+    (highlightId: string, patch: { comment: string } | null) => {
+      const hasHighlight = (mentionables: Mentionable[]): boolean =>
+        mentionables.some(
+          (mentionable) =>
+            mentionable.type === 'block' &&
+            mentionable.highlightId === highlightId,
+        )
+      const applyPatch = (mentionables: Mentionable[]): Mentionable[] => {
+        if (patch === null) {
+          return mentionables.filter(
+            (mentionable) =>
+              !(
+                mentionable.type === 'block' &&
+                mentionable.highlightId === highlightId
+              ),
+          )
+        }
+        return mentionables.map((mentionable) =>
+          mentionable.type === 'block' &&
+          mentionable.highlightId === highlightId
+            ? { ...mentionable, comment: patch.comment }
+            : mentionable,
+        )
+      }
+
+      if (hasHighlight(inputMessageRef.current.mentionables)) {
+        if (patch === null) {
+          releaseAnnotationSequenceIfEmpty(
+            inputMessageRef.current.id,
+            applyPatch(inputMessageRef.current.mentionables),
+          )
+        }
+        setInputMessage((prevInputMessage) => ({
+          ...prevInputMessage,
+          mentionables: applyPatch(prevInputMessage.mentionables),
+        }))
+        return
+      }
+
+      if (patch === null) {
+        const owner = chatMessagesStateRef.current.find(
+          (message): message is ChatUserMessage =>
+            message.role === 'user' && hasHighlight(message.mentionables),
+        )
+        if (owner) {
+          releaseAnnotationSequenceIfEmpty(
+            owner.id,
+            applyPatch(owner.mentionables),
+          )
+        }
+      }
+
+      setChatMessages((prevChatHistory) =>
+        prevChatHistory.map((message) =>
+          message.role === 'user' && hasHighlight(message.mentionables)
+            ? { ...message, mentionables: applyPatch(message.mentionables) }
+            : message,
+        ),
+      )
+    },
+    [
+      chatMessagesStateRef,
+      releaseAnnotationSequenceIfEmpty,
       setChatMessages,
       setInputMessage,
     ],
@@ -708,13 +887,13 @@ export function useChatInputController({
       return {
         ...latestInputMessage,
         content,
-        reasoningLevel: getLate().reasoningLevel,
+        reasoningLevel: preferencesController.getSnapshot().reasoningLevel,
         mentionables,
         selectedSkills: latestInputMessage.selectedSkills ?? [],
         selectedModelIds: extractSelectedModelIds(mentionables),
       }
     },
-    [getLate, getLatestInputMessage],
+    [getLatestInputMessage, preferencesController],
   )
 
   const clearSelectionMentionable = useCallback(() => {
@@ -763,24 +942,30 @@ export function useChatInputController({
       )
     }
 
-    late.updateHistoricalUserMessage(focusedMessageId, (message) => {
-      const nextMentionables = removeSelectionMentionable(message.mentionables)
-      if (nextMentionables.length === message.mentionables.length) {
-        return message
-      }
+    sessionController.updateHistoricalUserMessage(
+      focusedMessageId,
+      (message) => {
+        const nextMentionables = removeSelectionMentionable(
+          message.mentionables,
+        )
+        if (nextMentionables.length === message.mentionables.length) {
+          return message
+        }
 
-      return {
-        ...message,
-        mentionables: nextMentionables,
-        promptContent: null,
-      }
-    })
+        return {
+          ...message,
+          mentionables: nextMentionables,
+          promptContent: null,
+        }
+      },
+    )
   }, [
     chatMessagesStateRef,
     focusedMessageId,
     getLate,
     inputMessage.id,
     removeSelectionMentionable,
+    sessionController,
     setInputMessage,
   ])
 
@@ -832,21 +1017,19 @@ export function useChatInputController({
           promptContent: null,
         }
 
-        return late.isUserMessageEffectivelyEmpty(nextMessage)
-          ? []
-          : [nextMessage]
+        return isUserMessageEffectivelyEmpty(nextMessage) ? [] : [nextMessage]
       })
       const nextAssistantGroupBoundaryMessageIds =
-        late.buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
+        sessionController.buildAssistantGroupBoundaryMessageIdsAfterUserRemoval(
           sourceMessages,
           nextMessages,
-          late.assistantGroupBoundaryMessageIds,
+          assistantGroupBoundaryMessageIds,
         )
 
       if (didChangeHistory) {
         chatMessagesStateRef.current = nextMessages
         setChatMessages(nextMessages)
-        late.setAssistantGroupBoundaryMessageIds(
+        sessionController.setAssistantGroupBoundaryMessageIds(
           nextAssistantGroupBoundaryMessageIds,
         )
       }
@@ -864,7 +1047,7 @@ export function useChatInputController({
           ? inputMessage.id
           : prev,
       )
-      late.setMessageModelMap(
+      sessionController.setMessageModelMap(
         (prev) =>
           new Map(
             Array.from(prev.entries()).filter(([messageId]) =>
@@ -872,7 +1055,7 @@ export function useChatInputController({
             ),
           ),
       )
-      late.setMessageReasoningMap(
+      sessionController.setMessageReasoningMap(
         (prev) =>
           new Map(
             Array.from(prev.entries()).filter(([messageId]) =>
@@ -883,12 +1066,14 @@ export function useChatInputController({
 
       const nextActiveBranchByUserMessageId = new Map(
         Array.from(
-          late.activeBranchByUserMessageIdRef.current.entries(),
+          sessionController.activeBranchByUserMessageIdRef.current.entries(),
         ).filter(([messageId]) => retainedUserMessageIds.has(messageId)),
       )
-      late.activeBranchByUserMessageIdRef.current =
+      sessionController.activeBranchByUserMessageIdRef.current =
         nextActiveBranchByUserMessageId
-      late.setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
+      sessionController.setActiveBranchByUserMessageId(
+        nextActiveBranchByUserMessageId,
+      )
 
       // 从当前输入消息中删除
       setInputMessage((prev) => ({
@@ -901,20 +1086,19 @@ export function useChatInputController({
         return
       }
 
-      if (nextMessages.length === 0) {
-        void late.deleteConversation(late.currentConversationId)
-        return
-      }
-
-      void late.persistConversation(
-        nextMessages,
-        nextAssistantGroupBoundaryMessageIds,
-      )
+      sessionController.syncAgentConversationMessages(nextMessages)
+      void sessionController
+        .persist(nextMessages, nextAssistantGroupBoundaryMessageIds)
+        .then((ok) => {
+          if (!ok) new Notice('Failed to save chat history')
+        })
     },
     [
+      assistantGroupBoundaryMessageIds,
       chatMessagesStateRef,
       getLate,
       inputMessage.id,
+      sessionController,
       setChatMessages,
       setInputMessage,
     ],
@@ -936,9 +1120,14 @@ export function useChatInputController({
     [bumpInputDraftRevision, inputDraftHolder],
   )
 
+  /**
+   * Draft collection + result-to-UI translation only — the actual submit
+   * orchestration (yolo gating, CLI turn submission) lives in
+   * `sessionController.submit()` (架构治理第三步分期 C2). Notice text and
+   * the post-submit input-box rebuild are UI concerns and stay here.
+   */
   const handleMainInputSubmit = useCallback<ChatUserInputProps['onSubmit']>(
     (content) => {
-      const late = getLate()
       if (
         editorStateToPlainText(content).trim() === '' &&
         inputMessageRef.current.mentionables.length === 0 &&
@@ -947,240 +1136,108 @@ export function useChatInputController({
         return
       }
 
-      if (activeRuntimeId !== 'yolo') {
-        const runtimeId = activeRuntimeId
-        const controller = late.cliConversationController
-        const coordinator = late.cliOperationCoordinator
-        const scope = late.cliRuntimeScope
-        if (
-          !controller ||
-          !coordinator ||
-          !scope ||
-          isCliConversationActive(controller.getSnapshot())
-        ) {
-          return
+      const late = getLate()
+      const message = buildInputMessageForSubmit(content)
+      const assistant =
+        settings.assistants.find(
+          (candidate) =>
+            candidate.id ===
+            preferencesController.getSnapshot().conversationAssistantId,
+        ) ?? null
+
+      const finishSubmitUi = (submittedMessage: ChatUserMessage) => {
+        late.commitSentSelectionHighlights(submittedMessage.mentionables)
+        if (queuedMessageEditState) {
+          preferencesController.setReasoningLevel(
+            queuedMessageEditState.preservedReasoningLevel,
+          )
+          preferencesController.conversationReasoningLevelRef.current.set(
+            currentConversationId,
+            queuedMessageEditState.preservedReasoningLevel,
+          )
+          replaceInputMessage(queuedMessageEditState.preservedInputMessage)
+          setQueuedMessageEditState(null)
+        } else {
+          replaceInputMessage(
+            buildNewInputMessage(
+              preferencesController.getSnapshot().reasoningLevel,
+            ),
+          )
         }
-
-        const draftRevision = inputDraftRevisionRef.current
-        const messageForSubmit = buildInputMessageForSubmit(content)
-        const submission = coordinator.beginSubmission(draftRevision)
-        if (!submission) return
-
-        void (async () => {
-          try {
-            const environmentContext = await buildCliEnvironmentContext({
-              app: late.app,
-              settings: late.settings,
-              currentFile: late.activeFile,
-              currentFileViewState: late.activeViewState,
-            })
-            const result = await submitCliComposerTurn({
-              settings: late.settings,
-              scope,
-              controller,
-              runtimeId,
-              userMessage: messageForSubmit,
-              environmentContext,
-              permissionProfile: {
-                mode: late.cliChatMode,
-                yoloEnabled:
-                  late.cliChatMode === 'plan' ? false : late.cliYoloEnabled,
-              },
-              signal: submission.signal,
-              onSendStarted: () => coordinator.markSending(submission.token),
-              onPresented: (presentedMessage) => {
-                coordinator.markPresented(submission.token, presentedMessage)
-              },
-              onAccepted: (acceptedMessage) => {
-                if (
-                  coordinator.markAccepted(submission.token, acceptedMessage) &&
-                  late.chatMountedRef.current
-                ) {
-                  const acceptedDraft = coordinator.getSnapshot().acceptedDraft
-                  if (acceptedDraft) late.consumeAcceptedCliDraft(acceptedDraft)
-                }
-              },
-            })
-            const historyConversationId = late.cliConversationId ?? uuidv4()
-            await late.createOrTouchCliConversation(
-              historyConversationId,
-              {
-                runtimeId: result.sessionRef.runtimeId,
-                nativeSessionId: result.sessionRef.nativeSessionId,
-                ...(result.sessionRef.sessionPathHint
-                  ? { sessionPathHint: result.sessionRef.sessionPathHint }
-                  : {}),
-              },
-              late.conversationOverrides,
-            )
-            if (
-              late.cliConversationId === null &&
-              late.chatMountedRef.current
-            ) {
-              late.setCliConversationId(historyConversationId)
-            }
-            void late
-              .generateConversationTitle(historyConversationId, [
-                result.userMessage,
-              ])
-              .then((title) => {
-                if (title) {
-                  late.syncCliConversationTitle(historyConversationId, title)
-                }
-              })
-            if (late.chatMountedRef.current) {
-              if (result.overlayError) {
-                console.warn('[YOLO] Failed to save CLI display metadata', {
-                  conversationId: historyConversationId,
-                  error: result.overlayError.message,
-                })
-              }
-            }
-          } catch (error) {
-            if (error instanceof DOMException && error.name === 'AbortError') {
-              return
-            }
-            if (late.chatMountedRef.current) {
-              new Notice(
-                late
-                  .t(
-                    'chat.cliSurface.submitError',
-                    'Could not send the CLI message: {message}',
-                  )
-                  .replace(
-                    '{message}',
-                    error instanceof Error ? error.message : String(error),
-                  ),
-              )
-            }
-          } finally {
-            coordinator.finishSubmission(submission.token)
-          }
-        })()
-        return
       }
 
-      // 新用户回合进入对话:在此固定当前时间。同时覆盖随后两条出口
-      // ——入队(running 分支)与普通提交——保证两者用的都是入队/提交
-      // 那一刻的时间,而非 drain 时刻。
-      const messageForSubmit = stampUserMessageTimeContext(
-        buildInputMessageForSubmit(content),
-        resolveAssistantTimeContextEnabled(
-          late.selectedAssistant,
-          late.settings,
+      const result = sessionController.submit({
+        runtimeId: activeRuntimeId,
+        message,
+        assistantTimeContextEnabled: resolveAssistantTimeContextEnabled(
+          assistant,
+          settings,
         ),
-      )
+        currentConversationRunSummary: late.currentConversationRunSummary,
+      })
 
-      // ask_user_question parks the agent in a paused state that may outlive
-      // the run itself. A new message must answer that panel first.
-      if (late.currentConversationRunSummary.isWaitingUserInput) {
-        new Notice(
-          late.t(
-            'chat.queueMessage.blockedAwaitingInput',
-            '请先在对话中回答模型的提问，再发送新消息。',
-          ),
-        )
-        return
-      }
-
-      if (late.currentConversationRunSummary.isWaitingApproval) {
-        new Notice(
-          late.t(
-            'chat.queueMessage.blockedApproval',
-            '请先批准或拒绝待审批工具，再发送新消息。',
-          ),
-        )
-        return
-      }
-
-      // While the live loop is queueable, route the message through
-      // AgentService so it can be injected at the next safe LLM boundary.
-      if (late.currentConversationRunSummary.isQueueable) {
-        const enqueueResult = late.agentService.enqueueUserMessage(
-          late.currentConversationId,
-          messageForSubmit,
-        )
-        if (enqueueResult === 'enqueued') {
-          late.setMessageReasoningMap((prev) => {
-            const next = new Map(prev)
-            next.set(inputMessage.id, late.reasoningLevel)
-            return next
-          })
-          late.commitSentSelectionHighlights(messageForSubmit.mentionables)
-          if (late.queuedMessageEditState) {
-            late.setReasoningLevel(
-              late.queuedMessageEditState.preservedReasoningLevel,
-            )
-            late.conversationReasoningLevelRef.current.set(
-              late.currentConversationId,
-              late.queuedMessageEditState.preservedReasoningLevel,
-            )
-            replaceInputMessage(
-              late.queuedMessageEditState.preservedInputMessage,
-            )
-            late.setQueuedMessageEditState(null)
-          } else {
-            replaceInputMessage(buildNewInputMessage(late.reasoningLevel))
-          }
+      switch (result.kind) {
+        case 'cli_unavailable':
+        case 'cli_busy':
+        case 'cli_submission_blocked':
+          // Mirrors the pre-C2 silent `return` — the composer stays as-is,
+          // no Notice.
           return
-        }
-        if (enqueueResult === 'blocked_awaiting_approval') {
+        case 'cli_submitted':
+          void result.settled.then((outcome) => {
+            if (outcome.kind !== 'error') return
+            new Notice(
+              t(
+                'chat.cliSurface.submitError',
+                'Could not send the CLI message: {message}',
+              ).replace('{message}', outcome.message),
+            )
+          })
+          return
+        case 'blocked_waiting_user_input':
           new Notice(
-            late.t(
+            t(
+              'chat.queueMessage.blockedAwaitingInput',
+              '请先在对话中回答模型的提问，再发送新消息。',
+            ),
+          )
+          return
+        case 'blocked_waiting_approval':
+        case 'blocked_enqueue_awaiting_approval':
+          new Notice(
+            t(
               'chat.queueMessage.blockedApproval',
               '请先批准或拒绝待审批工具，再发送新消息。',
             ),
           )
           return
-        }
-        // 'idle' -> fall through to the normal submit path below.
-      }
-
-      if (late.currentConversationRunSummary.isActive) {
-        new Notice(
-          late.t(
-            'chat.queueMessage.blockedActiveTool',
-            '请等待当前工具调用完成后再发送新消息。',
-          ),
-        )
-        return
-      }
-
-      const nextMessageModelMap = new Map(late.messageModelMap)
-      nextMessageModelMap.set(inputMessage.id, late.conversationModelId)
-      void late.handleUserMessageSubmit({
-        inputChatMessages: [...late.chatMessages, messageForSubmit],
-        requestChatMessages: [...late.displayedChatMessages, messageForSubmit],
-        persistedMessageModelMap: nextMessageModelMap,
-      })
-      late.setMessageModelMap(nextMessageModelMap)
-      late.setMessageReasoningMap((prev) => {
-        const next = new Map(prev)
-        next.set(inputMessage.id, late.reasoningLevel)
-        return next
-      })
-      late.commitSentSelectionHighlights(messageForSubmit.mentionables)
-      if (late.queuedMessageEditState) {
-        late.setReasoningLevel(
-          late.queuedMessageEditState.preservedReasoningLevel,
-        )
-        late.conversationReasoningLevelRef.current.set(
-          late.currentConversationId,
-          late.queuedMessageEditState.preservedReasoningLevel,
-        )
-        replaceInputMessage(late.queuedMessageEditState.preservedInputMessage)
-        late.setQueuedMessageEditState(null)
-      } else {
-        replaceInputMessage(buildNewInputMessage(late.reasoningLevel))
+        case 'blocked_active_tool':
+          new Notice(
+            t(
+              'chat.queueMessage.blockedActiveTool',
+              '请等待当前工具调用完成后再发送新消息。',
+            ),
+          )
+          return
+        case 'enqueued':
+        case 'submitted':
+          finishSubmitUi(result.message)
+          return
       }
     },
     [
       activeRuntimeId,
       buildInputMessageForSubmit,
       buildNewInputMessage,
+      currentConversationId,
       getLate,
-      inputMessage.id,
+      preferencesController,
+      queuedMessageEditState,
       replaceInputMessage,
+      sessionController,
+      setQueuedMessageEditState,
+      settings,
+      t,
     ],
   )
 
@@ -1259,14 +1316,15 @@ export function useChatInputController({
     NonNullable<ChatUserInputProps['onModelChange']>
   >(
     (id) => {
-      const late = getLate()
-      const conversationId = late.currentConversationId
-      late.setConversationModelId(id)
-      late.conversationModelIdRef.current.set(conversationId, id)
-      const nextReasoningLevel = late.getReasoningLevelForModelId(id)
-      late.setReasoningLevel(nextReasoningLevel)
-      late.conversationReasoningLevelRef.current.set(
-        conversationId,
+      preferencesController.setConversationModelId(id)
+      preferencesController.conversationModelIdRef.current.set(
+        currentConversationId,
+        id,
+      )
+      const nextReasoningLevel = getReasoningLevelForModelId(id)
+      preferencesController.setReasoningLevel(nextReasoningLevel)
+      preferencesController.conversationReasoningLevelRef.current.set(
+        currentConversationId,
         nextReasoningLevel,
       )
       setInputMessage((prev) => ({
@@ -1274,25 +1332,36 @@ export function useChatInputController({
         reasoningLevel: nextReasoningLevel,
       }))
     },
-    [getLate, setInputMessage],
+    [
+      currentConversationId,
+      getReasoningLevelForModelId,
+      preferencesController,
+      setInputMessage,
+    ],
   )
 
   const handleMainInputReasoningChange = useCallback<
     NonNullable<ChatUserInputProps['onReasoningChange']>
   >(
     (level) => {
-      const late = getLate()
-      const conversationId = late.currentConversationId
-      const modelId = late.conversationModelId
-      late.setReasoningLevel(level)
-      late.conversationReasoningLevelRef.current.set(conversationId, level)
-      void late.persistReasoningLevelForModel(modelId, level)
+      const modelId = preferencesController.getSnapshot().conversationModelId
+      preferencesController.setReasoningLevel(level)
+      preferencesController.conversationReasoningLevelRef.current.set(
+        currentConversationId,
+        level,
+      )
+      void persistReasoningLevelForModel(modelId, level)
       setInputMessage((prev) => ({
         ...prev,
         reasoningLevel: level,
       }))
     },
-    [getLate, setInputMessage],
+    [
+      currentConversationId,
+      persistReasoningLevelForModel,
+      preferencesController,
+      setInputMessage,
+    ],
   )
 
   const handleMainInputRunSlashCommand = useCallback<
@@ -1303,7 +1372,7 @@ export function useChatInputController({
       if (command.id === 'open-plugin-manager') {
         // 打开弹窗是纯 UI 导航，不改变会话状态，因此不经
         // cliOperationCoordinator.transition。
-        const modal = new ClaudePluginManagerModal(late.app, plugin, {
+        const modal = new ClaudePluginManagerModal(app, plugin, {
           controller: late.cliConversationController,
           isActive: () => activeRuntimeIdRef.current === 'claude-code',
           refreshCliSkills: late.refreshCliSkills,
@@ -1312,11 +1381,14 @@ export function useChatInputController({
         return
       }
       if (command.id === 'open-mcp-servers') {
-        if (activeRuntimeId !== 'claude-code' && activeRuntimeId !== 'codex') {
+        if (
+          !isCliRuntime(activeRuntimeId) ||
+          !RUNTIME_CAPABILITIES[activeRuntimeId].hasNativeMcpPanel
+        ) {
           return
         }
         const runtimeIdAtOpen = activeRuntimeId
-        const modal = new McpServerStatusModal(late.app, plugin, {
+        const modal = new McpServerStatusModal(app, plugin, {
           runtimeId: runtimeIdAtOpen,
           controller: late.cliConversationController,
           isActive: () => activeRuntimeIdRef.current === runtimeIdAtOpen,
@@ -1325,30 +1397,69 @@ export function useChatInputController({
         return
       }
       if (command.id !== 'compact-context') return
+      if (!RUNTIME_CAPABILITIES[activeRuntimeId].supportsContextCompaction) {
+        return
+      }
       if (
         activeRuntimeId === 'yolo' ||
         !late.cliConversationController ||
         !late.cliOperationCoordinator ||
         !late.cliRuntimeScope
       ) {
-        void late.handleManualContextCompaction()
+        void sessionController
+          .compactContext({
+            currentConversationRunSummary: late.currentConversationRunSummary,
+          })
+          .then((result) => {
+            switch (result.kind) {
+              case 'blocked_waiting_approval':
+                new Notice(
+                  t(
+                    'chat.compaction.waitingApproval',
+                    '请先处理当前待确认的工具调用，再压缩上下文。',
+                  ),
+                )
+                return
+              case 'blocked_active':
+                new Notice(
+                  t(
+                    'chat.compaction.runActive',
+                    '请等待当前回复完成后再压缩上下文。',
+                  ),
+                )
+                return
+              case 'empty':
+                new Notice(
+                  t('chat.compaction.empty', '当前还没有可压缩的对话内容。'),
+                )
+                return
+              case 'compacted':
+                new Notice(
+                  t(
+                    'chat.compaction.success',
+                    '已压缩较早上下文，后续回复将基于摘要继续。',
+                  ),
+                )
+                return
+              case 'failed':
+                new Notice(
+                  t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'),
+                )
+                return
+            }
+          })
         return
       }
       if (
         isCliConversationActive(late.cliConversationController.getSnapshot())
       ) {
         new Notice(
-          late.t(
-            'chat.compaction.runActive',
-            '请等待当前回复完成后再压缩上下文。',
-          ),
+          t('chat.compaction.runActive', '请等待当前回复完成后再压缩上下文。'),
         )
         return
       }
       if (late.cliConversationController.getSnapshot().messages.length === 0) {
-        new Notice(
-          late.t('chat.compaction.empty', '当前还没有可压缩的对话内容。'),
-        )
+        new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
         return
       }
       const controller = late.cliConversationController
@@ -1372,40 +1483,32 @@ export function useChatInputController({
         })
         .catch((error) => {
           new Notice(
-            late.t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'),
+            t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'),
           )
           console.error('Failed to compact native CLI context', error)
         })
     },
-    [activeRuntimeId, getLate, plugin],
+    [activeRuntimeId, app, getLate, plugin, sessionController, t],
   )
 
   const handleMainInputAbort = useCallback(() => {
-    const late = getLate()
-    if (
-      activeRuntimeId !== 'yolo' &&
-      late.cliConversationController &&
-      late.cliOperationCoordinator
-    ) {
-      void late.cliOperationCoordinator
-        .cancelCurrentOperation(late.cliConversationController)
-        .catch((error) => {
-          new Notice(
-            late
-              .t(
-                'chat.cliSurface.cancelError',
-                'Could not stop the CLI run: {message}',
-              )
-              .replace(
-                '{message}',
-                error instanceof Error ? error.message : String(error),
-              ),
-          )
-        })
-      return
+    const result = sessionController.abortRun({ runtimeId: activeRuntimeId })
+    if (result.kind === 'cli_cancelling') {
+      void result.settled.then((outcome) => {
+        if (outcome.ok) return
+        new Notice(
+          t(
+            'chat.cliSurface.cancelError',
+            'Could not stop the CLI run: {message}',
+          ).replace('{message}', outcome.message),
+        )
+      })
     }
-    late.abortConversationRun(late.currentConversationId)
-  }, [activeRuntimeId, getLate])
+    // 'yolo_aborted' / 'cli_unavailable' need no further UI reaction —
+    // mirrors the pre-C2 behavior exactly (the yolo path never showed a
+    // Notice, and `cli_unavailable` mirrors the old `if (controller &&
+    // coordinator)` guard falling through silently).
+  }, [activeRuntimeId, sessionController, t])
 
   // === ChatRef 委托的 selection/input 便捷方法 ===
   const addSelectionToChat = useCallback(
@@ -1685,6 +1788,8 @@ export function useChatInputController({
     addMentionableToFocusedMessage,
     handleQuoteAssistantSelection,
     handleDeleteAssistantQuote,
+    handleQuotePdfSelection,
+    updatePdfQuoteMention,
 
     buildSelectionMentionable,
     removeSelectionMentionable,

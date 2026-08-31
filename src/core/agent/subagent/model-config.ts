@@ -1,7 +1,10 @@
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { ChatModel } from '../../../types/chat-model.types'
 
-const DELEGATE_SUBAGENT_TOOL_SHORT_NAME = 'delegate_subagent'
+// Capability id as of the `80_to_81` settings migration (D9,
+// docs/plans/2026-08-15-tool-registry/phase2-migration.md D9) — was the
+// short tool name `delegate_subagent` before that migration landed.
+const SUBAGENT_DELEGATION_CAPABILITY_ID = 'subagent_delegation'
 
 export type ResolvedSubagentModelConfig = {
   allowedModelIds: string[]
@@ -18,7 +21,7 @@ export function resolveSubagentModelConfig(
   const registeredModels = getRegisteredChatModels(settings)
   const registeredIds = new Set(registeredModels.map((model) => model.id))
   const options =
-    settings.mcp.builtinToolOptions[DELEGATE_SUBAGENT_TOOL_SHORT_NAME]
+    settings.mcp.builtinCapabilityOptions[SUBAGENT_DELEGATION_CAPABILITY_ID]
   const savedAllowedIds = options?.allowedModelIds
   const allowedModelIds = Array.isArray(savedAllowedIds)
     ? savedAllowedIds.filter((modelId, index, list) => {
@@ -47,7 +50,7 @@ export function normalizeSubagentModelOptions(
 ): YoloSettings {
   const resolved = resolveSubagentModelConfig(settings)
   const current =
-    settings.mcp.builtinToolOptions[DELEGATE_SUBAGENT_TOOL_SHORT_NAME]
+    settings.mcp.builtinCapabilityOptions[SUBAGENT_DELEGATION_CAPABILITY_ID]
 
   if (
     current?.allowedModelIds &&
@@ -61,9 +64,9 @@ export function normalizeSubagentModelOptions(
     ...settings,
     mcp: {
       ...settings.mcp,
-      builtinToolOptions: {
-        ...settings.mcp.builtinToolOptions,
-        [DELEGATE_SUBAGENT_TOOL_SHORT_NAME]: {
+      builtinCapabilityOptions: {
+        ...settings.mcp.builtinCapabilityOptions,
+        [SUBAGENT_DELEGATION_CAPABILITY_ID]: {
           ...current,
           allowedModelIds: resolved.allowedModelIds,
           preferredModelId: resolved.preferredModelId,

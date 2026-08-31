@@ -32,9 +32,11 @@ type ExecFileCallback = (
 
 const processSupport: ClaudeProcessSupport = {
   cliPath: '/usr/local/bin/claude',
+  nodePath: null,
   env: { PATH: '/usr/local/bin' },
   createAbortController: () => new AbortController(),
-  spawnClaudeCodeProcess: jest.fn() as unknown as ClaudeProcessSupport['spawnClaudeCodeProcess'],
+  spawnClaudeCodeProcess:
+    jest.fn() as unknown as ClaudeProcessSupport['spawnClaudeCodeProcess'],
 }
 
 const mockExecOnce = (
@@ -44,16 +46,14 @@ const mockExecOnce = (
   ) => { stdout?: string; stderr?: string; error?: unknown },
 ): void => {
   mockedExecFile.mockImplementationOnce(
-    (
-      file: unknown,
-      args: unknown,
-      _options: unknown,
-      callback: unknown,
-    ) => {
+    (file: unknown, args: unknown, _options: unknown, callback: unknown) => {
       const result = handler(file as string, args as readonly string[])
       const cb = callback as ExecFileCallback
       if (result.error) {
-        cb(result.error, { stdout: result.stdout ?? '', stderr: result.stderr ?? '' })
+        cb(result.error, {
+          stdout: result.stdout ?? '',
+          stderr: result.stderr ?? '',
+        })
       } else {
         cb(null, { stdout: result.stdout ?? '', stderr: result.stderr ?? '' })
       }

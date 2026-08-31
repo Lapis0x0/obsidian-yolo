@@ -35,6 +35,39 @@ export function setRuntimeComponentAcquirerForTests(
   testAcquirer = acquirer
 }
 
+let testAssetReader:
+  | ((id: RuntimeComponentId, name: string) => Promise<Uint8Array>)
+  | null = null
+
+/**
+ * Reads one declared asset's bytes for a component (installing it first if
+ * needed), for host adapter code to inject into a component's
+ * `createSession`-style options. Only the `name`s a component's registry
+ * descriptor actually declares can be read — see
+ * `RuntimeComponentService.readAsset`.
+ */
+export function readRuntimeComponentAsset(
+  id: RuntimeComponentId,
+  name: string,
+): Promise<Uint8Array> {
+  if (testAssetReader) return testAssetReader(id, name)
+  if (!service) {
+    throw new Error(`Runtime component "${id}" is unavailable`)
+  }
+  return service.readAsset(id, name)
+}
+
+export function setRuntimeComponentAssetReaderForTests(
+  reader:
+    | ((id: RuntimeComponentId, name: string) => Promise<Uint8Array>)
+    | null,
+): void {
+  if (process.env.NODE_ENV !== 'test') {
+    throw new Error('Runtime component asset reader overrides are test-only')
+  }
+  testAssetReader = reader
+}
+
 let testEnabledOverride: ((id: RuntimeComponentId) => boolean) | null = null
 
 /**

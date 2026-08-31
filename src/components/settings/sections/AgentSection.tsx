@@ -7,20 +7,8 @@ import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getAssistantModelDisplayLabel } from '../../../core/agent/assistant-model'
-import {
-  FILE_EDIT_GROUP_TOOL_NAME,
-  MEMORY_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
-  getBuiltinToolUiMeta,
-} from '../../../core/agent/builtinToolUiMeta'
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
-import {
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-  getLocalFileTools,
-} from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
 import { humanizeSkillName } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
@@ -40,17 +28,12 @@ import { AgentAutoContextCompactionSection } from './AgentAutoContextCompactionS
 import { AgentCliPathSection } from './AgentCliPathSection'
 import { AgentImageReadingSection } from './AgentImageReadingSection'
 import { AgentMcpServerSection } from './AgentMcpServerSection'
+import { buildBuiltinCapabilityRows } from './builtinCapabilityRows'
 import { NotificationSettingsSection } from './NotificationSettingsSection'
 
 type AgentSectionProps = {
   app: App
 }
-
-const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-)
-const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
 
 export function AgentSection({ app }: AgentSectionProps) {
   const { settings, setSettings } = useSettings()
@@ -218,81 +201,14 @@ export function AgentSection({ app }: AgentSectionProps) {
   )
 
   const builtinTools = useMemo(() => {
-    const toolOptions = settings.mcp.builtinToolOptions
-    const tools = getLocalFileTools()
-      .filter(
-        (tool) =>
-          !EDIT_FS_TOOL_NAME_SET.has(tool.name) &&
-          !SPLIT_MEMORY_TOOL_NAME_SET.has(tool.name) &&
-          !SPLIT_WEB_TOOL_NAME_SET.has(tool.name),
-      )
-      .map((tool) => {
-        const meta = getBuiltinToolUiMeta(tool.name)
-        return {
-          id: tool.name,
-          label: meta ? t(meta.labelKey, meta.labelFallback) : tool.name,
-          enabled: !(toolOptions[tool.name]?.disabled ?? false),
-        }
-      })
-
-    const editSplitToolEnabled = LOCAL_FS_EDIT_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[FILE_EDIT_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
-    if (!fileEditMeta) {
-      throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
-    }
-    const fileEditTool = {
-      id: FILE_EDIT_GROUP_TOOL_NAME,
-      label: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
-      enabled: editSplitToolEnabled,
-    }
-
-    const memorySplitToolEnabled = LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[MEMORY_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
-    if (!memoryOpsMeta) {
-      throw new Error('Missing built-in tool UI metadata for memory_ops')
-    }
-    const memoryOpsTool = {
-      id: MEMORY_OPS_GROUP_TOOL_NAME,
-      label: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
-      enabled: memorySplitToolEnabled,
-    }
-
-    const webSplitToolEnabled = WEB_OPS_SPLIT_ACTION_TOOL_NAMES.every(
-      (toolName) =>
-        !(toolOptions[toolName]?.disabled ?? false) &&
-        !(toolOptions[WEB_OPS_GROUP_TOOL_NAME]?.disabled ?? false),
-    )
-    const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
-    if (!webOpsMeta) {
-      throw new Error('Missing built-in tool UI metadata for web_ops')
-    }
-    const webOpsTool = {
-      id: WEB_OPS_GROUP_TOOL_NAME,
-      label: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
-      enabled: webSplitToolEnabled,
-    }
-
-    const fsReadIndex = tools.findIndex((tool) => tool.id === 'fs_read')
-    if (fsReadIndex >= 0) {
-      tools.splice(fsReadIndex, 0, fileEditTool)
-      tools.splice(fsReadIndex + 1, 0, memoryOpsTool)
-      tools.splice(fsReadIndex + 2, 0, webOpsTool)
-    } else {
-      tools.push(fileEditTool)
-      tools.push(memoryOpsTool)
-      tools.push(webOpsTool)
-    }
-
-    return tools
-  }, [settings.mcp.builtinToolOptions, t])
+    // Lists every registered capability unconditionally, for the same reason
+    // as `AgentToolsModal.tsx`'s `builtinToolGroups` — see that useMemo. This
+    // flat overview and the modal it launches must stay in visible sync.
+    return buildBuiltinCapabilityRows({
+      toolOptions: settings.mcp.builtinCapabilityOptions,
+      t,
+    }).map((row) => ({ id: row.id, label: row.label, enabled: row.enabled }))
+  }, [settings.mcp.builtinCapabilityOptions, t])
 
   const allSkillEntries = useLiteSkillEntries(app, { settings })
   const disabledSkillIds = settings.skills?.disabledSkillIds ?? []

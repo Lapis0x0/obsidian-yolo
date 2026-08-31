@@ -41,6 +41,14 @@ type SelectionActionsMenuProps = {
   onHoverChange: (isHovering: boolean) => void
   /** PDF selections cannot be rewritten — pass 'pdf' to hide rewrite actions. */
   source?: 'markdown' | 'pdf'
+  /**
+   * PDF-only "引用" entry, prepended above every other action. Deliberately
+   * NOT part of `selectionChatActionCatalog`: that catalog also drives the
+   * registered Obsidian commands, and this action is meaningless outside a
+   * PDF view — putting it there would surface a command that silently does
+   * nothing in markdown. See docs/plans/2026-08-16-pdf-annotation-quotes.md.
+   */
+  onQuoteAction?: () => void
 }
 
 export function SelectionActionsMenu({
@@ -51,6 +59,7 @@ export function SelectionActionsMenu({
   onAction,
   onHoverChange,
   source = 'markdown',
+  onQuoteAction,
 }: SelectionActionsMenuProps) {
   const isMobile = !Platform.isDesktop
   const { t } = useLanguage()
@@ -69,7 +78,7 @@ export function SelectionActionsMenu({
         ? resolved.filter((action) => action.mode !== 'rewrite')
         : resolved
 
-    return displayActions.map((action) => ({
+    const mapped: SelectionAction[] = displayActions.map((action) => ({
       id: action.id,
       label: action.label,
       instruction: action.instruction,
@@ -85,7 +94,20 @@ export function SelectionActionsMenu({
           action.assistantId,
         ),
     }))
-  }, [settings, t, source, onAction])
+
+    if (source !== 'pdf' || !onQuoteAction) return mapped
+
+    return [
+      {
+        id: 'pdf-quote',
+        label: t('chat.assistantQuote.add', '引用'),
+        instruction: '',
+        mode: 'chat-input' as SelectionActionMode,
+        handler: onQuoteAction,
+      },
+      ...mapped,
+    ]
+  }, [settings, t, source, onAction, onQuoteAction])
 
   const getMenuSize = useCallback(() => {
     const measuredWidth = menuRef.current?.offsetWidth ?? 0

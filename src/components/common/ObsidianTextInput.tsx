@@ -9,7 +9,7 @@ type ObsidianTextInputProps = {
   onChange: (value: string) => void
   onBlur?: (value: string) => void
   onFocus?: () => void
-  type?: 'text' | 'number'
+  type?: 'text' | 'number' | 'password'
   inputMode?: InputHTMLAttributes<HTMLInputElement>['inputMode']
   min?: InputHTMLAttributes<HTMLInputElement>['min']
   max?: InputHTMLAttributes<HTMLInputElement>['max']

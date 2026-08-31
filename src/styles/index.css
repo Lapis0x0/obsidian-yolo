@@ -6,6 +6,7 @@
 @import './settings/provider-picker.css';
 @import './settings/mcp.css';
 @import './settings/rag.css';
+@import './settings/scope.css';
 @import './settings/assistants.css';
 @import './settings/tabs.css';
 @import './settings/agent.css';
@@ -20,6 +21,7 @@
 @import './action-toast.css';
 @import './acknowledgement-modal.css';
 @import './yolo-icon.css';
+@import './chat/view-header-title.css';
 @import './chat/input.css';
 @import './chat/message.css';
 @import './chat/popover.css';
@@ -31,8 +33,9 @@
 @import './chat/cli-chat-surface.css';
 @import './chat/runtime-badge.css';
 
-@import './panels/smart-space.css';
+@import './panels/continuation.css';
 @import './panels/quick-ask.css';
+@import './panels/sparkle.css';
 
 @import './selection/selection-chat.css';
 @import './selection/selection-rewrite.css';

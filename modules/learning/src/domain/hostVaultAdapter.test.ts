@@ -130,7 +130,7 @@ describe('hostVaultAdapter', () => {
     const host = createHostVault()
     const api = createHostLearningVaultWriteApi(host.vault)
     const snapshot = await api.readTextSnapshot('p/cards.md')
-    expect(snapshot?.identity).toBe(host.initial)
+    expect(snapshot?.content).toBe(host.initial.content)
 
     const changed = snapshot
       ? await api.replaceTextIfUnchanged(snapshot, 'after')
@@ -144,7 +144,6 @@ describe('hostVaultAdapter', () => {
     const forged: LearningVaultFileSnapshot = {
       path: host.initial.path,
       content: host.initial.content,
-      identity: host.initial,
     }
     await expect(api.replaceTextIfUnchanged(forged, 'bad')).resolves.toBeNull()
   })

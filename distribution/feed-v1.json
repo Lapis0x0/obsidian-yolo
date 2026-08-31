@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 15,
+  "revision": 27,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.5",
+    "version": "1.6.7",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.5",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.7",
     "releaseNotes": {
-      "en": "## 1.6.5 Agent Tools, Cross-Device Sync & Chat Polish ✨\n\n### 🛠️ Agent Capabilities\n\n- New virtual Bash tool unifies file search and operations in a sandboxed shell over your vault.\n- Oversized virtual bash output is now auto-truncated with guidance to narrow the query, preventing large directory listings from flooding context. (#555)\n- The agent can read `[[wikilink]]` targets directly, resolving down to `#heading` / `^block` ranges. (#555)\n- The `js_eval` tool is renamed to Analysis Sandbox to better reflect its purpose.\n- Added support for DeepSeek's native web search tool.\n\n### 💬 Chat Experience\n\n- Reworked streaming rendering and scroll performance, with a unified motion system and polished high-frequency interaction animations.\n- Multiple consecutive tool cards now auto-collapse for a cleaner agent conversation view.\n- Fixed the view unexpectedly scrolling to the bottom when expanding reasoning content.\n\n### ⚡ Quick Ask & CLI\n\n- Quick Ask and YOLO Agent now share unified core runtime semantics; Smart Space is retired, with its continuation feature merged into Quick Ask's third mode. (#529)\n- The CLI mode menu adds native actions for Claude plugin management and MCP server status. (#535)\n- More robust CLI executable discovery, with support for custom CLI paths.\n\n### 🔄 Data Sync & Fixes\n\n- Chat history, learning data, and module settings moved to a visible `data/` directory inside your vault, so sync tools like Obsidian Sync can replicate them across devices. In Obsidian Sync, enable \"Sync all other types\" to include them.\n- Fixed Learning project creation failing on Windows with Obsidian 1.13.4 due to `_staging` temp directory cleanup errors, which could leave empty folders behind. (#556)",
-      "zh": "## 1.6.5 Agent 工具、跨设备同步与对话体验 ✨\n\n### 🛠️ Agent 能力\n\n- 新增虚拟 Bash 工具，在 vault 沙箱 shell 中统一文件检索与操作能力。\n- 虚拟 bash 超大输出自动截断并引导收窄查询，防止大目录列出灌爆上下文。（#555）\n- Agent 支持直接读取 `[[wikilink]]` 目标，可精确定位到 `#标题` / `^块` 范围。（#555）\n- `js_eval` 工具更名为「分析沙箱」，更符合产品定位。\n- 适配支持 DeepSeek 官方原生搜索工具。\n\n### 💬 对话体验\n\n- 重构流式渲染与滚动性能，统一动效体系并补齐高频交互动画。\n- 连续多个工具卡片自动折叠，Agent 对话视觉更清爽。\n- 修复展开思维链内容时视图意外滚动到底部的问题。\n\n### ⚡ Quick Ask 与 CLI\n\n- 统一 Quick Ask 与 YOLO Agent 的核心运行语义；Smart Space 退役，续写能力并入 Quick Ask 第三档模式。（#529）\n- CLI 模式菜单新增 Claude 插件管理与 MCP 服务器状态原生动作。（#535）\n- 增强 CLI 定位鲁棒性，支持自定义 CLI 路径。\n\n### 🔄 数据同步与修复\n\n- 聊天记录、学习数据与模块配置迁至 vault 内可见的 `data/` 目录，Obsidian Sync 等同步工具可跨设备同步；Obsidian Sync 需开启「同步所有其他类型文件」。\n- 修复 Windows + Obsidian 1.13.4 下 Learning 清理 `_staging` 临时目录报错导致项目创建失败并残留空目录的问题。（#556）"
+      "en": "## 1.6.7 Similar Notes & CLI Polish 🔗\n\n- Added Similar Notes to the Sparkle sidebar, surfacing related notes for whatever you are writing.\n- Improved the approval flow for CLI agents, so a decision registers immediately.\n- Hermes and pi now show the context window ring, and fill in the token / duration bar under a reply.\n- Fixed Hermes and pi replies staying stuck in the generating state after they finished, which made them impossible to select or quote.\n- Fixed pi replies losing their line breaks.\n- Updates and runtime components now download from Cloudflare R2.",
+      "zh": "## 1.6.7 相似笔记与 CLI 体验打磨 🔗\n\n- 灵光写作侧边栏新增「相似笔记」，基于当前笔记推荐关联内容。\n- 优化 CLI 智能体的审批交互，审批结果即时生效。\n- Hermes 与 pi 接入上下文窗口占用环，并补齐回复底部的 token / 耗时信息栏。\n- 修复 Hermes / pi 回答结束后仍被判定为生成中，导致无法选中或引用回复的问题。\n- 修复 pi 回复换行被错误移除的问题。\n- 更新与运行组件的下载改由 Cloudflare R2 分发。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.5/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5/main.js",
-        "byteSize": 9146419,
-        "sha256": "2e66a161f33c7b8c30d04da160f0e51f003dc96e8444c3f02a475da1b5391a25"
+        "mirrorPath": "core/1.6.7/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.7/main.js",
+        "byteSize": 9455947,
+        "sha256": "17aba9cc5e7bde10a55bfc33fc9d36d7f189ec701f4b52807490c81e9ad56f00"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.5/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5/manifest.json",
-        "byteSize": 328,
-        "sha256": "5fc0367aa21faa1a215fd0a7d308294aa02e0863f118b8a6f840abaaea3d4fb2"
+        "mirrorPath": "core/1.6.7/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.7/manifest.json",
+        "byteSize": 411,
+        "sha256": "0b5e8b5a49aa6e4312d4595c5cdc03cdd97fe7bac28cb05bf4f852848ce7a74b"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.5/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.5/styles.css",
-        "byteSize": 599683,
-        "sha256": "6e443a7cecdca0611bd927072ddcedd71461d607eb230a91a87a77f3d5f4d9e0"
+        "mirrorPath": "core/1.6.7/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.7/styles.css",
+        "byteSize": 667804,
+        "sha256": "31e6b524ad41961883d815ce826cf8813637093e6a6c32c4f17d9d6a61ce1b4d"
       }
     }
   },

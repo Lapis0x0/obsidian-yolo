@@ -298,5 +298,9 @@ export async function testEmbeddingModelHealth(
     if (onExternalAbort) {
       opts.signal.removeEventListener('abort', onExternalAbort)
     }
+    // This client is scoped to a single probe call — for `yolo-local` it
+    // holds a runtime-component lease that must be released here rather
+    // than left to the 10-minute idle timeout.
+    await client.dispose?.()
   }
 }

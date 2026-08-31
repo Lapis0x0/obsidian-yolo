@@ -124,6 +124,9 @@ function mentionablesToMarkdownLines(
       case 'folder':
         lines.push(`Folder: \`${m.folder}\``)
         break
+      case 'local-folder':
+        lines.push(`Local folder: \`${m.path}\``)
+        break
       case 'block':
         lines.push(`Block in \`${m.file}\` (lines ${m.startLine}–${m.endLine})`)
         break

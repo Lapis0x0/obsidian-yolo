@@ -8,9 +8,20 @@ export const YOLO_TRANSCRIPTIONS_SUBDIR = 'transcriptions'
 export const YOLO_READ_ALOUD_SUBDIR = 'read_aloud'
 export const YOLO_LOGS_SUBDIR = 'logs'
 export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
-export const YOLO_VECTOR_DB_FILE_NAME = '.yolo_vector_db.tar.gz'
+// Cleanup-only: the retired PGlite-backed vector store used to snapshot here.
+// The only remaining reader of this name is `DatabaseManager`'s legacy-artifact
+// sweep (`cleanupLegacyVectorDbArtifacts`) — nothing writes it anymore, so
+// don't reuse it as if it were a live storage path.
+export const LEGACY_YOLO_VECTOR_DB_ARCHIVE_FILE_NAME = '.yolo_vector_db.tar.gz'
 export const YOLO_DATA_JSON_FILE_NAME = '.yolo_data.json'
 export const YOLO_LEARNING_SUBDIR = 'learning'
+// Host-owned projection root for artifacts a module ships and the rest of the
+// app must reach through ordinary Vault paths (currently: skill packages, see
+// `moduleSkillMaterializer.ts`). Deliberately visible/indexed — a dot-prefixed
+// directory would be invisible to Obsidian's file index and therefore to the
+// agent's read tools, which is the whole reason the projection exists.
+export const YOLO_MODULES_SUBDIR = 'modules'
+export const YOLO_MODULE_SKILLS_SUBDIR = 'skills'
 export const YOLO_LEARNING_SRS_DIR_NAME = 'learning-srs'
 export const YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME = 'anki-import-journals'
 // Visible root for user data that must survive vault sync (Obsidian Sync,
@@ -30,7 +41,7 @@ export const YOLO_SYNC_POINTER_FILE_NAME = '.yolo_sync'
 export const LEGACY_JSON_DB_DIR_NAME = '.smtcmp_json_db'
 export const LEGACY_VECTOR_DB_FILE_NAME = '.smtcmp_vector_db.tar.gz'
 
-type YoloSettingsLike = {
+export type YoloSettingsLike = {
   yolo?: {
     baseDir?: string
   }
@@ -62,6 +73,25 @@ export const normalizeVaultRelativeDir = (
 
 export const getYoloBaseDir = (settings?: YoloSettingsLike | null): string => {
   return normalizeVaultRelativeDir(settings?.yolo?.baseDir)
+}
+
+/**
+ * True when `path` is the YOLO base directory itself or nested inside it.
+ * Every knowledge base excludes this directory unconditionally, regardless
+ * of its own include/exclude rules — it's an always-on rule, not a per-base
+ * toggle. Callers that compute "what would a sync touch" or "how many files
+ * does this scope match" outside the actual index write path (pending-change
+ * counts, the scope-estimate UI, auto-update dirty tracking) must apply this
+ * too, or they'll report/act on files the real indexer would never write —
+ * see `VectorManager.listIndexableFiles`, the one place this exclusion was
+ * previously applied.
+ */
+export const isWithinYoloBaseDir = (
+  path: string,
+  settings?: YoloSettingsLike | null,
+): boolean => {
+  const yoloBaseDir = getYoloBaseDir(settings)
+  return path === yoloBaseDir || path.startsWith(`${yoloBaseDir}/`)
 }
 
 /** True when a vault-relative path contains a segment Obsidian will not index. */
@@ -190,6 +220,34 @@ export const getYoloLearningDir = (
   return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_LEARNING_SUBDIR}`)
 }
 
+/** Root of every module's host-owned Vault projection. */
+export const getYoloModulesRootDir = (
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(`${getYoloBaseDir(settings)}/${YOLO_MODULES_SUBDIR}`)
+}
+
+/**
+ * One module's host-owned Vault projection root. `moduleId` must already be a
+ * validated module id (`assertModuleId`); these helpers only assemble paths.
+ */
+export const getYoloModuleDir = (
+  moduleId: string,
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(`${getYoloModulesRootDir(settings)}/${moduleId}`)
+}
+
+/** Where a module's shipped skill packages are projected as real Vault files. */
+export const getYoloModuleSkillsDir = (
+  moduleId: string,
+  settings?: YoloSettingsLike | null,
+): string => {
+  return normalizePath(
+    `${getYoloModuleDir(moduleId, settings)}/${YOLO_MODULE_SKILLS_SUBDIR}`,
+  )
+}
+
 export const getYoloJsonDbRootDir = (
   settings?: YoloSettingsLike | null,
 ): string => {
@@ -212,19 +270,22 @@ export const isWithinYoloUserDataRoot = (
   return normalized === root || normalized.startsWith(`${root}/`)
 }
 
-export const getYoloVectorDbPath = (
+/** Cleanup-only path for the retired PGlite vector store's tarball snapshot; see the file name's own doc comment. */
+export const getLegacyYoloVectorDbArchivePath = (
   settings?: YoloSettingsLike | null,
 ): string => {
   return normalizePath(
-    `${getYoloBaseDir(settings)}/${YOLO_VECTOR_DB_FILE_NAME}`,
+    `${getYoloBaseDir(settings)}/${LEGACY_YOLO_VECTOR_DB_ARCHIVE_FILE_NAME}`,
   )
 }
 
 // The vault-stored `data.json` mirror sits under `yolo.baseDir` for UX
-// consistency with other plugin files (.yolo_json_db, .yolo_vector_db.tar.gz).
-// A sibling pointer file at vault root (`.yolo_sync`) records where this
-// path is, so other devices can locate the mirror without needing the synced
-// `baseDir` value upfront — breaking the bootstrap circular dependency.
+// consistency with other plugin files (`.yolo_json_db`; the vector store
+// itself is IndexedDB-backed and has no vault-file counterpart — see
+// `src/database/vector-store/`). A sibling pointer file at vault root
+// (`.yolo_sync`) records where this path is, so other devices can locate the
+// mirror without needing the synced `baseDir` value upfront — breaking the
+// bootstrap circular dependency.
 export const getYoloDataJsonPath = (
   settings?: YoloSettingsLike | null,
 ): string => {

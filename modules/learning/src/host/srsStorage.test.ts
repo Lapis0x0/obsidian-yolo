@@ -79,9 +79,9 @@ describe('HostLearningSrsStorage', () => {
     baseDir = 'Moved/YOLO'
     expect(storage.getLocationKey()).toBe('Moved/YOLO/data')
     await storage.write('project-a', '{"version":3,"moved":true}')
-    expect(
-      files.get('Moved/YOLO/data/learning-srs/project-a.json'),
-    ).toBe('{"version":3,"moved":true}')
+    expect(files.get('Moved/YOLO/data/learning-srs/project-a.json')).toBe(
+      '{"version":3,"moved":true}',
+    )
   })
 
   it('only accepts pinned paths with the exact managed identity', async () => {
@@ -206,9 +206,7 @@ describe('HostLearningSrsStorage', () => {
     baseDir = 'Moved'
     release()
     await relocation
-    await expect(writing).resolves.toBe(
-      'Moved/data/learning-srs/project.json',
-    )
+    await expect(writing).resolves.toBe('Moved/data/learning-srs/project.json')
     expect(files.has('Old/data/learning-srs/project.json')).toBe(false)
   })
 

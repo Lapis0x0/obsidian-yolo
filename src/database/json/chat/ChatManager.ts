@@ -159,6 +159,19 @@ export class ChatManager extends AbstractJsonRepository<
     }
 
     const nextFileName = this.generateFileName(updatedChat)
+
+    // A write that changes nothing but `updatedAt` still marks both the
+    // conversation file and the index dirty for whatever syncs the vault, so
+    // skip it. `updatedAt` tracks content changes; leaving it untouched when
+    // the content is identical is the correct reading of the field, not a
+    // compromise.
+    if (
+      nextFileName === targetMetadata.fileName &&
+      this.contentSignature(updatedChat) === this.contentSignature(chat)
+    ) {
+      return chat
+    }
+
     const nextPath = normalizePath(path.join(this.dataDir, nextFileName))
     await this.writeFile(nextPath, JSON.stringify(updatedChat, null, 2))
     if (targetMetadata.fileName !== nextFileName) {
@@ -209,6 +222,13 @@ export class ChatManager extends AbstractJsonRepository<
 
     await this.writeIndexIfChanged(cachedList, reconciled)
     return this.sortByUpdatedAt(reconciled)
+  }
+
+  // Key order is stable here because the compared objects are both derived from
+  // the same stored conversation via spread, so a plain stringify is enough.
+  private contentSignature(chat: ChatConversation): string {
+    const { updatedAt: _updatedAt, ...rest } = chat
+    return JSON.stringify(rest)
   }
 
   private async readSafe(fileName: string): Promise<ChatConversation | null> {

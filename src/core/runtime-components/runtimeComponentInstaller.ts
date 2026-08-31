@@ -6,14 +6,21 @@ import {
   RuntimeComponentInstallError,
   isTransientRuntimeComponentError,
 } from './runtimeComponentErrors'
-import type { RuntimeComponentDescriptor } from './runtimeComponentManifest'
+import type {
+  RuntimeComponentAssetDescriptor,
+  RuntimeComponentDescriptor,
+} from './runtimeComponentManifest'
 import { RuntimeComponentStore } from './runtimeComponentStore'
 
 export type RuntimeComponentDownload = (request: {
   descriptor: RuntimeComponentDescriptor
+  /** Present when downloading an asset instead of the component's entry.js. */
+  asset?: RuntimeComponentAssetDescriptor
   source: string
   signal?: AbortSignal
 }) => Promise<Uint8Array>
+
+type ArtifactTarget = Readonly<{ byteSize: number; sha256: string }>
 
 const queues = new WeakMap<object, Map<string, Promise<void>>>()
 let transaction = 0
@@ -25,6 +32,7 @@ export class RuntimeComponentInstaller {
       download: RuntimeComponentDownload
       resolveDownloadSources?: (
         descriptor: RuntimeComponentDescriptor,
+        asset?: RuntimeComponentAssetDescriptor,
       ) => readonly string[]
       subtleCrypto?: Pick<SubtleCrypto, 'digest'>
       reportCleanupError?: (error: unknown) => void
@@ -76,18 +84,7 @@ export class RuntimeComponentInstaller {
     await removeDir(this.options.store.adapter, staging)
     await ensureDir(this.options.store.adapter, staging)
     try {
-      const bytes = await this.downloadVerified(descriptor, subtle, signal)
-      throwIfAborted(signal)
-      await this.options.store.adapter.writeBinary(
-        normalizePath(`${staging}/entry.js`),
-        exactArrayBuffer(bytes),
-      )
-      await verifyPath(
-        this.options.store.adapter,
-        normalizePath(`${staging}/entry.js`),
-        descriptor,
-        subtle,
-      )
+      await this.writeArtifactsToStaging(staging, descriptor, subtle, signal)
       if (
         await this.options.store.adapter.exists(
           this.options.store.targetDir(descriptor),
@@ -103,6 +100,60 @@ export class RuntimeComponentInstaller {
       await this.verifyInstalled(descriptor, subtle)
     } finally {
       await this.cleanup(staging)
+    }
+  }
+
+  /**
+   * Downloads and writes `entry.js` plus every declared asset into `staging`
+   * (a directory that later gets renamed atomically to the versioned target
+   * dir), verifying each file's size+sha256 as it lands. Shared by the
+   * first-install path and `repair` so both stage a complete, verified set
+   * before anything is promoted.
+   */
+  private async writeArtifactsToStaging(
+    staging: string,
+    descriptor: RuntimeComponentDescriptor,
+    subtle: Pick<SubtleCrypto, 'digest'>,
+    signal?: AbortSignal,
+  ): Promise<void> {
+    const entryBytes = await this.downloadVerified(descriptor, subtle, signal)
+    throwIfAborted(signal)
+    const entryPath = normalizePath(`${staging}/entry.js`)
+    await this.options.store.adapter.writeBinary(
+      entryPath,
+      exactArrayBuffer(entryBytes),
+    )
+    await verifyPath(
+      this.options.store.adapter,
+      entryPath,
+      descriptor,
+      subtle,
+      `Runtime component "${descriptor.id}" entry`,
+    )
+    const assets = descriptor.assets ?? []
+    if (assets.length === 0) return
+    const assetsDir = normalizePath(`${staging}/assets`)
+    await ensureDir(this.options.store.adapter, assetsDir)
+    for (const asset of assets) {
+      const assetBytes = await this.downloadVerified(
+        descriptor,
+        subtle,
+        signal,
+        asset,
+      )
+      throwIfAborted(signal)
+      const assetPath = normalizePath(`${assetsDir}/${asset.name}`)
+      await this.options.store.adapter.writeBinary(
+        assetPath,
+        exactArrayBuffer(assetBytes),
+      )
+      await verifyPath(
+        this.options.store.adapter,
+        assetPath,
+        asset,
+        subtle,
+        `Runtime component "${descriptor.id}" asset "${asset.name}"`,
+      )
     }
   }
 
@@ -123,17 +174,7 @@ export class RuntimeComponentInstaller {
     let backupOwned = false
     let promoted = false
     try {
-      const bytes = await this.downloadVerified(descriptor, subtle, signal)
-      await adapter.writeBinary(
-        normalizePath(`${staging}/entry.js`),
-        exactArrayBuffer(bytes),
-      )
-      await verifyPath(
-        adapter,
-        normalizePath(`${staging}/entry.js`),
-        descriptor,
-        subtle,
-      )
+      await this.writeArtifactsToStaging(staging, descriptor, subtle, signal)
       throwIfAborted(signal)
       if (await adapter.exists(target)) {
         await adapter.rename(target, backup)
@@ -170,11 +211,17 @@ export class RuntimeComponentInstaller {
     descriptor: RuntimeComponentDescriptor,
     subtle: Pick<SubtleCrypto, 'digest'>,
     signal?: AbortSignal,
+    asset?: RuntimeComponentAssetDescriptor,
   ): Promise<Uint8Array> {
     throwIfAborted(signal)
-    const sources = this.options.resolveDownloadSources?.(descriptor) ?? [
-      descriptor.entry,
-    ]
+    const target: ArtifactTarget = asset ?? descriptor
+    const label = asset
+      ? `Runtime component "${descriptor.id}" asset "${asset.name}"`
+      : `Runtime component "${descriptor.id}"`
+    const sources = this.options.resolveDownloadSources?.(
+      descriptor,
+      asset,
+    ) ?? [asset ? asset.path : descriptor.entry]
     if (
       !Array.isArray(sources) ||
       sources.length === 0 ||
@@ -190,6 +237,7 @@ export class RuntimeComponentInstaller {
       try {
         const bytes = await this.options.download({
           descriptor,
+          ...(asset ? { asset } : {}),
           source,
           ...(signal ? { signal } : {}),
         })
@@ -199,17 +247,10 @@ export class RuntimeComponentInstaller {
             'Runtime component download must return Uint8Array',
           )
         }
-        if (bytes.byteLength !== descriptor.byteSize) {
-          throw new Error(
-            `Runtime component "${descriptor.id}" byte size mismatch`,
-          )
+        if (bytes.byteLength !== target.byteSize) {
+          throw new Error(`${label} byte size mismatch`)
         }
-        await verifyModuleBytes(
-          bytes,
-          descriptor,
-          `Runtime component "${descriptor.id}"`,
-          subtle,
-        )
+        await verifyModuleBytes(bytes, target, label, subtle)
         return bytes
       } catch (error) {
         if (signal?.aborted) throw error
@@ -234,7 +275,17 @@ export class RuntimeComponentInstaller {
       this.options.store.entryPath(descriptor),
       descriptor,
       subtle,
+      `Runtime component "${descriptor.id}" entry`,
     )
+    for (const asset of descriptor.assets ?? []) {
+      await verifyPath(
+        this.options.store.adapter,
+        this.options.store.assetPath(descriptor, asset),
+        asset,
+        subtle,
+        `Runtime component "${descriptor.id}" asset "${asset.name}"`,
+      )
+    }
   }
 
   private async cleanup(path: string): Promise<void> {
@@ -269,23 +320,19 @@ function describeError(error: unknown): string {
 async function verifyPath(
   adapter: DataAdapter,
   path: string,
-  descriptor: RuntimeComponentDescriptor,
+  target: ArtifactTarget,
   subtle: Pick<SubtleCrypto, 'digest'>,
+  label: string,
 ): Promise<void> {
   const stat = await adapter.stat(path)
-  if (stat?.type !== 'file' || stat.size !== descriptor.byteSize) {
-    throw new Error(`Runtime component "${descriptor.id}" entry is incomplete`)
+  if (stat?.type !== 'file' || stat.size !== target.byteSize) {
+    throw new Error(`${label} is incomplete`)
   }
   const bytes = new Uint8Array(await adapter.readBinary(path))
-  if (bytes.byteLength !== descriptor.byteSize) {
-    throw new Error(`Runtime component "${descriptor.id}" byte size mismatch`)
+  if (bytes.byteLength !== target.byteSize) {
+    throw new Error(`${label} byte size mismatch`)
   }
-  await verifyModuleBytes(
-    bytes,
-    descriptor,
-    `Runtime component "${descriptor.id}"`,
-    subtle,
-  )
+  await verifyModuleBytes(bytes, target, label, subtle)
 }
 
 async function ensureDir(adapter: DataAdapter, path: string): Promise<void> {

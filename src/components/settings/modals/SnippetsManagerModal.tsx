@@ -10,7 +10,7 @@ import {
 import { getYoloSnippetsPath } from '../../../core/paths/yoloPaths'
 import { openSnippetsFileInVault } from '../../../core/snippets/snippetsFile'
 import { removeSnippetBlock } from '../../../core/snippets/snippetsManager'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { useSnippetEntries } from '../../chat-view/hooks/useSnippetEntries'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ReactModal } from '../../common/ReactModal'

@@ -12,22 +12,15 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { isPortableVaultPathSegment } from '../../../core/paths/portableVaultPath'
 import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
-import {
-  getYoloLogsDir,
-  hasHiddenYoloBaseDirSegment,
-} from '../../../core/paths/yoloPaths'
+import { hasHiddenYoloBaseDirSegment } from '../../../core/paths/yoloPaths'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
 import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
 import { clearPdfTextCache } from '../../../database/json/chat/pdfTextCacheStore'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
 import { CHAT_DIR } from '../../../database/json/constants'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { yoloSettingsSchema } from '../../../settings/schema/setting.types'
-import {
-  folderPathsToIncludePatterns,
-  includePatternsToFolderPaths,
-} from '../../../utils/rag-utils'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
@@ -49,37 +42,6 @@ const CHAT_SNAPSHOT_DIR = 'chat_snapshots'
 const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
-/** Legacy cache dir from removed delegate_external_agent tool. */
-const LEGACY_EXTERNAL_AGENT_PROGRESS_DIR = 'external_agent_progress'
-/** Legacy cache dir from removed timeline virtualization (superseded by the chat history window). */
-const LEGACY_TIMELINE_HEIGHT_CACHE_DIR = 'timeline_height_cache'
-
-const clearLegacyExternalAgentProgressDir = async (
-  app: App,
-  settings: Parameters<typeof ensureUserDataRootDir>[1],
-): Promise<void> => {
-  const rootDir = await ensureUserDataRootDir(app, settings)
-  const path = normalizePath(
-    `${rootDir}/${CHAT_DIR}/${LEGACY_EXTERNAL_AGENT_PROGRESS_DIR}`,
-  )
-  if (await app.vault.adapter.exists(path)) {
-    await app.vault.adapter.rmdir(path, true)
-  }
-}
-
-const clearLegacyTimelineHeightCacheDir = async (
-  app: App,
-  settings: Parameters<typeof ensureUserDataRootDir>[1],
-): Promise<void> => {
-  const rootDir = await ensureUserDataRootDir(app, settings)
-  const path = normalizePath(
-    `${rootDir}/${CHAT_DIR}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`,
-  )
-  if (await app.vault.adapter.exists(path)) {
-    await app.vault.adapter.rmdir(path, true)
-  }
-}
-
 const formatBytes = (bytes: number): string => {
   if (bytes < 1024) {
     return `${bytes} B`
@@ -135,33 +97,21 @@ const loadStorageUsage = async (
     chatHistoryBytes,
     promptSnapshotBytes,
     editReviewSnapshotBytes,
-    timelineHeightCacheBytes,
     imageCacheBytes,
     pdfCacheBytes,
-    agentProgressBytes,
   ] = await Promise.all([
     getPathSize(app, chatDir),
     getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
-    getPathSize(
-      app,
-      normalizePath(`${chatDir}/${LEGACY_TIMELINE_HEIGHT_CACHE_DIR}`),
-    ),
     getPathSize(app, normalizePath(`${chatDir}/${IMAGE_CACHE_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${PDF_CACHE_DIR}`)),
-    getPathSize(
-      app,
-      normalizePath(`${chatDir}/${LEGACY_EXTERNAL_AGENT_PROGRESS_DIR}`),
-    ),
   ])
 
   const snapshotAndCacheBytes =
     promptSnapshotBytes +
     editReviewSnapshotBytes +
-    timelineHeightCacheBytes +
     imageCacheBytes +
-    pdfCacheBytes +
-    agentProgressBytes
+    pdfCacheBytes
 
   return {
     chatHistoryBytes: Math.max(0, chatHistoryBytes - snapshotAndCacheBytes),
@@ -268,46 +218,17 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
       })
   }
 
-  const isDebugLogsExcludedFromKnowledgeBase = (): boolean => {
-    if (settings.ragOptions.excludeYoloBaseDir) return true
-    return includePatternsToFolderPaths(
-      settings.ragOptions.excludePatterns,
-    ).includes(getYoloLogsDir(settings))
-  }
-
-  const excludeDebugLogsFromKnowledgeBase = async () => {
-    const currentSettings = plugin.settings
-    const excludeFolders = includePatternsToFolderPaths(
-      currentSettings.ragOptions.excludePatterns,
-    )
-    const debugLogsDir = getYoloLogsDir(currentSettings)
-    if (
-      currentSettings.ragOptions.excludeYoloBaseDir ||
-      excludeFolders.includes(debugLogsDir)
-    ) {
-      return
-    }
-
-    await setSettings({
-      ...currentSettings,
-      debug: {
-        ...currentSettings.debug,
-        captureRawRequestDebug: true,
-      },
-      ragOptions: {
-        ...currentSettings.ragOptions,
-        excludePatterns: folderPathsToIncludePatterns([
-          ...excludeFolders,
-          debugLogsDir,
-        ]),
-      },
-    })
-    new Notice(
-      t('settings.etc.captureRawRequestDebugExcludeLogsSuccess').replace(
-        '{{path}}',
-        debugLogsDir,
-      ),
-    )
+  const handlePluginUpdateNoticeChange = (value: boolean) => {
+    void (async () => {
+      try {
+        await setSettings({
+          ...settings,
+          pluginUpdateNoticeEnabled: value,
+        })
+      } catch (error: unknown) {
+        console.error('Failed to update plugin update notice setting', error)
+      }
+    })()
   }
 
   const handlePluginAutoUpdateChange = (value: boolean) => {
@@ -323,43 +244,18 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
     })()
   }
 
+  // Debug logs live under the YOLO base dir, which every knowledge base's
+  // engine now excludes unconditionally (see `getYoloBaseDir` usage in
+  // `core/rag/ragCoordinator.ts`) — no per-base exclude rule is needed for
+  // them anymore.
   const handleCaptureRawRequestDebugChange = (value: boolean) => {
-    const shouldPromptExcludeLogs =
-      value && !isDebugLogsExcludedFromKnowledgeBase()
-    const updateDebugSettingPromise = Promise.resolve(
-      setSettings({
-        ...settings,
-        debug: {
-          ...settings.debug,
-          captureRawRequestDebug: value,
-        },
-      }),
-    )
-
-    if (shouldPromptExcludeLogs) {
-      new ConfirmModal(app, {
-        title: t('settings.etc.captureRawRequestDebugExcludeLogsTitle'),
-        message: t(
-          'settings.etc.captureRawRequestDebugExcludeLogsMessage',
-        ).replace('{{path}}', getYoloLogsDir(settings)),
-        ctaText: t('settings.etc.captureRawRequestDebugExcludeLogsCta'),
-        cancelText: t('common.cancel', 'Cancel'),
-        onConfirm: () => {
-          void (async () => {
-            await updateDebugSettingPromise
-            await excludeDebugLogsFromKnowledgeBase()
-          })().catch((error: unknown) => {
-            console.error(
-              'Failed to exclude debug logs from knowledge base',
-              error,
-            )
-            new Notice(t('common.error'))
-          })
-        },
-      }).open()
-    }
-
-    void updateDebugSettingPromise.catch((error: unknown) => {
+    void setSettings({
+      ...settings,
+      debug: {
+        ...settings.debug,
+        captureRawRequestDebug: value,
+      },
+    }).catch((error: unknown) => {
       console.error('Failed to update raw request debug setting', error)
       new Notice(t('common.error'))
     })
@@ -456,8 +352,6 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
           await clearAllEditReviewSnapshotStores(app, settings)
           await clearImageCache(app, settings)
           await clearPdfTextCache(app, settings)
-          await clearLegacyExternalAgentProgressDir(app, settings)
-          await clearLegacyTimelineHeightCacheDir(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)
           setStorageUsage(nextUsage)
           new Notice(t('settings.etc.clearChatSnapshotsSuccess'))
@@ -506,25 +400,41 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
 
         <div className="yolo-settings-block-content">
           <ObsidianSetting
-            name={t('settings.etc.pluginAutoUpdate', '自动下载更新')}
-            desc={
-              Platform.isDesktop && canSelfUpdate
-                ? t(
-                    'settings.etc.pluginAutoUpdateDesc',
-                    '开启后检测到新版本会自动在后台加载。',
-                  )
-                : t(
-                    'settings.etc.pluginAutoUpdateDescUnavailable',
-                    '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
-                  )
-            }
+            name={t('settings.etc.pluginUpdateNotice', '更新提醒')}
+            desc={t(
+              'settings.etc.pluginUpdateNoticeDesc',
+              '开启后 YOLO 会自动检测新版本并提醒。',
+            )}
             className="yolo-settings-card"
           >
             <ObsidianToggle
-              value={settings.pluginUpdateAutoDownloadEnabled ?? true}
-              onChange={handlePluginAutoUpdateChange}
+              value={settings.pluginUpdateNoticeEnabled ?? true}
+              onChange={handlePluginUpdateNoticeChange}
             />
           </ObsidianSetting>
+
+          {(settings.pluginUpdateNoticeEnabled ?? true) ? (
+            <ObsidianSetting
+              name={t('settings.etc.pluginAutoUpdate', '自动下载更新')}
+              desc={
+                Platform.isDesktop && canSelfUpdate
+                  ? t(
+                      'settings.etc.pluginAutoUpdateDesc',
+                      '开启后检测到新版本会自动在后台加载。',
+                    )
+                  : t(
+                      'settings.etc.pluginAutoUpdateDescUnavailable',
+                      '开启后会自动下载模块更新；主插件的一键安装仅在桌面端且插件目录可写时可用。',
+                    )
+              }
+              className="yolo-settings-card"
+            >
+              <ObsidianToggle
+                value={settings.pluginUpdateAutoDownloadEnabled ?? true}
+                onChange={handlePluginAutoUpdateChange}
+              />
+            </ObsidianSetting>
+          ) : null}
 
           <ObsidianSetting
             name={t('settings.etc.exportConfig', '导出配置')}

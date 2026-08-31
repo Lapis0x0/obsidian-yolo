@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "pdf-engine",
   "platforms": ["desktop", "mobile"],
   "nameKey": "settings.modules.runtimeComponents.pdfEngine.name",

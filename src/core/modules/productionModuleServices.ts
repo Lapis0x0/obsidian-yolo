@@ -95,18 +95,75 @@ export type ProductionModuleServicesOptions = Readonly<{
   intentStore: ProductionModuleIntentStore
   catalogSource?: ModuleCatalogResolutionSource
   artifactDownloader?: ModuleArtifactInstallerOptions['download']
+  resolveDownloadSources?: ModuleArtifactInstallerOptions['resolveDownloadSources']
   artifactArrivalGrace?: Pick<ModuleArtifactArrivalGrace, 'waitForArtifact'>
   activationLoader?: ModuleActivationCoordinatorOptions['loader']
   artifactRequest?: OfficialModuleArtifactRequest
   subtleCrypto?: Pick<SubtleCrypto, 'digest'>
+  /** Vault projection of module-shipped skill packages; see
+   * `moduleSkillMaterializer.ts`. Absent in tests and headless composition. */
+  skillProjection?: Readonly<{
+    materialize: NonNullable<
+      ModuleActivationCoordinatorOptions['materializeSkills']
+    >
+    remove: (moduleId: string) => Promise<void>
+  }>
   verifiedArtifactRegistry?: VerifiedModuleArtifactRegistry
   reportCleanupError?: (error: unknown) => void
   reportRefreshError?: (error: unknown) => void
   reportActivationError?: (moduleId: string, error: unknown) => void
+  /** Kept apart from `reportActivationError`: a skill projection that fails
+   * leaves the module active, so it must not surface as an activation
+   * failure. See `ModuleActivationCoordinatorOptions.materializeSkills`. */
+  reportSkillProjectionError?: (moduleId: string, error: unknown) => void
   reportStartupError?: (error: unknown, moduleId?: string) => void
 }>
 
 export type ProductionModuleServices = ModuleService
+
+/** Rejects a compatibility result computed for the wrong runtime platform. */
+export function assertCompatibilityPlatform(
+  getCompatibility: OfficialModuleCompatibilityProvider,
+  platform: ModuleArtifactPlatform,
+): OfficialModuleCompatibilityProvider {
+  return async (module) => {
+    const compatibility = await getCompatibility(module)
+    if (compatibility.platform !== platform) {
+      throw new Error(
+        `Official module compatibility platform ${compatibility.platform} does not match ${platform}`,
+      )
+    }
+    return compatibility
+  }
+}
+
+/** Composes the trusted official catalog source from the signed distribution Feed. */
+export function createOfficialModuleCatalogSource(
+  options: Pick<
+    ProductionModuleServicesOptions,
+    'distributionFeedClient' | 'locale' | 'getCompatibility' | 'platform'
+  >,
+): OfficialModuleCatalogSource {
+  if (!options.distributionFeedClient) {
+    throw new Error('Official module catalog source requires a Feed client')
+  }
+  const distributionFeedClient = options.distributionFeedClient
+  return new OfficialModuleCatalogSource({
+    client: {
+      load: async () =>
+        projectDistributionFeedCatalog(await distributionFeedClient.load()),
+      loadFresh: async () =>
+        projectDistributionFeedCatalog(
+          await distributionFeedClient.loadFresh(),
+        ),
+    },
+    locale: options.locale,
+    getCompatibility: assertCompatibilityPlatform(
+      options.getCompatibility,
+      options.platform,
+    ),
+  })
+}
 
 export function isInstallCandidateState(
   displayed: ModuleRecord | undefined,
@@ -130,29 +187,7 @@ export function createProductionModuleServices(
   assertOptions(options)
 
   const catalogSource =
-    options.catalogSource ??
-    new OfficialModuleCatalogSource({
-      client: {
-        load: async () =>
-          projectDistributionFeedCatalog(
-            await options.distributionFeedClient!.load(),
-          ),
-        loadFresh: async () =>
-          projectDistributionFeedCatalog(
-            await options.distributionFeedClient!.loadFresh(),
-          ),
-      },
-      locale: options.locale,
-      getCompatibility: async (module) => {
-        const compatibility = await options.getCompatibility(module)
-        if (compatibility.platform !== options.platform) {
-          throw new Error(
-            `Official module compatibility platform ${compatibility.platform} does not match ${options.platform}`,
-          )
-        }
-        return compatibility
-      },
-    })
+    options.catalogSource ?? createOfficialModuleCatalogSource(options)
   const activationLoader =
     options.activationLoader ??
     Object.freeze({
@@ -181,9 +216,15 @@ export function createProductionModuleServices(
     runtime: runtimeReservation,
     intentStateSource,
     verifiedArtifactRegistry,
+    ...(options.skillProjection
+      ? { materializeSkills: options.skillProjection.materialize }
+      : {}),
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportActivationError
       ? { reportActivationError: options.reportActivationError }
+      : {}),
+    ...(options.reportSkillProjectionError
+      ? { reportSkillProjectionError: options.reportSkillProjectionError }
       : {}),
   })
   const installedStateSource = new ModuleDeviceStateInstalledStateSource({
@@ -209,7 +250,8 @@ export function createProductionModuleServices(
           ? { requestUrl: options.artifactRequest }
           : {}),
       }),
-    resolveDownloadSources: resolveOfficialModuleArtifactSources,
+    resolveDownloadSources:
+      options.resolveDownloadSources ?? resolveOfficialModuleArtifactSources,
     ...(options.subtleCrypto ? { subtleCrypto: options.subtleCrypto } : {}),
     ...(options.reportCleanupError
       ? { reportCleanupError: options.reportCleanupError }
@@ -252,6 +294,9 @@ export function createProductionModuleServices(
     manager,
     runtime: runtimeReservation,
     platform: options.platform,
+    ...(options.skillProjection
+      ? { removeSkillProjection: options.skillProjection.remove }
+      : {}),
   })
   const startupIntentStore = options.intentStore
   const startupReconciler = new ModuleStartupReconciler({
@@ -661,6 +706,9 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
     typeof options.intentStore?.subscribeAll !== 'function' ||
     (options.activationLoader !== undefined &&
       typeof options.activationLoader.load !== 'function') ||
+    (options.skillProjection !== undefined &&
+      (typeof options.skillProjection.materialize !== 'function' ||
+        typeof options.skillProjection.remove !== 'function')) ||
     (options.verifiedArtifactRegistry !== undefined &&
       !(
         options.verifiedArtifactRegistry instanceof
@@ -668,6 +716,8 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       )) ||
     (options.artifactRequest !== undefined &&
       typeof options.artifactRequest !== 'function') ||
+    (options.resolveDownloadSources !== undefined &&
+      typeof options.resolveDownloadSources !== 'function') ||
     (options.artifactArrivalGrace !== undefined &&
       typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
     (options.subscribeLocale !== undefined &&
@@ -678,6 +728,8 @@ function assertOptions(options: ProductionModuleServicesOptions): void {
       typeof options.reportRefreshError !== 'function') ||
     (options.reportActivationError !== undefined &&
       typeof options.reportActivationError !== 'function') ||
+    (options.reportSkillProjectionError !== undefined &&
+      typeof options.reportSkillProjectionError !== 'function') ||
     (options.reportStartupError !== undefined &&
       typeof options.reportStartupError !== 'function')
   ) {

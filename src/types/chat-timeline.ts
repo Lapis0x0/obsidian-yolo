@@ -21,7 +21,6 @@ export type ActiveConversationTailState = {
 type ChatTimelineBaseItem = {
   id: string
   renderKey: string
-  estimatedHeight: number
   spacingBefore?: number
   isActive?: boolean
   isEditable?: boolean
@@ -54,6 +53,21 @@ export type ChatTimelineCompactionDividerItem = ChatTimelineBaseItem & {
   compaction: ChatConversationCompaction | null
 }
 
+/**
+ * A "resumed session couldn't be reached, started a fresh one instead"
+ * notice anchored into the transcript — see `CliSessionFallbackBoundary`.
+ * Structurally identical to `ChatTimelineCompactionDividerItem` (same
+ * divider visual) but carries its own copy since, unlike a compaction
+ * divider's surface-wide text, the notice names the specific profile that
+ * became unreachable.
+ */
+export type ChatTimelineSessionFallbackDividerItem = ChatTimelineBaseItem & {
+  kind: 'session-fallback-divider'
+  anchorMessageId: string | null
+  title: string
+  description: string
+}
+
 export type ChatTimelineQueryProgressItem = ChatTimelineBaseItem & {
   kind: 'query-progress'
 }
@@ -76,6 +90,7 @@ export type ChatTimelineItem =
   | ChatTimelineAssistantGroupItem
   | ChatTimelineCompactionPendingItem
   | ChatTimelineCompactionDividerItem
+  | ChatTimelineSessionFallbackDividerItem
   | ChatTimelineQueryProgressItem
   | ChatTimelinePendingResponseItem
   | ChatTimelineContinueResponseItem

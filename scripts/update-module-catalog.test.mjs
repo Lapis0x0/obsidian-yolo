@@ -86,7 +86,13 @@ test('preserves schema declarations from a real Learning build', async () => {
       await readFile(path.join(artifactDir, 'module.json'), 'utf8'),
     )
     assert.equal(catalog.modules[0].icon, 'graduation-cap')
-    assert.equal(catalog.modules[0].versions[0].hostApi, '^1.4.0')
+    // Compared against the real build's manifest, like `dataSchemas` below:
+    // this asserts the catalog preserves what the module declared, without
+    // pinning a host API range that every bump would invalidate.
+    assert.equal(
+      catalog.modules[0].versions[0].hostApi,
+      builtManifest.hostApi,
+    )
     assert.deepEqual(
       catalog.modules[0].versions[0].dataSchemas,
       builtManifest.dataSchemas,

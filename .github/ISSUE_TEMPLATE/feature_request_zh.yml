@@ -8,6 +8,8 @@ body:
       value: |
         感谢你抽时间填写功能请求！
 
+        **提交后请留意回复**（GitHub 通知 / 邮箱）——我们一般会在一天内响应，可能会在 issue 下追问你的使用场景。
+
   - type: textarea
     id: problem
     attributes:

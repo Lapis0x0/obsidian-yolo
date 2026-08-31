@@ -4,7 +4,7 @@ import { App, Notice } from 'obsidian'
 import { DEFAULT_PROVIDERS, PROVIDER_TYPES_INFO } from '../../../constants'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { LLMProvider } from '../../../types/provider.types'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { EditProviderModal } from '../modals/ProviderFormModal'
@@ -42,18 +42,22 @@ export function ProvidersSection({ app, plugin }: ProvidersSectionProps) {
       onConfirm: () => {
         void (async () => {
           try {
-            const vectorManager = await plugin.tryGetVectorManager()
+            const vectorManagers = await plugin.tryGetVectorManagers()
 
-            if (vectorManager) {
+            if (vectorManagers.length > 0) {
               const embeddingModelIds = associatedEmbeddingModels.map(
                 (embeddingModel) => embeddingModel.id,
               )
               if (embeddingModelIds.length > 0) {
-                await vectorManager.clearVectorsByModelIds(embeddingModelIds)
+                await Promise.all(
+                  vectorManagers.map((vm) =>
+                    vm.clearVectorsByModelIds(embeddingModelIds),
+                  ),
+                )
               }
             } else {
               console.warn(
-                '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
+                '[YOLO] Skip clearing embeddings because no vector managers are available.',
               )
             }
 

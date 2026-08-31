@@ -5,7 +5,6 @@ import { useLanguage } from '../../../contexts/language-context'
 import { applyAudioOutputDevice } from '../../../core/tts/audioOutput'
 import { buildTtsProviderForConfig } from '../../../core/tts/manager'
 import { type Language, createTranslationFunction } from '../../../i18n'
-import YoloPlugin from '../../../main'
 import {
   TTS_API_FORMATS,
   TTS_OUTPUT_FORMATS,
@@ -21,9 +20,10 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ReactModal } from '../../common/ReactModal'
+import type { VoiceSettingsPlugin } from '../voiceSettingsPlugin'
 
 type TtsConfigFormProps = {
-  plugin: YoloPlugin
+  plugin: VoiceSettingsPlugin
   config: TtsConfig | null
 }
 
@@ -132,7 +132,7 @@ function translateOutsideReact(keyPath: string, fallback: string): string {
 }
 
 export class AddTtsConfigModal extends ReactModal<TtsConfigFormProps> {
-  constructor(app: App, plugin: YoloPlugin) {
+  constructor(app: App, plugin: VoiceSettingsPlugin) {
     super({
       app,
       Component: TtsConfigFormComponent,
@@ -143,13 +143,12 @@ export class AddTtsConfigModal extends ReactModal<TtsConfigFormProps> {
           'Add TTS configuration',
         ),
       },
-      plugin,
     })
   }
 }
 
 export class EditTtsConfigModal extends ReactModal<TtsConfigFormProps> {
-  constructor(app: App, plugin: YoloPlugin, config: TtsConfig) {
+  constructor(app: App, plugin: VoiceSettingsPlugin, config: TtsConfig) {
     super({
       app,
       Component: TtsConfigFormComponent,
@@ -160,7 +159,6 @@ export class EditTtsConfigModal extends ReactModal<TtsConfigFormProps> {
           'Edit TTS config: {name}',
         ).replace('{name}', config.name || config.id),
       },
-      plugin,
     })
   }
 }

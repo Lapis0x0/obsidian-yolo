@@ -77,11 +77,9 @@ Write every knowledge point in the required output language provided by the user
 
 ## Your output
 
-Pure markdown, with each knowledge point separated by a second-level heading (##). Do not wrap the output in any markdown code block, and do not output any preamble or closing remarks.
+You have one tool available: \`emit_knowledge_point({ title, body })\`. Do not output knowledge-point content as chat text; every knowledge point must be produced by calling this tool.
 
-## <knowledge point title>
-
-<knowledge point body>
+First think through the whole chapter silently: how many atomic knowledge points it should contain and the order between them. Then call \`emit_knowledge_point\` once per knowledge point, in order. Once every knowledge point has been emitted, stop immediately — do not output any summary, recap, or other text before or after the tool calls.
 
 ## atomicity criteria
 
@@ -96,6 +94,7 @@ One knowledge point = one cognitive unit that can be explained on its own and me
 - include at least one concrete example (code example, case, or analogy); the example should be minimal and runnable/verifiable
 - if the chapter contract explicitly excludes certain content, do not touch it in the knowledge points
 - there is an implicit order between knowledge points: earlier ones should not depend too much on later ones
+- do not repeat a knowledge point already listed for an earlier chapter (the user message lists prior chapters' knowledge-point titles); build on them by reference instead
 
 ## reference materials
 
@@ -116,31 +115,16 @@ The chapter contract notes an expected number of knowledge points as guidance. D
 
 export const CARD_GENERATOR_PROMPT = `You are a learning-card designer. Given a chapter contract and the completed knowledge points, generate learning cards for the chapter.
 
-Write the cards in the language of knowledge.md.
+Write the cards in the language of the knowledge points provided below.
 
 ## Your output
 
-Output strictly pure markdown, with each card separated by a second-level heading (##). Do not wrap the whole output in a markdown code block, and do not output any preamble or closing remarks. Each card must strictly use the following format:
+You have one tool available: \`emit_card({ kpId, title, front, back })\`. Do not output card content as chat text; every card must be produced by calling this tool.
 
-## <card title> <!--kp:<knowledge point UUID>-->
+- \`kpId\` must be copied verbatim from the "title -> kpId" list in the user message; do not generate, guess, or modify it
+- \`front\` is the question side, \`back\` is the answer side; do not include a separator between them, the host renders it
 
-<question>
-
----
-
-<answer>
-
-<!--yolo-card-end-->
-
-The knowledge-point UUID after the title must be copied verbatim from the user-provided knowledge.md body; do not generate, guess, or modify the UUID. Between the front and the back there must be exactly one line containing only \`---\`, and no other line consisting solely of \`---\` may appear elsewhere in the body.
-Every card (including the last) must output a line containing only \`<!--yolo-card-end-->\` after its back. That line only marks card completion; the string must never appear in the card title, front, or back body, nor anywhere else.
-
-## tool-use constraints
-
-You have two tools available: bash and fs_edit, but:
-- **fs_edit is strictly forbidden during the initial generation pass**. fs_edit is only allowed when a later user message explicitly states that cards.md has been written and asks for corrections
-- bash may be used to read reference materials (if any)
-- generating cards is your main task; just output markdown directly
+First think through all the knowledge points and decide the full set of cards. Then call \`emit_card\` once per card, in order. Once every card has been emitted, stop immediately — do not output any summary, recap, or other text before or after the tool calls.
 
 ## one card, one question
 
@@ -148,12 +132,11 @@ You have two tools available: bash and fs_edit, but:
 - the front must form a clear, independently answerable question that does not reveal the answer or contain obvious hints
 - the back answers the front directly and accurately, providing the minimum explanation needed to understand the answer
 - decide the number of cards based on the actual knowledge-point content; do not repeatedly test the same content just to hit a number
-- do not use second-level headings (##) inside card bodies, to avoid being parsed as a new card
 
 ## content boundaries
 
-- cards must be grounded in the provided knowledge.md; do not introduce content beyond the chapter's knowledge points
-- each card may bind to only one knowledge-point UUID that actually exists in this chapter's knowledge.md
+- cards must be grounded in the provided knowledge points; do not introduce content beyond the chapter's knowledge points
+- each card may bind to only one knowledge-point id that actually exists in the list provided
 - if the chapter contract explicitly excludes certain content, do not generate related cards
 
 ## level adaptation
@@ -163,33 +146,90 @@ You have two tools available: bash and fs_edit, but:
 - experienced: focus on principles, trade-offs, pitfalls, and practical judgment
 - advanced: focus on edge cases, design motivations, and comparison of alternatives`
 
-export function buildCardPrompt({
+export function buildKnowledgePointStagePrompt({
   projectTopic,
-  chapterTitle,
-  chapterContract,
-  knowledgeMdContent,
-  cardsFilePath,
+  projectGoal,
+  outline,
+  chapterIndex,
+  outputLanguage,
   level,
+  priorChapterKnowledgeTitles,
+  referenceDir,
 }: {
   projectTopic: string
-  chapterTitle: string
-  chapterContract: string
-  knowledgeMdContent: string
-  cardsFilePath: string
+  projectGoal: string
+  outline: readonly { title: string; contract: string }[]
+  chapterIndex: number
+  outputLanguage: string
   level: string
+  /** Knowledge-point titles already generated for earlier chapters, in chapter order. */
+  priorChapterKnowledgeTitles: readonly {
+    chapterTitle: string
+    titles: readonly string[]
+  }[]
+  referenceDir?: string
 }): string {
-  return `Generate learning cards for the following chapter:
+  const outlineBlock = outline
+    .map((chapter, index) => {
+      const marker = index === chapterIndex ? ' <- current chapter' : ''
+      return `${index + 1}. ${chapter.title}${marker}\n   ${chapter.contract}`
+    })
+    .join('\n')
+  const priorBlock = priorChapterKnowledgeTitles.length
+    ? priorChapterKnowledgeTitles
+        .map(
+          (chapter) =>
+            `${chapter.chapterTitle}: ${chapter.titles.length ? chapter.titles.join(', ') : '(none)'}`,
+        )
+        .join('\n')
+    : '(this is the first chapter, no prior knowledge points yet)'
+  const refSection = referenceDir
+    ? `\nReference materials directory: ${referenceDir} (when the contract names reference files, use the bash tool, e.g. \`cat\`, at their corresponding paths)`
+    : ''
+  return `Generate knowledge points for the current chapter.
 
 Project topic: ${projectTopic}
+Project goal: ${projectGoal}
+
+Full chapter outline:
+${outlineBlock}
+
+Knowledge points already generated in earlier chapters:
+${priorBlock}
+
+Required output language: ${outputLanguage}
+
+User's current level: ${level}${refSection}`
+}
+
+export function buildCardStagePrompt({
+  chapterTitle,
+  chapterContract,
+  knowledgeMdBody,
+  knowledgePoints,
+  level,
+}: {
+  chapterTitle: string
+  chapterContract: string
+  knowledgeMdBody: string
+  knowledgePoints: readonly { uuid: string; title: string }[]
+  level: string
+}): string {
+  const kpList = knowledgePoints
+    .map((point) => `- ${point.title} -> ${point.uuid}`)
+    .join('\n')
+  return `The knowledge points for this chapter are complete. Generate learning cards for them.
+
 Chapter title: ${chapterTitle}
 Chapter contract:
 ${chapterContract}
 
 User's current level: ${level}
 
-This chapter's knowledge.md body (the card kpUuid must be copied from here):
+This chapter's knowledge points:
 
-${knowledgeMdContent}
+${knowledgeMdBody}
 
-The cards file will be written to: ${cardsFilePath}`
+title -> kpId:
+${kpList}`
 }

@@ -1,16 +1,6 @@
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext'
 import { $createTextNode, COMMAND_PRIORITY_NORMAL, TextNode } from 'lexical'
-import {
-  ArrowLeft,
-  Blocks,
-  Check,
-  ChevronRight,
-  FilePlus2,
-  Minimize2,
-  Plug,
-  Sparkles,
-  Zap,
-} from 'lucide-react'
+import { Blocks, FilePlus2, Minimize2, Plug, Sparkles, Zap } from 'lucide-react'
 import {
   type ReactNode,
   RefObject,
@@ -27,11 +17,13 @@ import {
   humanizeSkillName,
 } from '../../../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../../../core/snippets/snippetsManager'
-import {
-  CascadingTypeaheadItemProps,
-  useCascadingTypeaheadMenu,
-} from '../shared/CascadingTypeaheadMenu'
 import { MenuOption } from '../shared/LexicalMenu'
+import {
+  type RailMenuCategory,
+  type RailMenuItemProps,
+  RailMenuRow,
+  useRailTypeaheadMenu,
+} from '../shared/RailTypeaheadMenu'
 import {
   LexicalTypeaheadMenuPlugin,
   useBasicTypeaheadTriggerMatch,
@@ -40,29 +32,15 @@ import {
 import { $createSkillNode } from './SkillNode'
 
 const SUGGESTION_LIST_LENGTH_LIMIT = 20
-const COMPACT_COMMAND_ID = 'compact-context'
 const CREATE_SNIPPETS_FILE_COMMAND_ID = 'create-snippets-file'
 
 export type SlashCommand = {
-  id: typeof COMPACT_COMMAND_ID | 'open-plugin-manager' | 'open-mcp-servers'
+  id: 'compact-context' | 'open-plugin-manager' | 'open-mcp-servers'
   name: string
   description: string
 }
 
-type SlashMenuScope = 'root' | 'skill' | 'snippet'
-
-type SlashEntryType = 'skill' | 'snippet'
-
 type SlashTypeaheadOptionPayload =
-  | {
-      kind: 'back'
-      label: string
-    }
-  | {
-      kind: 'entry'
-      entryType: SlashEntryType
-      label: string
-    }
   | {
       kind: 'skill'
       skill: LiteSkillEntry
@@ -92,14 +70,6 @@ class SkillTypeaheadOption extends MenuOption {
     let subtitle = ''
 
     switch (payload.kind) {
-      case 'back':
-        key = 'slash:back'
-        name = payload.label
-        break
-      case 'entry':
-        key = `slash:entry:${payload.entryType}`
-        name = payload.label
-        break
       case 'skill':
         key = `slash:skill:${payload.skill.name}`
         name = humanizeSkillName(payload.skill.name)
@@ -128,101 +98,38 @@ class SkillTypeaheadOption extends MenuOption {
   }
 }
 
-function SkillTypeaheadMenuItem({
-  id,
-  isSelected,
-  onClick,
-  onMouseEnter,
-  option,
-}: CascadingTypeaheadItemProps<SkillTypeaheadOption>) {
+function SkillSlashOptionRow(props: RailMenuItemProps<SkillTypeaheadOption>) {
+  const { option } = props
   let iconNode: ReactNode = null
   switch (option.payload.kind) {
-    case 'back':
-      iconNode = (
-        <ArrowLeft size={14} className="yolo-smart-space-mention-option-icon" />
-      )
-      break
-    case 'entry':
-      iconNode =
-        option.payload.entryType === 'skill' ? (
-          <Sparkles
-            size={14}
-            className="yolo-smart-space-mention-option-icon"
-          />
-        ) : (
-          <Zap size={14} className="yolo-smart-space-mention-option-icon" />
-        )
-      break
     case 'skill':
-      iconNode = (
-        <Sparkles size={14} className="yolo-smart-space-mention-option-icon" />
-      )
+      iconNode = <Sparkles size={15} className="yolo-rail-menu-row-icon" />
       break
     case 'snippet':
-      iconNode = (
-        <Zap size={14} className="yolo-smart-space-mention-option-icon" />
-      )
+      iconNode = <Zap size={15} className="yolo-rail-menu-row-icon" />
       break
     case 'command':
       iconNode =
         option.payload.command.id === 'open-plugin-manager' ? (
-          <Blocks size={14} className="yolo-smart-space-mention-option-icon" />
+          <Blocks size={15} className="yolo-rail-menu-row-icon" />
         ) : option.payload.command.id === 'open-mcp-servers' ? (
-          <Plug size={14} className="yolo-smart-space-mention-option-icon" />
+          <Plug size={15} className="yolo-rail-menu-row-icon" />
         ) : (
-          <Minimize2
-            size={14}
-            className="yolo-smart-space-mention-option-icon"
-          />
+          <Minimize2 size={15} className="yolo-rail-menu-row-icon" />
         )
       break
     case 'create-snippets-file':
-      iconNode = (
-        <FilePlus2 size={14} className="yolo-smart-space-mention-option-icon" />
-      )
+      iconNode = <FilePlus2 size={15} className="yolo-rail-menu-row-icon" />
       break
   }
 
-  const isSelectedSkill =
-    option.payload.kind === 'skill' && option.payload.isSelected
-  const showChevron = option.payload.kind === 'entry'
-
   return (
-    <button
-      type="button"
-      className={`yolo-popover-item yolo-smart-space-mention-option ${
-        isSelected ? 'active' : ''
-      }`}
-      ref={(el) => option.setRefElement(el)}
-      role="option"
-      aria-selected={isSelected}
-      id={id}
-      onMouseDown={(event) => event.preventDefault()}
-      onMouseEnter={onMouseEnter}
-      onClick={onClick}
-      data-highlighted={isSelected ? 'true' : undefined}
-    >
-      {iconNode}
-      <div className="yolo-smart-space-mention-option-text yolo-smart-space-mention-option-text--inline-meta">
-        <div className="yolo-smart-space-mention-option-name">
-          {option.name}
-        </div>
-        {option.subtitle && (
-          <div className="yolo-smart-space-mention-option-path yolo-smart-space-mention-option-inline-meta">
-            {option.subtitle}
-          </div>
-        )}
-      </div>
-      {isSelectedSkill && (
-        <Check size={12} className="yolo-smart-space-mention-option-check" />
-      )}
-      {showChevron && (
-        <ChevronRight
-          size={14}
-          className="yolo-smart-space-mention-option-expand"
-        />
-      )}
-    </button>
+    <RailMenuRow
+      {...props}
+      icon={iconNode}
+      name={option.name}
+      description={option.subtitle}
+    />
   )
 }
 
@@ -254,7 +161,6 @@ export default function SkillSlashPlugin({
 }): ReactJSX.Element | null {
   const [editor] = useLexicalComposerContext()
   const [queryString, setQueryString] = useState<string | null>(null)
-  const [menuScope, setMenuScope] = useState<SlashMenuScope>('root')
   const { t } = useLanguage()
 
   useEffect(() => {
@@ -262,12 +168,6 @@ export default function SkillSlashPlugin({
       onMenuOpenChange?.(false)
     }
   }, [onMenuOpenChange])
-
-  useEffect(() => {
-    if (queryString === null) {
-      setMenuScope('root')
-    }
-  }, [queryString])
 
   const checkForSlashTriggerMatch = useBasicTypeaheadTriggerMatch('/', {
     minLength: 0,
@@ -283,269 +183,177 @@ export default function SkillSlashPlugin({
     [selectedSkillNames],
   )
 
-  const compactCommand = useMemo<SlashCommand>(
-    () => ({
-      id: COMPACT_COMMAND_ID,
-      name: t('chat.slashCommands.compact.label', '压缩上下文'),
-      description: t(
-        'chat.slashCommands.compact.description',
-        '手动压缩较早对话历史，并在新的上下文窗口中继续当前任务。',
-      ),
-    }),
-    [t],
-  )
-
-  const skillEntryLabel = t('chat.slashMenu.entrySkill', '技能')
-  const snippetEntryLabel = t('chat.slashMenu.entrySnippet', '快捷指令')
-  const backLabel = t('chat.mentionMenu.back', '返回上一级')
+  const skillCategoryLabel = t('chat.slashMenu.entrySkill', '技能')
+  const snippetCategoryLabel = t('chat.slashMenu.entrySnippet', '快捷指令')
+  const commandCategoryLabel = t('chat.slashMenu.categoryCommand', '命令')
+  const categoryEmptyLabel = t('chat.slashMenu.categoryEmpty', '暂无内容')
   const createSnippetsLabel = t(
     'chat.slashMenu.createSnippetsFile',
     '点击创建 snippets.md',
   )
 
-  const filterSkills = useCallback(
-    (query: string) => {
-      const q = query
-      return skills.filter((skill) => {
-        if (!q) return true
-        return (
-          skill.name.toLowerCase().includes(q) ||
-          skill.description.toLowerCase().includes(q) ||
-          skill.path.toLowerCase().includes(q)
-        )
-      })
-    },
-    [skills],
-  )
+  const allCommands = nativeCommands
 
-  const filterSnippets = useCallback(
-    (query: string) => {
-      const q = query
-      return snippets.filter((snippet) => {
-        if (!q) return true
-        const triggerLower = snippet.trigger.toLowerCase()
-        const descriptionLower = (snippet.description ?? '').toLowerCase()
-        return (
-          triggerLower.startsWith(q) ||
-          triggerLower.includes(q) ||
-          descriptionLower.includes(q)
-        )
-      })
-    },
-    [snippets],
-  )
-
-  const getSubOptionsForEntry = useCallback(
-    (entryType: SlashEntryType, query: string): SkillTypeaheadOption[] => {
-      if (entryType === 'skill') {
-        return filterSkills(query).map(
-          (skill) =>
-            new SkillTypeaheadOption({
-              kind: 'skill',
-              skill,
-              isSelected: selectedSkillNameSet.has(skill.name),
-            }),
-        )
-      }
-
-      if (snippets.length === 0) {
-        return [
+  const skillOptions = useMemo(
+    () =>
+      skills.map(
+        (skill) =>
           new SkillTypeaheadOption({
-            kind: 'create-snippets-file',
-            label: createSnippetsLabel,
-          }),
-        ]
-      }
-
-      return filterSnippets(query).map(
-        (snippet) =>
-          new SkillTypeaheadOption({
-            kind: 'snippet',
-            snippet,
-          }),
-      )
-    },
-    [
-      createSnippetsLabel,
-      filterSkills,
-      filterSnippets,
-      selectedSkillNameSet,
-      snippets.length,
-    ],
-  )
-
-  const options = useMemo(() => {
-    if (queryString == null) {
-      return [] as SkillTypeaheadOption[]
-    }
-
-    if (menuScope === 'skill') {
-      return [
-        new SkillTypeaheadOption({ kind: 'back', label: backLabel }),
-        ...getSubOptionsForEntry('skill', normalizedQuery),
-      ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT + 1)
-    }
-
-    if (menuScope === 'snippet') {
-      // "Create snippets.md" appears only when the user has no snippets at all
-      // (file missing or no parseable entries). Filtered-but-non-empty lists
-      // should NOT show it — clicking only opens an existing file, which is
-      // misleading when the user is searching within a populated library.
-      if (snippets.length === 0) {
-        return [
-          new SkillTypeaheadOption({ kind: 'back', label: backLabel }),
-          ...getSubOptionsForEntry('snippet', normalizedQuery),
-        ]
-      }
-      return [
-        new SkillTypeaheadOption({ kind: 'back', label: backLabel }),
-        ...getSubOptionsForEntry('snippet', normalizedQuery),
-      ].slice(0, SUGGESTION_LIST_LENGTH_LIMIT + 1)
-    }
-
-    // root scope
-    if (normalizedQuery) {
-      // Cross-category search: rank candidates by match strength rather than
-      // by category order. A snippet whose trigger starts with the query must
-      // outrank a skill whose only match is in its description.
-      const q = normalizedQuery
-      const scoreText = (text: string): number => {
-        const t = text.toLowerCase()
-        if (t === q) return 100
-        if (t.startsWith(q)) return 80
-        if (t.includes(q)) return 60
-        return 0
-      }
-
-      type RankedOption = {
-        option: SkillTypeaheadOption
-        score: number
-        categoryRank: number // tiebreaker: skill < snippet < command
-        order: number // tiebreaker: preserve within-category insertion order
-      }
-      const ranked: RankedOption[] = []
-      let orderCounter = 0
-
-      skills.forEach((skill) => {
-        const score = Math.max(
-          scoreText(skill.name),
-          skill.description.toLowerCase().includes(q) ? 10 : 0,
-          skill.path.toLowerCase().includes(q) ? 5 : 0,
-        )
-        if (score === 0) return
-        ranked.push({
-          option: new SkillTypeaheadOption({
             kind: 'skill',
             skill,
             isSelected: selectedSkillNameSet.has(skill.name),
           }),
-          score,
-          categoryRank: 0,
-          order: orderCounter++,
-        })
-      })
+      ),
+    [selectedSkillNameSet, skills],
+  )
 
-      snippets.forEach((snippet) => {
-        const score = Math.max(
-          scoreText(snippet.trigger),
-          (snippet.description ?? '').toLowerCase().includes(q) ? 10 : 0,
-        )
-        if (score === 0) return
-        ranked.push({
-          option: new SkillTypeaheadOption({ kind: 'snippet', snippet }),
-          score,
-          categoryRank: 1,
-          order: orderCounter++,
-        })
-      })
-      ;[compactCommand, ...nativeCommands].forEach((command) => {
-        const commandScore = Math.max(
-          scoreText(command.name),
-          command.id.toLowerCase().includes(q) ? 30 : 0,
-          command.description.toLowerCase().includes(q) ? 10 : 0,
-        )
-        if (commandScore === 0) return
-        ranked.push({
-          option: new SkillTypeaheadOption({
-            kind: 'command',
-            command,
-          }),
-          score: commandScore,
-          categoryRank: 2,
-          order: orderCounter++,
-        })
-      })
+  const snippetOptions = useMemo(
+    () =>
+      snippets.length === 0
+        ? [
+            new SkillTypeaheadOption({
+              kind: 'create-snippets-file',
+              label: createSnippetsLabel,
+            }),
+          ]
+        : snippets.map(
+            (snippet) => new SkillTypeaheadOption({ kind: 'snippet', snippet }),
+          ),
+    [createSnippetsLabel, snippets],
+  )
 
-      ranked.sort((a, b) => {
-        if (a.score !== b.score) return b.score - a.score
-        if (a.categoryRank !== b.categoryRank)
-          return a.categoryRank - b.categoryRank
-        return a.order - b.order
-      })
+  const commandOptions = useMemo(
+    () =>
+      allCommands.map(
+        (command) => new SkillTypeaheadOption({ kind: 'command', command }),
+      ),
+    [allCommands],
+  )
 
-      return ranked
-        .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
-        .map((entry) => entry.option)
+  const categories = useMemo<RailMenuCategory<SkillTypeaheadOption>[]>(
+    () => [
+      {
+        key: 'skill',
+        label: skillCategoryLabel,
+        icon: <Sparkles size={13} className="yolo-rail-menu-rail-item-icon" />,
+        options: skillOptions,
+        count: skillOptions.length,
+      },
+      {
+        key: 'snippet',
+        label: snippetCategoryLabel,
+        icon: <Zap size={13} className="yolo-rail-menu-rail-item-icon" />,
+        options: snippetOptions,
+        count: snippetOptions.length,
+      },
+      {
+        key: 'command',
+        label: commandCategoryLabel,
+        icon: <Minimize2 size={13} className="yolo-rail-menu-rail-item-icon" />,
+        options: commandOptions,
+        count: commandOptions.length,
+      },
+    ],
+    [
+      commandCategoryLabel,
+      commandOptions,
+      skillCategoryLabel,
+      skillOptions,
+      snippetCategoryLabel,
+      snippetOptions,
+    ],
+  )
+
+  // 跨类别打分排序：过滤态下 snippet 的 trigger 前缀匹配要能压过 skill 只在
+  // 描述里命中的情况，所以不是按类别顺序简单拼接，而是统一算分后排序。
+  const filteredOptions = useMemo<SkillTypeaheadOption[] | null>(() => {
+    if (!normalizedQuery) return null
+
+    const q = normalizedQuery
+    const scoreText = (text: string): number => {
+      const lower = text.toLowerCase()
+      if (lower === q) return 100
+      if (lower.startsWith(q)) return 80
+      if (lower.includes(q)) return 60
+      return 0
     }
 
-    // root scope, empty query: show three entries + runtime-native commands
-    return [
-      new SkillTypeaheadOption({
-        kind: 'entry',
-        entryType: 'skill',
-        label: skillEntryLabel,
-      }),
-      new SkillTypeaheadOption({
-        kind: 'entry',
-        entryType: 'snippet',
-        label: snippetEntryLabel,
-      }),
-      new SkillTypeaheadOption({
-        kind: 'command',
-        command: compactCommand,
-      }),
-      ...nativeCommands.map(
-        (command) =>
-          new SkillTypeaheadOption({
-            kind: 'command',
-            command,
-          }),
-      ),
-    ]
-  }, [
-    backLabel,
-    compactCommand,
-    getSubOptionsForEntry,
-    menuScope,
-    nativeCommands,
-    normalizedQuery,
-    queryString,
-    selectedSkillNameSet,
-    skillEntryLabel,
-    snippetEntryLabel,
-    skills,
-    snippets,
-  ])
+    type RankedOption = {
+      option: SkillTypeaheadOption
+      score: number
+      categoryRank: number // tiebreaker: skill < snippet < command
+      order: number // tiebreaker: preserve within-category insertion order
+    }
+    const ranked: RankedOption[] = []
+    let orderCounter = 0
 
-  const getCascadeEntryKey = useCallback(
-    (option: SkillTypeaheadOption): SlashEntryType | null =>
-      option.payload.kind === 'entry' ? option.payload.entryType : null,
-    [],
-  )
+    skills.forEach((skill) => {
+      const score = Math.max(
+        scoreText(skill.name),
+        skill.description.toLowerCase().includes(q) ? 10 : 0,
+        skill.path.toLowerCase().includes(q) ? 5 : 0,
+      )
+      if (score === 0) return
+      ranked.push({
+        option: new SkillTypeaheadOption({
+          kind: 'skill',
+          skill,
+          isSelected: selectedSkillNameSet.has(skill.name),
+        }),
+        score,
+        categoryRank: 0,
+        order: orderCounter++,
+      })
+    })
 
-  const getCascadeSubOptions = useCallback(
-    (entry: SlashEntryType) =>
-      getSubOptionsForEntry(entry, '').slice(0, SUGGESTION_LIST_LENGTH_LIMIT),
-    [getSubOptionsForEntry],
-  )
+    snippets.forEach((snippet) => {
+      const score = Math.max(
+        scoreText(snippet.trigger),
+        (snippet.description ?? '').toLowerCase().includes(q) ? 10 : 0,
+      )
+      if (score === 0) return
+      ranked.push({
+        option: new SkillTypeaheadOption({ kind: 'snippet', snippet }),
+        score,
+        categoryRank: 1,
+        order: orderCounter++,
+      })
+    })
 
-  const cascadingMenu = useCascadingTypeaheadMenu({
-    enabled: !normalizedQuery && menuScope === 'root',
-    getEntryKey: getCascadeEntryKey,
-    getSubOptions: getCascadeSubOptions,
-    options,
+    allCommands.forEach((command) => {
+      const commandScore = Math.max(
+        scoreText(command.name),
+        command.id.toLowerCase().includes(q) ? 30 : 0,
+        command.description.toLowerCase().includes(q) ? 10 : 0,
+      )
+      if (commandScore === 0) return
+      ranked.push({
+        option: new SkillTypeaheadOption({ kind: 'command', command }),
+        score: commandScore,
+        categoryRank: 2,
+        order: orderCounter++,
+      })
+    })
+
+    ranked.sort((a, b) => {
+      if (a.score !== b.score) return b.score - a.score
+      if (a.categoryRank !== b.categoryRank)
+        return a.categoryRank - b.categoryRank
+      return a.order - b.order
+    })
+
+    return ranked
+      .slice(0, SUGGESTION_LIST_LENGTH_LIMIT)
+      .map((entry) => entry.option)
+  }, [allCommands, normalizedQuery, selectedSkillNameSet, skills, snippets])
+
+  const railMenu = useRailTypeaheadMenu({
+    categories,
+    flatOptions: filteredOptions,
     placement,
   })
+
+  const options = railMenu.displayOptions
 
   const onSelectOption = useCallback(
     (
@@ -554,26 +362,6 @@ export default function SkillSlashPlugin({
       closeMenu: () => void,
     ) => {
       const payload = selectedOption.payload
-
-      if (payload.kind === 'back') {
-        if (nodeToReplace) {
-          const triggerNode = $createTextNode('/')
-          nodeToReplace.replace(triggerNode)
-          triggerNode.selectEnd()
-        }
-        setMenuScope('root')
-        return
-      }
-
-      if (payload.kind === 'entry') {
-        if (nodeToReplace) {
-          const triggerNode = $createTextNode('/')
-          nodeToReplace.replace(triggerNode)
-          triggerNode.selectEnd()
-        }
-        setMenuScope(payload.entryType === 'skill' ? 'skill' : 'snippet')
-        return
-      }
 
       if (payload.kind === 'command') {
         if (nodeToReplace) {
@@ -668,20 +456,6 @@ export default function SkillSlashPlugin({
     ],
   )
 
-  const getDefaultHighlightedIndex = useCallback(
-    (menuOptions: SkillTypeaheadOption[]) => {
-      if (menuScope === 'root') {
-        return 0
-      }
-      const firstOption = menuOptions[0]
-      if (firstOption?.payload.kind === 'back' && menuOptions.length > 1) {
-        return 1
-      }
-      return 0
-    },
-    [menuScope],
-  )
-
   return (
     <LexicalTypeaheadMenuPlugin<SkillTypeaheadOption>
       onQueryChange={setQueryString}
@@ -689,22 +463,20 @@ export default function SkillSlashPlugin({
       triggerFn={checkForTriggerMatch}
       options={options}
       commandPriority={COMMAND_PRIORITY_NORMAL}
-      getDefaultHighlightedIndex={getDefaultHighlightedIndex}
       onOpen={() => onMenuOpenChange?.(true)}
       onClose={() => {
         onMenuOpenChange?.(false)
-        cascadingMenu.reset()
+        railMenu.reset()
       }}
-      customKeyHandlers={cascadingMenu.customKeyHandlers}
+      customKeyHandlers={railMenu.customKeyHandlers}
       menuRenderFn={(anchorElementRef, itemProps) =>
-        cascadingMenu.renderMenu({
+        railMenu.renderMenu({
           anchorElementRef,
           itemProps,
           menuContainer: menuContainerRef?.current,
-          renderItem: (
-            props: CascadingTypeaheadItemProps<SkillTypeaheadOption>,
-          ) => (
-            <SkillTypeaheadMenuItem
+          emptyLabel: categoryEmptyLabel,
+          renderItem: (props) => (
+            <SkillSlashOptionRow
               {...props}
               key={`${props.id}:${props.option.key}`}
             />

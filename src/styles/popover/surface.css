@@ -25,8 +25,8 @@
  * 3. 变体规则按文件归属，禁止跨文件覆盖
  * ─────────────────────────────────────────────
  *   --default 变体的样式      → src/styles/chat/popover.css
- *   --smart-space 变体的样式  → src/styles/panels/smart-space.css
- * 不要在 smart-space.css 里写 `.yolo-popover-surface--default ...`，反之亦然。
+ *   --continuation 变体的样式  → src/styles/panels/continuation.css
+ * 不要在 continuation.css 里写 `.yolo-popover-surface--default ...`，反之亦然。
  * 同一选择器跨文件出现时胜负只剩源码顺序，是最隐蔽的"屎山"来源。
  * 真正跨变体共享的样式（如 [data-state='checked']）写无前缀版本，
  * 但必须在注释里写明"有意跨变体共享"。
@@ -49,6 +49,26 @@
 
 .yolo-popover-surface {
   overflow: hidden;
+}
+
+/*
+ * Radix 会把 Content 的 computed z-index 抄写到外层
+ * [data-radix-popper-content-wrapper] 的 inline style 上，我们的层叠设计
+ * （如 chat-history 的 ctx-menu 1010 需要盖过 --default 弹层的 1000）依赖
+ * 这个抄写值。但第三方插件可能用无作用域的
+ * `[data-radix-popper-content-wrapper] { z-index: ... !important }`
+ * 污染同 vault 里所有 Radix 弹层（已确认收敛案例：Copilot 插件强设 9999，
+ * 导致我们的弹层容器压过自家 ctx-menu）。这里用更高优先级的作用域规则把
+ * 自家 wrapper 钉回声明值。!important 为对抗上述已确认的外部 !important
+ * 污染所必需；:has(> …) 限定只命中包含 yolo surface 的 wrapper，不影响
+ * 其他插件的弹层。
+ */
+[data-radix-popper-content-wrapper]:has(> .yolo-popover-surface--default) {
+  z-index: 1000 !important;
+}
+
+[data-radix-popper-content-wrapper]:has(> .yolo-popover-surface--continuation) {
+  z-index: 10000 !important;
 }
 
 /* Default variant — used by chat-input dropdowns, chat-history,
@@ -81,9 +101,9 @@
   animation: yolo-popover-fade-in 130ms cubic-bezier(0.2, 0.9, 0.3, 1);
 }
 
-/* Smart-space variant — heavier shadow, blur backdrop, larger radius.
-   Used by SmartSpace panel, QuickAsk panel, mention/slash menus. */
-.yolo-popover-surface--smart-space {
+/* Continuation variant (formerly smart-space) — heavier shadow, blur
+   backdrop, larger radius. Used by Quick Ask panel, mention/slash menus. */
+.yolo-popover-surface--continuation {
   --yolo-popover-border: color-mix(
     in srgb,
     var(--background-modifier-border) 65%,
@@ -104,8 +124,7 @@
     0 0 0 3px var(--yolo-popover-ring),
     0 12px 32px -8px rgba(0, 0, 0, 0.2),
     0 4px 12px rgba(0, 0, 0, 0.08);
-  backdrop-filter: blur(16px);
-  animation: yolo-popover-smart-space-fade-in var(--yolo-anim-duration-enter)
+  animation: yolo-popover-continuation-fade-in var(--yolo-anim-duration-enter)
     var(--yolo-anim-ease-out);
 }
 
@@ -120,7 +139,7 @@
   }
 }
 
-@keyframes yolo-popover-smart-space-fade-in {
+@keyframes yolo-popover-continuation-fade-in {
   0% {
     opacity: 0;
     transform: translateY(8px) scale(0.96);

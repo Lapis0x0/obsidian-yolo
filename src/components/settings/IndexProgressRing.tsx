@@ -7,8 +7,8 @@ type IndexProgressRingProps = {
 
 export function IndexProgressRing({
   percent,
-  size = 18,
-  strokeWidth = 2.5,
+  size = 36,
+  strokeWidth = 3,
   'aria-label': ariaLabel,
 }: IndexProgressRingProps) {
   const clamped = Math.max(0, Math.min(100, percent))
@@ -58,6 +58,10 @@ export function IndexProgressRing({
           style={{ transition: 'stroke-dashoffset 200ms ease' }}
         />
       </svg>
+      <span className="yolo-index-ring-label" aria-hidden="true">
+        <span className="yolo-index-ring-pct">{Math.round(clamped)}</span>
+        <span className="yolo-index-ring-sym">%</span>
+      </span>
     </div>
   )
 }

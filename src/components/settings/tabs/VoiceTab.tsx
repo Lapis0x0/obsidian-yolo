@@ -1,15 +1,15 @@
 import { App } from 'obsidian'
 import React from 'react'
 
-import YoloPlugin from '../../../main'
 import { AudioFileTranscriptionSection } from '../sections/AudioFileTranscriptionSection'
 import { ContextVoiceInputSection } from '../sections/ContextVoiceInputSection'
 import { VoiceFloatingIslandSettingsSection } from '../sections/VoiceFloatingIslandSettingsSection'
 import { VoiceReadAloudSection } from '../sections/VoiceReadAloudSection'
+import type { VoiceSettingsPlugin } from '../voiceSettingsPlugin'
 
 type VoiceTabProps = {
   app: App
-  plugin: YoloPlugin
+  plugin: VoiceSettingsPlugin
 }
 
 export function VoiceTab(_props: VoiceTabProps) {

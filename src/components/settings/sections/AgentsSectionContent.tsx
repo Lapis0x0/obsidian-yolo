@@ -28,21 +28,9 @@ import {
   getAssistantModelSelectValue,
   modelIdFromAssistantModelSelectValue,
 } from '../../../core/agent/assistant-model'
-import {
-  BUILTIN_TOOL_CATEGORY_I18N,
-  BUILTIN_TOOL_CATEGORY_ORDER,
-  type BuiltinToolCategory,
-  FILE_EDIT_GROUP_TOOL_NAME,
-  MEMORY_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-  WEB_OPS_SPLIT_ACTION_TOOL_NAMES,
-  getBuiltinToolCategory,
-  getBuiltinToolDisplayIndex,
-  getBuiltinToolUiMeta,
-} from '../../../core/agent/builtinToolUiMeta'
 import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
-  buildDefaultBuiltinToolPreferences,
+  buildDefaultBuiltinCapabilityPreferences,
   buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
@@ -55,12 +43,7 @@ import {
 } from '../../../core/agent/tool-preferences'
 import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection'
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
-import {
-  BASH_TOOL_NAME,
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-  getLocalFileToolServerName,
-} from '../../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
@@ -72,6 +55,14 @@ import {
   getDisabledSkillNameSet,
   resolveAssistantSkillPolicy,
 } from '../../../core/skills/skillPolicy'
+import {
+  BUILTIN_TOOL_CATEGORY_I18N,
+  BUILTIN_TOOL_CATEGORY_ORDER,
+} from '../../../core/tools/categories'
+import {
+  type BuiltinCapabilityId,
+  listCapabilities,
+} from '../../../core/tools/registry'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import {
@@ -103,6 +94,7 @@ import {
   normalizeToolSelectionForPersistence,
 } from './agentToolPersistence'
 import { AgentWorkspaceScopeEditor } from './AgentWorkspaceScopeEditor'
+import { buildBuiltinCapabilityRows } from './builtinCapabilityRows'
 
 type AgentsSectionContentProps = {
   app: App
@@ -118,18 +110,20 @@ type AgentToolView = {
   toggleTargets: string[]
   displayName: string
   description: string
+  /**
+   * The owning built-in capability's id, for rows built from
+   * `buildBuiltinCapabilityRows` (undefined for MCP server tool rows, which
+   * have no capability). Used to look up this row's approval
+   * `allowedModes` (D7, phase2-migration.md D7 item 8) instead of a
+   * hardcoded two-option literal.
+   */
+  capabilityId?: BuiltinCapabilityId
 }
 
 type SkillRowView = LiteSkillEntry & {
   enabled: boolean
   loadMode: AssistantSkillLoadMode
 }
-
-const EDIT_FS_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const SPLIT_MEMORY_TOOL_NAME_SET = new Set<string>(
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-)
-const SPLIT_WEB_TOOL_NAME_SET = new Set<string>(WEB_OPS_SPLIT_ACTION_TOOL_NAMES)
 
 const AGENT_EDITOR_TABS: AgentEditorTab[] = [
   'profile',
@@ -303,7 +297,8 @@ function createNewAgent(): Assistant {
     enableTools: true,
     includeBuiltinTools: true,
     enabledToolNames: [],
-    toolPreferences: buildDefaultBuiltinToolPreferences(),
+    toolPreferences: {},
+    builtinCapabilityPreferences: buildDefaultBuiltinCapabilityPreferences(),
     toolServerPreferences: {},
     enabledSkills: [],
     skillPreferences: {},
@@ -322,6 +317,7 @@ function toDraftAgent(assistant: Assistant): Assistant {
     modelId: assistant.modelId || undefined,
     enabledToolNames: getExplicitlyEnabledAssistantToolNames(assistant),
     toolPreferences: getAssistantToolPreferences(assistant),
+    builtinCapabilityPreferences: assistant.builtinCapabilityPreferences ?? {},
     toolServerPreferences: assistant.toolServerPreferences ?? {},
     enabledSkills: assistant.enabledSkills ?? [],
     skillPreferences: assistant.skillPreferences ?? {},
@@ -332,6 +328,9 @@ function toDraftAgent(assistant: Assistant): Assistant {
   }
 }
 
+// Remote MCP tools only, post-D9: built-in tool state no longer lives in
+// `toolPreferences` at all (see `updateDraftBuiltinCapabilityPreferences`
+// below for the built-in counterpart).
 function updateDraftToolPreferences(
   assistant: Assistant,
   updater: (
@@ -351,6 +350,29 @@ function updateDraftToolPreferences(
     ...assistant,
     toolPreferences: nextToolPreferences,
     enabledToolNames: nextEnabledToolNames,
+  }
+}
+
+// Built-in capabilities only: writes a single capability's
+// `{ enabled, approvalMode }` entry in the draft's own
+// `builtinCapabilityPreferences` map. `updater` receives the capability's
+// *current effective* entry (explicit if present, else its registry
+// default) so callers can safely read-modify-write a single field without
+// clobbering the other.
+function updateDraftBuiltinCapabilityPreferences(
+  assistant: Assistant,
+  capabilityId: BuiltinCapabilityId,
+  updater: (
+    current: AssistantToolPreference | undefined,
+  ) => AssistantToolPreference,
+): Assistant {
+  const current = assistant.builtinCapabilityPreferences ?? {}
+  return {
+    ...assistant,
+    builtinCapabilityPreferences: {
+      ...current,
+      [capabilityId]: updater(current[capabilityId]),
+    },
   }
 }
 
@@ -587,30 +609,55 @@ export function AgentsSectionContent({
     setDraftAgent(null)
   }
 
-  const toggleTool = (toolNames: string[], enabled: boolean) => {
+  // `tools` mixes built-in capability rows (`capabilityId` set — a bulk
+  // toggle can span several) and MCP server tool rows (`capabilityId`
+  // undefined, `toggleTargets` always a single FQN). Each row is routed to
+  // its own persistence half: built-ins write
+  // `builtinCapabilityPreferences[capabilityId]`, everything else writes
+  // `toolPreferences[fqn]` — see `updateDraftBuiltinCapabilityPreferences` /
+  // `updateDraftToolPreferences`.
+  const toggleTool = (tools: AgentToolView[], enabled: boolean) => {
     setDraftAgent((prev) => {
       if (!prev) {
         return prev
       }
 
-      return updateDraftToolPreferences(prev, (current) => {
-        const next = { ...current }
-        for (const toolName of toolNames) {
-          next[toolName] = {
-            ...next[toolName],
-            enabled,
-            approvalMode:
-              next[toolName]?.approvalMode ??
-              getDefaultApprovalModeForTool(toolName),
-          }
+      let next = prev
+      for (const tool of tools) {
+        if (tool.capabilityId) {
+          const capabilityId = tool.capabilityId
+          next = updateDraftBuiltinCapabilityPreferences(
+            next,
+            capabilityId,
+            (current) => ({
+              enabled,
+              approvalMode:
+                current?.approvalMode ??
+                getDefaultApprovalModeForTool(tool.toggleTargets[0]),
+            }),
+          )
+          continue
         }
-        return next
-      })
+        next = updateDraftToolPreferences(next, (current) => {
+          const updated = { ...current }
+          for (const toolName of tool.toggleTargets) {
+            updated[toolName] = {
+              ...updated[toolName],
+              enabled,
+              approvalMode:
+                updated[toolName]?.approvalMode ??
+                getDefaultApprovalModeForTool(toolName),
+            }
+          }
+          return updated
+        })
+      }
+      return next
     })
   }
 
   const setToolApprovalMode = (
-    toolNames: string[],
+    tools: AgentToolView[],
     approvalMode: AssistantToolApprovalMode,
   ) => {
     setDraftAgent((prev) => {
@@ -618,17 +665,33 @@ export function AgentsSectionContent({
         return prev
       }
 
-      return updateDraftToolPreferences(prev, (current) => {
-        const next = { ...current }
-        for (const toolName of toolNames) {
-          next[toolName] = {
-            ...next[toolName],
-            enabled: next[toolName]?.enabled ?? true,
-            approvalMode,
-          }
+      let next = prev
+      for (const tool of tools) {
+        if (tool.capabilityId) {
+          const capabilityId = tool.capabilityId
+          next = updateDraftBuiltinCapabilityPreferences(
+            next,
+            capabilityId,
+            (current) => ({
+              enabled: current?.enabled ?? true,
+              approvalMode,
+            }),
+          )
+          continue
         }
-        return next
-      })
+        next = updateDraftToolPreferences(next, (current) => {
+          const updated = { ...current }
+          for (const toolName of tool.toggleTargets) {
+            updated[toolName] = {
+              ...updated[toolName],
+              enabled: updated[toolName]?.enabled ?? true,
+              approvalMode,
+            }
+          }
+          return updated
+        })
+      }
+      return next
     })
   }
 
@@ -753,9 +816,14 @@ export function AgentsSectionContent({
       string,
       { title: string; tools: AgentToolView[]; isBuiltin: boolean }
     >()
-    const localEditSplitToolTargets = new Set<string>()
-    const localMemorySplitToolTargets = new Set<string>()
-    const localWebSplitToolTargets = new Set<string>()
+    const includeBuiltinTools = draftAgent?.includeBuiltinTools !== false
+    // Which built-in tool *short* names are actually present in this
+    // request's tool catalog (`availableTools` — respects runtime
+    // availability, unlike the global settings pages' `getLocalFileTools()`;
+    // see `builtinCapabilityRows.ts`'s doc comment on that asymmetry).
+    // Populated only when built-in tools are included at all, matching the
+    // pre-D7 early-return.
+    const builtinToolNamesPresent = new Set<string>()
 
     availableTools.forEach((tool) => {
       let serverName = localFsServerName
@@ -771,107 +839,61 @@ export function AgentsSectionContent({
       }
 
       const isBuiltin = serverName === localFsServerName
-      if (isBuiltin && draftAgent?.includeBuiltinTools === false) {
-        return
-      }
-      if (isBuiltin && EDIT_FS_TOOL_NAME_SET.has(toolName)) {
-        localEditSplitToolTargets.add(tool.name)
-        return
-      }
-      if (isBuiltin && SPLIT_MEMORY_TOOL_NAME_SET.has(toolName)) {
-        localMemorySplitToolTargets.add(tool.name)
-        return
-      }
-      if (isBuiltin && SPLIT_WEB_TOOL_NAME_SET.has(toolName)) {
-        localWebSplitToolTargets.add(tool.name)
+      if (isBuiltin) {
+        if (includeBuiltinTools) {
+          builtinToolNamesPresent.add(toolName)
+        }
         return
       }
 
-      const builtinCategory = isBuiltin
-        ? (getBuiltinToolCategory(toolName) ?? 'vault')
-        : null
-      const key = isBuiltin ? `__builtin:${builtinCategory}` : serverName
-      const title = isBuiltin
-        ? t(
-            BUILTIN_TOOL_CATEGORY_I18N[builtinCategory!].key,
-            BUILTIN_TOOL_CATEGORY_I18N[builtinCategory!].fallback,
-          )
-        : serverName
-      const builtinMeta = isBuiltin ? getBuiltinToolUiMeta(toolName) : null
-      const displayName = builtinMeta
-        ? t(builtinMeta.labelKey, builtinMeta.labelFallback)
-        : toolName
-      const description = builtinMeta
-        ? t(builtinMeta.descKey ?? '', builtinMeta.descFallback)
-        : tool.description || t('common.none', 'None')
-      const group = groups.get(key) ?? { title, tools: [], isBuiltin }
+      const key = serverName
+      const group = groups.get(key) ?? {
+        title: serverName,
+        tools: [],
+        isBuiltin: false,
+      }
       group.tools.push({
         fullName: tool.name,
         toggleTargets: [tool.name],
-        displayName,
-        description,
+        displayName: toolName,
+        description: tool.description || t('common.none', 'None'),
       })
       groups.set(key, group)
     })
 
-    const pushBuiltinGroupTool = (toolName: string, tool: AgentToolView) => {
-      const category = getBuiltinToolCategory(toolName) ?? 'vault'
-      const key = `__builtin:${category}`
-      const title = t(
-        BUILTIN_TOOL_CATEGORY_I18N[category].key,
-        BUILTIN_TOOL_CATEGORY_I18N[category].fallback,
-      )
-      const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
-      group.tools.push(tool)
-      groups.set(key, group)
-    }
-
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localEditSplitToolTargets.size > 0
-    ) {
-      const fileEditMeta = getBuiltinToolUiMeta(FILE_EDIT_GROUP_TOOL_NAME)
-      if (!fileEditMeta) {
-        throw new Error('Missing built-in tool UI metadata for fs_edit_ops')
-      }
-      pushBuiltinGroupTool(FILE_EDIT_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${FILE_EDIT_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localEditSplitToolTargets],
-        displayName: t(fileEditMeta.labelKey, fileEditMeta.labelFallback),
-        description: t(fileEditMeta.descKey ?? '', fileEditMeta.descFallback),
+    if (includeBuiltinTools) {
+      const rows = buildBuiltinCapabilityRows({
+        toolOptions: settings.mcp.builtinCapabilityOptions,
+        t,
       })
-    }
+      for (const row of rows) {
+        const presentMembers = row.memberToolNames.filter((name) =>
+          builtinToolNamesPresent.has(name),
+        )
+        if (presentMembers.length === 0) {
+          continue
+        }
 
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localMemorySplitToolTargets.size > 0
-    ) {
-      const memoryOpsMeta = getBuiltinToolUiMeta(MEMORY_OPS_GROUP_TOOL_NAME)
-      if (!memoryOpsMeta) {
-        throw new Error('Missing built-in tool UI metadata for memory_ops')
+        const key = `__builtin:${row.category}`
+        const title = t(
+          BUILTIN_TOOL_CATEGORY_I18N[row.category].key,
+          BUILTIN_TOOL_CATEGORY_I18N[row.category].fallback,
+        )
+        const group = groups.get(key) ?? { title, tools: [], isBuiltin: true }
+        group.tools.push({
+          // Only used as a React list key — any present member's own FQN is
+          // fine, there is no group-vs-single-tool distinction to preserve
+          // post-D9 (decision 12: no virtual tool names anywhere).
+          fullName: getToolName(localFsServerName, presentMembers[0]),
+          toggleTargets: presentMembers.map((name) =>
+            getToolName(localFsServerName, name),
+          ),
+          displayName: row.label,
+          description: row.description,
+          capabilityId: row.id,
+        })
+        groups.set(key, group)
       }
-      pushBuiltinGroupTool(MEMORY_OPS_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${MEMORY_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localMemorySplitToolTargets],
-        displayName: t(memoryOpsMeta.labelKey, memoryOpsMeta.labelFallback),
-        description: t(memoryOpsMeta.descKey ?? '', memoryOpsMeta.descFallback),
-      })
-    }
-
-    if (
-      draftAgent?.includeBuiltinTools !== false &&
-      localWebSplitToolTargets.size > 0
-    ) {
-      const webOpsMeta = getBuiltinToolUiMeta(WEB_OPS_GROUP_TOOL_NAME)
-      if (!webOpsMeta) {
-        throw new Error('Missing built-in tool UI metadata for web_ops')
-      }
-      pushBuiltinGroupTool(WEB_OPS_GROUP_TOOL_NAME, {
-        fullName: `${localFsServerName}__${WEB_OPS_GROUP_TOOL_NAME}`,
-        toggleTargets: [...localWebSplitToolTargets],
-        displayName: t(webOpsMeta.labelKey, webOpsMeta.labelFallback),
-        description: t(webOpsMeta.descKey ?? '', webOpsMeta.descFallback),
-      })
     }
 
     const builtinCategoryRank = new Map<string, number>(
@@ -888,23 +910,14 @@ export function AgentsSectionContent({
         if (rb !== undefined) return 1
         return a.localeCompare(b)
       })
-      .map(([key, value]) => {
-        const builtinCategory = key.startsWith('__builtin:')
-          ? (key.slice('__builtin:'.length) as BuiltinToolCategory)
-          : null
-        const tools = builtinCategory
-          ? value.tools.slice().sort((toolA, toolB) => {
-              const idA = parseToolName(toolA.fullName).toolName
-              const idB = parseToolName(toolB.fullName).toolName
-              return (
-                getBuiltinToolDisplayIndex(builtinCategory, idA) -
-                getBuiltinToolDisplayIndex(builtinCategory, idB)
-              )
-            })
-          : value.tools
-        return { key, ...value, tools }
-      })
-  }, [availableTools, draftAgent?.includeBuiltinTools, localFsServerName, t])
+      .map(([key, value]) => ({ key, ...value }))
+  }, [
+    availableTools,
+    draftAgent?.includeBuiltinTools,
+    localFsServerName,
+    settings.mcp.builtinCapabilityOptions,
+    t,
+  ])
 
   const visibleToolsCount = useMemo(
     () => visibleToolGroups.reduce((sum, group) => sum + group.tools.length, 0),
@@ -1199,33 +1212,53 @@ export function AgentsSectionContent({
     ],
     [t],
   )
-  // bash is the only tool with a third tier: dangerous operations only
-  // (read commands and mkdir run freely; rm/mv pause mid-script). See
-  // src/core/agent/bash/dangerousOperationGate.ts.
-  const bashToolFullName = useMemo(
-    () => getToolName(getLocalFileToolServerName(), BASH_TOOL_NAME),
-    [],
-  )
-  const bashToolApprovalOptions = useMemo(
-    () => [
-      {
-        value: 'require_approval',
-        label: t('settings.agent.toolApprovalRequire', 'Require approval'),
-      },
-      {
-        value: 'dangerous_only',
-        label: t(
-          'settings.agent.toolApprovalDangerousOnly',
-          'Approve dangerous operations',
-        ),
-      },
-      {
-        value: 'full_access',
-        label: t('settings.agent.toolApprovalFullAccess', 'Full access'),
-      },
-    ],
-    [t],
-  )
+  // D7 (phase2-migration.md D7 item 8): every built-in row's approval
+  // dropdown offers exactly its own capability's `approval.allowedModes`.
+  // This replaces both the hardcoded two-item literal that all non-bash rows
+  // used to share and the separate bash-only three-item memo — `vault_shell`
+  // is no longer a special case in this file, it is simply the one
+  // capability whose `allowedModes` includes `dangerous_only`. The
+  // `toolApprovalOptions` literal above legitimately stays hardcoded: it
+  // serves the MCP *server*-level dropdown, and servers have no capability.
+  //
+  // Display order stays require -> dangerous -> full rather than following
+  // each capability's own `allowedModes` declaration order, since reordering
+  // the dropdown is not an approved visible change (master.md §5).
+  const capabilityApprovalOptionsById = useMemo(() => {
+    const labelFor = (mode: AssistantToolApprovalMode): string => {
+      switch (mode) {
+        case 'require_approval':
+          return t('settings.agent.toolApprovalRequire', 'Require approval')
+        case 'dangerous_only':
+          return t(
+            'settings.agent.toolApprovalDangerousOnly',
+            'Approve dangerous operations',
+          )
+        case 'full_access':
+        default:
+          return t('settings.agent.toolApprovalFullAccess', 'Full access')
+      }
+    }
+    const displayOrder: AssistantToolApprovalMode[] = [
+      'require_approval',
+      'dangerous_only',
+      'full_access',
+    ]
+    const map = new Map<
+      BuiltinCapabilityId,
+      { value: AssistantToolApprovalMode; label: string }[]
+    >()
+    for (const capability of listCapabilities()) {
+      const allowedModes = new Set(capability.approval.allowedModes)
+      map.set(
+        capability.id as BuiltinCapabilityId,
+        displayOrder
+          .filter((mode) => allowedModes.has(mode))
+          .map((mode) => ({ value: mode, label: labelFor(mode) })),
+      )
+    }
+    return map
+  }, [t])
   return (
     <div
       ref={sectionRef}
@@ -1871,10 +1904,7 @@ export function AgentsSectionContent({
                               type="button"
                               className="yolo-agent-tool-group-bulk-toggle"
                               onClick={() =>
-                                toggleTool(
-                                  groupToggleTargets,
-                                  !allGroupToolsEnabled,
-                                )
+                                toggleTool(group.tools, !allGroupToolsEnabled)
                               }
                             >
                               {allGroupToolsEnabled
@@ -1897,8 +1927,21 @@ export function AgentsSectionContent({
                               (target) =>
                                 isAssistantToolEnabled(draftAgent, target),
                             )
-                            const isBashTool = tool.toggleTargets.every(
-                              (target) => target === bashToolFullName,
+                            // Built-in rows offer their own capability's
+                            // allowed tiers; MCP server tool rows have no
+                            // capability and keep the generic two-tier list.
+                            const approvalOptions =
+                              (tool.capabilityId &&
+                                capabilityApprovalOptionsById.get(
+                                  tool.capabilityId,
+                                )) ||
+                              toolApprovalOptions
+                            // Only a capability that allows `dangerous_only`
+                            // can display it — today that is `vault_shell`
+                            // alone, but this reads the declaration rather
+                            // than naming bash (phase2-migration.md D7 item 8).
+                            const allowsDangerousOnly = approvalOptions.some(
+                              (option) => option.value === 'dangerous_only',
                             )
                             const approvalMode = !group.isBuiltin
                               ? 'require_approval'
@@ -1910,7 +1953,7 @@ export function AgentsSectionContent({
                                       ) === 'full_access',
                                   )
                                 ? 'full_access'
-                                : isBashTool &&
+                                : allowsDangerousOnly &&
                                     tool.toggleTargets.every(
                                       (target) =>
                                         getAssistantToolApprovalMode(
@@ -1939,14 +1982,10 @@ export function AgentsSectionContent({
                                       <div className="yolo-agent-tool-select">
                                         <SimpleSelect
                                           value={approvalMode}
-                                          options={
-                                            isBashTool
-                                              ? bashToolApprovalOptions
-                                              : toolApprovalOptions
-                                          }
+                                          options={approvalOptions}
                                           onChange={(value) =>
                                             setToolApprovalMode(
-                                              tool.toggleTargets,
+                                              [tool],
                                               value as AssistantToolApprovalMode,
                                             )
                                           }
@@ -1959,7 +1998,7 @@ export function AgentsSectionContent({
                                   <ObsidianToggle
                                     value={Boolean(selected)}
                                     onChange={(value) =>
-                                      toggleTool(tool.toggleTargets, value)
+                                      toggleTool([tool], value)
                                     }
                                   />
                                 </div>

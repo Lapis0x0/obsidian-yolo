@@ -11,104 +11,31 @@ import {
   COMMAND_PRIORITY_HIGH,
   DROP_COMMAND,
 } from 'lexical'
-import { App, TFile, TFolder } from 'obsidian'
 import { useEffect } from 'react'
 
 import { useApp } from '../../../../../contexts/app-context'
-import { Mentionable } from '../../../../../types/mentionable'
 import {
   getMentionableName,
   serializeMentionable,
 } from '../../../../../utils/chat/mentionable'
 import { $createMentionNode } from '../mention/MentionNode'
 
-const OBSIDIAN_OPEN_PREFIX = 'obsidian://open?'
+import { resolveDrop } from './resolveDrop'
 
-type ParsedObsidianLink = {
-  vault: string | null
-  file: string
-}
-
-function parseObsidianOpenUrl(raw: string): ParsedObsidianLink | null {
-  const trimmed = raw.trim()
-  if (!trimmed.startsWith(OBSIDIAN_OPEN_PREFIX)) {
-    return null
-  }
-  try {
-    const url = new URL(trimmed)
-    const file = url.searchParams.get('file')
-    if (!file) {
-      return null
-    }
-    return {
-      vault: url.searchParams.get('vault'),
-      file,
-    }
-  } catch {
-    return null
-  }
-}
-
-function extractCandidateUrls(dataTransfer: DataTransfer): string[] {
-  const uriList = dataTransfer.getData('text/uri-list')
-  if (uriList) {
-    const lines = uriList
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0 && !line.startsWith('#'))
-    if (lines.length > 0) {
-      return lines
-    }
-  }
-
-  const plain = dataTransfer.getData('text/plain')
-  if (plain) {
-    return plain
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter((line) => line.length > 0)
-  }
-
-  return []
-}
-
-// Obsidian's internal drag state. Folders carry no openable URI in the drop
-// event's dataTransfer, so this is the only reliable source for a dragged
-// folder. Not part of the public API — typed narrowly and accessed defensively.
-type ObsidianDraggable = {
-  type?: string
-  file?: unknown
-  files?: unknown[]
-}
-
-function getDraggedFolders(app: App): TFolder[] {
-  const draggable = (
-    app as unknown as { dragManager?: { draggable?: ObsidianDraggable } }
-  ).dragManager?.draggable
-  if (!draggable) {
-    return []
-  }
-
-  const candidates: unknown[] = []
-  if (draggable.file) {
-    candidates.push(draggable.file)
-  }
-  if (Array.isArray(draggable.files)) {
-    candidates.push(...draggable.files)
-  }
-
-  const folders: TFolder[] = []
-  const seenPaths = new Set<string>()
-  for (const candidate of candidates) {
-    if (candidate instanceof TFolder && !seenPaths.has(candidate.path)) {
-      seenPaths.add(candidate.path)
-      folders.push(candidate)
-    }
-  }
-  return folders
-}
-
-export default function ObsidianFileDropPlugin(): null {
+/**
+ * The chat input's only drop handler.
+ *
+ * Registered above Lexical's own rich-text DROP_COMMAND handler, which would
+ * otherwise turn any dropped file into a DRAG_DROP_PASTE. Claiming the drop
+ * here keeps a single answer to "what was dropped" — see resolveDrop. Files
+ * that belong to the attachment flow are forwarded to `onDropFiles` rather
+ * than routed through a second path.
+ */
+export default function ObsidianFileDropPlugin({
+  onDropFiles,
+}: {
+  onDropFiles?: (files: File[]) => void
+}): null {
   const [editor] = useLexicalComposerContext()
   const app = useApp()
 
@@ -121,62 +48,22 @@ export default function ObsidianFileDropPlugin(): null {
           return false
         }
 
-        // If actual files are present, defer to the existing image DragDropPaste flow.
-        if (dataTransfer.files && dataTransfer.files.length > 0) {
-          return false
-        }
-
-        // Folders carry no openable URI in dataTransfer, so resolve them from
-        // Obsidian's internal drag state instead of the uri-list candidates.
-        const resolvedFolders = getDraggedFolders(app)
-
-        const candidates = extractCandidateUrls(dataTransfer)
-        if (candidates.length === 0 && resolvedFolders.length === 0) {
-          return false
-        }
-
-        const currentVaultName = app.vault.getName()
-        const resolvedFiles: TFile[] = []
-        const seenPaths = new Set<string>()
-
-        for (const candidate of candidates) {
-          const parsed = parseObsidianOpenUrl(candidate)
-          if (!parsed) {
-            continue
-          }
-          if (parsed.vault && parsed.vault !== currentVaultName) {
-            continue
-          }
-
-          const linkpath = parsed.file
-          let file: TFile | null =
-            app.metadataCache.getFirstLinkpathDest(linkpath, '') ?? null
-
-          if (!file) {
-            const direct = app.vault.getAbstractFileByPath(linkpath)
-            if (direct instanceof TFile) {
-              file = direct
-            }
-          }
-          if (!file) {
-            const withMd = app.vault.getAbstractFileByPath(`${linkpath}.md`)
-            if (withMd instanceof TFile) {
-              file = withMd
-            }
-          }
-
-          if (file && !seenPaths.has(file.path)) {
-            seenPaths.add(file.path)
-            resolvedFiles.push(file)
-          }
-        }
-
-        if (resolvedFiles.length === 0 && resolvedFolders.length === 0) {
+        const { mentionables, files } = resolveDrop(app, dataTransfer)
+        const droppableFiles = onDropFiles ? files : []
+        if (mentionables.length === 0 && droppableFiles.length === 0) {
           return false
         }
 
         event.preventDefault()
         event.stopPropagation()
+
+        if (droppableFiles.length > 0) {
+          onDropFiles?.(droppableFiles)
+        }
+
+        if (mentionables.length === 0) {
+          return true
+        }
 
         // Capture drop coordinates before the update so we can position the
         // cursor at the actual drop point rather than the old caret position.
@@ -231,16 +118,8 @@ export default function ObsidianFileDropPlugin(): null {
             return
           }
 
-          const droppedMentionables: Mentionable[] = [
-            ...resolvedFiles.map(
-              (file): Mentionable => ({ type: 'file', file }),
-            ),
-            ...resolvedFolders.map(
-              (folder): Mentionable => ({ type: 'folder', folder }),
-            ),
-          ]
           const nodesToInsert = []
-          for (const mentionable of droppedMentionables) {
+          for (const mentionable of mentionables) {
             nodesToInsert.push(
               $createMentionNode(
                 getMentionableName(mentionable),
@@ -257,7 +136,7 @@ export default function ObsidianFileDropPlugin(): null {
       },
       COMMAND_PRIORITY_HIGH,
     )
-  }, [app, editor])
+  }, [app, editor, onDropFiles])
 
   return null
 }

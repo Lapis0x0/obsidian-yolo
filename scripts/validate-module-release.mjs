@@ -3,6 +3,11 @@ import { createHash } from 'node:crypto'
 import { copyFile, readdir, readFile } from 'node:fs/promises'
 import path from 'node:path'
 
+import {
+  assertReleaseAssetUniqueness,
+  deriveReleaseAssetName,
+} from './module-release-assets.mjs'
+
 const repository = 'Lapis0x0/obsidian-yolo'
 const args = parseArgs(process.argv.slice(2))
 const id = args.module
@@ -33,6 +38,10 @@ if (args.build) {
       id,
       '--output-dir',
       artifactDir,
+      // A GitHub Release holds one flat asset namespace, so the upload
+      // directory stores every artifact under its Release asset name.
+      '--layout',
+      'flat',
       '--release-tag',
       tag,
     ],
@@ -94,7 +103,21 @@ for (const variant of manifest.variants) {
     if (
       !file ||
       typeof file.name !== 'string' ||
-      file.path !== file.name ||
+      typeof file.path !== 'string'
+    ) {
+      throw new Error(`${id} manifest file is invalid`)
+    }
+    // An installed path may be nested; its Release asset name is the flat
+    // fold of that path, re-derived here instead of trusted from the build.
+    if (
+      file.name !==
+      deriveReleaseAssetName(file.path, `${id} manifest file path`)
+    ) {
+      throw new Error(
+        `${id} manifest file name does not fold its path: ${file.path}`,
+      )
+    }
+    if (
       !Number.isSafeInteger(file.byteSize) ||
       file.byteSize <= 0 ||
       !/^[a-f0-9]{64}$/.test(file.sha256) ||
@@ -108,16 +131,23 @@ for (const variant of manifest.variants) {
       throw new Error(`${id} manifest file differs across platforms`)
     }
     canonicalFiles.set(file.path, file)
-    expectedNames.add(file.path)
+    expectedNames.add(file.name)
   }
+  // Run on the variant's own declaration array, never on `canonicalFiles`:
+  // that map is keyed by path and collapses a repeated declaration, while the
+  // Host parses each variant's file list as it stands and rejects a duplicate
+  // path or name there. Checking only the collapsed form would let a manifest
+  // the Host refuses to install pass every release gate.
+  assertReleaseAssetUniqueness(variant.files, `${id} ${variant.platform}`)
 }
-for (const [filePath, descriptor] of canonicalFiles) {
-  const bytes = await readFile(path.join(artifactDir, filePath))
+assertReleaseAssetUniqueness(canonicalFiles.values(), id)
+for (const descriptor of canonicalFiles.values()) {
+  const bytes = await readFile(path.join(artifactDir, descriptor.name))
   if (
     bytes.byteLength !== descriptor.byteSize ||
     sha256(bytes) !== descriptor.sha256
   ) {
-    throw new Error(`${id} artifact integrity mismatch: ${filePath}`)
+    throw new Error(`${id} artifact integrity mismatch: ${descriptor.path}`)
   }
 }
 const directoryEntries = await readdir(artifactDir, { withFileTypes: true })

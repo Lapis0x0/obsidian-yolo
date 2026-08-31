@@ -352,10 +352,13 @@ describe('parseVaultData', () => {
     expect(result.valid).toBe(true)
     if (result.valid) {
       expect(result.data.settingsVersion).toBe(SETTINGS_SCHEMA_VERSION)
-      expect(result.data.data.ragOptions).toMatchObject({
-        enabled: true,
-        excludeYoloBaseDir: true,
-      })
+      expect(result.data.data.ragOptions).toMatchObject({ enabled: true })
+      // The 81_to_82 migration deletes this field along with the
+      // scope-pattern fields it used to gate; a migrated export must not
+      // resurrect it.
+      expect(result.data.data.ragOptions).not.toHaveProperty(
+        'excludeYoloBaseDir',
+      )
     }
   })
 
@@ -407,7 +410,7 @@ describe('applyImport', () => {
       enabled: true,
       chunkSize: 1000,
       limit: 10,
-      excludePatterns: ['*.tmp'],
+      minSimilarity: 0.42,
     },
   })
 
@@ -463,7 +466,7 @@ describe('applyImport', () => {
     expect(result.ragOptions.chunkSize).toBe(800)
     expect(result.ragOptions.limit).toBe(20)
     expect(result.ragOptions.enabled).toBe(true)
-    expect(result.ragOptions.excludePatterns).toEqual(['*.tmp'])
+    expect(result.ragOptions.minSimilarity).toBe(0.42)
   })
 
   it('should only import selected keys, ignoring unselected ones', () => {
@@ -500,7 +503,8 @@ describe('applyImport', () => {
 
     expect(result.ragOptions.enabled).toBe(false)
     expect(result.ragOptions.chunkSize).toBe(750)
-    expect(result.ragOptions.excludeYoloBaseDir).toBe(true)
+    // The deleted field must not resurface via migration on an older export.
+    expect(result.ragOptions).not.toHaveProperty('excludeYoloBaseDir')
   })
 
   it('should not apply migration-generated fields that were not exported', () => {

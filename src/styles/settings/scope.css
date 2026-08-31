@@ -1,0 +1,676 @@
+/*
+ * Unified scope editor: the settings-page summary (`yolo-scope-summary`) and
+ * the editor modal (`yolo-scope-editor`) share the status sentence, the
+ * include/exclude badges, and the two-state colour language:
+ *   solid 2/3px bar = a rule set on this row,
+ *   translucent bar = the row follows an ancestor.
+ * Colours come from Obsidian variables only, so themes stay in charge.
+ */
+
+/* ================= shared atoms ================= */
+
+.yolo-scope-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.yolo-scope-badge.is-include {
+  background: rgba(var(--color-green-rgb), 0.14);
+  color: var(--color-green);
+}
+
+.yolo-scope-badge.is-exclude {
+  background: rgba(var(--color-red-rgb), 0.12);
+  color: var(--color-red);
+}
+
+.yolo-scope-badge svg {
+  flex: 0 0 auto;
+}
+
+.yolo-scope-status {
+  font-size: var(--font-ui-small);
+  color: var(--text-muted);
+  line-height: 1.45;
+}
+
+.yolo-scope-status-main {
+  color: var(--text-normal);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-scope-status-dot {
+  color: var(--text-faint);
+}
+
+.yolo-scope-status--inline {
+  margin-top: 4px;
+}
+
+.yolo-scope-status--block {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+}
+
+.yolo-scope-status--block .yolo-scope-status-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-status--block.is-only .yolo-scope-status-icon {
+  color: var(--interactive-accent);
+}
+
+.yolo-scope-status-text {
+  flex: 1;
+  min-width: 0;
+}
+
+button.yolo-scope-status-reset {
+  flex: 0 0 auto;
+  padding: 0;
+  background: transparent;
+  box-shadow: none;
+  border: none;
+  color: var(--interactive-accent);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+button.yolo-scope-status-reset:hover {
+  background: transparent;
+  box-shadow: none;
+  text-decoration: underline;
+}
+
+/* The one-shot pulse that makes "whole vault -> only these" visible. Scale
+ * only; the element is remounted on each flip so the animation replays. */
+.yolo-scope-status--block.is-flip {
+  animation: yolo-scope-status-pulse var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-scope-status-pulse {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.025);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.yolo-scope-crumb-segment,
+.yolo-scope-crumb-separator {
+  color: var(--text-faint);
+}
+
+.yolo-scope-crumb-separator {
+  opacity: 0.7;
+  margin: 0 1px;
+}
+
+.yolo-scope-crumb-leaf {
+  color: var(--text-normal);
+  font-weight: var(--font-medium);
+}
+
+/* ================= settings-page summary ================= */
+
+.yolo-scope-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.yolo-scope-summary.is-disabled .yolo-scope-status,
+.yolo-scope-summary.is-disabled .yolo-scope-rules {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.yolo-scope-summary-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.yolo-scope-summary-copy {
+  flex: 1;
+  min-width: 0;
+}
+
+.yolo-scope-summary-title {
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-edit-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  cursor: pointer;
+}
+
+.yolo-scope-rules {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  overflow: hidden;
+  background: var(--background-primary);
+}
+
+.yolo-scope-rule-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 8px 0 14px;
+  font-size: var(--font-ui-small);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-scope-rule-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+}
+
+.yolo-scope-rule-row.is-include::before {
+  background: var(--color-green);
+}
+
+.yolo-scope-rule-row.is-exclude::before {
+  background: var(--color-red);
+}
+
+.yolo-scope-rule-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-rule-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-scope-rule-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+button.yolo-scope-rule-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  flex: 0 0 auto;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.yolo-scope-rule-remove:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-rule-remove:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.yolo-scope-rules-empty {
+  padding: 18px;
+  text-align: center;
+  color: var(--text-faint);
+  font-size: var(--font-ui-small);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+.yolo-scope-rules-footer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 40px;
+  padding: 0 10px;
+  background: var(--background-secondary);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-scope-rules-footer > span {
+  flex: 1;
+}
+
+button.yolo-scope-rules-clear {
+  padding: 2px 9px;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  border-radius: var(--radius-s);
+  cursor: pointer;
+}
+
+button.yolo-scope-rules-clear:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-rules-clear:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* ================= editor modal ================= */
+
+/* The modal is capped by Obsidian's max-height; let the tree absorb the
+   shrink so `.modal-content` itself never grows a scrollbar. */
+.yolo-scope-editor-modal .modal-content {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+  padding-top: var(--size-4-2);
+}
+
+.yolo-scope-editor {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 10px;
+  min-height: 0;
+  width: min(580px, 100%);
+}
+
+.yolo-scope-editor > * {
+  flex: 0 0 auto;
+}
+
+.yolo-scope-editor > .yolo-scope-tree {
+  flex: 1 1 auto;
+  min-height: 160px;
+}
+
+.yolo-scope-editor-title {
+  font-size: var(--font-ui-large);
+  font-weight: var(--font-semibold);
+  color: var(--text-normal);
+}
+
+.yolo-scope-editor-subtitle {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.yolo-scope-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.yolo-scope-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-form-field);
+  color: var(--text-faint);
+}
+
+.yolo-scope-search:focus-within {
+  border-color: var(--interactive-accent);
+}
+
+.yolo-scope-search input {
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-scope-search input:focus,
+.yolo-scope-search input:focus-visible {
+  border: none;
+  box-shadow: none;
+  outline: none;
+}
+
+button.yolo-scope-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  flex: 0 0 auto;
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+button.yolo-scope-filter.is-active {
+  border-color: var(--interactive-accent);
+  color: var(--interactive-accent);
+  background: color-mix(in srgb, var(--color-accent) 6%, transparent);
+}
+
+.yolo-scope-tree {
+  max-height: 340px;
+  overflow: auto;
+  margin: 0 -6px;
+  padding: 0 6px;
+}
+
+.yolo-scope-tree-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.yolo-scope-tree-item {
+  margin: 0;
+}
+
+.yolo-scope-children {
+  margin-left: 20px;
+}
+
+.yolo-scope-tree-empty {
+  border: 1px dashed var(--background-modifier-border-hover);
+  border-radius: var(--radius-m);
+  padding: 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-scope-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 6px 0 4px;
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-scope-row::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 2px;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.yolo-scope-row.is-effective-include::before {
+  background: rgba(var(--color-green-rgb), 0.45);
+}
+
+.yolo-scope-row.is-effective-exclude::before {
+  background: rgba(var(--color-red-rgb), 0.45);
+}
+
+.yolo-scope-row.has-rule.is-effective-include::before {
+  background: var(--color-green);
+}
+
+.yolo-scope-row.has-rule.is-effective-exclude::before {
+  background: var(--color-red);
+}
+
+.yolo-scope-row:hover {
+  background: var(--background-modifier-hover);
+}
+
+.yolo-scope-row.is-effective-exclude .yolo-scope-row-name,
+.yolo-scope-row.is-effective-exclude .yolo-scope-row-icon {
+  color: var(--text-faint);
+}
+
+button.yolo-scope-row-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  margin-left: 6px;
+  flex: 0 0 auto;
+  border: none;
+  box-shadow: none;
+  background: transparent;
+  border-radius: var(--radius-s);
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+button.yolo-scope-row-toggle:hover {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-row-toggle.is-blank {
+  visibility: hidden;
+}
+
+.yolo-scope-row-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-scope-highlight {
+  background: color-mix(in srgb, var(--color-accent) 24%, transparent);
+  color: inherit;
+  border-radius: 2px;
+  padding: 0 1px;
+}
+
+.yolo-scope-row-count {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-follows {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-faint);
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-faint);
+  flex: 0 0 auto;
+}
+
+.yolo-scope-row-marks {
+  display: inline-flex;
+  flex: 0 0 auto;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  overflow: hidden;
+  background: var(--background-primary);
+  opacity: 0;
+  transition: opacity var(--yolo-anim-duration-feedback);
+}
+
+.yolo-scope-row:hover .yolo-scope-row-marks,
+.yolo-scope-row:focus-within .yolo-scope-row-marks,
+.yolo-scope-row.has-rule .yolo-scope-row-marks {
+  opacity: 1;
+}
+
+button.yolo-scope-mark {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 8px;
+  border: none;
+  border-left: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+button.yolo-scope-mark:first-child {
+  border-left: none;
+}
+
+button.yolo-scope-mark:hover:not(:disabled) {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+
+button.yolo-scope-mark.is-include.is-active {
+  background: rgba(var(--color-green-rgb), 0.16);
+  color: var(--color-green);
+  font-weight: var(--font-semibold);
+}
+
+button.yolo-scope-mark.is-exclude.is-active {
+  background: rgba(var(--color-red-rgb), 0.14);
+  color: var(--color-red);
+  font-weight: var(--font-semibold);
+}
+
+button.yolo-scope-mark:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.yolo-scope-editor-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--background-modifier-border);
+  flex-wrap: wrap;
+}
+
+.yolo-scope-editor-counts {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-scope-editor-estimate {
+  font-variant-numeric: tabular-nums;
+}
+
+.yolo-scope-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+/* ================= mobile ================= */
+
+body.is-mobile .yolo-scope-row {
+  height: 44px;
+  font-size: var(--font-ui-medium);
+  cursor: pointer;
+}
+
+body.is-mobile .yolo-scope-rule-row {
+  min-height: 44px;
+}
+
+body.is-mobile .yolo-scope-tree {
+  max-height: none;
+}
+
+body.is-mobile .yolo-scope-children {
+  margin-left: 16px;
+}
+
+body.is-mobile .yolo-scope-filter-label {
+  display: none;
+}
+
+body.is-mobile .yolo-scope-summary-head {
+  flex-direction: column;
+  align-items: stretch;
+}
+
+body.is-mobile button.yolo-scope-edit-button {
+  justify-content: center;
+  width: 100%;
+}

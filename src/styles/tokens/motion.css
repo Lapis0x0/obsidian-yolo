@@ -37,6 +37,8 @@
   --yolo-anim-ease-in: cubic-bezier(0.4, 0, 1, 1);
   /* 持续型状态指示器使用的循环曲线。 */
   --yolo-anim-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  /* 匀速：仅用于遮蔽性动画（如流式显影尾巴），需要均匀的亮度斜坡而非
+     入场曲线的前重后轻。暂无 JS 侧消费者，故 motion.ts 未设镜像常量。 */
   --yolo-anim-ease-linear: linear;
 }
 

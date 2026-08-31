@@ -1,4 +1,4 @@
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileToolNames'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import type { ChatMessage, ChatToolMessage } from '../../types/chat'
 import type { ToolCallRequest } from '../../types/tool-call.types'

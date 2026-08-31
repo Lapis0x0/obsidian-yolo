@@ -12,6 +12,11 @@ import {
   type ModuleAssetsCapabilityProviderV1,
   UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
 } from './moduleAssets'
+import {
+  MAX_MODULE_CHAT_MODES_PER_MODULE,
+  type ModuleChatModeContributionSinkV1,
+  snapshotModuleChatMode,
+} from './moduleChatModeRegistry'
 import type {
   ModuleConfigCapabilityActivationV1,
   ModuleConfigV1,
@@ -33,6 +38,7 @@ import {
   type ModuleSettingsCapabilityProviderV1,
   UNAVAILABLE_MODULE_SETTINGS_CAPABILITY_PROVIDER,
 } from './moduleSettingsContributions'
+import { assertModuleId } from './moduleStore'
 import {
   type ModuleUiCapabilityProviderV1,
   UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
@@ -46,6 +52,8 @@ import type {
   YoloModuleBackgroundActivityV1,
   YoloModuleBackgroundV1,
   YoloModuleCapabilitiesV1,
+  YoloModuleChatModeV1,
+  YoloModuleChatV1,
 } from './types'
 
 export type ModuleHostCapabilityProviderV1 = {
@@ -156,6 +164,7 @@ type CoreModuleHostCapabilityProviderOptions = {
   agent?: ModuleAgentCapabilityProviderV1
   assets?: ModuleAssetsCapabilityProviderV1
   backgroundActivities: BackgroundActivityBatchSink
+  chat?: ModuleChatCapabilityProviderV1
   config?: ModuleConfigCapabilityProviderV1
   i18n?: ModuleI18nCapabilityProviderV1
   paths?: ModulePathsCapabilityProviderV1
@@ -174,6 +183,7 @@ export class CoreModuleHostCapabilityProvider
   private readonly agent: ModuleAgentCapabilityProviderV1
   private readonly assets: ModuleAssetsCapabilityProviderV1
   private readonly backgroundActivities: BackgroundActivityBatchSink
+  private readonly chat: ModuleChatCapabilityProviderV1
   private readonly config: ModuleConfigCapabilityProviderV1
   private readonly now: () => number
   private readonly i18n: ModuleI18nCapabilityProviderV1
@@ -192,6 +202,7 @@ export class CoreModuleHostCapabilityProvider
     agent = UNAVAILABLE_MODULE_AGENT_CAPABILITY_PROVIDER,
     assets = UNAVAILABLE_MODULE_ASSETS_CAPABILITY_PROVIDER,
     backgroundActivities,
+    chat = UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER,
     config = UNAVAILABLE_MODULE_CONFIG_CAPABILITY_PROVIDER,
     i18n = new ModuleI18nCapabilityProvider(),
     paths = UNAVAILABLE_MODULE_PATHS_CAPABILITY_PROVIDER,
@@ -211,6 +222,7 @@ export class CoreModuleHostCapabilityProvider
     this.agent = agent
     this.assets = assets
     this.backgroundActivities = backgroundActivities
+    this.chat = chat
     this.config = config
     this.i18n = i18n
     this.paths = paths
@@ -236,6 +248,7 @@ export class CoreModuleHostCapabilityProvider
       now: this.now,
       reportCallbackError: this.reportCallbackError,
     })
+    const chat = this.chat.create(moduleId, lifecycle)
     const config = this.config.create(moduleId, lifecycle)
     const i18n = this.i18n.create(moduleId, lifecycle)
     const paths = this.paths.create(moduleId, lifecycle)
@@ -249,6 +262,7 @@ export class CoreModuleHostCapabilityProvider
         agent: agent.api,
         assets: assets.api,
         background: background.api,
+        chat: chat.api,
         config: config.api,
         i18n: i18n.api,
         paths: paths.api,
@@ -262,11 +276,13 @@ export class CoreModuleHostCapabilityProvider
       commit: () => {
         settings.commit()
         background.commit()
+        chat.commit()
       },
       activate: () => {
         agent.activate()
         assets.activate()
         background.activate()
+        chat.activate()
         paths.activate()
         privateStorage.activate()
         settings.activate()
@@ -275,6 +291,126 @@ export class CoreModuleHostCapabilityProvider
         workers.activate()
       },
     })
+  }
+}
+
+export type ModuleChatCapabilityProviderV1 = Readonly<{
+  create(
+    moduleId: string,
+    lifecycle: ModuleLifecycleScope,
+  ): Readonly<{
+    api: YoloModuleChatV1
+    commit(): void
+    activate(): void
+  }>
+}>
+
+export type ModuleChatCapabilityProviderOptions = Readonly<{
+  sink: ModuleChatModeContributionSinkV1
+}>
+
+export class CoreModuleChatCapabilityProvider
+  implements ModuleChatCapabilityProviderV1
+{
+  constructor(private readonly options: ModuleChatCapabilityProviderOptions) {}
+
+  create(moduleId: string, lifecycle: ModuleLifecycleScope) {
+    return createModuleChatCapability({
+      moduleId,
+      lifecycle,
+      sink: this.options.sink,
+    })
+  }
+}
+
+export const UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER: ModuleChatCapabilityProviderV1 =
+  Object.freeze({
+    create: () => ({
+      api: Object.freeze({
+        registerMode: () => {
+          throw new Error('Module chat capability is unavailable')
+        },
+      }),
+      commit: () => undefined,
+      activate: () => undefined,
+    }),
+  })
+
+/**
+ * Stages a module's chat mode declarations during `activate()` and
+ * publishes them to the shared `ModuleChatModeRegistry` atomically on
+ * `commit()` — mirrors `ModuleSettingsCapabilityProvider`'s staged/commit
+ * shape. The lifecycle disposer revokes every published mode (module
+ * disable/uninstall, or a rollback after a failed activation).
+ */
+function createModuleChatCapability({
+  moduleId,
+  lifecycle,
+  sink,
+}: {
+  moduleId: string
+  lifecycle: ModuleLifecycleScope
+  sink: ModuleChatModeContributionSinkV1
+}): {
+  api: YoloModuleChatV1
+  commit(): void
+  activate(): void
+} {
+  assertModuleId(moduleId, 'Module id')
+  const staged = new Map<string, YoloModuleChatModeV1>()
+  const published = new Set<string>()
+  let active = true
+  let committed = false
+  let activationComplete = false
+  lifecycle.add(() => {
+    active = false
+    activationComplete = false
+    staged.clear()
+    for (const id of published) sink.remove(moduleId, id)
+    published.clear()
+  })
+  const assertActive = (): void => {
+    if (!active) throw new Error(`Module "${moduleId}" is no longer active`)
+  }
+  const api: YoloModuleChatV1 = Object.freeze({
+    registerMode: (mode) => {
+      assertActive()
+      if (committed) {
+        throw new Error('Module chat modes are already committed')
+      }
+      const snapshot = snapshotModuleChatMode(mode)
+      if (staged.has(snapshot.id)) {
+        throw new Error(`Duplicate module chat mode id "${snapshot.id}"`)
+      }
+      if (staged.size >= MAX_MODULE_CHAT_MODES_PER_MODULE) {
+        throw new Error(
+          `Module "${moduleId}" cannot register more than ${MAX_MODULE_CHAT_MODES_PER_MODULE} chat modes`,
+        )
+      }
+      staged.set(snapshot.id, snapshot)
+    },
+  })
+  return {
+    api,
+    commit: () => {
+      assertActive()
+      if (committed) {
+        throw new Error('Module capabilities are already committed')
+      }
+      committed = true
+      for (const [id, mode] of staged) {
+        published.add(id)
+        sink.add(moduleId, mode)
+      }
+      staged.clear()
+    },
+    activate: () => {
+      assertActive()
+      if (activationComplete) {
+        throw new Error('Module capabilities are already active')
+      }
+      activationComplete = true
+    },
   }
 }
 

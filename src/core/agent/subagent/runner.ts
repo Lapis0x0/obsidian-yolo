@@ -14,7 +14,6 @@ import { runWithBackgroundExecution } from '../../background/backgroundExecution
 import type { BaseLLMProvider } from '../../llm/base'
 import { type YoloAgentEvent, conversationStateToEvents } from '../agent-api'
 import { backgroundTaskCompletionBus } from '../background-task/completion-bus'
-import { CitationRegistry } from '../citationRegistry'
 import { liveTaskStreamBus } from '../live-stream/taskStreamBus'
 import { NativeAgentRuntime } from '../native-runtime'
 import type { AgentConversationState } from '../service'
@@ -250,7 +249,6 @@ async function runChildAgent(
   }
 
   const runtime = new NativeAgentRuntime(loopConfig)
-  const citationRegistry = new CitationRegistry()
   const abortController = record.abortController
   const parentToolCallId = record.source.toolCallId
   const activityLines: string[] = []
@@ -280,6 +278,7 @@ async function runChildAgent(
     mcpManager: parent.mcpManager,
     allowedToolNames: childAllowedToolNames,
     toolPreferences: parent.toolPreferences,
+    builtinCapabilityPreferences: parent.builtinCapabilityPreferences,
     toolServerPreferences: parent.toolServerPreferences,
     workspaceScope: parent.workspaceScope,
     allowedSkillPaths: parent.allowedSkillPaths,
@@ -290,7 +289,6 @@ async function runChildAgent(
     systemPromptOverride: SUBAGENT_DEFAULT_SYSTEM_PROMPT,
     toolApprovalConversationId: parent.conversationId,
     bypassToolApproval: parent.bypassToolApproval,
-    runContext: { citationRegistry },
   }
 
   const unsubscribe = runtime.subscribe((snapshot) => {

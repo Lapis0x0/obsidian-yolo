@@ -89,14 +89,50 @@ export function buildReviewPlanFromEdits(
   return materializeReviewEdits(originalContent, normalizedEdits)
 }
 
+/**
+ * 走 diff 切块的行数上限（单侧）。
+ *
+ * `createLineDiffBlocks` 的时间上限管不住行对齐：vscode-diff 只给「两侧合计
+ * < 1700 行」的 dynamic-programming 路径传了 timeout，更大的输入走
+ * `myersDiffingAlgorithm.compute(sequence1, sequence2)`，没有 timeout 参数
+ * （同 `editSummary.ts` 的 `LINE_STATS_MAX_LINES`）。超限时退化成「整篇替换」
+ * 的单个 edit：`splitEditByParagraphStructure` 仍会按段落拆分，只是拆分依据
+ * 从 diff 块变成整篇的段落结构，段数对不上就退化成一个大评审项。
+ *
+ * 比行数统计宽松得多（那边是 2000），因为评审是用户主动触发的一次性计算，
+ * 而且块的划分质量直接决定能不能逐段接受/拒绝。
+ */
+const REVIEW_DIFF_MAX_LINES = 5000
+
+const countLines = (content: string): number => {
+  let lines = 1
+  for (let index = 0; index < content.length; index++) {
+    if (content[index] === '\n') lines++
+  }
+  return lines
+}
+
 export function buildSnapshotReviewPlan(
   originalContent: string,
   incomingContent: string,
 ): ReviewPlan {
-  const edits = buildSnapshotReviewEdits(
-    originalContent,
-    createLineDiffBlocks(originalContent, incomingContent),
-  )
+  const tooLargeToDiff =
+    countLines(originalContent) > REVIEW_DIFF_MAX_LINES ||
+    countLines(incomingContent) > REVIEW_DIFF_MAX_LINES
+  const edits = tooLargeToDiff
+    ? originalContent === incomingContent
+      ? []
+      : [
+          {
+            from: 0,
+            to: originalContent.length,
+            replacement: incomingContent,
+          },
+        ]
+    : buildSnapshotReviewEdits(
+        originalContent,
+        createLineDiffBlocks(originalContent, incomingContent),
+      )
   return (
     buildReviewPlanFromEdits(originalContent, edits) ?? {
       content: originalContent,

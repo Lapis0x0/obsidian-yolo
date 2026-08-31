@@ -20,6 +20,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import AssistantMessageReasoning, {
   formatReasoningDurationSeconds,
   getReasoningPreviewHoldOffset,
+  getReasoningPreviewViewportMetrics,
   getReasoningRollText,
 } from './AssistantMessageReasoning'
 
@@ -67,6 +68,40 @@ describe('AssistantMessageReasoning', () => {
     expect(getReasoningPreviewHoldOffset(20, 20)).toBe(0)
     expect(getReasoningPreviewHoldOffset(40, 20)).toBe(20)
     expect(getReasoningPreviewHoldOffset(80, 20)).toBe(20)
+  })
+
+  it('grows the viewport without moving the track until the preview caps out', () => {
+    const metrics = (contentHeight: number) =>
+      getReasoningPreviewViewportMetrics({
+        contentHeight,
+        holdOffset: getReasoningPreviewHoldOffset(contentHeight, 20),
+        lineHeight: 20,
+        previewLines: 5,
+      })
+
+    // 未封顶：视口贴着可见内容生长，轨道位移恒为 0，只有一条动画在跑。
+    expect(metrics(20)).toEqual({
+      viewportHeight: 20,
+      scrollOffset: 0,
+      isOverflowing: false,
+    })
+    expect(metrics(100)).toEqual({
+      viewportHeight: 80,
+      scrollOffset: 0,
+      isOverflowing: false,
+    })
+    // 恰好封顶：视口停在上限，位移仍未启动，两条动画不重叠。
+    expect(metrics(120)).toEqual({
+      viewportHeight: 100,
+      scrollOffset: 0,
+      isOverflowing: false,
+    })
+    // 封顶后：视口恒定，超出多少就往上滚多少。
+    expect(metrics(140)).toEqual({
+      viewportHeight: 100,
+      scrollOffset: 20,
+      isOverflowing: true,
+    })
   })
 
   it('keeps the reasoning title when the response generation fails', () => {

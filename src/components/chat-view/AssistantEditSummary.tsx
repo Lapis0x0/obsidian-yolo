@@ -11,7 +11,7 @@ const formatDelta = (value: number, sign: '+' | '-') => {
   return `${sign}${value}`
 }
 
-const renderDeltaPair = (addedLines: number, removedLines: number) => {
+export const renderDeltaPair = (addedLines: number, removedLines: number) => {
   const items: Array<ReactElement> = []
 
   if (addedLines > 0) {
@@ -86,7 +86,12 @@ const AssistantEditSummary = memo(function AssistantEditSummary({
               '{count} file(s) changed',
             ).replace('{count}', String(summary.totalFiles))}
           </span>
-          {renderDeltaPair(summary.totalAddedLines, summary.totalRemovedLines)}
+          {summary.totalLineStatsAvailable
+            ? renderDeltaPair(
+                summary.totalAddedLines,
+                summary.totalRemovedLines,
+              )
+            : null}
         </div>
         {showUndo ? (
           <button

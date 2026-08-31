@@ -162,6 +162,79 @@ describe('createVaultBashSearch', () => {
     }
   })
 
+  it('requests exactly maxResults, even with a scope active — pre-filtering happens at the retrieval layer now', async () => {
+    const workspaceScope: AssistantWorkspaceScope = {
+      enabled: true,
+      include: ['notes'],
+      exclude: [],
+    }
+    // `runVaultSearchStructured` now applies workspace scope before
+    // retrieval (RAG scan predicate + keyword sweep filters), so there is no
+    // over-request to compensate for post-filtering trimming the ranking —
+    // every hit it returns is already in scope.
+    mockRunVaultSearchStructured.mockResolvedValue(
+      successOutcome([
+        { kind: 'file', path: 'notes/out.md', source: 'keyword' },
+      ]),
+    )
+    const search = createVaultBashSearch({
+      app,
+      settings: { ragOptions: { limit: 10 } } as never,
+      workspaceScope,
+    })
+
+    const outcome = await search({ query: 'q', maxResults: 20 })
+
+    expect(mockRunVaultSearchStructured).toHaveBeenCalledTimes(1)
+    expect(mockRunVaultSearchStructured).toHaveBeenCalledWith(
+      expect.objectContaining({
+        workspaceScope,
+        args: { query: 'q', path: undefined, maxResults: 20, mode: 'hybrid' },
+      }),
+    )
+    expect(outcome).toEqual({
+      status: 'success',
+      notice: undefined,
+      results: [{ kind: 'file', path: 'notes/out.md' }],
+    })
+  })
+
+  it('hides the YOLO user-data root from results and scope paths even with no workspace scope', async () => {
+    const settings = { yolo: { baseDir: 'YOLO' } } as never
+    mockRunVaultSearchStructured.mockResolvedValue(
+      successOutcome([
+        { kind: 'file', path: 'notes/in.md', source: 'keyword' },
+        {
+          kind: 'file',
+          path: 'YOLO/data/chats/v1_abc.json',
+          source: 'keyword',
+        },
+      ]),
+    )
+    const search = createVaultBashSearch({ app, settings })
+
+    // `vaultSearchService` filters the user-data root out of its filename and
+    // folder sweeps but not its content sweep, so this layer has to — and it
+    // must not be conditional on a workspace scope being configured.
+    const outcome = await search({ query: 'q', maxResults: 20 })
+    expect(outcome.status).toBe('success')
+    if (outcome.status === 'success') {
+      expect(outcome.results).toEqual([{ kind: 'file', path: 'notes/in.md' }])
+    }
+
+    // An explicit request for a hidden path keeps the not-found disguise
+    // rather than being reported as a scope violation.
+    const denied = await search({
+      query: 'q',
+      scopePath: 'YOLO/data',
+      maxResults: 20,
+    })
+    expect(denied).toEqual({
+      status: 'error',
+      message: "no such file or directory: 'YOLO/data'",
+    })
+  })
+
   it('maps aborted and error outcomes to search errors', async () => {
     mockRunVaultSearchStructured.mockResolvedValueOnce({ status: 'aborted' })
     const search = createVaultBashSearch({ app })

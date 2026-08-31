@@ -2,6 +2,7 @@ jest.mock('obsidian', () => ({
   TAbstractFile: class {},
   TFile: class {},
   TFolder: class {},
+  normalizePath: (path: string) => path,
 }))
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
@@ -29,11 +30,12 @@ describe('RagAutoUpdateService', () => {
       ragOptions: {
         enabled: true,
         autoUpdateEnabled: true,
-        includePatterns: [],
-        excludePatterns: [],
         lastAutoUpdateAt: 0,
         indexPdf: true,
       },
+      knowledgeBases: [
+        { id: 'kb-a', name: 'kb-a', description: '', include: [], exclude: [] },
+      ],
     } as unknown as YoloSettings
     let retryCount = 0
     const runIndex = jest.fn().mockImplementation(async () => {
@@ -42,9 +44,11 @@ describe('RagAutoUpdateService', () => {
     const setSettings = jest.fn().mockResolvedValue(undefined)
     const markRetryScheduled = jest
       .fn()
-      .mockImplementation(async ({ retryCount: nextRetryCount }) => {
-        retryCount = nextRetryCount
-      })
+      .mockImplementation(
+        async (_kbId: string, { retryCount: nextRetryCount }) => {
+          retryCount = nextRetryCount
+        },
+      )
     const clearRetryScheduled = jest.fn().mockResolvedValue(undefined)
 
     const service = new RagAutoUpdateService({
@@ -139,6 +143,78 @@ describe('RagAutoUpdateService', () => {
     cleanup()
   })
 
+  it('tracks and flushes two differently-scoped knowledge bases independently', async () => {
+    // Each knowledge base gets its own RagAutoUpdateWorker keyed by kbId — a
+    // path that only matches one base's include/exclude scope must dirty
+    // (and later flush) only that base's worker, never the other's.
+    const settings = {
+      embeddingModelId: 'test-embed',
+      embeddingModels: [{ id: 'test-embed' }],
+      ragOptions: {
+        enabled: true,
+        autoUpdateEnabled: true,
+        lastAutoUpdateAt: 0,
+        indexPdf: true,
+      },
+      knowledgeBases: [
+        {
+          id: 'kb-a',
+          name: 'kb-a',
+          description: '',
+          include: ['FolderA'],
+          exclude: [],
+        },
+        {
+          id: 'kb-b',
+          name: 'kb-b',
+          description: '',
+          include: ['FolderB'],
+          exclude: [],
+        },
+      ],
+    } as unknown as YoloSettings
+    const retryCounts = new Map<string, number>()
+    const runIndex = jest.fn().mockResolvedValue(undefined)
+    const setSettings = jest.fn().mockResolvedValue(undefined)
+    const markRetryScheduled = jest.fn().mockResolvedValue(undefined)
+    const clearRetryScheduled = jest.fn().mockResolvedValue(undefined)
+
+    const service = new RagAutoUpdateService({
+      getSettings: () => settings,
+      setSettings,
+      runIndex,
+      getRetryCount: (kbId: string) => retryCounts.get(kbId) ?? 0,
+      markRetryScheduled,
+      clearRetryScheduled,
+    })
+
+    // Only kb-a's scope matches this path — kb-b's worker must stay idle.
+    service.onVaultPathChanged('FolderA/note.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledWith('kb-a', {
+      kind: 'paths',
+      paths: ['FolderA/note.md'],
+    })
+
+    runIndex.mockClear()
+
+    // Now a path only kb-b's scope matches — must flush kb-b alone.
+    service.onVaultPathChanged('FolderB/note.md')
+    jest.advanceTimersByTime(5 * 60_000)
+    await flushAsync()
+
+    expect(runIndex).toHaveBeenCalledTimes(1)
+    expect(runIndex).toHaveBeenCalledWith('kb-b', {
+      kind: 'paths',
+      paths: ['FolderB/note.md'],
+    })
+
+    service.cleanup()
+  })
+
   it('runs sooner when the window blurs after a short grace period', async () => {
     const { service, runIndex, cleanup } = createService()
 
@@ -183,7 +259,7 @@ describe('RagAutoUpdateService', () => {
   it('restores persisted retry schedule on startup', async () => {
     const { service, runIndex, cleanup } = createService()
 
-    service.restoreRetryScheduled(Date.now() + 5 * 60_000)
+    service.restoreRetryScheduled('kb-a', Date.now() + 5 * 60_000)
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
@@ -239,7 +315,7 @@ describe('RagAutoUpdateService', () => {
 
     for (let i = 0; i < expectedDelaysMs.length; i += 1) {
       const before = Date.now()
-      const lastCall = markRetryScheduled.mock.calls.at(-1)?.[0] as {
+      const lastCall = markRetryScheduled.mock.calls.at(-1)?.[1] as {
         retryAt: number
       }
       const observedDelay = lastCall.retryAt - before
@@ -287,7 +363,7 @@ describe('RagAutoUpdateService', () => {
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    const lastCall = markRetryScheduled.mock.calls.at(-1)?.[0] as {
+    const lastCall = markRetryScheduled.mock.calls.at(-1)?.[1] as {
       retryAt: number
     }
     // Fresh failure after a success must restart at the base 5m delay.
@@ -318,7 +394,7 @@ describe('RagAutoUpdateService', () => {
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    const lastCall = markRetryScheduled.mock.calls.at(-1)?.[0] as {
+    const lastCall = markRetryScheduled.mock.calls.at(-1)?.[1] as {
       retryAt: number
     }
     expect(lastCall.retryAt - Date.now()).toBe(15 * 60_000)
@@ -349,7 +425,7 @@ describe('RagAutoUpdateService', () => {
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    const lastCall = markRetryScheduled.mock.calls.at(-1)?.[0] as {
+    const lastCall = markRetryScheduled.mock.calls.at(-1)?.[1] as {
       retryAt: number
     }
     expect(lastCall.retryAt - Date.now()).toBe(15 * 60_000)
@@ -362,7 +438,7 @@ describe('RagAutoUpdateService', () => {
     // the full persisted delay.
     const { service, runIndex, cleanup } = createService()
 
-    service.restoreRetryScheduled(Date.now() + 30 * 60_000)
+    service.restoreRetryScheduled('kb-a', Date.now() + 30 * 60_000)
     // Nothing has fired yet (retry is 30m out).
     jest.advanceTimersByTime(60_000)
     await flushAsync()
@@ -391,12 +467,12 @@ describe('RagAutoUpdateService', () => {
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(runIndex).toHaveBeenNthCalledWith(1, { kind: 'all' })
+    expect(runIndex).toHaveBeenNthCalledWith(1, 'kb-a', { kind: 'all' })
 
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(runIndex).toHaveBeenNthCalledWith(2, { kind: 'all' })
+    expect(runIndex).toHaveBeenNthCalledWith(2, 'kb-a', { kind: 'all' })
     cleanup()
   })
 
@@ -411,16 +487,16 @@ describe('RagAutoUpdateService', () => {
       .mockRejectedValueOnce(transientError)
       .mockResolvedValueOnce(undefined)
 
-    service.restoreRetryScheduled(Date.now() + 5 * 60_000)
+    service.restoreRetryScheduled('kb-a', Date.now() + 5 * 60_000)
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(runIndex).toHaveBeenNthCalledWith(1, { kind: 'all' })
+    expect(runIndex).toHaveBeenNthCalledWith(1, 'kb-a', { kind: 'all' })
 
     jest.advanceTimersByTime(5 * 60_000)
     await flushAsync()
 
-    expect(runIndex).toHaveBeenNthCalledWith(2, { kind: 'all' })
+    expect(runIndex).toHaveBeenNthCalledWith(2, 'kb-a', { kind: 'all' })
     cleanup()
   })
 

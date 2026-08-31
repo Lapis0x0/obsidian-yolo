@@ -65,6 +65,10 @@
   position: fixed;
   inset: 0;
   pointer-events: none;
+  /* Popovers are transient surfaces anchored to the panel — they must stack
+     above it (.yolo-quick-ask-overlay is z-index: 1), or the panel's shadow
+     paints over their top edge. */
+  z-index: 2;
 }
 
 /* Radix's Portal wraps its child in its own div before mounting it here, so
@@ -155,7 +159,7 @@
 }
 
 /* "Continue" mode preset menu — a detached Quick-Ask-style popover below the
-   composer (YoloPopoverContent, smart-space variant), replacing the old inline
+   composer (YoloPopoverContent, continuation variant), replacing the old inline
    chip row. Sizing lives here per the popover surface ownership rules. */
 .yolo-quick-ask-continue-menu {
   display: flex;
@@ -192,11 +196,7 @@ button.yolo-quick-ask-continue-menu-item:focus-visible {
 }
 
 button.yolo-quick-ask-continue-menu-item:focus {
-  background: color-mix(
-    in srgb,
-    var(--interactive-accent) 10%,
-    transparent
-  );
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
   outline: none;
   box-shadow: inset 0 0 0 2px var(--interactive-accent);
 }
@@ -377,8 +377,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 .yolo-quick-ask-reasoning-select .yolo-reasoning-select:hover,
 .yolo-quick-ask-reasoning-select .yolo-reasoning-select:focus,
 .yolo-quick-ask-reasoning-select .yolo-reasoning-select:focus-visible,
-.yolo-quick-ask-reasoning-select
-  .yolo-reasoning-select[data-state='open'] {
+.yolo-quick-ask-reasoning-select .yolo-reasoning-select[data-state='open'] {
   background: color-mix(
     in srgb,
     var(--background-modifier-hover) 32%,
@@ -437,8 +436,12 @@ button.yolo-quick-ask-continue-menu-item:focus {
   white-space: nowrap;
 }
 
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select:hover,
-.yolo-quick-ask-toolbar .yolo-quick-ask-mode-select .yolo-chat-mode-select:focus,
+.yolo-quick-ask-toolbar
+  .yolo-quick-ask-mode-select
+  .yolo-chat-mode-select:hover,
+.yolo-quick-ask-toolbar
+  .yolo-quick-ask-mode-select
+  .yolo-chat-mode-select:focus,
 .yolo-quick-ask-toolbar
   .yolo-quick-ask-mode-select
   .yolo-chat-mode-select:focus-visible,

@@ -63,8 +63,9 @@ export const RESPONSE_STREAMING_MODE_SETTING = {
     'Control whether this provider uses streaming or non-streaming responses.',
 }
 
-// Surfaced dynamically when a provider's apiType is 'anthropic'
-// (native Anthropic or Anthropic-compatible endpoints like Moonshot/Kimi).
+// Surfaced dynamically for providers whose Anthropic payload YOLO builds
+// itself (native Anthropic or Anthropic-compatible endpoints like
+// Moonshot/Kimi) — see providerSupportsPromptCaching.
 export const PROMPT_CACHING_SETTING = {
   label: 'Prompt caching',
   key: 'promptCaching',
@@ -126,6 +127,17 @@ export const PROVIDER_PRESET_INFO = {
       RESPONSE_STREAMING_MODE_SETTING,
     ],
   },
+  'claude-oauth': {
+    label: 'Claude OAuth',
+    defaultProviderId: 'claude-oauth',
+    requireApiKey: false,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    // Runs a local `claude` subprocess through the Claude Agent SDK rather
+    // than issuing HTTP requests (see ClaudeOAuthProvider), so transport and
+    // streaming settings have nothing to act on here.
+    additionalSettings: [],
+  },
   gemini: {
     label: 'Gemini',
     defaultProviderId: 'gemini',
@@ -154,6 +166,17 @@ export const PROVIDER_PRESET_INFO = {
     requireApiKey: true,
     requireBaseUrl: false,
     supportEmbedding: true,
+    additionalSettings: [
+      REQUEST_TRANSPORT_MODE_SETTING,
+      RESPONSE_STREAMING_MODE_SETTING,
+    ],
+  },
+  apimart: {
+    label: 'APIMart',
+    defaultProviderId: 'apimart',
+    requireApiKey: true,
+    requireBaseUrl: false,
+    supportEmbedding: false,
     additionalSettings: [
       REQUEST_TRANSPORT_MODE_SETTING,
       RESPONSE_STREAMING_MODE_SETTING,
@@ -488,12 +511,6 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
     additionalSettings: getDefaultProviderAdditionalSettings('chatgpt-oauth'),
   },
   {
-    presetType: 'gemini-oauth',
-    apiType: getDefaultApiTypeForPresetType('gemini-oauth'),
-    id: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
-    additionalSettings: getDefaultProviderAdditionalSettings('gemini-oauth'),
-  },
-  {
     presetType: 'anthropic',
     apiType: getDefaultApiTypeForPresetType('anthropic'),
     id: PROVIDER_PRESET_INFO.anthropic.defaultProviderId,
@@ -512,11 +529,6 @@ export const DEFAULT_PROVIDERS: readonly LLMProvider[] = [
     presetType: 'openrouter',
     apiType: getDefaultApiTypeForPresetType('openrouter'),
     id: PROVIDER_PRESET_INFO.openrouter.defaultProviderId,
-  },
-  {
-    presetType: 'xiaomimimo',
-    apiType: getDefaultApiTypeForPresetType('xiaomimimo'),
-    id: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,
   },
 ]
 
@@ -580,30 +592,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     name: 'GPT-5.4',
     enable: false,
     reasoningType: 'openai',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
-    id: 'gemini-oauth/gemini-2.5-pro',
-    model: 'gemini-2.5-pro',
-    enable: false,
-    reasoningType: 'gemini',
-    builtinToolProvider: 'gemini',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
-    id: 'gemini-oauth/gemini-2.5-flash',
-    model: 'gemini-2.5-flash',
-    enable: false,
-    reasoningType: 'gemini',
-    builtinToolProvider: 'gemini',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO['gemini-oauth'].defaultProviderId,
-    id: 'gemini-oauth/gemini-2.5-flash-lite',
-    model: 'gemini-2.5-flash-lite',
-    enable: false,
-    reasoningType: 'gemini',
-    builtinToolProvider: 'gemini',
   },
   {
     providerId: PROVIDER_PRESET_INFO.openai.defaultProviderId,
@@ -707,41 +695,6 @@ export const DEFAULT_CHAT_MODELS: readonly ChatModel[] = [
     providerId: PROVIDER_PRESET_INFO.deepseek.defaultProviderId,
     id: 'deepseek/deepseek-v4-pro',
     model: 'deepseek-v4-pro',
-    enable: false,
-    reasoningType: 'openai',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,
-    id: 'xiaomimimo/mimo-v2.5-pro',
-    model: 'mimo-v2.5-pro',
-    enable: false,
-    reasoningType: 'openai',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,
-    id: 'xiaomimimo/mimo-v2.5',
-    model: 'mimo-v2.5',
-    enable: false,
-    reasoningType: 'openai',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,
-    id: 'xiaomimimo/mimo-v2-pro',
-    model: 'mimo-v2-pro',
-    enable: false,
-    reasoningType: 'openai',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,
-    id: 'xiaomimimo/mimo-v2-omni',
-    model: 'mimo-v2-omni',
-    enable: false,
-    reasoningType: 'openai',
-  },
-  {
-    providerId: PROVIDER_PRESET_INFO.xiaomimimo.defaultProviderId,
-    id: 'xiaomimimo/mimo-v2-flash',
-    model: 'mimo-v2-flash',
     enable: false,
     reasoningType: 'openai',
   },

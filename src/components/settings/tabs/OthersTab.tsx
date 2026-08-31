@@ -4,7 +4,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import { Language } from '../../../i18n'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { openExternalLink } from '../../../utils/openExternalLink'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
@@ -201,8 +201,15 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
           className="yolo-settings-support-yolo"
         >
           <ObsidianButton
-            text={t('settings.supportYolo.buyMeACoffee')}
+            text={t('settings.supportYolo.afdian')}
             onClick={() => openExternalLink('https://afdian.com/a/lapis0x0')}
+            cta
+          />
+          <ObsidianButton
+            text={t('settings.supportYolo.buyMeACoffee')}
+            onClick={() =>
+              openExternalLink('https://buymeacoffee.com/lapis0x0')
+            }
             cta
           />
           <ObsidianButton

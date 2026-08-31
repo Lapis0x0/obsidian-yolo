@@ -13,3 +13,194 @@
 ::highlight(yolo-pdf-selection) {
   background-color: var(--interactive-accent);
 }
+
+/* ============================================
+   PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md)
+
+   The marker/editor DOM is built imperatively by
+   pdfSelectionHighlightController (not React — see that file's header
+   comment), mounted as a child of the `.page[data-page-number]` element so
+   `position: absolute` positions it relative to the page and it scrolls for
+   free. PDF.js's own stylesheet already sets that element to
+   `position: relative; overflow: visible`, so no host override is needed.
+   Visual language is adapted from the chat-side
+   `.yolo-assistant-annotation-*` rules in src/styles/chat/input.css — same
+   shapes, same motion tokens.
+
+   The entry point itself is not styled here: it's the "引用" item injected
+   at the top of `SelectionActionsMenu` for PDF selections, which uses that
+   menu's existing item styling.
+   ============================================ */
+
+button.yolo-pdf-annotation-marker {
+  position: absolute;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  min-width: 30px;
+  min-height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--interactive-accent);
+  box-shadow: none;
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  line-height: 1;
+  transform: translate(-12%, -70%);
+  animation: yolo-pdf-annotation-marker-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) backwards;
+  transition:
+    transform var(--yolo-anim-duration-feedback) ease,
+    filter var(--yolo-anim-duration-feedback) ease;
+}
+
+@keyframes yolo-pdf-annotation-marker-in {
+  from {
+    opacity: 0;
+    transform: translate(-12%, -55%) scale(0.82);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-12%, -70%) scale(1);
+  }
+}
+
+.yolo-pdf-annotation-marker-shape {
+  position: absolute;
+  inset: 0;
+  width: 30px;
+  height: 30px;
+  fill: var(--interactive-accent);
+  stroke: var(--background-primary);
+  filter: drop-shadow(
+    0 2px 3px
+      color-mix(in srgb, var(--background-modifier-box-shadow) 24%, transparent)
+  );
+}
+
+.yolo-pdf-annotation-marker-index {
+  position: relative;
+  z-index: 1;
+  color: var(--text-on-accent);
+  transform: translateY(-1px);
+}
+
+.yolo-pdf-annotation-marker-preview {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 10;
+  display: -webkit-box;
+  width: max-content;
+  max-width: min(240px, 60vw);
+  padding: 7px 9px;
+  overflow: hidden;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
+  color: var(--text-normal);
+  box-shadow: var(--shadow-s);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-normal);
+  line-height: var(--line-height-tight);
+  text-align: start;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate(-50%, 3px) scale(0.98);
+  transform-origin: bottom center;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  transition:
+    opacity var(--yolo-anim-duration-feedback) ease,
+    transform var(--yolo-anim-duration-feedback) var(--yolo-anim-ease-out);
+}
+
+.yolo-pdf-annotation-marker-preview:not(.has-content) {
+  display: none;
+}
+
+button.yolo-pdf-annotation-marker.is-editing
+  .yolo-pdf-annotation-marker-preview {
+  display: none;
+}
+
+button.yolo-pdf-annotation-marker:hover .yolo-pdf-annotation-marker-preview,
+button.yolo-pdf-annotation-marker:focus-visible
+  .yolo-pdf-annotation-marker-preview {
+  opacity: 1;
+  transform: translate(-50%, 0) scale(1);
+}
+
+button.yolo-pdf-annotation-marker:hover,
+button.yolo-pdf-annotation-marker:focus-visible {
+  filter: brightness(1.06);
+  transform: translate(-12%, -70%) scale(1.06);
+}
+
+.yolo-pdf-annotation-editor {
+  position: absolute;
+  z-index: 9;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: min(320px, calc(100% - 16px));
+  padding: 4px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  background: var(--background-primary);
+  box-shadow: var(--shadow-s);
+  animation: yolo-pdf-annotation-editor-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) backwards;
+}
+
+@keyframes yolo-pdf-annotation-editor-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.yolo-pdf-annotation-editor.is-new {
+  width: min(300px, calc(100% - 16px));
+}
+
+.yolo-pdf-annotation-editor input {
+  display: block;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  margin: 0;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-normal);
+  font: inherit;
+  line-height: var(--line-height-tight);
+  box-shadow: none;
+}
+
+.yolo-pdf-annotation-editor input:focus {
+  box-shadow: none;
+}
+
+.yolo-pdf-annotation-editor-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  flex: none;
+}

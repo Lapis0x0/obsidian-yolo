@@ -9,14 +9,13 @@ import { ChatViewProvider } from '../../../contexts/chat-view-context'
 import { LanguageProvider } from '../../../contexts/language-context'
 import { McpProvider } from '../../../contexts/mcp-context'
 import { PluginProvider } from '../../../contexts/plugin-context'
-import { RAGProvider } from '../../../contexts/rag-context'
 import { SettingsProvider } from '../../../contexts/settings-context'
 import type { QuickAskAnchor } from '../../../features/editor/quick-ask/quickAsk.anchor'
 import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import type { Mentionable } from '../../../types/mentionable'
 import {
   clearDynamicStyleClass,
@@ -265,65 +264,61 @@ export class QuickAskOverlay {
           >
             <LanguageProvider>
               <AppProvider app={this.options.plugin.app}>
-                <RAGProvider
-                  getRAGEngine={() => this.options.plugin.getRAGEngine()}
+                <McpProvider
+                  getMcpManager={() => this.options.plugin.getMcpManager()}
                 >
-                  <McpProvider
-                    getMcpManager={() => this.options.plugin.getMcpManager()}
-                  >
-                    {capabilities.edit ? (
-                      <QuickAskPanel
-                        plugin={this.options.plugin}
-                        capabilities={{ edit: true }}
-                        editor={capabilities.editor}
-                        view={capabilities.view}
-                        contextText={this.options.contextText}
-                        fileTitle={this.options.fileTitle}
-                        sourceFilePath={this.options.sourceFilePath}
-                        initialPrompt={this.options.initialPrompt}
-                        initialMentionables={this.options.initialMentionables}
-                        initialMode={this.options.initialMode}
-                        initialInput={this.options.initialInput}
-                        selectionScope={this.options.selectionScope}
-                        isRewriteEntry={this.options.isRewriteEntry}
-                        autoSend={this.options.autoSend}
-                        initialAssistantId={this.options.initialAssistantId}
-                        onClose={this.closeWithAnimation}
-                        messageInputRef={this.messageInputRef}
-                        containerRef={this.containerRef}
-                        onOverlayStateChange={this.handleOverlayStateChange}
-                        onDragOffset={this.handleDragOffset}
-                        onResize={this.handleResize}
-                        onDockToTopRight={this.handleDockToTopRight}
-                        popoverPortalHost={popoverPortalHost}
-                      />
-                    ) : (
-                      <QuickAskPanel
-                        plugin={this.options.plugin}
-                        capabilities={{ edit: false }}
-                        editor={null}
-                        view={null}
-                        contextText={this.options.contextText}
-                        fileTitle={this.options.fileTitle}
-                        sourceFilePath={this.options.sourceFilePath}
-                        initialPrompt={this.options.initialPrompt}
-                        initialMentionables={this.options.initialMentionables}
-                        initialMode={this.options.initialMode}
-                        initialInput={this.options.initialInput}
-                        autoSend={this.options.autoSend}
-                        initialAssistantId={this.options.initialAssistantId}
-                        onClose={this.closeWithAnimation}
-                        messageInputRef={this.messageInputRef}
-                        containerRef={this.containerRef}
-                        onOverlayStateChange={this.handleOverlayStateChange}
-                        onDragOffset={this.handleDragOffset}
-                        onResize={this.handleResize}
-                        onDockToTopRight={this.handleDockToTopRight}
-                        popoverPortalHost={popoverPortalHost}
-                      />
-                    )}
-                  </McpProvider>
-                </RAGProvider>
+                  {capabilities.edit ? (
+                    <QuickAskPanel
+                      plugin={this.options.plugin}
+                      capabilities={{ edit: true }}
+                      editor={capabilities.editor}
+                      view={capabilities.view}
+                      contextText={this.options.contextText}
+                      fileTitle={this.options.fileTitle}
+                      sourceFilePath={this.options.sourceFilePath}
+                      initialPrompt={this.options.initialPrompt}
+                      initialMentionables={this.options.initialMentionables}
+                      initialMode={this.options.initialMode}
+                      initialInput={this.options.initialInput}
+                      selectionScope={this.options.selectionScope}
+                      isRewriteEntry={this.options.isRewriteEntry}
+                      autoSend={this.options.autoSend}
+                      initialAssistantId={this.options.initialAssistantId}
+                      onClose={this.closeWithAnimation}
+                      messageInputRef={this.messageInputRef}
+                      containerRef={this.containerRef}
+                      onOverlayStateChange={this.handleOverlayStateChange}
+                      onDragOffset={this.handleDragOffset}
+                      onResize={this.handleResize}
+                      onDockToTopRight={this.handleDockToTopRight}
+                      popoverPortalHost={popoverPortalHost}
+                    />
+                  ) : (
+                    <QuickAskPanel
+                      plugin={this.options.plugin}
+                      capabilities={{ edit: false }}
+                      editor={null}
+                      view={null}
+                      contextText={this.options.contextText}
+                      fileTitle={this.options.fileTitle}
+                      sourceFilePath={this.options.sourceFilePath}
+                      initialPrompt={this.options.initialPrompt}
+                      initialMentionables={this.options.initialMentionables}
+                      initialMode={this.options.initialMode}
+                      initialInput={this.options.initialInput}
+                      autoSend={this.options.autoSend}
+                      initialAssistantId={this.options.initialAssistantId}
+                      onClose={this.closeWithAnimation}
+                      messageInputRef={this.messageInputRef}
+                      containerRef={this.containerRef}
+                      onOverlayStateChange={this.handleOverlayStateChange}
+                      onDragOffset={this.handleDragOffset}
+                      onResize={this.handleResize}
+                      onDockToTopRight={this.handleDockToTopRight}
+                      popoverPortalHost={popoverPortalHost}
+                    />
+                  )}
+                </McpProvider>
               </AppProvider>
             </LanguageProvider>
           </SettingsProvider>

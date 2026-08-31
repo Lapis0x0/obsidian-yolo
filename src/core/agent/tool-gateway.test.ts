@@ -192,6 +192,50 @@ describe('AgentToolGateway', () => {
     })
   })
 
+  describe('non-Agent modes supply no preference maps', () => {
+    // `resolveChatModeRuntime` deliberately passes `toolPreferences` and
+    // `builtinCapabilityPreferences` as undefined outside Agent mode, so
+    // `allowedToolNames` is the only grant the gateway gets. Re-deriving
+    // built-in enablement there resolved each tool against its capability's
+    // `defaultEnabled` instead — silently rejecting every Ask / Quick Ask
+    // call to `js_sandbox`, both context tools, and `subagent_delegation`,
+    // all of which are `defaultEnabled: false` yet advertised to the model
+    // by `selectAllowedTools` once the user enables them.
+    const askModeGateway = (allowedToolNames: string[]) =>
+      new AgentToolGateway(
+        {
+          isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+          getJsSandboxSettings: jest.fn().mockReturnValue({}),
+        } as unknown as McpManager,
+        { allowedToolNames },
+      )
+
+    const call = (gateway: AgentToolGateway, name: string) =>
+      gateway.createToolMessage({
+        toolCallRequests: [{ id: 'tool-1', name, arguments: emptyArgs }],
+        conversationId: 'conv-1',
+      }).toolCalls[0]?.response
+
+    it.each([
+      'yolo_local__js_eval',
+      'yolo_local__context_compact',
+      'yolo_local__context_prune_tool_results',
+      'yolo_local__delegate_subagent',
+    ])('honors the grant for default-off capability tool %s', (name) => {
+      expect(call(askModeGateway([name]), name)?.status).not.toBe(
+        ToolCallResponseStatus.Rejected,
+      )
+    })
+
+    it('still rejects a tool the grant does not contain', () => {
+      const response = call(
+        askModeGateway(['yolo_local__js_eval']),
+        'yolo_local__fs_write',
+      )
+      expect(response?.status).toBe(ToolCallResponseStatus.Rejected)
+    })
+  })
+
   it('rejects malformed local write arguments before execution', async () => {
     const callTool = jest.fn()
     const mcpManager = {
@@ -202,8 +246,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_write'],
-      toolPreferences: {
-        yolo_local__fs_write: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -260,8 +304,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_write'],
-      toolPreferences: {
-        yolo_local__fs_write: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -312,8 +356,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_write'],
-      toolPreferences: {
-        yolo_local__fs_write: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -360,8 +404,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -406,8 +450,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -450,8 +494,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -494,8 +538,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__bash'],
-      toolPreferences: {
-        yolo_local__bash: {
+      builtinCapabilityPreferences: {
+        vault_shell: {
           enabled: true,
           approvalMode: 'dangerous_only',
         },
@@ -538,8 +582,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__bash'],
-      toolPreferences: {
-        yolo_local__bash: {
+      builtinCapabilityPreferences: {
+        vault_shell: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -610,8 +654,8 @@ describe('AgentToolGateway', () => {
     const gateway = new AgentToolGateway(mcpManager, {
       bypassToolApproval: true,
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -647,8 +691,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -685,8 +729,8 @@ describe('AgentToolGateway', () => {
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
       blockedCommandPrefixes: [],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -734,8 +778,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -797,8 +841,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__terminal_command'],
-      toolPreferences: {
-        yolo_local__terminal_command: {
+      builtinCapabilityPreferences: {
+        terminal: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -944,8 +988,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -1010,8 +1054,8 @@ describe('AgentToolGateway', () => {
     const gateway = new AgentToolGateway(mcpManager, {
       isSubagentChildRun: true,
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'require_approval',
         },
@@ -1079,8 +1123,8 @@ describe('AgentToolGateway', () => {
 
     const gateway = new AgentToolGateway(mcpManager, {
       allowedToolNames: ['yolo_local__fs_edit'],
-      toolPreferences: {
-        yolo_local__fs_edit: {
+      builtinCapabilityPreferences: {
+        file_editing: {
           enabled: true,
           approvalMode: 'full_access',
         },
@@ -1519,6 +1563,185 @@ describe('AgentToolGateway', () => {
       })
       const response = result.toolCalls[0]?.response
       expect(response?.status).toBe(ToolCallResponseStatus.Success)
+    })
+  })
+
+  describe('module chat mode tool call snapshot', () => {
+    // Mirrors resolveModuleChatModeRuntime's moduleToolApprovalPolicies: full
+    // tool name -> the mode's declared requiresApproval (present with
+    // `false` when omitted, absent entirely for non-mode tools).
+    const moduleToolApprovalPolicies = new Map<string, boolean>([
+      ['module-mode-learning-chat__start_course_generation', true],
+      ['module-mode-learning-chat__get_generation_status', false],
+    ])
+
+    it('fixes approvalPolicy "always-require-user" and stays PendingApproval, ignoring bypassToolApproval and the conversation allow-list', () => {
+      const mcpManager = {
+        // Both would normally auto-execute the call; the persisted policy
+        // must override them entirely.
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        bypassToolApproval: true,
+        allowedToolNames: [
+          'module-mode-learning-chat__start_course_generation',
+        ],
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'module-mode-learning-chat__start_course_generation',
+            arguments: emptyArgs,
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(message.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.PendingApproval,
+      )
+      expect(message.toolCalls[0]?.request.metadata?.approvalPolicy).toBe(
+        'always-require-user',
+      )
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+      const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+      expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+    })
+
+    it('fixes approvalPolicy "auto" and runs immediately for a mode tool without requiresApproval', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(false),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['module-mode-learning-chat__get_generation_status'],
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'module-mode-learning-chat__get_generation_status',
+            arguments: emptyArgs,
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(message.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.Running,
+      )
+      expect(message.toolCalls[0]?.request.metadata?.approvalPolicy).toBe(
+        'auto',
+      )
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock function accessed for assertion
+      const isToolExecutionAllowedMock = mcpManager.isToolExecutionAllowed
+      expect(isToolExecutionAllowedMock).not.toHaveBeenCalled()
+    })
+
+    it('does not write approvalPolicy for a host tool granted by the mode capability tier (not in the map)', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__bash'],
+        bashReadOnly: true,
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'yolo_local__bash',
+            arguments: createCompleteToolCallArguments({
+              value: { command: 'ls' },
+            }),
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(
+        message.toolCalls[0]?.request.metadata?.approvalPolicy,
+      ).toBeUndefined()
+      expect(
+        message.toolCalls[0]?.request.metadata?.executionConstraints,
+      ).toEqual({ bashReadOnly: true })
+    })
+
+    it('does not write executionConstraints for a non-bash tool in module mode', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(false),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['module-mode-learning-chat__get_generation_status'],
+        bashReadOnly: true,
+        moduleToolApprovalPolicies,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'module-mode-learning-chat__get_generation_status',
+            arguments: emptyArgs,
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(
+        message.toolCalls[0]?.request.metadata?.executionConstraints,
+      ).toBeUndefined()
+    })
+
+    it('writes no module chat mode metadata at all outside module chat mode runs', () => {
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+
+      // No `moduleToolApprovalPolicies` passed — matches every existing
+      // (non-module) chat mode and assistant run.
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__bash'],
+        builtinCapabilityPreferences: {
+          vault_shell: { enabled: true, approvalMode: 'full_access' },
+        },
+        bashReadOnly: false,
+      })
+
+      const message = gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name: 'yolo_local__bash',
+            arguments: createCompleteToolCallArguments({
+              value: { command: 'ls' },
+            }),
+          },
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(
+        message.toolCalls[0]?.request.metadata?.approvalPolicy,
+      ).toBeUndefined()
+      expect(
+        message.toolCalls[0]?.request.metadata?.executionConstraints,
+      ).toBeUndefined()
     })
   })
 })

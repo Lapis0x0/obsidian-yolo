@@ -411,9 +411,7 @@ describe('Host Anki shared sidecars', () => {
     await journals.write(path, '{"phase":"writing"}')
     await journals.remove(path)
 
-    expect(path).toMatch(
-      /^Moved\/data\/anki-import-journals\/.+\.json$/,
-    )
+    expect(path).toMatch(/^Moved\/data\/anki-import-journals\/.+\.json$/)
     expect(files.has(path)).toBe(false)
     expect(namespaces).toEqual([
       LEARNING_MANAGED_DATA_NAMESPACE,

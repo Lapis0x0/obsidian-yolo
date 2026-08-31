@@ -7,6 +7,8 @@ import type { YoloModuleWorkerV1 } from '../src/core/modules/moduleWorkerHost'
 import type {
   YoloHostApiV1,
   YoloModuleActionToastV1,
+  YoloModuleChatModeToolV1,
+  YoloModuleChatModeV1,
   YoloModuleI18nV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleRuntimeRegistration,
@@ -14,9 +16,11 @@ import type {
 
 declare global {
   const yolo: YoloModuleRuntimeRegistration
-  type YoloModuleHostApiVersion = '1.4.0'
+  type YoloModuleHostApiVersion = '1.7.0'
   type YoloModuleHostApiV1 = YoloHostApiV1
   type YoloModuleHostActionToastV1 = YoloModuleActionToastV1
+  type YoloModuleHostChatModeV1 = YoloModuleChatModeV1
+  type YoloModuleHostChatModeToolV1 = YoloModuleChatModeToolV1
   type YoloModuleHostI18nV1 = YoloModuleI18nV1
   type YoloModuleHostLocalizedTextV1 = LocalizedTextV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1

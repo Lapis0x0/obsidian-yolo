@@ -1,62 +1,84 @@
-import { App, FileSystemAdapter, MarkdownView, TFile } from 'obsidian'
+import {
+  App,
+  FileSystemAdapter,
+  MarkdownView,
+  Platform,
+  type TAbstractFile,
+  TFile,
+  TFolder,
+  normalizePath,
+  requestUrl,
+} from 'obsidian'
 
-import type { JsSandboxSettings } from '../../settings/schema/setting.types'
+import type {
+  JsSandboxSettings,
+  KnowledgeBase,
+  YoloSettings,
+} from '../../settings/schema/setting.types'
+import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import { McpTool } from '../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { collectWikilinkPaths } from '../../utils/llm/annotate-wikilinks'
+import {
+  BROWSER_READ_PATH_PREFIX,
+  buildAllowedSkillPathSet,
+  buildRagScopeForWorkspace,
+  describePathDenial,
+  isCoveredBySkillPathExemption,
+  isVisibleForTraversal,
+  resolvePathVisibility,
+} from '../agent/workspaceScope'
+import {
+  BROWSER_PAGE_ID_PATTERN,
+  findWebviewHandleByPageId,
+} from '../browser/activeWebviewProbe'
+import {
+  BrowserReadFailure,
+  readActiveWebviewHtml,
+} from '../browser/activeWebviewReader'
+import { isWithinYoloUserDataRoot } from '../paths/yoloPaths'
+import {
+  type RagKnowledgeAccess,
+  findKnowledgeBaseByName,
+} from '../rag/ragAccess'
+import { mergeRagQueryResults } from '../rag/ragQueryMerge'
+import {
+  BROWSER_READ_PATH_USAGE,
+  parseBrowserReadPageId,
+} from '../tools/fs_read/schema-helpers'
 
+import {
+  JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_MIN_KB,
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+  JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
+  JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES,
+  JS_SANDBOX_DEFAULT_TIMEOUT_MS,
+  JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
+  JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,
+  JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
+  JS_SANDBOX_FETCH_HARD_MAX_RESPONSE_KB,
+  JS_SANDBOX_FETCH_MIN_CONCURRENT,
+  JS_SANDBOX_FETCH_MIN_RESPONSE_KB,
+  JS_SANDBOX_HARD_MAX_TIMEOUT_MS,
+  JS_SANDBOX_MIN_TIMEOUT_MS,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
+  JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
+  JS_SANDBOX_VAULT_READ_MIN_KB,
+  resolveJsSandboxOutputMaxBytes,
+} from './jsSandboxLimits'
 import { buildJsSandboxToolDescription } from './jsSandboxSettings'
+import { validateVaultPath } from './vaultFileOps'
+
+export * from './jsSandboxLimits'
 
 export const JS_SANDBOX_TOOL_NAME = 'js_eval'
 
 const SANDBOX_CHANNEL = 'yolo-js-sandbox-v1'
-export const JS_SANDBOX_DEFAULT_TIMEOUT_MS = 3000
-export const JS_SANDBOX_MIN_TIMEOUT_MS = 100
-// Absolute hard ceiling — agents may not exceed this even if configured
-// higher. Keeps a single runaway run from monopolizing the main thread
-// indefinitely on slow / mobile devices.
-export const JS_SANDBOX_HARD_MAX_TIMEOUT_MS = 60000
 const READY_TIMEOUT_MS = 3000
-// Default cap on the serialized JSON result returned to the LLM. The host
-// keeps this conservative so a single tool call doesn't accidentally blow
-// the model's context window. The user may raise it per-agent up to the
-// hard ceiling below.
-export const JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES = 50 * 1024
-// Hard ceiling on the tool result size. 2 MiB strikes a balance between
-// "useful for paste-sized payloads" and "won't OOM smaller models if the
-// agent pipes a raw fetch body straight back".
-export const JS_SANDBOX_HARD_MAX_OUTPUT_BYTES = 2 * 1024 * 1024
-export const JS_SANDBOX_MIN_OUTPUT_BYTES = 1024
-
-// Fetch defaults live here (rather than in localFileTools) so the
-// LLM-facing description can quote the same numbers the proxy enforces.
-export const JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT = 3
-// 10 MiB — comfortable for typical scrape / API response bodies without
-// silently blowing past the per-tool output cap.
-export const JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB = 10 * 1024
-// 1 GiB hard ceiling. Anything larger would risk freezing the renderer
-// while postMessage shuttles the response back across the iframe boundary.
-export const JS_SANDBOX_FETCH_HARD_MAX_RESPONSE_KB = 1024 * 1024
-export const JS_SANDBOX_FETCH_MIN_RESPONSE_KB = 1
-export const JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT = 32
-export const JS_SANDBOX_FETCH_MIN_CONCURRENT = 1
-
-// Vault read defaults / hard cap. Range mirrors fetch — large vault files
-// can blow through the model context just as easily as oversized HTTP
-// bodies, so the same ceiling applies.
-export const JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB = 10 * 1024
-export const JS_SANDBOX_VAULT_READ_HARD_MAX_KB = 1024 * 1024
-export const JS_SANDBOX_VAULT_READ_MIN_KB = 1
-export const JS_SANDBOX_VAULT_LIST_MAX_ENTRIES = 100_000
-// Full rendered page HTML can be as large as fetched response bodies. Keep the
-// same default and hard cap family so one browser page cannot dominate memory
-// or the model context by accident.
-export const JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB = 10 * 1024
-export const JS_SANDBOX_BROWSER_READ_HARD_MAX_KB = 1024 * 1024
-export const JS_SANDBOX_BROWSER_READ_MIN_KB = 1
-export const JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT = 20
-export const JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT = 100
-export const JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT = 10
 
 type JsonRecord = Record<string, unknown>
 
@@ -685,7 +707,7 @@ function buildScope(rawVars) {
     $tags: Array.isArray(rawVars && rawVars.$tags) ? rawVars.$tags : [],
     $utils: htmlUtilsAllowed ? SANDBOX_UTILS_WITH_HTML : SANDBOX_UTILS,
     $db: caps.allowDbQuery ? {
-      search: (query, limit) => proxyCall('db_query', { method: 'search', query, limit })
+      search: (query, limit, knowledgeBase) => proxyCall('db_query', { method: 'search', query, limit, knowledgeBase })
     } : undefined,
     $browser: browserReadAllowed ? {
       readHtml: (pageId) => proxyCall('browser_read_html', { pageId })
@@ -1393,7 +1415,10 @@ self.addEventListener('message', (event) => {
 postToParent({ type: 'ready' })
 `
 
-export function getJsSandboxTool(settings?: JsSandboxSettings | null): McpTool {
+export function getJsSandboxTool(
+  settings?: JsSandboxSettings | null,
+  knowledgeBases?: readonly KnowledgeBase[],
+): McpTool {
   const effectiveTimeoutCap = clampAgentTimeoutCap(settings?.timeoutMs)
   const effectiveTimeoutDefault = Math.min(
     JS_SANDBOX_DEFAULT_TIMEOUT_MS,
@@ -1401,7 +1426,7 @@ export function getJsSandboxTool(settings?: JsSandboxSettings | null): McpTool {
   )
   return {
     name: JS_SANDBOX_TOOL_NAME,
-    description: buildJsSandboxToolDescription(settings ?? {}),
+    description: buildJsSandboxToolDescription(settings ?? {}, knowledgeBases),
     inputSchema: {
       type: 'object',
       properties: {
@@ -1417,23 +1442,6 @@ export function getJsSandboxTool(settings?: JsSandboxSettings | null): McpTool {
       required: ['code'],
     },
   }
-}
-
-export function resolveJsSandboxOutputMaxBytes(
-  configuredKb?: number | null,
-): number {
-  if (
-    typeof configuredKb !== 'number' ||
-    !Number.isFinite(configuredKb) ||
-    configuredKb <= 0
-  ) {
-    return JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES
-  }
-  const requested = Math.floor(configuredKb) * 1024
-  return Math.min(
-    JS_SANDBOX_HARD_MAX_OUTPUT_BYTES,
-    Math.max(JS_SANDBOX_MIN_OUTPUT_BYTES, requested),
-  )
 }
 
 export function formatJsSandboxToolText(
@@ -2270,4 +2278,677 @@ function addTag(tags: Set<string>, value: unknown): void {
 
 function deepCloneJson<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
+}
+
+// --- $vault / $browser / $fetch / $db proxy-handler construction ---------
+//
+// Moved here verbatim from `core/mcp/localFileTools.ts` (D6 batch 6,
+// docs/plans/2026-08-15-tool-registry/phase2-migration.md). Every helper in
+// this section had exactly one call site — inside `buildJsSandboxProxyHandlers`
+// itself — so per the "谁用它谁收留" rule (phase2-migration.md D6 "注意") the
+// whole cluster relocates together rather than leaving a stub behind.
+//
+// This move exists to satisfy master.md's D6 batch 6 requirement without
+// creating a new `core/tools/* -> core/mcp/localFileTools.ts` value import
+// (forbidden by the D6a fix, master.md §D6a): `core/tools/js_eval/definition.ts`
+// needs to build these proxy handlers, and this file — jsSandboxTool.ts,
+// js_eval's designated external-implementation home — is a dependency
+// `core/tools/*` may safely import from (localFileTools.ts already imports
+// FROM this file, never the reverse). `localFileTools.ts`'s own still-live
+// `case JS_SANDBOX_TOOL_NAME` branch now imports `buildJsSandboxProxyHandlers`
+// back from here instead of defining it locally.
+
+const resolveFolderByPath = (
+  app: App,
+  rawPath: string | undefined,
+  settings?: YoloSettings,
+  scope?: AssistantWorkspaceScope,
+  exemptPaths?: ReadonlySet<string>,
+): { folder: TFolder; normalizedPath: string } => {
+  const trimmedPath = rawPath?.trim()
+  // Treat "/" as vault root for better model compatibility.
+  if (!trimmedPath || trimmedPath === '/') {
+    return { folder: app.vault.getRoot(), normalizedPath: '' }
+  }
+
+  const normalizedPath = validateVaultPath(trimmedPath)
+  // The YOLO user-data root must stay invisible to agent tools; see the
+  // matching fs_read check for the full rationale. Reported as the same
+  // "Folder not found" a genuinely missing path would get.
+  if (isWithinYoloUserDataRoot(normalizedPath, settings)) {
+    throw new Error(`Folder not found: ${normalizedPath}`)
+  }
+  // `$vault.list(path)` is an explicit request for a specific folder (not
+  // an enumeration of a folder's children — that's `isExcluded` in
+  // `collectVaultChildEntries` below), so an out-of-scope target is refused
+  // outright rather than silently emptied. `isVisibleForTraversal` (not the
+  // stricter `resolvePathVisibility`) so an ancestor of an include rule
+  // stays listable — the agent needs to be able to descend toward it,
+  // mirroring the bash tool's `ls`.
+  if (
+    scope?.enabled &&
+    !isVisibleForTraversal(normalizedPath, scope) &&
+    !(exemptPaths && isCoveredBySkillPathExemption(normalizedPath, exemptPaths))
+  ) {
+    throw new Error(describePathDenial('out-of-scope', trimmedPath, 'folder'))
+  }
+  const abstractFile = app.vault.getAbstractFileByPath(normalizedPath)
+
+  if (!abstractFile) {
+    throw new Error(`Folder not found: ${normalizedPath}`)
+  }
+  if (!(abstractFile instanceof TFolder)) {
+    throw new Error(`Path is not a folder: ${normalizedPath}`)
+  }
+
+  return { folder: abstractFile, normalizedPath }
+}
+
+type CollectedVaultListEntry =
+  | {
+      kind: 'file'
+      node: TFile
+      path: string
+    }
+  | {
+      kind: 'dir'
+      node: TFolder
+      path: string
+    }
+
+const getAbstractFileName = (file: TAbstractFile): string => {
+  if (file.name) {
+    return file.name
+  }
+  return file.path.split('/').pop() ?? file.path
+}
+
+// Breadth-first walk collecting child dirs and files. Output order is not
+// significant here: the only caller re-sorts by path, and exceeding maxResults
+// is a hard error (the partial collection is discarded), so no intermediate
+// sort is needed.
+const collectVaultChildEntries = ({
+  folder,
+  depth,
+  maxResults,
+  isExcluded,
+}: {
+  folder: TFolder
+  depth: number
+  maxResults: number
+  /**
+   * Paths for which this returns true are skipped entirely — not counted
+   * against `maxResults` and never descended into — so hidden content (the
+   * YOLO user-data root) can't exhaust a caller's result budget before real
+   * content is collected.
+   */
+  isExcluded?: (path: string) => boolean
+}): CollectedVaultListEntry[] => {
+  const entries: CollectedVaultListEntry[] = []
+  const queue: Array<{ folder: TFolder; level: number }> = [
+    { folder, level: 1 },
+  ]
+  let queueIndex = 0
+
+  while (queueIndex < queue.length && entries.length < maxResults) {
+    const current = queue[queueIndex]
+    queueIndex++
+    const { folder: currentFolder, level } = current
+
+    for (const child of currentFolder.children) {
+      if (entries.length >= maxResults) break
+      if (isExcluded?.(child.path)) continue
+
+      if (child instanceof TFolder) {
+        entries.push({ kind: 'dir', node: child, path: child.path })
+        if (level < depth) {
+          queue.push({ folder: child, level: level + 1 })
+        }
+        continue
+      }
+
+      if (child instanceof TFile) {
+        entries.push({ kind: 'file', node: child, path: child.path })
+      }
+    }
+  }
+
+  return entries
+}
+
+const toJsSandboxVaultListEntry = (
+  entry: CollectedVaultListEntry,
+): JsSandboxVaultListEntry => {
+  if (entry.kind === 'dir') {
+    return {
+      kind: 'dir',
+      path: entry.path,
+      name: getAbstractFileName(entry.node),
+    }
+  }
+
+  const stat = entry.node.stat as
+    | {
+        size?: number
+        mtime?: number
+      }
+    | undefined
+  return {
+    kind: 'file',
+    path: entry.path,
+    name: getAbstractFileName(entry.node),
+    size: typeof stat?.size === 'number' ? stat.size : 0,
+    mtime: typeof stat?.mtime === 'number' ? stat.mtime : 0,
+  }
+}
+
+const normalizeBrowserReadPageId = (value: string): string => {
+  const trimmed = value.trim()
+  if (trimmed.startsWith(BROWSER_READ_PATH_PREFIX)) {
+    return parseBrowserReadPageId(trimmed)
+  }
+  if (!BROWSER_PAGE_ID_PATTERN.test(trimmed)) {
+    throw new Error(BROWSER_READ_PATH_USAGE)
+  }
+  return trimmed
+}
+
+const MIME_TYPES_BY_EXT: Record<string, string> = {
+  png: 'image/png',
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  bmp: 'image/bmp',
+  svg: 'image/svg+xml',
+  avif: 'image/avif',
+  ico: 'image/x-icon',
+  pdf: 'application/pdf',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  m4a: 'audio/mp4',
+  flac: 'audio/flac',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  zip: 'application/zip',
+  json: 'application/json',
+  csv: 'text/csv',
+  ttf: 'font/ttf',
+  otf: 'font/otf',
+  woff: 'font/woff',
+  woff2: 'font/woff2',
+}
+
+function inferMimeType(path: string): string {
+  const name = path.split('/').pop() ?? path
+  const dotIndex = name.lastIndexOf('.')
+  if (dotIndex <= 0 || dotIndex === name.length - 1) {
+    return 'application/octet-stream'
+  }
+  return (
+    MIME_TYPES_BY_EXT[name.slice(dotIndex + 1).toLowerCase()] ??
+    'application/octet-stream'
+  )
+}
+
+function readString(value: unknown): string | undefined {
+  return typeof value === 'string' ? value : undefined
+}
+
+function readHeaderRecord(value: unknown): Record<string, string> | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined
+  }
+  const headers: Record<string, string> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (typeof item === 'string') {
+      headers[key] = item
+    }
+  }
+  return Object.keys(headers).length > 0 ? headers : undefined
+}
+
+function readRequestBody(value: unknown): string | ArrayBuffer | undefined {
+  if (typeof value === 'string' || value instanceof ArrayBuffer) {
+    return value
+  }
+  return undefined
+}
+
+function normalizeFetchDomain(raw: string): string | null {
+  const trimmed = raw.trim().toLowerCase()
+  if (!trimmed) {
+    return null
+  }
+  try {
+    return new URL(
+      trimmed.includes('://') ? trimmed : `https://${trimmed}`,
+    ).hostname.replace(/^\.+|\.+$/g, '')
+  } catch {
+    return trimmed.split('/')[0]?.replace(/^\.+|\.+$/g, '') || null
+  }
+}
+
+function isDomainMatch(hostname: string, domain: string): boolean {
+  return hostname === domain || hostname.endsWith(`.${domain}`)
+}
+
+function assertJsSandboxFetchAllowed(
+  url: string,
+  mode: 'whitelist' | 'blacklist',
+  domains: string[],
+): void {
+  let hostname: string
+  try {
+    const parsed = new URL(url)
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      throw new Error('$fetch only supports http(s) URLs')
+    }
+    hostname = parsed.hostname.toLowerCase()
+  } catch (error) {
+    if (error instanceof Error && error.message.startsWith('$fetch')) {
+      throw error
+    }
+    throw new Error(`invalid $fetch URL: ${url}`)
+  }
+
+  if (domains.length === 0) {
+    if (mode === 'whitelist') {
+      throw new Error('$fetch whitelist is empty')
+    }
+    return
+  }
+
+  const matched = domains.some((domain) => isDomainMatch(hostname, domain))
+  if (mode === 'whitelist' && !matched) {
+    throw new Error(`$fetch blocked by whitelist: ${hostname}`)
+  }
+  if (mode === 'blacklist' && matched) {
+    throw new Error(`$fetch blocked by blacklist: ${hostname}`)
+  }
+}
+
+export function buildJsSandboxProxyHandlers(
+  app: App,
+  config: JsSandboxSettings,
+  ragAccess?: RagKnowledgeAccess,
+  settings?: YoloSettings,
+  workspaceScope?: AssistantWorkspaceScope,
+  allowedSkillPaths?: readonly string[],
+): JsSandboxProxyHandlers {
+  const handlers: JsSandboxProxyHandlers = {}
+  const exemptPaths = allowedSkillPaths
+    ? buildAllowedSkillPathSet(allowedSkillPaths)
+    : undefined
+
+  if (config.allowVaultRead || config.allowDbQuery) {
+    const configuredVaultKb =
+      typeof config.vaultReadMaxKb === 'number' &&
+      Number.isFinite(config.vaultReadMaxKb)
+        ? Math.floor(config.vaultReadMaxKb)
+        : JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB
+    const vaultReadMaxKb = Math.min(
+      JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
+      Math.max(JS_SANDBOX_VAULT_READ_MIN_KB, configuredVaultKb),
+    )
+    const vaultReadMaxBytes = vaultReadMaxKb * 1024
+
+    if (config.allowVaultRead) {
+      handlers.vaultList = async (
+        path?: string,
+        options?: Record<string, unknown>,
+      ) => {
+        const { folder, normalizedPath } = resolveFolderByPath(
+          app,
+          path,
+          settings,
+          workspaceScope,
+          exemptPaths,
+        )
+        const recursive = options?.recursive === true
+        // The list crosses the sandbox/host boundary as one array. Keep a hard
+        // fuse for pathological vaults while leaving normal large-vault stats
+        // practical inside the JS execution.
+        //
+        // Unlike an explicitly requested folder (`resolveFolderByPath`
+        // above), a *child* the caller never named is silently dropped
+        // rather than erroring — reporting "this entry exists but you can't
+        // see it" would itself leak information the scope is supposed to
+        // withhold. `isVisibleForTraversal` (not the stricter
+        // `resolvePathVisibility`) so a child that's only an ancestor of an
+        // include rule still appears (and gets descended into for
+        // `recursive`), matching the bash tool's directory listing.
+        const entries = collectVaultChildEntries({
+          folder,
+          depth: recursive ? Number.POSITIVE_INFINITY : 1,
+          maxResults: JS_SANDBOX_VAULT_LIST_MAX_ENTRIES + 1,
+          isExcluded: (childPath) =>
+            isWithinYoloUserDataRoot(childPath, settings) ||
+            (workspaceScope?.enabled
+              ? !isVisibleForTraversal(childPath, workspaceScope)
+              : false),
+        })
+        if (entries.length > JS_SANDBOX_VAULT_LIST_MAX_ENTRIES) {
+          throw new Error(
+            `vault.list refused: more than ${JS_SANDBOX_VAULT_LIST_MAX_ENTRIES} entries under "${normalizedPath || '/'}"; pass a narrower path.`,
+          )
+        }
+        return entries
+          .map(toJsSandboxVaultListEntry)
+          .sort((a, b) => a.path.localeCompare(b.path))
+      }
+    }
+
+    handlers.vaultReadText = async (path: string) => {
+      const normalized = normalizePath(path)
+      // Explicit request for one specific file: `hidden` gets the same
+      // `null` this handler already uses for a genuine miss (see the
+      // matching fs_read check for the full rationale), but `out-of-scope`
+      // throws rather than returning null — null is this handler's
+      // established "file does not exist" signal, and silently returning
+      // it here would let the model conclude the file is missing when it
+      // actually just isn't allowed, rather than telling it plainly.
+      const visibility = resolvePathVisibility(normalized, {
+        scope: workspaceScope,
+        settings,
+        exemptPaths,
+      })
+      if (visibility === 'hidden') {
+        return null
+      }
+      if (visibility === 'out-of-scope') {
+        throw new Error(describePathDenial('out-of-scope', path))
+      }
+      const file = app.vault.getAbstractFileByPath(normalized)
+      // Contract: return null ONLY when the file truly does not exist
+      // (a legitimate "missing" signal the model can branch on). Folder
+      // paths and read failures throw with a reason so the script doesn't
+      // collapse two distinct cases into the same null.
+      if (file === null) {
+        return null
+      }
+      if (!(file instanceof TFile)) {
+        throw new Error(`vault.readText: "${path}" is a folder, not a file`)
+      }
+      try {
+        const vault = app.vault as {
+          cachedRead?: (f: TFile) => Promise<string>
+          read: (f: TFile) => Promise<string>
+        }
+        const text = vault.cachedRead
+          ? await vault.cachedRead(file)
+          : await vault.read(file)
+        if (text.length > vaultReadMaxBytes) {
+          return (
+            text.slice(0, vaultReadMaxBytes) +
+            `\n\n... [truncated by host: file is ${text.length} bytes, vaultReadMaxKb cap is ${vaultReadMaxKb} KB. Slice or stream in chunks if you need more.]`
+          )
+        }
+        return text
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`vault.readText: ${reason}`)
+      }
+    }
+
+    if (config.allowVaultRead) {
+      handlers.vaultReadBinary = async (path: string) => {
+        const normalized = normalizePath(path)
+        // Same contract as vaultReadText above: hidden -> null (genuine-miss
+        // disguise), out-of-scope -> throw (never disguised as missing).
+        const visibility = resolvePathVisibility(normalized, {
+          scope: workspaceScope,
+          settings,
+          exemptPaths,
+        })
+        if (visibility === 'hidden') {
+          return null
+        }
+        if (visibility === 'out-of-scope') {
+          throw new Error(describePathDenial('out-of-scope', path))
+        }
+        const file = app.vault.getAbstractFileByPath(normalized)
+        // Same contract as readText: null only for "file does not exist".
+        if (file === null) {
+          return null
+        }
+        if (!(file instanceof TFile)) {
+          throw new Error(`vault.readBinary: "${path}" is a folder, not a file`)
+        }
+        const buffer = await app.vault.readBinary(file).catch((error) => {
+          const reason = error instanceof Error ? error.message : String(error)
+          throw new Error(`vault.readBinary: ${reason}`)
+        })
+        const bytes = new Uint8Array(buffer)
+        if (bytes.length > vaultReadMaxBytes) {
+          // Binary truncation would yield an invalid file; refuse instead so
+          // the model gets a clear signal rather than corrupted base64.
+          throw new Error(
+            `vault.readBinary refused: file is ${bytes.length} bytes, vaultReadMaxKb cap is ${vaultReadMaxKb} KB`,
+          )
+        }
+        // Convert in 32KB chunks to avoid `String.fromCharCode(...arr)` blowing the call-stack on large files.
+        let binary = ''
+        const chunkSize = 0x8000
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length))
+          binary += String.fromCharCode.apply(null, Array.from(chunk))
+        }
+        const base64 = btoa(binary)
+        return {
+          base64,
+          mimeType: inferMimeType(path),
+          byteLength: bytes.length,
+        }
+      }
+    }
+  }
+
+  if (config.allowBrowserRead) {
+    const configuredBrowserKb =
+      typeof config.browserReadMaxKb === 'number' &&
+      Number.isFinite(config.browserReadMaxKb)
+        ? Math.floor(config.browserReadMaxKb)
+        : JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB
+    const browserReadMaxKb = Math.min(
+      JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+      Math.max(JS_SANDBOX_BROWSER_READ_MIN_KB, configuredBrowserKb),
+    )
+    const browserReadMaxBytes = browserReadMaxKb * 1024
+    handlers.browserReadHtml = async (
+      rawPageId: string,
+    ): Promise<JsSandboxBrowserReadHtmlResult | null> => {
+      if (Platform.isMobile) {
+        throw new Error('browser.readHtml is desktop-only.')
+      }
+      const pageId = normalizeBrowserReadPageId(rawPageId)
+      const handle = findWebviewHandleByPageId(app, pageId)
+      if (!handle) {
+        return null
+      }
+      try {
+        return await readActiveWebviewHtml(handle, {
+          maxBytes: browserReadMaxBytes,
+        })
+      } catch (error) {
+        if (error instanceof BrowserReadFailure) {
+          throw new Error(`browser.readHtml: ${error.message}`)
+        }
+        const reason = error instanceof Error ? error.message : String(error)
+        throw new Error(`browser.readHtml: ${reason}`)
+      }
+    }
+  }
+
+  if (config.allowFetch || config.allowExternalScripts) {
+    const configuredMaxConcurrent =
+      typeof config.fetchMaxConcurrent === 'number' &&
+      Number.isFinite(config.fetchMaxConcurrent) &&
+      config.fetchMaxConcurrent > 0
+        ? Math.floor(config.fetchMaxConcurrent)
+        : JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT
+    const configuredMaxResponseKb =
+      typeof config.fetchMaxResponseKb === 'number' &&
+      Number.isFinite(config.fetchMaxResponseKb) &&
+      config.fetchMaxResponseKb > 0
+        ? Math.floor(config.fetchMaxResponseKb)
+        : JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB
+    const maxConcurrent = Math.min(
+      JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
+      Math.max(JS_SANDBOX_FETCH_MIN_CONCURRENT, configuredMaxConcurrent),
+    )
+    const maxResponseKb = Math.min(
+      JS_SANDBOX_FETCH_HARD_MAX_RESPONSE_KB,
+      Math.max(JS_SANDBOX_FETCH_MIN_RESPONSE_KB, configuredMaxResponseKb),
+    )
+    const fetchMode = config.fetchMode ?? 'blacklist'
+    const fetchDomains = (config.fetchDomains ?? [])
+      .map(normalizeFetchDomain)
+      .filter((domain): domain is string => Boolean(domain))
+
+    handlers.fetchConfig = {
+      fetchMode,
+      fetchDomains,
+      maxConcurrent,
+      maxResponseKb,
+    }
+    handlers.hostFetch = async (
+      url: string,
+      init?: Record<string, unknown>,
+    ) => {
+      assertJsSandboxFetchAllowed(url, fetchMode, fetchDomains)
+      const response = await requestUrl({
+        url,
+        method: readString(init?.method) ?? 'GET',
+        headers: readHeaderRecord(init?.headers),
+        body: readRequestBody(init?.body),
+        contentType: readString(init?.contentType),
+        throw: false,
+      })
+      const bytes = new Uint8Array(response.arrayBuffer)
+      if (bytes.byteLength > maxResponseKb * 1024) {
+        throw new Error(
+          `$fetch response exceeded ${maxResponseKb} KB (${bytes.byteLength} bytes)`,
+        )
+      }
+      return {
+        ok: response.status >= 200 && response.status < 300,
+        status: response.status,
+        statusText: '',
+        headers: response.headers,
+        body: response.arrayBuffer,
+        byteLength: bytes.byteLength,
+      }
+    }
+  }
+
+  if (config.allowDbQuery && ragAccess) {
+    const configuredLimit =
+      typeof config.dbQueryMaxLimit === 'number' &&
+      Number.isFinite(config.dbQueryMaxLimit) &&
+      config.dbQueryMaxLimit > 0
+        ? Math.min(
+            JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
+            Math.floor(config.dbQueryMaxLimit),
+          )
+        : JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT
+
+    const clampLimit = (raw: unknown): number => {
+      if (typeof raw !== 'number' || !Number.isFinite(raw) || raw <= 0) {
+        return Math.min(
+          JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+          configuredLimit,
+        )
+      }
+      return Math.min(configuredLimit, Math.floor(raw))
+    }
+
+    handlers.dbQuery = async (
+      method: 'search',
+      params: Record<string, unknown>,
+    ) => {
+      if (method === 'search') {
+        const query = typeof params.query === 'string' ? params.query : ''
+        const limit = clampLimit(params.limit)
+        const knowledgeBaseArg =
+          typeof params.knowledgeBase === 'string'
+            ? params.knowledgeBase.trim()
+            : undefined
+        // Pre-filter at the vector-store scan, not just the post-filter
+        // below: `$db.search` has no path argument of its own, so its scope
+        // is entirely the assistant's workspace scope (no `pathScope` to
+        // intersect against). `empty` means the workspace scope and the
+        // always-on hidden-root exclude leave nothing queryable, so skip the
+        // query (and its embedding computation) outright.
+        const ragScopeResult = buildRagScopeForWorkspace({
+          workspace: workspaceScope,
+          settings,
+          exemptPaths,
+        })
+        if ('empty' in ragScopeResult) {
+          return []
+        }
+
+        const allKnowledgeBases = ragAccess.listKnowledgeBases()
+        let targetKnowledgeBases = allKnowledgeBases
+        if (knowledgeBaseArg) {
+          const match = findKnowledgeBaseByName(
+            allKnowledgeBases,
+            knowledgeBaseArg,
+          )
+          if (!match) {
+            const available = allKnowledgeBases.map((kb) => kb.name).join(', ')
+            throw new Error(
+              available
+                ? `Unknown knowledge base "${knowledgeBaseArg}". Available: ${available}.`
+                : `Unknown knowledge base "${knowledgeBaseArg}". No knowledge bases are configured.`,
+            )
+          }
+          targetKnowledgeBases = [match]
+        }
+        if (targetKnowledgeBases.length === 0) {
+          return []
+        }
+
+        // No `knowledgeBase`: query every knowledge base and merge by
+        // similarity, same as `vault_search`'s union behavior.
+        const perKbResults = await Promise.all(
+          targetKnowledgeBases.map(async (kb) => {
+            const engine = await ragAccess.getRagEngine(kb.id)
+            return engine.processQuery({
+              query,
+              limit,
+              scope: ragScopeResult.scope,
+            })
+          }),
+        )
+        // Overlapping knowledge bases can each return the identical chunk —
+        // dedupe by exact chunk position (same as vault_search's merge)
+        // before truncating to `limit`, not just sort+slice.
+        const results = mergeRagQueryResults(perKbResults, limit)
+        // The RAG index covers the whole vault and every row carries the
+        // chunk's actual text, so an unfiltered `$db.search` is a read path
+        // straight around workspace scope — the same hole `$vault.readText`
+        // had above. Retrieval is an enumeration the caller never named a
+        // path for, so denied rows are dropped silently (matching
+        // `$vault.list`'s children) rather than raising. This post-filter is
+        // cheap defense in depth on top of the pre-filter above, not a
+        // substitute for it.
+        return results.filter(
+          (row) =>
+            resolvePathVisibility(row.path, {
+              scope: workspaceScope,
+              settings,
+              exemptPaths,
+            }) === 'visible',
+        )
+      }
+
+      throw new Error(`unknown db method: ${method}`)
+    }
+  }
+
+  return handlers
 }

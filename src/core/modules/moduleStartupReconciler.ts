@@ -200,7 +200,11 @@ export class ModuleStartupReconciler {
       const current = intent ?? null
       this.intents.set(moduleId, current)
 
-      if (current === 'enabled') {
+      // Readiness repairs artifacts on disk and therefore requires a quiesced
+      // module. A source event that does not change the intent value carries
+      // no new readiness work — this session already reconciled it — and by
+      // then the module is usually running, so re-checking would only fail.
+      if (current === 'enabled' && previous !== current) {
         try {
           const result =
             await this.options.readinessReconciler.ensureModuleReady(moduleId)

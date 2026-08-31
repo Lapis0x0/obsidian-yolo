@@ -604,42 +604,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   flex-shrink: 0;
 }
 
-/* Folder Picker: flatten rows and remove container visuals */
-.yolo-folder-picker .yolo-provider-header {
-  background-color: transparent !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-  padding: 4px 8px;
-  gap: 8px;
-}
-
-.yolo-folder-picker .yolo-provider-header:hover {
-  background-color: var(--background-modifier-hover) !important;
-}
-
-.yolo-folder-picker .yolo-provider-header * {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-  outline: none !important;
-}
-
-.yolo-folder-picker [role='button']:focus,
-.yolo-folder-picker [role='button']:focus-visible,
-.yolo-folder-picker [role='button']:active {
-  outline: none !important;
-  box-shadow: none !important;
-}
-
-.yolo-folder-picker .yolo-provider-expand-btn {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-}
-
 /* ===== Added for review fixes: move inline styles to CSS ===== */
 
 /* Wide modal (instead of setting width via JS) */
@@ -776,7 +740,8 @@ button.yolo-assistant-selector-footer-btn:hover {
 
 .yolo-assistant-item.editing {
   border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px rgba(var(--interactive-accent-rgb), 0.1);
+  box-shadow: 0 0 0 2px
+    color-mix(in srgb, var(--interactive-accent) 10%, transparent);
   cursor: default;
 }
 
@@ -812,7 +777,7 @@ button.yolo-assistant-selector-footer-btn:hover {
     transform: scale(0.98);
   }
   50% {
-    background: rgba(var(--interactive-accent-rgb), 0.25);
+    background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
     transform: scale(1.01);
   }
 }
@@ -893,7 +858,7 @@ button.yolo-assistant-selector-footer-btn:hover {
   font-size: 11px;
   font-weight: 600;
   color: var(--interactive-accent);
-  background: rgba(var(--interactive-accent-rgb), 0.1);
+  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
   padding: 2px 8px;
   border-radius: var(--radius-s);
   text-transform: uppercase;

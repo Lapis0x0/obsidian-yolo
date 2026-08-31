@@ -8,7 +8,14 @@
  * holds the only rAF queue and the only place that writes scrollTop, so at
  * most one write happens per frame and a higher-priority intent always wins
  * a contested frame.
+ *
+ * 每个 Obsidian popout 都是独立的 BrowserWindow：rAF 句柄与 `ResizeObserver`
+ * 构造器都属于各自的 realm。因此这里的帧调度一律取绑定滚动容器 / 被观察元素
+ * 所属窗口，而不是全局对象——用主窗口的 rAF 驱动 popout 的跟随，主窗口被最小化
+ * 或遮挡时会直接被节流甚至停摆。
  */
+
+import { getNodeWindow } from '../../../utils/dom/window-context'
 
 export type ScrollTargetResolver = () => number | null
 
@@ -22,6 +29,13 @@ export type ScrollController = {
     resolve: ScrollTargetResolver,
     observe: Element | null,
   ): void
+  /**
+   * Drops an in-flight anchor correction. Needed when the reader's position is
+   * replaced outright rather than adjusted — a jump outranks the correction
+   * while it lasts, but the correction would otherwise resume and undo it the
+   * moment the jump settles.
+   */
+  cancelPreserveAnchor(): void
   submitFollowLiveEdge(resolve: ScrollTargetResolver): void
   cancelFollowLiveEdge(): void
   /**
@@ -73,6 +87,8 @@ type Intent = {
 export function createScrollController(): ScrollController {
   let boundElement: HTMLElement | null = null
   let frameHandle: number | null = null
+  // rAF 句柄只能由发起它的窗口取消，而绑定元素可能在句柄还挂着时被换掉。
+  let frameWindow: (Window & typeof globalThis) | null = null
   const intents = new Map<IntentKind, Intent>()
 
   const clearIntent = (kind: IntentKind) => {
@@ -89,8 +105,11 @@ export function createScrollController(): ScrollController {
 
   const cancelFrame = () => {
     if (frameHandle !== null) {
-      cancelAnimationFrame(frameHandle)
+      ;(frameWindow ?? getNodeWindow(boundElement)).cancelAnimationFrame(
+        frameHandle,
+      )
       frameHandle = null
+      frameWindow = null
     }
   }
 
@@ -98,11 +117,13 @@ export function createScrollController(): ScrollController {
     if (frameHandle !== null || intents.size === 0 || !boundElement) {
       return
     }
-    frameHandle = requestAnimationFrame(flush)
+    frameWindow = getNodeWindow(boundElement)
+    frameHandle = frameWindow.requestAnimationFrame(flush)
   }
 
   function flush() {
     frameHandle = null
+    frameWindow = null
     const element = boundElement
     if (!element) {
       return
@@ -152,9 +173,14 @@ export function createScrollController(): ScrollController {
     observe: Element | null,
   ) => {
     clearIntent(kind)
+    // 被观察元素所属窗口的构造器：popout 里的元素必须由该 realm 的
+    // `ResizeObserver` 观察，否则观察不到。
+    const ObserverCtor = observe
+      ? getNodeWindow(observe).ResizeObserver
+      : undefined
     const observer =
-      observe && typeof ResizeObserver !== 'undefined'
-        ? new ResizeObserver(() => scheduleFlush())
+      observe && typeof ObserverCtor !== 'undefined'
+        ? new ObserverCtor(() => scheduleFlush())
         : null
     if (observer && observe) {
       observer.observe(observe)
@@ -190,6 +216,9 @@ export function createScrollController(): ScrollController {
     },
     submitPreserveAnchor(resolve, observe) {
       submitSettlementIntent('preserveAnchor', resolve, observe)
+    },
+    cancelPreserveAnchor() {
+      clearIntent('preserveAnchor')
     },
     submitFollowLiveEdge(resolve) {
       clearIntent('followLiveEdge')

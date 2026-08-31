@@ -2,7 +2,7 @@ import { App } from 'obsidian'
 import React from 'react'
 
 import { SettingsProvider } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
 import { AgentsSectionContent } from '../sections/AgentsSectionContent'
 

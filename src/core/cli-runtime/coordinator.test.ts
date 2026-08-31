@@ -1,13 +1,34 @@
 import { FileSystemAdapter, Platform } from 'obsidian'
 
+import { ToolCallResponseStatus } from '../../types/tool-call.types'
+
 import type { CliRuntimeFactories } from './coordinator'
 import { createDesktopCliRuntimeCoordinator } from './coordinator'
+import { discoverHermesProfiles } from './hermes/profiles'
+import { loadLoginShellEnvironment } from './login-shell-env'
 import type { CliSessionIndexStore } from './session-index'
 import type {
   CliRuntime,
   CliRuntimeEvent,
   CliRuntimeEventListener,
+  CliRuntimeId,
 } from './types'
+
+jest.mock('./hermes/profiles', () => ({
+  HERMES_DEFAULT_PROFILE_ID: 'default',
+  discoverHermesProfiles: jest.fn(async () => [
+    { id: 'default', displayName: 'default' },
+  ]),
+}))
+jest.mock('./login-shell-env', () => ({
+  loadLoginShellEnvironment: jest.fn(async () => ({
+    PATH: '/login-shell/bin',
+    HERMES_HOME: '/login-shell/.hermes',
+  })),
+}))
+
+const mockedDiscoverHermesProfiles = jest.mocked(discoverHermesProfiles)
+const mockedLoadLoginShellEnvironment = jest.mocked(loadLoginShellEnvironment)
 
 class TestFileSystemAdapter extends FileSystemAdapter {
   constructor(private readonly basePath: string) {
@@ -41,7 +62,7 @@ class TestRuntime implements CliRuntime {
   readonly cancel = jest.fn(async () => undefined)
   readonly dispose = jest.fn(async () => undefined)
 
-  constructor(readonly runtimeId: 'claude-code' | 'codex') {}
+  constructor(readonly runtimeId: CliRuntimeId) {}
 
   async openSession(ref: Parameters<CliRuntime['openSession']>[0]) {
     return { ref, messages: [], compactionBoundaries: [] }
@@ -70,11 +91,11 @@ class TestRuntime implements CliRuntime {
   async rewriteTurn() {}
 
   async respondApproval() {
-    return true
+    return null
   }
 
   async respondQuestion() {
-    return true
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -90,6 +111,8 @@ class TestRuntime implements CliRuntime {
 const runtimeHarness = () => {
   const claudeRuntimes: TestRuntime[] = []
   const codexRuntimes: TestRuntime[] = []
+  const hermesRuntimes: TestRuntime[] = []
+  const piRuntimes: TestRuntime[] = []
   const createClaudeRuntime = jest.fn(() => {
     const runtime = new TestRuntime('claude-code')
     claudeRuntimes.push(runtime)
@@ -100,15 +123,31 @@ const runtimeHarness = () => {
     codexRuntimes.push(runtime)
     return runtime
   })
+  const createHermesRuntime = jest.fn(() => {
+    const runtime = new TestRuntime('hermes')
+    hermesRuntimes.push(runtime)
+    return runtime
+  })
+  const createPiRuntime = jest.fn(() => {
+    const runtime = new TestRuntime('pi')
+    piRuntimes.push(runtime)
+    return runtime
+  })
   const factories: CliRuntimeFactories = {
-    createClaudeRuntime,
-    createCodexRuntime,
+    'claude-code': { create: createClaudeRuntime },
+    codex: { create: createCodexRuntime },
+    hermes: { create: createHermesRuntime },
+    pi: { create: createPiRuntime },
   }
   return {
     claudeRuntimes,
     codexRuntimes,
+    hermesRuntimes,
+    piRuntimes,
     createClaudeRuntime,
     createCodexRuntime,
+    createHermesRuntime,
+    createPiRuntime,
     factories,
   }
 }
@@ -130,6 +169,8 @@ describe('CLI runtime coordinator', () => {
 
   beforeEach(() => {
     Platform.isDesktop = true
+    mockedDiscoverHermesProfiles.mockClear()
+    mockedLoadLoginShellEnvironment.mockClear()
   })
 
   afterEach(() => {
@@ -164,17 +205,34 @@ describe('CLI runtime coordinator', () => {
     expect(loadRuntimeFactories).not.toHaveBeenCalled()
   })
 
-  it('creates each provider lazily once per scope with current absolute cwd and options', async () => {
+  it('passes the vault path and configured option getters to the runtime factories loader', async () => {
     const harness = runtimeHarness()
-    const getConfiguredCliPath = () => '/bin/claude'
-    const getClaudeRuntimeOptions = jest.fn(() => ({
-      getConfiguredCliPath,
-    }))
-    const getCodexRuntimeOptions = jest.fn(() => ({ command: '/bin/codex' }))
-    const coordinator = await createDesktopCliRuntimeCoordinator({
-      app: createApp(new TestFileSystemAdapter('/vault/current')),
+    const app = createApp(new TestFileSystemAdapter('/vault/loader'))
+    const getClaudeRuntimeOptions = () => ({})
+    const getCodexRuntimeOptions = () => ({})
+    const loadRuntimeFactories = jest.fn(() => harness.factories)
+
+    await createDesktopCliRuntimeCoordinator({
+      app,
       getClaudeRuntimeOptions,
       getCodexRuntimeOptions,
+      loadRuntimeFactories,
+      createSessionIndexStore: indexStore,
+    })
+
+    expect(loadRuntimeFactories).toHaveBeenCalledWith({
+      app,
+      vaultPath: '/vault/loader',
+      getClaudeRuntimeOptions,
+      getCodexRuntimeOptions,
+    })
+  })
+
+  it('creates each provider lazily once per scope with the current absolute vault path', async () => {
+    const harness = runtimeHarness()
+    const app = createApp(new TestFileSystemAdapter('/vault/current'))
+    const coordinator = await createDesktopCliRuntimeCoordinator({
+      app,
       loadRuntimeFactories: () => harness.factories,
       createSessionIndexStore: indexStore,
     })
@@ -187,22 +245,15 @@ describe('CLI runtime coordinator', () => {
     )
     expect(harness.createClaudeRuntime).toHaveBeenCalledTimes(1)
     expect(harness.createClaudeRuntime).toHaveBeenCalledWith({
-      getConfiguredCliPath,
+      app,
       vaultPath: '/vault/current',
     })
     expect(scope.resolveRuntime('codex')).toBe(scope.resolveRuntime('codex'))
     expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
-    expect(harness.createCodexRuntime).toHaveBeenCalledWith(
-      expect.objectContaining({
-        command: '/bin/codex',
-        cwd: '/vault/current',
-        resolveHost: expect.any(Function),
-      }),
-    )
-    expect(getClaudeRuntimeOptions).toHaveBeenCalledTimes(1)
-    // Once for the shared app-server host pool, once at runtime creation so
-    // refreshed launch options are picked up per conversation.
-    expect(getCodexRuntimeOptions).toHaveBeenCalledTimes(2)
+    expect(harness.createCodexRuntime).toHaveBeenCalledWith({
+      app,
+      vaultPath: '/vault/current',
+    })
   })
 
   it('rejects a relative vault cwd without invoking a provider factory', async () => {
@@ -215,6 +266,38 @@ describe('CLI runtime coordinator', () => {
       coordinator.createScope().resolveRuntime('claude-code'),
     ).toThrow(/absolute vault path/)
     expect(harness.createClaudeRuntime).not.toHaveBeenCalled()
+  })
+
+  it('delegates warmConversationRuntime to the factory warm hook when present', async () => {
+    const warm = jest.fn(async () => undefined)
+    const harness = runtimeHarness()
+    const factories: CliRuntimeFactories = {
+      ...harness.factories,
+      codex: { ...harness.factories.codex, warm },
+    }
+    const { coordinator } = await createCoordinator({ ...harness, factories })
+    const scope = coordinator.createScope()
+
+    await scope.warmConversationRuntime('codex')
+    expect(warm).toHaveBeenCalledTimes(1)
+
+    // claude-code declares no warm hook — this must resolve as a no-op.
+    await expect(
+      scope.warmConversationRuntime('claude-code'),
+    ).resolves.toBeUndefined()
+  })
+
+  it('disposes factory-owned infrastructure when the coordinator disposes', async () => {
+    const dispose = jest.fn(async () => undefined)
+    const harness = runtimeHarness()
+    const factories: CliRuntimeFactories = {
+      ...harness.factories,
+      codex: { ...harness.factories.codex, dispose },
+    }
+    const { coordinator } = await createCoordinator({ ...harness, factories })
+
+    await coordinator.dispose()
+    expect(dispose).toHaveBeenCalledTimes(1)
   })
 
   it('shares service and action routing inside a scope', async () => {
@@ -375,7 +458,21 @@ describe('CLI runtime coordinator', () => {
       runState: 'running',
     })
 
-    runtime.emit({ type: 'run_state', state: 'waiting_for_approval' })
+    // A pending card is what puts the run into `waiting_for_approval` — the
+    // state is derived from it, so monitoring keeps seeing a live run.
+    runtime.emit({
+      type: 'message_upsert',
+      message: {
+        role: 'tool',
+        id: 'tool-1',
+        toolCalls: [
+          {
+            request: { id: 'call-1', name: 'ls' },
+            response: { status: ToolCallResponseStatus.PendingApproval },
+          },
+        ],
+      },
+    })
     expect(summaries[summaries.length - 1].get('conversation-a')).toEqual({
       conversationId: 'conversation-a',
       runtimeId: 'claude-code',
@@ -495,5 +592,84 @@ describe('CLI runtime coordinator', () => {
     await expect(dispose).rejects.toThrow('claude dispose failed')
     expect(completeHarness.codexRuntimes[0].dispose).toHaveBeenCalledTimes(1)
     expect(complete.coordinator.dispose()).toBe(dispose)
+  })
+
+  it('listHermesProfiles() discovers profiles through the login-shell environment, not bare process.env', async () => {
+    // macOS GUI apps (Obsidian included) don't inherit shell-rc exports like
+    // a custom `HERMES_HOME` — command resolution and process launch already
+    // go through `loadLoginShellEnvironment()` (see `hermes/factory.ts`).
+    // Profile discovery used to read `process.env` directly instead, so a
+    // user with `HERMES_HOME` set only in their shell rc would see the
+    // wrong (or missing) profiles in the picker even though the actual
+    // Hermes process launches against the right root.
+    const originalHermesHome = process.env.HERMES_HOME
+    process.env.HERMES_HOME = '/process-env/.hermes'
+    try {
+      const { coordinator } = await createCoordinator()
+      const scope = coordinator.createScope()
+
+      const profiles = await scope.listHermesProfiles()
+
+      expect(mockedLoadLoginShellEnvironment).toHaveBeenCalledTimes(1)
+      expect(mockedDiscoverHermesProfiles).toHaveBeenCalledWith(
+        expect.objectContaining({ HERMES_HOME: '/login-shell/.hermes' }),
+      )
+      // Never the raw process.env value, proving the login-shell snapshot
+      // (not process.env) is what actually gets used.
+      expect(mockedDiscoverHermesProfiles).not.toHaveBeenCalledWith(
+        expect.objectContaining({ HERMES_HOME: '/process-env/.hermes' }),
+      )
+      expect(profiles).toEqual([{ id: 'default', displayName: 'default' }])
+
+      await scope.dispose()
+      await coordinator.dispose()
+    } finally {
+      if (originalHermesHome === undefined) {
+        delete process.env.HERMES_HOME
+      } else {
+        process.env.HERMES_HOME = originalHermesHome
+      }
+    }
+  })
+
+  it('listHermesProfiles() memoizes the login-shell environment resolution but always rescans the profile directory', async () => {
+    // `loadLoginShellEnvironment()` synchronously spawns `zsh -ilc`, which
+    // blocks Obsidian's render thread — `HermesProfileSelector` calls this
+    // on every mount and every popover open, so resolving it fresh each time
+    // caused a visible stall. The fix must still rescan the profile
+    // directory (`discoverHermesProfiles`) on every call so a profile
+    // created/deleted after the first call shows up immediately — only the
+    // environment resolution itself is cached.
+    const { coordinator } = await createCoordinator()
+    const scope = coordinator.createScope()
+
+    mockedDiscoverHermesProfiles.mockResolvedValueOnce([
+      { id: 'default', displayName: 'default' },
+    ])
+    const first = await scope.listHermesProfiles()
+    expect(first).toEqual([{ id: 'default', displayName: 'default' }])
+
+    mockedDiscoverHermesProfiles.mockResolvedValueOnce([
+      { id: 'default', displayName: 'default' },
+      { id: 'work', displayName: 'Work' },
+    ])
+    const second = await scope.listHermesProfiles()
+    expect(second).toEqual([
+      { id: 'default', displayName: 'default' },
+      { id: 'work', displayName: 'Work' },
+    ])
+
+    // The memoization must live on the coordinator's shared workspace, not
+    // on one scope — a second scope (a second Chat view, for instance) must
+    // still reuse the cached environment instead of resolving its own.
+    const otherScope = coordinator.createScope()
+    await otherScope.listHermesProfiles()
+
+    expect(mockedDiscoverHermesProfiles).toHaveBeenCalledTimes(3)
+    expect(mockedLoadLoginShellEnvironment).toHaveBeenCalledTimes(1)
+
+    await otherScope.dispose()
+    await scope.dispose()
+    await coordinator.dispose()
   })
 })

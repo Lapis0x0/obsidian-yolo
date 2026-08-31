@@ -64,6 +64,18 @@ export type MenuResolution = {
 export const PUNCTUATION =
   '\\.,\\+\\*\\?\\$\\@\\|#{}\\(\\)\\^\\-\\[\\]\\\\/!%\'"~=<>_:;'
 
+/* 双栏 typeahead 菜单（RailTypeaheadMenu，`/` 与 `@` 共用）的目标宽度：内容
+ * 宽度约 470px、左对齐，不铺满输入框。见下方 positionMenu() 里的
+ * isRailMenu 分支。 */
+const RAIL_MENU_WIDTH_PX = 470
+/* typeahead 菜单的完整面板高度：列表 max-height 为 min(320px, available)，
+ * 加上面板 padding/border 约 24px 余量 → 344。展开方向的规则：打开首帧朝空间
+ * 更大的一侧展开；打开期间方向粘滞，仅当已选一侧装不下此值且另一侧更大时才
+ * 改判（输入框长高、窗口缩放不会导致方向来回翻）。翻转的唯一决策点在
+ * reposition()（内联样式是垂直定位的最终权威），生效方向通过 menuEle 的
+ * data-flip 属性暴露，该属性随弹层卸载消失，每次打开重新决策。 */
+const TYPEAHEAD_MENU_FULL_HEIGHT_PX = 344
+
 export class MenuOption {
   key: string
   ref?: MutableRefObject<HTMLElement | null>
@@ -696,15 +708,6 @@ export function useMenuAnchorRef(
       const containerEl = rootElement.closest(
         '.yolo-chat-user-input-container, .yolo-quick-ask-input-row',
       )
-      const centeredChatContainer = rootElement.closest(
-        '.yolo-chat-container--centered',
-      )
-      const isCenteredChatContainer = Boolean(centeredChatContainer)
-      const centeredChatTypeaheadMaxWidth = centeredChatContainer
-        ? getComputedStyle(centeredChatContainer)
-            .getPropertyValue('--yolo-chat-typeahead-max-width')
-            .trim() || '560px'
-        : '560px'
 
       if (containerEl) {
         // Position the menu in the current window body to avoid clipping by container bounds
@@ -713,10 +716,6 @@ export function useMenuAnchorRef(
         }
 
         const rect = containerEl.getBoundingClientRect()
-        const boundaryRect =
-          rootElement
-            .closest('.yolo-chat-container')
-            ?.getBoundingClientRect() ?? rect
         const cs = getComputedStyle(containerEl)
 
         // Calculate focus ring thickness from box-shadow
@@ -735,7 +734,38 @@ export function useMenuAnchorRef(
         // Position menu to align with the outermost edge of the focus ring
         const menuLeft = Math.round(rect.left - ring)
         const menuWidth = Math.round(rect.width + ring * 2)
-        const menuTop = Math.round(rect.top - offsetTop)
+
+        const availableAbove = Math.max(margin, Math.floor(rect.top - margin))
+        const availableBelow = Math.max(
+          margin,
+          Math.floor(ownerWindow.innerHeight - rect.bottom - margin),
+        )
+        // 展开方向：首帧朝空间更大的一侧；打开期间粘滞（data-flip 记录上次
+        // 决策），仅当已选一侧装不下完整面板高度且另一侧更大时改判。判定只
+        // 依赖输入框 rect 与视口，不依赖菜单自身尺寸。Quick Ask 层面的
+        // mentionMenuPlacement 状态不再影响主面板的实际垂直方向（这里的内联
+        // 样式是最终权威）。
+        const isRailMenu =
+          menuEle?.classList.contains('yolo-rail-menu-popover') ?? false
+        let flipBelow = false
+        if (menuEle && isRailMenu) {
+          const prevFlip = menuEle.getAttribute('data-flip')
+          if (prevFlip !== 'above' && prevFlip !== 'below') {
+            flipBelow = availableBelow > availableAbove
+          } else {
+            flipBelow = prevFlip === 'below'
+            const chosen = flipBelow ? availableBelow : availableAbove
+            const other = flipBelow ? availableAbove : availableBelow
+            if (chosen < TYPEAHEAD_MENU_FULL_HEIGHT_PX && other > chosen) {
+              flipBelow = !flipBelow
+            }
+          }
+          menuEle.setAttribute('data-flip', flipBelow ? 'below' : 'above')
+        }
+
+        const menuTop = Math.round(
+          flipBelow ? rect.bottom + offsetTop : rect.top - offsetTop,
+        )
 
         // 与上次写入的坐标相同则跳过,避免 animationFrame 模式下每帧重写样式。
         // menuEle 也要复检 —— 它的 absolute 定位完全依赖 containerDiv,
@@ -762,30 +792,26 @@ export function useMenuAnchorRef(
         }
 
         if (menuEle) {
-          const available = Math.max(margin, Math.floor(rect.top - margin))
-          const isMentionPopover = menuEle.classList.contains(
-            'yolo-smart-space-mention-popover',
-          )
-          if (isMentionPopover) {
-            const mentionPopoverWidth = isCenteredChatContainer
-              ? `min(100%, ${centeredChatTypeaheadMaxWidth})`
-              : '100%'
+          const available = flipBelow ? availableBelow : availableAbove
+          if (isRailMenu) {
+            // 内容宽度、左对齐：宽度不跟随输入框，而是钳在设计宽度（约 470px）
+            // 和输入框宽度（containerDiv/100%）中较小者——输入框比 470px 窄时
+            // 自然退化为输入框宽度，RailTypeaheadMenu 内部再据此测得的实际渲染
+            // 宽度切换单栏降级布局。
+            const railMenuWidth = `min(100%, ${RAIL_MENU_WIDTH_PX}px)`
             updateDynamicStyleClass(menuEle, 'yolo-typeahead-pop', {
               position: 'absolute',
               left: 0,
-              right: isCenteredChatContainer ? 'auto' : 0,
-              bottom: 0,
-              width: mentionPopoverWidth,
-              maxWidth: mentionPopoverWidth,
+              right: 'auto',
+              // 常态锚在 containerDiv 底边向上生长；翻转时锚在顶边向下生长
+              //（containerDiv 的 top 已在上方按 flipBelow 移到输入框底边）。
+              top: flipBelow ? 0 : 'auto',
+              bottom: flipBelow ? 'auto' : 0,
+              width: railMenuWidth,
+              maxWidth: railMenuWidth,
               boxSizing: 'border-box',
               overflow: 'visible',
               '--yolo-typeahead-available-height': `${available}px`,
-              '--yolo-typeahead-boundary-left': `${Math.round(
-                boundaryRect.left,
-              )}px`,
-              '--yolo-typeahead-boundary-right': `${Math.round(
-                boundaryRect.right,
-              )}px`,
             })
           } else {
             updateDynamicStyleClass(menuEle, 'yolo-typeahead-pop', {

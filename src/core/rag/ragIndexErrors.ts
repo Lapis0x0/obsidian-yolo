@@ -1,4 +1,3 @@
-import { DatabaseSaveFailedError } from '../../database/exception'
 import {
   LLMAPIKeyInvalidException,
   LLMAPIKeyNotSetException,
@@ -13,7 +12,7 @@ export type RagIndexFailureKind =
   | 'unknown'
 
 /**
- * Raised by `embedAndInsertBatches` when one or more files had transient
+ * Raised by `VectorManager.reconcile` when one or more files had transient
  * embedding failures and were rolled back to 0 rows. It is always classified
  * as `transient` so the run-level retry path (exponential backoff) is
  * activated — without relying on message-string matching.
@@ -72,14 +71,6 @@ export const classifyRagIndexError = (error: unknown): RagIndexFailureKind => {
     error instanceof LLMAPIKeyInvalidException ||
     error instanceof LLMBaseUrlNotSetException
   ) {
-    return 'permanent'
-  }
-
-  // dumpDataDir OOM (#408) and similar persistence failures: classify as
-  // permanent so the run records as `failed` and the user sees actionable
-  // feedback. Retrying immediately wouldn't help — the snapshot is just as
-  // big — and we don't want to thrash an OOM condition with auto-retries.
-  if (error instanceof DatabaseSaveFailedError) {
     return 'permanent'
   }
 

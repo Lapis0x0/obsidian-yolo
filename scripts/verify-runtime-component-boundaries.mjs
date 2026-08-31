@@ -9,10 +9,10 @@ const forbidden = [
   'node_modules/pdfjs-dist/',
   'node_modules/pdf-lib/',
   'node_modules/@pdf-lib/',
-  'node_modules/@electric-sql/pglite/',
-  'node_modules/drizzle-orm/',
+  'node_modules/@huggingface/transformers/',
+  'node_modules/onnxruntime-web/',
+  'node_modules/onnxruntime-common/',
   'inline-pdfjs-worker',
-  'inline-pglite-worker',
 ]
 for (const dependency of forbidden) {
   const match = inputs.find((input) => input.includes(dependency))
@@ -22,17 +22,34 @@ for (const dependency of forbidden) {
 }
 
 const expectedClosures = {
-  tokenizer: ['node_modules/gpt-tokenizer/'],
-  'pdf-engine': ['node_modules/pdfjs-dist/', 'node_modules/pdf-lib/'],
-  'pglite-engine': [
-    'node_modules/@electric-sql/pglite/',
-    'node_modules/drizzle-orm/pglite/',
-  ],
+  tokenizer: {
+    metafile: 'runtime-components/tokenizer/dist/meta.json',
+    dependencies: ['node_modules/gpt-tokenizer/'],
+  },
+  'pdf-engine': {
+    metafile: 'runtime-components/pdf-engine/dist/meta.json',
+    dependencies: ['node_modules/pdfjs-dist/', 'node_modules/pdf-lib/'],
+  },
+  // embedding-engine's own entry.js never imports Transformers.js/ORT — they
+  // are only used inside the inlined inference worker (see
+  // `runtime-components/embedding-engine/src/worker.ts` and the
+  // `runtime-embedding-worker` esbuild plugin in
+  // `scripts/build-runtime-components.mjs`), whose dependency graph is
+  // captured separately in `dist/worker-meta.json` since it never appears in
+  // the outer `entry.js` bundle's own metafile.
+  'embedding-engine': {
+    metafile: 'runtime-components/embedding-engine/dist/worker-meta.json',
+    dependencies: [
+      'node_modules/@huggingface/transformers/',
+      'node_modules/onnxruntime-web/',
+    ],
+  },
 }
-for (const [componentId, dependencies] of Object.entries(expectedClosures)) {
-  const metafile = JSON.parse(
-    await readFile(`runtime-components/${componentId}/dist/meta.json`, 'utf8'),
-  )
+for (const [
+  componentId,
+  { metafile: metafilePath, dependencies },
+] of Object.entries(expectedClosures)) {
+  const metafile = JSON.parse(await readFile(metafilePath, 'utf8'))
   const componentInputs = Object.keys(metafile.inputs).map((path) =>
     path.replaceAll('\\', '/'),
   )

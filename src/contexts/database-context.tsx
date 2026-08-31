@@ -5,7 +5,7 @@ import { VectorManager } from '../database/modules/vector/VectorManager'
 
 type DatabaseContextType = {
   getDatabaseManager: () => Promise<DatabaseManager>
-  getVectorManager: () => Promise<VectorManager>
+  getVectorManager: (kbId: string) => Promise<VectorManager>
 }
 
 const DatabaseContext = createContext<DatabaseContextType | null>(null)
@@ -17,9 +17,12 @@ export function DatabaseProvider({
   children: React.ReactNode
   getDatabaseManager: () => Promise<DatabaseManager>
 }) {
-  const getVectorManager = useCallback(async () => {
-    return (await getDatabaseManager()).getVectorManager()
-  }, [getDatabaseManager])
+  const getVectorManager = useCallback(
+    async (kbId: string) => {
+      return (await getDatabaseManager()).getVectorManager(kbId)
+    },
+    [getDatabaseManager],
+  )
 
   const value = useMemo(() => {
     return { getDatabaseManager, getVectorManager }

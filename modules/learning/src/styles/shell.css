@@ -159,6 +159,62 @@ button.yolo-learning-workspace-back svg {
   white-space: nowrap;
 }
 
+.yolo-learning-workspace-resume-banner {
+  box-sizing: border-box;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  border: 1px solid color-mix(in oklab, var(--yolo-warning) 30%, transparent);
+  border-radius: var(--yolo-radius-md);
+  padding: 8px 12px;
+  background-color: color-mix(in oklab, var(--yolo-warning) 8%, transparent);
+  color: var(--yolo-warning);
+}
+
+.yolo-learning-workspace-resume-banner-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-width: 0;
+  gap: 1px;
+}
+
+.yolo-learning-workspace-resume-banner-title {
+  overflow: hidden;
+  color: var(--yolo-foreground);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-learning-workspace-resume-banner-detail {
+  color: var(--yolo-muted-foreground);
+  font-size: 12px;
+}
+
+.yolo-learning-workspace-resume-banner-action {
+  display: inline-flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: var(--yolo-radius-sm);
+  padding: 6px 12px;
+  background-color: var(--yolo-warning);
+  color: var(--yolo-primary-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.yolo-learning-workspace-resume-banner-action:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
 .yolo-learning-workspace-main {
   box-sizing: border-box;
   display: flex;

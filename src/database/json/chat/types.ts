@@ -3,15 +3,18 @@ import {
   SerializedChatMessage,
 } from '../../../types/chat'
 import { ConversationOverrideSettings } from '../../../types/conversation-settings.types'
+import { ProviderSession } from '../../../types/provider-session.types'
 
 export const CHAT_SCHEMA_VERSION = 1
 
 export type ChatConversationOrigin = 'user' | 'external-agent'
 
 export type ChatConversationCliSession = {
-  runtimeId: 'claude-code' | 'codex'
+  runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi'
   nativeSessionId: string
   sessionPathHint?: string
+  /** Hermes profile this session lives under (see `CliSessionRef.profileId`). */
+  profileId?: string
 }
 
 export const getChatConversationOrigin = (
@@ -43,6 +46,15 @@ export type ChatConversation = {
    * stable reference and its own conversation metadata.
    */
   cliSession?: ChatConversationCliSession
+  /**
+   * Native session binding for a provider that owns one (see
+   * `ProviderSession`). Deliberately separate from `cliSession`, which also
+   * declares "this is a CLI runtime conversation" and is read as such by the
+   * runtime selector and the message rendering path — a conversation with a
+   * `providerSession` is an ordinary YOLO conversation whose provider happens
+   * to keep a session of its own.
+   */
+  providerSession?: ProviderSession
 }
 
 export type ChatConversationMetadata = {

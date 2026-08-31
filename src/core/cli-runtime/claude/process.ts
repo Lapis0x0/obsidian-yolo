@@ -28,6 +28,13 @@ type SpawnImplementation = (
 
 type ResolveClaudeProcessSupportOptions = {
   configuredCliPath?: string
+  /**
+   * OAuth token from `claude setup-token`, injected as
+   * `CLAUDE_CODE_OAUTH_TOKEN` so the CLI subprocess authenticates with the
+   * user's Claude subscription instead of this device's own CLI login
+   * state. Blank/whitespace-only values are treated as "not configured".
+   */
+  oauthToken?: string
   loadEnvironment?: () => Promise<Record<string, string | undefined>>
   platform?: NodeJS.Platform
   homedir?: string
@@ -108,8 +115,7 @@ const getClaudeCandidates = ({
   const pathEntries = getPathValue(env, platform)
     .split(pathSeparator)
     .filter(Boolean)
-  const executableNames =
-    platform === 'win32' ? ['claude.exe', 'claude'] : ['claude']
+  const executableNames = platform === 'win32' ? ['claude.exe'] : ['claude']
   const rawConfiguredPath = configuredCliPath?.trim()
   const configuredPath =
     rawConfiguredPath === '~'
@@ -333,9 +339,13 @@ export const resolveClaudeProcessSupport = async (
   const environment = await (
     options.loadEnvironment ?? loadDesktopEnvironment
   )()
+  const trimmedOauthToken = options.oauthToken?.trim()
   const env = {
     ...environment,
     CLAUDE_AGENT_SDK_CLIENT_APP: 'obsidian-yolo',
+    ...(trimmedOauthToken
+      ? { CLAUDE_CODE_OAUTH_TOKEN: trimmedOauthToken }
+      : {}),
   }
   const cliPath = await findExisting(
     getClaudeCandidates({
@@ -377,6 +387,7 @@ export const resolveClaudeProcessSupport = async (
 
   return {
     cliPath,
+    nodePath,
     env,
     createAbortController: transferableAbortController,
     spawnClaudeCodeProcess: createElectronSpawnFunction({

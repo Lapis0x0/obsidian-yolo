@@ -11,6 +11,7 @@ import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import {
   buildForegroundAgentVisualTurnPlan,
   getForegroundAgentFooterForGroup,
+  reuseForegroundAgentVisualTurnPlan,
 } from './foregroundAgentVisualTurns'
 
 const makeUser = (id: string): ChatUserMessage => ({
@@ -254,5 +255,85 @@ describe('buildForegroundAgentVisualTurnPlan', () => {
       suppress: true,
       inlineInfoMessages: beforeBackground,
     })
+  })
+})
+
+// 时间线行的 render version 用 `inlineInfoMessages` 的对象身份判断是否重渲。
+// 内容没变却换新数组，会让全部 assistant 行在流式期间每帧重渲。
+describe('foreground agent footer 引用稳定性', () => {
+  it('没有 background bridge 时直接沿用入参 group', () => {
+    const assistantGroup = group(makeAssistant('assistant-1'))
+
+    const plan = buildForegroundAgentVisualTurnPlan([
+      makeUser('user-1'),
+      assistantGroup,
+    ])
+
+    expect(
+      getForegroundAgentFooterForGroup(plan, assistantGroup)
+        ?.inlineInfoMessages,
+    ).toBe(assistantGroup)
+  })
+
+  it('内容未变时复用上一份 plan 的 footer 数组', () => {
+    const beforeBackground = group(
+      makeAssistant('assistant-1'),
+      makeTool('tool-1'),
+    )
+    const backgroundResult = group(makeSubagentResult('subagent-result-1'))
+    const afterBackground = group(makeAssistant('assistant-2'))
+    const grouped = [
+      makeUser('user-1'),
+      beforeBackground,
+      backgroundResult,
+      afterBackground,
+    ]
+
+    const previous = buildForegroundAgentVisualTurnPlan(grouped)
+    const next = reuseForegroundAgentVisualTurnPlan(
+      previous,
+      buildForegroundAgentVisualTurnPlan(grouped),
+    )
+
+    // 跨 group 合并出来的 footer 是新建数组，必须靠复用才能保持引用稳定
+    expect(
+      getForegroundAgentFooterForGroup(next, afterBackground)
+        ?.inlineInfoMessages,
+    ).toBe(
+      getForegroundAgentFooterForGroup(previous, afterBackground)
+        ?.inlineInfoMessages,
+    )
+  })
+
+  it('内容变化时给出新的 footer 数组', () => {
+    const beforeBackground = group(
+      makeAssistant('assistant-1'),
+      makeTool('tool-1'),
+    )
+    const backgroundResult = group(makeSubagentResult('subagent-result-1'))
+
+    const previous = buildForegroundAgentVisualTurnPlan([
+      makeUser('user-1'),
+      beforeBackground,
+      backgroundResult,
+      group(makeAssistant('assistant-2')),
+    ])
+    const next = reuseForegroundAgentVisualTurnPlan(
+      previous,
+      buildForegroundAgentVisualTurnPlan([
+        makeUser('user-1'),
+        beforeBackground,
+        backgroundResult,
+        group(makeAssistant('assistant-2'), makeAssistant('assistant-3')),
+      ]),
+    )
+
+    const nextFooter = getForegroundAgentFooterForGroup(
+      next,
+      group(makeAssistant('assistant-2')),
+    )
+    expect(nextFooter?.inlineInfoMessages.map((message) => message.id)).toEqual(
+      ['assistant-1', 'tool-1', 'assistant-2', 'assistant-3'],
+    )
   })
 })

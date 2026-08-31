@@ -35,6 +35,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Every artifact any published version can ask for must still be
+      # attached. Runs here rather than in the release workflow because this
+      # checkout has the full tag history the referenced set is derived from.
+      - name: Audit runtime component artifact completeness
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/runtime-assets.mjs audit
+
       - name: Reconcile GitHub Release state into signed metadata
         env:
           GH_TOKEN: ${{ github.token }}
@@ -52,6 +60,8 @@ jobs:
           npx jest src/core/distribution --runInBand
           node --test scripts/distribution.test.mjs
           node --test scripts/release.test.mjs
+          node --test scripts/runtimeComponentAssetName.test.mjs
+          node --test scripts/runtimeComponentReleaseAssets.test.mjs
           git diff --check
 
       - name: Detect metadata change
@@ -100,12 +110,12 @@ jobs:
           curl --fail --show-error --silent --retry 3 --retry-all-errors
           https://purge.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/catalog-v1.json
 
-      - name: Check current Pages deployment
+      - name: Check current mirror content
         id: pages
         continue-on-error: true
         run: node scripts/distribution.mjs verify-pages
 
-      - name: Build latest-only Pages snapshot
+      - name: Build latest-only mirror snapshot
         id: pages_build
         if: steps.pages.outcome != 'success'
         continue-on-error: true
@@ -113,7 +123,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/distribution.mjs build-pages
 
-      - name: Deploy Cloudflare Pages snapshot
+      - name: Upload latest-only snapshot to R2
         id: pages_deploy
         if: >-
           steps.pages.outcome != 'success' &&
@@ -122,9 +132,7 @@ jobs:
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-        run: >-
-          npx wrangler pages deploy .distribution-pages
-          --project-name yolo-updates --branch main
+        run: node scripts/distribution.mjs upload-r2
 
       - name: Summarize distribution state
         run: |
@@ -134,11 +142,11 @@ jobs:
           elif [[ "${{ steps.pages_build.outcome }}" != 'success' ]]; then
             pages_status='degraded (snapshot build failed; rerun reconcile to retry)'
           elif [[ "${{ steps.pages_deploy.outcome }}" == 'success' ]]; then
-            pages_status='deployment submitted; verification deferred to a later reconcile'
+            pages_status='upload submitted; verification deferred to a later reconcile'
           else
-            pages_status='degraded (deployment failed; rerun reconcile to retry)'
+            pages_status='degraded (upload failed; rerun reconcile to retry)'
           fi
           echo "### Distribution revision $revision" >> "$GITHUB_STEP_SUMMARY"
           echo '- GitHub Release archive: authoritative' >> "$GITHUB_STEP_SUMMARY"
           echo '- Signed GitHub Raw Feed: current' >> "$GITHUB_STEP_SUMMARY"
-          echo "- Cloudflare Pages mirror: $pages_status" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare R2 mirror: $pages_status" >> "$GITHUB_STEP_SUMMARY"

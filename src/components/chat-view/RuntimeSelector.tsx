@@ -2,49 +2,22 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown } from 'lucide-react'
 import { useEffect, useId, useRef, useState } from 'react'
 
-import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
-import openaiLogo from '../../assets/provider-icons/openai.svg'
 import { useLanguage } from '../../contexts/language-context'
 import {
+  CLI_RUNTIME_DESCRIPTORS,
+  type CliRuntimeDescriptor,
   type CliRuntimeId,
+  getCliRuntimeDescriptor,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
 import { YoloDropdownContent } from '../common/popover'
 
-export type RuntimeSelectorOption = {
-  id: CliRuntimeId
-  labelKey: string
-  descriptionKey: string
-}
-
-const RUNTIME_OPTIONS: Record<CliRuntimeId, RuntimeSelectorOption> = {
-  'claude-code': {
-    id: 'claude-code',
-    labelKey: 'sidebar.runtimeSelector.claudeCodeLabel',
-    descriptionKey: 'sidebar.runtimeSelector.claudeCodeDescription',
-  },
-  codex: {
-    id: 'codex',
-    labelKey: 'sidebar.runtimeSelector.codexLabel',
-    descriptionKey: 'sidebar.runtimeSelector.codexDescription',
-  },
-}
-
-const CLI_RUNTIME_IDS: readonly CliRuntimeId[] = ['claude-code', 'codex']
-const RUNTIME_LOGOS: Record<
-  CliRuntimeId,
-  { src: string; provider: 'anthropic' | 'openai' }
-> = {
-  'claude-code': { src: anthropicLogo, provider: 'anthropic' },
-  codex: { src: openaiLogo, provider: 'openai' },
-}
+export type RuntimeSelectorOption = CliRuntimeDescriptor
 
 export const getRuntimeSelectorOptions = (
   cliRuntimeAvailable: boolean,
 ): readonly RuntimeSelectorOption[] =>
-  cliRuntimeAvailable
-    ? CLI_RUNTIME_IDS.map((runtimeId) => RUNTIME_OPTIONS[runtimeId])
-    : []
+  cliRuntimeAvailable ? CLI_RUNTIME_DESCRIPTORS : []
 
 export const resolveAvailableRuntimeId = (
   value: string,
@@ -62,7 +35,7 @@ export type RuntimeSelectorProps = {
 }
 
 const RuntimeIcon = ({ runtimeId }: { runtimeId: CliRuntimeId }) => {
-  const logo = RUNTIME_LOGOS[runtimeId]
+  const logo = getCliRuntimeDescriptor(runtimeId).icon
   return (
     <img
       className="yolo-runtime-selector__provider-logo"
@@ -198,7 +171,7 @@ export function RuntimeSelector({
   }
 
   const availableOptions = getRuntimeSelectorOptions(cliRuntimeAvailable)
-  const currentOption = RUNTIME_OPTIONS[currentRuntimeId]
+  const currentOption = getCliRuntimeDescriptor(currentRuntimeId)
   const currentLabel = t(currentOption.labelKey)
   const accessibleLabel = t('sidebar.runtimeSelector.accessibleLabel').replace(
     '{runtime}',

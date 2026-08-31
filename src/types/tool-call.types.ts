@@ -99,6 +99,16 @@ export type ToolEditSummary = {
   totalFiles: number
   totalAddedLines: number
   totalRemovedLines: number
+  /**
+   * False when the totals themselves are incomplete — i.e. some file's lines
+   * could not be counted at all, so summing the files under-reports the turn.
+   *
+   * This is NOT the same as every file having `lineStatsAvailable: false`: a
+   * provider that only reports turn-wide insertions/deletions (Claude CLI)
+   * marks each file unavailable while the totals stay exact. Omitted means the
+   * totals are trustworthy.
+   */
+  totalLineStatsAvailable?: boolean
   undoStatus: ToolEditUndoStatus
 }
 
@@ -139,7 +149,7 @@ export type CliToolCallCapability =
  * replaces the provider-native arguments.
  */
 export type CliToolCallMetadata = {
-  runtimeId: 'claude-code' | 'codex'
+  runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi'
   eventType: string
   name: string
   namespace?: string
@@ -156,6 +166,29 @@ export type ToolCallRequest = {
     thoughtSignature?: string
     argumentDiagnostics?: ToolCallArgumentDiagnostics
     cliToolCall?: CliToolCallMetadata
+    /**
+     * Module chat mode tool approval, fixed at tool-call creation time by
+     * `AgentToolGateway` and never recomputed afterward — every consumer
+     * (gateway initial state, approve-after-review execution, the recovery
+     * path, and the UI) must read this persisted value rather than the live
+     * module registry, so a module upgrade/disable/reload never changes the
+     * outcome for an already-created call. Present only for tool calls
+     * created during a module chat mode run; absent (including for
+     * historical/pre-D3 sessions) means "not a module chat mode call" and
+     * every consumer falls back to its pre-D3 behavior.
+     */
+    approvalPolicy?: 'auto' | 'always-require-user'
+    /**
+     * Execution constraints fixed alongside `approvalPolicy` at creation
+     * time, for the two execution paths that call `McpManager.callTool`
+     * directly instead of going through `AgentToolGateway`
+     * (`AgentService.approveToolCall` and the chat UI's pending-tool-call
+     * recovery path) — neither has access to the gateway's live
+     * `bashReadOnly` option, so it must be persisted on the request itself.
+     */
+    executionConstraints?: {
+      bashReadOnly?: boolean
+    }
   }
 }
 

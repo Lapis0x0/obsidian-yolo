@@ -1,0 +1,17 @@
+{
+  "logicalCyclicEdges": [
+    "components/chat-view/AssistantMessageContent.tsx -> components/chat-view/ToolMessage.tsx",
+    "components/chat-view/AssistantToolMessageGroupActions.tsx -> components/chat-view/ToolMessage.tsx",
+    "components/chat-view/AssistantToolMessageGroupItem.tsx -> components/chat-view/AssistantMessageContent.tsx",
+    "components/chat-view/AssistantToolMessageGroupItem.tsx -> components/chat-view/AssistantToolMessageGroupActions.tsx",
+    "components/chat-view/AssistantToolMessageGroupItem.tsx -> components/chat-view/ToolMessage.tsx",
+    "components/chat-view/ToolMessage.tsx -> components/chat-view/tool-cards/CliSubagentCard.tsx",
+    "components/chat-view/ToolMessage.tsx -> components/chat-view/tool-renderers/index.ts",
+    "components/chat-view/tool-cards/CliSubagentCard.tsx -> components/chat-view/tool-cards/SubagentCardView.tsx",
+    "components/chat-view/tool-cards/SubagentCard.tsx -> components/chat-view/tool-cards/SubagentCardView.tsx",
+    "components/chat-view/tool-cards/SubagentCardView.tsx -> components/chat-view/tool-cards/SubagentDetailModal.tsx",
+    "components/chat-view/tool-cards/SubagentDetailModal.tsx -> components/chat-view/AssistantToolMessageGroupItem.tsx",
+    "components/chat-view/tool-renderers/index.ts -> core/tools/delegate_subagent/ui.tsx",
+    "core/tools/delegate_subagent/ui.tsx -> components/chat-view/tool-cards/SubagentCard.tsx"
+  ]
+}

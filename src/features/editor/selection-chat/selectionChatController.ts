@@ -30,7 +30,7 @@ import type {
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
-import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAskController'
+import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAsk.types'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
@@ -127,6 +127,23 @@ type SelectionChatControllerDeps = {
     text: string,
     assistantId?: string,
   ) => Promise<void>
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md,
+   * architecture decision A). `selectedBlock` must already carry a
+   * `highlightId`. Returns the annotation number chat assigned, so the PDF
+   * bubble can render "批注N" without ever numbering itself.
+   */
+  addPdfQuoteToChat: (
+    selectedBlock: MentionableBlockData,
+  ) => Promise<number | undefined>
+  /**
+   * The one deps channel the PDF-side bubble editor uses to patch or remove
+   * its mentionable's comment (architecture decision B).
+   */
+  updatePdfQuoteMention: (
+    highlightId: string,
+    patch: { comment: string } | null,
+  ) => void | Promise<void>
 }
 
 export class SelectionChatController {
@@ -174,6 +191,8 @@ export class SelectionChatController {
     text: string,
     assistantId?: string,
   ) => Promise<void>
+  private readonly addPdfQuoteToChat: SelectionChatControllerDeps['addPdfQuoteToChat']
+  private readonly updatePdfQuoteMention: SelectionChatControllerDeps['updatePdfQuoteMention']
 
   private selectionManager: SelectionManager | null = null
   private pdfSelectionManager: PdfSelectionManager | null = null
@@ -216,6 +235,8 @@ export class SelectionChatController {
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
+    this.addPdfQuoteToChat = deps.addPdfQuoteToChat
+    this.updatePdfQuoteMention = deps.updatePdfQuoteMention
   }
 
   isActive(): boolean {
@@ -1034,6 +1055,9 @@ export class SelectionChatController {
           assistantId,
         )
       },
+      onQuoteAction: () => {
+        void this.handlePdfQuoteAction(pdfData, blockData)
+      },
     })
     this.selectionChatWidget.mount()
   }
@@ -1062,35 +1086,8 @@ export class SelectionChatController {
       return
     }
 
-    // Mirror the markdown chat-input/chat-send paths: register a NEW 'pinned'
-    // highlight (with a fresh id, independent from the transient 'sync' one
-    // currently tracked in chat).  This way subsequent selections that sweep
-    // 'sync' entries on the leaf cannot wipe the pinned highlight.
-    const buildPinnedBlock = (): MentionableBlockData => {
-      if (this.shouldPersistSelectionHighlight()) {
-        const pinnedId = crypto.randomUUID()
-        pdfSelectionHighlightController.addHighlight(
-          pdfData.leaf,
-          pinnedId,
-          {
-            range: pdfData.range,
-            pageNumber: pdfData.pageNumber,
-            file: pdfData.file,
-          },
-          'pinned',
-          'chat',
-        )
-        return {
-          ...blockData,
-          source: 'selection-pinned',
-          highlightId: pinnedId,
-        }
-      }
-      return { ...blockData, source: 'selection-pinned' }
-    }
-
     if (mode === 'chat-input') {
-      const pinned = buildPinnedBlock()
+      const pinned = this.buildPinnedPdfBlock(pdfData, blockData)
       if (actionId === 'add-to-sidebar') {
         await this.addSelectionToSidebarChat(pinned)
         return
@@ -1105,7 +1102,7 @@ export class SelectionChatController {
 
     if (mode === 'chat-send') {
       await this.openChatWithSelectionAndSend(
-        buildPinnedBlock(),
+        this.buildPinnedPdfBlock(pdfData, blockData),
         instruction.trim(),
         resolvedAssistantId,
       )
@@ -1143,6 +1140,97 @@ export class SelectionChatController {
       initialMode: 'ask',
       autoSend: prompt.length > 0,
     })
+  }
+
+  /**
+   * Builds a `selection-pinned` MentionableBlockData for a PDF selection,
+   * registering a NEW 'pinned' highlight (fresh id, independent from the
+   * transient 'sync' one currently tracked in chat) so a later selection
+   * that sweeps 'sync' entries on the leaf cannot wipe it. Shared by the
+   * add-to-sidebar / chat-input / chat-send actions in
+   * `handlePdfSelectionAction` AND the PDF quote button
+   * (`handlePdfQuoteAction`) — the only two producers of PDF pinned blocks.
+   * See docs/plans/2026-08-16-pdf-annotation-quotes.md item 5.
+   *
+   * Anchor and paint are decoupled (see the 2026-08-16 addendum to the plan,
+   * "锚点与涂色必须解耦"): `addHighlight` is called unconditionally so a
+   * `highlightId` is always produced — the quote button's bubble/editor must
+   * work even when `persistSelectionHighlight` is off, since that setting
+   * only promises a *visual* preference, not the annotation feature itself.
+   * `persistSelectionHighlight` only gates whether the entry paints.
+   */
+  private buildPinnedPdfBlock(
+    pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
+    blockData: MentionableBlockData,
+  ): MentionableBlockData {
+    const pinnedId = crypto.randomUUID()
+    pdfSelectionHighlightController.addHighlight(
+      pdfData.leaf,
+      pinnedId,
+      {
+        range: pdfData.range,
+        pageNumber: pdfData.pageNumber,
+        file: pdfData.file,
+      },
+      'pinned',
+      'chat',
+      { paint: this.shouldPersistSelectionHighlight() },
+    )
+    return {
+      ...blockData,
+      source: 'selection-pinned',
+      highlightId: pinnedId,
+    }
+  }
+
+  /**
+   * Handles a click on the PDF-only "引用" button (docs/plans/2026-08-16-pdf-
+   * annotation-quotes.md item 6). Builds the same pinned highlight + block as
+   * the add-to-sidebar action (via `buildPinnedPdfBlock`), sends it to chat to
+   * get a numbered "批注N" slot — chat is the only side allowed to assign the
+   * number (architecture decision A) — then tells
+   * `pdfSelectionHighlightController` to render the bubble and open its
+   * editor immediately in the "new" draft state, mirroring
+   * `AssistantSelectionQuoteButton.handleCreateQuote`.
+   */
+  private async handlePdfQuoteAction(
+    pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
+    blockData: MentionableBlockData,
+  ): Promise<void> {
+    const pinnedBlock = this.buildPinnedPdfBlock(pdfData, blockData)
+    const annotationNumber = await this.addPdfQuoteToChat(pinnedBlock)
+    if (annotationNumber === undefined) {
+      return
+    }
+    if (!pinnedBlock.highlightId) {
+      // Unreachable in practice: `buildPinnedPdfBlock` always sets
+      // `highlightId` now that anchor and paint are decoupled — its own doc
+      // comment covers why. `MentionableBlockData.highlightId` is merely
+      // typed optional (it's also used by non-PDF, non-annotation callers),
+      // so this stays as a narrowing guard rather than a settings-off degrade.
+      return
+    }
+
+    pdfSelectionHighlightController.enableAnnotation(
+      pinnedBlock.highlightId,
+      { annotationNumber, comment: '', isNew: true },
+      {
+        onCommentChange: (highlightId, comment) => {
+          void this.updatePdfQuoteMention(highlightId, { comment })
+        },
+        onDelete: (highlightId) => {
+          void this.updatePdfQuoteMention(highlightId, null)
+        },
+        getLabels: () => ({
+          commentPlaceholder: this.t(
+            'chat.assistantQuote.commentPlaceholder',
+            '添加批注…',
+          ),
+          saveLabel: this.t('chat.assistantQuote.save', '保存批注'),
+          deleteLabel: this.t('chat.assistantQuote.delete', '删除批注'),
+        }),
+      },
+    )
   }
 
   private adjustSelectionLength(

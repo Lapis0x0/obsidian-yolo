@@ -1,17 +1,10 @@
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { McpTool } from '../../types/mcp.types'
 
-import { expandAllowedToolNames, selectAllowedTools } from './tool-selection'
-
-describe('expandAllowedToolNames', () => {
-  it('expands the file editing group', () => {
-    const expanded = expandAllowedToolNames(['yolo_local__fs_edit_ops'])
-
-    expect(expanded).toBeDefined()
-    expect(expanded?.has('yolo_local__fs_edit')).toBe(true)
-    expect(expanded?.has('yolo_local__fs_write')).toBe(true)
-  })
-})
+import {
+  applyDynamicToolDescriptions,
+  selectAllowedTools,
+} from './tool-selection'
 
 describe('selectAllowedTools', () => {
   it('keeps full schemas for tools left in always mode', async () => {
@@ -82,8 +75,8 @@ describe('selectAllowedTools', () => {
       mcp: {
         servers: [],
         enableToolDisclosure: false,
-        builtinToolOptions: {
-          delegate_subagent: {
+        builtinCapabilityOptions: {
+          subagent_delegation: {
             allowedModelIds: ['openai/gpt-4.1-mini'],
             preferredModelId: 'openai/gpt-4.1-mini',
           },
@@ -348,5 +341,54 @@ describe('selectAllowedTools', () => {
     expect(JSON.stringify(before.requestTools)).toEqual(
       JSON.stringify(after.requestTools),
     )
+  })
+})
+
+describe('applyDynamicToolDescriptions', () => {
+  const knowledgeBases = [
+    {
+      id: 'kb-1',
+      name: '读书笔记',
+      description: '书摘与书评',
+      include: [],
+      exclude: [],
+    },
+    { id: 'kb-2', name: 'Work', description: '', include: [], exclude: [] },
+  ]
+  const settings = { knowledgeBases } as unknown as YoloSettings
+  const tools: McpTool[] = [
+    {
+      name: 'yolo_local__bash',
+      description: 'static',
+      inputSchema: { type: 'object', properties: {} },
+    },
+    {
+      name: 'yolo_local__js_eval',
+      description: 'static',
+      inputSchema: { type: 'object', properties: {} },
+    },
+  ]
+
+  it('lists the configured knowledge bases in bash and js_eval descriptions', () => {
+    const [bash, jsEval] = applyDynamicToolDescriptions(tools, {
+      jsSandboxSettings: { allowDbQuery: true },
+      settings,
+    })
+    for (const tool of [bash, jsEval]) {
+      expect(tool.description).toContain('- 读书笔记 - 书摘与书评')
+      expect(tool.description).toContain('- Work')
+    }
+    expect(bash.description).toContain('--kb')
+    expect(jsEval.description).toContain(
+      '$db.search(query, limit?, knowledgeBase?)',
+    )
+  })
+
+  it('tells the model when no knowledge base exists', () => {
+    const [bash] = applyDynamicToolDescriptions(tools, {
+      jsSandboxSettings: {},
+      settings: { knowledgeBases: [] } as unknown as YoloSettings,
+    })
+    expect(bash.description).toContain('No knowledge bases are configured')
   })
 })

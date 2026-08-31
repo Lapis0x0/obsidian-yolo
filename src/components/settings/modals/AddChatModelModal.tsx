@@ -15,11 +15,12 @@ import { BAKED_PLUGIN_VERSION } from '../../../constants/bakedVersion'
 import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockChatModelIds } from '../../../core/llm/bedrockCatalog'
 import { listChatGPTOAuthModels } from '../../../core/llm/chatgptOAuthModelCatalog'
+import { listClaudeSdkModels } from '../../../core/llm/claude-sdk/modelCatalog'
 import {
   collectModelIdentifiers,
   extractModelIdentifier,
 } from '../../../core/llm/modelCatalogIdentifiers'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   ChatModel,
   ChatModelModality,
@@ -374,6 +375,19 @@ function AddChatModelModalComponent({
         const isOpenAIStyle =
           selectedProvider.apiType === 'openai-compatible' ||
           selectedProvider.apiType === 'openai-responses'
+
+        if (selectedProvider.presetType === 'claude-oauth') {
+          // The list comes from the CLI itself, which costs a subprocess
+          // spawn — hence no fallback list to fall back to: an empty list
+          // with the error surfaced is more honest than a guess that may not
+          // match what this machine's CLI accepts.
+          const models = await listClaudeSdkModels({
+            oauthToken: selectedProvider.apiKey?.trim() ?? '',
+          })
+          setAvailableModels(models)
+          plugin.setCachedModelList(selectedProvider.id, models, 'chat')
+          return
+        }
 
         if (selectedProvider.presetType === 'chatgpt-oauth') {
           const service = plugin.getChatGPTOAuthService(selectedProvider.id)

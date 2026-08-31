@@ -3,7 +3,7 @@
   "modules": [
     {
       "id": "learning",
-      "version": "0.1.2-dev.0",
+      "version": "0.1.5-dev.1",
       "icon": "graduation-cap",
       "localizations": {
         "en": {
@@ -19,7 +19,7 @@
           "description": "Trasforma le note in conoscenze durature con piani di studio guidati, ripetizione dilazionata e ripasso."
         }
       },
-      "hostApi": "^1.5.0",
+      "hostApi": "^1.6.0",
       "dataSchemas": {
         "settings": {
           "readMin": 0,
@@ -31,10 +31,10 @@
         "desktop",
         "mobile"
       ],
-      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.2-dev.0/module.json",
+      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v0.1.5-dev.1/module.json",
       "manifest": {
         "byteSize": 1910,
-        "sha256": "8122d125167e1d4a10d384fbcf3e14a753b7c96ea3d8294fa746a4c144091a98"
+        "sha256": "741283bb3978eaadd3bd5212e19cb71d7f4a3b6e81772a2c486378a6991033bb"
       }
     }
   ]

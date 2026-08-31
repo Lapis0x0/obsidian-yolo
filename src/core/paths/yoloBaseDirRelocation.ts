@@ -230,13 +230,17 @@ async function moveFolder(
 }
 
 async function removeEmptyFolder(app: App, path: string): Promise<void> {
+  // Non-forced folder deletion rejects every directory on Obsidian 1.13+
+  // (see vaultFs.ts), so emptiness is verified here and the deletes below
+  // run in force/recursive mode on the confirmed-empty folder.
+  if (await isFolderNonEmpty(app, path)) return
   const indexed = app.vault.getAbstractFileByPath(path)
   if (indexed instanceof TFolder) {
     // eslint-disable-next-line obsidianmd/prefer-file-manager-trash-file -- The empty destination is restored on rollback; trash would create a duplicate recovery artifact.
-    await app.vault.delete(indexed, false)
+    await app.vault.delete(indexed, true)
     return
   }
-  await app.vault.adapter.rmdir(path, false)
+  await app.vault.adapter.rmdir(path, true)
 }
 
 async function cleanupCreatedFolders(app: App, folders: readonly string[]) {

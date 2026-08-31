@@ -120,38 +120,11 @@ For popovers/dropdowns, read the comment header in `src/styles/popover/surface.c
 
 ## Database schema changes
 
-YOLO uses PGlite + Drizzle ORM. If your change touches the schema:
-
-1. Edit `src/database/schema.ts`.
-2. Generate a migration: `npx drizzle-kit generate --name <migration-name>`
-3. Review the generated files under `drizzle/`.
-4. Compile migrations into the bundle: `npm run migrate:compile` — this updates `src/database/migrations.json`, which is what actually runs at startup. **Migration files in `drizzle/` have no effect until compiled.**
-
-Prefer one migration file per logical change. If you've generated several while iterating, squash them before submitting:
-
-1. Delete the new migration files in `drizzle/`.
-2. Delete the new snapshot files in `drizzle/meta/`.
-3. Remove the new entries from `drizzle/meta/_journal.json`.
-4. Re-run `npx drizzle-kit generate --name <final-name>` to produce a single consolidated file.
-5. Run `npm run migrate:compile` again.
+The RAG vector store is IndexedDB-backed (`src/database/vector-store/`). Schema v1 is final — a schema change requires bumping `VECTOR_DATABASE_VERSION` and adding an upgrade path in `vectorDatabase.ts`.
 
 ### Debugging the database in Obsidian
 
-In the Obsidian developer console:
-
-1. Find the log message `Next composer database initialized.`
-2. Right-click the `DatabaseManager` object in the log → **Store as global variable** (it'll be saved as `temp1` or similar).
-3. Run queries directly:
-   ```js
-   await temp1.pgClient.query(`
-     SELECT table_schema, table_name
-     FROM information_schema.tables
-     WHERE table_schema NOT IN ('information_schema', 'pg_catalog')
-       AND table_type = 'BASE TABLE'
-     ORDER BY table_schema, table_name;
-   `)
-   ```
-4. Call `await temp1.save()` to persist changes to disk.
+Open the Obsidian developer console and inspect the vector database directly with the standard IndexedDB APIs (`indexedDB.databases()`, `indexedDB.open(name)`), or use the browser DevTools **Application → IndexedDB** panel. Database names are namespaced per vault as `yolo-vector:<vaultNamespaceId>`.
 
 ---
 

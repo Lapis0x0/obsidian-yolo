@@ -15,7 +15,7 @@ import {
   type WebSearchSettings,
   createDefaultProviderOptions,
 } from '../../../core/web-search'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
 
 import {
@@ -70,6 +70,7 @@ const PROVIDER_MONO: Record<WebSearchProviderType, string> = {
   grok: 'X',
   zhipu: 'Z',
   exa: 'E',
+  anysearch: 'A',
 }
 
 function Content({ app, plugin }: { app: App; plugin: YoloPlugin }) {
@@ -386,5 +387,7 @@ function defaultTypeLabel(type: WebSearchProviderType): string {
       return 'Zhipu Web Search'
     case 'exa':
       return 'Exa'
+    case 'anysearch':
+      return 'AnySearch'
   }
 }

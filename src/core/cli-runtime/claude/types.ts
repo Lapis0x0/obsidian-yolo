@@ -93,6 +93,12 @@ export type ClaudeSdkModule = {
 
 export type ClaudeProcessSupport = {
   cliPath: string
+  /**
+   * Absolute path to a Node.js executable capable of running `cliPath` when
+   * it resolves to a JS entrypoint (`cli.js`/`cli-wrapper.cjs`) instead of a
+   * native binstub. `null` when no usable Node install was found.
+   */
+  nodePath: string | null
   env: Record<string, string | undefined>
   createAbortController: () => AbortController
   spawnClaudeCodeProcess: (options: SpawnOptions) => SpawnedProcess

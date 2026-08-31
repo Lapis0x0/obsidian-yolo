@@ -8,7 +8,6 @@ import type {
   AsrStreamingSession,
 } from '../../../core/asr/types'
 import type { VoiceInputRecorder } from '../../../features/editor/voice/context-input/voiceInputRecorder'
-import YoloPlugin from '../../../main'
 import {
   ASR_AUDIO_FORMATS,
   ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
@@ -33,9 +32,10 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'
+import type { VoiceSettingsPlugin } from '../voiceSettingsPlugin'
 
 type AsrConfigFormProps = {
-  plugin: YoloPlugin
+  plugin: VoiceSettingsPlugin
   /** null when adding a brand-new config. */
   config: AsrConfig | null
   category?: AsrConfigCategory
@@ -310,7 +310,7 @@ const formatTemplate = (
 export class AddAsrConfigModal extends ReactModal<AsrConfigFormProps> {
   constructor(
     app: App,
-    plugin: YoloPlugin,
+    plugin: VoiceSettingsPlugin,
     category: AsrConfigCategory = 'http-short-audio',
   ) {
     super({
@@ -318,19 +318,17 @@ export class AddAsrConfigModal extends ReactModal<AsrConfigFormProps> {
       Component: AsrConfigFormComponent,
       props: { plugin, config: null, category },
       options: { title: 'Add ASR configuration' },
-      plugin,
     })
   }
 }
 
 export class EditAsrConfigModal extends ReactModal<AsrConfigFormProps> {
-  constructor(app: App, plugin: YoloPlugin, config: AsrConfig) {
+  constructor(app: App, plugin: VoiceSettingsPlugin, config: AsrConfig) {
     super({
       app,
       Component: AsrConfigFormComponent,
       props: { plugin, config },
       options: { title: `Edit ASR config: ${config.name || config.id}` },
-      plugin,
     })
   }
 }

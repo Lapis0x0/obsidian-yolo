@@ -19,7 +19,9 @@ import type {
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { getChatModelClient } from '../llm/manager'
+import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import type { McpManager } from '../mcp/mcpManager'
+import { getToolName } from '../mcp/tool-name-utils'
 import { listLiteSkillEntries } from '../skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../skills/skillPolicy'
 
@@ -63,6 +65,22 @@ export type YoloAgentRunRequest = {
   context?: YoloAgentContext[]
   tools?: {
     allowedToolNames?: string[]
+    /**
+     * Optional in-process tool server scoped to this run. `stream()`
+     * registers it with the shared `McpManager` before the run starts and
+     * disposes it (idempotently) once the run settles — completed, aborted,
+     * or errored — so it never outlives its run.
+     *
+     * Its tool names are unioned into the run's `allowedToolNames` rather
+     * than intersected against it like `allowedToolNames` above: they exist
+     * only for this run and have no persisted per-assistant toggle to
+     * intersect against (see `narrowAllowedToolNames` / moduleAgent.ts, the
+     * only current caller).
+     */
+    inProcessServer?: {
+      name: string
+      server: InProcessToolServer
+    }
   }
   /**
    * 覆盖 assistant 的 workspace scope。学习模块 subagent 按参考资料范围
@@ -196,7 +214,16 @@ export class YoloAgentApiService implements YoloAgentApi {
       }
     }
 
+    let disposeInProcessServer: (() => void) | undefined
     try {
+      const mcpManager = await this.options.getMcpManager()
+      if (request.tools?.inProcessServer) {
+        disposeInProcessServer = mcpManager.registerInProcessServer(
+          request.tools.inProcessServer.name,
+          request.tools.inProcessServer.server,
+        )
+      }
+
       const resolved = await resolveAgentApiRunInput({
         request,
         conversationId,
@@ -204,7 +231,7 @@ export class YoloAgentApiService implements YoloAgentApi {
         app: this.options.app,
         settings: this.options.getSettings(),
         agentService: this.options.getAgentService(),
-        mcpManager: await this.options.getMcpManager(),
+        mcpManager,
       })
 
       for await (const event of streamResolvedAgentRunEvents({
@@ -227,6 +254,7 @@ export class YoloAgentApiService implements YoloAgentApi {
       abortController.abort()
       request.abortSignal?.removeEventListener('abort', abortExternal)
       this.abortControllers.delete(conversationId)
+      disposeInProcessServer?.()
     }
   }
 
@@ -259,6 +287,63 @@ export async function* streamResolvedAgentRunEvents({
   let previous = createEmptySnapshotTracker()
   let settled = false
 
+  // 会话快照只在语义边界发布，纯 token 增量走 assistant render stream。模块侧
+  // 的 `text` 事件仍然要保持逐块的增量粒度，所以这里额外订阅当前 assistant
+  // 消息的展示流；两条通道共用同一份 `assistantTextById` 游标，delta 不会重复。
+  const renderStream: {
+    messageId: string | null
+    unsubscribe: (() => void) | null
+  } = { messageId: null, unsubscribe: null }
+
+  const pushAssistantText = ({
+    messageId,
+    text,
+    streaming,
+  }: {
+    messageId: string
+    text: string
+    streaming: boolean
+  }) => {
+    const previousText = previous.assistantTextById.get(messageId) ?? ''
+    if (previousText === text) {
+      return
+    }
+    previous.assistantTextById.set(messageId, text)
+    queue.push({
+      type: 'text',
+      conversationId,
+      messageId,
+      text,
+      delta: text.startsWith(previousText)
+        ? text.slice(previousText.length)
+        : '',
+      streaming,
+    })
+  }
+
+  const followRenderStream = (messageId: string | null) => {
+    if (messageId === renderStream.messageId) {
+      return
+    }
+    renderStream.unsubscribe?.()
+    renderStream.unsubscribe = null
+    renderStream.messageId = messageId
+    if (!messageId) {
+      return
+    }
+    renderStream.unsubscribe = agentService.subscribeAssistantRenderStream(
+      conversationId,
+      messageId,
+      (value) => {
+        pushAssistantText({
+          messageId: value.messageId,
+          text: value.content,
+          streaming: value.phase === 'streaming',
+        })
+      },
+    )
+  }
+
   const unsubscribe = agentService.subscribe(
     conversationId,
     (state) => {
@@ -271,6 +356,10 @@ export async function* streamResolvedAgentRunEvents({
       for (const event of nextEvents.events) {
         queue.push(event)
       }
+      followRenderStream(
+        findAssistantMessageForUser(state.messages, sourceUserMessageId)?.id ??
+          null,
+      )
       if (
         state.status === 'completed' ||
         state.status === 'aborted' ||
@@ -310,6 +399,7 @@ export async function* streamResolvedAgentRunEvents({
       agentService.abortConversation(conversationId)
     }
     unsubscribe()
+    renderStream.unsubscribe?.()
   }
 }
 
@@ -354,9 +444,12 @@ export async function resolveAgentApiRunInput({
     assistant,
     assistantEnabledToolNames,
   })
-  const allowedToolNames = narrowAllowedToolNames(
-    chatModeRuntime.allowedToolNames,
-    request.tools?.allowedToolNames,
+  const allowedToolNames = mergeInProcessServerToolNames(
+    narrowAllowedToolNames(
+      chatModeRuntime.allowedToolNames,
+      request.tools?.allowedToolNames,
+    ),
+    request.tools?.inProcessServer,
   )
   const allowedSkillPaths = await resolveAllowedSkillPaths({
     app,
@@ -440,9 +533,14 @@ export async function resolveAgentApiRunInput({
       systemPromptOverride: request.systemPromptOverride,
       enableToolDisclosure: settings.mcp.enableToolDisclosure,
       toolPreferences: chatModeRuntime.toolPreferences,
+      builtinCapabilityPreferences:
+        chatModeRuntime.builtinCapabilityPreferences,
       toolServerPreferences: chatModeRuntime.toolServerPreferences,
       toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
       bypassToolApproval: chatModeRuntime.bypassToolApproval,
+      modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
+      modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
+      contextPolicy: chatModeRuntime.contextPolicy,
       workspaceScope:
         request.workspaceScope ??
         resolveWorkspaceScopeForRuntimeInput(assistant),
@@ -554,6 +652,25 @@ export function narrowAllowedToolNames(
 
   const requested = new Set(requestedAllowedToolNames)
   return runtimeAllowedToolNames.filter((name) => requested.has(name))
+}
+
+/**
+ * Unions a run-scoped in-process tool server's tool names into
+ * `allowedToolNames`. Deliberately a union, not a further narrowing: these
+ * tools are supplied by the caller for this run alone and were never in the
+ * assistant's persisted tool preferences for `narrowAllowedToolNames` to
+ * have intersected against in the first place.
+ */
+export function mergeInProcessServerToolNames(
+  allowedToolNames: string[] | undefined,
+  inProcessServer: NonNullable<YoloAgentRunRequest['tools']>['inProcessServer'],
+): string[] | undefined {
+  if (!inProcessServer) return allowedToolNames
+  const serverToolNames = inProcessServer.server
+    .listTools()
+    .map((tool) => getToolName(inProcessServer.name, tool.name))
+  if (serverToolNames.length === 0) return allowedToolNames
+  return [...new Set([...(allowedToolNames ?? []), ...serverToolNames])]
 }
 
 export function conversationStateToEvents({

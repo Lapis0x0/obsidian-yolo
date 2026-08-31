@@ -6,21 +6,33 @@ import {
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { parseToolName } from '../mcp/tool-name-utils'
+import { getCapability } from '../tools/registry'
 
-import { WEB_OPS_SPLIT_ACTION_TOOL_NAMES } from './builtinToolUiMeta'
 import { getEnabledAssistantToolNames } from './tool-preferences'
+
+// `web_access`'s member tool short names, derived from the registry rather
+// than hand-listed — matches the other two groups below, which come from
+// `localFileTools.ts`'s own multi-tool-capability constants. Previously
+// imported from `core/tools/legacy-persistence-keys.ts`
+// (`WEB_OPS_SPLIT_ACTION_TOOL_NAMES`), deleted as part of the D9 settings
+// migration (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9).
+const WEB_ACCESS_TOOL_NAMES: readonly string[] =
+  getCapability('web_access')?.tools.map((tool) => tool.name) ?? []
 
 const BUILTIN_TOOL_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(LOCAL_FS_EDIT_TOOL_NAMES),
   new Set(LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES),
-  new Set(WEB_OPS_SPLIT_ACTION_TOOL_NAMES),
+  new Set(WEB_ACCESS_TOOL_NAMES),
 ]
 
 /** Counts enabled tools using the same grouped, currently-visible units as the agent editor. */
 export function countEnabledVisibleAssistantTools(
   assistant: Pick<
     Assistant,
-    'toolPreferences' | 'enabledToolNames' | 'includeBuiltinTools'
+    | 'toolPreferences'
+    | 'enabledToolNames'
+    | 'includeBuiltinTools'
+    | 'builtinCapabilityPreferences'
   > | null,
   availableTools: readonly McpTool[],
 ): number {

@@ -1,0 +1,21 @@
+/*
+ * ChatView's pane title lives in Obsidian's own `.view-header-title` element
+ * (native, not part of our React tree) — see ChatView.ts for the rename-in-
+ * place wiring. Scope every rule to `.view-header-title.yolo-*` so nothing
+ * here leaks into other views' headers.
+ */
+
+.view-header-title.yolo-view-header-title-editable {
+  cursor: pointer;
+}
+
+.view-header-title.yolo-view-header-title-editable:hover {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+}
+
+.view-header-title.yolo-view-header-title-editing {
+  cursor: text;
+  user-select: text;
+}

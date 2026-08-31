@@ -13,7 +13,7 @@
     <img src="https://img.shields.io/github/v/release/Lapis0x0/obsidian-yolo?style=flat-square&color=00b894" alt="Latest Release">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/releases">
-    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fcdn.jsdelivr.net%2Fgh%2FLapis0x0%2Fobsidian-yolo%40download-metrics%2Fbadge.json&style=flat-square" alt="Downloads">
+    <img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FLapis0x0%2Fobsidian-yolo%2Fdownload-metrics%2Fbadge.json&style=flat-square" alt="Downloads">
   </a>
   <a href="https://github.com/Lapis0x0/obsidian-yolo/blob/main/LICENSE">
     <img src="https://img.shields.io/github/license/Lapis0x0/obsidian-yolo?style=flat-square&color=636e72" alt="License">
@@ -50,13 +50,26 @@
   <a href="https://www.atlascloud.ai/console/coding-plan"><b>Scopri il Coding Plan →</b></a>
 </td>
 </tr>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://go.apimart.ai/gh-obsidian-yolo">
+    <img src="./assets/sponsor-apimart.png" alt="APIMart" width="163">
+  </a>
+</td>
+<td valign="middle">
+  Grazie a <b><a href="https://go.apimart.ai/gh-obsidian-yolo">APIMart</a></b> per aver sponsorizzato questo progetto! APIMart è una piattaforma API a basso costo per la generazione di immagini e video con l'AI: GPT-Image-2 da 0,006 $ per immagine, oltre 160 immagini per dollaro. Un'unica API asincrona copre immagini e video: invii il task, ottieni un ID e recuperi il risultato tramite polling o callback. Elabora decine di migliaia di immagini in batch senza timeout e cambi modello senza toccare il codice. Pagamento a consumo, nessun canone mensile: registrati qui per iniziare.
+  <br><br>
+  <a href="https://go.apimart.ai/gh-obsidian-yolo"><b>Registrati su APIMart →</b></a>
+</td>
+</tr>
 </table>
 
 ## Novita recenti
 
-- **`1.6`**: Aggiunge la chat CLI: su desktop puoi pilotare Claude Code o Codex già autenticati sul tuo dispositivo dalla stessa interfaccia di chat.
-
-- **`1.6`**: Introduce la nuova Modalità di apprendimento: trasforma qualsiasi argomento e materiale di riferimento in un progetto di studio personalizzato con scalette strutturate, concetti chiave, flashcard e una mappa interattiva delle conoscenze. La ripetizione dilazionata FSRS integrata e l'importazione di pacchetti Anki `.apkg` aiutano a trasformare le conoscenze in un percorso di ripasso sostenibile.
+- **`1.6`**
+  - **Modelli di embedding locali on-device e knowledge base multiple**: indicizza senza alcuna chiave API, suddividi e gestisci le knowledge base in modo indipendente, e lascia che l'Agent scelga automaticamente quella giusta in base al nome.
+  - **Chat CLI**: su desktop puoi pilotare Claude Code, Codex, Hermes o Pi CLI già autenticati sul tuo dispositivo dalla stessa interfaccia di chat.
+  - **La nuova Modalità di apprendimento**: trasforma qualsiasi argomento e materiale di riferimento in un progetto di studio personalizzato con scalette strutturate, concetti chiave, flashcard e una mappa interattiva delle conoscenze, supportata dalla ripetizione dilazionata FSRS e dall'importazione di pacchetti Anki `.apkg` per un ripasso sostenibile nel lungo periodo.
 
 - **`1.5`**: Introduce un nuovo runtime Agent che trasforma l'AI da semplice Q&A in collaborazione attiva—con tool calling completo, MCP, Skills, Bash desktop, subagent e ricerca web—oltre a contesto e memoria per sessioni lunghe, RAG ibrido rinnovato, sincronizzazione del focus e consapevolezza PDF, e chat multi-finestra con Agent in background.
 
@@ -75,7 +88,7 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
 |--------------|-------------|
 | 🖥️ Agent CLI (desktop) | Riutilizza Claude Code / Codex già autenticati sul tuo dispositivo e dialoga con l'agent CLI direttamente dentro Obsidian |
 | 🔌 Supporto per Agent esterni | Collega client MCP come Hermes e OpenClaw alla ricerca nel Vault di YOLO oppure delega attività a un Agent YOLO configurato |
-| ⚡ Quick Ask e Smart Space | Chiedi, modifica e continua a scrivere senza lasciare l'editor |
+| ⚡ Quick Ask | Chiedi, modifica e continua a scrivere senza lasciare l'editor |
 | 🔎 Vault RAG | Cerca nell'intero Vault per ottenere risposte fondate sui tuoi appunti |
 | 🪟 Chat Multi-Finestra | Gestisci in parallelo attività e contesti diversi in finestre di chat indipendenti |
 | 🧠 Sistema di memoria | Permette a YOLO di ricordare preferenze, abitudini e contesto a lungo termine per conversazioni piu coerenti |
@@ -155,6 +168,10 @@ Ringraziamenti speciali a [Kilo Code](https://kilo.ai) per il loro sponsorship. 
 Se trovi YOLO utile, considera di supportare il progetto:
 
 <p align="center">
+  <a href="https://buymeacoffee.com/lapis0x0" target="_blank">
+    <img src="https://img.shields.io/badge/Buy Me a Coffee-Support Developer-FFDD00?style=for-the-badge" alt="Buy Me a Coffee">
+  </a>
+  &nbsp;
   <a href="https://afdian.com/a/lapis0x0" target="_blank">
     <img src="https://img.shields.io/badge/爱发电-Support Developer-fd6c9e?style=for-the-badge" alt="爱发电">
   </a>
@@ -172,4 +189,4 @@ I log di sviluppo sono regolarmente aggiornati sul [blog](https://www.lapis.cafe
 
 ## Star History
 
-[![Star History Chart](https://api.star-history.com/svg?repos=Lapis0x0/obsidian-yolo&type=Date)](https://star-history.com/#Lapis0x0/obsidian-yolo&Type=Date)
+[![Star History Chart](https://star-history.dera.page/svg?repos=Lapis0x0/obsidian-yolo&type=Date)](https://star-history.dera.page/#Lapis0x0/obsidian-yolo&type=date)

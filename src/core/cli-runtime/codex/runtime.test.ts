@@ -791,8 +791,8 @@ describe('CodexCliRuntime', () => {
     })
     const messagesA: string[] = []
     const messagesB: string[] = []
-    const approvalsA: string[] = []
-    const approvalsB: string[] = []
+    const approvalCardsA: string[] = []
+    const approvalCardsB: string[] = []
     runtimeA.subscribe((event) => {
       if (
         event.type === 'message_upsert' &&
@@ -801,10 +801,12 @@ describe('CodexCliRuntime', () => {
         if (event.message.content) messagesA.push(event.message.content)
       }
       if (
-        event.type === 'run_state' &&
-        event.state === 'waiting_for_approval'
+        event.type === 'message_upsert' &&
+        event.message.role === 'tool' &&
+        event.message.toolCalls[0].response.status ===
+          ToolCallResponseStatus.PendingApproval
       ) {
-        approvalsA.push(event.state)
+        approvalCardsA.push(event.message.toolCalls[0].request.id)
       }
     })
     runtimeB.subscribe((event) => {
@@ -815,10 +817,12 @@ describe('CodexCliRuntime', () => {
         if (event.message.content) messagesB.push(event.message.content)
       }
       if (
-        event.type === 'run_state' &&
-        event.state === 'waiting_for_approval'
+        event.type === 'message_upsert' &&
+        event.message.role === 'tool' &&
+        event.message.toolCalls[0].response.status ===
+          ToolCallResponseStatus.PendingApproval
       ) {
-        approvalsB.push(event.state)
+        approvalCardsB.push(event.message.toolCalls[0].request.id)
       }
     })
 
@@ -881,8 +885,8 @@ describe('CodexCliRuntime', () => {
 
     expect(messagesA).toEqual(['A'])
     expect(messagesB).toEqual(['B'])
-    expect(approvalsA).toEqual(['waiting_for_approval'])
-    expect(approvalsB).toEqual(['waiting_for_approval'])
+    expect(approvalCardsA).toEqual(['item-a'])
+    expect(approvalCardsB).toEqual(['item-b'])
     expect(process.serverResponses).toContainEqual({
       id: 101,
       result: { decision: 'accept' },
@@ -897,6 +901,51 @@ describe('CodexCliRuntime', () => {
     expect(
       process.requests.filter((request) => request.method === 'initialize'),
     ).toHaveLength(1)
+  })
+
+  it('answers an approval with the state its card becomes, not by republishing it', async () => {
+    const process = new RpcFakeProcess()
+    const runtime = new CodexCliRuntime({
+      cwd: '/vault',
+      createProcess: async () => process,
+    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    process.emit({
+      jsonrpc: '2.0',
+      method: 'turn/started',
+      params: { threadId: 'thread-1', turn: { id: 'turn-1' } },
+    })
+    process.emit({
+      jsonrpc: '2.0',
+      id: 7,
+      method: 'item/commandExecution/requestApproval',
+      params: {
+        threadId: 'thread-1',
+        turnId: 'turn-1',
+        itemId: 'item-1',
+        command: 'echo hi',
+      },
+    })
+    const eventsBeforeAnswer = events.length
+
+    // Codex acknowledges nothing here — the settled state is the return value,
+    // and the host publishes it (see `CliRuntime.respondApproval`).
+    await expect(
+      runtime.respondApproval({
+        requestId: 'item-1',
+        decision: 'approve_once',
+      }),
+    ).resolves.toEqual({ status: ToolCallResponseStatus.Running })
+    await expect(
+      runtime.respondApproval({
+        requestId: 'item-2',
+        decision: 'reject',
+      }),
+    ).resolves.toBeNull()
+    expect(events).toHaveLength(eventsBeforeAnswer)
+    await runtime.dispose()
   })
 
   it('starts a native thread without discovering external sessions', async () => {
@@ -1107,10 +1156,8 @@ describe('CodexCliRuntime', () => {
       cwd: '/vault',
       createProcess: async () => process,
     })
-    const events: string[] = []
-    runtime.subscribe((event) => {
-      if (event.type === 'run_state') events.push(event.state)
-    })
+    const events: CliRuntimeEvent[] = []
+    runtime.subscribe((event) => events.push(event))
     await runtime.ensureReady({})
     process.emit({
       jsonrpc: '2.0',
@@ -1123,21 +1170,39 @@ describe('CodexCliRuntime', () => {
         cwd: '/vault',
       },
     })
-    expect(events).toContain('waiting_for_approval')
+    // The waiting run state is derived from this card by the controller, so
+    // the runtime publishes the card and nothing else.
+    expect(events).toContainEqual({
+      type: 'message_upsert',
+      message: expect.objectContaining({
+        role: 'tool',
+        toolCalls: [
+          expect.objectContaining({
+            response: { status: ToolCallResponseStatus.PendingApproval },
+          }),
+        ],
+      }),
+    })
+    expect(
+      events.filter((event) => event.type === 'run_state'),
+    ).not.toContainEqual(
+      expect.objectContaining({ state: 'waiting_for_approval' }),
+    )
 
     await expect(
       runtime.respondApproval({
         requestId: 'command-1',
         decision: 'approve_for_session',
       }),
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ status: ToolCallResponseStatus.Running })
     expect(process.responses).toContainEqual({ decision: 'acceptForSession' })
+    // Same request answered twice: the second one is stale.
     await expect(
       runtime.respondApproval({
         requestId: 'approval-1',
         decision: 'reject',
       }),
-    ).resolves.toBe(false)
+    ).resolves.toBeNull()
   })
 
   it('uses method-specific file and permission approval response schemas', async () => {
@@ -1156,7 +1221,7 @@ describe('CodexCliRuntime', () => {
     })
     await expect(
       runtime.respondApproval({ requestId: 'file-1', decision: 'reject' }),
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ status: ToolCallResponseStatus.Rejected })
     expect(process.responses).toContainEqual({ decision: 'decline' })
 
     const permissions = {
@@ -1169,12 +1234,16 @@ describe('CodexCliRuntime', () => {
       method: 'item/permissions/requestApproval',
       params: { itemId: 'permissions-once', permissions },
     })
+    // A permission grant has no follow-up item, so its card ends here.
     await expect(
       runtime.respondApproval({
         requestId: 'permissions-once',
         decision: 'approve_once',
       }),
-    ).resolves.toBe(true)
+    ).resolves.toEqual({
+      status: ToolCallResponseStatus.Success,
+      data: { type: 'text', text: '' },
+    })
     expect(process.responses).toContainEqual({
       permissions,
       scope: 'turn',
@@ -1314,7 +1383,7 @@ describe('CodexCliRuntime', () => {
           answers: [{ id: 'choice', value: 'A' }],
         },
       }),
-    ).resolves.toBe(true)
+    ).resolves.toEqual({ status: ToolCallResponseStatus.Running })
     expect(process.responses).toContainEqual({
       answers: { choice: { answers: ['A'] } },
     })

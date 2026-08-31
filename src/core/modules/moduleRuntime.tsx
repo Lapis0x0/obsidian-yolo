@@ -349,6 +349,7 @@ export class ModuleRuntime {
             agent: capabilityActivation.capabilities.agent,
             assets: capabilityActivation.capabilities.assets,
             background: capabilityActivation.capabilities.background,
+            chat: capabilityActivation.capabilities.chat,
             config: capabilityActivation.capabilities.config,
             i18n: capabilityActivation.capabilities.i18n,
             paths: capabilityActivation.capabilities.paths,

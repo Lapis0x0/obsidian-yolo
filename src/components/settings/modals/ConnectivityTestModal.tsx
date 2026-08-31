@@ -24,7 +24,7 @@ import {
   ConnectivityCounts,
   useConnectivityTest,
 } from '../../../hooks/useConnectivityTest'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
 import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
@@ -349,16 +349,20 @@ function ConnectivityTestPanel({
       void (async () => {
         setDeletingEmbeddingModelIds((prev) => new Set(prev).add(modelId))
         try {
-          const vectorManager = await plugin.tryGetVectorManager()
-          if (vectorManager) {
+          const vectorManagers = await plugin.tryGetVectorManagers()
+          if (vectorManagers.length > 0) {
             const embeddingModelClient = getEmbeddingModelClient({
               settings,
               embeddingModelId: modelId,
             })
-            await vectorManager.clearAllVectors(embeddingModelClient)
+            await Promise.all(
+              vectorManagers.map((vm) =>
+                vm.clearAllVectors(embeddingModelClient),
+              ),
+            )
           } else {
             console.warn(
-              '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
+              '[YOLO] Skip clearing embeddings because no vector managers are available.',
             )
           }
           await setSettings({

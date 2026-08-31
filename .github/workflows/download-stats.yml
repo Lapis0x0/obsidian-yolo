@@ -68,19 +68,18 @@ jobs:
           git -C "$worktree" commit -m 'chore(metrics): update download statistics'
           git -C "$worktree" push origin HEAD:download-metrics
 
-      - name: Purge Badge CDN cache
-        continue-on-error: true
-        run: >-
-          curl --fail --show-error --silent --retry 3 --retry-all-errors
-          https://purge.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@download-metrics/badge.json
-
       - name: Summarize totals
         run: |
           node -e '
             const stats = require("/tmp/download-metrics-output/download-stats.json");
             const summary = process.env.GITHUB_STEP_SUMMARY;
+            const feedDates = Object.keys(stats.feedDaily ?? {}).sort();
+            const latestFeedDate = feedDates[feedDates.length - 1];
             require("node:fs").appendFileSync(summary,
               `### Downloads ${stats.total.toLocaleString()}\n` +
               `- GitHub Releases: ${stats.githubTotal.toLocaleString()}\n` +
-              `- Cloudflare mirror: ${stats.cloudflareTotal.toLocaleString()}\n`);
+              `- Cloudflare mirror: ${stats.cloudflareTotal.toLocaleString()}\n` +
+              (latestFeedDate
+                ? `- Feed clients ${latestFeedDate}: ${stats.feedDaily[latestFeedDate].uniques.toLocaleString()} unique IPs\n`
+                : ""));
           '

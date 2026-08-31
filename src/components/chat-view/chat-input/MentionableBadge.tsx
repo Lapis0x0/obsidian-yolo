@@ -9,6 +9,7 @@ import {
   MentionableFile,
   MentionableFolder,
   MentionableImage,
+  MentionableLocalFolder,
   MentionableModel,
   MentionableOffice,
   MentionablePDF,
@@ -16,7 +17,10 @@ import {
   MentionableUrl,
   MentionableWebSelection,
 } from '../../../types/mentionable'
-import { getBlockMentionableCountInfo } from '../../../utils/chat/mentionable'
+import {
+  getBlockMentionableCountInfo,
+  getLocalFolderDisplayName,
+} from '../../../utils/chat/mentionable'
 
 import { getMentionableIcon } from './utils/get-metionable-icon'
 
@@ -142,6 +146,44 @@ function FolderBadge({
           />
         )}
         <span>{mentionable.folder.name}</span>
+      </div>
+    </BadgeBase>
+  )
+}
+
+function LocalFolderBadge({
+  mentionable,
+  onDelete,
+  onClick,
+  isFocused,
+  showDeleteButton,
+}: {
+  mentionable: MentionableLocalFolder
+  onDelete: () => void
+  onClick: () => void
+  isFocused: boolean
+  showDeleteButton?: boolean
+}) {
+  const Icon = getMentionableIcon(mentionable)
+  return (
+    <BadgeBase
+      onDelete={onDelete}
+      onClick={onClick}
+      isFocused={isFocused}
+      // The trailing segment alone cannot tell this apart from a vault folder
+      // of the same name, so the absolute path is the disambiguator.
+      title={mentionable.path}
+      showExpandButton={false}
+      showDeleteButton={showDeleteButton}
+    >
+      <div className="yolo-chat-user-input-file-badge-name">
+        {Icon && (
+          <Icon
+            size={12}
+            className="yolo-chat-user-input-file-badge-name-icon"
+          />
+        )}
+        <span>{getLocalFolderDisplayName(mentionable.path)}</span>
       </div>
     </BadgeBase>
   )
@@ -553,6 +595,16 @@ export default function MentionableBadge({
     case 'folder':
       return (
         <FolderBadge
+          mentionable={mentionable}
+          onDelete={onDelete}
+          onClick={onClick}
+          isFocused={isFocused}
+          showDeleteButton={showDeleteButton}
+        />
+      )
+    case 'local-folder':
+      return (
+        <LocalFolderBadge
           mentionable={mentionable}
           onDelete={onDelete}
           onClick={onClick}

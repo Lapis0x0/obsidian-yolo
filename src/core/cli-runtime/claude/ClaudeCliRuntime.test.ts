@@ -458,6 +458,7 @@ const createSdk = () => {
 
 const processSupport: ClaudeProcessSupport = {
   cliPath: '/opt/homebrew/bin/claude',
+  nodePath: null,
   env: { PATH: '/opt/homebrew/bin:/usr/bin' },
   createAbortController: () => new AbortController(),
   spawnClaudeCodeProcess: jest.fn(),
@@ -1819,16 +1820,10 @@ describe('ClaudeCliRuntime', () => {
       ],
     })
 
+    // Waiting run states are derived from these cards by the controller, so
+    // the runtime publishes cards and never announces the state itself.
     expect(events).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          type: 'run_state',
-          state: 'waiting_for_approval',
-        }),
-        expect.objectContaining({
-          type: 'run_state',
-          state: 'waiting_for_user',
-        }),
         expect.objectContaining({
           type: 'message_upsert',
           message: expect.objectContaining({
@@ -1843,6 +1838,15 @@ describe('ClaudeCliRuntime', () => {
           }),
         }),
       ]),
+    )
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'run_state', state: 'waiting_for_user' }),
+    )
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: 'run_state',
+        state: 'waiting_for_approval',
+      }),
     )
   })
 
@@ -1879,31 +1883,22 @@ describe('ClaudeCliRuntime', () => {
       },
     )
     await flushPromises()
-    await runtime.respondQuestion({
-      requestId: 'request-invalid-answer',
-      answer: { answers: { choice: 'A' } },
-    })
+    // The card's error state is the return value; the host publishes it.
+    await expect(
+      runtime.respondQuestion({
+        requestId: 'request-invalid-answer',
+        answer: { answers: { choice: 'A' } },
+      }),
+    ).resolves.toEqual(
+      expect.objectContaining({ status: ToolCallResponseStatus.Error }),
+    )
 
     await expect(question).resolves.toMatchObject({
       behavior: 'deny',
       interrupt: true,
     })
-    expect(events).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          type: 'message_upsert',
-          message: expect.objectContaining({
-            role: 'tool',
-            toolCalls: [
-              expect.objectContaining({
-                response: expect.objectContaining({
-                  status: ToolCallResponseStatus.Error,
-                }),
-              }),
-            ],
-          }),
-        }),
-      ]),
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: 'run_state', state: 'error' }),
     )
   })
 

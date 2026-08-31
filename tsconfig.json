@@ -1,11 +1,6 @@
 {
   "compilerOptions": {
     "baseUrl": ".",
-    "paths": {
-      "@electric-sql/pglite/worker": [
-        "./node_modules/@electric-sql/pglite/dist/worker/index.d.ts"
-      ]
-    },
     "inlineSourceMap": true,
     "inlineSources": true,
     "module": "ESNext",
@@ -22,5 +17,5 @@
     "skipLibCheck": true,
     "resolveJsonModule": true
   },
-  "include": ["src/**/*.ts", "src/**/*.tsx", "drizzle.config.ts", "__mocks__"]
+  "include": ["src/**/*.ts", "src/**/*.tsx", "__mocks__"]
 }

@@ -4,6 +4,7 @@ import test from 'node:test'
 import {
   buildBadge,
   buildDateWindows,
+  extractCoreVersionMainJsCounts,
   formatCompactNumber,
   isMirroredAssetPath,
   selectWindowsToRefresh,
@@ -99,6 +100,49 @@ test('sums successful mirrored asset requests only', () => {
   )
 })
 
+test('extracts per-version core main.js counts from successful requests', () => {
+  assert.deepEqual(
+    extractCoreVersionMainJsCounts([
+      {
+        count: 12,
+        dimensions: {
+          clientRequestPath: '/core/1.6.5/main.js',
+          edgeResponseStatus: 200,
+        },
+      },
+      {
+        count: 5,
+        dimensions: {
+          clientRequestPath: '/core/1.6.5/main.js',
+          edgeResponseStatus: 206,
+        },
+      },
+      {
+        count: 7,
+        dimensions: {
+          clientRequestPath: '/core/1.6.4.5/main.js',
+          edgeResponseStatus: 200,
+        },
+      },
+      {
+        count: 30,
+        dimensions: {
+          clientRequestPath: '/core/1.6.5/styles.css',
+          edgeResponseStatus: 200,
+        },
+      },
+      {
+        count: 4,
+        dimensions: {
+          clientRequestPath: '/core/1.6.5/main.js',
+          edgeResponseStatus: 404,
+        },
+      },
+    ]),
+    { '1.6.5': 17, '1.6.4.5': 7 },
+  )
+})
+
 test('formats the Shields endpoint payload like the previous badge', () => {
   assert.equal(formatCompactNumber(999), '999')
   assert.equal(formatCompactNumber(1_234), '1.2k')
@@ -122,6 +166,23 @@ test('combines paginated GitHub assets with persisted Cloudflare days', async ()
     }
     if (url === 'https://api.cloudflare.com/client/v4/graphql') {
       const request = JSON.parse(init.body)
+      if (request.query.includes('FeedRequests')) {
+        return Response.json({
+          data: {
+            viewer: {
+              zones: [
+                {
+                  httpRequestsAdaptiveGroups: [
+                    { count: 30, dimensions: { clientIP: '203.0.113.7' } },
+                    { count: 6, dimensions: { clientIP: '203.0.113.7' } },
+                    { count: 4, dimensions: { clientIP: '198.51.100.9' } },
+                  ],
+                },
+              ],
+            },
+          },
+        })
+      }
       analyticsWindows.push(request.variables)
       return Response.json({
         data: {
@@ -184,4 +245,14 @@ test('combines paginated GitHub assets with persisted Cloudflare days', async ()
   assert.equal(result.state.cloudflareTotal, 45)
   assert.equal(result.state.total, 249)
   assert.equal(result.badge.message, '249')
+  assert.deepEqual(result.state.coreVersionDaily, {
+    '2026-07-27': { '1.6.2': 10 },
+    '2026-07-28': { '1.6.2': 10 },
+    '2026-07-29': { '1.6.2': 10 },
+  })
+  assert.deepEqual(result.state.feedDaily, {
+    '2026-07-27': { requests: 40, uniques: 2 },
+    '2026-07-28': { requests: 40, uniques: 2 },
+    '2026-07-29': { requests: 40, uniques: 2 },
+  })
 })

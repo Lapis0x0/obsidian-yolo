@@ -10,7 +10,7 @@ import {
   type WebSearchProviderOptions,
   webSearchProviderOptionsSchema,
 } from '../../../core/web-search'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
@@ -380,6 +380,24 @@ function Form({ draft, editId, onClose }: FormProps & { onClose: () => void }) {
           value={form.apiKey}
           onChange={(value) => update('apiKey', value)}
         />
+      )}
+
+      {form.type === 'anysearch' && (
+        <ObsidianSetting
+          name={t(
+            'settings.webSearch.fieldApiKeyOptional',
+            'API key (optional)',
+          )}
+          desc={t(
+            'settings.webSearch.anysearchApiKeyDesc',
+            'Leave empty for anonymous access (rate-limited per IP with a daily free quota). Add a key for higher limits.',
+          )}
+        >
+          <ObsidianTextInput
+            value={form.apiKey}
+            onChange={(value) => update('apiKey', value)}
+          />
+        </ObsidianSetting>
       )}
 
       <ObsidianSetting>

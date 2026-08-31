@@ -9,6 +9,8 @@ export const en: TranslationKeys = {
     openNewChatTab: 'Open new chat (new tab)',
     openNewChatSplit: 'Open new chat (right split)',
     openNewChatWindow: 'Open new chat (new window)',
+    openChatHistory: 'Open chat history',
+    exportCurrentConversationToVault: 'Export current conversation to vault',
     addSelectionToChat: 'Add selection to chat',
     addFileToChat: 'Add file to chat',
     addFolderToChat: 'Add folder to chat',
@@ -80,6 +82,10 @@ export const en: TranslationKeys = {
       claudeCodeDescription: 'Claude Code on this device',
       codexLabel: 'Codex',
       codexDescription: 'Codex on this device',
+      hermesLabel: 'Hermes',
+      hermesDescription: 'Hermes on this device',
+      piLabel: 'Pi',
+      piDescription: 'Pi on this device',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',
@@ -98,8 +104,17 @@ export const en: TranslationKeys = {
       archived: 'Archived',
       hideArchived: 'Hide archived',
       exportConversation: 'Export conversation to vault',
+      exportShort: 'Export',
       moreActions: 'More actions',
       confirmDelete: 'Click again to delete',
+      openHistory: 'Chat history',
+      legend: {
+        navigate: 'Navigate',
+        open: 'Open',
+        delete: 'Delete',
+        pin: 'Pin',
+        rename: 'Rename',
+      },
     },
     chat: {
       exportSuccess: 'Exported chat to {path}',
@@ -186,7 +201,8 @@ export const en: TranslationKeys = {
     supportYolo: {
       name: 'Support the project',
       desc: 'If you find this plugin valuable, consider supporting its development!',
-      buyMeACoffee: 'Buy me a coffee',
+      afdian: 'Afdian (CN)',
+      buyMeACoffee: 'Buy Me a Coffee',
       reportBug: 'Report Bug',
       featureRequest: 'Feature Request',
     },
@@ -322,17 +338,19 @@ export const en: TranslationKeys = {
           description: 'Extracts text, renders pages, and prepares PDF ranges.',
           impact: 'Turning this off disables PDF reading and page tools.',
         },
-        pgliteEngine: {
-          name: 'PGlite engine',
-          description: 'Stores and searches the local knowledge-base index.',
-          impact: 'Turning this off disables indexing and semantic search.',
-        },
         bashEngine: {
           name: 'Bash engine',
           description:
             'Provides a virtual shell for the bash tool to search and organize vault files.',
           impact:
             'Turning this off disables the bash tool; the model loses vault search and file organization.',
+        },
+        embeddingEngine: {
+          name: 'Embedding engine',
+          description:
+            'Runs local embedding models on-device for private, offline indexing.',
+          impact:
+            'Turning this off disables local embedding models; RAG falls back to a remote embedding provider.',
         },
         statuses: {
           missing: 'Waiting to install',
@@ -346,7 +364,7 @@ export const en: TranslationKeys = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: 'Continue writing presets',
       quickActionsDesc:
         'Customize the quick actions and prompts shown in Quick Ask’s continue mode',
@@ -601,10 +619,6 @@ export const en: TranslationKeys = {
       enableAllTools: 'Enable all',
       disableAllTools: 'Disable all',
       descriptionColumn: 'Description',
-      builtinFsListLabel: 'Read Vault',
-      builtinFsListDesc: 'List vault directory structure',
-      builtinFsSearchLabel: 'Search Vault',
-      builtinFsSearchDesc: 'Search vault files and content',
       builtinFsReadLabel: 'Read',
       builtinFsReadDesc:
         'Read vault files, skills, or open web pages (browser://)',
@@ -669,18 +683,11 @@ export const en: TranslationKeys = {
       editorTabSkills: 'Skills',
       editorTabWorkspace: 'Workspace',
       workspace: {
-        enableTitle: 'Restrict directory access',
+        enableTitle: 'Limit autonomous working range',
         enableDesc:
-          'When off, this agent can access the entire vault. When on, only the rules below apply.',
-        includeTitle: 'Allow',
-        includeDesc: 'Only read/write files under these paths',
-        includeBadge: 'INCLUDE',
-        includeEmpty:
-          'Leave empty to allow everything except the exclude list below.',
-        excludeTitle: 'Deny',
-        excludeDesc: 'Excluded from the allow range (higher priority)',
-        excludeBadge: 'EXCLUDE',
-        excludeEmpty: 'No exclusions.',
+          'When off, the agent can browse and edit anywhere in the vault on its own. When on, its own browsing and edits stay within the ranges below — files you @ mention or have open are never restricted.',
+        toolBypassNotice:
+          'Agents with terminal commands or third-party MCP tools enabled can go around this range — it is not a security boundary.',
       },
       editorTabModel: 'Model',
       editorName: 'Name',
@@ -765,10 +772,16 @@ export const en: TranslationKeys = {
       cliRuntimesBlockTitle: 'CLI runtimes',
       claudeCliPathName: 'Claude Code CLI path',
       claudeCliPathDesc:
-        'Custom path to the claude executable — paste the output of "which claude". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the claude executable — paste the output of "which claude" ("where claude" on Windows). Leave empty to auto-detect. Stored on this device only.',
       codexCliPathName: 'Codex CLI path',
       codexCliPathDesc:
         'Custom path to the codex executable — paste the output of "which codex" ("where codex" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      hermesCliPathName: 'Hermes CLI path',
+      hermesCliPathDesc:
+        'Custom path to the hermes executable — paste the output of "which hermes" ("where hermes" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      piCliPathName: 'Pi CLI path',
+      piCliPathDesc:
+        'Custom path to the pi executable — paste the output of "which pi" ("where pi" on Windows). Leave empty to auto-detect. Stored on this device only.',
       cliPathMissing:
         'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',
@@ -915,9 +928,13 @@ export const en: TranslationKeys = {
         grok: 'Grok',
         zhipu: 'Zhipu Web Search',
         exa: 'Exa',
+        anysearch: 'AnySearch',
       },
       fieldName: 'Display name',
       fieldApiKey: 'API key',
+      fieldApiKeyOptional: 'API key (optional)',
+      anysearchApiKeyDesc:
+        'Leave empty for anonymous access (rate-limited per IP with a daily free quota). Add a key for higher limits.',
       fieldDepth: 'Depth',
       fieldSearchUrl: 'Search URL',
       fieldScrapeUrl: 'Scrape URL',
@@ -958,11 +975,13 @@ export const en: TranslationKeys = {
       badgeOpenAiCompatible: 'OpenAI compatible',
       badgeNative: 'Native protocol',
       badgeOAuth: 'OAuth',
+      badgeSponsor: 'Sponsor',
       badgeAdded: 'Added',
       kind: {
         openai: 'Reasoning · Multimodal',
         chatgptOAuth: 'ChatGPT Plus / Pro',
         anthropic: 'Chat · Reasoning',
+        claudeOAuth: 'Claude Code login',
         gemini: 'Multimodal',
         geminiOAuth: 'Google account',
         mistral: 'Chat · Embedding',
@@ -997,6 +1016,7 @@ export const en: TranslationKeys = {
         'Choose an ID to identify this provider in your settings. This is just for your reference.',
       providerIdPlaceholder: 'Example: my-custom-provider',
       apiKey: 'API key',
+      getApiKey: 'Get API key',
       apiKeyDesc: 'Leave empty if not required.',
       apiKeyPlaceholder: 'Enter your API key',
       baseUrl: 'Base URL',
@@ -1074,6 +1094,18 @@ export const en: TranslationKeys = {
       geminiOAuthDisconnectedHelp:
         'Not connected. Connect to use Gemini quota from your Google account.',
       geminiOAuthProject: 'project',
+      claudeOauthTitle: 'Claude OAuth',
+      claudeOauthTokenName: 'OAuth token',
+      claudeOauthTokenDesc:
+        'Run "claude setup-token" in a terminal and paste the token here to chat on your Claude subscription. This provider runs a local claude subprocess, so it is desktop-only. Paste a new token once it expires.',
+      claudeOauthClear: 'Clear',
+      claudeOauthAutoLogin: 'Auto login',
+      claudeOauthAutoLoginConnecting: 'Waiting for browser login...',
+      claudeOauthAutoLoginSuccess: 'Claude login connected.',
+      claudeOauthAutoLoginDesktopOnly:
+        'Automated login is only available on desktop.',
+      claudeOauthAutoLoginWindowsNotice:
+        'A terminal window opened to complete login. Paste the printed token into the field below once it finishes.',
     },
     models: {
       title: 'Models',
@@ -1132,6 +1164,7 @@ export const en: TranslationKeys = {
         'Batch-added models use default settings; fine-tune each one afterwards.',
       fetchModelsFailed: 'Failed to fetch models',
       embeddingModelsFirst: 'Embedding models are listed first',
+      localEmbeddingProviderLabel: 'Local (on-device)',
       reasoningType: 'Model type',
       reasoningTypeDesc: 'When unsure, OpenAI reasoning is the safer pick.',
       reasoningTypeNone: 'Non-reasoning model / default',
@@ -1220,13 +1253,65 @@ export const en: TranslationKeys = {
       noChatModelsConfigured: 'No chat models configured',
       noEmbeddingModelsConfigured: 'No embedding models configured',
     },
+    scope: {
+      editRange: 'Edit scope',
+      currentRules: 'Current rules',
+      rulesCount: '{{n}} rule(s)',
+      noRules: {
+        rag: 'No rules — the whole vault is indexed',
+        agent: 'No rules — the whole vault is available',
+      },
+      include: 'Include',
+      exclude: 'Exclude',
+      clearMark: 'Clear mark',
+      clickAgainToClear: 'Click again to clear',
+      follows: 'Follows "{{name}}"',
+      reasonExcludedAncestor: 'Parent "{{name}}" is already excluded',
+      reasonIncludedAncestor: 'Already included by parent "{{name}}"',
+      reset: 'Reset',
+      resetTitle: 'Restore the default scope and clear all custom rules',
+      onlyWithRules: 'Only with rules',
+      searchFolders: 'Search folders…',
+      searchFoldersOrFiles: 'Search folders or files…',
+      noMatch: {
+        rag: 'No matching folders',
+        agent: 'No matching folders or files',
+      },
+      noRuleYet: 'No rules yet',
+      fileLabel: 'File',
+      fileCount: '{{n}} file(s)',
+      modalTitle: {
+        rag: 'Edit index scope',
+        agent: 'Edit workspace scope',
+      },
+      modalSubtitle: {
+        rag: 'Hover any folder to mark it Include / Exclude; click again to clear.',
+        agent:
+          'You can go down to a single file; files follow their folder by default.',
+      },
+      status: {
+        rag: {
+          all: 'Indexing the whole vault',
+          only: 'Indexing only {{items}}',
+        },
+        agent: {
+          all: 'The whole vault is available',
+          only: 'Only {{items}} available',
+        },
+        excludeSuffix: ', excluding {{items}}',
+        excludeWithinSuffix: ', excluding {{items}} inside',
+        folders: '{{n}} folder(s)',
+        files: '{{n}} file(s)',
+        joiner: ', ',
+        estimate: {
+          rag: '≈ {{n}} / {{total}} notes',
+          agent: '{{n}} / {{total}} files reachable',
+        },
+      },
+    },
     rag: {
       title: 'Knowledge base',
       desc: 'Manage knowledge base indexing. RAG is invoked automatically when the Agent uses the Search tool in Hybrid or RAG mode.',
-      enableRag: 'Enable knowledge base indexing',
-      enableRagDesc: 'Build indexes for documents within the selected scope.',
-      partialFailureSummary: 'Done · {{count}} file(s) could not be indexed',
-      embeddingModel: 'Embedding model',
       embeddingModelDesc: 'Choose the model you want to use for embeddings',
       chunkSize: 'Chunk size',
       chunkSizeDesc:
@@ -1240,147 +1325,133 @@ export const en: TranslationKeys = {
       embeddingConcurrency: 'Embedding concurrency',
       embeddingConcurrencyDesc:
         'Maximum parallel embedding requests during indexing (1–24, default 10). Lower this if the embedding provider returns 429 / rate-limit errors (e.g. Azure S0 tier or per-minute-quota free tiers).',
-      includePatterns: 'Include patterns',
-      includePatternsDesc:
-        "Specify glob patterns to include files in indexing (one per line); for example, use 'notes/**' for all files in the notes folder, leave empty to include all files, and rebuild the entire vault index after changes.",
-      excludePatterns: 'Exclude patterns',
-      excludePatternsDesc:
-        "Specify glob patterns to exclude files from indexing (one per line); for example, use 'notes/**' for all files in the notes folder, leave empty to exclude nothing, and rebuild the entire vault index after changes.",
-      testPatterns: 'Test patterns',
-      manageEmbeddingDatabase: 'Manage embedding database',
+      vectorDataSize: 'Vector data (MB)',
+      inMemoryIndexEstimate: 'In-memory index (MB)',
       manage: 'Manage',
-      rebuildIndex: 'Rebuild index',
-      rebuildFromScratch: 'Rebuild from scratch',
-      rebuildFromScratchConfirm:
-        'This will clear all existing vectors for the current embedding model and re-index the entire vault, which may incur many embedding API calls. Continue?',
-      continueIndex: 'Continue indexing',
-      continueIndexNow: 'Continue now',
-      // UI additions
-      selectedFolders: 'Selected folders',
-      excludedFolders: 'Excluded folders',
-      selectFoldersPlaceholder:
-        'Click here to select folders (leave empty to include all)',
-      selectFilesOrFoldersPlaceholder:
-        'Click here to pick files or folders (leave empty for the entire vault)',
-      selectExcludeFoldersPlaceholder:
-        'Click here to select folders to exclude (leave empty to exclude nothing)',
-      conflictNoteDefaultInclude:
-        'Tip: no include folders are selected, so all are included by default; if exclude folders are set, exclusion takes precedence.',
-      conflictExact:
-        'The following folders are both included and excluded; they will be excluded:',
-      conflictParentExclude:
-        'The following included folders are under excluded parents and will be excluded:',
-      conflictChildExclude:
-        'The following excluded subfolders are under included folders (partial exclusion applies):',
-      conflictRule:
-        'When include and exclude overlap, exclusion takes precedence.',
-      // Auto update
-      autoUpdate: 'Auto update index',
-      autoUpdateDesc:
-        'When enabled, incrementally update the index in the background after documents change.',
+      advanced: 'Advanced settings',
       indexPdf: 'Index PDF files',
       indexPdfDesc:
         'Extract and index PDF text for the knowledge base. The first full rebuild may take longer; turn off for very large vaults if you do not need PDF retrieval.',
-      autoUpdateInterval: 'Minimum interval (hours)',
-      autoUpdateIntervalDesc:
-        'Only trigger auto update after this interval to avoid frequent re-indexing.',
-      manualUpdateNow: 'Update now',
-      manualUpdateNowDesc:
-        'Run an incremental update immediately and record the last updated time.',
-      advanced: 'Advanced settings',
-      basicCardTitle: 'Knowledge base',
-      basicCardDesc:
-        'Control knowledge base indexing, the embedding model, and related maintenance actions.',
-      resourceCardTitle: 'PGlite Resources',
-      resourceCardDesc:
-        'Manage the database runtime resources required by the knowledge base.',
-      scopeCardTitle: 'Index scope',
-      scopeCardDesc:
-        'Choose which folders should be included in or excluded from indexing.',
-      maintenanceCardTitle: 'Status & maintenance',
-      maintenanceCardDesc:
-        'Review the current knowledge base status and run maintenance actions when needed.',
-      maintenanceUnavailableHint:
-        'Prepare PGlite resources above before running index maintenance or embedding database management.',
-      currentStatus: 'Current status',
-      currentStatusDesc:
-        'Once enabled, the knowledge base maintains its index in the background according to the auto-update setting.',
-      lastIndexedAt: 'Last synced',
-      lastIndexedAtDesc:
-        'The most recent time indexing or a background sync completed successfully.',
-      maintenanceActions: 'Maintenance actions',
-      deleteIndex: 'Delete current index',
-      deleteIndexConfirm:
-        'Delete all index data for the currently selected embedding model?',
-      deleteIndexSuccess: 'The current index has been deleted.',
-      deleteIndexFailed: 'Failed to delete the current index.',
-      statusDisabled: 'Disabled',
-      statusSyncing: 'Background sync in progress',
-      statusRuntimeRequired: 'Waiting for database resources',
-      statusReady: 'Enabled',
-      statusEmpty: 'No index has been built yet',
       selectEmbeddingModelFirst:
         'Select an embedding model before enabling knowledge base indexing.',
-      openKnowledgeSettings: 'Open knowledge base settings',
-      openKnowledgeSettingsDesc:
-        'Go to settings to manage indexing, scope, status, and advanced options.',
-      composerEntryDesc:
-        'Knowledge base indexing is now managed from the settings page, and this view keeps a quick shortcut.',
-      pgliteStatusCurrent: 'Current status',
-      pgliteStatusSource: 'Resource source',
-      pgliteStatusPath: 'Resource path',
-      pgliteStatusCheckedAt: 'Last checked',
-      pgliteStatusVersion: 'Runtime version',
-      pgliteStatusReadyAt: 'Last prepared',
-      pgliteStatusReason: 'Details',
-      pgliteStateUnchecked: 'Not recorded',
-      pgliteStateChecking: 'Checking',
-      pgliteStateMissing: 'Not downloaded',
-      pgliteStateDownloading: 'Downloading',
-      pgliteStateUnavailable: 'Unavailable',
-      pgliteStateFailed: 'Failed',
-      pgliteStateReady: 'Ready',
-      pgliteSourceRemote: 'Remote cache',
-      pgliteSourceBundled: 'Bundled with plugin',
-      pgliteSourceLocalCache: 'Local cache',
-      pgliteDeliveryManual: 'Manual download',
-      pgliteDownload: 'Download resources',
-      pgliteRedownload: 'Download again',
-      pgliteRecheck: 'Check again',
-      pgliteDeleteLocal: 'Delete local resources',
-      pgliteDownloadPlaceholder:
-        'The manual download entry point for remote PGlite resources will be wired here.',
-      pgliteDeletePlaceholder:
-        'The local PGlite resource deletion entry point will be wired here.',
-      pgliteDownloadingUnknownFile: 'runtime file',
-      pgliteInlineErrorTitle: 'Download failed',
-      pgliteSummaryReadyRemote:
-        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
-      pgliteSummaryReadyBundled:
-        'The plugin is still using bundled PGlite resources. After remote distribution is introduced, this card will show local cache status and host the manual download entry.',
-      pgliteSummaryUnavailable:
-        'PGlite runtime resources are unavailable. Index maintenance and embedding database management will remain disabled until resources are ready.',
-      pgliteSummaryReady:
-        'PGlite runtime resources are ready and can be used for indexing and embedding database management.',
-      pgliteSummaryDownloading:
-        'PGlite runtime resources are being prepared. Once the download completes, index maintenance and embedding database management will become available automatically.',
-      pgliteSummaryFailed:
-        'PGlite runtime preparation failed. Retry downloading or clear the local cache before using knowledge base features again.',
-      pgliteSummaryMissing:
-        'PGlite runtime resources have not been prepared yet. They will be downloaded automatically on first knowledge base use, and you can also prepare them here manually.',
-      pgliteDownloadingFile: 'Downloading',
-      // Index progress header/status
-      indexProgressTitle: 'Retrieval-augmented generation index progress',
-      indexing: 'In progress',
-      notStarted: 'Not started',
       waitingRateLimit: 'Waiting for rate limit to reset...',
       preparingProgress: 'Preparing index...',
-      notIndexedYet: 'Not indexed yet',
-      indexComplete: 'Index complete',
-      indexIncomplete: 'Last index did not finish',
-      retryNow: 'Retry now',
-      waitingRetry: 'Waiting to retry...',
       cancelIndex: 'Cancel',
+      cancellingIndex: 'Cancelling…',
+      // Status bar (RAGSection)
+      indexingDisabled: 'Knowledge base indexing is off',
+      indexingDisabledSub:
+        "The Agent's Search tool will only use keyword search. Choose an embedding model below, then turn indexing on.",
+      indexingProgress: 'Indexing {{kb}}',
+      indexedCount: '{{n}} document(s) indexed',
+      autoUpdate: 'Auto update',
+      updateNow: 'Update now',
+      previousRunInterrupted: 'The previous index run did not finish.',
+    },
+    knowledgeBases: {
+      title: 'Knowledge bases',
+      new: 'New knowledge base',
+      emptyState: 'No knowledge bases yet',
+      count: '{{n}} knowledge base(s)',
+      queuedCount: '{{n}} knowledge base(s) queued',
+      pendingCount: '{{n}} pending update(s)',
+      attentionCount: '{{n}} knowledge base(s) need attention',
+      embeddingModelLine: 'Embedding model {{model}}',
+      embeddingModelShelf: 'Embedding model',
+      embeddingModelShelfDesc:
+        'Shared by all knowledge bases · changing it requires a full rebuild',
+      embeddingModelApiRow: 'API model',
+      embeddingModelApiRowMeta:
+        '{{dimension}} dims · billed per token · keys and custom models live on the Models tab',
+      setAsCurrent: 'Set as current',
+      stateReady: 'Ready',
+      stateIndexing: 'Indexing',
+      statePending: 'Pending update',
+      stateQueued: 'Queued',
+      stateAttention: 'Needs attention',
+      docs: 'Docs',
+      chunks: 'Chunks',
+      pendingFiles: '{{n}} file(s) changed',
+      lastUpdated: 'Last updated {{time}}',
+      enableAndIndex: 'Enable and index',
+      disable: 'Disable indexing',
+      rebuildThis: 'Rebuild this base',
+      rebuildAll: 'Rebuild all indexes',
+      manageDataTitle: 'Manage index data',
+      noIndexedData: 'No index has been built yet',
+      manageModelColumn: 'Model',
+      manageEmbeddingsColumn: 'Total embeddings',
+      manageActionsColumn: 'Actions',
+      manageRefresh: 'Refresh',
+      manageRemoveIndex: 'Remove index',
+      removeIndexFailed: 'Failed to remove index',
+      localEmbedding: {
+        groupLabel: 'Local',
+        groupDesc: 'Runs on your device — your notes never leave this machine.',
+        desktopOnly: 'Local embedding models are only available on desktop.',
+        metaLine: '{{dimension}} dims · {{size}}',
+        download: 'Download',
+        downloadingLine: 'Downloading {{percent}}% · {{received}} / {{total}}',
+        verifying: 'Verifying files…',
+        failedLine: 'Download failed: {{error}}',
+        readyLine: 'Downloaded',
+        current: 'Current',
+        viewSource: 'Source',
+        sourceRepoLabel: 'Repository',
+        sourceRevisionLabel: 'Revision',
+        sourceFilesLabel: 'Files',
+        confirmDelete: 'Click again to delete',
+        endpointLabel: 'Download source',
+        endpointCustomOption: 'Custom',
+        endpointCustomPlaceholder: 'https://example.com',
+        endpointCustomInvalid: 'Enter a valid http/https address',
+        engineModelNotDownloaded: 'Local embedding model not downloaded',
+        engineModelNotDownloadedSub:
+          'Download the model in Knowledge Base settings to use local embedding.',
+        engineDownloadAction: 'Download model',
+        engineModelDownloadingLine:
+          'Local embedding model downloading {{percent}}%',
+        engineModelVerifying: 'Verifying local embedding model files…',
+        engineModelFailedLine:
+          'Local embedding model download failed: {{error}}',
+        engineComponentDisabled: 'Local embedding engine is disabled',
+        engineComponentDisabledSub:
+          'Enable the embedding engine to use local embedding.',
+        engineEnableAction: 'Enable',
+        engineEnableFailed: 'Failed to enable the embedding engine',
+        engineComponentFailed: 'Local embedding engine failed to initialize',
+        engineComponentPreparing: 'Local embedding engine is preparing…',
+        engineNonDesktop: 'Local embedding is unavailable',
+        engineNonDesktopSub: 'Local embedding models only run on desktop.',
+        languageNames: {
+          en: 'English',
+          zh: 'Chinese',
+          multilingual: 'Multilingual',
+        },
+        dtypeBadge: {
+          q8: 'INT8',
+          fp16: 'FP16',
+        },
+      },
+      delete: 'Delete knowledge base',
+      deleteConfirm:
+        'This deletes the knowledge base "{{name}}" and all of its index data. This cannot be undone.',
+      createTitle: 'New knowledge base',
+      editTitle: 'Knowledge base · {{name}}',
+      fieldName: 'Name',
+      fieldNameDesc: 'The display name of this knowledge base',
+      fieldDescription: 'Description',
+      fieldDescriptionDesc:
+        "Describe what this base mainly contains. This text is given to the model to help it pick the right knowledge base to search; it's optional.",
+      fieldDescriptionPlaceholder:
+        'e.g. Daily meeting notes and current project docs',
+      scopeTitle: 'Scope',
+      scopeDesc: 'Decides which folders go into this knowledge base.',
+      nameRequired: 'Enter a name for the knowledge base',
+      nameDuplicate: 'A knowledge base with this name already exists',
+      saveFailed: 'Failed to save the knowledge base',
+      deleteTitle: 'Delete knowledge base',
+      deleteFailed: 'Failed to delete the knowledge base',
     },
     mcp: {
       title: 'Custom tools (MCP)',
@@ -1641,6 +1712,9 @@ export const en: TranslationKeys = {
     },
     etc: {
       title: 'Other',
+      pluginUpdateNotice: 'Update notifications',
+      pluginUpdateNoticeDesc:
+        'When enabled, YOLO checks for new versions and lets you know.',
       pluginAutoUpdate: 'Auto-download updates',
       pluginAutoUpdateDesc:
         'When enabled, new versions are downloaded automatically in the background when detected.',
@@ -1686,13 +1760,6 @@ export const en: TranslationKeys = {
       captureRawRequestDebug: 'Enable LLM request debugging',
       captureRawRequestDebugDesc:
         'When enabled, each AI response shows a Debug button (in the info bar and the more-actions menu) that lets you view or export the raw LLM, tool-call, and web-search requests and responses for that turn. Captured data is kept in memory for the current Obsidian session only and is cleared on restart. API keys are redacted in the export, but the original conversation content is included.',
-      captureRawRequestDebugExcludeLogsTitle:
-        'Exclude debug logs from knowledge base?',
-      captureRawRequestDebugExcludeLogsMessage:
-        'Debug logs may contain raw conversation and tool contents. Add {{path}} to the knowledge base exclude list so they are not indexed by RAG?',
-      captureRawRequestDebugExcludeLogsCta: 'Exclude logs',
-      captureRawRequestDebugExcludeLogsSuccess:
-        '{{path}} has been excluded from the knowledge base.',
       yoloBaseDir: 'YOLO base folder',
       yoloBaseDirDesc:
         'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder. Current skills directory: {path}.',
@@ -2458,6 +2525,16 @@ export const en: TranslationKeys = {
     sendMessage: 'Send message',
     newChat: 'New chat',
     untitledConversation: 'New chat',
+    paneTitle: {
+      renameAriaLabel: 'Click to rename conversation',
+      editingAriaLabel: 'Editing conversation title',
+    },
+    paneMenu: {
+      rename: 'Rename',
+      deleteConfirmTitle: 'Delete conversation?',
+      deleteConfirmMessage:
+        'This will permanently delete "{title}". This action cannot be undone.',
+    },
     continueResponse: 'Continue response',
     messageNavigator: {
       title: 'Message navigator',
@@ -2505,7 +2582,7 @@ export const en: TranslationKeys = {
     selectModel: 'Select model',
     uploadImage: 'Upload image',
     uploadFile: 'Add file',
-    dropFilesHint: 'Drop to add files',
+    dropFilesHint: 'Drop to add to the conversation',
     imageUnsupportedByModel:
       'This model has not declared image support. Enable the "Vision" input modality in the model settings to attach images.',
     unsupportedFileType: 'Unsupported file type: {names}',
@@ -2538,14 +2615,13 @@ export const en: TranslationKeys = {
       inputLabel: 'Annotation {index}',
     },
     mentionMenu: {
-      back: 'Back',
       entryCurrentFile: 'Current file',
       entryMode: 'Mode',
-      entrySkill: 'Skill',
       entryAssistant: 'Assistant',
       entryModel: 'Model',
       entryFile: 'File',
       entryFolder: 'Folder',
+      categoryEmpty: 'Nothing here yet',
     },
     slashCommands: {
       compact: {
@@ -2566,6 +2642,8 @@ export const en: TranslationKeys = {
     slashMenu: {
       entrySkill: 'Skills',
       entrySnippet: 'Snippets',
+      categoryCommand: 'Commands',
+      categoryEmpty: 'Nothing here yet',
       createSnippetsFile: 'Click to create snippets.md',
     },
     emptyState: {
@@ -2594,6 +2672,13 @@ export const en: TranslationKeys = {
       cancelError: 'Could not stop the CLI run: {message}',
       openError: 'Could not open the CLI session: {message}',
       transitionError: 'Could not leave the current CLI session: {message}',
+      sessionFallbackDividerTitle: 'Switched to default',
+      sessionFallbackDividerDescription:
+        'The original agent "{profile}" is unavailable, so this conversation switched to default — earlier messages are not in its memory.',
+      sessionFallbackUnknownProfile: 'previous',
+    },
+    hermesProfileSelector: {
+      accessibleLabel: 'Hermes profile: {profile}',
     },
     cliControls: {
       defaultModel: '{provider} default model',
@@ -2843,8 +2928,6 @@ export const en: TranslationKeys = {
         unknown: 'Unknown',
       },
       displayName: {
-        fs_list: 'List files',
-        fs_search: 'Search vault',
         fs_read: 'Read files',
         fs_edit: 'Text editing',
         fs_edit_ops: 'File Editing Toolset',
@@ -2861,13 +2944,6 @@ export const en: TranslationKeys = {
       },
       writeAction: {
         write: 'Write file',
-        delete: 'Delete',
-        create_dir: 'Create folder',
-        move: 'Move path',
-        // Legacy keys kept for rendering historical conversations.
-        create_file: 'Create file',
-        delete_file: 'Delete file',
-        delete_dir: 'Delete folder',
       },
       readMode: {
         full: 'Full',
@@ -2912,6 +2988,9 @@ export const en: TranslationKeys = {
       search: 'Searched {count} time(s)',
       web: '{count} web lookup(s)',
       edit: 'Edited {count} file(s)',
+      editedFile: 'Edited {name}',
+      createdFile: 'Created {name}',
+      deletedFile: 'Deleted {name}',
       virtualTerminal: 'Virtual terminal {count} time(s)',
       terminal: 'Terminal {count} time(s)',
       command: 'Ran {count} command(s)',
@@ -2987,10 +3066,6 @@ export const en: TranslationKeys = {
     continueFailed: 'Resumed index failed.',
     openYoloNewChatFailed:
       'Failed to open the YOLO chat window; try the command palette first.',
-    pgliteUnavailable:
-      'PGlite runtime unavailable; retry downloading the runtime assets.',
-    downloadingPglite:
-      'Downloading PGlite runtime assets; first-time knowledge base usage may take a moment…',
     updatingIndex: 'Updating vault index…',
     indexUpdated: 'Vault index updated.',
     indexUpdateFailed: 'Vault index update failed.',
@@ -3110,6 +3185,47 @@ export const en: TranslationKeys = {
     statusRequesting: 'Requesting...',
     statusThinking: 'Thinking...',
     statusGenerating: 'Generating...',
+  },
+
+  sparkle: {
+    settings: {
+      open: 'Sparkle settings',
+      back: 'Back',
+    },
+    similarNotes: {
+      title: 'Similar notes',
+      scope: 'Scope',
+      allKnowledgeBases: 'All knowledge bases',
+      someKnowledgeBases: '{count} knowledge bases',
+      manageKnowledgeBases: 'Manage knowledge bases…',
+      basedOn: 'Based on',
+      insertLink: 'Insert link at cursor',
+      insertUnavailable: 'No active markdown editor',
+      expandSnippets: 'Show matching passages',
+      collapseSnippets: 'Hide matching passages',
+      noActiveNote: 'No note is open',
+      noActiveNoteHint: 'Open a note to see what it relates to.',
+      noEmbeddingModel: 'No embedding model configured',
+      noEmbeddingModelHint:
+        'Similar notes need an embedding model to compare notes with.',
+      configure: 'Configure',
+      notIndexed: 'This note has not been indexed yet',
+      notIndexedHint:
+        'Similar notes come from the vector index. Index this note to see what it relates to.',
+      indexThisNote: 'Index this note',
+      indexing: 'Indexing…',
+      indexFailed: 'Failed to index this note',
+      outOfScope: 'This note is outside every knowledge base',
+      outOfScopeHint:
+        'Add its folder to a knowledge base to include it in similar notes.',
+      openKnowledgeBaseSettings: 'Open knowledge base settings',
+      empty: 'No similar notes in this scope',
+      emptyHint: 'Widen the scope to search more knowledge bases.',
+      emptyHintSearched:
+        'Searched {count} indexed notes. Widen the scope to search more knowledge bases.',
+      error: 'Could not load similar notes',
+      retry: 'Retry',
+    },
   },
 
   chatMode: {

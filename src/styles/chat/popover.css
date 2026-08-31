@@ -2,95 +2,6 @@
  * ChatUserInput
  */
 
-/**
- * @mention 菜单的二级 hover/方向键预览子面板。
- * popover 根（.yolo-smart-space-mention-popover）是 flex 容器（见 panels/smart-space.css）；
- * 主面板宽度由 LexicalMenu 锁定为输入框宽度（containerDiv width），如果子面板作为 flex item
- * 会把主面板挤压成 0 宽。所以子面板改用 position:absolute 浮在主面板侧边，不参与 flex 布局；
- * popover 根加 position:relative 作为其定位参考。
- * 注意：子面板必须保持为 popover 的直接子节点。这里的 100% intentionally 指向
- * LexicalMenu 已定位好的 popover/root 宽度；不要把子面板移进主面板 DOM 内部，
- * 否则 placement='top' 的向上展开锚点和 hover safe-area 都会偏离原行为。
- * 是否允许侧向展开由 MentionPlugin 读取 LexicalMenu 写入的 Chat 容器边界决定；
- * 侧边栏 Chat pane 内放不下时隐藏子面板，点击一级菜单走 drill-down。
- * 空间不够时由组件切到 data-side="left" 翻到主面板左侧；
- * 两侧都不够时组件不渲染（drill-down 兜底）。 */
-.yolo-smart-space-mention-popover {
-  position: relative;
-  align-items: flex-start;
-}
-
-.yolo-smart-space-mention-subpanel {
-  position: absolute;
-  width: min(var(--yolo-chat-typeahead-max-width, 480px), calc(100vw - 24px));
-  max-width: var(--yolo-chat-typeahead-max-width, 480px);
-  overflow: visible;
-  pointer-events: auto;
-}
-
-/* 105ms kept un-tokenized (enter bucket is 220ms, >80ms away): this panel
- * follows arrow-key/hover navigation through mention menu items, so it
- * must resolve well inside the time between two keystrokes — the enter
- * bucket's slower pace would read as lag while arrowing through the list. */
-.yolo-smart-space-mention-subpanel[data-side='right'] {
-  left: calc(100% + 6px);
-  animation: yolo-smart-space-mention-subpanel-enter-right 105ms
-    cubic-bezier(0.2, 0, 0, 1) both;
-}
-
-.yolo-smart-space-mention-subpanel[data-side='left'] {
-  right: calc(100% + 6px);
-  animation: yolo-smart-space-mention-subpanel-enter-left 105ms
-    cubic-bezier(0.2, 0, 0, 1) both;
-}
-
-@keyframes yolo-smart-space-mention-subpanel-enter-right {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-@keyframes yolo-smart-space-mention-subpanel-enter-left {
-  from {
-    opacity: 0;
-    transform: translateX(6px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
-/* 子菜单与主菜单同向展开：
- * placement='bottom'（主菜单向下） → 子菜单顶对齐 hover 项的顶 → 向下延伸；
- * placement='top'   （主菜单向上） → 子菜单底对齐 hover 项的底 → 向上延伸。
- * CSS 变量由 MentionPlugin 在测量 hover 项后写到 popover 根。 */
-.yolo-smart-space-mention-popover[data-placement='bottom']
-  .yolo-smart-space-mention-subpanel {
-  top: var(--yolo-sub-anchor-top, 0);
-  bottom: auto;
-}
-
-.yolo-smart-space-mention-popover[data-placement='top']
-  .yolo-smart-space-mention-subpanel {
-  top: auto;
-  bottom: calc(100% - var(--yolo-sub-anchor-bottom, 100%));
-}
-
-/* Safe triangle 内：抑制主面板（非子面板）item 的 :hover 染色，
- * 让 React 的 data-highlighted 完全主导视觉。这样鼠标穿越其他 entry 时不会瞬时高亮。 */
-.yolo-smart-space-mention-popover[data-safe-active='true']
-  > .yolo-smart-space-mention-dropdown:not(.yolo-smart-space-mention-subpanel)
-  .yolo-smart-space-mention-option:hover:not([data-highlighted='true']) {
-  background: transparent;
-  box-shadow: none;
-}
-
 .yolo-lexical-content-editable-root .mention {
   background-color: var(--tag-background);
   color: var(--tag-color);
@@ -191,11 +102,22 @@
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3Cpath d='M2 10h20'/%3E%3C/svg%3E");
 }
 
+/* local-folder = a directory outside the vault. Same folder glyph as a vault
+   folder: it is the same kind of thing to the reader, and the badge's tooltip
+   carries the absolute path that tells them apart. */
+.yolo-lexical-content-editable-root .yolo-mention--local-folder::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z'/%3E%3Cpath d='M2 10h20'/%3E%3C/svg%3E");
+}
+
 .yolo-lexical-content-editable-root .yolo-mention--pdf::before {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E");
 }
 
 .yolo-lexical-content-editable-root .yolo-mention--office::before {
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E");
+}
+
+.yolo-lexical-content-editable-root .yolo-mention--text-attachment::before {
   mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z'/%3E%3Cpath d='M14 2v4a2 2 0 0 0 2 2h4'/%3E%3Cpath d='M10 9H8'/%3E%3Cpath d='M16 13H8'/%3E%3Cpath d='M16 17H8'/%3E%3C/svg%3E");
 }
 
@@ -248,7 +170,7 @@
 }
 
 /* default 变体下的 group-label / separator / list / item 样式集中在这里。
-   --smart-space 变体的同名元素样式集中在 src/styles/panels/smart-space.css。
+   --continuation 变体的同名元素样式集中在 src/styles/panels/continuation.css。
    两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */
 .yolo-popover-surface--default .yolo-popover-group-label {
   display: block;
@@ -488,10 +410,16 @@
     background-color var(--yolo-anim-duration-feedback) ease;
 }
 
+/* issue #567 Step 5：键盘高亮行（data-highlighted）与鼠标悬停同权显形操作
+   图标——纯键盘操作（Mod+Shift+P 置顶、Mod+Backspace 删除）的状态反馈不能
+   依赖鼠标恰好悬停在该行上，否则星标点亮/删除变红发生在不可见的图标上，
+   操作看起来像没生效。 */
 .yolo-popover-surface
-  li:is(:hover, :focus-within)
+  li:is(:hover, :focus-within, [data-highlighted='true'])
   .yolo-chat-list-dropdown-item-icon,
-.yolo-popover-surface li:is(:hover, :focus-within) .yolo-chat-list-pin-button {
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-pin-button {
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
@@ -521,11 +449,31 @@
   --yolo-chat-list-response-duration: var(--yolo-anim-duration-response);
   --yolo-chat-list-presence-duration: var(--yolo-anim-duration-exit);
   --yolo-chat-list-presence-ease: var(--yolo-anim-ease-out);
+  /* L3 补位 / 重排滑行，JS 侧同源常量见 CHAT_LIST_REORDER_DURATION_MS */
+  --yolo-chat-list-reorder-duration: 260ms;
 
   display: inline-flex;
   flex-direction: column;
-  width: 100%;
-  max-width: 420px;
+  /*
+   * issue #567 Step 4：宽度不再钳在母容器（原先是聊天侧边栏的
+   * .yolo-chat-container，窄侧边栏下弹层被跟着挤窄——这正是 pjeby 抱怨的
+   * "弹层相对标题太窄"）。目标宽度固定 420px，只受弹层所在窗口的视口宽度
+   * 约束：100vw 取的是这个元素所在文档的 viewport（弹层 Portal 到
+   * anchorRef.current.ownerDocument.body，popout 窗口下 100vw 天然就是
+   * popout 自己的视口，不用假设主窗口，也不需要 JS 读 window.innerWidth）。
+   *
+   * 原先这里改用过 JS 方案（syncPopoverWidth，一次性 useLayoutEffect 读
+   * getNodeWindow(trigger).innerWidth 后设 inline style width）：实测在真实
+   * Obsidian 里，Popover 首次打开时该 effect 确实跑了（用 React DevTools
+   * fiber 验证过 hook 状态、并手动重放同一个 effect 闭包证实计算逻辑本身
+   * 没问题），但 inline style 设完之后没有生效——大概率是 Radix
+   * Popover.Content 背后的 floating-ui 在同一次打开过程中还有一轮异步定位/
+   * 重渲染，把这次 inline style 写入盖掉了，且我们的 effect 依赖是
+   * [open, syncPopoverWidth]，不会再重试。CSS 表达式不吃这个时序坑（不是
+   * inline style，不参与 floating-ui 对 Content 节点的属性管理），也更简单
+   * ——去掉了 useLayoutEffect、resize 监听、以及 contentRef 这一整套机制。
+   */
+  width: min(420px, calc(100vw - 24px));
   min-width: 0;
   /* 让弹层左侧与聊天面板外层布局对齐（仅聊天历史下拉需要）。 */
   margin-left: -64px;
@@ -732,23 +680,135 @@ button.yolo-chat-list-origin-filter:focus-visible {
 }
 
 /*
- * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
- * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
- * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing 关掉。
- * 260ms 故意不复用 --yolo-chat-list-presence-duration（用于 opacity/transform
- * 的显隐）：L3 补位没有 CSS token（token 头注释：L3 用 spring，只在 JS 侧
- * MOTION_LAYOUT_SPRING 有对应常量），这里是其在纯 CSS FLIP 场景下的手调近似值。
+ * issue #567 Step 5：键位图例，仿 Obsidian 快速切换器的 prompt-instructions。
+ * 是 .yolo-chat-list-dropdown-content（flex column）里 <ul> 的下一个兄弟节点，
+ * flex-shrink: 0 保证它不参与滚动区、不被压缩——列表滚动只发生在上面的
+ * .yolo-model-select-list 内部。
  */
-.yolo-chat-list-dropdown-item {
-  transition: transform 260ms var(--yolo-chat-list-presence-ease);
+.yolo-chat-list-legend {
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 10px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 52%, transparent);
+  padding: 6px 10px;
+  background: var(--background-primary);
 }
 
-.yolo-model-select-list.is-collapsing .yolo-chat-list-dropdown-item {
+.yolo-chat-list-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.yolo-chat-list-legend-key {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  height: 14px;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+  border-radius: var(--radius-s);
+  padding: 0 3px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.yolo-chat-list-legend-label {
+  color: var(--text-faint);
+}
+
+/*
+ * L3 跟随：补位平移。条目被 inline transform 摁回删除前的位置后，下一帧 React 把
+ * transform 撤掉，由这条过渡把它送回 0——只动 transform，不触发 layout。
+ * 摁回去的那一帧必须无过渡，否则会看到它先往下滑再滑回来，由 .is-collapsing
+ * / .is-reordering 关掉。
+ * --yolo-chat-list-reorder-duration（260ms）故意不复用
+ * --yolo-chat-list-presence-duration（用于 opacity/transform 的显隐）：L3 补位
+ * 没有全局 CSS token（token 头注释：L3 用 spring，只在 JS 侧
+ * MOTION_LAYOUT_SPRING 有对应常量），这里是其在纯 CSS FLIP 场景下的手调近似值。
+ * 置顶重排的滑行走同一条过渡，所以两者共用这一个时长。
+ */
+.yolo-chat-list-dropdown-item {
+  transition: transform var(--yolo-chat-list-reorder-duration)
+    var(--yolo-chat-list-presence-ease);
+  /*
+   * 打开性能：弹层子树 ~1700 个 DOM 节点（每行 ~35 个，操作按钮的 SVG 图标
+   * 是大头），但滚动区一屏只露出十来行。挂载后 Radix Presence 的
+   * getComputedStyle 强制整文档样式重算（实测 ~100ms，占「点击→呈现」
+   * ~260ms 的最大单项），成本 ∝ 新节点数 × 全文档规则数。
+   * content-visibility: auto 让视口外的行跳过 style/layout/paint，滚到
+   * 才渲染——浏览器原生的按需渲染。intrinsic-size 用实测行高 34px 占位，
+   * 保证滚动条与 popper 测量稳定；auto 关键字让渲染过的行记住真实尺寸。
+   * 不支持的引擎（老 iOS WebKit）忽略该属性，退回全量渲染，无行为差异。
+   */
+  content-visibility: auto;
+  contain-intrinsic-size: auto 34px;
+}
+
+/*
+ * 飞行中的行：压在其余行之上，并且必须不透明——FLIP 重排里被移动的行一定会
+ * 在中途与被它越过的行完全重合（两边都在线性插值到对方的位置），透明就是
+ * 文字叠文字。底色用与悬停同样的色，但以弹层底色而不是 transparent 调和：
+ * 视觉上仍是「这一行被拿起来了」，只是不透。
+ */
+.yolo-chat-list-dropdown-item.is-pin-moving {
+  --yolo-chat-list-row-tint: color-mix(
+    in srgb,
+    var(--background-modifier-hover) 92%,
+    transparent
+  );
+
+  z-index: 1;
+  /* 状态色图层 + 底色打底，两层才不透明（见 --yolo-chat-list-row-tint 注释）。
+     !important 用于对抗行基础规则里的 background: transparent !important —— 那条
+     是为压住宿主 li 样式而存在的，不加就写不进来。 */
+  background: linear-gradient(
+      var(--yolo-chat-list-row-tint),
+      var(--yolo-chat-list-row-tint)
+    ),
+    var(--background-primary) !important;
+}
+
+/* Invert 帧（无论来自删除补位还是置顶重排）必须无过渡，见上一条注释 */
+.yolo-model-select-list.is-collapsing .yolo-chat-list-dropdown-item,
+.yolo-model-select-list.is-reordering .yolo-chat-list-dropdown-item {
   transition: none;
+}
+
+/*
+ * 置顶重排会在视口上方插入一行（置顶区在列表顶端），内容高度的变化落在滚动
+ * 视口之外——浏览器的滚动锚定会自作主张地补偿 scrollTop 来「稳住」画面，而
+ * FLIP 的 Invert 量是按行索引算出来的，一旦被补偿，摁回去的位置就和真实旧位
+ * 对不上，重排会在落位时抖一下。关掉锚定，这段几何由我们自己负责。
+ */
+.yolo-chat-list-dropdown-content .yolo-model-select-list {
+  overflow-anchor: none;
 }
 
 .yolo-chat-list-dropdown-content li,
 .yolo-chat-list-dropdown-item {
+  /*
+   * 行的状态色（hover / 高亮 / 飞行中），半透明，叠在弹层底色之上。
+   *
+   * 需要不透明版本的地方（操作区浮层的遮罩、置顶飞行中的行）一律用
+   * 「状态色图层 + --background-primary 打底」两层叠出来，不要写
+   * color-mix(状态色 92%, 底色)：--background-modifier-hover 自身就是半透明的
+   * （默认主题 rgba(0,0,0,0.075)），与不透明色 92:8 混合后 alpha 只剩 ~0.13，
+   * 看着像没生效。混色改不了 alpha 不足的事实，叠层才能。
+   */
+  --yolo-chat-list-row-tint: transparent;
+
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: flex-start;
@@ -781,19 +841,39 @@ button.yolo-chat-list-origin-filter:focus-visible {
   overflow: hidden;
 }
 
+/*
+ * issue #567 Step 4：中间截断。ghost/overlay 结构（原理与测量逻辑见
+ * ChatListDropdown.tsx 的 useMiddleTruncatedTitle）：.title-ghost 承载完整
+ * 标题、visibility 隐藏，负责撑出容器的理想宽度——flex 收缩后容器的实际
+ * 宽度就是截断计算的可用宽度；.title-display 绝对定位铺满同一盒子，放
+ * JS 测量拼好的「头…尾」单段文本，内容变化不影响布局，无测量反馈环。
+ * 单段文本排版让整字截断的余数落在标题末尾（不可见），省略号两侧
+ * 像素级贴合，没有 text-overflow: ellipsis 的整字形残留缝隙。
+ * opacity/transform 过渡（为 is-retrying 骨架屏服务）留在外层容器上不变。
+ */
 .yolo-chat-list-dropdown-item-title-text {
-  display: block;
+  position: relative;
   flex: 0 1 auto;
   min-width: 0;
   max-width: 100%;
   overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 1;
   transform: translateY(0);
   transition:
     opacity var(--yolo-anim-duration-exit) ease,
     transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-list-dropdown-item-title-ghost {
+  visibility: hidden;
+}
+
+.yolo-chat-list-dropdown-item-title-display {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  white-space: nowrap;
 }
 
 .yolo-chat-list-dropdown-item-current-badge {
@@ -931,7 +1011,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   right: 0;
   bottom: calc(100% + 8px);
   z-index: 40;
-  display: flex;
   flex-direction: column;
   gap: 8px;
   width: min(320px, calc(100vw - 24px));
@@ -950,6 +1029,11 @@ button.yolo-chat-list-origin-filter:focus-visible {
     opacity var(--yolo-anim-duration-exit) ease,
     transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
   pointer-events: none;
+}
+
+/* Keep display off the base rule so UA `[hidden] { display: none }` wins. */
+.yolo-background-activity-status-panel:not([hidden]) {
+  display: flex;
 }
 
 .yolo-background-activity-status-panel.is-open {
@@ -1085,64 +1169,63 @@ input[type='text'].yolo-chat-list-dropdown-item-title-input {
   color: var(--text-normal) !important;
 }
 
-.yolo-chat-list-dropdown-content {
-  transform-origin: var(--radix-popover-content-transform-origin);
-}
-
-.yolo-chat-list-dropdown-content[data-state='open'] {
-  animation: yolo-chat-list-dropdown-fade-in var(--yolo-anim-duration-enter)
-    var(--yolo-anim-ease-out);
-}
-
+/*
+ * 入场不再单独覆盖：弹层开合是高频交互，不属于 L2「一次性揭示」的语汇，
+ * 这里直接吃 .yolo-popover-surface--default 自带的 130ms fade-in
+ * （surface.css 头注释已把 chat-history 列为该默认动画的既定消费者之一），
+ * 不再重复定义一份更慢的 L2 版本。
+ *
+ * 退场则保留：默认弹层整体没有关闭动效（Radix 卸载即走），历史菜单是
+ * 目前唯一需要「关闭也有 fade-out」的消费者，所以仍在本文件单独定义，
+ * 时长继续复用 L2 的 exit token——160ms 离 130ms 的入场并不远，不需要
+ * 再造一个未 token 化的退场数值。
+ */
 .yolo-chat-list-dropdown-content[data-state='closed'] {
   animation: yolo-chat-list-dropdown-fade-out var(--yolo-anim-duration-exit)
     var(--yolo-anim-ease-in);
 }
 
-@keyframes yolo-chat-list-dropdown-fade-in {
-  0% {
-    opacity: 0;
-    transform: translateY(7px) scale(0.96);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
-}
-
 @keyframes yolo-chat-list-dropdown-fade-out {
   0% {
     opacity: 1;
-    transform: translateY(0) scale(1);
+    transform: translateY(0);
   }
   100% {
     opacity: 0;
-    transform: translateY(5px) scale(0.98);
+    transform: translateY(5px);
   }
 }
 
-.yolo-chat-list-dropdown-item:hover,
-.yolo-chat-list-dropdown-item:focus-within,
-.yolo-chat-list-dropdown-content li:is(:hover, :focus-within, :has(:hover)) {
-  background: color-mix(
+/* :not(.is-pin-moving)：飞行中的行有自己的一套底色（见下方 .is-pin-moving），
+   悬停/高亮那套底色是半透明的，会让它在与被越过的行交错时透出重影。 */
+.yolo-chat-list-dropdown-item:hover:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item:focus-within:not(.is-pin-moving),
+.yolo-chat-list-dropdown-content
+  li:is(:hover, :focus-within, :has(:hover)):not(.is-pin-moving) {
+  --yolo-chat-list-row-tint: color-mix(
     in srgb,
     var(--background-modifier-hover) 92%,
     transparent
-  ) !important;
+  );
+
+  background: var(--yolo-chat-list-row-tint) !important;
   outline: none;
   color: var(--text-normal) !important;
 }
 
-.yolo-chat-list-dropdown-item.selected,
-.yolo-chat-list-dropdown-item[data-highlighted='true'],
-.yolo-chat-list-dropdown-item.is-ctx-open,
-.yolo-chat-list-dropdown-content li.selected,
-.yolo-chat-list-dropdown-content li[data-highlighted='true'] {
-  background: color-mix(
+.yolo-chat-list-dropdown-item.selected:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item[data-highlighted='true']:not(.is-pin-moving),
+.yolo-chat-list-dropdown-item.is-ctx-open:not(.is-pin-moving),
+.yolo-chat-list-dropdown-content li.selected:not(.is-pin-moving),
+.yolo-chat-list-dropdown-content
+  li[data-highlighted='true']:not(.is-pin-moving) {
+  --yolo-chat-list-row-tint: color-mix(
     in srgb,
     var(--background-modifier-hover) 96%,
     transparent
-  ) !important;
+  );
+
+  background: var(--yolo-chat-list-row-tint) !important;
   box-shadow: none;
   border: 0 !important;
   color: var(--text-normal) !important;
@@ -1205,12 +1288,35 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   );
 }
 
+/*
+ * 操作区脱离文档流，浮在行的右端。
+ *
+ * 它原本是普通 flex 成员，四个常驻图标（改名/置顶/删除/⋯）即使 opacity: 0
+ * 也一直占着约 100px 宽度——静息态整条右侧是空的，标题却按被削掉 100px 的
+ * 宽度去算中间截断。那段空白是为「hover 不抖」付的租金：图标若按需占位，
+ * 标题盒子会随 hover 变宽变窄，useMiddleTruncatedTitle 的 ResizeObserver
+ * 每次都要重算截断，文字当场重排。
+ *
+ * 改成浮层之后租金不必再付，而且比原方案更稳：标题盒子恒为整行宽，hover
+ * 前后都不变，重排从根上不存在。代价是 hover 那一行时标题尾部（以及靠右的
+ * 徽标、运行指示点）被盖住约 100px——这段空间今天标题本来就吃不到，所以是
+ * 净赚；完整标题另有 tooltip 兜底。
+ *
+ * pointer-events: none 是必需的：浮层横跨标题尾部，若它自己参与命中测试，
+ * 这段区域会对「点击行 = 打开会话」失灵。按钮各自在显形时把命中恢复成 auto。
+ */
 .yolo-chat-list-dropdown-item-actions {
+  position: absolute;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  /* z-index 而非 auto：形成层叠上下文，让底下的遮罩 ::before 只垫在按钮
+     之下，而不是掉到行背景之后（无上下文时 z-index: -1 会穿到行背景后面） */
+  z-index: 0;
   display: flex;
   align-items: center;
   gap: var(--size-4-1);
-  margin-left: auto;
-  position: relative;
+  pointer-events: none;
 
   svg {
     height: var(--icon-xs);
@@ -1219,11 +1325,61 @@ button.yolo-chat-list-dropdown-archive-toggle:focus-visible
   }
 }
 
-body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
-  width: 86px;
-  min-height: 26px;
-  flex-shrink: 0;
-  pointer-events: none;
+/* 遮罩：向左延伸一段渐变，让被盖住的标题淡出而不是被硬切一刀。
+   :not(:empty) —— 移动端不渲染任何操作按钮，空浮层不该凭空亮出一块底色。 */
+.yolo-chat-list-dropdown-item-actions:not(:empty)::before {
+  content: '';
+  position: absolute;
+  /* 右侧多盖出行的 10px 内边距，左侧多出 28px 作渐变段 */
+  inset: 0 -10px 0 -28px;
+  z-index: -1;
+  /* 两层：上层是行的状态色，下层是弹层底色。合起来才不透明，理由见
+     --yolo-chat-list-row-tint 的注释。两层同一条 28px 渐变，一起淡出。 */
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-list-row-tint) 28px
+    ),
+    linear-gradient(to right, transparent, var(--background-primary) 28px);
+  opacity: 0;
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+/* 遮罩跟着图标一起显形，选择器与下面那条「同权显形」保持一一对应 */
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-actions::before,
+.yolo-chat-list-dropdown-item-actions.is-more-open::before {
+  opacity: 1;
+}
+
+/*
+ * 显形时整个浮层恢复命中：issue #567 Step 4 修过一次「点到按钮之间的缝隙
+ * 被当成点击行」，靠的就是在这个容器上统一拦一次 mousedown——容器若始终
+ * pointer-events: none，缝隙会重新漏到行上去。静息态仍然让位（此时图标不
+ * 可见，那段区域属于标题）。
+ */
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-dropdown-item-actions,
+.yolo-chat-list-dropdown-item-actions.is-more-open {
+  pointer-events: auto;
+}
+
+/*
+ * 改名态例外：输入框要占满整行，保存按钮必须留在流内把它顶窄，不能浮在
+ * 输入框上面。
+ */
+.yolo-chat-list-dropdown-item.is-editing .yolo-chat-list-dropdown-item-actions {
+  position: static;
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.yolo-chat-list-dropdown-item.is-editing
+  .yolo-chat-list-dropdown-item-actions::before {
+  content: none;
 }
 
 .yolo-chat-list-inline-actions {
@@ -1295,12 +1451,6 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   transition-delay: 55ms, 55ms, 0s, 0s;
 }
 
-.yolo-chat-list-inline-actions.is-open
-  .yolo-chat-list-inline-actions-inner
-  > .yolo-chat-list-dropdown-item-icon:nth-child(3) {
-  transition-delay: 80ms, 80ms, 0s, 0s;
-}
-
 .yolo-chat-list-dropdown-item-actions.is-more-open
   .yolo-chat-list-dropdown-item-icon,
 .yolo-chat-list-dropdown-item-actions.is-more-open .yolo-chat-list-pin-button {
@@ -1334,9 +1484,17 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
  * 上色是一次点击回执而不是状态过渡，必须瞬时完成；渐变会让人拿点击时刻和颜色
  * 到位的时刻对表，中间的过渡色就被读成卡顿。复位方向保留淡出，让自动超时取消
  * 时不突兀。duration 按 transition-property 的顺序对位覆盖，只改 color 一项。
+ *
+ * issue #567 Step 5：opacity/transform/pointer-events 强制置 1（与下面
+ * .is-pinned 同一惯例）——删除按钮平时靠 :hover/:focus-within 才显形，但
+ * Mod+Backspace 键盘快捷键触发确认态时这一行未必被鼠标悬停，待确认反馈必须
+ * 不依赖鼠标位置就可见。
  */
 .yolo-popover-surface li .yolo-chat-list-delete-button.is-confirming {
   color: var(--color-red);
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
   /* L1 回执：只把 color 一项压成 0s，其余按位保留 L2 的显隐时长 */
   transition-duration: var(--yolo-chat-list-presence-duration),
     var(--yolo-chat-list-presence-duration),
@@ -1360,15 +1518,130 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   fill: transparent;
 }
 
+/*
+ * 星标按钮不常驻显形：它是「置顶开关」，跟其余图标一起只在 hover / 键盘高亮
+ * 时出现；显形时是填充态，读得出当前是置顶。静息态的「这条被置顶了」由下面
+ * 的 .pin-marker 承担。
+ *
+ * 置顶态用 accent 而非 --text-normal：同排图标都是中性色，accent 是这一排里
+ * 唯一的「已激活」语汇；也和静息态的 .pin-marker 同色，hover 前后不变色，
+ * 交接读起来才是同一颗星标换了个人拿着。
+ */
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned {
-  color: var(--text-normal);
-  opacity: 1;
-  transform: translateX(0) scale(1);
-  pointer-events: auto;
+  color: var(--interactive-accent);
 }
 
 .yolo-popover-surface li .yolo-chat-list-pin-button.is-pinned svg {
   fill: currentColor;
+}
+
+/*
+ * 置顶状态的静息标识。曾经是行左缘一条 accent 导轨，但一条竖线读不出「置顶」
+ * 这层意思，反而更容易被当成「当前选中的那一行」。改用星标本身：和操作区里
+ * 那颗开关同一个图标、同一个填充态，状态语言全程只有一种。
+ *
+ * 位置在行尾——静息态的行尾本来就是状态位（运行中的状态点也在这里），hover
+ * 时整块换成操作区，两者不并存：状态点由 React 侧让位（见 ChatListDropdown
+ * 里 pin-marker 的渲染条件），星标由下面的 opacity 规则让位。
+ *
+ * 绝对定位在行的内边距里（与操作区同一套做法），不占布局宽度——置顶因此不会
+ * 改变标题的可用宽度，也就不会触发一次重新截断。
+ */
+.yolo-chat-list-pin-marker {
+  position: absolute;
+  right: 10px;
+  top: 0;
+  bottom: 0;
+  /* z-index 而非 auto：与操作区同理，形成层叠上下文，让遮罩 ::before 只垫在
+     星标之下，而不是掉到行背景之后 */
+  z-index: 0;
+  display: flex;
+  align-items: center;
+  color: var(--interactive-accent);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity var(--yolo-chat-list-presence-duration)
+    var(--yolo-chat-list-presence-ease);
+}
+
+.yolo-chat-list-pin-marker svg {
+  width: var(--icon-xs);
+  height: var(--icon-xs);
+  stroke-width: var(--icon-stroke);
+  fill: currentColor;
+}
+
+/* 遮罩：与操作区同一条 28px 渐变、同样的两层叠法（理由见
+   --yolo-chat-list-row-tint 的注释），让被盖住的长标题淡出而不是被硬切一刀。 */
+.yolo-chat-list-pin-marker::before {
+  content: '';
+  position: absolute;
+  inset: 0 -10px 0 -28px;
+  z-index: -1;
+  background: linear-gradient(
+      to right,
+      transparent,
+      var(--yolo-chat-list-row-tint) 28px
+    ),
+    linear-gradient(to right, transparent, var(--background-primary) 28px);
+}
+
+/* 交给操作区里的星标按钮，选择器与操作区的显形规则一一对应 */
+.yolo-popover-surface
+  li:is(:hover, :focus-within, [data-highlighted='true'])
+  .yolo-chat-list-pin-marker,
+.yolo-chat-list-dropdown-item:has(
+    .yolo-chat-list-dropdown-item-actions.is-more-open
+  )
+  .yolo-chat-list-pin-marker {
+  opacity: 0;
+}
+
+/*
+ * L1 回执：星标被按下的手感。填充与颜色仍然是 0ms 硬切换（L1 禁止渐变，见
+ * tokens/motion.css），这里动的只是 transform——它不是状态的过渡，而是反馈
+ * 本身，压下去的那一刻状态已经切完了。
+ *
+ * 放在 svg 上而不是按钮上：按钮的 transform 归显形/悬停那套过渡管（见上面
+ * translateX/scale 的规则），两者抢同一个属性会互相截断。
+ *
+ * 置顶给一点点回弹（落定），取消置顶只压不弹（收回不该被庆祝）。
+ */
+@keyframes yolo-chat-list-pin-pop {
+  0% {
+    transform: scale(1);
+  }
+  30% {
+    transform: scale(0.84);
+  }
+  62% {
+    transform: scale(1.12);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes yolo-chat-list-unpin-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(0.86);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.yolo-chat-list-pin-button[data-pin-pulse='pin'] svg {
+  animation: yolo-chat-list-pin-pop var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-chat-list-pin-button[data-pin-pulse='unpin'] svg {
+  animation: yolo-chat-list-unpin-pop var(--yolo-anim-duration-exit)
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-code-block {
@@ -1840,7 +2113,6 @@ body.is-mobile .yolo-chat-list-dropdown-item-actions:empty {
   background: color-mix(in srgb, var(--background-secondary) 86%, transparent);
   border: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 70%, transparent);
-  backdrop-filter: blur(12px);
 }
 
 .yolo-inline-review-toolbar-nav,
@@ -2334,9 +2606,28 @@ button.yolo-chat-input-model-select {
 }
 
 .yolo-chat-list-ctx-menu {
-  position: absolute;
-  z-index: 210;
-  width: 176px;
+  /*
+   * issue #567 Step 3（追加需求）：菜单 createPortal 到 <body>（见
+   * ChatListDropdown.tsx），不再是母弹层 .yolo-popover-surface 的 DOM 后代——
+   * 逃开了 surface.css 那条 overflow:hidden 的物理裁剪，窄弹层里靠右侧会话
+   * 弹出的菜单不会再被削掉。position 从 absolute（相对弹层内容定位）换成
+   * fixed（相对视口），top/left 也随之变成视口坐标。z-index 必须盖过
+   * --default 变体的 1000（src/styles/popover/surface.css）——Portal 后两者
+   * 是 <body> 下的兄弟节点，层叠顺序只看 z-index，不再天然继承弹层内部的
+   * 绘制顺序。
+   */
+  position: fixed;
+  z-index: 1010;
+  /*
+   * 宽度随内容自适应而不是固定死。width: max-content 让盒子撑到最长一行
+   * 文案的自然宽度；min/max 兜住两端——短文案（如「置顶」）不再空荡，长文案
+   * （如「Export conversation to vault」）到 max-width 才换行，而不是在固定
+   * 176px 里过早折断。真实渲染宽高由 ChatListDropdown.tsx 的 useLayoutEffect
+   * 量出来后再钳一次位置（基准是视口，不是母弹层），越界翻转同样在那处理。
+   */
+  width: max-content;
+  min-width: 148px;
+  max-width: 240px;
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-m);

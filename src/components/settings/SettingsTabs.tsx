@@ -9,7 +9,7 @@ import React, {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 import { SETTINGS_ACTIVE_TAB_STORAGE_KEY } from '../../utils/openPluginSettingsTab'
 
 import { AgentTab } from './tabs/AgentTab'
@@ -103,6 +103,10 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
     }
     return 'models'
   })
+  // 内容入场方向：与 glider 的滑动方向一致，让内容读起来是「跟着指示器走」。
+  const [enterDirection, setEnterDirection] = useState<'forward' | 'backward'>(
+    'forward',
+  )
   const registry = plugin.getModuleSettingsContributionRegistry()
   const moduleSettings = useSyncExternalStore(
     registry.subscribe,
@@ -120,7 +124,22 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
   const activeTabIndex = SETTINGS_TABS.findIndex((tab) => tab.id === activeTab)
   const activeTabIndexRef = useRef(activeTabIndex)
   const navRef = useRef<HTMLDivElement | null>(null)
+  const contentRef = useRef<HTMLDivElement | null>(null)
   const tabRefs = useRef<Array<HTMLButtonElement | null>>([])
+
+  const selectTab = (tabId: SettingsTabId, index: number) => {
+    if (tabId === activeTab) {
+      return
+    }
+    setEnterDirection(index > activeTabIndex ? 'forward' : 'backward')
+    setActiveTab(tabId)
+  }
+
+  useLayoutEffect(() => {
+    // 换 tab 等于换了一份内容，滚动位置必须回到顶部；否则新内容会从上一个
+    // tab 停留的偏移处开始显示，比缺少动效更割裂。
+    contentRef.current?.scrollTo({ top: 0 })
+  }, [activeTab])
 
   const updateGlider = () => {
     const nav = navRef.current
@@ -195,7 +214,7 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
             className={`yolo-settings-tab-button ${
               activeTab === tab.id ? 'is-active' : ''
             }`}
-            onClick={() => setActiveTab(tab.id)}
+            onClick={() => selectTab(tab.id, index)}
             role="tab"
             aria-selected={activeTab === tab.id}
             ref={(element) => {
@@ -208,8 +227,13 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
           </button>
         ))}
       </div>
-      <div className="yolo-settings-tabs-content">
-        <div className="yolo-settings-tabs-body">
+      <div className="yolo-settings-tabs-content" ref={contentRef}>
+        {/* key 让每次换 tab 重新挂载容器，入场动画得以重放。 */}
+        <div
+          key={activeTab}
+          className="yolo-settings-tabs-body"
+          data-enter-direction={enterDirection}
+        >
           {activeTab === 'modules' ? (
             <ModulesTab
               service={plugin.getModuleService()}

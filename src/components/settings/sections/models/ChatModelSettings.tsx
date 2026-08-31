@@ -1,7 +1,7 @@
 import { App, Notice } from 'obsidian'
 import { useState } from 'react'
 
-import YoloPlugin from '../../../../main'
+import type YoloPlugin from '../../../../main'
 import { ChatModel } from '../../../../types/chat-model.types'
 import { ObsidianButton } from '../../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../../common/ObsidianDropdown'

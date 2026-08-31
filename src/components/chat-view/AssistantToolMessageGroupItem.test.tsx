@@ -658,8 +658,14 @@ describe('AssistantToolMessageGroupItem', () => {
           messages={[
             hiddenAssistantMessage,
             buildToolMessage('tool-1', [
-              { name: 'yolo_local__bash', status: ToolCallResponseStatus.Running },
-              { name: 'yolo_local__js_eval', status: ToolCallResponseStatus.Running },
+              {
+                name: 'yolo_local__bash',
+                status: ToolCallResponseStatus.Running,
+              },
+              {
+                name: 'yolo_local__js_eval',
+                status: ToolCallResponseStatus.Running,
+              },
             ]),
           ]}
         />,

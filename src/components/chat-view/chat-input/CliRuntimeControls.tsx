@@ -1,8 +1,9 @@
 import { useLanguage } from '../../../contexts/language-context'
-import type {
-  CliRuntimeConfiguration,
-  CliRuntimeId,
-  CliRuntimeModel,
+import {
+  type CliRuntimeConfiguration,
+  type CliRuntimeId,
+  type CliRuntimeModel,
+  getCliRuntimeDescriptor,
 } from '../../../core/cli-runtime'
 import type { ChatModel } from '../../../types/chat-model.types'
 import {
@@ -36,11 +37,15 @@ export function CliRuntimeControls({
   const models = configuration?.models.length
     ? configuration.models
     : cachedModels
-  const providerLabel = runtimeId === 'codex' ? 'CODEX' : 'CLAUDE CODE'
+  const providerName = t(
+    getCliRuntimeDescriptor(runtimeId).labelKey,
+    runtimeId === 'codex' ? 'Codex' : 'Claude Code',
+  )
+  const providerLabel = providerName.toUpperCase()
   const defaultModelLabel = t(
     'chat.cliControls.defaultModel',
     '{provider} default model',
-  ).replace('{provider}', runtimeId === 'codex' ? 'Codex' : 'Claude Code')
+  ).replace('{provider}', providerName)
   const selectedModel =
     models.find((model) => model.id === configuration?.modelId) ??
     models.find((model) => model.isDefault) ??

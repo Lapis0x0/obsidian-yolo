@@ -8,6 +8,8 @@ body:
       value: |
         Thanks for taking the time to fill out this feature request!
 
+        **Please check back after submitting** (watch your GitHub notifications / email) — we typically respond within a day, and may ask follow-up questions here to understand your use case.
+
   - type: textarea
     id: problem
     attributes:

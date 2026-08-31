@@ -57,6 +57,7 @@ async function* streamAgent(
           },
         }
       : {}),
+    ...(request.tools ? { tools: request.tools } : {}),
     ...(request.abortSignal ? { signal: request.abortSignal } : {}),
   })
 }

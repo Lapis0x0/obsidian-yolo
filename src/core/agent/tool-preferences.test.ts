@@ -1,7 +1,12 @@
+import { USER_FACING_LOCAL_TOOL_SHORT_NAMES } from '../mcp/localFileTools'
+import { getCapabilityForTool, listCapabilities } from '../tools/registry'
+
 import {
+  BUILTIN_DEFAULT_ENABLED_TOOL_FQNS,
   buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
+  getDefaultApprovalModeForTool,
   getDefaultEnabledForTool,
   getEnabledAssistantToolNames,
   getExplicitlyEnabledAssistantToolNames,
@@ -97,33 +102,247 @@ describe('tool-preferences defaults', () => {
         false,
       )
     })
+
+    // D7 (phase2-migration.md D7 item 5): `defaultEnabled` used to be read
+    // off a hand-maintained deny-list (`BUILTIN_DEFAULT_DISABLED_TOOL_SHORT_
+    // NAMES`) that had to be kept in sync with each capability's own
+    // `defaultEnabled` by inspection. This pins every user-facing tool's
+    // result against its owning capability's `defaultEnabled` directly, so a
+    // future capability whose `defaultEnabled` disagrees with its tools'
+    // `getDefaultEnabledForTool` result fails loudly here instead of via
+    // silent drift.
+    it("agrees with every registered capability's own defaultEnabled, for every user-facing tool", () => {
+      for (const shortName of USER_FACING_LOCAL_TOOL_SHORT_NAMES) {
+        const capability = getCapabilityForTool(shortName)
+        expect(capability).toBeDefined()
+        expect(getDefaultEnabledForTool(`yolo_local__${shortName}`)).toBe(
+          capability?.defaultEnabled,
+        )
+      }
+    })
+
+    it('the five capabilities that default off match master.md §3.1', () => {
+      const disabledCapabilityIds = listCapabilities()
+        .filter((capability) => !capability.defaultEnabled)
+        .map((capability) => capability.id)
+        .sort()
+      expect(disabledCapabilityIds).toEqual(
+        [
+          'context_compaction',
+          'context_pruning',
+          'js_sandbox',
+          'subagent_delegation',
+          'terminal',
+        ].sort(),
+      )
+    })
   })
 
+  describe('BUILTIN_DEFAULT_ENABLED_TOOL_FQNS', () => {
+    it('includes exactly the tools of default-enabled capabilities', () => {
+      const expected = new Set(
+        listCapabilities()
+          .filter((capability) => capability.defaultEnabled)
+          .flatMap((capability) =>
+            capability.tools.map((tool) => `yolo_local__${tool.name}`),
+          ),
+      )
+      expect(new Set(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS)).toEqual(expected)
+    })
+
+    it('excludes the five default-off tools and includes fs_edit/fs_write', () => {
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__context_prune_tool_results',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__context_compact',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__delegate_subagent',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__js_eval',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).not.toContain(
+        'yolo_local__terminal_command',
+      )
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).toContain('yolo_local__fs_edit')
+      expect(BUILTIN_DEFAULT_ENABLED_TOOL_FQNS).toContain(
+        'yolo_local__fs_write',
+      )
+    })
+  })
+
+  // D7 (phase2-migration.md D7 items 5-7): pins every case the task's
+  // acceptance table calls out, now that `getDefaultApprovalModeForTool`
+  // reads `approval.defaultMode` off the owning capability instead of the
+  // three retired side tables (`FULL_ACCESS_LOCAL_TOOLS`,
+  // `REQUIRE_APPROVAL_LOCAL_TOOLS`, and the bash-specific `if`).
+  describe('getDefaultApprovalModeForTool', () => {
+    it('fs_edit: NEW value require_approval (master.md decision 17 — the one deliberate behavior change)', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_edit')).toBe(
+        'require_approval',
+      )
+    })
+
+    it('fs_write / terminal_command / the fs_edit_ops group name: require_approval, unchanged from before', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_write')).toBe(
+        'require_approval',
+      )
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__terminal_command'),
+      ).toBe('require_approval')
+    })
+
+    it('bash: dangerous_only, derived from vault_shell (no more BASH_TOOL_NAME special case)', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__bash')).toBe(
+        'dangerous_only',
+      )
+    })
+
+    it('load_tool_schemas: full_access (protocol-internal tool, not a CAPABILITIES member)', () => {
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__load_tool_schemas'),
+      ).toBe('full_access')
+    })
+
+    it('the rest default to full_access', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_read')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__memory_add')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__todo_write')).toBe(
+        'full_access',
+      )
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__ask_user_question'),
+      ).toBe('full_access')
+      expect(getDefaultApprovalModeForTool('yolo_local__web_search')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__web_scrape')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool(JS_SANDBOX_FQN)).toBe('full_access')
+      expect(
+        getDefaultApprovalModeForTool('yolo_local__delegate_subagent'),
+      ).toBe('full_access')
+    })
+
+    it('an unknown local tool short name (e.g. a retired name like fs_list) falls back to full_access, matching the pre-refactor fallthrough', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_list')).toBe(
+        'full_access',
+      )
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_search')).toBe(
+        'full_access',
+      )
+    })
+
+    it('the legacy fs_edit_ops group-name FQN also falls back to full_access — it is not a registered tool name and no live call site ever passes it (see D7b report)', () => {
+      expect(getDefaultApprovalModeForTool('yolo_local__fs_edit_ops')).toBe(
+        'full_access',
+      )
+    })
+
+    it('a non-local server tool always requires approval', () => {
+      expect(getDefaultApprovalModeForTool('some_server__some_tool')).toBe(
+        'require_approval',
+      )
+    })
+
+    it('a malformed tool name falls back to the module default (require_approval)', () => {
+      expect(getDefaultApprovalModeForTool('not_a_qualified_name')).toBe(
+        'require_approval',
+      )
+    })
+
+    it("agrees with every registered capability's own approval.defaultMode, for every one of its tools", () => {
+      for (const capability of listCapabilities()) {
+        for (const tool of capability.tools) {
+          expect(
+            getDefaultApprovalModeForTool(`yolo_local__${tool.name}`),
+          ).toBe(capability.approval.defaultMode)
+        }
+      }
+    })
+  })
+
+  // D7 (phase2-migration.md D7 item 7): `allowAlwaysAllow` used to be a
+  // hand-maintained two-item list (`ALWAYS_ALLOW_DISABLED_TOOL_NAMES`,
+  // consumed only by `ToolMessage.tsx`'s `isAlwaysAllowDisabled`). Pinned
+  // here at the data level, since that's a rendering hook rather than an
+  // exported function.
+  describe('capability approval.allowAlwaysAllow (consumed by ToolMessage.tsx)', () => {
+    it('only vault_shell and terminal disable always-allow', () => {
+      const disallowed = listCapabilities()
+        .filter((capability) => !capability.approval.allowAlwaysAllow)
+        .map((capability) => capability.id)
+        .sort()
+      expect(disallowed).toEqual(['terminal', 'vault_shell'].sort())
+    })
+
+    it('every other capability allows always-allow', () => {
+      const allowed = listCapabilities()
+        .filter((capability) => capability.approval.allowAlwaysAllow)
+        .map((capability) => capability.id)
+        .sort()
+      expect(allowed).toEqual(
+        [
+          'file_reading',
+          'file_editing',
+          'memory',
+          'context_compaction',
+          'context_pruning',
+          'todo_list',
+          'user_questions',
+          'web_access',
+          'js_sandbox',
+          'subagent_delegation',
+        ].sort(),
+      )
+    })
+  })
+
+  // D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9): a
+  // built-in tool's FQN resolves through its owning capability's
+  // `builtinCapabilityPreferences` entry now, not `toolPreferences` —
+  // `toolPreferences` is exclusively remote-MCP-tool territory as of the
+  // `80_to_81` migration. Remote-tool behavior (unaffected by D9) is
+  // unchanged from before.
   describe('isAssistantToolEnabled', () => {
-    it('treats missing entries as disabled (single source of truth)', () => {
-      // toolPreferences is now the only signal — the v60→v61 migration is
-      // responsible for materializing every default-on built-in into the
-      // map, so reads do not silently fill in.
-      const assistant = { toolPreferences: {}, enabledToolNames: [] }
+    it('a built-in tool with no explicit builtinCapabilityPreferences entry falls back to its capability default', () => {
+      // file_editing defaults enabled; context_compaction defaults disabled
+      // (master.md §3.1) — no fill-in happens in toolPreferences for either,
+      // since built-ins never read it at all post-D9.
+      const assistant = {
+        toolPreferences: {},
+        enabledToolNames: [],
+        builtinCapabilityPreferences: {},
+      }
       expect(isAssistantToolEnabled(assistant, 'yolo_local__fs_write')).toBe(
-        false,
+        true,
       )
       expect(
         isAssistantToolEnabled(assistant, 'yolo_local__context_compact'),
       ).toBe(false)
+    })
+
+    it('a remote MCP tool with no toolPreferences entry is treated as disabled (no fill-in)', () => {
+      const assistant = { toolPreferences: {}, enabledToolNames: [] }
       expect(isAssistantToolEnabled(assistant, 'Gemini__get_all_tabs')).toBe(
         false,
       )
     })
 
-    it('explicit preferences are honored', () => {
+    it('explicit builtinCapabilityPreferences are honored for built-in tools', () => {
       expect(
         isAssistantToolEnabled(
           {
-            toolPreferences: {
-              yolo_local__fs_write: { enabled: false },
+            builtinCapabilityPreferences: {
+              file_editing: { enabled: false },
             },
-            enabledToolNames: [],
           },
           'yolo_local__fs_write',
         ),
@@ -131,14 +350,16 @@ describe('tool-preferences defaults', () => {
       expect(
         isAssistantToolEnabled(
           {
-            toolPreferences: {
-              yolo_local__context_compact: { enabled: true },
+            builtinCapabilityPreferences: {
+              context_compaction: { enabled: true },
             },
-            enabledToolNames: [],
           },
           'yolo_local__context_compact',
         ),
       ).toBe(true)
+    })
+
+    it('explicit toolPreferences are honored for remote MCP tools', () => {
       expect(
         isAssistantToolEnabled(
           {
@@ -162,41 +383,61 @@ describe('tool-preferences defaults', () => {
       )
     })
 
-    it('handles null / undefined assistant as disabled', () => {
-      expect(isAssistantToolEnabled(null, 'yolo_local__fs_write')).toBe(false)
+    it('a null / undefined assistant resolves built-in tools to their capability default, and remote tools to disabled', () => {
+      // No assistant is the same input shape as a freshly-created one with
+      // an empty builtinCapabilityPreferences map — both fall back to the
+      // registry's own defaults, matching `buildDefaultBuiltinCapabilityPreferences`.
+      expect(isAssistantToolEnabled(null, 'yolo_local__fs_write')).toBe(true)
       expect(isAssistantToolEnabled(undefined, 'yolo_local__fs_write')).toBe(
+        true,
+      )
+      expect(isAssistantToolEnabled(null, 'yolo_local__context_compact')).toBe(
         false,
       )
+      expect(isAssistantToolEnabled(null, 'Gemini__get_all_tabs')).toBe(false)
     })
   })
 
   describe('getEnabledAssistantToolNames', () => {
-    it('returns only tools with explicit enabled:true (no fill-in)', () => {
+    it('returns only remote MCP tools with explicit enabled:true from toolPreferences (no fill-in there)', () => {
       const result = getEnabledAssistantToolNames({
         toolPreferences: {
-          yolo_local__fs_write: { enabled: true },
-          yolo_local__fs_edit: { enabled: false },
+          Gemini__get_all_tabs: { enabled: true },
+          Gemini__close_tab: { enabled: false },
         },
         enabledToolNames: [],
+        builtinCapabilityPreferences: Object.fromEntries(
+          listCapabilities().map((c) => [c.id, { enabled: false }]),
+        ),
       })
-      expect(result).toEqual(['yolo_local__fs_write'])
+      expect(result).toEqual(['Gemini__get_all_tabs'])
     })
 
-    it('returns empty for a fresh assistant with no preferences', () => {
-      // The migration is responsible for seeding entries; reads do not
-      // invent enablement.
-      expect(
+    it('expands every default-enabled capability into its member FQNs for a fresh assistant with no preferences', () => {
+      // Built-ins fall back to the capability's own defaultEnabled when
+      // builtinCapabilityPreferences is empty — unlike remote MCP tools,
+      // which still require an explicit toolPreferences entry.
+      const result = new Set(
         getEnabledAssistantToolNames({
           toolPreferences: {},
           enabledToolNames: [],
         }),
-      ).toEqual([])
+      )
+      const defaultEnabledFqns = new Set(
+        listCapabilities()
+          .filter((c) => c.defaultEnabled)
+          .flatMap((c) => c.tools.map((tool) => `yolo_local__${tool.name}`)),
+      )
+      expect(result).toEqual(defaultEnabledFqns)
     })
 
     it('legacy enabledToolNames is promoted via the preferences merge', () => {
       const result = getEnabledAssistantToolNames({
         toolPreferences: {},
         enabledToolNames: ['Gemini__get_all_tabs'],
+        builtinCapabilityPreferences: Object.fromEntries(
+          listCapabilities().map((c) => [c.id, { enabled: false }]),
+        ),
       })
       expect(result).toContain('Gemini__get_all_tabs')
     })
@@ -204,7 +445,6 @@ describe('tool-preferences defaults', () => {
     it('excludes built-in tools when includeBuiltinTools is false', () => {
       const result = getEnabledAssistantToolNames({
         toolPreferences: {
-          yolo_local__fs_write: { enabled: true },
           Gemini__get_all_tabs: { enabled: true },
         },
         enabledToolNames: [],
@@ -216,16 +456,21 @@ describe('tool-preferences defaults', () => {
   })
 
   describe('getAssistantToolApprovalMode (js_eval)', () => {
+    // D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9): a
+    // built-in tool's approval mode is now read from its owning capability's
+    // `builtinCapabilityPreferences` entry, not from a `toolPreferences[fqn]`
+    // entry — `toolPreferences` no longer carries built-in tool state at all.
     it.each(['full_access', 'require_approval'] as const)(
       'honors the saved %s mode',
       (approvalMode) => {
         expect(
           getAssistantToolApprovalMode(
             {
-              toolPreferences: {
-                [JS_SANDBOX_FQN]: { enabled: true, approvalMode },
-              },
+              toolPreferences: {},
               enabledToolNames: [],
+              builtinCapabilityPreferences: {
+                js_sandbox: { enabled: true, approvalMode },
+              },
             },
             JS_SANDBOX_FQN,
           ),
@@ -239,12 +484,40 @@ describe('tool-preferences defaults', () => {
       expect(
         getAssistantToolApprovalMode(
           {
-            toolPreferences: {
-              yolo_local__delegate_subagent: { enabled: true },
+            builtinCapabilityPreferences: {
+              subagent_delegation: { enabled: true },
             },
-            enabledToolNames: [],
           },
           'yolo_local__delegate_subagent',
+        ),
+      ).toBe('full_access')
+    })
+
+    it('honors an explicit builtinCapabilityPreferences approvalMode for a built-in tool', () => {
+      expect(
+        getAssistantToolApprovalMode(
+          {
+            builtinCapabilityPreferences: {
+              file_editing: {
+                enabled: true,
+                approvalMode: 'full_access',
+              },
+            },
+          },
+          'yolo_local__fs_edit',
+        ),
+      ).toBe('full_access')
+      expect(
+        getAssistantToolApprovalMode(
+          {
+            builtinCapabilityPreferences: {
+              file_editing: {
+                enabled: true,
+                approvalMode: 'full_access',
+              },
+            },
+          },
+          'yolo_local__fs_write',
         ),
       ).toBe('full_access')
     })

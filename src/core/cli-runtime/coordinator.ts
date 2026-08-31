@@ -2,19 +2,20 @@ import { App, FileSystemAdapter, Platform } from 'obsidian'
 
 import type { YoloSettingsLike } from '../paths/yoloManagedData'
 
-import type { ClaudeCliRuntimeOptions } from './claude'
+import type { ClaudeRuntimeOptions } from './claude/factory'
+import { createClaudeRuntimeFactory } from './claude/factory'
 import { createCliChatRuntimeActions } from './cli-actions'
-import { getCliPathOverride } from './cli-path-override'
-import type { CodexCliRuntimeOptions } from './codex'
-import { CodexAppServerHostPool } from './codex/host'
-import { type ResolvedCodexLaunch, resolveCodexLaunch } from './codex/launch'
-import type { CodexProcessOptions } from './codex/process'
+import type { CodexRuntimeOptions } from './codex/factory'
+import { createCodexRuntimeFactory } from './codex/factory'
 import { CliConversationController } from './conversation-controller'
+import { createHermesRuntimeFactory } from './hermes/factory'
+import { type HermesProfile, discoverHermesProfiles } from './hermes/profiles'
 import { loadLoginShellEnvironment } from './login-shell-env'
 import {
   CliModelCatalogService,
   type CliModelCatalogSnapshot,
 } from './model-catalog'
+import { createPiRuntimeFactory } from './pi/factory'
 import type {
   CliSessionIndexEntry,
   CliSessionIndexMutator,
@@ -24,34 +25,31 @@ import { CliSessionService } from './session-service'
 import type {
   CliActiveRunState,
   CliRuntime,
+  CliRuntimeFactories,
+  CliRuntimeFactoryDeps,
   CliRuntimeId,
   CliRuntimeRunState,
   CliSessionRef,
 } from './types'
 import { VaultCliSessionIndexStore } from './vault-session-index-store'
 
-type ClaudeRuntimeOptions = Omit<ClaudeCliRuntimeOptions, 'vaultPath'>
-type CodexRuntimeOptions = Omit<
-  CodexCliRuntimeOptions,
-  'cwd' | 'resolveHost'
-> & {
-  cwd?: string
-}
+export type { CliRuntimeFactories }
 
-export type CliRuntimeFactories = Readonly<{
-  createClaudeRuntime(options: ClaudeCliRuntimeOptions): CliRuntime
-  createCodexRuntime(options: CodexCliRuntimeOptions): CliRuntime
-}>
+/** Deps available to whatever builds the default (or a caller-injected) factory table. */
+export type CliRuntimeFactoriesLoaderDeps = CliRuntimeFactoryDeps &
+  Readonly<{
+    getClaudeRuntimeOptions?: () => ClaudeRuntimeOptions
+    getCodexRuntimeOptions?: () => CodexRuntimeOptions
+  }>
 
 export type CliRuntimeCoordinatorOptions = Readonly<{
   app: App
   getSettings?: () => YoloSettingsLike | null
   getClaudeRuntimeOptions?: () => ClaudeRuntimeOptions
   getCodexRuntimeOptions?: () => CodexRuntimeOptions
-  resolveCodexProcessOptions?: () => Promise<CodexProcessOptions>
-  loadRuntimeFactories?: () =>
-    | CliRuntimeFactories
-    | Promise<CliRuntimeFactories>
+  loadRuntimeFactories?: (
+    deps: CliRuntimeFactoriesLoaderDeps,
+  ) => CliRuntimeFactories | Promise<CliRuntimeFactories>
   createSessionIndexStore?: (
     app: App,
     getSettings: () => YoloSettingsLike | null,
@@ -64,12 +62,22 @@ export type CliRuntimeScope = {
 
   resolveRuntime(runtimeId: CliRuntimeId): CliRuntime
   selectConversationRuntime(runtimeId: CliRuntimeId): CliConversationController
-  createConversationRuntime(runtimeId: CliRuntimeId): CliConversationController
+  /**
+   * `profileId` picks which Hermes profile (see `CliSessionRef.profileId`)
+   * a brand-new conversation launches under; ignored by runtimes without a
+   * profile concept. Undefined means that runtime's own default.
+   */
+  createConversationRuntime(
+    runtimeId: CliRuntimeId,
+    profileId?: string,
+  ): CliConversationController
   selectConversationSession(ref: CliSessionRef): CliConversationController
   getModelCatalogSnapshot(): CliModelCatalogSnapshot
   subscribeToModelCatalog(listener: () => void): () => void
   warmModelCatalog(runtimeId: CliRuntimeId): Promise<void>
   warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void>
+  /** Discovers Hermes profiles (`default` plus any under `profiles/`). Empty/single-entry for other runtimes' callers — Hermes-specific, not gated by which runtime is active. */
+  listHermesProfiles(): Promise<readonly HermesProfile[]>
   dispose(): Promise<void>
 }
 
@@ -105,14 +113,21 @@ const isAbsoluteFileSystemPath = (path: string): boolean =>
   /^[A-Za-z]:[\\/]/u.test(path) ||
   path.startsWith('\\\\')
 
-const defaultLoadRuntimeFactories = async (): Promise<CliRuntimeFactories> => {
-  const [{ ClaudeCliRuntime }, { CodexCliRuntime }] = await Promise.all([
-    import('./claude/ClaudeCliRuntime'),
-    import('./codex/runtime'),
-  ])
+const defaultLoadRuntimeFactories = async (
+  deps: CliRuntimeFactoriesLoaderDeps,
+): Promise<CliRuntimeFactories> => {
+  const [claudeFactory, codexFactory, hermesFactory, piFactory] =
+    await Promise.all([
+      createClaudeRuntimeFactory(deps),
+      createCodexRuntimeFactory(deps),
+      createHermesRuntimeFactory(deps),
+      createPiRuntimeFactory(deps),
+    ])
   return {
-    createClaudeRuntime: (options) => new ClaudeCliRuntime(options),
-    createCodexRuntime: (options) => new CodexCliRuntime(options),
+    'claude-code': claudeFactory,
+    codex: codexFactory,
+    hermes: hermesFactory,
+    pi: piFactory,
   }
 }
 
@@ -209,14 +224,34 @@ class DesktopCliRuntimeWorkspace {
     new Set<CliConversationRunSummarySubscriber>()
   private lastRunSummaryFingerprint = ''
   private readonly modelCatalog: CliModelCatalogService
-  private readonly codexHostPool: CodexAppServerHostPool
   private sessionServiceInstance: CliSessionService | null = null
   private disposePromise: Promise<void> | null = null
   private disposing = false
+  /**
+   * Memoizes `loadLoginShellEnvironment()` for Hermes profile discovery only
+   * — that call synchronously spawns a login shell (`zsh -ilc`), so without
+   * this every profile-selector mount and popover open would block Obsidian's
+   * render thread again. Scoped to this workspace instance (one per
+   * coordinator) rather than made a module-level/global cache: it must never
+   * touch `hermes/factory.ts`'s own `loadLoginShellEnvironment()` call, which
+   * intentionally re-runs on every host respawn so an install or path
+   * override picked up after startup still takes effect without restarting
+   * Obsidian. `discoverHermesProfiles()` itself is still invoked fresh on
+   * every call below, so newly created/deleted profile directories are
+   * always reflected immediately.
+   */
+  private hermesLoginShellEnvironmentPromise: Promise<NodeJS.ProcessEnv> | null =
+    null
 
-  readonly chatRuntimeActions = createCliChatRuntimeActions((ref) =>
-    this.resolveConversationRuntime(ref),
-  )
+  readonly chatRuntimeActions = createCliChatRuntimeActions((ref) => {
+    const record = this.resolveConversationRecord(ref)
+    if (!record) return undefined
+    return {
+      runtime: record.runtime,
+      settleToolCard: (toolCallId, response) =>
+        record.controller.settleToolCard(toolCallId, response),
+    }
+  })
 
   constructor(
     private readonly adapter: FileSystemAdapter,
@@ -228,16 +263,6 @@ class DesktopCliRuntimeWorkspace {
       options.app,
       options.getSettings ?? (() => null),
     )
-    const codexRuntimeOptions = this.getCodexRuntimeOptions()
-    this.codexHostPool = new CodexAppServerHostPool({
-      ...codexRuntimeOptions,
-      cwd: codexRuntimeOptions.cwd ?? this.adapter.getBasePath(),
-      resolveProcessOptions: this.options.resolveCodexProcessOptions,
-    })
-  }
-
-  private getCodexRuntimeOptions(): CodexRuntimeOptions {
-    return this.options.getCodexRuntimeOptions?.() ?? {}
   }
 
   get sessionService(): CliSessionService {
@@ -254,35 +279,17 @@ class DesktopCliRuntimeWorkspace {
     const existing = this.runtimes.get(runtimeId)
     if (existing) return existing
 
-    const vaultPath = this.getVaultPath()
-    const codexRuntimeOptions =
-      runtimeId === 'codex' ? this.getCodexRuntimeOptions() : null
-    const runtime =
-      runtimeId === 'claude-code'
-        ? this.factories.createClaudeRuntime({
-            ...this.options.getClaudeRuntimeOptions?.(),
-            vaultPath,
-          })
-        : this.factories.createCodexRuntime({
-            ...codexRuntimeOptions,
-            cwd: codexRuntimeOptions?.cwd ?? vaultPath,
-            resolveHost: this.codexHostPool.acquire,
-          })
-    this.ownedRuntimes.add(runtime)
-    if (runtime.runtimeId !== runtimeId) {
-      throw new Error(
-        `CLI runtime factory returned ${runtime.runtimeId} for ${runtimeId}.`,
-      )
-    }
+    const runtime = this.instantiateRuntime(runtimeId)
     this.runtimes.set(runtimeId, runtime)
     return runtime
   }
 
   selectConversationRuntime(
     runtimeId: CliRuntimeId,
+    profileId?: string,
   ): CliConversationController {
     this.assertActive()
-    const runtime = this.createRuntime(runtimeId)
+    const runtime = this.instantiateRuntime(runtimeId, profileId)
     const controller = new CliConversationController(
       runtime,
       () => this.modelCatalog.getSnapshot().get(runtimeId) ?? [],
@@ -399,9 +406,23 @@ class DesktopCliRuntimeWorkspace {
   }
 
   async warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void> {
-    if (runtimeId === 'codex') {
-      await this.codexHostPool.warm()
-    }
+    await this.factories[runtimeId].warm?.()
+  }
+
+  async listHermesProfiles(): Promise<readonly HermesProfile[]> {
+    this.assertActive()
+    // Must read the same environment snapshot command resolution and process
+    // launch use (`hermes/factory.ts`'s `resolveProcessOptionsForProfile`) —
+    // `process.env` alone omits shell-rc exports (e.g. a custom
+    // `HERMES_HOME`) that macOS GUI apps don't inherit, which would otherwise
+    // make this list a different set of profiles than what actually launches.
+    // The environment resolution itself is memoized (see the field's doc
+    // comment); the directory scan below is not, so newly added/removed
+    // profiles are always picked up.
+    this.hermesLoginShellEnvironmentPromise ??=
+      loadLoginShellEnvironment() as Promise<NodeJS.ProcessEnv>
+    const env = await this.hermesLoginShellEnvironmentPromise
+    return discoverHermesProfiles(env)
   }
 
   selectConversationSession(ref: CliSessionRef): CliConversationController {
@@ -410,17 +431,18 @@ class DesktopCliRuntimeWorkspace {
       [...this.conversations].find((record) => {
         const selectedRef = record.controller.getSnapshot().sessionRef
         return selectedRef !== null && isSameSession(selectedRef, ref)
-      })?.controller ?? this.selectConversationRuntime(ref.runtimeId)
+      })?.controller ??
+      this.selectConversationRuntime(ref.runtimeId, ref.profileId)
     )
   }
 
-  private resolveConversationRuntime(
+  private resolveConversationRecord(
     ref: CliSessionRef,
-  ): CliRuntime | undefined {
+  ): ConversationRuntimeRecord | undefined {
     return [...this.conversations].find((record) => {
       const selectedRef = record.controller.getSnapshot().sessionRef
       return selectedRef !== null && isSameSession(selectedRef, ref)
-    })?.runtime
+    })
   }
 
   dispose(): Promise<void> {
@@ -438,10 +460,12 @@ class DesktopCliRuntimeWorkspace {
         ...this.conversationDisposals,
         ...[...this.ownedRuntimes].map((runtime) => runtime.dispose()),
       ])
-      const [hostResult] = await Promise.allSettled([
-        this.codexHostPool.dispose(),
-      ])
-      const failure = [...results, hostResult].find(
+      const factoryDisposeResults = await Promise.allSettled(
+        Object.values(this.factories).map(
+          (factory) => factory.dispose?.() ?? Promise.resolve(),
+        ),
+      )
+      const failure = [...results, ...factoryDisposeResults].find(
         (result): result is PromiseRejectedResult =>
           result.status === 'rejected',
       )
@@ -498,21 +522,15 @@ class DesktopCliRuntimeWorkspace {
     if (this.disposing) throw new Error('CLI runtime scope is disposed.')
   }
 
-  private createRuntime(runtimeId: CliRuntimeId): CliRuntime {
-    const vaultPath = this.getVaultPath()
-    const codexRuntimeOptions =
-      runtimeId === 'codex' ? this.getCodexRuntimeOptions() : null
-    const runtime =
-      runtimeId === 'claude-code'
-        ? this.factories.createClaudeRuntime({
-            ...this.options.getClaudeRuntimeOptions?.(),
-            vaultPath,
-          })
-        : this.factories.createCodexRuntime({
-            ...codexRuntimeOptions,
-            cwd: codexRuntimeOptions?.cwd ?? vaultPath,
-            resolveHost: this.codexHostPool.acquire,
-          })
+  private instantiateRuntime(
+    runtimeId: CliRuntimeId,
+    profileId?: string,
+  ): CliRuntime {
+    const runtime = this.factories[runtimeId].create({
+      app: this.options.app,
+      vaultPath: this.getVaultPath(),
+      ...(profileId ? { profileId } : {}),
+    })
     this.ownedRuntimes.add(runtime)
     if (runtime.runtimeId !== runtimeId) {
       throw new Error(
@@ -563,9 +581,13 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
 
   createConversationRuntime(
     runtimeId: CliRuntimeId,
+    profileId?: string,
   ): CliConversationController {
     this.assertActive()
-    const controller = this.workspace.selectConversationRuntime(runtimeId)
+    const controller = this.workspace.selectConversationRuntime(
+      runtimeId,
+      profileId,
+    )
     this.selectController(runtimeId, controller)
     return controller
   }
@@ -595,6 +617,11 @@ class DesktopCliRuntimeScope implements CliRuntimeScope {
   warmConversationRuntime(runtimeId: CliRuntimeId): Promise<void> {
     this.assertActive()
     return this.workspace.warmConversationRuntime(runtimeId)
+  }
+
+  listHermesProfiles(): Promise<readonly HermesProfile[]> {
+    this.assertActive()
+    return this.workspace.listHermesProfiles()
   }
 
   dispose(): Promise<void> {
@@ -708,49 +735,14 @@ export const createDesktopCliRuntimeCoordinator = async (
   if (!(adapter instanceof FileSystemAdapter)) {
     throw new Error('CLI runtimes require a file-system-backed vault.')
   }
+  const vaultPath = adapter.getBasePath()
   const factories = await (
     options.loadRuntimeFactories ?? defaultLoadRuntimeFactories
-  )()
-  const vaultPath = adapter.getBasePath()
-
-  let resolvedOptions = options
-  if (!options.getClaudeRuntimeOptions) {
-    resolvedOptions = {
-      ...resolvedOptions,
-      getClaudeRuntimeOptions: () => ({
-        getConfiguredCliPath: () =>
-          getCliPathOverride(options.app, 'claude-code'),
-      }),
-    }
-  }
-  if (!options.getCodexRuntimeOptions) {
-    const resolveLaunch = async (): Promise<ResolvedCodexLaunch> =>
-      resolveCodexLaunch(
-        vaultPath,
-        (await loadLoginShellEnvironment()) as NodeJS.ProcessEnv,
-        process.platform,
-        getCliPathOverride(options.app, 'codex'),
-      )
-    let launchSnapshot = await resolveLaunch()
-    resolvedOptions = {
-      ...resolvedOptions,
-      getCodexRuntimeOptions: () => ({
-        command: launchSnapshot.command,
-        cwd: launchSnapshot.runtimeCwd,
-        spawnCwd: launchSnapshot.spawnCwd,
-        launchArgs: launchSnapshot.launchArgs,
-        mapRuntimePathToHost: launchSnapshot.mapRuntimePathToHost,
-      }),
-      resolveCodexProcessOptions: async () => {
-        launchSnapshot = await resolveLaunch()
-        return {
-          command: launchSnapshot.command,
-          cwd: launchSnapshot.runtimeCwd,
-          spawnCwd: launchSnapshot.spawnCwd,
-          launchArgs: launchSnapshot.launchArgs,
-        }
-      },
-    }
-  }
-  return new DesktopCliRuntimeCoordinator(adapter, resolvedOptions, factories)
+  )({
+    app: options.app,
+    vaultPath,
+    getClaudeRuntimeOptions: options.getClaudeRuntimeOptions,
+    getCodexRuntimeOptions: options.getCodexRuntimeOptions,
+  })
+  return new DesktopCliRuntimeCoordinator(adapter, options, factories)
 }

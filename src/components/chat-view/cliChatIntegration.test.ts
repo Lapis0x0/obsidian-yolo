@@ -22,6 +22,8 @@ import {
   prepareCliConversation,
   resolveActiveCliConversationSnapshot,
   resolveChatRuntimeId,
+  resolveHermesProfileSwitchAction,
+  resolveHermesSessionFallbackUpdate,
   rewriteCliConversationTurn,
   shouldClearAcceptedCliDraft,
   shouldHydrateSeededCliSession,
@@ -718,6 +720,221 @@ describe('CLI chat integration', () => {
         currentDraftRevision: 4,
       }),
     ).toBe(false)
+  })
+
+  it('resolves the Hermes profile-switch action from conversation state', () => {
+    // Not on Hermes: always a no-op regardless of message state.
+    expect(
+      resolveHermesProfileSwitchAction({
+        activeRuntimeId: 'codex',
+        requestedProfileId: 'work',
+        currentProfileId: undefined,
+        hasMessages: true,
+      }),
+    ).toBe('noop')
+
+    // Already on the requested profile: no-op.
+    expect(
+      resolveHermesProfileSwitchAction({
+        activeRuntimeId: 'hermes',
+        requestedProfileId: 'work',
+        currentProfileId: 'work',
+        hasMessages: false,
+      }),
+    ).toBe('noop')
+    expect(
+      resolveHermesProfileSwitchAction({
+        activeRuntimeId: 'hermes',
+        requestedProfileId: undefined,
+        currentProfileId: undefined,
+        hasMessages: true,
+      }),
+    ).toBe('noop')
+
+    // Empty conversation: swap the profile in place.
+    expect(
+      resolveHermesProfileSwitchAction({
+        activeRuntimeId: 'hermes',
+        requestedProfileId: 'work',
+        currentProfileId: undefined,
+        hasMessages: false,
+      }),
+    ).toBe('swap-in-place')
+
+    // Conversation already has messages: start a brand new conversation,
+    // never migrate history onto the new profile.
+    expect(
+      resolveHermesProfileSwitchAction({
+        activeRuntimeId: 'hermes',
+        requestedProfileId: 'work',
+        currentProfileId: undefined,
+        hasMessages: true,
+      }),
+    ).toBe('new-conversation')
+    expect(
+      resolveHermesProfileSwitchAction({
+        activeRuntimeId: 'hermes',
+        requestedProfileId: undefined,
+        currentProfileId: 'work',
+        hasMessages: true,
+      }),
+    ).toBe('new-conversation')
+  })
+
+  describe('resolveHermesSessionFallbackUpdate', () => {
+    // These take the shape `CliConversationController.getSnapshot()` settles
+    // into after both `hydrateSession()` and `ensureReady()` have run (see
+    // `conversation-controller.test.ts`'s "session recovery fallback" suite
+    // for how the controller itself derives `sessionFallbackBoundaries`) —
+    // not the one-shot `CliSessionHydration` `openSession()` alone returns.
+    const fallbackBoundary = (requestedRef: CliSessionRef) => ({
+      id: 'fallback-boundary',
+      afterMessageId: null,
+      requestedRef,
+    })
+
+    it('returns null for a non-Hermes runtime, even with a fallback-shaped snapshot', () => {
+      const snapshot: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        sessionRef: { runtimeId: 'codex', nativeSessionId: 'fresh-sess' },
+        sessionFallbackBoundaries: [
+          fallbackBoundary({
+            runtimeId: 'codex',
+            nativeSessionId: 'gone-sess',
+          }),
+        ],
+      }
+      expect(resolveHermesSessionFallbackUpdate('codex', snapshot)).toBeNull()
+    })
+
+    it('returns null when no session is bound yet', () => {
+      const snapshot: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        sessionRef: null,
+        sessionFallbackBoundaries: [],
+      }
+      expect(resolveHermesSessionFallbackUpdate('hermes', snapshot)).toBeNull()
+    })
+
+    it('returns null when the bound session carries no fallback boundary', () => {
+      const snapshot: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        sessionRef: {
+          runtimeId: 'hermes',
+          nativeSessionId: 'sess-1',
+          profileId: 'work',
+        },
+        sessionFallbackBoundaries: [],
+      }
+      expect(resolveHermesSessionFallbackUpdate('hermes', snapshot)).toBeNull()
+    })
+
+    it('resets hermesProfileId to the default (undefined) and builds a default-profile cliSession when a fallback occurred', () => {
+      const snapshot: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        sessionRef: { runtimeId: 'hermes', nativeSessionId: 'fallback-sess' },
+        sessionFallbackBoundaries: [
+          fallbackBoundary({
+            runtimeId: 'hermes',
+            nativeSessionId: 'gone-sess',
+            profileId: 'deleted-profile',
+          }),
+        ],
+      }
+      expect(resolveHermesSessionFallbackUpdate('hermes', snapshot)).toEqual({
+        hermesProfileId: undefined,
+        cliSession: {
+          runtimeId: 'hermes',
+          nativeSessionId: 'fallback-sess',
+        },
+      })
+    })
+
+    it('carries sessionPathHint through, but never a stale profileId, when the bound ref has one', () => {
+      const snapshot: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        sessionRef: {
+          runtimeId: 'hermes',
+          nativeSessionId: 'fallback-sess',
+          sessionPathHint: '/vault/.yolo/hermes/fallback-sess',
+        },
+        sessionFallbackBoundaries: [
+          fallbackBoundary({
+            runtimeId: 'hermes',
+            nativeSessionId: 'gone-sess',
+            profileId: 'deleted-profile',
+          }),
+        ],
+      }
+      const update = resolveHermesSessionFallbackUpdate('hermes', snapshot)
+      expect(update?.cliSession).toEqual({
+        runtimeId: 'hermes',
+        nativeSessionId: 'fallback-sess',
+        sessionPathHint: '/vault/.yolo/hermes/fallback-sess',
+      })
+      expect(update?.cliSession).not.toHaveProperty('profileId')
+    })
+
+    // Regression for the bug where only the *first* load's hydration was
+    // consulted: the requested profile's session resumed cleanly at
+    // `openSession()` time (no fallback there), and only the *second*,
+    // separate load inside `prepareCliConversation()`'s `ensureReady()`
+    // discovered the profile was gone in the meantime (deleted between the
+    // two loads, or the host process crashed and respawned). The controller
+    // still records that as a fallback boundary against the *current*
+    // sessionRef, so reading its settled snapshot — not the stale
+    // first-load hydration — must still catch it.
+    it('catches a fallback recorded only by the second (ensureReady) load, not the first (openSession) one', () => {
+      const requestedRef: CliSessionRef = {
+        runtimeId: 'hermes',
+        nativeSessionId: 'original-sess',
+        profileId: 'work',
+      }
+      const snapshotAfterFirstLoadAlone: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        // openSession() bound the exact session that was requested — no
+        // fallback yet.
+        sessionRef: requestedRef,
+        sessionFallbackBoundaries: [],
+      }
+      expect(
+        resolveHermesSessionFallbackUpdate(
+          'hermes',
+          snapshotAfterFirstLoadAlone,
+        ),
+      ).toBeNull()
+
+      const snapshotAfterEnsureReady: Pick<
+        CliConversationSnapshot,
+        'sessionRef' | 'sessionFallbackBoundaries'
+      > = {
+        // ensureReady()'s own load then failed on the same requested ref and
+        // fell back live to a fresh default-profile session.
+        sessionRef: { runtimeId: 'hermes', nativeSessionId: 'second-fallback' },
+        sessionFallbackBoundaries: [fallbackBoundary(requestedRef)],
+      }
+      expect(
+        resolveHermesSessionFallbackUpdate('hermes', snapshotAfterEnsureReady),
+      ).toEqual({
+        hermesProfileId: undefined,
+        cliSession: {
+          runtimeId: 'hermes',
+          nativeSessionId: 'second-fallback',
+        },
+      })
+    })
   })
 
   it('opens an external native session and records its overlay', async () => {

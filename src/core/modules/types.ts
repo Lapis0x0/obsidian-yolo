@@ -89,6 +89,30 @@ export type YoloModuleAgentActivityV1 = Readonly<{
   detail?: string
 }>
 
+export type YoloModuleAgentToolResultV1 = Readonly<{
+  /** Text returned to the model. */
+  content: string
+  /** True when the call failed (e.g. validation) — the model should self-correct. */
+  isError?: boolean
+}>
+
+export type YoloModuleAgentToolV1 = Readonly<{
+  /** Must match `^[a-z][a-z0-9_]*$` and be unique within the request's `tools`. */
+  name: string
+  description: string
+  /** JSON Schema object describing the tool's input. */
+  inputSchema: Record<string, unknown>
+  /**
+   * Invoked serially per run in arrival order: a handler starts only after
+   * the previous handler (across all of the run's tools) has settled, even
+   * when the model issues multiple tool calls in one turn. Handlers may
+   * therefore safely read-modify-write run-scoped state.
+   */
+  handler: (
+    input: Record<string, unknown>,
+  ) => Promise<YoloModuleAgentToolResultV1> | YoloModuleAgentToolResultV1
+}>
+
 export type YoloModuleAgentRequestV1 = Readonly<{
   prompt?: string
   messages?: readonly YoloModuleAgentMessageV1[]
@@ -101,6 +125,11 @@ export type YoloModuleAgentRequestV1 = Readonly<{
     exclude: readonly string[]
   }>
   activity?: YoloModuleAgentActivityV1
+  /**
+   * Custom tools scoped to this run only. Registered as an in-process MCP
+   * server for the run's lifetime and torn down when it settles. Up to 16.
+   */
+  tools?: readonly YoloModuleAgentToolV1[]
   signal?: AbortSignal
 }>
 
@@ -126,6 +155,57 @@ export type YoloModuleAgentV1 = {
     request: YoloModuleAgentRequestV1,
   ): AsyncIterable<YoloModuleAgentEventV1>
 }
+
+export type YoloModuleChatModeToolV1 = YoloModuleAgentToolV1 &
+  Readonly<{
+    /**
+     * true = every call requires user approval (allow/deny), fixed at tool
+     * call creation time as part of the call's persisted metadata — YOLO,
+     * "always allow for this conversation", and session-resume replay can
+     * never bypass it. Used for hard-confirmation tools (e.g. an outline
+     * confirmation gate). Default false (auto-approved, subject to the
+     * mode's ordinary approval policy).
+     */
+    requiresApproval?: boolean
+  }>
+
+export type YoloModuleChatModeV1 = Readonly<{
+  /** Mode-local id, `^[a-z][a-z0-9-]*$`; the host assembles the full runtime
+   * id as `module:<moduleId>:<id>`. */
+  id: string
+  label: LocalizedTextV1
+  description?: LocalizedTextV1
+  /** lucide icon name (Obsidian `setIcon` vocabulary); falls back to a
+   * generic icon when absent or unrecognized. */
+  icon?: string
+  /** Mode persona, injected into the system prompt in place of assistant
+   * instructions. */
+  personaPrompt: string
+  /** Built-in host tool tier, shared with the module agent capability;
+   * `vault-read` carries a structural read-only constraint. */
+  capability: YoloModuleAgentCapabilityV1
+  /** Mode-specific tools, registered as a persistent in-process tool server
+   * for the lifetime of the mode's contribution. */
+  tools?: readonly YoloModuleChatModeToolV1[]
+  /**
+   * Skill packages that apply within this mode. Each entry is the
+   * artifact-relative path of a package's `SKILL.md` (e.g.
+   * `skills/coach/SKILL.md`); every `role: 'data'` file the verified manifest
+   * declares inside that directory is part of the package. On activation the
+   * host copies the package out of the (unindexed) plugin directory into
+   * `<yolo base>/modules/<moduleId>/skills/<package>/`, so the skill and all
+   * its resources behave exactly like an imported or hand-written Vault skill
+   * package and are reachable by ordinary agent read tools. Effective only
+   * while this mode is active: skills declared here are not visible in
+   * ordinary (non-module) chat modes, and a same-named user/vault skill
+   * always wins.
+   */
+  skills?: readonly string[]
+}>
+
+export type YoloModuleChatV1 = Readonly<{
+  registerMode(mode: YoloModuleChatModeV1): void
+}>
 
 export type YoloModulePathsSnapshotV1 = Readonly<{
   contentRoot: string
@@ -303,6 +383,7 @@ export type YoloModuleCapabilitiesV1 = Readonly<{
   agent: YoloModuleAgentV1
   assets: YoloModuleAssetsV1
   background: YoloModuleBackgroundV1
+  chat: YoloModuleChatV1
   config: ModuleConfigV1
   i18n: YoloModuleI18nV1
   paths: YoloModulePathsV1

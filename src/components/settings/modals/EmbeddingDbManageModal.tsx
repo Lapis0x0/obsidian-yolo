@@ -5,29 +5,47 @@ import {
 } from '@tanstack/react-query'
 import cx from 'clsx'
 import dayjs from 'dayjs'
-import { Loader2, PickaxeIcon, RefreshCw, Trash2 } from 'lucide-react'
+import { RefreshCw, Trash2 } from 'lucide-react'
 import { App, Notice } from 'obsidian'
-import { useState } from 'react'
 
 import { AppProvider } from '../../../contexts/app-context'
 import {
   DatabaseProvider,
   useDatabase,
 } from '../../../contexts/database-context'
+import { useLanguage } from '../../../contexts/language-context'
 import {
   SettingsProvider,
   useSettings,
 } from '../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
-import { describeRagIndexError } from '../../../core/rag/ragIndexErrors'
-import YoloPlugin from '../../../main'
-import { EmbeddingDbStats } from '../../../types/embedding'
-import { IndexProgress } from '../../chat-view/QueryProgress'
+import type YoloPlugin from '../../../main'
+import { KnowledgeBase } from '../../../settings/schema/setting.types'
+import {
+  EmbeddingDbStats,
+  EmbeddingModelClient,
+} from '../../../types/embedding'
 import { ReactModal } from '../../common/ReactModal'
 
 type EmbeddingDbManagerModalComponentWrapperProps = {
   app: App
   plugin: YoloPlugin
+}
+
+// The in-memory VectorIndex always stores int8 rows (1 byte/dimension) plus
+// a 4-byte float32 scale per row (see `src/database/vector-store/vectorIndex.ts`);
+// this estimates that footprint from the model's configured dimension. Not
+// derived from `getEmbeddingStats` (which reports on-disk float32 bytes), so
+// there's no reason to touch that contract for this purely-local estimate.
+// Exported so `RAGSection.tsx`'s knowledge base cards use the exact same
+// formula for their "index size" estimate rather than a second one derived
+// from on-disk `vectorBytes`.
+export const inMemoryIndexMb = (
+  rowCount: number,
+  dimension: number | undefined,
+): number | null => {
+  if (dimension === undefined) return null
+  return (rowCount * (dimension + 4)) / 1000 / 1000
 }
 
 export class EmbeddingDbManageModal extends ReactModal<EmbeddingDbManagerModalComponentWrapperProps> {
@@ -37,8 +55,12 @@ export class EmbeddingDbManageModal extends ReactModal<EmbeddingDbManagerModalCo
       Component: EmbeddingDbManagerModalComponentWrapper,
       props: { app, plugin },
       options: {
-        title: 'Manage embedding database',
+        title: plugin.t(
+          'settings.knowledgeBases.manageDataTitle',
+          '管理索引数据',
+        ),
       },
+      plugin,
     })
     this.modalEl.classList.add('yolo-modal--wide')
   }
@@ -79,16 +101,10 @@ function EmbeddingDbManagerModalComponentWrapper({
   )
 }
 
-function EmbeddingDbManageModalComponent({
-  onClose: _onClose,
-}: {
-  onClose: () => void
-}) {
+function KnowledgeBaseStatsTable({ kb }: { kb: KnowledgeBase }) {
   const { getVectorManager } = useDatabase()
   const { settings } = useSettings()
-  const [indexProgressMap, setIndexProgressMap] = useState<
-    Map<string, IndexProgress>
-  >(new Map())
+  const { t } = useLanguage()
 
   const {
     data: stats = [],
@@ -97,90 +113,44 @@ function EmbeddingDbManageModalComponent({
     refetch,
     dataUpdatedAt,
   } = useQuery<EmbeddingDbStats[]>({
-    queryKey: ['embedding-db-stats'],
+    queryKey: ['embedding-db-stats', kb.id],
     queryFn: async () => {
-      const dbStats = await (await getVectorManager()).getEmbeddingStats()
-
+      const dbStats = await (await getVectorManager(kb.id)).getEmbeddingStats()
       const statsMap = new Map(dbStats.map((stat) => [stat.model, stat]))
-
-      return settings.embeddingModels.map((embeddingModel) => ({
-        model: embeddingModel.id,
-        rowCount: statsMap.get(embeddingModel.id)?.rowCount ?? 0,
-        totalDataBytes: statsMap.get(embeddingModel.id)?.totalDataBytes ?? 0,
-      }))
+      return settings.embeddingModels
+        .map((embeddingModel) => ({
+          model: embeddingModel.id,
+          rowCount: statsMap.get(embeddingModel.id)?.rowCount ?? 0,
+          vectorBytes: statsMap.get(embeddingModel.id)?.vectorBytes ?? 0,
+        }))
+        .filter((stat) => stat.rowCount > 0)
     },
   })
 
-  const handleRebuildIndex = (modelId: string) => {
-    void (async () => {
-      try {
-        const embeddingModel = getEmbeddingModelClient({
-          settings,
-          embeddingModelId: modelId,
-        })
-
-        await (
-          await getVectorManager()
-        ).reconcile(
-          embeddingModel,
-          {
-            chunkSize: settings.ragOptions.chunkSize,
-            excludePatterns: settings.ragOptions.excludePatterns,
-            includePatterns: settings.ragOptions.includePatterns,
-            indexPdf: settings.ragOptions.indexPdf ?? true,
-            settings,
-          },
-          {
-            scope: { kind: 'all' },
-            truncate: true,
-            onProgress: (progress) => {
-              setIndexProgressMap((prev) => {
-                const newMap = new Map(prev)
-                newMap.set(modelId, progress)
-                return newMap
-              })
-            },
-          },
-        )
-      } catch (error) {
-        console.error(error)
-        const failure = describeRagIndexError(error)
-        const detail =
-          failure.message &&
-          failure.message !== 'null' &&
-          failure.message !== 'undefined'
-            ? `${failure.httpStatus ? `HTTP ${failure.httpStatus} · ` : ''}${failure.message}`
-            : ''
-        new Notice(
-          detail
-            ? `Failed to rebuild index: ${detail}`
-            : 'Failed to rebuild index',
-        )
-      } finally {
-        setIndexProgressMap((prev) => {
-          const newMap = new Map(prev)
-          newMap.delete(modelId)
-          return newMap
-        })
-        await refetch().catch((error) => {
-          console.error('Failed to refresh embedding DB stats:', error)
-        })
-      }
-    })()
-  }
-
   const handleRemoveIndex = (modelId: string) => {
     void (async () => {
+      // Created inside the `try` (nullable outside it) — `getEmbeddingModelClient`
+      // throws synchronously for a stale/removed model (e.g. a `yolo-local`
+      // catalog entry that's been deleted), and that must still land on the
+      // same `catch`/`finally` as every other failure here instead of
+      // skipping the user-facing Notice and the stats refetch.
+      let embeddingModel: EmbeddingModelClient | null = null
       try {
-        const embeddingModel = getEmbeddingModelClient({
+        embeddingModel = getEmbeddingModelClient({
           settings,
           embeddingModelId: modelId,
         })
-        await (await getVectorManager()).clearAllVectors(embeddingModel)
+        await (await getVectorManager(kb.id)).clearAllVectors(embeddingModel)
       } catch (error) {
         console.error(error)
-        new Notice('Failed to remove index')
+        new Notice(
+          t('settings.knowledgeBases.removeIndexFailed', '移除索引失败'),
+        )
       } finally {
+        // Scoped to this one call — for `yolo-local` it holds a
+        // runtime-component lease that must be released here rather than
+        // left to the 10-minute idle timeout.
+        await embeddingModel?.dispose?.()
         await refetch().catch((error) => {
           console.error('Failed to refresh embedding DB stats:', error)
         })
@@ -189,79 +159,115 @@ function EmbeddingDbManageModalComponent({
   }
 
   if (isLoading) {
-    return <div>Loading...</div>
+    return <div>{t('common.loading', 'Loading...')}</div>
+  }
+
+  return (
+    <div className="yolo-settings-embedding-db-manage-kb">
+      <div className="yolo-settings-embedding-db-manage-kb-head">
+        <span className="yolo-settings-embedding-db-manage-kb-name">
+          {kb.name}
+        </span>
+        <div className="yolo-settings-embedding-db-manage-header">
+          <button
+            className="clickable-icon"
+            aria-label={t('settings.knowledgeBases.manageRefresh', '刷新')}
+            onClick={() => {
+              void refetch().catch((error) => {
+                console.error('Failed to refresh embedding DB stats:', error)
+              })
+            }}
+            disabled={isFetching}
+          >
+            <RefreshCw size={14} className={cx(isFetching && 'yolo-spinner')} />
+          </button>
+          <span className="yolo-settings-embedding-db-manage-last-updated">
+            {dayjs(dataUpdatedAt).format('YYYY-MM-DD HH:mm:ss')}
+          </span>
+        </div>
+      </div>
+      {stats.length === 0 ? (
+        <div className="yolo-settings-embedding-db-manage-empty">
+          {t('settings.knowledgeBases.noIndexedData', '尚未建立索引')}
+        </div>
+      ) : (
+        <table className="yolo-settings-embedding-db-manage-table">
+          <thead>
+            <tr>
+              <th>{t('settings.knowledgeBases.manageModelColumn', '模型')}</th>
+              <th>
+                {t(
+                  'settings.knowledgeBases.manageEmbeddingsColumn',
+                  '嵌入总数',
+                )}
+              </th>
+              <th>{t('settings.rag.vectorDataSize', 'Vector data (MB)')}</th>
+              <th>
+                {t(
+                  'settings.rag.inMemoryIndexEstimate',
+                  'In-memory index (MB)',
+                )}
+              </th>
+              <th>
+                {t('settings.knowledgeBases.manageActionsColumn', '操作')}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {stats.map((stat) => {
+              const dimension = settings.embeddingModels.find(
+                (embeddingModel) => embeddingModel.id === stat.model,
+              )?.dimension
+              const estimateMb = inMemoryIndexMb(stat.rowCount, dimension)
+              return (
+                <tr key={stat.model}>
+                  <td>{stat.model}</td>
+                  <td>{stat.rowCount}</td>
+                  <td>{(stat.vectorBytes / 1e6).toFixed(2)}</td>
+                  <td>{estimateMb === null ? '-' : estimateMb.toFixed(2)}</td>
+                  <td className="yolo-settings-embedding-db-manage-actions">
+                    <button
+                      className="clickable-icon"
+                      aria-label={t(
+                        'settings.knowledgeBases.manageRemoveIndex',
+                        '移除索引',
+                      )}
+                      onClick={() => handleRemoveIndex(stat.model)}
+                    >
+                      <Trash2 size={16} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      )}
+    </div>
+  )
+}
+
+function EmbeddingDbManageModalComponent({
+  onClose: _onClose,
+}: {
+  onClose: () => void
+}) {
+  const { settings } = useSettings()
+  const { t } = useLanguage()
+
+  if (settings.knowledgeBases.length === 0) {
+    return (
+      <div className="yolo-settings-embedding-db-manage-empty">
+        {t('settings.knowledgeBases.emptyState', '还没有知识库')}
+      </div>
+    )
   }
 
   return (
     <div className="yolo-settings-embedding-db-manage-root">
-      <div className="yolo-settings-embedding-db-manage-header">
-        <button
-          className="clickable-icon"
-          aria-label="Refresh"
-          onClick={() => {
-            void refetch().catch((error) => {
-              console.error('Failed to refresh embedding DB stats:', error)
-            })
-          }}
-          disabled={isFetching}
-        >
-          <RefreshCw size={16} className={cx(isFetching && 'yolo-spinner')} />
-        </button>
-
-        <span className="yolo-settings-embedding-db-manage-last-updated">
-          Last updated: {dayjs(dataUpdatedAt).format('YYYY-MM-DD HH:mm:ss')}
-        </span>
-      </div>
-      <table className="yolo-settings-embedding-db-manage-table">
-        <thead>
-          <tr>
-            <th>Model</th>
-            <th>Total embeddings</th>
-            <th>Size (MB)</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {stats.map((stat) => (
-            <tr key={stat.model}>
-              <td>{stat.model}</td>
-              <td>{stat.rowCount}</td>
-              <td>{(stat.totalDataBytes / 1000 / 1000).toFixed(2)}</td>
-              {indexProgressMap.get(stat.model) ? (
-                <td className="yolo-settings-embedding-db-manage-actions-loading">
-                  <Loader2 className="yolo-spinner" size={14} />
-                  <div>
-                    {Math.round(
-                      ((indexProgressMap.get(stat.model)?.completedChunks ??
-                        0) /
-                        (indexProgressMap.get(stat.model)?.totalChunks ?? 1)) *
-                        100,
-                    )}
-                    %
-                  </div>
-                </td>
-              ) : (
-                <td className="yolo-settings-embedding-db-manage-actions">
-                  <button
-                    className="clickable-icon"
-                    aria-label="Rebuild index"
-                    onClick={() => handleRebuildIndex(stat.model)}
-                  >
-                    <PickaxeIcon size={16} />
-                  </button>
-                  <button
-                    className="clickable-icon"
-                    aria-label="Remove index"
-                    onClick={() => handleRemoveIndex(stat.model)}
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                </td>
-              )}
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      {settings.knowledgeBases.map((kb) => (
+        <KnowledgeBaseStatsTable key={kb.id} kb={kb} />
+      ))}
     </div>
   )
 }

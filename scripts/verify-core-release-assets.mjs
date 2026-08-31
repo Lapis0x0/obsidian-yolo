@@ -15,6 +15,9 @@ assertEqual(release.tag_name, args.tag, 'Release tag')
 assertEqual(release.target_commitish, args['target-commit'], 'target commit')
 assertEqual(release.draft, expectedDraft, 'draft state')
 assertEqual(release.prerelease, false, 'prerelease state')
+// Runtime component artifacts are deliberately absent: they live on the
+// permanent `runtime-assets` Release instead of being copied into every Core
+// release. See scripts/runtimeComponentReleaseAssets.mjs.
 const expectedNames = new Set([
   'main.js',
   'manifest.json',

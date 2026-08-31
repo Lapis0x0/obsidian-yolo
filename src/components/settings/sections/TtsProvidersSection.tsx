@@ -20,7 +20,6 @@ import { useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
 import type {
   TtsApiFormat,
   TtsConfig,
@@ -31,10 +30,11 @@ import {
   AddTtsConfigModal,
   EditTtsConfigModal,
 } from '../modals/TtsConfigFormModal'
+import type { VoiceSettingsPlugin } from '../voiceSettingsPlugin'
 
 type TtsProvidersSectionProps = {
   app: App
-  plugin: YoloPlugin
+  plugin: VoiceSettingsPlugin
 }
 
 type Translator = ReturnType<typeof useLanguage>['t']

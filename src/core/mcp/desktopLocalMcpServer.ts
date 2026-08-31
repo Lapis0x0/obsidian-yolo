@@ -6,7 +6,8 @@ import { BAKED_PLUGIN_VERSION } from '../../constants/bakedVersion'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 import type { AgentService } from '../agent/service'
-import type { RAGEngine } from '../rag/ragEngine'
+import { describeKnowledgeBaseCatalog } from '../rag/knowledgeBaseCatalog'
+import type { RagKnowledgeAccess } from '../rag/ragAccess'
 
 import {
   type ExternalAgentTask,
@@ -35,6 +36,7 @@ type LocalMcpSession = {
   server: McpServer
   transport: StreamableHTTPServerTransport
   agentStartTool: RegisteredTool
+  searchTool: RegisteredTool
   lastAccessedAt: number
 }
 
@@ -43,7 +45,7 @@ type DesktopLocalMcpServerOptions = {
   getSettings: () => YoloSettings
   getAgentService: () => Promise<AgentService>
   getMcpManager: () => Promise<McpManager>
-  getRagEngine: () => Promise<RAGEngine>
+  ragAccess: RagKnowledgeAccess
   openConversation: (conversationId: string) => Promise<void>
 }
 
@@ -51,7 +53,7 @@ const MAX_REQUEST_BODY_BYTES = 1024 * 1024
 const MAX_SESSIONS = 16
 const SESSION_IDLE_TTL_MS = 30 * 60 * 1000
 
-const searchInputSchema = {
+const buildSearchInputSchema = (settings: YoloSettings) => ({
   mode: z
     .enum(['keyword', 'rag', 'hybrid'])
     .optional()
@@ -69,7 +71,13 @@ const searchInputSchema = {
   caseSensitive: z.boolean().optional(),
   ragMinSimilarity: z.number().min(0).max(1).optional(),
   ragLimit: z.number().int().min(1).max(300).optional(),
-}
+  knowledgeBase: z
+    .string()
+    .optional()
+    .describe(
+      `Restrict semantic (rag/hybrid) search to one knowledge base by name (case-insensitive). ${describeKnowledgeBaseCatalog(settings.knowledgeBases)}`,
+    ),
+})
 
 const taskIdInputSchema = {
   taskId: z.uuid().describe('Task ID returned by agent_task_start.'),
@@ -230,6 +238,9 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
     return this.enqueueLifecycle(async () => {
       const previous = this.currentSettings.mcp.localServer
       const previousAgentCatalog = buildAgentCatalog(this.currentSettings)
+      const previousKnowledgeBaseCatalog = describeKnowledgeBaseCatalog(
+        this.currentSettings.knowledgeBases,
+      )
       this.currentSettings = settings
       const next = settings.mcp.localServer
       if (!this.initialized) {
@@ -268,6 +279,12 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
       }
       if (previousAgentCatalog !== buildAgentCatalog(settings)) {
         this.refreshAgentTools()
+      }
+      if (
+        previousKnowledgeBaseCatalog !==
+        describeKnowledgeBaseCatalog(settings.knowledgeBases)
+      ) {
+        this.refreshSearchTools()
       }
     })
   }
@@ -487,31 +504,35 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
         }
       },
     })
-    const agentStartTool = this.registerTools(server)
+    const { agentStartTool, searchTool } = this.registerTools(server)
     const session = {
       server,
       transport,
       agentStartTool,
+      searchTool,
       lastAccessedAt: Date.now(),
     }
     await server.connect(transport)
     return session
   }
 
-  private registerTools(server: McpServer): RegisteredTool {
-    server.registerTool(
+  private registerTools(server: McpServer): {
+    agentStartTool: RegisteredTool
+    searchTool: RegisteredTool
+  } {
+    const searchTool = server.registerTool(
       'vault_search',
       {
         description:
           'Search the Obsidian vault using YOLO keyword, semantic RAG, or hybrid retrieval. Results are grouped by file with relevant snippets.',
-        inputSchema: searchInputSchema,
+        inputSchema: buildSearchInputSchema(this.currentSettings),
         annotations: { readOnlyHint: true },
       },
       async (args, extra) => {
         const result = await runVaultSearch({
           app: this.options.app,
           settings: this.options.getSettings(),
-          getRagEngine: this.options.getRagEngine,
+          ragAccess: this.options.ragAccess,
           args,
           signal: extra.signal,
         })
@@ -521,7 +542,7 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
         if (result.status === 'aborted') {
           return textResult('Search was cancelled.', true)
         }
-        return textResult('Search failed.', true)
+        return textResult(result.error, true)
       },
     )
 
@@ -580,7 +601,7 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
         }
       },
     )
-    return agentStartTool
+    return { agentStartTool, searchTool }
   }
 
   private refreshAgentTools(): void {
@@ -588,6 +609,13 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
     const paramsSchema = buildAgentStartInputSchema(this.currentSettings)
     for (const session of this.sessions.values()) {
       session.agentStartTool.update({ description, paramsSchema })
+    }
+  }
+
+  private refreshSearchTools(): void {
+    const paramsSchema = buildSearchInputSchema(this.currentSettings)
+    for (const session of this.sessions.values()) {
+      session.searchTool.update({ paramsSchema })
     }
   }
 

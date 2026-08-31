@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "id": "tokenizer",
   "platforms": ["desktop", "mobile"],
   "nameKey": "settings.modules.runtimeComponents.tokenizer.name",

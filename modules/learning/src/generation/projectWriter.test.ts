@@ -3,7 +3,9 @@ import type { LearningVaultWriteApi } from '../domain/learningVaultWriteApi'
 
 import {
   appendKnowledgePointDraft,
+  buildChapterKnowledgeBaseline,
   createProjectScaffold,
+  markChapterKnowledgeComplete,
   markProjectStudying,
 } from './projectWriter'
 
@@ -53,6 +55,8 @@ describe('Learning project writer boundary', () => {
       baseDir: '/Learning//',
       topic: 'React',
       goal: 'Build an app',
+      level: 'beginner',
+      outputLanguage: 'English',
       chapters: [{ title: 'Basics', contract: 'Core concepts' }],
     })
 
@@ -77,10 +81,10 @@ describe('Learning project writer boundary', () => {
       ['Learning/React-3/01-Basics'],
     ])
     expect(boundary.contents.get(scaffold.chapters[0].knowledgePath)).toBe(
-      '---\ntitle: Basics\n---\n\n\n',
+      '---\ntitle: Basics\ncontract: Core concepts\ncomplete: false\n---\n\n\n',
     )
     expect(boundary.contents.get(scaffold.indexPath)).toBe(
-      '---\ntopic: React\ngoal: Build an app\nstatus: building\nchapters:\n  - 01-Basics\n---\n\n1. [[01-Basics/knowledge|Basics]]\n',
+      '---\ntopic: React\ngoal: Build an app\nstatus: building\nchapters:\n  - 01-Basics\nlevel: beginner\noutputLanguage: English\n---\n\n1. [[01-Basics/knowledge|Basics]]\n',
     )
   })
 
@@ -129,5 +133,54 @@ describe('Learning project writer boundary', () => {
     expect(boundary.contents.get(indexPath)).toBe(
       '---\nstatus: studying\n---\n\nThe word building stays.\n',
     )
+  })
+
+  it('marks only the frontmatter flag complete, leaving a same-looking body line alone', async () => {
+    const boundary = createVaultBoundary()
+    const knowledgePath = 'Learning/React/01-Basics/knowledge.md'
+    const baseline = buildChapterKnowledgeBaseline({
+      title: 'Basics',
+      contract: 'Core concepts',
+    })
+    // A knowledge point body that happens to contain the exact same line as
+    // the frontmatter flag. Since `.replace` without the `g` flag only
+    // touches the first match, and the frontmatter always comes first, this
+    // decoy line must survive untouched.
+    boundary.contents.set(
+      knowledgePath,
+      `${baseline.trimEnd()}\n\n## Odd example <!--kp:1234abcd-->\n\ncomplete: false\n`,
+    )
+
+    await markChapterKnowledgeComplete({
+      vault: boundary.vault,
+      writer: boundary.writer,
+      knowledgePath,
+    })
+
+    const updated = boundary.contents.get(knowledgePath) ?? ''
+    expect(updated).toContain(
+      'title: Basics\ncontract: Core concepts\ncomplete: true\n---',
+    )
+    expect(updated).toContain(
+      '## Odd example <!--kp:1234abcd-->\n\ncomplete: false\n',
+    )
+  })
+
+  it('is a no-op when a chapter is already marked complete', async () => {
+    const boundary = createVaultBoundary()
+    const knowledgePath = 'Learning/React/01-Basics/knowledge.md'
+    const alreadyComplete = buildChapterKnowledgeBaseline({
+      title: 'Basics',
+      contract: 'Core concepts',
+    }).replace('complete: false', 'complete: true')
+    boundary.contents.set(knowledgePath, alreadyComplete)
+
+    await markChapterKnowledgeComplete({
+      vault: boundary.vault,
+      writer: boundary.writer,
+      knowledgePath,
+    })
+
+    expect(boundary.writeText).not.toHaveBeenCalled()
   })
 })

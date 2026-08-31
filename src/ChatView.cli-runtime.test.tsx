@@ -29,8 +29,27 @@ jest.mock('obsidian', () => {
       this.containerEl = {}
     }
   }
+  class Modal {
+    app: unknown
+    contentEl: { empty: () => void }
+    titleEl: { setText: () => void }
+    modalEl: { classList: { add: () => void; remove: () => void } }
+
+    constructor(app: unknown) {
+      this.app = app
+      this.contentEl = { empty: () => {} }
+      this.titleEl = { setText: () => {} }
+      this.modalEl = { classList: { add: () => {}, remove: () => {} } }
+    }
+
+    open(): void {}
+    close(): void {}
+    onOpen(): void {}
+    onClose(): void {}
+  }
   return {
     ItemView,
+    Modal,
     TFile: class {},
     TFolder: class {},
     WorkspaceLeaf: class {},
@@ -61,9 +80,6 @@ jest.mock('./contexts/mcp-context', () => ({
 }))
 jest.mock('./contexts/plugin-context', () => ({
   PluginProvider: passthroughProvider,
-}))
-jest.mock('./contexts/rag-context', () => ({
-  RAGProvider: passthroughProvider,
 }))
 jest.mock('./contexts/settings-context', () => ({
   SettingsProvider: passthroughProvider,

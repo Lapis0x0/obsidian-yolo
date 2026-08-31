@@ -41,6 +41,7 @@ export function Workspace({
   projectPaused,
   services,
   ownerDocument,
+  resumeBanner,
   t,
 }: {
   project: Project | null
@@ -56,6 +57,8 @@ export function Workspace({
   projectPaused: boolean
   services: LearningWorkspaceTabServices
   ownerDocument: Document
+  /** Shown under the header when the project has an unfinished generation task. */
+  resumeBanner?: ReactNode
   t: WorkspaceText
 }) {
   const [studyCardCount, setStudyCardCount] = useState(0)
@@ -144,6 +147,7 @@ export function Workspace({
           visibleTabs={visibleTabs}
         />
       </header>
+      {resumeBanner}
       <main
         className={`yolo-learning-workspace-main ${activeTab === '大纲' ? 'is-outline yolo-learning-scrollbar-thin' : ''}`}
       >

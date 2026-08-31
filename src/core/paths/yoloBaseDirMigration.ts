@@ -1,5 +1,6 @@
 import { App } from 'obsidian'
 
+import { removeDirIfEmpty } from './vaultFs'
 import {
   getVisibleYoloBaseDir,
   getYoloBaseDir,
@@ -175,9 +176,10 @@ const cleanupCreatedParents = async (
 ): Promise<void> => {
   for (const parent of [...parents].reverse()) {
     try {
-      await adapter.rmdir(parent, false)
+      // Skips parents that were populated concurrently or already removed.
+      await removeDirIfEmpty(adapter, parent)
     } catch {
-      // It either was populated concurrently or was never created by us.
+      // Keep parents whose state cannot be inspected or deleted.
     }
   }
 }

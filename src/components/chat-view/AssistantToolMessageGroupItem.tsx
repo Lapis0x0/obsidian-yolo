@@ -17,7 +17,7 @@ import type { AgentConversationRunSummary } from '../../core/agent/service'
 import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
-import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import { readEditReviewSnapshots } from '../../database/json/chat/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
@@ -27,15 +27,22 @@ import {
   ChatToolMessage,
 } from '../../types/chat'
 import type { MentionableAssistantQuote } from '../../types/mentionable'
+import type { ToolEditOperation } from '../../types/tool-call.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
-import { shouldRenderAssistantToolPreview } from '../../utils/chat/assistantToolPreview'
-import type { GroupEditSummary } from '../../utils/chat/editSummary'
+import {
+  hasMatchingToolMessageForRequests,
+  shouldRenderAssistantToolPreview,
+} from '../../utils/chat/assistantToolPreview'
+import type {
+  FileChangeStats,
+  GroupEditSummary,
+} from '../../utils/chat/editSummary'
 import {
   collectGroupEditSummary,
   countFileChangeStats,
 } from '../../utils/chat/editSummary'
 
-import AssistantEditSummary from './AssistantEditSummary'
+import AssistantEditSummary, { renderDeltaPair } from './AssistantEditSummary'
 import AssistantErrorCard from './AssistantErrorCard'
 import AssistantGroupEditor from './AssistantGroupEditor'
 import AssistantMessageAnnotations from './AssistantMessageAnnotations'
@@ -48,6 +55,9 @@ import { isReasoningActivityActive } from './reasoningActivity'
 import { buildSynthToolMessageFromResult } from './tool-cards/externalAgentResultAdapter'
 import { buildHostedWebSearchToolMessage } from './tool-cards/hostedWebSearchAdapter'
 import ToolMessage from './ToolMessage'
+
+// user message 之后的首条 thinking 用多行预览面板；工具轮之间的保持单行。
+const LEAD_REASONING_PREVIEW_LINES = 5
 
 const getBranchStateLabel = (
   state: 'streaming' | 'waiting-approval' | 'completed' | 'aborted' | 'error',
@@ -203,16 +213,23 @@ type AssistantMessageRenderPlan = {
 const getAssistantMessageRenderPlan = ({
   message,
   nextMessage,
+  groupMessages,
   hidePendingAssistantPlaceholders,
 }: {
   message: ChatAssistantMessage
   nextMessage: AssistantToolMessageGroup[number] | undefined
+  groupMessages: AssistantToolMessageGroup
   hidePendingAssistantPlaceholders: boolean
 }): AssistantMessageRenderPlan => {
   const hasVisibleContent = message.content.trim().length > 0
   const hasVisibleReasoning = (message.reasoning ?? '').trim().length > 0
   const hasVisibleAnnotations = Boolean(message.annotations)
-  const hasToolResponseForThis = nextMessage?.role === 'tool'
+  const hasToolResponseForThis =
+    nextMessage?.role === 'tool' ||
+    hasMatchingToolMessageForRequests(
+      message.toolCallRequests?.map((request) => request.id) ?? [],
+      groupMessages,
+    )
   const shouldShowAssistantToolPreview = shouldRenderAssistantToolPreview({
     generationState: message.metadata?.generationState,
     toolCallRequestCount: message.toolCallRequests?.length ?? 0,
@@ -403,21 +420,92 @@ type ToolRunSegment = {
    */
   boundaryIndex: number | null
   bucketCounts: Partial<Record<ToolRunSummaryBucket, number>>
+  /**
+   * 本段里已成功完成的文件编辑聚合（复用 footer 用的同一套按路径去重 + 净差异
+   * 逻辑）。为 null 表示本段没有任何编辑调用已经成功返回——可能是纯只读段，
+   * 也可能是编辑还在跑/失败了，这两种情况都退回普通的分桶计数文案。
+   */
+  editSummary: GroupEditSummary | null
   requiresUserAction: boolean
 }
 
-const buildToolRunSummaryText = (
+const getFileBaseName = (path: string): string => {
+  const segments = path.split('/')
+  return segments[segments.length - 1] || path
+}
+
+const EDIT_FILE_SUMMARY_LABELS: Record<
+  ToolEditOperation,
+  { key: string; fallback: string }
+> = {
+  edit: { key: 'chat.toolRunSummary.editedFile', fallback: 'Edited {name}' },
+  create: {
+    key: 'chat.toolRunSummary.createdFile',
+    fallback: 'Created {name}',
+  },
+  delete: {
+    key: 'chat.toolRunSummary.deletedFile',
+    fallback: 'Deleted {name}',
+  },
+}
+
+/**
+ * 摘要行的文案分两部分：`clauses`（纯文本短语，逗号/·拼接）和 `stats`
+ * （行尾带色的 +N/-M，渲染成 JSX 而不是字符串)。是否点名文件、要不要带数字，
+ * 完全由 `editSummary` 是否存在、`totalFiles`、`totalLineStatsAvailable` 决定：
+ * - 没有已完成的编辑 → 跟以前完全一样的分桶计数，`·` 拼接。
+ * - 恰好 1 个文件 → 点名该文件（按 create/edit/delete 换动词），逗号拼接。
+ * - ≥2 个文件 → 不点名，只报数量，逗号拼接。
+ * - 数字是否可信只看 `totalLineStatsAvailable`（footer 已验证过这个字段在
+ *   「CLI 只按 turn 报总量」的场景下依然准确，不能逐文件判断）。
+ */
+const buildToolRunSummaryDisplay = (
   segment: ToolRunSegment,
   t: (keyPath: string, fallback?: string) => string,
-): string =>
-  TOOL_RUN_SUMMARY_BUCKET_ORDER.flatMap((bucket) => {
+): { clauses: string[]; separator: string; stats: [number, number] | null } => {
+  const { editSummary } = segment
+  const clauses: string[] = []
+
+  if (editSummary && editSummary.totalFiles === 1) {
+    const file = editSummary.files[0]
+    const label = EDIT_FILE_SUMMARY_LABELS[file.operation]
+    clauses.push(
+      t(label.key, label.fallback).replace(
+        '{name}',
+        getFileBaseName(file.path),
+      ),
+    )
+  } else if (editSummary && editSummary.totalFiles >= 2) {
+    const label = TOOL_RUN_SUMMARY_LABELS.edit
+    clauses.push(
+      t(label.key, label.fallback).replace(
+        '{count}',
+        String(editSummary.totalFiles),
+      ),
+    )
+  }
+
+  TOOL_RUN_SUMMARY_BUCKET_ORDER.forEach((bucket) => {
+    if (bucket === 'edit' && editSummary) {
+      return
+    }
     const count = segment.bucketCounts[bucket]
     if (!count) {
-      return []
+      return
     }
     const label = TOOL_RUN_SUMMARY_LABELS[bucket]
-    return [t(label.key, label.fallback).replace('{count}', String(count))]
-  }).join(' · ')
+    clauses.push(t(label.key, label.fallback).replace('{count}', String(count)))
+  })
+
+  return {
+    clauses,
+    separator: editSummary ? ', ' : ' · ',
+    stats:
+      editSummary && editSummary.totalLineStatsAvailable
+        ? [editSummary.totalAddedLines, editSummary.totalRemovedLines]
+        : null,
+  }
+}
 
 export type AssistantToolMessageGroupItemProps = {
   messages: AssistantToolMessageGroup
@@ -711,6 +799,7 @@ function AssistantToolMessageGroupItem({
           ? getAssistantMessageRenderPlan({
               message,
               nextMessage: displayedMessages[index + 1],
+              groupMessages: displayedMessages,
               hidePendingAssistantPlaceholders,
             })
           : null,
@@ -739,9 +828,7 @@ function AssistantToolMessageGroupItem({
     const close = (boundaryIndex: number | null) => {
       if (toolMessages.length > 0) {
         const toolCalls = toolMessages.flatMap((message) => message.toolCalls)
-        if (
-          toolCalls.length >= 2
-        ) {
+        if (toolCalls.length >= 2) {
           const bucketCounts: ToolRunSegment['bucketCounts'] = {}
           for (const call of toolCalls) {
             const bucket = getToolRunSummaryBucket(call.request)
@@ -753,10 +840,13 @@ function AssistantToolMessageGroupItem({
             endIndex: lastMemberIndex,
             boundaryIndex,
             bucketCounts,
+            editSummary: collectGroupEditSummary(toolMessages),
             requiresUserAction: toolCalls.some(
               (call) =>
-                call.response.status === ToolCallResponseStatus.PendingApproval ||
-                call.response.status === ToolCallResponseStatus.AwaitingUserInput,
+                call.response.status ===
+                  ToolCallResponseStatus.PendingApproval ||
+                call.response.status ===
+                  ToolCallResponseStatus.AwaitingUserInput,
             ),
           })
         }
@@ -898,12 +988,15 @@ function AssistantToolMessageGroupItem({
       .join('|')
   }, [baseGroupEditSummary])
 
-  // Cached per-file {addedLines, removedLines} derived from the cumulative
-  // first→latest snapshot diff. Keyed by snapshotFetchKey entries so it
-  // survives re-renders of baseGroupEditSummary that don't touch the file
-  // set (e.g. tool-call entries appended during the same round).
+  // Cached per-file stats derived from the cumulative first→latest snapshot
+  // diff. Keyed by snapshotFetchKey entries so it survives re-renders of
+  // baseGroupEditSummary that don't touch the file set (e.g. tool-call entries
+  // appended during the same round). Carries `lineStatsAvailable` along with
+  // the numbers: the recomputation can come back unavailable (oversized file
+  // or diff timeout), and applying its 0/0 while leaving the original
+  // availability flag alone would render a confident, wrong "0".
   const [enrichedFileCounts, setEnrichedFileCounts] = useState<
-    Record<string, { addedLines: number; removedLines: number }>
+    Record<string, FileChangeStats>
   >({})
 
   useEffect(() => {
@@ -915,47 +1008,42 @@ function AssistantToolMessageGroupItem({
     const files = baseGroupEditSummary.files
 
     void (async () => {
-      const entries = await Promise.all(
-        files.map(async (file) => {
-          const [firstSnapshot, latestSnapshot] = await Promise.all([
-            readEditReviewSnapshot({
-              app,
-              conversationId,
-              roundId: file.firstRoundId,
-              filePath: file.path,
-              settings,
-            }),
-            readEditReviewSnapshot({
-              app,
-              conversationId,
-              roundId: file.latestRoundId,
-              filePath: file.path,
-              settings,
-            }),
-          ])
-
-          if (!firstSnapshot || !latestSnapshot) {
-            return null
-          }
-
-          const counts = countFileChangeStats({
-            beforeContent: firstSnapshot.beforeContent,
-            afterContent: latestSnapshot.afterContent,
-            beforeExists: firstSnapshot.beforeExists,
-            afterExists: latestSnapshot.afterExists,
-          })
-
-          const key = `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
-          return [key, counts] as const
-        }),
-      )
+      // 一次读盘取出所有需要的快照。逐个 readEditReviewSnapshot 会把整个会话
+      // 的快照库（含每个文件的前后全文）读盘并 JSON.parse 2×N 遍，全在主线程。
+      const snapshots = await readEditReviewSnapshots({
+        app,
+        conversationId,
+        keys: files.flatMap((file) => [
+          { roundId: file.firstRoundId, filePath: file.path },
+          { roundId: file.latestRoundId, filePath: file.path },
+        ]),
+        settings,
+      })
 
       if (cancelled) {
         return
       }
 
-      const next: Record<string, { addedLines: number; removedLines: number }> =
-        {}
+      const entries = files.map((file, index) => {
+        const firstSnapshot = snapshots[index * 2]
+        const latestSnapshot = snapshots[index * 2 + 1]
+
+        if (!firstSnapshot || !latestSnapshot) {
+          return null
+        }
+
+        const counts = countFileChangeStats({
+          beforeContent: firstSnapshot.beforeContent,
+          afterContent: latestSnapshot.afterContent,
+          beforeExists: firstSnapshot.beforeExists,
+          afterExists: latestSnapshot.afterExists,
+        })
+
+        const key = `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
+        return [key, counts] as const
+      })
+
+      const next: Record<string, FileChangeStats> = {}
       for (const entry of entries) {
         if (entry) {
           next[entry[0]] = entry[1]
@@ -987,6 +1075,7 @@ function AssistantToolMessageGroupItem({
         ...file,
         addedLines: enriched.addedLines,
         removedLines: enriched.removedLines,
+        lineStatsAvailable: enriched.lineStatsAvailable,
       }
     })
     return {
@@ -997,6 +1086,20 @@ function AssistantToolMessageGroupItem({
         (sum, file) => sum + file.removedLines,
         0,
       ),
+      // 合计跟着补齐后的逐文件数字一起重算，所以补齐结果算不出行数时合计也就
+      // 残缺了。只看「被补齐覆盖过的」文件：没被覆盖的文件其可用性已经体现在
+      // baseGroupEditSummary.totalLineStatsAvailable 里，而用 files.every()
+      // 会误伤只报告整轮增删的 provider（Claude CLI 把每个文件都标成不可用，
+      // 合计却是准确的）。
+      totalLineStatsAvailable:
+        baseGroupEditSummary.totalLineStatsAvailable &&
+        baseGroupEditSummary.files.every((file) => {
+          const enriched =
+            enrichedFileCounts[
+              `${file.path}::${file.firstRoundId}::${file.latestRoundId}`
+            ]
+          return !enriched || enriched.lineStatsAvailable
+        }),
     }
   }, [baseGroupEditSummary, enrichedFileCounts])
 
@@ -1123,10 +1226,20 @@ function AssistantToolMessageGroupItem({
                           !message.toolCallRequests?.length)) && (
                         <AssistantMessageReasoning
                           reasoning={message.reasoning ?? ''}
+                          conversationId={effectiveConversationId}
+                          messageId={message.id}
+                          isGenerating={
+                            message.metadata?.generationState === 'streaming'
+                          }
                           hasAnswerContent={message.content.trim().length > 0}
                           generationState={reasoningGenerationState}
                           reasoningDurationMs={
                             message.metadata?.reasoningDurationMs
+                          }
+                          previewLines={
+                            messageIndex === 0
+                              ? LEAD_REASONING_PREVIEW_LINES
+                              : undefined
                           }
                         />
                       )}
@@ -1143,7 +1256,12 @@ function AssistantToolMessageGroupItem({
                         }
                       />
                     )}
-                    {(message.content.trim().length > 0 ||
+                    {/* 生成中的正文走 assistant render stream，快照里只有
+                        最近一次结构折回值。因此只要这条消息还在生成就必须挂着
+                        内容叶子——否则第一段流没有订阅者，正文要等到下一个语义
+                        事件才会出现。 */}
+                    {(message.metadata?.generationState === 'streaming' ||
+                      message.content.trim().length > 0 ||
                       shouldShowAssistantToolPreview) && (
                       <AssistantMessageContent
                         messageId={message.id}
@@ -1238,6 +1356,7 @@ function AssistantToolMessageGroupItem({
             if (messageIndex !== toolRunSegment.startIndex) {
               return isSegmentExpanded ? renderedMessage : null
             }
+            const summaryDisplay = buildToolRunSummaryDisplay(toolRunSegment, t)
             return (
               <Fragment key={`tool-run-${toolRunSegment.key}`}>
                 <button
@@ -1249,8 +1368,13 @@ function AssistantToolMessageGroupItem({
                   onClick={() => toggleToolRunSegment(toolRunSegment.key)}
                 >
                   <span className="yolo-tool-run-summary__text">
-                    {buildToolRunSummaryText(toolRunSegment, t)}
+                    {summaryDisplay.clauses.join(summaryDisplay.separator)}
                   </span>
+                  {summaryDisplay.stats && (
+                    <span className="yolo-tool-run-summary__stats">
+                      {renderDeltaPair(...summaryDisplay.stats)}
+                    </span>
+                  )}
                   <ChevronRight
                     size={14}
                     className="yolo-tool-run-summary__chevron"

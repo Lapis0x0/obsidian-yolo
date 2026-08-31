@@ -1,9 +1,10 @@
 import { App, normalizePath } from 'obsidian'
 
 import {
+  type ModuleChatModeSkillSourceV1,
+  configureModuleChatModeSkillSource,
   getLiteSkillDocument,
   getLiteSkillDocumentByPath,
-  getLiteSkillPackageSource,
   getManagedSkillScanDirs,
   getSkillScanDirs,
   humanizeSkillName,
@@ -984,106 +985,6 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
     expect(names).toContain('Other Name')
   })
 
-  it('exposes every package resource without flattening its paths', async () => {
-    const app = makeAdapterApp({
-      listings: {
-        'YOLO/skills': {
-          files: [],
-          folders: ['YOLO/skills/resourceful'],
-        },
-        'YOLO/skills/resourceful': {
-          files: ['YOLO/skills/resourceful/SKILL.md'],
-          folders: [
-            'YOLO/skills/resourceful/assets',
-            'YOLO/skills/resourceful/references',
-          ],
-        },
-        'YOLO/skills/resourceful/assets': {
-          files: ['YOLO/skills/resourceful/assets/icon.png'],
-          folders: [],
-        },
-        'YOLO/skills/resourceful/references': {
-          files: ['YOLO/skills/resourceful/references/guide.md'],
-          folders: [],
-        },
-      },
-      fileContents: {
-        'YOLO/skills/resourceful/SKILL.md': [
-          '---',
-          'name: resourceful',
-          'description: Uses package resources.',
-          '---',
-        ].join('\n'),
-        'YOLO/skills/resourceful/assets/icon.png': 'binary-path-placeholder',
-        'YOLO/skills/resourceful/references/guide.md': '# Guide',
-      },
-    })
-
-    const source = await getLiteSkillPackageSource({
-      app,
-      name: 'resourceful',
-      settings,
-    })
-
-    expect(source?.entry.name).toBe('resourceful')
-    expect(source?.resources).toHaveLength(3)
-    expect(source?.resources).toEqual(
-      expect.arrayContaining([
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/resourceful/SKILL.md',
-          relativePath: 'SKILL.md',
-        },
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/resourceful/assets/icon.png',
-          relativePath: 'assets/icon.png',
-        },
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/resourceful/references/guide.md',
-          relativePath: 'references/guide.md',
-        },
-      ]),
-    )
-  })
-
-  it('materializes a root Markdown skill as a SKILL.md resource', async () => {
-    const app = makeAdapterApp({
-      listings: {
-        'YOLO/skills': {
-          files: ['YOLO/skills/readable-filename.md'],
-          folders: [],
-        },
-      },
-      fileContents: {
-        'YOLO/skills/readable-filename.md': [
-          '---',
-          'name: readable-skill',
-          'description: A single file.',
-          '---',
-        ].join('\n'),
-      },
-    })
-
-    await expect(
-      getLiteSkillPackageSource({
-        app,
-        name: 'readable-skill',
-        settings,
-      }),
-    ).resolves.toMatchObject({
-      entry: { path: 'YOLO/skills/readable-filename.md' },
-      resources: [
-        {
-          kind: 'vault',
-          path: 'YOLO/skills/readable-filename.md',
-          relativePath: 'SKILL.md',
-        },
-      ],
-    })
-  })
-
   it('resolves builtin skill documents by canonical path', async () => {
     const app = makeAdapterApp({
       listings: {
@@ -1100,6 +1001,204 @@ describe('listLiteSkillEntries and getLiteSkillDocument', () => {
 
     expect(document?.entry.name).toBe('skill-creator')
     expect(document?.content).toContain('YOLO/skills')
+  })
+})
+
+describe('module chat mode skill scope', () => {
+  const settings = { yolo: { baseDir: 'YOLO' } }
+  const MODE_ID = 'module:learning:chat'
+  const DECLARED_SKILL = 'skills/outline-skill/SKILL.md'
+  // Where the activation-time projection writes the module's package.
+  const SKILL_PATH = 'YOLO/modules/learning/skills/outline-skill/SKILL.md'
+
+  afterEach(() => {
+    configureModuleChatModeSkillSource(null)
+  })
+
+  const makeSource = (
+    overrides: Partial<ModuleChatModeSkillSourceV1> = {},
+  ): ModuleChatModeSkillSourceV1 => ({
+    getMode: (fullModeId) =>
+      fullModeId === MODE_ID
+        ? { moduleId: 'learning', skillPaths: [DECLARED_SKILL] }
+        : undefined,
+    listModeIds: () => [MODE_ID],
+    resolveSkillPath: (moduleId, declaredSkillPath) =>
+      moduleId === 'learning' && declaredSkillPath === DECLARED_SKILL
+        ? SKILL_PATH
+        : null,
+    ...overrides,
+  })
+
+  it('is a no-op when unconfigured: scope is accepted but changes nothing', async () => {
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: {},
+    })
+
+    const scoped = await listLiteSkillEntries(app, {
+      settings,
+      scope: { moduleChatModeId: MODE_ID },
+    })
+    const unscoped = await listLiteSkillEntries(app, { settings })
+
+    // Only builtins (seeded unconditionally) — no `outline-skill` from an
+    // unconfigured module source, and scoped/unscoped are identical.
+    expect(scoped.map((entry) => entry.name)).not.toContain('outline-skill')
+    expect(scoped).toEqual(unscoped)
+  })
+
+  it('adds the mode-scoped skill to listLiteSkillEntries only when scope matches', async () => {
+    configureModuleChatModeSkillSource(makeSource())
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: {
+        [SKILL_PATH]: [
+          '---',
+          'name: outline-skill',
+          'description: Outline design conventions',
+          '---',
+          'body',
+        ].join('\n'),
+      },
+    })
+
+    const scoped = await listLiteSkillEntries(app, {
+      settings,
+      scope: { moduleChatModeId: MODE_ID },
+    })
+    expect(scoped.map((entry) => entry.name)).toContain('outline-skill')
+    const scopedEntry = scoped.find((entry) => entry.name === 'outline-skill')
+    expect(scopedEntry?.isReadOnly).toBe(true)
+
+    const unscoped = await listLiteSkillEntries(app, { settings })
+    expect(unscoped.map((entry) => entry.name)).not.toContain('outline-skill')
+
+    const otherMode = await listLiteSkillEntries(app, {
+      settings,
+      scope: { moduleChatModeId: 'module:learning:other' },
+    })
+    expect(otherMode.map((entry) => entry.name)).not.toContain('outline-skill')
+  })
+
+  it('lets a same-named user/global vault skill win over the mode skill', async () => {
+    configureModuleChatModeSkillSource(makeSource())
+    const app = makeAdapterApp({
+      listings: {
+        'YOLO/skills': {
+          files: [],
+          folders: ['YOLO/skills/outline-skill'],
+        },
+        'YOLO/skills/outline-skill': {
+          files: ['YOLO/skills/outline-skill/SKILL.md'],
+          folders: [],
+        },
+      },
+      fileContents: {
+        'YOLO/skills/outline-skill/SKILL.md': [
+          '---',
+          'name: outline-skill',
+          'description: user override',
+          '---',
+          'user body',
+        ].join('\n'),
+        [SKILL_PATH]: [
+          '---',
+          'name: outline-skill',
+          'description: module version',
+          '---',
+          'module body',
+        ].join('\n'),
+      },
+    })
+
+    const scoped = await listLiteSkillEntries(app, {
+      settings,
+      scope: { moduleChatModeId: MODE_ID },
+    })
+
+    const outlineEntries = scoped.filter(
+      (entry) => entry.name === 'outline-skill',
+    )
+    expect(outlineEntries).toHaveLength(1)
+    expect(outlineEntries[0].path).toBe('YOLO/skills/outline-skill/SKILL.md')
+    expect(outlineEntries[0].isReadOnly).toBe(false)
+  })
+
+  it('getLiteSkillDocument resolves a mode-scoped skill by name', async () => {
+    configureModuleChatModeSkillSource(makeSource())
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: {
+        [SKILL_PATH]: ['---', 'name: outline-skill', '---', 'module body'].join(
+          '\n',
+        ),
+      },
+    })
+
+    const withScope = await getLiteSkillDocument({
+      app,
+      name: 'outline-skill',
+      settings,
+      scope: { moduleChatModeId: MODE_ID },
+    })
+    expect(withScope?.content).toContain('module body')
+
+    const withoutScope = await getLiteSkillDocument({
+      app,
+      name: 'outline-skill',
+      settings,
+    })
+    expect(withoutScope).toBeNull()
+  })
+
+  it('getLiteSkillDocumentByPath finds a mode skill by path even without an explicit scope', async () => {
+    configureModuleChatModeSkillSource(makeSource())
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: {
+        [SKILL_PATH]: ['---', 'name: outline-skill', '---', 'module body'].join(
+          '\n',
+        ),
+      },
+    })
+
+    const document = await getLiteSkillDocumentByPath({
+      app,
+      path: SKILL_PATH,
+      settings,
+    })
+
+    expect(document?.entry.name).toBe('outline-skill')
+    expect(document?.content).toContain('module body')
+  })
+
+  it('skips a declared skill whose file name does not resolve, without throwing', async () => {
+    configureModuleChatModeSkillSource(
+      makeSource({
+        getMode: (fullModeId) =>
+          fullModeId === MODE_ID
+            ? {
+                moduleId: 'learning',
+                skillPaths: ['skills/missing/SKILL.md', DECLARED_SKILL],
+              }
+            : undefined,
+      }),
+    )
+    const app = makeAdapterApp({
+      listings: { 'YOLO/skills': { files: [], folders: [] } },
+      fileContents: {
+        [SKILL_PATH]: ['---', 'name: outline-skill', '---', 'body'].join('\n'),
+      },
+    })
+
+    const entries = await listLiteSkillEntries(app, {
+      settings,
+      scope: { moduleChatModeId: MODE_ID },
+    })
+
+    expect(entries.map((entry) => entry.name)).toContain('outline-skill')
+    expect(entries.map((entry) => entry.name)).not.toContain('missing-skill')
   })
 })
 

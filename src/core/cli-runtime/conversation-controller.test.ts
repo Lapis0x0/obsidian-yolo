@@ -1,4 +1,12 @@
-import type { ChatAssistantMessage, ChatUserMessage } from '../../types/chat'
+import type {
+  ChatAssistantMessage,
+  ChatToolMessage,
+  ChatUserMessage,
+} from '../../types/chat'
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+} from '../../types/tool-call.types'
 
 import { CliConversationController } from './conversation-controller'
 import type {
@@ -158,12 +166,16 @@ class FakeCliRuntime implements CliRuntime {
     return this.compactImpl()
   }
 
-  async respondApproval(_response: CliApprovalResponse): Promise<boolean> {
-    return false
+  async respondApproval(
+    _response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
-  async respondQuestion(_response: CliQuestionResponse): Promise<boolean> {
-    return false
+  async respondQuestion(
+    _response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -228,6 +240,301 @@ describe('CliConversationController', () => {
 
     controller.resetSession()
     expect(controller.getSnapshot().surfaceId).not.toBe(initialSurfaceId)
+  })
+
+  it('allows ensureReady to complete before a native session exists', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    runtime.ensureReadyImpl = async () => undefined
+    const controller = new CliConversationController(runtime)
+
+    await controller.ensureReady()
+
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionRef: null,
+      runState: 'idle',
+      error: null,
+      configuration: { modelId: 'pi-model' },
+    })
+  })
+
+  it('accepts the first session_bound after a deferred bind', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    const ref = session('pi-sess-1', 'pi')
+    runtime.ensureReadyImpl = async () => undefined
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({ type: 'session_bound', ref })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('a1', 'ok'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    const surfaceId = controller.getSnapshot().surfaceId
+    await controller.ensureReady()
+
+    await controller.sendTurn({
+      userMessage: userMessage('u1', 'hi'),
+      content: 'hi',
+    })
+
+    expect(runtime.turnInputs[0]?.sessionRef).toBeUndefined()
+    expect(controller.getSnapshot()).toMatchObject({
+      surfaceId,
+      sessionRef: ref,
+      messages: [
+        { id: 'u1', role: 'user' },
+        { id: 'a1', role: 'assistant' },
+      ],
+    })
+  })
+
+  it('ignores a different session_bound after the deferred bind has landed', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    const ref = session('pi-sess-1', 'pi')
+    runtime.ensureReadyImpl = async () => undefined
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({ type: 'session_bound', ref })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    await controller.sendTurn({
+      userMessage: userMessage('u1', 'hi'),
+      content: 'hi',
+    })
+
+    runtime.emit({
+      type: 'session_bound',
+      ref: session('pi-sess-other', 'pi'),
+    })
+
+    expect(controller.getSnapshot().sessionRef).toEqual(ref)
+  })
+
+  it('does not upsert a reused assistant id into a previous turn', async () => {
+    const runtime = new FakeCliRuntime('pi')
+    runtime.sendTurnImpl = async (input) => {
+      const content = input.content === 'second' ? 'tool test' : 'here'
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('shared-stream', content),
+      })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('shared-stream', `${content} continued`),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+
+    await controller.sendTurn({
+      userMessage: userMessage('u1', '在吗'),
+      content: 'first',
+    })
+    runtime.emit({ type: 'run_state', state: 'completed' })
+    await controller.sendTurn({
+      userMessage: userMessage('u2', '你测试一下工具调用'),
+      content: 'second',
+    })
+
+    expect(controller.getSnapshot().messages).toMatchObject([
+      { id: 'u1', role: 'user' },
+      { id: 'shared-stream', role: 'assistant', content: 'here continued' },
+      { id: 'u2', role: 'user' },
+      {
+        id: expect.stringMatching(/^shared-stream#/),
+        role: 'assistant',
+        content: 'tool test continued',
+      },
+    ])
+  })
+
+  describe('approval card lifecycle', () => {
+    const pendingCard = (
+      status: ToolCallResponse['status'],
+      id = 'call-1',
+    ): ChatToolMessage => ({
+      role: 'tool',
+      id: `tool-${id}`,
+      toolCalls: [
+        {
+          request: { id, name: 'ls' },
+          response: { status } as ToolCallResponse,
+        },
+      ],
+    })
+    const cardStatus = (controller: CliConversationController, id = 'call-1') =>
+      controller
+        .getSnapshot()
+        .messages.flatMap((message) =>
+          message.role === 'tool' ? message.toolCalls : [],
+        )
+        .find((toolCall) => toolCall.request.id === id)?.response.status
+
+    it('derives the waiting run state from the card, not from the runtime', async () => {
+      const runtime = new FakeCliRuntime('codex')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({ type: 'run_state', state: 'running' })
+
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.PendingApproval),
+      })
+      expect(controller.getSnapshot().runState).toBe('waiting_for_approval')
+
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.AwaitingUserInput, 'q-1'),
+      })
+      expect(controller.getSnapshot().runState).toBe('waiting_for_user')
+    })
+
+    it('settles the answered card and lets the run state follow it back', async () => {
+      const runtime = new FakeCliRuntime('codex')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({ type: 'run_state', state: 'running' })
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.PendingApproval),
+      })
+
+      controller.settleToolCard('call-1', {
+        status: ToolCallResponseStatus.Running,
+      })
+
+      expect(cardStatus(controller)).toBe(ToolCallResponseStatus.Running)
+      expect(controller.getSnapshot().runState).toBe('running')
+    })
+
+    it('aborts an unanswered card when the turn ends, whatever the runtime did', async () => {
+      const runtime = new FakeCliRuntime('codex')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({ type: 'run_state', state: 'running' })
+      runtime.emit({
+        type: 'message_upsert',
+        message: pendingCard(ToolCallResponseStatus.PendingApproval),
+      })
+
+      // A runtime whose cancel() only interrupts the provider leaves the card
+      // behind; the buttons would otherwise stay on screen forever.
+      runtime.emit({ type: 'run_state', state: 'aborted' })
+
+      expect(cardStatus(controller)).toBe(ToolCallResponseStatus.Aborted)
+      expect(controller.getSnapshot().runState).toBe('aborted')
+    })
+  })
+
+  it('appends a new assistant bubble when text continues after tools', async () => {
+    const runtime = new FakeCliRuntime('hermes')
+    const toolMessage: ChatToolMessage = {
+      role: 'tool',
+      id: 'tool-1',
+      toolCalls: [
+        {
+          request: { id: 'call-1', name: 'ls' },
+          response: { status: ToolCallResponseStatus.Running },
+        },
+      ],
+    }
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '好的，我来测试一下主要工具：'),
+      })
+      runtime.emit({ type: 'message_upsert', message: toolMessage })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '一切正常。'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    await controller.sendTurn({
+      userMessage: userMessage('u1', '你测试一下工具'),
+      content: '你测试一下工具',
+    })
+
+    expect(controller.getSnapshot().messages).toMatchObject([
+      { id: 'u1', role: 'user' },
+      {
+        id: 'stream',
+        role: 'assistant',
+        content: '好的，我来测试一下主要工具：',
+      },
+      { id: 'tool-1', role: 'tool' },
+      {
+        id: expect.stringMatching(/^stream#/),
+        role: 'assistant',
+        content: '一切正常。',
+      },
+    ])
+  })
+
+  it('does not duplicate a tool-request assistant when it is re-upserted after its tool card', async () => {
+    const runtime = new FakeCliRuntime('hermes')
+    const request: ChatAssistantMessage = {
+      role: 'assistant',
+      id: 'acp-request-call-1',
+      content: '',
+      toolCallRequests: [{ id: 'call-1', name: 'ls' }],
+      metadata: { generationState: 'completed' },
+    }
+    const toolRunning: ChatToolMessage = {
+      role: 'tool',
+      id: 'acp-result-call-1',
+      toolCalls: [
+        {
+          request: { id: 'call-1', name: 'ls' },
+          response: { status: ToolCallResponseStatus.Running },
+        },
+      ],
+    }
+    const toolDone: ChatToolMessage = {
+      role: 'tool',
+      id: 'acp-result-call-1',
+      toolCalls: [
+        {
+          request: { id: 'call-1', name: 'ls' },
+          response: {
+            status: ToolCallResponseStatus.Success,
+            data: { type: 'text', text: 'ok' },
+          },
+        },
+      ],
+    }
+    runtime.sendTurnImpl = async () => {
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '好的，开始测试：'),
+      })
+      runtime.emit({ type: 'message_upsert', message: request })
+      runtime.emit({ type: 'message_upsert', message: toolRunning })
+      runtime.emit({ type: 'message_upsert', message: request })
+      runtime.emit({ type: 'message_upsert', message: toolDone })
+      runtime.emit({
+        type: 'message_upsert',
+        message: assistantMessage('stream', '完成。'),
+      })
+    }
+    const controller = new CliConversationController(runtime)
+    await controller.ensureReady()
+    await controller.sendTurn({
+      userMessage: userMessage('u1', '测试工具'),
+      content: '测试工具',
+    })
+
+    expect(
+      controller
+        .getSnapshot()
+        .messages.filter((message) => message.role === 'assistant')
+        .map((message) => message.id),
+    ).toEqual([
+      'stream',
+      'acp-request-call-1',
+      expect.stringMatching(/^stream#/),
+    ])
   })
 
   it('presents a staged turn before provider readiness and scopes rejection', () => {
@@ -331,6 +638,28 @@ describe('CliConversationController', () => {
     expect(runtime.configurationUpdates).toEqual([
       { modelId: 'luna', reasoningEffort: null },
     ])
+  })
+
+  it('stages null instead of inventing a selection when nothing is requested or the remembered model is stale', () => {
+    const models = [
+      { id: 'alpha-first', label: 'Alpha', reasoningEfforts: [] },
+      { id: 'omega-actual', label: 'Omega', reasoningEfforts: [] },
+    ]
+    const controller = new CliConversationController(
+      new FakeCliRuntime(),
+      () => models,
+    )
+
+    // No request, nothing remembered: the runtime's own current model must
+    // win after bind — staging the catalog head here would get applied via
+    // set_model and silently switch the agent's model.
+    expect(controller.stageConfiguration({})).toMatchObject({ modelId: null })
+
+    // A remembered id that is no longer in the catalog degrades to null, not
+    // to an arbitrary entry.
+    expect(controller.stageConfiguration({ modelId: 'removed' })).toMatchObject(
+      { modelId: null },
+    )
   })
 
   it('hydrates messages, upserts by stable id in place, and removes by id', async () => {
@@ -549,14 +878,9 @@ describe('CliConversationController', () => {
     expect(runtime.readyInputs).toEqual([{ sessionRef: ref }])
     expect(controller.getSnapshot().sessionRef).toEqual(ref)
 
-    const states = [
-      'running',
-      'waiting_for_approval',
-      'waiting_for_user',
-      'completed',
-      'aborted',
-      'error',
-    ] as const
+    // Waiting states are not reported by runtimes any more — they are derived
+    // from the cards (see the approval-lifecycle tests below).
+    const states = ['running', 'completed', 'aborted', 'error'] as const
     for (const state of states) {
       runtime.emit({
         type: 'run_state',
@@ -962,5 +1286,212 @@ describe('CliConversationController', () => {
     await expect(controller.reconnectMcpServer('github')).rejects.toThrow(
       'does not support reconnecting MCP servers',
     )
+  })
+
+  describe('settling messages left in streaming', () => {
+    const streamingAssistant = (
+      id: string,
+      content = id,
+    ): ChatAssistantMessage => ({
+      ...assistantMessage(id, content),
+      metadata: { generationState: 'streaming' },
+    })
+
+    it('settles streaming assistant messages when the run completes', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      const settled = assistantMessage('acp-assistant-done', 'earlier turn')
+      runtime.emit({ type: 'message_upsert', message: settled })
+      runtime.emit({
+        type: 'message_upsert',
+        message: streamingAssistant('acp-assistant-live', 'hello'),
+      })
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        metadata: { generationState: 'streaming' },
+      })
+
+      runtime.emit({ type: 'run_state', state: 'completed' })
+
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        id: 'acp-assistant-live',
+        content: 'hello',
+        metadata: { generationState: 'completed' },
+      })
+      // Structural sharing: only the message whose content changed is replaced.
+      expect(controller.getSnapshot().messages[0]).toBe(settled)
+    })
+
+    it('settles streaming assistant messages as aborted when the run is cancelled', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({
+        type: 'message_upsert',
+        message: streamingAssistant('acp-assistant-live', 'partial'),
+      })
+
+      runtime.emit({ type: 'run_state', state: 'aborted' })
+
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        metadata: { generationState: 'aborted' },
+      })
+    })
+
+    it('settles the partial answer alongside the appended error message', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+      runtime.emit({
+        type: 'message_upsert',
+        message: streamingAssistant('acp-assistant-live', 'partial'),
+      })
+
+      runtime.emit({
+        type: 'run_state',
+        state: 'error',
+        error: 'native failure',
+      })
+
+      expect(controller.getSnapshot().messages).toMatchObject([
+        {
+          id: 'acp-assistant-live',
+          metadata: { generationState: 'completed' },
+        },
+        {
+          metadata: {
+            generationState: 'error',
+            errorMessage: 'native failure',
+          },
+        },
+      ])
+    })
+
+    it('settles replayed history that hydrates as streaming', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const ref = session('resume-me', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref,
+        messages: [
+          userMessage('acp-user-1', 'hi'),
+          streamingAssistant('acp-assistant-1', 'replayed'),
+        ],
+        compactionBoundaries: [],
+      })
+      const controller = new CliConversationController(runtime)
+      await controller.hydrateSession(ref)
+
+      expect(controller.getSnapshot().messages.at(-1)).toMatchObject({
+        id: 'acp-assistant-1',
+        content: 'replayed',
+        metadata: { generationState: 'completed' },
+      })
+    })
+  })
+
+  describe('session recovery fallback', () => {
+    it('hydrateSession accepts a flagged fallback ref instead of throwing, and anchors a boundary', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('gone-sess', 'hermes')
+      const fallbackRef = session('fresh-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: fallbackRef,
+        messages: [],
+        compactionBoundaries: [],
+        sessionFallback: { requestedRef },
+      })
+      const controller = new CliConversationController(runtime)
+
+      const hydration = await controller.hydrateSession(requestedRef)
+
+      expect(hydration).toMatchObject({ ref: fallbackRef })
+      expect(controller.getSnapshot().sessionRef).toEqual(fallbackRef)
+      expect(controller.getSnapshot().sessionFallbackBoundaries).toEqual([
+        expect.objectContaining({ afterMessageId: null, requestedRef }),
+      ])
+    })
+
+    it('hydrateSession anchors the fallback boundary after the restored history, not at the top of the transcript', async () => {
+      // Unlike the previous test (empty history, where `afterMessageId: null`
+      // is coincidentally correct too), this hydrates a session that already
+      // has messages — the regression case: the boundary must land after the
+      // last restored message, not unconditionally at `null`/the very top.
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('gone-sess', 'hermes')
+      const fallbackRef = session('fresh-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: fallbackRef,
+        messages: [userMessage('user-1'), assistantMessage('assistant-1')],
+        compactionBoundaries: [],
+        sessionFallback: { requestedRef },
+      })
+      const controller = new CliConversationController(runtime)
+
+      await controller.hydrateSession(requestedRef)
+
+      expect(controller.getSnapshot().sessionFallbackBoundaries).toEqual([
+        expect.objectContaining({
+          afterMessageId: 'assistant-1',
+          requestedRef,
+        }),
+      ])
+    })
+
+    it('hydrateSession still throws on a mismatched ref when it is not flagged as a fallback', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('requested-sess', 'hermes')
+      const otherRef = session('other-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: otherRef,
+        messages: [],
+        compactionBoundaries: [],
+      })
+      const controller = new CliConversationController(runtime)
+
+      await expect(controller.hydrateSession(requestedRef)).rejects.toThrow(
+        'CLI runtime hydrated a different session.',
+      )
+    })
+
+    it('ensureReady binds a fallback session_bound event, updates sessionRef, and anchors the boundary after existing messages', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const requestedRef = session('gone-sess', 'hermes')
+      const fallbackRef = session('fresh-sess', 'hermes')
+      runtime.openSessionImpl = async () => ({
+        ref: requestedRef,
+        messages: [userMessage('user-1'), assistantMessage('assistant-1')],
+        compactionBoundaries: [],
+      })
+      // Simulates AcpCliRuntime.ensureReady()'s recovery path: it binds the
+      // fallback session live instead of the one the caller asked to resume.
+      runtime.ensureReadyImpl = async () => {
+        runtime.emit({
+          type: 'session_bound',
+          ref: fallbackRef,
+          fallbackFrom: requestedRef,
+        })
+      }
+      const controller = new CliConversationController(runtime)
+
+      await controller.hydrateSession(requestedRef)
+      await controller.ensureReady()
+
+      const snapshot = controller.getSnapshot()
+      expect(snapshot.sessionRef).toEqual(fallbackRef)
+      expect(snapshot.sessionFallbackBoundaries).toEqual([
+        expect.objectContaining({
+          afterMessageId: 'assistant-1',
+          requestedRef,
+        }),
+      ])
+    })
+
+    it('a session_bound event with no fallbackFrom never records a fallback boundary', async () => {
+      const runtime = new FakeCliRuntime('hermes')
+      const controller = new CliConversationController(runtime)
+      await controller.ensureReady()
+
+      expect(controller.getSnapshot().sessionFallbackBoundaries).toEqual([])
+    })
   })
 })

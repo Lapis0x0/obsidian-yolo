@@ -16,6 +16,10 @@ import MarkdownCodeComponent from './MarkdownCodeComponent'
 import MarkdownReferenceBlock from './MarkdownReferenceBlock'
 import { getToolDisplayInfo, getToolLabels } from './ToolMessage'
 import TransitioningMarkdown from './TransitioningMarkdown'
+import {
+  type StreamingContentSource,
+  useAssistantStreamedContent,
+} from './useAssistantRenderStream'
 
 function hasRenderableAssistantContent(blocks: ParsedTagContent[]): boolean {
   return blocks.some((block) => {
@@ -85,13 +89,26 @@ export default function AssistantMessageContent({
     [handleApply],
   )
 
+  // 生成中的正文不再随会话快照到达：它是一条按 conversationId + messageId
+  // 索引的展示流。annotations 会重写正文（注记标记插入），所以它一旦存在就
+  // 必须关闭命令式源，退回按快照渲染。
+  const { content: streamedContent, contentSource } =
+    useAssistantStreamedContent({
+      conversationId,
+      messageId,
+      isStreaming: generationState === 'streaming',
+      content,
+      allowLiveSource: !annotations,
+    })
+
   const annotatedContent = useMemo(
-    () => injectAnnotationMarkers(content, annotations),
-    [content, annotations],
+    () => injectAnnotationMarkers(streamedContent, annotations),
+    [streamedContent, annotations],
   )
 
   return (
     <AssistantTextRenderer
+      contentSource={contentSource}
       onApply={onApply}
       isApplying={isApplying}
       activeApplyRequestKey={activeApplyRequestKey}
@@ -113,6 +130,7 @@ export default function AssistantMessageContent({
 }
 
 const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
+  contentSource,
   onApply,
   isApplying,
   activeApplyRequestKey,
@@ -129,6 +147,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   sources,
   children,
 }: {
+  contentSource: StreamingContentSource | null
   onApply: (
     blockToApply: string,
     applyRequestKey: string,
@@ -160,8 +179,14 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
   const { t } = useLanguage()
 
   const blocks: ParsedTagContent[] = useMemo(
-    () => parseTagContents(children),
-    [children],
+    () =>
+      contentSource
+        ? // 命令式源只在"正文里没有任何标签"时才存在（见 useAssistantRenderStream），
+          // 此时 parseTagContents 的结果恒为单个 string 块。保持与慢路径同样的
+          // JSX 形状，标签出现时可以原地切换而不卸载 markdown 播放器。
+          [{ type: 'string', content: children }]
+        : parseTagContents(children),
+    [children, contentSource],
   )
   const hasAnswerContent = useMemo(
     () => hasRenderableAssistantContent(blocks),
@@ -196,6 +221,7 @@ const AssistantTextRenderer = React.memo(function AssistantTextRenderer({
           <div key={blockKey}>
             <TransitioningMarkdown
               content={block.content}
+              contentSource={contentSource}
               scale="sm"
               generationState={generationState}
               citationSources={sources}

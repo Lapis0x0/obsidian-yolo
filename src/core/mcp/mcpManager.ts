@@ -21,40 +21,29 @@ import {
   ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../types/tool-call.types'
-import {
-  FILE_EDIT_GROUP_TOOL_NAME,
-  WEB_OPS_GROUP_TOOL_NAME,
-} from '../agent/builtinToolUiMeta'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentParentContext } from '../agent/subagent/parent-context'
-import type { AgentRunContext } from '../agent/types'
-import type { RAGEngine } from '../rag/ragEngine'
+import type { RagKnowledgeAccess } from '../rag/ragAccess'
+import { executeBuiltinTool } from '../tools/dispatcher'
 import {
-  WEB_SCRAPE_TOOL_NAME,
-  WEB_SEARCH_TOOL_NAME,
-  isWebSearchToolReady,
-} from '../web-search'
+  getCapabilityForTool,
+  getToolDefinition,
+  isBuiltinToolName,
+} from '../tools/registry'
+import type { ToolContext } from '../tools/types'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
+import type { InProcessToolServer } from './inProcessToolServer'
 import {
   type JsSandboxSettings,
   getJsSandboxSettings,
 } from './jsSandboxSettings'
 import { disposeJsSandbox } from './jsSandboxTool'
-// eslint-disable-next-line import/order -- false positive: sibling group is contiguous; rule miscounts the blank line above this group
 import {
-  LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-  callLocalFileTool,
   getLocalFileToolServerName,
   getLocalFileTools,
   parseLocalFsActionFromToolArgs,
 } from './localFileTools'
-
-const LOCAL_FS_EDIT_TOOL_NAME_SET = new Set<string>(LOCAL_FS_EDIT_TOOL_NAMES)
-const LOCAL_MEMORY_SPLIT_TOOL_NAME_SET = new Set<string>(
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
-)
 import { McpOAuthController } from './mcpOAuthController'
 import type { McpOAuthClientProvider } from './mcpOAuthProvider'
 import type { McpRemoteTransportBackend } from './remoteTransport'
@@ -89,8 +78,9 @@ export class McpManager {
   private readonly app: App
   private readonly oauthController: McpOAuthController
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
-  private readonly getRagEngine?: () => Promise<RAGEngine>
+  private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
+  private readonly runSubagent?: NonNullable<ToolContext['runSubagent']>
   private settings: YoloSettings
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
@@ -116,6 +106,11 @@ export class McpManager {
 
   private availableToolsCache: Map<string, McpTool[]> = new Map()
 
+  // Registry of in-process tool servers (see inProcessToolServer.ts). Keyed
+  // by server name, disjoint from both `getLocalFileToolServerName()` and any
+  // configured remote MCP server name — enforced in registerInProcessServer.
+  private inProcessServers: Map<string, InProcessToolServer> = new Map()
+
   private buildExecutionAllowanceKey({
     requestToolName,
     requestArgs,
@@ -138,49 +133,56 @@ export class McpManager {
     return requestToolName
   }
 
+  /**
+   * Two independent gates, applied in sequence: persisted user enablement
+   * (below), then, for tools already migrated into the registry, that
+   * tool's own `isAvailable(ctx)` (master.md §3.1b / decision 18 —
+   * environment availability is separate from user authorization).
+   */
   private isLocalToolEnabled(toolName: string): boolean {
-    // Web tools share a single `web_ops` group switch. `web_search` needs a
-    // configured provider, while `web_scrape` can fall back to the generic
-    // static-HTML scraper when no provider is configured.
-    if (
-      toolName === WEB_SEARCH_TOOL_NAME ||
-      toolName === WEB_SCRAPE_TOOL_NAME
-    ) {
-      const groupDisabled =
-        this.settings.mcp.builtinToolOptions[WEB_OPS_GROUP_TOOL_NAME]
-          ?.disabled ?? false
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      if (groupDisabled || splitToolDisabled) return false
+    if (!this.isLocalToolPersistedEnabled(toolName)) {
+      return false
+    }
+
+    // Applied uniformly rather than per-tool-name-special-cased: any
+    // registered tool's `isAvailable` runs here, not just `web_search` /
+    // `terminal_command`. Today those are the only two definitions that
+    // declare one — `getToolDefinition(toolName)?.isAvailable` is `undefined`
+    // for everything else, which the `?.` short-circuits to "available".
+    if (isBuiltinToolName(toolName)) {
+      const definition = getToolDefinition(toolName)
       if (
-        toolName === WEB_SEARCH_TOOL_NAME &&
-        !isWebSearchToolReady(this.settings.webSearch)
+        definition?.isAvailable &&
+        !definition.isAvailable({ settings: this.settings })
       ) {
         return false
       }
+    }
+
+    return true
+  }
+
+  /**
+   * As of the `80_to_81` settings migration (D9,
+   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9),
+   * `settings.mcp.builtinCapabilityOptions` is keyed by capability id — one
+   * entry per capability, no more group-key-plus-members aggregation. This
+   * collapses what used to be three special-cased group checks
+   * (`web_ops`/`fs_edit_ops`/`memory_ops`) plus a generic fallback into a
+   * single lookup through the tool's owning capability.
+   */
+  private isLocalToolPersistedEnabled(toolName: string): boolean {
+    const capability = getCapabilityForTool(toolName)
+    if (!capability) {
+      // Unknown/retired local short name (e.g. a pre-v79 `fs_list`) — no
+      // capability owns it, so there is nothing to disable. Matches the
+      // pre-D9 fallthrough (`directDisabled` undefined => enabled).
       return true
     }
-    if (LOCAL_FS_EDIT_TOOL_NAME_SET.has(toolName)) {
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      const groupedEditOpsDisabled =
-        this.settings.mcp.builtinToolOptions[FILE_EDIT_GROUP_TOOL_NAME]
-          ?.disabled ?? false
-      return !(splitToolDisabled || groupedEditOpsDisabled)
-    }
-    if (LOCAL_MEMORY_SPLIT_TOOL_NAME_SET.has(toolName)) {
-      const splitToolDisabled =
-        this.settings.mcp.builtinToolOptions[toolName]?.disabled ?? false
-      const groupedMemoryOpsDisabled =
-        this.settings.mcp.builtinToolOptions.memory_ops?.disabled ?? false
-      return !(splitToolDisabled || groupedMemoryOpsDisabled)
-    }
-    const directDisabled =
-      this.settings.mcp.builtinToolOptions[toolName]?.disabled
-    if (typeof directDisabled === 'boolean') {
-      return !directDisabled
-    }
-    return true
+    return !(
+      this.settings.mcp.builtinCapabilityOptions[capability.id]?.disabled ??
+      false
+    )
   }
 
   constructor({
@@ -189,8 +191,9 @@ export class McpManager {
     settings,
     openApplyReview,
     registerSettingsListener,
-    getRagEngine,
+    ragAccess,
     promptSourceWatcher,
+    runSubagent,
   }: {
     app: App
     pluginId: string
@@ -199,14 +202,16 @@ export class McpManager {
     registerSettingsListener: (
       listener: (settings: YoloSettings) => void,
     ) => () => void
-    getRagEngine?: () => Promise<RAGEngine>
+    ragAccess?: RagKnowledgeAccess
     promptSourceWatcher?: PromptSourceWatcher
+    runSubagent?: NonNullable<ToolContext['runSubagent']>
   }) {
     this.app = app
     this.oauthController = new McpOAuthController(app, pluginId)
     this.openApplyReview = openApplyReview
-    this.getRagEngine = getRagEngine
+    this.ragAccess = ragAccess
     this.promptSourceWatcher = promptSourceWatcher
+    this.runSubagent = runSubagent
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -256,6 +261,7 @@ export class McpManager {
     }
 
     this.servers = []
+    this.inProcessServers.clear()
     this.remoteTransportFactory = null
     this.remoteTransportModulePromise = null
     this.subscribers.clear()
@@ -904,6 +910,69 @@ export class McpManager {
     )
   }
 
+  /**
+   * Register an in-process tool server. Its tools become reachable through
+   * `listAvailableTools`/`callTool`/`isToolExecutionAllowed`/`abortToolCall`
+   * immediately, prefixed as `${serverName}__${toolName}` like any other
+   * server. Returns a dispose function that unregisters it; call it when the
+   * server's tools should stop being offered (e.g. when the owning run
+   * ends). Disposing is idempotent.
+   *
+   * Throws if `serverName` fails MCP server-name validation, is the reserved
+   * local-file-tool server name, or collides with an already-registered
+   * in-process server or a currently configured remote MCP server.
+   */
+  public registerInProcessServer(
+    serverName: string,
+    server: InProcessToolServer,
+  ): () => void {
+    // In-process registration is host-controlled (never fed a user-supplied
+    // name), so it's the one legitimate user of the reserved
+    // `module-mode-` prefix (see `moduleChatModeRegistry.ts`).
+    validateServerName(serverName, { allowReservedPrefix: true })
+    if (serverName === getLocalFileToolServerName()) {
+      throw new Error(
+        `Tool server name "${serverName}" is reserved for built-in local tools.`,
+      )
+    }
+    if (this.inProcessServers.has(serverName)) {
+      throw new Error(
+        `An in-process tool server named "${serverName}" is already registered.`,
+      )
+    }
+    if (this.servers.some((existing) => existing.name === serverName)) {
+      throw new Error(
+        `Tool server name "${serverName}" conflicts with a configured MCP server.`,
+      )
+    }
+
+    this.inProcessServers.set(serverName, server)
+    this.availableToolsCache.clear()
+
+    let disposed = false
+    return () => {
+      if (disposed) return
+      disposed = true
+      // Only remove if we're still the registered instance for this name —
+      // guards against a stale dispose call outliving a later re-registration
+      // of the same name after a prior, already-completed dispose.
+      if (this.inProcessServers.get(serverName) === server) {
+        this.inProcessServers.delete(serverName)
+        this.availableToolsCache.clear()
+      }
+    }
+  }
+
+  private listInProcessServerTools(): McpTool[] {
+    const tools: McpTool[] = []
+    for (const [serverName, server] of this.inProcessServers) {
+      for (const tool of server.listTools()) {
+        tools.push({ ...tool, name: getToolName(serverName, tool.name) })
+      }
+    }
+    return tools
+  }
+
   public async listAvailableTools({
     includeBuiltinTools = false,
     chatModelModalities,
@@ -939,7 +1008,7 @@ export class McpManager {
             }))
         })
 
-    const nextTools = includeBuiltinTools
+    const builtinTools = includeBuiltinTools
       ? [
           ...availableTools,
           ...getLocalFileTools({
@@ -953,6 +1022,13 @@ export class McpManager {
             })),
         ]
       : availableTools
+
+    // Registered in-process servers (see registerInProcessServer) are always
+    // surfaced, independent of includeBuiltinTools — that flag only gates the
+    // fixed local-file-tool set. A server only ends up in the registry
+    // because a caller explicitly opted in for this run, so listing its
+    // tools needs no separate opt-in flag.
+    const nextTools = [...builtinTools, ...this.listInProcessServerTools()]
 
     this.availableToolsCache.set(cacheKey, [...nextTools])
     return nextTools
@@ -991,6 +1067,14 @@ export class McpManager {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (serverName === getLocalFileToolServerName()) {
         if (!this.isLocalToolEnabled(toolName)) {
+          return false
+        }
+      } else if (this.inProcessServers.has(serverName)) {
+        // Registered in-process servers have no user-facing enable/disable
+        // toggle — being registered for this run is authorization enough.
+        // Still verify the tool is actually one this server offers.
+        const registered = this.inProcessServers.get(serverName)
+        if (!registered?.listTools().some((tool) => tool.name === toolName)) {
           return false
         }
       } else {
@@ -1045,7 +1129,6 @@ export class McpManager {
     workspaceScope,
     allowedSkillPaths,
     subagentParentContext,
-    runContext,
     bashApprovalMode,
     bashReadOnly,
   }: {
@@ -1060,7 +1143,6 @@ export class McpManager {
     chatModelId?: string
     workspaceScope?: AssistantWorkspaceScope
     allowedSkillPaths?: readonly string[]
-    runContext?: AgentRunContext
     subagentParentContext?: SubagentParentContext
     /** Effective approval tier for the bash tool; see tool-gateway.ts. */
     bashApprovalMode?: AssistantToolApprovalMode
@@ -1093,28 +1175,49 @@ export class McpManager {
         if (!this.isLocalToolEnabled(toolName)) {
           throw new Error(`Built-in tool ${toolName} is disabled`)
         }
-        const localResult = await callLocalFileTool({
-          app: this.app,
-          settings: this.settings,
-          openApplyReview: this.openApplyReview,
-          getRagEngine: this.getRagEngine,
-          conversationId,
-          conversationMessages,
-          roundId,
-          toolCallId: id,
+        // Every built-in tool executes through the registry dispatcher.
+        // `executeBuiltinTool` rejects unregistered names itself, so no
+        // membership test is needed here.
+        //
+        // `localFileTools.ts` must never import the *dispatcher*. It does
+        // read the registry (its `getLocalFileTools()` catalog is built from
+        // `getMcpTool` projections since D6b), and each tool's
+        // `definition.ts` imports shared helpers back out of it — so an
+        // import of `dispatcher.ts` there would close a module-init cycle
+        // through every definition. That cycle already broke `fs_read`'s
+        // schema literal once during this migration.
+        const localResult = await executeBuiltinTool(
           toolName,
-          args: parsedArgs ?? {},
-          requireReview,
-          signal: compositeSignal,
-          chatModelId,
-          workspaceScope,
-          allowedSkillPaths,
-          runContext,
-          subagentParentContext,
-          promptSourceWatcher: this.promptSourceWatcher,
-          bashApprovalMode,
-          bashReadOnly,
-        })
+          parsedArgs ?? {},
+          {
+            app: this.app,
+            settings: this.settings,
+            openApplyReview: this.openApplyReview,
+            ragAccess: this.ragAccess,
+            conversationId,
+            conversationMessages,
+            roundId,
+            toolCallId: id,
+            requireReview,
+            signal: compositeSignal,
+            chatModelId,
+            workspaceScope,
+            allowedSkillPaths,
+            // No `runContext`: `ToolContext` doesn't carry it (see that
+            // type's doc comment in `core/tools/types.ts` for why it was
+            // dropped rather than opacified). It was a `callTool` parameter
+            // only to feed the old `callLocalFileTool` switch, so it left
+            // that signature along with it.
+            subagentParentContext,
+            // The composition root owns subagent creation. McpManager only
+            // forwards the injected capability, keeping MCP/tool dispatch
+            // independent from the native agent runtime.
+            runSubagent: this.runSubagent,
+            promptSourceWatcher: this.promptSourceWatcher,
+            bashApprovalMode,
+            bashReadOnly,
+          },
+        )
         if (localResult.status === ToolCallResponseStatus.Success) {
           return {
             status: ToolCallResponseStatus.Success,
@@ -1145,6 +1248,19 @@ export class McpManager {
           status: ToolCallResponseStatus.Error,
           error: localResult.error,
         }
+      }
+
+      const inProcessServer = this.inProcessServers.get(serverName)
+      if (inProcessServer) {
+        // A thrown/rejected error here falls through to the catch block
+        // below, which already converts it into an Error-status response —
+        // no separate try/catch needed just to keep the handler from
+        // crashing the caller.
+        return await inProcessServer.callTool({
+          toolName,
+          args: parsedArgs ?? {},
+          signal: compositeSignal,
+        })
       }
 
       if (this.remoteMcpDisabled) {

@@ -1,3 +1,4 @@
+import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type { AssistantToolApprovalMode } from '../../types/assistant.types'
 import {
   ChatConversationCompactionLike,
@@ -6,6 +7,8 @@ import {
   ChatUserMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
+import type { NativeToolPolicy } from '../../types/llm/request'
+import type { ProviderSessionAccessor } from '../../types/provider-session.types'
 import { LLMProvider, LLMProviderApiType } from '../../types/provider.types'
 import { ReasoningLevel } from '../../types/reasoning'
 import type { ContextualInjection } from '../../utils/chat/contextual-injections'
@@ -14,13 +17,8 @@ import { BaseLLMProvider } from '../llm/base'
 import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import { McpManager } from '../mcp/mcpManager'
 
-import type { CitationRegistry } from './citationRegistry'
 import type { AutoContextCompactionChatOptions } from './compaction'
 import type { ToolCapabilityMode } from './tool-capability-prompt'
-
-export type AgentRunContext = {
-  citationRegistry: CitationRegistry
-}
 
 export type AgentRuntimeSnapshot = {
   messages: ChatMessage[]
@@ -75,6 +73,20 @@ export type AgentRuntimeRunInput = {
       approvalMode?: AssistantToolApprovalMode
     }
   >
+  /**
+   * Per-capability enabled/approval state for built-in tools (D9,
+   * docs/plans/2026-08-15-tool-registry/phase2-migration.md D9). Sibling to
+   * `toolPreferences` above, which as of that migration only carries remote
+   * MCP tool state — built-in tool approval/enablement resolution
+   * (`AgentToolGateway.resolveApprovalMode`/`isToolAllowed`) needs both.
+   */
+  builtinCapabilityPreferences?: Record<
+    string,
+    {
+      enabled?: boolean
+      approvalMode?: AssistantToolApprovalMode
+    }
+  >
   toolServerPreferences?: Record<
     string,
     {
@@ -90,10 +102,33 @@ export type AgentRuntimeRunInput = {
   allowedSkillPaths?: string[]
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  /** Module chat mode persona, injected in place of assistant instructions. */
+  modePersonaPrompt?: string
+  /** The owning module id, for the persona injection's `module="..."` attribute. */
+  modePersonaModuleId?: string
+  /** Full running mode id (`module:<moduleId>:<modeId>`) — scopes skill
+   * resolution to the mode's own declared skills. See
+   * `ChatModeRuntime.moduleChatModeId`. Undefined for built-in modes. */
+  moduleChatModeId?: string
+  /**
+   * Explicit context-assembly policy from `resolveChatModeRuntime`. Absent
+   * (built-in modes) is equivalent to `{ useAssistant: true }` — every
+   * consumer defaults accordingly, so omitting it never changes existing
+   * behavior.
+   */
+  contextPolicy?: ChatContextPolicy
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  /**
+   * Session handle for a provider that keeps a native session of its own (see
+   * `LLMOptions.session`). Absent for every stateless provider and for runs
+   * with no conversation record behind them.
+   */
+  session?: ProviderSessionAccessor
+  /** See `LLMOptions.nativeToolPolicy`. */
+  nativeToolPolicy?: NativeToolPolicy
   autoContextCompaction?: {
     chatOptions: AutoContextCompactionChatOptions
     maxContextTokens?: number
@@ -108,12 +143,6 @@ export type AgentRuntimeRunInput = {
    * Not invoked by the single-turn fast path (single LLM call, no boundary).
    */
   drainPendingUserMessages?: () => AgentPendingUserMessageDrain | null
-  /**
-   * Per-run side-channel for state that flows down to tool execution but isn't
-   * part of the LLM-visible message stream (e.g. the citation registry that
-   * collects fs_search hits across multiple tool calls).
-   */
-  runContext?: AgentRunContext
   /** Isolated subagent runs: replace the normal system prompt assembly. */
   systemPromptOverride?: string
   /** Conversation whose approval state should be used for tool auto-execution. */
@@ -133,6 +162,15 @@ export type AgentRuntimeRunInput = {
    * `vault-read` module agent capability). Defaults to false.
    */
   bashReadOnly?: boolean
+  /**
+   * For module chat modes: full tool name → the mode's declared
+   * `requiresApproval` for each of the mode's own tools. See
+   * `ChatModeRuntime.moduleToolApprovalPolicies` — threaded through
+   * unchanged to `AgentToolGateway`, which uses it to fix a persisted
+   * `approvalPolicy` (and, for bash calls, `executionConstraints`) onto
+   * every `ToolCallRequest` at creation time. Undefined for built-in modes.
+   */
+  moduleToolApprovalPolicies?: ReadonlyMap<string, boolean>
 }
 
 export type AgentRuntimeLoopConfig = {

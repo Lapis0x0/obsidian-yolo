@@ -1,8 +1,8 @@
 export type RuntimeComponentId =
   | 'tokenizer'
   | 'pdf-engine'
-  | 'pglite-engine'
   | 'bash-engine'
+  | 'embedding-engine'
 
 export type TokenizerComponentApi = Readonly<{
   count(text: string): number
@@ -88,6 +88,13 @@ export type VectorStore = Readonly<{
       Pick<VectorSelect, 'id' | 'path' | 'mtime' | 'content_hash' | 'metadata'>
     >
   >
+  /**
+   * Every stored chunk vector for one file, in insertion order. Vectors are
+   * L2-normalized at write time (`insertVectors`), so callers can pool them
+   * directly. Empty when the file has no rows for this model — i.e. it is
+   * not indexed in this knowledge base.
+   */
+  listVectorsForPath(modelId: string, path: string): Promise<Float32Array[]>
   deleteVectorsByIds(ids: number[]): Promise<void>
   deleteVectorsByPaths(modelId: string, paths: string[]): Promise<void>
   bumpMtimeByIds(updates: Array<{ id: number; mtime: number }>): Promise<void>
@@ -100,37 +107,39 @@ export type VectorStore = Readonly<{
     options: {
       minSimilarity: number
       limit: number
-      scope?: { files: string[]; folders: string[] }
+      /**
+       * Declarative scan predicate applied while walking the in-memory
+       * index (never a function, so it stays serializable across a future
+       * Worker boundary). `exclude` uses the same equal-or-prefix rule
+       * semantics as `workspaceScope.ts`'s `matchesRule` and always wins
+       * over `files`/`folders` — a row matching any exclude rule is
+       * dropped even if it also matches an explicit include entry.
+       */
+      scope?: { files: string[]; folders: string[]; exclude?: string[] }
     },
   ): Promise<Array<VectorSelect & { similarity: number }>>
+  /**
+   * How similar two *unrelated* chunks in this index typically are: the mean
+   * and standard deviation of cosine similarity over a random sample of chunk
+   * pairs. Cosine has no model-independent meaning — one embedding model's
+   * "unrelated" sits at 0.37, another's at 0.8 — so a caller that wants to
+   * say "this result is genuinely related" needs this corpus-level baseline
+   * to normalize against.
+   *
+   * Deliberately a property of (model, index) rather than of a query: a
+   * per-query baseline rewards a note for being uniformly far from
+   * everything, which inflates the score of its merely-least-bad match.
+   *
+   * `null` when the index holds fewer than two vectors for the model, i.e.
+   * there is no pair to sample.
+   */
+  getSimilarityBaseline(embeddingModel: {
+    id: string
+    dimension: number
+  }): Promise<{ mean: number; std: number } | null>
   getEmbeddingStats(): Promise<
-    Array<{ model: string; rowCount: number; totalDataBytes: number }>
+    Array<{ model: string; rowCount: number; vectorBytes: number }>
   >
-}>
-
-export type PgliteRuntimeResources = Readonly<{
-  fsBundle: Blob
-  pgliteWasmModule: WebAssembly.Module
-  initdbWasmModule: WebAssembly.Module
-  vectorExtensionBlob: Blob
-  vectorExtensionBundlePath: URL
-}>
-
-export type PgliteEngineSession = Readonly<{
-  vectorStore: VectorStore
-  migrationChanged: boolean
-  cleanupLegacyStaging(): Promise<number>
-  vacuum(): Promise<void>
-  dump(): Promise<Blob>
-  close(): Promise<void>
-}>
-
-export type PgliteEngineComponentApi = Readonly<{
-  createSession(options: {
-    resources: PgliteRuntimeResources
-    snapshot?: Blob
-  }): Promise<PgliteEngineSession>
-  dispose(): Promise<void>
 }>
 
 /**
@@ -228,6 +237,9 @@ export type BashSearchCallback = (
     query: string
     scopePath?: string
     maxResults: number
+    /** `--kb <name>`: restrict to one knowledge base by name (case-
+     * insensitive). Undefined = merge results across every knowledge base. */
+    knowledgeBase?: string
   }>,
 ) => Promise<BashSearchOutcome>
 
@@ -268,11 +280,81 @@ export type BashEngineComponentApi = Readonly<{
   dispose(): void
 }>
 
+/**
+ * Result of `EmbeddingEngineComponentApi.probeEnvironment()`, checked before
+ * `createSession` is attempted. Synchronous and side-effect free — it only
+ * inspects capability flags (`crossOriginIsolated`, `navigator.gpu`, WASM
+ * SIMD support) already available on `globalThis`, mirroring the old PGlite
+ * component's "capability probe before install-time failure" precedent.
+ */
+export type EmbeddingEngineEnvironmentProbe =
+  | Readonly<{ ok: true; webgpu: boolean; threads: number }>
+  | Readonly<{
+      ok: false
+      reason: 'no-wasm-simd' | 'no-worker' | 'no-response'
+    }>
+
+export type EmbeddingEngineSpec = Readonly<{
+  dimension: number
+  pooling: 'mean' | 'cls' | 'last-token'
+  normalize: boolean
+  maxTokens: number
+  dtype?: 'q8' | 'fp16'
+}>
+
+/**
+ * Callbacks injected by the host so the component never touches the network
+ * or the vault directly. `loadWasm` reads a runtime-component asset (see
+ * `readRuntimeComponentAsset`); `loadModelFile` reads a file from the
+ * `LocalEmbeddingModelManager`-owned model directory (host-only, P2). Both
+ * receive `createSession`'s own `signal` so a caller that aborts while
+ * assets/model files are still loading (network fetch, vault read) can
+ * cancel that work instead of it running to completion unobserved.
+ */
+export type EmbeddingEngineCreateSessionOptions = Readonly<{
+  loadWasm(name: string, signal?: AbortSignal): Promise<Uint8Array>
+  loadModelFile(file: string, signal?: AbortSignal): Promise<Uint8Array>
+  spec: EmbeddingEngineSpec
+  /**
+   * `'webgpu'` is kept in the type for forward compatibility but is not
+   * supported in this release — `createSession` rejects it rather than
+   * silently falling back to `'wasm'`, since the component doesn't ship the
+   * JSEP/WebGPU wasm variant as a declared asset. Omit this option (or pass
+   * `'wasm'` explicitly) until WebGPU support returns in a future release.
+   * `dtype` (on `EmbeddingEngineSpec` above) is independent of device and
+   * already supported on `'wasm'`.
+   */
+  device?: 'wasm' | 'webgpu'
+  signal?: AbortSignal
+}>
+
+export type EmbeddingSession = Readonly<{
+  /** Returns vectors already pooled/normalized per `EmbeddingEngineSpec`. */
+  embed(texts: string[], signal?: AbortSignal): Promise<Float32Array[]>
+  /**
+   * Resolves once the underlying ORT/WebGPU session and Worker have been
+   * torn down. Async because real cleanup is: ask the Worker to dispose the
+   * model, wait for its ack (bounded by a short timeout), then terminate —
+   * not just `Worker.terminate()`, which reclaims the JS realm without ever
+   * running the library's own resource-release lifecycle.
+   */
+  dispose(): Promise<void>
+}>
+
+export type EmbeddingEngineComponentApi = Readonly<{
+  probeEnvironment(): EmbeddingEngineEnvironmentProbe
+  createSession(
+    options: EmbeddingEngineCreateSessionOptions,
+  ): Promise<EmbeddingSession>
+  /** Disposes every session still open under this engine instance. */
+  dispose(): Promise<void>
+}>
+
 export type RuntimeComponentApiMap = {
   tokenizer: TokenizerComponentApi
   'pdf-engine': PdfEngineComponentApi
-  'pglite-engine': PgliteEngineComponentApi
   'bash-engine': BashEngineComponentApi
+  'embedding-engine': EmbeddingEngineComponentApi
 }
 
 export type RuntimeComponentDefinition<

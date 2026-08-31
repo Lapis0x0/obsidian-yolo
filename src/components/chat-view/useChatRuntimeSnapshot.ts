@@ -23,6 +23,7 @@ export type UseChatRuntimeSnapshotParams = {
   conversationModelId: string
   conversationAssistantId: string
   chatMode: ChatMode
+  persistedChatMode: ChatMode
   yoloEnabled: boolean
   reasoningLevel: ReasoningLevel
   conversationOverrides: ConversationOverrideSettings | null
@@ -49,6 +50,7 @@ export function useChatRuntimeSnapshot({
   conversationModelId,
   conversationAssistantId,
   chatMode,
+  persistedChatMode,
   yoloEnabled,
   reasoningLevel,
   conversationOverrides,
@@ -64,6 +66,7 @@ export function useChatRuntimeSnapshot({
       conversationModelId,
       conversationAssistantId,
       chatMode,
+      persistedChatMode,
       yoloEnabled,
       reasoningLevel,
       conversationOverrides,
@@ -71,6 +74,7 @@ export function useChatRuntimeSnapshot({
     [
       activeRuntimeId,
       chatMode,
+      persistedChatMode,
       cliConversationId,
       cliSessionRef,
       conversationAssistantId,

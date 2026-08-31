@@ -1,13 +1,7 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
 import { Notice, TFile, TFolder, normalizePath } from 'obsidian'
-import {
-  Dispatch,
-  MutableRefObject,
-  SetStateAction,
-  useCallback,
-  useRef,
-} from 'react'
+import { Dispatch, MutableRefObject, SetStateAction, useCallback } from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -24,7 +18,6 @@ import type { useChatManager } from '../../hooks/useJsonManagers'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { Assistant } from '../../types/assistant.types'
 import type {
-  AssistantToolMessageGroup,
   ChatConversationCompactionState,
   ChatMessage,
   ChatToolMessage,
@@ -51,11 +44,11 @@ import {
 } from '../../utils/chat/tool-result-index'
 import { readTFileContent } from '../../utils/obsidian'
 
-import { type ChatMode, isAgentChatMode } from './chat-input/ChatModeSelect'
 import {
-  buildAssistantErrorContinuation,
-  buildRetrySubmissionMessages,
-} from './chatRetry'
+  type ChatMode,
+  isAgentChatMode,
+  isModuleChatMode,
+} from './chat-input/ChatModeSelect'
 import { invalidateChatRuntimeNavigation } from './cliChatIntegration'
 import { isDelegateSubagentToolName } from './messageNavigatorUtils'
 import type { QueryProgressState } from './QueryProgress'
@@ -181,17 +174,11 @@ export type UseChatDomainActionsParams = {
   yoloEnabled: boolean
   effectiveCompactionState: ChatConversationCompactionState
   setCompactionState: Dispatch<SetStateAction<ChatConversationCompactionState>>
-  setPendingCompactionAnchorMessageId: Dispatch<SetStateAction<string | null>>
   assistantGroupBoundaryMessageIds: string[]
-  setAssistantGroupBoundaryMessageIds: Dispatch<SetStateAction<string[]>>
   activeBranchByUserMessageIdRef: MutableRefObject<Map<string, string>>
-  setActiveBranchByUserMessageId: Dispatch<SetStateAction<Map<string, string>>>
   messageModelMap: Map<string, string>
   reasoningLevel: ReasoningLevel
   conversationReasoningLevelRef: MutableRefObject<Map<string, ReasoningLevel>>
-  groupedChatMessagesRef: MutableRefObject<
-    (ChatUserMessage | AssistantToolMessageGroup)[]
-  >
   selectedAssistant: Assistant | null
   setQueryProgress: Dispatch<SetStateAction<QueryProgressState>>
   setUndoingEditSummaryTarget: Dispatch<SetStateAction<string | null>>
@@ -220,9 +207,6 @@ export type UseChatDomainActionsParams = {
   createOrUpdateConversation: ReturnType<
     typeof useChatHistory
   >['createOrUpdateConversation']
-  createOrUpdateConversationImmediately: ReturnType<
-    typeof useChatHistory
-  >['createOrUpdateConversationImmediately']
   generateConversationTitle: ReturnType<
     typeof useChatHistory
   >['generateConversationTitle']
@@ -234,12 +218,6 @@ export type UseChatDomainActionsParams = {
   abortConversationRun: ReturnType<
     typeof useChatStreamManager
   >['abortConversationRun']
-  compactConversation: ReturnType<
-    typeof useChatStreamManager
-  >['compactConversation']
-  currentConversationRunSummary: ReturnType<
-    typeof useChatStreamManager
-  >['currentConversationRunSummary']
 
   // Shared, memoized across renders — must stay a single instance (also fed
   // to useChatStreamManager)
@@ -269,15 +247,11 @@ export function useChatDomainActions({
   yoloEnabled,
   effectiveCompactionState,
   setCompactionState,
-  setPendingCompactionAnchorMessageId,
   assistantGroupBoundaryMessageIds,
-  setAssistantGroupBoundaryMessageIds,
   activeBranchByUserMessageIdRef,
-  setActiveBranchByUserMessageId,
   messageModelMap,
   reasoningLevel,
   conversationReasoningLevelRef,
-  groupedChatMessagesRef,
   selectedAssistant,
   setQueryProgress,
   setUndoingEditSummaryTarget,
@@ -291,12 +265,9 @@ export function useChatDomainActions({
   normalizeAssistantGroupBoundaryMessageIds,
   serializeMessageModelMap,
   createOrUpdateConversation,
-  createOrUpdateConversationImmediately,
   generateConversationTitle,
   submitChatMutation,
   abortConversationRun,
-  compactConversation,
-  currentConversationRunSummary,
   requestContextBuilder,
   chatManager,
   normalizeReasoningLevel,
@@ -307,8 +278,6 @@ export function useChatDomainActions({
   const { settings } = useSettings()
   const { t } = useLanguage()
   const { getMcpManager } = useMcp()
-
-  const assistantContinuationPendingRef = useRef(false)
 
   const resolveReasoningLevelForMessages = useCallback(
     (messages: ChatMessage[]) => {
@@ -322,109 +291,6 @@ export function useChatDomainActions({
     },
     [normalizeReasoningLevel, reasoningLevel],
   )
-
-  const handleManualContextCompaction = useCallback(async () => {
-    if (currentConversationRunSummary.isWaitingApproval) {
-      new Notice(
-        t(
-          'chat.compaction.waitingApproval',
-          '请先处理当前待确认的工具调用，再压缩上下文。',
-        ),
-      )
-      return
-    }
-
-    if (currentConversationRunSummary.isActive) {
-      new Notice(
-        t('chat.compaction.runActive', '请等待当前回复完成后再压缩上下文。'),
-      )
-      return
-    }
-
-    if (chatMessages.length === 0) {
-      new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
-      return
-    }
-
-    try {
-      setPendingCompactionAnchorMessageId(chatMessages.at(-1)?.id ?? null)
-      const nextCompactionState = await compactConversation(chatMessages)
-      setPendingCompactionAnchorMessageId(null)
-
-      if (!nextCompactionState) {
-        new Notice(t('chat.compaction.empty', '当前还没有可压缩的对话内容。'))
-        return
-      }
-
-      const nextCompactionHistory = [
-        ...effectiveCompactionState,
-        nextCompactionState,
-      ]
-
-      plugin
-        .getAgentService()
-        .replaceConversationMessages(
-          currentConversationId,
-          chatMessages,
-          nextCompactionHistory,
-        )
-
-      const effectiveOverrides = {
-        ...(conversationOverrides ?? {}),
-        chatMode,
-        agentYoloEnabled: yoloEnabled,
-      }
-      await createOrUpdateConversationImmediately(
-        currentConversationId,
-        chatMessages,
-        effectiveOverrides,
-        conversationModelId,
-        serializeMessageModelMap(chatMessages),
-        serializeActiveBranchByUserMessageId(
-          chatMessages,
-          activeBranchByUserMessageIdRef.current,
-        ),
-        conversationReasoningLevelRef.current.get(currentConversationId) ??
-          reasoningLevel,
-        nextCompactionHistory,
-        normalizeAssistantGroupBoundaryMessageIds(
-          chatMessages,
-          assistantGroupBoundaryMessageIds,
-        ),
-      )
-      new Notice(
-        t(
-          'chat.compaction.success',
-          '已压缩较早上下文，后续回复将基于摘要继续。',
-        ),
-      )
-    } catch (error) {
-      setPendingCompactionAnchorMessageId(null)
-      new Notice(t('chat.compaction.failed', '上下文压缩失败，请稍后重试。'))
-      console.error('Failed to compact conversation context', error)
-    }
-  }, [
-    chatMessages,
-    chatMode,
-    yoloEnabled,
-    compactConversation,
-    conversationModelId,
-    conversationOverrides,
-    createOrUpdateConversationImmediately,
-    currentConversationId,
-    currentConversationRunSummary.isActive,
-    currentConversationRunSummary.isWaitingApproval,
-    effectiveCompactionState,
-    plugin,
-    reasoningLevel,
-    assistantGroupBoundaryMessageIds,
-    normalizeAssistantGroupBoundaryMessageIds,
-    serializeMessageModelMap,
-    t,
-    setPendingCompactionAnchorMessageId,
-    activeBranchByUserMessageIdRef,
-    conversationReasoningLevelRef,
-  ])
 
   const handleRecoverPendingToolCall = useCallback(
     async ({
@@ -504,11 +370,27 @@ export function useChatDomainActions({
           })
 
         if (allowForConversation) {
-          mcpManager.allowToolForConversation(
-            request.name,
-            conversationId,
-            args,
-          )
+          if (request.metadata?.approvalPolicy === 'always-require-user') {
+            // See `AgentService.approveToolCall`'s matching guard: module
+            // chat mode tools declared `requiresApproval: true` are an
+            // unconditional per-call confirmation gate and must never be
+            // added to the conversation's "always allow" list, even from
+            // this recovery path.
+            console.warn(
+              '[YOLO] Ignoring allowForConversation: tool call approval policy is always-require-user',
+              {
+                conversationId,
+                toolCallId: request.id,
+                toolName: request.name,
+              },
+            )
+          } else {
+            mcpManager.allowToolForConversation(
+              request.name,
+              conversationId,
+              args,
+            )
+          }
         }
 
         if (foregroundToolAbortController.signal.aborted) {
@@ -554,6 +436,12 @@ export function useChatDomainActions({
                     .getAgentService()
                     .getPendingApprovalSubagentParentContext(conversationId)
                 : undefined,
+              // This recovery path also bypasses `AgentToolGateway` and has
+              // no live `bashReadOnly` option to read — use the persisted
+              // snapshot fixed at tool-call creation time instead. See
+              // `ToolCallRequest.metadata.executionConstraints`.
+              bashReadOnly:
+                request.metadata?.executionConstraints?.bashReadOnly,
             }),
           getResponseBody: (response) => response,
         })
@@ -637,52 +525,6 @@ export function useChatDomainActions({
     ],
   )
 
-  /**
-   * Recovery path for ask_user_question: the service has already committed
-   * the user's answers to the persisted tool message but no live run remains
-   * (the conversation finalized before the user answered). Mirror the tail
-   * of handleRecoverPendingToolCall — persist immediately and kick off a
-   * fresh submit so the agent loop resumes from the resolved messages.
-   */
-  const handleRecoverAnswerUserQuestion = useCallback(
-    ({
-      resolvedMessages,
-      toolCallId: _toolCallId,
-    }: {
-      resolvedMessages: ChatMessage[]
-      toolCallId: string
-    }) => {
-      const conversationId = currentConversationId
-      setChatMessages(resolvedMessages)
-      chatMessagesStateRef.current = resolvedMessages
-      plugin
-        .getAgentService()
-        .replaceConversationMessages(
-          conversationId,
-          resolvedMessages,
-          effectiveCompactionState,
-          { persistState: true },
-        )
-      void persistConversationImmediately(resolvedMessages)
-      submitChatMutation.mutate({
-        chatMessages: resolvedMessages,
-        conversationId,
-        reasoningLevel: resolveReasoningLevelForMessages(resolvedMessages),
-        modelIds: getLatestUserSelectedModelIds(resolvedMessages),
-      })
-    },
-    [
-      currentConversationId,
-      effectiveCompactionState,
-      persistConversationImmediately,
-      plugin,
-      resolveReasoningLevelForMessages,
-      setChatMessages,
-      submitChatMutation,
-      chatMessagesStateRef,
-    ],
-  )
-
   const handleUserMessageSubmit = useCallback(
     async ({
       inputChatMessages,
@@ -729,6 +571,9 @@ export function useChatDomainActions({
         await requestContextBuilder.compileUserMessagePrompt({
           message: lastMessage,
           onQueryProgressChange: setQueryProgress,
+          scope: isModuleChatMode(chatMode)
+            ? { moduleChatModeId: chatMode }
+            : undefined,
         })
       const compiledRequestMessages = effectiveRequestChatMessages.map(
         (message) =>
@@ -852,129 +697,6 @@ export function useChatDomainActions({
       setQueryProgress,
       setCompactionState,
       conversationReasoningLevelRef,
-    ],
-  )
-
-  const handleAssistantMessageGroupRetry = useCallback(
-    (messageIds: string[]) => {
-      const retryPayload = buildRetrySubmissionMessages({
-        sourceMessages: chatMessagesStateRef.current,
-        groupedChatMessages: groupedChatMessagesRef.current,
-        targetMessageIds: messageIds,
-        activeBranchByUserMessageId: activeBranchByUserMessageIdRef.current,
-      })
-
-      if (!retryPayload) {
-        new Notice(
-          t('chat.regenerateFailed', 'Failed to regenerate this reply'),
-        )
-        return
-      }
-
-      const {
-        sourceUserMessageId,
-        inputChatMessages,
-        requestChatMessages,
-        branchTarget,
-      } = retryPayload
-      const nextAssistantGroupBoundaryMessageIds =
-        normalizeAssistantGroupBoundaryMessageIds(
-          inputChatMessages,
-          assistantGroupBoundaryMessageIds,
-        )
-
-      setAssistantGroupBoundaryMessageIds(nextAssistantGroupBoundaryMessageIds)
-
-      const nextActiveBranchByUserMessageId = new Map(
-        activeBranchByUserMessageIdRef.current,
-      )
-      if (branchTarget) {
-        nextActiveBranchByUserMessageId.set(
-          sourceUserMessageId,
-          branchTarget.branchId,
-        )
-      } else {
-        nextActiveBranchByUserMessageId.delete(sourceUserMessageId)
-      }
-      activeBranchByUserMessageIdRef.current = nextActiveBranchByUserMessageId
-      setActiveBranchByUserMessageId(nextActiveBranchByUserMessageId)
-
-      void handleUserMessageSubmit({
-        inputChatMessages,
-        requestChatMessages,
-        retryBranchTarget: branchTarget
-          ? {
-              ...branchTarget,
-              sourceUserMessageId,
-            }
-          : undefined,
-      })
-    },
-    [
-      assistantGroupBoundaryMessageIds,
-      groupedChatMessagesRef,
-      handleUserMessageSubmit,
-      normalizeAssistantGroupBoundaryMessageIds,
-      t,
-      chatMessagesStateRef,
-      activeBranchByUserMessageIdRef,
-      setAssistantGroupBoundaryMessageIds,
-      setActiveBranchByUserMessageId,
-    ],
-  )
-
-  const handleAssistantErrorContinue = useCallback(
-    (assistantMessageId: string) => {
-      if (assistantContinuationPendingRef.current) {
-        return
-      }
-      const payload = buildAssistantErrorContinuation({
-        sourceMessages: chatMessagesStateRef.current,
-        groupedChatMessages: groupedChatMessagesRef.current,
-        assistantMessageId,
-        activeBranchByUserMessageId: activeBranchByUserMessageIdRef.current,
-      })
-      if (!payload) {
-        new Notice(
-          t('chat.regenerateFailed', 'Failed to regenerate this reply'),
-        )
-        return
-      }
-
-      forceScrollToBottom()
-      assistantContinuationPendingRef.current = true
-      submitChatMutation.mutate(
-        {
-          chatMessages: payload.inputChatMessages,
-          requestMessages: payload.requestChatMessages,
-          conversationId: currentConversationId,
-          reasoningLevel: resolveReasoningLevelForMessages(
-            payload.requestChatMessages,
-          ),
-          assistantContinuation: {
-            assistantMessageId: payload.assistantMessageId,
-            sourceUserMessageId: payload.sourceUserMessageId,
-            modelId: payload.modelId,
-            branchId: payload.branchId,
-            branchLabel: payload.branchLabel,
-          },
-        },
-        {
-          onSettled: () => {
-            assistantContinuationPendingRef.current = false
-          },
-        },
-      )
-    },
-    [
-      currentConversationId,
-      forceScrollToBottom,
-      resolveReasoningLevelForMessages,
-      submitChatMutation,
-      t,
-      chatMessagesStateRef,
-      groupedChatMessagesRef,
-      activeBranchByUserMessageIdRef,
     ],
   )
 
@@ -1538,24 +1260,6 @@ export function useChatDomainActions({
     [getMcpManager, updateToolMessageInChatHistory],
   )
 
-  const handleContinueResponse = useCallback(() => {
-    const latestMessage = chatMessages.at(-1)
-    submitChatMutation.mutate({
-      chatMessages: chatMessages,
-      conversationId: currentConversationId,
-      reasoningLevel: resolveReasoningLevelForMessages(chatMessages),
-      modelIds:
-        latestMessage?.role === 'user'
-          ? latestMessage.selectedModelIds
-          : undefined,
-    })
-  }, [
-    submitChatMutation,
-    chatMessages,
-    currentConversationId,
-    resolveReasoningLevelForMessages,
-  ])
-
   const handleExportChatToVault = useCallback(
     (conversationId: string) => {
       void (async () => {
@@ -1585,19 +1289,14 @@ export function useChatDomainActions({
 
   return {
     resolveReasoningLevelForMessages,
-    handleManualContextCompaction,
     handleRecoverPendingToolCall,
-    handleRecoverAnswerUserQuestion,
     handleUserMessageSubmit,
-    handleAssistantMessageGroupRetry,
-    handleAssistantErrorContinue,
     applyMutation,
     handleApply,
     handleUndoEditSummary,
     handleOpenEditSummaryFile,
     handleToolMessageUpdate,
     handleToolCallResponseUpdate,
-    handleContinueResponse,
     handleExportChatToVault,
   }
 }

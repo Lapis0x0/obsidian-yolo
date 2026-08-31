@@ -4,7 +4,7 @@ import { App, Notice } from 'obsidian'
 import { DEFAULT_EMBEDDING_MODELS } from '../../../../constants'
 import { useSettings } from '../../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../../core/rag/embedding'
-import YoloPlugin from '../../../../main'
+import type YoloPlugin from '../../../../main'
 import { ConfirmModal } from '../../../modals/ConfirmModal'
 import { AddEmbeddingModelModal } from '../../modals/AddEmbeddingModelModal'
 
@@ -37,17 +37,21 @@ export function EmbeddingModelsSubSection({
       ctaText: 'Delete',
       onConfirm: () => {
         void (async () => {
-          const vectorManager = await plugin.tryGetVectorManager()
+          const vectorManagers = await plugin.tryGetVectorManagers()
 
-          if (vectorManager) {
+          if (vectorManagers.length > 0) {
             const embeddingModelClient = getEmbeddingModelClient({
               settings,
               embeddingModelId: modelId,
             })
-            await vectorManager.clearAllVectors(embeddingModelClient)
+            await Promise.all(
+              vectorManagers.map((vm) =>
+                vm.clearAllVectors(embeddingModelClient),
+              ),
+            )
           } else {
             console.warn(
-              '[YOLO] Skip clearing embeddings because vector manager is unavailable.',
+              '[YOLO] Skip clearing embeddings because no vector managers are available.',
             )
           }
 

@@ -20,6 +20,9 @@ export type ModuleUninstallCoordinatorOptions = Readonly<{
   /** Shared with every activation path; it does not deactivate a live module. */
   runtime: ModuleRuntimeQuiescence
   platform: ModuleArtifactPlatform
+  /** Drops the module's Vault-projected skill packages (see
+   * `moduleSkillMaterializer.ts`) so uninstall leaves no orphan directory. */
+  removeSkillProjection?: (moduleId: string) => Promise<void>
 }>
 
 export class ModuleUninstallRefreshError extends Error {
@@ -46,7 +49,9 @@ export class ModuleUninstallCoordinator {
       typeof options.intentStore?.get !== 'function' ||
       typeof options.manager?.refresh !== 'function' ||
       typeof options.runtime?.runWithModuleQuiesced !== 'function' ||
-      (options.platform !== 'desktop' && options.platform !== 'mobile')
+      (options.platform !== 'desktop' && options.platform !== 'mobile') ||
+      (options.removeSkillProjection !== undefined &&
+        typeof options.removeSkillProjection !== 'function')
     ) {
       throw new Error('Module uninstall coordinator options are invalid')
     }
@@ -66,6 +71,10 @@ export class ModuleUninstallCoordinator {
                 `Module "${moduleId}" uninstall requires uninstalled intent`,
               )
             }
+            // Runs before the device-state short-circuit below: a projection
+            // can outlive the device state (removed in an earlier, partly
+            // failed uninstall) and must not be left behind.
+            await this.options.removeSkillProjection?.(moduleId)
 
             let state = await transaction.read()
             if (state === null) return

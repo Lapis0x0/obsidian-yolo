@@ -6,8 +6,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockEmbeddingModelIds } from '../../../core/llm/bedrockCatalog'
 import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
 import { getProviderClient } from '../../../core/llm/manager'
-import { supportedDimensionsForIndex } from '../../../database/vectorConstants'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   EmbeddingModel,
   embeddingModelSchema,
@@ -24,7 +23,6 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ReactModal } from '../../common/ReactModal'
 import { SearchableDropdown } from '../../common/SearchableDropdown'
-import { ConfirmModal } from '../../modals/ConfirmModal'
 
 type AddEmbeddingModelModalComponentProps = {
   plugin: YoloPlugin
@@ -318,23 +316,6 @@ function AddEmbeddingModelModalComponent({
         'test',
       )
       const dimension = extractEmbeddingVector(embeddingResult).length
-
-      if (!supportedDimensionsForIndex.includes(dimension)) {
-        const confirmed = await new Promise<boolean>((resolve) => {
-          new ConfirmModal(plugin.app, {
-            title: 'Performance warning',
-            message: `This model outputs ${dimension} dimensions, but the optimized dimensions for database indexing are: ${supportedDimensionsForIndex.join(
-              ', ',
-            )}.\n\nThis may result in slower search performance.\n\nDo you want to continue anyway?`,
-            onConfirm: () => resolve(true),
-            onCancel: () => resolve(false),
-          }).open()
-        })
-
-        if (!confirmed) {
-          return
-        }
-      }
 
       const embeddingModel: EmbeddingModel = {
         ...formData,

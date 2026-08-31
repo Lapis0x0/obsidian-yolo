@@ -1,5 +1,6 @@
 import { v4 as uuidv4 } from 'uuid'
 
+import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type {
   AssistantToolPreference,
   AssistantToolServerPreference,
@@ -11,7 +12,13 @@ import {
   ChatMessage,
 } from '../../types/chat'
 import { ChatModel } from '../../types/chat-model.types'
-import type { RequestMessage, RequestTool } from '../../types/llm/request'
+import type {
+  NativeToolPolicy,
+  RequestMessage,
+  RequestTool,
+} from '../../types/llm/request'
+import type { ProviderExecutedToolCall } from '../../types/llm/response'
+import type { ProviderSessionAccessor } from '../../types/provider-session.types'
 import { LLMProvider, LLMProviderApiType } from '../../types/provider.types'
 import {
   ReasoningLevel,
@@ -78,13 +85,35 @@ type AgentLlmTurnExecutorInput = {
   }
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  modePersonaPrompt?: string
+  modePersonaModuleId?: string
+  moduleChatModeId?: string
+  contextPolicy?: ChatContextPolicy
   transientRequestMessages?: RequestMessage[]
   geminiTools?: {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  /**
+   * Session handle for providers that run their own native session (see
+   * `LLMOptions.session`). Supplied by the caller that owns the conversation
+   * record; absent for runs with nothing to persist against.
+   */
+  session?: ProviderSessionAccessor
+  /** See `LLMOptions.nativeToolPolicy`. */
+  nativeToolPolicy?: NativeToolPolicy
   systemPromptOverride?: string
   onAssistantMessage: (message: ChatAssistantMessage) => void
+  /**
+   * A run of tools the provider executed inside its own runtime, at the point
+   * in the answer where it happened (see `providerToolRun`). The assistant
+   * message is sealed before the call and a new one is opened after it, so the
+   * caller only has to place the run between them.
+   *
+   * Called again as the run's calls complete, with the same run — the caller
+   * replaces rather than appends.
+   */
+  onProviderToolRun?: (calls: ProviderExecutedToolCall[]) => void
 }
 
 type AgentLlmTurnExecutorOutput = {
@@ -176,6 +205,21 @@ export class AgentLlmTurnExecutor {
     const initialContent = assistantMessage.content
     const initialReasoning = assistantMessage.reasoning ?? ''
     const preserveInitialReasoning = Boolean(resumedMessage)
+    /**
+     * How many times a provider tool run has split this turn's answer. Past
+     * the first split the turn is no longer one message, so anything that
+     * reasons about "the message" as a whole — the non-streaming fallbacks
+     * below, and whether the turn produced output at all — has to account for
+     * the sealed messages instead of only the one still open.
+     */
+    let splitCount = 0
+    let producedAssistantOutput = false
+    /**
+     * Start of the message currently being written. Equal to `responseStart`
+     * until a run splits the turn, after which each message is timed over its
+     * own stretch — so the per-call breakdown adds back up to the turn.
+     */
+    let segmentStart = responseStart
     this.input.onAssistantMessage(assistantMessage)
 
     let turnResult: Awaited<ReturnType<typeof executeSingleTurn>>
@@ -238,6 +282,10 @@ export class AgentLlmTurnExecutor {
           compaction: this.input.compaction,
           contextualInjections: this.input.contextualInjections,
           runtimeModePrompt,
+          modePersonaPrompt: this.input.modePersonaPrompt,
+          modePersonaModuleId: this.input.modePersonaModuleId,
+          moduleChatModeId: this.input.moduleChatModeId,
+          contextPolicy: this.input.contextPolicy,
           systemPromptOverride: this.input.systemPromptOverride,
           systemPromptSnapshotMode: 'create',
         })
@@ -256,6 +304,8 @@ export class AgentLlmTurnExecutor {
       )
       const providerStart = Date.now()
       let recordedFirstToken = false
+      /** Runs already placed in the conversation, by run id. */
+      const openedToolRuns = new Set<string>()
       turnResult = await executeSingleTurn({
         providerClient: this.input.providerClient,
         model: this.input.model,
@@ -277,6 +327,10 @@ export class AgentLlmTurnExecutor {
         streamFallbackRecoveryEnabled:
           this.input.requestParams?.streamFallbackRecoveryEnabled,
         geminiTools: this.input.geminiTools,
+        ...(this.input.session ? { session: this.input.session } : {}),
+        ...(this.input.nativeToolPolicy
+          ? { nativeToolPolicy: this.input.nativeToolPolicy }
+          : {}),
         debugTraceId: debugTrace?.id,
         onStreamDelta: ({ contentDelta, reasoningDelta, chunk, toolCalls }) => {
           if (reasoningDelta) reasoningTracker.observeReasoning()
@@ -365,6 +419,50 @@ export class AgentLlmTurnExecutor {
             }
           }
           this.input.onAssistantMessage(assistantMessage)
+
+          const toolRun = chunk.choices?.[0]?.delta?.providerToolRun
+          if (!toolRun?.length) return
+          const runId = toolRun[0].id
+          if (openedToolRuns.has(runId)) {
+            // The run is already in place; this only completes its calls.
+            this.input.onProviderToolRun?.(toolRun)
+            return
+          }
+          openedToolRuns.add(runId)
+          // Everything streamed so far is the part of the answer that came
+          // before this run. Seal it, place the run after it, and continue in
+          // a new message — that ordering is the whole point of the run being
+          // a positional signal rather than metadata.
+          producedAssistantOutput ||= assistantMessage.content.trim().length > 0
+          assistantMessage = {
+            ...assistantMessage,
+            metadata: {
+              ...assistantMessage.metadata,
+              generationState: 'completed',
+              durationMs: Date.now() - segmentStart,
+              ...(reasoningTracker.settle() !== undefined
+                ? { reasoningDurationMs: reasoningTracker.durationMs }
+                : {}),
+            },
+          }
+          segmentStart = Date.now()
+          this.input.onAssistantMessage(assistantMessage)
+          this.input.onProviderToolRun?.(toolRun)
+          splitCount += 1
+          assistantMessage = {
+            role: 'assistant',
+            id: `${assistantMessageId}#${splitCount}`,
+            content: '',
+            metadata: {
+              ...assistantMessage.metadata,
+              generationState: 'streaming',
+              usage: undefined,
+              durationMs: undefined,
+              reasoningDurationMs: undefined,
+              errorMessage: undefined,
+            },
+          }
+          this.input.onAssistantMessage(assistantMessage)
         },
       })
       if (!recordedFirstToken) {
@@ -395,7 +493,7 @@ export class AgentLlmTurnExecutor {
         ...(reasoningTracker.settle() !== undefined
           ? { reasoningDurationMs: reasoningTracker.durationMs }
           : {}),
-        durationMs: Date.now() - responseStart,
+        durationMs: Date.now() - segmentStart,
         generationState: isAborted ? ('aborted' as const) : ('error' as const),
         errorMessage,
         ...(errorDetail ? { errorDetail } : {}),
@@ -411,12 +509,21 @@ export class AgentLlmTurnExecutor {
       throw error
     }
 
+    // These fallbacks fill in the answer when no delta ever arrived. A split
+    // turn has deltas by definition, and its trailing message starting out
+    // empty is not the same thing — appending the whole turn there would
+    // repeat every sealed message.
     let finalContent = assistantMessage.content
-    if (finalContent === initialContent && turnResult.content) {
+    if (
+      splitCount === 0 &&
+      finalContent === initialContent &&
+      turnResult.content
+    ) {
       finalContent += turnResult.content
     }
     let finalReasoning = assistantMessage.reasoning
     if (
+      splitCount === 0 &&
       !preserveInitialReasoning &&
       (finalReasoning ?? '') === initialReasoning &&
       turnResult.reasoning
@@ -444,7 +551,7 @@ export class AgentLlmTurnExecutor {
       ...assistantMessage.metadata,
       ...(reasoningDurationMs !== undefined ? { reasoningDurationMs } : {}),
       usage: turnResult.usage ?? assistantMessage.metadata?.usage,
-      durationMs: Date.now() - responseStart,
+      durationMs: Date.now() - segmentStart,
       generationState: this.input.abortSignal?.aborted
         ? ('aborted' as const)
         : ('completed' as const),
@@ -480,7 +587,8 @@ export class AgentLlmTurnExecutor {
     return {
       assistantMessage,
       toolCallRequests,
-      hasAssistantOutput: assistantMessage.content.trim().length > 0,
+      hasAssistantOutput:
+        producedAssistantOutput || assistantMessage.content.trim().length > 0,
       debugTraceId: debugTrace?.id,
       requestMessages,
       requestTools: tools,

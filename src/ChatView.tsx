@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { ItemView, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
+import { ItemView, Menu, TFile, TFolder, WorkspaceLeaf } from 'obsidian'
 import type { ViewStateResult } from 'obsidian'
 import React from 'react'
 import { Root, createRoot } from 'react-dom/client'
@@ -10,6 +10,7 @@ import type {
   ChatRuntimeSnapshot,
 } from './components/chat-view/Chat'
 import ChatSidebarTabs from './components/chat-view/ChatSidebarTabs'
+import { ConfirmModal } from './components/modals/ConfirmModal'
 import { CHAT_VIEW_TYPE } from './constants'
 import { AppProvider } from './contexts/app-context'
 import { ChatViewProvider } from './contexts/chat-view-context'
@@ -19,7 +20,6 @@ import { DialogContainerProvider } from './contexts/dialog-container-context'
 import { LanguageProvider } from './contexts/language-context'
 import { McpProvider } from './contexts/mcp-context'
 import { PluginProvider } from './contexts/plugin-context'
-import { RAGProvider } from './contexts/rag-context'
 import { SettingsProvider } from './contexts/settings-context'
 import type { CliRuntimeScope } from './core/cli-runtime/coordinator'
 import type { PendingChatOpenPayload } from './features/chat/chatLeafSessionManager'
@@ -35,6 +35,15 @@ import { YOLO_ICON_ID } from './yoloIcon'
 
 export class ChatView extends ItemView {
   private displayTitle = 'Yolo chat'
+  // Task-1 (issue #567): Obsidian's `leaf.updateHeader()` only refreshes the
+  // tab-strip label, never the pane-top `.view-header-title` element — that
+  // element only gets its initial text once, at leaf-open time. Runtime
+  // instances expose it as an undocumented `titleEl: HTMLElement` property
+  // (verified empirically; not part of the public `ItemView`/`View` types),
+  // so we read it through a local type narrowing rather than `any`.
+  private isEditingTitle = false
+  private currentConversationRenamable = false
+  private boundTitleEl: HTMLElement | null = null
   private root: Root | null = null
   private initialChatProps?: ChatProps
   private restoredConversationId?: string
@@ -61,6 +70,8 @@ export class ChatView extends ItemView {
   private cliRuntimeScope: CliRuntimeScope | undefined
   private cliRuntimeScopeInitialization: Promise<void> | null = null
   private cliRuntimeScopeDisposal: Promise<void> | null = null
+  // See `consumeLastPdfQuoteAnnotationNumber`.
+  private lastPdfQuoteAnnotationNumber?: number
 
   constructor(
     leaf: WorkspaceLeaf,
@@ -138,9 +149,11 @@ export class ChatView extends ItemView {
     const placement =
       pendingPayload?.placement ?? manager.getLeafPlacement(this.leaf)
     manager.registerLeaf(this.leaf, placement)
-    this.updateDisplayTitle(
-      manager.getLeafSummary(this.leaf)?.currentConversationTitle,
+    const leafSummary = manager.getLeafSummary(this.leaf)
+    this.currentConversationRenamable = Boolean(
+      leafSummary?.currentConversationPersisted,
     )
+    this.updateDisplayTitle(leafSummary?.currentConversationTitle)
     this.initialChatProps = this.getInitialChatProps(pendingPayload)
 
     await this.render()
@@ -202,6 +215,8 @@ export class ChatView extends ItemView {
     this.root = null
     this.mountedHost = null
     this.mountedDoc = null
+    this.boundTitleEl = null
+    this.isEditingTitle = false
     await this.disposeCliRuntimeScope()
   }
 
@@ -274,6 +289,11 @@ export class ChatView extends ItemView {
     this.mountedHost = newHost
     this.mountedDoc = newHost.ownerDocument
     await this.render()
+    // Defensive: rebuild only replaces view-content (children[1]), so the
+    // header/titleEl should survive untouched — but re-sync anyway in case a
+    // platform's pop-out path ever recreates the whole leaf DOM including
+    // the header (see class-level note on `titleEl`).
+    this.syncHeaderTitleElement()
   }
 
   render(): Promise<void> {
@@ -321,48 +341,52 @@ export class ChatView extends ItemView {
                   <DatabaseProvider
                     getDatabaseManager={() => this.plugin.getDbManager()}
                   >
-                    <RAGProvider
-                      getRAGEngine={() => this.plugin.getRAGEngine()}
+                    <McpProvider
+                      getMcpManager={() => this.plugin.getMcpManager()}
                     >
-                      <McpProvider
-                        getMcpManager={() => this.plugin.getMcpManager()}
-                      >
-                        <QueryClientProvider client={queryClient}>
-                          <React.StrictMode>
-                            <DialogContainerProvider
-                              container={
-                                this.containerEl.children[1] as HTMLElement
-                              }
-                            >
-                              <ChatSidebarTabs
-                                chatRef={this.chatRef}
-                                placement={placement}
-                                initialChatProps={{
-                                  ...(this.initialChatProps ?? {}),
-                                  cliRuntimeScope: this.cliRuntimeScope,
-                                  seededRuntimeSnapshot,
-                                }}
-                                onConversationContextChange={(context) => {
-                                  const manager =
-                                    this.plugin.getChatLeafSessionManager()
-                                  manager.updateLeafSummary(this.leaf, context)
-                                  this.updateRestoredConversationFromContext(
-                                    context,
-                                  )
-                                  this.updateDisplayTitle(
-                                    context.currentConversationTitle,
-                                  )
-                                  void this.persistLeafViewState(context)
-                                }}
-                                onRuntimeSnapshotChange={(snapshot) => {
-                                  this.runtimeSnapshot = snapshot
-                                }}
-                              />
-                            </DialogContainerProvider>
-                          </React.StrictMode>
-                        </QueryClientProvider>
-                      </McpProvider>
-                    </RAGProvider>
+                      <QueryClientProvider client={queryClient}>
+                        <React.StrictMode>
+                          <DialogContainerProvider
+                            container={
+                              this.containerEl.children[1] as HTMLElement
+                            }
+                          >
+                            <ChatSidebarTabs
+                              chatRef={this.chatRef}
+                              placement={placement}
+                              initialChatProps={{
+                                ...(this.initialChatProps ?? {}),
+                                cliRuntimeScope: this.cliRuntimeScope,
+                                seededRuntimeSnapshot,
+                              }}
+                              onConversationContextChange={(context) => {
+                                const manager =
+                                  this.plugin.getChatLeafSessionManager()
+                                manager.updateLeafSummary(this.leaf, context)
+                                this.updateRestoredConversationFromContext(
+                                  context,
+                                )
+                                // Only a persisted conversation has a
+                                // rename path (ChatRef.renameCurrentConversation
+                                // no-ops otherwise) — gate the pane title's
+                                // click-to-edit affordance on the same flag.
+                                this.currentConversationRenamable = Boolean(
+                                  context.currentConversationPersisted,
+                                )
+                                this.updateDisplayTitle(
+                                  context.currentConversationTitle,
+                                )
+                                this.syncHeaderTitleElement()
+                                void this.persistLeafViewState(context)
+                              }}
+                              onRuntimeSnapshotChange={(snapshot) => {
+                                this.runtimeSnapshot = snapshot
+                              }}
+                            />
+                          </DialogContainerProvider>
+                        </React.StrictMode>
+                      </QueryClientProvider>
+                    </McpProvider>
                   </DatabaseProvider>
                 </DarkModeProvider>
               </SettingsProvider>
@@ -377,6 +401,41 @@ export class ChatView extends ItemView {
   openNewChat(selectedBlock?: MentionableBlockData) {
     this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
     this.chatRef.current?.openNewChat(selectedBlock)
+  }
+
+  /**
+   * issue #567 Step 2. Opens the history dropdown — used by the "Open chat
+   * history" command (`main.ts`) so it's reachable via the command palette,
+   * a bound keyboard shortcut, or Commander. The in-content History button
+   * (`ChatHeader`) keeps its own direct click handler; this is a second
+   * entry point onto the same `ChatListDropdown` instance.
+   */
+  openChatHistory(): void {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.openChatHistory()
+  }
+
+  /**
+   * issue #567 Step 2. Whether the active conversation can currently be
+   * exported to the vault — persisted conversation + active runtime
+   * supports vault export. Backs the "Export current conversation to vault"
+   * command's `checkCallback` gate in `main.ts`. Reads
+   * `ChatRef.getCurrentConversationMenuState`, the same live source
+   * `onPaneMenu` uses — not a new state source.
+   */
+  canExportCurrentConversation(): boolean {
+    const state = this.chatRef.current?.getCurrentConversationMenuState()
+    return Boolean(state?.persisted && state?.canExport)
+  }
+
+  /**
+   * issue #567 Step 2. Exports the active conversation to the vault. Callers
+   * must gate on `canExportCurrentConversation()` first (see the command's
+   * `checkCallback`); mirrors the in-content export button's behavior.
+   */
+  exportCurrentConversation(): void {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    this.chatRef.current?.exportCurrentConversation()
   }
 
   async loadConversation(conversationId: string) {
@@ -427,6 +486,44 @@ export class ChatView extends ItemView {
 
   clearSelectionFromChat() {
     this.chatRef.current?.clearSelectionFromChat()
+  }
+
+  /**
+   * PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-quotes.md).
+   * "Existing leaf" path — see `chatViewNavigator.addPdfQuoteToChat`. Returns
+   * the annotation number chat assigned so the caller can render it on the
+   * PDF-side bubble; `undefined` only if the chat React tree isn't mounted
+   * yet (should not happen on this path, since a leaf that resolved as
+   * "existing" already has a live ChatRef).
+   */
+  addPdfQuoteToChat(selectedBlock: MentionableBlockData): number | undefined {
+    this.plugin.getChatLeafSessionManager().touchLeafInteracted(this.leaf)
+    return this.chatRef.current?.addPdfQuoteToChat(selectedBlock)
+  }
+
+  /**
+   * The one deps channel the PDF-side bubble editor uses to patch or remove
+   * its mentionable's comment (architecture decision B, see `ChatRef.updatePdfQuoteMention`).
+   */
+  updatePdfQuoteMention(
+    highlightId: string,
+    patch: { comment: string } | null,
+  ): void {
+    this.chatRef.current?.updatePdfQuoteMention(highlightId, patch)
+  }
+
+  /**
+   * "New leaf" path for PDF quote annotation: `onOpen` applies the pending
+   * `pdfQuoteBlock` payload (via `applyDeferredPayload`) and stashes the
+   * annotation number chat assigned here, since the payload is consumed
+   * entirely inside `onOpen` before `chatViewNavigator.addPdfQuoteToChat`
+   * gets a chance to read it back. Single-slot: each freshly created leaf
+   * only ever applies one pending payload once.
+   */
+  consumeLastPdfQuoteAnnotationNumber(): number | undefined {
+    const value = this.lastPdfQuoteAnnotationNumber
+    this.lastPdfQuoteAnnotationNumber = undefined
+    return value
   }
 
   addFileToChat(file: TFile) {
@@ -660,6 +757,15 @@ export class ChatView extends ItemView {
       chatRef.addImageToChat(payload.imageToAdd)
     }
 
+    if (payload.pdfQuoteBlock) {
+      // No `focusMessage()`: focus belongs to the PDF-side comment editor that
+      // opens right after this — see `chatViewNavigator.addPdfQuoteToChat`.
+      this.lastPdfQuoteAnnotationNumber = chatRef.addPdfQuoteToChat(
+        payload.pdfQuoteBlock,
+      )
+      return
+    }
+
     if (payload.prefillText !== undefined && payload.selectedBlock) {
       chatRef.applySelectionToMainInput(
         payload.selectedBlock,
@@ -705,13 +811,244 @@ export class ChatView extends ItemView {
       this.plugin.t('chat.untitledConversation', 'New chat'),
     )
 
-    if (this.displayTitle === nextTitle) {
-      return
+    if (this.displayTitle !== nextTitle) {
+      this.displayTitle = nextTitle
+      ;(
+        this.leaf as WorkspaceLeaf & { updateHeader?: () => void }
+      ).updateHeader?.()
     }
 
-    this.displayTitle = nextTitle
-    ;(
-      this.leaf as WorkspaceLeaf & { updateHeader?: () => void }
-    ).updateHeader?.()
+    // `updateHeader()` above only refreshes the tab label — the pane-top
+    // title element needs its text synced separately (see class-level note).
+    this.syncHeaderTitleElement()
+  }
+
+  private getHeaderTitleEl(): HTMLElement | null {
+    return (this as ItemView & { titleEl?: HTMLElement }).titleEl ?? null
+  }
+
+  /**
+   * Keeps the native `.view-header-title` element's text, editable-affordance
+   * class, and click binding in sync with `displayTitle` /
+   * `currentConversationRenamable`. Cheap and idempotent — safe to call from
+   * every place the underlying element or its bound state might have moved
+   * (title change, conversation-context change, rebuild after popout).
+   */
+  private syncHeaderTitleElement(): void {
+    const titleEl = this.getHeaderTitleEl()
+    if (!titleEl) return
+
+    if (!this.isEditingTitle && titleEl.textContent !== this.displayTitle) {
+      titleEl.textContent = this.displayTitle
+    }
+
+    titleEl.toggleClass(
+      'yolo-view-header-title-editable',
+      this.currentConversationRenamable && !this.isEditingTitle,
+    )
+    if (this.currentConversationRenamable && !this.isEditingTitle) {
+      titleEl.setAttribute(
+        'aria-label',
+        this.plugin.t(
+          'chat.paneTitle.renameAriaLabel',
+          'Click to rename conversation',
+        ),
+      )
+    } else if (!this.isEditingTitle) {
+      titleEl.removeAttribute('aria-label')
+    }
+
+    if (titleEl !== this.boundTitleEl) {
+      this.boundTitleEl = titleEl
+      this.registerDomEvent(titleEl, 'click', this.handleTitleClick)
+    }
+  }
+
+  private handleTitleClick = (): void => {
+    if (this.isEditingTitle || !this.currentConversationRenamable) return
+    this.beginTitleEditing()
+  }
+
+  /**
+   * Turns the pane title into a plain contenteditable field: select-all on
+   * entry, Enter commits (via blur), Esc cancels and restores the previous
+   * text, blur commits. An empty/unchanged submission is treated as a
+   * cancel. Commit calls through `ChatRef.renameCurrentConversation` so
+   * history list, tab label, and CLI session overlays all stay in sync —
+   * the same rename path `ChatHeader`'s history dropdown uses.
+   */
+  private beginTitleEditing(): void {
+    const titleEl = this.getHeaderTitleEl()
+    if (!titleEl || this.isEditingTitle) return
+
+    this.isEditingTitle = true
+    const originalTitle = this.displayTitle
+
+    titleEl.contentEditable = 'true'
+    titleEl.spellcheck = false
+    titleEl.addClass('yolo-view-header-title-editing')
+    titleEl.removeClass('yolo-view-header-title-editable')
+    titleEl.setAttribute(
+      'aria-label',
+      this.plugin.t(
+        'chat.paneTitle.editingAriaLabel',
+        'Editing conversation title',
+      ),
+    )
+
+    titleEl.focus()
+    const selection = titleEl.ownerDocument.getSelection()
+    if (selection) {
+      const range = titleEl.ownerDocument.createRange()
+      range.selectNodeContents(titleEl)
+      selection.removeAllRanges()
+      selection.addRange(range)
+    }
+
+    let settled = false
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Enter') {
+        event.preventDefault()
+        titleEl.blur()
+      } else if (event.key === 'Escape') {
+        event.preventDefault()
+        finish(false)
+      }
+    }
+    const onBlur = () => finish(true)
+
+    const finish = (commit: boolean): void => {
+      if (settled) return
+      settled = true
+      titleEl.removeEventListener('keydown', onKeyDown)
+      titleEl.removeEventListener('blur', onBlur)
+      titleEl.removeAttribute('contenteditable')
+      titleEl.removeClass('yolo-view-header-title-editing')
+      this.isEditingTitle = false
+
+      const trimmedTitle = (titleEl.textContent ?? '').trim()
+      // Blank or unchanged submissions are treated as a cancel.
+      if (!commit || !trimmedTitle || trimmedTitle === originalTitle) {
+        this.syncHeaderTitleElement()
+        return
+      }
+
+      const renamePromise =
+        this.chatRef.current?.renameCurrentConversation(trimmedTitle)
+      if (!renamePromise) {
+        this.syncHeaderTitleElement()
+        return
+      }
+
+      // Optimistic: reflect the typed title immediately (pane + tab). The
+      // async round trip through onConversationContextChange will confirm
+      // (no-op) or, on failure below, we revert.
+      this.updateDisplayTitle(trimmedTitle)
+      renamePromise.catch((error: unknown) => {
+        console.error('[YOLO] Failed to rename conversation', error)
+        this.updateDisplayTitle(originalTitle)
+      })
+    }
+
+    titleEl.addEventListener('keydown', onKeyDown)
+    titleEl.addEventListener('blur', onBlur)
+  }
+
+  /**
+   * issue #567 Step 2. Adds a conversation-management group to the pane's
+   * native "···" menu: rename / pin-toggle / export / delete. All four act
+   * on the active conversation and are disabled when it isn't persisted yet
+   * (a brand-new, not-yet-saved chat has nothing to rename/pin/export/
+   * delete) — export is omitted entirely when the active runtime doesn't
+   * support vault export, matching `ChatHeader`'s conditional rendering.
+   */
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source)
+
+    const state = this.chatRef.current?.getCurrentConversationMenuState()
+    const persisted = state?.persisted ?? false
+
+    menu.addSeparator()
+
+    menu.addItem((item) =>
+      item
+        .setTitle(this.plugin.t('chat.paneMenu.rename', 'Rename'))
+        .setIcon('pencil')
+        .setDisabled(!persisted)
+        .onClick(() => {
+          if (!persisted) return
+          this.beginTitleEditing()
+        }),
+    )
+
+    menu.addItem((item) =>
+      item
+        .setTitle(
+          state?.pinned
+            ? this.plugin.t('sidebar.chatList.unpinConversation', 'Unpin')
+            : this.plugin.t('sidebar.chatList.pinConversation', 'Pin'),
+        )
+        .setIcon(state?.pinned ? 'star-off' : 'star')
+        .setDisabled(!persisted)
+        .onClick(() => {
+          if (!persisted) return
+          void this.chatRef.current?.toggleCurrentConversationPinned()
+        }),
+    )
+
+    if (state?.canExport) {
+      menu.addItem((item) =>
+        item
+          .setTitle(
+            this.plugin.t(
+              'sidebar.chatList.exportConversation',
+              'Export conversation to vault',
+            ),
+          )
+          .setIcon('download')
+          .setDisabled(!persisted)
+          .onClick(() => {
+            if (!persisted) return
+            this.chatRef.current?.exportCurrentConversation()
+          }),
+      )
+    }
+
+    menu.addItem((item) =>
+      item
+        .setTitle(this.plugin.t('common.delete', 'Delete'))
+        .setIcon('trash-2')
+        .setDisabled(!persisted)
+        .onClick(() => {
+          if (!persisted) return
+          this.confirmDeleteCurrentConversation()
+        }),
+    )
+  }
+
+  /**
+   * Native confirm dialog (shared `ConfirmModal`, see
+   * `src/components/modals/ConfirmModal.tsx`) before deleting the active
+   * conversation. Delete cleanup + post-delete conversation switching is
+   * `ChatRef.deleteCurrentConversation`'s sunk implementation, shared with
+   * `ChatHeader`'s history dropdown.
+   */
+  private confirmDeleteCurrentConversation(): void {
+    new ConfirmModal(this.app, {
+      title: this.plugin.t(
+        'chat.paneMenu.deleteConfirmTitle',
+        'Delete conversation?',
+      ),
+      message: this.plugin
+        .t(
+          'chat.paneMenu.deleteConfirmMessage',
+          'This will permanently delete "{title}". This action cannot be undone.',
+        )
+        .replace('{title}', this.displayTitle),
+      ctaText: this.plugin.t('common.delete', 'Delete'),
+      onConfirm: () => {
+        void this.chatRef.current?.deleteCurrentConversation()
+      },
+    }).open()
   }
 }

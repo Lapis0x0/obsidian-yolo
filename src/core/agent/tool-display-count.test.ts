@@ -14,7 +14,10 @@ const assistantWithTools = (
   includeBuiltinTools = true,
 ): Pick<
   Assistant,
-  'toolPreferences' | 'enabledToolNames' | 'includeBuiltinTools'
+  | 'toolPreferences'
+  | 'enabledToolNames'
+  | 'includeBuiltinTools'
+  | 'builtinCapabilityPreferences'
 > => ({
   enabledToolNames,
   toolPreferences: {},
@@ -54,10 +57,24 @@ describe('countEnabledVisibleAssistantTools', () => {
     ).toBe(3)
   })
 
-  it('requires every currently visible group target to be enabled', () => {
+  // D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9): a
+  // built-in capability's enabled state is now atomic — `file_editing`'s
+  // `fs_edit`/`fs_write` can no longer be independently enabled/disabled via
+  // `enabledToolNames`/`toolPreferences` (those no longer carry built-in
+  // entries at all; only `builtinCapabilityPreferences` does, one entry per
+  // *capability*, not per member tool). The pre-D9 version of this test
+  // simulated a "partial" group via a stale `enabledToolNames` list
+  // containing only `fs_edit` — that path no longer has any effect on
+  // built-in enablement, so it now covers the still-real "whole capability
+  // disabled" case instead: every one of its currently visible members must
+  // be hidden together.
+  it('hides every currently visible group target when the capability is disabled', () => {
     expect(
       countEnabledVisibleAssistantTools(
-        assistantWithTools(['yolo_local__fs_edit']),
+        {
+          ...assistantWithTools([]),
+          builtinCapabilityPreferences: { file_editing: { enabled: false } },
+        },
         [tool('yolo_local__fs_edit'), tool('yolo_local__fs_write')],
       ),
     ).toBe(0)

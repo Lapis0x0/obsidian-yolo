@@ -300,4 +300,45 @@ describe('ChatManager', () => {
       expect(result.map((entry) => entry.id)).toEqual([idB, idA])
     })
   })
+
+  describe('updateChat write elision', () => {
+    const idA = '123e4567-e89b-12d3-a456-426614174000'
+
+    test('skips the write when the update changes nothing but updatedAt', async () => {
+      // A no-op write still marks the conversation file and the index dirty
+      // for whatever syncs the vault, so it must not reach the adapter.
+      const conversation = makeConversation(idA, 'Stable chat', 1000)
+      const { app, adapter } = createFakeFs({
+        [`${CHATS_DIR}/v1_${idA}.json`]: JSON.stringify(conversation),
+      })
+      const manager = new ChatManager(app)
+      adapter.write.mockClear()
+
+      const result = await manager.updateChat(idA, {
+        messages: conversation.messages,
+      })
+
+      expect(adapter.write).not.toHaveBeenCalled()
+      expect(result?.updatedAt).toBe(1000)
+    })
+
+    test('writes when the content actually changes', async () => {
+      const conversation = makeConversation(idA, 'Stable chat', 1000)
+      const { app, adapter } = createFakeFs({
+        [`${CHATS_DIR}/v1_${idA}.json`]: JSON.stringify(conversation),
+      })
+      const manager = new ChatManager(app)
+      adapter.write.mockClear()
+
+      const result = await manager.updateChat(idA, { title: 'Renamed chat' })
+
+      expect(result?.title).toBe('Renamed chat')
+      expect(adapter.write.mock.calls.map(([filePath]) => filePath)).toEqual(
+        expect.arrayContaining([
+          `${CHATS_DIR}/v1_${idA}.json`,
+          `${CHATS_DIR}/chat_index.json`,
+        ]),
+      )
+    })
+  })
 })

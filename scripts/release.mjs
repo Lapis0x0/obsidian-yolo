@@ -3,6 +3,9 @@ import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { pathToFileURL } from 'node:url'
 
+import { isValidRuntimeComponentAssetName } from './runtimeComponentAssetName.mjs'
+import { resolveRuntimeComponentAssetSource } from './runtimeComponentAssetSources.mjs'
+
 const CORE_VERSION = /^(?:0|[1-9]\d*)(?:\.(?:0|[1-9]\d*)){2,3}$/
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const MODULE_VERSION = /^(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)\.(?:0|[1-9]\d*)$/
@@ -74,24 +77,28 @@ export async function checkRelease(root, product, id, version) {
   return target
 }
 
+const RUNTIME_COMPONENT_IDS = new Set([
+  'tokenizer',
+  'pdf-engine',
+  'bash-engine',
+  'embedding-engine',
+])
+
 export async function validateRuntimeComponentArtifacts(root) {
   const registry = await readJson(root, 'runtime-components/registry.json')
   if (
     !isPlainRecord(registry) ||
     !hasExactKeys(registry, ['schemaVersion', 'components']) ||
-    registry.schemaVersion !== 1 ||
+    registry.schemaVersion !== 2 ||
     !Array.isArray(registry.components) ||
-    registry.components.length !== 4
+    registry.components.length !== RUNTIME_COMPONENT_IDS.size
   ) {
     throw new Error('Runtime component registry is invalid')
   }
-  const expectedIds = new Set([
-    'tokenizer',
-    'pdf-engine',
-    'pglite-engine',
-    'bash-engine',
-  ])
+  const expectedIds = new Set(RUNTIME_COMPONENT_IDS)
   for (const descriptor of registry.components) {
+    const hasAssets =
+      isPlainRecord(descriptor) && Object.keys(descriptor).includes('assets')
     if (
       !isPlainRecord(descriptor) ||
       !hasExactKeys(descriptor, [
@@ -103,6 +110,7 @@ export async function validateRuntimeComponentArtifacts(root) {
         'entry',
         'byteSize',
         'sha256',
+        ...(hasAssets ? ['assets'] : []),
       ]) ||
       !expectedIds.delete(descriptor.id) ||
       descriptor.entry !==
@@ -141,9 +149,76 @@ export async function validateRuntimeComponentArtifacts(root) {
         `Runtime component artifact is not synchronized: ${descriptor.id}`,
       )
     }
+    await validateRuntimeComponentAssetArtifacts(root, descriptor, config)
   }
   if (expectedIds.size > 0) {
     throw new Error('Runtime component registry is incomplete')
+  }
+}
+
+/**
+ * Assets are gitignored build outputs (see `.gitignore`) — `descriptor.entry`
+ * above is verified against the committed `dist/entry.js`, but an asset has
+ * nothing committed to compare against. Instead this reads the same local
+ * source `npm run runtime:build` copies it from (already present: `npm ci`
+ * runs before `release:check` in `release.yml`), so a `registry.json` that
+ * drifted from what the current `node_modules` dependency would actually
+ * produce — e.g. someone bumped `onnxruntime-web` without rerunning the
+ * build — is caught here rather than shipping a mismatched release.
+ */
+async function validateRuntimeComponentAssetArtifacts(
+  root,
+  descriptor,
+  config,
+) {
+  const declaredNames = config.assets ?? []
+  const assets = descriptor.assets
+  if (declaredNames.length === 0) {
+    if (assets !== undefined) {
+      throw new Error(
+        `Runtime component descriptor is invalid: ${descriptor.id}`,
+      )
+    }
+    return
+  }
+  if (!Array.isArray(assets) || assets.length !== declaredNames.length) {
+    throw new Error(`Runtime component descriptor is invalid: ${descriptor.id}`)
+  }
+  const names = new Set()
+  for (const [index, name] of declaredNames.entries()) {
+    const asset = assets[index]
+    if (
+      !isPlainRecord(asset) ||
+      !hasExactKeys(asset, ['name', 'path', 'byteSize', 'sha256']) ||
+      asset.name !== name ||
+      !isValidRuntimeComponentAssetName(asset.name) ||
+      names.has(asset.name) ||
+      asset.path !==
+        `runtime-components/${descriptor.id}/dist/assets/${asset.name}` ||
+      !Number.isSafeInteger(asset.byteSize) ||
+      asset.byteSize <= 0 ||
+      typeof asset.sha256 !== 'string' ||
+      !/^[a-f0-9]{64}$/.test(asset.sha256)
+    ) {
+      throw new Error(
+        `Runtime component asset descriptor is invalid: ${descriptor.id}/${name}`,
+      )
+    }
+    names.add(asset.name)
+    const assetBytes = await readFile(
+      path.resolve(
+        root,
+        resolveRuntimeComponentAssetSource(descriptor.id, asset.name),
+      ),
+    )
+    if (
+      assetBytes.byteLength !== asset.byteSize ||
+      createHash('sha256').update(assetBytes).digest('hex') !== asset.sha256
+    ) {
+      throw new Error(
+        `Runtime component asset is not synchronized: ${descriptor.id}/${asset.name}`,
+      )
+    }
   }
 }
 

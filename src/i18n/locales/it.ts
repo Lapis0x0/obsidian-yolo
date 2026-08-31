@@ -9,6 +9,9 @@ export const it: DeepPartial<TranslationKeys> = {
     openNewChatTab: 'Apri nuova chat (nuova scheda)',
     openNewChatSplit: 'Apri nuova chat (divisione destra)',
     openNewChatWindow: 'Apri nuova chat (nuova finestra)',
+    openChatHistory: 'Apri cronologia chat',
+    exportCurrentConversationToVault:
+      'Esporta la conversazione attuale nel vault',
     addSelectionToChat: 'Aggiungi selezione alla chat',
     addFileToChat: 'Aggiungi file alla chat',
     addFolderToChat: 'Aggiungi cartella alla chat',
@@ -97,6 +100,10 @@ export const it: DeepPartial<TranslationKeys> = {
       claudeCodeDescription: 'Claude Code su questo dispositivo',
       codexLabel: 'Codex',
       codexDescription: 'Codex su questo dispositivo',
+      hermesLabel: 'Hermes',
+      hermesDescription: 'Hermes su questo dispositivo',
+      piLabel: 'Pi',
+      piDescription: 'Pi su questo dispositivo',
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
@@ -115,8 +122,17 @@ export const it: DeepPartial<TranslationKeys> = {
       archived: 'Archiviate',
       hideArchived: 'Nascondi archiviate',
       exportConversation: 'Esporta conversazione nel vault',
+      exportShort: 'Esporta',
       moreActions: 'Altre azioni',
       confirmDelete: 'Clicca di nuovo per eliminare',
+      openHistory: 'Cronologia chat',
+      legend: {
+        navigate: 'Naviga',
+        open: 'Apri',
+        delete: 'Elimina',
+        pin: 'Fissa',
+        rename: 'Rinomina',
+      },
     },
     chat: {
       exportSuccess: 'Chat esportata in {path}',
@@ -203,7 +219,8 @@ export const it: DeepPartial<TranslationKeys> = {
     supportYolo: {
       name: 'Supporta il progetto',
       desc: 'Se trovi utile questo plugin, considera di supportarne lo sviluppo!',
-      buyMeACoffee: 'Offrimi un caffè',
+      afdian: 'Afdian (CN)',
+      buyMeACoffee: 'Buy Me a Coffee',
       reportBug: 'Segnala bug',
       featureRequest: 'Richiedi funzione',
     },
@@ -345,18 +362,19 @@ export const it: DeepPartial<TranslationKeys> = {
           impact:
             'Disattivandolo, la lettura PDF e gli strumenti pagina non funzionano.',
         },
-        pgliteEngine: {
-          name: 'Motore PGlite',
-          description: 'Archivia e cerca l’indice locale della knowledge base.',
-          impact:
-            'Disattivandolo, indicizzazione e ricerca semantica non funzionano.',
-        },
         bashEngine: {
           name: 'Motore Bash',
           description:
             'Fornisce una shell virtuale allo strumento bash per cercare e organizzare i file del vault.',
           impact:
             'Disattivandolo, lo strumento bash non è disponibile e il modello perde la ricerca e l’organizzazione dei file.',
+        },
+        embeddingEngine: {
+          name: 'Motore di embedding',
+          description:
+            'Esegue modelli di embedding locali sul dispositivo per un’indicizzazione privata e offline.',
+          impact:
+            'Disattivandolo, i modelli di embedding locali non sono disponibili; il RAG utilizza un provider di embedding remoto.',
         },
         statuses: {
           missing: 'In attesa di installazione',
@@ -370,7 +388,7 @@ export const it: DeepPartial<TranslationKeys> = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: 'Preset di continuazione scrittura',
       quickActionsDesc:
         'Personalizza le azioni rapide e i prompt mostrati nella modalità di continuazione di Quick Ask',
@@ -613,10 +631,6 @@ export const it: DeepPartial<TranslationKeys> = {
       enableToolDisclosureDesc:
         'Gli strumenti opzionali partono con descrizioni brevi, poi caricano i dettagli completi quando servono. Consigliato quando sono abilitati molti strumenti MCP. Nota: questo meccanismo dipende dalle capacità di tool-use del modello — alcuni modelli potrebbero non riconoscere in modo affidabile gli strumenti caricati in questo modo.',
       descriptionColumn: 'Descrizione',
-      builtinFsListLabel: 'Leggi vault',
-      builtinFsListDesc: 'Elenca la struttura delle directory del vault',
-      builtinFsSearchLabel: 'Cerca nel vault',
-      builtinFsSearchDesc: 'Cerca file e contenuti nel vault',
       builtinFsReadLabel: 'Leggi',
       builtinFsReadDesc:
         'Leggi file del vault, skill o pagine web aperte (browser://)',
@@ -685,18 +699,11 @@ export const it: DeepPartial<TranslationKeys> = {
       editorTabSkills: 'Competenze',
       editorTabWorkspace: 'Spazio di lavoro',
       workspace: {
-        enableTitle: "Limita l'accesso alle directory",
+        enableTitle: "Limita l'ambito di lavoro autonomo",
         enableDesc:
-          "Se disattivato, l'agent può accedere all'intero vault. Se attivo, si applicano solo le regole sotto.",
-        includeTitle: 'Consenti',
-        includeDesc: 'Leggi/scrivi solo i file in questi percorsi',
-        includeBadge: 'INCLUDE',
-        includeEmpty:
-          "Lascia vuoto per consentire tutto tranne l'elenco di esclusione sotto.",
-        excludeTitle: 'Nega',
-        excludeDesc: "Escluso dall'intervallo consentito (priorità maggiore)",
-        excludeBadge: 'EXCLUDE',
-        excludeEmpty: 'Nessuna esclusione.',
+          "Se disattivato, l'agent può esplorare e modificare l'intero vault in autonomia. Se attivo, le sue azioni autonome di navigazione e modifica restano entro gli ambiti qui sotto — i file che menzioni con @ o che hai aperto non sono mai limitati.",
+        toolBypassNotice:
+          'Gli agent con comandi da terminale o strumenti MCP di terze parti abilitati possono aggirare questo ambito: non è un confine di sicurezza.',
       },
       editorTabModel: 'Modello',
       editorName: 'Nome',
@@ -769,10 +776,16 @@ export const it: DeepPartial<TranslationKeys> = {
       cliRuntimesBlockTitle: 'Runtime CLI',
       claudeCliPathName: 'Percorso CLI di Claude Code',
       claudeCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude" ("where claude" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       codexCliPathName: 'Percorso CLI di Codex',
       codexCliPathDesc:
         'Percorso personalizzato dell\'eseguibile codex — incolla l\'output di "which codex" ("where codex" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      hermesCliPathName: 'Percorso CLI di Hermes',
+      hermesCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile hermes — incolla l\'output di "which hermes" ("where hermes" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      piCliPathName: 'Percorso CLI di Pi',
+      piCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi" ("where pi" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       cliPathMissing:
         'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
@@ -894,6 +907,7 @@ export const it: DeepPartial<TranslationKeys> = {
       badgeOpenAiCompatible: 'Compatibile OpenAI',
       badgeNative: 'Protocollo nativo',
       badgeOAuth: 'OAuth',
+      badgeSponsor: 'Sponsor',
       badgeAdded: 'Aggiunto',
       providersCount: '{count} provider aggiunti',
       editProvider: 'Modifica provider',
@@ -916,6 +930,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Identificatore univoco per questo provider (ad es., openai, anthropic).',
       providerIdPlaceholder: 'Ad esempio, openai',
       apiKey: 'Chiave API',
+      getApiKey: 'Ottieni chiave API',
       apiKeyDesc: 'La tua chiave API per questo provider.',
       apiKeyPlaceholder: 'Inserisci la tua chiave API',
       baseUrl: 'URL base',
@@ -992,6 +1007,19 @@ export const it: DeepPartial<TranslationKeys> = {
       geminiOAuthDisconnectedHelp:
         'Non connesso. Connettiti per usare la quota Gemini del tuo account Google.',
       geminiOAuthProject: 'progetto',
+      claudeOauthTitle: 'Claude OAuth',
+      claudeOauthTokenName: 'Token OAuth',
+      claudeOauthTokenDesc:
+        'Esegui "claude setup-token" in un terminale e incolla qui il token per chattare con il tuo abbonamento Claude. Questo provider avvia un sottoprocesso claude locale, quindi è disponibile solo su desktop. Incolla un nuovo token quando scade.',
+      claudeOauthClear: 'Cancella',
+      claudeOauthAutoLogin: 'Accesso automatico',
+      claudeOauthAutoLoginConnecting:
+        "Accesso in corso, completa l'autorizzazione nel browser…",
+      claudeOauthAutoLoginSuccess: 'Accesso Claude connesso.',
+      claudeOauthAutoLoginDesktopOnly:
+        "L'accesso automatico è disponibile solo su desktop.",
+      claudeOauthAutoLoginWindowsNotice:
+        "È stata aperta una finestra del terminale per completare l'accesso. Incolla il token stampato nel campo qui sotto una volta terminato.",
     },
     tts: {
       title: 'Generazione vocale (TTS)',
@@ -1198,6 +1226,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'I modelli aggiunti in blocco usano le impostazioni predefinite; regolali singolarmente in seguito.',
       fetchModelsFailed: 'Impossibile recuperare i modelli',
       embeddingModelsFirst: 'Modelli embedding (prima)',
+      localEmbeddingProviderLabel: 'Locale (sul dispositivo)',
       reasoningType: 'Tipo di ragionamento',
       reasoningTypeDesc: 'Nel dubbio, scegli OpenAI reasoning.',
       reasoningTypeNone: 'Modello non ragionante / predefinito',
@@ -1270,14 +1299,66 @@ export const it: DeepPartial<TranslationKeys> = {
       noChatModelsConfigured: 'Nessun modello chat configurato',
       noEmbeddingModelsConfigured: 'Nessun modello embedding configurato',
     },
+    scope: {
+      editRange: 'Modifica ambito',
+      currentRules: 'Regole correnti',
+      rulesCount: '{{n}} regole',
+      noRules: {
+        rag: "Nessuna regola: viene indicizzato l'intero vault",
+        agent: "Nessuna regola: l'intero vault è disponibile",
+      },
+      include: 'Includi',
+      exclude: 'Escludi',
+      clearMark: 'Rimuovi il contrassegno',
+      clickAgainToClear: 'Clicca di nuovo per rimuovere',
+      follows: 'Segue «{{name}}»',
+      reasonExcludedAncestor: 'La cartella superiore «{{name}}» è già esclusa',
+      reasonIncludedAncestor: 'Già inclusa dalla cartella superiore «{{name}}»',
+      reset: 'Reimposta',
+      resetTitle:
+        "Ripristina l'ambito predefinito e rimuovi tutte le regole personalizzate",
+      onlyWithRules: 'Solo con regole',
+      searchFolders: 'Cerca cartelle…',
+      searchFoldersOrFiles: 'Cerca cartelle o file…',
+      noMatch: {
+        rag: 'Nessuna cartella corrispondente',
+        agent: 'Nessuna cartella o file corrispondente',
+      },
+      noRuleYet: 'Ancora nessuna regola',
+      fileLabel: 'File',
+      fileCount: '{{n}} file',
+      modalTitle: {
+        rag: "Modifica l'ambito di indicizzazione",
+        agent: "Modifica l'ambito dello spazio di lavoro",
+      },
+      modalSubtitle: {
+        rag: 'Passa il mouse su una cartella per contrassegnarla Includi / Escludi; clicca di nuovo per rimuovere.',
+        agent:
+          'Puoi arrivare al singolo file; i file seguono la loro cartella per impostazione predefinita.',
+      },
+      status: {
+        rag: {
+          all: "Indicizza l'intero vault",
+          only: 'Indicizza solo {{items}}',
+        },
+        agent: {
+          all: "L'intero vault è disponibile",
+          only: 'Disponibili solo {{items}}',
+        },
+        excludeSuffix: ', escludendo {{items}}',
+        excludeWithinSuffix: ', escludendo {{items}} al suo interno',
+        folders: '{{n}} cartelle',
+        files: '{{n}} file',
+        joiner: ', ',
+        estimate: {
+          rag: '≈ {{n}} / {{total}} note',
+          agent: '{{n}} / {{total}} file raggiungibili',
+        },
+      },
+    },
     rag: {
-      title: 'RAG (Retrieval Augmented Generation)',
+      title: 'Knowledge base',
       desc: "Gestisci gli indici della knowledge base. Il RAG viene attivato automaticamente quando l'Agent usa lo strumento Ricerca in modalità Ibrida o RAG.",
-      enableRag: 'Abilita RAG',
-      enableRagDesc:
-        "Crea l'indice per i documenti inclusi nell'ambito selezionato.",
-      partialFailureSummary: 'Completato · {{count}} file non indicizzabili',
-      embeddingModel: 'Modello embedding',
       embeddingModelDesc:
         'Modello usato per generare embeddings per la ricerca semantica.',
       chunkSize: 'Dimensione chunk',
@@ -1290,139 +1371,140 @@ export const it: DeepPartial<TranslationKeys> = {
       embeddingConcurrency: 'Concorrenza embedding',
       embeddingConcurrencyDesc:
         "Numero massimo di richieste di embedding in parallelo durante l'indicizzazione (1–24, predefinito 10). Riducilo se il provider restituisce errori 429 / limite di frequenza.",
-      includePatterns: 'Pattern di inclusione',
-      includePatternsDesc:
-        "Pattern glob per i file da includere nell'indice (uno per riga).",
-      excludePatterns: 'Pattern di esclusione',
-      excludePatternsDesc:
-        "Pattern glob per i file da escludere dall'indice (uno per riga).",
-      testPatterns: 'Testa pattern',
-      manageEmbeddingDatabase: 'Gestisci database embedding',
+      vectorDataSize: 'Dati vettoriali (MB)',
+      inMemoryIndexEstimate: 'Indice in memoria (MB)',
       manage: 'Gestisci',
-      rebuildIndex: 'Ricostruisci indice',
-      rebuildFromScratch: 'Ricostruisci da zero',
-      rebuildFromScratchConfirm:
-        "Verranno eliminati tutti i vettori esistenti del modello di embedding corrente e l'intero vault verrà reindicizzato, con possibili numerose chiamate API. Continuare?",
-      continueIndex: 'Continua indicizzazione',
-      continueIndexNow: 'Continua ora',
-      selectedFolders: 'Cartelle selezionate',
-      excludedFolders: 'Cartelle escluse',
-      selectFoldersPlaceholder: 'Seleziona cartelle...',
-      selectFilesOrFoldersPlaceholder: 'Seleziona file o cartelle...',
-      selectExcludeFoldersPlaceholder: 'Seleziona cartelle da escludere...',
-      conflictNoteDefaultInclude: 'Nota: per default tutti i file sono inclusi',
-      conflictExact:
-        'Conflitto: questo percorso è sia incluso che escluso esplicitamente',
-      conflictParentExclude:
-        'Conflitto: una cartella genitore è esclusa, quindi questa inclusione è inefficace',
-      conflictChildExclude:
-        'Conflitto: cartelle figlio sono incluse, quindi questa esclusione è parzialmente inefficace',
-      conflictRule: 'Regola di conflitto',
-      autoUpdate: 'Aggiornamento automatico',
-      autoUpdateDesc:
-        "Quando è attivo, aggiorna incrementalmente l'indice in background dopo le modifiche ai documenti.",
+      advanced: 'Impostazioni avanzate',
       indexPdf: 'Indicizza file PDF',
       indexPdfDesc:
         'Estrae e indicizza il testo dei PDF per la knowledge base. La prima ricostruzione completa può richiedere più tempo; disattiva per vault molto grandi se non ti serve il recupero sui PDF.',
-      autoUpdateInterval: 'Intervallo aggiornamento automatico',
-      autoUpdateIntervalDesc:
-        "Tempo di attesa (in millisecondi) dopo che un file viene modificato prima di aggiornare l'indice.",
-      manualUpdateNow: 'Aggiorna ora',
-      manualUpdateNowDesc:
-        "Aggiorna manualmente l'indice per i file modificati dall'ultimo aggiornamento.",
-      advanced: 'Impostazioni avanzate',
-      basicCardTitle: 'Knowledge base',
-      basicCardDesc:
-        "Controlla l'indicizzazione della knowledge base, il modello di embedding e le relative azioni di manutenzione.",
-      resourceCardTitle: 'Risorse PGlite',
-      resourceCardDesc:
-        'Gestisce le risorse runtime del database necessarie alla base di conoscenza.',
-      scopeCardTitle: 'Ambito di ricerca',
-      scopeCardDesc:
-        "Specifica quali cartelle includere o escludere dall'indicizzazione.",
-      maintenanceCardTitle: 'Stato e manutenzione',
-      maintenanceCardDesc:
-        'Mostra lo stato corrente della knowledge base e consente le operazioni di manutenzione necessarie.',
-      maintenanceUnavailableHint:
-        "Prepara prima le risorse PGlite qui sopra per usare la manutenzione dell'indice o il database embedding.",
-      currentStatus: 'Stato corrente',
-      currentStatusDesc:
-        "Quando la knowledge base è attiva, l'indice viene mantenuto in background in base all'impostazione di aggiornamento automatico.",
-      lastIndexedAt: 'Ultima sincronizzazione',
-      lastIndexedAtDesc:
-        "L'ultima volta in cui l'indicizzazione o una sincronizzazione in background è terminata con successo.",
-      maintenanceActions: 'Azioni di manutenzione',
-      deleteIndex: 'Elimina indice corrente',
-      deleteIndexConfirm:
-        "Vuoi eliminare tutti i dati d'indice per il modello di embedding attualmente selezionato?",
-      deleteIndexSuccess: "L'indice corrente è stato eliminato.",
-      deleteIndexFailed: "Impossibile eliminare l'indice corrente.",
-      statusDisabled: 'Disattivato',
-      statusSyncing: 'Sincronizzazione in background',
-      statusRuntimeRequired: 'In attesa delle risorse database',
-      statusReady: 'Attivo',
-      statusEmpty: 'Nessun indice disponibile',
       selectEmbeddingModelFirst:
         "Seleziona prima un modello di embedding, poi attiva l'indicizzazione della knowledge base.",
-      openKnowledgeSettings: 'Apri impostazioni knowledge base',
-      openKnowledgeSettingsDesc:
-        'Vai alle impostazioni per gestire indice, ambito, stato e opzioni avanzate.',
-      composerEntryDesc:
-        'L’indicizzazione della knowledge base ora è gestita nella pagina impostazioni; qui resta solo un accesso rapido.',
-      pgliteStatusCurrent: 'Stato attuale',
-      pgliteStatusSource: 'Origine risorsa',
-      pgliteStatusPath: 'Percorso risorsa',
-      pgliteStatusCheckedAt: 'Ultimo controllo',
-      pgliteStatusVersion: 'Versione runtime',
-      pgliteStatusReadyAt: 'Ultima preparazione',
-      pgliteStatusReason: 'Dettagli',
-      pgliteStateUnchecked: 'Non registrato',
-      pgliteStateChecking: 'Controllo in corso',
-      pgliteStateMissing: 'Non scaricato',
-      pgliteStateDownloading: 'Download in corso',
-      pgliteStateUnavailable: 'Non disponibile',
-      pgliteStateFailed: 'Preparazione fallita',
-      pgliteStateReady: 'Pronto',
-      pgliteSourceRemote: 'Cache remota',
-      pgliteSourceBundled: 'Incluso nel plugin',
-      pgliteSourceLocalCache: 'Cache locale',
-      pgliteDeliveryManual: 'Download manuale',
-      pgliteDownload: 'Scarica risorse',
-      pgliteRedownload: 'Scarica di nuovo',
-      pgliteRecheck: 'Controlla di nuovo',
-      pgliteDeleteLocal: 'Elimina risorse locali',
-      pgliteDownloadPlaceholder:
-        'Qui verrà collegato il punto di download manuale delle risorse PGlite remote.',
-      pgliteDeletePlaceholder:
-        'Qui verrà collegato il punto di eliminazione delle risorse locali di PGlite.',
-      pgliteDownloadingUnknownFile: 'file runtime',
-      pgliteInlineErrorTitle: 'Download non riuscito',
-      pgliteSummaryReadyRemote:
-        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
-      pgliteSummaryReadyBundled:
-        'Il plugin sta ancora usando risorse PGlite integrate. Dopo il passaggio alla distribuzione remota, questa scheda mostrerà lo stato della cache locale e ospiterà il download manuale.',
-      pgliteSummaryUnavailable:
-        'Le risorse runtime di PGlite non sono disponibili. La manutenzione dell’indice e la gestione del database embedding resteranno disabilitate finché le risorse non saranno pronte.',
-      pgliteSummaryReady:
-        "Le risorse runtime di PGlite sono pronte e possono essere usate per l'indicizzazione e la gestione del database embedding.",
-      pgliteSummaryDownloading:
-        'Le risorse runtime di PGlite sono in preparazione. Al termine del download, la manutenzione dell’indice e la gestione del database embedding torneranno disponibili automaticamente.',
-      pgliteSummaryFailed:
-        'La preparazione del runtime PGlite non è riuscita. Riprova il download oppure svuota la cache locale prima di usare di nuovo le funzioni knowledge base.',
-      pgliteSummaryMissing:
-        'Le risorse runtime di PGlite non sono ancora state preparate. Verranno scaricate automaticamente al primo uso della knowledge base, oppure puoi prepararle qui manualmente.',
-      pgliteDownloadingFile: 'Download',
-      indexProgressTitle: 'Progresso indicizzazione',
-      indexing: 'Indicizzazione in corso...',
-      notStarted: 'Non iniziato',
       waitingRateLimit: 'In attesa del reset del limite di frequenza...',
       preparingProgress: 'Preparazione indicizzazione...',
-      notIndexedYet: 'Non ancora indicizzato',
-      indexComplete: 'Indicizzazione completata',
-      indexIncomplete: 'Ultima indicizzazione non completata',
-      retryNow: 'Riprova ora',
-      waitingRetry: 'In attesa di un nuovo tentativo...',
       cancelIndex: 'Annulla',
+      cancellingIndex: 'Annullamento…',
+      // Status bar (RAGSection)
+      indexingDisabled: "L'indicizzazione della knowledge base è disattivata",
+      indexingDisabledSub:
+        "Lo strumento Ricerca dell'Agent userà solo la ricerca per parole chiave. Scegli un modello di embedding qui sotto, poi attiva l'indicizzazione.",
+      indexingProgress: 'Indicizzazione di {{kb}} in corso',
+      indexedCount: '{{n}} documento/i indicizzati',
+      autoUpdate: 'Aggiornamento automatico',
+      updateNow: 'Aggiorna ora',
+      previousRunInterrupted:
+        "L'ultima indicizzazione non è terminata correttamente.",
+    },
+    knowledgeBases: {
+      title: 'Knowledge base',
+      new: 'Nuova knowledge base',
+      emptyState: 'Nessuna knowledge base ancora creata',
+      count: '{{n}} knowledge base',
+      queuedCount: '{{n}} knowledge base in coda',
+      pendingCount: '{{n}} aggiornamento/i in sospeso',
+      attentionCount: '{{n}} knowledge base richiedono attenzione',
+      embeddingModelLine: 'Modello embedding {{model}}',
+      embeddingModelShelf: 'Modello embedding',
+      embeddingModelShelfDesc:
+        'Condiviso da tutte le knowledge base · cambiarlo richiede una ricostruzione completa',
+      embeddingModelApiRow: 'Modello API',
+      embeddingModelApiRowMeta:
+        '{{dimension}} dim · fatturato per token · chiavi e modelli personalizzati nella scheda Modelli',
+      setAsCurrent: 'Imposta come corrente',
+      stateReady: 'Pronta',
+      stateIndexing: 'In indicizzazione',
+      statePending: 'Aggiornamento in sospeso',
+      stateQueued: 'In coda',
+      stateAttention: 'Richiede attenzione',
+      docs: 'Documenti',
+      chunks: 'Chunk',
+      pendingFiles: '{{n}} file modificati',
+      lastUpdated: 'Ultimo aggiornamento {{time}}',
+      enableAndIndex: 'Attiva e indicizza',
+      disable: 'Disattiva indicizzazione',
+      rebuildThis: 'Ricostruisci questa base',
+      rebuildAll: 'Ricostruisci tutti gli indici',
+      manageDataTitle: 'Gestisci dati indicizzati',
+      noIndexedData: 'Nessun indice disponibile',
+      manageModelColumn: 'Modello',
+      manageEmbeddingsColumn: 'Embedding totali',
+      manageActionsColumn: 'Azioni',
+      manageRefresh: 'Aggiorna',
+      manageRemoveIndex: 'Rimuovi indice',
+      removeIndexFailed: "Impossibile rimuovere l'indice",
+      localEmbedding: {
+        groupLabel: 'Locale',
+        groupDesc:
+          'Eseguito sul tuo dispositivo: le note non lasciano questo computer.',
+        desktopOnly:
+          'I modelli di embedding locali sono disponibili solo su desktop.',
+        metaLine: '{{dimension}} dim · {{size}}',
+        download: 'Scarica',
+        downloadingLine: 'Download {{percent}}% · {{received}} / {{total}}',
+        verifying: 'Verifica dei file…',
+        failedLine: 'Download non riuscito: {{error}}',
+        readyLine: 'Scaricato',
+        current: 'Attuale',
+        viewSource: 'Origine',
+        sourceRepoLabel: 'Repository',
+        sourceRevisionLabel: 'Revisione',
+        sourceFilesLabel: 'File',
+        confirmDelete: 'Clicca di nuovo per eliminare',
+        endpointLabel: 'Origine download',
+        endpointCustomOption: 'Personalizzato',
+        endpointCustomPlaceholder: 'https://example.com',
+        endpointCustomInvalid: 'Inserisci un indirizzo http/https valido',
+        engineModelNotDownloaded: 'Modello di embedding locale non scaricato',
+        engineModelNotDownloadedSub:
+          "Scarica il modello nelle impostazioni della Knowledge Base per usare l'embedding locale.",
+        engineDownloadAction: 'Scarica modello',
+        engineModelDownloadingLine:
+          'Download del modello di embedding locale {{percent}}%',
+        engineModelVerifying:
+          'Verifica dei file del modello di embedding locale…',
+        engineModelFailedLine:
+          'Download del modello di embedding locale non riuscito: {{error}}',
+        engineComponentDisabled: 'Il motore di embedding locale è disattivato',
+        engineComponentDisabledSub:
+          "Attiva il motore di embedding per usare l'embedding locale.",
+        engineEnableAction: 'Attiva',
+        engineEnableFailed: 'Impossibile attivare il motore di embedding',
+        engineComponentFailed:
+          'Inizializzazione del motore di embedding locale non riuscita',
+        engineComponentPreparing:
+          'Il motore di embedding locale si sta preparando…',
+        engineNonDesktop: "L'embedding locale non è disponibile",
+        engineNonDesktopSub:
+          'I modelli di embedding locali funzionano solo su desktop.',
+        languageNames: {
+          en: 'Inglese',
+          zh: 'Cinese',
+          multilingual: 'Multilingua',
+        },
+        dtypeBadge: {
+          q8: 'INT8',
+          fp16: 'FP16',
+        },
+      },
+      delete: 'Elimina knowledge base',
+      deleteConfirm:
+        'Verranno eliminati la knowledge base "{{name}}" e tutti i suoi dati indicizzati. L\'operazione non è reversibile.',
+      createTitle: 'Nuova knowledge base',
+      editTitle: 'Knowledge base · {{name}}',
+      fieldName: 'Nome',
+      fieldNameDesc: 'Il nome visualizzato di questa knowledge base',
+      fieldDescription: 'Descrizione',
+      fieldDescriptionDesc:
+        'Descrivi cosa contiene principalmente questa base. Questo testo viene fornito al modello per aiutarlo a scegliere la knowledge base giusta da consultare; è facoltativo.',
+      fieldDescriptionPlaceholder:
+        'Es. Verbali riunioni quotidiane e documenti dei progetti in corso',
+      scopeTitle: 'Ambito',
+      scopeDesc: 'Decide quali cartelle entrano in questa knowledge base.',
+      nameRequired: 'Inserisci un nome per la knowledge base',
+      nameDuplicate: 'Esiste già una knowledge base con questo nome',
+      saveFailed: 'Impossibile salvare la knowledge base',
+      deleteTitle: 'Elimina knowledge base',
+      deleteFailed: 'Impossibile eliminare la knowledge base',
     },
     mcp: {
       title: 'Strumenti personalizzati (MCP)',
@@ -1637,6 +1719,9 @@ export const it: DeepPartial<TranslationKeys> = {
     },
     etc: {
       title: 'Altro',
+      pluginUpdateNotice: 'Notifiche di aggiornamento',
+      pluginUpdateNoticeDesc:
+        'Se attivo, YOLO controlla le nuove versioni e te lo segnala.',
       pluginAutoUpdate: 'Scarica aggiornamenti automaticamente',
       pluginAutoUpdateDesc:
         'Se attivo, le nuove versioni rilevate vengono scaricate automaticamente in background.',
@@ -1677,13 +1762,6 @@ export const it: DeepPartial<TranslationKeys> = {
       captureRawRequestDebug: 'Abilita debug richieste LLM',
       captureRawRequestDebugDesc:
         "Quando attivo, ogni risposta del modello mostra un pulsante Debug (nella barra info e nel menu Altre azioni) che consente di consultare o esportare le richieste e risposte raw di LLM, chiamate strumento e ricerche web di quel turno. I dati catturati restano in memoria solo per la sessione corrente di Obsidian e vengono cancellati al riavvio. Le chiavi API sono offuscate nell'export, ma il contenuto originale della conversazione è incluso.",
-      captureRawRequestDebugExcludeLogsTitle:
-        'Escludere i log di debug dalla knowledge base?',
-      captureRawRequestDebugExcludeLogsMessage:
-        'I log di debug possono contenere il contenuto raw della conversazione e degli strumenti. Aggiungere {{path}} alla lista di esclusione della knowledge base per evitare che vengano indicizzati dal RAG?',
-      captureRawRequestDebugExcludeLogsCta: 'Escludi log',
-      captureRawRequestDebugExcludeLogsSuccess:
-        '{{path}} è stato escluso dalla knowledge base.',
       yoloBaseDir: 'Cartella base YOLO',
       yoloBaseDirDesc:
         'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting. Directory skill attuale: {path}.',
@@ -1853,6 +1931,16 @@ export const it: DeepPartial<TranslationKeys> = {
     sendMessage: 'Invia messaggio',
     newChat: 'Nuova chat',
     untitledConversation: 'Nuova chat',
+    paneTitle: {
+      renameAriaLabel: 'Clicca per rinominare la conversazione',
+      editingAriaLabel: 'Modifica del titolo della conversazione',
+    },
+    paneMenu: {
+      rename: 'Rinomina',
+      deleteConfirmTitle: 'Eliminare la conversazione?',
+      deleteConfirmMessage:
+        'Questo eliminerà definitivamente "{title}". Questa azione non può essere annullata.',
+    },
     continueResponse: 'Continua risposta',
     messageNavigator: {
       title: 'Navigatore messaggi',
@@ -1903,7 +1991,7 @@ export const it: DeepPartial<TranslationKeys> = {
     selectModel: 'Seleziona modello',
     uploadImage: 'Carica immagine',
     uploadFile: 'Aggiungi file',
-    dropFilesHint: 'Rilascia per aggiungere file',
+    dropFilesHint: 'Rilascia per aggiungere alla conversazione',
     imageUnsupportedByModel:
       'Questo modello non dichiara il supporto alle immagini. Abilita la modalità di input "Vision" nelle impostazioni del modello per allegare immagini.',
     unsupportedFileType: 'Tipo di file non supportato: {names}',
@@ -1933,14 +2021,13 @@ export const it: DeepPartial<TranslationKeys> = {
       inputLabel: 'Annotazione {index}',
     },
     mentionMenu: {
-      back: 'Torna indietro',
       entryCurrentFile: 'File corrente',
       entryMode: 'Modalita',
-      entrySkill: 'Skill',
       entryAssistant: 'Assistente',
       entryModel: 'Modello',
       entryFile: 'File',
       entryFolder: 'Cartella',
+      categoryEmpty: 'Ancora nulla qui',
     },
     slashCommands: {
       compact: {
@@ -1962,6 +2049,8 @@ export const it: DeepPartial<TranslationKeys> = {
     slashMenu: {
       entrySkill: 'Abilità',
       entrySnippet: 'Snippet',
+      categoryCommand: 'Comandi',
+      categoryEmpty: 'Ancora nulla qui',
       createSnippetsFile: 'Clicca per creare snippets.md',
     },
     emptyState: {
@@ -1991,6 +2080,13 @@ export const it: DeepPartial<TranslationKeys> = {
       openError: 'Impossibile aprire la sessione CLI: {message}',
       transitionError:
         'Impossibile lasciare la sessione CLI corrente: {message}',
+      sessionFallbackDividerTitle: 'Passato al profilo predefinito',
+      sessionFallbackDividerDescription:
+        'L\'agente originale "{profile}" non è disponibile, quindi questa conversazione è passata al profilo predefinito: i messaggi precedenti non fanno parte della sua memoria.',
+      sessionFallbackUnknownProfile: 'precedente',
+    },
+    hermesProfileSelector: {
+      accessibleLabel: 'Profilo Hermes: {profile}',
     },
     cliControls: {
       defaultModel: 'Modello predefinito di {provider}',
@@ -2247,8 +2343,6 @@ export const it: DeepPartial<TranslationKeys> = {
         unknown: 'Sconosciuto',
       },
       displayName: {
-        fs_list: 'Elenca file',
-        fs_search: 'Cerca nel vault',
         fs_read: 'Leggi file',
         fs_edit: 'Modifica testo',
         fs_edit_ops: 'Set modifica file',
@@ -2265,13 +2359,6 @@ export const it: DeepPartial<TranslationKeys> = {
       },
       writeAction: {
         write: 'Scrivi file',
-        delete: 'Elimina',
-        create_dir: 'Crea cartella',
-        move: 'Sposta percorso',
-        // Chiavi legacy mantenute per le conversazioni storiche.
-        create_file: 'Crea file',
-        delete_file: 'Elimina file',
-        delete_dir: 'Elimina cartella',
       },
       readMode: {
         full: 'Intero testo',
@@ -2316,6 +2403,9 @@ export const it: DeepPartial<TranslationKeys> = {
       search: 'Eseguite {count} ricerche',
       web: '{count} ricerche web',
       edit: 'Modificati {count} file',
+      editedFile: 'Modificato {name}',
+      createdFile: 'Creato {name}',
+      deletedFile: 'Eliminato {name}',
       virtualTerminal: 'Terminale virtuale {count} volte',
       terminal: 'Terminale {count} volte',
       command: 'Eseguiti {count} comandi',
@@ -2390,10 +2480,6 @@ export const it: DeepPartial<TranslationKeys> = {
     continueFailed: 'Indicizzazione ripresa fallita.',
     openYoloNewChatFailed:
       'Impossibile aprire la finestra chat YOLO; prova prima dal palette comandi.',
-    pgliteUnavailable:
-      'Runtime PGlite non disponibile; riprova a scaricare le risorse runtime.',
-    downloadingPglite:
-      'Download delle risorse runtime PGlite in corso; il primo utilizzo della knowledge base potrebbe richiedere un momento…',
     updatingIndex: 'Aggiornamento indice vault in corso…',
     indexUpdated: 'Indice vault aggiornato.',
     indexUpdateFailed: 'Aggiornamento indice vault fallito.',

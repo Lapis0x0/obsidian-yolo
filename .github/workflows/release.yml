@@ -60,11 +60,20 @@ jobs:
         run: |
           npm run type:check
           npx jest --runInBand
-          npm run runtime:test
           npm run build
           mkdir core-release
           cp main.js manifest.json styles.css core-release/
           cp latest-release-note.md core-release/release-note.md
+
+      # Must land before the Release below becomes visible: the moment a user
+      # can update, they can ask to install a runtime component, and the
+      # fallback URL baked into this build points straight at these bytes.
+      # Uploads nothing when no component changed, since an unchanged artifact
+      # keeps its content-addressed name.
+      - name: Publish runtime component artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/runtime-assets.mjs publish
 
       - name: Require a monotonically newer Core version
         env:

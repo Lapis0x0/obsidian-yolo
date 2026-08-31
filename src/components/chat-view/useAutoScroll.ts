@@ -6,6 +6,8 @@ import {
   useState,
 } from 'react'
 
+import { getNodeWindow } from '../../utils/dom/window-context'
+
 import { createScrollController } from './scroll/scrollController'
 
 const AT_BOTTOM_THRESHOLD_PX = 24
@@ -576,15 +578,19 @@ export function useAutoScroll({
   ])
 
   useEffect(() => {
-    if (
-      !scrollContainerElement ||
-      !bottomSentinelElement ||
-      typeof IntersectionObserver === 'undefined'
-    ) {
+    if (!scrollContainerElement || !bottomSentinelElement) {
+      return
+    }
+    // popout 是独立 BrowserWindow：全局 `IntersectionObserver` 属于主窗口，
+    // 用它观察另一个 realm 的哨兵元素观察不到，live-edge 跟随会整窗失效。
+    const ObserverCtor = getNodeWindow(
+      bottomSentinelElement,
+    ).IntersectionObserver
+    if (typeof ObserverCtor === 'undefined') {
       return
     }
 
-    const observer = new IntersectionObserver(
+    const observer = new ObserverCtor(
       ([entry]) => {
         if (
           entry &&

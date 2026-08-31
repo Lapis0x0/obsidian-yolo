@@ -39,6 +39,8 @@ type SharedConversationSurfaceProps<TItem extends ChatTimelineItem> = {
   hasNewerMessages?: boolean
   onLoadEarlier?: () => void
   onLoadNewer?: () => void
+  onGrowWindowToFillViewport?: () => void
+  historyWindowKey?: string
   scrollContainerClassName?: string
   scrollContainerStyle?: CSSProperties
   containerClassName?: string
@@ -70,6 +72,8 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
   hasNewerMessages,
   onLoadEarlier,
   onLoadNewer,
+  onGrowWindowToFillViewport,
+  historyWindowKey,
   scrollContainerClassName,
   scrollContainerStyle,
   containerClassName,
@@ -101,6 +105,8 @@ export function SharedConversationSurface<TItem extends ChatTimelineItem>({
       hasNewerMessages={hasNewerMessages}
       onLoadEarlier={onLoadEarlier}
       onLoadNewer={onLoadNewer}
+      onGrowWindowToFillViewport={onGrowWindowToFillViewport}
+      historyWindowKey={historyWindowKey}
       scrollContainerClassName={scrollContainerClassName}
       scrollContainerStyle={scrollContainerStyle}
       bottomSpacerHeight={bottomSpacerHeight}

@@ -1,5 +1,6 @@
 import amazonBedrockLogo from '../assets/provider-icons/amazon-bedrock.svg'
 import anthropicLogo from '../assets/provider-icons/anthropic.svg'
+import apimartLogo from '../assets/provider-icons/apimart.svg'
 import azureOpenaiLogo from '../assets/provider-icons/azure-openai.svg'
 import cerebrasLogo from '../assets/provider-icons/cerebras.svg'
 import deepseekLogo from '../assets/provider-icons/deepseek.svg'
@@ -52,6 +53,15 @@ export type ProviderCatalogEntry = {
   oauth?: boolean
   /** Inlined brand logo (data-URL via esbuild). Falls back to monogram. */
   logo?: string
+  /** Sponsors YOLO's development — surfaced as a badge on the picker tile. */
+  sponsor?: boolean
+  /**
+   * Where the user gets the API key for this provider — surfaced next to the
+   * key field in the provider form. Omitted for presets that need no key
+   * (OAuth, local runtimes) and for the ones whose console URL we have not
+   * verified; a wrong link is worse than none.
+   */
+  apiKeyUrl?: string
 }
 
 // Keyed by `LLMProviderPresetType`, minus `openai-compatible` which is rendered
@@ -66,6 +76,7 @@ export const PROVIDER_CATALOG: Record<
     tint: 'green',
     category: 'main',
     logo: openaiLogo,
+    apiKeyUrl: 'https://platform.openai.com/api-keys',
   },
   'chatgpt-oauth': {
     monogram: 'GPT',
@@ -79,12 +90,21 @@ export const PROVIDER_CATALOG: Record<
     tint: 'amber',
     category: 'main',
     logo: anthropicLogo,
+    apiKeyUrl: 'https://console.anthropic.com/settings/keys',
+  },
+  'claude-oauth': {
+    monogram: 'An',
+    tint: 'amber',
+    category: 'main',
+    oauth: true,
+    logo: anthropicLogo,
   },
   gemini: {
     monogram: 'Ge',
     tint: 'teal',
     category: 'main',
     logo: geminiLogo,
+    apiKeyUrl: 'https://aistudio.google.com/apikey',
   },
   'gemini-oauth': {
     monogram: 'Ge',
@@ -98,6 +118,7 @@ export const PROVIDER_CATALOG: Record<
     tint: 'rose',
     category: 'main',
     logo: mistralLogo,
+    apiKeyUrl: 'https://console.mistral.ai/api-keys',
   },
   perplexity: {
     monogram: 'Px',
@@ -110,6 +131,7 @@ export const PROVIDER_CATALOG: Record<
     tint: 'orange',
     category: 'main',
     logo: groqLogo,
+    apiKeyUrl: 'https://console.groq.com/keys',
   },
   morph: {
     monogram: 'Mo',
@@ -122,18 +144,30 @@ export const PROVIDER_CATALOG: Record<
     tint: 'blue',
     category: 'cn',
     logo: deepseekLogo,
+    apiKeyUrl: 'https://platform.deepseek.com/api_keys',
   },
   moonshot: {
     monogram: 'Ki',
     tint: 'purple',
     category: 'cn',
     logo: moonshotLogo,
+    apiKeyUrl: 'https://platform.moonshot.cn/console/api-keys',
   },
   openrouter: {
     monogram: 'OR',
     tint: 'purple',
     category: 'gw',
     logo: openrouterLogo,
+    apiKeyUrl: 'https://openrouter.ai/keys',
+  },
+  apimart: {
+    monogram: 'AM',
+    tint: 'ink',
+    category: 'gw',
+    logo: apimartLogo,
+    sponsor: true,
+    // Referral link — see the "Sponsors" section in the README.
+    apiKeyUrl: 'https://go.apimart.ai/gh-obsidian-yolo',
   },
   'azure-openai': {
     monogram: 'Az',
@@ -206,12 +240,14 @@ export const PROVIDER_CATALOG: Record<
     tint: 'ink',
     category: 'main',
     logo: xaiLogo,
+    apiKeyUrl: 'https://console.x.ai',
   },
   'together-ai': {
     monogram: 'Tg',
     tint: 'indigo',
     category: 'main',
     logo: togetherAiLogo,
+    apiKeyUrl: 'https://api.together.xyz/settings/api-keys',
   },
   cerebras: {
     monogram: 'Cb',
@@ -230,12 +266,17 @@ export const PROVIDER_CATALOG: Record<
 // Sort order inside each category (and across the flat list when category=all).
 // Matches the visual priority in the design (mainstream first, then CN, etc.).
 const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
-  // International (main)
+  // The four frontier labs first, then the gateways — one aggregator key
+  // reaches more models than any single second-tier lab, so they outrank the
+  // rest even though the category chips still file them under "gateway".
   'openai',
   'chatgpt-oauth',
   'anthropic',
+  'claude-oauth',
   'gemini',
   'gemini-oauth',
+  'openrouter',
+  'apimart',
   'xai',
   'mistral',
   'perplexity',
@@ -254,8 +295,6 @@ const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
   'minimax',
   'hunyuan',
   'xiaomimimo',
-  // Gateway
-  'openrouter',
   // Cloud
   'azure-openai',
   'amazon-bedrock',

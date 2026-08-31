@@ -556,12 +556,12 @@ function runtimeComponentIcon(componentId: string): string {
   switch (componentId) {
     case 'pdf-engine':
       return 'file-text'
-    case 'pglite-engine':
-      return 'database'
     case 'tokenizer':
       return 'binary'
     case 'bash-engine':
       return 'terminal'
+    case 'embedding-engine':
+      return 'vector-square'
     default:
       return 'component'
   }

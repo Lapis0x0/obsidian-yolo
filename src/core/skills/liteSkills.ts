@@ -33,21 +33,62 @@ export type LiteSkillDocument = {
   content: string
 }
 
-export type LiteSkillPackageResource =
-  | {
-      kind: 'vault'
-      relativePath: string
-      path: string
-    }
-  | {
-      kind: 'builtin'
-      relativePath: typeof SKILL_PACKAGE_ENTRY_FILE_NAME
-      content: string
-    }
+/**
+ * Scope for skill resolution beyond the always-included user/global bucket
+ * (builtins + vault skill directories, unchanged by this type's existence —
+ * every call site that omits `scope` behaves exactly as before). When
+ * `moduleChatModeId` (the full running mode id, `module:<moduleId>:<id>`) is
+ * set, the mode's own declared skills join the candidate set: user/global
+ * skills are selected first, then the mode's skills fill in any names the
+ * user/global bucket didn't already claim (§4.8 — scope is chosen before the
+ * same-name pass, never a global by-name flatten across modes).
+ */
+export type LiteSkillScope = Readonly<{
+  moduleChatModeId?: string
+}>
 
-export type LiteSkillPackageSource = {
-  entry: LiteSkillEntry
-  resources: LiteSkillPackageResource[]
+/** One module chat mode's current skill declaration, as read from the
+ * module chat mode registry. */
+export type ModuleChatModeSkillModeSourceV1 = Readonly<{
+  moduleId: string
+  /** Artifact-relative `SKILL.md` paths — see `YoloModuleChatModeV1.skills`. */
+  skillPaths: readonly string[]
+}>
+
+/**
+ * Host-wide bridge from the module chat mode registry into the skills
+ * subsystem. Configured once (see `configureModuleChatModeSkillSource`) by
+ * host wiring code that owns both the mode registry and the trusted skill
+ * path resolver; every lookup reads the registry fresh (no separate cache to
+ * invalidate), so a module being disabled/upgraded/reactivated is reflected
+ * on the very next skill list/get call.
+ */
+export type ModuleChatModeSkillSourceV1 = Readonly<{
+  /** The current declaration for a registered, available mode — `undefined`
+   * when the mode is unknown or unavailable (module disabled, uninstalled,
+   * name-collision fallback, etc). */
+  getMode(fullModeId: string): ModuleChatModeSkillModeSourceV1 | undefined
+  /** Every full mode id currently registered — used only by the by-path
+   * exemption lookup (`getLiteSkillDocumentByPath` without an explicit
+   * scope) to search across modes, since a path alone already identifies
+   * its file unambiguously. */
+  listModeIds(): readonly string[]
+  /** Vault path the module's declared skill package was projected to (see
+   * `moduleSkillMaterializer.ts`). `null` when the declaration is not a valid
+   * package path. Pure path derivation from host-owned settings — the file
+   * itself only exists while the module is active and materialized. */
+  resolveSkillPath(moduleId: string, declaredSkillPath: string): string | null
+}>
+
+let moduleChatModeSkillSource: ModuleChatModeSkillSourceV1 | null = null
+
+/** Host wiring calls this once (and with `null` on teardown) to connect the
+ * module chat mode registry to skill resolution. Tests that never call it
+ * get the exact prior behavior: every `scope` is a no-op. */
+export function configureModuleChatModeSkillSource(
+  source: ModuleChatModeSkillSourceV1 | null,
+): void {
+  moduleChatModeSkillSource = source
 }
 
 export const SKILL_PACKAGE_ENTRY_FILE_NAME = 'SKILL.md'
@@ -327,6 +368,76 @@ const buildSkillRegistry = async ({
   return registry
 }
 
+/**
+ * Builds the read-only skill records a module chat mode currently
+ * contributes. A module's packages are projected into the vault on
+ * activation (`moduleSkillMaterializer.ts`), so each record is an ordinary
+ * vault skill file here — same frontmatter parsing, same `TFile` lookup, and
+ * therefore the same reachability from `fs_read`/`bash` as a user-authored
+ * package. Only `isReadOnly` differs: the projection is derived from the
+ * verified artifact and is rewritten on the next activation.
+ *
+ * A declaration that does not resolve (module inactive, projection missing)
+ * or fails to parse is skipped and logged — one bad declaration must not
+ * blank out the mode's other skills.
+ */
+const buildModuleSkillRecords = async (
+  app: App,
+  fullModeId: string,
+): Promise<SkillRegistryRecord[]> => {
+  const source = moduleChatModeSkillSource
+  if (!source) {
+    return []
+  }
+  const mode = source.getMode(fullModeId)
+  if (!mode) {
+    return []
+  }
+  const records: SkillRegistryRecord[] = []
+  for (const declaredSkillPath of mode.skillPaths) {
+    try {
+      const path = source.resolveSkillPath(mode.moduleId, declaredSkillPath)
+      if (!path) {
+        continue
+      }
+      const file = app.vault.getFileByPath(path)
+      const frontmatter = await resolveSkillFrontmatter(app, path, file)
+      const entry = toLiteSkillEntry({ path, frontmatter, isReadOnly: true })
+      if (!entry) {
+        continue
+      }
+      records.push({ entry, file })
+    } catch (error) {
+      console.warn(
+        `[YOLO] Failed to load module chat mode skill "${declaredSkillPath}" for "${fullModeId}"`,
+        error,
+      )
+    }
+  }
+  return records
+}
+
+/**
+ * Merges module-mode skill records into a user/global candidate set. The
+ * user/global bucket is selected first and always wins ties — a module skill
+ * only fills in names the vault/builtin bucket left unclaimed (§4.8: scope
+ * is chosen before the same-name pass; the user can always override a
+ * same-named module skill).
+ */
+const mergeModuleSkillRecords = (
+  base: readonly SkillRegistryRecord[],
+  moduleRecords: readonly SkillRegistryRecord[],
+): SkillRegistryRecord[] => {
+  if (moduleRecords.length === 0) {
+    return [...base]
+  }
+  const claimed = new Set(base.map((record) => record.entry.name))
+  const additions = moduleRecords.filter(
+    (record) => !claimed.has(record.entry.name),
+  )
+  return [...base, ...additions]
+}
+
 class LiteSkillRegistryService {
   private static readonly EVENT_REBUILD_DEBOUNCE_MS = 75
 
@@ -495,11 +606,19 @@ export async function listLiteSkillEntries(
   app: App,
   options?: {
     settings?: SkillSettings
+    scope?: LiteSkillScope
   },
 ): Promise<LiteSkillEntry[]> {
-  return [
+  const base = [
     ...(await getRegistryService(app).getRegistry(options?.settings)).values(),
   ]
+  const combined = options?.scope?.moduleChatModeId
+    ? mergeModuleSkillRecords(
+        base,
+        await buildModuleSkillRecords(app, options.scope.moduleChatModeId),
+      )
+    : base
+  return combined
     .map((record) => record.entry)
     .sort((a, b) => a.path.localeCompare(b.path))
 }
@@ -508,10 +627,12 @@ export async function getLiteSkillDocument({
   app,
   name,
   settings,
+  scope,
 }: {
   app: App
   name?: string
   settings?: SkillSettings
+  scope?: LiteSkillScope
 }): Promise<LiteSkillDocument | null> {
   const target = name?.trim()
   if (!target) {
@@ -519,10 +640,18 @@ export async function getLiteSkillDocument({
   }
 
   // Resolve through the SAME registry as `list`, so a name displayed in the UI
-  // opens exactly the file/builtin that was displayed.
-  const record = (await getRegistryService(app).getRegistry(settings)).get(
-    target,
-  )
+  // opens exactly the file/builtin that was displayed. Module-mode skills are
+  // only consulted when the user/global bucket doesn't already claim `name`
+  // — same tie-break as `mergeModuleSkillRecords`.
+  const registry = await getRegistryService(app).getRegistry(settings)
+  let record = registry.get(target)
+  if (!record && scope?.moduleChatModeId) {
+    const moduleRecords = await buildModuleSkillRecords(
+      app,
+      scope.moduleChatModeId,
+    )
+    record = moduleRecords.find((candidate) => candidate.entry.name === target)
+  }
   if (!record) {
     return null
   }
@@ -579,14 +708,25 @@ export async function getLiteSkillDocument({
   }
 }
 
+/**
+ * Looks up a skill by its exact file path, used by the `fs_read` exemption
+ * path (a caller-supplied path already vetted as a member of this run's
+ * `allowedSkillPaths`). `scope` is optional here — unlike name-based lookup,
+ * a path already identifies exactly one file, so when the caller doesn't
+ * know (or need) the owning mode, every currently registered module mode's
+ * skills are searched; `allowedSkillPaths` is what actually gated whether
+ * this path should be readable for the run, not this function.
+ */
 export async function getLiteSkillDocumentByPath({
   app,
   path,
   settings,
+  scope,
 }: {
   app: App
   path: string
   settings?: SkillSettings
+  scope?: LiteSkillScope
 }): Promise<LiteSkillDocument | null> {
   const targetPath = path.trim()
   if (!targetPath) {
@@ -603,82 +743,28 @@ export async function getLiteSkillDocumentByPath({
       })
     }
   }
+
+  const source = moduleChatModeSkillSource
+  if (source) {
+    const modeIds = scope?.moduleChatModeId
+      ? [scope.moduleChatModeId]
+      : source.listModeIds()
+    for (const modeId of modeIds) {
+      const moduleRecords = await buildModuleSkillRecords(app, modeId)
+      const match = moduleRecords.find(
+        (candidate) => candidate.entry.path === targetPath,
+      )
+      if (match) {
+        return getLiteSkillDocument({
+          app,
+          name: match.entry.name,
+          settings,
+          scope: { moduleChatModeId: modeId },
+        })
+      }
+    }
+  }
   return null
-}
-
-const listPackageResourcePaths = async (
-  adapter: App['vault']['adapter'],
-  packageDir: string,
-): Promise<string[]> => {
-  const paths: string[] = []
-  const collect = async (dir: string): Promise<void> => {
-    const listing = await adapter.list(dir)
-    paths.push(...listing.files.map((path) => normalizePath(path)))
-    for (const folder of listing.folders) {
-      await collect(normalizePath(folder))
-    }
-  }
-  await collect(packageDir)
-  return paths.sort((a, b) => a.localeCompare(b))
-}
-
-/**
- * Resolve the complete package behind a canonical frontmatter name. Vault
- * resources are returned as paths so downstream materializers can preserve
- * text and binary files with the adapter operation appropriate to each file.
- */
-export async function getLiteSkillPackageSource({
-  app,
-  name,
-  settings,
-}: {
-  app: App
-  name?: string
-  settings?: SkillSettings
-}): Promise<LiteSkillPackageSource | null> {
-  const document = await getLiteSkillDocument({ app, name, settings })
-  if (!document) {
-    return null
-  }
-
-  if (document.entry.path.startsWith('builtin://')) {
-    return {
-      entry: document.entry,
-      resources: [
-        {
-          kind: 'builtin',
-          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
-          content: document.content,
-        },
-      ],
-    }
-  }
-
-  const packageDir = getSkillPackageDirPath(document.entry.path)
-  if (!packageDir) {
-    return {
-      entry: document.entry,
-      resources: [
-        {
-          kind: 'vault',
-          path: document.entry.path,
-          relativePath: SKILL_PACKAGE_ENTRY_FILE_NAME,
-        },
-      ],
-    }
-  }
-  const prefix = `${packageDir}/`
-  const resources = (
-    await listPackageResourcePaths(app.vault.adapter, packageDir)
-  ).map(
-    (path): LiteSkillPackageResource => ({
-      kind: 'vault',
-      path,
-      relativePath: path.slice(prefix.length),
-    }),
-  )
-
-  return { entry: document.entry, resources }
 }
 
 /**

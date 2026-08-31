@@ -29,6 +29,11 @@ export const serializeMentionable = (
         type: 'folder',
         folder: mentionable.folder.path,
       }
+    case 'local-folder':
+      return {
+        type: 'local-folder',
+        path: mentionable.path,
+      }
     case 'block':
       return {
         type: 'block',
@@ -45,6 +50,8 @@ export const serializeMentionable = (
         contentUnit: mentionable.contentUnit,
         tableRowCount: mentionable.tableRowCount,
         tableColumnCount: mentionable.tableColumnCount,
+        comment: mentionable.comment,
+        annotationNumber: mentionable.annotationNumber,
       }
     case 'assistant-quote':
       return {
@@ -164,6 +171,17 @@ export const deserializeMentionable = (
           folder: folder,
         }
       }
+      case 'local-folder': {
+        const path =
+          typeof mentionable.path === 'string' ? mentionable.path.trim() : ''
+        if (!path) {
+          return null
+        }
+        return {
+          type: 'local-folder',
+          path,
+        }
+      }
       case 'block': {
         const filePath =
           typeof mentionable.file === 'string' ? mentionable.file : null
@@ -194,6 +212,8 @@ export const deserializeMentionable = (
           contentUnit: mentionable.contentUnit,
           tableRowCount: mentionable.tableRowCount,
           tableColumnCount: mentionable.tableColumnCount,
+          comment: mentionable.comment,
+          annotationNumber: mentionable.annotationNumber,
         }
       }
       case 'assistant-quote': {
@@ -334,12 +354,27 @@ export function getMentionableKey(mentionable: SerializedMentionable): string {
       return `file:${mentionable.file}`
     case 'folder':
       return `folder:${mentionable.folder}`
+    case 'local-folder':
+      return `local-folder:${mentionable.path}`
     case 'block': {
       const pageTag =
         mentionable.pageNumber !== undefined
           ? `:p${mentionable.pageNumber}`
           : ''
-      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}`
+      // PDF multi-quote annotation (docs/plans/2026-08-16-pdf-annotation-
+      // quotes.md): two distinct annotations can select the same repeated
+      // substring on the same page, which otherwise collide on identical
+      // file/line/page/contentHash. `annotationNumber` is only ever set on
+      // annotated blocks (see its definition in types/mentionable.ts), so
+      // appending it here is additive and never runs for plain blocks —
+      // the key format below is byte-for-byte unchanged when it's absent,
+      // which existing add-to-sidebar references and deserialized history
+      // both depend on for stable mentionable identity.
+      const annotationTag =
+        mentionable.annotationNumber !== undefined
+          ? `:a${mentionable.annotationNumber}`
+          : ''
+      return `block:${mentionable.file}:${mentionable.startLine}:${mentionable.endLine}${pageTag}:${mentionable.contentHash ?? (typeof mentionable.content === 'string' ? getBlockContentHash(mentionable.content) : 'nohash')}${annotationTag}`
     }
     case 'assistant-quote':
       return mentionable.id
@@ -439,11 +474,25 @@ function resolveUnitLabel(
   return unitLabels?.[unit] ?? unit
 }
 
+/**
+ * Trailing segment of an absolute path. Handles both separators because the
+ * path comes from the host OS, not from the vault.
+ */
+export function getLocalFolderDisplayName(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, '')
+  const lastSeparator = Math.max(
+    trimmed.lastIndexOf('/'),
+    trimmed.lastIndexOf('\\'),
+  )
+  const name = lastSeparator === -1 ? trimmed : trimmed.slice(lastSeparator + 1)
+  // A drive or filesystem root has no trailing segment; show the path itself.
+  return name.length > 0 ? name : path
+}
+
 export function getMentionableName(
   mentionable: Mentionable,
   options?: {
     unitLabels?: MentionableUnitLabels
-    currentFileLabel?: string
   },
 ): string {
   switch (mentionable.type) {
@@ -451,6 +500,8 @@ export function getMentionableName(
       return mentionable.file.name
     case 'folder':
       return mentionable.folder.name
+    case 'local-folder':
+      return getLocalFolderDisplayName(mentionable.path)
     case 'block': {
       if (
         mentionable.contentFormat === 'markdown-table' &&

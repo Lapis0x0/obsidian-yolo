@@ -2,7 +2,10 @@ import { type RefObject, useCallback, useEffect, useMemo, useRef } from 'react'
 
 import type { Mentionable } from '../../../types/mentionable'
 
-import { pdfSelectionHighlightController } from './pdfSelectionHighlightController'
+import {
+  PDF_ANNOTATION_UI_SELECTOR,
+  pdfSelectionHighlightController,
+} from './pdfSelectionHighlightController'
 import { selectionHighlightController } from './selectionHighlightController'
 
 type UseChatHighlightSessionArgs = {
@@ -195,6 +198,12 @@ export function useChatHighlightSession({
       if (!(target instanceof Element)) return
       const container = containerRef.current
       if (container && container.contains(target)) return
+      // The PDF annotation bubble/editor lives inside the PDF page, so it
+      // matches EDITOR_LEAF_SELECTOR — but it is our own UI, not the
+      // document.  Without this, `openAnnotationEditor`'s rAF focus of the
+      // comment input reconciles the annotation's own entry away before the
+      // chat state that keeps it alive has rendered.
+      if (target.closest(PDF_ANNOTATION_UI_SELECTOR)) return
       if (!target.closest(EDITOR_LEAF_SELECTOR)) return
       // Returning to a real editor ends the sent-message sticky cycle.  Live
       // input / in-place-edit mentions still render through liveIds.

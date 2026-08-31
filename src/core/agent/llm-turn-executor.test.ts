@@ -8,6 +8,7 @@ import {
 import {
   LLMResponseNonStreaming,
   LLMResponseStreaming,
+  ProviderExecutedToolCall,
 } from '../../types/llm/response'
 import { LLMProvider } from '../../types/provider.types'
 import {
@@ -90,6 +91,132 @@ const createMockMcpManager = (tools: unknown[] = []): McpManager =>
 describe('AgentLlmTurnExecutor', () => {
   beforeEach(() => {
     mockExecuteSingleTurn.mockReset()
+  })
+
+  describe('provider tool runs', () => {
+    const chunkWith = (
+      delta: LLMResponseStreaming['choices'][number]['delta'],
+    ): LLMResponseStreaming => ({
+      id: 'chunk',
+      model: 'gpt-4.1',
+      object: 'chat.completion.chunk',
+      choices: [{ finish_reason: null, delta }],
+    })
+
+    const run = (
+      id: string,
+      status: 'running' | 'success',
+    ): ProviderExecutedToolCall[] => [{ id, name: 'Bash', status }]
+
+    const runExecutor = async (
+      stream: (
+        emit: (delta: LLMResponseStreaming['choices'][number]['delta']) => void,
+      ) => void,
+      turnContent: string,
+    ) => {
+      const log: string[] = []
+      mockExecuteSingleTurn.mockImplementation(async (input) => {
+        stream((delta) => {
+          void input.onStreamDelta?.({
+            contentDelta: delta.content ?? '',
+            reasoningDelta: '',
+            chunk: chunkWith(delta),
+          })
+        })
+        return {
+          content: turnContent,
+          reasoning: undefined,
+          annotations: undefined,
+          usage: undefined,
+          providerMetadata: undefined,
+          toolCalls: [],
+        }
+      })
+
+      const result = await new AgentLlmTurnExecutor({
+        providerClient: new MockProvider(),
+        model: TEST_MODEL,
+        requestContextBuilder: {
+          generateRequestMessages: jest
+            .fn()
+            .mockResolvedValue([{ role: 'user', content: 'hello' }]),
+        } as unknown as RequestContextBuilder,
+        mcpManager: createMockMcpManager(),
+        conversationId: 'conv-1',
+        messages: [],
+        enableTools: false,
+        includeBuiltinTools: false,
+        onAssistantMessage: (message) => {
+          log.push(
+            `assistant:${message.id}:${message.content}:${message.metadata?.generationState}`,
+          )
+        },
+        onProviderToolRun: (calls) => {
+          log.push(`run:${calls[0].id}:${calls[0].status}`)
+        },
+      }).run()
+
+      return { log, result }
+    }
+
+    it('seals the answer before the run and continues after it', async () => {
+      const { log, result } = await runExecutor((emit) => {
+        emit({ content: 'before' })
+        emit({ providerToolRun: run('t1', 'running') })
+        emit({ providerToolRun: run('t1', 'success') })
+        emit({ content: 'after' })
+      }, 'beforeafter')
+
+      // The run has to land between the two halves of the answer: the first
+      // message is finished before it, the second opens after it.
+      expect(log).toEqual(
+        [
+          'assistant:$id::streaming',
+          'assistant:$id:before:streaming',
+          // Every chunk republishes the open message, changed or not; the
+          // run-bearing chunk is no exception, and the seal follows it.
+          'assistant:$id:before:streaming',
+          'assistant:$id:before:completed',
+          'run:t1:running',
+          'assistant:$id#1::streaming',
+          'assistant:$id#1::streaming',
+          'run:t1:success',
+          'assistant:$id#1:after:streaming',
+          'assistant:$id#1:after:completed',
+        ].map((entry) =>
+          entry.replace('$id', result.assistantMessage.id.split('#')[0]),
+        ),
+      )
+    })
+
+    it('does not split again while the same run is still reporting', async () => {
+      const { log } = await runExecutor((emit) => {
+        emit({ providerToolRun: run('t1', 'running') })
+        emit({ providerToolRun: run('t1', 'success') })
+        emit({ providerToolRun: run('t2', 'running') })
+      }, '')
+
+      const openedMessages = new Set(
+        log
+          .filter((entry) => entry.startsWith('assistant:'))
+          .map((entry) => entry.split(':')[1]),
+      )
+      expect(openedMessages.size).toBe(3)
+      expect(log.filter((entry) => entry.startsWith('run:'))).toHaveLength(3)
+    })
+
+    it('does not replay the turn into a message opened after the last run', async () => {
+      // The trailing message is empty because the turn ended on a tool run,
+      // not because no delta ever arrived — the non-streaming fallback must
+      // not treat it as the latter and paste the whole answer back in.
+      const { result } = await runExecutor((emit) => {
+        emit({ content: 'all of the answer' })
+        emit({ providerToolRun: run('t1', 'success') })
+      }, 'all of the answer')
+
+      expect(result.assistantMessage.content).toBe('')
+      expect(result.hasAssistantOutput).toBe(true)
+    })
   })
 
   it('passes primary timeout and recovery settings to single turn execution', async () => {

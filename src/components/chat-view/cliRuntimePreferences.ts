@@ -1,3 +1,5 @@
+import type { MutableRefObject } from 'react'
+
 import type {
   CliChatMode,
   CliRuntimeConfiguration,
@@ -5,7 +7,10 @@ import type {
   CliRuntimeId,
   CliRuntimeModel,
 } from '../../core/cli-runtime'
-import { normalizeCliChatMode } from '../../core/cli-runtime'
+import {
+  RUNTIME_CAPABILITIES,
+  normalizeCliChatMode,
+} from '../../core/cli-runtime'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 
@@ -70,13 +75,14 @@ export type CliModePreference = {
 }
 
 /**
- * Codex never exposes Plan in the product surface; collapse stray plan values.
+ * Runtimes without plan-mode support never expose Plan in the product
+ * surface; collapse stray plan values.
  */
 export const normalizeCliModeForRuntime = (
   runtimeId: CliRuntimeId,
   mode: CliChatMode,
 ): CliChatMode => {
-  if (runtimeId === 'codex' && mode === 'plan') {
+  if (!RUNTIME_CAPABILITIES[runtimeId].supportsPlanMode && mode === 'plan') {
     return 'agent'
   }
   return mode
@@ -153,5 +159,50 @@ export const patchConversationCliModeOverrides = (
       ...(overrides?.cliAgentYoloEnabledByRuntime ?? {}),
       [runtimeId]: mode === 'plan' ? false : preference.yoloEnabled,
     },
+  }
+}
+
+/**
+ * Per-conversation memory of the agent-mode config to restore to when a
+ * plan-capable CLI runtime (claude-code) leaves Plan mode. Transient —
+ * lives only in this ref for the tab's lifetime, never persisted to
+ * settings or conversation storage.
+ */
+export type PrePlanCliModeEntry = { mode: 'agent'; yoloEnabled: boolean }
+export type PrePlanCliModeMemory = MutableRefObject<
+  Map<string, PrePlanCliModeEntry>
+>
+
+/** Records the agent-mode config a conversation had right before entering Plan. */
+export const rememberPrePlanCliMode = (
+  memory: PrePlanCliModeMemory,
+  conversationId: string,
+  yoloEnabled: boolean,
+): void => {
+  memory.current.set(conversationId, { mode: 'agent', yoloEnabled })
+}
+
+/** Reads the remembered pre-plan config, defaulting to plain agent mode. */
+export const readPrePlanCliMode = (
+  memory: PrePlanCliModeMemory,
+  conversationId: string,
+): PrePlanCliModeEntry =>
+  memory.current.get(conversationId) ?? { mode: 'agent', yoloEnabled: false }
+
+/**
+ * Drops stale pre-plan memory once a conversation settles on a non-plan
+ * mode for a plan-capable runtime — covers both live mode changes
+ * (`applyCliModePreference`) and session loads (`loadYoloConversation` /
+ * `loadCliConversation`), which previously reimplemented this guard
+ * separately.
+ */
+export const prunePrePlanCliMode = (
+  memory: PrePlanCliModeMemory,
+  conversationId: string,
+  runtimeId: CliRuntimeId,
+  mode: CliChatMode,
+): void => {
+  if (RUNTIME_CAPABILITIES[runtimeId].supportsPlanMode && mode !== 'plan') {
+    memory.current.delete(conversationId)
   }
 }

@@ -194,6 +194,37 @@ select.yolo-module-settings-select {
   padding: var(--size-4-2);
 }
 
+/* One section per knowledge base — the root above used to wrap a single
+ * global stats table; now it lists one table per kb, separated by a rule. */
+.yolo-settings-embedding-db-manage-kb + .yolo-settings-embedding-db-manage-kb {
+  margin-top: var(--size-4-4);
+  padding-top: var(--size-4-4);
+  border-top: 1px solid var(--background-modifier-border);
+}
+
+.yolo-settings-embedding-db-manage-kb-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+}
+
+.yolo-settings-embedding-db-manage-kb-name {
+  color: var(--text-normal);
+  font-size: var(--font-ui-medium);
+  font-weight: var(--font-semibold);
+}
+
+.yolo-settings-embedding-db-manage-empty {
+  padding: var(--size-4-2) 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+}
+
+.yolo-settings-embedding-db-manage-last-updated {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
 .yolo-settings-embedding-db-manage-header {
   display: flex;
   align-items: center;
@@ -233,13 +264,6 @@ select.yolo-module-settings-select {
 .yolo-settings-embedding-db-manage-actions {
   display: flex;
   gap: var(--size-4-2);
-}
-
-.yolo-settings-embedding-db-manage-actions-loading {
-  display: flex;
-  align-items: center;
-  gap: var(--size-2-2);
-  font-size: var(--font-ui-smaller);
 }
 
 /* Settings: tables */
@@ -628,14 +652,20 @@ select.yolo-module-settings-select {
     margin-bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
 }
 
+/*
+ * 顶部锚定：视口长高时轨道原地不动，新行由下边缘扫出来。若改锚到 bottom，
+ * 轨道会跟着正在过渡的下边缘漂移，就必须再叠一个反向 transform 去抵消它——
+ * 而 height 只能在主线程逐帧重排、transform 跑在合成线程，两者无法保持同步，
+ * 主线程一卡帧旧行就会向上窜。位移只承担封顶后的滚动量。
+ */
 .yolo-assistant-message-metadata-preview-track {
   position: absolute;
   inset-inline: 0;
-  bottom: 0;
+  top: 0;
   white-space: normal;
   overflow-wrap: anywhere;
   transform: translateY(
-    var(--yolo-assistant-metadata-preview-hold-offset, 0px)
+    calc(var(--yolo-assistant-metadata-preview-scroll-offset, 0px) * -1)
   );
   will-change: transform;
 }
@@ -653,6 +683,36 @@ select.yolo-module-settings-select {
   max-height: 0;
   margin-bottom: 0;
   opacity: 0;
+}
+
+/*
+ * 面板式预览：user message 后的首条 thinking 用多行视口，随内容长高、
+ * 封顶后内容在顶部渐隐遮罩后上滚。高度由组件量测后写入
+ * --yolo-assistant-metadata-preview-viewport-height 驱动，收场时归零。
+ * 动效豁免（height 属布局属性）：视口 contain: layout paint 已隔离重排，
+ * 而“视口自身长高”无法用 transform 表达。封顶后 height 恒定、与轨道位移互斥，
+ * 不会出现两条动画争抢同一段视觉位置。
+ */
+.yolo-assistant-message-metadata-preview--panel {
+  height: var(--yolo-assistant-metadata-preview-viewport-height, 0px);
+  max-height: none;
+  transition:
+    height var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    opacity 180ms ease,
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out),
+    margin-bottom var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-assistant-message-metadata.has-preview
+  .yolo-assistant-message-metadata-preview--panel,
+.yolo-assistant-message-metadata.is-expanded
+  .yolo-assistant-message-metadata-preview--panel {
+  max-height: none;
+}
+
+.yolo-assistant-message-metadata-preview--panel.is-overflowing {
+  -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
 }
 
 .yolo-assistant-message-metadata.is-expanded
@@ -977,13 +1037,6 @@ select.yolo-module-settings-select {
   color: var(--text-success);
 }
 
-/* Muted small text/note */
-.yolo-muted-note {
-  margin: 4px 0 8px 0;
-  color: var(--text-muted);
-  font-size: 12px;
-  line-height: 1.4;
-}
 .yolo-text-faint-small {
   color: var(--text-faint);
   font-size: 12px;
@@ -994,198 +1047,8 @@ select.yolo-module-settings-select {
   display: flex;
   gap: 8px;
 }
-.yolo-actions-right-gap-8 {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
-}
-
 .yolo-clickable {
   cursor: pointer;
-}
-
-/* List reset & scroll panel */
-.yolo-list-reset {
-  list-style: none;
-  padding: 0;
-  margin: 0;
-}
-.yolo-scroll-panel {
-  max-height: 300px;
-  overflow: auto;
-}
-
-/* Folder picker */
-.yolo-folder-picker {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.yolo-folder-empty {
-  padding: 8px;
-  opacity: 0.7;
-}
-.yolo-folder-row {
-  cursor: pointer;
-  border-radius: 0;
-  box-shadow: none;
-  border: 0;
-}
-.yolo-folder-row.is-file {
-  cursor: default;
-}
-.yolo-folder-row.is-file:hover {
-  background-color: transparent;
-}
-.yolo-folder-row.is-disabled {
-  cursor: not-allowed;
-}
-.yolo-folder-row:not(.is-disabled):hover {
-  background-color: var(--background-modifier-hover);
-}
-.yolo-icon-placeholder {
-  display: inline-block;
-  width: 16px;
-}
-.yolo-provider-expand-btn.no-children {
-  visibility: hidden;
-}
-.yolo-folder-name {
-  outline: none;
-  box-shadow: none;
-  border: none;
-  background: transparent;
-  padding: 0;
-  text-align: left;
-  color: var(--text-normal);
-  border-radius: 0;
-  pointer-events: none;
-}
-.yolo-folder-row.is-disabled .yolo-folder-name {
-  color: var(--text-faint);
-}
-
-.yolo-tree-root,
-.yolo-tree-children {
-  list-style: none;
-  margin: 0;
-  padding-left: 0;
-}
-
-.yolo-tree-children {
-  margin-left: 0;
-}
-
-.yolo-tree-item {
-  margin: 0;
-}
-
-.yolo-tree-guides {
-  display: flex;
-  align-self: stretch;
-  pointer-events: none;
-  flex: 0 0 auto;
-  margin-right: 4px;
-}
-
-.yolo-tree-guide {
-  position: relative;
-  width: 16px;
-  flex: 0 0 16px;
-}
-
-.yolo-tree-guide::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-0.5px);
-  border-left: 1px solid var(--background-modifier-border);
-}
-
-.yolo-tree-guide.is-empty::before {
-  display: none;
-}
-
-.yolo-tree-guide-branch::after {
-  content: '';
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 16px;
-  transform: translate(-0.5px, -0.5px);
-  border-top: 1px solid var(--background-modifier-border);
-}
-
-.yolo-tree-guide-branch::before {
-  bottom: -12px;
-}
-
-.yolo-tree-guide-branch.is-last::before {
-  bottom: 50%;
-}
-
-.yolo-tree-icon {
-  display: flex;
-  align-items: center;
-  color: var(--text-muted);
-}
-
-.yolo-folder-row:not(.is-disabled):hover .yolo-tree-icon {
-  color: var(--text-normal);
-}
-
-.yolo-folder-row.is-disabled .yolo-tree-icon {
-  color: var(--text-faint);
-}
-
-/* Indent helpers using CSS variables for depth */
-.yolo-depth {
-  --yolo-depth: 0;
-}
-.yolo-depth-0 {
-  --yolo-depth: 0;
-}
-.yolo-depth-1 {
-  --yolo-depth: 1;
-}
-.yolo-depth-2 {
-  --yolo-depth: 2;
-}
-.yolo-depth-3 {
-  --yolo-depth: 3;
-}
-.yolo-depth-4 {
-  --yolo-depth: 4;
-}
-.yolo-depth-5 {
-  --yolo-depth: 5;
-}
-.yolo-depth-6 {
-  --yolo-depth: 6;
-}
-.yolo-depth-7 {
-  --yolo-depth: 7;
-}
-.yolo-depth-8 {
-  --yolo-depth: 8;
-}
-.yolo-depth-9 {
-  --yolo-depth: 9;
-}
-.yolo-depth-10 {
-  --yolo-depth: 10;
-}
-
-/* Folder picker row indent (base 8px + depth*12px) */
-.yolo-indent-folder {
-  padding-left: calc(8px + var(--yolo-depth) * 12px);
-}
-
-/* RAG index list indent (base 16px + depth*12px) */
-.yolo-indent-list {
-  margin-left: calc(16px + var(--yolo-depth) * 12px);
 }
 
 .yolo-split-button {

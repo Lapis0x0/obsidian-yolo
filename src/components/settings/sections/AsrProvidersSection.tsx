@@ -19,7 +19,6 @@ import { type CSSProperties, useCallback, useMemo } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
 import {
   ASR_WEBSOCKET_FILE_STREAMING_RATE_DEFAULT,
   type AsrApiFormat,
@@ -32,10 +31,11 @@ import {
   AddAsrConfigModal,
   EditAsrConfigModal,
 } from '../modals/AsrConfigFormModal'
+import type { VoiceSettingsPlugin } from '../voiceSettingsPlugin'
 
 type AsrProvidersSectionProps = {
   app: App
-  plugin: YoloPlugin
+  plugin: VoiceSettingsPlugin
 }
 
 type Translator = ReturnType<typeof useLanguage>['t']

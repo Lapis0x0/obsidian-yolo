@@ -1,7 +1,9 @@
 import type {
   JsSandboxSettings,
+  KnowledgeBase,
   YoloSettings,
 } from '../../settings/schema/setting.types'
+import { describeKnowledgeBaseCatalog } from '../rag/knowledgeBaseCatalog'
 
 import {
   JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
@@ -14,7 +16,7 @@ import {
   JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
   JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
   resolveJsSandboxOutputMaxBytes,
-} from './jsSandboxTool'
+} from './jsSandboxLimits'
 
 export const JS_SANDBOX_BASE_DESCRIPTION =
   'Execute JavaScript in an isolated classic Worker and return JSON. Each call uses a fresh Worker; re-import/recreate state inside the same call. Single expressions are auto-returned; multi-statement code needs an explicit return. No DOM/document/Image; use Worker APIs (Blob, Response, Request, OffscreenCanvas, createImageBitmap, etc.).' +
@@ -80,7 +82,16 @@ function describeHtmlParsingUtils(): string {
  * everything is off (the default), the model has no reason to try APIs
  * that don't exist, so the description stays minimal.
  */
-export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
+/**
+ * @param knowledgeBases When given, `$db.search`'s doc lists the configured
+ * knowledge bases by name so the model can pick one; the settings-agnostic
+ * catalog (`getLocalFileTools`) omits it and `applyDynamicToolDescriptions`
+ * fills it in per request.
+ */
+export function buildJsSandboxToolDescription(
+  s: JsSandboxSettings,
+  knowledgeBases?: readonly KnowledgeBase[],
+): string {
   const enabled: string[] = []
   const htmlParsingEnabled =
     s.allowFetch || s.allowExternalScripts || s.allowBrowserRead
@@ -147,7 +158,7 @@ export function buildJsSandboxToolDescription(s: JsSandboxSettings): string {
       ? 'Do not use $db for images/PDF/audio/binary; use $vault.readBinary(path) for those.'
       : 'Do not use $db for images/PDF/audio/binary — those are out of scope.'
     enabled.push(
-      `Text only, markdown-focused. await $db.search(query, limit?) -> [{path,content,similarity,...}] (knowledge-base RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; default ${dbDefaultLimit} results, requested limit is clamped to ${dbLimit}; throws when the vault has no index). ${textReadHint} ${binaryHint}`,
+      `Text only, markdown-focused. await $db.search(query, limit?, knowledgeBase?) -> [{path,content,similarity,...}] (knowledge-base RAG semantic/vector search; \`content\` is the matched chunk excerpt, not the full file; default ${dbDefaultLimit} results, requested limit is clamped to ${dbLimit}; throws when the vault has no knowledge bases).${knowledgeBases ? ` ${describeKnowledgeBaseCatalog(knowledgeBases)}` : ' Omit knowledgeBase to merge top results across every knowledge base, or pass a knowledge base name to restrict to one.'} ${textReadHint} ${binaryHint}`,
     )
   }
 

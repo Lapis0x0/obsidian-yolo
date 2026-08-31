@@ -3,11 +3,12 @@ import { z } from 'zod'
 import type { SerializedChatUserMessage } from '../../types/chat'
 import type { ToolEditSummary } from '../../types/tool-call.types'
 
+import { CLI_RUNTIME_IDS } from './types'
 import type { CliRuntimeId, CliSessionRef } from './types'
 
 export const CLI_SESSION_INDEX_SCHEMA_VERSION = 1 as const
 
-const cliRuntimeIdSchema = z.enum(['claude-code', 'codex'])
+const cliRuntimeIdSchema = z.enum(CLI_RUNTIME_IDS)
 
 const serializedUserMessageSchema = z.custom<SerializedChatUserMessage>(
   (value) => {
@@ -48,6 +49,7 @@ export const cliSessionIndexEntrySchema = z.object({
   runtimeId: cliRuntimeIdSchema,
   nativeSessionId: z.string().min(1),
   sessionPathHint: z.string().min(1).optional(),
+  profileId: z.string().min(1).optional(),
   turnOverlays: z.array(cliTurnOverlaySchema).optional(),
   turnEditSummaryByUserMessageId: z
     .record(z.string(), toolEditSummarySchema)
@@ -98,6 +100,7 @@ export const toCliSessionRef = (
   runtimeId: entry.runtimeId,
   nativeSessionId: entry.nativeSessionId,
   ...(entry.sessionPathHint ? { sessionPathHint: entry.sessionPathHint } : {}),
+  ...(entry.profileId ? { profileId: entry.profileId } : {}),
 })
 
 export const createCliSessionIndexEntry = ({

@@ -1,4 +1,4 @@
-import { Download, History, Plus } from 'lucide-react'
+import { ArrowLeft, Download, History, Plus, Settings } from 'lucide-react'
 import type {
   Dispatch,
   MutableRefObject,
@@ -9,10 +9,12 @@ import { useEffect, useRef } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
-import type {
-  ChatRuntimeId,
-  CliRuntimeId,
-  CliRuntimeScope,
+import {
+  type ChatRuntimeId,
+  type CliRuntimeId,
+  type CliRuntimeScope,
+  RUNTIME_CAPABILITIES,
+  isCliRuntime,
 } from '../../core/cli-runtime'
 import type {
   ChatConversationCliSession,
@@ -26,8 +28,11 @@ import type { ConversationOverrideSettings } from '../../types/conversation-sett
 import type { MentionableBlockData } from '../../types/mentionable'
 
 import { AssistantSelector } from './AssistantSelector'
+import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { ChatListDropdown } from './ChatListDropdown'
+import { HermesProfileSelector } from './HermesProfileSelector'
 import { RuntimeSelector } from './RuntimeSelector'
+import type { SparkleView } from './sparkle/SparklePanel'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
@@ -36,11 +41,15 @@ export type ChatHeaderProps = {
   isSidebarPlacement: boolean
   activeView: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
+  sparkleView: SparkleView
+  onChangeSparkleView: (view: SparkleView) => void
   activeRuntimeId: ChatRuntimeId
   handleRuntimeChange: (runtimeId: ChatRuntimeId) => void
   lastCliRuntimeIdRef: MutableRefObject<CliRuntimeId>
   cliRuntimeAvailable: boolean
   cliRuntimeScope: CliRuntimeScope | undefined
+  /** Gates the assistant selector — hidden while a module chat mode is active. */
+  chatMode: ChatMode
 
   // workspace-wide header 测量：containerRef 由 Chat.tsx 持有（同一节点也
   // 服务于其他用途），这里只读取 .current 做宽度测量；isWorkspaceWideHeader
@@ -53,6 +62,9 @@ export type ChatHeaderProps = {
 
   conversationAssistantId: string
   handleConversationAssistantSelect: (assistantId: string) => void
+  /** `undefined` means the default Hermes profile. Ignored by non-Hermes runtimes. */
+  hermesProfileId: string | undefined
+  handleHermesProfileSelect: (profileId: string | undefined) => void
   handleNewChat: (selectedBlock?: MentionableBlockData) => void
   handleExportChatToVault: (conversationId: string) => void
   currentConversationId: string
@@ -72,7 +84,12 @@ export type ChatHeaderProps = {
     compaction?: ChatConversationCompactionState
     cliSession?: ChatConversationCliSession
   } | null>
-  deleteConversation: (id: string) => Promise<void>
+  /**
+   * issue #567 Step 2：删除会话后的清理（CLI overlay 移除）+ 会话切换逻辑
+   * 下沉到 Chat.tsx 单一实现，供本组件与 `ChatRef.deleteCurrentConversation`
+   * 共用，取代原先直接内联在 `onDelete` 里的那段逻辑。
+   */
+  deleteConversationWithCleanup: (conversationId: string) => Promise<void>
   updateConversationTitle: (id: string, title: string) => Promise<void>
   syncCliConversationTitle: (conversationId: string, title: string) => void
   toggleConversationPinned: (id: string) => Promise<void>
@@ -83,23 +100,30 @@ export type ChatHeaderProps = {
       force?: boolean
     },
   ) => Promise<string | null>
+  /** 见 `ChatListDropdown` 的 `openHandleRef` 文档注释。 */
+  historyOpenHandleRef: MutableRefObject<(() => void) | null>
 }
 
 export function ChatHeader({
   isSidebarPlacement,
   activeView,
   onChangeView,
+  sparkleView,
+  onChangeSparkleView,
   activeRuntimeId,
   handleRuntimeChange,
   lastCliRuntimeIdRef,
   cliRuntimeAvailable,
   cliRuntimeScope,
+  chatMode,
   containerRef,
   isWorkspaceWideHeader,
   setIsWorkspaceWideHeader,
   setWorkspaceWideHeaderHeight,
   conversationAssistantId,
   handleConversationAssistantSelect,
+  hermesProfileId,
+  handleHermesProfileSelect,
   handleNewChat,
   handleExportChatToVault,
   currentConversationId,
@@ -108,11 +132,12 @@ export function ChatHeader({
   runSummariesByConversationId,
   handleLoadConversation,
   getConversationById,
-  deleteConversation,
+  deleteConversationWithCleanup,
   updateConversationTitle,
   syncCliConversationTitle,
   toggleConversationPinned,
   generateConversationTitle,
+  historyOpenHandleRef,
 }: ChatHeaderProps) {
   const { t } = useLanguage()
   const headerRef = useRef<HTMLDivElement | null>(null)
@@ -199,7 +224,7 @@ export function ChatHeader({
             {t('sidebar.tabs.chat', 'Chat')}
           </h1>
         )}
-        {activeView === 'chat' && activeRuntimeId !== 'yolo' ? (
+        {activeView === 'chat' && isCliRuntime(activeRuntimeId) ? (
           <RuntimeSelector
             currentRuntimeId={activeRuntimeId}
             onRuntimeChange={handleRuntimeChange}
@@ -208,7 +233,8 @@ export function ChatHeader({
       </div>
       {activeView === 'chat' && (
         <div className="yolo-chat-header-right">
-          {activeRuntimeId === 'yolo' ? (
+          {RUNTIME_CAPABILITIES[activeRuntimeId].hasAssistants &&
+          !isModuleChatMode(chatMode) ? (
             <AssistantSelector
               currentAssistantId={conversationAssistantId}
               triggerClassName={
@@ -226,16 +252,25 @@ export function ChatHeader({
               }}
             />
           ) : null}
+          {activeRuntimeId === 'hermes' &&
+          !isModuleChatMode(chatMode) &&
+          cliRuntimeScope ? (
+            <HermesProfileSelector
+              cliRuntimeScope={cliRuntimeScope}
+              currentProfileId={hermesProfileId}
+              onProfileChange={handleHermesProfileSelect}
+            />
+          ) : null}
           <div className="yolo-chat-header-buttons">
             <button
               type="button"
               onClick={() => handleNewChat()}
               className="clickable-icon"
-              aria-label="New Chat"
+              aria-label={t('chat.newChat', 'New chat')}
             >
               <Plus size={18} />
             </button>
-            {activeRuntimeId === 'yolo' ? (
+            {RUNTIME_CAPABILITIES[activeRuntimeId].supportsVaultExport ? (
               <button
                 type="button"
                 onClick={() => handleExportChatToVault(currentConversationId)}
@@ -252,34 +287,13 @@ export function ChatHeader({
               chatList={chatList}
               currentConversationId={activeHistoryConversationId}
               runSummariesByConversationId={runSummariesByConversationId}
+              openHandleRef={historyOpenHandleRef}
               onSelect={(conversationId) => {
                 if (conversationId === activeHistoryConversationId) return
                 void handleLoadConversation(conversationId)
               }}
               onDelete={(conversationId) => {
-                void (async () => {
-                  const conversation = await getConversationById(conversationId)
-                  await deleteConversation(conversationId)
-                  if (conversation?.cliSession && cliRuntimeScope) {
-                    await cliRuntimeScope.sessionService.removeOverlay(
-                      conversation.cliSession,
-                    )
-                  }
-                  if (conversationId === activeHistoryConversationId) {
-                    if (activeRuntimeId !== 'yolo') {
-                      handleNewChat()
-                      return
-                    }
-                    const nextConversation = chatList.find(
-                      (chat) => chat.id !== conversationId,
-                    )
-                    if (nextConversation) {
-                      void handleLoadConversation(nextConversation.id)
-                    } else {
-                      handleNewChat()
-                    }
-                  }
-                })()
+                void deleteConversationWithCleanup(conversationId)
               }}
               onUpdateTitle={async (conversationId, newTitle) => {
                 await updateConversationTitle(conversationId, newTitle)
@@ -312,6 +326,46 @@ export function ChatHeader({
             >
               <History size={18} />
             </ChatListDropdown>
+          </div>
+        </div>
+      )}
+      {activeView === 'composer' && (
+        <div className="yolo-chat-header-right">
+          <div className="yolo-chat-header-buttons">
+            <button
+              type="button"
+              className={`clickable-icon${
+                sparkleView === 'settings' ? ' is-active' : ''
+              }`}
+              aria-label={
+                sparkleView === 'settings'
+                  ? t('sparkle.settings.back', 'Back')
+                  : t('sparkle.settings.open', 'Sparkle settings')
+              }
+              aria-pressed={sparkleView === 'settings'}
+              onClick={() =>
+                onChangeSparkleView(
+                  sparkleView === 'settings' ? 'main' : 'settings',
+                )
+              }
+            >
+              {/* 齿轮与返回箭头同格堆叠、互相交接：这个按钮既是设置入口也是
+                  设置出口，图标自己交代当前按下去会发生什么，设置视图因此
+                  不再需要一行返回栏。 */}
+              <span
+                className={`yolo-sparkle-settings-toggle-icon${
+                  sparkleView === 'settings' ? ' is-open' : ''
+                }`}
+                aria-hidden="true"
+              >
+                <span className="yolo-sparkle-settings-toggle-gear">
+                  <Settings size={18} />
+                </span>
+                <span className="yolo-sparkle-settings-toggle-back">
+                  <ArrowLeft size={18} />
+                </span>
+              </span>
+            </button>
           </div>
         </div>
       )}

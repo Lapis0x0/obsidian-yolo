@@ -3,6 +3,7 @@
 
 import { ChatCompletionCreateParams, ReasoningEffort } from 'openai/resources'
 
+import { ProviderSessionAccessor } from '../provider-session.types'
 import { ReasoningLevel } from '../reasoning'
 import { ToolCallRequest } from '../tool-call.types'
 
@@ -117,7 +118,29 @@ export type LLMOptions = {
     useWebSearch?: boolean
     useUrlContext?: boolean
   }
+  /**
+   * Read/write access to the conversation's native provider session, for the
+   * providers that own one. Absent for every stateless provider, and absent
+   * on lightweight single-turn calls that have no conversation behind them —
+   * a provider that needs it must treat that as "start a fresh session".
+   */
+  session?: ProviderSessionAccessor
+  /**
+   * How far a provider that runs tools inside its own runtime may go this
+   * turn. Distinct from YOLO's chat mode, which also governs the tool gateway
+   * and approval UI that these providers do not go through; callers map their
+   * mode onto it. Providers without a runtime of their own ignore it, and an
+   * absent value means the most restrictive policy.
+   */
+  nativeToolPolicy?: NativeToolPolicy
 }
+
+/**
+ * - `read-only`: the provider may look at the vault but not change it.
+ * - `edit`: file edits run without asking, matching Agent mode's promise.
+ * - `unrestricted`: nothing is withheld, matching YOLO mode.
+ */
+export type NativeToolPolicy = 'read-only' | 'edit' | 'unrestricted'
 
 export type RequestTool = {
   type: 'function'

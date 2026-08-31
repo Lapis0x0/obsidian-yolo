@@ -1,7 +1,7 @@
 import { App } from 'obsidian'
 import React from 'react'
 
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { AgentSection } from '../sections/AgentSection'
 
 type AgentTabProps = {

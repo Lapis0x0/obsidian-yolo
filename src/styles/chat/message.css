@@ -408,7 +408,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  backdrop-filter: blur(6px);
 }
 
 @keyframes yolo-thinking-text-shimmer {
@@ -420,22 +419,36 @@
   }
 }
 
-/* 流式文本入场 - 每个新到达的 span 淡入 + 轻微模糊消散 */
-.yolo-stream-fresh-text {
+/* 流式 markdown 的显影尾巴 —— streamingReveal 的 rehype 插件按播出帧把尾窗切成
+   span，每个 span 以内联样式带上交替的动画名（-a / -b）与等于字符年龄的负
+   animation-delay。相位必须取自年龄而非挂载时刻：react-markdown 按序号复用
+   节点，同一个 DOM 节点每帧对应的段会变，交替动画名强制重启，让负 delay 重新
+   对相；帧间的透明度插值由浏览器在显示帧完成，播出循环维持 30fps 不动。
+   这个动画的目标是遮蔽 30Hz 播出的阶跃感，不是可见的显影效果：linear 而非入场
+   曲线，就是为了让尾部在任意时刻都是均匀的亮度斜坡，而不是一块一块地冒。
+   降级：JS 侧 prefers-reduced-motion 时不产生 span，CSS 全局兜底同样覆盖。 */
+.yolo-stream-reveal {
   display: inline;
-  animation: yolo-stream-fresh-text-fade var(--yolo-anim-duration-feedback)
-    var(--yolo-anim-ease-out);
+  animation-duration: var(--yolo-anim-duration-feedback);
+  animation-timing-function: var(--yolo-anim-ease-linear);
+  animation-fill-mode: both;
 }
 
-@keyframes yolo-stream-fresh-text-fade {
-  0% {
-    opacity: 0.18;
-    filter: blur(0.18em);
+@keyframes yolo-stream-reveal-a {
+  from {
+    opacity: 0;
   }
-
-  100% {
+  to {
     opacity: 1;
-    filter: blur(0);
+  }
+}
+
+@keyframes yolo-stream-reveal-b {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
   }
 }
 
@@ -826,9 +839,7 @@
  * separation from the activity timeline. */
 .yolo-assistant-group-body
   > .yolo-assistant-answer-item:not(.has-visible-reasoning) {
-  margin-top: calc(
-    var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap)
-  );
+  margin-top: calc(var(--yolo-chat-answer-gap) - var(--yolo-chat-activity-gap));
 }
 
 /* A prose-bearing assistant item also creates breathing room before the next
@@ -1395,8 +1406,8 @@ button.yolo-assistant-error-card-continue:focus-visible {
 
 .yolo-assistant-tool-running-preview {
   margin-top: var(--yolo-chat-answer-gap);
-  animation: yolo-tool-activity-row-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+  animation: yolo-tool-activity-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
 }
 
 .yolo-assistant-tool-running-preview-header {
@@ -2910,8 +2921,8 @@ button.yolo-mermaid-modal-control:disabled {
   cursor: pointer;
   user-select: none;
   opacity: 0.96;
-  animation: yolo-tool-activity-row-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out) both;
+  animation: yolo-tool-activity-row-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) both;
 }
 
 .yolo-tool-run-summary:hover {
@@ -2928,12 +2939,21 @@ button.yolo-mermaid-modal-control:disabled {
  * 与工具标题、思考标题同属活动层，统一使用 text-muted；正文保持 text-normal，
  * 参数与详情继续使用 text-faint。 */
 .yolo-tool-run-summary__text {
+  flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
   line-height: inherit;
   color: var(--text-muted);
+}
+
+/* 编辑段的增删行数：放在 __text 之外的固定宽度兄弟节点，这样整行过长触发
+ * 省略号截断时，被吃掉的是前面的文字，而不是最该被看到的 +N/-M。 */
+.yolo-tool-run-summary__stats {
+  flex-shrink: 0;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 /* 右侧展开箭头：默认隐藏、hover/聚焦浮现，与 .yolo-toolcall-header-icon--expand

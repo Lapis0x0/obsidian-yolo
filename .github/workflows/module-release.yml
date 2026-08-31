@@ -76,8 +76,12 @@ jobs:
           node scripts/distribution.mjs assert-new-release
           --tag "$MODULE_RELEASE_TAG"
 
-      - name: Test remote verification
-        run: node --test scripts/verify-learning-release-assets.test.mjs
+      - name: Test the release asset protocol
+        run: >-
+          node --test
+          scripts/module-release-assets.test.mjs
+          scripts/validate-module-release.test.mjs
+          scripts/verify-learning-release-assets.test.mjs
 
       - name: Create immutable draft Release
         id: create

@@ -71,10 +71,10 @@ function SubagentConfigModalContent({
         ...settings,
         mcp: {
           ...settings.mcp,
-          builtinToolOptions: {
-            ...settings.mcp.builtinToolOptions,
-            delegate_subagent: {
-              ...settings.mcp.builtinToolOptions.delegate_subagent,
+          builtinCapabilityOptions: {
+            ...settings.mcp.builtinCapabilityOptions,
+            subagent_delegation: {
+              ...settings.mcp.builtinCapabilityOptions.subagent_delegation,
               ...value,
             },
           },

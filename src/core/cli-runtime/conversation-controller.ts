@@ -2,7 +2,11 @@ import { v4 as uuidv4 } from 'uuid'
 
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import type { ResponseUsage } from '../../types/llm/response'
-import type { ToolEditSummary } from '../../types/tool-call.types'
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+  type ToolEditSummary,
+} from '../../types/tool-call.types'
 
 import { attachCliTurnEditSummary } from './turn-edit-summary'
 import type {
@@ -18,6 +22,7 @@ import type {
   CliRuntimeModel,
   CliRuntimeRunState,
   CliRuntimeSkill,
+  CliSessionFallbackBoundary,
   CliSessionHydration,
   CliSessionOverlay,
   CliSessionRef,
@@ -36,6 +41,14 @@ export type CliConversationSnapshot = Readonly<{
   messages: readonly ChatMessage[]
   /** Ordered provider-native compaction events derived from the CLI session. */
   compactionBoundaries: readonly CliCompactionBoundary[]
+  /**
+   * Ordered "resumed session couldn't be reached, started a fresh one
+   * instead" notices anchored into the transcript. See
+   * `AcpCliRuntimeOptions.sessionRecovery`. Optional (unlike
+   * `compactionBoundaries`) so existing snapshot fixtures that predate this
+   * field stay valid; treat a missing value the same as an empty array.
+   */
+  sessionFallbackBoundaries?: readonly CliSessionFallbackBoundary[]
   sessionRef: CliSessionRef | null
   runState: CliRuntimeRunState
   /** True only while a provider-native context compaction is in flight. */
@@ -73,6 +86,11 @@ const isSameSession = (
 ): boolean =>
   left?.runtimeId === right?.runtimeId &&
   left?.nativeSessionId === right?.nativeSessionId
+
+const isToolRequestShell = (message: ChatMessage): boolean =>
+  message.role === 'assistant' &&
+  !message.content.trim() &&
+  (message.toolCallRequests?.length ?? 0) > 0
 
 const upsertMessage = (
   messages: readonly ChatMessage[],
@@ -134,6 +152,31 @@ const retainAnchoredCompactionBoundaries = (
 ): readonly CliCompactionBoundary[] =>
   normalizeCompactionBoundaries(boundaries, messages)
 
+const normalizeSessionFallbackBoundaries = (
+  boundaries: readonly CliSessionFallbackBoundary[],
+  messages: readonly ChatMessage[],
+): readonly CliSessionFallbackBoundary[] => {
+  const messageIds = new Set(messages.map((message) => message.id))
+  const normalized: CliSessionFallbackBoundary[] = []
+  const indexById = new Map<string, number>()
+  for (const boundary of boundaries) {
+    if (
+      boundary.afterMessageId !== null &&
+      !messageIds.has(boundary.afterMessageId)
+    ) {
+      continue
+    }
+    const index = indexById.get(boundary.id)
+    if (index === undefined) {
+      indexById.set(boundary.id, normalized.length)
+      normalized.push(boundary)
+    } else {
+      normalized[index] = boundary
+    }
+  }
+  return Object.freeze(normalized)
+}
+
 const getCurrentTurnConfiguration = (
   configuration: CliRuntimeConfiguration | null | undefined,
 ): CliTurnConfiguration | null =>
@@ -192,6 +235,147 @@ const replaceOptimisticUserMessage = (
     id: nativeMessage.id,
   }
   return Object.freeze(next)
+}
+
+/**
+ * A transcript that is not being generated into must not contain a message
+ * still marked `streaming` — every consumer reads that flag as "tokens are
+ * still arriving" and keeps the streaming markdown/reasoning renderers
+ * engaged while suppressing finished-message affordances such as the
+ * selection-quote overlay.
+ *
+ * Runtimes that already finalize their own messages (claude-code, codex) pass
+ * through untouched; ACP agents and pi only ever emit `streaming`, so without
+ * this their turns would stay "generating" forever. Owned here because this is
+ * the layer that holds both the run state and the messages it applies to.
+ */
+const settleStreamingAssistantMessages = (
+  messages: readonly ChatMessage[],
+  generationState: 'completed' | 'aborted',
+): readonly ChatMessage[] => {
+  let changed = false
+  const settled = messages.map((message) => {
+    if (
+      message.role !== 'assistant' ||
+      message.metadata?.generationState !== 'streaming'
+    ) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      metadata: { ...message.metadata, generationState },
+    }
+  })
+  return changed ? Object.freeze(settled) : messages
+}
+
+const PENDING_INTERACTION_STATUSES = [
+  ToolCallResponseStatus.PendingApproval,
+  ToolCallResponseStatus.AwaitingUserInput,
+] as const
+
+const isPendingInteraction = (response: ToolCallResponse): boolean =>
+  (
+    PENDING_INTERACTION_STATUSES as readonly ToolCallResponse['status'][]
+  ).includes(response.status)
+
+/**
+ * The run state while a card waits for the user is not something a runtime has
+ * to remember to announce: a card sitting at `PendingApproval` /
+ * `AwaitingUserInput` *is* the run waiting. Deriving it from the transcript is
+ * what makes it impossible for an adapter to forget — and it cannot disagree
+ * with what the user sees, because it is read off the same messages.
+ *
+ * Only a live turn is reinterpreted; an idle or finished snapshot keeps the
+ * state the runtime reported.
+ */
+const deriveRunState = (
+  runState: CliRuntimeRunState,
+  messages: readonly ChatMessage[],
+): CliRuntimeRunState => {
+  if (
+    runState !== 'running' &&
+    runState !== 'waiting_for_approval' &&
+    runState !== 'waiting_for_user'
+  ) {
+    return runState
+  }
+  let waiting: CliRuntimeRunState = 'running'
+  // Only the current turn can hold a live request, so the scan stops at the
+  // user message that opened it rather than walking the whole transcript.
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message?.role === 'user') break
+    if (message?.role !== 'tool') continue
+    for (const { response } of message.toolCalls) {
+      if (response.status === ToolCallResponseStatus.AwaitingUserInput) {
+        return 'waiting_for_user'
+      }
+      if (response.status === ToolCallResponseStatus.PendingApproval) {
+        waiting = 'waiting_for_approval'
+      }
+    }
+  }
+  return waiting
+}
+
+/**
+ * A turn cannot end with a question still on screen. Settling here covers
+ * every runtime at once — including the ones whose `cancel()` only interrupts
+ * the provider and never touched their own cards.
+ */
+const abortPendingInteractions = (
+  messages: readonly ChatMessage[],
+): readonly ChatMessage[] => {
+  let changed = false
+  const settled = messages.map((message) => {
+    if (message.role !== 'tool') return message
+    if (
+      !message.toolCalls.some(({ response }) => isPendingInteraction(response))
+    ) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) =>
+        isPendingInteraction(toolCall.response)
+          ? {
+              ...toolCall,
+              response: { status: ToolCallResponseStatus.Aborted } as const,
+            }
+          : toolCall,
+      ),
+    }
+  })
+  return changed ? Object.freeze(settled) : messages
+}
+
+const settleToolCallResponse = (
+  messages: readonly ChatMessage[],
+  toolCallId: string,
+  response: ToolCallResponse,
+): readonly ChatMessage[] => {
+  let changed = false
+  const settled = messages.map((message) => {
+    if (
+      message.role !== 'tool' ||
+      !message.toolCalls.some((toolCall) => toolCall.request.id === toolCallId)
+    ) {
+      return message
+    }
+    changed = true
+    return {
+      ...message,
+      toolCalls: message.toolCalls.map((toolCall) =>
+        toolCall.request.id === toolCallId
+          ? { ...toolCall, response }
+          : toolCall,
+      ),
+    }
+  })
+  return changed ? Object.freeze(settled) : messages
 }
 
 const appendAssistantError = (
@@ -286,6 +470,14 @@ export class CliConversationController {
   private bindingTarget: CliSessionRef | null | undefined
   private bindingEpoch: number | null = null
   private pendingOptimisticUserMessageId: string | null = null
+  /**
+   * Live-turn remapping of runtime message ids. A provider may reuse the same
+   * stream id across turns (pi's fallback `"stream"`, an ACP agent recycling
+   * `messageId`); upsert-in-place would then edit the previous turn. When that
+   * happens we mint a fresh id for the current turn and keep routing later
+   * deltas to it.
+   */
+  private currentTurnMessageIds = new Map<string, string>()
   private allowSessionRebind = false
   private restoredCacheHitRate: number | null = null
   private currentTurnMetrics: CliTurnMetrics | null = null
@@ -358,7 +550,10 @@ export class CliConversationController {
       const hydration = await operation.runtime.openSession(ref)
       if (!this.isCurrent(operation)) return null
       this.assertRuntimeRef(hydration.ref)
-      if (!isSameSession(ref, hydration.ref)) {
+      const isFallback =
+        hydration.sessionFallback !== undefined &&
+        isSameSession(hydration.sessionFallback.requestedRef, ref)
+      if (!isFallback && !isSameSession(ref, hydration.ref)) {
         throw new Error('CLI runtime hydrated a different session.')
       }
       const restored = restoreMessages
@@ -372,13 +567,31 @@ export class CliConversationController {
         : (restored as readonly ChatMessage[])
       if (!this.isCurrent(operation)) return null
       this.restoredCacheHitRate = overlay?.lastCacheHitRate ?? null
+      const sessionFallbackBoundaries = isFallback
+        ? normalizeSessionFallbackBoundaries(
+            [
+              {
+                id: `${hydration.ref.runtimeId}-fallback-${hydration.ref.nativeSessionId}`,
+                afterMessageId: messages.at(-1)?.id ?? null,
+                requestedRef: hydration.sessionFallback!.requestedRef,
+              },
+            ],
+            messages,
+          )
+        : Object.freeze([])
       this.publish({
         ...this.snapshot,
-        messages: normalizeMessages(messages),
+        // Hydrated history is finished by definition — nothing in it can still
+        // be generating, whatever `generationState` the replay mapping emitted.
+        messages: settleStreamingAssistantMessages(
+          normalizeMessages(messages),
+          'completed',
+        ),
         compactionBoundaries: normalizeCompactionBoundaries(
           hydration.compactionBoundaries ?? [],
           messages,
         ),
+        sessionFallbackBoundaries,
         turnConfigurationByUserMessageId:
           overlay?.turnConfigurationByUserMessageId ?? Object.freeze({}),
         sessionRef: hydration.ref,
@@ -433,6 +646,7 @@ export class CliConversationController {
     const sessionRef = this.snapshot.sessionRef
 
     this.currentTurnMetrics = {}
+    this.currentTurnMessageIds.clear()
     this.publish({
       ...this.snapshot,
       messages: upsertMessage(this.snapshot.messages, userMessage),
@@ -490,6 +704,7 @@ export class CliConversationController {
 
     const sessionRef = this.snapshot.sessionRef
     this.currentTurnMetrics = {}
+    this.currentTurnMessageIds.clear()
     this.pendingOptimisticUserMessageId = userMessage.id
     const messages = Object.freeze([
       ...this.snapshot.messages.slice(0, sourceIndex),
@@ -500,6 +715,10 @@ export class CliConversationController {
       messages,
       compactionBoundaries: retainAnchoredCompactionBoundaries(
         this.snapshot.compactionBoundaries,
+        messages,
+      ),
+      sessionFallbackBoundaries: normalizeSessionFallbackBoundaries(
+        this.snapshot.sessionFallbackBoundaries ?? [],
         messages,
       ),
       turnConfigurationByUserMessageId: setTurnConfiguration(
@@ -618,6 +837,24 @@ export class CliConversationController {
   }
 
   /**
+   * Publishes the settled state of an approval / question card the user just
+   * answered — see `CliRuntime.respondApproval`. The runtime declares what the
+   * card becomes; applying it is the host's own job, so no adapter can leave
+   * the buttons on screen waiting for the provider's next event. The run state
+   * follows from the card itself (`deriveRunState`), so there is nothing else
+   * to publish here.
+   */
+  settleToolCard(toolCallId: string, response: ToolCallResponse): void {
+    const messages = settleToolCallResponse(
+      this.snapshot.messages,
+      toolCallId,
+      response,
+    )
+    if (messages === this.snapshot.messages) return
+    this.publish({ ...this.snapshot, messages })
+  }
+
+  /**
    * Accepts a composer turn into the local transcript before provider setup.
    * Native acceptance remains owned by `sendTurn`.
    */
@@ -725,11 +962,18 @@ export class CliConversationController {
     const current = this.snapshot.configuration
     const requestedModelId =
       'modelId' in update ? update.modelId : current?.modelId
+    // No invented selection: when nothing is requested/remembered (or the
+    // remembered id is no longer in the catalog), stage `null` — "the
+    // runtime's own current model". Falling back to the catalog head here
+    // would not just display an arbitrary model, it would be applied via
+    // set_model once the session binds (the runtime restores its real model
+    // on bind and the orchestration layer remembers it, so a fresh
+    // conversation's staged null resolves to the truth one turn later).
     const modelId =
-      requestedModelId === null ||
+      requestedModelId != null &&
       models.some((model) => model.id === requestedModelId)
-        ? (requestedModelId ?? null)
-        : (models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null)
+        ? requestedModelId
+        : null
     const selectedModel = modelId
       ? models.find((model) => model.id === modelId)
       : undefined
@@ -789,9 +1033,8 @@ export class CliConversationController {
         ...(target ? { sessionRef: target } : {}),
       })
       if (!this.isCurrent(operation)) return
-      if (!target && !this.snapshot.sessionRef) {
-        throw new Error('CLI runtime did not bind a session.')
-      }
+      // Some runtimes (pi) only materialize a native session on the first
+      // prompt. `surfaceId` already identifies the conversation until then.
       let configuration = await operation.runtime.getConfiguration(
         this.getCachedModels(),
       )
@@ -872,6 +1115,7 @@ export class CliConversationController {
       runtimeId: this.runtime.runtimeId,
       messages: Object.freeze([]),
       compactionBoundaries: Object.freeze([]),
+      sessionFallbackBoundaries: Object.freeze([]),
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: ref,
       runState: 'idle',
@@ -908,13 +1152,42 @@ export class CliConversationController {
         return
       }
       if (this.bindingEpoch === conversationEpoch) {
+        const isFallback =
+          event.fallbackFrom !== undefined &&
+          this.bindingTarget !== null &&
+          this.bindingTarget !== undefined &&
+          isSameSession(this.bindingTarget, event.fallbackFrom)
         if (
           this.bindingTarget &&
-          !isSameSession(this.bindingTarget, event.ref)
+          !isSameSession(this.bindingTarget, event.ref) &&
+          !isFallback
         ) {
           return
         }
         this.acceptingEvents = true
+        this.publish({
+          ...this.snapshot,
+          sessionRef: event.ref,
+          error: null,
+          ...(isFallback
+            ? {
+                sessionFallbackBoundaries: normalizeSessionFallbackBoundaries(
+                  [
+                    ...(this.snapshot.sessionFallbackBoundaries ?? []),
+                    {
+                      id: `${event.ref.runtimeId}-fallback-${event.ref.nativeSessionId}`,
+                      afterMessageId: this.snapshot.messages.at(-1)?.id ?? null,
+                      requestedRef: event.fallbackFrom!,
+                    },
+                  ],
+                  this.snapshot.messages,
+                ),
+              }
+            : {}),
+        })
+        return
+      }
+      if (this.acceptingEvents && !this.snapshot.sessionRef) {
         this.publish({ ...this.snapshot, sessionRef: event.ref, error: null })
         return
       }
@@ -1043,19 +1316,22 @@ export class CliConversationController {
           return
         }
       }
-      const messages = upsertMessage(this.snapshot.messages, event.message)
+      const message = this.resolveCurrentTurnUpsert(event.message)
+      const messages = upsertMessage(this.snapshot.messages, message)
       this.publish({
         ...this.snapshot,
         messages:
-          event.message.role === 'assistant' && this.currentTurnMetrics
+          message.role === 'assistant' && this.currentTurnMetrics
             ? applyTurnMetrics(messages, this.currentTurnMetrics)
             : messages,
       })
       return
     }
     if (event.type === 'message_remove') {
+      const messageId =
+        this.currentTurnMessageIds.get(event.messageId) ?? event.messageId
       const messages = this.snapshot.messages.filter(
-        (message) => message.id !== event.messageId,
+        (message) => message.id !== messageId,
       )
       if (messages.length !== this.snapshot.messages.length) {
         const frozenMessages = Object.freeze(messages)
@@ -1066,22 +1342,41 @@ export class CliConversationController {
             this.snapshot.compactionBoundaries,
             frozenMessages,
           ),
+          sessionFallbackBoundaries: normalizeSessionFallbackBoundaries(
+            this.snapshot.sessionFallbackBoundaries ?? [],
+            frozenMessages,
+          ),
         })
       }
       return
     }
-    if (
-      event.state !== 'running' &&
-      event.state !== 'waiting_for_approval' &&
-      event.state !== 'waiting_for_user'
-    ) {
+    if (event.state !== 'running') {
       this.pendingOptimisticUserMessageId = null
-      this.currentTurnMetrics = null
+      this.currentTurnMessageIds.clear()
+      // The metrics window deliberately stays open past the terminal state: a
+      // runtime that reports usage and duration as two separate events (Codex,
+      // pi) would otherwise lose whichever one loses the race, silently. It is
+      // reset when the next turn opens, which is the only moment the previous
+      // turn's metrics stop being the right answer.
     }
+    const messages =
+      event.state === 'completed' ||
+      event.state === 'aborted' ||
+      event.state === 'error'
+        ? abortPendingInteractions(
+            settleStreamingAssistantMessages(
+              this.snapshot.messages,
+              event.state === 'aborted' ? 'aborted' : 'completed',
+            ),
+          )
+        : this.snapshot.messages
     if (event.state === 'error' && event.error) {
       this.publish({
         ...this.snapshot,
-        messages: appendAssistantError(this.snapshot, event.error),
+        messages: appendAssistantError(
+          { ...this.snapshot, messages },
+          event.error,
+        ),
         runState: 'error',
         error: event.error,
       })
@@ -1089,13 +1384,10 @@ export class CliConversationController {
     }
     this.publish({
       ...this.snapshot,
+      messages,
       runState: event.state,
       error: event.error ?? null,
-      ...(event.state !== 'running' &&
-      event.state !== 'waiting_for_approval' &&
-      event.state !== 'waiting_for_user'
-        ? { isCompacting: false }
-        : {}),
+      ...(event.state !== 'running' ? { isCompacting: false } : {}),
     })
   }
 
@@ -1121,6 +1413,69 @@ export class CliConversationController {
     this.acceptingEvents = false
     this.bindingTarget = undefined
     this.bindingEpoch = null
+    this.currentTurnMessageIds.clear()
+  }
+
+  /**
+   * Streaming upserts may only edit the current bubble. Reused ids from an
+   * earlier turn, or assistant *text* that continues after tools, must start
+   * a new message. Tool-request shells (empty assistant + toolCallRequests)
+   * stay in place — they are re-emitted on every tool update, and appending
+   * them would duplicate a stale "running" preview after the real tool cards.
+   */
+  private resolveCurrentTurnUpsert(message: ChatMessage): ChatMessage {
+    if (message.role === 'user') return message
+    const sourceId = message.id
+    const mappedId = this.currentTurnMessageIds.get(sourceId) ?? sourceId
+    const candidate =
+      mappedId === sourceId ? message : { ...message, id: mappedId }
+    const existingIndex = this.snapshot.messages.findIndex(
+      (entry) => entry.id === candidate.id,
+    )
+    if (this.shouldAppendInsteadOfReplace(candidate, existingIndex)) {
+      const nextId = `${sourceId}#${this.conversationEpoch}-${this.currentTurnMessageIds.size}`
+      this.currentTurnMessageIds.set(sourceId, nextId)
+      return { ...message, id: nextId }
+    }
+    this.currentTurnMessageIds.set(sourceId, candidate.id)
+    return candidate
+  }
+
+  private shouldAppendInsteadOfReplace(
+    message: ChatMessage,
+    existingIndex: number,
+  ): boolean {
+    if (existingIndex < 0) return false
+    const turnStart = this.findCurrentTurnUserIndex(this.snapshot.messages)
+    if (turnStart >= 0 && existingIndex < turnStart) return true
+    if (message.role !== 'assistant') return false
+    const existing = this.snapshot.messages[existingIndex]
+    if (existing?.role !== 'assistant') return false
+    if (isToolRequestShell(existing) || isToolRequestShell(message)) {
+      return false
+    }
+    return this.snapshot.messages
+      .slice(existingIndex + 1)
+      .some((entry) => entry.role !== 'assistant')
+  }
+
+  private findCurrentTurnUserIndex(messages: readonly ChatMessage[]): number {
+    const optimisticId = this.pendingOptimisticUserMessageId
+    if (optimisticId) {
+      const index = messages.findIndex((message) => message.id === optimisticId)
+      if (index >= 0) return index
+    }
+    if (
+      this.snapshot.runState !== 'running' &&
+      this.snapshot.runState !== 'waiting_for_approval' &&
+      this.snapshot.runState !== 'waiting_for_user'
+    ) {
+      return -1
+    }
+    for (let index = messages.length - 1; index >= 0; index -= 1) {
+      if (messages[index]?.role === 'user') return index
+    }
+    return -1
   }
 
   private captureOperation(): {
@@ -1169,6 +1524,7 @@ export class CliConversationController {
       this.snapshot.runState === 'waiting_for_approval' ||
       this.snapshot.runState === 'waiting_for_user'
     this.pendingOptimisticUserMessageId = null
+    this.currentTurnMessageIds.clear()
     this.publish({
       ...this.snapshot,
       ...(isTurnError
@@ -1186,6 +1542,7 @@ export class CliConversationController {
       runtimeId: runtime.runtimeId,
       messages: Object.freeze([]),
       compactionBoundaries: Object.freeze([]),
+      sessionFallbackBoundaries: Object.freeze([]),
       turnConfigurationByUserMessageId: Object.freeze({}),
       sessionRef: null,
       runState: 'idle',
@@ -1202,7 +1559,10 @@ export class CliConversationController {
 
   private publish(snapshot: CliConversationSnapshot): void {
     if (this.disposed) return
-    this.snapshot = Object.freeze(snapshot)
+    const runState = deriveRunState(snapshot.runState, snapshot.messages)
+    this.snapshot = Object.freeze(
+      runState === snapshot.runState ? snapshot : { ...snapshot, runState },
+    )
     this.notify()
   }
 

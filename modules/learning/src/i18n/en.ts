@@ -16,6 +16,18 @@ export const en = {
     unsupportedFileType:
       'Unsupported file type: {ext} (PDF, Word, Markdown, text supported)',
     fileTooLarge: 'File too large: {size}MB (max 20MB)',
+    backgroundTitle: 'Learning: generating project',
+    backgroundKnowledgeDetail: 'Chapter {current}/{total}',
+    backgroundCardsDetail: 'Generating cards',
+    alreadyRunning:
+      'Another learning project is already being generated. Wait for it to finish, or check its progress.',
+    resumeBannerTitle: 'Generation unfinished',
+    resumeBannerDetail: '{completed}/{total} chapters generated',
+    resumeAction: 'Continue from where it stopped',
+    resumeInProgress: 'Resuming…',
+    resumeFailed: 'Failed to resume: {error}',
+    resumeUnavailable:
+      'This project predates generation resume and cannot be continued automatically.',
   },
   background: {
     reviewTitle: 'YOLO Learning',
@@ -212,6 +224,7 @@ export const en = {
   outlineBuilder: {
     chapterRequired: 'At least one valid chapter is required',
     generatingPoint: 'Generating',
+    generatedCount: 'Generated {count}',
     knowledgeComplete: 'Knowledge points generated',
     newChapter: 'New chapter',
     newChapterContract:

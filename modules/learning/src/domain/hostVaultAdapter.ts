@@ -75,7 +75,6 @@ export function createHostLearningVaultWriteApi(
     const wrapped: LearningVaultFileSnapshot = Object.freeze({
       path: snapshot.path,
       content: snapshot.content,
-      identity: snapshot,
     })
     snapshots.set(wrapped, snapshot)
     return wrapped

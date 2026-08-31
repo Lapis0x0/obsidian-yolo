@@ -109,7 +109,7 @@ const buildManager = () => {
     settings: {
       mcp: {
         servers: [],
-        builtinToolOptions: {},
+        builtinCapabilityOptions: {},
       },
       webSearch: {
         providers: [],
@@ -178,7 +178,7 @@ describe('McpManager self-heal', () => {
     ).createClientTransport = createClientTransport
 
     await manager.handleSettingsUpdate({
-      mcp: { servers: [httpServerConfig()], builtinToolOptions: {} },
+      mcp: { servers: [httpServerConfig()], builtinCapabilityOptions: {} },
       webSearch: {
         providers: [],
         defaultProviderId: undefined,
@@ -211,7 +211,7 @@ describe('McpManager self-heal', () => {
     const manager = buildManager()
 
     await manager.handleSettingsUpdate({
-      mcp: { servers: [stdioServerConfig()], builtinToolOptions: {} },
+      mcp: { servers: [stdioServerConfig()], builtinCapabilityOptions: {} },
       webSearch: {
         providers: [],
         defaultProviderId: undefined,
@@ -248,7 +248,7 @@ describe('McpManager self-heal', () => {
     const manager = buildManager()
 
     await manager.handleSettingsUpdate({
-      mcp: { servers: [stdioServerConfig()], builtinToolOptions: {} },
+      mcp: { servers: [stdioServerConfig()], builtinCapabilityOptions: {} },
       webSearch: {
         providers: [],
         defaultProviderId: undefined,
@@ -300,7 +300,7 @@ describe('McpManager self-heal', () => {
     const manager = buildManager()
 
     await manager.handleSettingsUpdate({
-      mcp: { servers: [stdioServerConfig()], builtinToolOptions: {} },
+      mcp: { servers: [stdioServerConfig()], builtinCapabilityOptions: {} },
       webSearch: {
         providers: [],
         defaultProviderId: undefined,
@@ -345,7 +345,7 @@ describe('McpManager self-heal', () => {
     const manager = buildManager()
 
     await manager.handleSettingsUpdate({
-      mcp: { servers: [stdioServerConfig()], builtinToolOptions: {} },
+      mcp: { servers: [stdioServerConfig()], builtinCapabilityOptions: {} },
       webSearch: {
         providers: [],
         defaultProviderId: undefined,
@@ -381,7 +381,7 @@ describe('McpManager self-heal', () => {
             },
           },
         ],
-        builtinToolOptions: {},
+        builtinCapabilityOptions: {},
       },
       webSearch: {
         providers: [],
@@ -416,7 +416,7 @@ describe('McpManager self-heal', () => {
     const manager = buildManager()
 
     await manager.handleSettingsUpdate({
-      mcp: { servers: [stdioServerConfig()], builtinToolOptions: {} },
+      mcp: { servers: [stdioServerConfig()], builtinCapabilityOptions: {} },
       webSearch: {
         providers: [],
         defaultProviderId: undefined,

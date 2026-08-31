@@ -1,5 +1,5 @@
 {
-  "schemaVersion": 1,
+  "schemaVersion": 2,
   "components": [
     {
       "id": "bash-engine",
@@ -11,8 +11,34 @@
       "descriptionKey": "settings.modules.runtimeComponents.bashEngine.description",
       "impactKey": "settings.modules.runtimeComponents.bashEngine.impact",
       "entry": "runtime-components/bash-engine/dist/entry.js",
-      "byteSize": 1279196,
-      "sha256": "1797c24e23f62885705d0aef617728b139583586bd3d47dd574a0e45ed49fbd6"
+      "byteSize": 1279381,
+      "sha256": "4d3486fab4f01c5c82964e2c0678cc4d90b58cc1bbf43c5b877f521ce3e6d35a"
+    },
+    {
+      "id": "embedding-engine",
+      "platforms": [
+        "desktop"
+      ],
+      "nameKey": "settings.modules.runtimeComponents.embeddingEngine.name",
+      "descriptionKey": "settings.modules.runtimeComponents.embeddingEngine.description",
+      "impactKey": "settings.modules.runtimeComponents.embeddingEngine.impact",
+      "entry": "runtime-components/embedding-engine/dist/entry.js",
+      "byteSize": 488659,
+      "sha256": "0d6b8cf99a116480b1b9572e82c1763fac3acfb14bb6da84298bdb2608094cf1",
+      "assets": [
+        {
+          "name": "ort-wasm-simd-threaded.wasm",
+          "path": "runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.wasm",
+          "byteSize": 12942611,
+          "sha256": "f4f290847a4df02d0b93cdbf39b4b0e71acefbe80573e7e6b9342a7abd7b290a"
+        },
+        {
+          "name": "ort-wasm-simd-threaded.mjs",
+          "path": "runtime-components/embedding-engine/dist/assets/ort-wasm-simd-threaded.mjs",
+          "byteSize": 24180,
+          "sha256": "5f2cd914554830762579c372d0211614c1e3f40ab3f6c0cfcf0900343229071d"
+        }
+      ]
     },
     {
       "id": "pdf-engine",
@@ -26,19 +52,6 @@
       "entry": "runtime-components/pdf-engine/dist/entry.js",
       "byteSize": 2258500,
       "sha256": "a224786bbf62622d86b7a0cc5146445609e2b1e364b7f6d1c8b8cc345d22c3ee"
-    },
-    {
-      "id": "pglite-engine",
-      "platforms": [
-        "desktop",
-        "mobile"
-      ],
-      "nameKey": "settings.modules.runtimeComponents.pgliteEngine.name",
-      "descriptionKey": "settings.modules.runtimeComponents.pgliteEngine.description",
-      "impactKey": "settings.modules.runtimeComponents.pgliteEngine.impact",
-      "entry": "runtime-components/pglite-engine/dist/entry.js",
-      "byteSize": 1291023,
-      "sha256": "267e3e349eca084e0bc6744e39b91f22f5ddab1b79a3fc19e22855340849dc52"
     },
     {
       "id": "tokenizer",

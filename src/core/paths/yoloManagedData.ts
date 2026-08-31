@@ -2,6 +2,7 @@ import { App, normalizePath } from 'obsidian'
 
 import { CHAT_DIR } from '../../database/json/constants'
 
+import { removeDirIfEmpty } from './vaultFs'
 import {
   DEFAULT_YOLO_BASE_DIR,
   YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME,
@@ -10,13 +11,11 @@ import {
   YOLO_MODULE_INTENT_DIR_NAME,
   YOLO_MODULE_SETTINGS_DIR_NAME,
   getLegacyJsonDbRootDir,
-  getLegacyVectorDbPath,
   getYoloBaseDir,
   getYoloDataJsonPath,
   getYoloJsonDbRootDir,
   getYoloSyncPointerPath,
   getYoloUserDataRootDir,
-  getYoloVectorDbPath,
 } from './yoloPaths'
 
 /**
@@ -33,6 +32,21 @@ export const YOLO_USER_DATA_SUBDIR_NAMES = [
   YOLO_MODULE_SETTINGS_DIR_NAME,
   YOLO_MODULE_INTENT_DIR_NAME,
   YOLO_COMPONENT_INTENT_DIR_NAME,
+] as const
+
+/**
+ * Chat subdirectories left behind by removed features: the timeline height
+ * cache (superseded by the chat history window) and the progress cache of the
+ * deleted `delegate_external_agent` tool. Nothing writes them any more, but
+ * they were never cleaned up automatically — a long-running vault can hold
+ * thousands of dead ~1KB files (one per conversation ever opened, including
+ * deleted ones). Dropped on every startup before the migration runs so they
+ * are never carried into the visible `data/` root, where Obsidian would index
+ * them for good.
+ */
+const LEGACY_CHAT_CACHE_DIR_NAMES = [
+  'timeline_height_cache',
+  'external_agent_progress',
 ] as const
 
 export type YoloSettingsLike = {
@@ -135,7 +149,10 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
   try {
     const stat = await app.vault.adapter.stat(path)
     if (stat?.type === 'folder') {
-      await app.vault.adapter.rmdir(path, false)
+      // A directory that still has content stays in place: a merge may have
+      // deliberately kept files for the next launch to retry, and warning on
+      // every periodic cleanup pass would be pure noise.
+      await removeDirIfEmpty(app.vault.adapter, path)
       return
     }
     await app.vault.adapter.remove(path)
@@ -144,16 +161,6 @@ const removePathIfExists = async (app: App, path: string): Promise<void> => {
       `[YOLO] Failed to remove path "${path}" after migration`,
       error,
     )
-  }
-}
-
-const removeDirIfEmpty = async (app: App, path: string): Promise<void> => {
-  if (!(await app.vault.adapter.exists(path))) return
-  const stat = await app.vault.adapter.stat(path)
-  if (stat?.type !== 'folder') return
-  const listing = await app.vault.adapter.list(path)
-  if (listing.files.length === 0 && listing.folders.length === 0) {
-    await app.vault.adapter.rmdir(path, false)
   }
 }
 
@@ -262,7 +269,9 @@ const mergeJsonDirectoryPreferNewer = async (
     // pick it up instead of dropping data.
     const safeRemoveSource = async (): Promise<void> => {
       const sourceStatNow = await app.vault.adapter.stat(filePath)
-      if ((sourceStatNow?.mtime ?? null) !== (sourceStatBefore?.mtime ?? null)) {
+      if (
+        (sourceStatNow?.mtime ?? null) !== (sourceStatBefore?.mtime ?? null)
+      ) {
         return
       }
       await removePathIfExists(app, filePath)
@@ -292,7 +301,12 @@ const mergeJsonDirectoryPreferNewer = async (
   for (const folderPath of listing.folders) {
     const relativePath = folderPath.slice(sourceDir.length + 1)
     const nextTargetDir = normalizePath(`${targetDir}/${relativePath}`)
-    await mergeJsonDirectoryPreferNewer(app, folderPath, nextTargetDir, transform)
+    await mergeJsonDirectoryPreferNewer(
+      app,
+      folderPath,
+      nextTargetDir,
+      transform,
+    )
   }
 
   await removePathIfExists(app, sourceDir)
@@ -365,7 +379,10 @@ const cleanupDirectoryStrict = async (
   for (const folderPath of listing.folders) {
     await cleanupDirectoryStrict(app, folderPath)
   }
-  await app.vault.adapter.rmdir(rootDir, false)
+  // Non-recursive rmdir rejects every directory on Obsidian 1.13+ (see
+  // vaultFs.ts); the directory was just drained, so a recursive delete
+  // removes exactly the empty shell.
+  await app.vault.adapter.rmdir(rootDir, true)
 }
 
 const migrateJsonDirectory = async (
@@ -382,36 +399,6 @@ const migrateJsonDirectory = async (
   }
 
   await cleanupJsonDirectory(app, sourceDir)
-}
-
-const migrateBinaryFile = async (
-  app: App,
-  sourcePath: string,
-  targetPath: string,
-): Promise<void> => {
-  try {
-    const content = await app.vault.adapter.readBinary(sourcePath)
-    await ensureParentDir(app, targetPath)
-    await app.vault.adapter.writeBinary(targetPath, content)
-  } catch (error) {
-    await removePathIfExists(app, targetPath)
-    throw error
-  }
-
-  await removePathIfExists(app, sourcePath)
-}
-
-const mergeBinaryFile = async (
-  app: App,
-  sourcePath: string,
-  targetPath: string,
-): Promise<void> => {
-  await ensureParentDir(app, targetPath)
-  if (await app.vault.adapter.exists(targetPath)) {
-    await removePathIfExists(app, sourcePath)
-    return
-  }
-  await migrateBinaryFile(app, sourcePath, targetPath)
 }
 
 const findFirstExistingPath = async (
@@ -511,6 +498,79 @@ export const ensureUserDataRootDir = async (
   return promise
 }
 
+/**
+ * Drops the dead cache directories listed in `LEGACY_CHAT_CACHE_DIR_NAMES`
+ * from one chat root. Runs against both the hidden and the visible root: a
+ * device that already migrated has them under the visible root, one that has
+ * not still has them under the hidden one.
+ *
+ * Failures are swallowed — this is opportunistic cleanup and must never block
+ * the migration that follows it.
+ */
+const removeLegacyChatCacheDirs = async (
+  app: App,
+  root: string,
+): Promise<void> => {
+  for (const dirName of LEGACY_CHAT_CACHE_DIR_NAMES) {
+    const path = normalizePath(`${root}/${CHAT_DIR}/${dirName}`)
+    try {
+      if (await app.vault.adapter.exists(path)) {
+        await app.vault.adapter.rmdir(path, true)
+      }
+    } catch (error) {
+      console.warn(`[YOLO] Failed to remove legacy cache dir "${path}".`, error)
+    }
+  }
+}
+
+/**
+ * Moves one managed subdirectory from the hidden root to the visible one.
+ *
+ * A whole-tree `rename` is one filesystem operation regardless of file count,
+ * where the per-file merge costs ~10 adapter round-trips each. That gap is
+ * what makes the difference load-bearing on mobile: during `onload` every
+ * round-trip competes with Obsidian's cold-start vault indexing and measures
+ * ~830ms instead of the ~17ms it takes once the app is idle, so a vault with a
+ * few thousand chat files blocks plugin startup for tens of minutes. The same
+ * tree renames in a single ~2.8s call.
+ *
+ * The fast path is only safe when the target is absent (`rename` rejects an
+ * existing destination on both desktop and mobile rather than merging into it)
+ * and when no `transform` is needed, since rewriting file contents requires
+ * reading them. Everything else falls through to the merge, which stays the
+ * authority on conflict resolution.
+ */
+const migrateUserDataSubdir = async (
+  app: App,
+  sourceDir: string,
+  targetDir: string,
+  transform: TextTransform | undefined,
+): Promise<void> => {
+  if (!transform && !(await app.vault.adapter.exists(targetDir))) {
+    try {
+      await app.vault.adapter.rename(sourceDir, targetDir)
+      return
+    } catch (error) {
+      // The target may have appeared between the check above and the rename
+      // (a sync tool landing the directory), or this adapter may not support
+      // renaming a folder at all — `DataAdapter.rename` promises neither
+      // atomicity nor a defined post-failure state. Re-read what is actually
+      // on disk instead of assuming nothing happened: a vanished source means
+      // the rename did take effect, and anything else is handed to the merge,
+      // which already reconciles a partially populated target by mtime.
+      console.warn(
+        `[YOLO] Fast-path rename of "${sourceDir}" to "${targetDir}" failed, falling back to per-file merge.`,
+        error,
+      )
+      if (!(await app.vault.adapter.exists(sourceDir))) {
+        return
+      }
+    }
+  }
+
+  await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+}
+
 const ensureUserDataRootDirUnlocked = async (
   app: App,
   settings: YoloSettingsLike | null,
@@ -528,6 +588,11 @@ const ensureUserDataRootDirUnlocked = async (
     return jsonDbRoot
   }
 
+  // Before the migration, so the dead files are deleted in place instead of
+  // being carried into the visible root first.
+  await removeLegacyChatCacheDirs(app, jsonDbRoot)
+  await removeLegacyChatCacheDirs(app, userDataRoot)
+
   for (const subdirName of YOLO_USER_DATA_SUBDIR_NAMES) {
     const sourceDir = normalizePath(`${jsonDbRoot}/${subdirName}`)
     if (!(await app.vault.adapter.exists(sourceDir))) {
@@ -543,10 +608,11 @@ const ensureUserDataRootDirUnlocked = async (
     // created — this rewrite is what prevents that.
     const transform: TextTransform | undefined =
       subdirName === YOLO_ANKI_IMPORT_JOURNAL_DIR_NAME
-        ? (content) => rewriteAnkiJournalSrsPath(content, jsonDbRoot, userDataRoot)
+        ? (content) =>
+            rewriteAnkiJournalSrsPath(content, jsonDbRoot, userDataRoot)
         : undefined
     try {
-      await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+      await migrateUserDataSubdir(app, sourceDir, targetDir, transform)
     } catch (error) {
       console.warn(
         `[YOLO] Failed to migrate "${sourceDir}" to "${targetDir}"; will retry on next launch.`,
@@ -732,39 +798,12 @@ export const ensureLearningJsonDbRootDir = async (
   await restoreMissingMigrationTargets(app, manifest)
   if (hasSourceSrs) await cleanupDirectoryStrict(app, sourceSrsDir)
   if (hasSourceJournals) await cleanupDirectoryStrict(app, sourceJournalDir)
-  await removeDirIfEmpty(app, sourceRoot)
-  await removeDirIfEmpty(app, sourceBaseDir)
+  await removeDirIfEmpty(app.vault.adapter, sourceRoot)
+  await removeDirIfEmpty(app.vault.adapter, sourceBaseDir)
   if (await app.vault.adapter.exists(markerPath)) {
     await app.vault.adapter.remove(markerPath)
   }
   return targetRoot
-}
-
-export const ensureVectorDbPath = async (
-  app: App,
-  settings: YoloSettingsLike | null,
-): Promise<string> => {
-  await ensureDir(app, getYoloBaseDir(settings))
-  const targetPath = getYoloVectorDbPath(settings)
-  if (await app.vault.adapter.exists(targetPath)) {
-    return targetPath
-  }
-
-  const legacyPath = getLegacyVectorDbPath()
-  if (!(await app.vault.adapter.exists(legacyPath))) {
-    return targetPath
-  }
-
-  try {
-    await migrateBinaryFile(app, legacyPath, targetPath)
-    return targetPath
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to migrate vector database from "${legacyPath}" to "${targetPath}", fallback to legacy location.`,
-      error,
-    )
-    return legacyPath
-  }
 }
 
 const relocateJsonDbRootDir = async ({
@@ -800,7 +839,12 @@ const relocateJsonDbRootDir = async ({
   try {
     if (await app.vault.adapter.exists(targetDir)) {
       if (preferNewerMerge) {
-        await mergeJsonDirectoryPreferNewer(app, sourceDir, targetDir, transform)
+        await mergeJsonDirectoryPreferNewer(
+          app,
+          sourceDir,
+          targetDir,
+          transform,
+        )
       } else {
         await mergeJsonDirectory(app, sourceDir, targetDir)
       }
@@ -811,35 +855,6 @@ const relocateJsonDbRootDir = async ({
   } catch (error) {
     console.warn(
       `[YOLO] Failed to relocate chat storage from "${sourceDir}" to "${targetDir}".`,
-      error,
-    )
-    return false
-  }
-}
-
-const relocateVectorDbFile = async ({
-  app,
-  sourceCandidates,
-  targetPath,
-}: {
-  app: App
-  sourceCandidates: string[]
-  targetPath: string
-}): Promise<boolean> => {
-  const sourcePath = await findFirstExistingPath(
-    app,
-    sourceCandidates.filter((candidate) => candidate !== targetPath),
-  )
-  if (!sourcePath) {
-    return true
-  }
-
-  try {
-    await mergeBinaryFile(app, sourcePath, targetPath)
-    return true
-  } catch (error) {
-    console.warn(
-      `[YOLO] Failed to relocate vector database from "${sourcePath}" to "${targetPath}".`,
       error,
     )
     return false
@@ -893,10 +908,8 @@ export const relocateYoloManagedData = async ({
   toSettings?: YoloSettingsLike | null
 }): Promise<boolean> => {
   const currentJsonDir = getYoloJsonDbRootDir(fromSettings)
-  const currentVectorPath = getYoloVectorDbPath(fromSettings)
   const currentUserDataDir = getYoloUserDataRootDir(fromSettings)
   const targetJsonDir = getYoloJsonDbRootDir(toSettings)
-  const targetVectorPath = getYoloVectorDbPath(toSettings)
   const targetUserDataDir = getYoloUserDataRootDir(toSettings)
   if (targetJsonDir.startsWith(`${currentJsonDir}/`)) {
     console.warn(
@@ -913,7 +926,6 @@ export const relocateYoloManagedData = async ({
 
   await ensureDir(app, getYoloBaseDir(toSettings))
   const sourceJsonCandidates = [currentJsonDir, getLegacyJsonDbRootDir()]
-  const sourceVectorCandidates = [currentVectorPath, getLegacyVectorDbPath()]
   const sourceUserDataCandidates = [currentUserDataDir]
 
   const jsonSucceeded = await relocateJsonDbRootDir({
@@ -944,40 +956,6 @@ export const relocateYoloManagedData = async ({
     if (!rolledBackJson) {
       console.warn(
         `[YOLO] Failed to roll back chat storage after user data relocation failed. Source root: "${targetJsonDir}".`,
-      )
-    }
-    return false
-  }
-
-  const vectorSucceeded = await relocateVectorDbFile({
-    app,
-    sourceCandidates: sourceVectorCandidates,
-    targetPath: targetVectorPath,
-  })
-  if (!vectorSucceeded) {
-    const rolledBackUserData = await relocateJsonDbRootDir({
-      app,
-      sourceCandidates: [targetUserDataDir],
-      targetDir: getYoloUserDataRootDir(fromSettings),
-      preferNewerMerge: true,
-      transform: makeAnkiJournalSrsPathTransform(
-        targetUserDataDir,
-        getYoloUserDataRootDir(fromSettings),
-      ),
-    })
-    if (!rolledBackUserData) {
-      console.warn(
-        `[YOLO] Failed to roll back user data after vector relocation failed. Source root: "${targetUserDataDir}".`,
-      )
-    }
-    const rolledBackJson = await relocateJsonDbRootDir({
-      app,
-      sourceCandidates: [targetJsonDir],
-      targetDir: getYoloJsonDbRootDir(fromSettings),
-    })
-    if (!rolledBackJson) {
-      console.warn(
-        `[YOLO] Failed to roll back chat storage after vector relocation failed. Source root: "${targetJsonDir}".`,
       )
     }
     return false

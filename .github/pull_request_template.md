@@ -61,4 +61,3 @@ If you checked the second box, please confirm:
 - [ ] `npm test` passes
 - [ ] I tested this manually in Obsidian
 - [ ] If CSS changed: I edited `src/styles/**`, ran `npm run styles:build`, and committed the regenerated `styles.css`
-- [ ] If schema changed: I ran `npx drizzle-kit generate` and `npm run migrate:compile`, and committed the results

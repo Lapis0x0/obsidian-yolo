@@ -74,6 +74,7 @@ type BashSearchCallback = (
     query: string
     scopePath?: string
     maxResults: number
+    knowledgeBase?: string
   }>,
 ) => Promise<BashSearchOutcome>
 type BashSessionOptions = Readonly<{
@@ -609,11 +610,10 @@ function createMvCommand(
 
 const SEARCH_MAX_RESULTS_DEFAULT = 20
 const SEARCH_MAX_RESULTS_CAP = 100
-const SEARCH_USAGE = 'usage: search [-n N] "query" [path]\n'
+const SEARCH_USAGE = 'usage: search [-n N] [--kb NAME] "query" [path]\n'
 
 function formatSearchLine(entry: BashSearchResultEntry): string {
-  const abs =
-    entry.path === '' ? VAULT_MOUNT : `${VAULT_MOUNT}/${entry.path}`
+  const abs = entry.path === '' ? VAULT_MOUNT : `${VAULT_MOUNT}/${entry.path}`
   if (entry.kind === 'dir') return `${abs}/`
   if (entry.kind === 'file') return abs
   const loc =
@@ -641,6 +641,7 @@ function createSearchCommand(
 ) {
   return defineCommand('search', async (args, ctx): Promise<ExecResult> => {
     let maxResults = SEARCH_MAX_RESULTS_DEFAULT
+    let knowledgeBase: string | undefined
     const positional: string[] = []
     for (let i = 0; i < args.length; i++) {
       const arg = args[i]
@@ -656,6 +657,19 @@ function createSearchCommand(
           }
         }
         maxResults = Math.min(parsed, SEARCH_MAX_RESULTS_CAP)
+        continue
+      }
+      if (arg === '--kb') {
+        const raw = args[i + 1]
+        i += 1
+        if (!raw || raw.trim() === '') {
+          return {
+            stdout: '',
+            stderr: `search: --kb requires a knowledge base name\n${SEARCH_USAGE}`,
+            exitCode: 2,
+          }
+        }
+        knowledgeBase = raw
         continue
       }
       if (arg === '--') {
@@ -694,10 +708,16 @@ function createSearchCommand(
         }
       }
       // Root and the vault mount itself both mean "whole vault".
-      scopePath = c.kind === 'vault' && c.relative !== '' ? c.relative : undefined
+      scopePath =
+        c.kind === 'vault' && c.relative !== '' ? c.relative : undefined
     }
 
-    const outcome = await search({ query, scopePath, maxResults })
+    const outcome = await search({
+      query,
+      scopePath,
+      maxResults,
+      knowledgeBase,
+    })
     if (outcome.status === 'error') {
       return { stdout: '', stderr: `search: ${outcome.message}\n`, exitCode: 1 }
     }

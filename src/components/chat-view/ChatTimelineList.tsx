@@ -9,8 +9,19 @@ import {
 } from 'react'
 
 import type { ChatTimelineItem } from '../../types/chat-timeline'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
+import type { PagingDirection } from './scroll/paging'
+import {
+  getRetainedAnchorIndex,
+  getScrollPagingDirection,
+  getTouchPagingDirection,
+  getWheelPagingDirection,
+  isPagingInputClaimedByNestedScroller,
+  resolvePagingLoad,
+} from './scroll/paging'
 import type { ScrollController } from './scroll/scrollController'
+import { PAGE_TURNS } from './useChatHistoryWindow'
 
 const MIN_LOAD_MORE_THRESHOLD_PX = 240
 const MAX_LOAD_MORE_THRESHOLD_PX = 720
@@ -136,6 +147,18 @@ type ChatTimelineListProps<TItem extends ChatTimelineItem> = {
   onLoadEarlier?: () => void
   onLoadNewer?: () => void
   /**
+   * Enlarge the window without moving either of its edges' contents. Only
+   * called when the rendered window is too short to produce a scroll range,
+   * which is the one situation the scroll-driven paging above cannot resolve.
+   */
+  onGrowWindowToFillViewport?: () => void
+  /**
+   * Identity of the rendered turn range, from `useChatHistoryWindow`. Used to
+   * tell "the page I asked for has arrived" from "the items changed", which
+   * during streaming they do constantly without the window moving at all.
+   */
+  historyWindowKey?: string
+  /**
    * Additional bottom spacer height (px). Used to keep the last item from
    * being visually obscured by an absolute-positioned overlay (e.g. todo
    * panel / queued bubbles) anchored above the input box.
@@ -172,25 +195,33 @@ function TimelineBottomSentinel({
   )
 }
 
-function TimelineLoadMoreSentinel({
-  elementRef,
-}: {
-  elementRef?: RefObject<HTMLDivElement>
-}) {
-  return (
-    <div
-      ref={elementRef}
-      aria-hidden
-      className="yolo-chat-history-window-sentinel"
-    />
-  )
-}
-
 function setScrollContainerRef(
   ref: RefObject<HTMLElement>,
   element: HTMLElement | null,
 ) {
   ;(ref as { current: HTMLElement | null }).current = element
+}
+
+/**
+ * `Event.target` as an element, without `instanceof`: in an Obsidian popout
+ * the node belongs to another document whose constructors are not this realm's.
+ */
+const getEventElement = (event: Event): Element | null => {
+  const target = event.target
+  return target && 'tagName' in target ? (target as Element) : null
+}
+
+const SCROLLABLE_OVERFLOW_Y = new Set(['auto', 'scroll', 'overlay'])
+
+/**
+ * Whether this element actually scrolls, as opposed to merely overflowing its
+ * box. Resolved against the element's own view so it stays correct in a
+ * popout, where the global `window` belongs to a different document.
+ */
+const isScrollableElement = (element: Element): boolean => {
+  const view = element.ownerDocument.defaultView
+  const overflowY = view?.getComputedStyle(element).overflowY
+  return overflowY !== undefined && SCROLLABLE_OVERFLOW_Y.has(overflowY)
 }
 
 const getLoadMoreThreshold = (element: HTMLElement) =>
@@ -202,8 +233,25 @@ const getLoadMoreThreshold = (element: HTMLElement) =>
     ),
   )
 
+/**
+ * Picks the turn whose position the viewport should be held against across a
+ * window change.
+ *
+ * Nearest to the top of the viewport is the natural choice — it is what the
+ * reader is looking at — but for a paging load it is not always a *safe* one.
+ * A window that is already at its maximum size slides rather than grows, and a
+ * slide only keeps `PAGE_TURNS` turns adjacent to the edge being loaded. With
+ * short turns the viewport can easily span more than that, so the anchor
+ * nearest the top may be one of the turns about to be unmounted; the restore
+ * then finds nothing, skips compensation, and the whole list jumps.
+ *
+ * Passing the direction being loaded clamps the choice into the turns that
+ * change provably keeps, picking the closest safe one rather than the closest
+ * one. `null` means the window is only growing, where every turn survives.
+ */
 const getVisibleAnchorSnapshot = (
   scrollerElement: HTMLElement,
+  retainedTurnsDirection: PagingDirection | null,
 ): AnchorSnapshot | null => {
   const anchors = Array.from(
     scrollerElement.querySelectorAll<HTMLElement>('[data-yolo-user-anchor-id]'),
@@ -213,18 +261,26 @@ const getVisibleAnchorSnapshot = (
   }
 
   const containerTop = scrollerElement.getBoundingClientRect().top
-  let selectedAnchor: HTMLElement | null = null
+  let selectedIndex = 0
   let selectedDistance = Number.POSITIVE_INFINITY
 
-  for (const anchor of anchors) {
-    const anchorTop = anchor.getBoundingClientRect().top
-    const distance = Math.abs(anchorTop - containerTop)
+  anchors.forEach((anchor, index) => {
+    const distance = Math.abs(anchor.getBoundingClientRect().top - containerTop)
     if (distance < selectedDistance) {
       selectedDistance = distance
-      selectedAnchor = anchor
+      selectedIndex = index
     }
-  }
+  })
 
+  const selectedAnchor =
+    anchors[
+      getRetainedAnchorIndex(
+        selectedIndex,
+        anchors.length,
+        retainedTurnsDirection,
+        PAGE_TURNS,
+      )
+    ]
   const messageId = selectedAnchor?.dataset.yoloUserAnchorId
   if (!selectedAnchor || !messageId) {
     return null
@@ -340,6 +396,8 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   hasNewerMessages = false,
   onLoadEarlier,
   onLoadNewer,
+  onGrowWindowToFillViewport,
+  historyWindowKey,
   bottomSpacerHeight = 0,
 }: ChatTimelineListProps<TItem>) {
   void overscanPx
@@ -348,16 +406,49 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   const [scrollerElement, setScrollerElement] = useState<HTMLElement | null>(
     null,
   )
-  const lastScrollTopRef = useRef<number | null>(null)
-  const earlierSentinelRef = useRef<HTMLDivElement>(null)
   const renderItemRef = useRef(renderItem)
   renderItemRef.current = renderItem
   const pendingAnchorSnapshotRef = useRef<AnchorSnapshot | null>(null)
-  const loadInFlightRef = useRef(false)
+  // The window on screen, and the window a paging load has already been fired
+  // against. React commits the window a load asks for in a later task, so
+  // without this a single wheel gesture at 60Hz fires several loads into the
+  // gap before the first one lands — and two window transforms applied to one
+  // commit can leave a window with no turn in common with the DOM the anchor
+  // was captured from, which is exactly the jump the anchor exists to prevent.
+  //
+  // Keyed on the window rather than on `items`: `items` is rebuilt for every
+  // streaming token, revision and edit, so a commit that changed nothing about
+  // the window would release the gate on a load that had not landed yet.
+  //
+  // Tracked from a layout effect rather than during render because a
+  // concurrent render can be interrupted or thrown away, and a render-phase
+  // write would hand the already-committed listeners a window that never
+  // reached the DOM.
+  //
+  // Clearing takes care of itself: the requested window arriving stops the two
+  // matching, and while the window is unchanged there is nothing new to page to.
+  const committedWindowKeyRef = useRef<string | undefined>(undefined)
+  const pagedForWindowKeyRef = useRef<string | undefined>(undefined)
+  useLayoutEffect(() => {
+    committedWindowKeyRef.current = historyWindowKey
+  }, [historyWindowKey])
+  // Scrollbar drags produce no directional input event of their own, so their
+  // direction is read from the resulting scroll position — but only while a
+  // pointer is actually held down on the scroller, which is what makes that
+  // reading attributable to the reader rather than to the scroll controller or
+  // to content reflowing.
+  const isPointerDownRef = useRef(false)
+  const lastScrollTopRef = useRef<number | null>(null)
+  const lastTouchClientYRef = useRef<number | null>(null)
   const lastUserMessageViewportRef = useRef<UserMessageViewportState | null>(
     null,
   )
-  const userMessageViewportFrameRef = useRef<number | null>(null)
+  // rAF 句柄归发起它的窗口所有：popout 是独立 BrowserWindow，用全局 rAF 驱动
+  // 滚动视口上报会被主窗口的可见性节流，且句柄也不能跨窗口取消。
+  const userMessageViewportFrameRef = useRef<{
+    window: Window & typeof globalThis
+    id: number
+  } | null>(null)
   const appliedWindowNavigationKeyRef = useRef<number | undefined>(undefined)
   const pendingWindowNavigationRef = useRef<{
     key: number
@@ -383,33 +474,67 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     onVirtualizationChange?.(false)
   }, [onVirtualizationChange])
 
-  const captureAnchorBeforeWindowChange = useCallback(() => {
-    if (!scrollerElement) {
-      return
-    }
+  const captureAnchorBeforeWindowChange = useCallback(
+    (retainedTurnsDirection: PagingDirection | null) => {
+      if (!scrollerElement) {
+        return
+      }
 
-    pendingAnchorSnapshotRef.current = getVisibleAnchorSnapshot(scrollerElement)
-  }, [scrollerElement])
+      pendingAnchorSnapshotRef.current = getVisibleAnchorSnapshot(
+        scrollerElement,
+        retainedTurnsDirection,
+      )
+    },
+    [scrollerElement],
+  )
 
   const handleLoadEarlier = useCallback(() => {
-    if (!onLoadEarlier || loadInFlightRef.current) {
+    if (!onLoadEarlier) {
       return
     }
 
-    loadInFlightRef.current = true
-    captureAnchorBeforeWindowChange()
+    captureAnchorBeforeWindowChange('earlier')
     onLoadEarlier()
   }, [captureAnchorBeforeWindowChange, onLoadEarlier])
 
   const handleLoadNewer = useCallback(() => {
-    if (!onLoadNewer || loadInFlightRef.current) {
+    if (!onLoadNewer) {
       return
     }
 
-    loadInFlightRef.current = true
-    captureAnchorBeforeWindowChange()
+    captureAnchorBeforeWindowChange('newer')
     onLoadNewer()
   }, [captureAnchorBeforeWindowChange, onLoadNewer])
+
+  // Both paging triggers are driven by scrolling, which a window that fits
+  // inside the viewport can never produce: there is no scroll event and both
+  // edge distances sit at 0 forever. Enlarging the window is the only way out.
+  //
+  // It has to *grow* rather than page: `onLoadEarlier` slides the window off
+  // the live edge once it is full, and with no scroll range there is no way
+  // back, so paging here would walk the reader to the oldest turns and strand
+  // them. Growing keeps every currently rendered turn rendered, so the live
+  // edge stays visible and the reader never moves; the anchor snapshot keeps
+  // the viewport steady once the added turns finally make the content
+  // overflow.
+  const growWindowIfViewportNotFilled = useCallback(() => {
+    if (
+      !scrollerElement ||
+      !hasEarlierMessages ||
+      !onGrowWindowToFillViewport ||
+      scrollerElement.scrollHeight > scrollerElement.clientHeight
+    ) {
+      return
+    }
+
+    captureAnchorBeforeWindowChange(null)
+    onGrowWindowToFillViewport()
+  }, [
+    captureAnchorBeforeWindowChange,
+    hasEarlierMessages,
+    onGrowWindowToFillViewport,
+    scrollerElement,
+  ])
 
   const emitUserMessageViewport = useCallback(() => {
     if (!onUserMessageViewportChange || !scrollerElement) {
@@ -438,51 +563,55 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    userMessageViewportFrameRef.current = window.requestAnimationFrame(() => {
-      userMessageViewportFrameRef.current = null
-      emitUserMessageViewport()
-    })
-  }, [emitUserMessageViewport])
+    const ownerWindow = getNodeWindow(scrollerElement)
+    userMessageViewportFrameRef.current = {
+      window: ownerWindow,
+      id: ownerWindow.requestAnimationFrame(() => {
+        userMessageViewportFrameRef.current = null
+        emitUserMessageViewport()
+      }),
+    }
+  }, [emitUserMessageViewport, scrollerElement])
 
   useEffect(
     () => () => {
-      if (userMessageViewportFrameRef.current !== null) {
-        window.cancelAnimationFrame(userMessageViewportFrameRef.current)
+      const pendingFrame = userMessageViewportFrameRef.current
+      if (pendingFrame !== null) {
+        pendingFrame.window.cancelAnimationFrame(pendingFrame.id)
         userMessageViewportFrameRef.current = null
       }
     },
     [],
   )
 
-  const firstItemRenderKey = items.at(0)?.renderKey
+  // Watches both sides of the "does the window fill the viewport" question:
+  // the content growing/shrinking and the viewport itself resizing. Measuring
+  // from a ResizeObserver rather than a post-commit effect keeps these reads
+  // on layout the browser has already computed, so streaming never pays a
+  // forced reflow for them. Observing also fires once, which covers the
+  // initial state.
   useEffect(() => {
-    const sentinel = earlierSentinelRef.current
-    if (
-      !scrollerElement ||
-      !sentinel ||
-      !hasEarlierMessages ||
-      !onLoadEarlier
-    ) {
+    if (!scrollerElement) {
+      return
+    }
+    // Popouts are separate BrowserWindows: the global `ResizeObserver` belongs
+    // to the main window and would observe an element from another realm.
+    const ObserverCtor = getNodeWindow(scrollerElement).ResizeObserver
+    if (typeof ObserverCtor === 'undefined') {
       return
     }
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) {
-          handleLoadEarlier()
-        }
-      },
-      { root: scrollerElement },
-    )
-    observer.observe(sentinel)
+    const observer = new ObserverCtor(() => {
+      growWindowIfViewportNotFilled()
+    })
+    observer.observe(scrollerElement)
+    const contentElement = contentElementRef.current
+    if (contentElement) {
+      observer.observe(contentElement)
+    }
+
     return () => observer.disconnect()
-  }, [
-    firstItemRenderKey,
-    handleLoadEarlier,
-    hasEarlierMessages,
-    onLoadEarlier,
-    scrollerElement,
-  ])
+  }, [growWindowIfViewportNotFilled, scrollerElement])
 
   const handleScrollerRef = useCallback(
     (element: HTMLElement | null) => {
@@ -496,7 +625,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
   )
 
   useLayoutEffect(() => {
-    loadInFlightRef.current = false
     const snapshot = pendingAnchorSnapshotRef.current
     if (!snapshot || !scrollerElement) {
       scheduleUserMessageViewport()
@@ -551,6 +679,13 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
     const targetMessageId = pendingNavigation.targetMessageId
     appliedWindowNavigationKeyRef.current = windowNavigationKey
     pendingWindowNavigationRef.current = null
+    // A jump replaces the reader's position outright, so any anchor-preserving
+    // correction still in flight is now describing a position nobody asked to
+    // keep. The controller ranks the jump higher, but only for as long as the
+    // jump itself is alive: once it settles the stale correction would take
+    // over and pull the viewport back off the target.
+    pendingAnchorSnapshotRef.current = null
+    scrollController?.cancelPreserveAnchor()
 
     scrollController?.submitJumpToMessage(() => {
       const targetAnchor = getUserAnchorElement(
@@ -587,60 +722,187 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       return
     }
 
-    const handleScroll = () => {
-      const previousScrollTop = lastScrollTopRef.current
-      const currentScrollTop = scrollerElement.scrollTop
-      lastScrollTopRef.current = currentScrollTop
-      const isScrollingTowardNewer =
-        previousScrollTop !== null && currentScrollTop > previousScrollTop
-
-      scheduleUserMessageViewport()
-      if (scrollController?.isSettling()) {
-        // A jumpToMessage/preserveAnchor intent is still correcting scroll
-        // position; its own writes must not be misread as the user
-        // scrolling toward newer messages and trigger another page load.
+    // Every paging load starts here, from an input event that carries its own
+    // direction. Position is only ever a gate ("are they near that edge?"),
+    // never the evidence of intent.
+    //
+    // The order of the checks is load-bearing for performance, not just
+    // readability: the free ones come first so that scrolling in a direction
+    // with nothing left to load — the overwhelmingly common case, and the one
+    // that runs at wheel frequency during streaming — never reads layout at
+    // all. Only an input that could actually page pays for measuring.
+    const requestPaging = (
+      direction: PagingDirection,
+      target: Element | null,
+    ) => {
+      const hasMore =
+        direction === 'earlier'
+          ? hasEarlierMessages && Boolean(onLoadEarlier)
+          : hasNewerMessages && Boolean(onLoadNewer)
+      const isBusy =
+        (scrollController?.isSettling() ?? false) ||
+        (pagedForWindowKeyRef.current !== undefined &&
+          pagedForWindowKeyRef.current === committedWindowKeyRef.current)
+      if (!hasMore || isBusy) {
         return
       }
 
-      const distanceToBottom =
-        scrollerElement.scrollHeight -
-        scrollerElement.scrollTop -
-        scrollerElement.clientHeight
-      const loadMoreThreshold = getLoadMoreThreshold(scrollerElement)
+      const maxDistance = Math.max(
+        0,
+        scrollerElement.scrollHeight - scrollerElement.clientHeight,
+      )
+      const distanceToTop = Math.min(
+        Math.max(0, scrollerElement.scrollTop),
+        maxDistance,
+      )
+      const load = resolvePagingLoad({
+        direction,
+        distanceToTop,
+        distanceToBottom: maxDistance - distanceToTop,
+        threshold: getLoadMoreThreshold(scrollerElement),
+        hasEarlierMessages: hasEarlierMessages && Boolean(onLoadEarlier),
+        hasNewerMessages: hasNewerMessages && Boolean(onLoadNewer),
+        isBusy,
+      })
       if (
-        hasNewerMessages &&
-        onLoadNewer &&
-        isScrollingTowardNewer &&
-        distanceToBottom <= loadMoreThreshold
+        !load ||
+        isPagingInputClaimedByNestedScroller(
+          target,
+          scrollerElement,
+          direction,
+          isScrollableElement,
+        )
       ) {
+        return
+      }
+
+      pagedForWindowKeyRef.current = committedWindowKeyRef.current
+      if (load === 'earlier') {
+        handleLoadEarlier()
+      } else {
         handleLoadNewer()
       }
     }
 
-    scrollerElement.addEventListener('scroll', handleScroll, {
-      passive: true,
-    })
-    lastScrollTopRef.current = scrollerElement.scrollTop
-    scheduleUserMessageViewport()
+    const handleScroll = () => {
+      const previousScrollTop = lastScrollTopRef.current
+      lastScrollTopRef.current = scrollerElement.scrollTop
+      scheduleUserMessageViewport()
 
-    if (typeof ResizeObserver === 'undefined') {
-      return () => {
-        scrollerElement.removeEventListener('scroll', handleScroll)
+      // Wheel and touch have already reported their own direction by the time
+      // the resulting scroll event arrives, so the only thing left for this
+      // one to contribute is a scrollbar drag — the sole way to scroll that
+      // produces no directional input event of its own.
+      if (!isPointerDownRef.current || previousScrollTop === null) {
+        return
+      }
+
+      const direction = getScrollPagingDirection(
+        previousScrollTop,
+        scrollerElement.scrollTop,
+      )
+      if (direction) {
+        // A scrollbar drag moves this scroller and nothing else, so there is
+        // no nested region that could have claimed it.
+        requestPaging(direction, null)
       }
     }
 
-    const observer = new ResizeObserver(() => {
+    const handleWheel = (event: WheelEvent) => {
+      const direction = getWheelPagingDirection(event.deltaY)
+      if (direction) {
+        requestPaging(direction, getEventElement(event))
+      }
+    }
+
+    const handleTouchStart = (event: TouchEvent) => {
+      lastTouchClientYRef.current = event.touches[0]?.clientY ?? null
+    }
+
+    const handleTouchMove = (event: TouchEvent) => {
+      const clientY = event.touches[0]?.clientY
+      if (clientY === undefined) {
+        return
+      }
+
+      const previousClientY = lastTouchClientYRef.current
+      lastTouchClientYRef.current = clientY
+      if (previousClientY === null) {
+        return
+      }
+
+      const direction = getTouchPagingDirection(previousClientY, clientY)
+      if (direction) {
+        requestPaging(direction, getEventElement(event))
+      }
+    }
+
+    // Only a press that lands on the scroller *itself* — its scrollbar or its
+    // own padding — can be a scrollbar drag. A press on content is a text
+    // selection or a button, and letting those open the gate would hand the
+    // scroll-position path back to reflow and to the controller's own writes,
+    // which is exactly what reading direction off input events avoids.
+    const handlePointerDown = (event: PointerEvent) => {
+      isPointerDownRef.current = event.target === scrollerElement
+    }
+
+    const handlePointerUp = () => {
+      isPointerDownRef.current = false
+    }
+
+    const passive = { passive: true } as const
+    // The release lands on whichever document owns the scroller, which in a
+    // popout is not the global one. A release the drag never hears about —
+    // outside the element, or in another application after the window loses
+    // focus — would latch the gate open and hand every later reflow and
+    // controller write back to the scroll-position path, so the window's own
+    // `blur` releases it too.
+    const ownerDocument = scrollerElement.ownerDocument
+    const ownerWindow = ownerDocument.defaultView
+    lastScrollTopRef.current = scrollerElement.scrollTop
+    scrollerElement.addEventListener('scroll', handleScroll, passive)
+    scrollerElement.addEventListener('wheel', handleWheel, passive)
+    scrollerElement.addEventListener('touchstart', handleTouchStart, passive)
+    scrollerElement.addEventListener('touchmove', handleTouchMove, passive)
+    scrollerElement.addEventListener('pointerdown', handlePointerDown, passive)
+    ownerDocument.addEventListener('pointerup', handlePointerUp, passive)
+    ownerDocument.addEventListener('pointercancel', handlePointerUp, passive)
+    ownerWindow?.addEventListener('blur', handlePointerUp, passive)
+    scheduleUserMessageViewport()
+
+    const removeListeners = () => {
+      scrollerElement.removeEventListener('scroll', handleScroll)
+      scrollerElement.removeEventListener('wheel', handleWheel)
+      scrollerElement.removeEventListener('touchstart', handleTouchStart)
+      scrollerElement.removeEventListener('touchmove', handleTouchMove)
+      scrollerElement.removeEventListener('pointerdown', handlePointerDown)
+      ownerDocument.removeEventListener('pointerup', handlePointerUp)
+      ownerDocument.removeEventListener('pointercancel', handlePointerUp)
+      ownerWindow?.removeEventListener('blur', handlePointerUp)
+      isPointerDownRef.current = false
+    }
+
+    // Same realm caveat as the viewport-fill observer above.
+    const ObserverCtor = ownerWindow?.ResizeObserver
+    if (typeof ObserverCtor === 'undefined') {
+      return removeListeners
+    }
+
+    const observer = new ObserverCtor(() => {
       scheduleUserMessageViewport()
     })
     observer.observe(scrollerElement)
 
     return () => {
       observer.disconnect()
-      scrollerElement.removeEventListener('scroll', handleScroll)
+      removeListeners()
     }
   }, [
+    handleLoadEarlier,
     handleLoadNewer,
+    hasEarlierMessages,
     hasNewerMessages,
+    onLoadEarlier,
     onLoadNewer,
     scheduleUserMessageViewport,
     scrollController,
@@ -728,9 +990,6 @@ export function ChatTimelineList<TItem extends ChatTimelineItem>({
       style={scrollContainerStyle}
     >
       <div ref={contentElementRef} className="yolo-chat-timeline-content">
-        {hasEarlierMessages && onLoadEarlier ? (
-          <TimelineLoadMoreSentinel elementRef={earlierSentinelRef} />
-        ) : null}
         {items.map((item, index) => (
           <TimelineRow
             key={item.renderKey}
