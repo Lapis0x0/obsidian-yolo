@@ -355,10 +355,7 @@ describe('IndexedDbDataAdapter', () => {
 
     expect(listed.files).toHaveLength(listQueryLimit)
     expect(listed.folders).toEqual([])
-    // fake-indexeddb is substantially slower for this 10k-record boundary
-    // case on Windows; keep the production cap assertion, but avoid turning
-    // host filesystem/CPU variance into a false regression.
-  }, 60_000)
+  })
 
   it('ships a listing query limit one past the module private storage cap', () => {
     // Guards the number the test above no longer exercises directly.

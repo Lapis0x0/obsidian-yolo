@@ -25,7 +25,6 @@ export const MOTION_EASE_OUT_CSS = 'cubic-bezier(0.22, 1, 0.36, 1)'
 export const MOTION_EASE_IN = [0.4, 0, 1, 1] as const
 /** 持续型状态指示器使用的循环曲线。 */
 export const MOTION_EASE_STANDARD = [0.4, 0, 0.2, 1] as const
-export const MOTION_EASE_LINEAR = 'linear'
 
 /** L3 跟随：补位 / 布局位移用 spring，插值加速度而非数值，不错峰。 */
 export const MOTION_LAYOUT_SPRING = {

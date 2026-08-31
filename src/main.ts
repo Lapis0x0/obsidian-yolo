@@ -138,10 +138,10 @@ import {
 import {
   getYoloBaseDir,
   getYoloJsonDbRootDir,
-  getYoloTranscriptionsDir,
   getYoloModuleDir,
   getYoloModuleSkillsDir,
   getYoloModulesRootDir,
+  getYoloTranscriptionsDir,
   hasHiddenYoloBaseDirSegment,
   resolveExternalYoloBaseDir,
 } from './core/paths/yoloPaths'
@@ -175,8 +175,8 @@ import {
   prewarmLiteSkillRegistry,
   updateLiteSkillRegistrySettings,
 } from './core/skills/liteSkills'
-import { hasConfiguredTtsConfig } from './core/tts/configStatus'
 import type { ToolContext } from './core/tools/types'
+import { hasConfiguredTtsConfig } from './core/tts/configStatus'
 import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
