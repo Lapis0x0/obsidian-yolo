@@ -989,7 +989,12 @@
    * the background, which also gives the ring below something to sit on.) */
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: calc(11px * var(--yolo-whiteboard-zoom-multiplier, 1));
+  /* A size up from a card's own text (13), a size down from a group's name
+   * (20): an edge label names a relation between cards, which is read at the
+   * zoom where you are looking at structure rather than at any one card.
+   * Obsidian Canvas puts its own at --font-ui-large (20) against 16px card
+   * text, for the same reason and in the same direction. */
+  font-size: calc(15px * var(--yolo-whiteboard-zoom-multiplier, 1));
   line-height: 1.3;
   text-align: center;
   white-space: pre-wrap;
