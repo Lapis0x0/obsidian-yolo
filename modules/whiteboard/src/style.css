@@ -238,13 +238,6 @@
  * The membership behaviour (moving a group carries the nodes inside it,
  * dropping a node into one joins it) is P3 batch 3; nothing here implies it. */
 
-/* The frame takes no pointer events at all — only its label does (below).
- * Obsidian Canvas's group is built the same way (measured: `pointer-events:
- * none` on `.canvas-node-group` and everything inside it but
- * `.canvas-group-label`), and the reason is that a group is mostly empty
- * space: if its interior were grabbable, every press aimed at the canvas
- * inside a group — a marquee, a double-click to make a card — would hit the
- * group instead. So the label is the handle, and the frame is scenery. */
 .yolo-whiteboard-group {
   position: absolute;
   z-index: -1;
@@ -258,6 +251,22 @@
   border-radius: var(--radius-l, 10px);
   background: color-mix(in oklch, var(--yolo-whiteboard-color) 8%, transparent);
   contain: layout style;
+}
+
+/* An unselected frame takes no pointer events — only its label does (below).
+ * A group is mostly empty space: if its interior were grabbable, every press
+ * aimed at the canvas inside it — a marquee, a double-click to make a card —
+ * would hit the group instead. So until it is spoken for, the label is the
+ * handle and the frame is scenery.
+ *
+ * Selected, it stops being scenery. The user has said this is the thing they
+ * are working on, and a thing you have selected but can only move by finding
+ * its label again is not selected in any sense that helps. Obsidian Canvas
+ * draws the line in the same place, down to the selector:
+ * `.canvas-node-group:not(.is-focused):not(.is-selected) { pointer-events:
+ * none }`. What it costs is a marquee begun inside the selected group, and
+ * that is one click on the canvas away. */
+.yolo-whiteboard-group:not(.yolo-whiteboard-card-selected) {
   pointer-events: none;
 }
 
