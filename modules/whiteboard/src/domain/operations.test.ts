@@ -275,6 +275,26 @@ describe('updateEdge', () => {
     )
   })
 
+  it('patches the arrowheads independently at each end', () => {
+    const next = updateEdge(board, 'e1', { fromEnd: 'arrow', toEnd: 'none' })
+    expect(next.edges[0]).toMatchObject({ fromEnd: 'arrow', toEnd: 'none' })
+  })
+
+  it('patches the colour and the label', () => {
+    const next = updateEdge(board, 'e1', { color: '3', label: 'depends on' })
+    expect(next.edges[0]).toMatchObject({ color: '3', label: 'depends on' })
+  })
+
+  it('clears the colour and the label back to absent', () => {
+    const coloured = updateEdge(board, 'e1', { color: '3', label: 'x' })
+    const cleared = updateEdge(coloured, 'e1', {
+      color: undefined,
+      label: undefined,
+    })
+    expect(cleared.edges[0].color).toBeUndefined()
+    expect(cleared.edges[0].label).toBeUndefined()
+  })
+
   it('throws when the new endpoint card does not exist', () => {
     expect(() => updateEdge(board, 'e1', { toNode: 'missing' })).toThrow(
       /not found/i,

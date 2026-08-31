@@ -18,6 +18,7 @@ import type {
   Board,
   BoardNode,
   Edge,
+  EdgeEnd,
   EdgeId,
   NodeColor,
   NodeId,
@@ -36,12 +37,17 @@ export type NodePatch = Readonly<{
   label?: string
 }>
 
-/** Fields `updateEdge` may patch — one end of the edge, or both. */
+/** Fields `updateEdge` may patch: where an edge is attached, and everything
+ * about how it reads — its arrowheads, its colour, its label. */
 export type EdgePatch = Readonly<{
   fromNode?: NodeId
   toNode?: NodeId
   fromSide?: NodeSide
   toSide?: NodeSide
+  fromEnd?: EdgeEnd
+  toEnd?: EdgeEnd
+  color?: NodeColor
+  label?: string
 }>
 
 export function addNode(board: Board, node: BoardNode): Board {
@@ -147,10 +153,9 @@ export function addEdge(board: Board, edge: Edge): Board {
 }
 
 /**
- * Repoints one end of an edge — what dragging an existing connection's
- * endpoint onto another node means. Only the endpoints are patchable: an
- * edge's arrowheads, colour and label are content, and belong to the editing
- * surfaces that own them rather than to the gesture that re-wires it.
+ * Changes an edge: where an end is attached (what dragging a connection's
+ * endpoint onto another node means), or how it reads — arrowheads, colour,
+ * label, all written by the edge toolbar.
  */
 export function updateEdge(board: Board, id: EdgeId, patch: EdgePatch): Board {
   const index = board.edges.findIndex((edge) => edge.id === id)

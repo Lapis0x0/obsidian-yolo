@@ -13,7 +13,7 @@
 // (temporary coordinates the caller passes in), so this module only ever
 // sees plain rectangles, never live elements.
 
-import type { NodeId, NodeSide } from './fileFormat'
+import type { EdgeEnd, NodeId, NodeSide } from './fileFormat'
 import type { CardRect, CardSize } from './resize'
 import type { VirtualCardRect } from './virtualization'
 
@@ -229,6 +229,45 @@ export function rectAnchoredAt(
     case 'right':
       return { x: point.x - size.w, y: point.y - size.h / 2, ...size }
   }
+}
+
+// --- arrowheads -----------------------------------------------------------
+//
+// JSON Canvas models an edge's arrowheads as two independent fields,
+// `fromEnd`/`toEnd`, each 'none' or 'arrow'. What a user picks from is not two
+// independent switches but one question — which way does this point — so the
+// edge toolbar offers the four combinations by name. This is the translation
+// between the two, kept here rather than in the toolbar so the mapping (and in
+// particular that JSON Canvas's default, no arrow at the source and an arrow
+// at the target, *is* one of the four) is covered by a test.
+
+export type ArrowDirection = 'none' | 'forward' | 'backward' | 'both'
+
+export const ARROW_DIRECTIONS: readonly ArrowDirection[] = [
+  'none',
+  'forward',
+  'backward',
+  'both',
+]
+
+/** The `fromEnd`/`toEnd` pair a direction writes. */
+export function arrowEnds(
+  direction: ArrowDirection,
+): Readonly<{ fromEnd: EdgeEnd; toEnd: EdgeEnd }> {
+  return {
+    fromEnd:
+      direction === 'backward' || direction === 'both' ? 'arrow' : 'none',
+    toEnd: direction === 'forward' || direction === 'both' ? 'arrow' : 'none',
+  }
+}
+
+/** Which direction an edge is currently in — the option the menu ticks. */
+export function arrowDirection(
+  fromEnd: EdgeEnd,
+  toEnd: EdgeEnd,
+): ArrowDirection {
+  if (fromEnd === 'arrow') return toEnd === 'arrow' ? 'both' : 'backward'
+  return toEnd === 'arrow' ? 'forward' : 'none'
 }
 
 /** SVG path `d` attribute for the cubic bezier described by `geometry`. */

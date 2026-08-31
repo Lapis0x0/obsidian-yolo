@@ -15,6 +15,33 @@ export const en = {
     newCard: 'New card',
     convertToNote: 'Convert to note',
     deleteCard: 'Delete',
+    deleteEdge: 'Delete connection',
+    arrowNone: 'No arrow',
+    arrowForward: 'Arrow at the end',
+    arrowBackward: 'Arrow at the start',
+    arrowBoth: 'Arrows at both ends',
+  },
+  // Floating toolbar over the current selection (P3 batch 3).
+  toolbar: {
+    color: 'Set colour',
+    edit: 'Edit',
+    more: 'More options',
+    arrows: 'Arrows',
+    edgeLabel: 'Label',
+  },
+  // The six preset names are Obsidian's own canvas palette.
+  color: {
+    default: 'No colour',
+    preset1: 'Red',
+    preset2: 'Orange',
+    preset3: 'Yellow',
+    preset4: 'Green',
+    preset5: 'Cyan',
+    preset6: 'Purple',
+    custom: 'Custom colour',
+  },
+  edge: {
+    labelPlaceholder: 'Label this connection',
   },
   file: {
     newWhiteboardBaseName: 'Whiteboard',

@@ -1,6 +1,9 @@
 import {
+  ARROW_DIRECTIONS,
   EDGE_CONTROL_MAX_PX,
   anchorPoint,
+  arrowDirection,
+  arrowEnds,
   autoEdgeSides,
   buildEdgePathD,
   computeEdgeGeometry,
@@ -245,5 +248,30 @@ describe('rectAnchoredAt', () => {
       w: 100,
       h: 60,
     })
+  })
+})
+
+describe('arrow direction', () => {
+  it('round-trips every direction through the JSON Canvas end pair', () => {
+    for (const direction of ARROW_DIRECTIONS) {
+      const ends = arrowEnds(direction)
+      expect(arrowDirection(ends.fromEnd, ends.toEnd)).toBe(direction)
+    }
+  })
+
+  it("offers JSON Canvas's default as one of the four", () => {
+    // A brand-new edge is fromEnd 'none' / toEnd 'arrow' (fileFormat.ts's
+    // parse defaults). If that did not map onto an option, the menu would
+    // never tick anything for an untouched edge.
+    expect(arrowDirection('none', 'arrow')).toBe('forward')
+    expect(arrowEnds('forward')).toEqual({ fromEnd: 'none', toEnd: 'arrow' })
+  })
+
+  it('puts the arrow at the source for a reversed edge', () => {
+    expect(arrowEnds('backward')).toEqual({ fromEnd: 'arrow', toEnd: 'none' })
+  })
+
+  it('strips both arrowheads for a plain line', () => {
+    expect(arrowEnds('none')).toEqual({ fromEnd: 'none', toEnd: 'none' })
   })
 })

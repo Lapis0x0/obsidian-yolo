@@ -182,3 +182,19 @@ export const RESIZE_HANDLE_PX = 20
  * relative to the card it forgives you for missing.
  */
 export const CONNECT_SNAP_WORLD_PX = 12
+
+/**
+ * Clear space between the selection toolbar and the selection it acts on, in
+ * screen pixels — the toolbar lives in the viewport layer, so this is a fact
+ * about the screen and does not scale with the camera.
+ *
+ * Obsidian Canvas's own gap is measured in world units and so grows with zoom
+ * (24px on screen at scale 0.48). We keep it constant instead: ours is a
+ * screen-space chrome element, and chrome that drifts away from what it acts
+ * on as you zoom in is chrome that has to be chased.
+ */
+export const TOOLBAR_GAP_PX = 8
+
+/** How close to the viewport's edge the toolbar may come before it is clamped
+ * back in — the same figure decides when it flips below the selection. */
+export const TOOLBAR_MARGIN_PX = 8

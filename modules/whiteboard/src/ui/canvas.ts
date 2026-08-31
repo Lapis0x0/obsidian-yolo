@@ -33,11 +33,16 @@ import {
   viewFromCamera,
 } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
+import { COLOR_PRESETS, type ColorPreset, commonColor } from '../domain/color'
 import { planNodeCommit } from '../domain/commit'
 import {
+  ARROW_DIRECTIONS,
+  type ArrowDirection,
   NODE_SIDES,
   type SideAnchor,
   anchorPoint,
+  arrowDirection,
+  arrowEnds,
   buildEdgePathD,
   computeEdgeGeometry,
   findConnectTarget,
@@ -52,6 +57,7 @@ import {
   type Edge,
   type EdgeId,
   type FileNode,
+  type NodeColor,
   type NodeId,
   type NodeSide,
   type TextNode,
@@ -91,6 +97,7 @@ import {
   nodesInMarquee,
 } from '../domain/selection'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
+import { type ToolbarBounds, toolbarScreenPosition } from '../domain/toolbar'
 import {
   type CanvasView,
   type VirtualCardRect,
@@ -117,15 +124,32 @@ import {
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SCALE_BOUNDS,
+  TOOLBAR_GAP_PX,
+  TOOLBAR_MARGIN_PX,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
   ZOOM_GLIDE_EPSILON_DOUBLINGS,
   ZOOM_GLIDE_TAU_MS,
 } from './constants'
+import { InlineTextInput } from './inlineTextInput'
 import { degradedNodeTitle, nextDegradedState } from './lod'
+import {
+  SelectionToolbar,
+  type ToolbarAction,
+  type ToolbarModel,
+  applyColorToElement,
+} from './selectionToolbar'
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** i18n key per arrowhead direction (domain/edges.ts's `ArrowDirection`). */
+const ARROW_MENU_KEYS: Readonly<Record<ArrowDirection, string>> = {
+  none: 'menu.arrowNone',
+  forward: 'menu.arrowForward',
+  backward: 'menu.arrowBackward',
+  both: 'menu.arrowBoth',
+}
 
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
@@ -405,6 +429,22 @@ export class WhiteboardCanvas {
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
+  // Selection toolbar (P3 batch 3, surfaces ①/②): one instance per view,
+  // rebuilt on selection change and re-placed whenever the camera or the
+  // selection's geometry moves. It lives in the viewport (screen-space) layer,
+  // so it keeps a constant size at every zoom — see ui/selectionToolbar.ts and
+  // domain/toolbar.ts for the placement law.
+  private toolbar: SelectionToolbar | null = null
+  /** Hidden for the duration of a pointer gesture (drag, resize, marquee, pan,
+   * connect) — Obsidian Canvas hides its menu the same way, and a toolbar that
+   * follows a card being dragged is a toolbar in the way. */
+  private toolbarSuppressed = false
+  /** The edge whose label is being typed, and the field it is typed in. */
+  private edgeLabelSession: Readonly<{
+    edgeId: EdgeId
+    input: InlineTextInput
+  }> | null = null
+
   // Resize (W3-C): one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
   // card — at a few hundred mounted cards that would be thousands of nodes
@@ -581,6 +621,9 @@ export class WhiteboardCanvas {
     if (this.parseFailed) return
     this.recomputeVisibility()
     this.drainQueues()
+    // The toolbar is clamped against the viewport's size, which just changed.
+    this.positionToolbar()
+    this.positionEdgeLabelInput()
   }
 
   /**
@@ -621,6 +664,10 @@ export class WhiteboardCanvas {
     this.viewKeymapDisposer?.()
     this.viewKeymapDisposer = null
 
+    this.edgeLabelSession?.input.close()
+    this.edgeLabelSession = null
+    this.toolbar?.destroy()
+    this.toolbar = null
     this.teardownAllCards()
     this.preheatView?.destroy()
     this.preheatView = null
@@ -738,6 +785,9 @@ export class WhiteboardCanvas {
     this.edgesGroupEl = edgesGroup
     this.previewPathEl = preview
     this.interactionLayerEl = interactionLayer
+    // Inside the viewport rather than the world: the toolbar is chrome, and
+    // chrome does not zoom. Built last so it paints over the cards.
+    this.toolbar = new SelectionToolbar(doc, viewport)
     // A freshly built world element carries none of the old one's inline
     // custom properties, so both handle variables have to be written again.
     // The size is pushed from here rather than hard-coded in the stylesheet
@@ -836,6 +886,13 @@ export class WhiteboardCanvas {
 
   private readonly onPointerDown = (e: PointerEvent): void => {
     if (this.parseFailed) return
+    // The toolbar and the edge-label field sit above the canvas in the same
+    // viewport element these listeners are on: a press on one of them is not
+    // also a press on the board behind it.
+    if (this.isOverlayTarget(e.target)) return
+    // A press anywhere else dismisses the colour popover, the same way one
+    // dismisses a menu.
+    this.toolbar?.closePopover()
     const nodeId = this.nodeIdFromEventTarget(e.target)
 
     if (e.button === 1) {
@@ -904,6 +961,7 @@ export class WhiteboardCanvas {
    */
   private readonly onDoubleClick = (e: MouseEvent): void => {
     if (this.parseFailed) return
+    if (this.isOverlayTarget(e.target)) return
     const world = this.worldPointFromEvent(e)
     // Which card this landed on has to come from geometry, not from
     // `e.target`: the press that preceded it captured the pointer on the
@@ -923,6 +981,7 @@ export class WhiteboardCanvas {
 
   private readonly onContextMenu = (e: MouseEvent): void => {
     if (this.parseFailed) return
+    if (this.isOverlayTarget(e.target)) return
     const nodeId = this.nodeIdFromEventTarget(e.target)
     // The card being edited owns its own context menu (CM6's, with the text
     // actions that belong to an editor).
@@ -1010,6 +1069,10 @@ export class WhiteboardCanvas {
       this.updateHover(e)
       return
     }
+    // A gesture that has actually moved takes the toolbar off screen until it
+    // ends. A press that never moves leaves it alone, so clicking a card that
+    // is already selected does not make its toolbar blink.
+    this.setToolbarSuppressed(true)
     switch (interaction.kind) {
       case 'pan':
         this.updatePan(interaction, e)
@@ -1150,6 +1213,7 @@ export class WhiteboardCanvas {
         this.finishConnect(interaction, e)
         break
     }
+    this.setToolbarSuppressed(false)
   }
 
   private readonly onWheel = (e: WheelEvent): void => {
@@ -1271,6 +1335,11 @@ export class WhiteboardCanvas {
     this.worldEl.style.transform = `translate(${this.view.tx}px, ${this.view.ty}px) scale(${this.view.scale})`
     this.applyGrid()
     this.applyHandleScale()
+    // The screen-space chrome is anchored to world positions, so it has to be
+    // re-projected whenever the camera moves. Both are no-ops when nothing is
+    // selected and nothing is being typed, which is the common case.
+    this.positionToolbar()
+    this.positionEdgeLabelInput()
   }
 
   /**
@@ -2122,6 +2191,7 @@ export class WhiteboardCanvas {
     this.syncSelectionKeymapScope()
     // Selection is one of the two things that decides where the handles are.
     this.updateInteractionLayer()
+    this.refreshToolbar()
   }
 
   /** Keeps `focusedNodeId` and its class in step with the selection — see the
@@ -2154,6 +2224,13 @@ export class WhiteboardCanvas {
     }
     this.selectedEdgeIds = next
     this.syncSelectionKeymapScope()
+    // A label being typed belongs to the edge that was selected when it
+    // opened; deselecting that edge ends the session (committing, the same as
+    // a blur would).
+    if (this.edgeLabelSession && !next.has(this.edgeLabelSession.edgeId)) {
+      this.edgeLabelSession.input.close()
+    }
+    this.refreshToolbar()
   }
 
   private markEdgeSelected(id: EdgeId, selected: boolean): void {
@@ -2173,7 +2250,11 @@ export class WhiteboardCanvas {
    * and popped when both are. */
   private syncSelectionKeymapScope(): void {
     const hasSelection =
-      this.selectedIds.size > 0 || this.selectedEdgeIds.size > 0
+      (this.selectedIds.size > 0 || this.selectedEdgeIds.size > 0) &&
+      // While an edge label is being typed, Backspace/Delete/Escape belong to
+      // the field, not to the selection behind it — the same rule that keeps
+      // the card editor and the selection scope from ever being armed at once.
+      this.edgeLabelSession === null
     if (hasSelection && !this.selectionScopeDisposer) {
       this.pushSelectionKeymapScope()
     } else if (!hasSelection && this.selectionScopeDisposer) {
@@ -2222,6 +2303,349 @@ export class WhiteboardCanvas {
   private popSelectionKeymapScope(): void {
     this.selectionScopeDisposer?.()
     this.selectionScopeDisposer = null
+  }
+
+  // -----------------------------------------------------------------------
+  // Selection toolbar (P3 batch 3, surfaces ①/②).
+  //
+  // Two responsibilities, kept apart because they run at very different
+  // rates: `refreshToolbar` decides *what* the toolbar contains and runs on
+  // discrete events (selection, degrade state, an edge appearing or going
+  // away); `positionToolbar` decides *where* it is and runs on every camera
+  // frame. Rebuilding the DOM at camera rate would be absurd, and re-placing
+  // it only on selection change would leave it stranded mid-pan.
+  //
+  // Everything the buttons do goes through the same board operations the rest
+  // of the canvas uses, so a colour picked here is one history step like any
+  // other edit.
+  // -----------------------------------------------------------------------
+
+  /** Whether an event landed on the screen-space chrome (toolbar, colour
+   * popover, edge-label field) rather than on the board. */
+  private isOverlayTarget(target: EventTarget | null): boolean {
+    return target instanceof Node && (this.toolbar?.contains(target) ?? false)
+  }
+
+  private setToolbarSuppressed(suppressed: boolean): void {
+    if (this.toolbarSuppressed === suppressed) return
+    this.toolbarSuppressed = suppressed
+    this.toolbar?.setSuppressed(suppressed)
+    if (!suppressed) this.positionToolbar()
+  }
+
+  private refreshToolbar(): void {
+    const toolbar = this.toolbar
+    if (!toolbar) return
+    toolbar.setModel(this.buildToolbarModel())
+    toolbar.setSuppressed(this.toolbarSuppressed)
+    this.positionToolbar()
+  }
+
+  private positionToolbar(): void {
+    const toolbar = this.toolbar
+    if (!toolbar || this.toolbarSuppressed) return
+    const bounds = this.toolbarBounds()
+    if (!bounds) return
+    toolbar.place(
+      toolbarScreenPosition(
+        bounds,
+        this.view,
+        {
+          width: this.viewportEl.clientWidth,
+          height: this.viewportEl.clientHeight,
+        },
+        toolbar.size(),
+        TOOLBAR_GAP_PX,
+        TOOLBAR_MARGIN_PX,
+      ),
+    )
+  }
+
+  /**
+   * World rectangle the toolbar is anchored to: the union of the selected
+   * nodes, or — for an edge — a zero-size rect at the point its label hangs
+   * from, which is the only place on a curve that reads as "the edge itself".
+   */
+  private toolbarBounds(): ToolbarBounds | null {
+    if (this.selectedEdgeIds.size > 0) {
+      const point = this.edgeAnchorPoint(
+        this.selectedEdgeIds.values().next().value,
+      )
+      return point ? { x: point.x, y: point.y, w: 0, h: 0 } : null
+    }
+    if (this.selectedIds.size === 0) return null
+    return unionRect(
+      this.board.nodes
+        .filter((node) => this.selectedIds.has(node.id))
+        .map((node) => ({ x: node.x, y: node.y, w: node.w, h: node.h })),
+    )
+  }
+
+  private buildToolbarModel(): ToolbarModel | null {
+    if (this.parseFailed) return null
+    if (this.selectedEdgeIds.size > 0) return this.buildEdgeToolbarModel()
+    if (this.selectedIds.size > 0) return this.buildNodeToolbarModel()
+    return null
+  }
+
+  private buildNodeToolbarModel(): ToolbarModel | null {
+    const nodes = this.board.nodes.filter((node) =>
+      this.selectedIds.has(node.id),
+    )
+    if (nodes.length === 0) return null
+    const single = nodes.length === 1 ? nodes[0] : null
+
+    const actions: ToolbarAction[] = []
+    // Editing is the one action a degraded card cannot take (D8: its content
+    // is not built at this zoom), so the button goes away rather than being
+    // offered and declining.
+    if (single && this.isEditableNode(single) && !this.degraded) {
+      actions.push({
+        label: this.t('toolbar.edit'),
+        icon: 'pencil',
+        onSelect: () => this.editCard(single.id),
+      })
+    }
+    actions.push({
+      label: this.t('toolbar.more'),
+      icon: 'ellipsis',
+      onSelect: (event) => {
+        const ids = nodes.map((node) => node.id)
+        this.host.ui.showMenu(event, [
+          ...(single?.type === 'text'
+            ? [
+                {
+                  title: this.t('menu.convertToNote'),
+                  icon: 'file-plus',
+                  onSelect: () => this.convertCardToNote(single.id),
+                },
+                { kind: 'separator' as const },
+              ]
+            : []),
+          {
+            title: this.t('menu.deleteCard'),
+            icon: 'trash-2',
+            onSelect: () => this.deleteNodes(ids),
+          },
+        ])
+      },
+    })
+
+    return {
+      color: this.colorControl(
+        commonColor(nodes.map((node) => node.color)),
+        (color) =>
+          this.applyColorToNodes(
+            nodes.map((node) => node.id),
+            color,
+          ),
+      ),
+      actions,
+    }
+  }
+
+  private buildEdgeToolbarModel(): ToolbarModel | null {
+    const edgeId = this.selectedEdgeIds.values().next().value
+    const edge =
+      edgeId === undefined ? undefined : this.boardEdgesById.get(edgeId)
+    if (!edge) return null
+
+    return {
+      color: this.colorControl(edge.color, (color) =>
+        this.applyColorToEdge(edge.id, color),
+      ),
+      actions: [
+        {
+          label: this.t('toolbar.arrows'),
+          icon: 'arrow-right',
+          onSelect: (event) => this.showEdgeArrowMenu(event, edge.id),
+        },
+        {
+          label: this.t('toolbar.edgeLabel'),
+          icon: 'tag',
+          onSelect: () => this.openEdgeLabelEditor(edge.id),
+        },
+        {
+          label: this.t('toolbar.more'),
+          icon: 'ellipsis',
+          onSelect: (event) => {
+            this.host.ui.showMenu(event, [
+              {
+                title: this.t('menu.deleteEdge'),
+                icon: 'trash-2',
+                onSelect: () => this.deleteEdges([edge.id]),
+              },
+            ])
+          },
+        },
+      ],
+    }
+  }
+
+  /** The colour control shared by both toolbars — one picker, so a node and an
+   * edge cannot end up offering different palettes. */
+  private colorControl(
+    current: NodeColor | undefined,
+    onPick: (color: NodeColor | undefined) => void,
+  ): ToolbarModel['color'] {
+    return {
+      label: this.t('toolbar.color'),
+      defaultLabel: this.t('color.default'),
+      presetLabels: Object.fromEntries(
+        COLOR_PRESETS.map((preset) => [
+          preset,
+          this.t(`color.preset${preset}`),
+        ]),
+      ) as Readonly<Record<ColorPreset, string>>,
+      customLabel: this.t('color.custom'),
+      current,
+      onPick: (color) => {
+        onPick(color)
+        this.toolbar?.setCurrentColor(color)
+      },
+    }
+  }
+
+  /** Applies (or clears) a colour across the selection. A cleared colour is
+   * written as `undefined`, which `serializeBoard` simply omits — the same
+   * shape a board that never had one has. */
+  private applyColorToNodes(
+    ids: readonly NodeId[],
+    color: NodeColor | undefined,
+  ): void {
+    if (this.parseFailed) return
+    let board = this.board
+    for (const id of ids) {
+      if ((this.nodesById.get(id)?.color ?? undefined) === color) continue
+      board = updateNode(board, id, { color })
+    }
+    if (board === this.board) return
+    this.applyBoardChange(board)
+    for (const id of ids) {
+      const el = this.runtimeByNodeId.get(id)?.el
+      if (el) applyColorToElement(el, color)
+    }
+  }
+
+  private applyColorToEdge(edgeId: EdgeId, color: NodeColor | undefined): void {
+    if (this.parseFailed) return
+    const board = updateEdge(this.board, edgeId, { color })
+    if (board === this.board) return
+    this.applyBoardChange(board)
+    this.boardEdgesById = new Map(board.edges.map((edge) => [edge.id, edge]))
+    const path = this.edgeElsById.get(edgeId)?.path
+    if (path) applyColorToElement(path, color)
+  }
+
+  /**
+   * Arrowheads, as JSON Canvas models them: an independent `fromEnd`/`toEnd`
+   * per end. Offered as four named states rather than a cycling button —
+   * "which way does it point" has a direction, and a button that only cycles
+   * makes reversing an edge a guessing game.
+   */
+  private showEdgeArrowMenu(event: MouseEvent, edgeId: EdgeId): void {
+    const edge = this.boardEdgesById.get(edgeId)
+    if (!edge) return
+    const current = arrowDirection(edge.fromEnd, edge.toEnd)
+    this.host.ui.showMenu(
+      event,
+      ARROW_DIRECTIONS.map((direction) => ({
+        title: this.t(ARROW_MENU_KEYS[direction]),
+        icon: direction === current ? 'check' : undefined,
+        onSelect: () => this.setEdgeEnds(edgeId, direction),
+      })),
+    )
+  }
+
+  private setEdgeEnds(edgeId: EdgeId, direction: ArrowDirection): void {
+    if (this.parseFailed) return
+    const { fromEnd, toEnd } = arrowEnds(direction)
+    const board = updateEdge(this.board, edgeId, { fromEnd, toEnd })
+    if (board === this.board) return
+    this.applyBoardChange(board)
+    this.boardEdgesById = new Map(board.edges.map((edge) => [edge.id, edge]))
+    const path = this.edgeElsById.get(edgeId)?.path
+    if (!path) return
+    this.setEdgeMarker(path, 'marker-start', fromEnd === 'arrow')
+    this.setEdgeMarker(path, 'marker-end', toEnd === 'arrow')
+  }
+
+  private setEdgeMarker(
+    path: SVGPathElement,
+    attribute: 'marker-start' | 'marker-end',
+    present: boolean,
+  ): void {
+    if (present) {
+      path.setAttribute(attribute, `url(#${this.arrowMarkerId})`)
+      return
+    }
+    path.removeAttribute(attribute)
+  }
+
+  // -- edge label ---------------------------------------------------------
+
+  private openEdgeLabelEditor(edgeId: EdgeId): void {
+    const overlay = this.toolbar?.overlay
+    const edge = this.boardEdgesById.get(edgeId)
+    if (!overlay || !edge) return
+    this.edgeLabelSession?.input.close()
+    this.toolbar?.closePopover()
+    const input = new InlineTextInput(this.context.getDocument(), overlay, {
+      value: edge.label ?? '',
+      placeholder: this.t('edge.labelPlaceholder'),
+      ariaLabel: this.t('toolbar.edgeLabel'),
+      onCommit: (value) => this.commitEdgeLabel(edgeId, value),
+      onClose: () => {
+        this.edgeLabelSession = null
+        this.syncSelectionKeymapScope()
+      },
+    })
+    this.edgeLabelSession = { edgeId, input }
+    this.syncSelectionKeymapScope()
+    this.positionEdgeLabelInput()
+  }
+
+  private positionEdgeLabelInput(): void {
+    const session = this.edgeLabelSession
+    if (!session) return
+    const point = this.edgeAnchorPoint(session.edgeId)
+    if (!point) return
+    session.input.place({
+      x: point.x * this.view.scale + this.view.tx,
+      y: point.y * this.view.scale + this.view.ty,
+    })
+  }
+
+  /** An empty label removes the attribute rather than storing `""` — an edge
+   * with a blank label and one with no label are the same edge. */
+  private commitEdgeLabel(edgeId: EdgeId, value: string): void {
+    if (this.parseFailed || !this.boardEdgesById.has(edgeId)) return
+    const label = value.trim().length > 0 ? value : undefined
+    const board = updateEdge(this.board, edgeId, { label })
+    if (board === this.board) return
+    this.applyBoardChange(board)
+    // A label appearing or disappearing changes which elements the edge has,
+    // not just their attributes — the one edge change that needs the SVG
+    // rebuilt (which also restores the selection, and with it the toolbar).
+    this.rebuildEdgesSvg()
+  }
+
+  /** World point an edge's chrome hangs from: the midpoint of its curve, the
+   * same anchor its label already uses (domain/edges.ts's `EdgeGeometry`). */
+  private edgeAnchorPoint(edgeId: EdgeId | undefined): ScreenPoint | null {
+    const edge =
+      edgeId === undefined ? undefined : this.boardEdgesById.get(edgeId)
+    if (!edge) return null
+    const from = this.effectiveNodeRect(edge.fromNode)
+    const to = this.effectiveNodeRect(edge.toNode)
+    if (!from || !to) return null
+    const { fromSide, toSide } = resolveEdgeSides(
+      from,
+      to,
+      edge.fromSide,
+      edge.toSide,
+    )
+    return computeEdgeGeometry(from, to, fromSide, toSide).label
   }
 
   /** Only one of the two selections is ever non-empty (see `selectedEdgeIds`). */
@@ -2534,6 +2958,9 @@ export class WhiteboardCanvas {
       if (!runtime.el || this.editing?.nodeId === id) continue
       this.contentSyncQueue.add(id)
     }
+    // A degraded card cannot be edited (see enterEditMode), so the toolbar's
+    // edit button appears and disappears with this state.
+    this.refreshToolbar()
   }
 
   private drainQueues(): void {
@@ -2601,6 +3028,9 @@ export class WhiteboardCanvas {
     el.style.width = `${node.w}px`
     el.style.height = `${node.h}px`
     el.dataset.nodeId = id
+    // JSON Canvas's `color` (p3-canvas-parity D5): a preset or a hex, both
+    // resolved to the one custom property style.css paints from.
+    applyColorToElement(el, node.color)
     // Re-apply selection state — a selected node can unmount (scrolled
     // off-screen) and remount without its selection ever changing.
     if (this.selectedIds.has(id)) el.classList.add(CARD_SELECTED_CLASS)
@@ -3064,6 +3494,10 @@ export class WhiteboardCanvas {
 
     const path = doc.createElementNS(SVG_NS, 'path')
     path.setAttribute('class', EDGE_PATH_CLASS)
+    // The colour rides on the path element itself, not on the shared SVG:
+    // one overlay draws every edge, so per-edge colour has to be per-element.
+    // The arrowhead marker picks it up through `fill: context-stroke`.
+    applyColorToElement(path, edge.color)
     if (edge.toEnd === 'arrow') {
       path.setAttribute('marker-end', `url(#${this.arrowMarkerId})`)
     }
@@ -3117,6 +3551,7 @@ export class WhiteboardCanvas {
     this.selectedEdgeIds = new Set(surviving)
     for (const id of surviving) this.markEdgeSelected(id, true)
     this.syncSelectionKeymapScope()
+    this.refreshToolbar()
   }
 
   private redrawEdge(
