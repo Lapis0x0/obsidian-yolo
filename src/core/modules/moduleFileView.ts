@@ -120,6 +120,27 @@ let constructingSlot: ModuleFileViewSlot | null = null
 class HostModuleFileView extends TextFileView {
   private instance: YoloModuleFileViewInstanceV1 | null = null
   private cachedData = ''
+  /**
+   * The document this view is holding, and the file it came from — null when
+   * it is holding none: freshly constructed, or cleared because the leaf is
+   * being repurposed.
+   *
+   * `getViewData()` is a total function over a partial reality. Obsidian asks
+   * it for "the file's text" whenever a debounced save fires, which can land
+   * at a moment when the view has nothing to answer with, and a module that
+   * answers anyway — with an empty document of its own kind, which is a
+   * perfectly valid one — overwrites the user's file. Obsidian guards the
+   * same window with `lastSavedData === null`, but that is a second piece of
+   * state and it has holes (a failed write restores it after `clear()` has
+   * run; a `saveAgain` queued during an in-flight save re-enters with
+   * `this.file` already pointing at the next file).
+   *
+   * So the question is answered here instead, where the answer is known: the
+   * document arrived through `setViewData` and belongs to whatever file was
+   * loaded then. If that is not the file being saved now, this view has
+   * nothing to say about it.
+   */
+  private document: Readonly<{ path: string | null }> | null = null
   private opened = false
   private closed = true
   private unsubscribeSlot: (() => void) | null = null
@@ -188,6 +209,13 @@ class HostModuleFileView extends TextFileView {
   }
 
   getViewData(): string {
+    // Holding no document for this file: answer with what Obsidian already
+    // believes is in it, which turns the save that asked into a no-op
+    // (TextFileView.save skips a write when the data is unchanged) instead of
+    // a destructive one.
+    if (!this.holdsDocumentFor(this.file?.path ?? null)) {
+      return this.data ?? ''
+    }
     if (this.instance) {
       try {
         return this.instance.getViewData()
@@ -198,8 +226,20 @@ class HostModuleFileView extends TextFileView {
     return this.cachedData
   }
 
+  /** Whether the document this view is holding is `path`'s. */
+  private holdsDocumentFor(path: string | null): boolean {
+    const document = this.document
+    if (!document) return false
+    // A document that arrived with no file to belong to is taken at face
+    // value: Obsidian only calls setViewData from its own load path, where a
+    // file is always set, so this is the embedding-in-a-test case rather than
+    // a stale document.
+    return document.path === null || document.path === path
+  }
+
   setViewData(data: string, clear: boolean): void {
     this.cachedData = data
+    this.document = { path: this.file?.path ?? null }
     if (this.instance) {
       try {
         this.instance.setViewData(data, clear)
@@ -225,6 +265,10 @@ class HostModuleFileView extends TextFileView {
       }
     }
     this.cachedData = ''
+    // Whatever the instance is left holding after its own clear() — for a
+    // board, an empty board, which serializes to a perfectly valid file — is
+    // no longer this view's answer for anything.
+    this.document = null
   }
 
   onResize(): void {

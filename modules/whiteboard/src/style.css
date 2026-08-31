@@ -270,6 +270,34 @@
   pointer-events: none;
 }
 
+/* Grabbable, so say so — the same tell the label carries (below), on exactly
+ * the condition that makes the frame grabbable at all. Locked out on a locked
+ * board, where a press selects but never becomes a drag
+ * (ui/canvas.ts's updateNodeInteraction). */
+.yolo-whiteboard-root:not(.yolo-whiteboard-locked)
+  .yolo-whiteboard-group.yolo-whiteboard-card-selected {
+  cursor: grab;
+}
+
+/* Being dragged. A card gets this from the block further down, which a group
+ * does not match: it is not a `.yolo-whiteboard-card`, and it must not take
+ * that block's `z-index: 1` either — a group is a frame and stays behind its
+ * contents while it moves. What it does want is the same grabbing cursor and
+ * the same compositor hint, since a drag rewrites its transform every frame.
+ *
+ * The cursor carries the rule above's whole prefix, which it does not need
+ * (a locked board never starts a drag, so the class never appears there) but
+ * cannot do without: two classes would lose to that rule's four, and the
+ * cursor would stay `grab` for the length of the drag. */
+.yolo-whiteboard-group.yolo-whiteboard-card-dragging {
+  will-change: transform;
+}
+
+.yolo-whiteboard-root:not(.yolo-whiteboard-locked)
+  .yolo-whiteboard-group.yolo-whiteboard-card-dragging {
+  cursor: grabbing;
+}
+
 .yolo-whiteboard-group.yolo-whiteboard-card-selected {
   border-color: var(--interactive-accent);
   box-shadow: 0 0 0 1px var(--interactive-accent);

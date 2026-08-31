@@ -76,6 +76,7 @@ jest.mock('obsidian', () => {
       triggerMigration: () => void
     }
     file: InstanceType<typeof TFile> | null = null
+    data: string | null = null
     requestSave = jest.fn()
     // The real super chain (EditableFileView.onOpen wires the editable
     // header title; FileView.onClose unloads the file) must be awaitable
@@ -291,6 +292,104 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
 
     expect(hostView.getViewData()).toBe('# hello, edited live')
     expect(handles[0].dispose).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers with the file, not the module, until it has been given a document', () => {
+    // The wipe this guards against: a save fires while the view is holding
+    // nothing, the module answers with an empty document of its own kind —
+    // for a board, a valid empty board — and it lands on the user's file.
+    const { factory, handles } = makeFactory()
+    const view: YoloModuleFileViewV1 = {
+      viewType: 'yolo-whiteboard',
+      extensions: ['yoloboard'],
+      name: 'Whiteboard',
+      icon: 'layout-grid',
+      factory,
+    }
+    const slot = new ModuleFileViewSlot(
+      'whiteboard',
+      'yolo-whiteboard',
+      'layout-grid',
+      view.name,
+      makeLocales(),
+    )
+    const hostView = createModuleFileView(
+      {} as never,
+      makePlugin(),
+      slot,
+    ) as unknown as {
+      onOpen(): Promise<void>
+      getViewData(): string
+      setViewData(data: string, clear: boolean): void
+      clear(): void
+      file: TFile | null
+      data: string | null
+    }
+
+    const board = new TFile('board.yoloboard')
+    const onDisk = '{"nodes":[{"id":"n-1"}]}'
+    hostView.file = board
+    hostView.data = onDisk
+
+    slot.bind(view)
+    void hostView.onOpen()
+    // The instance exists and will happily serialize the empty document it
+    // was constructed with.
+    expect(handles).toHaveLength(1)
+    handles[0].liveData = '{"nodes":[]}'
+
+    expect(hostView.getViewData()).toBe(onDisk)
+
+    // Once the file's content has actually been handed over, the module is
+    // the authority again.
+    hostView.setViewData(onDisk, true)
+    handles[0].liveData = '{"nodes":[{"id":"n-1"},{"id":"n-2"}]}'
+    expect(hostView.getViewData()).toBe('{"nodes":[{"id":"n-1"},{"id":"n-2"}]}')
+
+    // Cleared: the leaf is being repurposed and the view holds nothing again.
+    hostView.clear()
+    expect(hostView.getViewData()).toBe(onDisk)
+  })
+
+  it('never answers for one file with the document of another', () => {
+    const { factory, handles } = makeFactory()
+    const view: YoloModuleFileViewV1 = {
+      viewType: 'yolo-whiteboard',
+      extensions: ['yoloboard'],
+      name: 'Whiteboard',
+      icon: 'layout-grid',
+      factory,
+    }
+    const slot = new ModuleFileViewSlot(
+      'whiteboard',
+      'yolo-whiteboard',
+      'layout-grid',
+      view.name,
+      makeLocales(),
+    )
+    const hostView = createModuleFileView(
+      {} as never,
+      makePlugin(),
+      slot,
+    ) as unknown as {
+      onOpen(): Promise<void>
+      getViewData(): string
+      setViewData(data: string, clear: boolean): void
+      file: TFile | null
+      data: string | null
+    }
+
+    slot.bind(view)
+    void hostView.onOpen()
+    hostView.file = new TFile('first.yoloboard')
+    hostView.setViewData('{"board":"first"}', true)
+    handles[0].liveData = '{"board":"first","edited":true}'
+
+    // The leaf moves on to another file before the pending save fires.
+    hostView.file = new TFile('second.yoloboard')
+    hostView.data = '{"board":"second"}'
+
+    expect(hostView.getViewData()).toBe('{"board":"second"}')
   })
 
   it('caches setViewData calls that arrive before onOpen and replays them on bind', () => {
