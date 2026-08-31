@@ -568,6 +568,20 @@ export type YoloModuleVaultV1 = {
   exists(path: string): Promise<boolean>
   readText(filePath: string): Promise<string>
   readBinary(filePath: string): Promise<ArrayBuffer>
+  /**
+   * The URL that serves `filePath`'s bytes to the renderer — what an `<img>`,
+   * `<audio>` or `<video>` in a module's UI points its `src` at.
+   *
+   * `readBinary` plus a blob URL would technically get there, but it copies
+   * the whole file into memory and makes the module responsible for revoking
+   * the URL; this hands out the same `app://` URL Obsidian's own embeds use,
+   * so the media element streams and seeks exactly as it does in a note.
+   *
+   * Synchronous and total: it maps a path to a URL without touching the file,
+   * so a path that does not exist simply yields a URL that 404s. Only the
+   * usual path validation applies (vault-relative, no dot segments).
+   */
+  getResourceUrl(filePath: string): string
   ensureFolder(folderPath: string): Promise<void>
   createFolder(folderPath: string): Promise<void>
   createText(

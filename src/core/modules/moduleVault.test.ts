@@ -90,6 +90,7 @@ function createApp(entries: Array<TFile | TFolder>) {
       }),
       read: jest.fn(async (path: string) => `content:${path}`),
       readBinary: jest.fn(async () => binary),
+      getResourcePath: jest.fn((path: string) => `app://vault/${path}?1`),
       remove: jest.fn(async (path: string) => void byPath.delete(path)),
       rmdir: jest.fn(async (path: string) => void byPath.delete(path)),
     },
@@ -190,6 +191,17 @@ describe('ObsidianModuleVaultCapabilityProvider', () => {
       capability.api.readBinary('unindexed/secret.json'),
     ).rejects.toThrow('file not found')
     expect(vault.adapter.exists).toHaveBeenCalled()
+
+    // Media/link cards point an <img>/<audio>/<video> at this, so it must be
+    // the same app:// URL Obsidian's own embeds use — and it must apply the
+    // same path validation as every other vault call.
+    expect(capability.api.getResourceUrl('notes\\card.md')).toBe(
+      'app://vault/notes/card.md?1',
+    )
+    expect(() => capability.api.getResourceUrl('../escape.png')).toThrow(
+      'dot segments',
+    )
+
     lifecycle.dispose()
     expect(() => capability.api.getEntry('notes')).toThrow('not active')
     await expect(capability.api.exists('notes')).rejects.toThrow('not active')

@@ -107,6 +107,7 @@ const UNAVAILABLE_MODULE_VAULT_API: YoloModuleVaultV1 = Object.freeze({
   exists: () => Promise.reject(new Error('Module vault is unavailable')),
   readText: () => Promise.reject(new Error('Module vault is unavailable')),
   readBinary: () => Promise.reject(new Error('Module vault is unavailable')),
+  getResourceUrl: () => unavailable(),
   ensureFolder: () => Promise.reject(new Error('Module vault is unavailable')),
   createFolder: () => Promise.reject(new Error('Module vault is unavailable')),
   createText: () => Promise.reject(new Error('Module vault is unavailable')),
@@ -301,6 +302,12 @@ function createObsidianModuleVaultCapability({
       }
       const bytes = await app.vault.readBinary(entry)
       return bytes.slice(0)
+    },
+    getResourceUrl: (filePath) => {
+      assertAvailable()
+      return app.vault.adapter.getResourcePath(
+        normalizeModuleVaultPath(filePath),
+      )
     },
     ensureFolder: async (folderPath) => {
       assertAvailable()
