@@ -2,9 +2,9 @@
  * YOLO Whiteboard module styles (M1: canvas view — camera, cards, live
  * editor, error state). All classes use the yolo- prefix (Obsidian and
  * Style Constraints, CLAUDE.md); scoped further with whiteboard- to make the
- * module obvious. Animate only opacity/transform (CLAUDE.md) — this file
- * has no animations yet beyond the browser's own :active/:hover, but keep
- * that constraint in mind if one is added later.
+ * module obvious. Animate only opacity/transform (CLAUDE.md), with durations
+ * from the host's motion tokens — the one transition here is the creation
+ * bar's hover lift.
  */
 
 .yolo-whiteboard-root {
@@ -1311,6 +1311,47 @@ label.yolo-whiteboard-color-swatch-custom.yolo-whiteboard-color-swatch-active {
 
 button.yolo-whiteboard-card-menu-button {
   padding: var(--size-2-3, 6px) var(--size-4-2, 8px);
+  /* Every button is also a handle: a card can be dragged off it onto the
+   * board (ui/canvas.ts's beginCreateDrag). */
+  cursor: grab;
+}
+
+button.yolo-whiteboard-card-menu-button:active {
+  cursor: grabbing;
+}
+
+/* The icon lifts on hover, which is how the bar says a button can be picked
+ * up at all — Canvas's own tell for the same gesture. Transform only, at the
+ * feedback duration; reduced motion is handled globally for yolo- classes. */
+.yolo-whiteboard-card-menu-button .svg-icon {
+  transition: transform var(--yolo-anim-duration-feedback, 120ms) ease-out;
+}
+
+@media (hover: hover) {
+  button.yolo-whiteboard-card-menu-button:hover .svg-icon {
+    transform: translateY(-3px);
+  }
+}
+
+/* The card a creation-bar drag is about to make: its outline, at its real
+ * size, in the world layer so it is stated in the same world coordinates the
+ * snapping thought in. An outline rather than a card, because it is not one
+ * yet — what it shows is where and how big, which is all that is known before
+ * the note or the URL has been chosen. */
+.yolo-whiteboard-create-ghost {
+  position: absolute;
+  border: 1px solid var(--interactive-accent);
+  border-radius: var(--radius-m, 6px);
+  /* The wash is mixed into the fill rather than applied as `opacity` to the
+   * whole element: enough of a solid to read over the dot grid and not enough
+   * to hide a card it passes over, while the outline stays at full strength —
+   * where the edges land is the thing this is showing. */
+  background-color: color-mix(
+    in oklch,
+    var(--interactive-accent) 14%,
+    transparent
+  );
+  pointer-events: none;
 }
 
 /* Hidden while the board cannot take a new card — locked, or zoomed out past

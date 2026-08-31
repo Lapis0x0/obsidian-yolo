@@ -1,18 +1,17 @@
 // The bottom-centre creation bar (P3 batch 3, interaction surface ③) —
 // Obsidian Canvas's `.canvas-card-menu`.
 //
-// Canvas's own bar carries three buttons (card, note, media), each wired to
-// *two* gestures: `click` creates at `posCenter()` — the viewport's centre —
-// and `pointerdown` starts a ghost node that is dropped wherever the pointer
-// lets go. Both verified against a running 1.13.7 build.
+// Every button is both a click and a handle to drag a card off, which is
+// Canvas's arrangement (`dragTempNode`) and for its reason: the bar is where
+// the eye already is when a card is wanted, so "put one *there*" should not
+// have to be asked for somewhere else. A press is raised as one `onPress`
+// rather than as a click and a drag, because at pointerdown the two are still
+// the same gesture — the canvas decides which it was from how far the pointer
+// travelled, the same way a press on a card decides between editing it and
+// moving it.
 //
-// We ship the click. Placing a card exactly where you want it is covered
-// instead by the canvas context menu, which creates at the point that was
-// right-clicked (Canvas's `showCreationMenu(menu, pos, size)` does the same) —
-// so the drag is a second route to a destination already reachable, and the
-// three of our four entries that need a file or a URL would have to open their
-// picker *after* the drop, which is a good deal more machinery than a ghost
-// rectangle. The button labels promise only what they do.
+// `click` is left for the keyboard alone (`detail === 0`), where there is no
+// pointer to follow and a button must still activate.
 //
 // Our bar carries a fourth button Canvas's does not: the web card. Canvas
 // offers "add website" only from its creation menu, but for us this is the one
@@ -20,7 +19,7 @@
 // with an import path and no new-card path.
 //
 // This class is a renderer, like ui/selectionToolbar.ts: it knows how to draw
-// a row of buttons and raise their clicks, and nothing about boards.
+// a row of buttons and raise their presses, and nothing about boards.
 //
 // Popout safety: every element is created from the `Document` handed in.
 
@@ -69,7 +68,12 @@ export type CardMenuIconName =
 export type CardMenuAction = Readonly<{
   label: string
   icon: CardMenuIconName
+  /** Activated from the keyboard, which names no place: create wherever this
+   * action's default is. */
   onSelect: () => void
+  /** Pressed with a pointer, which does: raised at pointerdown, before a
+   * click and a drag have become different things. */
+  onPress: (event: PointerEvent) => void
 }>
 
 export class CardMenu {
@@ -114,8 +118,20 @@ export class CardMenu {
     button.setAttribute('aria-label', action.label)
     button.appendChild(this.createIcon(action.icon))
     button.addEventListener('click', (event) => {
+      // A pointer press was already handled at pointerdown; `detail === 0` is
+      // the click the keyboard synthesises, which is the only one left to act
+      // on.
+      if (event.detail !== 0) return
       event.preventDefault()
       action.onSelect()
+    })
+    button.addEventListener('pointerdown', (event) => {
+      if (!event.isPrimary || event.button !== 0) return
+      // Nothing this press does is the default one: no text selection, and no
+      // focus ring landing on a button whose card is about to be dragged
+      // somewhere else. Canvas's `dragTempNode` opens the same way.
+      event.preventDefault()
+      action.onPress(event)
     })
     parent.appendChild(button)
   }

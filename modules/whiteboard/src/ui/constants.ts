@@ -132,7 +132,7 @@ export const DEGRADE_RESTORE_SCALE =
   DEGRADE_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
 
 /**
- * Size a card is created at. Deliberately at the small end of what the
+ * Size a text card is created at. Deliberately at the small end of what the
  * spikes' boards used (226-334 wide) — an empty card should not take half
  * the screen; the user resizes the ones that grow.
  *
@@ -143,6 +143,24 @@ export const DEGRADE_RESTORE_SCALE =
  * gaps by dragging alone.
  */
 export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 182 })
+
+/**
+ * Size a card that shows something else is created at: a note, an image, a
+ * web page.
+ *
+ * Bigger than an empty text card, and for the opposite reason. What a text
+ * card will hold does not exist yet, so the small end is the polite guess;
+ * what these hold exists already and is not ours to abridge — a note shown
+ * two lines at a time, or a picture at a fifth of its size, is a card that
+ * has to be resized before it can be read at all.
+ *
+ * 390 is 30 grid cells, the whole-cell neighbour of Obsidian Canvas's own
+ * 400 x 400 `defaultFileNodeDimensions` (its text nodes are 250 x 60, and it
+ * splits the two for the same reason). Whole cells for the reason above, and
+ * a literal for the same reason NEW_CARD_SIZE is one: the cell is derived
+ * from the card, not the other way round.
+ */
+export const NEW_EMBED_CARD_SIZE = Object.freeze({ w: 390, h: 390 })
 
 /** World-space stagger between cards created by one multi-file drop, so
  * three dropped notes read as three cards rather than one. */

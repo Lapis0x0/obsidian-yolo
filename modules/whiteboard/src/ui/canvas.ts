@@ -96,6 +96,7 @@ import {
 } from '../domain/operations'
 import {
   type CardRect,
+  type CardSize,
   RESIZE_HANDLES,
   type ResizeHandle,
   rectOfCard,
@@ -127,7 +128,11 @@ import {
   DISTRIBUTE_MENU,
   ToolbarController,
 } from './canvas/toolbarController'
-import { CardMenu } from './cardMenu'
+import {
+  CardMenu,
+  type CardMenuAction,
+  type CardMenuIconName,
+} from './cardMenu'
 import {
   CARD_BODY_LIVE_CLASS,
   CARD_FOCUSED_CLASS,
@@ -148,6 +153,7 @@ import {
   MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
+  NEW_EMBED_CARD_SIZE,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SNAP_SCREEN_PX,
@@ -190,6 +196,7 @@ const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
 const LOCKED_CLASS = 'yolo-whiteboard-locked'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
+const CREATE_GHOST_CLASS = 'yolo-whiteboard-create-ghost'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
 const EDGE_ARROW_MARKER_CLASS = 'yolo-whiteboard-edge-arrow-marker'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
@@ -318,12 +325,34 @@ type ConnectInteraction = {
   target: SideAnchor | null
 }
 
+/**
+ * A press on one of the creation bar's buttons, which is a card being pulled
+ * off the bar and has not yet decided whether it is going anywhere: below
+ * `DRAG_THRESHOLD_PX` it is the click that creates in the middle of the
+ * screen, past it the card is placed where the pointer lets go.
+ *
+ * `create` is the whole difference between the four buttons — the ghost, the
+ * snapping and the drop are one gesture whatever is about to be made.
+ */
+type CreateInteraction = {
+  readonly kind: 'create'
+  readonly startClient: ScreenPoint
+  /** The card's size, carried so the ghost is the card: one table feeds both
+   * (see `creationAction`), and they cannot disagree. */
+  readonly size: CardSize
+  readonly create: (at: ScreenPoint) => void
+  dragging: boolean
+  /** As the other drags: frozen when the press becomes one. */
+  snapCandidates: readonly CardRect[]
+}
+
 type Interaction =
   | PanInteraction
   | MarqueeInteraction
   | NodeInteraction
   | ResizeInteraction
   | ConnectInteraction
+  | CreateInteraction
 
 /** Which label a rename is acting on. The two kinds are typed the same way
  * (in place, on the element itself) and differ only in where the text is
@@ -457,6 +486,11 @@ export class WhiteboardCanvas {
   private edgeLayer!: EdgeLayer
   /** Drawn only while a drag or a resize is lining something up. */
   private snapGuideLayer: SnapGuideLayer | null = null
+  /** The outline of the card a creation-bar drag is about to make. Built for
+   * the gesture and removed with it — one element per drag is cheaper than a
+   * permanent one to keep in step with a world layer that is rebuilt on every
+   * reload. */
+  private createGhostEl: HTMLElement | null = null
   /** Which key waves alignment away, which is a platform question — resolved
    * once, on first use (see `snappingWanted`). */
   private isMacOS: boolean | null = null
@@ -801,7 +835,11 @@ export class WhiteboardCanvas {
     this.errorEl = error
     this.previewPathEl = preview
     this.interactionLayerEl = interactionLayer
-    this.cameraController = new CameraController(this.context, viewport, world, {
+    this.cameraController = new CameraController(
+      this.context,
+      viewport,
+      world,
+      {
         isParseFailed: () => this.parseFailed,
         isEditingWheelTarget: (target) =>
           this.editing !== null &&
@@ -904,26 +942,30 @@ export class WhiteboardCanvas {
     // `isOverlayTarget` check then keeps a press on any of this chrome from
     // also being a press on the board behind it.
     this.cardMenu = new CardMenu(doc, this.toolbarController.overlay, [
-      {
-        label: this.t('cardMenu.newCard'),
-        icon: 'sticky-note',
-        onSelect: () => this.createTextCardAt(this.viewportCenterWorld()),
-      },
-      {
-        label: this.t('cardMenu.addNote'),
-        icon: 'file-text',
-        onSelect: () => this.promptForNoteCard(),
-      },
-      {
-        label: this.t('cardMenu.addMedia'),
-        icon: 'file-image',
-        onSelect: () => this.promptForMediaCard(),
-      },
-      {
-        label: this.t('cardMenu.newWebCard'),
-        icon: 'external-link',
-        onSelect: () => this.promptForWebCard(),
-      },
+      this.creationAction(
+        'cardMenu.newCard',
+        'sticky-note',
+        NEW_CARD_SIZE,
+        (at) => this.createTextCardAt(at),
+      ),
+      this.creationAction(
+        'cardMenu.addNote',
+        'file-text',
+        NEW_EMBED_CARD_SIZE,
+        (at) => this.promptForNoteCard(at),
+      ),
+      this.creationAction(
+        'cardMenu.addMedia',
+        'file-image',
+        NEW_EMBED_CARD_SIZE,
+        (at) => this.promptForMediaCard(at),
+      ),
+      this.creationAction(
+        'cardMenu.newWebCard',
+        'external-link',
+        NEW_EMBED_CARD_SIZE,
+        (at) => this.promptForWebCard(at),
+      ),
     ])
     // A freshly built world element carries none of the old one's inline
     // custom properties, so both handle variables have to be written again.
@@ -1206,17 +1248,17 @@ export class WhiteboardCanvas {
           {
             title: this.t('cardMenu.addNote'),
             icon: 'file-text',
-            onSelect: () => this.promptForNoteCard(),
+            onSelect: () => this.promptForNoteCard(point),
           },
           {
             title: this.t('cardMenu.addMedia'),
             icon: 'file-image',
-            onSelect: () => this.promptForMediaCard(),
+            onSelect: () => this.promptForMediaCard(point),
           },
           {
             title: this.t('cardMenu.newWebCard'),
             icon: 'external-link',
-            onSelect: () => this.promptForWebCard(),
+            onSelect: () => this.promptForWebCard(point),
           },
           {
             title: this.t('menu.newGroupHere'),
@@ -1399,6 +1441,9 @@ export class WhiteboardCanvas {
       case 'connect':
         this.updateConnect(interaction, e)
         break
+      case 'create':
+        this.updateCreateDrag(interaction, e)
+        break
     }
   }
 
@@ -1526,6 +1571,9 @@ export class WhiteboardCanvas {
       case 'connect':
         this.finishConnect(interaction, e)
         break
+      case 'create':
+        this.finishCreateDrag(interaction, e)
+        break
     }
     // Whatever the gesture was, it is over: nothing is lining up any more.
     this.snapGuideLayer?.clear()
@@ -1633,7 +1681,10 @@ export class WhiteboardCanvas {
     const current = this.currentMarqueePoint(interaction, e)
     this.marqueeEl?.remove()
     this.marqueeEl = null
-    const worldA = screenToWorld(this.cameraController.view, interaction.originLocal)
+    const worldA = screenToWorld(
+      this.cameraController.view,
+      interaction.originLocal,
+    )
     const worldB = screenToWorld(this.cameraController.view, current)
     // A zero-size marquee (a plain click on empty canvas, no movement)
     // naturally selects nothing here, subsuming "click empty clears
@@ -2465,7 +2516,9 @@ export class WhiteboardCanvas {
     const next = new Set(ids)
     for (const id of this.selectedIds) {
       if (!next.has(id))
-        this.cardRenderer.getRuntime(id)?.el?.classList.remove(CARD_SELECTED_CLASS)
+        this.cardRenderer
+          .getRuntime(id)
+          ?.el?.classList.remove(CARD_SELECTED_CLASS)
     }
     for (const id of next) {
       if (!this.selectedIds.has(id))
@@ -2673,7 +2726,9 @@ export class WhiteboardCanvas {
     this.endRename(true)
     const el =
       this.labelEl(target) ??
-      (target.kind === 'edge' ? this.edgeLayer.attachEdgeLabel(target.id) : null)
+      (target.kind === 'edge'
+        ? this.edgeLayer.attachEdgeLabel(target.id)
+        : null)
     if (!el) return
     this.toolbarController.closePopover()
     this.renaming = target
@@ -2903,10 +2958,160 @@ export class WhiteboardCanvas {
     this.cardMenu?.setAvailable(this.canCreate)
   }
 
+  // -- creating from the bar ----------------------------------------------
+  // Obsidian Canvas's `dragTempNode`: each button is also a handle, and what
+  // comes off it is a ghost of the card about to exist — the same size, in the
+  // same place, lining up with the same neighbours. A drop is a placement like
+  // any other, so it runs through domain/snapping.ts and draws the same
+  // guides.
+  //
+  // Canvas also pans the board when the ghost reaches the edge of the
+  // viewport. We have that nowhere — not for card drags, not for the marquee,
+  // not for connections — and it is a property of dragging on a canvas rather
+  // than of this gesture, so it belongs to all of them at once or to none.
+
+  /** One entry on the bar: the same creation from the keyboard, which names
+   * no place and takes the middle of the screen, and from a pointer, which
+   * names one. `size` is what this entry creates, so the ghost is a ghost of
+   * the card rather than of a card. */
+  private creationAction(
+    labelKey: string,
+    icon: CardMenuIconName,
+    size: CardSize,
+    create: (at: ScreenPoint) => void,
+  ): CardMenuAction {
+    return {
+      label: this.t(labelKey),
+      icon,
+      onSelect: () => create(this.viewportCenterWorld()),
+      onPress: (event) => this.beginCreateDrag(event, size, create),
+    }
+  }
+
+  private beginCreateDrag(
+    e: PointerEvent,
+    size: CardSize,
+    create: (at: ScreenPoint) => void,
+  ): void {
+    if (!this.canCreate) return
+    this.interaction = {
+      kind: 'create',
+      startClient: { x: e.clientX, y: e.clientY },
+      size,
+      create,
+      dragging: false,
+      snapCandidates: [],
+    }
+    // Captured on the viewport rather than left on the button: the ghost is
+    // dragged across cards and over live content (an embedded page swallows
+    // pointer events), and the button must not receive the pointerup either —
+    // its click is the keyboard's alone.
+    this.viewportEl.setPointerCapture(e.pointerId)
+  }
+
+  private updateCreateDrag(
+    interaction: CreateInteraction,
+    e: PointerEvent,
+  ): void {
+    if (!interaction.dragging) {
+      const dx = e.clientX - interaction.startClient.x
+      const dy = e.clientY - interaction.startClient.y
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
+      interaction.dragging = true
+      // Nothing of the board is moving, so everything on screen is something
+      // to line up with.
+      interaction.snapCandidates = this.snapCandidates(new Set())
+      this.showCreateGhost()
+    }
+    const { rect, guides } = this.createGhostRect(interaction, e)
+    this.placeCreateGhost(rect)
+    this.snapGuideLayer?.show(guides)
+  }
+
+  private finishCreateDrag(
+    interaction: CreateInteraction,
+    e: PointerEvent,
+  ): void {
+    this.hideCreateGhost()
+    // Never moved: the press was a click, and a click on the bar creates in
+    // the middle of the screen as it always has.
+    if (!interaction.dragging) {
+      interaction.create(this.viewportCenterWorld())
+      return
+    }
+    // Let go off the board — over the sidebar, or outside the window
+    // entirely. Canvas drops the gesture here too: a card placed where the
+    // pointer is not would be a card the user cannot see arriving.
+    const local = this.cameraController.viewportPointFromEvent(e)
+    if (
+      local.x < 0 ||
+      local.y < 0 ||
+      local.x > this.viewportEl.clientWidth ||
+      local.y > this.viewportEl.clientHeight
+    ) {
+      return
+    }
+    const { rect } = this.createGhostRect(interaction, e)
+    interaction.create({ x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 })
+  }
+
+  /**
+   * Where the ghost is, and what it lines up with there.
+   *
+   * The card is centred on the pointer — every creation path already takes a
+   * centre and lays the card out around it, so the ghost and what replaces it
+   * are the same rectangle by construction.
+   */
+  private createGhostRect(
+    interaction: CreateInteraction,
+    e: PointerEvent,
+  ): Readonly<{ rect: CardRect; guides: readonly SnapGuide[] }> {
+    const center = this.worldPointFromEvent(e)
+    const { w, h } = interaction.size
+    const rect: CardRect = { x: center.x - w / 2, y: center.y - h / 2, w, h }
+    if (!this.snappingWanted(e)) return { rect, guides: [] }
+    const snap = snapMove([rect], interaction.snapCandidates, {
+      ...this.snapOptions(),
+      movedX: true,
+      movedY: true,
+    })
+    return {
+      rect: { ...rect, x: rect.x + snap.dx, y: rect.y + snap.dy },
+      guides: snap.guides,
+    }
+  }
+
+  private showCreateGhost(): void {
+    if (this.createGhostEl) return
+    const el = this.context.getDocument().createElement('div')
+    el.className = CREATE_GHOST_CLASS
+    this.worldEl.appendChild(el)
+    this.createGhostEl = el
+  }
+
+  private placeCreateGhost(rect: CardRect): void {
+    const el = this.createGhostEl
+    if (!el) return
+    el.style.left = `${rect.x}px`
+    el.style.top = `${rect.y}px`
+    el.style.width = `${rect.w}px`
+    el.style.height = `${rect.h}px`
+  }
+
+  private hideCreateGhost(): void {
+    this.createGhostEl?.remove()
+    this.createGhostEl = null
+  }
+
   // -- creation prompts ---------------------------------------------------
   // Three of the four creation entries need a value before they can act. Each
   // opens the same panel (ui/promptOverlay.ts); what differs is the list it
   // filters and what the chosen value becomes.
+  //
+  // Where the card goes is settled before the panel opens and carried through
+  // it: a drop names its place, and by the time a note has been chosen the
+  // pointer is long gone. Canvas orders it the same way — `dragTempNode`'s
+  // callback opens the picker with the dropped position already captured.
 
   /** Opens a prompt, replacing any already open. Closing is this view's own
    * bookkeeping, so callers describe only what they are asking for. */
@@ -2930,8 +3135,9 @@ export class WhiteboardCanvas {
     this.syncSelectionKeymapScope()
   }
 
-  private promptForNoteCard(): void {
-    const center = this.viewportCenterWorld()
+  private promptForNoteCard(
+    center: ScreenPoint = this.viewportCenterWorld(),
+  ): void {
     this.openPrompt({
       title: this.t('prompt.addNoteTitle'),
       placeholder: this.t('prompt.searchPlaceholder'),
@@ -2946,8 +3152,9 @@ export class WhiteboardCanvas {
     })
   }
 
-  private promptForMediaCard(): void {
-    const center = this.viewportCenterWorld()
+  private promptForMediaCard(
+    center: ScreenPoint = this.viewportCenterWorld(),
+  ): void {
     this.openPrompt({
       title: this.t('prompt.addMediaTitle'),
       placeholder: this.t('prompt.searchPlaceholder'),
@@ -2962,8 +3169,9 @@ export class WhiteboardCanvas {
     })
   }
 
-  private promptForWebCard(): void {
-    const center = this.viewportCenterWorld()
+  private promptForWebCard(
+    center: ScreenPoint = this.viewportCenterWorld(),
+  ): void {
     this.openPrompt({
       title: this.t('prompt.newWebCardTitle'),
       placeholder: this.t('prompt.urlPlaceholder'),
@@ -3027,10 +3235,10 @@ export class WhiteboardCanvas {
     const node: LinkNode = {
       id: this.nextNodeId(),
       type: 'link',
-      x: Math.round(world.x - NEW_CARD_SIZE.w / 2),
-      y: Math.round(world.y - NEW_CARD_SIZE.h / 2),
-      w: NEW_CARD_SIZE.w,
-      h: NEW_CARD_SIZE.h,
+      x: Math.round(world.x - NEW_EMBED_CARD_SIZE.w / 2),
+      y: Math.round(world.y - NEW_EMBED_CARD_SIZE.h / 2),
+      w: NEW_EMBED_CARD_SIZE.w,
+      h: NEW_EMBED_CARD_SIZE.h,
       url: normalized,
       extra: {},
     }
@@ -3079,10 +3287,10 @@ export class WhiteboardCanvas {
       board = addNode(board, {
         id: this.nextNodeId(),
         type: 'file',
-        x: Math.round(world.x - NEW_CARD_SIZE.w / 2 + offset),
-        y: Math.round(world.y - NEW_CARD_SIZE.h / 2 + offset),
-        w: NEW_CARD_SIZE.w,
-        h: NEW_CARD_SIZE.h,
+        x: Math.round(world.x - NEW_EMBED_CARD_SIZE.w / 2 + offset),
+        y: Math.round(world.y - NEW_EMBED_CARD_SIZE.h / 2 + offset),
+        w: NEW_EMBED_CARD_SIZE.w,
+        h: NEW_EMBED_CARD_SIZE.h,
         file: path,
         extra: {},
       })
@@ -3411,7 +3619,10 @@ export class WhiteboardCanvas {
    * a zoom level gets to tear down.
    */
   private updateDegradedState(): void {
-    const next = nextDegradedState(this.cameraController.view.scale, this.degraded, {
+    const next = nextDegradedState(
+      this.cameraController.view.scale,
+      this.degraded,
+      {
         enter: DEGRADE_SCALE_THRESHOLD,
         restore: DEGRADE_RESTORE_SCALE,
       },
