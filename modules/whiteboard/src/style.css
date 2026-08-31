@@ -935,7 +935,7 @@
 }
 
 .yolo-whiteboard-edge-arrow {
-  /* Scaled about the marker's reference point (refX/refY = 7,4 of an 8x8
+  /* Scaled about the marker's reference point (refX/refY = 8.75,5 of a 10x10
    * triangle, hence 87.5% 50% of its fill box), which is the point pinned to
    * the end of the line — so the arrow keeps its tip where the line ends at
    * every zoom, and only its size changes. Obsidian Canvas scales its own

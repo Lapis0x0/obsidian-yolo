@@ -706,13 +706,17 @@ export class WhiteboardCanvas {
     const marker = doc.createElementNS(SVG_NS, 'marker')
     marker.setAttribute('id', this.arrowMarkerId)
     // The arrowhead is counter-scaled in the stylesheet (it grows past this
-    // 8x8 marker viewport when the board is zoomed out), so the marker must
+    // 10x10 marker viewport when the board is zoomed out), so the marker must
     // not clip it.
     marker.setAttribute('class', EDGE_ARROW_MARKER_CLASS)
-    marker.setAttribute('markerWidth', '8')
-    marker.setAttribute('markerHeight', '8')
-    marker.setAttribute('refX', '7')
-    marker.setAttribute('refY', '4')
+    // 10 world units long at 1:1 (and counter-scaled from there — see
+    // style.css's .yolo-whiteboard-edge-arrow), which is Obsidian Canvas's
+    // own 10.4. `refX` is an eighth of the length short of the tip, so the
+    // head overlaps the end of the line it caps rather than floating off it.
+    marker.setAttribute('markerWidth', '10')
+    marker.setAttribute('markerHeight', '10')
+    marker.setAttribute('refX', '8.75')
+    marker.setAttribute('refY', '5')
     // auto-start-reverse: the same marker, reused for both marker-start and
     // marker-end (an edge's `arrow: 'both'`), points outward correctly at
     // each end without needing two separate marker defs.
@@ -720,7 +724,7 @@ export class WhiteboardCanvas {
     marker.setAttribute('markerUnits', 'userSpaceOnUse')
     const arrowPath = doc.createElementNS(SVG_NS, 'path')
     arrowPath.setAttribute('class', EDGE_ARROW_CLASS)
-    arrowPath.setAttribute('d', 'M0,0 L8,4 L0,8 Z')
+    arrowPath.setAttribute('d', 'M0,0 L10,5 L0,10 Z')
     marker.appendChild(arrowPath)
     defs.appendChild(marker)
     edgesSvg.appendChild(defs)
