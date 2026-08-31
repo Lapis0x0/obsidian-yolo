@@ -1,6 +1,7 @@
-import type { BoardNode } from './fileFormat'
+import { type Board, type BoardNode, emptyBoard } from './fileFormat'
 import {
   GROUP_SELECTION_PADDING,
+  arrangeTargets,
   groupRectForNodes,
   nodesInsideGroup,
   nodesToDragWith,
@@ -19,6 +20,10 @@ function group(
 
 function card(id: string, x: number, y: number, w = 50, h = 50): BoardNode {
   return { id, type: 'text', x, y, w, h, text: '', extra: {} }
+}
+
+function boardWith(nodes: BoardNode[]): Board {
+  return { ...emptyBoard(), nodes }
 }
 
 describe('rectContains', () => {
@@ -105,6 +110,34 @@ describe('nodesToDragWith', () => {
 
   it('returns nothing for an empty selection', () => {
     expect(nodesToDragWith(new Set(), nodes)).toEqual([])
+  })
+})
+
+describe('arrangeTargets', () => {
+  const a = card('a', 0, 0)
+  const b = card('b', 100, 0)
+  const frame = group('g', 0, 0, 200, 200)
+  const inside = card('inside', 20, 20)
+  const outside = card('outside', 400, 400)
+
+  it('returns the plain selection when it is not a lone group', () => {
+    const board = boardWith([a, b])
+    expect(arrangeTargets(board, new Set(['a', 'b']))).toEqual([a, b])
+  })
+
+  it("returns a lone selected group's contents rather than the frame itself", () => {
+    const board = boardWith([frame, inside, outside])
+    expect(arrangeTargets(board, new Set(['g']))).toEqual([inside])
+  })
+
+  it('treats several selected groups as a plain multi-selection', () => {
+    const other = group('h', 300, 300, 50, 50)
+    const board = boardWith([frame, other, inside])
+    expect(arrangeTargets(board, new Set(['g', 'h']))).toEqual([frame, other])
+  })
+
+  it('returns nothing for an empty selection', () => {
+    expect(arrangeTargets(boardWith([a, b]), new Set())).toEqual([])
   })
 })
 

@@ -28,18 +28,21 @@ import {
   alignRects,
   distributeRects,
 } from '../domain/arrange'
-import { cameraFromView, screenToWorld, unionRect } from '../domain/camera'
+import {
+  cameraFromView,
+  distanceBetween,
+  screenDeltaToWorld,
+  screenToWorld,
+} from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
-import { COLOR_PRESETS, type ColorPreset, commonColor } from '../domain/color'
 import { planNodeCommit } from '../domain/commit'
 import {
-  ARROW_DIRECTIONS,
   type ArrowDirection,
   NODE_SIDES,
   type SideAnchor,
   anchorPoint,
-  arrowDirection,
   arrowEnds,
+  buildEdge,
   buildEdgePathD,
   computeEdgeGeometry,
   findConnectTarget,
@@ -66,8 +69,8 @@ import {
 } from '../domain/fileFormat'
 import {
   GROUP_SELECTION_PADDING,
+  arrangeTargets,
   groupRectForNodes,
-  nodesInsideGroup,
   nodesToDragWith,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
@@ -103,7 +106,6 @@ import {
   nodesInMarquee,
 } from '../domain/selection'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
-import { type ToolbarBounds, toolbarScreenPosition } from '../domain/toolbar'
 import {
   type CanvasView,
   type VirtualCardRect,
@@ -113,10 +115,15 @@ import {
 import { takePendingFit } from '../host/pendingFit'
 import { createWhiteboardTranslation } from '../i18n'
 
-import { CardMenu } from './cardMenu'
 import { CameraController } from './canvas/cameraController'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { EdgeLayer } from './canvas/edgeLayer'
+import {
+  ALIGN_MENU,
+  DISTRIBUTE_MENU,
+  ToolbarController,
+} from './canvas/toolbarController'
+import { CardMenu } from './cardMenu'
 import {
   CARD_BODY_LIVE_CLASS,
   CARD_FOCUSED_CLASS,
@@ -138,8 +145,6 @@ import {
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SVG_NS,
-  TOOLBAR_GAP_PX,
-  TOOLBAR_MARGIN_PX,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
   WEB_URL_PATTERN,
@@ -150,51 +155,7 @@ import {
   type PromptOverlayOptions,
   type PromptSuggestion,
 } from './promptOverlay'
-import {
-  SelectionToolbar,
-  type ToolbarColorControl,
-  type ToolbarIconName,
-  type ToolbarItem,
-  type ToolbarMenuControl,
-  type ToolbarModel,
-  applyColorToElement,
-} from './selectionToolbar'
-
-/** i18n key per arrowhead direction (domain/edges.ts's `ArrowDirection`). */
-const ARROW_MENU_KEYS: Readonly<Record<ArrowDirection, string>> = {
-  none: 'menu.arrowNone',
-  forward: 'menu.arrowForward',
-  backward: 'menu.arrowBackward',
-  both: 'menu.arrowBoth',
-}
-
-/** i18n key and icon per alignment (domain/arrange.ts's `AlignEdge`). */
-/** Label and icon per arrange command, shared by the toolbar's popover and the
- * context menu — `ToolbarIconName` is a lucide name, which is also what a host
- * menu item's `icon` takes, so neither can drift from the other. */
-const ALIGN_MENU: Readonly<
-  Record<AlignEdge, Readonly<{ key: string; icon: ToolbarIconName }>>
-> = {
-  left: { key: 'menu.alignLeft', icon: 'align-start-vertical' },
-  center: { key: 'menu.alignCenter', icon: 'align-center-vertical' },
-  right: { key: 'menu.alignRight', icon: 'align-end-vertical' },
-  top: { key: 'menu.alignTop', icon: 'align-start-horizontal' },
-  middle: { key: 'menu.alignMiddle', icon: 'align-center-horizontal' },
-  bottom: { key: 'menu.alignBottom', icon: 'align-end-horizontal' },
-}
-
-const DISTRIBUTE_MENU: Readonly<
-  Record<DistributeAxis, Readonly<{ key: string; icon: ToolbarIconName }>>
-> = {
-  horizontal: {
-    key: 'menu.distributeHorizontal',
-    icon: 'align-horizontal-distribute-center',
-  },
-  vertical: {
-    key: 'menu.distributeVertical',
-    icon: 'align-vertical-distribute-center',
-  },
-}
+import { applyColorToElement } from './selectionToolbar'
 
 /**
  * Size of a group created around a selection is derived from that selection
@@ -448,13 +409,11 @@ export class WhiteboardCanvas {
   // Selection toolbar (P3 batch 3, surfaces ①/②): one instance per view,
   // rebuilt on selection change and re-placed whenever the camera or the
   // selection's geometry moves. It lives in the viewport (screen-space) layer,
-  // so it keeps a constant size at every zoom — see ui/selectionToolbar.ts and
-  // domain/toolbar.ts for the placement law.
-  private toolbar: SelectionToolbar | null = null
-  /** Hidden for the duration of a pointer gesture (drag, resize, marquee, pan,
-   * connect) — Obsidian Canvas hides its menu the same way, and a toolbar that
-   * follows a card being dragged is a toolbar in the way. */
-  private toolbarSuppressed = false
+  // so it keeps a constant size at every zoom — see ./canvas/toolbarController.ts,
+  // ui/selectionToolbar.ts and domain/toolbar.ts for the placement law.
+  /** Constructed once in `ensureDom`, once the viewport element exists (see
+   * ./canvas/toolbarController.ts's own doc comment). */
+  private toolbarController!: ToolbarController
   /** The label being typed in place, if any — see `beginRename`. It holds
    * off the selection's keymap scope for as long as it has the caret. */
   private renaming: LabelTarget | null = null
@@ -653,7 +612,7 @@ export class WhiteboardCanvas {
     this.recomputeVisibility()
     this.drainQueues()
     // The toolbar is clamped against the viewport's size, which just changed.
-    this.positionToolbar()
+    this.toolbarController.positionToolbar()
   }
 
   /**
@@ -692,8 +651,7 @@ export class WhiteboardCanvas {
     this.prompt = null
     this.cardMenu?.destroy()
     this.cardMenu = null
-    this.toolbar?.destroy()
-    this.toolbar = null
+    this.toolbarController.destroy()
     this.teardownAllCards()
     this.preheatView?.destroy()
     this.preheatView = null
@@ -819,7 +777,7 @@ export class WhiteboardCanvas {
       isEditingWheelTarget: (target) =>
         this.editing !== null &&
         this.nodeIdFromEventTarget(target) === this.editing.nodeId,
-      positionToolbar: () => this.positionToolbar(),
+      positionToolbar: () => this.toolbarController.positionToolbar(),
       setInteracting: (interacting) => {
         this.interacting = interacting
       },
@@ -883,12 +841,46 @@ export class WhiteboardCanvas {
     })
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
-    this.toolbar = new SelectionToolbar(doc, viewport)
+    this.toolbarController = new ToolbarController(
+      this.context,
+      this.host,
+      viewport,
+      {
+        isParseFailed: () => this.parseFailed,
+        canEdit: () => this.canEdit,
+        isDegraded: () => this.degraded,
+        getBoard: () => this.board,
+        getSelectedIds: () => this.selectedIds,
+        getSelectedEdgeIds: () => this.selectedEdgeIds,
+        getEdge: (id) => this.boardEdgesById.get(id),
+        isEditableNode: (node) => this.isEditableNode(node),
+        edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
+        getView: () => this.cameraController.view,
+        getViewportSize: () => ({
+          width: this.viewportEl.clientWidth,
+          height: this.viewportEl.clientHeight,
+        }),
+        t: (key, fallback) => this.t(key, fallback),
+        deleteNodes: (ids) => this.deleteNodes(ids),
+        deleteEdges: (ids) => this.deleteEdges(ids),
+        zoomToSelection: () => this.cameraController.zoomToSelection(),
+        createGroupFromSelection: () => this.createGroupFromSelection(),
+        editCard: (id) => this.editCard(id),
+        beginRename: (target) => this.beginRename(target),
+        applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
+        applyColorToEdge: (edgeId, color) =>
+          this.applyColorToEdge(edgeId, color),
+        setEdgeEnds: (edgeId, direction) =>
+          this.setEdgeEnds(edgeId, direction),
+        alignSelection: (edge) => this.alignSelection(edge),
+        distributeSelection: (axis) => this.distributeSelection(axis),
+      },
+    )
     // The creation bar and the file/URL prompt live in the toolbar's overlay
     // layer, which exists for exactly this (see SelectionToolbar.overlay): one
     // `isOverlayTarget` check then keeps a press on any of this chrome from
     // also being a press on the board behind it.
-    this.cardMenu = new CardMenu(doc, this.toolbar.overlay, [
+    this.cardMenu = new CardMenu(doc, this.toolbarController.overlay, [
       {
         label: this.t('cardMenu.newCard'),
         icon: 'sticky-note',
@@ -1018,10 +1010,10 @@ export class WhiteboardCanvas {
     // The toolbar and the edge-label field sit above the canvas in the same
     // viewport element these listeners are on: a press on one of them is not
     // also a press on the board behind it.
-    if (this.isOverlayTarget(e.target)) return
+    if (this.toolbarController.isOverlayTarget(e.target)) return
     // A press anywhere else dismisses the colour popover, the same way one
     // dismisses a menu.
-    this.toolbar?.closePopover()
+    this.toolbarController.closePopover()
     const nodeId = this.nodeIdFromEventTarget(e.target)
 
     if (e.button === 1) {
@@ -1102,7 +1094,7 @@ export class WhiteboardCanvas {
   private readonly onDoubleClick = (e: MouseEvent): void => {
     if (this.parseFailed) return
     const target = this.pressedTarget
-    if (this.isOverlayTarget(target)) return
+    if (this.toolbarController.isOverlayTarget(target)) return
     // A group's label is the one part of a group a pointer can reach (the
     // frame itself is pointer-transparent — see style.css), and double-clicking
     // it renames the group. Obsidian Canvas puts the same gesture on the same
@@ -1145,7 +1137,7 @@ export class WhiteboardCanvas {
 
   private readonly onContextMenu = (e: MouseEvent): void => {
     if (this.parseFailed) return
-    if (this.isOverlayTarget(e.target)) return
+    if (this.toolbarController.isOverlayTarget(e.target)) return
     const nodeId = this.nodeIdFromEventTarget(e.target)
     // The card being edited owns its own context menu (CM6's, with the text
     // actions that belong to an editor).
@@ -1262,7 +1254,7 @@ export class WhiteboardCanvas {
 
     // Aligning needs at least two things to agree on a line; distributing
     // needs at least three, so there is a gap to divide (domain/arrange.ts).
-    const targets = this.arrangeTargets().length
+    const targets = arrangeTargets(this.board, this.selectedIds).length
     if (this.canEdit && targets > 1) {
       items.push({ kind: 'separator' })
       for (const edge of ALIGN_EDGES) {
@@ -1365,7 +1357,7 @@ export class WhiteboardCanvas {
     // A gesture that has actually moved takes the toolbar off screen until it
     // ends. A press that never moves leaves it alone, so clicking a card that
     // is already selected does not make its toolbar blink.
-    this.setToolbarSuppressed(true)
+    this.toolbarController.setToolbarSuppressed(true)
     switch (interaction.kind) {
       case 'pan':
         this.updatePan(interaction, e)
@@ -1510,7 +1502,7 @@ export class WhiteboardCanvas {
         this.finishConnect(interaction, e)
         break
     }
-    this.setToolbarSuppressed(false)
+    this.toolbarController.setToolbarSuppressed(false)
   }
 
   // -----------------------------------------------------------------------
@@ -1979,7 +1971,15 @@ export class WhiteboardCanvas {
     // and the edge that justified it are undone together.
     this.applyBoardChange(
       interaction.edgeId === null
-        ? addEdge(this.board, this.connectedEdge(interaction, target))
+        ? addEdge(
+            this.board,
+            buildEdge(
+              this.nextEdgeId(),
+              interaction.anchor,
+              interaction.movingEnd,
+              target,
+            ),
+          )
         : updateEdge(
             this.board,
             interaction.edgeId,
@@ -1994,26 +1994,6 @@ export class WhiteboardCanvas {
       this.recomputeVisibility()
       this.drainQueues()
       this.enterEditMode(created.nodeId)
-    }
-  }
-
-  private connectedEdge(
-    interaction: ConnectInteraction,
-    target: SideAnchor,
-  ): Edge {
-    const { anchor, movingEnd } = interaction
-    const from = movingEnd === 'to' ? anchor : target
-    const to = movingEnd === 'to' ? target : anchor
-    return {
-      id: this.nextEdgeId(),
-      fromNode: from.nodeId,
-      toNode: to.nodeId,
-      fromSide: from.side,
-      toSide: to.side,
-      // JSON Canvas's defaults: the arrow is at the end you pulled towards.
-      fromEnd: 'none',
-      toEnd: 'arrow',
-      extra: {},
     }
   }
 
@@ -2083,21 +2063,15 @@ export class WhiteboardCanvas {
     }
   }
 
-  private worldDelta(
-    interaction: NodeInteraction,
-    e: PointerEvent,
-  ): Readonly<{ dx: number; dy: number }> {
-    return {
-      dx: (e.clientX - interaction.startClient.x) / this.cameraController.view.scale,
-      dy: (e.clientY - interaction.startClient.y) / this.cameraController.view.scale,
-    }
-  }
-
   private updateNodeDragPositions(
     interaction: NodeInteraction,
     e: PointerEvent,
   ): void {
-    const { dx, dy } = this.worldDelta(interaction, e)
+    const { dx, dy } = screenDeltaToWorld(
+      this.cameraController.view,
+      e.clientX - interaction.startClient.x,
+      e.clientY - interaction.startClient.y,
+    )
     const overrides = new Map<NodeId, CardRect>()
     for (const id of interaction.ids) {
       const start = interaction.startPositions.get(id)
@@ -2129,7 +2103,11 @@ export class WhiteboardCanvas {
       return
     }
 
-    const { dx, dy } = this.worldDelta(interaction, e)
+    const { dx, dy } = screenDeltaToWorld(
+      this.cameraController.view,
+      e.clientX - interaction.startClient.x,
+      e.clientY - interaction.startClient.y,
+    )
     if (dx !== 0 || dy !== 0) {
       this.applyBoardChange(moveNodes(this.board, interaction.ids, dx, dy))
     }
@@ -2310,7 +2288,7 @@ export class WhiteboardCanvas {
     // on a card, or a press would still find a handle to grab.
     this.refreshInteractionLayer()
     this.refreshCardMenu()
-    this.refreshToolbar()
+    this.toolbarController.refreshToolbar()
   }
 
   // -----------------------------------------------------------------------
@@ -2338,7 +2316,7 @@ export class WhiteboardCanvas {
     this.syncSelectionKeymapScope()
     // Selection is one of the two things that decides where the handles are.
     this.updateInteractionLayer()
-    this.refreshToolbar()
+    this.toolbarController.refreshToolbar()
   }
 
   /** Adds a node to the selection, or takes it out if it was already in —
@@ -2384,7 +2362,7 @@ export class WhiteboardCanvas {
     // a blur would).
     const typed = this.renaming
     if (typed?.kind === 'edge' && !next.has(typed.id)) this.endRename(true)
-    this.refreshToolbar()
+    this.toolbarController.refreshToolbar()
   }
 
   private markEdgeSelected(id: EdgeId, selected: boolean): void {
@@ -2460,249 +2438,15 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Selection toolbar (P3 batch 3, surfaces ①/②).
-  //
-  // Two responsibilities, kept apart because they run at very different
-  // rates: `refreshToolbar` decides *what* the toolbar contains and runs on
-  // discrete events (selection, degrade state, an edge appearing or going
-  // away); `positionToolbar` decides *where* it is and runs on every camera
-  // frame. Rebuilding the DOM at camera rate would be absurd, and re-placing
-  // it only on selection change would leave it stranded mid-pan.
-  //
-  // Everything the buttons do goes through the same board operations the rest
-  // of the canvas uses, so a colour picked here is one history step like any
-  // other edit.
+  // Selection toolbar (P3 batch 3, surfaces ①/②): the `SelectionToolbar`
+  // instance, its model-building, and its placement are
+  // ./canvas/toolbarController.ts's job (split out structurally — see that
+  // file's own doc comment). What stays here is every command whose whole
+  // body is one board change plus one DOM call: the toolbar controller reads
+  // this class's state to decide what to show, and calls back into these
+  // when a button is pressed, so a colour picked from the toolbar is one
+  // history step like any other edit.
   // -----------------------------------------------------------------------
-
-  /** Whether an event landed on the screen-space chrome (toolbar, colour
-   * popover, edge-label field) rather than on the board. */
-  private isOverlayTarget(target: EventTarget | null): boolean {
-    return target instanceof Node && (this.toolbar?.contains(target) ?? false)
-  }
-
-  private setToolbarSuppressed(suppressed: boolean): void {
-    if (this.toolbarSuppressed === suppressed) return
-    this.toolbarSuppressed = suppressed
-    this.toolbar?.setSuppressed(suppressed)
-    if (!suppressed) this.positionToolbar()
-  }
-
-  private refreshToolbar(): void {
-    const toolbar = this.toolbar
-    if (!toolbar) return
-    toolbar.setModel(this.buildToolbarModel())
-    toolbar.setSuppressed(this.toolbarSuppressed)
-    this.positionToolbar()
-  }
-
-  private positionToolbar(): void {
-    const toolbar = this.toolbar
-    if (!toolbar || this.toolbarSuppressed) return
-    const bounds = this.toolbarBounds()
-    if (!bounds) return
-    toolbar.place(
-      toolbarScreenPosition(
-        bounds,
-        this.cameraController.view,
-        {
-          width: this.viewportEl.clientWidth,
-          height: this.viewportEl.clientHeight,
-        },
-        toolbar.size(),
-        TOOLBAR_GAP_PX,
-        TOOLBAR_MARGIN_PX,
-      ),
-    )
-  }
-
-  /**
-   * World rectangle the toolbar is anchored to: the union of the selected
-   * nodes, or — for an edge — a zero-size rect at the point its label hangs
-   * from, which is the only place on a curve that reads as "the edge itself".
-   */
-  private toolbarBounds(): ToolbarBounds | null {
-    if (this.selectedEdgeIds.size > 0) {
-      const point = this.edgeAnchorPoint(
-        this.selectedEdgeIds.values().next().value,
-      )
-      return point ? { x: point.x, y: point.y, w: 0, h: 0 } : null
-    }
-    if (this.selectedIds.size === 0) return null
-    return unionRect(
-      this.board.nodes
-        .filter((node) => this.selectedIds.has(node.id))
-        .map((node) => ({ x: node.x, y: node.y, w: node.w, h: node.h })),
-    )
-  }
-
-  private buildToolbarModel(): ToolbarModel | null {
-    if (this.parseFailed) return null
-    if (this.selectedEdgeIds.size > 0) return this.buildEdgeToolbarModel()
-    if (this.selectedIds.size > 0) return this.buildNodeToolbarModel()
-    return null
-  }
-
-  private buildNodeToolbarModel(): ToolbarModel | null {
-    const nodes = this.board.nodes.filter((node) =>
-      this.selectedIds.has(node.id),
-    )
-    if (nodes.length === 0) return null
-    const single = nodes.length === 1 ? nodes[0] : null
-    const ids = nodes.map((node) => node.id)
-
-    // The row is Obsidian Canvas's, in its order: delete, colour, focus,
-    // group, align — then the one button that is ours, editing what is
-    // selected. Nothing is behind an overflow button, because everything a
-    // selection can do either fits on the row or belongs to the right-click
-    // menu; see `selectionMenuItems`.
-    const items: ToolbarItem[] = []
-    if (this.canEdit) {
-      items.push({
-        label: this.t('menu.deleteCard'),
-        icon: 'trash',
-        onSelect: () => this.deleteNodes(ids),
-      })
-      items.push(
-        this.colorControl(
-          commonColor(nodes.map((node) => node.color)),
-          (color) => this.applyColorToNodes(ids, color),
-        ),
-      )
-    }
-    // Framing the selection is a camera move, not an edit — the one button a
-    // locked board still gets, and Obsidian Canvas's third button too.
-    items.push({
-      label: this.t('menu.zoomToSelection'),
-      icon: 'scan-search',
-      onSelect: () => {
-        this.cameraController.zoomToSelection()
-      },
-    })
-    if (this.canEdit && nodes.length > 1) {
-      items.push({
-        label: this.t('menu.createGroup'),
-        icon: 'group',
-        onSelect: () => this.createGroupFromSelection(),
-      })
-    }
-    const arrange = this.arrangeControl()
-    if (arrange) items.push(arrange)
-    // Editing is the one action a degraded card cannot take (D8: its content
-    // is not built at this zoom), so the button goes away rather than being
-    // offered and declining. A locked board offers it for nothing either.
-    if (
-      single &&
-      this.isEditableNode(single) &&
-      !this.degraded &&
-      this.canEdit
-    ) {
-      items.push({
-        label: this.t('toolbar.edit'),
-        icon: 'pencil',
-        onSelect: () => this.editCard(single.id),
-      })
-    }
-    // A group has no content to edit, so the pencil in its place renames it —
-    // the same command its label's double-click carries, which is otherwise
-    // the only way to find it.
-    if (single?.type === 'group' && this.canEdit) {
-      items.push({
-        label: this.t('menu.renameGroup'),
-        icon: 'pencil',
-        onSelect: () => this.beginRename({ kind: 'group', id: single.id }),
-      })
-    }
-
-    return { items }
-  }
-
-  /**
-   * The align/distribute button, or null when the selection has too little to
-   * arrange. Aligning needs two things to agree on a line; distributing needs
-   * three, so there is a gap to divide (domain/arrange.ts) — the second row
-   * appears with the third card.
-   */
-  private arrangeControl(): ToolbarMenuControl | null {
-    const targets = this.arrangeTargets().length
-    if (!this.canEdit || targets < 2) return null
-    return {
-      kind: 'menu',
-      label: this.t('toolbar.arrange'),
-      icon: 'align-start-vertical',
-      groups: [
-        ALIGN_EDGES.map((edge) => ({
-          label: this.t(ALIGN_MENU[edge].key),
-          icon: ALIGN_MENU[edge].icon,
-          onSelect: () => this.alignSelection(edge),
-        })),
-        targets > 2
-          ? DISTRIBUTE_AXES.map((axis) => ({
-              label: this.t(DISTRIBUTE_MENU[axis].key),
-              icon: DISTRIBUTE_MENU[axis].icon,
-              onSelect: () => this.distributeSelection(axis),
-            }))
-          : [],
-      ],
-    }
-  }
-
-  private buildEdgeToolbarModel(): ToolbarModel | null {
-    const edgeId = this.selectedEdgeIds.values().next().value
-    const edge =
-      edgeId === undefined ? undefined : this.boardEdgesById.get(edgeId)
-    if (!edge) return null
-
-    // Same row shape as a node's: delete, colour, then what is specific to an
-    // edge. Deleting was this menu's only entry, so "more" goes with it.
-    if (!this.canEdit) return { items: [] }
-    return {
-      items: [
-        {
-          label: this.t('menu.deleteEdge'),
-          icon: 'trash',
-          onSelect: () => this.deleteEdges([edge.id]),
-        },
-        this.colorControl(edge.color, (color) =>
-          this.applyColorToEdge(edge.id, color),
-        ),
-        {
-          label: this.t('toolbar.arrows'),
-          icon: 'arrow-right',
-          onSelect: (event) => this.showEdgeArrowMenu(event, edge.id),
-        },
-        {
-          label: this.t('toolbar.edgeLabel'),
-          icon: 'tag',
-          onSelect: () => this.beginRename({ kind: 'edge', id: edge.id }),
-        },
-      ],
-    }
-  }
-
-  /** The colour control shared by both toolbars — one picker, so a node and an
-   * edge cannot end up offering different palettes. */
-  private colorControl(
-    current: NodeColor | undefined,
-    onPick: (color: NodeColor | undefined) => void,
-  ): ToolbarColorControl {
-    return {
-      kind: 'color',
-      label: this.t('toolbar.color'),
-      defaultLabel: this.t('color.default'),
-      presetLabels: Object.fromEntries(
-        COLOR_PRESETS.map((preset) => [
-          preset,
-          this.t(`color.preset${preset}`),
-        ]),
-      ) as Readonly<Record<ColorPreset, string>>,
-      customLabel: this.t('color.custom'),
-      current,
-      onPick: (color) => {
-        onPick(color)
-        this.toolbar?.setCurrentColor(color)
-      },
-    }
-  }
 
   /** Applies (or clears) a colour across the selection. A cleared colour is
    * written as `undefined`, which `serializeBoard` simply omits — the same
@@ -2733,26 +2477,9 @@ export class WhiteboardCanvas {
     this.edgeLayer.applyEdgeColor(edgeId, color)
   }
 
-  /**
-   * Arrowheads, as JSON Canvas models them: an independent `fromEnd`/`toEnd`
-   * per end. Offered as four named states rather than a cycling button —
-   * "which way does it point" has a direction, and a button that only cycles
-   * makes reversing an edge a guessing game.
-   */
-  private showEdgeArrowMenu(event: MouseEvent, edgeId: EdgeId): void {
-    const edge = this.boardEdgesById.get(edgeId)
-    if (!edge) return
-    const current = arrowDirection(edge.fromEnd, edge.toEnd)
-    this.host.ui.showMenu(
-      event,
-      ARROW_DIRECTIONS.map((direction) => ({
-        title: this.t(ARROW_MENU_KEYS[direction]),
-        icon: direction === current ? 'check' : undefined,
-        onSelect: () => this.setEdgeEnds(edgeId, direction),
-      })),
-    )
-  }
-
+  /** Writes an edge's arrowhead ends — the board-side half of the toolbar
+   * controller's arrow menu (`ToolbarController`'s own `showEdgeArrowMenu`
+   * builds the menu; `edgeLayer.setEdgeArrowEnds` is the DOM half). */
   private setEdgeEnds(edgeId: EdgeId, direction: ArrowDirection): void {
     if (!this.canEdit) return
     const { fromEnd, toEnd } = arrowEnds(direction)
@@ -2788,7 +2515,7 @@ export class WhiteboardCanvas {
       this.labelEl(target) ??
       (target.kind === 'edge' ? this.edgeLayer.attachEdgeLabel(target.id) : null)
     if (!el) return
-    this.toolbar?.closePopover()
+    this.toolbarController.closePopover()
     this.renaming = target
     // `plaintext-only` rather than plain `contenteditable` so a paste arrives
     // as the text it looked like rather than as markup a label cannot hold.
@@ -3024,17 +2751,20 @@ export class WhiteboardCanvas {
   /** Opens a prompt, replacing any already open. Closing is this view's own
    * bookkeeping, so callers describe only what they are asking for. */
   private openPrompt(options: Omit<PromptOverlayOptions, 'onClose'>): void {
-    const overlay = this.toolbar?.overlay
-    if (!overlay || !this.canCreate) return
+    if (!this.canCreate) return
     this.prompt?.close()
-    this.toolbar?.closePopover()
-    this.prompt = new PromptOverlay(this.context.getDocument(), overlay, {
-      ...options,
-      onClose: () => {
-        this.prompt = null
-        this.syncSelectionKeymapScope()
+    this.toolbarController.closePopover()
+    this.prompt = new PromptOverlay(
+      this.context.getDocument(),
+      this.toolbarController.overlay,
+      {
+        ...options,
+        onClose: () => {
+          this.prompt = null
+          this.syncSelectionKeymapScope()
+        },
       },
-    })
+    )
     // While the panel has the caret, Delete/Escape/Enter belong to it — the
     // same rule that keeps the selection's bindings off an open label field.
     this.syncSelectionKeymapScope()
@@ -3269,31 +2999,19 @@ export class WhiteboardCanvas {
     this.setSelection([group.id])
   }
 
-  /**
-   * The nodes an align or distribute acts on.
-   *
-   * Normally the selection. The exception is a lone selected group, where the
-   * target is what the group *holds* — Obsidian Canvas does exactly this, and
-   * it is what makes a group worth having: tidying a cluster becomes "select
-   * its frame, align", rather than rubber-banding its members first.
-   */
-  private arrangeTargets(): readonly BoardNode[] {
-    const selected = this.board.nodes.filter((node) =>
-      this.selectedIds.has(node.id),
-    )
-    if (selected.length === 1 && selected[0].type === 'group') {
-      const contained = new Set(nodesInsideGroup(selected[0], this.board.nodes))
-      return this.board.nodes.filter((node) => contained.has(node.id))
-    }
-    return selected
-  }
-
+  /** The nodes an align or distribute acts on — domain/groups.ts's
+   * `arrangeTargets`, also what ./canvas/toolbarController.ts's arrange
+   * button counts to decide whether to show at all. */
   private alignSelection(edge: AlignEdge): void {
-    this.applyArrangement(alignRects(this.arrangeTargets(), edge))
+    this.applyArrangement(
+      alignRects(arrangeTargets(this.board, this.selectedIds), edge),
+    )
   }
 
   private distributeSelection(axis: DistributeAxis): void {
-    this.applyArrangement(distributeRects(this.arrangeTargets(), axis))
+    this.applyArrangement(
+      distributeRects(arrangeTargets(this.board, this.selectedIds), axis),
+    )
   }
 
   /** Commits a batch of new positions and brings the canvas back in step with
@@ -3315,7 +3033,7 @@ export class WhiteboardCanvas {
     }
     this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
     this.refreshInteractionLayer()
-    this.positionToolbar()
+    this.toolbarController.positionToolbar()
     this.recomputeVisibility()
     this.drainQueues()
   }
@@ -3555,7 +3273,7 @@ export class WhiteboardCanvas {
     // be made at this zoom (see `canCreate`), so the toolbar's edit button and
     // the whole creation bar appear and disappear with this state — rather
     // than staying on screen offering what would be declined.
-    this.refreshToolbar()
+    this.toolbarController.refreshToolbar()
     this.refreshCardMenu()
   }
 
@@ -3646,7 +3364,7 @@ export class WhiteboardCanvas {
     this.selectedEdgeIds = new Set(surviving)
     for (const id of surviving) this.markEdgeSelected(id, true)
     this.syncSelectionKeymapScope()
-    this.refreshToolbar()
+    this.toolbarController.refreshToolbar()
   }
 
   // -----------------------------------------------------------------------
@@ -3989,10 +3707,6 @@ export class WhiteboardCanvas {
   private reportError(stage: string, error: unknown): void {
     console.error(`[YOLO Whiteboard] ${stage} failed`, error)
   }
-}
-
-function distanceBetween(a: ScreenPoint, b: ScreenPoint): number {
-  return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
 /**

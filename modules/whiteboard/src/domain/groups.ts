@@ -19,7 +19,7 @@
 // card whose visible bulk is outside the frame, and intersection would carry
 // away anything the frame merely grazed.
 
-import type { BoardNode, NodeId } from './fileFormat'
+import type { Board, BoardNode, NodeId } from './fileFormat'
 
 export type GroupRect = Readonly<{ x: number; y: number; w: number; h: number }>
 
@@ -78,6 +78,27 @@ export function nodesToDragWith(
     for (const contained of nodesInsideGroup(node, nodes)) ids.add(contained)
   }
   return Array.from(ids)
+}
+
+/**
+ * The nodes an align or distribute acts on (ui/canvas/toolbarController.ts's
+ * arrange button, canvas.ts's own selection menu).
+ *
+ * Normally the selection. The exception is a lone selected group, where the
+ * target is what the group *holds* — Obsidian Canvas does exactly this, and
+ * it is what makes a group worth having: tidying a cluster becomes "select
+ * its frame, align", rather than rubber-banding its members first.
+ */
+export function arrangeTargets(
+  board: Board,
+  selectedIds: ReadonlySet<NodeId>,
+): readonly BoardNode[] {
+  const selected = board.nodes.filter((node) => selectedIds.has(node.id))
+  if (selected.length === 1 && selected[0].type === 'group') {
+    const contained = new Set(nodesInsideGroup(selected[0], board.nodes))
+    return board.nodes.filter((node) => contained.has(node.id))
+  }
+  return selected
 }
 
 /**

@@ -265,6 +265,26 @@ export function fitViewToBounds(
   }
 }
 
+/** Screen-space pointer movement -> world-space movement at `view`'s current
+ * scale — a pan/zoom's *translation* doesn't enter into converting a delta,
+ * only its scale does, which is what tells a drag gesture (canvas.ts's card
+ * move) how far the pointer's client-pixel travel is in board units. */
+export function screenDeltaToWorld(
+  view: CanvasView,
+  dx: number,
+  dy: number,
+): Readonly<{ dx: number; dy: number }> {
+  return { dx: dx / view.scale, dy: dy / view.scale }
+}
+
+/** Straight-line distance between two points in the same space (screen or
+ * world — the formula doesn't care which). Used wherever a gesture picks the
+ * nearer of two candidates, such as canvas.ts's `startEdgeReattach` choosing
+ * which end of a pressed edge to grab. */
+export function distanceBetween(a: ScreenPoint, b: ScreenPoint): number {
+  return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
 /** `.yoloboard`'s persisted `camera` field -> the canvas's live view state. */
 export function viewFromCamera(camera: Camera): CanvasView {
   return { tx: camera.x, ty: camera.y, scale: camera.scale }

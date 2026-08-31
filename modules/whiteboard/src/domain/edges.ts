@@ -13,7 +13,7 @@
 // (temporary coordinates the caller passes in), so this module only ever
 // sees plain rectangles, never live elements.
 
-import type { EdgeEnd, NodeId, NodeSide } from './fileFormat'
+import type { Edge, EdgeEnd, EdgeId, NodeId, NodeSide } from './fileFormat'
 import type { CardRect, CardSize } from './resize'
 import type { VirtualCardRect } from './virtualization'
 
@@ -206,6 +206,35 @@ export function findConnectTarget(
     }
   }
   return best
+}
+
+/**
+ * The edge a finished connection drag creates: `anchor` is the end that
+ * stayed put and `target` is where the dragged end landed; `movingEnd` says
+ * which of the two the drag was moving (canvas.ts's `ConnectInteraction`),
+ * so anchor/target resolve to `from`/`to` accordingly. `id` is the caller's
+ * to generate — canvas.ts's `nextEdgeId` is `crypto`-backed, out of reach for
+ * this dependency-free module.
+ */
+export function buildEdge(
+  id: EdgeId,
+  anchor: SideAnchor,
+  movingEnd: 'from' | 'to',
+  target: SideAnchor,
+): Edge {
+  const from = movingEnd === 'to' ? anchor : target
+  const to = movingEnd === 'to' ? target : anchor
+  return {
+    id,
+    fromNode: from.nodeId,
+    toNode: to.nodeId,
+    fromSide: from.side,
+    toSide: to.side,
+    // JSON Canvas's defaults: the arrow is at the end you pulled towards.
+    fromEnd: 'none',
+    toEnd: 'arrow',
+    extra: {},
+  }
 }
 
 /**

@@ -5,6 +5,7 @@ import {
   arrowDirection,
   arrowEnds,
   autoEdgeSides,
+  buildEdge,
   buildEdgePathD,
   computeEdgeGeometry,
   findConnectTarget,
@@ -247,6 +248,44 @@ describe('rectAnchoredAt', () => {
       y: -30,
       w: 100,
       h: 60,
+    })
+  })
+})
+
+describe('buildEdge', () => {
+  const anchor = { nodeId: 'a', side: 'right' as const }
+  const target = { nodeId: 'b', side: 'left' as const }
+
+  it("puts anchor at 'from' and target at 'to' when the drag was moving the 'to' end", () => {
+    expect(buildEdge('e1', anchor, 'to', target)).toEqual({
+      id: 'e1',
+      fromNode: 'a',
+      toNode: 'b',
+      fromSide: 'right',
+      toSide: 'left',
+      fromEnd: 'none',
+      toEnd: 'arrow',
+      extra: {},
+    })
+  })
+
+  it("swaps them when the drag was moving the 'from' end (re-attaching an edge's start)", () => {
+    expect(buildEdge('e2', anchor, 'from', target)).toEqual({
+      id: 'e2',
+      fromNode: 'b',
+      toNode: 'a',
+      fromSide: 'left',
+      toSide: 'right',
+      fromEnd: 'none',
+      toEnd: 'arrow',
+      extra: {},
+    })
+  })
+
+  it('always defaults to an arrow at the end you pulled towards', () => {
+    expect(buildEdge('e3', anchor, 'to', target)).toMatchObject({
+      fromEnd: 'none',
+      toEnd: 'arrow',
     })
   })
 })

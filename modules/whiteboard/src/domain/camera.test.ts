@@ -3,10 +3,12 @@ import {
   approachView,
   cameraFromView,
   clampScale,
+  distanceBetween,
   dragPan,
   fitViewToBounds,
   panByWheel,
   scaleAfterWheel,
+  screenDeltaToWorld,
   screenToWorld,
   unionRect,
   viewAnchoredAt,
@@ -244,6 +246,31 @@ describe('dragPan', () => {
     const origin = { tx: 0, ty: 0, scale: 0.42 }
     const next = dragPan(origin, { x: 0, y: 0 }, { x: 100, y: 100 })
     expect(next.scale).toBe(0.42)
+  })
+})
+
+describe('screenDeltaToWorld', () => {
+  it('is the identity at scale 1', () => {
+    expect(screenDeltaToWorld({ tx: 40, ty: -10, scale: 1 }, 12, -6)).toEqual({
+      dx: 12,
+      dy: -6,
+    })
+  })
+
+  it('divides by scale — pan does not enter into a delta', () => {
+    expect(screenDeltaToWorld({ tx: 999, ty: 999, scale: 2 }, 30, 10)).toEqual(
+      { dx: 15, dy: 5 },
+    )
+  })
+})
+
+describe('distanceBetween', () => {
+  it('is zero for the same point', () => {
+    expect(distanceBetween({ x: 5, y: 5 }, { x: 5, y: 5 })).toBe(0)
+  })
+
+  it('computes the straight-line distance', () => {
+    expect(distanceBetween({ x: 0, y: 0 }, { x: 3, y: 4 })).toBe(5)
   })
 })
 
