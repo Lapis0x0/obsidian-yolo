@@ -210,7 +210,9 @@ export const MIN_CARD_SIZE = Object.freeze({
  * handle whose *screen* size is 20*sqrt(scale): ~9px zoomed right out, 20px
  * at 1:1, ~28px zoomed right in. Constant world size would make it
  * ungrabbable when zoomed out; constant screen size would make it swallow the
- * card when zoomed in. See canvas.ts's applyHandleScale().
+ * card when zoomed in. See cameraController.ts's applyZoomScale(), which
+ * writes the multiplier every dimension in the world layer that is chrome
+ * rather than drawing is computed from.
  */
 export const RESIZE_HANDLE_PX = 20
 

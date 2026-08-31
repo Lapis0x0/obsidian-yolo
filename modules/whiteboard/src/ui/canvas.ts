@@ -184,6 +184,7 @@ const LOCKED_CLASS = 'yolo-whiteboard-locked'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
+const EDGE_ARROW_MARKER_CLASS = 'yolo-whiteboard-edge-arrow-marker'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
 const EDGE_LABELS_CLASS = 'yolo-whiteboard-edge-labels'
 const EDGE_PREVIEW_CLASS = 'yolo-whiteboard-edge-preview'
@@ -704,6 +705,10 @@ export class WhiteboardCanvas {
     const defs = doc.createElementNS(SVG_NS, 'defs')
     const marker = doc.createElementNS(SVG_NS, 'marker')
     marker.setAttribute('id', this.arrowMarkerId)
+    // The arrowhead is counter-scaled in the stylesheet (it grows past this
+    // 8x8 marker viewport when the board is zoomed out), so the marker must
+    // not clip it.
+    marker.setAttribute('class', EDGE_ARROW_MARKER_CLASS)
     marker.setAttribute('markerWidth', '8')
     marker.setAttribute('markerHeight', '8')
     marker.setAttribute('refX', '7')
@@ -903,7 +908,8 @@ export class WhiteboardCanvas {
     // so it stays next to the doc comment explaining the counter-scale law.
     // (The zoom-multiplier variable itself is (re)written by the freshly
     // constructed `cameraController` above, whose own counter-scale cache
-    // starts unset.)
+    // starts unset. Everything else it drives — edge strokes, arrowheads,
+    // edge label type — is computed in the stylesheet.)
     world.style.setProperty(
       '--yolo-whiteboard-resizer-size',
       `${RESIZE_HANDLE_PX}px`,

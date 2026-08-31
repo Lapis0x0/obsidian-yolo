@@ -104,10 +104,11 @@ export class CameraController {
   private interactingTimer: number | null = null
   private settleTimer: number | null = null
 
-  /** Scale the handle counter-scale was last written for; the CSS variable
-   * is only rewritten when the zoom actually changed, so panning (which
-   * writes `transform` every frame) doesn't invalidate the handles' style. */
-  private appliedHandleScale: number | null = null
+  /** Scale the counter-scale variable was last written for; it is only
+   * rewritten when the zoom actually changed, so panning (which writes
+   * `transform` every frame) doesn't invalidate everything computed from
+   * it. */
+  private appliedZoomScale: number | null = null
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -251,6 +252,9 @@ export class CameraController {
     if (!settled) return
     this.cameraGlide = null
     this.lastGlideTime = null
+    // The counter-scale is written here rather than per frame — see
+    // `applyZoomScale`.
+    this.applyZoomScale()
     this.scheduleCameraSettle()
   }
 
@@ -265,7 +269,9 @@ export class CameraController {
   private applyTransform(): void {
     this.worldEl.style.transform = `translate(${this.viewValue.tx}px, ${this.viewValue.ty}px) scale(${this.viewValue.scale})`
     this.applyGrid()
-    this.applyHandleScale()
+    // Not mid-glide: see `applyZoomScale`. The glide's last frame writes it
+    // through `finishGlideFrame`.
+    if (!this.cameraGlide) this.applyZoomScale()
     // The screen-space chrome is anchored to world positions, so it has to be
     // re-projected whenever the camera moves. Both are no-ops when nothing is
     // selected and nothing is being typed, which is the common case.
@@ -273,17 +279,26 @@ export class CameraController {
   }
 
   /**
-   * Counter-scales the resize handles, which live in the world layer and
-   * would otherwise be scaled along with the cards.
+   * Counter-scales everything that lives in the world layer but is not part
+   * of the drawing — the resize handles, the edges' stroke widths and
+   * arrowheads, the edge labels' type — and would otherwise be scaled along
+   * with the cards.
    *
    * 1/sqrt(scale) rather than 1/scale: see RESIZE_HANDLE_PX (constants.ts).
-   * Skipped unless the zoom actually changed, because this writes a custom
-   * property the handles' sizes are computed from, and panning calls this
-   * method every frame without touching the scale.
+   * The result is chrome whose *screen* size grows as sqrt(scale) — visible
+   * zoomed out, not overbearing zoomed in — which is Obsidian Canvas's
+   * `--zoom-multiplier`, the same law and the same value.
+   *
+   * Written only when the zoom actually changed, and never mid-glide:
+   * everything downstream of this variable re-lays-out when it changes (the
+   * labels are text), which is not something to do on every frame of a zoom.
+   * Obsidian Canvas holds the value for the length of its own animation for
+   * the same reason. The sizes therefore lag a zoom by its glide and land
+   * with it.
    */
-  private applyHandleScale(): void {
-    if (this.appliedHandleScale === this.viewValue.scale) return
-    this.appliedHandleScale = this.viewValue.scale
+  private applyZoomScale(): void {
+    if (this.appliedZoomScale === this.viewValue.scale) return
+    this.appliedZoomScale = this.viewValue.scale
     this.worldEl.style.setProperty(
       '--yolo-whiteboard-zoom-multiplier',
       String(1 / Math.sqrt(this.viewValue.scale)),

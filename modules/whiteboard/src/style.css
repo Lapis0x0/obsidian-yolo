@@ -347,8 +347,8 @@
  * ui/canvas.ts's placeInteractionLayer(). It lives inside the world layer,
  * so it is in world coordinates like the cards — which is why every handle
  * dimension is multiplied by --yolo-whiteboard-zoom-multiplier (1/sqrt(scale),
- * written per zoom change by applyHandleScale()). Both custom properties are
- * set on the world element from ui/constants.ts.
+ * written by applyZoomScale()). Both custom properties are set on the world
+ * element from ui/constants.ts.
  *
  * The handles are invisible: they are hit areas, not decoration. The card's
  * own accent ring already says which card the pointer is on, and eight
@@ -844,8 +844,16 @@
  * rebuildEdgesSvg/redrawEdgesForCards). `overflow: visible` on a nominally
  * 1x1px element lets paths be drawn anywhere in world coordinates,
  * including negative x/y, without a viewBox that would need to track board
- * extent. Coordinates are world units, so edges scale with zoom exactly
- * like everything else in the world layer (cards included). */
+ * extent. Coordinates are world units, so an edge's *path* scales with zoom
+ * exactly like everything else in the world layer (cards included).
+ *
+ * Its weight does not. Stroke widths, the arrowhead and the label are drawn
+ * for a reader, not for the board: every one of them is multiplied by
+ * --yolo-whiteboard-zoom-multiplier (1/sqrt(scale), written by
+ * cameraController.ts's applyZoomScale), so the camera's own scale is half
+ * cancelled and the screen size grows as sqrt(scale) instead. A line of
+ * constant world weight is a hairline zoomed out and a rope zoomed in; this
+ * is Obsidian Canvas's --zoom-multiplier, the same law at the same value. */
 
 .yolo-whiteboard-edges {
   position: absolute;
@@ -864,7 +872,7 @@
 .yolo-whiteboard-edge-path {
   fill: none;
   stroke: var(--yolo-whiteboard-color);
-  stroke-width: 1.5;
+  stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
   pointer-events: none;
 }
 
@@ -893,7 +901,7 @@
 
 .yolo-whiteboard-edge-hit:hover + .yolo-whiteboard-edge-path,
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
-  stroke-width: 3;
+  stroke-width: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
 }
 
 .yolo-whiteboard-edge-path.yolo-whiteboard-edge-selected {
@@ -912,7 +920,7 @@
 .yolo-whiteboard-edge-preview {
   fill: none;
   stroke: var(--interactive-accent);
-  stroke-width: 1.5;
+  stroke-width: calc(1.5 * var(--yolo-whiteboard-zoom-multiplier, 1));
   pointer-events: none;
 }
 
@@ -920,7 +928,21 @@
   display: none;
 }
 
+/* The counter-scaled arrowhead grows past the marker's own 8x8 viewport when
+ * the board is zoomed out, and a marker clips to it by default. */
+.yolo-whiteboard-edge-arrow-marker {
+  overflow: visible;
+}
+
 .yolo-whiteboard-edge-arrow {
+  /* Scaled about the marker's reference point (refX/refY = 7,4 of an 8x8
+   * triangle, hence 87.5% 50% of its fill box), which is the point pinned to
+   * the end of the line — so the arrow keeps its tip where the line ends at
+   * every zoom, and only its size changes. Obsidian Canvas scales its own
+   * arrowhead polygon about the tip for the same reason. */
+  transform: scale(var(--yolo-whiteboard-zoom-multiplier, 1));
+  transform-box: fill-box;
+  transform-origin: 87.5% 50%;
   fill: var(--text-faint);
   /* Takes the color of whichever path referenced the marker, so a selected
    * edge's arrowhead follows its line instead of every edge on the board
@@ -956,16 +978,18 @@
   width: max-content;
   /* Obsidian Canvas's own ceiling for a path label. A label is an annotation
    * on a line, not a card: past this it wraps rather than running the length
-   * of the board. */
+   * of the board. In `em`, so it follows the counter-scaled font size below
+   * and the text wraps at the same word at every zoom. */
   max-width: 17em;
-  padding: 2px 6px;
+  padding: calc(2px * var(--yolo-whiteboard-zoom-multiplier, 1))
+    calc(6px * var(--yolo-whiteboard-zoom-multiplier, 1));
   border-radius: var(--radius-s, 4px);
   /* Opaque, so the label stays legible where it crosses its own curve and
    * any other. (As SVG text this was a stroke halo; as an element it is just
    * the background, which also gives the ring below something to sit on.) */
   background: var(--background-primary);
   color: var(--text-normal);
-  font-size: 11px;
+  font-size: calc(11px * var(--yolo-whiteboard-zoom-multiplier, 1));
   line-height: 1.3;
   text-align: center;
   white-space: pre-wrap;
@@ -978,7 +1002,8 @@
 /* Being typed — the same treatment a group label gets, for the same reason:
  * nothing about the text moves, it just gains the ring of a field. */
 .yolo-whiteboard-edge-label[contenteditable] {
-  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
+  box-shadow: 0 0 0 calc(2px * var(--yolo-whiteboard-zoom-multiplier, 1))
+    var(--yolo-whiteboard-color);
   outline: none;
   cursor: text;
 }
