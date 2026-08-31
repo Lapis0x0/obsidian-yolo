@@ -18,19 +18,26 @@ export const WHEEL_DELTA_PER_ZOOM_DOUBLING = 300
  * nodes or to the selection (Shift+1 / Shift+2). */
 export const FIT_CAMERA_PADDING_PX = 48
 
-/** Time constant of the glide the camera takes toward the zoom a gesture
- * asked for, rather than snapping to it. Measured off Obsidian Canvas by
+/** Time constant of the glide the camera takes toward where a gesture asked
+ * it to go, rather than snapping there. Measured off Obsidian Canvas by
  * sampling its transform every frame through one wheel notch: the remaining
  * distance decays by ~0.876 per frame on a 120Hz display, i.e. e-folding
- * every ~63ms, and the whole glide is over in ~255ms. Short enough that the
- * easing reads as weight rather than lag — twice this already feels floaty.
- * See canvas.ts's advanceZoomGlide(). */
-export const ZOOM_GLIDE_TAU_MS = 63
+ * every ~63ms, and the whole glide is over in ~255ms. Its own source has the
+ * decay as `0.984 ** dtMs`, an e-folding every 62.0ms — the measurement was
+ * reading the real constant. Short enough that the easing reads as weight
+ * rather than lag: twice this already feels floaty. See canvas.ts's
+ * advanceCameraGlide(). */
+export const CAMERA_GLIDE_TAU_MS = 63
 
 /** Remaining distance, in doublings, below which the glide is finished and
  * the camera snaps to its target — an exponential approach never arrives, and
  * a hundredth of a doubling is a fifth of a pixel on a 260px card. */
-export const ZOOM_GLIDE_EPSILON_DOUBLINGS = 0.01
+export const CAMERA_GLIDE_EPSILON_DOUBLINGS = 0.01
+
+/** The same cutoff for the pan half of a fit's glide. Half a pixel is below
+ * anything a display can show, and unlike the zoom tolerance it is already in
+ * the units the transform is written in. */
+export const CAMERA_GLIDE_EPSILON_PX = 0.5
 
 /** Screen-pixel buffer band around the viewport for virtualization, divided
  * by scale before use so its on-screen width stays constant across zoom

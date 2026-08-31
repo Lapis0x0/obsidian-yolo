@@ -94,6 +94,81 @@ export function approachScale(
   )
 }
 
+/**
+ * One frame of the same approach toward a whole view — the counterpart of
+ * `approachScale` for a camera move whose translation is *not* derivable from
+ * its scale: framing a selection, as against a cursor-anchored wheel zoom.
+ *
+ * The scale eases exactly as it does for the wheel; the translation is then
+ * **linear in that scale**, not in time. That one choice is what makes the
+ * transit look like a zoom instead of a lurch, because a translation linear in
+ * scale is precisely a `viewAnchoredAt` path: any two views of different
+ * scales share exactly one screen point that means the same world point in
+ * both, and a tx linear in s is the unique path that holds it still the whole
+ * way. Framing a card that is already centred is then a pure zoom, and no
+ * intermediate frame ever shows the board somewhere neither end put it.
+ *
+ * Obsidian Canvas eases its translation in *world* space instead (its `x`/`y`
+ * are world coordinates, its `tZoom` a log2 scale — both interpolated against
+ * time). That is a different curve, and a visibly worse one: framing a centred
+ * card at 1x down to 0.2x sweeps it 137px sideways and back before it settles.
+ *
+ * Stated against `current` rather than against a stored origin, so it is
+ * self-correcting: a frame the browser skipped, or a target moved mid-flight,
+ * simply re-aims from wherever the camera actually is.
+ */
+export function approachView(
+  current: CanvasView,
+  target: CanvasView,
+  dtMs: number,
+  tauMs: number,
+): CanvasView {
+  if (tauMs <= 0 || dtMs <= 0) return target
+  const scale = approachScale(current.scale, target.scale, dtMs, tauMs)
+  const remaining = target.scale - current.scale
+  // Near the end of a zoom — and throughout a fit that happens to land on the
+  // scale it started at — there is no scale change left to hang the pan on.
+  // The two agree in the limit (the eased scale covers `alpha` of what is
+  // left, so `progress` tends to `alpha`), so the fallback is a seam-free
+  // continuation rather than a second kind of motion.
+  const progress =
+    Math.abs(remaining) > SCALE_PROGRESS_EPSILON * target.scale
+      ? (scale - current.scale) / remaining
+      : 1 - Math.exp(-dtMs / tauMs)
+  return {
+    tx: current.tx + (target.tx - current.tx) * progress,
+    ty: current.ty + (target.ty - current.ty) * progress,
+    scale,
+  }
+}
+
+/** Relative scale change below which `approachView` stops deriving the pan's
+ * progress from the zoom's: the ratio of two vanishing quantities loses its
+ * precision long before it loses its meaning. */
+const SCALE_PROGRESS_EPSILON = 1e-6
+
+/**
+ * Whether `current` is close enough to `target` to call the move over —
+ * within `epsilonDoublings` of its zoom and `epsilonPx` of its position.
+ *
+ * An exponential approach never actually arrives, so something has to decide
+ * when it has; the two tolerances are separate because a hundredth of a
+ * doubling and half a pixel are both "invisible" but neither implies the
+ * other.
+ */
+export function viewSettled(
+  current: CanvasView,
+  target: CanvasView,
+  epsilonDoublings: number,
+  epsilonPx: number,
+): boolean {
+  return (
+    Math.abs(Math.log2(current.scale / target.scale)) < epsilonDoublings &&
+    Math.abs(current.tx - target.tx) < epsilonPx &&
+    Math.abs(current.ty - target.ty) < epsilonPx
+  )
+}
+
 /** Plain two-axis wheel pan (no modifier held): screen deltas subtract
  * directly from the translation, scale unchanged. */
 export function panByWheel(

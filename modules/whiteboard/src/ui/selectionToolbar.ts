@@ -84,14 +84,18 @@ export type ToolbarIconName =
   | 'ellipsis'
   | 'arrow-right'
   | 'tag'
+  | 'trash'
+  | 'scan-search'
 
 export type ToolbarAction = Readonly<{
+  kind?: 'action'
   label: string
   icon: ToolbarIconName
   onSelect: (event: MouseEvent) => void
 }>
 
 export type ToolbarColorControl = Readonly<{
+  kind: 'color'
   /** Tooltip for the palette button. */
   label: string
   /** Tooltip for the "no colour" swatch. */
@@ -105,18 +109,22 @@ export type ToolbarColorControl = Readonly<{
   onPick: (color: string | undefined) => void
 }>
 
+/** One button in the row. The colour control is an item like any other so its
+ * place in the row is the caller's decision, not this class's — the delete
+ * button has to be able to sit before it. */
+export type ToolbarItem = ToolbarAction | ToolbarColorControl
+
 export type ToolbarModel = Readonly<{
-  /** Absent when the selection cannot be recoloured — a locked board. The
-   * palette button is then not drawn at all, rather than drawn and inert. */
-  color?: ToolbarColorControl
-  actions: readonly ToolbarAction[]
+  /** Drawn left to right. A control the selection cannot use — recolouring a
+   * locked board — is simply absent, rather than drawn and inert. */
+  items: readonly ToolbarItem[]
 }>
 
 /**
  * Lucide icon geometry, the same drawings Obsidian's own `setIcon` produces
  * (lucide 0.447, the version this repository already vendors for the Learning
  * module's React UI). Inlined rather than imported: this module is imperative
- * DOM with no package dependencies, and five icons are not worth one.
+ * DOM with no package dependencies, and six icons are not worth one.
  */
 const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
   palette: [
@@ -152,11 +160,29 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
     },
     { kind: 'dot', cx: 7.5, cy: 7.5 },
   ],
+  'scan-search': [
+    { kind: 'path', d: 'M3 7V5a2 2 0 0 1 2-2h2' },
+    { kind: 'path', d: 'M17 3h2a2 2 0 0 1 2 2v2' },
+    { kind: 'path', d: 'M21 17v2a2 2 0 0 1-2 2h-2' },
+    { kind: 'path', d: 'M7 21H5a2 2 0 0 1-2-2v-2' },
+    { kind: 'ring', cx: 12, cy: 12, r: 3 },
+    { kind: 'path', d: 'm16 16-1.9-1.9' },
+  ],
+  trash: [
+    { kind: 'path', d: 'M3 6h18' },
+    { kind: 'path', d: 'M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6' },
+    { kind: 'path', d: 'M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2' },
+    { kind: 'path', d: 'M10 11v6' },
+    { kind: 'path', d: 'M14 11v6' },
+  ],
 }
 
+/** `dot` is filled (the palette's paint blobs, the ellipsis); `ring` is
+ * stroked like a path, which is what lucide's `<circle>` elements are. */
 type IconShape =
   | Readonly<{ kind: 'path'; d: string }>
   | Readonly<{ kind: 'dot'; cx: number; cy: number; r?: number }>
+  | Readonly<{ kind: 'ring'; cx: number; cy: number; r: number }>
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -169,6 +195,9 @@ export class SelectionToolbar {
   private popoverEl: HTMLElement | null = null
   private paletteButtonEl: HTMLElement | null = null
   private model: ToolbarModel | null = null
+  /** The colour item out of `model.items`, kept aside because the popover and
+   * `setCurrentColor` reach for it on every interaction. */
+  private color: ToolbarColorControl | null = null
 
   constructor(
     private readonly doc: Document,
@@ -202,29 +231,31 @@ export class SelectionToolbar {
     this.model = model
     this.el.replaceChildren()
     this.paletteButtonEl = null
-    if (!model) {
+    this.color = null
+    if (!model || model.items.length === 0) {
       this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
       return
     }
-    this.paletteButtonEl = model.color
-      ? this.appendButton({
-          label: model.color.label,
-          icon: 'palette',
-          onSelect: () => this.togglePopover(),
-        })
-      : null
-    for (const action of model.actions) this.appendButton(action)
+    for (const item of model.items) {
+      if (item.kind !== 'color') {
+        this.appendButton(item)
+        continue
+      }
+      this.color = item
+      this.paletteButtonEl = this.appendButton({
+        label: item.label,
+        icon: 'palette',
+        onSelect: () => this.togglePopover(),
+      })
+    }
     this.el.classList.remove(TOOLBAR_HIDDEN_CLASS)
   }
 
   /** Reflects a colour the caller just applied, without rebuilding the
    * toolbar — picking a second colour from an open popover has to be possible. */
   setCurrentColor(color: string | undefined): void {
-    if (!this.model?.color) return
-    this.model = {
-      ...this.model,
-      color: { ...this.model.color, current: color },
-    }
+    if (!this.color) return
+    this.color = { ...this.color, current: color }
     if (this.popoverEl) this.markActiveSwatch()
   }
 
@@ -302,7 +333,7 @@ export class SelectionToolbar {
       circle.setAttribute('cx', String(shape.cx))
       circle.setAttribute('cy', String(shape.cy))
       circle.setAttribute('r', String(shape.r ?? 0.5))
-      circle.setAttribute('fill', 'currentColor')
+      if (shape.kind === 'dot') circle.setAttribute('fill', 'currentColor')
       svg.appendChild(circle)
     }
     return svg
@@ -317,24 +348,24 @@ export class SelectionToolbar {
   }
 
   private openPopover(): void {
-    const model = this.model
-    if (!model?.color) return
+    const color = this.color
+    if (!color) return
     const popover = this.doc.createElement('div')
     popover.className = POPOVER_CLASS
 
     this.appendSwatch(popover, {
-      label: model.color.defaultLabel,
+      label: color.defaultLabel,
       extraClass: SWATCH_DEFAULT_CLASS,
       value: undefined,
     })
     for (const preset of COLOR_PRESETS) {
       this.appendSwatch(popover, {
-        label: model.color.presetLabels[preset],
+        label: color.presetLabels[preset],
         extraClass: colorPresetClass(preset),
         value: preset,
       })
     }
-    this.appendCustomSwatch(popover, model.color)
+    this.appendCustomSwatch(popover, color)
 
     this.el.appendChild(popover)
     this.popoverEl = popover
@@ -357,7 +388,7 @@ export class SelectionToolbar {
     swatch.dataset.color = options.value ?? ''
     swatch.addEventListener('click', (event) => {
       event.preventDefault()
-      this.model?.color?.onPick(options.value)
+      this.color?.onPick(options.value)
     })
     popover.appendChild(swatch)
     return swatch
@@ -385,7 +416,7 @@ export class SelectionToolbar {
     input.value = customColorInputValue(control.current)
     input.addEventListener('change', () => {
       const hex = normalizeHex(input.value)
-      if (hex) this.model?.color?.onPick(hex)
+      if (hex) this.color?.onPick(hex)
     })
     swatch.appendChild(input)
     popover.appendChild(swatch)
@@ -393,7 +424,7 @@ export class SelectionToolbar {
 
   private markActiveSwatch(): void {
     const popover = this.popoverEl
-    const current = this.model?.color?.current
+    const current = this.color?.current
     if (!popover) return
     const resolved = resolveColor(current)
     // `null` = no plain swatch can match, which is the custom case: the empty

@@ -1,5 +1,6 @@
 import {
   approachScale,
+  approachView,
   cameraFromView,
   clampScale,
   dragPan,
@@ -10,6 +11,7 @@ import {
   unionRect,
   viewAnchoredAt,
   viewFromCamera,
+  viewSettled,
 } from './camera'
 
 describe('clampScale', () => {
@@ -118,6 +120,103 @@ describe('approachScale', () => {
 
   it('arrives immediately when there is no time constant to spread it over', () => {
     expect(approachScale(1, 2, 16, 0)).toBe(2)
+  })
+})
+
+describe('approachView', () => {
+  const start = { tx: 0, ty: 0, scale: 1 }
+  const target = { tx: -900, ty: -400, scale: 0.25 }
+
+  it('converges on the whole target view, pan and zoom together', () => {
+    let view = start
+    for (let i = 0; i < 400; i++) view = approachView(view, target, 16.7, 63)
+    expect(view.scale).toBeCloseTo(target.scale, 6)
+    expect(view.tx).toBeCloseTo(target.tx, 4)
+    expect(view.ty).toBeCloseTo(target.ty, 4)
+  })
+
+  it('eases the zoom on the same curve as approachScale', () => {
+    const next = approachView(start, target, 160, 160)
+    expect(next.scale).toBeCloseTo(
+      approachScale(start.scale, target.scale, 160, 160),
+      10,
+    )
+  })
+
+  // The pan's parameter is the scale, not the clock: whatever fraction of the
+  // zoom a frame covered, the translation covered the same fraction.
+  it('keeps the translation linear in the scale it reached', () => {
+    const next = approachView(start, target, 160, 160)
+    const progress = (next.scale - start.scale) / (target.scale - start.scale)
+    expect(next.tx).toBeCloseTo(start.tx + (target.tx - start.tx) * progress, 8)
+    expect(next.ty).toBeCloseTo(start.ty + (target.ty - start.ty) * progress, 8)
+  })
+
+  it('moves the same distance per unit time whatever the frame rate', () => {
+    let slow = start
+    for (let i = 0; i < 30; i++) slow = approachView(slow, target, 16, 160)
+    let fast = start
+    for (let i = 0; i < 60; i++) fast = approachView(fast, target, 8, 160)
+    expect(fast.scale).toBeCloseTo(slow.scale, 10)
+    expect(fast.tx).toBeCloseTo(slow.tx, 8)
+    expect(fast.ty).toBeCloseTo(slow.ty, 8)
+  })
+
+  /**
+   * The property the linear-in-scale pan exists for, and the one Obsidian
+   * Canvas's own law fails: framing something already centred is a pure zoom,
+   * with the subject pinned for every intermediate frame rather than sweeping
+   * out and back.
+   */
+  it('holds a centred subject still while zooming out to frame it', () => {
+    const viewport = { x: 400, y: 300 }
+    const centred = { tx: 0, ty: 0, scale: 1 }
+    const world = screenToWorld(centred, viewport)
+    const framed = {
+      tx: viewport.x - world.x * 0.2,
+      ty: viewport.y - world.y * 0.2,
+      scale: 0.2,
+    }
+    let view = centred
+    for (let i = 0; i < 60; i++) {
+      view = approachView(view, framed, 16.7, 63)
+      const at = screenToWorld(view, viewport)
+      expect(at.x).toBeCloseTo(world.x, 6)
+      expect(at.y).toBeCloseTo(world.y, 6)
+    }
+  })
+
+  it('arrives immediately when there is no time constant to spread it over', () => {
+    expect(approachView(start, target, 16, 0)).toBe(target)
+  })
+})
+
+describe('viewSettled', () => {
+  const target = { tx: 100, ty: 200, scale: 0.5 }
+
+  it('is settled at the target itself', () => {
+    expect(viewSettled(target, target, 0.01, 0.5)).toBe(true)
+  })
+
+  it('is not settled while the pan is still short, however exact the zoom', () => {
+    expect(viewSettled({ ...target, tx: 101 }, target, 0.01, 0.5)).toBe(false)
+  })
+
+  it('is not settled while the zoom is still off, however exact the pan', () => {
+    expect(viewSettled({ ...target, scale: 0.51 }, target, 0.01, 0.5)).toBe(
+      false,
+    )
+  })
+
+  it('tolerates sub-threshold error on both axes at once', () => {
+    expect(
+      viewSettled(
+        { tx: 100.4, ty: 199.6, scale: 0.5 * 2 ** 0.005 },
+        target,
+        0.01,
+        0.5,
+      ),
+    ).toBe(true)
   })
 })
 

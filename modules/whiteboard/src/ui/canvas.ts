@@ -30,6 +30,7 @@ import {
 } from '../domain/arrange'
 import {
   approachScale,
+  approachView,
   cameraFromView,
   dragPan,
   fitViewToBounds,
@@ -39,6 +40,7 @@ import {
   unionRect,
   viewAnchoredAt,
   viewFromCamera,
+  viewSettled,
 } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { COLOR_PRESETS, type ColorPreset, commonColor } from '../domain/color'
@@ -128,6 +130,9 @@ import { createWhiteboardTranslation } from '../i18n'
 
 import { CardMenu } from './cardMenu'
 import {
+  CAMERA_GLIDE_EPSILON_DOUBLINGS,
+  CAMERA_GLIDE_EPSILON_PX,
+  CAMERA_GLIDE_TAU_MS,
   CAMERA_SETTLE_MS,
   CONNECT_SNAP_WORLD_PX,
   DEGRADE_RESTORE_SCALE,
@@ -150,8 +155,6 @@ import {
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
-  ZOOM_GLIDE_EPSILON_DOUBLINGS,
-  ZOOM_GLIDE_TAU_MS,
 } from './constants'
 import { InlineTextInput } from './inlineTextInput'
 import { degradedNodeTitle, nextDegradedState } from './lod'
@@ -162,7 +165,8 @@ import {
 } from './promptOverlay'
 import {
   SelectionToolbar,
-  type ToolbarAction,
+  type ToolbarColorControl,
+  type ToolbarItem,
   type ToolbarModel,
   applyColorToElement,
 } from './selectionToolbar'
@@ -617,13 +621,24 @@ export class WhiteboardCanvas {
   private interactingTimer: number | null = null
   private settleTimer: number | null = null
   private lastRecomputeTime = 0
-  /** Zoom the wheel has asked for but the camera has not reached yet, with
-   * the point the gesture grabbed. Null when the camera is at rest. */
-  private zoomGlide: {
-    targetScale: number
-    screen: ScreenPoint
-    world: ScreenPoint
-  } | null = null
+  /**
+   * Where the camera is heading and has not arrived yet. Null at rest.
+   *
+   * Two laws, because two gestures. `anchored` is a wheel zoom: only the
+   * scale eases, and the translation is re-derived every frame from the point
+   * the gesture grabbed, which is what keeps that point exactly under the
+   * cursor for the whole glide. `view` is a fit: its translation is not a
+   * function of its scale, so both ease (domain/camera.ts's `approachView`).
+   */
+  private cameraGlide:
+    | Readonly<{
+        kind: 'anchored'
+        targetScale: number
+        screen: ScreenPoint
+        world: ScreenPoint
+      }>
+    | Readonly<{ kind: 'view'; target: CanvasView }>
+    | null = null
   private lastGlideTime: number | null = null
   /** Current zoom-degrade state, updated only at recomputeVisibility's ~70ms
    * throttle (see updateDegradedState) — not evaluated per frame. */
@@ -682,7 +697,7 @@ export class WhiteboardCanvas {
     this.view = viewFromCamera(this.board.camera)
     // A glide aimed at the previous board's camera has nothing to say about
     // this one, and would drag the new view away from where it opened.
-    this.zoomGlide = null
+    this.cameraGlide = null
     this.lastGlideTime = null
     this.applyTransform()
     this.applyLockedState()
@@ -695,7 +710,7 @@ export class WhiteboardCanvas {
     // rather than where the user left off (host/pendingFit.ts). Done after
     // showCanvas so the viewport has its real size to fit against.
     if (takePendingFit(this.sourcePathForBoard())) {
-      this.fitCameraToNodes(this.board.nodes)
+      this.fitCameraToNodes(this.board.nodes, { immediate: true })
     }
     this.recomputeVisibility()
     this.drainQueues()
@@ -1169,7 +1184,7 @@ export class WhiteboardCanvas {
     // the whole selection; on one that is not, it takes over the selection
     // first, so what the menu will do is what the user can see is selected.
     if (!this.selectedIds.has(nodeId)) this.setSelection([nodeId])
-    this.host.ui.showMenu(e, this.selectionMenuItems())
+    this.host.ui.showMenu(e, this.selectionMenuItems('context'))
   }
 
   /**
@@ -1239,13 +1254,25 @@ export class WhiteboardCanvas {
    * the Host API's menu model, they become one list with separators, which is
    * the same grouping Canvas gets from its `setSection` calls.
    */
-  private selectionMenuItems(): YoloModuleHostMenuItemV1[] {
+  /**
+   * The selection's commands.
+   *
+   * `'context'` is the full set, the right-click menu's contract: everything
+   * that can be done to what is selected. `'toolbar'` is what is left for the
+   * floating toolbar's "more" button — the commands it does not already carry
+   * as a button of its own, minus the ones that belong to the right-click menu
+   * alone. Deleting leads the toolbar row, and converting a card to a note is
+   * rare enough that surfacing it twice only makes the toolbar longer.
+   */
+  private selectionMenuItems(
+    scope: 'context' | 'toolbar',
+  ): YoloModuleHostMenuItemV1[] {
     const ids = Array.from(this.selectedIds)
     if (ids.length === 0) return []
     const single = ids.length === 1 ? this.nodesById.get(ids[0]) : null
     const items: YoloModuleHostMenuItemV1[] = []
 
-    if (this.canEdit && single?.type === 'text') {
+    if (scope === 'context' && this.canEdit && single?.type === 'text') {
       items.push({
         title: this.t('menu.convertToNote'),
         icon: 'file-plus',
@@ -1284,27 +1311,28 @@ export class WhiteboardCanvas {
       }
     }
 
-    if (single?.type === 'group') {
-      items.push({ kind: 'separator' })
+    items.push({ kind: 'separator' })
+    // Framing works on any selection and needs no write access, so it is not
+    // the group's own command it used to be. The toolbar carries it as a
+    // button, hence context only.
+    if (scope === 'context') {
       items.push({
         title: this.t('menu.zoomToSelection'),
-        icon: 'zoom-in',
+        icon: 'scan-search',
         onSelect: () => {
-          this.fitCameraToNodes(
-            this.board.nodes.filter((node) => this.selectedIds.has(node.id)),
-          )
+          this.zoomToSelection()
         },
       })
-      if (this.canEdit) {
-        items.push({
-          title: this.t('menu.renameGroup'),
-          icon: 'pencil',
-          onSelect: () => this.openGroupLabelEditor(single.id),
-        })
-      }
+    }
+    if (single?.type === 'group' && this.canEdit) {
+      items.push({
+        title: this.t('menu.renameGroup'),
+        icon: 'pencil',
+        onSelect: () => this.openGroupLabelEditor(single.id),
+      })
     }
 
-    if (this.canEdit) {
+    if (scope === 'context' && this.canEdit) {
       items.push({ kind: 'separator' })
       items.push({
         title: this.t('menu.deleteCard'),
@@ -1312,7 +1340,7 @@ export class WhiteboardCanvas {
         onSelect: () => this.deleteNodes(ids),
       })
     }
-    return items
+    return trimSeparators(items)
   }
 
   // -- drag and drop ------------------------------------------------------
@@ -1548,7 +1576,7 @@ export class WhiteboardCanvas {
    * Aims the camera at a new zoom, anchored on the point under the cursor.
    *
    * The camera glides there over the next few frames rather than arriving at
-   * once (see `advanceZoomGlide`), so consecutive notches accumulate against
+   * once (see `advanceCameraGlide`), so consecutive notches accumulate against
    * the *target* rather than wherever the glide currently is — otherwise
    * spinning the wheel would fight the easing and cover less ground the
    * faster it was spun. The anchor is re-taken from the live view each time,
@@ -1556,34 +1584,35 @@ export class WhiteboardCanvas {
    * wherever it now points.
    */
   private zoomBy(deltaY: number, cursor: ScreenPoint): void {
+    const glide = this.cameraGlide
     const targetScale = scaleAfterWheel(
-      this.zoomGlide?.targetScale ?? this.view.scale,
+      glide?.kind === 'anchored' ? glide.targetScale : this.view.scale,
       deltaY,
       WHEEL_DELTA_PER_ZOOM_DOUBLING,
       SCALE_BOUNDS,
     )
     const anchor = { screen: cursor, world: screenToWorld(this.view, cursor) }
     if (this.prefersReducedMotion()) {
-      this.zoomGlide = null
+      this.cameraGlide = null
       this.view = viewAnchoredAt(anchor.screen, anchor.world, targetScale)
       this.applyTransform()
       this.markInteracting()
       this.scheduleCameraSettle()
       return
     }
-    this.zoomGlide = { ...anchor, targetScale }
+    this.cameraGlide = { kind: 'anchored', ...anchor, targetScale }
   }
 
   /**
-   * Moves the camera one frame closer to the zoom the last gesture asked for.
+   * Moves the camera one frame closer to where the last gesture aimed it.
    *
    * Driven from the rAF loop rather than by the input events themselves: the
    * motion has to continue after the wheel stops, which is the whole point of
    * gliding — a gesture ends with the camera still travelling, the way it does
    * everywhere else in Obsidian.
    */
-  private advanceZoomGlide(now: number): void {
-    const glide = this.zoomGlide
+  private advanceCameraGlide(now: number): void {
+    const glide = this.cameraGlide
     if (!glide) return
     // A first frame, or one after the tab was backgrounded, has no meaningful
     // elapsed time; treat it as a single 60Hz frame rather than teleporting.
@@ -1593,27 +1622,49 @@ export class WhiteboardCanvas {
         : Math.min(now - this.lastGlideTime, 100)
     this.lastGlideTime = now
 
-    const next = approachScale(
-      this.view.scale,
-      glide.targetScale,
+    if (glide.kind === 'anchored') {
+      const next = approachScale(
+        this.view.scale,
+        glide.targetScale,
+        elapsed,
+        CAMERA_GLIDE_TAU_MS,
+      )
+      const settled =
+        Math.abs(Math.log2(next / glide.targetScale)) <
+        CAMERA_GLIDE_EPSILON_DOUBLINGS
+      this.view = viewAnchoredAt(
+        glide.screen,
+        glide.world,
+        settled ? glide.targetScale : next,
+      )
+      this.finishGlideFrame(settled)
+      return
+    }
+
+    const next = approachView(
+      this.view,
+      glide.target,
       elapsed,
-      ZOOM_GLIDE_TAU_MS,
+      CAMERA_GLIDE_TAU_MS,
     )
-    const settled =
-      Math.abs(Math.log2(next / glide.targetScale)) <
-      ZOOM_GLIDE_EPSILON_DOUBLINGS
-    this.view = viewAnchoredAt(
-      glide.screen,
-      glide.world,
-      settled ? glide.targetScale : next,
+    const settled = viewSettled(
+      next,
+      glide.target,
+      CAMERA_GLIDE_EPSILON_DOUBLINGS,
+      CAMERA_GLIDE_EPSILON_PX,
     )
+    this.view = settled ? glide.target : next
+    this.finishGlideFrame(settled)
+  }
+
+  /** What both glide laws do with the frame they just computed. */
+  private finishGlideFrame(settled: boolean): void {
     this.applyTransform()
     this.markInteracting()
-    if (settled) {
-      this.zoomGlide = null
-      this.lastGlideTime = null
-      this.scheduleCameraSettle()
-    }
+    if (!settled) return
+    this.cameraGlide = null
+    this.lastGlideTime = null
+    this.scheduleCameraSettle()
   }
 
   /** Viewport-relative position of a mouse event. */
@@ -1709,6 +1760,20 @@ export class WhiteboardCanvas {
     }, CAMERA_SETTLE_MS)
   }
 
+  /**
+   * Where the camera has come to rest, or is on its way to. Mid-glide the
+   * live view is a frame on the way to somewhere; what the user asked for is
+   * the target, and persisting an intermediate frame would reopen the board
+   * half-way through a move the gesture had already finished.
+   */
+  private get targetView(): CanvasView {
+    const glide = this.cameraGlide
+    if (!glide) return this.view
+    return glide.kind === 'anchored'
+      ? viewAnchoredAt(glide.screen, glide.world, glide.targetScale)
+      : glide.target
+  }
+
   private commitCameraNow(): void {
     const win = this.context.getWindow()
     if (this.settleTimer !== null) {
@@ -1716,15 +1781,7 @@ export class WhiteboardCanvas {
       this.settleTimer = null
     }
     if (this.parseFailed) return
-    // Mid-glide, the view is a frame on the way to somewhere; what the user
-    // asked for is the target. Persisting the intermediate one would reopen
-    // the board half-way through a zoom the gesture had already finished.
-    const glide = this.zoomGlide
-    const camera = cameraFromView(
-      glide
-        ? viewAnchoredAt(glide.screen, glide.world, glide.targetScale)
-        : this.view,
-    )
+    const camera = cameraFromView(this.targetView)
     const current = this.board.camera
     if (
       camera.x === current.x &&
@@ -2451,11 +2508,7 @@ export class WhiteboardCanvas {
     }
     const fitSelection = () => {
       if (this.editing) return false
-      const selected = this.board.nodes.filter((node) =>
-        this.selectedIds.has(node.id),
-      )
-      if (selected.length === 0) return false
-      return this.fitCameraToNodes(selected)
+      return this.zoomToSelection()
     }
     // Back to the origin at 1:1. Obsidian Canvas binds no key to its own
     // (weaker) reset — Shift+1 and Shift+2 are the only two camera keys it
@@ -2478,10 +2531,36 @@ export class WhiteboardCanvas {
     ])
   }
 
-  /** Jumps the camera to frame `nodes` (zoom to fit / zoom to selection).
-   * A deliberate teleport, not a glide: the destination can be tens of
-   * thousands of pixels away, where an animated transit is pure noise. */
-  private fitCameraToNodes(nodes: readonly BoardNode[]): boolean {
+  /** Frames the current selection. The single implementation behind Shift+2,
+   * the toolbar's focus button and the context menu's item, so the three can
+   * never mean slightly different things. Declines an empty selection, which
+   * is what lets the key fall through to Obsidian. */
+  private zoomToSelection(): boolean {
+    const selected = this.board.nodes.filter((node) =>
+      this.selectedIds.has(node.id),
+    )
+    if (selected.length === 0) return false
+    return this.fitCameraToNodes(selected)
+  }
+
+  /**
+   * Frames `nodes` (zoom to fit / zoom to selection).
+   *
+   * The camera glides there rather than cutting, on the same law the wheel
+   * uses and the one Obsidian Canvas animates its own viewport with: the move
+   * is what tells you where you came from, and over a large jump that is
+   * exactly when a cut is most disorienting.
+   *
+   * `immediate` is for the one fit with nothing to travel from — a board
+   * being framed against a real viewport for the first time, where the
+   * position it would glide out of is a placeholder the user never saw.
+   * Obsidian exempts the same case (`finishViewportAnimation`), and reduced
+   * motion takes the same path.
+   */
+  private fitCameraToNodes(
+    nodes: readonly BoardNode[],
+    options?: Readonly<{ immediate?: boolean }>,
+  ): boolean {
     const bounds = unionRect(
       nodes.map((node) => ({
         x: node.x,
@@ -2492,18 +2571,37 @@ export class WhiteboardCanvas {
     )
     if (!bounds) return false
     const rect = this.viewportEl.getBoundingClientRect()
-    this.zoomGlide = null
-    this.lastGlideTime = null
-    this.view = fitViewToBounds(
+    const target = fitViewToBounds(
       bounds,
       { width: rect.width, height: rect.height },
       FIT_CAMERA_PADDING_PX,
       SCALE_BOUNDS,
     )
-    this.applyTransform()
-    this.markInteracting()
-    this.commitCameraNow()
+    this.moveCameraTo(target, options)
     return true
+  }
+
+  /**
+   * Sends the camera to `target`, gliding unless told otherwise. Every
+   * destination the canvas picks for itself — both fits and the reset — goes
+   * through here, so they cannot end up moving in different ways.
+   */
+  private moveCameraTo(
+    target: CanvasView,
+    options?: Readonly<{ immediate?: boolean }>,
+  ): void {
+    if (options?.immediate === true || this.prefersReducedMotion()) {
+      this.cameraGlide = null
+      this.lastGlideTime = null
+      this.view = target
+      this.applyTransform()
+      this.markInteracting()
+    } else {
+      this.cameraGlide = { kind: 'view', target }
+    }
+    // Persisted from the target either way, so a board closed mid-glide
+    // reopens where the move was going rather than wherever it had got to.
+    this.commitCameraNow()
   }
 
   /**
@@ -2518,12 +2616,7 @@ export class WhiteboardCanvas {
    * it is where a new board is centred and where an imported one is parked.
    */
   private resetCamera(): void {
-    this.zoomGlide = null
-    this.lastGlideTime = null
-    this.view = viewFromCamera(DEFAULT_CAMERA)
-    this.applyTransform()
-    this.markInteracting()
-    this.commitCameraNow()
+    this.moveCameraTo(viewFromCamera(DEFAULT_CAMERA))
     this.recomputeVisibility()
     this.drainQueues()
   }
@@ -2825,8 +2918,34 @@ export class WhiteboardCanvas {
     )
     if (nodes.length === 0) return null
     const single = nodes.length === 1 ? nodes[0] : null
+    const ids = nodes.map((node) => node.id)
 
-    const actions: ToolbarAction[] = []
+    const items: ToolbarItem[] = []
+    // Delete leads the row, the way it does in Obsidian Canvas: it is the one
+    // command every selection can take, and it was the reason to open "more"
+    // in the first place.
+    if (this.canEdit) {
+      items.push({
+        label: this.t('menu.deleteCard'),
+        icon: 'trash',
+        onSelect: () => this.deleteNodes(ids),
+      })
+      items.push(
+        this.colorControl(
+          commonColor(nodes.map((node) => node.color)),
+          (color) => this.applyColorToNodes(ids, color),
+        ),
+      )
+    }
+    // Framing the selection is a camera move, not an edit — the one button a
+    // locked board still gets, and Obsidian Canvas's third button too.
+    items.push({
+      label: this.t('menu.zoomToSelection'),
+      icon: 'scan-search',
+      onSelect: () => {
+        this.zoomToSelection()
+      },
+    })
     // Editing is the one action a degraded card cannot take (D8: its content
     // is not built at this zoom), so the button goes away rather than being
     // offered and declining. A locked board offers it for nothing either.
@@ -2836,30 +2955,26 @@ export class WhiteboardCanvas {
       !this.degraded &&
       this.canEdit
     ) {
-      actions.push({
+      items.push({
         label: this.t('toolbar.edit'),
         icon: 'pencil',
         onSelect: () => this.editCard(single.id),
       })
     }
-    actions.push({
-      label: this.t('toolbar.more'),
-      icon: 'ellipsis',
-      onSelect: (event) =>
-        this.host.ui.showMenu(event, this.selectionMenuItems()),
-    })
-
-    return {
-      color: this.colorControl(
-        commonColor(nodes.map((node) => node.color)),
-        (color) =>
-          this.applyColorToNodes(
-            nodes.map((node) => node.id),
-            color,
-          ),
-      ),
-      actions,
+    // "More" exists only when it has something left to hold — a single card
+    // whose whole command set is already on the row does not get an empty
+    // menu. The menu itself is still built when it opens, not now, so it
+    // cannot go stale between selecting and clicking.
+    if (this.selectionMenuItems('toolbar').length > 0) {
+      items.push({
+        label: this.t('toolbar.more'),
+        icon: 'ellipsis',
+        onSelect: (event) =>
+          this.host.ui.showMenu(event, this.selectionMenuItems('toolbar')),
+      })
     }
+
+    return { items }
   }
 
   private buildEdgeToolbarModel(): ToolbarModel | null {
@@ -2868,11 +2983,19 @@ export class WhiteboardCanvas {
       edgeId === undefined ? undefined : this.boardEdgesById.get(edgeId)
     if (!edge) return null
 
+    // Same row shape as a node's: delete, colour, then what is specific to an
+    // edge. Deleting was this menu's only entry, so "more" goes with it.
+    if (!this.canEdit) return { items: [] }
     return {
-      color: this.colorControl(edge.color, (color) =>
-        this.applyColorToEdge(edge.id, color),
-      ),
-      actions: [
+      items: [
+        {
+          label: this.t('menu.deleteEdge'),
+          icon: 'trash',
+          onSelect: () => this.deleteEdges([edge.id]),
+        },
+        this.colorControl(edge.color, (color) =>
+          this.applyColorToEdge(edge.id, color),
+        ),
         {
           label: this.t('toolbar.arrows'),
           icon: 'arrow-right',
@@ -2883,19 +3006,6 @@ export class WhiteboardCanvas {
           icon: 'tag',
           onSelect: () => this.openEdgeLabelEditor(edge.id),
         },
-        {
-          label: this.t('toolbar.more'),
-          icon: 'ellipsis',
-          onSelect: (event) => {
-            this.host.ui.showMenu(event, [
-              {
-                title: this.t('menu.deleteEdge'),
-                icon: 'trash-2',
-                onSelect: () => this.deleteEdges([edge.id]),
-              },
-            ])
-          },
-        },
       ],
     }
   }
@@ -2905,8 +3015,9 @@ export class WhiteboardCanvas {
   private colorControl(
     current: NodeColor | undefined,
     onPick: (color: NodeColor | undefined) => void,
-  ): ToolbarModel['color'] {
+  ): ToolbarColorControl {
     return {
+      kind: 'color',
       label: this.t('toolbar.color'),
       defaultLabel: this.t('color.default'),
       presetLabels: Object.fromEntries(
@@ -3687,7 +3798,7 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   private readonly frame = (now: number): void => {
-    this.advanceZoomGlide(now)
+    this.advanceCameraGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
       this.recomputeVisibility()
       this.lastRecomputeTime = now
@@ -4812,4 +4923,25 @@ export class WhiteboardCanvas {
 
 function distanceBetween(a: ScreenPoint, b: ScreenPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
+}
+
+/**
+ * Drops separators that no longer divide anything — leading, trailing, or
+ * doubled. A menu assembled from optional groups cannot know which of them
+ * survived, so it writes the divider it needs and lets this settle the result.
+ */
+function trimSeparators(
+  items: readonly YoloModuleHostMenuItemV1[],
+): YoloModuleHostMenuItemV1[] {
+  const trimmed: YoloModuleHostMenuItemV1[] = []
+  for (const item of items) {
+    if (item.kind !== 'separator') {
+      trimmed.push(item)
+      continue
+    }
+    if (trimmed[trimmed.length - 1]?.kind === 'separator') continue
+    if (trimmed.length > 0) trimmed.push(item)
+  }
+  if (trimmed[trimmed.length - 1]?.kind === 'separator') trimmed.pop()
+  return trimmed
 }
