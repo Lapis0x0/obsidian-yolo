@@ -241,3 +241,30 @@ export const TOOLBAR_GAP_PX = 8
 /** How close to the viewport's edge the toolbar may come before it is clamped
  * back in — the same figure decides when it flips below the selection. */
 export const TOOLBAR_MARGIN_PX = 8
+
+// -----------------------------------------------------------------------
+// Constants shared across canvas.ts and its `ui/canvas/*` collaborators
+// (CardRenderer, EdgeLayer). Everything below is either a DOM class name or a
+// tiny data constant read on both sides of one of those class boundaries; a
+// constant used by only one file lives locally in that file instead (see
+// cardRenderer.ts's and edgeLayer.ts's own top-of-file consts).
+// -----------------------------------------------------------------------
+
+export const SVG_NS = 'http://www.w3.org/2000/svg'
+
+/** Obsidian's own link nodes load nothing but http(s) (`setFrameUrl`), which
+ * is also what keeps `data:`/`javascript:` URLs out of the frame. */
+export const WEB_URL_PATTERN = /^https?:\/\//i
+
+export const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
+/** The single-selected card, mirroring Obsidian Canvas's `is-focused`. */
+export const CARD_FOCUSED_CLASS = 'yolo-whiteboard-card-focused'
+export const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
+/** Marks a body whose content is its own interaction surface — media
+ * transport controls, an embedded web page — and so is exempt from the
+ * content mask once its card is the single selection. See style.css. */
+export const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
+
+export const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
+export const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'
+export const EDGE_HIDDEN_CLASS = 'yolo-whiteboard-edge-hidden'

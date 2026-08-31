@@ -28,20 +28,7 @@ import {
   alignRects,
   distributeRects,
 } from '../domain/arrange'
-import {
-  approachScale,
-  approachView,
-  cameraFromView,
-  dragPan,
-  fitViewToBounds,
-  panByWheel,
-  scaleAfterWheel,
-  screenToWorld,
-  unionRect,
-  viewAnchoredAt,
-  viewFromCamera,
-  viewSettled,
-} from '../domain/camera'
+import { cameraFromView, screenToWorld, unionRect } from '../domain/camera'
 import type { ScreenPoint } from '../domain/camera'
 import { COLOR_PRESETS, type ColorPreset, commonColor } from '../domain/color'
 import { planNodeCommit } from '../domain/commit'
@@ -64,7 +51,6 @@ import {
   type Board,
   type BoardNode,
   type BoardParseIssue,
-  DEFAULT_CAMERA,
   type Edge,
   type EdgeId,
   type FileNode,
@@ -86,7 +72,6 @@ import {
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
 import {
-  type FileNodeKind,
   basenameWithoutExtension,
   cardNoteContent,
   fileNodeKind,
@@ -129,35 +114,37 @@ import { takePendingFit } from '../host/pendingFit'
 import { createWhiteboardTranslation } from '../i18n'
 
 import { CardMenu } from './cardMenu'
+import { CameraController } from './canvas/cameraController'
+import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
+import { EdgeLayer } from './canvas/edgeLayer'
 import {
-  CAMERA_GLIDE_EPSILON_DOUBLINGS,
-  CAMERA_GLIDE_EPSILON_PX,
-  CAMERA_GLIDE_TAU_MS,
-  CAMERA_SETTLE_MS,
+  CARD_BODY_LIVE_CLASS,
+  CARD_FOCUSED_CLASS,
+  CARD_SELECTED_CLASS,
   CONNECT_SNAP_WORLD_PX,
   DEGRADE_RESTORE_SCALE,
   DEGRADE_SCALE_THRESHOLD,
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
+  EDGE_HIDDEN_CLASS,
+  EDGE_HIT_CLASS,
+  EDGE_LABEL_CLASS,
   EDIT_PERSIST_THROTTLE_MS,
-  FIT_CAMERA_PADDING_PX,
   FRAME_ON_TIME_MS,
-  GRID_MIN_SCREEN_STEP_PX,
-  GRID_WORLD_STEP_PX,
-  INTERACTING_CLASS_TIMEOUT_MS,
+  GROUP_LABEL_CLASS,
   MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
-  SCALE_BOUNDS,
+  SVG_NS,
   TOOLBAR_GAP_PX,
   TOOLBAR_MARGIN_PX,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
-  WHEEL_DELTA_PER_ZOOM_DOUBLING,
+  WEB_URL_PATTERN,
 } from './constants'
-import { degradedNodeTitle, nextDegradedState } from './lod'
+import { nextDegradedState } from './lod'
 import {
   PromptOverlay,
   type PromptOverlayOptions,
@@ -172,8 +159,6 @@ import {
   type ToolbarModel,
   applyColorToElement,
 } from './selectionToolbar'
-
-const SVG_NS = 'http://www.w3.org/2000/svg'
 
 /** i18n key per arrowhead direction (domain/edges.ts's `ArrowDirection`). */
 const ARROW_MENU_KEYS: Readonly<Record<ArrowDirection, string>> = {
@@ -219,77 +204,27 @@ const DISTRIBUTE_MENU: Readonly<
  */
 const MIN_GROUP_SIZE = Object.freeze({ w: 200, h: 160 })
 
-/**
- * How many *web* cards may keep a live page while parked off screen
- * (p3-canvas-parity §六's D13 scope revision).
- *
- * An `<iframe>` removed from the document tree loses its browsing context, and
- * re-inserting it reloads the page from the top — every scroll position, form
- * field and session in it gone. So a web card that scrolls out of the viewport
- * is hidden rather than destroyed. Each survivor is a whole live page (its own
- * JavaScript, timers, sockets and media), which is why this cap is small and
- * separate from the pool's own: six background pages is already a real cost,
- * and a board with more than six web cards in play at once is not the case
- * this exists for. Past the cap the least-recently-seen one is destroyed for
- * real. Every other parked card is inert DOM and answers to `parkedCapacity`.
- */
-const WEB_FRAME_POOL_CAPACITY = 6
-
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
-const VIEWPORT_PANNING_CLASS = 'yolo-whiteboard-viewport-panning'
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
 const WORLD_CLASS = 'yolo-whiteboard-world'
-const WORLD_INTERACTING_CLASS = 'yolo-whiteboard-world-interacting'
 const WORLD_DEGRADED_CLASS = 'yolo-whiteboard-world-degraded'
-const CARD_CLASS = 'yolo-whiteboard-card'
 const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
 const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
-const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
-/** The single-selected card, mirroring Obsidian Canvas's `is-focused`. */
-const CARD_FOCUSED_CLASS = 'yolo-whiteboard-card-focused'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
-const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
-/** Marks a body whose content is its own interaction surface — media
- * transport controls, an embedded web page — and so is exempt from the
- * content mask once its card is the single selection. See style.css. */
-const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
-const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
-const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
-const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
-const CARD_DEGRADED_TITLE_CLASS = 'yolo-whiteboard-card-degraded-title'
-const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
-const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
-  'yolo-whiteboard-card-unsupported-placeholder'
-const GROUP_CLASS = 'yolo-whiteboard-group'
-const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
-/** A card parked in the hidden pool: out of the viewport, out of sight, still
- * in the document so what it holds survives. Invisible but still laid out,
- * because its content view's section measurements are the expensive part and
- * they only survive if its boxes do — see `parkCard` and style.css. */
-const CARD_PARKED_CLASS = 'yolo-whiteboard-card-parked'
-/** A parked *web* card: taken out of layout altogether, which suspends the
- * page inside it. See WEB_FRAME_POOL_CAPACITY. */
-const CARD_POOLED_CLASS = 'yolo-whiteboard-card-pooled'
 /** On the root while `board.locked` — what the stylesheet keys the read-only
  * treatment off, mirroring Obsidian Canvas's `mod-readonly`. */
 const LOCKED_CLASS = 'yolo-whiteboard-locked'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
-const CARD_HINT_CLASS = 'yolo-whiteboard-card-hint'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
-const EDGE_PATH_CLASS = 'yolo-whiteboard-edge-path'
-const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
 const EDGE_LABELS_CLASS = 'yolo-whiteboard-edge-labels'
-const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'
-const EDGE_SELECTED_CLASS = 'yolo-whiteboard-edge-selected'
-const EDGE_HIDDEN_CLASS = 'yolo-whiteboard-edge-hidden'
 const EDGE_PREVIEW_CLASS = 'yolo-whiteboard-edge-preview'
 const EDITOR_HOST_CLASS = 'yolo-whiteboard-editor-host'
 const ERROR_CLASS = 'yolo-whiteboard-error'
@@ -298,63 +233,8 @@ const ERROR_TITLE_CLASS = 'yolo-whiteboard-error-title'
 const ERROR_HINT_CLASS = 'yolo-whiteboard-error-hint'
 const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
 
-/**
- * What a web card's frame is allowed to do.
- *
- * Copied verbatim from Obsidian's own non-desktop link node (`app.js`'s
- * `recreateFrame`), which is a sandboxed `<iframe>`. Its desktop branch uses
- * an Electron `<webview>` instead, and we deliberately do not: the parts that
- * make that webview safe — `app.getWebviewPartition()` plus the
- * `create-browser-session` IPC that installs the session's permission
- * allowlist (clipboard only), user-agent scrubbing and ad blocking — are host
- * internals a module cannot reach, and Electron grants every permission a page
- * asks for when no such handler is installed. `webviewTag` *is* enabled in
- * both the main window and popouts (verified against `main.js`), so this is a
- * deliberate trade, not a missing capability: an iframe grants no permissions
- * by default and behaves identically on mobile, at the cost of the sites that
- * refuse to be framed.
- */
-const WEB_FRAME_SANDBOX =
-  'allow-forms allow-presentation allow-same-origin allow-scripts allow-modals'
-
-/** Obsidian's own link nodes load nothing but http(s) (`setFrameUrl`), which
- * is also what keeps `data:`/`javascript:` URLs out of the frame. */
-const WEB_URL_PATTERN = /^https?:\/\//i
-
-type NodeRuntime = {
-  el: HTMLElement | null
-  bodyEl: HTMLElement | null
-  /** The card's read-only content surface, for both note and text cards —
-   * one path, because a text card is only markdown that happens to live in
-   * the board file rather than in one of its own (p3-canvas-parity D2/D11).
-   * Null while the card shows a placeholder or is being edited. */
-  contentView: YoloModuleHostMarkdownContentViewV1 | null
-  /** What `contentView` was built against. A content view resolves links
-   * against this on every render pass, so a card whose source moves needs a
-   * new one rather than a `setValue`. */
-  contentSourcePath: string | null
-  /**
-   * Teardown for a body that holds something other than a content view — a
-   * media element or a web frame. Removing those from the DOM is not enough:
-   * a detached `<audio>`/`<video>` keeps playing and keeps streaming, and a
-   * detached frame keeps its page alive until it is collected. Null whenever
-   * the body holds nothing that needs releasing.
-   */
-  releaseContent: (() => void) | null
-  /**
-   * The URL this card's live web frame was built for, or null when its body
-   * holds anything else. Set only for web cards, and the flag that decides
-   * whether an unmount parks the card in the hidden pool instead of tearing it
-   * down (see WEB_FRAME_POOL_CAPACITY and `unmountNode`).
-   */
-  webFrameUrl: string | null
-  missingFile: boolean
-  /** Last known content for a *note* card (its backing file's text), cached
-   * because note-card content never lives in `board` (p1-design §1.2) — this
-   * is the only place it's available to seed the live editor. Unused for
-   * text/pdf cards. */
-  noteText: string | null
-}
+// `NodeRuntime` now lives in ./canvas/cardRenderer.ts (imported above as a
+// type), which owns the mounted-card map it describes.
 
 type EditingState = {
   readonly nodeId: NodeId
@@ -481,17 +361,6 @@ function sameLabelTarget(a: LabelTarget, b: LabelTarget): boolean {
   return a.kind === b.kind && a.id === b.id
 }
 
-type EdgeDomEntry = Readonly<{
-  path: SVGPathElement
-  /** Transparent fat stroke under `path`: a 1.5-unit curve is not something
-   * a pointer can be asked to hit. */
-  hit: SVGPathElement
-  /** Absent until the edge has a label. An HTML element rather than SVG
-   * `<text>`: it is what holds the caret while the label is typed (see
-   * `beginRename`), and SVG text cannot. */
-  label: HTMLElement | null
-}>
-
 /**
  * One instance per open leaf (and re-created on popout window migration —
  * see the `dispose()`/constructor doc comments). Implements the DOM/camera/
@@ -509,7 +378,10 @@ export class WhiteboardCanvas {
    * it. Derived in `syncBoardIndex`, never stored.
    */
   private cardNodes: readonly BoardNode[] = []
-  private readonly runtimeByNodeId = new Map<NodeId, NodeRuntime>()
+  /** Card DOM/content lifecycle — mount/unmount, the hidden pool, per-card
+   * rendering. Owns `NodeRuntime`; constructed once in `ensureDom` (see
+   * ./canvas/cardRenderer.ts's own doc comment for the split's rationale). */
+  private cardRenderer!: CardRenderer
   private readonly engine = new VirtualizationEngine()
   private readonly pinnedIds = new Set<NodeId>()
 
@@ -522,7 +394,12 @@ export class WhiteboardCanvas {
   private viewKeymapDisposer: (() => void) | null = null
   private editSessionCounter = 0
 
-  private view: CanvasView = { tx: 0, ty: 0, scale: 1 }
+  /** Camera (pan/zoom) state and its glide animation. Constructed once in
+   * `ensureDom` (see ./canvas/cameraController.ts's own doc comment). Gesture
+   * code reads its live position through the `view` getter and
+   * `viewportPointFromEvent`/`worldPointFromEvent`; it never writes the
+   * camera directly. */
+  private cameraController!: CameraController
   /**
    * What the last press landed on — the only trustworthy answer to "what was
    * clicked" this canvas has.
@@ -587,14 +464,6 @@ export class WhiteboardCanvas {
   private cardMenu: CardMenu | null = null
   private prompt: PromptOverlay | null = null
 
-  /**
-   * Cards parked off screen with what they hold intact, least-recently-seen
-   * first: a Set iterates in insertion order, and every re-park deletes before
-   * it adds, so the iteration order *is* the LRU order and the first entry is
-   * always the one to evict. See `parkCard`.
-   */
-  private readonly parkedCards = new Set<NodeId>()
-
   // Resize (W3-C): one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
   // card — at a few hundred mounted cards that would be thousands of nodes
@@ -605,27 +474,23 @@ export class WhiteboardCanvas {
   /** The card the layer is currently parked on — `interactionLayerTarget()`
    * as last applied, which is what a press on a handle resizes. */
   private layerNodeId: NodeId | null = null
-  /** Scale the handle counter-scale was last written for; the CSS variable
-   * is only rewritten when the zoom actually changed, so panning (which
-   * writes `transform` every frame) doesn't invalidate the handles' style. */
-  private appliedHandleScale: number | null = null
 
   // Edges (W3-A): a single SVG overlay drawn into the world layer, redrawn
   // wholesale on structural change (rebuildEdgesSvg) and per-path on card
-  // position change (redrawEdgesForNodes) — see those methods' doc
-  // comments for the mount-independent, DOM-measurement-free approach.
-  private edgesGroupEl: SVGGElement | null = null
+  // position change (redrawEdgesForNodes) — see ./canvas/edgeLayer.ts, which
+  // owns the SVG's child elements and the incidence index, and its own doc
+  // comment for the mount-independent, DOM-measurement-free approach.
+  /** Constructed once in `ensureDom`, once the edges `<svg>` exists. */
+  private edgeLayer!: EdgeLayer
+  /** canvas.ts's own copy of the board's edges by id, kept in step by
+   * `syncBoardIndex` — the lookup every edge-*gesture* and label-editing path
+   * here uses; `edgeLayer` keeps a separate copy scoped to its own drawing
+   * (see that file's doc comment on why the two are not merged). */
   private boardEdgesById = new Map<EdgeId, Edge>()
-  private edgeIndexByNodeId = new Map<NodeId, Set<EdgeId>>()
-  private readonly edgeElsById = new Map<EdgeId, EdgeDomEntry>()
   /** The in-flight connection's curve. A sibling of the edges group rather
    * than a child, so `rebuildEdgesSvg`'s wholesale replaceChildren never
    * takes it out from under a live gesture. */
   private previewPathEl: SVGPathElement | null = null
-  /** Holds the edges' label elements. A sibling of the edges SVG rather than
-   * a layer inside it (HTML cannot live in SVG), mounted once and before any
-   * card so labels keep painting above the curves and below the cards. */
-  private edgeLabelsEl: HTMLElement | null = null
   private connectTargetNodeId: NodeId | null = null
   private readonly arrowMarkerId = `yolo-whiteboard-edge-arrow-${Math.random().toString(36).slice(2)}`
 
@@ -649,28 +514,7 @@ export class WhiteboardCanvas {
   private errorEl: HTMLElement | null = null
 
   private rafId: number | null = null
-  private interactingTimer: number | null = null
-  private settleTimer: number | null = null
   private lastRecomputeTime = 0
-  /**
-   * Where the camera is heading and has not arrived yet. Null at rest.
-   *
-   * Two laws, because two gestures. `anchored` is a wheel zoom: only the
-   * scale eases, and the translation is re-derived every frame from the point
-   * the gesture grabbed, which is what keeps that point exactly under the
-   * cursor for the whole glide. `view` is a fit: its translation is not a
-   * function of its scale, so both ease (domain/camera.ts's `approachView`).
-   */
-  private cameraGlide:
-    | Readonly<{
-        kind: 'anchored'
-        targetScale: number
-        screen: ScreenPoint
-        world: ScreenPoint
-      }>
-    | Readonly<{ kind: 'view'; target: CanvasView }>
-    | null = null
-  private lastGlideTime: number | null = null
   /** Current zoom-degrade state, updated only at recomputeVisibility's ~70ms
    * throttle (see updateDegradedState) — not evaluated per frame. */
   private degraded = false
@@ -742,12 +586,7 @@ export class WhiteboardCanvas {
     // pushing the previous content over it is how an undo destroys data.
     this.history.reset(this.board)
     this.rebuildEdgesSvg()
-    this.view = viewFromCamera(this.board.camera)
-    // A glide aimed at the previous board's camera has nothing to say about
-    // this one, and would drag the new view away from where it opened.
-    this.cameraGlide = null
-    this.lastGlideTime = null
-    this.applyTransform()
+    this.cameraController.loadCamera(this.board.camera)
     this.applyLockedState()
     // Cards were all torn down above: whatever the layer was parked on is
     // either gone or somewhere else now.
@@ -758,7 +597,9 @@ export class WhiteboardCanvas {
     // rather than where the user left off (host/pendingFit.ts). Done after
     // showCanvas so the viewport has its real size to fit against.
     if (takePendingFit(this.sourcePathForBoard())) {
-      this.fitCameraToNodes(this.board.nodes, { immediate: true })
+      this.cameraController.fitCameraToNodes(this.board.nodes, {
+        immediate: true,
+      })
     }
     this.recomputeVisibility()
     this.drainQueues()
@@ -782,7 +623,7 @@ export class WhiteboardCanvas {
   getViewData(): string {
     if (this.parseFailed) return this.lastRawData
     let board = this.board
-    const camera = cameraFromView(this.view)
+    const camera = cameraFromView(this.cameraController.view)
     if (
       camera.x !== board.camera.x ||
       camera.y !== board.camera.y ||
@@ -831,17 +672,9 @@ export class WhiteboardCanvas {
       win.cancelAnimationFrame(this.rafId)
       this.rafId = null
     }
-    if (this.interactingTimer !== null) {
-      win.clearTimeout(this.interactingTimer)
-      this.interactingTimer = null
-    }
-    this.interacting = false
-    if (this.settleTimer !== null) {
-      win.clearTimeout(this.settleTimer)
-      this.settleTimer = null
-    }
+    this.cameraController.dispose()
     this.viewportEl?.removeEventListener('pointerdown', this.onPointerDown)
-    this.viewportEl?.removeEventListener('wheel', this.onWheel)
+    this.viewportEl?.removeEventListener('wheel', this.cameraController.onWheel)
     this.viewportEl?.removeEventListener('dblclick', this.onDoubleClick)
     this.viewportEl?.removeEventListener('contextmenu', this.onContextMenu)
     this.viewportEl?.removeEventListener('dragover', this.onDragOver)
@@ -979,10 +812,75 @@ export class WhiteboardCanvas {
     this.viewportEl = viewport
     this.worldEl = world
     this.errorEl = error
-    this.edgesGroupEl = edgesGroup
-    this.edgeLabelsEl = edgeLabels
     this.previewPathEl = preview
     this.interactionLayerEl = interactionLayer
+    this.cameraController = new CameraController(this.context, viewport, world, {
+      isParseFailed: () => this.parseFailed,
+      isEditingWheelTarget: (target) =>
+        this.editing !== null &&
+        this.nodeIdFromEventTarget(target) === this.editing.nodeId,
+      positionToolbar: () => this.positionToolbar(),
+      setInteracting: (interacting) => {
+        this.interacting = interacting
+      },
+      getSelectedNodes: () =>
+        this.board.nodes.filter((node) => this.selectedIds.has(node.id)),
+      commitCamera: (camera) => {
+        const current = this.board.camera
+        if (
+          camera.x === current.x &&
+          camera.y === current.y &&
+          camera.scale === current.scale
+        ) {
+          return
+        }
+        this.board = { ...this.board, camera }
+        this.context.requestSave()
+      },
+      afterCameraReset: () => {
+        this.recomputeVisibility()
+        this.drainQueues()
+      },
+    })
+    this.edgeLayer = new EdgeLayer(
+      this.context,
+      edgesGroup,
+      edgeLabels,
+      this.arrowMarkerId,
+      {
+        getNode: (id) => this.nodesById.get(id),
+        cancelActiveEdgeRename: () => {
+          if (this.renaming?.kind === 'edge') this.endRename(false)
+        },
+        onLabelKeyDown: (id, event) =>
+          this.handleLabelKeyDown({ kind: 'edge', id }, event),
+        onLabelBlur: (id) => this.endRename(true, { kind: 'edge', id }),
+        t: (key, fallback) => this.t(key, fallback),
+      },
+    )
+    this.cardRenderer = new CardRenderer(this.context, this.host, world, {
+      getNode: (id) => this.nodesById.get(id),
+      isSelected: (id) => this.selectedIds.has(id),
+      isFocused: (id) => this.focusedNodeId === id,
+      isEditing: (id) => this.editing?.nodeId === id,
+      isRenamingGroup: (id) => this.isRenaming({ kind: 'group', id }),
+      onGroupLabelKeyDown: (id, event) =>
+        this.handleLabelKeyDown({ kind: 'group', id }, event),
+      onGroupLabelBlur: (id) => this.endRename(true, { kind: 'group', id }),
+      isDegraded: () => this.degraded,
+      canBuildContent: () => this.canBuildContent,
+      queueContentSync: (id) => {
+        this.contentSyncQueue.add(id)
+      },
+      dequeueContentSync: (id) => {
+        this.contentSyncQueue.delete(id)
+      },
+      getMountedCount: () => this.engine.mounted.size,
+      purgeNode: (id) => this.purgeNodeRuntime(id),
+      getSourcePath: () => this.sourcePathForBoard(),
+      reportError: (stage, error) => this.reportError(stage, error),
+      t: (key, fallback) => this.t(key, fallback),
+    })
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
     this.toolbar = new SelectionToolbar(doc, viewport)
@@ -1016,7 +914,9 @@ export class WhiteboardCanvas {
     // custom properties, so both handle variables have to be written again.
     // The size is pushed from here rather than hard-coded in the stylesheet
     // so it stays next to the doc comment explaining the counter-scale law.
-    this.appliedHandleScale = null
+    // (The zoom-multiplier variable itself is (re)written by the freshly
+    // constructed `cameraController` above, whose own counter-scale cache
+    // starts unset.)
     world.style.setProperty(
       '--yolo-whiteboard-resizer-size',
       `${RESIZE_HANDLE_PX}px`,
@@ -1038,7 +938,9 @@ export class WhiteboardCanvas {
     this.viewportEl.addEventListener('pointerdown', this.onPointerDown)
     win.addEventListener('pointermove', this.onPointerMove)
     win.addEventListener('pointerup', this.onPointerUp)
-    this.viewportEl.addEventListener('wheel', this.onWheel, { passive: false })
+    this.viewportEl.addEventListener('wheel', this.cameraController.onWheel, {
+      passive: false,
+    })
     this.viewportEl.addEventListener('dblclick', this.onDoubleClick)
     this.viewportEl.addEventListener('contextmenu', this.onContextMenu)
     this.viewportEl.addEventListener('dragover', this.onDragOver)
@@ -1100,7 +1002,7 @@ export class WhiteboardCanvas {
   // Middle-button always pans, from anywhere (including over a card).
   // Wheel handles both plain two-axis pan and ctrl/cmd-anchored zoom (the
   // ctrl/cmd-wheel signature is also how Chrome/Safari report trackpad
-  // pinch). All three gestures only ever touch `this.view` + per-element
+  // pinch). All three gestures only ever touch `this.cameraController.view` + per-element
   // `transform`/`left`/`top` directly (no reflow); the camera is folded
   // into `board` and persisted only once a pan/zoom gesture settles (see
   // `scheduleCameraSettle`); a card drag/marquee commits immediately on
@@ -1312,7 +1214,7 @@ export class WhiteboardCanvas {
       {
         title: this.t('menu.resetCamera'),
         icon: 'locate-fixed',
-        onSelect: () => this.resetCamera(),
+        onSelect: () => this.cameraController.resetCamera(),
       },
       {
         title: this.isLocked
@@ -1389,7 +1291,7 @@ export class WhiteboardCanvas {
       title: this.t('menu.zoomToSelection'),
       icon: 'scan-search',
       onSelect: () => {
-        this.zoomToSelection()
+        this.cameraController.zoomToSelection()
       },
     })
     if (single?.type === 'group' && this.canEdit) {
@@ -1611,288 +1513,33 @@ export class WhiteboardCanvas {
     this.setToolbarSuppressed(false)
   }
 
-  private readonly onWheel = (e: WheelEvent): void => {
-    if (this.parseFailed) return
-    // Zoom stays a canvas gesture wherever the pointer is, including over an
-    // open editor — it is about the board, not about what is under the
-    // cursor. (Obsidian Canvas zooms over a focused node too.)
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault()
-      this.zoomBy(e.deltaY, this.viewportPointFromEvent(e))
-      return
-    }
-    // Plain wheel inside the card being edited belongs to that card: its text
-    // can be taller than it is, and a user who has clicked in to type means
-    // to move through the text, not the board. Left unhandled entirely (no
-    // preventDefault) so the editor's own scroller sees a normal event.
-    // Only the card being edited, not any card under the pointer: on a canvas
-    // the wheel pans, and you click into a card first to scroll it.
-    if (
-      this.editing &&
-      this.nodeIdFromEventTarget(e.target) === this.editing.nodeId
-    ) {
-      return
-    }
-    e.preventDefault()
-    this.view = panByWheel(this.view, e.deltaX, e.deltaY)
-    this.applyTransform()
-    this.markInteracting()
-    this.scheduleCameraSettle()
-  }
-
-  /**
-   * Aims the camera at a new zoom, anchored on the point under the cursor.
-   *
-   * The camera glides there over the next few frames rather than arriving at
-   * once (see `advanceCameraGlide`), so consecutive notches accumulate against
-   * the *target* rather than wherever the glide currently is — otherwise
-   * spinning the wheel would fight the easing and cover less ground the
-   * faster it was spun. The anchor is re-taken from the live view each time,
-   * which is what lets the cursor move mid-gesture and still zoom about
-   * wherever it now points.
-   */
-  private zoomBy(deltaY: number, cursor: ScreenPoint): void {
-    const glide = this.cameraGlide
-    const targetScale = scaleAfterWheel(
-      glide?.kind === 'anchored' ? glide.targetScale : this.view.scale,
-      deltaY,
-      WHEEL_DELTA_PER_ZOOM_DOUBLING,
-      SCALE_BOUNDS,
-    )
-    const anchor = { screen: cursor, world: screenToWorld(this.view, cursor) }
-    if (this.prefersReducedMotion()) {
-      this.cameraGlide = null
-      this.view = viewAnchoredAt(anchor.screen, anchor.world, targetScale)
-      this.applyTransform()
-      this.markInteracting()
-      this.scheduleCameraSettle()
-      return
-    }
-    this.cameraGlide = { kind: 'anchored', ...anchor, targetScale }
-  }
-
-  /**
-   * Moves the camera one frame closer to where the last gesture aimed it.
-   *
-   * Driven from the rAF loop rather than by the input events themselves: the
-   * motion has to continue after the wheel stops, which is the whole point of
-   * gliding — a gesture ends with the camera still travelling, the way it does
-   * everywhere else in Obsidian.
-   */
-  private advanceCameraGlide(now: number): void {
-    const glide = this.cameraGlide
-    if (!glide) return
-    // A first frame, or one after the tab was backgrounded, has no meaningful
-    // elapsed time; treat it as a single 60Hz frame rather than teleporting.
-    const elapsed =
-      this.lastGlideTime === null
-        ? 16.7
-        : Math.min(now - this.lastGlideTime, 100)
-    this.lastGlideTime = now
-
-    if (glide.kind === 'anchored') {
-      const next = approachScale(
-        this.view.scale,
-        glide.targetScale,
-        elapsed,
-        CAMERA_GLIDE_TAU_MS,
-      )
-      const settled =
-        Math.abs(Math.log2(next / glide.targetScale)) <
-        CAMERA_GLIDE_EPSILON_DOUBLINGS
-      this.view = viewAnchoredAt(
-        glide.screen,
-        glide.world,
-        settled ? glide.targetScale : next,
-      )
-      this.finishGlideFrame(settled)
-      return
-    }
-
-    const next = approachView(
-      this.view,
-      glide.target,
-      elapsed,
-      CAMERA_GLIDE_TAU_MS,
-    )
-    const settled = viewSettled(
-      next,
-      glide.target,
-      CAMERA_GLIDE_EPSILON_DOUBLINGS,
-      CAMERA_GLIDE_EPSILON_PX,
-    )
-    this.view = settled ? glide.target : next
-    this.finishGlideFrame(settled)
-  }
-
-  /** What both glide laws do with the frame they just computed. */
-  private finishGlideFrame(settled: boolean): void {
-    this.applyTransform()
-    this.markInteracting()
-    if (!settled) return
-    this.cameraGlide = null
-    this.lastGlideTime = null
-    this.scheduleCameraSettle()
-  }
-
-  /** Viewport-relative position of a mouse event. */
-  private viewportPointFromEvent(e: MouseEvent): ScreenPoint {
-    const rect = this.viewportEl.getBoundingClientRect()
-    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
-  }
-
-  /** Resolved per gesture rather than cached: the setting can change while a
-   * view is open, and this runs once per wheel gesture, not per frame. */
-  private prefersReducedMotion(): boolean {
-    return this.context
-      .getWindow()
-      .matchMedia('(prefers-reduced-motion: reduce)').matches
-  }
-
-  private applyTransform(): void {
-    this.worldEl.style.transform = `translate(${this.view.tx}px, ${this.view.ty}px) scale(${this.view.scale})`
-    this.applyGrid()
-    this.applyHandleScale()
-    // The screen-space chrome is anchored to world positions, so it has to be
-    // re-projected whenever the camera moves. Both are no-ops when nothing is
-    // selected and nothing is being typed, which is the common case.
-    this.positionToolbar()
-  }
-
-  /**
-   * Counter-scales the resize handles, which live in the world layer and
-   * would otherwise be scaled along with the cards.
-   *
-   * 1/sqrt(scale) rather than 1/scale: see RESIZE_HANDLE_PX. Skipped unless
-   * the zoom actually changed, because this writes a custom property the
-   * handles' sizes are computed from, and panning calls this method every
-   * frame without touching the scale.
-   */
-  private applyHandleScale(): void {
-    if (this.appliedHandleScale === this.view.scale) return
-    this.appliedHandleScale = this.view.scale
-    this.worldEl.style.setProperty(
-      '--yolo-whiteboard-zoom-multiplier',
-      String(1 / Math.sqrt(this.view.scale)),
-    )
-  }
-
-  /**
-   * Places the dot grid. It is painted on the viewport (screen space), not
-   * inside the world layer, because a world-space grid would be scaled by
-   * the camera along with everything else — dots would swell into blobs
-   * zoomed in and vanish zoomed out. Instead the lattice is positioned by
-   * hand: spacing tracks the camera scale, the tile origin tracks the camera
-   * translation, and the dot itself (style.css owns its size and colour)
-   * stays constant on screen. The result is anchored to world coordinates —
-   * it pans with the board and spreads as you zoom in — which is the whole
-   * point of a grid rather than a decorative backdrop.
-   *
-   * Writing background-position per frame repaints the viewport. That is
-   * paint only (no reflow) and the card layer above it remains a composited
-   * transform, so the pan path keeps its compositor fast-path; it is also
-   * what Obsidian's own canvas does, and there is no way to keep a grid
-   * locked to world coordinates without moving it every frame.
-   */
-  private applyGrid(): void {
-    const { scale, tx, ty } = this.view
-    const doublings = Math.max(
-      0,
-      Math.ceil(
-        Math.log2(GRID_MIN_SCREEN_STEP_PX / (GRID_WORLD_STEP_PX * scale)),
-      ),
-    )
-    const step = GRID_WORLD_STEP_PX * 2 ** doublings * scale
-    this.viewportEl.style.backgroundSize = `${step}px ${step}px`
-    this.viewportEl.style.backgroundPosition = `${tx}px ${ty}px`
-  }
-
-  // will-change only while actively interacting (S1/S2 finding: a permanent
-  // will-change wastes compositor memory for no benefit at rest).
-  private markInteracting(): void {
-    this.worldEl.classList.add(WORLD_INTERACTING_CLASS)
-    this.interacting = true
-    const win = this.context.getWindow()
-    if (this.interactingTimer !== null) win.clearTimeout(this.interactingTimer)
-    this.interactingTimer = win.setTimeout(() => {
-      this.worldEl.classList.remove(WORLD_INTERACTING_CLASS)
-      this.interacting = false
-    }, INTERACTING_CLASS_TIMEOUT_MS)
-  }
-
-  private scheduleCameraSettle(): void {
-    const win = this.context.getWindow()
-    if (this.settleTimer !== null) win.clearTimeout(this.settleTimer)
-    this.settleTimer = win.setTimeout(() => {
-      this.settleTimer = null
-      this.commitCameraNow()
-    }, CAMERA_SETTLE_MS)
-  }
-
-  /**
-   * Where the camera has come to rest, or is on its way to. Mid-glide the
-   * live view is a frame on the way to somewhere; what the user asked for is
-   * the target, and persisting an intermediate frame would reopen the board
-   * half-way through a move the gesture had already finished.
-   */
-  private get targetView(): CanvasView {
-    const glide = this.cameraGlide
-    if (!glide) return this.view
-    return glide.kind === 'anchored'
-      ? viewAnchoredAt(glide.screen, glide.world, glide.targetScale)
-      : glide.target
-  }
-
-  private commitCameraNow(): void {
-    const win = this.context.getWindow()
-    if (this.settleTimer !== null) {
-      win.clearTimeout(this.settleTimer)
-      this.settleTimer = null
-    }
-    if (this.parseFailed) return
-    const camera = cameraFromView(this.targetView)
-    const current = this.board.camera
-    if (
-      camera.x === current.x &&
-      camera.y === current.y &&
-      camera.scale === current.scale
-    ) {
-      return
-    }
-    this.board = { ...this.board, camera }
-    this.context.requestSave()
-  }
-
   // -----------------------------------------------------------------------
   // Pan gesture (middle-drag anywhere, or Alt+left-drag from empty canvas).
+  // The gesture's own state machine lives here (which `Interaction` is
+  // active); the camera math and DOM writes it drives are
+  // `cameraController`'s (see ./canvas/cameraController.ts).
   // -----------------------------------------------------------------------
 
   private startPan(e: PointerEvent): void {
     this.interaction = {
       kind: 'pan',
-      origin: { ...this.view },
+      origin: { ...this.cameraController.view },
       startX: e.clientX,
       startY: e.clientY,
     }
-    this.viewportEl.classList.add(VIEWPORT_PANNING_CLASS)
-    this.viewportEl.setPointerCapture(e.pointerId)
-    this.markInteracting()
+    this.cameraController.beginPan(e.pointerId)
   }
 
   private updatePan(interaction: PanInteraction, e: PointerEvent): void {
-    this.view = dragPan(
+    this.cameraController.updatePan(
       interaction.origin,
       { x: interaction.startX, y: interaction.startY },
       { x: e.clientX, y: e.clientY },
     )
-    this.applyTransform()
-    this.markInteracting()
-    this.scheduleCameraSettle()
   }
 
   private finishPan(): void {
-    this.viewportEl.classList.remove(VIEWPORT_PANNING_CLASS)
-    this.commitCameraNow()
+    this.cameraController.finishPan()
   }
 
   // -----------------------------------------------------------------------
@@ -1967,8 +1614,8 @@ export class WhiteboardCanvas {
     const current = this.currentMarqueePoint(interaction, e)
     this.marqueeEl?.remove()
     this.marqueeEl = null
-    const worldA = screenToWorld(this.view, interaction.originLocal)
-    const worldB = screenToWorld(this.view, current)
+    const worldA = screenToWorld(this.cameraController.view, interaction.originLocal)
+    const worldB = screenToWorld(this.cameraController.view, current)
     // A zero-size marquee (a plain click on empty canvas, no movement)
     // naturally selects nothing here, subsuming "click empty clears
     // selection" without a separate code path. Edges are not marquee-
@@ -2071,8 +1718,8 @@ export class WhiteboardCanvas {
     return resizeRect(
       interaction.startRect,
       interaction.handle,
-      (e.clientX - interaction.startClient.x) / this.view.scale,
-      (e.clientY - interaction.startClient.y) / this.view.scale,
+      (e.clientX - interaction.startClient.x) / this.cameraController.view.scale,
+      (e.clientY - interaction.startClient.y) / this.cameraController.view.scale,
       MIN_CARD_SIZE,
     )
   }
@@ -2082,7 +1729,7 @@ export class WhiteboardCanvas {
     interaction: ResizeInteraction,
     rect: CardRect,
   ): void {
-    const el = this.runtimeByNodeId.get(interaction.nodeId)?.el
+    const el = this.cardRenderer.getRuntime(interaction.nodeId)?.el
     if (el) {
       el.style.left = `${rect.x}px`
       el.style.top = `${rect.y}px`
@@ -2090,7 +1737,7 @@ export class WhiteboardCanvas {
       el.style.height = `${rect.h}px`
     }
     this.placeInteractionLayer(rect)
-    this.redrawEdgesForNodes(
+    this.edgeLayer.redrawEdgesForNodes(
       new Set([interaction.nodeId]),
       new Map([[interaction.nodeId, rect]]),
     )
@@ -2233,7 +1880,7 @@ export class WhiteboardCanvas {
       // The edge being re-attached is replaced by the preview for the
       // duration, so its old shape doesn't hang there contradicting it.
       if (interaction.edgeId !== null) {
-        this.setEdgeHidden(interaction.edgeId, true)
+        this.edgeLayer.setEdgeHidden(interaction.edgeId, true)
       }
     }
     const world = this.worldPointFromEvent(e)
@@ -2286,14 +1933,14 @@ export class WhiteboardCanvas {
     if (nodeId === this.connectTargetNodeId) return
     const previous = this.connectTargetNodeId
     if (previous !== null) {
-      this.runtimeByNodeId
-        .get(previous)
+      this.cardRenderer
+        .getRuntime(previous)
         ?.el?.classList.remove(CARD_CONNECT_TARGET_CLASS)
     }
     this.connectTargetNodeId = nodeId
     if (nodeId !== null) {
-      this.runtimeByNodeId
-        .get(nodeId)
+      this.cardRenderer
+        .getRuntime(nodeId)
         ?.el?.classList.add(CARD_CONNECT_TARGET_CLASS)
     }
   }
@@ -2308,7 +1955,7 @@ export class WhiteboardCanvas {
       delete this.interactionLayerEl.dataset.connecting
     }
     if (interaction.edgeId !== null) {
-      this.setEdgeHidden(interaction.edgeId, false)
+      this.edgeLayer.setEdgeHidden(interaction.edgeId, false)
     }
 
     if (!interaction.dragging) {
@@ -2432,7 +2079,7 @@ export class WhiteboardCanvas {
       // Exempt every dragged card from virtualization unmount for the
       // duration of the drag (mirrors the existing editing-card pin).
       this.pinnedIds.add(id)
-      this.runtimeByNodeId.get(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
+      this.cardRenderer.getRuntime(id)?.el?.classList.add(CARD_DRAGGING_CLASS)
     }
   }
 
@@ -2441,8 +2088,8 @@ export class WhiteboardCanvas {
     e: PointerEvent,
   ): Readonly<{ dx: number; dy: number }> {
     return {
-      dx: (e.clientX - interaction.startClient.x) / this.view.scale,
-      dy: (e.clientY - interaction.startClient.y) / this.view.scale,
+      dx: (e.clientX - interaction.startClient.x) / this.cameraController.view.scale,
+      dy: (e.clientY - interaction.startClient.y) / this.cameraController.view.scale,
     }
   }
 
@@ -2462,10 +2109,10 @@ export class WhiteboardCanvas {
         w: card.w,
         h: card.h,
       })
-      const el = this.runtimeByNodeId.get(id)?.el
+      const el = this.cardRenderer.getRuntime(id)?.el
       if (el) el.style.transform = `translate(${dx}px, ${dy}px)`
     }
-    this.redrawEdgesForNodes(new Set(interaction.ids), overrides)
+    this.edgeLayer.redrawEdgesForNodes(new Set(interaction.ids), overrides)
     // The handle layer sits in the same world space as the cards but is not
     // one of them, so a drag has to carry it along explicitly.
     const dragged = overrides.get(this.layerNodeId ?? '')
@@ -2488,7 +2135,7 @@ export class WhiteboardCanvas {
     }
     for (const id of interaction.ids) {
       this.pinnedIds.delete(id)
-      const el = this.runtimeByNodeId.get(id)?.el
+      const el = this.cardRenderer.getRuntime(id)?.el
       if (!el) continue
       el.classList.remove(CARD_DRAGGING_CLASS)
       // A literal-string style assignment is disallowed (obsidianmd/
@@ -2501,7 +2148,7 @@ export class WhiteboardCanvas {
         el.style.top = `${card.y}px`
       }
     }
-    this.redrawEdgesForNodes(new Set(interaction.ids))
+    this.edgeLayer.redrawEdgesForNodes(new Set(interaction.ids))
     this.refreshInteractionLayer()
     // Dragged cards may have moved on/off screen — re-evaluate mount state
     // immediately rather than waiting for the next throttled recompute
@@ -2550,7 +2197,7 @@ export class WhiteboardCanvas {
     if (!next || this.parseFailed) return
     const previous = this.nodesById
     // The snapshot's camera is discarded: see this section's doc comment.
-    this.board = { ...next, camera: cameraFromView(this.view) }
+    this.board = { ...next, camera: cameraFromView(this.cameraController.view) }
     this.syncBoardIndex()
     for (const [id, card] of previous) {
       if (this.nodesById.get(id) !== card) this.purgeNodeRuntime(id)
@@ -2581,11 +2228,11 @@ export class WhiteboardCanvas {
     // through to Obsidian) when nothing is selected, same as Canvas.
     const fitAll = () => {
       if (this.editing) return false
-      return this.fitCameraToNodes(this.board.nodes)
+      return this.cameraController.fitCameraToNodes(this.board.nodes)
     }
     const fitSelection = () => {
       if (this.editing) return false
-      return this.zoomToSelection()
+      return this.cameraController.zoomToSelection()
     }
     // Back to the origin at 1:1. Obsidian Canvas binds no key to its own
     // (weaker) reset — Shift+1 and Shift+2 are the only two camera keys it
@@ -2594,7 +2241,7 @@ export class WhiteboardCanvas {
     // every browser.
     const home = () => {
       if (this.editing) return false
-      this.resetCamera()
+      this.cameraController.resetCamera()
       return true
     }
     this.viewKeymapDisposer = this.context.registerKeymap([
@@ -2606,96 +2253,6 @@ export class WhiteboardCanvas {
       { modifiers: ['Shift'], key: '2', handler: fitSelection },
       { modifiers: ['Shift'], key: '0', handler: home },
     ])
-  }
-
-  /** Frames the current selection. The single implementation behind Shift+2,
-   * the toolbar's focus button and the context menu's item, so the three can
-   * never mean slightly different things. Declines an empty selection, which
-   * is what lets the key fall through to Obsidian. */
-  private zoomToSelection(): boolean {
-    const selected = this.board.nodes.filter((node) =>
-      this.selectedIds.has(node.id),
-    )
-    if (selected.length === 0) return false
-    return this.fitCameraToNodes(selected)
-  }
-
-  /**
-   * Frames `nodes` (zoom to fit / zoom to selection).
-   *
-   * The camera glides there rather than cutting, on the same law the wheel
-   * uses and the one Obsidian Canvas animates its own viewport with: the move
-   * is what tells you where you came from, and over a large jump that is
-   * exactly when a cut is most disorienting.
-   *
-   * `immediate` is for the one fit with nothing to travel from — a board
-   * being framed against a real viewport for the first time, where the
-   * position it would glide out of is a placeholder the user never saw.
-   * Obsidian exempts the same case (`finishViewportAnimation`), and reduced
-   * motion takes the same path.
-   */
-  private fitCameraToNodes(
-    nodes: readonly BoardNode[],
-    options?: Readonly<{ immediate?: boolean }>,
-  ): boolean {
-    const bounds = unionRect(
-      nodes.map((node) => ({
-        x: node.x,
-        y: node.y,
-        w: node.w,
-        h: node.h,
-      })),
-    )
-    if (!bounds) return false
-    const rect = this.viewportEl.getBoundingClientRect()
-    const target = fitViewToBounds(
-      bounds,
-      { width: rect.width, height: rect.height },
-      FIT_CAMERA_PADDING_PX,
-      SCALE_BOUNDS,
-    )
-    this.moveCameraTo(target, options)
-    return true
-  }
-
-  /**
-   * Sends the camera to `target`, gliding unless told otherwise. Every
-   * destination the canvas picks for itself — both fits and the reset — goes
-   * through here, so they cannot end up moving in different ways.
-   */
-  private moveCameraTo(
-    target: CanvasView,
-    options?: Readonly<{ immediate?: boolean }>,
-  ): void {
-    if (options?.immediate === true || this.prefersReducedMotion()) {
-      this.cameraGlide = null
-      this.lastGlideTime = null
-      this.view = target
-      this.applyTransform()
-      this.markInteracting()
-    } else {
-      this.cameraGlide = { kind: 'view', target }
-    }
-    // Persisted from the target either way, so a board closed mid-glide
-    // reopens where the move was going rather than wherever it had got to.
-    this.commitCameraNow()
-  }
-
-  /**
-   * Puts the camera back where a new board starts: the world origin, at 1:1.
-   *
-   * Obsidian Canvas has no such action. Its "reset zoom" control — measured on
-   * a running 1.13.7 — is `zoomBy(-zoom)`: it returns the scale to 1 and
-   * leaves the position exactly where it was, which is no help at all to
-   * someone who has panned into empty space. Fit-to-all (Shift+1) already
-   * answers "show me everything"; this answers the other half, "take me back",
-   * and it has a fixed destination because our world origin means something —
-   * it is where a new board is centred and where an imported one is parked.
-   */
-  private resetCamera(): void {
-    this.moveCameraTo(viewFromCamera(DEFAULT_CAMERA))
-    this.recomputeVisibility()
-    this.drainQueues()
   }
 
   // -----------------------------------------------------------------------
@@ -2770,11 +2327,11 @@ export class WhiteboardCanvas {
     const next = new Set(ids)
     for (const id of this.selectedIds) {
       if (!next.has(id))
-        this.runtimeByNodeId.get(id)?.el?.classList.remove(CARD_SELECTED_CLASS)
+        this.cardRenderer.getRuntime(id)?.el?.classList.remove(CARD_SELECTED_CLASS)
     }
     for (const id of next) {
       if (!this.selectedIds.has(id))
-        this.runtimeByNodeId.get(id)?.el?.classList.add(CARD_SELECTED_CLASS)
+        this.cardRenderer.getRuntime(id)?.el?.classList.add(CARD_SELECTED_CLASS)
     }
     this.selectedIds = next
     this.applyFocusedNode()
@@ -2801,13 +2358,13 @@ export class WhiteboardCanvas {
         : null
     if (next === this.focusedNodeId) return
     if (this.focusedNodeId !== null) {
-      this.runtimeByNodeId
-        .get(this.focusedNodeId)
+      this.cardRenderer
+        .getRuntime(this.focusedNodeId)
         ?.el?.classList.remove(CARD_FOCUSED_CLASS)
     }
     this.focusedNodeId = next
     if (next !== null) {
-      this.runtimeByNodeId.get(next)?.el?.classList.add(CARD_FOCUSED_CLASS)
+      this.cardRenderer.getRuntime(next)?.el?.classList.add(CARD_FOCUSED_CLASS)
     }
   }
 
@@ -2831,9 +2388,7 @@ export class WhiteboardCanvas {
   }
 
   private markEdgeSelected(id: EdgeId, selected: boolean): void {
-    this.edgeElsById
-      .get(id)
-      ?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    this.edgeLayer.setEdgeSelected(id, selected)
   }
 
   /** Clears both kinds of selection — what a click on empty canvas, or
@@ -2948,7 +2503,7 @@ export class WhiteboardCanvas {
     toolbar.place(
       toolbarScreenPosition(
         bounds,
-        this.view,
+        this.cameraController.view,
         {
           width: this.viewportEl.clientWidth,
           height: this.viewportEl.clientHeight,
@@ -3020,7 +2575,7 @@ export class WhiteboardCanvas {
       label: this.t('menu.zoomToSelection'),
       icon: 'scan-search',
       onSelect: () => {
-        this.zoomToSelection()
+        this.cameraController.zoomToSelection()
       },
     })
     if (this.canEdit && nodes.length > 1) {
@@ -3165,7 +2720,7 @@ export class WhiteboardCanvas {
     if (board === this.board) return
     this.applyBoardChange(board)
     for (const id of ids) {
-      const el = this.runtimeByNodeId.get(id)?.el
+      const el = this.cardRenderer.getRuntime(id)?.el
       if (el) applyColorToElement(el, color)
     }
   }
@@ -3175,11 +2730,7 @@ export class WhiteboardCanvas {
     const board = updateEdge(this.board, edgeId, { color })
     if (board === this.board) return
     this.applyBoardChange(board)
-    const dom = this.edgeElsById.get(edgeId)
-    if (dom?.path) applyColorToElement(dom.path, color)
-    // The label carries the colour too — it is what its ring is drawn in
-    // while the label is being typed.
-    if (dom?.label) applyColorToElement(dom.label, color)
+    this.edgeLayer.applyEdgeColor(edgeId, color)
   }
 
   /**
@@ -3208,22 +2759,11 @@ export class WhiteboardCanvas {
     const board = updateEdge(this.board, edgeId, { fromEnd, toEnd })
     if (board === this.board) return
     this.applyBoardChange(board)
-    const path = this.edgeElsById.get(edgeId)?.path
-    if (!path) return
-    this.setEdgeMarker(path, 'marker-start', fromEnd === 'arrow')
-    this.setEdgeMarker(path, 'marker-end', toEnd === 'arrow')
-  }
-
-  private setEdgeMarker(
-    path: SVGPathElement,
-    attribute: 'marker-start' | 'marker-end',
-    present: boolean,
-  ): void {
-    if (present) {
-      path.setAttribute(attribute, `url(#${this.arrowMarkerId})`)
-      return
-    }
-    path.removeAttribute(attribute)
+    this.edgeLayer.setEdgeArrowEnds(
+      edgeId,
+      fromEnd === 'arrow',
+      toEnd === 'arrow',
+    )
   }
 
   // -- labels (edge, group) -----------------------------------------------
@@ -3246,7 +2786,7 @@ export class WhiteboardCanvas {
     this.endRename(true)
     const el =
       this.labelEl(target) ??
-      (target.kind === 'edge' ? this.attachEdgeLabel(target.id) : null)
+      (target.kind === 'edge' ? this.edgeLayer.attachEdgeLabel(target.id) : null)
     if (!el) return
     this.toolbar?.closePopover()
     this.renaming = target
@@ -3312,11 +2852,11 @@ export class WhiteboardCanvas {
 
   private labelEl(target: LabelTarget): HTMLElement | null {
     if (target.kind === 'edge') {
-      return this.edgeElsById.get(target.id)?.label ?? null
+      return this.edgeLayer.getLabelEl(target.id)
     }
     return (
-      this.runtimeByNodeId
-        .get(target.id)
+      this.cardRenderer
+        .getRuntime(target.id)
         ?.el?.querySelector<HTMLElement>(`.${GROUP_LABEL_CLASS}`) ?? null
     )
   }
@@ -3329,7 +2869,7 @@ export class WhiteboardCanvas {
         ? this.groupLabelText(target.id)
         : (this.boardEdgesById.get(target.id)?.label ?? '')
     if (target.kind === 'edge' && stored.length === 0) {
-      this.detachEdgeLabel(target.id)
+      this.edgeLayer.detachEdgeLabel(target.id)
       return
     }
     el.textContent = stored
@@ -3366,9 +2906,9 @@ export class WhiteboardCanvas {
   private commitEdgeLabel(edgeId: EdgeId, value: string): void {
     if (!this.canEdit || !this.boardEdgesById.has(edgeId)) return
     const label = value.trim().length > 0 ? value : undefined
-    if (label === undefined) this.detachEdgeLabel(edgeId)
+    if (label === undefined) this.edgeLayer.detachEdgeLabel(edgeId)
     else {
-      const el = this.attachEdgeLabel(edgeId)
+      const el = this.edgeLayer.attachEdgeLabel(edgeId)
       if (el) el.textContent = label
     }
     const board = updateEdge(this.board, edgeId, { label })
@@ -3382,8 +2922,8 @@ export class WhiteboardCanvas {
     const edge =
       edgeId === undefined ? undefined : this.boardEdgesById.get(edgeId)
     if (!edge) return null
-    const from = this.effectiveNodeRect(edge.fromNode)
-    const to = this.effectiveNodeRect(edge.toNode)
+    const from = this.edgeLayer.effectiveNodeRect(edge.fromNode)
+    const to = this.edgeLayer.effectiveNodeRect(edge.toNode)
     if (!from || !to) return null
     const { fromSide, toSide } = resolveEdgeSides(
       from,
@@ -3458,7 +2998,7 @@ export class WhiteboardCanvas {
    * pos, size)` does.
    */
   private viewportCenterWorld(): ScreenPoint {
-    return screenToWorld(this.view, {
+    return screenToWorld(this.cameraController.view, {
       x: this.viewportEl.clientWidth / 2,
       y: this.viewportEl.clientHeight / 2,
     })
@@ -3767,13 +3307,13 @@ export class WhiteboardCanvas {
     if (next === this.board) return
     this.applyBoardChange(next)
     for (const id of positions.keys()) {
-      const el = this.runtimeByNodeId.get(id)?.el
+      const el = this.cardRenderer.getRuntime(id)?.el
       const node = this.nodesById.get(id)
       if (!el || !node) continue
       el.style.left = `${node.x}px`
       el.style.top = `${node.y}px`
     }
-    this.redrawEdgesForNodes(new Set(positions.keys()))
+    this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
     this.refreshInteractionLayer()
     this.positionToolbar()
     this.recomputeVisibility()
@@ -3881,7 +3421,10 @@ export class WhiteboardCanvas {
   }
 
   private worldPointFromEvent(e: MouseEvent): ScreenPoint {
-    return screenToWorld(this.view, this.viewportPointFromEvent(e))
+    return screenToWorld(
+      this.cameraController.view,
+      this.cameraController.viewportPointFromEvent(e),
+    )
   }
 
   /**
@@ -3930,15 +3473,13 @@ export class WhiteboardCanvas {
     // The node is going away, so there is nothing left to rename and nothing
     // to write what was typed to; drop the session rather than commit it.
     this.endRename(false, { kind: 'group', id })
-    const runtime = this.runtimeByNodeId.get(id)
-    if (runtime) {
-      this.destroyCardContent(runtime)
-      runtime.el?.remove()
-    }
-    this.runtimeByNodeId.delete(id)
+    // The runtime-map half of this teardown is cardRenderer's own state; see
+    // its `destroyRuntime` doc comment for why the operation is still one
+    // call from every caller but this one's point of view (`evictParkedCard`
+    // reaches this same method back through the `purgeNode` callback).
+    this.cardRenderer.destroyRuntime(id)
     this.pinnedIds.delete(id)
     this.contentSyncQueue.delete(id)
-    this.parkedCards.delete(id)
     this.engine.markUnmounted(id)
   }
 
@@ -3947,7 +3488,7 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   private readonly frame = (now: number): void => {
-    this.advanceCameraGlide(now)
+    this.cameraController.advanceCameraGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
       this.recomputeVisibility()
       this.lastRecomputeTime = now
@@ -3969,7 +3510,7 @@ export class WhiteboardCanvas {
     const rect = computeWorldViewportRect(
       this.viewportEl.clientWidth,
       this.viewportEl.clientHeight,
-      this.view,
+      this.cameraController.view,
       VIEWPORT_BUFFER_PX,
     )
     this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
@@ -3992,7 +3533,7 @@ export class WhiteboardCanvas {
    * a zoom level gets to tear down.
    */
   private updateDegradedState(): void {
-    const next = nextDegradedState(this.view.scale, this.degraded, {
+    const next = nextDegradedState(this.cameraController.view.scale, this.degraded, {
       enter: DEGRADE_SCALE_THRESHOLD,
       restore: DEGRADE_RESTORE_SCALE,
     })
@@ -4001,13 +3542,13 @@ export class WhiteboardCanvas {
     this.worldEl.classList.toggle(WORLD_DEGRADED_CLASS, next)
     // Whatever was queued was work in the other direction, and is now moot.
     this.contentSyncQueue.clear()
-    for (const [id, runtime] of this.runtimeByNodeId) {
+    for (const [id, runtime] of this.cardRenderer.entries()) {
       if (!runtime.el || this.editing?.nodeId === id) continue
       // A parked card is not on screen, so which side of the threshold its
       // content is on is not a question the zoom level gets to ask: it is
       // hidden either way, its pool is capacity-bounded, and it is reconciled
       // by the same paths as any mounted card the moment it comes back.
-      if (this.parkedCards.has(id)) continue
+      if (this.cardRenderer.isParked(id)) continue
       this.contentSyncQueue.add(id)
     }
     // A degraded card cannot be edited (see enterEditMode) and no new card can
@@ -4023,8 +3564,8 @@ export class WhiteboardCanvas {
       MOUNT_QUOTA_PER_FRAME,
       UNMOUNT_QUOTA_PER_FRAME,
     )
-    for (const id of toMount) this.mountNode(id)
-    for (const id of toUnmount) this.unmountNode(id)
+    for (const id of toMount) this.cardRenderer.mountNode(id)
+    for (const id of toUnmount) this.cardRenderer.unmountNode(id)
     this.drainContentSync()
   }
 
@@ -4062,12 +3603,12 @@ export class WhiteboardCanvas {
   }
 
   private syncNodeContent(id: NodeId): void {
-    const runtime = this.runtimeByNodeId.get(id)
+    const runtime = this.cardRenderer.getRuntime(id)
     if (!runtime?.el || !runtime.bodyEl) return
     // Entered edit mode after being queued: the editor owns the body now.
     if (this.editing?.nodeId === id) return
     if (!this.degraded) {
-      void this.renderCardPreview(id)
+      void this.cardRenderer.renderCardPreview(id)
       return
     }
     // A web card keeps its live page through a degrade for the same reason it
@@ -4078,741 +3619,22 @@ export class WhiteboardCanvas {
     // Everything else is destroyed, not parked — the same rule an off-screen
     // card follows (p3-canvas-parity D13); the card's title block is what
     // stands in for it.
-    this.destroyCardContent(runtime)
+    this.cardRenderer.destroyCardContent(runtime)
     runtime.bodyEl.replaceChildren()
   }
 
   // -----------------------------------------------------------------------
-  // Card mount/unmount
-  // -----------------------------------------------------------------------
-
-  private mountNode(id: NodeId): void {
-    const node = this.nodesById.get(id)
-    const existing = this.runtimeByNodeId.get(id)
-    // A card that never really left (it was parked in the hidden pool) comes
-    // back by being shown again — rebuilding it would be exactly the page
-    // reload, or the whole-note re-parse, the pool exists to prevent.
-    if (existing?.el && this.parkedCards.has(id)) {
-      this.revealParkedCard(id)
-      return
-    }
-    if (!node || existing?.el) return
-
-    const doc = this.context.getDocument()
-    const el = doc.createElement('div')
-    el.className = node.type === 'group' ? GROUP_CLASS : CARD_CLASS
-    el.style.left = `${node.x}px`
-    el.style.top = `${node.y}px`
-    el.style.width = `${node.w}px`
-    el.style.height = `${node.h}px`
-    el.dataset.nodeId = id
-    // JSON Canvas's `color` (p3-canvas-parity D5): a preset or a hex, both
-    // resolved to the one custom property style.css paints from.
-    applyColorToElement(el, node.color)
-    // Re-apply selection state — a selected node can unmount (scrolled
-    // off-screen) and remount without its selection ever changing.
-    if (this.selectedIds.has(id)) el.classList.add(CARD_SELECTED_CLASS)
-    if (this.focusedNodeId === id) el.classList.add(CARD_FOCUSED_CLASS)
-
-    // A group is a labelled frame behind the cards, not a card: it has no
-    // body, no content view and no degraded form (p3-canvas-parity D5, and
-    // batch 3 for the membership interactions). Everything else a node gets
-    // here — selection, dragging, resizing, edges — it gets for free, because
-    // it goes through the same runtime as a card.
-    if (node.type === 'group') {
-      const label = doc.createElement('div')
-      label.className = GROUP_LABEL_CLASS
-      label.textContent = node.label ?? ''
-      // The label is renamed in place (see beginRename), so it needs the
-      // two listeners that end a rename. They are attached here, for the
-      // element's whole life, rather than for the duration of a session:
-      // both are no-ops until this group is the one being renamed, and a
-      // listener that outlives its session cannot leak one that doesn't.
-      label.spellcheck = false
-      const target: LabelTarget = { kind: 'group', id }
-      label.addEventListener('keydown', (event) =>
-        this.handleLabelKeyDown(target, event),
-      )
-      label.addEventListener('blur', () => this.endRename(true, target))
-      el.appendChild(label)
-      this.worldEl.appendChild(el)
-      this.runtimeByNodeId.set(id, {
-        el,
-        bodyEl: null,
-        contentView: null,
-        contentSourcePath: null,
-        releaseContent: null,
-        webFrameUrl: null,
-        missingFile: false,
-        noteText: null,
-      })
-      return
-    }
-
-    // A card whose content comes from outside the board carries its title in
-    // chrome rather than in its text: a file card shows its file name
-    // (Obsidian's convention is that a note's name *is* its title, so a note
-    // dragged onto the board would otherwise arrive as a body with nothing
-    // naming it), and a web card its URL — the only thing about a page we can
-    // know without asking the page.
-    //
-    // Drawn *above* the card, not in it (style.css), and there through edit
-    // mode. Obsidian Canvas shows the same name twice: a label above the node
-    // and, inside it, the embed's own inline title — which disappears the
-    // moment the embed is swapped for an editor (measured). One title that
-    // never moves beats two that take turns, and outside is where it belongs,
-    // because a name that came from outside the content is a label on the box
-    // rather than a line of it.
-    //
-    // A text card gets none: its first line is its own title, and repeating
-    // it above the card would be the duplication this arrangement exists to
-    // avoid.
-    //
-    // Canvas replaces a link node's URL with the page's own title once the
-    // webview reports one; a sandboxed cross-origin iframe never will, so the
-    // URL is what the card says. Also a drag handle — a focused web card's
-    // body belongs to the page (see the content mask) and this does not, and
-    // it stays one from outside the box because hit-testing walks the DOM
-    // (`nodeIdFromEventTarget`), not the geometry.
-    const chromeTitle =
-      node.type === 'file'
-        ? basenameWithoutExtension(node.file)
-        : node.type === 'link'
-          ? node.url
-          : null
-    if (chromeTitle !== null) {
-      const title = doc.createElement('div')
-      title.className = CARD_TITLE_CLASS
-      title.textContent = chromeTitle
-      el.appendChild(title)
-    }
-
-    const body = doc.createElement('div')
-    body.className = CARD_BODY_CLASS
-    el.appendChild(body)
-
-    // Degraded (low-zoom) title block: always built — it is a line of text,
-    // and it is what the card *is* below the threshold, where its body holds
-    // nothing (renderCardPreview's degrade gate). Swapped for the body by the
-    // world element's WORLD_DEGRADED_CLASS — see style.css. Computed once from
-    // card data at mount time; card title-affecting fields (file/markdown)
-    // never change post-mount in M1, only position does.
-    const degradedTitle = doc.createElement('div')
-    degradedTitle.className = CARD_DEGRADED_TITLE_CLASS
-    degradedTitle.textContent = degradedNodeTitle(node)
-    el.appendChild(degradedTitle)
-
-    // Click-to-edit vs. drag-to-move is disambiguated centrally in
-    // onPointerDown/Move/Up (DRAG_THRESHOLD_PX) rather than a per-card
-    // `click` listener, so the same gesture can also drive dragging.
-
-    this.worldEl.appendChild(el)
-    this.runtimeByNodeId.set(id, {
-      el,
-      bodyEl: body,
-      contentView: null,
-      contentSourcePath: null,
-      releaseContent: null,
-      webFrameUrl: null,
-      missingFile: false,
-      noteText: existing?.noteText ?? null,
-    })
-
-    void this.renderCardPreview(id)
-  }
-
-  private unmountNode(id: NodeId): void {
-    const runtime = this.runtimeByNodeId.get(id)
-    if (!runtime?.el) return
-    // A pinned (editing) card is never queued for unmount by the
-    // virtualization engine, but stay defensive: only the commit path
-    // (finishEdit) ever destroys a live editor.
-    if (this.editing?.nodeId === id) return
-    // A group being renamed is pinned for the same reason: its label holds
-    // the caret, and unmounting would take the text being typed with it.
-    if (this.isRenaming({ kind: 'group', id })) return
-    // Two kinds of card are hidden rather than destroyed, for the same reason
-    // at two scales: putting them back costs more than keeping them.
-    //
-    //   - a web card would reload its page (WEB_FRAME_POOL_CAPACITY);
-    //   - a card showing rendered markdown would re-parse the whole note
-    //     behind it — ~2ms for a five-line card but ~25ms for a 160-line one
-    //     (2026-08-31 baseline), and a pan that pushes a card off one edge
-    //     very often brings it back moments later: half the mounts in one
-    //     measured pan were cards that had just left. This is D13's verdict,
-    //     taken on that measurement.
-    //
-    // Everything else — media (its "off-screen stops playing" is deliberate,
-    // p3-canvas-parity §六), placeholders, groups — is torn down here, because
-    // rebuilding it costs nothing worth keeping DOM for.
-    if (runtime.webFrameUrl !== null || runtime.contentView !== null) {
-      this.parkCard(id, runtime)
-      return
-    }
-    this.destroyCardContent(runtime)
-    this.contentSyncQueue.delete(id)
-    runtime.el.remove()
-    runtime.el = null
-    runtime.bodyEl = null
-  }
-
-  // -----------------------------------------------------------------------
-  // Hidden card pool (p3-canvas-parity §六, and D13's verdict).
-  //
-  // Obsidian Canvas parks an off-screen node by detaching its content element
-  // and keeping the instance in a cache. We park the whole card in place
-  // instead: `display: none` stops layout, paint and hit-testing while
-  // leaving everything attached, which is both simpler and the only thing
-  // that works for an iframe (a detached frame loses its browsing context).
-  //
-  // Parking in place is also what keeps a pool from needing an invalidation
-  // story of its own — the thing D13 was right to be wary of. A parked card
-  // is still a card: it keeps its runtime entry, its element and its place in
-  // `runtimeByNodeId`, so every path that updates a mounted card (an external
-  // edit through `handleBackingFileModified`, an undo through
-  // `applyHistoryBoard`, a delete through `purgeNodeRuntime`) reaches it
-  // unchanged. There is no second copy of anything to go stale.
-  // -----------------------------------------------------------------------
-
-  private parkCard(id: NodeId, runtime: NodeRuntime): void {
-    // A page has to leave layout to be suspended; a rendered note has to stay
-    // in it to keep the measurements that make coming back free.
-    runtime.el?.classList.add(
-      runtime.webFrameUrl !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
-    )
-    this.contentSyncQueue.delete(id)
-    // Delete before adding so a re-parked card moves to the back of the queue:
-    // insertion order is the LRU order (see `parkedCards`).
-    this.parkedCards.delete(id)
-    this.parkedCards.add(id)
-    this.evictExcessParkedCards()
-  }
-
-  private revealParkedCard(id: NodeId): void {
-    const runtime = this.runtimeByNodeId.get(id)
-    const node = this.nodesById.get(id)
-    this.parkedCards.delete(id)
-    if (!runtime?.el) return
-    runtime.el.classList.remove(CARD_POOLED_CLASS, CARD_PARKED_CLASS)
-    // The card sat out however much moved while it was hidden: an undo, an
-    // align, a colour change on a multi-selection. Its geometry and its
-    // selection state are re-applied from the board rather than trusted.
-    if (node) {
-      runtime.el.style.left = `${node.x}px`
-      runtime.el.style.top = `${node.y}px`
-      runtime.el.style.width = `${node.w}px`
-      runtime.el.style.height = `${node.h}px`
-      applyColorToElement(runtime.el, node.color)
-    }
-    runtime.el.classList.toggle(CARD_SELECTED_CLASS, this.selectedIds.has(id))
-    runtime.el.classList.toggle(CARD_FOCUSED_CLASS, this.focusedNodeId === id)
-  }
-
-  /**
-   * Destroys the least-recently-seen parked cards until the pool is within
-   * capacity. Eviction is a real teardown: the card is rebuilt from scratch
-   * the next time it is on screen.
-   *
-   * Two capacities, because the two kinds of parked card cost different
-   * things. A parked page is still running, so web cards answer to their own
-   * small cap; everything else is inert DOM and is capped at **what the
-   * screen itself holds** — the pool exists to catch the cards a gesture just
-   * pushed off the edges, and a gesture cannot push off more than a screenful
-   * before the ones it pushed first stop being worth keeping. Scaling with
-   * the mounted set rather than a fixed number also means the cap follows the
-   * zoom and the window size instead of being tuned for one of them.
-   */
-  private evictExcessParkedCards(): void {
-    const livePages = [...this.parkedCards].filter(
-      (id) => this.runtimeByNodeId.get(id)?.webFrameUrl != null,
-    )
-    for (const id of livePages.slice(
-      0,
-      Math.max(0, livePages.length - WEB_FRAME_POOL_CAPACITY),
-    )) {
-      this.evictParkedCard(id)
-    }
-    while (this.parkedCards.size > this.engine.mounted.size) {
-      const oldest = this.parkedCards.values().next().value
-      if (oldest === undefined) return
-      this.evictParkedCard(oldest)
-    }
-  }
-
-  private evictParkedCard(id: NodeId): void {
-    this.parkedCards.delete(id)
-    this.purgeNodeRuntime(id)
-  }
-
-  /**
-   * Releases whatever the card's body currently holds, whichever kind it is —
-   * the single teardown every path (unmount, degrade, re-render, edit) goes
-   * through, so a new content kind cannot be added and leak from one of them.
-   */
-  private destroyCardContent(runtime: NodeRuntime): void {
-    runtime.contentView?.destroy()
-    runtime.contentView = null
-    runtime.contentSourcePath = null
-    runtime.webFrameUrl = null
-    const release = runtime.releaseContent
-    runtime.releaseContent = null
-    if (release) {
-      try {
-        release()
-      } catch (error) {
-        this.reportError('card content release', error)
-      }
-    }
-    runtime.bodyEl?.classList.remove(CARD_BODY_LIVE_CLASS)
-  }
-
-  /**
-   * Builds whatever a card shows below its title — rendered markdown, a media
-   * element, an embedded page, or a placeholder for the cases that have none
-   * of those.
-   *
-   * The single gate for all of it, which is why the degrade check lives here
-   * rather than at the call sites: below the threshold nothing is built at all
-   * (p3-canvas-parity D8) — no `<img>`, no `<video>`, no frame, and not even
-   * the note card's `readText`, which at the zoom where the most cards are on
-   * screen is the larger half of the cost. `updateDegradedState` queues every
-   * mounted card when the camera comes back up, so a card skipped here is not
-   * forgotten.
-   */
-  private async renderCardPreview(id: NodeId): Promise<void> {
-    const node = this.nodesById.get(id)
-    const runtime = this.runtimeByNodeId.get(id)
-    // A group has no body: it is a frame, drawn once at mount.
-    if (!node || node.type === 'group' || !runtime?.bodyEl) return
-    if (this.degraded) return
-
-    if (node.type === 'link') {
-      this.renderWebFrameInto(runtime, node.url)
-      return
-    }
-
-    if (node.type === 'file') {
-      // A JSON Canvas file node can point at anything in the vault, and its
-      // extension is the only thing that says what to build for it
-      // (domain/naming.ts's fileNodeKind). Existence is checked first for
-      // every kind: "this file is gone" is the more useful thing to say about
-      // a missing PDF than "no card for this type yet".
-      const entry = this.host.vault.getEntry(node.file)
-      if (!entry || entry.kind !== 'file') {
-        runtime.missingFile = true
-        runtime.noteText = null
-        this.renderMissingFilePlaceholder(runtime, node.file)
-        return
-      }
-      runtime.missingFile = false
-      const kind = fileNodeKind(node.file)
-      if (kind !== 'markdown') {
-        // Only markdown has text an editor could be seeded from; leaving the
-        // cache set from a previous identity would seed one with a stale note.
-        runtime.noteText = null
-        if (kind === 'unsupported') {
-          this.renderUnsupportedFilePlaceholder(runtime, node.file)
-        } else {
-          this.renderMediaInto(runtime, node.file, kind)
-        }
-        return
-      }
-      let text: string
-      try {
-        text = await this.host.vault.readText(node.file)
-      } catch (error) {
-        this.reportError('readText', error)
-        if (this.runtimeByNodeId.get(id) === runtime) {
-          runtime.missingFile = true
-          this.renderMissingFilePlaceholder(runtime, node.file)
-        }
-        return
-      }
-      if (this.runtimeByNodeId.get(id) !== runtime) return // unmounted meanwhile
-      runtime.missingFile = false
-      runtime.noteText = text
-      this.renderMarkdownInto(id, runtime, text, node.file)
-      return
-    }
-
-    // text node: markdown lives directly in the board.
-    this.renderMarkdownInto(id, runtime, node.text, this.sourcePathForBoard())
-  }
-
-  /**
-   * Puts markdown on a card through the one content path both card types
-   * share (p3-canvas-parity D2/D11): the host's windowed preview, which
-   * mounts only the sections near its own scroll position, so a card holding
-   * a long note costs a screenful rather than the whole document.
-   *
-   * Synchronous by design — the view renders on its own schedule once it is
-   * in the document, and there is nothing here to wait for.
-   *
-   * This is the one expensive thing the canvas does per card, and so the one
-   * place besides the drain that asks whether this frame may build. It has to
-   * ask again here: a note card gets this far only after reading its file,
-   * which is one or more frames after the drain that let it start. On a frame
-   * that may not build, the card goes back on the queue — its frame is on
-   * screen, its text arrives a frame or two later, which is what paying for a
-   * long note looks like when the paying is paced.
-   */
-  private renderMarkdownInto(
-    id: NodeId,
-    runtime: NodeRuntime,
-    markdown: string,
-    sourcePath: string,
-  ): void {
-    const bodyEl = runtime.bodyEl
-    // The card may have been unmounted or swapped into edit mode while the
-    // text that got here was being read.
-    if (!bodyEl || this.editing?.nodeId === id) {
-      this.destroyCardContent(runtime)
-      return
-    }
-    if (!this.canBuildContent) {
-      this.contentSyncQueue.add(id)
-      return
-    }
-    // New text in the same document is a `setValue`; a different document
-    // needs a new view, because links resolve against what the view was
-    // built for.
-    if (runtime.contentView && runtime.contentSourcePath === sourcePath) {
-      runtime.contentView.setValue(markdown)
-    } else {
-      this.destroyCardContent(runtime)
-      bodyEl.replaceChildren()
-      try {
-        runtime.contentView = this.host.ui.createMarkdownContentView({
-          container: bodyEl,
-          value: markdown,
-          sourcePath,
-        })
-        runtime.contentSourcePath = sourcePath
-      } catch (error) {
-        this.reportError('markdown render', error)
-      }
-    }
-  }
-
-  private renderMissingFilePlaceholder(
-    runtime: NodeRuntime,
-    path: string,
-  ): void {
-    this.destroyCardContent(runtime)
-    this.renderPlaceholder(
-      runtime,
-      CARD_MISSING_CLASS,
-      this.t('card.missingFile'),
-      this.t('card.missingFileHint').replace('{path}', path),
-    )
-  }
-
-  /** What a file card shows while its file type has no card of its own — a
-   * PDF (M2), anything else. Named after the file so the card still says
-   * which one it is. */
-  private renderUnsupportedFilePlaceholder(
-    runtime: NodeRuntime,
-    path: string,
-  ): void {
-    this.destroyCardContent(runtime)
-    this.renderPlaceholder(
-      runtime,
-      CARD_UNSUPPORTED_PLACEHOLDER_CLASS,
-      this.t('card.unsupportedFile'),
-      this.t('card.unsupportedFileHint').replace('{path}', path),
-    )
-  }
-
-  /**
-   * Puts a vault image, audio or video file on a card, pointing the element at
-   * the same `app://` resource URL Obsidian's own embeds use
-   * (`vault.getResourceUrl`) so it streams and seeks exactly as it does in a
-   * note (p3-canvas-parity D1).
-   *
-   * The element fills the card and keeps its aspect ratio without cropping
-   * (style.css's `.yolo-whiteboard-card-media`). Obsidian Canvas instead
-   * reshapes the *node* to the media's aspect ratio when its content loads,
-   * and writes that back to the file — a load-time geometry mutation we
-   * deliberately do not copy: our cards mount and unmount with the viewport,
-   * so it would rewrite the board on every pan. Aspect-locked geometry belongs
-   * with the resize interactions (P3 batch 3).
-   *
-   * Audio and video get a `releaseContent`: taking a media element out of the
-   * DOM neither pauses it nor stops it streaming, so an off-screen or degraded
-   * card would go on playing out of sight.
-   */
-  private renderMediaInto(
-    runtime: NodeRuntime,
-    path: string,
-    kind: Exclude<FileNodeKind, 'markdown' | 'unsupported'>,
-  ): void {
-    this.destroyCardContent(runtime)
-    const bodyEl = runtime.bodyEl
-    if (!bodyEl) return
-    const doc = this.context.getDocument()
-    const url = this.host.vault.getResourceUrl(path)
-    const frame = doc.createElement('div')
-    frame.className = CARD_MEDIA_CLASS
-
-    if (kind === 'image') {
-      const image = doc.createElement('img')
-      image.src = url
-      // Obsidian Canvas sets this on its own image nodes: the card is what a
-      // drag moves, and a native image drag would start a competing one.
-      image.draggable = false
-      frame.appendChild(image)
-      bodyEl.replaceChildren(frame)
-      return
-    }
-
-    // Element attributes copied from Obsidian's own media embed builder
-    // (`app.js`'s audio/video embed helpers), so a card plays what a note
-    // plays: `controlsList=nodownload` because the file is already in the
-    // vault, `preload=metadata` because a board pans dozens of cards through
-    // the viewport and only the transport bar has to be drawn until one is
-    // played, and the `#t=0.001` fragment because a video with no poster
-    // otherwise shows a black rectangle instead of its first frame.
-    const media: HTMLMediaElement =
-      kind === 'audio' ? doc.createElement('audio') : doc.createElement('video')
-    media.controls = true
-    media.setAttribute('controlsList', 'nodownload')
-    media.preload = 'metadata'
-    media.src = kind === 'video' ? `${url}#t=0.001` : url
-    frame.appendChild(media)
-    bodyEl.replaceChildren(frame)
-    bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
-    runtime.releaseContent = () => {
-      media.pause()
-      // Dropping the source is what actually stops the download; `load()` is
-      // what makes the element act on it.
-      media.removeAttribute('src')
-      media.load()
-    }
-  }
-
-  /**
-   * Puts a web page on a card.
-   *
-   * A sandboxed `<iframe>` — see WEB_FRAME_SANDBOX for why this and not the
-   * Electron `<webview>` Obsidian Canvas uses on desktop. Only http(s) loads,
-   * exactly as in Canvas's own `setFrameUrl`; anything else is a card that
-   * says what it points at rather than a frame pointed somewhere it should
-   * not be.
-   */
-  private renderWebFrameInto(runtime: NodeRuntime, url: string): void {
-    // Already showing this exact page: leave it alone. Without this, coming
-    // back from a degraded zoom (which re-runs the render path for every
-    // mounted card) would tear down and reload every web card on screen —
-    // the reload the hidden pool exists to avoid, arrived at from the other
-    // direction.
-    if (runtime.webFrameUrl === url) return
-    this.destroyCardContent(runtime)
-    const bodyEl = runtime.bodyEl
-    if (!bodyEl) return
-    if (!WEB_URL_PATTERN.test(url)) {
-      this.renderPlaceholder(
-        runtime,
-        CARD_UNSUPPORTED_PLACEHOLDER_CLASS,
-        this.t('card.linkNotWeb'),
-        this.t('card.linkNotWebHint').replace('{url}', url),
-      )
-      return
-    }
-    const doc = this.context.getDocument()
-    const frame = doc.createElement('iframe')
-    frame.className = CARD_WEB_FRAME_CLASS
-    frame.setAttribute('sandbox', WEB_FRAME_SANDBOX)
-    frame.setAttribute('allow', 'fullscreen')
-    frame.src = url
-    bodyEl.replaceChildren(frame)
-    bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
-    runtime.webFrameUrl = url
-    // A detached frame keeps its page (and its timers, media and sockets)
-    // running until it is collected; navigating it away first is what ends
-    // them. Reached only on a real teardown now — the node was deleted, the
-    // board closed, or the card was evicted from the pool — because an
-    // ordinary unmount parks the card instead.
-    runtime.releaseContent = () => {
-      frame.src = 'about:blank'
-      frame.remove()
-    }
-  }
-
-  private renderPlaceholder(
-    runtime: NodeRuntime,
-    className: string,
-    titleText: string,
-    hintText: string,
-  ): void {
-    if (!runtime.bodyEl) return
-    const doc = this.context.getDocument()
-    const placeholder = doc.createElement('div')
-    placeholder.className = className
-    const title = doc.createElement('div')
-    title.textContent = titleText
-    const hint = doc.createElement('div')
-    hint.className = CARD_HINT_CLASS
-    hint.textContent = hintText
-    placeholder.append(title, hint)
-    runtime.bodyEl.replaceChildren(placeholder)
-  }
-
-  // -----------------------------------------------------------------------
-  // Edges: a single SVG overlay in the world layer draws every edge
-  // (p1-design §3: "世界层内单个 SVG overlay 画全部 edges...只在 edges 或
-  // 端点卡片位移时重绘（不进逐帧路径）"). Two redraw paths:
-  //   - `rebuildEdgesSvg` — full rebuild, for a structural change (a new
-  //     file loaded, an edge drawn or deleted, or a card delete cascading
-  //     edge removal). Costs one pass over the board's edges, and only ever
-  //     runs on a discrete user action — never during a gesture.
-  //   - `redrawEdgesForNodes` — updates only the `d`/label position of
-  //     edges incident to the given card ids, via `edgeIndexByNodeId`.
-  //     Used on every card-drag pointermove (with live override positions)
-  //     and once more after a drag commits (against the final board data).
-  // Endpoint coordinates always come from board data (via
-  // `effectiveNodeRect`), never the DOM — an edge still draws correctly
-  // even when one of its endpoint cards isn't currently mounted
-  // (virtualization) or is mid-drag (temporary override coordinates).
+  // Edges: drawing is ./canvas/edgeLayer.ts's job (see that file's doc
+  // comment for the two redraw paths and why endpoint coordinates always
+  // come from board data, never the DOM). What stays here is board-edge
+  // bookkeeping (`boardEdgesById`) and re-applying the *selection* after a
+  // rebuild has replaced every path element — a concern of `selectedEdgeIds`,
+  // which this class owns, not of edge drawing.
   // -----------------------------------------------------------------------
 
   private rebuildEdgesSvg(): void {
-    this.clearEdgesSvg()
-    this.boardEdgesById = new Map(
-      this.board.edges.map((edge) => [edge.id, edge]),
-    )
-    for (const edge of this.board.edges) {
-      this.indexEdgeIncidence(edge)
-      this.createEdgeDom(edge)
-      this.redrawEdge(edge.id)
-    }
+    this.edgeLayer.rebuildEdgesSvg(this.board.edges)
     this.restoreEdgeSelection()
-  }
-
-  private clearEdgesSvg(): void {
-    // An edge label being typed is about to lose the element it is typed in.
-    if (this.renaming?.kind === 'edge') this.endRename(false)
-    this.edgesGroupEl?.replaceChildren()
-    this.edgeLabelsEl?.replaceChildren()
-    this.edgeElsById.clear()
-    this.boardEdgesById = new Map()
-    this.edgeIndexByNodeId = new Map()
-  }
-
-  private indexEdgeIncidence(edge: Edge): void {
-    this.addEdgeIndex(edge.fromNode, edge.id)
-    this.addEdgeIndex(edge.toNode, edge.id)
-  }
-
-  private addEdgeIndex(nodeId: NodeId, edgeId: EdgeId): void {
-    let ids = this.edgeIndexByNodeId.get(nodeId)
-    if (!ids) {
-      ids = new Set()
-      this.edgeIndexByNodeId.set(nodeId, ids)
-    }
-    ids.add(edgeId)
-  }
-
-  private createEdgeDom(edge: Edge): void {
-    if (!this.edgesGroupEl) return
-    const doc = this.context.getDocument()
-    // Hit path first so the visible one paints over it; it is transparent,
-    // and the only element of the pair a pointer can land on.
-    const hit = doc.createElementNS(SVG_NS, 'path')
-    hit.setAttribute('class', EDGE_HIT_CLASS)
-    hit.dataset.edgeId = edge.id
-    this.edgesGroupEl.appendChild(hit)
-
-    const path = doc.createElementNS(SVG_NS, 'path')
-    path.setAttribute('class', EDGE_PATH_CLASS)
-    // The colour rides on the path element itself, not on the shared SVG:
-    // one overlay draws every edge, so per-edge colour has to be per-element.
-    // The arrowhead marker picks it up through `fill: context-stroke`.
-    applyColorToElement(path, edge.color)
-    if (edge.toEnd === 'arrow') {
-      path.setAttribute('marker-end', `url(#${this.arrowMarkerId})`)
-    }
-    if (edge.fromEnd === 'arrow') {
-      path.setAttribute('marker-start', `url(#${this.arrowMarkerId})`)
-    }
-    this.edgesGroupEl.appendChild(path)
-
-    const hasLabel = (edge.label?.trim().length ?? 0) > 0
-    this.edgeElsById.set(edge.id, {
-      path,
-      hit,
-      label: hasLabel ? this.createEdgeLabelEl(edge) : null,
-    })
-  }
-
-  /**
-   * Builds an edge's label element. Carries the same two listeners a group's
-   * label does, for the same reason (see `mountNode`), and the edge's colour
-   * so the ring it gets while being typed is the edge's own.
-   */
-  private createEdgeLabelEl(edge: Edge): HTMLElement | null {
-    const parent = this.edgeLabelsEl
-    if (!parent) return null
-    const el = this.context.getDocument().createElement('div')
-    el.className = EDGE_LABEL_CLASS
-    el.dataset.edgeId = edge.id
-    el.textContent = edge.label ?? ''
-    el.spellcheck = false
-    // Shown by style.css while the element is empty, which it only ever is
-    // between being created for an unlabelled edge and being typed into.
-    el.dataset.placeholder = this.t('edge.labelPlaceholder')
-    applyColorToElement(el, edge.color)
-    const target: LabelTarget = { kind: 'edge', id: edge.id }
-    el.addEventListener('keydown', (event) =>
-      this.handleLabelKeyDown(target, event),
-    )
-    el.addEventListener('blur', () => this.endRename(true, target))
-    parent.appendChild(el)
-    return el
-  }
-
-  /** Gives an edge that has no label the element to type one into, and puts
-   * it on the curve. */
-  private attachEdgeLabel(edgeId: EdgeId): HTMLElement | null {
-    const edge = this.boardEdgesById.get(edgeId)
-    const dom = this.edgeElsById.get(edgeId)
-    if (!edge || !dom || dom.label) return dom?.label ?? null
-    const label = this.createEdgeLabelEl(edge)
-    if (!label) return null
-    this.edgeElsById.set(edgeId, { ...dom, label })
-    this.redrawEdge(edgeId)
-    return label
-  }
-
-  /** Takes it away again — an edge with a blank label is an edge with no
-   * label, and nothing should be left on the curve marking it. */
-  private detachEdgeLabel(edgeId: EdgeId): void {
-    const dom = this.edgeElsById.get(edgeId)
-    if (!dom?.label) return
-    dom.label.remove()
-    this.edgeElsById.set(edgeId, { ...dom, label: null })
-  }
-
-  /** Takes an edge off the canvas without touching the board — the preview
-   * stands in for it while its endpoint is being dragged. */
-  private setEdgeHidden(edgeId: EdgeId, hidden: boolean): void {
-    const dom = this.edgeElsById.get(edgeId)
-    if (!dom) return
-    dom.path.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
-    dom.label?.classList.toggle(EDGE_HIDDEN_CLASS, hidden)
-  }
-
-  /** Board-data rect for `id`, or its live drag position from `overrides`
-   * when provided (see `updateNodeDragPositions`) — the single lookup both
-   * `redrawEdge` call sites (live drag, and the post-commit redraw against
-   * final data) go through. */
-  private effectiveNodeRect(
-    id: NodeId,
-    overrides?: ReadonlyMap<NodeId, CardRect>,
-  ): VirtualCardRect | null {
-    const card = this.nodesById.get(id)
-    if (!card) return null
-    const override = overrides?.get(id)
-    return override ? { id: card.id, ...override } : card
   }
 
   /** Drops selected ids whose edge is gone and re-applies the class to the
@@ -4825,45 +3647,6 @@ export class WhiteboardCanvas {
     for (const id of surviving) this.markEdgeSelected(id, true)
     this.syncSelectionKeymapScope()
     this.refreshToolbar()
-  }
-
-  private redrawEdge(
-    edgeId: EdgeId,
-    overrides?: ReadonlyMap<NodeId, CardRect>,
-  ): void {
-    const edge = this.boardEdgesById.get(edgeId)
-    const dom = this.edgeElsById.get(edgeId)
-    if (!edge || !dom) return
-    const from = this.effectiveNodeRect(edge.fromNode, overrides)
-    const to = this.effectiveNodeRect(edge.toNode, overrides)
-    if (!from || !to) return // dangling edges are rejected at parse time; stay defensive
-    const { fromSide, toSide } = resolveEdgeSides(
-      from,
-      to,
-      edge.fromSide,
-      edge.toSide,
-    )
-    const geometry = computeEdgeGeometry(from, to, fromSide, toSide)
-    const d = buildEdgePathD(geometry)
-    dom.path.setAttribute('d', d)
-    dom.hit.setAttribute('d', d)
-    if (dom.label) {
-      dom.label.style.left = `${geometry.label.x}px`
-      dom.label.style.top = `${geometry.label.y}px`
-    }
-  }
-
-  private redrawEdgesForNodes(
-    nodeIds: ReadonlySet<NodeId>,
-    overrides?: ReadonlyMap<NodeId, CardRect>,
-  ): void {
-    const edgeIds = new Set<EdgeId>()
-    for (const id of nodeIds) {
-      const incident = this.edgeIndexByNodeId.get(id)
-      if (!incident) continue
-      for (const edgeId of incident) edgeIds.add(edgeId)
-    }
-    for (const edgeId of edgeIds) this.redrawEdge(edgeId, overrides)
   }
 
   // -----------------------------------------------------------------------
@@ -4903,7 +3686,7 @@ export class WhiteboardCanvas {
     if (!this.canCreate) return
     const node = this.nodesById.get(id)
     if (!node || !this.isEditableNode(node)) return
-    const runtime = this.runtimeByNodeId.get(id)
+    const runtime = this.cardRenderer.getRuntime(id)
     if (!runtime?.bodyEl || runtime.missingFile) return
     // A file card's initial content is read asynchronously on mount
     // (renderCardPreview); if the user clicks to edit before that first
@@ -4926,7 +3709,7 @@ export class WhiteboardCanvas {
 
     const initialText =
       node.type === 'text' ? node.text : (runtime.noteText ?? '')
-    this.destroyCardContent(runtime)
+    this.cardRenderer.destroyCardContent(runtime)
     runtime.bodyEl.replaceChildren()
     runtime.el?.classList.add(CARD_EDITING_CLASS)
     runtime.bodyEl.classList.add(EDITOR_HOST_CLASS)
@@ -4991,7 +3774,7 @@ export class WhiteboardCanvas {
     const action = planNodeCommit(this.board, id, text)
     switch (action.kind) {
       case 'writeNoteFile': {
-        const runtime = this.runtimeByNodeId.get(id)
+        const runtime = this.cardRenderer.getRuntime(id)
         if (runtime) runtime.noteText = action.markdown
         void this.host.vault
           .writeText(action.file, action.markdown)
@@ -5017,7 +3800,7 @@ export class WhiteboardCanvas {
     editing.editor.destroy()
     this.pinnedIds.delete(id)
 
-    const runtime = this.runtimeByNodeId.get(id)
+    const runtime = this.cardRenderer.getRuntime(id)
     runtime?.el?.classList.remove(CARD_EDITING_CLASS)
     runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
 
@@ -5025,7 +3808,7 @@ export class WhiteboardCanvas {
     // unpersisted, and a no-op commit costs nothing. Still under the
     // session's history key — the whole session is one step to undo.
     this.commitCardText(id, text, editing.historyKey)
-    void this.renderCardPreview(id)
+    void this.cardRenderer.renderCardPreview(id)
     // Leaving the editor lands on the card, not on nothing: Escape steps
     // out to the selected card and only a second Escape clears it. A blur
     // caused by pressing somewhere else is overwritten by whatever that
@@ -5054,18 +3837,11 @@ export class WhiteboardCanvas {
     this.popSelectionKeymapScope()
     this.selectedIds = new Set()
     this.focusedNodeId = null
-    for (const runtime of this.runtimeByNodeId.values()) {
-      this.destroyCardContent(runtime)
-      runtime.el?.remove()
-      runtime.el = null
-      runtime.bodyEl = null
-    }
-    this.runtimeByNodeId.clear()
+    this.cardRenderer.destroyAll()
     this.pinnedIds.clear()
     this.contentSyncQueue.clear()
-    this.parkedCards.clear()
     this.engine.reset()
-    this.clearEdgesSvg()
+    this.edgeLayer.clearEdgesSvg()
   }
 
   private syncBoardIndex(): void {
@@ -5134,7 +3910,7 @@ export class WhiteboardCanvas {
     for (const [id, node] of this.nodesById) {
       if (node.type !== 'file' || node.file !== path) continue
       if (this.editing?.nodeId === id) continue
-      const runtime = this.runtimeByNodeId.get(id)
+      const runtime = this.cardRenderer.getRuntime(id)
       if (!runtime?.el) continue // not currently mounted
       if (isMarkdownPath(node.file)) {
         void this.refreshMountedNoteCard(id, runtime, path)
@@ -5142,7 +3918,7 @@ export class WhiteboardCanvas {
       }
       // Anything else has no text to re-read, and its resource URL carries
       // the file's mtime — so the way to show new bytes is a new element.
-      void this.renderCardPreview(id)
+      void this.cardRenderer.renderCardPreview(id)
     }
   }
 
@@ -5160,7 +3936,7 @@ export class WhiteboardCanvas {
     }
     // The card may have unmounted, been superseded, or entered edit mode
     // while the read above was in flight.
-    if (this.runtimeByNodeId.get(id) !== runtime) return
+    if (this.cardRenderer.getRuntime(id) !== runtime) return
     if (this.editing?.nodeId === id) return
     if (runtime.noteText === text) return // no real change — short-circuit
     runtime.noteText = text
@@ -5171,7 +3947,7 @@ export class WhiteboardCanvas {
     // superseded read is how the write on blur would undo someone else's
     // edit. The rendering is what D8 skips, not the freshness.
     if (this.degraded) return
-    this.renderMarkdownInto(id, runtime, text, path)
+    this.cardRenderer.renderMarkdownInto(id, runtime, text, path)
   }
 
   private showError(issues: readonly BoardParseIssue[]): void {
