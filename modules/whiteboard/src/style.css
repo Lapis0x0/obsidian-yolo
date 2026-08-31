@@ -1311,12 +1311,28 @@ input.yolo-whiteboard-prompt-input:focus {
   cursor: default;
 }
 
-/* --- pooled web cards -----------------------------------------------------
- * A web card that has scrolled out of the viewport keeps its live page: it is
- * hidden rather than removed, because an <iframe> taken out of the document
- * loses its browsing context and reloads when put back (ui/canvas.ts's
- * WEB_FRAME_POOL_CAPACITY). `display: none` stops layout, paint and hit
- * testing while leaving the frame attached, which is all the page needs. */
+/* --- parked cards ---------------------------------------------------------
+ * A card that has scrolled out of the viewport is hidden rather than removed
+ * when putting it back would cost more than keeping it (ui/canvas.ts's
+ * `parkCard`). Two ways of hiding, because the two kinds of card need
+ * opposite things from the layout engine.
+ *
+ * A web card is suspended: `display: none` takes it out of layout and paint
+ * entirely while leaving its <iframe> attached, which is all the page's
+ * browsing context needs to survive.
+ *
+ * A markdown card is only made invisible. Its content view measures every
+ * section it renders and caches the result; `display: none` collapses those
+ * boxes to nothing, so showing the card again makes the host re-measure the
+ * whole note — measured as the dominant cost of a pan over long-note cards,
+ * and the reason a pool that hid them this way bought much less than it
+ * should have. `visibility: hidden` keeps the boxes, so a parked card comes
+ * back for free. */
+
+.yolo-whiteboard-card.yolo-whiteboard-card-parked {
+  visibility: hidden;
+  pointer-events: none;
+}
 
 .yolo-whiteboard-card.yolo-whiteboard-card-pooled {
   display: none;

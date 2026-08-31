@@ -141,6 +141,7 @@ import {
   DROP_STAGGER_PX,
   EDIT_PERSIST_THROTTLE_MS,
   FIT_CAMERA_PADDING_PX,
+  FRAME_ON_TIME_MS,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
@@ -219,17 +220,18 @@ const DISTRIBUTE_MENU: Readonly<
 const MIN_GROUP_SIZE = Object.freeze({ w: 200, h: 160 })
 
 /**
- * How many web cards keep a live page while off screen (p3-canvas-parity §六's
- * D13 scope revision).
+ * How many *web* cards may keep a live page while parked off screen
+ * (p3-canvas-parity §六's D13 scope revision).
  *
  * An `<iframe>` removed from the document tree loses its browsing context, and
  * re-inserting it reloads the page from the top — every scroll position, form
  * field and session in it gone. So a web card that scrolls out of the viewport
  * is hidden rather than destroyed. Each survivor is a whole live page (its own
- * JavaScript, timers, sockets and media), which is why the pool is small: six
- * background pages is already a real cost, and a board with more than six web
- * cards in play at once is not the case this exists for. Past the cap the
- * least-recently-seen card is destroyed for real.
+ * JavaScript, timers, sockets and media), which is why this cap is small and
+ * separate from the pool's own: six background pages is already a real cost,
+ * and a board with more than six web cards in play at once is not the case
+ * this exists for. Past the cap the least-recently-seen one is destroyed for
+ * real. Every other parked card is inert DOM and answers to `parkedCapacity`.
  */
 const WEB_FRAME_POOL_CAPACITY = 6
 
@@ -266,8 +268,13 @@ const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
   'yolo-whiteboard-card-unsupported-placeholder'
 const GROUP_CLASS = 'yolo-whiteboard-group'
 const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
-/** A web card parked in the hidden pool: out of the viewport, out of sight,
- * still in the document so its page stays alive. See WEB_FRAME_POOL_CAPACITY. */
+/** A card parked in the hidden pool: out of the viewport, out of sight, still
+ * in the document so what it holds survives. Invisible but still laid out,
+ * because its content view's section measurements are the expensive part and
+ * they only survive if its boxes do — see `parkCard` and style.css. */
+const CARD_PARKED_CLASS = 'yolo-whiteboard-card-parked'
+/** A parked *web* card: taken out of layout altogether, which suspends the
+ * page inside it. See WEB_FRAME_POOL_CAPACITY. */
 const CARD_POOLED_CLASS = 'yolo-whiteboard-card-pooled'
 /** On the root while `board.locked` — what the stylesheet keys the read-only
  * treatment off, mirroring Obsidian Canvas's `mod-readonly`. */
@@ -581,12 +588,12 @@ export class WhiteboardCanvas {
   private prompt: PromptOverlay | null = null
 
   /**
-   * Web cards holding a live page while off screen, least-recently-seen
+   * Cards parked off screen with what they hold intact, least-recently-seen
    * first: a Set iterates in insertion order, and every re-park deletes before
    * it adds, so the iteration order *is* the LRU order and the first entry is
-   * always the one to evict. See WEB_FRAME_POOL_CAPACITY.
+   * always the one to evict. See `parkCard`.
    */
-  private readonly webFramePool = new Set<NodeId>()
+  private readonly parkedCards = new Set<NodeId>()
 
   // Resize (W3-C): one shared handle layer for the whole board, parked over
   // whichever card the pointer is on, rather than eight handles per mounted
@@ -671,8 +678,25 @@ export class WhiteboardCanvas {
    * threshold: built while it should be gone, or absent while it should be
    * there. Filled wholesale when `degraded` flips and drained a few per frame
    * by `drainQueues` (p3-canvas-parity D8) — the queue only ever holds work in
-   * the direction `degraded` currently points, so one set covers both. */
+   * the direction `degraded` currently points, so one set covers both.
+   *
+   * Also where a content build that ran out of this frame's budget goes to
+   * wait for the next one (see `renderMarkdownInto`). */
   private readonly contentSyncQueue = new Set<NodeId>()
+
+  /**
+   * Whether card content may be built right now: either nothing is moving, or
+   * the last frame arrived on time (FRAME_ON_TIME_MS). Re-derived once per
+   * frame; read wherever a build is about to start, including the builds that
+   * only reach that point after reading a file, a frame or more later.
+   */
+  private canBuildContent = true
+  private lastFrameAt: number | null = null
+
+  /** Whether the camera is moving — the same state WORLD_INTERACTING_CLASS
+   * tracks (see markInteracting). While it is, building is paced by whether
+   * frames are keeping up; at rest it runs at full rate. */
+  private interacting = false
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -811,6 +835,7 @@ export class WhiteboardCanvas {
       win.clearTimeout(this.interactingTimer)
       this.interactingTimer = null
     }
+    this.interacting = false
     if (this.settleTimer !== null) {
       win.clearTimeout(this.settleTimer)
       this.settleTimer = null
@@ -1786,10 +1811,12 @@ export class WhiteboardCanvas {
   // will-change wastes compositor memory for no benefit at rest).
   private markInteracting(): void {
     this.worldEl.classList.add(WORLD_INTERACTING_CLASS)
+    this.interacting = true
     const win = this.context.getWindow()
     if (this.interactingTimer !== null) win.clearTimeout(this.interactingTimer)
     this.interactingTimer = win.setTimeout(() => {
       this.worldEl.classList.remove(WORLD_INTERACTING_CLASS)
+      this.interacting = false
     }, INTERACTING_CLASS_TIMEOUT_MS)
   }
 
@@ -3911,7 +3938,7 @@ export class WhiteboardCanvas {
     this.runtimeByNodeId.delete(id)
     this.pinnedIds.delete(id)
     this.contentSyncQueue.delete(id)
-    this.webFramePool.delete(id)
+    this.parkedCards.delete(id)
     this.engine.markUnmounted(id)
   }
 
@@ -3925,6 +3952,14 @@ export class WhiteboardCanvas {
       this.recomputeVisibility()
       this.lastRecomputeTime = now
     }
+    // Whether this frame builds card content. While the camera moves, only
+    // frames that follow an on-time one do: the work is priced by its effect
+    // on the frame it lands in, and that is the only place it can be read.
+    const sinceLastFrame =
+      this.lastFrameAt === null ? 0 : now - this.lastFrameAt
+    this.lastFrameAt = now
+    this.canBuildContent =
+      !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
     this.rafId = this.context.getWindow().requestAnimationFrame(this.frame)
   }
@@ -3968,6 +4003,11 @@ export class WhiteboardCanvas {
     this.contentSyncQueue.clear()
     for (const [id, runtime] of this.runtimeByNodeId) {
       if (!runtime.el || this.editing?.nodeId === id) continue
+      // A parked card is not on screen, so which side of the threshold its
+      // content is on is not a question the zoom level gets to ask: it is
+      // hidden either way, its pool is capacity-bounded, and it is reconciled
+      // by the same paths as any mounted card the moment it comes back.
+      if (this.parkedCards.has(id)) continue
       this.contentSyncQueue.add(id)
     }
     // A degraded card cannot be edited (see enterEditMode) and no new card can
@@ -3985,28 +4025,38 @@ export class WhiteboardCanvas {
     )
     for (const id of toMount) this.mountNode(id)
     for (const id of toUnmount) this.unmountNode(id)
-    // Same frame budget as the mount/unmount queues above, and the same
-    // asymmetry: building content is the expensive direction and shares the
-    // mount quota with the cards that just mounted (so a frame never starts
-    // more than MOUNT_QUOTA_PER_FRAME renders however the work is split),
-    // while tearing it down is cheap DOM removal.
-    this.drainContentSync(
-      this.degraded
-        ? UNMOUNT_QUOTA_PER_FRAME
-        : MOUNT_QUOTA_PER_FRAME - toMount.length,
-    )
+    this.drainContentSync()
   }
 
-  /** Brings up to `budget` mounted cards' content into line with the current
-   * degrade state. A Set iterates in insertion order and tolerates deletion
-   * mid-iteration, so it serves as both the queue and the membership test. */
-  private drainContentSync(budget: number): void {
-    if (budget <= 0) return
-    let done = 0
+  /**
+   * Brings mounted cards' content into line with the current degrade state,
+   * on the frames this one is allowed to build on. A Set iterates in
+   * insertion order and tolerates deletion mid-iteration, so it serves as
+   * both the queue and the membership test.
+   *
+   * The frame gate decides *whether* to build; the start cap bounds how many
+   * builds may be in flight at once. A note card reads its file before it can
+   * render, and the read is nearly free — without the cap one qualifying
+   * frame would start a hundred reads and then be handed a hundred renders.
+   * Each of those still checks the gate when it lands
+   * (`renderMarkdownInto`), so the cap does not have to be tight; it only has
+   * to be finite.
+   */
+  private drainContentSync(): void {
+    // While degraded the queue holds teardowns, which are the cheap uniform
+    // kind of work a count does bound — the same asymmetry as the mount and
+    // unmount quotas above.
+    const startCap = this.degraded
+      ? UNMOUNT_QUOTA_PER_FRAME
+      : MOUNT_QUOTA_PER_FRAME
+    let started = 0
     for (const id of this.contentSyncQueue) {
-      if (done >= budget) return
+      // Teardown is not building: it is what makes the next frames cheaper,
+      // so it runs even on the frames that may not build.
+      if (!this.degraded && !this.canBuildContent) return
+      if (started >= startCap) return
       this.contentSyncQueue.delete(id)
-      done += 1
+      started += 1
       this.syncNodeContent(id)
     }
   }
@@ -4039,11 +4089,11 @@ export class WhiteboardCanvas {
   private mountNode(id: NodeId): void {
     const node = this.nodesById.get(id)
     const existing = this.runtimeByNodeId.get(id)
-    // A web card that never really left (it was parked in the hidden pool)
-    // comes back by being shown again — rebuilding it would be exactly the
-    // page reload the pool exists to prevent.
-    if (existing?.el && this.webFramePool.has(id)) {
-      this.revealPooledCard(id)
+    // A card that never really left (it was parked in the hidden pool) comes
+    // back by being shown again — rebuilding it would be exactly the page
+    // reload, or the whole-note re-parse, the pool exists to prevent.
+    if (existing?.el && this.parkedCards.has(id)) {
+      this.revealParkedCard(id)
       return
     }
     if (!node || existing?.el) return
@@ -4181,16 +4231,24 @@ export class WhiteboardCanvas {
     // A group being renamed is pinned for the same reason: its label holds
     // the caret, and unmounting would take the text being typed with it.
     if (this.isRenaming({ kind: 'group', id })) return
-    // A web card is hidden, not destroyed — see WEB_FRAME_POOL_CAPACITY.
-    if (runtime.webFrameUrl !== null) {
-      this.poolWebCard(id, runtime)
+    // Two kinds of card are hidden rather than destroyed, for the same reason
+    // at two scales: putting them back costs more than keeping them.
+    //
+    //   - a web card would reload its page (WEB_FRAME_POOL_CAPACITY);
+    //   - a card showing rendered markdown would re-parse the whole note
+    //     behind it — ~2ms for a five-line card but ~25ms for a 160-line one
+    //     (2026-08-31 baseline), and a pan that pushes a card off one edge
+    //     very often brings it back moments later: half the mounts in one
+    //     measured pan were cards that had just left. This is D13's verdict,
+    //     taken on that measurement.
+    //
+    // Everything else — media (its "off-screen stops playing" is deliberate,
+    // p3-canvas-parity §六), placeholders, groups — is torn down here, because
+    // rebuilding it costs nothing worth keeping DOM for.
+    if (runtime.webFrameUrl !== null || runtime.contentView !== null) {
+      this.parkCard(id, runtime)
       return
     }
-    // Everything else is destroyed rather than parked (p3-canvas-parity D13):
-    // an off-screen card keeps nothing but its cached text, and a detach pool
-    // would have to manage capacity, invalidation and content sync to earn its
-    // keep. Only the web card's *state* (scroll position, form contents, a
-    // login) makes that bargain worth taking.
     this.destroyCardContent(runtime)
     this.contentSyncQueue.delete(id)
     runtime.el.remove()
@@ -4199,36 +4257,43 @@ export class WhiteboardCanvas {
   }
 
   // -----------------------------------------------------------------------
-  // Web-card hidden pool (p3-canvas-parity §六, D13's scope revision).
+  // Hidden card pool (p3-canvas-parity §六, and D13's verdict).
   //
   // Obsidian Canvas parks an off-screen node by detaching its content element
-  // and keeping the instance. That works for a markdown embed and not for an
-  // iframe: taking a frame out of the document tree destroys its browsing
-  // context, and putting it back reloads the page from scratch. So a web card
-  // is hidden in place instead — still in the document, so the page keeps
-  // running, just not painted.
+  // and keeping the instance in a cache. We park the whole card in place
+  // instead: `display: none` stops layout, paint and hit-testing while
+  // leaving everything attached, which is both simpler and the only thing
+  // that works for an iframe (a detached frame loses its browsing context).
   //
-  // `display: none` is enough: it stops layout, paint and hit-testing for the
-  // card while leaving the frame attached, which is the only thing the
-  // browsing context's survival depends on.
+  // Parking in place is also what keeps a pool from needing an invalidation
+  // story of its own — the thing D13 was right to be wary of. A parked card
+  // is still a card: it keeps its runtime entry, its element and its place in
+  // `runtimeByNodeId`, so every path that updates a mounted card (an external
+  // edit through `handleBackingFileModified`, an undo through
+  // `applyHistoryBoard`, a delete through `purgeNodeRuntime`) reaches it
+  // unchanged. There is no second copy of anything to go stale.
   // -----------------------------------------------------------------------
 
-  private poolWebCard(id: NodeId, runtime: NodeRuntime): void {
-    runtime.el?.classList.add(CARD_POOLED_CLASS)
+  private parkCard(id: NodeId, runtime: NodeRuntime): void {
+    // A page has to leave layout to be suspended; a rendered note has to stay
+    // in it to keep the measurements that make coming back free.
+    runtime.el?.classList.add(
+      runtime.webFrameUrl !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
+    )
     this.contentSyncQueue.delete(id)
     // Delete before adding so a re-parked card moves to the back of the queue:
-    // insertion order is the LRU order (see `webFramePool`).
-    this.webFramePool.delete(id)
-    this.webFramePool.add(id)
-    this.evictExcessWebCards()
+    // insertion order is the LRU order (see `parkedCards`).
+    this.parkedCards.delete(id)
+    this.parkedCards.add(id)
+    this.evictExcessParkedCards()
   }
 
-  private revealPooledCard(id: NodeId): void {
+  private revealParkedCard(id: NodeId): void {
     const runtime = this.runtimeByNodeId.get(id)
     const node = this.nodesById.get(id)
-    this.webFramePool.delete(id)
+    this.parkedCards.delete(id)
     if (!runtime?.el) return
-    runtime.el.classList.remove(CARD_POOLED_CLASS)
+    runtime.el.classList.remove(CARD_POOLED_CLASS, CARD_PARKED_CLASS)
     // The card sat out however much moved while it was hidden: an undo, an
     // align, a colour change on a multi-selection. Its geometry and its
     // selection state are re-applied from the board rather than trusted.
@@ -4243,16 +4308,40 @@ export class WhiteboardCanvas {
     runtime.el.classList.toggle(CARD_FOCUSED_CLASS, this.focusedNodeId === id)
   }
 
-  /** Destroys the least-recently-seen pooled cards until the pool is within
-   * capacity. Eviction is a real teardown: the page goes, and the card is
-   * rebuilt from its URL the next time it is on screen. */
-  private evictExcessWebCards(): void {
-    while (this.webFramePool.size > WEB_FRAME_POOL_CAPACITY) {
-      const oldest = this.webFramePool.values().next().value
-      if (oldest === undefined) return
-      this.webFramePool.delete(oldest)
-      this.purgeNodeRuntime(oldest)
+  /**
+   * Destroys the least-recently-seen parked cards until the pool is within
+   * capacity. Eviction is a real teardown: the card is rebuilt from scratch
+   * the next time it is on screen.
+   *
+   * Two capacities, because the two kinds of parked card cost different
+   * things. A parked page is still running, so web cards answer to their own
+   * small cap; everything else is inert DOM and is capped at **what the
+   * screen itself holds** — the pool exists to catch the cards a gesture just
+   * pushed off the edges, and a gesture cannot push off more than a screenful
+   * before the ones it pushed first stop being worth keeping. Scaling with
+   * the mounted set rather than a fixed number also means the cap follows the
+   * zoom and the window size instead of being tuned for one of them.
+   */
+  private evictExcessParkedCards(): void {
+    const livePages = [...this.parkedCards].filter(
+      (id) => this.runtimeByNodeId.get(id)?.webFrameUrl != null,
+    )
+    for (const id of livePages.slice(
+      0,
+      Math.max(0, livePages.length - WEB_FRAME_POOL_CAPACITY),
+    )) {
+      this.evictParkedCard(id)
     }
+    while (this.parkedCards.size > this.engine.mounted.size) {
+      const oldest = this.parkedCards.values().next().value
+      if (oldest === undefined) return
+      this.evictParkedCard(oldest)
+    }
+  }
+
+  private evictParkedCard(id: NodeId): void {
+    this.parkedCards.delete(id)
+    this.purgeNodeRuntime(id)
   }
 
   /**
@@ -4358,6 +4447,14 @@ export class WhiteboardCanvas {
    *
    * Synchronous by design — the view renders on its own schedule once it is
    * in the document, and there is nothing here to wait for.
+   *
+   * This is the one expensive thing the canvas does per card, and so the one
+   * place besides the drain that asks whether this frame may build. It has to
+   * ask again here: a note card gets this far only after reading its file,
+   * which is one or more frames after the drain that let it start. On a frame
+   * that may not build, the card goes back on the queue — its frame is on
+   * screen, its text arrives a frame or two later, which is what paying for a
+   * long note looks like when the paying is paced.
    */
   private renderMarkdownInto(
     id: NodeId,
@@ -4372,24 +4469,28 @@ export class WhiteboardCanvas {
       this.destroyCardContent(runtime)
       return
     }
+    if (!this.canBuildContent) {
+      this.contentSyncQueue.add(id)
+      return
+    }
     // New text in the same document is a `setValue`; a different document
     // needs a new view, because links resolve against what the view was
     // built for.
     if (runtime.contentView && runtime.contentSourcePath === sourcePath) {
       runtime.contentView.setValue(markdown)
-      return
-    }
-    this.destroyCardContent(runtime)
-    bodyEl.replaceChildren()
-    try {
-      runtime.contentView = this.host.ui.createMarkdownContentView({
-        container: bodyEl,
-        value: markdown,
-        sourcePath,
-      })
-      runtime.contentSourcePath = sourcePath
-    } catch (error) {
-      this.reportError('markdown render', error)
+    } else {
+      this.destroyCardContent(runtime)
+      bodyEl.replaceChildren()
+      try {
+        runtime.contentView = this.host.ui.createMarkdownContentView({
+          container: bodyEl,
+          value: markdown,
+          sourcePath,
+        })
+        runtime.contentSourcePath = sourcePath
+      } catch (error) {
+        this.reportError('markdown render', error)
+      }
     }
   }
 
@@ -4962,7 +5063,7 @@ export class WhiteboardCanvas {
     this.runtimeByNodeId.clear()
     this.pinnedIds.clear()
     this.contentSyncQueue.clear()
-    this.webFramePool.clear()
+    this.parkedCards.clear()
     this.engine.reset()
     this.clearEdgesSvg()
   }

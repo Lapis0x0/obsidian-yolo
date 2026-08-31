@@ -42,17 +42,53 @@ export const CAMERA_GLIDE_EPSILON_PX = 0.5
 /** Screen-pixel buffer band around the viewport for virtualization, divided
  * by scale before use so its on-screen width stays constant across zoom
  * levels (see domain/virtualization.ts's computeWorldViewportRect). */
-export const VIEWPORT_BUFFER_PX = 400
+export const VIEWPORT_BUFFER_PX = 150
 
 /** Visibility recompute throttle — matches the spikes' measured sweet spot
  * between responsiveness and recompute cost at a few hundred cards. */
 export const RECOMPUTE_INTERVAL_MS = 70
 
-/** Per-frame drain quotas: mounting is a real `MarkdownRenderer.render()`
- * call (materially more expensive than the spike's `innerHTML =`
- * simulation), so it stays conservative; unmounting is cheap DOM removal. */
+/**
+ * Per-frame drain quotas for the two *uniform-cost* halves of virtualization:
+ * putting a card's frame in the world and taking it out again. Both are plain
+ * DOM work whose cost does not depend on what the card holds, which is what
+ * makes a count an honest budget for them.
+ *
+ * Building a card's **content** is not in here — see CONTENT_BUILD_BUDGET_MS.
+ */
 export const MOUNT_QUOTA_PER_FRAME = 6
 export const UNMOUNT_QUOTA_PER_FRAME = 40
+
+/**
+ * Frame interval, in milliseconds, above which the canvas treats the last
+ * frame as having overrun and stops starting new content builds *while the
+ * camera is moving*.
+ *
+ * A count cannot bound content building the way it bounds the quotas above,
+ * because what a card costs to build is a property of the note behind it:
+ * ~2ms for a five-line card and ~25ms for a 160-line one at the point the
+ * work is asked for — but most of the bill arrives later still, inside the
+ * host renderer's own scheduling (measured 2026-08-31: a pan over long-note
+ * cards spends its time in `measureSection` and the layout that measuring
+ * forces, none of it inside the call that started it). So neither a count nor
+ * a stopwatch around the call can price this work in advance.
+ *
+ * What can be observed is the consequence: whether frames are still arriving
+ * on time. So that is what gates building — start work only after a frame
+ * that came in under this bar, and the pacing tunes itself to the board, the
+ * machine and the display without anyone estimating a cost. On a light board
+ * every frame qualifies and nothing changes; on a heavy one the canvas builds
+ * on the frames it can afford and skips the ones it cannot.
+ *
+ * 20ms is the same bar the benchmark counts dropped frames at: comfortably
+ * above a 120Hz frame (8.3ms) and a 60Hz one (16.7ms), so an on-time frame at
+ * either rate qualifies, and nothing slower than 50fps does.
+ *
+ * Only while the camera moves. At rest a long frame costs nothing visible and
+ * the only thing waiting is the content itself, so building runs at full rate
+ * — a board opening fills as fast as it can.
+ */
+export const FRAME_ON_TIME_MS = 20
 
 /** How long the world element keeps its "interacting" class (which is what
  * gates `will-change: transform`) after the last pan/zoom input. */
