@@ -841,41 +841,36 @@ export class WhiteboardCanvas {
     })
     // Inside the viewport rather than the world: the toolbar is chrome, and
     // chrome does not zoom. Built last so it paints over the cards.
-    this.toolbarController = new ToolbarController(
-      this.context,
-      this.host,
-      viewport,
-      {
-        isParseFailed: () => this.parseFailed,
-        canEdit: () => this.canEdit,
-        isDegraded: () => this.degraded,
-        getBoard: () => this.board,
-        getSelectedIds: () => this.selectedIds,
-        getSelectedEdgeIds: () => this.selectedEdgeIds,
-        getEdge: (id) => this.boardEdgesById.get(id),
-        isEditableNode: (node) => this.isEditableNode(node),
-        edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
-        getView: () => this.cameraController.view,
-        getViewportSize: () => ({
-          width: this.viewportEl.clientWidth,
-          height: this.viewportEl.clientHeight,
-        }),
-        t: (key, fallback) => this.t(key, fallback),
-        deleteNodes: (ids) => this.deleteNodes(ids),
-        deleteEdges: (ids) => this.deleteEdges(ids),
-        zoomToSelection: () => this.cameraController.zoomToSelection(),
-        createGroupFromSelection: () => this.createGroupFromSelection(),
-        editCard: (id) => this.editCard(id),
-        beginRename: (target) => this.beginRename(target),
-        applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
-        applyColorToEdge: (edgeId, color) =>
-          this.applyColorToEdge(edgeId, color),
-        setEdgeEnds: (edgeId, direction) =>
-          this.setEdgeEnds(edgeId, direction),
-        alignSelection: (edge) => this.alignSelection(edge),
-        distributeSelection: (axis) => this.distributeSelection(axis),
-      },
-    )
+    this.toolbarController = new ToolbarController(this.context, viewport, {
+      isParseFailed: () => this.parseFailed,
+      canEdit: () => this.canEdit,
+      isDegraded: () => this.degraded,
+      getBoard: () => this.board,
+      getSelectedIds: () => this.selectedIds,
+      getSelectedEdgeIds: () => this.selectedEdgeIds,
+      getEdge: (id) => this.boardEdgesById.get(id),
+      isEditableNode: (node) => this.isEditableNode(node),
+      edgeAnchorPoint: (id) => this.edgeAnchorPoint(id),
+      getView: () => this.cameraController.view,
+      getViewportSize: () => ({
+        width: this.viewportEl.clientWidth,
+        height: this.viewportEl.clientHeight,
+      }),
+      t: (key, fallback) => this.t(key, fallback),
+      deleteNodes: (ids) => this.deleteNodes(ids),
+      deleteEdges: (ids) => this.deleteEdges(ids),
+      zoomToSelection: () => this.cameraController.zoomToSelection(),
+      createGroupFromSelection: () => this.createGroupFromSelection(),
+      editCard: (id) => this.editCard(id),
+      beginRename: (target) => this.beginRename(target),
+      applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
+      applyColorToEdge: (edgeId, color) =>
+        this.applyColorToEdge(edgeId, color),
+      setEdgeEnds: (edgeId, direction) =>
+        this.setEdgeEnds(edgeId, direction),
+      alignSelection: (edge) => this.alignSelection(edge),
+      distributeSelection: (axis) => this.distributeSelection(axis),
+    })
     // The creation bar and the file/URL prompt live in the toolbar's overlay
     // layer, which exists for exactly this (see SelectionToolbar.overlay): one
     // `isOverlayTarget` check then keeps a press on any of this chrome from

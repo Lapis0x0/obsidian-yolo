@@ -32,6 +32,8 @@ import {
 } from '../domain/color'
 import type { ToolbarSize } from '../domain/toolbar'
 
+import { TOOLBAR_MARGIN_PX } from './constants'
+
 const OVERLAY_CLASS = 'yolo-whiteboard-overlay'
 const TOOLBAR_CLASS = 'yolo-whiteboard-toolbar'
 const TOOLBAR_HIDDEN_CLASS = 'yolo-whiteboard-toolbar-hidden'
@@ -41,7 +43,10 @@ const TOOLBAR_BUTTON_CLASS = 'yolo-whiteboard-toolbar-button'
 const POPOVER_CLASS = 'yolo-whiteboard-toolbar-popover'
 const COLOR_POPOVER_CLASS = 'yolo-whiteboard-color-popover'
 const MENU_POPOVER_CLASS = 'yolo-whiteboard-menu-popover'
+const MENU_POPOVER_LIST_CLASS = 'yolo-whiteboard-menu-popover-list'
 const MENU_ROW_CLASS = 'yolo-whiteboard-menu-popover-row'
+const MENU_ITEM_CLASS = 'yolo-whiteboard-menu-popover-item'
+const MENU_ITEM_LABEL_CLASS = 'yolo-whiteboard-menu-popover-label'
 const SWATCH_CLASS = 'yolo-whiteboard-color-swatch'
 const SWATCH_DEFAULT_CLASS = 'yolo-whiteboard-color-swatch-default'
 const SWATCH_CUSTOM_CLASS = 'yolo-whiteboard-color-swatch-custom'
@@ -91,6 +96,10 @@ export type ToolbarIconName =
   | 'palette'
   | 'pencil'
   | 'arrow-right'
+  | 'arrow-left'
+  | 'move-horizontal'
+  | 'minus'
+  | 'check'
   | 'tag'
   | 'trash'
   | 'scan-search'
@@ -129,12 +138,15 @@ export type ToolbarColorControl = Readonly<{
 export type ToolbarMenuEntry = Readonly<{
   label: string
   icon: ToolbarIconName
+  /** Drawn with a check mark, for the state the selection is already in.
+   * Only a `list` menu shows it — a row of icons has nowhere to put it. */
+  checked?: boolean
   onSelect: () => void
 }>
 
 /**
  * A button whose commands are too many for the row but too alike to separate:
- * it opens a popover of icon buttons, laid out one row per group.
+ * it opens a popover of its own, anchored under the button.
  *
  * Deliberately not the host's `showMenu`. That is Obsidian's `Menu`, which on
  * desktop is by default the *operating system's* menu — correct where a menu
@@ -142,15 +154,25 @@ export type ToolbarMenuEntry = Readonly<{
  * where it arrives as a piece of the OS pasted over the board. Obsidian Canvas
  * draws the same line: its own align button forces `setUseNativeMenu(false)`
  * and anchors the result to the button, while its context menu stays native.
- * A popover of icons goes further in the same direction — for alignment the
- * icon *is* the label, so a column of text would say less in more space.
+ * Drawing it ourselves is also the only way the popover can show which entry
+ * is currently in force, which a set of named states needs and a set of
+ * one-shot commands does not — hence the two layouts.
  */
 export type ToolbarMenuControl = Readonly<{
   kind: 'menu'
   label: string
   icon: ToolbarIconName
-  /** One row per group. Empty groups are dropped, so a caller can pass a
-   * group that its current selection does not qualify for. */
+  /**
+   * `icons`: one row of icon buttons per group. For alignment the icon *is*
+   * the label, so a column of text would say less in more space.
+   * `list`: one labelled row per entry, with a check on the current one —
+   * what a set of named states (the arrowheads) needs, and what Obsidian's
+   * own menus look like.
+   */
+  layout: 'icons' | 'list'
+  /** One row (or, in a list, one block) per group. Empty groups are dropped,
+   * so a caller can pass a group that its current selection does not qualify
+   * for. */
   groups: readonly (readonly ToolbarMenuEntry[])[]
 }>
 
@@ -256,6 +278,17 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
     { kind: 'path', d: 'M5 12h14' },
     { kind: 'path', d: 'm12 5 7 7-7 7' },
   ],
+  'arrow-left': [
+    { kind: 'path', d: 'm12 19-7-7 7-7' },
+    { kind: 'path', d: 'M19 12H5' },
+  ],
+  'move-horizontal': [
+    { kind: 'path', d: 'm18 8 4 4-4 4' },
+    { kind: 'path', d: 'M2 12h20' },
+    { kind: 'path', d: 'm6 16-4-4 4-4' },
+  ],
+  minus: [{ kind: 'path', d: 'M5 12h14' }],
+  check: [{ kind: 'path', d: 'M20 6 9 17l-5-5' }],
   tag: [
     {
       kind: 'path',
@@ -296,6 +329,12 @@ type IconShape =
     }>
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
+
+function menuPopoverClass(menu: ToolbarMenuControl): string {
+  return menu.layout === 'list'
+    ? `${MENU_POPOVER_CLASS} ${MENU_POPOVER_LIST_CLASS}`
+    : MENU_POPOVER_CLASS
+}
 
 export class SelectionToolbar {
   /** Screen-space layer holding the toolbar (and, while it is open, the
@@ -356,7 +395,7 @@ export class SelectionToolbar {
           const button = this.appendButton({
             label: item.label,
             icon: 'palette',
-            onSelect: () => this.togglePopover(button, COLOR_POPOVER_CLASS),
+            onSelect: () => this.togglePopover(button),
           })
           break
         }
@@ -364,8 +403,7 @@ export class SelectionToolbar {
           const button = this.appendButton({
             label: item.label,
             icon: item.icon,
-            onSelect: () =>
-              this.togglePopover(button, MENU_POPOVER_CLASS, item),
+            onSelect: () => this.togglePopover(button, item),
           })
           break
         }
@@ -480,24 +518,42 @@ export class SelectionToolbar {
    * time is the whole rule: a second click on the same button closes it, and a
    * click on a different one replaces it.
    */
-  private togglePopover(
-    button: HTMLElement,
-    contentClass: string,
-    menu?: ToolbarMenuControl,
-  ): void {
+  private togglePopover(button: HTMLElement, menu?: ToolbarMenuControl): void {
     const wasOpen = this.popover?.button === button
     this.closePopover()
     if (wasOpen) return
 
     const popover = this.doc.createElement('div')
-    popover.className = `${POPOVER_CLASS} ${contentClass}`
+    popover.className = `${POPOVER_CLASS} ${menu ? menuPopoverClass(menu) : COLOR_POPOVER_CLASS}`
     if (menu) this.fillMenuPopover(popover, menu)
     else if (!this.fillColorPopover(popover)) return
 
     this.el.appendChild(popover)
+    this.positionPopover(popover, button)
     this.popover = { el: popover, button }
     button.classList.add('is-active')
     if (!menu) this.markActiveSwatch()
+  }
+
+  /**
+   * Hangs the popover under the button that owns it — with several buttons
+   * able to open one, where it hangs from is the only thing saying which
+   * button it belongs to — then pulls it back inside the board if that would
+   * leave it hanging off the edge.
+   */
+  private positionPopover(popover: HTMLElement, button: HTMLElement): void {
+    const anchor = button.offsetLeft
+    popover.style.left = `${anchor}px`
+    const bounds = this.overlayEl.getBoundingClientRect()
+    const rect = popover.getBoundingClientRect()
+    const min = bounds.left + TOOLBAR_MARGIN_PX
+    const max = bounds.right - TOOLBAR_MARGIN_PX - rect.width
+    // `max` is below `min` only on a board narrower than the popover, where
+    // the left edge is the better of the two failures.
+    const clamped = Math.max(min, Math.min(rect.left, Math.max(min, max)))
+    if (clamped !== rect.left) {
+      popover.style.left = `${anchor + (clamped - rect.left)}px`
+    }
   }
 
   private fillColorPopover(popover: HTMLElement): boolean {
@@ -519,15 +575,21 @@ export class SelectionToolbar {
     return true
   }
 
-  /** One row of icon buttons per non-empty group. Selecting closes the
-   * popover: every one of these commands rearranges what is selected, so
-   * leaving it open would leave it describing a board that has moved. */
+  /** One row of icon buttons, or one labelled item per entry, per non-empty
+   * group. Selecting closes the popover either way: these commands change
+   * what is selected or how it is drawn, so leaving it open would leave it
+   * describing a board that has moved on. */
   private fillMenuPopover(
     popover: HTMLElement,
     menu: ToolbarMenuControl,
   ): void {
     for (const group of menu.groups) {
       if (group.length === 0) continue
+      if (menu.layout === 'list') {
+        for (const entry of group)
+          popover.appendChild(this.createMenuItem(entry))
+        continue
+      }
       const row = this.doc.createElement('div')
       row.className = MENU_ROW_CLASS
       for (const entry of group) {
@@ -536,15 +598,39 @@ export class SelectionToolbar {
         button.type = 'button'
         button.setAttribute('aria-label', entry.label)
         button.appendChild(this.createIcon(entry.icon))
-        button.addEventListener('click', (event) => {
-          event.preventDefault()
-          this.closePopover()
-          entry.onSelect()
-        })
+        this.bindMenuEntry(button, entry)
         row.appendChild(button)
       }
       popover.appendChild(row)
     }
+  }
+
+  /** Icon, label, and a check on the state that is already in force —
+   * Obsidian's own menu item, drawn in this popover so it can hang off the
+   * button rather than off the pointer. */
+  private createMenuItem(entry: ToolbarMenuEntry): HTMLElement {
+    const button = this.doc.createElement('button')
+    button.className = MENU_ITEM_CLASS
+    button.type = 'button'
+    // The states are mutually exclusive, and the one in force reads as the
+    // pressed one — the check mark beside it, said out loud.
+    button.setAttribute('aria-pressed', String(Boolean(entry.checked)))
+    button.appendChild(this.createIcon(entry.icon))
+    const label = this.doc.createElement('span')
+    label.className = MENU_ITEM_LABEL_CLASS
+    label.textContent = entry.label
+    button.appendChild(label)
+    if (entry.checked) button.appendChild(this.createIcon('check'))
+    this.bindMenuEntry(button, entry)
+    return button
+  }
+
+  private bindMenuEntry(button: HTMLElement, entry: ToolbarMenuEntry): void {
+    button.addEventListener('click', (event) => {
+      event.preventDefault()
+      this.closePopover()
+      entry.onSelect()
+    })
   }
 
   private appendSwatch(

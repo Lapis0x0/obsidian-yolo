@@ -20,8 +20,16 @@ import {
   type DistributeAxis,
 } from '../../domain/arrange'
 import { type ScreenPoint, unionRect } from '../../domain/camera'
-import { COLOR_PRESETS, type ColorPreset, commonColor } from '../../domain/color'
-import { ARROW_DIRECTIONS, type ArrowDirection, arrowDirection } from '../../domain/edges'
+import {
+  COLOR_PRESETS,
+  type ColorPreset,
+  commonColor,
+} from '../../domain/color'
+import {
+  ARROW_DIRECTIONS,
+  type ArrowDirection,
+  arrowDirection,
+} from '../../domain/edges'
 import type {
   Board,
   BoardNode,
@@ -43,12 +51,16 @@ import {
   type ToolbarModel,
 } from '../selectionToolbar'
 
-/** i18n key per arrowhead direction (domain/edges.ts's `ArrowDirection`). */
-const ARROW_MENU_KEYS: Readonly<Record<ArrowDirection, string>> = {
-  none: 'menu.arrowNone',
-  forward: 'menu.arrowForward',
-  backward: 'menu.arrowBackward',
-  both: 'menu.arrowBoth',
+/** i18n key and icon per arrowhead direction (domain/edges.ts's
+ * `ArrowDirection`). The icon is the arrangement it writes, drawn the way the
+ * edge will look. */
+const ARROW_MENU: Readonly<
+  Record<ArrowDirection, Readonly<{ key: string; icon: ToolbarIconName }>>
+> = {
+  none: { key: 'menu.arrowNone', icon: 'minus' },
+  forward: { key: 'menu.arrowForward', icon: 'arrow-right' },
+  backward: { key: 'menu.arrowBackward', icon: 'arrow-left' },
+  both: { key: 'menu.arrowBoth', icon: 'move-horizontal' },
 }
 
 /**
@@ -156,7 +168,6 @@ export class ToolbarController {
 
   constructor(
     context: YoloModuleHostFileViewContextV1,
-    private readonly host: YoloModuleHostApiV1,
     parent: HTMLElement,
     private readonly callbacks: ToolbarControllerCallbacks,
   ) {
@@ -342,6 +353,7 @@ export class ToolbarController {
       kind: 'menu',
       label: this.callbacks.t('toolbar.arrange'),
       icon: 'align-start-vertical',
+      layout: 'icons',
       groups: [
         ALIGN_EDGES.map((edge) => ({
           label: this.callbacks.t(ALIGN_MENU[edge].key),
@@ -378,11 +390,7 @@ export class ToolbarController {
         this.colorControl(edge.color, (color) =>
           this.callbacks.applyColorToEdge(edge.id, color),
         ),
-        {
-          label: this.callbacks.t('toolbar.arrows'),
-          icon: 'arrow-right',
-          onSelect: (event) => this.showEdgeArrowMenu(event, edge.id),
-        },
+        this.arrowControl(edge),
         {
           label: this.callbacks.t('toolbar.edgeLabel'),
           icon: 'tag',
@@ -422,19 +430,30 @@ export class ToolbarController {
    * Arrowheads, as JSON Canvas models them: an independent `fromEnd`/`toEnd`
    * per end. Offered as four named states rather than a cycling button —
    * "which way does it point" has a direction, and a button that only cycles
-   * makes reversing an edge a guessing game.
+   * makes reversing an edge a guessing game. Four states need names, so this
+   * is the toolbar's one `list` menu, with the edge's current state checked.
    */
-  private showEdgeArrowMenu(event: MouseEvent, edgeId: EdgeId): void {
-    const edge = this.callbacks.getEdge(edgeId)
-    if (!edge) return
+  private arrowControl(edge: Edge): ToolbarMenuControl {
     const current = arrowDirection(edge.fromEnd, edge.toEnd)
-    this.host.ui.showMenu(
-      event,
-      ARROW_DIRECTIONS.map((direction) => ({
-        title: this.callbacks.t(ARROW_MENU_KEYS[direction]),
-        icon: direction === current ? 'check' : undefined,
-        onSelect: () => this.callbacks.setEdgeEnds(edgeId, direction),
-      })),
-    )
+    return {
+      kind: 'menu',
+      label: this.callbacks.t('toolbar.arrows'),
+      icon: ARROW_MENU[current].icon,
+      layout: 'list',
+      groups: [
+        ARROW_DIRECTIONS.map((direction) => ({
+          label: this.callbacks.t(ARROW_MENU[direction].key),
+          icon: ARROW_MENU[direction].icon,
+          checked: direction === current,
+          onSelect: () => {
+            this.callbacks.setEdgeEnds(edge.id, direction)
+            // Both the button's icon and the checked entry say what the edge
+            // is now, so the control has to be rebuilt from the board it just
+            // changed — the arrowhead counterpart of `setCurrentColor`.
+            this.refreshToolbar()
+          },
+        })),
+      ],
+    }
   }
 }

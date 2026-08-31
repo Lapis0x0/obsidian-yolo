@@ -1046,10 +1046,9 @@ button.yolo-whiteboard-toolbar-button.is-active {
 
 /* --- toolbar popovers -----------------------------------------------------
  * The panel a toolbar button opens, hanging under the row: Obsidian Canvas's
- * `.canvas-submenu`. One of these at a time, so it can sit at the toolbar's
- * left edge rather than tracking whichever button opened it — the toolbar is
- * only a few buttons wide, and a panel that never moves is easier to aim at
- * than one that does. */
+ * `.canvas-submenu`. One of these at a time, hanging under the button that
+ * opened it — `left` is written by selectionToolbar.ts's `positionPopover`,
+ * which also pulls it back inside the board at the edges. */
 
 .yolo-whiteboard-toolbar-popover {
   position: absolute;
@@ -1075,6 +1074,54 @@ button.yolo-whiteboard-toolbar-button.is-active {
 .yolo-whiteboard-menu-popover-row {
   display: flex;
   gap: 1px;
+}
+
+/* Arrowheads: named states, so the popover is a column of Obsidian
+ * `.menu-item`s — icon, label, and a check on the one in force — rather than
+ * a row of icons. Every property Obsidian's global `button` styling would
+ * otherwise supply is reset here (Obsidian and Style Constraints, CLAUDE.md). */
+.yolo-whiteboard-menu-popover-list {
+  min-width: 9em;
+  padding: var(--size-2-2, 4px);
+}
+
+button.yolo-whiteboard-menu-popover-item {
+  display: flex;
+  gap: var(--size-4-2, 8px);
+  align-items: center;
+  width: 100%;
+  height: auto;
+  margin: 0;
+  padding: var(--size-4-1, 4px) var(--size-4-2, 8px);
+  color: var(--text-normal);
+  font-family: inherit;
+  font-size: var(--font-ui-small, 13px);
+  font-weight: inherit;
+  line-height: 1.4;
+  text-align: left;
+  white-space: nowrap;
+  background-color: transparent;
+  border: none;
+  border-radius: var(--radius-s, 4px);
+  box-shadow: none;
+  cursor: var(--cursor, pointer);
+}
+
+button.yolo-whiteboard-menu-popover-item:hover,
+button.yolo-whiteboard-menu-popover-item:focus-visible {
+  color: var(--text-normal);
+  background-color: var(--background-modifier-hover);
+}
+
+.yolo-whiteboard-menu-popover-item .svg-icon {
+  flex: 0 0 auto;
+  width: var(--icon-s, 16px);
+  height: var(--icon-s, 16px);
+  color: var(--text-muted);
+}
+
+.yolo-whiteboard-menu-popover-label {
+  flex: 1 1 auto;
 }
 
 /* --- colour popover -------------------------------------------------------
