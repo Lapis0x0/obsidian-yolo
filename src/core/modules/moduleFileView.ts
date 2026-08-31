@@ -166,7 +166,9 @@ class HostModuleFileView extends TextFileView {
       this.syncInstance(),
     )
     this.syncInstance()
-    return Promise.resolve()
+    // EditableFileView.onOpen is what makes the view-header title editable
+    // (click-to-rename); skipping the super chain silently loses it.
+    return super.onOpen()
   }
 
   onClose(): Promise<void> {
@@ -176,9 +178,13 @@ class HostModuleFileView extends TextFileView {
     this.unsubscribeSlot = null
     this.windowMigratedDisposer?.()
     this.windowMigratedDisposer = null
+    // Refreshes cachedData from the live instance before the super chain's
+    // loadFile(null) → onUnloadFile → save(true) flushes any pending edit
+    // through getViewData(); TextFileView.save skips the write when the
+    // data is unchanged.
     this.disposeInstance()
     this.releaseKeymapScope()
-    return Promise.resolve()
+    return super.onClose()
   }
 
   getViewData(): string {

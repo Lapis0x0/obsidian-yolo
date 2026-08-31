@@ -77,6 +77,12 @@ jest.mock('obsidian', () => {
     }
     file: InstanceType<typeof TFile> | null = null
     requestSave = jest.fn()
+    // The real super chain (EditableFileView.onOpen wires the editable
+    // header title; FileView.onClose unloads the file) must be awaitable
+    // from HostModuleFileView's overrides — prototype methods, so `super.`
+    // lookups resolve.
+    async onOpen(): Promise<void> {}
+    async onClose(): Promise<void> {}
     constructor(public leaf: unknown) {
       // Real Obsidian's View base constructor calls getViewType() before the
       // subclass constructor body (and TS parameter properties) have run —
