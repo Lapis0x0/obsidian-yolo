@@ -1,4 +1,4 @@
-import { cardAtPoint, cardsInMarquee, marqueeRectFromPoints } from './selection'
+import { marqueeRectFromPoints, nodeAtPoint, nodesInMarquee } from './selection'
 import type { VirtualCardRect } from './virtualization'
 
 function card(
@@ -44,55 +44,55 @@ describe('marqueeRectFromPoints', () => {
   })
 })
 
-describe('cardsInMarquee', () => {
+describe('nodesInMarquee', () => {
   it('selects a card fully inside the rect', () => {
     const rect = { left: 0, top: 0, right: 200, bottom: 200 }
-    expect(cardsInMarquee([card('a', 10, 10)], rect)).toEqual(['a'])
+    expect(nodesInMarquee([card('a', 10, 10)], rect)).toEqual(['a'])
   })
 
   it('selects a card that only partially intersects the rect', () => {
     const rect = { left: 0, top: 0, right: 50, bottom: 50 }
-    expect(cardsInMarquee([card('a', 25, 25)], rect)).toEqual(['a'])
+    expect(nodesInMarquee([card('a', 25, 25)], rect)).toEqual(['a'])
   })
 
   it('excludes a card entirely outside the rect', () => {
     const rect = { left: 0, top: 0, right: 50, bottom: 50 }
-    expect(cardsInMarquee([card('a', 1000, 1000)], rect)).toEqual([])
+    expect(nodesInMarquee([card('a', 1000, 1000)], rect)).toEqual([])
   })
 
   it('excludes a card that only touches the rect edge (open interval, no false positive on a zero-size marquee)', () => {
     const rect = marqueeRectFromPoints({ x: 5, y: 5 }, { x: 5, y: 5 })
-    expect(cardsInMarquee([card('a', 5, 5)], rect)).toEqual([])
+    expect(nodesInMarquee([card('a', 5, 5)], rect)).toEqual([])
   })
 
   it('preserves input order and includes every intersecting card', () => {
     const rect = { left: 0, top: 0, right: 1000, bottom: 1000 }
     const cards = [card('a', 0, 0), card('b', 500, 500), card('c', 2000, 2000)]
-    expect(cardsInMarquee(cards, rect)).toEqual(['a', 'b'])
+    expect(nodesInMarquee(cards, rect)).toEqual(['a', 'b'])
   })
 })
 
-describe('cardAtPoint', () => {
+describe('nodeAtPoint', () => {
   const a = card('a', 0, 0, 100, 100)
   const b = card('b', 50, 50, 100, 100)
 
   it('finds nothing on open canvas', () => {
-    expect(cardAtPoint([a, b], { x: 500, y: 500 })).toBeNull()
+    expect(nodeAtPoint([a, b], { x: 500, y: 500 })).toBeNull()
   })
 
   it('finds the card the point is inside', () => {
-    expect(cardAtPoint([a, b], { x: 10, y: 10 })).toBe('a')
-    expect(cardAtPoint([a, b], { x: 140, y: 140 })).toBe('b')
+    expect(nodeAtPoint([a, b], { x: 10, y: 10 })).toBe('a')
+    expect(nodeAtPoint([a, b], { x: 140, y: 140 })).toBe('b')
   })
 
   it('returns the topmost card where two overlap', () => {
     // Later cards paint over earlier ones.
-    expect(cardAtPoint([a, b], { x: 60, y: 60 })).toBe('b')
-    expect(cardAtPoint([b, a], { x: 60, y: 60 })).toBe('a')
+    expect(nodeAtPoint([a, b], { x: 60, y: 60 })).toBe('b')
+    expect(nodeAtPoint([b, a], { x: 60, y: 60 })).toBe('a')
   })
 
   it('counts the border as inside', () => {
-    expect(cardAtPoint([a], { x: 0, y: 50 })).toBe('a')
-    expect(cardAtPoint([a], { x: 100, y: 50 })).toBe('a')
+    expect(nodeAtPoint([a], { x: 0, y: 50 })).toBe('a')
+    expect(nodeAtPoint([a], { x: 100, y: 50 })).toBe('a')
   })
 })

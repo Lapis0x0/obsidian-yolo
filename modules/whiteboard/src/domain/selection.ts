@@ -1,5 +1,5 @@
 // Pure marquee-selection math: normalizing a drag gesture's two corner
-// points into a world-space rectangle, and hit-testing board cards against
+// points into a world-space rectangle, and hit-testing board nodes against
 // it (docs/plans/08-25-yolo-whiteboard/p1-design.md §3's "框选"). The canvas
 // UI (src/ui/canvas.ts) owns the actual overlay div and the screen->world
 // conversion (via ./camera's `screenToWorld`) — this module only ever sees
@@ -48,16 +48,16 @@ function intersects(card: VirtualCardRect, rect: WorldRect): boolean {
   )
 }
 
-/** Ids of every card intersecting `rect`, in the input cards' order. */
-export function cardsInMarquee(
-  cards: readonly VirtualCardRect[],
+/** Ids of every node intersecting `rect`, in the input nodes' order. */
+export function nodesInMarquee(
+  nodes: readonly VirtualCardRect[],
   rect: WorldRect,
 ): string[] {
-  return cards.filter((card) => intersects(card, rect)).map((card) => card.id)
+  return nodes.filter((node) => intersects(node, rect)).map((node) => node.id)
 }
 
 /**
- * The card a world-space point lands on, or null for open canvas. Later cards
+ * The node a world-space point lands on, or null for open canvas. Later nodes
  * paint over earlier ones, so the scan runs backwards and the topmost one
  * wins — the same card the user sees under the pointer.
  *
@@ -66,12 +66,12 @@ export function cardsInMarquee(
  * after it to the capturing element, so `click`/`dblclick` on a card arrive
  * naming the viewport (see canvas.ts's onDoubleClick).
  */
-export function cardAtPoint(
-  cards: readonly VirtualCardRect[],
+export function nodeAtPoint(
+  nodes: readonly VirtualCardRect[],
   point: ScreenPoint,
 ): string | null {
-  for (let index = cards.length - 1; index >= 0; index -= 1) {
-    const card = cards[index]
+  for (let index = nodes.length - 1; index >= 0; index -= 1) {
+    const card = nodes[index]
     if (
       point.x >= card.x &&
       point.x <= card.x + card.w &&

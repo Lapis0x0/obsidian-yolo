@@ -1,26 +1,26 @@
 import {
   type Board,
-  type BoardCard,
+  type BoardNode,
   type Edge,
-  type TextCard,
+  type TextNode,
   emptyBoard,
 } from './fileFormat'
 import {
-  type CardPatch,
-  addCard,
+  type NodePatch,
   addEdge,
-  moveCard,
-  removeCard,
+  addNode,
+  moveNodes,
   removeEdge,
-  replaceCard,
-  updateCard,
+  removeNode,
+  replaceNode,
   updateEdge,
+  updateNode,
 } from './operations'
 
 function textCard(
   id: string,
-  overrides: Partial<Omit<TextCard, 'id' | 'type'>> = {},
-): TextCard {
+  overrides: Partial<Omit<TextNode, 'id' | 'type'>> = {},
+): TextNode {
   return {
     id,
     type: 'text',
@@ -28,7 +28,7 @@ function textCard(
     y: 0,
     w: 100,
     h: 100,
-    markdown: '',
+    text: '',
     extra: {},
     ...overrides,
   }
@@ -36,82 +36,90 @@ function textCard(
 
 function edge(
   id: string,
-  from: string,
-  to: string,
+  fromNode: string,
+  toNode: string,
   overrides: Partial<Edge> = {},
 ): Edge {
-  return { id, from, to, arrow: 'end', extra: {}, ...overrides }
+  return {
+    id,
+    fromNode,
+    toNode,
+    fromEnd: 'none',
+    toEnd: 'arrow',
+    extra: {},
+    ...overrides,
+  }
 }
 
-function boardWith(cards: BoardCard[], edges: Edge[] = []): Board {
-  return { ...emptyBoard(), cards, edges }
+function boardWith(nodes: BoardNode[], edges: Edge[] = []): Board {
+  return { ...emptyBoard(), nodes, edges }
 }
 
-describe('addCard', () => {
+describe('addNode', () => {
   it('appends the card and keeps other cards referentially unchanged', () => {
     const c1 = textCard('c1')
     const board = boardWith([c1])
-    const next = addCard(board, textCard('c2'))
-    expect(next.cards).toHaveLength(2)
-    expect(next.cards[0]).toBe(c1)
+    const next = addNode(board, textCard('c2'))
+    expect(next.nodes).toHaveLength(2)
+    expect(next.nodes[0]).toBe(c1)
     expect(next).not.toBe(board)
   })
 
   it('throws on a duplicate id', () => {
     const board = boardWith([textCard('c1')])
-    expect(() => addCard(board, textCard('c1'))).toThrow(/duplicate/i)
+    expect(() => addNode(board, textCard('c1'))).toThrow(/duplicate/i)
   })
 
   it('throws on an empty id', () => {
     const board = boardWith([])
-    expect(() => addCard(board, textCard(''))).toThrow()
+    expect(() => addNode(board, textCard(''))).toThrow()
   })
 })
 
-describe('updateCard', () => {
+describe('updateNode', () => {
   it('patches only the target card, leaving siblings referentially unchanged', () => {
-    const c1 = textCard('c1', { markdown: 'old' })
+    const c1 = textCard('c1', { text: 'old' })
     const c2 = textCard('c2')
     const board = boardWith([c1, c2])
-    const next = updateCard(board, 'c1', { markdown: 'new' })
-    expect(next.cards[1]).toBe(c2)
-    expect(next.cards[0]).not.toBe(c1)
-    expect((next.cards[0] as { markdown: string }).markdown).toBe('new')
+    const next = updateNode(board, 'c1', { text: 'new' })
+    expect(next.nodes[1]).toBe(c2)
+    expect(next.nodes[0]).not.toBe(c1)
+    expect((next.nodes[0] as { text: string }).text).toBe('new')
   })
 
   it('returns the same board reference when the patch changes nothing', () => {
-    const c1 = textCard('c1', { markdown: 'same' })
+    const c1 = textCard('c1', { text: 'same' })
     const board = boardWith([c1])
-    const next = updateCard(board, 'c1', { markdown: 'same' })
+    const next = updateNode(board, 'c1', { text: 'same' })
     expect(next).toBe(board)
   })
 
   it('throws for an unknown card id', () => {
     const board = boardWith([textCard('c1')])
-    expect(() => updateCard(board, 'missing', { x: 1 })).toThrow(/not found/i)
+    expect(() => updateNode(board, 'missing', { x: 1 })).toThrow(/not found/i)
   })
 
   it('rejects a patch that tries to change "id" or "type"', () => {
     const board = boardWith([textCard('c1')])
     expect(() =>
-      updateCard(board, 'c1', { id: 'c2' } as unknown as CardPatch),
+      updateNode(board, 'c1', { id: 'c2' } as unknown as NodePatch),
     ).toThrow(/id.*type|type.*id/i)
     expect(() =>
-      updateCard(board, 'c1', { type: 'note' } as unknown as CardPatch),
+      updateNode(board, 'c1', { type: 'file' } as unknown as NodePatch),
     ).toThrow(/id.*type|type.*id/i)
   })
 })
 
-describe('replaceCard', () => {
+describe('replaceNode', () => {
   it('swaps the card in place and leaves its edges intact', () => {
     const c1 = textCard('c1')
     const c2 = textCard('c2')
     const wire = edge('e1', 'c1', 'c2')
     const board = boardWith([c1, c2], [wire])
 
-    const promoted: BoardCard = {
+    const promoted: BoardNode = {
       id: 'c1',
-      type: 'note',
+      type: 'file',
       x: c1.x,
       y: c1.y,
       w: c1.w,
@@ -119,10 +127,10 @@ describe('replaceCard', () => {
       file: 'Board Cards/Untitled.md',
       extra: {},
     }
-    const next = replaceCard(board, 'c1', promoted)
+    const next = replaceNode(board, 'c1', promoted)
 
-    expect(next.cards[0]).toBe(promoted)
-    expect(next.cards[1]).toBe(c2)
+    expect(next.nodes[0]).toBe(promoted)
+    expect(next.nodes[1]).toBe(c2)
     // The reason this primitive exists: remove-then-add would drop this.
     expect(next.edges).toBe(board.edges)
   })
@@ -130,19 +138,19 @@ describe('replaceCard', () => {
   it('returns the same board when the replacement is identical', () => {
     const c1 = textCard('c1')
     const board = boardWith([c1])
-    expect(replaceCard(board, 'c1', { ...c1 })).toBe(board)
+    expect(replaceNode(board, 'c1', { ...c1 })).toBe(board)
   })
 
   it('refuses to change the id or replace a card that is not there', () => {
     const board = boardWith([textCard('c1')])
-    expect(() => replaceCard(board, 'c1', textCard('c2'))).toThrow('must equal')
-    expect(() => replaceCard(board, 'missing', textCard('missing'))).toThrow(
+    expect(() => replaceNode(board, 'c1', textCard('c2'))).toThrow('must equal')
+    expect(() => replaceNode(board, 'missing', textCard('missing'))).toThrow(
       'not found',
     )
   })
 })
 
-describe('removeCard', () => {
+describe('removeNode', () => {
   it('removes the card and cascades incident edges', () => {
     const c1 = textCard('c1')
     const c2 = textCard('c2')
@@ -150,8 +158,8 @@ describe('removeCard', () => {
     const e1 = edge('e1', 'c1', 'c2')
     const e2 = edge('e2', 'c2', 'c3')
     const board = boardWith([c1, c2, c3], [e1, e2])
-    const next = removeCard(board, 'c1')
-    expect(next.cards.map((c) => c.id)).toEqual(['c2', 'c3'])
+    const next = removeNode(board, 'c1')
+    expect(next.nodes.map((c) => c.id)).toEqual(['c2', 'c3'])
     expect(next.edges).toEqual([e2])
     expect(next.edges[0]).toBe(e2)
   })
@@ -162,44 +170,44 @@ describe('removeCard', () => {
     const c3 = textCard('c3')
     const e1 = edge('e1', 'c2', 'c3')
     const board = boardWith([c1, c2, c3], [e1])
-    const next = removeCard(board, 'c1')
+    const next = removeNode(board, 'c1')
     expect(next.edges).toBe(board.edges)
   })
 
   it('throws for an unknown card id', () => {
     const board = boardWith([textCard('c1')])
-    expect(() => removeCard(board, 'missing')).toThrow(/not found/i)
+    expect(() => removeNode(board, 'missing')).toThrow(/not found/i)
   })
 })
 
-describe('moveCard', () => {
+describe('moveNodes', () => {
   it('moves the given cards by (dx, dy), leaving others referentially unchanged', () => {
     const c1 = textCard('c1', { x: 0, y: 0 })
     const c2 = textCard('c2', { x: 10, y: 10 })
     const board = boardWith([c1, c2])
-    const next = moveCard(board, ['c1'], 5, -5)
-    expect(next.cards[0]).toMatchObject({ x: 5, y: -5 })
-    expect(next.cards[1]).toBe(c2)
+    const next = moveNodes(board, ['c1'], 5, -5)
+    expect(next.nodes[0]).toMatchObject({ x: 5, y: -5 })
+    expect(next.nodes[1]).toBe(c2)
   })
 
   it('supports batch multi-card moves', () => {
     const c1 = textCard('c1', { x: 0, y: 0 })
     const c2 = textCard('c2', { x: 10, y: 10 })
     const board = boardWith([c1, c2])
-    const next = moveCard(board, ['c1', 'c2'], 1, 2)
-    expect(next.cards[0]).toMatchObject({ x: 1, y: 2 })
-    expect(next.cards[1]).toMatchObject({ x: 11, y: 12 })
+    const next = moveNodes(board, ['c1', 'c2'], 1, 2)
+    expect(next.nodes[0]).toMatchObject({ x: 1, y: 2 })
+    expect(next.nodes[1]).toMatchObject({ x: 11, y: 12 })
   })
 
   it('is a no-op (same reference) for an empty id list or zero delta', () => {
     const board = boardWith([textCard('c1')])
-    expect(moveCard(board, [], 5, 5)).toBe(board)
-    expect(moveCard(board, ['c1'], 0, 0)).toBe(board)
+    expect(moveNodes(board, [], 5, 5)).toBe(board)
+    expect(moveNodes(board, ['c1'], 0, 0)).toBe(board)
   })
 
   it('throws for an unknown card id', () => {
     const board = boardWith([textCard('c1')])
-    expect(() => moveCard(board, ['missing'], 1, 1)).toThrow(/not found/i)
+    expect(() => moveNodes(board, ['missing'], 1, 1)).toThrow(/not found/i)
   })
 })
 
@@ -252,27 +260,29 @@ describe('updateEdge', () => {
   )
 
   it('repoints one end, leaving the other alone', () => {
-    const next = updateEdge(board, 'e1', { to: 'c3', toSide: 'top' })
+    const next = updateEdge(board, 'e1', { toNode: 'c3', toSide: 'top' })
     expect(next.edges[0]).toMatchObject({
-      from: 'c1',
+      fromNode: 'c1',
       fromSide: 'right',
-      to: 'c3',
+      toNode: 'c3',
       toSide: 'top',
     })
   })
 
   it('returns the same board when the patch changes nothing', () => {
-    expect(updateEdge(board, 'e1', { to: 'c2', toSide: 'left' })).toBe(board)
+    expect(updateEdge(board, 'e1', { toNode: 'c2', toSide: 'left' })).toBe(
+      board,
+    )
   })
 
   it('throws when the new endpoint card does not exist', () => {
-    expect(() => updateEdge(board, 'e1', { to: 'missing' })).toThrow(
+    expect(() => updateEdge(board, 'e1', { toNode: 'missing' })).toThrow(
       /not found/i,
     )
   })
 
   it('throws for an unknown edge id', () => {
-    expect(() => updateEdge(board, 'missing', { to: 'c3' })).toThrow(
+    expect(() => updateEdge(board, 'missing', { toNode: 'c3' })).toThrow(
       /not found/i,
     )
   })

@@ -6,15 +6,15 @@
 // references change for a single rename, so the decision is testable
 // without any vault fixture.
 
-import type { Board, BoardCard } from './fileFormat'
+import type { Board, BoardNode } from './fileFormat'
 
 /**
- * Rewrites every `note`/`pdf` card whose `file` equals `oldPath` to
- * `newPath`. Returns `null` when the board has no such reference at all —
- * the caller's contract (src/host/renameRewriter.ts) is "don't write back a
- * file with nothing to change", so `null` doubles as that signal. Cards
- * that aren't touched keep their original object reference (the repo's
- * "reference changes iff content changes" invariant, same as operations.ts).
+ * Rewrites every `file` node whose `file` equals `oldPath` to `newPath`.
+ * Returns `null` when the board has no such reference at all — the caller's
+ * contract (src/host/renameRewriter.ts) is "don't write back a file with
+ * nothing to change", so `null` doubles as that signal. Nodes that aren't
+ * touched keep their original object reference (the repo's "reference changes
+ * iff content changes" invariant, same as operations.ts).
  */
 export function rewriteFileReferences(
   board: Board,
@@ -22,11 +22,11 @@ export function rewriteFileReferences(
   newPath: string,
 ): Board | null {
   let changed = false
-  const cards = board.cards.map((card): BoardCard => {
-    if (card.type === 'text' || card.file !== oldPath) return card
+  const nodes = board.nodes.map((node): BoardNode => {
+    if (node.type !== 'file' || node.file !== oldPath) return node
     changed = true
-    return { ...card, file: newPath }
+    return { ...node, file: newPath }
   })
   if (!changed) return null
-  return { ...board, cards }
+  return { ...board, nodes }
 }

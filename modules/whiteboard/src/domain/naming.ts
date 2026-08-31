@@ -8,8 +8,42 @@
 const YOLOBOARD_EXTENSION = '.yoloboard'
 const MARKDOWN_EXTENSION = '.md'
 
+const CANVAS_EXTENSION = '.canvas'
+
 /** Characters no vault file name may contain, plus path separators. */
 const ILLEGAL_FILE_NAME_CHARS = /[\\/:*?"<>|#^[\]]/g
+
+/**
+ * Whether a file node's path points at a note. The board's one markdown
+ * rendering path (p3-canvas-parity D2/D11) is reached through this test, and
+ * so is "can this card be edited" — a JSON Canvas `file` node holds any
+ * vault file, and only the markdown ones have text a card can show or edit.
+ */
+export function isMarkdownPath(path: string): boolean {
+  return path.toLowerCase().endsWith(MARKDOWN_EXTENSION)
+}
+
+export function isCanvasPath(path: string): boolean {
+  return path.toLowerCase().endsWith(CANVAS_EXTENSION)
+}
+
+/**
+ * Vault-relative (or bare) file path -> its base name without extension.
+ * One owner for both consumers: a file card's title / degraded label
+ * (ui/lod.ts) and the name an imported `.canvas` hands to its `.yoloboard`.
+ */
+export function basenameWithoutExtension(path: string): string {
+  const slashIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+  const name = slashIndex === -1 ? path : path.slice(slashIndex + 1)
+  const dotIndex = name.lastIndexOf('.')
+  return dotIndex > 0 ? name.slice(0, dotIndex) : name
+}
+
+/** The folder a vault path lives in; '' for a file at the vault root. */
+export function folderPathOf(path: string): string {
+  const slashIndex = path.lastIndexOf('/')
+  return slashIndex === -1 ? '' : path.slice(0, slashIndex)
+}
 
 /**
  * `baseName` is the locale's "Whiteboard" word (no extension, no path).

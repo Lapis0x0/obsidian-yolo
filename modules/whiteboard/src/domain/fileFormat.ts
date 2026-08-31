@@ -1,73 +1,118 @@
 // `.yoloboard` schema v1 — the single point that knows this file format.
-// See docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1 for the schema
-// this formalizes (the S3 spike's fileFormat.ts, `git show
-// spike/s2-editor-lifecycle:src/features/whiteboard-spike/fileFormat.ts`,
-// covered only cards with no edges — this is the real, versioned schema).
+// See docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1 for the schema this
+// formalizes, and p3-canvas-parity.md D5 for why it is shaped the way it is.
+//
+// The format is a **superset of JSON Canvas 1.0** (https://jsoncanvas.org/
+// spec/1.0/). Every concept Canvas has, we spell the way Canvas spells it:
+//
+//   - one flat `nodes` array holding `text` / `file` / `group` nodes, rather
+//     than a `cards` array beside a separate `groups` collection — a group is
+//     a kind of node, not a second population (D5);
+//   - `color` is a node (and edge) attribute, with Canvas's `canvasColor`
+//     values: the presets "1".."6", or a hex string;
+//   - edges name their ends `fromNode`/`toNode`, their anchors
+//     `fromSide`/`toSide`, and their arrowheads `fromEnd`/`toEnd`, with
+//     Canvas's defaults (no arrow at the source, an arrow at the target).
+//
+// Two deliberate deviations, both documented in the P3 report:
+//   - geometry is `w`/`h`, not Canvas's `width`/`height` (an abbreviation, not
+//     a different concept; renaming would churn every geometry helper for no
+//     conceptual gain);
+//   - we add `version` and `camera` at the top level — the viewport state
+//     Canvas cannot hold is one of the reasons this is our own format
+//     (master.md's "存储格式" decision).
+//
+// Everything else Canvas defines but we do not yet render (`subpath` on file
+// nodes, `background`/`backgroundStyle` on groups) round-trips untouched
+// through the `extra` bag below, so an import loses nothing.
 //
 // Zero dependencies, no host/DOM/Obsidian imports (Module Boundaries,
 // CLAUDE.md): this file is pure data-in, data-out.
 //
-// Forward compatibility: an unrecognized field at the file, card, or edge
+// Forward compatibility: an unrecognized field at the file, node, or edge
 // level is preserved verbatim on parse (in an `extra` bag) and written back
 // on serialize, so a future schema addition round-trips through an older
 // build of this module without data loss.
 
 export const YOLOBOARD_SCHEMA_VERSION = 1
 
-export type CardId = string
+export type NodeId = string
 export type EdgeId = string
-export type CardSide = 'top' | 'right' | 'bottom' | 'left'
-export type EdgeArrow = 'none' | 'end' | 'both'
+export type NodeSide = 'top' | 'right' | 'bottom' | 'left'
+/** JSON Canvas's `fromEnd`/`toEnd`: whether that end of an edge is an arrow. */
+export type EdgeEnd = 'none' | 'arrow'
+/**
+ * JSON Canvas's `canvasColor`: one of the six presets ("1".."6") or a hex
+ * string ("#FF0000"). Kept as an unconstrained string — an unknown value is
+ * preserved rather than dropped, and what a colour *looks* like is the
+ * rendering layer's business, not the file format's.
+ */
+export type NodeColor = string
 
-const CARD_SIDES: readonly CardSide[] = ['top', 'right', 'bottom', 'left']
-const EDGE_ARROWS: readonly EdgeArrow[] = ['none', 'end', 'both']
+const NODE_SIDES: readonly NodeSide[] = ['top', 'right', 'bottom', 'left']
+const EDGE_ENDS: readonly EdgeEnd[] = ['none', 'arrow']
 
 /** Unrecognized JSON fields captured at a given nesting level, preserved verbatim. */
 export type ExtraFields = Readonly<Record<string, unknown>>
 
-export type CardBase = Readonly<{
-  id: CardId
+export type BoardNodeBase = Readonly<{
+  id: NodeId
   x: number
   y: number
   w: number
   h: number
-  /** Unknown fields read from this card's JSON object, round-tripped on write. */
+  /** JSON Canvas `color`. Absent = the theme's default for that node kind. */
+  color?: NodeColor
+  /** Unknown fields read from this node's JSON object, round-tripped on write. */
   extra: ExtraFields
 }>
 
-export type NoteCard = CardBase &
-  Readonly<{
-    type: 'note'
-    /** Vault-relative path to the backing note. */
-    file: string
-  }>
-
-export type TextCard = CardBase &
+/** JSON Canvas text node: markdown that lives in the board file itself. */
+export type TextNode = BoardNodeBase &
   Readonly<{
     type: 'text'
-    markdown: string
+    text: string
   }>
 
-export type PdfCard = CardBase &
+/**
+ * JSON Canvas file node: a reference to a vault file. Markdown files render
+ * as cards showing the note; every other extension renders as a placeholder
+ * until P3 batch 2 (media) and M2 (PDF) land. One node type rather than the
+ * old `note`/`pdf` pair, because "which file is this" is a path question, not
+ * a schema question — and Canvas has always modelled it that way.
+ */
+export type FileNode = BoardNodeBase &
   Readonly<{
-    type: 'pdf'
-    /** Vault-relative path to the backing PDF. */
+    type: 'file'
+    /** Vault-relative path to the backing file. */
     file: string
-    /** 1-based current page. */
-    page: number
   }>
 
-export type BoardCard = NoteCard | TextCard | PdfCard
+/**
+ * JSON Canvas group node: a labelled frame behind the cards. Membership is
+ * geometric (a node inside the frame is in the group) rather than stored, the
+ * same way Canvas does it; the interactions that act on membership are P3
+ * batch 3.
+ */
+export type GroupNode = BoardNodeBase &
+  Readonly<{
+    type: 'group'
+    label?: string
+  }>
+
+export type BoardNode = TextNode | FileNode | GroupNode
 
 export type Edge = Readonly<{
   id: EdgeId
-  from: CardId
-  to: CardId
-  /** Anchor side on the source/target card. Omitted = pick from relative position at render time (not this module's job). */
-  fromSide?: CardSide
-  toSide?: CardSide
-  /** Defaults to 'end' when omitted from the file. */
-  arrow: EdgeArrow
+  fromNode: NodeId
+  toNode: NodeId
+  /** Anchor side on the source/target node. Omitted = pick from relative position at render time (not this module's job). */
+  fromSide?: NodeSide
+  toSide?: NodeSide
+  /** JSON Canvas defaults: 'none' at the source, 'arrow' at the target. */
+  fromEnd: EdgeEnd
+  toEnd: EdgeEnd
+  color?: NodeColor
   label?: string
   /** Unknown fields read from this edge's JSON object, round-tripped on write. */
   extra: ExtraFields
@@ -82,10 +127,8 @@ export type Camera = Readonly<{
 export type Board = Readonly<{
   version: 1
   camera: Camera
-  cards: readonly BoardCard[]
+  nodes: readonly BoardNode[]
   edges: readonly Edge[]
-  /** Reserved, unimplemented in 1.0 (p1-design §1.1) — carried through opaque. */
-  groups: readonly unknown[]
   /** Unknown top-level fields, round-tripped on write. */
   extra: ExtraFields
 }>
@@ -93,9 +136,19 @@ export type Board = Readonly<{
 export type BoardParseIssue =
   | Readonly<{ type: 'invalid-json'; message: string }>
   | Readonly<{ type: 'invalid-schema'; message: string }>
-  | Readonly<{ type: 'invalid-card'; index: number; id?: string; message: string }>
-  | Readonly<{ type: 'duplicate-card-id'; index: number; id: string }>
-  | Readonly<{ type: 'invalid-edge'; index: number; id?: string; message: string }>
+  | Readonly<{
+      type: 'invalid-node'
+      index: number
+      id?: string
+      message: string
+    }>
+  | Readonly<{ type: 'duplicate-node-id'; index: number; id: string }>
+  | Readonly<{
+      type: 'invalid-edge'
+      index: number
+      id?: string
+      message: string
+    }>
   | Readonly<{
       type: 'dangling-edge'
       id: string
@@ -107,15 +160,14 @@ export type BoardParseResult =
   | Readonly<{ ok: true; board: Board; issues: readonly BoardParseIssue[] }>
   | Readonly<{ ok: false; issues: readonly BoardParseIssue[] }>
 
-const DEFAULT_CAMERA: Camera = Object.freeze({ x: 0, y: 0, scale: 1 })
+export const DEFAULT_CAMERA: Camera = Object.freeze({ x: 0, y: 0, scale: 1 })
 
 export function emptyBoard(): Board {
   return {
     version: YOLOBOARD_SCHEMA_VERSION,
     camera: DEFAULT_CAMERA,
-    cards: [],
+    nodes: [],
     edges: [],
-    groups: [],
     extra: {},
   }
 }
@@ -123,12 +175,11 @@ export function emptyBoard(): Board {
 /**
  * Parses raw `.yoloboard` file text. An empty/blank file parses to a fresh
  * empty board. A JSON syntax error, a non-object root, an unsupported
- * `version`, or a `cards`/`edges`/`groups` field present but not an array
- * makes the whole file unparsable (`ok: false`) — the document cannot be
- * trusted at all in that case. Anything narrower (a single malformed card,
- * a malformed edge, an edge referencing a missing card) is dropped and
- * reported as an issue instead, so one bad record doesn't take down an
- * otherwise-good board.
+ * `version`, or a `nodes`/`edges` field present but not an array makes the
+ * whole file unparsable (`ok: false`) — the document cannot be trusted at all
+ * in that case. Anything narrower (a single malformed node, a malformed edge,
+ * an edge referencing a missing node) is dropped and reported as an issue
+ * instead, so one bad record doesn't take down an otherwise-good board.
  */
 export function parseBoard(raw: string): BoardParseResult {
   if (!raw.trim()) return { ok: true, board: emptyBoard(), issues: [] }
@@ -151,7 +202,12 @@ export function parseBoard(raw: string): BoardParseResult {
   if (!isPlainObject(json)) {
     return {
       ok: false,
-      issues: [{ type: 'invalid-schema', message: '.yoloboard root must be a JSON object' }],
+      issues: [
+        {
+          type: 'invalid-schema',
+          message: '.yoloboard root must be a JSON object',
+        },
+      ],
     }
   }
 
@@ -167,39 +223,45 @@ export function parseBoard(raw: string): BoardParseResult {
     }
   }
 
-  const rawCards = json.cards
+  const rawNodes = json.nodes
   const rawEdges = json.edges
-  const rawGroups = json.groups
-  if (rawCards !== undefined && !Array.isArray(rawCards)) {
+  if (rawNodes !== undefined && !Array.isArray(rawNodes)) {
     return {
       ok: false,
-      issues: [{ type: 'invalid-schema', message: '.yoloboard "cards" must be an array' }],
+      issues: [
+        {
+          type: 'invalid-schema',
+          message: '.yoloboard "nodes" must be an array',
+        },
+      ],
     }
   }
   if (rawEdges !== undefined && !Array.isArray(rawEdges)) {
     return {
       ok: false,
-      issues: [{ type: 'invalid-schema', message: '.yoloboard "edges" must be an array' }],
-    }
-  }
-  if (rawGroups !== undefined && !Array.isArray(rawGroups)) {
-    return {
-      ok: false,
-      issues: [{ type: 'invalid-schema', message: '.yoloboard "groups" must be an array' }],
+      issues: [
+        {
+          type: 'invalid-schema',
+          message: '.yoloboard "edges" must be an array',
+        },
+      ],
     }
   }
 
   const issues: BoardParseIssue[] = []
-  const cards = parseCards(Array.isArray(rawCards) ? rawCards : [], issues)
-  const cardIds = new Set(cards.map((card) => card.id))
-  const edges = parseEdges(Array.isArray(rawEdges) ? rawEdges : [], cardIds, issues)
+  const nodes = parseNodes(Array.isArray(rawNodes) ? rawNodes : [], issues)
+  const nodeIds = new Set(nodes.map((node) => node.id))
+  const edges = parseEdges(
+    Array.isArray(rawEdges) ? rawEdges : [],
+    nodeIds,
+    issues,
+  )
 
   const board: Board = {
     version: YOLOBOARD_SCHEMA_VERSION,
     camera: parseCamera(json.camera),
-    cards,
+    nodes,
     edges,
-    groups: Array.isArray(rawGroups) ? rawGroups : [],
     extra: extractExtra(json, TOP_LEVEL_KEYS),
   }
   return { ok: true, board, issues }
@@ -210,142 +272,185 @@ export function serializeBoard(board: Board): string {
   const out: Record<string, unknown> = {
     version: board.version,
     camera: { x: board.camera.x, y: board.camera.y, scale: board.camera.scale },
-    cards: board.cards.map(serializeCard),
+    nodes: board.nodes.map(serializeNode),
     edges: board.edges.map(serializeEdge),
-    groups: board.groups,
     ...board.extra,
   }
   return `${JSON.stringify(out, null, 2)}\n`
 }
 
-// --- cards ---------------------------------------------------------------
+// --- nodes ---------------------------------------------------------------
 
-const CARD_COMMON_KEYS = ['id', 'type', 'x', 'y', 'w', 'h'] as const
-const NOTE_CARD_KEYS = [...CARD_COMMON_KEYS, 'file'] as const
-const TEXT_CARD_KEYS = [...CARD_COMMON_KEYS, 'markdown'] as const
-const PDF_CARD_KEYS = [...CARD_COMMON_KEYS, 'file', 'page'] as const
+const NODE_COMMON_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'color'] as const
+const TEXT_NODE_KEYS = [...NODE_COMMON_KEYS, 'text'] as const
+const FILE_NODE_KEYS = [...NODE_COMMON_KEYS, 'file'] as const
+const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
 
-function parseCards(
+function parseNodes(
   raw: readonly unknown[],
   issues: BoardParseIssue[],
-): BoardCard[] {
-  const cards: BoardCard[] = []
+): BoardNode[] {
+  const nodes: BoardNode[] = []
   const seenIds = new Set<string>()
   raw.forEach((entry, index) => {
-    const card = parseCard(entry, index, issues)
-    if (!card) return
-    if (seenIds.has(card.id)) {
-      issues.push({ type: 'duplicate-card-id', index, id: card.id })
+    const node = parseNode(entry, index, issues)
+    if (!node) return
+    if (seenIds.has(node.id)) {
+      issues.push({ type: 'duplicate-node-id', index, id: node.id })
       return
     }
-    seenIds.add(card.id)
-    cards.push(card)
+    seenIds.add(node.id)
+    nodes.push(node)
   })
-  return cards
+  return nodes
 }
 
-function parseCard(
+function parseNode(
   entry: unknown,
   index: number,
   issues: BoardParseIssue[],
-): BoardCard | null {
+): BoardNode | null {
   if (!isPlainObject(entry)) {
-    issues.push({ type: 'invalid-card', index, message: 'Card must be a JSON object' })
+    issues.push({
+      type: 'invalid-node',
+      index,
+      message: 'Node must be a JSON object',
+    })
     return null
   }
   const id = entry.id
   if (typeof id !== 'string' || id.length === 0) {
-    issues.push({ type: 'invalid-card', index, message: 'Card "id" must be a non-empty string' })
+    issues.push({
+      type: 'invalid-node',
+      index,
+      message: 'Node "id" must be a non-empty string',
+    })
     return null
   }
-  const base = parseCardGeometry(entry, index, id, issues)
+  const base = parseNodeGeometry(entry, index, id, issues)
   if (!base) return null
 
   switch (entry.type) {
-    case 'note': {
-      const file = entry.file
-      if (typeof file !== 'string' || file.length === 0) {
-        issues.push({ type: 'invalid-card', index, id, message: 'Note card requires a non-empty "file"' })
-        return null
-      }
-      return {
-        ...base,
-        type: 'note',
-        file,
-        extra: extractExtra(entry, NOTE_CARD_KEYS),
-      }
-    }
     case 'text': {
-      const markdown = entry.markdown
-      if (typeof markdown !== 'string') {
-        issues.push({ type: 'invalid-card', index, id, message: 'Text card requires "markdown" to be a string' })
+      const text = entry.text
+      if (typeof text !== 'string') {
+        issues.push({
+          type: 'invalid-node',
+          index,
+          id,
+          message: 'Text node requires "text" to be a string',
+        })
         return null
       }
       return {
         ...base,
         type: 'text',
-        markdown,
-        extra: extractExtra(entry, TEXT_CARD_KEYS),
+        text,
+        extra: extractExtra(entry, TEXT_NODE_KEYS),
       }
     }
-    case 'pdf': {
+    case 'file': {
       const file = entry.file
-      const page = entry.page
       if (typeof file !== 'string' || file.length === 0) {
-        issues.push({ type: 'invalid-card', index, id, message: 'PDF card requires a non-empty "file"' })
-        return null
-      }
-      if (typeof page !== 'number' || !Number.isInteger(page) || page < 1) {
-        issues.push({ type: 'invalid-card', index, id, message: 'PDF card requires "page" to be an integer >= 1' })
+        issues.push({
+          type: 'invalid-node',
+          index,
+          id,
+          message: 'File node requires a non-empty "file"',
+        })
         return null
       }
       return {
         ...base,
-        type: 'pdf',
+        type: 'file',
         file,
-        page,
-        extra: extractExtra(entry, PDF_CARD_KEYS),
+        extra: extractExtra(entry, FILE_NODE_KEYS),
+      }
+    }
+    case 'group': {
+      const label = typeof entry.label === 'string' ? entry.label : undefined
+      return {
+        ...base,
+        type: 'group',
+        ...(label === undefined ? {} : { label }),
+        extra: extractExtra(entry, GROUP_NODE_KEYS),
       }
     }
     default:
-      issues.push({ type: 'invalid-card', index, id, message: `Unknown card "type": ${String(entry.type)}` })
+      issues.push({
+        type: 'invalid-node',
+        index,
+        id,
+        message: `Unknown node "type": ${String(entry.type)}`,
+      })
       return null
   }
 }
 
-function parseCardGeometry(
+function parseNodeGeometry(
   entry: Record<string, unknown>,
   index: number,
   id: string,
   issues: BoardParseIssue[],
-): Omit<CardBase, 'extra'> | null {
+): Omit<BoardNodeBase, 'extra'> | null {
   const { x, y, w, h } = entry
   if (![x, y, w, h].every(isFiniteNumber)) {
-    issues.push({ type: 'invalid-card', index, id, message: 'Card "x"/"y"/"w"/"h" must be finite numbers' })
+    issues.push({
+      type: 'invalid-node',
+      index,
+      id,
+      message: 'Node "x"/"y"/"w"/"h" must be finite numbers',
+    })
     return null
   }
-  return { id, x: x as number, y: y as number, w: w as number, h: h as number }
+  const color = isNonEmptyString(entry.color) ? entry.color : undefined
+  return {
+    id,
+    x: x as number,
+    y: y as number,
+    w: w as number,
+    h: h as number,
+    ...(color === undefined ? {} : { color }),
+  }
 }
 
-function serializeCard(card: BoardCard): Record<string, unknown> {
-  const common = { id: card.id, type: card.type, x: card.x, y: card.y, w: card.w, h: card.h }
-  switch (card.type) {
-    case 'note':
-      return { ...common, file: card.file, ...card.extra }
+function serializeNode(node: BoardNode): Record<string, unknown> {
+  const common = {
+    id: node.id,
+    type: node.type,
+    x: node.x,
+    y: node.y,
+    w: node.w,
+    h: node.h,
+    color: node.color,
+  }
+  switch (node.type) {
     case 'text':
-      return { ...common, markdown: card.markdown, ...card.extra }
-    case 'pdf':
-      return { ...common, file: card.file, page: card.page, ...card.extra }
+      return { ...common, text: node.text, ...node.extra }
+    case 'file':
+      return { ...common, file: node.file, ...node.extra }
+    case 'group':
+      return { ...common, label: node.label, ...node.extra }
   }
 }
 
 // --- edges -----------------------------------------------------------------
 
-const EDGE_KNOWN_KEYS = ['id', 'from', 'to', 'fromSide', 'toSide', 'arrow', 'label'] as const
+const EDGE_KNOWN_KEYS = [
+  'id',
+  'fromNode',
+  'toNode',
+  'fromSide',
+  'toSide',
+  'fromEnd',
+  'toEnd',
+  'color',
+  'label',
+] as const
 
 function parseEdges(
   raw: readonly unknown[],
-  cardIds: ReadonlySet<string>,
+  nodeIds: ReadonlySet<string>,
   issues: BoardParseIssue[],
 ): Edge[] {
   const edges: Edge[] = []
@@ -354,11 +459,21 @@ function parseEdges(
     const edge = parseEdge(entry, index, issues)
     if (!edge) return
     if (seenIds.has(edge.id)) {
-      issues.push({ type: 'invalid-edge', index, id: edge.id, message: 'Duplicate edge id' })
+      issues.push({
+        type: 'invalid-edge',
+        index,
+        id: edge.id,
+        message: 'Duplicate edge id',
+      })
       return
     }
-    if (!cardIds.has(edge.from) || !cardIds.has(edge.to)) {
-      issues.push({ type: 'dangling-edge', id: edge.id, from: edge.from, to: edge.to })
+    if (!nodeIds.has(edge.fromNode) || !nodeIds.has(edge.toNode)) {
+      issues.push({
+        type: 'dangling-edge',
+        id: edge.id,
+        from: edge.fromNode,
+        to: edge.toNode,
+      })
       return
     }
     seenIds.add(edge.id)
@@ -373,29 +488,52 @@ function parseEdge(
   issues: BoardParseIssue[],
 ): Edge | null {
   if (!isPlainObject(entry)) {
-    issues.push({ type: 'invalid-edge', index, message: 'Edge must be a JSON object' })
+    issues.push({
+      type: 'invalid-edge',
+      index,
+      message: 'Edge must be a JSON object',
+    })
     return null
   }
-  const { id, from, to } = entry
+  const { id, fromNode, toNode } = entry
   if (typeof id !== 'string' || id.length === 0) {
-    issues.push({ type: 'invalid-edge', index, message: 'Edge "id" must be a non-empty string' })
+    issues.push({
+      type: 'invalid-edge',
+      index,
+      message: 'Edge "id" must be a non-empty string',
+    })
     return null
   }
-  if (typeof from !== 'string' || from.length === 0 || typeof to !== 'string' || to.length === 0) {
-    issues.push({ type: 'invalid-edge', index, id, message: 'Edge "from"/"to" must be non-empty card ids' })
+  if (
+    typeof fromNode !== 'string' ||
+    fromNode.length === 0 ||
+    typeof toNode !== 'string' ||
+    toNode.length === 0
+  ) {
+    issues.push({
+      type: 'invalid-edge',
+      index,
+      id,
+      message: 'Edge "fromNode"/"toNode" must be non-empty node ids',
+    })
     return null
   }
-  const fromSide = isCardSide(entry.fromSide) ? entry.fromSide : undefined
-  const toSide = isCardSide(entry.toSide) ? entry.toSide : undefined
-  const arrow = isEdgeArrow(entry.arrow) ? entry.arrow : 'end'
+  const fromSide = isNodeSide(entry.fromSide) ? entry.fromSide : undefined
+  const toSide = isNodeSide(entry.toSide) ? entry.toSide : undefined
+  // JSON Canvas defaults, applied here so nothing downstream has to know them.
+  const fromEnd = isEdgeEnd(entry.fromEnd) ? entry.fromEnd : 'none'
+  const toEnd = isEdgeEnd(entry.toEnd) ? entry.toEnd : 'arrow'
+  const color = isNonEmptyString(entry.color) ? entry.color : undefined
   const label = typeof entry.label === 'string' ? entry.label : undefined
   return {
     id,
-    from,
-    to,
+    fromNode,
+    toNode,
     fromSide,
     toSide,
-    arrow,
+    fromEnd,
+    toEnd,
+    color,
     label,
     extra: extractExtra(entry, EDGE_KNOWN_KEYS),
   }
@@ -404,11 +542,13 @@ function parseEdge(
 function serializeEdge(edge: Edge): Record<string, unknown> {
   return {
     id: edge.id,
-    from: edge.from,
-    to: edge.to,
+    fromNode: edge.fromNode,
+    toNode: edge.toNode,
     fromSide: edge.fromSide,
     toSide: edge.toSide,
-    arrow: edge.arrow,
+    fromEnd: edge.fromEnd,
+    toEnd: edge.toEnd,
+    color: edge.color,
     label: edge.label,
     ...edge.extra,
   }
@@ -427,7 +567,7 @@ function parseCamera(raw: unknown): Camera {
 
 // --- shared helpers ------------------------------------------------------
 
-const TOP_LEVEL_KEYS = ['version', 'camera', 'cards', 'edges', 'groups'] as const
+const TOP_LEVEL_KEYS = ['version', 'camera', 'nodes', 'edges'] as const
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -436,7 +576,11 @@ function isPlainObject(value: unknown): value is Record<string, unknown> {
 /** Renders an `unknown` value for an error message without risking `[object Object]`. */
 function describeUnknown(value: unknown): string {
   if (typeof value === 'string') return value
-  if (typeof value === 'number' || typeof value === 'boolean' || value === null) {
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    value === null
+  ) {
     return String(value)
   }
   try {
@@ -452,12 +596,22 @@ function isFiniteNumber(value: unknown): value is number {
   return typeof value === 'number' && Number.isFinite(value)
 }
 
-function isCardSide(value: unknown): value is CardSide {
-  return typeof value === 'string' && (CARD_SIDES as readonly string[]).includes(value)
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0
 }
 
-function isEdgeArrow(value: unknown): value is EdgeArrow {
-  return typeof value === 'string' && (EDGE_ARROWS as readonly string[]).includes(value)
+export function isNodeSide(value: unknown): value is NodeSide {
+  return (
+    typeof value === 'string' &&
+    (NODE_SIDES as readonly string[]).includes(value)
+  )
+}
+
+export function isEdgeEnd(value: unknown): value is EdgeEnd {
+  return (
+    typeof value === 'string' &&
+    (EDGE_ENDS as readonly string[]).includes(value)
+  )
 }
 
 function extractExtra(

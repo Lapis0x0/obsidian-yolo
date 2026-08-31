@@ -13,16 +13,21 @@
 // (temporary coordinates the caller passes in), so this module only ever
 // sees plain rectangles, never live elements.
 
-import type { CardId, CardSide } from './fileFormat'
+import type { NodeId, NodeSide } from './fileFormat'
 import type { CardRect, CardSize } from './resize'
 import type { VirtualCardRect } from './virtualization'
 
 export type Point = Readonly<{ x: number; y: number }>
 
-/** One end of an edge: a card and the side of it the edge meets. */
-export type SideAnchor = Readonly<{ cardId: CardId; side: CardSide }>
+/** One end of an edge: a node and the side of it the edge meets. */
+export type SideAnchor = Readonly<{ nodeId: NodeId; side: NodeSide }>
 
-export const CARD_SIDES: readonly CardSide[] = ['top', 'right', 'bottom', 'left']
+export const NODE_SIDES: readonly NodeSide[] = [
+  'top',
+  'right',
+  'bottom',
+  'left',
+]
 
 export type EdgeGeometry = Readonly<{
   start: Point
@@ -42,14 +47,14 @@ export const EDGE_CONTROL_FACTOR = 0.5
  * cards don't get a control point that overshoots into unrelated territory. */
 export const EDGE_CONTROL_MAX_PX = 160
 
-const SIDE_NORMALS: Readonly<Record<CardSide, Point>> = {
+const SIDE_NORMALS: Readonly<Record<NodeSide, Point>> = {
   top: { x: 0, y: -1 },
   right: { x: 1, y: 0 },
   bottom: { x: 0, y: 1 },
   left: { x: -1, y: 0 },
 }
 
-const OPPOSITE_SIDES: Readonly<Record<CardSide, CardSide>> = {
+const OPPOSITE_SIDES: Readonly<Record<NodeSide, NodeSide>> = {
   top: 'bottom',
   right: 'left',
   bottom: 'top',
@@ -58,14 +63,14 @@ const OPPOSITE_SIDES: Readonly<Record<CardSide, CardSide>> = {
 
 /** The side facing back the way the given one points — the side a card
  * dropped in front of an anchor should present to it. */
-export function oppositeSide(side: CardSide): CardSide {
+export function oppositeSide(side: NodeSide): NodeSide {
   return OPPOSITE_SIDES[side]
 }
 
 /** Midpoint of the given side of a card rect, in world coordinates — the
  * edge's connection point. Computed from data, never measured from the DOM
  * (see file doc comment). */
-export function anchorPoint(card: VirtualCardRect, side: CardSide): Point {
+export function anchorPoint(card: VirtualCardRect, side: NodeSide): Point {
   switch (side) {
     case 'top':
       return { x: card.x + card.w / 2, y: card.y }
@@ -88,13 +93,17 @@ export function anchorPoint(card: VirtualCardRect, side: CardSide): Point {
 export function autoEdgeSides(
   from: VirtualCardRect,
   to: VirtualCardRect,
-): Readonly<{ fromSide: CardSide; toSide: CardSide }> {
+): Readonly<{ fromSide: NodeSide; toSide: NodeSide }> {
   const dx = to.x + to.w / 2 - (from.x + from.w / 2)
   const dy = to.y + to.h / 2 - (from.y + from.h / 2)
   if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? { fromSide: 'right', toSide: 'left' } : { fromSide: 'left', toSide: 'right' }
+    return dx >= 0
+      ? { fromSide: 'right', toSide: 'left' }
+      : { fromSide: 'left', toSide: 'right' }
   }
-  return dy >= 0 ? { fromSide: 'bottom', toSide: 'top' } : { fromSide: 'top', toSide: 'bottom' }
+  return dy >= 0
+    ? { fromSide: 'bottom', toSide: 'top' }
+    : { fromSide: 'top', toSide: 'bottom' }
 }
 
 /** Resolves the actual sides to anchor at: an explicit `fromSide`/`toSide`
@@ -103,21 +112,27 @@ export function autoEdgeSides(
 export function resolveEdgeSides(
   from: VirtualCardRect,
   to: VirtualCardRect,
-  fromSide?: CardSide,
-  toSide?: CardSide,
-): Readonly<{ fromSide: CardSide; toSide: CardSide }> {
+  fromSide?: NodeSide,
+  toSide?: NodeSide,
+): Readonly<{ fromSide: NodeSide; toSide: NodeSide }> {
   if (fromSide && toSide) return { fromSide, toSide }
   const auto = autoEdgeSides(from, to)
   return { fromSide: fromSide ?? auto.fromSide, toSide: toSide ?? auto.toSide }
 }
 
-function extrapolate(anchor: Point, side: CardSide, distance: number): Point {
+function extrapolate(anchor: Point, side: NodeSide, distance: number): Point {
   const normal = SIDE_NORMALS[side]
   const push = Math.min(distance * EDGE_CONTROL_FACTOR, EDGE_CONTROL_MAX_PX)
   return { x: anchor.x + normal.x * push, y: anchor.y + normal.y * push }
 }
 
-function cubicBezierPointAt(p0: Point, p1: Point, p2: Point, p3: Point, t: number): Point {
+function cubicBezierPointAt(
+  p0: Point,
+  p1: Point,
+  p2: Point,
+  p3: Point,
+  t: number,
+): Point {
   const mt = 1 - t
   const a = mt * mt * mt
   const b = 3 * mt * mt * t
@@ -135,15 +150,21 @@ function cubicBezierPointAt(p0: Point, p1: Point, p2: Point, p3: Point, t: numbe
 export function computeEdgeGeometry(
   from: VirtualCardRect,
   to: VirtualCardRect,
-  fromSide: CardSide,
-  toSide: CardSide,
+  fromSide: NodeSide,
+  toSide: NodeSide,
 ): EdgeGeometry {
   const start = anchorPoint(from, fromSide)
   const end = anchorPoint(to, toSide)
   const distance = Math.hypot(end.x - start.x, end.y - start.y)
   const c1 = extrapolate(start, fromSide, distance)
   const c2 = extrapolate(end, toSide, distance)
-  return { start, end, c1, c2, label: cubicBezierPointAt(start, c1, c2, end, 0.5) }
+  return {
+    start,
+    end,
+    c1,
+    c2,
+    label: cubicBezierPointAt(start, c1, c2, end, 0.5),
+  }
 }
 
 /**
@@ -176,12 +197,12 @@ export function findConnectTarget(
     ) {
       continue
     }
-    for (const side of CARD_SIDES) {
+    for (const side of NODE_SIDES) {
       const anchor = anchorPoint(card, side)
       const distance = Math.hypot(anchor.x - point.x, anchor.y - point.y)
       if (distance >= bestDistance) continue
       bestDistance = distance
-      best = { cardId: card.id, side }
+      best = { nodeId: card.id, side }
     }
   }
   return best
@@ -195,7 +216,7 @@ export function findConnectTarget(
  */
 export function rectAnchoredAt(
   point: Point,
-  side: CardSide,
+  side: NodeSide,
   size: CardSize,
 ): CardRect {
   switch (side) {

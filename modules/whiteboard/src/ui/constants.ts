@@ -57,12 +57,32 @@ export const CAMERA_SETTLE_MS = 300
  * (docs/plans/08-25-yolo-whiteboard/p1-design.md's W3-A task brief: "~4px"). */
 export const DRAG_THRESHOLD_PX = 4
 
-/** World scale below which cards render a degraded (title-only) preview
- * instead of their full markdown, to skip text layout cost while zoomed far
- * out (p1-design §3: "补齐 spike 未移植项：缩放阈值降级"). Checked at the
- * same ~70ms throttle as recomputeVisibility, not per frame — see
- * canvas.ts's updateDegradedState(). */
+/** World scale below which a card shows only its title block and its content
+ * is not constructed at all — not merely hidden (p3-canvas-parity D8: "降级时
+ * 根本不构造内容组件，只挂占位标题"). Checked at the same ~70ms throttle as
+ * recomputeVisibility, not per frame — see canvas.ts's updateDegradedState(). */
 export const DEGRADE_SCALE_THRESHOLD = 0.35
+
+/**
+ * Width of the hysteresis band above DEGRADE_SCALE_THRESHOLD, in zoom
+ * doublings: once degraded, a card's content is rebuilt only after the camera
+ * comes back this far past the threshold it fell through.
+ *
+ * A single threshold was fine while degrading was a CSS class; now that
+ * crossing it destroys and rebuilds every visible card's markdown, a zoom
+ * that settles on the boundary would do exactly that on alternate throttle
+ * ticks (p3-canvas-parity D8: "跨越阈值来回抖动时不能反复构造/销毁打爆帧").
+ *
+ * Expressed in doublings because that is the unit the wheel works in (see
+ * WHEEL_DELTA_PER_ZOOM_DOUBLING): a quarter doubling is ~75 delta — inside a
+ * single mouse notch, so one deliberate notch still crosses the band in one
+ * go, and far outside the few-delta dither a trackpad emits at rest.
+ */
+const DEGRADE_RESTORE_DOUBLINGS = 0.25
+
+/** Scale a degraded card's content is built again at — see above. */
+export const DEGRADE_RESTORE_SCALE =
+  DEGRADE_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
 
 /** Size a card is created at. Deliberately at the small end of what the
  * spikes' boards used (226-334 wide) — an empty card should not take half

@@ -11,7 +11,13 @@ import {
 } from './edges'
 import type { VirtualCardRect } from './virtualization'
 
-function rect(id: string, x: number, y: number, w = 100, h = 100): VirtualCardRect {
+function rect(
+  id: string,
+  x: number,
+  y: number,
+  w = 100,
+  h = 100,
+): VirtualCardRect {
   return { id, x, y, w, h }
 }
 
@@ -30,31 +36,46 @@ describe('autoEdgeSides', () => {
   it('anchors right->left when the target card is mostly to the right', () => {
     const from = rect('a', 0, 0)
     const to = rect('b', 500, 10)
-    expect(autoEdgeSides(from, to)).toEqual({ fromSide: 'right', toSide: 'left' })
+    expect(autoEdgeSides(from, to)).toEqual({
+      fromSide: 'right',
+      toSide: 'left',
+    })
   })
 
   it('anchors left->right when the target card is mostly to the left', () => {
     const from = rect('a', 500, 0)
     const to = rect('b', 0, 10)
-    expect(autoEdgeSides(from, to)).toEqual({ fromSide: 'left', toSide: 'right' })
+    expect(autoEdgeSides(from, to)).toEqual({
+      fromSide: 'left',
+      toSide: 'right',
+    })
   })
 
   it('anchors bottom->top when the target card is mostly below', () => {
     const from = rect('a', 0, 0)
     const to = rect('b', 10, 500)
-    expect(autoEdgeSides(from, to)).toEqual({ fromSide: 'bottom', toSide: 'top' })
+    expect(autoEdgeSides(from, to)).toEqual({
+      fromSide: 'bottom',
+      toSide: 'top',
+    })
   })
 
   it('anchors top->bottom when the target card is mostly above', () => {
     const from = rect('a', 0, 500)
     const to = rect('b', 10, 0)
-    expect(autoEdgeSides(from, to)).toEqual({ fromSide: 'top', toSide: 'bottom' })
+    expect(autoEdgeSides(from, to)).toEqual({
+      fromSide: 'top',
+      toSide: 'bottom',
+    })
   })
 
   it('breaks a tie (equal |dx| and |dy|) in favor of the horizontal axis', () => {
     const from = rect('a', 0, 0)
     const to = rect('b', 300, 300)
-    expect(autoEdgeSides(from, to)).toEqual({ fromSide: 'right', toSide: 'left' })
+    expect(autoEdgeSides(from, to)).toEqual({
+      fromSide: 'right',
+      toSide: 'left',
+    })
   })
 })
 
@@ -63,16 +84,28 @@ describe('resolveEdgeSides', () => {
   const to = rect('b', 500, 10)
 
   it('falls back to autoEdgeSides when both sides are omitted', () => {
-    expect(resolveEdgeSides(from, to)).toEqual({ fromSide: 'right', toSide: 'left' })
+    expect(resolveEdgeSides(from, to)).toEqual({
+      fromSide: 'right',
+      toSide: 'left',
+    })
   })
 
   it('honors both explicit sides, overriding the auto pick', () => {
-    expect(resolveEdgeSides(from, to, 'top', 'bottom')).toEqual({ fromSide: 'top', toSide: 'bottom' })
+    expect(resolveEdgeSides(from, to, 'top', 'bottom')).toEqual({
+      fromSide: 'top',
+      toSide: 'bottom',
+    })
   })
 
   it('honors an explicit side while auto-filling the omitted one', () => {
-    expect(resolveEdgeSides(from, to, 'top')).toEqual({ fromSide: 'top', toSide: 'left' })
-    expect(resolveEdgeSides(from, to, undefined, 'bottom')).toEqual({ fromSide: 'right', toSide: 'bottom' })
+    expect(resolveEdgeSides(from, to, 'top')).toEqual({
+      fromSide: 'top',
+      toSide: 'left',
+    })
+    expect(resolveEdgeSides(from, to, undefined, 'bottom')).toEqual({
+      fromSide: 'right',
+      toSide: 'bottom',
+    })
   })
 })
 
@@ -116,7 +149,10 @@ describe('computeEdgeGeometry', () => {
     // midpoint y (sanity check on the symmetric setup) while x is still
     // exactly between the two anchors given the symmetric control points.
     expect(geometry.label.y).toBeCloseTo(straightMidpointY, 10)
-    expect(geometry.label.x).toBeCloseTo((geometry.start.x + geometry.end.x) / 2, 10)
+    expect(geometry.label.x).toBeCloseTo(
+      (geometry.start.x + geometry.end.x) / 2,
+      10,
+    )
   })
 })
 
@@ -152,18 +188,18 @@ describe('findConnectTarget', () => {
   it('anchors to the nearest side of the card the pointer is inside', () => {
     // Just inside the left border, vertically centered.
     expect(findConnectTarget({ x: 5, y: 50 }, [card], 12)).toEqual({
-      cardId: 'a',
+      nodeId: 'a',
       side: 'left',
     })
     expect(findConnectTarget({ x: 50, y: 5 }, [card], 12)).toEqual({
-      cardId: 'a',
+      nodeId: 'a',
       side: 'top',
     })
   })
 
   it('still anchors from just outside the card, within the snap band', () => {
     expect(findConnectTarget({ x: -10, y: 50 }, [card], 12)).toEqual({
-      cardId: 'a',
+      nodeId: 'a',
       side: 'left',
     })
     expect(findConnectTarget({ x: -13, y: 50 }, [card], 12)).toBeNull()
@@ -173,7 +209,7 @@ describe('findConnectTarget', () => {
     const wide = rect('w', 0, 0, 400, 100)
     // Dropped on the far right half: the right connection point is nearest.
     expect(findConnectTarget({ x: 380, y: 50 }, [wide], 12)).toEqual({
-      cardId: 'w',
+      nodeId: 'w',
       side: 'right',
     })
   })
@@ -183,7 +219,7 @@ describe('findConnectTarget', () => {
     // x=90 against the other's right one at x=100.
     const near = rect('near', 90, 0, 100, 100)
     expect(findConnectTarget({ x: 92, y: 50 }, [card, near], 12)).toEqual({
-      cardId: 'near',
+      nodeId: 'near',
       side: 'left',
     })
   })
@@ -192,7 +228,7 @@ describe('findConnectTarget', () => {
 describe('rectAnchoredAt', () => {
   const size = { w: 100, h: 60 }
 
-  it('places the card so the named side\'s connection point lands on the drop', () => {
+  it("places the card so the named side's connection point lands on the drop", () => {
     for (const side of ['top', 'right', 'bottom', 'left'] as const) {
       const placed = rectAnchoredAt({ x: 200, y: 300 }, side, size)
       expect(anchorPoint({ id: 'new', ...placed }, side)).toEqual({

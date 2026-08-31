@@ -6,57 +6,60 @@
 // degraded card shows) that has no `.yoloboard` representation and has no
 // reason to move if the file format ever changes.
 
-import type { BoardCard } from '../domain/fileFormat'
+import type { BoardNode } from '../domain/fileFormat'
+import { basenameWithoutExtension } from '../domain/naming'
 
-/** True once `scale` has dropped below `threshold`. The canvas toggles a
- * single CSS class on the world element at this boundary — checked at the
- * existing visibility-recompute throttle, not per frame — rather than
- * mounting/unmounting anything (src/ui/canvas.ts's updateDegradedState()). */
-export function isDegradedScale(scale: number, threshold: number): boolean {
-  return scale < threshold
+/**
+ * Whether cards should be showing their degraded (title-only) form now that
+ * the camera has reached `scale`, given whether they already are.
+ *
+ * Two thresholds rather than one: content is torn down below `band.enter` and
+ * built again only once the camera is back above `band.restore`
+ * (constants.ts's DEGRADE_SCALE_THRESHOLD / DEGRADE_RESTORE_SCALE). The gap
+ * is what keeps a zoom that settles on the boundary from rebuilding and
+ * destroying every visible card's markdown on alternate throttle ticks — see
+ * DEGRADE_RESTORE_DOUBLINGS for why the band is the width it is.
+ *
+ * Evaluated at the canvas's existing visibility-recompute throttle, not per
+ * frame (src/ui/canvas.ts's updateDegradedState()).
+ */
+export function nextDegradedState(
+  scale: number,
+  degraded: boolean,
+  band: Readonly<{ enter: number; restore: number }>,
+): boolean {
+  return degraded ? scale < band.restore : scale < band.enter
 }
 
 const MAX_DEGRADED_TITLE_LENGTH = 60
-
-/** Vault-relative (or bare) file path -> its basename without extension, for
- * a note/pdf card's degraded title. */
-export function basenameWithoutExtension(filePath: string): string {
-  const slashIndex = Math.max(
-    filePath.lastIndexOf('/'),
-    filePath.lastIndexOf('\\'),
-  )
-  const name = slashIndex === -1 ? filePath : filePath.slice(slashIndex + 1)
-  const dotIndex = name.lastIndexOf('.')
-  return dotIndex > 0 ? name.slice(0, dotIndex) : name
-}
 
 function truncate(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 1)}…` : text
 }
 
 /**
- * The label a degraded card shows in place of its rendered markdown: a
- * note/pdf card shows its backing file's basename, a text card shows its
- * first line (trimmed and truncated) — p1-design §3's "note 卡显示文件名、
- * text 卡显示首行截断".
+ * The label a degraded card shows in place of its rendered markdown: a file
+ * node shows its backing file's basename, a text node shows its first line
+ * (trimmed and truncated) — p1-design §3's "note 卡显示文件名、text 卡显示
+ * 首行截断". A group node has no degraded form: its label is chrome, drawn at
+ * every zoom, so this returns it unchanged for the callers that ask.
  *
- * A text card's leading `#` markers are dropped: the line is being shown as
+ * A text node's leading `#` markers are dropped: the line is being shown as
  * a title, not as markdown, and a card that opens with a heading — the most
  * common way to title one — would otherwise wear its syntax in the one place
  * the syntax is never rendered. Only the heading marker goes; a first line
  * that starts with a bullet or a quote is prose the user wrote that way.
  */
-export function degradedCardTitle(card: BoardCard): string {
-  switch (card.type) {
-    case 'note':
-    case 'pdf':
-      return basenameWithoutExtension(card.file)
+export function degradedNodeTitle(node: BoardNode): string {
+  switch (node.type) {
+    case 'file':
+      return basenameWithoutExtension(node.file)
+    case 'group':
+      return truncate(node.label ?? '', MAX_DEGRADED_TITLE_LENGTH)
     case 'text': {
-      const newlineIndex = card.markdown.indexOf('\n')
+      const newlineIndex = node.text.indexOf('\n')
       const firstLine =
-        newlineIndex === -1
-          ? card.markdown
-          : card.markdown.slice(0, newlineIndex)
+        newlineIndex === -1 ? node.text : node.text.slice(0, newlineIndex)
       const title = firstLine.trim().replace(/^#{1,6}\s+/, '')
       return truncate(title, MAX_DEGRADED_TITLE_LENGTH)
     }

@@ -1,27 +1,30 @@
-// Minimal i18n scaffold, following the Learning module's pattern
-// (modules/learning/src/i18n/index.ts). Only "en"/"zh" ship for now — no
-// user-visible surface exists yet in the M1 skeleton milestone (see
-// docs/plans/08-25-yolo-whiteboard/p1-design.md), so this exists to give
-// later milestones a ready-made place to add strings rather than as an
-// actively consumed API.
+// i18n for the Whiteboard module, following the Learning module's pattern
+// (modules/learning/src/i18n/index.ts). The locale set matches
+// module.config.json's `localizations` — a locale declared there and missing
+// here would show its module name translated and everything inside it in
+// English.
 
 import { en } from './en'
+import { it } from './it'
 import { zh } from './zh'
 
-export type WhiteboardLocale = 'en' | 'zh'
+export type WhiteboardLocale = 'en' | 'zh' | 'it'
 export type WhiteboardTranslation = (key: string, fallback?: string) => string
 export type WhiteboardLocalizedTextKey =
   | 'module.name'
   | 'module.open'
   | 'command.newWhiteboard'
+  | 'command.importAllCanvas'
   | 'menu.newWhiteboard'
+  | 'menu.importCanvas'
 
-export const WHITEBOARD_LOCALES = ['en', 'zh'] as const
-const resources = { en, zh } as const
+export const WHITEBOARD_LOCALES = ['en', 'zh', 'it'] as const
+const resources = { en, zh, it } as const
 
 export function normalizeWhiteboardLocale(locale: string): WhiteboardLocale {
   const normalized = locale.trim().toLowerCase()
   if (normalized.startsWith('zh')) return 'zh'
+  if (normalized.startsWith('it')) return 'it'
   return 'en'
 }
 
@@ -77,4 +80,4 @@ function getNestedString(
   return typeof current === 'string' ? current : undefined
 }
 
-export { en, zh }
+export { en, it, zh }

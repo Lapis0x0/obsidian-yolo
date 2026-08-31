@@ -1,8 +1,55 @@
 import {
+  basenameWithoutExtension,
   cardNoteContent,
+  folderPathOf,
   generateBoardFileName,
   generateCardNoteFileName,
+  isCanvasPath,
+  isMarkdownPath,
 } from './naming'
+
+describe('basenameWithoutExtension', () => {
+  it('strips a vault-relative directory path and extension', () => {
+    expect(basenameWithoutExtension('Cards/concept a.md')).toBe('concept a')
+  })
+
+  it('handles a bare filename with no directory', () => {
+    expect(basenameWithoutExtension('foo.pdf')).toBe('foo')
+  })
+
+  it('leaves a leading dot (dotfile) alone rather than treating it as the extension', () => {
+    expect(basenameWithoutExtension('.gitignore')).toBe('.gitignore')
+  })
+
+  it('leaves a file with no extension alone', () => {
+    expect(basenameWithoutExtension('Cards/README')).toBe('README')
+  })
+})
+
+describe('folderPathOf', () => {
+  it('returns the containing folder', () => {
+    expect(folderPathOf('A/B/board.yoloboard')).toBe('A/B')
+  })
+
+  it('returns the empty string for a file at the vault root', () => {
+    expect(folderPathOf('board.yoloboard')).toBe('')
+  })
+})
+
+describe('isMarkdownPath / isCanvasPath', () => {
+  it('recognizes markdown regardless of case', () => {
+    expect(isMarkdownPath('Notes/A.md')).toBe(true)
+    expect(isMarkdownPath('Notes/A.MD')).toBe(true)
+    expect(isMarkdownPath('Notes/A.pdf')).toBe(false)
+    expect(isMarkdownPath('Notes/mdfile')).toBe(false)
+  })
+
+  it('recognizes canvas files regardless of case', () => {
+    expect(isCanvasPath('Boards/A.canvas')).toBe(true)
+    expect(isCanvasPath('Boards/A.Canvas')).toBe(true)
+    expect(isCanvasPath('Boards/A.yoloboard')).toBe(false)
+  })
+})
 
 describe('generateBoardFileName', () => {
   it('returns the plain name when nothing collides', () => {

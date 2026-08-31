@@ -9,27 +9,47 @@ import {
 const SAMPLE_RAW = JSON.stringify({
   version: 1,
   camera: { x: 10, y: -5, scale: 1.5 },
-  cards: [
-    { id: 'c1', type: 'note', x: 0, y: 0, w: 320, h: 240, file: 'Cards/概念A.md' },
-    { id: 'c2', type: 'text', x: 400, y: 0, w: 240, h: 120, markdown: '临时便签' },
-    { id: 'c3', type: 'pdf', x: 0, y: 400, w: 480, h: 600, file: 'papers/foo.pdf', page: 3 },
+  nodes: [
+    {
+      id: 'c1',
+      type: 'file',
+      x: 0,
+      y: 0,
+      w: 320,
+      h: 240,
+      file: 'Cards/概念A.md',
+    },
+    { id: 'c2', type: 'text', x: 400, y: 0, w: 240, h: 120, text: '临时便签' },
+    {
+      id: 'c3',
+      type: 'file',
+      x: 0,
+      y: 400,
+      w: 480,
+      h: 600,
+      file: 'papers/foo.pdf',
+      color: '4',
+    },
+    { id: 'g1', type: 'group', x: -40, y: -40, w: 800, h: 800, label: '一组' },
   ],
   edges: [
     {
       id: 'e1',
-      from: 'c1',
-      to: 'c2',
+      fromNode: 'c1',
+      toNode: 'c2',
       fromSide: 'right',
       toSide: 'left',
-      arrow: 'end',
+      fromEnd: 'arrow',
+      toEnd: 'arrow',
+      color: '#FF0000',
       label: '',
     },
   ],
-  groups: [],
 })
 
 function requireOk(result: ReturnType<typeof parseBoard>): Board {
-  if (!result.ok) throw new Error(`expected ok, got issues: ${JSON.stringify(result.issues)}`)
+  if (!result.ok)
+    throw new Error(`expected ok, got issues: ${JSON.stringify(result.issues)}`)
   return result.board
 }
 
@@ -46,32 +66,42 @@ describe('parseBoard / serializeBoard', () => {
     expect(board).toEqual(emptyBoard())
   })
 
-  it('parses the p1-design §1.1 sample schema', () => {
+  it('parses the JSON Canvas-aligned node/edge schema', () => {
     const result = parseBoard(SAMPLE_RAW)
     const board = requireOk(result)
     expect(result.ok && result.issues).toEqual([])
     expect(board.version).toBe(YOLOBOARD_SCHEMA_VERSION)
     expect(board.camera).toEqual({ x: 10, y: -5, scale: 1.5 })
-    expect(board.cards).toHaveLength(3)
+    expect(board.nodes).toHaveLength(4)
     expect(board.edges).toHaveLength(1)
 
-    const note = board.cards.find((c) => c.id === 'c1')
-    expect(note).toMatchObject({ type: 'note', file: 'Cards/概念A.md' })
+    expect(board.nodes.find((n) => n.id === 'c1')).toMatchObject({
+      type: 'file',
+      file: 'Cards/概念A.md',
+    })
+    expect(board.nodes.find((n) => n.id === 'c2')).toMatchObject({
+      type: 'text',
+      text: '临时便签',
+    })
+    expect(board.nodes.find((n) => n.id === 'c3')).toMatchObject({
+      type: 'file',
+      file: 'papers/foo.pdf',
+      color: '4',
+    })
+    expect(board.nodes.find((n) => n.id === 'g1')).toMatchObject({
+      type: 'group',
+      label: '一组',
+    })
 
-    const text = board.cards.find((c) => c.id === 'c2')
-    expect(text).toMatchObject({ type: 'text', markdown: '临时便签' })
-
-    const pdf = board.cards.find((c) => c.id === 'c3')
-    expect(pdf).toMatchObject({ type: 'pdf', file: 'papers/foo.pdf', page: 3 })
-
-    const edge = board.edges[0]
-    expect(edge).toMatchObject({
+    expect(board.edges[0]).toMatchObject({
       id: 'e1',
-      from: 'c1',
-      to: 'c2',
+      fromNode: 'c1',
+      toNode: 'c2',
       fromSide: 'right',
       toSide: 'left',
-      arrow: 'end',
+      fromEnd: 'arrow',
+      toEnd: 'arrow',
+      color: '#FF0000',
       label: '',
     })
   })
@@ -94,59 +124,75 @@ describe('parseBoard / serializeBoard', () => {
     expect(serializeBoard(board)).toEqual(serializeBoard(board))
   })
 
-  it('defaults edge "arrow" to "end" when omitted', () => {
+  it('applies JSON Canvas edge-end defaults when they are omitted', () => {
     const raw = JSON.stringify({
       version: 1,
-      cards: [
-        { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: '' },
-        { id: 'c2', type: 'text', x: 200, y: 0, w: 100, h: 100, markdown: '' },
+      nodes: [
+        { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, text: '' },
+        { id: 'c2', type: 'text', x: 200, y: 0, w: 100, h: 100, text: '' },
       ],
-      edges: [{ id: 'e1', from: 'c1', to: 'c2' }],
+      edges: [{ id: 'e1', fromNode: 'c1', toNode: 'c2' }],
     })
     const board = requireOk(parseBoard(raw))
-    expect(board.edges[0].arrow).toBe('end')
+    expect(board.edges[0].fromEnd).toBe('none')
+    expect(board.edges[0].toEnd).toBe('arrow')
     expect(board.edges[0].fromSide).toBeUndefined()
     expect(board.edges[0].toSide).toBeUndefined()
   })
 
+  it('accepts a group node with no label', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      nodes: [{ id: 'g1', type: 'group', x: 0, y: 0, w: 100, h: 100 }],
+    })
+    const board = requireOk(parseBoard(raw))
+    expect(board.nodes).toHaveLength(1)
+    expect(board.nodes[0]).toMatchObject({ type: 'group' })
+  })
+
   describe('unknown-field forward compatibility', () => {
-    it('preserves and round-trips unknown fields at the file, card, and edge level', () => {
+    it('preserves and round-trips unknown fields at the file, node, and edge level', () => {
       const raw = JSON.stringify({
         version: 1,
         futureTopLevelField: 'kept',
         camera: { x: 0, y: 0, scale: 1 },
-        cards: [
+        nodes: [
           {
             id: 'c1',
-            type: 'note',
+            type: 'file',
             x: 0,
             y: 0,
             w: 100,
             h: 100,
             file: 'a.md',
-            futureCardField: 42,
+            // JSON Canvas fields we do not render yet ride along here.
+            subpath: '#heading',
+            futureNodeField: 42,
           },
-          { id: 'c2', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: '' },
+          { id: 'c2', type: 'text', x: 0, y: 0, w: 100, h: 100, text: '' },
         ],
         edges: [
           {
             id: 'e1',
-            from: 'c1',
-            to: 'c2',
+            fromNode: 'c1',
+            toNode: 'c2',
             futureEdgeField: { nested: true },
           },
         ],
       })
       const board = requireOk(parseBoard(raw))
       expect(board.extra).toEqual({ futureTopLevelField: 'kept' })
-      const card = board.cards.find((c) => c.id === 'c1')
-      expect(card?.extra).toEqual({ futureCardField: 42 })
-      expect(board.edges[0].extra).toEqual({ futureEdgeField: { nested: true } })
+      const node = board.nodes.find((n) => n.id === 'c1')
+      expect(node?.extra).toEqual({ subpath: '#heading', futureNodeField: 42 })
+      expect(board.edges[0].extra).toEqual({
+        futureEdgeField: { nested: true },
+      })
 
       const serialized = serializeBoard(board)
       const reparsed = JSON.parse(serialized)
       expect(reparsed.futureTopLevelField).toBe('kept')
-      expect(reparsed.cards[0].futureCardField).toBe(42)
+      expect(reparsed.nodes[0].subpath).toBe('#heading')
+      expect(reparsed.nodes[0].futureNodeField).toBe(42)
       expect(reparsed.edges[0].futureEdgeField).toEqual({ nested: true })
     })
   })
@@ -167,68 +213,107 @@ describe('parseBoard / serializeBoard', () => {
     })
 
     it('fails with invalid-schema for an unsupported version', () => {
-      const result = parseBoard(JSON.stringify({ version: 2, cards: [], edges: [] }))
+      const result = parseBoard(
+        JSON.stringify({ version: 2, nodes: [], edges: [] }),
+      )
       expect(result.ok).toBe(false)
       expect(!result.ok && result.issues[0].type).toBe('invalid-schema')
     })
 
-    it('fails with invalid-schema when "cards" is present but not an array', () => {
-      const result = parseBoard(JSON.stringify({ version: 1, cards: {} }))
+    it('fails with invalid-schema when "nodes" is present but not an array', () => {
+      const result = parseBoard(JSON.stringify({ version: 1, nodes: {} }))
       expect(result.ok).toBe(false)
     })
 
-    it('drops a duplicate card id and reports it, keeping the file usable', () => {
+    it('opens a pre-D5 board as empty, without destroying its old arrays', () => {
+      // No migration exists and none is planned (p3-canvas-parity D6). A
+      // board written against the old `cards`/`groups` schema has no `nodes`,
+      // so it comes up empty — but its old arrays are unknown top-level
+      // fields, which means they round-trip in `extra` and a later save does
+      // not erase them.
       const raw = JSON.stringify({
         version: 1,
         cards: [
-          { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: 'first' },
-          { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: 'second' },
+          { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: 'x' },
+        ],
+        groups: [],
+      })
+      const board = requireOk(parseBoard(raw))
+      // It parses (the root is a valid object) but holds no nodes — the old
+      // arrays survive only as opaque `extra`, so nothing is silently lost.
+      expect(board.nodes).toHaveLength(0)
+      expect(board.extra).toHaveProperty('cards')
+      expect(board.extra).toHaveProperty('groups')
+    })
+
+    it('drops a duplicate node id and reports it, keeping the file usable', () => {
+      const raw = JSON.stringify({
+        version: 1,
+        nodes: [
+          { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, text: 'first' },
+          {
+            id: 'c1',
+            type: 'text',
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 100,
+            text: 'second',
+          },
         ],
       })
       const result = parseBoard(raw)
       const board = requireOk(result)
-      expect(board.cards).toHaveLength(1)
-      expect((board.cards[0] as { markdown: string }).markdown).toBe('first')
+      expect(board.nodes).toHaveLength(1)
+      expect((board.nodes[0] as { text: string }).text).toBe('first')
       expect(result.ok && result.issues).toContainEqual({
-        type: 'duplicate-card-id',
+        type: 'duplicate-node-id',
         index: 1,
         id: 'c1',
       })
     })
 
-    it('drops a note card missing "file" and reports it, without failing the whole board', () => {
+    it('drops a file node missing "file" and reports it, without failing the whole board', () => {
       const raw = JSON.stringify({
         version: 1,
-        cards: [
-          { id: 'c1', type: 'note', x: 0, y: 0, w: 100, h: 100 },
-          { id: 'c2', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: 'kept' },
+        nodes: [
+          { id: 'c1', type: 'file', x: 0, y: 0, w: 100, h: 100 },
+          { id: 'c2', type: 'text', x: 0, y: 0, w: 100, h: 100, text: 'kept' },
         ],
       })
       const result = parseBoard(raw)
       const board = requireOk(result)
-      expect(board.cards).toHaveLength(1)
-      expect(board.cards[0].id).toBe('c2')
-      expect(result.ok && result.issues.some((i) => i.type === 'invalid-card')).toBe(true)
+      expect(board.nodes).toHaveLength(1)
+      expect(board.nodes[0].id).toBe('c2')
+      expect(
+        result.ok && result.issues.some((i) => i.type === 'invalid-node'),
+      ).toBe(true)
     })
 
-    it('drops a card with non-finite geometry and reports it', () => {
+    it('drops a node with non-finite geometry and reports it', () => {
       // JSON has no NaN/Infinity literal, so a non-numeric "x" (e.g. null)
-      // is what a corrupt-geometry card looks like on the wire.
+      // is what a corrupt-geometry node looks like on the wire.
       const raw = JSON.stringify({
         version: 1,
-        cards: [{ id: 'c1', type: 'text', x: null, y: 0, w: 100, h: 100, markdown: '' }],
+        nodes: [
+          { id: 'c1', type: 'text', x: null, y: 0, w: 100, h: 100, text: '' },
+        ],
       })
       const result = parseBoard(raw)
       const board = requireOk(result)
-      expect(board.cards).toHaveLength(0)
-      expect(result.ok && result.issues.some((i) => i.type === 'invalid-card')).toBe(true)
+      expect(board.nodes).toHaveLength(0)
+      expect(
+        result.ok && result.issues.some((i) => i.type === 'invalid-node'),
+      ).toBe(true)
     })
 
     it('drops a dangling edge and reports it, without failing the whole board', () => {
       const raw = JSON.stringify({
         version: 1,
-        cards: [{ id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, markdown: '' }],
-        edges: [{ id: 'e1', from: 'c1', to: 'missing' }],
+        nodes: [
+          { id: 'c1', type: 'text', x: 0, y: 0, w: 100, h: 100, text: '' },
+        ],
+        edges: [{ id: 'e1', fromNode: 'c1', toNode: 'missing' }],
       })
       const result = parseBoard(raw)
       const board = requireOk(result)
@@ -241,13 +326,26 @@ describe('parseBoard / serializeBoard', () => {
       })
     })
 
-    it('rejects a PDF card whose "page" is not a positive integer', () => {
+    it('ignores a non-string colour rather than failing the node', () => {
       const raw = JSON.stringify({
         version: 1,
-        cards: [{ id: 'c1', type: 'pdf', x: 0, y: 0, w: 100, h: 100, file: 'a.pdf', page: 0 }],
+        nodes: [
+          {
+            id: 'c1',
+            type: 'text',
+            x: 0,
+            y: 0,
+            w: 100,
+            h: 100,
+            text: '',
+            color: 7,
+          },
+        ],
       })
       const board = requireOk(parseBoard(raw))
-      expect(board.cards).toHaveLength(0)
+      expect(board.nodes).toHaveLength(1)
+      expect(board.nodes[0].color).toBeUndefined()
+      expect(board.nodes[0].extra).toEqual({})
     })
   })
 })

@@ -1,13 +1,13 @@
-import { planCardCommit } from './commit'
+import { planNodeCommit } from './commit'
 import { type Board, emptyBoard } from './fileFormat'
 
-function boardWith(...cards: Board['cards']): Board {
-  return { ...emptyBoard(), cards }
+function boardWith(...nodes: Board['nodes']): Board {
+  return { ...emptyBoard(), nodes }
 }
 
-const noteCard = {
+const noteNode = {
   id: 'c1',
-  type: 'note' as const,
+  type: 'file' as const,
   x: 0,
   y: 0,
   w: 100,
@@ -16,33 +16,43 @@ const noteCard = {
   extra: {},
 }
 
-const textCard = {
+const textNode = {
   id: 'c2',
   type: 'text' as const,
   x: 0,
   y: 0,
   w: 100,
   h: 100,
-  markdown: 'old text',
+  text: 'old text',
   extra: {},
 }
 
-const pdfCard = {
+const pdfNode = {
   id: 'c3',
-  type: 'pdf' as const,
+  type: 'file' as const,
   x: 0,
   y: 0,
   w: 100,
   h: 100,
   file: 'papers/foo.pdf',
-  page: 1,
   extra: {},
 }
 
-describe('planCardCommit', () => {
-  it('plans a note-file write for a note card, leaving the board untouched', () => {
-    const board = boardWith(noteCard)
-    const action = planCardCommit(board, 'c1', 'new note text')
+const groupNode = {
+  id: 'g1',
+  type: 'group' as const,
+  x: 0,
+  y: 0,
+  w: 400,
+  h: 400,
+  label: 'Group',
+  extra: {},
+}
+
+describe('planNodeCommit', () => {
+  it('plans a note-file write for a markdown file node, leaving the board untouched', () => {
+    const board = boardWith(noteNode)
+    const action = planNodeCommit(board, 'c1', 'new note text')
     expect(action).toEqual({
       kind: 'writeNoteFile',
       file: 'Cards/note.md',
@@ -50,33 +60,40 @@ describe('planCardCommit', () => {
     })
   })
 
-  it('plans a board update for a text card, patching only its markdown', () => {
-    const board = boardWith(textCard)
-    const action = planCardCommit(board, 'c2', 'new text')
+  it('plans a board update for a text node, patching only its text', () => {
+    const board = boardWith(textNode)
+    const action = planNodeCommit(board, 'c2', 'new text')
     expect(action.kind).toBe('updateBoard')
     if (action.kind !== 'updateBoard') throw new Error('unreachable')
-    const updated = action.board.cards.find((card) => card.id === 'c2')
-    expect(updated).toMatchObject({ markdown: 'new text' })
-    // Only the touched card's reference changes; untouched cards from the
+    const updated = action.board.nodes.find((node) => node.id === 'c2')
+    expect(updated).toMatchObject({ text: 'new text' })
+    // Only the touched node's reference changes; untouched nodes from the
     // same board keep theirs (repo-wide immutable-update invariant).
     expect(action.board).not.toBe(board)
   })
 
-  it('is a no-op for a pdf card (not editable in M1)', () => {
-    const board = boardWith(pdfCard)
-    expect(planCardCommit(board, 'c3', 'ignored')).toEqual({ kind: 'noop' })
+  it('is a no-op for a file node that is not markdown', () => {
+    const board = boardWith(pdfNode)
+    expect(planNodeCommit(board, 'c3', 'ignored')).toEqual({ kind: 'noop' })
   })
 
-  it('is a no-op when the card id is not found', () => {
-    const board = boardWith(textCard)
-    expect(planCardCommit(board, 'missing', 'ignored')).toEqual({ kind: 'noop' })
+  it('is a no-op for a group node', () => {
+    const board = boardWith(groupNode)
+    expect(planNodeCommit(board, 'g1', 'ignored')).toEqual({ kind: 'noop' })
   })
 
-  it('leaves an untouched card reference-equal across an updateBoard commit', () => {
-    const board = boardWith(noteCard, textCard)
-    const action = planCardCommit(board, 'c2', 'edited')
+  it('is a no-op when the node id is not found', () => {
+    const board = boardWith(textNode)
+    expect(planNodeCommit(board, 'missing', 'ignored')).toEqual({
+      kind: 'noop',
+    })
+  })
+
+  it('leaves an untouched node reference-equal across an updateBoard commit', () => {
+    const board = boardWith(noteNode, textNode)
+    const action = planNodeCommit(board, 'c2', 'edited')
     if (action.kind !== 'updateBoard') throw new Error('unreachable')
-    const untouched = action.board.cards.find((card) => card.id === 'c1')
-    expect(untouched).toBe(noteCard)
+    const untouched = action.board.nodes.find((node) => node.id === 'c1')
+    expect(untouched).toBe(noteNode)
   })
 })

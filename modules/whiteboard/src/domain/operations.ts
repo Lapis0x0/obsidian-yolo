@@ -1,5 +1,5 @@
-// Structured board operations — the primitives (`addCard`, `updateCard`,
-// `replaceCard`, `removeCard`, `moveCard`, `addEdge`, `updateEdge`,
+// Structured board operations — the primitives (`addNode`, `updateNode`,
+// `replaceNode`, `removeNode`, `moveNodes`, `addEdge`, `updateEdge`,
 // `removeEdge`) that are
 // the *only* sanctioned way to change a Board in 1.0
 // (docs/plans/08-25-yolo-whiteboard/p1-design.md §1.1). This is also the land for the AI-driven editing
@@ -8,126 +8,128 @@
 // object literals.
 //
 // All operations are pure and immutable: each returns a new `Board`. A
-// card/edge object that isn't touched by the operation keeps its original
+// node/edge object that isn't touched by the operation keeps its original
 // reference (mirrors the repository's chat-state invariant — "an object's
 // reference changes if and only if its content changes"). Invalid input
 // (an id that doesn't exist, a duplicate id, an edge pointing at a missing
-// card, …) throws a descriptive Error rather than silently no-oping.
+// node, …) throws a descriptive Error rather than silently no-oping.
 
 import type {
   Board,
-  BoardCard,
-  CardId,
-  CardSide,
+  BoardNode,
   Edge,
   EdgeId,
+  NodeColor,
+  NodeId,
+  NodeSide,
 } from './fileFormat'
 
-/** Fields `updateCard` may patch. `id`/`type` are immutable — see `updateCard`. */
-export type CardPatch = Readonly<{
+/** Fields `updateNode` may patch. `id`/`type` are immutable — see `updateNode`. */
+export type NodePatch = Readonly<{
   x?: number
   y?: number
   w?: number
   h?: number
+  color?: NodeColor
   file?: string
-  markdown?: string
-  page?: number
+  text?: string
+  label?: string
 }>
 
 /** Fields `updateEdge` may patch — one end of the edge, or both. */
 export type EdgePatch = Readonly<{
-  from?: CardId
-  to?: CardId
-  fromSide?: CardSide
-  toSide?: CardSide
+  fromNode?: NodeId
+  toNode?: NodeId
+  fromSide?: NodeSide
+  toSide?: NodeSide
 }>
 
-export function addCard(board: Board, card: BoardCard): Board {
-  if (!card.id) throw new Error('addCard: card id must be non-empty')
-  if (board.cards.some((existing) => existing.id === card.id)) {
-    throw new Error(`addCard: duplicate card id "${card.id}"`)
+export function addNode(board: Board, node: BoardNode): Board {
+  if (!node.id) throw new Error('addNode: node id must be non-empty')
+  if (board.nodes.some((existing) => existing.id === node.id)) {
+    throw new Error(`addNode: duplicate node id "${node.id}"`)
   }
-  return { ...board, cards: [...board.cards, card] }
+  return { ...board, nodes: [...board.nodes, node] }
 }
 
-export function updateCard(board: Board, id: CardId, patch: CardPatch): Board {
+export function updateNode(board: Board, id: NodeId, patch: NodePatch): Board {
   if ('id' in patch || 'type' in patch) {
-    throw new Error('updateCard: patch must not include "id" or "type"')
+    throw new Error('updateNode: patch must not include "id" or "type"')
   }
-  const index = board.cards.findIndex((card) => card.id === id)
-  if (index === -1) throw new Error(`updateCard: card "${id}" not found`)
+  const index = board.nodes.findIndex((node) => node.id === id)
+  if (index === -1) throw new Error(`updateNode: node "${id}" not found`)
 
-  const current = board.cards[index]
-  const next = { ...current, ...patch } as BoardCard
+  const current = board.nodes[index]
+  const next = { ...current, ...patch } as BoardNode
   if (shallowEqual(current, next)) return board
 
-  const cards = board.cards.slice()
-  cards[index] = next
-  return { ...board, cards }
+  const nodes = board.nodes.slice()
+  nodes[index] = next
+  return { ...board, nodes }
 }
 
 /**
- * Swaps one card for another that keeps its id — the "same card, different
- * identity" operation, used when a text card is converted into a note card.
+ * Swaps one node for another that keeps its id — the "same node, different
+ * identity" operation, used when a text node is converted into a file node.
  *
- * `updateCard` cannot express it (`id` and `type` are immutable there) and
- * remove-then-add cannot either: `removeCard` cascades edge removal, so a
- * card that was wired to three others would come back an island. Position
- * and edges are untouched here by construction — only the card object at
+ * `updateNode` cannot express it (`id` and `type` are immutable there) and
+ * remove-then-add cannot either: `removeNode` cascades edge removal, so a
+ * node that was wired to three others would come back an island. Position
+ * and edges are untouched here by construction — only the node object at
  * that index changes.
  *
- * Deliberately general rather than a `convertCardToNote`: further
- * conversions will follow (a note demoted back to text, a card repointed at
- * another file), and one primitive per conversion would grow the operation
+ * Deliberately general rather than a `convertNodeToFile`: further
+ * conversions will follow (a file node demoted back to text, a node repointed
+ * at another file), and one primitive per conversion would grow the operation
  * set without adding meaning.
  */
-export function replaceCard(board: Board, id: CardId, next: BoardCard): Board {
+export function replaceNode(board: Board, id: NodeId, next: BoardNode): Board {
   if (next.id !== id) {
     throw new Error(
-      `replaceCard: replacement id "${next.id}" must equal "${id}"`,
+      `replaceNode: replacement id "${next.id}" must equal "${id}"`,
     )
   }
-  const index = board.cards.findIndex((card) => card.id === id)
-  if (index === -1) throw new Error(`replaceCard: card "${id}" not found`)
-  if (shallowEqual(board.cards[index], next)) return board
+  const index = board.nodes.findIndex((node) => node.id === id)
+  if (index === -1) throw new Error(`replaceNode: node "${id}" not found`)
+  if (shallowEqual(board.nodes[index], next)) return board
 
-  const cards = board.cards.slice()
-  cards[index] = next
-  return { ...board, cards }
+  const nodes = board.nodes.slice()
+  nodes[index] = next
+  return { ...board, nodes }
 }
 
-export function removeCard(board: Board, id: CardId): Board {
-  if (!board.cards.some((card) => card.id === id)) {
-    throw new Error(`removeCard: card "${id}" not found`)
+export function removeNode(board: Board, id: NodeId): Board {
+  if (!board.nodes.some((node) => node.id === id)) {
+    throw new Error(`removeNode: node "${id}" not found`)
   }
-  const cards = board.cards.filter((card) => card.id !== id)
+  const nodes = board.nodes.filter((node) => node.id !== id)
   const hasIncidentEdges = board.edges.some(
-    (edge) => edge.from === id || edge.to === id,
+    (edge) => edge.fromNode === id || edge.toNode === id,
   )
   const edges = hasIncidentEdges
-    ? board.edges.filter((edge) => edge.from !== id && edge.to !== id)
+    ? board.edges.filter((edge) => edge.fromNode !== id && edge.toNode !== id)
     : board.edges
-  return { ...board, cards, edges }
+  return { ...board, nodes, edges }
 }
 
-/** Batch-moves the given cards by (dx, dy); no-op input returns the same board. */
-export function moveCard(
+/** Batch-moves the given nodes by (dx, dy); no-op input returns the same board. */
+export function moveNodes(
   board: Board,
-  ids: readonly CardId[],
+  ids: readonly NodeId[],
   dx: number,
   dy: number,
 ): Board {
   if (ids.length === 0 || (dx === 0 && dy === 0)) return board
   const idSet = new Set(ids)
   for (const id of idSet) {
-    if (!board.cards.some((card) => card.id === id)) {
-      throw new Error(`moveCard: card "${id}" not found`)
+    if (!board.nodes.some((node) => node.id === id)) {
+      throw new Error(`moveNodes: node "${id}" not found`)
     }
   }
-  const cards = board.cards.map((card) =>
-    idSet.has(card.id) ? { ...card, x: card.x + dx, y: card.y + dy } : card,
+  const nodes = board.nodes.map((node) =>
+    idSet.has(node.id) ? { ...node, x: node.x + dx, y: node.y + dy } : node,
   )
-  return { ...board, cards }
+  return { ...board, nodes }
 }
 
 export function addEdge(board: Board, edge: Edge): Board {
@@ -135,20 +137,20 @@ export function addEdge(board: Board, edge: Edge): Board {
   if (board.edges.some((existing) => existing.id === edge.id)) {
     throw new Error(`addEdge: duplicate edge id "${edge.id}"`)
   }
-  if (!board.cards.some((card) => card.id === edge.from)) {
-    throw new Error(`addEdge: "from" card "${edge.from}" not found`)
+  if (!board.nodes.some((node) => node.id === edge.fromNode)) {
+    throw new Error(`addEdge: "fromNode" "${edge.fromNode}" not found`)
   }
-  if (!board.cards.some((card) => card.id === edge.to)) {
-    throw new Error(`addEdge: "to" card "${edge.to}" not found`)
+  if (!board.nodes.some((node) => node.id === edge.toNode)) {
+    throw new Error(`addEdge: "toNode" "${edge.toNode}" not found`)
   }
   return { ...board, edges: [...board.edges, edge] }
 }
 
 /**
  * Repoints one end of an edge — what dragging an existing connection's
- * endpoint onto another card means. Only the endpoints are patchable: an
- * edge's arrow and label are content, and belong to the editing surfaces
- * that own them rather than to the gesture that re-wires it.
+ * endpoint onto another node means. Only the endpoints are patchable: an
+ * edge's arrowheads, colour and label are content, and belong to the editing
+ * surfaces that own them rather than to the gesture that re-wires it.
  */
 export function updateEdge(board: Board, id: EdgeId, patch: EdgePatch): Board {
   const index = board.edges.findIndex((edge) => edge.id === id)
@@ -156,9 +158,9 @@ export function updateEdge(board: Board, id: EdgeId, patch: EdgePatch): Board {
 
   const current = board.edges[index]
   const next: Edge = { ...current, ...patch }
-  for (const endpoint of [next.from, next.to]) {
-    if (!board.cards.some((card) => card.id === endpoint)) {
-      throw new Error(`updateEdge: card "${endpoint}" not found`)
+  for (const endpoint of [next.fromNode, next.toNode]) {
+    if (!board.nodes.some((node) => node.id === endpoint)) {
+      throw new Error(`updateEdge: node "${endpoint}" not found`)
     }
   }
   if (shallowEqual(current, next)) return board

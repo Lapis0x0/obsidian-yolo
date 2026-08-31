@@ -13,6 +13,10 @@
 // because it uses JSX.
 
 import { createWhiteboard } from './host/createWhiteboard'
+import {
+  importAllCanvasFiles,
+  importCanvasFileAndOpen,
+} from './host/importCanvasFile'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import { createWhiteboardLocalizedText } from './i18n'
 import { WhiteboardCanvas } from './ui/canvas'
@@ -58,6 +62,25 @@ yolo.registerModule({
       icon: 'layout-grid',
       appliesTo: 'folder',
       onSelect: (entry) => createWhiteboard(host, entry.path),
+    })
+
+    // `.canvas` import (p3-canvas-parity D4): one-way, never registers a view
+    // for `.canvas` and never writes one. Two entries because they answer two
+    // different questions — "bring this canvas across" (right-click one) and
+    // "bring my canvases across" (the migration a command can express, since
+    // a command has no file to act on).
+    host.workspace.registerFileMenuAction({
+      id: 'whiteboard-import-canvas',
+      title: createWhiteboardLocalizedText('menu.importCanvas'),
+      icon: 'layout-grid',
+      appliesTo: 'file',
+      extensions: ['canvas'],
+      onSelect: (entry) => importCanvasFileAndOpen(host, entry.path),
+    })
+    host.workspace.registerCommand({
+      id: 'import-all-canvas',
+      name: createWhiteboardLocalizedText('command.importAllCanvas'),
+      callback: () => importAllCanvasFiles(host),
     })
   },
 })
