@@ -166,7 +166,9 @@ import {
 import {
   SelectionToolbar,
   type ToolbarColorControl,
+  type ToolbarIconName,
   type ToolbarItem,
+  type ToolbarMenuControl,
   type ToolbarModel,
   applyColorToElement,
 } from './selectionToolbar'
@@ -182,8 +184,11 @@ const ARROW_MENU_KEYS: Readonly<Record<ArrowDirection, string>> = {
 }
 
 /** i18n key and icon per alignment (domain/arrange.ts's `AlignEdge`). */
+/** Label and icon per arrange command, shared by the toolbar's popover and the
+ * context menu — `ToolbarIconName` is a lucide name, which is also what a host
+ * menu item's `icon` takes, so neither can drift from the other. */
 const ALIGN_MENU: Readonly<
-  Record<AlignEdge, Readonly<{ key: string; icon: string }>>
+  Record<AlignEdge, Readonly<{ key: string; icon: ToolbarIconName }>>
 > = {
   left: { key: 'menu.alignLeft', icon: 'align-start-vertical' },
   center: { key: 'menu.alignCenter', icon: 'align-center-vertical' },
@@ -194,7 +199,7 @@ const ALIGN_MENU: Readonly<
 }
 
 const DISTRIBUTE_MENU: Readonly<
-  Record<DistributeAxis, Readonly<{ key: string; icon: string }>>
+  Record<DistributeAxis, Readonly<{ key: string; icon: ToolbarIconName }>>
 > = {
   horizontal: {
     key: 'menu.distributeHorizontal',
@@ -1184,7 +1189,7 @@ export class WhiteboardCanvas {
     // the whole selection; on one that is not, it takes over the selection
     // first, so what the menu will do is what the user can see is selected.
     if (!this.selectedIds.has(nodeId)) this.setSelection([nodeId])
-    this.host.ui.showMenu(e, this.selectionMenuItems('context'))
+    this.host.ui.showMenu(e, this.selectionMenuItems())
   }
 
   /**
@@ -1245,34 +1250,25 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * What can be done to the current node selection — one list, shown both by a
-   * right-click on a selected card and by the floating toolbar's "more"
-   * button, so the two can never drift apart.
+   * Everything that can be done to the current node selection — the
+   * right-click menu's contract, and the only place some of it lives:
+   * converting a card to a note is too rare to spend a button on.
    *
-   * Obsidian Canvas splits these across its selection context menu (delete,
-   * create group) and its floating menu's align submenu; with no submenus in
-   * the Host API's menu model, they become one list with separators, which is
-   * the same grouping Canvas gets from its `setSection` calls.
-   */
-  /**
-   * The selection's commands.
+   * The floating toolbar builds its own row from the same commands rather than
+   * showing a slice of this list. That is deliberate: a menu is what a
+   * right-click produces, and Obsidian renders it with the platform's own menu
+   * where the user asked for that; a button on a canvas should not open one.
    *
-   * `'context'` is the full set, the right-click menu's contract: everything
-   * that can be done to what is selected. `'toolbar'` is what is left for the
-   * floating toolbar's "more" button — the commands it does not already carry
-   * as a button of its own, minus the ones that belong to the right-click menu
-   * alone. Deleting leads the toolbar row, and converting a card to a note is
-   * rare enough that surfacing it twice only makes the toolbar longer.
+   * Obsidian Canvas groups these with `setSection`; with no sections in the
+   * Host API's menu model, separators do the same job.
    */
-  private selectionMenuItems(
-    scope: 'context' | 'toolbar',
-  ): YoloModuleHostMenuItemV1[] {
+  private selectionMenuItems(): YoloModuleHostMenuItemV1[] {
     const ids = Array.from(this.selectedIds)
     if (ids.length === 0) return []
     const single = ids.length === 1 ? this.nodesById.get(ids[0]) : null
     const items: YoloModuleHostMenuItemV1[] = []
 
-    if (scope === 'context' && this.canEdit && single?.type === 'text') {
+    if (this.canEdit && single?.type === 'text') {
       items.push({
         title: this.t('menu.convertToNote'),
         icon: 'file-plus',
@@ -1313,17 +1309,14 @@ export class WhiteboardCanvas {
 
     items.push({ kind: 'separator' })
     // Framing works on any selection and needs no write access, so it is not
-    // the group's own command it used to be. The toolbar carries it as a
-    // button, hence context only.
-    if (scope === 'context') {
-      items.push({
-        title: this.t('menu.zoomToSelection'),
-        icon: 'scan-search',
-        onSelect: () => {
-          this.zoomToSelection()
-        },
-      })
-    }
+    // the group's own command it used to be.
+    items.push({
+      title: this.t('menu.zoomToSelection'),
+      icon: 'scan-search',
+      onSelect: () => {
+        this.zoomToSelection()
+      },
+    })
     if (single?.type === 'group' && this.canEdit) {
       items.push({
         title: this.t('menu.renameGroup'),
@@ -1332,7 +1325,7 @@ export class WhiteboardCanvas {
       })
     }
 
-    if (scope === 'context' && this.canEdit) {
+    if (this.canEdit) {
       items.push({ kind: 'separator' })
       items.push({
         title: this.t('menu.deleteCard'),
@@ -2920,10 +2913,12 @@ export class WhiteboardCanvas {
     const single = nodes.length === 1 ? nodes[0] : null
     const ids = nodes.map((node) => node.id)
 
+    // The row is Obsidian Canvas's, in its order: delete, colour, focus,
+    // group, align — then the one button that is ours, editing what is
+    // selected. Nothing is behind an overflow button, because everything a
+    // selection can do either fits on the row or belongs to the right-click
+    // menu; see `selectionMenuItems`.
     const items: ToolbarItem[] = []
-    // Delete leads the row, the way it does in Obsidian Canvas: it is the one
-    // command every selection can take, and it was the reason to open "more"
-    // in the first place.
     if (this.canEdit) {
       items.push({
         label: this.t('menu.deleteCard'),
@@ -2946,6 +2941,15 @@ export class WhiteboardCanvas {
         this.zoomToSelection()
       },
     })
+    if (this.canEdit && nodes.length > 1) {
+      items.push({
+        label: this.t('menu.createGroup'),
+        icon: 'group',
+        onSelect: () => this.createGroupFromSelection(),
+      })
+    }
+    const arrange = this.arrangeControl()
+    if (arrange) items.push(arrange)
     // Editing is the one action a degraded card cannot take (D8: its content
     // is not built at this zoom), so the button goes away rather than being
     // offered and declining. A locked board offers it for nothing either.
@@ -2961,20 +2965,48 @@ export class WhiteboardCanvas {
         onSelect: () => this.editCard(single.id),
       })
     }
-    // "More" exists only when it has something left to hold — a single card
-    // whose whole command set is already on the row does not get an empty
-    // menu. The menu itself is still built when it opens, not now, so it
-    // cannot go stale between selecting and clicking.
-    if (this.selectionMenuItems('toolbar').length > 0) {
+    // A group has no content to edit, so the pencil in its place renames it —
+    // the same command its label's double-click carries, which is otherwise
+    // the only way to find it.
+    if (single?.type === 'group' && this.canEdit) {
       items.push({
-        label: this.t('toolbar.more'),
-        icon: 'ellipsis',
-        onSelect: (event) =>
-          this.host.ui.showMenu(event, this.selectionMenuItems('toolbar')),
+        label: this.t('menu.renameGroup'),
+        icon: 'pencil',
+        onSelect: () => this.openGroupLabelEditor(single.id),
       })
     }
 
     return { items }
+  }
+
+  /**
+   * The align/distribute button, or null when the selection has too little to
+   * arrange. Aligning needs two things to agree on a line; distributing needs
+   * three, so there is a gap to divide (domain/arrange.ts) — the second row
+   * appears with the third card.
+   */
+  private arrangeControl(): ToolbarMenuControl | null {
+    const targets = this.arrangeTargets().length
+    if (!this.canEdit || targets < 2) return null
+    return {
+      kind: 'menu',
+      label: this.t('toolbar.arrange'),
+      icon: 'align-start-vertical',
+      groups: [
+        ALIGN_EDGES.map((edge) => ({
+          label: this.t(ALIGN_MENU[edge].key),
+          icon: ALIGN_MENU[edge].icon,
+          onSelect: () => this.alignSelection(edge),
+        })),
+        targets > 2
+          ? DISTRIBUTE_AXES.map((axis) => ({
+              label: this.t(DISTRIBUTE_MENU[axis].key),
+              icon: DISTRIBUTE_MENU[axis].icon,
+              onSelect: () => this.distributeSelection(axis),
+            }))
+          : [],
+      ],
+    }
   }
 
   private buildEdgeToolbarModel(): ToolbarModel | null {

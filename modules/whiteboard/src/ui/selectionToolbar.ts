@@ -4,11 +4,15 @@
 // Modelled on Obsidian Canvas's `.canvas-menu`, measured in a running
 // Obsidian: a row of `clickable-icon` buttons in a screen-space container that
 // is re-positioned as the camera moves, centred on the selection's bounding
-// box and sitting just above it. The button set is ours — Canvas's own row
-// carries actions (create group, align) that belong to a later wave — but the
-// shape, the placement law and the colour picker's anatomy (six preset dots, a
-// "no colour" dot, and a custom swatch that is an `<input type="color">` at
-// zero opacity) are Canvas's.
+// box and sitting just above it. The button set is Canvas's too — delete,
+// colour, focus, group, align — as are the placement law and the colour
+// picker's anatomy (six preset dots, a "no colour" dot, and a custom swatch
+// that is an `<input type="color">` at zero opacity).
+//
+// What this toolbar does not have is an overflow button. Every command the
+// selection can take is a button, and the two that open something open a
+// popover of this module's own making rather than a host menu — see
+// `ToolbarMenuControl` for why that distinction is the point.
 //
 // This class is a renderer: it knows how to draw a toolbar and how to raise
 // the events its controls produce, and nothing about boards, selections or
@@ -32,7 +36,12 @@ const OVERLAY_CLASS = 'yolo-whiteboard-overlay'
 const TOOLBAR_CLASS = 'yolo-whiteboard-toolbar'
 const TOOLBAR_HIDDEN_CLASS = 'yolo-whiteboard-toolbar-hidden'
 const TOOLBAR_BUTTON_CLASS = 'yolo-whiteboard-toolbar-button'
-const POPOVER_CLASS = 'yolo-whiteboard-color-popover'
+/** The popover's chrome (position, panel, shadow); the class beside it says
+ * what is inside. */
+const POPOVER_CLASS = 'yolo-whiteboard-toolbar-popover'
+const COLOR_POPOVER_CLASS = 'yolo-whiteboard-color-popover'
+const MENU_POPOVER_CLASS = 'yolo-whiteboard-menu-popover'
+const MENU_ROW_CLASS = 'yolo-whiteboard-menu-popover-row'
 const SWATCH_CLASS = 'yolo-whiteboard-color-swatch'
 const SWATCH_DEFAULT_CLASS = 'yolo-whiteboard-color-swatch-default'
 const SWATCH_CUSTOM_CLASS = 'yolo-whiteboard-color-swatch-custom'
@@ -81,11 +90,19 @@ export function applyColorToElement(
 export type ToolbarIconName =
   | 'palette'
   | 'pencil'
-  | 'ellipsis'
   | 'arrow-right'
   | 'tag'
   | 'trash'
   | 'scan-search'
+  | 'group'
+  | 'align-start-vertical'
+  | 'align-center-vertical'
+  | 'align-end-vertical'
+  | 'align-start-horizontal'
+  | 'align-center-horizontal'
+  | 'align-end-horizontal'
+  | 'align-horizontal-distribute-center'
+  | 'align-vertical-distribute-center'
 
 export type ToolbarAction = Readonly<{
   kind?: 'action'
@@ -109,10 +126,41 @@ export type ToolbarColorControl = Readonly<{
   onPick: (color: string | undefined) => void
 }>
 
-/** One button in the row. The colour control is an item like any other so its
- * place in the row is the caller's decision, not this class's — the delete
- * button has to be able to sit before it. */
-export type ToolbarItem = ToolbarAction | ToolbarColorControl
+export type ToolbarMenuEntry = Readonly<{
+  label: string
+  icon: ToolbarIconName
+  onSelect: () => void
+}>
+
+/**
+ * A button whose commands are too many for the row but too alike to separate:
+ * it opens a popover of icon buttons, laid out one row per group.
+ *
+ * Deliberately not the host's `showMenu`. That is Obsidian's `Menu`, which on
+ * desktop is by default the *operating system's* menu — correct where a menu
+ * belongs to a right-click, and wrong hanging off a button inside a canvas,
+ * where it arrives as a piece of the OS pasted over the board. Obsidian Canvas
+ * draws the same line: its own align button forces `setUseNativeMenu(false)`
+ * and anchors the result to the button, while its context menu stays native.
+ * A popover of icons goes further in the same direction — for alignment the
+ * icon *is* the label, so a column of text would say less in more space.
+ */
+export type ToolbarMenuControl = Readonly<{
+  kind: 'menu'
+  label: string
+  icon: ToolbarIconName
+  /** One row per group. Empty groups are dropped, so a caller can pass a
+   * group that its current selection does not qualify for. */
+  groups: readonly (readonly ToolbarMenuEntry[])[]
+}>
+
+/** One button in the row. The controls that open something are items like any
+ * other so their place in the row is the caller's decision, not this class's —
+ * the delete button has to be able to sit before them. */
+export type ToolbarItem =
+  | ToolbarAction
+  | ToolbarColorControl
+  | ToolbarMenuControl
 
 export type ToolbarModel = Readonly<{
   /** Drawn left to right. A control the selection cannot use — recolouring a
@@ -124,7 +172,9 @@ export type ToolbarModel = Readonly<{
  * Lucide icon geometry, the same drawings Obsidian's own `setIcon` produces
  * (lucide 0.447, the version this repository already vendors for the Learning
  * module's React UI). Inlined rather than imported: this module is imperative
- * DOM with no package dependencies, and six icons are not worth one.
+ * DOM with no package dependencies, and a handful of path strings is not worth
+ * one. The names are lucide's own, so a command can hand the same name to this
+ * table or to a host menu item and get the same drawing either way.
  */
 const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
   palette: [
@@ -144,10 +194,63 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
     },
     { kind: 'path', d: 'm15 5 4 4' },
   ],
-  ellipsis: [
-    { kind: 'dot', cx: 12, cy: 12, r: 1 },
-    { kind: 'dot', cx: 19, cy: 12, r: 1 },
-    { kind: 'dot', cx: 5, cy: 12, r: 1 },
+  group: [
+    { kind: 'path', d: 'M3 7V5c0-1.1.9-2 2-2h2' },
+    { kind: 'path', d: 'M17 3h2c1.1 0 2 .9 2 2v2' },
+    { kind: 'path', d: 'M21 17v2c0 1.1-.9 2-2 2h-2' },
+    { kind: 'path', d: 'M7 21H5c-1.1 0-2-.9-2-2v-2' },
+    { kind: 'rect', x: 7, y: 7, w: 7, h: 5, r: 1 },
+    { kind: 'rect', x: 10, y: 12, w: 7, h: 5, r: 1 },
+  ],
+  'align-start-vertical': [
+    { kind: 'rect', x: 6, y: 14, w: 9, h: 6, r: 2 },
+    { kind: 'rect', x: 6, y: 4, w: 16, h: 6, r: 2 },
+    { kind: 'path', d: 'M2 2v20' },
+  ],
+  'align-center-vertical': [
+    { kind: 'path', d: 'M12 2v20' },
+    { kind: 'path', d: 'M8 10H4a2 2 0 0 1-2-2V6c0-1.1.9-2 2-2h4' },
+    { kind: 'path', d: 'M16 10h4a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-4' },
+    { kind: 'path', d: 'M8 20H7a2 2 0 0 1-2-2v-2c0-1.1.9-2 2-2h1' },
+    { kind: 'path', d: 'M16 14h1a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-1' },
+  ],
+  'align-end-vertical': [
+    { kind: 'rect', x: 2, y: 4, w: 16, h: 6, r: 2 },
+    { kind: 'rect', x: 9, y: 14, w: 9, h: 6, r: 2 },
+    { kind: 'path', d: 'M22 22V2' },
+  ],
+  'align-start-horizontal': [
+    { kind: 'rect', x: 4, y: 6, w: 6, h: 16, r: 2 },
+    { kind: 'rect', x: 14, y: 6, w: 6, h: 9, r: 2 },
+    { kind: 'path', d: 'M22 2H2' },
+  ],
+  'align-center-horizontal': [
+    { kind: 'path', d: 'M2 12h20' },
+    { kind: 'path', d: 'M10 16v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-4' },
+    { kind: 'path', d: 'M10 8V4a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v4' },
+    { kind: 'path', d: 'M20 16v1a2 2 0 0 1-2 2h-2a2 2 0 0 1-2-2v-1' },
+    { kind: 'path', d: 'M14 8V7c0-1.1.9-2 2-2h2a2 2 0 0 1 2 2v1' },
+  ],
+  'align-end-horizontal': [
+    { kind: 'rect', x: 4, y: 2, w: 6, h: 16, r: 2 },
+    { kind: 'rect', x: 14, y: 9, w: 6, h: 9, r: 2 },
+    { kind: 'path', d: 'M22 22H2' },
+  ],
+  'align-horizontal-distribute-center': [
+    { kind: 'rect', x: 4, y: 5, w: 6, h: 14, r: 2 },
+    { kind: 'rect', x: 14, y: 7, w: 6, h: 10, r: 2 },
+    { kind: 'path', d: 'M17 22v-5' },
+    { kind: 'path', d: 'M17 7V2' },
+    { kind: 'path', d: 'M7 22v-3' },
+    { kind: 'path', d: 'M7 5V2' },
+  ],
+  'align-vertical-distribute-center': [
+    { kind: 'path', d: 'M22 17h-3' },
+    { kind: 'path', d: 'M22 7h-5' },
+    { kind: 'path', d: 'M5 17H2' },
+    { kind: 'path', d: 'M7 7H2' },
+    { kind: 'rect', x: 5, y: 14, w: 14, h: 6, r: 2 },
+    { kind: 'rect', x: 7, y: 4, w: 10, h: 6, r: 2 },
   ],
   'arrow-right': [
     { kind: 'path', d: 'M5 12h14' },
@@ -177,12 +280,20 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
   ],
 }
 
-/** `dot` is filled (the palette's paint blobs, the ellipsis); `ring` is
- * stroked like a path, which is what lucide's `<circle>` elements are. */
+/** `dot` is filled (the palette's paint blobs); `ring` and `rect` are stroked
+ * like a path, which is what lucide's `<circle>` and `<rect>` elements are. */
 type IconShape =
   | Readonly<{ kind: 'path'; d: string }>
   | Readonly<{ kind: 'dot'; cx: number; cy: number; r?: number }>
   | Readonly<{ kind: 'ring'; cx: number; cy: number; r: number }>
+  | Readonly<{
+      kind: 'rect'
+      x: number
+      y: number
+      w: number
+      h: number
+      r: number
+    }>
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
 
@@ -192,8 +303,11 @@ export class SelectionToolbar {
    * canvas gestures underneath; its children take pointer events back. */
   private readonly overlayEl: HTMLElement
   private readonly el: HTMLElement
-  private popoverEl: HTMLElement | null = null
-  private paletteButtonEl: HTMLElement | null = null
+  /** The one popover a toolbar may have open, with the button that owns it —
+   * both the colour picker and a menu button hang off this, so opening either
+   * closes the other without any of them knowing about the rest. */
+  private popover: Readonly<{ el: HTMLElement; button: HTMLElement }> | null =
+    null
   private model: ToolbarModel | null = null
   /** The colour item out of `model.items`, kept aside because the popover and
    * `setCurrentColor` reach for it on every interaction. */
@@ -224,29 +338,40 @@ export class SelectionToolbar {
     return this.overlayEl.contains(node)
   }
 
-  /** Rebuilds the toolbar's contents. `null` empties and hides it. Closes the
-   * colour popover: what the popover acts on is exactly what just changed. */
+  /** Rebuilds the toolbar's contents. `null` empties and hides it. Closes any
+   * popover: what it acts on is exactly what just changed. */
   setModel(model: ToolbarModel | null): void {
     this.closePopover()
     this.model = model
     this.el.replaceChildren()
-    this.paletteButtonEl = null
     this.color = null
     if (!model || model.items.length === 0) {
       this.el.classList.add(TOOLBAR_HIDDEN_CLASS)
       return
     }
     for (const item of model.items) {
-      if (item.kind !== 'color') {
-        this.appendButton(item)
-        continue
+      switch (item.kind) {
+        case 'color': {
+          this.color = item
+          const button = this.appendButton({
+            label: item.label,
+            icon: 'palette',
+            onSelect: () => this.togglePopover(button, COLOR_POPOVER_CLASS),
+          })
+          break
+        }
+        case 'menu': {
+          const button = this.appendButton({
+            label: item.label,
+            icon: item.icon,
+            onSelect: () =>
+              this.togglePopover(button, MENU_POPOVER_CLASS, item),
+          })
+          break
+        }
+        default:
+          this.appendButton(item)
       }
-      this.color = item
-      this.paletteButtonEl = this.appendButton({
-        label: item.label,
-        icon: 'palette',
-        onSelect: () => this.togglePopover(),
-      })
     }
     this.el.classList.remove(TOOLBAR_HIDDEN_CLASS)
   }
@@ -256,7 +381,7 @@ export class SelectionToolbar {
   setCurrentColor(color: string | undefined): void {
     if (!this.color) return
     this.color = { ...this.color, current: color }
-    if (this.popoverEl) this.markActiveSwatch()
+    if (this.popover) this.markActiveSwatch()
   }
 
   /** Measured only while shown — a hidden toolbar has no size, and the caller
@@ -280,13 +405,14 @@ export class SelectionToolbar {
   }
 
   closePopover(): void {
-    this.popoverEl?.remove()
-    this.popoverEl = null
-    this.paletteButtonEl?.classList.remove('is-active')
+    if (!this.popover) return
+    this.popover.el.remove()
+    this.popover.button.classList.remove('is-active')
+    this.popover = null
   }
 
   get popoverOpen(): boolean {
-    return this.popoverEl !== null
+    return this.popover !== null
   }
 
   destroy(): void {
@@ -329,6 +455,16 @@ export class SelectionToolbar {
         svg.appendChild(path)
         continue
       }
+      if (shape.kind === 'rect') {
+        const rect = this.doc.createElementNS(SVG_NS, 'rect')
+        rect.setAttribute('x', String(shape.x))
+        rect.setAttribute('y', String(shape.y))
+        rect.setAttribute('width', String(shape.w))
+        rect.setAttribute('height', String(shape.h))
+        rect.setAttribute('rx', String(shape.r))
+        svg.appendChild(rect)
+        continue
+      }
       const circle = this.doc.createElementNS(SVG_NS, 'circle')
       circle.setAttribute('cx', String(shape.cx))
       circle.setAttribute('cy', String(shape.cy))
@@ -339,20 +475,34 @@ export class SelectionToolbar {
     return svg
   }
 
-  private togglePopover(): void {
-    if (this.popoverEl) {
-      this.closePopover()
-      return
-    }
-    this.openPopover()
+  /**
+   * Opens `button`'s popover, or closes whatever is open. One popover at a
+   * time is the whole rule: a second click on the same button closes it, and a
+   * click on a different one replaces it.
+   */
+  private togglePopover(
+    button: HTMLElement,
+    contentClass: string,
+    menu?: ToolbarMenuControl,
+  ): void {
+    const wasOpen = this.popover?.button === button
+    this.closePopover()
+    if (wasOpen) return
+
+    const popover = this.doc.createElement('div')
+    popover.className = `${POPOVER_CLASS} ${contentClass}`
+    if (menu) this.fillMenuPopover(popover, menu)
+    else if (!this.fillColorPopover(popover)) return
+
+    this.el.appendChild(popover)
+    this.popover = { el: popover, button }
+    button.classList.add('is-active')
+    if (!menu) this.markActiveSwatch()
   }
 
-  private openPopover(): void {
+  private fillColorPopover(popover: HTMLElement): boolean {
     const color = this.color
-    if (!color) return
-    const popover = this.doc.createElement('div')
-    popover.className = POPOVER_CLASS
-
+    if (!color) return false
     this.appendSwatch(popover, {
       label: color.defaultLabel,
       extraClass: SWATCH_DEFAULT_CLASS,
@@ -366,11 +516,35 @@ export class SelectionToolbar {
       })
     }
     this.appendCustomSwatch(popover, color)
+    return true
+  }
 
-    this.el.appendChild(popover)
-    this.popoverEl = popover
-    this.paletteButtonEl?.classList.add('is-active')
-    this.markActiveSwatch()
+  /** One row of icon buttons per non-empty group. Selecting closes the
+   * popover: every one of these commands rearranges what is selected, so
+   * leaving it open would leave it describing a board that has moved. */
+  private fillMenuPopover(
+    popover: HTMLElement,
+    menu: ToolbarMenuControl,
+  ): void {
+    for (const group of menu.groups) {
+      if (group.length === 0) continue
+      const row = this.doc.createElement('div')
+      row.className = MENU_ROW_CLASS
+      for (const entry of group) {
+        const button = this.doc.createElement('button')
+        button.className = `clickable-icon ${TOOLBAR_BUTTON_CLASS}`
+        button.type = 'button'
+        button.setAttribute('aria-label', entry.label)
+        button.appendChild(this.createIcon(entry.icon))
+        button.addEventListener('click', (event) => {
+          event.preventDefault()
+          this.closePopover()
+          entry.onSelect()
+        })
+        row.appendChild(button)
+      }
+      popover.appendChild(row)
+    }
   }
 
   private appendSwatch(
@@ -423,7 +597,7 @@ export class SelectionToolbar {
   }
 
   private markActiveSwatch(): void {
-    const popover = this.popoverEl
+    const popover = this.popover?.el
     const current = this.color?.current
     if (!popover) return
     const resolved = resolveColor(current)

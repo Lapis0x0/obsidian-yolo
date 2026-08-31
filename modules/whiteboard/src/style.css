@@ -940,22 +940,46 @@ button.yolo-whiteboard-toolbar-button.is-active {
   background-color: var(--background-modifier-hover);
 }
 
-/* --- colour popover -------------------------------------------------------
- * Six preset dots, a "no colour" dot, and a custom swatch — Obsidian Canvas's
- * `.canvas-color-picker`, down to the 24px circles and to the custom swatch
- * being a transparent <input type="color"> over a rainbow dot. */
+/* --- toolbar popovers -----------------------------------------------------
+ * The panel a toolbar button opens, hanging under the row: Obsidian Canvas's
+ * `.canvas-submenu`. One of these at a time, so it can sit at the toolbar's
+ * left edge rather than tracking whichever button opened it — the toolbar is
+ * only a few buttons wide, and a panel that never moves is easier to aim at
+ * than one that does. */
 
-.yolo-whiteboard-color-popover {
+.yolo-whiteboard-toolbar-popover {
   position: absolute;
   left: 0;
   top: calc(100% + 4px);
-  display: flex;
   width: fit-content;
   padding: 2px;
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s, 4px);
   box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
+}
+
+/* Align and distribute: one row of icon buttons per group, using the same
+ * button treatment as the toolbar itself so the popover reads as an extension
+ * of the row rather than as a different kind of surface. */
+.yolo-whiteboard-menu-popover {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.yolo-whiteboard-menu-popover-row {
+  display: flex;
+  gap: 1px;
+}
+
+/* --- colour popover -------------------------------------------------------
+ * Six preset dots, a "no colour" dot, and a custom swatch — Obsidian Canvas's
+ * `.canvas-color-picker`, down to the 24px circles and to the custom swatch
+ * being a transparent <input type="color"> over a rainbow dot. */
+
+.yolo-whiteboard-color-popover {
+  display: flex;
 }
 
 button.yolo-whiteboard-color-swatch,

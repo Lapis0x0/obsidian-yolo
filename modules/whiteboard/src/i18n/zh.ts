@@ -52,7 +52,7 @@ export const zh = {
   toolbar: {
     color: '设置颜色',
     edit: '编辑',
-    more: '更多操作',
+    arrange: '对齐与分布',
     arrows: '箭头',
     edgeLabel: '标签',
   },

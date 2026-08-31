@@ -56,7 +56,7 @@ export const en = {
   toolbar: {
     color: 'Set colour',
     edit: 'Edit',
-    more: 'More options',
+    arrange: 'Align and distribute',
     arrows: 'Arrows',
     edgeLabel: 'Label',
   },

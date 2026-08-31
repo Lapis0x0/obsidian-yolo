@@ -52,7 +52,7 @@ export const it = {
   toolbar: {
     color: 'Imposta colore',
     edit: 'Modifica',
-    more: 'Altre opzioni',
+    arrange: 'Allinea e distribuisci',
     arrows: 'Frecce',
     edgeLabel: 'Etichetta',
   },
