@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "yoloModule": {
-    "previewVersion": "0.1.0",
-    "previewTag": "module-whiteboard-v0.1.0"
+    "previewVersion": "0.1.1",
+    "previewTag": "module-whiteboard-v0.1.1"
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",

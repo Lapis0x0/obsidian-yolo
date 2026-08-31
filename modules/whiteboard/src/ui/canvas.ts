@@ -77,6 +77,7 @@ import {
   serializeBoard,
 } from '../domain/fileFormat'
 import {
+  GROUP_SELECTION_PADDING,
   groupRectForNodes,
   nodesInsideGroup,
   nodesToDragWith,
@@ -1202,6 +1203,11 @@ export class WhiteboardCanvas {
             title: this.t('cardMenu.newWebCard'),
             icon: 'external-link',
             onSelect: () => this.promptForWebCard(),
+          },
+          {
+            title: this.t('menu.newGroupHere'),
+            icon: 'group',
+            onSelect: () => this.createEmptyGroupAt(point),
           },
           { kind: 'separator' },
         ]
@@ -3430,6 +3436,31 @@ export class WhiteboardCanvas {
       y: Math.round(rect.y),
       w: Math.max(MIN_GROUP_SIZE.w, Math.round(rect.w)),
       h: Math.max(MIN_GROUP_SIZE.h, Math.round(rect.h)),
+      extra: {},
+    }
+    this.applyBoardChange({
+      ...this.board,
+      nodes: [group, ...this.board.nodes],
+    })
+    this.recomputeVisibility()
+    this.drainQueues()
+    this.setSelection([group.id])
+  }
+
+  /** An empty group centered on the clicked point, sized to hold one default
+   * card with the same breathing room a selection-made group gets. Selected on
+   * creation so the double-click-to-name affordance is one gesture away. */
+  private createEmptyGroupAt(world: ScreenPoint): void {
+    if (!this.canCreate) return
+    const w = NEW_CARD_SIZE.w + GROUP_SELECTION_PADDING * 2
+    const h = NEW_CARD_SIZE.h + GROUP_SELECTION_PADDING * 2
+    const group: GroupNode = {
+      id: this.nextNodeId(),
+      type: 'group',
+      x: Math.round(world.x - w / 2),
+      y: Math.round(world.y - h / 2),
+      w,
+      h,
       extra: {},
     }
     this.applyBoardChange({

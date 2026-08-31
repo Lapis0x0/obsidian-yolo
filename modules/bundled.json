@@ -39,7 +39,7 @@
     },
     {
       "id": "whiteboard",
-      "version": "0.1.0",
+      "version": "0.1.1",
       "icon": "layout-grid",
       "localizations": {
         "en": {
@@ -61,10 +61,10 @@
         "desktop",
         "mobile"
       ],
-      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.0/module.json",
+      "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/module.json",
       "manifest": {
         "byteSize": 1802,
-        "sha256": "8173a12a33e8b0248202e04abeae8b652d1dda547da66a35b1da7c79a3f40075"
+        "sha256": "451708be916b66ad9effcbfc8810e3c42f08ece027acc5f834cf438c282112a9"
       }
     }
   ]

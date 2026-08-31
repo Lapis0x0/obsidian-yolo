@@ -19,6 +19,7 @@ export const zh = {
     arrowBackward: '起点箭头',
     arrowBoth: '双向箭头',
     createGroup: '将选中项建组',
+    newGroupHere: '新建分组',
     renameGroup: '重命名分组',
     zoomToSelection: '缩放到选中',
     resetCamera: '回到原点',

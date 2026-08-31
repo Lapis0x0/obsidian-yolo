@@ -21,6 +21,7 @@ export const en = {
     arrowBackward: 'Arrow at the start',
     arrowBoth: 'Arrows at both ends',
     createGroup: 'Group selection',
+    newGroupHere: 'New group',
     renameGroup: 'Rename group',
     zoomToSelection: 'Zoom to selection',
     resetCamera: 'Back to origin',

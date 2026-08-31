@@ -19,6 +19,7 @@ export const it = {
     arrowBackward: "Freccia all'inizio",
     arrowBoth: 'Frecce a entrambe le estremità',
     createGroup: 'Raggruppa la selezione',
+    newGroupHere: 'Nuovo gruppo',
     renameGroup: 'Rinomina gruppo',
     zoomToSelection: 'Zoom sulla selezione',
     resetCamera: "Torna all'origine",
