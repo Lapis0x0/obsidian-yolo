@@ -28,7 +28,8 @@ export const en = {
   },
   notice: {
     convertedToNote: 'Card saved as {path}',
-    dropUnsupported: 'Only markdown notes can be dropped onto a whiteboard.',
+    dropUnsupported:
+      'Only notes, images, audio and video can be dropped onto a whiteboard.',
     imported: 'Imported as {path}',
     importedAll:
       'Imported {imported} Canvas file(s); {failed} could not be read.',
@@ -39,6 +40,9 @@ export const en = {
     missingFileHint: 'This card refers to "{path}", which no longer exists.',
     unsupportedFile: 'Not shown yet',
     unsupportedFileHint: '"{path}" has no card of its own yet.',
+    linkNotWeb: 'Not a web address',
+    linkNotWebHint:
+      'Only http and https pages can be shown. This card points at "{url}".',
   },
   error: {
     title: 'Could not read this whiteboard',

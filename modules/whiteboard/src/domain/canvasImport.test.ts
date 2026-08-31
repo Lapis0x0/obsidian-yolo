@@ -100,12 +100,12 @@ describe('importCanvas', () => {
     })
   })
 
-  it('degrades a link node to a text node holding the URL as an autolink', () => {
+  it('maps a link node identically', () => {
     const board = requireOk(importCanvas(SAMPLE_CANVAS))
     expect(board.nodes[2]).toMatchObject({
       id: 'n-link',
-      type: 'text',
-      text: '<https://example.com/a>',
+      type: 'link',
+      url: 'https://example.com/a',
     })
   })
 

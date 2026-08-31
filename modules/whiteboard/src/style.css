@@ -443,6 +443,78 @@
   pointer-events: none;
 }
 
+/* The one exemption, and the reason it is narrow.
+ *
+ * Obsidian Canvas's blocker is lifted for the node that is the *single*
+ * selection — measured: its frame loop calls `node.focus()` only when the new
+ * selection has size 1, and `.canvas-node.is-focused:not(.is-dragging)
+ * .canvas-node-content-blocker { display: none }`. So in Canvas one click
+ * selects and everything inside that node is then live, markdown links
+ * included.
+ *
+ * We take that rule only for the bodies that have no other way in: media
+ * transport controls and an embedded web page. A markdown card has an edit
+ * mode — clicking into it is what "I mean the content, not the card" already
+ * means there — so D7's mask stays absolute for it, and the misfire surface
+ * the mask exists for (a link, a checkbox, a callout fold) stays covered. A
+ * video that can never be played is not a card, it is a screenshot; that is
+ * what earns the exemption here and nothing else does.
+ *
+ * `:not(.yolo-whiteboard-card-dragging)` is Canvas's clause too: while the
+ * card is being moved the pointer belongs to the drag.
+ *
+ * An image body is deliberately *not* live — there is nothing in an image to
+ * press, and leaving it masked keeps the whole card draggable. */
+.yolo-whiteboard-card-focused:not(.yolo-whiteboard-card-dragging)
+  .yolo-whiteboard-card-body-live {
+  pointer-events: auto;
+}
+
+/* --- media cards (P3 batch 2) ---------------------------------------------
+ * The element is pointed at the same app:// resource URL Obsidian's own
+ * embeds use (Host API `vault.getResourceUrl`), so what plays here is what
+ * plays in a note (p3-canvas-parity D1).
+ *
+ * `object-fit: contain` over a filled box is the whole sizing rule: the media
+ * scales up or down to the card and keeps its aspect ratio, with no crop and
+ * no distortion, whatever shape the card is dragged into. Obsidian Canvas
+ * reaches the same look from the other end — it reshapes the *node* to the
+ * media's aspect ratio when the content loads — which is a geometry decision,
+ * not a rendering one, and one we cannot copy: our cards mount and unmount
+ * with the viewport, so it would rewrite the board on every pan. */
+
+.yolo-whiteboard-card-media {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+.yolo-whiteboard-card-media img,
+.yolo-whiteboard-card-media video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+/* An audio player is a control bar, not a picture: it takes the card's width
+ * at its own natural height rather than being stretched to the card. */
+.yolo-whiteboard-card-media audio {
+  width: 100%;
+  max-height: 100%;
+}
+
+/* A web card's frame. Sandbox flags and the http(s)-only rule live in
+ * ui/canvas.ts (WEB_FRAME_SANDBOX) — this is only its geometry. */
+.yolo-whiteboard-card-web-frame {
+  width: 100%;
+  height: 100%;
+  border: none;
+  background: var(--background-primary);
+}
+
 /* Obsidian's windowed preview, mounted by the Host API's markdown content
  * view (ui.createMarkdownContentView) — the single content path both note and
  * text cards take. It arrives sized to fill and scrolling on its own; what is

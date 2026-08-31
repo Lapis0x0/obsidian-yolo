@@ -31,6 +31,15 @@ const SAMPLE_RAW = JSON.stringify({
       color: '4',
     },
     { id: 'g1', type: 'group', x: -40, y: -40, w: 800, h: 800, label: '一组' },
+    {
+      id: 'l1',
+      type: 'link',
+      x: 800,
+      y: 0,
+      w: 400,
+      h: 300,
+      url: 'https://example.com/a',
+    },
   ],
   edges: [
     {
@@ -72,7 +81,7 @@ describe('parseBoard / serializeBoard', () => {
     expect(result.ok && result.issues).toEqual([])
     expect(board.version).toBe(YOLOBOARD_SCHEMA_VERSION)
     expect(board.camera).toEqual({ x: 10, y: -5, scale: 1.5 })
-    expect(board.nodes).toHaveLength(4)
+    expect(board.nodes).toHaveLength(5)
     expect(board.edges).toHaveLength(1)
 
     expect(board.nodes.find((n) => n.id === 'c1')).toMatchObject({
@@ -91,6 +100,10 @@ describe('parseBoard / serializeBoard', () => {
     expect(board.nodes.find((n) => n.id === 'g1')).toMatchObject({
       type: 'group',
       label: '一组',
+    })
+    expect(board.nodes.find((n) => n.id === 'l1')).toMatchObject({
+      type: 'link',
+      url: 'https://example.com/a',
     })
 
     expect(board.edges[0]).toMatchObject({
@@ -278,6 +291,23 @@ describe('parseBoard / serializeBoard', () => {
         version: 1,
         nodes: [
           { id: 'c1', type: 'file', x: 0, y: 0, w: 100, h: 100 },
+          { id: 'c2', type: 'text', x: 0, y: 0, w: 100, h: 100, text: 'kept' },
+        ],
+      })
+      const result = parseBoard(raw)
+      const board = requireOk(result)
+      expect(board.nodes).toHaveLength(1)
+      expect(board.nodes[0].id).toBe('c2')
+      expect(
+        result.ok && result.issues.some((i) => i.type === 'invalid-node'),
+      ).toBe(true)
+    })
+
+    it('drops a link node missing "url" and reports it', () => {
+      const raw = JSON.stringify({
+        version: 1,
+        nodes: [
+          { id: 'l1', type: 'link', x: 0, y: 0, w: 100, h: 100 },
           { id: 'c2', type: 'text', x: 0, y: 0, w: 100, h: 100, text: 'kept' },
         ],
       })

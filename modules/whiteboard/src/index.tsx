@@ -2,9 +2,9 @@
 //
 // M1 canvas milestone (docs/plans/08-25-yolo-whiteboard/p1-design.md):
 // registers the `.yoloboard` file view via the Host API's
-// `registerFileView` (host-sdk.d.ts's `YoloModuleHostApiVersion` is
-// '1.8.0', where that surface first exists — see module.config.json's
-// `hostApi` bump). All the actual camera/virtualization/card-lifecycle
+// `registerFileView` (added in host API 1.8.0; the declared floor is 1.9.0,
+// where `vault.getResourceUrl` — what a media card points an <img>/<audio>/
+// <video> at — first exists). All the actual camera/virtualization/card-lifecycle
 // behavior lives in `./ui/canvas.ts`; this file only wires the thin
 // `YoloModuleFileViewInstanceV1` adapter around it.
 //

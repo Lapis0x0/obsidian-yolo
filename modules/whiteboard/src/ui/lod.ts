@@ -38,8 +38,8 @@ function truncate(text: string, maxLength: number): string {
 }
 
 /**
- * The label a degraded card shows in place of its rendered markdown: a file
- * node shows its backing file's basename, a text node shows its first line
+ * The label a degraded card shows in place of its content: a file node shows
+ * its backing file's basename, a link node its URL, a text node its first line
  * (trimmed and truncated) — p1-design §3's "note 卡显示文件名、text 卡显示
  * 首行截断". A group node has no degraded form: its label is chrome, drawn at
  * every zoom, so this returns it unchanged for the callers that ask.
@@ -54,6 +54,8 @@ export function degradedNodeTitle(node: BoardNode): string {
   switch (node.type) {
     case 'file':
       return basenameWithoutExtension(node.file)
+    case 'link':
+      return truncate(node.url, MAX_DEGRADED_TITLE_LENGTH)
     case 'group':
       return truncate(node.label ?? '', MAX_DEGRADED_TITLE_LENGTH)
     case 'text': {

@@ -1,4 +1,9 @@
-import type { FileNode, GroupNode, TextNode } from '../domain/fileFormat'
+import type {
+  FileNode,
+  GroupNode,
+  LinkNode,
+  TextNode,
+} from '../domain/fileFormat'
 
 import { DEGRADE_RESTORE_SCALE, DEGRADE_SCALE_THRESHOLD } from './constants'
 import { degradedNodeTitle, nextDegradedState } from './lod'
@@ -51,7 +56,19 @@ function groupNode(label?: string): GroupNode {
   }
 }
 
+function linkNode(url: string): LinkNode {
+  return { id: 'l1', type: 'link', x: 0, y: 0, w: 400, h: 300, url, extra: {} }
+}
+
 describe('degradedNodeTitle', () => {
+  it('shows a link node URL, truncated like any other title', () => {
+    expect(degradedNodeTitle(linkNode('https://example.com'))).toBe(
+      'https://example.com',
+    )
+    const long = `https://example.com/${'x'.repeat(100)}`
+    expect(degradedNodeTitle(linkNode(long))).toHaveLength(60)
+  })
+
   it('shows a markdown file node basename', () => {
     expect(degradedNodeTitle(fileNode('Cards/概念A.md'))).toBe('概念A')
   })

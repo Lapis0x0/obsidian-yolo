@@ -26,7 +26,8 @@ export const it = {
   },
   notice: {
     convertedToNote: 'Scheda salvata come {path}',
-    dropUnsupported: 'Su una lavagna si possono trascinare solo note Markdown.',
+    dropUnsupported:
+      'Su una lavagna si possono trascinare solo note, immagini, audio e video.',
     imported: 'Importato come {path}',
     importedAll:
       'Importati {imported} file Canvas; {failed} non sono stati letti.',
@@ -38,6 +39,9 @@ export const it = {
       'Questa scheda fa riferimento a "{path}", che non esiste più.',
     unsupportedFile: 'Non ancora visualizzabile',
     unsupportedFileHint: '"{path}" non ha ancora una scheda dedicata.',
+    linkNotWeb: 'Non è un indirizzo web',
+    linkNotWebHint:
+      'Si possono mostrare solo pagine http e https. Questa scheda punta a "{url}".',
   },
   error: {
     title: 'Impossibile leggere questa lavagna',

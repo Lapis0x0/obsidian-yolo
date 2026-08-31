@@ -61,8 +61,10 @@ import {
 } from '../domain/fileFormat'
 import { BoardHistory } from '../domain/history'
 import {
+  type FileNodeKind,
   basenameWithoutExtension,
   cardNoteContent,
+  fileNodeKind,
   generateCardNoteFileName,
   isMarkdownPath,
 } from '../domain/naming'
@@ -141,8 +143,16 @@ const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
+/** The single-selected card, mirroring Obsidian Canvas's `is-focused`. */
+const CARD_FOCUSED_CLASS = 'yolo-whiteboard-card-focused'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
 const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
+/** Marks a body whose content is its own interaction surface — media
+ * transport controls, an embedded web page — and so is exempt from the
+ * content mask once its card is the single selection. See style.css. */
+const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
+const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
+const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
 const CARD_DEGRADED_TITLE_CLASS = 'yolo-whiteboard-card-degraded-title'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
@@ -168,6 +178,29 @@ const ERROR_TITLE_CLASS = 'yolo-whiteboard-error-title'
 const ERROR_HINT_CLASS = 'yolo-whiteboard-error-hint'
 const PREHEAT_CLASS = 'yolo-whiteboard-preheat'
 
+/**
+ * What a web card's frame is allowed to do.
+ *
+ * Copied verbatim from Obsidian's own non-desktop link node (`app.js`'s
+ * `recreateFrame`), which is a sandboxed `<iframe>`. Its desktop branch uses
+ * an Electron `<webview>` instead, and we deliberately do not: the parts that
+ * make that webview safe — `app.getWebviewPartition()` plus the
+ * `create-browser-session` IPC that installs the session's permission
+ * allowlist (clipboard only), user-agent scrubbing and ad blocking — are host
+ * internals a module cannot reach, and Electron grants every permission a page
+ * asks for when no such handler is installed. `webviewTag` *is* enabled in
+ * both the main window and popouts (verified against `main.js`), so this is a
+ * deliberate trade, not a missing capability: an iframe grants no permissions
+ * by default and behaves identically on mobile, at the cost of the sites that
+ * refuse to be framed.
+ */
+const WEB_FRAME_SANDBOX =
+  'allow-forms allow-presentation allow-same-origin allow-scripts allow-modals'
+
+/** Obsidian's own link nodes load nothing but http(s) (`setFrameUrl`), which
+ * is also what keeps `data:`/`javascript:` URLs out of the frame. */
+const WEB_URL_PATTERN = /^https?:\/\//i
+
 type NodeRuntime = {
   el: HTMLElement | null
   bodyEl: HTMLElement | null
@@ -180,6 +213,14 @@ type NodeRuntime = {
    * against this on every render pass, so a card whose source moves needs a
    * new one rather than a `setValue`. */
   contentSourcePath: string | null
+  /**
+   * Teardown for a body that holds something other than a content view — a
+   * media element or a web frame. Removing those from the DOM is not enough:
+   * a detached `<audio>`/`<video>` keeps playing and keeps streaming, and a
+   * detached frame keeps its page alive until it is collected. Null whenever
+   * the body holds nothing that needs releasing.
+   */
+  releaseContent: (() => void) | null
   missingFile: boolean
   /** Last known content for a *note* card (its backing file's text), cached
    * because note-card content never lives in `board` (p1-design §1.2) — this
@@ -348,6 +389,19 @@ export class WhiteboardCanvas {
    * Delete acting on "whatever was selected last" is the only reading of a
    * mixed selection anyone would expect. */
   private selectedEdgeIds = new Set<EdgeId>()
+  /**
+   * The lone selected card, when exactly one is selected — Obsidian Canvas's
+   * `is-focused`, derived from the selection rather than tracked beside it.
+   *
+   * Canvas lifts its content blocker for exactly this state (measured:
+   * `.canvas-node.is-focused:not(.is-dragging) .canvas-node-content-blocker
+   * { display: none }`, and its frame loop calls `node.focus()` only when the
+   * new selection has size 1). We take the same rule for the cards whose
+   * content has no other way in — media transport controls and web pages —
+   * while D7's mask stays absolute for markdown, which has an edit mode
+   * instead. See style.css's content-mask block.
+   */
+  private focusedNodeId: NodeId | null = null
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
@@ -806,6 +860,14 @@ export class WhiteboardCanvas {
       // (native text selection/cursor placement inside its CM6 editor) —
       // don't intercept.
       if (this.editing?.nodeId === nodeId) return
+      // Same rule for a body the content mask has been lifted from: a press
+      // that reached a media element or an embedded page belongs to it, and
+      // the pointer capture below would take the rest of the gesture away
+      // from the transport control being dragged. (Obsidian Canvas gets there
+      // differently — it never captures the pointer, tracking the drag on the
+      // window instead — but arrives at the same place: content that is live
+      // stays usable.) The card's title row remains its drag handle.
+      if (this.isLiveContentTarget(e.target)) return
       this.interaction = {
         kind: 'card',
         nodeId,
@@ -925,16 +987,19 @@ export class WhiteboardCanvas {
     e.preventDefault()
     const entries = this.host.ui.resolveDropEntries(e)
     if (entries.length === 0) return
-    const notes = entries.filter(
+    // Every file kind that has a card of its own is droppable — the same
+    // table the renderer dispatches on (domain/naming.ts's fileNodeKind), so
+    // "you can drop it" and "it renders" can never disagree.
+    const droppable = entries.filter(
       (entry) =>
-        entry.kind === 'file' && entry.path.toLowerCase().endsWith('.md'),
+        entry.kind === 'file' && fileNodeKind(entry.path) !== 'unsupported',
     )
-    if (notes.length === 0) {
+    if (droppable.length === 0) {
       this.host.ui.notice(this.t('notice.dropUnsupported'))
       return
     }
-    this.addNoteCards(
-      notes.map((entry) => entry.path),
+    this.addFileCards(
+      droppable.map((entry) => entry.path),
       this.worldPointFromEvent(e),
     )
   }
@@ -2053,9 +2118,29 @@ export class WhiteboardCanvas {
         this.runtimeByNodeId.get(id)?.el?.classList.add(CARD_SELECTED_CLASS)
     }
     this.selectedIds = next
+    this.applyFocusedNode()
     this.syncSelectionKeymapScope()
     // Selection is one of the two things that decides where the handles are.
     this.updateInteractionLayer()
+  }
+
+  /** Keeps `focusedNodeId` and its class in step with the selection — see the
+   * field's doc comment for what the state means. */
+  private applyFocusedNode(): void {
+    const next =
+      this.selectedIds.size === 1
+        ? (this.selectedIds.values().next().value ?? null)
+        : null
+    if (next === this.focusedNodeId) return
+    if (this.focusedNodeId !== null) {
+      this.runtimeByNodeId
+        .get(this.focusedNodeId)
+        ?.el?.classList.remove(CARD_FOCUSED_CLASS)
+    }
+    this.focusedNodeId = next
+    if (next !== null) {
+      this.runtimeByNodeId.get(next)?.el?.classList.add(CARD_FOCUSED_CLASS)
+    }
   }
 
   private setEdgeSelection(ids: readonly EdgeId[]): void {
@@ -2221,8 +2306,10 @@ export class WhiteboardCanvas {
     this.enterEditMode(node.id)
   }
 
-  /** Adds one note card per vault path, staggered from `world`. */
-  private addNoteCards(paths: readonly string[], world: ScreenPoint): void {
+  /** Adds one file card per vault path, staggered from `world`. Which kind of
+   * card each becomes is decided at render time from its extension, so this
+   * is one path for notes, images, audio and video alike. */
+  private addFileCards(paths: readonly string[], world: ScreenPoint): void {
     if (this.parseFailed || paths.length === 0) return
     let board = this.board
     for (const [index, path] of paths.entries()) {
@@ -2347,6 +2434,22 @@ export class WhiteboardCanvas {
     return screenToWorld(this.view, this.viewportPointFromEvent(e))
   }
 
+  /**
+   * Whether this event landed inside content the mask is currently lifted
+   * from.
+   *
+   * Reaching a live body at all *is* the test: a masked body has
+   * `pointer-events: none`, which its whole subtree inherits, so an event
+   * whose target is inside one can only have got there through the exemption
+   * (style.css's content-mask block).
+   */
+  private isLiveContentTarget(target: EventTarget | null): boolean {
+    return (
+      target instanceof Element &&
+      target.closest(`.${CARD_BODY_LIVE_CLASS}`) !== null
+    )
+  }
+
   /** Matched on the data attribute rather than on a class, because both
    * kinds of mounted node carry it (a card and a group frame) and every
    * gesture that asks "which node is this" means either. */
@@ -2367,7 +2470,7 @@ export class WhiteboardCanvas {
   private purgeNodeRuntime(id: NodeId): void {
     const runtime = this.runtimeByNodeId.get(id)
     if (runtime) {
-      this.destroyContentView(runtime)
+      this.destroyCardContent(runtime)
       runtime.el?.remove()
     }
     this.runtimeByNodeId.delete(id)
@@ -2477,7 +2580,7 @@ export class WhiteboardCanvas {
     }
     // Destroyed, not parked — the same rule an off-screen card follows
     // (p3-canvas-parity D13); the card's title block is what stands in for it.
-    this.destroyContentView(runtime)
+    this.destroyCardContent(runtime)
     runtime.bodyEl.replaceChildren()
   }
 
@@ -2501,6 +2604,7 @@ export class WhiteboardCanvas {
     // Re-apply selection state — a selected node can unmount (scrolled
     // off-screen) and remount without its selection ever changing.
     if (this.selectedIds.has(id)) el.classList.add(CARD_SELECTED_CLASS)
+    if (this.focusedNodeId === id) el.classList.add(CARD_FOCUSED_CLASS)
 
     // A group is a labelled frame behind the cards, not a card: it has no
     // body, no content view and no degraded form (p3-canvas-parity D5, and
@@ -2518,28 +2622,40 @@ export class WhiteboardCanvas {
         bodyEl: null,
         contentView: null,
         contentSourcePath: null,
+        releaseContent: null,
         missingFile: false,
         noteText: null,
       })
       return
     }
 
-    // A file-backed card carries its title in its file name, not in its
-    // text: Obsidian's convention is that a note's name *is* its title, so a
-    // note dragged onto the board would otherwise arrive as a body with
-    // nothing naming it. Drawn as card chrome and never written into the
-    // file — the card is a live reference to someone's note, and a board
-    // that displays a note must not rewrite it to do so.
+    // A card whose content comes from outside the board carries its title in
+    // chrome rather than in its text: a file card shows its file name
+    // (Obsidian's convention is that a note's name *is* its title, so a note
+    // dragged onto the board would otherwise arrive as a body with nothing
+    // naming it), and a web card its URL — the only thing about a page we can
+    // know without asking the page.
     //
     // It stays through edit mode, which is where this parts ways with
     // Obsidian Canvas: Canvas's in-card title is the embed's own inline
     // title, so it disappears the moment the embed is swapped for an editor
     // (measured), and Canvas covers that with a second label outside the
     // card. One title that never moves beats two that take turns.
-    if (node.type === 'file') {
+    //
+    // Canvas replaces a link node's URL with the page's own title once the
+    // webview reports one; a sandboxed cross-origin iframe never will, so the
+    // URL is what the card says. Also a drag handle: a focused web card's body
+    // belongs to the page (see the content mask), and this row does not.
+    const chromeTitle =
+      node.type === 'file'
+        ? basenameWithoutExtension(node.file)
+        : node.type === 'link'
+          ? node.url
+          : null
+    if (chromeTitle !== null) {
       const title = doc.createElement('div')
       title.className = CARD_TITLE_CLASS
-      title.textContent = basenameWithoutExtension(node.file)
+      title.textContent = chromeTitle
       el.appendChild(title)
     }
 
@@ -2568,6 +2684,7 @@ export class WhiteboardCanvas {
       bodyEl: body,
       contentView: null,
       contentSourcePath: null,
+      releaseContent: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
     })
@@ -2585,29 +2702,46 @@ export class WhiteboardCanvas {
     // Destroy rather than park (p3-canvas-parity D13): an off-screen card
     // keeps nothing but its cached text, and a detach pool would have to
     // manage capacity, invalidation and content sync to earn its keep.
-    this.destroyContentView(runtime)
+    this.destroyCardContent(runtime)
     this.contentSyncQueue.delete(id)
     runtime.el.remove()
     runtime.el = null
     runtime.bodyEl = null
   }
 
-  private destroyContentView(runtime: NodeRuntime): void {
+  /**
+   * Releases whatever the card's body currently holds, whichever kind it is —
+   * the single teardown every path (unmount, degrade, re-render, edit) goes
+   * through, so a new content kind cannot be added and leak from one of them.
+   */
+  private destroyCardContent(runtime: NodeRuntime): void {
     runtime.contentView?.destroy()
     runtime.contentView = null
     runtime.contentSourcePath = null
+    const release = runtime.releaseContent
+    runtime.releaseContent = null
+    if (release) {
+      try {
+        release()
+      } catch (error) {
+        this.reportError('card content release', error)
+      }
+    }
+    runtime.bodyEl?.classList.remove(CARD_BODY_LIVE_CLASS)
   }
 
   /**
-   * Builds whatever a card shows below its title — rendered markdown, or a
-   * placeholder for the cases that have no markdown to show.
+   * Builds whatever a card shows below its title — rendered markdown, a media
+   * element, an embedded page, or a placeholder for the cases that have none
+   * of those.
    *
    * The single gate for all of it, which is why the degrade check lives here
    * rather than at the call sites: below the threshold nothing is built at all
-   * (p3-canvas-parity D8), and that has to include the note card's `readText`
-   * — at the zoom where the most cards are on screen, a file read each is the
-   * larger half of the cost. `updateDegradedState` queues every mounted card
-   * when the camera comes back up, so a card skipped here is not forgotten.
+   * (p3-canvas-parity D8) — no `<img>`, no `<video>`, no frame, and not even
+   * the note card's `readText`, which at the zoom where the most cards are on
+   * screen is the larger half of the cost. `updateDegradedState` queues every
+   * mounted card when the camera comes back up, so a card skipped here is not
+   * forgotten.
    */
   private async renderCardPreview(id: NodeId): Promise<void> {
     const node = this.nodesById.get(id)
@@ -2616,19 +2750,35 @@ export class WhiteboardCanvas {
     if (!node || node.type === 'group' || !runtime?.bodyEl) return
     if (this.degraded) return
 
+    if (node.type === 'link') {
+      this.renderWebFrameInto(runtime, node.url)
+      return
+    }
+
     if (node.type === 'file') {
-      // A JSON Canvas file node can point at anything in the vault. Only
-      // markdown has text a card can show; the rest get a placeholder until
-      // media cards (P3 batch 2) and the PDF card (M2) land.
-      if (!isMarkdownPath(node.file)) {
-        this.renderUnsupportedFilePlaceholder(runtime, node.file)
-        return
-      }
+      // A JSON Canvas file node can point at anything in the vault, and its
+      // extension is the only thing that says what to build for it
+      // (domain/naming.ts's fileNodeKind). Existence is checked first for
+      // every kind: "this file is gone" is the more useful thing to say about
+      // a missing PDF than "no card for this type yet".
       const entry = this.host.vault.getEntry(node.file)
       if (!entry || entry.kind !== 'file') {
         runtime.missingFile = true
         runtime.noteText = null
         this.renderMissingFilePlaceholder(runtime, node.file)
+        return
+      }
+      runtime.missingFile = false
+      const kind = fileNodeKind(node.file)
+      if (kind !== 'markdown') {
+        // Only markdown has text an editor could be seeded from; leaving the
+        // cache set from a previous identity would seed one with a stale note.
+        runtime.noteText = null
+        if (kind === 'unsupported') {
+          this.renderUnsupportedFilePlaceholder(runtime, node.file)
+        } else {
+          this.renderMediaInto(runtime, node.file, kind)
+        }
         return
       }
       let text: string
@@ -2672,7 +2822,7 @@ export class WhiteboardCanvas {
     // The card may have been unmounted or swapped into edit mode while the
     // text that got here was being read.
     if (!bodyEl || this.editing?.nodeId === id) {
-      this.destroyContentView(runtime)
+      this.destroyCardContent(runtime)
       return
     }
     // New text in the same document is a `setValue`; a different document
@@ -2682,7 +2832,7 @@ export class WhiteboardCanvas {
       runtime.contentView.setValue(markdown)
       return
     }
-    this.destroyContentView(runtime)
+    this.destroyCardContent(runtime)
     bodyEl.replaceChildren()
     try {
       runtime.contentView = this.host.ui.createMarkdownContentView({
@@ -2700,40 +2850,152 @@ export class WhiteboardCanvas {
     runtime: NodeRuntime,
     path: string,
   ): void {
-    this.destroyContentView(runtime)
-    if (!runtime.bodyEl) return
-    const doc = this.context.getDocument()
-    const placeholder = doc.createElement('div')
-    placeholder.className = CARD_MISSING_CLASS
-    const title = doc.createElement('div')
-    title.textContent = this.t('card.missingFile')
-    const hint = doc.createElement('div')
-    hint.className = CARD_HINT_CLASS
-    hint.textContent = this.t('card.missingFileHint').replace('{path}', path)
-    placeholder.append(title, hint)
-    runtime.bodyEl.replaceChildren(placeholder)
+    this.destroyCardContent(runtime)
+    this.renderPlaceholder(
+      runtime,
+      CARD_MISSING_CLASS,
+      this.t('card.missingFile'),
+      this.t('card.missingFileHint').replace('{path}', path),
+    )
   }
 
   /** What a file card shows while its file type has no card of its own — a
-   * PDF (M2), an image or a video (P3 batch 2), anything else. Named after
-   * the file so the card still says which one it is. */
+   * PDF (M2), anything else. Named after the file so the card still says
+   * which one it is. */
   private renderUnsupportedFilePlaceholder(
     runtime: NodeRuntime,
     path: string,
   ): void {
-    this.destroyContentView(runtime)
+    this.destroyCardContent(runtime)
+    this.renderPlaceholder(
+      runtime,
+      CARD_UNSUPPORTED_PLACEHOLDER_CLASS,
+      this.t('card.unsupportedFile'),
+      this.t('card.unsupportedFileHint').replace('{path}', path),
+    )
+  }
+
+  /**
+   * Puts a vault image, audio or video file on a card, pointing the element at
+   * the same `app://` resource URL Obsidian's own embeds use
+   * (`vault.getResourceUrl`) so it streams and seeks exactly as it does in a
+   * note (p3-canvas-parity D1).
+   *
+   * The element fills the card and keeps its aspect ratio without cropping
+   * (style.css's `.yolo-whiteboard-card-media`). Obsidian Canvas instead
+   * reshapes the *node* to the media's aspect ratio when its content loads,
+   * and writes that back to the file — a load-time geometry mutation we
+   * deliberately do not copy: our cards mount and unmount with the viewport,
+   * so it would rewrite the board on every pan. Aspect-locked geometry belongs
+   * with the resize interactions (P3 batch 3).
+   *
+   * Audio and video get a `releaseContent`: taking a media element out of the
+   * DOM neither pauses it nor stops it streaming, so an off-screen or degraded
+   * card would go on playing out of sight.
+   */
+  private renderMediaInto(
+    runtime: NodeRuntime,
+    path: string,
+    kind: Exclude<FileNodeKind, 'markdown' | 'unsupported'>,
+  ): void {
+    this.destroyCardContent(runtime)
+    const bodyEl = runtime.bodyEl
+    if (!bodyEl) return
+    const doc = this.context.getDocument()
+    const url = this.host.vault.getResourceUrl(path)
+    const frame = doc.createElement('div')
+    frame.className = CARD_MEDIA_CLASS
+
+    if (kind === 'image') {
+      const image = doc.createElement('img')
+      image.src = url
+      // Obsidian Canvas sets this on its own image nodes: the card is what a
+      // drag moves, and a native image drag would start a competing one.
+      image.draggable = false
+      frame.appendChild(image)
+      bodyEl.replaceChildren(frame)
+      return
+    }
+
+    // Element attributes copied from Obsidian's own media embed builder
+    // (`app.js`'s audio/video embed helpers), so a card plays what a note
+    // plays: `controlsList=nodownload` because the file is already in the
+    // vault, `preload=metadata` because a board pans dozens of cards through
+    // the viewport and only the transport bar has to be drawn until one is
+    // played, and the `#t=0.001` fragment because a video with no poster
+    // otherwise shows a black rectangle instead of its first frame.
+    const media: HTMLMediaElement =
+      kind === 'audio' ? doc.createElement('audio') : doc.createElement('video')
+    media.controls = true
+    media.setAttribute('controlsList', 'nodownload')
+    media.preload = 'metadata'
+    media.src = kind === 'video' ? `${url}#t=0.001` : url
+    frame.appendChild(media)
+    bodyEl.replaceChildren(frame)
+    bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
+    runtime.releaseContent = () => {
+      media.pause()
+      // Dropping the source is what actually stops the download; `load()` is
+      // what makes the element act on it.
+      media.removeAttribute('src')
+      media.load()
+    }
+  }
+
+  /**
+   * Puts a web page on a card.
+   *
+   * A sandboxed `<iframe>` — see WEB_FRAME_SANDBOX for why this and not the
+   * Electron `<webview>` Obsidian Canvas uses on desktop. Only http(s) loads,
+   * exactly as in Canvas's own `setFrameUrl`; anything else is a card that
+   * says what it points at rather than a frame pointed somewhere it should
+   * not be.
+   */
+  private renderWebFrameInto(runtime: NodeRuntime, url: string): void {
+    this.destroyCardContent(runtime)
+    const bodyEl = runtime.bodyEl
+    if (!bodyEl) return
+    if (!WEB_URL_PATTERN.test(url)) {
+      this.renderPlaceholder(
+        runtime,
+        CARD_UNSUPPORTED_PLACEHOLDER_CLASS,
+        this.t('card.linkNotWeb'),
+        this.t('card.linkNotWebHint').replace('{url}', url),
+      )
+      return
+    }
+    const doc = this.context.getDocument()
+    const frame = doc.createElement('iframe')
+    frame.className = CARD_WEB_FRAME_CLASS
+    frame.setAttribute('sandbox', WEB_FRAME_SANDBOX)
+    frame.setAttribute('allow', 'fullscreen')
+    frame.src = url
+    bodyEl.replaceChildren(frame)
+    bodyEl.classList.add(CARD_BODY_LIVE_CLASS)
+    // A detached frame keeps its page (and its timers, media and sockets)
+    // running until it is collected; navigating it away first is what ends
+    // them when the card scrolls off or degrades.
+    runtime.releaseContent = () => {
+      frame.src = 'about:blank'
+      frame.remove()
+    }
+  }
+
+  private renderPlaceholder(
+    runtime: NodeRuntime,
+    className: string,
+    titleText: string,
+    hintText: string,
+  ): void {
     if (!runtime.bodyEl) return
     const doc = this.context.getDocument()
     const placeholder = doc.createElement('div')
-    placeholder.className = CARD_UNSUPPORTED_PLACEHOLDER_CLASS
+    placeholder.className = className
     const title = doc.createElement('div')
-    title.textContent = this.t('card.unsupportedFile')
+    title.textContent = titleText
     const hint = doc.createElement('div')
     hint.className = CARD_HINT_CLASS
-    hint.textContent = this.t('card.unsupportedFileHint').replace(
-      '{path}',
-      path,
-    )
+    hint.textContent = hintText
     placeholder.append(title, hint)
     runtime.bodyEl.replaceChildren(placeholder)
   }
@@ -2907,7 +3169,7 @@ export class WhiteboardCanvas {
   /**
    * Whether this node has text a card can edit: a text node always, a file
    * node only while it points at markdown. A group has no text surface, and
-   * neither does a PDF or an image.
+   * neither does a web card, a PDF or a media file.
    */
   private isEditableNode(node: BoardNode): boolean {
     return (
@@ -2957,7 +3219,7 @@ export class WhiteboardCanvas {
 
     const initialText =
       node.type === 'text' ? node.text : (runtime.noteText ?? '')
-    this.destroyContentView(runtime)
+    this.destroyCardContent(runtime)
     runtime.bodyEl.replaceChildren()
     runtime.el?.classList.add(CARD_EDITING_CLASS)
     runtime.bodyEl.classList.add(EDITOR_HOST_CLASS)
@@ -3084,8 +3346,9 @@ export class WhiteboardCanvas {
     this.marqueeEl = null
     this.popSelectionKeymapScope()
     this.selectedIds = new Set()
+    this.focusedNodeId = null
     for (const runtime of this.runtimeByNodeId.values()) {
-      this.destroyContentView(runtime)
+      this.destroyCardContent(runtime)
       runtime.el?.remove()
       runtime.el = null
       runtime.bodyEl = null
@@ -3162,7 +3425,13 @@ export class WhiteboardCanvas {
       if (this.editing?.nodeId === id) continue
       const runtime = this.runtimeByNodeId.get(id)
       if (!runtime?.el) continue // not currently mounted
-      void this.refreshMountedNoteCard(id, runtime, path)
+      if (isMarkdownPath(node.file)) {
+        void this.refreshMountedNoteCard(id, runtime, path)
+        continue
+      }
+      // Anything else has no text to re-read, and its resource URL carries
+      // the file's mtime — so the way to show new bytes is a new element.
+      void this.renderCardPreview(id)
     }
   }
 

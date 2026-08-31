@@ -1,12 +1,36 @@
 import {
   basenameWithoutExtension,
   cardNoteContent,
+  fileNodeKind,
   folderPathOf,
   generateBoardFileName,
   generateCardNoteFileName,
   isCanvasPath,
   isMarkdownPath,
 } from './naming'
+
+describe('fileNodeKind', () => {
+  it('classifies each kind of card a file node can render as', () => {
+    expect(fileNodeKind('Cards/概念A.md')).toBe('markdown')
+    expect(fileNodeKind('Assets/photo.PNG')).toBe('image')
+    expect(fileNodeKind('Assets/scan.svg')).toBe('image')
+    expect(fileNodeKind('Assets/talk.m4a')).toBe('audio')
+    expect(fileNodeKind('Assets/talk.opus')).toBe('audio')
+    expect(fileNodeKind('Assets/clip.mp4')).toBe('video')
+    expect(fileNodeKind('Assets/clip.mkv')).toBe('video')
+  })
+
+  it('reads .webm as video — the container carries either, and a video element plays both', () => {
+    expect(fileNodeKind('Assets/clip.webm')).toBe('video')
+  })
+
+  it('leaves everything else unsupported, PDF included (its card is M2)', () => {
+    expect(fileNodeKind('papers/foo.pdf')).toBe('unsupported')
+    expect(fileNodeKind('data/table.csv')).toBe('unsupported')
+    expect(fileNodeKind('Assets/README')).toBe('unsupported')
+    expect(fileNodeKind('.gitignore')).toBe('unsupported')
+  })
+})
 
 describe('basenameWithoutExtension', () => {
   it('strips a vault-relative directory path and extension', () => {

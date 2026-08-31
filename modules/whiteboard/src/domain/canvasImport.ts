@@ -8,10 +8,6 @@
 //
 //   - `width`/`height` -> `w`/`h`. An abbreviation, not a concept (see
 //     fileFormat.ts's header).
-//   - a `link` node -> a text node holding `<url>`. We have no web card until
-//     P3 batch 2; a text node keeps the URL visible and clickable with no new
-//     concept, where a `link` node type nothing renders would be a card that
-//     shows nothing. The node's kind is the only thing lost.
 //   - `.canvas` has no camera. A board opened at the file's stored camera
 //     would otherwise start at world origin, which for a canvas laid out in
 //     negative coordinates is empty space — so the import parks the camera on
@@ -273,10 +269,8 @@ function convertNodeBody(
       }
       return {
         ...base,
-        type: 'text',
-        // An autolink rather than the bare URL: this is what makes the address
-        // both readable and clickable once the card renders it as markdown.
-        text: `<${entry.url}>`,
+        type: 'link',
+        url: entry.url,
         extra: extraExcept(entry, [
           'id',
           'type',

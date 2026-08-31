@@ -5,7 +5,7 @@
 // text node -> updateNode" independently (docs/plans/08-25-yolo-whiteboard/
 // p1-design.md §1.2, §3: "Escape/blur 共用同一提交路径，不双写").
 //
-// A node with no editable text — a group, or a file node pointing at
+// A node with no editable text — a group, a link, or a file node pointing at
 // something that isn't markdown — is a no-op rather than a reachable case:
 // callers should not be invoking this for one, but a defensive no-op is safer
 // than an exception on a future data/UI desync.
@@ -41,6 +41,7 @@ export function planNodeCommit(
         kind: 'updateBoard',
         board: updateNode(board, nodeId, { text: markdown }),
       }
+    case 'link':
     case 'group':
       return { kind: 'noop' }
   }

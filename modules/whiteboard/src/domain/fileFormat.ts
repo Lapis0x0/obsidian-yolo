@@ -5,7 +5,7 @@
 // The format is a **superset of JSON Canvas 1.0** (https://jsoncanvas.org/
 // spec/1.0/). Every concept Canvas has, we spell the way Canvas spells it:
 //
-//   - one flat `nodes` array holding `text` / `file` / `group` nodes, rather
+//   - one flat `nodes` array holding `text` / `file` / `link` / `group` nodes, rather
 //     than a `cards` array beside a separate `groups` collection — a group is
 //     a kind of node, not a second population (D5);
 //   - `color` is a node (and edge) attribute, with Canvas's `canvasColor`
@@ -75,17 +75,29 @@ export type TextNode = BoardNodeBase &
   }>
 
 /**
- * JSON Canvas file node: a reference to a vault file. Markdown files render
- * as cards showing the note; every other extension renders as a placeholder
- * until P3 batch 2 (media) and M2 (PDF) land. One node type rather than the
- * old `note`/`pdf` pair, because "which file is this" is a path question, not
- * a schema question — and Canvas has always modelled it that way.
+ * JSON Canvas file node: a reference to a vault file. Markdown, image, audio
+ * and video files each render as their own kind of card (domain/naming.ts's
+ * `fileNodeKind`); every other extension renders as a placeholder until the
+ * PDF card lands (M2). One node type rather than the old `note`/`pdf` pair,
+ * because "which file is this" is a path question, not a schema question —
+ * and Canvas has always modelled it that way.
  */
 export type FileNode = BoardNodeBase &
   Readonly<{
     type: 'file'
     /** Vault-relative path to the backing file. */
     file: string
+  }>
+
+/**
+ * JSON Canvas link node: a web page, embedded live in the card. The one node
+ * kind whose content lives outside the vault entirely, which is why it is its
+ * own type rather than a file node with an `http` path.
+ */
+export type LinkNode = BoardNodeBase &
+  Readonly<{
+    type: 'link'
+    url: string
   }>
 
 /**
@@ -100,7 +112,7 @@ export type GroupNode = BoardNodeBase &
     label?: string
   }>
 
-export type BoardNode = TextNode | FileNode | GroupNode
+export type BoardNode = TextNode | FileNode | LinkNode | GroupNode
 
 export type Edge = Readonly<{
   id: EdgeId
@@ -284,6 +296,7 @@ export function serializeBoard(board: Board): string {
 const NODE_COMMON_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'color'] as const
 const TEXT_NODE_KEYS = [...NODE_COMMON_KEYS, 'text'] as const
 const FILE_NODE_KEYS = [...NODE_COMMON_KEYS, 'file'] as const
+const LINK_NODE_KEYS = [...NODE_COMMON_KEYS, 'url'] as const
 const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
 
 function parseNodes(
@@ -367,6 +380,24 @@ function parseNode(
         extra: extractExtra(entry, FILE_NODE_KEYS),
       }
     }
+    case 'link': {
+      const url = entry.url
+      if (typeof url !== 'string' || url.length === 0) {
+        issues.push({
+          type: 'invalid-node',
+          index,
+          id,
+          message: 'Link node requires a non-empty "url"',
+        })
+        return null
+      }
+      return {
+        ...base,
+        type: 'link',
+        url,
+        extra: extractExtra(entry, LINK_NODE_KEYS),
+      }
+    }
     case 'group': {
       const label = typeof entry.label === 'string' ? entry.label : undefined
       return {
@@ -429,6 +460,8 @@ function serializeNode(node: BoardNode): Record<string, unknown> {
       return { ...common, text: node.text, ...node.extra }
     case 'file':
       return { ...common, file: node.file, ...node.extra }
+    case 'link':
+      return { ...common, url: node.url, ...node.extra }
     case 'group':
       return { ...common, label: node.label, ...node.extra }
   }

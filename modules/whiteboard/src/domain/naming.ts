@@ -1,4 +1,6 @@
-// Pure filename generation for everything the whiteboard creates in the
+// Pure path reading and filename generation: what a vault path *means* to the
+// board (is it a note, is it a canvas, which kind of card does it render as —
+// `fileNodeKind`), and the names the whiteboard gives what it creates in the
 // vault: the `.yoloboard` files themselves (command + folder context menu,
 // docs/plans/08-25-yolo-whiteboard/p1-design.md §5) and the notes a text
 // card is converted into (§1.2, which puts them in `<board name> Cards/`).
@@ -25,6 +27,74 @@ export function isMarkdownPath(path: string): boolean {
 
 export function isCanvasPath(path: string): boolean {
   return path.toLowerCase().endsWith(CANVAS_EXTENSION)
+}
+
+/**
+ * Which kind of card a `file` node's path renders as. A JSON Canvas file node
+ * can point at anything in the vault, and the extension is the only thing that
+ * says what to build for it — so this is the single table both the renderer
+ * and the drop handler read, rather than each keeping its own list.
+ *
+ * The three media lists are exactly the extensions Obsidian itself registers
+ * image/audio/video views for (read off `app.viewRegistry.typeByExtension` in
+ * a running 1.13 instance) — behaviour alignment starts with agreeing on what
+ * counts as an image (p3-canvas-parity D1). `unsupported` covers everything
+ * left, PDF included (its card is M2).
+ */
+export type FileNodeKind =
+  | 'markdown'
+  | 'image'
+  | 'audio'
+  | 'video'
+  | 'unsupported'
+
+const IMAGE_EXTENSIONS = [
+  'bmp',
+  'png',
+  'jpg',
+  'jpeg',
+  'gif',
+  'svg',
+  'webp',
+  'avif',
+] as const
+const AUDIO_EXTENSIONS = [
+  'mp3',
+  'wav',
+  'm4a',
+  '3gp',
+  'flac',
+  'ogg',
+  'oga',
+  'opus',
+] as const
+/**
+ * `.webm` is claimed by video, not audio: the container carries either, and a
+ * `<video>` element plays an audio-only webm perfectly well (it just draws
+ * nothing), while an `<audio>` element given a webm with a video track drops
+ * the picture. Obsidian resolves the same ambiguity the same way.
+ */
+const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogv', 'mov', 'mkv'] as const
+
+export function fileNodeKind(path: string): FileNodeKind {
+  if (isMarkdownPath(path)) return 'markdown'
+  const extension = extensionOf(path)
+  if ((IMAGE_EXTENSIONS as readonly string[]).includes(extension))
+    return 'image'
+  if ((AUDIO_EXTENSIONS as readonly string[]).includes(extension))
+    return 'audio'
+  if ((VIDEO_EXTENSIONS as readonly string[]).includes(extension))
+    return 'video'
+  return 'unsupported'
+}
+
+/** Lowercased extension without the dot; '' for a name that has none. */
+function extensionOf(path: string): string {
+  const name = path.slice(
+    Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\')) + 1,
+  )
+  const dotIndex = name.lastIndexOf('.')
+  return dotIndex > 0 ? name.slice(dotIndex + 1).toLowerCase() : ''
 }
 
 /**

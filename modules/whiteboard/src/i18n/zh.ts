@@ -26,7 +26,7 @@ export const zh = {
   },
   notice: {
     convertedToNote: '卡片已保存为 {path}',
-    dropUnsupported: '白板目前只能接收 Markdown 笔记。',
+    dropUnsupported: '白板目前只能接收笔记、图片、音频和视频。',
     imported: '已导入为 {path}',
     importedAll: '已导入 {imported} 个 Canvas 文件，{failed} 个无法读取。',
     importNoneFound: '库中没有找到 Canvas 文件。',
@@ -36,6 +36,8 @@ export const zh = {
     missingFileHint: '此卡片引用的「{path}」已不存在。',
     unsupportedFile: '暂不支持预览',
     unsupportedFileHint: '「{path}」还没有对应的卡片形态。',
+    linkNotWeb: '不是网页地址',
+    linkNotWebHint: '只能显示 http 和 https 网页，此卡片指向「{url}」。',
   },
   error: {
     title: '无法读取此白板',
