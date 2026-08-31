@@ -312,13 +312,33 @@
   min-width: 2em;
 }
 
+/* Being renamed (ui/canvas.ts's beginGroupRename makes the label itself
+ * editable). The text does not move, change size or change weight — all that
+ * happens is that it stops being clipped to the frame and gains the chrome of
+ * a field, so the rename reads as the label opening up rather than as a box
+ * appearing over it. The negative margin cancels the padding, which is what
+ * keeps the first glyph on the pixel it was already on. */
+.yolo-whiteboard-group-label[contenteditable] {
+  overflow: visible;
+  max-width: none;
+  text-overflow: clip;
+  padding: 2px 4px;
+  margin-left: -4px;
+  border-radius: var(--radius-s, 4px);
+  color: var(--text-normal);
+  background: var(--background-primary);
+  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
+  outline: none;
+  cursor: text;
+}
+
 .yolo-whiteboard-root:not(.yolo-whiteboard-locked)
-  .yolo-whiteboard-group-label {
+  .yolo-whiteboard-group-label:not([contenteditable]) {
   cursor: grab;
 }
 
 .yolo-whiteboard-root:not(.yolo-whiteboard-locked)
-  .yolo-whiteboard-group-label:active {
+  .yolo-whiteboard-group-label:not([contenteditable]):active {
   cursor: grabbing;
 }
 
@@ -915,24 +935,62 @@
   box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
+/* An edge's label: an HTML element in the world layer, next to the SVG that
+ * draws the curves rather than in it, because this is the element that holds
+ * the caret while the label is typed (ui/canvas.ts's beginRename) and SVG
+ * text cannot. Positioned by its centre on the curve's midpoint — the same
+ * anchor domain/edges.ts computes. */
+.yolo-whiteboard-edge-labels {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+}
+
 .yolo-whiteboard-edge-label {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  width: max-content;
+  /* Obsidian Canvas's own ceiling for a path label. A label is an annotation
+   * on a line, not a card: past this it wraps rather than running the length
+   * of the board. */
+  max-width: 17em;
+  padding: 2px 6px;
+  border-radius: var(--radius-s, 4px);
+  /* Opaque, so the label stays legible where it crosses its own curve and
+   * any other. (As SVG text this was a stroke halo; as an element it is just
+   * the background, which also gives the ring below something to sit on.) */
+  background: var(--background-primary);
+  color: var(--text-normal);
   font-size: 11px;
-  fill: var(--text-normal);
-  /* Halo behind the text so it stays legible crossing the curve/other
-   * edges, without measuring a background rect via getBBox(). */
-  paint-order: stroke;
-  stroke: var(--background-primary);
-  stroke-width: 3px;
-  stroke-linejoin: round;
-  /* Reachable like the hit path under it (the svg is pointer-transparent):
-   * the label is part of its edge, so pressing it grabs that edge. Without
-   * this, a label wider than the hit stroke has dead ends hanging off the
-   * line. */
+  line-height: 1.3;
+  text-align: center;
+  white-space: pre-wrap;
+  /* Reachable, unlike the layer it sits in: the label is part of its edge, so
+   * pressing it grabs that edge and double-clicking it types the label. */
   pointer-events: auto;
   cursor: grab;
 }
 
-.yolo-whiteboard-edge-label:active {
+/* Being typed — the same treatment a group label gets, for the same reason:
+ * nothing about the text moves, it just gains the ring of a field. */
+.yolo-whiteboard-edge-label[contenteditable] {
+  box-shadow: 0 0 0 2px var(--yolo-whiteboard-color);
+  outline: none;
+  cursor: text;
+}
+
+/* Only ever empty between being created for an unlabelled edge and being
+ * typed into, so this is the prompt for that moment. */
+.yolo-whiteboard-edge-label:empty::before {
+  content: attr(data-placeholder);
+  color: var(--text-faint);
+}
+
+.yolo-whiteboard-edge-label:not([contenteditable]):active {
   cursor: grabbing;
 }
 
@@ -1076,27 +1134,6 @@ label.yolo-whiteboard-color-swatch-custom.yolo-whiteboard-color-swatch-active {
   border: none;
   opacity: 0;
   cursor: pointer;
-}
-
-/* --- inline field (edge label) -------------------------------------------
- * Centred on the point it edits — the second translate lives in the transform
- * canvas.ts writes, because a scripted transform replaces the property. */
-
-input.yolo-whiteboard-inline-input {
-  position: absolute;
-  left: 0;
-  top: 0;
-  width: 12em;
-  padding: 4px 8px;
-  font-size: var(--font-ui-small, 13px);
-  line-height: var(--line-height-tight, 1.3);
-  text-align: center;
-  color: var(--text-normal);
-  background-color: var(--background-primary);
-  border: 1px solid var(--interactive-accent);
-  border-radius: var(--radius-s, 4px);
-  box-shadow: 0 2px 10px rgb(0 0 0 / 7%);
-  pointer-events: auto;
 }
 
 /* --- error state ---------------------------------------------------------

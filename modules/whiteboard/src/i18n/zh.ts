@@ -69,9 +69,6 @@ export const zh = {
   edge: {
     labelPlaceholder: '为这条连线加标签',
   },
-  group: {
-    labelPlaceholder: '为这个分组命名',
-  },
   file: {
     newWhiteboardBaseName: '白板',
     newNoteBaseName: '未命名',

@@ -74,9 +74,6 @@ export const en = {
   edge: {
     labelPlaceholder: 'Label this connection',
   },
-  group: {
-    labelPlaceholder: 'Name this group',
-  },
   file: {
     newWhiteboardBaseName: 'Whiteboard',
     newNoteBaseName: 'Untitled',

@@ -143,8 +143,6 @@ import {
   FIT_CAMERA_PADDING_PX,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
-  GROUP_LABEL_CENTER_OFFSET_PX,
-  GROUP_LABEL_INSET_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
   MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
@@ -158,7 +156,6 @@ import {
   VIEWPORT_BUFFER_PX,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
 } from './constants'
-import { InlineTextInput } from './inlineTextInput'
 import { degradedNodeTitle, nextDegradedState } from './lod'
 import {
   PromptOverlay,
@@ -282,6 +279,7 @@ const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
 const EDGE_PATH_CLASS = 'yolo-whiteboard-edge-path'
 const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
+const EDGE_LABELS_CLASS = 'yolo-whiteboard-edge-labels'
 const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'
 const EDGE_SELECTED_CLASS = 'yolo-whiteboard-edge-selected'
 const EDGE_HIDDEN_CLASS = 'yolo-whiteboard-edge-hidden'
@@ -465,12 +463,26 @@ type Interaction =
   | ResizeInteraction
   | ConnectInteraction
 
+/** Which label a rename is acting on. The two kinds are typed the same way
+ * (in place, on the element itself) and differ only in where the text is
+ * read from and written back to. */
+type LabelTarget =
+  | Readonly<{ kind: 'group'; id: NodeId }>
+  | Readonly<{ kind: 'edge'; id: EdgeId }>
+
+function sameLabelTarget(a: LabelTarget, b: LabelTarget): boolean {
+  return a.kind === b.kind && a.id === b.id
+}
+
 type EdgeDomEntry = Readonly<{
   path: SVGPathElement
   /** Transparent fat stroke under `path`: a 1.5-unit curve is not something
    * a pointer can be asked to hit. */
   hit: SVGPathElement
-  label: SVGTextElement | null
+  /** Absent until the edge has a label. An HTML element rather than SVG
+   * `<text>`: it is what holds the caret while the label is typed (see
+   * `beginRename`), and SVG text cannot. */
+  label: HTMLElement | null
 }>
 
 /**
@@ -559,22 +571,9 @@ export class WhiteboardCanvas {
    * connect) — Obsidian Canvas hides its menu the same way, and a toolbar that
    * follows a card being dragged is a toolbar in the way. */
   private toolbarSuppressed = false
-  /**
-   * The label being typed and the field it is typed in — an edge's, or a
-   * group's.
-   *
-   * One session rather than one per kind: only one label can be edited at a
-   * time, both hang a one-line field off a point on the board, and both have
-   * to hold off the selection's keymap scope while they have the caret. What
-   * differs is only where the field sits and what the text is committed to,
-   * which is what `target` selects.
-   */
-  private labelSession: Readonly<{
-    target:
-      | Readonly<{ kind: 'edge'; id: EdgeId }>
-      | Readonly<{ kind: 'group'; id: NodeId }>
-    input: InlineTextInput
-  }> | null = null
+  /** The label being typed in place, if any — see `beginRename`. It holds
+   * off the selection's keymap scope for as long as it has the caret. */
+  private renaming: LabelTarget | null = null
 
   // Creation surfaces (P3 batch 3 wave B): the bottom bar, and the panel that
   // asks which file or what URL before a card can be made.
@@ -616,6 +615,10 @@ export class WhiteboardCanvas {
    * than a child, so `rebuildEdgesSvg`'s wholesale replaceChildren never
    * takes it out from under a live gesture. */
   private previewPathEl: SVGPathElement | null = null
+  /** Holds the edges' label elements. A sibling of the edges SVG rather than
+   * a layer inside it (HTML cannot live in SVG), mounted once and before any
+   * card so labels keep painting above the curves and below the cards. */
+  private edgeLabelsEl: HTMLElement | null = null
   private connectTargetNodeId: NodeId | null = null
   private readonly arrowMarkerId = `yolo-whiteboard-edge-arrow-${Math.random().toString(36).slice(2)}`
 
@@ -786,7 +789,6 @@ export class WhiteboardCanvas {
     this.drainQueues()
     // The toolbar is clamped against the viewport's size, which just changed.
     this.positionToolbar()
-    this.positionLabelInput()
   }
 
   /**
@@ -827,8 +829,7 @@ export class WhiteboardCanvas {
     this.viewKeymapDisposer?.()
     this.viewKeymapDisposer = null
 
-    this.labelSession?.input.close()
-    this.labelSession = null
+    this.endRename(true)
     this.prompt?.close()
     this.prompt = null
     this.cardMenu?.destroy()
@@ -910,6 +911,10 @@ export class WhiteboardCanvas {
     edgesSvg.appendChild(preview)
     world.appendChild(edgesSvg)
 
+    const edgeLabels = doc.createElement('div')
+    edgeLabels.className = EDGE_LABELS_CLASS
+    world.appendChild(edgeLabels)
+
     // Built once and reused: mounted last so it sits above every card, and
     // parked (hidden) until the pointer is actually on a card.
     const interactionLayer = doc.createElement('div')
@@ -950,6 +955,7 @@ export class WhiteboardCanvas {
     this.worldEl = world
     this.errorEl = error
     this.edgesGroupEl = edgesGroup
+    this.edgeLabelsEl = edgeLabels
     this.previewPathEl = preview
     this.interactionLayerEl = interactionLayer
     // Inside the viewport rather than the world: the toolbar is chrome, and
@@ -1111,8 +1117,11 @@ export class WhiteboardCanvas {
     if (nodeId !== null) {
       // The card currently being edited owns its own pointer handling
       // (native text selection/cursor placement inside its CM6 editor) —
-      // don't intercept.
+      // don't intercept. A group whose label is being renamed owns it for the
+      // same reason: that label is the only part of a group a press can
+      // reach, and while it holds the caret a press in it places the caret.
       if (this.editing?.nodeId === nodeId) return
+      if (this.isRenaming({ kind: 'group', id: nodeId })) return
       // Same rule for a body the content mask has been lifted from: a press
       // that reached a media element or an embedded page belongs to it, and
       // the pointer capture below would take the rest of the gesture away
@@ -1137,7 +1146,12 @@ export class WhiteboardCanvas {
     // Edges paint behind the cards, so a press only reaches one where no
     // card covers it — which is exactly where pressing it can mean the edge.
     const edgeId = this.edgeIdFromEventTarget(e.target)
-    if (edgeId !== null && this.startEdgeReattach(edgeId, e)) return
+    if (edgeId !== null) {
+      // Its label is being typed: a press in it places the caret, the same
+      // rule a group being renamed follows above.
+      if (this.isRenaming({ kind: 'edge', id: edgeId })) return
+      if (this.startEdgeReattach(edgeId, e)) return
+    }
 
     if (e.altKey) {
       this.startPan(e)
@@ -1168,14 +1182,14 @@ export class WhiteboardCanvas {
     // element, wiring its label's `dblclick` straight to `focusLabel`.
     const groupId = this.groupLabelIdFromEventTarget(target)
     if (groupId !== null) {
-      this.openGroupLabelEditor(groupId)
+      this.beginRename({ kind: 'group', id: groupId })
       return
     }
     // An edge carries its label on the line, so the line is where one asks
     // for it — the same gesture the toolbar's "label" button performs.
     const edgeId = this.edgeIdFromEventTarget(target)
     if (edgeId !== null) {
-      this.openEdgeLabelEditor(edgeId)
+      this.beginRename({ kind: 'edge', id: edgeId })
       return
     }
     const world = this.worldPointFromEvent(e)
@@ -1357,7 +1371,7 @@ export class WhiteboardCanvas {
       items.push({
         title: this.t('menu.renameGroup'),
         icon: 'pencil',
-        onSelect: () => this.openGroupLabelEditor(single.id),
+        onSelect: () => this.beginRename({ kind: 'group', id: single.id }),
       })
     }
 
@@ -1718,7 +1732,6 @@ export class WhiteboardCanvas {
     // re-projected whenever the camera moves. Both are no-ops when nothing is
     // selected and nothing is being typed, which is the common case.
     this.positionToolbar()
-    this.positionLabelInput()
   }
 
   /**
@@ -2119,7 +2132,7 @@ export class WhiteboardCanvas {
     ) {
       return null
     }
-    return (target as SVGElement).dataset.edgeId ?? null
+    return (target as SVGElement | HTMLElement).dataset.edgeId ?? null
   }
 
   /** False when the card the layer was parked on is gone, so the caller can
@@ -2696,7 +2709,7 @@ export class WhiteboardCanvas {
     if (this.parseFailed || this.isLocked === locked) return
     // Anything mid-flight belongs to the state being left.
     this.forceCommitActiveEdit()
-    this.labelSession?.input.close()
+    this.endRename(true)
     this.prompt?.close()
     this.board = locked
       ? { ...this.board, locked: true }
@@ -2785,10 +2798,8 @@ export class WhiteboardCanvas {
     // A label being typed belongs to the edge that was selected when it
     // opened; deselecting that edge ends the session (committing, the same as
     // a blur would).
-    const session = this.labelSession
-    if (session?.target.kind === 'edge' && !next.has(session.target.id)) {
-      session.input.close()
-    }
+    const typed = this.renaming
+    if (typed?.kind === 'edge' && !next.has(typed.id)) this.endRename(true)
     this.refreshToolbar()
   }
 
@@ -2814,7 +2825,7 @@ export class WhiteboardCanvas {
       // Backspace/Delete/Escape belong to that field, not to the selection
       // behind it — the same rule that keeps the card editor and the selection
       // scope from ever being armed at once.
-      this.labelSession === null &&
+      this.renaming === null &&
       this.prompt === null
     if (hasSelection && !this.selectionScopeDisposer) {
       this.pushSelectionKeymapScope()
@@ -3016,7 +3027,7 @@ export class WhiteboardCanvas {
       items.push({
         label: this.t('menu.renameGroup'),
         icon: 'pencil',
-        onSelect: () => this.openGroupLabelEditor(single.id),
+        onSelect: () => this.beginRename({ kind: 'group', id: single.id }),
       })
     }
 
@@ -3080,7 +3091,7 @@ export class WhiteboardCanvas {
         {
           label: this.t('toolbar.edgeLabel'),
           icon: 'tag',
-          onSelect: () => this.openEdgeLabelEditor(edge.id),
+          onSelect: () => this.beginRename({ kind: 'edge', id: edge.id }),
         },
       ],
     }
@@ -3137,9 +3148,11 @@ export class WhiteboardCanvas {
     const board = updateEdge(this.board, edgeId, { color })
     if (board === this.board) return
     this.applyBoardChange(board)
-    this.boardEdgesById = new Map(board.edges.map((edge) => [edge.id, edge]))
-    const path = this.edgeElsById.get(edgeId)?.path
-    if (path) applyColorToElement(path, color)
+    const dom = this.edgeElsById.get(edgeId)
+    if (dom?.path) applyColorToElement(dom.path, color)
+    // The label carries the colour too — it is what its ring is drawn in
+    // while the label is being typed.
+    if (dom?.label) applyColorToElement(dom.label, color)
   }
 
   /**
@@ -3168,7 +3181,6 @@ export class WhiteboardCanvas {
     const board = updateEdge(this.board, edgeId, { fromEnd, toEnd })
     if (board === this.board) return
     this.applyBoardChange(board)
-    this.boardEdgesById = new Map(board.edges.map((edge) => [edge.id, edge]))
     const path = this.edgeElsById.get(edgeId)?.path
     if (!path) return
     this.setEdgeMarker(path, 'marker-start', fromEnd === 'arrow')
@@ -3187,130 +3199,154 @@ export class WhiteboardCanvas {
     path.removeAttribute(attribute)
   }
 
-  // -- inline labels (edge, group) ----------------------------------------
-  // Both hang the same one-line field (ui/inlineTextInput.ts) off a point on
-  // the board and follow the camera. A group's label is edited this way rather
-  // than as a `contenteditable` on the label itself (which is how Obsidian
-  // Canvas does it): the board already has one way to type a label, and a
-  // second one that behaves differently — world-scaled text, a different
-  // commit rule — would be a second thing to learn for no gain.
+  // -- labels (edge, group) -----------------------------------------------
+  // A group's label and an edge's are both HTML in the world layer, and both
+  // are typed where they already are: the element takes the caret itself
+  // (`contenteditable`) rather than having a field floated over it. This is
+  // Obsidian Canvas's arrangement for both, and the only one under which the
+  // text keeps the size, weight and position it had a moment ago — a
+  // screen-space field standing in for world-scaled text can match it at one
+  // zoom level and no other, which is what both of these used to do.
+  //
+  // One session for the two, because there is now only one mechanism. What
+  // differs is which element holds the text, what the text is committed to,
+  // and what an emptied label means: a group keeps its label element (it is
+  // the group's only handle), an edge's goes away with its text.
 
-  private openEdgeLabelEditor(edgeId: EdgeId): void {
-    const edge = this.boardEdgesById.get(edgeId)
-    if (!edge || !this.canEdit) return
-    this.openLabelEditor(
-      { kind: 'edge', id: edgeId },
-      edge.label ?? '',
-      this.t('edge.labelPlaceholder'),
-      this.t('toolbar.edgeLabel'),
-    )
-  }
-
-  private openGroupLabelEditor(nodeId: NodeId): void {
-    const group = this.nodesById.get(nodeId)
-    if (!group || group.type !== 'group' || !this.canEdit) return
-    this.openLabelEditor(
-      { kind: 'group', id: nodeId },
-      group.label ?? '',
-      this.t('group.labelPlaceholder'),
-      this.t('menu.renameGroup'),
-    )
-  }
-
-  private openLabelEditor(
-    target: Readonly<{ kind: 'edge' | 'group'; id: string }>,
-    value: string,
-    placeholder: string,
-    ariaLabel: string,
-  ): void {
-    const overlay = this.toolbar?.overlay
-    if (!overlay) return
-    this.labelSession?.input.close()
+  private beginRename(target: LabelTarget): void {
+    if (!this.canEdit || !this.renameSubjectExists(target)) return
+    if (this.isRenaming(target)) return
+    this.endRename(true)
+    const el =
+      this.labelEl(target) ??
+      (target.kind === 'edge' ? this.attachEdgeLabel(target.id) : null)
+    if (!el) return
     this.toolbar?.closePopover()
-    const input = new InlineTextInput(this.context.getDocument(), overlay, {
-      value,
-      placeholder,
-      ariaLabel,
-      onCommit: (text) =>
-        target.kind === 'edge'
-          ? this.commitEdgeLabel(target.id, text)
-          : this.commitGroupLabel(target.id, text),
-      onClose: () => {
-        this.labelSession = null
-        this.syncSelectionKeymapScope()
-      },
-    })
-    this.labelSession = {
-      target:
-        target.kind === 'edge'
-          ? { kind: 'edge', id: target.id }
-          : { kind: 'group', id: target.id },
-      input,
+    this.renaming = target
+    // `plaintext-only` rather than plain `contenteditable` so a paste arrives
+    // as the text it looked like rather than as markup a label cannot hold.
+    el.setAttribute('contenteditable', 'plaintext-only')
+    el.focus()
+    // Selected rather than left with a caret where the click landed: renaming
+    // usually replaces the name. Obsidian Canvas selects it too.
+    const range = el.ownerDocument.createRange()
+    range.selectNodeContents(el)
+    const selection = this.context.getWindow().getSelection()
+    selection?.removeAllRanges()
+    selection?.addRange(range)
+    this.syncSelectionKeymapScope()
+  }
+
+  /** Ends a rename: committing writes what was typed, cancelling puts back
+   * what the board still holds. Either way the label goes back to being a
+   * label. `target` defaults to whichever one is being typed, so a caller
+   * that only means "whatever is in flight" (a lock, a teardown) can say
+   * that; naming one that is not being typed is a no-op. */
+  private endRename(
+    commit: boolean,
+    target: LabelTarget | null = this.renaming,
+  ): void {
+    if (!target || !this.isRenaming(target)) return
+    this.renaming = null
+    const el = this.labelEl(target)
+    if (el) {
+      el.removeAttribute('contenteditable')
+      el.blur()
+      if (commit) this.commitLabel(target, el.textContent ?? '')
+      else this.restoreLabel(target, el)
     }
     this.syncSelectionKeymapScope()
-    this.positionLabelInput()
   }
 
-  /** Re-projects the open field onto the world point it belongs to — the
-   * midpoint of an edge's curve, or the top-left of a group's label row. */
-  private positionLabelInput(): void {
-    const session = this.labelSession
-    if (!session) return
-    const isEdge = session.target.kind === 'edge'
-    const point = isEdge
-      ? this.edgeAnchorPoint(session.target.id)
-      : this.groupLabelAnchorPoint(session.target.id)
-    if (!point) return
-    session.input.place(
-      {
-        x: point.x * this.view.scale + this.view.tx,
-        y: point.y * this.view.scale + this.view.ty,
-      },
-      // An edge label is centred on its curve; a group label starts at the
-      // point below, so the field that stands in for it does too.
-      isEdge ? 'center' : 'left',
+  private handleLabelKeyDown(target: LabelTarget, e: KeyboardEvent): void {
+    if (!this.isRenaming(target)) return
+    // `isComposing` so the Enter that accepts an IME candidate is the IME's,
+    // not ours — Obsidian Canvas guards its own label the same way.
+    if (e.isComposing) return
+    if (e.key !== 'Enter' && e.key !== 'Escape') return
+    e.preventDefault()
+    // Neither key means anything else while a name is being typed: Escape in
+    // particular must not travel on to whatever Obsidian would close with it.
+    e.stopPropagation()
+    this.endRename(e.key === 'Enter', target)
+  }
+
+  private isRenaming(target: LabelTarget): boolean {
+    return this.renaming !== null && sameLabelTarget(this.renaming, target)
+  }
+
+  /** False once the thing being named has left the board, which is what makes
+   * calling any of this on a stale target safe. */
+  private renameSubjectExists(target: LabelTarget): boolean {
+    return target.kind === 'group'
+      ? this.nodesById.get(target.id)?.type === 'group'
+      : this.boardEdgesById.has(target.id)
+  }
+
+  private labelEl(target: LabelTarget): HTMLElement | null {
+    if (target.kind === 'edge') {
+      return this.edgeElsById.get(target.id)?.label ?? null
+    }
+    return (
+      this.runtimeByNodeId
+        .get(target.id)
+        ?.el?.querySelector<HTMLElement>(`.${GROUP_LABEL_CLASS}`) ?? null
     )
   }
 
-  /** Where a group's label starts: just above its top edge, indented from its
-   * left one — the two offsets style.css lays the label out with. */
-  private groupLabelAnchorPoint(nodeId: NodeId): ScreenPoint | null {
-    const group = this.nodesById.get(nodeId)
-    if (!group) return null
-    return {
-      x: group.x + GROUP_LABEL_INSET_PX,
-      y: group.y - GROUP_LABEL_CENTER_OFFSET_PX,
+  /** Puts back what the board still holds, after a cancelled rename. An
+   * edge that had no label to begin with loses the element it was given. */
+  private restoreLabel(target: LabelTarget, el: HTMLElement): void {
+    const stored =
+      target.kind === 'group'
+        ? this.groupLabelText(target.id)
+        : (this.boardEdgesById.get(target.id)?.label ?? '')
+    if (target.kind === 'edge' && stored.length === 0) {
+      this.detachEdgeLabel(target.id)
+      return
     }
+    el.textContent = stored
+  }
+
+  private commitLabel(target: LabelTarget, value: string): void {
+    if (target.kind === 'group') this.commitGroupLabel(target.id, value)
+    else this.commitEdgeLabel(target.id, value)
+  }
+
+  private groupLabelText(nodeId: NodeId): string {
+    const group = this.nodesById.get(nodeId)
+    return group?.type === 'group' ? (group.label ?? '') : ''
   }
 
   /** An empty group label removes the attribute rather than storing `""` —
-   * the same rule an edge label follows. */
+   * the same rule an edge label follows. The element stays either way: it is
+   * the group's only handle. */
   private commitGroupLabel(nodeId: NodeId, value: string): void {
     if (!this.canEdit) return
     const group = this.nodesById.get(nodeId)
     if (!group || group.type !== 'group') return
     const label = value.trim().length > 0 ? value : undefined
+    const el = this.labelEl({ kind: 'group', id: nodeId })
+    if (el) el.textContent = label ?? ''
     const board = updateNode(this.board, nodeId, { label })
     if (board === this.board) return
     this.applyBoardChange(board)
-    const labelEl = this.runtimeByNodeId
-      .get(nodeId)
-      ?.el?.querySelector(`.${GROUP_LABEL_CLASS}`)
-    if (labelEl) labelEl.textContent = label ?? ''
   }
 
   /** An empty label removes the attribute rather than storing `""` — an edge
-   * with a blank label and one with no label are the same edge. */
+   * with a blank label and one with no label are the same edge, and neither
+   * carries an element on its curve. */
   private commitEdgeLabel(edgeId: EdgeId, value: string): void {
     if (!this.canEdit || !this.boardEdgesById.has(edgeId)) return
     const label = value.trim().length > 0 ? value : undefined
+    if (label === undefined) this.detachEdgeLabel(edgeId)
+    else {
+      const el = this.attachEdgeLabel(edgeId)
+      if (el) el.textContent = label
+    }
     const board = updateEdge(this.board, edgeId, { label })
     if (board === this.board) return
     this.applyBoardChange(board)
-    // A label appearing or disappearing changes which elements the edge has,
-    // not just their attributes — the one edge change that needs the SVG
-    // rebuilt (which also restores the selection, and with it the toolbar).
-    this.rebuildEdgesSvg()
   }
 
   /** World point an edge's chrome hangs from: the midpoint of its curve, the
@@ -3864,6 +3900,9 @@ export class WhiteboardCanvas {
    * iterates, so it would otherwise never be queued for unmount on its
    * own. */
   private purgeNodeRuntime(id: NodeId): void {
+    // The node is going away, so there is nothing left to rename and nothing
+    // to write what was typed to; drop the session rather than commit it.
+    this.endRename(false, { kind: 'group', id })
     const runtime = this.runtimeByNodeId.get(id)
     if (runtime) {
       this.destroyCardContent(runtime)
@@ -4034,6 +4073,17 @@ export class WhiteboardCanvas {
       const label = doc.createElement('div')
       label.className = GROUP_LABEL_CLASS
       label.textContent = node.label ?? ''
+      // The label is renamed in place (see beginRename), so it needs the
+      // two listeners that end a rename. They are attached here, for the
+      // element's whole life, rather than for the duration of a session:
+      // both are no-ops until this group is the one being renamed, and a
+      // listener that outlives its session cannot leak one that doesn't.
+      label.spellcheck = false
+      const target: LabelTarget = { kind: 'group', id }
+      label.addEventListener('keydown', (event) =>
+        this.handleLabelKeyDown(target, event),
+      )
+      label.addEventListener('blur', () => this.endRename(true, target))
       el.appendChild(label)
       this.worldEl.appendChild(el)
       this.runtimeByNodeId.set(id, {
@@ -4128,6 +4178,9 @@ export class WhiteboardCanvas {
     // virtualization engine, but stay defensive: only the commit path
     // (finishEdit) ever destroys a live editor.
     if (this.editing?.nodeId === id) return
+    // A group being renamed is pinned for the same reason: its label holds
+    // the caret, and unmounting would take the text being typed with it.
+    if (this.isRenaming({ kind: 'group', id })) return
     // A web card is hidden, not destroyed — see WEB_FRAME_POOL_CAPACITY.
     if (runtime.webFrameUrl !== null) {
       this.poolWebCard(id, runtime)
@@ -4535,7 +4588,10 @@ export class WhiteboardCanvas {
   }
 
   private clearEdgesSvg(): void {
+    // An edge label being typed is about to lose the element it is typed in.
+    if (this.renaming?.kind === 'edge') this.endRename(false)
     this.edgesGroupEl?.replaceChildren()
+    this.edgeLabelsEl?.replaceChildren()
     this.edgeElsById.clear()
     this.boardEdgesById = new Map()
     this.edgeIndexByNodeId = new Map()
@@ -4579,18 +4635,60 @@ export class WhiteboardCanvas {
     }
     this.edgesGroupEl.appendChild(path)
 
-    let label: SVGTextElement | null = null
-    if (edge.label && edge.label.trim().length > 0) {
-      label = doc.createElementNS(SVG_NS, 'text')
-      label.setAttribute('class', EDGE_LABEL_CLASS)
-      label.dataset.edgeId = edge.id
-      label.setAttribute('text-anchor', 'middle')
-      label.setAttribute('dominant-baseline', 'middle')
-      label.textContent = edge.label
-      this.edgesGroupEl.appendChild(label)
-    }
+    const hasLabel = (edge.label?.trim().length ?? 0) > 0
+    this.edgeElsById.set(edge.id, {
+      path,
+      hit,
+      label: hasLabel ? this.createEdgeLabelEl(edge) : null,
+    })
+  }
 
-    this.edgeElsById.set(edge.id, { path, hit, label })
+  /**
+   * Builds an edge's label element. Carries the same two listeners a group's
+   * label does, for the same reason (see `mountNode`), and the edge's colour
+   * so the ring it gets while being typed is the edge's own.
+   */
+  private createEdgeLabelEl(edge: Edge): HTMLElement | null {
+    const parent = this.edgeLabelsEl
+    if (!parent) return null
+    const el = this.context.getDocument().createElement('div')
+    el.className = EDGE_LABEL_CLASS
+    el.dataset.edgeId = edge.id
+    el.textContent = edge.label ?? ''
+    el.spellcheck = false
+    // Shown by style.css while the element is empty, which it only ever is
+    // between being created for an unlabelled edge and being typed into.
+    el.dataset.placeholder = this.t('edge.labelPlaceholder')
+    applyColorToElement(el, edge.color)
+    const target: LabelTarget = { kind: 'edge', id: edge.id }
+    el.addEventListener('keydown', (event) =>
+      this.handleLabelKeyDown(target, event),
+    )
+    el.addEventListener('blur', () => this.endRename(true, target))
+    parent.appendChild(el)
+    return el
+  }
+
+  /** Gives an edge that has no label the element to type one into, and puts
+   * it on the curve. */
+  private attachEdgeLabel(edgeId: EdgeId): HTMLElement | null {
+    const edge = this.boardEdgesById.get(edgeId)
+    const dom = this.edgeElsById.get(edgeId)
+    if (!edge || !dom || dom.label) return dom?.label ?? null
+    const label = this.createEdgeLabelEl(edge)
+    if (!label) return null
+    this.edgeElsById.set(edgeId, { ...dom, label })
+    this.redrawEdge(edgeId)
+    return label
+  }
+
+  /** Takes it away again — an edge with a blank label is an edge with no
+   * label, and nothing should be left on the curve marking it. */
+  private detachEdgeLabel(edgeId: EdgeId): void {
+    const dom = this.edgeElsById.get(edgeId)
+    if (!dom?.label) return
+    dom.label.remove()
+    this.edgeElsById.set(edgeId, { ...dom, label: null })
   }
 
   /** Takes an edge off the canvas without touching the board — the preview
@@ -4649,8 +4747,8 @@ export class WhiteboardCanvas {
     dom.path.setAttribute('d', d)
     dom.hit.setAttribute('d', d)
     if (dom.label) {
-      dom.label.setAttribute('x', String(geometry.label.x))
-      dom.label.setAttribute('y', String(geometry.label.y))
+      dom.label.style.left = `${geometry.label.x}px`
+      dom.label.style.top = `${geometry.label.y}px`
     }
   }
 
@@ -4872,6 +4970,9 @@ export class WhiteboardCanvas {
   private syncBoardIndex(): void {
     this.nodesById = new Map(this.board.nodes.map((node) => [node.id, node]))
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
+    this.boardEdgesById = new Map(
+      this.board.edges.map((edge) => [edge.id, edge]),
+    )
   }
 
   // ---------------------------------------------------------------------

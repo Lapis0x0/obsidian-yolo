@@ -69,9 +69,6 @@ export const it = {
   edge: {
     labelPlaceholder: 'Etichetta questo collegamento',
   },
-  group: {
-    labelPlaceholder: 'Dai un nome a questo gruppo',
-  },
   file: {
     newWhiteboardBaseName: 'Lavagna',
     newNoteBaseName: 'Senza titolo',
