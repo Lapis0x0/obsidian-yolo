@@ -131,10 +131,18 @@ const DEGRADE_RESTORE_DOUBLINGS = 0.25
 export const DEGRADE_RESTORE_SCALE =
   DEGRADE_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
 
-/** Size a card is created at. Deliberately at the small end of what the
+/**
+ * Size a card is created at. Deliberately at the small end of what the
  * spikes' boards used (226-334 wide) — an empty card should not take half
- * the screen; the user resizes the ones that grow. */
-export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 180 })
+ * the screen; the user resizes the ones that grow.
+ *
+ * Both dimensions are whole grid cells (20 x 14 — see GRID_WORLD_STEP_PX,
+ * which is derived from the width). A card whose height were not would have
+ * its top edge on the lattice and its bottom edge between two lines once a
+ * drag snapped it there, so a column of cards could never be given even
+ * gaps by dragging alone.
+ */
+export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 182 })
 
 /** World-space stagger between cards created by one multi-file drop, so
  * three dropped notes read as three cards rather than one. */
@@ -227,6 +235,17 @@ export const RESIZE_HANDLE_PX = 20
  * relative to the card it forgives you for missing.
  */
 export const CONNECT_SNAP_WORLD_PX = 12
+
+/**
+ * How near two edges must be, in *screen* pixels, for a drag or a resize to
+ * line them up (domain/snapping.ts).
+ *
+ * Screen rather than world: this is a statement about the pointer, which has
+ * the same precision however far the board is zoomed, so the canvas divides
+ * it by the scale before handing it over. 15 is Obsidian Canvas's
+ * `objectSnapDistance`, and it does the same division.
+ */
+export const SNAP_SCREEN_PX = 15
 
 /**
  * Clear space between the selection toolbar and the selection it acts on, in

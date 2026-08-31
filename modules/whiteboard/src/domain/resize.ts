@@ -35,6 +35,33 @@ export const RESIZE_HANDLES: readonly ResizeHandle[] = [
 
 export type CardRect = Readonly<{ x: number; y: number; w: number; h: number }>
 
+/** Which edge of one axis a handle moves: the low one, the high one, or
+ * neither (an edge handle leaves the other axis alone). */
+export type ResizeEdge = 'start' | 'end' | null
+
+/**
+ * The two edges `handle` moves — the whole of what distinguishes the eight
+ * handles from one another, which is why both `resizeRect` and the alignment
+ * that corrects it (domain/snapping.ts) read it from here rather than each
+ * spelling the eight cases out again.
+ */
+export function resizeEdges(
+  handle: ResizeHandle,
+): Readonly<{ x: ResizeEdge; y: ResizeEdge }> {
+  return {
+    x: handle.includes('left')
+      ? 'start'
+      : handle.includes('right')
+        ? 'end'
+        : null,
+    y: handle.includes('top')
+      ? 'start'
+      : handle.includes('bottom')
+        ? 'end'
+        : null,
+  }
+}
+
 export type CardSize = Readonly<{ w: number; h: number }>
 
 /** Drops the id from a board card, so callers can hand one straight in. */
@@ -87,21 +114,22 @@ export function resizeRect(
   dy: number,
   min: CardSize,
 ): CardRect {
+  const edges = resizeEdges(handle)
   const horizontal = resizeAxis(
     start.x,
     start.w,
     dx,
     min.w,
-    handle === 'left' || handle === 'topleft' || handle === 'bottomleft',
-    handle === 'right' || handle === 'topright' || handle === 'bottomright',
+    edges.x === 'start',
+    edges.x === 'end',
   )
   const vertical = resizeAxis(
     start.y,
     start.h,
     dy,
     min.h,
-    handle === 'top' || handle === 'topleft' || handle === 'topright',
-    handle === 'bottom' || handle === 'bottomleft' || handle === 'bottomright',
+    edges.y === 'start',
+    edges.y === 'end',
   )
   return {
     x: horizontal.pos,

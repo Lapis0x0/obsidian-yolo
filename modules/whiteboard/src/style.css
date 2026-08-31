@@ -957,6 +957,44 @@
   box-shadow: 0 0 0 1px var(--interactive-accent);
 }
 
+/* --- alignment guides ------------------------------------------------------
+ * Drawn only while a drag or a resize has something lined up
+ * (ui/canvas/snapGuideLayer.ts). In the world layer, in world coordinates,
+ * over the cards — an alignment hidden behind the card that caused it is not
+ * feedback. Line weight and dot size are counter-scaled like the edges', so
+ * the hint stays the same hint at every zoom.
+ *
+ * Obsidian Canvas's `.canvas-snaps`, at its accent colour and its 0.6 opacity;
+ * it leaves its own weights in world units, which we do not (see the edge
+ * section above). */
+
+.yolo-whiteboard-snap-guides {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 1px;
+  height: 1px;
+  overflow: visible;
+  pointer-events: none;
+  opacity: 0.6;
+  /* Over the cards and over the handle layer, which is the only other thing
+   * in the world layer a gesture puts on screen. */
+  z-index: 3;
+}
+
+.yolo-whiteboard-snap-guides line {
+  stroke: var(--interactive-accent);
+  stroke-width: calc(1 * var(--yolo-whiteboard-zoom-multiplier, 1));
+}
+
+.yolo-whiteboard-snap-guides circle {
+  fill: var(--interactive-accent);
+  /* `r` as a CSS property (SVG 2) so the dot follows the same counter-scale
+   * as everything else here; the element carries a plain `r` attribute too,
+   * which is what would be drawn if it did not apply. */
+  r: calc(3 * var(--yolo-whiteboard-zoom-multiplier, 1));
+}
+
 /* An edge's label: an HTML element in the world layer, next to the SVG that
  * draws the curves rather than in it, because this is the element that holds
  * the caret while the label is typed (ui/canvas.ts's beginRename) and SVG

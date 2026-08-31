@@ -17,6 +17,7 @@ import {
   cameraFromView,
   dragPan,
   fitViewToBounds,
+  gridStepForScale,
   panByWheel,
   scaleAfterWheel,
   screenToWorld,
@@ -323,13 +324,9 @@ export class CameraController {
    */
   private applyGrid(): void {
     const { scale, tx, ty } = this.viewValue
-    const doublings = Math.max(
-      0,
-      Math.ceil(
-        Math.log2(GRID_MIN_SCREEN_STEP_PX / (GRID_WORLD_STEP_PX * scale)),
-      ),
-    )
-    const step = GRID_WORLD_STEP_PX * 2 ** doublings * scale
+    const step =
+      gridStepForScale(scale, GRID_WORLD_STEP_PX, GRID_MIN_SCREEN_STEP_PX) *
+      scale
     this.viewportEl.style.backgroundSize = `${step}px ${step}px`
     this.viewportEl.style.backgroundPosition = `${tx}px ${ty}px`
   }

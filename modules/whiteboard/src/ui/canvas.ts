@@ -31,6 +31,7 @@ import {
 import {
   cameraFromView,
   distanceBetween,
+  gridStepForScale,
   screenDeltaToWorld,
   screenToWorld,
 } from '../domain/camera'
@@ -106,11 +107,13 @@ import {
   nodesInMarquee,
 } from '../domain/selection'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
+import { type SnapGuide, snapMove, snapResize } from '../domain/snapping'
 import {
   type CanvasView,
   type VirtualCardRect,
   VirtualizationEngine,
   computeWorldViewportRect,
+  intersectsViewport,
 } from '../domain/virtualization'
 import { takePendingFit } from '../host/pendingFit'
 import { createWhiteboardTranslation } from '../i18n'
@@ -118,6 +121,7 @@ import { createWhiteboardTranslation } from '../i18n'
 import { CameraController } from './canvas/cameraController'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { EdgeLayer } from './canvas/edgeLayer'
+import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import {
   ALIGN_MENU,
   DISTRIBUTE_MENU,
@@ -138,12 +142,15 @@ import {
   EDGE_LABEL_CLASS,
   EDIT_PERSIST_THROTTLE_MS,
   FRAME_ON_TIME_MS,
+  GRID_MIN_SCREEN_STEP_PX,
+  GRID_WORLD_STEP_PX,
   GROUP_LABEL_CLASS,
   MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
+  SNAP_SCREEN_PX,
   SVG_NS,
   UNMOUNT_QUOTA_PER_FRAME,
   VIEWPORT_BUFFER_PX,
@@ -255,6 +262,9 @@ type NodeInteraction = {
   dragging: boolean
   ids: NodeId[]
   readonly startPositions: Map<NodeId, Readonly<{ x: number; y: number }>>
+  /** What this drag may line up with, frozen when it becomes a drag for the
+   * same reason `ids` is (see `beginNodeDrag`). */
+  snapCandidates: readonly CardRect[]
 }
 
 /**
@@ -272,6 +282,9 @@ type ResizeInteraction = {
   readonly startClient: ScreenPoint
   readonly startRect: CardRect
   dragging: boolean
+  /** As `NodeInteraction.snapCandidates`, frozen when the press becomes a
+   * drag rather than at press time — most presses on a handle are clicks. */
+  snapCandidates: readonly CardRect[]
 }
 
 /**
@@ -442,6 +455,11 @@ export class WhiteboardCanvas {
   // comment for the mount-independent, DOM-measurement-free approach.
   /** Constructed once in `ensureDom`, once the edges `<svg>` exists. */
   private edgeLayer!: EdgeLayer
+  /** Drawn only while a drag or a resize is lining something up. */
+  private snapGuideLayer: SnapGuideLayer | null = null
+  /** Which key waves alignment away, which is a platform question — resolved
+   * once, on first use (see `snappingWanted`). */
+  private isMacOS: boolean | null = null
   /** canvas.ts's own copy of the board's edges by id, kept in step by
    * `syncBoardIndex` — the lookup every edge-*gesture* and label-editing path
    * here uses; `edgeLayer` keeps a separate copy scoped to its own drawing
@@ -765,6 +783,8 @@ export class WhiteboardCanvas {
       interactionLayer.appendChild(resizer)
     }
     world.appendChild(interactionLayer)
+    this.snapGuideLayer?.destroy()
+    this.snapGuideLayer = new SnapGuideLayer(doc, world)
 
     viewport.appendChild(world)
     root.appendChild(viewport)
@@ -782,33 +802,34 @@ export class WhiteboardCanvas {
     this.previewPathEl = preview
     this.interactionLayerEl = interactionLayer
     this.cameraController = new CameraController(this.context, viewport, world, {
-      isParseFailed: () => this.parseFailed,
-      isEditingWheelTarget: (target) =>
-        this.editing !== null &&
-        this.nodeIdFromEventTarget(target) === this.editing.nodeId,
-      positionToolbar: () => this.toolbarController.positionToolbar(),
-      setInteracting: (interacting) => {
-        this.interacting = interacting
+        isParseFailed: () => this.parseFailed,
+        isEditingWheelTarget: (target) =>
+          this.editing !== null &&
+          this.nodeIdFromEventTarget(target) === this.editing.nodeId,
+        positionToolbar: () => this.toolbarController.positionToolbar(),
+        setInteracting: (interacting) => {
+          this.interacting = interacting
+        },
+        getSelectedNodes: () =>
+          this.board.nodes.filter((node) => this.selectedIds.has(node.id)),
+        commitCamera: (camera) => {
+          const current = this.board.camera
+          if (
+            camera.x === current.x &&
+            camera.y === current.y &&
+            camera.scale === current.scale
+          ) {
+            return
+          }
+          this.board = { ...this.board, camera }
+          this.context.requestSave()
+        },
+        afterCameraReset: () => {
+          this.recomputeVisibility()
+          this.drainQueues()
+        },
       },
-      getSelectedNodes: () =>
-        this.board.nodes.filter((node) => this.selectedIds.has(node.id)),
-      commitCamera: (camera) => {
-        const current = this.board.camera
-        if (
-          camera.x === current.x &&
-          camera.y === current.y &&
-          camera.scale === current.scale
-        ) {
-          return
-        }
-        this.board = { ...this.board, camera }
-        this.context.requestSave()
-      },
-      afterCameraReset: () => {
-        this.recomputeVisibility()
-        this.drainQueues()
-      },
-    })
+    )
     this.edgeLayer = new EdgeLayer(
       this.context,
       edgesGroup,
@@ -873,10 +894,8 @@ export class WhiteboardCanvas {
       editCard: (id) => this.editCard(id),
       beginRename: (target) => this.beginRename(target),
       applyColorToNodes: (ids, color) => this.applyColorToNodes(ids, color),
-      applyColorToEdge: (edgeId, color) =>
-        this.applyColorToEdge(edgeId, color),
-      setEdgeEnds: (edgeId, direction) =>
-        this.setEdgeEnds(edgeId, direction),
+      applyColorToEdge: (edgeId, color) => this.applyColorToEdge(edgeId, color),
+      setEdgeEnds: (edgeId, direction) => this.setEdgeEnds(edgeId, direction),
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
     })
@@ -1062,6 +1081,7 @@ export class WhiteboardCanvas {
         dragging: false,
         ids: [],
         startPositions: new Map(),
+        snapCandidates: [],
       }
       this.viewportEl.setPointerCapture(e.pointerId)
       return
@@ -1507,6 +1527,8 @@ export class WhiteboardCanvas {
         this.finishConnect(interaction, e)
         break
     }
+    // Whatever the gesture was, it is over: nothing is lining up any more.
+    this.snapGuideLayer?.clear()
     this.toolbarController.setToolbarSuppressed(false)
   }
 
@@ -1689,6 +1711,7 @@ export class WhiteboardCanvas {
       startClient: { x: e.clientX, y: e.clientY },
       startRect: rectOfCard(card),
       dragging: false,
+      snapCandidates: [],
     }
     this.viewportEl.setPointerCapture(e.pointerId)
     return true
@@ -1700,25 +1723,57 @@ export class WhiteboardCanvas {
       const dy = e.clientY - interaction.startClient.y
       if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return
       interaction.dragging = true
+      interaction.snapCandidates = this.snapCandidates(
+        new Set([interaction.nodeId]),
+      )
       // Exempt from virtualization unmount for the gesture's duration, the
       // same way a dragged card is: a card being resized must not vanish
       // because a corner of it wandered out of the buffer band.
       this.pinnedIds.add(interaction.nodeId)
     }
-    this.applyResizeRect(interaction, this.resizedRect(interaction, e))
+    const resized = this.resizedRect(interaction, e)
+    this.snapGuideLayer?.show(resized.guides)
+    this.applyResizeRect(interaction, resized.rect)
   }
 
+  /**
+   * The rectangle this resize has reached, and what it lined up with on the
+   * way. The alignment correction is applied to the *delta* rather than to
+   * the rectangle it produces, because that is what keeps the minimum-size
+   * clamp in charge: a snapped edge that would take the card below its
+   * minimum stops at the minimum like any other (domain/resize.ts).
+   */
   private resizedRect(
     interaction: ResizeInteraction,
     e: PointerEvent,
-  ): CardRect {
-    return resizeRect(
+  ): Readonly<{ rect: CardRect; guides: readonly SnapGuide[] }> {
+    const { scale } = this.cameraController.view
+    const dx = (e.clientX - interaction.startClient.x) / scale
+    const dy = (e.clientY - interaction.startClient.y) / scale
+    const rect = resizeRect(
       interaction.startRect,
       interaction.handle,
-      (e.clientX - interaction.startClient.x) / this.cameraController.view.scale,
-      (e.clientY - interaction.startClient.y) / this.cameraController.view.scale,
+      dx,
+      dy,
       MIN_CARD_SIZE,
     )
+    if (!this.snappingWanted(e)) return { rect, guides: [] }
+    const snap = snapResize(
+      rect,
+      interaction.handle,
+      interaction.snapCandidates,
+      this.snapOptions(),
+    )
+    return {
+      rect: resizeRect(
+        interaction.startRect,
+        interaction.handle,
+        dx + snap.dx,
+        dy + snap.dy,
+        MIN_CARD_SIZE,
+      ),
+      guides: snap.guides,
+    }
   }
 
   /** Live (uncommitted) geometry for the card, its handles and its edges. */
@@ -1749,7 +1804,7 @@ export class WhiteboardCanvas {
     }
 
     this.pinnedIds.delete(interaction.nodeId)
-    const rect = this.resizedRect(interaction, e)
+    const { rect } = this.resizedRect(interaction, e)
     // A group's contents deliberately stay where they are: growing a frame is
     // how more cards are taken in and shrinking it is how they are let go,
     // which is only possible if resizing moves nothing (Obsidian Canvas's
@@ -2057,6 +2112,7 @@ export class WhiteboardCanvas {
       this.setSelection([interaction.nodeId])
     }
     interaction.ids = nodesToDragWith(this.selectedIds, this.board.nodes)
+    interaction.snapCandidates = this.snapCandidates(new Set(interaction.ids))
     for (const id of interaction.ids) {
       const card = this.nodesById.get(id)
       if (!card) continue
@@ -2068,15 +2124,118 @@ export class WhiteboardCanvas {
     }
   }
 
-  private updateNodeDragPositions(
+  // -----------------------------------------------------------------------
+  // Alignment (drag and resize). What lines up with what is
+  // domain/snapping.ts's; what lives here is the gesture's side of it —
+  // which rectangles are on offer, how big the offer is at this zoom, and
+  // when the user has waved it away.
+  // -----------------------------------------------------------------------
+
+  /**
+   * The drag's world delta with alignment folded in, and the guides to draw
+   * for it.
+   *
+   * One method for the live frame and for the commit both, because the two
+   * have to agree exactly: recomputing from the same event is a few hundred
+   * comparisons, and any drift between them would move the card on release.
+   */
+  private draggedDelta(
     interaction: NodeInteraction,
     e: PointerEvent,
-  ): void {
-    const { dx, dy } = screenDeltaToWorld(
+  ): Readonly<{ dx: number; dy: number; guides: readonly SnapGuide[] }> {
+    const raw = screenDeltaToWorld(
       this.cameraController.view,
       e.clientX - interaction.startClient.x,
       e.clientY - interaction.startClient.y,
     )
+    if (!this.snappingWanted(e)) return { ...raw, guides: [] }
+    const moving: CardRect[] = []
+    for (const id of interaction.ids) {
+      const start = interaction.startPositions.get(id)
+      const card = this.nodesById.get(id)
+      if (!start || !card) continue
+      moving.push({
+        x: start.x + raw.dx,
+        y: start.y + raw.dy,
+        w: card.w,
+        h: card.h,
+      })
+    }
+    const snap = snapMove(moving, interaction.snapCandidates, {
+      ...this.snapOptions(),
+      movedX: raw.dx !== 0,
+      movedY: raw.dy !== 0,
+    })
+    return { dx: raw.dx + snap.dx, dy: raw.dy + snap.dy, guides: snap.guides }
+  }
+
+  /**
+   * What a gesture may line up with: what is on screen, minus what the
+   * gesture is moving, minus everything of the other kind.
+   *
+   * Cards line up with cards and groups with groups (Obsidian Canvas draws
+   * the same line): a card dragged at a group is being dropped *into* it, and
+   * one that jumped to the frame's edge on the way in would be fighting the
+   * drop rather than helping it.
+   *
+   * Off-screen cards are left out because an alignment the user cannot see is
+   * not an offer — and because it keeps the comparison bounded by the
+   * viewport rather than by the size of the board.
+   */
+  private snapCandidates(moving: ReadonlySet<NodeId>): readonly CardRect[] {
+    const groups = this.board.nodes.some(
+      (node) => moving.has(node.id) && node.type === 'group',
+    )
+    const view = computeWorldViewportRect(
+      this.viewportEl.clientWidth,
+      this.viewportEl.clientHeight,
+      this.cameraController.view,
+      0,
+    )
+    return this.board.nodes
+      .filter(
+        (node) =>
+          !moving.has(node.id) &&
+          (node.type === 'group') === groups &&
+          intersectsViewport(node, view),
+      )
+      .map(rectOfCard)
+  }
+
+  /** The offer's size and the lattice it falls back to, both of which are
+   * facts about the current zoom: the tolerance is a screen distance divided
+   * by the scale, and the grid is whichever lattice is currently drawn. */
+  private snapOptions(): Readonly<{ tolerance: number; gridStep: number }> {
+    const { scale } = this.cameraController.view
+    return {
+      tolerance: SNAP_SCREEN_PX / scale,
+      gridStep: gridStepForScale(
+        scale,
+        GRID_WORLD_STEP_PX,
+        GRID_MIN_SCREEN_STEP_PX,
+      ),
+    }
+  }
+
+  /**
+   * Alignment is on unless the user holds the key that says otherwise, which
+   * is Obsidian Canvas's arrangement down to the key: Ctrl on macOS — where
+   * Alt already pans this canvas, as it does theirs — and Alt everywhere
+   * else. Read off the event, so it can be pressed and released mid-drag.
+   */
+  private snappingWanted(e: PointerEvent): boolean {
+    this.isMacOS ??= /Mac|iPhone|iPad/.test(
+      this.context.getWindow().navigator.userAgent,
+    )
+    return this.isMacOS ? !e.ctrlKey : !e.altKey
+  }
+
+  private updateNodeDragPositions(
+    interaction: NodeInteraction,
+    e: PointerEvent,
+  ): void {
+    const { dx, dy, guides } = this.draggedDelta(interaction, e)
+    this.snapGuideLayer?.show(guides)
     const overrides = new Map<NodeId, CardRect>()
     for (const id of interaction.ids) {
       const start = interaction.startPositions.get(id)
@@ -2108,11 +2267,7 @@ export class WhiteboardCanvas {
       return
     }
 
-    const { dx, dy } = screenDeltaToWorld(
-      this.cameraController.view,
-      e.clientX - interaction.startClient.x,
-      e.clientY - interaction.startClient.y,
-    )
+    const { dx, dy } = this.draggedDelta(interaction, e)
     if (dx !== 0 || dy !== 0) {
       this.applyBoardChange(moveNodes(this.board, interaction.ids, dx, dy))
     }
@@ -3257,9 +3412,10 @@ export class WhiteboardCanvas {
    */
   private updateDegradedState(): void {
     const next = nextDegradedState(this.cameraController.view.scale, this.degraded, {
-      enter: DEGRADE_SCALE_THRESHOLD,
-      restore: DEGRADE_RESTORE_SCALE,
-    })
+        enter: DEGRADE_SCALE_THRESHOLD,
+        restore: DEGRADE_RESTORE_SCALE,
+      },
+    )
     if (next === this.degraded) return
     this.degraded = next
     this.worldEl.classList.toggle(WORLD_DEGRADED_CLASS, next)
@@ -3555,6 +3711,7 @@ export class WhiteboardCanvas {
   private teardownAllCards(): void {
     this.forceCommitActiveEdit()
     this.interaction = null
+    this.snapGuideLayer?.clear()
     this.marqueeEl?.remove()
     this.marqueeEl = null
     this.popSelectionKeymapScope()

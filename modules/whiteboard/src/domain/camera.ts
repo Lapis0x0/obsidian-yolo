@@ -285,6 +285,30 @@ export function distanceBetween(a: ScreenPoint, b: ScreenPoint): number {
   return Math.hypot(a.x - b.x, a.y - b.y)
 }
 
+/**
+ * World spacing of the lattice at `scale`: `worldStep` doubled as many times
+ * as it takes for one cell to cover `minScreenStep` pixels on screen.
+ *
+ * The dot grid is drawn from this and a drag snaps to it, which is the point
+ * of it being one function: a card that lands between two visible dots would
+ * be snapping to a lattice the board is not showing, and the user would have
+ * no way to predict where it goes. Obsidian Canvas ties the two together the
+ * same way (its `gridSpacing` feeds both its background pattern and its
+ * `getSnapping`), differing only in taking the step off a table of zoom
+ * thresholds rather than computing it.
+ */
+export function gridStepForScale(
+  scale: number,
+  worldStep: number,
+  minScreenStep: number,
+): number {
+  const doublings = Math.max(
+    0,
+    Math.ceil(Math.log2(minScreenStep / (worldStep * scale))),
+  )
+  return worldStep * 2 ** doublings
+}
+
 /** `.yoloboard`'s persisted `camera` field -> the canvas's live view state. */
 export function viewFromCamera(camera: Camera): CanvasView {
   return { tx: camera.x, ty: camera.y, scale: camera.scale }

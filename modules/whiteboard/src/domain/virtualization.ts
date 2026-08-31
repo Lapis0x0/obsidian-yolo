@@ -57,7 +57,12 @@ export function computeWorldViewportRect(
   }
 }
 
-function intersects(card: VirtualCardRect, rect: WorldRect): boolean {
+/** Whether a card's footprint overlaps a world rectangle — the viewport test
+ * both virtualization and the canvas's alignment candidates are asking. */
+export function intersectsViewport(
+  card: VirtualCardRect,
+  rect: WorldRect,
+): boolean {
   return (
     card.x < rect.right &&
     card.x + card.w > rect.left &&
@@ -80,7 +85,7 @@ function wantsVisible(
   rect: WorldRect,
   pinnedIds: ReadonlySet<string>,
 ): boolean {
-  return pinnedIds.has(card.id) || intersects(card, rect)
+  return pinnedIds.has(card.id) || intersectsViewport(card, rect)
 }
 
 export class VirtualizationEngine {
