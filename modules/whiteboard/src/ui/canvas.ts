@@ -839,6 +839,12 @@ export class WhiteboardCanvas {
       this.context,
       viewport,
       world,
+      // Every world-layer overlay that is counter-scaled instead of drawn in
+      // world units, and nothing else: the camera writes the counter-scale
+      // variable on each of these rather than once on `world`, because a
+      // custom property written on `world` restyles every card under it (see
+      // CameraController's applyZoomScale).
+      [edgesSvg, edgeLabels, interactionLayer, this.snapGuideLayer.element],
       {
         isParseFailed: () => this.parseFailed,
         isEditingWheelTarget: (target) =>
@@ -968,13 +974,15 @@ export class WhiteboardCanvas {
       ),
     ])
     // A freshly built world element carries none of the old one's inline
-    // custom properties, so both handle variables have to be written again.
-    // The size is pushed from here rather than hard-coded in the stylesheet
-    // so it stays next to the doc comment explaining the counter-scale law.
-    // (The zoom-multiplier variable itself is (re)written by the freshly
-    // constructed `cameraController` above, whose own counter-scale cache
-    // starts unset. Everything else it drives — edge strokes, arrowheads,
-    // edge label type — is computed in the stylesheet.)
+    // custom properties, so the handle size has to be written again. It is
+    // pushed from here rather than hard-coded in the stylesheet so it stays
+    // next to the doc comment explaining the counter-scale law. Once, on
+    // `world`, before any card is mounted — unlike the zoom multiplier, which
+    // is rewritten on every zoom and therefore lives on the chrome layers
+    // (see CameraController's applyZoomScale); the freshly constructed
+    // `cameraController` above writes it, its counter-scale cache starting
+    // unset. Everything else it drives — edge strokes, arrowheads, edge label
+    // type — is computed in the stylesheet.
     world.style.setProperty(
       '--yolo-whiteboard-resizer-size',
       `${RESIZE_HANDLE_PX}px`,

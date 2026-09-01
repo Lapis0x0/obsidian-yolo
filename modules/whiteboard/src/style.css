@@ -384,8 +384,9 @@
  * ui/canvas.ts's placeInteractionLayer(). It lives inside the world layer,
  * so it is in world coordinates like the cards — which is why every handle
  * dimension is multiplied by --yolo-whiteboard-zoom-multiplier (1/sqrt(scale),
- * written by applyZoomScale()). Both custom properties are set on the world
- * element from ui/constants.ts.
+ * written on this layer by cameraController.ts's applyZoomScale(); the handle
+ * size it is multiplied against is written once on the world element from
+ * ui/canvas.ts).
  *
  * The handles are invisible: they are hit areas, not decoration. The card's
  * own accent ring already says which card the pointer is on, and eight

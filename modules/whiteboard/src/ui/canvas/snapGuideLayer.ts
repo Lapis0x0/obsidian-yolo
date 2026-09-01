@@ -37,6 +37,13 @@ export class SnapGuideLayer {
     parent.appendChild(this.el)
   }
 
+  /** The layer element. Exposed for one reason: the guides' weights are
+   * counter-scaled, so `CameraController` has to write the counter-scale
+   * variable here (see its `applyZoomScale`). */
+  get element(): SVGElement {
+    return this.el
+  }
+
   show(guides: readonly SnapGuide[]): void {
     const key = guides
       .map((g) => `${g.axis}${g.position},${g.from},${g.to},${g.marks}`)

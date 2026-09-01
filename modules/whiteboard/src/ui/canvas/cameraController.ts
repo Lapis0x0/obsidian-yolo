@@ -115,6 +115,10 @@ export class CameraController {
     private readonly context: YoloModuleHostFileViewContextV1,
     private readonly viewportEl: HTMLElement,
     private readonly worldEl: HTMLElement,
+    /** The world layer's chrome layers — the overlays that are counter-scaled
+     * rather than drawn in world units. See `applyZoomScale`, which is the
+     * only thing that touches them. */
+    private readonly chromeEls: readonly (HTMLElement | SVGElement)[],
     private readonly callbacks: CameraControllerCallbacks,
   ) {}
 
@@ -296,14 +300,24 @@ export class CameraController {
    * Obsidian Canvas holds the value for the length of its own animation for
    * the same reason. The sizes therefore lag a zoom by its glide and land
    * with it.
+   *
+   * Written on each chrome layer rather than once on the world layer they
+   * share, which would be the shorter code and is the trap. Blink does not
+   * track which elements actually read a custom property: setting one on an
+   * element invalidates the style of its entire subtree, and the world
+   * layer's subtree is every card on the board. Measured on a 1200-card
+   * board, the single world-level write restyled 8400 elements in ~60ms on
+   * the frame a zoom settled — a visible stall, for a value no card reads.
+   * The chrome layers hold every element that does read it, and nothing
+   * else, so the restyle is now the size of what is counter-scaled.
    */
   private applyZoomScale(): void {
     if (this.appliedZoomScale === this.viewValue.scale) return
     this.appliedZoomScale = this.viewValue.scale
-    this.worldEl.style.setProperty(
-      '--yolo-whiteboard-zoom-multiplier',
-      String(1 / Math.sqrt(this.viewValue.scale)),
-    )
+    const value = String(1 / Math.sqrt(this.viewValue.scale))
+    for (const el of this.chromeEls) {
+      el.style.setProperty('--yolo-whiteboard-zoom-multiplier', value)
+    }
   }
 
   /**
