@@ -80,6 +80,9 @@ export type CameraControllerCallbacks = Readonly<{
   /** `resetCamera` also needs the virtualization loop to catch up
    * immediately, the same as any other discrete camera jump. */
   afterCameraReset: () => void
+  /** Whether the overview tier is on, which decides whether the chrome layers
+   * it hides are worth writing to at all — see `applyZoomScale`. */
+  isOverviewActive: () => boolean
 }>
 
 /**
@@ -120,6 +123,11 @@ export class CameraController {
    * it. */
   private appliedZoomScale: number | null = null
 
+  /** A write to `overviewChromeEls` was skipped because the overview tier had
+   * them out of the drawing; it is owed on the way out
+   * (`flushOverviewChromeZoomScale`). */
+  private overviewChromeStale = false
+
   /** Memoised zoom-out floor, keyed on the node array it was derived from —
    * see `zoomScaleBounds`. Also dropped on resize (`invalidateScaleFloor`),
    * which the node array cannot report. */
@@ -136,6 +144,11 @@ export class CameraController {
      * rather than drawn in world units. See `applyZoomScale`, which is the
      * only thing that touches them. */
     private readonly chromeEls: readonly (HTMLElement | SVGElement)[],
+    /** The same, for the layers the overview tier hides outright (the edges
+     * and their labels): they read the counter-scale like the others, but
+     * only while they are part of the drawing. Split out so `applyZoomScale`
+     * can leave them alone while they are not. */
+    private readonly overviewChromeEls: readonly (HTMLElement | SVGElement)[],
     private readonly callbacks: CameraControllerCallbacks,
   ) {}
 
@@ -371,8 +384,39 @@ export class CameraController {
   private applyZoomScale(): void {
     if (this.appliedZoomScale === this.viewValue.scale) return
     this.appliedZoomScale = this.viewValue.scale
-    const value = String(1 / Math.sqrt(this.viewValue.scale))
-    for (const el of this.chromeEls) {
+    this.writeZoomScale(this.chromeEls)
+    // The edges and their labels are `display: none` for the length of the
+    // overview tier (the canvas draws the edges instead), and a hidden subtree
+    // skips layout but not style: writing this there restyles every path,
+    // marker and label on the board — thousands of elements, on the frame a
+    // zoom settles — for a value nothing on screen is reading. Owed, not
+    // dropped: `flushOverviewChromeZoomScale` pays it as the tier ends.
+    if (this.callbacks.isOverviewActive()) {
+      this.overviewChromeStale = true
+      return
+    }
+    this.writeZoomScale(this.overviewChromeEls)
+  }
+
+  /**
+   * Writes the counter-scale the overview tier's hidden layers went without.
+   * Called by the canvas as the tier ends — before the stylesheet puts them
+   * back in the drawing, so they are never seen at the wrong weight.
+   */
+  flushOverviewChromeZoomScale(): void {
+    if (!this.overviewChromeStale) return
+    this.overviewChromeStale = false
+    this.writeZoomScale(this.overviewChromeEls)
+  }
+
+  /** The counter-scale for the zoom `applyZoomScale` last accepted — which is
+   * not necessarily the live one, since the value deliberately lags a glide
+   * and lands with it. */
+  private writeZoomScale(els: readonly (HTMLElement | SVGElement)[]): void {
+    const value = String(
+      1 / Math.sqrt(this.appliedZoomScale ?? this.viewValue.scale),
+    )
+    for (const el of els) {
       el.style.setProperty('--yolo-whiteboard-zoom-multiplier', value)
     }
   }

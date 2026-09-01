@@ -951,7 +951,10 @@ export class WhiteboardCanvas {
       // variable on each of these rather than once on `world`, because a
       // custom property written on `world` restyles every card under it (see
       // CameraController's applyZoomScale).
-      [edgesSvg, edgeLabels, interactionLayer, this.snapGuideLayer.element],
+      [interactionLayer, this.snapGuideLayer.element],
+      // The two of them the overview tier takes out of the document, which is
+      // why they are handed over separately — see the same method.
+      [edgesSvg, edgeLabels],
       {
         isParseFailed: () => this.parseFailed,
         isEditingWheelTarget: (target) =>
@@ -980,6 +983,7 @@ export class WhiteboardCanvas {
           this.recomputeVisibility()
           this.drainQueues()
         },
+        isOverviewActive: () => this.overview,
       },
     )
     this.edgeLayer = new EdgeLayer(
@@ -3960,6 +3964,11 @@ export class WhiteboardCanvas {
     )
     if (next === this.overview) return
     this.overview = next
+    // Before the class comes off: the edges are counter-scaled by a variable
+    // the camera stops writing to them while they are hidden (see
+    // CameraController's applyZoomScale), and they must not be put back in the
+    // drawing still carrying the weight they had on the way in.
+    if (!next) this.cameraController.flushOverviewChromeZoomScale()
     this.worldEl.classList.toggle(WORLD_OVERVIEW_CLASS, next)
     if (next) {
       this.overviewLingering = false
