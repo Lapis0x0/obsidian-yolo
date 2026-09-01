@@ -494,3 +494,45 @@ export const EDGE_HIDDEN_CLASS = 'yolo-whiteboard-edge-hidden'
  * independent and each has to be able to end without clearing the other.
  */
 export const EDGE_CULLED_CLASS = 'yolo-whiteboard-edge-culled'
+
+// -----------------------------------------------------------------------
+// Card content budget.
+//
+// A card's body clips and does not scroll (style.css's content mask, D7), so
+// everything a card renders past its own height is work whose result no user
+// can reach. Handing the whole note to a renderer costs a full parse, an
+// image decode per image and a post-processor pass over the entire document,
+// and — with the windowed preview — a measurement pass over every section on
+// top, repeated on every remount. So the card asks for a prefix instead, and
+// the prefix is sized from the card rather than from the note: what a card
+// costs becomes a property of its geometry, which is the invariant a board
+// needs.
+// -----------------------------------------------------------------------
+
+/**
+ * The tightest line box a card body can produce, in world pixels — 13px type
+ * (style.css's `.yolo-whiteboard-card-body .markdown-preview-view`) at the
+ * smallest line height a theme is likely to set.
+ *
+ * Deliberately an underestimate: it is the divisor that turns a card's height
+ * into a *line budget*, so a value below the truth over-provisions the prefix
+ * and a value above it would clip content the card can show. Every source
+ * line renders as at least one line box, so a budget of height/this many
+ * lines cannot render shorter than the card is tall.
+ */
+export const CARD_CONTENT_MIN_LINE_WORLD_PX = 16
+
+/**
+ * Lines granted on top of the height-derived budget, covering the ways a
+ * source line can occupy no line box of its own: a table's delimiter row, a
+ * closing code fence, a frontmatter block drawn as one compact property list.
+ */
+export const CARD_CONTENT_EXTRA_LINES = 4
+
+/**
+ * Hard ceiling on the prefix, in characters. The line budget bounds a normal
+ * note; this bounds the pathological one — a minified file, a base64 data URI,
+ * a whole document written on one line — where a single "line" is the entire
+ * cost the budget exists to avoid.
+ */
+export const CARD_CONTENT_MAX_CHARS = 4000

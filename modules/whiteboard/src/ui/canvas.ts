@@ -456,7 +456,9 @@ export class WhiteboardCanvas {
    * `applyHistoryBoard`). */
   private readonly history = new BoardHistory()
   /** The off-screen card that warms the rendering pipeline; see `preheat`. */
-  private preheatView: YoloModuleHostMarkdownContentViewV1 | null = null
+  private preheatRenderer: ReturnType<
+    YoloModuleHostApiV1['ui']['createMarkdownRenderer']
+  > | null = null
   private viewKeymapDisposer: (() => void) | null = null
   private editSessionCounter = 0
 
@@ -798,8 +800,8 @@ export class WhiteboardCanvas {
     this.overviewLayer?.destroy()
     this.overviewLayer = null
     this.teardownAllCards()
-    this.preheatView?.destroy()
-    this.preheatView = null
+    this.preheatRenderer?.unload()
+    this.preheatRenderer = null
     this.rootEl?.remove()
     this.rootEl = null
     this.errorEl = null
@@ -1151,8 +1153,8 @@ export class WhiteboardCanvas {
    * 动）") — renders into an off-screen (not `display:none`, so layout/
    * measurement work isn't skipped) element.
    *
-   * Through the same content view the cards use, so what is warmed is what
-   * they will actually run: the preview pipeline's parse worker included.
+   * Through the same renderer the cards use, so what is warmed is what they
+   * will actually run: the markdown parse pipeline and its worker included.
    */
   private preheat(): void {
     if (!this.rootEl) return
@@ -1161,18 +1163,21 @@ export class WhiteboardCanvas {
     el.className = PREHEAT_CLASS
     this.rootEl.appendChild(el)
     try {
-      this.preheatView = this.host.ui.createMarkdownContentView({
-        container: el,
-        value: '_',
-        sourcePath: this.sourcePathForBoard(),
-      })
+      const renderer = this.host.ui.createMarkdownRenderer()
+      this.preheatRenderer = renderer
+      void renderer
+        .render('_', el, this.sourcePathForBoard())
+        .catch((error: unknown) => {
+          if (this.preheatRenderer !== renderer) return
+          this.reportError('preheat render', error)
+        })
     } catch (error) {
       this.reportError('preheat render', error)
     }
-    // Kept for the view's lifetime rather than discarded once it has drawn:
-    // a content view renders on its own schedule and reports no completion,
-    // and one empty off-screen card costs nothing next to guessing at a
-    // moment to tear it down. Released in `dispose()`.
+    // Kept for the view's lifetime rather than unloaded once it has drawn:
+    // unloading is what cancels an in-flight render, and one empty off-screen
+    // element costs nothing next to racing the thing it exists to warm.
+    // Released in `dispose()`.
   }
 
   // -----------------------------------------------------------------------
@@ -2098,6 +2103,12 @@ export class WhiteboardCanvas {
     this.applyResizeRect(interaction, rect)
     // The board holds this rectangle now; the gesture's copy of it retires.
     this.setLiveNodeRects(null)
+    // How much of a card's markdown is worth building is derived from the
+    // card's height (`cardMarkdownPrefix`), so a card that just grew may have
+    // room for source it was never given. Queued rather than rendered here so
+    // it answers to the same frame gate as every other build; a resize that
+    // does not change the prefix costs the comparison and nothing else.
+    this.contentSyncQueue.add(interaction.nodeId)
     // The card's footprint changed, so its mount state may have too.
     this.recomputeVisibility()
   }

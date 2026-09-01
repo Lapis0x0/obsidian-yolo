@@ -811,6 +811,15 @@
   font-size: 13px;
 }
 
+/* A card's content starts at the card's inset. Obsidian's preview absorbs the
+ * first block's top margin because a document opens under a header; a card has
+ * no header, so the margin would push its one visible screenful down by a line
+ * it cannot afford. Only the leading edge: spacing *between* blocks is what
+ * makes the content read as the note it came from. */
+.yolo-whiteboard-card-body .markdown-preview-sizer > :first-child {
+  margin-top: 0;
+}
+
 /* Same inset, on CodeMirror's scroll container rather than on its content:
  * putting it on `.cm-content` would also lose to Obsidian's own
  * `.markdown-source-view.mod-cm6 .cm-content { padding: 0 }` (0,3,0 against

@@ -6,7 +6,7 @@ import type {
 } from '../domain/fileFormat'
 
 import { OVERVIEW_RESTORE_SCALE, OVERVIEW_SCALE_THRESHOLD } from './constants'
-import { nextOverviewState, nodeTitleText } from './lod'
+import { cardMarkdownPrefix, nextOverviewState, nodeTitleText } from './lod'
 
 describe('nextOverviewState', () => {
   const band = { enter: 0.35, restore: 0.42 }
@@ -107,5 +107,54 @@ describe('nodeTitleText', () => {
     const title = nodeTitleText(textCard(long))
     expect(title.length).toBe(60)
     expect(title.endsWith('…')).toBe(true)
+  })
+})
+
+describe('cardMarkdownPrefix', () => {
+  const lines = (n: number, prefix = 'line'): string =>
+    Array.from({ length: n }, (_, i) => `${prefix} ${i}`).join('\n')
+
+  it('gives a short note back whole', () => {
+    const markdown = lines(3)
+    expect(cardMarkdownPrefix(markdown, 200)).toBe(markdown)
+  })
+
+  it('bounds a long note by the card height', () => {
+    // 200px / 16px + 4 = 17 lines.
+    expect(cardMarkdownPrefix(lines(500), 200).split('\n')).toHaveLength(17)
+    expect(cardMarkdownPrefix(lines(500), 400).split('\n')).toHaveLength(29)
+  })
+
+  it('grows the prefix with the card, which is the point', () => {
+    const markdown = lines(500)
+    const short = cardMarkdownPrefix(markdown, 200)
+    const tall = cardMarkdownPrefix(markdown, 800)
+    expect(tall.startsWith(short)).toBe(true)
+    expect(tall.length).toBeGreaterThan(short.length)
+  })
+
+  it('keeps blank lines without spending budget on them', () => {
+    // Every other line blank: the budget still buys 17 lines of content, so
+    // a note written with paragraph breaks does not arrive half empty.
+    const spaced = Array.from({ length: 500 }, (_, i) => `line ${i}\n`).join(
+      '\n',
+    )
+    const prefix = cardMarkdownPrefix(spaced, 200)
+    expect(prefix.split('\n').filter((line) => line !== '')).toHaveLength(17)
+  })
+
+  it('cuts on a line boundary when one pathological line blows the cap', () => {
+    const markdown = `# title\n${'x'.repeat(9000)}\ntail`
+    const prefix = cardMarkdownPrefix(markdown, 200)
+    expect(prefix).toBe('# title')
+  })
+
+  it('never returns more than the character cap', () => {
+    const markdown = lines(500, 'x'.repeat(300))
+    expect(cardMarkdownPrefix(markdown, 4000).length).toBeLessThanOrEqual(4000)
+  })
+
+  it('treats a zero-height card as the smallest budget rather than throwing', () => {
+    expect(cardMarkdownPrefix(lines(500), 0).split('\n')).toHaveLength(4)
   })
 })

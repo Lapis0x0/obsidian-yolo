@@ -22,8 +22,22 @@ import {
   GROUP_LABEL_CLASS,
   WEB_URL_PATTERN,
 } from '../constants'
-import { nodeTitleText } from '../lod'
+import { cardMarkdownPrefix, nodeTitleText } from '../lod'
 import { applyColorToElement } from '../selectionToolbar'
+
+/** The host's one-pass Markdown renderer. Named through the Host API rather
+ * than imported: the module SDK exports no alias for it. */
+type CardMarkdownRenderer = ReturnType<
+  YoloModuleHostApiV1['ui']['createMarkdownRenderer']
+>
+
+/** Obsidian's own preview wrapper chain, rebuilt around a one-pass render.
+ * Same classes as `createMarkdownContentView` produces, so every rule that
+ * styles a card's content — Obsidian's element styling keyed off
+ * `markdown-rendered`, and style.css's inset and card-scale type — applies to
+ * both without a second set of selectors to keep in step. */
+const PREVIEW_VIEW_CLASS = 'markdown-preview-view markdown-rendered'
+const PREVIEW_SIZER_CLASS = 'markdown-preview-sizer markdown-preview-section'
 
 const CARD_CLASS = 'yolo-whiteboard-card'
 const GROUP_CLASS = 'yolo-whiteboard-group'
@@ -87,11 +101,14 @@ export type NodeRuntime = {
    * one path, because a text card is only markdown that happens to live in
    * the board file rather than in one of its own (p3-canvas-parity D2/D11).
    * Null while the card shows a placeholder or is being edited. */
-  contentView: YoloModuleHostMarkdownContentViewV1 | null
-  /** What `contentView` was built against. A content view resolves links
-   * against this on every render pass, so a card whose source moves needs a
-   * new one rather than a `setValue`. */
+  contentRenderer: CardMarkdownRenderer | null
+  /** What `contentRenderer` was built against. Links resolve against this, so
+   * a card whose source moves needs a new render rather than none. */
   contentSourcePath: string | null
+  /** The exact markdown last handed to `contentRenderer` — the *prefix*, not
+   * the note. Compared before re-rendering so an edit below a card's fold,
+   * which cannot change what the card shows, costs nothing. */
+  contentMarkdown: string | null
   /**
    * Teardown for a body that holds something other than a content view — a
    * media element or a web frame. Removing those from the DOM is not enough:
@@ -288,7 +305,8 @@ export class CardRenderer {
       this.runtimeByNodeId.set(id, {
         el,
         bodyEl: null,
-        contentView: null,
+        contentRenderer: null,
+        contentMarkdown: null,
         contentSourcePath: null,
         releaseContent: null,
         webFrameUrl: null,
@@ -360,7 +378,8 @@ export class CardRenderer {
     this.runtimeByNodeId.set(id, {
       el,
       bodyEl: body,
-      contentView: null,
+      contentRenderer: null,
+      contentMarkdown: null,
       contentSourcePath: null,
       releaseContent: null,
       webFrameUrl: null,
@@ -395,7 +414,7 @@ export class CardRenderer {
     // Everything else — media (its "off-screen stops playing" is deliberate,
     // p3-canvas-parity §六), placeholders, groups — is torn down here, because
     // rebuilding it costs nothing worth keeping DOM for.
-    if (runtime.webFrameUrl !== null || runtime.contentView !== null) {
+    if (runtime.webFrameUrl !== null || runtime.contentRenderer !== null) {
       this.parkCard(id, runtime)
       return
     }
@@ -601,9 +620,10 @@ export class CardRenderer {
    * so a new content kind cannot be added and leak from one of them.
    */
   destroyCardContent(runtime: NodeRuntime): void {
-    runtime.contentView?.destroy()
-    runtime.contentView = null
+    runtime.contentRenderer?.unload()
+    runtime.contentRenderer = null
     runtime.contentSourcePath = null
+    runtime.contentMarkdown = null
     runtime.webFrameUrl = null
     const release = runtime.releaseContent
     runtime.releaseContent = null
@@ -694,12 +714,27 @@ export class CardRenderer {
 
   /**
    * Puts markdown on a card through the one content path both card types
-   * share (p3-canvas-parity D2/D11): the host's windowed preview, which
-   * mounts only the sections near its own scroll position, so a card holding
-   * a long note costs a screenful rather than the whole document.
+   * share (p3-canvas-parity D2/D11): a one-pass render of as much of the
+   * source as the card can show (`cardMarkdownPrefix`).
    *
-   * Synchronous by design — the view renders on its own schedule once it is
-   * in the document, and there is nothing here to wait for.
+   * The prefix is the whole design. A card clips and does not scroll, so it
+   * was only ever going to display its first screenful — but the renderer was
+   * being handed the entire note, and paying a parse, an image decode and a
+   * post-processor pass over all of it. The windowed preview this used to use
+   * bounded what stayed *mounted*, not what got built: it measures every
+   * section to know its own height, so a long note cost the whole document on
+   * every remount anyway (measured 2026-09-01: 6.3ms a card against 1.06ms
+   * for a short one, and 223k transient nodes on a 300-card board). Asking
+   * for a prefix bounds the build itself, and makes a card's cost a property
+   * of its own geometry rather than of the note behind it.
+   *
+   * `MarkdownRenderer.render` also happens to be the published API, where the
+   * windowed preview reaches into shape Obsidian does not publish
+   * (obsidianMarkdownContentView.ts). What the one-pass path does not carry is
+   * a view's *behaviour* — an internal link renders but nothing wires its
+   * click or its hover preview — which costs a card nothing: everything inside
+   * a card that is not being edited is unhittable by design (style.css's
+   * content mask, D7).
    *
    * This is the one expensive thing the canvas does per card, and so the one
    * place besides the drain that asks whether this frame may build. It has to
@@ -729,25 +764,45 @@ export class CardRenderer {
       this.callbacks.queueContentSync(id)
       return
     }
-    // New text in the same document is a `setValue`; a different document
-    // needs a new view, because links resolve against what the view was
-    // built for.
-    if (runtime.contentView && runtime.contentSourcePath === sourcePath) {
-      runtime.contentView.setValue(markdown)
-    } else {
-      this.destroyCardContent(runtime)
-      bodyEl.replaceChildren()
-      try {
-        runtime.contentView = this.host.ui.createMarkdownContentView({
-          container: bodyEl,
-          value: markdown,
-          sourcePath,
-        })
-        runtime.contentSourcePath = sourcePath
-      } catch (error) {
-        this.callbacks.reportError('markdown render', error)
-      }
+    const prefix = cardMarkdownPrefix(
+      markdown,
+      this.callbacks.getNode(id)?.h ?? 0,
+    )
+    // Nothing to do when neither the visible source nor what it resolves
+    // against has changed — which is every edit made below a card's fold.
+    if (
+      runtime.contentRenderer &&
+      runtime.contentSourcePath === sourcePath &&
+      runtime.contentMarkdown === prefix
+    ) {
+      return
     }
+    this.destroyCardContent(runtime)
+    bodyEl.replaceChildren()
+    const doc = bodyEl.ownerDocument
+    const view = doc.createElement('div')
+    view.className = PREVIEW_VIEW_CLASS
+    const sizer = doc.createElement('div')
+    sizer.className = PREVIEW_SIZER_CLASS
+    view.appendChild(sizer)
+    bodyEl.appendChild(view)
+    let renderer: CardMarkdownRenderer
+    try {
+      renderer = this.host.ui.createMarkdownRenderer()
+    } catch (error) {
+      this.callbacks.reportError('markdown render', error)
+      return
+    }
+    runtime.contentRenderer = renderer
+    runtime.contentSourcePath = sourcePath
+    runtime.contentMarkdown = prefix
+    void renderer.render(prefix, sizer, sourcePath).catch((error: unknown) => {
+      // A render that lost its card was cancelled, not failed: `unload()`
+      // rejects whatever was in flight, and the card has already been torn
+      // down or re-rendered by whoever called it.
+      if (runtime.contentRenderer !== renderer) return
+      this.callbacks.reportError('markdown render', error)
+    })
   }
 
   private renderMissingFilePlaceholder(

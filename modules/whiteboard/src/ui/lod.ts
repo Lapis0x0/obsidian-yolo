@@ -9,6 +9,12 @@
 import type { BoardNode } from '../domain/fileFormat'
 import { basenameWithoutExtension } from '../domain/naming'
 
+import {
+  CARD_CONTENT_EXTRA_LINES,
+  CARD_CONTENT_MAX_CHARS,
+  CARD_CONTENT_MIN_LINE_WORLD_PX,
+} from './constants'
+
 /**
  * Whether the board should be drawn by the overview canvas now that the camera
  * has reached `scale`, given whether it already is.
@@ -68,4 +74,48 @@ export function nodeTitleText(node: BoardNode): string {
       return truncate(title, MAX_TITLE_LENGTH)
     }
   }
+}
+
+/**
+ * The leading slice of a card's markdown that its body can actually show.
+ *
+ * A card clips and does not scroll (style.css's content mask, D7), so the
+ * renderer only ever needs enough source to fill the card's height — see
+ * constants.ts's CARD_CONTENT_MIN_LINE_WORLD_PX for why a line budget derived
+ * from the height cannot come up short. Everything past it is parsed,
+ * post-processed and laid out for a reader who has no way to reach it.
+ *
+ * Counted in *source lines*, not characters, because that is the unit whose
+ * relationship to rendered height is knowable: every non-blank source line
+ * renders as at least one line box, while a character count says nothing
+ * about how tall anything is. Blank lines are kept but not counted — they
+ * separate blocks rather than occupying height, and a run of them would
+ * otherwise eat the budget and leave the card half empty.
+ *
+ * Cuts on a line boundary, and only ever cuts. What a cut leaves open — an
+ * unterminated fence, half a table — renders as the partial block it is,
+ * which is exactly what the card was going to show of it anyway.
+ */
+export function cardMarkdownPrefix(
+  markdown: string,
+  bodyHeightWorldPx: number,
+): string {
+  const budget =
+    Math.ceil(Math.max(bodyHeightWorldPx, 0) / CARD_CONTENT_MIN_LINE_WORLD_PX) +
+    CARD_CONTENT_EXTRA_LINES
+  const lines = markdown.split('\n')
+  let counted = 0
+  let end = lines.length
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i].trim() !== '') counted += 1
+    if (counted >= budget) {
+      end = i + 1
+      break
+    }
+  }
+  const prefix = lines.slice(0, end).join('\n')
+  if (prefix.length <= CARD_CONTENT_MAX_CHARS) return prefix
+  const hardCut = prefix.slice(0, CARD_CONTENT_MAX_CHARS)
+  const lastBreak = hardCut.lastIndexOf('\n')
+  return lastBreak > 0 ? hardCut.slice(0, lastBreak) : hardCut
 }
