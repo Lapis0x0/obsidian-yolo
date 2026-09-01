@@ -168,6 +168,11 @@ export class CardRenderer {
    */
   private frozenParkedCapacity: number | null = null
   /**
+   * The same pin for the web frames' own, much smaller pool — null while it
+   * follows WEB_FRAME_POOL_CAPACITY as usual. See `freezeParkedCapacity`.
+   */
+  private frozenWebFramePoolCapacity: number | null = null
+  /**
    * Group label size in world units while the overview tier is overriding it,
    * or null while the stylesheet's own value stands — see
    * `setGroupLabelFontSize`.
@@ -492,7 +497,7 @@ export class CardRenderer {
     )
     for (const id of livePages.slice(
       0,
-      Math.max(0, livePages.length - WEB_FRAME_POOL_CAPACITY),
+      Math.max(0, livePages.length - this.webFramePoolCapacity),
     )) {
       this.evictParkedCard(id)
     }
@@ -505,6 +510,10 @@ export class CardRenderer {
 
   private get parkedCapacity(): number {
     return this.frozenParkedCapacity ?? this.callbacks.getMountedCount()
+  }
+
+  private get webFramePoolCapacity(): number {
+    return this.frozenWebFramePoolCapacity ?? WEB_FRAME_POOL_CAPACITY
   }
 
   /**
@@ -521,20 +530,36 @@ export class CardRenderer {
    *
    * Pinned at what is mounted *plus* what is already parked, so the way in
    * throws nothing away either.
+   *
+   * Both pools, not just the big one. A web card answers to its own cap
+   * (WEB_FRAME_POOL_CAPACITY) whatever the other says, so freezing only the
+   * general capacity would leave a board with more than six web cards on
+   * screen destroying the ones over the cap on the way in — and a destroyed
+   * frame is a page reloaded from the top when it comes back, which is the one
+   * thing this tier's pool exists to prevent. Frozen at the water mark, which
+   * is never below what is currently held, so the freeze itself evicts
+   * nothing; the tier mounts no new card, so nothing can be added to it while
+   * it is held.
    */
   freezeParkedCapacity(): void {
     this.frozenParkedCapacity =
       this.parkedCards.size + this.callbacks.getMountedCount()
+    let livePages = 0
+    for (const runtime of this.runtimeByNodeId.values()) {
+      if (runtime.webFrameUrl !== null) livePages += 1
+    }
+    this.frozenWebFramePoolCapacity = livePages
   }
 
   /**
-   * Lets the capacity follow the mounted set again. Deliberately does not
+   * Lets both capacities follow their usual rule again. Deliberately does not
    * evict on the spot: this runs as the camera comes back up, when the pool is
    * full of exactly the cards about to be asked for and the mounted set has
    * not caught up yet. The next card to park trims it.
    */
   unfreezeParkedCapacity(): void {
     this.frozenParkedCapacity = null
+    this.frozenWebFramePoolCapacity = null
   }
 
   /**
