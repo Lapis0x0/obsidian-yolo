@@ -6,7 +6,7 @@ import type {
 } from '../domain/fileFormat'
 
 import { OVERVIEW_RESTORE_SCALE, OVERVIEW_SCALE_THRESHOLD } from './constants'
-import { cardMarkdownPrefix, nextOverviewState, nodeTitleText } from './lod'
+import { cardMarkdownWindow, nextOverviewState, nodeTitleText } from './lod'
 
 describe('nextOverviewState', () => {
   const band = { enter: 0.35, restore: 0.42 }
@@ -110,25 +110,25 @@ describe('nodeTitleText', () => {
   })
 })
 
-describe('cardMarkdownPrefix', () => {
+describe('cardMarkdownWindow', () => {
   const lines = (n: number, prefix = 'line'): string =>
     Array.from({ length: n }, (_, i) => `${prefix} ${i}`).join('\n')
 
   it('gives a short note back whole', () => {
     const markdown = lines(3)
-    expect(cardMarkdownPrefix(markdown, 200)).toBe(markdown)
+    expect(cardMarkdownWindow(markdown, 200)).toBe(markdown)
   })
 
   it('bounds a long note by the card height', () => {
     // 200px / 16px + 4 = 17 lines.
-    expect(cardMarkdownPrefix(lines(500), 200).split('\n')).toHaveLength(17)
-    expect(cardMarkdownPrefix(lines(500), 400).split('\n')).toHaveLength(29)
+    expect(cardMarkdownWindow(lines(500), 200).split('\n')).toHaveLength(17)
+    expect(cardMarkdownWindow(lines(500), 400).split('\n')).toHaveLength(29)
   })
 
-  it('grows the prefix with the card, which is the point', () => {
+  it('grows the window with the card, which is the point', () => {
     const markdown = lines(500)
-    const short = cardMarkdownPrefix(markdown, 200)
-    const tall = cardMarkdownPrefix(markdown, 800)
+    const short = cardMarkdownWindow(markdown, 200)
+    const tall = cardMarkdownWindow(markdown, 800)
     expect(tall.startsWith(short)).toBe(true)
     expect(tall.length).toBeGreaterThan(short.length)
   })
@@ -139,22 +139,68 @@ describe('cardMarkdownPrefix', () => {
     const spaced = Array.from({ length: 500 }, (_, i) => `line ${i}\n`).join(
       '\n',
     )
-    const prefix = cardMarkdownPrefix(spaced, 200)
-    expect(prefix.split('\n').filter((line) => line !== '')).toHaveLength(17)
+    const window = cardMarkdownWindow(spaced, 200)
+    expect(
+      window.split('\n').filter((line: string) => line !== ''),
+    ).toHaveLength(17)
   })
 
   it('cuts on a line boundary when one pathological line blows the cap', () => {
     const markdown = `# title\n${'x'.repeat(9000)}\ntail`
-    const prefix = cardMarkdownPrefix(markdown, 200)
-    expect(prefix).toBe('# title')
+    const window = cardMarkdownWindow(markdown, 200)
+    expect(window).toBe('# title')
   })
 
   it('never returns more than the character cap', () => {
     const markdown = lines(500, 'x'.repeat(300))
-    expect(cardMarkdownPrefix(markdown, 4000).length).toBeLessThanOrEqual(4000)
+    expect(cardMarkdownWindow(markdown, 4000).length).toBeLessThanOrEqual(4000)
   })
 
   it('treats a zero-height card as the smallest budget rather than throwing', () => {
-    expect(cardMarkdownPrefix(lines(500), 0).split('\n')).toHaveLength(4)
+    expect(cardMarkdownWindow(lines(500), 0).split('\n')).toHaveLength(4)
+  })
+
+  it('starts the window at the requested block', () => {
+    const markdown = 'alpha\n\nbeta\n\ngamma\n\ndelta'
+    expect(cardMarkdownWindow(markdown, 200, 4)).toBe('gamma\n\ndelta')
+  })
+
+  it('backs a start inside a block up to where that block begins', () => {
+    const markdown = 'alpha\n\nbeta one\nbeta two\nbeta three\n\ngamma'
+    expect(cardMarkdownWindow(markdown, 200, 4)).toBe(
+      'beta one\nbeta two\nbeta three\n\ngamma',
+    )
+  })
+
+  it('never begins inside a fenced block, where the closing fence would open one', () => {
+    const markdown = [
+      'intro',
+      '',
+      '```js',
+      'const a = 1',
+      'const b = 2',
+      '```',
+      '',
+      'tail',
+    ].join('\n')
+    // Line 4 is inside the fence; starting there would leave "```" reading as
+    // an opening fence and render everything after it as code.
+    expect(cardMarkdownWindow(markdown, 400, 4)).toBe(
+      '```js\nconst a = 1\nconst b = 2\n```\n\ntail',
+    )
+  })
+
+  it('does not let a blank line inside a fence look like a block boundary', () => {
+    const markdown = ['~~~', 'a', '', 'b', '~~~', '', 'after'].join('\n')
+    expect(cardMarkdownWindow(markdown, 400, 3)).toBe(markdown)
+  })
+
+  it('reads a fence closed only by its own marker', () => {
+    const markdown = ['```', 'a', '~~~', 'b', '```', '', 'after'].join('\n')
+    expect(cardMarkdownWindow(markdown, 400, 3)).toBe(markdown)
+  })
+
+  it('ignores a window past the end of the note', () => {
+    expect(cardMarkdownWindow('alpha\n\nbeta', 200, 999)).toBe('beta')
   })
 })

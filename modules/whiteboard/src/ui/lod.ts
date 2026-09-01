@@ -77,13 +77,15 @@ export function nodeTitleText(node: BoardNode): string {
 }
 
 /**
- * The leading slice of a card's markdown that its body can actually show.
+ * The slice of a card's markdown that its body can actually show.
  *
- * A card clips and does not scroll (style.css's content mask, D7), so the
- * renderer only ever needs enough source to fill the card's height — see
- * constants.ts's CARD_CONTENT_MIN_LINE_WORLD_PX for why a line budget derived
- * from the height cannot come up short. Everything past it is parsed,
- * post-processed and laid out for a reader who has no way to reach it.
+ * A card is a window onto its document: `startLine` says where the window
+ * sits, and the card's height says how much fits. An unfocused card clips and
+ * does not scroll (style.css's content mask, D7), so the renderer only ever
+ * needs that much source — see constants.ts's CARD_CONTENT_MIN_LINE_WORLD_PX
+ * for why a line budget derived from the height cannot come up short.
+ * Everything outside the window is parsed, post-processed and laid out for a
+ * reader who has no way to reach it.
  *
  * Counted in *source lines*, not characters, because that is the unit whose
  * relationship to rendered height is knowable: every non-blank source line
@@ -92,30 +94,81 @@ export function nodeTitleText(node: BoardNode): string {
  * separate blocks rather than occupying height, and a run of them would
  * otherwise eat the budget and leave the card half empty.
  *
- * Cuts on a line boundary, and only ever cuts. What a cut leaves open — an
- * unterminated fence, half a table — renders as the partial block it is,
- * which is exactly what the card was going to show of it anyway.
+ * The two ends are not symmetric. The *end* only ever cuts: what it leaves
+ * open — an unterminated fence, half a table — renders as the partial block
+ * it is, which is exactly what the card was going to show of it anyway. The
+ * *start* cannot be so casual: begin inside a fenced block and its closing
+ * fence reads as an opening one, so the rest of the card renders as code.
+ * `blockStartAtOrBefore` therefore backs the start up to the nearest block
+ * boundary, which is also the more honest place to begin reading.
  */
-export function cardMarkdownPrefix(
+export function cardMarkdownWindow(
   markdown: string,
   bodyHeightWorldPx: number,
+  startLine = 0,
 ): string {
   const budget =
     Math.ceil(Math.max(bodyHeightWorldPx, 0) / CARD_CONTENT_MIN_LINE_WORLD_PX) +
     CARD_CONTENT_EXTRA_LINES
   const lines = markdown.split('\n')
+  const start =
+    startLine > 0 ? blockStartAtOrBefore(lines, Math.floor(startLine)) : 0
   let counted = 0
   let end = lines.length
-  for (let i = 0; i < lines.length; i += 1) {
+  for (let i = start; i < lines.length; i += 1) {
     if (lines[i].trim() !== '') counted += 1
     if (counted >= budget) {
       end = i + 1
       break
     }
   }
-  const prefix = lines.slice(0, end).join('\n')
-  if (prefix.length <= CARD_CONTENT_MAX_CHARS) return prefix
-  const hardCut = prefix.slice(0, CARD_CONTENT_MAX_CHARS)
+  const window = lines.slice(start, end).join('\n')
+  if (window.length <= CARD_CONTENT_MAX_CHARS) return window
+  const hardCut = window.slice(0, CARD_CONTENT_MAX_CHARS)
   const lastBreak = hardCut.lastIndexOf('\n')
   return lastBreak > 0 ? hardCut.slice(0, lastBreak) : hardCut
+}
+
+/**
+ * The last line at or before `target` that a block starts on — the first
+ * non-blank line after a blank one, ignoring anything inside a fenced code
+ * block, where a blank line separates nothing.
+ *
+ * Scanned from the top rather than backwards from `target`, because whether a
+ * line is inside a fence is only knowable by counting the fences before it.
+ * That is the same one pass over the lines the budget above already costs.
+ */
+function blockStartAtOrBefore(
+  lines: readonly string[],
+  target: number,
+): number {
+  let openFence: string | null = null
+  let previousBlank = true
+  let candidate = 0
+  const last = Math.min(target, lines.length - 1)
+  for (let i = 0; i <= last; i += 1) {
+    const line = lines[i].trim()
+    const fence = line.startsWith('```')
+      ? '```'
+      : line.startsWith('~~~')
+        ? '~~~'
+        : null
+    if (openFence !== null) {
+      // Only the marker that opened this block can close it: a `~~~` inside a
+      // ``` block is content, not a fence.
+      if (fence === openFence) openFence = null
+      previousBlank = false
+      continue
+    }
+    if (fence !== null) {
+      if (previousBlank) candidate = i
+      openFence = fence
+      previousBlank = false
+      continue
+    }
+    const blank = line === ''
+    if (!blank && previousBlank) candidate = i
+    previousBlank = blank
+  }
+  return candidate
 }

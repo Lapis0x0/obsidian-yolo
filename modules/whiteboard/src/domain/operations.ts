@@ -75,6 +75,41 @@ export function updateNode(board: Board, id: NodeId, patch: NodePatch): Board {
 }
 
 /**
+ * Moves a card's reading window (fileFormat.ts's `startLine`).
+ *
+ * A card read from the top carries no field at all rather than a
+ * `startLine: 0`: the common case is a card nobody has scrolled, and the file
+ * should not grow a key for every one of them.
+ *
+ * Kept to two decimals. The fraction is not noise — Obsidian's coordinate
+ * interpolates within a *section*, and a section can be a forty-line
+ * paragraph — but nothing downstream can tell 119.87 from 119.8675595238.
+ */
+export function boardWithReadingWindow(
+  board: Board,
+  id: NodeId,
+  line: number,
+): Board {
+  const index = board.nodes.findIndex((node) => node.id === id)
+  if (index === -1) return board
+  const current = board.nodes[index]
+  if (current.type !== 'text' && current.type !== 'file') return board
+  const startLine =
+    Number.isFinite(line) && line >= 1
+      ? Math.round(line * 100) / 100
+      : undefined
+  if (current.startLine === startLine) return board
+
+  const next = { ...current } as { startLine?: number }
+  if (startLine === undefined) delete next.startLine
+  else next.startLine = startLine
+
+  const nodes = board.nodes.slice()
+  nodes[index] = next as BoardNode
+  return { ...board, nodes }
+}
+
+/**
  * Swaps one node for another that keeps its id — the "same node, different
  * identity" operation, used when a text node is converted into a file node.
  *

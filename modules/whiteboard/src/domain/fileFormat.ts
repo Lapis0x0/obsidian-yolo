@@ -67,8 +67,25 @@ export type BoardNodeBase = Readonly<{
   extra: ExtraFields
 }>
 
+/**
+ * Which source line this card's body starts at — the card is a window onto
+ * its document, and this is where the window sits.
+ *
+ * Not in JSON Canvas, and deliberately in the file rather than in memory: a
+ * card parked on section six is showing what its owner put there, the same
+ * way its position and size are. It travels with the board for the reason
+ * `camera` does.
+ *
+ * Fractional, because it is the coordinate both the rendered preview and the
+ * live editor speak (the host's `getScrollLine`/`scrollToLine`): 12.5 is line
+ * 12, half of it above the top edge. Absent — the common case — means the
+ * card starts at the top of its document.
+ */
+type ReadingWindow = Readonly<{ startLine?: number }>
+
 /** JSON Canvas text node: markdown that lives in the board file itself. */
 export type TextNode = BoardNodeBase &
+  ReadingWindow &
   Readonly<{
     type: 'text'
     text: string
@@ -83,6 +100,7 @@ export type TextNode = BoardNodeBase &
  * and Canvas has always modelled it that way.
  */
 export type FileNode = BoardNodeBase &
+  ReadingWindow &
   Readonly<{
     type: 'file'
     /** Vault-relative path to the backing file. */
@@ -318,8 +336,8 @@ export function serializeBoard(board: Board): string {
 // --- nodes ---------------------------------------------------------------
 
 const NODE_COMMON_KEYS = ['id', 'type', 'x', 'y', 'w', 'h', 'color'] as const
-const TEXT_NODE_KEYS = [...NODE_COMMON_KEYS, 'text'] as const
-const FILE_NODE_KEYS = [...NODE_COMMON_KEYS, 'file'] as const
+const TEXT_NODE_KEYS = [...NODE_COMMON_KEYS, 'text', 'startLine'] as const
+const FILE_NODE_KEYS = [...NODE_COMMON_KEYS, 'file', 'startLine'] as const
 const LINK_NODE_KEYS = [...NODE_COMMON_KEYS, 'url'] as const
 const GROUP_NODE_KEYS = [...NODE_COMMON_KEYS, 'label'] as const
 
@@ -383,6 +401,7 @@ function parseNode(
         ...base,
         type: 'text',
         text,
+        ...parseReadingWindow(entry),
         extra: extractExtra(entry, TEXT_NODE_KEYS),
       }
     }
@@ -401,6 +420,7 @@ function parseNode(
         ...base,
         type: 'file',
         file,
+        ...parseReadingWindow(entry),
         extra: extractExtra(entry, FILE_NODE_KEYS),
       }
     }
@@ -442,6 +462,20 @@ function parseNode(
   }
 }
 
+/**
+ * A window position is dropped rather than repaired when it is nonsense: a
+ * card that cannot say where it starts starts at the top, which is what a
+ * card without the field does anyway. Not an issue worth reporting — unlike
+ * geometry, nothing about the board is lost.
+ */
+function parseReadingWindow(entry: Record<string, unknown>): {
+  startLine?: number
+} {
+  const value = entry.startLine
+  if (!isFiniteNumber(value) || value <= 0) return {}
+  return { startLine: value }
+}
+
 function parseNodeGeometry(
   entry: Record<string, unknown>,
   index: number,
@@ -481,9 +515,19 @@ function serializeNode(node: BoardNode): Record<string, unknown> {
   }
   switch (node.type) {
     case 'text':
-      return { ...common, text: node.text, ...node.extra }
+      return {
+        ...common,
+        text: node.text,
+        startLine: node.startLine,
+        ...node.extra,
+      }
     case 'file':
-      return { ...common, file: node.file, ...node.extra }
+      return {
+        ...common,
+        file: node.file,
+        startLine: node.startLine,
+        ...node.extra,
+      }
     case 'link':
       return { ...common, url: node.url, ...node.extra }
     case 'group':

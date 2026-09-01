@@ -87,6 +87,7 @@ import {
 import {
   addEdge,
   addNode,
+  boardWithReadingWindow,
   moveNodes,
   removeEdge,
   removeNode,
@@ -716,6 +717,9 @@ export class WhiteboardCanvas {
    *    the camera position, since the host reads `getViewData()` to snapshot
    *    final state *before* calling `dispose()` (see that method's doc
    *    comment), i.e. before any settle timer would have run;
+   *  - the focused card's reading window, for the same reason and against the
+   *    same race: `commitReadingWindow` only runs when focus leaves a card,
+   *    and closing a board never takes focus off one;
    *  - the active card's live editor text, via the same `planNodeCommit`
    *    decision the actual commit path uses, without performing its write
    *    side effects (a note card's live text isn't part of the board at all
@@ -732,6 +736,12 @@ export class WhiteboardCanvas {
       camera.scale !== board.camera.scale
     ) {
       board = { ...board, camera }
+    }
+    if (this.focusedNodeId !== null) {
+      const line = this.cardRenderer.getContentScrollLine(this.focusedNodeId)
+      if (line !== null) {
+        board = boardWithReadingWindow(board, this.focusedNodeId, line)
+      }
     }
     if (this.editing) {
       const liveText = this.editing.editor.getValue()
@@ -2628,6 +2638,24 @@ export class WhiteboardCanvas {
   // reference, not something the user did).
   // -----------------------------------------------------------------------
 
+  /**
+   * Records where a card is being read, as a source line on the node itself.
+   *
+   * Written straight to `this.board` rather than through `applyBoardChange`,
+   * the way the camera is: moving a window is not a step anyone wants to undo
+   * one notch at a time. An undo still carries whatever window its snapshot
+   * holds, which is the board as it was — the same deal the camera has.
+   */
+  private commitReadingWindow(id: NodeId): void {
+    const line = this.cardRenderer.getContentScrollLine(id)
+    if (line === null) return
+    const next = boardWithReadingWindow(this.board, id, line)
+    if (next === this.board) return
+    this.board = next
+    this.syncBoardIndex()
+    this.context.requestSave()
+  }
+
   private applyBoardChange(next: Board, historyKey?: string): void {
     if (next === this.board) return
     this.board = next
@@ -2827,6 +2855,11 @@ export class WhiteboardCanvas {
       this.cardRenderer
         .getRuntime(previous)
         ?.el?.classList.remove(CARD_FOCUSED_CLASS)
+      // The surface that could answer "where am I reading" is about to be
+      // replaced by the clipped window, so the answer is taken now. This is
+      // also the path a card takes into edit mode, which clears the selection
+      // before it mounts the editor.
+      this.commitReadingWindow(previous)
     }
     this.focusedNodeId = next
     if (next !== null) {
@@ -4254,10 +4287,12 @@ export class WhiteboardCanvas {
       persistTimer: null,
     }
     editor.focus()
-    // Open where the card was being read, not at the top. `destroyCardContent`
-    // above kept that place as a source line, and the editor takes the same
-    // coordinate — nothing is mapped between the two surfaces.
-    if (runtime.scrollLine) editor.scrollToLine(runtime.scrollLine)
+    // Open on the card's window, not at the top of the note. The window is a
+    // source line and the editor takes the same coordinate, so nothing is
+    // mapped between the two surfaces.
+    const startLine =
+      node.type === 'text' || node.type === 'file' ? (node.startLine ?? 0) : 0
+    if (startLine) editor.scrollToLine(startLine)
   }
 
   /**
@@ -4313,14 +4348,22 @@ export class WhiteboardCanvas {
     }
     editing.scopeDisposer()
 
-    const runtime = this.cardRenderer.getRuntime(id)
-    // The other half of `enterEditMode`: hand the editor's place back to the
-    // card, so the preview rebuilt below opens on the line just left.
+    // The other half of `enterEditMode`: the line the editor was left on
+    // becomes the card's window, so what the card shows is where the work was
+    // just done. Before `destroy()`, which is what makes the editor unable to
+    // answer.
     const line = editing.editor.getScrollLine()
-    if (runtime && Number.isFinite(line)) runtime.scrollLine = line
+    const board = Number.isFinite(line)
+      ? boardWithReadingWindow(this.board, id, line)
+      : this.board
+    if (board !== this.board) {
+      this.board = board
+      this.syncBoardIndex()
+    }
     editing.editor.destroy()
     this.pinnedIds.delete(id)
 
+    const runtime = this.cardRenderer.getRuntime(id)
     runtime?.el?.classList.remove(CARD_EDITING_CLASS)
     runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
 

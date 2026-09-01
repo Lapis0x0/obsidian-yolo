@@ -22,7 +22,7 @@ import {
   GROUP_LABEL_CLASS,
   WEB_URL_PATTERN,
 } from '../constants'
-import { cardMarkdownPrefix, nodeTitleText } from '../lod'
+import { cardMarkdownWindow, nodeTitleText } from '../lod'
 import { applyColorToElement } from '../selectionToolbar'
 
 /** The host's one-pass Markdown renderer. Named through the Host API rather
@@ -98,7 +98,7 @@ export type NodeRuntime = {
   el: HTMLElement | null
   bodyEl: HTMLElement | null
   /** A card's read-only content, one-pass rendered from as much of its source
-   * as the card can show (`cardMarkdownPrefix`). What every card that is not
+   * as the card can show (`cardMarkdownWindow`). What every card that is not
    * the focused one holds — so what a pan pays for. Null while the card shows
    * a placeholder, is being edited, or holds the scrollable view below. */
   contentRenderer: CardMarkdownRenderer | null
@@ -135,19 +135,6 @@ export type NodeRuntime = {
    * is the only place it's available to seed the live editor. Unused for
    * text/pdf cards. */
   noteText: string | null
-  /**
-   * Where this card's content is scrolled to, as a fractional source line —
-   * the note's own coordinate rather than any one surface's pixels.
-   *
-   * A card is read through three different things: the clipped one-pass
-   * render, the focused card's windowed preview, and the live editor. The
-   * same text is a different height in each, so a position kept in pixels
-   * lands somewhere else the moment one is swapped for another. Kept here and
-   * not in the surfaces because it outlives all of them — it is the reader's
-   * place in the note, and the note is what does not change. Null until the
-   * card has been scrolled.
-   */
-  scrollLine: number | null
 }
 
 /**
@@ -331,7 +318,6 @@ export class CardRenderer {
         webFrameUrl: null,
         missingFile: false,
         noteText: null,
-        scrollLine: null,
       })
       return
     }
@@ -406,7 +392,6 @@ export class CardRenderer {
       webFrameUrl: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
-      scrollLine: existing?.scrollLine ?? null,
     })
 
     void this.renderCardPreview(id)
@@ -646,11 +631,6 @@ export class CardRenderer {
    * so a new content kind cannot be added and leak from one of them.
    */
   destroyCardContent(runtime: NodeRuntime): void {
-    // The surface is going away; where the reader had got to in the note is
-    // not (see `NodeRuntime.scrollLine`). Only the windowed preview can be
-    // scrolled, so it is the only one with an answer to keep.
-    const line = runtime.contentView?.getScrollLine()
-    if (line !== undefined && Number.isFinite(line)) runtime.scrollLine = line
     runtime.contentRenderer?.unload()
     runtime.contentRenderer = null
     runtime.contentView?.destroy()
@@ -748,7 +728,7 @@ export class CardRenderer {
   /**
    * Puts markdown on a card through the one content path both card types
    * share (p3-canvas-parity D2/D11): a one-pass render of as much of the
-   * source as the card can show (`cardMarkdownPrefix`).
+   * source as the card can show (`cardMarkdownWindow`).
    *
    * The prefix is the whole design. A card clips and does not scroll, so it
    * was only ever going to display its first screenful — but the renderer was
@@ -798,11 +778,16 @@ export class CardRenderer {
       return
     }
     // The focused card is the one card that can be scrolled, so it is the one
-    // card that needs source below its own fold — see `scrollCardContent`.
+    // card that needs source outside its own window — see `scrollCardContent`.
     const focused = this.callbacks.isFocused(id)
+    const node = this.callbacks.getNode(id)
+    const startLine =
+      node && (node.type === 'text' || node.type === 'file')
+        ? (node.startLine ?? 0)
+        : 0
     const wanted = focused
       ? markdown
-      : cardMarkdownPrefix(markdown, this.callbacks.getNode(id)?.h ?? 0)
+      : cardMarkdownWindow(markdown, node?.h ?? 0, startLine)
     // Nothing to do when neither the visible source, what it resolves against,
     // nor which of the two surfaces should hold it has changed — which is
     // every edit made below an unfocused card's fold.
@@ -830,9 +815,9 @@ export class CardRenderer {
           sourcePath,
         })
         runtime.contentView = view
-        // Back to where this card was last read, which is the line the editor
-        // was left on when one was just closed here.
-        if (runtime.scrollLine) view.scrollToLine(runtime.scrollLine)
+        // The whole note is mounted, so the window the card was showing has
+        // to be found again by scrolling to it.
+        if (startLine) view.scrollToLine(startLine)
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
       }
@@ -884,6 +869,18 @@ export class CardRenderer {
    * for. Panning from here is a matter of moving the pointer off a card that
    * takes up a few hundred pixels of a whole canvas.
    */
+  /**
+   * Where the focused card's preview is currently scrolled to, as a source
+   * line, or null when this card has no scrollable surface — which is every
+   * card but the focused one.
+   */
+  getContentScrollLine(id: NodeId): number | null {
+    const view = this.runtimeByNodeId.get(id)?.contentView
+    if (!view) return null
+    const line = view.getScrollLine()
+    return Number.isFinite(line) ? line : null
+  }
+
   scrollCardContent(id: NodeId, deltaX: number, deltaY: number): boolean {
     const scroller = this.runtimeByNodeId
       .get(id)

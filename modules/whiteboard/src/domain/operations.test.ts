@@ -9,6 +9,7 @@ import {
   type NodePatch,
   addEdge,
   addNode,
+  boardWithReadingWindow,
   moveNodes,
   removeEdge,
   removeNode,
@@ -365,5 +366,42 @@ describe('updateEdge', () => {
     expect(() => updateEdge(board, 'missing', { toNode: 'c3' })).toThrow(
       /not found/i,
     )
+  })
+})
+
+describe('boardWithReadingWindow', () => {
+  it('records where a card is being read, to two decimals', () => {
+    const board = boardWith([textCard('a')])
+    const next = boardWithReadingWindow(board, 'a', 119.8675595238)
+    expect((next.nodes[0] as TextNode).startLine).toBe(119.87)
+  })
+
+  it('drops the field for a card back at the top', () => {
+    const board = boardWith([textCard('a', { startLine: 40 })])
+    const next = boardWithReadingWindow(board, 'a', 0)
+    expect('startLine' in next.nodes[0]).toBe(false)
+  })
+
+  it('returns the same board when nothing moved, so nothing re-renders', () => {
+    const board = boardWith([textCard('a', { startLine: 12.5 })])
+    expect(boardWithReadingWindow(board, 'a', 12.5)).toBe(board)
+    expect(boardWithReadingWindow(boardWith([textCard('b')]), 'b', 0)).toEqual(
+      boardWith([textCard('b')]),
+    )
+  })
+
+  it('ignores a node that cannot carry a window, or one that is gone', () => {
+    const group: BoardNode = {
+      id: 'g',
+      type: 'group',
+      x: 0,
+      y: 0,
+      w: 1,
+      h: 1,
+      extra: {},
+    }
+    const board = boardWith([group])
+    expect(boardWithReadingWindow(board, 'g', 20)).toBe(board)
+    expect(boardWithReadingWindow(board, 'missing', 20)).toBe(board)
   })
 })

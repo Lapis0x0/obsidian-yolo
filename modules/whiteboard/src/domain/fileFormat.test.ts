@@ -194,6 +194,86 @@ describe('parseBoard / serializeBoard', () => {
     })
   })
 
+  describe('startLine', () => {
+    const withNode = (extra: Record<string, unknown>): string =>
+      JSON.stringify({
+        version: 1,
+        nodes: [
+          {
+            id: 'n1',
+            type: 'text',
+            x: 0,
+            y: 0,
+            w: 10,
+            h: 10,
+            text: 'a',
+            ...extra,
+          },
+        ],
+      })
+
+    it('round-trips a card window on text and file nodes', () => {
+      for (const node of [
+        {
+          id: 'n1',
+          type: 'text',
+          x: 0,
+          y: 0,
+          w: 1,
+          h: 1,
+          text: 'a',
+          startLine: 12.5,
+        },
+        {
+          id: 'n2',
+          type: 'file',
+          x: 0,
+          y: 0,
+          w: 1,
+          h: 1,
+          file: 'a.md',
+          startLine: 40,
+        },
+      ]) {
+        const board = requireOk(
+          parseBoard(JSON.stringify({ version: 1, nodes: [node] })),
+        )
+        const parsed = board.nodes[0]
+        expect(parsed.type === 'text' || parsed.type === 'file').toBe(true)
+        expect((parsed as { startLine?: number }).startLine).toBe(
+          node.startLine,
+        )
+        expect(JSON.parse(serializeBoard(board)).nodes[0].startLine).toBe(
+          node.startLine,
+        )
+      }
+    })
+
+    it('writes no field for a card read from the top', () => {
+      const board = requireOk(parseBoard(withNode({})))
+      expect(
+        (board.nodes[0] as { startLine?: number }).startLine,
+      ).toBeUndefined()
+      expect('startLine' in JSON.parse(serializeBoard(board)).nodes[0]).toBe(
+        false,
+      )
+    })
+
+    it('drops a nonsense window rather than carrying it', () => {
+      for (const value of [0, -3, 'ten', null, NaN, {}]) {
+        const board = requireOk(parseBoard(withNode({ startLine: value })))
+        expect(
+          (board.nodes[0] as { startLine?: number }).startLine,
+        ).toBeUndefined()
+      }
+    })
+
+    it('does not treat `startLine` as an unknown field', () => {
+      const board = requireOk(parseBoard(withNode({ startLine: 9 })))
+      expect(board.nodes[0].extra).toEqual({})
+    })
+  })
+
   describe('unknown-field forward compatibility', () => {
     it('preserves and round-trips unknown fields at the file, node, and edge level', () => {
       const raw = JSON.stringify({
