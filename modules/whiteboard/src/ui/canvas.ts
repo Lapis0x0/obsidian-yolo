@@ -141,6 +141,7 @@ import {
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
   CONNECT_SNAP_WORLD_PX,
+  CONTENT_BUILD_START_CAP_PER_FRAME,
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
   EDGE_HIDDEN_CLASS,
@@ -4063,19 +4064,20 @@ export class WhiteboardCanvas {
    * build on. A Set iterates in insertion order and tolerates deletion
    * mid-iteration, so it serves as both the queue and the membership test.
    *
-   * The frame gate decides *whether* to build; the start cap bounds how many
-   * builds may be in flight at once. A note card reads its file before it can
-   * render, and the read is nearly free — without the cap one qualifying
-   * frame would start a hundred reads and then be handed a hundred renders.
-   * Each of those still checks the gate when it lands
-   * (`renderMarkdownInto`), so the cap does not have to be tight; it only has
-   * to be finite.
+   * The frame gate decides *whether* to build; the start cap
+   * (CONTENT_BUILD_START_CAP_PER_FRAME) bounds how many builds one frame may
+   * begin. A note card reads its file before it can render, and the read is
+   * nearly free — without the cap one qualifying frame would start a hundred
+   * reads and then be handed a hundred renders. Each of those still checks the
+   * gate when it lands (`renderMarkdownInto`), so the cap does not have to be
+   * tight; it only has to be finite, and small enough that a frame cannot
+   * spend its whole budget here.
    */
   private drainContentSync(): void {
     let started = 0
     for (const id of this.contentSyncQueue) {
       if (!this.canBuildContent) return
-      if (started >= MOUNT_QUOTA_PER_FRAME) return
+      if (started >= CONTENT_BUILD_START_CAP_PER_FRAME) return
       this.contentSyncQueue.delete(id)
       started += 1
       this.syncNodeContent(id)

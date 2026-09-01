@@ -71,10 +71,37 @@ export const RECOMPUTE_INTERVAL_MS = 70
  * DOM work whose cost does not depend on what the card holds, which is what
  * makes a count an honest budget for them.
  *
- * Building a card's **content** is not in here — see CONTENT_BUILD_BUDGET_MS.
+ * Building a card's **content** is not in here — that has a budget of its own
+ * (CONTENT_BUILD_START_CAP_PER_FRAME) and a gate of its own (FRAME_ON_TIME_MS),
+ * because its cost is a property of the note behind the card rather than of
+ * the card.
  */
 export const MOUNT_QUOTA_PER_FRAME = 6
 export const UNMOUNT_QUOTA_PER_FRAME = 40
+
+/**
+ * How many card-content builds one frame may *start*.
+ *
+ * Separate from MOUNT_QUOTA_PER_FRAME, which it used to share, because the two
+ * are not the same size of work: putting a card's frame in the world is a few
+ * DOM nodes, while building its content is ~3.3ms of parse, style and layout
+ * (measured 2026-09-01 on the 3000-card board, real Obsidian over CDP). At six
+ * a frame that is ~20ms of content work in one frame — a frame that is already
+ * over budget before anything else on it runs, which is where the 33–50ms
+ * outliers in that measurement came from.
+ *
+ * Three, because a pan fast enough to be worth pacing brings cards in at about
+ * 2.3 a frame (140/s at 60Hz, same measurement): a cap just above the arrival
+ * rate keeps up with a steady pan while forbidding the burst. It does not
+ * reduce the work — the same builds happen, spread over more frames — which is
+ * the whole point: one 50ms frame is visible and three 17ms frames are not.
+ *
+ * A cap on *starts*, not on builds in flight. A note card reads its file
+ * before it can render, and the read is nearly free; each build re-checks the
+ * frame gate when it lands (`renderMarkdownInto`), so this only has to be
+ * finite, not tight.
+ */
+export const CONTENT_BUILD_START_CAP_PER_FRAME = 3
 
 /**
  * Frame interval, in milliseconds, above which the canvas treats the last
