@@ -3892,7 +3892,22 @@ export class WhiteboardCanvas {
 
   private recomputeVisibility(): void {
     if (this.parseFailed || !this.viewportEl) return
-    const rect = this.worldViewportRect()
+    // One measurement, before anything on this tick writes to the document.
+    // Reading `clientWidth` is a layout read, so a read placed after the
+    // mounts and the edge class flips below forces Blink to recalculate style
+    // and lay out the whole world synchronously, inside the rAF callback —
+    // measured at ~13ms a tick on a three thousand card board, which is a
+    // dropped frame every 70ms for a number that has not changed. Both
+    // consumers below want the same size, so it is taken once here.
+    const width = this.viewportEl.clientWidth
+    const height = this.viewportEl.clientHeight
+    const rect = computeWorldViewportRect(
+      width,
+      height,
+      this.cameraController.view,
+      VIEWPORT_BUFFER_PX,
+    )
+    this.overviewLayer?.setViewportSize(width, height)
     this.updateOverviewState()
     if (this.overview) {
       // Two populations, one engine: groups keep their DOM at every tier
@@ -3912,13 +3927,6 @@ export class WhiteboardCanvas {
     // layout is skipped for a hidden subtree, not style). Leaving the tier
     // runs this again on the same tick, with the real rectangle.
     if (!this.overview) this.edgeLayer.updateVisibility(rect, this.pinnedIds)
-    // Measured here, where the viewport has just been measured anyway, rather
-    // than by the overview layer on a frame that has already written the
-    // world's transform (see `setViewportSize`).
-    this.overviewLayer?.setViewportSize(
-      this.viewportEl.clientWidth,
-      this.viewportEl.clientHeight,
-    )
     this.syncGroupLabelScale()
   }
 
