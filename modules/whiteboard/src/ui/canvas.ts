@@ -46,6 +46,7 @@ import {
   buildEdge,
   buildEdgePathD,
   computeEdgeGeometry,
+  edgeAtPoint,
   findConnectTarget,
   oppositeSide,
   rectAnchoredAt,
@@ -157,6 +158,7 @@ import {
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
+  OVERVIEW_EDGE_HIT_SCREEN_PX,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
@@ -1253,7 +1255,7 @@ export class WhiteboardCanvas {
 
     // Edges paint behind the cards, so a press only reaches one where no
     // card covers it — which is exactly where pressing it can mean the edge.
-    const edgeId = this.edgeIdFromEventTarget(e.target)
+    const edgeId = this.edgeIdAtPointer(e)
     if (edgeId !== null) {
       // Its label is being typed: a press in it places the caret, the same
       // rule a group being renamed follows above.
@@ -1625,8 +1627,7 @@ export class WhiteboardCanvas {
     if (this.parseFailed) return
     const target = asElement(e.target)
     const onLayer =
-      target !== null &&
-      target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
+      target !== null && target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
     this.setHoveredNode(onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e))
   }
 
@@ -1644,6 +1645,33 @@ export class WhiteboardCanvas {
     const fromDom = this.nodeIdFromEventTarget(e.target)
     if (fromDom !== null || !this.overview) return fromDom
     return nodeAtPoint(this.cardNodes, this.worldPointFromEvent(e))
+  }
+
+  /**
+   * Which edge a pointer event landed on — the same two answers, for the same
+   * reason as `nodeIdAtPointer` above. In the overview tier an edge is a curve
+   * on a canvas with no element to hit, so the press is measured against the
+   * geometry the canvas drew from (domain/edges.ts's `edgeAtPoint`).
+   *
+   * The tolerance is stated in screen pixels and converted, so how close you
+   * have to be to a line stays what it looks like rather than shrinking with
+   * the zoom — which is the whole difficulty of pointing at anything down
+   * there.
+   *
+   * Only the press path asks this. A double-click on an edge in this tier
+   * would open its label, which the tier does not draw and the stylesheet has
+   * hidden: nothing to type into, and no blur to end the rename with. The
+   * label is a thing you edit where you can read it.
+   */
+  private edgeIdAtPointer(e: MouseEvent): EdgeId | null {
+    const fromDom = this.edgeIdFromEventTarget(e.target)
+    if (fromDom !== null || !this.overview) return fromDom
+    return edgeAtPoint(
+      this.board.edges,
+      this.nodesById,
+      this.worldPointFromEvent(e),
+      OVERVIEW_EDGE_HIT_SCREEN_PX / this.cameraController.view.scale,
+    )
   }
 
   private setHoveredNode(nodeId: NodeId | null): void {

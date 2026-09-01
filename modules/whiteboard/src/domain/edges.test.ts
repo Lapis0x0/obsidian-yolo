@@ -8,11 +8,14 @@ import {
   buildEdge,
   buildEdgePathD,
   computeEdgeGeometry,
+  distanceToEdgeCurve,
+  edgeAtPoint,
   findConnectTarget,
   oppositeSide,
   rectAnchoredAt,
   resolveEdgeSides,
 } from './edges'
+import type { Edge } from './fileFormat'
 import type { VirtualCardRect } from './virtualization'
 
 function rect(
@@ -157,6 +160,100 @@ describe('computeEdgeGeometry', () => {
       (geometry.start.x + geometry.end.x) / 2,
       10,
     )
+  })
+})
+
+describe('distanceToEdgeCurve', () => {
+  const from = rect('a', 0, 0, 100, 100)
+  const to = rect('b', 500, 0, 100, 100)
+  // A horizontal S-curve: start (100,50) -> end (500,50), control points on
+  // the same y, so the whole curve lies on y = 50.
+  const geometry = computeEdgeGeometry(from, to, 'right', 'left')
+
+  it('is zero on the curve', () => {
+    expect(distanceToEdgeCurve(geometry, { x: 300, y: 50 })).toBeCloseTo(0, 6)
+    expect(distanceToEdgeCurve(geometry, geometry.start)).toBeCloseTo(0, 6)
+    expect(distanceToEdgeCurve(geometry, geometry.end)).toBeCloseTo(0, 6)
+  })
+
+  it('measures the perpendicular offset from it', () => {
+    expect(distanceToEdgeCurve(geometry, { x: 300, y: 70 })).toBeCloseTo(20, 6)
+  })
+
+  it('measures to the nearest end for a point past one of them', () => {
+    expect(distanceToEdgeCurve(geometry, { x: 90, y: 50 })).toBeCloseTo(10, 6)
+  })
+
+  it('follows a curve that bows away from the straight line between its ends', () => {
+    // Anchored top-to-top: the curve leaves both cards upward, so its middle
+    // sits well above the straight line joining the two anchors.
+    const bowed = computeEdgeGeometry(from, to, 'top', 'top')
+    const straightMidpoint = {
+      x: (bowed.start.x + bowed.end.x) / 2,
+      y: (bowed.start.y + bowed.end.y) / 2,
+    }
+    expect(distanceToEdgeCurve(bowed, straightMidpoint)).toBeGreaterThan(50)
+    expect(
+      distanceToEdgeCurve(bowed, { ...straightMidpoint, y: bowed.label.y }),
+    ).toBeCloseTo(0, 6)
+  })
+})
+
+describe('edgeAtPoint', () => {
+  const from = rect('a', 0, 0, 100, 100)
+  const to = rect('b', 500, 0, 100, 100)
+  const far = rect('c', 0, 2000, 100, 100)
+  const nodes = new Map([
+    [from.id, from],
+    [to.id, to],
+    [far.id, far],
+  ])
+  const edge = (id: string, fromNode: string, toNode: string): Edge => ({
+    id,
+    fromNode,
+    toNode,
+    fromSide: 'right',
+    toSide: 'left',
+    fromEnd: 'none',
+    toEnd: 'arrow',
+    extra: {},
+  })
+
+  it('finds the edge a point sits on', () => {
+    expect(
+      edgeAtPoint([edge('e1', 'a', 'b')], nodes, { x: 300, y: 52 }, 6),
+    ).toBe('e1')
+  })
+
+  it('finds nothing past the tolerance', () => {
+    expect(
+      edgeAtPoint([edge('e1', 'a', 'b')], nodes, { x: 300, y: 70 }, 6),
+    ).toBeNull()
+  })
+
+  it('takes the nearest edge, not the topmost one', () => {
+    const straight = edge('straight', 'a', 'b')
+    // Same two cards, anchored top-to-top: its curve bows far above the other.
+    const bowed: Edge = {
+      ...edge('bowed', 'a', 'b'),
+      fromSide: 'top',
+      toSide: 'top',
+    }
+    expect(edgeAtPoint([straight, bowed], nodes, { x: 300, y: 52 }, 6)).toBe(
+      'straight',
+    )
+  })
+
+  it('skips an edge whose endpoints are missing from the board', () => {
+    expect(
+      edgeAtPoint([edge('e1', 'a', 'gone')], nodes, { x: 300, y: 50 }, 6),
+    ).toBeNull()
+  })
+
+  it('rejects a point outside the endpoints bounding box before measuring', () => {
+    expect(
+      edgeAtPoint([edge('e1', 'a', 'b')], nodes, { x: 300, y: 1000 }, 6),
+    ).toBeNull()
   })
 })
 

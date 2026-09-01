@@ -167,6 +167,111 @@ export function computeEdgeGeometry(
   }
 }
 
+// --- hit testing ----------------------------------------------------------
+//
+// Asking which edge a point is on, from the geometry rather than from the DOM.
+// The DOM tiers do not need this — every edge carries a fat transparent stroke
+// under it and the browser answers — but the overview tier has no edge
+// elements at all: the canvas draws them, and a canvas is not a pointer target
+// (ui/canvas/overviewLayer.ts). Selecting an edge is promised at every zoom
+// (p4-perf-overview §二's capability table), so down there the same question is
+// answered here instead.
+
+/** How many segments the curve is measured as. Twenty is well past the point
+ * where the polyline and the curve differ by anything a pointer can express:
+ * an edge is a few hundred world units long, so the chords are tens of units
+ * where the tolerance itself is tens of units. */
+export const EDGE_HIT_SAMPLES = 20
+
+function distanceToSegment(point: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x
+  const dy = b.y - a.y
+  const lengthSq = dx * dx + dy * dy
+  if (lengthSq === 0) return Math.hypot(point.x - a.x, point.y - a.y)
+  const t = Math.max(
+    0,
+    Math.min(1, ((point.x - a.x) * dx + (point.y - a.y) * dy) / lengthSq),
+  )
+  return Math.hypot(point.x - (a.x + t * dx), point.y - (a.y + t * dy))
+}
+
+/**
+ * Shortest distance from `point` to an edge's curve, measured against the
+ * polyline through `EDGE_HIT_SAMPLES` samples of it — a cubic has no closed
+ * form for this, and sampling is what every hit test on one does.
+ *
+ * Space-agnostic: feed it world coordinates and a world tolerance, or screen
+ * coordinates and a screen one. The caller picks (canvas.ts works in world
+ * space, where the geometry already is, and divides its screen tolerance by
+ * the camera scale).
+ */
+export function distanceToEdgeCurve(
+  geometry: EdgeGeometry,
+  point: Point,
+): number {
+  const { start, c1, c2, end } = geometry
+  let previous = start
+  let best = Infinity
+  for (let index = 1; index <= EDGE_HIT_SAMPLES; index += 1) {
+    const next =
+      index === EDGE_HIT_SAMPLES
+        ? end
+        : cubicBezierPointAt(start, c1, c2, end, index / EDGE_HIT_SAMPLES)
+    best = Math.min(best, distanceToSegment(point, previous, next))
+    previous = next
+  }
+  return best
+}
+
+/**
+ * The edge running closest to `point`, or null when none runs within
+ * `tolerance` of it.
+ *
+ * Nearest rather than topmost, unlike `nodeAtPoint`: cards are opaque and
+ * stack, so which one you clicked is which one you can see; lines cross, and
+ * the one you meant is the one you aimed at. Scanned backwards so an exact tie
+ * still goes to the edge drawn last.
+ *
+ * The bounding box of the two endpoint cards grown by `EDGE_CONTROL_MAX_PX`
+ * contains the whole curve (see edgeLayer's `edgeIsVisible` for why), so a
+ * point outside it plus the tolerance cannot be on the edge — four comparisons
+ * to skip the sampling, which on a board of a few thousand edges is what makes
+ * this a linear scan worth doing at all.
+ */
+export function edgeAtPoint(
+  edges: readonly Edge[],
+  nodes: ReadonlyMap<NodeId, VirtualCardRect>,
+  point: Point,
+  tolerance: number,
+): EdgeId | null {
+  let best: EdgeId | null = null
+  let bestDistance = Infinity
+  const margin = EDGE_CONTROL_MAX_PX + tolerance
+  for (let index = edges.length - 1; index >= 0; index -= 1) {
+    const edge = edges[index]
+    const from = nodes.get(edge.fromNode)
+    const to = nodes.get(edge.toNode)
+    if (!from || !to) continue
+    if (
+      point.x < Math.min(from.x, to.x) - margin ||
+      point.x > Math.max(from.x + from.w, to.x + to.w) + margin ||
+      point.y < Math.min(from.y, to.y) - margin ||
+      point.y > Math.max(from.y + from.h, to.y + to.h) + margin
+    ) {
+      continue
+    }
+    const sides = resolveEdgeSides(from, to, edge.fromSide, edge.toSide)
+    const distance = distanceToEdgeCurve(
+      computeEdgeGeometry(from, to, sides.fromSide, sides.toSide),
+      point,
+    )
+    if (distance > tolerance || distance >= bestDistance) continue
+    bestDistance = distance
+    best = edge.id
+  }
+  return best
+}
+
 /**
  * Where a connection drag would land if it ended at `point`: the nearest
  * connection point of any card the pointer is inside of (or within `snapPx`

@@ -221,6 +221,20 @@ export const OVERVIEW_MIN_EDGE_STROKE_PX = 0.75
  * thicker line. */
 export const OVERVIEW_ARROW_MIN_SCREEN_PX = 4
 
+/**
+ * How far from an edge's curve, in screen pixels, a press still lands on it in
+ * the overview tier (domain/edges.ts's `edgeAtPoint`).
+ *
+ * The tier draws its edges on a canvas, which is not a pointer target, so the
+ * fat transparent stroke the DOM tiers are hit through does not exist down
+ * here and this stands in for its half-width. That stroke is 16 world units
+ * counter-scaled by 1/sqrt(scale), which on screen is `16 * sqrt(scale)` — a
+ * little over 5px across at the tier's own threshold, so ~3px either side.
+ * Rounded up rather than matched exactly: at this zoom every target is small,
+ * and the two are the same order, which is the point.
+ */
+export const OVERVIEW_EDGE_HIT_SCREEN_PX = 6
+
 /** Font size of a group's label in world units — style.css's
  * `.yolo-whiteboard-group-label`. The two must stay in step: the overview tier
  * counter-scales this value rather than replacing it. */
