@@ -97,17 +97,22 @@ const WEB_FRAME_POOL_CAPACITY = 6
 export type NodeRuntime = {
   el: HTMLElement | null
   bodyEl: HTMLElement | null
-  /** The card's read-only content surface, for both note and text cards —
-   * one path, because a text card is only markdown that happens to live in
-   * the board file rather than in one of its own (p3-canvas-parity D2/D11).
-   * Null while the card shows a placeholder or is being edited. */
+  /** A card's read-only content, one-pass rendered from as much of its source
+   * as the card can show (`cardMarkdownPrefix`). What every card that is not
+   * the focused one holds — so what a pan pays for. Null while the card shows
+   * a placeholder, is being edited, or holds the scrollable view below. */
   contentRenderer: CardMarkdownRenderer | null
-  /** What `contentRenderer` was built against. Links resolve against this, so
+  /** The focused card's content: Obsidian's windowed preview over the *whole*
+   * note, because that card can be scrolled and the rest cannot. At most one
+   * card on the board has this. Mutually exclusive with `contentRenderer`. */
+  contentView: YoloModuleHostMarkdownContentViewV1 | null
+  /** What the content above was built against. Links resolve against this, so
    * a card whose source moves needs a new render rather than none. */
   contentSourcePath: string | null
-  /** The exact markdown last handed to `contentRenderer` — the *prefix*, not
-   * the note. Compared before re-rendering so an edit below a card's fold,
-   * which cannot change what the card shows, costs nothing. */
+  /** The exact markdown last handed to the renderer — the *prefix* for an
+   * unfocused card, the whole note for the focused one. Compared before
+   * re-rendering so an edit below a card's fold, which cannot change what the
+   * card shows, costs nothing. */
   contentMarkdown: string | null
   /**
    * Teardown for a body that holds something other than a content view — a
@@ -306,6 +311,7 @@ export class CardRenderer {
         el,
         bodyEl: null,
         contentRenderer: null,
+        contentView: null,
         contentMarkdown: null,
         contentSourcePath: null,
         releaseContent: null,
@@ -379,6 +385,7 @@ export class CardRenderer {
       el,
       bodyEl: body,
       contentRenderer: null,
+      contentView: null,
       contentMarkdown: null,
       contentSourcePath: null,
       releaseContent: null,
@@ -414,7 +421,11 @@ export class CardRenderer {
     // Everything else — media (its "off-screen stops playing" is deliberate,
     // p3-canvas-parity §六), placeholders, groups — is torn down here, because
     // rebuilding it costs nothing worth keeping DOM for.
-    if (runtime.webFrameUrl !== null || runtime.contentRenderer !== null) {
+    if (
+      runtime.webFrameUrl !== null ||
+      runtime.contentRenderer !== null ||
+      runtime.contentView !== null
+    ) {
       this.parkCard(id, runtime)
       return
     }
@@ -622,6 +633,8 @@ export class CardRenderer {
   destroyCardContent(runtime: NodeRuntime): void {
     runtime.contentRenderer?.unload()
     runtime.contentRenderer = null
+    runtime.contentView?.destroy()
+    runtime.contentView = null
     runtime.contentSourcePath = null
     runtime.contentMarkdown = null
     runtime.webFrameUrl = null
@@ -764,21 +777,43 @@ export class CardRenderer {
       this.callbacks.queueContentSync(id)
       return
     }
-    const prefix = cardMarkdownPrefix(
-      markdown,
-      this.callbacks.getNode(id)?.h ?? 0,
-    )
-    // Nothing to do when neither the visible source nor what it resolves
-    // against has changed — which is every edit made below a card's fold.
+    // The focused card is the one card that can be scrolled, so it is the one
+    // card that needs source below its own fold — see `scrollCardContent`.
+    const focused = this.callbacks.isFocused(id)
+    const wanted = focused
+      ? markdown
+      : cardMarkdownPrefix(markdown, this.callbacks.getNode(id)?.h ?? 0)
+    // Nothing to do when neither the visible source, what it resolves against,
+    // nor which of the two surfaces should hold it has changed — which is
+    // every edit made below an unfocused card's fold.
     if (
-      runtime.contentRenderer &&
+      (focused ? runtime.contentView : runtime.contentRenderer) &&
       runtime.contentSourcePath === sourcePath &&
-      runtime.contentMarkdown === prefix
+      runtime.contentMarkdown === wanted
     ) {
       return
     }
     this.destroyCardContent(runtime)
     bodyEl.replaceChildren()
+    runtime.contentSourcePath = sourcePath
+    runtime.contentMarkdown = wanted
+    if (focused) {
+      // Obsidian's own windowed preview, which is what a scrollable document
+      // wants and what a clipped card does not: it mounts only the sections
+      // around its scroll position, so scrolling a long note stays a screenful
+      // of DOM however far down it goes. Built for one card, on a deliberate
+      // click — never for the hundred a pan brings past.
+      try {
+        runtime.contentView = this.host.ui.createMarkdownContentView({
+          container: bodyEl,
+          value: wanted,
+          sourcePath,
+        })
+      } catch (error) {
+        this.callbacks.reportError('markdown render', error)
+      }
+      return
+    }
     const doc = bodyEl.ownerDocument
     const view = doc.createElement('div')
     view.className = PREVIEW_VIEW_CLASS
@@ -794,15 +829,50 @@ export class CardRenderer {
       return
     }
     runtime.contentRenderer = renderer
-    runtime.contentSourcePath = sourcePath
-    runtime.contentMarkdown = prefix
-    void renderer.render(prefix, sizer, sourcePath).catch((error: unknown) => {
+    void renderer.render(wanted, sizer, sourcePath).catch((error: unknown) => {
       // A render that lost its card was cancelled, not failed: `unload()`
       // rejects whatever was in flight, and the card has already been torn
       // down or re-rendered by whoever called it.
       if (runtime.contentRenderer !== renderer) return
       this.callbacks.reportError('markdown render', error)
     })
+  }
+
+  /**
+   * Scrolls a card's own content by a wheel delta, reporting whether it had
+   * anywhere to go.
+   *
+   * The scroller is Obsidian's preview element, which both content surfaces
+   * put inside the body (PREVIEW_VIEW_CLASS) — so this reads the same way for
+   * the focused card's windowed view and for anything else that ends up
+   * asking. Written rather than delegated to the browser because a card's
+   * content is deliberately unhittable (style.css's content mask, D7): the
+   * wheel never reaches the scroller on its own.
+   *
+   * False only when there is nothing to scroll at all, which is what hands the
+   * gesture back to the board: a card that fits must not swallow a pan.
+   *
+   * A card that *can* scroll keeps the wheel even at either end of its
+   * content, rather than passing the rest of the gesture on. Chaining reads
+   * well with a mouse notch and badly with the trackpad this canvas is mostly
+   * driven by: one flick has momentum enough to reach the end of a card and
+   * then throw the board across the board, which is a gesture nobody asked
+   * for. Panning from here is a matter of moving the pointer off a card that
+   * takes up a few hundred pixels of a whole canvas.
+   */
+  scrollCardContent(id: NodeId, deltaX: number, deltaY: number): boolean {
+    const scroller = this.runtimeByNodeId
+      .get(id)
+      ?.bodyEl?.querySelector<HTMLElement>('.markdown-preview-view')
+    if (!scroller) return false
+    const room = scroller.scrollHeight - scroller.clientHeight
+    if (room <= 0) return false
+    scroller.scrollTop = Math.max(
+      0,
+      Math.min(room, scroller.scrollTop + deltaY),
+    )
+    scroller.scrollLeft += deltaX
+    return true
   }
 
   private renderMissingFilePlaceholder(

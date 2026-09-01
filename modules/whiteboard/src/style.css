@@ -811,6 +811,24 @@
   font-size: 13px;
 }
 
+/* Only the focused card scrolls (cardRenderer's `scrollCardContent`). Every
+ * other card is rendered with just the source it can show, so a scrollbar on
+ * one would be an offer to reach content that was never built — and a card
+ * whose content overshoots its box by a line would grow one for no reason.
+ *
+ * The scrollbar is an affordance, not a control: the content mask keeps the
+ * whole card unhittable, so it cannot be dragged. What moves the content is
+ * the wheel, routed by the canvas's own handler. */
+.yolo-whiteboard-card-body .markdown-preview-view {
+  overflow: hidden;
+}
+
+.yolo-whiteboard-card-focused
+  .yolo-whiteboard-card-body
+  .markdown-preview-view {
+  overflow: auto;
+}
+
 /* A card's content starts at the card's inset. Obsidian's preview absorbs the
  * first block's top margin because a document opens under a header; a card has
  * no header, so the margin would push its one visible screenful down by a line

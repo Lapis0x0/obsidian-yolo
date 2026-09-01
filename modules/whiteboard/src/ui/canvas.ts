@@ -965,6 +965,14 @@ export class WhiteboardCanvas {
         isEditingWheelTarget: (target) =>
           this.editing !== null &&
           this.nodeIdFromEventTarget(target) === this.editing.nodeId,
+        scrollFocusedCardBy: (target, deltaX, deltaY) =>
+          this.focusedNodeId !== null &&
+          this.nodeIdFromEventTarget(target) === this.focusedNodeId &&
+          this.cardRenderer.scrollCardContent(
+            this.focusedNodeId,
+            deltaX,
+            deltaY,
+          ),
         positionToolbar: () => this.toolbarController.positionToolbar(),
         setInteracting: (interacting) => {
           this.interacting = interacting
@@ -2814,15 +2822,24 @@ export class WhiteboardCanvas {
         ? (this.selectedIds.values().next().value ?? null)
         : null
     if (next === this.focusedNodeId) return
-    if (this.focusedNodeId !== null) {
+    const previous = this.focusedNodeId
+    if (previous !== null) {
       this.cardRenderer
-        .getRuntime(this.focusedNodeId)
+        .getRuntime(previous)
         ?.el?.classList.remove(CARD_FOCUSED_CLASS)
     }
     this.focusedNodeId = next
     if (next !== null) {
       this.cardRenderer.getRuntime(next)?.el?.classList.add(CARD_FOCUSED_CLASS)
     }
+    // Focus decides how much of a card's note is built, because the focused
+    // card is the one that can be scrolled (cardRenderer's
+    // `renderMarkdownInto`). Both ends of the change are re-queued: the card
+    // gaining focus needs the rest of its note, the one losing it should stop
+    // paying for what it can no longer show. Queued rather than rendered here
+    // so it answers to the same frame gate as every other build.
+    if (previous !== null) this.contentSyncQueue.add(previous)
+    if (next !== null) this.contentSyncQueue.add(next)
   }
 
   private setEdgeSelection(ids: readonly EdgeId[]): void {

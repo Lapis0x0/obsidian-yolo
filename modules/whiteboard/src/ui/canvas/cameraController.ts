@@ -64,6 +64,13 @@ export type CameraControllerCallbacks = Readonly<{
   /** Whether `target` belongs to the card currently being edited — a plain
    * wheel there scrolls the editor rather than panning the board. */
   isEditingWheelTarget: (target: EventTarget | null) => boolean
+  /** Scrolls the focused card's content by a wheel delta, reporting whether
+   * it took the gesture — see canvas.ts's `scrollFocusedCardBy`. */
+  scrollFocusedCardBy: (
+    target: EventTarget | null,
+    deltaX: number,
+    deltaY: number,
+  ) => boolean
   /** The screen-space chrome is anchored to world positions, so it has to be
    * re-projected whenever the camera moves. */
   positionToolbar: () => void
@@ -183,6 +190,23 @@ export class CameraController {
     // Only the card being edited, not any card under the pointer: on a canvas
     // the wheel pans, and you click into a card first to scroll it.
     if (this.callbacks.isEditingWheelTarget(e.target)) {
+      return
+    }
+    // The selected card scrolls its own content, for the same reason the one
+    // being edited does: a card that holds more than it can show is worth
+    // looking further into, and selecting it is how the user says which card
+    // they mean. Only the *focused* card — one selected on its own, the same
+    // state the live media bodies answer to — and only while it has somewhere
+    // to scroll; a card that fits, or one of many selected, leaves the wheel
+    // to the board.
+    //
+    // Handled here rather than by letting the event through: a card's content
+    // is unhittable by design (style.css's content mask, D7), and lifting that
+    // to get the browser's scrolling would also hand back every link, checkbox
+    // and callout fold the mask exists to cover. This scrolls the element
+    // directly and leaves the mask absolute.
+    if (this.callbacks.scrollFocusedCardBy(e.target, e.deltaX, e.deltaY)) {
+      e.preventDefault()
       return
     }
     e.preventDefault()
