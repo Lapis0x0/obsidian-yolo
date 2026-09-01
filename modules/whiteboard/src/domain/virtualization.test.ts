@@ -126,6 +126,36 @@ describe('VirtualizationEngine', () => {
     expect(engine.isPendingMount('a')).toBe(true)
   })
 
+  it('cancels a queued mount for a card that leaves the viewport before it drains', () => {
+    const engine = new VirtualizationEngine()
+    engine.recompute([card('a', 0, 0)], viewport, NO_PINS)
+    expect(engine.isPendingMount('a')).toBe(true)
+
+    // Left before the quota reached it: mounting it now would build a card
+    // that is not on screen, and the next tick would queue its unmount.
+    engine.recompute([card('a', 1000, 1000)], viewport, NO_PINS)
+    expect(engine.isPendingMount('a')).toBe(false)
+    const { toMount, toUnmount } = engine.drain(10, 10)
+    expect(toMount).toEqual([])
+    expect(toUnmount).toEqual([])
+    expect(engine.mounted.size).toBe(0)
+  })
+
+  it('leaves the rest of the mount queue in order when one entry is cancelled', () => {
+    const engine = new VirtualizationEngine()
+    engine.recompute(
+      [card('a', 0, 0), card('b', 10, 0), card('c', 20, 0)],
+      viewport,
+      NO_PINS,
+    )
+    engine.recompute(
+      [card('a', 0, 0), card('b', 1000, 1000), card('c', 20, 0)],
+      viewport,
+      NO_PINS,
+    )
+    expect(engine.drain(10, 10).toMount).toEqual(['a', 'c'])
+  })
+
   it('exempts a pinned card from unmount even when it leaves the viewport', () => {
     const engine = new VirtualizationEngine()
     const pinned = new Set(['a'])

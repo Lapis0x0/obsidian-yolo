@@ -151,6 +151,22 @@ export class VirtualizationEngine {
           this.unmountQueue.push(card.id)
           this.unmountQueueSet.add(card.id)
         }
+      } else if (!vis && this.mountQueueSet.has(card.id)) {
+        // Queued for a mount it no longer wants: the card left the viewport
+        // before the drain quota reached it. Without this the mount is still
+        // paid in full — the element built, its content constructed — and the
+        // next tick queues the unmount that undoes it: work for a card that
+        // was never on screen. Most visible on the way into the overview
+        // tier, where every card leaves at once, but this is the general
+        // case, not that one.
+        //
+        // Splicing an array the queue is otherwise only pushed to and drained
+        // from the front of, for symmetry with the unmount-cancel above and
+        // with `markUnmounted`: at these lengths (a screenful's worth) the
+        // scan is not worth a second index to keep consistent.
+        this.mountQueueSet.delete(card.id)
+        const idx = this.mountQueue.indexOf(card.id)
+        if (idx !== -1) this.mountQueue.splice(idx, 1)
       }
     }
   }
