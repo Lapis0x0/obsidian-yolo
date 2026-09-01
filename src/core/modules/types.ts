@@ -387,6 +387,19 @@ export type YoloModuleMarkdownContentViewOptionsV1 = Readonly<{
  */
 export type YoloModuleMarkdownContentViewV1 = {
   setValue(text: string): void
+  /**
+   * Where the view is scrolled to, as a fractional source line: 12.5 is line
+   * 12, half of it above the top edge.
+   *
+   * The document's own coordinate rather than either surface's pixels, which
+   * is what makes it portable — the same text is a different height rendered
+   * than it is in an editor, so a scroll position handed across as pixels
+   * lands somewhere else. See `YoloModuleMarkdownEditorV1`, which reads and
+   * writes the same coordinate: a module swapping one surface for the other
+   * carries the reading position over by passing this number along.
+   */
+  getScrollLine(): number
+  scrollToLine(line: number): void
   destroy(): void
 }
 
@@ -418,6 +431,9 @@ export type YoloModuleMarkdownEditorV1 = {
   focus(): void
   blur(): void
   hasFocus(): boolean
+  /** The same fractional source line as `YoloModuleMarkdownContentViewV1`. */
+  getScrollLine(): number
+  scrollToLine(line: number): void
   destroy(): void
 }
 

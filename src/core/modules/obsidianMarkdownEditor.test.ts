@@ -55,6 +55,8 @@ describe('assertMarkdownEditorInstance', () => {
   const validInstance = () => ({
     set: jest.fn(),
     destroy: jest.fn(),
+    getScroll: jest.fn(),
+    applyScroll: jest.fn(),
     cm: { hasFocus: false, focus: jest.fn(), contentDOM: {} },
     editor: { getValue: jest.fn(), setValue: jest.fn() },
   })
@@ -66,6 +68,8 @@ describe('assertMarkdownEditorInstance', () => {
   it.each([
     ['set', /no set\(\)/],
     ['destroy', /no destroy\(\)/],
+    ['getScroll', /no getScroll\(\)/],
+    ['applyScroll', /no applyScroll\(\)/],
     ['cm', /no CodeMirror view/],
     ['editor', /no editor interface/],
   ])('rejects an instance missing %s', (member, message) => {

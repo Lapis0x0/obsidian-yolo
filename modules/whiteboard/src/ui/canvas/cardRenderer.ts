@@ -135,6 +135,19 @@ export type NodeRuntime = {
    * is the only place it's available to seed the live editor. Unused for
    * text/pdf cards. */
   noteText: string | null
+  /**
+   * Where this card's content is scrolled to, as a fractional source line —
+   * the note's own coordinate rather than any one surface's pixels.
+   *
+   * A card is read through three different things: the clipped one-pass
+   * render, the focused card's windowed preview, and the live editor. The
+   * same text is a different height in each, so a position kept in pixels
+   * lands somewhere else the moment one is swapped for another. Kept here and
+   * not in the surfaces because it outlives all of them — it is the reader's
+   * place in the note, and the note is what does not change. Null until the
+   * card has been scrolled.
+   */
+  scrollLine: number | null
 }
 
 /**
@@ -318,6 +331,7 @@ export class CardRenderer {
         webFrameUrl: null,
         missingFile: false,
         noteText: null,
+        scrollLine: null,
       })
       return
     }
@@ -392,6 +406,7 @@ export class CardRenderer {
       webFrameUrl: null,
       missingFile: false,
       noteText: existing?.noteText ?? null,
+      scrollLine: existing?.scrollLine ?? null,
     })
 
     void this.renderCardPreview(id)
@@ -631,6 +646,11 @@ export class CardRenderer {
    * so a new content kind cannot be added and leak from one of them.
    */
   destroyCardContent(runtime: NodeRuntime): void {
+    // The surface is going away; where the reader had got to in the note is
+    // not (see `NodeRuntime.scrollLine`). Only the windowed preview can be
+    // scrolled, so it is the only one with an answer to keep.
+    const line = runtime.contentView?.getScrollLine()
+    if (line !== undefined && Number.isFinite(line)) runtime.scrollLine = line
     runtime.contentRenderer?.unload()
     runtime.contentRenderer = null
     runtime.contentView?.destroy()
@@ -804,11 +824,15 @@ export class CardRenderer {
       // of DOM however far down it goes. Built for one card, on a deliberate
       // click — never for the hundred a pan brings past.
       try {
-        runtime.contentView = this.host.ui.createMarkdownContentView({
+        const view = this.host.ui.createMarkdownContentView({
           container: bodyEl,
           value: wanted,
           sourcePath,
         })
+        runtime.contentView = view
+        // Back to where this card was last read, which is the line the editor
+        // was left on when one was just closed here.
+        if (runtime.scrollLine) view.scrollToLine(runtime.scrollLine)
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
       }

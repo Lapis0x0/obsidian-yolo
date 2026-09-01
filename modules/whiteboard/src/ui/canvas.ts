@@ -4254,6 +4254,10 @@ export class WhiteboardCanvas {
       persistTimer: null,
     }
     editor.focus()
+    // Open where the card was being read, not at the top. `destroyCardContent`
+    // above kept that place as a source line, and the editor takes the same
+    // coordinate — nothing is mapped between the two surfaces.
+    if (runtime.scrollLine) editor.scrollToLine(runtime.scrollLine)
   }
 
   /**
@@ -4308,10 +4312,15 @@ export class WhiteboardCanvas {
       this.context.getWindow().clearTimeout(editing.persistTimer)
     }
     editing.scopeDisposer()
+
+    const runtime = this.cardRenderer.getRuntime(id)
+    // The other half of `enterEditMode`: hand the editor's place back to the
+    // card, so the preview rebuilt below opens on the line just left.
+    const line = editing.editor.getScrollLine()
+    if (runtime && Number.isFinite(line)) runtime.scrollLine = line
     editing.editor.destroy()
     this.pinnedIds.delete(id)
 
-    const runtime = this.cardRenderer.getRuntime(id)
     runtime?.el?.classList.remove(CARD_EDITING_CLASS)
     runtime?.bodyEl?.classList.remove(EDITOR_HOST_CLASS)
 

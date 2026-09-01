@@ -33,10 +33,24 @@ import { getNodeWindow } from '../../utils/dom/window-context'
  * `set` replaces the text and queues a render; `onResize` re-measures the
  * viewport and re-picks the mounted window of sections. Nothing else here
  * needs to know how either works.
+ *
+ * `getScroll` and `applyScrollDelayed` are Obsidian's own pair, and they speak
+ * in fractional source lines rather than pixels — the unit a Markdown view
+ * uses to hold its source and preview panes together. The borrowed editor in
+ * `obsidianMarkdownEditor.ts` answers in the same one.
+ *
+ * The *delayed* apply, not the plain one, because a scroll target only exists
+ * once there are measured sections to find it among: a preview asked to go to
+ * a line before its first render simply stays where it is. Obsidian's own
+ * answer to that is this method — it tries, and on failure retries when the
+ * render lands. Every scroll this file applies arrives on a preview that was
+ * built a moment ago, so the plain one would be wrong every time.
  */
 type ObsidianMarkdownPreviewRenderer = {
   set(text: string): void
   onResize(): void
+  getScroll(): number
+  applyScrollDelayed(line: number): void
 }
 
 /**
@@ -75,6 +89,8 @@ export type ObsidianMarkdownContentViewOptions = {
 
 export type ObsidianMarkdownContentViewHandle = {
   setValue(text: string): void
+  getScrollLine(): number
+  scrollToLine(line: number): void
   destroy(): void
 }
 
@@ -119,7 +135,12 @@ export function assertMarkdownRendererInstance(
       'the Markdown renderer built no preview renderer',
     )
   }
-  for (const method of ['set', 'onResize'] as const) {
+  for (const method of [
+    'set',
+    'onResize',
+    'getScroll',
+    'applyScrollDelayed',
+  ] as const) {
     if (typeof renderer[method] !== 'function') {
       throw new ObsidianMarkdownContentViewUnavailableError(
         `the preview renderer has no ${method}()`,
@@ -260,6 +281,11 @@ export function createObsidianMarkdownContentView(
     setValue: (text: string) => {
       if (destroyed) throw new Error('Markdown content view is destroyed')
       instance.renderer.set(text)
+    },
+    getScrollLine: () => (destroyed ? 0 : instance.renderer.getScroll()),
+    scrollToLine: (line: number) => {
+      if (destroyed) return
+      instance.renderer.applyScrollDelayed(line)
     },
     destroy: () => {
       if (destroyed) return

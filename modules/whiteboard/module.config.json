@@ -15,7 +15,7 @@
       "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
     }
   },
-  "hostApi": "^1.9.0",
+  "hostApi": "^1.10.0",
   "platforms": ["desktop", "mobile"],
   "dataSchemas": {}
 }

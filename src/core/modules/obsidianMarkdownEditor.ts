@@ -25,6 +25,14 @@ import { type App, TFile } from 'obsidian'
 type ObsidianMarkdownEditorInstance = {
   set(value: string, clear?: boolean): void
   destroy(): void
+  /**
+   * Scroll position as a fractional source line. Obsidian's own pair — it is
+   * how a Markdown view keeps its source and preview panes aligned, so the
+   * unit is the document's, not this editor's, and the preview renderer in
+   * `obsidianMarkdownContentView.ts` answers in the same one.
+   */
+  getScroll(): number
+  applyScroll(line: number): void
   cm: {
     hasFocus: boolean
     focus(): void
@@ -84,6 +92,8 @@ export type ObsidianMarkdownEditorHandle = {
   focus(): void
   blur(): void
   hasFocus(): boolean
+  getScrollLine(): number
+  scrollToLine(line: number): void
   destroy(): void
 }
 
@@ -155,7 +165,12 @@ export function assertMarkdownEditorInstance(
       'constructing the editor produced no instance',
     )
   }
-  for (const method of ['set', 'destroy'] as const) {
+  for (const method of [
+    'set',
+    'destroy',
+    'getScroll',
+    'applyScroll',
+  ] as const) {
     if (typeof value[method] !== 'function') {
       throw new ObsidianMarkdownEditorUnavailableError(
         `the editor instance has no ${method}()`,
@@ -308,6 +323,8 @@ export function createObsidianMarkdownEditor(
     focus: () => instance.cm.focus(),
     blur: () => instance.cm.contentDOM.blur(),
     hasFocus: () => instance.cm.hasFocus,
+    getScrollLine: () => instance.getScroll(),
+    scrollToLine: (line: number) => instance.applyScroll(line),
     destroy: () => {
       if (destroyed) return
       destroyed = true

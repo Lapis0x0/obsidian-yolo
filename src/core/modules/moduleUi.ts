@@ -365,6 +365,11 @@ export class ObsidianModuleUiCapabilityProvider
             requireString(text, 'Markdown content view value')
             handle.setValue(text)
           },
+          getScrollLine: () => handle.getScrollLine(),
+          scrollToLine: (line: number) => {
+            requireFiniteNumber(line, 'Markdown content view scroll line')
+            handle.scrollToLine(line)
+          },
           destroy: () => {
             contentViews.delete(handle)
             handle.destroy()
@@ -408,6 +413,11 @@ export class ObsidianModuleUiCapabilityProvider
           focus: () => handle.focus(),
           blur: () => handle.blur(),
           hasFocus: () => handle.hasFocus(),
+          getScrollLine: () => handle.getScrollLine(),
+          scrollToLine: (line: number) => {
+            requireFiniteNumber(line, 'Markdown editor scroll line')
+            handle.scrollToLine(line)
+          },
           destroy: () => {
             editors.delete(handle)
             handle.destroy()
@@ -671,6 +681,14 @@ function requireOptionalString(value: unknown, label: string): void {
 function requireOptionalFunction(value: unknown, label: string): void {
   if (value !== undefined && typeof value !== 'function')
     throw new TypeError(`${label} must be a function`)
+}
+
+function requireFiniteNumber(
+  value: unknown,
+  label: string,
+): asserts value is number {
+  if (typeof value !== 'number' || !Number.isFinite(value))
+    throw new TypeError(`${label} must be a finite number`)
 }
 
 function requireString(value: unknown, label: string): asserts value is string {
