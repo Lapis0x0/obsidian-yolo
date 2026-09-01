@@ -555,6 +555,11 @@ export class WhiteboardCanvas {
    * and behind the same kind of hysteresis band. */
   private overview = false
   /**
+   * The tier has been left and the cards it unmounted are not all back yet, so
+   * the canvas is still drawing them — see `settleOverviewLinger`.
+   */
+  private overviewLingering = false
+  /**
    * Uncommitted geometry for the nodes a drag or a resize is moving, or null.
    *
    * In the DOM tiers the live feedback *is* the `transform` written on each
@@ -3799,6 +3804,7 @@ export class WhiteboardCanvas {
     this.canBuildContent =
       !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
+    this.settleOverviewLinger()
     // Last: it draws the camera the world layer was just given, and the
     // geometry the queues above have just finished changing.
     this.overviewLayer?.render()
@@ -3925,9 +3931,41 @@ export class WhiteboardCanvas {
     if (next === this.overview) return
     this.overview = next
     this.worldEl.classList.toggle(WORLD_OVERVIEW_CLASS, next)
-    this.overviewLayer?.setActive(next)
-    if (next) this.cardRenderer.freezeParkedCapacity()
-    else this.cardRenderer.unfreezeParkedCapacity()
+    if (next) {
+      this.overviewLingering = false
+      this.overviewLayer?.setActive(true)
+      this.cardRenderer.freezeParkedCapacity()
+      return
+    }
+    // Not `setActive(false)` here: which layer *renders* and which population
+    // is virtualized are two different switches, and the second one is not
+    // instant. The cards this tier unmounted come back a few per frame
+    // (MOUNT_QUOTA_PER_FRAME), and at this zoom the viewport can hold hundreds
+    // — turning the canvas off on the tick the threshold is crossed leaves the
+    // board blank and then hatches it card by card for a second or more.
+    //
+    // So the canvas keeps drawing until they are all back
+    // (`settleOverviewLinger`). Nothing has to be cross-faded for that to be
+    // invisible: the canvas sits behind the world layer, so every card that
+    // mounts covers its own drawing, and the last frame of the tier is one
+    // where the canvas has nothing left to show that the DOM is not already
+    // showing.
+    this.overviewLingering = true
+    this.cardRenderer.unfreezeParkedCapacity()
+  }
+
+  /**
+   * Ends the linger above once the mount queue the exit filled has drained.
+   *
+   * Runs after `drainQueues` and before the canvas draws, so the frame that
+   * mounts the last card is the frame the canvas stops drawing on: both land
+   * in one paint, and there is no moment where the board is showing neither.
+   */
+  private settleOverviewLinger(): void {
+    if (!this.overviewLingering) return
+    if (this.engine.pendingMountCount > 0) return
+    this.overviewLingering = false
+    this.overviewLayer?.setActive(false)
   }
 
   /**

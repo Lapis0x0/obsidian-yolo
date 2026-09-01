@@ -103,6 +103,13 @@ export class VirtualizationEngine {
     return this.mountQueueSet.has(id)
   }
 
+  /** How many cards are waiting for the mount quota to reach them — for a
+   * caller that has to know when the screen it asked for is finally on it
+   * (canvas.ts holds the overview canvas up until this reaches zero). */
+  get pendingMountCount(): number {
+    return this.mountQueue.length
+  }
+
   /**
    * Forgets everything: no card is mounted, nothing is queued.
    *
