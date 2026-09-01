@@ -69,6 +69,9 @@ const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
  * `fillStyle`, so any colour syntax a theme uses works. Where the stylesheet
  * mixes in transparency (`color-mix(… 70% …)`) this uses `globalAlpha` on the
  * same colour, which needs no parsing and composites the same way.
+ *
+ * Dropped again whenever the document's body classes change, which is how a
+ * theme or light/dark switch reaches a plugin (`watchTheme`).
  */
 type Palette = Readonly<{
   presets: Readonly<Record<ColorPreset, string>>
@@ -124,6 +127,9 @@ export class OverviewLayer {
   private appliedHeight = 0
   /** The camera the last draw was made for — see `render`. */
   private lastView: CanvasView | null = null
+  /** Watches for the theme changing under a tier that has already read its
+   * colours — see `watchTheme`. */
+  private themeObserver: MutationObserver | null = null
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -138,6 +144,40 @@ export class OverviewLayer {
     this.canvasEl.className = `${OVERVIEW_CANVAS_CLASS} ${OVERVIEW_HIDDEN_CLASS}`
     parentEl.appendChild(this.canvasEl)
     this.ctx = this.canvasEl.getContext('2d')
+    this.watchTheme()
+  }
+
+  /**
+   * Drops the cached palette when the theme changes.
+   *
+   * The colours are read once per entry into the tier and then held, which is
+   * right — reading computed style per frame is not a thing to do — but a tier
+   * can outlast a theme: switching to dark while zoomed out would leave the
+   * board drawn in the light one's colours until the next entry, which may be
+   * minutes of panning away.
+   *
+   * Obsidian gives a plugin no theme event; what it does is rewrite the body's
+   * classes (`theme-dark`/`theme-light`, the active theme's own), so that is
+   * what is watched. A false positive costs one `getComputedStyle` on the next
+   * frame that draws, which is why this stays a class-attribute watch rather
+   * than anything that tries to work out whether the colours really moved.
+   *
+   * The observer is the *view's own* window's, and watches the view's own
+   * document: in a popout both are that window's, not the main one's
+   * (CLAUDE.md, Popout / Multi-window).
+   */
+  private watchTheme(): void {
+    const doc = this.styleSourceEl.ownerDocument
+    const win = doc.defaultView
+    if (!win) return
+    this.themeObserver = new win.MutationObserver(() => {
+      this.palette = null
+      this.dirty = true
+    })
+    this.themeObserver.observe(doc.body, {
+      attributes: true,
+      attributeFilter: ['class'],
+    })
   }
 
   get isActive(): boolean {
@@ -146,9 +186,9 @@ export class OverviewLayer {
 
   /**
    * Enters or leaves the tier. Entering drops the cached palette so the theme
-   * is re-read: a module has no reliable notice of a theme change, and the
-   * moment the tier is entered is both the only moment the values are needed
-   * and a cheap place to spend one `getComputedStyle`.
+   * is re-read: the moment the tier is entered is both the only moment the
+   * values are needed and a cheap place to spend one `getComputedStyle`. A
+   * theme that changes *during* the tier is caught by `watchTheme`.
    */
   setActive(active: boolean): void {
     if (active === this.active) return
@@ -203,6 +243,8 @@ export class OverviewLayer {
   }
 
   destroy(): void {
+    this.themeObserver?.disconnect()
+    this.themeObserver = null
     this.canvasEl.remove()
   }
 
