@@ -990,6 +990,8 @@ export class WhiteboardCanvas {
         cancelActiveEdgeRename: () => {
           if (this.renaming?.kind === 'edge') this.endRename(false)
         },
+        getRenamingEdgeId: () =>
+          this.renaming?.kind === 'edge' ? this.renaming.id : null,
         onLabelKeyDown: (id, event) =>
           this.handleLabelKeyDown({ kind: 'edge', id }, event),
         onLabelBlur: (id) => this.endRename(true, { kind: 'edge', id }),

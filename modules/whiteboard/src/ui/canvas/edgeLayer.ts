@@ -63,6 +63,10 @@ export type EdgeLayerCallbacks = Readonly<{
   /** An edge label being typed is about to lose the element it is typed in —
    * called before every wholesale clear, structural rebuild included. */
   cancelActiveEdgeRename: () => void
+  /** The edge whose label is being typed right now, or null — canvas.ts owns
+   * the rename; this class only needs to know not to hide it
+   * (`edgeIsVisible`). */
+  getRenamingEdgeId: () => EdgeId | null
   onLabelKeyDown: (edgeId: EdgeId, event: KeyboardEvent) => void
   onLabelBlur: (edgeId: EdgeId) => void
   t: (key: string, fallback?: string) => string
@@ -161,10 +165,21 @@ export class EdgeLayer {
    * away (`staleIds`): a pan moves the camera, not the board, so the hundreds
    * of edges crossing the viewport's edge on every tick of one come back
    * showing the geometry they already had.
+   *
+   * The edge whose label is being typed is exempt whatever the viewport says —
+   * the same exemption a card being interacted with gets from `pinnedNodeIds`.
+   * `display: none` on the element holding the caret takes the focus with it,
+   * and the rename then ends on a blur nobody asked for; panning the board
+   * while renaming is not a way to lose what you were typing.
    */
   updateVisibility(rect: WorldRect, pinnedNodeIds: ReadonlySet<NodeId>): void {
+    // Read once for the sweep rather than per edge: on a board of a few
+    // thousand this runs every tick.
+    const renamingEdgeId = this.callbacks.getRenamingEdgeId()
     for (const [edgeId, edge] of this.edgesById) {
-      const culled = !this.edgeIsVisible(edge, rect, pinnedNodeIds)
+      const culled =
+        edgeId !== renamingEdgeId &&
+        !this.edgeIsVisible(edge, rect, pinnedNodeIds)
       if (culled === this.culledIds.has(edgeId)) continue
       const dom = this.edgeElsById.get(edgeId)
       if (!dom) continue
