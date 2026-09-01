@@ -2852,14 +2852,15 @@ export class WhiteboardCanvas {
     if (next === this.focusedNodeId) return
     const previous = this.focusedNodeId
     if (previous !== null) {
+      // Asked before the card is restyled, not after: reading the answer is a
+      // layout read, and a layout flush is exactly what turns a class change
+      // into a scroll container that no longer scrolls. This is also the path
+      // a card takes into edit mode, which clears the selection before it
+      // mounts the editor.
+      this.commitReadingWindow(previous)
       this.cardRenderer
         .getRuntime(previous)
         ?.el?.classList.remove(CARD_FOCUSED_CLASS)
-      // The surface that could answer "where am I reading" is about to be
-      // replaced by the clipped window, so the answer is taken now. This is
-      // also the path a card takes into edit mode, which clears the selection
-      // before it mounts the editor.
-      this.commitReadingWindow(previous)
     }
     this.focusedNodeId = next
     if (next !== null) {

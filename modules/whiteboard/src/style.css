@@ -811,10 +811,16 @@
   font-size: 13px;
 }
 
-/* Only the focused card scrolls (cardRenderer's `scrollCardContent`). Every
- * other card is rendered with just the source it can show, so a scrollbar on
- * one would be an offer to reach content that was never built — and a card
- * whose content overshoots its box by a line would grow one for no reason.
+/* Only a body holding the whole document scrolls — in practice the focused
+ * card, the only one that gets one (cardRenderer's `renderMarkdownInto`).
+ * Every other card is rendered with just the slice it can show, so a
+ * scrollbar on one would be an offer to reach content that was never built —
+ * and a card whose content overshoots its box by a line would grow one for no
+ * reason.
+ *
+ * Keyed on the mounted content rather than on the selection: see
+ * CARD_BODY_SCROLLS_CLASS for the frame of the note's top that the other
+ * spelling paints on the way out.
  *
  * The scrollbar is an affordance, not a control: the content mask keeps the
  * whole card unhittable, so it cannot be dragged. What moves the content is
@@ -823,9 +829,7 @@
   overflow: hidden;
 }
 
-.yolo-whiteboard-card-focused
-  .yolo-whiteboard-card-body
-  .markdown-preview-view {
+.yolo-whiteboard-card-body-scrolls .markdown-preview-view {
   overflow: auto;
 }
 

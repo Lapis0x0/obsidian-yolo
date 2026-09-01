@@ -483,6 +483,20 @@ export const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
  * transport controls, an embedded web page — and so is exempt from the
  * content mask once its card is the single selection. See style.css. */
 export const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
+/**
+ * Marks a body that currently holds the whole document rather than the slice
+ * the card can show — the windowed preview, which is the one content surface
+ * with somewhere to scroll to.
+ *
+ * Deliberately not the focus class, even though only the focused card ever
+ * gets one. A scroll container that stops being scrollable is snapped back to
+ * the top by the browser, and focus leaves a card a frame or more before its
+ * content is rebuilt: keying `overflow` on the selection therefore paints one
+ * frame of the top of the note on the way out. Keying it on what is actually
+ * mounted cannot, because the class and the content it describes are put up
+ * and taken down together. See style.css.
+ */
+export const CARD_BODY_SCROLLS_CLASS = 'yolo-whiteboard-card-body-scrolls'
 
 export const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
 export const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'

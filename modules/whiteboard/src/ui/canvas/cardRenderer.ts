@@ -17,6 +17,7 @@ import {
 } from '../../domain/naming'
 import {
   CARD_BODY_LIVE_CLASS,
+  CARD_BODY_SCROLLS_CLASS,
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
   GROUP_LABEL_CLASS,
@@ -648,6 +649,7 @@ export class CardRenderer {
       }
     }
     runtime.bodyEl?.classList.remove(CARD_BODY_LIVE_CLASS)
+    runtime.bodyEl?.classList.remove(CARD_BODY_SCROLLS_CLASS)
   }
 
   /**
@@ -815,8 +817,10 @@ export class CardRenderer {
           sourcePath,
         })
         runtime.contentView = view
-        // The whole note is mounted, so the window the card was showing has
-        // to be found again by scrolling to it.
+        // The whole note is mounted, so this body has somewhere to scroll to
+        // — and the window the card was showing has to be found again by
+        // scrolling to it.
+        bodyEl.classList.add(CARD_BODY_SCROLLS_CLASS)
         if (startLine) view.scrollToLine(startLine)
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
