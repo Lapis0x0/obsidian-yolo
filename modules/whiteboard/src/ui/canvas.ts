@@ -266,9 +266,20 @@ type EditingState = {
 // onPointerDown): panning the camera, marquee-selecting cards, or
 // pressing-and-maybe-dragging a card. `interaction` holds whichever is
 // active; `null` when the pointer is up.
+//
+// Every one of them carries the `pointerId` of the press that started it, and
+// every one of them captures that pointer on the viewport. Capture routes that
+// pointer's events here, but it does not stop a *second* pointer from being
+// reported: a touch screen or a pen reports each contact separately, and with
+// the moves coalesced into one slot (`pendingPointerMove`) whichever arrived
+// last would be the position the gesture is updated from — a drag that jumps to
+// a second finger. So a move or an up is only the gesture's if it names the
+// gesture's pointer.
 
 type PanInteraction = Readonly<{
   kind: 'pan'
+  /** The press that started this gesture; see the section comment. */
+  pointerId: number
   origin: CanvasView
   startX: number
   startY: number
@@ -278,6 +289,7 @@ type PanInteraction = Readonly<{
  * comment for why both `originLocal` and `originClient` are tracked. */
 type MarqueeInteraction = Readonly<{
   kind: 'marquee'
+  pointerId: number
   originLocal: ScreenPoint
   originClient: ScreenPoint
   /** Shift was held at press: the band adds to the selection rather than
@@ -297,6 +309,7 @@ type MarqueeInteraction = Readonly<{
  */
 type NodeInteraction = {
   readonly kind: 'card'
+  readonly pointerId: number
   readonly nodeId: NodeId
   readonly startClient: ScreenPoint
   /** Shift was held: a press that never moves toggles this card in and out of
@@ -320,6 +333,7 @@ type NodeInteraction = {
  */
 type ResizeInteraction = {
   readonly kind: 'resize'
+  readonly pointerId: number
   readonly nodeId: NodeId
   readonly handle: ResizeHandle
   readonly startClient: ScreenPoint
@@ -348,6 +362,7 @@ type ResizeInteraction = {
  */
 type ConnectInteraction = {
   readonly kind: 'connect'
+  readonly pointerId: number
   /** The end that stays put, and the side it is anchored to. */
   readonly anchor: SideAnchor
   /** Which end of the edge is following the pointer. A new edge always
@@ -372,6 +387,7 @@ type ConnectInteraction = {
  */
 type CreateInteraction = {
   readonly kind: 'create'
+  readonly pointerId: number
   readonly startClient: ScreenPoint
   /** The card's size, carried so the ghost is the card: one table feeds both
    * (see `creationAction`), and they cannot disagree. */
@@ -1165,6 +1181,11 @@ export class WhiteboardCanvas {
     // Recorded before any early return: this is the record of what was
     // pressed, not of what the press went on to do (see `pressedTarget`).
     this.pressedTarget = e.target
+    // A hover move that the last frame has not consumed yet belongs to no
+    // gesture, and the gesture about to start must not be updated from it: it
+    // is wherever the pointer was travelling before the press, which the drag
+    // threshold below would read as movement the user never made after it.
+    this.pendingPointerMove = null
     if (this.parseFailed) return
     // The toolbar and the edge-label field sit above the canvas in the same
     // viewport element these listeners are on: a press on one of them is not
@@ -1210,6 +1231,7 @@ export class WhiteboardCanvas {
       if (this.isLiveContentTarget(e.target)) return
       this.interaction = {
         kind: 'card',
+        pointerId: e.pointerId,
         nodeId,
         startClient: { x: e.clientX, y: e.clientY },
         additive: e.shiftKey,
@@ -1528,6 +1550,12 @@ export class WhiteboardCanvas {
   private pendingPointerMove: PointerEvent | null = null
 
   private readonly onPointerMove = (e: PointerEvent): void => {
+    // While a gesture is in flight the slot is that gesture's: a second
+    // pointer (a finger, a pen) reports its own moves, and the one slot would
+    // otherwise hand the drag whichever pointer moved last. With none in
+    // flight every pointer is a candidate for the hover.
+    const interaction = this.interaction
+    if (interaction !== null && e.pointerId !== interaction.pointerId) return
     this.pendingPointerMove = e
   }
 
@@ -1697,6 +1725,9 @@ export class WhiteboardCanvas {
     this.consumePointerMove()
     const interaction = this.interaction
     if (!interaction) return
+    // Another pointer lifting is not this gesture ending — the one that
+    // started it is the one that can finish it.
+    if (e.pointerId !== interaction.pointerId) return
     this.interaction = null
     switch (interaction.kind) {
       case 'pan':
@@ -1733,6 +1764,7 @@ export class WhiteboardCanvas {
   private startPan(e: PointerEvent): void {
     this.interaction = {
       kind: 'pan',
+      pointerId: e.pointerId,
       origin: { ...this.cameraController.view },
       startX: e.clientX,
       startY: e.clientY,
@@ -1770,6 +1802,7 @@ export class WhiteboardCanvas {
     const originLocal = { x: e.clientX - rect.left, y: e.clientY - rect.top }
     this.interaction = {
       kind: 'marquee',
+      pointerId: e.pointerId,
       originLocal,
       originClient: { x: e.clientX, y: e.clientY },
       additive: e.shiftKey,
@@ -1900,6 +1933,7 @@ export class WhiteboardCanvas {
     e.preventDefault()
     this.interaction = {
       kind: 'resize',
+      pointerId: e.pointerId,
       nodeId,
       handle,
       startClient: { x: e.clientX, y: e.clientY },
@@ -2115,6 +2149,7 @@ export class WhiteboardCanvas {
   ): void {
     this.interaction = {
       kind: 'connect',
+      pointerId: e.pointerId,
       anchor,
       movingEnd,
       edgeId,
@@ -3169,6 +3204,7 @@ export class WhiteboardCanvas {
     if (!this.canCreate) return
     this.interaction = {
       kind: 'create',
+      pointerId: e.pointerId,
       startClient: { x: e.clientX, y: e.clientY },
       size,
       create,
