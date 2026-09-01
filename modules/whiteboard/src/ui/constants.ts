@@ -324,3 +324,10 @@ export const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
 export const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
 export const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'
 export const EDGE_HIDDEN_CLASS = 'yolo-whiteboard-edge-hidden'
+/**
+ * An edge culled by viewport virtualization (edgeLayer.ts's
+ * `updateVisibility`). A separate class from EDGE_HIDDEN_CLASS, which a
+ * connection drag owns for the length of a gesture: the two states are
+ * independent and each has to be able to end without clearing the other.
+ */
+export const EDGE_CULLED_CLASS = 'yolo-whiteboard-edge-culled'

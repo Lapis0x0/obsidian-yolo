@@ -966,6 +966,19 @@
   display: none;
 }
 
+/* An edge whose two endpoints are both far off screen (P4-2 —
+ * ui/canvas/edgeLayer.ts's updateVisibility). Its own class rather than the
+ * one above: a connection drag owns that one for the length of a gesture, and
+ * the two states have to be able to end independently.
+ *
+ * `display: none` is the whole mechanism. An edge is two paths and no content,
+ * so there is nothing to destroy that would be worth rebuilding; what costs is
+ * the element's presence in layout, paint and the compositor's per-element
+ * accounting, and this takes it out of all three. */
+.yolo-whiteboard-edge-culled {
+  display: none;
+}
+
 /* The counter-scaled arrowhead grows past the marker's own 8x8 viewport when
  * the board is zoomed out, and a marker clips to it by default. */
 .yolo-whiteboard-edge-arrow-marker {

@@ -113,6 +113,7 @@ import {
   type CanvasView,
   type VirtualCardRect,
   VirtualizationEngine,
+  type WorldRect,
   computeWorldViewportRect,
   intersectsViewport,
 } from '../domain/virtualization'
@@ -3640,14 +3641,23 @@ export class WhiteboardCanvas {
 
   private recomputeVisibility(): void {
     if (this.parseFailed || !this.viewportEl) return
-    const rect = computeWorldViewportRect(
+    const rect = this.worldViewportRect()
+    this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
+    // Edges answer to the same viewport, on the same tick (P4-2) — see
+    // edgeLayer.ts's `updateVisibility`.
+    this.edgeLayer.updateVisibility(rect, this.pinnedIds)
+    this.updateDegradedState()
+  }
+
+  /** The buffered viewport in world coordinates — what decides which cards are
+   * mounted and which edges are drawn. */
+  private worldViewportRect(): WorldRect {
+    return computeWorldViewportRect(
       this.viewportEl.clientWidth,
       this.viewportEl.clientHeight,
       this.cameraController.view,
       VIEWPORT_BUFFER_PX,
     )
-    this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
-    this.updateDegradedState()
   }
 
   /**
@@ -3771,6 +3781,12 @@ export class WhiteboardCanvas {
 
   private rebuildEdgesSvg(): void {
     this.edgeLayer.rebuildEdgesSvg(this.board.edges)
+    // A rebuild starts every edge visible; cull the off-screen ones now rather
+    // than leaving a board's worth of them in the document until the next
+    // visibility tick.
+    if (this.viewportEl) {
+      this.edgeLayer.updateVisibility(this.worldViewportRect(), this.pinnedIds)
+    }
     this.restoreEdgeSelection()
   }
 

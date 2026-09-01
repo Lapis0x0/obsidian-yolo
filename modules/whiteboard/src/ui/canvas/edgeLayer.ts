@@ -15,6 +15,7 @@
 // collaborators).
 
 import {
+  EDGE_CONTROL_MAX_PX,
   buildEdgePathD,
   computeEdgeGeometry,
   resolveEdgeSides,
@@ -27,8 +28,14 @@ import type {
   NodeId,
 } from '../../domain/fileFormat'
 import type { CardRect } from '../../domain/resize'
-import type { VirtualCardRect } from '../../domain/virtualization'
-import { EDGE_HIDDEN_CLASS, EDGE_HIT_CLASS, EDGE_LABEL_CLASS, SVG_NS } from '../constants'
+import type { VirtualCardRect, WorldRect } from '../../domain/virtualization'
+import {
+  EDGE_CULLED_CLASS,
+  EDGE_HIDDEN_CLASS,
+  EDGE_HIT_CLASS,
+  EDGE_LABEL_CLASS,
+  SVG_NS,
+} from '../constants'
 import { applyColorToElement } from '../selectionToolbar'
 
 const EDGE_PATH_CLASS = 'yolo-whiteboard-edge-path'
@@ -72,6 +79,25 @@ export class EdgeLayer {
   private edgesById = new Map<EdgeId, Edge>()
   private edgeIndexByNodeId = new Map<NodeId, Set<EdgeId>>()
   private readonly edgeElsById = new Map<EdgeId, EdgeDomEntry>()
+  /**
+   * Edges currently off screen (`updateVisibility`). Membership is the single
+   * source of truth for both the class on the elements and `redrawEdge`'s
+   * early return, so a culled edge costs nothing to keep and nothing to move
+   * a card past.
+   */
+  private readonly culledIds = new Set<EdgeId>()
+  /**
+   * Culled edges that declined a redraw while they were off screen, and so owe
+   * one before they can be shown again.
+   *
+   * Without this, coming back into view would mean recomputing and re-parsing
+   * a path for every edge crossing the viewport's edge on every pan tick —
+   * work the uncalled version never did, since an edge is only redrawn when a
+   * node moves. Which is exactly the point: a pan moves the camera, not the
+   * board, so on a pan this set stays empty and an edge comes back showing the
+   * geometry it already had.
+   */
+  private readonly staleIds = new Set<EdgeId>()
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -97,8 +123,98 @@ export class EdgeLayer {
     this.edgesGroupEl.replaceChildren()
     this.edgeLabelsEl.replaceChildren()
     this.edgeElsById.clear()
+    this.culledIds.clear()
+    this.staleIds.clear()
     this.edgesById = new Map()
     this.edgeIndexByNodeId = new Map()
+  }
+
+  // -----------------------------------------------------------------------
+  // Viewport culling (P4-2).
+  //
+  // Edges used to be the one thing on the board with no virtualization at
+  // all: every edge in the file kept two paths and possibly a label in the
+  // document at every zoom level, so a board with a few thousand of them paid
+  // Blink's per-element compositing bill in *every* tier — the same
+  // `PaintArtifactCompositor::Update` tax that card virtualization exists to
+  // bound (p4-perf-overview §一.5). The overview tier draws edges on a canvas
+  // and is unaffected; this is what the two DOM tiers needed.
+  //
+  // Culling is a `display: none` rather than a teardown, unlike a card's. An
+  // edge is two path elements and no content: rebuilding one costs a
+  // `setAttribute`, so there is nothing to save by destroying it and a whole
+  // incidence index to keep consistent if we did. What the class buys is what
+  // was expensive — the element leaves layout, paint and the compositor's
+  // accounting entirely.
+  // -----------------------------------------------------------------------
+
+  /**
+   * Hides the edges that cannot be seen and brings back the ones that can.
+   *
+   * `rect` is the same buffered world viewport the card virtualization uses.
+   * `pinnedNodeIds` names the nodes a gesture is holding: those edges keep
+   * their DOM whatever the board says, because during a drag the board's
+   * positions are the ones the card *left* and the live geometry arrives
+   * through `redrawEdgesForNodes`'s overrides instead.
+   *
+   * An edge that comes back is redrawn only if something moved while it was
+   * away (`staleIds`): a pan moves the camera, not the board, so the hundreds
+   * of edges crossing the viewport's edge on every tick of one come back
+   * showing the geometry they already had.
+   */
+  updateVisibility(
+    rect: WorldRect,
+    pinnedNodeIds: ReadonlySet<NodeId>,
+  ): void {
+    for (const [edgeId, edge] of this.edgesById) {
+      const culled = !this.edgeIsVisible(edge, rect, pinnedNodeIds)
+      if (culled === this.culledIds.has(edgeId)) continue
+      const dom = this.edgeElsById.get(edgeId)
+      if (!dom) continue
+      dom.path.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.hit.classList.toggle(EDGE_CULLED_CLASS, culled)
+      dom.label?.classList.toggle(EDGE_CULLED_CLASS, culled)
+      if (culled) {
+        this.culledIds.add(edgeId)
+        continue
+      }
+      this.culledIds.delete(edgeId)
+      // Only if something moved while it was away — see `staleIds`.
+      if (this.staleIds.has(edgeId)) this.redrawEdge(edgeId)
+    }
+  }
+
+  /**
+   * Whether any part of `edge` can reach `rect`.
+   *
+   * Tested against the union of its two endpoint cards grown by
+   * `EDGE_CONTROL_MAX_PX`, which is a bound on the curve rather than the
+   * curve: a cubic lies inside the convex hull of its four control points, the
+   * anchors are on the two rects, and the control points are pushed at most
+   * that far out along a side normal (domain/edges.ts's `extrapolate`). So a
+   * box that contains both rects and that margin contains the curve, and it
+   * costs four comparisons instead of a bezier evaluation.
+   */
+  private edgeIsVisible(
+    edge: Edge,
+    rect: WorldRect,
+    pinnedNodeIds: ReadonlySet<NodeId>,
+  ): boolean {
+    if (pinnedNodeIds.has(edge.fromNode) || pinnedNodeIds.has(edge.toNode)) {
+      return true
+    }
+    const from = this.callbacks.getNode(edge.fromNode)
+    const to = this.callbacks.getNode(edge.toNode)
+    // Dangling edges are rejected at parse time; keep a stray one visible
+    // rather than silently hiding something nothing else will draw.
+    if (!from || !to) return true
+    const margin = EDGE_CONTROL_MAX_PX
+    return (
+      Math.min(from.x, to.x) - margin < rect.right &&
+      Math.max(from.x + from.w, to.x + to.w) + margin > rect.left &&
+      Math.min(from.y, to.y) - margin < rect.bottom &&
+      Math.max(from.y + from.h, to.y + to.h) + margin > rect.top
+    )
   }
 
   private indexEdgeIncidence(edge: Edge): void {
@@ -162,6 +278,9 @@ export class EdgeLayer {
     // Shown by style.css while the element is empty, which it only ever is
     // between being created for an unlabelled edge and being typed into.
     el.dataset.placeholder = this.callbacks.t('edge.labelPlaceholder')
+    // A label may be attached to an edge that is currently culled (see
+    // `updateVisibility`); it belongs to the edge and shares its state.
+    if (this.culledIds.has(edge.id)) el.classList.add(EDGE_CULLED_CLASS)
     applyColorToElement(el, edge.color)
     el.addEventListener('keydown', (event) =>
       this.callbacks.onLabelKeyDown(edge.id, event),
@@ -233,6 +352,13 @@ export class EdgeLayer {
     edgeId: EdgeId,
     overrides?: ReadonlyMap<NodeId, CardRect>,
   ): void {
+    // Off screen: the redraw is owed, not lost — `updateVisibility` pays it on
+    // the way back in.
+    if (this.culledIds.has(edgeId)) {
+      this.staleIds.add(edgeId)
+      return
+    }
+    this.staleIds.delete(edgeId)
     const edge = this.edgesById.get(edgeId)
     const dom = this.edgeElsById.get(edgeId)
     if (!edge || !dom) return
