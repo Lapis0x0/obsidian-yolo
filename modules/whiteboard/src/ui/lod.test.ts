@@ -5,33 +5,33 @@ import type {
   TextNode,
 } from '../domain/fileFormat'
 
-import { DEGRADE_RESTORE_SCALE, DEGRADE_SCALE_THRESHOLD } from './constants'
-import { degradedNodeTitle, nextDegradedState } from './lod'
+import { OVERVIEW_RESTORE_SCALE, OVERVIEW_SCALE_THRESHOLD } from './constants'
+import { nextOverviewState, nodeTitleText } from './lod'
 
-describe('nextDegradedState', () => {
+describe('nextOverviewState', () => {
   const band = { enter: 0.35, restore: 0.42 }
 
-  it('degrades once the scale drops below the enter threshold', () => {
-    expect(nextDegradedState(0.2, false, band)).toBe(true)
+  it('hands the board to the canvas once the scale drops below the enter threshold', () => {
+    expect(nextOverviewState(0.2, false, band)).toBe(true)
   })
 
-  it('stays undegraded at or above the enter threshold', () => {
-    expect(nextDegradedState(0.35, false, band)).toBe(false)
-    expect(nextDegradedState(1, false, band)).toBe(false)
+  it('keeps the board in the DOM at or above the enter threshold', () => {
+    expect(nextOverviewState(0.35, false, band)).toBe(false)
+    expect(nextOverviewState(1, false, band)).toBe(false)
   })
 
-  it('stays degraded inside the band — a scale that only just cleared the enter threshold does not rebuild content', () => {
-    expect(nextDegradedState(0.36, true, band)).toBe(true)
-    expect(nextDegradedState(0.41, true, band)).toBe(true)
+  it('stays on the canvas inside the band — a scale that only just cleared the enter threshold does not remount every card', () => {
+    expect(nextOverviewState(0.36, true, band)).toBe(true)
+    expect(nextOverviewState(0.41, true, band)).toBe(true)
   })
 
   it('restores once the scale clears the far side of the band', () => {
-    expect(nextDegradedState(0.42, true, band)).toBe(false)
-    expect(nextDegradedState(1, true, band)).toBe(false)
+    expect(nextOverviewState(0.42, true, band)).toBe(false)
+    expect(nextOverviewState(1, true, band)).toBe(false)
   })
 
   it('is driven by a band the constants actually leave open', () => {
-    expect(DEGRADE_RESTORE_SCALE).toBeGreaterThan(DEGRADE_SCALE_THRESHOLD)
+    expect(OVERVIEW_RESTORE_SCALE).toBeGreaterThan(OVERVIEW_SCALE_THRESHOLD)
   })
 })
 
@@ -60,51 +60,51 @@ function linkNode(url: string): LinkNode {
   return { id: 'l1', type: 'link', x: 0, y: 0, w: 400, h: 300, url, extra: {} }
 }
 
-describe('degradedNodeTitle', () => {
+describe('nodeTitleText', () => {
   it('shows a link node URL, truncated like any other title', () => {
-    expect(degradedNodeTitle(linkNode('https://example.com'))).toBe(
+    expect(nodeTitleText(linkNode('https://example.com'))).toBe(
       'https://example.com',
     )
     const long = `https://example.com/${'x'.repeat(100)}`
-    expect(degradedNodeTitle(linkNode(long))).toHaveLength(60)
+    expect(nodeTitleText(linkNode(long))).toHaveLength(60)
   })
 
   it('shows a markdown file node basename', () => {
-    expect(degradedNodeTitle(fileNode('Cards/概念A.md'))).toBe('概念A')
+    expect(nodeTitleText(fileNode('Cards/概念A.md'))).toBe('概念A')
   })
 
   it('shows any other file node basename the same way', () => {
-    expect(degradedNodeTitle(fileNode('papers/foo.pdf'))).toBe('foo')
+    expect(nodeTitleText(fileNode('papers/foo.pdf'))).toBe('foo')
   })
 
   it('shows a group label, and nothing for an unlabelled group', () => {
-    expect(degradedNodeTitle(groupNode('研究'))).toBe('研究')
-    expect(degradedNodeTitle(groupNode())).toBe('')
+    expect(nodeTitleText(groupNode('研究'))).toBe('研究')
+    expect(nodeTitleText(groupNode())).toBe('')
   })
 
   it('shows a text node first line, trimmed', () => {
-    expect(degradedNodeTitle(textCard('  hello world  \nsecond line'))).toBe(
+    expect(nodeTitleText(textCard('  hello world  \nsecond line'))).toBe(
       'hello world',
     )
   })
 
   it('shows the whole text when it has no newline', () => {
-    expect(degradedNodeTitle(textCard('single line'))).toBe('single line')
+    expect(nodeTitleText(textCard('single line'))).toBe('single line')
   })
 
   it('drops a leading heading marker — the line is shown as a title, not as markdown', () => {
-    expect(degradedNodeTitle(textCard('# 测试\n\nbody'))).toBe('测试')
-    expect(degradedNodeTitle(textCard('###### deep'))).toBe('deep')
+    expect(nodeTitleText(textCard('# 测试\n\nbody'))).toBe('测试')
+    expect(nodeTitleText(textCard('###### deep'))).toBe('deep')
   })
 
   it('keeps markers that are not headings, and a hash that is not one', () => {
-    expect(degradedNodeTitle(textCard('- 买牛奶'))).toBe('- 买牛奶')
-    expect(degradedNodeTitle(textCard('#tag 起头'))).toBe('#tag 起头')
+    expect(nodeTitleText(textCard('- 买牛奶'))).toBe('- 买牛奶')
+    expect(nodeTitleText(textCard('#tag 起头'))).toBe('#tag 起头')
   })
 
   it('truncates a long text node first line', () => {
     const long = 'x'.repeat(100)
-    const title = degradedNodeTitle(textCard(long))
+    const title = nodeTitleText(textCard(long))
     expect(title.length).toBe(60)
     expect(title.endsWith('…')).toBe(true)
   })

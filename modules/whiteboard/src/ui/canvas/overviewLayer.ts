@@ -42,16 +42,20 @@ import {
   computeWorldViewportRect,
 } from '../../domain/virtualization'
 import {
-  DEGRADED_TITLE_WORLD_FONT_PX,
   EDGE_ARROW_WORLD_PX,
+  EDGE_LABEL_FONT_PX,
+  EDGE_LABEL_MAX_WIDTH_EM,
+  EDGE_LABEL_PADDING_PX,
   EDGE_STROKE_WORLD_PX,
   OVERVIEW_ARROW_MIN_SCREEN_PX,
   OVERVIEW_CARD_WASH_ALPHA,
+  OVERVIEW_LABEL_MIN_FONT_PX,
   OVERVIEW_MIN_EDGE_STROKE_PX,
   OVERVIEW_THEMED_BORDER_ALPHA,
   OVERVIEW_TITLE_MIN_CARD_PX,
+  TITLE_BLOCK_WORLD_FONT_PX,
 } from '../constants'
-import { degradedNodeTitle } from '../lod'
+import { nodeTitleText } from '../lod'
 
 const OVERVIEW_CANVAS_CLASS = 'yolo-whiteboard-overview'
 const OVERVIEW_HIDDEN_CLASS = 'yolo-whiteboard-overview-hidden'
@@ -97,6 +101,11 @@ export type OverviewLayerCallbacks = Readonly<{
   getNode: (id: NodeId) => BoardNode | undefined
   isSelected: (id: NodeId) => boolean
   isEdgeSelected: (id: EdgeId) => boolean
+  /** The edge whose label is being typed, or null. That one label stays in
+   * the DOM for the length of the rename (canvas.ts's `syncEdgeRenameChrome`)
+   * because a canvas holds no caret, so this is the one this layer must not
+   * draw as well. */
+  getRenamingEdgeId: () => EdgeId | null
   /**
    * Live rectangles for the nodes a drag or a resize is moving, or null when
    * nothing is. In the DOM tiers this feedback is a `transform` on the card's
@@ -346,10 +355,10 @@ export class OverviewLayer {
   // -----------------------------------------------------------------------
   // Cards
   //
-  // Drawn as the degraded tier's card is (p4-perf-overview §二: the switch is
-  // direct, so the two tiers have to look the same): an opaque fill, a wash of
-  // the node's colour over it, a border, and — only where a card is big enough
-  // on screen for the line to mean anything — its degraded title.
+  // Drawn as a DOM card with no content yet is (p4-perf-overview §二: the
+  // switch is direct, so the two tiers have to look the same): an opaque fill,
+  // a wash of the node's colour over it, a border, and — only where a card is
+  // big enough on screen for the line to mean anything — its title block.
   //
   // Batched by colour rather than drawn card by card. Every `fillStyle` write
   // is a state change in the rasteriser, and a board has at most seven colours;
@@ -451,16 +460,16 @@ export class OverviewLayer {
     ctx.lineWidth = 1
 
     // 5. Titles, where a card is wide enough on screen to hold one. The type
-    //    is the degraded tier's own — 32 world units, so it shrinks with the
-    //    card — which is what makes the switch between the two invisible.
-    const fontPx = DEGRADED_TITLE_WORLD_FONT_PX * view.scale
+    //    is the DOM card's title block — 32 world units, so it shrinks with
+    //    the card — which is what makes the switch between tiers invisible.
+    const fontPx = TITLE_BLOCK_WORLD_FONT_PX * view.scale
     ctx.font = `600 ${fontPx}px ${palette.fontFamily}`
     ctx.fillStyle = palette.text
     ctx.textAlign = 'center'
     ctx.textBaseline = 'middle'
     for (const card of visible) {
       if (card.w < OVERVIEW_TITLE_MIN_CARD_PX) continue
-      const title = degradedNodeTitle(card.node)
+      const title = nodeTitleText(card.node)
       if (title.length === 0) continue
       ctx.fillText(
         title,
@@ -493,9 +502,11 @@ export class OverviewLayer {
   // `computeEdgeGeometry`), so the two are visually continuous across the
   // switch, projected into screen space and batched by colour like the cards.
   //
-  // Labels are not drawn: at this zoom the DOM tiers' own labels are already
-  // below a pixel of type, and a canvas would only be drawing a smudge per
-  // edge. Arrowheads are drawn once they are big enough to read as arrowheads.
+  // Labels are drawn too, and drawn last so they sit over the curves the way
+  // the opaque DOM chip does — but still inside this method, which runs before
+  // the cards, because the label layer sits before the cards in the world
+  // (canvas.ts's `ensureDom`) and a card covers a label that runs under it.
+  // Arrowheads are drawn once they are big enough to read as arrowheads.
   // -----------------------------------------------------------------------
 
   private drawEdges(
@@ -515,6 +526,11 @@ export class OverviewLayer {
     )
     const arrow = EDGE_ARROW_WORLD_PX * Math.sqrt(view.scale)
     const drawArrows = arrow >= OVERVIEW_ARROW_MIN_SCREEN_PX
+    // Asked once, before the sweep: at the bottom of the tier there is no
+    // label small enough to be worth drawing, and that is also where there are
+    // the most edges to have skipped one for.
+    const drawLabels =
+      EDGE_LABEL_FONT_PX * Math.sqrt(view.scale) >= OVERVIEW_LABEL_MIN_FONT_PX
 
     type Segment = Readonly<{
       start: ScreenPoint
@@ -526,6 +542,10 @@ export class OverviewLayer {
       selected: boolean
     }>
     const byColor = new Map<string, Segment[]>()
+    // Labels are collected here rather than walked for separately: their
+    // anchor is a point on the geometry this loop already computes.
+    const labels: { text: string; x: number; y: number }[] = []
+    const renamingEdgeId = this.callbacks.getRenamingEdgeId()
     const toScreen = (p: ScreenPoint): ScreenPoint => ({
       x: p.x * view.scale + view.tx,
       y: p.y * view.scale + view.ty,
@@ -591,6 +611,12 @@ export class OverviewLayer {
       const bucket = byColor.get(color)
       if (bucket) bucket.push(segment)
       else byColor.set(color, [segment])
+      if (!drawLabels) continue
+      const text = edge.label?.trim() ?? ''
+      if (text.length > 0 && edge.id !== renamingEdgeId) {
+        const at = toScreen(geometry.label)
+        labels.push({ text, x: at.x, y: at.y })
+      }
     }
     if (byColor.size === 0) return
 
@@ -621,6 +647,100 @@ export class OverviewLayer {
       }
     }
     ctx.lineWidth = 1
+    this.drawEdgeLabels(ctx, view, labels)
+  }
+
+  /**
+   * The chips that name relations, over the curves they belong to.
+   *
+   * Not drawn while the tier only ran below 0.15, on the grounds that the type
+   * was a smudge by then. That is still true down there — hence the floor —
+   * but the tier now reaches 0.35, where a label is the one piece of text on
+   * the board saying what a line *means*, and a board of unnamed lines is the
+   * thing this zoom exists to read.
+   *
+   * One line, ellipsised at the stylesheet's `max-width`, where the element
+   * wraps: wrapping buys a second row of type this small, which is not a
+   * trade. The chip is a plain rectangle rather than the element's rounded
+   * one — its radius is 4 world units, under a pixel and a half here, so the
+   * corners are a rounding error and `fillRect` is what a rounding error
+   * should cost.
+   */
+  private drawEdgeLabels(
+    ctx: CanvasRenderingContext2D,
+    view: CanvasView,
+    labels: readonly Readonly<{ text: string; x: number; y: number }>[],
+  ): void {
+    const palette = this.palette
+    if (!palette || labels.length === 0) return
+    // The counter-scaled law the stylesheet uses, in screen pixels: a size
+    // written in world units as `15 * 1/sqrt(scale)` lands at `15 * sqrt`.
+    const root = Math.sqrt(view.scale)
+    const fontPx = EDGE_LABEL_FONT_PX * root
+    const padX = EDGE_LABEL_PADDING_PX.x * root
+    const padY = EDGE_LABEL_PADDING_PX.y * root
+    const lineHeight = fontPx * 1.3
+    const maxTextWidth = EDGE_LABEL_MAX_WIDTH_EM * fontPx
+
+    ctx.globalAlpha = 1
+    ctx.font = `${fontPx}px ${palette.fontFamily}`
+    ctx.textAlign = 'left'
+    ctx.textBaseline = 'middle'
+    const drawn: { text: string; width: number; x: number; y: number }[] = []
+    for (const label of labels) {
+      const text = this.ellipsise(ctx, label.text, maxTextWidth)
+      const width = ctx.measureText(text).width
+      const x = label.x - width / 2
+      const y = label.y
+      // Off-screen labels are cheap to skip and not cheap to draw: an edge is
+      // kept for its curve, and the curve's midpoint can be well outside the
+      // viewport the curve crosses.
+      if (
+        x - padX > this.width ||
+        x + width + padX < 0 ||
+        y - lineHeight / 2 - padY > this.height ||
+        y + lineHeight / 2 + padY < 0
+      ) {
+        continue
+      }
+      drawn.push({ text, width, x, y })
+    }
+    if (drawn.length === 0) return
+
+    ctx.fillStyle = palette.background
+    for (const label of drawn) {
+      ctx.fillRect(
+        label.x - padX,
+        label.y - lineHeight / 2 - padY,
+        label.width + padX * 2,
+        lineHeight + padY * 2,
+      )
+    }
+    ctx.fillStyle = palette.text
+    for (const label of drawn) ctx.fillText(label.text, label.x, label.y)
+  }
+
+  /** The text as it fits, with an ellipsis where it stops — what the element's
+   * `max-width` plus wrapping does, minus the wrapping. Binary search rather
+   * than a character at a time: `measureText` is the cost here, and a label
+   * long enough to need cutting is long enough for the difference to show. */
+  private ellipsise(
+    ctx: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ): string {
+    if (ctx.measureText(text).width <= maxWidth) return text
+    let low = 0
+    let high = text.length
+    while (low < high) {
+      const mid = Math.ceil((low + high) / 2)
+      if (ctx.measureText(`${text.slice(0, mid)}…`).width <= maxWidth) {
+        low = mid
+      } else {
+        high = mid - 1
+      }
+    }
+    return `${text.slice(0, low)}…`
   }
 
   /** A filled triangle at `tip`, pointing the way the curve arrives there —

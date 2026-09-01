@@ -197,6 +197,28 @@ export class EdgeLayer {
   }
 
   /**
+   * Brings one edge back into the document whatever the viewport last said.
+   *
+   * The same exemption `updateVisibility` gives the edge being renamed, for
+   * the tier where that sweep does not run: below the overview threshold the
+   * canvas draws the edges and the DOM sweep is skipped, so an edge culled on
+   * the way in stays culled — including the label that is about to be asked to
+   * hold a caret (canvas.ts's `beginRename`). Cheap and idempotent, so the DOM
+   * tiers call it too rather than waiting a throttle tick for the sweep to
+   * reach the same conclusion.
+   */
+  revealEdge(edgeId: EdgeId): void {
+    if (!this.culledIds.has(edgeId)) return
+    const dom = this.edgeElsById.get(edgeId)
+    if (!dom) return
+    dom.path.classList.remove(EDGE_CULLED_CLASS)
+    dom.hit.classList.remove(EDGE_CULLED_CLASS)
+    dom.label?.classList.remove(EDGE_CULLED_CLASS)
+    this.culledIds.delete(edgeId)
+    if (this.staleIds.has(edgeId)) this.redrawEdge(edgeId)
+  }
+
+  /**
    * Whether any part of `edge` can reach `rect`.
    *
    * Tested against the union of its two endpoint cards grown by

@@ -121,64 +121,69 @@ export const CAMERA_SETTLE_MS = 300
  * (docs/plans/08-25-yolo-whiteboard/p1-design.md's W3-A task brief: "~4px"). */
 export const DRAG_THRESHOLD_PX = 4
 
-/** World scale below which a card shows only its title block and its content
- * is not constructed at all — not merely hidden (p3-canvas-parity D8: "降级时
- * 根本不构造内容组件，只挂占位标题"). Checked at the same ~70ms throttle as
- * recomputeVisibility, not per frame — see canvas.ts's updateDegradedState(). */
-export const DEGRADE_SCALE_THRESHOLD = 0.35
+// -----------------------------------------------------------------------
+// The one rendering-tier switch (P4-1, revised). At and above the threshold a
+// card is a DOM element with its content built; below it no card has DOM at
+// all and the whole board is drawn on one screen-space canvas
+// (ui/canvas/overviewLayer.ts).
+//
+// There used to be a third state between the two — a mounted card whose
+// content was not built, showing only its title block. It was deleted because
+// it bought nothing and cost the most expensive transition on the board: it
+// looked exactly like the canvas by construction (same title, same font size,
+// same wash), could not be edited either, and everything else it offered —
+// select, marquee, drag, resize, connect — the canvas tier offers too. What it
+// did do was keep hundreds of cards mounted through the zoom band where a
+// viewport holds the most of them, which is precisely the cost the canvas tier
+// exists to remove.
+//
+// Merging the two fixes where the line goes rather than leaving it a choice:
+// it has to be where building a card's content stops being worth it, because a
+// mounted card builds its content. Lower and the board would render markdown
+// nobody can read; higher and it would drop the DOM while the DOM is still
+// saying something.
+//
+// Rendering tier and capability stay separate ideas (p4-perf-overview §二):
+// what is drawn how is a performance detail the user never asked for, and what
+// can be done at a given zoom is a product rule. Selecting, marquee, dragging,
+// resizing and connecting all keep working below the threshold, because there
+// is no reason for them not to. What does key off it is what genuinely cannot
+// be done to a card with no element — editing it — and alignment, which has no
+// precision to offer here and whose candidate set would be the whole board
+// (P4-D1).
+// -----------------------------------------------------------------------
 
 /**
- * Width of the hysteresis band above DEGRADE_SCALE_THRESHOLD, in zoom
- * doublings: once degraded, a card's content is rebuilt only after the camera
- * comes back this far past the threshold it fell through.
+ * Scale below which cards leave the DOM for the canvas.
  *
- * A single threshold was fine while degrading was a CSS class; now that
- * crossing it destroys and rebuilds every visible card's markdown, a zoom
- * that settles on the boundary would do exactly that on alternate throttle
- * ticks (p3-canvas-parity D8: "跨越阈值来回抖动时不能反复构造/销毁打爆帧").
+ * Placed where a card's content stops earning its construction: below this a
+ * card is ~90px wide and its 13px body type is under 5 screen pixels, so what
+ * a reader gets from it is its title and its colour — both of which a
+ * rectangle and one `fillText` give for a rounding error of the cost. Above it
+ * the mounted count is bounded by what a screen holds; below it the count is
+ * bounded by the board, which is the whole problem (p4-perf-overview §一.2).
+ */
+export const OVERVIEW_SCALE_THRESHOLD = 0.35
+
+/**
+ * Width of the hysteresis band above OVERVIEW_SCALE_THRESHOLD, in zoom
+ * doublings: once the canvas has the board, the DOM takes it back only after
+ * the camera comes this far past the threshold it fell through.
+ *
+ * Crossing this line unmounts or rebuilds every card on screen, so a zoom that
+ * settles on the boundary would do exactly that on alternate throttle ticks
+ * (p3-canvas-parity D8: "跨越阈值来回抖动时不能反复构造/销毁打爆帧").
  *
  * Expressed in doublings because that is the unit the wheel works in (see
  * WHEEL_DELTA_PER_ZOOM_DOUBLING): a quarter doubling is ~75 delta — inside a
  * single mouse notch, so one deliberate notch still crosses the band in one
  * go, and far outside the few-delta dither a trackpad emits at rest.
  */
-const DEGRADE_RESTORE_DOUBLINGS = 0.25
+const OVERVIEW_RESTORE_DOUBLINGS = 0.25
 
-/** Scale a degraded card's content is built again at — see above. */
-export const DEGRADE_RESTORE_SCALE =
-  DEGRADE_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
-
-// -----------------------------------------------------------------------
-// Overview tier (P4-1). Below this scale no card has DOM at all: the whole
-// board is drawn on one screen-space canvas (ui/canvas/overviewLayer.ts).
-//
-// Rendering tier and capability are deliberately separate ideas
-// (p4-perf-overview §二): what is drawn how is a performance detail the user
-// never asked for, and what can be done at a given zoom is a product rule.
-// Only two capabilities key off this constant — alignment, which has no
-// precision to offer here and whose candidate set would be the whole board
-// (P4-D1), and nothing else. Selecting, marquee, dragging, resizing and
-// connecting all keep working, because there is no reason for them not to.
-// -----------------------------------------------------------------------
-
-/**
- * Scale below which cards leave the DOM for the canvas.
- *
- * Chosen where the DOM tier stops earning its keep rather than where it stops
- * working: a card is ~40px wide here, which is a coloured tile with a line of
- * unreadable type on it — nothing the DOM is giving that a rectangle would
- * not. Above it the mounted count is bounded by what a screen holds; below it
- * the count is bounded by the board, which is the whole problem
- * (p4-perf-overview §一.2).
- */
-export const OVERVIEW_SCALE_THRESHOLD = 0.15
-
-/** The same hysteresis band DEGRADE_RESTORE_DOUBLINGS gives the tier above,
- * for the same reason and in the same unit: crossing this threshold unmounts
- * or rebuilds every card on screen, which is not something a zoom settling on
- * the boundary may do on alternate throttle ticks. */
+/** Scale the DOM takes the board back at — see above. */
 export const OVERVIEW_RESTORE_SCALE =
-  OVERVIEW_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
+  OVERVIEW_SCALE_THRESHOLD * 2 ** OVERVIEW_RESTORE_DOUBLINGS
 
 /**
  * Screen width, in pixels, below which an overview card is drawn as a plain
@@ -188,14 +193,14 @@ export const OVERVIEW_RESTORE_SCALE =
  */
 export const OVERVIEW_TITLE_MIN_CARD_PX = 40
 
-/** Font size of the degraded tier's title block, in world units — style.css's
- * `.yolo-whiteboard-card-degraded-title`. The overview canvas draws its titles
- * at the same size so the switch between the two tiers is invisible; the two
- * must stay in step. */
-export const DEGRADED_TITLE_WORLD_FONT_PX = 32
+/** Font size of a card's title block, in world units — style.css's
+ * `.yolo-whiteboard-card-title-block`. The overview canvas draws its titles at
+ * the same size so the switch between the two tiers is invisible; the two must
+ * stay in step. */
+export const TITLE_BLOCK_WORLD_FONT_PX = 32
 
 /** Alpha of the colour wash over an overview card — style.css's
- * `.yolo-whiteboard-card-degraded-title` background, which is
+ * `.yolo-whiteboard-card-title-block` background, which is
  * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */
 export const OVERVIEW_CARD_WASH_ALPHA = 0.1
 
@@ -220,6 +225,34 @@ export const OVERVIEW_MIN_EDGE_STROKE_PX = 0.75
  * a triangle is three dark pixels at the end of a line, which reads as a
  * thicker line. */
 export const OVERVIEW_ARROW_MIN_SCREEN_PX = 4
+
+// --- an overview edge's label ---------------------------------------------
+// Labels are drawn here too, unlike everything else the DOM edge layer holds.
+// They were not, while the tier only ever ran below 0.15, on the grounds that
+// the type was a smudge by then — true there, and false now that the tier
+// reaches 0.35, where a label is the one piece of text on the board naming
+// what a line *means*. The three numbers below mirror style.css's
+// `.yolo-whiteboard-edge-label`; the two must stay in step.
+
+/** Label type size in screen pixels at 1:1, before the counter-scale below. */
+export const EDGE_LABEL_FONT_PX = 15
+
+/** The label chip's padding at 1:1, in screen pixels — the stylesheet's
+ * `2px 6px`, counter-scaled the same way the type is. */
+export const EDGE_LABEL_PADDING_PX = { x: 6, y: 2 } as const
+
+/** The stylesheet's `max-width: 17em`, in ems so it follows the type size. A
+ * canvas cannot wrap the way the element does, so past this the label is
+ * ellipsised on one line: at the zoom this tier covers a wrapped label would
+ * be two rows of unreadable type instead of one. */
+export const EDGE_LABEL_MAX_WIDTH_EM = 17
+
+/** Screen type size below which a label is not drawn. A label is opaque — it
+ * has to be, to stay legible where it crosses its own curve — so an unreadable
+ * one is not a faint smudge but a solid chip sitting on the board, and a
+ * thousand of them are a rash. 6px lands just under where the old DOM tier
+ * started showing them (15 * sqrt(0.15) = 5.8), so nothing readable is lost. */
+export const OVERVIEW_LABEL_MIN_FONT_PX = 6
 
 /**
  * Width of an edge's transparent hit stroke in world units at 1:1 —

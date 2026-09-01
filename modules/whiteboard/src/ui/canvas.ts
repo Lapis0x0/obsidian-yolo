@@ -141,8 +141,6 @@ import {
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
   CONNECT_SNAP_WORLD_PX,
-  DEGRADE_RESTORE_SCALE,
-  DEGRADE_SCALE_THRESHOLD,
   DRAG_THRESHOLD_PX,
   DROP_STAGGER_PX,
   EDGE_HIDDEN_CLASS,
@@ -171,7 +169,7 @@ import {
   WEB_URL_PATTERN,
 } from './constants'
 import { asElement, asNode } from './eventTarget'
-import { nextDegradedState } from './lod'
+import { nextOverviewState } from './lod'
 import {
   PromptOverlay,
   type PromptOverlayOptions,
@@ -214,13 +212,15 @@ const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
 const WORLD_CLASS = 'yolo-whiteboard-world'
-const WORLD_DEGRADED_CLASS = 'yolo-whiteboard-world-degraded'
 /** On the world layer while the overview tier is drawing the board: what the
  * stylesheet keys "no edge DOM at all" off. A class rather than a custom
  * property, so Blink's invalidation set is the two layers the rule names
  * rather than the world's whole subtree (see CameraController's
  * applyZoomScale for what the other choice costs). */
 const WORLD_OVERVIEW_CLASS = 'yolo-whiteboard-world-overview'
+/** On the world layer while an edge label is being typed in the overview
+ * tier — see `syncEdgeRenameChrome`. */
+const WORLD_EDGE_RENAME_CLASS = 'yolo-whiteboard-world-edge-rename'
 const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
 const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
@@ -553,14 +553,23 @@ export class WhiteboardCanvas {
    */
   private overviewLayer: OverviewLayer | null = null
   /** Whether the camera is below the overview threshold — see
-   * `updateOverviewState`. Updated at the same ~70ms throttle as `degraded`,
-   * and behind the same kind of hysteresis band. */
+   * `updateOverviewState`. Updated at recomputeVisibility's ~70ms throttle,
+   * behind a hysteresis band. */
   private overview = false
   /**
    * The tier has been left and the cards it unmounted are not all back yet, so
-   * the canvas is still drawing them — see `settleOverviewLinger`.
+   * the canvas is still drawing them and the edge DOM is still out of the
+   * document — see `settleOverviewLinger`.
    */
   private overviewLingering = false
+
+  /** Whether the world still carries WORLD_OVERVIEW_CLASS, which is what
+   * decides whether the edge layers are part of the drawing at all. The
+   * camera reads it to know whether writing their counter-scale would restyle
+   * thousands of elements for nothing (CameraController's applyZoomScale). */
+  private get overviewChromeHidden(): boolean {
+    return this.overview || this.overviewLingering
+  }
   /**
    * Uncommitted geometry for the nodes a drag or a resize is moving, or null.
    *
@@ -613,17 +622,9 @@ export class WhiteboardCanvas {
 
   private rafId: number | null = null
   private lastRecomputeTime = 0
-  /** Current zoom-degrade state, updated only at recomputeVisibility's ~70ms
-   * throttle (see updateDegradedState) — not evaluated per frame. */
-  private degraded = false
-  /** Mounted cards whose content is on the wrong side of the degrade
-   * threshold: built while it should be gone, or absent while it should be
-   * there. Filled wholesale when `degraded` flips and drained a few per frame
-   * by `drainQueues` (p3-canvas-parity D8) — the queue only ever holds work in
-   * the direction `degraded` currently points, so one set covers both.
-   *
-   * Also where a content build that ran out of this frame's budget goes to
-   * wait for the next one (see `renderMarkdownInto`). */
+  /** Cards whose content build ran out of a frame's budget and is owed on a
+   * later one — drained a few per frame by `drainQueues` (see
+   * `renderMarkdownInto`, which is what puts them here). */
   private readonly contentSyncQueue = new Set<NodeId>()
 
   /**
@@ -925,6 +926,7 @@ export class WhiteboardCanvas {
       getNode: (id) => this.nodesById.get(id),
       isSelected: (id) => this.selectedIds.has(id),
       isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
+      getRenamingEdgeId: () => this.renamingEdgeId,
       getLiveRects: () => this.liveNodeRects,
     })
     viewport.appendChild(world)
@@ -983,7 +985,11 @@ export class WhiteboardCanvas {
           this.recomputeVisibility()
           this.drainQueues()
         },
-        isOverviewActive: () => this.overview,
+        // The rename exemption: while a label is being typed in the tier,
+        // its layer is back in the drawing (`syncEdgeRenameChrome`) and has
+        // to keep its counter-scale current like any other chrome.
+        isOverviewActive: () =>
+          this.overviewChromeHidden && this.renamingEdgeId === null,
       },
     )
     this.edgeLayer = new EdgeLayer(
@@ -996,8 +1002,7 @@ export class WhiteboardCanvas {
         cancelActiveEdgeRename: () => {
           if (this.renaming?.kind === 'edge') this.endRename(false)
         },
-        getRenamingEdgeId: () =>
-          this.renaming?.kind === 'edge' ? this.renaming.id : null,
+        getRenamingEdgeId: () => this.renamingEdgeId,
         onLabelKeyDown: (id, event) =>
           this.handleLabelKeyDown({ kind: 'edge', id }, event),
         onLabelBlur: (id) => this.endRename(true, { kind: 'edge', id }),
@@ -1013,7 +1018,6 @@ export class WhiteboardCanvas {
       onGroupLabelKeyDown: (id, event) =>
         this.handleLabelKeyDown({ kind: 'group', id }, event),
       onGroupLabelBlur: (id) => this.endRename(true, { kind: 'group', id }),
-      isDegraded: () => this.degraded,
       canBuildContent: () => this.canBuildContent,
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
@@ -1032,7 +1036,7 @@ export class WhiteboardCanvas {
     this.toolbarController = new ToolbarController(this.context, viewport, {
       isParseFailed: () => this.parseFailed,
       canEdit: () => this.canEdit,
-      isDegraded: () => this.degraded,
+      isOverview: () => this.overview,
       getBoard: () => this.board,
       getSelectedIds: () => this.selectedIds,
       getSelectedEdgeIds: () => this.selectedEdgeIds,
@@ -2975,6 +2979,9 @@ export class WhiteboardCanvas {
     if (!this.canEdit || !this.renameSubjectExists(target)) return
     if (this.isRenaming(target)) return
     this.endRename(true)
+    // Whatever the viewport last said about this edge, it is about to hold a
+    // caret — and a culled edge's label is `display: none`.
+    if (target.kind === 'edge') this.edgeLayer.revealEdge(target.id)
     const el =
       this.labelEl(target) ??
       (target.kind === 'edge'
@@ -2986,6 +2993,9 @@ export class WhiteboardCanvas {
     // `plaintext-only` rather than plain `contenteditable` so a paste arrives
     // as the text it looked like rather than as markup a label cannot hold.
     el.setAttribute('contenteditable', 'plaintext-only')
+    // Before the focus: in the overview tier this element is out of the
+    // document, and a hidden element cannot take the caret.
+    this.syncEdgeRenameChrome()
     el.focus()
     // Selected rather than left with a caret where the click landed: renaming
     // usually replaces the name. Obsidian Canvas selects it too.
@@ -3015,6 +3025,7 @@ export class WhiteboardCanvas {
       if (commit) this.commitLabel(target, el.textContent ?? '')
       else this.restoreLabel(target, el)
     }
+    this.syncEdgeRenameChrome()
     this.syncSelectionKeymapScope()
   }
 
@@ -3033,6 +3044,35 @@ export class WhiteboardCanvas {
 
   private isRenaming(target: LabelTarget): boolean {
     return this.renaming !== null && sameLabelTarget(this.renaming, target)
+  }
+
+  /** Whether an edge label is being typed right now — the one label the
+   * overview canvas leaves to the DOM, since a canvas holds no caret. */
+  private get renamingEdgeId(): EdgeId | null {
+    return this.renaming?.kind === 'edge' ? this.renaming.id : null
+  }
+
+  /**
+   * Puts the label being typed back in the drawing for the length of the
+   * rename, in the tier that has taken every label out of it.
+   *
+   * Naming a relation is what this zoom is for (see style.css's
+   * `.yolo-whiteboard-edge-label` on why a label is sized the way it is), so
+   * declining the rename here was not an option, and neither was drawing it:
+   * the caret lives in the element. The class the stylesheet reads brings the
+   * layer back and hides every label but the editable one, which costs a
+   * style recalculation over the board's labels — paid once, at the start of a
+   * deliberate action the user is about to spend seconds on.
+   */
+  private syncEdgeRenameChrome(): void {
+    const wanted = this.renamingEdgeId !== null && this.overviewChromeHidden
+    if (this.worldEl.classList.contains(WORLD_EDGE_RENAME_CLASS) === wanted) {
+      return
+    }
+    // The layer is about to be seen; it must not be seen at the counter-scale
+    // it wore whenever the tier began (CameraController's applyZoomScale).
+    if (wanted) this.cameraController.flushOverviewChromeZoomScale()
+    this.worldEl.classList.toggle(WORLD_EDGE_RENAME_CLASS, wanted)
   }
 
   /** False once the thing being named has left the board, which is what makes
@@ -3198,11 +3238,11 @@ export class WhiteboardCanvas {
   }
 
   /** Whether a new card can be made at all right now — the shared gate behind
-   * the creation bar, the creation menu items, and double-click-to-create. A
-   * degraded card's content is not built (D8) and it cannot be edited, so
-   * creating one there would leave an invisible empty card and no editor. */
+   * the creation bar, the creation menu items, and double-click-to-create. In
+   * the overview tier a card has no element, so creating one there would leave
+   * a rectangle on the canvas and no editor to type into. */
   private get canCreate(): boolean {
-    return this.canEdit && !this.degraded
+    return this.canEdit && !this.overview
   }
 
   private refreshCardMenu(): void {
@@ -3879,7 +3919,6 @@ export class WhiteboardCanvas {
       this.viewportEl.clientHeight,
     )
     this.syncGroupLabelScale()
-    this.updateDegradedState()
   }
 
   /** The buffered viewport in world coordinates — what decides which cards are
@@ -3894,56 +3933,13 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Flips the zoom-degrade state at this method's ~70ms throttle
+   * Flips the rendering tier at this method's ~70ms throttle
    * (recomputeVisibility's caller), not per frame — p1-design §3's
-   * "阈值切换时机放在相机 settle 或节流点，不逐帧判断切换". This throttle
-   * point (rather than only the longer 300ms camera-settle debounce) keeps
-   * a deliberate zoom-out gesture feeling responsive.
+   * "阈值切换时机放在相机 settle 或节流点，不逐帧判断切换". This throttle point
+   * (rather than only the longer 300ms camera-settle debounce) keeps a
+   * deliberate zoom-out gesture feeling responsive.
    *
-   * Crossing the threshold now costs real work in both directions (D8: below
-   * it a card's content is not constructed at all, above it every card that
-   * came up bare has to build its own), so every mounted card is queued and
-   * `drainQueues` pays for a few of them per frame rather than the whole
-   * screenful at the moment of crossing. The card being edited is left out:
-   * its body holds a live editor with unwritten text, which is not something
-   * a zoom level gets to tear down.
-   */
-  private updateDegradedState(): void {
-    const next = nextDegradedState(
-      this.cameraController.view.scale,
-      this.degraded,
-      {
-        enter: DEGRADE_SCALE_THRESHOLD,
-        restore: DEGRADE_RESTORE_SCALE,
-      },
-    )
-    if (next === this.degraded) return
-    this.degraded = next
-    this.worldEl.classList.toggle(WORLD_DEGRADED_CLASS, next)
-    // Whatever was queued was work in the other direction, and is now moot.
-    this.contentSyncQueue.clear()
-    for (const [id, runtime] of this.cardRenderer.entries()) {
-      if (!runtime.el || this.editing?.nodeId === id) continue
-      // A parked card is not on screen, so which side of the threshold its
-      // content is on is not a question the zoom level gets to ask: it is
-      // hidden either way, its pool is capacity-bounded, and it is reconciled
-      // by the same paths as any mounted card the moment it comes back.
-      if (this.cardRenderer.isParked(id)) continue
-      this.contentSyncQueue.add(id)
-    }
-    // A degraded card cannot be edited (see enterEditMode) and no new card can
-    // be made at this zoom (see `canCreate`), so the toolbar's edit button and
-    // the whole creation bar appear and disappear with this state — rather
-    // than staying on screen offering what would be declined.
-    this.toolbarController.refreshToolbar()
-    this.refreshCardMenu()
-  }
-
-  /**
-   * Flips the overview tier, on the same tick and behind the same kind of
-   * hysteresis band as the degrade state above (P4-1).
-   *
-   * Below this threshold no card is mounted at all: the board is drawn by
+   * Below the threshold no card is mounted at all: the board is drawn by
    * `overviewLayer` on one canvas, because what a card costs at this zoom is
    * not what it contains but that it exists (see that module's doc comment).
    * The world layer stays — it still holds the groups, the resize handles and
@@ -3956,9 +3952,13 @@ export class WhiteboardCanvas {
    * the cards the user is about to zoom back into. Zooming out to find a
    * region and back in to work in it is one action, not two, and the far end
    * of it must not be a screen rebuilding itself.
+   *
+   * Editing a card and creating one both need an element (`canCreate`), so the
+   * toolbar's edit button and the whole creation bar appear and disappear with
+   * this state rather than staying on screen offering what would be declined.
    */
   private updateOverviewState(): void {
-    const next = nextDegradedState(
+    const next = nextOverviewState(
       this.cameraController.view.scale,
       this.overview,
       {
@@ -3968,47 +3968,57 @@ export class WhiteboardCanvas {
     )
     if (next === this.overview) return
     this.overview = next
-    // Before the class comes off: the edges are counter-scaled by a variable
-    // the camera stops writing to them while they are hidden (see
-    // CameraController's applyZoomScale), and they must not be put back in the
-    // drawing still carrying the weight they had on the way in.
-    if (!next) this.cameraController.flushOverviewChromeZoomScale()
-    this.worldEl.classList.toggle(WORLD_OVERVIEW_CLASS, next)
     if (next) {
       this.overviewLingering = false
+      this.worldEl.classList.add(WORLD_OVERVIEW_CLASS)
       this.overviewLayer?.setActive(true)
       this.cardRenderer.freezeParkedCapacity()
-      return
+    } else {
+      // Neither the class nor `setActive(false)` here: which layer *renders*
+      // and which population is virtualized are two different switches, and
+      // the second one is not instant. The cards this tier unmounted come back
+      // a few per frame (MOUNT_QUOTA_PER_FRAME) — ending the tier on the tick
+      // the threshold is crossed leaves the board blank and then hatches it
+      // card by card. So the canvas keeps drawing, and the edge DOM stays out
+      // of the document, until they are all back (`settleOverviewLinger`).
+      this.overviewLingering = true
+      this.cardRenderer.unfreezeParkedCapacity()
     }
-    // Not `setActive(false)` here: which layer *renders* and which population
-    // is virtualized are two different switches, and the second one is not
-    // instant. The cards this tier unmounted come back a few per frame
-    // (MOUNT_QUOTA_PER_FRAME), and at this zoom the viewport can hold hundreds
-    // — turning the canvas off on the tick the threshold is crossed leaves the
-    // board blank and then hatches it card by card for a second or more.
-    //
-    // So the canvas keeps drawing until they are all back
-    // (`settleOverviewLinger`). Nothing has to be cross-faded for that to be
-    // invisible: the canvas sits behind the world layer, so every card that
-    // mounts covers its own drawing, and the last frame of the tier is one
-    // where the canvas has nothing left to show that the DOM is not already
-    // showing.
-    this.overviewLingering = true
-    this.cardRenderer.unfreezeParkedCapacity()
+    this.syncEdgeRenameChrome()
+    this.toolbarController.refreshToolbar()
+    this.refreshCardMenu()
   }
 
   /**
-   * Ends the linger above once the mount queue the exit filled has drained.
+   * Ends the tier once the mount queue its exit filled has drained: the canvas
+   * stops drawing and the edge DOM comes back, in that one frame.
+   *
+   * Both, together, or neither. The canvas sits *behind* the world layer, so
+   * while it is drawing the board, anything the world holds paints over its
+   * drawing — the edges included. Putting the edges back before the cards are
+   * there would hang every line on the board over the cards the canvas is
+   * still drawing, for as long as the mount queue takes to drain, which at a
+   * screenful of cards is long enough to read as a bug rather than a flicker.
+   * Held to the same frame, the handoff is invisible: every card that mounts
+   * covers its own drawing, and the last frame of the tier is one where the
+   * canvas has nothing left to show that the DOM is not already showing.
    *
    * Runs after `drainQueues` and before the canvas draws, so the frame that
-   * mounts the last card is the frame the canvas stops drawing on: both land
-   * in one paint, and there is no moment where the board is showing neither.
+   * mounts the last card is the frame the tier ends on: both land in one
+   * paint, and there is no moment where the board is showing neither.
    */
   private settleOverviewLinger(): void {
     if (!this.overviewLingering) return
     if (this.engine.pendingMountCount > 0) return
     this.overviewLingering = false
+    // Before the class comes off: the edges are counter-scaled by a variable
+    // the camera stops writing to them while they are out of the drawing (see
+    // CameraController's applyZoomScale), and they must not be put back still
+    // carrying the weight they had on the way in.
+    this.cameraController.flushOverviewChromeZoomScale()
+    this.worldEl.classList.remove(WORLD_OVERVIEW_CLASS)
     this.overviewLayer?.setActive(false)
+    this.syncEdgeRenameChrome()
   }
 
   /**
@@ -4049,10 +4059,9 @@ export class WhiteboardCanvas {
   }
 
   /**
-   * Brings mounted cards' content into line with the current degrade state,
-   * on the frames this one is allowed to build on. A Set iterates in
-   * insertion order and tolerates deletion mid-iteration, so it serves as
-   * both the queue and the membership test.
+   * Builds the content a card is owed, on the frames this one is allowed to
+   * build on. A Set iterates in insertion order and tolerates deletion
+   * mid-iteration, so it serves as both the queue and the membership test.
    *
    * The frame gate decides *whether* to build; the start cap bounds how many
    * builds may be in flight at once. A note card reads its file before it can
@@ -4063,18 +4072,10 @@ export class WhiteboardCanvas {
    * to be finite.
    */
   private drainContentSync(): void {
-    // While degraded the queue holds teardowns, which are the cheap uniform
-    // kind of work a count does bound — the same asymmetry as the mount and
-    // unmount quotas above.
-    const startCap = this.degraded
-      ? UNMOUNT_QUOTA_PER_FRAME
-      : MOUNT_QUOTA_PER_FRAME
     let started = 0
     for (const id of this.contentSyncQueue) {
-      // Teardown is not building: it is what makes the next frames cheaper,
-      // so it runs even on the frames that may not build.
-      if (!this.degraded && !this.canBuildContent) return
-      if (started >= startCap) return
+      if (!this.canBuildContent) return
+      if (started >= MOUNT_QUOTA_PER_FRAME) return
       this.contentSyncQueue.delete(id)
       started += 1
       this.syncNodeContent(id)
@@ -4086,20 +4087,7 @@ export class WhiteboardCanvas {
     if (!runtime?.el || !runtime.bodyEl) return
     // Entered edit mode after being queued: the editor owns the body now.
     if (this.editing?.nodeId === id) return
-    if (!this.degraded) {
-      void this.cardRenderer.renderCardPreview(id)
-      return
-    }
-    // A web card keeps its live page through a degrade for the same reason it
-    // keeps it through an unmount (see WEB_FRAME_POOL_CAPACITY): the body is
-    // already hidden by the degraded world's own CSS, and the frame stays in
-    // the document, so nothing is lost and nothing is rebuilt on the way back.
-    if (runtime.webFrameUrl !== null) return
-    // Everything else is destroyed, not parked — the same rule an off-screen
-    // card follows (p3-canvas-parity D13); the card's title block is what
-    // stands in for it.
-    this.cardRenderer.destroyCardContent(runtime)
-    runtime.bodyEl.replaceChildren()
+    void this.cardRenderer.renderCardPreview(id)
   }
 
   // -----------------------------------------------------------------------
@@ -4434,12 +4422,6 @@ export class WhiteboardCanvas {
     if (runtime.noteText === text) return // no real change — short-circuit
     runtime.noteText = text
     runtime.missingFile = false
-    // A degraded card has no content to refresh (renderCardPreview's gate),
-    // but the read above still had to happen: `noteText` is what an editor
-    // opened on this card would be seeded from, and seeding it from a
-    // superseded read is how the write on blur would undo someone else's
-    // edit. The rendering is what D8 skips, not the freshness.
-    if (this.degraded) return
     this.cardRenderer.renderMarkdownInto(id, runtime, text, path)
   }
 

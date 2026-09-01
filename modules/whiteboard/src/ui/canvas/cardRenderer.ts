@@ -22,7 +22,7 @@ import {
   GROUP_LABEL_CLASS,
   WEB_URL_PATTERN,
 } from '../constants'
-import { degradedNodeTitle } from '../lod'
+import { nodeTitleText } from '../lod'
 import { applyColorToElement } from '../selectionToolbar'
 
 const CARD_CLASS = 'yolo-whiteboard-card'
@@ -31,7 +31,7 @@ const CARD_BODY_CLASS = 'yolo-whiteboard-card-body'
 const CARD_MEDIA_CLASS = 'yolo-whiteboard-card-media'
 const CARD_WEB_FRAME_CLASS = 'yolo-whiteboard-card-web-frame'
 const CARD_TITLE_CLASS = 'yolo-whiteboard-card-title'
-const CARD_DEGRADED_TITLE_CLASS = 'yolo-whiteboard-card-degraded-title'
+const CARD_TITLE_BLOCK_CLASS = 'yolo-whiteboard-card-title-block'
 const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
   'yolo-whiteboard-card-unsupported-placeholder'
@@ -129,7 +129,6 @@ export type CardRendererCallbacks = Readonly<{
   isRenamingGroup: (id: NodeId) => boolean
   onGroupLabelKeyDown: (id: NodeId, event: KeyboardEvent) => void
   onGroupLabelBlur: (id: NodeId) => void
-  isDegraded: () => boolean
   canBuildContent: () => boolean
   queueContentSync: (id: NodeId) => void
   dequeueContentSync: (id: NodeId) => void
@@ -194,19 +193,6 @@ export class CardRenderer {
 
   getRuntime(id: NodeId): NodeRuntime | undefined {
     return this.runtimeByNodeId.get(id)
-  }
-
-  entries(): IterableIterator<[NodeId, NodeRuntime]> {
-    return this.runtimeByNodeId.entries()
-  }
-
-  /** Whether `id` is currently sitting in the hidden pool — canvas.ts's
-   * `updateDegradedState` uses this to skip a parked card when it queues
-   * every mounted card for a content resync, since a parked card is
-   * reconciled by the same paths as any other the moment it comes back
-   * (see `revealParkedCard`), not by that queue. */
-  isParked(id: NodeId): boolean {
-    return this.parkedCards.has(id)
   }
 
   /** Tears every mounted/parked card down to nothing — used by
@@ -274,7 +260,7 @@ export class CardRenderer {
     if (this.callbacks.isFocused(id)) el.classList.add(CARD_FOCUSED_CLASS)
 
     // A group is a labelled frame behind the cards, not a card: it has no
-    // body, no content view and no degraded form (p3-canvas-parity D5, and
+    // body, no content view and no title block (p3-canvas-parity D5, and
     // batch 3 for the membership interactions). Everything else a node gets
     // here — selection, dragging, resizing, edges — it gets for free, because
     // it goes through the same runtime as a card.
@@ -354,16 +340,17 @@ export class CardRenderer {
     body.className = CARD_BODY_CLASS
     el.appendChild(body)
 
-    // Degraded (low-zoom) title block: always built — it is a line of text,
-    // and it is what the card *is* below the threshold, where its body holds
-    // nothing (renderCardPreview's degrade gate). Swapped for the body by the
-    // world element's WORLD_DEGRADED_CLASS — see style.css. Computed once from
-    // card data at mount time; card title-affecting fields (file/markdown)
-    // never change post-mount in M1, only position does.
-    const degradedTitle = doc.createElement('div')
-    degradedTitle.className = CARD_DEGRADED_TITLE_CLASS
-    degradedTitle.textContent = degradedNodeTitle(node)
-    el.appendChild(degradedTitle)
+    // Title block: always built — it is a line of text, and it is what the
+    // card shows for as long as its body holds nothing, which is every card
+    // between mounting and its content build. Which of the two is laid out is
+    // the stylesheet's answer to whether the body is empty; nothing here
+    // toggles it. Computed once from card data at mount time; card
+    // title-affecting fields (file/markdown) never change post-mount in M1,
+    // only position does.
+    const titleBlock = doc.createElement('div')
+    titleBlock.className = CARD_TITLE_BLOCK_CLASS
+    titleBlock.textContent = nodeTitleText(node)
+    el.appendChild(titleBlock)
 
     // Click-to-edit vs. drag-to-move is disambiguated centrally in
     // onPointerDown/Move/Up (DRAG_THRESHOLD_PX) rather than a per-card
@@ -610,8 +597,8 @@ export class CardRenderer {
 
   /**
    * Releases whatever the card's body currently holds, whichever kind it is —
-   * the single teardown every path (unmount, degrade, re-render, edit) goes
-   * through, so a new content kind cannot be added and leak from one of them.
+   * the single teardown every path (unmount, re-render, edit) goes through,
+   * so a new content kind cannot be added and leak from one of them.
    */
   destroyCardContent(runtime: NodeRuntime): void {
     runtime.contentView?.destroy()
@@ -635,20 +622,17 @@ export class CardRenderer {
    * element, an embedded page, or a placeholder for the cases that have none
    * of those.
    *
-   * The single gate for all of it, which is why the degrade check lives here
-   * rather than at the call sites: below the threshold nothing is built at all
-   * (p3-canvas-parity D8) — no `<img>`, no `<video>`, no frame, and not even
-   * the note card's `readText`, which at the zoom where the most cards are on
-   * screen is the larger half of the cost. `updateDegradedState` queues every
-   * mounted card when the camera comes back up, so a card skipped here is not
-   * forgotten.
+   * There is no zoom gate here any more: a card that is mounted at all is one
+   * the camera is close enough to read, because below that threshold it has no
+   * element (constants.ts's OVERVIEW_SCALE_THRESHOLD). What still paces the
+   * work is the frame gate in `renderMarkdownInto`, which prices it where it
+   * lands rather than by where the camera is.
    */
   async renderCardPreview(id: NodeId): Promise<void> {
     const node = this.callbacks.getNode(id)
     const runtime = this.runtimeByNodeId.get(id)
     // A group has no body: it is a frame, drawn once at mount.
     if (!node || node.type === 'group' || !runtime?.bodyEl) return
-    if (this.callbacks.isDegraded()) return
 
     if (node.type === 'link') {
       this.renderWebFrameInto(runtime, node.url)
@@ -727,8 +711,7 @@ export class CardRenderer {
    */
   /** Public: canvas.ts's content-freshness path (`refreshMountedNoteCard`)
    * calls this directly on an external file modify, without going through
-   * `renderCardPreview`'s degrade/file-kind dispatch it has already done
-   * itself. */
+   * `renderCardPreview`'s file-kind dispatch it has already done itself. */
   renderMarkdownInto(
     id: NodeId,
     runtime: NodeRuntime,
@@ -811,8 +794,8 @@ export class CardRenderer {
    * with the resize interactions (P3 batch 3).
    *
    * Audio and video get a `releaseContent`: taking a media element out of the
-   * DOM neither pauses it nor stops it streaming, so an off-screen or degraded
-   * card would go on playing out of sight.
+   * DOM neither pauses it nor stops it streaming, so an off-screen card would
+   * go on playing out of sight.
    */
   private renderMediaInto(
     runtime: NodeRuntime,
@@ -873,11 +856,11 @@ export class CardRenderer {
    * not be.
    */
   private renderWebFrameInto(runtime: NodeRuntime, url: string): void {
-    // Already showing this exact page: leave it alone. Without this, coming
-    // back from a degraded zoom (which re-runs the render path for every
-    // mounted card) would tear down and reload every web card on screen —
-    // the reload the hidden pool exists to avoid, arrived at from the other
-    // direction.
+    // Already showing this exact page: leave it alone. Without this, a
+    // re-render of a card whose body already holds the right page — a parked
+    // web card revealed again, a content resync — would tear it down and
+    // reload it, the reload the hidden pool exists to avoid, arrived at from
+    // the other direction.
     if (runtime.webFrameUrl === url) return
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl

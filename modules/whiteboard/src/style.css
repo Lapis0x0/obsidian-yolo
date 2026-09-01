@@ -168,6 +168,22 @@
   display: none;
 }
 
+/* The one label the canvas cannot draw: the one being typed into. A canvas
+ * holds no caret, so for the length of an edge rename the label layer comes
+ * back and every label but that one is taken out individually — the expensive
+ * shape (a style recalculation over every label on the board) for the one
+ * moment it is the only shape that works. Naming a relation is exactly what
+ * this zoom is for, so declining the rename here was not an option. */
+.yolo-whiteboard-world.yolo-whiteboard-world-overview.yolo-whiteboard-world-edge-rename
+  .yolo-whiteboard-edge-labels {
+  display: block;
+}
+
+.yolo-whiteboard-world.yolo-whiteboard-world-overview.yolo-whiteboard-world-edge-rename
+  .yolo-whiteboard-edge-label:not([contenteditable]) {
+  display: none;
+}
+
 /* --- cards --------------------------------------------------------------- */
 
 .yolo-whiteboard-card {
@@ -831,19 +847,19 @@
   color: var(--text-faint);
 }
 
-/* --- degraded (low-zoom) card preview (W3-A) -----------------------------
- * Below DEGRADE_SCALE_THRESHOLD (ui/constants.ts), the world element gets
- * yolo-whiteboard-world-degraded and every card swaps its markdown body for a
- * plain title block.
+/* --- a card's title block ------------------------------------------------
+ * What a card shows while its body holds nothing: its file name, its URL, or
+ * its first line (ui/lod.ts's nodeTitleText). Laid out exactly when the body
+ * is empty, which is every moment a card has no content — the frames between
+ * mounting and the content build that follows it, and a build still waiting on
+ * a frame it is allowed to run in (canvas.ts's drainContentSync). It is also
+ * what the overview canvas draws for a card with no element at all, at the
+ * same size, so nothing about a card's face changes as it crosses the tier.
  *
- * The class only decides which of the two is laid out; the body it hides is
- * empty by then. A degraded card does not construct its content at all
- * (p3-canvas-parity D8 — ui/canvas.ts's renderCardPreview and
- * updateDegradedState), which is the whole point: low zoom is where the most
- * cards are on screen, so hiding a rendered preview would have saved nothing
- * that mattered. */
-
-/* Sized in world units, like everything else in the world layer — the title
+ * Driven by `:empty` rather than by a zoom class: the question this answers is
+ * whether there is content, and the body is the only thing that knows.
+ *
+ * Sized in world units, like everything else in the world layer — the title
  * shrinks with the card rather than being counter-scaled, so what matters is
  * its share of the card, not its pixel count. 32px is Obsidian Canvas's own
  * figure (measured off its low-zoom placeholder); against our 13px body it
@@ -856,8 +872,8 @@
  * `--canvas-color` (its per-node colour, #c0c0c0 by default) rather than
  * swapping the background outright, so it lands right in both themes and
  * stays this faint — 10% of a mid grey, not of black. */
-.yolo-whiteboard-card-degraded-title {
-  display: none;
+.yolo-whiteboard-card-title-block {
+  display: flex;
   /* Fills the card, which no longer clips for it. */
   border-radius: inherit;
   align-items: center;
@@ -895,7 +911,7 @@
  * src/styles/chat/popover.css). Three rounded bars of uneven length — the
  * conventional "some text lives here" mark, and what Canvas's own
  * `align-left` icon looks like. */
-.yolo-whiteboard-card-degraded-title:empty::after {
+.yolo-whiteboard-card-title-block:empty::after {
   content: '';
   width: 40%;
   height: 40%;
@@ -907,16 +923,25 @@
   mask-position: center;
 }
 
-.yolo-whiteboard-world.yolo-whiteboard-world-degraded
-  .yolo-whiteboard-card-body,
-.yolo-whiteboard-world.yolo-whiteboard-world-degraded
-  .yolo-whiteboard-card-title {
+/* The two are exclusive: an empty body gives its space to the title block, and
+ * the first thing put in the body takes it back. `~` rather than a state class
+ * because the block sits after the body in the card (see cardRenderer.ts's
+ * mountNode), and because a class would be a second answer to a question the
+ * DOM already answers.
+ *
+ * A body opened for editing is the one exception, and it has to be: the editor
+ * is built into the element (canvas.ts's enterEditMode), and an editor built
+ * into a `display: none` box measures itself against nothing. It is empty for
+ * the instant between being emptied and being given the editor, which is not
+ * an instant the card should spend showing its title back to someone who has
+ * just asked to type in it. */
+.yolo-whiteboard-card-body:empty:not(.yolo-whiteboard-editor-host) {
   display: none;
 }
 
-.yolo-whiteboard-world.yolo-whiteboard-world-degraded
-  .yolo-whiteboard-card-degraded-title {
-  display: flex;
+.yolo-whiteboard-card-body:not(:empty) ~ .yolo-whiteboard-card-title-block,
+.yolo-whiteboard-editor-host ~ .yolo-whiteboard-card-title-block {
+  display: none;
 }
 
 /* --- edges (W3-A) ----------------------------------------------------------

@@ -106,7 +106,7 @@ export const DISTRIBUTE_MENU: Readonly<
 export type ToolbarControllerCallbacks = Readonly<{
   isParseFailed: () => boolean
   canEdit: () => boolean
-  isDegraded: () => boolean
+  isOverview: () => boolean
   getBoard: () => Board
   getSelectedIds: () => ReadonlySet<NodeId>
   getSelectedEdgeIds: () => ReadonlySet<EdgeId>
@@ -309,13 +309,14 @@ export class ToolbarController {
     }
     const arrange = this.arrangeControl()
     if (arrange) items.push(arrange)
-    // Editing is the one action a degraded card cannot take (D8: its content
-    // is not built at this zoom), so the button goes away rather than being
-    // offered and declining. A locked board offers it for nothing either.
+    // Editing is the one action a card in the overview tier cannot take —
+    // it has no element to put an editor in — so the button goes away rather
+    // than being offered and declining. A locked board offers it for nothing
+    // either.
     if (
       single &&
       this.callbacks.isEditableNode(single) &&
-      !this.callbacks.isDegraded() &&
+      !this.callbacks.isOverview() &&
       canEdit
     ) {
       items.push({
