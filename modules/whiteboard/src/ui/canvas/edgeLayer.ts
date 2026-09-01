@@ -162,10 +162,7 @@ export class EdgeLayer {
    * of edges crossing the viewport's edge on every tick of one come back
    * showing the geometry they already had.
    */
-  updateVisibility(
-    rect: WorldRect,
-    pinnedNodeIds: ReadonlySet<NodeId>,
-  ): void {
+  updateVisibility(rect: WorldRect, pinnedNodeIds: ReadonlySet<NodeId>): void {
     for (const [edgeId, edge] of this.edgesById) {
       const culled = !this.edgeIsVisible(edge, rect, pinnedNodeIds)
       if (culled === this.culledIds.has(edgeId)) continue
@@ -331,7 +328,9 @@ export class EdgeLayer {
   /** Toggles an edge's selected styling — the DOM half of canvas.ts's own
    * `markEdgeSelected`, now that this class owns `edgeElsById`. */
   setEdgeSelected(id: EdgeId, selected: boolean): void {
-    this.edgeElsById.get(id)?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
+    this.edgeElsById
+      .get(id)
+      ?.path.classList.toggle(EDGE_SELECTED_CLASS, selected)
   }
 
   /** Board-data rect for `id`, or its live drag position from `overrides`

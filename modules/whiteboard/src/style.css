@@ -126,6 +126,48 @@
   will-change: transform;
 }
 
+/* The overview tier's canvas (P4-1). A sibling of the world layer, not a child
+ * of it: inside the world the camera's CSS scale would blur the bitmap and
+ * force a re-raster on every zoom frame, so it is drawn in screen space and
+ * redrawn per camera change instead (ui/canvas/overviewLayer.ts). It sits
+ * *before* the world in the document, so the groups, resize handles, snap
+ * guides and in-flight connection curve the world still holds paint over it.
+ * Never a pointer target — the tier's hit testing is geometric. */
+.yolo-whiteboard-overview {
+  position: absolute;
+  inset: 0;
+  /* Stated, not left to `inset`: a canvas is a replaced element, and an
+   * absolutely positioned replaced element with `width: auto` takes its
+   * *intrinsic* width (the backing store's) however over-constrained the
+   * offsets are. Without these it renders at devicePixelRatio times its box
+   * and spills out of the viewport. */
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.yolo-whiteboard-overview.yolo-whiteboard-overview-hidden {
+  display: none;
+}
+
+/* In the overview tier the canvas draws the edges too, so their DOM comes out
+ * of the document entirely — which is the point of the tier: what an element
+ * costs at this zoom is that it exists, not what it holds. The in-flight
+ * connection preview is a sibling of the edges group, not a child, so it
+ * survives this and a connection can still be drawn down here.
+ *
+ * `display` rather than `visibility`: measured on the 3000-card fixture,
+ * hiding them with `visibility` instead cost 206ms/s of style recalculation
+ * across a zoom that crosses the threshold (against 59) and dropped the sweep
+ * from 57 to 50fps — the retained layout is not free when the subtree is this
+ * large. */
+.yolo-whiteboard-world.yolo-whiteboard-world-overview
+  .yolo-whiteboard-edges-group,
+.yolo-whiteboard-world.yolo-whiteboard-world-overview
+  .yolo-whiteboard-edge-labels {
+  display: none;
+}
+
 /* --- cards --------------------------------------------------------------- */
 
 .yolo-whiteboard-card {

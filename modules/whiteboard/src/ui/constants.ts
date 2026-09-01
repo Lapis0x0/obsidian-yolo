@@ -148,6 +148,97 @@ const DEGRADE_RESTORE_DOUBLINGS = 0.25
 export const DEGRADE_RESTORE_SCALE =
   DEGRADE_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
 
+// -----------------------------------------------------------------------
+// Overview tier (P4-1). Below this scale no card has DOM at all: the whole
+// board is drawn on one screen-space canvas (ui/canvas/overviewLayer.ts).
+//
+// Rendering tier and capability are deliberately separate ideas
+// (p4-perf-overview §二): what is drawn how is a performance detail the user
+// never asked for, and what can be done at a given zoom is a product rule.
+// Only two capabilities key off this constant — alignment, which has no
+// precision to offer here and whose candidate set would be the whole board
+// (P4-D1), and nothing else. Selecting, marquee, dragging, resizing and
+// connecting all keep working, because there is no reason for them not to.
+// -----------------------------------------------------------------------
+
+/**
+ * Scale below which cards leave the DOM for the canvas.
+ *
+ * Chosen where the DOM tier stops earning its keep rather than where it stops
+ * working: a card is ~40px wide here, which is a coloured tile with a line of
+ * unreadable type on it — nothing the DOM is giving that a rectangle would
+ * not. Above it the mounted count is bounded by what a screen holds; below it
+ * the count is bounded by the board, which is the whole problem
+ * (p4-perf-overview §一.2).
+ */
+export const OVERVIEW_SCALE_THRESHOLD = 0.15
+
+/** The same hysteresis band DEGRADE_RESTORE_DOUBLINGS gives the tier above,
+ * for the same reason and in the same unit: crossing this threshold unmounts
+ * or rebuilds every card on screen, which is not something a zoom settling on
+ * the boundary may do on alternate throttle ticks. */
+export const OVERVIEW_RESTORE_SCALE =
+  OVERVIEW_SCALE_THRESHOLD * 2 ** DEGRADE_RESTORE_DOUBLINGS
+
+/**
+ * Screen width, in pixels, below which an overview card is drawn as a plain
+ * tile with no title (p4-perf-overview §三). Not a legibility bar — the type
+ * is already small by then — but the point past which drawing a title costs a
+ * `fillText` per card and returns a smudge.
+ */
+export const OVERVIEW_TITLE_MIN_CARD_PX = 40
+
+/** Font size of the degraded tier's title block, in world units — style.css's
+ * `.yolo-whiteboard-card-degraded-title`. The overview canvas draws its titles
+ * at the same size so the switch between the two tiers is invisible; the two
+ * must stay in step. */
+export const DEGRADED_TITLE_WORLD_FONT_PX = 32
+
+/** Alpha of the colour wash over an overview card — style.css's
+ * `.yolo-whiteboard-card-degraded-title` background, which is
+ * `color-mix(… 10% …)`, expressed as the `globalAlpha` a canvas needs. */
+export const OVERVIEW_CARD_WASH_ALPHA = 0.1
+
+/** Alpha of a coloured card's border, matching the stylesheet's
+ * `color-mix(in oklch, var(--yolo-whiteboard-color) 70%, transparent)`. */
+export const OVERVIEW_THEMED_BORDER_ALPHA = 0.7
+
+/** Edge stroke weight in world units at 1:1 — style.css's
+ * `.yolo-whiteboard-edge-path`, before its counter-scale. */
+export const EDGE_STROKE_WORLD_PX = 1.5
+
+/** Arrowhead length in world units at 1:1 — the `markerWidth` canvas.ts gives
+ * the shared SVG marker, before its counter-scale. */
+export const EDGE_ARROW_WORLD_PX = 10
+
+/** Screen weight an overview edge is never drawn below: a sub-pixel line is
+ * rasterised as a faded one, and a board of faded lines is haze rather than
+ * edges. */
+export const OVERVIEW_MIN_EDGE_STROKE_PX = 0.75
+
+/** Screen length an arrowhead must reach before it is drawn at all — below it
+ * a triangle is three dark pixels at the end of a line, which reads as a
+ * thicker line. */
+export const OVERVIEW_ARROW_MIN_SCREEN_PX = 4
+
+/** Font size of a group's label in world units — style.css's
+ * `.yolo-whiteboard-group-label`. The two must stay in step: the overview tier
+ * counter-scales this value rather than replacing it. */
+export const GROUP_LABEL_WORLD_FONT_PX = 20
+
+/**
+ * Screen size a group's label is held at in the overview tier, however far the
+ * board is zoomed out (P4-D2).
+ *
+ * Everything else in the world layer shrinks with the board, which is right for
+ * a card — at this zoom a card is a tile, and its title is not the point. A
+ * group's label is: the whole value of an overview is seeing which region is
+ * which, and a 20-unit label at 0.1 is two pixels of grey. So it is
+ * counter-scaled and pinned, like a place name on a map, which stays the same
+ * size whether you are looking at a city or a country.
+ */
+export const OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX = 12
+
 /**
  * Size a text card is created at. Deliberately at the small end of what the
  * spikes' boards used (226-334 wide) — an empty card should not take half

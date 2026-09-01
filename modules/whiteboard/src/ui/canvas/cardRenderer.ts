@@ -9,12 +9,12 @@
 // back (single-direction dependency between the canvas and its
 // collaborators).
 
+import type { BoardNode, NodeId } from '../../domain/fileFormat'
 import {
   type FileNodeKind,
   basenameWithoutExtension,
   fileNodeKind,
 } from '../../domain/naming'
-import type { BoardNode, NodeId } from '../../domain/fileFormat'
 import {
   CARD_BODY_LIVE_CLASS,
   CARD_FOCUSED_CLASS,
@@ -162,6 +162,17 @@ export class CardRenderer {
    * always the one to evict. See `parkCard`.
    */
   private readonly parkedCards = new Set<NodeId>()
+  /**
+   * Pool capacity while it is pinned, or null when it follows the mounted set
+   * as usual — see `freezeParkedCapacity`.
+   */
+  private frozenParkedCapacity: number | null = null
+  /**
+   * Group label size in world units while the overview tier is overriding it,
+   * or null while the stylesheet's own value stands — see
+   * `setGroupLabelFontSize`.
+   */
+  private groupLabelFontPx: number | null = null
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -278,6 +289,11 @@ export class CardRenderer {
       label.addEventListener('blur', () => this.callbacks.onGroupLabelBlur(id))
       el.appendChild(label)
       this.worldEl.appendChild(el)
+      // A group mounting while the overview tier holds labels at a screen size
+      // has to arrive at that size, not at the stylesheet's.
+      if (this.groupLabelFontPx !== null) {
+        label.style.fontSize = `${this.groupLabelFontPx}px`
+      }
       this.runtimeByNodeId.set(id, {
         el,
         bodyEl: null,
@@ -450,7 +466,10 @@ export class CardRenderer {
       CARD_SELECTED_CLASS,
       this.callbacks.isSelected(id),
     )
-    runtime.el.classList.toggle(CARD_FOCUSED_CLASS, this.callbacks.isFocused(id))
+    runtime.el.classList.toggle(
+      CARD_FOCUSED_CLASS,
+      this.callbacks.isFocused(id),
+    )
   }
 
   /**
@@ -477,11 +496,86 @@ export class CardRenderer {
     )) {
       this.evictParkedCard(id)
     }
-    while (this.parkedCards.size > this.callbacks.getMountedCount()) {
+    while (this.parkedCards.size > this.parkedCapacity) {
       const oldest = this.parkedCards.values().next().value
       if (oldest === undefined) return
       this.evictParkedCard(oldest)
     }
+  }
+
+  private get parkedCapacity(): number {
+    return this.frozenParkedCapacity ?? this.callbacks.getMountedCount()
+  }
+
+  /**
+   * Pins the pool's capacity at what the board is holding right now, for as
+   * long as the overview tier lasts (P4-D5).
+   *
+   * Entering that tier unmounts every card at once, which the ordinary rule
+   * would read as "the mounted set is empty, so the pool should be too" and
+   * answer by destroying everything the user is about to come back to. But
+   * zooming out to find a region and back in to work in it is one action, not
+   * two, and the far end of it must not be a screen rebuilding itself. The
+   * pinned cards cost hidden DOM and no drawing — the trade the pool exists to
+   * make, held for the length of one gesture.
+   *
+   * Pinned at what is mounted *plus* what is already parked, so the way in
+   * throws nothing away either.
+   */
+  freezeParkedCapacity(): void {
+    this.frozenParkedCapacity =
+      this.parkedCards.size + this.callbacks.getMountedCount()
+  }
+
+  /**
+   * Lets the capacity follow the mounted set again. Deliberately does not
+   * evict on the spot: this runs as the camera comes back up, when the pool is
+   * full of exactly the cards about to be asked for and the mounted set has
+   * not caught up yet. The next card to park trims it.
+   */
+  unfreezeParkedCapacity(): void {
+    this.frozenParkedCapacity = null
+  }
+
+  /**
+   * Overrides the world-unit font size of every group's label, or clears the
+   * override with `null` (see constants.ts's
+   * OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX).
+   *
+   * Written on the label elements themselves rather than as a custom property
+   * on the world layer, which would be the shorter code and is the trap
+   * cameraController.ts's `applyZoomScale` documents: a custom property written
+   * on an element invalidates the style of its whole subtree, and the world's
+   * subtree includes every edge path on the board. There are a few dozen group
+   * labels; this touches exactly them.
+   */
+  setGroupLabelFontSize(worldPx: number | null): void {
+    if (worldPx === this.groupLabelFontPx) return
+    this.groupLabelFontPx = worldPx
+    for (const [id, runtime] of this.runtimeByNodeId) {
+      if (this.callbacks.getNode(id)?.type !== 'group') continue
+      this.applyGroupLabelFontSize(runtime)
+    }
+  }
+
+  /**
+   * A group element's only child is its label — this class built it, so the
+   * cast states what it already knows.
+   *
+   * Deliberately not `instanceof HTMLElement`: in an Obsidian popout the node
+   * belongs to another window, whose `HTMLElement` is a different constructor,
+   * and the check would answer false for every group on the board (CLAUDE.md,
+   * Popout / Multi-window). Measured: it silently left every label at its
+   * stylesheet size in a popped-out view.
+   */
+  private applyGroupLabelFontSize(runtime: NodeRuntime): void {
+    const label = runtime.el?.firstElementChild as HTMLElement | null
+    if (!label) return
+    if (this.groupLabelFontPx === null) {
+      label.style.removeProperty('font-size')
+      return
+    }
+    label.style.fontSize = `${this.groupLabelFontPx}px`
   }
 
   private evictParkedCard(id: NodeId): void {

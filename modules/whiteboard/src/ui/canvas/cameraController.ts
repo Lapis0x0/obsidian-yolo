@@ -27,7 +27,11 @@ import {
   viewSettled,
 } from '../../domain/camera'
 import type { ScaleBounds, ScreenPoint } from '../../domain/camera'
-import { DEFAULT_CAMERA, type BoardNode, type Camera } from '../../domain/fileFormat'
+import {
+  type BoardNode,
+  type Camera,
+  DEFAULT_CAMERA,
+} from '../../domain/fileFormat'
 import type { CanvasView } from '../../domain/virtualization'
 import {
   CAMERA_GLIDE_EPSILON_DOUBLINGS,
@@ -299,7 +303,9 @@ export class CameraController {
       this.scaleFloor = { nodes, value: this.computeScaleFloor(nodes) }
     }
     const min = this.scaleFloor.value
-    return min < SCALE_BOUNDS.min ? { min, max: SCALE_BOUNDS.max } : SCALE_BOUNDS
+    return min < SCALE_BOUNDS.min
+      ? { min, max: SCALE_BOUNDS.max }
+      : SCALE_BOUNDS
   }
 
   private computeScaleFloor(nodes: readonly BoardNode[]): number {

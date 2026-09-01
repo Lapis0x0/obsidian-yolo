@@ -123,6 +123,7 @@ import { createWhiteboardTranslation } from '../i18n'
 import { CameraController } from './canvas/cameraController'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { EdgeLayer } from './canvas/edgeLayer'
+import { OverviewLayer } from './canvas/overviewLayer'
 import { SnapGuideLayer } from './canvas/snapGuideLayer'
 import {
   ALIGN_MENU,
@@ -151,10 +152,14 @@ import {
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   GROUP_LABEL_CLASS,
+  GROUP_LABEL_WORLD_FONT_PX,
   MIN_CARD_SIZE,
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
+  OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
+  OVERVIEW_RESTORE_SCALE,
+  OVERVIEW_SCALE_THRESHOLD,
   RECOMPUTE_INTERVAL_MS,
   RESIZE_HANDLE_PX,
   SNAP_SCREEN_PX,
@@ -179,12 +184,40 @@ import { applyColorToElement } from './selectionToolbar'
  */
 const MIN_GROUP_SIZE = Object.freeze({ w: 200, h: 160 })
 
+/**
+ * A world rectangle nothing can intersect — what the cards are measured
+ * against in the overview tier, where none of them may stay mounted.
+ *
+ * Asking the existing engine an ordinary question rather than giving it a
+ * mode: the answer comes back as the usual unmount diff, so it drains at the
+ * usual per-frame quota and entering the tier never tears down a screenful in
+ * one frame.
+ */
+const UNREACHABLE_RECT: WorldRect = Object.freeze({
+  left: Number.POSITIVE_INFINITY,
+  top: Number.POSITIVE_INFINITY,
+  right: Number.NEGATIVE_INFINITY,
+  bottom: Number.NEGATIVE_INFINITY,
+})
+
+/** Passed with `UNREACHABLE_RECT`: in the overview tier a pinned card must
+ * come down like every other one — what a gesture is moving is drawn by the
+ * canvas from `liveNodeRects`, so keeping its element would only put a second
+ * copy of it on screen. */
+const NO_PINS: ReadonlySet<NodeId> = new Set()
+
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
 const WORLD_CLASS = 'yolo-whiteboard-world'
 const WORLD_DEGRADED_CLASS = 'yolo-whiteboard-world-degraded'
+/** On the world layer while the overview tier is drawing the board: what the
+ * stylesheet keys "no edge DOM at all" off. A class rather than a custom
+ * property, so Blink's invalidation set is the two layers the rule names
+ * rather than the world's whole subtree (see CameraController's
+ * applyZoomScale for what the other choice costs). */
+const WORLD_OVERVIEW_CLASS = 'yolo-whiteboard-world-overview'
 const INTERACTION_LAYER_CLASS = 'yolo-whiteboard-interaction-layer'
 const INTERACTION_LAYER_HIDDEN_CLASS =
   'yolo-whiteboard-interaction-layer-hidden'
@@ -199,6 +232,7 @@ const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
 const CREATE_GHOST_CLASS = 'yolo-whiteboard-create-ghost'
 const EDGES_SVG_CLASS = 'yolo-whiteboard-edges'
+const EDGES_GROUP_CLASS = 'yolo-whiteboard-edges-group'
 const EDGE_ARROW_MARKER_CLASS = 'yolo-whiteboard-edge-arrow-marker'
 const EDGE_ARROW_CLASS = 'yolo-whiteboard-edge-arrow'
 const EDGE_LABELS_CLASS = 'yolo-whiteboard-edge-labels'
@@ -383,6 +417,13 @@ export class WhiteboardCanvas {
    * it. Derived in `syncBoardIndex`, never stored.
    */
   private cardNodes: readonly BoardNode[] = []
+  /**
+   * The other half of the same split. Groups keep their DOM at every zoom
+   * (P4-D2), so the two populations answer to different viewport rects in the
+   * overview tier and have to be handed to the virtualization engine
+   * separately — see `recomputeVisibility`.
+   */
+  private groupNodes: readonly BoardNode[] = []
   /** Card DOM/content lifecycle — mount/unmount, the hidden pool, per-card
    * rendering. Owns `NodeRuntime`; constructed once in `ensureDom` (see
    * ./canvas/cardRenderer.ts's own doc comment for the split's rationale). */
@@ -487,6 +528,26 @@ export class WhiteboardCanvas {
   private edgeLayer!: EdgeLayer
   /** Drawn only while a drag or a resize is lining something up. */
   private snapGuideLayer: SnapGuideLayer | null = null
+  /**
+   * The overview tier's renderer (P4-1). Built in `ensureDom`; null before
+   * that, which `clear()` can reach.
+   */
+  private overviewLayer: OverviewLayer | null = null
+  /** Whether the camera is below the overview threshold — see
+   * `updateOverviewState`. Updated at the same ~70ms throttle as `degraded`,
+   * and behind the same kind of hysteresis band. */
+  private overview = false
+  /**
+   * Uncommitted geometry for the nodes a drag or a resize is moving, or null.
+   *
+   * In the DOM tiers the live feedback *is* the `transform` written on each
+   * card's element, and this is only the map those writes were computed from.
+   * In the overview tier there are no elements, so this is the feedback: the
+   * canvas draws from it (`OverviewLayerCallbacks.getLiveRects`). Published
+   * from one place either way, so the two tiers cannot disagree about where a
+   * card is being dragged to.
+   */
+  private liveNodeRects: ReadonlyMap<NodeId, CardRect> | null = null
   /** The outline of the card a creation-bar drag is about to make. Built for
    * the gesture and removed with it — one element per drag is cheaper than a
    * permanent one to keep in step with a world layer that is rebuilt on every
@@ -708,6 +769,8 @@ export class WhiteboardCanvas {
     this.cardMenu?.destroy()
     this.cardMenu = null
     this.toolbarController.destroy()
+    this.overviewLayer?.destroy()
+    this.overviewLayer = null
     this.teardownAllCards()
     this.preheatView?.destroy()
     this.preheatView = null
@@ -784,6 +847,10 @@ export class WhiteboardCanvas {
     defs.appendChild(marker)
     edgesSvg.appendChild(defs)
     const edgesGroup = doc.createElementNS(SVG_NS, 'g')
+    // Classed so the overview tier can take every edge out of the document
+    // with one rule, without taking the connection preview below (a sibling,
+    // not a child) with them.
+    edgesGroup.setAttribute('class', EDGES_GROUP_CLASS)
     edgesSvg.appendChild(edgesGroup)
     const preview = doc.createElementNS(SVG_NS, 'path')
     preview.setAttribute('class', `${EDGE_PREVIEW_CLASS} ${EDGE_HIDDEN_CLASS}`)
@@ -823,6 +890,19 @@ export class WhiteboardCanvas {
     this.snapGuideLayer?.destroy()
     this.snapGuideLayer = new SnapGuideLayer(doc, world)
 
+    // The overview canvas goes in *before* the world layer, so everything the
+    // world holds paints over it: the group frames and labels that stay in the
+    // DOM at every tier (P4-D2), the resize handles, the snap guides, and an
+    // in-flight connection's curve. See ./canvas/overviewLayer.ts.
+    this.overviewLayer = new OverviewLayer(this.context, root, viewport, {
+      getView: () => this.cameraController.view,
+      getCardNodes: () => this.cardNodes,
+      getEdges: () => this.board.edges,
+      getNode: (id) => this.nodesById.get(id),
+      isSelected: (id) => this.selectedIds.has(id),
+      isEdgeSelected: (id) => this.selectedEdgeIds.has(id),
+      getLiveRects: () => this.liveNodeRects,
+    })
     viewport.appendChild(world)
     root.appendChild(viewport)
 
@@ -1092,7 +1172,7 @@ export class WhiteboardCanvas {
     // A press anywhere else dismisses the colour popover, the same way one
     // dismisses a menu.
     this.toolbarController.closePopover()
-    const nodeId = this.nodeIdFromEventTarget(e.target)
+    const nodeId = this.nodeIdAtPointer(e)
 
     if (e.button === 1) {
       // Middle-click always pans, even starting from a card.
@@ -1217,7 +1297,7 @@ export class WhiteboardCanvas {
   private readonly onContextMenu = (e: MouseEvent): void => {
     if (this.parseFailed) return
     if (this.toolbarController.isOverlayTarget(e.target)) return
-    const nodeId = this.nodeIdFromEventTarget(e.target)
+    const nodeId = this.nodeIdAtPointer(e)
     // The card being edited owns its own context menu (CM6's, with the text
     // actions that belong to an editor).
     if (nodeId !== null && this.editing?.nodeId === nodeId) return
@@ -1447,21 +1527,25 @@ export class WhiteboardCanvas {
   private pendingPointerMove: PointerEvent | null = null
 
   private readonly onPointerMove = (e: PointerEvent): void => {
-    if (!this.interaction) {
-      this.updateHover(e)
-      return
-    }
     this.pendingPointerMove = e
   }
 
-  /** Applies the latest pointer position to the gesture in flight. Called once
-   * per frame, and again from `onPointerUp` so the gesture's last position is
-   * never left unapplied when it commits. */
+  /** Applies the latest pointer position to the gesture in flight, or — when
+   * there is none — to the hover. Called once per frame, and again from
+   * `onPointerUp` so the gesture's last position is never left unapplied when
+   * it commits. */
   private consumePointerMove(): void {
     const e = this.pendingPointerMove
     this.pendingPointerMove = null
+    if (!e) return
     const interaction = this.interaction
-    if (!e || !interaction) return
+    if (!interaction) {
+      // Hover is coalesced for the same reason a drag is, and in the overview
+      // tier for one more: with no card elements to hit, resolving it is a
+      // pass over the board rather than a DOM lookup.
+      this.updateHover(e)
+      return
+    }
     // A gesture that has actually moved takes the toolbar off screen until it
     // ends. A press that never moves leaves it alone, so clicking a card that
     // is already selected does not make its toolbar blink.
@@ -1507,9 +1591,23 @@ export class WhiteboardCanvas {
     const onLayer =
       target instanceof Element &&
       target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
-    this.setHoveredNode(
-      onLayer ? this.hoveredNodeId : this.nodeIdFromEventTarget(target),
-    )
+    this.setHoveredNode(onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e))
+  }
+
+  /**
+   * Which node a pointer event landed on.
+   *
+   * In the DOM tiers that is the element under it. In the overview tier the
+   * cards have no elements, so the same question is asked of the board data
+   * the canvas drew from — a point-in-rectangle test per card, linear over the
+   * board (p4-perf-overview §三: no spatial index; a pass over a few thousand
+   * rectangles is not what costs anything here). Groups keep their DOM at
+   * every tier, so they keep answering the first way.
+   */
+  private nodeIdAtPointer(e: MouseEvent): NodeId | null {
+    const fromDom = this.nodeIdFromEventTarget(e.target)
+    if (fromDom !== null || !this.overview) return fromDom
+    return nodeAtPoint(this.cardNodes, this.worldPointFromEvent(e))
   }
 
   private setHoveredNode(nodeId: NodeId | null): void {
@@ -1883,11 +1981,20 @@ export class WhiteboardCanvas {
       el.style.width = `${rect.w}px`
       el.style.height = `${rect.h}px`
     }
+    const live = new Map([[interaction.nodeId, rect]])
+    // As in a drag: with no element to write to, this is what the overview
+    // tier draws the card being resized from.
+    this.setLiveNodeRects(live)
     this.placeInteractionLayer(rect)
-    this.edgeLayer.redrawEdgesForNodes(
-      new Set([interaction.nodeId]),
-      new Map([[interaction.nodeId, rect]]),
-    )
+    this.edgeLayer.redrawEdgesForNodes(new Set([interaction.nodeId]), live)
+  }
+
+  /** Publishes (or, with null, retires) the geometry a gesture has reached but
+   * not committed. One setter because the overview layer redraws from it and
+   * would otherwise have to be told separately by every caller. */
+  private setLiveNodeRects(rects: ReadonlyMap<NodeId, CardRect> | null): void {
+    this.liveNodeRects = rects
+    this.overviewLayer?.markDirty()
   }
 
   private finishResize(interaction: ResizeInteraction, e: PointerEvent): void {
@@ -1906,6 +2013,8 @@ export class WhiteboardCanvas {
     // group resize behaves identically).
     this.applyBoardChange(updateNode(this.board, interaction.nodeId, rect))
     this.applyResizeRect(interaction, rect)
+    // The board holds this rectangle now; the gesture's copy of it retires.
+    this.setLiveNodeRects(null)
     // The card's footprint changed, so its mount state may have too.
     this.recomputeVisibility()
   }
@@ -2278,6 +2387,10 @@ export class WhiteboardCanvas {
    * viewport rather than by the size of the board.
    */
   private snapCandidates(moving: ReadonlySet<NodeId>): readonly CardRect[] {
+    // Nothing is on offer in the overview tier (`snappingWanted`), and at that
+    // zoom "what is on screen" is most of the board — so this is also the one
+    // place the gesture would have paid for it.
+    if (this.overview) return []
     const groups = this.board.nodes.some(
       (node) => moving.has(node.id) && node.type === 'group',
     )
@@ -2319,6 +2432,11 @@ export class WhiteboardCanvas {
    * else. Read off the event, so it can be pressed and released mid-drag.
    */
   private snappingWanted(e: PointerEvent): boolean {
+    // Off below the overview threshold (P4-D1). Alignment is an offer measured
+    // in screen pixels, and down there the tolerance covers a screenful of
+    // board: the card would jump to a neighbour the user cannot see, and the
+    // guide drawn for it would be a line across the whole viewport.
+    if (this.overview) return false
     this.isMacOS ??= /Mac|iPhone|iPad/.test(
       this.context.getWindow().navigator.userAgent,
     )
@@ -2345,6 +2463,9 @@ export class WhiteboardCanvas {
       const el = this.cardRenderer.getRuntime(id)?.el
       if (el) el.style.transform = `translate(${dx}px, ${dy}px)`
     }
+    // In the overview tier those elements do not exist and this map is the
+    // drag's only feedback — see `liveNodeRects`.
+    this.setLiveNodeRects(overrides)
     this.edgeLayer.redrawEdgesForNodes(new Set(interaction.ids), overrides)
     // The handle layer sits in the same world space as the cards but is not
     // one of them, so a drag has to carry it along explicitly.
@@ -2366,6 +2487,8 @@ export class WhiteboardCanvas {
     if (dx !== 0 || dy !== 0) {
       this.applyBoardChange(moveNodes(this.board, interaction.ids, dx, dy))
     }
+    // The board holds these positions now; the drag's copy of them retires.
+    this.setLiveNodeRects(null)
     for (const id of interaction.ids) {
       this.pinnedIds.delete(id)
       const el = this.cardRenderer.getRuntime(id)?.el
@@ -2569,6 +2692,9 @@ export class WhiteboardCanvas {
         this.cardRenderer.getRuntime(id)?.el?.classList.add(CARD_SELECTED_CLASS)
     }
     this.selectedIds = next
+    // The class writes above reach nothing in the overview tier; there the
+    // selection ring is drawn.
+    this.overviewLayer?.markDirty()
     this.applyFocusedNode()
     this.syncSelectionKeymapScope()
     // Selection is one of the two things that decides where the handles are.
@@ -2613,6 +2739,7 @@ export class WhiteboardCanvas {
       if (!this.selectedEdgeIds.has(id)) this.markEdgeSelected(id, true)
     }
     this.selectedEdgeIds = next
+    this.overviewLayer?.markDirty()
     this.syncSelectionKeymapScope()
     // A label being typed belongs to the edge that was selected when it
     // opened; deselecting that edge ends the session (committing, the same as
@@ -3636,16 +3763,42 @@ export class WhiteboardCanvas {
     this.canBuildContent =
       !this.interacting || sinceLastFrame <= FRAME_ON_TIME_MS
     this.drainQueues()
+    // Last: it draws the camera the world layer was just given, and the
+    // geometry the queues above have just finished changing.
+    this.overviewLayer?.render()
     this.rafId = this.context.getWindow().requestAnimationFrame(this.frame)
   }
 
   private recomputeVisibility(): void {
     if (this.parseFailed || !this.viewportEl) return
     const rect = this.worldViewportRect()
-    this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
+    this.updateOverviewState()
+    if (this.overview) {
+      // Two populations, one engine: groups keep their DOM at every tier
+      // (P4-D2) and are asked the ordinary question, cards are asked one they
+      // cannot answer yes to.
+      this.engine.recompute(this.groupNodes, rect, this.pinnedIds)
+      this.engine.recompute(this.cardNodes, UNREACHABLE_RECT, NO_PINS)
+    } else {
+      this.engine.recompute(this.board.nodes, rect, this.pinnedIds)
+    }
     // Edges answer to the same viewport, on the same tick (P4-2) — see
-    // edgeLayer.ts's `updateVisibility`.
-    this.edgeLayer.updateVisibility(rect, this.pinnedIds)
+    // edgeLayer.ts's `updateVisibility`. Not in the overview tier: there the
+    // edge DOM is out of the document altogether and the canvas is drawing
+    // them, so which of them the viewport covers is not a question worth
+    // asking — and asking it costs a style recalculation over three thousand
+    // elements per tick, which a `display: none` ancestor does not save (only
+    // layout is skipped for a hidden subtree, not style). Leaving the tier
+    // runs this again on the same tick, with the real rectangle.
+    if (!this.overview) this.edgeLayer.updateVisibility(rect, this.pinnedIds)
+    // Measured here, where the viewport has just been measured anyway, rather
+    // than by the overview layer on a frame that has already written the
+    // world's transform (see `setViewportSize`).
+    this.overviewLayer?.setViewportSize(
+      this.viewportEl.clientWidth,
+      this.viewportEl.clientHeight,
+    )
+    this.syncGroupLabelScale()
     this.updateDegradedState()
   }
 
@@ -3704,6 +3857,68 @@ export class WhiteboardCanvas {
     // than staying on screen offering what would be declined.
     this.toolbarController.refreshToolbar()
     this.refreshCardMenu()
+  }
+
+  /**
+   * Flips the overview tier, on the same tick and behind the same kind of
+   * hysteresis band as the degrade state above (P4-1).
+   *
+   * Below this threshold no card is mounted at all: the board is drawn by
+   * `overviewLayer` on one canvas, because what a card costs at this zoom is
+   * not what it contains but that it exists (see that module's doc comment).
+   * The world layer stays — it still holds the groups, the resize handles and
+   * the snap guides — and gets a class so the stylesheet can take the edge DOM
+   * out of the document, which the canvas is now drawing too.
+   *
+   * The parking pool is frozen for the length of the tier (P4-D5). Entering it
+   * unmounts every card, which the pool's ordinary rule reads as "nothing is
+   * mounted, so nothing should be parked" and answers by destroying exactly
+   * the cards the user is about to zoom back into. Zooming out to find a
+   * region and back in to work in it is one action, not two, and the far end
+   * of it must not be a screen rebuilding itself.
+   */
+  private updateOverviewState(): void {
+    const next = nextDegradedState(
+      this.cameraController.view.scale,
+      this.overview,
+      {
+        enter: OVERVIEW_SCALE_THRESHOLD,
+        restore: OVERVIEW_RESTORE_SCALE,
+      },
+    )
+    if (next === this.overview) return
+    this.overview = next
+    this.worldEl.classList.toggle(WORLD_OVERVIEW_CLASS, next)
+    this.overviewLayer?.setActive(next)
+    if (next) this.cardRenderer.freezeParkedCapacity()
+    else this.cardRenderer.unfreezeParkedCapacity()
+  }
+
+  /**
+   * Keeps a group's label readable in the overview tier.
+   *
+   * The label is drawn in world units like everything else in the world layer,
+   * so at 0.05 it is a third of a pixel of type — and the frames are the only
+   * landmarks left down there, which unreadable ones are not. Counter-scaled
+   * to a floor of ~12 screen pixels while the tier lasts, and handed back to
+   * the stylesheet on the way out, where the label is part of the drawing
+   * again.
+   *
+   * Not the world layer's `--yolo-whiteboard-zoom-multiplier` treatment: that
+   * law (1/sqrt) is for chrome that should still grow with the zoom, and this
+   * is a floor. Written on the few dozen label elements rather than as a
+   * custom property — see cardRenderer's `setGroupLabelFontSize`.
+   */
+  private syncGroupLabelScale(): void {
+    const { scale } = this.cameraController.view
+    this.cardRenderer.setGroupLabelFontSize(
+      this.overview
+        ? Math.max(
+            GROUP_LABEL_WORLD_FONT_PX,
+            OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX / scale,
+          )
+        : null,
+    )
   }
 
   private drainQueues(): void {
@@ -3986,6 +4201,7 @@ export class WhiteboardCanvas {
     this.forceCommitActiveEdit()
     this.interaction = null
     this.pendingPointerMove = null
+    this.setLiveNodeRects(null)
     this.snapGuideLayer?.clear()
     this.marqueeEl?.remove()
     this.marqueeEl = null
@@ -4002,9 +4218,14 @@ export class WhiteboardCanvas {
   private syncBoardIndex(): void {
     this.nodesById = new Map(this.board.nodes.map((node) => [node.id, node]))
     this.cardNodes = this.board.nodes.filter((node) => node.type !== 'group')
+    this.groupNodes = this.board.nodes.filter((node) => node.type === 'group')
     this.boardEdgesById = new Map(
       this.board.edges.map((edge) => [edge.id, edge]),
     )
+    // The overview tier draws from this index rather than from the DOM, so
+    // every board change is a redraw — this is the one place they all pass
+    // through.
+    this.overviewLayer?.markDirty()
   }
 
   // ---------------------------------------------------------------------
