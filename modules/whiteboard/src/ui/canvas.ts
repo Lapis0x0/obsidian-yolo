@@ -168,6 +168,7 @@ import {
   VIEWPORT_BUFFER_PX,
   WEB_URL_PATTERN,
 } from './constants'
+import { asElement, asNode } from './eventTarget'
 import { nextDegradedState } from './lod'
 import {
   PromptOverlay,
@@ -1479,8 +1480,8 @@ export class WhiteboardCanvas {
   private readonly onDragLeave = (e: DragEvent): void => {
     // Moving across a child element fires dragleave on the way out; only a
     // pointer that actually left the viewport should clear the hint.
-    const related = e.relatedTarget
-    if (related instanceof Node && this.viewportEl.contains(related)) return
+    const related = asNode(e.relatedTarget)
+    if (related !== null && this.viewportEl.contains(related)) return
     this.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
   }
 
@@ -1587,9 +1588,9 @@ export class WhiteboardCanvas {
    */
   private updateHover(e: PointerEvent): void {
     if (this.parseFailed) return
-    const target = e.target
+    const target = asElement(e.target)
     const onLayer =
-      target instanceof Element &&
+      target !== null &&
       target.closest(`.${INTERACTION_LAYER_CLASS}`) !== null
     this.setHoveredNode(onLayer ? this.hoveredNodeId : this.nodeIdAtPointer(e))
   }
@@ -1880,9 +1881,9 @@ export class WhiteboardCanvas {
   private resizeHandleFromEventTarget(
     target: EventTarget | null,
   ): ResizeHandle | null {
-    if (!(target instanceof Element)) return null
-    if (!target.classList.contains(RESIZER_CLASS)) return null
-    const handle = (target as HTMLElement).dataset.resize
+    const el = asElement(target)
+    if (!el?.classList.contains(RESIZER_CLASS)) return null
+    const handle = (el as HTMLElement).dataset.resize
     return RESIZE_HANDLES.find((candidate) => candidate === handle) ?? null
   }
 
@@ -2045,9 +2046,9 @@ export class WhiteboardCanvas {
   private connectionSideFromEventTarget(
     target: EventTarget | null,
   ): NodeSide | null {
-    if (!(target instanceof Element)) return null
-    if (!target.classList.contains(CONNECTION_POINT_CLASS)) return null
-    const side = (target as HTMLElement).dataset.side
+    const el = asElement(target)
+    if (!el?.classList.contains(CONNECTION_POINT_CLASS)) return null
+    const side = (el as HTMLElement).dataset.side
     return NODE_SIDES.find((candidate) => candidate === side) ?? null
   }
 
@@ -2055,14 +2056,15 @@ export class WhiteboardCanvas {
    * The label is part of the edge and answers as one: pressing it selects and
    * drags that edge, double-clicking it edits the label it already shows. */
   private edgeIdFromEventTarget(target: EventTarget | null): EdgeId | null {
-    if (!(target instanceof Element)) return null
+    const el = asElement(target)
     if (
-      !target.classList.contains(EDGE_HIT_CLASS) &&
-      !target.classList.contains(EDGE_LABEL_CLASS)
+      el === null ||
+      (!el.classList.contains(EDGE_HIT_CLASS) &&
+        !el.classList.contains(EDGE_LABEL_CLASS))
     ) {
       return null
     }
-    return (target as SVGElement | HTMLElement).dataset.edgeId ?? null
+    return (el as SVGElement | HTMLElement).dataset.edgeId ?? null
   }
 
   /** False when the card the layer was parked on is gone, so the caller can
@@ -3694,28 +3696,26 @@ export class WhiteboardCanvas {
    * (style.css's content-mask block).
    */
   private isLiveContentTarget(target: EventTarget | null): boolean {
-    return (
-      target instanceof Element &&
-      target.closest(`.${CARD_BODY_LIVE_CLASS}`) !== null
-    )
+    return asElement(target)?.closest(`.${CARD_BODY_LIVE_CLASS}`) != null
   }
 
   /** The group whose label this event landed on, or null for anything else. */
   private groupLabelIdFromEventTarget(
     target: EventTarget | null,
   ): NodeId | null {
-    if (!(target instanceof Element)) return null
-    if (!target.classList.contains(GROUP_LABEL_CLASS)) return null
-    return this.nodeIdFromEventTarget(target)
+    const el = asElement(target)
+    if (!el?.classList.contains(GROUP_LABEL_CLASS)) return null
+    return this.nodeIdFromEventTarget(el)
   }
 
   /** Matched on the data attribute rather than on a class, because both
    * kinds of mounted node carry it (a card and a group frame) and every
    * gesture that asks "which node is this" means either. */
   private nodeIdFromEventTarget(target: EventTarget | null): NodeId | null {
-    if (!(target instanceof Element)) return null
+    const el = asElement(target)
+    if (el === null) return null
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-type-assertion -- Element.closest()'s generic return type defaults to `Element` here (no type argument to infer it from); the assertion is required for `.dataset` below to type-check under tsc even though this lint rule's own type resolution disagrees.
-    const nodeEl = target.closest('[data-node-id]') as HTMLElement | null
+    const nodeEl = el.closest('[data-node-id]') as HTMLElement | null
     return nodeEl?.dataset.nodeId ?? null
   }
 

@@ -42,6 +42,7 @@ import { arrangeTargets } from '../../domain/groups'
 import { type ToolbarBounds, toolbarScreenPosition } from '../../domain/toolbar'
 import type { CanvasView } from '../../domain/virtualization'
 import { TOOLBAR_GAP_PX, TOOLBAR_MARGIN_PX } from '../constants'
+import { asNode } from '../eventTarget'
 import {
   SelectionToolbar,
   type ToolbarColorControl,
@@ -184,7 +185,8 @@ export class ToolbarController {
    * overlay — canvas.ts's gesture dispatch uses this to keep a press on this
    * chrome from also being a press on the board behind it. */
   isOverlayTarget(target: EventTarget | null): boolean {
-    return target instanceof Node && this.toolbar.contains(target)
+    const node = asNode(target)
+    return node !== null && this.toolbar.contains(node)
   }
 
   /** Dismisses the colour/arrow/arrange popover, the same way a press
