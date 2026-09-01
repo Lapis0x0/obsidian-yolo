@@ -662,6 +662,8 @@ export class WhiteboardCanvas {
 
   onResize(): void {
     if (this.parseFailed) return
+    // How far out the wheel may zoom is derived from the viewport's size.
+    this.cameraController.invalidateScaleFloor()
     this.recomputeVisibility()
     this.drainQueues()
     // The toolbar is clamped against the viewport's size, which just changed.
@@ -856,6 +858,7 @@ export class WhiteboardCanvas {
         },
         getSelectedNodes: () =>
           this.board.nodes.filter((node) => this.selectedIds.has(node.id)),
+        getAllNodes: () => this.board.nodes,
         commitCamera: (camera) => {
           const current = this.board.camera
           if (
@@ -1423,12 +1426,41 @@ export class WhiteboardCanvas {
     )
   }
 
+  /**
+   * Latest un-consumed pointermove of the gesture in flight, or null.
+   *
+   * A pointer reports at its own rate, not the display's: a 1000Hz mouse
+   * emits sixteen moves per 60Hz frame, and every one of them used to run a
+   * whole drag update — snapping over the on-screen candidates, a transform
+   * write per moved card, an edge redraw, the handle layer. Fifteen sixteenths
+   * of that work is overwritten before anything is painted.
+   *
+   * So a move now only records where the pointer is, and the rAF loop consumes
+   * the last one once per frame (`consumePointerMove`) — the same shape the
+   * camera glide already has, and the reason the glide could be driven from the
+   * frame loop in the first place: what a gesture means is a position, not a
+   * stream of deltas. Every `update*` method already computes its result from
+   * the gesture's start and the event's *absolute* position, so dropping the
+   * intermediate events changes nothing they would have produced.
+   */
+  private pendingPointerMove: PointerEvent | null = null
+
   private readonly onPointerMove = (e: PointerEvent): void => {
-    const interaction = this.interaction
-    if (!interaction) {
+    if (!this.interaction) {
       this.updateHover(e)
       return
     }
+    this.pendingPointerMove = e
+  }
+
+  /** Applies the latest pointer position to the gesture in flight. Called once
+   * per frame, and again from `onPointerUp` so the gesture's last position is
+   * never left unapplied when it commits. */
+  private consumePointerMove(): void {
+    const e = this.pendingPointerMove
+    this.pendingPointerMove = null
+    const interaction = this.interaction
+    if (!e || !interaction) return
     // A gesture that has actually moved takes the toolbar off screen until it
     // ends. A press that never moves leaves it alone, so clicking a card that
     // is already selected does not make its toolbar blink.
@@ -1560,6 +1592,9 @@ export class WhiteboardCanvas {
   }
 
   private readonly onPointerUp = (e: PointerEvent): void => {
+    // The frame that would have applied the gesture's last move may not have
+    // run yet; every commit below reads the board's live state, so it has to.
+    this.consumePointerMove()
     const interaction = this.interaction
     if (!interaction) return
     this.interaction = null
@@ -3582,6 +3617,10 @@ export class WhiteboardCanvas {
   // -----------------------------------------------------------------------
 
   private readonly frame = (now: number): void => {
+    // Before the camera glide: a drag reads the live camera to convert its
+    // screen delta, and the position the pointer reported belongs to the
+    // camera the user was looking at when they reported it.
+    this.consumePointerMove()
     this.cameraController.advanceCameraGlide(now)
     if (now - this.lastRecomputeTime > RECOMPUTE_INTERVAL_MS) {
       this.recomputeVisibility()
@@ -3930,6 +3969,7 @@ export class WhiteboardCanvas {
   private teardownAllCards(): void {
     this.forceCommitActiveEdit()
     this.interaction = null
+    this.pendingPointerMove = null
     this.snapGuideLayer?.clear()
     this.marqueeEl?.remove()
     this.marqueeEl = null

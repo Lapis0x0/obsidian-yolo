@@ -5,8 +5,25 @@
 // domain data — kept out of domain/ per that layer's zero-dependency
 // contract (it doesn't need these; only src/ui/canvas.ts's rAF loop does).
 
-/** Camera scale clamp range. */
+/** Camera scale clamp range. `min` is the floor for a board that fits inside
+ * it; a board too big to fit gets a lower one — see MIN_SCALE_FIT_MARGIN. */
 export const SCALE_BOUNDS = Object.freeze({ min: 0.08, max: 2.5 })
+
+/**
+ * How far past "the whole board fits" the wheel may zoom out, as a fraction of
+ * the fit scale — so a board that needs 0.04 to fit can be wheeled down to
+ * 0.036 and shows a margin of empty canvas around itself rather than stopping
+ * with its edges flush against the viewport.
+ *
+ * The floor is `min(SCALE_BOUNDS.min, fitScale * this)`: it only ever *lowers*
+ * the fixed floor, so every board that already fits at 0.08 behaves exactly as
+ * before, and only a board that does not gains the room to be seen whole. That
+ * asymmetry is the point — 0.08 is a legibility floor for a board you are
+ * working in, not a statement about boards larger than it was chosen for
+ * (fit-to-all already ignores it entirely; see domain/camera.ts's
+ * fitViewToBounds). See cameraController.ts's `zoomScaleBounds`.
+ */
+export const MIN_SCALE_FIT_MARGIN = 0.9
 
 /** Wheel delta that doubles the zoom. 300 is Obsidian Canvas's own figure,
  * measured by driving its canvas with wheel events of four different sizes

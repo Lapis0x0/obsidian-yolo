@@ -26,7 +26,7 @@ import {
   viewFromCamera,
   viewSettled,
 } from '../../domain/camera'
-import type { ScreenPoint } from '../../domain/camera'
+import type { ScaleBounds, ScreenPoint } from '../../domain/camera'
 import { DEFAULT_CAMERA, type BoardNode, type Camera } from '../../domain/fileFormat'
 import type { CanvasView } from '../../domain/virtualization'
 import {
@@ -38,6 +38,7 @@ import {
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
   INTERACTING_CLASS_TIMEOUT_MS,
+  MIN_SCALE_FIT_MARGIN,
   SCALE_BOUNDS,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
 } from '../constants'
@@ -64,6 +65,10 @@ export type CameraControllerCallbacks = Readonly<{
   positionToolbar: () => void
   setInteracting: (interacting: boolean) => void
   getSelectedNodes: () => readonly BoardNode[]
+  /** Every node on the board — what the zoom-out floor is derived from (see
+   * `zoomScaleBounds`). The array's identity is the cache key, which works
+   * because every board mutation replaces it (domain/operations.ts). */
+  getAllNodes: () => readonly BoardNode[]
   /** Folds a settled/target camera into the board and persists it, iff it
    * actually changed — the comparison and the write both touch `board`,
    * which this class does not own. */
@@ -110,6 +115,14 @@ export class CameraController {
    * `transform` every frame) doesn't invalidate everything computed from
    * it. */
   private appliedZoomScale: number | null = null
+
+  /** Memoised zoom-out floor, keyed on the node array it was derived from —
+   * see `zoomScaleBounds`. Also dropped on resize (`invalidateScaleFloor`),
+   * which the node array cannot report. */
+  private scaleFloor: Readonly<{
+    nodes: readonly BoardNode[]
+    value: number
+  }> | null = null
 
   constructor(
     private readonly context: YoloModuleHostFileViewContextV1,
@@ -179,7 +192,7 @@ export class CameraController {
       glide?.kind === 'anchored' ? glide.targetScale : this.viewValue.scale,
       deltaY,
       WHEEL_DELTA_PER_ZOOM_DOUBLING,
-      SCALE_BOUNDS,
+      this.zoomScaleBounds(),
     )
     const anchor = {
       screen: cursor,
@@ -261,6 +274,44 @@ export class CameraController {
     // `applyZoomScale`.
     this.applyZoomScale()
     this.scheduleCameraSettle()
+  }
+
+  /**
+   * The range interactive zoom is clamped to, which is `SCALE_BOUNDS` for
+   * every board that fits inside it and a lower floor for one that does not
+   * (constants.ts's MIN_SCALE_FIT_MARGIN).
+   *
+   * A fixed 0.08 floor is a legibility limit chosen for a board you are
+   * working in; on a board too wide to fit at that scale it becomes something
+   * else — a rule that the board may never be seen whole by hand. Fit-to-all
+   * has always been exempt (domain/camera.ts's fitViewToBounds); this gives
+   * the wheel the same reach, and no more.
+   *
+   * Memoised on the node array rather than recomputed per wheel event: the
+   * viewport size is a layout read, and a zoom gesture arrives as a stream of
+   * events on frames whose layout is already dirty from the transform the last
+   * one wrote. Board mutations replace the array and so invalidate it for free;
+   * a resize does not, and calls `invalidateScaleFloor` instead.
+   */
+  private zoomScaleBounds(): ScaleBounds {
+    const nodes = this.callbacks.getAllNodes()
+    if (this.scaleFloor?.nodes !== nodes) {
+      this.scaleFloor = { nodes, value: this.computeScaleFloor(nodes) }
+    }
+    const min = this.scaleFloor.value
+    return min < SCALE_BOUNDS.min ? { min, max: SCALE_BOUNDS.max } : SCALE_BOUNDS
+  }
+
+  private computeScaleFloor(nodes: readonly BoardNode[]): number {
+    const fit = this.fitViewFor(nodes)
+    if (!fit) return SCALE_BOUNDS.min
+    return Math.min(SCALE_BOUNDS.min, fit.scale * MIN_SCALE_FIT_MARGIN)
+  }
+
+  /** Drops the memoised floor — for the one input it is derived from that the
+   * node array cannot report having changed (canvas.ts's `onResize`). */
+  invalidateScaleFloor(): void {
+    this.scaleFloor = null
   }
 
   /** Resolved per gesture rather than cached: the setting can change while a
@@ -447,6 +498,17 @@ export class CameraController {
     nodes: readonly BoardNode[],
     options?: Readonly<{ immediate?: boolean }>,
   ): boolean {
+    const target = this.fitViewFor(nodes)
+    if (!target) return false
+    this.moveCameraTo(target, options)
+    return true
+  }
+
+  /** The view that frames `nodes`, or null when there are none — shared by the
+   * fit gestures and by the zoom-out floor they define (`zoomScaleBounds`), so
+   * "zoomed out as far as the wheel goes" and "fit to all" cannot drift into
+   * meaning different amounts of board. */
+  private fitViewFor(nodes: readonly BoardNode[]): CanvasView | null {
     const bounds = unionRect(
       nodes.map((node) => ({
         x: node.x,
@@ -455,16 +517,14 @@ export class CameraController {
         h: node.h,
       })),
     )
-    if (!bounds) return false
+    if (!bounds) return null
     const rect = this.viewportEl.getBoundingClientRect()
-    const target = fitViewToBounds(
+    return fitViewToBounds(
       bounds,
       { width: rect.width, height: rect.height },
       FIT_CAMERA_PADDING_PX,
       SCALE_BOUNDS,
     )
-    this.moveCameraTo(target, options)
-    return true
   }
 
   /**
