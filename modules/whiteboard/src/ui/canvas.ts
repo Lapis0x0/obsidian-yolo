@@ -147,6 +147,7 @@ import {
   DROP_STAGGER_PX,
   EDGE_HIDDEN_CLASS,
   EDGE_HIT_CLASS,
+  EDGE_HIT_STROKE_WORLD_PX,
   EDGE_LABEL_CLASS,
   EDIT_PERSIST_THROTTLE_MS,
   FRAME_ON_TIME_MS,
@@ -158,7 +159,6 @@ import {
   MOUNT_QUOTA_PER_FRAME,
   NEW_CARD_SIZE,
   NEW_EMBED_CARD_SIZE,
-  OVERVIEW_EDGE_HIT_SCREEN_PX,
   OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX,
   OVERVIEW_RESTORE_SCALE,
   OVERVIEW_SCALE_THRESHOLD,
@@ -1657,10 +1657,12 @@ export class WhiteboardCanvas {
    * on a canvas with no element to hit, so the press is measured against the
    * geometry the canvas drew from (domain/edges.ts's `edgeAtPoint`).
    *
-   * The tolerance is stated in screen pixels and converted, so how close you
-   * have to be to a line stays what it looks like rather than shrinking with
-   * the zoom — which is the whole difficulty of pointing at anything down
-   * there.
+   * The tolerance is the DOM tiers' own: half of their transparent hit
+   * stroke, under the same 1/sqrt(scale) counter-scale the stylesheet gives
+   * it. Aiming at a line is therefore exactly as forgiving here as it is one
+   * tier up — and no more, which matters on a board of a few thousand edges,
+   * where a generous tolerance would leave the empty space a marquee starts
+   * in belonging to whichever line ran nearest.
    *
    * Only the press path asks this. A double-click on an edge in this tier
    * would open its label, which the tier does not draw and the stylesheet has
@@ -1674,7 +1676,9 @@ export class WhiteboardCanvas {
       this.board.edges,
       this.nodesById,
       this.worldPointFromEvent(e),
-      OVERVIEW_EDGE_HIT_SCREEN_PX / this.cameraController.view.scale,
+      EDGE_HIT_STROKE_WORLD_PX /
+        2 /
+        Math.sqrt(this.cameraController.view.scale),
     )
   }
 
