@@ -1,4 +1,11 @@
-import { App, type EventRef, TFile, TFolder, normalizePath } from 'obsidian'
+import {
+  App,
+  type EventRef,
+  TFile,
+  TFolder,
+  getLinkpath,
+  normalizePath,
+} from 'obsidian'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import type {
@@ -108,6 +115,7 @@ const UNAVAILABLE_MODULE_VAULT_API: YoloModuleVaultV1 = Object.freeze({
   readText: () => Promise.reject(new Error('Module vault is unavailable')),
   readBinary: () => Promise.reject(new Error('Module vault is unavailable')),
   getResourceUrl: () => unavailable(),
+  resolveLink: () => unavailable(),
   ensureFolder: () => Promise.reject(new Error('Module vault is unavailable')),
   createFolder: () => Promise.reject(new Error('Module vault is unavailable')),
   createText: () => Promise.reject(new Error('Module vault is unavailable')),
@@ -308,6 +316,21 @@ function createObsidianModuleVaultCapability({
       return app.vault.adapter.getResourcePath(
         normalizeModuleVaultPath(filePath),
       )
+    },
+    resolveLink: (linktext, sourcePath) => {
+      assertAvailable()
+      if (typeof linktext !== 'string' || linktext.trim().length === 0) {
+        return null
+      }
+      // `getLinkpath` drops the `#heading`/`^block` tail: the subpath picks a
+      // place *within* the file and says nothing about which file. Obsidian's
+      // own link resolution takes the same two arguments in the same order,
+      // so a module's answer and a note's answer cannot drift apart.
+      const file = app.metadataCache.getFirstLinkpathDest(
+        getLinkpath(linktext),
+        normalizeModuleVaultPath(sourcePath),
+      )
+      return file ? describeFile(file) : null
     },
     ensureFolder: async (folderPath) => {
       assertAvailable()

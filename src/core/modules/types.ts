@@ -598,6 +598,25 @@ export type YoloModuleVaultV1 = {
    * usual path validation applies (vault-relative, no dot segments).
    */
   getResourceUrl(filePath: string): string
+  /**
+   * The file a wiki link names, read the way Obsidian reads it: `linktext` is
+   * what stands between the brackets (a bare name, a partial path, with or
+   * without an extension, with or without a `#heading` after it), and it is
+   * resolved against `sourcePath` — the document the link is written in — by
+   * the same shortest-path rules the editor's autocomplete uses.
+   *
+   * Null means the link points at nothing, which is a real answer and the
+   * reason this exists: a module rendering Markdown itself has the markup for
+   * a link but not a view's knowledge of whether it leads anywhere, and an
+   * unresolved link that is not shown as unresolved is a lie about the vault.
+   *
+   * Synchronous, off Obsidian's own link index. Nothing is created, opened,
+   * or read.
+   */
+  resolveLink(
+    linktext: string,
+    sourcePath: string,
+  ): YoloModuleVaultFileV1 | null
   ensureFolder(folderPath: string): Promise<void>
   createFolder(folderPath: string): Promise<void>
   createText(

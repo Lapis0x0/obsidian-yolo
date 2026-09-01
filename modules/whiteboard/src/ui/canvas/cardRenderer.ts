@@ -842,13 +842,51 @@ export class CardRenderer {
       return
     }
     runtime.contentRenderer = renderer
-    void renderer.render(wanted, sizer, sourcePath).catch((error: unknown) => {
-      // A render that lost its card was cancelled, not failed: `unload()`
-      // rejects whatever was in flight, and the card has already been torn
-      // down or re-rendered by whoever called it.
-      if (runtime.contentRenderer !== renderer) return
-      this.callbacks.reportError('markdown render', error)
-    })
+    void renderer
+      .render(wanted, sizer, sourcePath)
+      .then(() => {
+        if (runtime.contentRenderer !== renderer) return
+        this.markUnresolvedLinks(sizer, sourcePath)
+      })
+      .catch((error: unknown) => {
+        // A render that lost its card was cancelled, not failed: `unload()`
+        // rejects whatever was in flight, and the card has already been torn
+        // down or re-rendered by whoever called it.
+        if (runtime.contentRenderer !== renderer) return
+        this.callbacks.reportError('markdown render', error)
+      })
+  }
+
+  /**
+   * Colours the links that lead nowhere.
+   *
+   * `MarkdownRenderer.render` produces a view's *markup* but not a view's
+   * knowledge: it writes every wiki link as a resolved one, because whether a
+   * link resolves is a question about the vault and the one-pass renderer was
+   * never given the vault to ask. A card showing a broken link exactly as it
+   * shows a working one is telling the reader something false about their
+   * notes. What `is-unresolved` then looks like is the theme's business —
+   * dimmed, recoloured, or both.
+   *
+   * Only this path needs it — the focused card's windowed preview is a real
+   * view and does this itself. Costs one query over a card's worth of links
+   * and an index lookup each; no layout is read, so it can run straight after
+   * the render rather than waiting for a frame.
+   */
+  private markUnresolvedLinks(root: HTMLElement, sourcePath: string): void {
+    const links = root.querySelectorAll<HTMLElement>('a.internal-link')
+    for (const link of Array.from(links)) {
+      const linktext = link.getAttribute('data-href') ?? link.textContent
+      if (!linktext) continue
+      try {
+        if (this.host.vault.resolveLink(linktext, sourcePath)) continue
+      } catch {
+        // The vault answers for as long as the module is active; if it has
+        // stopped, this card is on its way out and its colours do not matter.
+        return
+      }
+      link.classList.add('is-unresolved')
+    }
   }
 
   /**
