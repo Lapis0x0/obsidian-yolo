@@ -399,7 +399,16 @@ export type YoloModuleMarkdownContentViewV1 = {
    * carries the reading position over by passing this number along.
    */
   getScrollLine(): number
-  scrollToLine(line: number): void
+  /**
+   * `onSettled` runs when the view is actually showing that line, which is
+   * not when this returns: a preview that has not rendered yet has no
+   * measured sections to find the line among, so it stays where it is and
+   * moves once the render lands, a frame or several later. A module mounting
+   * a view that should open part-way down has to keep something over that
+   * gap — otherwise the view paints the top of the document first — and this
+   * is how it knows the gap is over.
+   */
+  scrollToLine(line: number, onSettled?: () => void): void
   destroy(): void
 }
 
@@ -433,7 +442,12 @@ export type YoloModuleMarkdownEditorV1 = {
   hasFocus(): boolean
   /** The same fractional source line as `YoloModuleMarkdownContentViewV1`. */
   getScrollLine(): number
-  scrollToLine(line: number): void
+  /**
+   * Opens the editor on `line`: puts it at the top of the view *and* the caret
+   * on it. The caret is half of it — left where a fresh editor puts it, at the
+   * start of the document, the first keystroke scrolls the view back there.
+   */
+  openAtLine(line: number): void
   destroy(): void
 }
 

@@ -44,13 +44,16 @@ import { getNodeWindow } from '../../utils/dom/window-context'
  * a line before its first render simply stays where it is. Obsidian's own
  * answer to that is this method — it tries, and on failure retries when the
  * render lands. Every scroll this file applies arrives on a preview that was
- * built a moment ago, so the plain one would be wrong every time.
+ * built a moment ago, so the plain one would be wrong every time. Its third
+ * argument is called on both paths, and is the only way to know which one was
+ * taken; the second is the highlight/centre options Obsidian passes for a
+ * scroll that came from a search hit, and nothing here wants them.
  */
 type ObsidianMarkdownPreviewRenderer = {
   set(text: string): void
   onResize(): void
   getScroll(): number
-  applyScrollDelayed(line: number): void
+  applyScrollDelayed(line: number, options?: unknown, onDone?: () => void): void
 }
 
 /**
@@ -90,7 +93,7 @@ export type ObsidianMarkdownContentViewOptions = {
 export type ObsidianMarkdownContentViewHandle = {
   setValue(text: string): void
   getScrollLine(): number
-  scrollToLine(line: number): void
+  scrollToLine(line: number, onSettled?: () => void): void
   destroy(): void
 }
 
@@ -283,9 +286,13 @@ export function createObsidianMarkdownContentView(
       instance.renderer.set(text)
     },
     getScrollLine: () => (destroyed ? 0 : instance.renderer.getScroll()),
-    scrollToLine: (line: number) => {
+    scrollToLine: (line: number, onSettled?: () => void) => {
       if (destroyed) return
-      instance.renderer.applyScrollDelayed(line)
+      instance.renderer.applyScrollDelayed(line, undefined, () => {
+        // A view destroyed while the render it was waiting on was still in
+        // flight is not a view that arrived anywhere.
+        if (!destroyed) onSettled?.()
+      })
     },
     destroy: () => {
       if (destroyed) return

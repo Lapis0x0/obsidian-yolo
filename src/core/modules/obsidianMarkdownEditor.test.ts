@@ -57,8 +57,12 @@ describe('assertMarkdownEditorInstance', () => {
     destroy: jest.fn(),
     getScroll: jest.fn(),
     applyScroll: jest.fn(),
-    cm: { hasFocus: false, focus: jest.fn(), contentDOM: {} },
-    editor: { getValue: jest.fn(), setValue: jest.fn() },
+    cm: {
+      hasFocus: false,
+      focus: jest.fn(),
+      contentDOM: {},
+    },
+    editor: { getValue: jest.fn(), setValue: jest.fn(), setCursor: jest.fn() },
   })
 
   it('accepts an instance carrying every member the host drives', () => {

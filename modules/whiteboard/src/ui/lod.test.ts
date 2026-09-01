@@ -6,7 +6,12 @@ import type {
 } from '../domain/fileFormat'
 
 import { OVERVIEW_RESTORE_SCALE, OVERVIEW_SCALE_THRESHOLD } from './constants'
-import { cardMarkdownWindow, nextOverviewState, nodeTitleText } from './lod'
+import {
+  blockStartLine,
+  cardMarkdownWindow,
+  nextOverviewState,
+  nodeTitleText,
+} from './lod'
 
 describe('nextOverviewState', () => {
   const band = { enter: 0.35, restore: 0.42 }
@@ -202,5 +207,57 @@ describe('cardMarkdownWindow', () => {
 
   it('ignores a window past the end of the note', () => {
     expect(cardMarkdownWindow('alpha\n\nbeta', 200, 999)).toBe('beta')
+  })
+})
+
+// The quantum a reading window moves in. Applied where the window is written
+// (canvas.ts's `boardWithSnappedWindow`) so that the card's clipped render and
+// its scrollable preview are asked for the same place.
+describe('blockStartLine', () => {
+  const markdown = [
+    '# title', // 0
+    '', // 1
+    'first paragraph', // 2
+    'still the first', // 3
+    '', // 4
+    '```js', // 5
+    'const a = 1', // 6
+    '', // 7
+    '```', // 8
+    '', // 9
+    'last paragraph', // 10
+  ].join('\n')
+
+  it('backs up to where the block the line is in starts', () => {
+    expect(blockStartLine(markdown, 3)).toBe(2)
+    expect(blockStartLine(markdown, 10)).toBe(10)
+  })
+
+  it('never lands inside a fence, blank line or not', () => {
+    expect(blockStartLine(markdown, 6)).toBe(5)
+    expect(blockStartLine(markdown, 7)).toBe(5)
+    expect(blockStartLine(markdown, 8)).toBe(5)
+  })
+
+  it('is idempotent — a window already snapped stays put', () => {
+    for (let line = 0; line <= 10; line += 1) {
+      const snapped = blockStartLine(markdown, line)
+      expect(blockStartLine(markdown, snapped)).toBe(snapped)
+    }
+  })
+
+  it('drops the fraction a scroll position carries', () => {
+    expect(blockStartLine(markdown, 3.75)).toBe(2)
+  })
+
+  it('answers the top for the top, and for nothing sensible', () => {
+    expect(blockStartLine(markdown, 0)).toBe(0)
+    expect(blockStartLine(markdown, 1)).toBe(0)
+    expect(blockStartLine(markdown, -4)).toBe(0)
+    expect(blockStartLine(markdown, Number.NaN)).toBe(0)
+  })
+
+  it('clamps a line past the end of the note to its last block', () => {
+    expect(blockStartLine(markdown, 999)).toBe(10)
   })
 })

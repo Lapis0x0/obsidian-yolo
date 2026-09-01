@@ -171,7 +171,7 @@ import {
   WEB_URL_PATTERN,
 } from './constants'
 import { asElement, asNode } from './eventTarget'
-import { nextOverviewState } from './lod'
+import { blockStartLine, nextOverviewState } from './lod'
 import {
   PromptOverlay,
   type PromptOverlayOptions,
@@ -262,6 +262,9 @@ type EditingState = {
   /** Pending throttled write of what is currently in the editor; see
    * `scheduleEditPersist`. */
   persistTimer: number | null
+  /** Whether the user has scrolled this editor — see `claimEditorWheel`, and
+   * `finishEdit` for what it decides. */
+  userScrolled: boolean
 }
 
 // -- pointer interaction state --------------------------------------------
@@ -740,7 +743,7 @@ export class WhiteboardCanvas {
     if (this.focusedNodeId !== null) {
       const line = this.cardRenderer.getContentScrollLine(this.focusedNodeId)
       if (line !== null) {
-        board = boardWithReadingWindow(board, this.focusedNodeId, line)
+        board = this.boardWithSnappedWindow(board, this.focusedNodeId, line)
       }
     }
     if (this.editing) {
@@ -972,9 +975,24 @@ export class WhiteboardCanvas {
       [edgesSvg, edgeLabels],
       {
         isParseFailed: () => this.parseFailed,
-        isEditingWheelTarget: (target) =>
-          this.editing !== null &&
-          this.nodeIdFromEventTarget(target) === this.editing.nodeId,
+        claimEditorWheel: (target) => {
+          if (
+            this.editing === null ||
+            this.nodeIdFromEventTarget(target) !== this.editing.nodeId
+          ) {
+            return false
+          }
+          // The wheel is about to scroll the editor, and there is no other
+          // way that surface moves under a user's hand. Recorded here rather
+          // than compared afterwards: at rest the editor and the reading
+          // surface behind it disagree by about a block, so no comparison of
+          // the two can tell "the user moved" from "they never agreed" —
+          // measured, and paying that difference on every crossing walks a
+          // card up its note. What the user did is the only signal that is
+          // not already noise.
+          this.editing.userScrolled = true
+          return true
+        },
         scrollFocusedCardBy: (target, deltaX, deltaY) =>
           this.focusedNodeId !== null &&
           this.nodeIdFromEventTarget(target) === this.focusedNodeId &&
@@ -2649,11 +2667,50 @@ export class WhiteboardCanvas {
   private commitReadingWindow(id: NodeId): void {
     const line = this.cardRenderer.getContentScrollLine(id)
     if (line === null) return
-    const next = boardWithReadingWindow(this.board, id, line)
+    const next = this.boardWithSnappedWindow(this.board, id, line)
     if (next === this.board) return
     this.board = next
     this.syncBoardIndex()
     this.context.requestSave()
+  }
+
+  /**
+   * Puts a reading window on a card, snapped to where a block starts.
+   *
+   * Snapped here, at the one moment it is written, because the card's surfaces
+   * cannot all honour an arbitrary line. The scrollable preview and the editor
+   * can begin mid block — they have a scroll offset to hide the top of one
+   * with — but a card that is not selected is a clipped one-pass render of
+   * just the slice it can show, and a slice can only begin flush at a block.
+   * Snapping there instead would leave that card sitting a block away from
+   * what the same card shows the moment it is selected. One quantum, one
+   * place: what is stored is already a block start, so every surface reads the
+   * same number and lands in the same spot.
+   */
+  private boardWithSnappedWindow(
+    board: Board,
+    id: NodeId,
+    line: number,
+  ): Board {
+    if (!Number.isFinite(line)) return board
+    const markdown = this.cardMarkdown(id)
+    return boardWithReadingWindow(
+      board,
+      id,
+      markdown === null ? line : blockStartLine(markdown, line),
+    )
+  }
+
+  /** The source a card is showing: a text card's lives in the board, a note
+   * card's in the file, kept by whatever last read it. Null when the card has
+   * no markdown behind it, or has not read it yet — in which case it cannot
+   * have been scrolled either. */
+  private cardMarkdown(id: NodeId): string | null {
+    const node = this.nodesById.get(id)
+    if (!node) return null
+    if (node.type === 'text') return node.text
+    if (node.type !== 'file') return null
+    return this.cardRenderer.getRuntime(id)?.noteText ?? null
   }
 
   private applyBoardChange(next: Board, historyKey?: string): void {
@@ -4252,10 +4309,38 @@ export class WhiteboardCanvas {
     // Enter and Escape from the editor — the keys they mean most.
     this.clearSelection()
 
+    // Where the editor opens, read before anything below has touched the card.
+    //
+    // Asked of the reading surface the editor is about to go over, and only of
+    // the node when there is none — a card edited straight out of a clipped
+    // render has no finer position to offer. What the node carries is snapped
+    // to a block start, because a clipped card cannot begin mid block; the
+    // surface the user is looking at is not, and opening the editor on the
+    // node's number would step the card back to the top of whatever block the
+    // reader's top edge was inside.
+    //
+    // The node is re-read here rather than taken from `node` above: clearing
+    // the selection is what commits where the card was being read, and a board
+    // is structurally shared — that commit leaves a *new* node object behind,
+    // so the one this method opened with still carries the window before this
+    // reading.
+    const current = this.nodesById.get(id)
+    const nodeLine =
+      current && (current.type === 'text' || current.type === 'file')
+        ? (current.startLine ?? 0)
+        : 0
+    const startLine = this.cardRenderer.getContentScrollLine(id) ?? nodeLine
+
     const initialText =
       node.type === 'text' ? node.text : (runtime.noteText ?? '')
-    this.cardRenderer.destroyCardContent(runtime)
-    runtime.bodyEl.replaceChildren()
+    // The reading surface stays where it is, holding the card's scroll
+    // position, and the class below takes it out of the way (style.css). Only
+    // a body holding something an editor cannot sit over — a placeholder, an
+    // image, a web frame — is cleared first.
+    if (runtime.contentView === null) {
+      this.cardRenderer.destroyCardContent(runtime)
+      runtime.bodyEl.replaceChildren()
+    }
     runtime.el?.classList.add(CARD_EDITING_CLASS)
     runtime.bodyEl.classList.add(EDITOR_HOST_CLASS)
     this.pinnedIds.add(id)
@@ -4286,14 +4371,12 @@ export class WhiteboardCanvas {
       scopeDisposer,
       historyKey: `edit-${this.nextEditSessionId()}`,
       persistTimer: null,
+      userScrolled: false,
     }
     editor.focus()
-    // Open on the card's window, not at the top of the note. The window is a
-    // source line and the editor takes the same coordinate, so nothing is
-    // mapped between the two surfaces.
-    const startLine =
-      node.type === 'text' || node.type === 'file' ? (node.startLine ?? 0) : 0
-    if (startLine) editor.scrollToLine(startLine)
+    // Open on the card's window rather than at the top of the note. Both
+    // surfaces speak in source lines, so nothing is mapped between them.
+    if (startLine > 0) editor.openAtLine(startLine)
   }
 
   /**
@@ -4349,14 +4432,22 @@ export class WhiteboardCanvas {
     }
     editing.scopeDisposer()
 
-    // The other half of `enterEditMode`: the line the editor was left on
-    // becomes the card's window, so what the card shows is where the work was
-    // just done. Before `destroy()`, which is what makes the editor unable to
+    // Where the card is now — but only if the user moved the editor. Scrolling
+    // it is them saying where they are: reading on and stopping somewhere is
+    // the whole point of a card that scrolls, and sending them back on the way
+    // out would answer that with nothing. An editor the user never scrolled
+    // says nothing at all, and the reading surface waiting behind it already
+    // holds the right place; taking the editor's word for it there would pay
+    // the two surfaces' standing disagreement — about a block — on every
+    // crossing, which walks a card up its note (measured: three idle round
+    // trips, ~350px each).
+    //
+    // Read before `destroy()`, which is what makes the editor unable to
     // answer.
-    const line = editing.editor.getScrollLine()
-    const board = Number.isFinite(line)
-      ? boardWithReadingWindow(this.board, id, line)
-      : this.board
+    const line = editing.userScrolled
+      ? editing.editor.getScrollLine()
+      : Number.NaN
+    const board = this.boardWithSnappedWindow(this.board, id, line)
     if (board !== this.board) {
       this.board = board
       this.syncBoardIndex()
@@ -4373,6 +4464,8 @@ export class WhiteboardCanvas {
     // session's history key — the whole session is one step to undo.
     this.commitCardText(id, text, editing.historyKey)
     void this.cardRenderer.renderCardPreview(id)
+    // The reading surface comes out of hiding where the editor left off.
+    if (line > 0) runtime?.contentView?.scrollToLine(line)
     // Leaving the editor lands on the card, not on nothing: Escape steps
     // out to the selected card and only a second Escape clears it. A blur
     // caused by pressing somewhere else is overwritten by whatever that

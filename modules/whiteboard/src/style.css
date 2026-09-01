@@ -695,6 +695,47 @@
   /* The card no longer clips, so the box that fills it has to. */
   border-radius: inherit;
   font-size: 13px;
+  /* Containing block for the reading preview while an editor is over it. */
+  position: relative;
+}
+
+/* The reading surface while the card is being edited.
+ *
+ * Kept, not torn down. Where a card is being read is a scroll position on this
+ * element, and this element is the only place that position exists — destroy
+ * it and coming back means reconstructing the reader's place from a source
+ * line, across two renderings that lay the same line out at different heights.
+ * Obsidian's own Canvas keeps it too (measured 2026-09-02: the preview's
+ * `scrollTop` is untouched across an edit, and the card comes back exactly
+ * where it left).
+ *
+ * Out of flow, so the editor is the body's only laid-out child and fills it
+ * the way it did before; `visibility` rather than `display`, because an
+ * element with no layout box has no scroll position either — which is the one
+ * thing it is being kept for. */
+.yolo-whiteboard-editor-host .markdown-preview-view {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+}
+
+/* While a card hands its body over, whatever comes after the render on its way
+ * out is not ready to be seen (CARD_HANDOFF_CLASS): the incoming preview is
+ * mounted but still at the top of the note, and reaches the card's reading
+ * window a frame or more later.
+ *
+ * Hidden rather than covered. A preview draws no background of its own, so an
+ * outgoing render laid over an incoming one leaves both sets of text visible
+ * at once — measured, and exactly what a person sees as the card flickering.
+ * Giving it a background instead would mean naming the card's own, which is
+ * the card's business and a custom node colour's. So the outgoing render just
+ * stays where it is, in flow, and the incoming one waits its turn.
+ *
+ * `visibility` and not `display`, because a box with no layout is a preview
+ * that cannot measure the sections it has to scroll through — it would never
+ * settle, and the handover would never end. */
+.yolo-whiteboard-card-body > .yolo-whiteboard-card-handoff ~ * {
+  visibility: hidden;
 }
 
 /* Content mask (p3-canvas-parity D7). Until a card is opened for editing,
@@ -829,7 +870,11 @@
   overflow: hidden;
 }
 
-.yolo-whiteboard-card-body-scrolls .markdown-preview-view {
+/* Never the render on its way out: it holds a slice, not the document, and a
+ * scrollbar appearing on it for the frames a handover lasts is one more thing
+ * moving in a card that should look still. */
+.yolo-whiteboard-card-body-scrolls
+  .markdown-preview-view:not(.yolo-whiteboard-card-handoff) {
   overflow: auto;
 }
 

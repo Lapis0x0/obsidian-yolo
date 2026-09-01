@@ -41,6 +41,12 @@ type ObsidianMarkdownEditorInstance = {
   editor: {
     getValue(): string
     setValue(value: string): void
+    /**
+     * Where the insertion point is. Obsidian's own `Editor`, in the document's
+     * line/column coordinates — the same lines `getScroll` and `applyScroll`
+     * speak in.
+     */
+    setCursor(pos: { line: number; ch: number }): void
   }
 }
 
@@ -93,7 +99,7 @@ export type ObsidianMarkdownEditorHandle = {
   blur(): void
   hasFocus(): boolean
   getScrollLine(): number
-  scrollToLine(line: number): void
+  openAtLine(line: number): void
   destroy(): void
 }
 
@@ -182,7 +188,11 @@ export function assertMarkdownEditorInstance(
       'the editor instance exposes no CodeMirror view',
     )
   }
-  if (!value.editor || typeof value.editor.getValue !== 'function') {
+  if (
+    !value.editor ||
+    typeof value.editor.getValue !== 'function' ||
+    typeof value.editor.setCursor !== 'function'
+  ) {
     throw new ObsidianMarkdownEditorUnavailableError(
       'the editor instance exposes no editor interface',
     )
@@ -280,8 +290,31 @@ export function createObsidianMarkdownEditor(
     syncScroll: () => undefined,
   }
 
-  const instance = new EditorClass(app, options.container, owner)
-  assertMarkdownEditorInstance(instance)
+  // Obsidian's component builds its own `.markdown-source-view` inside
+  // whatever container it is handed, and its `destroy()` tears down
+  // CodeMirror without taking that element away again. Mounted straight into
+  // the caller's container, every editor this function ever built would stay
+  // behind as a full-height empty box — so it gets a wrapper of its own to be
+  // removed by, and `destroy()` leaves the container as it found it.
+  //
+  // Box-less (`display: contents`), so the component's own layout still
+  // resolves against the caller's container exactly as it did when it was
+  // mounted there directly. Appended before construction, not after:
+  // CodeMirror measures itself as it is built, and a detached container has
+  // no size to measure.
+  const hostEl = options.container.ownerDocument.createElement('div')
+  hostEl.className = 'yolo-markdown-editor'
+  hostEl.setCssProps({ display: 'contents' })
+  options.container.appendChild(hostEl)
+
+  let instance: ObsidianMarkdownEditorInstance
+  try {
+    instance = new EditorClass(app, hostEl, owner)
+    assertMarkdownEditorInstance(instance)
+  } catch (error) {
+    hostEl.remove()
+    throw error
+  }
   // Only available once constructed, and needed before the first edit and the
   // first focus respectively — see MarkdownEditorOwner.
   owner.editor = instance.editor
@@ -324,7 +357,16 @@ export function createObsidianMarkdownEditor(
     blur: () => instance.cm.contentDOM.blur(),
     hasFocus: () => instance.cm.hasFocus,
     getScrollLine: () => instance.getScroll(),
-    scrollToLine: (line: number) => instance.applyScroll(line),
+    openAtLine: (line: number) => {
+      // The caret first, then the view. Left where a fresh editor puts it —
+      // the start of the document — the first keystroke scrolls the editor
+      // back there, undoing the scroll below; measured, and exactly what a
+      // person sees as a card opened part-way down snapping to the top the
+      // moment they type. Setting it may scroll too, so the view is placed
+      // afterwards and has the last word.
+      instance.editor.setCursor({ line: Math.floor(line), ch: 0 })
+      instance.applyScroll(line)
+    },
     destroy: () => {
       if (destroyed) return
       destroyed = true
@@ -337,6 +379,7 @@ export function createObsidianMarkdownEditor(
       const workspace = app.workspace as unknown as { activeEditor: unknown }
       if (workspace.activeEditor === owner) workspace.activeEditor = null
       instance.destroy()
+      hostEl.remove()
     },
   }
 }

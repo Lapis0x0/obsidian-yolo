@@ -497,6 +497,20 @@ export const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
  * and taken down together. See style.css.
  */
 export const CARD_BODY_SCROLLS_CLASS = 'yolo-whiteboard-card-body-scrolls'
+/**
+ * Marks the render that is on its way out while the card hands its body over
+ * from the clipped one-pass render to the scrollable preview, and holds it
+ * over the incoming one until that has found the card's reading window.
+ *
+ * The window is a source line, and Obsidian's preview cannot go to a line it
+ * has not rendered yet: mounted, it sits at the top of the note and moves to
+ * the line a frame or more later. Something has to fill that gap, and the only
+ * thing already showing the right content is the render being replaced — so it
+ * is the *outgoing* surface that gets a class, it stays exactly where it was,
+ * and what the class hides is everything mounted after it. Removing it is what
+ * ends the handover. See style.css.
+ */
+export const CARD_HANDOFF_CLASS = 'yolo-whiteboard-card-handoff'
 
 export const EDGE_HIT_CLASS = 'yolo-whiteboard-edge-hit'
 export const EDGE_LABEL_CLASS = 'yolo-whiteboard-edge-label'

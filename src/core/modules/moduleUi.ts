@@ -366,9 +366,13 @@ export class ObsidianModuleUiCapabilityProvider
             handle.setValue(text)
           },
           getScrollLine: () => handle.getScrollLine(),
-          scrollToLine: (line: number) => {
+          scrollToLine: (line: number, onSettled?: () => void) => {
             requireFiniteNumber(line, 'Markdown content view scroll line')
-            handle.scrollToLine(line)
+            requireOptionalFunction(
+              onSettled,
+              'Markdown content view scroll callback',
+            )
+            handle.scrollToLine(line, onSettled)
           },
           destroy: () => {
             contentViews.delete(handle)
@@ -414,9 +418,9 @@ export class ObsidianModuleUiCapabilityProvider
           blur: () => handle.blur(),
           hasFocus: () => handle.hasFocus(),
           getScrollLine: () => handle.getScrollLine(),
-          scrollToLine: (line: number) => {
+          openAtLine: (line: number) => {
             requireFiniteNumber(line, 'Markdown editor scroll line')
-            handle.scrollToLine(line)
+            handle.openAtLine(line)
           },
           destroy: () => {
             editors.delete(handle)

@@ -111,8 +111,7 @@ export function cardMarkdownWindow(
     Math.ceil(Math.max(bodyHeightWorldPx, 0) / CARD_CONTENT_MIN_LINE_WORLD_PX) +
     CARD_CONTENT_EXTRA_LINES
   const lines = markdown.split('\n')
-  const start =
-    startLine > 0 ? blockStartAtOrBefore(lines, Math.floor(startLine)) : 0
+  const start = blockStartLine(lines, startLine)
   let counted = 0
   let end = lines.length
   for (let i = start; i < lines.length; i += 1) {
@@ -130,27 +129,40 @@ export function cardMarkdownWindow(
 }
 
 /**
- * The last line at or before `target` that a block starts on — the first
+ * The last line at or before `line` that a block starts on — the first
  * non-blank line after a blank one, ignoring anything inside a fenced code
  * block, where a blank line separates nothing.
  *
- * Scanned from the top rather than backwards from `target`, because whether a
+ * This is the quantum a reading window moves in, and every surface has to
+ * agree on it. A clipped card can only begin flush at a block: it has no
+ * scroll offset to hide the top of one with. So the position is snapped when
+ * it is *recorded* (canvas.ts's `commitReadingWindow`) rather than when it is
+ * rendered — snap at render and the scrollable preview, which does begin mid
+ * block, would sit a block away from what the same card shows when it is not
+ * selected. Applied again here anyway: `startLine` comes out of a file a
+ * person can edit, and beginning inside a fence renders the rest of the card
+ * as code.
+ *
+ * Scanned from the top rather than backwards from `line`, because whether a
  * line is inside a fence is only knowable by counting the fences before it.
  * That is the same one pass over the lines the budget above already costs.
  */
-function blockStartAtOrBefore(
-  lines: readonly string[],
-  target: number,
+export function blockStartLine(
+  source: string | readonly string[],
+  line: number,
 ): number {
+  if (!(line > 0)) return 0
+  const lines = typeof source === 'string' ? source.split('\n') : source
+  const target = Math.floor(line)
   let openFence: string | null = null
   let previousBlank = true
   let candidate = 0
   const last = Math.min(target, lines.length - 1)
   for (let i = 0; i <= last; i += 1) {
-    const line = lines[i].trim()
-    const fence = line.startsWith('```')
+    const text = lines[i].trim()
+    const fence = text.startsWith('```')
       ? '```'
-      : line.startsWith('~~~')
+      : text.startsWith('~~~')
         ? '~~~'
         : null
     if (openFence !== null) {
@@ -166,7 +178,7 @@ function blockStartAtOrBefore(
       previousBlank = false
       continue
     }
-    const blank = line === ''
+    const blank = text === ''
     if (!blank && previousBlank) candidate = i
     previousBlank = blank
   }

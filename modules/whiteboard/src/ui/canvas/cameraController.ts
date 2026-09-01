@@ -62,8 +62,10 @@ const WORLD_INTERACTING_CLASS = 'yolo-whiteboard-world-interacting'
 export type CameraControllerCallbacks = Readonly<{
   isParseFailed: () => boolean
   /** Whether `target` belongs to the card currently being edited — a plain
-   * wheel there scrolls the editor rather than panning the board. */
-  isEditingWheelTarget: (target: EventTarget | null) => boolean
+   * wheel there scrolls the editor rather than panning the board. Claiming
+   * it is also how the canvas learns the user moved that surface, which is
+   * what lets the card follow the editor out (canvas.ts's `finishEdit`). */
+  claimEditorWheel: (target: EventTarget | null) => boolean
   /** Scrolls the focused card's content by a wheel delta, reporting whether
    * it took the gesture — see canvas.ts's `scrollFocusedCardBy`. */
   scrollFocusedCardBy: (
@@ -189,7 +191,7 @@ export class CameraController {
     // preventDefault) so the editor's own scroller sees a normal event.
     // Only the card being edited, not any card under the pointer: on a canvas
     // the wheel pans, and you click into a card first to scroll it.
-    if (this.callbacks.isEditingWheelTarget(e.target)) {
+    if (this.callbacks.claimEditorWheel(e.target)) {
       return
     }
     // The selected card scrolls its own content, for the same reason the one

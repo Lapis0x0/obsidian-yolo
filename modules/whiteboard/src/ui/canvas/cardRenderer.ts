@@ -19,6 +19,7 @@ import {
   CARD_BODY_LIVE_CLASS,
   CARD_BODY_SCROLLS_CLASS,
   CARD_FOCUSED_CLASS,
+  CARD_HANDOFF_CLASS,
   CARD_SELECTED_CLASS,
   GROUP_LABEL_CLASS,
   WEB_URL_PATTERN,
@@ -627,6 +628,62 @@ export class CardRenderer {
   }
 
   /**
+   * Holds the card's current render over the preview about to replace it, and
+   * answers with the call that ends the handover.
+   *
+   * The two surfaces do not arrive in the same state. The render being
+   * replaced was built from the card's window and sits flush at it; the
+   * preview is built from the whole note and starts at the top of it, because
+   * a line it has not rendered yet is a line it cannot go to — it moves to the
+   * window a frame or more later, when the render lands. That gap is a frame
+   * of the top of the note, painted in the middle of a card that was showing
+   * something else, which is what a person sees as the card flickering.
+   *
+   * So nothing is torn down here: the outgoing element is taken out of flow
+   * and laid over the body (CARD_HANDOFF_CLASS), leaving the incoming preview
+   * an ordinary first child that renders, measures and scrolls exactly as it
+   * would in an empty body. The returned call drops it, whole, and is the
+   * settle callback of the scroll that made the wait necessary.
+   *
+   * Answers null when there is nothing to hold over — a body that is empty, or
+   * that holds something other than a one-pass render — and the caller swaps
+   * outright.
+   */
+  private beginContentHandoff(runtime: NodeRuntime): (() => void) | null {
+    const outgoing = runtime.contentRenderer
+    const outgoingEl = runtime.bodyEl?.firstElementChild
+    // `releaseContent` is what carries the outgoing render across, so a body
+    // already owing a release is one this cannot take over from.
+    if (!outgoing || !outgoingEl || runtime.releaseContent) return null
+    // The runtime now describes the incoming surface alone; the outgoing one
+    // exists only as the release below, which every teardown path already
+    // runs — so a card unmounted mid-handover still lets go of it.
+    runtime.contentRenderer = null
+    outgoingEl.classList.add(CARD_HANDOFF_CLASS)
+    runtime.releaseContent = () => {
+      outgoing.unload()
+      outgoingEl.remove()
+    }
+    return () => this.runContentRelease(runtime)
+  }
+
+  /**
+   * Drops the render a handover was holding over the body, if one is still
+   * owed. Idempotent, because every teardown path runs it and a handover may
+   * also end on its own.
+   */
+  private runContentRelease(runtime: NodeRuntime): void {
+    const release = runtime.releaseContent
+    runtime.releaseContent = null
+    if (!release) return
+    try {
+      release()
+    } catch (error) {
+      this.callbacks.reportError('card content release', error)
+    }
+  }
+
+  /**
    * Releases whatever the card's body currently holds, whichever kind it is —
    * the single teardown every path (unmount, re-render, edit) goes through,
    * so a new content kind cannot be added and leak from one of them.
@@ -639,15 +696,7 @@ export class CardRenderer {
     runtime.contentSourcePath = null
     runtime.contentMarkdown = null
     runtime.webFrameUrl = null
-    const release = runtime.releaseContent
-    runtime.releaseContent = null
-    if (release) {
-      try {
-        release()
-      } catch (error) {
-        this.callbacks.reportError('card content release', error)
-      }
-    }
+    this.runContentRelease(runtime)
     runtime.bodyEl?.classList.remove(CARD_BODY_LIVE_CLASS)
     runtime.bodyEl?.classList.remove(CARD_BODY_SCROLLS_CLASS)
   }
@@ -769,42 +818,87 @@ export class CardRenderer {
     sourcePath: string,
   ): void {
     const bodyEl = runtime.bodyEl
-    // The card may have been unmounted or swapped into edit mode while the
-    // text that got here was being read.
-    if (!bodyEl || this.callbacks.isEditing(id)) {
+    // The card may have been unmounted while the text that got here was being
+    // read.
+    if (!bodyEl) {
       this.destroyCardContent(runtime)
       return
     }
+    // Or swapped into edit mode: the editor owns the body until it leaves, and
+    // the reading surface is waiting behind it with the card's scroll position
+    // on it (style.css). Rebuilding either one now would throw that away.
+    if (this.callbacks.isEditing(id)) return
     if (!this.callbacks.canBuildContent()) {
       this.callbacks.queueContentSync(id)
       return
     }
-    // The focused card is the one card that can be scrolled, so it is the one
-    // card that needs source outside its own window — see `scrollCardContent`.
-    const focused = this.callbacks.isFocused(id)
+    // Which surface this card's content belongs on. A card that has never been
+    // opened gets the clipped render of just its own window, because that is
+    // what a pan pays for; opening one gives it the scrollable preview over
+    // the whole note, because that is the card someone is reading.
+    //
+    // Once given, never taken back. Deselecting a card used to hand it back to
+    // the clipped render, which meant rebuilding its body every time it was
+    // selected and building it again when it was not — and a rebuilt body has
+    // to be told where the reading window was, in a coordinate that both
+    // surfaces understand and neither of them shares. Obsidian's own Canvas
+    // has no such coordinate because it never rebuilds: it mounts a card's
+    // content when the card comes on screen and swaps nothing thereafter,
+    // selection included (measured 2026-09-02). Keeping the surface is the
+    // same answer within our tiers — the position never has to survive a
+    // handover it never makes. What still comes back is the whole card, when
+    // it leaves the viewport or the board drops into the overview tier, and
+    // that is where the memory goes back too.
+    const scrollable =
+      this.callbacks.isFocused(id) || runtime.contentView !== null
+
     const node = this.callbacks.getNode(id)
     const startLine =
       node && (node.type === 'text' || node.type === 'file')
         ? (node.startLine ?? 0)
         : 0
-    const wanted = focused
+    const wanted = scrollable
       ? markdown
       : cardMarkdownWindow(markdown, node?.h ?? 0, startLine)
     // Nothing to do when neither the visible source, what it resolves against,
     // nor which of the two surfaces should hold it has changed — which is
     // every edit made below an unfocused card's fold.
     if (
-      (focused ? runtime.contentView : runtime.contentRenderer) &&
+      (scrollable ? runtime.contentView : runtime.contentRenderer) &&
       runtime.contentSourcePath === sourcePath &&
       runtime.contentMarkdown === wanted
     ) {
       return
     }
-    this.destroyCardContent(runtime)
-    bodyEl.replaceChildren()
+    // New text on a surface that already exists goes *into* it. Rebuilding
+    // would throw away the one place the card's reading position lives and
+    // then have to re-derive it from the node's window — a snapped line, in a
+    // coordinate the surface does not share — which is how editing a card used
+    // to send it back to the top of the note. A preview fed through `setValue`
+    // keeps its scroll position, and Obsidian's own Canvas drives its text
+    // nodes exactly this way.
+    if (
+      scrollable &&
+      runtime.contentView &&
+      runtime.contentSourcePath === sourcePath
+    ) {
+      runtime.contentMarkdown = wanted
+      runtime.contentView.setValue(wanted)
+      return
+    }
+    // A card opening part-way down keeps what it is already showing until the
+    // preview arriving under it has found that place (`beginContentHandoff`).
+    // Everything else swaps outright: with nothing to find, the incoming
+    // surface is right from its first frame.
+    const endHandoff =
+      scrollable && startLine > 0 ? this.beginContentHandoff(runtime) : null
+    if (!endHandoff) {
+      this.destroyCardContent(runtime)
+      bodyEl.replaceChildren()
+    }
     runtime.contentSourcePath = sourcePath
     runtime.contentMarkdown = wanted
-    if (focused) {
+    if (scrollable) {
       // Obsidian's own windowed preview, which is what a scrollable document
       // wants and what a clipped card does not: it mounts only the sections
       // around its scroll position, so scrolling a long note stays a screenful
@@ -821,9 +915,13 @@ export class CardRenderer {
         // — and the window the card was showing has to be found again by
         // scrolling to it.
         bodyEl.classList.add(CARD_BODY_SCROLLS_CLASS)
-        if (startLine) view.scrollToLine(startLine)
+        if (startLine) view.scrollToLine(startLine, endHandoff ?? undefined)
       } catch (error) {
         this.callbacks.reportError('markdown render', error)
+        // Nothing is arriving to settle, so the outgoing render is not being
+        // held over anything: let it go rather than leave it laid over an
+        // empty body, where it would outlive the content it describes.
+        endHandoff?.()
       }
       return
     }
