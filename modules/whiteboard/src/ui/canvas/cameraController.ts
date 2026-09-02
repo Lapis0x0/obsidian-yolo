@@ -45,6 +45,7 @@ import {
   MIN_SCALE_FIT_MARGIN,
   SCALE_BOUNDS,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
+  WHEEL_PAN_GLIDE_TAU_MS,
 } from '../constants'
 
 /**
@@ -102,8 +103,14 @@ export class CameraController {
    * Two laws, because two gestures. `anchored` is a wheel zoom: only the
    * scale eases, and the translation is re-derived every frame from the point
    * the gesture grabbed, which is what keeps that point exactly under the
-   * cursor for the whole glide. `view` is a fit: its translation is not a
-   * function of its scale, so both ease (domain/camera.ts's `approachView`).
+   * cursor for the whole glide. `view` eases a whole camera, whose
+   * translation is not a function of its scale (domain/camera.ts's
+   * `approachView`) — a fit, or a wheel pan.
+   *
+   * `view` carries its own time constant: how long the camera should take is
+   * a property of the gesture that asked for the move, not of the machinery
+   * that carries it out. A fit travels a long way and wants the weight; a
+   * wheel pan is answering the hand and wants half of it (constants.ts).
    */
   private cameraGlide:
     | Readonly<{
@@ -112,7 +119,7 @@ export class CameraController {
         screen: ScreenPoint
         world: ScreenPoint
       }>
-    | Readonly<{ kind: 'view'; target: CanvasView }>
+    | Readonly<{ kind: 'view'; target: CanvasView; tauMs: number }>
     | null = null
   private lastGlideTime: number | null = null
 
@@ -207,10 +214,30 @@ export class CameraController {
       return
     }
     e.preventDefault()
-    this.viewValue = panByWheel(this.viewValue, e.deltaX, e.deltaY)
-    this.applyTransform()
+    this.panByWheel(e.deltaX, e.deltaY)
+  }
+
+  /**
+   * Aims the camera at where this notch asked it to go, and lets the rAF loop
+   * carry it there — the same arrangement as the wheel zoom above, and for
+   * the same reason stated there: consecutive notches accumulate against the
+   * *target*, so a fast spin covers the whole distance rather than fighting
+   * the easing.
+   *
+   * Writing the camera straight from the event instead (which this used to
+   * do) makes the motion exactly as smooth as the event stream, which on a
+   * 120Hz display means one moving frame per event and the rest held still —
+   * see WHEEL_PAN_GLIDE_TAU_MS for what that measured against Obsidian's own
+   * scrolling. The settle is left to `finishGlideFrame`: what gets persisted
+   * is where the camera is going, not the frame it is passing through.
+   */
+  private panByWheel(deltaX: number, deltaY: number): void {
+    this.cameraGlide = {
+      kind: 'view',
+      target: panByWheel(this.targetView, deltaX, deltaY),
+      tauMs: WHEEL_PAN_GLIDE_TAU_MS,
+    }
     this.markInteracting()
-    this.scheduleCameraSettle()
   }
 
   /**
@@ -289,7 +316,7 @@ export class CameraController {
       this.viewValue,
       glide.target,
       elapsed,
-      CAMERA_GLIDE_TAU_MS,
+      glide.tauMs,
     )
     const settled = viewSettled(
       next,
@@ -556,6 +583,12 @@ export class CameraController {
    * changes, so a pan now touches no style at all.
    */
   beginPan(pointerId: number): void {
+    // Direct manipulation wins over a glide in flight: the drag reads the
+    // live camera as its origin, so a glide still advancing under it would
+    // add its own motion to the hand's. Grabbing a scroller mid-animation
+    // cancels it everywhere else for the same reason.
+    this.cameraGlide = null
+    this.lastGlideTime = null
     this.panCaptureEl.setPointerCapture(pointerId)
     this.markInteracting()
   }
@@ -648,7 +681,7 @@ export class CameraController {
       this.applyTransform()
       this.markInteracting()
     } else {
-      this.cameraGlide = { kind: 'view', target }
+      this.cameraGlide = { kind: 'view', target, tauMs: CAMERA_GLIDE_TAU_MS }
     }
     // Persisted from the target either way, so a board closed mid-glide
     // reopens where the move was going rather than wherever it had got to.

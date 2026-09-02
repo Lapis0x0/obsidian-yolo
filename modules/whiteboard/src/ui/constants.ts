@@ -46,6 +46,29 @@ export const FIT_CAMERA_PADDING_PX = 48
  * advanceCameraGlide(). */
 export const CAMERA_GLIDE_TAU_MS = 63
 
+/**
+ * The same law for a wheel *pan*, which is a shorter glide than a zoom.
+ *
+ * A wheel pan used to write the camera straight from the event, which made
+ * the motion exactly as smooth as the event stream: measured on a 120Hz
+ * display (2026-09-03), the frames that moved were exactly the frames a wheel
+ * event landed in — 10-12% of them — with the whole delta in one frame
+ * (peaks of 236-290px). Obsidian's own document scroller, given the same
+ * three seconds from the same mouse, moved on 41-49% of frames along an
+ * accelerate-peak-decelerate curve that peaked at 84-106px and kept going for
+ * ~90ms after the last event: an accumulating target eased per frame, which
+ * is what this glide already is. A trackpad delivers an event most frames and
+ * so was already smooth, and the two devices are not distinguishable from the
+ * event stream on macOS (both `deltaMode: 0`, both accelerated and
+ * fractional) — hence one law for both rather than a device test.
+ *
+ * 30ms rather than the zoom's 63: the tail above is over in ~90ms, which is
+ * three e-foldings of 30. Long enough to spread a notch across ~7 frames,
+ * short enough that a trackpad — which asks for a new target most frames —
+ * still reads as tracking the fingers rather than following them.
+ */
+export const WHEEL_PAN_GLIDE_TAU_MS = 30
+
 /** Remaining distance, in doublings, below which the glide is finished and
  * the camera snaps to its target — an exponential approach never arrives, and
  * a hundredth of a doubling is a fifth of a pixel on a 260px card. */
