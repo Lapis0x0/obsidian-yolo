@@ -68,14 +68,6 @@ type ResponsesHostedTool = WebSearchTool | FileSearchTool | ComputerTool
 
 type ResponsesTool = FunctionTool | ResponsesHostedTool
 
-type RawResponsesHostedTool =
-  | { type: 'web_search' }
-  | ({
-      type: 'web_search_preview' | 'web_search_preview_2025_03_11'
-    } & Partial<WebSearchTool>)
-  | ({ type: 'file_search' } & Partial<FileSearchTool>)
-  | ({ type: 'computer-preview' } & Partial<ComputerTool>)
-
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null
 
@@ -86,16 +78,6 @@ const isFunctionRequestTool = (value: unknown): value is RequestTool => {
 
   const fn = value.function
   return isRecord(fn) && typeof fn.name === 'string' && isRecord(fn.parameters)
-}
-
-const toHostedTool = (tool: RawResponsesHostedTool): ResponsesHostedTool => {
-  if (tool.type === 'web_search') {
-    return {
-      type: 'web_search_preview',
-    }
-  }
-
-  return tool as ResponsesHostedTool
 }
 
 const toInputContent = (
@@ -226,12 +208,16 @@ const toTools = (
 
     if (isRecord(tool) && typeof tool.type === 'string') {
       switch (tool.type) {
+        // Hosted tools are forwarded verbatim: the transport that injected one
+        // owns its wire name. The OpenAI platform takes `web_search_preview`
+        // while the Codex backend only accepts `web_search` and rejects the
+        // preview type outright, so renaming here would break one of them.
         case 'web_search':
         case 'web_search_preview':
         case 'web_search_preview_2025_03_11':
         case 'file_search':
         case 'computer-preview':
-          mappedTools.push(toHostedTool(tool as RawResponsesHostedTool))
+          mappedTools.push(tool as unknown as ResponsesHostedTool)
           continue
       }
     }
