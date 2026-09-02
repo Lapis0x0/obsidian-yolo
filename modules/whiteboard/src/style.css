@@ -1671,17 +1671,33 @@ input.yolo-whiteboard-prompt-input:focus {
  * entirely while leaving its <iframe> attached, which is all the page's
  * browsing context needs to survive.
  *
- * A markdown card is only made invisible. Its content view measures every
- * section it renders and caches the result; `display: none` collapses those
- * boxes to nothing, so showing the card again makes the host re-measure the
- * whole note — measured as the dominant cost of a pan over long-note cards,
- * and the reason a pool that hid them this way bought much less than it
- * should have. `visibility: hidden` keeps the boxes, so a parked card comes
- * back for free. */
+ * A markdown card is skipped, not hidden. `content-visibility: hidden` keeps
+ * the card's boxes — the focused card's content view measures every section
+ * it renders and caches the result, and `display: none` would collapse those
+ * boxes and make the host re-measure the whole note on the way back, which
+ * was measured as the dominant cost of a pan over long-note cards (D13). But
+ * unlike `visibility: hidden`, which this used to be, it also takes the
+ * subtree out of style, layout, paint, hit testing and the accessibility tree
+ * for as long as the card is parked. `visibility` is inherited: flipping it
+ * on the card restyled every element under it, twice per round trip, and
+ * every parked card's content still stood in the accessibility tree to be
+ * rebuilt whenever a row of cards came or went — measured 2026-09-02 on the
+ * long-note board as half of a pan's style recalculation and two thirds of
+ * its accessibility work. A skipped subtree is not restyled and not in the
+ * tree, and its cached layout and the content view's scroll position survive
+ * (verified: a focused card scrolled, parked and revealed comes back where it
+ * was).
+ *
+ * `opacity: 0` is what keeps the card's own box from painting: on the way into
+ * the overview tier every card is parked *on screen*, over the canvas that is
+ * now drawing them, and an empty frame there is a visible bug. Not
+ * `visibility: hidden`, for the reason above — opacity is not inherited, so
+ * nothing under the card is touched — and a zero-opacity layer is skipped by
+ * the painter rather than drawn transparent. */
 
 .yolo-whiteboard-card.yolo-whiteboard-card-parked {
-  visibility: hidden;
-  pointer-events: none;
+  content-visibility: hidden;
+  opacity: 0;
 }
 
 .yolo-whiteboard-card.yolo-whiteboard-card-pooled {

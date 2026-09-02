@@ -52,9 +52,11 @@ const CARD_MISSING_CLASS = 'yolo-whiteboard-card-missing'
 const CARD_UNSUPPORTED_PLACEHOLDER_CLASS =
   'yolo-whiteboard-card-unsupported-placeholder'
 /** A card parked in the hidden pool: out of the viewport, out of sight, still
- * in the document so what it holds survives. Invisible but still laid out,
+ * in the document so what it holds survives. Its subtree is skipped
+ * (`content-visibility: hidden`) rather than hidden: the boxes are kept,
  * because its content view's section measurements are the expensive part and
- * they only survive if its boxes do — see `parkCard` and style.css. */
+ * they only survive if its boxes do, while style, paint and the accessibility
+ * tree stop paying for it — see `parkCard` and style.css. */
 const CARD_PARKED_CLASS = 'yolo-whiteboard-card-parked'
 /** A parked *web* card: taken out of layout altogether, which suspends the
  * page inside it. See WEB_FRAME_POOL_CAPACITY. */
@@ -443,9 +445,10 @@ export class CardRenderer {
   //
   // Obsidian Canvas parks an off-screen node by detaching its content element
   // and keeping the instance in a cache. We park the whole card in place
-  // instead: `display: none` stops layout, paint and hit-testing while
-  // leaving everything attached, which is both simpler and the only thing
-  // that works for an iframe (a detached frame loses its browsing context).
+  // instead: a class takes it out of style, paint and hit-testing while
+  // leaving everything attached (style.css says which property, and why),
+  // which is both simpler and the only thing that works for an iframe (a
+  // detached frame loses its browsing context).
   //
   // Parking in place is also what keeps a pool from needing an invalidation
   // story of its own — the thing D13 was right to be wary of. A parked card
@@ -457,8 +460,8 @@ export class CardRenderer {
   // -----------------------------------------------------------------------
 
   private parkCard(id: NodeId, runtime: NodeRuntime): void {
-    // A page has to leave layout to be suspended; a rendered note has to stay
-    // in it to keep the measurements that make coming back free.
+    // A page has to leave layout to be suspended; a rendered note has to keep
+    // its boxes so the measurements that make coming back free survive.
     runtime.el?.classList.add(
       runtime.webFrameUrl !== null ? CARD_POOLED_CLASS : CARD_PARKED_CLASS,
     )
