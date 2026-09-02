@@ -1497,9 +1497,9 @@ label.yolo-whiteboard-color-swatch-custom.yolo-whiteboard-color-swatch-active {
   left: 50%;
   bottom: 16px;
   display: flex;
+  align-items: stretch;
   gap: 1px;
   width: fit-content;
-  padding: var(--size-2-1, 2px);
   line-height: 1;
   background-color: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
@@ -1512,8 +1512,20 @@ label.yolo-whiteboard-color-swatch-custom.yolo-whiteboard-color-swatch-active {
   pointer-events: auto;
 }
 
+/* Sized like Canvas's own `.canvas-card-menu-button`, not like the selection
+ * toolbar's: that row is transient chrome next to a selection, this one is
+ * permanent and is also the thing a card gets dragged off, so the icon is the
+ * grab target and wants to be one, not `clickable-icon`'s default.
+ *
+ * One step under Canvas's `--icon-xl`: 24px reads as a handle on a board this
+ * light without the 48px button pressing on it. Obsidian has no token at that
+ * size — `--icon-l` is 18 and `--icon-xl` is 32 — so the size and the stroke
+ * that goes with it are stated here, the stroke interpolated between the two
+ * (1.75 at 18, 1.25 at 32) so the weight still reads as one family. */
 button.yolo-whiteboard-card-menu-button {
-  padding: var(--size-2-3, 6px) var(--size-4-2, 8px);
+  padding: var(--size-4-2, 8px);
+  --icon-size: 24px;
+  --icon-stroke: 1.5px;
   /* Every button is also a handle: a card can be dragged off it onto the
    * board (ui/canvas.ts's beginCreateDrag). */
   cursor: grab;
@@ -1619,9 +1631,29 @@ input.yolo-whiteboard-prompt-input:focus {
   box-shadow: none;
 }
 
+/* Full-bleed to the panel's right edge — the panel's own padding is cancelled
+ * and re-added here — so the thin overlay scrollbar hugs the frame instead of
+ * floating a gutter inside it, while the rows keep their inset and stay
+ * symmetric with the panel's left padding. The host's model-select menu and
+ * update toast are the same treatment.
+ *
+ * Auto-hide is Chromium's native overlay scrollbar, triggered by
+ * `scrollbar-width`/`scrollbar-color`. Do NOT transition `scrollbar-color`:
+ * Chromium cannot interpolate it and flashes the darker system thumb before
+ * snapping to ours. */
 .yolo-whiteboard-prompt-list {
   flex: 1 1 auto;
+  margin-right: calc(-1 * var(--size-4-3, 12px));
+  padding-right: var(--size-4-3, 12px);
   overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+.yolo-whiteboard-prompt-list:hover,
+.yolo-whiteboard-prompt-list:focus-within {
+  scrollbar-color: color-mix(in srgb, var(--text-muted) 35%, transparent)
+    transparent;
 }
 
 .yolo-whiteboard-prompt-item {

@@ -111,6 +111,18 @@ export class PromptOverlay {
     // away from a menu does. Pressing the panel itself must not, so the panel
     // stops the event before it reaches here.
     backdrop.addEventListener('pointerdown', () => this.settle(null))
+    // The wheel belongs to the ask, not to the board behind it — the same
+    // rule as the press, and for a second reason besides: the panel's own
+    // list is a scroller, and the canvas's wheel handler ends in an
+    // unconditional `preventDefault` that would take its scrolling away.
+    // Stopped rather than prevented: the board's handler is on an ancestor
+    // (the panel lives in the canvas overlay, not in a host modal), while
+    // native scrolling follows the scroll chain and is left alone.
+    //
+    // The whole backdrop, not just the panel: where the new card goes was
+    // settled before this opened, so panning the board underneath would move
+    // the board out from under a point the card is still going to land on.
+    backdrop.addEventListener('wheel', (event) => event.stopPropagation())
 
     const panel = doc.createElement('div')
     panel.className = PANEL_CLASS
