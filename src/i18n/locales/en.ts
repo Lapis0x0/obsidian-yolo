@@ -794,6 +794,11 @@ export const en: TranslationKeys = {
       mcpServerDesc:
         'Allow external agents to search the Vault through MCP and delegate tasks to configured YOLO agents.',
       mcpServerDesktopOnly: 'The MCP service is available on desktop only.',
+      mcpServerPort: 'Port',
+      mcpServerPortDesc:
+        'Local port the MCP service listens on. Change it if another app or plugin already uses this port, then update your client configuration.',
+      mcpServerPortInUse:
+        'Port {port} is already in use — often by another Obsidian plugin in this same process, such as Local REST API. Pick a different port above.',
       mcpServerClientConfig: 'MCP connection configuration',
       mcpServerCopyConfig: 'Copy',
       mcpServerError: 'Failed to start',

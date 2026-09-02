@@ -738,6 +738,11 @@ export const zh: TranslationKeys = {
       mcpServerDesc:
         '允许外部 Agent 通过 MCP 搜索 Vault，并向已配置的 YOLO Agent 委派任务。',
       mcpServerDesktopOnly: 'MCP 服务仅支持桌面端。',
+      mcpServerPort: '端口',
+      mcpServerPortDesc:
+        'MCP 服务监听的本地端口。若该端口已被其他程序或插件占用，改成别的端口后记得同步更新客户端配置。',
+      mcpServerPortInUse:
+        '端口 {port} 已被占用——常见情况是同一个 Obsidian 进程里的其他插件（例如 Local REST API）在用。请在上方换一个端口。',
       mcpServerClientConfig: 'MCP 连接配置',
       mcpServerCopyConfig: '复制',
       mcpServerError: '启动失败',

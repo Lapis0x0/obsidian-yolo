@@ -598,6 +598,9 @@ export type TranslationKeys = {
       mcpServerDesc?: string
       mcpServerDesktopOnly?: string
       mcpServerEnabled?: string
+      mcpServerPort?: string
+      mcpServerPortDesc?: string
+      mcpServerPortInUse?: string
       mcpServerClientConfig?: string
       mcpServerCopyConfig?: string
       mcpServerError?: string

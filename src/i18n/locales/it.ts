@@ -798,6 +798,11 @@ export const it: DeepPartial<TranslationKeys> = {
       mcpServerDesc:
         'Consenti agli agenti esterni di cercare nel Vault tramite MCP e delegare attivita agli agenti YOLO configurati.',
       mcpServerDesktopOnly: 'Il servizio MCP e disponibile solo su desktop.',
+      mcpServerPort: 'Porta',
+      mcpServerPortDesc:
+        'Porta locale su cui il servizio MCP resta in ascolto. Cambiala se un altro programma o plugin la occupa gia, poi aggiorna la configurazione del client.',
+      mcpServerPortInUse:
+        'La porta {port} e gia in uso, spesso da un altro plugin nello stesso processo di Obsidian come Local REST API. Scegli una porta diversa qui sopra.',
       mcpServerClientConfig: 'Configurazione connessione MCP',
       mcpServerCopyConfig: 'Copia',
       mcpServerError: 'Avvio non riuscito',

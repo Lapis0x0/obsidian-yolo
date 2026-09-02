@@ -1,6 +1,11 @@
 import type { YoloSettings } from '../../settings/schema/setting.types'
 
-export const DEFAULT_LOCAL_MCP_SERVER_PORT = 27124
+/**
+ * 27123/27124 belong to the Local REST API plugin, which listens inside the
+ * same Obsidian process — sharing that default made every install with both
+ * plugins fail to bind. Existing configs keep whatever port they stored.
+ */
+export const DEFAULT_LOCAL_MCP_SERVER_PORT = 28124
 export const LOCAL_MCP_SERVER_HOST = '127.0.0.1'
 export const LOCAL_MCP_SERVER_PATH = '/mcp'
 
