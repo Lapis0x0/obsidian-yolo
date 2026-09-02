@@ -134,9 +134,9 @@ export const CONTENT_BUILD_START_CAP_PER_FRAME = 3
  */
 export const FRAME_ON_TIME_MS = 20
 
-/** How long the world element keeps its "interacting" class (which is what
- * gates `will-change: transform`) after the last pan/zoom input. */
-export const INTERACTING_CLASS_TIMEOUT_MS = 250
+/** How long the camera counts as "interacting" (which paces content
+ * building — see FRAME_ON_TIME_MS) after the last pan/zoom input. */
+export const INTERACTING_TIMEOUT_MS = 250
 
 /** How long the camera must sit idle after the last pan/zoom input before
  * it's folded into the board and persisted (p1-design §3: "手势结束（而非

@@ -130,12 +130,10 @@
   isolation: isolate;
 }
 
-/* will-change only while actively panning/zooming — see canvas.ts's
- * markInteracting(). A permanent will-change wastes compositor memory for
- * no benefit at rest (S1/S2 spike finding). */
-.yolo-whiteboard-world.yolo-whiteboard-world-interacting {
-  will-change: transform;
-}
+/* No `will-change: transform` on the world, at rest or while panning: a
+ * composited world flashes the whole window white whenever a pan exposes a
+ * tile the raster threads have not finished — see
+ * CameraController.markInteracting for the measurement. */
 
 /* The overview tier's canvas (P4-1). A sibling of the world layer, not a child
  * of it: inside the world the camera's CSS scale would blur the bitmap and

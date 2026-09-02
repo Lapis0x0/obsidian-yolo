@@ -641,9 +641,9 @@ export class WhiteboardCanvas {
   private canBuildContent = true
   private lastFrameAt: number | null = null
 
-  /** Whether the camera is moving — the same state WORLD_INTERACTING_CLASS
-   * tracks (see markInteracting). While it is, building is paced by whether
-   * frames are keeping up; at rest it runs at full rate. */
+  /** Whether the camera is moving (see CameraController.markInteracting).
+   * While it is, building is paced by whether frames are keeping up; at rest
+   * it runs at full rate. */
   private interacting = false
 
   constructor(

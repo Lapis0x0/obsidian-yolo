@@ -41,15 +41,11 @@ import {
   FIT_CAMERA_PADDING_PX,
   GRID_MIN_SCREEN_STEP_PX,
   GRID_WORLD_STEP_PX,
-  INTERACTING_CLASS_TIMEOUT_MS,
+  INTERACTING_TIMEOUT_MS,
   MIN_SCALE_FIT_MARGIN,
   SCALE_BOUNDS,
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
 } from '../constants'
-
-// will-change only while actively interacting (S1/S2 finding: a permanent
-// will-change wastes compositor memory for no benefit at rest).
-const WORLD_INTERACTING_CLASS = 'yolo-whiteboard-world-interacting'
 
 /**
  * The narrow surface `WhiteboardCanvas` injects so the camera can trigger
@@ -471,15 +467,33 @@ export class CameraController {
     this.viewportEl.style.backgroundPosition = `${tx}px ${ty}px`
   }
 
+  /**
+   * "The camera is moving" — held for a short tail after the last input so
+   * the canvas can pace content building by whether frames keep up (see
+   * WhiteboardCanvas.frame).
+   *
+   * This used to also put `will-change: transform` on the world for the same
+   * window, and it must not come back. A composited world is painted into
+   * tiles by the raster threads *after* the main thread is done, and a pan
+   * keeps exposing tiles they have not rastered yet; whenever one is
+   * missing, cc fills the whole root surface with the page background
+   * before drawing (cc/trees/layer_tree_host_impl.cc, "If any tiles are
+   * missing, then fill behind the entire root render surface"), which is a
+   * white flash across the entire window, sidebar included. On a 3000-card,
+   * 3000-edge board at reading zoom that was 23–46% of compositor draws
+   * (measured 2026-09-02 from the "missing tiles" arg on cc's draw_result
+   * events; the will-change also split the world into eight layers, ~400 MB
+   * of tiles). Without the hint the world paints with the root layer and its
+   * tiles are required before the frame is drawn: never a flash, and on that
+   * board no slow frames either.
+   */
   private markInteracting(): void {
-    this.worldEl.classList.add(WORLD_INTERACTING_CLASS)
     this.callbacks.setInteracting(true)
     const win = this.context.getWindow()
     if (this.interactingTimer !== null) win.clearTimeout(this.interactingTimer)
     this.interactingTimer = win.setTimeout(() => {
-      this.worldEl.classList.remove(WORLD_INTERACTING_CLASS)
       this.callbacks.setInteracting(false)
-    }, INTERACTING_CLASS_TIMEOUT_MS)
+    }, INTERACTING_TIMEOUT_MS)
   }
 
   private scheduleCameraSettle(): void {
