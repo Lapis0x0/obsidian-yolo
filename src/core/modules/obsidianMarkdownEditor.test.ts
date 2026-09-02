@@ -55,25 +55,30 @@ describe('assertMarkdownEditorInstance', () => {
   const validInstance = () => ({
     set: jest.fn(),
     destroy: jest.fn(),
-    getScroll: jest.fn(),
-    applyScroll: jest.fn(),
     cm: {
       hasFocus: false,
       focus: jest.fn(),
+      dispatch: jest.fn(),
       contentDOM: {},
     },
-    editor: { getValue: jest.fn(), setValue: jest.fn(), setCursor: jest.fn() },
+    editor: { getValue: jest.fn(), setValue: jest.fn() },
   })
 
   it('accepts an instance carrying every member the host drives', () => {
     expect(() => assertMarkdownEditorInstance(validInstance())).not.toThrow()
   })
 
+  it('rejects a CodeMirror view that cannot be dispatched to', () => {
+    const instance = validInstance()
+    instance.cm = { ...instance.cm, dispatch: undefined as never }
+    expect(() => assertMarkdownEditorInstance(instance)).toThrow(
+      /no CodeMirror view/,
+    )
+  })
+
   it.each([
     ['set', /no set\(\)/],
     ['destroy', /no destroy\(\)/],
-    ['getScroll', /no getScroll\(\)/],
-    ['applyScroll', /no applyScroll\(\)/],
     ['cm', /no CodeMirror view/],
     ['editor', /no editor interface/],
   ])('rejects an instance missing %s', (member, message) => {

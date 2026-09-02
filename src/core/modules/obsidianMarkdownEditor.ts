@@ -19,34 +19,34 @@
 // they can be tested against fakes, and each failure names the step that broke
 // — when a future Obsidian changes shape, the error should say where.
 
+import { EditorView } from '@codemirror/view'
 import { type App, TFile } from 'obsidian'
 
-/** The private editor component, as much of it as we rely on. */
+import { getNodeWindow } from '../../utils/dom/window-context'
+
+/**
+ * The private editor component, as much of it as we rely on.
+ *
+ * Scrolling is deliberately *not* driven through the component's own
+ * `getScroll`/`applyScroll` pair, although it speaks the fractional source
+ * line the preview renderer answers in. Both convert between the scroller's
+ * `scrollTop` and CodeMirror's block map, and the two are in different units
+ * whenever the editor sits inside a CSS-scaled ancestor — a card on a zoomed
+ * board: `scrollTop` is CSS pixels, the block map is screen pixels. Measured
+ * 2026-09-02 at 1.107×: with source line 51 at the top edge, `getScroll` read
+ * 45.76; `applyScroll(49)` landed on line 28, because it also scrolls to
+ * heights that are still estimates. Obsidian's own Canvas drifts the same
+ * way, a line per round trip at its zoom. The CodeMirror view underneath is
+ * public API and has both a scale-aware coordinate and a scroll that
+ * re-measures until it lands (`readScrollLine`, `openAtLine` below).
+ */
 type ObsidianMarkdownEditorInstance = {
   set(value: string, clear?: boolean): void
   destroy(): void
-  /**
-   * Scroll position as a fractional source line. Obsidian's own pair — it is
-   * how a Markdown view keeps its source and preview panes aligned, so the
-   * unit is the document's, not this editor's, and the preview renderer in
-   * `obsidianMarkdownContentView.ts` answers in the same one.
-   */
-  getScroll(): number
-  applyScroll(line: number): void
-  cm: {
-    hasFocus: boolean
-    focus(): void
-    contentDOM: HTMLElement
-  }
+  cm: EditorView
   editor: {
     getValue(): string
     setValue(value: string): void
-    /**
-     * Where the insertion point is. Obsidian's own `Editor`, in the document's
-     * line/column coordinates — the same lines `getScroll` and `applyScroll`
-     * speak in.
-     */
-    setCursor(pos: { line: number; ch: number }): void
   }
 }
 
@@ -171,32 +171,106 @@ export function assertMarkdownEditorInstance(
       'constructing the editor produced no instance',
     )
   }
-  for (const method of [
-    'set',
-    'destroy',
-    'getScroll',
-    'applyScroll',
-  ] as const) {
+  for (const method of ['set', 'destroy'] as const) {
     if (typeof value[method] !== 'function') {
       throw new ObsidianMarkdownEditorUnavailableError(
         `the editor instance has no ${method}()`,
       )
     }
   }
-  if (!value.cm || typeof value.cm.contentDOM !== 'object') {
+  if (
+    !value.cm ||
+    typeof value.cm.contentDOM !== 'object' ||
+    typeof value.cm.dispatch !== 'function'
+  ) {
     throw new ObsidianMarkdownEditorUnavailableError(
       'the editor instance exposes no CodeMirror view',
     )
   }
-  if (
-    !value.editor ||
-    typeof value.editor.getValue !== 'function' ||
-    typeof value.editor.setCursor !== 'function'
-  ) {
+  if (!value.editor || typeof value.editor.getValue !== 'function') {
     throw new ObsidianMarkdownEditorUnavailableError(
       'the editor instance exposes no editor interface',
     )
   }
+}
+
+/**
+ * Where the view is scrolled to, as a fractional source line: the line whose
+ * block the viewport's top edge is in, plus how far into that block the edge
+ * sits, as a share of the block's lines. The coordinate the preview renderer
+ * in `obsidianMarkdownContentView.ts` speaks, which is what lets a position
+ * cross between the two surfaces.
+ *
+ * Both terms are screen pixels — `documentTop` is where CodeMirror says the
+ * document begins on screen, and its block map is kept in the same units —
+ * so a CSS transform on an ancestor cancels out instead of scaling the answer.
+ * The edge is inside the viewport, so the block it lands in has been laid out
+ * and measured, never estimated.
+ */
+function readScrollLine(cm: EditorView): number {
+  const doc = cm.state.doc
+  const edge = cm.scrollDOM.getBoundingClientRect().top - cm.documentTop
+  const block = cm.lineBlockAtHeight(edge)
+  const first = doc.lineAt(block.from).number - 1
+  const lines = doc.lineAt(block.to).number - first
+  const into = block.height > 0 ? (edge - block.top) / block.height : 0
+  return first + lines * Math.min(1, Math.max(0, into))
+}
+
+/**
+ * Puts a fractional source line at the viewport's top edge, and the caret
+ * near it.
+ *
+ * The scroll is CodeMirror's own `scrollIntoView`, which keeps re-measuring
+ * until the target is where it was asked to be. That is what a position far
+ * below the viewport needs: every line between here and there is an estimate
+ * until it has been laid out, and a scroll computed from estimates lands
+ * short (measured: 21 lines short of 49). The share of the block above the
+ * edge rides along as a negative margin, sized from the block's height as
+ * currently known — possibly an estimate too, so once the scroll has been
+ * measured the remainder is applied from the measured height, in the same
+ * frame, before anything is painted. Usually nothing; up to a heading's top
+ * padding when it is.
+ *
+ * The caret is the other half of it: left where a fresh editor puts it, at
+ * the start of the document, the first keystroke scrolls the view back there.
+ * It goes on the first line at or below the target that is not replaced by a
+ * block widget, because a caret set inside a rendered table opens Obsidian's
+ * cell editor, which takes the focus with it.
+ */
+function openAtLine(cm: EditorView, line: number): void {
+  const doc = cm.state.doc
+  const target = Math.max(0, Math.min(line, doc.lines - 1))
+  const from = doc.line(Math.floor(target) + 1).from
+  const above = (): number => {
+    const block = cm.lineBlockAt(from)
+    const first = doc.lineAt(block.from).number - 1
+    const lines = doc.lineAt(block.to).number - first
+    return ((target - first) / lines) * block.height
+  }
+  let caret = from
+  for (let n = Math.floor(target) + 1; n <= doc.lines; n += 1) {
+    const candidate = doc.line(n)
+    const block = cm.lineBlockAt(candidate.from)
+    if (block.from === candidate.from && block.to === candidate.to) {
+      caret = candidate.from
+      break
+    }
+  }
+  cm.dispatch({
+    selection: { anchor: caret },
+    effects: EditorView.scrollIntoView(from, { y: 'start', yMargin: -above() }),
+  })
+  // CodeMirror measures and scrolls in a frame callback it scheduled just
+  // now; this one is queued behind it, so it runs after the scroll and before
+  // the frame is painted.
+  getNodeWindow(cm.dom).requestAnimationFrame(() => {
+    if (!cm.dom.isConnected) return
+    const wanted = cm.scrollDOM.getBoundingClientRect().top - above()
+    const actual = cm.documentTop + cm.lineBlockAt(from).top
+    const delta = actual - wanted
+    if (Math.abs(delta) >= 1) cm.scrollDOM.scrollTop += delta / cm.scaleY
+  })
 }
 
 type PrivateEmbedRegistry = {
@@ -356,16 +430,9 @@ export function createObsidianMarkdownEditor(
     focus: () => instance.cm.focus(),
     blur: () => instance.cm.contentDOM.blur(),
     hasFocus: () => instance.cm.hasFocus,
-    getScrollLine: () => instance.getScroll(),
+    getScrollLine: () => (destroyed ? 0 : readScrollLine(instance.cm)),
     openAtLine: (line: number) => {
-      // The caret first, then the view. Left where a fresh editor puts it —
-      // the start of the document — the first keystroke scrolls the editor
-      // back there, undoing the scroll below; measured, and exactly what a
-      // person sees as a card opened part-way down snapping to the top the
-      // moment they type. Setting it may scroll too, so the view is placed
-      // afterwards and has the last word.
-      instance.editor.setCursor({ line: Math.floor(line), ch: 0 })
-      instance.applyScroll(line)
+      if (!destroyed) openAtLine(instance.cm, line)
     },
     destroy: () => {
       if (destroyed) return

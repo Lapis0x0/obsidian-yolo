@@ -444,8 +444,9 @@ export type YoloModuleMarkdownEditorV1 = {
   getScrollLine(): number
   /**
    * Opens the editor on `line`: puts it at the top of the view *and* the caret
-   * on it. The caret is half of it — left where a fresh editor puts it, at the
-   * start of the document, the first keystroke scrolls the view back there.
+   * on it — or on the nearest line below it that is not a rendered widget.
+   * The caret is half of it — left where a fresh editor puts it, at the start
+   * of the document, the first keystroke scrolls the view back there.
    */
   openAtLine(line: number): void
   destroy(): void

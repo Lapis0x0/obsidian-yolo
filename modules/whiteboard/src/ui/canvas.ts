@@ -262,9 +262,6 @@ type EditingState = {
   /** Pending throttled write of what is currently in the editor; see
    * `scheduleEditPersist`. */
   persistTimer: number | null
-  /** Whether the user has scrolled this editor — see `claimEditorWheel`, and
-   * `finishEdit` for what it decides. */
-  userScrolled: boolean
 }
 
 // -- pointer interaction state --------------------------------------------
@@ -975,24 +972,9 @@ export class WhiteboardCanvas {
       [edgesSvg, edgeLabels],
       {
         isParseFailed: () => this.parseFailed,
-        claimEditorWheel: (target) => {
-          if (
-            this.editing === null ||
-            this.nodeIdFromEventTarget(target) !== this.editing.nodeId
-          ) {
-            return false
-          }
-          // The wheel is about to scroll the editor, and there is no other
-          // way that surface moves under a user's hand. Recorded here rather
-          // than compared afterwards: at rest the editor and the reading
-          // surface behind it disagree by about a block, so no comparison of
-          // the two can tell "the user moved" from "they never agreed" —
-          // measured, and paying that difference on every crossing walks a
-          // card up its note. What the user did is the only signal that is
-          // not already noise.
-          this.editing.userScrolled = true
-          return true
-        },
+        isEditingWheelTarget: (target) =>
+          this.editing !== null &&
+          this.nodeIdFromEventTarget(target) === this.editing.nodeId,
         scrollFocusedCardBy: (target, deltaX, deltaY) =>
           this.focusedNodeId !== null &&
           this.nodeIdFromEventTarget(target) === this.focusedNodeId &&
@@ -4371,11 +4353,12 @@ export class WhiteboardCanvas {
       scopeDisposer,
       historyKey: `edit-${this.nextEditSessionId()}`,
       persistTimer: null,
-      userScrolled: false,
     }
     editor.focus()
-    // Open on the card's window rather than at the top of the note. Both
-    // surfaces speak in source lines, so nothing is mapped between them.
+    // Open where the card was being read. Both surfaces speak the same
+    // fractional source line, so nothing is mapped between them; what is left
+    // is how the two lay a block out, which is bounded by that block and
+    // measured, not estimated (obsidianMarkdownEditor.ts's `openAtLine`).
     if (startLine > 0) editor.openAtLine(startLine)
   }
 
@@ -4432,21 +4415,11 @@ export class WhiteboardCanvas {
     }
     editing.scopeDisposer()
 
-    // Where the card is now — but only if the user moved the editor. Scrolling
-    // it is them saying where they are: reading on and stopping somewhere is
-    // the whole point of a card that scrolls, and sending them back on the way
-    // out would answer that with nothing. An editor the user never scrolled
-    // says nothing at all, and the reading surface waiting behind it already
-    // holds the right place; taking the editor's word for it there would pay
-    // the two surfaces' standing disagreement — about a block — on every
-    // crossing, which walks a card up its note (measured: three idle round
-    // trips, ~350px each).
-    //
-    // Read before `destroy()`, which is what makes the editor unable to
-    // answer.
-    const line = editing.userScrolled
-      ? editing.editor.getScrollLine()
-      : Number.NaN
+    // Where the editor was left is where the card is now — the other half of
+    // `enterEditMode`, and the same shape as Obsidian's own embed leaving edit
+    // mode: read once, carried across once, unconditionally. Read before
+    // `destroy()`, which is what makes the editor unable to answer.
+    const line = editing.editor.getScrollLine()
     const board = this.boardWithSnappedWindow(this.board, id, line)
     if (board !== this.board) {
       this.board = board
@@ -4465,7 +4438,7 @@ export class WhiteboardCanvas {
     this.commitCardText(id, text, editing.historyKey)
     void this.cardRenderer.renderCardPreview(id)
     // The reading surface comes out of hiding where the editor left off.
-    if (line > 0) runtime?.contentView?.scrollToLine(line)
+    runtime?.contentView?.scrollToLine(line)
     // Leaving the editor lands on the card, not on nothing: Escape steps
     // out to the selected card and only a second Escape clears it. A blur
     // caused by pressing somewhere else is overwritten by whatever that
