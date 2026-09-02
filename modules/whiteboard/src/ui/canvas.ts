@@ -211,6 +211,7 @@ const NO_PINS: ReadonlySet<NodeId> = new Set()
 
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
+const PAN_CAPTURE_CLASS = 'yolo-whiteboard-pan-capture'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
 const WORLD_CLASS = 'yolo-whiteboard-world'
@@ -943,6 +944,12 @@ export class WhiteboardCanvas {
       getLiveRects: () => this.liveNodeRects,
     })
     viewport.appendChild(world)
+    // The empty element a pan captures the pointer on, so that the grabbing
+    // cursor comes from it and the viewport's own style never changes during
+    // a pan — see CameraController.beginPan.
+    const panCapture = doc.createElement('div')
+    panCapture.className = PAN_CAPTURE_CLASS
+    viewport.appendChild(panCapture)
     root.appendChild(viewport)
 
     const error = doc.createElement('div')
@@ -961,6 +968,7 @@ export class WhiteboardCanvas {
       this.context,
       viewport,
       world,
+      panCapture,
       // Every world-layer overlay that is counter-scaled instead of drawn in
       // world units, and nothing else: the camera writes the counter-scale
       // variable on each of these rather than once on `world`, because a

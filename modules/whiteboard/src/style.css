@@ -68,8 +68,8 @@
   overflow: hidden;
   /* A left-drag from empty canvas is marquee-select (W3-A), not pan — pan
    * is middle-drag (anywhere) or Alt+left-drag from empty canvas, so the
-   * base cursor no longer implies "grab to pan"; VIEWPORT_PANNING_CLASS
-   * still shows grabbing while an actual pan gesture is in progress. */
+   * base cursor no longer implies "grab to pan"; the grabbing cursor of an
+   * actual pan comes from .yolo-whiteboard-pan-capture below. */
   cursor: default;
   touch-action: none;
   /* Dot grid. This rule owns the dot's size and colour only — its spacing
@@ -86,7 +86,18 @@
   );
 }
 
-.yolo-whiteboard-viewport.yolo-whiteboard-viewport-panning {
+/* What a pan captures the pointer on, and the only place its cursor lives.
+ * Blink takes the cursor from the capturing element for as long as the
+ * capture lasts, so an empty, pointer-transparent box with this one rule *is*
+ * the gesture's cursor — and because it never changes, a pan changes no style
+ * at all. The rule used to be a class on the viewport; `cursor` is inherited,
+ * and flipping it there restyled every card and every edge path and label on
+ * the board, ~130ms each way on a 3000-edge board (see
+ * cameraController.ts's beginPan). */
+.yolo-whiteboard-pan-capture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   cursor: grabbing;
 }
 

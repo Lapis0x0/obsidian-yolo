@@ -47,7 +47,6 @@ import {
   WHEEL_DELTA_PER_ZOOM_DOUBLING,
 } from '../constants'
 
-const VIEWPORT_PANNING_CLASS = 'yolo-whiteboard-viewport-panning'
 // will-change only while actively interacting (S1/S2 finding: a permanent
 // will-change wastes compositor memory for no benefit at rest).
 const WORLD_INTERACTING_CLASS = 'yolo-whiteboard-world-interacting'
@@ -147,6 +146,8 @@ export class CameraController {
     private readonly context: YoloModuleHostFileViewContextV1,
     private readonly viewportEl: HTMLElement,
     private readonly worldEl: HTMLElement,
+    /** The empty element a pan captures the pointer on — see `beginPan`. */
+    private readonly panCaptureEl: HTMLElement,
     /** The world layer's chrome layers — the overlays that are counter-scaled
      * rather than drawn in world units. See `applyZoomScale`, which is the
      * only thing that touches them. */
@@ -522,9 +523,26 @@ export class CameraController {
   // writes that follow from it live here.
   // -----------------------------------------------------------------------
 
+  /**
+   * The pointer is captured on `panCaptureEl`, not on the viewport, and that
+   * is the whole of how the gesture shows its cursor. While an element holds
+   * the capture, Blink hit-tests every move to *that element* and takes the
+   * cursor from its style (event_handler.cc's `PerformMouseEventHitTest`
+   * with a capture target, then `SelectCursor`), so an empty element whose
+   * only style is `cursor: grabbing` is the grabbing cursor for the length of
+   * the pan and nothing else.
+   *
+   * It used to be a class on the viewport. `cursor` is inherited, and an
+   * inherited property flipped on the viewport is recomputed on everything
+   * under it — every card, and every path and label of every edge, culled or
+   * not. On a 3000-edge board that was ~130ms at press and ~130ms again at
+   * release (measured 2026-09-02: 7.4k elements restyled each way), which is
+   * what a pan there felt like: a freeze on the way in and a freeze on the
+   * way out. The capture element has no descendants and its style never
+   * changes, so a pan now touches no style at all.
+   */
   beginPan(pointerId: number): void {
-    this.viewportEl.classList.add(VIEWPORT_PANNING_CLASS)
-    this.viewportEl.setPointerCapture(pointerId)
+    this.panCaptureEl.setPointerCapture(pointerId)
     this.markInteracting()
   }
 
@@ -540,7 +558,6 @@ export class CameraController {
   }
 
   finishPan(): void {
-    this.viewportEl.classList.remove(VIEWPORT_PANNING_CLASS)
     this.commitCameraNow()
   }
 
