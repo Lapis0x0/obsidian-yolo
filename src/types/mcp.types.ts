@@ -253,6 +253,43 @@ export enum McpServerStatus {
   Error = 'error',
 }
 
+/**
+ * The `serverInfo` an MCP server reports about itself during `initialize`,
+ * plus the top-level `instructions` from the same response. `name` is the
+ * only field the protocol requires; `title` and `description` were added
+ * later and many existing servers leave them unset.
+ *
+ * We keep this because the locally configured server id is user-chosen and
+ * frequently opaque (`cf`, `ca`, `playright`) — the server's own name is a far
+ * better label for the model-facing tool catalog, and it costs the user no
+ * configuration.
+ */
+export type McpServerInfo = {
+  name: string
+  title?: string
+  description?: string
+  version?: string
+}
+
+/**
+ * Last-known discovery result for one configured MCP server: what the server
+ * calls itself, and the names of the tools it exposed. Persisted (see
+ * `settings.mcp.discoveredCatalogs`) so the model-facing tool catalog is a
+ * function of *configuration* rather than of live connection state.
+ *
+ * `toolNames` holds short (server-side) names; the record's key is the local
+ * server id, so the FQN is derived by the catalog builder.
+ *
+ * Deliberately carries no input schemas: the catalog lists names only, and
+ * `load_tool_schemas` reads real schemas off a live connection. A server that
+ * is configured but offline therefore still appears in the catalog, and a call
+ * into it fails with a connection error rather than "no such tool".
+ */
+export type McpDiscoveredCatalog = {
+  serverInfo?: McpServerInfo
+  toolNames: string[]
+}
+
 export type McpServerState = {
   name: string
   config: McpServerConfig
@@ -264,6 +301,7 @@ export type McpServerState = {
       status: McpServerStatus.Connected
       client: McpClient
       tools: McpTool[]
+      serverInfo?: McpServerInfo
     }
   | {
       status: McpServerStatus.Error

@@ -11,7 +11,9 @@ import type { ChatMessage } from '../../types/chat'
 import type { ChatModelModality } from '../../types/chat-model.types'
 import {
   McpClient,
+  McpDiscoveredCatalog,
   McpServerConfig,
+  McpServerInfo,
   McpServerState,
   McpServerStatus,
   McpTool,
@@ -70,6 +72,25 @@ const MCP_CONNECTION_CLOSED_CODE = -32000
 const RECONNECT_WINDOW_MS = 60_000
 const RECONNECT_MAX_ATTEMPTS = 3
 
+/**
+ * The `serverInfo` an MCP server reported during `initialize`. Only `name` is
+ * required by the protocol; `title` and `description` were added later, so
+ * most existing servers leave them unset and the catalog falls back to `name`
+ * and then to the user's local server id.
+ */
+const readServerInfo = (client: McpClient): McpServerInfo | undefined => {
+  const info = client.getServerVersion()
+  if (!info?.name) {
+    return undefined
+  }
+  return {
+    name: info.name,
+    ...(info.title ? { title: info.title } : {}),
+    ...(info.description ? { description: info.description } : {}),
+    ...(info.version ? { version: info.version } : {}),
+  }
+}
+
 export class McpManager {
   static readonly TOOL_NAME_DELIMITER = '__' // Delimiter for tool name construction (serverName__toolName)
 
@@ -81,6 +102,9 @@ export class McpManager {
   private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private settings: YoloSettings
+  private persistDiscoveredCatalogs?: (
+    catalogs: Record<string, McpDiscoveredCatalog>,
+  ) => void
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
   private remoteTransportFactory: ReturnType<
@@ -192,6 +216,7 @@ export class McpManager {
     registerSettingsListener,
     ragAccess,
     promptSourceWatcher,
+    persistDiscoveredCatalogs,
   }: {
     app: App
     pluginId: string
@@ -202,12 +227,16 @@ export class McpManager {
     ) => () => void
     ragAccess?: RagKnowledgeAccess
     promptSourceWatcher?: PromptSourceWatcher
+    persistDiscoveredCatalogs?: (
+      catalogs: Record<string, McpDiscoveredCatalog>,
+    ) => void
   }) {
     this.app = app
     this.oauthController = new McpOAuthController(app, pluginId)
     this.openApplyReview = openApplyReview
     this.ragAccess = ragAccess
     this.promptSourceWatcher = promptSourceWatcher
+    this.persistDiscoveredCatalogs = persistDiscoveredCatalogs
     this.settings = settings
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
@@ -422,6 +451,51 @@ export class McpManager {
     if (!provider.getCredential().tokens) {
       throw new Error('This MCP server did not request OAuth authorization.')
     }
+  }
+
+  /**
+   * Record what a server just reported about itself, so the model-facing tool
+   * catalog can be built from configuration alone (see
+   * `settings.mcp.discoveredCatalogs`). Writes only on an actual change: a
+   * stable setup therefore persists nothing after its first successful
+   * connect, and the frozen system-prompt snapshot is not evicted on every
+   * reconnect.
+   *
+   * Entries for servers no longer present in settings are pruned here rather
+   * than on removal — a server can be deleted while this manager is torn
+   * down, and the next connect is the first moment we are guaranteed to run.
+   */
+  private rememberDiscoveredCatalog(
+    serverName: string,
+    tools: readonly McpTool[],
+    serverInfo: McpServerInfo | undefined,
+  ): void {
+    if (!this.persistDiscoveredCatalogs) {
+      return
+    }
+    const configuredNames = new Set(
+      this.settings.mcp.servers.map((server) => server.id),
+    )
+    const existing = this.settings.mcp.discoveredCatalogs ?? {}
+    const next: Record<string, McpDiscoveredCatalog> = {}
+    for (const [name, catalog] of Object.entries(existing)) {
+      if (configuredNames.has(name)) {
+        next[name] = catalog
+      }
+    }
+    // Short (server-side) tool names, not FQNs: the record is already keyed by
+    // the local server id, and the FQN delimiter belongs to the catalog
+    // builder rather than to persisted data. Sorted because server order is
+    // not guaranteed stable across connects, and an unchanged server must not
+    // look like a change.
+    next[serverName] = {
+      ...(serverInfo ? { serverInfo } : {}),
+      toolNames: tools.map((tool) => tool.name).sort(),
+    }
+    if (isEqual(next, existing)) {
+      return
+    }
+    this.persistDiscoveredCatalogs(next)
   }
 
   public async handleSettingsUpdate(settings: YoloSettings) {
@@ -758,12 +832,15 @@ export class McpManager {
         prewarmMcpServerToolTokenCosts(name, toolList.tools)
       }
       signal?.removeEventListener('abort', abortListener)
+      const serverInfo = readServerInfo(client)
+      this.rememberDiscoveredCatalog(name, toolList.tools, serverInfo)
       return {
         name,
         config: serverConfig,
         status: McpServerStatus.Connected,
         client,
         tools: toolList.tools,
+        ...(serverInfo ? { serverInfo } : {}),
       }
     } catch (error) {
       signal?.removeEventListener('abort', abortListener)

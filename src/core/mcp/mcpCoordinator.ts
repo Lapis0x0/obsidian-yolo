@@ -2,6 +2,7 @@ import { App } from 'obsidian'
 
 import { YoloSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import type { McpDiscoveredCatalog } from '../../types/mcp.types'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import {
   type RegisteredModuleChatModeV1,
@@ -40,6 +41,15 @@ type McpCoordinatorDeps = {
    * hosts/tests that don't need module chat modes can omit it.
    */
   moduleChatModeRegistry?: ModuleChatModeRegistrySource
+  /**
+   * Persists the derived MCP tool catalog (see
+   * `settings.mcp.discoveredCatalogs`). Optional so hosts/tests that never
+   * build a model-facing tool catalog can omit it — the manager then simply
+   * discovers without remembering.
+   */
+  persistDiscoveredCatalogs?: (
+    catalogs: Record<string, McpDiscoveredCatalog>,
+  ) => void
 }
 
 export class McpCoordinator {
@@ -53,6 +63,9 @@ export class McpCoordinator {
   private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private readonly moduleChatModeRegistry?: ModuleChatModeRegistrySource
+  private readonly persistDiscoveredCatalogs?: (
+    catalogs: Record<string, McpDiscoveredCatalog>,
+  ) => void
 
   private mcpManager: McpManager | null = null
   private mcpManagerInitPromise: Promise<McpManager> | null = null
@@ -74,6 +87,7 @@ export class McpCoordinator {
     this.ragAccess = deps.ragAccess
     this.promptSourceWatcher = deps.promptSourceWatcher
     this.moduleChatModeRegistry = deps.moduleChatModeRegistry
+    this.persistDiscoveredCatalogs = deps.persistDiscoveredCatalogs
   }
 
   async getMcpManager(): Promise<McpManager> {
@@ -92,6 +106,7 @@ export class McpCoordinator {
             registerSettingsListener: this.registerSettingsListener,
             ragAccess: this.ragAccess,
             promptSourceWatcher: this.promptSourceWatcher,
+            persistDiscoveredCatalogs: this.persistDiscoveredCatalogs,
           })
           await manager.initialize()
           this.mcpManager = manager

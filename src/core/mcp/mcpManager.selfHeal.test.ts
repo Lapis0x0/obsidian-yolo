@@ -38,6 +38,12 @@ class FakeClient {
     return this.listToolsMock()
   }
 
+  // Part of the real SDK Client contract; the manager reads it after a
+  // successful connect to label the model-facing tool catalog.
+  getServerVersion(): { name: string; version: string } | undefined {
+    return undefined
+  }
+
   async callTool(
     params: unknown,
     schema: unknown,

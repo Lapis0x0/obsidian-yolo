@@ -479,6 +479,34 @@ export const yoloSettingsSchema = z.object({
        */
       builtinCapabilityOptions: mcpServerToolOptionsSchema.catch({}),
       enableToolDisclosure: z.boolean().catch(false),
+      /**
+       * Derived cache, not user configuration: the last-known `serverInfo`
+       * and tool-name list for each configured MCP server, keyed by the
+       * server's local id. Written by `McpManager` on a successful connect,
+       * and only when the discovered value actually changed.
+       *
+       * It lives in settings because the model-facing tool catalog is built
+       * during system-prompt assembly, which already reads settings, and
+       * because `computeSystemPromptFingerprint` can then treat it like any
+       * other configuration-level input. Losing it is harmless — the affected
+       * server is simply absent from the catalog until it connects once.
+       */
+      discoveredCatalogs: z
+        .record(
+          z.string(),
+          z.object({
+            serverInfo: z
+              .object({
+                name: z.string(),
+                title: z.string().optional(),
+                description: z.string().optional(),
+                version: z.string().optional(),
+              })
+              .optional(),
+            toolNames: z.array(z.string()).catch([]),
+          }),
+        )
+        .catch({}),
       localServer: z
         .object({
           enabled: z.boolean().catch(false),
@@ -500,6 +528,7 @@ export const yoloSettingsSchema = z.object({
       servers: [],
       builtinCapabilityOptions: {},
       enableToolDisclosure: false,
+      discoveredCatalogs: {},
       localServer: {
         enabled: false,
         port: DEFAULT_LOCAL_MCP_SERVER_PORT,

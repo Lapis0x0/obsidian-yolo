@@ -1009,6 +1009,12 @@ export default class YoloPlugin extends Plugin {
         ragAccess: this.getRagAccess(),
         promptSourceWatcher: agentService.getPromptSourceWatcher(),
         moduleChatModeRegistry: this.moduleChatModeRegistry,
+        persistDiscoveredCatalogs: (catalogs) => {
+          void this.setSettings({
+            ...this.settings,
+            mcp: { ...this.settings.mcp, discoveredCatalogs: catalogs },
+          })
+        },
       })
     }
     return this.mcpCoordinator
