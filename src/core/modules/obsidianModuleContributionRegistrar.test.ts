@@ -440,7 +440,9 @@ describe('ObsidianModuleContributionRegistrar', () => {
         { fileViews: [{ ...fileView, extensions: ['other'] }] },
         new ModuleLifecycleScope(),
       ),
-    ).toThrow(`Module file view type "${fileView.viewType}" is already registered`)
+    ).toThrow(
+      `Module file view type "${fileView.viewType}" is already registered`,
+    )
 
     expect(() =>
       registrar.commit(
@@ -478,12 +480,10 @@ describe('ObsidianModuleContributionRegistrar', () => {
     let fileMenuHandler:
       | ((menu: unknown, file: unknown, source: string) => void)
       | undefined
-    const on = jest.fn(
-      (name: string, cb: typeof fileMenuHandler): object => {
-        if (name === 'file-menu') fileMenuHandler = cb
-        return {}
-      },
-    )
+    const on = jest.fn((name: string, cb: typeof fileMenuHandler): object => {
+      if (name === 'file-menu') fileMenuHandler = cb
+      return {}
+    })
     const registrar = new ObsidianModuleContributionRegistrar({
       app: { workspace: { on } },
       registerEvent: jest.fn(),

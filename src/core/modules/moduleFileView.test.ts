@@ -326,7 +326,7 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
       data: string | null
     }
 
-    const board = new TFile('board.yoloboard')
+    const board = makeFile('board.yoloboard')
     const onDisk = '{"nodes":[{"id":"n-1"}]}'
     hostView.file = board
     hostView.data = onDisk
@@ -381,12 +381,12 @@ describe('HostModuleFileView (via createModuleFileView)', () => {
 
     slot.bind(view)
     void hostView.onOpen()
-    hostView.file = new TFile('first.yoloboard')
+    hostView.file = makeFile('first.yoloboard')
     hostView.setViewData('{"board":"first"}', true)
     handles[0].liveData = '{"board":"first","edited":true}'
 
     // The leaf moves on to another file before the pending save fires.
-    hostView.file = new TFile('second.yoloboard')
+    hostView.file = makeFile('second.yoloboard')
     hostView.data = '{"board":"second"}'
 
     expect(hostView.getViewData()).toBe('{"board":"second"}')

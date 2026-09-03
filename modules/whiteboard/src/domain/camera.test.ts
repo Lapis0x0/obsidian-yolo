@@ -258,9 +258,10 @@ describe('screenDeltaToWorld', () => {
   })
 
   it('divides by scale — pan does not enter into a delta', () => {
-    expect(screenDeltaToWorld({ tx: 999, ty: 999, scale: 2 }, 30, 10)).toEqual(
-      { dx: 15, dy: 5 },
-    )
+    expect(screenDeltaToWorld({ tx: 999, ty: 999, scale: 2 }, 30, 10)).toEqual({
+      dx: 15,
+      dy: 5,
+    })
   })
 })
 

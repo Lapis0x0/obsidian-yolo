@@ -531,9 +531,7 @@ export class ObsidianModuleContributionRegistrar
     const fileViews = contributions.fileViews ?? []
     const existingFileViewSlots = this.fileViewSlotsByModuleId.get(moduleId)
     for (const fileView of fileViews) {
-      const existingFileViewSlot = existingFileViewSlots?.get(
-        fileView.viewType,
-      )
+      const existingFileViewSlot = existingFileViewSlots?.get(fileView.viewType)
       if (existingFileViewSlot?.get()) {
         throw new Error(
           `Module file view type "${fileView.viewType}" is already active`,

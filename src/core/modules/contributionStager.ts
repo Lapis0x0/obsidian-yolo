@@ -33,7 +33,10 @@ function requireText(value: unknown, label: string): void {
   }
 }
 
-function requireExtension(value: unknown, label: string): asserts value is string {
+function requireExtension(
+  value: unknown,
+  label: string,
+): asserts value is string {
   requireText(value, label)
   if (!EXTENSION_PATTERN.test(value as string)) {
     throw new Error(`${label} must match ${EXTENSION_PATTERN}`)
@@ -67,7 +70,10 @@ export class ModuleContributionStager {
   private readonly commands = new Map<string, YoloModuleCommandV1>()
   private readonly fileViews = new Map<string, YoloModuleFileViewV1>()
   private readonly fileViewExtensionOwners = new Map<string, string>()
-  private readonly fileMenuActions = new Map<string, YoloModuleFileMenuActionV1>()
+  private readonly fileMenuActions = new Map<
+    string,
+    YoloModuleFileMenuActionV1
+  >()
   private finished = false
 
   readonly workspace: YoloModuleWorkspaceContributionsV1 = {
