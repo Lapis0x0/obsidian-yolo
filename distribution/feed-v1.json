@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "revision": 28,
+  "revision": 29,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.8",
@@ -82,6 +82,55 @@
         "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/learning%2Fv0.1.4/module.json",
         "byteSize": 1860,
         "sha256": "f226e62c9fb1d7785db70e49bb1fd48430c13501c1353f42d482c3081bc99120"
+      }
+    },
+    {
+      "id": "whiteboard",
+      "icon": "layout-grid",
+      "localizations": {
+        "en": {
+          "name": "YOLO Whiteboard",
+          "description": "An infinite canvas for spatial thinking: place note, text, and PDF cards, connect them, and read/annotate PDFs alongside your notes."
+        },
+        "zh": {
+          "name": "YOLO 白板",
+          "description": "用于空间化思考的无限画布：摆放笔记、便签与 PDF 卡片，建立连线，并在笔记旁阅读与标注 PDF。"
+        },
+        "it": {
+          "name": "Lavagna YOLO",
+          "description": "Una tela infinita per il pensiero spaziale: disponi schede di note, testo e PDF, collegale tra loro e leggi/annota i PDF accanto alle tue note."
+        }
+      },
+      "version": "0.0.2",
+      "hostApi": "^1.8.0",
+      "platforms": [
+        "desktop",
+        "mobile"
+      ],
+      "dataSchemas": {
+        "settings": {
+          "readMin": 0,
+          "readMax": 1,
+          "write": 1
+        }
+      },
+      "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/whiteboard/v0.0.2",
+      "releaseNotes": {
+        "en": "## 0.0.2 YOLO Whiteboard 🧩\n\n- For now, think of it as an Obsidian Canvas several to dozens of times faster. More features that push the boundaries of AI and human thinking are on the way.\n- Requires YOLO Core 1.6.8 or later.",
+        "zh": "## 0.0.2 YOLO 白板 🧩\n\n- 你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。\n- 需要 YOLO Core 1.6.8 及以上版本。"
+      },
+      "releaseNote": {
+        "name": "release-note.md",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.2/release-note.md",
+        "byteSize": 472,
+        "sha256": "fe46c77fd83c23908b60c21fae1d29519e6a23e22e3065c32aa6dc58f50ad702"
+      },
+      "manifest": {
+        "name": "module.json",
+        "mirrorPath": "modules/whiteboard/0.0.2/module.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/whiteboard%2Fv0.0.2/module.json",
+        "byteSize": 1866,
+        "sha256": "58fee4ae4085e8159c155f0ae2597886482013328feccdce8c5952e5375eb663"
       }
     }
   ]
