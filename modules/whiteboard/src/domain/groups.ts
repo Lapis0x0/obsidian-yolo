@@ -98,7 +98,50 @@ export function arrangeTargets(
     const contained = new Set(nodesInsideGroup(selected[0], board.nodes))
     return board.nodes.filter((node) => contained.has(node.id))
   }
-  return selected
+  // A node its own group is carrying is not a target beside it: it has no
+  // position of its own to align, it goes where the frame goes. Leaving it in
+  // would let an align pull a card out of the group it sits in.
+  const carried = new Set<NodeId>()
+  for (const node of selected) {
+    if (node.type !== 'group') continue
+    for (const id of nodesInsideGroup(node, board.nodes)) carried.add(id)
+  }
+  return selected.filter((node) => !carried.has(node.id))
+}
+
+/**
+ * The moves `positions` really implies: a group that moves carries what it
+ * holds, so each of its members moves by the same delta.
+ *
+ * The counterpart of `nodesToDragWith` for a move that is computed rather than
+ * dragged (align, distribute). Both say the one thing — a group carries its
+ * contents — and both resolve membership against the layout as it stands
+ * before the move, so a frame cannot pick up the nodes it travels past.
+ *
+ * A node that has a move of its own keeps it. `arrangeTargets` never returns a
+ * carried node beside its group, so the two cannot disagree unless a caller
+ * asks for something contradictory, and then what it asked for wins.
+ */
+export function carryGroupMembers(
+  nodes: readonly BoardNode[],
+  positions: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
+): Map<NodeId, Readonly<{ x: number; y: number }>> {
+  const carried = new Map(positions)
+  const byId = new Map(nodes.map((node) => [node.id, node]))
+  for (const [id, point] of positions) {
+    const group = byId.get(id)
+    if (group?.type !== 'group') continue
+    const dx = point.x - group.x
+    const dy = point.y - group.y
+    if (dx === 0 && dy === 0) continue
+    for (const memberId of nodesInsideGroup(group, nodes)) {
+      if (positions.has(memberId)) continue
+      const member = byId.get(memberId)
+      if (!member) continue
+      carried.set(memberId, { x: member.x + dx, y: member.y + dy })
+    }
+  }
+  return carried
 }
 
 /**

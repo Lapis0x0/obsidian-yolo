@@ -72,6 +72,7 @@ import {
 import {
   GROUP_SELECTION_PADDING,
   arrangeTargets,
+  carryGroupMembers,
   groupRectForNodes,
   nodesToDragWith,
 } from '../domain/groups'
@@ -3785,12 +3786,15 @@ export class WhiteboardCanvas {
   }
 
   /** Commits a batch of new positions and brings the canvas back in step with
-   * them. `setNodePositions` returns the same board when nothing moved, so an
-   * align that changes nothing records no history step and redraws nothing. */
+   * them. A group among them carries what it holds, the same law a drag obeys
+   * (`carryGroupMembers`). `setNodePositions` returns the same board when
+   * nothing moved, so an align that changes nothing records no history step
+   * and redraws nothing. */
   private applyArrangement(
-    positions: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
+    requested: ReadonlyMap<NodeId, Readonly<{ x: number; y: number }>>,
   ): void {
-    if (!this.canEdit || positions.size === 0) return
+    if (!this.canEdit || requested.size === 0) return
+    const positions = carryGroupMembers(this.board.nodes, requested)
     const next = setNodePositions(this.board, positions)
     if (next === this.board) return
     this.applyBoardChange(next)

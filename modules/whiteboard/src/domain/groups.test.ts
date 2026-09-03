@@ -2,6 +2,7 @@ import { type Board, type BoardNode, emptyBoard } from './fileFormat'
 import {
   GROUP_SELECTION_PADDING,
   arrangeTargets,
+  carryGroupMembers,
   groupRectForNodes,
   nodesInsideGroup,
   nodesToDragWith,
@@ -138,6 +139,67 @@ describe('arrangeTargets', () => {
 
   it('returns nothing for an empty selection', () => {
     expect(arrangeTargets(boardWith([a, b]), new Set())).toEqual([])
+  })
+
+  it('drops a card its own selected group is carrying', () => {
+    const board = boardWith([frame, inside, outside])
+    expect(arrangeTargets(board, new Set(['g', 'inside', 'outside']))).toEqual([
+      frame,
+      outside,
+    ])
+  })
+
+  it('drops a group nested inside another selected group', () => {
+    const nested = group('n', 10, 10, 50, 50)
+    const board = boardWith([frame, nested, outside])
+    expect(arrangeTargets(board, new Set(['g', 'n']))).toEqual([frame])
+  })
+})
+
+describe('carryGroupMembers', () => {
+  const frame = group('g', 0, 0, 200, 200)
+  const inside = card('inside', 20, 20)
+  const outside = card('outside', 400, 400)
+  const nodes = [frame, inside, outside]
+
+  it("moves a group's contents by the group's own delta", () => {
+    const moved = carryGroupMembers(nodes, new Map([['g', { x: 30, y: 50 }]]))
+    expect(moved.get('g')).toEqual({ x: 30, y: 50 })
+    expect(moved.get('inside')).toEqual({ x: 50, y: 70 })
+    expect(moved.has('outside')).toBe(false)
+  })
+
+  it('leaves a card that moves on its own alone', () => {
+    const moved = carryGroupMembers(
+      nodes,
+      new Map([['inside', { x: 5, y: 5 }]]),
+    )
+    expect(moved.get('inside')).toEqual({ x: 5, y: 5 })
+    expect(moved.size).toBe(1)
+  })
+
+  it('resolves membership before the move, not after', () => {
+    // The frame travels far enough to cover `outside`; it must not pick it up
+    // on the way, and must still carry the card it started with.
+    const moved = carryGroupMembers(nodes, new Map([['g', { x: 380, y: 380 }]]))
+    expect(moved.get('inside')).toEqual({ x: 400, y: 400 })
+    expect(moved.has('outside')).toBe(false)
+  })
+
+  it('carries a nested group and everything it holds', () => {
+    const nested = group('n', 10, 10, 100, 100)
+    const deep = card('deep', 20, 20, 30, 30)
+    const moved = carryGroupMembers(
+      [frame, nested, deep],
+      new Map([['g', { x: 100, y: 0 }]]),
+    )
+    expect(moved.get('n')).toEqual({ x: 110, y: 10 })
+    expect(moved.get('deep')).toEqual({ x: 120, y: 20 })
+  })
+
+  it('is a no-op for a group that does not actually move', () => {
+    const moved = carryGroupMembers(nodes, new Map([['g', { x: 0, y: 0 }]]))
+    expect(moved.has('inside')).toBe(false)
   })
 })
 
