@@ -53,6 +53,19 @@ describe('describeMcpToolSets', () => {
     expect(result?.text).toContain('cf__search_docs')
   })
 
+  it('keeps the local alias when the server reports a deployment id as its name', () => {
+    const result = buildFromMcp({
+      configuredServers: [server('dingtalk')],
+      discoveredCatalogs: {
+        dingtalk: catalog(['search_my_robots'], {
+          name: 'dingtalk-mcp-21b6ab2e1179b05980c39fa4e36e71f44f1b8c98b6f541ed3697c8',
+        }),
+      },
+    })
+    expect(result?.text).toContain('dingtalk\n')
+    expect(result?.text).not.toContain('21b6ab2e')
+  })
+
   it('falls back title -> name -> local id', () => {
     const withName = buildFromMcp({
       configuredServers: [server('ca')],

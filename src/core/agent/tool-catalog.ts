@@ -48,12 +48,28 @@ const CATALOG_INSTRUCTION = [
 ].join(' ')
 
 /**
+ * Beyond this, `serverInfo.name` is read as a deployment identifier rather
+ * than something meant to be shown. Real display names are short
+ * (`DeepWiki`, `cloudflare-docs`, `github-mcp-server`); the ones that blow
+ * past this are of the
+ * `dingtalk-mcp-21b6ab2e1179b05980c39fa4e36e71f44f1b8c98b6f...` shape.
+ */
+const MAX_DISPLAYABLE_SERVER_NAME_LENGTH = 32
+
+/**
  * Display name for a tool set.
  *
  * The locally configured id is user-chosen and frequently opaque (`cf`, `ca`,
  * `playright`), so the server's own reported identity wins when it provided
  * one. `title` and `description` are optional in the MCP protocol and were
  * added to it late, hence the fallback chain.
+ *
+ * `title` is the protocol's declared display field and is always trusted.
+ * `name` is not — it is an identifier that servers are merely *free* to make
+ * readable, and a deployment id is worse than the local alias on both ends:
+ * it costs the model tokens in `<tool_catalog>` for no meaning, and it
+ * overruns the user's collapsed summary line. Length is what separates the
+ * two, so it is what we test.
  *
  * Shared with the chat run summary so a tool set is named the same way
  * wherever it appears — what the model reads in `<tool_catalog>` is what the
@@ -62,7 +78,17 @@ const CATALOG_INSTRUCTION = [
 export const resolveToolSetLabel = (
   setId: string,
   serverInfo: McpServerInfo | undefined,
-): string => serverInfo?.title?.trim() || serverInfo?.name?.trim() || setId
+): string => {
+  const title = serverInfo?.title?.trim()
+  if (title) {
+    return title
+  }
+  const name = serverInfo?.name?.trim()
+  if (name && name.length <= MAX_DISPLAYABLE_SERVER_NAME_LENGTH) {
+    return name
+  }
+  return setId
+}
 
 /**
  * MCP tool sets, built from *configuration* rather than connection state.
