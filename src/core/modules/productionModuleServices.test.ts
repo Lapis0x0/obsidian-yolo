@@ -685,6 +685,43 @@ describe('createProductionModuleServices', () => {
     )
   })
 
+  // Deleting or reinstalling the plugin folder wipes the artifacts while the
+  // device-state row survives. That row keeps reporting the module installed at
+  // a version whose bytes are gone, which refuses the install ("not newer than
+  // active") and refuses the uninstall (no intent left to clear).
+  it('drops a device state whose intent and artifacts are both gone', async () => {
+    const harness = createHarness()
+    await seedActiveVersion(harness, '1.2.3')
+    harness.intents.delete('learning')
+    harness.activeVersions.delete('learning')
+    await harness.services.refresh()
+    expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+
+    await harness.services.start()
+
+    expect(await harness.deviceStateStore.read('learning')).toBeNull()
+    expect(harness.services.getInstallCandidate('learning')).toMatchObject({
+      moduleId: 'learning',
+      expectedVersion: '1.2.3',
+    })
+  })
+
+  // A moved YOLO base directory or a Vault whose data has not synced makes the
+  // intent look absent while the module is perfectly installed. Losing it there
+  // would cost the user a working module and a full re-download.
+  it('keeps an installed module whose intent has merely gone missing', async () => {
+    const harness = createHarness()
+    const root = await seedActiveVersion(harness, '1.2.3')
+    await harness.adapter.write(`${root}/entry.js`, '/* entry */')
+    harness.intents.delete('learning')
+
+    await harness.services.start()
+
+    expect(await harness.deviceStateStore.read('learning')).toMatchObject({
+      active: { version: '1.2.3' },
+    })
+  })
+
   it('activates a pending target and commits it as active', async () => {
     const harness = createHarness()
     await install(harness)

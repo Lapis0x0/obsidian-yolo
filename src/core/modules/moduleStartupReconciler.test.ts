@@ -73,6 +73,9 @@ function createHarness(
   const scheduleSafeUninstall = jest.fn(async (moduleId: string) => {
     log.push(`uninstall:${moduleId}`)
   })
+  const repairOrphanedInstall = jest.fn(async (moduleId: string) => {
+    log.push(`repair:${moduleId}`)
+  })
   const reportError = jest.fn()
   const reconciler = new ModuleStartupReconciler({
     source,
@@ -87,6 +90,7 @@ function createHarness(
     runtime,
     manager: { refresh },
     scheduleSafeUninstall,
+    repairOrphanedInstall,
     reportError,
   })
   return {
@@ -100,6 +104,7 @@ function createHarness(
     runtime,
     refresh,
     scheduleSafeUninstall,
+    repairOrphanedInstall,
     reportError,
     emit(moduleId: string) {
       for (const listener of [...listeners]) listener(moduleId)
@@ -426,5 +431,50 @@ describe('ModuleStartupReconciler', () => {
     expect(harness.ensureModuleReady).toHaveBeenCalledTimes(1)
     expect(harness.refresh).toHaveBeenCalledTimes(1)
     expect(harness.activatePersistedModules).toHaveBeenCalledTimes(1)
+  })
+})
+
+describe('ModuleStartupReconciler orphan repair', () => {
+  // Deleting or reinstalling the plugin folder wipes a module's artifacts while
+  // its device-state row survives in IndexedDB. Nothing declares the module any
+  // more, yet it still reports itself installed at a version whose bytes are
+  // gone — install is refused as "not newer than active" and uninstall is
+  // refused for want of an intent. Startup is the one place that sees the whole
+  // picture, so it is where the row has to be offered for repair.
+  test('offers a module no intent declares to the repair seam once', async () => {
+    const harness = createHarness({}, ['whiteboard'])
+
+    await harness.reconciler.start()
+
+    expect(harness.repairOrphanedInstall.mock.calls).toEqual([['whiteboard']])
+    expect(harness.scheduleSafeUninstall).not.toHaveBeenCalled()
+
+    // Repeat events carry no new information: the intent is still absent and
+    // this session already reconciled it.
+    harness.emit('whiteboard')
+    await harness.reconciler.whenIdle()
+    expect(harness.repairOrphanedInstall).toHaveBeenCalledTimes(1)
+  })
+
+  test('leaves a declared module alone', async () => {
+    const harness = createHarness({ notes: 'disabled' })
+
+    await harness.reconciler.start()
+
+    expect(harness.repairOrphanedInstall).not.toHaveBeenCalled()
+  })
+
+  test('keeps reconciling when a repair fails', async () => {
+    const harness = createHarness({}, ['whiteboard'])
+    harness.repairOrphanedInstall.mockRejectedValueOnce(
+      new Error('device state is locked'),
+    )
+
+    await expect(harness.reconciler.start()).resolves.toBeUndefined()
+
+    expect(harness.reportError).toHaveBeenCalledWith(
+      expect.objectContaining({ message: 'device state is locked' }),
+      'whiteboard',
+    )
   })
 })

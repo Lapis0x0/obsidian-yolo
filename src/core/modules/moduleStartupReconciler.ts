@@ -32,6 +32,12 @@ export type ModuleStartupReconcilerOptions = Readonly<{
   }>
   manager: Pick<ModuleManager, 'refresh'>
   scheduleSafeUninstall?: (moduleId: string) => Promise<void>
+  /**
+   * Drops a device-local installation that no intent declares any more, so a
+   * device state cannot outlive the artifacts it claims. Production decides
+   * whether the artifacts are really gone before removing anything.
+   */
+  repairOrphanedInstall?: (moduleId: string) => Promise<void>
   reportError?: (error: unknown, moduleId?: string) => void
 }>
 
@@ -61,6 +67,8 @@ export class ModuleStartupReconciler {
       typeof options.manager?.refresh !== 'function' ||
       (options.scheduleSafeUninstall !== undefined &&
         typeof options.scheduleSafeUninstall !== 'function') ||
+      (options.repairOrphanedInstall !== undefined &&
+        typeof options.repairOrphanedInstall !== 'function') ||
       (options.reportError !== undefined &&
         typeof options.reportError !== 'function')
     ) {
@@ -185,6 +193,7 @@ export class ModuleStartupReconciler {
       intent: ModuleIntent | null
     }> = []
     const uninstallIds: string[] = []
+    const orphanIds: string[] = []
 
     for (const moduleId of moduleIds) {
       if (this.disposed) return
@@ -221,6 +230,11 @@ export class ModuleStartupReconciler {
         }
       } else if (current === 'uninstalled') {
         uninstallIds.push(moduleId)
+      } else if (current === null && previous !== current) {
+        // No intent at all: either a catalog module this Vault never installed,
+        // or a device state whose declaration is gone. Only the repair can tell
+        // them apart, and like readiness it is worth running once per value.
+        orphanIds.push(moduleId)
       }
 
       if (
@@ -261,6 +275,14 @@ export class ModuleStartupReconciler {
     for (const moduleId of uninstallIds) {
       try {
         await this.options.scheduleSafeUninstall?.(moduleId)
+      } catch (error) {
+        this.report(error, moduleId)
+      }
+    }
+    if (this.disposed) return
+    for (const moduleId of orphanIds) {
+      try {
+        await this.options.repairOrphanedInstall?.(moduleId)
       } catch (error) {
         this.report(error, moduleId)
       }

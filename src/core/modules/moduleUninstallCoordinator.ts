@@ -65,8 +65,12 @@ export class ModuleUninstallCoordinator {
         this.options.deviceStateStore.runExclusive(
           moduleId,
           async (transaction) => {
+            // Nothing may still want the module. An intent that is gone
+            // entirely counts: the device state can outlive its Vault-side
+            // declaration, and cleanup must not depend on a file that is
+            // already deleted.
             const intent = await this.options.intentStore.get(moduleId)
-            if (intent !== 'uninstalled') {
+            if (intent === 'enabled' || intent === 'disabled') {
               throw new Error(
                 `Module "${moduleId}" uninstall requires uninstalled intent`,
               )

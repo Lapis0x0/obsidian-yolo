@@ -340,6 +340,31 @@ export function createProductionModuleServices(
     manager,
     scheduleSafeUninstall: (moduleId: string) =>
       uninstallCoordinator.uninstall(moduleId),
+    // A device state is this device's claim about artifacts on this device.
+    // Deleting or reinstalling the plugin folder wipes the artifacts while the
+    // IndexedDB row survives, and that row then reports the module installed at
+    // a version whose bytes are gone: install is refused (nothing is newer than
+    // the "active" version) and uninstall is refused (no intent left to clear),
+    // leaving no way out. Drop the row once nothing declares the module and no
+    // artifacts remain. A missing intent alone is not enough — a moved YOLO
+    // base directory or a Vault that has not synced must never cost the user an
+    // installed module.
+    repairOrphanedInstall: async (moduleId: string) => {
+      const state = (await options.deviceStateStore.list()).find(
+        (candidate) => candidate.moduleId === moduleId,
+      )
+      if (!state) return
+      const versions = new Set(
+        [state.active?.version, state.pending?.descriptor.version].filter(
+          (version): version is string => version !== undefined,
+        ),
+      )
+      for (const version of versions) {
+        const files = await options.store.listVersionFiles(moduleId, version)
+        if (files.length > 0) return
+      }
+      await uninstallCoordinator.uninstall(moduleId)
+    },
     ...(options.reportStartupError
       ? { reportError: options.reportStartupError }
       : {}),
