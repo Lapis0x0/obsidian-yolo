@@ -77,6 +77,7 @@ import {
   nodesToDragWith,
 } from '../domain/groups'
 import { BoardHistory } from '../domain/history'
+import { mintEdgeId, mintNodeId } from '../domain/ids'
 import {
   basenameWithoutExtension,
   cardNoteContent,
@@ -3811,7 +3812,7 @@ export class WhiteboardCanvas {
     for (const [index, path] of paths.entries()) {
       const offset = index * DROP_STAGGER_PX
       board = addNode(board, {
-        id: this.nextNodeId(),
+        id: this.nextNodeId(board),
         type: 'file',
         x: Math.round(world.x - NEW_EMBED_CARD_SIZE.w / 2 + offset),
         y: Math.round(world.y - NEW_EMBED_CARD_SIZE.h / 2 + offset),
@@ -4073,14 +4074,15 @@ export class WhiteboardCanvas {
     return lastSlash === -1 ? '' : boardPath.slice(0, lastSlash)
   }
 
-  private nextNodeId(): NodeId {
-    const uuid = this.context.getWindow().crypto.randomUUID()
-    return `c-${uuid}`
+  /** Minted against `board` rather than `this.board` where a caller is
+   * building up several cards before committing them — two ids drawn from
+   * the same four-hex space have to see each other to stay apart. */
+  private nextNodeId(board: Board = this.board): NodeId {
+    return mintNodeId(board)
   }
 
   private nextEdgeId(): EdgeId {
-    const uuid = this.context.getWindow().crypto.randomUUID()
-    return `e-${uuid}`
+    return mintEdgeId(this.board)
   }
 
   private nextEditSessionId(): number {

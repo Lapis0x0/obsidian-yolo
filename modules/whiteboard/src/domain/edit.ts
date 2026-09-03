@@ -86,8 +86,13 @@ const COLOR_NAMES: Readonly<Record<string, NodeColor>> = Object.freeze({
 export const COLOR_NAME_LIST = Object.keys(COLOR_NAMES)
 
 export type BoardEditContext = Readonly<{
-  newNodeId(): NodeId
-  newEdgeId(): EdgeId
+  /**
+   * Ids are minted against the board *as it stands at that moment*, not
+   * against the one this edit started from: two cards created in the same
+   * call have to see each other, or they can be handed the same short id.
+   */
+  newNodeId(board: Board): NodeId
+  newEdgeId(board: Board): EdgeId
   /** Snap step for `arrange: "tidy"` — the canvas's `GRID_WORLD_STEP_PX`. */
   gridStep: number
   /** Default size of a text card, and of a card that embeds something. */
@@ -277,7 +282,7 @@ function applyCreates(
       previous,
     })
 
-    const id = context.newNodeId()
+    const id = context.newNodeId(next)
     const base = {
       id,
       x: Math.round(position.x),
@@ -435,7 +440,7 @@ function applyConnects(
     requireNode(next, op.from, `${where}.from`)
     requireNode(next, op.to, `${where}.to`)
     if (op.from === op.to) fail(`${where}: a card cannot connect to itself.`)
-    const id = context.newEdgeId()
+    const id = context.newEdgeId(next)
     next = addEdge(next, {
       id,
       fromNode: op.from,
@@ -473,7 +478,7 @@ function applyGroups(
     const rect = groupRectForNodes(members)
     if (!rect) fail(`${where}: give at least one card to group.`)
     const group: GroupNode = {
-      id: context.newNodeId(),
+      id: context.newNodeId(next),
       type: 'group',
       x: Math.round(rect.x),
       y: Math.round(rect.y),

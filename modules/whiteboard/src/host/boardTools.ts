@@ -24,6 +24,7 @@ import {
   parseBoard,
   serializeBoard,
 } from '../domain/fileFormat'
+import { mintEdgeId, mintNodeId } from '../domain/ids'
 import {
   previewablePaths,
   readBoardCard,
@@ -157,8 +158,8 @@ async function editBoard(
   if (typeof path !== 'string') return path
   const edit = input as Parameters<typeof applyBoardEdit>[1]
   const context = {
-    newNodeId: () => `c-${crypto.randomUUID()}`,
-    newEdgeId: () => `e-${crypto.randomUUID()}`,
+    newNodeId: mintNodeId,
+    newEdgeId: mintEdgeId,
     gridStep: GRID_WORLD_STEP_PX,
     textCardSize: NEW_CARD_SIZE,
     embedCardSize: NEW_EMBED_CARD_SIZE,

@@ -13,6 +13,7 @@ function contextWith(): BoardEditContext {
   let cards = 0
   let edges = 0
   return {
+    // Deterministic, so a test can name the id an operation just created.
     newNodeId: () => `c-${(cards += 1)}`,
     newEdgeId: () => `e-${(edges += 1)}`,
     gridStep: 20,
