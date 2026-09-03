@@ -87,6 +87,7 @@ import {
   ModuleChatModeRegistry,
   ModuleConfigCapabilityProvider,
   ModuleDeviceStateStore,
+  ModuleFileTextRendererRegistry,
   ModuleIntentStore,
   ModuleLoader,
   ModulePrivateStorageCapabilityProvider,
@@ -310,6 +311,8 @@ export default class YoloPlugin extends Plugin {
     new ModuleSettingsContributionRegistry()
   private readonly moduleChatModeRegistry = new ModuleChatModeRegistry()
   private readonly moduleToolSetRegistry = new ModuleToolSetRegistry()
+  private readonly moduleFileTextRendererRegistry =
+    new ModuleFileTextRendererRegistry()
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -4060,6 +4063,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleToolSetRegistry
   }
 
+  getModuleFileTextRendererRegistry(): ModuleFileTextRendererRegistry {
+    return this.moduleFileTextRendererRegistry
+  }
+
   private initializeModuleSystem(): void {
     const store = new ModuleStore({
       adapter: this.app.vault.adapter,
@@ -4113,6 +4120,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         chat: new CoreModuleChatCapabilityProvider({
           sink: this.moduleChatModeRegistry,
           toolSetSink: this.moduleToolSetRegistry,
+          fileTextRendererSink: this.moduleFileTextRendererRegistry,
         }),
         config: new ModuleConfigCapabilityProvider({
           createBackend: (moduleId) => {

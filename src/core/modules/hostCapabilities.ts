@@ -22,6 +22,10 @@ import type {
   ModuleConfigV1,
 } from './moduleConfig'
 import {
+  type ModuleFileTextRendererContributionSinkV1,
+  snapshotModuleFileTextRenderer,
+} from './moduleFileTextRendererRegistry'
+import {
   ModuleI18nCapabilityProvider,
   type ModuleI18nCapabilityProviderV1,
 } from './moduleI18n'
@@ -59,6 +63,7 @@ import type {
   YoloModuleCapabilitiesV1,
   YoloModuleChatModeV1,
   YoloModuleChatV1,
+  YoloModuleFileTextRendererV1,
   YoloModuleToolSetV1,
 } from './types'
 
@@ -314,6 +319,7 @@ export type ModuleChatCapabilityProviderV1 = Readonly<{
 export type ModuleChatCapabilityProviderOptions = Readonly<{
   sink: ModuleChatModeContributionSinkV1
   toolSetSink: ModuleToolSetContributionSinkV1
+  fileTextRendererSink: ModuleFileTextRendererContributionSinkV1
 }>
 
 export class CoreModuleChatCapabilityProvider
@@ -327,6 +333,7 @@ export class CoreModuleChatCapabilityProvider
       lifecycle,
       sink: this.options.sink,
       toolSetSink: this.options.toolSetSink,
+      fileTextRendererSink: this.options.fileTextRendererSink,
     })
   }
 }
@@ -339,6 +346,9 @@ export const UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER: ModuleChatCapabilityPr
           throw new Error('Module chat capability is unavailable')
         },
         registerToolSet: () => {
+          throw new Error('Module chat capability is unavailable')
+        },
+        registerFileTextRenderer: () => {
           throw new Error('Module chat capability is unavailable')
         },
       }),
@@ -359,11 +369,13 @@ function createModuleChatCapability({
   lifecycle,
   sink,
   toolSetSink,
+  fileTextRendererSink,
 }: {
   moduleId: string
   lifecycle: ModuleLifecycleScope
   sink: ModuleChatModeContributionSinkV1
   toolSetSink: ModuleToolSetContributionSinkV1
+  fileTextRendererSink: ModuleFileTextRendererContributionSinkV1
 }): {
   api: YoloModuleChatV1
   commit(): void
@@ -374,6 +386,7 @@ function createModuleChatCapability({
   const published = new Set<string>()
   const stagedToolSets = new Map<string, YoloModuleToolSetV1>()
   const publishedToolSets = new Set<string>()
+  const publishedRenderers = new Set<YoloModuleFileTextRendererV1>()
   let active = true
   let committed = false
   let activationComplete = false
@@ -386,6 +399,10 @@ function createModuleChatCapability({
     published.clear()
     for (const id of publishedToolSets) toolSetSink.remove(moduleId, id)
     publishedToolSets.clear()
+    for (const renderer of publishedRenderers) {
+      fileTextRendererSink.remove(moduleId, renderer)
+    }
+    publishedRenderers.clear()
   })
   const assertActive = (): void => {
     if (!active) throw new Error(`Module "${moduleId}" is no longer active`)
@@ -422,6 +439,21 @@ function createModuleChatCapability({
         )
       }
       stagedToolSets.set(snapshot.id, snapshot)
+    },
+    // Published immediately rather than staged to `commit()`: a renderer is
+    // not part of the frozen contribution set the way a mode or a tool set
+    // is — it answers a read that can arrive at any time, it carries no id
+    // to collide on within a module, and it hands back its own disposer so a
+    // module may retire one mid-life.
+    registerFileTextRenderer: (renderer) => {
+      assertActive()
+      const snapshot = snapshotModuleFileTextRenderer(renderer)
+      fileTextRendererSink.add(moduleId, snapshot)
+      publishedRenderers.add(snapshot)
+      return () => {
+        if (!publishedRenderers.delete(snapshot)) return
+        fileTextRendererSink.remove(moduleId, snapshot)
+      }
     },
   })
   return {

@@ -40,6 +40,12 @@ export {
   type RegisteredModuleChatModeV1,
 } from './moduleChatModeRegistry'
 export {
+  ModuleFileTextRendererRegistry,
+  snapshotModuleFileTextRenderer,
+  type ModuleFileTextRendererContributionSinkV1,
+  type RegisteredModuleFileTextRendererV1,
+} from './moduleFileTextRendererRegistry'
+export {
   MAX_MODULE_TOOL_SETS_PER_MODULE,
   MODULE_TOOL_SET_ID_RE,
   ModuleToolSetRegistry,

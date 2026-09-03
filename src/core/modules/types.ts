@@ -335,9 +335,36 @@ export type YoloModuleToolSetV1 = Readonly<{
   tools: readonly YoloModuleAgentToolV1[]
 }>
 
+/**
+ * How a module-owned file format reads to a *model* — the text `fs_read`
+ * returns for it and the text an @mention injects, in place of its raw bytes.
+ *
+ * Registered per extension, because that is how the host's read paths already
+ * dispatch (a PDF goes through text extraction, an Office document through
+ * its own extractor). A module-owned format simply adds a source to that
+ * table: the host still reads the bytes and enforces the size limits, and the
+ * module supplies only the transform.
+ *
+ * `content` is the file's raw text. The returned string is what the model
+ * sees, so it should be the *summary* form — for a format whose file is large
+ * and mostly machine state, returning the raw text back is the one answer
+ * that helps nobody.
+ */
+export type YoloModuleFileTextRendererV1 = Readonly<{
+  /** Extensions without a leading dot, e.g. ['yoloboard']. */
+  extensions: readonly string[]
+  render(
+    file: Readonly<{ path: string; content: string }>,
+  ): string | Promise<string>
+}>
+
 export type YoloModuleChatV1 = Readonly<{
   registerMode(mode: YoloModuleChatModeV1): void
   registerToolSet(set: YoloModuleToolSetV1): void
+  /** Returns a disposer; also revoked automatically when the module unloads. */
+  registerFileTextRenderer(
+    renderer: YoloModuleFileTextRendererV1,
+  ): ModuleDisposer
 }>
 
 export type YoloModulePathsSnapshotV1 = Readonly<{

@@ -23,6 +23,7 @@ import type {
   YoloModuleMenuItemV1,
   YoloModuleOpenFileLocationV1,
   YoloModuleRuntimeRegistration,
+  YoloModuleFileTextRendererV1,
   YoloModuleToolSetV1,
   YoloModuleVaultEntryV1,
 } from '../src/core/modules/types'
@@ -50,6 +51,7 @@ declare global {
   type YoloModuleHostMenuItemV1 = YoloModuleMenuItemV1
   type YoloModuleHostOpenFileLocationV1 = YoloModuleOpenFileLocationV1
   type YoloModuleHostToolSetV1 = YoloModuleToolSetV1
+  type YoloModuleHostFileTextRendererV1 = YoloModuleFileTextRendererV1
   type YoloModuleHostSettingsContributionV1 = YoloModuleSettingsContributionV1
   type YoloModuleHostModelSnapshotV1 = YoloModuleModelSnapshotV1
   type YoloModuleHostVaultEntryV1 = YoloModuleVaultEntryV1

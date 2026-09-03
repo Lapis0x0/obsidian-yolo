@@ -505,6 +505,7 @@ describe('CoreModuleHostCapabilityProvider', () => {
       chat: new CoreModuleChatCapabilityProvider({
         sink: { add, remove },
         toolSetSink: { add: jest.fn(), remove: jest.fn() },
+        fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
       }),
     }).create('learning', lifecycle)
 
@@ -530,6 +531,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add, remove },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
     const declaration = baseChatMode()
 
@@ -553,6 +555,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
     activation.activate()
     activation.commit()
@@ -568,6 +571,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
 
     activation.api.registerMode(baseChatMode())
@@ -582,6 +586,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
 
     activation.api.registerMode(baseChatMode({ id: 'a' }))
@@ -601,6 +606,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add, remove },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
 
     activation.api.registerMode(baseChatMode())
@@ -620,6 +626,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
 
     lifecycle.dispose()
@@ -633,6 +640,7 @@ describe('CoreModuleChatCapabilityProvider', () => {
     const activation = new CoreModuleChatCapabilityProvider({
       sink: { add: jest.fn(), remove: jest.fn() },
       toolSetSink: { add: jest.fn(), remove: jest.fn() },
+      fileTextRendererSink: { add: jest.fn(), remove: jest.fn() },
     }).create('learning', lifecycle)
 
     activation.activate()
