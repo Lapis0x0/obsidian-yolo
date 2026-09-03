@@ -290,8 +290,54 @@ export type YoloModuleChatModeV1 = Readonly<{
   skills?: readonly string[]
 }>
 
+/**
+ * Which settings-page group a tool set is listed under. Mirrors the host's
+ * `BuiltinToolCategory` — a module tool set sits in the same three groups the
+ * built-in capabilities do, because from the user's side it is one more thing
+ * the assistant can reach for, not a separate species. Spelled as a literal
+ * union rather than imported so the module-facing contract does not drag
+ * `core/tools` into the SDK surface; `moduleToolSetRegistry.ts` asserts the
+ * two stay in step.
+ */
+export type YoloModuleToolSetCategoryV1 = 'vault' | 'context' | 'external'
+
+/**
+ * A set of tools a module contributes to *ordinary* chat, for as long as the
+ * module is active — unlike `YoloModuleChatModeV1.tools`, which are reachable
+ * only while the user has that mode selected.
+ *
+ * The tools are registered as one in-process tool server named `yolo_<id>`,
+ * so they are addressed, listed, and toggled exactly the way MCP tools are.
+ * They ride the deferred tier by default: the model sees their names in the
+ * system-prompt catalog and loads a schema only when it reaches for one, so
+ * an optional module costs a user who never uses it a handful of names rather
+ * than a handful of schemas.
+ *
+ * No approval knob: a module tool set's safety comes from being undoable, not
+ * from a confirmation on every call (docs/plans/09-03-whiteboard-agent-tools
+ * Q13). Tools whose every call must be confirmed belong to a chat mode, whose
+ * `requiresApproval` is unconditional.
+ */
+export type YoloModuleToolSetV1 = Readonly<{
+  /**
+   * Set-local id, `^[a-z][a-z0-9_]*$`. The host addresses the set as
+   * `yolo_<id>` and it must be unique across every active module — the id is
+   * part of a fully-qualified tool name, which is a public contract with the
+   * model, so it cannot be namespaced by module behind the user's back.
+   */
+  id: string
+  label: LocalizedTextV1
+  /** One line about the whole set, shown as the catalog group heading and in
+   * settings. Costs O(sets), never O(tools) — which is why the catalog gives
+   * a set a description and a tool only its name. */
+  description?: LocalizedTextV1
+  category: YoloModuleToolSetCategoryV1
+  tools: readonly YoloModuleAgentToolV1[]
+}>
+
 export type YoloModuleChatV1 = Readonly<{
   registerMode(mode: YoloModuleChatModeV1): void
+  registerToolSet(set: YoloModuleToolSetV1): void
 }>
 
 export type YoloModulePathsSnapshotV1 = Readonly<{

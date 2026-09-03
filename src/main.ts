@@ -96,6 +96,7 @@ import {
   ModuleSettingsCapabilityProvider,
   ModuleSettingsContributionRegistry,
   ModuleStore,
+  ModuleToolSetRegistry,
   OFFICIAL_MODULE_ARTIFACT_TIMEOUT_MS,
   ObsidianModuleContributionRegistrar,
   ObsidianModuleUiCapabilityProvider,
@@ -308,6 +309,7 @@ export default class YoloPlugin extends Plugin {
   private readonly moduleSettingsContributions =
     new ModuleSettingsContributionRegistry()
   private readonly moduleChatModeRegistry = new ModuleChatModeRegistry()
+  private readonly moduleToolSetRegistry = new ModuleToolSetRegistry()
   installationIncompleteDetail: InstallationIncompleteDetail | null = null
   private installationIncompleteBannerDismissed = false
   private installationIncompleteListeners: (() => void)[] = []
@@ -1016,6 +1018,7 @@ export default class YoloPlugin extends Plugin {
           return (runSubagent as NonNullable<ToolContext['runSubagent']>)(input)
         },
         moduleChatModeRegistry: this.moduleChatModeRegistry,
+        moduleToolSetRegistry: this.moduleToolSetRegistry,
         persistDiscoveredCatalogs: (catalogs) => {
           void this.setSettings({
             ...this.settings,
@@ -4053,6 +4056,10 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     return this.moduleChatModeRegistry
   }
 
+  getModuleToolSetRegistry(): ModuleToolSetRegistry {
+    return this.moduleToolSetRegistry
+  }
+
   private initializeModuleSystem(): void {
     const store = new ModuleStore({
       adapter: this.app.vault.adapter,
@@ -4105,6 +4112,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         backgroundActivities: this.getBackgroundActivityRegistry(),
         chat: new CoreModuleChatCapabilityProvider({
           sink: this.moduleChatModeRegistry,
+          toolSetSink: this.moduleToolSetRegistry,
         }),
         config: new ModuleConfigCapabilityProvider({
           createBackend: (moduleId) => {

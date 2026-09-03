@@ -281,6 +281,17 @@ export const getAssistantToolPreferences = (
 }
 
 /**
+ * A registered module tool set, reduced to what enablement needs: the
+ * in-process server it is served under and the short names it serves. Kept
+ * structural rather than importing `RegisteredModuleToolSetV1` so this module
+ * stays free of the module-host layer.
+ */
+export type ModuleToolSetEnablementV1 = Readonly<{
+  serverName: string
+  toolNames: readonly string[]
+}>
+
+/**
  * The set of tool FQNs the runtime treats as enabled for this assistant.
  *
  * Remote MCP tools: the explicit `enabled: true` entries from
@@ -312,6 +323,7 @@ export const getEnabledAssistantToolNames = (
     | 'includeBuiltinTools'
     | 'builtinCapabilityPreferences'
   > | null,
+  moduleToolSets: readonly ModuleToolSetEnablementV1[] = [],
 ): string[] => {
   const toolPreferences = getAssistantToolPreferences(assistant)
   const includeBuiltinTools = assistant?.includeBuiltinTools !== false
@@ -336,6 +348,22 @@ export const getEnabledAssistantToolNames = (
           `${localServer}${McpManager.TOOL_NAME_DELIMITER}${tool.name}`,
         )
       }
+    }
+  }
+
+  // Module tool sets are enabled unless the user turned one off — the
+  // opposite of the remote-MCP rule above, and for a reason that does not
+  // apply to remote servers: a user who installed and enabled an optional
+  // module has already said yes to the thing this set belongs to, and the
+  // set's runtime cost is a handful of names in the deferred catalog rather
+  // than a handful of schemas (see `YoloModuleToolSetV1`). A set the user
+  // never opens settings for is therefore usable, while a set they switched
+  // off stays off.
+  for (const set of moduleToolSets) {
+    for (const toolName of set.toolNames) {
+      const fqn = `${set.serverName}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
+      if (toolPreferences[fqn]?.enabled === false) continue
+      result.add(fqn)
     }
   }
 

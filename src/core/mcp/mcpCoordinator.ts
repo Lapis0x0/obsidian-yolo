@@ -4,10 +4,12 @@ import { YoloSettings } from '../../settings/schema/setting.types'
 import type { ApplyViewState } from '../../types/apply-view.types'
 import type { McpDiscoveredCatalog } from '../../types/mcp.types'
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
+import { createModuleToolInProcessServer } from '../modules/moduleAgent'
 import {
   type RegisteredModuleChatModeV1,
   createModuleChatModeToolServer,
 } from '../modules/moduleChatModeRegistry'
+import type { RegisteredModuleToolSetV1 } from '../modules/moduleToolSetRegistry'
 import type { RagKnowledgeAccess } from '../rag/ragAccess'
 import type { ToolContext } from '../tools/types'
 
@@ -20,6 +22,20 @@ export type ModuleChatModeRegistrySource = Readonly<{
   subscribe(listener: () => void): () => void
   setAvailability(
     fullModeId: string,
+    availability:
+      | Readonly<{ status: 'available' }>
+      | Readonly<{ status: 'unavailable'; reason: string }>,
+  ): void
+}>
+
+/** The subset of `ModuleToolSetRegistry` the coordinator needs to replay
+ * module tool set servers onto the MCP manager. Same shape as the chat mode
+ * source above, keyed by set id instead of full mode id. */
+export type ModuleToolSetRegistrySource = Readonly<{
+  getSnapshot(): readonly RegisteredModuleToolSetV1[]
+  subscribe(listener: () => void): () => void
+  setAvailability(
+    setId: string,
     availability:
       | Readonly<{ status: 'available' }>
       | Readonly<{ status: 'unavailable'; reason: string }>,
@@ -44,6 +60,12 @@ type McpCoordinatorDeps = {
    */
   moduleChatModeRegistry?: ModuleChatModeRegistrySource
   /**
+   * Source of module tool set declarations to replay onto the MCP manager as
+   * in-process tool servers (see `reconcileToolSets`). Optional for the same
+   * reason as `moduleChatModeRegistry`.
+   */
+  moduleToolSetRegistry?: ModuleToolSetRegistrySource
+  /**
    * Persists the derived MCP tool catalog (see
    * `settings.mcp.discoveredCatalogs`). Optional so hosts/tests that never
    * build a model-facing tool catalog can omit it — the manager then simply
@@ -66,6 +88,7 @@ export class McpCoordinator {
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private readonly runSubagent?: NonNullable<ToolContext['runSubagent']>
   private readonly moduleChatModeRegistry?: ModuleChatModeRegistrySource
+  private readonly moduleToolSetRegistry?: ModuleToolSetRegistrySource
   private readonly persistDiscoveredCatalogs?: (
     catalogs: Record<string, McpDiscoveredCatalog>,
   ) => void
@@ -81,6 +104,12 @@ export class McpCoordinator {
   private readonly registeredChatModeServers = new Map<string, () => void>()
   private reconcilingChatModes = false
 
+  // Module tool set replay state — the same three fields, for the sets a
+  // module contributes to ordinary chat rather than to one mode.
+  private toolSetUnsubscribe: (() => void) | null = null
+  private readonly registeredToolSetServers = new Map<string, () => void>()
+  private reconcilingToolSets = false
+
   constructor(deps: McpCoordinatorDeps) {
     this.app = deps.app
     this.pluginId = deps.pluginId
@@ -91,6 +120,7 @@ export class McpCoordinator {
     this.promptSourceWatcher = deps.promptSourceWatcher
     this.runSubagent = deps.runSubagent
     this.moduleChatModeRegistry = deps.moduleChatModeRegistry
+    this.moduleToolSetRegistry = deps.moduleToolSetRegistry
     this.persistDiscoveredCatalogs = deps.persistDiscoveredCatalogs
   }
 
@@ -116,6 +146,7 @@ export class McpCoordinator {
           await manager.initialize()
           this.mcpManager = manager
           this.setupChatModeReplay(manager)
+          this.setupToolSetReplay(manager)
           return manager
         } catch (error) {
           this.mcpManager = null
@@ -131,6 +162,9 @@ export class McpCoordinator {
   cleanup() {
     this.chatModeUnsubscribe?.()
     this.chatModeUnsubscribe = null
+    this.toolSetUnsubscribe?.()
+    this.toolSetUnsubscribe = null
+    this.registeredToolSetServers.clear()
     // The manager instance itself is being discarded, so there's nothing to
     // unregister from it — just forget what we thought was registered. A
     // later `getMcpManager()` call builds a fresh manager and replays from
@@ -213,6 +247,68 @@ export class McpCoordinator {
       }
     } finally {
       this.reconcilingChatModes = false
+    }
+  }
+
+  /** The tool-set twin of `setupChatModeReplay`. */
+  private setupToolSetReplay(manager: McpManager): void {
+    const registry = this.moduleToolSetRegistry
+    if (!registry) return
+    this.reconcileToolSets(manager, registry.getSnapshot())
+    this.toolSetUnsubscribe = registry.subscribe(() => {
+      if (this.mcpManager !== manager) return
+      this.reconcileToolSets(manager, registry.getSnapshot())
+    })
+  }
+
+  /**
+   * The tool-set twin of `reconcileChatModes` — same idempotent diff, same
+   * per-entry failure isolation, keyed by set id. Kept as a sibling rather
+   * than folded into one generic pass: the two differ in their key, their
+   * server factory and their entry shape, and the parametrization needed to
+   * unify them would be longer than the loop it replaced.
+   */
+  private reconcileToolSets(
+    manager: McpManager,
+    snapshot: readonly RegisteredModuleToolSetV1[],
+  ): void {
+    const registry = this.moduleToolSetRegistry
+    if (!registry) return
+    if (this.reconcilingToolSets) return
+    this.reconcilingToolSets = true
+    try {
+      const desired = new Map(
+        snapshot.map((entry) => [entry.set.id, entry] as const),
+      )
+
+      for (const [setId, dispose] of [...this.registeredToolSetServers]) {
+        if (desired.has(setId)) continue
+        dispose()
+        this.registeredToolSetServers.delete(setId)
+      }
+
+      for (const [setId, entry] of desired) {
+        if (this.registeredToolSetServers.has(setId)) continue
+        try {
+          const dispose = manager.registerInProcessServer(
+            entry.serverName,
+            createModuleToolInProcessServer(entry.set.tools),
+          )
+          this.registeredToolSetServers.set(setId, dispose)
+          registry.setAvailability(setId, { status: 'available' })
+        } catch (error) {
+          console.warn(
+            `[YOLO] Module tool set "${setId}" tool server registration failed`,
+            error,
+          )
+          registry.setAvailability(setId, {
+            status: 'unavailable',
+            reason: error instanceof Error ? error.message : String(error),
+          })
+        }
+      }
+    } finally {
+      this.reconcilingToolSets = false
     }
   }
 }

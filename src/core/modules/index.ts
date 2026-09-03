@@ -40,6 +40,16 @@ export {
   type RegisteredModuleChatModeV1,
 } from './moduleChatModeRegistry'
 export {
+  MAX_MODULE_TOOL_SETS_PER_MODULE,
+  MODULE_TOOL_SET_ID_RE,
+  ModuleToolSetRegistry,
+  buildModuleToolSetServerName,
+  snapshotModuleToolSet,
+  type ModuleToolSetAvailabilityV1,
+  type ModuleToolSetContributionSinkV1,
+  type RegisteredModuleToolSetV1,
+} from './moduleToolSetRegistry'
+export {
   createModuleSkillMaterializer,
   createObsidianModuleSkillProjectionVault,
   planModuleSkillPackages,

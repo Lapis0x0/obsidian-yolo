@@ -40,6 +40,11 @@ import {
 } from './moduleSettingsContributions'
 import { assertModuleId } from './moduleStore'
 import {
+  MAX_MODULE_TOOL_SETS_PER_MODULE,
+  type ModuleToolSetContributionSinkV1,
+  snapshotModuleToolSet,
+} from './moduleToolSetRegistry'
+import {
   type ModuleUiCapabilityProviderV1,
   UNAVAILABLE_MODULE_UI_CAPABILITY_PROVIDER,
 } from './moduleUi'
@@ -54,6 +59,7 @@ import type {
   YoloModuleCapabilitiesV1,
   YoloModuleChatModeV1,
   YoloModuleChatV1,
+  YoloModuleToolSetV1,
 } from './types'
 
 export type ModuleHostCapabilityProviderV1 = {
@@ -307,6 +313,7 @@ export type ModuleChatCapabilityProviderV1 = Readonly<{
 
 export type ModuleChatCapabilityProviderOptions = Readonly<{
   sink: ModuleChatModeContributionSinkV1
+  toolSetSink: ModuleToolSetContributionSinkV1
 }>
 
 export class CoreModuleChatCapabilityProvider
@@ -319,6 +326,7 @@ export class CoreModuleChatCapabilityProvider
       moduleId,
       lifecycle,
       sink: this.options.sink,
+      toolSetSink: this.options.toolSetSink,
     })
   }
 }
@@ -328,6 +336,9 @@ export const UNAVAILABLE_MODULE_CHAT_CAPABILITY_PROVIDER: ModuleChatCapabilityPr
     create: () => ({
       api: Object.freeze({
         registerMode: () => {
+          throw new Error('Module chat capability is unavailable')
+        },
+        registerToolSet: () => {
           throw new Error('Module chat capability is unavailable')
         },
       }),
@@ -347,10 +358,12 @@ function createModuleChatCapability({
   moduleId,
   lifecycle,
   sink,
+  toolSetSink,
 }: {
   moduleId: string
   lifecycle: ModuleLifecycleScope
   sink: ModuleChatModeContributionSinkV1
+  toolSetSink: ModuleToolSetContributionSinkV1
 }): {
   api: YoloModuleChatV1
   commit(): void
@@ -359,6 +372,8 @@ function createModuleChatCapability({
   assertModuleId(moduleId, 'Module id')
   const staged = new Map<string, YoloModuleChatModeV1>()
   const published = new Set<string>()
+  const stagedToolSets = new Map<string, YoloModuleToolSetV1>()
+  const publishedToolSets = new Set<string>()
   let active = true
   let committed = false
   let activationComplete = false
@@ -366,8 +381,11 @@ function createModuleChatCapability({
     active = false
     activationComplete = false
     staged.clear()
+    stagedToolSets.clear()
     for (const id of published) sink.remove(moduleId, id)
     published.clear()
+    for (const id of publishedToolSets) toolSetSink.remove(moduleId, id)
+    publishedToolSets.clear()
   })
   const assertActive = (): void => {
     if (!active) throw new Error(`Module "${moduleId}" is no longer active`)
@@ -389,6 +407,22 @@ function createModuleChatCapability({
       }
       staged.set(snapshot.id, snapshot)
     },
+    registerToolSet: (set) => {
+      assertActive()
+      if (committed) {
+        throw new Error('Module tool sets are already committed')
+      }
+      const snapshot = snapshotModuleToolSet(set)
+      if (stagedToolSets.has(snapshot.id)) {
+        throw new Error(`Duplicate module tool set id "${snapshot.id}"`)
+      }
+      if (stagedToolSets.size >= MAX_MODULE_TOOL_SETS_PER_MODULE) {
+        throw new Error(
+          `Module "${moduleId}" cannot register more than ${MAX_MODULE_TOOL_SETS_PER_MODULE} tool sets`,
+        )
+      }
+      stagedToolSets.set(snapshot.id, snapshot)
+    },
   })
   return {
     api,
@@ -403,6 +437,14 @@ function createModuleChatCapability({
         sink.add(moduleId, mode)
       }
       staged.clear()
+      for (const [id, set] of stagedToolSets) {
+        // Added before `add` can throw on a contested id, so the lifecycle
+        // disposer still revokes the sets that did publish. `remove` is
+        // owner-guarded, so revoking an id we lost is a no-op.
+        publishedToolSets.add(id)
+        toolSetSink.add(moduleId, set)
+      }
+      stagedToolSets.clear()
     },
     activate: () => {
       assertActive()
