@@ -56,15 +56,21 @@
         }
       },
       "hostApi": "^1.8.0",
-      "dataSchemas": {},
+      "dataSchemas": {
+        "settings": {
+          "readMin": 0,
+          "readMax": 1,
+          "write": 1
+        }
+      },
       "platforms": [
         "desktop",
         "mobile"
       ],
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/module.json",
       "manifest": {
-        "byteSize": 1802,
-        "sha256": "6e393bbfa4ad1d901ed5d789c44e47119cad14b8c228568b21fab46478e4c053"
+        "byteSize": 1886,
+        "sha256": "770dca47128161df54a999777199f455406e9ecabb4701adfad24b1a6a76c12c"
       }
     }
   ]

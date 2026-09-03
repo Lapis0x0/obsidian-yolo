@@ -149,7 +149,13 @@ test('validateModuleConfig rejects schemas the client cannot parse', () => {
   )
 })
 
-test('validateModuleConfig accepts a module that persists nothing in the host', () => {
+// Every shipped client parses the signed Feed with `parseModule`
+// (src/core/distribution/distributionFeed.ts), which throws on a module
+// declaring no data schema — and one bad module fails the whole Feed, so a
+// released module with `{}` would cost older clients update discovery
+// entirely. This gate is that contract's mirror: relaxing it publishes a
+// module the Feed cannot carry.
+test('validateModuleConfig rejects the empty schemas the signed Feed cannot carry', () => {
   const config = {
     id: 'whiteboard',
     icon: 'layout-grid',
@@ -160,7 +166,10 @@ test('validateModuleConfig accepts a module that persists nothing in the host', 
     platforms: ['desktop', 'mobile'],
     dataSchemas: {},
   }
-  assert.doesNotThrow(() => validateModuleConfig(config, 'whiteboard'))
+  assert.throws(
+    () => validateModuleConfig(config, 'whiteboard'),
+    /Module config is invalid/,
+  )
 })
 
 test('prepareRelease synchronizes Core version sources', async () => {

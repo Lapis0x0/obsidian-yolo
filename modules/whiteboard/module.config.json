@@ -17,5 +17,11 @@
   },
   "hostApi": "^1.8.0",
   "platforms": ["desktop", "mobile"],
-  "dataSchemas": {}
+  "dataSchemas": {
+    "settings": {
+      "readMin": 0,
+      "readMax": 1,
+      "write": 1
+    }
+  }
 }

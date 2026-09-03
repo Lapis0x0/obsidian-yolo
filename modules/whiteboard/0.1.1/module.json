@@ -3,7 +3,13 @@
   "id": "whiteboard",
   "version": "0.1.1",
   "hostApi": "^1.8.0",
-  "dataSchemas": {},
+  "dataSchemas": {
+    "settings": {
+      "readMin": 0,
+      "readMax": 1,
+      "write": 1
+    }
+  },
   "variants": [
     {
       "platform": "desktop",

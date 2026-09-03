@@ -247,10 +247,8 @@ export function validateModuleConfig(config, expectedId) {
     config.platforms.some(
       (platform) => platform !== 'desktop' && platform !== 'mobile',
     ) ||
-    // A module that owns no host-persisted data declares `{}` — Whiteboard
-    // keeps every board in the Vault. The client parser accepts that too, so
-    // requiring a namespace here would gate a shape it happily loads.
-    !isPlainRecord(config.dataSchemas)
+    !isPlainRecord(config.dataSchemas) ||
+    Object.keys(config.dataSchemas).length === 0
   ) {
     throw new Error(`Module config is invalid: ${expectedId}`)
   }
