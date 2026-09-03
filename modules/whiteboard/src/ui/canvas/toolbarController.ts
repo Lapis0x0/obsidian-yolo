@@ -357,7 +357,7 @@ export class ToolbarController {
     if (!this.callbacks.canEdit() || targets < 2) return null
     return {
       label: this.callbacks.t('toolbar.tidy'),
-      icon: 'wand-sparkles',
+      icon: 'layout-grid',
       onSelect: () => this.callbacks.tidySelection(),
     }
   }

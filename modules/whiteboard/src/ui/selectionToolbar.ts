@@ -102,7 +102,7 @@ export type ToolbarIconName =
   | 'trash'
   | 'scan-search'
   | 'group'
-  | 'wand-sparkles'
+  | 'layout-grid'
   | 'align-start-vertical'
   | 'align-center-vertical'
   | 'align-end-vertical'
@@ -210,18 +210,11 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
     },
     { kind: 'path', d: 'm15 5 4 4' },
   ],
-  'wand-sparkles': [
-    {
-      kind: 'path',
-      d: 'm21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72',
-    },
-    { kind: 'path', d: 'm14 7 3 3' },
-    { kind: 'path', d: 'M5 6v4' },
-    { kind: 'path', d: 'M19 14v4' },
-    { kind: 'path', d: 'M10 2v2' },
-    { kind: 'path', d: 'M7 8H3' },
-    { kind: 'path', d: 'M21 16h-4' },
-    { kind: 'path', d: 'M11 3H9' },
+  'layout-grid': [
+    { kind: 'rect', x: 3, y: 3, w: 7, h: 7, r: 1 },
+    { kind: 'rect', x: 14, y: 3, w: 7, h: 7, r: 1 },
+    { kind: 'rect', x: 14, y: 14, w: 7, h: 7, r: 1 },
+    { kind: 'rect', x: 3, y: 14, w: 7, h: 7, r: 1 },
   ],
   group: [
     { kind: 'path', d: 'M3 7V5c0-1.1.9-2 2-2h2' },

@@ -1514,7 +1514,7 @@ export class WhiteboardCanvas {
       items.push({ kind: 'separator' })
       items.push({
         title: this.t('menu.tidy'),
-        icon: 'wand-sparkles',
+        icon: 'layout-grid',
         onSelect: () => this.tidySelection(),
       })
       for (const edge of ALIGN_EDGES) {
