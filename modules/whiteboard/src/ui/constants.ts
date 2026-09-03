@@ -503,9 +503,23 @@ export const CARD_SELECTED_CLASS = 'yolo-whiteboard-card-selected'
 export const CARD_FOCUSED_CLASS = 'yolo-whiteboard-card-focused'
 export const GROUP_LABEL_CLASS = 'yolo-whiteboard-group-label'
 /** Marks a body whose content is its own interaction surface — media
- * transport controls, an embedded web page — and so is exempt from the
- * content mask once its card is the single selection. See style.css. */
+ * transport controls, an embedded web page — and so is the one kind of body
+ * the content mask can be lifted from. Lifting it takes CARD_ENTERED_CLASS;
+ * this class only says the body is capable of it. See style.css. */
 export const CARD_BODY_LIVE_CLASS = 'yolo-whiteboard-card-body-live'
+/**
+ * The card the pointer has been let into: its live body is interactive and
+ * the board has given up its claim on that surface.
+ *
+ * Separate from CARD_FOCUSED_CLASS, and that separation is the point.
+ * Selecting a card must never cost the ability to drag it — but a live body
+ * that is reachable by a pointer is a body the card can no longer be dragged
+ * by, because the press lands in the page instead. So entering is its own
+ * gesture (double-click, or Enter), exactly as it is for a markdown card;
+ * what differs between the two kinds of card is what "opened" gives you, not
+ * how you ask for it. Escape leaves.
+ */
+export const CARD_ENTERED_CLASS = 'yolo-whiteboard-card-entered'
 /**
  * Marks a body that currently holds the whole document rather than the slice
  * the card can show — the windowed preview, which is the one content surface

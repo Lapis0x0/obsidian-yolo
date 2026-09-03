@@ -777,29 +777,55 @@
 
 /* The one exemption, and the reason it is narrow.
  *
- * Obsidian Canvas's blocker is lifted for the node that is the *single*
- * selection — measured: its frame loop calls `node.focus()` only when the new
- * selection has size 1, and `.canvas-node.is-focused:not(.is-dragging)
- * .canvas-node-content-blocker { display: none }`. So in Canvas one click
- * selects and everything inside that node is then live, markdown links
- * included.
+ * It applies only to bodies that have no other way in: media transport
+ * controls and an embedded web page. A markdown card has an edit mode —
+ * clicking into it is what "I mean the content, not the card" already means
+ * there — so D7's mask stays absolute for it, and the misfire surface the
+ * mask exists for (a link, a checkbox, a callout fold) stays covered. A video
+ * that can never be played is not a card, it is a screenshot; that is what
+ * earns the exemption here and nothing else does. An image body is
+ * deliberately *not* live: there is nothing in an image to press, and leaving
+ * it masked keeps the whole card draggable.
  *
- * We take that rule only for the bodies that have no other way in: media
- * transport controls and an embedded web page. A markdown card has an edit
- * mode — clicking into it is what "I mean the content, not the card" already
- * means there — so D7's mask stays absolute for it, and the misfire surface
- * the mask exists for (a link, a checkbox, a callout fold) stays covered. A
- * video that can never be played is not a card, it is a screenshot; that is
- * what earns the exemption here and nothing else does.
+ * What lifts the mask is `card-entered` — the card a double-click has let the
+ * pointer into — and NOT `card-focused`, the single selection.
  *
- * `:not(.yolo-whiteboard-card-dragging)` is Canvas's clause too: while the
- * card is being moved the pointer belongs to the drag.
+ * Obsidian Canvas keys it on focus: measured, its frame loop calls
+ * `node.focus()` only when the selection has size 1, and
+ * `.canvas-node.is-focused:not(.is-dragging) .canvas-node-content-blocker
+ * { display: none }`. We shipped that rule and it is wrong, for a reason that
+ * only shows on a card you want to move: a live body a pointer can reach is a
+ * body the card can no longer be dragged by, because the press lands in the
+ * page. Keyed on focus, the single click that selects a web card — the thing
+ * you do *before* moving it — is also the thing that stops you moving it, and
+ * the only handle left is the card's title row. Selecting must never cost the
+ * drag, so entering became its own gesture (ui/constants.ts's
+ * CARD_ENTERED_CLASS), the same double-click that opens a markdown card's
+ * editor. Figma, tldraw and Miro all separate the two the same way.
  *
- * An image body is deliberately *not* live — there is nothing in an image to
- * press, and leaving it masked keeps the whole card draggable. */
-.yolo-whiteboard-card-focused:not(.yolo-whiteboard-card-dragging)
+ * `:not(.yolo-whiteboard-card-dragging)` is Canvas's clause, and still right:
+ * while the card is being moved the pointer belongs to the drag. */
+.yolo-whiteboard-card-entered:not(.yolo-whiteboard-card-dragging)
   .yolo-whiteboard-card-body-live {
   pointer-events: auto;
+}
+
+/* An entered card says so: the board has given its content surface away, and
+ * the one visible consequence — that dragging from the body no longer moves
+ * this card — needs a tell. The accent ring the selection already draws,
+ * doubled, rather than a new colour: it is the same card in a further state,
+ * not a different kind of thing. */
+.yolo-whiteboard-card.yolo-whiteboard-card-entered {
+  box-shadow:
+    0 0 0 1px var(--interactive-accent),
+    0 0 0 4px color-mix(in srgb, var(--interactive-accent) 25%, transparent);
+}
+
+.yolo-whiteboard-card.yolo-whiteboard-themed.yolo-whiteboard-card-entered {
+  box-shadow:
+    inset 0 0 0 1px var(--yolo-whiteboard-color),
+    0 0 0 1px var(--yolo-whiteboard-color),
+    0 0 0 4px color-mix(in srgb, var(--yolo-whiteboard-color) 25%, transparent);
 }
 
 /* --- media cards (P3 batch 2) ---------------------------------------------

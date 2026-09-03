@@ -141,6 +141,7 @@ import {
 } from './cardMenu'
 import {
   CARD_BODY_LIVE_CLASS,
+  CARD_ENTERED_CLASS,
   CARD_FOCUSED_CLASS,
   CARD_SELECTED_CLASS,
   CONNECT_SNAP_WORLD_PX,
@@ -505,15 +506,29 @@ export class WhiteboardCanvas {
    * The lone selected card, when exactly one is selected — Obsidian Canvas's
    * `is-focused`, derived from the selection rather than tracked beside it.
    *
-   * Canvas lifts its content blocker for exactly this state (measured:
-   * `.canvas-node.is-focused:not(.is-dragging) .canvas-node-content-blocker
-   * { display: none }`, and its frame loop calls `node.focus()` only when the
-   * new selection has size 1). We take the same rule for the cards whose
-   * content has no other way in — media transport controls and web pages —
-   * while D7's mask stays absolute for markdown, which has an edit mode
-   * instead. See style.css's content-mask block.
+   * What this state does *not* do is lift the content mask. Canvas lifts its
+   * blocker here (measured: `.canvas-node.is-focused:not(.is-dragging)
+   * .canvas-node-content-blocker { display: none }`, and its frame loop calls
+   * `node.focus()` only when the new selection has size 1) and we did too,
+   * until it turned out to mean that selecting a web card is what stops you
+   * dragging it. That now takes `enteredNodeId` and a gesture of its own.
+   *
+   * What focus still decides is how much of a card's note is built — the
+   * focused card is the one that can be scrolled — and which card a keyboard
+   * command acts on. See style.css's content-mask block.
    */
   private focusedNodeId: NodeId | null = null
+  /**
+   * The card the pointer has been let into, or null.
+   *
+   * Only ever the focused card — entering is asked for on a selected card and
+   * `applyFocusedNode` drops it the moment focus moves on — but it is its own
+   * field rather than a flag on the focus, because that is the whole
+   * distinction: a card can be selected without its content being reachable,
+   * which is what keeps a selected web card draggable. See
+   * `enterLiveContent` and CARD_ENTERED_CLASS.
+   */
+  private enteredNodeId: NodeId | null = null
   private selectionScopeDisposer: (() => void) | null = null
   private marqueeEl: HTMLElement | null = null
 
@@ -2991,6 +3006,13 @@ export class WhiteboardCanvas {
         ? (this.selectedIds.values().next().value ?? null)
         : null
     if (next === this.focusedNodeId) return
+    // The pointer only stays in a card for as long as that card is the one
+    // selected: picking another card, or none, takes it back out. Done here
+    // rather than at each call site because this is the one place focus
+    // changes, and "entered" is only ever a state of the focused card.
+    if (this.enteredNodeId !== null && this.enteredNodeId !== next) {
+      this.exitLiveContent()
+    }
     const previous = this.focusedNodeId
     if (previous !== null) {
       // Asked before the card is restyled, not after: reading the answer is a
@@ -3097,6 +3119,13 @@ export class WhiteboardCanvas {
         modifiers: [],
         key: 'Escape',
         handler: () => {
+          // Steps out one layer at a time, the way Escape does out of an
+          // editor: first back out of the card's content, and only a second
+          // press lets go of the card itself.
+          if (this.enteredNodeId !== null) {
+            this.exitLiveContent()
+            return true
+          }
           this.clearSelection()
           return true
         },
@@ -4362,14 +4391,66 @@ export class WhiteboardCanvas {
     )
   }
 
-  /** Opens a card for editing if that node is editable. False when it is not,
-   * so a key binding can decline instead of silently swallowing the
-   * keystroke. */
+  /**
+   * Opens a card: into its editor when it has text, into its content when
+   * that content is live. False when the card is neither, so a key binding
+   * can decline instead of silently swallowing the keystroke.
+   *
+   * One gesture, two destinations, because there is one idea: "I mean what is
+   * in this card, not the card". A markdown card answers it with a caret; a
+   * web, HTML or media card answers it by letting the pointer through to the
+   * page or the transport. Which of the two a card gives is a property of the
+   * card, not a second command for the user to know about.
+   */
   private editCard(id: NodeId): boolean {
     const node = this.nodesById.get(id)
-    if (!node || !this.isEditableNode(node)) return false
+    if (!node) return false
+    if (!this.isEditableNode(node)) return this.enterLiveContent(id)
     this.enterEditMode(id)
     return true
+  }
+
+  /**
+   * Lets the pointer into a card's live content.
+   *
+   * This is the whole reason the content mask is not lifted by selection.
+   * A live body that a pointer can reach is a body the card can no longer be
+   * dragged by — the press lands in the page, and `onPointerDown` bails
+   * (`isLiveContentTarget`) rather than steal it. Hanging that on selection
+   * meant that selecting a web card, the one thing you do before moving it,
+   * was also the thing that stopped you moving it. Obsidian Canvas lifts its
+   * blocker on focus and pays exactly this price; every canvas that embeds
+   * live content and stayed usable — Figma, tldraw, Miro — asks for the
+   * enter separately instead, and so do we.
+   *
+   * The card keeps its selection: entering is about the pointer, not about
+   * what the toolbar or a delete key is aimed at. Edit mode is the other way
+   * round (a card being edited is never also selected) because there a
+   * keystroke has to belong to one of them.
+   */
+  private enterLiveContent(id: NodeId): boolean {
+    // A degraded card has no body to enter (D8), the same reason edit mode
+    // declines there. A locked board does not: reading a page is not editing,
+    // and refusing here would make a locked board's web cards unusable rather
+    // than protected.
+    if (this.parseFailed || this.overview) return false
+    if (!this.cardRenderer.hasLiveContent(id)) return false
+    if (this.enteredNodeId === id) return true
+    this.exitLiveContent()
+    const el = this.cardRenderer.getRuntime(id)?.el
+    if (!el) return false
+    el.classList.add(CARD_ENTERED_CLASS)
+    this.enteredNodeId = id
+    return true
+  }
+
+  /** Takes the pointer back out of a card's live content, if it was in one. */
+  private exitLiveContent(): void {
+    if (this.enteredNodeId === null) return
+    this.cardRenderer
+      .getRuntime(this.enteredNodeId)
+      ?.el?.classList.remove(CARD_ENTERED_CLASS)
+    this.enteredNodeId = null
   }
 
   private enterEditMode(id: NodeId): void {
@@ -4579,6 +4660,9 @@ export class WhiteboardCanvas {
     this.popSelectionKeymapScope()
     this.selectedIds = new Set()
     this.focusedNodeId = null
+    // Dropped rather than exited: every card element is about to go, so there
+    // is no class left to take off one.
+    this.enteredNodeId = null
     this.cardRenderer.destroyAll()
     this.pinnedIds.clear()
     this.contentSyncQueue.clear()

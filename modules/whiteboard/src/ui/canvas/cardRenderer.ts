@@ -221,6 +221,22 @@ export class CardRenderer {
     return this.runtimeByNodeId.get(id)
   }
 
+  /**
+   * Whether this card's body currently holds content that is its own
+   * interaction surface — a media transport, an embedded page — and so is
+   * something a pointer could be let into (canvas.ts's `enterLiveContent`).
+   *
+   * Read off the body rather than derived from the node a second time. The
+   * table that decides which content is live lives in this class, in the
+   * methods that build it; asking the DOM what got built means "you can enter
+   * it" and "it is live" cannot drift apart, the same reason
+   * `isLiveContentTarget` tests for the class instead of re-deriving it.
+   */
+  hasLiveContent(id: NodeId): boolean {
+    const bodyEl = this.runtimeByNodeId.get(id)?.bodyEl
+    return bodyEl?.classList.contains(CARD_BODY_LIVE_CLASS) === true
+  }
+
   /** Tears every mounted/parked card down to nothing — used by
    * canvas.ts's `teardownAllCards` on a full reload/dispose. */
   destroyAll(): void {
@@ -347,10 +363,12 @@ export class CardRenderer {
     //
     // Canvas replaces a link node's URL with the page's own title once the
     // webview reports one; a sandboxed cross-origin iframe never will, so the
-    // URL is what the card says. Also a drag handle — a focused web card's
+    // URL is what the card says. Also a drag handle — an *entered* web card's
     // body belongs to the page (see the content mask) and this does not, and
     // it stays one from outside the box because hit-testing walks the DOM
-    // (`nodeIdFromEventTarget`), not the geometry.
+    // (`nodeIdFromEventTarget`), not the geometry. No longer the only handle,
+    // now that a card has to be entered before its body is given away, but
+    // the one that still works once the pointer is inside the page.
     const chromeTitle =
       node.type === 'file'
         ? basenameWithoutExtension(node.file)
