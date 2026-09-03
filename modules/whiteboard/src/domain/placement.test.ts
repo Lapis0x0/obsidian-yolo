@@ -30,35 +30,31 @@ describe('placeCard', () => {
     })
   })
 
-  it('honours the direction it was asked for', () => {
-    const anchor = { x: 0, y: 0, w: 100, h: 100 }
-    expect(placeCard([anchor], SIZE, { anchor, direction: 'below' })).toEqual({
-      x: 0,
-      y: 100 + PLACEMENT_GAP,
-    })
-    expect(placeCard([anchor], SIZE, { anchor, direction: 'left' })).toEqual({
-      x: -100 - PLACEMENT_GAP,
-      y: 0,
+  it('follows the card it was told to follow', () => {
+    const previous = { x: 500, y: 300, w: 100, h: 100 }
+    expect(placeCard([previous], SIZE, previous)).toEqual({
+      x: 600 + PLACEMENT_GAP,
+      y: 300,
     })
   })
 
   it('steps further along rather than pushing an occupant aside', () => {
-    const anchor = { x: 0, y: 0, w: 100, h: 100 }
+    const previous = { x: 0, y: 0, w: 100, h: 100 }
     const blocker = { x: 140, y: 0, w: 100, h: 100 }
-    const point = placeCard([anchor, blocker], SIZE, { anchor })
+    const point = placeCard([previous, blocker], SIZE, previous)
     expect(point.y).toBe(0)
     expect(point.x).toBeGreaterThanOrEqual(blocker.x + blocker.w)
   })
 
-  it('never lands behind the anchor when asked for the right', () => {
-    const anchor = { x: 0, y: 0, w: 100, h: 100 }
+  it('never lands behind what it follows', () => {
+    const previous = { x: 0, y: 0, w: 100, h: 100 }
     const wall = Array.from({ length: 5 }, (_, index) => ({
       x: 140 + index * 140,
       y: 0,
       w: 100,
       h: 100,
     }))
-    const point = placeCard([anchor, ...wall], SIZE, { anchor })
-    expect(point.x).toBeGreaterThan(anchor.x)
+    const point = placeCard([previous, ...wall], SIZE, previous)
+    expect(point.x).toBeGreaterThan(previous.x)
   })
 })

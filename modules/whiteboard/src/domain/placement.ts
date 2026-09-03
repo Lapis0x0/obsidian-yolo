@@ -1,11 +1,17 @@
 // Where a card goes when nobody said where — the other half of `edit_board`'s
 // optional coordinates (docs/plans/09-03-whiteboard-agent-tools Q4, Q9).
 //
-// One rule, and one prohibition.
+// This is the *only* thing a caller cannot express with coordinates, which is
+// why it is the only placement behaviour that exists. There is no anchor, no
+// direction, no grid and no column count: every one of those says something
+// an `x` and a `y` already say, and offering both would make a caller choose
+// between two spellings of one thing and leave two paths to keep in step.
+// What coordinates genuinely cannot say is "somewhere sensible, not on top of
+// anything" — so that is what this answers, and nothing else.
 //
-// The rule: start where the caller pointed (beside an anchor card, or beside
-// what is already on the board), then step along the requested direction
-// until the card fits.
+// The rule: start beside what the card should follow (the one before it in
+// the same batch, or everything already on the board), then step right until
+// it fits.
 //
 // The prohibition: **never move a node that is already there.** Pushing
 // neighbours aside to make room is a re-layout nobody asked for, and Q2
@@ -17,12 +23,6 @@
 // membership is geometric — landing a new card inside one is how a card joins
 // it, so treating the frame as occupied would make "add this to that group"
 // impossible to express.
-//
-// There is no grid, column-count, or other layout knob here. A caller that
-// wants a specific arrangement has two better ways to say so: give the
-// coordinates, or create the cards and then `arrange` them. A third,
-// half-expressive layout language in between would only be a worse version of
-// both.
 
 import type { BoardNode } from './fileFormat'
 
@@ -41,24 +41,6 @@ export type Rect = Readonly<{ x: number; y: number; w: number; h: number }>
 export type Size = Readonly<{ w: number; h: number }>
 export type Point = Readonly<{ x: number; y: number }>
 
-export type PlacementDirection = 'right' | 'left' | 'below' | 'above'
-
-export const PLACEMENT_DIRECTIONS: readonly PlacementDirection[] = [
-  'right',
-  'left',
-  'below',
-  'above',
-]
-
-export type PlacementRequest = Readonly<{
-  /**
-   * Rectangle to place against. Null/absent = against everything already
-   * placed, so a card lands beside the work rather than on top of it.
-   */
-  anchor?: Rect | null
-  direction?: PlacementDirection
-}>
-
 /**
  * Every rectangle a new card must avoid. Group frames are filtered out here
  * rather than by each caller, so no call site can forget why.
@@ -69,74 +51,44 @@ export function collectObstacles(nodes: readonly BoardNode[]): Rect[] {
     .map(({ x, y, w, h }) => ({ x, y, w, h }))
 }
 
+/**
+ * `after` is what the card should sit beside — the previous card of the same
+ * batch. Null measures against everything already placed instead, so the
+ * first card of a batch lands beside the work rather than on top of it; on an
+ * empty board that leaves the origin, which is the one case where "beside"
+ * has nothing to be beside.
+ */
 export function placeCard(
   obstacles: readonly Rect[],
   size: Size,
-  { anchor, direction = 'right' }: PlacementRequest = {},
+  after: Rect | null = null,
 ): Point {
-  // On an empty board with no anchor, "beside" has nothing to be beside, so
-  // the origin is the answer rather than a fallback.
-  const from = anchor ?? boundsOf(obstacles)
-  const seed = from ? adjacent(from, size, direction) : { x: 0, y: 0 }
-  return findFreeSpot(seed, size, obstacles, direction)
-}
-
-/** Where a card of `size` sits when placed against `from` on that side. */
-function adjacent(
-  from: Rect,
-  size: Size,
-  direction: PlacementDirection,
-): Point {
-  switch (direction) {
-    case 'right':
-      return { x: from.x + from.w + PLACEMENT_GAP, y: from.y }
-    case 'left':
-      return { x: from.x - size.w - PLACEMENT_GAP, y: from.y }
-    case 'below':
-      return { x: from.x, y: from.y + from.h + PLACEMENT_GAP }
-    case 'above':
-      return { x: from.x, y: from.y - size.h - PLACEMENT_GAP }
-  }
+  const from = after ?? boundsOf(obstacles)
+  const seed = from
+    ? { x: from.x + from.w + PLACEMENT_GAP, y: from.y }
+    : { x: 0, y: 0 }
+  return findFreeSpot(seed, size, obstacles)
 }
 
 /**
- * Walks `direction` from `seed` until the card fits. Searching along the
- * direction the caller asked for (rather than spiralling) keeps the result
- * predictable: a card asked for on the right lands on the right, further out
- * if it has to, and never behind the anchor.
+ * Walks right from `seed` until the card fits. Searching along one axis
+ * (rather than spiralling) keeps the result predictable: a card lands after
+ * what it follows, further out if it has to, and never behind it.
  */
 function findFreeSpot(
   seed: Point,
   size: Size,
   obstacles: readonly Rect[],
-  direction: PlacementDirection,
 ): Point {
   let candidate: Rect = { ...seed, w: size.w, h: size.h }
   for (let step = 0; step < MAX_PLACEMENT_STEPS; step += 1) {
     if (!obstacles.some((obstacle) => overlaps(obstacle, candidate))) {
       return { x: candidate.x, y: candidate.y }
     }
-    candidate = { ...advance(candidate, direction), w: size.w, h: size.h }
+    candidate = { ...candidate, x: candidate.x + candidate.w + PLACEMENT_GAP }
   }
   return { x: candidate.x, y: candidate.y }
 }
-
-function advance(rect: Rect, direction: PlacementDirection): Point {
-  const stride = (isHorizontal(direction) ? rect.w : rect.h) + PLACEMENT_GAP
-  switch (direction) {
-    case 'right':
-      return { x: rect.x + stride, y: rect.y }
-    case 'left':
-      return { x: rect.x - stride, y: rect.y }
-    case 'below':
-      return { x: rect.x, y: rect.y + stride }
-    case 'above':
-      return { x: rect.x, y: rect.y - stride }
-  }
-}
-
-const isHorizontal = (direction: PlacementDirection): boolean =>
-  direction === 'right' || direction === 'left'
 
 function overlaps(a: Rect, b: Rect): boolean {
   return (

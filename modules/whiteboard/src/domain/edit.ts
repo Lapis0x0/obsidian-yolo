@@ -59,7 +59,6 @@ import {
   updateNode,
 } from './operations'
 import {
-  type PlacementDirection,
   type Point,
   type Rect,
   type Size,
@@ -110,13 +109,6 @@ export type CreateCardOp = Readonly<{
   w?: number
   h?: number
   color?: string
-  /**
-   * Card to place this one beside. Absent: beside the card the same call
-   * created before it, so a batch flows into a row instead of a pile; absent
-   * on the first card too, beside everything already on the board.
-   */
-  anchor?: NodeId
-  direction?: PlacementDirection
 }>
 
 export type UpdateOp = Readonly<{
@@ -277,7 +269,6 @@ function applyCreates(
 
     const position = resolveCreatePosition(op, size, {
       index,
-      board: next,
       obstacles,
       previous,
     })
@@ -319,12 +310,7 @@ function applyCreates(
 function resolveCreatePosition(
   op: CreateCardOp,
   size: Size,
-  scope: {
-    index: number
-    board: Board
-    obstacles: readonly Rect[]
-    previous: Rect | null
-  },
+  scope: { index: number; obstacles: readonly Rect[]; previous: Rect | null },
 ): Point {
   // Explicit coordinates win outright — no search, no nudging. A model that
   // read the summary knows where things are, and second-guessing the number
@@ -333,21 +319,7 @@ function resolveCreatePosition(
   if (op.x !== undefined || op.y !== undefined) {
     fail(`create[${scope.index}]: give both "x" and "y", or neither.`)
   }
-
-  let anchor: Rect | null = scope.previous
-  if (op.anchor !== undefined) {
-    const target = scope.board.nodes.find((node) => node.id === op.anchor)
-    if (!target) {
-      fail(
-        `create[${scope.index}]: no card with id "${op.anchor}" to anchor to.`,
-      )
-    }
-    anchor = { x: target.x, y: target.y, w: target.w, h: target.h }
-  }
-  return placeCard(scope.obstacles, size, {
-    anchor,
-    direction: op.direction,
-  })
+  return placeCard(scope.obstacles, size, scope.previous)
 }
 
 function applyUpdates(board: Board, ops: readonly UpdateOp[]): Board {

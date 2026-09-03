@@ -43,22 +43,12 @@ const createItem = {
     x: {
       type: 'number',
       description:
-        'Left edge, in board coordinates (the summary gives every card its own). Omit x and y together to have the card placed automatically; giving one without the other is an error.',
+        'Left edge, in board coordinates — the summary gives every existing card its own, so place a card relative to another by reading its position and size. Omit x and y together and the card is placed for you, in a row after the one before it, clear of everything already on the board. Giving one without the other is an error.',
     },
     y: { type: 'number', description: 'Top edge. See x.' },
     w: { type: 'number', description: 'Width. Omit for the default size.' },
     h: { type: 'number', description: 'Height. Omit for the default size.' },
     color: { type: 'string', description: `One of ${COLORS}.` },
-    anchor: {
-      type: 'string',
-      description:
-        'Id of a card to place this one beside. Only used when x and y are omitted. Defaults to the card created just before it in this call, so a list of cards comes out as a row rather than a pile.',
-    },
-    direction: {
-      type: 'string',
-      enum: ['right', 'left', 'below', 'above'],
-      description: 'Which side of the anchor to place on. Default: right.',
-    },
   },
 } as const
 

@@ -76,15 +76,14 @@ describe('applyBoardEdit — create', () => {
     expect(result.board.nodes[0]).toBe(board.nodes[0])
   })
 
-  it('places relative to a named anchor', () => {
+  it('places a card relative to another by the coordinates it was given', () => {
+    // The only way to say "beside that one": there is no anchor knob, and
+    // the summary hands the model every coordinate it needs to do this.
     const board = boardWith([card('c-a', 0, 0), card('c-b', 1000, 1000)])
     const result = ok(
-      apply(board, {
-        create: [{ text: 'x', anchor: 'c-b', direction: 'below' }],
-      }),
+      apply(board, { create: [{ text: 'x', x: 1140, y: 1000 }] }),
     )
-    expect(result.board.nodes[2]).toMatchObject({ x: 1000 })
-    expect(result.board.nodes[2].y).toBeGreaterThan(1000)
+    expect(result.board.nodes[2]).toMatchObject({ x: 1140, y: 1000 })
   })
 
   it('rejects a card that is neither text, file nor url', () => {
