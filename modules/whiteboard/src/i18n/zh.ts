@@ -33,6 +33,7 @@ export const zh = {
     alignBottom: '底端对齐',
     distributeHorizontal: '水平等距分布',
     distributeVertical: '垂直等距分布',
+    tidy: '整理',
   },
   cardMenu: {
     newCard: '添加卡片',
@@ -53,7 +54,7 @@ export const zh = {
   toolbar: {
     color: '设置颜色',
     edit: '编辑',
-    arrange: '对齐与分布',
+    tidy: '整理',
     arrows: '箭头',
     edgeLabel: '标签',
   },

@@ -13,12 +13,7 @@
 // back (single-direction dependency between the canvas and its
 // collaborators).
 
-import {
-  ALIGN_EDGES,
-  type AlignEdge,
-  DISTRIBUTE_AXES,
-  type DistributeAxis,
-} from '../../domain/arrange'
+import { type AlignEdge, type DistributeAxis } from '../../domain/arrange'
 import { type ScreenPoint, unionRect } from '../../domain/camera'
 import {
   COLOR_PRESETS,
@@ -45,6 +40,7 @@ import { TOOLBAR_GAP_PX, TOOLBAR_MARGIN_PX } from '../constants'
 import { asNode } from '../eventTarget'
 import {
   SelectionToolbar,
+  type ToolbarAction,
   type ToolbarColorControl,
   type ToolbarIconName,
   type ToolbarItem,
@@ -141,6 +137,7 @@ export type ToolbarControllerCallbacks = Readonly<{
   setEdgeEnds: (edgeId: EdgeId, direction: ArrowDirection) => void
   alignSelection: (edge: AlignEdge) => void
   distributeSelection: (axis: DistributeAxis) => void
+  tidySelection: () => void
 }>
 
 /**
@@ -307,8 +304,8 @@ export class ToolbarController {
         onSelect: () => this.callbacks.createGroupFromSelection(),
       })
     }
-    const arrange = this.arrangeControl()
-    if (arrange) items.push(arrange)
+    const tidy = this.tidyControl()
+    if (tidy) items.push(tidy)
     // Editing is the one action a card in the overview tier cannot take —
     // it has no element to put an editor in — so the button goes away rather
     // than being offered and declining. A locked board offers it for nothing
@@ -341,36 +338,27 @@ export class ToolbarController {
   }
 
   /**
-   * The align/distribute button, or null when the selection has too little to
-   * arrange. Aligning needs two things to agree on a line; distributing needs
-   * three, so there is a gap to divide (domain/arrange.ts) — the second row
-   * appears with the third card.
+   * The tidy button, or null when there is nothing to tidy — it takes two
+   * things to have a gap between them.
+   *
+   * One click, no popover. This is the toolbar's answer to "make this look
+   * tidy", and a command that has to be found inside a grid of eight
+   * geometric icons is not an answer to that: those icons are a vocabulary
+   * for someone who has already translated their intent into "align left,
+   * then distribute vertically". They still exist, in the right-click menu,
+   * where they are labelled in words and where the person reaching for them
+   * knows which axis they mean — see canvas.ts's selection menu.
    */
-  private arrangeControl(): ToolbarMenuControl | null {
+  private tidyControl(): ToolbarAction | null {
     const targets = arrangeTargets(
       this.callbacks.getBoard(),
       this.callbacks.getSelectedIds(),
     ).length
     if (!this.callbacks.canEdit() || targets < 2) return null
     return {
-      kind: 'menu',
-      label: this.callbacks.t('toolbar.arrange'),
-      icon: 'align-start-vertical',
-      layout: 'icons',
-      groups: [
-        ALIGN_EDGES.map((edge) => ({
-          label: this.callbacks.t(ALIGN_MENU[edge].key),
-          icon: ALIGN_MENU[edge].icon,
-          onSelect: () => this.callbacks.alignSelection(edge),
-        })),
-        targets > 2
-          ? DISTRIBUTE_AXES.map((axis) => ({
-              label: this.callbacks.t(DISTRIBUTE_MENU[axis].key),
-              icon: DISTRIBUTE_MENU[axis].icon,
-              onSelect: () => this.callbacks.distributeSelection(axis),
-            }))
-          : [],
-      ],
+      label: this.callbacks.t('toolbar.tidy'),
+      icon: 'wand-sparkles',
+      onSelect: () => this.callbacks.tidySelection(),
     }
   }
 
@@ -442,7 +430,6 @@ export class ToolbarController {
       kind: 'menu',
       label: this.callbacks.t('toolbar.arrows'),
       icon: ARROW_MENU[current].icon,
-      layout: 'list',
       groups: [
         ARROW_DIRECTIONS.map((direction) => ({
           label: this.callbacks.t(ARROW_MENU[direction].key),

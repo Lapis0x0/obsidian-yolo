@@ -1362,22 +1362,13 @@ button.yolo-whiteboard-toolbar-button.is-active {
 /* Align and distribute: one row of icon buttons per group, using the same
  * button treatment as the toolbar itself so the popover reads as an extension
  * of the row rather than as a different kind of surface. */
+/* A column of Obsidian `.menu-item`s — icon, label, and a check on the one in
+ * force. Every property Obsidian's global `button` styling would otherwise
+ * supply is reset on the item (Obsidian and Style Constraints, CLAUDE.md). */
 .yolo-whiteboard-menu-popover {
   display: flex;
   flex-direction: column;
   gap: 1px;
-}
-
-.yolo-whiteboard-menu-popover-row {
-  display: flex;
-  gap: 1px;
-}
-
-/* Arrowheads: named states, so the popover is a column of Obsidian
- * `.menu-item`s — icon, label, and a check on the one in force — rather than
- * a row of icons. Every property Obsidian's global `button` styling would
- * otherwise supply is reset here (Obsidian and Style Constraints, CLAUDE.md). */
-.yolo-whiteboard-menu-popover-list {
   min-width: 9em;
   padding: var(--size-2-2, 4px);
 }

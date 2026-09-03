@@ -35,6 +35,7 @@ export const en = {
     alignBottom: 'Align bottom',
     distributeHorizontal: 'Distribute horizontally',
     distributeVertical: 'Distribute vertically',
+    tidy: 'Tidy up',
   },
   // The creation bar along the bottom of the canvas (P3 batch 3, surface 3).
   cardMenu: {
@@ -57,7 +58,7 @@ export const en = {
   toolbar: {
     color: 'Set colour',
     edit: 'Edit',
-    arrange: 'Align and distribute',
+    tidy: 'Tidy up',
     arrows: 'Arrows',
     edgeLabel: 'Label',
   },

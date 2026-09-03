@@ -55,7 +55,7 @@ export const DISTRIBUTE_AXES: readonly DistributeAxis[] = [
   'vertical',
 ]
 
-type Bounds = Readonly<{
+export type Bounds = Readonly<{
   minX: number
   minY: number
   maxX: number
@@ -157,7 +157,10 @@ export function distributeRects(
   return positions
 }
 
-function boundsOf(rects: readonly ArrangeRect[]): Bounds | null {
+/** The selection's bounding box, or null when there is no selection. Exported
+ * for ./tidy.ts, which anchors its result to the same box these operations
+ * measure themselves against. */
+export function boundsOf(rects: readonly ArrangeRect[]): Bounds | null {
   if (rects.length === 0) return null
   let minX = Infinity
   let minY = Infinity

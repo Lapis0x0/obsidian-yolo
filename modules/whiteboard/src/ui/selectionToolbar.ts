@@ -43,8 +43,6 @@ const TOOLBAR_BUTTON_CLASS = 'yolo-whiteboard-toolbar-button'
 const POPOVER_CLASS = 'yolo-whiteboard-toolbar-popover'
 const COLOR_POPOVER_CLASS = 'yolo-whiteboard-color-popover'
 const MENU_POPOVER_CLASS = 'yolo-whiteboard-menu-popover'
-const MENU_POPOVER_LIST_CLASS = 'yolo-whiteboard-menu-popover-list'
-const MENU_ROW_CLASS = 'yolo-whiteboard-menu-popover-row'
 const MENU_ITEM_CLASS = 'yolo-whiteboard-menu-popover-item'
 const MENU_ITEM_LABEL_CLASS = 'yolo-whiteboard-menu-popover-label'
 const SWATCH_CLASS = 'yolo-whiteboard-color-swatch'
@@ -104,6 +102,7 @@ export type ToolbarIconName =
   | 'trash'
   | 'scan-search'
   | 'group'
+  | 'wand-sparkles'
   | 'align-start-vertical'
   | 'align-center-vertical'
   | 'align-end-vertical'
@@ -155,23 +154,18 @@ export type ToolbarMenuEntry = Readonly<{
  * draws the same line: its own align button forces `setUseNativeMenu(false)`
  * and anchors the result to the button, while its context menu stays native.
  * Drawing it ourselves is also the only way the popover can show which entry
- * is currently in force, which a set of named states needs and a set of
- * one-shot commands does not — hence the two layouts.
+ * is currently in force — which is what a set of named states needs, and a
+ * set of named states is all that is left behind a toolbar button now that
+ * the one-shot commands are either a single click (tidy) or right-click menu
+ * items (align, distribute).
  */
 export type ToolbarMenuControl = Readonly<{
   kind: 'menu'
   label: string
   icon: ToolbarIconName
-  /**
-   * `icons`: one row of icon buttons per group. For alignment the icon *is*
-   * the label, so a column of text would say less in more space.
-   * `list`: one labelled row per entry, with a check on the current one —
-   * what a set of named states (the arrowheads) needs, and what Obsidian's
-   * own menus look like.
-   */
-  layout: 'icons' | 'list'
-  /** One row (or, in a list, one block) per group. Empty groups are dropped,
-   * so a caller can pass a group that its current selection does not qualify
+  /** One block per group: a labelled row per entry, with a check on the one
+   * in force — what Obsidian's own menus look like. Empty groups are dropped,
+   * so a caller can pass a group its current selection does not qualify
    * for. */
   groups: readonly (readonly ToolbarMenuEntry[])[]
 }>
@@ -215,6 +209,19 @@ const ICONS: Readonly<Record<ToolbarIconName, readonly IconShape[]>> = {
       d: 'M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z',
     },
     { kind: 'path', d: 'm15 5 4 4' },
+  ],
+  'wand-sparkles': [
+    {
+      kind: 'path',
+      d: 'm21.64 3.64-1.28-1.28a1.21 1.21 0 0 0-1.72 0L2.36 18.64a1.21 1.21 0 0 0 0 1.72l1.28 1.28a1.2 1.2 0 0 0 1.72 0L21.64 5.36a1.2 1.2 0 0 0 0-1.72',
+    },
+    { kind: 'path', d: 'm14 7 3 3' },
+    { kind: 'path', d: 'M5 6v4' },
+    { kind: 'path', d: 'M19 14v4' },
+    { kind: 'path', d: 'M10 2v2' },
+    { kind: 'path', d: 'M7 8H3' },
+    { kind: 'path', d: 'M21 16h-4' },
+    { kind: 'path', d: 'M11 3H9' },
   ],
   group: [
     { kind: 'path', d: 'M3 7V5c0-1.1.9-2 2-2h2' },
@@ -329,12 +336,6 @@ type IconShape =
     }>
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
-
-function menuPopoverClass(menu: ToolbarMenuControl): string {
-  return menu.layout === 'list'
-    ? `${MENU_POPOVER_CLASS} ${MENU_POPOVER_LIST_CLASS}`
-    : MENU_POPOVER_CLASS
-}
 
 export class SelectionToolbar {
   /** Screen-space layer holding the toolbar (and, while it is open, the
@@ -524,7 +525,7 @@ export class SelectionToolbar {
     if (wasOpen) return
 
     const popover = this.doc.createElement('div')
-    popover.className = `${POPOVER_CLASS} ${menu ? menuPopoverClass(menu) : COLOR_POPOVER_CLASS}`
+    popover.className = `${POPOVER_CLASS} ${menu ? MENU_POPOVER_CLASS : COLOR_POPOVER_CLASS}`
     if (menu) this.fillMenuPopover(popover, menu)
     else if (!this.fillColorPopover(popover)) return
 
@@ -575,8 +576,8 @@ export class SelectionToolbar {
     return true
   }
 
-  /** One row of icon buttons, or one labelled item per entry, per non-empty
-   * group. Selecting closes the popover either way: these commands change
+  /** One labelled item per entry. Selecting closes the popover: these
+   * commands change
    * what is selected or how it is drawn, so leaving it open would leave it
    * describing a board that has moved on. */
   private fillMenuPopover(
@@ -584,24 +585,9 @@ export class SelectionToolbar {
     menu: ToolbarMenuControl,
   ): void {
     for (const group of menu.groups) {
-      if (group.length === 0) continue
-      if (menu.layout === 'list') {
-        for (const entry of group)
-          popover.appendChild(this.createMenuItem(entry))
-        continue
-      }
-      const row = this.doc.createElement('div')
-      row.className = MENU_ROW_CLASS
       for (const entry of group) {
-        const button = this.doc.createElement('button')
-        button.className = `clickable-icon ${TOOLBAR_BUTTON_CLASS}`
-        button.type = 'button'
-        button.setAttribute('aria-label', entry.label)
-        button.appendChild(this.createIcon(entry.icon))
-        this.bindMenuEntry(button, entry)
-        row.appendChild(button)
+        popover.appendChild(this.createMenuItem(entry))
       }
-      popover.appendChild(row)
     }
   }
 

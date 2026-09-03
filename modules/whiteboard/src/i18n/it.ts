@@ -33,6 +33,7 @@ export const it = {
     alignBottom: 'Allinea in basso',
     distributeHorizontal: 'Distribuisci orizzontalmente',
     distributeVertical: 'Distribuisci verticalmente',
+    tidy: 'Riordina',
   },
   cardMenu: {
     newCard: 'Aggiungi scheda',
@@ -53,7 +54,7 @@ export const it = {
   toolbar: {
     color: 'Imposta colore',
     edit: 'Modifica',
-    arrange: 'Allinea e distribuisci',
+    tidy: 'Riordina',
     arrows: 'Frecce',
     edgeLabel: 'Etichetta',
   },

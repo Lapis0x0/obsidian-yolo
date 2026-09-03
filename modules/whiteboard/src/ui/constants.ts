@@ -396,6 +396,19 @@ const GRID_CELLS_PER_CARD = 20
 export const GRID_WORLD_STEP_PX = NEW_CARD_SIZE.w / GRID_CELLS_PER_CARD
 
 /**
+ * How long a card takes to travel to the place an align, distribute or tidy
+ * put it, and on what curve.
+ *
+ * The host's `--yolo-anim-duration-enter` and `--yolo-anim-ease-out`, in
+ * numbers, because a Web Animation cannot read a CSS custom property. The
+ * host pairs `tokens/motion.css` with `tokens/motion.ts` for the same reason;
+ * a module cannot import the host's, so this is the mirror — if those move,
+ * move these.
+ */
+export const ARRANGE_ANIMATION_MS = 220
+export const ARRANGE_ANIMATION_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)'
+
+/**
  * On-screen spacing the grid refuses to go below. The visible step is
  * GRID_WORLD_STEP_PX doubled as many times as it takes to clear this floor.
  *

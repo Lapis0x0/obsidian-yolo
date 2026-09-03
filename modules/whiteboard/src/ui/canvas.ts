@@ -113,6 +113,7 @@ import {
 } from '../domain/selection'
 import { type MissingFileNode, planFileNodeSelfHeal } from '../domain/selfHeal'
 import { type SnapGuide, snapMove, snapResize } from '../domain/snapping'
+import { tidyRects } from '../domain/tidy'
 import {
   type CanvasView,
   type VirtualCardRect,
@@ -140,6 +141,8 @@ import {
   type CardMenuIconName,
 } from './cardMenu'
 import {
+  ARRANGE_ANIMATION_EASING,
+  ARRANGE_ANIMATION_MS,
   CARD_BODY_LIVE_CLASS,
   CARD_ENTERED_CLASS,
   CARD_FOCUSED_CLASS,
@@ -1106,6 +1109,7 @@ export class WhiteboardCanvas {
       setEdgeEnds: (edgeId, direction) => this.setEdgeEnds(edgeId, direction),
       alignSelection: (edge) => this.alignSelection(edge),
       distributeSelection: (axis) => this.distributeSelection(axis),
+      tidySelection: () => this.tidySelection(),
     })
     // The creation bar and the file/URL prompt live in the toolbar's overlay
     // layer, which exists for exactly this (see SelectionToolbar.overlay): one
@@ -1500,11 +1504,19 @@ export class WhiteboardCanvas {
       })
     }
 
-    // Aligning needs at least two things to agree on a line; distributing
-    // needs at least three, so there is a gap to divide (domain/arrange.ts).
+    // Tidying and aligning both need two things to have a gap between them;
+    // distributing needs three, so there is a gap to divide (domain/tidy.ts,
+    // domain/arrange.ts). Tidy leads: it is the whole answer for most
+    // selections, and the eight below it are the precise instruments for
+    // someone who already knows which axis they mean.
     const targets = arrangeTargets(this.board, this.selectedIds).length
     if (this.canEdit && targets > 1) {
       items.push({ kind: 'separator' })
+      items.push({
+        title: this.t('menu.tidy'),
+        icon: 'wand-sparkles',
+        onSelect: () => this.tidySelection(),
+      })
       for (const edge of ALIGN_EDGES) {
         items.push({
           title: this.t(ALIGN_MENU[edge].key),
@@ -3911,6 +3923,19 @@ export class WhiteboardCanvas {
     )
   }
 
+  /** The one-click cleanup (domain/tidy.ts): even gaps, level edges, and the
+   * order the user already has left untouched. Gaps land on the same lattice
+   * a dragged card snaps to, so tidying and dragging agree about what "even"
+   * means. */
+  private tidySelection(): void {
+    this.applyArrangement(
+      tidyRects(
+        arrangeTargets(this.board, this.selectedIds),
+        GRID_WORLD_STEP_PX,
+      ),
+    )
+  }
+
   /** Commits a batch of new positions and brings the canvas back in step with
    * them. A group among them carries what it holds, the same law a drag obeys
    * (`carryGroupMembers`). `setNodePositions` returns the same board when
@@ -3921,21 +3946,61 @@ export class WhiteboardCanvas {
   ): void {
     if (!this.canEdit || requested.size === 0) return
     const positions = carryGroupMembers(this.board.nodes, requested)
+    const before = new Map<NodeId, Readonly<{ x: number; y: number }>>()
+    for (const id of positions.keys()) {
+      const node = this.nodesById.get(id)
+      if (node) before.set(id, { x: node.x, y: node.y })
+    }
     const next = setNodePositions(this.board, positions)
     if (next === this.board) return
     this.applyBoardChange(next)
+    const moved: { el: HTMLElement; dx: number; dy: number }[] = []
     for (const id of positions.keys()) {
       const el = this.cardRenderer.getRuntime(id)?.el
       const node = this.nodesById.get(id)
       if (!el || !node) continue
       el.style.left = `${node.x}px`
       el.style.top = `${node.y}px`
+      const from = before.get(id)
+      if (!from) continue
+      const dx = from.x - node.x
+      const dy = from.y - node.y
+      if (dx !== 0 || dy !== 0) moved.push({ el, dx, dy })
     }
+    this.animateArrangement(moved)
     this.edgeLayer.redrawEdgesForNodes(new Set(positions.keys()))
     this.refreshInteractionLayer()
     this.toolbarController.positionToolbar()
     this.recomputeVisibility()
     this.drainQueues()
+  }
+
+  /**
+   * FLIP for an arrangement: the cards already carry their new `left`/`top`,
+   * so each is offset back to where it came from and animated to zero.
+   *
+   * Not decoration. These commands move several cards at once and the user
+   * pointed at none of them — with no travel there is nothing on screen saying
+   * what happened or which cards it happened to, and the command reads as "I
+   * pressed something, and maybe nothing occurred". Only `transform` is
+   * animated (CLAUDE.md), and as a Web Animation rather than a transition
+   * class, so nothing is left behind on the element for the next drag to
+   * inherit.
+   */
+  private animateArrangement(
+    moved: readonly { el: HTMLElement; dx: number; dy: number }[],
+  ): void {
+    if (moved.length === 0) return
+    const win = this.context.getWindow()
+    // A JS-driven animation, so the reduced-motion degrade is ours to make
+    // (CLAUDE.md) — the global CSS fallback does not reach WAAPI.
+    if (win.matchMedia('(prefers-reduced-motion: reduce)').matches) return
+    for (const { el, dx, dy } of moved) {
+      el.animate(
+        [{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+        { duration: ARRANGE_ANIMATION_MS, easing: ARRANGE_ANIMATION_EASING },
+      )
+    }
   }
 
   /**
