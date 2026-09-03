@@ -1543,8 +1543,23 @@ export class WhiteboardCanvas {
   // all; the host resolves what the drag actually carries at `drop`, because
   // during dragover the browser hides the DataTransfer contents.
 
+  /**
+   * Whether the board itself will take a drop right now.
+   *
+   * False while a creation prompt is open: that panel covers the board and is
+   * itself asking a question a drop can answer (ui/promptOverlay.ts's drop
+   * zone), so the board behind it is not a second target. It is the same rule
+   * the panel's backdrop already applies to presses and to the wheel — and
+   * without it the board both lights its drop outline for a drag aimed at the
+   * panel and, for a drop that lands beside the panel rather than on it,
+   * makes a card nobody can see.
+   */
+  private get acceptsDrop(): boolean {
+    return this.canCreate && this.prompt === null
+  }
+
   private readonly onDragOver = (e: DragEvent): void => {
-    if (!this.canCreate) return
+    if (!this.acceptsDrop) return
     e.preventDefault()
     if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'
     this.viewportEl.classList.add(VIEWPORT_DROP_ACTIVE_CLASS)
@@ -1560,7 +1575,7 @@ export class WhiteboardCanvas {
 
   private readonly onDrop = (e: DragEvent): void => {
     this.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
-    if (!this.canCreate) return
+    if (!this.acceptsDrop) return
     e.preventDefault()
     const at = this.worldPointFromEvent(e)
     // Two drags arrive here and they carry different things. One comes from
