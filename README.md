@@ -68,7 +68,7 @@
 
 - **`1.6`**
   - **On-device local embedding models and multiple knowledge bases**: index without any API key, split and manage knowledge bases independently, and let the Agent auto-pick the right one by name.
-  - **CLI chat**: on desktop, drive the Claude Code, Codex, Hermes, or Pi CLI you're already signed into from the same chat surface.
+  - **CLI chat**: on desktop, drive the Claude Code, Codex, Hermes, Pi, or Grok CLI you're already signed into from the same chat surface. Grok reuses an official Grok Build CLI login; it does not reuse an xAI API key.
   - **The new Learning Mode**: turn any topic and reference material into a personalized learning project with structured outlines, knowledge points, flashcards, and an interactive knowledge map, backed by FSRS spaced repetition and Anki `.apkg` import for sustainable long-term review.
 
 - **`1.5`**: Introduces a new Agent runtime that turns AI from Q&A into active collaboration—with full tool calling, MCP, Skills, desktop Bash, subagents, and web search—plus smarter long-session context and memory, refreshed hybrid RAG, focus/PDF awareness, and multi-window chat with background Agents.
@@ -78,7 +78,7 @@
 | A Complete Agent Experience \| Use Codex / Claude Code Inside Obsidian | Turn Vault Knowledge into Lasting Mastery |
 |:--:|:--:|
 | ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| Go beyond answers. YOLO understands and works directly with your Vault, calls tools and MCP servers, and uses Skills to get real work done your way. On desktop, switch in one click to the Claude Code or Codex you are already signed in to and let them work directly in your Vault. | Turn topics and source material into a personal learning system, then use flashcards and FSRS-powered review to move from saved notes to lasting knowledge. |
+| Go beyond answers. YOLO understands and works directly with your Vault, calls tools and MCP servers, and uses Skills to get real work done your way. On desktop, switch in one click to a supported CLI agent you are already signed in to and let it work directly in your Vault. | Turn topics and source material into a personal learning system, then use flashcards and FSRS-powered review to move from saved notes to lasting knowledge. |
 
 ## Features
 
@@ -86,7 +86,7 @@ Beyond the core capabilities above, YOLO also provides:
 
 | Feature | Description |
 |---------|-------------|
-| 🖥️ CLI Agent (Desktop) | Reuse the Claude Code / Codex you are already signed in to locally, and chat with the CLI agent right inside Obsidian |
+| 🖥️ CLI Agent (Desktop) | Reuse a supported locally signed-in CLI agent, including Claude Code, Codex, Hermes, Pi, and Grok, right inside Obsidian |
 | 🔌 External Agent Support | Connect MCP clients such as Hermes and OpenClaw to YOLO's Vault search, or delegate tasks to a configured YOLO Agent |
 | ⚡ Quick Ask | Ask, edit, and continue writing without leaving the editor |
 | 🔎 Vault RAG | Retrieve across your Vault for answers grounded in your own notes |
@@ -104,6 +104,8 @@ Beyond the core capabilities above, YOLO also provides:
 3. Configure your API key in plugin settings, or use your own ChatGPT OAuth / Gemini OAuth:
    - [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys) / [Gemini](https://aistudio.google.com/apikey) / [Groq](https://console.groq.com/keys)
 4. Open the sidebar to start chatting — or try Quick Ask by typing `@` in the editor
+
+For Grok subscription CLI chat on desktop, install [Grok Build](https://docs.x.ai/build) and run `grok login` (or `grok login --device-auth`) in a terminal first. YOLO asks the official CLI to reuse that cached login and does not copy its OAuth tokens into the Vault. The plugin starts a dedicated Grok ACP process in its default ask-first permission mode; YOLO auto-approval is not offered for this runtime.
 
 ## Installation
 

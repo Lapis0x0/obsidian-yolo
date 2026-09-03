@@ -552,6 +552,16 @@ export const toAcpPromptBlocks = (
 }
 
 /**
+ * True for every block `toAcpPromptBlocks` produces from an `image_url`
+ * part. Only base64 data URLs become an `image` block — an http(s) or
+ * `app://` image becomes a `resource_link` named `image` — so a caller that
+ * must keep images away from an agent has to match both kinds.
+ */
+export const isAcpImagePromptBlock = (block: ContentBlock): boolean =>
+  block.type === 'image' ||
+  (block.type === 'resource_link' && block.name === 'image')
+
+/**
  * Maps our three-tier approval decision onto one of the `PermissionOption`s
  * the agent offered for this specific request:
  *  - `approve_once` -> the `allow_once` option

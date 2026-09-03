@@ -81,6 +81,8 @@ export const en: TranslationKeys = {
       hermesDescription: 'Hermes on this device',
       piLabel: 'Pi',
       piDescription: 'Pi on this device',
+      grokLabel: 'Grok',
+      grokDescription: 'Grok Build on this device',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',
@@ -769,6 +771,9 @@ export const en: TranslationKeys = {
       piCliPathName: 'Pi CLI path',
       piCliPathDesc:
         'Custom path to the pi executable — paste the output of "which pi" ("where pi" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      grokCliPathName: 'Grok CLI path',
+      grokCliPathDesc:
+        'Custom path to the grok executable — paste the output of "which grok" ("where grok" on Windows). Leave empty to auto-detect. Stored on this device only.',
       cliPathMissing:
         'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',
@@ -1950,6 +1955,7 @@ export const en: TranslationKeys = {
     dropFilesHint: 'Drop to add to the conversation',
     imageUnsupportedByModel:
       'This model has not declared image support. Enable the "Vision" input modality in the model settings to attach images.',
+    imageUnsupportedByRuntime: 'This CLI runtime does not accept image input.',
     unsupportedFileType: 'Unsupported file type: {names}',
     processImagesFailed: 'Failed to process uploaded images',
     readPdfFailed: 'Failed to read PDF "{name}": {error}',
@@ -2029,7 +2035,7 @@ export const en: TranslationKeys = {
     cliSurface: {
       emptyTitle: 'Use CLI Agent',
       emptyDescription:
-        'Connect Claude Code or Codex to run complex tasks on this device.',
+        'Connect a supported CLI agent to run complex tasks on this device.',
       emptyUserMessage: 'Empty message',
       error: 'CLI session error: {message}',
       runtimeError: 'Could not start the CLI runtime: {message}',

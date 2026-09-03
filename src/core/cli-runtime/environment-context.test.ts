@@ -45,6 +45,7 @@ describe('buildCliEnvironmentContext', () => {
     await expect(
       buildCliEnvironmentContext({
         app,
+        runtimeId: 'hermes',
         settings,
         currentFile,
         currentFileViewState: {
@@ -74,5 +75,30 @@ describe('buildCliEnvironmentContext', () => {
       type: 'browser-context',
       app,
     })
+  })
+
+  it('drops the auto-attached image for a runtime that takes no image input', async () => {
+    mockedRenderCurrentFilePointerInjection.mockResolvedValue({
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: 'data:image/png;base64,QUJD' } },
+        { type: 'text', text: '# Current Context\nFile: Notes/diagram.png' },
+      ],
+    })
+    mockedRenderBrowserContextInjection.mockResolvedValue(null)
+    const currentFile = Object.assign(new TFile(), {
+      path: 'Notes/diagram.png',
+    })
+
+    await expect(
+      buildCliEnvironmentContext({
+        app: {} as App,
+        runtimeId: 'grok',
+        settings: parseYoloSettings({}),
+        currentFile,
+      }),
+    ).resolves.toEqual([
+      { type: 'text', text: '# Current Context\nFile: Notes/diagram.png' },
+    ])
   })
 })

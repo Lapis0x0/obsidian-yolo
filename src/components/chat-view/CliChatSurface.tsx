@@ -981,15 +981,15 @@ export function CliChatSurface({
         emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
         emptyStateAskDescription={t(
           'chat.cliSurface.emptyDescription',
-          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+          '连接受支持的 CLI Agent，直接在本机执行复杂任务',
         )}
         emptyStateAgentDescription={t(
           'chat.cliSurface.emptyDescription',
-          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+          '连接受支持的 CLI Agent，直接在本机执行复杂任务',
         )}
         emptyStateAgentFullDescription={t(
           'chat.cliSurface.emptyDescription',
-          '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+          '连接受支持的 CLI Agent，直接在本机执行复杂任务',
         )}
         emptyStateIcon={<SquareTerminal size={18} strokeWidth={2} />}
         emptyStateIconMode="cli"

@@ -1921,10 +1921,7 @@ export default class YoloPlugin extends Plugin {
     }
 
     const descriptor = getCliRuntimeDescriptor(runtimeId)
-    const fullLabel = this.t(
-      descriptor.labelKey,
-      runtimeId === 'claude-code' ? 'Claude Code' : 'Codex',
-    )
+    const fullLabel = this.t(descriptor.labelKey, descriptor.defaultLabel)
     badge.classList.add(`yolo-runtime-badge--${runtimeId}`)
     badge.setText(
       descriptor.shortLabelKey

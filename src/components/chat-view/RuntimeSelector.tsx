@@ -172,7 +172,7 @@ export function RuntimeSelector({
 
   const availableOptions = getRuntimeSelectorOptions(cliRuntimeAvailable)
   const currentOption = getCliRuntimeDescriptor(currentRuntimeId)
-  const currentLabel = t(currentOption.labelKey)
+  const currentLabel = t(currentOption.labelKey, currentOption.defaultLabel)
   const accessibleLabel = t('sidebar.runtimeSelector.accessibleLabel').replace(
     '{runtime}',
     currentLabel,
@@ -262,7 +262,7 @@ export function RuntimeSelector({
                 </span>
                 <span className="yolo-runtime-selector__option-copy">
                   <span className="yolo-runtime-selector__option-label">
-                    {t(option.labelKey)}
+                    {t(option.labelKey, option.defaultLabel)}
                   </span>
                   <span className="yolo-runtime-selector__option-description">
                     {t(option.descriptionKey)}

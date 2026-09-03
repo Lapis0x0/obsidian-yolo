@@ -118,6 +118,7 @@ export type ChatUserInputProps = {
   moduleModeOptions?: readonly ModuleChatModeOption[]
   yoloEnabled?: boolean
   onYoloChange?: (enabled: boolean) => void
+  showYoloToggle?: boolean
   controlLayout?: ChatUserInputControlLayout
   onControlPopoverOpenChange?: (isOpen: boolean) => void
   allowAgentModeOption?: boolean
@@ -149,6 +150,7 @@ export type ChatUserInputProps = {
   quickAccessSkillEntries?: LiteSkillEntry[]
   quickAccessSnippetEntries?: SnippetEntry[]
   skipImageModelCapabilityCheck?: boolean
+  allowImageAttachments?: boolean
 }
 
 const DEFAULT_INPUT_HEIGHT = 80
@@ -194,6 +196,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       moduleModeOptions,
       yoloEnabled = false,
       onYoloChange,
+      showYoloToggle = true,
       controlLayout = 'composer-toolbar',
       onControlPopoverOpenChange,
       allowAgentModeOption = true,
@@ -210,6 +213,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       quickAccessSkillEntries,
       quickAccessSnippetEntries,
       skipImageModelCapabilityCheck = false,
+      allowImageAttachments = true,
     },
     ref,
   ) => {
@@ -671,6 +675,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           moduleModeOptions={moduleModeOptions}
           yoloEnabled={yoloEnabled}
           onYoloChange={onYoloChange ?? (() => {})}
+          showYoloToggle={showYoloToggle}
           side="top"
           sideOffset={8}
         />
@@ -887,6 +892,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
               displayMentionablesForDelete={effectiveMentionables}
               enableSkills={enableSkills}
               enableAttachments
+              allowImageAttachments={allowImageAttachments}
               skipImageModelCapabilityCheck={skipImageModelCapabilityCheck}
               selectedSkills={effectiveSelectedSkills}
               setSelectedSkills={enableSkills ? setSelectedSkills : undefined}
@@ -920,6 +926,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
             <div className="yolo-chat-user-input-controls">
               <div className="yolo-chat-user-input-controls__left">
                 <FileUploadButton
+                  allowImages={allowImageAttachments}
                   onUpload={(files) => coreRef.current?.uploadFiles(files)}
                 />
                 {runtimeControls ?? (
@@ -939,6 +946,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           {!compact && controlLayout === 'composer-toolbar' && (
             <div className="yolo-chat-user-input-send-row">
               <FileUploadButton
+                allowImages={allowImageAttachments}
                 onUpload={(files) => coreRef.current?.uploadFiles(files)}
               />
               <div className="yolo-chat-user-input-send-row__right">

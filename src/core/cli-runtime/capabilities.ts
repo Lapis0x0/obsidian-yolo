@@ -12,6 +12,8 @@ import type { ChatRuntimeId, CliRuntimeId } from './types'
 export type ChatRuntimeCapabilities = Readonly<{
   /** Shift+Tab plan-mode shortcut and plan/agent mode switching (A20). */
   supportsPlanMode: boolean
+  /** Shows the YOLO auto-approval toggle for this runtime. */
+  showsYoloToggle: boolean
   /** Needs `warmConversationRuntime` before first use (A25, codex only). */
   needsWarmup: boolean
   /** Loads provider-native skills into the skills picker (A12). */
@@ -41,6 +43,8 @@ export type ChatRuntimeCapabilities = Readonly<{
   supportsReasoningSelect: boolean
   /** Main input skips its yolo-only image/model capability check (B1). */
   skipsImageModelCapabilityCheck: boolean
+  /** Main input accepts image attachments for this runtime. */
+  supportsImageAttachments: boolean
   /** Main input allows queueing a message while a run is in flight (B1). */
   supportsQueueWhileGenerating: boolean
 }>
@@ -51,6 +55,7 @@ export const RUNTIME_CAPABILITIES: Record<
 > = {
   yolo: {
     supportsPlanMode: false,
+    showsYoloToggle: true,
     needsWarmup: false,
     hasNativeSkills: false,
     hasNativeMcpPanel: false,
@@ -63,10 +68,12 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsModelControl: true,
     supportsReasoningSelect: true,
     skipsImageModelCapabilityCheck: false,
+    supportsImageAttachments: true,
     supportsQueueWhileGenerating: true,
   },
   'claude-code': {
     supportsPlanMode: true,
+    showsYoloToggle: true,
     needsWarmup: false,
     hasNativeSkills: true,
     hasNativeMcpPanel: true,
@@ -79,10 +86,12 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsModelControl: false,
     supportsReasoningSelect: false,
     skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: true,
     supportsQueueWhileGenerating: false,
   },
   codex: {
     supportsPlanMode: false,
+    showsYoloToggle: true,
     needsWarmup: true,
     hasNativeSkills: true,
     hasNativeMcpPanel: true,
@@ -95,10 +104,12 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsModelControl: false,
     supportsReasoningSelect: false,
     skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: true,
     supportsQueueWhileGenerating: false,
   },
   hermes: {
     supportsPlanMode: false,
+    showsYoloToggle: true,
     needsWarmup: false,
     hasNativeSkills: false,
     hasNativeMcpPanel: false,
@@ -111,10 +122,12 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsModelControl: false,
     supportsReasoningSelect: false,
     skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: true,
     supportsQueueWhileGenerating: false,
   },
   pi: {
     supportsPlanMode: false,
+    showsYoloToggle: true,
     needsWarmup: false,
     hasNativeSkills: false,
     hasNativeMcpPanel: false,
@@ -133,6 +146,25 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsModelControl: false,
     supportsReasoningSelect: false,
     skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: true,
+    supportsQueueWhileGenerating: false,
+  },
+  grok: {
+    supportsPlanMode: false,
+    showsYoloToggle: false,
+    needsWarmup: false,
+    hasNativeSkills: false,
+    hasNativeMcpPanel: false,
+    hasPluginManagement: false,
+    hasAssistants: false,
+    supportsMessageRewrite: false,
+    supportsContextCompaction: false,
+    supportsVaultExport: false,
+    supportsSubagentWatch: false,
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: false,
     supportsQueueWhileGenerating: false,
   },
 }

@@ -16,7 +16,13 @@ import type { CliChatMode } from './permission-profile'
  * never drift; adding a runtime means adding one entry here (plus a
  * `CliRuntimeDescriptor` in `registry.ts` and a factory in `coordinator.ts`).
  */
-export const CLI_RUNTIME_IDS = ['claude-code', 'codex', 'hermes', 'pi'] as const
+export const CLI_RUNTIME_IDS = [
+  'claude-code',
+  'codex',
+  'hermes',
+  'pi',
+  'grok',
+] as const
 export type CliRuntimeId = (typeof CLI_RUNTIME_IDS)[number]
 export type ChatRuntimeId = 'yolo' | CliRuntimeId
 

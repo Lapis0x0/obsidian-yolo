@@ -137,13 +137,19 @@ describe('parseYoloSettings', () => {
       chatOptions: {
         includeCurrentFileContent: true,
         lastChatSurface: 'chat',
-        lastCliRuntimeId: 'codex',
+        lastCliRuntimeId: 'grok',
+        cliModelIdByRuntime: { grok: 'grok-4.6' },
+        cliChatModeByRuntime: { grok: 'agent' },
+        cliAgentYoloEnabledByRuntime: { grok: false },
       },
     })
 
     expect(result.chatOptions).toMatchObject({
       lastChatSurface: 'chat',
-      lastCliRuntimeId: 'codex',
+      lastCliRuntimeId: 'grok',
+      cliModelIdByRuntime: { grok: 'grok-4.6' },
+      cliChatModeByRuntime: { grok: 'agent' },
+      cliAgentYoloEnabledByRuntime: { grok: false },
     })
   })
 

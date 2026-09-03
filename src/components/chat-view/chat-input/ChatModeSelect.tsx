@@ -84,6 +84,12 @@ export const shouldShowYoloToggle = (
 ): boolean =>
   availableModes.includes('agent') && mode !== 'plan' && !isModuleChatMode(mode)
 
+export const isYoloModeActive = (
+  showYoloControl: boolean,
+  mode: ChatModeSelectOptionValue,
+  yoloEnabled: boolean,
+): boolean => showYoloControl && isAgentChatMode(mode) && yoloEnabled
+
 export const isChatMode = (value: string): value is ChatMode =>
   value === 'ask' || value === 'agent' || isModuleChatMode(value)
 
@@ -469,7 +475,7 @@ export const ChatModeSelect = forwardRef<
         focusByDelta(-1)
       }
     }
-    const isYoloActive = isAgentChatMode(mode) && yoloEnabled
+    const isYoloActive = isYoloModeActive(showYoloControl, mode, yoloEnabled)
 
     return (
       <DropdownMenu.Root open={isOpen} onOpenChange={handleOpenChange}>

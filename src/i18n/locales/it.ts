@@ -98,6 +98,8 @@ export const it: DeepPartial<TranslationKeys> = {
       hermesDescription: 'Hermes su questo dispositivo',
       piLabel: 'Pi',
       piDescription: 'Pi su questo dispositivo',
+      grokLabel: 'Grok',
+      grokDescription: 'Grok Build su questo dispositivo',
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
@@ -772,6 +774,9 @@ export const it: DeepPartial<TranslationKeys> = {
       piCliPathName: 'Percorso CLI di Pi',
       piCliPathDesc:
         'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi" ("where pi" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      grokCliPathName: 'Percorso CLI di Grok',
+      grokCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile grok — incolla l\'output di "which grok" ("where grok" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       cliPathMissing:
         'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
@@ -1801,6 +1806,8 @@ export const it: DeepPartial<TranslationKeys> = {
     dropFilesHint: 'Rilascia per aggiungere alla conversazione',
     imageUnsupportedByModel:
       'Questo modello non dichiara il supporto alle immagini. Abilita la modalità di input "Vision" nelle impostazioni del modello per allegare immagini.',
+    imageUnsupportedByRuntime:
+      'Questo runtime CLI non accetta input di immagini.',
     unsupportedFileType: 'Tipo di file non supportato: {names}',
     processImagesFailed: 'Impossibile elaborare le immagini caricate',
     readPdfFailed: 'Impossibile leggere il PDF "{name}": {error}',
@@ -1878,7 +1885,7 @@ export const it: DeepPartial<TranslationKeys> = {
     cliSurface: {
       emptyTitle: 'Usa CLI Agent',
       emptyDescription:
-        'Collega Claude Code o Codex per eseguire attività complesse su questo dispositivo.',
+        'Collega un agent CLI supportato per eseguire attività complesse su questo dispositivo.',
       emptyUserMessage: 'Messaggio vuoto',
       error: 'Errore della sessione CLI: {message}',
       runtimeError: 'Impossibile avviare il runtime CLI: {message}',

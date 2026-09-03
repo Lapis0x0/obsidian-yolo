@@ -2,6 +2,8 @@
 import { PassThrough } from 'node:stream'
 /* eslint-enable import/no-nodejs-modules */
 
+import type { InitializeResponse } from '@agentclientprotocol/sdk'
+
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type { CliRuntimeEvent } from '../types'
 
@@ -132,10 +134,11 @@ class FakeAcpAgent implements AcpProcessLike {
   }
 
   shutdownCalled = false
+  emitExitOnShutdown = true
 
   async shutdown(): Promise<void> {
     this.shutdownCalled = true
-    this.emitExit()
+    if (this.emitExitOnShutdown) this.emitExit()
   }
 
   emitExit(code: number | null = 0): void {
@@ -176,6 +179,13 @@ const createRuntime = (agent: FakeAcpAgent, compactCommand?: string) =>
     ...(compactCommand ? { compactCommand } : {}),
   })
 
+/** Grok is the runtime whose capabilities declare `supportsImageAttachments: false`. */
+const createImagelessRuntime = (agent: FakeAcpAgent) =>
+  new AcpCliRuntime('grok', {
+    cwd: '/vault',
+    createProcess: async () => agent,
+  })
+
 const collectEvents = (runtime: AcpCliRuntime): CliRuntimeEvent[] => {
   const events: CliRuntimeEvent[] = []
   runtime.subscribe((event) => events.push(event))
@@ -214,6 +224,162 @@ const createRuntimeWithRecovery = (
 }
 
 describe('AcpCliRuntime', () => {
+  it('authenticates with the selected advertised method before creating a session', async () => {
+    const agent = new FakeAcpAgent()
+    const calls: string[] = []
+    agent.on('initialize', () => {
+      calls.push('initialize')
+      return {
+        protocolVersion: 1,
+        agentCapabilities: { loadSession: true },
+        authMethods: [
+          { id: 'cached_token', name: 'Cached token' },
+          { id: 'grok.com', name: 'Grok.com' },
+        ],
+      }
+    })
+    agent.on('authenticate', (message) => {
+      calls.push('authenticate')
+      expect(message.params).toEqual({ methodId: 'cached_token' })
+      return {}
+    })
+    agent.on('session/new', () => {
+      calls.push('session/new')
+      return { sessionId: 'sess-authenticated' }
+    })
+    const host = new AcpHost({
+      runtimeId: 'hermes',
+      clientName: 'test',
+      resolveProcessOptions: async () => ({
+        command: '/bin/agent',
+        args: [],
+        cwd: '/vault',
+      }),
+      createProcess: async () => agent,
+      selectAuthMethod: (init: InitializeResponse) =>
+        init.authMethods?.find((method) => method.id === 'cached_token')?.id,
+    })
+    const runtime = new AcpCliRuntime('hermes', {
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+
+    await runtime.ensureReady({})
+
+    expect(calls).toEqual(['initialize', 'authenticate', 'session/new'])
+    await runtime.dispose()
+  })
+
+  it('rejects an auth method that the agent did not advertise and shuts down the process', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('initialize', () => ({
+      protocolVersion: 1,
+      agentCapabilities: { loadSession: true },
+      authMethods: [{ id: 'cached_token', name: 'Cached token' }],
+    }))
+    const host = new AcpHost({
+      runtimeId: 'hermes',
+      clientName: 'test',
+      resolveProcessOptions: async () => ({
+        command: '/bin/agent',
+        args: [],
+        cwd: '/vault',
+      }),
+      createProcess: async () => agent,
+      selectAuthMethod: () => 'not-advertised',
+    })
+
+    await expect(host.ensureReady()).rejects.toThrow(
+      'selected authentication method "not-advertised" was not advertised',
+    )
+    expect(agent.shutdownCalled).toBe(true)
+    expect(
+      agent.requests.some((request) => request.method === 'authenticate'),
+    ).toBe(false)
+  })
+
+  it('shuts down the process when authentication fails without creating a session', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('initialize', () => ({
+      protocolVersion: 1,
+      agentCapabilities: { loadSession: true },
+      authMethods: [{ id: 'cached_token', name: 'Cached token' }],
+    }))
+    agent.on('authenticate', () => {
+      throw new Error('cached login expired')
+    })
+    agent.on('session/new', () => ({ sessionId: 'must-not-run' }))
+    const host = new AcpHost({
+      runtimeId: 'hermes',
+      clientName: 'test',
+      resolveProcessOptions: async () => ({
+        command: '/bin/agent',
+        args: [],
+        cwd: '/vault',
+      }),
+      createProcess: async () => agent,
+      selectAuthMethod: () => 'cached_token',
+    })
+    const runtime = new AcpCliRuntime('hermes', {
+      cwd: '/vault',
+      resolveHost: async () => host,
+    })
+
+    await expect(runtime.ensureReady({})).rejects.toThrow(
+      'cached login expired',
+    )
+    expect(agent.shutdownCalled).toBe(true)
+    expect(
+      agent.requests.some((request) => request.method === 'session/new'),
+    ).toBe(false)
+  })
+
+  it('ignores a delayed exit from an auth-failed process after a retry connects', async () => {
+    const failedAgent = new FakeAcpAgent()
+    failedAgent.emitExitOnShutdown = false
+    failedAgent.on('initialize', () => ({
+      protocolVersion: 1,
+      agentCapabilities: { loadSession: true },
+      authMethods: [{ id: 'cached_token', name: 'Cached token' }],
+    }))
+    failedAgent.on('authenticate', () => {
+      throw new Error('cached login expired')
+    })
+
+    const connectedAgent = new FakeAcpAgent()
+    connectedAgent.on('initialize', () => ({
+      protocolVersion: 1,
+      agentCapabilities: { loadSession: true },
+      authMethods: [{ id: 'cached_token', name: 'Cached token' }],
+    }))
+    connectedAgent.on('authenticate', () => ({}))
+
+    let spawnCount = 0
+    const host = new AcpHost({
+      runtimeId: 'hermes',
+      clientName: 'test',
+      resolveProcessOptions: async () => ({
+        command: '/bin/agent',
+        args: [],
+        cwd: '/vault',
+      }),
+      createProcess: async () => {
+        spawnCount += 1
+        return spawnCount === 1 ? failedAgent : connectedAgent
+      },
+      selectAuthMethod: () => 'cached_token',
+    })
+
+    await expect(host.ensureReady()).rejects.toThrow('cached login expired')
+    await expect(host.ensureReady()).resolves.toBeUndefined()
+
+    failedAgent.emitExit()
+    await expect(host.ensureReady()).resolves.toBeUndefined()
+
+    expect(spawnCount).toBe(2)
+    await host.dispose()
+  })
+
   it('starts a fresh session and streams a completed turn', async () => {
     const agent = new FakeAcpAgent()
     let sessionId = ''
@@ -253,6 +419,121 @@ describe('AcpCliRuntime', () => {
           event.message.content === 'Hello!',
       ),
     ).toBe(true)
+    await runtime.dispose()
+  })
+
+  it('rejects image input for a runtime that declares no image attachments', async () => {
+    const agent = new FakeAcpAgent()
+    let promptCalled = false
+    agent.on('session/new', () => ({ sessionId: 'sess-no-images' }))
+    agent.on('session/prompt', () => {
+      promptCalled = true
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createImagelessRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+
+    await expect(
+      runtime.sendTurn({
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: 'data:image/png;base64,QUJD' },
+          },
+        ],
+      }),
+    ).rejects.toThrow('does not support image input')
+    expect(promptCalled).toBe(false)
+    expect(events).not.toContainEqual(
+      expect.objectContaining({ type: 'run_state', state: 'running' }),
+    )
+    await runtime.dispose()
+  })
+
+  it('rejects an image carried as a URL, which maps to a resource link rather than an image block', async () => {
+    const agent = new FakeAcpAgent()
+    let promptCalled = false
+    agent.on('session/new', () => ({ sessionId: 'sess-linked-image' }))
+    agent.on('session/prompt', () => {
+      promptCalled = true
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createImagelessRuntime(agent)
+    await runtime.ensureReady({})
+
+    await expect(
+      runtime.sendTurn({
+        content: [
+          {
+            type: 'image_url',
+            image_url: { url: 'https://example.com/diagram.png' },
+          },
+        ],
+      }),
+    ).rejects.toThrow('does not support image input')
+    expect(promptCalled).toBe(false)
+    await runtime.dispose()
+  })
+
+  it('forwards image blocks for an image-capable runtime even when the agent advertises no image capability', async () => {
+    const agent = new FakeAcpAgent()
+    let prompt: unknown
+    agent.on('session/new', () => ({ sessionId: 'sess-silent-capability' }))
+    agent.on('session/prompt', (message) => {
+      prompt = message.params?.prompt
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    await runtime.ensureReady({})
+    await runtime.sendTurn({
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,QUJD' },
+        },
+      ],
+    })
+
+    expect(prompt).toEqual([
+      { type: 'image', mimeType: 'image/png', data: 'QUJD' },
+    ])
+    await runtime.dispose()
+  })
+
+  it('forwards image blocks when the ACP agent explicitly supports them', async () => {
+    const agent = new FakeAcpAgent()
+    let prompt: unknown
+    agent.on('initialize', () => ({
+      protocolVersion: 1,
+      agentCapabilities: {
+        loadSession: true,
+        promptCapabilities: { image: true },
+      },
+    }))
+    agent.on('session/new', () => ({ sessionId: 'sess-images' }))
+    agent.on('session/prompt', (message) => {
+      prompt = message.params?.prompt
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    await runtime.ensureReady({})
+    await runtime.sendTurn({
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,QUJD' },
+        },
+      ],
+    })
+
+    expect(prompt).toEqual([
+      { type: 'image', mimeType: 'image/png', data: 'QUJD' },
+    ])
     await runtime.dispose()
   })
 

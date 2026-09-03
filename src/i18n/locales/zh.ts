@@ -81,6 +81,8 @@ export const zh: TranslationKeys = {
       hermesDescription: '本机 Hermes 运行时',
       piLabel: 'Pi',
       piDescription: '本机 Pi 运行时',
+      grokLabel: 'Grok',
+      grokDescription: '本机 Grok Build 运行时',
     },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
@@ -714,6 +716,9 @@ export const zh: TranslationKeys = {
       piCliPathName: 'Pi CLI 路径',
       piCliPathDesc:
         '自定义 pi 可执行文件路径，可粘贴 which pi（Windows 为 where pi）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      grokCliPathName: 'Grok CLI 路径',
+      grokCliPathDesc:
+        '自定义 grok 可执行文件路径，可粘贴 which grok（Windows 为 where grok）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',
@@ -1854,6 +1859,7 @@ export const zh: TranslationKeys = {
     dropFilesHint: '松开以添加到对话',
     imageUnsupportedByModel:
       '当前模型未声明支持图片输入；请在模型设置里开启「图片」模态后再上传。',
+    imageUnsupportedByRuntime: '当前 CLI 运行时不接受图片输入。',
     unsupportedFileType: '不支持的文件类型：{names}',
     processImagesFailed: '处理上传图片失败',
     readPdfFailed: '读取 PDF「{name}」失败：{error}',
@@ -1927,7 +1933,7 @@ export const zh: TranslationKeys = {
     },
     cliSurface: {
       emptyTitle: '使用 CLI Agent',
-      emptyDescription: '连接 Claude Code 或 Codex，直接在本机执行复杂任务',
+      emptyDescription: '连接受支持的 CLI Agent，直接在本机执行复杂任务',
       emptyUserMessage: '空消息',
       error: 'CLI 会话出错：{message}',
       runtimeError: '无法启动 CLI 运行时：{message}',

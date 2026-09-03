@@ -112,6 +112,7 @@ export type MessageInputCoreProps = {
   setSelectedSkills?: (skills: ChatSelectedSkill[]) => void
 
   enableAttachments?: boolean
+  allowImageAttachments?: boolean
   currentModel?: ChatModel | null
   skipImageModelCapabilityCheck?: boolean
 
@@ -170,6 +171,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
       setSelectedSkills,
 
       enableAttachments = true,
+      allowImageAttachments = true,
       currentModel = null,
       skipImageModelCapabilityCheck = false,
 
@@ -290,6 +292,15 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
 
     const handleCreateImageMentionables = useCallback(
       (mentionableImages: MentionableImage[]) => {
+        if (mentionableImages.length > 0 && !allowImageAttachments) {
+          new Notice(
+            t(
+              'chat.imageUnsupportedByRuntime',
+              'This CLI runtime does not accept image input.',
+            ),
+          )
+          return
+        }
         if (
           mentionableImages.length > 0 &&
           !skipImageModelCapabilityCheck &&
@@ -350,6 +361,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         setMentionables([...mentionables, ...newMentionableImages])
       },
       [
+        allowImageAttachments,
         currentModel,
         mentionableUnitLabels,
         mentionables,

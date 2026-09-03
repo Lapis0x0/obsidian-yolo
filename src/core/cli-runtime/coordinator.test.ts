@@ -113,6 +113,7 @@ const runtimeHarness = () => {
   const codexRuntimes: TestRuntime[] = []
   const hermesRuntimes: TestRuntime[] = []
   const piRuntimes: TestRuntime[] = []
+  const grokRuntimes: TestRuntime[] = []
   const createClaudeRuntime = jest.fn(() => {
     const runtime = new TestRuntime('claude-code')
     claudeRuntimes.push(runtime)
@@ -133,21 +134,29 @@ const runtimeHarness = () => {
     piRuntimes.push(runtime)
     return runtime
   })
+  const createGrokRuntime = jest.fn(() => {
+    const runtime = new TestRuntime('grok')
+    grokRuntimes.push(runtime)
+    return runtime
+  })
   const factories: CliRuntimeFactories = {
     'claude-code': { create: createClaudeRuntime },
     codex: { create: createCodexRuntime },
     hermes: { create: createHermesRuntime },
     pi: { create: createPiRuntime },
+    grok: { create: createGrokRuntime },
   }
   return {
     claudeRuntimes,
     codexRuntimes,
     hermesRuntimes,
     piRuntimes,
+    grokRuntimes,
     createClaudeRuntime,
     createCodexRuntime,
     createHermesRuntime,
     createPiRuntime,
+    createGrokRuntime,
     factories,
   }
 }
@@ -251,6 +260,12 @@ describe('CLI runtime coordinator', () => {
     expect(scope.resolveRuntime('codex')).toBe(scope.resolveRuntime('codex'))
     expect(harness.createCodexRuntime).toHaveBeenCalledTimes(1)
     expect(harness.createCodexRuntime).toHaveBeenCalledWith({
+      app,
+      vaultPath: '/vault/current',
+    })
+    expect(scope.resolveRuntime('grok')).toBe(scope.resolveRuntime('grok'))
+    expect(harness.createGrokRuntime).toHaveBeenCalledTimes(1)
+    expect(harness.createGrokRuntime).toHaveBeenCalledWith({
       app,
       vaultPath: '/vault/current',
     })
