@@ -1,14 +1,14 @@
 {
   "schemaVersion": 1,
-  "revision": 29,
+  "revision": 30,
   "keyId": "yolo-distribution-2026-01",
   "core": {
     "version": "1.6.8",
     "minAppVersion": "1.8.7",
     "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.8",
     "releaseNotes": {
-      "en": "## 1.6.8 YOLO Whiteboard & On-Demand Tools 🧩\n\n**Introducing YOLO Whiteboard** — for now, think of it as an Obsidian Canvas several to dozens of times faster. More features that push the boundaries of AI and human thinking are on the way.\n\n### Agent & tools\n\n- A more complete and elegant unified progressive disclosure for tools\n- Added Grok build as a new CLI agent channel\n\n### Models & connections\n\n- Fixed ChatGPT OAuth requests failing with a 400 when Web Search was enabled. (#588)\n- Fixed non-streaming requests such as conversation titles returning no content over a desktop direct ChatGPT OAuth connection. (#589)\n- Fixed the local MCP server failing to start when its default port collided with Local REST API, and made the port configurable. (#586)\n- Updated the OpenRouter model capability snapshot.\n\n### Chat & interface\n\n- The model picker in the chat input now shows more of the model name instead of truncating early when there is room.\n- Fixed the Similar Notes list being clipped with no way to scroll it in a short window.",
-      "zh": "## 1.6.8 YOLO 白板与工具按需披露 🧩\n\n**引入 YOLO 白板** —— 你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。\n\n### Agent 与工具\n\n- 实现更为完整、优雅的统一工具渐进式披露\n- 添加 Grok build 作为新的 CLI Agent 渠道\n\n### 模型与连接\n\n- 修复 ChatGPT OAuth 开启 Web Search 时请求报 400 的问题。（#588）\n- 修复 ChatGPT OAuth 桌面直连下，会话标题等非流式请求拿不到内容的问题。（#589）\n- 修复本地 MCP 服务默认端口与 Local REST API 冲突导致无法启动的问题，并开放端口配置。（#586）\n- 更新 OpenRouter 模型能力快照。\n\n### 对话与界面\n\n- 聊天输入框的模型选择器会显示更完整的模型名，不再在有空间时提前截断。\n- 修复相似笔记列表在窗口较矮时被截断且无法滚动的问题。"
+      "en": "## 1.6.8 YOLO Whiteboard & On-Demand Tools 🧩\n\n### New module\n\n- **Introducing YOLO Whiteboard**: for now, think of it as an Obsidian Canvas several to dozens of times faster. More features that push the boundaries of AI and human thinking are on the way.\n\n### Agent & tools\n\n- A more complete and elegant unified progressive disclosure for tools\n- Added Grok build as a new CLI agent channel\n\n### Models & connections\n\n- Fixed ChatGPT OAuth requests failing with a 400 when Web Search was enabled. (#588)\n- Fixed non-streaming requests such as conversation titles returning no content over a desktop direct ChatGPT OAuth connection. (#589)\n- Fixed the local MCP server failing to start when its default port collided with Local REST API, and made the port configurable. (#586)\n- Updated the OpenRouter model capability snapshot.\n\n### Chat & interface\n\n- The model picker in the chat input now shows more of the model name instead of truncating early when there is room.\n- Fixed the Similar Notes list being clipped with no way to scroll it in a short window.",
+      "zh": "## 1.6.8 YOLO 白板与工具按需披露 🧩\n\n### 新模块\n\n- **引入 YOLO 白板**：你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。\n\n### Agent 与工具\n\n- 实现更为完整、优雅的统一工具渐进式披露\n- 添加 Grok build 作为新的 CLI Agent 渠道\n\n### 模型与连接\n\n- 修复 ChatGPT OAuth 开启 Web Search 时请求报 400 的问题。（#588）\n- 修复 ChatGPT OAuth 桌面直连下，会话标题等非流式请求拿不到内容的问题。（#589）\n- 修复本地 MCP 服务默认端口与 Local REST API 冲突导致无法启动的问题，并开放端口配置。（#586）\n- 更新 OpenRouter 模型能力快照。\n\n### 对话与界面\n\n- 聊天输入框的模型选择器会显示更完整的模型名，不再在有空间时提前截断。\n- 修复相似笔记列表在窗口较矮时被截断且无法滚动的问题。"
     },
     "assets": {
       "mainJs": {
