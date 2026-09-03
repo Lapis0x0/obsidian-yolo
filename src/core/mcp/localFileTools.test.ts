@@ -2058,6 +2058,72 @@ describe('local fs tool action helpers', () => {
     }
   })
 
+  // D4 of docs/plans/09-03-whiteboard-agent-tools/master.md (Q11): fs_edit /
+  // fs_write refuse `.yoloboard` unconditionally — no `resolveModuleFileTextRenderer`
+  // is even passed here, proving the block does not depend on the whiteboard
+  // module being installed or active.
+  it('rejects fs_write against a .yoloboard path, pointing at the whiteboard edit tool', async () => {
+    const create = jest.fn()
+    const modify = jest.fn()
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(null),
+          create,
+          modify,
+          createFolder: jest.fn(),
+        },
+      } as unknown as App,
+      toolName: 'fs_write',
+      args: {
+        path: 'Boards/Reading Notes.yoloboard',
+        content: '{"nodes":[]}',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toMatch(/yolo_whiteboard__edit_board/)
+    }
+    expect(create).not.toHaveBeenCalled()
+    expect(modify).not.toHaveBeenCalled()
+  })
+
+  it('rejects fs_edit against a .yoloboard path, pointing at the whiteboard edit tool', async () => {
+    const file = Object.assign(new TFile(), {
+      path: 'Boards/Reading Notes.yoloboard',
+      extension: 'yoloboard',
+      stat: { size: 100 },
+    })
+    const read = jest.fn().mockResolvedValue('{"nodes":[]}')
+    const modify = jest.fn()
+
+    const result = await callLocalFileTool({
+      app: {
+        vault: {
+          getAbstractFileByPath: jest.fn().mockReturnValue(file),
+          read,
+          modify,
+        },
+      } as unknown as App,
+      toolName: 'fs_edit',
+      args: {
+        path: 'Boards/Reading Notes.yoloboard',
+        oldText: 'nodes',
+        newText: 'cards',
+      },
+    })
+
+    expect(result.status).toBe(ToolCallResponseStatus.Error)
+    if (result.status === ToolCallResponseStatus.Error) {
+      expect(result.error).toMatch(/yolo_whiteboard__edit_board/)
+    }
+    // Rejected before ever reading the file to attempt the edit.
+    expect(read).not.toHaveBeenCalled()
+    expect(modify).not.toHaveBeenCalled()
+  })
+
   it('keeps the fs_write tool schema flat without items or top-level combinators', () => {
     const tools = getLocalFileTools()
     const schemaByName = new Map(
@@ -2762,6 +2828,203 @@ describe('fs_read wikilink resolution', () => {
     expect(results[0]).toEqual(
       expect.objectContaining({ path: 'Skills/pkg/reference.md', ok: true }),
     )
+  })
+})
+
+// D3 of docs/plans/09-03-whiteboard-agent-tools/master.md: fs_read dispatches
+// a claimed extension to the module's renderer instead of returning raw
+// bytes. `resolveModuleFileTextRenderer` is threaded straight through
+// `ToolContext`, so these tests pass it as a plain function the way
+// `mcpManager.ts` would populate it from `ModuleFileTextRendererRegistry`.
+describe('fs_read module file text renderer dispatch (D3)', () => {
+  const makeFile = (path: string, extension: string, size = 100): TFile =>
+    Object.assign(new TFile(), {
+      path,
+      name: path.split('/').pop(),
+      extension,
+      stat: { size, mtime: 1000 },
+    })
+
+  const makeApp = (options: {
+    files: Record<string, TFile>
+    content: Record<string, string>
+  }): App => {
+    const { files, content } = options
+    return {
+      vault: {
+        getFileByPath: jest
+          .fn()
+          .mockImplementation((path: string) => files[path] ?? null),
+        read: jest
+          .fn()
+          .mockImplementation((file: TFile) =>
+            Promise.resolve(content[file.path] ?? ''),
+          ),
+      },
+      metadataCache: {
+        getFirstLinkpathDest: jest.fn().mockReturnValue(null),
+        getFileCache: jest.fn().mockReturnValue(null),
+      },
+    } as unknown as App
+  }
+
+  const parseResults = (result: {
+    status: ToolCallResponseStatus
+    text?: string
+  }): Array<Record<string, unknown>> => {
+    expect(result.status).toBe(ToolCallResponseStatus.Success)
+    return (
+      JSON.parse((result as { text: string }).text) as {
+        results: Array<Record<string, unknown>>
+      }
+    ).results
+  }
+
+  it('renders a claimed extension through the module renderer instead of returning raw content', async () => {
+    const file = makeFile('Board.yoloboard', 'yoloboard')
+    const app = makeApp({
+      files: { 'Board.yoloboard': file },
+      content: { 'Board.yoloboard': '{"nodes":[]}' },
+    })
+    const render = jest.fn().mockResolvedValue('37 cards, 12 edges')
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Board.yoloboard'] },
+      resolveModuleFileTextRenderer: (extension) =>
+        extension === 'yoloboard'
+          ? { extensions: ['yoloboard'], render }
+          : null,
+    })
+
+    expect(render).toHaveBeenCalledWith({
+      path: 'Board.yoloboard',
+      content: '{"nodes":[]}',
+    })
+    const results = parseResults(result)
+    expect(results).toEqual([
+      expect.objectContaining({
+        path: 'Board.yoloboard',
+        ok: true,
+        content: '1|37 cards, 12 edges',
+      }),
+    ])
+  })
+
+  it('reads raw content unchanged when nothing claims the extension', async () => {
+    const file = makeFile('Board.yoloboard', 'yoloboard')
+    const app = makeApp({
+      files: { 'Board.yoloboard': file },
+      content: { 'Board.yoloboard': '{"nodes":[]}' },
+    })
+    const render = jest.fn()
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Board.yoloboard'] },
+      // Registered for a different extension only — the module is either
+      // not installed/active, or never claimed `.yoloboard`.
+      resolveModuleFileTextRenderer: (extension) =>
+        extension === 'somethingelse'
+          ? { extensions: ['somethingelse'], render }
+          : null,
+    })
+
+    expect(render).not.toHaveBeenCalled()
+    const results = parseResults(result)
+    expect(results).toEqual([
+      expect.objectContaining({
+        path: 'Board.yoloboard',
+        ok: true,
+        content: '1|{"nodes":[]}',
+      }),
+    ])
+  })
+
+  it('reads raw content unchanged when resolveModuleFileTextRenderer is not wired up at all', async () => {
+    const file = makeFile('Board.yoloboard', 'yoloboard')
+    const app = makeApp({
+      files: { 'Board.yoloboard': file },
+      content: { 'Board.yoloboard': '{"nodes":[]}' },
+    })
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Board.yoloboard'] },
+    })
+
+    const results = parseResults(result)
+    expect(results).toEqual([
+      expect.objectContaining({
+        path: 'Board.yoloboard',
+        ok: true,
+        content: '1|{"nodes":[]}',
+      }),
+    ])
+  })
+
+  it('returns a clear tool error, not raw JSON, when the renderer throws', async () => {
+    const file = makeFile('Board.yoloboard', 'yoloboard')
+    const app = makeApp({
+      files: { 'Board.yoloboard': file },
+      content: { 'Board.yoloboard': '{"nodes":[]}' },
+    })
+    const render = jest.fn().mockRejectedValue(new Error('board is corrupt'))
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Board.yoloboard'] },
+      resolveModuleFileTextRenderer: (extension) =>
+        extension === 'yoloboard'
+          ? { extensions: ['yoloboard'], render }
+          : null,
+    })
+
+    const results = parseResults(result)
+    expect(results).toEqual([
+      expect.objectContaining({
+        path: 'Board.yoloboard',
+        ok: false,
+        error: expect.stringContaining('board is corrupt'),
+      }),
+    ])
+    // Model-facing error explains *why* — not a raw JSON dump of the file.
+    expect((results[0].error as string).includes('{"nodes"')).toBe(false)
+  })
+
+  it('rejects an oversized raw file before ever calling the renderer', async () => {
+    // MODULE_RENDERED_FILE_SOURCE_MAX_BYTES (20 MiB) is far above the
+    // MAX_FILE_SIZE_BYTES (2 MiB) an unclaimed text file would be capped at —
+    // this is the "size ordering is reversed for a claimed extension" case
+    // from master.md D3: a huge raw board must still be readable so it can
+    // be rendered down to a small summary.
+    const oversized = 21 * 1024 * 1024
+    const file = makeFile('Board.yoloboard', 'yoloboard', oversized)
+    const app = makeApp({
+      files: { 'Board.yoloboard': file },
+      content: {},
+    })
+    const render = jest.fn()
+
+    const result = await callLocalFileTool({
+      app,
+      toolName: 'fs_read',
+      args: { paths: ['Board.yoloboard'] },
+      resolveModuleFileTextRenderer: (extension) =>
+        extension === 'yoloboard'
+          ? { extensions: ['yoloboard'], render }
+          : null,
+    })
+
+    expect(render).not.toHaveBeenCalled()
+    const results = parseResults(result)
+    expect(results).toEqual([
+      expect.objectContaining({ path: 'Board.yoloboard', ok: false }),
+    ])
   })
 })
 

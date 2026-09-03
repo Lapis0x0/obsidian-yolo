@@ -354,7 +354,22 @@ export type YoloModuleFileTextRendererV1 = Readonly<{
   /** Extensions without a leading dot, e.g. ['yoloboard']. */
   extensions: readonly string[]
   render(
-    file: Readonly<{ path: string; content: string }>,
+    file: Readonly<{
+      path: string
+      content: string
+      /**
+       * What the read addressed after a '#', when it addressed anything —
+       * `board.yoloboard#c-8f3a` arrives here as `c-8f3a`. The host does not
+       * interpret it: which pieces a format has names for is the module's
+       * own vocabulary, and this is the same shape a note's `#heading`
+       * already has.
+       *
+       * Absent means the whole file was asked for, which is what a summary
+       * answers. A fragment the module does not recognize is its own to
+       * report.
+       */
+      fragment?: string
+    }>,
   ): string | Promise<string>
 }>
 

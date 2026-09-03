@@ -91,3 +91,50 @@ describe('fuzzySearch / fuzzySearchFolders (YOLO user data root exclusion)', () 
     expect(results.some((item) => item.type === 'file')).toBe(true)
   })
 })
+
+// D3 of docs/plans/09-03-whiteboard-agent-tools/master.md: `.yoloboard` isn't
+// (and shouldn't be — this is a general host utility with no import of
+// core/modules) in the static MENTION_SEARCHABLE_EXTENSIONS list, so a module
+// that's claimed a file-text renderer for it is unioned in per call instead.
+describe('fuzzySearch extraSearchableExtensions (D3)', () => {
+  it('excludes a module-owned extension by default', () => {
+    const boardFile = makeFile('Boards/Reading Notes.yoloboard')
+    const app = makeApp([boardFile], [])
+
+    const results = fuzzySearch(app, '')
+
+    expect(
+      results.some(
+        (item) => item.type === 'file' && item.file.path === boardFile.path,
+      ),
+    ).toBe(false)
+  })
+
+  it('includes a module-owned extension when passed as extraSearchableExtensions', () => {
+    const boardFile = makeFile('Boards/Reading Notes.yoloboard')
+    const noteFile = makeFile('Notes/todo.md')
+    const app = makeApp([boardFile, noteFile], [])
+
+    const results = fuzzySearch(app, '', undefined, ['yoloboard'])
+
+    expect(
+      results.some(
+        (item) => item.type === 'file' && item.file.path === boardFile.path,
+      ),
+    ).toBe(true)
+    expect(
+      results.some(
+        (item) => item.type === 'file' && item.file.path === noteFile.path,
+      ),
+    ).toBe(true)
+  })
+
+  it('does not mutate the shared MENTION_SEARCHABLE_EXTENSIONS constant', () => {
+    const boardFile = makeFile('Boards/Reading Notes.yoloboard')
+    const app = makeApp([boardFile], [])
+
+    fuzzySearch(app, '', undefined, ['yoloboard'])
+
+    expect(MENTION_SEARCHABLE_EXTENSIONS.has('yoloboard')).toBe(false)
+  })
+})

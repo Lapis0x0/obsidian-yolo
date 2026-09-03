@@ -11,6 +11,7 @@ import {
   buildFileChangeSummary,
   maybeWithInternalWrite,
 } from '../file-editing-support'
+import { describeStructuredVaultFormatDenial } from '../structured-vault-formats'
 import { MAX_FILE_SIZE_BYTES, formatJsonResult, getTextArg } from '../tool-args'
 import type { LocalToolCallResultMetadata } from '../types'
 
@@ -80,6 +81,12 @@ export const fsWriteDefinition = defineTool({
     } = ctx
 
     const path = validateVaultPath(getTextArg(args, 'path'))
+
+    const structuredFormatDenial = describeStructuredVaultFormatDenial(path)
+    if (structuredFormatDenial) {
+      throw new Error(structuredFormatDenial)
+    }
+
     const content = getTextArg(args, 'content')
     if (content.length > MAX_FILE_SIZE_BYTES) {
       throw new Error(

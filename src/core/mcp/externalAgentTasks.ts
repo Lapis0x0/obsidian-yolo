@@ -14,6 +14,7 @@ import {
   type AgentService,
   buildAgentConversationRunSummary,
 } from '../agent/service'
+import type { ModuleToolSetRegistry } from '../modules/moduleToolSetRegistry'
 import { ensureJsonDbRootDir } from '../paths/yoloManagedData'
 import { getYoloJsonDbRootDir } from '../paths/yoloPaths'
 
@@ -66,6 +67,8 @@ type ExternalAgentTaskServiceOptions = {
   getAgentService: () => Promise<AgentService>
   getMcpManager: () => Promise<McpManager>
   openConversation: (conversationId: string) => Promise<void>
+  /** See `YoloAgentApiServiceOptions['getModuleToolSetRegistry']` — same optionality reason. */
+  getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
 
 const EMPTY_TASK_FILE: ExternalAgentTaskFile = {
@@ -306,6 +309,7 @@ export class ExternalAgentTaskService {
       settings,
       agentService,
       mcpManager: await this.options.getMcpManager(),
+      moduleToolSets: this.options.getModuleToolSetRegistry?.().getSnapshot(),
     })
 
     await new ChatManager(this.options.app, settings).createChat({

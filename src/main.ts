@@ -1020,6 +1020,8 @@ export default class YoloPlugin extends Plugin {
           const { runSubagent } = await import('./core/agent/subagent/runner')
           return (runSubagent as NonNullable<ToolContext['runSubagent']>)(input)
         },
+        resolveModuleFileTextRenderer: (extension) =>
+          this.moduleFileTextRendererRegistry.resolve(extension),
         moduleChatModeRegistry: this.moduleChatModeRegistry,
         moduleToolSetRegistry: this.moduleToolSetRegistry,
         persistDiscoveredCatalogs: (catalogs) => {
@@ -1046,6 +1048,7 @@ export default class YoloPlugin extends Plugin {
       ragAccess: this.getRagAccess(),
       openConversation: (conversationId) =>
         this.openChatView({ initialConversationId: conversationId }),
+      getModuleToolSetRegistry: () => this.getModuleToolSetRegistry(),
     })
     this.localMcpServer = runtime
     this.localMcpSettingsUnsubscribe = this.addSettingsChangeListener(
@@ -1268,6 +1271,7 @@ export default class YoloPlugin extends Plugin {
             getSettings: () => this.settings,
             getAgentService: () => this.getAgentService(),
             getMcpManager: () => this.getMcpManager(),
+            getModuleToolSetRegistry: () => this.getModuleToolSetRegistry(),
           })
           return service
         } catch (error) {

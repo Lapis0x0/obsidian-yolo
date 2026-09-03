@@ -13,6 +13,7 @@ import {
   buildFileChangeSummary,
   maybeWithInternalWrite,
 } from '../file-editing-support'
+import { describeStructuredVaultFormatDenial } from '../structured-vault-formats'
 import { MAX_FILE_SIZE_BYTES, formatJsonResult, getTextArg } from '../tool-args'
 import type { LocalToolCallResultMetadata } from '../types'
 
@@ -102,6 +103,12 @@ export const fsEditDefinition = defineTool({
     } = ctx
 
     const path = validateVaultPath(getTextArg(args, 'path'))
+
+    const structuredFormatDenial = describeStructuredVaultFormatDenial(path)
+    if (structuredFormatDenial) {
+      throw new Error(structuredFormatDenial)
+    }
+
     const plan = getFsEditPlan(args)
 
     const file = app.vault.getAbstractFileByPath(path)

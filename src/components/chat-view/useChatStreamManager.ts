@@ -43,6 +43,7 @@ import type { ResponseDeliveryMode } from '../../core/llm/responseDeliveryMode'
 import { promoteProviderTransportModeToObsidian } from '../../core/llm/transportModePromotion'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
+import { toModuleToolSetEnablement } from '../../core/modules/moduleToolSetRegistry'
 import { listLiteSkillEntries } from '../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../core/skills/skillPolicy'
 import { useChatManager } from '../../hooks/useJsonManagers'
@@ -260,6 +261,21 @@ export function useChatStreamManager({
     moduleChatModeRegistry.subscribe,
     moduleChatModeRegistry.getSnapshot,
   )
+
+  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md D1b):
+  // same registry `useSyncExternalStore` pattern as the chat mode registry
+  // above, reduced to what `getEnabledAssistantToolNames` needs so a module
+  // tool set's default-enabled tools count as enabled here exactly as they
+  // do everywhere else that resolves an assistant's tool list.
+  const moduleToolSetRegistry = plugin.getModuleToolSetRegistry()
+  const moduleToolSetSnapshot = useSyncExternalStore(
+    moduleToolSetRegistry.subscribe,
+    moduleToolSetRegistry.getSnapshot,
+  )
+  const moduleToolSetEnablement = useMemo(
+    () => toModuleToolSetEnablement(moduleToolSetSnapshot),
+    [moduleToolSetSnapshot],
+  )
   // `chatMode` here is always an *effective* value (see
   // `resolveEffectiveChatMode` in `useYoloChatSession`) — an unavailable
   // module id never reaches this hook as `'agent'` is substituted upstream.
@@ -425,8 +441,10 @@ export function useChatStreamManager({
           mode: chatMode,
           yoloEnabled,
           assistant: selectedAssistant,
-          assistantEnabledToolNames:
-            getEnabledAssistantToolNames(selectedAssistant),
+          assistantEnabledToolNames: getEnabledAssistantToolNames(
+            selectedAssistant,
+            moduleToolSetEnablement,
+          ),
           moduleChatMode: resolveModuleChatMode(),
         }),
         autoContextCompactionOptions.autoContextCompactionEnabled,
@@ -700,8 +718,10 @@ export function useChatStreamManager({
             mode: chatMode,
             yoloEnabled,
             assistant: selectedAssistant,
-            assistantEnabledToolNames:
-              getEnabledAssistantToolNames(selectedAssistant),
+            assistantEnabledToolNames: getEnabledAssistantToolNames(
+              selectedAssistant,
+              moduleToolSetEnablement,
+            ),
             moduleChatMode: resolveModuleChatMode(),
           }),
           autoContextCompactionOptions.autoContextCompactionEnabled,
@@ -1054,8 +1074,10 @@ export function useChatStreamManager({
         mode: chatMode,
         yoloEnabled,
         assistant: selectedAssistant,
-        assistantEnabledToolNames:
-          getEnabledAssistantToolNames(selectedAssistant),
+        assistantEnabledToolNames: getEnabledAssistantToolNames(
+          selectedAssistant,
+          moduleToolSetEnablement,
+        ),
         moduleChatMode: resolveModuleChatMode(),
       })
       const provider = settings.providers.find(

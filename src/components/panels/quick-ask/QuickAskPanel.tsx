@@ -11,6 +11,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
@@ -24,6 +25,7 @@ import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
 import { LLMModelNotFoundException } from '../../../core/llm/exception'
 import { getChatModelClient } from '../../../core/llm/manager'
+import { toModuleToolSetEnablement } from '../../../core/modules/moduleToolSetRegistry'
 import { listLiteSkillEntries } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import type {
@@ -240,6 +242,21 @@ export function QuickAskPanel({
   const { getMcpManager } = useMcp()
   const { createOrUpdateConversationImmediately, generateConversationTitle } =
     useChatHistory()
+
+  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md D1b):
+  // same registry `useSyncExternalStore` pattern used by the chat mode
+  // registry in `useChatStreamManager.ts`, reduced to what
+  // `getEnabledAssistantToolNames` needs so Quick Ask resolves the same
+  // enabled tool set the sidebar chat does.
+  const moduleToolSetRegistry = plugin.getModuleToolSetRegistry()
+  const moduleToolSetSnapshot = useSyncExternalStore(
+    moduleToolSetRegistry.subscribe,
+    moduleToolSetRegistry.getSnapshot,
+  )
+  const moduleToolSetEnablement = useMemo(
+    () => toModuleToolSetEnablement(moduleToolSetSnapshot),
+    [moduleToolSetSnapshot],
+  )
 
   const assistants = settings.assistants || []
   const currentAssistantId = settings.quickAskAssistantId
@@ -1000,8 +1017,10 @@ export function QuickAskPanel({
           mode: isAgentMode ? 'agent' : 'ask',
           yoloEnabled,
           assistant: selectedAssistant,
-          assistantEnabledToolNames:
-            getEnabledAssistantToolNames(selectedAssistant),
+          assistantEnabledToolNames: getEnabledAssistantToolNames(
+            selectedAssistant,
+            moduleToolSetEnablement,
+          ),
         })
         const effectiveModel = model
         const disabledSkillNames = settings.skills?.disabledSkillIds ?? []

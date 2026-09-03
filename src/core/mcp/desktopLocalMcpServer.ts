@@ -6,6 +6,7 @@ import { BAKED_PLUGIN_VERSION } from '../../constants/bakedVersion'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
 import type { AgentService } from '../agent/service'
+import type { ModuleToolSetRegistry } from '../modules/moduleToolSetRegistry'
 import { describeKnowledgeBaseCatalog } from '../rag/knowledgeBaseCatalog'
 import type { RagKnowledgeAccess } from '../rag/ragAccess'
 
@@ -47,6 +48,8 @@ type DesktopLocalMcpServerOptions = {
   getMcpManager: () => Promise<McpManager>
   ragAccess: RagKnowledgeAccess
   openConversation: (conversationId: string) => Promise<void>
+  /** See `YoloAgentApiServiceOptions['getModuleToolSetRegistry']` — same optionality reason. */
+  getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
 
 const MAX_REQUEST_BODY_BYTES = 1024 * 1024
@@ -216,6 +219,7 @@ export class DesktopLocalMcpServer implements LocalMcpServerRuntime {
       getAgentService: options.getAgentService,
       getMcpManager: options.getMcpManager,
       openConversation: options.openConversation,
+      getModuleToolSetRegistry: options.getModuleToolSetRegistry,
     })
   }
 

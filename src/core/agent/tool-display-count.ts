@@ -8,7 +8,10 @@ import {
 import { parseToolName } from '../mcp/tool-name-utils'
 import { getCapability } from '../tools/registry'
 
-import { getEnabledAssistantToolNames } from './tool-preferences'
+import {
+  type ModuleToolSetEnablementV1,
+  getEnabledAssistantToolNames,
+} from './tool-preferences'
 
 // `web_access`'s member tool short names, derived from the registry rather
 // than hand-listed — matches the other two groups below, which come from
@@ -35,8 +38,11 @@ export function countEnabledVisibleAssistantTools(
     | 'builtinCapabilityPreferences'
   > | null,
   availableTools: readonly McpTool[],
+  moduleToolSets: readonly ModuleToolSetEnablementV1[] = [],
 ): number {
-  const enabledToolNames = new Set(getEnabledAssistantToolNames(assistant))
+  const enabledToolNames = new Set(
+    getEnabledAssistantToolNames(assistant, moduleToolSets),
+  )
   const localServerName = getLocalFileToolServerName()
   const groupedTargets = BUILTIN_TOOL_GROUPS.map(() => [] as string[])
   let count = 0

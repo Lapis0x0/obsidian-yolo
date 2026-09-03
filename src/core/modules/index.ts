@@ -40,6 +40,7 @@ export {
   type RegisteredModuleChatModeV1,
 } from './moduleChatModeRegistry'
 export {
+  MODULE_RENDERED_FILE_SOURCE_MAX_BYTES,
   ModuleFileTextRendererRegistry,
   snapshotModuleFileTextRenderer,
   type ModuleFileTextRendererContributionSinkV1,

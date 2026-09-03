@@ -707,6 +707,7 @@ export const en: TranslationKeys = {
       toolDisclosureAlways: 'In context',
       toolDisclosureMixed: 'Mixed',
       toolDisclosureOnDemand: 'On demand',
+      moduleToolSetUnavailable: 'Unavailable',
       editorEnabled: 'Enabled',
       editorDisabled: 'Disabled',
       editorModel: 'Model',

@@ -143,6 +143,29 @@ export class ModuleToolSetRegistry implements ModuleToolSetContributionSinkV1 {
   }
 }
 
+/**
+ * Reduces a tool set snapshot to what `getEnabledAssistantToolNames`
+ * (`core/agent/tool-preferences.ts`) needs: the in-process server name each
+ * set is served under and the short tool names it exposes. Shared by every
+ * call site that threads a tool set snapshot into enablement/count
+ * computations (docs/plans/09-03-whiteboard-agent-tools/master.md D1b) so
+ * none of them hand-write the same `serverName`/`toolNames` projection.
+ *
+ * Drops `unavailable` sets: their tools are not actually registered as an
+ * in-process MCP server (see `McpCoordinator`), so counting them as enabled
+ * would claim usability the runtime cannot deliver.
+ */
+export function toModuleToolSetEnablement(
+  snapshot: readonly RegisteredModuleToolSetV1[],
+): readonly Readonly<{ serverName: string; toolNames: readonly string[] }>[] {
+  return snapshot
+    .filter((entry) => entry.availability.status === 'available')
+    .map((entry) => ({
+      serverName: entry.serverName,
+      toolNames: entry.set.tools.map((tool) => tool.name),
+    }))
+}
+
 function sameAvailability(
   left: ModuleToolSetAvailabilityV1,
   right: ModuleToolSetAvailabilityV1,

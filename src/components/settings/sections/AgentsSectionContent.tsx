@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react'
 import { createPortal } from 'react-dom'
 
@@ -44,6 +45,11 @@ import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
 import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { getToolName, parseToolName } from '../../../core/mcp/tool-name-utils'
+import { resolveLocalizedText } from '../../../core/modules/moduleI18n'
+import {
+  type ModuleToolSetAvailabilityV1,
+  toModuleToolSetEnablement,
+} from '../../../core/modules/moduleToolSetRegistry'
 import { getYoloSkillsDir } from '../../../core/paths/yoloPaths'
 import {
   LiteSkillEntry,
@@ -62,6 +68,7 @@ import {
   type BuiltinCapabilityId,
   listCapabilities,
 } from '../../../core/tools/registry'
+import type { BuiltinToolCategory } from '../../../core/tools/types'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
 import { YoloSettings } from '../../../settings/schema/setting.types'
 import {
@@ -356,7 +363,28 @@ export function AgentsSectionContent({
 }: AgentsSectionContentProps) {
   const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
-  const { t } = useLanguage()
+  const { t, language } = useLanguage()
+
+  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md
+  // D1b): same registry `useSyncExternalStore` pattern used elsewhere
+  // (`Chat.tsx`'s module chat mode subscription, `useChatStreamManager.ts`).
+  // The full snapshot (not just the reduced enablement projection) is kept
+  // too — the "库内操作" tool-group rows below need each set's own label,
+  // description, category, and availability, not just its enabled tool
+  // names.
+  const moduleToolSetRegistry = plugin.getModuleToolSetRegistry()
+  const moduleToolSetSnapshot = useSyncExternalStore(
+    moduleToolSetRegistry.subscribe,
+    moduleToolSetRegistry.getSnapshot,
+  )
+  const moduleToolSetEnablement = useMemo(
+    () => toModuleToolSetEnablement(moduleToolSetSnapshot),
+    [moduleToolSetSnapshot],
+  )
+  const moduleToolSetServerNames = useMemo(
+    () => new Set(moduleToolSetSnapshot.map((entry) => entry.serverName)),
+    [moduleToolSetSnapshot],
+  )
 
   const assistants = settings.assistants || []
   const isDirectEditEntry = Boolean(initialAssistantId)
@@ -801,7 +829,26 @@ export function AgentsSectionContent({
   const visibleToolGroups = useMemo(() => {
     const groups = new Map<
       string,
-      { title: string; tools: AgentToolView[]; isBuiltin: boolean }
+      {
+        title: string
+        tools: AgentToolView[]
+        isBuiltin: boolean
+        /**
+         * Present only for a module-contributed tool set row (whiteboard,
+         * etc. — docs/plans/09-03-whiteboard-agent-tools/master.md D1b, Q16).
+         * These render inside the same category ordering as builtin
+         * capability rows (`title`/`category` come from the registry's own
+         * `set.label`/`set.category`, resolved to the current locale), but
+         * keep `isBuiltin: false` — they use the MCP-style collapsible
+         * layout and per-set disclosure control, not the always-expanded
+         * builtin one, and (Q13) never show an approval control at all.
+         */
+        moduleToolSet?: {
+          description: string
+          category: BuiltinToolCategory
+          availability: ModuleToolSetAvailabilityV1
+        }
+      }
     >()
     const includeBuiltinTools = draftAgent?.includeBuiltinTools !== false
     // Which built-in tool *short* names are actually present in this
@@ -830,6 +877,15 @@ export function AgentsSectionContent({
         if (includeBuiltinTools) {
           builtinToolNamesPresent.add(toolName)
         }
+        return
+      }
+
+      // Module tool sets get their own dedicated group below, built from the
+      // registry snapshot directly rather than from `availableTools` — that
+      // is what lets an `unavailable` set still render a row (its tools
+      // never reach `availableTools`, since the coordinator never registers
+      // them as an in-process server in that state).
+      if (moduleToolSetServerNames.has(serverName)) {
         return
       }
 
@@ -883,15 +939,51 @@ export function AgentsSectionContent({
       }
     }
 
+    // Module tool sets (Q16): one group per registered set, built from the
+    // registry itself so an `unavailable` set still shows a row (with its
+    // reason) even though it has no live in-process tools to iterate.
+    for (const entry of moduleToolSetSnapshot) {
+      groups.set(entry.serverName, {
+        title: resolveLocalizedText(entry.set.label, language),
+        tools: entry.set.tools.map((tool) => {
+          const fqn = getToolName(entry.serverName, tool.name)
+          return {
+            fullName: fqn,
+            toggleTargets: [fqn],
+            displayName: tool.name,
+            description: tool.description || t('common.none', 'None'),
+          }
+        }),
+        isBuiltin: false,
+        moduleToolSet: {
+          description: entry.set.description
+            ? resolveLocalizedText(entry.set.description, language)
+            : '',
+          category: entry.set.category,
+          availability: entry.availability,
+        },
+      })
+    }
+
     const builtinCategoryRank = new Map<string, number>(
       BUILTIN_TOOL_CATEGORY_ORDER.map(
         (category, index) => [`__builtin:${category}`, index] as const,
       ),
     )
+    // A module tool set's rank sits just after its own category's builtin
+    // group (`+0.5`) so it visually reads as part of that category's
+    // section, while still sorting ahead of the plain alphabetical MCP
+    // server groups below (which have no rank at all).
+    const moduleToolSetRank = new Map<string, number>(
+      moduleToolSetSnapshot.map((entry) => [
+        entry.serverName,
+        (builtinCategoryRank.get(`__builtin:${entry.set.category}`) ?? 0) + 0.5,
+      ]),
+    )
     return [...groups.entries()]
       .sort(([a], [b]) => {
-        const ra = builtinCategoryRank.get(a)
-        const rb = builtinCategoryRank.get(b)
+        const ra = builtinCategoryRank.get(a) ?? moduleToolSetRank.get(a)
+        const rb = builtinCategoryRank.get(b) ?? moduleToolSetRank.get(b)
         if (ra !== undefined && rb !== undefined) return ra - rb
         if (ra !== undefined) return -1
         if (rb !== undefined) return 1
@@ -901,7 +993,10 @@ export function AgentsSectionContent({
   }, [
     availableTools,
     draftAgent?.includeBuiltinTools,
+    language,
     localFsServerName,
+    moduleToolSetServerNames,
+    moduleToolSetSnapshot,
     settings.mcp.builtinCapabilityOptions,
     t,
   ])
@@ -912,11 +1007,17 @@ export function AgentsSectionContent({
   )
 
   const enabledVisibleToolsCount = useMemo(() => {
-    return countEnabledVisibleAssistantTools(draftAgent, availableTools)
-  }, [availableTools, draftAgent])
+    return countEnabledVisibleAssistantTools(
+      draftAgent,
+      availableTools,
+      moduleToolSetEnablement,
+    )
+  }, [availableTools, draftAgent, moduleToolSetEnablement])
 
   const groupEnabledCounts = useMemo(() => {
-    const enabled = new Set(getEnabledAssistantToolNames(draftAgent))
+    const enabled = new Set(
+      getEnabledAssistantToolNames(draftAgent, moduleToolSetEnablement),
+    )
     const counts = new Map<string, number>()
     for (const group of visibleToolGroups) {
       counts.set(
@@ -927,7 +1028,7 @@ export function AgentsSectionContent({
       )
     }
     return counts
-  }, [draftAgent, visibleToolGroups])
+  }, [draftAgent, moduleToolSetEnablement, visibleToolGroups])
 
   // Estimated tokens are scoped to a specific agent identity. Stale values
   // from a previous agent must NOT leak across an agent switch (would mislead
@@ -969,7 +1070,11 @@ export function AgentsSectionContent({
       ) {
         return false
       }
-      return isAssistantToolEnabled(draftAgent, tool.name)
+      return isAssistantToolEnabled(
+        draftAgent,
+        tool.name,
+        moduleToolSetEnablement,
+      )
     })
 
     if (eligibleTools.length === 0) {
@@ -1034,10 +1139,13 @@ export function AgentsSectionContent({
     draftAgent?.enableTools,
     draftAgent?.includeBuiltinTools,
     localFsServerName,
+    moduleToolSetEnablement,
   ])
 
   const groupEnabledTokens = useMemo(() => {
-    const enabledNames = new Set(getEnabledAssistantToolNames(draftAgent))
+    const enabledNames = new Set(
+      getEnabledAssistantToolNames(draftAgent, moduleToolSetEnablement),
+    )
     const perTool = estimatedToolContextTokens.perTool
     const result = new Map<string, number>()
     for (const group of visibleToolGroups) {
@@ -1052,7 +1160,12 @@ export function AgentsSectionContent({
       result.set(group.key, sum)
     }
     return result
-  }, [draftAgent, estimatedToolContextTokens.perTool, visibleToolGroups])
+  }, [
+    draftAgent,
+    estimatedToolContextTokens.perTool,
+    moduleToolSetEnablement,
+    visibleToolGroups,
+  ])
 
   const skillEntries = useLiteSkillEntries(app, { settings })
 
@@ -1602,6 +1715,44 @@ export function AgentsSectionContent({
                 </div>
 
                 {visibleToolGroups.map((group) => {
+                  const moduleToolSet = group.moduleToolSet
+                  // An unavailable module tool set has no live tools to
+                  // toggle, disclose, or estimate tokens for — it renders as
+                  // a plain informational row (title, description, reason)
+                  // instead of the interactive group below.
+                  if (moduleToolSet?.availability.status === 'unavailable') {
+                    return (
+                      <div
+                        key={group.key}
+                        className="yolo-agent-tool-group yolo-agent-tool-group--module-set is-unavailable"
+                      >
+                        <div className="yolo-agent-tool-group-title">
+                          <span className="yolo-agent-tool-group-title-main">
+                            <span className="yolo-agent-tool-group-name">
+                              {group.title}
+                            </span>
+                          </span>
+                          <span className="yolo-agent-tool-group-meta">
+                            <span className="yolo-agent-tool-group-unavailable">
+                              {t(
+                                'settings.agent.moduleToolSetUnavailable',
+                                'Unavailable',
+                              )}
+                            </span>
+                          </span>
+                        </div>
+                        {moduleToolSet.description && (
+                          <div className="yolo-agent-tool-group-description">
+                            {moduleToolSet.description}
+                          </div>
+                        )}
+                        <div className="yolo-agent-tool-group-unavailable-reason">
+                          {moduleToolSet.availability.reason}
+                        </div>
+                      </div>
+                    )
+                  }
+
                   const groupEnabledCount =
                     groupEnabledCounts.get(group.key) ?? 0
                   const allGroupToolsEnabled =
@@ -1630,7 +1781,12 @@ export function AgentsSectionContent({
                   const serverDisclosureLabel = disclosureModeLabel(
                     disclosureSelectionValue,
                   )
-                  const showServerApproval = !group.isBuiltin
+                  // Module tool sets have no approval tier (Q13 — safety is
+                  // pushed entirely onto the writes going through undo, not
+                  // a confirmation gate), so the group-level approval control
+                  // below is skipped for them the same way it already is for
+                  // built-in groups.
+                  const showServerApproval = !group.isBuiltin && !moduleToolSet
                   const serverApprovalMode: AssistantToolApprovalMode =
                     draftAgent.toolServerPreferences?.[group.key]
                       ?.approvalMode ?? 'require_approval'
@@ -1645,6 +1801,7 @@ export function AgentsSectionContent({
                   const groupClassName = [
                     'yolo-agent-tool-group',
                     !group.isBuiltin ? 'yolo-agent-tool-group--mcp' : null,
+                    moduleToolSet ? 'yolo-agent-tool-group--module-set' : null,
                     groupFullyDisabled ? 'is-disabled' : null,
                     !group.isBuiltin && isGroupExpanded ? 'is-expanded' : null,
                   ]
@@ -1672,6 +1829,11 @@ export function AgentsSectionContent({
                               />
                               <span>{group.title}</span>
                             </button>
+                          )}
+                          {moduleToolSet?.description && (
+                            <span className="yolo-agent-tool-group-description">
+                              {moduleToolSet.description}
+                            </span>
                           )}
                           {estimatedToolContextTokens.perTool.size > 0 && (
                             <span className="yolo-agent-tool-group-tokens">
@@ -1865,7 +2027,11 @@ export function AgentsSectionContent({
                           {group.tools.map((tool) => {
                             const selected = tool.toggleTargets.every(
                               (target) =>
-                                isAssistantToolEnabled(draftAgent, target),
+                                isAssistantToolEnabled(
+                                  draftAgent,
+                                  target,
+                                  moduleToolSetEnablement,
+                                ),
                             )
                             // Built-in rows offer their own capability's
                             // allowed tiers; MCP server tool rows have no

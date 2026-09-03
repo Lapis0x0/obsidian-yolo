@@ -653,6 +653,7 @@ export const zh: TranslationKeys = {
       toolDisclosureAlways: '常驻上下文',
       toolDisclosureMixed: '混合',
       toolDisclosureOnDemand: '按需披露',
+      moduleToolSetUnavailable: '不可用',
       editorEnabled: '已启用',
       editorDisabled: '已禁用',
       editorModel: '模型',

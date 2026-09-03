@@ -22,6 +22,7 @@ import type {
 import type { PromptSourceWatcher } from '../agent/promptSourceWatcher'
 import type { SubagentAcceptedResult } from '../agent/subagent/types'
 import type { BaseLLMProvider } from '../llm/base'
+import type { YoloModuleFileTextRendererV1 } from '../modules/types'
 import type { RagKnowledgeAccess } from '../rag/ragAccess'
 
 /** A translatable piece of UI text: an i18n key plus its English fallback. */
@@ -186,6 +187,20 @@ export type ToolContext = {
    * unavailable regardless of `bashApprovalMode`.
    */
   bashReadOnly?: boolean
+  /**
+   * Looks up the module that owns a file extension's "what does this look
+   * like to a model" text form (`ModuleFileTextRendererRegistry.resolve`),
+   * e.g. `.yoloboard` → the whiteboard module's board-summary renderer.
+   * `fs_read` is this field's only consumer (docs/plans/09-03-whiteboard-agent-tools/master.md
+   * D3): a claimed extension is read and rendered instead of returned
+   * verbatim. Same DI shape as `ragAccess` / `openApplyReview` above — the
+   * tool consumes the host capability through `ToolContext`, it never reaches
+   * into `core/modules/` itself. Undefined (host/test contexts that never
+   * wire it up) behaves exactly like "nothing claimed this extension".
+   */
+  resolveModuleFileTextRenderer?: (
+    extension: string,
+  ) => YoloModuleFileTextRendererV1 | null
 }
 
 /**

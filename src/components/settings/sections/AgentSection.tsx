@@ -1,7 +1,13 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { BookOpen, Copy, Cpu, Plus, Trash2, Wrench } from 'lucide-react'
 import { App, Platform } from 'obsidian'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { usePlugin } from '../../../contexts/plugin-context'
@@ -10,6 +16,7 @@ import { getAssistantModelDisplayLabel } from '../../../core/agent/assistant-mod
 import { isDefaultAssistantId } from '../../../core/agent/default-assistant'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { McpManager } from '../../../core/mcp/mcpManager'
+import { toModuleToolSetEnablement } from '../../../core/modules/moduleToolSetRegistry'
 import { humanizeSkillName } from '../../../core/skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../../../core/skills/skillPolicy'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
@@ -38,6 +45,15 @@ export function AgentSection({ app }: AgentSectionProps) {
   const { t } = useLanguage()
   const plugin = usePlugin()
   const assistants = settings.assistants || []
+  const moduleToolSetRegistry = plugin.getModuleToolSetRegistry()
+  const moduleToolSetSnapshot = useSyncExternalStore(
+    moduleToolSetRegistry.subscribe,
+    moduleToolSetRegistry.getSnapshot,
+  )
+  const moduleToolSetEnablement = useMemo(
+    () => toModuleToolSetEnablement(moduleToolSetSnapshot),
+    [moduleToolSetSnapshot],
+  )
   const [mcpManager, setMcpManager] = useState<McpManager | null>(null)
   const [mcpServers, setMcpServers] = useState<McpServerState[]>([])
   const [mcpManagerLoading, setMcpManagerLoading] = useState(true)
@@ -500,7 +516,12 @@ export function AgentSection({ app }: AgentSectionProps) {
                 <span className="yolo-agent-meta-item">
                   <Wrench size={12} />
                   {assistant.enableTools
-                    ? `${getEnabledAssistantToolNames(assistant).length} tools`
+                    ? `${
+                        getEnabledAssistantToolNames(
+                          assistant,
+                          moduleToolSetEnablement,
+                        ).length
+                      } tools`
                     : '0 tools'}
                 </span>
                 <span className="yolo-agent-meta-item">

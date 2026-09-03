@@ -182,15 +182,31 @@ export function fuzzySearch(
   app: App,
   query: string,
   settings?: FuzzySearchSettingsLike | null,
+  /**
+   * Extensions a module has claimed a file-text renderer for (see
+   * `ModuleFileTextRendererRegistry.listExtensions()`), unioned into the
+   * searchable set for this call. A module-owned format like `.yoloboard`
+   * can't sit in the static `MENTION_SEARCHABLE_EXTENSIONS` list above —
+   * this file is a general host utility with no import of `core/modules`,
+   * and the set of claimed extensions is runtime state (a module can be
+   * enabled/disabled while the app is open) rather than something fixed at
+   * module-init time. So the registry-aware caller
+   * (`LexicalContentEditable.tsx`, which has `usePlugin()`) passes its
+   * current snapshot in per call instead (docs/plans/09-03-whiteboard-agent-tools/master.md
+   * D3).
+   */
+  extraSearchableExtensions?: Iterable<string>,
 ): SearchableMentionable[] {
   const currentFile = app.workspace.getActiveFile()
   const openFiles = getOpenFiles(app)
 
+  const searchableExtensions = extraSearchableExtensions
+    ? new Set([...MENTION_SEARCHABLE_EXTENSIONS, ...extraSearchableExtensions])
+    : MENTION_SEARCHABLE_EXTENSIONS
+
   const allSupportedFiles = app.vault
     .getFiles()
-    .filter((file) =>
-      MENTION_SEARCHABLE_EXTENSIONS.has(file.extension.toLowerCase()),
-    )
+    .filter((file) => searchableExtensions.has(file.extension.toLowerCase()))
     .filter((file) => !isWithinYoloUserDataRoot(file.path, settings))
 
   const allFilesWithMetadata: SearchItem[] = allSupportedFiles.map((file) => ({

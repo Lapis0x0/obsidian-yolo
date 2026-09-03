@@ -22,6 +22,11 @@ import { getChatModelClient } from '../llm/manager'
 import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import type { McpManager } from '../mcp/mcpManager'
 import { getToolName } from '../mcp/tool-name-utils'
+import type {
+  ModuleToolSetRegistry,
+  RegisteredModuleToolSetV1,
+} from '../modules/moduleToolSetRegistry'
+import { toModuleToolSetEnablement } from '../modules/moduleToolSetRegistry'
 import { listLiteSkillEntries } from '../skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../skills/skillPolicy'
 
@@ -163,6 +168,13 @@ export type YoloAgentApiServiceOptions = {
   getSettings: () => YoloSettings
   getAgentService: () => AgentService
   getMcpManager: () => Promise<McpManager>
+  /**
+   * Optional so pre-existing test fixtures that construct this service
+   * without a plugin instance keep compiling — a caller that omits it simply
+   * gets no module tool sets in `assistantEnabledToolNames`, matching the
+   * pre-D1b behavior. The real host (`main.ts`) always provides it.
+   */
+  getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
 
 export class YoloAgentApiService implements YoloAgentApi {
@@ -232,6 +244,7 @@ export class YoloAgentApiService implements YoloAgentApi {
         settings: this.options.getSettings(),
         agentService: this.options.getAgentService(),
         mcpManager,
+        moduleToolSets: this.options.getModuleToolSetRegistry?.().getSnapshot(),
       })
 
       for await (const event of streamResolvedAgentRunEvents({
@@ -411,6 +424,7 @@ export async function resolveAgentApiRunInput({
   settings,
   agentService,
   mcpManager,
+  moduleToolSets,
 }: {
   request: YoloAgentRunRequest
   conversationId: string
@@ -419,6 +433,14 @@ export async function resolveAgentApiRunInput({
   settings: YoloSettings
   agentService: AgentService
   mcpManager: McpManager
+  /**
+   * Registry snapshot of module-contributed tool sets (whiteboard, etc.) —
+   * see docs/plans/09-03-whiteboard-agent-tools/master.md D1b. Optional so
+   * the many test call sites that don't exercise module tool sets don't need
+   * to pass one; a caller that omits it just resolves with none available,
+   * same as before this parameter existed.
+   */
+  moduleToolSets?: readonly RegisteredModuleToolSetV1[]
 }): Promise<AgentApiRunInput> {
   const assistantId =
     request.assistantId ?? settings.currentAssistantId ?? DEFAULT_ASSISTANT_ID
@@ -434,7 +456,10 @@ export async function resolveAgentApiRunInput({
   const provider = settings.providers.find(
     (candidate) => candidate.id === resolvedClient.model.providerId,
   )
-  const assistantEnabledToolNames = getEnabledAssistantToolNames(assistant)
+  const assistantEnabledToolNames = getEnabledAssistantToolNames(
+    assistant,
+    toModuleToolSetEnablement(moduleToolSets ?? []),
+  )
   const requestedMode = request.mode ?? 'ask'
   const mode = requestedMode === 'agent-full' ? 'agent' : requestedMode
   const chatModeRuntime = resolveChatModeRuntime({
@@ -469,6 +494,8 @@ export async function resolveAgentApiRunInput({
         agentService.getPromptSourceWatcher().getRevision(),
       promptSourcePathsCallback: (paths) =>
         agentService.getPromptSourceWatcher().setWatchedPaths(paths),
+      resolveModuleFileTextRenderer: (extension) =>
+        mcpManager.resolveModuleFileTextRenderer(extension),
     },
   )
   const resolvedContext = await resolveAgentApiContext({

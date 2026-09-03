@@ -18,6 +18,20 @@
 
 import type { ModuleDisposer, YoloModuleFileTextRendererV1 } from './types'
 
+/**
+ * Cap on the *raw* file a claimed extension is read at before handing it to
+ * the module's renderer. Deliberately generous and deliberately separate
+ * from every other size cap a read path applies (e.g. `fs_read`'s
+ * `MAX_FILE_SIZE_BYTES`): those caps bound what the model receives, but this
+ * path's whole premise is the opposite shape — the raw file is expected to
+ * be large (a several-hundred-KB whiteboard is normal) while the rendered
+ * summary handed to the model is small. So this ceiling only exists to catch
+ * a pathological file (a module bug, a hand-edited multi-megabyte file); the
+ * size that actually matters is the *rendered* text, which each caller caps
+ * separately at its own normal text-result limit.
+ */
+export const MODULE_RENDERED_FILE_SOURCE_MAX_BYTES = 20 * 1024 * 1024
+
 export type RegisteredModuleFileTextRendererV1 = Readonly<{
   moduleId: string
   extension: string

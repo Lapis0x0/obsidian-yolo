@@ -8,7 +8,13 @@ import {
   Settings,
   Wrench,
 } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 
 import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
@@ -20,6 +26,7 @@ import {
   isDefaultAssistantId,
 } from '../../core/agent/default-assistant'
 import { countEnabledVisibleAssistantTools } from '../../core/agent/tool-display-count'
+import { toModuleToolSetEnablement } from '../../core/modules/moduleToolSetRegistry'
 import { Assistant } from '../../types/assistant.types'
 import type { McpTool } from '../../types/mcp.types'
 import { renderAssistantIcon } from '../../utils/assistant-icon'
@@ -48,6 +55,21 @@ export function AssistantSelector({
   const [availableTools, setAvailableTools] = useState<McpTool[]>([])
   const triggerRef = useRef<HTMLButtonElement | null>(null)
   const isControlled = typeof currentAssistantId === 'string'
+
+  // Module tool sets (docs/plans/09-03-whiteboard-agent-tools/master.md
+  // D1b): same registry `useSyncExternalStore` pattern as `Chat.tsx`'s
+  // module chat mode subscription, reduced to what
+  // `countEnabledVisibleAssistantTools` needs so this selector's per-agent
+  // tool count matches what the agent editor and chat runtime resolve.
+  const moduleToolSetRegistry = plugin.getModuleToolSetRegistry()
+  const moduleToolSetSnapshot = useSyncExternalStore(
+    moduleToolSetRegistry.subscribe,
+    moduleToolSetRegistry.getSnapshot,
+  )
+  const moduleToolSetEnablement = useMemo(
+    () => toModuleToolSetEnablement(moduleToolSetSnapshot),
+    [moduleToolSetSnapshot],
+  )
 
   useEffect(() => {
     let mounted = true
@@ -179,7 +201,11 @@ export function AssistantSelector({
         ? rawModelId
         : rawModelId.slice(rawModelId.lastIndexOf('/') + 1)
     const toolCount = assistant.enableTools
-      ? countEnabledVisibleAssistantTools(assistant, availableTools)
+      ? countEnabledVisibleAssistantTools(
+          assistant,
+          availableTools,
+          moduleToolSetEnablement,
+        )
       : 0
     return (
       <div className="yolo-assistant-selector-item-meta">

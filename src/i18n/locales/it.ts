@@ -723,6 +723,7 @@ export const it: DeepPartial<TranslationKeys> = {
       toolDisclosureAlways: 'In contesto',
       toolDisclosureMixed: 'Misto',
       toolDisclosureOnDemand: 'Su richiesta',
+      moduleToolSetUnavailable: 'Non disponibile',
       editorEnabled: 'Abilitato',
       editorDisabled: 'Disabilitato',
       editorModel: 'Modello',

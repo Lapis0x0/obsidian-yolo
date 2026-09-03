@@ -54,6 +54,14 @@ type McpCoordinatorDeps = {
   promptSourceWatcher?: PromptSourceWatcher
   runSubagent?: NonNullable<ToolContext['runSubagent']>
   /**
+   * Looks up the module that owns a file extension's model-facing text form
+   * (see `ToolContext['resolveModuleFileTextRenderer']`'s doc comment).
+   * Forwarded verbatim into `McpManager` — same DI shape as `ragAccess`.
+   */
+  resolveModuleFileTextRenderer?: NonNullable<
+    ToolContext['resolveModuleFileTextRenderer']
+  >
+  /**
    * Source of module chat mode declarations to replay onto the MCP manager
    * as in-process tool servers (see `reconcileChatModes`). Optional so
    * hosts/tests that don't need module chat modes can omit it.
@@ -87,6 +95,9 @@ export class McpCoordinator {
   private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private readonly runSubagent?: NonNullable<ToolContext['runSubagent']>
+  private readonly resolveModuleFileTextRenderer?: NonNullable<
+    ToolContext['resolveModuleFileTextRenderer']
+  >
   private readonly moduleChatModeRegistry?: ModuleChatModeRegistrySource
   private readonly moduleToolSetRegistry?: ModuleToolSetRegistrySource
   private readonly persistDiscoveredCatalogs?: (
@@ -119,6 +130,7 @@ export class McpCoordinator {
     this.ragAccess = deps.ragAccess
     this.promptSourceWatcher = deps.promptSourceWatcher
     this.runSubagent = deps.runSubagent
+    this.resolveModuleFileTextRenderer = deps.resolveModuleFileTextRenderer
     this.moduleChatModeRegistry = deps.moduleChatModeRegistry
     this.moduleToolSetRegistry = deps.moduleToolSetRegistry
     this.persistDiscoveredCatalogs = deps.persistDiscoveredCatalogs
@@ -142,6 +154,7 @@ export class McpCoordinator {
             promptSourceWatcher: this.promptSourceWatcher,
             persistDiscoveredCatalogs: this.persistDiscoveredCatalogs,
             runSubagent: this.runSubagent,
+            resolveModuleFileTextRenderer: this.resolveModuleFileTextRenderer,
           })
           await manager.initialize()
           this.mcpManager = manager

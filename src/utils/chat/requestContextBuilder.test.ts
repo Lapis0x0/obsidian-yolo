@@ -896,6 +896,57 @@ describe('RequestContextBuilder compileUserMessagePrompt', () => {
     )
     expect(textContent).toContain('```notes/empty.md\n\n```')
   })
+
+  // D3 of docs/plans/09-03-whiteboard-agent-tools/master.md: the @mention
+  // `full` mode dispatches a claimed extension to the module's renderer
+  // instead of inlining raw bytes — same dispatch fs_read uses, threaded in
+  // here as `resolveModuleFileTextRenderer`.
+  it('renders a claimed extension through the module renderer in full mode instead of raw content', async () => {
+    const boardFile = Object.assign(
+      createMockFile('Boards/Reading Notes.yoloboard'),
+      { stat: { size: 23, mtime: 1000, ctime: 1000 } },
+    )
+
+    const app = createMockApp({
+      files: [boardFile],
+      fileContents: new Map([[boardFile.path, '{"nodes":[],"edges":[]}']]),
+    })
+
+    const render = jest.fn().mockResolvedValue('3 cards, 1 edge')
+
+    const builder = new RequestContextBuilder(
+      app as never,
+      {
+        ...settings,
+        chatOptions: {
+          includeCurrentFileContent: true,
+          mentionContextMode: 'full',
+        },
+      } as unknown as YoloSettings,
+      {
+        resolveModuleFileTextRenderer: (extension) =>
+          extension === 'yoloboard'
+            ? { extensions: ['yoloboard'], render }
+            : null,
+      },
+    )
+
+    const result = await builder.compileUserMessagePrompt({
+      message: createUserMessage([{ type: 'file', file: boardFile }]),
+    })
+
+    const textContent = getTextContent(result.promptContent)
+
+    expect(render).toHaveBeenCalledWith({
+      path: boardFile.path,
+      content: '{"nodes":[],"edges":[]}',
+    })
+    expect(textContent).toContain(
+      '### `Boards/Reading Notes.yoloboard` (full content, 1 lines)',
+    )
+    expect(textContent).toContain('1|3 cards, 1 edge')
+    expect(textContent).not.toContain('"nodes"')
+  })
 })
 
 describe('RequestContextBuilder generateRequestMessages', () => {

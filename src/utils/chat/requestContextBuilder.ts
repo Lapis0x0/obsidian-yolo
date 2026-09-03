@@ -16,6 +16,8 @@ import {
   getMemoryPromptContext,
   resolveMemoryFilePaths,
 } from '../../core/memory/memoryManager'
+import { MODULE_RENDERED_FILE_SOURCE_MAX_BYTES } from '../../core/modules/moduleFileTextRendererRegistry'
+import type { YoloModuleFileTextRendererV1 } from '../../core/modules/types'
 import {
   getProjectInstructionsSection,
   resolveProjectInstructionFilePaths,
@@ -208,6 +210,19 @@ type RequestContextBuilderOptions = {
   systemPromptSnapshotStore?: SystemPromptSnapshotStore
   getPromptSourceRevision?: () => number
   promptSourcePathsCallback?: (paths: Set<string>) => void
+  /**
+   * Looks up the module that owns a file extension's model-facing text form
+   * (`ModuleFileTextRendererRegistry.resolve`, forwarded here the same way
+   * `fs_read` receives it via `ToolContext`). Used by the @mention `full`
+   * mode's file inlining (`buildFullMentionedFilesPrompt`) so a claimed
+   * extension like `.yoloboard` renders to its summary instead of dumping raw
+   * bytes into the prompt (docs/plans/09-03-whiteboard-agent-tools/master.md
+   * D3 / Q7). Omitted in tests and other callers that don't wire up modules —
+   * behaves exactly like "nothing claimed this extension".
+   */
+  resolveModuleFileTextRenderer?: (
+    extension: string,
+  ) => YoloModuleFileTextRendererV1 | null
 }
 
 /**
@@ -524,6 +539,9 @@ export class RequestContextBuilder {
   private systemPromptSnapshotStore?: SystemPromptSnapshotStore
   private getPromptSourceRevision?: () => number
   private promptSourcePathsCallback?: (paths: Set<string>) => void
+  private resolveModuleFileTextRenderer?: (
+    extension: string,
+  ) => YoloModuleFileTextRendererV1 | null
 
   constructor(
     app: App,
@@ -536,6 +554,7 @@ export class RequestContextBuilder {
     this.systemPromptSnapshotStore = options?.systemPromptSnapshotStore
     this.getPromptSourceRevision = options?.getPromptSourceRevision
     this.promptSourcePathsCallback = options?.promptSourcePathsCallback
+    this.resolveModuleFileTextRenderer = options?.resolveModuleFileTextRenderer
   }
 
   private getMentionContextMode(): MentionContextMode {
@@ -2494,7 +2513,26 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
           }
           const ext = file.extension?.toLowerCase() ?? ''
           let rawContent: string
-          if (ext === 'pdf') {
+          // Module-owned formats (D3 of
+          // docs/plans/09-03-whiteboard-agent-tools/master.md): same
+          // dispatch fs_read uses (see that tool's `resolveModuleFileTextRenderer`
+          // branch) — a claimed extension renders to its model-facing summary
+          // instead of the @mention `full` mode dumping raw bytes into the
+          // prompt. `undefined` (module not installed/active, or nothing ever
+          // registered the extension) falls through exactly as before.
+          const fileTextRenderer = this.resolveModuleFileTextRenderer?.(ext)
+          if (fileTextRenderer) {
+            if (file.stat.size > MODULE_RENDERED_FILE_SOURCE_MAX_BYTES) {
+              throw new Error(
+                `File too large to render (${file.stat.size} bytes). Max source size for a module-rendered format (.${ext}) is ${MODULE_RENDERED_FILE_SOURCE_MAX_BYTES} bytes.`,
+              )
+            }
+            const sourceContent = await readTFileContent(file, this.app.vault)
+            rawContent = await fileTextRenderer.render({
+              path: file.path,
+              content: sourceContent,
+            })
+          } else if (ext === 'pdf') {
             const { pages } = await extractPdfText(this.app, file, {
               maxBinaryBytes: PDF_INDEX_MAX_BYTES,
               maxPages: PDF_INDEX_MAX_PAGES,

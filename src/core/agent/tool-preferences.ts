@@ -576,6 +576,15 @@ export const isAssistantToolEnabled = (
     | null
     | undefined,
   toolName: string,
+  /**
+   * Same registry snapshot `getEnabledAssistantToolNames` takes. Needed so a
+   * module tool set's tool resolves the same "enabled unless explicitly
+   * turned off" default here as it does there — without it, a module tool
+   * set FQN with no explicit `toolPreferences` entry falls through to the
+   * generic `?? false` below, which would show as off in the UI even though
+   * it is actually enabled at runtime.
+   */
+  moduleToolSets: readonly ModuleToolSetEnablementV1[] = [],
 ): boolean => {
   try {
     const { serverName, toolName: shortName } = parseToolName(toolName)
@@ -584,6 +593,14 @@ export const isAssistantToolEnabled = (
       if (capability) {
         return resolveBuiltinCapabilityPreference(assistant, capability.id)
           .enabled
+      }
+    } else {
+      const moduleToolSet = moduleToolSets.find(
+        (set) => set.serverName === serverName,
+      )
+      if (moduleToolSet?.toolNames.includes(shortName)) {
+        const toolPreferences = getAssistantToolPreferences(assistant)
+        return toolPreferences[toolName]?.enabled !== false
       }
     }
   } catch {

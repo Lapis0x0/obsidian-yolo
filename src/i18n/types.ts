@@ -528,6 +528,7 @@ export type TranslationKeys = {
       toolDisclosureAlways?: string
       toolDisclosureMixed?: string
       toolDisclosureOnDemand?: string
+      moduleToolSetUnavailable?: string
       editorEnabled?: string
       editorDisabled?: string
       editorModel?: string

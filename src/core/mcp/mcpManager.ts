@@ -102,6 +102,9 @@ export class McpManager {
   private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
   private readonly runSubagent?: NonNullable<ToolContext['runSubagent']>
+  private readonly moduleFileTextRendererResolver?: NonNullable<
+    ToolContext['resolveModuleFileTextRenderer']
+  >
   private settings: YoloSettings
   private persistDiscoveredCatalogs?: (
     catalogs: Record<string, McpDiscoveredCatalog>,
@@ -227,6 +230,7 @@ export class McpManager {
     promptSourceWatcher,
     persistDiscoveredCatalogs,
     runSubagent,
+    resolveModuleFileTextRenderer,
   }: {
     app: App
     pluginId: string
@@ -241,6 +245,9 @@ export class McpManager {
       catalogs: Record<string, McpDiscoveredCatalog>,
     ) => void
     runSubagent?: NonNullable<ToolContext['runSubagent']>
+    resolveModuleFileTextRenderer?: NonNullable<
+      ToolContext['resolveModuleFileTextRenderer']
+    >
   }) {
     this.app = app
     this.oauthController = new McpOAuthController(app, pluginId)
@@ -249,6 +256,7 @@ export class McpManager {
     this.promptSourceWatcher = promptSourceWatcher
     this.persistDiscoveredCatalogs = persistDiscoveredCatalogs
     this.runSubagent = runSubagent
+    this.moduleFileTextRendererResolver = resolveModuleFileTextRenderer
     this.settings = settings
     this.discoveredCatalogs = settings.mcp.discoveredCatalogs ?? {}
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
@@ -319,6 +327,21 @@ export class McpManager {
 
   public getServers() {
     return this.servers
+  }
+
+  /**
+   * Looks up the module-owned text form for a file extension (see
+   * `ToolContext['resolveModuleFileTextRenderer']`'s doc comment). `fs_read`
+   * reaches this through `ToolContext` on every builtin-tool call; the
+   * @mention `full` path in `requestContextBuilder.ts` needs the identical
+   * lookup outside of a tool call, so it's exposed here as well rather than
+   * threading a second, separate DI path down to the same registry
+   * (docs/plans/09-03-whiteboard-agent-tools/master.md D3).
+   */
+  public resolveModuleFileTextRenderer(
+    extension: string,
+  ): ReturnType<NonNullable<ToolContext['resolveModuleFileTextRenderer']>> {
+    return this.moduleFileTextRendererResolver?.(extension) ?? null
   }
 
   /**
@@ -1300,6 +1323,7 @@ export class McpManager {
             promptSourceWatcher: this.promptSourceWatcher,
             bashApprovalMode,
             bashReadOnly,
+            resolveModuleFileTextRenderer: this.moduleFileTextRendererResolver,
           },
         )
         if (localResult.status === ToolCallResponseStatus.Success) {

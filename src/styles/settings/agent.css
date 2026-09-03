@@ -702,6 +702,28 @@ button.yolo-agent-tool-group-bulk-toggle:hover {
   background: transparent;
 }
 
+/* 模块工具集分组（白板等，docs/plans/09-03-whiteboard-agent-tools/master.md
+ * D1b）：一句话说明紧跟在名字后面，与 MCP server 分组共用折叠/披露样式。 */
+.yolo-agent-tool-group-description {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+  font-weight: normal;
+}
+
+.yolo-agent-tool-group--module-set.is-unavailable {
+  opacity: 0.7;
+}
+
+.yolo-agent-tool-group-unavailable {
+  color: var(--text-error);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-agent-tool-group-unavailable-reason {
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
 .yolo-agent-tools-panel .yolo-agent-tool-list {
   gap: 0;
   border: 1px solid var(--background-modifier-border);

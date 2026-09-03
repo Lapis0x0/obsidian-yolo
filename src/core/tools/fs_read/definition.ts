@@ -38,6 +38,7 @@ import {
   readActiveWebviewPage,
 } from '../../browser/activeWebviewReader'
 import { validateVaultPath } from '../../mcp/vaultFileOps'
+import { MODULE_RENDERED_FILE_SOURCE_MAX_BYTES } from '../../modules/moduleFileTextRendererRegistry'
 import { getLiteSkillDocumentByPath } from '../../skills/liteSkills'
 import { defineTool } from '../define'
 import {
@@ -178,6 +179,7 @@ export const fsReadDefinition = defineTool({
       chatModelId,
       workspaceScope,
       allowedSkillPaths,
+      resolveModuleFileTextRenderer,
     } = ctx
 
     const paths = getStringArrayArg(args, 'paths')
@@ -385,7 +387,25 @@ export const fsReadDefinition = defineTool({
       // can never be a valid exact path, and Obsidian filenames can't
       // contain '#', so subpathed links can't collide with exact paths
       // either.
-      let file = app.vault.getFileByPath(path)
+      // A module-rendered format may address a piece of itself after '#',
+      // the way a note addresses a heading — a whiteboard's `board#c-8f3a`
+      // is one card. What follows the '#' is the module's own vocabulary,
+      // so this only splits it off and carries it through; nothing here
+      // interprets it. Scoped to extensions a module actually claims, so a
+      // wikilink like `[[Note#Heading]]` takes the path it always did.
+      let moduleFragment: string | undefined
+      let lookupPath = path
+      const hashIndex = path.indexOf('#')
+      if (hashIndex > 0) {
+        const basePath = path.slice(0, hashIndex)
+        const baseFile = app.vault.getFileByPath(basePath)
+        if (baseFile && resolveModuleFileTextRenderer?.(baseFile.extension)) {
+          lookupPath = basePath
+          moduleFragment = path.slice(hashIndex + 1)
+        }
+      }
+
+      let file = app.vault.getFileByPath(lookupPath)
       let resolvedPath: string | undefined
       let resolvedSubpath: WikilinkReadSubpath | undefined
       let subpathWarning: string | undefined
@@ -942,6 +962,92 @@ export const fsReadDefinition = defineTool({
                   : JSON.stringify(error),
           })
         }
+        continue
+      }
+
+      // Module-owned formats (D3 of docs/plans/09-03-whiteboard-agent-tools/
+      // master.md): a module can claim an extension and supply the text form
+      // a model should see for it — e.g. `.yoloboard` renders to a board
+      // summary instead of raw coordinate JSON. `null` means nothing claimed
+      // this extension (module not installed/active, or no module ever
+      // registered it), and the read falls through to the plain-text branch
+      // below exactly as it always has.
+      const fileTextRenderer = resolveModuleFileTextRenderer?.(file.extension)
+      if (fileTextRenderer) {
+        // The size ordering here is deliberately the *opposite* of every
+        // other branch in this function: the scenario this path exists for
+        // is a large raw file (a several-hundred-KB whiteboard) rendering
+        // down to a small summary. So the raw read is guarded by a generous,
+        // separate ceiling (MODULE_RENDERED_FILE_SOURCE_MAX_BYTES — see its
+        // doc comment), and MAX_FILE_SIZE_BYTES is applied to the *rendered*
+        // text below, matching what every other text result in this function
+        // is capped at.
+        if (file.stat.size > MODULE_RENDERED_FILE_SOURCE_MAX_BYTES) {
+          results.push({
+            path,
+            ok: false,
+            error: `File too large to render (${file.stat.size} bytes). Max source size for a module-rendered format (.${file.extension}) is ${MODULE_RENDERED_FILE_SOURCE_MAX_BYTES} bytes.`,
+          })
+          continue
+        }
+
+        let renderedContent: string
+        try {
+          const rawContent = await app.vault.read(file)
+          renderedContent = await fileTextRenderer.render({
+            path: file.path,
+            content: rawContent,
+            ...(moduleFragment !== undefined
+              ? { fragment: moduleFragment }
+              : {}),
+          })
+        } catch (error) {
+          results.push({
+            path,
+            ok: false,
+            error: `This file format (.${file.extension}) is rendered by a module, and rendering failed: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          })
+          continue
+        }
+
+        if (renderedContent.length > MAX_FILE_SIZE_BYTES) {
+          results.push({
+            path,
+            ok: false,
+            error: `Rendered content too large (${renderedContent.length} chars). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+          })
+          continue
+        }
+
+        // Line/offset semantics apply to the *rendered* summary text, not to
+        // the original file's bytes — a coordinate JSON file has no
+        // model-meaningful line numbers, but the summary a module renders is
+        // ordinary text, and the same startLine/endLine/maxLines windowing
+        // fs_read gives every other text file is the honest, reusable
+        // behavior here too (rather than inventing a second read protocol).
+        const renderedLines =
+          renderedContent.length === 0 ? [] : renderedContent.split('\n')
+        const sliced = sliceLinesForFsReadOperation(renderedLines, operation)
+
+        results.push({
+          path,
+          ok: true,
+          totalLines: sliced.totalLines,
+          returnedRange:
+            operation.type === 'lines'
+              ? {
+                  startLine: sliced.returnedStartLine,
+                  endLine: sliced.returnedEndLine,
+                }
+              : undefined,
+          hasMoreBelow: sliced.hasMoreBelow,
+          nextStartLine: sliced.nextStartLine,
+          content: sliced.outputContent,
+          ...wikilinkResultFields,
+          ...(subpathWarning ? { warning: subpathWarning } : {}),
+        })
         continue
       }
 
