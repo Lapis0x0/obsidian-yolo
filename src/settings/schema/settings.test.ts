@@ -3,12 +3,13 @@ import { LOCAL_EMBEDDING_PROVIDER_ID } from '../../core/rag/local-embedding/cons
 
 import { SETTINGS_SCHEMA_VERSION } from './migrations'
 import {
+  DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS,
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
 } from './setting.types'
-import { parseYoloSettings } from './settings'
+import { migrateYoloSettingsData, parseYoloSettings } from './settings'
 
 describe('parseYoloSettings', () => {
   it('should return default values for empty input', () => {
@@ -88,7 +89,7 @@ describe('parseYoloSettings', () => {
 
   it('defaults local MCP server settings without a schema migration', () => {
     const result = parseYoloSettings({
-      version: 75,
+      version: SETTINGS_SCHEMA_VERSION,
       mcp: {
         servers: [],
         builtinToolOptions: {},
@@ -101,6 +102,118 @@ describe('parseYoloSettings', () => {
       enabled: false,
       port: DEFAULT_LOCAL_MCP_SERVER_PORT,
       token: '',
+    })
+  })
+
+  it('provides voice defaults at the upstream schema version without a fork migration', () => {
+    const result = parseYoloSettings({ version: SETTINGS_SCHEMA_VERSION })
+
+    expect(result.contextVoiceInputOptions).toEqual(
+      DEFAULT_CONTEXT_VOICE_INPUT_OPTIONS,
+    )
+  })
+
+  it('migrates released voice v70 data through upstream additions', () => {
+    const result = migrateYoloSettingsData({
+      version: 70,
+      browser: {
+        injectActivePageContext: true,
+      },
+      assistants: [
+        {
+          id: 'voice-user',
+          toolPreferences: {
+            yolo_local__browser_read_page: {
+              enabled: true,
+              approvalMode: 'require_approval',
+            },
+          },
+        },
+      ],
+      contextVoiceInputOptions: {
+        enabled: true,
+        asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+        activeAsrConfigId: 'asr-1',
+      },
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.browser).toEqual({
+      injectActivePageContext: true,
+    })
+    expect(result.pluginUpdateAutoDownloadEnabled).toBe(true)
+    // v81→v82 intentionally retires the single-index scope fields. Voice
+    // upgrades must follow that upstream migration instead of preserving a
+    // stale `excludeYoloBaseDir` shape.
+    expect(result.ragOptions).not.toHaveProperty('excludeYoloBaseDir')
+    expect(result.knowledgeBases).toBeUndefined()
+    expect(result.contextVoiceInputOptions).toMatchObject({
+      enabled: true,
+      asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+      activeAsrConfigId: 'asr-1',
+    })
+    const assistants = result.assistants as Array<Record<string, unknown>>
+    expect(assistants[0].toolPreferences).toEqual({})
+    expect(assistants[0].builtinCapabilityPreferences).toMatchObject({
+      vault_shell: {
+        enabled: true,
+        approvalMode: 'dangerous_only',
+      },
+    })
+  })
+
+  it('does not backfill the skipped upstream migration for released voice v77 data', () => {
+    const result = migrateYoloSettingsData({
+      // Voice builds published a different v76→v77 before upstream assigned
+      // that number. Accept the resulting gap: later upstream migrations still
+      // run normally, but the migration chain must not replay v76→v77.
+      version: 77,
+      assistants: [
+        {
+          id: 'voice-user',
+          toolPreferences: {
+            remote_search__search: {
+              enabled: true,
+              approvalMode: 'require_approval',
+              disclosureMode: 'on_demand',
+            },
+          },
+        },
+      ],
+      contextVoiceInputOptions: {
+        enabled: true,
+        asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+        activeAsrConfigId: 'asr-1',
+      },
+    })
+
+    expect(result.version).toBe(SETTINGS_SCHEMA_VERSION)
+    expect(result.continuationOptions).toBeUndefined()
+    expect(result.chatOptions).toMatchObject({
+      cliChatModeByRuntime: {},
+      cliAgentYoloEnabledByRuntime: {},
+    })
+    expect(result.contextVoiceInputOptions).toMatchObject({
+      enabled: true,
+      asrConfigs: [{ id: 'asr-1', name: 'Existing ASR' }],
+      activeAsrConfigId: 'asr-1',
+    })
+
+    const assistant = (result.assistants as Array<Record<string, unknown>>)[0]
+    expect(assistant.toolServerPreferences).toBeUndefined()
+    expect(assistant.toolPreferences).toMatchObject({
+      remote_search__search: {
+        enabled: true,
+        approvalMode: 'require_approval',
+        disclosureMode: 'on_demand',
+      },
+    })
+    expect(assistant.toolPreferences).not.toHaveProperty('yolo_local__bash')
+    expect(assistant.builtinCapabilityPreferences).toMatchObject({
+      vault_shell: {
+        enabled: true,
+        approvalMode: 'dangerous_only',
+      },
     })
   })
 
@@ -498,6 +611,9 @@ describe('parseYoloSettings', () => {
         continuationModelId: 'missing/model',
         tabCompletionModelId: 'missing/model',
       },
+      contextVoiceInputOptions: {
+        polishModelId: 'missing/model',
+      },
       learningOptions: { modelId: 'missing/model' },
       assistants: [
         {
@@ -524,6 +640,7 @@ describe('parseYoloSettings', () => {
     expect(result.embeddingModelId).toBe('')
     expect(result.continuationOptions.continuationModelId).toBe('openai/gpt-5')
     expect(result.continuationOptions.tabCompletionModelId).toBe('openai/gpt-5')
+    expect(result.contextVoiceInputOptions.polishModelId).toBe('')
     expect(result.learningOptions).toEqual({ modelId: 'missing/model' })
     expect(result.assistants).toEqual([
       {

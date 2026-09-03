@@ -36,14 +36,16 @@ describe('builtin skills', () => {
     expect(outputFormat?.content).toContain('<yolo_block>')
   })
 
-  it('renders snippet creator content with the configured snippets path', () => {
+  it('renders the snippet skill content and description with its current path', () => {
     const builtin = getBuiltinLiteSkillByName({
       name: 'snippet-creator',
-      snippetsPath: '99-Assets/YOLO/snippets.md',
+      snippetsPath: 'Config/YOLO/snippets.md',
     })
 
     expect(builtin).not.toBeNull()
-    expect(builtin?.content).toContain('99-Assets/YOLO/snippets.md')
+    expect(builtin?.description).toContain('Config/YOLO/snippets.md')
+    expect(builtin?.content).toContain('Config/YOLO/snippets.md')
+    expect(builtin?.description).not.toContain('`YOLO/snippets.md`')
     expect(builtin?.content).not.toContain('Read `YOLO/snippets.md`')
   })
 

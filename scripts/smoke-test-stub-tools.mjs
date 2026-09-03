@@ -225,17 +225,22 @@ async function testOpenAIResponses() {
     body: JSON.stringify(body),
   })
   const text = await res.text()
-  return analyze('openai-responses (via OpenRouter chat)', res.status, text, (json) => {
-    const msg = json.choices?.[0]?.message
-    return {
-      finish_reason: json.choices?.[0]?.finish_reason,
-      tool_calls: (msg?.tool_calls ?? []).map((c) => ({
-        name: c.function?.name,
-        args: c.function?.arguments,
-      })),
-      content: (msg?.content ?? '').slice(0, 200),
-    }
-  })
+  return analyze(
+    'openai-responses (via OpenRouter chat)',
+    res.status,
+    text,
+    (json) => {
+      const msg = json.choices?.[0]?.message
+      return {
+        finish_reason: json.choices?.[0]?.finish_reason,
+        tool_calls: (msg?.tool_calls ?? []).map((c) => ({
+          name: c.function?.name,
+          args: c.function?.arguments,
+        })),
+        content: (msg?.content ?? '').slice(0, 200),
+      }
+    },
+  )
 }
 
 // ---------- Gemini ----------

@@ -54,7 +54,9 @@ const { ws, send } = await connect(target.webSocketDebuggerUrl)
 
 await send('HeapProfiler.enable')
 await send('HeapProfiler.startSampling', { samplingInterval: 32768 })
-console.error(`[${new Date().toLocaleTimeString()}] sampling started. Window = ${seconds}s. Trigger the hot path now.`)
+console.error(
+  `[${new Date().toLocaleTimeString()}] sampling started. Window = ${seconds}s. Trigger the hot path now.`,
+)
 
 await new Promise((r) => setTimeout(r, seconds * 1000))
 

@@ -11,6 +11,7 @@ import {
   getLLMDebugTraces,
 } from '../../core/llm/debugCapture'
 import { buildLLMDebugMarkdown } from '../../core/llm/debugMarkdown'
+import { getYoloLogsDir } from '../../core/paths/yoloPaths'
 import type YoloPlugin from '../../main'
 import type { AssistantToolMessageGroup } from '../../types/chat'
 import { ReactModal } from '../common/ReactModal'
@@ -28,10 +29,11 @@ export {
   hasLLMDebugMetadataForMessages,
 } from './llmDebugTraceSelection'
 
-const DEBUG_FOLDER = 'YOLO/logs'
-
-async function ensureDebugFolder(app: App): Promise<string> {
-  const folderPath = normalizePath(DEBUG_FOLDER)
+async function ensureDebugFolder(
+  app: App,
+  requestedFolderPath: string,
+): Promise<string> {
+  const folderPath = normalizePath(requestedFolderPath)
   const parts = folderPath.split('/').filter(Boolean)
   let currentPath = ''
 
@@ -58,8 +60,11 @@ function getLocalTimestampForFilename(date = new Date()): string {
   ].join('_')
 }
 
-async function getAvailableDebugPath(app: App): Promise<string> {
-  const targetFolderPath = await ensureDebugFolder(app)
+async function getAvailableDebugPath(
+  app: App,
+  folderPath: string,
+): Promise<string> {
+  const targetFolderPath = await ensureDebugFolder(app, folderPath)
   const timestamp = new Date()
   const localTimestamp = getLocalTimestampForFilename(timestamp)
   const baseName = `llm-debug-${localTimestamp}`
@@ -85,6 +90,7 @@ function LLMDebugModalContent({
   onClose: () => void
 }) {
   const { t } = useLanguage()
+  const plugin = usePlugin()
   const [copied, setCopied] = useState(false)
   const [saved, setSaved] = useState(false)
 
@@ -101,7 +107,12 @@ function LLMDebugModalContent({
 
   const handleSave = async () => {
     try {
-      const path = await getAvailableDebugPath(app)
+      // Resolve at click time so a modal opened before a root relocation never
+      // recreates the old managed directory when it is finally saved.
+      const path = await getAvailableDebugPath(
+        app,
+        getYoloLogsDir(plugin.settings),
+      )
       const file = await app.vault.create(path, markdown)
       await app.workspace.getLeaf('tab').openFile(file)
       setSaved(true)

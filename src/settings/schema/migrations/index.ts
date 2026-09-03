@@ -85,6 +85,14 @@ import { migrateFrom83To84 } from './83_to_84'
 import { migrateFrom8To9 } from './8_to_9'
 import { migrateFrom9To10 } from './9_to_10'
 
+/**
+ * This branch intentionally has no fork-only migration after upstream's
+ * current schema version. Voice settings rely on schema defaults. If a future
+ * voice change genuinely needs a migration, explain that need and obtain
+ * explicit user approval before adding the new highest version. Historical
+ * version-collision gaps remain accepted; do not replay or backfill skipped
+ * upstream migrations.
+ */
 export { SETTINGS_SCHEMA_VERSION } from './version'
 
 export const SETTING_MIGRATIONS: SettingMigration[] = [

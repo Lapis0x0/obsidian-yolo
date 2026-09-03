@@ -49,9 +49,16 @@ const existingFile = async (candidate: string): Promise<boolean> => {
   }
 }
 
-const expandHomePath = (value: string, home: string): string => {
+const expandHomePath = (
+  value: string,
+  home: string,
+  platform: NodeJS.Platform,
+): string => {
   if (value === '~') return home
-  if (value.startsWith('~/')) return path.join(home, value.slice(2))
+  if (value.startsWith('~/')) {
+    const pathApi = platform === 'win32' ? path.win32 : path.posix
+    return pathApi.join(home, value.slice(2))
+  }
   return value
 }
 
@@ -73,7 +80,7 @@ const resolveConfiguredExecutable = async (
   const trimmed = configuredPath?.trim().replace(/^"|"$/g, '')
   if (!trimmed) return null
   const expanded =
-    platform === 'win32' ? trimmed : expandHomePath(trimmed, home)
+    platform === 'win32' ? trimmed : expandHomePath(trimmed, home, platform)
   return resolveWindowsSpawnablePath(expanded, existingFile, platform)
 }
 
@@ -102,8 +109,10 @@ export const findCodexExecutable = async (
           home ? path.win32.join(home, 'scoop', 'shims') : '',
         ]
       : [
-          path.join(home, '.local', 'bin'),
-          path.join(home, '.volta', 'bin'),
+          // Discovery is parameterized by the target platform for tests and
+          // synced settings. Do not let the current host rewrite POSIX paths.
+          path.posix.join(home, '.local', 'bin'),
+          path.posix.join(home, '.volta', 'bin'),
           '/usr/local/bin',
           '/opt/homebrew/bin',
           '/usr/bin',
@@ -111,7 +120,7 @@ export const findCodexExecutable = async (
           // installed the app still get a working runtime.
           ...(platform === 'darwin'
             ? [
-                path.join(
+                path.posix.join(
                   home,
                   'Applications',
                   'Codex.app',
@@ -119,7 +128,7 @@ export const findCodexExecutable = async (
                   'Resources',
                 ),
                 '/Applications/Codex.app/Contents/Resources',
-                path.join(
+                path.posix.join(
                   home,
                   'Applications',
                   'Codex.app',
@@ -143,7 +152,7 @@ export const findCodexExecutable = async (
       const candidate =
         platform === 'win32'
           ? path.win32.join(directory, name)
-          : path.join(directory, name)
+          : path.posix.join(directory, name)
       if (await existingFile(candidate)) return candidate
     }
   }

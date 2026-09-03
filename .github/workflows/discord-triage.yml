@@ -17,6 +17,9 @@ concurrency:
 
 jobs:
   triage:
+    # This automation carries the official project's Discord identity. Forks
+    # must opt in with their own workflow instead of inheriting its schedule.
+    if: github.repository == 'Lapis0x0/obsidian-yolo'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:

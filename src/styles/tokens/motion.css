@@ -26,11 +26,17 @@
   --yolo-anim-duration-exit: 160ms;
   /* L2 入场。 */
   --yolo-anim-duration-enter: 220ms;
+  /* 持续型进度 / 草稿指示；不参与 L1/L2/L3 的一次性状态切换。 */
+  --yolo-anim-duration-progress: 900ms;
+  --yolo-anim-duration-shimmer: 1.4s;
+  --yolo-anim-duration-ambient: 3.2s;
 
   /* 入场 / 落位默认曲线（easeOutQuint）：快速启动、缓慢收尾。 */
   --yolo-anim-ease-out: cubic-bezier(0.22, 1, 0.36, 1);
   /* 退场曲线：加速离开。 */
   --yolo-anim-ease-in: cubic-bezier(0.4, 0, 1, 1);
+  /* 持续型状态指示器使用的循环曲线。 */
+  --yolo-anim-ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
   /* 匀速：仅用于遮蔽性动画（如流式显影尾巴），需要均匀的亮度斜坡而非
      入场曲线的前重后轻。暂无 JS 侧消费者，故 motion.ts 未设镜像常量。 */
   --yolo-anim-ease-linear: linear;

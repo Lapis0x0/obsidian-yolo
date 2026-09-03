@@ -18,6 +18,7 @@ import { KnowledgeTab } from './tabs/KnowledgeTab'
 import { ModelsTab } from './tabs/ModelsTab'
 import { ModulesTab } from './tabs/ModulesTab'
 import { OthersTab } from './tabs/OthersTab'
+import { VoiceTab } from './tabs/VoiceTab'
 
 type SettingsTabsProps = {
   app: App
@@ -26,6 +27,7 @@ type SettingsTabsProps = {
 
 export type SettingsTabId =
   | 'models'
+  | 'voice'
   | 'editor'
   | 'knowledge'
   | 'modules'
@@ -35,6 +37,7 @@ export type SettingsTabId =
 type SettingsTab = {
   id: SettingsTabId
   labelKey: string
+  labelFallback: string
   component?: FC<SettingsTabsProps>
 }
 
@@ -42,30 +45,42 @@ const SETTINGS_TABS: SettingsTab[] = [
   {
     id: 'models',
     labelKey: 'settings.tabs.models',
+    labelFallback: 'Models',
     component: ModelsTab,
   },
   {
     id: 'agent',
     labelKey: 'settings.tabs.agent',
+    labelFallback: 'Agent',
     component: AgentTab,
   },
   {
     id: 'editor',
     labelKey: 'settings.tabs.editor',
+    labelFallback: 'Editor',
     component: EditorTab,
+  },
+  {
+    id: 'voice',
+    labelKey: 'settings.tabs.voice',
+    labelFallback: 'Voice',
+    component: VoiceTab,
   },
   {
     id: 'knowledge',
     labelKey: 'settings.tabs.knowledge',
+    labelFallback: 'Knowledge',
     component: KnowledgeTab,
   },
   {
     id: 'modules',
     labelKey: 'settings.tabs.modules',
+    labelFallback: 'Modules',
   },
   {
     id: 'others',
     labelKey: 'settings.tabs.others',
+    labelFallback: 'Others',
     component: OthersTab,
   },
 ]
@@ -206,7 +221,9 @@ export function SettingsTabs({ app, plugin }: SettingsTabsProps) {
               tabRefs.current[index] = element
             }}
           >
-            <span className="yolo-settings-tab-label">{t(tab.labelKey)}</span>
+            <span className="yolo-settings-tab-label">
+              {t(tab.labelKey, tab.labelFallback)}
+            </span>
           </button>
         ))}
       </div>

@@ -80,8 +80,8 @@ function SnippetsSectionInner({ app }: SnippetsSectionProps) {
             <div className="yolo-settings-desc yolo-settings-block-desc">
               {t(
                 'settings.editor.snippets.sectionDesc',
-                'Type / in the chat input and pick a snippet to insert a preset prompt. Snippets live in YOLO/snippets.md.',
-              )}
+                'Type / in the chat input and pick a snippet to insert a preset prompt. Snippets live in {{path}}.',
+              ).replace('{{path}}', snippetsPath)}
             </div>
           </div>
         </div>

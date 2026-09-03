@@ -51,7 +51,10 @@ function connect(url) {
   })
 }
 
-const rl = readline.createInterface({ input: process.stdin, output: process.stdout })
+const rl = readline.createInterface({
+  input: process.stdin,
+  output: process.stdout,
+})
 
 const target = await pickMainTarget()
 const { ws, send } = await connect(target.webSocketDebuggerUrl)
@@ -185,10 +188,12 @@ const topTotal = [...totalByFunc.entries()]
   .sort((a, b) => b[1] - a[1])
   .slice(0, 20)
 
-const gcMs = [...selfByFunc.entries()].find(([k]) =>
-  k.startsWith('(garbage collector)'),
-)?.[1] || 0
-const idleMs = [...selfByFunc.entries()].find(([k]) => k.startsWith('(idle)'))?.[1] || 0
+const gcMs =
+  [...selfByFunc.entries()].find(([k]) =>
+    k.startsWith('(garbage collector)'),
+  )?.[1] || 0
+const idleMs =
+  [...selfByFunc.entries()].find(([k]) => k.startsWith('(idle)'))?.[1] || 0
 
 console.log(
   `\nCPU: idle ${idleMs} ms, GC ${gcMs} ms, active ~${Math.max(
@@ -201,14 +206,16 @@ console.log('\n## top self-time JS functions (ms)')
 if (topSelf.length === 0) {
   console.log('  (none — main thread was idle)')
 } else {
-  for (const [k, v] of topSelf) console.log(`  ${String(v).padStart(6)} ms  ${k}`)
+  for (const [k, v] of topSelf)
+    console.log(`  ${String(v).padStart(6)} ms  ${k}`)
 }
 
 console.log('\n## top total-time JS functions (ms, inclusive)')
 if (topTotal.length === 0) {
   console.log('  (none)')
 } else {
-  for (const [k, v] of topTotal) console.log(`  ${String(v).padStart(6)} ms  ${k}`)
+  for (const [k, v] of topTotal)
+    console.log(`  ${String(v).padStart(6)} ms  ${k}`)
 }
 
 if (idleMs > durationMs * 0.9 && peakHeap - baseHeap > 100) {

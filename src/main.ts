@@ -31,6 +31,10 @@ import type {
   AgentService,
 } from './core/agent/service'
 import {
+  hasConfiguredAsrConfig,
+  hasConfiguredAudioFileAsrConfig,
+} from './core/asr/configStatus'
+import {
   clearAllChatGPTOAuthServices,
   clearChatGPTOAuthService,
   getChatGPTOAuthService as getChatGPTOAuthServiceRuntime,
@@ -137,6 +141,7 @@ import {
   getYoloModuleDir,
   getYoloModuleSkillsDir,
   getYoloModulesRootDir,
+  getYoloTranscriptionsDir,
   hasHiddenYoloBaseDirSegment,
   resolveExternalYoloBaseDir,
 } from './core/paths/yoloPaths'
@@ -171,6 +176,7 @@ import {
   updateLiteSkillRegistrySettings,
 } from './core/skills/liteSkills'
 import type { ToolContext } from './core/tools/types'
+import { hasConfiguredTtsConfig } from './core/tts/configStatus'
 import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
@@ -233,6 +239,18 @@ import {
   type StartSelectionRewriteOptions,
 } from './features/editor/selection-rewrite/selectionRewriteController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
+import {
+  type AudioFileSource,
+  createBlobAudioFileSource,
+  createVaultAudioFileSource,
+} from './features/editor/voice/audio-file-transcription/audioFileSource'
+import type { DocumentSummaryManager } from './features/editor/voice/context-input/documentSummaryManager'
+import type { VoicePrefixCacheManager } from './features/editor/voice/context-input/voicePrefixCacheManager'
+import type { VoiceFloatingIslandController } from './features/editor/voice/floating-island/voiceFloatingIslandController'
+import { GENERATED_AUDIO_DRAG_MIME } from './features/editor/voice/read-aloud/generatedAudioDragSource'
+import type { VoiceController } from './features/editor/voice/voiceController'
+import { rebaseVoiceManagedPaths } from './features/editor/voice/voiceManagedPaths'
+import type { ActiveVoiceModeId } from './features/editor/voice/voiceModes'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import { type Language, createTranslationFunction, loadLocale } from './i18n'
 import {
@@ -276,6 +294,17 @@ const MODULE_DEVICE_STATE_ROOT = 'module-device-state-v2'
 type TranslateFn = (keyPath: string, fallback?: string) => string
 type BackgroundStatusPanelAction = BackgroundActivityAction
 
+type VoiceModules = {
+  VoiceController: typeof import('./features/editor/voice/voiceController').VoiceController
+  DocumentSummaryManager: typeof import('./features/editor/voice/context-input/documentSummaryManager').DocumentSummaryManager
+  VoiceFloatingIslandController: typeof import('./features/editor/voice/floating-island/voiceFloatingIslandController').VoiceFloatingIslandController
+  VoicePrefixCacheManager: typeof import('./features/editor/voice/context-input/voicePrefixCacheManager').VoicePrefixCacheManager
+}
+
+type AudioDropSource = { file: File } | { vaultFile: TFile }
+type AudioDropInput = File | AudioFileSource
+type AudioFileDragKind = 'audio' | 'maybe-audio' | 'unsupported'
+
 /**
  * A staged module update can only be installed from the update toast, so
  * downloading one while the notice is off would never be applied.
@@ -312,9 +341,24 @@ export default class YoloPlugin extends Plugin {
   private dbManagerInitPromise: Promise<DatabaseManager> | null = null
   private timeoutIds: ReturnType<typeof setTimeout>[] = [] // Use ReturnType instead of number
   private isContinuationInProgress = false
+  private isVoiceInputInProgress = false
   private activeAbortControllers: Set<AbortController> = new Set()
   private tabCompletionController: TabCompletionController | null = null
   private inlineSuggestionController: InlineSuggestionController | null = null
+  private voiceController: VoiceController | null = null
+  private voiceFloatingIslandController: VoiceFloatingIslandController | null =
+    null
+  private documentSummaryManager: DocumentSummaryManager | null = null
+  private voicePrefixCacheManager: VoicePrefixCacheManager | null = null
+  private voiceModules: VoiceModules | null = null
+  private voiceModulesPromise: Promise<VoiceModules> | null = null
+  private managedPathTransitionDepth = 0
+  private voiceAudioDragRevealCache: {
+    dataTransfer: DataTransfer
+    dragKind: AudioFileDragKind | null
+    revealedKind: AudioFileDragKind | null
+    revealedMarkdownView: MarkdownView | null
+  } | null = null
   private diffReviewController: DiffReviewController | null = null
   private selectionRewriteController: SelectionRewriteController | null = null
   // Selection chat state
@@ -1208,8 +1252,12 @@ export default class YoloPlugin extends Plugin {
   }
 
   private cancelAllAiTasks() {
+    if (this.voiceController?.isBusy()) {
+      this.voiceController.cancelActiveSession('user-cancel')
+    }
     if (this.activeAbortControllers.size === 0) {
       this.isContinuationInProgress = false
+      this.isVoiceInputInProgress = false
       return
     }
     for (const controller of Array.from(this.activeAbortControllers)) {
@@ -1221,6 +1269,7 @@ export default class YoloPlugin extends Plugin {
     }
     this.activeAbortControllers.clear()
     this.isContinuationInProgress = false
+    this.isVoiceInputInProgress = false
     this.tabCompletionController?.cancelRequest()
     this.agentService?.abortAll()
   }
@@ -1301,6 +1350,598 @@ export default class YoloPlugin extends Plugin {
       })
     }
     return this.agentNotificationCoordinator
+  }
+
+  /**
+   * Lazy-load the voice-input modules on first use. ~5K lines of code
+   * (audio transcode, WebSocket ASR, floating-island UI) stay out of the
+   * plugin's startup module graph until the user actually toggles voice
+   * input or has it configured + enabled, at which point the dynamic
+   * import resolves once and is cached.
+   */
+  private loadVoiceModules(): Promise<VoiceModules> {
+    if (this.isUnloaded) {
+      return Promise.reject(
+        new Error('[YOLO] Plugin unloaded before voice modules were ready'),
+      )
+    }
+    if (this.voiceModules) return Promise.resolve(this.voiceModules)
+    if (!this.voiceModulesPromise) {
+      this.voiceModulesPromise = (async () => {
+        try {
+          const [ctrl, summary, island, prefix] = await Promise.all([
+            import('./features/editor/voice/voiceController'),
+            import(
+              './features/editor/voice/context-input/documentSummaryManager'
+            ),
+            import(
+              './features/editor/voice/floating-island/voiceFloatingIslandController'
+            ),
+            import(
+              './features/editor/voice/context-input/voicePrefixCacheManager'
+            ),
+          ])
+          if (this.isUnloaded) {
+            throw new Error('[YOLO] Plugin unloaded during voice module warmup')
+          }
+          const modules: VoiceModules = {
+            VoiceController: ctrl.VoiceController,
+            DocumentSummaryManager: summary.DocumentSummaryManager,
+            VoiceFloatingIslandController: island.VoiceFloatingIslandController,
+            VoicePrefixCacheManager: prefix.VoicePrefixCacheManager,
+          }
+          this.voiceModules = modules
+          return modules
+        } catch (error) {
+          // A transient chunk-load failure must remain retryable, and an
+          // unload must never let a late dynamic import revive the feature.
+          this.voiceModulesPromise = null
+          throw error
+        }
+      })()
+    }
+    return this.voiceModulesPromise
+  }
+
+  /**
+   * The voice input mic lives as a floating island at the bottom of the
+   * active editor. Status text + waveform + timer + voice-mode toggle
+   * all surface inside that single bar, so the user has one place to look.
+   */
+  private async ensureVoiceFloatingIsland(): Promise<VoiceFloatingIslandController> {
+    if (this.voiceFloatingIslandController) {
+      return this.voiceFloatingIslandController
+    }
+    const modules = await this.loadVoiceModules()
+    if (this.isUnloaded) {
+      throw new Error('[YOLO] Plugin unloaded before voice UI initialization')
+    }
+    if (this.voiceFloatingIslandController) {
+      return this.voiceFloatingIslandController
+    }
+    const island = new modules.VoiceFloatingIslandController({
+      getController: () => this.voiceController,
+      getActiveMarkdownView: () =>
+        this.app.workspace.getActiveViewOfType(MarkdownView),
+      t: (key, fallback) => this.t(key, fallback),
+      isFeatureReady: () => this.isVoiceFloatingIslandFeatureReady(),
+      isAudioFileModeEnabled: () => {
+        return this.isAudioFileTranscriptionFeatureReady()
+      },
+      getAvailableVoiceModes: () => this.getAvailableVoiceModes(),
+      getAudioFileDragKind: (event) => this.getAudioFileDragKind(event),
+      resolveAudioFileFromDrop: (event) =>
+        this.resolveAudioInputFromDrop(event),
+      getVoiceMode: () => this.getActiveVoiceMode(),
+      setVoiceMode: async (mode) => {
+        const availableModes = this.getAvailableVoiceModes()
+        const nextMode = availableModes.includes(mode)
+          ? mode
+          : (availableModes[0] ?? 'toggle-listen')
+        await this.setSettings({
+          ...this.settings,
+          contextVoiceInputOptions: {
+            ...this.settings.contextVoiceInputOptions,
+            interactionMode: nextMode,
+          },
+        })
+      },
+      getVadOptions: () => {
+        const voice = this.settings.contextVoiceInputOptions
+        return {
+          speechStartDecibels: voice.vadSpeechStartDecibels,
+          silenceDecibels: voice.vadSilenceDecibels,
+          speechRequiredMs: voice.vadSpeechRequiredMs,
+          silenceHoldMs: voice.vadSilenceHoldMs,
+        }
+      },
+      getBottomOffsetVh: () =>
+        this.settings.contextVoiceInputOptions.floatingIslandBottomOffsetVh,
+    })
+    this.voiceFloatingIslandController = island
+    return island
+  }
+
+  private isContextVoiceInputFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    return !!opts && opts.enabled && hasConfiguredAsrConfig(opts)
+  }
+
+  private isVoiceFloatingIslandFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    if (!opts?.floatingIslandEnabled) return false
+    return this.getAvailableVoiceModes().length > 0
+  }
+
+  private getActiveVoiceMode(): ActiveVoiceModeId {
+    const mode =
+      this.settings.contextVoiceInputOptions.interactionMode ?? 'toggle-listen'
+    const availableModes = this.getAvailableVoiceModes()
+    return availableModes.includes(mode)
+      ? mode
+      : (availableModes[0] ?? 'toggle-listen')
+  }
+
+  private getAvailableVoiceModes(): ActiveVoiceModeId[] {
+    const opts = this.settings.contextVoiceInputOptions
+    const available = new Set<ActiveVoiceModeId>()
+    if (this.isContextVoiceInputFeatureReady()) {
+      available.add('toggle-listen')
+      available.add('hold-to-talk')
+    }
+    if (this.isAudioFileTranscriptionFeatureReady()) {
+      available.add('audio-file')
+    }
+    if (this.isReadAloudFeatureReady()) {
+      available.add('read-aloud')
+    }
+    const order = opts.floatingIslandModeOrder ?? [
+      'toggle-listen',
+      'hold-to-talk',
+      'audio-file',
+      'read-aloud',
+    ]
+    const hidden = new Set(opts.floatingIslandHiddenModes ?? [])
+    const ordered = order.filter(
+      (mode): mode is ActiveVoiceModeId =>
+        available.has(mode) && !hidden.has(mode),
+    )
+    for (const mode of available) {
+      if (!ordered.includes(mode) && !hidden.has(mode)) ordered.push(mode)
+    }
+    return ordered
+  }
+
+  private syncVoiceFloatingIsland(): void {
+    if (!this.isVoiceFloatingIslandFeatureReady()) {
+      if (!this.voiceController?.isBusy()) {
+        this.voiceFloatingIslandController?.destroy()
+        this.voiceFloatingIslandController = null
+      }
+      return
+    }
+    void this.attachVoiceFloatingIsland()
+  }
+
+  private registerVoiceAudioDragReveal(): void {
+    const options: AddEventListenerOptions = { capture: true }
+    this.registerDomEvent(
+      document,
+      'dragenter',
+      (event) => this.handleVoiceAudioDragReveal(event),
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'dragover',
+      (event) => this.handleVoiceAudioDragReveal(event),
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'drop',
+      (event) => {
+        this.clearVoiceAudioDragReveal()
+        this.handleVoiceAudioDrop(event)
+      },
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'dragend',
+      () => this.clearVoiceAudioDragReveal(),
+      options,
+    )
+    this.registerDomEvent(
+      document,
+      'dragleave',
+      (event) => this.handleVoiceAudioDragLeave(event),
+      options,
+    )
+    this.registerDomEvent(window, 'blur', () =>
+      this.clearVoiceAudioDragReveal(),
+    )
+  }
+
+  private handleVoiceAudioDragReveal(event: DragEvent): void {
+    if (!this.isAudioFileTranscriptionFeatureReady()) return
+    if (this.isGeneratedReadAloudAudioDrag(event.dataTransfer)) return
+    const dragKind = this.getCachedVoiceAudioDragKind(event)
+    if (!dragKind) return
+    const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
+    if (!markdownView) return
+    const cache = this.voiceAudioDragRevealCache
+    if (
+      cache?.revealedMarkdownView === markdownView &&
+      cache.revealedKind === dragKind
+    ) {
+      return
+    }
+    if (cache) {
+      cache.revealedMarkdownView = markdownView
+      cache.revealedKind = dragKind
+    }
+    void this.revealVoiceFloatingIslandForAudioDrag(markdownView, dragKind)
+  }
+
+  private handleVoiceAudioDrop(event: DragEvent): void {
+    if (!this.isAudioFileTranscriptionFeatureReady()) return
+    if (this.isGeneratedReadAloudAudioDrag(event.dataTransfer)) return
+    const markdownView = this.resolveMarkdownViewFromEventTarget(event.target)
+    if (!markdownView) return
+    const source = this.resolveAudioDropSource(event)
+    if (!source) return
+
+    event.preventDefault()
+    event.stopPropagation()
+    void this.startVoiceAudioDropTranscription(markdownView, source)
+  }
+
+  private handleVoiceAudioDragLeave(event: DragEvent): void {
+    if (event.relatedTarget !== null) return
+    this.clearVoiceAudioDragReveal()
+  }
+
+  private clearVoiceAudioDragReveal(): void {
+    this.voiceAudioDragRevealCache = null
+    this.voiceFloatingIslandController?.clearAudioDropTargetReveal()
+  }
+
+  private getCachedVoiceAudioDragKind(
+    event: DragEvent,
+  ): AudioFileDragKind | null {
+    const dataTransfer = event.dataTransfer
+    if (!dataTransfer) return null
+    // `dragover` fires many times per second and DataTransfer contents stay
+    // stable for a single drag operation. Cache the classification so dragging
+    // any file across the editor does not repeatedly parse paths or reveal UI.
+    if (this.voiceAudioDragRevealCache?.dataTransfer === dataTransfer) {
+      return this.voiceAudioDragRevealCache.dragKind
+    }
+    const dragKind = this.getAudioFileDragKind(event)
+    this.voiceAudioDragRevealCache = {
+      dataTransfer,
+      dragKind,
+      revealedKind: null,
+      revealedMarkdownView: null,
+    }
+    return dragKind
+  }
+
+  private async revealVoiceFloatingIslandForAudioDrag(
+    markdownView: MarkdownView,
+    dragKind: AudioFileDragKind,
+  ): Promise<void> {
+    try {
+      await this.ensureVoiceController()
+      const island = await this.ensureVoiceFloatingIsland()
+      island.revealAudioDropTargetForView(markdownView, dragKind)
+    } catch (error) {
+      console.warn('Voice audio drag reveal failed:', error)
+    }
+  }
+
+  private async startVoiceAudioDropTranscription(
+    markdownView: MarkdownView,
+    source: AudioDropSource,
+  ): Promise<void> {
+    try {
+      await this.ensureVoiceController()
+      const audioInput = this.createAudioInputFromDropSource(source)
+      const island = await this.ensureVoiceFloatingIsland()
+      island.attachToView(markdownView)
+      await this.voiceController?.startAudioFileTranscription(
+        audioInput,
+        markdownView.editor,
+      )
+    } catch (error) {
+      console.warn('Voice audio drop transcription failed:', error)
+    }
+  }
+
+  private async attachVoiceFloatingIsland(): Promise<void> {
+    try {
+      await this.ensureVoiceController()
+      const island = await this.ensureVoiceFloatingIsland()
+      island.attachToActiveView()
+    } catch (error) {
+      console.error('Voice floating island attach failed:', error)
+    }
+  }
+
+  private isAudioFileTranscriptionFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    return (
+      !!opts &&
+      opts.audioFileTranscriptionEnabled &&
+      hasConfiguredAudioFileAsrConfig(opts)
+    )
+  }
+
+  private isReadAloudFeatureReady(): boolean {
+    const opts = this.settings?.contextVoiceInputOptions
+    return !!opts && opts.voiceReadAloudEnabled && hasConfiguredTtsConfig(opts)
+  }
+
+  private getAudioFileDragKind(event: DragEvent): AudioFileDragKind | null {
+    const dataTransfer = event.dataTransfer
+    if (!dataTransfer) return null
+    if (this.isGeneratedReadAloudAudioDrag(dataTransfer)) return null
+    const files = Array.from(dataTransfer.files ?? [])
+    if (files.length > 0) {
+      return files.some((file) => this.isLikelyAudioDragFile(file))
+        ? 'audio'
+        : 'unsupported'
+    }
+
+    const items = Array.from(dataTransfer.items ?? [])
+    const fileItems = items.filter((item) => item.kind === 'file')
+    if (fileItems.length > 0) {
+      if (
+        fileItems.some((item) => item.type.toLowerCase().startsWith('audio/'))
+      ) {
+        return 'audio'
+      }
+      if (fileItems.some((item) => item.type === '')) return 'maybe-audio'
+      return 'unsupported'
+    }
+
+    const textCandidateKind =
+      this.getAudioFileDragKindFromDataTransferText(dataTransfer)
+    if (textCandidateKind) return textCandidateKind
+
+    return Array.from(dataTransfer.types ?? []).some((type) => {
+      const lower = type.toLowerCase()
+      return (
+        lower === 'files' ||
+        lower === 'text/uri-list' ||
+        lower.includes('file') ||
+        lower.includes('obsidian')
+      )
+    })
+      ? 'maybe-audio'
+      : null
+  }
+
+  private getAudioFileDragKindFromDataTransferText(
+    dataTransfer: DataTransfer,
+  ): AudioFileDragKind | null {
+    let sawFileLikeCandidate = false
+    for (const type of Array.from(dataTransfer.types ?? [])) {
+      const text = this.safeReadDropData(dataTransfer, type)
+      for (const candidate of this.extractVaultPathCandidates(text)) {
+        const fileLike =
+          candidate.includes('/') || /\.[a-z0-9]{2,8}$/i.test(candidate)
+        if (!fileLike) continue
+        if (this.resolveAudioVaultFileCandidate(candidate)) return 'audio'
+        if (this.isLikelyAudioPath(candidate)) return 'audio'
+        sawFileLikeCandidate = true
+      }
+    }
+    return sawFileLikeCandidate ? 'unsupported' : null
+  }
+
+  private async resolveAudioInputFromDrop(
+    event: DragEvent,
+  ): Promise<AudioDropInput | null> {
+    const source = this.resolveAudioDropSource(event)
+    return source ? this.createAudioInputFromDropSource(source) : null
+  }
+
+  private resolveAudioDropSource(event: DragEvent): AudioDropSource | null {
+    const dataTransfer = event.dataTransfer
+    if (!dataTransfer) return null
+    if (this.isGeneratedReadAloudAudioDrag(dataTransfer)) return null
+
+    const file = Array.from(dataTransfer.files ?? []).find((candidate) =>
+      this.isLikelyAudioDragFile(candidate),
+    )
+    if (file) return { file }
+
+    const vaultFile = this.resolveAudioVaultFileFromDataTransfer(dataTransfer)
+    return vaultFile ? { vaultFile } : null
+  }
+
+  private isGeneratedReadAloudAudioDrag(
+    dataTransfer: DataTransfer | null,
+  ): boolean {
+    if (!dataTransfer) return false
+    return Array.from(dataTransfer.types ?? []).some(
+      (type) => type.toLowerCase() === GENERATED_AUDIO_DRAG_MIME,
+    )
+  }
+
+  private createAudioInputFromDropSource(
+    source: AudioDropSource,
+  ): AudioDropInput {
+    if ('file' in source) return createBlobAudioFileSource(source.file)
+
+    return createVaultAudioFileSource({
+      app: this.app,
+      file: source.vaultFile,
+      mimeType: this.getAudioMimeType(source.vaultFile.path),
+      materializeLimitMessage: this.t(
+        'voiceInput.audioFileErrorLocalDecodeTooLarge',
+        'This audio file is too large for local processing. Use a long-audio provider.',
+      ),
+    })
+  }
+
+  private resolveAudioVaultFileFromDataTransfer(
+    dataTransfer: DataTransfer,
+  ): TFile | null {
+    const candidates = new Set<string>()
+    for (const type of Array.from(dataTransfer.types ?? [])) {
+      const text = this.safeReadDropData(dataTransfer, type)
+      for (const candidate of this.extractVaultPathCandidates(text)) {
+        candidates.add(candidate)
+      }
+    }
+    for (const candidate of candidates) {
+      const file = this.resolveAudioVaultFileCandidate(candidate)
+      if (file) return file
+    }
+    return null
+  }
+
+  private safeReadDropData(dataTransfer: DataTransfer, type: string): string {
+    try {
+      return dataTransfer.getData(type) || ''
+    } catch {
+      return ''
+    }
+  }
+
+  private extractVaultPathCandidates(text: string): string[] {
+    if (!text.trim()) return []
+    const candidates: string[] = []
+    const add = (value: string) => {
+      const normalized = this.normalizeDroppedVaultPath(value)
+      if (normalized) candidates.push(normalized)
+    }
+
+    for (const line of text.split(/\r?\n/)) {
+      const trimmed = line.trim()
+      if (!trimmed || trimmed.startsWith('#')) continue
+      add(trimmed)
+    }
+
+    const wikiLinkPattern = /!?\[\[([^\]|#]+)(?:[|#][^\]]*)?\]\]/g
+    for (const match of text.matchAll(wikiLinkPattern)) {
+      add(match[1] ?? '')
+    }
+
+    const markdownLinkPattern = /!?\[[^\]]*]\(([^)]+)\)/g
+    for (const match of text.matchAll(markdownLinkPattern)) {
+      add(match[1] ?? '')
+    }
+
+    return candidates
+  }
+
+  private normalizeDroppedVaultPath(value: string): string | null {
+    let candidate = value.trim()
+    if (!candidate) return null
+
+    candidate = candidate.replace(/^["'<]+|[">'）]+$/g, '').trim()
+    if (!candidate) return null
+
+    try {
+      candidate = decodeURIComponent(candidate)
+    } catch {
+      // Keep the raw string when it is not a URI-encoded path.
+    }
+
+    if (candidate.startsWith('file://')) {
+      candidate = candidate.replace(/^file:\/+/, '')
+    }
+
+    const queryIndex = candidate.indexOf('?')
+    if (candidate.startsWith('obsidian://') && queryIndex !== -1) {
+      const params = new URLSearchParams(candidate.slice(queryIndex + 1))
+      candidate = params.get('file') ?? params.get('path') ?? candidate
+    }
+
+    candidate = candidate.replace(/^!?\[\[|\]\]$/g, '')
+    const aliasIndex = candidate.indexOf('|')
+    if (aliasIndex !== -1) candidate = candidate.slice(0, aliasIndex)
+    const headingIndex = candidate.indexOf('#')
+    if (headingIndex !== -1) candidate = candidate.slice(0, headingIndex)
+    candidate = candidate.trim()
+    if (!candidate) return null
+
+    return normalizePath(candidate.replace(/^\/+/, ''))
+  }
+
+  private resolveAudioVaultFileCandidate(candidate: string): TFile | null {
+    const linked = this.app.metadataCache.getFirstLinkpathDest(candidate, '')
+    if (linked instanceof TFile && this.isLikelyAudioPath(linked.path)) {
+      return linked
+    }
+
+    const direct = this.app.vault.getAbstractFileByPath(candidate)
+    if (direct instanceof TFile && this.isLikelyAudioPath(direct.path)) {
+      return direct
+    }
+
+    if (candidate.includes('/')) return null
+    return (
+      this.app.vault
+        .getFiles()
+        .find(
+          (file) =>
+            file.name.toLowerCase() === candidate.toLowerCase() &&
+            this.isLikelyAudioPath(file.path),
+        ) ?? null
+    )
+  }
+
+  private isLikelyAudioDragFile(file: File): boolean {
+    if (file.type.toLowerCase().startsWith('audio/')) return true
+    return this.isLikelyAudioPath(file.name)
+  }
+
+  private isLikelyAudioPath(path: string): boolean {
+    return /\.(mp3|m4a|mp4|wav|webm|ogg|opus|flac|aac|amr)$/i.test(path)
+  }
+
+  private getAudioMimeType(path: string): string {
+    const extension = path.split('.').pop()?.toLowerCase()
+    switch (extension) {
+      case 'mp3':
+        return 'audio/mpeg'
+      case 'm4a':
+      case 'mp4':
+        return 'audio/mp4'
+      case 'wav':
+        return 'audio/wav'
+      case 'webm':
+        return 'audio/webm'
+      case 'ogg':
+      case 'opus':
+        return 'audio/ogg'
+      case 'flac':
+        return 'audio/flac'
+      case 'aac':
+        return 'audio/aac'
+      case 'amr':
+        return 'audio/amr'
+      default:
+        return 'application/octet-stream'
+    }
+  }
+
+  private resolveMarkdownViewFromEventTarget(
+    target: EventTarget | null,
+  ): MarkdownView | null {
+    if (!(target instanceof Node)) return null
+    const markdownLeaves = this.app.workspace.getLeavesOfType('markdown')
+    for (const leaf of markdownLeaves) {
+      const view = leaf.view
+      if (!(view instanceof MarkdownView)) continue
+      if (view.contentEl.contains(target)) return view
+    }
+    return null
   }
 
   private setupBackgroundActivityStatusBar(): void {
@@ -2029,6 +2670,7 @@ export default class YoloPlugin extends Plugin {
         removeAbortController: (controller) =>
           this.activeAbortControllers.delete(controller),
         isContinuationInProgress: () => this.isContinuationInProgress,
+        isVoiceInputInProgress: () => this.isVoiceInputInProgress,
       })
     }
     return this.tabCompletionController
@@ -2039,9 +2681,186 @@ export default class YoloPlugin extends Plugin {
       this.inlineSuggestionController = new InlineSuggestionController({
         getEditorView: (editor) => this.getEditorView(editor),
         getTabCompletionController: () => this.getTabCompletionController(),
+        getVoiceController: () => this.voiceController,
       })
     }
     return this.inlineSuggestionController
+  }
+
+  private async ensureVoiceController(): Promise<VoiceController> {
+    if (this.voiceController) {
+      return this.voiceController
+    }
+    const modules = await this.loadVoiceModules()
+    if (this.isUnloaded) {
+      throw new Error(
+        '[YOLO] Plugin unloaded before voice controller initialization',
+      )
+    }
+    if (this.voiceController) {
+      return this.voiceController
+    }
+    const inlineSuggestionController = this.getInlineSuggestionController()
+    const controller = new modules.VoiceController({
+      app: this.app,
+      getSettings: () => this.settings,
+      setSettings: (next) => this.setSettings(next),
+      getEditorView: (editor) => this.getEditorView(editor),
+      getActiveMarkdownView: () =>
+        this.app.workspace.getActiveViewOfType(MarkdownView),
+      setInlineSuggestionGhost: (view, payload) =>
+        inlineSuggestionController.setInlineSuggestionGhost(view, payload),
+      setActiveVoiceSuggestion: (suggestion) =>
+        inlineSuggestionController.setVoiceSuggestion(suggestion),
+      clearInlineSuggestion: () =>
+        inlineSuggestionController.clearInlineSuggestion(),
+      addAbortController: (controller) =>
+        this.activeAbortControllers.add(controller),
+      removeAbortController: (controller) =>
+        this.activeAbortControllers.delete(controller),
+      cancelPendingTabCompletion: () => {
+        this.tabCompletionController?.clearTimer()
+        this.tabCompletionController?.cancelRequest()
+      },
+      setVoiceInputInProgress: (inProgress) => {
+        this.isVoiceInputInProgress = inProgress
+      },
+      createFallbackMarkdownFile: (desiredPath, content) =>
+        this.createVoiceFallbackMarkdownFile(desiredPath, content),
+      appendToMarkdownFile: (path, content) =>
+        this.appendToVoiceFallbackMarkdownFile(path, content),
+      isManagedPathTransitionInProgress: () =>
+        this.managedPathTransitionDepth > 0,
+      t: (key, fallback) => this.t(key, fallback),
+    })
+    controller.setSummaryManager(this.ensureDocumentSummaryManager(modules))
+    controller.setPrefixCacheManager(
+      this.ensureVoicePrefixCacheManager(modules),
+    )
+    this.voiceController = controller
+    return controller
+  }
+
+  private async startReadAloud(
+    mode: 'selection' | 'document' | 'selection-or-document',
+  ): Promise<void> {
+    try {
+      const controller = await this.ensureVoiceController()
+      this.syncVoiceFloatingIsland()
+      if (mode === 'selection') {
+        await controller.startReadAloudSelection()
+        return
+      }
+      if (mode === 'document') {
+        await controller.startReadAloudDocument()
+        return
+      }
+      await controller.startReadAloudSelectionOrDocument()
+    } catch (error) {
+      console.error('Read aloud failed to start:', error)
+      new Notice(this.t('voiceInput.readAloudFailed', 'Read aloud failed.'))
+    }
+  }
+
+  private async createVoiceFallbackMarkdownFile(
+    desiredPath: string,
+    content: string,
+  ): Promise<string> {
+    const path = await this.reserveVoiceFallbackMarkdownPath(desiredPath)
+    await this.ensureVaultFolderForPath(path)
+    const file = await this.app.vault.create(path, content)
+    return file.path
+  }
+
+  private async appendToVoiceFallbackMarkdownFile(
+    path: string,
+    content: string,
+  ): Promise<void> {
+    const normalized = this.normalizeMarkdownPath(path)
+    const existing = this.app.vault.getAbstractFileByPath(normalized)
+    if (existing instanceof TFile) {
+      const current = await this.app.vault.read(existing)
+      await this.app.vault.modify(existing, `${current}${content}`)
+      return
+    }
+    if (existing) {
+      throw new Error(
+        `Cannot write transcription to folder path: ${normalized}`,
+      )
+    }
+    await this.ensureVaultFolderForPath(normalized)
+    await this.app.vault.create(normalized, content)
+  }
+
+  private async reserveVoiceFallbackMarkdownPath(
+    desiredPath: string,
+  ): Promise<string> {
+    const normalized = this.normalizeMarkdownPath(desiredPath)
+    if (!this.app.vault.getAbstractFileByPath(normalized)) return normalized
+
+    const dot = normalized.toLowerCase().endsWith('.md')
+      ? normalized.length - 3
+      : normalized.length
+    const stem = normalized.slice(0, dot)
+    const ext = normalized.slice(dot)
+    let counter = 2
+    while (true) {
+      const candidate = `${stem} ${counter}${ext}`
+      if (!this.app.vault.getAbstractFileByPath(candidate)) return candidate
+      counter += 1
+    }
+  }
+
+  private normalizeMarkdownPath(path: string): string {
+    const fallbackPath = `${getYoloTranscriptionsDir(this.settings)}/audio`
+    const trimmed = path.trim().replace(/[\\:*?"<>|]/g, '-') || fallbackPath
+    const withExtension = trimmed.toLowerCase().endsWith('.md')
+      ? trimmed
+      : `${trimmed}.md`
+    return normalizePath(withExtension || `${fallbackPath}.md`)
+  }
+
+  private async ensureVaultFolderForPath(path: string): Promise<void> {
+    const parts = path.split('/').slice(0, -1)
+    let current = ''
+    for (const part of parts) {
+      current = current ? `${current}/${part}` : part
+      const existing = this.app.vault.getAbstractFileByPath(current)
+      if (existing instanceof TFolder) continue
+      if (existing) {
+        throw new Error(`Cannot create folder for transcription: ${current}`)
+      }
+      await this.app.vault.createFolder(current)
+    }
+  }
+
+  /**
+   * Lazy singleton for the per-document summary cache shared by voice input.
+   * Lives only in memory; created on first use, dropped on plugin unload.
+   */
+  private ensureDocumentSummaryManager(
+    modules: VoiceModules,
+  ): DocumentSummaryManager {
+    if (!this.documentSummaryManager) {
+      this.documentSummaryManager = new modules.DocumentSummaryManager({
+        getSettings: () => this.settings,
+        setSettings: (next) => this.setSettings(next),
+      })
+    }
+    return this.documentSummaryManager
+  }
+
+  /**
+   * Lazy singleton for the per-file anchored prefix cache used by voice
+   * input polish. Like the summary manager, lives only in memory.
+   */
+  private ensureVoicePrefixCacheManager(
+    modules: VoiceModules,
+  ): VoicePrefixCacheManager {
+    if (!this.voicePrefixCacheManager) {
+      this.voicePrefixCacheManager = new modules.VoicePrefixCacheManager()
+    }
+    return this.voicePrefixCacheManager
   }
 
   private getDiffReviewController(): DiffReviewController {
@@ -2305,6 +3124,23 @@ export default class YoloPlugin extends Plugin {
     this.registerEditorExtension(
       this.getTabCompletionController().createTriggerExtension(),
     )
+    // Soft-restart voice-input session at the new cursor position whenever
+    // the user clicks / arrow-keys away during the recording phase. Listener
+    // is global but cheap (early-exits when there's no active voice session)
+    // — see VoiceController.handleEditorSelectionChange for the
+    // full guard list (toggle-listen only, same editor, etc).
+    this.registerEditorExtension(
+      EditorView.updateListener.of((update) => {
+        if (update.docChanged) {
+          this.voiceController?.handleEditorDocumentChange(
+            update.view,
+            update.changes,
+          )
+        }
+        if (!update.selectionSet) return
+        this.voiceController?.handleEditorSelectionChange(update.view)
+      }),
+    )
 
     // This creates an icon in the left ribbon.
     this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
@@ -2480,6 +3316,64 @@ export default class YoloPlugin extends Plugin {
       },
     })
 
+    this.addCommand({
+      id: 'toggle-context-voice-input',
+      name:
+        this.t('commands.toggleVoiceInput') ??
+        'Toggle context-aware voice input',
+      editorCallback: (editor: Editor) => {
+        void (async () => {
+          try {
+            const controller = await this.ensureVoiceController()
+            this.syncVoiceFloatingIsland()
+            await controller.toggle(editor)
+          } catch (error) {
+            console.error('Voice input toggle failed:', error)
+            new Notice('Voice input failed to start.')
+          }
+        })()
+      },
+    })
+
+    this.addCommand({
+      id: 'cancel-context-voice-input',
+      name:
+        this.t('commands.cancelVoiceInput') ??
+        'Cancel context-aware voice input',
+      callback: () => {
+        if (this.voiceController?.isBusy()) {
+          this.voiceController.cancelActiveSession('user-cancel')
+        }
+      },
+    })
+
+    this.addCommand({
+      id: 'read-aloud-selection',
+      name: this.t('commands.readAloudSelection', 'Read selection aloud'),
+      editorCallback: () => {
+        void this.startReadAloud('selection')
+      },
+    })
+
+    this.addCommand({
+      id: 'read-aloud-current-file',
+      name: this.t('commands.readAloudCurrentFile', 'Read current file aloud'),
+      editorCallback: () => {
+        void this.startReadAloud('document')
+      },
+    })
+
+    this.addCommand({
+      id: 'stop-read-aloud',
+      name: this.t('commands.stopReadAloud', 'Stop read aloud'),
+      callback: () => {
+        this.voiceController?.cancelActiveSession('user-cancel')
+      },
+    })
+
+    this.syncVoiceFloatingIsland()
+    this.registerVoiceAudioDragReveal()
+
     // Register file context menu for adding file/folder to chat
     this.registerEvent(
       this.app.workspace.on('file-menu', (menu, file) => {
@@ -2517,9 +3411,15 @@ export default class YoloPlugin extends Plugin {
       ),
     )
     this.registerEvent(
-      this.app.vault.on('delete', (file) =>
-        this.getRagAutoUpdateService().onVaultFileChanged(file, 'delete'),
-      ),
+      this.app.vault.on('delete', (file) => {
+        this.getRagAutoUpdateService().onVaultFileChanged(file, 'delete')
+        // Voice-input caches are keyed by file path. `forget` also clears
+        // child paths when `file` is a deleted folder.
+        this.documentSummaryManager?.forget(file.path)
+        this.voicePrefixCacheManager?.forget(file.path, {
+          includeChildren: file instanceof TFolder,
+        })
+      }),
     )
     this.registerEvent(
       this.app.vault.on('rename', (file, oldPath) => {
@@ -2529,6 +3429,15 @@ export default class YoloPlugin extends Plugin {
           service.onVaultPathChanged(oldPath, {
             requiresFullScan: file instanceof TFolder,
           })
+        // Voice-input caches: forget the OLD path so the renamed file
+        // gets a fresh entry next time. Handles A↔B file-swap correctly
+        // since both rename events fire.
+        if (oldPath) {
+          this.documentSummaryManager?.forget(oldPath)
+          this.voicePrefixCacheManager?.forget(oldPath, {
+            includeChildren: file instanceof TFolder,
+          })
+        }
       }),
     )
     this.registerDomEvent(window, 'blur', () => {
@@ -2704,6 +3613,14 @@ export default class YoloPlugin extends Plugin {
           this.selectionChatController?.handleActiveLeafChange(leaf ?? null)
           // Update selection manager with new editor container
           this.initializeSelectionChat()
+          // Cancel an in-progress voice session if the user switched to a
+          // different file — recording / polish would otherwise complete
+          // against the old file silently and either insert into the wrong
+          // place or be lost when the bar re-attaches to the new view.
+          this.voiceController?.cancelIfFileChanged()
+          // Re-attach the voice floating island to whichever markdown view is
+          // now active. No-op unless voice input is configured and enabled.
+          this.syncVoiceFloatingIsland()
         } catch (err) {
           console.error('Editor change handler error:', err)
         }
@@ -2725,6 +3642,9 @@ export default class YoloPlugin extends Plugin {
         this.initializeSelectionChat()
       }
       this.syncSelectionChatCommands()
+      // Voice feature gating may have flipped (enable toggled, ASR configured);
+      // re-render the island so it shows/hides accordingly.
+      this.syncVoiceFloatingIsland()
     })
   }
 
@@ -2778,6 +3698,12 @@ export default class YoloPlugin extends Plugin {
     this.chatViewNavigator = null
     this.markdownInsertionTargetTracker = null
     this.newTabEmptyStateEnhancer = null
+    this.voiceController?.destroy()
+    this.voiceController = null
+    this.voiceFloatingIslandController?.destroy()
+    this.voiceFloatingIslandController = null
+    this.voiceModules = null
+    this.voiceModulesPromise = null
     this.inlineSuggestionController?.clearInlineSuggestion()
     this.inlineSuggestionController?.destroy()
     this.inlineSuggestionController = null
@@ -2871,17 +3797,24 @@ export default class YoloPlugin extends Plugin {
   /** Migrate old hidden roots before any service can open files beneath them. */
   private async migrateHiddenYoloBaseDirIfNeeded(): Promise<void> {
     const previousSettings = this.settings
+    const sourceBaseDir = getYoloBaseDir(previousSettings)
+    let migratedSettings: YoloSettings | null = null
     let result
     try {
       result = await migrateHiddenYoloBaseDir({
         app: this.app,
         settings: previousSettings,
         persistTargetBaseDir: async (baseDir) => {
-          const nextSettings: YoloSettings = {
-            ...previousSettings,
-            yolo: { ...previousSettings.yolo, baseDir },
-          }
+          const nextSettings = rebaseVoiceManagedPaths(
+            {
+              ...previousSettings,
+              yolo: { ...previousSettings.yolo, baseDir },
+            },
+            sourceBaseDir,
+            baseDir,
+          )
           await this.persistPluginDirSettings(nextSettings)
+          migratedSettings = nextSettings
         },
       })
     } catch (error) {
@@ -2907,10 +3840,16 @@ export default class YoloPlugin extends Plugin {
       return
     }
     if (result.status === 'migrated' || result.status === 'source-missing') {
-      this.settings = {
-        ...previousSettings,
-        yolo: { ...previousSettings.yolo, baseDir: result.target },
-      }
+      this.settings =
+        migratedSettings ??
+        rebaseVoiceManagedPaths(
+          {
+            ...previousSettings,
+            yolo: { ...previousSettings.yolo, baseDir: result.target },
+          },
+          sourceBaseDir,
+          result.target,
+        )
       new Notice(
         this.t(
           'settings.agent.yoloBaseDirMigrated',
@@ -3037,6 +3976,27 @@ export default class YoloPlugin extends Plugin {
     return meta
   }
 
+  private async waitForVoiceManagedWritesBeforePathChange(): Promise<boolean> {
+    try {
+      await this.voiceController?.waitForManagedWrites()
+      return true
+    } catch (error) {
+      // Moving while an old-root write may still complete can recreate files
+      // at the abandoned path, so a drain timeout must fail closed.
+      console.error(
+        '[YOLO] Voice writes did not settle before the managed-root change.',
+        error,
+      )
+      new Notice(
+        this.t(
+          'voiceInput.managedPathWriteTimeoutNotice',
+          'Voice files are still being saved, so the YOLO root was not changed. Try again after saving finishes.',
+        ),
+      )
+      return false
+    }
+  }
+
   /**
    * Adopt an externally-written `data.json` payload into in-memory state.
    *
@@ -3115,18 +4075,32 @@ export default class YoloPlugin extends Plugin {
       }
       new Notice(this.t('settings.agent.yoloBaseDirHiddenPath'))
     }
-    const baseDirChanged =
-      previousSettings?.yolo?.baseDir !== normalizedSettings.yolo.baseDir
+    const sourceBaseDir = getYoloBaseDir(previousSettings)
+    const targetBaseDir = getYoloBaseDir(normalizedSettings)
+    const baseDirChanged = sourceBaseDir !== targetBaseDir
 
     if (baseDirChanged) {
-      await runManagedModuleDataExclusive(
-        this.app.vault,
-        managedModuleDataNamespace('learning', 'managed-data'),
-        async () => {
-          this.settings = normalizedSettings
-          this.publishManagedModulePathChange()
-        },
-      )
+      // External settings do not move files locally, but active voice tasks
+      // may still hold destinations beneath the old root. Stop them before
+      // publishing the authoritative external path snapshot. Do not rebase
+      // its voice fields here: unlike a local relocation, an external payload
+      // may intentionally keep destinations outside its new managed root.
+      this.managedPathTransitionDepth += 1
+      try {
+        this.voiceController?.cancelActiveSession('base-dir-changed')
+        if (!(await this.waitForVoiceManagedWritesBeforePathChange())) return
+        await runManagedModuleDataExclusive(
+          this.app.vault,
+          managedModuleDataNamespace('learning', 'managed-data'),
+          async () => {
+            this.settings = normalizedSettings
+            this.publishManagedModulePathChange()
+          },
+        )
+        this.voiceController?.clearManagedPathCaches()
+      } finally {
+        this.managedPathTransitionDepth -= 1
+      }
     } else {
       this.settings = normalizedSettings
     }
@@ -3374,72 +4348,106 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     const sourceBaseDir = getYoloBaseDir(previousSettings)
     const targetBaseDir = getYoloBaseDir(normalizedSettings)
     const yoloBaseDirChanged = sourceBaseDir !== targetBaseDir
+    if (
+      yoloBaseDirChanged &&
+      (this.managedPathTransitionDepth > 0 || this.voiceController?.isBusy())
+    ) {
+      new Notice(
+        this.t(
+          'settings.agent.yoloBaseDirVoiceBusy',
+          'Finish the current voice task before changing the YOLO root.',
+        ),
+      )
+      return false
+    }
+    const normalizedSettingsWithManagedPaths = yoloBaseDirChanged
+      ? rebaseVoiceManagedPaths(
+          normalizedSettings,
+          sourceBaseDir,
+          targetBaseDir,
+          previousSettings,
+        )
+      : normalizedSettings
     const settingsToApply = yoloBaseDirChanged
       ? {
-          ...normalizedSettings,
-          yolo: { ...normalizedSettings.yolo, baseDir: targetBaseDir },
+          ...normalizedSettingsWithManagedPaths,
+          yolo: {
+            ...normalizedSettingsWithManagedPaths.yolo,
+            baseDir: targetBaseDir,
+          },
         }
-      : normalizedSettings
+      : normalizedSettingsWithManagedPaths
 
     if (yoloBaseDirChanged) {
-      const relocation = await runManagedModuleDataExclusive(
-        this.app.vault,
-        managedModuleDataNamespace('learning', 'managed-data'),
-        async () => {
-          const result = await relocateYoloBaseDir({
-            app: this.app,
-            source: sourceBaseDir,
-            target: targetBaseDir,
-            persistTargetBaseDir: async () => {
-              await this.persistPluginDirSettings(settingsToApply)
-            },
-          })
-          if (
-            result.status === 'migrated' ||
-            result.status === 'adopted' ||
-            result.status === 'created'
-          ) {
-            this.settings = settingsToApply
-            this.publishManagedModulePathChange()
-          }
-          return result
-        },
-      )
+      this.managedPathTransitionDepth += 1
+      try {
+        // A completed voice session can still have final Vault writes even
+        // though the busy-state guard above already reports idle.
+        if (!(await this.waitForVoiceManagedWritesBeforePathChange())) {
+          return false
+        }
+        const relocation = await runManagedModuleDataExclusive(
+          this.app.vault,
+          managedModuleDataNamespace('learning', 'managed-data'),
+          async () => {
+            const result = await relocateYoloBaseDir({
+              app: this.app,
+              source: sourceBaseDir,
+              target: targetBaseDir,
+              persistTargetBaseDir: async () => {
+                await this.persistPluginDirSettings(settingsToApply)
+              },
+            })
+            if (
+              result.status === 'migrated' ||
+              result.status === 'adopted' ||
+              result.status === 'created'
+            ) {
+              this.settings = settingsToApply
+              this.publishManagedModulePathChange()
+            }
+            return result
+          },
+        )
 
-      if (relocation.status === 'target-conflict') {
-        this.showYoloRootRelocationConflict(relocation.target)
-        return false
-      }
-      if (relocation.status === 'protected-source') {
-        new Notice(
-          this.t(
-            'settings.agent.yoloBaseDirMigrationManualRepair',
-            'The current YOLO root is a protected hidden folder and cannot be moved automatically. Move the YOLO files manually, then choose the new root.',
-          ),
-          0,
-        )
-        return false
-      }
-      if (relocation.status === 'failed') {
-        console.error('[YOLO] Failed to relocate YOLO root', relocation.error)
-        new Notice(
-          relocation.rollbackFailed
-            ? this.t(
-                'settings.agent.yoloBaseDirMigrationRollbackFailed',
-                'YOLO root moved, but the setting could not be saved and the move could not be rolled back. Restore the previous folder manually before continuing.',
-              )
-            : this.t(
-                'settings.agent.yoloBaseDirMigrationFailed',
-                'YOLO root could not be moved. Your existing setting was kept.',
-              ),
-          relocation.rollbackFailed ? 0 : undefined,
-        )
-        return false
-      }
-      if (this.dbManager) {
-        await this.dbManager.cleanup()
-        this.dbManager = null
-        this.dbManagerInitPromise = null
+        if (relocation.status === 'target-conflict') {
+          this.showYoloRootRelocationConflict(relocation.target)
+          return false
+        }
+        if (relocation.status === 'protected-source') {
+          new Notice(
+            this.t(
+              'settings.agent.yoloBaseDirMigrationManualRepair',
+              'The current YOLO root is a protected hidden folder and cannot be moved automatically. Move the YOLO files manually, then choose the new root.',
+            ),
+            0,
+          )
+          return false
+        }
+        if (relocation.status === 'failed') {
+          console.error('[YOLO] Failed to relocate YOLO root', relocation.error)
+          new Notice(
+            relocation.rollbackFailed
+              ? this.t(
+                  'settings.agent.yoloBaseDirMigrationRollbackFailed',
+                  'YOLO root moved, but the setting could not be saved and the move could not be rolled back. Restore the previous folder manually before continuing.',
+                )
+              : this.t(
+                  'settings.agent.yoloBaseDirMigrationFailed',
+                  'YOLO root could not be moved. Your existing setting was kept.',
+                ),
+            relocation.rollbackFailed ? 0 : undefined,
+          )
+          return false
+        }
+        this.voiceController?.clearManagedPathCaches()
+        if (this.dbManager) {
+          await this.dbManager.cleanup()
+          this.dbManager = null
+          this.dbManagerInitPromise = null
+        }
+      } finally {
+        this.managedPathTransitionDepth -= 1
       }
     }
 

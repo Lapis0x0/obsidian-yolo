@@ -101,7 +101,7 @@ test('keeps Core out of the Learning entry metafile', async () => {
 })
 
 test('keeps Learning implementation out of the Core production metafile', async () => {
-  await execFileAsync('npm', ['run', 'build'], { cwd: repositoryRoot })
+  await runNpmBuild()
   const metafile = JSON.parse(
     await readFile(path.join(repositoryRoot, 'meta.json'), 'utf8'),
   )
@@ -124,6 +124,26 @@ test('keeps Learning implementation out of the Core production metafile', async 
     )
   }
 })
+
+async function runNpmBuild() {
+  // Reuse npm's JS entry when the test was launched by npm itself. The static
+  // shell fallback is needed for direct `node --test` runs on Windows, where
+  // execFile cannot execute npm.cmd without a command interpreter.
+  if (process.env.npm_execpath) {
+    return execFileAsync(
+      process.execPath,
+      [process.env.npm_execpath, 'run', 'build'],
+      { cwd: repositoryRoot },
+    )
+  }
+  return process.platform === 'win32'
+    ? execFileAsync(
+        process.env.ComSpec ?? 'cmd.exe',
+        ['/d', '/s', '/c', 'npm run build'],
+        { cwd: repositoryRoot },
+      )
+    : execFileAsync('npm', ['run', 'build'], { cwd: repositoryRoot })
+}
 
 test('Core source has no dependency on the Learning module source tree', async () => {
   const imports = await readImports(path.join(repositoryRoot, 'src'))

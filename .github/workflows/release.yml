@@ -14,6 +14,9 @@ concurrency:
 
 jobs:
   build:
+    # Fork voice releases use numeric-leading tags too, but have their own
+    # notes/assets workflow. Skip them without weakening Core's tag validator.
+    if: ${{ !contains(github.ref_name, '-voice.') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:

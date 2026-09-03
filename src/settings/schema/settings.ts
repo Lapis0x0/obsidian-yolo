@@ -104,6 +104,17 @@ export function normalizeYoloSettingsReferences(
         fallbackChatModelId,
       ),
     },
+    contextVoiceInputOptions: {
+      ...settings.contextVoiceInputOptions,
+      // An empty selection intentionally delegates to voice's existing
+      // default-model fallback instead of pinning a replacement model here.
+      polishModelId:
+        normalizeModelReference(
+          settings.contextVoiceInputOptions.polishModelId,
+          validChatModelIds,
+          '',
+        ) ?? '',
+    },
     assistants,
     currentAssistantId:
       settings.currentAssistantId &&
