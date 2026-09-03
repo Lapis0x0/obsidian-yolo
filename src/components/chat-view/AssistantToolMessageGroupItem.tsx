@@ -14,8 +14,10 @@ import { useApp } from '../../contexts/app-context'
 import { useLanguage } from '../../contexts/language-context'
 import { useSettings } from '../../contexts/settings-context'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
+import { resolveToolSetLabel } from '../../core/agent/tool-catalog'
 import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
+import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
 import { readEditReviewSnapshots } from '../../database/json/chat/editReviewSnapshotStore'
 import {
@@ -346,34 +348,62 @@ const CLI_TOOL_RUN_SUMMARY_BUCKET_BY_NAME: Record<
 
 type ToolCallRequestLike = ChatToolMessage['toolCalls'][number]['request']
 
-const getToolRunSummaryBucket = (
+/**
+ * How one call is counted in a collapsed run summary.
+ *
+ * Host built-ins get a verb, because their set is closed and we define the
+ * semantics. MCP and module tools get no verb — `read_wiki_structure` looks
+ * like a read and `search_my_robots` looks like a search, but that is guessing
+ * from a name, and a wrong guess reads worse than no guess. What they do have
+ * is the tool set they belong to, which is both honest and the identity the
+ * model itself sees in `<tool_catalog>`.
+ */
+type ToolRunSummaryKey =
+  | { kind: 'builtin'; bucket: ToolRunSummaryBucket }
+  | { kind: 'toolSet'; setId: string; toolName: string }
+
+const getToolRunSummaryKey = (
   request: ToolCallRequestLike,
-): ToolRunSummaryBucket => {
+): ToolRunSummaryKey => {
   const cliToolCall = request.metadata?.cliToolCall
   if (cliToolCall) {
     if (isCliToolCallCapability(request, 'file_change')) {
-      return 'edit'
+      return { kind: 'builtin', bucket: 'edit' }
     }
     if (isCliToolCallCapability(request, 'command_execution')) {
-      return 'command'
+      return { kind: 'builtin', bucket: 'command' }
     }
     const cliBucket =
       CLI_TOOL_RUN_SUMMARY_BUCKET_BY_NAME[cliToolCall.name.toLowerCase()]
-    if (cliBucket) {
-      return cliBucket
-    }
-    return 'other'
+    return { kind: 'builtin', bucket: cliBucket ?? 'other' }
   }
 
-  let toolName = request.name
+  let parsed: { serverName: string; toolName: string } | null = null
   try {
-    toolName = parseToolName(request.name).toolName
+    parsed = parseToolName(request.name)
   } catch (error) {
     if (!(error instanceof InvalidToolNameException)) {
       throw error
     }
   }
-  return TOOL_RUN_SUMMARY_BUCKET_BY_TOOL[toolName] ?? 'other'
+  if (!parsed) {
+    return { kind: 'builtin', bucket: 'other' }
+  }
+
+  // The verb table is keyed by short name, so it is scoped to the host server:
+  // an MCP tool that happens to be called `fs_read` is not a host file read.
+  if (parsed.serverName === getLocalFileToolServerName()) {
+    return {
+      kind: 'builtin',
+      bucket: TOOL_RUN_SUMMARY_BUCKET_BY_TOOL[parsed.toolName] ?? 'other',
+    }
+  }
+
+  return {
+    kind: 'toolSet',
+    setId: parsed.serverName,
+    toolName: parsed.toolName,
+  }
 }
 
 const TOOL_RUN_SUMMARY_LABELS: Record<
@@ -409,6 +439,35 @@ const TOOL_RUN_SUMMARY_LABELS: Record<
   },
 }
 
+const TOOL_SET_SUMMARY_LABEL = {
+  key: 'chat.toolRunSummary.toolSet',
+  fallback: '{name} {count} time(s)',
+}
+
+/**
+ * A single call names the tool instead of counting to one: "deepwiki 1 time"
+ * says nothing the reader could act on, and the point of the collapsed line is
+ * to be readable without expanding. Mirrors what the built-in buckets already
+ * do for a lone file edit.
+ */
+const TOOL_SET_SUMMARY_SINGLE_LABEL = {
+  key: 'chat.toolRunSummary.toolSetSingle',
+  fallback: '{name} · {tool}',
+}
+
+/**
+ * Non-builtin calls in a run, tallied per tool set. Kept separate from
+ * `bucketCounts` because tool sets are an open set — they cannot live in that
+ * record's fixed key space.
+ */
+type ToolSetTally = {
+  setId: string
+  label: string
+  count: number
+  /** Set only when `count` is 1, for the named-tool form. */
+  soleToolName: string | null
+}
+
 type ToolRunSegment = {
   key: string
   startIndex: number
@@ -420,6 +479,8 @@ type ToolRunSegment = {
    */
   boundaryIndex: number | null
   bucketCounts: Partial<Record<ToolRunSummaryBucket, number>>
+  /** Per-tool-set tallies, already sorted and labelled for display. */
+  toolSetTallies: ToolSetTally[]
   /**
    * 本段里已成功完成的文件编辑聚合（复用 footer 用的同一套按路径去重 + 净差异
    * 逻辑）。为 null 表示本段没有任何编辑调用已经成功返回——可能是纯只读段，
@@ -485,17 +546,40 @@ const buildToolRunSummaryDisplay = (
     )
   }
 
-  TOOL_RUN_SUMMARY_BUCKET_ORDER.forEach((bucket) => {
-    if (bucket === 'edit' && editSummary) {
-      return
-    }
+  const pushBucketClause = (bucket: ToolRunSummaryBucket) => {
     const count = segment.bucketCounts[bucket]
     if (!count) {
       return
     }
     const label = TOOL_RUN_SUMMARY_LABELS[bucket]
     clauses.push(t(label.key, label.fallback).replace('{count}', String(count)))
+  }
+
+  // `other` is appended after the tool sets rather than in bucket order: it is
+  // the residue of everything we could not name, so it belongs at the tail.
+  TOOL_RUN_SUMMARY_BUCKET_ORDER.forEach((bucket) => {
+    if (bucket === 'other' || (bucket === 'edit' && editSummary)) {
+      return
+    }
+    pushBucketClause(bucket)
   })
+
+  for (const tally of segment.toolSetTallies) {
+    clauses.push(
+      tally.soleToolName
+        ? t(
+            TOOL_SET_SUMMARY_SINGLE_LABEL.key,
+            TOOL_SET_SUMMARY_SINGLE_LABEL.fallback,
+          )
+            .replace('{name}', tally.label)
+            .replace('{tool}', tally.soleToolName)
+        : t(TOOL_SET_SUMMARY_LABEL.key, TOOL_SET_SUMMARY_LABEL.fallback)
+            .replace('{name}', tally.label)
+            .replace('{count}', String(tally.count)),
+    )
+  }
+
+  pushBucketClause('other')
 
   return {
     clauses,
@@ -631,6 +715,7 @@ function AssistantToolMessageGroupItem({
   const app = useApp()
   const { t } = useLanguage()
   const { settings } = useSettings()
+  const discoveredCatalogs = settings.mcp.discoveredCatalogs ?? {}
   const containerRef = useRef<HTMLDivElement | null>(null)
   const pendingScrollRestoreRef = useRef<{
     scrollContainer: HTMLElement
@@ -830,16 +915,39 @@ function AssistantToolMessageGroupItem({
         const toolCalls = toolMessages.flatMap((message) => message.toolCalls)
         if (toolCalls.length >= 2) {
           const bucketCounts: ToolRunSegment['bucketCounts'] = {}
+          const bySet = new Map<
+            string,
+            { count: number; toolNames: string[] }
+          >()
           for (const call of toolCalls) {
-            const bucket = getToolRunSummaryBucket(call.request)
-            bucketCounts[bucket] = (bucketCounts[bucket] ?? 0) + 1
+            const key = getToolRunSummaryKey(call.request)
+            if (key.kind === 'builtin') {
+              bucketCounts[key.bucket] = (bucketCounts[key.bucket] ?? 0) + 1
+              continue
+            }
+            const tally = bySet.get(key.setId) ?? { count: 0, toolNames: [] }
+            tally.count += 1
+            tally.toolNames.push(key.toolName)
+            bySet.set(key.setId, tally)
           }
+          const toolSetTallies = [...bySet.entries()]
+            .map(([setId, tally]) => ({
+              setId,
+              label: resolveToolSetLabel(
+                setId,
+                discoveredCatalogs[setId]?.serverInfo,
+              ),
+              count: tally.count,
+              soleToolName: tally.count === 1 ? tally.toolNames[0] : null,
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label))
           segments.push({
             key: toolMessages[0].id,
             startIndex: firstMemberIndex,
             endIndex: lastMemberIndex,
             boundaryIndex,
             bucketCounts,
+            toolSetTallies,
             editSummary: collectGroupEditSummary(toolMessages),
             requiresUserAction: toolCalls.some(
               (call) =>
@@ -880,7 +988,7 @@ function AssistantToolMessageGroupItem({
     close(null)
 
     return segments
-  }, [displayedMessages, messageRenderPlans])
+  }, [displayedMessages, messageRenderPlans, discoveredCatalogs])
 
   const toolRunSegmentByIndex = useMemo(() => {
     const byIndex = new Map<number, ToolRunSegment>()

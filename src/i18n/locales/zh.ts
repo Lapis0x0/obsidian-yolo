@@ -2224,6 +2224,8 @@ export const zh: TranslationKeys = {
       command: '运行 {count} 条命令',
       analysis: '沙箱分析 {count} 次',
       other: '其他操作 {count} 项',
+      toolSet: '{name} {count} 次',
+      toolSetSingle: '{name} · {tool}',
     },
     liveTask: {
       statusRunning: '执行中',

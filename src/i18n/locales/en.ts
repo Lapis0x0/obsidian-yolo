@@ -2356,6 +2356,8 @@ export const en: TranslationKeys = {
       command: 'Ran {count} command(s)',
       analysis: '{count} sandbox run(s)',
       other: '{count} other action(s)',
+      toolSet: '{name} {count} time(s)',
+      toolSetSingle: '{name} · {tool}',
     },
     liveTask: {
       statusRunning: 'Running',

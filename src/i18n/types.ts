@@ -2035,6 +2035,8 @@ export type TranslationKeys = {
       command?: string
       analysis?: string
       other?: string
+      toolSet?: string
+      toolSetSingle?: string
     }
     // shared live task card
     liveTask?: {

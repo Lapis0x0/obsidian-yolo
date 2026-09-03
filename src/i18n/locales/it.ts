@@ -2213,6 +2213,8 @@ export const it: DeepPartial<TranslationKeys> = {
       command: 'Eseguiti {count} comandi',
       analysis: '{count} analisi in sandbox',
       other: '{count} altre azioni',
+      toolSet: '{name} {count} volte',
+      toolSetSingle: '{name} · {tool}',
     },
     liveTask: {
       statusRunning: 'In esecuzione',

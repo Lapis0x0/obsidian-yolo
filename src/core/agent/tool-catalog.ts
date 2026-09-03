@@ -1,6 +1,7 @@
 import type {
   McpDiscoveredCatalog,
   McpServerConfig,
+  McpServerInfo,
   McpTool,
 } from '../../types/mcp.types'
 import { getLocalFileToolServerName } from '../mcp/localFileTools'
@@ -47,6 +48,23 @@ const CATALOG_INSTRUCTION = [
 ].join(' ')
 
 /**
+ * Display name for a tool set.
+ *
+ * The locally configured id is user-chosen and frequently opaque (`cf`, `ca`,
+ * `playright`), so the server's own reported identity wins when it provided
+ * one. `title` and `description` are optional in the MCP protocol and were
+ * added to it late, hence the fallback chain.
+ *
+ * Shared with the chat run summary so a tool set is named the same way
+ * wherever it appears — what the model reads in `<tool_catalog>` is what the
+ * user reads on a collapsed run.
+ */
+export const resolveToolSetLabel = (
+  setId: string,
+  serverInfo: McpServerInfo | undefined,
+): string => serverInfo?.title?.trim() || serverInfo?.name?.trim() || setId
+
+/**
  * MCP tool sets, built from *configuration* rather than connection state.
  *
  * A configured server that is currently offline still appears, so the catalog
@@ -70,12 +88,8 @@ export const describeMcpToolSets = ({
     const catalog = discoveredCatalogs[server.id]
     if (!catalog || catalog.toolNames.length === 0) continue
 
-    // The locally configured id is user-chosen and frequently opaque (`cf`,
-    // `ca`, `playright`), so the server's own reported identity wins when it
-    // provided one. `title` and `description` are optional in the MCP protocol
-    // and were added to it late, hence the fallback chain.
     const reported = catalog.serverInfo
-    const label = reported?.title?.trim() || reported?.name?.trim() || server.id
+    const label = resolveToolSetLabel(server.id, reported)
     const description = reported?.description?.trim()
     sets.push({
       id: server.id,

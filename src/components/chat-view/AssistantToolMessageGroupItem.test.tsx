@@ -23,9 +23,11 @@ jest.mock('../../contexts/language-context', () => ({
   }),
 }))
 
+const mockDiscoveredCatalogs: Record<string, unknown> = {}
+
 jest.mock('../../contexts/settings-context', () => ({
   useSettings: () => ({
-    settings: {},
+    settings: { mcp: { discoveredCatalogs: mockDiscoveredCatalogs } },
   }),
 }))
 
@@ -692,6 +694,70 @@ describe('AssistantToolMessageGroupItem', () => {
       expect(html).toContain('Ran 1 command(s)')
       expect(html).toContain('Edited 1 file(s)')
       expect(html).not.toContain('other action')
+    })
+
+    it('summarizes MCP and module calls by tool set rather than lumping them into other', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'deepwiki__read_wiki_structure' },
+              { name: 'deepwiki__read_wiki_contents' },
+              { name: 'whiteboard__add_card' },
+            ]),
+          ]}
+        />,
+      )
+
+      expect(html).toContain('deepwiki 2 time(s)')
+      // A lone call names the tool: "whiteboard 1 time" says nothing.
+      expect(html).toContain('whiteboard · add_card')
+      expect(html).not.toContain('other action')
+    })
+
+    it('names a tool set the way the server reports itself, as <tool_catalog> does', () => {
+      mockDiscoveredCatalogs.cf = {
+        toolNames: ['search_docs', 'read_docs'],
+        serverInfo: { name: 'cloudflare-docs', title: 'Cloudflare Docs' },
+      }
+      try {
+        const html = renderToStaticMarkup(
+          <AssistantToolMessageGroupItem
+            {...baseProps}
+            messages={[
+              hiddenAssistantMessage,
+              buildToolMessage('tool-1', [
+                { name: 'cf__search_docs' },
+                { name: 'cf__read_docs' },
+              ]),
+            ]}
+          />,
+        )
+        expect(html).toContain('Cloudflare Docs 2 time(s)')
+      } finally {
+        delete mockDiscoveredCatalogs.cf
+      }
+    })
+
+    it('does not read a host verb into an MCP tool that shares its name', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'someserver__fs_read' },
+              { name: 'someserver__fs_edit' },
+            ]),
+          ]}
+        />,
+      )
+
+      expect(html).toContain('someserver 2 time(s)')
+      expect(html).not.toContain('Read 1 file(s)')
+      expect(html).not.toContain('Edited 1 file(s)')
     })
   })
 })
