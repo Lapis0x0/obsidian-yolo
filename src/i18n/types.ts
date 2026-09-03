@@ -523,8 +523,6 @@ export type TranslationKeys = {
       toolApprovalFullAccess?: string
       toolApprovalRequire?: string
       toolApprovalDangerousOnly?: string
-      toolDisclosureAuto?: string
-      toolDisclosureAutoSelect?: string
       toolDisclosureAlways?: string
       toolDisclosureMixed?: string
       toolDisclosureOnDemand?: string

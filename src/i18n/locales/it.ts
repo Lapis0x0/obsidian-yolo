@@ -718,8 +718,6 @@ export const it: DeepPartial<TranslationKeys> = {
       toolApprovalFullAccess: 'Accesso completo',
       toolApprovalRequire: 'Richiedi approvazione',
       toolApprovalDangerousOnly: 'Approva solo operazioni pericolose',
-      toolDisclosureAuto: 'Auto',
-      toolDisclosureAutoSelect: 'Selezione automatica',
       toolDisclosureAlways: 'In contesto',
       toolDisclosureMixed: 'Misto',
       toolDisclosureOnDemand: 'Su richiesta',

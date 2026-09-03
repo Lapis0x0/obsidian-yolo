@@ -85,17 +85,15 @@ export const getDefaultEnabledForTool = (toolName: string): boolean => {
 }
 
 /**
- * Default disclosure mode for a tool when the user has not customized it.
+ * Fallback disclosure mode for a tool name that does not parse into a server
+ * and a tool.
  *
- * Built-in `yolo_local__*` tools default to `always`: they total ~3.9K tokens
- * across ~13 tools, stub-izing them saves little and only adds a first-use
- * latency hit. Third-party MCP server tools also fall back to `always` here;
- * runtime callers that have the current server token budget pass it through
- * `getAssistantToolDisclosureMode` for automatic server-level selection.
+ * `always`, because a name we cannot parse cannot be addressed through the
+ * deferred path either: `<tool_catalog>` lists fully-qualified names, so a
+ * tool that has none would be listed nowhere and reachable by nothing.
  *
- * `load_tool_schemas` is a protocol-only tool injected by `selectAllowedTools`
- * when on-demand disclosure is in use; it is not a user-configurable surface
- * and never appears in `toolPreferences`.
+ * The ordinary paths never reach here — a host built-in resolves to `always`
+ * and everything else to `on_demand`, both in `getAssistantToolDisclosureMode`.
  */
 export const getDefaultDisclosureModeForTool = (
   toolName: string,

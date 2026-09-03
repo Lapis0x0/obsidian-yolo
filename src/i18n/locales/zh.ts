@@ -648,8 +648,6 @@ export const zh: TranslationKeys = {
       toolApprovalFullAccess: '完全放行',
       toolApprovalRequire: '需要审批',
       toolApprovalDangerousOnly: '危险操作审批',
-      toolDisclosureAuto: 'Auto',
-      toolDisclosureAutoSelect: '自动选择',
       toolDisclosureAlways: '常驻上下文',
       toolDisclosureMixed: '混合',
       toolDisclosureOnDemand: '按需披露',

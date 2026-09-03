@@ -702,8 +702,6 @@ export const en: TranslationKeys = {
       toolApprovalFullAccess: 'Full access',
       toolApprovalRequire: 'Require approval',
       toolApprovalDangerousOnly: 'Approve dangerous operations',
-      toolDisclosureAuto: 'Auto',
-      toolDisclosureAutoSelect: 'Auto select',
       toolDisclosureAlways: 'In context',
       toolDisclosureMixed: 'Mixed',
       toolDisclosureOnDemand: 'On demand',

@@ -1592,15 +1592,15 @@ export function AgentsSectionContent({
                     groupEnabledCount === group.tools.length
                   const showServerDisclosure =
                     !group.isBuiltin && group.tools.length > 0
-                  const disclosureSelectionValue = showServerDisclosure
-                    ? (draftAgent.toolServerPreferences?.[group.key]
-                        ?.disclosureMode ?? 'auto')
-                    : 'auto'
-                  // `auto` no longer weighs a token budget: everything that
-                  // is not a host built-in defers, and this row only renders
-                  // for non-built-in groups.
-                  const autoDisclosureMode: AssistantToolDisclosureMode =
-                    'on_demand'
+                  // No third "auto" choice: it used to pick a mode from the
+                  // server's schema token cost, and once everything that is
+                  // not a host built-in defers unconditionally it resolved to
+                  // `on_demand` every time — a label for a decision nobody was
+                  // making any more. Absence of an explicit preference is the
+                  // default, and the default is `on_demand`.
+                  const disclosureSelectionValue: AssistantToolDisclosureMode =
+                    draftAgent.toolServerPreferences?.[group.key]
+                      ?.disclosureMode ?? 'on_demand'
                   const disclosureModeLabel = (
                     mode: AssistantToolDisclosureMode,
                   ) =>
@@ -1610,22 +1610,9 @@ export function AgentsSectionContent({
                           'settings.agent.toolDisclosureAlways',
                           'Always loaded',
                         )
-                  const autoDisclosureLabel = `${t(
-                    'settings.agent.toolDisclosureAuto',
-                    'Auto',
-                  )}${
-                    autoDisclosureMode
-                      ? `: ${disclosureModeLabel(autoDisclosureMode)}`
-                      : ''
-                  }`
-                  const autoDisclosureOptionLabel = t(
-                    'settings.agent.toolDisclosureAutoSelect',
-                    'Auto select',
+                  const serverDisclosureLabel = disclosureModeLabel(
+                    disclosureSelectionValue,
                   )
-                  const serverDisclosureLabel =
-                    disclosureSelectionValue === 'auto'
-                      ? autoDisclosureLabel
-                      : disclosureModeLabel(disclosureSelectionValue)
                   const showServerApproval = !group.isBuiltin
                   const serverApprovalMode: AssistantToolApprovalMode =
                     draftAgent.toolServerPreferences?.[group.key]
@@ -1688,37 +1675,24 @@ export function AgentsSectionContent({
                                     className="yolo-simple-select__list"
                                     value={disclosureSelectionValue}
                                     onValueChange={(nextValue) => {
-                                      if (nextValue === 'auto') {
+                                      if (nextValue === 'always') {
+                                        setServerDisclosureMode(
+                                          group.key,
+                                          'always',
+                                        )
+                                        return
+                                      }
+                                      // Picking the default stores nothing, so
+                                      // "no preference" stays the one way to
+                                      // spell it.
+                                      if (nextValue === 'on_demand') {
                                         setServerDisclosureMode(
                                           group.key,
                                           undefined,
                                         )
-                                        return
-                                      }
-                                      if (
-                                        nextValue === 'always' ||
-                                        nextValue === 'on_demand'
-                                      ) {
-                                        setServerDisclosureMode(
-                                          group.key,
-                                          nextValue,
-                                        )
                                       }
                                     }}
                                   >
-                                    <DropdownMenu.RadioItem
-                                      className="yolo-simple-select__item"
-                                      value="auto"
-                                    >
-                                      <div className="yolo-simple-select__item-text">
-                                        <div className="yolo-simple-select__item-label">
-                                          {autoDisclosureOptionLabel}
-                                        </div>
-                                      </div>
-                                      <DropdownMenu.ItemIndicator className="yolo-simple-select__item-indicator">
-                                        <Check size={12} />
-                                      </DropdownMenu.ItemIndicator>
-                                    </DropdownMenu.RadioItem>
                                     <DropdownMenu.RadioItem
                                       className="yolo-simple-select__item"
                                       value="always"
