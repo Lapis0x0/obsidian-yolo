@@ -1209,6 +1209,7 @@ export function useCliRuntimeOrchestration({
           async (isCurrent) => {
             const environmentContext = await buildCliEnvironmentContext({
               app,
+              runtimeId: activeRuntimeId,
               settings,
               currentFile: activeFile,
               currentFileViewState: activeViewState,

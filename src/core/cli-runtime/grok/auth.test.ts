@@ -24,10 +24,13 @@ describe('selectGrokSubscriptionAuthMethod', () => {
     ['interactive OAuth only', [method('grok.com')]],
     ['API key only', [method('xai.api_key')]],
     ['unknown methods', [method('future-auth')]],
-    ['no methods', []],
   ])('requires a prior grok login for %s', (_label, methods) => {
     expect(() => selectGrokSubscriptionAuthMethod(methods)).toThrow(
       'Run `grok login` (or `grok login --device-auth`) in a terminal, then retry.',
     )
+  })
+
+  it('skips authentication when the agent advertises no auth methods', () => {
+    expect(selectGrokSubscriptionAuthMethod([])).toBeUndefined()
   })
 })

@@ -1019,6 +1019,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
           buildEnvironmentContext: () =>
             buildCliEnvironmentContext({
               app,
+              runtimeId: activeRuntimeId,
               settings,
               currentFile: activeFile,
               currentFileViewState: activeViewState,

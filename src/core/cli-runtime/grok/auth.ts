@@ -10,10 +10,17 @@ const LOGIN_REQUIRED_MESSAGE =
  * and UI lifecycle that this first integration deliberately does not claim
  * to support. `xai.api_key` is also excluded so choosing the subscription
  * runtime cannot silently consume separately billed API credits.
+ *
+ * An empty list is ACP's way of saying the agent needs no authentication at
+ * all, which `AcpHost` honours by skipping the `authenticate` call — so it
+ * returns undefined rather than sending an already signed-in user off to run
+ * `grok login` again. Only a non-empty list without `cached_token` means a
+ * login is genuinely missing.
  */
 export const selectGrokSubscriptionAuthMethod = (
   methods: readonly AuthMethod[],
-): AuthMethodId => {
+): AuthMethodId | undefined => {
+  if (methods.length === 0) return undefined
   if (methods.some((method) => method.id === 'cached_token')) {
     return 'cached_token'
   }

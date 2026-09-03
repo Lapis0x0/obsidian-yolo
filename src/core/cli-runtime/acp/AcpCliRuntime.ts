@@ -9,6 +9,7 @@ import {
   type ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
+import { RUNTIME_CAPABILITIES } from '../capabilities'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -32,6 +33,7 @@ import {
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModelState,
+  isAcpImagePromptBlock,
   mapAcpTurnUsage,
   mapAcpUsageUpdate,
   resolveApprovalOptionId,
@@ -272,14 +274,18 @@ export class AcpCliRuntime implements CliRuntime {
     }
     const host = await this.getHost()
     const prompt = toAcpPromptBlocks(input.content)
-    const containsImage = prompt.some((block) => block.type === 'image')
+    // Runtimes that declare no image attachments (Grok) must not reach the
+    // agent with one, whatever the turn content picked up on the way here —
+    // the composer refusing the attachment is the user-facing half, this is
+    // the protocol edge. Scoped to that declaration rather than to what the
+    // agent advertised: ACP leaves `promptCapabilities` optional, so its
+    // absence is not a denial, and reading it as one would break every
+    // image-capable ACP runtime whose agent stays silent.
     if (
-      containsImage &&
-      host.capabilities?.promptCapabilities?.image !== true
+      !RUNTIME_CAPABILITIES[this.runtimeId].supportsImageAttachments &&
+      prompt.some(isAcpImagePromptBlock)
     ) {
-      throw new Error(
-        `${this.runtimeId} ACP agent does not support image input.`,
-      )
+      throw new Error(`${this.runtimeId} does not support image input.`)
     }
     const sessionId = this.activeSessionRef.nativeSessionId
     this.cancelRequested = false

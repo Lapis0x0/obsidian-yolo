@@ -179,6 +179,13 @@ const createRuntime = (agent: FakeAcpAgent, compactCommand?: string) =>
     ...(compactCommand ? { compactCommand } : {}),
   })
 
+/** Grok is the runtime whose capabilities declare `supportsImageAttachments: false`. */
+const createImagelessRuntime = (agent: FakeAcpAgent) =>
+  new AcpCliRuntime('grok', {
+    cwd: '/vault',
+    createProcess: async () => agent,
+  })
+
 const collectEvents = (runtime: AcpCliRuntime): CliRuntimeEvent[] => {
   const events: CliRuntimeEvent[] = []
   runtime.subscribe((event) => events.push(event))
@@ -415,23 +422,16 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
-  it('rejects image input when the ACP agent explicitly reports no image capability', async () => {
+  it('rejects image input for a runtime that declares no image attachments', async () => {
     const agent = new FakeAcpAgent()
     let promptCalled = false
-    agent.on('initialize', () => ({
-      protocolVersion: 1,
-      agentCapabilities: {
-        loadSession: true,
-        promptCapabilities: { image: false },
-      },
-    }))
     agent.on('session/new', () => ({ sessionId: 'sess-no-images' }))
     agent.on('session/prompt', () => {
       promptCalled = true
       return { stopReason: 'end_turn' }
     })
 
-    const runtime = createRuntime(agent)
+    const runtime = createImagelessRuntime(agent)
     const events = collectEvents(runtime)
     await runtime.ensureReady({})
 
@@ -452,16 +452,16 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
-  it('requires an explicit ACP image capability before forwarding image blocks', async () => {
+  it('rejects an image carried as a URL, which maps to a resource link rather than an image block', async () => {
     const agent = new FakeAcpAgent()
     let promptCalled = false
-    agent.on('session/new', () => ({ sessionId: 'sess-no-image-capability' }))
+    agent.on('session/new', () => ({ sessionId: 'sess-linked-image' }))
     agent.on('session/prompt', () => {
       promptCalled = true
       return { stopReason: 'end_turn' }
     })
 
-    const runtime = createRuntime(agent)
+    const runtime = createImagelessRuntime(agent)
     await runtime.ensureReady({})
 
     await expect(
@@ -469,12 +469,38 @@ describe('AcpCliRuntime', () => {
         content: [
           {
             type: 'image_url',
-            image_url: { url: 'data:image/png;base64,QUJD' },
+            image_url: { url: 'https://example.com/diagram.png' },
           },
         ],
       }),
     ).rejects.toThrow('does not support image input')
     expect(promptCalled).toBe(false)
+    await runtime.dispose()
+  })
+
+  it('forwards image blocks for an image-capable runtime even when the agent advertises no image capability', async () => {
+    const agent = new FakeAcpAgent()
+    let prompt: unknown
+    agent.on('session/new', () => ({ sessionId: 'sess-silent-capability' }))
+    agent.on('session/prompt', (message) => {
+      prompt = message.params?.prompt
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    await runtime.ensureReady({})
+    await runtime.sendTurn({
+      content: [
+        {
+          type: 'image_url',
+          image_url: { url: 'data:image/png;base64,QUJD' },
+        },
+      ],
+    })
+
+    expect(prompt).toEqual([
+      { type: 'image', mimeType: 'image/png', data: 'QUJD' },
+    ])
     await runtime.dispose()
   })
 

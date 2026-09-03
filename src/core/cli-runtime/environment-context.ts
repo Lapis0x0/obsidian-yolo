@@ -8,8 +8,12 @@ import {
   renderCurrentFilePointerInjection,
 } from '../../utils/chat/contextual-injections'
 
+import { RUNTIME_CAPABILITIES } from './capabilities'
+import type { CliRuntimeId } from './types'
+
 export type BuildCliEnvironmentContextInput = {
   app: App
+  runtimeId: CliRuntimeId
   settings: YoloSettings
   currentFile: TFile | null
   currentFileViewState?: CurrentFileViewState
@@ -30,6 +34,7 @@ const toContentParts = (message: RequestMessage | null): ContentPart[] => {
  */
 export const buildCliEnvironmentContext = async ({
   app,
+  runtimeId,
   settings,
   currentFile,
   currentFileViewState,
@@ -48,8 +53,16 @@ export const buildCliEnvironmentContext = async ({
     renderBrowserContextInjection({ type: 'browser-context', app }),
   ])
 
-  return [
+  const parts = [
     ...toContentParts(currentFileContext),
     ...toContentParts(browserContext),
   ]
+
+  // Viewing an image file makes the current-file pointer contribute the
+  // image itself. A runtime that takes no images would fail the whole turn
+  // over context the user never attached, so drop just that part — the
+  // pointer text naming the file still goes through.
+  return RUNTIME_CAPABILITIES[runtimeId].supportsImageAttachments
+    ? parts
+    : parts.filter((part) => part.type !== 'image_url')
 }
