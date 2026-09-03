@@ -83,7 +83,7 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         name={t('settings.agent.claudeCliPathName', 'Claude Code CLI path')}
         desc={t(
           'settings.agent.claudeCliPathDesc',
-          'Custom path to the claude executable — paste the output of "which claude". Leave empty to auto-detect. Stored on this device only.',
+          'Custom path to the claude executable — paste the output of "which claude" ("where claude" on Windows). Leave empty to auto-detect. Stored on this device only.',
         )}
         placeholder="/opt/homebrew/bin/claude"
       />
@@ -103,7 +103,7 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         name={t('settings.agent.hermesCliPathName', 'Hermes CLI path')}
         desc={t(
           'settings.agent.hermesCliPathDesc',
-          'Custom path to the hermes executable — paste the output of "which hermes". Leave empty to auto-detect. Stored on this device only.',
+          'Custom path to the hermes executable — paste the output of "which hermes" ("where hermes" on Windows). Leave empty to auto-detect. Stored on this device only.',
         )}
         placeholder="~/.local/bin/hermes"
       />
@@ -113,7 +113,7 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         name={t('settings.agent.piCliPathName', 'pi CLI path')}
         desc={t(
           'settings.agent.piCliPathDesc',
-          'Custom path to the pi executable — paste the output of "which pi". Leave empty to auto-detect. Stored on this device only.',
+          'Custom path to the pi executable — paste the output of "which pi" ("where pi" on Windows). Leave empty to auto-detect. Stored on this device only.',
         )}
         placeholder="/opt/homebrew/bin/pi"
       />

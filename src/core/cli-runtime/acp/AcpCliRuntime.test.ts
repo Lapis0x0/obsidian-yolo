@@ -256,6 +256,88 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
+  it('surfaces a usage_update as context usage without touching the transcript', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    agent.on('session/prompt', (message) => {
+      const params = message.params as { sessionId: string }
+      agent.notify('session/update', {
+        sessionId: params.sessionId,
+        update: {
+          sessionUpdate: 'agent_message_chunk',
+          content: { type: 'text', text: 'Hello!' },
+        },
+      })
+      // Hermes reports context pressure once the turn settles.
+      agent.notify('session/update', {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'usage_update', used: 12_345, size: 200_000 },
+      })
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ content: 'hi' })
+
+    expect(events).toContainEqual({
+      type: 'context_usage',
+      usage: { promptTokens: 12_345, maxContextTokens: 200_000 },
+    })
+    expect(
+      events.filter(
+        (event) =>
+          event.type === 'message_upsert' && event.message.role === 'assistant',
+      ),
+    ).toHaveLength(1)
+    await runtime.dispose()
+  })
+
+  it('reports turn metrics before the terminal run state so the footer keeps them', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    agent.on('session/prompt', () => ({
+      stopReason: 'end_turn',
+      usage: {
+        inputTokens: 6_800,
+        outputTokens: 572,
+        totalTokens: 7_372,
+        cachedReadTokens: 5_800,
+      },
+    }))
+
+    const runtime = createRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ content: 'hi' })
+
+    const metricsIndex = events.findIndex(
+      (event) => event.type === 'turn_metrics',
+    )
+    const completedIndex = events.findIndex(
+      (event) => event.type === 'run_state' && event.state === 'completed',
+    )
+    // The controller closes the turn's metrics window on the terminal run
+    // state, so metrics emitted after it would be dropped.
+    expect(metricsIndex).toBeGreaterThanOrEqual(0)
+    expect(metricsIndex).toBeLessThan(completedIndex)
+    const metrics = events[metricsIndex]
+    expect(metrics).toMatchObject({
+      type: 'turn_metrics',
+      usage: {
+        prompt_tokens: 6_800,
+        completion_tokens: 572,
+        total_tokens: 7_372,
+        cache_read_input_tokens: 5_800,
+      },
+    })
+    expect(
+      metrics.type === 'turn_metrics' ? metrics.durationMs : undefined,
+    ).toEqual(expect.any(Number))
+    await runtime.dispose()
+  })
+
   it('maps a cancelled stop reason to an aborted run state', async () => {
     const agent = new FakeAcpAgent()
     agent.on('session/new', () => ({ sessionId: 'sess-1' }))
@@ -301,15 +383,11 @@ describe('AcpCliRuntime', () => {
 
     // Let the requestPermission round-trip reach AcpCliRuntime before responding.
     await new Promise((resolve) => setTimeout(resolve, 10))
-    expect(events).toContainEqual({
-      type: 'run_state',
-      state: 'waiting_for_approval',
-    })
     const responded = await runtime.respondApproval({
       requestId: 'call-1',
       decision: 'approve_for_session',
     })
-    expect(responded).toBe(true)
+    expect(responded).toEqual({ status: ToolCallResponseStatus.Running })
 
     await turnPromise
     expect(permissionOutcome).toEqual({
@@ -327,6 +405,52 @@ describe('AcpCliRuntime', () => {
         ],
       },
     })
+    await runtime.dispose()
+  })
+
+  it('answers an approval with the state its card becomes, not by republishing it', async () => {
+    const agent = new FakeAcpAgent()
+    wireServerRequestReplies(agent)
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    agent.on('session/prompt', async (message) => {
+      const params = message.params as { sessionId: string }
+      await agent.request('session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call-1',
+          title: 'Run npm test',
+          kind: 'execute',
+        },
+        options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }],
+      })
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent)
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+    const turnPromise = runtime.sendTurn({ content: 'run the tests' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    // The waiting run state is derived from the card, never announced.
+    expect(events).not.toContainEqual(
+      expect.objectContaining({
+        type: 'run_state',
+        state: 'waiting_for_approval',
+      }),
+    )
+    const eventsBeforeAnswer = events.length
+
+    // The settled state is the return value — the host publishes it (see
+    // `CliRuntime.respondApproval`).
+    await expect(
+      runtime.respondApproval({
+        requestId: 'call-1',
+        decision: 'approve_once',
+      }),
+    ).resolves.toEqual({ status: ToolCallResponseStatus.Running })
+    expect(events).toHaveLength(eventsBeforeAnswer)
+
+    await turnPromise
     await runtime.dispose()
   })
 

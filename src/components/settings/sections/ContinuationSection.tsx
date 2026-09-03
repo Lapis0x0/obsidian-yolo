@@ -14,8 +14,8 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { ContinuationQuickActionsSettings } from '../ContinuationQuickActionsSettings'
 import { SelectionChatActionsSettings } from '../SelectionChatActionsSettings'
-import { SmartSpaceQuickActionsSettings } from '../SmartSpaceQuickActionsSettings'
 
 import { SnippetsSection } from './SnippetsSection'
 
@@ -346,7 +346,7 @@ export function ContinuationSection({ app }: ContinuationSectionProps) {
                   />
                 </ObsidianSetting>
 
-                <SmartSpaceQuickActionsSettings />
+                <ContinuationQuickActionsSettings />
               </>
             )}
 

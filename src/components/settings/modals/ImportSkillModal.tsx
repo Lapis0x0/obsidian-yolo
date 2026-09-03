@@ -27,7 +27,7 @@ import {
   validateDirectoryPackage,
   validateSingleFileSkill,
 } from '../../../core/skills/skillValidation'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 

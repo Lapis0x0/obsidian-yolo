@@ -319,7 +319,7 @@ export const zh: TranslationKeys = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: '续写预设',
       quickActionsDesc: '自定义续写模式下显示的快捷选项和提示词',
       quickActionsModalTitle: 'Quick Ask 续写预设',
@@ -341,7 +341,7 @@ export const zh: TranslationKeys = {
       actionIcon: '图标',
       actionIconDesc: '选择一个图标',
       actionEnabled: '启用',
-      actionEnabledDesc: '是否在 Smart Space 中显示此选项',
+      actionEnabledDesc: '是否在续写预设中显示此选项',
       moveUp: '上移',
       moveDown: '下移',
       duplicate: '复制',
@@ -704,16 +704,16 @@ export const zh: TranslationKeys = {
       cliRuntimesBlockTitle: 'CLI 运行时',
       claudeCliPathName: 'Claude Code CLI 路径',
       claudeCliPathDesc:
-        '自定义 claude 可执行文件路径，可粘贴 which claude 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+        '自定义 claude 可执行文件路径，可粘贴 which claude（Windows 为 where claude）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       codexCliPathName: 'Codex CLI 路径',
       codexCliPathDesc:
         '自定义 codex 可执行文件路径，可粘贴 which codex（Windows 为 where codex）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       hermesCliPathName: 'Hermes CLI 路径',
       hermesCliPathDesc:
-        '自定义 hermes 可执行文件路径，可粘贴 which hermes 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+        '自定义 hermes 可执行文件路径，可粘贴 which hermes（Windows 为 where hermes）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       piCliPathName: 'Pi CLI 路径',
       piCliPathDesc:
-        '自定义 pi 可执行文件路径，可粘贴 which pi 的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+        '自定义 pi 可执行文件路径，可粘贴 which pi（Windows 为 where pi）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',
@@ -733,6 +733,11 @@ export const zh: TranslationKeys = {
       mcpServerDesc:
         '允许外部 Agent 通过 MCP 搜索 Vault，并向已配置的 YOLO Agent 委派任务。',
       mcpServerDesktopOnly: 'MCP 服务仅支持桌面端。',
+      mcpServerPort: '端口',
+      mcpServerPortDesc:
+        'MCP 服务监听的本地端口。若该端口已被其他程序或插件占用，改成别的端口后记得同步更新客户端配置。',
+      mcpServerPortInUse:
+        '端口 {port} 已被占用——常见情况是同一个 Obsidian 进程里的其他插件（例如 Local REST API）在用。请在上方换一个端口。',
       mcpServerClientConfig: 'MCP 连接配置',
       mcpServerCopyConfig: '复制',
       mcpServerError: '启动失败',
@@ -899,6 +904,7 @@ export const zh: TranslationKeys = {
       badgeOpenAiCompatible: 'OpenAI 兼容',
       badgeNative: '原生协议',
       badgeOAuth: 'OAuth',
+      badgeSponsor: '赞助商',
       badgeAdded: '已添加',
       kind: {
         openai: '推理 · 多模态',
@@ -937,6 +943,7 @@ export const zh: TranslationKeys = {
       providerIdDesc: '为此提供商指定一个用于设置中的 ID，仅供你自己区分使用。',
       providerIdPlaceholder: 'my-custom-provider',
       apiKey: 'API 密钥',
+      getApiKey: '获取 API 密钥',
       apiKeyDesc: '（如不需要可留空）',
       apiKeyPlaceholder: '输入你的 API 密钥',
       baseUrl: '基础 URL',
@@ -2400,6 +2407,44 @@ export const zh: TranslationKeys = {
     statusRequesting: '请求中...',
     statusThinking: '思考中...',
     statusGenerating: '生成中...',
+  },
+
+  sparkle: {
+    settings: {
+      open: '灵光写作设置',
+      back: '返回',
+    },
+    similarNotes: {
+      title: '相似笔记',
+      scope: '范围',
+      allKnowledgeBases: '全部知识库',
+      someKnowledgeBases: '{count} 个知识库',
+      manageKnowledgeBases: '管理知识库…',
+      basedOn: '基于当前笔记',
+      insertLink: '在光标处插入链接',
+      insertUnavailable: '没有正在编辑的笔记',
+      expandSnippets: '展开命中片段',
+      collapseSnippets: '收起命中片段',
+      noActiveNote: '没有打开的笔记',
+      noActiveNoteHint: '打开一篇笔记后，这里会显示与它相关的内容。',
+      noEmbeddingModel: '尚未配置 embedding 模型',
+      noEmbeddingModelHint: '需要一个 embedding 模型来计算笔记之间的相似度。',
+      configure: '去配置',
+      notIndexed: '这篇笔记还没有被索引',
+      notIndexedHint: '相似笔记依赖向量索引。索引后即可在这里看到关联的笔记。',
+      indexThisNote: '索引这篇笔记',
+      indexing: '索引中…',
+      indexFailed: '索引这篇笔记失败',
+      outOfScope: '这篇笔记不在任何知识库范围内',
+      outOfScopeHint: '把它所在的文件夹加入某个知识库，才会出现在相似笔记里。',
+      openKnowledgeBaseSettings: '前往知识库设置',
+      empty: '当前范围内没有相似笔记',
+      emptyHint: '可以放宽检索范围，检索更多知识库。',
+      emptyHintSearched:
+        '已在 {count} 篇已索引笔记中查找。可以放宽检索范围，检索更多知识库。',
+      error: '相似笔记加载失败',
+      retry: '重试',
+    },
   },
 
   chatMode: {

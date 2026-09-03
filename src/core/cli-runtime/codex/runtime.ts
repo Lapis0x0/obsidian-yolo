@@ -2,6 +2,7 @@ import type { ChatMessage } from '../../../types/chat'
 import type { ContentPart } from '../../../types/llm/request'
 import {
   type ToolCallRequest,
+  type ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
 import { ReasoningPhaseTracker } from '../../../utils/chat/reasoningPhaseTracker'
@@ -613,9 +614,11 @@ export class CodexCliRuntime implements CliRuntime {
     })
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
+  async respondApproval(
+    response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingRequests.get(response.requestId)
-    if (!pending || pending.kind !== 'approval') return false
+    if (!pending || pending.kind !== 'approval') return null
     this.deletePendingRequest(pending)
     const host = await this.getHost()
     if (pending.request.method === 'item/permissions/requestApproval') {
@@ -637,17 +640,32 @@ export class CodexCliRuntime implements CliRuntime {
         decision: approvalDecision(response.decision),
       })
     }
-    return true
+    if (response.decision === 'reject') {
+      return { status: ToolCallResponseStatus.Rejected }
+    }
+    // A permission grant has no follow-up item of its own, so this is where
+    // that card ends; a command or file change is about to report through its
+    // own item, which replaces the card the moment it arrives.
+    return pending.request.method === 'item/permissions/requestApproval'
+      ? {
+          status: ToolCallResponseStatus.Success,
+          data: { type: 'text', text: '' },
+        }
+      : { status: ToolCallResponseStatus.Running }
   }
 
-  async respondQuestion(response: CliQuestionResponse): Promise<boolean> {
+  async respondQuestion(
+    response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingRequests.get(response.requestId)
-    if (!pending || pending.kind !== 'question') return false
+    if (!pending || pending.kind !== 'question') return null
     this.deletePendingRequest(pending)
     ;(await this.getHost()).respond(pending.request.id, {
       answers: toCodexQuestionAnswers(response.answer),
     })
-    return true
+    return response.answer === null || response.answer === undefined
+      ? { status: ToolCallResponseStatus.Rejected }
+      : { status: ToolCallResponseStatus.Running }
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -1083,11 +1101,6 @@ export class CodexCliRuntime implements CliRuntime {
       request.method === 'item/fileChange/requestApproval' ||
       request.method === 'item/permissions/requestApproval'
     ) {
-      this.registerPendingRequest(key, {
-        request,
-        toolCallId: itemId,
-        kind: 'approval',
-      })
       const [assistant, tool] = buildPendingToolMessages({
         requestId: request.id,
         toolCallId: itemId,
@@ -1116,17 +1129,16 @@ export class CodexCliRuntime implements CliRuntime {
                 : 'permission_request',
         },
       })
-      this.emit({ type: 'message_upsert', message: assistant })
-      this.emit({ type: 'message_upsert', message: tool })
-      this.emit({ type: 'run_state', state: 'waiting_for_approval' })
-      return
-    }
-    if (request.method === 'item/tool/requestUserInput') {
       this.registerPendingRequest(key, {
         request,
         toolCallId: itemId,
-        kind: 'question',
+        kind: 'approval',
       })
+      this.emit({ type: 'message_upsert', message: assistant })
+      this.emit({ type: 'message_upsert', message: tool })
+      return
+    }
+    if (request.method === 'item/tool/requestUserInput') {
       const rawQuestions = Array.isArray(request.params.questions)
         ? request.params.questions
         : []
@@ -1181,9 +1193,13 @@ export class CodexCliRuntime implements CliRuntime {
           presentationArguments: { questions },
         },
       })
+      this.registerPendingRequest(key, {
+        request,
+        toolCallId: itemId,
+        kind: 'question',
+      })
       this.emit({ type: 'message_upsert', message: assistant })
       this.emit({ type: 'message_upsert', message: tool })
-      this.emit({ type: 'run_state', state: 'waiting_for_user' })
       return
     }
     void this.getHost().then((host) =>

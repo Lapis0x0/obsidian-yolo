@@ -1,5 +1,10 @@
 import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
 import { assertCliRuntimeAvailable } from '../desktop'
+import {
+  type CliSpawnSpec,
+  killCliChild,
+  resolveCliSpawnSpec,
+} from '../windows-spawn'
 
 type ChildProcess = import('node:child_process').ChildProcess
 type StringDecoder = import('node:string_decoder').StringDecoder
@@ -60,6 +65,8 @@ export class PiSubprocess implements PiProcessLike {
   private constructor(
     private readonly child: ChildProcess,
     private readonly stdoutDecoder: StringDecoder,
+    private readonly spawnSpec: CliSpawnSpec,
+    private readonly spawn: typeof import('node:child_process').spawn,
   ) {
     this.started = new Promise<void>((resolve, reject) => {
       let settled = false
@@ -119,17 +126,24 @@ export class PiSubprocess implements PiProcessLike {
       )
     }
     const env = await getProcessEnv(options.env)
+    const spec = resolveCliSpawnSpec(command, options.args)
     // No `await` between `spawn()` and constructing `PiSubprocess` — the
     // constructor is what attaches the `'spawn'`/`'error'` listeners, and a
     // fast-starting process's `'spawn'` event must not have a chance to fire
     // (and be lost) before that listener exists.
-    const child = spawn(command, options.args, {
+    const child = spawn(spec.command, spec.args, {
       cwd: options.cwd,
       env,
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      windowsVerbatimArguments: spec.windowsVerbatimArguments,
     })
-    const process = new PiSubprocess(child, new StringDecoder('utf8'))
+    const process = new PiSubprocess(
+      child,
+      new StringDecoder('utf8'),
+      spec,
+      spawn,
+    )
     await process.started
     return process
   }
@@ -167,7 +181,7 @@ export class PiSubprocess implements PiProcessLike {
     if (this.termination || this.child.exitCode !== null || this.child.killed) {
       return
     }
-    this.child.kill('SIGTERM')
+    killCliChild(this.child, this.spawnSpec, this.spawn)
   }
 
   private signalExit(code: number | null, signal: NodeJS.Signals | null): void {

@@ -5,6 +5,10 @@ import type {
 } from '@agentclientprotocol/sdk'
 
 import type { ChatMessage } from '../../../types/chat'
+import {
+  type ToolCallResponse,
+  ToolCallResponseStatus,
+} from '../../../types/tool-call.types'
 import type {
   CliApprovalResponse,
   CliQuestionResponse,
@@ -28,6 +32,8 @@ import {
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModelState,
+  mapAcpTurnUsage,
+  mapAcpUsageUpdate,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
   upsertAcpMessage,
@@ -270,6 +276,7 @@ export class AcpCliRuntime implements CliRuntime {
     this.aggregator.beginTurn()
     this.emit({ type: 'run_state', state: 'running' })
     this.turnInFlight = true
+    const startedAt = Date.now()
     try {
       const result = await host.call((connection) =>
         connection.prompt({
@@ -284,20 +291,18 @@ export class AcpCliRuntime implements CliRuntime {
       // outcome can only be `aborted`, regardless of what `stopReason` the
       // (possibly racing) prompt response reports.
       const aborted = this.cancelRequested || result.stopReason === 'cancelled'
+      // Before the terminal run state, which closes the turn's metrics window.
+      // ACP has no turn-duration field, so it is measured around the prompt
+      // call the same way Codex measures its own.
+      this.emit({
+        type: 'turn_metrics',
+        durationMs: Math.max(0, Date.now() - startedAt),
+        ...(result.usage ? { usage: mapAcpTurnUsage(result.usage) } : {}),
+      })
       this.emit({
         type: 'run_state',
         state: aborted ? 'aborted' : 'completed',
       })
-      if (result.usage) {
-        this.emit({
-          type: 'turn_metrics',
-          usage: {
-            prompt_tokens: result.usage.inputTokens,
-            completion_tokens: result.usage.outputTokens,
-            total_tokens: result.usage.totalTokens,
-          },
-        })
-      }
     } catch (error) {
       this.turnInFlight = false
       throw error
@@ -368,9 +373,11 @@ export class AcpCliRuntime implements CliRuntime {
     await host.call((connection) => connection.cancel({ sessionId }))
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
+  async respondApproval(
+    response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingApprovals.get(response.requestId)
-    if (!pending) return false
+    if (!pending) return null
     this.pendingApprovals.delete(response.requestId)
     const optionId = resolveApprovalOptionId(pending.options, response.decision)
     pending.resolve(
@@ -378,11 +385,18 @@ export class AcpCliRuntime implements CliRuntime {
         ? { outcome: { outcome: 'selected', optionId } }
         : buildCancelledApprovalOutcome(),
     )
-    return true
+    // No matching option means the outcome went out as cancelled, so the tool
+    // is not about to run.
+    return optionId
+      ? { status: ToolCallResponseStatus.Running }
+      : { status: ToolCallResponseStatus.Rejected }
   }
 
-  async respondQuestion(_response: CliQuestionResponse): Promise<boolean> {
-    return false
+  /** ACP has no user-question request — nothing is ever pending to answer. */
+  async respondQuestion(
+    _response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
+    return null
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -424,6 +438,13 @@ export class AcpCliRuntime implements CliRuntime {
     this.activeSessionRef = ref
     this.unregisterSession = host.registerSession(ref.nativeSessionId, {
       onUpdate: (update) => {
+        // Carries context pressure rather than transcript content, so it never
+        // reaches the message aggregator.
+        if (update.sessionUpdate === 'usage_update') {
+          const usage = mapAcpUsageUpdate(update)
+          if (usage) this.emit({ type: 'context_usage', usage })
+          return
+        }
         for (const message of this.aggregator.apply(update, this.runtimeId)) {
           this.emit({ type: 'message_upsert', message })
         }
@@ -497,7 +518,6 @@ export class AcpCliRuntime implements CliRuntime {
     )
     this.emit({ type: 'message_upsert', message: assistant })
     this.emit({ type: 'message_upsert', message: tool })
-    this.emit({ type: 'run_state', state: 'waiting_for_approval' })
     return new Promise<RequestPermissionResponse>((resolve) => {
       this.pendingApprovals.set(request.toolCall.toolCallId, {
         options: request.options,

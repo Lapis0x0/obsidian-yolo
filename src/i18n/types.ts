@@ -594,6 +594,9 @@ export type TranslationKeys = {
       mcpServerDesc?: string
       mcpServerDesktopOnly?: string
       mcpServerEnabled?: string
+      mcpServerPort?: string
+      mcpServerPortDesc?: string
+      mcpServerPortInUse?: string
       mcpServerClientConfig?: string
       mcpServerCopyConfig?: string
       mcpServerError?: string
@@ -747,6 +750,7 @@ export type TranslationKeys = {
       badgeOpenAiCompatible?: string
       badgeNative?: string
       badgeOAuth?: string
+      badgeSponsor: string
       badgeAdded?: string
       kind?: Record<string, string>
       providersCount: string
@@ -766,6 +770,7 @@ export type TranslationKeys = {
       providerIdDesc: string
       providerIdPlaceholder: string
       apiKey: string
+      getApiKey: string
       apiKeyDesc: string
       apiKeyPlaceholder: string
       baseUrl: string
@@ -1475,7 +1480,7 @@ export type TranslationKeys = {
       interactionSectionTitle?: string
       maintenanceSectionTitle?: string
     }
-    smartSpace?: {
+    continuationQuickActions?: {
       quickActionsTitle: string
       quickActionsDesc: string
       quickActionsModalTitle?: string
@@ -2216,6 +2221,44 @@ export type TranslationKeys = {
     statusRequesting?: string
     statusThinking?: string
     statusGenerating?: string
+  }
+
+  // Sparkle sidebar page
+  sparkle?: {
+    settings?: {
+      open?: string
+      back?: string
+    }
+    similarNotes?: {
+      title?: string
+      scope?: string
+      allKnowledgeBases?: string
+      someKnowledgeBases?: string
+      manageKnowledgeBases?: string
+      basedOn?: string
+      insertLink?: string
+      insertUnavailable?: string
+      expandSnippets?: string
+      collapseSnippets?: string
+      noActiveNote?: string
+      noActiveNoteHint?: string
+      noEmbeddingModel?: string
+      noEmbeddingModelHint?: string
+      configure?: string
+      notIndexed?: string
+      notIndexedHint?: string
+      indexThisNote?: string
+      indexing?: string
+      indexFailed?: string
+      outOfScope?: string
+      outOfScopeHint?: string
+      openKnowledgeBaseSettings?: string
+      empty?: string
+      emptyHint?: string
+      emptyHintSearched?: string
+      error?: string
+      retry?: string
+    }
   }
 
   // Chat Mode Select

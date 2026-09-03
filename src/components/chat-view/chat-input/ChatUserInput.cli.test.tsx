@@ -1,15 +1,5 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 
-jest.mock('framer-motion', () => ({
-  AnimatePresence: ({ children }: { children: React.ReactNode }) => children,
-  motion: {
-    div: ({ children, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-      <div {...props}>{children}</div>
-    ),
-  },
-  useReducedMotion: () => false,
-}))
-
 jest.mock('../../../contexts/app-context', () => ({
   useApp: () => ({}),
 }))

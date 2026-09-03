@@ -170,7 +170,7 @@
 }
 
 /* default 变体下的 group-label / separator / list / item 样式集中在这里。
-   --smart-space 变体的同名元素样式集中在 src/styles/panels/smart-space.css。
+   --continuation 变体的同名元素样式集中在 src/styles/panels/continuation.css。
    两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */
 .yolo-popover-surface--default .yolo-popover-group-label {
   display: block;
@@ -1011,7 +1011,6 @@ button.yolo-chat-list-origin-filter:focus-visible {
   right: 0;
   bottom: calc(100% + 8px);
   z-index: 40;
-  display: flex;
   flex-direction: column;
   gap: 8px;
   width: min(320px, calc(100vw - 24px));
@@ -1030,6 +1029,11 @@ button.yolo-chat-list-origin-filter:focus-visible {
     opacity var(--yolo-anim-duration-exit) ease,
     transform var(--yolo-anim-duration-exit) var(--yolo-anim-ease-out);
   pointer-events: none;
+}
+
+/* Keep display off the base rule so UA `[hidden] { display: none }` wins. */
+.yolo-background-activity-status-panel:not([hidden]) {
+  display: flex;
 }
 
 .yolo-background-activity-status-panel.is-open {

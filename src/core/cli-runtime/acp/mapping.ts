@@ -11,6 +11,8 @@ import type {
   ToolCallStatus,
   ToolCallUpdate,
   ToolKind,
+  Usage,
+  UsageUpdate,
 } from '@agentclientprotocol/sdk'
 
 import type {
@@ -20,6 +22,7 @@ import type {
   ChatUserMessage,
 } from '../../../types/chat'
 import type { ContentPart } from '../../../types/llm/request'
+import type { ResponseUsage } from '../../../types/llm/response'
 import {
   type ToolCallRequest,
   type ToolCallResponse,
@@ -30,6 +33,7 @@ import { createToolEditSummary } from '../../../utils/chat/editSummary'
 import { createCliToolCallRequest } from '../tool-call'
 import type {
   CliApprovalDecision,
+  CliContextUsage,
   CliRuntimeId,
   CliRuntimeModel,
 } from '../types'
@@ -145,6 +149,16 @@ const buildAcpEditSummary = (
   }
 }
 
+/** The tool card's identity — one owner for the `acp-result-` id. */
+const buildAcpToolMessage = (
+  request: ToolCallRequest,
+  response: ToolCallResponse,
+): ChatToolMessage => ({
+  role: 'tool',
+  id: `acp-result-${request.id}`,
+  toolCalls: [{ request, response }],
+})
+
 const toolPair = ({
   request,
   response,
@@ -159,11 +173,7 @@ const toolPair = ({
     toolCallRequests: [request],
     metadata: { generationState: 'completed' },
   },
-  {
-    role: 'tool',
-    id: `acp-result-${request.id}`,
-    toolCalls: [{ request, response }],
-  },
+  buildAcpToolMessage(request, response),
 ]
 
 export type AcpToolCallState = {
@@ -261,6 +271,44 @@ export const buildAcpPlanMessage = (plan: Plan): ChatAssistantMessage => ({
   content: renderAcpPlan(plan),
   metadata: { generationState: 'completed' },
 })
+
+/**
+ * Per-turn token counts for the assistant footer. ACP's own field docs
+ * describe these as session-cumulative, but agents report what their provider
+ * returned for the turn (Hermes passes through the turn's `prompt_tokens` /
+ * `completion_tokens`), and the wire carries no way to tell the two apart —
+ * so this maps them as the turn metrics the footer expects.
+ */
+export const mapAcpTurnUsage = (usage: Usage): ResponseUsage => ({
+  prompt_tokens: usage.inputTokens,
+  completion_tokens: usage.outputTokens,
+  total_tokens: usage.totalTokens,
+  ...(usage.cachedReadTokens
+    ? { cache_read_input_tokens: usage.cachedReadTokens }
+    : {}),
+  ...(usage.cachedWriteTokens
+    ? { cache_creation_input_tokens: usage.cachedWriteTokens }
+    : {}),
+})
+
+/**
+ * ACP reports context pressure as a `used`/`size` pair, with no per-category
+ * breakdown and no cache statistics — an agent that estimates rather than
+ * counts (Hermes does) still reports through this same shape, so the ring
+ * shows an approximation for those agents.
+ */
+export const mapAcpUsageUpdate = (
+  update: UsageUpdate,
+): CliContextUsage | null => {
+  if (!Number.isFinite(update.used) || update.used < 0) return null
+  const maxContextTokens =
+    Number.isFinite(update.size) && update.size > 0 ? update.size : null
+  return {
+    promptTokens: Math.floor(update.used),
+    maxContextTokens:
+      maxContextTokens === null ? null : Math.floor(maxContextTokens),
+  }
+}
 
 /**
  * `live`: streaming a prompt this client itself just sent — every
@@ -416,9 +464,10 @@ export class AcpSessionAggregator {
       return [buildAcpPlanMessage(update)]
     }
     // plan_update / plan_removed / available_commands_update /
-    // current_mode_update / config_option_update / session_info_update /
-    // usage_update: unstable or out of scope for v1 (no UI surface yet) —
-    // ignored rather than guessed at.
+    // current_mode_update / config_option_update / session_info_update:
+    // unstable or out of scope for v1 (no UI surface yet) — ignored rather
+    // than guessed at. `usage_update` produces no message either, but it does
+    // feed the context ring; the runtime reads it through `mapAcpUsageUpdate`.
     return []
   }
 }

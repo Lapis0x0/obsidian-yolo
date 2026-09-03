@@ -150,6 +150,30 @@ describe('Codex launch discovery', () => {
     })
   })
 
+  it('rewrites a Git Bash which-codex override to the sibling .cmd', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      const path = String(candidate)
+      if (
+        path === 'C:\\Users\\me\\AppData\\Roaming\\npm\\codex' ||
+        path === 'C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd'
+      ) {
+        return
+      }
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      resolveCodexLaunch(
+        'C:\\vault',
+        { USERPROFILE: 'C:\\Users\\me' },
+        'win32',
+        'C:\\Users\\me\\AppData\\Roaming\\npm\\codex',
+      ),
+    ).resolves.toMatchObject({
+      command: 'C:\\Users\\me\\AppData\\Roaming\\npm\\codex.cmd',
+    })
+  })
+
   it('classifies Windows-style CLI references', () => {
     expect(isWindowsStylePath('C:\\tools\\codex.exe')).toBe(true)
     expect(isWindowsStylePath('codex.cmd')).toBe(true)

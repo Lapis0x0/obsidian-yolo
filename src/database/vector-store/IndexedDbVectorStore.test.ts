@@ -216,6 +216,44 @@ describe('IndexedDbVectorStore', () => {
     }
   })
 
+  describe('listVectorsForPath', () => {
+    it("returns one file's stored vectors, L2-normalized, scoped to the model", async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        await store.insertVectors([
+          insert({ path: 'a.md', embedding: [2, 0, 0] }),
+          insert({ path: 'a.md', embedding: [0, 3, 0] }),
+          insert({ path: 'b.md', embedding: [0, 0, 1] }),
+          insert({ path: 'a.md', model: MODEL_B, embedding: [0, 0, 4] }),
+        ])
+
+        const vectors = await store.listVectorsForPath(MODEL_A, 'a.md')
+
+        expect(vectors.map((v) => Array.from(v))).toEqual([
+          [1, 0, 0],
+          [0, 1, 0],
+        ])
+      } finally {
+        store.close()
+      }
+    })
+
+    it('returns an empty array for a path with no rows', async () => {
+      const indexedDB = new IDBFactory()
+      const store = await openStore(indexedDB)
+      try {
+        await store.insertVectors([insert({ path: 'a.md' })])
+
+        expect(await store.listVectorsForPath(MODEL_A, 'missing.md')).toEqual(
+          [],
+        )
+      } finally {
+        store.close()
+      }
+    })
+  })
+
   describe('performSimilaritySearch', () => {
     it('ranks by cosine similarity and respects limit', async () => {
       const indexedDB = new IDBFactory()

@@ -30,11 +30,11 @@ import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
-import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAskController'
+import { QUICK_ASK_CURSOR_MARKER } from '../../../features/editor/quick-ask/quickAsk.types'
 import { selectionHighlightController } from '../../../features/editor/selection-highlight/selectionHighlightController'
 import { useChatHistory } from '../../../hooks/useChatHistory'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import type { ApplyViewState } from '../../../types/apply-view.types'
 import { Assistant } from '../../../types/assistant.types'
 import {
@@ -98,7 +98,7 @@ import { YoloDropdownContent, YoloPopoverContent } from '../../common/popover'
 import {
   ICON_OPTIONS,
   getDefaultQuickActions,
-} from '../../settings/SmartSpaceQuickActionsSettings'
+} from '../../settings/ContinuationQuickActionsSettings'
 
 import { AssistantSelectMenu } from './AssistantSelectMenu'
 import { createQuickAskEditorState } from './utils/createQuickAskEditorState'
@@ -505,13 +505,17 @@ export function QuickAskPanel({
   // PDF panels (capabilities.edit === false) have no editor to write into.
   const continueQuickActions = useMemo(() => {
     if (!isContinueMode) return []
-    const configured = settings.continuationOptions?.smartSpaceQuickActions
+    const configured = settings.continuationOptions?.continuationQuickActions
     const actions =
       configured && configured.length > 0
         ? configured
         : getDefaultQuickActions(t)
     return actions.filter((action) => action.enabled)
-  }, [isContinueMode, settings.continuationOptions?.smartSpaceQuickActions, t])
+  }, [
+    isContinueMode,
+    settings.continuationOptions?.continuationQuickActions,
+    t,
+  ])
 
   // Preset menu floats below the composer as a Quick-Ask-style popover; it is
   // the idle-state default, so it yields as soon as the user starts writing
@@ -2273,7 +2277,7 @@ export function QuickAskPanel({
                       </YoloDropdownContent>
                     </DropdownMenu.Root>
 
-                    <div className="yolo-quick-ask-model-select yolo-smart-space-model-select">
+                    <div className="yolo-quick-ask-model-select yolo-continuation-model-select">
                       <ModelSelect
                         ref={modelTriggerRef}
                         modelId={
@@ -2460,7 +2464,7 @@ export function QuickAskPanel({
             </Popover.Anchor>
 
             <YoloPopoverContent
-              variant="smart-space"
+              variant="continuation"
               className="yolo-quick-ask-continue-menu"
               anchorRef={inputRowRef}
               container={popoverPortalHost ?? undefined}

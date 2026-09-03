@@ -728,10 +728,11 @@ export const yoloSettingsSchema = z.object({
       // length preset for tab completion prompt constraints
       tabCompletionLengthPreset: z.enum(['short', 'medium', 'long']).optional(),
       // Quick Ask "continue" mode quick actions (chips shown when the
-      // continue mode input is empty). Key name predates the Quick Ask
-      // "continue" mode (it originally belonged to the now-removed Smart
-      // Space panel); kept as-is to avoid a settings migration.
-      smartSpaceQuickActions: z
+      // continue mode input is empty). Renamed from smartSpaceQuickActions
+      // in v83->v84 — that name predated the Quick Ask "continue" mode and
+      // referenced the now-removed Smart Space panel it originally belonged
+      // to.
+      continuationQuickActions: z
         .array(
           z.object({
             id: z.string(),
@@ -780,6 +781,14 @@ export const yoloSettingsSchema = z.object({
       quickAskContextBeforeChars: z.number().int().min(0).optional(),
       // quick ask context chars after cursor
       quickAskContextAfterChars: z.number().int().min(0).optional(),
+      // Knowledge bases the Sparkle panel's similar-notes list searches.
+      // Undefined — the default — means every configured base, merged, and
+      // stays that way as bases are added: "all" is a rule here, not a
+      // snapshot of the ids that existed when the user chose it. A non-empty
+      // list restricts the search to those bases; ids whose bases no longer
+      // exist are dropped, and a selection left empty degrades back to "every
+      // base" at query time (see `core/rag/similarNotes.ts`).
+      similarNotesKnowledgeBaseIds: z.array(z.string()).optional(),
       // whether a failed streaming primary request should recover once with non-stream fallback
       streamFallbackRecoveryEnabled: z.boolean().optional(),
       // timeout for the primary request before recovery is considered
@@ -810,7 +819,7 @@ export const yoloSettingsSchema = z.object({
       tabCompletionSystemPrompt: DEFAULT_TAB_COMPLETION_SYSTEM_PROMPT,
       tabCompletionConstraints: '',
       tabCompletionLengthPreset: DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
-      smartSpaceQuickActions: undefined,
+      continuationQuickActions: undefined,
       selectionChatActions: undefined,
       enableQuickAsk: true,
       quickAskTrigger: '@',
@@ -818,6 +827,7 @@ export const yoloSettingsSchema = z.object({
       quickAskAutoDockToTopRight: true,
       quickAskContextBeforeChars: 5000,
       quickAskContextAfterChars: 2000,
+      similarNotesKnowledgeBaseIds: undefined,
       streamFallbackRecoveryEnabled: true,
       primaryRequestTimeoutMs: DEFAULT_MODEL_REQUEST_TIMEOUT_MS,
     }),

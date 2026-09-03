@@ -30,7 +30,7 @@ import type {
 import { getMentionableBlockData } from '../../../utils/obsidian'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
-import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAskController'
+import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAsk.types'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 

@@ -182,4 +182,69 @@ describe('DesktopLocalMcpServer', () => {
       await server.close()
     }
   })
+
+  // Obsidian's `onunload` is synchronous, so the plugin can only fire the close
+  // off — the port has to be free by the time the next load binds it. Node
+  // drops idle keep-alive sockets on `close()`, but a connection sitting
+  // mid-request holds the server open indefinitely, which surfaced as
+  // EADDRINUSE on the next launch.
+  it('releases the port when a connection is stuck mid-request', async () => {
+    const port = await getAvailablePort()
+    const settings = {
+      yolo: { baseDir: 'YOLO' },
+      mcp: {
+        localServer: { enabled: true, port, token: TOKEN },
+      },
+      assistants: [],
+      knowledgeBases: [],
+    } as unknown as YoloSettings
+    const unavailable = async (): Promise<never> => {
+      throw new Error('Not used by this test')
+    }
+    const server = new DesktopLocalMcpServer({
+      app: createApp(),
+      getSettings: () => settings,
+      getAgentService: unavailable,
+      getMcpManager: unavailable,
+      ragAccess: { listKnowledgeBases: () => [], getRagEngine: unavailable },
+      openConversation: async () => undefined,
+    })
+    const { connect } =
+      await loadDesktopNodeModule<typeof import('node:net')>('node:net')
+    let stuck: import('node:net').Socket | null = null
+
+    try {
+      await server.initialize()
+      await server.updateSettings(settings)
+      expect(server.getState().status).toBe('running')
+
+      stuck = connect(port, '127.0.0.1')
+      const socket = stuck
+      await new Promise<void>((resolve, reject) => {
+        socket.once('error', reject)
+        socket.once('connect', () => {
+          // Headers started, never finished — the request stays in flight.
+          socket.write('POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n')
+          resolve()
+        })
+      })
+
+      // Deliberately leave the connection open, the way an unload does.
+      await server.close()
+
+      const { createServer } =
+        await loadDesktopNodeModule<typeof import('node:http')>('node:http')
+      const rebound = createServer()
+      await expect(
+        new Promise<void>((resolve, reject) => {
+          rebound.once('error', reject)
+          rebound.listen(port, '127.0.0.1', resolve)
+        }),
+      ).resolves.toBeUndefined()
+      await new Promise<void>((resolve) => rebound.close(() => resolve()))
+    } finally {
+      stuck?.destroy()
+      await server.close()
+    }
+  })
 })

@@ -88,6 +88,13 @@ export type VectorStore = Readonly<{
       Pick<VectorSelect, 'id' | 'path' | 'mtime' | 'content_hash' | 'metadata'>
     >
   >
+  /**
+   * Every stored chunk vector for one file, in insertion order. Vectors are
+   * L2-normalized at write time (`insertVectors`), so callers can pool them
+   * directly. Empty when the file has no rows for this model — i.e. it is
+   * not indexed in this knowledge base.
+   */
+  listVectorsForPath(modelId: string, path: string): Promise<Float32Array[]>
   deleteVectorsByIds(ids: number[]): Promise<void>
   deleteVectorsByPaths(modelId: string, paths: string[]): Promise<void>
   bumpMtimeByIds(updates: Array<{ id: number; mtime: number }>): Promise<void>
@@ -111,6 +118,25 @@ export type VectorStore = Readonly<{
       scope?: { files: string[]; folders: string[]; exclude?: string[] }
     },
   ): Promise<Array<VectorSelect & { similarity: number }>>
+  /**
+   * How similar two *unrelated* chunks in this index typically are: the mean
+   * and standard deviation of cosine similarity over a random sample of chunk
+   * pairs. Cosine has no model-independent meaning — one embedding model's
+   * "unrelated" sits at 0.37, another's at 0.8 — so a caller that wants to
+   * say "this result is genuinely related" needs this corpus-level baseline
+   * to normalize against.
+   *
+   * Deliberately a property of (model, index) rather than of a query: a
+   * per-query baseline rewards a note for being uniformly far from
+   * everything, which inflates the score of its merely-least-bad match.
+   *
+   * `null` when the index holds fewer than two vectors for the model, i.e.
+   * there is no pair to sample.
+   */
+  getSimilarityBaseline(embeddingModel: {
+    id: string
+    dimension: number
+  }): Promise<{ mean: number; std: number } | null>
   getEmbeddingStats(): Promise<
     Array<{ model: string; rowCount: number; vectorBytes: number }>
   >

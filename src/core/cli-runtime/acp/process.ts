@@ -1,6 +1,11 @@
 import { loadDesktopNodeModule } from '../../../utils/platform/desktopNodeModule'
 import { assertCliRuntimeAvailable } from '../desktop'
 import type { CliRuntimeId } from '../types'
+import {
+  type CliSpawnSpec,
+  killCliChild,
+  resolveCliSpawnSpec,
+} from '../windows-spawn'
 
 type ChildProcess = import('node:child_process').ChildProcess
 type NodeReadable = import('node:stream').Readable
@@ -60,6 +65,8 @@ export class AcpChildProcess implements AcpProcessLike {
   private constructor(
     private readonly runtimeId: CliRuntimeId,
     private readonly child: ChildProcess,
+    private readonly spawnSpec: CliSpawnSpec,
+    private readonly spawn: typeof import('node:child_process').spawn,
   ) {
     this.started = new Promise<void>((resolve, reject) => {
       let settled = false
@@ -94,13 +101,15 @@ export class AcpChildProcess implements AcpProcessLike {
       await loadDesktopNodeModule<typeof import('node:child_process')>(
         'node:child_process',
       )
-    const child = spawn(options.command, options.args, {
+    const spec = resolveCliSpawnSpec(options.command, options.args)
+    const child = spawn(spec.command, spec.args, {
       cwd: options.cwd,
       env: await getProcessEnv(options.env),
       stdio: ['pipe', 'pipe', 'pipe'],
       windowsHide: true,
+      windowsVerbatimArguments: spec.windowsVerbatimArguments,
     })
-    const process = new AcpChildProcess(options.runtimeId, child)
+    const process = new AcpChildProcess(options.runtimeId, child, spec, spawn)
     await process.started
     return process
   }
@@ -137,7 +146,7 @@ export class AcpChildProcess implements AcpProcessLike {
     if (this.termination || this.child.exitCode !== null || this.child.killed) {
       return
     }
-    this.child.kill('SIGTERM')
+    killCliChild(this.child, this.spawnSpec, this.spawn)
   }
 
   private signalExit(code: number | null, signal: NodeJS.Signals | null): void {

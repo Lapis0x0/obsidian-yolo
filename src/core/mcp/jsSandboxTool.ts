@@ -47,59 +47,38 @@ import {
   parseBrowserReadPageId,
 } from '../tools/fs_read/schema-helpers'
 
+import {
+  JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_HARD_MAX_KB,
+  JS_SANDBOX_BROWSER_READ_MIN_KB,
+  JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT,
+  JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT,
+  JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT,
+  JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES,
+  JS_SANDBOX_DEFAULT_TIMEOUT_MS,
+  JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT,
+  JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB,
+  JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT,
+  JS_SANDBOX_FETCH_HARD_MAX_RESPONSE_KB,
+  JS_SANDBOX_FETCH_MIN_CONCURRENT,
+  JS_SANDBOX_FETCH_MIN_RESPONSE_KB,
+  JS_SANDBOX_HARD_MAX_TIMEOUT_MS,
+  JS_SANDBOX_MIN_TIMEOUT_MS,
+  JS_SANDBOX_VAULT_LIST_MAX_ENTRIES,
+  JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB,
+  JS_SANDBOX_VAULT_READ_HARD_MAX_KB,
+  JS_SANDBOX_VAULT_READ_MIN_KB,
+  resolveJsSandboxOutputMaxBytes,
+} from './jsSandboxLimits'
 import { buildJsSandboxToolDescription } from './jsSandboxSettings'
 import { validateVaultPath } from './vaultFileOps'
+
+export * from './jsSandboxLimits'
 
 export const JS_SANDBOX_TOOL_NAME = 'js_eval'
 
 const SANDBOX_CHANNEL = 'yolo-js-sandbox-v1'
-export const JS_SANDBOX_DEFAULT_TIMEOUT_MS = 3000
-export const JS_SANDBOX_MIN_TIMEOUT_MS = 100
-// Absolute hard ceiling — agents may not exceed this even if configured
-// higher. Keeps a single runaway run from monopolizing the main thread
-// indefinitely on slow / mobile devices.
-export const JS_SANDBOX_HARD_MAX_TIMEOUT_MS = 60000
 const READY_TIMEOUT_MS = 3000
-// Default cap on the serialized JSON result returned to the LLM. The host
-// keeps this conservative so a single tool call doesn't accidentally blow
-// the model's context window. The user may raise it per-agent up to the
-// hard ceiling below.
-export const JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES = 50 * 1024
-// Hard ceiling on the tool result size. 2 MiB strikes a balance between
-// "useful for paste-sized payloads" and "won't OOM smaller models if the
-// agent pipes a raw fetch body straight back".
-export const JS_SANDBOX_HARD_MAX_OUTPUT_BYTES = 2 * 1024 * 1024
-export const JS_SANDBOX_MIN_OUTPUT_BYTES = 1024
-
-// Fetch defaults live here (rather than in localFileTools) so the
-// LLM-facing description can quote the same numbers the proxy enforces.
-export const JS_SANDBOX_FETCH_DEFAULT_MAX_CONCURRENT = 3
-// 10 MiB — comfortable for typical scrape / API response bodies without
-// silently blowing past the per-tool output cap.
-export const JS_SANDBOX_FETCH_DEFAULT_MAX_RESPONSE_KB = 10 * 1024
-// 1 GiB hard ceiling. Anything larger would risk freezing the renderer
-// while postMessage shuttles the response back across the iframe boundary.
-export const JS_SANDBOX_FETCH_HARD_MAX_RESPONSE_KB = 1024 * 1024
-export const JS_SANDBOX_FETCH_MIN_RESPONSE_KB = 1
-export const JS_SANDBOX_FETCH_HARD_MAX_CONCURRENT = 32
-export const JS_SANDBOX_FETCH_MIN_CONCURRENT = 1
-
-// Vault read defaults / hard cap. Range mirrors fetch — large vault files
-// can blow through the model context just as easily as oversized HTTP
-// bodies, so the same ceiling applies.
-export const JS_SANDBOX_VAULT_READ_DEFAULT_MAX_KB = 10 * 1024
-export const JS_SANDBOX_VAULT_READ_HARD_MAX_KB = 1024 * 1024
-export const JS_SANDBOX_VAULT_READ_MIN_KB = 1
-export const JS_SANDBOX_VAULT_LIST_MAX_ENTRIES = 100_000
-// Full rendered page HTML can be as large as fetched response bodies. Keep the
-// same default and hard cap family so one browser page cannot dominate memory
-// or the model context by accident.
-export const JS_SANDBOX_BROWSER_READ_DEFAULT_MAX_KB = 10 * 1024
-export const JS_SANDBOX_BROWSER_READ_HARD_MAX_KB = 1024 * 1024
-export const JS_SANDBOX_BROWSER_READ_MIN_KB = 1
-export const JS_SANDBOX_DB_QUERY_DEFAULT_MAX_LIMIT = 20
-export const JS_SANDBOX_DB_QUERY_HARD_MAX_LIMIT = 100
-export const JS_SANDBOX_DB_QUERY_DEFAULT_REQUEST_LIMIT = 10
 
 type JsonRecord = Record<string, unknown>
 
@@ -1463,23 +1442,6 @@ export function getJsSandboxTool(
       required: ['code'],
     },
   }
-}
-
-export function resolveJsSandboxOutputMaxBytes(
-  configuredKb?: number | null,
-): number {
-  if (
-    typeof configuredKb !== 'number' ||
-    !Number.isFinite(configuredKb) ||
-    configuredKb <= 0
-  ) {
-    return JS_SANDBOX_DEFAULT_OUTPUT_MAX_BYTES
-  }
-  const requested = Math.floor(configuredKb) * 1024
-  return Math.min(
-    JS_SANDBOX_HARD_MAX_OUTPUT_BYTES,
-    Math.max(JS_SANDBOX_MIN_OUTPUT_BYTES, requested),
-  )
 }
 
 export function formatJsSandboxToolText(

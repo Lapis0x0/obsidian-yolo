@@ -11,7 +11,7 @@ import type {
   ClaudePluginScope,
 } from '../../../core/cli-runtime/claude/plugin-cli'
 import { getCliPathOverride } from '../../../core/cli-runtime/cli-path-override'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../common/ObsidianDropdown'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'

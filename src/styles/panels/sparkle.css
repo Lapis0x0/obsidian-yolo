@@ -1,0 +1,615 @@
+/*
+ * 灵光写作 sidebar 主视图（相似笔记）。设置视图沿用 chat/input.css 里既有的
+ * .yolo-composer-* 样式，这里只负责主视图的 section 壳、范围行与卡片。
+ *
+ * 面板里的裸 <button> 一律用 `button.yolo-*` 选择器并显式重置
+ * background-color：Obsidian 核心与主题的 `button` 规则是全局生效的，只写
+ * class 选择器会被主题按元素选择器写的 background-color 盖掉（实测标题、
+ * section 头会变成灰色药丸）。
+ *
+ * section 壳是一张带边框的卡，对应设计稿里的 .section。token 映射：
+ * --line → --background-modifier-border，--radius → --radius-m，
+ * --panel-2（头部色带）→ --background-modifier-hover。设计稿里 --panel 同时
+ * 是面板底和卡片底，所以卡片这边不填色而是 transparent。
+ *
+ * 壳有了边框之后内边距归各子块所有，section 自身只留纵向外边距，否则边框和
+ * 内容之间会多出一圈空白、横向还会和外层容器的内边距叠成多重缩进。
+ */
+
+.yolo-sparkle-panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  overflow-y: auto;
+  /* 视图入场是从边缘滑进来的，横向溢出必须裁掉，否则侧栏会在这 220ms 里
+     多出一条横向滚动条。 */
+  overflow-x: hidden;
+  /* 滚动条贴边。滚动容器是这一层，而它的右边界被宿主 .view-content 的横向
+     内边距（--size-4-3）往里推了一截，滚动条于是悬在内容中间而不是贴着面板
+     边缘。做法和 .yolo-chat-messages 那条一样：用负 margin 把边框盒推回叶子
+     边缘（滚动条画在边框边上），再用等量内边距把内容缩回原处——卡片仍与
+     .yolo-chat-header 左右对齐，只是滚动条挪到了它右边。 */
+  margin-inline-end: calc(var(--size-4-3) * -1);
+  padding-inline-end: var(--size-4-3);
+}
+
+/*
+ * 主视图 ⇄ 设置视图的切换。这层壳承载入场位移，同时要把两个视图各自的滚动
+ * 模型说清楚——它们本来就不一样：
+ *
+ * 主视图（相似笔记）是内容高度，由 .yolo-sparkle-panel 统一滚动。所以这层
+ * 壳默认不可收缩：一旦给它 flex-shrink + min-height: 0，它就会被压到面板
+ * 高度，.yolo-sparkle-section 的 overflow: hidden 把超出的卡片直接裁掉，
+ * 面板自身又因为内容没超出而不出滚动条——列表看起来就是「截断且划不动」。
+ *
+ * 只做位移不做淡入：这是 drill-in，不是内容替换。24px 在 ~350px 宽的侧栏里
+ * 足够读出方向，又不会让内容像是从很远的地方飞进来。
+ * reduced-motion 由 tokens/motion.css 的全局兜底接管。
+ */
+.yolo-sparkle-view {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  animation: yolo-sparkle-view-enter-forward var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+/*
+ * 设置视图相反：它自带内部滚动容器（.yolo-composer-scroll），必须被压到面板
+ * 高度才有得滚，所以这里把 flex 语义原样透传下去（.yolo-composer-container
+ * 靠 flex: 1 和 height: 100% 撑满，中间插一层不透传就会塌）。
+ */
+.yolo-sparkle-view[data-view='settings'] {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.yolo-sparkle-view[data-view='main'] {
+  animation-name: yolo-sparkle-view-enter-back;
+}
+
+@keyframes yolo-sparkle-view-enter-forward {
+  from {
+    transform: translateX(24px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes yolo-sparkle-view-enter-back {
+  from {
+    transform: translateX(-24px);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+/* 设置开关（chat header 里的齿轮 ⇄ 返回） ------------------------------ */
+
+/*
+ * 同一个按钮既进设置也出设置，所以图标要把当前状态说清楚：齿轮与返回箭头
+ * 叠在同一个 grid 格子里交接，一个顺时针旋出、另一个逆时针旋入，读起来像
+ * 一个图形形变而不是两次闪现。
+ *
+ * 承载状态的是图标外面这层槽位，不是 svg 本身：Obsidian `app.css` 里
+ * `.clickable-icon svg` / `:hover svg` / `:active svg` / `.is-active svg`
+ * 四条规则都在按元素级设 svg 的 opacity——那是图标亮度与按压反馈的归属。
+ * 直接给 svg 写 opacity 会跟它逐条对抗，实测抢一半的后果是隐藏的那个图标
+ * 在 hover 时浮出来，变成「齿轮里套着另一个图标」。槽位是本插件自己的元素，
+ * 宿主不碰，opacity 与 transform 两路都能干净地做完整交接。
+ */
+
+.yolo-sparkle-settings-toggle-icon {
+  display: grid;
+  place-items: center;
+}
+
+.yolo-sparkle-settings-toggle-gear,
+.yolo-sparkle-settings-toggle-back {
+  grid-area: 1 / 1;
+  display: flex;
+  transition:
+    opacity var(--yolo-anim-duration-exit) var(--yolo-anim-ease-in),
+    transform var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+.yolo-sparkle-settings-toggle-back {
+  opacity: 0;
+  transform: rotate(-90deg) scale(0.6);
+}
+
+.is-open > .yolo-sparkle-settings-toggle-gear {
+  opacity: 0;
+  transform: rotate(90deg) scale(0.6);
+}
+
+.is-open > .yolo-sparkle-settings-toggle-back {
+  opacity: 1;
+  transform: none;
+}
+
+/* Section 壳 ---------------------------------------------------------- */
+
+.yolo-sparkle-section {
+  display: flex;
+  flex-direction: column;
+  /* 横向缩进由 .view-content 自己的内边距负责，卡片因此和同级的
+   * .yolo-chat-header 左右对齐；上方间距由 .yolo-chat-header 的 margin-bottom
+   * 负责（chat/input.css 里那条 :has(+ .yolo-chat-composer-wrapper) 规则）。
+   * 这两个方向再自己加一层，就会和外层叠成双份。 */
+  margin: 0 0 var(--size-4-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  /* 卡片不自带填充：设计稿里 .section 和面板底是同一个色，卡片靠边框划分。
+   * sidebar 的底色由主题决定（默认 --background-secondary），这里填死任何
+   * 颜色都会在灰底上糊出一块突兀的方块。 */
+  background-color: transparent;
+  overflow: hidden;
+}
+
+.yolo-sparkle-section-header {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  padding: var(--size-4-2) var(--size-4-3);
+  /* 半透明压暗，而不是某个具体灰：--background-secondary-alt 在不同主题里
+   * 可能比 --background-secondary 更浅（实测当前主题 #fcfcfc vs #f6f6f6），
+   * 填死就会在浅色面板上糊出一条更白的带子。设计稿里头部色带和卡片 hover
+   * 本来也是同一个色。 */
+  background-color: var(--background-modifier-hover);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+
+/* 折叠后头部就是整张卡，不该再拖一条分隔线。 */
+.yolo-sparkle-section[data-collapsed='true'] .yolo-sparkle-section-header {
+  border-bottom: none;
+}
+
+button.yolo-sparkle-section-toggle {
+  display: flex;
+  align-items: center;
+  /* Obsidian's own `button` rule centers content; these panels are
+   * left-aligned text, so the justification has to be restated. */
+  justify-content: flex-start;
+  gap: var(--size-4-1);
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: none;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+  text-align: left;
+  cursor: pointer;
+}
+
+button.yolo-sparkle-section-toggle:hover,
+button.yolo-sparkle-section-toggle:focus,
+button.yolo-sparkle-section-toggle:focus-visible {
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+}
+
+.yolo-sparkle-section-chevron {
+  flex: 0 0 auto;
+  color: var(--text-muted);
+  transition: transform var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-sparkle-section[data-collapsed='true'] .yolo-sparkle-section-chevron {
+  transform: rotate(-90deg);
+}
+
+.yolo-sparkle-section-title {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  white-space: nowrap;
+}
+
+.yolo-sparkle-section-count {
+  flex: 0 0 auto;
+  padding: 1px var(--size-2-2);
+  border-radius: var(--radius-l);
+  background-color: var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-sparkle-section-action {
+  flex: 0 0 auto;
+}
+
+/*
+ * 内容入场。切笔记时结果整体换掉，直接替换会读成"闪一下"；这里让新内容淡入
+ * 落位。只有 key 变化（真的换了一批结果）才会重放，同一批结果的重渲染不会。
+ * reduced-motion 由 tokens/motion.css 的全局兜底接管。
+ */
+.yolo-sparkle-section-body {
+  animation: yolo-sparkle-body-enter var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-sparkle-body-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 范围行：一行小字，不是一个占满宽度的选择框 -------------------------- */
+
+.yolo-sparkle-scope-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  min-width: 0;
+  padding: var(--size-2-3) var(--size-4-3);
+  border-bottom: 1px dashed var(--background-modifier-border);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+button.yolo-sparkle-scope-trigger {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  width: auto;
+  max-width: 60%;
+  min-height: 0;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  cursor: pointer;
+}
+
+button.yolo-sparkle-scope-trigger:hover,
+button.yolo-sparkle-scope-trigger:focus,
+button.yolo-sparkle-scope-trigger:focus-visible,
+button.yolo-sparkle-scope-trigger[data-state='open'] {
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--text-accent);
+  outline: none;
+}
+
+.yolo-sparkle-scope-trigger-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* 范围 popover：chips 自动换行，不做固定列数 —— 库名长度差异很大。 */
+.yolo-sparkle-scope-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-2-2);
+  padding: var(--size-4-2);
+}
+
+button.yolo-sparkle-scope-chip {
+  max-width: 100%;
+  height: auto;
+  padding: var(--size-2-1) var(--size-2-3);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  line-height: 1.6;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.yolo-sparkle-scope-chip:hover {
+  background-color: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--text-normal);
+}
+
+button.yolo-sparkle-scope-chip[data-selected='true'] {
+  border-color: var(--interactive-accent);
+  background-color: var(--background-modifier-hover);
+  color: var(--text-accent);
+  font-weight: var(--font-medium);
+}
+
+.yolo-sparkle-scope-label {
+  flex: 0 0 auto;
+}
+
+/* popover 底部的管理入口：整宽一行、与 chips 之间一条分隔线，读作「这组
+   选项之外的动作」而不是又一个 chip。 */
+button.yolo-sparkle-scope-manage {
+  display: block;
+  width: 100%;
+  height: auto;
+  padding: var(--size-2-2) var(--size-4-2);
+  border: none;
+  border-top: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  background: none;
+  background-color: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  text-align: left;
+  cursor: pointer;
+}
+
+button.yolo-sparkle-scope-manage:hover,
+button.yolo-sparkle-scope-manage:focus,
+button.yolo-sparkle-scope-manage:focus-visible {
+  background-color: var(--background-modifier-hover);
+  box-shadow: none;
+  color: var(--text-normal);
+  outline: none;
+}
+
+.yolo-sparkle-source-row {
+  padding: var(--size-4-2) var(--size-4-3) var(--size-2-2);
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-sparkle-source-name {
+  color: var(--text-normal);
+}
+
+/* 卡片：无边框，靠左侧竖条与留白分隔；hover / 展开才有底色 ------------ */
+
+.yolo-similar-note-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-3);
+  padding: var(--size-2-2) var(--size-2-3) var(--size-4-2);
+}
+
+.yolo-similar-note-card {
+  display: flex;
+  gap: var(--size-4-2);
+  padding: var(--size-4-2);
+  border-radius: var(--radius-m);
+  background-color: transparent;
+  /* 整张卡都能展开/收起，不只是那个小箭头。 */
+  cursor: pointer;
+  transition: background-color var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-similar-note-card:hover,
+.yolo-similar-note-card[data-expanded='true'] {
+  background-color: var(--background-modifier-hover);
+}
+
+/* 相对强度：只用竖条深浅表达，不显示相似度数字。 */
+.yolo-similar-note-card-strength {
+  flex: 0 0 2px;
+  border-radius: 1px;
+  background-color: var(--interactive-accent);
+}
+
+.yolo-similar-note-card-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  min-width: 0;
+  flex: 1;
+}
+
+.yolo-similar-note-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--size-4-1);
+  min-width: 0;
+}
+
+button.yolo-similar-note-card-title {
+  display: block;
+  flex: 1;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  background: none;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-semibold);
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+button.yolo-similar-note-card-title:hover,
+button.yolo-similar-note-card-title:focus,
+button.yolo-similar-note-card-title:focus-visible {
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  color: var(--text-accent);
+}
+
+.yolo-similar-note-card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  flex: 0 0 auto;
+}
+
+.yolo-similar-note-card-chevron {
+  transition: transform var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-similar-note-card[data-expanded='true'] .yolo-similar-note-card-chevron {
+  transform: rotate(180deg);
+}
+
+.yolo-similar-note-card-path,
+.yolo-similar-note-card-preview {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+.yolo-similar-note-card-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-similar-note-card-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.5;
+}
+
+/* 命中片段 ------------------------------------------------------------ */
+
+.yolo-similar-note-card-snippets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  margin-top: var(--size-2-2);
+}
+
+.yolo-similar-note-snippet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-1);
+  padding-left: var(--size-4-2);
+  border-left: 2px solid var(--background-modifier-border);
+}
+
+.yolo-similar-note-snippet-ticks {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.yolo-similar-note-snippet-tick {
+  width: 8px;
+  height: 2px;
+  border-radius: 1px;
+  background-color: var(--background-modifier-border);
+}
+
+.yolo-similar-note-snippet-tick[data-filled='true'] {
+  background-color: var(--interactive-accent);
+}
+
+.yolo-similar-note-snippet-text {
+  /* 一个 chunk 可能上千字符；片段是"命中的是哪几句"，不是全文预览，
+     所以按行截断。 */
+  display: -webkit-box;
+  -webkit-line-clamp: 6;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  min-width: 0;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* 空态与骨架 ---------------------------------------------------------- */
+
+/* 空态本身不再画边框：它现在住在 section 卡里，套第二层框就成了双边框。 */
+.yolo-sparkle-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--size-4-1);
+  padding: var(--size-4-5) var(--size-4-4);
+  text-align: center;
+}
+
+.yolo-sparkle-empty-title {
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  color: var(--text-normal);
+}
+
+.yolo-sparkle-empty-body {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+
+button.yolo-sparkle-empty-secondary {
+  display: block;
+  height: auto;
+  padding: 0;
+  background: none;
+  background-color: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  color: var(--text-accent);
+  font-size: var(--font-ui-smaller);
+  cursor: pointer;
+}
+
+button.yolo-sparkle-empty-secondary:hover,
+button.yolo-sparkle-empty-secondary:focus,
+button.yolo-sparkle-empty-secondary:focus-visible {
+  background-color: transparent;
+  box-shadow: none;
+  outline: none;
+  text-decoration: underline;
+}
+
+.yolo-sparkle-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  padding: var(--size-4-3);
+}
+
+.yolo-sparkle-skeleton-card {
+  height: 56px;
+  border-radius: var(--radius-m);
+  background-color: var(--background-modifier-hover);
+  animation: yolo-sparkle-skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes yolo-sparkle-skeleton-pulse {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}

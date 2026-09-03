@@ -15,7 +15,7 @@ import {
   type WebSearchSettings,
   createDefaultProviderOptions,
 } from '../../../core/web-search'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
 
 import {

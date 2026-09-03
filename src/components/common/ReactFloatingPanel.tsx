@@ -3,7 +3,7 @@ import { Root, createRoot } from 'react-dom/client'
 
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 
 export type FloatingPanelOptions = {
   title?: string

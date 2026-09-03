@@ -202,6 +202,48 @@ describe('PiCliRuntime — session binding on sendTurn', () => {
   }, 10_000)
 })
 
+describe('PiCliRuntime — turn metrics', () => {
+  it('emits usage and a locally measured duration before the terminal run state', async () => {
+    const runtime = createRuntime()
+    const events = collectEvents(runtime)
+    await runtime.ensureReady({})
+    const process = startedProcesses[0]
+    process.registerHandler('prompt', () => undefined)
+    process.registerHandler('get_state', () => ({ sessionId: 'sess-1' }))
+
+    await runtime.sendTurn({ content: 'hi' })
+    process.emitLine({
+      type: 'message_end',
+      message: { role: 'assistant', usage: { input: 100, output: 20 } },
+    })
+    process.emitLine({ type: 'agent_settled' })
+
+    // CliConversationController closes the turn's metrics window on the
+    // terminal run state, so both metrics events must land before it.
+    const metricsIndexes = events.flatMap((event, index) =>
+      event.type === 'turn_metrics' ? [index] : [],
+    )
+    const terminalIndex = events.findIndex(
+      (event) => event.type === 'run_state' && event.state === 'completed',
+    )
+    expect(metricsIndexes).toHaveLength(2)
+    expect(Math.max(...metricsIndexes)).toBeLessThan(terminalIndex)
+    expect(events[metricsIndexes[0]]).toEqual({
+      type: 'turn_metrics',
+      usage: {
+        prompt_tokens: 100,
+        completion_tokens: 20,
+        total_tokens: 120,
+      },
+    })
+    expect(events[metricsIndexes[1]]).toEqual({
+      type: 'turn_metrics',
+      durationMs: expect.any(Number),
+    })
+    await runtime.dispose()
+  })
+})
+
 describe('PiCliRuntime — fatal transport recovery', () => {
   it('clears the active handle on a fatal error so the next ensureReady respawns', async () => {
     const runtime = createRuntime()

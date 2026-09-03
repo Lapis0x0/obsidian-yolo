@@ -1,24 +1,24 @@
 import { App } from 'obsidian'
-import React from 'react'
+import React, { type ComponentType } from 'react'
 
 import { SettingsProvider } from '../../../contexts/settings-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ReactModal } from '../../common/ReactModal'
-import { SmartSpaceQuickActionsSettingsContent } from '../SmartSpaceQuickActionsSettings'
 
-type SmartSpaceQuickActionsModalComponentProps = {
+type ContinuationQuickActionsModalComponentProps = {
   plugin: YoloPlugin
+  Content: ComponentType
 }
 
-export class SmartSpaceQuickActionsModal extends ReactModal<SmartSpaceQuickActionsModalComponentProps> {
-  constructor(app: App, plugin: YoloPlugin) {
+export class ContinuationQuickActionsModal extends ReactModal<ContinuationQuickActionsModalComponentProps> {
+  constructor(app: App, plugin: YoloPlugin, Content: ComponentType) {
     super({
       app: app,
-      Component: SmartSpaceQuickActionsModalComponentWrapper,
-      props: { plugin },
+      Component: ContinuationQuickActionsModalComponentWrapper,
+      props: { plugin, Content },
       options: {
         title: plugin.t(
-          'settings.smartSpace.quickActionsModalTitle',
+          'settings.continuationQuickActions.quickActionsModalTitle',
           'Quick Ask continuation presets',
         ),
       },
@@ -28,10 +28,11 @@ export class SmartSpaceQuickActionsModal extends ReactModal<SmartSpaceQuickActio
   }
 }
 
-function SmartSpaceQuickActionsModalComponentWrapper({
+function ContinuationQuickActionsModalComponentWrapper({
   plugin,
+  Content,
   onClose: _onClose,
-}: SmartSpaceQuickActionsModalComponentProps & { onClose: () => void }) {
+}: ContinuationQuickActionsModalComponentProps & { onClose: () => void }) {
   return (
     <SettingsProvider
       settings={plugin.settings}
@@ -40,7 +41,7 @@ function SmartSpaceQuickActionsModalComponentWrapper({
         plugin.addSettingsChangeListener(listener)
       }
     >
-      <SmartSpaceQuickActionsSettingsContent />
+      <Content />
     </SettingsProvider>
   )
 }

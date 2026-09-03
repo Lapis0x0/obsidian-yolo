@@ -15,8 +15,18 @@ import type { VectorSelect } from '../runtime-components'
 import { getEmbeddingModelClient } from './embedding'
 import type { ReconcileScope } from './reconciler'
 
-type RagQueryResult = VectorSelect & {
+export type RagQueryResult = VectorSelect & {
   similarity: number
+}
+
+/**
+ * `findSimilarChunks`' output: the ranked chunks plus the knowledge base's
+ * background similarity, which is what turns a raw cosine into a statement
+ * about strength. `baseline` is `null` only for an index too small to sample.
+ */
+export type SimilarChunkResults = {
+  rows: RagQueryResult[]
+  baseline: { mean: number; std: number } | null
 }
 
 /**
@@ -49,6 +59,35 @@ export const dedupeRagQueryResults = (
   }
 
   return [...deduped.values()]
+}
+
+/**
+ * Averages a file's chunk vectors into one document vector. Stored chunk
+ * vectors are already L2-normalized, and the similarity search normalizes
+ * whatever query vector it is handed, so no normalization is needed here.
+ *
+ * Returns `null` for an empty input or for rows whose dimensions disagree —
+ * the latter means the stored rows predate a model/dimension change, and
+ * pooling them would produce a vector the search would reject anyway.
+ */
+export function meanPoolVectors(
+  vectors: readonly Float32Array[],
+): number[] | null {
+  const first = vectors[0]
+  if (!first) return null
+  const dimension = first.length
+  if (dimension === 0) return null
+  const pooled = new Array<number>(dimension).fill(0)
+  for (const vector of vectors) {
+    if (vector.length !== dimension) return null
+    for (let i = 0; i < dimension; i++) {
+      pooled[i] += vector[i]
+    }
+  }
+  for (let i = 0; i < dimension; i++) {
+    pooled[i] /= vectors.length
+  }
+  return pooled
 }
 
 // TODO: do we really need this class? It seems like unnecessary abstraction.
@@ -254,6 +293,62 @@ export class RAGEngine {
       queryResult: dedupedQueryResult,
     })
     return dedupedQueryResult
+  }
+
+  /**
+   * "Notes similar to this one", without embedding anything: the file's own
+   * chunk vectors are already in this knowledge base, so they are mean-pooled
+   * into a single document vector and used as the query. The source file is
+   * excluded from its own results.
+   *
+   * Returns `null` when this knowledge base holds no vectors for `path` —
+   * the file is outside its scope, or not indexed yet. That is a distinct
+   * outcome from "indexed but nothing similar" (an empty array), and the
+   * panel shows different states for the two.
+   */
+  async findSimilarChunks({
+    path,
+    limit,
+    minSimilarity,
+  }: {
+    path: string
+    limit: number
+    minSimilarity: number
+  }): Promise<SimilarChunkResults | null> {
+    if (!this.embeddingModel) {
+      throw new Error('Embedding model is not set')
+    }
+    if (!this.vectorManager) {
+      throw new Error('Vector manager is not set')
+    }
+    const chunkVectors = await this.vectorManager.listVectorsForPath(
+      this.embeddingModel.id,
+      path,
+    )
+    if (chunkVectors.length === 0) return null
+
+    const documentVector = meanPoolVectors(chunkVectors)
+    if (!documentVector) return null
+
+    const rows = await this.vectorManager.performSimilaritySearch(
+      documentVector,
+      this.embeddingModel,
+      {
+        minSimilarity,
+        limit,
+        // The source note's own chunks are always its nearest neighbours;
+        // `exclude` matches on the exact path (or a prefix segment), which is
+        // what drops them here.
+        scope: { files: [], folders: [], exclude: [path] },
+      },
+    )
+    // The corpus baseline travels with the rows: a raw cosine says nothing on
+    // its own — what "unrelated" scores differs per embedding model — so the
+    // caller needs both to tell a strong match from a merely top-ranked one.
+    const baseline = await this.vectorManager.getSimilarityBaseline(
+      this.embeddingModel,
+    )
+    return { rows: dedupeRagQueryResults(rows), baseline }
   }
 
   private async getQueryEmbedding(query: string): Promise<number[]> {

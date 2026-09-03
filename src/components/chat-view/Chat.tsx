@@ -101,7 +101,6 @@ import type {
 } from './ChatSessionController'
 import { ChatSessionController } from './ChatSessionController'
 import CliChatSurface from './CliChatSurface'
-import Composer from './Composer'
 import { useActiveViewState } from './hooks/useActiveViewState'
 import {
   useMobileChatViewContentClass,
@@ -110,6 +109,7 @@ import {
 import { useSnippetEntries } from './hooks/useSnippetEntries'
 import { getInputOverlayReserveHeight } from './inputOverlayReserve'
 import type { QueryProgressState } from './QueryProgress'
+import SparklePanel, { type SparkleView } from './sparkle/SparklePanel'
 import { TodoListPanel } from './TodoListPanel'
 import { useChatDomainActions } from './useChatDomainActions'
 import { useChatInputController } from './useChatInputController'
@@ -758,6 +758,14 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
   const isSidebarPlacement = props.placement === 'sidebar'
   const activeView = isSidebarPlacement ? (props.activeView ?? 'chat') : 'chat'
   const onChangeView = props.onChangeView
+  // Sparkle's main/settings split lives here because the gear that toggles it
+  // sits in the chat header, and the header and the panel are siblings.
+  const [sparkleView, setSparkleView] = useState<SparkleView>('main')
+  useEffect(() => {
+    // Leaving Sparkle drops you back on its content, not on its settings.
+    if (activeView !== 'composer') setSparkleView('main')
+  }, [activeView])
+  const handleSparkleBack = useCallback(() => setSparkleView('main'), [])
 
   const containerClassName = `yolo-chat-container${
     isSidebarPlacement
@@ -1622,6 +1630,8 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
       isSidebarPlacement={isSidebarPlacement}
       activeView={activeView}
       onChangeView={onChangeView}
+      sparkleView={sparkleView}
+      onChangeSparkleView={setSparkleView}
       activeRuntimeId={activeRuntimeId}
       handleRuntimeChange={handleRuntimeChange}
       lastCliRuntimeIdRef={lastCliRuntimeIdRef}
@@ -2028,7 +2038,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         {header}
         {activeView === 'composer' ? (
           <div className="yolo-chat-composer-wrapper">
-            <Composer onNavigateChat={() => onChangeView?.('chat')} />
+            <SparklePanel
+              view={sparkleView}
+              onBack={handleSparkleBack}
+              onNavigateChat={() => onChangeView?.('chat')}
+            />
           </div>
         ) : isCliRuntimeActive &&
           cliConversationController &&

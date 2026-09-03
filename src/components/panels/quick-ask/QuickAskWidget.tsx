@@ -15,7 +15,7 @@ import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
 } from '../../../features/editor/quick-ask/quickAsk.types'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import type { Mentionable } from '../../../types/mentionable'
 import {
   clearDynamicStyleClass,

@@ -1,6 +1,7 @@
 import OpenAI from 'openai'
 import type {
   ResponseCreateParamsStreaming,
+  ResponseOutputItem,
   ResponseStreamEvent,
 } from 'openai/resources/responses/responses'
 
@@ -39,10 +40,10 @@ import { createTransportClients } from './transportClients'
 
 /**
  * Forward only the OpenAI-shaped hosted `web_search` family on this ChatGPT
- * OAuth transport — the adapter remaps it to `web_search_preview`. Other
- * built-in families (OpenRouter / Grok / Gemini) target different endpoints
- * and silently no-op here so a stale cross-provider config never changes
- * user intent.
+ * OAuth transport, and forward it under that exact type — the Codex backend
+ * rejects `web_search_preview`. Other built-in families (OpenRouter / Grok /
+ * Gemini) target different endpoints and silently no-op here so a stale
+ * cross-provider config never changes user intent.
  */
 function injectChatgptHostedTools<
   RequestType extends LLMRequestNonStreaming | LLMRequestStreaming,
@@ -317,16 +318,37 @@ export class ChatGPTOAuthProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
+  /**
+   * The Codex endpoint only streams, so a buffered request folds the stream
+   * back into one response. Its terminal event carries the response envelope
+   * (id, status, usage) with an empty `output` — the produced items only ever
+   * arrive as `response.output_item.done`, so they are collected here, keyed by
+   * the `output_index` that fixes their place in the response, and handed to
+   * the same `parseResponse` the terminal response would have gone through.
+   */
   private async collectResponseFromStream(
     stream: AsyncIterable<ResponseStreamEvent>,
   ): Promise<LLMResponseNonStreaming> {
+    const streamedOutput: ResponseOutputItem[] = []
+
     for await (const event of stream) {
-      if (event.type === 'response.completed') {
-        return this.adapter.parseResponse(event.response)
+      if (event.type === 'response.output_item.done') {
+        streamedOutput[event.output_index] = event.item
+        continue
       }
 
-      if (event.type === 'response.incomplete') {
-        return this.adapter.parseResponse(event.response)
+      if (
+        event.type === 'response.completed' ||
+        event.type === 'response.incomplete'
+      ) {
+        // A terminal response that carries its own output stays authoritative;
+        // the collected items only fill the gap Codex leaves.
+        return this.adapter.parseResponse(
+          event.response.output.length > 0
+            ? event.response
+            : // Indices never filled in stay holes, which `filter` drops.
+              { ...event.response, output: streamedOutput.filter(Boolean) },
+        )
       }
 
       if (event.type === 'response.failed') {

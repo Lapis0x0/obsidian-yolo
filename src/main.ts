@@ -170,6 +170,7 @@ import {
   prewarmLiteSkillRegistry,
   updateLiteSkillRegistrySettings,
 } from './core/skills/liteSkills'
+import type { ToolContext } from './core/tools/types'
 import {
   type InstallationIncompleteDetail,
   type ReleaseFileName,
@@ -211,6 +212,8 @@ import {
 } from './features/chat/chatLeafSessionManager'
 import { ChatViewNavigator } from './features/chat/chatViewNavigator'
 import { NewTabEmptyStateEnhancer } from './features/chat/newTabEmptyStateEnhancer'
+import type { ContinuationModelOverride } from './features/editor/continuation/continuationController'
+import { ContinuationController } from './features/editor/continuation/continuationController'
 import { DiffReviewController } from './features/editor/diff-review/diffReviewController'
 import {
   buildReviewPlanFromEdits,
@@ -230,8 +233,6 @@ import {
   type StartSelectionRewriteOptions,
 } from './features/editor/selection-rewrite/selectionRewriteController'
 import { TabCompletionController } from './features/editor/tab-completion/tabCompletionController'
-import type { ContinuationModelOverride } from './features/editor/write-assist/writeAssistController'
-import { WriteAssistController } from './features/editor/write-assist/writeAssistController'
 import { enablePdfScreenshotFeature } from './features/pdf-screenshot'
 import {
   type Language,
@@ -352,7 +353,7 @@ export default class YoloPlugin extends Plugin {
   private localMcpSettingsUnsubscribe: (() => void) | null = null
   private liteSkillRegistryDispose: (() => void) | null = null
   private webviewSelectionBridge: WebviewSelectionBridge | null = null
-  private writeAssistController: WriteAssistController | null = null
+  private continuationController: ContinuationController | null = null
   // Model list cache for provider model fetching
   private modelListCache: Map<string, { models: string[]; timestamp: number }> =
     new Map()
@@ -985,8 +986,10 @@ export default class YoloPlugin extends Plugin {
 
   /** The single DI surface retrieval consumers (MCP `vault_search`, `bash
    * search`, `$db.search`, agent tool context) use to reach knowledge bases —
-   * see `core/rag/ragAccess.ts`. */
-  private getRagAccess(): RagKnowledgeAccess {
+   * see `core/rag/ragAccess.ts`. Public because the Sparkle panel's
+   * similar-notes list is a retrieval consumer too — it reaches knowledge
+   * bases through the same surface rather than the coordinator directly. */
+  getRagAccess(): RagKnowledgeAccess {
     const coordinator = this.getRagCoordinator()
     return {
       listKnowledgeBases: () => coordinator.listKnowledgeBases(),
@@ -1008,6 +1011,10 @@ export default class YoloPlugin extends Plugin {
         ) => this.addSettingsChangeListener(listener),
         ragAccess: this.getRagAccess(),
         promptSourceWatcher: agentService.getPromptSourceWatcher(),
+        runSubagent: async (input) => {
+          const { runSubagent } = await import('./core/agent/subagent/runner')
+          return (runSubagent as NonNullable<ToolContext['runSubagent']>)(input)
+        },
         moduleChatModeRegistry: this.moduleChatModeRegistry,
         persistDiscoveredCatalogs: (catalogs) => {
           void this.setSettings({
@@ -2110,9 +2117,9 @@ export default class YoloPlugin extends Plugin {
     return false
   }
 
-  private getWriteAssistController(): WriteAssistController {
-    if (!this.writeAssistController) {
-      this.writeAssistController = new WriteAssistController({
+  private getContinuationController(): ContinuationController {
+    if (!this.continuationController) {
+      this.continuationController = new ContinuationController({
         app: this.app,
         getSettings: () => this.settings,
         setSettings: (newSettings) => this.setSettings(newSettings),
@@ -2144,7 +2151,7 @@ export default class YoloPlugin extends Plugin {
           ),
       })
     }
-    return this.writeAssistController
+    return this.continuationController
   }
 
   private cancelTabCompletionRequest() {
@@ -2784,7 +2791,7 @@ export default class YoloPlugin extends Plugin {
     this.diffReviewController = null
     this.selectionRewriteController?.destroy()
     this.selectionRewriteController = null
-    this.writeAssistController = null
+    this.continuationController = null
 
     // clear all timers
     this.timeoutIds.forEach((id) => {
@@ -4451,15 +4458,8 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
               asset?: NonNullable<(typeof descriptor)['assets']>[number],
             ) =>
               asset
-                ? resolveRuntimeComponentAssetSources(
-                    descriptor,
-                    asset,
-                    BAKED_PLUGIN_VERSION,
-                  )
-                : resolveRuntimeComponentArtifactSources(
-                    descriptor,
-                    BAKED_PLUGIN_VERSION,
-                  ),
+                ? resolveRuntimeComponentAssetSources(asset)
+                : resolveRuntimeComponentArtifactSources(descriptor),
           }
         : {}),
       reportCleanupError: (error) => {
@@ -4723,7 +4723,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
     mentionables: (MentionableFile | MentionableFolder)[] | undefined,
     modelOverride: ContinuationModelOverride,
   ) {
-    return this.getWriteAssistController().handleContinueWriting(
+    return this.getContinuationController().handleContinueWriting(
       editor,
       customPrompt,
       mentionables,

@@ -6,7 +6,7 @@ import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
 import { SettingsProvider } from '../../contexts/settings-context'
 import type { PdfSelectionResult } from '../../features/editor/selection-chat/getPdfSelectionData'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 
 import type {
   SelectionActionMode,

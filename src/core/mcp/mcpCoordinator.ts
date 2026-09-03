@@ -9,6 +9,7 @@ import {
   createModuleChatModeToolServer,
 } from '../modules/moduleChatModeRegistry'
 import type { RagKnowledgeAccess } from '../rag/ragAccess'
+import type { ToolContext } from '../tools/types'
 
 import { McpManager } from './mcpManager'
 
@@ -35,6 +36,7 @@ type McpCoordinatorDeps = {
   ) => () => void
   ragAccess?: RagKnowledgeAccess
   promptSourceWatcher?: PromptSourceWatcher
+  runSubagent?: NonNullable<ToolContext['runSubagent']>
   /**
    * Source of module chat mode declarations to replay onto the MCP manager
    * as in-process tool servers (see `reconcileChatModes`). Optional so
@@ -62,6 +64,7 @@ export class McpCoordinator {
   ) => () => void
   private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
+  private readonly runSubagent?: NonNullable<ToolContext['runSubagent']>
   private readonly moduleChatModeRegistry?: ModuleChatModeRegistrySource
   private readonly persistDiscoveredCatalogs?: (
     catalogs: Record<string, McpDiscoveredCatalog>,
@@ -86,6 +89,7 @@ export class McpCoordinator {
     this.registerSettingsListener = deps.registerSettingsListener
     this.ragAccess = deps.ragAccess
     this.promptSourceWatcher = deps.promptSourceWatcher
+    this.runSubagent = deps.runSubagent
     this.moduleChatModeRegistry = deps.moduleChatModeRegistry
     this.persistDiscoveredCatalogs = deps.persistDiscoveredCatalogs
   }
@@ -107,6 +111,7 @@ export class McpCoordinator {
             ragAccess: this.ragAccess,
             promptSourceWatcher: this.promptSourceWatcher,
             persistDiscoveredCatalogs: this.persistDiscoveredCatalogs,
+            runSubagent: this.runSubagent,
           })
           await manager.initialize()
           this.mcpManager = manager

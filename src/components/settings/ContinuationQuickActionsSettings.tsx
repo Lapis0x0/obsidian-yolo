@@ -39,7 +39,7 @@ import { ObsidianTextArea } from '../common/ObsidianTextArea'
 import { ObsidianTextInput } from '../common/ObsidianTextInput'
 import { ConfirmModal } from '../modals/ConfirmModal'
 
-import { SmartSpaceQuickActionsModal } from './modals/SmartSpaceQuickActionsModal'
+import { ContinuationQuickActionsModal } from './modals/ContinuationQuickActionsModal'
 
 export type QuickAction = {
   id: string
@@ -69,52 +69,52 @@ const isQuickActionCategory = (value: string): value is QuickActionCategory =>
 export const ICON_OPTIONS = {
   sparkles: {
     component: Sparkles,
-    labelKey: 'settings.smartSpace.iconLabels.sparkles',
+    labelKey: 'settings.continuationQuickActions.iconLabels.sparkles',
     fallback: 'Sparkles',
   },
   filetext: {
     component: FileText,
-    labelKey: 'settings.smartSpace.iconLabels.file',
+    labelKey: 'settings.continuationQuickActions.iconLabels.file',
     fallback: 'File',
   },
   listtodo: {
     component: ListTodo,
-    labelKey: 'settings.smartSpace.iconLabels.todo',
+    labelKey: 'settings.continuationQuickActions.iconLabels.todo',
     fallback: 'Todo',
   },
   workflow: {
     component: Workflow,
-    labelKey: 'settings.smartSpace.iconLabels.workflow',
+    labelKey: 'settings.continuationQuickActions.iconLabels.workflow',
     fallback: 'Workflow',
   },
   table: {
     component: Table,
-    labelKey: 'settings.smartSpace.iconLabels.table',
+    labelKey: 'settings.continuationQuickActions.iconLabels.table',
     fallback: 'Table',
   },
   penline: {
     component: PenLine,
-    labelKey: 'settings.smartSpace.iconLabels.pen',
+    labelKey: 'settings.continuationQuickActions.iconLabels.pen',
     fallback: 'Pen',
   },
   lightbulb: {
     component: Lightbulb,
-    labelKey: 'settings.smartSpace.iconLabels.lightbulb',
+    labelKey: 'settings.continuationQuickActions.iconLabels.lightbulb',
     fallback: 'Lightbulb',
   },
   brain: {
     component: Brain,
-    labelKey: 'settings.smartSpace.iconLabels.brain',
+    labelKey: 'settings.continuationQuickActions.iconLabels.brain',
     fallback: 'Brain',
   },
   messagecircle: {
     component: MessageCircle,
-    labelKey: 'settings.smartSpace.iconLabels.message',
+    labelKey: 'settings.continuationQuickActions.iconLabels.message',
     fallback: 'Message',
   },
   settings: {
     component: Settings,
-    labelKey: 'settings.smartSpace.iconLabels.settings',
+    labelKey: 'settings.continuationQuickActions.iconLabels.settings',
     fallback: 'Settings',
   },
 }
@@ -252,36 +252,43 @@ type GroupedActions = {
   actions: QuickAction[]
 }
 
-type SmartSpaceQuickActionsSettingsProps = {
+type ContinuationQuickActionsSettingsProps = {
   variant?: 'settings' | 'composer'
 }
 
-export function SmartSpaceQuickActionsSettings({
+export function ContinuationQuickActionsSettings({
   variant = 'settings',
-}: SmartSpaceQuickActionsSettingsProps) {
+}: ContinuationQuickActionsSettingsProps) {
   const plugin = usePlugin()
   const { settings } = useSettings()
   const { t } = useLanguage()
   const quickActions =
-    settings.continuationOptions.smartSpaceQuickActions ||
+    settings.continuationOptions.continuationQuickActions ||
     getDefaultQuickActions(t)
   const actionsCountLabel = t(
-    'settings.smartSpace.actionsCount',
+    'settings.continuationQuickActions.actionsCount',
     '已配置 {count} 个快捷选项',
   ).replace('{count}', String(quickActions.length))
 
   const handleOpenModal = () => {
-    const modal = new SmartSpaceQuickActionsModal(plugin.app, plugin)
+    const modal = new ContinuationQuickActionsModal(
+      plugin.app,
+      plugin,
+      ContinuationQuickActionsSettingsContent,
+    )
     modal.open()
   }
 
   if (variant === 'composer') {
     return (
-      <div className="yolo-smart-space-settings">
-        <div className="yolo-smart-space-settings-row">
+      <div className="yolo-continuation-settings">
+        <div className="yolo-continuation-settings-row">
           <div className="yolo-settings-desc">{actionsCountLabel}</div>
           <ObsidianButton
-            text={t('settings.smartSpace.configureActions', '配置快捷选项')}
+            text={t(
+              'settings.continuationQuickActions.configureActions',
+              '配置快捷选项',
+            )}
             onClick={handleOpenModal}
           />
         </div>
@@ -290,18 +297,24 @@ export function SmartSpaceQuickActionsSettings({
   }
 
   return (
-    <div className="yolo-smart-space-settings">
+    <div className="yolo-continuation-settings">
       <ObsidianSetting
-        name={t('settings.smartSpace.quickActionsTitle', '续写预设')}
+        name={t(
+          'settings.continuationQuickActions.quickActionsTitle',
+          '续写预设',
+        )}
         desc={t(
-          'settings.smartSpace.quickActionsDesc',
+          'settings.continuationQuickActions.quickActionsDesc',
           '自定义续写模式下显示的快捷选项和提示词',
         )}
         className="yolo-settings-card"
       >
         <div className="yolo-settings-desc">{actionsCountLabel}</div>
         <ObsidianButton
-          text={t('settings.smartSpace.configureActions', '配置快捷选项')}
+          text={t(
+            'settings.continuationQuickActions.configureActions',
+            '配置快捷选项',
+          )}
           onClick={handleOpenModal}
         />
       </ObsidianSetting>
@@ -309,19 +322,28 @@ export function SmartSpaceQuickActionsSettings({
   )
 }
 
-export function SmartSpaceQuickActionsSettingsContent() {
+export function ContinuationQuickActionsSettingsContent() {
   const plugin = usePlugin()
   const { settings, setSettings } = useSettings()
   const { t } = useLanguage()
   const categoryOptions = useMemo(
     () => ({
-      suggestions: t('settings.smartSpace.categories.suggestions', '建议'),
-      writing: t('settings.smartSpace.categories.writing', '撰写'),
+      suggestions: t(
+        'settings.continuationQuickActions.categories.suggestions',
+        '建议',
+      ),
+      writing: t(
+        'settings.continuationQuickActions.categories.writing',
+        '撰写',
+      ),
       thinking: t(
-        'settings.smartSpace.categories.thinking',
+        'settings.continuationQuickActions.categories.thinking',
         '思考 · 询问 · 对话',
       ),
-      custom: t('settings.smartSpace.categories.custom', '自定义'),
+      custom: t(
+        'settings.continuationQuickActions.categories.custom',
+        '自定义',
+      ),
     }),
     [t],
   )
@@ -345,7 +367,7 @@ export function SmartSpaceQuickActionsSettingsContent() {
 
   // Get current quick actions, or use default ones if not customized
   const quickActions = (
-    settings.continuationOptions.smartSpaceQuickActions ||
+    settings.continuationOptions.continuationQuickActions ||
     getDefaultQuickActions(t)
   ).map((action) => {
     const config = DEFAULT_ACTION_LOOKUP[action.id]
@@ -398,7 +420,7 @@ export function SmartSpaceQuickActionsSettingsContent() {
       ...settings,
       continuationOptions: {
         ...settings.continuationOptions,
-        smartSpaceQuickActions: newActions.map((action) => ({
+        continuationQuickActions: newActions.map((action) => ({
           ...action,
           enabled: true,
         })),
@@ -440,7 +462,7 @@ export function SmartSpaceQuickActionsSettingsContent() {
       setEditingAction(null)
       setIsAddingAction(false)
     } catch (error: unknown) {
-      console.error('Failed to save Smart Space quick action', error)
+      console.error('Failed to save Continuation quick action', error)
     }
   }
 
@@ -449,7 +471,7 @@ export function SmartSpaceQuickActionsSettingsContent() {
     try {
       await handleSaveActions(newActions)
     } catch (error: unknown) {
-      console.error('Failed to delete Smart Space quick action', error)
+      console.error('Failed to delete Continuation quick action', error)
     }
   }
 
@@ -457,14 +479,14 @@ export function SmartSpaceQuickActionsSettingsContent() {
     const newAction = {
       ...action,
       id: generateId(),
-      label: `${action.label}${t('settings.smartSpace.copySuffix', ' (副本)')}`,
+      label: `${action.label}${t('settings.continuationQuickActions.copySuffix', ' (副本)')}`,
       enabled: true,
     }
     const newActions = [...quickActions, newAction]
     try {
       await handleSaveActions(newActions)
     } catch (error: unknown) {
-      console.error('Failed to duplicate Smart Space quick action', error)
+      console.error('Failed to duplicate Continuation quick action', error)
     }
   }
 
@@ -509,7 +531,7 @@ export function SmartSpaceQuickActionsSettingsContent() {
       await handleSaveActions(reorderedActions)
       triggerDropSuccess(String(active.id))
     } catch (error: unknown) {
-      console.error('Failed to reorder Smart Space actions', error)
+      console.error('Failed to reorder Continuation actions', error)
     }
   }
 
@@ -518,11 +540,11 @@ export function SmartSpaceQuickActionsSettingsContent() {
 
     const modal = new ConfirmModal(plugin.app, {
       title: t(
-        'settings.smartSpace.resetConfirmTitle',
-        'Reset Smart Space actions',
+        'settings.continuationQuickActions.resetConfirmTitle',
+        'Reset Continuation actions',
       ),
       message: t(
-        'settings.smartSpace.confirmReset',
+        'settings.continuationQuickActions.confirmReset',
         '确定要恢复默认的快捷选项吗？这将删除所有自定义设置。',
       ),
       ctaText: t('common.confirm'),
@@ -538,11 +560,11 @@ export function SmartSpaceQuickActionsSettingsContent() {
           ...settings,
           continuationOptions: {
             ...settings.continuationOptions,
-            smartSpaceQuickActions: undefined,
+            continuationQuickActions: undefined,
           },
         }),
       ).catch((error: unknown) => {
-        console.error('Failed to reset Smart Space quick actions', error)
+        console.error('Failed to reset Continuation quick actions', error)
       })
     }
 
@@ -550,20 +572,26 @@ export function SmartSpaceQuickActionsSettingsContent() {
   }
 
   return (
-    <div className="yolo-smart-space-settings">
+    <div className="yolo-continuation-settings">
       <ObsidianSetting
-        name={t('settings.smartSpace.quickActionsTitle', '续写预设')}
+        name={t(
+          'settings.continuationQuickActions.quickActionsTitle',
+          '续写预设',
+        )}
         desc={t(
-          'settings.smartSpace.quickActionsDesc',
+          'settings.continuationQuickActions.quickActionsDesc',
           '自定义续写模式下显示的快捷选项和提示词',
         )}
       >
         <ObsidianButton
-          text={t('settings.smartSpace.addAction', '添加选项')}
+          text={t('settings.continuationQuickActions.addAction', '添加选项')}
           onClick={handleAddAction}
         />
         <ObsidianButton
-          text={t('settings.smartSpace.resetToDefault', '恢复默认')}
+          text={t(
+            'settings.continuationQuickActions.resetToDefault',
+            '恢复默认',
+          )}
           onClick={handleResetToDefault}
         />
       </ObsidianSetting>
@@ -572,16 +600,19 @@ export function SmartSpaceQuickActionsSettingsContent() {
       {isAddingAction && editingAction && (
         <div className="yolo-quick-action-editor yolo-quick-action-editor-new">
           <ObsidianSetting
-            name={t('settings.smartSpace.actionLabel', '选项名称')}
+            name={t(
+              'settings.continuationQuickActions.actionLabel',
+              '选项名称',
+            )}
             desc={t(
-              'settings.smartSpace.actionLabelDesc',
+              'settings.continuationQuickActions.actionLabelDesc',
               '显示在快捷选项中的文本',
             )}
           >
             <ObsidianTextInput
               value={editingAction.label}
               placeholder={t(
-                'settings.smartSpace.actionLabelPlaceholder',
+                'settings.continuationQuickActions.actionLabelPlaceholder',
                 '例如：继续编写',
               )}
               onChange={(value) =>
@@ -591,9 +622,12 @@ export function SmartSpaceQuickActionsSettingsContent() {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.smartSpace.actionInstruction', '提示词')}
+            name={t(
+              'settings.continuationQuickActions.actionInstruction',
+              '提示词',
+            )}
             desc={t(
-              'settings.smartSpace.actionInstructionDesc',
+              'settings.continuationQuickActions.actionInstructionDesc',
               '发送给 AI 的指令',
             )}
             className="yolo-settings-textarea-header"
@@ -602,7 +636,7 @@ export function SmartSpaceQuickActionsSettingsContent() {
             <ObsidianTextArea
               value={editingAction.instruction}
               placeholder={t(
-                'settings.smartSpace.actionInstructionPlaceholder',
+                'settings.continuationQuickActions.actionInstructionPlaceholder',
                 '例如：请继续扩展当前段落，保持原有语气与风格。',
               )}
               onChange={(value) =>
@@ -612,8 +646,11 @@ export function SmartSpaceQuickActionsSettingsContent() {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.smartSpace.actionCategory', '分类')}
-            desc={t('settings.smartSpace.actionCategoryDesc', '选项所属的分类')}
+            name={t('settings.continuationQuickActions.actionCategory', '分类')}
+            desc={t(
+              'settings.continuationQuickActions.actionCategoryDesc',
+              '选项所属的分类',
+            )}
           >
             <ObsidianDropdown
               value={editingAction.category || 'custom'}
@@ -628,8 +665,11 @@ export function SmartSpaceQuickActionsSettingsContent() {
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.smartSpace.actionIcon', '图标')}
-            desc={t('settings.smartSpace.actionIconDesc', '选择一个图标')}
+            name={t('settings.continuationQuickActions.actionIcon', '图标')}
+            desc={t(
+              'settings.continuationQuickActions.actionIconDesc',
+              '选择一个图标',
+            )}
           >
             <ObsidianDropdown
               value={editingAction.icon || 'sparkles'}
@@ -770,7 +810,10 @@ function QuickActionItem({
         <div className="yolo-quick-action-drag-handle">
           <span
             className={`yolo-drag-handle ${isDragging ? 'yolo-drag-handle--active' : ''}`}
-            aria-label={t('settings.smartSpace.dragHandleAria', '拖拽排序')}
+            aria-label={t(
+              'settings.continuationQuickActions.dragHandleAria',
+              '拖拽排序',
+            )}
             {...listeners}
           >
             <GripVertical size={16} />
@@ -800,7 +843,7 @@ function QuickActionItem({
           <ObsidianButton
             onClick={() => void handleDuplicateAction(action)}
             icon="copy"
-            tooltip={t('settings.smartSpace.duplicate', '复制')}
+            tooltip={t('settings.continuationQuickActions.duplicate', '复制')}
           />
           <ObsidianButton
             onClick={() => void handleDeleteAction(action.id)}
@@ -813,16 +856,19 @@ function QuickActionItem({
       {isEditing && currentEditing && (
         <div className="yolo-quick-action-editor yolo-quick-action-editor-inline">
           <ObsidianSetting
-            name={t('settings.smartSpace.actionLabel', '选项名称')}
+            name={t(
+              'settings.continuationQuickActions.actionLabel',
+              '选项名称',
+            )}
             desc={t(
-              'settings.smartSpace.actionLabelDesc',
+              'settings.continuationQuickActions.actionLabelDesc',
               '显示在快捷选项中的文本',
             )}
           >
             <ObsidianTextInput
               value={currentEditing.label}
               placeholder={t(
-                'settings.smartSpace.actionLabelPlaceholder',
+                'settings.continuationQuickActions.actionLabelPlaceholder',
                 '例如：继续编写',
               )}
               onChange={(value) =>
@@ -835,9 +881,12 @@ function QuickActionItem({
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.smartSpace.actionInstruction', '提示词')}
+            name={t(
+              'settings.continuationQuickActions.actionInstruction',
+              '提示词',
+            )}
             desc={t(
-              'settings.smartSpace.actionInstructionDesc',
+              'settings.continuationQuickActions.actionInstructionDesc',
               '发送给 AI 的指令',
             )}
             className="yolo-settings-textarea-header"
@@ -846,7 +895,7 @@ function QuickActionItem({
             <ObsidianTextArea
               value={currentEditing.instruction}
               placeholder={t(
-                'settings.smartSpace.actionInstructionPlaceholder',
+                'settings.continuationQuickActions.actionInstructionPlaceholder',
                 '例如：请继续扩展当前段落，保持原有语气与风格。',
               )}
               onChange={(value) =>
@@ -859,8 +908,11 @@ function QuickActionItem({
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.smartSpace.actionCategory', '分类')}
-            desc={t('settings.smartSpace.actionCategoryDesc', '选项所属的分类')}
+            name={t('settings.continuationQuickActions.actionCategory', '分类')}
+            desc={t(
+              'settings.continuationQuickActions.actionCategoryDesc',
+              '选项所属的分类',
+            )}
           >
             <ObsidianDropdown
               value={currentEditing.category || 'custom'}
@@ -875,8 +927,11 @@ function QuickActionItem({
           </ObsidianSetting>
 
           <ObsidianSetting
-            name={t('settings.smartSpace.actionIcon', '图标')}
-            desc={t('settings.smartSpace.actionIconDesc', '选择一个图标')}
+            name={t('settings.continuationQuickActions.actionIcon', '图标')}
+            desc={t(
+              'settings.continuationQuickActions.actionIconDesc',
+              '选择一个图标',
+            )}
           >
             <ObsidianDropdown
               value={currentEditing.icon || 'sparkles'}

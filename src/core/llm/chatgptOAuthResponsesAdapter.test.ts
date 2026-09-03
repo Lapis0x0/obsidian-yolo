@@ -83,7 +83,9 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
     expect(request.instructions).toBe('You are helpful.')
   })
 
-  it('maps hosted web search tools to responses web search preview tools', () => {
+  // The Codex backend rejects `web_search_preview`, so the hosted tool type the
+  // transport injected is forwarded untouched.
+  it('forwards hosted web search tools under the requested type', () => {
     const request = adapter.buildRequest({
       model: 'gpt-5.4',
       stream: false,
@@ -96,7 +98,7 @@ describe('ChatGPTOAuthResponsesAdapter', () => {
       ],
     })
 
-    expect(request.tools).toEqual([{ type: 'web_search_preview' }])
+    expect(request.tools).toEqual([{ type: 'web_search' }])
   })
 
   it('keeps standard Responses sampling and output limit fields by default', () => {

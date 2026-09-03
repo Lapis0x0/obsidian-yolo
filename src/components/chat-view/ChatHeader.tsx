@@ -1,4 +1,4 @@
-import { Download, History, Plus } from 'lucide-react'
+import { ArrowLeft, Download, History, Plus, Settings } from 'lucide-react'
 import type {
   Dispatch,
   MutableRefObject,
@@ -32,6 +32,7 @@ import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { ChatListDropdown } from './ChatListDropdown'
 import { HermesProfileSelector } from './HermesProfileSelector'
 import { RuntimeSelector } from './RuntimeSelector'
+import type { SparkleView } from './sparkle/SparklePanel'
 import ViewToggle from './ViewToggle'
 
 const WORKSPACE_WIDE_HEADER_MIN_WIDTH = 1200
@@ -40,6 +41,8 @@ export type ChatHeaderProps = {
   isSidebarPlacement: boolean
   activeView: 'chat' | 'composer'
   onChangeView?: (view: 'chat' | 'composer') => void
+  sparkleView: SparkleView
+  onChangeSparkleView: (view: SparkleView) => void
   activeRuntimeId: ChatRuntimeId
   handleRuntimeChange: (runtimeId: ChatRuntimeId) => void
   lastCliRuntimeIdRef: MutableRefObject<CliRuntimeId>
@@ -105,6 +108,8 @@ export function ChatHeader({
   isSidebarPlacement,
   activeView,
   onChangeView,
+  sparkleView,
+  onChangeSparkleView,
   activeRuntimeId,
   handleRuntimeChange,
   lastCliRuntimeIdRef,
@@ -321,6 +326,46 @@ export function ChatHeader({
             >
               <History size={18} />
             </ChatListDropdown>
+          </div>
+        </div>
+      )}
+      {activeView === 'composer' && (
+        <div className="yolo-chat-header-right">
+          <div className="yolo-chat-header-buttons">
+            <button
+              type="button"
+              className={`clickable-icon${
+                sparkleView === 'settings' ? ' is-active' : ''
+              }`}
+              aria-label={
+                sparkleView === 'settings'
+                  ? t('sparkle.settings.back', 'Back')
+                  : t('sparkle.settings.open', 'Sparkle settings')
+              }
+              aria-pressed={sparkleView === 'settings'}
+              onClick={() =>
+                onChangeSparkleView(
+                  sparkleView === 'settings' ? 'main' : 'settings',
+                )
+              }
+            >
+              {/* 齿轮与返回箭头同格堆叠、互相交接：这个按钮既是设置入口也是
+                  设置出口，图标自己交代当前按下去会发生什么，设置视图因此
+                  不再需要一行返回栏。 */}
+              <span
+                className={`yolo-sparkle-settings-toggle-icon${
+                  sparkleView === 'settings' ? ' is-open' : ''
+                }`}
+                aria-hidden="true"
+              >
+                <span className="yolo-sparkle-settings-toggle-gear">
+                  <Settings size={18} />
+                </span>
+                <span className="yolo-sparkle-settings-toggle-back">
+                  <ArrowLeft size={18} />
+                </span>
+              </span>
+            </button>
           </div>
         </div>
       )}

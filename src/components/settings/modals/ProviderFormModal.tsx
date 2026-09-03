@@ -6,8 +6,9 @@ import {
   PROVIDER_API_INFO,
   PROVIDER_PRESET_INFO,
 } from '../../../constants'
+import { PROVIDER_CATALOG } from '../../../constants/provider-catalog'
 import { useLanguage } from '../../../contexts/language-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   LLMProvider,
   LLMProviderPresetType,
@@ -234,6 +235,12 @@ function ProviderFormComponent({
   }
 
   const providerTypeInfo = PROVIDER_PRESET_INFO[formData.presetType]
+  // Where to get a key for this brand. `openai-compatible` is the custom-provider
+  // tile and has no catalog entry (and no single console to point at).
+  const apiKeyUrl =
+    formData.presetType === 'openai-compatible'
+      ? undefined
+      : PROVIDER_CATALOG[formData.presetType].apiKeyUrl
   const providerApiOptions = Object.fromEntries(
     getSupportedApiTypesForPresetType(formData.presetType).map((apiType) => [
       apiType,
@@ -361,6 +368,16 @@ function ProviderFormComponent({
               >
                 {t('settings.providers.apiKey')}
               </div>
+              {apiKeyUrl && (
+                <a
+                  className="yolo-provider-field-header-link"
+                  href={apiKeyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {t('settings.providers.getApiKey', 'Get API key')}
+                </a>
+              )}
             </div>
             <div className="yolo-provider-field-body">
               <input

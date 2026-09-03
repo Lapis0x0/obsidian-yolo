@@ -1,26 +1,26 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { useLanguage } from '../../contexts/language-context'
-import { useSettings } from '../../contexts/settings-context'
+import { useLanguage } from '../../../contexts/language-context'
+import { useSettings } from '../../../contexts/settings-context'
 import {
   DEFAULT_TAB_COMPLETION_LENGTH_PRESET,
   DEFAULT_TAB_COMPLETION_OPTIONS,
   DEFAULT_TAB_COMPLETION_TRIGGERS,
   type TabCompletionTrigger,
-} from '../../settings/schema/setting.types'
-import type { YoloSettings } from '../../settings/schema/setting.types'
-import { getModelDisplayName } from '../../utils/model-id-utils'
-import { ObsidianButton } from '../common/ObsidianButton'
-import { ObsidianDropdown } from '../common/ObsidianDropdown'
-import { ObsidianTextArea } from '../common/ObsidianTextArea'
-import { ObsidianTextInput } from '../common/ObsidianTextInput'
-import { ObsidianToggle } from '../common/ObsidianToggle'
-import { ReasoningPanel } from '../common/ReasoningPanel'
-import { SimpleSelect } from '../common/SimpleSelect'
-import { SelectionChatActionsSettings } from '../settings/SelectionChatActionsSettings'
-import { SmartSpaceQuickActionsSettings } from '../settings/SmartSpaceQuickActionsSettings'
+} from '../../../settings/schema/setting.types'
+import type { YoloSettings } from '../../../settings/schema/setting.types'
+import { getModelDisplayName } from '../../../utils/model-id-utils'
+import { ObsidianButton } from '../../common/ObsidianButton'
+import { ObsidianDropdown } from '../../common/ObsidianDropdown'
+import { ObsidianTextArea } from '../../common/ObsidianTextArea'
+import { ObsidianTextInput } from '../../common/ObsidianTextInput'
+import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { ReasoningPanel } from '../../common/ReasoningPanel'
+import { SimpleSelect } from '../../common/SimpleSelect'
+import { ContinuationQuickActionsSettings } from '../../settings/ContinuationQuickActionsSettings'
+import { SelectionChatActionsSettings } from '../../settings/SelectionChatActionsSettings'
 
-type ComposerProps = {
+type SparkleSettingsProps = {
   onNavigateChat?: () => void
 }
 
@@ -30,7 +30,7 @@ type NumberInputState = {
   [key: string]: string
 }
 
-const Composer: React.FC<ComposerProps> = (_props) => {
+const SparkleSettings: React.FC<SparkleSettingsProps> = (_props) => {
   const { t } = useLanguage()
   const { settings, setSettings } = useSettings()
   const composerRef = useRef<HTMLDivElement>(null)
@@ -449,16 +449,19 @@ const Composer: React.FC<ComposerProps> = (_props) => {
               <section className="yolo-composer-section">
                 <header className="yolo-composer-heading">
                   <div className="yolo-composer-heading-title">
-                    {t('settings.smartSpace.quickActionsTitle', '续写预设')}
+                    {t(
+                      'settings.continuationQuickActions.quickActionsTitle',
+                      '续写预设',
+                    )}
                   </div>
                   <div className="yolo-composer-heading-desc">
                     {t(
-                      'settings.smartSpace.quickActionsDesc',
+                      'settings.continuationQuickActions.quickActionsDesc',
                       '自定义续写模式下显示的快捷选项和提示词。',
                     )}
                   </div>
                 </header>
-                <SmartSpaceQuickActionsSettings variant="composer" />
+                <ContinuationQuickActionsSettings variant="composer" />
               </section>
             )}
 
@@ -1155,4 +1158,4 @@ const Composer: React.FC<ComposerProps> = (_props) => {
   )
 }
 
-export default Composer
+export default SparkleSettings

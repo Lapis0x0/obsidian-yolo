@@ -24,7 +24,7 @@ import {
   ConnectivityCounts,
   useConnectivityTest,
 } from '../../../hooks/useConnectivityTest'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ChatModel } from '../../../types/chat-model.types'
 import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'

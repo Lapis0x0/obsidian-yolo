@@ -16,7 +16,7 @@ import { useSettings } from '../../../contexts/settings-context'
 import { pruneOrphanedAssistantToolPreferences } from '../../../core/agent/tool-preferences'
 import { getLocalFileToolServerName } from '../../../core/mcp/localFileTools'
 import { McpManager } from '../../../core/mcp/mcpManager'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   McpServerState,
   McpServerStatus,

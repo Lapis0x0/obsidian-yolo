@@ -20,7 +20,7 @@ import {
   collectModelIdentifiers,
   extractModelIdentifier,
 } from '../../../core/llm/modelCatalogIdentifiers'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   ChatModel,
   ChatModelModality,

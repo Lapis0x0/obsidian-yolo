@@ -358,7 +358,7 @@ export const en: TranslationKeys = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: 'Continue writing presets',
       quickActionsDesc:
         'Customize the quick actions and prompts shown in Quick Ask’s continue mode',
@@ -759,16 +759,16 @@ export const en: TranslationKeys = {
       cliRuntimesBlockTitle: 'CLI runtimes',
       claudeCliPathName: 'Claude Code CLI path',
       claudeCliPathDesc:
-        'Custom path to the claude executable — paste the output of "which claude". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the claude executable — paste the output of "which claude" ("where claude" on Windows). Leave empty to auto-detect. Stored on this device only.',
       codexCliPathName: 'Codex CLI path',
       codexCliPathDesc:
         'Custom path to the codex executable — paste the output of "which codex" ("where codex" on Windows). Leave empty to auto-detect. Stored on this device only.',
       hermesCliPathName: 'Hermes CLI path',
       hermesCliPathDesc:
-        'Custom path to the hermes executable — paste the output of "which hermes". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the hermes executable — paste the output of "which hermes" ("where hermes" on Windows). Leave empty to auto-detect. Stored on this device only.',
       piCliPathName: 'Pi CLI path',
       piCliPathDesc:
-        'Custom path to the pi executable — paste the output of "which pi". Leave empty to auto-detect. Stored on this device only.',
+        'Custom path to the pi executable — paste the output of "which pi" ("where pi" on Windows). Leave empty to auto-detect. Stored on this device only.',
       cliPathMissing:
         'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',
@@ -789,6 +789,11 @@ export const en: TranslationKeys = {
       mcpServerDesc:
         'Allow external agents to search the Vault through MCP and delegate tasks to configured YOLO agents.',
       mcpServerDesktopOnly: 'The MCP service is available on desktop only.',
+      mcpServerPort: 'Port',
+      mcpServerPortDesc:
+        'Local port the MCP service listens on. Change it if another app or plugin already uses this port, then update your client configuration.',
+      mcpServerPortInUse:
+        'Port {port} is already in use — often by another Obsidian plugin in this same process, such as Local REST API. Pick a different port above.',
       mcpServerClientConfig: 'MCP connection configuration',
       mcpServerCopyConfig: 'Copy',
       mcpServerError: 'Failed to start',
@@ -962,6 +967,7 @@ export const en: TranslationKeys = {
       badgeOpenAiCompatible: 'OpenAI compatible',
       badgeNative: 'Native protocol',
       badgeOAuth: 'OAuth',
+      badgeSponsor: 'Sponsor',
       badgeAdded: 'Added',
       kind: {
         openai: 'Reasoning · Multimodal',
@@ -1002,6 +1008,7 @@ export const en: TranslationKeys = {
         'Choose an ID to identify this provider in your settings. This is just for your reference.',
       providerIdPlaceholder: 'Example: my-custom-provider',
       apiKey: 'API key',
+      getApiKey: 'Get API key',
       apiKeyDesc: 'Leave empty if not required.',
       apiKeyPlaceholder: 'Enter your API key',
       baseUrl: 'Base URL',
@@ -2545,6 +2552,47 @@ export const en: TranslationKeys = {
     statusRequesting: 'Requesting...',
     statusThinking: 'Thinking...',
     statusGenerating: 'Generating...',
+  },
+
+  sparkle: {
+    settings: {
+      open: 'Sparkle settings',
+      back: 'Back',
+    },
+    similarNotes: {
+      title: 'Similar notes',
+      scope: 'Scope',
+      allKnowledgeBases: 'All knowledge bases',
+      someKnowledgeBases: '{count} knowledge bases',
+      manageKnowledgeBases: 'Manage knowledge bases…',
+      basedOn: 'Based on',
+      insertLink: 'Insert link at cursor',
+      insertUnavailable: 'No active markdown editor',
+      expandSnippets: 'Show matching passages',
+      collapseSnippets: 'Hide matching passages',
+      noActiveNote: 'No note is open',
+      noActiveNoteHint: 'Open a note to see what it relates to.',
+      noEmbeddingModel: 'No embedding model configured',
+      noEmbeddingModelHint:
+        'Similar notes need an embedding model to compare notes with.',
+      configure: 'Configure',
+      notIndexed: 'This note has not been indexed yet',
+      notIndexedHint:
+        'Similar notes come from the vector index. Index this note to see what it relates to.',
+      indexThisNote: 'Index this note',
+      indexing: 'Indexing…',
+      indexFailed: 'Failed to index this note',
+      outOfScope: 'This note is outside every knowledge base',
+      outOfScopeHint:
+        'Add its folder to a knowledge base to include it in similar notes.',
+      openKnowledgeBaseSettings: 'Open knowledge base settings',
+      empty: 'No similar notes in this scope',
+      emptyHint: 'Widen the scope to search more knowledge bases.',
+      emptyHintSearched:
+        'Searched {count} indexed notes. Widen the scope to search more knowledge bases.',
+      error: 'Could not load similar notes',
+      retry: 'Retry',
+    },
   },
 
   chatMode: {

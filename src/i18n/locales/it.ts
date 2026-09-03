@@ -381,7 +381,7 @@ export const it: DeepPartial<TranslationKeys> = {
         },
       },
     },
-    smartSpace: {
+    continuationQuickActions: {
       quickActionsTitle: 'Preset di continuazione scrittura',
       quickActionsDesc:
         'Personalizza le azioni rapide e i prompt mostrati nella modalità di continuazione di Quick Ask',
@@ -762,16 +762,16 @@ export const it: DeepPartial<TranslationKeys> = {
       cliRuntimesBlockTitle: 'Runtime CLI',
       claudeCliPathName: 'Percorso CLI di Claude Code',
       claudeCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile claude — incolla l\'output di "which claude" ("where claude" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       codexCliPathName: 'Percorso CLI di Codex',
       codexCliPathDesc:
         'Percorso personalizzato dell\'eseguibile codex — incolla l\'output di "which codex" ("where codex" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       hermesCliPathName: 'Percorso CLI di Hermes',
       hermesCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile hermes — incolla l\'output di "which hermes". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile hermes — incolla l\'output di "which hermes" ("where hermes" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       piCliPathName: 'Percorso CLI di Pi',
       piCliPathDesc:
-        'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi". Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+        'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi" ("where pi" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       cliPathMissing:
         'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
@@ -793,6 +793,11 @@ export const it: DeepPartial<TranslationKeys> = {
       mcpServerDesc:
         'Consenti agli agenti esterni di cercare nel Vault tramite MCP e delegare attivita agli agenti YOLO configurati.',
       mcpServerDesktopOnly: 'Il servizio MCP e disponibile solo su desktop.',
+      mcpServerPort: 'Porta',
+      mcpServerPortDesc:
+        'Porta locale su cui il servizio MCP resta in ascolto. Cambiala se un altro programma o plugin la occupa gia, poi aggiorna la configurazione del client.',
+      mcpServerPortInUse:
+        'La porta {port} e gia in uso, spesso da un altro plugin nello stesso processo di Obsidian come Local REST API. Scegli una porta diversa qui sopra.',
       mcpServerClientConfig: 'Configurazione connessione MCP',
       mcpServerCopyConfig: 'Copia',
       mcpServerError: 'Avvio non riuscito',
@@ -893,6 +898,7 @@ export const it: DeepPartial<TranslationKeys> = {
       badgeOpenAiCompatible: 'Compatibile OpenAI',
       badgeNative: 'Protocollo nativo',
       badgeOAuth: 'OAuth',
+      badgeSponsor: 'Sponsor',
       badgeAdded: 'Aggiunto',
       providersCount: '{count} provider aggiunti',
       editProvider: 'Modifica provider',
@@ -915,6 +921,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Identificatore univoco per questo provider (ad es., openai, anthropic).',
       providerIdPlaceholder: 'Ad esempio, openai',
       apiKey: 'Chiave API',
+      getApiKey: 'Ottieni chiave API',
       apiKeyDesc: 'La tua chiave API per questo provider.',
       apiKeyPlaceholder: 'Inserisci la tua chiave API',
       baseUrl: 'URL base',

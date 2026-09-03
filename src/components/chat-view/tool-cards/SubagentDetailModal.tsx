@@ -1,18 +1,21 @@
 import { Clock, Coins, Wrench, X } from 'lucide-react'
-import { useEffect, useId } from 'react'
+import { Suspense, lazy, useEffect, useId } from 'react'
 import { createPortal } from 'react-dom'
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { ChatMessage } from '../../../types/chat'
 import { groupAssistantAndToolMessages } from '../../../utils/chat/message-groups'
 import { formatTokenCount } from '../../../utils/llm/formatTokenCount'
-import AssistantToolMessageGroupItem from '../AssistantToolMessageGroupItem'
 
 import { formatDuration, formatSubagentActivityLine } from './subagentCardUtils'
 import type {
   SubagentDetailStats,
   SubagentDisplayStatus,
 } from './SubagentCardView'
+
+const AssistantToolMessageGroupItem = lazy(
+  async () => import('../AssistantToolMessageGroupItem'),
+)
 
 type SubagentDetailModalProps = {
   container: HTMLElement
@@ -163,33 +166,41 @@ export function SubagentDetailModal({
           ) : groupedTranscript ? (
             groupedTranscript.map((messageOrGroup) =>
               Array.isArray(messageOrGroup) ? (
-                <AssistantToolMessageGroupItem
+                <Suspense
                   key={messageOrGroup.at(0)?.id ?? taskId ?? title}
-                  messages={messageOrGroup}
-                  conversationId={taskId ?? 'subagent-transcript'}
-                  suppressFooter
-                  showInlineInfo={false}
-                  showRetryAction={false}
-                  showInsertAction={false}
-                  showCopyAction={false}
-                  showBranchAction={false}
-                  showEditAction={false}
-                  showDeleteAction={false}
-                  showQuoteAction={false}
-                  showRunningToolFooter={false}
-                  isApplying={false}
-                  activeApplyRequestKey={null}
-                  onApply={() => {}}
-                  onToolMessageUpdate={() => {}}
-                  onEditStart={() => {}}
-                  onEditCancel={() => {}}
-                  onEditSave={() => {}}
-                  onDeleteGroup={() => {}}
-                  onRetryGroup={() => {}}
-                  onBranchGroup={() => {}}
-                  onOpenEditSummaryFile={() => {}}
-                  onQuoteAssistantSelection={() => {}}
-                />
+                  fallback={
+                    <div className="yolo-subagent-detail-empty">
+                      {t('chat.subagent.loadingActivity', 'Loading activity…')}
+                    </div>
+                  }
+                >
+                  <AssistantToolMessageGroupItem
+                    messages={messageOrGroup}
+                    conversationId={taskId ?? 'subagent-transcript'}
+                    suppressFooter
+                    showInlineInfo={false}
+                    showRetryAction={false}
+                    showInsertAction={false}
+                    showCopyAction={false}
+                    showBranchAction={false}
+                    showEditAction={false}
+                    showDeleteAction={false}
+                    showQuoteAction={false}
+                    showRunningToolFooter={false}
+                    isApplying={false}
+                    activeApplyRequestKey={null}
+                    onApply={() => {}}
+                    onToolMessageUpdate={() => {}}
+                    onEditStart={() => {}}
+                    onEditCancel={() => {}}
+                    onEditSave={() => {}}
+                    onDeleteGroup={() => {}}
+                    onRetryGroup={() => {}}
+                    onBranchGroup={() => {}}
+                    onOpenEditSummaryFile={() => {}}
+                    onQuoteAssistantSelection={() => {}}
+                  />
+                </Suspense>
               ) : null,
             )
           ) : visibleActivityLines.length > 0 ? (

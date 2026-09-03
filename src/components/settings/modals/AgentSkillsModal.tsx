@@ -12,7 +12,7 @@ import {
   humanizeSkillName,
 } from '../../../core/skills/liteSkills'
 import { useLiteSkillEntries } from '../../../hooks/useLiteSkillEntries'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ReactModal } from '../../common/ReactModal'

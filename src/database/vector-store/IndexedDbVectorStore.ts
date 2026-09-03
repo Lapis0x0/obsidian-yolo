@@ -37,6 +37,22 @@ const IDLE_CHECK_INTERVAL_MS = 60 * 1000
 const CANDIDATE_WINDOW_MULTIPLIER = 4
 const CANDIDATE_WINDOW_MIN = 32
 
+/**
+ * Random chunk pairs sampled for `getSimilarityBaseline`. The estimate only
+ * needs to place the corpus's background similarity to two decimals, and the
+ * standard error of a mean over 4000 samples is ~1.5% of the standard
+ * deviation — far finer than the visual scale it feeds. Costs one int8 dot
+ * product per sample against an index that is already resident.
+ */
+const BASELINE_PAIR_SAMPLES = 4000
+/**
+ * Recompute the cached baseline once the index has grown or shrunk by this
+ * fraction. The statistic is coarse and barely moves as a few hundred chunks
+ * are added, but a vault indexing from empty would otherwise keep a baseline
+ * measured over its first handful of notes for the rest of the session.
+ */
+const BASELINE_STALE_SIZE_RATIO = 0.25
+
 /** Exact dot product of two equal-length vectors (cosine similarity when both are unit-length). */
 function dotProduct(a: Float32Array, b: Float32Array): number {
   let dot = 0
@@ -74,6 +90,12 @@ export class IndexedDbVectorStore implements VectorStore {
     string,
     { dimension: number; promise: Promise<VectorIndex> }
   >()
+  /** Per-model background similarity, with the live row count it was measured
+   *  over so growth can invalidate it. Cleared with the index it describes. */
+  private readonly baselines = new Map<
+    string,
+    { mean: number; std: number; size: number }
+  >()
   private readonly idleThresholdMs: number
   private readonly scanYieldEvery: number | undefined
   private idleTimer: ReturnType<typeof setInterval> | null = null
@@ -103,6 +125,7 @@ export class IndexedDbVectorStore implements VectorStore {
     }
     this.indexes.clear()
     this.loadingIndexes.clear()
+    this.baselines.clear()
     this.db.close()
   }
 
@@ -111,6 +134,7 @@ export class IndexedDbVectorStore implements VectorStore {
     for (const [modelId, index] of this.indexes) {
       if (now - index.lastQueryAt > this.idleThresholdMs) {
         this.indexes.delete(modelId)
+        this.baselines.delete(modelId)
       }
     }
   }
@@ -178,6 +202,19 @@ export class IndexedDbVectorStore implements VectorStore {
     }
     await transactionCompletion(tx)
     return results
+  }
+
+  async listVectorsForPath(
+    modelId: string,
+    path: string,
+  ): Promise<Float32Array[]> {
+    const tx = this.db.transaction(CHUNKS_STORE, 'readonly')
+    const index = tx.objectStore(CHUNKS_STORE).index(MODEL_PATH_INDEX)
+    const records = (await requestResult(
+      index.getAll(compoundKeyPrefixRange([modelId, path])),
+    )) as ChunkRecord[]
+    await transactionCompletion(tx)
+    return records.map((record) => record.vector)
   }
 
   async deleteVectorsByIds(ids: number[]): Promise<void> {
@@ -291,6 +328,7 @@ export class IndexedDbVectorStore implements VectorStore {
   async truncateModel(modelId: string): Promise<void> {
     await this.deleteAllForModel(modelId)
     this.indexes.delete(modelId)
+    this.baselines.delete(modelId)
     this.loadingIndexes.delete(modelId)
   }
 
@@ -298,6 +336,7 @@ export class IndexedDbVectorStore implements VectorStore {
     for (const modelId of modelIds) {
       await this.deleteAllForModel(modelId)
       this.indexes.delete(modelId)
+      this.baselines.delete(modelId)
       this.loadingIndexes.delete(modelId)
     }
   }
@@ -326,6 +365,73 @@ export class IndexedDbVectorStore implements VectorStore {
    * and one `index.openCursor(modelId)` — stopped after its first result —
    * purely to read that one row's `dimension`.
    */
+  /**
+   * See `VectorStore.getSimilarityBaseline`. Samples random *live* row pairs
+   * from the resident int8 matrix and reconstructs each pair's cosine from
+   * the per-row scales (`x ≈ q * scale / 127`, see `quantization.ts`); rows
+   * are L2-normalized at write time, so the dot product is the cosine. int8
+   * error is well below the resolution this statistic is read at, so the
+   * float32 rescore `performSimilaritySearch` does is not worth a second
+   * IndexedDB round trip here.
+   */
+  async getSimilarityBaseline(embeddingModel: {
+    id: string
+    dimension: number
+  }): Promise<{ mean: number; std: number } | null> {
+    const index = await this.ensureIndexLoaded(
+      embeddingModel.id,
+      embeddingModel.dimension,
+    )
+    const liveCount = index.size - index.tombstoneCount
+    if (liveCount < 2) return null
+
+    const cached = this.baselines.get(embeddingModel.id)
+    if (
+      cached &&
+      Math.abs(liveCount - cached.size) <=
+        cached.size * BASELINE_STALE_SIZE_RATIO
+    ) {
+      return { mean: cached.mean, std: cached.std }
+    }
+
+    const liveRows: number[] = []
+    for (let rowIndex = 0; rowIndex < index.size; rowIndex++) {
+      if (!index.isTombstoned(rowIndex)) liveRows.push(rowIndex)
+    }
+    if (liveRows.length < 2) return null
+
+    const { dimension, matrix, scales } = index
+    let sum = 0
+    let sumSquares = 0
+    for (let sample = 0; sample < BASELINE_PAIR_SAMPLES; sample++) {
+      const indexA = Math.floor(Math.random() * liveRows.length)
+      let indexB = Math.floor(Math.random() * liveRows.length)
+      // A row against itself scores 1 and would drag the background up.
+      if (indexA === indexB) indexB = (indexB + 1) % liveRows.length
+      const a = liveRows[indexA]
+      const b = liveRows[indexB]
+      let dot = 0
+      const offsetA = a * dimension
+      const offsetB = b * dimension
+      for (let i = 0; i < dimension; i++) {
+        dot += matrix[offsetA + i] * matrix[offsetB + i]
+      }
+      const similarity = (dot * scales[a] * scales[b]) / (127 * 127)
+      sum += similarity
+      sumSquares += similarity * similarity
+    }
+    const mean = sum / BASELINE_PAIR_SAMPLES
+    const std = Math.sqrt(
+      Math.max(0, sumSquares / BASELINE_PAIR_SAMPLES - mean * mean),
+    )
+    this.baselines.set(embeddingModel.id, {
+      mean,
+      std,
+      size: liveRows.length,
+    })
+    return { mean, std }
+  }
+
   async getEmbeddingStats(): Promise<
     Array<{ model: string; rowCount: number; vectorBytes: number }>
   > {
@@ -530,6 +636,7 @@ export class IndexedDbVectorStore implements VectorStore {
     if (existing) {
       if (existing.dimension === dimension) return Promise.resolve(existing)
       this.indexes.delete(modelId)
+      this.baselines.delete(modelId)
     }
     const inFlight = this.loadingIndexes.get(modelId)
     if (inFlight) {

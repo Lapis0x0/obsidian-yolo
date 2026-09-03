@@ -37,7 +37,7 @@ const CONTINUATION_TASK_CONTRACT =
 // implicit "continuation model" fallback here.
 export type ContinuationModelOverride = ReturnType<typeof getChatModelClient>
 
-type WriteAssistDeps = {
+type ContinuationControllerDeps = {
   app: App
   getSettings: () => YoloSettings
   setSettings: (newSettings: YoloSettings) => Promise<boolean>
@@ -75,10 +75,10 @@ type WriteAssistDeps = {
   }) => void
 }
 
-export class WriteAssistController {
-  private readonly deps: WriteAssistDeps
+export class ContinuationController {
+  private readonly deps: ContinuationControllerDeps
 
-  constructor(deps: WriteAssistDeps) {
+  constructor(deps: ContinuationControllerDeps) {
     this.deps = deps
   }
 
@@ -208,7 +208,7 @@ export class WriteAssistController {
           }
         } catch (error) {
           console.warn(
-            'Failed to include mentioned files for Smart Space continuation',
+            'Failed to include mentioned files for continuation',
             error,
           )
         }

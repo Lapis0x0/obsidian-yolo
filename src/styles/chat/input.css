@@ -598,6 +598,17 @@ body.is-mobile .yolo-chat-container--mobile-keyboard-managed {
 
 .yolo-chat-quick-access-motion {
   width: 100%;
+  animation: yolo-chat-quick-access-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-chat-quick-access-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 button.yolo-chat-quick-access-entry,
@@ -810,7 +821,9 @@ button.yolo-chat-quick-access-picker-row > svg {
   text-align: center;
 }
 
-.yolo-chat-container--sidebar > .yolo-chat-composer-wrapper,
+/* .yolo-chat-composer-wrapper 不在此列：它现在只包 SparklePanel，而 SparklePanel
+ * 的每个子视图都自带横向内边距。再补一层就会和 .view-content 的内边距叠成双重
+ * 缩进，让灵光写作的内容比同级的 .yolo-chat-header 各窄 12px。 */
 .yolo-chat-container--sidebar > .yolo-chat-footer,
 .yolo-chat-container--sidebar > .yolo-chat-user-input-files,
 .yolo-chat-container--sidebar > .yolo-chat-input-wrapper {
@@ -970,6 +983,16 @@ button.yolo-chat-quick-access-picker-row > svg {
   position: relative;
   /* 工具栏与 Obsidian 面板底栏（词数/字符数等）之间留一点呼吸感 */
   padding-bottom: 4px;
+}
+
+/*
+ * Empty↔docked FLIP Play. Invert 帧把 inline transition:none 摁在 transform 上；
+ * 这一帧松手后由这条过渡收到 0。时长走 L2 enter token：L3 的 spring 只存在于
+ * JS，这里和会话列表补位一样是 CSS 近似，只动 transform。
+ */
+.yolo-chat-footer--dock-flipping {
+  transition: transform var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
 }
 
 .yolo-chat-floating-actions {
@@ -3647,7 +3670,9 @@ button.yolo-assistant-annotation-marker.is-active {
 }
 
 .yolo-chat-user-input-controls__left .yolo-chat-input-model-select {
-  max-width: 160px;
+  /* 上限只是「别把整行吃光」的护栏，不是常态约束：行内有空间时完整显示模型名，
+   * 空间不足时再由 flex 收缩 + 省略号处理 */
+  max-width: 320px;
   min-width: 0;
   flex-shrink: 1;
 }
@@ -3655,10 +3680,6 @@ button.yolo-assistant-annotation-marker.is-active {
 .yolo-chat-user-input-controls__left .yolo-reasoning-select {
   min-width: 72px;
   flex: 0 1 auto;
-}
-
-.yolo-chat-user-input-controls__left .yolo-chat-input-model-select__model-name {
-  max-width: 120px;
 }
 
 .yolo-chat-user-input-toolbar {
@@ -3701,7 +3722,8 @@ button.yolo-assistant-annotation-marker.is-active {
 }
 
 .yolo-chat-user-input-toolbar__right .yolo-chat-input-model-select {
-  max-width: 160px;
+  /* 同 controls__left：上限是护栏而非常态约束 */
+  max-width: 320px;
   min-width: 0;
   flex-shrink: 1;
 }
@@ -3709,10 +3731,6 @@ button.yolo-assistant-annotation-marker.is-active {
 .yolo-chat-user-input-toolbar__right .yolo-reasoning-select {
   min-width: 72px;
   flex: 0 1 auto;
-}
-
-.yolo-chat-user-input-toolbar__right .yolo-chat-input-model-select__model-name {
-  max-width: 120px;
 }
 
 /* 底部工具栏控件：默认用 text-muted + normal 字重，比全局 medium 略轻但仍可读 */

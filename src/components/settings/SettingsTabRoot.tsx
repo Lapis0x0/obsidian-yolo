@@ -3,7 +3,7 @@ import { App } from 'obsidian'
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
 import { SettingsProvider } from '../../contexts/settings-context'
-import YoloPlugin from '../../main'
+import type YoloPlugin from '../../main'
 
 import { SettingsTabs } from './SettingsTabs'
 

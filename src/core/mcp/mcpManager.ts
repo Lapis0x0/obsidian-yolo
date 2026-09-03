@@ -101,6 +101,7 @@ export class McpManager {
   private readonly openApplyReview: (state: ApplyViewState) => Promise<boolean>
   private readonly ragAccess?: RagKnowledgeAccess
   private readonly promptSourceWatcher?: PromptSourceWatcher
+  private readonly runSubagent?: NonNullable<ToolContext['runSubagent']>
   private settings: YoloSettings
   private persistDiscoveredCatalogs?: (
     catalogs: Record<string, McpDiscoveredCatalog>,
@@ -225,6 +226,7 @@ export class McpManager {
     ragAccess,
     promptSourceWatcher,
     persistDiscoveredCatalogs,
+    runSubagent,
   }: {
     app: App
     pluginId: string
@@ -238,6 +240,7 @@ export class McpManager {
     persistDiscoveredCatalogs?: (
       catalogs: Record<string, McpDiscoveredCatalog>,
     ) => void
+    runSubagent?: NonNullable<ToolContext['runSubagent']>
   }) {
     this.app = app
     this.oauthController = new McpOAuthController(app, pluginId)
@@ -245,6 +248,7 @@ export class McpManager {
     this.ragAccess = ragAccess
     this.promptSourceWatcher = promptSourceWatcher
     this.persistDiscoveredCatalogs = persistDiscoveredCatalogs
+    this.runSubagent = runSubagent
     this.settings = settings
     this.discoveredCatalogs = settings.mcp.discoveredCatalogs ?? {}
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
@@ -1289,35 +1293,10 @@ export class McpManager {
             // only to feed the old `callLocalFileTool` switch, so it left
             // that signature along with it.
             subagentParentContext,
-            // Dependency injection, same lazy-accessor shape as
-            // `ragAccess` above — `delegate_subagent` no longer
-            // imports `runner.ts` itself (see
-            // `ToolContext['runSubagent']`'s doc comment in
-            // `core/tools/types.ts`).
-            //
-            // The import is dynamic and lives *inside* the thunk for two
-            // reasons. (1) `runner.ts` transitively reaches
-            // `tool-preferences.ts`, which reads
-            // `McpManager.TOOL_NAME_DELIMITER` at module-evaluation time
-            // (`tool-preferences.ts:125`); a static top-level import here
-            // would recreate the module-init-order hazard that already
-            // broke `fs_read`'s schema literal earlier in this migration.
-            // (2) Keeping it in the thunk rather than awaiting it before
-            // every dispatch means tools that never delegate (i.e. all of
-            // them but one) don't pull in the subagent runtime at all.
-            // It is not an attempt to hide the dependency edge from the
-            // circular-dependency ratchet, which still records it.
-            //
-            // The cast is required because the declared parameter type
-            // keeps `parent` opaque (`unknown`) so every other tool's
-            // import graph stays clear of
-            // `core/agent/subagent/parent-context.ts`; this is the one
-            // place the real, narrower `SubagentParentContext` shape gets
-            // reconciled with it.
-            runSubagent: async (input) => {
-              const { runSubagent } = await import('../agent/subagent/runner')
-              return (runSubagent as ToolContext['runSubagent'])!(input)
-            },
+            // The composition root owns subagent creation. McpManager only
+            // forwards the injected capability, keeping MCP/tool dispatch
+            // independent from the native agent runtime.
+            runSubagent: this.runSubagent,
             promptSourceWatcher: this.promptSourceWatcher,
             bashApprovalMode,
             bashReadOnly,

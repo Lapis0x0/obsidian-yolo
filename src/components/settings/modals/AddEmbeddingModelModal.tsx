@@ -6,7 +6,7 @@ import { useLanguage } from '../../../contexts/language-context'
 import { listBedrockEmbeddingModelIds } from '../../../core/llm/bedrockCatalog'
 import { extractEmbeddingVector } from '../../../core/llm/embedding-utils'
 import { getProviderClient } from '../../../core/llm/manager'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import {
   EmbeddingModel,
   embeddingModelSchema,

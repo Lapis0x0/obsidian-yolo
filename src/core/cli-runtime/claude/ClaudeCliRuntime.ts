@@ -761,12 +761,11 @@ export class ClaudeCliRuntime implements CliRuntime {
       await this.query.interrupt()
     }
     this.markActiveAssistant('aborted')
+    // Unanswered approval / question cards are settled by the controller on
+    // the terminal run state, for every runtime at once — only a tool that was
+    // already running needs this runtime's own bookkeeping.
     for (const [toolUseId, tool] of this.tools) {
-      if (
-        tool.response.status === ToolCallResponseStatus.Running ||
-        tool.response.status === ToolCallResponseStatus.PendingApproval ||
-        tool.response.status === ToolCallResponseStatus.AwaitingUserInput
-      ) {
+      if (tool.response.status === ToolCallResponseStatus.Running) {
         this.upsertTool(toolUseId, {
           status: ToolCallResponseStatus.Aborted,
         })
@@ -775,9 +774,11 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.emit({ type: 'run_state', state: 'aborted' })
   }
 
-  async respondApproval(response: CliApprovalResponse): Promise<boolean> {
+  async respondApproval(
+    response: CliApprovalResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingPermissions.get(response.requestId)
-    if (!pending || pending.kind !== 'approval' || pending.settled) return false
+    if (!pending || pending.kind !== 'approval' || pending.settled) return null
 
     if (response.decision === 'reject') {
       this.settlePending(pending, {
@@ -786,12 +787,10 @@ export class ClaudeCliRuntime implements CliRuntime {
         toolUseID: pending.toolUseId,
         decisionClassification: 'user_reject',
       })
-      this.upsertTool(pending.toolUseId, {
+      return {
         status: ToolCallResponseStatus.Rejected,
         reason: 'User denied this action.',
-      })
-      this.emitPendingRunStateOrRunning()
-      return true
+      }
     }
 
     this.settlePending(pending, {
@@ -811,16 +810,14 @@ export class ClaudeCliRuntime implements CliRuntime {
           ? 'user_permanent'
           : 'user_temporary',
     })
-    this.upsertTool(pending.toolUseId, {
-      status: ToolCallResponseStatus.Running,
-    })
-    this.emitPendingRunStateOrRunning()
-    return true
+    return { status: ToolCallResponseStatus.Running }
   }
 
-  async respondQuestion(response: CliQuestionResponse): Promise<boolean> {
+  async respondQuestion(
+    response: CliQuestionResponse,
+  ): Promise<ToolCallResponse | null> {
     const pending = this.pendingPermissions.get(response.requestId)
-    if (!pending || pending.kind !== 'question' || pending.settled) return false
+    if (!pending || pending.kind !== 'question' || pending.settled) return null
 
     if (response.answer === null || response.answer === undefined) {
       this.settlePending(pending, {
@@ -830,11 +827,10 @@ export class ClaudeCliRuntime implements CliRuntime {
         toolUseID: pending.toolUseId,
         decisionClassification: 'user_reject',
       })
-      this.upsertTool(pending.toolUseId, {
+      return {
         status: ToolCallResponseStatus.Rejected,
         reason: 'User declined to answer.',
-      })
-      return true
+      }
     }
 
     const converted = convertYoloAnswerPayloadToClaude({
@@ -848,12 +844,8 @@ export class ClaudeCliRuntime implements CliRuntime {
         interrupt: true,
         toolUseID: pending.toolUseId,
       })
-      this.upsertTool(pending.toolUseId, {
-        status: ToolCallResponseStatus.Error,
-        error: converted.error,
-      })
       this.emit({ type: 'run_state', state: 'error', error: converted.error })
-      return true
+      return { status: ToolCallResponseStatus.Error, error: converted.error }
     }
 
     this.settlePending(pending, {
@@ -862,11 +854,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       toolUseID: pending.toolUseId,
       decisionClassification: 'user_temporary',
     })
-    this.upsertTool(pending.toolUseId, {
-      status: ToolCallResponseStatus.Running,
-    })
-    this.emitPendingRunStateOrRunning()
-    return true
+    return { status: ToolCallResponseStatus.Running }
   }
 
   subscribe(listener: CliRuntimeEventListener): () => void {
@@ -924,12 +912,6 @@ export class ClaudeCliRuntime implements CliRuntime {
           ? { status: ToolCallResponseStatus.AwaitingUserInput }
           : { status: ToolCallResponseStatus.PendingApproval },
       )
-      this.emit({
-        type: 'run_state',
-        state:
-          kind === 'question' ? 'waiting_for_user' : 'waiting_for_approval',
-      })
-
       return new Promise<PermissionResult>((resolve) => {
         const pending: PendingPermission = {
           requestId: options.requestId,
@@ -1587,16 +1569,6 @@ export class ClaudeCliRuntime implements CliRuntime {
     }
     this.publishedSessionRef = ref
     this.emit({ type: 'session_bound', ref })
-  }
-
-  private emitPendingRunStateOrRunning(): void {
-    const pending = Array.from(new Set(this.pendingPermissions.values()))
-    const state = pending.some((request) => request.kind === 'question')
-      ? 'waiting_for_user'
-      : pending.some((request) => request.kind === 'approval')
-        ? 'waiting_for_approval'
-        : 'running'
-    this.emit({ type: 'run_state', state })
   }
 
   private async resetQuery(): Promise<void> {

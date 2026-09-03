@@ -1,6 +1,6 @@
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
 
-import { RAGEngine, dedupeRagQueryResults } from './ragEngine'
+import { RAGEngine, dedupeRagQueryResults, meanPoolVectors } from './ragEngine'
 
 jest.mock('./embedding', () => ({
   getEmbeddingModelClient: jest.fn(() => ({
@@ -30,6 +30,24 @@ const baseSettings = {
 
 const waitForNextTick = async () =>
   await new Promise<void>((resolve) => setTimeout(resolve, 0))
+
+describe('meanPoolVectors', () => {
+  it('averages the chunk vectors component-wise', () => {
+    expect(
+      meanPoolVectors([
+        new Float32Array([1, 0, 0]),
+        new Float32Array([0, 1, 0]),
+      ]),
+    ).toEqual([0.5, 0.5, 0])
+  })
+
+  it('returns null for no vectors or mismatched dimensions', () => {
+    expect(meanPoolVectors([])).toBeNull()
+    expect(
+      meanPoolVectors([new Float32Array([1, 0, 0]), new Float32Array([1, 0])]),
+    ).toBeNull()
+  })
+})
 
 describe('RAGEngine', () => {
   it('dedupes duplicate query rows by path and line range', () => {

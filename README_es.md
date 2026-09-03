@@ -50,6 +50,18 @@
   <a href="https://www.atlascloud.ai/console/coding-plan"><b>Descubre el Coding Plan →</b></a>
 </td>
 </tr>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://go.apimart.ai/gh-obsidian-yolo">
+    <img src="./assets/sponsor-apimart.png" alt="APIMart" width="163">
+  </a>
+</td>
+<td valign="middle">
+  ¡Gracias a <b><a href="https://go.apimart.ai/gh-obsidian-yolo">APIMart</a></b> por patrocinar este proyecto! APIMart es una plataforma de API de bajo coste para generación de imagen y vídeo con IA: GPT-Image-2 desde 0,006 $ por imagen, más de 160 imágenes por dólar. Una única API asíncrona cubre imagen y vídeo: envías la tarea, recibes un ID y recuperas el resultado por sondeo o callback. Procesa decenas de miles de imágenes por lotes sin timeouts y cambia de modelo sin tocar el código. Pago por uso y sin cuota mensual: regístrate aquí para empezar.
+  <br><br>
+  <a href="https://go.apimart.ai/gh-obsidian-yolo"><b>Regístrate en APIMart →</b></a>
+</td>
+</tr>
 </table>
 
 ## Novedades
@@ -76,7 +88,7 @@ Además de las capacidades principales anteriores, YOLO también ofrece:
 |---------|-------------|
 | 🖥️ Agente CLI (escritorio) | Reutiliza el Claude Code / Codex con el que ya has iniciado sesión en tu equipo y conversa con el agente CLI dentro de Obsidian |
 | 🔌 Soporte de agentes externos | Conecta clientes MCP como Hermes y OpenClaw a la búsqueda en el Vault de YOLO, o delega tareas a un Agente YOLO configurado |
-| ⚡ Quick Ask y Smart Space | Pregunta, edita y continúa escribiendo sin salir del editor |
+| ⚡ Quick Ask | Pregunta, edita y continúa escribiendo sin salir del editor |
 | 🔎 RAG del Vault | Recupera información en todo tu Vault para obtener respuestas basadas en tus propias notas |
 | 🪟 Chat multiventana | Ejecuta distintas tareas y contextos en paralelo en ventanas de chat independientes |
 | 🧠 Sistema de memoria | Permite que YOLO recuerde preferencias, hábitos y contexto a largo plazo para conversaciones más coherentes |

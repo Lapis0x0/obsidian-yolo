@@ -1,6 +1,6 @@
 import React from 'react'
 
-import { ChatView } from '../ChatView'
+import type { ChatView } from '../ChatView'
 
 const ChatViewContext = React.createContext<ChatView | undefined>(undefined)
 

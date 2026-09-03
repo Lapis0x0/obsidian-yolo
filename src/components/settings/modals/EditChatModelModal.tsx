@@ -3,7 +3,7 @@ import { App, Notice } from 'obsidian'
 import React, { useEffect, useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import YoloPlugin from '../../../main'
+import type YoloPlugin from '../../../main'
 import { ChatModel, ChatModelModality } from '../../../types/chat-model.types'
 import { CustomParameter } from '../../../types/custom-parameter.types'
 import {

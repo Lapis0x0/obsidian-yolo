@@ -81,7 +81,7 @@ describe('parseYoloSettings', () => {
     expect(result.continuationOptions.tabCompletionTriggers).toEqual(
       expect.arrayContaining(DEFAULT_TAB_COMPLETION_TRIGGERS),
     )
-    expect(result.continuationOptions.smartSpaceQuickActions).toBeUndefined()
+    expect(result.continuationOptions.continuationQuickActions).toBeUndefined()
 
     expect(result.assistants).toEqual([])
   })
