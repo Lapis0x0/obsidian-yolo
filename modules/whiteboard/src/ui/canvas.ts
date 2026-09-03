@@ -83,6 +83,7 @@ import {
   fileNodeKind,
   folderPathOf,
   generateCardNoteFileName,
+  generateDroppedHtmlFileName,
   isMarkdownPath,
 } from '../domain/naming'
 import {
@@ -1116,7 +1117,7 @@ export class WhiteboardCanvas {
       ),
       this.creationAction(
         'cardMenu.newWebCard',
-        'external-link',
+        'globe',
         NEW_EMBED_CARD_SIZE,
         (at) => this.promptForWebCard(at),
       ),
@@ -1422,7 +1423,7 @@ export class WhiteboardCanvas {
           },
           {
             title: this.t('cardMenu.newWebCard'),
-            icon: 'external-link',
+            icon: 'globe',
             onSelect: () => this.promptForWebCard(point),
           },
           {
@@ -1561,23 +1562,100 @@ export class WhiteboardCanvas {
     this.viewportEl.classList.remove(VIEWPORT_DROP_ACTIVE_CLASS)
     if (!this.canCreate) return
     e.preventDefault()
+    const at = this.worldPointFromEvent(e)
+    // Two drags arrive here and they carry different things. One comes from
+    // inside Obsidian and names vault files, which the host resolves; the
+    // other comes from the operating system and carries bytes. The first is
+    // asked about first because a vault drag can also expose a `File`, and a
+    // file already in the vault is to be referenced, never copied.
     const entries = this.host.ui.resolveDropEntries(e)
-    if (entries.length === 0) return
-    // Every file kind that has a card of its own is droppable — the same
-    // table the renderer dispatches on (domain/naming.ts's fileNodeKind), so
-    // "you can drop it" and "it renders" can never disagree.
-    const droppable = entries.filter(
-      (entry) =>
-        entry.kind === 'file' && fileNodeKind(entry.path) !== 'unsupported',
+    if (entries.length > 0) {
+      // Every file kind that has a card of its own is droppable — the same
+      // table the renderer dispatches on (domain/naming.ts's fileNodeKind), so
+      // "you can drop it" and "it renders" can never disagree.
+      const droppable = entries.filter(
+        (entry) =>
+          entry.kind === 'file' && fileNodeKind(entry.path) !== 'unsupported',
+      )
+      if (droppable.length === 0) {
+        this.host.ui.notice(this.t('notice.dropUnsupported'))
+        return
+      }
+      this.addFileCards(
+        droppable.map((entry) => entry.path),
+        at,
+      )
+      return
+    }
+    // Read out synchronously: the `DataTransfer` is neutered once this handler
+    // returns, while the `File` objects taken from it stay readable.
+    const files = Array.from(e.dataTransfer?.files ?? [])
+    if (files.length === 0) return
+    void this.importDroppedFiles(files, at)
+  }
+
+  /**
+   * Takes documents dropped from outside the vault and makes cards of them.
+   *
+   * Only HTML, for now, and by the same rule everything else on this board
+   * follows: a card kind exists or it does not, and `fileNodeKind` is the one
+   * table that says so. An image dropped from the desktop is a card we could
+   * make too, but Obsidian already owns "import an attachment" with a
+   * configurable destination folder, and duplicating that policy here is the
+   * kind of second implementation this module is supposed to avoid — an HTML
+   * document has no such path anywhere in Obsidian, which is why it gets one.
+   *
+   * The copy lands beside the board, where a card converted to a note already
+   * goes: the board is what the file belongs to.
+   */
+  private async importDroppedFiles(
+    files: readonly File[],
+    at: ScreenPoint,
+  ): Promise<void> {
+    // Checked at both ends: the prompt's drop zone reaches this too, and a
+    // board locked between opening that panel and dropping on it should not
+    // have files written beside it for cards it will refuse.
+    if (!this.canCreate) return
+    const importable = files.filter(
+      (file) => fileNodeKind(file.name) === 'html',
     )
-    if (droppable.length === 0) {
+    if (importable.length === 0) {
       this.host.ui.notice(this.t('notice.dropUnsupported'))
       return
     }
-    this.addFileCards(
-      droppable.map((entry) => entry.path),
-      this.worldPointFromEvent(e),
-    )
+    const paths: string[] = []
+    try {
+      // No ensureFolder: the board's own folder exists by definition.
+      const folderPath = this.boardFolderPath()
+      const taken = new Set(
+        this.host.vault
+          .listChildren(folderPath)
+          .filter((entry) => entry.kind === 'file')
+          .map((entry) => entry.name),
+      )
+      for (const file of importable) {
+        const fileName = generateDroppedHtmlFileName(
+          file.name,
+          this.t('file.newHtmlBaseName'),
+          taken,
+        )
+        // Written one at a time rather than in parallel: the names are chosen
+        // against a set this loop is also adding to, so two documents dropped
+        // together cannot be handed the same one.
+        taken.add(fileName)
+        const path = folderPath ? `${folderPath}/${fileName}` : fileName
+        await this.host.vault.createBinary(path, await file.arrayBuffer())
+        paths.push(path)
+      }
+    } catch (error) {
+      this.reportError('importDroppedFiles', error)
+      this.host.ui.notice(this.t('error.dropFailed'))
+      // Whatever did land is still a card worth having; only the rest is lost.
+      if (paths.length === 0) return
+    }
+    // The board may have been closed or locked while the files were written.
+    if (!this.canCreate) return
+    this.addFileCards(paths, at)
   }
 
   /**
@@ -3579,6 +3657,10 @@ export class WhiteboardCanvas {
       title: this.t('prompt.newWebCardTitle'),
       placeholder: this.t('prompt.urlPlaceholder'),
       mode: { kind: 'text' },
+      dropZone: {
+        label: this.t('prompt.webDropHint'),
+        onDrop: (files) => void this.importDroppedFiles(files, center),
+      },
       onSubmit: (url) => this.createLinkCardAt(url, center),
     })
   }

@@ -5,6 +5,7 @@ import {
   folderPathOf,
   generateBoardFileName,
   generateCardNoteFileName,
+  generateDroppedHtmlFileName,
   isCanvasPath,
   isMarkdownPath,
 } from './naming'
@@ -22,6 +23,11 @@ describe('fileNodeKind', () => {
 
   it('reads .webm as video — the container carries either, and a video element plays both', () => {
     expect(fileNodeKind('Assets/clip.webm')).toBe('video')
+  })
+
+  it('reads both spellings of HTML as one kind', () => {
+    expect(fileNodeKind('Board/report.html')).toBe('html')
+    expect(fileNodeKind('Board/legacy.HTM')).toBe('html')
   })
 
   it('leaves everything else unsupported, PDF included (its card is M2)', () => {
@@ -177,5 +183,38 @@ describe('generateCardNoteFileName', () => {
         new Set(['Untitled.md', 'Untitled 1.md']),
       ),
     ).toBe('Untitled 2.md')
+  })
+})
+
+describe('generateDroppedHtmlFileName', () => {
+  it('keeps the name the document arrived with', () => {
+    expect(
+      generateDroppedHtmlFileName('Quarterly report.html', '网页', new Set()),
+    ).toBe('Quarterly report.html')
+  })
+
+  it('normalizes .htm to .html — one spelling in the vault', () => {
+    expect(generateDroppedHtmlFileName('legacy.HTM', '网页', new Set())).toBe(
+      'legacy.html',
+    )
+  })
+
+  it('sanitizes a name the vault could not hold, and falls back when nothing survives', () => {
+    expect(
+      generateDroppedHtmlFileName('Q3: "final"?.html', '网页', new Set()),
+    ).toBe('Q3 final.html')
+    expect(generateDroppedHtmlFileName('<>.html', '网页', new Set())).toBe(
+      '网页.html',
+    )
+  })
+
+  it('shares the whiteboard conflict rule', () => {
+    expect(
+      generateDroppedHtmlFileName(
+        'report.html',
+        '网页',
+        new Set(['report.html', 'report 1.html']),
+      ),
+    ).toBe('report 2.html')
   })
 })

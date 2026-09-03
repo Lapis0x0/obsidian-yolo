@@ -49,6 +49,7 @@ export const en = {
     newWebCardTitle: 'Add a web page to this whiteboard',
     searchPlaceholder: 'Type to search…',
     urlPlaceholder: 'https://example.com',
+    webDropHint: 'or drop an HTML file here',
     noMatches: 'No matching file.',
     noMedia: 'This vault has no images, audio or video.',
   },
@@ -77,6 +78,7 @@ export const en = {
   file: {
     newWhiteboardBaseName: 'Whiteboard',
     newNoteBaseName: 'Untitled',
+    newHtmlBaseName: 'Web page',
   },
   confirm: {
     importAllTitle: 'Import Canvas files',
@@ -87,7 +89,7 @@ export const en = {
   notice: {
     convertedToNote: 'Card saved as {path}',
     dropUnsupported:
-      'Only notes, images, audio and video can be dropped onto a whiteboard.',
+      'Only notes, images, audio, video and HTML files can be dropped onto a whiteboard.',
     imported: 'Imported as {path}',
     importedAll:
       'Imported {imported} Canvas file(s); {failed} could not be read.',

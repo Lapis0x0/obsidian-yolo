@@ -28,6 +28,8 @@ const ITEM_ACTIVE_CLASS = 'yolo-whiteboard-prompt-item-active'
 const ITEM_TITLE_CLASS = 'yolo-whiteboard-prompt-item-title'
 const ITEM_DETAIL_CLASS = 'yolo-whiteboard-prompt-item-detail'
 const EMPTY_CLASS = 'yolo-whiteboard-prompt-empty'
+const DROP_ZONE_CLASS = 'yolo-whiteboard-prompt-drop'
+const DROP_ZONE_ACTIVE_CLASS = 'yolo-whiteboard-prompt-drop-active'
 
 /** How many matches are drawn. A vault can hold thousands of notes, and a
  * list longer than this is not one anybody reads to the end — they type
@@ -51,10 +53,30 @@ export type PromptOverlayMode =
       emptyText: string
     }>
 
+/**
+ * A second way to answer the same ask: instead of typing the value, drop the
+ * document itself onto the panel.
+ *
+ * Only the web prompt has one, because only there does the ask have two
+ * honest answers — a page on the network, or a page on disk. It is drawn as
+ * part of the panel rather than left to the canvas behind it because the
+ * panel is where the user is looking once the button has been pressed; the
+ * canvas takes the same drop for the same result (ui/canvas.ts's `onDrop`),
+ * and this is the discoverable half of it, not a second mechanism.
+ */
+export type PromptOverlayDropZone = Readonly<{
+  /** Text drawn in the zone. */
+  label: string
+  /** The dropped files, in the order the browser listed them. Never called
+   * with an empty list, and the panel settles as a submission would. */
+  onDrop: (files: readonly File[]) => void
+}>
+
 export type PromptOverlayOptions = Readonly<{
   title: string
   placeholder: string
   mode: PromptOverlayMode
+  dropZone?: PromptOverlayDropZone
   /**
    * The chosen value: the highlighted suggestion's `value` in `pick` mode, or
    * the typed text in `text` mode. Never called with an empty string, and
@@ -152,6 +174,9 @@ export class PromptOverlay {
       this.listEl = null
     }
 
+    if (options.dropZone)
+      panel.appendChild(this.createDropZone(options.dropZone))
+
     backdrop.appendChild(panel)
     parent.appendChild(backdrop)
     this.backdropEl = backdrop
@@ -170,6 +195,42 @@ export class PromptOverlay {
   }
 
   // -- internals ----------------------------------------------------------
+
+  /**
+   * The panel's drop target.
+   *
+   * Every drag event is stopped as well as prevented: the canvas listens for
+   * the same three on an ancestor of this panel, and without that it would
+   * both light its own drop outline and take the drop a second time.
+   */
+  private createDropZone(dropZone: PromptOverlayDropZone): HTMLElement {
+    const zone = this.doc.createElement('div')
+    zone.className = DROP_ZONE_CLASS
+    zone.textContent = dropZone.label
+    zone.addEventListener('dragover', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'copy'
+      zone.classList.add(DROP_ZONE_ACTIVE_CLASS)
+    })
+    zone.addEventListener('dragleave', (event) => {
+      event.stopPropagation()
+      const related = event.relatedTarget
+      if (related instanceof Node && zone.contains(related)) return
+      zone.classList.remove(DROP_ZONE_ACTIVE_CLASS)
+    })
+    zone.addEventListener('drop', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      zone.classList.remove(DROP_ZONE_ACTIVE_CLASS)
+      const files = Array.from(event.dataTransfer?.files ?? [])
+      // A drag carrying no file at all — a selection of text, a vault note —
+      // leaves the panel open rather than dismissing it on nothing.
+      if (files.length === 0) return
+      this.finish(() => dropZone.onDrop(files))
+    })
+    return zone
+  }
 
   private onKeyDown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
@@ -264,10 +325,16 @@ export class PromptOverlay {
   }
 
   private settle(value: string | null): void {
+    this.finish(value === null ? null : () => this.options.onSubmit(value))
+  }
+
+  /** Closes the panel exactly once, running `commit` — what the user chose,
+   * or nothing at all when they dismissed it — before saying so. */
+  private finish(commit: (() => void) | null): void {
     if (this.settled) return
     this.settled = true
     this.backdropEl.remove()
-    if (value !== null) this.options.onSubmit(value)
+    commit?.()
     this.options.onClose()
   }
 }

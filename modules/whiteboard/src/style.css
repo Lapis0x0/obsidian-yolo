@@ -1687,6 +1687,31 @@ input.yolo-whiteboard-prompt-input:focus {
   padding: var(--size-4-2, 8px);
 }
 
+/* The web prompt's second half: drop an HTML document instead of typing a URL
+ * (ui/promptOverlay.ts's `createDropZone`). Dashed, because a dashed frame is
+ * what every drop target in this app is, and unstyled otherwise — it is a
+ * place to aim at, not a control. No transition on the active state: the
+ * feedback has to be immediate, and colour is not ours to animate
+ * (tokens/motion.css). */
+.yolo-whiteboard-prompt-drop {
+  padding: var(--size-4-4, 16px) var(--size-4-2, 8px);
+  font-size: var(--font-ui-smaller, 12px);
+  color: var(--text-faint);
+  text-align: center;
+  border: 1px dashed var(--background-modifier-border);
+  border-radius: var(--radius-s, 4px);
+}
+
+.yolo-whiteboard-prompt-drop.yolo-whiteboard-prompt-drop-active {
+  color: var(--text-normal);
+  background-color: color-mix(
+    in srgb,
+    var(--interactive-accent) 8%,
+    transparent
+  );
+  border-color: var(--interactive-accent);
+}
+
 /* --- read-only lock (P3 batch 3 wave B) ----------------------------------
  * The board can be looked at and moved around, not changed. Obsidian Canvas's
  * `.mod-readonly` does the same two things: it hides the resize handles and it

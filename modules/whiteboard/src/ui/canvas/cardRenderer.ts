@@ -747,6 +747,8 @@ export class CardRenderer {
         runtime.noteText = null
         if (kind === 'unsupported') {
           this.renderUnsupportedFilePlaceholder(runtime, node.file)
+        } else if (kind === 'html') {
+          this.renderFileFrameInto(runtime, node.file)
         } else {
           this.renderMediaInto(runtime, node.file, kind)
         }
@@ -1089,7 +1091,7 @@ export class CardRenderer {
   private renderMediaInto(
     runtime: NodeRuntime,
     path: string,
-    kind: Exclude<FileNodeKind, 'markdown' | 'unsupported'>,
+    kind: Exclude<FileNodeKind, 'markdown' | 'html' | 'unsupported'>,
   ): void {
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl
@@ -1138,13 +1140,64 @@ export class CardRenderer {
   /**
    * Puts a web page on a card.
    *
-   * A sandboxed `<iframe>` — see WEB_FRAME_SANDBOX for why this and not the
-   * Electron `<webview>` Obsidian Canvas uses on desktop. Only http(s) loads,
-   * exactly as in Canvas's own `setFrameUrl`; anything else is a card that
-   * says what it points at rather than a frame pointed somewhere it should
-   * not be.
+   * Only http(s) loads, exactly as in Canvas's own `setFrameUrl`; anything
+   * else is a card that says what it points at rather than a frame pointed
+   * somewhere it should not be. That gate is this method's whole job — the
+   * frame itself is `mountFrame`, shared with the HTML card.
    */
   private renderWebFrameInto(runtime: NodeRuntime, url: string): void {
+    if (!WEB_URL_PATTERN.test(url)) {
+      this.destroyCardContent(runtime)
+      this.renderPlaceholder(
+        runtime,
+        CARD_UNSUPPORTED_PLACEHOLDER_CLASS,
+        this.callbacks.t('card.linkNotWeb'),
+        this.callbacks.t('card.linkNotWebHint').replace('{url}', url),
+      )
+      return
+    }
+    this.mountFrame(runtime, url)
+  }
+
+  /**
+   * Puts a vault HTML document on a card — the same frame a web card gets,
+   * pointed at the file's own `app://` URL (`vault.getResourceUrl`, as media
+   * cards do) rather than at the network.
+   *
+   * What such a page can and cannot do was measured against a running 1.13
+   * instance before this shipped, and the second half is a real product
+   * boundary rather than a detail:
+   *
+   *   - the document loads and its scripts run, in an ordinary browser
+   *     context: no `require`, no `process`, no reach into this window, and
+   *     `fetch` of any other `app://` file is refused. It is exactly as
+   *     privileged as the remote page in a web card, which is why it can share
+   *     that card's sandbox verbatim;
+   *   - **no sub-resource of a framed `app://` document loads at all** —
+   *     relative or absolute, stylesheet, script or image, with or without the
+   *     sandbox attribute. Only the frame's own top-level navigation is
+   *     served. So a self-contained document (inline CSS/JS, `data:` URIs, or
+   *     a CDN) renders exactly as it does in a browser, while a multi-file
+   *     export renders as unstyled markup. We do not detect and warn about the
+   *     second case: the card shows the file, and what the file depends on is
+   *     the file's business.
+   *
+   * The URL carries the file's mtime as a query (Obsidian's own cache-buster),
+   * so an edit on disk changes it and the identity check below reloads the
+   * frame rather than leaving a stale page mounted.
+   */
+  private renderFileFrameInto(runtime: NodeRuntime, path: string): void {
+    this.mountFrame(runtime, this.host.vault.getResourceUrl(path))
+  }
+
+  /**
+   * Builds the frame both web and HTML cards show. Callers have already
+   * decided that `url` is one this card may load.
+   *
+   * A sandboxed `<iframe>` — see WEB_FRAME_SANDBOX for why this and not the
+   * Electron `<webview>` Obsidian Canvas uses on desktop.
+   */
+  private mountFrame(runtime: NodeRuntime, url: string): void {
     // Already showing this exact page: leave it alone. Without this, a
     // re-render of a card whose body already holds the right page — a parked
     // web card revealed again, a content resync — would tear it down and
@@ -1154,15 +1207,6 @@ export class CardRenderer {
     this.destroyCardContent(runtime)
     const bodyEl = runtime.bodyEl
     if (!bodyEl) return
-    if (!WEB_URL_PATTERN.test(url)) {
-      this.renderPlaceholder(
-        runtime,
-        CARD_UNSUPPORTED_PLACEHOLDER_CLASS,
-        this.callbacks.t('card.linkNotWeb'),
-        this.callbacks.t('card.linkNotWebHint').replace('{url}', url),
-      )
-      return
-    }
     const doc = this.context.getDocument()
     const frame = doc.createElement('iframe')
     frame.className = CARD_WEB_FRAME_CLASS

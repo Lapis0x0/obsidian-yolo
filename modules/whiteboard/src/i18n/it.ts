@@ -46,6 +46,7 @@ export const it = {
     newWebCardTitle: 'Aggiungi una pagina web a questa lavagna',
     searchPlaceholder: 'Digita per cercare…',
     urlPlaceholder: 'https://example.com',
+    webDropHint: 'oppure trascina qui un file HTML',
     noMatches: 'Nessun file corrispondente.',
     noMedia: 'Questo vault non contiene immagini, audio o video.',
   },
@@ -72,6 +73,7 @@ export const it = {
   file: {
     newWhiteboardBaseName: 'Lavagna',
     newNoteBaseName: 'Senza titolo',
+    newHtmlBaseName: 'Pagina web',
   },
   confirm: {
     importAllTitle: 'Importa i file Canvas',
@@ -82,7 +84,7 @@ export const it = {
   notice: {
     convertedToNote: 'Scheda salvata come {path}',
     dropUnsupported:
-      'Su una lavagna si possono trascinare solo note, immagini, audio e video.',
+      'Su una lavagna si possono trascinare solo note, immagini, audio, video e file HTML.',
     imported: 'Importato come {path}',
     importedAll:
       'Importati {imported} file Canvas; {failed} non sono stati letti.',

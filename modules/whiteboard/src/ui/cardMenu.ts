@@ -31,9 +31,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 
 /** Lucide geometry, matching the icons Canvas puts on the same three actions
  * (`lucide-sticky-note`, `lucide-file-text`, `lucide-file-image`) plus
- * `lucide-external-link` for the web card. Inlined for the same reason
- * ui/selectionToolbar.ts inlines its own: this module has no package
- * dependencies, and four icons are not worth acquiring one. */
+ * `lucide-globe` for the web card — the icon Obsidian's own Web viewer uses,
+ * and the one that still reads right now that this button also takes an HTML
+ * document. Inlined for the same reason ui/selectionToolbar.ts inlines its
+ * own: this module has no package dependencies, and four icons are not worth
+ * acquiring one. */
 const ICONS: Readonly<Record<CardMenuIconName, readonly string[]>> = {
   'sticky-note': [
     'M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h11l5-5V5a2 2 0 0 0-2-2z',
@@ -52,10 +54,12 @@ const ICONS: Readonly<Record<CardMenuIconName, readonly string[]>> = {
     'M10 12.5a1.5 1.5 0 1 1-3 0 1.5 1.5 0 0 1 3 0z',
     'm20 17-1.3-1.3a2 2 0 0 0-3 0L9 22',
   ],
-  'external-link': [
-    'M15 3h6v6',
-    'M10 14 21 3',
-    'M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+  // `lucide-globe`, whose circle is spelled as two semicircular arcs because
+  // this map holds path data and nothing else.
+  globe: [
+    'M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20',
+    'M2 12h20',
+    'M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20',
   ],
 }
 
@@ -63,7 +67,7 @@ export type CardMenuIconName =
   | 'sticky-note'
   | 'file-text'
   | 'file-image'
-  | 'external-link'
+  | 'globe'
 
 export type CardMenuAction = Readonly<{
   label: string

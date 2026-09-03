@@ -40,12 +40,20 @@ export function isCanvasPath(path: string): boolean {
  * a running 1.13 instance) — behaviour alignment starts with agreeing on what
  * counts as an image (p3-canvas-parity D1). `unsupported` covers everything
  * left, PDF included (its card is M2).
+ *
+ * `html` is ours rather than Obsidian's: Obsidian registers no view for it at
+ * all, so a `.html` file in a vault is inert. On a board it is a page, shown
+ * in the same frame a web card uses — which is why it is a file kind and not
+ * a second sort of `link` node: what it points at is a vault file, and every
+ * behaviour that follows from that (renames, deletion, the missing-file card)
+ * should follow from it here too.
  */
 export type FileNodeKind =
   | 'markdown'
   | 'image'
   | 'audio'
   | 'video'
+  | 'html'
   | 'unsupported'
 
 const IMAGE_EXTENSIONS = [
@@ -75,6 +83,11 @@ const AUDIO_EXTENSIONS = [
  * the picture. Obsidian resolves the same ambiguity the same way.
  */
 const VIDEO_EXTENSIONS = ['mp4', 'webm', 'ogv', 'mov', 'mkv'] as const
+const HTML_EXTENSIONS = ['html', 'htm'] as const
+
+/** The extension a dropped HTML document is saved under. `.htm` is read but
+ * never written: one spelling in, one spelling out. */
+export const HTML_EXTENSION = '.html'
 
 export function fileNodeKind(path: string): FileNodeKind {
   if (isMarkdownPath(path)) return 'markdown'
@@ -85,6 +98,7 @@ export function fileNodeKind(path: string): FileNodeKind {
     return 'audio'
   if ((VIDEO_EXTENSIONS as readonly string[]).includes(extension))
     return 'video'
+  if ((HTML_EXTENSIONS as readonly string[]).includes(extension)) return 'html'
   return 'unsupported'
 }
 
@@ -140,6 +154,27 @@ export function generateCardNoteFileName(
   existingNames: ReadonlySet<string>,
 ): string {
   return generateUniqueFileName(baseName, MARKDOWN_EXTENSION, existingNames)
+}
+
+/**
+ * File name for an HTML document dropped onto the board from outside the
+ * vault. `fileName` is what the operating system called it, extension and
+ * all; `fallbackBaseName` names the file when nothing legal survives
+ * sanitizing (a document called `<>.html` is still a document).
+ *
+ * The extension is normalized rather than kept: `.htm` reads the same as
+ * `.html` (`fileNodeKind`) and there is no reason for the vault to grow two
+ * spellings of one thing. The same numeric-suffix conflict rule as whiteboards
+ * and card notes applies.
+ */
+export function generateDroppedHtmlFileName(
+  fileName: string,
+  fallbackBaseName: string,
+  existingNames: ReadonlySet<string>,
+): string {
+  const baseName =
+    sanitizeFileName(basenameWithoutExtension(fileName)) || fallbackBaseName
+  return generateUniqueFileName(baseName, HTML_EXTENSION, existingNames)
 }
 
 /** What a text card becomes when it is converted into a note: the file's

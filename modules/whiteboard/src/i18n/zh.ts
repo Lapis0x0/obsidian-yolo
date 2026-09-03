@@ -46,6 +46,7 @@ export const zh = {
     newWebCardTitle: '向白板添加网页',
     searchPlaceholder: '输入以搜索……',
     urlPlaceholder: 'https://example.com',
+    webDropHint: '或把 HTML 文件拖到这里',
     noMatches: '没有匹配的文件。',
     noMedia: '库中没有图片、音频或视频。',
   },
@@ -72,6 +73,7 @@ export const zh = {
   file: {
     newWhiteboardBaseName: '白板',
     newNoteBaseName: '未命名',
+    newHtmlBaseName: '网页',
   },
   confirm: {
     importAllTitle: '导入 Canvas 文件',
@@ -81,7 +83,7 @@ export const zh = {
   },
   notice: {
     convertedToNote: '卡片已保存为 {path}',
-    dropUnsupported: '白板目前只能接收笔记、图片、音频和视频。',
+    dropUnsupported: '白板目前只能接收笔记、图片、音频、视频和 HTML 文件。',
     imported: '已导入为 {path}',
     importedAll: '已导入 {imported} 个 Canvas 文件，{failed} 个无法读取。',
     importNoneFound: '库中没有找到 Canvas 文件。',
