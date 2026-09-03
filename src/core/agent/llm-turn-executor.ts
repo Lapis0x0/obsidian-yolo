@@ -251,6 +251,7 @@ export class AgentLlmTurnExecutor {
         hasMemoryTools,
         hasOnDemandTools,
         requestTools,
+        deferredToolCatalog,
       } = await selectAllowedTools({
         availableTools,
         allowedToolNames: this.input.allowedToolNames,
@@ -277,6 +278,7 @@ export class AgentLlmTurnExecutor {
           hasTools,
           hasMemoryTools,
           hasOnDemandTools,
+          deferredToolCatalogText: deferredToolCatalog?.text,
           model: this.input.model,
           conversationId: this.input.conversationId,
           compaction: this.input.compaction,

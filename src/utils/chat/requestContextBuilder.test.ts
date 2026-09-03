@@ -2574,7 +2574,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(withOnDemand)).toContain(
-      'Some tools are ON-DEMAND stubs',
+      'Tools listed in <tool_catalog>',
     )
   })
 

@@ -184,6 +184,7 @@ export const estimateContextBreakdown = async ({
     hasMemoryTools,
     hasOnDemandTools,
     requestTools,
+    deferredToolCatalog,
   } = await selectAllowedTools({
     availableTools,
     allowedToolNames,
@@ -204,6 +205,7 @@ export const estimateContextBreakdown = async ({
     hasTools,
     hasMemoryTools,
     hasOnDemandTools,
+    deferredToolCatalogText: deferredToolCatalog?.text,
     model,
     conversationId,
     compaction,

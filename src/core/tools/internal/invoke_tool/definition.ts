@@ -132,8 +132,13 @@ export const unwrapInvokeToolArguments = ({
 }: {
   args: Record<string, unknown>
   apiType?: LLMProviderApiType | null
-  /** Every tool this agent may call, for the unknown-name suggestion list. */
-  knownToolNames: readonly string[]
+  /**
+   * Every tool this agent may call. `null` means the caller cannot enumerate
+   * them (an agent with no explicit allow-list), in which case the name is
+   * accepted here and the usual downstream availability check is what rejects
+   * an unknown tool.
+   */
+  knownToolNames: readonly string[] | null
 }): InvokeToolUnwrapResult => {
   const rawName = args.tool_name
   if (typeof rawName !== 'string' || rawName.trim().length === 0) {
@@ -145,7 +150,7 @@ export const unwrapInvokeToolArguments = ({
   }
   const toolName = rawName.trim()
 
-  if (!knownToolNames.includes(toolName)) {
+  if (knownToolNames && !knownToolNames.includes(toolName)) {
     const suggestions = suggestToolNames(toolName, knownToolNames)
     const hint =
       suggestions.length > 0

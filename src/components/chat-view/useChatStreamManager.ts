@@ -480,6 +480,7 @@ export function useChatStreamManager({
         hasMemoryTools,
         hasOnDemandTools,
         requestTools,
+        deferredToolCatalog,
       } = await selectAllowedTools({
         availableTools,
         allowedToolNames: effectiveAllowedToolNames,
@@ -500,6 +501,7 @@ export function useChatStreamManager({
           hasTools,
           hasMemoryTools,
           hasOnDemandTools,
+          deferredToolCatalogText: deferredToolCatalog?.text,
           model: effectiveModel,
           conversationId: currentConversationId,
           compaction: manualCompaction,

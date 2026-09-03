@@ -6,7 +6,6 @@ import type {
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
-import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
@@ -18,16 +17,20 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 import { buildBashToolDescription } from '../tools/bash/definition'
+import {
+  INVOKE_TOOL_NAME,
+  getInvokeTool,
+} from '../tools/internal/invoke_tool/definition'
 
 import {
   formatSubagentModelOption,
   resolveSubagentModelConfig,
 } from './subagent/model-config'
 import {
-  buildServerToolTokenBudgets,
-  getAssistantToolDisclosureMode,
-} from './tool-preferences'
-import { buildToolStub } from './tool-stub'
+  type DeferredToolCatalog,
+  buildDeferredToolCatalog,
+} from './tool-catalog'
+import { getAssistantToolDisclosureMode } from './tool-preferences'
 
 const LOCAL_MEMORY_TOOL_NAMES = new Set([
   'memory_ops',
@@ -72,24 +75,6 @@ const isToolAllowed = ({
   }
 
   return allowedToolNames.has(toolName)
-}
-
-const groupToolsByServer = (
-  tools: readonly McpTool[],
-): Map<string, McpTool[]> => {
-  const serverTools = new Map<string, McpTool[]>()
-  for (const tool of tools) {
-    let serverName: string
-    try {
-      serverName = parseToolName(tool.name).serverName
-    } catch {
-      continue
-    }
-    const bucket = serverTools.get(serverName) ?? []
-    bucket.push(tool)
-    serverTools.set(serverName, bucket)
-  }
-  return serverTools
 }
 
 export const buildRequestTools = (
@@ -207,7 +192,6 @@ export const selectAllowedTools = async ({
   enableToolDisclosure = true,
   jsSandboxSettings = {},
   settings,
-  serverToolTokenBudgets,
 }: {
   availableTools: McpTool[]
   allowedToolNames?: string[]
@@ -217,14 +201,17 @@ export const selectAllowedTools = async ({
   enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
   settings?: YoloSettings
-  serverToolTokenBudgets?: ReadonlyMap<string, number>
 }): Promise<{
   filteredTools: McpTool[]
   hasTools: boolean
   hasMemoryTools: boolean
   hasOnDemandTools: boolean
   requestTools: RequestTool[] | undefined
-  serverToolTokenBudgets: ReadonlyMap<string, number>
+  /**
+   * Model-facing listing of the deferred tools, for the system prompt. `null`
+   * when nothing is deferred.
+   */
+  deferredToolCatalog: DeferredToolCatalog | null
 }> => {
   // Post-D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9),
   // `allowedToolNames` is always a fully-expanded list of real tool FQNs —
@@ -252,64 +239,55 @@ export const selectAllowedTools = async ({
       ? [...normalizedAllowedToolNames]
       : undefined,
   }
-  const serverTools = groupToolsByServer(baseFiltered)
-  const localServerName = getLocalFileToolServerName()
-  const needsAutomaticBudget =
-    enableToolDisclosure &&
-    [...serverTools.keys()].some(
-      (serverName) =>
-        serverName !== localServerName &&
-        toolServerPreferences?.[serverName]?.disclosureMode === undefined,
-    )
-  const resolvedServerToolTokenBudgets = !needsAutomaticBudget
-    ? new Map<string, number>()
-    : (serverToolTokenBudgets ??
-      (await buildServerToolTokenBudgets(serverTools, estimateJsonTokens)))
-
-  // Per-tool disclosure decisions for the filtered (non-loader) tools.
-  // Computed up front so the loader injection can ask "does any surviving
-  // tool actually need on-demand disclosure?" before adding itself.
+  // Per-tool disclosure decisions for the filtered (non-protocol) tools.
+  // Computed up front so the protocol-tool injection can ask "does any
+  // surviving tool actually defer?" before adding itself.
   const disclosureModes = new Map<string, 'always' | 'on_demand'>()
   for (const tool of baseFiltered) {
     disclosureModes.set(
       tool.name,
       getAssistantToolDisclosureMode(assistantLike, tool.name, {
         enableToolDisclosure,
-        serverToolTokenBudgets: resolvedServerToolTokenBudgets,
       }),
     )
   }
 
-  // Inject the protocol-level loader tool only when the on-demand disclosure
-  // mechanism is globally enabled AND at least one surviving tool would be
-  // sent as a stub. Without this guard the loader bloats every request prefix
-  // even for agents that don't need it; with a stub present but no loader,
-  // the model would have no way to reach the real schema (deadlock).
-  const loaderFqn = `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME}`
   const hasOnDemand = [...disclosureModes.values()].some(
     (mode) => mode === 'on_demand',
   )
-  const shouldInjectLoader = enableToolDisclosure && hasOnDemand
-  const filteredTools: McpTool[] = shouldInjectLoader
-    ? [getLoadToolSchemasToolFqn(), ...baseFiltered]
-    : baseFiltered
 
-  // All allowed tools — including on-demand stubs — are registered in the
-  // request's `tools` field for the entire conversation so the prompt-cache
-  // prefix stays frozen. On-demand tools start as stubs (name + short
-  // description + permissive schema) and stay stubs even after their full
-  // schema has been disclosed via load_tool_schemas: schemas now ride the messages
-  // stream (tool_result + compaction registry) instead of the tools field.
-  const requestToolDefinitions: McpTool[] = filteredTools.map((tool) => {
-    if (tool.name === loaderFqn) {
-      return tool
-    }
-    const disclosureMode = disclosureModes.get(tool.name) ?? 'always'
-    if (disclosureMode === 'on_demand') {
-      return buildToolStub(tool, apiType)
-    }
-    return tool
-  })
+  // The two protocol tools are injected only when something actually defers.
+  // Without the guard they bloat every request prefix for agents that never
+  // need them; with a deferred tool but no protocol tools, the model would
+  // have no way to reach the real schema at all (deadlock).
+  const protocolTools: McpTool[] = hasOnDemand
+    ? [getLoadToolSchemasToolFqn(), getInvokeToolFqn(apiType)]
+    : []
+  const filteredTools: McpTool[] = [...protocolTools, ...baseFiltered]
+
+  // Deferred tools are not registered at all — they live in the system-prompt
+  // catalog as bare names and are reached through `invoke_tool`. The `tools`
+  // field therefore holds only the always-tier plus the two protocol tools,
+  // and stays byte-identical for the whole conversation, which is what keeps
+  // the prompt-cache prefix frozen.
+  const requestToolDefinitions: McpTool[] = filteredTools.filter(
+    (tool) => (disclosureModes.get(tool.name) ?? 'always') === 'always',
+  )
+
+  const deferredToolCatalog = hasOnDemand
+    ? buildDeferredToolCatalog({
+        configuredServers: settings?.mcp.servers ?? [],
+        discoveredCatalogs: settings?.mcp.discoveredCatalogs ?? {},
+        isDeferredAndEnabled: (toolName) =>
+          isToolAllowed({
+            toolName,
+            allowedToolNames: normalizedAllowedToolNames,
+          }) &&
+          getAssistantToolDisclosureMode(assistantLike, toolName, {
+            enableToolDisclosure,
+          }) === 'on_demand',
+      })
+    : null
 
   return {
     filteredTools,
@@ -319,7 +297,27 @@ export const selectAllowedTools = async ({
     ),
     hasOnDemandTools: hasOnDemand,
     requestTools: buildRequestTools(requestToolDefinitions),
-    serverToolTokenBudgets: resolvedServerToolTokenBudgets,
+    deferredToolCatalog,
+  }
+}
+
+function getInvokeToolFqn(apiType?: LLMProviderApiType | null): McpTool {
+  const tool = getInvokeTool(apiType)
+  return {
+    ...tool,
+    name: `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${tool.name}`,
+  }
+}
+
+export const isInvokeToolName = (toolName: string): boolean => {
+  try {
+    const parsed = parseToolName(toolName)
+    return (
+      parsed.serverName === getLocalFileToolServerName() &&
+      parsed.toolName === INVOKE_TOOL_NAME
+    )
+  } catch {
+    return toolName === INVOKE_TOOL_NAME
   }
 }
 

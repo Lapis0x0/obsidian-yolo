@@ -559,6 +559,7 @@ export class RequestContextBuilder {
     hasTools?: boolean
     hasMemoryTools?: boolean
     hasOnDemandTools?: boolean
+    deferredToolCatalogText?: string
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
@@ -590,6 +591,7 @@ export class RequestContextBuilder {
     hasTools = false,
     hasMemoryTools = false,
     hasOnDemandTools = false,
+    deferredToolCatalogText,
     model: _model,
     conversationId,
     compaction,
@@ -606,6 +608,7 @@ export class RequestContextBuilder {
     hasTools?: boolean
     hasMemoryTools?: boolean
     hasOnDemandTools?: boolean
+    deferredToolCatalogText?: string
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
@@ -714,6 +717,7 @@ export class RequestContextBuilder {
           hasTools,
           hasMemoryTools,
           hasOnDemandTools,
+          deferredToolCatalogText,
           compaction,
           runtimeModePrompt,
           modePersonaPrompt,
@@ -773,6 +777,7 @@ export class RequestContextBuilder {
     hasTools?: boolean
     hasMemoryTools?: boolean
     hasOnDemandTools?: boolean
+    deferredToolCatalogText?: string
     model: ChatModel
     conversationId: string
     compaction?: ChatConversationCompactionLike | null
@@ -1792,9 +1797,9 @@ ${quotes
     return {
       role: 'user',
       content: `<previously-loaded-tools>
-The following on-demand tools were already disclosed by yolo_local__load_tool_schemas earlier in this conversation. Their stubs remain registered in the tools list. You may call them directly using the schemas below without calling yolo_local__load_tool_schemas again.
+The following deferred tools were already disclosed by yolo_local__load_tool_schemas earlier in this conversation. Call them through yolo_local__invoke_tool using the schemas below, without calling yolo_local__load_tool_schemas again.
 
-If you need an on-demand tool that is NOT listed here (for example because its schema was too large to persist across compaction), call yolo_local__load_tool_schemas with {"servers":["<server-name>"]} — where "<server-name>" is the prefix before "__" in the stub tool name — to re-disclose all on-demand tools under that MCP server.
+If you need a tool from <tool_catalog> that is NOT listed here (for example because its schema was too large to persist across compaction), call yolo_local__load_tool_schemas with {"tools":["<exact name from the catalog>"]} to re-disclose it.
 
 ${entries}
 </previously-loaded-tools>`,
@@ -1820,6 +1825,7 @@ ${entries}
     hasTools,
     hasMemoryTools,
     hasOnDemandTools,
+    deferredToolCatalogText,
     compaction,
     runtimeModePrompt,
     modePersonaPrompt,
@@ -1832,6 +1838,7 @@ ${entries}
     hasTools: boolean
     hasMemoryTools: boolean
     hasOnDemandTools: boolean
+    deferredToolCatalogText?: string
     compaction?: ChatConversationCompactionLike | null
     runtimeModePrompt?: string
     modePersonaPrompt?: string
@@ -1847,6 +1854,7 @@ ${entries}
         hasTools,
         hasMemoryTools,
         hasOnDemandTools,
+        deferredToolCatalogText,
         runtimeModePrompt,
         modePersonaPrompt,
         modePersonaModuleId,
@@ -1871,6 +1879,7 @@ ${entries}
       hasTools,
       hasMemoryTools,
       hasOnDemandTools,
+      deferredToolCatalogText,
       compaction,
       runtimeModePrompt,
       modePersonaPrompt,
@@ -1894,6 +1903,7 @@ ${entries}
     hasTools: boolean,
     hasMemoryTools: boolean,
     hasOnDemandTools: boolean,
+    deferredToolCatalogText: string | undefined,
     compaction?: ChatConversationCompactionLike | null,
     runtimeModePrompt?: string,
     modePersonaPrompt?: string,
@@ -1934,6 +1944,7 @@ ${entries}
       hasTools,
       hasMemoryTools,
       hasOnDemandTools,
+      deferredToolCatalogText: deferredToolCatalogText ?? '',
       runtimeModePrompt: runtimeModePrompt?.trim() ?? '',
       useAssistant,
       modePersonaPrompt: modePersonaPrompt?.trim() ?? '',
@@ -1990,6 +2001,7 @@ ${entries}
     hasTools: boolean,
     hasMemoryTools: boolean,
     hasOnDemandTools: boolean,
+    deferredToolCatalogText: string | undefined,
     runtimeModePrompt?: string,
     modePersonaPrompt?: string,
     modePersonaModuleId?: string,
@@ -2028,6 +2040,17 @@ ${entries}
         bucket: 'system',
         id: 'system.base-behavior',
         content: baseBehaviorContent,
+      })
+    }
+
+    // Sits in the frozen system-prompt snapshot next to the base behaviour
+    // rules that explain how to use it, so the whole two-step protocol is
+    // cached as one prefix instead of re-sent per turn.
+    if (deferredToolCatalogText) {
+      sections.push({
+        bucket: 'system',
+        id: 'system.tool-catalog',
+        content: deferredToolCatalogText,
       })
     }
 
@@ -2310,9 +2333,9 @@ ${customInstruction}
 - If the current user message already includes <user_selected_skills>, treat them as user-selected context and avoid reloading the same skill again unless you need to verify something.`
       if (hasOnDemandTools) {
         section += `
-- Some tools are ON-DEMAND stubs. Do not call an ON-DEMAND tool until its full schema has been disclosed.
-- Before calling one, call yolo_local__load_tool_schemas with {"servers":["<server-name>"]}, where "<server-name>" is the prefix before "__" in the tool name.
-- After yolo_local__load_tool_schemas returns, call the target tool using the returned schema. If a <previously-loaded-tools> block lists the tool, treat it as already disclosed.`
+- Tools listed in <tool_catalog> are available but are not registered above, so their schemas are not loaded. Reach them in two steps.
+- First call yolo_local__load_tool_schemas with {"tools":["<exact name from the catalog>"]} — batch every tool you expect to need in one call rather than one at a time.
+- Then call yolo_local__invoke_tool with {"tool_name":"<the same name>","arguments":{...}}, filling arguments from the returned schema. If a <previously-loaded-tools> block lists the tool, it is already disclosed and you can invoke it directly.`
       }
     }
 

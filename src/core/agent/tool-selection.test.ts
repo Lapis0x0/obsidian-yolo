@@ -109,7 +109,7 @@ describe('selectAllowedTools', () => {
     })
   })
 
-  it('replaces on-demand tools with a permissive stub schema (non-Gemini)', async () => {
+  it('does not register deferred tools at all, injecting the two protocol tools instead', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -132,24 +132,20 @@ describe('selectAllowedTools', () => {
       apiType: 'anthropic',
     })
 
-    // The loader is injected automatically whenever any surviving tool is
-    // on-demand; it stays as a full schema and rides at the head of the list.
+    // A deferred tool costs a catalog line, not a `tools` entry — so the
+    // registered set is exactly the two protocol tools.
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
       'yolo_local__load_tool_schemas',
-      'server__tool_a',
+      'yolo_local__invoke_tool',
     ])
-    const stub = result.requestTools?.find(
-      (tool) => tool.function.name === 'server__tool_a',
+    expect(result.hasOnDemandTools).toBe(true)
+    // ...but the gateway still needs the real definition to validate against.
+    expect(result.filteredTools.map((tool) => tool.name)).toContain(
+      'server__tool_a',
     )
-    expect(stub?.function.parameters).toEqual({
-      type: 'object',
-      properties: {},
-      additionalProperties: true,
-    })
-    expect(stub?.function.description).toContain('load_tool_schemas')
   })
 
-  it('uses args_json stub form on Gemini', async () => {
+  it('gives invoke_tool a native object for arguments, and a JSON string only on Gemini', async () => {
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -157,26 +153,33 @@ describe('selectAllowedTools', () => {
         inputSchema: { type: 'object', properties: {} },
       },
     ]
+    const select = (apiType: 'anthropic' | 'gemini') =>
+      selectAllowedTools({
+        availableTools,
+        allowedToolNames: ['server__tool_a'],
+        toolPreferences: { server__tool_a: { enabled: true } },
+        toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
+        apiType,
+      })
+    const argumentsSchemaOf = (result: { requestTools?: unknown[] }) =>
+      (
+        result.requestTools as
+          | Array<{
+              function: {
+                name: string
+                parameters: { properties?: Record<string, unknown> }
+              }
+            }>
+          | undefined
+      )?.find((tool) => tool.function.name === 'yolo_local__invoke_tool')
+        ?.function.parameters.properties?.arguments
 
-    const result = await selectAllowedTools({
-      availableTools,
-      allowedToolNames: ['server__tool_a'],
-      toolPreferences: {
-        server__tool_a: { enabled: true },
-      },
-      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
-      apiType: 'gemini',
-    })
-
-    const stub = result.requestTools?.find(
-      (tool) => tool.function.name === 'server__tool_a',
-    )
-    expect(stub?.function.parameters).toEqual({
+    expect(argumentsSchemaOf(await select('anthropic'))).toMatchObject({
       type: 'object',
-      properties: {
-        args_json: expect.objectContaining({ type: 'string' }),
-      },
-      required: ['args_json'],
+      additionalProperties: true,
+    })
+    expect(argumentsSchemaOf(await select('gemini'))).toMatchObject({
+      type: 'string',
     })
   })
 
@@ -238,7 +241,10 @@ describe('selectAllowedTools', () => {
     ])
   })
 
-  it('defaults lightweight MCP servers to always-loaded full schemas', async () => {
+  it('defers every MCP server by default, regardless of how small its schemas are', async () => {
+    // The old default weighed a per-server token budget against a 2000-token
+    // threshold. That existed only because deferral was opt-in; with it on by
+    // default the threshold just left small servers inexplicably resident.
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -254,44 +260,7 @@ describe('selectAllowedTools', () => {
       availableTools,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
-        server__tool_a: {
-          enabled: true,
-          approvalMode: 'full_access',
-        },
-      },
-    })
-
-    expect(result.hasOnDemandTools).toBe(false)
-    expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
-      'server__tool_a',
-    ])
-    expect(result.requestTools?.[0]?.function.parameters).toEqual({
-      type: 'object',
-      properties: { foo: { type: 'string' } },
-    })
-  })
-
-  it('defaults heavy MCP servers to on-demand stubs', async () => {
-    const availableTools: McpTool[] = [
-      {
-        name: 'server__tool_a',
-        description: 'Tool A '.repeat(12000),
-        inputSchema: {
-          type: 'object',
-          properties: { foo: { type: 'string' } },
-          required: ['foo'],
-        },
-      },
-    ]
-
-    const result = await selectAllowedTools({
-      availableTools,
-      allowedToolNames: ['server__tool_a'],
-      toolPreferences: {
-        server__tool_a: {
-          enabled: true,
-          approvalMode: 'full_access',
-        },
+        server__tool_a: { enabled: true, approvalMode: 'full_access' },
       },
       apiType: 'anthropic',
     })
@@ -299,17 +268,39 @@ describe('selectAllowedTools', () => {
     expect(result.hasOnDemandTools).toBe(true)
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
       'yolo_local__load_tool_schemas',
-      'server__tool_a',
+      'yolo_local__invoke_tool',
     ])
-    const stub = result.requestTools?.find(
-      (tool) => tool.function.name === 'server__tool_a',
-    )
-    expect(stub?.function.parameters).toEqual({
-      type: 'object',
-      properties: {},
-      additionalProperties: true,
+  })
+
+  it('keeps host built-ins registered natively', async () => {
+    const availableTools: McpTool[] = [
+      {
+        name: 'yolo_local__fs_read',
+        description: 'Read a file',
+        inputSchema: {
+          type: 'object',
+          properties: { path: { type: 'string' } },
+          required: ['path'],
+        },
+      },
+    ]
+
+    const result = await selectAllowedTools({
+      availableTools,
+      allowedToolNames: ['yolo_local__fs_read'],
+      toolPreferences: { yolo_local__fs_read: { enabled: true } },
+      apiType: 'anthropic',
     })
-    expect(stub?.function.description).toContain('ON-DEMAND')
+
+    expect(result.hasOnDemandTools).toBe(false)
+    expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
+      'yolo_local__fs_read',
+    ])
+    expect(result.requestTools?.[0]?.function.parameters).toEqual({
+      type: 'object',
+      properties: { path: { type: 'string' } },
+      required: ['path'],
+    })
   })
 
   it('keeps the tools-field stable across identical selections', async () => {

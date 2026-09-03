@@ -4,7 +4,6 @@ import {
   AssistantToolDisclosureMode,
   AssistantToolPreference,
 } from '../../types/assistant.types'
-import type { McpTool } from '../../types/mcp.types'
 import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   USER_FACING_LOCAL_TOOL_SHORT_NAMES,
@@ -12,7 +11,6 @@ import {
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
-import { getMcpToolSchemaTokenCost } from '../mcp/toolCatalogTokenCache'
 import {
   getCapability,
   getCapabilityForTool,
@@ -23,49 +21,6 @@ export const DEFAULT_ASSISTANT_TOOL_APPROVAL_MODE: AssistantToolApprovalMode =
   'require_approval'
 export const DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE: AssistantToolDisclosureMode =
   'always'
-export const SERVER_TOOL_DISCLOSURE_AUTO_TOKEN_THRESHOLD = 2000
-
-export const resolveDefaultDisclosureModeForServer = (
-  serverTokenBudget: number | undefined,
-): AssistantToolDisclosureMode => {
-  if (
-    typeof serverTokenBudget !== 'number' ||
-    !Number.isFinite(serverTokenBudget)
-  ) {
-    return DEFAULT_ASSISTANT_TOOL_DISCLOSURE_MODE
-  }
-  return serverTokenBudget >= SERVER_TOOL_DISCLOSURE_AUTO_TOKEN_THRESHOLD
-    ? 'on_demand'
-    : 'always'
-}
-
-export const buildServerToolTokenBudgets = async (
-  serverToolsMap: ReadonlyMap<string, readonly McpTool[]>,
-  estimateJsonTokens: (value: unknown) => Promise<number>,
-): Promise<Map<string, number>> => {
-  const budgets = new Map<string, number>()
-  const localServerName = getLocalFileToolServerName()
-
-  await Promise.all(
-    [...serverToolsMap.entries()].map(async ([serverName, tools]) => {
-      if (serverName === localServerName || tools.length === 0) {
-        return
-      }
-      const costs = await Promise.all(
-        tools.map((tool) =>
-          getMcpToolSchemaTokenCost(tool, estimateJsonTokens),
-        ),
-      )
-      budgets.set(
-        serverName,
-        costs.reduce((sum, cost) => sum + cost, 0),
-      )
-    }),
-  )
-
-  return budgets
-}
-
 /**
  * Full set of user-facing built-in tool FQNs that default to on. Used by the
  * settings migration and `getDefaultEnabledForTool` to seed `toolPreferences`
@@ -658,6 +613,21 @@ export const getAssistantToolApprovalMode = (
   )
 }
 
+/**
+ * Which tier a tool sits on.
+ *
+ * The line is drawn by "high-frequency AND needs generation-time constraint",
+ * not by "built-in vs MCP": host built-ins (~13 tools, ~3.9K tokens) are used
+ * in nearly every conversation and have argument semantics precise enough to
+ * need the provider's own schema enforcement — `fs_edit`'s `old_string` has to
+ * match the file exactly. Everything else — MCP, and optional first-party
+ * feature modules such as the whiteboard — is deferred, so a user who never
+ * touches that feature pays a catalog line rather than a full schema.
+ *
+ * A user can pull any individual tool set back to `always` (the escape hatch
+ * for models that handle the deferred path poorly); that path registers the
+ * real schema natively and never goes through `invoke_tool`.
+ */
 export const getAssistantToolDisclosureMode = (
   assistant:
     | Pick<
@@ -667,18 +637,15 @@ export const getAssistantToolDisclosureMode = (
     | null
     | undefined,
   toolName: string,
-  options?: {
-    enableToolDisclosure?: boolean
-    serverToolTokenBudgets?: ReadonlyMap<string, number>
-  },
+  options?: { enableToolDisclosure?: boolean },
 ): AssistantToolDisclosureMode => {
+  // The global opt-out is on its way out (it defaults off today, which is why
+  // most installs still send every schema up front). Until the settings
+  // surface is collapsed it keeps its current meaning: off ⇒ nothing defers.
   if (options?.enableToolDisclosure === false) {
     return 'always'
   }
 
-  // Built-in tools are part of the agent's core capabilities (~3.9K tokens
-  // total) and are always loaded. Disclosure is an MCP-only concept now;
-  // any stale `on_demand` value in toolPreferences for a built-in is ignored.
   let parsedServerName: string | null = null
   try {
     const { serverName } = parseToolName(toolName)
@@ -694,9 +661,7 @@ export const getAssistantToolDisclosureMode = (
     const explicitMode =
       assistant?.toolServerPreferences?.[parsedServerName]?.disclosureMode
     if (explicitMode) return explicitMode
-    return resolveDefaultDisclosureModeForServer(
-      options?.serverToolTokenBudgets?.get(parsedServerName),
-    )
+    return 'on_demand'
   }
   return getDefaultDisclosureModeForTool(toolName)
 }

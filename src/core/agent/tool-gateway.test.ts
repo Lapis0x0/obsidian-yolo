@@ -1380,7 +1380,10 @@ describe('AgentToolGateway', () => {
       }
     })
 
-    it('does not require disclosure for lightweight servers in auto mode', async () => {
+    it('defers an MCP server left on auto, so an undisclosed call is rejected', async () => {
+      // Replaces the old "lightweight servers stay resident" case: the
+      // per-server token threshold is gone, and auto now means deferred for
+      // anything that is not a host built-in.
       const mcpManager = mcpManagerWithRealTool()
       const gateway = new AgentToolGateway(mcpManager, {
         allowedToolNames: ['server__tool_a'],
@@ -1409,7 +1412,7 @@ describe('AgentToolGateway', () => {
         conversationMessages: [],
       })
       const response = result.toolCalls[0]?.response
-      expect(response?.status).toBe(ToolCallResponseStatus.Success)
+      expect(response?.status).toBe(ToolCallResponseStatus.Error)
     })
 
     it('rejects on-demand tool calls with arguments that violate the real schema', async () => {
@@ -1469,63 +1472,160 @@ describe('AgentToolGateway', () => {
       }
     })
 
-    it('unpacks args_json before dispatch on Gemini', async () => {
-      const mcpManager = mcpManagerWithRealTool()
-      const gateway = buildGateway(mcpManager, 'gemini')
-      const disclosureMessage = {
-        role: 'tool' as const,
-        id: 'tool-load',
-        toolCalls: [
-          {
-            request: {
-              id: 'call-search',
-              name: 'yolo_local__load_tool_schemas',
-              arguments: emptyArgs,
-            },
-            response: {
-              status: ToolCallResponseStatus.Success as const,
-              data: {
-                type: 'text' as const,
-                text: JSON.stringify({
-                  tool: 'load_tool_schemas',
-                  loadedToolNames: ['server__tool_a'],
-                  matches: [
-                    {
-                      name: 'server__tool_a',
-                      description: 'Tool A',
-                      parameters: realToolSchema,
-                    },
-                  ],
-                }),
-              },
+    const disclosureOf = (name: string) => ({
+      role: 'tool' as const,
+      id: `tool-load-${name}`,
+      toolCalls: [
+        {
+          request: {
+            id: 'call-search',
+            name: 'yolo_local__load_tool_schemas',
+            arguments: emptyArgs,
+          },
+          response: {
+            status: ToolCallResponseStatus.Success as const,
+            data: {
+              type: 'text' as const,
+              text: JSON.stringify({
+                tool: 'load_tool_schemas',
+                loadedToolNames: [name],
+                matches: [
+                  { name, description: 'Tool A', parameters: realToolSchema },
+                ],
+              }),
             },
           },
-        ],
-      }
+        },
+      ],
+    })
+
+    const invokeCall = (args: Record<string, unknown>) => ({
+      id: 'tool-good',
+      name: 'yolo_local__invoke_tool',
+      arguments: createCompleteToolCallArguments({ value: args }),
+    })
+
+    it('unwraps invoke_tool into the real call before dispatch', async () => {
+      const mcpManager = mcpManagerWithRealTool()
+      const gateway = buildGateway(mcpManager)
       const toolMessage = gateway.createToolMessage({
         toolCallRequests: [
-          {
-            id: 'tool-good',
-            name: 'server__tool_a',
-            arguments: createCompleteToolCallArguments({
-              value: { args_json: '{"value": "hello"}' },
-            }),
-          },
+          invokeCall({
+            tool_name: 'server__tool_a',
+            arguments: { value: 'hello' },
+          }),
+        ],
+        conversationId: 'conv-1',
+      })
+      // The conversation state records the real tool, not the envelope — that
+      // is what every downstream policy and renderer reads.
+      expect(toolMessage.toolCalls[0]?.request.name).toBe('server__tool_a')
+
+      const result = await gateway.executeAutoToolCalls({
+        toolMessage,
+        conversationId: 'conv-1',
+        conversationMessages: [disclosureOf('server__tool_a')],
+      })
+      expect(result.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.Success,
+      )
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock for assertion
+      const callMock = mcpManager.callTool as unknown as jest.Mock
+      const callArgs = callMock.mock.calls[0]?.[0] as {
+        name: string
+        args: unknown
+      }
+      expect(callArgs.name).toBe('server__tool_a')
+      expect(callArgs.args).toEqual({ value: 'hello' })
+    })
+
+    it('unwraps the JSON-string arguments form on Gemini', async () => {
+      const mcpManager = mcpManagerWithRealTool()
+      const gateway = buildGateway(mcpManager, 'gemini')
+      const toolMessage = gateway.createToolMessage({
+        toolCallRequests: [
+          invokeCall({
+            tool_name: 'server__tool_a',
+            arguments: '{"value": "hello"}',
+          }),
         ],
         conversationId: 'conv-1',
       })
       const result = await gateway.executeAutoToolCalls({
         toolMessage,
         conversationId: 'conv-1',
-        conversationMessages: [disclosureMessage],
+        conversationMessages: [disclosureOf('server__tool_a')],
       })
-      const response = result.toolCalls[0]?.response
-      expect(response?.status).toBe(ToolCallResponseStatus.Success)
+      expect(result.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.Success,
+      )
       // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock for assertion
       const callMock = mcpManager.callTool as unknown as jest.Mock
-      expect(callMock).toHaveBeenCalledTimes(1)
       const callArgs = callMock.mock.calls[0]?.[0] as { args: unknown }
       expect(callArgs.args).toEqual({ value: 'hello' })
+    })
+
+    it('applies per-tool policy to the unwrapped call, not to the envelope', async () => {
+      // The ordering invariant behind invoke_tool: availability, workspace
+      // scope, blocked prefixes and the approval tier are all keyed on the
+      // real tool name. If the envelope were opened any later than
+      // createToolMessage, every one of these would be inspecting a wrapper
+      // whose name matches nothing — and would wave the call through.
+      const mcpManager = {
+        isToolExecutionAllowed: jest.fn().mockReturnValue(true),
+        callTool: jest.fn(),
+        listAvailableTools: jest.fn().mockResolvedValue([]),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__terminal_command'],
+        toolPreferences: {
+          yolo_local__terminal_command: {
+            enabled: true,
+            approvalMode: 'full_access',
+          },
+        },
+        builtinCapabilityPreferences: {
+          terminal: { enabled: true, approvalMode: 'full_access' },
+        },
+        blockedCommandPrefixes: ['rm -rf'],
+      })
+
+      const toolMessage = gateway.createToolMessage({
+        toolCallRequests: [
+          invokeCall({
+            tool_name: 'yolo_local__terminal_command',
+            arguments: { command: 'rm -rf /' },
+          }),
+        ],
+        conversationId: 'conv-1',
+      })
+
+      expect(toolMessage.toolCalls[0]?.request.name).toBe(
+        'yolo_local__terminal_command',
+      )
+      expect(toolMessage.toolCalls[0]?.response.status).toBe(
+        ToolCallResponseStatus.Error,
+      )
+    })
+
+    it('rejects an unknown tool_name and reports near matches instead of guessing', async () => {
+      const mcpManager = mcpManagerWithRealTool()
+      const gateway = buildGateway(mcpManager)
+      const toolMessage = gateway.createToolMessage({
+        toolCallRequests: [
+          invokeCall({ tool_name: 'server__tool_A', arguments: {} }),
+        ],
+        conversationId: 'conv-1',
+      })
+      const response = toolMessage.toolCalls[0]?.response
+      expect(response?.status).toBe(ToolCallResponseStatus.Error)
+      if (response?.status !== ToolCallResponseStatus.Error) {
+        throw new Error('expected error')
+      }
+      expect(response.error).toContain('server__tool_a')
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock for assertion
+      expect(mcpManager.callTool as unknown as jest.Mock).not.toHaveBeenCalled()
     })
 
     it('honors schemas persisted in compaction state when no load_tool_schemas history remains', async () => {

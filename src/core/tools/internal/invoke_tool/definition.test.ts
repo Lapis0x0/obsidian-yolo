@@ -11,7 +11,8 @@ const unwrap = (args: Record<string, unknown>, apiType?: 'gemini') =>
 
 describe('getInvokeTool', () => {
   it('uses a native object for arguments on providers that allow it', () => {
-    const schema = getInvokeTool('openai').inputSchema.properties?.arguments
+    const schema =
+      getInvokeTool('openai-compatible').inputSchema.properties?.arguments
     expect(schema).toMatchObject({ type: 'object', additionalProperties: true })
   })
 
@@ -62,6 +63,17 @@ describe('unwrapInvokeToolArguments', () => {
 
   it('rejects an array where an object is required', () => {
     expect(unwrap({ tool_name: 'cf__search', arguments: [] }).ok).toBe(false)
+  })
+})
+
+describe('unwrapInvokeToolArguments without an enumerable allow-list', () => {
+  it('accepts any name, leaving availability to the downstream check', () => {
+    expect(
+      unwrapInvokeToolArguments({
+        args: { tool_name: 'anything__at_all', arguments: {} },
+        knownToolNames: null,
+      }),
+    ).toMatchObject({ ok: true, toolName: 'anything__at_all' })
   })
 })
 

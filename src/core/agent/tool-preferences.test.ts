@@ -3,7 +3,6 @@ import { getCapabilityForTool, listCapabilities } from '../tools/registry'
 
 import {
   BUILTIN_DEFAULT_ENABLED_TOOL_FQNS,
-  buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
   getDefaultApprovalModeForTool,
@@ -18,28 +17,6 @@ import {
 const JS_SANDBOX_FQN = 'yolo_local__js_eval'
 
 describe('tool-preferences defaults', () => {
-  it('shares cached MCP schema costs across catalog consumers', async () => {
-    const estimate = jest.fn().mockResolvedValue(123)
-    const buildCatalog = () =>
-      new Map([
-        [
-          'cache_test_server',
-          [
-            {
-              name: 'cache_test_server__unique_tool_524',
-              description: 'schema cache regression 524',
-              inputSchema: { type: 'object' as const, properties: {} },
-            },
-          ],
-        ],
-      ])
-
-    await buildServerToolTokenBudgets(buildCatalog(), estimate)
-    await buildServerToolTokenBudgets(buildCatalog(), estimate)
-
-    expect(estimate).toHaveBeenCalledTimes(1)
-  })
-
   it('uses the server disclosure policy for every current and future tool', () => {
     const assistant = {
       toolPreferences: {},

@@ -47,12 +47,15 @@ export const getLoadToolSchemasChatSummary = ({
 }: {
   argumentsObject: Record<string, unknown> | null
 }): string | undefined => {
-  const servers = asStringArray(argumentsObject?.servers)
-  if (!servers || servers.length === 0) {
+  const names = [
+    ...(asStringArray(argumentsObject?.tools) ?? []),
+    ...(asStringArray(argumentsObject?.servers) ?? []),
+  ]
+  if (names.length === 0) {
     return undefined
   }
-  const head = servers.slice(0, 2).join(', ')
-  const rest = servers.length - 2
+  const head = names.slice(0, 2).join(', ')
+  const rest = names.length - 2
   return rest > 0 ? `${head} +${rest}` : head
 }
 
@@ -68,19 +71,23 @@ export function getLoadToolSchemasTool(): McpTool {
   return {
     name: LOAD_TOOL_SCHEMAS_TOOL_NAME,
     description:
-      'Load full schemas for all on-demand tools belonging to the given MCP servers, making them callable in the next turn. Pass MCP server names (the prefix before "__" in any stub tool name) — batch multiple servers when needed.',
+      'Load the full schemas for tools listed in <tool_catalog>, making them callable through yolo_local__invoke_tool in the next turn. Pass the exact tool names you need — batch several in one call.',
     inputSchema: {
       type: 'object',
       properties: {
+        tools: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'Fully-qualified tool names, copied verbatim from <tool_catalog> (e.g. "notion__notion-search").',
+        },
         servers: {
           type: 'array',
           items: { type: 'string' },
-          minItems: 1,
           description:
-            'MCP server names whose on-demand tools should be loaded (e.g. "context7", "deepwiki").',
+            'Optional shorthand: load every deferred tool belonging to these servers. Prefer naming the individual tools you need.',
         },
       },
-      required: ['servers'],
     },
   }
 }

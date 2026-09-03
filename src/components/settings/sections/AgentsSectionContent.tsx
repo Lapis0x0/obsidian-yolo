@@ -31,7 +31,6 @@ import {
 import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
   buildDefaultBuiltinCapabilityPreferences,
-  buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
   getAssistantToolPreferences,
@@ -39,7 +38,6 @@ import {
   getEnabledAssistantToolNames,
   getExplicitlyEnabledAssistantToolNames,
   isAssistantToolEnabled,
-  resolveDefaultDisclosureModeForServer,
 } from '../../../core/agent/tool-preferences'
 import { applyDynamicToolDescriptions } from '../../../core/agent/tool-selection'
 import { getJsSandboxSettings } from '../../../core/mcp/jsSandboxSettings'
@@ -165,23 +163,12 @@ function buildToolTokenPayload(tool: McpTool): Record<string, unknown> {
 }
 
 /**
- * Token estimate payload for an on-demand tool stub. Mirrors the stable
- * stub registration: name + truncated description + permissive schema.
- * Kept conservative so the estimate is unaffected by which provider is
- * actually used at request time.
+ * Token estimate payload for a deferred tool. A deferred tool is not
+ * registered in `tools` at all — it costs exactly one indented line in the
+ * system-prompt `<tool_catalog>`, so that line is what we price.
  */
-function buildDeferredToolStubTokenPayload(tool: McpTool): unknown {
-  const description = (tool.description ?? '').trim()
-  const truncatedDescription =
-    description.length > 200 ? `${description.slice(0, 197)}...` : description
-  return {
-    type: 'function',
-    function: {
-      name: tool.name,
-      description: truncatedDescription,
-      parameters: { type: 'object', properties: {} },
-    },
-  }
+function buildDeferredToolCatalogLineTokenPayload(tool: McpTool): unknown {
+  return `  ${tool.name}\n`
 }
 
 function estimateToolDefaultContextTokens(tool: McpTool): Promise<number> {
@@ -200,7 +187,7 @@ function estimateToolDefaultContextTokens(tool: McpTool): Promise<number> {
 }
 
 function estimateToolDeferredContextTokens(tool: McpTool): Promise<number> {
-  const payload = buildDeferredToolStubTokenPayload(tool)
+  const payload = buildDeferredToolCatalogLineTokenPayload(tool)
   const cacheKey = `${tool.name}:${fnv1aHash(stableStringify(payload))}`
   const cached = toolDeferredContextTokenCache.get(cacheKey)
   if (cached) return cached
@@ -210,22 +197,6 @@ function estimateToolDeferredContextTokens(tool: McpTool): Promise<number> {
   })
   toolDeferredContextTokenCache.set(cacheKey, pending)
   return pending
-}
-
-function groupToolsByServer(tools: readonly McpTool[]): Map<string, McpTool[]> {
-  const serverTools = new Map<string, McpTool[]>()
-  for (const tool of tools) {
-    let serverName: string
-    try {
-      serverName = parseToolName(tool.name).serverName
-    } catch {
-      continue
-    }
-    const bucket = serverTools.get(serverName) ?? []
-    bucket.push(tool)
-    serverTools.set(serverName, bucket)
-  }
-  return serverTools
 }
 
 function buildSkillMetadataPrompt(skill: LiteSkillEntry): string {
@@ -950,12 +921,10 @@ export function AgentsSectionContent({
     agentId: string | null
     value: number | null
     perTool: Map<string, number>
-    serverToolTokenBudgets: Map<string, number>
   }>({
     agentId: null,
     value: null,
     perTool: new Map(),
-    serverToolTokenBudgets: new Map(),
   })
 
   useEffect(() => {
@@ -967,7 +936,6 @@ export function AgentsSectionContent({
         agentId: currentAgentId,
         value: 0,
         perTool: new Map(),
-        serverToolTokenBudgets: new Map(),
       })
       return
     }
@@ -993,7 +961,6 @@ export function AgentsSectionContent({
         agentId: currentAgentId,
         value: 0,
         perTool: new Map(),
-        serverToolTokenBudgets: new Map(),
       })
       return
     }
@@ -1007,7 +974,6 @@ export function AgentsSectionContent({
             agentId: currentAgentId,
             value: null,
             perTool: new Map(),
-            serverToolTokenBudgets: new Map(),
           },
     )
 
@@ -1020,51 +986,29 @@ export function AgentsSectionContent({
       settings,
     })
 
-    const automaticBudgetTools = enableToolDisclosure
-      ? resolvedTools.filter((tool) => {
-          try {
-            const { serverName } = parseToolName(tool.name)
-            return (
-              serverName !== localFsServerName &&
-              draftAgent.toolServerPreferences?.[serverName]?.disclosureMode ===
-                undefined
-            )
-          } catch {
-            return false
-          }
-        })
-      : []
-
-    void buildServerToolTokenBudgets(
-      groupToolsByServer(automaticBudgetTools),
-      estimateJsonTokens,
-    ).then(async (serverToolTokenBudgets) => {
+    void (async () => {
       const entries = await Promise.all(
         resolvedTools.map(async (tool) => {
           const disclosureMode = getAssistantToolDisclosureMode(
             draftAgent,
             tool.name,
-            { enableToolDisclosure, serverToolTokenBudgets },
+            { enableToolDisclosure },
           )
-          if (disclosureMode === 'on_demand') {
-            const stubCount = await estimateToolDeferredContextTokens(tool)
-            return [tool.name, stubCount] as const
-          }
           return [
             tool.name,
-            await estimateToolDefaultContextTokens(tool),
+            disclosureMode === 'on_demand'
+              ? await estimateToolDeferredContextTokens(tool)
+              : await estimateToolDefaultContextTokens(tool),
           ] as const
         }),
       )
       if (cancelled) return
-      const perTool = new Map(entries)
       setEstimatedToolContextTokens({
         agentId: currentAgentId,
         value: entries.reduce((sum, [, count]) => sum + count, 0),
-        perTool,
-        serverToolTokenBudgets,
+        perTool: new Map(entries),
       })
-    })
+    })()
 
     return () => {
       cancelled = true
@@ -1649,9 +1593,6 @@ export function AgentsSectionContent({
                   const allGroupToolsEnabled =
                     group.tools.length > 0 &&
                     groupEnabledCount === group.tools.length
-                  const groupToggleTargets = group.tools.flatMap(
-                    (tool) => tool.toggleTargets,
-                  )
                   const showServerDisclosure =
                     !group.isBuiltin &&
                     enableToolDisclosure &&
@@ -1660,22 +1601,11 @@ export function AgentsSectionContent({
                     ? (draftAgent.toolServerPreferences?.[group.key]
                         ?.disclosureMode ?? 'auto')
                     : 'auto'
-                  const autoDisclosureMode = (() => {
-                    const firstTarget = groupToggleTargets[0]
-                    if (!firstTarget) return null
-                    try {
-                      const { serverName } = parseToolName(firstTarget)
-                      const tokenBudget =
-                        estimatedToolContextTokens.serverToolTokenBudgets.get(
-                          serverName,
-                        )
-                      return tokenBudget === undefined
-                        ? null
-                        : resolveDefaultDisclosureModeForServer(tokenBudget)
-                    } catch {
-                      return null
-                    }
-                  })()
+                  // `auto` no longer weighs a token budget: everything that
+                  // is not a host built-in defers, and this row only renders
+                  // for non-built-in groups.
+                  const autoDisclosureMode: AssistantToolDisclosureMode =
+                    'on_demand'
                   const disclosureModeLabel = (
                     mode: AssistantToolDisclosureMode,
                   ) =>

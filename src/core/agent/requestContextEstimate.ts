@@ -75,6 +75,7 @@ export const estimateContinuationRequestContextTokens = async ({
     hasMemoryTools,
     hasOnDemandTools,
     requestTools,
+    deferredToolCatalog,
   } = await selectAllowedTools({
     availableTools,
     allowedToolNames,
@@ -95,6 +96,7 @@ export const estimateContinuationRequestContextTokens = async ({
     hasTools,
     hasMemoryTools,
     hasOnDemandTools,
+    deferredToolCatalogText: deferredToolCatalog?.text,
     model,
     conversationId,
     compaction,

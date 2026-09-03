@@ -31,7 +31,6 @@ import {
   parseAndRepairToolArguments,
   parseAndRepairToolArgumentsText,
 } from '../../utils/chat/tool-argument-parser'
-import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { captureLLMDebugOperation } from '../llm/debugCapture'
 import {
   ASK_USER_QUESTION_TOOL_NAME,
@@ -45,6 +44,7 @@ import {
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
+import { unwrapInvokeToolArguments } from '../tools/internal/invoke_tool/definition'
 
 import {
   DEFAULT_BLOCKED_PREFIXES,
@@ -58,13 +58,11 @@ import {
   extractLoadedDeferredToolNames,
 } from './tool-disclosure'
 import {
-  buildServerToolTokenBudgets,
   getAssistantToolApprovalMode,
   getAssistantToolDisclosureMode,
   isAssistantToolEnabled,
 } from './tool-preferences'
-import { isLoadToolSchemasToolName } from './tool-selection'
-import { GEMINI_STUB_ARGS_JSON_FIELD, isGeminiStubApiType } from './tool-stub'
+import { isInvokeToolName, isLoadToolSchemasToolName } from './tool-selection'
 import {
   buildAllowedSkillPathSet,
   describePathDenial,
@@ -288,10 +286,6 @@ export class AgentToolGateway {
     string,
     AjvValidateFunction | null
   >()
-  private serverToolTokenBudgets: ReadonlyMap<string, number> | null = null
-  private serverToolTokenBudgetsPromise: Promise<
-    ReadonlyMap<string, number>
-  > | null = null
 
   constructor(
     private readonly mcpManager: McpManager,
@@ -343,53 +337,6 @@ export class AgentToolGateway {
     this.ajv = new Ajv({ allErrors: true, useDefaults: false })
   }
 
-  private async getServerToolTokenBudgets(): Promise<
-    ReadonlyMap<string, number>
-  > {
-    if (!this.enableToolDisclosure) {
-      return new Map()
-    }
-    if (this.serverToolTokenBudgets) {
-      return this.serverToolTokenBudgets
-    }
-    if (!this.serverToolTokenBudgetsPromise) {
-      this.serverToolTokenBudgetsPromise = (async () => {
-        const availableTools = await this.mcpManager.listAvailableTools({
-          includeBuiltinTools: true,
-        })
-        const serverToolsMap = new Map<string, McpTool[]>()
-        for (const tool of availableTools) {
-          if (!this.isToolAllowed(tool.name)) {
-            continue
-          }
-          let serverName: string
-          try {
-            serverName = parseToolName(tool.name).serverName
-          } catch {
-            continue
-          }
-          if (
-            serverName === getLocalFileToolServerName() ||
-            this.toolServerPreferences?.[serverName]?.disclosureMode !==
-              undefined
-          ) {
-            continue
-          }
-          const bucket = serverToolsMap.get(serverName) ?? []
-          bucket.push(tool)
-          serverToolsMap.set(serverName, bucket)
-        }
-        const budgets = await buildServerToolTokenBudgets(
-          serverToolsMap,
-          estimateJsonTokens,
-        )
-        this.serverToolTokenBudgets = budgets
-        return budgets
-      })()
-    }
-    return this.serverToolTokenBudgetsPromise
-  }
-
   private async isOnDemandToolName(toolName: string): Promise<boolean> {
     if (!this.enableToolDisclosure) {
       return false
@@ -405,7 +352,6 @@ export class AgentToolGateway {
     } catch {
       return false
     }
-    const serverToolTokenBudgets = await this.getServerToolTokenBudgets()
     return (
       getAssistantToolDisclosureMode(
         {
@@ -416,7 +362,7 @@ export class AgentToolGateway {
             : undefined,
         },
         toolName,
-        { serverToolTokenBudgets },
+        { enableToolDisclosure: this.enableToolDisclosure },
       ) === 'on_demand'
     )
   }
@@ -455,20 +401,18 @@ export class AgentToolGateway {
   }
 
   /**
-   * Harness gate that runs before tool dispatch. Implements two on-demand
-   * invariants that the LLM cannot enforce on its own (the registered tools
-   * are stubs):
+   * Harness gate that runs before tool dispatch, for tools that were never
+   * registered in the request's `tools` field. The provider validated nothing
+   * about them, so both invariants are ours to enforce:
    *
-   *   1. Reject calls to on-demand tools whose schemas have not been disclosed
-   *      via `load_tool_schemas` in this conversation yet. Errors point the
-   *      model to `load_tool_schemas` so it can self-correct in the next turn.
-   *   2. For Gemini stubs, unpack the `args_json` field back into real
-   *      arguments before dispatch. Then validate the unpacked payload
-   *      against the real JSON Schema via ajv.
+   *   1. The tool's real schema must have been disclosed via
+   *      `load_tool_schemas` earlier in this conversation. Otherwise the model
+   *      is guessing at the argument shape, and the error points it back at
+   *      the loader so it can self-correct next turn.
+   *   2. The arguments must validate against that real schema (ajv).
    *
-   * Returns either an updated request (Gemini args_json rewritten) or a
-   * structured error response that the caller substitutes for the would-be
-   * tool call.
+   * The `invoke_tool` envelope is already gone by this point — it is opened in
+   * `createToolMessage`, so `request` here names the real tool.
    */
   private async validateAndNormalizeRequest({
     request,
@@ -485,68 +429,19 @@ export class AgentToolGateway {
     }
 
     if (!loadedToolNames.has(request.name)) {
-      let serverName: string | null = null
-      try {
-        serverName = parseToolName(request.name).serverName
-      } catch {
-        serverName = null
-      }
-      const guidance = serverName
-        ? `Call yolo_local__load_tool_schemas with {"servers":["${serverName}"]} first`
-        : `Call yolo_local__load_tool_schemas with the server name (the prefix before "__") first`
       return {
         ok: false,
         response: {
           status: ToolCallResponseStatus.Error,
           error:
-            `Tool "${request.name}" is registered on demand and its schema has not been disclosed in this conversation yet. ` +
-            `${guidance}; the next assistant turn can then call ${request.name} directly.`,
+            `Tool "${request.name}" has not had its schema loaded in this conversation yet. ` +
+            `Call yolo_local__load_tool_schemas with {"tools":["${request.name}"]} first; ` +
+            `the next assistant turn can then invoke it.`,
         },
       }
     }
 
-    let normalizedArgs = getToolCallArgumentsObject(request.arguments) ?? {}
-    let normalizedRequest = request
-
-    if (isGeminiStubApiType(this.apiType)) {
-      const raw = normalizedArgs[GEMINI_STUB_ARGS_JSON_FIELD]
-      if (typeof raw !== 'string') {
-        return {
-          ok: false,
-          response: {
-            status: ToolCallResponseStatus.Error,
-            error: `Tool "${request.name}" is an on-demand tool. On Gemini, its arguments must be passed as a JSON-encoded string in the "${GEMINI_STUB_ARGS_JSON_FIELD}" field; received a non-string value instead.`,
-          },
-        }
-      }
-      let parsed: unknown
-      try {
-        parsed = JSON.parse(raw)
-      } catch (error) {
-        return {
-          ok: false,
-          response: {
-            status: ToolCallResponseStatus.Error,
-            error: `Tool "${request.name}" received an invalid JSON payload in "${GEMINI_STUB_ARGS_JSON_FIELD}": ${error instanceof Error ? error.message : String(error)}.`,
-          },
-        }
-      }
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return {
-          ok: false,
-          response: {
-            status: ToolCallResponseStatus.Error,
-            error: `Tool "${request.name}" expected an object payload in "${GEMINI_STUB_ARGS_JSON_FIELD}", received ${Array.isArray(parsed) ? 'an array' : typeof parsed}.`,
-          },
-        }
-      }
-      normalizedArgs = parsed as Record<string, unknown>
-      normalizedRequest = {
-        ...request,
-        arguments: createCompleteToolCallArguments({ value: normalizedArgs }),
-      }
-    }
-
+    const normalizedArgs = getToolCallArgumentsObject(request.arguments) ?? {}
     const realTool = await this.getRealToolSchema(request.name)
     if (!realTool) {
       return {
@@ -576,7 +471,7 @@ export class AgentToolGateway {
       }
     }
 
-    return { ok: true, request: normalizedRequest }
+    return { ok: true, request }
   }
 
   private findRequestPathOutsideScope(request: ToolCallRequest): string | null {
@@ -784,9 +679,17 @@ export class AgentToolGateway {
     branchModelId?: string
     branchLabel?: string
   }): ChatToolMessage {
+    // The `invoke_tool` envelope is opened here, before anything else looks
+    // at the request. Everything downstream — the availability gate, workspace
+    // scope, blocked terminal prefixes, approval tier, the chat renderers —
+    // therefore sees the real tool by construction, and no policy is ever
+    // evaluated against the wrapper. Argument parsing has to run first,
+    // because the wrapped name and arguments live inside the parsed payload.
     const preparedRequests = toolCallRequests.map((request) =>
-      this.prepareFinalToolCallRequest(
-        this.attachModuleChatModeSnapshot(request),
+      this.unwrapInvokeToolRequest(
+        this.prepareFinalToolCallRequest(
+          this.attachModuleChatModeSnapshot(request),
+        ),
       ),
     )
     const normalizedToolCallRequests = preparedRequests.map(
@@ -835,6 +738,44 @@ export class AgentToolGateway {
                 }),
         }
       }),
+    }
+  }
+
+  private unwrapInvokeToolRequest(
+    prepared:
+      | { ok: true; request: ToolCallRequest }
+      | { ok: false; request: ToolCallRequest; response: ToolCallResponse },
+  ):
+    | { ok: true; request: ToolCallRequest }
+    | { ok: false; request: ToolCallRequest; response: ToolCallResponse } {
+    if (!prepared.ok || !isInvokeToolName(prepared.request.name)) {
+      return prepared
+    }
+
+    const args = getToolCallArgumentsObject(prepared.request.arguments) ?? {}
+    const unwrapped = unwrapInvokeToolArguments({
+      args,
+      apiType: this.apiType,
+      knownToolNames: this.allowedToolNames ? [...this.allowedToolNames] : null,
+    })
+    if (!unwrapped.ok) {
+      return {
+        ok: false,
+        request: prepared.request,
+        response: {
+          status: ToolCallResponseStatus.Error,
+          error: unwrapped.error,
+        },
+      }
+    }
+
+    return {
+      ok: true,
+      request: {
+        ...prepared.request,
+        name: unwrapped.toolName,
+        arguments: createCompleteToolCallArguments({ value: unwrapped.args }),
+      },
     }
   }
 
@@ -1317,42 +1258,87 @@ export class AgentToolGateway {
     }
   }
 
+  /**
+   * Disclose real schemas for named tools.
+   *
+   * Tool-level rather than server-level: the model already knows which tool it
+   * wants (the catalog listed it by name), and pulling a whole server's
+   * schemas to reach one of them just moves the context dilution out of the
+   * prefix and into the message stream, where caching helps less. `servers` is
+   * kept as a batch shorthand for the rarer "show me everything here" case.
+   */
   private async callLoadToolSchemas(
     args?: Record<string, unknown>,
   ): Promise<ToolCallResponse> {
-    const rawServers = args?.servers
-    if (!Array.isArray(rawServers) || rawServers.length === 0) {
-      return {
-        status: ToolCallResponseStatus.Error,
-        error: 'servers must be a non-empty array of MCP server names.',
+    const readStringArray = (
+      value: unknown,
+      field: string,
+    ): { ok: true; values: string[] } | { ok: false; error: string } => {
+      if (value === undefined) return { ok: true, values: [] }
+      if (!Array.isArray(value)) {
+        return { ok: false, error: `${field} must be an array of strings.` }
       }
-    }
-    const requestedServers: string[] = []
-    for (const entry of rawServers) {
-      if (typeof entry !== 'string') {
-        return {
-          status: ToolCallResponseStatus.Error,
-          error: 'servers must contain only strings.',
+      const values: string[] = []
+      for (const entry of value) {
+        if (typeof entry !== 'string') {
+          return { ok: false, error: `${field} must contain only strings.` }
+        }
+        const trimmed = entry.trim()
+        if (trimmed.length > 0 && !values.includes(trimmed)) {
+          values.push(trimmed)
         }
       }
-      const trimmed = entry.trim()
-      if (trimmed.length === 0) continue
-      if (!requestedServers.includes(trimmed)) {
-        requestedServers.push(trimmed)
-      }
+      return { ok: true, values }
     }
-    if (requestedServers.length === 0) {
+
+    const requestedTools = readStringArray(args?.tools, 'tools')
+    if (!requestedTools.ok) {
       return {
         status: ToolCallResponseStatus.Error,
-        error: 'servers must contain at least one non-empty MCP server name.',
+        error: requestedTools.error,
+      }
+    }
+    const requestedServers = readStringArray(args?.servers, 'servers')
+    if (!requestedServers.ok) {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error: requestedServers.error,
+      }
+    }
+    if (
+      requestedTools.values.length === 0 &&
+      requestedServers.values.length === 0
+    ) {
+      return {
+        status: ToolCallResponseStatus.Error,
+        error:
+          'Pass "tools" (fully-qualified tool names from <tool_catalog>) and/or "servers".',
       }
     }
 
-    const tools = await this.mcpManager.listAvailableTools({
+    const available = await this.mcpManager.listAvailableTools({
       includeBuiltinTools: true,
     })
+    const isDisclosable = async (tool: McpTool): Promise<boolean> =>
+      !this.isLoadToolSchemasRequest(tool.name) &&
+      this.isToolAllowed(tool.name) &&
+      (await this.isOnDemandToolName(tool.name))
+
+    const byName = new Map(available.map((tool) => [tool.name, tool]))
+    const matches: McpTool[] = []
+    const unknownTools: string[] = []
+
+    for (const toolName of requestedTools.values) {
+      const tool = byName.get(toolName)
+      if (!tool || !(await isDisclosable(tool))) {
+        unknownTools.push(toolName)
+        continue
+      }
+      matches.push(tool)
+    }
+
     const toolsByServer = new Map<string, McpTool[]>()
-    for (const tool of tools) {
+    for (const tool of available) {
       let serverName: string
       try {
         serverName = parseToolName(tool.name).serverName
@@ -1364,54 +1350,43 @@ export class AgentToolGateway {
       toolsByServer.set(serverName, bucket)
     }
 
-    const matches: McpTool[] = []
     const loadedServers: string[] = []
-    const unknown: string[] = []
+    const unknownServers: string[] = []
     const emptyServers: string[] = []
-    for (const serverName of requestedServers) {
+    for (const serverName of requestedServers.values) {
       const serverTools = toolsByServer.get(serverName)
       if (!serverTools || serverTools.length === 0) {
-        unknown.push(serverName)
+        unknownServers.push(serverName)
         continue
       }
-      const eligible = serverTools.filter(
-        (tool) =>
-          !this.isLoadToolSchemasRequest(tool.name) &&
-          this.isToolAllowed(tool.name) &&
-          this.isOnDemandToolName(tool.name),
-      )
+      const eligible: McpTool[] = []
+      for (const tool of serverTools) {
+        if (await isDisclosable(tool)) eligible.push(tool)
+      }
       if (eligible.length === 0) {
-        // Server exists but has nothing left to disclose (all tools already
-        // always-loaded or disabled). Report separately from `unknownServers`
-        // so the model knows the name was right and won't retry.
+        // The server exists but has nothing left to disclose (everything is
+        // already always-loaded or disabled). Reported separately from
+        // `unknownServers` so the model knows the name was right.
         emptyServers.push(serverName)
         continue
       }
       loadedServers.push(serverName)
       for (const tool of eligible) {
-        matches.push(tool)
+        if (!matches.some((match) => match.name === tool.name)) {
+          matches.push(tool)
+        }
       }
     }
 
     const instructionParts: string[] = []
     if (matches.length > 0) {
       instructionParts.push(
-        'These tool schemas are now available. Call the loaded tools directly in the next turn.',
+        'These tool schemas are now available. Call them through yolo_local__invoke_tool in the next turn.',
       )
     }
-    if (emptyServers.length > 0) {
+    if (unknownTools.length > 0) {
       instructionParts.push(
-        `Servers [${emptyServers.join(', ')}] were recognized but have no on-demand tools to load (all their tools are already in context or disabled).`,
-      )
-    }
-    if (unknown.length > 0) {
-      instructionParts.push(
-        `Servers [${unknown.join(', ')}] are not registered or have no tools available.`,
-      )
-    }
-    if (instructionParts.length === 0) {
-      instructionParts.push(
-        'No on-demand tools matched the requested MCP servers.',
+        'Unknown tool names were skipped — check <tool_catalog> for the exact spelling.',
       )
     }
 
@@ -1422,7 +1397,9 @@ export class AgentToolGateway {
         text: JSON.stringify(
           {
             tool: LOAD_TOOL_SCHEMAS_RESULT_TOOL,
-            loadedServers,
+            // `loadedToolNames` and `matches` are the contract
+            // `tool-disclosure.ts` parses to track what has been disclosed —
+            // renaming them silently breaks that tracking.
             loadedToolNames: matches.map((tool) => tool.name),
             matches: matches.map((tool) => ({
               name: tool.name,
@@ -1432,8 +1409,10 @@ export class AgentToolGateway {
                 properties: tool.inputSchema.properties ?? {},
               },
             })),
+            unknownTools,
+            loadedServers,
             emptyServers,
-            unknownServers: unknown,
+            unknownServers,
             instruction: instructionParts.join(' '),
           },
           null,
