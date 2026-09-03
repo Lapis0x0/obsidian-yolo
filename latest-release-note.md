@@ -1,19 +1,43 @@
-## 1.6.7 Similar Notes & CLI Polish 🔗
+## 1.6.8 YOLO Whiteboard & On-Demand Tools 🧩
 
-- Added Similar Notes to the Sparkle sidebar, surfacing related notes for whatever you are writing.
-- Improved the approval flow for CLI agents, so a decision registers immediately.
-- Hermes and pi now show the context window ring, and fill in the token / duration bar under a reply.
-- Fixed Hermes and pi replies staying stuck in the generating state after they finished, which made them impossible to select or quote.
-- Fixed pi replies losing their line breaks.
-- Updates and runtime components now download from Cloudflare R2.
+**Introducing YOLO Whiteboard** — for now, think of it as an Obsidian Canvas several to dozens of times faster. More features that push the boundaries of AI and human thinking are on the way.
+
+### Agent & tools
+
+- A more complete and elegant unified progressive disclosure for tools
+- Added Grok build as a new CLI agent channel
+
+### Models & connections
+
+- Fixed ChatGPT OAuth requests failing with a 400 when Web Search was enabled. (#588)
+- Fixed non-streaming requests such as conversation titles returning no content over a desktop direct ChatGPT OAuth connection. (#589)
+- Fixed the local MCP server failing to start when its default port collided with Local REST API, and made the port configurable. (#586)
+- Updated the OpenRouter model capability snapshot.
+
+### Chat & interface
+
+- The model picker in the chat input now shows more of the model name instead of truncating early when there is room.
+- Fixed the Similar Notes list being clipped with no way to scroll it in a short window.
 
 ---
 
-## 1.6.7 相似笔记与 CLI 体验打磨 🔗
+## 1.6.8 YOLO 白板与工具按需披露 🧩
 
-- 灵光写作侧边栏新增「相似笔记」，基于当前笔记推荐关联内容。
-- 优化 CLI 智能体的审批交互，审批结果即时生效。
-- Hermes 与 pi 接入上下文窗口占用环，并补齐回复底部的 token / 耗时信息栏。
-- 修复 Hermes / pi 回答结束后仍被判定为生成中，导致无法选中或引用回复的问题。
-- 修复 pi 回复换行被错误移除的问题。
-- 更新与运行组件的下载改由 Cloudflare R2 分发。
+**引入 YOLO 白板** —— 你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。
+
+### Agent 与工具
+
+- 实现更为完整、优雅的统一工具渐进式披露
+- 添加 Grok build 作为新的 CLI Agent 渠道
+
+### 模型与连接
+
+- 修复 ChatGPT OAuth 开启 Web Search 时请求报 400 的问题。（#588）
+- 修复 ChatGPT OAuth 桌面直连下，会话标题等非流式请求拿不到内容的问题。（#589）
+- 修复本地 MCP 服务默认端口与 Local REST API 冲突导致无法启动的问题，并开放端口配置。（#586）
+- 更新 OpenRouter 模型能力快照。
+
+### 对话与界面
+
+- 聊天输入框的模型选择器会显示更完整的模型名，不再在有空间时提前截断。
+- 修复相似笔记列表在窗口较矮时被截断且无法滚动的问题。
