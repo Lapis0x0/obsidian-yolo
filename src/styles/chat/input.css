@@ -3670,7 +3670,9 @@ button.yolo-assistant-annotation-marker.is-active {
 }
 
 .yolo-chat-user-input-controls__left .yolo-chat-input-model-select {
-  max-width: 160px;
+  /* 上限只是「别把整行吃光」的护栏，不是常态约束：行内有空间时完整显示模型名，
+   * 空间不足时再由 flex 收缩 + 省略号处理 */
+  max-width: 320px;
   min-width: 0;
   flex-shrink: 1;
 }
@@ -3678,10 +3680,6 @@ button.yolo-assistant-annotation-marker.is-active {
 .yolo-chat-user-input-controls__left .yolo-reasoning-select {
   min-width: 72px;
   flex: 0 1 auto;
-}
-
-.yolo-chat-user-input-controls__left .yolo-chat-input-model-select__model-name {
-  max-width: 120px;
 }
 
 .yolo-chat-user-input-toolbar {
@@ -3724,7 +3722,8 @@ button.yolo-assistant-annotation-marker.is-active {
 }
 
 .yolo-chat-user-input-toolbar__right .yolo-chat-input-model-select {
-  max-width: 160px;
+  /* 同 controls__left：上限是护栏而非常态约束 */
+  max-width: 320px;
   min-width: 0;
   flex-shrink: 1;
 }
@@ -3732,10 +3731,6 @@ button.yolo-assistant-annotation-marker.is-active {
 .yolo-chat-user-input-toolbar__right .yolo-reasoning-select {
   min-width: 72px;
   flex: 0 1 auto;
-}
-
-.yolo-chat-user-input-toolbar__right .yolo-chat-input-model-select__model-name {
-  max-width: 120px;
 }
 
 /* 底部工具栏控件：默认用 text-muted + normal 字重，比全局 medium 略轻但仍可读 */

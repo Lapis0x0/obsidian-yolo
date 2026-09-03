@@ -110,7 +110,7 @@ export const ModelSelect = forwardRef<
     )
     const orderedModelIds = modelOptions.map((model) => model.id)
 
-    // Get provider name for current model
+    // 触发器上显示的当前模型文案
     const getCurrentModelDisplay = () => {
       if (externalOptions) {
         return (
@@ -122,15 +122,9 @@ export const ModelSelect = forwardRef<
         (m) => m.id === selectedModelId,
       )
       if (currentModel) {
-        // 优先显示「展示名称」，其次调用ID(model)，最后回退到内部 id
-        const provider = settings.providers.find(
-          (p) => p.id === currentModel.providerId,
-        )
-        const display =
-          currentModel.name || currentModel.model || currentModel.id
-        // 使用 provider 展示后缀
-        const suffix = provider?.id ? ` (${provider.id})` : ''
-        return `${display}${suffix}`
+        // 优先显示「展示名称」，其次调用ID(model)，最后回退到内部 id。
+        // 不附加 provider：下拉列表已按 provider 分组，触发器上重复它只会挤占模型名的宽度
+        return currentModel.name || currentModel.model || currentModel.id
       }
       return selectedModelId
     }
