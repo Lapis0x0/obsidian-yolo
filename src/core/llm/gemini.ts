@@ -490,7 +490,13 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
           lookaheadIndex += 1
         }
 
-        const toolContent = GeminiProvider.parseToolMessages(toolResponses)
+        const toolContent = GeminiProvider.parseToolMessages(
+          toolResponses,
+          GeminiProvider.resolveFunctionResponseNames(
+            assistantContent,
+            toolResponses,
+          ),
+        )
         if (toolContent) {
           contents.push(toolContent)
           index = lookaheadIndex - 1
@@ -594,18 +600,45 @@ export class GeminiProvider extends BaseLLMProvider<LLMProvider> {
     }
   }
 
+  /**
+   * The name each `functionResponse` must carry, taken from the `functionCall`
+   * it answers.
+   *
+   * Gemini pairs a response to its call by name and rejects a name it never
+   * called — and the two can disagree here: the tool gateway rewrites an
+   * `invoke_tool` call into the tool it wrapped, so the stored response names
+   * the real tool while the replayed call still names the envelope. The call
+   * side is what the model emitted, so it wins.
+   *
+   * Gemini emits calls and responses as parallel lists within a turn, so index
+   * is the pairing. Anything else — a skipped incomplete call, ids that do not
+   * line up — means we cannot say which call a response answers, and the
+   * stored name is used unchanged rather than guessed at.
+   */
+  private static resolveFunctionResponseNames(
+    assistantContent: GeminiContent | null,
+    toolResponses: readonly RequestMessage[],
+  ): string[] | undefined {
+    const callNames = (assistantContent?.parts ?? []).flatMap((part) => {
+      const call = (part as { functionCall?: GeminiFunctionCall }).functionCall
+      return typeof call?.name === 'string' ? [call.name] : []
+    })
+    return callNames.length === toolResponses.length ? callNames : undefined
+  }
+
   private static parseToolMessages(
     messages: RequestMessage[],
+    functionResponseNames?: readonly string[],
   ): GeminiContent | null {
     const functionResponses = messages
       .filter(
         (message): message is Extract<RequestMessage, { role: 'tool' }> =>
           message.role === 'tool',
       )
-      .map((message) => ({
+      .map((message, index) => ({
         functionResponse: {
           id: message.tool_call.id,
-          name: message.tool_call.name,
+          name: functionResponseNames?.[index] ?? message.tool_call.name,
           response: { result: message.content },
         },
       }))

@@ -68,10 +68,10 @@ export const extractLoadedDeferredToolNames = ({
   compaction?: ChatConversationCompactionLike | null
 }): Set<string> => {
   const loaded = new Set<string>()
+  // Only the surviving schemas count. Compaction drops oversized ones, and a
+  // name kept past its schema would let the gateway approve a call the model
+  // can no longer see the shape of.
   const latestCompaction = getLatestChatConversationCompaction(compaction)
-  for (const name of latestCompaction?.loadedDeferredToolNames ?? []) {
-    loaded.add(name)
-  }
   for (const schema of latestCompaction?.loadedDeferredToolSchemas ?? []) {
     if (typeof schema?.name === 'string' && schema.name.trim().length > 0) {
       loaded.add(schema.name)

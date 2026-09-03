@@ -207,7 +207,9 @@ describe('NativeAgentRuntime assistant continuation', () => {
       requestContextBuilder: { generateRequestMessages },
       mcpManager: {
         getJsSandboxSettings: () => ({}),
-        getSettingsSnapshot: () => ({}),
+        getSettingsSnapshot: () => ({
+          mcp: { servers: [], discoveredCatalogs: {} },
+        }),
       },
     } as unknown as AgentRuntimeRunInput)
 

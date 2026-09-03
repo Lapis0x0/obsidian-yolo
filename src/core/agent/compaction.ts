@@ -18,7 +18,6 @@ import type { BaseLLMProvider } from '../llm/base'
 
 import {
   type LoadedDeferredToolSchema,
-  extractLoadedDeferredToolNames,
   extractLoadedDeferredToolSchemas,
 } from './tool-disclosure'
 
@@ -449,9 +448,6 @@ export const buildCompactedConversationState = async ({
     return null
   }
 
-  const loadedDeferredToolNames = [
-    ...extractLoadedDeferredToolNames({ messages }),
-  ].sort()
   const loadedDeferredToolSchemas =
     await filterPersistableLoadedDeferredToolSchemas(
       extractLoadedDeferredToolSchemas({ messages }),
@@ -464,7 +460,6 @@ export const buildCompactedConversationState = async ({
     compactedAt: Date.now(),
     summaryModelId,
     compactedMessageCount: trigger.retainedStartIndex,
-    ...(loadedDeferredToolNames.length > 0 ? { loadedDeferredToolNames } : {}),
     ...(loadedDeferredToolSchemas.length > 0
       ? { loadedDeferredToolSchemas }
       : {}),
@@ -485,9 +480,6 @@ export const buildManualCompactionState = async ({
     return null
   }
 
-  const loadedDeferredToolNames = [
-    ...extractLoadedDeferredToolNames({ messages }),
-  ].sort()
   const loadedDeferredToolSchemas =
     await filterPersistableLoadedDeferredToolSchemas(
       extractLoadedDeferredToolSchemas({ messages }),
@@ -499,7 +491,6 @@ export const buildManualCompactionState = async ({
     compactedAt: Date.now(),
     summaryModelId,
     compactedMessageCount: messages.length,
-    ...(loadedDeferredToolNames.length > 0 ? { loadedDeferredToolNames } : {}),
     ...(loadedDeferredToolSchemas.length > 0
       ? { loadedDeferredToolSchemas }
       : {}),

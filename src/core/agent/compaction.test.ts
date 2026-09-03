@@ -637,7 +637,6 @@ describe('buildManualCompactionState loadedDeferredToolSchemas persistence', () 
       messages,
       summary: 'short summary',
     })
-    expect(state?.loadedDeferredToolNames).toEqual(['server__tool_a'])
     expect(state?.loadedDeferredToolSchemas).toEqual([
       {
         name: 'server__tool_a',
@@ -701,10 +700,9 @@ describe('buildManualCompactionState loadedDeferredToolSchemas persistence', () 
       messages,
       summary: 's',
     })
+    // Dropped outright, name included: the model is told to re-disclose the
+    // tool via load_tool_schemas, and the gateway now requires it to.
     expect(state?.loadedDeferredToolSchemas ?? []).toEqual([])
-    // Loaded names list still tracks the tool by name, since the model is told
-    // to re-disclose it via load_tool_schemas.
-    expect(state?.loadedDeferredToolNames).toEqual(['server__big_tool'])
   })
 })
 

@@ -672,19 +672,28 @@ export class AgentToolGateway {
     branchModelId?: string
     branchLabel?: string
   }): ChatToolMessage {
-    // The `invoke_tool` envelope is opened here, before anything else looks
-    // at the request. Everything downstream — the availability gate, workspace
-    // scope, blocked terminal prefixes, approval tier, the chat renderers —
-    // therefore sees the real tool by construction, and no policy is ever
-    // evaluated against the wrapper. Argument parsing has to run first,
-    // because the wrapped name and arguments live inside the parsed payload.
-    const preparedRequests = toolCallRequests.map((request) =>
-      this.unwrapInvokeToolRequest(
-        this.prepareFinalToolCallRequest(
-          this.attachModuleChatModeSnapshot(request),
-        ),
-      ),
-    )
+    // The `invoke_tool` envelope is opened here, before anything that keys off
+    // the tool's identity: the availability gate, workspace scope, blocked
+    // terminal prefixes, the approval tier, the module approval snapshot, and
+    // the chat renderers all see the real tool by construction.
+    //
+    // The order within this pipeline is load-bearing. Argument parsing has to
+    // come first, because the wrapped name and arguments live inside the
+    // parsed payload. `attachModuleChatModeSnapshot` has to come *last*,
+    // because it looks a tool up by name to find its declared approval
+    // policy — run against the envelope it would silently miss a module tool's
+    // `always-require-user` and let the user grant a blanket allow.
+    const preparedRequests = toolCallRequests.map((request) => {
+      const unwrapped = this.unwrapInvokeToolRequest(
+        this.prepareFinalToolCallRequest(request),
+      )
+      return unwrapped.ok
+        ? {
+            ok: true as const,
+            request: this.attachModuleChatModeSnapshot(unwrapped.request),
+          }
+        : unwrapped
+    })
     const normalizedToolCallRequests = preparedRequests.map(
       (prepared) => prepared.request,
     )
@@ -884,18 +893,27 @@ export class AgentToolGateway {
     debugTraceId?: string
   }): Promise<ChatToolMessage> {
     const nextToolCalls = [...toolMessage.toolCalls]
-    // Harness pre-pass: on-demand stubs let any call through provider-side
-    // validation, so we must enforce "schema previously disclosed" and (for
-    // Gemini) unpack the `args_json` smuggle field + run real-schema ajv
-    // validation before dispatch. Failures convert the call's status to
-    // Error with guidance pointing back to `load_tool_schemas`.
+    // Harness pre-pass. A deferred tool is invoked through `invoke_tool`, whose
+    // `arguments` is an open object — the provider validates nothing — so this
+    // is the only place its real schema is enforced, along with "the model
+    // loaded that schema first". Failures convert the call's status to Error
+    // with guidance pointing back to `load_tool_schemas`.
+    //
+    // `PendingApproval` is checked here too, not only `Running`: approval
+    // dispatches straight to `mcpManager.callTool`, so a call validated only
+    // on the auto path would reach the tool unchecked the moment it needs a
+    // confirmation — and the user would be asked to approve arguments we
+    // already know are malformed.
     const loadedToolNames = extractLoadedDeferredToolNames({
       messages: conversationMessages ?? [],
       compaction: conversationCompaction ?? null,
     })
     for (let i = 0; i < nextToolCalls.length; i += 1) {
       const entry = nextToolCalls[i]
-      if (entry.response.status !== ToolCallResponseStatus.Running) {
+      if (
+        entry.response.status !== ToolCallResponseStatus.Running &&
+        entry.response.status !== ToolCallResponseStatus.PendingApproval
+      ) {
         continue
       }
       if (

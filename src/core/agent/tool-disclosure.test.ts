@@ -35,17 +35,32 @@ describe('tool disclosure state', () => {
     ])
   })
 
-  it('carries loaded tool names from compaction metadata', () => {
+  it('counts a tool as disclosed only while its schema survives in the compaction registry', () => {
+    const compaction = {
+      anchorMessageId: 'a1',
+      summary: 'summary',
+      compactedAt: 1,
+    }
     expect([
       ...extractLoadedDeferredToolNames({
         messages: [],
         compaction: {
-          anchorMessageId: 'a1',
-          summary: 'summary',
-          compactedAt: 1,
-          loadedDeferredToolNames: ['server__tool_a'],
+          ...compaction,
+          loadedDeferredToolSchemas: [
+            {
+              name: 'server__tool_a',
+              description: '',
+              parameters: { type: 'object' },
+            },
+          ],
         },
       }),
     ]).toEqual(['server__tool_a'])
+
+    // Oversized schemas are dropped by compaction; the tool must be
+    // re-disclosed rather than counted as still loaded.
+    expect([
+      ...extractLoadedDeferredToolNames({ messages: [], compaction }),
+    ]).toEqual([])
   })
 })

@@ -29,6 +29,8 @@ import {
 import {
   type DeferredToolCatalog,
   buildDeferredToolCatalog,
+  describeInProcessToolSets,
+  describeMcpToolSets,
 } from './tool-catalog'
 import { getAssistantToolDisclosureMode } from './tool-preferences'
 
@@ -237,20 +239,35 @@ export const selectAllowedTools = async ({
       ? [...normalizedAllowedToolNames]
       : undefined,
   }
-  // Per-tool disclosure decisions for the filtered (non-protocol) tools.
-  // Computed up front so the protocol-tool injection can ask "does any
-  // surviving tool actually defer?" before adding itself.
-  const disclosureModes = new Map<string, 'always' | 'on_demand'>()
-  for (const tool of baseFiltered) {
-    disclosureModes.set(
-      tool.name,
-      getAssistantToolDisclosureMode(assistantLike, tool.name),
-    )
-  }
+  const isDeferredAndEnabled = (toolName: string): boolean =>
+    isToolAllowed({ toolName, allowedToolNames: normalizedAllowedToolNames }) &&
+    getAssistantToolDisclosureMode(assistantLike, toolName) === 'on_demand'
 
-  const hasOnDemand = [...disclosureModes.values()].some(
-    (mode) => mode === 'on_demand',
-  )
+  // The catalog is derived from the *tool sets* the user has configured or a
+  // module has registered — not from what happens to be connected right now.
+  // That distinction is what makes the prefix stable: a server dropping off
+  // must not delete its catalog entries, nor take the protocol tools with it.
+  const configuredServers = settings?.mcp.servers ?? []
+  const toolSets = [
+    ...describeMcpToolSets({
+      configuredServers,
+      discoveredCatalogs: settings?.mcp.discoveredCatalogs ?? {},
+    }),
+    ...describeInProcessToolSets({
+      availableTools,
+      configuredServerIds: new Set(configuredServers.map((s) => s.id)),
+    }),
+  ]
+  const deferredToolCatalog = buildDeferredToolCatalog({
+    toolSets,
+    isDeferredAndEnabled,
+  })
+
+  // Derived from the catalog rather than from `availableTools`: an offline
+  // server's tools are absent from the live list, and reading `hasOnDemand`
+  // off that list would let a disconnect strip the protocol tools out of the
+  // frozen `tools` field.
+  const hasOnDemand = deferredToolCatalog !== null
 
   // The two protocol tools are injected only when something actually defers.
   // Without the guard they bloat every request prefix for agents that never
@@ -263,26 +280,12 @@ export const selectAllowedTools = async ({
 
   // Deferred tools are not registered at all — they live in the system-prompt
   // catalog as bare names and are reached through `invoke_tool`. The `tools`
-  // field therefore holds only the always-tier plus the two protocol tools,
-  // and stays byte-identical for the whole conversation, which is what keeps
-  // the prompt-cache prefix frozen.
+  // field therefore holds only the always-tier plus the two protocol tools.
   const requestToolDefinitions: McpTool[] = filteredTools.filter(
-    (tool) => (disclosureModes.get(tool.name) ?? 'always') === 'always',
+    (tool) =>
+      protocolTools.some((protocolTool) => protocolTool.name === tool.name) ||
+      getAssistantToolDisclosureMode(assistantLike, tool.name) === 'always',
   )
-
-  const deferredToolCatalog = hasOnDemand
-    ? buildDeferredToolCatalog({
-        configuredServers: settings?.mcp.servers ?? [],
-        discoveredCatalogs: settings?.mcp.discoveredCatalogs ?? {},
-        isDeferredAndEnabled: (toolName) =>
-          isToolAllowed({
-            toolName,
-            allowedToolNames: normalizedAllowedToolNames,
-          }) &&
-          getAssistantToolDisclosureMode(assistantLike, toolName) ===
-            'on_demand',
-      })
-    : null
 
   return {
     filteredTools,

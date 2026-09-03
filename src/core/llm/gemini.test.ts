@@ -260,6 +260,50 @@ describe('GeminiProvider response parsing', () => {
     ])
   })
 
+  it('answers an invoke_tool call under the name the model actually called', () => {
+    // The gateway rewrites the request to the tool `invoke_tool` wrapped, so
+    // the stored response names a tool Gemini was never given. The response
+    // has to go back under the envelope's name or Gemini rejects the turn.
+    const contents = GeminiProvider.buildRequestContents([
+      {
+        role: 'assistant',
+        content: '',
+        tool_calls: [
+          {
+            id: 'call-1',
+            name: 'yolo_local__invoke_tool',
+            arguments: args({
+              tool_name: 'notion__notion-search',
+              arguments: { query: 'x' },
+            }),
+          },
+        ],
+      },
+      {
+        role: 'tool',
+        tool_call: {
+          id: 'call-1',
+          name: 'notion__notion-search',
+          arguments: args({ query: 'x' }),
+        },
+        content: 'hit',
+      },
+    ])
+
+    expect(contents[1]).toEqual({
+      role: 'user',
+      parts: [
+        {
+          functionResponse: {
+            id: 'call-1',
+            name: 'yolo_local__invoke_tool',
+            response: { result: 'hit' },
+          },
+        },
+      ],
+    })
+  })
+
   it('preserves assistant tool-only turns without dropping function calls', () => {
     const contents = GeminiProvider.buildRequestContents([
       {

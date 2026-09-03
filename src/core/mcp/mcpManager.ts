@@ -105,6 +105,14 @@ export class McpManager {
   private persistDiscoveredCatalogs?: (
     catalogs: Record<string, McpDiscoveredCatalog>,
   ) => void
+  /**
+   * This manager's own view of `settings.mcp.discoveredCatalogs`, and the sole
+   * writer of it. Persisting is asynchronous and only reaches `this.settings`
+   * a tick later, so servers connecting concurrently would each read a
+   * pre-write snapshot and clobber one another's entry. Owning the record here
+   * makes the read-modify-write synchronous.
+   */
+  private discoveredCatalogs: Record<string, McpDiscoveredCatalog>
   private unsubscribeFromSettings: () => void
   private defaultEnv: Record<string, string>
   private remoteTransportFactory: ReturnType<
@@ -238,6 +246,7 @@ export class McpManager {
     this.promptSourceWatcher = promptSourceWatcher
     this.persistDiscoveredCatalogs = persistDiscoveredCatalogs
     this.settings = settings
+    this.discoveredCatalogs = settings.mcp.discoveredCatalogs ?? {}
     this.unsubscribeFromSettings = registerSettingsListener((newSettings) => {
       void this.handleSettingsUpdate(newSettings).catch((error) => {
         console.error('[YOLO] Failed to handle MCP settings update:', error)
@@ -476,7 +485,7 @@ export class McpManager {
     const configuredNames = new Set(
       this.settings.mcp.servers.map((server) => server.id),
     )
-    const existing = this.settings.mcp.discoveredCatalogs ?? {}
+    const existing = this.discoveredCatalogs
     const next: Record<string, McpDiscoveredCatalog> = {}
     for (const [name, catalog] of Object.entries(existing)) {
       if (configuredNames.has(name)) {
@@ -495,6 +504,7 @@ export class McpManager {
     if (isEqual(next, existing)) {
       return
     }
+    this.discoveredCatalogs = next
     this.persistDiscoveredCatalogs(next)
   }
 
