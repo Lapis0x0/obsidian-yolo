@@ -1637,6 +1637,7 @@ export function AgentsSectionContent({
                   const groupClassName = [
                     'yolo-agent-tool-group',
                     !group.isBuiltin ? 'yolo-agent-tool-group--mcp' : null,
+                    groupFullyDisabled ? 'is-disabled' : null,
                   ]
                     .filter(Boolean)
                     .join(' ')
@@ -1644,7 +1645,9 @@ export function AgentsSectionContent({
                     <div key={group.key} className={groupClassName}>
                       <div className="yolo-agent-tool-group-title">
                         <span className="yolo-agent-tool-group-title-main">
-                          <span>{group.title}</span>
+                          <span className="yolo-agent-tool-group-name">
+                            {group.title}
+                          </span>
                           {estimatedToolContextTokens.perTool.size > 0 && (
                             <span className="yolo-agent-tool-group-tokens">
                               {t(

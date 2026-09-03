@@ -578,6 +578,27 @@ button.yolo-agent-mcp-config-copy {
   gap: var(--size-4-2);
 }
 
+/* server 名承载启用状态。此前整行统一是 text-muted，全开和全关长得一样——
+ * 一个 agent 能不能用某个 MCP，是这一页最该一眼看出来的事。有工具启用时它是
+ * 一个活动的分组标题（text-normal），全部禁用时退到 text-faint，两态之间是
+ * 两级对比而不是零级。 */
+.yolo-agent-tool-group-name {
+  color: var(--text-normal);
+}
+
+.yolo-agent-tool-group.is-disabled .yolo-agent-tool-group-name {
+  color: var(--text-faint);
+}
+
+/* 全部禁用时，token 估算、披露模式、审批模式描述的都是不会运行的工具，一起
+ * 淡下去，免得这一行看起来仍然「已配置、在生效」。「全部启用」是恢复它的唯一
+ * 入口，保持原有对比度，不跟着淡。 */
+.yolo-agent-tool-group.is-disabled .yolo-agent-tool-group-tokens,
+.yolo-agent-tool-group.is-disabled .yolo-agent-tool-group-disclosure,
+.yolo-agent-tool-group.is-disabled .yolo-agent-tool-group-count {
+  opacity: 0.55;
+}
+
 .yolo-agent-tool-group-tokens {
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
