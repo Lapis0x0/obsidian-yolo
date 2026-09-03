@@ -1,4 +1,5 @@
 import { Ban, Check, ChevronRight, CircleAlert, Loader2 } from 'lucide-react'
+import type { ReactNode } from 'react'
 import {
   Fragment,
   memo,
@@ -523,9 +524,13 @@ const EDIT_FILE_SUMMARY_LABELS: Record<
 const buildToolRunSummaryDisplay = (
   segment: ToolRunSegment,
   t: (keyPath: string, fallback?: string) => string,
-): { clauses: string[]; separator: string; stats: [number, number] | null } => {
+): {
+  clauses: ReactNode[]
+  separator: string
+  stats: [number, number] | null
+} => {
   const { editSummary } = segment
-  const clauses: string[] = []
+  const clauses: ReactNode[] = []
 
   if (editSummary && editSummary.totalFiles === 1) {
     const file = editSummary.files[0]
@@ -565,17 +570,30 @@ const buildToolRunSummaryDisplay = (
   })
 
   for (const tally of segment.toolSetTallies) {
+    if (!tally.soleToolName) {
+      clauses.push(
+        t(TOOL_SET_SUMMARY_LABEL.key, TOOL_SET_SUMMARY_LABEL.fallback)
+          .replace('{name}', tally.label)
+          .replace('{count}', String(tally.count)),
+      )
+      continue
+    }
+    // The tool name sits a layer below the set name, so it gets its own span.
+    // Split the template on `{tool}` rather than interpolating and slicing the
+    // result: a locale is free to put the tool first, and only the template
+    // knows the order.
+    const [before, after] = t(
+      TOOL_SET_SUMMARY_SINGLE_LABEL.key,
+      TOOL_SET_SUMMARY_SINGLE_LABEL.fallback,
+    ).split('{tool}')
     clauses.push(
-      tally.soleToolName
-        ? t(
-            TOOL_SET_SUMMARY_SINGLE_LABEL.key,
-            TOOL_SET_SUMMARY_SINGLE_LABEL.fallback,
-          )
-            .replace('{name}', tally.label)
-            .replace('{tool}', tally.soleToolName)
-        : t(TOOL_SET_SUMMARY_LABEL.key, TOOL_SET_SUMMARY_LABEL.fallback)
-            .replace('{name}', tally.label)
-            .replace('{count}', String(tally.count)),
+      <>
+        {before.replace('{name}', tally.label)}
+        <span className="yolo-tool-run-summary__tool">
+          {tally.soleToolName}
+        </span>
+        {(after ?? '').replace('{name}', tally.label)}
+      </>,
     )
   }
 
@@ -1476,7 +1494,12 @@ function AssistantToolMessageGroupItem({
                   onClick={() => toggleToolRunSegment(toolRunSegment.key)}
                 >
                   <span className="yolo-tool-run-summary__text">
-                    {summaryDisplay.clauses.join(summaryDisplay.separator)}
+                    {summaryDisplay.clauses.map((clause, clauseIndex) => (
+                      <Fragment key={clauseIndex}>
+                        {clauseIndex > 0 ? summaryDisplay.separator : null}
+                        {clause}
+                      </Fragment>
+                    ))}
                   </span>
                   {summaryDisplay.stats && (
                     <span className="yolo-tool-run-summary__stats">

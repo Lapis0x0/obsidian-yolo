@@ -18324,6 +18324,12 @@ button.yolo-mermaid-modal-control:disabled {
   color: var(--text-muted);
 }
 
+/* 单次调用时点名的工具名。工具集名回答「谁做的」，属于摘要层（text-muted）；
+ * 工具名回答「做了什么」，是这一层下面的细节，与参数、详情同属 text-faint。 */
+.yolo-tool-run-summary__tool {
+  color: var(--text-faint);
+}
+
 /* 编辑段的增删行数：放在 __text 之外的固定宽度兄弟节点，这样整行过长触发
  * 省略号截断时，被吃掉的是前面的文字，而不是最该被看到的 +N/-M。 */
 .yolo-tool-run-summary__stats {

@@ -712,8 +712,13 @@ describe('AssistantToolMessageGroupItem', () => {
       )
 
       expect(html).toContain('deepwiki 2 time(s)')
-      // A lone call names the tool: "whiteboard 1 time" says nothing.
-      expect(html).toContain('whiteboard · add_card')
+      // A lone call names the tool: "whiteboard 1 time" says nothing. The tool
+      // name renders one layer down from the set name, so it carries its own
+      // span rather than being part of the surrounding text.
+      expect(html).toContain('whiteboard ·')
+      expect(html).toContain(
+        '<span class="yolo-tool-run-summary__tool">add_card</span>',
+      )
       expect(html).not.toContain('other action')
     })
 
