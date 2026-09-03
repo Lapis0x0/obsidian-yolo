@@ -109,10 +109,10 @@ export class CardMenu {
   }
 
   /**
-   * Takes the bar off screen while the board cannot accept a new card: locked
-   * (feature 6), or zoomed out past the point where a card's content is built
-   * at all (D8 — a card created there would be an empty rectangle with no
-   * editor, which is why `createTextCardAt` already declines).
+   * Takes the bar off screen while the board cannot accept a new card: zoomed
+   * out past the point where a card's content is built at all (D8 — a card
+   * created there would be an empty rectangle with no editor, which is why
+   * `createTextCardAt` already declines).
    */
   setAvailable(available: boolean): void {
     this.el.classList.toggle(MENU_HIDDEN_CLASS, !available)

@@ -179,8 +179,8 @@ export type ToolbarItem =
   | ToolbarMenuControl
 
 export type ToolbarModel = Readonly<{
-  /** Drawn left to right. A control the selection cannot use — recolouring a
-   * locked board — is simply absent, rather than drawn and inert. */
+  /** Drawn left to right. A control the selection cannot use is simply
+   * absent, rather than drawn and inert. */
   items: readonly ToolbarItem[]
 }>
 

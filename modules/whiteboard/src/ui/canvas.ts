@@ -237,9 +237,6 @@ const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
-/** On the root while `board.locked` — what the stylesheet keys the read-only
- * treatment off, mirroring Obsidian Canvas's `mod-readonly`. */
-const LOCKED_CLASS = 'yolo-whiteboard-locked'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
 const CREATE_GHOST_CLASS = 'yolo-whiteboard-create-ghost'
@@ -689,6 +686,9 @@ export class WhiteboardCanvas {
     this.ensureDom()
     this.lastRawData = data
     const result = parseBoard(data)
+    // Before `teardownAllCards`, whose own commit path would land the edit on
+    // the board this method is about to replace. See the doc comment.
+    this.endEditForIncomingBoard()
     this.teardownAllCards()
 
     if (!result.ok) {
@@ -711,7 +711,6 @@ export class WhiteboardCanvas {
     this.history.reset(this.board)
     this.rebuildEdgesSvg()
     this.cameraController.loadCamera(this.board.camera)
-    this.applyLockedState()
     // Cards were all torn down above: whatever the layer was parked on is
     // either gone or somewhere else now.
     this.refreshInteractionLayer()
@@ -1416,11 +1415,10 @@ export class WhiteboardCanvas {
   /**
    * The empty-canvas menu: everything the creation bar offers, created at the
    * point that was clicked rather than at the middle of the screen, plus the
-   * two board-wide actions that have nowhere else to live.
+   * board-wide action that has nowhere else to live.
    *
    * Obsidian Canvas's `showCreationMenu(menu, pos, size)` is the same list
-   * (card / note / media / website), and its lock likewise appears as a
-   * checked item in a menu rather than as a control of its own.
+   * (card / note / media / website).
    */
   private canvasMenuItems(point: ScreenPoint): YoloModuleHostMenuItemV1[] {
     const creation: YoloModuleHostMenuItemV1[] = this.canCreate
@@ -1459,13 +1457,6 @@ export class WhiteboardCanvas {
         title: this.t('menu.resetCamera'),
         icon: 'locate-fixed',
         onSelect: () => this.cameraController.resetCamera(),
-      },
-      {
-        title: this.isLocked
-          ? this.t('menu.unlockBoard')
-          : this.t('menu.lockBoard'),
-        icon: this.isLocked ? 'lock-open' : 'lock',
-        onSelect: () => this.setLocked(!this.isLocked),
       },
     ]
   }
@@ -1655,8 +1646,9 @@ export class WhiteboardCanvas {
     at: ScreenPoint,
   ): Promise<void> {
     // Checked at both ends: the prompt's drop zone reaches this too, and a
-    // board locked between opening that panel and dropping on it should not
-    // have files written beside it for cards it will refuse.
+    // board whose file failed to parse between opening that panel and
+    // dropping on it should not have files written beside it for cards it
+    // will refuse.
     if (!this.canCreate) return
     const importable = files.filter(
       (file) => fileNodeKind(file.name) === 'html',
@@ -1695,7 +1687,8 @@ export class WhiteboardCanvas {
       // Whatever did land is still a card worth having; only the rest is lost.
       if (paths.length === 0) return
     }
-    // The board may have been closed or locked while the files were written.
+    // The board may have been closed, or failed to parse, while the files
+    // were written.
     if (!this.canCreate) return
     this.addFileCards(paths, at)
   }
@@ -1870,10 +1863,6 @@ export class WhiteboardCanvas {
    * on a node being edited too.
    */
   private interactionLayerTarget(): NodeId | null {
-    // Nothing on a locked board can be resized or wired up, so the layer has
-    // no card to belong to — the same conclusion Obsidian Canvas reaches by
-    // hiding `.canvas-node-resizer` under `.mod-readonly`.
-    if (this.isLocked) return null
     return (
       this.hoveredNodeId ??
       (this.selectedIds.size === 1
@@ -2532,10 +2521,6 @@ export class WhiteboardCanvas {
     interaction: NodeInteraction,
     e: PointerEvent,
   ): void {
-    // A locked board still lets a press select (Obsidian Canvas's read-only
-    // canvas does too — its selection menu keeps "zoom to selection"), it just
-    // never becomes a drag.
-    if (this.isLocked) return
     if (!interaction.dragging) {
       const dx = e.clientX - interaction.startClient.x
       const dy = e.clientY - interaction.startClient.y
@@ -2872,9 +2857,7 @@ export class WhiteboardCanvas {
    * and the text being typed is not a board change yet. */
   private registerViewKeymap(): void {
     const run = (action: () => void) => () => {
-      // A locked board has nothing to undo into: every step that could have
-      // been recorded is a step the lock refused.
-      if (this.editing || this.isLocked) return false
+      if (this.editing) return false
       action()
       return true
     }
@@ -2911,62 +2894,10 @@ export class WhiteboardCanvas {
     ])
   }
 
-  // -----------------------------------------------------------------------
-  // Read-only lock (P3 batch 3 wave B, feature 6).
-  //
-  // One flag gates every path that would change the board; pan, zoom, hover
-  // and selection are untouched, because looking around a locked board is the
-  // whole point of locking it. Obsidian Canvas draws the same line (verified
-  // on 1.13.7: its `readonly` gates deleteSelection, double-click creation,
-  // the creation context menu, `startEditing` and `handleSelectionDrag`, and
-  // appears nowhere in its pan/zoom handlers).
-  //
-  // Two deliberate differences from Canvas:
-  //   - it lives in the file (domain/fileFormat.ts's `locked`), not in a
-  //     machine-local side store;
-  //   - it hides the creation bar. Canvas leaves its card menu live on a
-  //     read-only canvas, which lets a locked board still be added to; a lock
-  //     that does not stop the most obvious way of changing a board is not a
-  //     lock.
-  //
-  // Not a history step: locking is a mode, not content. It joins the camera
-  // and self-heal as the things that write the board without going through
-  // `applyBoardChange` — an undo that silently unlocked a board would be a
-  // surprising way to lose the protection.
-  // -----------------------------------------------------------------------
-
-  private get isLocked(): boolean {
-    return this.board.locked === true
-  }
-
   /** Whether the board can be changed at all — the single test every mutating
    * path starts with, so a new one cannot forget half of it. */
   private get canEdit(): boolean {
-    return !this.parseFailed && !this.isLocked
-  }
-
-  private setLocked(locked: boolean): void {
-    if (this.parseFailed || this.isLocked === locked) return
-    // Anything mid-flight belongs to the state being left.
-    this.forceCommitActiveEdit()
-    this.endRename(true)
-    this.prompt?.close()
-    this.board = locked
-      ? { ...this.board, locked: true }
-      : { ...this.board, locked: undefined }
-    this.context.requestSave()
-    this.applyLockedState()
-  }
-
-  /** Pushes the lock into everything that reflects it. Also called on load,
-   * for a board that arrives already locked. */
-  private applyLockedState(): void {
-    this.rootEl?.classList.toggle(LOCKED_CLASS, this.isLocked)
-    // The handles are hidden by CSS, but the layer must also stop being parked
-    // on a card, or a press would still find a handle to grab.
-    this.refreshInteractionLayer()
-    this.refreshCardMenu()
-    this.toolbarController.refreshToolbar()
+    return !this.parseFailed
   }
 
   // -----------------------------------------------------------------------
@@ -3792,8 +3723,8 @@ export class WhiteboardCanvas {
   /** Creates an empty text card centered on `world` and opens it for typing. */
   private createTextCardAt(world: ScreenPoint): void {
     // Below the LOD threshold enterEditMode declines, which would leave this
-    // gesture producing an invisible empty card with no editor; a locked board
-    // takes no new cards at all. Both live in `canCreate`.
+    // gesture producing an invisible empty card with no editor. That lives in
+    // `canCreate`.
     if (!this.canCreate) return
     const node: TextNode = {
       id: this.nextNodeId(),
@@ -4495,9 +4426,7 @@ export class WhiteboardCanvas {
    */
   private enterLiveContent(id: NodeId): boolean {
     // A degraded card has no body to enter (D8), the same reason edit mode
-    // declines there. A locked board does not: reading a page is not editing,
-    // and refusing here would make a locked board's web cards unusable rather
-    // than protected.
+    // declines there.
     if (this.parseFailed || this.overview) return false
     if (!this.cardRenderer.hasLiveContent(id)) return false
     if (this.enteredNodeId === id) return true
@@ -4521,7 +4450,7 @@ export class WhiteboardCanvas {
   private enterEditMode(id: NodeId): void {
     // Degraded cards render as a title block with the body hidden (D8), so
     // an editor mounted now would be invisible; zooming back in is the way
-    // to edit. A locked board is not edited at all.
+    // to edit.
     if (!this.canCreate) return
     const node = this.nodesById.get(id)
     if (!node || !this.isEditableNode(node)) return
@@ -4708,6 +4637,48 @@ export class WhiteboardCanvas {
   private forceCommitActiveEdit(): void {
     if (!this.editing) return
     this.editing.editor.blur()
+  }
+
+  /**
+   * Ends the active edit for a board that is about to be replaced wholesale
+   * (`setViewData`) — the file was rewritten from outside, or a different one
+   * is being loaded into this leaf.
+   *
+   * A note card's text is still written: it belongs to that *file*, and the
+   * note is owed those keystrokes whether or not a card pointing at it
+   * survives the incoming board.
+   *
+   * A text card's is dropped, because there is nowhere left to put it. The
+   * ordinary commit path would `applyBoardChange` it onto `this.board` — the
+   * board `setViewData` discards two statements later, which takes the
+   * history entry with it and leaves a queued `requestSave` that goes on to
+   * persist the *replacing* board. The edit is lost either way; committing it
+   * only adds the corruption. (This is the "外部改写 board 后卡片消失" report
+   * in the whiteboard plan's T6 ③, which needed the rare
+   * editing-while-rewritten window to reproduce — a window the agent
+   * whiteboard tools make ordinary, docs/plans/09-03-whiteboard-agent-tools.)
+   */
+  private endEditForIncomingBoard(): void {
+    const editing = this.editing
+    if (!editing) return
+    // Nulled first, so the blur that `destroy()` fires reaches `finishEdit`
+    // as a stale callback and takes its early return instead of committing.
+    this.editing = null
+    if (editing.persistTimer !== null) {
+      this.context.getWindow().clearTimeout(editing.persistTimer)
+    }
+    editing.scopeDisposer()
+    const action = planNodeCommit(
+      this.board,
+      editing.nodeId,
+      editing.editor.getValue(),
+    )
+    if (action.kind === 'writeNoteFile') {
+      void this.host.vault
+        .writeText(action.file, action.markdown)
+        .catch((error: unknown) => this.reportError('writeText', error))
+    }
+    editing.editor.destroy()
   }
 
   // -----------------------------------------------------------------------

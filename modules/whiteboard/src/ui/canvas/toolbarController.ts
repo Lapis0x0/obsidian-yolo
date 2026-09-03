@@ -288,8 +288,8 @@ export class ToolbarController {
         ),
       )
     }
-    // Framing the selection is a camera move, not an edit — the one button a
-    // locked board still gets, and Obsidian Canvas's third button too.
+    // Framing the selection is a camera move, not an edit — Obsidian Canvas's
+    // third button too.
     items.push({
       label: this.callbacks.t('menu.zoomToSelection'),
       icon: 'scan-search',
@@ -308,8 +308,7 @@ export class ToolbarController {
     if (tidy) items.push(tidy)
     // Editing is the one action a card in the overview tier cannot take —
     // it has no element to put an editor in — so the button goes away rather
-    // than being offered and declining. A locked board offers it for nothing
-    // either.
+    // than being offered and declining.
     if (
       single &&
       this.callbacks.isEditableNode(single) &&

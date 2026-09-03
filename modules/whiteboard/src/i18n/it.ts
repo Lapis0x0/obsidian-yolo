@@ -23,8 +23,6 @@ export const it = {
     renameGroup: 'Rinomina gruppo',
     zoomToSelection: 'Zoom sulla selezione',
     resetCamera: "Torna all'origine",
-    lockBoard: 'Blocca lavagna',
-    unlockBoard: 'Sblocca lavagna',
     alignLeft: 'Allinea a sinistra',
     alignCenter: 'Allinea al centro orizzontale',
     alignRight: 'Allinea a destra',

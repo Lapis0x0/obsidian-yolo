@@ -338,11 +338,8 @@
 }
 
 /* Grabbable, so say so — the same tell the label carries (below), on exactly
- * the condition that makes the frame grabbable at all. Locked out on a locked
- * board, where a press selects but never becomes a drag
- * (ui/canvas.ts's updateNodeInteraction). */
-.yolo-whiteboard-root:not(.yolo-whiteboard-locked)
-  .yolo-whiteboard-group.yolo-whiteboard-card-selected {
+ * the condition that makes the frame grabbable at all. */
+.yolo-whiteboard-root .yolo-whiteboard-group.yolo-whiteboard-card-selected {
   cursor: grab;
 }
 
@@ -352,16 +349,14 @@
  * contents while it moves. What it does want is the same grabbing cursor and
  * the same compositor hint, since a drag rewrites its transform every frame.
  *
- * The cursor carries the rule above's whole prefix, which it does not need
- * (a locked board never starts a drag, so the class never appears there) but
- * cannot do without: two classes would lose to that rule's four, and the
- * cursor would stay `grab` for the length of the drag. */
+ * The cursor carries the rule above's whole prefix: two classes would lose to
+ * that rule's three, and the cursor would stay `grab` for the length of the
+ * drag. */
 .yolo-whiteboard-group.yolo-whiteboard-card-dragging {
   will-change: transform;
 }
 
-.yolo-whiteboard-root:not(.yolo-whiteboard-locked)
-  .yolo-whiteboard-group.yolo-whiteboard-card-dragging {
+.yolo-whiteboard-root .yolo-whiteboard-group.yolo-whiteboard-card-dragging {
   cursor: grabbing;
 }
 
@@ -436,12 +431,11 @@
   cursor: text;
 }
 
-.yolo-whiteboard-root:not(.yolo-whiteboard-locked)
-  .yolo-whiteboard-group-label:not([contenteditable]) {
+.yolo-whiteboard-root .yolo-whiteboard-group-label:not([contenteditable]) {
   cursor: grab;
 }
 
-.yolo-whiteboard-root:not(.yolo-whiteboard-locked)
+.yolo-whiteboard-root
   .yolo-whiteboard-group-label:not([contenteditable]):active {
   cursor: grabbing;
 }
@@ -1586,11 +1580,11 @@ button.yolo-whiteboard-card-menu-button:active {
   pointer-events: none;
 }
 
-/* Hidden while the board cannot take a new card — locked, or zoomed out past
- * the point where a card's content is built at all (D8). `display: none`
- * rather than a disabled state: a bar of four dead buttons is worse than no
- * bar, and the reason it is gone (the board is locked, or the whole board is
- * a field of title blocks) is visible on the canvas itself. */
+/* Hidden while the board cannot take a new card — zoomed out past the point
+ * where a card's content is built at all (D8). `display: none` rather than a
+ * disabled state: a bar of four dead buttons is worse than no bar, and the
+ * reason it is gone (the whole board is a field of title blocks) is visible
+ * on the canvas itself. */
 .yolo-whiteboard-card-menu.yolo-whiteboard-card-menu-hidden {
   display: none;
 }
@@ -1727,21 +1721,6 @@ input.yolo-whiteboard-prompt-input:focus {
     transparent
   );
   border-color: var(--interactive-accent);
-}
-
-/* --- read-only lock (P3 batch 3 wave B) ----------------------------------
- * The board can be looked at and moved around, not changed. Obsidian Canvas's
- * `.mod-readonly` does the same two things: it hides the resize handles and it
- * drops the grab cursors, so nothing on the board offers an affordance it
- * would then refuse. Panning and zooming are untouched — that is the point of
- * a lock rather than a closed file. */
-
-.yolo-whiteboard-root.yolo-whiteboard-locked .yolo-whiteboard-resizer {
-  display: none;
-}
-
-.yolo-whiteboard-root.yolo-whiteboard-locked .yolo-whiteboard-edge-hit {
-  cursor: default;
 }
 
 /* --- parked cards ---------------------------------------------------------

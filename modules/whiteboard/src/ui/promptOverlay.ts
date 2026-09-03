@@ -189,7 +189,7 @@ export class PromptOverlay {
     return this.backdropEl === node || this.backdropEl.contains(node)
   }
 
-  /** Dismisses from outside (the view is closing, the board was locked). */
+  /** Dismisses from outside (the view is closing). */
   close(): void {
     this.settle(null)
   }

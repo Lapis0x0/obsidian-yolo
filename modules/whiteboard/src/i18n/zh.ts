@@ -23,8 +23,6 @@ export const zh = {
     renameGroup: '重命名分组',
     zoomToSelection: '缩放到选中',
     resetCamera: '回到原点',
-    lockBoard: '锁定白板',
-    unlockBoard: '解除锁定',
     alignLeft: '左对齐',
     alignCenter: '水平居中对齐',
     alignRight: '右对齐',

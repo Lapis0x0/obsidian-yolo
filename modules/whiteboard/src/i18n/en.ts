@@ -25,8 +25,6 @@ export const en = {
     renameGroup: 'Rename group',
     zoomToSelection: 'Zoom to selection',
     resetCamera: 'Back to origin',
-    lockBoard: 'Lock whiteboard',
-    unlockBoard: 'Unlock whiteboard',
     alignLeft: 'Align left',
     alignCenter: 'Align horizontal centres',
     alignRight: 'Align right',
