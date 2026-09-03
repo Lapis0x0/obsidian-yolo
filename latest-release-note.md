@@ -1,3 +1,9 @@
+## 1.6.8.1 Hotfix 🛠️
+
+### 🛠️ Hotfix
+
+- Fixed a freshly installed module coming up broken: YOLO Whiteboard opened unstyled and unresponsive until Obsidian was restarted. The notes below are from 1.6.8.
+
 ## 1.6.8 YOLO Whiteboard & On-Demand Tools 🧩
 
 ### New module
@@ -22,6 +28,12 @@
 - Fixed the Similar Notes list being clipped with no way to scroll it in a short window.
 
 ---
+
+## 1.6.8.1 Hotfix 🛠️
+
+### 🛠️ 热修复
+
+- 修复模块安装后首次启动即损坏的问题：YOLO 白板打开后没有样式、无法操作，必须重启 Obsidian 才能正常使用。以下为 1.6.8 的更新内容。
 
 ## 1.6.8 YOLO 白板与工具按需披露 🧩
 

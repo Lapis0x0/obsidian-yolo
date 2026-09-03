@@ -36,6 +36,7 @@ export type ModuleActivationCoordinatorOptions = Readonly<{
       version: string,
       signal?: AbortSignal,
     ): Promise<void>
+    isActive(moduleId: string, version?: string): boolean
   }>
   activationTimeoutMs?: number
   startupTimeoutMs?: number
@@ -255,7 +256,18 @@ export class ModuleActivationCoordinator {
     )
     if (!descriptor) return result({ moduleId, status: 'skipped' })
 
-    await this.activateDescriptor(descriptor, signal)
+    // Activation is idempotent. Installing a module writes its `enabled`
+    // intent and then activates it, and that same write wakes the startup
+    // reconciler, which activates it again: two activations of one descriptor
+    // reach here, serialized by the device-state lock but both intending to
+    // start it. The second must not start it again: `activateVerifiedArtifact`
+    // opens by clearing the verified artifact of the module that is already
+    // running, and `runtime.activate` then throws "already active", leaving a
+    // live module that can no longer read its own style or worker assets
+    // until the next restart.
+    if (!this.options.runtime.isActive(moduleId, descriptor.version)) {
+      await this.activateDescriptor(descriptor, signal)
+    }
     if (state.pending) {
       await transaction.write({
         ...state,

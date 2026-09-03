@@ -63,7 +63,7 @@ function coordinator(states: ModuleDeviceState[], enabled: boolean) {
           throw new Error('not used')
         },
       },
-      runtime: { activate: async () => undefined },
+      runtime: { activate: async () => undefined, isActive: () => false },
     }),
   }
 }
@@ -102,6 +102,12 @@ function verifiableActivation(
     signal: AbortSignal,
   ) => Promise<void>,
   reportSkillProjectionError?: (moduleId: string, error: unknown) => void,
+  overrides?: Partial<
+    Pick<
+      ConstructorParameters<typeof ModuleActivationCoordinator>[0],
+      'runtime' | 'verifiedArtifactRegistry' | 'loader'
+    >
+  >,
 ) {
   const encoder = new TextEncoder()
   const entryBytes = encoder.encode('/* entry */')
@@ -192,10 +198,11 @@ function verifiableActivation(
     platform: 'desktop',
     hostApi: '1.0.0',
     loader: { load: async () => ({ activate: () => undefined }) as never },
-    runtime: { activate: async () => undefined },
+    runtime: { activate: async () => undefined, isActive: () => false },
     subtleCrypto: webcrypto.subtle as unknown as SubtleCrypto,
     ...(materializeSkills ? { materializeSkills } : {}),
     ...(reportSkillProjectionError ? { reportSkillProjectionError } : {}),
+    ...overrides,
   })
 }
 
@@ -288,5 +295,64 @@ describe('ModuleActivationCoordinator skill projection', () => {
     await expect(coordinator.activateModule('learning')).resolves.toMatchObject(
       { status: 'activated' },
     )
+  })
+})
+
+describe('ModuleActivationCoordinator repeat activation', () => {
+  // Installing a module writes its `enabled` intent and then activates it,
+  // and that same write wakes the startup reconciler into activating it too.
+  // Before this was idempotent the second pass cleared the running module's
+  // verified artifact and then threw "already active", so the live module
+  // could no longer read its own style.css until Obsidian restarted.
+  function statefulRuntime() {
+    const activeVersions = new Map<string, string>()
+    const activate = jest.fn(async (definition: { id: string }, version) => {
+      if (activeVersions.has(definition.id)) {
+        throw new Error(`Module "${definition.id}" is already active`)
+      }
+      activeVersions.set(definition.id, version)
+    })
+    return {
+      activate,
+      isActive: (moduleId: string, version?: string) =>
+        activeVersions.has(moduleId) &&
+        (version === undefined || activeVersions.get(moduleId) === version),
+    }
+  }
+
+  test('leaves the running module and its artifact untouched', async () => {
+    const runtime = statefulRuntime()
+    const registry = {
+      publish: jest.fn(),
+      clear: jest.fn(),
+      clearAll: jest.fn(),
+    }
+    const coordinator = verifiableActivation(undefined, undefined, {
+      loader: {
+        load: async () =>
+          ({ id: 'learning', activate: () => undefined }) as never,
+      },
+      runtime: {
+        activate: (definition, version) =>
+          runtime.activate(definition as unknown as { id: string }, version),
+        isActive: runtime.isActive,
+      },
+      verifiedArtifactRegistry: registry,
+    })
+
+    await expect(coordinator.activateModule('learning')).resolves.toMatchObject(
+      { status: 'activated', version: '1.0.0' },
+    )
+    expect(registry.publish).toHaveBeenCalledTimes(1)
+    // The first activation clears before it publishes; what must never happen
+    // is a later clear, which strands the running module without its assets.
+    const clearsWhileStarting = registry.clear.mock.calls.length
+
+    await expect(coordinator.activateModule('learning')).resolves.toMatchObject(
+      { status: 'activated', version: '1.0.0' },
+    )
+    expect(runtime.activate).toHaveBeenCalledTimes(1)
+    expect(registry.publish).toHaveBeenCalledTimes(1)
+    expect(registry.clear).toHaveBeenCalledTimes(clearsWhileStarting)
   })
 })
