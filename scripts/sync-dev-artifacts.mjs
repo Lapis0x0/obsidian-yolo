@@ -138,12 +138,10 @@ function schedule(key, operation) {
   )
 }
 
-function moduleVersionDir(filename) {
-  const parts = filename.replaceAll('\\', '/').split('/')
-  return parts[0] === 'modules' && parts.length >= 4
-    ? parts.slice(0, 3).join('/')
-    : null
-}
+/** A `modules/<id>/<version>/module.json` that we do not already sync — the
+ * one shape that means "a module version directory appeared after we looked". */
+const NEW_MODULE_MANIFEST = /^modules\/[^/]+\/[^/]+\/module\.json$/
+const warnedNewVersionDirs = new Set()
 
 const pluginDir = await resolvePluginDir()
 if (path.resolve(pluginDir) === path.resolve(sourceDir)) {
@@ -184,6 +182,34 @@ for (const directory of moduleVersionDirs) {
   schedule(directory, () => copyModuleVersion(pluginDir, directory))
 }
 
+/**
+ * Which directory we already sync this changed path belongs to, or null.
+ *
+ * A lookup against the list discovered at startup, and deliberately never a
+ * derivation from the path itself. `copyModuleVersion` renames its target
+ * aside and then deletes it, and — when this runs from a worktree — that
+ * target is inside the *main* working tree. So whatever computes the target
+ * is not a copy routine, it is a delete routine, and the only safe input is a
+ * directory we have already confirmed is a module version
+ * (`discoverModuleVersionDirs` requires a `module.json` in it).
+ *
+ * This used to slice the first three segments off the changed path instead,
+ * which cannot tell `modules/whiteboard/0.1.1` from `modules/whiteboard/src`:
+ * editing any module source made the watcher replace the main tree's copy of
+ * that module's *source directory* with this worktree's, destroying whatever
+ * uncommitted work was in it. Matching the way the static artifacts above
+ * already do — exact membership of a set fixed at startup — is what makes
+ * that class of mistake unreachable rather than merely fixed.
+ */
+function syncedDirectoryFor(filename) {
+  return (
+    moduleVersionDirs.find(
+      (directory) =>
+        filename === directory || filename.startsWith(`${directory}/`),
+    ) ?? null
+  )
+}
+
 const watcher = watch(sourceDir, { recursive: true })
 for await (const event of watcher) {
   const filename = event.filename?.toString().replaceAll('\\', '/')
@@ -192,8 +218,23 @@ for await (const event of watcher) {
     schedule(filename, () => copyArtifact(pluginDir, filename))
     continue
   }
-  const directory = moduleVersionDir(filename)
+  const directory = syncedDirectoryFor(filename)
   if (directory) {
     schedule(directory, () => copyModuleVersion(pluginDir, directory))
+    continue
+  }
+  // The list is read once, at startup, so a version directory created since
+  // then is not synced. Said out loud rather than passed over in silence —
+  // this is the one case where doing nothing is not what the user wanted —
+  // and only for the manifest that marks such a directory, because module
+  // sources change on every keystroke and must stay quiet.
+  if (NEW_MODULE_MANIFEST.test(filename)) {
+    const directory = filename.slice(0, filename.lastIndexOf('/'))
+    if (!warnedNewVersionDirs.has(directory)) {
+      warnedNewVersionDirs.add(directory)
+      console.log(
+        `[dev-sync] ${directory} appeared after startup and is not being synced — restart dev-sync to pick it up`,
+      )
+    }
   }
 }
