@@ -2851,6 +2851,60 @@ export class WhiteboardCanvas {
     this.context.requestSave()
   }
 
+  // ---- Agent edit surface -------------------------------------------------
+  //
+  // `edit_board` (host/boardTools.ts) edits the *open view* when the board it
+  // was pointed at happens to be open, and the file only when it is not. Two
+  // things follow from that, and neither is reachable by writing the file:
+  //
+  //   - The view is where the newest board is. Its saves are debounced, so
+  //     for up to two seconds after a drag the file is stale; an edit
+  //     computed from the file would silently undo that drag.
+  //   - Cmd+Z gets the user back to before the agent touched anything
+  //     (docs/plans/09-03-whiteboard-agent-tools D5), because the change
+  //     lands as a history step like any other edit rather than as a file
+  //     rewrite that resets the history.
+  //
+  // The path is the identity: a canvas is asked which board it is showing
+  // rather than registered under a path, so a rename needs no bookkeeping.
+
+  /** Vault path of the board on screen; empty before a file is loaded. */
+  getBoardPath(): string {
+    return this.sourcePathForBoard()
+  }
+
+  /** False when the board on screen failed to parse, in which case nothing
+   * about it can be edited — the same test the interactive paths use. */
+  canAcceptAgentEdit(): boolean {
+    return this.canEdit
+  }
+
+  /**
+   * Runs `edit` against the board on screen and puts the result back, as one
+   * undoable step. `edit` returns the new board — or null to decline, which
+   * is how a rejected operation leaves the view untouched — paired with
+   * whatever the caller needs to know, which is handed straight back.
+   *
+   * The transform is passed in rather than the board handed out because the
+   * two halves must not be separated: anything awaited between reading the
+   * board and writing it back could let a keystroke or a drag land in
+   * between, and the edit would be computed against a board that no longer
+   * exists.
+   */
+  applyAgentEdit<T>(edit: (board: Board) => readonly [Board | null, T]): T {
+    // A card whose editor is open holds its newest text in CodeMirror, not in
+    // `this.board`. Committing first is what keeps the agent's edit from
+    // being computed against — and then written over — what the user is in
+    // the middle of typing.
+    this.forceCommitActiveEdit()
+    const [next, value] = edit(this.board)
+    if (next && next !== this.board) {
+      this.history.push(next)
+      this.applyHistoryBoard(next)
+    }
+    return value
+  }
+
   /** Undo/redo live on the view's own keymap, so they are armed exactly
    * while this board is the leaf being looked at. While a card's editor has
    * the caret, they belong to that editor — CodeMirror has its own history,

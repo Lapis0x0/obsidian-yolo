@@ -7,6 +7,11 @@ export const en = {
     newWhiteboard: 'New whiteboard',
     importAllCanvas: 'Import every Canvas as a YOLO whiteboard',
   },
+  tools: {
+    label: 'Whiteboard',
+    description:
+      'Create YOLO whiteboards and edit their cards, connections and groups.',
+  },
   menu: {
     // The folder context menu sits next to Obsidian core's own "New canvas"
     // item with no plugin prefix, so this entry names the product.

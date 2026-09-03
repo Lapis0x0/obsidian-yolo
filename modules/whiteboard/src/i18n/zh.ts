@@ -7,6 +7,10 @@ export const zh = {
     newWhiteboard: '新建白板',
     importAllCanvas: '把全部 Canvas 导入为 YOLO 白板',
   },
+  tools: {
+    label: '白板',
+    description: '新建 YOLO 白板，编辑板上的卡片、连线与分组。',
+  },
   menu: {
     newWhiteboard: '新建 YOLO 白板',
     importCanvas: '导入为 YOLO 白板',

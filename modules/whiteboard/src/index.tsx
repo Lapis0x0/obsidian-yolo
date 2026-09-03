@@ -12,11 +12,13 @@
 // point is fixed at that path (scripts/build-first-party-modules.mjs), not
 // because it uses JSX.
 
+import { registerWhiteboardAgentTools } from './host/boardTools'
 import { createWhiteboard } from './host/createWhiteboard'
 import {
   importAllCanvasFiles,
   importCanvasFileAndOpen,
 } from './host/importCanvasFile'
+import { OpenBoards } from './host/openBoards'
 import { registerWhiteboardRenameRewriter } from './host/renameRewriter'
 import { createWhiteboardLocalizedText } from './i18n'
 import { WhiteboardCanvas } from './ui/canvas'
@@ -27,6 +29,10 @@ const VIEW_TYPE = 'yolo-whiteboard'
 yolo.registerModule({
   id: MODULE_ID,
   activate(host) {
+    // Per-activation, not module scope: a deactivate must leave no view
+    // behind for the next one to find.
+    const openBoards = new OpenBoards()
+
     host.workspace.registerFileView({
       viewType: VIEW_TYPE,
       extensions: ['yoloboard'],
@@ -34,15 +40,24 @@ yolo.registerModule({
       icon: 'layout-grid',
       factory: (context) => {
         const canvas = new WhiteboardCanvas(context, host)
+        const forgetOpenBoard = openBoards.add(canvas)
         return {
           setViewData: (data, clear) => canvas.setViewData(data, clear),
           getViewData: () => canvas.getViewData(),
           clear: () => canvas.clear(),
           onResize: () => canvas.onResize(),
-          dispose: () => canvas.dispose(),
+          dispose: () => {
+            forgetOpenBoard()
+            canvas.dispose()
+          },
         }
       },
     })
+
+    // The agent's view of a board: `fs_read` renders it as a summary, and
+    // `edit_board` / `create_board` are how it writes one
+    // (docs/plans/09-03-whiteboard-agent-tools/master.md D2, D3).
+    registerWhiteboardAgentTools(host, openBoards)
 
     // Event-layer reference resilience (p1-design §1.2): keeps every
     // `.yoloboard` file's card references correct across renames/moves for

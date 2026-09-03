@@ -17,6 +17,8 @@ export type WhiteboardLocalizedTextKey =
   | 'command.importAllCanvas'
   | 'menu.newWhiteboard'
   | 'menu.importCanvas'
+  | 'tools.label'
+  | 'tools.description'
 
 export const WHITEBOARD_LOCALES = ['en', 'zh', 'it'] as const
 const resources = { en, zh, it } as const

@@ -7,6 +7,11 @@ export const it = {
     newWhiteboard: 'Nuova lavagna',
     importAllCanvas: 'Importa tutti i Canvas come lavagne YOLO',
   },
+  tools: {
+    label: 'Lavagna',
+    description:
+      'Crea lavagne YOLO e modificane schede, collegamenti e gruppi.',
+  },
   menu: {
     newWhiteboard: 'Nuova lavagna YOLO',
     importCanvas: 'Importa come lavagna YOLO',
