@@ -30,6 +30,7 @@ import {
   parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import { INVOKE_TOOL_NAME } from '../../core/tools/internal/invoke_tool/definition'
 import {
   LOAD_TOOL_SCHEMAS_CHAT_LABEL,
   LOAD_TOOL_SCHEMAS_TOOL_NAME,
@@ -718,12 +719,70 @@ const getLocalToolSummaryText = ({
   return undefined
 }
 
+const resolveInvokeToolEnvelope = (
+  request: ToolRequestLike,
+): ToolRequestLike => {
+  let toolName: string
+  try {
+    toolName = parseToolName(request.name).toolName
+  } catch {
+    return request
+  }
+  if (toolName !== INVOKE_TOOL_NAME) {
+    return request
+  }
+  const envelope = parseToolArguments(request.arguments)
+  const realName = envelope?.tool_name
+  if (typeof realName !== 'string' || realName.trim().length === 0) {
+    return request
+  }
+  return {
+    ...request,
+    name: realName.trim(),
+    arguments: createCompleteToolCallArguments({
+      value: readEnvelopeArguments(envelope?.arguments),
+    }),
+  }
+}
+
+/**
+ * The envelope's `arguments` is an object on most providers and a
+ * JSON-encoded string on Gemini. Both have to resolve, or the Gemini preview
+ * would lose the per-tool summary (a shell command, an edited path) that the
+ * renderers derive from the arguments.
+ */
+const readEnvelopeArguments = (inner: unknown): Record<string, unknown> => {
+  if (inner && typeof inner === 'object' && !Array.isArray(inner)) {
+    return inner as Record<string, unknown>
+  }
+  if (typeof inner === 'string') {
+    try {
+      const parsed: unknown = JSON.parse(inner)
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+        return parsed as Record<string, unknown>
+      }
+    } catch {
+      // Still streaming, or malformed — the preview simply shows no summary.
+    }
+  }
+  return {}
+}
+
 export const getToolDisplayInfo = (
   request: ToolRequestLike,
   labels: ToolLabels = getToolLabels(),
 ): ToolDisplayInfo => {
   const localServerName = getLocalFileToolServerName()
-  const argumentsObject = parseToolArguments(request.arguments)
+  // Executed calls have already had the `invoke_tool` envelope opened by the
+  // gateway, so `request.name` is the real tool. The streaming preview is the
+  // exception: it renders the assistant's in-flight requests, which are still
+  // in envelope form. Resolve the real name here so the user never sees the
+  // wrapper. Mid-stream the arguments JSON may still be incomplete, in which
+  // case `tool_name` is simply absent and the preview corrects itself on the
+  // next chunk.
+  const resolved = resolveInvokeToolEnvelope(request)
+  const argumentsObject = parseToolArguments(resolved.arguments)
+  request = resolved
   const cliToolCall = request.metadata?.cliToolCall
   if (cliToolCall) {
     const isCommandExecution = cliToolCall.capability === 'command_execution'

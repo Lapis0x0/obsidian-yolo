@@ -84,6 +84,45 @@ describe('ToolMessage rendering', () => {
     ).toEqual({ displayName: 'codex:list_mcp_resources' })
   })
 
+  it('shows the real tool name while an invoke_tool call is still streaming', () => {
+    // Executed calls reach the UI already unwrapped by the gateway; the
+    // in-flight preview is the one place the envelope is still visible.
+    expect(
+      getToolDisplayInfo({
+        name: 'yolo_local__invoke_tool',
+        arguments: createCompleteToolCallArguments({
+          value: {
+            tool_name: 'server__do_thing',
+            arguments: { value: 'x' },
+          },
+        }),
+      }).displayName,
+    ).toBe('server:do_thing')
+  })
+
+  it('resolves the Gemini JSON-string arguments form too', () => {
+    expect(
+      getToolDisplayInfo({
+        name: 'yolo_local__invoke_tool',
+        arguments: createCompleteToolCallArguments({
+          value: {
+            tool_name: 'yolo_local__terminal_command',
+            arguments: '{"command":"ls -la"}',
+          },
+        }),
+      }).summaryText,
+    ).toContain('ls')
+  })
+
+  it('falls back to the wrapper until the streamed arguments name a tool', () => {
+    expect(
+      getToolDisplayInfo({
+        name: 'yolo_local__invoke_tool',
+        arguments: createCompleteToolCallArguments({ value: {} }),
+      }).displayName,
+    ).toBeTruthy()
+  })
+
   it('hydrates original terminal_command card from persisted result output', () => {
     const terminalResult: ChatTerminalCommandResultMessage = {
       role: 'terminal_command_result',
