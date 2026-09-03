@@ -158,13 +158,13 @@ export async function validateRuntimeComponentArtifacts(root) {
 
 /**
  * Assets are gitignored build outputs (see `.gitignore`) — `descriptor.entry`
- * above is verified against the committed `dist/entry.js`, but an asset has
- * nothing committed to compare against. Instead this reads the same local
- * source `npm run runtime:build` copies it from (already present: `npm ci`
- * runs before `release:check` in `release.yml`), so a `registry.json` that
- * drifted from what the current `node_modules` dependency would actually
- * produce — e.g. someone bumped `onnxruntime-web` without rerunning the
- * build — is caught here rather than shipping a mismatched release.
+ * above is hashed from the built `dist/entry.js`, while an asset is read from
+ * the same local source `npm run runtime:build` copies it from (already
+ * present: `npm ci` runs before `release:check` in `release.yml`), so a
+ * `registry.json` that drifted from what the current `node_modules`
+ * dependency would actually produce — e.g. someone bumped `onnxruntime-web`
+ * without rerunning the build — is caught here rather than shipping a
+ * mismatched release.
  */
 async function validateRuntimeComponentAssetArtifacts(
   root,

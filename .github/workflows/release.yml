@@ -45,13 +45,17 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Validate release sources
-        run: npm run release:check -- core "$GITHUB_REF_NAME"
-
-      - name: Validate runtime component artifacts
+      # dist/ is a gitignored build output, so a fresh checkout has no
+      # artifacts for release:check to hash against registry.json. Build them
+      # first; the diff gate then proves the committed registry matches what
+      # this checkout actually produces.
+      - name: Build and validate runtime component artifacts
         run: |
           npm run runtime:build
           git diff --exit-code -- runtime-components
+
+      - name: Validate release sources
+        run: npm run release:check -- core "$GITHUB_REF_NAME"
 
       - name: Build and test Core
         run: |
