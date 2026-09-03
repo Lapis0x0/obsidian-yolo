@@ -82,6 +82,9 @@ class MemoryAdapter {
   }
 
   async list(path: string): Promise<{ files: string[]; folders: string[] }> {
+    // Obsidian's adapter throws for a path that does not exist; a lenient empty
+    // listing would hide every "the artifacts are gone" code path.
+    if (!this.folders.has(path)) throw new Error(`Missing folder: ${path}`)
     const prefix = `${path}/`
     return {
       files: [...this.textFiles.keys(), ...this.binaryFiles.keys()].filter(
@@ -691,7 +694,8 @@ describe('createProductionModuleServices', () => {
   // active") and refuses the uninstall (no intent left to clear).
   it('drops a device state whose intent and artifacts are both gone', async () => {
     const harness = createHarness()
-    await seedActiveVersion(harness, '1.2.3')
+    const root = await seedActiveVersion(harness, '1.2.3')
+    harness.adapter.folders.delete(root)
     harness.intents.delete('learning')
     harness.activeVersions.delete('learning')
     await harness.services.refresh()

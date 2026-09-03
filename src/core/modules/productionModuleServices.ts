@@ -30,6 +30,7 @@ import type { ModuleRuntimeQuiescence } from './moduleRuntimeReservation'
 import type { ModuleService } from './moduleService'
 import { ModuleStartupReconciler } from './moduleStartupReconciler'
 import {
+  ModuleArtifactMissingError,
   type ModuleArtifactPlatform,
   type ModuleStore,
   assertModuleId,
@@ -360,8 +361,15 @@ export function createProductionModuleServices(
         ),
       )
       for (const version of versions) {
-        const files = await options.store.listVersionFiles(moduleId, version)
-        if (files.length > 0) return
+        try {
+          const files = await options.store.listVersionFiles(moduleId, version)
+          if (files.length > 0) return
+        } catch (error) {
+          // An absent version tree is the case being repaired. Any other
+          // listing failure leaves presence unproven, and nothing is removed
+          // on uncertainty.
+          if (!(error instanceof ModuleArtifactMissingError)) throw error
+        }
       }
       await uninstallCoordinator.uninstall(moduleId)
     },
