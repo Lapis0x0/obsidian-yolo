@@ -149,6 +149,20 @@ test('validateModuleConfig rejects schemas the client cannot parse', () => {
   )
 })
 
+test('validateModuleConfig accepts a module that persists nothing in the host', () => {
+  const config = {
+    id: 'whiteboard',
+    icon: 'layout-grid',
+    localizations: {
+      en: { name: 'Whiteboard', description: 'An infinite canvas.' },
+    },
+    hostApi: '^1.8.0',
+    platforms: ['desktop', 'mobile'],
+    dataSchemas: {},
+  }
+  assert.doesNotThrow(() => validateModuleConfig(config, 'whiteboard'))
+})
+
 test('prepareRelease synchronizes Core version sources', async () => {
   const root = await mkdtemp(path.join(os.tmpdir(), 'yolo-release-'))
   await Promise.all([

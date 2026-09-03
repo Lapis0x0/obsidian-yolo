@@ -1,6 +1,6 @@
 {
   "name": "@obsidian-yolo/whiteboard",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "yoloModule": {
     "previewVersion": "0.1.1",
