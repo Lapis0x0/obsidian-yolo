@@ -1,6 +1,8 @@
 ## 1.6.8 YOLO Whiteboard & On-Demand Tools 🧩
 
-**Introducing YOLO Whiteboard** — for now, think of it as an Obsidian Canvas several to dozens of times faster. More features that push the boundaries of AI and human thinking are on the way.
+### New module
+
+- **Introducing YOLO Whiteboard**: for now, think of it as an Obsidian Canvas several to dozens of times faster. More features that push the boundaries of AI and human thinking are on the way.
 
 ### Agent & tools
 
@@ -23,7 +25,9 @@
 
 ## 1.6.8 YOLO 白板与工具按需披露 🧩
 
-**引入 YOLO 白板** —— 你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。
+### 新模块
+
+- **引入 YOLO 白板**：你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。
 
 ### Agent 与工具
 

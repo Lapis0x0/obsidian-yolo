@@ -319,9 +319,10 @@ function parseChangelogItem(text: string): ChangelogItem {
  * update toast renders (Direction 1 / "Cursor minimal card" design): a subtitle
  * plus tone-tagged sections of bullet items. The repo authors release notes in a
  * stable shape — a `##` title heading, `### {emoji} {name}` section headings, and
- * `- **Title (#ref)**: body` bullets — so this maps directly. Content that
- * appears before the first section is gathered into an unnamed leading section so
- * nothing is dropped if the format drifts.
+ * `- **Title (#ref)**: body` bullets — so this maps directly. A paragraph is
+ * read as one more item of the section it sits in, and anything before the
+ * first section opens an unnamed leading section, so a note that leads with a
+ * plain sentence still reaches the reader instead of being dropped.
  */
 export function parseChangelog(markdown: string): ParsedChangelog {
   let subtitle: string | null = null
@@ -349,14 +350,16 @@ export function parseChangelog(markdown: string): ParsedChangelog {
       continue
     }
 
+    // The GitHub Release body carries a `<!-- core-release-owner -->` marker
+    // the reader must never see.
+    if (line.startsWith('<!--')) continue
+
     const bullet = line.match(/^[-*]\s+(.*)$/)
-    if (bullet) {
-      if (!current) {
-        current = { tone: 'accent', emoji: null, name: '', items: [] }
-        sections.push(current)
-      }
-      current.items.push(parseChangelogItem(bullet[1]))
+    if (!current) {
+      current = { tone: 'accent', emoji: null, name: '', items: [] }
+      sections.push(current)
     }
+    current.items.push(parseChangelogItem(bullet ? bullet[1] : line))
   }
 
   return { subtitle, sections }

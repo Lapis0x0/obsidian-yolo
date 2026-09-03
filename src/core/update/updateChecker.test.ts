@@ -410,6 +410,27 @@ describe('parseChangelog', () => {
     expect(sections[0].items[0].title).toBe('Loose note')
   })
 
+  it('keeps a lead paragraph and hides the release-owner marker', () => {
+    const { sections } = parseChangelog(
+      [
+        '<!-- core-release-owner:123:1 -->',
+        '## 1.6.8 YOLO Whiteboard 🧩',
+        '',
+        '**Introducing YOLO Whiteboard** — a faster canvas.',
+        '',
+        '### Agent & tools',
+        '',
+        '- Tools are disclosed on demand.',
+      ].join('\n'),
+    )
+    expect(sections.map((section) => section.name)).toEqual([
+      '',
+      'Agent & tools',
+    ])
+    expect(sections[0].items[0].title).toBe('Introducing YOLO Whiteboard')
+    expect(sections[0].items[0].body).toBe('— a faster canvas.')
+  })
+
   it('handles asterisk bullet markers (older release style) and the 🔧 tone', () => {
     const body = [
       '## 1.5.9.1 工具按需加载默认关闭 & 工具中断修复 🛠️',
