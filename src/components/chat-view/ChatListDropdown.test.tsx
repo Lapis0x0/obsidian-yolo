@@ -238,6 +238,10 @@ describe('ChatListDropdown', () => {
           runtimeId: 'codex',
           nativeSessionId: 'thread-1',
         }),
+        chat('grok', 'Grok task', {
+          runtimeId: 'grok',
+          nativeSessionId: 'session-grok',
+        }),
       ]),
     )
     const html = rows
@@ -257,7 +261,10 @@ describe('ChatListDropdown', () => {
     expect(html).toContain('aria-label="Claude Code"')
     expect(html).toContain('data-runtime-id="codex"')
     expect(html).toContain('>Codex<')
-    expect(html.match(/data-runtime-id=/g)).toHaveLength(2)
+    expect(html).toContain('data-runtime-id="grok"')
+    expect(html).toContain('>Grok<')
+    expect(html).not.toContain('aria-label="Codex">Grok')
+    expect(html.match(/data-runtime-id=/g)).toHaveLength(3)
   })
 
   // issue #567 Step 3：删除图标从「更多」展开组移回常驻行内图标，顺序为

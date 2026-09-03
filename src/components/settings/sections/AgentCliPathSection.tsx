@@ -117,6 +117,16 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         )}
         placeholder="/opt/homebrew/bin/pi"
       />
+      <CliPathRow
+        app={app}
+        runtimeId="grok"
+        name={t('settings.agent.grokCliPathName', 'Grok CLI path')}
+        desc={t(
+          'settings.agent.grokCliPathDesc',
+          'Custom path to the grok executable — paste the output of "which grok" ("where grok" on Windows). Leave empty to auto-detect. Stored on this device only.',
+        )}
+        placeholder="~/.grok/bin/grok"
+      />
     </>
   )
 }

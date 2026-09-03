@@ -5,6 +5,7 @@ import type {
   AgentCapabilities,
   Client,
   ClientSideConnection,
+  InitializeResponse,
   RequestPermissionRequest,
   RequestPermissionResponse,
   SessionUpdate,
@@ -34,6 +35,13 @@ export type AcpHostOptions = Readonly<{
   /** Re-resolved right before each spawn so a later install/path-override change is picked up. */
   resolveProcessOptions: () => Promise<Omit<AcpProcessOptions, 'runtimeId'>>
   createProcess?: (options: AcpProcessOptions) => Promise<AcpProcessLike>
+  /**
+   * Optional agent-specific authentication policy. Runs after initialize and
+   * before the connection is published or any session is created. Returning
+   * undefined skips authentication; a returned method is validated against
+   * the agent's advertised methods before it is sent.
+   */
+  selectAuthMethod?: (init: InitializeResponse) => string | undefined
 }>
 
 /**
@@ -138,6 +146,11 @@ export class AcpHost {
     }
     this.process = process
     process.onExit(() => {
+      // A failed connection shuts its process down before a retry can spawn.
+      // Some process implementations report that exit asynchronously, so an
+      // old callback can arrive after the retry has already published a new
+      // process. Only the currently-owned generation may invalidate the host.
+      if (this.process !== process) return
       const stderr = process.getStderrSnapshot()
       this.handleFatal(
         new Error(
@@ -164,6 +177,19 @@ export class AcpHost {
         clientInfo: { name: this.options.clientName, version: '1.0.0' },
       })
       if (this.disposed) throw new Error('ACP host is disposed.')
+      const authMethodId = this.options.selectAuthMethod?.(init)
+      if (authMethodId) {
+        const advertised = (init.authMethods ?? []).some(
+          (method) => method.id === authMethodId,
+        )
+        if (!advertised) {
+          throw new Error(
+            `${this.options.runtimeId} selected authentication method "${authMethodId}" was not advertised by the ACP agent.`,
+          )
+        }
+        await connection.authenticate({ methodId: authMethodId })
+        if (this.disposed) throw new Error('ACP host is disposed.')
+      }
       this.agentCapabilities = init.agentCapabilities
       this.connection = connection
       // A successful (re)connect supersedes any earlier fatal state.

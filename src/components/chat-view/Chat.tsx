@@ -1932,6 +1932,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         skipImageModelCapabilityCheck={
           mainInputCapabilities.skipsImageModelCapabilityCheck
         }
+        allowImageAttachments={mainInputCapabilities.supportsImageAttachments}
         skillEntries={isCliRuntimeActive ? cliSkillEntries : undefined}
         modelId={conversationModelId}
         onModelChange={handleMainInputModelChange}
@@ -1996,6 +1997,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         onYoloChange={
           isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
         }
+        showYoloToggle={mainInputCapabilities.showsYoloToggle}
         onEditorKeyDown={handleClaudePlanShortcut}
         allowAgentModeOption
         enableResize

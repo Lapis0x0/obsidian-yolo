@@ -59,6 +59,7 @@ jest.mock('./MessageInputCore', () => ({
         models: unknown[]
         enableSkills: boolean
         enableAttachments: boolean
+        allowImageAttachments: boolean
         skipImageModelCapabilityCheck: boolean
         mentionables: unknown[]
         selectedSkills: unknown[]
@@ -70,6 +71,7 @@ jest.mock('./MessageInputCore', () => ({
         data-model-count={props.models.length}
         data-skills-enabled={String(props.enableSkills)}
         data-attachments-enabled={String(props.enableAttachments)}
+        data-image-attachments-allowed={String(props.allowImageAttachments)}
         data-skip-image-model-check={String(
           props.skipImageModelCapabilityCheck,
         )}
@@ -91,11 +93,21 @@ jest.mock('./ReasoningSelect', () => ({
 
 jest.mock('./ChatModeSelect', () => ({
   ...jest.requireActual('./ChatModeSelect'),
-  ChatModeSelect: () => <span data-control="chat-mode" />,
+  ChatModeSelect: ({ showYoloToggle }: { showYoloToggle?: boolean }) => (
+    <span
+      data-control="chat-mode"
+      data-show-yolo-toggle={String(showYoloToggle)}
+    />
+  ),
 }))
 
 jest.mock('./FileUploadButton', () => ({
-  FileUploadButton: () => <button data-control="attachment" />,
+  FileUploadButton: ({ allowImages }: { allowImages?: boolean }) => (
+    <button
+      data-control="attachment"
+      data-image-files-allowed={String(allowImages)}
+    />
+  ),
 }))
 
 jest.mock('./SubmitButton', () => ({
@@ -165,5 +177,37 @@ describe('ChatUserInput CLI capabilities', () => {
 
     expect(html).toContain('add references')
     expect(html).not.toContain('add references or models')
+  })
+
+  it('passes through a runtime capability that hides the YOLO toggle', () => {
+    const html = renderToStaticMarkup(
+      <ChatUserInput
+        {...baseProps}
+        mentionables={[]}
+        selectedSkills={[]}
+        chatMode="agent"
+        onChatModeChange={jest.fn()}
+        showYoloToggle={false}
+      />,
+    )
+
+    expect(html).toContain('data-control="chat-mode"')
+    expect(html).toContain('data-show-yolo-toggle="false"')
+  })
+
+  it('disables image files while retaining the general attachment control', () => {
+    const html = renderToStaticMarkup(
+      <ChatUserInput
+        {...baseProps}
+        mentionables={[]}
+        selectedSkills={[]}
+        allowImageAttachments={false}
+      />,
+    )
+
+    expect(html).toContain('data-attachments-enabled="true"')
+    expect(html).toContain('data-image-attachments-allowed="false"')
+    expect(html).toContain('data-control="attachment"')
+    expect(html).toContain('data-image-files-allowed="false"')
   })
 })

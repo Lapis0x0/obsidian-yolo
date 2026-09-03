@@ -14,6 +14,12 @@ describe('CLI session index contract', () => {
         nativeSessionId: 'thread/with spaces',
       }),
     ).toBe('codex:thread%2Fwith%20spaces')
+    expect(
+      getCliSessionIndexKey({
+        runtimeId: 'grok',
+        nativeSessionId: 'session/with spaces',
+      }),
+    ).toBe('grok:session%2Fwith%20spaces')
   })
 
   it('keeps paths as mutable hints outside the stable key', () => {

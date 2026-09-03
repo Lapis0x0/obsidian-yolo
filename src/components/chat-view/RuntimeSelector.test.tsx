@@ -14,6 +14,8 @@ jest.mock('../../contexts/language-context', () => ({
           'sidebar.runtimeSelector.hermesDescription': 'Hermes on this device',
           'sidebar.runtimeSelector.piLabel': 'pi',
           'sidebar.runtimeSelector.piDescription': 'pi on this device',
+          'sidebar.runtimeSelector.grokLabel': 'Grok',
+          'sidebar.runtimeSelector.grokDescription': 'Grok on this device',
         }) as Record<string, string>
       )[key] ?? key,
   }),
@@ -34,6 +36,10 @@ jest.mock('../../assets/provider-icons/hermes.svg', () => ({
 jest.mock('../../assets/provider-icons/pi.svg', () => ({
   __esModule: true,
   default: 'pi-logo',
+}))
+jest.mock('../../assets/provider-icons/xai.svg', () => ({
+  __esModule: true,
+  default: 'xai-logo',
 }))
 
 import { Platform } from 'obsidian'
@@ -58,12 +64,14 @@ describe('RuntimeSelector', () => {
       'codex',
       'hermes',
       'pi',
+      'grok',
     ])
     expect(resolveAvailableRuntimeId('yolo', true)).toBeUndefined()
     expect(resolveAvailableRuntimeId('claude-code', true)).toBe('claude-code')
     expect(resolveAvailableRuntimeId('codex', true)).toBe('codex')
     expect(resolveAvailableRuntimeId('hermes', true)).toBe('hermes')
     expect(resolveAvailableRuntimeId('pi', true)).toBe('pi')
+    expect(resolveAvailableRuntimeId('grok', true)).toBe('grok')
   })
 
   it('exposes no provider without desktop capability', () => {
@@ -100,6 +108,18 @@ describe('RuntimeSelector', () => {
 
     expect(html).toContain('src="anthropic-logo"')
     expect(html).toContain('data-provider="anthropic"')
+  })
+
+  it('renders Grok with the xAI brand asset', () => {
+    Platform.isDesktop = true
+
+    const html = renderToStaticMarkup(
+      <RuntimeSelector currentRuntimeId="grok" onRuntimeChange={() => {}} />,
+    )
+
+    expect(html).toContain('aria-label="CLI provider: Grok"')
+    expect(html).toContain('src="xai-logo"')
+    expect(html).toContain('data-provider="xai"')
   })
 
   it('renders no runtime entry on mobile even with a stale CLI selection', () => {

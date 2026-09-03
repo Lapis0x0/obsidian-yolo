@@ -8,6 +8,7 @@ import {
   chatModeForSave,
   isChatMode,
   isModuleChatMode,
+  isYoloModeActive,
   narrowToMentionChatMode,
   normalizePersistedChatMode,
   resolveEffectiveChatMode,
@@ -33,6 +34,12 @@ describe('ChatModeSelect runtime options', () => {
     expect(shouldShowYoloToggle(availableModes, 'module:learning:chat')).toBe(
       false,
     )
+  })
+
+  it('does not present persisted YOLO state as active when the control is unavailable', () => {
+    expect(isYoloModeActive(false, 'agent', true)).toBe(false)
+    expect(isYoloModeActive(true, 'agent', true)).toBe(true)
+    expect(isYoloModeActive(true, 'plan', true)).toBe(false)
   })
 })
 

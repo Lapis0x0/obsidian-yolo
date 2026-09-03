@@ -1,3 +1,5 @@
+import type { InitializeResponse } from '@agentclientprotocol/sdk'
+
 import type { CliRuntimeId } from '../types'
 
 export type AcpResolvedCommand = Readonly<{
@@ -26,6 +28,11 @@ export type AcpAgentProfile = Readonly<{
     env: NodeJS.ProcessEnv,
     cliPathOverride?: string,
   ): Promise<AcpResolvedCommand | null>
+  /**
+   * Optional authentication policy applied after ACP initialization and
+   * before the host exposes a usable connection.
+   */
+  selectAuthMethod?(init: InitializeResponse): string | undefined
   /**
    * Slash command text this agent understands as a manual-compaction
    * trigger (e.g. Hermes's `/compress`), sent as an ordinary

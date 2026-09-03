@@ -2,6 +2,7 @@ import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
 import hermesLogo from '../../assets/provider-icons/hermes.svg'
 import openaiLogo from '../../assets/provider-icons/openai.svg'
 import piLogo from '../../assets/provider-icons/pi.svg'
+import xaiLogo from '../../assets/provider-icons/xai.svg'
 
 import { RUNTIME_CAPABILITIES } from './capabilities'
 import type { ChatRuntimeCapabilities } from './capabilities'
@@ -20,6 +21,8 @@ import type { CliRuntimeId } from './types'
  */
 export type CliRuntimeDescriptor = Readonly<{
   id: CliRuntimeId
+  /** Stable English fallback for call sites where a locale key is absent. */
+  defaultLabel: string
   /** i18n key, e.g. `sidebar.runtimeSelector.claudeCodeLabel`. */
   labelKey: string
   /**
@@ -37,6 +40,7 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
   {
     'claude-code': {
       id: 'claude-code',
+      defaultLabel: 'Claude Code',
       labelKey: 'sidebar.runtimeSelector.claudeCodeLabel',
       shortLabelKey: 'sidebar.runtimeSelector.claudeCodeShortLabel',
       descriptionKey: 'sidebar.runtimeSelector.claudeCodeDescription',
@@ -45,6 +49,7 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
     },
     codex: {
       id: 'codex',
+      defaultLabel: 'Codex',
       labelKey: 'sidebar.runtimeSelector.codexLabel',
       descriptionKey: 'sidebar.runtimeSelector.codexDescription',
       icon: { src: openaiLogo, provider: 'openai' },
@@ -52,6 +57,7 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
     },
     hermes: {
       id: 'hermes',
+      defaultLabel: 'Hermes',
       labelKey: 'sidebar.runtimeSelector.hermesLabel',
       descriptionKey: 'sidebar.runtimeSelector.hermesDescription',
       icon: { src: hermesLogo, provider: 'hermes' },
@@ -59,10 +65,19 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
     },
     pi: {
       id: 'pi',
+      defaultLabel: 'Pi',
       labelKey: 'sidebar.runtimeSelector.piLabel',
       descriptionKey: 'sidebar.runtimeSelector.piDescription',
       icon: { src: piLogo, provider: 'pi' },
       capabilities: RUNTIME_CAPABILITIES.pi,
+    },
+    grok: {
+      id: 'grok',
+      defaultLabel: 'Grok',
+      labelKey: 'sidebar.runtimeSelector.grokLabel',
+      descriptionKey: 'sidebar.runtimeSelector.grokDescription',
+      icon: { src: xaiLogo, provider: 'xai' },
+      capabilities: RUNTIME_CAPABILITIES.grok,
     },
   }
 

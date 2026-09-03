@@ -37,10 +37,8 @@ export function CliRuntimeControls({
   const models = configuration?.models.length
     ? configuration.models
     : cachedModels
-  const providerName = t(
-    getCliRuntimeDescriptor(runtimeId).labelKey,
-    runtimeId === 'codex' ? 'Codex' : 'Claude Code',
-  )
+  const descriptor = getCliRuntimeDescriptor(runtimeId)
+  const providerName = t(descriptor.labelKey, descriptor.defaultLabel)
   const providerLabel = providerName.toUpperCase()
   const defaultModelLabel = t(
     'chat.cliControls.defaultModel',

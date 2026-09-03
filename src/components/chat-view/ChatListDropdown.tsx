@@ -539,10 +539,7 @@ function TitleInput({
 function ChatRuntimeBadge({ runtimeId }: { runtimeId: CliRuntimeId }) {
   const { t } = useLanguage()
   const descriptor = getCliRuntimeDescriptor(runtimeId)
-  const fullLabel = t(
-    descriptor.labelKey,
-    runtimeId === 'claude-code' ? 'Claude Code' : 'Codex',
-  )
+  const fullLabel = t(descriptor.labelKey, descriptor.defaultLabel)
 
   return (
     <span

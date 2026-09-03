@@ -56,7 +56,7 @@ const ViewToggle: React.FC<ViewToggleProps> = ({
       label: cliLabel,
       description: t(
         'sidebar.runtimeSelector.cliDescription',
-        'Claude Code or Codex on this device',
+        'Use a supported CLI agent on this device',
       ),
       icon: <SquareTerminal size={14} strokeWidth={2} />,
     },

@@ -8,6 +8,7 @@ import { createCliChatRuntimeActions } from './cli-actions'
 import type { CodexRuntimeOptions } from './codex/factory'
 import { createCodexRuntimeFactory } from './codex/factory'
 import { CliConversationController } from './conversation-controller'
+import { createGrokRuntimeFactory } from './grok/factory'
 import { createHermesRuntimeFactory } from './hermes/factory'
 import { type HermesProfile, discoverHermesProfiles } from './hermes/profiles'
 import { loadLoginShellEnvironment } from './login-shell-env'
@@ -116,18 +117,20 @@ const isAbsoluteFileSystemPath = (path: string): boolean =>
 const defaultLoadRuntimeFactories = async (
   deps: CliRuntimeFactoriesLoaderDeps,
 ): Promise<CliRuntimeFactories> => {
-  const [claudeFactory, codexFactory, hermesFactory, piFactory] =
+  const [claudeFactory, codexFactory, hermesFactory, piFactory, grokFactory] =
     await Promise.all([
       createClaudeRuntimeFactory(deps),
       createCodexRuntimeFactory(deps),
       createHermesRuntimeFactory(deps),
       createPiRuntimeFactory(deps),
+      createGrokRuntimeFactory(deps),
     ])
   return {
     'claude-code': claudeFactory,
     codex: codexFactory,
     hermes: hermesFactory,
     pi: piFactory,
+    grok: grokFactory,
   }
 }
 

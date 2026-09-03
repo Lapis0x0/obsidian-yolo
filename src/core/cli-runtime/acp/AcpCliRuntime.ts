@@ -271,6 +271,16 @@ export class AcpCliRuntime implements CliRuntime {
       )
     }
     const host = await this.getHost()
+    const prompt = toAcpPromptBlocks(input.content)
+    const containsImage = prompt.some((block) => block.type === 'image')
+    if (
+      containsImage &&
+      host.capabilities?.promptCapabilities?.image !== true
+    ) {
+      throw new Error(
+        `${this.runtimeId} ACP agent does not support image input.`,
+      )
+    }
     const sessionId = this.activeSessionRef.nativeSessionId
     this.cancelRequested = false
     this.aggregator.beginTurn()
@@ -281,7 +291,7 @@ export class AcpCliRuntime implements CliRuntime {
       const result = await host.call((connection) =>
         connection.prompt({
           sessionId,
-          prompt: toAcpPromptBlocks(input.content),
+          prompt,
         }),
       )
       this.turnInFlight = false

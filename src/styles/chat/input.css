@@ -124,7 +124,8 @@ button.yolo-runtime-selector:disabled {
   user-select: none;
 }
 
-body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='openai'] {
+body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='openai'],
+body.theme-dark .yolo-runtime-selector__provider-logo[data-provider='xai'] {
   filter: invert(1);
 }
 

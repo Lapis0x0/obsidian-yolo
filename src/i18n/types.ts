@@ -90,6 +90,8 @@ export type TranslationKeys = {
       hermesDescription: string
       piLabel: string
       piDescription: string
+      grokLabel: string
+      grokDescription: string
     }
     chatList?: {
       searchPlaceholder?: string
@@ -583,6 +585,8 @@ export type TranslationKeys = {
       hermesCliPathDesc?: string
       piCliPathName?: string
       piCliPathDesc?: string
+      grokCliPathName?: string
+      grokCliPathDesc?: string
       cliPathMissing?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string
@@ -1701,6 +1705,7 @@ export type TranslationKeys = {
     uploadFile?: string
     dropFilesHint?: string
     imageUnsupportedByModel?: string
+    imageUnsupportedByRuntime?: string
     unsupportedFileType?: string
     processImagesFailed?: string
     readPdfFailed?: string
