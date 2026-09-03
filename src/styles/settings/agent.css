@@ -590,6 +590,39 @@ button.yolo-agent-mcp-config-copy {
   color: var(--text-faint);
 }
 
+/* 折叠触发器就是 server 名本身。它和同一行里的披露/审批下拉是兄弟节点而不是
+ * 祖先，整行不能做成一个按钮——那样会嵌套按钮。 */
+button.yolo-agent-tool-group-name--toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  padding: 0;
+  height: auto;
+  line-height: inherit;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  font-size: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+}
+
+button.yolo-agent-tool-group-name--toggle:hover {
+  background: transparent;
+  color: var(--text-accent);
+}
+
+.yolo-agent-tool-group-chevron {
+  flex: 0 0 auto;
+  opacity: 0.7;
+  transition: transform var(--yolo-anim-duration-feedback)
+    var(--yolo-anim-ease-out);
+}
+
+.yolo-agent-tool-group.is-expanded .yolo-agent-tool-group-chevron {
+  transform: rotate(90deg);
+}
+
 /* 全部禁用时，token 估算、披露模式、审批模式描述的都是不会运行的工具，一起
  * 淡下去，免得这一行看起来仍然「已配置、在生效」。「全部启用」是恢复它的唯一
  * 入口，保持原有对比度，不跟着淡。 */

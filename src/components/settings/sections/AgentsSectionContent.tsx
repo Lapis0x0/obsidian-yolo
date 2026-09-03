@@ -3,6 +3,7 @@ import {
   BookOpen,
   Check,
   ChevronDown,
+  ChevronRight,
   FolderOpen,
   Maximize2,
   User,
@@ -380,6 +381,22 @@ export function AgentsSectionContent({
   })
   const [activeTab, setActiveTab] = useState<AgentEditorTab>('profile')
   const [isSystemPromptExpanded, setIsSystemPromptExpanded] = useState(false)
+  // MCP tool groups start collapsed: a single server contributes a dozen rows,
+  // and the page's job is to show which servers this agent can use — the
+  // individual tools are a detail you open when you actually want to change
+  // one. View state only, deliberately not persisted.
+  const [expandedToolGroups, setExpandedToolGroups] = useState<
+    ReadonlySet<string>
+  >(() => new Set())
+  const toggleToolGroupExpanded = (groupKey: string) => {
+    setExpandedToolGroups((prev) => {
+      const next = new Set(prev)
+      if (!next.delete(groupKey)) {
+        next.add(groupKey)
+      }
+      return next
+    })
+  }
   const expandedPromptTextareaRef = useRef<HTMLTextAreaElement | null>(null)
   const systemPromptWrapperRef = useRef<HTMLDivElement | null>(null)
   const [portalContainer, setPortalContainer] = useState<HTMLElement>()
@@ -1621,10 +1638,15 @@ export function AgentsSectionContent({
                     !group.isBuiltin &&
                     group.tools.length > 0 &&
                     groupEnabledCount === 0
+                  // Built-in capability rows are the panel's primary content
+                  // and stay put; only MCP servers fold.
+                  const isGroupExpanded =
+                    group.isBuiltin || expandedToolGroups.has(group.key)
                   const groupClassName = [
                     'yolo-agent-tool-group',
                     !group.isBuiltin ? 'yolo-agent-tool-group--mcp' : null,
                     groupFullyDisabled ? 'is-disabled' : null,
+                    !group.isBuiltin && isGroupExpanded ? 'is-expanded' : null,
                   ]
                     .filter(Boolean)
                     .join(' ')
@@ -1632,9 +1654,25 @@ export function AgentsSectionContent({
                     <div key={group.key} className={groupClassName}>
                       <div className="yolo-agent-tool-group-title">
                         <span className="yolo-agent-tool-group-title-main">
-                          <span className="yolo-agent-tool-group-name">
-                            {group.title}
-                          </span>
+                          {group.isBuiltin ? (
+                            <span className="yolo-agent-tool-group-name">
+                              {group.title}
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              className="yolo-agent-tool-group-name yolo-agent-tool-group-name--toggle"
+                              aria-expanded={isGroupExpanded}
+                              onClick={() => toggleToolGroupExpanded(group.key)}
+                            >
+                              <ChevronRight
+                                size={12}
+                                aria-hidden="true"
+                                className="yolo-agent-tool-group-chevron"
+                              />
+                              <span>{group.title}</span>
+                            </button>
+                          )}
                           {estimatedToolContextTokens.perTool.size > 0 && (
                             <span className="yolo-agent-tool-group-tokens">
                               {t(
@@ -1822,7 +1860,7 @@ export function AgentsSectionContent({
                           )}
                         </span>
                       </div>
-                      {!groupFullyDisabled && (
+                      {isGroupExpanded && (
                         <div className="yolo-agent-tool-list">
                           {group.tools.map((tool) => {
                             const selected = tool.toggleTargets.every(
