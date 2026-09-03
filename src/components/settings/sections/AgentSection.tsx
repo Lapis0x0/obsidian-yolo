@@ -17,8 +17,6 @@ import { Assistant } from '../../../types/assistant.types'
 import { McpServerState, McpServerStatus } from '../../../types/mcp.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { ObsidianButton } from '../../common/ObsidianButton'
-import { ObsidianSetting } from '../../common/ObsidianSetting'
-import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
 import { AgentSkillsModal } from '../modals/AgentSkillsModal'
 import { AgentToolsModal } from '../modals/AgentToolsModal'
@@ -169,16 +167,6 @@ export function AgentSection({ app }: AgentSectionProps) {
   const handleOpenSkillsModal = () => {
     const modal = new AgentSkillsModal(app, plugin)
     modal.open()
-  }
-
-  const handleToggleToolDisclosure = async (value: boolean) => {
-    await setSettings({
-      ...settings,
-      mcp: {
-        ...settings.mcp,
-        enableToolDisclosure: value,
-      },
-    })
   }
 
   const mcpTools = useMemo(
@@ -392,22 +380,6 @@ export function AgentSection({ app }: AgentSectionProps) {
             </div>
           </article>
         </div>
-
-        <ObsidianSetting
-          name={t(
-            'settings.agent.enableToolDisclosure',
-            'On-demand tool disclosure',
-          )}
-          desc={t(
-            'settings.agent.enableToolDisclosureDesc',
-            'Beta: expose large tool schemas only when the model asks for them.',
-          )}
-        >
-          <ObsidianToggle
-            value={settings.mcp.enableToolDisclosure}
-            onChange={(value) => void handleToggleToolDisclosure(value)}
-          />
-        </ObsidianSetting>
       </section>
 
       <section className="yolo-agent-block">

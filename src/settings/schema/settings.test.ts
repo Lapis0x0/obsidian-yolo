@@ -43,7 +43,7 @@ describe('parseYoloSettings', () => {
     })
 
     expect(result.mcp.servers).toEqual([])
-    expect(result.mcp.enableToolDisclosure).toBe(false)
+    expect(result.mcp.discoveredCatalogs).toEqual({})
     expect(result.yolo).toEqual({ baseDir: 'YOLO' })
 
     expect(result.chatOptions).toMatchObject({
@@ -92,7 +92,6 @@ describe('parseYoloSettings', () => {
       mcp: {
         servers: [],
         builtinToolOptions: {},
-        enableToolDisclosure: false,
       },
     })
 
@@ -223,7 +222,6 @@ describe('parseYoloSettings', () => {
       chatModelId: 'openai/gpt-5',
       mcp: {
         servers: [],
-        enableToolDisclosure: false,
         builtinCapabilityOptions: {
           subagent_delegation: {
             allowedModelIds: [
@@ -273,7 +271,6 @@ describe('parseYoloSettings', () => {
       chatModelId: 'openai/gpt-5',
       mcp: {
         servers: [],
-        enableToolDisclosure: false,
         builtinCapabilityOptions: {},
       },
     })

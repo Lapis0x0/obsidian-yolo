@@ -555,9 +555,6 @@ export const zh: TranslationKeys = {
       toolsEnabledCount: '已启用 {count} 个',
       manageTools: '管理工具',
       manageSkills: '管理技能',
-      enableToolDisclosure: '启用工具按需加载（Beta）',
-      enableToolDisclosureDesc:
-        '可选工具集会先以简要说明提供，模型需要时再加载完整说明，推荐在启用了大量 MCP 工具时开启。注意：该机制依赖模型自身的工具调用能力，部分模型可能无法稳定识别已加载的工具。',
       expandDescription: '展开',
       collapseDescription: '收起',
       viewAllTools: '查看全部工具',

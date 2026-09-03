@@ -500,14 +500,12 @@ export class McpManager {
 
   public async handleSettingsUpdate(settings: YoloSettings) {
     this.settings = settings
-    if (settings.mcp.enableToolDisclosure) {
-      for (const server of this.servers) {
-        if (
-          server.status === McpServerStatus.Connected &&
-          this.shouldPrewarmToolTokenCosts(server.name)
-        ) {
-          prewarmMcpServerToolTokenCosts(server.name, server.tools)
-        }
+    for (const server of this.servers) {
+      if (
+        server.status === McpServerStatus.Connected &&
+        this.shouldPrewarmToolTokenCosts(server.name)
+      ) {
+        prewarmMcpServerToolTokenCosts(server.name, server.tools)
       }
     }
     const updatedServers = settings.mcp.servers.map(
@@ -969,7 +967,6 @@ export class McpManager {
   }
 
   private shouldPrewarmToolTokenCosts(serverName: string): boolean {
-    if (!this.settings.mcp.enableToolDisclosure) return false
     const assistants = this.settings.assistants ?? []
     // With no saved Agent yet, runtime still uses Auto. Otherwise an explicit
     // server policy on every Agent means the threshold budget is never read.

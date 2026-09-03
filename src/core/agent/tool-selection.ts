@@ -189,7 +189,6 @@ export const selectAllowedTools = async ({
   toolPreferences,
   toolServerPreferences,
   apiType,
-  enableToolDisclosure = true,
   jsSandboxSettings = {},
   settings,
 }: {
@@ -198,7 +197,6 @@ export const selectAllowedTools = async ({
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   apiType?: LLMProviderApiType | null
-  enableToolDisclosure?: boolean
   jsSandboxSettings?: JsSandboxSettings
   settings?: YoloSettings
 }): Promise<{
@@ -246,9 +244,7 @@ export const selectAllowedTools = async ({
   for (const tool of baseFiltered) {
     disclosureModes.set(
       tool.name,
-      getAssistantToolDisclosureMode(assistantLike, tool.name, {
-        enableToolDisclosure,
-      }),
+      getAssistantToolDisclosureMode(assistantLike, tool.name),
     )
   }
 
@@ -283,9 +279,8 @@ export const selectAllowedTools = async ({
             toolName,
             allowedToolNames: normalizedAllowedToolNames,
           }) &&
-          getAssistantToolDisclosureMode(assistantLike, toolName, {
-            enableToolDisclosure,
-          }) === 'on_demand',
+          getAssistantToolDisclosureMode(assistantLike, toolName) ===
+            'on_demand',
       })
     : null
 

@@ -478,7 +478,6 @@ export const yoloSettingsSchema = z.object({
        * `terminal` respectively.
        */
       builtinCapabilityOptions: mcpServerToolOptionsSchema.catch({}),
-      enableToolDisclosure: z.boolean().catch(false),
       /**
        * Derived cache, not user configuration: the last-known `serverInfo`
        * and tool-name list for each configured MCP server, keyed by the
@@ -527,7 +526,6 @@ export const yoloSettingsSchema = z.object({
     .catch({
       servers: [],
       builtinCapabilityOptions: {},
-      enableToolDisclosure: false,
       discoveredCatalogs: {},
       localServer: {
         enabled: false,

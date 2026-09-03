@@ -65,7 +65,6 @@ export type AgentRuntimeRunInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   allowedToolNames?: string[]
-  enableToolDisclosure?: boolean
   toolPreferences?: Record<
     string,
     {

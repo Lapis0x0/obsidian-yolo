@@ -531,7 +531,6 @@ export async function resolveAgentApiRunInput({
       abortSignal,
       allowedToolNames,
       systemPromptOverride: request.systemPromptOverride,
-      enableToolDisclosure: settings.mcp.enableToolDisclosure,
       toolPreferences: chatModeRuntime.toolPreferences,
       builtinCapabilityPreferences:
         chatModeRuntime.builtinCapabilityPreferences,

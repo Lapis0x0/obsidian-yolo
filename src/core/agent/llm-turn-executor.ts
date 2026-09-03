@@ -69,7 +69,6 @@ type AgentLlmTurnExecutorInput = {
   includeBuiltinTools: boolean
   apiType?: LLMProviderApiType | null
   allowedToolNames?: string[]
-  enableToolDisclosure?: boolean
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   allowedSkillPaths?: string[]
@@ -258,7 +257,6 @@ export class AgentLlmTurnExecutor {
         toolPreferences: this.input.toolPreferences,
         toolServerPreferences: this.input.toolServerPreferences,
         apiType: this.input.apiType,
-        enableToolDisclosure: this.input.enableToolDisclosure,
         jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
         settings: this.input.mcpManager.getSettingsSnapshot(),
       })

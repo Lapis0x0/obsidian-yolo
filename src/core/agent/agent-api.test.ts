@@ -154,9 +154,7 @@ describe('agent api helpers', () => {
         },
       ],
       providers: [{ id: 'mock-provider', apiType: 'openai' }],
-      mcp: {
-        enableToolDisclosure: false,
-      },
+      mcp: {},
       continuationOptions: {
         primaryRequestTimeoutMs: 30000,
         streamFallbackRecoveryEnabled: true,
@@ -376,9 +374,7 @@ describe('agent api helpers', () => {
           },
         ],
         providers: [{ id: 'mock-provider', apiType: 'openai' }],
-        mcp: {
-          enableToolDisclosure: false,
-        },
+        mcp: {},
         continuationOptions: {
           primaryRequestTimeoutMs: 30000,
           streamFallbackRecoveryEnabled: true,
@@ -545,7 +541,6 @@ describe('YoloAgentApiService in-process tool server lifecycle', () => {
         },
       ],
       providers: [{ id: 'mock-provider', apiType: 'openai' }],
-      mcp: { enableToolDisclosure: false },
       continuationOptions: {
         primaryRequestTimeoutMs: 30000,
         streamFallbackRecoveryEnabled: true,
@@ -743,9 +738,7 @@ function buildResolveAgentApiRunInputArgs(request: YoloAgentRunRequest) {
       },
     ],
     providers: [{ id: 'mock-provider', apiType: 'openai' }],
-    mcp: {
-      enableToolDisclosure: false,
-    },
+    mcp: {},
     continuationOptions: {
       primaryRequestTimeoutMs: 30000,
       streamFallbackRecoveryEnabled: true,

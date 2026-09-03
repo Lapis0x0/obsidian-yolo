@@ -142,7 +142,6 @@ export const estimateContextBreakdown = async ({
   includeBuiltinTools,
   apiType,
   allowedToolNames,
-  enableToolDisclosure,
   toolPreferences,
   toolServerPreferences,
   contextualInjections,
@@ -162,7 +161,6 @@ export const estimateContextBreakdown = async ({
   includeBuiltinTools: boolean
   apiType?: LLMProviderApiType | null
   allowedToolNames?: string[]
-  enableToolDisclosure?: boolean
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
@@ -191,7 +189,6 @@ export const estimateContextBreakdown = async ({
     toolPreferences,
     toolServerPreferences,
     apiType,
-    enableToolDisclosure,
     jsSandboxSettings: mcpManager.getJsSandboxSettings(),
     settings: mcpManager.getSettingsSnapshot(),
   })

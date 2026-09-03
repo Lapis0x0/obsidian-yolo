@@ -3065,7 +3065,6 @@ describe('delegate_subagent model selection', () => {
       ],
       mcp: {
         servers: [],
-        enableToolDisclosure: false,
         builtinCapabilityOptions: {
           subagent_delegation: {
             allowedModelIds: ['openai/gpt-5', 'openai/gpt-4.1-mini'],

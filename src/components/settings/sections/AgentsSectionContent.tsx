@@ -358,7 +358,6 @@ export function AgentsSectionContent({
   const { t } = useLanguage()
 
   const assistants = settings.assistants || []
-  const enableToolDisclosure = settings.mcp.enableToolDisclosure
   const isDirectEditEntry = Boolean(initialAssistantId)
   const isDirectCreateEntry = Boolean(initialCreate)
   const isDirectEntry = isDirectEditEntry || isDirectCreateEntry
@@ -992,7 +991,6 @@ export function AgentsSectionContent({
           const disclosureMode = getAssistantToolDisclosureMode(
             draftAgent,
             tool.name,
-            { enableToolDisclosure },
           )
           return [
             tool.name,
@@ -1019,7 +1017,6 @@ export function AgentsSectionContent({
     draftAgent?.enableTools,
     draftAgent?.includeBuiltinTools,
     localFsServerName,
-    enableToolDisclosure,
   ])
 
   const groupEnabledTokens = useMemo(() => {
@@ -1594,9 +1591,7 @@ export function AgentsSectionContent({
                     group.tools.length > 0 &&
                     groupEnabledCount === group.tools.length
                   const showServerDisclosure =
-                    !group.isBuiltin &&
-                    enableToolDisclosure &&
-                    group.tools.length > 0
+                    !group.isBuiltin && group.tools.length > 0
                   const disclosureSelectionValue = showServerDisclosure
                     ? (draftAgent.toolServerPreferences?.[group.key]
                         ?.disclosureMode ?? 'auto')

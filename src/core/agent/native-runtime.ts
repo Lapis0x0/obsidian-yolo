@@ -146,7 +146,6 @@ export class NativeAgentRuntime implements AgentRuntime {
     const toolGateway = new AgentToolGateway(input.mcpManager, {
       toolsEnabled: this.loopConfig.enableTools,
       allowedToolNames: input.allowedToolNames,
-      enableToolDisclosure: input.enableToolDisclosure,
       toolPreferences: input.toolPreferences,
       builtinCapabilityPreferences: input.builtinCapabilityPreferences,
       toolServerPreferences: input.toolServerPreferences,
@@ -241,7 +240,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                   includeBuiltinTools: this.loopConfig.includeBuiltinTools,
                   apiType: input.apiType,
                   allowedToolNames: input.allowedToolNames,
-                  enableToolDisclosure: input.enableToolDisclosure,
                   toolPreferences: input.toolPreferences,
                   toolServerPreferences: input.toolServerPreferences,
                   allowedSkillPaths: input.allowedSkillPaths,
@@ -447,7 +445,6 @@ export class NativeAgentRuntime implements AgentRuntime {
                           this.loopConfig.includeBuiltinTools,
                         apiType: input.apiType,
                         allowedToolNames: input.allowedToolNames,
-                        enableToolDisclosure: input.enableToolDisclosure,
                         toolPreferences: input.toolPreferences,
                         toolServerPreferences: input.toolServerPreferences,
                         contextualInjections: composeAgentInjections({

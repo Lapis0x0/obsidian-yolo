@@ -270,7 +270,6 @@ export class AgentToolGateway {
     string,
     AssistantToolServerPreference
   >
-  private readonly enableToolDisclosure: boolean
   private readonly workspaceScope?: AssistantWorkspaceScope
   private readonly allowedSkillPaths?: readonly string[]
   private readonly apiType?: LLMProviderApiType | null
@@ -295,7 +294,6 @@ export class AgentToolGateway {
       toolPreferences?: Record<string, AssistantToolPreference>
       builtinCapabilityPreferences?: Record<string, AssistantToolPreference>
       toolServerPreferences?: Record<string, AssistantToolServerPreference>
-      enableToolDisclosure?: boolean
       workspaceScope?: AssistantWorkspaceScope
       allowedSkillPaths?: string[]
       apiType?: LLMProviderApiType | null
@@ -318,7 +316,6 @@ export class AgentToolGateway {
     this.toolPreferences = options?.toolPreferences
     this.builtinCapabilityPreferences = options?.builtinCapabilityPreferences
     this.toolServerPreferences = options?.toolServerPreferences
-    this.enableToolDisclosure = options?.enableToolDisclosure ?? true
     this.workspaceScope = options?.workspaceScope
     this.allowedSkillPaths = options?.allowedSkillPaths
     this.apiType = options?.apiType
@@ -338,9 +335,6 @@ export class AgentToolGateway {
   }
 
   private async isOnDemandToolName(toolName: string): Promise<boolean> {
-    if (!this.enableToolDisclosure) {
-      return false
-    }
     if (isLoadToolSchemasToolName(toolName)) {
       return false
     }
@@ -362,7 +356,6 @@ export class AgentToolGateway {
             : undefined,
         },
         toolName,
-        { enableToolDisclosure: this.enableToolDisclosure },
       ) === 'on_demand'
     )
   }
@@ -1665,10 +1658,10 @@ export class AgentToolGateway {
       return false
     }
     if (isLoadToolSchemasToolName(toolName)) {
-      // Loader is a protocol-only tool injected by `selectAllowedTools` when
-      // disclosure is on. It is never in `toolPreferences` or
-      // `allowedToolNames`, so the user-tool gate below would reject it.
-      return this.enableToolDisclosure
+      // Protocol-only tool injected by `selectAllowedTools` whenever anything
+      // defers. It is never in `toolPreferences` or `allowedToolNames`, so the
+      // user-tool gate below would otherwise reject it.
+      return true
     }
 
     if (!this.allowedToolNames) {

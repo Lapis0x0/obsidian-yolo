@@ -637,15 +637,7 @@ export const getAssistantToolDisclosureMode = (
     | null
     | undefined,
   toolName: string,
-  options?: { enableToolDisclosure?: boolean },
 ): AssistantToolDisclosureMode => {
-  // The global opt-out is on its way out (it defaults off today, which is why
-  // most installs still send every schema up front). Until the settings
-  // surface is collapsed it keeps its current meaning: off ⇒ nothing defers.
-  if (options?.enableToolDisclosure === false) {
-    return 'always'
-  }
-
   let parsedServerName: string | null = null
   try {
     const { serverName } = parseToolName(toolName)

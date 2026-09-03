@@ -74,7 +74,6 @@ describe('selectAllowedTools', () => {
       ],
       mcp: {
         servers: [],
-        enableToolDisclosure: false,
         builtinCapabilityOptions: {
           subagent_delegation: {
             allowedModelIds: ['openai/gpt-4.1-mini'],
@@ -183,7 +182,10 @@ describe('selectAllowedTools', () => {
     })
   })
 
-  it('uses full schemas and skips loader injection when disclosure is disabled', async () => {
+  it('keeps a tool set the user pinned to always registered natively', async () => {
+    // The escape hatch that replaced the global opt-out: it is per tool set,
+    // and it puts the real schema back in `tools` rather than routing the
+    // call through invoke_tool.
     const availableTools: McpTool[] = [
       {
         name: 'server__tool_a',
@@ -199,13 +201,12 @@ describe('selectAllowedTools', () => {
     const result = await selectAllowedTools({
       availableTools,
       allowedToolNames: ['server__tool_a'],
-      enableToolDisclosure: false,
-      toolPreferences: {
-        server__tool_a: { enabled: true },
-      },
-      toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
+      toolPreferences: { server__tool_a: { enabled: true } },
+      toolServerPreferences: { server: { disclosureMode: 'always' } },
+      apiType: 'anthropic',
     })
 
+    expect(result.hasOnDemandTools).toBe(false)
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
       'server__tool_a',
     ])
@@ -214,6 +215,7 @@ describe('selectAllowedTools', () => {
       properties: { foo: { type: 'string' } },
       required: ['foo'],
     })
+    expect(result.deferredToolCatalog).toBeNull()
   })
 
   it('omits the loader when no surviving tool is on-demand', async () => {

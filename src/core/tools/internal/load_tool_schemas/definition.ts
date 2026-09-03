@@ -64,8 +64,7 @@ export const getLoadToolSchemasChatSummary = ({
  * from `core/mcp/localFileTools.ts` (D6b — see that migration's own note:
  * "进 internal/，不属任何 capability，固定 full_access，不出现在设置页").
  * Used by the runtime to inject the loader on demand (when
- * `enableToolDisclosure=true` AND the filtered tool set contains any
- * `on_demand` tool).
+ * the filtered tool set contains any `on_demand` tool).
  */
 export function getLoadToolSchemasTool(): McpTool {
   return {

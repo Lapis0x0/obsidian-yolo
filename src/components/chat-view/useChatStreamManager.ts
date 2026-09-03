@@ -487,7 +487,6 @@ export function useChatStreamManager({
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
         apiType: manualApiType,
-        enableToolDisclosure: settings.mcp.enableToolDisclosure,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
         settings,
       })
@@ -546,7 +545,6 @@ export function useChatStreamManager({
             includeBuiltinTools: effectiveIncludeBuiltinTools,
             apiType: manualApiType,
             allowedToolNames: effectiveAllowedToolNames,
-            enableToolDisclosure: settings.mcp.enableToolDisclosure,
             toolPreferences: chatModeRuntime.toolPreferences,
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
@@ -776,7 +774,6 @@ export function useChatStreamManager({
           apiType: currentProvider?.apiType ?? null,
           reasoningLevel,
           allowedToolNames: chatModeRuntime.allowedToolNames,
-          enableToolDisclosure: settings.mcp.enableToolDisclosure,
           toolPreferences: chatModeRuntime.toolPreferences,
           builtinCapabilityPreferences:
             chatModeRuntime.builtinCapabilityPreferences,
@@ -1077,7 +1074,6 @@ export function useChatStreamManager({
         includeBuiltinTools: chatModeRuntime.loopConfig.includeBuiltinTools,
         apiType: provider?.apiType ?? null,
         allowedToolNames: chatModeRuntime.allowedToolNames,
-        enableToolDisclosure: settings.mcp.enableToolDisclosure,
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
