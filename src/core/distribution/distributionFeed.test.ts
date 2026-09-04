@@ -88,7 +88,7 @@ describe('signed distribution Feed', () => {
     ).toHaveLength(1)
   })
 
-  it('rejects a changed byte and unknown fields', () => {
+  it('rejects a changed byte', () => {
     const value = fixture()
     const raw = `${JSON.stringify(value)}\n`
     const signature = Buffer.from(
@@ -99,20 +99,45 @@ describe('signed distribution Feed', () => {
         publicKeyBase64,
       }),
     ).toThrow('signature')
+  })
 
-    const withUnknown = { ...value, unknown: true }
-    const unknownRaw = `${JSON.stringify(withUnknown)}\n`
-    const unknownSignature = Buffer.from(
-      nacl.sign.detached(
-        new TextEncoder().encode(unknownRaw),
-        keyPair.secretKey,
-      ),
+  // A client that rejects a Feed carrying a newer field can never be told about
+  // the release that replaces it: update checks return null and there is no
+  // online path back. Unknown fields must therefore be ignored, and a change
+  // older clients must not apply gets a new schemaVersion instead.
+  it('ignores fields a newer publisher added', () => {
+    const value = fixture() as Record<string, unknown> & {
+      core: Record<string, unknown>
+      modules: Record<string, unknown>[]
+    }
+    value.unknownTopLevel = true
+    value.core.unknownCore = { nested: 1 }
+    value.modules[0].unknownModule = ['a']
+    const raw = `${JSON.stringify(value)}\n`
+    const signature = Buffer.from(
+      nacl.sign.detached(new TextEncoder().encode(raw), keyPair.secretKey),
+    ).toString('base64')
+
+    const feed = verifyAndParseDistributionFeed(raw, signature, {
+      publicKeyBase64,
+    })
+    expect(feed.core.version).toBe('1.7.0')
+    expect(feed.modules[0].id).toBe('learning')
+    expect(feed).not.toHaveProperty('unknownTopLevel')
+    expect(feed.core).not.toHaveProperty('unknownCore')
+    expect(feed.modules[0]).not.toHaveProperty('unknownModule')
+  })
+
+  it('still rejects a Feed that is missing a required field', () => {
+    const value = fixture() as Record<string, unknown>
+    delete value.keyId
+    const raw = `${JSON.stringify(value)}\n`
+    const signature = Buffer.from(
+      nacl.sign.detached(new TextEncoder().encode(raw), keyPair.secretKey),
     ).toString('base64')
     expect(() =>
-      verifyAndParseDistributionFeed(unknownRaw, unknownSignature, {
-        publicKeyBase64,
-      }),
-    ).toThrow('fields')
+      verifyAndParseDistributionFeed(raw, signature, { publicKeyBase64 }),
+    ).toThrow('missing field "keyId"')
   })
 
   it('binds every canonical download to the described product version', () => {

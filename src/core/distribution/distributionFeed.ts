@@ -135,7 +135,7 @@ export function projectDistributionFeedCatalog(
 
 function parseFeed(value: unknown): DistributionFeedV1 {
   const feed = record(value, 'Distribution Feed')
-  exactKeys(feed, ['schemaVersion', 'revision', 'keyId', 'core', 'modules'])
+  requireKeys(feed, ['schemaVersion', 'revision', 'keyId', 'core', 'modules'])
   if (
     feed.schemaVersion !== 1 ||
     !Number.isSafeInteger(feed.revision) ||
@@ -161,7 +161,7 @@ function parseFeed(value: unknown): DistributionFeedV1 {
 
 function parseCore(value: unknown): DistributionCore {
   const core = record(value, 'Core distribution')
-  exactKeys(core, [
+  requireKeys(core, [
     'version',
     'minAppVersion',
     'releaseUrl',
@@ -178,7 +178,7 @@ function parseCore(value: unknown): DistributionCore {
     throw new Error('Core distribution is invalid')
   }
   const assets = record(core.assets, 'Core assets')
-  exactKeys(assets, ['mainJs', 'manifestJson', 'stylesCss'])
+  requireKeys(assets, ['mainJs', 'manifestJson', 'stylesCss'])
   return Object.freeze({
     version: core.version,
     minAppVersion: core.minAppVersion,
@@ -206,7 +206,7 @@ function parseCore(value: unknown): DistributionCore {
 
 function parseModule(value: unknown): DistributionModule {
   const module = record(value, 'Module distribution')
-  exactKeys(module, [
+  requireKeys(module, [
     'id',
     'icon',
     'localizations',
@@ -245,7 +245,7 @@ function parseModule(value: unknown): DistributionModule {
   >
   for (const [namespace, schemaValue] of Object.entries(schemas)) {
     const schema = record(schemaValue, 'Module data schema')
-    exactKeys(schema, ['readMin', 'readMax', 'write'])
+    requireKeys(schema, ['readMin', 'readMax', 'write'])
     if (
       !isSchemaVersion(schema.readMin) ||
       !isSchemaVersion(schema.readMax) ||
@@ -295,7 +295,13 @@ function parseAsset(
   expectedTag: string,
 ): DistributionAsset {
   const asset = record(value, 'Distribution asset')
-  exactKeys(asset, ['name', 'mirrorPath', 'canonicalUrl', 'byteSize', 'sha256'])
+  requireKeys(asset, [
+    'name',
+    'mirrorPath',
+    'canonicalUrl',
+    'byteSize',
+    'sha256',
+  ])
   if (
     typeof asset.name !== 'string' ||
     !asset.name ||
@@ -322,7 +328,7 @@ function parseReleaseNoteAsset(
   expectedTag: string,
 ): DistributionReleaseNoteAsset {
   const asset = record(value, 'Release note asset')
-  exactKeys(asset, ['name', 'canonicalUrl', 'byteSize', 'sha256'])
+  requireKeys(asset, ['name', 'canonicalUrl', 'byteSize', 'sha256'])
   if (
     asset.name !== 'release-note.md' ||
     !isCanonicalReleaseDownload(asset.canonicalUrl, asset.name, expectedTag) ||
@@ -344,7 +350,7 @@ function parseReleaseNoteAsset(
 
 function parseNotes(value: unknown): DistributionReleaseNotes {
   const notes = record(value, 'Distribution release notes')
-  exactKeys(notes, ['en', 'zh'])
+  requireKeys(notes, ['en', 'zh'])
   if (
     typeof notes.en !== 'string' ||
     !notes.en ||
@@ -368,7 +374,7 @@ function parseLocalizations(
   >
   for (const [locale, localizationValue] of Object.entries(localizations)) {
     const localization = record(localizationValue, 'Module localization')
-    exactKeys(localization, ['name', 'description'])
+    requireKeys(localization, ['name', 'description'])
     if (
       !/^[a-z]{2}(?:-[A-Z]{2})?$/.test(locale) ||
       typeof localization.name !== 'string' ||
@@ -423,17 +429,26 @@ function record(value: unknown, label: string): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
-function exactKeys(
+/**
+ * Requires every declared field and ignores any other.
+ *
+ * The Feed is Ed25519-signed by the release pipeline, so an unknown field can
+ * only be one this publisher added. Rejecting it would mean every already
+ * shipped client stops parsing the Feed the moment a newer field appears —
+ * update checks would return null with no online path back, since the client
+ * that must be replaced is the one refusing the Feed that describes its
+ * replacement. Forward compatibility therefore has to be the default, and a
+ * change that older clients must *not* apply gets a new `schemaVersion`.
+ */
+function requireKeys(
   value: Record<string, unknown>,
   keys: readonly string[],
 ): void {
-  const actual = Object.keys(value).sort()
-  const expected = [...keys].sort()
-  if (
-    actual.length !== expected.length ||
-    actual.some((key, index) => key !== expected[index])
-  ) {
-    throw new Error('Distribution object fields are invalid')
+  const missing = keys.find(
+    (key) => !Object.prototype.hasOwnProperty.call(value, key),
+  )
+  if (missing !== undefined) {
+    throw new Error(`Distribution object is missing field "${missing}"`)
   }
 }
 
