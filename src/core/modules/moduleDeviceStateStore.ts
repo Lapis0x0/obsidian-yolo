@@ -183,23 +183,30 @@ export class ModuleDeviceStateStore {
     }
   }
 
-  async write(state: ModuleDeviceState): Promise<ModuleDeviceState> {
-    const snapshot = parseState(state)
-    return this.runExclusive(snapshot.moduleId, (transaction) =>
-      transaction.write(snapshot),
+  write(state: ModuleDeviceState): Promise<ModuleDeviceState> {
+    return this.runExclusive(state.moduleId, (transaction) =>
+      transaction.write(state),
     )
   }
 
+  /**
+   * Validates and canonicalizes once, on the way in.
+   *
+   * `ModuleRuntimeStateStore.write` reads the file back and compares it byte
+   * for byte against what it serialized, raising a conflict otherwise, so the
+   * envelope it returns is provably the snapshot built here — re-parsing it
+   * could only reproduce the same object.
+   */
   private async writeUnlocked(
     state: ModuleDeviceState,
     moduleId: string,
   ): Promise<ModuleDeviceState> {
     const snapshot = parseState(state, moduleId)
-    const envelope = await this.store.write(snapshot.moduleId, {
+    await this.store.write(snapshot.moduleId, {
       schemaVersion: SCHEMA_VERSION,
       data: snapshot,
     })
-    return parseState(envelope.data, snapshot.moduleId)
+    return snapshot
   }
 
   runExclusive<T>(
