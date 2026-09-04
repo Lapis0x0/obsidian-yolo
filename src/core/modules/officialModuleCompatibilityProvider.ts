@@ -30,11 +30,7 @@ export function createOfficialModuleCompatibilityProvider(
 ): (
   module: OfficialModuleCatalogCandidate,
 ) => Promise<OfficialModuleCompatibility> {
-  if (
-    !options ||
-    (options.platform !== 'desktop' && options.platform !== 'mobile') ||
-    typeof options.readDeviceState !== 'function'
-  ) {
+  if (options.platform !== 'desktop' && options.platform !== 'mobile') {
     throw new TypeError(
       'Official module compatibility provider options are invalid',
     )

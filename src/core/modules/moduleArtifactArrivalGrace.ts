@@ -22,14 +22,8 @@ export class ModuleArtifactArrivalGrace {
   private readonly quietMs: number
 
   constructor(private readonly options: ModuleArtifactArrivalGraceOptions) {
-    if (
-      !options ||
-      typeof options.adapter?.list !== 'function' ||
-      typeof options.adapter?.stat !== 'function' ||
-      typeof options.pluginDir !== 'string' ||
-      !options.pluginDir.trim()
-    ) {
-      throw new TypeError('Module artifact arrival grace options are invalid')
+    if (!options.pluginDir.trim()) {
+      throw new TypeError('Module artifact arrival grace plugin dir is empty')
     }
     this.pluginDir = normalizePath(options.pluginDir)
     this.graceMs = duration(
@@ -60,13 +54,6 @@ export class ModuleArtifactArrivalGrace {
   ): Promise<boolean> {
     assertModuleId(moduleId, 'Module id')
     assertModulePathSegment(version, 'Module version')
-    if (
-      typeof isReady !== 'function' ||
-      !signal ||
-      typeof signal.addEventListener !== 'function'
-    ) {
-      throw new TypeError('Module artifact arrival wait input is invalid')
-    }
     if (signal.aborted) return Promise.resolve(false)
 
     const root = normalizePath(

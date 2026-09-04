@@ -20,8 +20,8 @@ import {
   selectModuleManifestVariant,
 } from './moduleStore'
 import {
-  parseOfficialModuleCatalog,
   isHostApiCompatible,
+  parseOfficialModuleCatalog,
 } from './officialModuleCatalog'
 
 describe('host API conformance artifact boundary', () => {
@@ -215,7 +215,7 @@ describe('host API conformance artifact boundary', () => {
     )
     expect(catalog.modules[0]?.versions[0]?.version).toBe(learningVersion)
     expect(
-      isHostApiCompatible('1.6.0', catalog.modules[0]!.versions[0]!.hostApi),
+      isHostApiCompatible('1.6.0', catalog.modules[0].versions[0].hostApi),
     ).toBe(true)
   })
 

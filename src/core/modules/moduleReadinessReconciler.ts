@@ -50,25 +50,7 @@ export class ModuleReadinessReconciler {
   private readonly graceControllers = new Map<string, AbortController>()
   private disposed = false
 
-  constructor(private readonly options: ModuleReadinessReconcilerOptions) {
-    if (
-      !options ||
-      typeof options.deviceStateStore?.runExclusive !== 'function' ||
-      typeof options.intentStore?.get !== 'function' ||
-      typeof options.catalogSource?.getResolvedVersion !== 'function' ||
-      typeof options.catalogSource?.getResolvedArtifactDescriptor !==
-        'function' ||
-      !options.artifactStore ||
-      typeof options.artifactStore.removeVersionArtifacts !== 'function' ||
-      typeof options.installer?.install !== 'function' ||
-      typeof options.installer?.repair !== 'function' ||
-      (options.artifactArrivalGrace !== undefined &&
-        typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
-      (options.platform !== 'desktop' && options.platform !== 'mobile')
-    ) {
-      throw new Error('Module readiness reconciler options are invalid')
-    }
-  }
+  constructor(private readonly options: ModuleReadinessReconcilerOptions) {}
 
   ensureModuleReady(
     moduleId: string,

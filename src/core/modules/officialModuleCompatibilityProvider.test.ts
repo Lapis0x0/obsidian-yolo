@@ -63,14 +63,12 @@ describe('createOfficialModuleCompatibilityProvider', () => {
     )
   })
 
-  it.each([
-    null,
-    {},
-    { platform: 'web', readDeviceState: () => null },
-    { platform: 'desktop', readDeviceState: null },
-  ])('rejects invalid options %#', (value) => {
+  it('rejects a platform outside the supported enum', () => {
     expect(() =>
-      createOfficialModuleCompatibilityProvider(value as never),
+      createOfficialModuleCompatibilityProvider({
+        platform: 'web',
+        readDeviceState: () => null,
+      } as never),
     ).toThrow('Official module compatibility provider options are invalid')
   })
 })

@@ -99,36 +99,6 @@ export class ModuleActivationCoordinator {
   private disposed = false
 
   constructor(private readonly options: ModuleActivationCoordinatorOptions) {
-    if (
-      !options ||
-      typeof options.deviceStateStore?.list !== 'function' ||
-      typeof options.deviceStateStore?.runExclusive !== 'function' ||
-      (options.intentStateSource !== undefined &&
-        typeof options.intentStateSource.load !== 'function') ||
-      !options.artifactStore ||
-      (options.platform !== 'desktop' && options.platform !== 'mobile') ||
-      typeof options.hostApi !== 'string' ||
-      typeof options.loader?.load !== 'function' ||
-      typeof options.runtime?.activate !== 'function' ||
-      (options.activationTimeoutMs !== undefined &&
-        (!Number.isSafeInteger(options.activationTimeoutMs) ||
-          options.activationTimeoutMs <= 0)) ||
-      (options.startupTimeoutMs !== undefined &&
-        (!Number.isSafeInteger(options.startupTimeoutMs) ||
-          options.startupTimeoutMs <= 0)) ||
-      (options.verifiedArtifactRegistry !== undefined &&
-        (typeof options.verifiedArtifactRegistry.publish !== 'function' ||
-          typeof options.verifiedArtifactRegistry.clear !== 'function' ||
-          typeof options.verifiedArtifactRegistry.clearAll !== 'function')) ||
-      (options.materializeSkills !== undefined &&
-        typeof options.materializeSkills !== 'function') ||
-      (options.reportActivationError !== undefined &&
-        typeof options.reportActivationError !== 'function') ||
-      (options.reportSkillProjectionError !== undefined &&
-        typeof options.reportSkillProjectionError !== 'function')
-    ) {
-      throw new Error('Module activation coordinator options are invalid')
-    }
     this.activationTimeoutMs =
       options.activationTimeoutMs ?? DEFAULT_MODULE_ACTIVATION_TIMEOUT_MS
     this.startupTimeoutMs =

@@ -247,17 +247,4 @@ describe('ModuleRuntimeReservation', () => {
     await expect(queued).rejects.toThrow('is disposed')
     expect(queuedOperation).not.toHaveBeenCalled()
   })
-
-  it('validates construction and callback inputs', async () => {
-    expect(
-      () =>
-        new ModuleRuntimeReservation({
-          runtime: {} as never,
-        }),
-    ).toThrow('options are invalid')
-    const value = fixture()
-    await expect(
-      value.reservation.runWithModuleQuiesced('learning', undefined as never),
-    ).rejects.toThrow('must be a function')
-  })
 })

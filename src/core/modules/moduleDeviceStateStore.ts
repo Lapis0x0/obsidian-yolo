@@ -207,9 +207,6 @@ export class ModuleDeviceStateStore {
     operation: (transaction: ModuleDeviceStateTransaction) => Promise<T>,
   ): Promise<T> {
     assertModuleId(moduleId, 'Module id')
-    if (typeof operation !== 'function') {
-      throw new TypeError('Module device state operation must be a function')
-    }
     let queues = transactionQueues.get(this.backend.adapter)
     if (!queues) {
       queues = new Map()

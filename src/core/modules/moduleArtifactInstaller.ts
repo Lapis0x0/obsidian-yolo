@@ -50,18 +50,13 @@ let transactionSequence = 0
 
 /** Downloads and promotes an immutable module version without activating it. */
 export class ModuleArtifactInstaller {
-  constructor(private readonly options: ModuleArtifactInstallerOptions) {
-    if (!options || typeof options.download !== 'function') {
-      throw new Error('Module artifact installer options are invalid')
-    }
-  }
+  constructor(private readonly options: ModuleArtifactInstallerOptions) {}
 
   install(
     descriptor: ModuleArtifactDescriptor,
     signal?: AbortSignal,
     onProgress?: ModuleArtifactProgressListener,
   ): Promise<ModuleArtifactManifest> {
-    assertAbortSignal(signal)
     throwIfAborted(signal)
     const subtleCrypto = this.options.subtleCrypto ?? globalThis.crypto?.subtle
     if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
@@ -77,7 +72,6 @@ export class ModuleArtifactInstaller {
     descriptor: ModuleArtifactDescriptor,
     signal?: AbortSignal,
   ): Promise<ModuleArtifactManifest> {
-    assertAbortSignal(signal)
     throwIfAborted(signal)
     const subtleCrypto = this.options.subtleCrypto ?? globalThis.crypto?.subtle
     if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
@@ -451,18 +445,6 @@ function reportProgress(
     listener?.(Math.max(0, Math.min(100, progress)))
   } catch {
     // Presentation progress must not affect artifact integrity.
-  }
-}
-
-function assertAbortSignal(signal: AbortSignal | undefined): void {
-  if (
-    signal !== undefined &&
-    (!signal ||
-      typeof signal !== 'object' ||
-      typeof signal.aborted !== 'boolean' ||
-      typeof signal.addEventListener !== 'function')
-  ) {
-    throw new TypeError('Module artifact install signal is invalid')
   }
 }
 

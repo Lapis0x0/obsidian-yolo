@@ -26,40 +26,16 @@ const MAX_TIMER_DELAY_MS = 2_147_483_647
 export function createOfficialModuleArtifactDownloader(
   options: OfficialModuleArtifactDownloaderOptions = {},
 ): ModuleArtifactInstallerOptions['download'] {
-  if (!isPlainRecord(options)) {
-    throw new TypeError(
-      'Official module artifact downloader options are invalid',
-    )
-  }
-  const optionKeys = Reflect.ownKeys(options)
-  if (
-    optionKeys.some((key) => key !== 'requestUrl' && key !== 'timeoutMs') ||
-    optionKeys.some((key) => {
-      const descriptor = Object.getOwnPropertyDescriptor(options, key)
-      return !descriptor || !('value' in descriptor) || !descriptor.enumerable
-    })
-  ) {
-    throw new TypeError(
-      'Official module artifact downloader options are invalid',
-    )
-  }
-  const request = Object.prototype.hasOwnProperty.call(options, 'requestUrl')
-    ? options.requestUrl
-    : requestUrl
-  const timeoutMs = Object.prototype.hasOwnProperty.call(options, 'timeoutMs')
-    ? options.timeoutMs
-    : DEFAULT_TIMEOUT_MS
-  if (typeof request !== 'function') {
-    throw new TypeError('Official module artifact request must be a function')
-  }
+  const request = options.requestUrl ?? requestUrl
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
   if (
     !Number.isSafeInteger(timeoutMs) ||
-    (timeoutMs as number) <= 0 ||
-    (timeoutMs as number) > MAX_TIMER_DELAY_MS
+    timeoutMs <= 0 ||
+    timeoutMs > MAX_TIMER_DELAY_MS
   ) {
     throw new TypeError('Official module artifact timeout is invalid')
   }
-  const validatedTimeoutMs = timeoutMs as number
+  const validatedTimeoutMs = timeoutMs
   return async (downloadRequest) => {
     assertDownloadRequest(downloadRequest)
     const transport = Promise.resolve().then(() =>

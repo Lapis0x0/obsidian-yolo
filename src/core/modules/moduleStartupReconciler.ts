@@ -52,29 +52,7 @@ export class ModuleStartupReconciler {
   private startupComplete = false
   private disposed = false
 
-  constructor(private readonly options: ModuleStartupReconcilerOptions) {
-    if (
-      !options ||
-      typeof options.source?.listKnownModuleIds !== 'function' ||
-      typeof options.source?.subscribe !== 'function' ||
-      typeof options.intentStore?.get !== 'function' ||
-      typeof options.readinessReconciler?.ensureModuleReady !== 'function' ||
-      typeof options.activationCoordinator?.activatePersistedModules !==
-        'function' ||
-      typeof options.activationCoordinator?.activateModule !== 'function' ||
-      typeof options.runtime?.isActive !== 'function' ||
-      typeof options.runtime?.deactivate !== 'function' ||
-      typeof options.manager?.refresh !== 'function' ||
-      (options.scheduleSafeUninstall !== undefined &&
-        typeof options.scheduleSafeUninstall !== 'function') ||
-      (options.repairOrphanedInstall !== undefined &&
-        typeof options.repairOrphanedInstall !== 'function') ||
-      (options.reportError !== undefined &&
-        typeof options.reportError !== 'function')
-    ) {
-      throw new TypeError('Module startup reconciler options are invalid')
-    }
-  }
+  constructor(private readonly options: ModuleStartupReconcilerOptions) {}
 
   start(): Promise<void> {
     if (this.disposed) return Promise.reject(disposedError())
@@ -138,9 +116,6 @@ export class ModuleStartupReconciler {
   private async runStartup(): Promise<void> {
     const listed = await this.options.source.listKnownModuleIds()
     if (this.disposed) throw disposedError()
-    if (!Array.isArray(listed)) {
-      throw new TypeError('Module startup source ids must be an array')
-    }
     for (const moduleId of listed) {
       assertModuleId(moduleId, 'Module id')
       this.pendingModuleIds.add(moduleId)

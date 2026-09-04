@@ -40,16 +40,7 @@ export class ModuleRuntimeReservation implements ModuleRuntimeQuiescence {
   private readonly pendingActivations = new Map<string, number>()
   private disposed = false
 
-  constructor(private readonly options: ModuleRuntimeReservationOptions) {
-    if (
-      !options ||
-      typeof options.runtime?.isActive !== 'function' ||
-      typeof options.runtime?.activate !== 'function' ||
-      typeof options.runtime?.deactivate !== 'function'
-    ) {
-      throw new Error('Module runtime reservation options are invalid')
-    }
-  }
+  constructor(private readonly options: ModuleRuntimeReservationOptions) {}
 
   isActive(moduleId: string): boolean {
     return !this.disposed && this.options.runtime.isActive(moduleId)
@@ -89,12 +80,6 @@ export class ModuleRuntimeReservation implements ModuleRuntimeQuiescence {
     operation: () => Promise<T>,
   ): Promise<T> {
     if (this.disposed) return Promise.reject(disposedError())
-    if (typeof operation !== 'function') {
-      return Promise.reject(
-        new TypeError('Module quiesced operation must be a function'),
-      )
-    }
-
     try {
       this.assertQuiescent(moduleId)
     } catch (error) {

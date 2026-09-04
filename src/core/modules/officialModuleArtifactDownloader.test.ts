@@ -5,10 +5,7 @@ import {
   MAX_MODULE_ARTIFACT_FILE_BYTES,
   MAX_MODULE_MANIFEST_BYTES,
 } from './moduleStore'
-import {
-  type OfficialModuleArtifactRequest,
-  createOfficialModuleArtifactDownloader,
-} from './officialModuleArtifactDownloader'
+import { createOfficialModuleArtifactDownloader } from './officialModuleArtifactDownloader'
 
 const RELEASE_ROOT =
   'https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-learning-v1.0.0'
@@ -356,14 +353,6 @@ describe('createOfficialModuleArtifactDownloader', () => {
     resolveRequest(response(new Uint8Array([1])))
     await pending
     await Promise.resolve()
-  })
-
-  it('rejects a non-function injected request', () => {
-    expect(() =>
-      createOfficialModuleArtifactDownloader({
-        requestUrl: null as unknown as OfficialModuleArtifactRequest,
-      }),
-    ).toThrow('must be a function')
   })
 
   it.each([0, -1, 1.5, Number.MAX_SAFE_INTEGER])(

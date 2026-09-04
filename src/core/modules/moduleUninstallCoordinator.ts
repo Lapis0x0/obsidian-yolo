@@ -41,21 +41,7 @@ export class ModuleUninstallRefreshError extends Error {
 
 /** Removes only local program artifacts and their device-local installation state. */
 export class ModuleUninstallCoordinator {
-  constructor(private readonly options: ModuleUninstallCoordinatorOptions) {
-    if (
-      !options ||
-      typeof options.artifactStore?.removeVersionArtifacts !== 'function' ||
-      typeof options.deviceStateStore?.runExclusive !== 'function' ||
-      typeof options.intentStore?.get !== 'function' ||
-      typeof options.manager?.refresh !== 'function' ||
-      typeof options.runtime?.runWithModuleQuiesced !== 'function' ||
-      (options.platform !== 'desktop' && options.platform !== 'mobile') ||
-      (options.removeSkillProjection !== undefined &&
-        typeof options.removeSkillProjection !== 'function')
-    ) {
-      throw new Error('Module uninstall coordinator options are invalid')
-    }
-  }
+  constructor(private readonly options: ModuleUninstallCoordinatorOptions) {}
 
   async uninstall(moduleId: string): Promise<void> {
     assertModuleId(moduleId, 'Module id')

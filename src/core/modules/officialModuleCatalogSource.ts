@@ -1,6 +1,5 @@
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import {
-  MODULE_CATALOG_LOCALES,
   type ModuleCatalogLocale,
   type ModuleCatalogLocaleSource,
   readModuleCatalogLocale,
@@ -44,19 +43,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
     null
   private catalog: OfficialModuleCatalogV1 | null = null
 
-  constructor(private readonly options: OfficialModuleCatalogSourceOptions) {
-    if (
-      !options ||
-      !options.client ||
-      typeof options.client.load !== 'function' ||
-      typeof options.client.loadFresh !== 'function' ||
-      typeof options.getCompatibility !== 'function' ||
-      (typeof options.locale !== 'function' &&
-        !MODULE_CATALOG_LOCALES.includes(options.locale))
-    ) {
-      throw new Error('Official module catalog source options are invalid')
-    }
-  }
+  constructor(private readonly options: OfficialModuleCatalogSourceOptions) {}
 
   load(): Promise<ReadonlyArray<ModuleCatalogEntry>> {
     if (this.catalog) return this.resolve(this.catalog)

@@ -717,53 +717,21 @@ export function createProductionModuleServices(
   })
 }
 
+/**
+ * The composition root's own invariants — the two that TypeScript cannot state.
+ *
+ * Everything this function used to check was the shape of internal host
+ * objects wired up a few lines below, which the type system already covers.
+ * What survives is the platform enum (it names on-disk state and artifact
+ * variants, so a wrong value is silent corruption rather than a type error)
+ * and the requirement that a catalog can be resolved at all.
+ */
 function assertOptions(options: ProductionModuleServicesOptions): void {
-  if (
-    !options ||
-    !options.store ||
-    !options.deviceStateStore ||
-    (!options.distributionFeedClient && !options.catalogSource) ||
-    (options.platform !== 'desktop' && options.platform !== 'mobile') ||
-    typeof options.getCompatibility !== 'function' ||
-    typeof options.isActive !== 'function' ||
-    typeof options.runtimeReservation?.isActive !== 'function' ||
-    typeof options.runtimeReservation?.activate !== 'function' ||
-    typeof options.runtimeReservation?.deactivate !== 'function' ||
-    typeof options.runtimeReservation?.runWithModuleQuiesced !== 'function' ||
-    typeof options.intentStore?.get !== 'function' ||
-    typeof options.intentStore?.set !== 'function' ||
-    typeof options.intentStore?.listModuleIds !== 'function' ||
-    typeof options.intentStore?.subscribeAll !== 'function' ||
-    (options.activationLoader !== undefined &&
-      typeof options.activationLoader.load !== 'function') ||
-    (options.skillProjection !== undefined &&
-      (typeof options.skillProjection.materialize !== 'function' ||
-        typeof options.skillProjection.remove !== 'function')) ||
-    (options.verifiedArtifactRegistry !== undefined &&
-      !(
-        options.verifiedArtifactRegistry instanceof
-        VerifiedModuleArtifactRegistry
-      )) ||
-    (options.artifactRequest !== undefined &&
-      typeof options.artifactRequest !== 'function') ||
-    (options.resolveDownloadSources !== undefined &&
-      typeof options.resolveDownloadSources !== 'function') ||
-    (options.artifactArrivalGrace !== undefined &&
-      typeof options.artifactArrivalGrace.waitForArtifact !== 'function') ||
-    (options.subscribeLocale !== undefined &&
-      typeof options.subscribeLocale !== 'function') ||
-    (options.reportCleanupError !== undefined &&
-      typeof options.reportCleanupError !== 'function') ||
-    (options.reportRefreshError !== undefined &&
-      typeof options.reportRefreshError !== 'function') ||
-    (options.reportActivationError !== undefined &&
-      typeof options.reportActivationError !== 'function') ||
-    (options.reportSkillProjectionError !== undefined &&
-      typeof options.reportSkillProjectionError !== 'function') ||
-    (options.reportStartupError !== undefined &&
-      typeof options.reportStartupError !== 'function')
-  ) {
-    throw new TypeError('Production module services options are invalid')
+  if (options.platform !== 'desktop' && options.platform !== 'mobile') {
+    throw new TypeError('Production module services platform is invalid')
+  }
+  if (!options.distributionFeedClient && !options.catalogSource) {
+    throw new TypeError('Production module services need a catalog source')
   }
 }
 
