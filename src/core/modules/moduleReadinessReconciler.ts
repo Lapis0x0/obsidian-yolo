@@ -1,3 +1,5 @@
+import { withAbort } from '../../utils/async/settle'
+
 import type { ModuleArtifactArrivalGrace } from './moduleArtifactArrivalGrace'
 import type { ModuleArtifactInstaller } from './moduleArtifactInstaller'
 import {
@@ -19,6 +21,7 @@ import type { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
 const MODULE_READINESS_SUPERSEDED = Object.freeze({
   kind: 'module-readiness-superseded',
 })
+const READINESS_DISPOSED = 'Module readiness reconciler is disposed'
 
 export type ModuleReadinessResult = Readonly<{
   moduleId: string
@@ -251,6 +254,7 @@ export class ModuleReadinessReconciler {
           guardArtifactCrypto(subtleCrypto),
         ),
         signal,
+        READINESS_DISPOSED,
       )
       return false
     } catch (error) {
@@ -281,6 +285,7 @@ export class ModuleReadinessReconciler {
           guardArtifactCrypto(subtleCrypto),
         ),
         signal,
+        READINESS_DISPOSED,
       )
       return true
     } catch {
@@ -413,30 +418,8 @@ function readinessResult(value: ModuleReadinessResult): ModuleReadinessResult {
   })
 }
 
-function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  if (signal.aborted) return Promise.reject(disposedError())
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      cleanup()
-      reject(disposedError())
-    }
-    const cleanup = () => signal.removeEventListener('abort', onAbort)
-    signal.addEventListener('abort', onAbort, { once: true })
-    void operation.then(
-      (value) => {
-        cleanup()
-        resolve(value)
-      },
-      (error) => {
-        cleanup()
-        reject(error instanceof Error ? error : new Error(String(error)))
-      },
-    )
-  })
-}
-
 function disposedError(): Error {
-  return new Error('Module readiness reconciler is disposed')
+  return new Error(READINESS_DISPOSED)
 }
 
 function errorMessage(error: unknown): string {

@@ -1,3 +1,5 @@
+import { withAbort } from '../../utils/async/settle'
+
 import {
   type ModuleArtifactDescriptor,
   type ModuleArtifactReadStore,
@@ -86,6 +88,7 @@ export type ModuleActivationResult = Readonly<{
   error?: string
 }>
 
+const ACTIVATION_ABORTED = 'Module activation was aborted'
 const EMPTY_RESULTS = Object.freeze([]) as readonly ModuleActivationResult[]
 export const DEFAULT_MODULE_ACTIVATION_TIMEOUT_MS = 30_000
 
@@ -160,6 +163,7 @@ export class ModuleActivationCoordinator {
       const states = await withAbort(
         this.options.deviceStateStore.list(),
         controller.signal,
+        ACTIVATION_ABORTED,
       )
       if (states.length === 0) return EMPTY_RESULTS
       const results = await withAbort(
@@ -171,6 +175,7 @@ export class ModuleActivationCoordinator {
             ),
         ),
         controller.signal,
+        ACTIVATION_ABORTED,
       )
       return Object.freeze(results)
     } catch (error) {
@@ -194,6 +199,7 @@ export class ModuleActivationCoordinator {
       const intents = await withAbort(
         this.options.intentStateSource?.load([moduleId]) ?? Promise.resolve([]),
         signal,
+        ACTIVATION_ABORTED,
       )
       const matches = intents.filter((intent) => intent.id === moduleId)
       if (matches.length !== 1 || matches[0]?.state !== 'enabled') {
@@ -216,7 +222,11 @@ export class ModuleActivationCoordinator {
     transaction: ModuleDeviceStateTransaction,
     signal: AbortSignal,
   ): Promise<ModuleActivationResult> {
-    const state = await withAbort(transaction.read(), signal)
+    const state = await withAbort(
+      transaction.read(),
+      signal,
+      ACTIVATION_ABORTED,
+    )
     if (!state) return result({ moduleId, status: 'skipped' })
     if (state.moduleId !== moduleId) {
       throw new Error(`Module "${moduleId}" returned mismatched device state`)
@@ -268,6 +278,7 @@ export class ModuleActivationCoordinator {
         subtleCrypto,
       ),
       signal,
+      ACTIVATION_ABORTED,
     )
     await this.activateVerifiedArtifact(artifact, descriptor, signal)
   }
@@ -341,7 +352,9 @@ export class ModuleActivationCoordinator {
         // settles would otherwise outlive the abort and hold the whole
         // startup open. The signal it also receives lets it stop between
         // steps; this bounds the wait even when it cannot.
-        if (projection) await withAbort(projection, controller.signal)
+        if (projection) {
+          await withAbort(projection, controller.signal, ACTIVATION_ABORTED)
+        }
       } catch (error) {
         // An aborted projection (activation timeout, plugin unload) is not a
         // defect of the module and there is no one to act on it; the next
@@ -408,38 +421,6 @@ function snapshotDescriptor(
     ),
     manifest: Object.freeze({ ...descriptor.manifest }),
   })
-}
-
-function withAbort<T>(operation: Promise<T>, signal: AbortSignal): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    const onAbort = () => {
-      cleanup()
-      reject(abortedError())
-    }
-    const cleanup = () => signal.removeEventListener('abort', onAbort)
-    // Attached before the aborted check so that an operation abandoned by the
-    // race is still observed: losing it later is expected, an unhandled
-    // rejection is not.
-    void operation.then(
-      (value) => {
-        cleanup()
-        resolve(value)
-      },
-      (error) => {
-        cleanup()
-        reject(error instanceof Error ? error : new Error(String(error)))
-      },
-    )
-    if (signal.aborted) {
-      reject(abortedError())
-      return
-    }
-    signal.addEventListener('abort', onAbort, { once: true })
-  })
-}
-
-function abortedError(): Error {
-  return new Error('Module activation was aborted')
 }
 
 function disposedError(): Error {

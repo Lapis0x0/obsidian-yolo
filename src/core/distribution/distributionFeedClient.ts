@@ -4,6 +4,8 @@ import {
   requestUrl,
 } from 'obsidian'
 
+import { withTimeout } from '../../utils/async/settle'
+
 import {
   DISTRIBUTION_FEED_MAX_BYTES,
   type DistributionFeedV1,
@@ -156,10 +158,12 @@ export class DistributionFeedClient {
       withTimeout(
         this.request({ url: feedUrl, method: 'GET', throw: false }),
         this.options.timeoutMs,
+        'Distribution Feed request timed out',
       ),
       withTimeout(
         this.request({ url: signatureUrl, method: 'GET', throw: false }),
         this.options.timeoutMs,
+        'Distribution Feed request timed out',
       ),
     ])
     if (!isSuccessful(feedResponse) || !isSuccessful(signatureResponse)) {
@@ -263,31 +267,6 @@ export class DistributionFeedClient {
     })
     this.writeQueue = write.catch(() => undefined)
   }
-}
-
-function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const timer = globalThis.setTimeout(() => {
-      if (settled) return
-      settled = true
-      reject(new Error('Distribution Feed request timed out'))
-    }, timeoutMs)
-    operation.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        globalThis.clearTimeout(timer)
-        resolve(value)
-      },
-      (error: unknown) => {
-        if (settled) return
-        settled = true
-        globalThis.clearTimeout(timer)
-        reject(error instanceof Error ? error : new Error(String(error)))
-      },
-    )
-  })
 }
 
 function isSuccessful(response: RequestUrlResponse): boolean {

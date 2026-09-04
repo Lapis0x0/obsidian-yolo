@@ -1,3 +1,4 @@
+import { runSerialByKey } from '../../utils/async/serialQueue'
 import { assertPortableVaultPathSegment } from '../paths/portableVaultPath'
 
 import { assertModuleId } from './moduleStore'
@@ -43,7 +44,6 @@ export type ModuleCreateIfAbsentResult = 'created' | 'already-present'
 /** A migration must synchronously return plain JSON data. */
 export type ModuleDataMigration = (data: unknown) => unknown
 
-const queues = new WeakMap<object, Map<string, Promise<void>>>()
 const backendKinds = new WeakMap<object, Map<string, ModuleStorageKind>>()
 const activeMigrations = new WeakMap<object, Set<string>>()
 
@@ -278,24 +278,11 @@ export class ModuleNamespacedDataStore<K extends ModuleStorageKind> {
   }
 
   private enqueue<T>(key: string, operation: () => Promise<T>): Promise<T> {
-    let adapterQueues = queues.get(this.backend.adapter)
-    if (!adapterQueues) {
-      adapterQueues = new Map()
-      queues.set(this.backend.adapter, adapterQueues)
-    }
-    const queueKey = this.identityKey(key)
-    const previous = adapterQueues.get(queueKey) ?? Promise.resolve()
-    const result = previous.catch(() => undefined).then(operation)
-    const settled = result.then(
-      () => undefined,
-      () => undefined,
+    return runSerialByKey(
+      this.backend.adapter,
+      this.identityKey(key),
+      operation,
     )
-    adapterQueues.set(queueKey, settled)
-    void settled.finally(() => {
-      if (adapterQueues?.get(queueKey) === settled)
-        adapterQueues.delete(queueKey)
-    })
-    return result
   }
 
   private assertNotMigrating(target: string): void {

@@ -4,6 +4,8 @@ import {
   requestUrl,
 } from 'obsidian'
 
+import { withTimeout } from '../../utils/async/settle'
+
 import type { ModuleArtifactInstallerOptions } from './moduleArtifactInstaller'
 import {
   MAX_MODULE_ARTIFACT_FILE_BYTES,
@@ -48,7 +50,9 @@ export function createOfficialModuleArtifactDownloader(
     const response = await withTimeout(
       transport,
       validatedTimeoutMs,
+      `Official module artifact request timed out after ${validatedTimeoutMs} ms`,
       downloadRequest.signal,
+      'Official module artifact request aborted',
     )
     if (
       !response ||
@@ -112,52 +116,6 @@ function maximumBytesFor(kind: 'manifest' | 'artifact'): number {
   return kind === 'manifest'
     ? MAX_MODULE_MANIFEST_BYTES
     : MAX_MODULE_ARTIFACT_FILE_BYTES
-}
-
-function withTimeout<T>(
-  operation: Promise<T>,
-  timeoutMs: number,
-  signal?: AbortSignal,
-): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const finish = (settle: () => void): void => {
-      if (settled) return
-      settled = true
-      clearTimeout(timer)
-      signal?.removeEventListener('abort', abort)
-      settle()
-    }
-    const abort = (): void => {
-      finish(() =>
-        reject(new Error('Official module artifact request aborted')),
-      )
-    }
-    const timer = setTimeout(() => {
-      finish(() =>
-        reject(
-          new Error(
-            `Official module artifact request timed out after ${timeoutMs} ms`,
-          ),
-        ),
-      )
-    }, timeoutMs)
-    if (signal?.aborted) {
-      abort()
-      return
-    }
-    signal?.addEventListener('abort', abort, { once: true })
-    operation.then(
-      (value) => {
-        finish(() => resolve(value))
-      },
-      (error: unknown) => {
-        finish(() =>
-          reject(error instanceof Error ? error : new Error(String(error))),
-        )
-      },
-    )
-  })
 }
 
 function isAbortSignal(value: unknown): value is AbortSignal | undefined {

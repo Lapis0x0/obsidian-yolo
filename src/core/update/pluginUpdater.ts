@@ -9,6 +9,8 @@ import {
 } from 'obsidian'
 
 import type YoloPlugin from '../../main'
+import { withTimeout } from '../../utils/async/settle'
+import { sha256Hex } from '../../utils/crypto/sha256'
 
 import {
   RELEASE_FILE_NAMES,
@@ -288,6 +290,7 @@ async function downloadAsset(
       const response = await withTimeout(
         requestUrl({ url, method: 'GET', throw: false }),
         timeoutMs,
+        'Update download request timed out',
       )
       if (response.status < 200 || response.status >= 300) {
         throw new Error(`Download failed (${response.status})`)
@@ -296,7 +299,10 @@ async function downloadAsset(
       if (asset.size > 0 && bytes.byteLength !== asset.size) {
         throw new Error('Download byte size does not match the signed Feed')
       }
-      if (asset.sha256 && (await sha256(bytes)) !== asset.sha256) {
+      if (
+        asset.sha256 &&
+        (await sha256Hex(bytes, globalThis.crypto.subtle)) !== asset.sha256
+      ) {
         throw new Error('Download SHA-256 does not match the signed Feed')
       }
       return bytes.slice().buffer
@@ -305,38 +311,6 @@ async function downloadAsset(
     }
   }
   throw lastError instanceof Error ? lastError : new Error('Download failed')
-}
-
-function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
-  return new Promise<T>((resolve, reject) => {
-    let settled = false
-    const timer = globalThis.setTimeout(() => {
-      if (settled) return
-      settled = true
-      reject(new Error('Update download request timed out'))
-    }, timeoutMs)
-    operation.then(
-      (value) => {
-        if (settled) return
-        settled = true
-        globalThis.clearTimeout(timer)
-        resolve(value)
-      },
-      (error: unknown) => {
-        if (settled) return
-        settled = true
-        globalThis.clearTimeout(timer)
-        reject(error instanceof Error ? error : new Error(String(error)))
-      },
-    )
-  })
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const digest = await globalThis.crypto.subtle.digest('SHA-256', bytes)
-  return [...new Uint8Array(digest)]
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')
 }
 
 function decodeUtf8(bytes: ArrayBuffer): string {

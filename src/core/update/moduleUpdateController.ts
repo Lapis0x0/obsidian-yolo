@@ -1,6 +1,7 @@
 import type { RequestUrlParam, RequestUrlResponse } from 'obsidian'
 import { requestUrl } from 'obsidian'
 
+import { sha256Hex } from '../../utils/crypto/sha256'
 import type { ConfirmedModuleCandidate } from '../modules/moduleInstallationCoordinator'
 import type { ModuleService } from '../modules/moduleService'
 import type { ModuleRecord } from '../modules/types'
@@ -258,11 +259,9 @@ export async function fetchModuleReleaseNotes({
   if (bytes.byteLength !== descriptor.byteSize) {
     throw new Error('Module release note byte size mismatch')
   }
-  const digest = await subtleCrypto.digest('SHA-256', bytes)
-  const hex = [...new Uint8Array(digest)]
-    .map((value) => value.toString(16).padStart(2, '0'))
-    .join('')
-  if (hex !== descriptor.sha256.toLowerCase()) {
+  if (
+    (await sha256Hex(bytes, subtleCrypto)) !== descriptor.sha256.toLowerCase()
+  ) {
     throw new Error('Module release note SHA-256 mismatch')
   }
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim()

@@ -1,5 +1,7 @@
 import { type DataAdapter, normalizePath } from 'obsidian'
 
+import { runSerialByKey } from '../../utils/async/serialQueue'
+
 import {
   type ModuleArtifactDescriptor,
   collectInstallableModuleFiles,
@@ -45,7 +47,6 @@ export type ModuleArtifactInstallerOptions = {
 
 export type ModuleArtifactProgressListener = (progress: number) => void
 
-const adapterQueues = new WeakMap<object, Map<string, Promise<void>>>()
 let transactionSequence = 0
 
 /** Downloads and promotes an immutable module version without activating it. */
@@ -61,7 +62,7 @@ export class ModuleArtifactInstaller {
     const subtleCrypto = this.options.subtleCrypto ?? globalThis.crypto?.subtle
     if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
     const snapshot = snapshotDescriptor(descriptor)
-    return enqueue(
+    return runSerialByKey(
       this.options.adapter,
       moduleLockKey(this.options.store.pluginDir, snapshot.id),
       () => this.installUnlocked(snapshot, subtleCrypto, signal, onProgress),
@@ -76,7 +77,7 @@ export class ModuleArtifactInstaller {
     const subtleCrypto = this.options.subtleCrypto ?? globalThis.crypto?.subtle
     if (!subtleCrypto) throw new Error('Web Crypto SHA-256 is unavailable')
     const snapshot = snapshotDescriptor(descriptor)
-    return enqueue(
+    return runSerialByKey(
       this.options.adapter,
       moduleLockKey(this.options.store.pluginDir, snapshot.id),
       () => this.repairUnlocked(snapshot, subtleCrypto, signal),
@@ -692,27 +693,4 @@ function downloadSourceName(url: string): string {
   if (url.startsWith('https://updates.yoloapp.dev/')) return 'Cloudflare Pages'
   if (url.startsWith('https://github.com/')) return 'GitHub'
   return 'official source'
-}
-
-function enqueue<T>(
-  adapter: object,
-  key: string,
-  operation: () => Promise<T>,
-): Promise<T> {
-  let queues = adapterQueues.get(adapter)
-  if (!queues) {
-    queues = new Map()
-    adapterQueues.set(adapter, queues)
-  }
-  const previous = queues.get(key) ?? Promise.resolve()
-  const result = previous.then(operation)
-  const settled = result.then(
-    () => undefined,
-    () => undefined,
-  )
-  queues.set(key, settled)
-  void settled.finally(() => {
-    if (queues?.get(key) === settled) queues.delete(key)
-  })
-  return result
 }
