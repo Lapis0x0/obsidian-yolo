@@ -12,12 +12,12 @@ import {
   type ModuleFailure,
   describeModuleFailure,
 } from '../../../core/modules/moduleFailure'
-import { compareModuleVersions } from '../../../core/modules/moduleManager'
 import type {
   ModuleOperationResult,
   ModuleService,
 } from '../../../core/modules/moduleService'
 import type { RegisteredModuleSettingsContributionV1 } from '../../../core/modules/moduleSettingsContributions'
+import { compareModuleVersions } from '../../../core/modules/officialModuleCatalog'
 import type {
   RuntimeComponentRecord,
   RuntimeComponentService,

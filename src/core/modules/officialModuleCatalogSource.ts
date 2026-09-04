@@ -11,7 +11,7 @@ import {
   type OfficialModuleCatalogV1,
   type OfficialModuleCatalogVersion,
   type OfficialModuleCompatibility,
-  compareOfficialModuleVersions,
+  compareModuleVersions,
   getOfficialModuleVersionCompatibilityIssues,
 } from './officialModuleCatalog'
 import type { ModuleCatalogEntry, ModuleCatalogSource } from './types'
@@ -175,10 +175,7 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
 
       const newerThanActive =
         compatibility.activeVersion === undefined ||
-        compareOfficialModuleVersions(
-          latest.version,
-          compatibility.activeVersion,
-        ) > 0
+        compareModuleVersions(latest.version, compatibility.activeVersion) > 0
       if (compatibilityIssues.length === 0 && newerThanActive) {
         resolvedVersions[module.id] = latest
         entries.push(catalogEntry(module, latest.version, locale))

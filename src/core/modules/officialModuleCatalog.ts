@@ -78,14 +78,11 @@ export function getOfficialModuleVersionCompatibilityIssues(
   ])
 }
 
-export function compareOfficialModuleVersions(
-  left: string,
-  right: string,
-): number {
+export function compareModuleVersions(left: string, right: string): number {
   const leftVersion = parseSemver(left)
   const rightVersion = parseSemver(right)
   if (!leftVersion || !rightVersion) {
-    throw new Error('Official module version is invalid')
+    throw new Error('Module version is invalid')
   }
   return compareSemver(leftVersion, rightVersion)
 }

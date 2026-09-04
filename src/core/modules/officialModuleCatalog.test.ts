@@ -1,7 +1,7 @@
 import {
   type OfficialModuleCatalogVersion,
   type OfficialModulePlatform,
-  compareOfficialModuleVersions,
+  compareModuleVersions,
   getOfficialModuleVersionCompatibilityIssues,
   isHostApiCompatible,
   isModuleHostApiRange,
@@ -111,12 +111,12 @@ describe('module Host API ranges', () => {
 describe('official module version ordering', () => {
   it('orders huge SemVer components without losing precision', () => {
     expect(
-      compareOfficialModuleVersions(
+      compareModuleVersions(
         '9007199254740993.0.0',
         '9007199254740992.999999999999999999999.0',
       ),
     ).toBeGreaterThan(0)
-    expect(compareOfficialModuleVersions('1.0.0', '1.0.0')).toBe(0)
-    expect(() => compareOfficialModuleVersions('1.0.0', 'v1')).toThrow()
+    expect(compareModuleVersions('1.0.0', '1.0.0')).toBe(0)
+    expect(() => compareModuleVersions('1.0.0', 'v1')).toThrow()
   })
 })

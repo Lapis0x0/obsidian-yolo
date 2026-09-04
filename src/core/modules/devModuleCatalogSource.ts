@@ -6,10 +6,10 @@ import {
 } from './bundledModuleRegistry'
 import type { ModuleArtifactInstallerOptions } from './moduleArtifactInstaller'
 import type { ModuleCatalogLocaleSource } from './moduleCatalogPresentation'
-import { compareModuleVersions } from './moduleManager'
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
 import type { ModuleArtifactPlatform } from './moduleStore'
 import { resolveOfficialModuleArtifactSources } from './officialModuleArtifactSources'
+import { compareModuleVersions } from './officialModuleCatalog'
 import type { OfficialModuleCatalogV1 } from './officialModuleCatalog'
 import {
   OfficialModuleCatalogSource,

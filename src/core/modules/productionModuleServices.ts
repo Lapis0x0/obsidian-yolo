@@ -21,7 +21,7 @@ import {
 import { SynchronizedModuleIntentStateSource } from './moduleIntentStateSource'
 import type { ModuleIntentStore } from './moduleIntentStore'
 import { ModuleLoader } from './moduleLoader'
-import { ModuleManager, compareModuleVersions } from './moduleManager'
+import { ModuleManager } from './moduleManager'
 import {
   ModuleReadinessReconciler,
   type ModuleReadinessResult,
@@ -41,6 +41,7 @@ import {
   createOfficialModuleArtifactDownloader,
 } from './officialModuleArtifactDownloader'
 import { resolveOfficialModuleArtifactSources } from './officialModuleArtifactSources'
+import { compareModuleVersions } from './officialModuleCatalog'
 import {
   OfficialModuleCatalogSource,
   type OfficialModuleCompatibilityProvider,

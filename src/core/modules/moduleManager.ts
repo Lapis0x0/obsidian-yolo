@@ -1,4 +1,5 @@
 import type { ModuleFailure } from './moduleFailure'
+import { compareModuleVersions } from './officialModuleCatalog'
 import type {
   InstalledModuleState,
   InstalledModuleStateSource,
@@ -57,76 +58,6 @@ function indexById<T extends { id: string }>(
     result.set(value.id, value)
   }
   return result
-}
-
-type ParsedVersion = {
-  core: string[]
-  prerelease: string[] | null
-}
-
-function compareNumericIdentifiers(left: string, right: string): number {
-  const normalizedLeft = left.replace(/^0+(?=\d)/, '')
-  const normalizedRight = right.replace(/^0+(?=\d)/, '')
-  if (normalizedLeft.length !== normalizedRight.length) {
-    return normalizedLeft.length < normalizedRight.length ? -1 : 1
-  }
-  if (normalizedLeft === normalizedRight) return 0
-  return normalizedLeft < normalizedRight ? -1 : 1
-}
-
-function parseVersion(value: string): ParsedVersion | null {
-  const match = value
-    .trim()
-    .match(
-      /^v?(\d+(?:\.\d+)*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/,
-    )
-  if (!match) return null
-  return {
-    core: (match[1] ?? '').split('.'),
-    prerelease: match[2] ? match[2].split('.') : null,
-  }
-}
-
-export function compareModuleVersions(left: string, right: string): number {
-  const leftVersion = parseVersion(left)
-  const rightVersion = parseVersion(right)
-  if (!leftVersion || !rightVersion) {
-    return left === right ? 0 : left < right ? -1 : 1
-  }
-
-  const coreLength = Math.max(leftVersion.core.length, rightVersion.core.length)
-  for (let index = 0; index < coreLength; index += 1) {
-    const comparison = compareNumericIdentifiers(
-      leftVersion.core[index] ?? '0',
-      rightVersion.core[index] ?? '0',
-    )
-    if (comparison !== 0) return comparison
-  }
-
-  if (!leftVersion.prerelease && !rightVersion.prerelease) return 0
-  if (!leftVersion.prerelease) return 1
-  if (!rightVersion.prerelease) return -1
-
-  const prereleaseLength = Math.max(
-    leftVersion.prerelease.length,
-    rightVersion.prerelease.length,
-  )
-  for (let index = 0; index < prereleaseLength; index += 1) {
-    const leftPart = leftVersion.prerelease[index]
-    const rightPart = rightVersion.prerelease[index]
-    if (leftPart === undefined) return -1
-    if (rightPart === undefined) return 1
-    if (leftPart === rightPart) continue
-    const leftIsNumeric = /^\d+$/.test(leftPart)
-    const rightIsNumeric = /^\d+$/.test(rightPart)
-    if (leftIsNumeric && rightIsNumeric) {
-      return compareNumericIdentifiers(leftPart, rightPart)
-    }
-    if (leftIsNumeric) return -1
-    if (rightIsNumeric) return 1
-    return leftPart < rightPart ? -1 : 1
-  }
-  return 0
 }
 
 function resolveStatus(
