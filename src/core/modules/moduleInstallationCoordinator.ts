@@ -55,11 +55,12 @@ export class ModuleInstallationCoordinator {
       request.expectedVersion,
       this.options.platform,
     )
+    // The hash is the binding to what the user actually confirmed:
+    // `getResolvedArtifactDescriptor` only proves the id, version and platform
+    // it was asked for, and a `loadFresh` in between can replace the resolved
+    // candidate with a recut release carrying the same version number.
     if (
       !descriptor ||
-      descriptor.id !== request.moduleId ||
-      descriptor.version !== request.expectedVersion ||
-      descriptor.platform !== this.options.platform ||
       descriptor.manifest.sha256 !== request.expectedManifestSha256
     ) {
       throw new Error(

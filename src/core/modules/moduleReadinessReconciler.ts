@@ -137,13 +137,7 @@ export class ModuleReadinessReconciler {
       resolved.version,
       this.options.platform,
     )
-    if (
-      !descriptor ||
-      descriptor.id !== moduleId ||
-      descriptor.version !== resolved.version ||
-      descriptor.platform !== this.options.platform ||
-      descriptor.manifest.sha256 !== resolved.manifest.sha256
-    ) {
+    if (!descriptor) {
       throw new Error(
         `Official module "${moduleId}" returned a mismatched resolved descriptor`,
       )

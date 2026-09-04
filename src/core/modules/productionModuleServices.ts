@@ -438,11 +438,10 @@ export function createProductionModuleServices(
       candidate.expectedVersion,
       options.platform,
     )
+    // See ModuleInstallationCoordinator: the hash, not the version, is what
+    // binds this download to the candidate the user confirmed.
     if (
       !descriptor ||
-      descriptor.id !== candidate.moduleId ||
-      descriptor.version !== candidate.expectedVersion ||
-      descriptor.platform !== options.platform ||
       descriptor.manifest.sha256 !== candidate.expectedManifestSha256
     ) {
       throw new Error(
