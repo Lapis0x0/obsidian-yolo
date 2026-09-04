@@ -75,10 +75,29 @@
 
 ## Highlights
 
-| Un'esperienza Agent completa \| Usa Codex / Claude Code dentro Obsidian | Trasforma la conoscenza del Vault in padronanza duratura |
-|:--:|:--:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| Non si limita a rispondere. YOLO comprende e gestisce direttamente il tuo Vault, utilizza strumenti e server MCP e applica le Skills per completare il lavoro secondo il tuo metodo. Su desktop puoi passare con un clic a Claude Code o Codex già autenticati e lasciarli lavorare direttamente nel tuo Vault. | Trasforma argomenti e materiali in un sistema di apprendimento personale, poi usa flashcard e ripassi basati su FSRS per convertire gli appunti salvati in conoscenze durature. |
+<table>
+<tr>
+<td width="50%" align="center"><b>Un'esperienza Agent completa | Usa Codex / Claude Code dentro Obsidian</b></td>
+<td width="50%" align="center"><b>Trasforma la conoscenza del Vault in padronanza duratura</b></td>
+</tr>
+<tr valign="top">
+<td align="center"><img src="./assets/agenttools.gif" alt="Agent Tools" width="100%"></td>
+<td align="center"><img src="./assets/learning-mode.gif" alt="Learning Mode" width="100%"></td>
+</tr>
+<tr valign="top">
+<td align="center">Non si limita a rispondere. YOLO comprende e gestisce direttamente il tuo Vault, utilizza strumenti e server MCP e applica le Skills per completare il lavoro secondo il tuo metodo. Su desktop puoi passare con un clic a Claude Code o Codex già autenticati e lasciarli lavorare direttamente nel tuo Vault.</td>
+<td align="center">Trasforma argomenti e materiali in un sistema di apprendimento personale, poi usa flashcard e ripassi basati su FSRS per convertire gli appunti salvati in conoscenze durature.</td>
+</tr>
+<tr>
+<td colspan="2" align="center"><b>YOLO Whiteboard | Un'implementazione ad alte prestazioni di Obsidian Canvas</b></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="./assets/whiteboard.gif" alt="YOLO Whiteboard" width="100%"></td>
+</tr>
+<tr>
+<td colspan="2" align="center">Per ora puoi considerarlo un Obsidian Canvas da diverse a decine di volte più veloce. Presto arriveranno altre funzioni che ampliano i confini tra IA e pensiero umano.</td>
+</tr>
+</table>
 
 ## Funzionalità
 

@@ -73,10 +73,29 @@
 
 ## Highlights
 
-| 完整的 Agent 体验｜在 OB 内使用 Codex/Claude Code | 让 Vault 里的知识真正被你掌握 |
-|:-:|:-:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| 不止回答问题。YOLO 能理解并操作你的 Vault，调用工具与 MCP，并通过 Skills 按你的方式完成任务。桌面端还能一键切到你已登录的 Claude Code 或 Codex，让它们直接在 Vault 里工作。 | 把主题与资料转化为专属学习内容，再用闪卡与 FSRS 持续复习，让知识从被收藏走向真正掌握。 |
+<table>
+<tr>
+<td width="50%" align="center"><b>完整的 Agent 体验｜在 OB 内使用 Codex/Claude Code</b></td>
+<td width="50%" align="center"><b>让 Vault 里的知识真正被你掌握</b></td>
+</tr>
+<tr valign="top">
+<td align="center"><img src="./assets/agenttools.gif" alt="Agent Tools" width="100%"></td>
+<td align="center"><img src="./assets/learning-mode.gif" alt="Learning Mode" width="100%"></td>
+</tr>
+<tr valign="top">
+<td align="center">不止回答问题。YOLO 能理解并操作你的 Vault，调用工具与 MCP，并通过 Skills 按你的方式完成任务。桌面端还能一键切到你已登录的 Claude Code 或 Codex，让它们直接在 Vault 里工作。</td>
+<td align="center">把主题与资料转化为专属学习内容，再用闪卡与 FSRS 持续复习，让知识从被收藏走向真正掌握。</td>
+</tr>
+<tr>
+<td colspan="2" align="center"><b>YOLO 白板｜Obsidian Canvas 的高性能实现</b></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="./assets/whiteboard.gif" alt="YOLO Whiteboard" width="100%"></td>
+</tr>
+<tr>
+<td colspan="2" align="center">你目前可以把它当成一个性能好上几倍到几十倍的 Obsidian Canvas。未来会添加更多可以充分拓展 AI 与人类思考疆界的新功能。</td>
+</tr>
+</table>
 
 ## Features
 

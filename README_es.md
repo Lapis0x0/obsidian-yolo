@@ -75,10 +75,29 @@
 
 ## Lo más destacado
 
-| Una experiencia de Agente completa \| Usa Codex / Claude Code dentro de Obsidian | Convierte el conocimiento de tu Vault en dominio duradero |
-|:--:|:--:|
-| ![Agent Tools](./assets/agenttools.gif) | ![Learning Mode](./assets/learning-mode.gif) |
-| Ve más allá de las respuestas. YOLO entiende y trabaja directamente con tu Vault, llama a herramientas y servidores MCP, y usa Skills para hacer trabajo real a tu manera. En escritorio puedes cambiar con un clic al Claude Code o Codex con el que ya has iniciado sesión y dejar que trabajen directamente en tu Vault. | Convierte temas y material de origen en un sistema de aprendizaje personal, y luego usa tarjetas y el repaso con FSRS para pasar de notas guardadas a conocimiento duradero. |
+<table>
+<tr>
+<td width="50%" align="center"><b>Una experiencia de Agente completa | Usa Codex / Claude Code dentro de Obsidian</b></td>
+<td width="50%" align="center"><b>Convierte el conocimiento de tu Vault en dominio duradero</b></td>
+</tr>
+<tr valign="top">
+<td align="center"><img src="./assets/agenttools.gif" alt="Agent Tools" width="100%"></td>
+<td align="center"><img src="./assets/learning-mode.gif" alt="Learning Mode" width="100%"></td>
+</tr>
+<tr valign="top">
+<td align="center">Ve más allá de las respuestas. YOLO entiende y trabaja directamente con tu Vault, llama a herramientas y servidores MCP, y usa Skills para hacer trabajo real a tu manera. En escritorio puedes cambiar con un clic al Claude Code o Codex con el que ya has iniciado sesión y dejar que trabajen directamente en tu Vault.</td>
+<td align="center">Convierte temas y material de origen en un sistema de aprendizaje personal, y luego usa tarjetas y el repaso con FSRS para pasar de notas guardadas a conocimiento duradero.</td>
+</tr>
+<tr>
+<td colspan="2" align="center"><b>YOLO Whiteboard | Una implementación de alto rendimiento de Obsidian Canvas</b></td>
+</tr>
+<tr>
+<td colspan="2" align="center"><img src="./assets/whiteboard.gif" alt="YOLO Whiteboard" width="100%"></td>
+</tr>
+<tr>
+<td colspan="2" align="center">Por ahora, piénsalo como un Obsidian Canvas de varias a decenas de veces más rápido. Pronto llegarán más funciones que amplían las fronteras entre la IA y el pensamiento humano.</td>
+</tr>
+</table>
 
 ## Funciones
 
