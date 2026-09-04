@@ -1,6 +1,5 @@
 import {
   type OfficialModuleCatalogParserOptions,
-  findCompatibleUpdate,
   parseOfficialModuleCatalog,
   selectInitialCompatibleVersion,
 } from './officialModuleCatalog'
@@ -452,28 +451,6 @@ describe('official module catalog V1', () => {
         hostApi: '1.3.0',
         platform: 'desktop',
         activeVersion: '1.0.0',
-      }),
-    ).toBeNull()
-  })
-
-  it('finds only a compatible version above the active version', () => {
-    const module = moduleWithVersions(
-      version('1.0.0'),
-      version('2.0.0'),
-      version('3.0.0', { platforms: ['mobile'] }),
-    )
-    expect(
-      findCompatibleUpdate(module, {
-        hostApi: '1.3.0',
-        platform: 'desktop',
-        activeVersion: '1.0.0',
-      })?.version,
-    ).toBe('2.0.0')
-    expect(
-      findCompatibleUpdate(module, {
-        hostApi: '1.3.0',
-        platform: 'desktop',
-        activeVersion: '2.0.0',
       }),
     ).toBeNull()
   })

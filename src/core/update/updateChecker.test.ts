@@ -8,7 +8,6 @@ import {
   locateReleaseHistoryPage,
   normalizePluginVersion,
   parseChangelog,
-  parseLatestVersionFromVersionsJson,
   parseReleaseAssets,
   parseReleaseNoteVersion,
   splitReleaseNotesByLanguage,
@@ -32,27 +31,6 @@ function createRequestUrlResponse(text: string): RequestUrlResponse {
     text,
   }
 }
-
-describe('parseLatestVersionFromVersionsJson', () => {
-  it('returns the highest normalized version key', () => {
-    expect(
-      parseLatestVersionFromVersionsJson(
-        JSON.stringify({
-          '1.5.9': '1.8.0',
-          '1.5.12.4': '1.8.0',
-          v1: 'ignored',
-          '1.5.12.5': '1.8.0',
-          next: 'ignored',
-        }),
-      ),
-    ).toBe('1.5.12.5')
-  })
-
-  it('returns null for invalid JSON or non-object payloads', () => {
-    expect(parseLatestVersionFromVersionsJson('not-json')).toBeNull()
-    expect(parseLatestVersionFromVersionsJson('[]')).toBeNull()
-  })
-})
 
 describe('checkForUpdate', () => {
   const asset = (name: string) => ({

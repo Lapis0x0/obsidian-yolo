@@ -65,9 +65,6 @@ export type ProductionModuleReadinessReconciler = Readonly<{
     moduleId: string,
     options?: Readonly<{ waitForSynchronizedArtifact?: boolean }>,
   ): Promise<ModuleReadinessResult>
-  reconcile(
-    moduleIds: readonly string[],
-  ): Promise<readonly ModuleReadinessResult[]>
   dispose(): void
 }>
 
@@ -779,7 +776,6 @@ function createGuardedReadinessReconciler(
   runtime: ProductionModuleRuntimeReservation,
   setFailure: (moduleId: string, failure?: ModuleFailure) => void,
 ): ProductionModuleReadinessReconciler {
-  let disposed = false
   const record = (result: ModuleReadinessResult): ModuleReadinessResult => {
     setFailure(
       result.moduleId,
@@ -807,36 +803,6 @@ function createGuardedReadinessReconciler(
 
   return Object.freeze({
     ensureModuleReady,
-    async reconcile(moduleIds: readonly string[]) {
-      if (!Array.isArray(moduleIds)) {
-        throw new TypeError('Module readiness ids must be an array')
-      }
-      const ids = [...new Set(moduleIds)]
-      for (const moduleId of ids) assertModuleId(moduleId, 'Module id')
-      if (disposed) {
-        throw new Error('Module readiness reconciler is disposed')
-      }
-      return Object.freeze(
-        await Promise.all(
-          ids.sort().map(async (moduleId) => {
-            try {
-              return await ensureModuleReady(moduleId)
-            } catch (error) {
-              return Object.freeze({
-                moduleId,
-                status: 'failed' as const,
-                versions: Object.freeze([]),
-                repairedVersions: Object.freeze([]),
-                error: error instanceof Error ? error.message : String(error),
-              })
-            }
-          }),
-        ),
-      )
-    },
-    dispose: () => {
-      disposed = true
-      reconciler.dispose()
-    },
+    dispose: () => reconciler.dispose(),
   })
 }

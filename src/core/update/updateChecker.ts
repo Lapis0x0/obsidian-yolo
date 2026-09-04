@@ -8,10 +8,6 @@ const GITHUB_RELEASES_URL =
 const GITHUB_RELEASE_DOWNLOAD_BASE =
   'https://github.com/Lapis0x0/obsidian-yolo/releases/download'
 
-function releaseTagUrl(version: string): string {
-  return `${GITHUB_RELEASES_URL}/tags/${encodeURIComponent(version)}`
-}
-
 /** Matches the UI page size and GitHub `per_page` for on-demand loading. */
 export const RELEASE_HISTORY_PAGE_SIZE = 10
 
@@ -46,9 +42,6 @@ export type ReleaseAssets = {
   manifestJson: ReleaseAssetMeta
   stylesCss: ReleaseAssetMeta
 }
-
-/** @deprecated Use ReleaseAssets */
-export type ReleaseAssetUrls = ReleaseAssets
 
 export type UpdateCheckResult = {
   hasUpdate: boolean
@@ -158,33 +151,6 @@ export function compareVersions(current: string, latest: string): boolean {
     if (bv < av) return false
   }
   return false
-}
-
-function isPluginVersion(version: string): boolean {
-  return /^v?\d+(?:\.\d+)*$/i.test(version.trim())
-}
-
-export function parseLatestVersionFromVersionsJson(raw: string): string | null {
-  try {
-    const parsed = JSON.parse(raw) as unknown
-    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return null
-    }
-
-    let latestVersion: string | null = null
-    for (const version of Object.keys(parsed)) {
-      if (!isPluginVersion(version)) {
-        continue
-      }
-      const normalized = normalizePluginVersion(version)
-      if (!latestVersion || compareVersions(latestVersion, normalized)) {
-        latestVersion = normalized
-      }
-    }
-    return latestVersion
-  } catch {
-    return null
-  }
 }
 
 export function parseReleaseNoteVersion(markdown: string): string | null {
@@ -445,56 +411,6 @@ export function parseReleaseAssets(
   }
 
   return { mainJs, manifestJson, stylesCss }
-}
-
-/** @deprecated Use parseReleaseAssets */
-export function parseReleaseAssetUrls(
-  assets: GitHubReleaseAsset[] | undefined,
-): ReleaseAssets | null {
-  return parseReleaseAssets(assets)
-}
-
-/**
- * Fetches a specific GitHub release by tag/version. Returns null on failure.
- */
-export async function fetchReleaseByVersion(version: string): Promise<{
-  version: string
-  releaseUrl: string
-  assets: ReleaseAssets | null
-} | null> {
-  const normalized = normalizePluginVersion(version)
-  if (!normalized) {
-    return null
-  }
-
-  try {
-    const response = await requestUrl({
-      url: releaseTagUrl(normalized),
-      method: 'GET',
-      headers: {
-        Accept: 'application/vnd.github+json',
-      },
-    })
-
-    if (response.status < 200 || response.status >= 300) {
-      return null
-    }
-
-    const data = JSON.parse(response.text) as GitHubReleaseResponse
-    const tag = typeof data.tag_name === 'string' ? data.tag_name : ''
-    const releaseVersion = stripVersionPrefix(tag)
-    if (!releaseVersion) {
-      return null
-    }
-
-    return {
-      version: releaseVersion,
-      releaseUrl: typeof data.html_url === 'string' ? data.html_url : '',
-      assets: parseReleaseAssets(data.assets),
-    }
-  } catch {
-    return null
-  }
 }
 
 /**

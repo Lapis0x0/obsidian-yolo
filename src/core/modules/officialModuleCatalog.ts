@@ -187,29 +187,6 @@ export function parseOfficialModuleCatalog(
 
 export type OfficialModuleCompatibilityIssue = 'platform' | 'host-api'
 
-export function getOfficialModuleCompatibilityIssues(
-  module: OfficialModuleCatalogCandidate,
-  compatibility: OfficialModuleCompatibility,
-): readonly OfficialModuleCompatibilityIssue[] {
-  const context = parseCompatibility(compatibility)
-  const candidates = context.activeVersion
-    ? module.versions.filter(
-        (candidate) =>
-          compareSemver(
-            parseSemver(candidate.version)!,
-            context.activeVersion!,
-          ) === 0,
-      )
-    : module.versions
-  const issues = new Set<OfficialModuleCompatibilityIssue>()
-  for (const candidate of candidates) {
-    for (const issue of candidateCompatibilityIssues(candidate, context)) {
-      issues.add(issue)
-    }
-  }
-  return Object.freeze([...issues].sort())
-}
-
 /** Evaluates the one latest candidate exposed by the signed distribution Feed. */
 export function getOfficialModuleVersionCompatibilityIssues(
   candidate: OfficialModuleCatalogVersion,
@@ -242,17 +219,6 @@ export function selectInitialCompatibleVersion(
   const context = parseCompatibility(compatibility)
   if (context.activeVersion) return null
   return findHighestCompatible(module, context)
-}
-
-export function findCompatibleUpdate(
-  module: OfficialModuleCatalogCandidate,
-  compatibility: OfficialModuleCompatibility,
-): OfficialModuleCatalogVersion | null {
-  const context = parseCompatibility(compatibility)
-  if (!context.activeVersion) {
-    throw new Error('Active module version is required when finding an update')
-  }
-  return findHighestCompatible(module, context, context.activeVersion)
 }
 
 type CompatibilityContext = Readonly<{

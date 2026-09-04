@@ -206,8 +206,6 @@ export {
   type ModuleManagerOptions,
 } from './moduleManager'
 export {
-  findCompatibleUpdate,
-  getOfficialModuleCompatibilityIssues,
   parseOfficialModuleCatalog,
   selectInitialCompatibleVersion,
   type OfficialModuleCatalogModule,

@@ -108,36 +108,6 @@ export class ModuleReadinessReconciler {
       })
   }
 
-  async reconcile(
-    moduleIds: readonly string[],
-  ): Promise<readonly ModuleReadinessResult[]> {
-    if (!Array.isArray(moduleIds)) {
-      throw new TypeError('Module readiness ids must be an array')
-    }
-    const ids = [...new Set(moduleIds)]
-    for (const moduleId of ids) assertModuleId(moduleId, 'Module id')
-    if (this.disposed) {
-      throw new Error('Module readiness reconciler is disposed')
-    }
-    return Object.freeze(
-      await Promise.all(
-        ids.sort().map(async (moduleId) => {
-          try {
-            return await this.ensureModuleReady(moduleId)
-          } catch (error) {
-            return readinessResult({
-              moduleId,
-              status: 'failed',
-              versions: [],
-              repairedVersions: [],
-              error: errorMessage(error),
-            })
-          }
-        }),
-      ),
-    )
-  }
-
   dispose(): void {
     if (this.disposed) return
     this.disposed = true
