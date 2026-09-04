@@ -228,12 +228,7 @@ export class ModuleActivationCoordinator {
       ACTIVATION_ABORTED,
     )
     if (!state) return result({ moduleId, status: 'skipped' })
-    if (state.moduleId !== moduleId) {
-      throw new Error(`Module "${moduleId}" returned mismatched device state`)
-    }
-    const descriptor = snapshotDescriptor(
-      state.pending?.descriptor ?? state.active,
-    )
+    const descriptor = state.pending?.descriptor ?? state.active
     if (!descriptor) return result({ moduleId, status: 'skipped' })
 
     // Activation is idempotent. Installing a module writes its `enabled`
@@ -403,24 +398,6 @@ export class ModuleActivationCoordinator {
 
 function result(value: ModuleActivationResult): ModuleActivationResult {
   return Object.freeze({ ...value })
-}
-
-function snapshotDescriptor(
-  descriptor: ModuleArtifactDescriptor | null,
-): ModuleArtifactDescriptor | null {
-  if (!descriptor) return null
-  return Object.freeze({
-    ...descriptor,
-    dataSchemas: Object.freeze(
-      Object.fromEntries(
-        Object.entries(descriptor.dataSchemas).map(([namespace, schema]) => [
-          namespace,
-          Object.freeze({ ...schema }),
-        ]),
-      ),
-    ),
-    manifest: Object.freeze({ ...descriptor.manifest }),
-  })
 }
 
 function disposedError(): Error {

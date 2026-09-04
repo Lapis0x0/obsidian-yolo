@@ -375,18 +375,14 @@ function validateState(
   moduleId: string,
   platform: ModuleArtifactPlatform,
 ): void {
-  if (state.moduleId !== moduleId) {
-    throw new Error(`Module "${moduleId}" returned mismatched device state`)
-  }
+  // The store already binds a state and its descriptors to the module id and
+  // to the state's own platform. What it cannot know is which platform this
+  // process is: a Vault synced from a desktop carries a desktop device state
+  // onto a phone, and only here is that visible.
   if (state.platform !== platform) {
     throw new Error(
       `Module "${moduleId}" device state belongs to ${state.platform}, not ${platform}`,
     )
-  }
-  for (const descriptor of referencedDescriptors(state)) {
-    if (descriptor.id !== moduleId || descriptor.platform !== platform) {
-      throw new Error(`Module "${moduleId}" has a mismatched ready descriptor`)
-    }
   }
 }
 
