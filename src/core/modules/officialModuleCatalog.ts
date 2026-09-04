@@ -212,13 +212,18 @@ export function compareOfficialModuleVersions(
   return compareSemver(leftVersion, rightVersion)
 }
 
-export function selectInitialCompatibleVersion(
-  module: OfficialModuleCatalogCandidate,
-  compatibility: OfficialModuleCompatibility,
-): OfficialModuleCatalogVersion | null {
-  const context = parseCompatibility(compatibility)
-  if (context.activeVersion) return null
-  return findHighestCompatible(module, context)
+/**
+ * Whether the running Host API satisfies a module's declared range.
+ *
+ * Both sides are code-owned: `hostApi` is the constant this build ships and
+ * `range` comes from the signed Feed, so an unparseable value is a defect, not
+ * untrusted input — the host version throws and a malformed range is simply
+ * unsatisfied.
+ */
+export function isHostApiCompatible(hostApi: string, range: string): boolean {
+  const version = parseSemver(hostApi)
+  if (!version) throw new Error('Current Host API version is invalid')
+  return satisfiesRange(version, range)
 }
 
 type CompatibilityContext = Readonly<{
@@ -260,31 +265,6 @@ function candidateCompatibilityIssues(
     return ['host-api']
   }
   return []
-}
-
-function findHighestCompatible(
-  module: OfficialModuleCatalogCandidate,
-  compatibility: CompatibilityContext,
-  newerThan?: Semver,
-): OfficialModuleCatalogVersion | null {
-  let selected: OfficialModuleCatalogVersion | null = null
-  for (const candidate of module.versions) {
-    const candidateVersion = parseSemver(candidate.version)
-    if (
-      !candidateVersion ||
-      candidateCompatibilityIssues(candidate, compatibility).length > 0 ||
-      (newerThan && compareSemver(candidateVersion, newerThan) <= 0)
-    ) {
-      continue
-    }
-    if (
-      !selected ||
-      compareSemver(candidateVersion, parseSemver(selected.version)!) > 0
-    ) {
-      selected = candidate
-    }
-  }
-  return selected
 }
 
 function parseCatalogVersion(

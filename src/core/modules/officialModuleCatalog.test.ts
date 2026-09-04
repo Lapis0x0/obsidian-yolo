@@ -1,7 +1,8 @@
 import {
   type OfficialModuleCatalogParserOptions,
+  getOfficialModuleVersionCompatibilityIssues,
+  isHostApiCompatible,
   parseOfficialModuleCatalog,
-  selectInitialCompatibleVersion,
 } from './officialModuleCatalog'
 
 const HASH = 'A'.repeat(64)
@@ -411,63 +412,55 @@ describe('official module catalog V1', () => {
     ).toThrow()
   })
 
-  it('supports one manifest on desktop and mobile', () => {
-    const module = moduleWithVersions(
+  it('accepts one manifest that declares both desktop and mobile', () => {
+    const candidate = moduleWithVersions(
       version('1.0.0', { platforms: ['mobile', 'desktop'] }),
-    )
+    ).versions[0]
     for (const platform of ['desktop', 'mobile'] as const) {
       expect(
-        selectInitialCompatibleVersion(module, {
+        getOfficialModuleVersionCompatibilityIssues(candidate, {
           hostApi: '1.3.0',
           platform,
-        })?.version,
-      ).toBe('1.0.0')
+        }),
+      ).toEqual([])
     }
   })
 
-  it('selects the highest Host API and platform-compatible initial version', () => {
-    const module = moduleWithVersions(
-      version('1.0.0'),
-      version('2.0.0', { hostApi: '^1.2.0' }),
-      version('3.0.0', { platforms: ['mobile'] }),
-      version('4.0.0', {
-        dataSchemas: {
-          learning: { readMin: 3, readMax: 4, write: 4 },
-        },
-      }),
-    )
+  it('reports the platform and Host API issues of one candidate', () => {
+    const mobileOnly = moduleWithVersions(
+      version('1.0.0', { platforms: ['mobile'] }),
+    ).versions[0]
     expect(
-      selectInitialCompatibleVersion(module, {
-        hostApi: '1.4.0',
-        platform: 'desktop',
-      })?.version,
-    ).toBe('4.0.0')
-  })
-
-  it('never lets initial selection replace an active version', () => {
-    const module = moduleWithVersions(version('1.0.0'), version('2.0.0'))
-    expect(
-      selectInitialCompatibleVersion(module, {
+      getOfficialModuleVersionCompatibilityIssues(mobileOnly, {
         hostApi: '1.3.0',
         platform: 'desktop',
-        activeVersion: '1.0.0',
       }),
-    ).toBeNull()
+    ).toEqual(['platform'])
+
+    const narrowRange = moduleWithVersions(
+      version('1.0.0', { hostApi: '^1.2.0' }),
+    ).versions[0]
+    expect(
+      getOfficialModuleVersionCompatibilityIssues(narrowRange, {
+        hostApi: '2.0.0',
+        platform: 'desktop',
+      }),
+    ).toEqual(['host-api'])
   })
 
-  it('does not match prereleases from a stable range', () => {
-    const stableRange = moduleWithVersions(version('1.3.0-beta.1'))
-    const prereleaseRange = moduleWithVersions(
-      version('1.3.0-beta.1', { hostApi: '>=1.3.0-beta.1 <2.0.0' }),
+  it('does not satisfy a stable range with a prerelease Host API', () => {
+    expect(isHostApiCompatible('1.3.0-beta.2', '>=1.2.0 <2.0.0')).toBe(false)
+    expect(isHostApiCompatible('1.3.0-beta.2', '>=1.3.0-beta.1 <2.0.0')).toBe(
+      true,
     )
-    const context = {
-      hostApi: '1.3.0-beta.2',
-      platform: 'desktop' as const,
-    }
-    expect(selectInitialCompatibleVersion(stableRange, context)).toBeNull()
-    expect(
-      selectInitialCompatibleVersion(prereleaseRange, context)?.version,
-    ).toBe('1.3.0-beta.1')
+    expect(isHostApiCompatible('1.3.0', '>=1.2.0 <2.0.0')).toBe(true)
+  })
+
+  it('rejects an unparseable running Host API and an unsatisfiable range', () => {
+    expect(() => isHostApiCompatible('not-a-version', '*')).toThrow(
+      'Host API version is invalid',
+    )
+    expect(isHostApiCompatible('1.3.0', 'nonsense range')).toBe(false)
   })
 
   it('rejects dangerous namespaces and prototype-shaped catalog fields', () => {

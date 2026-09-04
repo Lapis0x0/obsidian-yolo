@@ -9,7 +9,7 @@ import type {
   ModuleDeviceStateTransaction,
 } from './moduleDeviceStateStore'
 import type { ModuleArtifactPlatform } from './moduleStore'
-import { selectInitialCompatibleVersion } from './officialModuleCatalog'
+import { isHostApiCompatible } from './officialModuleCatalog'
 import type {
   ModuleIntentStateSource,
   YoloModuleDefinition,
@@ -303,26 +303,10 @@ export class ModuleActivationCoordinator {
   }
 
   private assertCompatible(descriptor: ModuleArtifactDescriptor): void {
-    const selected = selectInitialCompatibleVersion(
-      {
-        id: descriptor.id,
-        versions: [
-          {
-            version: descriptor.version,
-            hostApi: descriptor.hostApi,
-            platforms: [descriptor.platform],
-            dataSchemas: descriptor.dataSchemas,
-            manifestUrl: descriptor.manifestUrl,
-            manifest: descriptor.manifest,
-          },
-        ],
-      },
-      {
-        hostApi: this.options.hostApi,
-        platform: this.options.platform,
-      },
-    )
-    if (!selected) {
+    if (
+      descriptor.platform !== this.options.platform ||
+      !isHostApiCompatible(this.options.hostApi, descriptor.hostApi)
+    ) {
       throw new Error(
         `Module "${descriptor.id}" version "${descriptor.version}" is incompatible with the current Host API or platform`,
       )

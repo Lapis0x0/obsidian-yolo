@@ -21,7 +21,7 @@ import {
 } from './moduleStore'
 import {
   parseOfficialModuleCatalog,
-  selectInitialCompatibleVersion,
+  isHostApiCompatible,
 } from './officialModuleCatalog'
 
 describe('host API conformance artifact boundary', () => {
@@ -213,12 +213,10 @@ describe('host API conformance artifact boundary', () => {
     expect(catalog.modules[0]?.versions[0]?.dataSchemas).toEqual(
       manifest.dataSchemas,
     )
+    expect(catalog.modules[0]?.versions[0]?.version).toBe(learningVersion)
     expect(
-      selectInitialCompatibleVersion(catalog.modules[0], {
-        hostApi: '1.6.0',
-        platform: 'desktop',
-      })?.version,
-    ).toBe(learningVersion)
+      isHostApiCompatible('1.6.0', catalog.modules[0]!.versions[0]!.hostApi),
+    ).toBe(true)
   })
 
   it('keeps fixture source and artifacts out of production main metadata', () => {

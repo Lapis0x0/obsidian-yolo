@@ -207,7 +207,7 @@ export {
 } from './moduleManager'
 export {
   parseOfficialModuleCatalog,
-  selectInitialCompatibleVersion,
+  isHostApiCompatible,
   type OfficialModuleCatalogModule,
   type OfficialModuleCatalogParserOptions,
   type OfficialModuleCatalogV1,
