@@ -14,9 +14,12 @@ import {
   type ModuleArtifactPlatform,
   assertModuleId,
   assertModulePathSegment,
-  isModuleHostApiRange,
 } from './moduleStore'
-import type { OfficialModuleCatalogVersion } from './officialModuleCatalog'
+import {
+  type OfficialModuleCatalogVersion,
+  isModuleHostApiRange,
+  isModuleVersion,
+} from './officialModuleCatalog'
 import type { ModuleCatalogEntry, ModuleCatalogSource } from './types'
 
 export type BundledModuleDescriptor = Readonly<{
@@ -74,8 +77,11 @@ export function parseBundledModuleIndex(value: unknown): BundledModuleIndex {
     if (typeof descriptor.id !== 'string') {
       throw new Error('Bundled module id must be a string')
     }
-    if (typeof descriptor.version !== 'string') {
-      throw new Error('Bundled module version must be a string')
+    if (
+      typeof descriptor.version !== 'string' ||
+      !isModuleVersion(descriptor.version)
+    ) {
+      throw new Error('Bundled module version must be a SemVer version')
     }
     if (
       typeof descriptor.icon !== 'string' ||

@@ -17,11 +17,11 @@ import {
   type ModuleStore,
   assertModuleId,
   assertModulePathSegment,
-  isModuleHostApiRange,
   normalizeModuleArtifactFilePath,
   parseModuleArtifactManifest,
   selectModuleManifestVariant,
 } from './moduleStore'
+import { isModuleHostApiRange } from './officialModuleCatalog'
 
 export type ModuleArtifactDownloadRequest = Readonly<{
   kind: 'manifest' | 'artifact'

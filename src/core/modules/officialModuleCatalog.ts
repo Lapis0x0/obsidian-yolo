@@ -332,3 +332,12 @@ function sameCore(left: Semver, right: Semver): boolean {
 export function isModuleHostApiRange(value: unknown): value is string {
   return typeof value === 'string' && parseRange(value) !== null
 }
+
+/**
+ * Whether a module version is a version `compareModuleVersions` can order.
+ * Every source of module versions must gate on this: the strict comparator
+ * throws rather than guessing, and one of its callers runs during render.
+ */
+export function isModuleVersion(value: unknown): value is string {
+  return typeof value === 'string' && parseSemver(value) !== null
+}

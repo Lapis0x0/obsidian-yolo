@@ -207,6 +207,7 @@ export {
 } from './moduleManager'
 export {
   isHostApiCompatible,
+  isModuleHostApiRange,
   type OfficialModuleCatalogModule,
   type OfficialModuleCatalogV1,
   type OfficialModuleCatalogVersion,
@@ -258,7 +259,6 @@ export {
   ModuleArtifactMissingError,
   ModuleStore,
   collectModuleManifestFiles,
-  isModuleHostApiRange,
   moduleArtifactReleaseParent,
   parseModuleArtifactManifest,
   selectModuleManifestVariant,

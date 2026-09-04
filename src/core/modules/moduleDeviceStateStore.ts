@@ -7,11 +7,8 @@ import {
   ModuleRuntimeStateStore,
   ModuleSettingsCorruptionError,
 } from './moduleSettingsStore'
-import {
-  MAX_MODULE_MANIFEST_BYTES,
-  assertModuleId,
-  isModuleHostApiRange,
-} from './moduleStore'
+import { MAX_MODULE_MANIFEST_BYTES, assertModuleId } from './moduleStore'
+import { isModuleHostApiRange } from './officialModuleCatalog'
 
 const SCHEMA_VERSION = 1
 const SEMVER =

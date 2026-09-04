@@ -1,6 +1,7 @@
 import { type DataAdapter, type ListedFiles, normalizePath } from 'obsidian'
 
 import { parseModuleReleaseUrl } from './moduleReleaseUrl'
+import { isModuleHostApiRange, isModuleVersion } from './officialModuleCatalog'
 
 export type ModuleStoreOptions = {
   adapter: DataAdapter
@@ -59,12 +60,9 @@ const MAX_MODULE_VERSION_TREE_ENTRIES = 256
 const MAX_MODULE_VERSION_TREE_DEPTH = 16
 const MAX_MODULE_ARTIFACT_FILES = 64
 const MAX_MODULE_SCHEMA_NAMESPACES = 32
-const MAX_SEMVER_RANGE_LENGTH = 512
 const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
 const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
 const DANGEROUS_NAMESPACES = new Set(['__proto__', 'prototype', 'constructor'])
-const SEMVER =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
 
 export function parseModuleArtifactManifest(
   value: unknown,
@@ -88,7 +86,7 @@ export function parseModuleArtifactManifest(
   }
   assertModuleId(manifest.id, 'Module id')
   assertModulePathSegment(manifest.version, 'Module version')
-  if (!SEMVER.test(manifest.version)) {
+  if (!isModuleVersion(manifest.version)) {
     throw new Error('Module version must be semantic')
   }
   const dataSchemas = parseModuleArtifactDataSchemas(manifest.dataSchemas)
@@ -418,44 +416,6 @@ function assertCanonicalManifestPath(value: string): void {
 
 function isSchemaVersion(value: unknown): value is number {
   return Number.isSafeInteger(value) && (value as number) >= 0
-}
-
-export function isModuleHostApiRange(value: unknown): value is string {
-  if (
-    typeof value !== 'string' ||
-    !value ||
-    value.length > MAX_SEMVER_RANGE_LENGTH ||
-    value.trim() !== value
-  ) {
-    return false
-  }
-  const alternatives = value.split('||')
-  if (alternatives.length > 8) return false
-  return alternatives.every((alternative) => {
-    const text = alternative.trim()
-    if (!text) return false
-    const hyphen = /^(\S+)\s+-\s+(\S+)$/.exec(text)
-    if (hyphen) return SEMVER.test(hyphen[1]) && SEMVER.test(hyphen[2])
-    const tokens = text.split(/\s+/)
-    return (
-      tokens.length <= 16 &&
-      tokens.every((token) => {
-        if (token === '*' || /^[xX]$/.test(token)) return true
-        const shorthand = /^[~^](.+)$/.exec(token)
-        if (shorthand) return SEMVER.test(shorthand[1])
-        if (
-          /^(0|[1-9]\d*)\.(?:[xX*]|0|[1-9]\d*)(?:\.(?:[xX*]|0|[1-9]\d*))?$/.test(
-            token,
-          ) &&
-          (/[xX*]/.test(token) || token.split('.').length === 2)
-        ) {
-          return true
-        }
-        const comparator = /^(?:<=|>=|<|>|=)?(.+)$/.exec(token)
-        return Boolean(comparator && SEMVER.test(comparator[1]))
-      })
-    )
-  })
 }
 
 export function assertModulePathSegment(value: string, label: string): void {
