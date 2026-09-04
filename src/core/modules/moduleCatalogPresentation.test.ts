@@ -22,12 +22,32 @@ describe('module catalog presentation', () => {
     })
   })
 
-  it('requires complete metadata for every supported locale', () => {
+  it('renders a locale this build knows and falls back for the rest', () => {
+    const parsed = parseModuleCatalogLocalizations(
+      { en: localizations.en, zh: localizations.zh },
+      'Test localizations',
+    )
+
+    expect(resolveModuleCatalogPresentation(parsed, 'zh')).toEqual(
+      localizations.zh,
+    )
+    expect(resolveModuleCatalogPresentation(parsed, 'it')).toEqual(
+      localizations.en,
+    )
+  })
+
+  it('requires the en fallback and complete metadata for a present locale', () => {
     expect(() =>
       parseModuleCatalogLocalizations(
-        { en: localizations.en, zh: localizations.zh },
+        { zh: localizations.zh },
         'Test localizations',
       ),
-    ).toThrow('fields are invalid')
+    ).toThrow('en fallback')
+    expect(() =>
+      parseModuleCatalogLocalizations(
+        { en: localizations.en, zh: { name: '学习', description: '  ' } },
+        'Test localizations',
+      ),
+    ).toThrow('Test localizations zh is invalid')
   })
 })

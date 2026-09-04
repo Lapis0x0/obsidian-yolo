@@ -1,12 +1,4 @@
-import {
-  type ModuleCatalogLocalizations,
-  parseModuleCatalogLocalizations,
-} from './moduleCatalogPresentation'
-import {
-  moduleReleaseRepositoryKey,
-  parseModuleReleaseUrl,
-} from './moduleReleaseUrl'
-
+import type { ModuleCatalogLocalizations } from './moduleCatalogPresentation'
 export type OfficialModulePlatform = 'desktop' | 'mobile'
 
 export type OfficialModuleDataSchema = Readonly<{
@@ -57,23 +49,6 @@ export type OfficialModuleCompatibility = Readonly<{
   activeVersion?: string
 }>
 
-export type OfficialModuleCatalogParserOptions = Readonly<{
-  /** Code-owned trust roots. Never derive these values from catalog data. */
-  allowedRepositories: readonly Readonly<{ owner: string; repo: string }>[]
-  limits?: Readonly<Partial<OfficialModuleCatalogLimits>>
-}>
-
-type OfficialModuleCatalogLimits = Readonly<{
-  maxBytes: number
-  maxModules: number
-  maxVersionsPerModule: number
-  maxNamespacesPerVersion: number
-  maxStringBytes: number
-  maxRangeAlternatives: number
-  maxComparatorsPerAlternative: number
-  maxManifestBytes: number
-}>
-
 type Semver = Readonly<{
   major: string
   minor: string
@@ -86,105 +61,8 @@ type Comparator = Readonly<{
   version: Semver
 }>
 
-const DEFAULT_LIMITS: OfficialModuleCatalogLimits = Object.freeze({
-  maxBytes: 1_000_000,
-  maxModules: 100,
-  maxVersionsPerModule: 200,
-  maxNamespacesPerVersion: 32,
-  maxStringBytes: 4_096,
-  maxRangeAlternatives: 8,
-  maxComparatorsPerAlternative: 16,
-  maxManifestBytes: 1024 * 1024,
-})
-const MODULE_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
-const ICON_ID = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/
-const SCHEMA_NAMESPACE = /^[a-z][a-z0-9]*(?:[.-][a-z0-9]+)*$/
-const DANGEROUS_NAMESPACES = new Set(['__proto__', 'prototype', 'constructor'])
-const SHA256 = /^[a-fA-F0-9]{64}$/
 const SEMVER =
   /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/
-export function parseOfficialModuleCatalog(
-  raw: string | Uint8Array,
-  options: OfficialModuleCatalogParserOptions,
-): OfficialModuleCatalogV1 {
-  const limits = resolveLimits(options)
-  const source = decodeCatalog(raw, limits.maxBytes)
-  let decoded: unknown
-  try {
-    decoded = JSON.parse(source) as unknown
-  } catch {
-    throw new Error('Official module catalog is not valid JSON')
-  }
-  assertBoundedStrings(decoded, limits.maxStringBytes)
-
-  const catalog = asObject(decoded, 'Official module catalog')
-  assertKeys(catalog, ['schemaVersion', 'modules'], 'Official module catalog')
-  if (
-    catalog.schemaVersion !== 1 ||
-    !Array.isArray(catalog.modules) ||
-    catalog.modules.length > limits.maxModules
-  ) {
-    throw new Error('Official module catalog is invalid')
-  }
-
-  const repositories = parseAllowedRepositories(options.allowedRepositories)
-  const moduleIds = new Set<string>()
-  const modules = catalog.modules.map((value, index) => {
-    const label = `Official module catalog module ${index}`
-    const module = asObject(value, label)
-    assertKeys(module, ['id', 'icon', 'localizations', 'versions'], label)
-    if (
-      typeof module.id !== 'string' ||
-      !MODULE_ID.test(module.id) ||
-      (module.icon !== undefined &&
-        (typeof module.icon !== 'string' || !ICON_ID.test(module.icon))) ||
-      !Array.isArray(module.versions) ||
-      module.versions.length > limits.maxVersionsPerModule
-    ) {
-      throw new Error(`${label} is invalid`)
-    }
-    if (moduleIds.has(module.id)) {
-      throw new Error(`Duplicate official module id "${module.id}"`)
-    }
-    moduleIds.add(module.id)
-    const localizations = parseModuleCatalogLocalizations(
-      module.localizations,
-      `${label} localizations`,
-    )
-
-    const versions = new Map<string, string>()
-    const parsedVersions = module.versions.map((value, versionIndex) => {
-      const parsed = parseCatalogVersion(
-        value,
-        `${label} version ${versionIndex}`,
-        repositories,
-        limits,
-      )
-      const semver = parseSemver(parsed.version)!
-      const precedenceKey = semverPrecedenceKey(semver)
-      const duplicate = versions.get(precedenceKey)
-      if (duplicate !== undefined) {
-        throw new Error(
-          `Duplicate equivalent versions "${duplicate}" and "${parsed.version}" for module "${module.id}"`,
-        )
-      }
-      versions.set(precedenceKey, parsed.version)
-      return parsed
-    })
-    parsedVersions.sort(compareCatalogVersions)
-    return frozenRecord({
-      id: module.id,
-      ...(module.icon !== undefined ? { icon: module.icon } : {}),
-      localizations,
-      versions: Object.freeze(parsedVersions),
-    }) as OfficialModuleCatalogModule
-  })
-  return frozenRecord({
-    schemaVersion: 1,
-    modules: Object.freeze(modules),
-  }) as OfficialModuleCatalogV1
-}
-
 export type OfficialModuleCompatibilityIssue = 'platform' | 'host-api'
 
 /** Evaluates the one latest candidate exposed by the signed distribution Feed. */
@@ -267,274 +145,6 @@ function candidateCompatibilityIssues(
   return []
 }
 
-function parseCatalogVersion(
-  value: unknown,
-  label: string,
-  repositories: ReadonlySet<string>,
-  limits: OfficialModuleCatalogLimits,
-): OfficialModuleCatalogVersion {
-  const version = asObject(value, label)
-  assertKeys(
-    version,
-    [
-      'version',
-      'hostApi',
-      'platforms',
-      'dataSchemas',
-      'manifestUrl',
-      'manifest',
-      'releaseNotes',
-    ],
-    label,
-  )
-  if (
-    typeof version.version !== 'string' ||
-    !parseSemver(version.version) ||
-    typeof version.hostApi !== 'string' ||
-    !parseRange(version.hostApi, limits) ||
-    !Array.isArray(version.platforms) ||
-    version.platforms.length === 0 ||
-    version.platforms.length > 2 ||
-    version.platforms.some(
-      (platform) => platform !== 'desktop' && platform !== 'mobile',
-    ) ||
-    new Set(version.platforms).size !== version.platforms.length ||
-    typeof version.manifestUrl !== 'string' ||
-    !isAllowedReleaseUrl(version.manifestUrl, repositories)
-  ) {
-    throw new Error(`${label} is invalid`)
-  }
-  const dataSchemas = parseDataSchemas(version.dataSchemas, label, limits)
-  const manifest = asObject(version.manifest, `${label} manifest`)
-  assertKeys(manifest, ['byteSize', 'sha256'], `${label} manifest`)
-  if (
-    !Number.isSafeInteger(manifest.byteSize) ||
-    (manifest.byteSize as number) <= 0 ||
-    (manifest.byteSize as number) > limits.maxManifestBytes ||
-    typeof manifest.sha256 !== 'string' ||
-    !SHA256.test(manifest.sha256)
-  ) {
-    throw new Error(`${label} manifest is invalid`)
-  }
-  let releaseNotes: OfficialModuleReleaseNotes | undefined
-  if (version.releaseNotes !== undefined) {
-    const value = asObject(version.releaseNotes, `${label} releaseNotes`)
-    assertKeys(value, ['url', 'byteSize', 'sha256'], `${label} releaseNotes`)
-    const manifestRelease = parseModuleReleaseUrl(version.manifestUrl)
-    const noteRelease =
-      typeof value.url === 'string' ? parseModuleReleaseUrl(value.url) : null
-    if (
-      !manifestRelease ||
-      !noteRelease ||
-      manifestRelease.tag !== noteRelease.tag ||
-      noteRelease.assetName !== 'release-note.md' ||
-      !Number.isSafeInteger(value.byteSize) ||
-      (value.byteSize as number) <= 0 ||
-      (value.byteSize as number) > 64 * 1024 ||
-      typeof value.sha256 !== 'string' ||
-      !SHA256.test(value.sha256)
-    ) {
-      throw new Error(`${label} releaseNotes is invalid`)
-    }
-    releaseNotes = frozenRecord({
-      url: value.url,
-      byteSize: value.byteSize as number,
-      sha256: value.sha256.toLowerCase(),
-    }) as OfficialModuleReleaseNotes
-  }
-  return frozenRecord({
-    version: version.version,
-    hostApi: version.hostApi,
-    platforms: Object.freeze(
-      [...version.platforms].sort(),
-    ) as readonly OfficialModulePlatform[],
-    dataSchemas,
-    manifestUrl: version.manifestUrl,
-    manifest: frozenRecord({
-      byteSize: manifest.byteSize as number,
-      sha256: manifest.sha256.toLowerCase(),
-    }),
-    ...(releaseNotes ? { releaseNotes } : {}),
-  }) as OfficialModuleCatalogVersion
-}
-
-function parseDataSchemas(
-  value: unknown,
-  label: string,
-  limits: OfficialModuleCatalogLimits,
-): Readonly<Record<string, OfficialModuleDataSchema>> {
-  const schemas = asObject(value, `${label} dataSchemas`)
-  const entries = Object.entries(schemas)
-  if (entries.length === 0 || entries.length > limits.maxNamespacesPerVersion) {
-    throw new Error(`${label} dataSchemas is invalid`)
-  }
-  const parsed = Object.create(null) as Record<string, OfficialModuleDataSchema>
-  for (const [namespace, value] of entries) {
-    if (!isNamespace(namespace)) {
-      throw new Error(`${label} data schema namespace is invalid`)
-    }
-    const schema = asObject(value, `${label} data schema "${namespace}"`)
-    assertKeys(
-      schema,
-      ['readMin', 'readMax', 'write'],
-      `${label} data schema "${namespace}"`,
-    )
-    if (
-      !isSchemaVersion(schema.readMin) ||
-      !isSchemaVersion(schema.readMax) ||
-      !isSchemaVersion(schema.write) ||
-      schema.readMin > schema.readMax ||
-      schema.write < schema.readMin ||
-      schema.write > schema.readMax
-    ) {
-      throw new Error(`${label} data schema "${namespace}" is invalid`)
-    }
-    parsed[namespace] = frozenRecord({
-      readMin: schema.readMin,
-      readMax: schema.readMax,
-      write: schema.write,
-    }) as OfficialModuleDataSchema
-  }
-  return Object.freeze(parsed)
-}
-
-function decodeCatalog(raw: string | Uint8Array, maxBytes: number): string {
-  if (typeof raw === 'string') {
-    if (new TextEncoder().encode(raw).byteLength > maxBytes) {
-      throw new Error('Official module catalog exceeds the byte limit')
-    }
-    return raw
-  }
-  if (!(raw instanceof Uint8Array)) {
-    throw new Error('Official module catalog must be raw UTF-8 bytes or text')
-  }
-  if (raw.byteLength > maxBytes) {
-    throw new Error('Official module catalog exceeds the byte limit')
-  }
-  try {
-    return new TextDecoder('utf-8', { fatal: true }).decode(raw)
-  } catch {
-    throw new Error('Official module catalog is not valid UTF-8')
-  }
-}
-
-function resolveLimits(
-  options: OfficialModuleCatalogParserOptions,
-): OfficialModuleCatalogLimits {
-  if (!options || !Array.isArray(options.allowedRepositories)) {
-    throw new Error('Official repository allowlist is required')
-  }
-  const supplied = options.limits ?? {}
-  const limits = { ...DEFAULT_LIMITS, ...supplied }
-  for (const [name, value] of Object.entries(limits)) {
-    if (!Number.isSafeInteger(value) || value <= 0) {
-      throw new Error(`Official module catalog limit "${name}" is invalid`)
-    }
-    if (
-      Object.prototype.hasOwnProperty.call(supplied, name) &&
-      value > DEFAULT_LIMITS[name as keyof OfficialModuleCatalogLimits]
-    ) {
-      throw new Error(
-        `Official module catalog limit "${name}" cannot exceed its hard limit`,
-      )
-    }
-  }
-  return limits
-}
-
-function parseAllowedRepositories(
-  repositories: OfficialModuleCatalogParserOptions['allowedRepositories'],
-): ReadonlySet<string> {
-  const parsed = new Set<string>()
-  for (const repository of repositories) {
-    const value = asObject(repository, 'Official repository allowlist entry')
-    assertKeys(value, ['owner', 'repo'], 'Official repository allowlist entry')
-    if (typeof value.owner !== 'string' || typeof value.repo !== 'string') {
-      throw new Error('Official repository allowlist entry is invalid')
-    }
-    const key = moduleReleaseRepositoryKey({
-      owner: value.owner,
-      repo: value.repo,
-    })
-    if (!key) throw new Error('Official repository allowlist entry is invalid')
-    parsed.add(key)
-  }
-  if (parsed.size === 0)
-    throw new Error('Official repository allowlist is empty')
-  return parsed
-}
-
-function isAllowedReleaseUrl(
-  value: string,
-  repositories: ReadonlySet<string>,
-): boolean {
-  const parsed = parseModuleReleaseUrl(value)
-  return Boolean(parsed && repositories.has(parsed.repositoryKey))
-}
-
-function assertBoundedStrings(value: unknown, maxBytes: number): void {
-  const pending: unknown[] = [value]
-  while (pending.length > 0) {
-    const current = pending.pop()
-    if (typeof current === 'string') {
-      if (new TextEncoder().encode(current).byteLength > maxBytes) {
-        throw new Error('Official module catalog string exceeds the byte limit')
-      }
-    } else if (Array.isArray(current)) {
-      pending.push(...current)
-    } else if (current !== null && typeof current === 'object') {
-      for (const [key, child] of Object.entries(current)) {
-        pending.push(key, child)
-      }
-    }
-  }
-}
-
-function asObject(value: unknown, label: string): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Error(`${label} must be an object`)
-  }
-  const prototype = Object.getPrototypeOf(value)
-  if (prototype !== Object.prototype && prototype !== null) {
-    throw new Error(`${label} must be a plain object`)
-  }
-  for (const key of Reflect.ownKeys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key)
-    if (
-      typeof key !== 'string' ||
-      !descriptor ||
-      !('value' in descriptor) ||
-      !descriptor.enumerable
-    ) {
-      throw new Error(`${label} must contain only own data fields`)
-    }
-  }
-  return value as Record<string, unknown>
-}
-
-function assertKeys(
-  value: Record<string, unknown>,
-  allowed: readonly string[],
-  label: string,
-): void {
-  const unknown = Object.keys(value).find((key) => !allowed.includes(key))
-  if (unknown) throw new Error(`${label} has unknown field "${unknown}"`)
-}
-
-function frozenRecord(
-  values: Readonly<Record<string, unknown>>,
-): Readonly<Record<string, unknown>> {
-  return Object.freeze(Object.assign(Object.create(null), values))
-}
-
-function isNamespace(value: string): boolean {
-  return SCHEMA_NAMESPACE.test(value) && !DANGEROUS_NAMESPACES.has(value)
-}
-
-function isSchemaVersion(value: unknown): value is number {
-  return Number.isSafeInteger(value) && (value as number) >= 0
-}
-
 function parseSemver(value: string): Semver | null {
   const match = SEMVER.exec(value)
   if (!match) return null
@@ -588,32 +198,13 @@ function compareSemver(left: Semver, right: Semver): number {
   return 0
 }
 
-function semverPrecedenceKey(version: Semver): string {
-  const prerelease = version.prerelease
-    .map((part) => `${part.numeric ? 'n' : 's'}${part.value}`)
-    .join('.')
-  return `${version.major}.${version.minor}.${version.patch}-${prerelease}`
-}
+const MAX_RANGE_ALTERNATIVES = 8
+const MAX_COMPARATORS_PER_ALTERNATIVE = 16
 
-function compareCatalogVersions(
-  left: OfficialModuleCatalogVersion,
-  right: OfficialModuleCatalogVersion,
-): number {
-  const precedence = compareSemver(
-    parseSemver(right.version)!,
-    parseSemver(left.version)!,
-  )
-  if (precedence !== 0) return precedence
-  return left.manifestUrl.localeCompare(right.manifestUrl)
-}
-
-function parseRange(
-  value: string,
-  limits: OfficialModuleCatalogLimits,
-): readonly (readonly Comparator[])[] | null {
+function parseRange(value: string): readonly (readonly Comparator[])[] | null {
   if (!value || value.trim() !== value) return null
   const texts = value.split('||')
-  if (texts.length > limits.maxRangeAlternatives) return null
+  if (texts.length > MAX_RANGE_ALTERNATIVES) return null
   const alternatives: Comparator[][] = []
   for (const alternative of texts) {
     const text = alternative.trim()
@@ -634,7 +225,7 @@ function parseRange(
       const parsed = parseComparator(token)
       if (!parsed) return null
       comparators.push(...parsed)
-      if (comparators.length > limits.maxComparatorsPerAlternative) return null
+      if (comparators.length > MAX_COMPARATORS_PER_ALTERNATIVE) return null
     }
     alternatives.push(comparators)
   }
@@ -705,7 +296,7 @@ function coreSemver(major: string, minor: string, patch: string): Semver {
 }
 
 function satisfiesRange(version: Semver, range: string): boolean {
-  const alternatives = parseRange(range, DEFAULT_LIMITS)
+  const alternatives = parseRange(range)
   if (!alternatives) return false
   return alternatives.some((comparators) => {
     if (
@@ -735,4 +326,12 @@ function sameCore(left: Semver, right: Semver): boolean {
     left.minor === right.minor &&
     left.patch === right.patch
   )
+}
+
+/**
+ * Whether a declared Host API range is syntactically valid, without evaluating
+ * it. Kept beside `parseRange` so the accepted grammar has one definition.
+ */
+export function isModuleHostApiRange(value: unknown): value is string {
+  return typeof value === 'string' && parseRange(value) !== null
 }

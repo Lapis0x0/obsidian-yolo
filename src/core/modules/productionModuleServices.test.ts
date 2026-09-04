@@ -7,7 +7,7 @@ import { ModuleDeviceStateStore } from './moduleDeviceStateStore'
 import type { ModuleIntent } from './moduleIntentStore'
 import { ModuleRuntimeReservation } from './moduleRuntimeReservation'
 import { ModuleStore } from './moduleStore'
-import { parseOfficialModuleCatalog } from './officialModuleCatalog'
+import type { OfficialModuleCatalogV1 } from './officialModuleCatalog'
 import { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
 import { createOfficialModuleCompatibilityProvider } from './officialModuleCompatibilityProvider'
 import {
@@ -304,9 +304,7 @@ function createHarness(
     },
   })
   const loadCatalog = async () =>
-    parseOfficialModuleCatalog((await catalogRequest()).text, {
-      allowedRepositories: [{ owner: 'Lapis0x0', repo: 'obsidian-yolo' }],
-    })
+    JSON.parse((await catalogRequest()).text) as OfficialModuleCatalogV1
   const catalogSource = new OfficialModuleCatalogSource({
     client: { load: loadCatalog, loadFresh: loadCatalog },
     getCompatibility,

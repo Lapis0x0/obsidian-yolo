@@ -206,10 +206,8 @@ export {
   type ModuleManagerOptions,
 } from './moduleManager'
 export {
-  parseOfficialModuleCatalog,
   isHostApiCompatible,
   type OfficialModuleCatalogModule,
-  type OfficialModuleCatalogParserOptions,
   type OfficialModuleCatalogV1,
   type OfficialModuleCatalogVersion,
   type OfficialModuleCompatibility,

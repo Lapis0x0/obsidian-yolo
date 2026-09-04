@@ -1,424 +1,33 @@
 import {
-  type OfficialModuleCatalogParserOptions,
+  type OfficialModuleCatalogVersion,
+  type OfficialModulePlatform,
+  compareOfficialModuleVersions,
   getOfficialModuleVersionCompatibilityIssues,
   isHostApiCompatible,
-  parseOfficialModuleCatalog,
+  isModuleHostApiRange,
 } from './officialModuleCatalog'
 
-const HASH = 'A'.repeat(64)
-const OPTIONS: OfficialModuleCatalogParserOptions = {
-  allowedRepositories: [{ owner: 'yolo-official', repo: 'learning' }],
-}
-
-function version(
-  value: string,
-  overrides: Record<string, unknown> = {},
-): Record<string, unknown> {
+function candidate(
+  overrides: Partial<OfficialModuleCatalogVersion> = {},
+): OfficialModuleCatalogVersion {
   return {
-    version: value,
+    version: '1.0.0',
     hostApi: '>=1.2.0 <2.0.0',
     platforms: ['desktop'],
-    dataSchemas: {
-      learning: { readMin: 1, readMax: 3, write: 3 },
-    },
-    manifestUrl: `https://github.com/yolo-official/learning/releases/download/v${value}/module.json`,
-    manifest: { byteSize: 123, sha256: HASH },
+    dataSchemas: { learning: { readMin: 1, readMax: 3, write: 3 } },
+    manifestUrl:
+      'https://github.com/yolo-official/learning/releases/download/v1.0.0/module.json',
+    manifest: { byteSize: 123, sha256: 'a'.repeat(64) },
     ...overrides,
   }
 }
 
-function catalog(modules: unknown[]): unknown {
-  return {
-    schemaVersion: 1,
-    modules: modules.map((value) => {
-      if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        return value
-      }
-      const module = value as Record<string, unknown>
-      const { name, description, ...rest } = module
-      return {
-        ...rest,
-        localizations:
-          module.localizations ??
-          Object.fromEntries(
-            ['en', 'zh', 'it'].map((locale) => [
-              locale,
-              {
-                name: typeof name === 'string' ? name : 'Learning',
-                description:
-                  typeof description === 'string'
-                    ? description
-                    : 'Learning description',
-              },
-            ]),
-          ),
-      }
-    }),
-  }
-}
-
-function parse(input: unknown, options = OPTIONS) {
-  return parseOfficialModuleCatalog(JSON.stringify(input), options)
-}
-
-function moduleWithVersions(...versions: Record<string, unknown>[]) {
-  return parse(catalog([{ id: 'learning', versions }])).modules[0]
-}
-
-describe('official module catalog V1', () => {
-  it('parses raw text and bytes into frozen null-prototype output', () => {
-    const input = catalog([
-      {
-        id: 'learning',
-        name: 'Learning',
-        description: 'Official learning module',
-        versions: [version('1.0.0')],
-      },
-    ])
-    const parsed = parseOfficialModuleCatalog(
-      new TextEncoder().encode(JSON.stringify(input)),
-      OPTIONS,
-    )
-
-    expect(parsed.modules[0]?.versions[0]?.manifest.sha256).toBe(
-      HASH.toLowerCase(),
-    )
-    expect(Object.isFrozen(parsed)).toBe(true)
-    expect(Object.getPrototypeOf(parsed)).toBeNull()
-    expect(
-      Object.getPrototypeOf(parsed.modules[0]?.versions[0]?.dataSchemas),
-    ).toBeNull()
-  })
-
-  it.each([
-    ['root', { schemaVersion: 1, modules: [], extra: true }],
-    [
-      'module',
-      catalog([{ id: 'learning', versions: [version('1.0.0')], extra: true }]),
-    ],
-    [
-      'version',
-      catalog([
-        { id: 'learning', versions: [version('1.0.0', { extra: true })] },
-      ]),
-    ],
-    [
-      'manifest',
-      catalog([
-        {
-          id: 'learning',
-          versions: [
-            version('1.0.0', {
-              manifest: { byteSize: 1, sha256: HASH, extra: true },
-            }),
-          ],
-        },
-      ]),
-    ],
-    [
-      'schema declaration',
-      catalog([
-        {
-          id: 'learning',
-          versions: [
-            version('1.0.0', {
-              dataSchemas: {
-                learning: { readMin: 1, readMax: 1, write: 1, extra: true },
-              },
-            }),
-          ],
-        },
-      ]),
-    ],
-  ])('rejects an unknown critical field at %s', (_label, input) => {
-    expect(() => parse(input)).toThrow(/unknown field/)
-  })
-
-  it.each([
-    [
-      'invalid module id',
-      catalog([{ id: 'Learning!', versions: [version('1.0.0')] }]),
-    ],
-    [
-      'invalid semver',
-      catalog([{ id: 'learning', versions: [version('01.0.0')] }]),
-    ],
-    [
-      'invalid range',
-      catalog([
-        {
-          id: 'learning',
-          versions: [version('1.0.0', { hostApi: 'not-a-range' })],
-        },
-      ]),
-    ],
-    [
-      'invalid hash',
-      catalog([
-        {
-          id: 'learning',
-          versions: [
-            version('1.0.0', { manifest: { byteSize: 1, sha256: 'bad' } }),
-          ],
-        },
-      ]),
-    ],
-    [
-      'empty schemas',
-      catalog([
-        { id: 'learning', versions: [version('1.0.0', { dataSchemas: {} })] },
-      ]),
-    ],
-    [
-      'invalid schema range',
-      catalog([
-        {
-          id: 'learning',
-          versions: [
-            version('1.0.0', {
-              dataSchemas: {
-                learning: { readMin: 3, readMax: 2, write: 3 },
-              },
-            }),
-          ],
-        },
-      ]),
-    ],
-  ])('rejects %s', (_label, input) => {
-    expect(() => parse(input)).toThrow()
-  })
-
-  it('enforces the caller-owned GitHub repository allowlist', () => {
-    const attacker = catalog([
-      {
-        id: 'learning',
-        versions: [
-          version('1.0.0', {
-            manifestUrl:
-              'https://github.com/attacker/learning/releases/download/v1.0.0/module.json',
-          }),
-        ],
-      },
-    ])
-    expect(() => parse(attacker)).toThrow()
-    expect(() =>
-      parseOfficialModuleCatalog(
-        JSON.stringify({
-          schemaVersion: 1,
-          modules: [
-            {
-              id: 'learning',
-              versions: [version('1.0.0')],
-            },
-          ],
-          allowedRepositories: [{ owner: 'attacker', repo: 'learning' }],
-        }),
-        OPTIONS,
-      ),
-    ).toThrow(/unknown field/)
-  })
-
-  it('accepts canonical encoded slash tags through the shared URL parser', () => {
-    const parsed = parse(
-      catalog([
-        {
-          id: 'learning',
-          versions: [
-            version('1.0.0', {
-              manifestUrl:
-                'https://github.com/yolo-official/learning/releases/download/learning%2Fv1.0.0/module.json',
-            }),
-          ],
-        },
-      ]),
-    )
-    expect(parsed.modules[0]?.versions[0]?.manifestUrl).toContain(
-      '/learning%2Fv1.0.0/module.json',
-    )
-  })
-
-  it('rejects non-release and HTTP URLs', () => {
-    for (const manifestUrl of [
-      'https://example.com/module.json',
-      'http://github.com/yolo-official/learning/releases/download/v1/module.json',
-      'https://github.com/yolo-official/learning/releases/download/learning/v1.0.0/module.json',
-      'https://github.com/yolo-official/learning/releases/download/learning%252Fv1.0.0/module.json',
-      'https://github.com/yolo-official/learning/releases/download/learning%2F../module.json',
-    ]) {
-      expect(() =>
-        parse(
-          catalog([
-            {
-              id: 'learning',
-              versions: [version('1.0.0', { manifestUrl })],
-            },
-          ]),
-        ),
-      ).toThrow()
-    }
-  })
-
-  it('rejects duplicate modules and build-metadata-equivalent versions', () => {
-    expect(() =>
-      parse(
-        catalog([
-          { id: 'learning', versions: [version('1.0.0')] },
-          { id: 'learning', versions: [version('2.0.0')] },
-        ]),
-      ),
-    ).toThrow(/Duplicate official module id/)
-    expect(() =>
-      parse(
-        catalog([
-          {
-            id: 'learning',
-            versions: [version('1.0.0+one'), version('1.0.0+two')],
-          },
-        ]),
-      ),
-    ).toThrow(/Duplicate equivalent versions/)
-  })
-
-  it('sorts huge SemVer components safely and deterministically', () => {
-    const module = moduleWithVersions(
-      version('9007199254740993.0.0'),
-      version('9007199254740992.999999999999999999999.0'),
-      version('2.0.0'),
-    )
-    expect(module.versions.map(({ version }) => version)).toEqual([
-      '9007199254740993.0.0',
-      '9007199254740992.999999999999999999999.0',
-      '2.0.0',
-    ])
-  })
-
-  it('enforces raw, string, range, collection, and manifest limits', () => {
-    expect(() => parseOfficialModuleCatalog({} as never, OPTIONS)).toThrow(
-      /raw UTF-8/,
-    )
-    expect(() =>
-      parse(catalog([]), {
-        ...OPTIONS,
-        limits: { maxBytes: 10 },
-      }),
-    ).toThrow(/byte limit/)
-    expect(() =>
-      parse(
-        catalog([
-          { id: 'learning', name: 'long', versions: [version('1.0.0')] },
-        ]),
-        {
-          ...OPTIONS,
-          limits: { maxStringBytes: 3 },
-        },
-      ),
-    ).toThrow(/string exceeds/)
-    expect(() =>
-      parse(catalog([{ id: 'learning', versions: [version('1.0.0')] }]), {
-        ...OPTIONS,
-        limits: {
-          maxModules: 1,
-          maxVersionsPerModule: 1,
-          maxNamespacesPerVersion: 1,
-          maxManifestBytes: 100,
-        },
-      }),
-    ).toThrow(/manifest is invalid/)
-    expect(() =>
-      parse(catalog([{ id: 'learning', versions: [version('1.0.0')] }]), {
-        ...OPTIONS,
-        limits: { maxManifestBytes: 2 * 1024 * 1024 },
-      }),
-    ).toThrow(/cannot exceed its hard limit/)
-    expect(() =>
-      parse(
-        catalog([
-          {
-            id: 'learning',
-            versions: [
-              version('1.0.0', {
-                manifest: {
-                  byteSize: 1024 * 1024 + 1,
-                  sha256: 'a'.repeat(64),
-                },
-              }),
-            ],
-          },
-        ]),
-      ),
-    ).toThrow(/manifest is invalid/)
-    expect(() =>
-      parse(
-        catalog([
-          { id: 'learning', versions: [version('1.0.0')] },
-          { id: 'search', versions: [version('1.0.0')] },
-        ]),
-        { ...OPTIONS, limits: { maxModules: 1 } },
-      ),
-    ).toThrow()
-    expect(() =>
-      parse(
-        catalog([
-          {
-            id: 'learning',
-            versions: [version('1.0.0'), version('2.0.0')],
-          },
-        ]),
-        { ...OPTIONS, limits: { maxVersionsPerModule: 1 } },
-      ),
-    ).toThrow()
-    expect(() =>
-      parse(
-        catalog([
-          {
-            id: 'learning',
-            versions: [
-              version('1.0.0', {
-                dataSchemas: {
-                  learning: { readMin: 0, readMax: 1, write: 1 },
-                  search: { readMin: 0, readMax: 1, write: 1 },
-                },
-              }),
-            ],
-          },
-        ]),
-        { ...OPTIONS, limits: { maxNamespacesPerVersion: 1 } },
-      ),
-    ).toThrow()
-    expect(() =>
-      parse(
-        catalog([
-          {
-            id: 'learning',
-            versions: [version('1.0.0', { hostApi: '>=1.0.0 || >=2.0.0' })],
-          },
-        ]),
-        {
-          ...OPTIONS,
-          limits: { maxRangeAlternatives: 1 },
-        },
-      ),
-    ).toThrow()
-    expect(() =>
-      parse(
-        catalog([
-          {
-            id: 'learning',
-            versions: [version('1.0.0', { hostApi: '>=1.0.0 <2.0.0' })],
-          },
-        ]),
-        { ...OPTIONS, limits: { maxComparatorsPerAlternative: 1 } },
-      ),
-    ).toThrow()
-  })
-
+describe('official module compatibility', () => {
   it('accepts one manifest that declares both desktop and mobile', () => {
-    const candidate = moduleWithVersions(
-      version('1.0.0', { platforms: ['mobile', 'desktop'] }),
-    ).versions[0]
+    const both = candidate({ platforms: ['mobile', 'desktop'] })
     for (const platform of ['desktop', 'mobile'] as const) {
       expect(
-        getOfficialModuleVersionCompatibilityIssues(candidate, {
+        getOfficialModuleVersionCompatibilityIssues(both, {
           hostApi: '1.3.0',
           platform,
         }),
@@ -427,25 +36,34 @@ describe('official module catalog V1', () => {
   })
 
   it('reports the platform and Host API issues of one candidate', () => {
-    const mobileOnly = moduleWithVersions(
-      version('1.0.0', { platforms: ['mobile'] }),
-    ).versions[0]
     expect(
-      getOfficialModuleVersionCompatibilityIssues(mobileOnly, {
-        hostApi: '1.3.0',
-        platform: 'desktop',
-      }),
+      getOfficialModuleVersionCompatibilityIssues(
+        candidate({ platforms: ['mobile'] }),
+        { hostApi: '1.3.0', platform: 'desktop' },
+      ),
     ).toEqual(['platform'])
 
-    const narrowRange = moduleWithVersions(
-      version('1.0.0', { hostApi: '^1.2.0' }),
-    ).versions[0]
     expect(
-      getOfficialModuleVersionCompatibilityIssues(narrowRange, {
-        hostApi: '2.0.0',
+      getOfficialModuleVersionCompatibilityIssues(
+        candidate({ hostApi: '^1.2.0' }),
+        { hostApi: '2.0.0', platform: 'desktop' },
+      ),
+    ).toEqual(['host-api'])
+  })
+
+  it('rejects an invalid platform or Host API from the composition root', () => {
+    expect(() =>
+      getOfficialModuleVersionCompatibilityIssues(candidate(), {
+        hostApi: '1.3.0',
+        platform: 'watch' as OfficialModulePlatform,
+      }),
+    ).toThrow()
+    expect(() =>
+      getOfficialModuleVersionCompatibilityIssues(candidate(), {
+        hostApi: 'not-a-version',
         platform: 'desktop',
       }),
-    ).toEqual(['host-api'])
+    ).toThrow()
   })
 
   it('does not satisfy a stable range with a prerelease Host API', () => {
@@ -462,22 +80,43 @@ describe('official module catalog V1', () => {
     )
     expect(isHostApiCompatible('1.3.0', 'nonsense range')).toBe(false)
   })
+})
 
-  it('rejects dangerous namespaces and prototype-shaped catalog fields', () => {
-    for (const namespace of ['constructor', 'prototype', '__proto__']) {
-      const schemas = JSON.parse(
-        `{"${namespace}":{"readMin":0,"readMax":1,"write":1}}`,
-      ) as unknown
-      expect(() =>
-        parse(
-          catalog([
-            {
-              id: 'learning',
-              versions: [version('1.0.0', { dataSchemas: schemas })],
-            },
-          ]),
-        ),
-      ).toThrow()
+describe('module Host API ranges', () => {
+  it('accepts the range shapes the Feed is allowed to publish', () => {
+    for (const range of ['*', '^1.2.0', '>=1.2.0 <2.0.0', '1.2.0 || 1.3.0']) {
+      expect(isModuleHostApiRange(range)).toBe(true)
     }
+  })
+
+  it('rejects unparseable ranges and ranges built to be expensive', () => {
+    expect(isModuleHostApiRange('')).toBe(false)
+    expect(isModuleHostApiRange('nonsense range')).toBe(false)
+    expect(isModuleHostApiRange(1)).toBe(false)
+    expect(
+      isModuleHostApiRange(
+        Array.from({ length: 9 }, (_unused, index) => `1.${index}.0`).join(
+          ' || ',
+        ),
+      ),
+    ).toBe(false)
+    expect(
+      isModuleHostApiRange(
+        Array.from({ length: 17 }, () => '>=1.0.0').join(' '),
+      ),
+    ).toBe(false)
+  })
+})
+
+describe('official module version ordering', () => {
+  it('orders huge SemVer components without losing precision', () => {
+    expect(
+      compareOfficialModuleVersions(
+        '9007199254740993.0.0',
+        '9007199254740992.999999999999999999999.0',
+      ),
+    ).toBeGreaterThan(0)
+    expect(compareOfficialModuleVersions('1.0.0', '1.0.0')).toBe(0)
+    expect(() => compareOfficialModuleVersions('1.0.0', 'v1')).toThrow()
   })
 })

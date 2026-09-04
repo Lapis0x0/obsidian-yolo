@@ -152,4 +152,67 @@ describe('signed distribution Feed', () => {
       verifyAndParseDistributionFeed(raw, signature, { publicKeyBase64 }),
     ).toThrow('asset')
   })
+
+  // The Feed parser is the only structural gate on module metadata, so the
+  // invariants the rest of the module stack assumes hold must be enforced here.
+  describe('module metadata invariants', () => {
+    const parse = (mutate: (module: Record<string, unknown>) => void) => {
+      const value = fixture()
+      mutate(value.modules[0] as unknown as Record<string, unknown>)
+      const raw = `${JSON.stringify(value)}\n`
+      const signature = Buffer.from(
+        nacl.sign.detached(new TextEncoder().encode(raw), keyPair.secretKey),
+      ).toString('base64')
+      return () =>
+        verifyAndParseDistributionFeed(raw, signature, { publicKeyBase64 })
+    }
+
+    it('requires the en localization every other locale falls back to', () => {
+      expect(
+        parse((module) => {
+          module.localizations = {
+            zh: { name: '学习', description: '从笔记中学习。' },
+          }
+        }),
+      ).toThrow('en fallback')
+    })
+
+    it('keeps locales this build has never heard of out of the way', () => {
+      const feed = parse((module) => {
+        module.localizations = {
+          ...(module.localizations as Record<string, unknown>),
+          ja: { name: '学習', description: 'ノートから学ぶ。' },
+        }
+      })()
+      expect(Object.keys(feed.modules[0].localizations).sort()).toEqual([
+        'en',
+        'it',
+        'zh',
+      ])
+    })
+
+    it('rejects a Host API range the module stack cannot evaluate', () => {
+      expect(parse((module) => (module.hostApi = 'nonsense range'))).toThrow(
+        'Module distribution is invalid',
+      )
+    })
+
+    it('rejects duplicate platforms', () => {
+      expect(
+        parse((module) => (module.platforms = ['desktop', 'desktop'])),
+      ).toThrow('Module distribution is invalid')
+    })
+
+    it('rejects prototype-shaped data schema namespaces', () => {
+      for (const namespace of ['constructor', 'prototype', '__proto__']) {
+        expect(
+          parse((module) => {
+            module.dataSchemas = JSON.parse(
+              `{"${namespace}":{"readMin":0,"readMax":1,"write":1}}`,
+            ) as Record<string, unknown>
+          }),
+        ).toThrow('data schema namespace')
+      }
+    })
+  })
 })
