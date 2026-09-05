@@ -4073,7 +4073,12 @@ button.yolo-chat-mode-select-item {
   appearance: none;
 }
 
-button.yolo-chat-mode-select-item:focus-visible {
+/* 焦点环只在焦点离开选中项时出现。打开菜单会把焦点程序化地放到选中项上
+ * （见 ChatModeSelect 的 focusSelectedItem），而选中态自身已用背景与描边
+ * 指明了位置，此时再叠一圈只是重复——且 :focus-visible 是否命中取决于
+ * 浏览器对"最近交互模态"的判断，于是刚启动后的第一次打开有环、之后没有。
+ * 焦点离开选中项后，这圈环是键盘上下导航唯一的视觉反馈，不能省。 */
+button.yolo-chat-mode-select-item:focus-visible:not([data-state='checked']) {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
   border-radius: var(--radius-s);
@@ -4104,7 +4109,8 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
   gap: 10px;
 }
 
-.yolo-chat-mode-toggle-card:focus-visible {
+/* 与 button.yolo-chat-mode-select-item:focus-visible 同一约定。 */
+.yolo-chat-mode-toggle-card:focus-visible:not([data-state='checked']) {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
   border-radius: var(--radius-s);
