@@ -42,6 +42,11 @@ export const fileEditingCapability = defineCapability({
       'Grouped file editing tools: targeted text edits and full-file writes.',
   },
   category: 'vault',
+  // Ask mode's promise is "do not change my vault", so writes are out; Max
+  // does not get these either, because it writes through `native_files`
+  // instead (master.md Q5 — the vault-backed and native file toolsets are two
+  // identities, never granted together).
+  chatModes: ['agent'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'require_approval',

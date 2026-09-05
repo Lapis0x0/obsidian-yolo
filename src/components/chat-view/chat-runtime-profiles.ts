@@ -1,10 +1,13 @@
 import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
-import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { getToolName } from '../../core/mcp/tool-name-utils'
 import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabilityProfile'
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
-import { getCapability } from '../../core/tools/registry'
+import {
+  getToolNamesForChatMode,
+  listBuiltinToolNames,
+} from '../../core/tools/registry'
+import type { BuiltinChatModeId } from '../../core/tools/types'
 import type { Assistant } from '../../types/assistant.types'
 import type { NativeToolPolicy } from '../../types/llm/request'
 
@@ -23,63 +26,12 @@ type AssistantRuntimeOptions = Pick<
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
 
 /**
- * Capabilities withheld from non-Agent chat modes (Ask mode): file writes,
- * the vault shell, the local terminal, and autonomous task planning — see
- * master.md §3.1's "非 Agent 聊天模式屏蔽的能力" note.
- *
- * D7 (phase2-migration.md D7 item 9): this used to be a hand-listed array of
- * 6 tool FQNs (the `fs_edit_ops` group name plus 5 member/tool names) that
- * had to be kept in sync with the tool catalog by inspection. It is now
- * derived from each blocked capability's own `tools` list, so adding a tool
- * to (say) `file_editing` automatically extends the block — no second list
- * to remember. `todo_list` is included here even though it wasn't one of
- * the three capabilities master.md §3.1 names in its "非 Agent 聊天模式屏蔽"
- * sentence: `todo_write`'s own description ("Agent mode only", see
- * `capabilities/todo-list.ts`) documents that it has always been part of
- * this block, and the pre-D7 6-FQN list did include it explicitly — the
- * prose in §3.1 just undercounts by one.
+ * Every built-in tool, by fully-qualified name. Membership in this set is the
+ * only thing that decides whether a name is subject to per-mode visibility at
+ * all: an MCP server's tool or a module tool set's tool is not this layer's
+ * business and passes through untouched.
  */
-const CHAT_BLOCKED_CAPABILITY_IDS = [
-  'file_editing',
-  'vault_shell',
-  'terminal',
-  'todo_list',
-] as const
-
-/**
- * Capabilities no built-in chat mode may expose *except* Max — withheld from
- * Ask and Agent alike (docs/plans/09-05-yolo-max/p1-design.md §2).
- *
- * Deliberately a second set rather than an addition to
- * `CHAT_BLOCKED_CAPABILITY_IDS`: that one asks "may a non-Agent mode do
- * this?", and Agent answers yes to every entry in it. This one asks a
- * different question — "is this capability part of Max's definition?" — and
- * Agent answers no. Agent mode is the Obsidian-API route the community
- * relies on (master.md Q2); a capability that writes anywhere on disk
- * changes what that mode *is*, so it must not leak in through an assistant's
- * enabled-tool list.
- */
-const MAX_ONLY_CAPABILITY_IDS = ['native_files'] as const
-
-const toolNamesForCapabilities = (
-  capabilityIds: readonly string[],
-): readonly string[] =>
-  capabilityIds.flatMap((capabilityId) => {
-    const capability = getCapability(capabilityId)
-    if (!capability) {
-      return []
-    }
-    return capability.tools.map((tool) =>
-      getToolName(getLocalFileToolServerName(), tool.name),
-    )
-  })
-
-export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] =
-  toolNamesForCapabilities(CHAT_BLOCKED_CAPABILITY_IDS)
-
-export const MAX_ONLY_TOOL_NAMES: readonly string[] = toolNamesForCapabilities(
-  MAX_ONLY_CAPABILITY_IDS,
-)
+const BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set(listBuiltinToolNames())
 
 /**
  * Explicit context-assembly policy produced by `resolveChatModeRuntime` and
@@ -183,13 +135,16 @@ export function resolveChatModeRuntime({
     : false
 
   const isAgentMode = isAgentChatMode(mode)
-  const blocked = new Set(
-    isAgentMode
-      ? MAX_ONLY_TOOL_NAMES
-      : [...CHAT_BLOCKED_TOOL_NAMES, ...MAX_ONLY_TOOL_NAMES],
-  )
+  // `ChatMode` has no `'max'` yet (S2a adds it), so this only ever resolves
+  // to 'ask' or 'agent' today — `getToolNamesForChatMode` already answers
+  // correctly for all three.
+  const builtinMode: BuiltinChatModeId = isAgentMode ? 'agent' : 'ask'
+  const exposedBuiltinToolNames = new Set(getToolNamesForChatMode(builtinMode))
   const allowedToolNames = enableTools
-    ? assistantEnabledToolNames.filter((name) => !blocked.has(name))
+    ? assistantEnabledToolNames.filter(
+        (name) =>
+          !BUILTIN_TOOL_NAMES.has(name) || exposedBuiltinToolNames.has(name),
+      )
     : undefined
 
   return {

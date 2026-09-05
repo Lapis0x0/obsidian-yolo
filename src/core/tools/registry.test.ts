@@ -3,11 +3,14 @@ import {
   getCapability,
   getCapabilityForTool,
   getToolDefinition,
+  getToolNamesForChatMode,
   isBuiltinCapabilityId,
   isBuiltinToolName,
+  listBuiltinToolNames,
   listBuiltinTools,
   listCapabilities,
 } from './registry'
+import type { BuiltinChatModeId } from './types'
 
 describe('assertNoDuplicates', () => {
   it('does not throw for a list with no duplicates', () => {
@@ -213,5 +216,131 @@ describe('registry queries', () => {
   it('type-guards the D6 batch 7 tool name (bash)', () => {
     expect(isBuiltinToolName('bash')).toBe(true)
     expect(isBuiltinCapabilityId('vault_shell')).toBe(true)
+  })
+})
+
+describe('chat mode visibility', () => {
+  /**
+   * docs/plans/09-05-yolo-max/master.md §6's declaration table, written out in
+   * full. Each capability carries its own `chatModes`, so this is the one
+   * place the whole table is visible at once — and the regression that makes
+   * a change to any single capability's visibility a deliberate act. It is
+   * also why no per-mode block list exists anywhere else in the codebase.
+   */
+  const CAPABILITY_IDS_BY_CHAT_MODE: Record<BuiltinChatModeId, string[]> = {
+    ask: [
+      'context_compaction',
+      'context_pruning',
+      'file_reading',
+      'memory',
+      'subagent_delegation',
+      'user_questions',
+      'vault_shell',
+      'web_access',
+    ],
+    agent: [
+      'context_compaction',
+      'context_pruning',
+      'file_editing',
+      'file_reading',
+      'js_sandbox',
+      'memory',
+      'subagent_delegation',
+      'terminal',
+      'todo_list',
+      'user_questions',
+      'vault_shell',
+      'web_access',
+    ],
+    max: [
+      'context_compaction',
+      'context_pruning',
+      'memory',
+      'native_files',
+      'subagent_delegation',
+      'terminal',
+      'todo_list',
+      'user_questions',
+      'web_access',
+    ],
+  }
+
+  it.each(['ask', 'agent', 'max'] as const)(
+    'exposes exactly the master.md §6 capability set in %s mode',
+    (mode) => {
+      expect(
+        listCapabilities()
+          .filter((capability) => capability.chatModes.includes(mode))
+          .map((capability) => capability.id)
+          .sort(),
+      ).toEqual([...CAPABILITY_IDS_BY_CHAT_MODE[mode]].sort())
+    },
+  )
+
+  it('leaves no capability invisible in every mode', () => {
+    const everywhereInvisible = listCapabilities().filter(
+      (capability) => capability.chatModes.length === 0,
+    )
+    expect(everywhereInvisible).toEqual([])
+  })
+
+  it('expands a mode to the fully-qualified tool names of its capabilities', () => {
+    expect(getToolNamesForChatMode('max').sort()).toEqual(
+      [
+        'yolo_local__ask_user_question',
+        'yolo_local__context_compact',
+        'yolo_local__context_prune_tool_results',
+        'yolo_local__delegate_subagent',
+        'yolo_local__edit_file',
+        'yolo_local__memory_add',
+        'yolo_local__memory_delete',
+        'yolo_local__memory_update',
+        'yolo_local__read_file',
+        'yolo_local__terminal_command',
+        'yolo_local__todo_write',
+        'yolo_local__web_scrape',
+        'yolo_local__web_search',
+        'yolo_local__write_file',
+      ].sort(),
+    )
+  })
+
+  it('keeps the vault-backed and native file toolsets in disjoint modes (master.md Q5)', () => {
+    const vaultFileTools = [
+      'yolo_local__fs_read',
+      'yolo_local__fs_edit',
+      'yolo_local__fs_write',
+      'yolo_local__bash',
+    ]
+    const nativeFileTools = [
+      'yolo_local__read_file',
+      'yolo_local__write_file',
+      'yolo_local__edit_file',
+    ]
+    for (const mode of ['ask', 'agent'] as const) {
+      const names = getToolNamesForChatMode(mode)
+      expect(names).toEqual(expect.arrayContaining(['yolo_local__fs_read']))
+      expect(names.filter((name) => nativeFileTools.includes(name))).toEqual([])
+    }
+    expect(
+      getToolNamesForChatMode('max').filter((name) =>
+        vaultFileTools.includes(name),
+      ),
+    ).toEqual([])
+  })
+
+  it('lists every built-in tool by fully-qualified name', () => {
+    expect(listBuiltinToolNames().sort()).toEqual(
+      listBuiltinTools()
+        .map((tool) => `yolo_local__${tool.name}`)
+        .sort(),
+    )
+    // Every mode's tools are a subset of the whole catalog.
+    const all = new Set(listBuiltinToolNames())
+    for (const mode of ['ask', 'agent', 'max'] as const) {
+      expect(getToolNamesForChatMode(mode).every((name) => all.has(name))).toBe(
+        true,
+      )
+    }
   })
 })

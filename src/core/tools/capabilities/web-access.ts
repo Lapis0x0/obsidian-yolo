@@ -39,6 +39,7 @@ export const webAccessCapability = defineCapability({
       'Grouped web tools: web_search for queries and web_scrape for single-page full content.',
   },
   category: 'external',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'full_access',

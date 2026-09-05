@@ -98,6 +98,7 @@ const _probeCapability = defineCapability({
   id: 'probe_capability',
   label: { key: 'probe', fallback: 'probe' },
   category: 'context',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: false,
   approval: {
     defaultMode: 'full_access',

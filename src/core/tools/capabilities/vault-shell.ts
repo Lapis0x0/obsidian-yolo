@@ -40,6 +40,12 @@ export const vaultShellCapability = defineCapability({
       'A virtual shell for vault search and inspection, plus mkdir/mv/rm path operations. Content edits stay on Text Editing / Write File.',
   },
   category: 'vault',
+  // Ask gets it read-only-in-spirit (its mkdir/mv/rm side is what Ask's
+  // "do not change my vault" promise has to cover — the whole capability is
+  // withheld rather than split). Max does not get it at all: it has a real
+  // shell (`terminal`) and native file tools, and the virtual vault shell is
+  // a JS reimplementation over the Vault API (master.md Q5).
+  chatModes: ['ask', 'agent'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'dangerous_only',

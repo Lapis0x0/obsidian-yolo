@@ -17,9 +17,8 @@ import { writeFileDefinition } from '../native/write_file/definition'
  * `category: 'external'` for the same reason `terminal` is external: the
  * reach is the user's machine, not the vault. `defaultEnabled: true` with
  * `approval.defaultMode: 'full_access'` is the Max standard trust tier
- * (Q8) — it costs nothing while no mode exposes these tools, and the
- * boundary that actually matters (a write outside the vault) is enforced by
- * the gateway, not by an all-or-nothing settings toggle.
+ * (Q8) — the boundary that actually matters (a write outside the vault) is
+ * enforced by the gateway, not by an all-or-nothing settings toggle.
  */
 export const nativeFilesCapability = defineCapability({
   id: 'native_files',
@@ -33,6 +32,11 @@ export const nativeFilesCapability = defineCapability({
       'Read, write, and edit files directly on the local filesystem, at any path and any extension. Desktop-only, and only available in Max mode.',
   },
   category: 'external',
+  // Max only. Agent mode is the Obsidian-API route the community relies on
+  // (master.md Q2); a capability that writes anywhere on disk changes what
+  // that mode *is*, so it must never leak in through an assistant's enabled
+  // tool list.
+  chatModes: ['max'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'full_access',

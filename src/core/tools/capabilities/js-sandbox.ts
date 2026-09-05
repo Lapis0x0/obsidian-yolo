@@ -31,6 +31,10 @@ export const jsSandboxCapability = defineCapability({
       'Run JavaScript in an isolated sandbox for precise computation, batch statistics, and data processing; grant retrieval, vault read-only, and network capabilities individually.',
   },
   category: 'external',
+  // Hidden in Max (master.md Q11): a mode that can run real commands and
+  // write real files has no use for an isolated JS sandbox, and offering both
+  // only makes the model pick the weaker one.
+  chatModes: ['agent'],
   defaultEnabled: false,
   approval: {
     defaultMode: 'full_access',

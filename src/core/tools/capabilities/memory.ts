@@ -20,6 +20,7 @@ export const memoryCapability = defineCapability({
     fallback: 'Grouped memory operations: add, update, and delete memory.',
   },
   category: 'context',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'full_access',

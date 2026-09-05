@@ -1,10 +1,6 @@
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 
-import {
-  CHAT_BLOCKED_TOOL_NAMES,
-  MAX_ONLY_TOOL_NAMES,
-  resolveChatModeRuntime,
-} from './chat-runtime-profiles'
+import { resolveChatModeRuntime } from './chat-runtime-profiles'
 
 function moduleChatMode(
   overrides: Partial<RegisteredModuleChatModeV1['mode']> = {},
@@ -260,29 +256,49 @@ describe('resolveChatModeRuntime', () => {
     expect(runtime.bypassToolApproval).toBe(false)
   })
 
-  // D7 (phase2-migration.md D7 item 9): CHAT_BLOCKED_TOOL_NAMES used to be a
-  // hand-listed array of 6 tool FQNs (the fs_edit_ops group name plus 5
-  // member/tool names). It is now derived from 4 capability ids
-  // (file_editing, vault_shell, terminal, todo_list) via each capability's
-  // own `tools` list — todo_list is included even though master.md §3.1's
-  // "非 Agent 聊天模式屏蔽的能力" prose only names 3, because todo_write's own
-  // description ("Agent mode only") and the pre-D7 6-FQN list (which did
-  // include yolo_local__todo_write) both document that it was always meant
-  // to be blocked; the prose undercounts by one.
-  it('CHAT_BLOCKED_TOOL_NAMES blocks fs_edit, fs_write, bash, terminal_command, and todo_write', () => {
-    expect(CHAT_BLOCKED_TOOL_NAMES).toEqual(
-      expect.arrayContaining([
+  // Per-mode visibility comes entirely from each capability's own
+  // `chatModes` (master.md §6); the table itself is locked by
+  // `core/tools/registry.test.ts`. These cases pin the *behavior* that
+  // derivation has to produce at this layer.
+  it('withholds every write/plan capability from ask mode', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'ask',
+      assistant,
+      assistantEnabledToolNames: [
+        'yolo_local__fs_read',
         'yolo_local__fs_edit',
         'yolo_local__fs_write',
-        'yolo_local__bash',
         'yolo_local__terminal_command',
         'yolo_local__todo_write',
-      ]),
-    )
-    expect(CHAT_BLOCKED_TOOL_NAMES).toHaveLength(5)
+        // bash stays: vault_shell declares 'ask'.
+        'yolo_local__bash',
+      ],
+    })
+
+    expect(runtime.allowedToolNames).toEqual([
+      'yolo_local__fs_read',
+      'yolo_local__bash',
+    ])
   })
 
-  it('blocks todo_write in ask mode, same as the other four blocked tools', () => {
+  it('leaves tools it does not own alone (MCP servers, module tool sets)', () => {
+    const runtime = resolveChatModeRuntime({
+      mode: 'ask',
+      assistant,
+      assistantEnabledToolNames: [
+        'playwright__browser_click',
+        'yolo_whiteboard__create_board',
+        'yolo_local__fs_write',
+      ],
+    })
+
+    expect(runtime.allowedToolNames).toEqual([
+      'playwright__browser_click',
+      'yolo_whiteboard__create_board',
+    ])
+  })
+
+  it('blocks todo_write in ask mode, same as the other blocked tools', () => {
     const runtime = resolveChatModeRuntime({
       mode: 'ask',
       assistant,
@@ -311,11 +327,11 @@ describe('resolveChatModeRuntime', () => {
     ])
   })
 
-  // YOLO Max S1 (docs/plans/09-05-yolo-max/p1-design.md §2/§3): the
-  // `native_files` tools are enabled by default at the capability level, so
-  // they land in `assistantEnabledToolNames` for every assistant. The only
-  // thing keeping them out of Ask and Agent is this exclusion.
-  describe('MAX_ONLY_TOOL_NAMES', () => {
+  // YOLO Max S1/S1b (master.md §6, p1-design.md §2/§3): the `native_files`
+  // tools are enabled by default at the capability level, so they land in
+  // `assistantEnabledToolNames` for every assistant. The only thing keeping
+  // them out of Ask and Agent is `native_files`'s `chatModes: ['max']`.
+  describe('native_files (chatModes: max)', () => {
     const withNativeFiles = [
       'yolo_local__fs_read',
       'yolo_local__read_file',
@@ -323,23 +339,7 @@ describe('resolveChatModeRuntime', () => {
       'yolo_local__edit_file',
     ]
 
-    it('covers every native_files tool', () => {
-      expect([...MAX_ONLY_TOOL_NAMES].sort()).toEqual([
-        'yolo_local__edit_file',
-        'yolo_local__read_file',
-        'yolo_local__write_file',
-      ])
-    })
-
-    it('is disjoint from CHAT_BLOCKED_TOOL_NAMES (a different question, not an extension of it)', () => {
-      expect(
-        MAX_ONLY_TOOL_NAMES.filter((name) =>
-          CHAT_BLOCKED_TOOL_NAMES.includes(name),
-        ),
-      ).toEqual([])
-    })
-
-    it('hides the native tools in agent mode, unlike CHAT_BLOCKED_TOOL_NAMES', () => {
+    it('hides the native tools in agent mode, unlike the ask-only exclusions', () => {
       const runtime = resolveChatModeRuntime({
         mode: 'agent',
         assistant,

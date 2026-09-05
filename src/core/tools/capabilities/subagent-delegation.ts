@@ -29,6 +29,7 @@ export const subagentDelegationCapability = defineCapability({
       'Dispatch an isolated temporary sub-agent to complete a self-contained task asynchronously.',
   },
   category: 'external',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: false,
   approval: {
     defaultMode: 'full_access',

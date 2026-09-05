@@ -95,6 +95,18 @@ export type OpaqueSubagentParentContext = unknown
 export type BuiltinToolCategory = 'vault' | 'context' | 'external'
 
 /**
+ * The built-in chat modes a capability can be exposed in.
+ *
+ * Deliberately declared here rather than imported from the UI layer's
+ * `BuiltinChatMode` (`components/chat-view/chat-input/ChatModeSelect`):
+ * `core/tools/` must not depend on `src/components/`, and this union is the
+ * one the tool registry is defined against. The two are kept aligned by hand
+ * (docs/plans/09-05-yolo-max/master.md §6 — S2a is where `BuiltinChatMode`
+ * grows `'max'` to match).
+ */
+export type BuiltinChatModeId = 'ask' | 'agent' | 'max'
+
+/**
  * Context available when building a tool's MCP protocol projection (i.e.
  * listing the catalog). No execution-time dependencies (signal, toolCallId,
  * ...) belong here — those live on `ToolContext`.
@@ -255,6 +267,19 @@ export type BuiltinCapabilityDefinition<
   label: I18nText
   description?: I18nText
   category: BuiltinToolCategory
+  /**
+   * Which built-in chat modes expose this capability's tools to the model.
+   * The single source of truth for per-mode visibility: `resolveChatModeRuntime`
+   * filters an assistant's enabled tools through this field and nothing else,
+   * and no per-mode list of blocked capabilities or tool names may exist
+   * anywhere (docs/plans/09-05-yolo-max/master.md §6 — the same rule that
+   * makes settings rows, approval policy, and persisted keys capability-derived).
+   *
+   * Module chat modes do not go through this field at all: their tool grant is
+   * self-declared (capability tier + mode tools, see
+   * `resolveModuleCapabilityProfile`), never narrowed per built-in mode.
+   */
+  chatModes: readonly BuiltinChatModeId[]
   defaultEnabled: boolean
   approval: {
     defaultMode: AssistantToolApprovalMode

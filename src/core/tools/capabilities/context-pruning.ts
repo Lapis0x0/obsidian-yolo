@@ -29,6 +29,7 @@ export const contextPruningCapability = defineCapability({
       'Exclude selected historical tool results, or prune all prunable tool results at once, from future model-visible context without deleting chat history.',
   },
   category: 'context',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: false,
   approval: {
     defaultMode: 'full_access',

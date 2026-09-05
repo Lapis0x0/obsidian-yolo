@@ -26,6 +26,7 @@ export const userQuestionsCapability = defineCapability({
       'Pause the run and ask the user 1-3 structured questions (free text / single / multi). The agent resumes after the user submits answers.',
   },
   category: 'context',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'full_access',

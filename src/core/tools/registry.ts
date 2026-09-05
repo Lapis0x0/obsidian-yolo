@@ -1,6 +1,10 @@
+import { getLocalFileToolServerName } from '../mcp/localFileToolNames'
+import { getToolName } from '../mcp/tool-name-utils'
+
 import { CAPABILITIES } from './capabilities'
 import type {
   BuiltinCapabilityDefinition,
+  BuiltinChatModeId,
   BuiltinToolDefinition,
 } from './types'
 
@@ -92,6 +96,35 @@ export const listBuiltinTools = (): readonly BuiltinToolDefinition[] =>
 
 export const isBuiltinToolName = (name: string): name is BuiltinToolName =>
   BUILTIN_TOOLS.some((tool) => tool.name === name)
+
+/**
+ * Fully-qualified names (`yolo_local__fs_read`, see `getToolName`) of every
+ * built-in tool — the form an assistant's enabled-tool list and the agent
+ * runtime's `allowedToolNames` speak in.
+ */
+export const listBuiltinToolNames = (): string[] =>
+  BUILTIN_TOOLS.map((tool) =>
+    getToolName(getLocalFileToolServerName(), tool.name),
+  )
+
+/**
+ * The same, narrowed to what a built-in chat mode exposes to the model: every
+ * tool of every capability whose `chatModes` includes `mode`.
+ *
+ * This is the *only* derivation of per-mode tool visibility
+ * (docs/plans/09-05-yolo-max/master.md §6). A mode that wants to hide a
+ * capability changes that capability's `chatModes`; there is no list of
+ * blocked ids or names to keep in sync anywhere. Module chat modes never
+ * reach here — see `chatModes`'s doc comment in types.ts.
+ */
+export const getToolNamesForChatMode = (mode: BuiltinChatModeId): string[] =>
+  (CAPABILITIES as readonly BuiltinCapabilityDefinition[])
+    .filter((capability) => capability.chatModes.includes(mode))
+    .flatMap((capability) =>
+      capability.tools.map((tool) =>
+        getToolName(getLocalFileToolServerName(), tool.name),
+      ),
+    )
 
 export const isBuiltinCapabilityId = (id: string): id is BuiltinCapabilityId =>
   CAPABILITIES.some((capability) => capability.id === id)

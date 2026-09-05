@@ -1692,8 +1692,9 @@ export class AgentToolGateway {
     if (!this.toolPreferences && !this.builtinCapabilityPreferences) {
       // Non-Agent modes (`resolveChatModeRuntime`) deliberately supply no
       // preference maps, so `allowedToolNames` — already derived from the
-      // assistant's enabled capabilities before the run started, minus
-      // `CHAT_BLOCKED_TOOL_NAMES` — is the only authoritative source, and
+      // assistant's enabled capabilities before the run started, narrowed to
+      // what the mode's `chatModes` expose — is the only authoritative
+      // source, and
       // the membership test above has already consulted it.
       //
       // Re-deriving enablement below would resolve every built-in against

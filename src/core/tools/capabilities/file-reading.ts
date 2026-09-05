@@ -28,6 +28,9 @@ export const fileReadingCapability = defineCapability({
       'Read vault files, skills, or open web pages by path with full-file or line-range operations.',
   },
   category: 'vault',
+  // Reading a vault file changes nothing, so Ask gets it. Max does not: it
+  // reads through `native_files` instead (master.md Q5).
+  chatModes: ['ask', 'agent'],
   defaultEnabled: true,
   approval: {
     defaultMode: 'full_access',

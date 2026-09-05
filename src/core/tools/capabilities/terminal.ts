@@ -26,6 +26,10 @@ export const terminalCapability = defineCapability({
     fallback: 'Run commands in the local terminal. Desktop-only.',
   },
   category: 'external',
+  // Not in Ask: running a command is not "looking at the vault". The
+  // approval/enablement overrides that make it actually usable in Max are
+  // S2b's job — visibility and trust are separate questions.
+  chatModes: ['agent', 'max'],
   defaultEnabled: false,
   approval: {
     defaultMode: 'require_approval',

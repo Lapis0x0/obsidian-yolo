@@ -27,6 +27,7 @@ export const contextCompactionCapability = defineCapability({
       'Compress earlier conversation history into a summary and continue in a fresh context window.',
   },
   category: 'context',
+  chatModes: ['ask', 'agent', 'max'],
   defaultEnabled: false,
   approval: {
     defaultMode: 'full_access',
