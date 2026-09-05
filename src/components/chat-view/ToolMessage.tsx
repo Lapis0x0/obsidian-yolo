@@ -1387,74 +1387,94 @@ function ToolCallItem({
           // it — see `tool-renderers/types.ts`'s doc comment.
           const bodyRenderer =
             localToolRenderer?.kind === 'body' ? localToolRenderer : null
+          // `kind: 'content'` renderers own this whole content area — both
+          // the parameters section and the result/error sections below (see
+          // `tool-renderers/types.ts`). `null` means "not this call/state",
+          // and the default sections render instead.
+          const customContent =
+            localToolRenderer?.kind === 'content'
+              ? localToolRenderer.render({
+                  toolCallId: request.id,
+                  request,
+                  response,
+                  conversationId,
+                  onAbort: () => {
+                    void handleAbort()
+                  },
+                })
+              : null
 
           return (
             <div
               id={`yolo-toolcall-content-${request.id}`}
               className="yolo-toolcall-content"
             >
-              {shouldShowParameters && (
-                <div className="yolo-toolcall-content-section">
-                  <div>{toolLabels.parameters}:</div>
-                  <ObsidianCodeBlock language="json" content={parameters} />
-                </div>
-              )}
-              {bodyRenderer ? (
-                bodyRenderer.render({
-                  toolCallId: request.id,
-                  request,
-                  response: effectiveTerminalResponse,
-                  conversationId,
-                  terminalCommandResult,
-                  onAbort: () => {
-                    void handleAbort()
-                  },
-                })
-              ) : isTerminalLikeRequest ? (
-                // CLI `command_execution` capability calls and the legacy
-                // `delegate_external_agent` tool name also render through
-                // `LiveTaskCard`, but neither is tool-name-indexed, so both
-                // stay as this inline branch rather than a `TOOL_RENDERERS`
-                // entry (D8: non-tool-name branches stay as-is).
-                <LiveTaskCard
-                  toolCallId={request.id}
-                  response={effectiveTerminalResponse}
-                  args={
-                    isLegacyDelegateExternalAgentRequest(request)
-                      ? extractLegacyExternalAgentArgs(request.arguments)
-                      : extractTerminalCommandArgs(request.arguments)
-                  }
-                  initialStdout={
-                    terminalCommandResult?.stdout ??
-                    syntheticLiveTaskOutput.stdout
-                  }
-                  initialStderr={
-                    terminalCommandResult?.stderr ??
-                    syntheticLiveTaskOutput.stderr
-                  }
-                  onAbort={handleAbort}
-                />
-              ) : (
+              {customContent ?? (
                 <>
-                  {response.status === ToolCallResponseStatus.Success && (
+                  {shouldShowParameters && (
                     <div className="yolo-toolcall-content-section">
-                      <div>{toolLabels.result}:</div>
-                      <ObsidianCodeBlock content={resultDisplayText} />
+                      <div>{toolLabels.parameters}:</div>
+                      <ObsidianCodeBlock language="json" content={parameters} />
                     </div>
                   )}
-                  {response.status === ToolCallResponseStatus.Error && (
-                    <div className="yolo-toolcall-content-section">
-                      <div>{toolLabels.error}:</div>
-                      <ObsidianCodeBlock content={response.error} />
-                    </div>
+                  {bodyRenderer ? (
+                    bodyRenderer.render({
+                      toolCallId: request.id,
+                      request,
+                      response: effectiveTerminalResponse,
+                      conversationId,
+                      terminalCommandResult,
+                      onAbort: () => {
+                        void handleAbort()
+                      },
+                    })
+                  ) : isTerminalLikeRequest ? (
+                    // CLI `command_execution` capability calls and the legacy
+                    // `delegate_external_agent` tool name also render through
+                    // `LiveTaskCard`, but neither is tool-name-indexed, so both
+                    // stay as this inline branch rather than a `TOOL_RENDERERS`
+                    // entry (D8: non-tool-name branches stay as-is).
+                    <LiveTaskCard
+                      toolCallId={request.id}
+                      response={effectiveTerminalResponse}
+                      args={
+                        isLegacyDelegateExternalAgentRequest(request)
+                          ? extractLegacyExternalAgentArgs(request.arguments)
+                          : extractTerminalCommandArgs(request.arguments)
+                      }
+                      initialStdout={
+                        terminalCommandResult?.stdout ??
+                        syntheticLiveTaskOutput.stdout
+                      }
+                      initialStderr={
+                        terminalCommandResult?.stderr ??
+                        syntheticLiveTaskOutput.stderr
+                      }
+                      onAbort={handleAbort}
+                    />
+                  ) : (
+                    <>
+                      {response.status === ToolCallResponseStatus.Success && (
+                        <div className="yolo-toolcall-content-section">
+                          <div>{toolLabels.result}:</div>
+                          <ObsidianCodeBlock content={resultDisplayText} />
+                        </div>
+                      )}
+                      {response.status === ToolCallResponseStatus.Error && (
+                        <div className="yolo-toolcall-content-section">
+                          <div>{toolLabels.error}:</div>
+                          <ObsidianCodeBlock content={response.error} />
+                        </div>
+                      )}
+                      {response.status === ToolCallResponseStatus.Rejected &&
+                        response.reason && (
+                          <div className="yolo-toolcall-content-section">
+                            <div>{toolLabels.rejectionReason}:</div>
+                            <ObsidianCodeBlock content={response.reason} />
+                          </div>
+                        )}
+                    </>
                   )}
-                  {response.status === ToolCallResponseStatus.Rejected &&
-                    response.reason && (
-                      <div className="yolo-toolcall-content-section">
-                        <div>{toolLabels.rejectionReason}:</div>
-                        <ObsidianCodeBlock content={response.reason} />
-                      </div>
-                    )}
                 </>
               )}
             </div>

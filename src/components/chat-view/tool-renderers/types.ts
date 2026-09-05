@@ -95,8 +95,8 @@ export type ToolChatSummaryFn = (args: {
 /**
  * A tool's chat-surface rendering strategy.
  *
- * Three kinds, because the existing card mount sites in ToolMessage.tsx come
- * in exactly two custom shapes plus the default:
+ * Four kinds, because the card mount sites in ToolMessage.tsx come in three
+ * custom shapes plus the default:
  *
  * - `{ kind: 'generic' }` — explicit opt-out meaning "no custom card; use the
  *   default collapsed-card rendering". Distinct from a missing table entry,
@@ -118,10 +118,29 @@ export type ToolChatSummaryFn = (args: {
  *   rather than table entries (see that file's own comment at the mount
  *   site).
  *
- * Either `render` may return `null` for a particular call/state to fall back
+ * - `{ kind: 'content', render }` — renders *as* the default card's whole
+ *   content area: it replaces both the "参数" (arguments JSON) section and
+ *   the "结果" (result JSON) section, while the header, the collapse
+ *   toggle, and the approval / running footers stay exactly as they are for
+ *   every other tool. The file-editing tools (`fs_edit`, `fs_write`,
+ *   `edit_file`, `write_file`) are its only entries (S6): their expanded
+ *   card shows a diff of what the call actually changed, and neither of the
+ *   two JSON blocks it replaces adds anything a diff doesn't already say —
+ *   `oldText`/`newText`/`content` *are* the diff, spelled as escaped JSON.
+ *
+ *   `body` cannot express this: it is defined as "append below the default
+ *   sections", so a `body` renderer would leave the arguments JSON sitting
+ *   above the diff (and, once the call succeeds, the result JSON too).
+ *   `replace` overshoots in the other direction — it takes over the header
+ *   and the approval footer as well, which these tools must keep: a pending
+ *   file write still needs its Allow/Reject row and its `+N/-M` headline.
+ *
+ * Any `render` may return `null` for a particular call/state to fall back
  * to the default rendering — e.g. `delegate_subagent`'s renderer returns
  * `null` while pending approval, matching current behavior where the approval
- * footer (not `SubagentCard`) owns that state.
+ * footer (not `SubagentCard`) owns that state; the file-editing `content`
+ * renderer returns `null` for every non-`Success` status, so a failed or
+ * rejected write still shows its error/rejection section verbatim.
  *
  * `summary` (D8) is orthogonal to `kind` — a `generic`-kind tool can still
  * have a custom header summary (most of them do); see `ToolChatSummaryFn`'s
@@ -143,6 +162,10 @@ export type ToolRenderer = {
     }
   | {
       kind: 'body'
+      render: (props: ToolRendererProps) => ReactNode
+    }
+  | {
+      kind: 'content'
       render: (props: ToolRendererProps) => ReactNode
     }
 )
