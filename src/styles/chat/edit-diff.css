@@ -1,0 +1,107 @@
+/* 文件编辑工具卡片展开后的 diff（`components/chat-view/tool-cards/EditDiffView.tsx`）。
+ *
+ * 归属：它只服务聊天卡片这一个功能模块，不是跨组件的视觉系统，所以按
+ * `src/styles/README.md` 的判断顺序落在 `chat/` 下，而不是新开目录。
+ *
+ * 配色不自带颜色：增删两色直接取 `--text-success` / `--text-error`，与卡片头部
+ * 的 `+N/-M`（`message.css` 的 `.yolo-toolcall-header-edit-*`）同源，主题换色时
+ * 两处一起变。底色由同一个变量 `color-mix` 出来，不写死。 */
+
+.yolo-edit-diff {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-2);
+  min-width: 0;
+}
+
+.yolo-edit-diff-path {
+  overflow: hidden;
+  color: var(--text-muted);
+  font-family: var(--font-monospace);
+  font-size: var(--font-smallest);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.yolo-edit-diff-notice {
+  color: var(--text-faint);
+  font-size: var(--font-smallest);
+}
+
+.yolo-edit-diff-body {
+  min-width: 0;
+  overflow-x: auto;
+  padding: var(--size-2-2) 0;
+  border: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 85%, transparent);
+  border-radius: var(--radius-s);
+  background-color: var(--background-primary-alt);
+  font-family: var(--font-monospace);
+  font-size: var(--font-smallest);
+  line-height: 1.5;
+}
+
+.yolo-edit-diff-row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--size-2-2);
+  /* 行要能被内容撑宽，容器才有东西可横向滚动。 */
+  width: max-content;
+  min-width: 100%;
+  padding: 0 var(--size-2-3);
+  color: var(--text-normal);
+}
+
+.yolo-edit-diff-row--added {
+  background-color: color-mix(in srgb, var(--text-success) 14%, transparent);
+}
+
+.yolo-edit-diff-row--removed {
+  background-color: color-mix(in srgb, var(--text-error) 14%, transparent);
+}
+
+.yolo-edit-diff-row--modified {
+  background-color: color-mix(in srgb, var(--text-accent) 14%, transparent);
+}
+
+.yolo-edit-diff-gutter {
+  flex: 0 0 auto;
+  min-width: 3ch;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  user-select: none;
+}
+
+.yolo-edit-diff-sign {
+  flex: 0 0 auto;
+  width: 1ch;
+  user-select: none;
+  white-space: pre;
+}
+
+.yolo-edit-diff-row--added .yolo-edit-diff-sign {
+  color: var(--text-success);
+}
+
+.yolo-edit-diff-row--removed .yolo-edit-diff-sign {
+  color: var(--text-error);
+}
+
+.yolo-edit-diff-text {
+  flex: 0 0 auto;
+  /* diff 行不折行：折行会让行号与内容对不上，宽度交给容器横向滚动。 */
+  white-space: pre;
+  tab-size: 4;
+}
+
+.yolo-edit-diff-gap {
+  padding: 0 var(--size-2-3);
+  color: var(--text-faint);
+  user-select: none;
+}
+
+.yolo-edit-diff-footer {
+  color: var(--text-faint);
+  font-size: var(--font-smallest);
+}

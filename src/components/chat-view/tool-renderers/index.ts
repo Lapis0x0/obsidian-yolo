@@ -1,6 +1,7 @@
 import { getBashChatSummary } from '../../../core/tools/bash/chat-summary'
 import { delegateSubagentRenderer } from '../../../core/tools/delegate_subagent/ui'
 import { getFileEditingPathChatSummary } from '../../../core/tools/file-editing-support'
+import { fileEditingRenderer } from '../../../core/tools/file-editing-ui'
 import { getFsReadChatSummary } from '../../../core/tools/fs_read/chat-summary'
 import { getJsEvalChatSummary } from '../../../core/tools/js_eval/chat-summary'
 import {
@@ -28,9 +29,12 @@ import type { ToolRenderer } from './types'
  *
  * `terminal_command` is the only `body`-kind entry (see
  * `core/tools/terminal_command/ui.tsx`); `delegate_subagent` is the only
- * `replace`-kind entry (D3). Every other tool is `generic` — with or
- * without a `summary` — because it renders through the default collapsed
- * card.
+ * `replace`-kind entry (D3); the four file-editing tools (`fs_edit`,
+ * `fs_write`, `edit_file`, `write_file`) share the one `content`-kind entry
+ * (`core/tools/file-editing-ui.tsx`), which shows a diff of the change
+ * instead of the arguments and result JSON. Every other tool is `generic` —
+ * with or without a `summary` — because it renders through the default
+ * collapsed card.
  *
  * Tools with no `summary` here (memory_add/update/delete, context_compact,
  * context_prune_tool_results, ask_user_question, delegate_subagent) had no
@@ -54,8 +58,8 @@ export const TOOL_RENDERERS = {
   todo_write: { kind: 'generic', summary: getTodoWriteChatSummary },
   ask_user_question: genericRenderer,
   fs_read: { kind: 'generic', summary: getFsReadChatSummary },
-  fs_edit: { kind: 'generic', summary: getFileEditingPathChatSummary },
-  fs_write: { kind: 'generic', summary: getFileEditingPathChatSummary },
+  fs_edit: fileEditingRenderer,
+  fs_write: fileEditingRenderer,
   web_search: { kind: 'generic', summary: getWebSearchChatSummary },
   web_scrape: { kind: 'generic', summary: getWebScrapeChatSummary },
   js_eval: { kind: 'generic', summary: getJsEvalChatSummary },
@@ -65,8 +69,8 @@ export const TOOL_RENDERERS = {
   // use — the summary reads the tool call's own `path` argument and has no
   // vault dependency of its own.
   read_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
-  write_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
-  edit_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
+  write_file: fileEditingRenderer,
+  edit_file: fileEditingRenderer,
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

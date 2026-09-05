@@ -2220,6 +2220,12 @@ export const zh: TranslationKeys = {
       outsideVaultNotice: '该路径在仓库之外：{path}',
       approvePlan: '批准计划',
       stayInPlan: '留在计划模式',
+      editDiff: {
+        originalUnavailable:
+          '改前内容在本设备不可用，以下只是本次写入的新内容。',
+        collapsedLines: '⋯ 省略 {{count}} 行',
+        truncatedLines: '还有 {{count}} 行未显示',
+      },
     },
     toolSummary: {
       todoWrite: {

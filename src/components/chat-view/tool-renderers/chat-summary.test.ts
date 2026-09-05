@@ -309,8 +309,30 @@ describe('TOOL_RENDERERS completeness (kind wiring)', () => {
     expect(TOOL_RENDERERS.delegate_subagent.kind).toBe('replace')
   })
 
+  it('the four file-editing tools are the content-kind entries, and share one renderer', () => {
+    const fileEditing = [
+      TOOL_RENDERERS.fs_edit,
+      TOOL_RENDERERS.fs_write,
+      TOOL_RENDERERS.edit_file,
+      TOOL_RENDERERS.write_file,
+    ]
+    for (const renderer of fileEditing) {
+      expect(renderer.kind).toBe('content')
+    }
+    // Agent's vault tools and Max's native tools must show the same card, so
+    // they are literally the same object rather than four look-alikes.
+    expect(new Set(fileEditing).size).toBe(1)
+  })
+
   it('every other tool is generic-kind', () => {
-    const nonGeneric = new Set(['terminal_command', 'delegate_subagent'])
+    const nonGeneric = new Set([
+      'terminal_command',
+      'delegate_subagent',
+      'fs_edit',
+      'fs_write',
+      'edit_file',
+      'write_file',
+    ])
     for (const [name, renderer] of Object.entries(TOOL_RENDERERS)) {
       if (nonGeneric.has(name)) continue
       expect(renderer.kind).toBe('generic')

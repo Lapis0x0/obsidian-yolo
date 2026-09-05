@@ -2352,6 +2352,12 @@ export const en: TranslationKeys = {
       outsideVaultNotice: 'This path is outside the vault: {path}',
       approvePlan: 'Approve plan',
       stayInPlan: 'Stay in plan',
+      editDiff: {
+        originalUnavailable:
+          'The pre-edit content is not available on this device; below is only the content this call wrote.',
+        collapsedLines: '⋯ {{count}} unchanged lines hidden',
+        truncatedLines: '{{count}} more lines not shown',
+      },
     },
     toolSummary: {
       todoWrite: {

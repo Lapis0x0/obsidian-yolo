@@ -2210,6 +2210,12 @@ export const it: DeepPartial<TranslationKeys> = {
       outsideVaultNotice: 'Questo percorso è fuori dal vault: {path}',
       approvePlan: 'Approva il piano',
       stayInPlan: 'Resta in modalità piano',
+      editDiff: {
+        originalUnavailable:
+          "Il contenuto precedente alla modifica non è disponibile su questo dispositivo; qui sotto c'è solo il contenuto scritto da questa chiamata.",
+        collapsedLines: '⋯ {{count}} righe invariate nascoste',
+        truncatedLines: 'Altre {{count}} righe non mostrate',
+      },
     },
     toolSummary: {
       todoWrite: {

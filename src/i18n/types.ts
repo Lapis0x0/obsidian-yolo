@@ -2024,6 +2024,11 @@ export type TranslationKeys = {
       outsideVaultNotice?: string
       approvePlan?: string
       stayInPlan?: string
+      editDiff?: {
+        originalUnavailable?: string
+        collapsedLines?: string
+        truncatedLines?: string
+      }
     }
     toolSummary?: {
       todoWrite?: {
