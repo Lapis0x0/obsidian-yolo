@@ -122,7 +122,7 @@ export function resolveNativePathWithin(
   }
 
   return normalizeAbsolutePath(
-    isAbsolutePath(candidate)
+    isAbsoluteNativePath(candidate)
       ? candidate
       : joinUnderRoot(boundary.vaultBasePath, candidate),
   )
@@ -150,7 +150,15 @@ export async function resolveNativePath(
 
 const WINDOWS_DRIVE_ROOT = /^[a-zA-Z]:[\\/]/
 
-const isAbsolutePath = (value: string): boolean =>
+/**
+ * True for a rooted filesystem path (`/x`, `\\server\share`, `C:\x`).
+ *
+ * Exported because the chat surface has to tell the two shapes of
+ * `editSummary` path apart — see {@link toEditSummaryPath} — and that
+ * judgment must be the same one the tools resolve with, not a second
+ * `startsWith('/')` written somewhere else.
+ */
+export const isAbsoluteNativePath = (value: string): boolean =>
   value.startsWith('/') ||
   value.startsWith('\\') ||
   WINDOWS_DRIVE_ROOT.test(value)
@@ -236,6 +244,33 @@ export function isInsideVault(absPath: string, vaultBasePath: string): boolean {
     return true
   }
   return target.startsWith(base === '/' ? '/' : `${base}/`)
+}
+
+/**
+ * The path shape an edit review snapshot / `editSummary` records for a native
+ * write: **vault-relative** for a file inside the vault, absolute for one
+ * outside it.
+ *
+ * The chat surface's undo and review already speak vault-relative paths
+ * (they resolve a `TFile` and go through the Vault API). Recording the
+ * vault-relative form whenever it exists means a native edit to a note is
+ * undoable and reviewable through exactly that path, with no branch —
+ * the absolute form is reserved for the files that genuinely have no `TFile`,
+ * where `isAbsoluteNativePath` is what tells the two apart again.
+ */
+export function toEditSummaryPath(
+  absPath: string,
+  vaultBasePath: string,
+): string {
+  if (!isInsideVault(absPath, vaultBasePath)) {
+    return absPath
+  }
+  const relative = absPath.slice(
+    vaultBasePath.replace(/[\\/]+$/, '').length + 1,
+  )
+  // The vault root itself is not a file; if it somehow arrives here there is
+  // no relative path to return, so keep the absolute one.
+  return relative.length === 0 ? absPath : relative.replace(/\\/g, '/')
 }
 
 const looksLikeWindowsPath = (value: string): boolean =>

@@ -12,9 +12,11 @@ import {
   OUTSIDE_VAULT_ALLOWANCE_KEY,
   getExtraAllowanceKeysForRequest,
   getVaultBasePath,
+  isAbsoluteNativePath,
   isInsideVault,
   resolveNativePath,
   resolveNativePathWithin,
+  toEditSummaryPath,
 } from './paths'
 
 const VAULT = path.resolve('/tmp/yolo-vault')
@@ -202,5 +204,42 @@ describe('getExtraAllowanceKeysForRequest', () => {
         metadata: { outsideVaultPath: '/etc/hosts' },
       }),
     ).toEqual([OUTSIDE_VAULT_ALLOWANCE_KEY])
+  })
+})
+
+describe('toEditSummaryPath', () => {
+  it('returns the vault-relative path for a file inside the vault', () => {
+    expect(toEditSummaryPath('/home/me/vault/a/b.md', '/home/me/vault')).toBe(
+      'a/b.md',
+    )
+    expect(toEditSummaryPath('/home/me/vault/a.md', '/home/me/vault/')).toBe(
+      'a.md',
+    )
+  })
+
+  it('keeps the absolute path for a file outside the vault', () => {
+    expect(toEditSummaryPath('/home/me/other.md', '/home/me/vault')).toBe(
+      '/home/me/other.md',
+    )
+    expect(
+      toEditSummaryPath('/home/me/vault-backup/a.md', '/home/me/vault'),
+    ).toBe('/home/me/vault-backup/a.md')
+  })
+
+  it('produces exactly the shape isAbsoluteNativePath tells apart', () => {
+    expect(
+      isAbsoluteNativePath(
+        toEditSummaryPath('/home/me/vault/a.md', '/home/me/vault'),
+      ),
+    ).toBe(false)
+    expect(
+      isAbsoluteNativePath(
+        toEditSummaryPath('/home/me/other.md', '/home/me/vault'),
+      ),
+    ).toBe(true)
+  })
+
+  it('uses forward slashes for a Windows vault path', () => {
+    expect(toEditSummaryPath('C:\\vault\\a\\b.md', 'C:\\vault')).toBe('a/b.md')
   })
 })

@@ -7,12 +7,17 @@ import {
   materializeTextEditPlan,
 } from '../../../edits/textEditEngine'
 import { defineTool } from '../../define'
+import { maybeWithInternalWrite } from '../../file-editing-support'
 import { describeStructuredVaultFormatDenial } from '../../structured-vault-formats'
 import {
   MAX_FILE_SIZE_BYTES,
   formatJsonResult,
   getTextArg,
 } from '../../tool-args'
+import {
+  buildNativeFileChangeSummary,
+  nativeEditSummaryPath,
+} from '../edit-summary'
 import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
 import { assertDecodableAsText } from '../text'
 
@@ -104,7 +109,11 @@ export const editFileDefinition = defineTool({
       )
     }
 
-    await fs.writeFile(absolutePath, nextContent, 'utf-8')
+    const summaryPath = nativeEditSummaryPath(ctx, absolutePath)
+    const appliedAt = Date.now()
+    await maybeWithInternalWrite(ctx.promptSourceWatcher, summaryPath, () =>
+      fs.writeFile(absolutePath, nextContent, 'utf-8'),
+    )
 
     return {
       status: ToolCallResponseStatus.Success,
@@ -114,6 +123,15 @@ export const editFileDefinition = defineTool({
         replacements: occurrences,
         changed: nextContent !== content,
         message: 'Applied edit.',
+      }),
+      metadata: await buildNativeFileChangeSummary({
+        ctx,
+        absolutePath,
+        beforeContent: content,
+        afterContent: nextContent,
+        beforeExists: true,
+        afterExists: true,
+        appliedAt,
       }),
     }
   },

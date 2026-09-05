@@ -3,12 +3,19 @@ import { Platform } from 'obsidian'
 import type { McpTool } from '../../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../../types/tool-call.types'
 import { defineTool } from '../../define'
+import { maybeWithInternalWrite } from '../../file-editing-support'
 import { describeStructuredVaultFormatDenial } from '../../structured-vault-formats'
 import {
   MAX_FILE_SIZE_BYTES,
   formatJsonResult,
   getTextArg,
 } from '../../tool-args'
+import type { LocalToolCallResultMetadata } from '../../types'
+import {
+  buildNativeFileChangeSummary,
+  nativeEditSummaryPath,
+  readNativeSnapshotSource,
+} from '../edit-summary'
 import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
 
 const WRITE_FILE_DESCRIPTION = [
@@ -80,8 +87,37 @@ export const writeFileDefinition = defineTool({
       )
     }
 
-    await fs.mkdir(path.dirname(absolutePath), { recursive: true })
-    await fs.writeFile(absolutePath, content, 'utf-8')
+    // The before-content has to be read before the write, and only for the
+    // diff card — `null` means this edit gets no card (binary, or too large
+    // to hold in memory), never that the write is refused.
+    const beforeContent =
+      existingSize === null
+        ? ''
+        : await readNativeSnapshotSource(fs, absolutePath, existingSize)
+
+    const summaryPath = nativeEditSummaryPath(ctx, absolutePath)
+    const appliedAt = Date.now()
+    await maybeWithInternalWrite(
+      ctx.promptSourceWatcher,
+      summaryPath,
+      async () => {
+        await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+        await fs.writeFile(absolutePath, content, 'utf-8')
+      },
+    )
+
+    const metadata: LocalToolCallResultMetadata | undefined =
+      beforeContent === null
+        ? undefined
+        : await buildNativeFileChangeSummary({
+            ctx,
+            absolutePath,
+            beforeContent,
+            afterContent: content,
+            beforeExists: existingSize !== null,
+            afterExists: true,
+            appliedAt,
+          })
 
     const byteSize = new TextEncoder().encode(content).length
     return {
@@ -96,6 +132,7 @@ export const writeFileDefinition = defineTool({
             ? 'Created file.'
             : `Overwrote file (was ${existingSize} bytes).`,
       }),
+      metadata,
     }
   },
 })
