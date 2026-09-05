@@ -43,6 +43,10 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   'load_tool_schemas',
   'todo_write',
   'ask_user_question',
+  // `native_files` (desktop-only, Max mode).
+  'read_file',
+  'write_file',
+  'edit_file',
 ] as const
 
 /**
@@ -120,6 +124,12 @@ const LOCAL_FILE_TOOL_CATALOG_ORDER: readonly BuiltinToolName[] = [
   'delegate_subagent',
   'ask_user_question',
   'todo_write',
+  // `native_files` (desktop-only, Max mode). Appended rather than placed
+  // next to the vault `fs_*` entries so the pre-existing catalog order the
+  // model already sees stays byte-identical.
+  'read_file',
+  'write_file',
+  'edit_file',
 ]
 
 assertNoDuplicates(

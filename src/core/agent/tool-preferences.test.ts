@@ -277,6 +277,7 @@ describe('tool-preferences defaults', () => {
           'web_access',
           'js_sandbox',
           'subagent_delegation',
+          'native_files',
         ].sort(),
       )
     })

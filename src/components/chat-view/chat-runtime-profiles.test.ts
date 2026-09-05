@@ -2,6 +2,7 @@ import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatMo
 
 import {
   CHAT_BLOCKED_TOOL_NAMES,
+  MAX_ONLY_TOOL_NAMES,
   resolveChatModeRuntime,
 } from './chat-runtime-profiles'
 
@@ -308,5 +309,66 @@ describe('resolveChatModeRuntime', () => {
       'yolo_local__fs_read',
       'yolo_local__todo_write',
     ])
+  })
+
+  // YOLO Max S1 (docs/plans/09-05-yolo-max/p1-design.md §2/§3): the
+  // `native_files` tools are enabled by default at the capability level, so
+  // they land in `assistantEnabledToolNames` for every assistant. The only
+  // thing keeping them out of Ask and Agent is this exclusion.
+  describe('MAX_ONLY_TOOL_NAMES', () => {
+    const withNativeFiles = [
+      'yolo_local__fs_read',
+      'yolo_local__read_file',
+      'yolo_local__write_file',
+      'yolo_local__edit_file',
+    ]
+
+    it('covers every native_files tool', () => {
+      expect([...MAX_ONLY_TOOL_NAMES].sort()).toEqual([
+        'yolo_local__edit_file',
+        'yolo_local__read_file',
+        'yolo_local__write_file',
+      ])
+    })
+
+    it('is disjoint from CHAT_BLOCKED_TOOL_NAMES (a different question, not an extension of it)', () => {
+      expect(
+        MAX_ONLY_TOOL_NAMES.filter((name) =>
+          CHAT_BLOCKED_TOOL_NAMES.includes(name),
+        ),
+      ).toEqual([])
+    })
+
+    it('hides the native tools in agent mode, unlike CHAT_BLOCKED_TOOL_NAMES', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'agent',
+        assistant,
+        assistantEnabledToolNames: withNativeFiles,
+      })
+
+      expect(runtime.allowedToolNames).toEqual(['yolo_local__fs_read'])
+    })
+
+    it('hides the native tools in ask mode too', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'ask',
+        assistant,
+        assistantEnabledToolNames: withNativeFiles,
+      })
+
+      expect(runtime.allowedToolNames).toEqual(['yolo_local__fs_read'])
+    })
+
+    it('still hides them when YOLO is on in agent mode', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'agent',
+        yoloEnabled: true,
+        assistant,
+        assistantEnabledToolNames: withNativeFiles,
+      })
+
+      expect(runtime.allowedToolNames).toEqual(['yolo_local__fs_read'])
+      expect(runtime.bypassToolApproval).toBe(true)
+    })
   })
 })

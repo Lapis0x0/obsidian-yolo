@@ -61,6 +61,12 @@ export const TOOL_RENDERERS = {
   js_eval: { kind: 'generic', summary: getJsEvalChatSummary },
   terminal_command: terminalCommandRenderer,
   bash: { kind: 'generic', summary: getBashChatSummary },
+  // `native_files`: same `path`-argument header summary the vault file tools
+  // use — the summary reads the tool call's own `path` argument and has no
+  // vault dependency of its own.
+  read_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
+  write_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
+  edit_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

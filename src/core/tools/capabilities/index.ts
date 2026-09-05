@@ -4,6 +4,7 @@ import { fileEditingCapability } from './file-editing'
 import { fileReadingCapability } from './file-reading'
 import { jsSandboxCapability } from './js-sandbox'
 import { memoryCapability } from './memory'
+import { nativeFilesCapability } from './native-files'
 import { subagentDelegationCapability } from './subagent-delegation'
 import { terminalCapability } from './terminal'
 import { todoListCapability } from './todo-list'
@@ -45,4 +46,9 @@ export const CAPABILITIES = [
   jsSandboxCapability,
   terminalCapability,
   subagentDelegationCapability,
+  // Appended, not slotted into the external group's historical order: the
+  // order above is a frozen reproduction of the pre-D7 display order, and a
+  // capability that did not exist then belongs after it (see the row-order
+  // regression test in `builtinCapabilityRows.test.ts`).
+  nativeFilesCapability,
 ] as const

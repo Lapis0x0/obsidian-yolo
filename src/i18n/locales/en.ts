@@ -658,6 +658,12 @@ export const en: TranslationKeys = {
       builtinTerminalCommandLabel: 'Terminal Commands',
       builtinTerminalCommandDesc:
         'Run commands in the local terminal, desktop-only',
+      builtinNativeFilesLabel: 'Local Filesystem Toolset',
+      builtinNativeFilesDesc:
+        'Read, write, and edit files directly on the local filesystem, at any path and any extension. Desktop-only, and only available in Max mode.',
+      builtinReadFileLabel: 'Read Local File',
+      builtinWriteFileLabel: 'Write Local File',
+      builtinEditFileLabel: 'Edit Local File',
       builtinDelegateSubagentLabel: 'Delegate Subagent',
       builtinDelegateSubagentDesc:
         'Dispatch an isolated temporary subagent to complete a self-contained task asynchronously.',

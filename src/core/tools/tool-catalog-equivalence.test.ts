@@ -51,6 +51,11 @@ const EXPECTED_ORDER_WITH_BASH = [
   'delegate_subagent',
   'ask_user_question',
   'todo_write',
+  // `native_files` (YOLO Max S1) — appended after the frozen pre-D6b order
+  // so nothing the model already sees moved.
+  'read_file',
+  'write_file',
+  'edit_file',
 ]
 
 function expectCatalogMatchesRegistry(

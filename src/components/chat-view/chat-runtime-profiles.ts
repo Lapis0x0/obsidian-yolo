@@ -46,8 +46,25 @@ const CHAT_BLOCKED_CAPABILITY_IDS = [
   'todo_list',
 ] as const
 
-export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] =
-  CHAT_BLOCKED_CAPABILITY_IDS.flatMap((capabilityId) => {
+/**
+ * Capabilities no built-in chat mode may expose *except* Max — withheld from
+ * Ask and Agent alike (docs/plans/09-05-yolo-max/p1-design.md §2).
+ *
+ * Deliberately a second set rather than an addition to
+ * `CHAT_BLOCKED_CAPABILITY_IDS`: that one asks "may a non-Agent mode do
+ * this?", and Agent answers yes to every entry in it. This one asks a
+ * different question — "is this capability part of Max's definition?" — and
+ * Agent answers no. Agent mode is the Obsidian-API route the community
+ * relies on (master.md Q2); a capability that writes anywhere on disk
+ * changes what that mode *is*, so it must not leak in through an assistant's
+ * enabled-tool list.
+ */
+const MAX_ONLY_CAPABILITY_IDS = ['native_files'] as const
+
+const toolNamesForCapabilities = (
+  capabilityIds: readonly string[],
+): readonly string[] =>
+  capabilityIds.flatMap((capabilityId) => {
     const capability = getCapability(capabilityId)
     if (!capability) {
       return []
@@ -56,6 +73,13 @@ export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] =
       getToolName(getLocalFileToolServerName(), tool.name),
     )
   })
+
+export const CHAT_BLOCKED_TOOL_NAMES: readonly string[] =
+  toolNamesForCapabilities(CHAT_BLOCKED_CAPABILITY_IDS)
+
+export const MAX_ONLY_TOOL_NAMES: readonly string[] = toolNamesForCapabilities(
+  MAX_ONLY_CAPABILITY_IDS,
+)
 
 /**
  * Explicit context-assembly policy produced by `resolveChatModeRuntime` and
@@ -159,11 +183,13 @@ export function resolveChatModeRuntime({
     : false
 
   const isAgentMode = isAgentChatMode(mode)
-  const blocked = new Set(CHAT_BLOCKED_TOOL_NAMES)
+  const blocked = new Set(
+    isAgentMode
+      ? MAX_ONLY_TOOL_NAMES
+      : [...CHAT_BLOCKED_TOOL_NAMES, ...MAX_ONLY_TOOL_NAMES],
+  )
   const allowedToolNames = enableTools
-    ? isAgentMode
-      ? assistantEnabledToolNames
-      : assistantEnabledToolNames.filter((name) => !blocked.has(name))
+    ? assistantEnabledToolNames.filter((name) => !blocked.has(name))
     : undefined
 
   return {

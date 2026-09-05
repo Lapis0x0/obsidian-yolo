@@ -486,6 +486,11 @@ export type TranslationKeys = {
       builtinJsEvalDesc?: string
       builtinTerminalCommandLabel?: string
       builtinTerminalCommandDesc?: string
+      builtinNativeFilesLabel?: string
+      builtinNativeFilesDesc?: string
+      builtinReadFileLabel?: string
+      builtinWriteFileLabel?: string
+      builtinEditFileLabel?: string
       builtinDelegateSubagentLabel?: string
       builtinDelegateSubagentDesc?: string
       builtinTodoWriteLabel?: string

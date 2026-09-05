@@ -672,6 +672,12 @@ export const it: DeepPartial<TranslationKeys> = {
       builtinTerminalCommandLabel: 'Comandi del terminale',
       builtinTerminalCommandDesc:
         'Esegue comandi nel terminale locale, solo desktop',
+      builtinNativeFilesLabel: 'Set strumenti filesystem locale',
+      builtinNativeFilesDesc:
+        'Legge, scrive e modifica file direttamente sul filesystem locale, con qualsiasi percorso ed estensione. Solo desktop e disponibile solo in modalità Max.',
+      builtinReadFileLabel: 'Leggi file locale',
+      builtinWriteFileLabel: 'Scrivi file locale',
+      builtinEditFileLabel: 'Modifica file locale',
       builtinDelegateSubagentLabel: 'Delega a subagent',
       builtinDelegateSubagentDesc:
         'Avvia in modo asincrono un subagent temporaneo e isolato per completare un task autonomo.',

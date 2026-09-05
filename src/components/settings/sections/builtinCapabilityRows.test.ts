@@ -34,6 +34,7 @@ describe('buildBuiltinCapabilityRows', () => {
       'js_sandbox',
       'terminal',
       'subagent_delegation',
+      'native_files',
     ])
 
     expect(rows.map((row) => row.label)).toEqual([
@@ -49,6 +50,7 @@ describe('buildBuiltinCapabilityRows', () => {
       'Analysis Sandbox',
       'Terminal Commands',
       'Delegate Subagent',
+      'Local Filesystem Toolset',
     ])
   })
 })
@@ -98,18 +100,21 @@ describe('groupCapabilityRowsByCategory', () => {
 
     const external = groups.find((group) => group.category === 'external')
     // web_ops -> js_eval -> terminal_command -> delegate_subagent (former
-    // `BUILTIN_TOOL_DISPLAY_ORDER.external`).
+    // `BUILTIN_TOOL_DISPLAY_ORDER.external`), then capabilities registered
+    // after that frozen order — `native_files` (YOLO Max S1).
     expect(external?.rows.map((row) => row.id)).toEqual([
       'web_access',
       'js_sandbox',
       'terminal',
       'subagent_delegation',
+      'native_files',
     ])
     expect(external?.rows.map((row) => row.label)).toEqual([
       'Web Search Toolset',
       'Analysis Sandbox',
       'Terminal Commands',
       'Delegate Subagent',
+      'Local Filesystem Toolset',
     ])
   })
 

@@ -51,6 +51,9 @@ const EXPECTED_TOOL_NAMES = [
   'js_eval',
   'terminal_command',
   'delegate_subagent',
+  'read_file',
+  'write_file',
+  'edit_file',
 ] as const
 
 const EXPECTED_CAPABILITY_IDS = [
@@ -66,6 +69,7 @@ const EXPECTED_CAPABILITY_IDS = [
   'js_sandbox',
   'terminal',
   'subagent_delegation',
+  'native_files',
 ] as const
 
 // The load-bearing assertions. Widening either union to `string` breaks

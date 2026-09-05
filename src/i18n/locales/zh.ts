@@ -606,6 +606,12 @@ export const zh: TranslationKeys = {
         '在隔离沙箱中运行 JavaScript，完成精确计算、批量统计与数据加工；可逐项授予知识库检索、库内只读、网络等能力',
       builtinTerminalCommandLabel: '终端命令',
       builtinTerminalCommandDesc: '在本机终端中运行命令，仅桌面端可用',
+      builtinNativeFilesLabel: '本地文件工具集',
+      builtinNativeFilesDesc:
+        '直接读写本地文件系统，任意路径、任意扩展名；仅桌面端可用，且仅 Max 模式可用',
+      builtinReadFileLabel: '读取本地文件',
+      builtinWriteFileLabel: '写入本地文件',
+      builtinEditFileLabel: '编辑本地文件',
       builtinDelegateSubagentLabel: '派遣子 Agent',
       builtinDelegateSubagentDesc:
         '异步派遣一个隔离的临时子 Agent，完成自包含任务',

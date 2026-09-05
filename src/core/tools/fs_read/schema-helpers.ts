@@ -7,6 +7,11 @@ import {
 import { BROWSER_PAGE_ID_PATTERN } from '../../browser/activeWebviewProbe'
 import type { BrowserReadFormat } from '../../browser/activeWebviewReader'
 import { validateVaultPath } from '../../mcp/vaultFileOps'
+import {
+  DEFAULT_READ_MAX_LINES,
+  type LineSliceResult,
+  sliceLines,
+} from '../line-slicing'
 import { getOptionalBoundedIntegerArg } from '../tool-args'
 
 // fs_read-exclusive schema/parsing helpers, types, and limits. Everything in
@@ -17,7 +22,6 @@ export const MAX_BATCH_READ_FILES = 20
 export const OFFICE_READ_MAX_BYTES = 10 * 1024 * 1024
 export const MAX_READ_MAX_LINES = 2000
 const DEFAULT_READ_START_LINE = 1
-const DEFAULT_READ_MAX_LINES = 50
 const MAX_READ_LINE_INDEX = 1_000_000
 
 // Also consumed by `localFileTools.ts`'s `normalizeBrowserReadPageId` (the
@@ -89,58 +93,16 @@ export type FsReadOperation =
       format?: BrowserReadFormat
     }
 
-type FsReadLineSliceResult = {
-  outputContent: string
-  rawSelected: string
-  totalLines: number
-  returnedStartLine: number | null
-  returnedEndLine: number | null
-  hasMoreBelow: boolean
-  nextStartLine: number | null
-}
-
+/**
+ * `FsReadOperation` is structurally a `LineSliceRange` plus fs_read-only
+ * fields (`modality`, `format`) the windowing never reads, so this is a
+ * naming adapter over the shared implementation, not a second one — see
+ * `../line-slicing.ts` for why that implementation is shared.
+ */
 export const sliceLinesForFsReadOperation = (
   lines: string[],
   operation: FsReadOperation,
-): FsReadLineSliceResult => {
-  const totalLines = lines.length
-  if (operation.type === 'full') {
-    const outputContent = lines
-      .map((line, index) => `${index + 1}|${line}`)
-      .join('\n')
-    return {
-      outputContent,
-      rawSelected: lines.join('\n'),
-      totalLines,
-      returnedStartLine: totalLines > 0 ? 1 : null,
-      returnedEndLine: totalLines > 0 ? totalLines : null,
-      hasMoreBelow: false,
-      nextStartLine: null,
-    }
-  }
-
-  const startIndex = Math.min(Math.max(operation.startLine - 1, 0), totalLines)
-  const endExclusive = Math.min(
-    totalLines,
-    operation.endLine ??
-      startIndex + (operation.maxLines ?? DEFAULT_READ_MAX_LINES),
-  )
-  const selectedLines = lines.slice(startIndex, endExclusive)
-  const outputContent = selectedLines
-    .map((line, index) => `${startIndex + index + 1}|${line}`)
-    .join('\n')
-  const returnedCount = selectedLines.length
-  const hasMoreBelow = endExclusive < totalLines
-  return {
-    outputContent,
-    rawSelected: selectedLines.join('\n'),
-    totalLines,
-    returnedStartLine: returnedCount > 0 ? startIndex + 1 : null,
-    returnedEndLine: returnedCount > 0 ? startIndex + returnedCount : null,
-    hasMoreBelow,
-    nextStartLine: hasMoreBelow ? endExclusive + 1 : null,
-  }
-}
+): LineSliceResult => sliceLines(lines, operation)
 
 /**
  * Build the modality enum + description fragment exposed to the current chat

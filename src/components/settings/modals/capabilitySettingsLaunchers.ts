@@ -164,4 +164,5 @@ export const CAPABILITY_SETTINGS_LAUNCHERS = {
   js_sandbox: openJsSandboxSettings,
   terminal: openTerminalSettings,
   vault_shell: null,
+  native_files: null,
 } satisfies Record<BuiltinCapabilityId, SettingsLauncher | null>
