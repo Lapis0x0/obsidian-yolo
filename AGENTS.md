@@ -1,6 +1,6 @@
 # Repository Guidelines
 
-YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and independently shipped product modules such as FSRS-based Learning.
+YOLO is an Obsidian plugin for AI chat, agent workflows, RAG, writing assistance, and independently shipped product modules such as FSRS-based Learning and the Whiteboard infinite canvas.
 
 For a behavior ↔ code-location ↔ verification-path index (complements this file's directory-ownership rules, doesn't restate them), see `FEATURE_MAP.md`.
 
@@ -22,11 +22,12 @@ Verify what you touched: host code → type-check + relevant tests; module code 
 
 - `src/main.ts` owns the host plugin lifecycle. `src/ChatView.tsx` and `src/components/chat-view/` own the main chat surface.
 - `src/core/modules/` owns module discovery, installation, loading, activation, lifecycle, and the versioned Host API. `modules/host-sdk.d.ts` is the module-facing API contract.
-- `modules/<id>/` owns everything in a product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` contains the complete Learning product implementation.
+- `modules/<id>/` owns everything in a product module: its UI, domain logic, host adapters, styles, assets, workers, and tests. `modules/learning/` and `modules/whiteboard/` hold the complete Learning and Whiteboard implementations.
 - `src/core/runtime-components/` owns discovery, download, and lifecycle of on-demand runtime components. `runtime-components/<id>/` at the repo root owns each component's source and build output; `runtime-components/sdk.d.ts` is the component-facing contract.
 - `src/core/agent/` owns the shared native agent runtime, tool gateway, conversation service, subagents, and background tasks. Quick Ask, Sidebar Chat, and Agent Chat run through `AgentService.run`; permissions come from `resolveChatModeRuntime`.
+- `src/core/cli-runtime/` owns the external CLI agent runtimes the chat surface can switch to. They are a separate execution surface alongside `AgentService`, not a second orchestration of it, and are desktop-only — keep their implementations out of the mobile static graph.
 - `src/core/ai/single-turn.ts` is the low-latency path for Sparkle (tab completion, selection rewrite, continuation). Do not route these features through the agent runtime.
-- `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path.
+- `src/core/tools/` owns every built-in tool: `capabilities/` is the single registration point, and the tool catalog, settings rows, approval policy, and persisted keys are all derived from it — never add a side table. `dispatcher.ts` is the only execution path. Deferred disclosure is the only mode: a tool outside the request's `tools` array is reached through the protocol-internal `invoke_tool` / `load_tool_schemas`, which carry no capability and never appear in settings. Evaluate approval and every other per-tool policy against the unwrapped call, never the wrapper.
 - `src/core/llm/`, `auth/`, `rag/`, `mcp/`, and `skills/` own shared model, provider, retrieval, and MCP capabilities.
 - `src/features/` contains host-shipped cross-cutting features. `src/database/`, `src/settings/`, and `src/styles/` own host persistence, settings, and global styles.
 
@@ -40,6 +41,7 @@ Verify what you touched: host code → type-check + relevant tests; module code 
 - Add a capability to the Host API only when it is broadly useful to modules. Keep module-specific policy and behavior inside the owning module.
 - Core must not import module source or bundle module implementation into the host artifact. Communicate only through registration, manifests, and Host API contracts.
 - A module ships skills as packages: declared files are projected on activation into `<YOLO base>/modules/<moduleId>/skills/<package>/` and are then ordinary Vault skills. Do not introduce a module-skill path protocol.
+- The host's refusal to text-edit a module-owned structured format is an unconditional static extension check (`src/core/tools/structured-vault-formats.ts`); never make it query a runtime registry, or the same call on the same file would behave differently depending on which modules a machine happens to have installed.
 - Treat versioned `entry.js`, module `style.css`, generated manifest metadata (hashes, sizes, and URLs), and `modules/bundled.json` as build outputs. Change source or compatibility declarations, run `npm run module:build`, and commit the regenerated artifacts rather than editing generated metadata.
 
 ### Runtime Components

@@ -15,11 +15,17 @@
 ### Chat 视图（侧边栏 / 标签页 / 分屏 / 独立窗口）
 - 触发方式：只有一个视图类型 `CHAT_VIEW_TYPE`（`src/ChatView.tsx`，挂载 `src/components/chat-view/Chat.tsx`），通过 `plugin.openChatView({ placement })` 打开到四种 Obsidian leaf 位置之一——`ChatLeafPlacement = 'sidebar' | 'split' | 'tab' | 'window'`（`src/features/chat/chatLeafSessionManager.ts`）。对应四个命令：`open-new-chat`（侧栏）、`open-chat-tab`、`open-chat-split`、`open-chat-window`（`src/main.ts`），实际打开/复用/新建 leaf 的逻辑在 `ChatViewNavigator`（`src/features/chat/chatViewNavigator.ts`）。四种挂载位置是同一份功能，不是四个不同的产品面；`ChatMode` 不是挂载位置的一部分，是下面这条正交的能力轴。
 - 核心代码：`src/components/chat-view/`（`ChatSessionController.ts` 管理会话状态与 `AgentService` 订阅、`ChatConversationPane.tsx`/`ChatTimelineList.tsx` 渲染时间线）。
-- 依赖子系统：任一挂载位置内部都叠加同一层 `ChatMode`（`'ask' | 'agent' | ModuleChatModeId`，定义于 `ChatModeSelect.tsx`）切换出的能力集——Ask 模式屏蔽写文件/vault shell/终端/todo 等能力（`CHAT_BLOCKED_CAPABILITY_IDS`，`chat-runtime-profiles.ts`）；`AgentService`、`resolveChatModeRuntime`、模块自定义聊天模式（`RegisteredModuleChatModeV1`，见「模块系统」）都接入同一个 `ChatMode` 类型体系。挂载到独立窗口（`placement: 'window'`）时叠加下方「Popout / 多窗口」一节的约束。
+- 依赖子系统：任一挂载位置内部都叠加同一层 `ChatMode`（`'ask' | 'agent' | ModuleChatModeId`，定义于 `ChatModeSelect.tsx`）切换出的能力集——Ask 模式屏蔽写文件/vault shell/终端/todo 等能力（`CHAT_BLOCKED_CAPABILITY_IDS`，`chat-runtime-profiles.ts`）；`AgentService`、`resolveChatModeRuntime`、模块自定义聊天模式（`RegisteredModuleChatModeV1`，见「模块系统」）都接入同一个 `ChatMode` 类型体系。另有一条与 `ChatMode` 正交的运行时轴：同一个视图既可以跑 YOLO 原生 agent（`YoloChatSurface.tsx`），也可以整体切到外部 CLI 运行时（`CliChatSurface.tsx`，切换入口 `RuntimeSelector.tsx`）——见下方「外部 CLI 运行时」条目，那条路径不经过 `AgentService`。挂载到独立窗口（`placement: 'window'`）时叠加下方「Popout / 多窗口」一节的约束。
 - 验证路径：dev vault 手测——四种 placement 各自打开/复用 leaf 是否正确（`chatViewNavigator.test.ts` 覆盖对应状态机），以及任一 placement 下 Ask/Agent 两种 ChatMode 的能力屏蔽是否符合预期（`ChatSessionController.test.ts`）。
 
 ### Streaming 渲染约束（跨 Ask/Agent 模式的所有入口）
 - 生成中的内容/推理不进会话快照，活在 `assistantRenderStreamStore`（`src/core/agent/assistantRenderStreamStore.ts`）里；快照只在语义边界折叠回去。改流式渲染前务必先读这个文件，不要引入逐 token 发布会话快照的路径。
+
+## 外部 CLI 运行时（Chat 视图内的第二种执行面）
+- 触发方式：Chat 视图顶部的 `RuntimeSelector.tsx` 从 YOLO 原生 agent 切到某个外部 CLI 代理，之后整条对话由该 CLI 进程驱动，UI 换成 `CliChatSurface.tsx`。这不是 `AgentService` 的另一种编排，而是并列的另一类执行面——AGENTS.md「不要造第二条 agent 编排路径」约束的是前者内部，不是这里。
+- 核心代码：`src/core/cli-runtime/`——`registry.ts`（描述符驱动的运行时注册面）、`coordinator.ts`（工厂装配与生命周期）、`conversation-controller.ts`（会话状态机）、`session-service.ts`/`session-index.ts`（会话落盘与索引）、`permission-profile.ts`（权限档）、`model-catalog.ts`；各家实现在 `claude/`、`codex/`、`grok/`、`hermes/`、`pi/` 与 `acp/`（Agent Client Protocol）。
+- 依赖子系统：桌面端独占（子进程 + 登录 shell 环境，`desktop.ts`/`login-shell-env.ts`）。`index.ts` 会被移动端一起加载，桌面实现必须留在它的静态图之外。
+- 验证路径：目录内测试与源文件基本一一对应（`registry.test.ts`、`coordinator.test.ts`、`conversation-controller.test.ts`、`permission-profile.test.ts` 等）；`src/components/chat-view/CliChatSurface.test.tsx` 覆盖 UI 侧；真机手测需要本地装好对应 CLI。
 
 ## 灵光写作 / Sparkle（单轮编辑器功能族）
 - 产品命名注记：这条线在设置页/侧边栏统一品牌为「灵光写作 / Sparkle」（`fdcc10ff`），代码里没有与之对应的统一目录——`src/features/editor/` 下 Tab 补全、选区改写、续写是并列的兄弟目录，只是共用同一条底层执行路径。不要再用「Write Assist」指代这整条产品线，那是改名前遗留的说法；`continuation` 现在专指续写这一个子能力（见下）。
@@ -30,7 +36,9 @@
 
 ## 工具系统
 - 核心代码：`src/core/tools/`。`capabilities/`（`file-editing.ts`、`file-reading.ts`、`vault-shell.ts`、`terminal.ts`、`todo-list.ts`、`memory.ts`、`web-access.ts`、`js-sandbox.ts`、`subagent-delegation.ts`、`user-questions.ts`、`context-compaction.ts`、`context-pruning.ts`）是唯一注册点——工具目录、设置项、审批策略、持久化 key 都从这里派生，不要另开侧表。`dispatcher.ts`（43 行）是唯一执行路径。
-- 具体工具实现目录：`bash/`、`fs_edit/`、`fs_read/`、`fs_write/`、`terminal_command/`、`todo_write/`、`web_search/`、`web_scrape/`、`js_eval/`、`ask_user_question/`、`memory_add/update/delete/`、`delegate_subagent/`、`context_compact/`、`context_prune_tool_results/`。
+- 按需披露（1.6.8 起是唯一模式，全局开关已下线）：不进请求 `tools` 数组的工具以裸名字活在系统提示词目录里，由 `src/core/agent/tool-catalog.ts` 构造、`tool-selection.ts` 决定哪些常驻；模型经 `src/core/tools/internal/invoke_tool/` 发起调用，需要 schema 时批量走 `internal/load_tool_schemas/`。两者都是协议内工具，不走 `defineTool`/`CAPABILITIES`、不进设置页；`tool-gateway.ts` 在任何策略求值之前把 `invoke_tool` 请求改写成真实工具的请求——这个顺序是安全不变量。
+- 模块自有格式：`structured-vault-formats.ts` 是一张静态扩展名表（当前只有 `.yoloboard` → `yolo_whiteboard__edit_board`），让 `fs_edit`/`fs_write` 拒绝把这类文件当纯文本改写。它刻意不查运行时注册表，好让同一次调用的行为跟机器上装没装那个模块无关。
+- 具体工具实现目录：`bash/`、`fs_edit/`、`fs_read/`、`fs_write/`、`terminal_command/`、`todo_write/`、`web_search/`、`web_scrape/`、`js_eval/`、`ask_user_question/`、`memory_add/update/delete/`、`delegate_subagent/`、`context_compact/`、`context_prune_tool_results/`，以及协议内的 `internal/`。
 - 验证路径：`dispatcher.test.ts`、`registry.test.ts`、`tool-catalog-equivalence.test.ts` 覆盖分发与目录一致性；单个工具改动看对应目录下的 `*.test.ts`。
 
 ## MCP
@@ -49,10 +57,17 @@
 
 ## 模块系统
 - 核心代码：`src/core/modules/`，覆盖发现（`officialModuleCatalog.ts`/`devModuleCatalogSource.ts`）、安装（`moduleInstallationCoordinator.ts`/`moduleArtifactInstaller.ts`/`moduleArtifactVerifier.ts`）、加载（`moduleLoader.ts`/`moduleRuntime.tsx`）、激活（`moduleActivationCoordinator.ts`）、生命周期（`lifecycleScope.ts`/`moduleStartupReconciler.ts`）、Host API 暴露（`hostCapabilities.ts`）。`modules/host-sdk.d.ts`（仓库根 `modules/` 目录下）是模块可见的 API 契约，模块不能越过它 import `src/core/`。
-- 已知第一方模块：`modules/learning/`（完整实现：`src/domain/`、`src/generation/`、`src/host/`、`src/ui/`、`src/anki/`）——学习模式的产品逻辑全部在这里，host 侧只负责通用的模块生命周期。
+- 已知第一方模块：`modules/learning/`（完整实现：`src/domain/`、`src/generation/`、`src/host/`、`src/ui/`、`src/anki/`）与 `modules/whiteboard/`（见下方「白板 / .yoloboard」）——产品逻辑全部在各自模块内，host 侧只负责通用的模块生命周期。
 - 模块自定义聊天模式：`moduleChatModeRegistry.ts`，产出 `RegisteredModuleChatModeV1`，接入前述 `ChatMode` 类型体系（`src/components/chat-view/chat-input/ChatModeSelect.tsx` 里的 `ModuleChatModeId`）。
+- 模块向宿主贡献的注册面（都在 `src/core/modules/`，Host API 仍是 `1.8.0`——中途开过的 1.9.0/1.10.0 已并回，别被 commit 标题误导）：`moduleToolSetRegistry.ts`（向**普通对话**贡献常驻工具集，与上一条的模式内工具正交，经 `McpCoordinator` 回放成进程内 MCP server）、`moduleFileTextRendererRegistry.ts`（模块定义自有格式对模型呈现的文本形态）、`moduleFileView.ts`（文件视图与文件菜单动作）、`obsidianMarkdownEditor.ts`/`obsidianMarkdownContentView.ts`（模块直接复用宿主 Live Preview 编辑器与分段渲染）、`moduleVault.ts` 的 `getResourceUrl`。
 - 模块 skill 投影：`moduleSkillMaterializer.ts`——声明的 skill 包在激活时物化到 `<YOLO base>/modules/<moduleId>/skills/<package>/`，之后按普通 vault skill 走，没有单独的协议层。
 - 验证路径：`src/core/modules/` 下测试文件与源文件几乎一一对应；模块侧改动需要 `npm run module:typecheck` + `npm run module:build`（重建 `modules/<id>/entry.js` 与 `modules/bundled.json`，这些是构建产物，改完要提交）。
+
+## 白板 / .yoloboard（第一方模块）
+- 触发方式：命令或文件菜单新建 `.yoloboard`，由模块注册的文件视图接管（`registerFileView`）；也可从 Obsidian Canvas 导入（`domain/canvasImport.ts`）。卡片是笔记的一扇取景窗，窗口位置存进板子本身。
+- 核心代码：`modules/whiteboard/src/`——`domain/`（纯逻辑，文件格式、提交与历史、选区、对齐吸附、分组、整理、虚拟化判定，测试与源文件一一对应）、`ui/canvas/`（`cardRenderer.ts`/`edgeLayer.ts`/`cameraController.ts`/`overviewLayer.ts`/`snapGuideLayer.ts`/`toolbarController.ts`）、`ui/lod.ts`（分档渲染：`OVERVIEW_SCALE_THRESHOLD = 0.35` 以下整块交给 canvas 概览档，卡片与边不进 DOM；回升有滞回带避免抖动）、`host/boardTools.ts`（白板 Agent 工具集，编辑落在已打开的视图上）。
+- 依赖子系统：只经 Host API 触达宿主（文件视图、Live Preview 编辑器、内容视图、`getResourceUrl`、工具集注册）；宿主侧对 `.yoloboard` 的写保护见上方「工具系统」的 `structured-vault-formats.ts`。
+- 验证路径：`npm --prefix modules/whiteboard run test`、`test:boundary`（边界脚本）、`typecheck`，改产物后 `npm run module:build` 并提交重新生成的版本目录与 `modules/bundled.json`。
 
 ## 运行时组件（Runtime Components）
 - 核心代码：`src/core/runtime-components/` 负责发现、下载、安装、生命周期（`runtimeComponentDownloader.ts`/`runtimeComponentInstaller.ts`/`runtimeComponentLoader.ts`/`runtimeComponentService.ts`）。仓库根 `runtime-components/<id>/` 存放各组件自己的源码与构建产物，`runtime-components/sdk.d.ts` 是组件侧契约。
