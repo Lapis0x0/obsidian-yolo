@@ -371,3 +371,8 @@ export {
   type LearningLegacyInstallMigrationOptions,
   type LearningLegacyInstallMigrationResult,
 } from './learningLegacyInstallMigration'
+export {
+  DEFAULT_INSTALLED_MODULE_IDS,
+  seedDefaultModuleInstallIntents,
+  type DefaultModuleInstallSeedOptions,
+} from './defaultModuleInstalls'

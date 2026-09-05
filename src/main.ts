@@ -118,6 +118,7 @@ import {
   parseModuleArtifactManifest,
   resolveModuleSkillVaultPath,
   runExclusive as runManagedModuleDataExclusive,
+  seedDefaultModuleInstallIntents,
   selectModuleManifestVariant,
 } from './core/modules'
 import { normalizeModuleCatalogLocale } from './core/modules/moduleCatalogPresentation'
@@ -351,6 +352,7 @@ export default class YoloPlugin extends Plugin {
   private moduleRuntimeReservation: ModuleRuntimeReservation | null = null
   private learningModuleSettingsHandoff: (() => Promise<void>) | null = null
   private learningLegacyInstallMigration: (() => Promise<void>) | null = null
+  private defaultModuleInstallSeed: (() => Promise<void>) | null = null
   private rawLearningLegacySettings: unknown = undefined
   private learningModuleSettingsHandoffReady = false
   private readonly managedModulePathChangeListeners = new Set<() => void>()
@@ -2229,6 +2231,11 @@ export default class YoloPlugin extends Plugin {
       console.error('[YOLO] Learning legacy install migration failed', error)
     }
     try {
+      await this.defaultModuleInstallSeed?.()
+    } catch (error) {
+      console.error('[YOLO] Default module install seeding failed', error)
+    }
+    try {
       // Must complete before `activateModules()`: the Learning module reads
       // and writes `learning-srs`/`anki-import-journals` directly under the
       // visible `data/` root (see `modules/learning/src/host/srsStorage.ts`)
@@ -2771,6 +2778,7 @@ export default class YoloPlugin extends Plugin {
     this.distributionFeedClient = null
     this.learningModuleSettingsHandoff = null
     this.learningLegacyInstallMigration = null
+    this.defaultModuleInstallSeed = null
     this.rawLearningLegacySettings = undefined
     this.learningModuleSettingsHandoffReady = false
     this.managedModulePathChangeListeners.clear()
@@ -4239,6 +4247,18 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         legacySettings: this.rawLearningLegacySettings,
         enableIfAbsent: (moduleId) =>
           intentStore.setIfAbsent(moduleId, 'enabled'),
+      })
+    }
+    this.defaultModuleInstallSeed = async () => {
+      await seedDefaultModuleInstallIntents({
+        enableIfAbsent: (moduleId) =>
+          intentStore.setIfAbsent(moduleId, 'enabled'),
+        reportError: (moduleId, error) => {
+          console.error(
+            `[YOLO] Default install intent seeding failed for module "${moduleId}"`,
+            error,
+          )
+        },
       })
     }
     const getCompatibility = createOfficialModuleCompatibilityProvider({
