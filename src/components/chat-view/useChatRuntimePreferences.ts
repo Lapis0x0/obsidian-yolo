@@ -27,6 +27,8 @@ import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 import {
   type BuiltinChatMode,
   type ChatMode,
+  readYoloPreference,
+  yoloPreferencePatch,
 } from './chat-input/ChatModeSelect'
 import {
   beginChatRuntimeNavigation,
@@ -115,8 +117,12 @@ function computeInitialSnapshot(
   const chatMode: ChatMode =
     seeded?.chatMode ?? settings.chatOptions.chatMode ?? 'agent'
   const persistedChatMode: ChatMode = seeded?.persistedChatMode ?? chatMode
+  // The global default for the trust profile this mode reads — Max's when
+  // starting in Max, Agent's otherwise.
   const yoloEnabled =
-    seeded?.yoloEnabled ?? settings.chatOptions.agentYoloEnabled ?? false
+    seeded?.yoloEnabled ??
+    readYoloPreference(settings.chatOptions, chatMode) ??
+    false
   const conversationModelId =
     seeded?.conversationModelId ??
     (() => {
@@ -256,9 +262,13 @@ export function useChatRuntimePreferences({
     [setSettings, settings],
   )
 
+  // The global default is stored per trust profile, so the mode being toggled
+  // decides which field is written — see `yoloPreferenceKeyForMode`.
   const persistPreferredYolo = useCallback(
-    async (enabled: boolean) => {
-      if ((settings.chatOptions.agentYoloEnabled ?? false) === enabled) {
+    async (mode: ChatMode, enabled: boolean) => {
+      if (
+        (readYoloPreference(settings.chatOptions, mode) ?? false) === enabled
+      ) {
         return
       }
 
@@ -267,7 +277,7 @@ export function useChatRuntimePreferences({
           ...settings,
           chatOptions: {
             ...settings.chatOptions,
-            agentYoloEnabled: enabled,
+            ...yoloPreferencePatch(mode, enabled),
           },
         })
       } catch (error: unknown) {
@@ -447,6 +457,7 @@ export function useChatRuntimePreferences({
           ),
           confirmTone: 'warning',
           onConfirm: () => {
+            const mode = preferencesController.getSnapshot().chatMode
             preferencesController.toggleYolo(true)
             void (async () => {
               try {
@@ -454,7 +465,7 @@ export function useChatRuntimePreferences({
                   ...settings,
                   chatOptions: {
                     ...settings.chatOptions,
-                    agentYoloEnabled: true,
+                    ...yoloPreferencePatch(mode, true),
                     fullAccessWarningConfirmed: true,
                   },
                 })
@@ -470,8 +481,9 @@ export function useChatRuntimePreferences({
         return
       }
 
+      const mode = preferencesController.getSnapshot().chatMode
       preferencesController.toggleYolo(enabled)
-      void persistPreferredYolo(enabled)
+      void persistPreferredYolo(mode, enabled)
     },
     [
       app,

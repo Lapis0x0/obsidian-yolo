@@ -7,7 +7,9 @@ import {
   ListTodo,
   MessageSquare,
   PenLine,
+  Zap,
 } from 'lucide-react'
+import { Platform } from 'obsidian'
 import {
   forwardRef,
   useCallback,
@@ -19,6 +21,7 @@ import {
 
 import { useLanguage } from '../../../contexts/language-context'
 import type { RegisteredModuleChatModeV1 } from '../../../core/modules/moduleChatModeRegistry'
+import type { BuiltinChatModeId } from '../../../core/tools/types'
 import { getNodeWindow } from '../../../utils/dom/window-context'
 import { ObsidianIcon } from '../../common/ObsidianIcon'
 import { YoloDropdownContent } from '../../common/popover'
@@ -36,17 +39,22 @@ export type ModuleChatModeId = `module:${string}:${string}`
  * The host-native modes — excludes module chat modes. `settings.chatOptions.
  * chatMode` (global default) stays scoped to this narrower type: a global
  * default can't sensibly point at something that may be uninstalled.
+ *
+ * The same union the tool registry declares capability visibility against
+ * (`BuiltinChatModeId`), reused rather than restated: two hand-aligned copies
+ * of "which built-in modes exist" can only drift.
  */
-export type BuiltinChatMode = 'ask' | 'agent'
+export type BuiltinChatMode = BuiltinChatModeId
 
 /**
  * YOLO-native capability modes plus any published module chat mode. Built-in
  * values are mutually exclusive and describe what the chat is allowed to do.
  * "Auto-approve tool calls" (YOLO) is NOT a mode — it is an orthogonal
- * boolean (`yoloEnabled`) that only takes effect while in Agent mode. See
- * `chat-runtime-profiles.ts`.
+ * boolean (`yoloEnabled`) that only takes effect in the tool-carrying modes
+ * (Agent, Max), each of which keeps its own value. See
+ * `chat-runtime-profiles.ts` and `yoloToggleOwnerMode`.
  */
-export type ChatMode = 'ask' | 'agent' | ModuleChatModeId
+export type ChatMode = BuiltinChatMode | ModuleChatModeId
 
 /**
  * Semantic alias for `ChatMode` used at persistence boundaries (conversation
@@ -63,7 +71,19 @@ export type PersistedChatMode = ChatMode
 export type ChatModeSelectValue = ChatMode | 'plan'
 export type ChatModeSelectOptionValue = ChatModeSelectValue | 'continue'
 
-export const CHAT_MODES: readonly ChatMode[] = ['ask', 'agent']
+export const CHAT_MODES: readonly ChatMode[] = ['ask', 'agent', 'max']
+
+/**
+ * Max's tools are a real filesystem and a real shell (`native_files`,
+ * `terminal`), neither of which exists on mobile — so mobile is never offered
+ * the mode at all, and a persisted or session-override `'max'` opened there
+ * runs as Agent (see `resolveEffectiveChatMode`).
+ */
+const MOBILE_CHAT_MODES: readonly ChatMode[] = ['ask', 'agent']
+
+/** The built-in modes selectable on this device — see `MOBILE_CHAT_MODES`. */
+export const availableBuiltinChatModes = (): readonly ChatMode[] =>
+  Platform.isDesktop ? CHAT_MODES : MOBILE_CHAT_MODES
 
 export const CLAUDE_CODE_CHAT_MODES: readonly ChatModeSelectValue[] = [
   'agent',
@@ -78,20 +98,39 @@ export const MODULE_CHAT_MODE_ID_RE = /^module:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*$/
 export const isModuleChatMode = (value: string): value is ModuleChatModeId =>
   MODULE_CHAT_MODE_ID_RE.test(value)
 
+/**
+ * Which mode's card carries the YOLO switch. `yoloEnabled` is a single value
+ * describing exactly one trust profile — the selected mode's when it has one,
+ * Agent's otherwise (Ask and Plan have no profile of their own but have
+ * always shown Agent's switch) — so the switch renders on that one mode's
+ * card. Putting a switch on both tool-mode cards would display one profile's
+ * state under the other's label, since the component is only ever handed the
+ * one value. See `yoloPreferenceKeyForMode`, which resolves the same question
+ * at the persistence layer.
+ */
+export const yoloToggleOwnerMode = (
+  mode: ChatModeSelectOptionValue,
+): 'agent' | 'max' => (mode === 'max' ? 'max' : 'agent')
+
 export const shouldShowYoloToggle = (
   availableModes: readonly ChatModeSelectOptionValue[],
   mode: ChatModeSelectOptionValue,
 ): boolean =>
-  availableModes.includes('agent') && mode !== 'plan' && !isModuleChatMode(mode)
+  mode !== 'plan' &&
+  !isModuleChatMode(mode) &&
+  availableModes.includes(yoloToggleOwnerMode(mode))
 
 export const isYoloModeActive = (
   showYoloControl: boolean,
   mode: ChatModeSelectOptionValue,
   yoloEnabled: boolean,
-): boolean => showYoloControl && isAgentChatMode(mode) && yoloEnabled
+): boolean => showYoloControl && isToolChatMode(mode) && yoloEnabled
 
 export const isChatMode = (value: string): value is ChatMode =>
-  value === 'ask' || value === 'agent' || isModuleChatMode(value)
+  value === 'ask' ||
+  value === 'agent' ||
+  value === 'max' ||
+  isModuleChatMode(value)
 
 export const isChatModeSelectValue = (
   value: string,
@@ -132,17 +171,24 @@ export const normalizePersistedChatMode = (
 
 /**
  * Resolves a persisted chat mode to the value that should actually run:
- * unregistered or unavailable (e.g. the owning module was disabled/uninstalled)
- * module mode ids downgrade to `'agent'`; everything else (built-in values,
- * and module ids that are registered + available) passes through unchanged.
+ * `'max'` opened on mobile downgrades to `'agent'` (the mode's tools are
+ * desktop-only); unregistered or unavailable (e.g. the owning module was
+ * disabled/uninstalled) module mode ids downgrade to `'agent'`; everything
+ * else (built-in values, and module ids that are registered + available)
+ * passes through unchanged.
  *
  * This is the ONLY place that downgrades a persisted value — call sites must
- * never persist the result back (see `chatModeForSave`).
+ * never persist the result back (see `chatModeForSave`). That is what lets a
+ * vault synced between a desktop and a phone keep running Max on the desktop
+ * while the phone silently reads the same conversation as Agent.
  */
 export const resolveEffectiveChatMode = (
   persisted: ChatMode,
   registeredModuleChatModes: readonly RegisteredModuleChatModeV1[],
 ): ChatMode => {
+  if (persisted === 'max') {
+    return Platform.isDesktop ? 'max' : 'agent'
+  }
   if (!isModuleChatMode(persisted)) {
     return persisted
   }
@@ -185,23 +231,69 @@ export const normalizeYoloEnabled = (
   return fallback
 }
 
+/**
+ * A trust profile belongs to one mode, so the persisted YOLO flag is stored
+ * per mode. Ask and Plan have no profile of their own and keep reading and
+ * writing Agent's, exactly as they did when it was the only one — see
+ * `yoloToggleOwnerMode`, the UI-side answer to the same question.
+ *
+ * The key names a field that both `ConversationOverrideSettings` and
+ * `settings.chatOptions` carry, so one lookup serves the per-conversation
+ * override and the global default alike.
+ */
+export type YoloPreferenceKey = 'agentYoloEnabled' | 'maxYoloEnabled'
+
+export const yoloPreferenceKeyForMode = (
+  mode: ChatModeSelectOptionValue,
+): YoloPreferenceKey => (mode === 'max' ? 'maxYoloEnabled' : 'agentYoloEnabled')
+
+/** Reads the YOLO flag `mode` owns out of an overrides / chatOptions record. */
+export const readYoloPreference = (
+  source:
+    | {
+        agentYoloEnabled?: boolean | null
+        maxYoloEnabled?: boolean | null
+      }
+    | null
+    | undefined,
+  mode: ChatModeSelectOptionValue,
+): boolean | null | undefined => source?.[yoloPreferenceKeyForMode(mode)]
+
+/** The overrides / chatOptions patch that stores `enabled` for `mode`. */
+export const yoloPreferencePatch = (
+  mode: ChatModeSelectOptionValue,
+  enabled: boolean,
+): { agentYoloEnabled: boolean } | { maxYoloEnabled: boolean } =>
+  mode === 'max' ? { maxYoloEnabled: enabled } : { agentYoloEnabled: enabled }
+
 export const isAgentChatMode = (mode: ChatModeSelectOptionValue): boolean =>
   mode === 'agent'
 
 /**
+ * The built-in modes that run the agent loop with tools: Agent and Max. Use
+ * this — not `isAgentChatMode` — wherever the question is "does this mode
+ * have tools, an assistant, a trust profile, a task list", which is nearly
+ * everywhere the codebase used to compare against `'agent'`.
+ * `isAgentChatMode` is left for the few places that genuinely mean the Agent
+ * mode specifically.
+ */
+export const isToolChatMode = (mode: ChatModeSelectOptionValue): boolean =>
+  mode === 'agent' || mode === 'max'
+
+/**
  * Narrows a chat mode down to what the mention menu's `/` mode switcher
- * understands (`CHAT_MODES` = `['ask', 'agent']` only — see
- * `MentionPlugin.tsx`, consumed from `ChatUserInput.tsx`). A module chat
- * mode is agent-like (tools + capability profile), so it narrows to
+ * understands (`MENTION_CHAT_MODES` = `['ask', 'agent']` only — see
+ * `MentionPlugin.tsx`, consumed from `ChatUserInput.tsx`). Max and module
+ * chat modes are agent-like (tools + capability profile), so they narrow to
  * `'agent'` rather than dropping out as `undefined` — otherwise the menu
  * would highlight `'ask'` as the current mode while the conversation is
- * actually running a module mode.
+ * actually running one of them.
  */
 export function narrowToMentionChatMode(
   mode: ChatModeSelectValue | undefined,
 ): 'ask' | 'agent' | undefined {
   if (mode === 'ask') return 'ask'
-  if (mode === 'agent') return 'agent'
+  if (mode === 'agent' || mode === 'max') return 'agent'
   if (mode !== undefined && isModuleChatMode(mode)) return 'agent'
   return undefined
 }
@@ -260,6 +352,14 @@ const MODE_OPTIONS: ModeOption[] = [
     descKey: 'chatMode.agentDesc',
     descFallback: 'Tools for complex tasks',
     icon: <Bot size={16} />,
+  },
+  {
+    value: 'max',
+    labelKey: 'chatMode.max',
+    labelFallback: 'Max',
+    descKey: 'chatMode.maxDesc',
+    descFallback: 'Work directly on local files and the terminal (desktop)',
+    icon: <Zap size={16} />,
   },
   {
     value: 'plan',
@@ -534,7 +634,10 @@ export const ChatModeSelect = forwardRef<
           >
             {visibleOptions.map((option) => {
               const isSelected = option.value === mode
-              if (option.value === 'agent' && showYoloControl) {
+              if (
+                showYoloControl &&
+                option.value === yoloToggleOwnerMode(mode)
+              ) {
                 return (
                   <div
                     key={option.value}
@@ -542,16 +645,16 @@ export const ChatModeSelect = forwardRef<
                     tabIndex={0}
                     aria-checked={isSelected}
                     className="yolo-popover-item yolo-chat-mode-agent-card"
-                    data-mode="agent"
+                    data-mode={option.value}
                     data-state={isSelected ? 'checked' : 'unchecked'}
                     ref={(element) => {
-                      itemRefs.current.agent = element
+                      itemRefs.current[option.value] = element
                     }}
-                    onClick={() => selectMode('agent')}
+                    onClick={() => selectMode(option.value)}
                     onKeyDown={(event) => {
                       if (event.key === 'Enter' || event.key === ' ') {
                         event.preventDefault()
-                        selectMode('agent')
+                        selectMode(option.value)
                       }
                     }}
                   >

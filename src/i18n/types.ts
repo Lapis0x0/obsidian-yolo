@@ -2282,6 +2282,8 @@ export type TranslationKeys = {
     rewriteDesc?: string
     agent?: string
     agentDesc?: string
+    max?: string
+    maxDesc?: string
     continue?: string
     continueDesc?: string
     plan?: string

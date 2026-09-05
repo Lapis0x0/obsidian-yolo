@@ -588,11 +588,13 @@ export const yoloSettingsSchema = z.object({
       chatInputHeight: z.number().int().min(80).max(520).optional(),
       chatApplyMode: z.enum(['review-required', 'direct-apply']).optional(),
       chatTitlePrompt: z.string().optional(),
-      // Chat mode (ask/agent)
-      chatMode: z.enum(['ask', 'agent']).optional(),
-      // Auto-approve tool calls (YOLO). Orthogonal to chatMode; only effective
-      // in Agent mode.
+      // Chat mode (ask/agent/max)
+      chatMode: z.enum(['ask', 'agent', 'max']).optional(),
+      // Auto-approve tool calls (YOLO). Orthogonal to chatMode, and stored per
+      // trust profile: Agent and Max each keep their own. Ask has no profile
+      // of its own and reads Agent's. See `yoloPreferenceKeyForMode`.
       agentYoloEnabled: z.boolean().optional(),
+      maxYoloEnabled: z.boolean().optional(),
       // Whether the user has acknowledged the first-time full access (YOLO) warning
       fullAccessWarningConfirmed: z.boolean().optional(),
       // Persist preferred reasoning level per model id in Chat input

@@ -47,10 +47,10 @@ import {
   resolveChatInputEditorSeed,
 } from './chatInputDraft'
 import {
-  CHAT_MODES,
   ChatModeSelect,
   type ChatModeSelectValue,
   type ModuleChatModeOption,
+  availableBuiltinChatModes,
   isModuleChatMode,
   narrowToMentionChatMode,
 } from './ChatModeSelect'
@@ -192,7 +192,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onSelectChatModeForConversation,
       chatMode,
       onChatModeChange,
-      chatModeOptions = CHAT_MODES,
+      chatModeOptions = availableBuiltinChatModes(),
       moduleModeOptions,
       yoloEnabled = false,
       onYoloChange,

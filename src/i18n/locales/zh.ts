@@ -617,7 +617,7 @@ export const zh: TranslationKeys = {
         '异步派遣一个隔离的临时子 Agent，完成自包含任务',
       builtinTodoWriteLabel: '任务清单',
       builtinTodoWriteDesc:
-        '让 Agent 自己拆分并跟踪多步任务的进度（仅 Agent 模式）',
+        '让 Agent 自己拆分并跟踪多步任务的进度（仅 Agent / Max 模式）',
       builtinAskUserQuestionLabel: '向用户提问',
       builtinAskUserQuestionDesc: '在缺少必要信息时向用户提问，等待回答后继续',
       editorDefaultName: '新建 Agent',
@@ -2469,6 +2469,8 @@ export const zh: TranslationKeys = {
     rewriteDesc: '仅修改当前选区',
     agent: 'Agent',
     agentDesc: '启用工具链，处理多步骤任务',
+    max: 'Max',
+    maxDesc: '直接操作本地文件与终端，桌面专属',
     continue: '续写',
     continueDesc: '在光标处继续写作，Tab 接受',
     plan: 'Plan',

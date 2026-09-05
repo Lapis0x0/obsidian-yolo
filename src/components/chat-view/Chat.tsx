@@ -76,11 +76,11 @@ import { ObsidianIcon } from '../common/ObsidianIcon'
 
 import { AssistantRenderStreamProvider } from './assistant-render-stream-context'
 import {
-  CHAT_MODES,
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
   type ChatMode,
   type ModuleChatModeOption,
+  availableBuiltinChatModes,
   chatModeForSave,
   isModuleChatMode,
 } from './chat-input/ChatModeSelect'
@@ -327,6 +327,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
         })),
     [moduleChatModeSnapshot, language],
   )
+
+  // Max is desktop-only (`native_files` / `terminal`), so mobile never lists
+  // it. `resolveEffectiveChatMode` covers the other half: a synced
+  // conversation persisted as Max still opens on the phone, as Agent.
+  const builtinChatModeOptions = availableBuiltinChatModes()
 
   const {
     createOrUpdateConversation,
@@ -1988,10 +1993,10 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               : CODEX_CHAT_MODES
             : moduleModeOptions.length > 0
               ? [
-                  ...CHAT_MODES,
+                  ...builtinChatModeOptions,
                   ...moduleModeOptions.map((option) => option.value),
                 ]
-              : CHAT_MODES
+              : builtinChatModeOptions
         }
         moduleModeOptions={moduleModeOptions}
         yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}

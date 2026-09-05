@@ -97,12 +97,11 @@ export type BuiltinToolCategory = 'vault' | 'context' | 'external'
 /**
  * The built-in chat modes a capability can be exposed in.
  *
- * Deliberately declared here rather than imported from the UI layer's
- * `BuiltinChatMode` (`components/chat-view/chat-input/ChatModeSelect`):
- * `core/tools/` must not depend on `src/components/`, and this union is the
- * one the tool registry is defined against. The two are kept aligned by hand
- * (docs/plans/09-05-yolo-max/master.md §6 — S2a is where `BuiltinChatMode`
- * grows `'max'` to match).
+ * Declared here rather than in the UI layer because `core/tools/` must not
+ * depend on `src/components/`, and this union is the one the tool registry is
+ * defined against. It is the single definition, not one of two: the UI layer's
+ * `BuiltinChatMode` (`components/chat-view/chat-input/ChatModeSelect`) is an
+ * alias of it (docs/plans/09-05-yolo-max/master.md §6).
  */
 export type BuiltinChatModeId = 'ask' | 'agent' | 'max'
 

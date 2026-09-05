@@ -51,7 +51,9 @@ import {
   isModuleChatMode,
   normalizePersistedChatMode,
   normalizeYoloEnabled,
+  readYoloPreference,
   resolveEffectiveChatMode,
+  yoloPreferencePatch,
 } from './chat-input/ChatModeSelect'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import type { ChatSessionController } from './ChatSessionController'
@@ -464,7 +466,7 @@ export function useYoloChatSession({
         const effectiveOverrides = {
           ...(conversationOverrides ?? {}),
           chatMode: chatModeForSave(persistedChatMode),
-          agentYoloEnabled: yoloEnabled,
+          ...yoloPreferencePatch(persistedChatMode, yoloEnabled),
         }
         await createOrUpdateConversation(
           currentConversationId,
@@ -540,7 +542,7 @@ export function useYoloChatSession({
         const effectiveOverrides = {
           ...(conversationOverrides ?? {}),
           chatMode: chatModeForSave(persistedChatMode),
-          agentYoloEnabled: yoloEnabled,
+          ...yoloPreferencePatch(persistedChatMode, yoloEnabled),
         }
         await createOrUpdateConversationImmediately(
           currentConversationId,
@@ -727,10 +729,13 @@ export function useYoloChatSession({
           loadedPersistedChatMode,
           moduleChatModeSnapshot,
         )
+        // Read the trust profile belonging to the mode this conversation was
+        // saved in, not whichever one happens to be current.
         const loadedYoloEnabled = normalizeYoloEnabled(
           conversation.overrides?.chatMode,
-          conversation.overrides?.agentYoloEnabled,
-          settings.chatOptions.agentYoloEnabled ?? false,
+          readYoloPreference(conversation.overrides, loadedPersistedChatMode),
+          readYoloPreference(settings.chatOptions, loadedPersistedChatMode) ??
+            false,
         )
         const modelFromRef =
           conversation.conversationModelId ??
@@ -1288,7 +1293,7 @@ export function useYoloChatSession({
       )
       const nextYoloEnabled = normalizeYoloEnabled(
         nextOverrides?.chatMode,
-        nextOverrides?.agentYoloEnabled,
+        readYoloPreference(nextOverrides, nextPersistedChatMode),
         yoloEnabled,
       )
       const resolvedConversationModelId =

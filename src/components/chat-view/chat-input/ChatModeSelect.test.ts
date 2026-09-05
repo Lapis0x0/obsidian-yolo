@@ -1,3 +1,5 @@
+import { Platform } from 'obsidian'
+
 import type { RegisteredModuleChatModeV1 } from '../../../core/modules/moduleChatModeRegistry'
 
 import {
@@ -5,20 +7,42 @@ import {
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
   type ModuleChatModeOption,
+  availableBuiltinChatModes,
   chatModeForSave,
   isChatMode,
   isModuleChatMode,
+  isToolChatMode,
   isYoloModeActive,
   narrowToMentionChatMode,
   normalizePersistedChatMode,
+  readYoloPreference,
   resolveEffectiveChatMode,
   resolveVisibleModuleModeOptions,
   shouldShowYoloToggle,
+  yoloPreferenceKeyForMode,
+  yoloPreferencePatch,
+  yoloToggleOwnerMode,
 } from './ChatModeSelect'
+
+/**
+ * `Platform` is ambient in the Obsidian API and the plugin reads it the same
+ * way everywhere (tool `isAvailable`, `tool-gateway`), so the desktop-only
+ * cases flip the mocked object rather than threading a flag through every
+ * signature.
+ */
+const withPlatform = <T>(isDesktop: boolean, run: () => T): T => {
+  const previous = Platform.isDesktop
+  Platform.isDesktop = isDesktop
+  try {
+    return run()
+  } finally {
+    Platform.isDesktop = previous
+  }
+}
 
 describe('ChatModeSelect runtime options', () => {
   it('exposes the intended modes for each runtime', () => {
-    expect(CHAT_MODES).toEqual(['ask', 'agent'])
+    expect(CHAT_MODES).toEqual(['ask', 'agent', 'max'])
     expect(CLAUDE_CODE_CHAT_MODES).toEqual(['agent', 'plan'])
     expect(CODEX_CHAT_MODES).toEqual(['agent'])
   })
@@ -40,6 +64,83 @@ describe('ChatModeSelect runtime options', () => {
     expect(isYoloModeActive(false, 'agent', true)).toBe(false)
     expect(isYoloModeActive(true, 'agent', true)).toBe(true)
     expect(isYoloModeActive(true, 'plan', true)).toBe(false)
+  })
+
+  it('treats Max as a YOLO-capable mode, same as Agent', () => {
+    expect(isYoloModeActive(true, 'max', true)).toBe(true)
+    expect(isYoloModeActive(true, 'max', false)).toBe(false)
+    expect(shouldShowYoloToggle(CHAT_MODES, 'max')).toBe(true)
+    expect(shouldShowYoloToggle(CHAT_MODES, 'ask')).toBe(true)
+  })
+
+  it('hides the YOLO switch when the mode that owns it is not on offer', () => {
+    // A surface that lists Max but not Agent (hypothetical) must not render a
+    // switch on a card that is not there.
+    expect(shouldShowYoloToggle(['max'], 'ask')).toBe(false)
+    expect(shouldShowYoloToggle(['max'], 'max')).toBe(true)
+  })
+
+  it('gives each tool mode its own switch card, so one profile never renders under the other label', () => {
+    expect(yoloToggleOwnerMode('max')).toBe('max')
+    expect(yoloToggleOwnerMode('agent')).toBe('agent')
+    // Ask and Plan have no profile of their own — they show Agent's, exactly
+    // as they did before Max existed.
+    expect(yoloToggleOwnerMode('ask')).toBe('agent')
+    expect(yoloToggleOwnerMode('plan')).toBe('agent')
+  })
+
+  it('offers Max only on desktop', () => {
+    expect(withPlatform(true, availableBuiltinChatModes)).toEqual([
+      'ask',
+      'agent',
+      'max',
+    ])
+    expect(withPlatform(false, availableBuiltinChatModes)).toEqual([
+      'ask',
+      'agent',
+    ])
+  })
+})
+
+describe('isToolChatMode', () => {
+  it('covers the modes that run tools, and nothing else', () => {
+    expect(isToolChatMode('agent')).toBe(true)
+    expect(isToolChatMode('max')).toBe(true)
+    expect(isToolChatMode('ask')).toBe(false)
+    expect(isToolChatMode('plan')).toBe(false)
+    // A module chat mode has tools too, but it declares its own grant and
+    // never participates in the assistant/YOLO wiring this gates.
+    expect(isToolChatMode('module:learning:chat')).toBe(false)
+  })
+})
+
+describe('per-mode YOLO preference', () => {
+  it('routes Max to its own field and leaves every other mode on the Agent field', () => {
+    expect(yoloPreferenceKeyForMode('max')).toBe('maxYoloEnabled')
+    expect(yoloPreferenceKeyForMode('agent')).toBe('agentYoloEnabled')
+    expect(yoloPreferenceKeyForMode('ask')).toBe('agentYoloEnabled')
+    expect(yoloPreferenceKeyForMode('module:learning:chat')).toBe(
+      'agentYoloEnabled',
+    )
+  })
+
+  it('reads the field belonging to the mode, not whichever one is set', () => {
+    const stored = { agentYoloEnabled: false, maxYoloEnabled: true }
+    expect(readYoloPreference(stored, 'agent')).toBe(false)
+    expect(readYoloPreference(stored, 'max')).toBe(true)
+    expect(readYoloPreference(null, 'max')).toBeUndefined()
+    expect(readYoloPreference({}, 'agent')).toBeUndefined()
+  })
+
+  it('patches only the current mode, so switching modes cannot overwrite the other profile', () => {
+    expect(yoloPreferencePatch('max', true)).toEqual({ maxYoloEnabled: true })
+    expect(yoloPreferencePatch('agent', false)).toEqual({
+      agentYoloEnabled: false,
+    })
+    expect({
+      agentYoloEnabled: true,
+      ...yoloPreferencePatch('max', true),
+    }).toEqual({ agentYoloEnabled: true, maxYoloEnabled: true })
   })
 })
 
@@ -86,6 +187,10 @@ describe('narrowToMentionChatMode', () => {
     expect(narrowToMentionChatMode('agent')).toBe('agent')
   })
 
+  it('narrows Max to agent — the compact / switcher does not offer it, so the highlight has to land on the nearest mode it does offer', () => {
+    expect(narrowToMentionChatMode('max')).toBe('agent')
+  })
+
   it('narrows a module chat mode to agent — the mention menu only understands CHAT_MODES (ask/agent), so a module mode must fall back to the closest built-in mode rather than the unrelated ask', () => {
     expect(narrowToMentionChatMode('module:learning:chat')).toBe('agent')
   })
@@ -115,6 +220,7 @@ describe('isModuleChatMode / isChatMode', () => {
   it('isChatMode accepts built-ins and well-formed module ids', () => {
     expect(isChatMode('ask')).toBe(true)
     expect(isChatMode('agent')).toBe(true)
+    expect(isChatMode('max')).toBe(true)
     expect(isChatMode('module:learning:chat')).toBe(true)
     expect(isChatMode('module:learning')).toBe(false)
     expect(isChatMode('plan')).toBe(false)
@@ -177,6 +283,15 @@ describe('resolveEffectiveChatMode', () => {
     expect(resolveEffectiveChatMode('agent', [availableEntry])).toBe('agent')
   })
 
+  it('runs a Max conversation as Agent on mobile without touching what is persisted', () => {
+    expect(withPlatform(true, () => resolveEffectiveChatMode('max', []))).toBe(
+      'max',
+    )
+    expect(withPlatform(false, () => resolveEffectiveChatMode('max', []))).toBe(
+      'agent',
+    )
+  })
+
   it('passes through a registered + available module mode', () => {
     expect(
       resolveEffectiveChatMode('module:learning:chat', [availableEntry]),
@@ -210,6 +325,7 @@ describe('chatModeForSave', () => {
   it('always returns the persisted value verbatim — the write-back discipline is enforced by call sites always passing persistedChatMode, never an effective/downgraded value', () => {
     expect(chatModeForSave('ask')).toBe('ask')
     expect(chatModeForSave('agent')).toBe('agent')
+    expect(chatModeForSave('max')).toBe('max')
     expect(chatModeForSave('module:learning:chat')).toBe('module:learning:chat')
   })
 })

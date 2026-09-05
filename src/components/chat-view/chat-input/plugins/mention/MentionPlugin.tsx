@@ -46,7 +46,7 @@ import {
   serializeMentionable,
 } from '../../../../../utils/chat/mentionable'
 import { SearchableMentionable } from '../../../../../utils/fuzzy-search'
-import { CHAT_MODES, type ChatMode } from '../../ChatModeSelect'
+import { type ChatMode } from '../../ChatModeSelect'
 import { getMentionableIcon } from '../../utils/get-metionable-icon'
 import { MenuOption, MenuTextMatch } from '../shared/LexicalMenu'
 import {
@@ -122,6 +122,16 @@ function getFileParentFolderPath(filePath: string): string {
 
 type MentionMenuMode = 'direct-search' | 'entry'
 type MentionChatMode = ChatMode
+
+/**
+ * The `/` switcher offers the two modes that exist on every device and carry
+ * no extra state of their own. Max is deliberately not here: it is
+ * desktop-only and has its own trust profile, both of which the full mode
+ * selector shows and this one-line menu cannot. A conversation already in
+ * Max highlights Agent instead (`narrowToMentionChatMode`), the same way a
+ * module chat mode does.
+ */
+const MENTION_CHAT_MODES: readonly MentionChatMode[] = ['ask', 'agent']
 
 type MentionTypeaheadOptionPayload =
   | {
@@ -439,7 +449,7 @@ export default function NewMentionsPlugin({
   const chatModeEntries = useMemo(() => {
     if (!onSelectChatMode) return []
     const modeKeys: MentionChatMode[] = allowAgentModeOption
-      ? [...CHAT_MODES]
+      ? [...MENTION_CHAT_MODES]
       : ['ask']
     return modeKeys.map((mode) => ({
       mode,

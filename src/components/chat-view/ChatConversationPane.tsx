@@ -22,7 +22,7 @@ import {
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
-import { isAgentChatMode } from './chat-input/ChatModeSelect'
+import { isToolChatMode } from './chat-input/ChatModeSelect'
 import type {
   ChatTimelineRenderVersion,
   UserMessageViewportState,
@@ -223,20 +223,22 @@ export function ChatConversationPane({
     groupedChatMessagesLength > 0 &&
     (!isAutoFollowEnabled || hasNewerMessages)
 
-  const isYoloAgent = isAgentChatMode(chatMode) && yoloEnabled
+  // Max is agent-shaped for the empty state: it has tools and a trust
+  // profile, so it gets the Agent copy rather than Ask's.
+  const isYoloAgent = isToolChatMode(chatMode) && yoloEnabled
   const emptyStateTitle =
     emptyStateModuleContent?.title ??
     emptyStateWorkspaceTitle ??
     (isYoloAgent
       ? emptyStateAgentFullTitle
-      : isAgentChatMode(chatMode)
+      : isToolChatMode(chatMode)
         ? emptyStateAgentTitle
         : emptyStateAskTitle)
   const emptyStateDescription =
     emptyStateModuleContent?.description ??
     (isYoloAgent
       ? emptyStateAgentFullDescription
-      : isAgentChatMode(chatMode)
+      : isToolChatMode(chatMode)
         ? emptyStateAgentDescription
         : emptyStateAskDescription)
   const resolvedEmptyStateIconMode =
@@ -246,7 +248,7 @@ export function ChatConversationPane({
     emptyStateIcon ??
     (isYoloAgent ? (
       <InfinityIcon size={18} strokeWidth={2} />
-    ) : isAgentChatMode(chatMode) ? (
+    ) : isToolChatMode(chatMode) ? (
       <Bot size={18} strokeWidth={2} />
     ) : (
       <MessageCircle size={18} strokeWidth={2} />

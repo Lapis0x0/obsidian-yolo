@@ -46,8 +46,9 @@ import { readTFileContent } from '../../utils/obsidian'
 
 import {
   type ChatMode,
-  isAgentChatMode,
   isModuleChatMode,
+  isToolChatMode,
+  yoloPreferencePatch,
 } from './chat-input/ChatModeSelect'
 import { invalidateChatRuntimeNavigation } from './cliChatIntegration'
 import { isDelegateSubagentToolName } from './messageNavigatorUtils'
@@ -428,7 +429,10 @@ export function useChatDomainActions({
               // match the schema used when the call was emitted.
               chatModelId:
                 toolMessage.metadata?.branchModelId ?? conversationModelId,
-              workspaceScope: isAgentChatMode(chatMode)
+              // Max carries the assistant's workspace scope for the same
+              // reason Agent does — the live path
+              // (`useChatStreamManager`) passes it for every built-in mode.
+              workspaceScope: isToolChatMode(chatMode)
                 ? selectedAssistant?.workspaceScope
                 : undefined,
               subagentParentContext: isDelegateSubagentToolName(request.name)
@@ -632,7 +636,7 @@ export function useChatDomainActions({
         {
           ...(conversationOverrides ?? {}),
           chatMode,
-          agentYoloEnabled: yoloEnabled,
+          ...yoloPreferencePatch(chatMode, yoloEnabled),
         },
         conversationModelId,
         serializeMessageModelMap(

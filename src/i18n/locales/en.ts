@@ -669,7 +669,7 @@ export const en: TranslationKeys = {
         'Dispatch an isolated temporary subagent to complete a self-contained task asynchronously.',
       builtinTodoWriteLabel: 'Task List',
       builtinTodoWriteDesc:
-        'Let the agent plan and track multi-step task progress autonomously. Agent mode only.',
+        'Let the agent plan and track multi-step task progress autonomously. Agent and Max modes only.',
       builtinAskUserQuestionLabel: 'Ask User',
       builtinAskUserQuestionDesc:
         'Ask the user a question when required information is missing, then resume after the answer.',
@@ -2617,6 +2617,8 @@ export const en: TranslationKeys = {
     rewriteDesc: 'Only modify the current selection',
     agent: 'Agent',
     agentDesc: 'Tools for complex tasks',
+    max: 'Max',
+    maxDesc: 'Work directly on local files and the terminal (desktop)',
     continue: 'Write',
     continueDesc: 'Continue writing at the cursor, press Tab to accept',
     plan: 'Plan',

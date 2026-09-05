@@ -3,8 +3,14 @@
 // importing it — `types/` stays a leaf module that `components/` depends on,
 // never the reverse.
 export type ConversationOverrideSettings = {
-  chatMode?: 'ask' | 'agent' | `module:${string}:${string}` | null
+  chatMode?: 'ask' | 'agent' | 'max' | `module:${string}:${string}` | null
+  /**
+   * Per-mode YOLO trust profile. Agent and Max each own one; Ask has none and
+   * reads Agent's. See `yoloPreferenceKeyForMode` for the single place that
+   * decides which field a mode reads and writes.
+   */
   agentYoloEnabled?: boolean | null
+  maxYoloEnabled?: boolean | null
   /** Per-conversation CLI capability mode, keyed like settings `cliChatModeByRuntime`. */
   cliChatModeByRuntime?: {
     'claude-code'?: 'agent' | 'plan' | null

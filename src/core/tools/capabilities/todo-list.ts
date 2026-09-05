@@ -24,12 +24,11 @@ export const todoListCapability = defineCapability({
   description: {
     key: 'settings.agent.builtinTodoWriteDesc',
     fallback:
-      'Let the agent plan and track multi-step task progress autonomously. Agent mode only.',
+      'Let the agent plan and track multi-step task progress autonomously. Agent and Max modes only.',
   },
   category: 'context',
   // Autonomous multi-step planning is what an agentic mode is for; a single
-  // Ask turn has nothing to track. (`description` above still says "Agent
-  // mode only" — S2a rewrites that user-visible string once Max ships.)
+  // Ask turn has nothing to track.
   chatModes: ['agent', 'max'],
   defaultEnabled: true,
   approval: {

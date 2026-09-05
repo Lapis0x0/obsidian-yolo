@@ -34,7 +34,11 @@ import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import type { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
-import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
+import {
+  type ChatMode,
+  isModuleChatMode,
+  yoloPreferencePatch,
+} from './chat-input/ChatModeSelect'
 import {
   buildAssistantErrorContinuation,
   buildRetrySubmissionMessages,
@@ -635,7 +639,10 @@ export class ChatSessionController {
     const effectiveOverrides = {
       ...(prefs.conversationOverrides ?? {}),
       chatMode: this.deps.chatModeForSave(prefs.persistedChatMode),
-      agentYoloEnabled: prefs.yoloEnabled,
+      // `yoloEnabled` describes the trust profile of the mode being saved, so
+      // it is written back under that mode's own field and leaves the other
+      // mode's stored value alone.
+      ...yoloPreferencePatch(prefs.persistedChatMode, prefs.yoloEnabled),
     }
     const reasoningLevel =
       this.preferencesController.conversationReasoningLevelRef.current.get(
@@ -685,7 +692,10 @@ export class ChatSessionController {
     const effectiveOverrides = {
       ...(prefs.conversationOverrides ?? {}),
       chatMode: this.deps.chatModeForSave(prefs.persistedChatMode),
-      agentYoloEnabled: prefs.yoloEnabled,
+      // `yoloEnabled` describes the trust profile of the mode being saved, so
+      // it is written back under that mode's own field and leaves the other
+      // mode's stored value alone.
+      ...yoloPreferencePatch(prefs.persistedChatMode, prefs.yoloEnabled),
     }
     const reasoningLevel =
       this.preferencesController.conversationReasoningLevelRef.current.get(
@@ -895,7 +905,7 @@ export class ChatSessionController {
       {
         ...(prefs.conversationOverrides ?? {}),
         chatMode: prefs.chatMode,
-        agentYoloEnabled: prefs.yoloEnabled,
+        ...yoloPreferencePatch(prefs.chatMode, prefs.yoloEnabled),
       },
       prefs.conversationModelId,
       this.serializeMessageModelMap(
@@ -1417,7 +1427,10 @@ export class ChatSessionController {
           {
             ...(policy.nextOverrides ?? {}),
             chatMode: this.deps.chatModeForSave(policy.nextPersistedChatMode),
-            agentYoloEnabled: policy.nextYoloEnabled,
+            ...yoloPreferencePatch(
+              policy.nextPersistedChatMode,
+              policy.nextYoloEnabled,
+            ),
           },
           policy.resolvedConversationModelId,
           this.serializeMessageModelMap(nextMessages, nextMessageModelMap),
@@ -1633,7 +1646,7 @@ export class ChatSessionController {
       const effectiveOverrides = {
         ...(prefs.conversationOverrides ?? {}),
         chatMode: prefs.chatMode,
-        agentYoloEnabled: prefs.yoloEnabled,
+        ...yoloPreferencePatch(prefs.chatMode, prefs.yoloEnabled),
       }
       await this.deps.createOrUpdateConversationImmediately(
         conversationId,

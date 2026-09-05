@@ -7,8 +7,10 @@ import {
   type BuiltinChatMode,
   type ChatMode,
   chatModeForSave,
-  isAgentChatMode,
   isModuleChatMode,
+  isToolChatMode,
+  readYoloPreference,
+  yoloPreferencePatch,
 } from './chat-input/ChatModeSelect'
 
 /**
@@ -25,6 +27,12 @@ export type ConversationPreferencesSnapshot = {
   chatMode: ChatMode
   /** Persisted (never runtime-downgraded) chat mode — see `chatModeForSave`. */
   persistedChatMode: ChatMode
+  /**
+   * The YOLO flag of the trust profile `chatMode` reads — Max's when Max is
+   * selected, Agent's otherwise. Switching modes re-reads it from the
+   * incoming mode's stored field rather than carrying the old one over; see
+   * `yoloPreferenceKeyForMode`.
+   */
   yoloEnabled: boolean
   conversationOverrides: ConversationOverrideSettings | null
 }
@@ -250,12 +258,23 @@ export class ConversationPreferencesController {
    * 也是应持久化的值。
    */
   changeChatMode = (nextMode: ChatMode): void => {
-    this.setChatMode(nextMode)
-    this.setPersistedChatMode(nextMode)
+    const settings = this.deps.getSettings()
     const nextOverrides = {
       ...(this.snapshot.conversationOverrides ?? {}),
       chatMode: chatModeForSave(nextMode),
     }
+
+    this.setChatMode(nextMode)
+    this.setPersistedChatMode(nextMode)
+    // Each tool mode owns its own trust profile, so `yoloEnabled` — which
+    // only ever describes one of them — has to be re-read for the mode being
+    // switched to. Carrying the old value over would silently hand Max the
+    // auto-approval the user granted Agent, and vice versa.
+    this.setYoloEnabled(
+      readYoloPreference(nextOverrides, nextMode) ??
+        readYoloPreference(settings.chatOptions, nextMode) ??
+        false,
+    )
     this.applyOverrides(nextOverrides)
     this.conversationOverridesRef.current.set(
       this.currentConversationId,
@@ -265,16 +284,18 @@ export class ConversationPreferencesController {
     // 全局 settings 永不学习 module chat mode——只有会话覆盖（上面已写入）
     // 会。module 可能被卸载，全局默认值不能指向它。
     if (!isModuleChatMode(nextMode)) {
-      this.deps.persistPreferredChatMode(nextMode as BuiltinChatMode)
+      this.deps.persistPreferredChatMode(nextMode)
     }
 
-    const settings = this.deps.getSettings()
     const assistant =
       settings.assistants.find(
         (item) => item.id === this.snapshot.conversationAssistantId,
       ) ?? null
+    // Max runs on the assistant the same way Agent does (tool preferences,
+    // instructions, `contextPolicy.useAssistant`), so it adopts the
+    // assistant's default model on entry for the same reason.
     if (
-      isAgentChatMode(nextMode) &&
+      isToolChatMode(nextMode) &&
       assistant?.modelId &&
       this.snapshot.conversationModelId === settings.chatModelId
     ) {
@@ -288,9 +309,11 @@ export class ConversationPreferencesController {
    */
   toggleYolo = (enabled: boolean): void => {
     this.setYoloEnabled(enabled)
+    // Writes only the field belonging to the current mode's trust profile,
+    // leaving the other mode's stored value untouched.
     const nextOverrides = {
       ...(this.snapshot.conversationOverrides ?? {}),
-      agentYoloEnabled: enabled,
+      ...yoloPreferencePatch(this.snapshot.chatMode, enabled),
     }
     this.applyOverrides(nextOverrides)
     this.conversationOverridesRef.current.set(

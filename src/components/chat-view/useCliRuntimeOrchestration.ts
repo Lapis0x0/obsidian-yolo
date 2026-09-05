@@ -878,10 +878,12 @@ export function useCliRuntimeOrchestration({
     (nextMode: ChatModeSelectValue) => {
       if (!isCliRuntime(activeRuntimeId)) return
       if (nextMode === 'ask') return
-      // CLI runtimes never offer a module chat mode (`CLAUDE_CODE_CHAT_MODES`
-      // / `CODEX_CHAT_MODES` are fixed 'agent'/'plan' lists) — this is an
-      // unreachable defensive guard, needed only to narrow `ChatModeSelectValue`
-      // (which structurally includes module ids) down to `CliChatMode`.
+      // CLI runtimes never offer Max or a module chat mode
+      // (`CLAUDE_CODE_CHAT_MODES` / `CODEX_CHAT_MODES` are fixed
+      // 'agent'/'plan' lists) — these are unreachable defensive guards,
+      // needed only to narrow `ChatModeSelectValue` (which structurally
+      // includes both) down to `CliChatMode`.
+      if (nextMode === 'max') return
       if (isModuleChatMode(nextMode)) return
       if (
         activeRuntimeId === 'claude-code' &&

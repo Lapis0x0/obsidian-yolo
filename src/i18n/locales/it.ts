@@ -683,7 +683,7 @@ export const it: DeepPartial<TranslationKeys> = {
         'Avvia in modo asincrono un subagent temporaneo e isolato per completare un task autonomo.',
       builtinTodoWriteLabel: 'Lista delle attività',
       builtinTodoWriteDesc:
-        "Consente all'agente di pianificare e tracciare autonomamente i progressi su task in più fasi. Solo modalità agente.",
+        "Consente all'agente di pianificare e tracciare autonomamente i progressi su task in più fasi. Solo modalità Agent e Max.",
       builtinAskUserQuestionLabel: "Chiedi all'utente",
       builtinAskUserQuestionDesc:
         "Chiede all'utente quando mancano informazioni necessarie e riprende dopo la risposta.",
@@ -2435,6 +2435,8 @@ export const it: DeepPartial<TranslationKeys> = {
     rewriteDesc: 'Modifica solo la selezione corrente',
     agent: 'Agent',
     agentDesc: 'Strumenti per task complessi',
+    max: 'Max',
+    maxDesc: 'Opera direttamente su file locali e terminale (solo desktop)',
     continue: 'Scrivi',
     continueDesc: 'Continua a scrivere al cursore, premi Tab per accettare',
     agentFull: 'Agent (YOLO)',
