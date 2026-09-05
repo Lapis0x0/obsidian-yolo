@@ -241,10 +241,11 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   /**
    * Serializes function tools plus any hosted (server-side) tool the model has
    * enabled. The hosted tool's name is fixed to `web_search` by the protocol,
-   * and Anthropic requires globally unique tool names — but our own web search
-   * reaches the model fully qualified as `yolo_local__web_search`, so the two
-   * coexist and the agent keeps both: the provider-run search and its own
-   * configured backend.
+   * and Anthropic requires globally unique tool names — which is exactly the
+   * name our own web search reaches the model under. The two therefore cannot
+   * both be offered, and `selectAllowedTools` is where that is settled: when
+   * the provider runs search itself, ours is dropped from the request before
+   * it ever gets here.
    */
   private buildTools(
     model: ChatModel,

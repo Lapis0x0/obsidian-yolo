@@ -42,20 +42,20 @@ export const buildInvokeToolArgumentsSchema = (
     ? {
         type: 'string',
         description:
-          "JSON-encoded object of the target tool's arguments, matching the schema returned by yolo_local__load_tool_schemas.",
+          "JSON-encoded object of the target tool's arguments, matching the schema returned by load_tool_schemas.",
       }
     : {
         type: 'object',
         additionalProperties: true,
         description:
-          "The target tool's arguments, matching the schema returned by yolo_local__load_tool_schemas.",
+          "The target tool's arguments, matching the schema returned by load_tool_schemas.",
       }
 
 export function getInvokeTool(apiType?: LLMProviderApiType | null): McpTool {
   return {
     name: INVOKE_TOOL_NAME,
     description:
-      'Call a tool listed in <tool_catalog>. Load its schema with yolo_local__load_tool_schemas first, then pass the tool name exactly as the catalog spells it.',
+      'Call a tool listed in <tool_catalog>. Load its schema with load_tool_schemas first, then pass the tool name exactly as the catalog spells it.',
     inputSchema: {
       type: 'object',
       properties: {

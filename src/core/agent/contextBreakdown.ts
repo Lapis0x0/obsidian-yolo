@@ -195,6 +195,7 @@ export const estimateContextBreakdown = async ({
     allowedToolNames,
     toolPreferences,
     toolServerPreferences,
+    model,
     apiType,
     jsSandboxSettings: mcpManager.getJsSandboxSettings(),
     settings: mcpManager.getSettingsSnapshot(),

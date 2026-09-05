@@ -86,6 +86,7 @@ export const estimateContinuationRequestContextTokens = async ({
     allowedToolNames,
     toolPreferences,
     toolServerPreferences,
+    model,
     apiType,
     jsSandboxSettings: mcpManager.getJsSandboxSettings(),
     settings: mcpManager.getSettingsSnapshot(),

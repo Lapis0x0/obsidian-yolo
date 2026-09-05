@@ -461,7 +461,7 @@ export class AgentToolGateway {
           status: ToolCallResponseStatus.Error,
           error:
             `Tool "${request.name}" has not had its schema loaded in this conversation yet. ` +
-            `Call yolo_local__load_tool_schemas with {"tools":["${request.name}"]} first; ` +
+            `Call load_tool_schemas with {"tools":["${request.name}"]} first; ` +
             `the next assistant turn can then invoke it.`,
         },
       }
@@ -492,7 +492,7 @@ export class AgentToolGateway {
           status: ToolCallResponseStatus.Error,
           error:
             `Arguments for "${request.name}" failed schema validation: ${errorDetail}. ` +
-            `Re-check the schema returned by yolo_local__load_tool_schemas and retry.`,
+            `Re-check the schema returned by load_tool_schemas and retry.`,
         },
       }
     }
@@ -1520,7 +1520,7 @@ export class AgentToolGateway {
     const instructionParts: string[] = []
     if (matches.length > 0) {
       instructionParts.push(
-        'These tool schemas are now available. Call them through yolo_local__invoke_tool in the next turn.',
+        'These tool schemas are now available. Call them through invoke_tool in the next turn.',
       )
     }
     if (unknownTools.length > 0) {

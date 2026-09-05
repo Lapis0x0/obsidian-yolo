@@ -43,8 +43,8 @@ export type DeferredToolCatalog = {
 
 const CATALOG_INSTRUCTION = [
   'Tools below are available but their schemas are not loaded.',
-  'To use one, first call `yolo_local__load_tool_schemas` with the exact names you need',
-  '(batch several in one call), then call it through `yolo_local__invoke_tool`.',
+  'To use one, first call `load_tool_schemas` with the exact names you need',
+  '(batch several in one call), then call it through `invoke_tool`.',
 ].join(' ')
 
 /**

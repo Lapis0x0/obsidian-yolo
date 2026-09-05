@@ -6,6 +6,9 @@ import {
   selectAllowedTools,
 } from './tool-selection'
 
+/** No provider-run tools, so the hosted web-search carve-out never applies. */
+const MODEL_WITHOUT_HOSTED_TOOLS = {}
+
 describe('selectAllowedTools', () => {
   it('keeps full schemas for tools left in always mode', async () => {
     const availableTools: McpTool[] = [
@@ -21,6 +24,7 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: {
@@ -85,6 +89,7 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['yolo_local__delegate_subagent'],
       toolPreferences: {
         yolo_local__delegate_subagent: {
@@ -123,6 +128,7 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: { enabled: true },
@@ -134,8 +140,8 @@ describe('selectAllowedTools', () => {
     // A deferred tool costs a catalog line, not a `tools` entry — so the
     // registered set is exactly the two protocol tools.
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
-      'yolo_local__load_tool_schemas',
-      'yolo_local__invoke_tool',
+      'load_tool_schemas',
+      'invoke_tool',
     ])
     expect(result.hasOnDemandTools).toBe(true)
     // ...but the gateway still needs the real definition to validate against.
@@ -155,6 +161,7 @@ describe('selectAllowedTools', () => {
     const select = (apiType: 'anthropic' | 'gemini') =>
       selectAllowedTools({
         availableTools,
+        model: MODEL_WITHOUT_HOSTED_TOOLS,
         allowedToolNames: ['server__tool_a'],
         toolPreferences: { server__tool_a: { enabled: true } },
         toolServerPreferences: { server: { disclosureMode: 'on_demand' } },
@@ -170,8 +177,8 @@ describe('selectAllowedTools', () => {
               }
             }>
           | undefined
-      )?.find((tool) => tool.function.name === 'yolo_local__invoke_tool')
-        ?.function.parameters.properties?.arguments
+      )?.find((tool) => tool.function.name === 'invoke_tool')?.function
+        .parameters.properties?.arguments
 
     expect(argumentsSchemaOf(await select('anthropic'))).toMatchObject({
       type: 'object',
@@ -200,6 +207,7 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: { server__tool_a: { enabled: true } },
       toolServerPreferences: { server: { disclosureMode: 'always' } },
@@ -229,6 +237,7 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: {
@@ -260,6 +269,7 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: { enabled: true, approvalMode: 'full_access' },
@@ -269,8 +279,8 @@ describe('selectAllowedTools', () => {
 
     expect(result.hasOnDemandTools).toBe(true)
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
-      'yolo_local__load_tool_schemas',
-      'yolo_local__invoke_tool',
+      'load_tool_schemas',
+      'invoke_tool',
     ])
   })
 
@@ -289,20 +299,70 @@ describe('selectAllowedTools', () => {
 
     const result = await selectAllowedTools({
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['yolo_local__fs_read'],
       toolPreferences: { yolo_local__fs_read: { enabled: true } },
       apiType: 'anthropic',
     })
 
     expect(result.hasOnDemandTools).toBe(false)
+    // Registered under the model-facing short name; the internal identity
+    // (allow-list, preferences, gateway) stays fully qualified.
     expect(result.requestTools?.map((tool) => tool.function.name)).toEqual([
-      'yolo_local__fs_read',
+      'fs_read',
     ])
     expect(result.requestTools?.[0]?.function.parameters).toEqual({
       type: 'object',
       properties: { path: { type: 'string' } },
       required: ['path'],
     })
+  })
+
+  it('drops our web_search when the provider runs search itself', async () => {
+    // Both would reach the model as the bare `web_search` — the name the
+    // hosted tool's protocol fixes — so offering ours would be a duplicate
+    // tool name, not merely a redundant option. `web_scrape` still earns its
+    // place: hosted results carry titles and URLs but no page content.
+    const availableTools: McpTool[] = [
+      {
+        name: 'yolo_local__web_search',
+        description: 'Search the web',
+        inputSchema: { type: 'object', properties: {} },
+      },
+      {
+        name: 'yolo_local__web_scrape',
+        description: 'Scrape a page',
+        inputSchema: { type: 'object', properties: {} },
+      },
+    ]
+    const params = {
+      availableTools,
+      allowedToolNames: ['yolo_local__web_search', 'yolo_local__web_scrape'],
+      toolPreferences: {
+        yolo_local__web_search: { enabled: true },
+        yolo_local__web_scrape: { enabled: true },
+      },
+      apiType: 'anthropic' as const,
+    }
+
+    const withHostedSearch = await selectAllowedTools({
+      ...params,
+      model: {
+        builtinToolProvider: 'deepseek',
+        builtinTools: { deepseek: { webSearch: { enabled: true } } },
+      } as never,
+    })
+    expect(
+      withHostedSearch.requestTools?.map((tool) => tool.function.name),
+    ).toEqual(['web_scrape'])
+
+    const withoutHostedSearch = await selectAllowedTools({
+      ...params,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
+    })
+    expect(
+      withoutHostedSearch.requestTools?.map((tool) => tool.function.name),
+    ).toEqual(['web_search', 'web_scrape'])
   })
 
   it('keeps the tools-field stable across identical selections', async () => {
@@ -318,6 +378,7 @@ describe('selectAllowedTools', () => {
     ]
     const params = {
       availableTools,
+      model: MODEL_WITHOUT_HOSTED_TOOLS,
       allowedToolNames: ['server__tool_a'],
       toolPreferences: {
         server__tool_a: { enabled: true },

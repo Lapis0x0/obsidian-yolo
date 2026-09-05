@@ -189,7 +189,11 @@ describe('buildDeferredToolCatalog', () => {
       configuredServers: [server('s')],
       discoveredCatalogs: { s: catalog(['t']) },
     })
-    expect(result?.text).toContain('yolo_local__load_tool_schemas')
-    expect(result?.text).toContain('yolo_local__invoke_tool')
+    // Built-ins reach the model under their short names (`toModelToolName`);
+    // the catalog's own entries keep their server prefix.
+    expect(result?.text).toContain('`load_tool_schemas`')
+    expect(result?.text).toContain('`invoke_tool`')
+    expect(result?.text).not.toContain('yolo_local__')
+    expect(result?.text).toContain('s__t')
   })
 })

@@ -70,7 +70,7 @@ export function getLoadToolSchemasTool(): McpTool {
   return {
     name: LOAD_TOOL_SCHEMAS_TOOL_NAME,
     description:
-      'Load the full schemas for tools listed in <tool_catalog>, making them callable through yolo_local__invoke_tool in the next turn. Pass the exact tool names you need — batch several in one call.',
+      'Load the full schemas for tools listed in <tool_catalog>, making them callable through invoke_tool in the next turn. Pass the exact tool names you need — batch several in one call.',
     inputSchema: {
       type: 'object',
       properties: {

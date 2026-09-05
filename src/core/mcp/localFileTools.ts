@@ -1,6 +1,7 @@
 import type { ChatModelModality } from '../../types/chat-model.types'
 import { McpTool } from '../../types/mcp.types'
 import { recoverLikelyEscapedBackslashSequences } from '../edits/textEditEngine'
+import { INVOKE_TOOL_NAME } from '../tools/internal/invoke_tool/definition'
 import {
   LOAD_TOOL_SCHEMAS_TOOL_NAME as LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   getLoadToolSchemasTool,
@@ -9,6 +10,7 @@ import {
   type BuiltinToolName,
   assertNoDuplicates,
   getToolDefinition,
+  isBuiltinToolName,
   listBuiltinTools,
 } from '../tools/registry'
 import type { ToolCatalogContext } from '../tools/types'
@@ -16,7 +18,7 @@ import { WEB_SCRAPE_TOOL_NAME, WEB_SEARCH_TOOL_NAME } from '../web-search'
 
 import { JS_SANDBOX_TOOL_NAME } from './jsSandboxTool'
 import { LOCAL_FILE_TOOL_SERVER } from './localFileToolNames'
-import { parseToolName } from './tool-name-utils'
+import { getToolName, parseToolName } from './tool-name-utils'
 
 export { getLocalFileToolServerName } from './localFileToolNames'
 
@@ -59,6 +61,60 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
  */
 export const USER_FACING_LOCAL_TOOL_SHORT_NAMES: readonly string[] =
   LOCAL_FILE_TOOL_SHORT_NAMES.filter((name) => name !== 'load_tool_schemas')
+
+/**
+ * Whether `name` is the short name of a tool served by this in-process server:
+ * every registered built-in (derived from `CAPABILITIES`, never hand-listed)
+ * plus the two protocol-internal tools, which have no capability of their own
+ * but are still registered in the request and called back by name.
+ */
+const isLocalToolShortName = (name: string): boolean =>
+  isBuiltinToolName(name) ||
+  name === LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME ||
+  name === INVOKE_TOOL_NAME
+
+/**
+ * The model-facing form of a tool name — the *only* place a name is rewritten
+ * on its way out to the provider, and {@link fromModelToolName} the only place
+ * it is read back.
+ *
+ * Built-in tools drop the `yolo_local__` prefix: it carries no information the
+ * model can act on (there is exactly one such server, and it is ours), while
+ * costing tokens in every schema, every catalog line and every replayed tool
+ * call. MCP and module tools keep theirs — there the prefix *is* the routing
+ * key, the stable identity, and the only signal of where a tool came from.
+ *
+ * Internal identity is untouched: the gateway, approval and always-allow keys,
+ * persisted messages, settings keys and the UI all keep speaking the fully
+ * qualified name, so nothing needs migrating.
+ */
+export const toModelToolName = (name: string): string => {
+  try {
+    const { serverName, toolName } = parseToolName(name)
+    return serverName === LOCAL_FILE_TOOL_SERVER ? toolName : name
+  } catch {
+    return name
+  }
+}
+
+/**
+ * Inverse of {@link toModelToolName}: restore the internal identity of a name
+ * the model produced. A name that already carries a server prefix is returned
+ * untouched — MCP and module names always do, so they can never be confused
+ * with a built-in short name. An unqualified name that is not one of ours is
+ * left alone too, so the usual "no such tool" error names what the model
+ * actually asked for.
+ */
+export const fromModelToolName = (name: string): string => {
+  try {
+    parseToolName(name)
+    return name
+  } catch {
+    return isLocalToolShortName(name)
+      ? getToolName(LOCAL_FILE_TOOL_SERVER, name)
+      : name
+  }
+}
 // 'delete' | 'create_dir' | 'move' retired with fs_delete/fs_create_dir/fs_move
 // (see the bash tool, which now covers path operations via vaultFileOps.ts).
 type FsFileOpAction = 'write'

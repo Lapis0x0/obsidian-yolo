@@ -506,6 +506,7 @@ export function useChatStreamManager({
         allowedToolNames: effectiveAllowedToolNames,
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
+        model: effectiveModel,
         apiType: manualApiType,
         jsSandboxSettings: mcpManager.getJsSandboxSettings(),
         settings,

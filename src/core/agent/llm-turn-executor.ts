@@ -29,7 +29,6 @@ import type { ContextualInjection } from '../../utils/chat/contextual-injections
 import { ReasoningPhaseTracker } from '../../utils/chat/reasoningPhaseTracker'
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { formatErrorMessageWithCauses } from '../../utils/error-message'
-import { hasHostedWebSearch } from '../../utils/llm/model-tools'
 import { executeSingleTurn } from '../ai/single-turn'
 import { BaseLLMProvider } from '../llm/base'
 import {
@@ -40,14 +39,10 @@ import {
 } from '../llm/debugCapture'
 import { ProviderRequestError } from '../llm/providerErrors'
 import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
-import {
-  LOCAL_FILE_TOOL_SHORT_NAMES,
-  getLocalFileToolServerName,
-} from '../mcp/localFileTools'
+import { fromModelToolName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
-import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import {
   type ToolCapabilityMode,
   buildToolCapabilityPrompt,
@@ -141,11 +136,6 @@ type AgentLlmTurnExecutorOutput = {
 }
 
 export class AgentLlmTurnExecutor {
-  private static readonly LOCAL_TOOL_NAMES = new Set([
-    ...LOCAL_FILE_TOOL_SHORT_NAMES,
-    CONTEXT_COMPACT_TOOL_NAME,
-  ])
-
   constructor(private readonly input: AgentLlmTurnExecutorInput) {}
 
   async run(): Promise<AgentLlmTurnExecutorOutput> {
@@ -231,24 +221,13 @@ export class AgentLlmTurnExecutor {
     let tools: RequestTool[] | undefined
     try {
       const toolPlanStart = Date.now()
-      const allAvailableTools = this.input.enableTools
+      const availableTools = this.input.enableTools
         ? await this.input.mcpManager.listAvailableTools({
             includeBuiltinTools: this.input.includeBuiltinTools,
             chatModelModalities: this.input.model.modalities,
             capabilityOverrides: this.input.capabilityOverrides,
           })
         : []
-      // When the provider runs web search itself, offering ours too just gives
-      // the model two interchangeable options. `web_scrape` still earns its
-      // place: hosted results carry titles and URLs but no page content.
-      const availableTools = hasHostedWebSearch(
-        this.input.model,
-        this.input.apiType,
-      )
-        ? allAvailableTools.filter(
-            (tool) => tool.name !== this.qualifyLocalToolName('web_search'),
-          )
-        : allAvailableTools
       const {
         filteredTools,
         hasTools,
@@ -261,6 +240,7 @@ export class AgentLlmTurnExecutor {
         allowedToolNames: this.input.allowedToolNames,
         toolPreferences: this.input.toolPreferences,
         toolServerPreferences: this.input.toolServerPreferences,
+        model: this.input.model,
         apiType: this.input.apiType,
         jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
         settings: this.input.mcpManager.getSettingsSnapshot(),
@@ -602,17 +582,13 @@ export class AgentLlmTurnExecutor {
     }
   }
 
+  /**
+   * Inbound half of the model-facing name boundary: built-in tools are
+   * registered under their short names, so that is what the model calls back
+   * with. Everything downstream — gateway, approval, persistence — speaks the
+   * fully qualified name.
+   */
   private normalizeToolCallName(toolName: string): string {
-    if (toolName.includes(McpManager.TOOL_NAME_DELIMITER)) {
-      return toolName
-    }
-    if (!AgentLlmTurnExecutor.LOCAL_TOOL_NAMES.has(toolName)) {
-      return toolName
-    }
-    return this.qualifyLocalToolName(toolName)
-  }
-
-  private qualifyLocalToolName(toolName: string): string {
-    return `${getLocalFileToolServerName()}${McpManager.TOOL_NAME_DELIMITER}${toolName}`
+    return fromModelToolName(toolName)
   }
 }

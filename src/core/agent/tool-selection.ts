@@ -3,9 +3,11 @@ import type {
   AssistantToolPreference,
   AssistantToolServerPreference,
 } from '../../types/assistant.types'
+import type { ChatModel } from '../../types/chat-model.types'
 import type { RequestTool } from '../../types/llm/request'
 import type { McpTool } from '../../types/mcp.types'
 import type { LLMProviderApiType } from '../../types/provider.types'
+import { hasHostedWebSearch } from '../../utils/llm/model-tools'
 import { type JsSandboxSettings } from '../mcp/jsSandboxSettings'
 import { JS_SANDBOX_TOOL_NAME, getJsSandboxTool } from '../mcp/jsSandboxTool'
 import {
@@ -13,14 +15,16 @@ import {
   LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME,
   getLoadToolSchemasTool,
   getLocalFileToolServerName,
+  toModelToolName,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
-import { parseToolName } from '../mcp/tool-name-utils'
+import { getToolName, parseToolName } from '../mcp/tool-name-utils'
 import { buildBashToolDescription } from '../tools/bash/definition'
 import {
   INVOKE_TOOL_NAME,
   getInvokeTool,
 } from '../tools/internal/invoke_tool/definition'
+import { WEB_SEARCH_TOOL_NAME } from '../web-search'
 
 import {
   formatSubagentModelOption,
@@ -79,6 +83,11 @@ const isToolAllowed = ({
   return allowedToolNames.has(toolName)
 }
 
+/**
+ * The request's `tools` field — the outbound half of the model-facing name
+ * boundary (`toModelToolName`), so built-in tools are registered under their
+ * short names while MCP and module tools keep their server prefix.
+ */
 export const buildRequestTools = (
   toolDefinitions: McpTool[],
 ): RequestTool[] | undefined => {
@@ -89,7 +98,7 @@ export const buildRequestTools = (
   return toolDefinitions.map((tool) => ({
     type: 'function',
     function: {
-      name: tool.name,
+      name: toModelToolName(tool.name),
       description: tool.description,
       parameters: {
         ...tool.inputSchema,
@@ -190,6 +199,7 @@ export const selectAllowedTools = async ({
   allowedToolNames,
   toolPreferences,
   toolServerPreferences,
+  model,
   apiType,
   jsSandboxSettings = {},
   settings,
@@ -198,6 +208,8 @@ export const selectAllowedTools = async ({
   allowedToolNames?: string[]
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
+  /** Decides whether the provider runs web search itself — see below. */
+  model: Pick<ChatModel, 'builtinToolProvider' | 'builtinTools'>
   apiType?: LLMProviderApiType | null
   jsSandboxSettings?: JsSandboxSettings
   settings?: YoloSettings
@@ -223,8 +235,21 @@ export const selectAllowedTools = async ({
     ? new Set(allowedToolNames)
     : undefined
 
+  // When the provider runs web search itself, offering ours too just gives the
+  // model two interchangeable options — and since the built-in reaches it as
+  // the bare `web_search`, it would collide outright with the hosted tool's
+  // protocol-fixed name. `web_scrape` still earns its place: hosted results
+  // carry titles and URLs but no page content.
+  const offeredTools = hasHostedWebSearch(model, apiType)
+    ? availableTools.filter(
+        (tool) =>
+          tool.name !==
+          getToolName(getLocalFileToolServerName(), WEB_SEARCH_TOOL_NAME),
+      )
+    : availableTools
+
   const baseFiltered = applyDynamicToolDescriptions(
-    availableTools.filter((tool) =>
+    offeredTools.filter((tool) =>
       isToolAllowed({
         toolName: tool.name,
         allowedToolNames: normalizedAllowedToolNames,

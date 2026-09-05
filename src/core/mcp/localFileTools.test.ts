@@ -60,10 +60,12 @@ import {
   formatJsSandboxToolText,
 } from './jsSandboxTool'
 import {
+  fromModelToolName,
   getLocalFileTools,
   isLocalFsWriteToolName,
   parseLocalFsActionFromToolArgs,
   recoverLikelyEscapedBackslashSequences,
+  toModelToolName,
 } from './localFileTools'
 
 /**
@@ -3388,5 +3390,69 @@ describe('delegate_subagent model selection', () => {
     }
     expect(result.error).toContain('not allowed for delegate_subagent')
     expect(runSubagent).not.toHaveBeenCalled()
+  })
+})
+
+describe('model-facing tool name boundary', () => {
+  describe('toModelToolName', () => {
+    it('drops the yolo_local prefix from built-in tools', () => {
+      expect(toModelToolName('yolo_local__fs_read')).toBe('fs_read')
+      expect(toModelToolName('yolo_local__terminal_command')).toBe(
+        'terminal_command',
+      )
+      expect(toModelToolName('yolo_local__invoke_tool')).toBe('invoke_tool')
+    })
+
+    it('leaves MCP and module tools fully qualified', () => {
+      // The prefix is their routing key and their only provenance signal.
+      expect(toModelToolName('github__create_issue')).toBe(
+        'github__create_issue',
+      )
+      expect(toModelToolName('yolo_whiteboard__edit_board')).toBe(
+        'yolo_whiteboard__edit_board',
+      )
+    })
+
+    it('passes through a name that carries no server prefix', () => {
+      expect(toModelToolName('fs_read')).toBe('fs_read')
+    })
+  })
+
+  describe('fromModelToolName', () => {
+    it('qualifies built-in short names', () => {
+      expect(fromModelToolName('fs_read')).toBe('yolo_local__fs_read')
+      expect(fromModelToolName('context_compact')).toBe(
+        'yolo_local__context_compact',
+      )
+    })
+
+    it('qualifies the two protocol tools, which own no capability', () => {
+      expect(fromModelToolName('load_tool_schemas')).toBe(
+        'yolo_local__load_tool_schemas',
+      )
+      expect(fromModelToolName('invoke_tool')).toBe('yolo_local__invoke_tool')
+    })
+
+    it('leaves an already-qualified name alone', () => {
+      expect(fromModelToolName('github__create_issue')).toBe(
+        'github__create_issue',
+      )
+      expect(fromModelToolName('yolo_local__fs_read')).toBe(
+        'yolo_local__fs_read',
+      )
+    })
+
+    it('leaves an unknown short name alone, so the error names what was asked for', () => {
+      expect(fromModelToolName('definitely_not_a_tool')).toBe(
+        'definitely_not_a_tool',
+      )
+    })
+
+    it('round-trips every built-in tool', () => {
+      for (const tool of getLocalFileTools()) {
+        const fqn = `yolo_local__${tool.name}`
+        expect(fromModelToolName(toModelToolName(fqn))).toBe(fqn)
+      }
+    })
   })
 })

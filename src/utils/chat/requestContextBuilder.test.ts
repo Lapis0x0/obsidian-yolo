@@ -2323,11 +2323,52 @@ describe('parseToolMessage document hoisting', () => {
     expect(headerPart?.type === 'text' && headerPart.text).toContain(
       'PDF attachments from tool call',
     )
-    expect(headerPart?.type === 'text' && headerPart.text).toContain(
-      'yolo_local__fs_read',
+    // Model-facing text, so the built-in is named the way the model knows it.
+    expect(headerPart?.type === 'text' && headerPart.text).toContain('fs_read')
+    expect(headerPart?.type === 'text' && headerPart.text).not.toContain(
+      'yolo_local__',
     )
     const docPart = content.find((p) => p.type === 'document')
     expect(docPart).toEqual(documentPart)
+  })
+
+  it('replays a built-in tool call under its model-facing short name', async () => {
+    // Messages persist the fully qualified name; the request must show the
+    // model the same name its `tools` field registered, on both the call and
+    // the result that answers it (Gemini pairs the two by name).
+    const messages = await buildMessagesWithToolResponse(
+      'yolo_local__fs_read',
+      [],
+    )
+
+    const assistant = messages.find((m) => m.role === 'assistant')
+    expect(
+      assistant?.role === 'assistant' &&
+        assistant.tool_calls?.map((call) => call.name),
+    ).toEqual(['fs_read'])
+
+    const toolMessage = messages.find((m) => m.role === 'tool')
+    expect(toolMessage?.role === 'tool' && toolMessage.tool_call.name).toBe(
+      'fs_read',
+    )
+  })
+
+  it('keeps an MCP tool call fully qualified when replaying it', async () => {
+    const messages = await buildMessagesWithToolResponse(
+      'github__create_issue',
+      [],
+    )
+
+    const assistant = messages.find((m) => m.role === 'assistant')
+    expect(
+      assistant?.role === 'assistant' &&
+        assistant.tool_calls?.map((call) => call.name),
+    ).toEqual(['github__create_issue'])
+
+    const toolMessage = messages.find((m) => m.role === 'tool')
+    expect(toolMessage?.role === 'tool' && toolMessage.tool_call.name).toBe(
+      'github__create_issue',
+    )
   })
 
   it('hoists image_url part alone → header is "Images from tool call"', async () => {
