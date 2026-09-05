@@ -18,10 +18,10 @@ import {
   readYoloPreference,
   resolveEffectiveChatMode,
   resolveVisibleModuleModeOptions,
+  resolveYoloByMode,
   shouldShowYoloToggle,
   yoloPreferenceKeyForMode,
   yoloPreferencePatch,
-  yoloToggleOwnerMode,
 } from './ChatModeSelect'
 
 /**
@@ -47,17 +47,14 @@ describe('ChatModeSelect runtime options', () => {
     expect(CODEX_CHAT_MODES).toEqual(['agent'])
   })
 
-  it('hides the YOLO switch while Plan is active', () => {
-    expect(shouldShowYoloToggle(CLAUDE_CODE_CHAT_MODES, 'agent')).toBe(true)
-    expect(shouldShowYoloToggle(CLAUDE_CODE_CHAT_MODES, 'plan')).toBe(false)
+  it('hides the YOLO switches while Plan is active', () => {
+    expect(shouldShowYoloToggle('agent')).toBe(true)
+    expect(shouldShowYoloToggle('plan')).toBe(false)
   })
 
-  it('hides the YOLO switch while a module chat mode is selected', () => {
-    const availableModes = ['ask', 'agent', 'module:learning:chat'] as const
-    expect(shouldShowYoloToggle(availableModes, 'agent')).toBe(true)
-    expect(shouldShowYoloToggle(availableModes, 'module:learning:chat')).toBe(
-      false,
-    )
+  it('hides the YOLO switches while a module chat mode is selected', () => {
+    expect(shouldShowYoloToggle('agent')).toBe(true)
+    expect(shouldShowYoloToggle('module:learning:chat')).toBe(false)
   })
 
   it('does not present persisted YOLO state as active when the control is unavailable', () => {
@@ -69,24 +66,17 @@ describe('ChatModeSelect runtime options', () => {
   it('treats Max as a YOLO-capable mode, same as Agent', () => {
     expect(isYoloModeActive(true, 'max', true)).toBe(true)
     expect(isYoloModeActive(true, 'max', false)).toBe(false)
-    expect(shouldShowYoloToggle(CHAT_MODES, 'max')).toBe(true)
-    expect(shouldShowYoloToggle(CHAT_MODES, 'ask')).toBe(true)
+    expect(shouldShowYoloToggle('max')).toBe(true)
+    expect(shouldShowYoloToggle('ask')).toBe(true)
   })
 
-  it('hides the YOLO switch when the mode that owns it is not on offer', () => {
-    // A surface that lists Max but not Agent (hypothetical) must not render a
-    // switch on a card that is not there.
-    expect(shouldShowYoloToggle(['max'], 'ask')).toBe(false)
-    expect(shouldShowYoloToggle(['max'], 'max')).toBe(true)
-  })
-
-  it('gives each tool mode its own switch card, so one profile never renders under the other label', () => {
-    expect(yoloToggleOwnerMode('max')).toBe('max')
-    expect(yoloToggleOwnerMode('agent')).toBe('agent')
-    // Ask and Plan have no profile of their own — they show Agent's, exactly
-    // as they did before Max existed.
-    expect(yoloToggleOwnerMode('ask')).toBe('agent')
-    expect(yoloToggleOwnerMode('plan')).toBe('agent')
+  it('shows both tool cards their own switch whichever mode is selected, including Ask', () => {
+    // The gate is whole-menu; which cards carry a switch follows from
+    // `isToolChatMode`, and a card that is not listed cannot render one.
+    for (const mode of ['ask', 'agent', 'max'] as const) {
+      expect(shouldShowYoloToggle(mode)).toBe(true)
+    }
+    expect(CHAT_MODES.filter(isToolChatMode)).toEqual(['agent', 'max'])
   })
 
   it('offers Max only on desktop', () => {
@@ -141,6 +131,54 @@ describe('per-mode YOLO preference', () => {
       agentYoloEnabled: true,
       ...yoloPreferencePatch('max', true),
     }).toEqual({ agentYoloEnabled: true, maxYoloEnabled: true })
+  })
+})
+
+describe('resolveYoloByMode', () => {
+  it('gives each card its own state, so one profile never renders under the other label', () => {
+    expect(
+      resolveYoloByMode(
+        'agent',
+        true,
+        { maxYoloEnabled: false },
+        { agentYoloEnabled: false, maxYoloEnabled: true },
+      ),
+    ).toEqual({ agent: true, max: false })
+  })
+
+  it('takes the selected mode from the live flag the runtime reads, not from storage', () => {
+    // The conversation override still says false — the card must follow the
+    // snapshot the run is actually using, or the ∞ badge would lie.
+    expect(
+      resolveYoloByMode(
+        'max',
+        true,
+        { maxYoloEnabled: false },
+        { maxYoloEnabled: false },
+      ),
+    ).toEqual({ agent: false, max: true })
+  })
+
+  it('resolves the unselected mode override-first, then the global default', () => {
+    expect(
+      resolveYoloByMode('agent', false, { maxYoloEnabled: true }, {}),
+    ).toEqual({ agent: false, max: true })
+    expect(
+      resolveYoloByMode('agent', false, null, { maxYoloEnabled: true }),
+    ).toEqual({ agent: false, max: true })
+    expect(resolveYoloByMode('agent', false, null, null)).toEqual({
+      agent: false,
+      max: false,
+    })
+  })
+
+  it('reads both cards from storage when the selected mode owns no profile (Ask, Plan, module modes)', () => {
+    const stored = { agentYoloEnabled: true, maxYoloEnabled: true }
+    // `activeYoloEnabled` describes no card here, so it must not leak into one.
+    expect(resolveYoloByMode('ask', false, null, stored)).toEqual({
+      agent: true,
+      max: true,
+    })
   })
 })
 

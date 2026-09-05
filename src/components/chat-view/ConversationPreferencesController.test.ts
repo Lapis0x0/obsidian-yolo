@@ -207,7 +207,7 @@ describe('ConversationPreferencesController', () => {
     it('re-reads the YOLO flag from the mode being entered instead of carrying the old one across', () => {
       const { controller } = createController('c1')
 
-      controller.toggleYolo(true) // agent's trust profile
+      controller.toggleYolo('agent', true)
       controller.changeChatMode('max')
 
       // Max starts from its own (unset → false) profile, not Agent's true.
@@ -217,7 +217,7 @@ describe('ConversationPreferencesController', () => {
         chatMode: 'max',
       })
 
-      controller.toggleYolo(true) // max's trust profile
+      controller.toggleYolo('max', true)
       controller.changeChatMode('agent')
 
       // ...and switching back restores Agent's, which was never overwritten.
@@ -249,7 +249,7 @@ describe('ConversationPreferencesController', () => {
     it('sets yoloEnabled and merges agentYoloEnabled into the override', () => {
       const { controller } = createController('c1')
 
-      controller.toggleYolo(true)
+      controller.toggleYolo('agent', true)
 
       const snapshot = controller.getSnapshot()
       expect(snapshot.yoloEnabled).toBe(true)
@@ -262,15 +262,40 @@ describe('ConversationPreferencesController', () => {
     it('writes maxYoloEnabled while in max mode, leaving the agent profile alone', () => {
       const { controller } = createController('c1')
 
-      controller.toggleYolo(true)
+      controller.toggleYolo('agent', true)
       controller.changeChatMode('max')
-      controller.toggleYolo(true)
+      controller.toggleYolo('max', true)
 
       expect(controller.conversationOverridesRef.current.get('c1')).toEqual({
         chatMode: 'max',
         agentYoloEnabled: true,
         maxYoloEnabled: true,
       })
+    })
+
+    it('records the preference without touching the mode or the running trust flag when the other card is flipped', () => {
+      const { controller, persistPreferredChatMode } = createController('c1')
+
+      // Selector shows both switches at once: this is the Max card being
+      // flipped while the conversation is running Agent.
+      controller.toggleYolo('max', true)
+
+      const snapshot = controller.getSnapshot()
+      expect(snapshot.chatMode).toBe('agent')
+      // `yoloEnabled` is what `bypassToolApproval` reads for the *running*
+      // mode — flipping the other card must not move it.
+      expect(snapshot.yoloEnabled).toBe(false)
+      expect(snapshot.conversationOverrides).toEqual({ maxYoloEnabled: true })
+      expect(persistPreferredChatMode).not.toHaveBeenCalled()
+    })
+
+    it('hands the recorded preference over when the mode is later entered', () => {
+      const { controller } = createController('c1')
+
+      controller.toggleYolo('max', true)
+      controller.changeChatMode('max')
+
+      expect(controller.getSnapshot().yoloEnabled).toBe(true)
     })
   })
 

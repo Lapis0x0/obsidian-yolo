@@ -2446,6 +2446,8 @@ export const it: DeepPartial<TranslationKeys> = {
     yolo: 'YOLO',
     yoloDesc:
       'Approva automaticamente le chiamate agli strumenti per task complessi',
+    maxYoloDesc:
+      'Approva automaticamente ogni chiamata agli strumenti, inclusi i percorsi fuori dal vault e i comandi terminal in scrittura',
     fullAccessWarning: {
       title: 'Conferma prima di abilitare la Modalità YOLO',
       description:

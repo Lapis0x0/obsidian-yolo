@@ -6,6 +6,7 @@ import type { ReasoningLevel } from '../../types/reasoning'
 import {
   type BuiltinChatMode,
   type ChatMode,
+  type ToolChatMode,
   chatModeForSave,
   isModuleChatMode,
   isToolChatMode,
@@ -306,14 +307,22 @@ export class ConversationPreferencesController {
   /**
    * 等价于原 `applyYoloChange`（不含确认弹窗——弹窗触达 Obsidian UI，留在
    * React/host 层的 `handleYoloChange` 包装器里）。
+   *
+   * `mode` 是被拨动的那张卡片所属的模式，不一定是当前模式：选择器里 Agent
+   * 与 Max 各自带一个开关，拨动未选中的那个只是修改它的信任档偏好。因此只
+   * 有当它就是当前模式时才动运行时快照的 `yoloEnabled`（`bypassToolApproval`
+   * 读的就是它）；另一个模式的值会在 `changeChatMode` 切过去时从这里写下的
+   * 覆盖项重新读入。
    */
-  toggleYolo = (enabled: boolean): void => {
-    this.setYoloEnabled(enabled)
-    // Writes only the field belonging to the current mode's trust profile,
-    // leaving the other mode's stored value untouched.
+  toggleYolo = (mode: ToolChatMode, enabled: boolean): void => {
+    if (mode === this.snapshot.chatMode) {
+      this.setYoloEnabled(enabled)
+    }
+    // Writes only the field belonging to `mode`'s trust profile, leaving the
+    // other mode's stored value untouched.
     const nextOverrides = {
       ...(this.snapshot.conversationOverrides ?? {}),
-      ...yoloPreferencePatch(this.snapshot.chatMode, enabled),
+      ...yoloPreferencePatch(mode, enabled),
     }
     this.applyOverrides(nextOverrides)
     this.conversationOverridesRef.current.set(

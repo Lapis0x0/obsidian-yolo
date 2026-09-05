@@ -50,6 +50,8 @@ import {
   ChatModeSelect,
   type ChatModeSelectValue,
   type ModuleChatModeOption,
+  type ToolChatMode,
+  type YoloByMode,
   availableBuiltinChatModes,
   isModuleChatMode,
   narrowToMentionChatMode,
@@ -75,6 +77,9 @@ export type ChatUserInputRef = {
 }
 
 export type ChatUserInputControlLayout = 'composer-toolbar' | 'inline'
+
+/** Stable default so the mode selector's props identity survives re-renders. */
+const EMPTY_YOLO_BY_MODE: YoloByMode = {}
 
 export type ChatUserInputProps = {
   initialSerializedEditorState: SerializedEditorState | null
@@ -116,8 +121,8 @@ export type ChatUserInputProps = {
   onChatModeChange?: (mode: ChatModeSelectValue) => void
   chatModeOptions?: readonly ChatModeSelectValue[]
   moduleModeOptions?: readonly ModuleChatModeOption[]
-  yoloEnabled?: boolean
-  onYoloChange?: (enabled: boolean) => void
+  yoloByMode?: YoloByMode
+  onYoloChange?: (mode: ToolChatMode, enabled: boolean) => void
   showYoloToggle?: boolean
   controlLayout?: ChatUserInputControlLayout
   onControlPopoverOpenChange?: (isOpen: boolean) => void
@@ -194,7 +199,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
       onChatModeChange,
       chatModeOptions = availableBuiltinChatModes(),
       moduleModeOptions,
-      yoloEnabled = false,
+      yoloByMode = EMPTY_YOLO_BY_MODE,
       onYoloChange,
       showYoloToggle = true,
       controlLayout = 'composer-toolbar',
@@ -673,7 +678,7 @@ const ChatUserInput = forwardRef<ChatUserInputRef, ChatUserInputProps>(
           onChange={onChatModeChange}
           availableModes={chatModeOptions}
           moduleModeOptions={moduleModeOptions}
-          yoloEnabled={yoloEnabled}
+          yoloByMode={yoloByMode}
           onYoloChange={onYoloChange ?? (() => {})}
           showYoloToggle={showYoloToggle}
           side="top"

@@ -80,6 +80,7 @@ import {
   CODEX_CHAT_MODES,
   type ChatMode,
   type ModuleChatModeOption,
+  type YoloByMode,
   availableBuiltinChatModes,
   chatModeForSave,
   isModuleChatMode,
@@ -439,6 +440,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     chatMode,
     persistedChatMode,
     yoloEnabled,
+    yoloByMode,
     conversationOverrides,
     setConversationModelId,
     setConversationAssistantId,
@@ -1692,6 +1694,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     currentConversationRunSummary,
   }
 
+  // A CLI runtime carries a single trust flag and never offers Max, so its
+  // selector shows exactly one switch — on the Agent card.
+  const cliYoloByMode = useMemo<YoloByMode>(
+    () => ({ agent: cliYoloEnabled }),
+    [cliYoloEnabled],
+  )
+
   const buildMainInputContextBreakdownInputs = useCallback(() => {
     return buildContextBreakdownInputsRef.current(chatMessagesStateRef.current)
   }, [buildContextBreakdownInputsRef])
@@ -1999,9 +2008,13 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               : builtinChatModeOptions
         }
         moduleModeOptions={moduleModeOptions}
-        yoloEnabled={isCliRuntimeActive ? cliYoloEnabled : yoloEnabled}
+        yoloByMode={isCliRuntimeActive ? cliYoloByMode : yoloByMode}
         onYoloChange={
-          isCliRuntimeActive ? handleCliYoloChange : handleYoloChange
+          isCliRuntimeActive
+            ? // CLI runtimes only ever offer Agent (and Plan, which carries no
+              // switch), so their single trust flag needs no mode argument.
+              (_mode, enabled) => handleCliYoloChange(enabled)
+            : handleYoloChange
         }
         showYoloToggle={mainInputCapabilities.showsYoloToggle}
         onEditorKeyDown={handleClaudePlanShortcut}

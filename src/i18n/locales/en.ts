@@ -2628,6 +2628,8 @@ export const en: TranslationKeys = {
     agentFullDesc: 'Auto-approve tool calls for complex tasks',
     yolo: 'YOLO',
     yoloDesc: 'Auto-approve tool calls for complex tasks',
+    maxYoloDesc:
+      'Auto-approve every tool call, including paths outside the vault and terminal commands that write',
     fullAccessWarning: {
       title: 'Please confirm before enabling YOLO Mode',
       description:

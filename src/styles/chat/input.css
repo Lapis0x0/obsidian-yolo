@@ -4054,8 +4054,11 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
   color: var(--text-normal);
 }
 
-/* Self-drawn dropdown rows: Ask remains a plain button; Agent hosts the YOLO
- * switch while the outer row keeps the same popover-item sizing as before. */
+/* Self-drawn dropdown rows: Ask remains a plain button; every tool mode
+ * (Agent, Max — see `isToolChatMode`) hosts its own YOLO switch while the
+ * outer row keeps the same popover-item sizing as before. Cards are told
+ * apart by `data-mode`, so the shared `.yolo-chat-mode-agent-card` block
+ * styles both. */
 button.yolo-chat-mode-select-item {
   width: 100%;
   height: auto;

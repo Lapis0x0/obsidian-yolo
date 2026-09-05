@@ -73,6 +73,8 @@ import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageG
 import {
   ChatModeSelect,
   type ChatModeSelectOptionValue,
+  type ToolChatMode,
+  yoloPreferencePatch,
 } from '../../chat-view/chat-input/ChatModeSelect'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
 import MessageInputCore, {
@@ -1507,14 +1509,21 @@ export function QuickAskPanel({
     [clampQuickAskMode, setSettings, settings],
   )
 
+  const quickAskYoloByMode = useMemo(
+    () => ({ agent: yoloEnabled }),
+    [yoloEnabled],
+  )
+
+  // Quick Ask offers Ask/Agent/Write only — Max is desktop chat surface
+  // territory — so the sole switch on offer is Agent's.
   const handleYoloChange = useCallback(
-    (enabled: boolean) => {
+    (mode: ToolChatMode, enabled: boolean) => {
       setYoloEnabled(enabled)
       void setSettings({
         ...settings,
         chatOptions: {
           ...settings.chatOptions,
-          agentYoloEnabled: enabled,
+          ...yoloPreferencePatch(mode, enabled),
         },
       })
     },
@@ -2410,7 +2419,7 @@ export function QuickAskPanel({
                             ? ['ask', 'agent', 'continue']
                             : ['ask', 'agent']
                         }
-                        yoloEnabled={yoloEnabled}
+                        yoloByMode={quickAskYoloByMode}
                         onYoloChange={handleYoloChange}
                         triggerLabel={modeTriggerLabel}
                         popoverClassName="yolo-quick-ask-mode-popover"

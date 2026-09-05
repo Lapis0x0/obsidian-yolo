@@ -2293,6 +2293,7 @@ export type TranslationKeys = {
     agentFullDesc?: string
     yolo?: string
     yoloDesc?: string
+    maxYoloDesc?: string
     fullAccessWarning?: {
       title?: string
       description?: string

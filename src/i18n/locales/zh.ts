@@ -2480,6 +2480,7 @@ export const zh: TranslationKeys = {
     agentFullDesc: '自动放行工具调用，适合复杂任务',
     yolo: 'YOLO',
     yoloDesc: '自动放行工具调用，适合复杂任务',
+    maxYoloDesc: '自动放行全部工具调用，包括 vault 外路径与写入类终端命令',
     fullAccessWarning: {
       title: '⚠️ YOLO 模式风险提示',
       description:
