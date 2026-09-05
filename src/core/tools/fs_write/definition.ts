@@ -71,14 +71,8 @@ export const fsWriteDefinition = defineTool({
   // validation / abort / workspace-scope / YOLO-data-root guards are
   // dispatcher responsibilities (master.md §3.4) and are not repeated here.
   execute: async (args, ctx) => {
-    const {
-      app,
-      settings,
-      conversationId,
-      roundId,
-      toolCallId,
-      promptSourceWatcher,
-    } = ctx
+    const { app, conversationId, roundId, toolCallId, promptSourceWatcher } =
+      ctx
 
     const path = validateVaultPath(getTextArg(args, 'path'))
 
@@ -121,7 +115,6 @@ export const fsWriteDefinition = defineTool({
         if (!overSized) {
           metadata = await buildFileChangeSummary({
             app,
-            settings,
             path,
             beforeContent,
             afterContent: content,
@@ -146,7 +139,6 @@ export const fsWriteDefinition = defineTool({
         await app.vault.create(path, content)
         metadata = await buildFileChangeSummary({
           app,
-          settings,
           path,
           beforeContent: '',
           afterContent: content,

@@ -20,7 +20,7 @@ import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
-import { readEditReviewSnapshots } from '../../database/json/chat/editReviewSnapshotStore'
+import { readEditReviewSnapshots } from '../../database/edit-review/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
   ChatAssistantMessage,
@@ -1143,7 +1143,6 @@ function AssistantToolMessageGroupItem({
           { roundId: file.firstRoundId, filePath: file.path },
           { roundId: file.latestRoundId, filePath: file.path },
         ]),
-        settings,
       })
 
       if (cancelled) {
@@ -1154,7 +1153,15 @@ function AssistantToolMessageGroupItem({
         const firstSnapshot = snapshots[index * 2]
         const latestSnapshot = snapshots[index * 2 + 1]
 
-        if (!firstSnapshot || !latestSnapshot) {
+        // 内容超上限的快照只记了行数，没留正文（见
+        // `MAX_SNAPSHOT_CONTENT_CHARS`）——拿空串去 diff 会算出一个自信的错
+        // 数字，不如沿用逐次统计。
+        if (
+          !firstSnapshot ||
+          !latestSnapshot ||
+          !firstSnapshot.contentAvailable ||
+          !latestSnapshot.contentAvailable
+        ) {
           return null
         }
 
@@ -1185,7 +1192,7 @@ function AssistantToolMessageGroupItem({
     // baseGroupEditSummary changes every streaming frame and MUST NOT be a
     // dep — it would retrigger this effect at ~60Hz and re-parse the full
     // snapshot JSON on every frame.
-  }, [snapshotFetchKey, app, conversationId, settings])
+  }, [snapshotFetchKey, app, conversationId])
 
   const groupEditSummary = useMemo<GroupEditSummary | null>(() => {
     if (!baseGroupEditSummary) {

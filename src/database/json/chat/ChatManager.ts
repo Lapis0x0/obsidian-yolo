@@ -4,11 +4,12 @@ import { v4 as uuidv4 } from 'uuid'
 
 import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
 import { getYoloUserDataRootDir } from '../../../core/paths/yoloPaths'
+import { editUndoSnapshotStore } from '../../../utils/chat/editUndoSnapshotStore'
+import { deleteEditReviewSnapshotStore } from '../../edit-review/editReviewSnapshotStore'
 import { AbstractJsonRepository } from '../base'
 import { CHAT_DIR } from '../constants'
 import { EmptyChatTitleException } from '../exception'
 
-import { deleteEditReviewSnapshotStore } from './editReviewSnapshotStore'
 import { deletePromptSnapshotStore } from './promptSnapshotStore'
 import {
   CHAT_SCHEMA_VERSION,
@@ -188,7 +189,8 @@ export class ChatManager extends AbstractJsonRepository<
 
     await this.delete(targetMetadata.fileName)
     await deletePromptSnapshotStore(this.app, id, this.settings)
-    await deleteEditReviewSnapshotStore(this.app, id, this.settings)
+    await deleteEditReviewSnapshotStore(this.app, id)
+    editUndoSnapshotStore.deleteConversation(id)
     await this.removeFromIndex(id)
     return true
   }

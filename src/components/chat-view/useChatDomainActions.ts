@@ -12,7 +12,7 @@ import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
 import { getExtraAllowanceKeysForRequest } from '../../core/tools/native/paths'
-import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
+import { readEditReviewSnapshot } from '../../database/edit-review/editReviewSnapshotStore'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import type { useChatHistory } from '../../hooks/useChatHistory'
 import type { useChatManager } from '../../hooks/useJsonManagers'
@@ -890,14 +890,12 @@ export function useChatDomainActions({
               conversationId: currentConversationId,
               roundId: fileGroup.firstRoundId,
               filePath: fileGroup.path,
-              settings,
             }),
             readEditReviewSnapshot({
               app,
               conversationId: currentConversationId,
               roundId: fileGroup.latestRoundId,
               filePath: fileGroup.path,
-              settings,
             }),
           ])
 
@@ -1031,7 +1029,6 @@ export function useChatDomainActions({
       chatMessages,
       currentConversationId,
       persistConversationImmediately,
-      settings,
       t,
       setChatMessages,
       setUndoingEditSummaryTarget,
@@ -1065,14 +1062,12 @@ export function useChatDomainActions({
           conversationId: currentConversationId,
           roundId: firstRoundId,
           filePath: path,
-          settings,
         }),
         readEditReviewSnapshot({
           app,
           conversationId: currentConversationId,
           roundId: latestRoundId,
           filePath: path,
-          settings,
         }),
       ])
 
@@ -1125,7 +1120,7 @@ export function useChatDomainActions({
       const leaf = app.workspace.getLeaf(false)
       await leaf.openFile(targetFile)
     },
-    [app, app.vault, app.workspace, currentConversationId, plugin, settings, t],
+    [app, app.vault, app.workspace, currentConversationId, plugin, t],
   )
 
   const updateToolMessageInChatHistory = useCallback(

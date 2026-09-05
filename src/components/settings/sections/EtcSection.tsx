@@ -13,8 +13,8 @@ import { useSettings } from '../../../contexts/settings-context'
 import { isPortableVaultPathSegment } from '../../../core/paths/portableVaultPath'
 import { ensureUserDataRootDir } from '../../../core/paths/yoloManagedData'
 import { hasHiddenYoloBaseDirSegment } from '../../../core/paths/yoloPaths'
+import { clearAllEditReviewSnapshotStores } from '../../../database/edit-review/editReviewSnapshotStore'
 import { ChatManager } from '../../../database/json/chat/ChatManager'
-import { clearAllEditReviewSnapshotStores } from '../../../database/json/chat/editReviewSnapshotStore'
 import { clearImageCache } from '../../../database/json/chat/imageCacheStore'
 import { clearPdfTextCache } from '../../../database/json/chat/pdfTextCacheStore'
 import { clearAllPromptSnapshotStores } from '../../../database/json/chat/promptSnapshotStore'
@@ -39,7 +39,6 @@ type StorageUsage = {
 }
 
 const CHAT_SNAPSHOT_DIR = 'chat_snapshots'
-const EDIT_REVIEW_SNAPSHOT_DIR = 'edit_review_snapshots'
 const IMAGE_CACHE_DIR = 'image_cache'
 const PDF_CACHE_DIR = 'pdf_cache'
 const formatBytes = (bytes: number): string => {
@@ -93,25 +92,23 @@ const loadStorageUsage = async (
   const rootDir = await ensureUserDataRootDir(app, settings)
   const chatDir = normalizePath(`${rootDir}/${CHAT_DIR}`)
 
+  // 编辑评审快照不在这里计量：它已经不在 vault 里，而是设备本地的 IndexedDB
+  // 库（`database/edit-review/editReviewSnapshotStore.ts`），Obsidian 的
+  // adapter 看不到它的体积。
   const [
     chatHistoryBytes,
     promptSnapshotBytes,
-    editReviewSnapshotBytes,
     imageCacheBytes,
     pdfCacheBytes,
   ] = await Promise.all([
     getPathSize(app, chatDir),
     getPathSize(app, normalizePath(`${chatDir}/${CHAT_SNAPSHOT_DIR}`)),
-    getPathSize(app, normalizePath(`${chatDir}/${EDIT_REVIEW_SNAPSHOT_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${IMAGE_CACHE_DIR}`)),
     getPathSize(app, normalizePath(`${chatDir}/${PDF_CACHE_DIR}`)),
   ])
 
   const snapshotAndCacheBytes =
-    promptSnapshotBytes +
-    editReviewSnapshotBytes +
-    imageCacheBytes +
-    pdfCacheBytes
+    promptSnapshotBytes + imageCacheBytes + pdfCacheBytes
 
   return {
     chatHistoryBytes: Math.max(0, chatHistoryBytes - snapshotAndCacheBytes),
@@ -349,7 +346,7 @@ export function EtcSection({ app, plugin, className }: EtcSectionProps) {
       onConfirm: () => {
         void (async () => {
           await clearAllPromptSnapshotStores(app, settings)
-          await clearAllEditReviewSnapshotStores(app, settings)
+          await clearAllEditReviewSnapshotStores(app)
           await clearImageCache(app, settings)
           await clearPdfTextCache(app, settings)
           const nextUsage = await loadStorageUsage(app, settings)

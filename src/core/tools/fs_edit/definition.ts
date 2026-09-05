@@ -92,7 +92,6 @@ export const fsEditDefinition = defineTool({
   execute: async (args, ctx) => {
     const {
       app,
-      settings,
       openApplyReview,
       requireReview = false,
       signal,
@@ -201,7 +200,6 @@ export const fsEditDefinition = defineTool({
       ? undefined
       : await buildFileChangeSummary({
           app,
-          settings,
           path,
           beforeContent: content,
           afterContent: appliedContent,

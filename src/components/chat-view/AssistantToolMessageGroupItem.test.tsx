@@ -31,8 +31,9 @@ jest.mock('../../contexts/settings-context', () => ({
   }),
 }))
 
-jest.mock('../../database/json/chat/editReviewSnapshotStore', () => ({
+jest.mock('../../database/edit-review/editReviewSnapshotStore', () => ({
   readEditReviewSnapshot: jest.fn(),
+  readEditReviewSnapshots: jest.fn().mockResolvedValue([]),
 }))
 
 jest.mock('./AssistantEditSummary', () => ({

@@ -1,7 +1,6 @@
 import type { App } from 'obsidian'
 
-import { upsertEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
-import type { YoloSettings } from '../../settings/schema/setting.types'
+import { upsertEditReviewSnapshot } from '../../database/edit-review/editReviewSnapshotStore'
 import type { ToolEditSummary } from '../../types/tool-call.types'
 import {
   createToolEditSummary,
@@ -34,7 +33,6 @@ import type { LocalToolCallResultMetadata } from './types'
  */
 export const buildFileChangeSummary = async ({
   app,
-  settings,
   path,
   beforeContent,
   afterContent,
@@ -46,7 +44,6 @@ export const buildFileChangeSummary = async ({
   appliedAt,
 }: {
   app: App
-  settings?: YoloSettings
   path: string
   beforeContent: string
   afterContent: string
@@ -66,6 +63,7 @@ export const buildFileChangeSummary = async ({
 
   if (toolCallId && changed) {
     editUndoSnapshotStore.set({
+      conversationId,
       toolCallId,
       path,
       beforeContent,
@@ -91,7 +89,6 @@ export const buildFileChangeSummary = async ({
       afterContent,
       beforeExists,
       afterExists,
-      settings,
     })
     editSummary = createToolEditSummary({
       path,

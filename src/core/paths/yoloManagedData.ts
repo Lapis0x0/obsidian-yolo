@@ -36,17 +36,24 @@ export const YOLO_USER_DATA_SUBDIR_NAMES = [
 
 /**
  * Chat subdirectories left behind by removed features: the timeline height
- * cache (superseded by the chat history window) and the progress cache of the
- * deleted `delegate_external_agent` tool. Nothing writes them any more, but
- * they were never cleaned up automatically — a long-running vault can hold
- * thousands of dead ~1KB files (one per conversation ever opened, including
- * deleted ones). Dropped on every startup before the migration runs so they
- * are never carried into the visible `data/` root, where Obsidian would index
- * them for good.
+ * cache (superseded by the chat history window), the progress cache of the
+ * deleted `delegate_external_agent` tool, and the edit review snapshots that
+ * now live in a device-local IndexedDB database
+ * (`database/edit-review/editReviewSnapshotStore.ts`). Nothing writes them any
+ * more, but they were never cleaned up automatically — a long-running vault
+ * can hold thousands of dead ~1KB files (one per conversation ever opened,
+ * including deleted ones), and the review snapshots are far heavier than that.
+ * Dropped on every startup before the migration runs so they are never carried
+ * into the visible `data/` root, where Obsidian would index them for good.
+ *
+ * The review snapshots are deleted rather than migrated on purpose: they are
+ * derived data whose whole point was to stop being synced, and the chat
+ * history keeps the `editSummary` that renders the card either way.
  */
 const LEGACY_CHAT_CACHE_DIR_NAMES = [
   'timeline_height_cache',
   'external_agent_progress',
+  'edit_review_snapshots',
 ] as const
 
 export type YoloSettingsLike = {
