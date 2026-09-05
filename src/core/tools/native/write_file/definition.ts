@@ -1,14 +1,15 @@
 import { Platform } from 'obsidian'
 
-import type { McpTool } from '../../../types/mcp.types'
-import { ToolCallResponseStatus } from '../../../types/tool-call.types'
-import { defineTool } from '../define'
+import type { McpTool } from '../../../../types/mcp.types'
+import { ToolCallResponseStatus } from '../../../../types/tool-call.types'
+import { defineTool } from '../../define'
+import { describeStructuredVaultFormatDenial } from '../../structured-vault-formats'
 import {
-  NATIVE_PATH_ARG_DESCRIPTION,
-  resolveNativeFilePathArg,
-} from '../native-files-support'
-import { describeStructuredVaultFormatDenial } from '../structured-vault-formats'
-import { MAX_FILE_SIZE_BYTES, formatJsonResult, getTextArg } from '../tool-args'
+  MAX_FILE_SIZE_BYTES,
+  formatJsonResult,
+  getTextArg,
+} from '../../tool-args'
+import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
 
 const WRITE_FILE_DESCRIPTION = [
   'Create a file, or replace an existing file with new full content, straight on the local filesystem. Desktop-only. Missing parent directories are created.',

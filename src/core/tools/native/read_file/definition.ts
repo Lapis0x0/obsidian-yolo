@@ -1,30 +1,27 @@
 import { Platform } from 'obsidian'
 
-import type { YoloSettings } from '../../../settings/schema/setting.types'
-import type { ContentPart } from '../../../types/llm/request'
-import type { McpTool } from '../../../types/mcp.types'
-import { ToolCallResponseStatus } from '../../../types/tool-call.types'
-import { uint8ArrayToBase64 } from '../../../utils/base64'
-import { getImageMimeTypeFromExtension } from '../../../utils/llm/image'
-import { chatModelSupportsVision } from '../../../utils/llm/model-modalities'
+import type { YoloSettings } from '../../../../settings/schema/setting.types'
+import type { ContentPart } from '../../../../types/llm/request'
+import type { McpTool } from '../../../../types/mcp.types'
+import { ToolCallResponseStatus } from '../../../../types/tool-call.types'
+import { uint8ArrayToBase64 } from '../../../../utils/base64'
+import { getImageMimeTypeFromExtension } from '../../../../utils/llm/image'
+import { chatModelSupportsVision } from '../../../../utils/llm/model-modalities'
 import {
   PDF_INDEX_MAX_BYTES,
   PDF_INDEX_MAX_PAGES,
   extractPdfTextFromBase64,
-} from '../../../utils/pdf/extractPdfText'
-import { defineTool } from '../define'
-import { sliceLines } from '../line-slicing'
-import {
-  NATIVE_PATH_ARG_DESCRIPTION,
-  assertDecodableAsText,
-  resolveNativeFilePathArg,
-} from '../native-files-support'
-import { getVaultPathExtension } from '../structured-vault-formats'
+} from '../../../../utils/pdf/extractPdfText'
+import { defineTool } from '../../define'
+import { sliceLines } from '../../line-slicing'
+import { getVaultPathExtension } from '../../structured-vault-formats'
 import {
   MAX_FILE_SIZE_BYTES,
   formatJsonResult,
   getOptionalBoundedIntegerArg,
-} from '../tool-args'
+} from '../../tool-args'
+import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
+import { assertDecodableAsText } from '../text'
 
 const MAX_LINE_INDEX = 1_000_000
 

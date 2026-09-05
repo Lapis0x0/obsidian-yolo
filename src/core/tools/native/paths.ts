@@ -1,8 +1,11 @@
 import { type App, FileSystemAdapter } from 'obsidian'
 
-// Path resolution and vault-boundary judgment for the desktop-only
-// `native_files` capability (docs/plans/09-05-yolo-max/master.md Q3/Q7,
-// p1-design.md §3).
+import { getTextArg } from '../tool-args'
+
+// The path contract shared by every tool in this directory: how a
+// model-supplied path is described, how it is resolved, and where the vault
+// boundary is (docs/plans/09-05-yolo-max/master.md Q3/Q7, §6; p1-design.md §3).
+// One contract, not one copy per tool.
 //
 // Distinct from `workspaceScope.ts` on purpose: that module reasons about
 // *vault-relative* paths (`isPathAllowedByScope` is a vault-relative prefix
@@ -65,6 +68,23 @@ export async function resolveNativePath(
     ? path.resolve(candidate)
     : path.resolve(getVaultBasePath(app), candidate)
 }
+
+/**
+ * The `path` property description every native file tool exposes. Written
+ * for the model: it has to be able to tell these apart from the vault-backed
+ * `fs_*` tools, which take vault-relative paths and resolve wikilinks.
+ */
+export const NATIVE_PATH_ARG_DESCRIPTION =
+  'Filesystem path. Absolute ("/Users/me/x.md", "C:\\\\work\\\\x.md"), home-relative ("~/x.md"), ' +
+  'or relative to the vault root. Any extension, hidden directories, and locations outside the ' +
+  'vault are all allowed. This is a real path on disk — never a wikilink, a skill path, or a ' +
+  'browser:// page id.'
+
+/** Reads the `path` argument and resolves it to an absolute path. */
+export const resolveNativeFilePathArg = async (
+  app: App,
+  args: Record<string, unknown>,
+): Promise<string> => resolveNativePath(app, getTextArg(args, 'path'))
 
 /**
  * True when `absPath` is the vault root itself or lives underneath it.

@@ -1,19 +1,20 @@
 import { Platform } from 'obsidian'
 
-import type { McpTool } from '../../../types/mcp.types'
-import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import type { McpTool } from '../../../../types/mcp.types'
+import { ToolCallResponseStatus } from '../../../../types/tool-call.types'
 import {
   buildReplaceMatchErrorHint,
   materializeTextEditPlan,
-} from '../../edits/textEditEngine'
-import { defineTool } from '../define'
+} from '../../../edits/textEditEngine'
+import { defineTool } from '../../define'
+import { describeStructuredVaultFormatDenial } from '../../structured-vault-formats'
 import {
-  NATIVE_PATH_ARG_DESCRIPTION,
-  assertDecodableAsText,
-  resolveNativeFilePathArg,
-} from '../native-files-support'
-import { describeStructuredVaultFormatDenial } from '../structured-vault-formats'
-import { MAX_FILE_SIZE_BYTES, formatJsonResult, getTextArg } from '../tool-args'
+  MAX_FILE_SIZE_BYTES,
+  formatJsonResult,
+  getTextArg,
+} from '../../tool-args'
+import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
+import { assertDecodableAsText } from '../text'
 
 const EDIT_FILE_DESCRIPTION = [
   'Replace an exact piece of text in an existing file on the local filesystem. Desktop-only.',

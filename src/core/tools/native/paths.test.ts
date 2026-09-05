@@ -8,11 +8,7 @@ import * as path from 'node:path'
 import { FileSystemAdapter } from 'obsidian'
 import type { App } from 'obsidian'
 
-import {
-  getVaultBasePath,
-  isInsideVault,
-  resolveNativePath,
-} from './native-scope'
+import { getVaultBasePath, isInsideVault, resolveNativePath } from './paths'
 
 const VAULT = path.resolve('/tmp/yolo-vault')
 

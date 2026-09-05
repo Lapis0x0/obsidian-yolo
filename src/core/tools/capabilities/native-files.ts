@@ -1,7 +1,7 @@
 import { defineCapability } from '../define'
-import { editFileDefinition } from '../edit_file/definition'
-import { readFileDefinition } from '../read_file/definition'
-import { writeFileDefinition } from '../write_file/definition'
+import { editFileDefinition } from '../native/edit_file/definition'
+import { readFileDefinition } from '../native/read_file/definition'
+import { writeFileDefinition } from '../native/write_file/definition'
 
 /**
  * Direct local-filesystem access, desktop-only (docs/plans/09-05-yolo-max/

@@ -9,10 +9,9 @@ import * as path from 'node:path'
 import { FileSystemAdapter } from 'obsidian'
 import type { App } from 'obsidian'
 
-import { ToolCallResponseStatus } from '../../types/tool-call.types'
-
-import { executeBuiltinTool } from './dispatcher'
-import type { ToolContext } from './types'
+import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import { executeBuiltinTool } from '../dispatcher'
+import type { ToolContext } from '../types'
 
 // Real filesystem, real temp directory: these three tools exist precisely to
 // bypass every Obsidian abstraction, so a mocked fs would test nothing.
