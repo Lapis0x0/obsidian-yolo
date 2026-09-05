@@ -71,6 +71,7 @@ export const PROMPT_CACHING_SETTING = {
   key: 'promptCaching',
   type: 'toggle' as const,
   required: false,
+  defaultValue: true,
 }
 
 export const PROVIDER_PRESET_INFO = {

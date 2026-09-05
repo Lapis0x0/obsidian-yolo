@@ -40,7 +40,10 @@ import { parseImageDataUrl } from '../../utils/llm/image'
 import { getBuiltinProviderTools } from '../../utils/llm/model-tools'
 import { toProviderHeadersRecord } from '../../utils/llm/provider-headers'
 
-import { applyAnthropicPromptCache } from './anthropicPromptCache'
+import {
+  applyAnthropicPromptCache,
+  isPromptCachingEnabled,
+} from './anthropicPromptCache'
 import { BaseLLMProvider } from './base'
 import {
   LLMAPIKeyInvalidException,
@@ -169,8 +172,7 @@ export class AnthropicProvider extends BaseLLMProvider<LLMProvider> {
   }
 
   private isPromptCachingEnabled(): boolean {
-    const raw = this.provider.additionalSettings?.promptCaching
-    return raw === true
+    return isPromptCachingEnabled(this.provider.additionalSettings)
   }
 
   private static readonly DEFAULT_MAX_TOKENS = 8192

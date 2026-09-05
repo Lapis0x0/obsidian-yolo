@@ -1043,7 +1043,7 @@ export const en: TranslationKeys = {
       responseStreamingModeNonStreaming: 'Non-streaming',
       promptCaching: 'Prompt caching',
       promptCachingDesc:
-        'Enable Anthropic ephemeral prompt caching. Reuses system prompt, tools, and conversation history across turns to cut input tokens. Cache writes carry a 25% premium; reads cost ~10% of normal input. Available whenever the provider API type is Anthropic; upstream must actually honor the cache_control field.',
+        'Anthropic ephemeral prompt caching, on by default. Reuses system prompt, tools, and conversation history across turns to cut input tokens. Cache writes carry a 25% premium; reads cost ~10% of normal input. Turn it off only if your upstream endpoint rejects or mishandles the cache_control field.',
       customHeaders: 'Custom headers',
       customHeadersDesc:
         'Attach extra HTTP headers to all requests sent through this provider.',

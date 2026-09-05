@@ -98,3 +98,15 @@ export function applyAnthropicPromptCache<
     messages: nextMessages,
   } as T
 }
+
+/**
+ * Prompt caching is on unless the provider explicitly opts out. A multi-turn
+ * agent loop resends the same system prompt, tool list and history on every
+ * step, so caching them is the default win in both latency and cost; only an
+ * explicit `false` disables it.
+ */
+export function isPromptCachingEnabled(
+  additionalSettings: Record<string, unknown> | undefined,
+): boolean {
+  return additionalSettings?.promptCaching !== false
+}

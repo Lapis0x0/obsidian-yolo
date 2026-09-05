@@ -469,7 +469,9 @@ function ProviderFormComponent({
                 value={
                   (formData.additionalSettings as Record<string, boolean>)?.[
                     setting.key
-                  ] ?? false
+                  ] ??
+                  (setting as { defaultValue?: boolean }).defaultValue ??
+                  false
                 }
                 onChange={(value: boolean) =>
                   setFormData(

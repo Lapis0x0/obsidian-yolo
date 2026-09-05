@@ -1,4 +1,7 @@
-import { applyAnthropicPromptCache } from './anthropicPromptCache'
+import {
+  applyAnthropicPromptCache,
+  isPromptCachingEnabled,
+} from './anthropicPromptCache'
 
 type Payload = Parameters<typeof applyAnthropicPromptCache>[0] & {
   system?: unknown
@@ -148,5 +151,17 @@ describe('applyAnthropicPromptCache', () => {
     const snapshot = JSON.parse(JSON.stringify(input))
     applyAnthropicPromptCache(input)
     expect(input).toEqual(snapshot)
+  })
+})
+
+describe('isPromptCachingEnabled', () => {
+  it('is enabled when the setting is unset', () => {
+    expect(isPromptCachingEnabled(undefined)).toBe(true)
+    expect(isPromptCachingEnabled({})).toBe(true)
+  })
+
+  it('is disabled only when explicitly set to false', () => {
+    expect(isPromptCachingEnabled({ promptCaching: false })).toBe(false)
+    expect(isPromptCachingEnabled({ promptCaching: true })).toBe(true)
   })
 })
