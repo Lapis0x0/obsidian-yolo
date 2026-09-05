@@ -4,6 +4,7 @@ import {
   Bot,
   Infinity as InfinityIcon,
   MessageCircle,
+  Zap,
 } from 'lucide-react'
 import {
   type ReactNode,
@@ -140,6 +141,18 @@ export type ChatConversationPaneProps = {
   emptyStateAskTitle: string
   emptyStateAgentTitle: string
   emptyStateAgentFullTitle: string
+  /**
+   * Max's own empty-state copy. Max is agent-shaped here — tools plus a trust
+   * profile — but it reaches past the vault into local files and the terminal,
+   * so it says its own thing instead of borrowing Agent's. Surfaces without
+   * Max (Quick Ask, the CLI runtimes) omit this and never reach `'max'`.
+   */
+  emptyStateMaxCopy?: {
+    title: string
+    description: string
+    fullTitle: string
+    fullDescription: string
+  }
   emptyStateWorkspaceTitle?: ReactNode
   emptyStateAskDescription: string
   emptyStateAgentDescription: string
@@ -195,6 +208,7 @@ export function ChatConversationPane({
   emptyStateAskTitle,
   emptyStateAgentTitle,
   emptyStateAgentFullTitle,
+  emptyStateMaxCopy,
   emptyStateWorkspaceTitle,
   emptyStateAskDescription,
   emptyStateAgentDescription,
@@ -223,30 +237,49 @@ export function ChatConversationPane({
     groupedChatMessagesLength > 0 &&
     (!isAutoFollowEnabled || hasNewerMessages)
 
-  // Max is agent-shaped for the empty state: it has tools and a trust
-  // profile, so it gets the Agent copy rather than Ask's.
+  const isMaxMode = chatMode === 'max'
   const isYoloAgent = isToolChatMode(chatMode) && yoloEnabled
+  const maxCopy = isMaxMode ? emptyStateMaxCopy : undefined
   const emptyStateTitle =
     emptyStateModuleContent?.title ??
     emptyStateWorkspaceTitle ??
-    (isYoloAgent
-      ? emptyStateAgentFullTitle
-      : isToolChatMode(chatMode)
-        ? emptyStateAgentTitle
-        : emptyStateAskTitle)
+    (maxCopy
+      ? yoloEnabled
+        ? maxCopy.fullTitle
+        : maxCopy.title
+      : isYoloAgent
+        ? emptyStateAgentFullTitle
+        : isToolChatMode(chatMode)
+          ? emptyStateAgentTitle
+          : emptyStateAskTitle)
   const emptyStateDescription =
     emptyStateModuleContent?.description ??
-    (isYoloAgent
-      ? emptyStateAgentFullDescription
-      : isToolChatMode(chatMode)
-        ? emptyStateAgentDescription
-        : emptyStateAskDescription)
+    (maxCopy
+      ? yoloEnabled
+        ? maxCopy.fullDescription
+        : maxCopy.description
+      : isYoloAgent
+        ? emptyStateAgentFullDescription
+        : isToolChatMode(chatMode)
+          ? emptyStateAgentDescription
+          : emptyStateAskDescription)
   const resolvedEmptyStateIconMode =
-    emptyStateIconMode ?? (isYoloAgent ? 'agent-full' : chatMode)
+    emptyStateIconMode ??
+    (isMaxMode
+      ? yoloEnabled
+        ? 'max-full'
+        : 'max'
+      : isYoloAgent
+        ? 'agent-full'
+        : chatMode)
+  // The icon states the mode, not the trust profile: Max keeps the selector's
+  // bolt in both of its states.
   const resolvedEmptyStateIcon =
     emptyStateModuleContent?.icon ??
     emptyStateIcon ??
-    (isYoloAgent ? (
+    (isMaxMode ? (
+      <Zap size={18} strokeWidth={2} />
+    ) : isYoloAgent ? (
       <InfinityIcon size={18} strokeWidth={2} />
     ) : isToolChatMode(chatMode) ? (
       <Bot size={18} strokeWidth={2} />

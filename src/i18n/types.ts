@@ -1776,6 +1776,10 @@ export type TranslationKeys = {
       agentDescription?: string
       agentFullTitle?: string
       agentFullDescription?: string
+      maxTitle?: string
+      maxDescription?: string
+      maxFullTitle?: string
+      maxFullDescription?: string
     }
     cliSurface?: {
       emptyTitle?: string

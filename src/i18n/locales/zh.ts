@@ -1935,8 +1935,12 @@ export const zh: TranslationKeys = {
       chatDescription: '适合提问、润色与改写，专注表达本身',
       agentTitle: '让 AI 去执行',
       agentDescription: '启用工具链，处理搜索、读写与多步骤任务',
-      agentFullTitle: '让 AI 自主执行 · YOLO 模式',
+      agentFullTitle: '让 AI 自主执行 · YOLO',
       agentFullDescription: '自动放行工具调用，处理搜索、读写与多步骤任务',
+      maxTitle: '协作，不止于 vault',
+      maxDescription: '任意文件、真实终端',
+      maxFullTitle: '协作，不止于 vault · YOLO',
+      maxFullDescription: '任意文件、真实终端，快速完成任务',
     },
     cliSurface: {
       emptyTitle: '使用 CLI Agent',

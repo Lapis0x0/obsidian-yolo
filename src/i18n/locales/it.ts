@@ -1885,9 +1885,14 @@ export const it: DeepPartial<TranslationKeys> = {
       agentTitle: "Lascia eseguire all'AI",
       agentDescription:
         'Abilita gli strumenti per ricerca, lettura/scrittura e task multi-step.',
-      agentFullTitle: "Lascia eseguire all'AI · Modalità YOLO",
+      agentFullTitle: "Lascia eseguire all'AI · YOLO",
       agentFullDescription:
         'Approva automaticamente gli strumenti per ricerca, lettura/scrittura e task multi-step.',
+      maxTitle: 'Collaborare, oltre il vault',
+      maxDescription: 'Qualsiasi file, un terminale vero.',
+      maxFullTitle: 'Collaborare, oltre il vault · YOLO',
+      maxFullDescription:
+        'Qualsiasi file, un terminale vero. Porta a termine il lavoro in fretta.',
     },
     cliSurface: {
       emptyTitle: 'Usa CLI Agent',

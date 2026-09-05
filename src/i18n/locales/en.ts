@@ -2035,9 +2035,13 @@ export const en: TranslationKeys = {
       agentTitle: 'Let AI execute',
       agentDescription:
         'Enable tools to handle search, read/write operations, and multi-step tasks.',
-      agentFullTitle: 'Let AI execute · YOLO Mode',
+      agentFullTitle: 'Let AI execute · YOLO',
       agentFullDescription:
         'Auto-approve tool calls for search, read/write operations, and multi-step tasks.',
+      maxTitle: 'Work together, beyond the vault',
+      maxDescription: 'Any file, a real terminal.',
+      maxFullTitle: 'Work together, beyond the vault · YOLO',
+      maxFullDescription: 'Any file, a real terminal. Get it done fast.',
     },
     cliSurface: {
       emptyTitle: 'Use CLI Agent',

@@ -1592,8 +1592,23 @@ export function YoloChatSurface({
         emptyStateAgentTitle={t('chat.emptyState.agentTitle', '让 AI 去执行')}
         emptyStateAgentFullTitle={t(
           'chat.emptyState.agentFullTitle',
-          '让 AI 自主执行 · YOLO 模式',
+          '让 AI 自主执行 · YOLO',
         )}
+        emptyStateMaxCopy={{
+          title: t('chat.emptyState.maxTitle', '协作，不止于 vault'),
+          description: t(
+            'chat.emptyState.maxDescription',
+            '任意文件、真实终端',
+          ),
+          fullTitle: t(
+            'chat.emptyState.maxFullTitle',
+            '协作，不止于 vault · YOLO',
+          ),
+          fullDescription: t(
+            'chat.emptyState.maxFullDescription',
+            '任意文件、真实终端，快速完成任务',
+          ),
+        }}
         emptyStateWorkspaceTitle={emptyStateWorkspaceTitle}
         emptyStateModuleContent={emptyStateModuleContent}
         emptyStateAskDescription={t(
