@@ -23,7 +23,7 @@ import {
 
 describe('mapPiEvent — message_update delta aggregation', () => {
   it('accumulates text_delta into one streaming assistant message', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     const first = mapPiEvent(
       {
         type: 'message_update',
@@ -63,7 +63,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
     // Regression: deltas were read through a trimming helper, so newline-only
     // chunks were dropped and edge whitespace was eaten — collapsing every
     // Markdown block (headings, lists, fences) into one paragraph.
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     const emit = (delta: string) =>
       mapPiEvent(
         {
@@ -89,7 +89,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
   })
 
   it('accumulates thinking_delta separately from text_delta', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'message_update',
@@ -118,7 +118,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
   })
 
   it('keeps concurrent streams separate when an itemId is present', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'message_update',
@@ -142,7 +142,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
   })
 
   it('scopes the fallback stream id per turn so a second turn does not edit the first', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     resetPiMappingState(state)
     const turn1 = mapPiEvent(
       {
@@ -171,7 +171,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
   it('emits turn_metrics and context_usage from message_end usage', () => {
     // The streaming event carries no usage at all — pi's RPC layer strips
     // `message_update` down to its delta.
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     expect(
       mapPiEvent(
         {
@@ -224,7 +224,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
   })
 
   it('bills the whole turn but rings only the latest call', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     const messageEnd = (usage: Record<string, number>) => ({
       type: 'message_end',
       message: { role: 'assistant', usage },
@@ -267,7 +267,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
   })
 
   it('starts a fresh usage total on the next turn', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'message_end',
@@ -299,7 +299,7 @@ describe('mapPiEvent — message_update delta aggregation', () => {
 
 describe('mapPiEvent — tool call lifecycle', () => {
   it('upserts a Running tool pair on tool_execution_start, keyed by id', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     const events = mapPiEvent(
       {
         type: 'tool_execution_start',
@@ -326,7 +326,7 @@ describe('mapPiEvent — tool call lifecycle', () => {
   })
 
   it('does not emit anything for tool_execution_update, only caches output', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'tool_execution_start',
@@ -345,7 +345,7 @@ describe('mapPiEvent — tool call lifecycle', () => {
   })
 
   it('resolves the same message id to Success on tool_execution_end', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'tool_execution_start',
@@ -381,7 +381,7 @@ describe('mapPiEvent — tool call lifecycle', () => {
   })
 
   it('falls back to the last cached partial output when the end result is empty', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'tool_execution_start',
@@ -415,7 +415,7 @@ describe('mapPiEvent — tool call lifecycle', () => {
   })
 
   it('maps isError to an Error response', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     mapPiEvent(
       {
         type: 'tool_execution_start',
@@ -515,7 +515,7 @@ describe('agent_settled / terminal error detection', () => {
 
 describe('compaction events', () => {
   it('maps compaction_start/compaction_end to compaction_state and a boundary', () => {
-    const state = createPiMappingState()
+    const state = createPiMappingState('pi')
     expect(mapPiEvent({ type: 'compaction_start' }, state)).toEqual([
       { type: 'compaction_state', isCompacting: true },
     ])
@@ -527,6 +527,27 @@ describe('compaction events', () => {
     expect(endEvents[1]).toMatchObject({
       type: 'compaction_boundary',
       boundary: { id: 'pi-compact-c1' },
+    })
+  })
+
+  it('accepts omp’s renamed auto_compaction_start/auto_compaction_end pair', () => {
+    // omp renamed the pair; the two vocabularies do not overlap, so both are
+    // accepted unconditionally rather than split per runtime.
+    const state = createPiMappingState('omp')
+    expect(mapPiEvent({ type: 'auto_compaction_start' }, state)).toEqual([
+      { type: 'compaction_state', isCompacting: true },
+    ])
+    const endEvents = mapPiEvent(
+      { type: 'auto_compaction_end', id: 'c9' },
+      state,
+    )
+    expect(endEvents[0]).toEqual({
+      type: 'compaction_state',
+      isCompacting: false,
+    })
+    expect(endEvents[1]).toMatchObject({
+      type: 'compaction_boundary',
+      boundary: { id: 'pi-compact-c9' },
     })
   })
 })
@@ -732,14 +753,17 @@ describe('extractPiCurrentModelState', () => {
 
 describe('mapPiEntriesToHydration', () => {
   it('maps a linear session into user/assistant messages', () => {
-    const { messages, compactionBoundaries } = mapPiEntriesToHydration([
-      { id: 'u1', type: 'user', message: { role: 'user', content: 'hi' } },
-      {
-        id: 'a1',
-        type: 'assistant',
-        message: { role: 'assistant', content: 'hello there' },
-      },
-    ])
+    const { messages, compactionBoundaries } = mapPiEntriesToHydration(
+      [
+        { id: 'u1', type: 'user', message: { role: 'user', content: 'hi' } },
+        {
+          id: 'a1',
+          type: 'assistant',
+          message: { role: 'assistant', content: 'hello there' },
+        },
+      ],
+      'pi',
+    )
     expect(messages).toEqual([
       expect.objectContaining({ role: 'user', id: 'u1', promptContent: 'hi' }),
       expect.objectContaining({
@@ -752,29 +776,36 @@ describe('mapPiEntriesToHydration', () => {
   })
 
   it('resolves a tool call embedded in an assistant entry against its toolResult entry', () => {
-    const { messages } = mapPiEntriesToHydration([
-      { id: 'u1', type: 'user', message: { role: 'user', content: 'run ls' } },
-      {
-        id: 'a1',
-        type: 'assistant',
-        message: {
-          role: 'assistant',
-          content: [
-            {
-              type: 'toolCall',
-              id: 'call-1',
-              name: 'bash',
-              input: { command: 'ls' },
-            },
-          ],
+    const { messages } = mapPiEntriesToHydration(
+      [
+        {
+          id: 'u1',
+          type: 'user',
+          message: { role: 'user', content: 'run ls' },
         },
-      },
-      {
-        id: 't1',
-        type: 'toolResult',
-        message: { toolCallId: 'call-1', result: 'file1\nfile2' },
-      },
-    ])
+        {
+          id: 'a1',
+          type: 'assistant',
+          message: {
+            role: 'assistant',
+            content: [
+              {
+                type: 'toolCall',
+                id: 'call-1',
+                name: 'bash',
+                input: { command: 'ls' },
+              },
+            ],
+          },
+        },
+        {
+          id: 't1',
+          type: 'toolResult',
+          message: { toolCallId: 'call-1', result: 'file1\nfile2' },
+        },
+      ],
+      'pi',
+    )
     const toolMessage = messages.find((message) => message.role === 'tool')
     expect(toolMessage).toMatchObject({
       toolCalls: [
@@ -789,29 +820,32 @@ describe('mapPiEntriesToHydration', () => {
   })
 
   it('only keeps the current branch when entries form a parent-linked tree', () => {
-    const { messages } = mapPiEntriesToHydration([
-      { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
-      {
-        id: 'a1',
-        parentId: 'u1',
-        type: 'assistant',
-        message: { role: 'assistant', content: 'reply A' },
-      },
-      // An abandoned branch off the same parent — must not appear in the
-      // active-branch result, which follows the *last* entry's parent chain.
-      {
-        id: 'a1-alt',
-        parentId: 'u1',
-        type: 'assistant',
-        message: { role: 'assistant', content: 'reply B (dead branch)' },
-      },
-      {
-        id: 'u2',
-        parentId: 'a1',
-        type: 'user',
-        message: { role: 'user', content: 'second' },
-      },
-    ])
+    const { messages } = mapPiEntriesToHydration(
+      [
+        { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
+        {
+          id: 'a1',
+          parentId: 'u1',
+          type: 'assistant',
+          message: { role: 'assistant', content: 'reply A' },
+        },
+        // An abandoned branch off the same parent — must not appear in the
+        // active-branch result, which follows the *last* entry's parent chain.
+        {
+          id: 'a1-alt',
+          parentId: 'u1',
+          type: 'assistant',
+          message: { role: 'assistant', content: 'reply B (dead branch)' },
+        },
+        {
+          id: 'u2',
+          parentId: 'a1',
+          type: 'user',
+          message: { role: 'user', content: 'second' },
+        },
+      ],
+      'pi',
+    )
     expect(messages.map((message) => message.id)).toEqual(['u1', 'a1', 'u2'])
   })
 
@@ -820,9 +854,44 @@ describe('mapPiEntriesToHydration', () => {
     // a rewrite/fork), so the abandoned `u2`/`a2` entries are still appended
     // after it in the array, but `leafId` says the active branch ends at
     // `a1`. Hydration must follow `leafId`, not "last array element".
-    const { messages } = mapPiEntriesToHydration({
-      leafId: 'a1',
-      entries: [
+    const { messages } = mapPiEntriesToHydration(
+      {
+        leafId: 'a1',
+        entries: [
+          {
+            id: 'u1',
+            type: 'user',
+            message: { role: 'user', content: 'first' },
+          },
+          {
+            id: 'a1',
+            parentId: 'u1',
+            type: 'assistant',
+            message: { role: 'assistant', content: 'reply A' },
+          },
+          // Appended after a1 but abandoned — not on the leafId's branch.
+          {
+            id: 'u2',
+            parentId: 'a1',
+            type: 'user',
+            message: { role: 'user', content: 'abandoned follow-up' },
+          },
+          {
+            id: 'a2',
+            parentId: 'u2',
+            type: 'assistant',
+            message: { role: 'assistant', content: 'abandoned reply' },
+          },
+        ],
+      },
+      'pi',
+    )
+    expect(messages.map((message) => message.id)).toEqual(['u1', 'a1'])
+  })
+
+  it('falls back to the last appended entry when leafId is absent (bare array response)', () => {
+    const { messages } = mapPiEntriesToHydration(
+      [
         { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
         {
           id: 'a1',
@@ -830,34 +899,9 @@ describe('mapPiEntriesToHydration', () => {
           type: 'assistant',
           message: { role: 'assistant', content: 'reply A' },
         },
-        // Appended after a1 but abandoned — not on the leafId's branch.
-        {
-          id: 'u2',
-          parentId: 'a1',
-          type: 'user',
-          message: { role: 'user', content: 'abandoned follow-up' },
-        },
-        {
-          id: 'a2',
-          parentId: 'u2',
-          type: 'assistant',
-          message: { role: 'assistant', content: 'abandoned reply' },
-        },
       ],
-    })
-    expect(messages.map((message) => message.id)).toEqual(['u1', 'a1'])
-  })
-
-  it('falls back to the last appended entry when leafId is absent (bare array response)', () => {
-    const { messages } = mapPiEntriesToHydration([
-      { id: 'u1', type: 'user', message: { role: 'user', content: 'first' } },
-      {
-        id: 'a1',
-        parentId: 'u1',
-        type: 'assistant',
-        message: { role: 'assistant', content: 'reply A' },
-      },
-    ])
+      'pi',
+    )
     expect(messages.map((message) => message.id)).toEqual(['u1', 'a1'])
   })
 })

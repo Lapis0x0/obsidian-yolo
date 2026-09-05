@@ -21,6 +21,7 @@ export const CLI_RUNTIME_IDS = [
   'codex',
   'hermes',
   'pi',
+  'omp',
   'grok',
 ] as const
 export type CliRuntimeId = (typeof CLI_RUNTIME_IDS)[number]

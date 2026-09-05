@@ -12,12 +12,16 @@ export type PiRuntimeFactoryDeps = CliRuntimeFactoryDeps
 export const createPiRuntimeFactory = async (
   _deps: PiRuntimeFactoryDeps,
 ): Promise<CliRuntimeFactory> => {
-  const { PiCliRuntime } = await import('./PiCliRuntime')
+  const [{ PiCliRuntime }, { PI_RUNTIME_DIALECT }] = await Promise.all([
+    import('./PiCliRuntime'),
+    import('./dialect'),
+  ])
   return {
     create: (createDeps) =>
       new PiCliRuntime({
         app: createDeps.app,
         vaultPath: createDeps.vaultPath,
+        dialect: PI_RUNTIME_DIALECT,
       }),
   }
 }

@@ -149,6 +149,27 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsImageAttachments: true,
     supportsQueueWhileGenerating: false,
   },
+  // oh-my-pi is a hard fork of pi speaking the same RPC protocol, so it
+  // exposes exactly the same product surface — kept field-for-field identical
+  // to `pi` above rather than guessing at extra capabilities.
+  omp: {
+    supportsPlanMode: false,
+    showsYoloToggle: true,
+    needsWarmup: false,
+    hasNativeSkills: false,
+    hasNativeMcpPanel: false,
+    hasPluginManagement: false,
+    hasAssistants: false,
+    supportsMessageRewrite: true,
+    supportsContextCompaction: true,
+    supportsVaultExport: false,
+    supportsSubagentWatch: false,
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: true,
+    supportsQueueWhileGenerating: false,
+  },
   grok: {
     supportsPlanMode: false,
     showsYoloToggle: false,

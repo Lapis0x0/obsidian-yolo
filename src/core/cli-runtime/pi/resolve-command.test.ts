@@ -34,6 +34,31 @@ describe('pi executable discovery', () => {
       ),
     ).resolves.toBe('C:\\Users\\me\\AppData\\Roaming\\npm\\pi.cmd')
   })
+
+  it('probes the requested command name, not always pi', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      if (String(candidate) === '/opt/homebrew/bin/omp') return
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      findPiExecutable({ HOME: '/home/me' }, 'darwin', 'omp'),
+    ).resolves.toBe('/opt/homebrew/bin/omp')
+    await expect(
+      findPiExecutable({ HOME: '/home/me' }, 'darwin'),
+    ).resolves.toBeNull()
+  })
+
+  it('finds a bun global install, omp’s recommended install route', async () => {
+    mockedAccess.mockImplementation(async (candidate) => {
+      if (String(candidate) === '/home/me/.bun/bin/omp') return
+      throw new Error('ENOENT')
+    })
+
+    await expect(
+      findPiExecutable({ HOME: '/home/me' }, 'darwin', 'omp'),
+    ).resolves.toBe('/home/me/.bun/bin/omp')
+  })
 })
 
 describe('resolvePiCommand', () => {

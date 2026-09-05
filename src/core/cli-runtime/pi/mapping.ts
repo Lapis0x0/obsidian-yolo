@@ -16,6 +16,7 @@ import type {
   CliCompactionBoundary,
   CliContextUsage,
   CliRuntimeEvent,
+  CliRuntimeId,
   CliRuntimeModel,
 } from '../types'
 
@@ -81,6 +82,11 @@ const firstStringField = (
 // ---------------------------------------------------------------------------
 
 export type PiMappingState = {
+  /**
+   * Runtime this stream belongs to, stamped onto every tool call's
+   * provider-native metadata — the engine drives both pi and its omp fork.
+   */
+  runtimeId: CliRuntimeId
   assistantText: Map<string, string>
   thinkingText: Map<string, string>
   toolInputs: Map<string, Record<string, unknown>>
@@ -100,7 +106,10 @@ type PiUsageTotals = {
   totalTokens: number
 }
 
-export const createPiMappingState = (): PiMappingState => ({
+export const createPiMappingState = (
+  runtimeId: CliRuntimeId,
+): PiMappingState => ({
+  runtimeId,
   assistantText: new Map(),
   thinkingText: new Map(),
   toolInputs: new Map(),
@@ -122,8 +131,13 @@ export const resetPiMappingState = (state: PiMappingState): void => {
 }
 
 /**
- * `agent_settled` is the authoritative "this turn is fully done" signal —
- * unlike `agent_end`, it is not emitted while pi is still retrying/queued.
+ * pi's "this turn is fully done" signal. `agent_settled` is authoritative
+ * where `agent_end` is not: pi re-emits `agent_end` after a retry or a
+ * compaction, so treating that as terminal ends the turn early.
+ *
+ * This rule is pi's alone — omp removed `agent_settled` entirely and marks
+ * terminality on `agent_end` instead (see `omp/dialect.ts`), which is why the
+ * engine takes the predicate from its `PiRuntimeDialect`.
  */
 export const isPiAgentSettled = (event: PiRpcRecord): boolean =>
   getString(event.type) === 'agent_settled'
@@ -345,7 +359,11 @@ const mapToolStart = (
   const request = createCliToolCallRequest({
     id,
     input,
-    metadata: { runtimeId: 'pi', eventType: 'tool_execution_start', name },
+    metadata: {
+      runtimeId: state.runtimeId,
+      eventType: 'tool_execution_start',
+      name,
+    },
   })
   const [assistant, tool] = toolPair(request, {
     status: ToolCallResponseStatus.Running,
@@ -397,7 +415,11 @@ const mapToolEnd = (
   const request = createCliToolCallRequest({
     id,
     input,
-    metadata: { runtimeId: 'pi', eventType: 'tool_execution_end', name },
+    metadata: {
+      runtimeId: state.runtimeId,
+      eventType: 'tool_execution_end',
+      name,
+    },
   })
   const response: ToolCallResponse = isError
     ? {
@@ -427,12 +449,18 @@ let compactionCounter = 0
 
 /**
  * Maps one raw pi RPC event line into zero or more `CliRuntimeEvent`s.
- * `agent_settled` and the `message_end`/`turn_end` error path are handled
- * separately by the runtime (they drive `run_state`, which also needs
+ * The turn-terminal event and the `message_end`/`turn_end` error path are
+ * handled separately by the runtime (they drive `run_state`, which also needs
  * runtime-local state like "was cancel() called"), so this only covers the
  * message/tool/compaction event families. `auto_retry_start`/`auto_retry_end`
  * have no corresponding UI surface yet and are intentionally ignored rather
  * than routed through a notice mechanism that doesn't exist.
+ *
+ * Compaction is accepted under both runtimes' names: pi emits
+ * `compaction_start`/`compaction_end`, omp renamed the pair to
+ * `auto_compaction_start`/`auto_compaction_end`. The two vocabularies do not
+ * overlap — neither runtime emits the other's names — so a plain union is
+ * exact here, and splitting it per runtime would buy nothing.
  */
 export const mapPiEvent = (
   event: PiRpcRecord,
@@ -452,8 +480,10 @@ export const mapPiEvent = (
     case 'tool_execution_end':
       return mapToolEnd(event, state)
     case 'compaction_start':
+    case 'auto_compaction_start':
       return [{ type: 'compaction_state', isCompacting: true }]
     case 'compaction_end':
+    case 'auto_compaction_end':
       return [
         { type: 'compaction_state', isCompacting: false },
         {
@@ -968,6 +998,7 @@ const buildUserMessage = (
 const buildAssistantEntry = (
   entry: PiSessionEntry,
   index: number,
+  runtimeId: CliRuntimeId,
 ): { assistant: ChatAssistantMessage; tool: ChatToolMessage | null } => {
   const parts = extractContentParts(entry.message)
   const textParts: string[] = []
@@ -995,7 +1026,7 @@ const buildAssistantEntry = (
           createCliToolCallRequest({
             id: toolId,
             input: getPiToolInput(part),
-            metadata: { runtimeId: 'pi', eventType: 'history', name },
+            metadata: { runtimeId, eventType: 'history', name },
           }),
         )
         continue
@@ -1201,6 +1232,7 @@ export const buildPiForkSessionContent = ({
  */
 export const mapPiEntriesToHydration = (
   response: unknown,
+  runtimeId: CliRuntimeId,
 ): PiSessionHydrationContent => {
   const normalized = normalizePiEntries(response)
   const entries = resolvePiActiveBranch(normalized.entries, normalized.leafId)
@@ -1227,7 +1259,7 @@ export const mapPiEntriesToHydration = (
       return
     }
     if (role === 'assistant') {
-      const { assistant, tool } = buildAssistantEntry(entry, index)
+      const { assistant, tool } = buildAssistantEntry(entry, index, runtimeId)
       messages.push(assistant)
       if (tool) messages.push(tool)
     }

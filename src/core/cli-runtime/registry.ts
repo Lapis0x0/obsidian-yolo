@@ -1,5 +1,6 @@
 import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
 import hermesLogo from '../../assets/provider-icons/hermes.svg'
+import ompLogo from '../../assets/provider-icons/omp.svg'
 import openaiLogo from '../../assets/provider-icons/openai.svg'
 import piLogo from '../../assets/provider-icons/pi.svg'
 import xaiLogo from '../../assets/provider-icons/xai.svg'
@@ -31,6 +32,14 @@ export type CliRuntimeDescriptor = Readonly<{
    */
   shortLabelKey?: string
   descriptionKey: string
+  /**
+   * This runtime is a variant of another one and collapses into *that*
+   * runtime's single row in the selector, instead of claiming a row of its
+   * own. Purely a presentation declaration: the variant keeps a fully
+   * independent runtime id everywhere else (sessions, settings, badges,
+   * factories). Declared by the variant, never by the runtime it folds into.
+   */
+  variantOf?: CliRuntimeId
   /** RuntimeSelector's brand asset and `data-provider` attribute value. */
   icon: Readonly<{ src: string; provider: string }>
   capabilities: ChatRuntimeCapabilities
@@ -70,6 +79,15 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       descriptionKey: 'sidebar.runtimeSelector.piDescription',
       icon: { src: piLogo, provider: 'pi' },
       capabilities: RUNTIME_CAPABILITIES.pi,
+    },
+    omp: {
+      id: 'omp',
+      defaultLabel: 'omp',
+      labelKey: 'sidebar.runtimeSelector.ompLabel',
+      descriptionKey: 'sidebar.runtimeSelector.ompDescription',
+      variantOf: 'pi',
+      icon: { src: ompLogo, provider: 'omp' },
+      capabilities: RUNTIME_CAPABILITIES.omp,
     },
     grok: {
       id: 'grok',

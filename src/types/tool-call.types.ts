@@ -149,7 +149,7 @@ export type CliToolCallCapability =
  * replaces the provider-native arguments.
  */
 export type CliToolCallMetadata = {
-  runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi' | 'grok'
+  runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi' | 'omp' | 'grok'
   eventType: string
   name: string
   namespace?: string

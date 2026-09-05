@@ -81,6 +81,8 @@ export const zh: TranslationKeys = {
       hermesDescription: '本机 Hermes 运行时',
       piLabel: 'Pi',
       piDescription: '本机 Pi 运行时',
+      ompLabel: 'omp',
+      ompDescription: '本机 Oh My Pi 运行时',
       grokLabel: 'Grok',
       grokDescription: '本机 Grok Build 运行时',
     },
@@ -723,6 +725,9 @@ export const zh: TranslationKeys = {
       piCliPathName: 'Pi CLI 路径',
       piCliPathDesc:
         '自定义 pi 可执行文件路径，可粘贴 which pi（Windows 为 where pi）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      ompCliPathName: 'omp CLI 路径',
+      ompCliPathDesc:
+        '自定义 omp 可执行文件路径，可粘贴 which omp（Windows 为 where omp）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       grokCliPathName: 'Grok CLI 路径',
       grokCliPathDesc:
         '自定义 grok 可执行文件路径，可粘贴 which grok（Windows 为 where grok）的输出。留空则自动检测；仅保存在本设备，不随库同步。',

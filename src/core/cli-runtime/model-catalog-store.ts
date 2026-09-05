@@ -28,6 +28,7 @@ const documentSchema = z.object({
     codex: z.array(modelSchema).optional(),
     hermes: z.array(modelSchema).optional(),
     pi: z.array(modelSchema).optional(),
+    omp: z.array(modelSchema).optional(),
     grok: z.array(modelSchema).optional(),
   }),
 })

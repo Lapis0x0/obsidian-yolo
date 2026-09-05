@@ -90,6 +90,8 @@ export type TranslationKeys = {
       hermesDescription: string
       piLabel: string
       piDescription: string
+      ompLabel: string
+      ompDescription: string
       grokLabel: string
       grokDescription: string
     }
@@ -587,6 +589,8 @@ export type TranslationKeys = {
       hermesCliPathDesc?: string
       piCliPathName?: string
       piCliPathDesc?: string
+      ompCliPathName?: string
+      ompCliPathDesc?: string
       grokCliPathName?: string
       grokCliPathDesc?: string
       cliPathMissing?: string

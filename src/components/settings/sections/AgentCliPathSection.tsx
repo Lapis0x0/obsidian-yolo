@@ -119,6 +119,16 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
       />
       <CliPathRow
         app={app}
+        runtimeId="omp"
+        name={t('settings.agent.ompCliPathName', 'omp CLI path')}
+        desc={t(
+          'settings.agent.ompCliPathDesc',
+          'Custom path to the omp executable — paste the output of "which omp" ("where omp" on Windows). Leave empty to auto-detect. Stored on this device only.',
+        )}
+        placeholder="~/.local/bin/omp"
+      />
+      <CliPathRow
+        app={app}
         runtimeId="grok"
         name={t('settings.agent.grokCliPathName', 'Grok CLI path')}
         desc={t(

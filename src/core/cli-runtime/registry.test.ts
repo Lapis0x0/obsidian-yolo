@@ -42,6 +42,17 @@ describe('CLI runtime registry', () => {
     expect(getCliRuntimeDescriptor('grok').shortLabelKey).toBeUndefined()
   })
 
+  it('lets omp declare that it collapses into pi’s selector row', () => {
+    expect(getCliRuntimeDescriptor('omp').variantOf).toBe('pi')
+    // A variant still has an id of its own everywhere else, and the runtime it
+    // folds into never declares the relationship back.
+    expect(getCliRuntimeDescriptor('pi').variantOf).toBeUndefined()
+  })
+
+  it('gives omp the same capabilities as the pi runtime it forks', () => {
+    expect(RUNTIME_CAPABILITIES.omp).toEqual(RUNTIME_CAPABILITIES.pi)
+  })
+
   it('hides the YOLO toggle only for the pinned ask-first Grok runtime', () => {
     expect(RUNTIME_CAPABILITIES['claude-code'].showsYoloToggle).toBe(true)
     expect(RUNTIME_CAPABILITIES.codex.showsYoloToggle).toBe(true)

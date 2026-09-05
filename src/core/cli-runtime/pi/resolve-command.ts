@@ -66,11 +66,17 @@ const resolveConfiguredExecutable = async (
  * pi (earendil-works/pi, npm-distributed as `@earendil-works/*`, command
  * name still `pi`) is installed the same way Codex is — global npm/pnpm/
  * volta/nvm install — so this probes the same common bin directories rather
- * than Hermes's Python-tooling ones.
+ * than Hermes's Python-tooling ones. Its omp fork adds a `bun install -g`
+ * route (its own recommended one) and an installer script that lands in
+ * `~/.local/bin`, both of which the same directory list covers.
+ *
+ * `command` is the executable's base name — `pi` for pi itself, `omp` for
+ * the fork — with the Windows extensions derived from it.
  */
 export const findPiExecutable = async (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform,
+  command = 'pi',
 ): Promise<string | null> => {
   const home = firstEnvironmentValue(env, 'HOME', 'USERPROFILE') ?? homedir()
   const delimiter = platform === 'win32' ? ';' : ':'
@@ -93,13 +99,16 @@ export const findPiExecutable = async (
         ]
       : [
           path.join(home, '.local', 'bin'),
+          path.join(home, '.bun', 'bin'),
           path.join(home, '.volta', 'bin'),
           '/usr/local/bin',
           '/opt/homebrew/bin',
           '/usr/bin',
         ]
   const names =
-    platform === 'win32' ? ['pi.exe', 'pi.cmd', 'pi.bat', 'pi'] : ['pi']
+    platform === 'win32'
+      ? [`${command}.exe`, `${command}.cmd`, `${command}.bat`, command]
+      : [command]
 
   for (const directory of unique(
     [...pathEntries, ...commonEntries],
@@ -117,19 +126,21 @@ export const findPiExecutable = async (
 }
 
 /**
- * Resolves the `pi` executable. `cliPathOverride` (Settings → Agent) takes
- * priority; falls back to PATH/common-install-dir auto-detection. Returns
- * `null` when pi cannot be found at all.
+ * Resolves the executable for one runtime on this engine (`pi` by default,
+ * `omp` for the fork). `cliPathOverride` (Settings → Agent) takes priority;
+ * falls back to PATH/common-install-dir auto-detection. Returns `null` when
+ * the executable cannot be found at all.
  */
 export const resolvePiCommand = async (
   env: NodeJS.ProcessEnv,
   platform: NodeJS.Platform = process.platform,
   cliPathOverride?: string,
+  command = 'pi',
 ): Promise<PiResolvedCommand | null> => {
   const home = firstEnvironmentValue(env, 'HOME', 'USERPROFILE') ?? homedir()
-  const command =
+  const resolved =
     (await resolveConfiguredExecutable(cliPathOverride, home, platform)) ??
-    (await findPiExecutable(env, platform))
-  if (!command) return null
-  return { command }
+    (await findPiExecutable(env, platform, command))
+  if (!resolved) return null
+  return { command: resolved }
 }

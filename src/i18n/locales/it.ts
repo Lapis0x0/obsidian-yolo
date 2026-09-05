@@ -98,6 +98,8 @@ export const it: DeepPartial<TranslationKeys> = {
       hermesDescription: 'Hermes su questo dispositivo',
       piLabel: 'Pi',
       piDescription: 'Pi su questo dispositivo',
+      ompLabel: 'omp',
+      ompDescription: 'Oh My Pi su questo dispositivo',
       grokLabel: 'Grok',
       grokDescription: 'Grok Build su questo dispositivo',
     },
@@ -781,6 +783,9 @@ export const it: DeepPartial<TranslationKeys> = {
       piCliPathName: 'Percorso CLI di Pi',
       piCliPathDesc:
         'Percorso personalizzato dell\'eseguibile pi — incolla l\'output di "which pi" ("where pi" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      ompCliPathName: 'Percorso CLI di omp',
+      ompCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile omp — incolla l\'output di "which omp" ("where omp" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       grokCliPathName: 'Percorso CLI di Grok',
       grokCliPathDesc:
         'Percorso personalizzato dell\'eseguibile grok — incolla l\'output di "which grok" ("where grok" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',

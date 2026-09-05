@@ -81,6 +81,8 @@ export const en: TranslationKeys = {
       hermesDescription: 'Hermes on this device',
       piLabel: 'Pi',
       piDescription: 'Pi on this device',
+      ompLabel: 'omp',
+      ompDescription: 'Oh My Pi on this device',
       grokLabel: 'Grok',
       grokDescription: 'Grok Build on this device',
     },
@@ -778,6 +780,9 @@ export const en: TranslationKeys = {
       piCliPathName: 'Pi CLI path',
       piCliPathDesc:
         'Custom path to the pi executable — paste the output of "which pi" ("where pi" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      ompCliPathName: 'omp CLI path',
+      ompCliPathDesc:
+        'Custom path to the omp executable — paste the output of "which omp" ("where omp" on Windows). Leave empty to auto-detect. Stored on this device only.',
       grokCliPathName: 'Grok CLI path',
       grokCliPathDesc:
         'Custom path to the grok executable — paste the output of "which grok" ("where grok" on Windows). Leave empty to auto-detect. Stored on this device only.',

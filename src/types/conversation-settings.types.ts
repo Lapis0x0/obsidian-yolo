@@ -17,6 +17,7 @@ export type ConversationOverrideSettings = {
     codex?: 'agent' | 'plan' | null
     hermes?: 'agent' | 'plan' | null
     pi?: 'agent' | 'plan' | null
+    omp?: 'agent' | 'plan' | null
     grok?: 'agent' | 'plan' | null
   } | null
   /** Per-conversation CLI YOLO flag, keyed like settings `cliAgentYoloEnabledByRuntime`. */
@@ -25,6 +26,7 @@ export type ConversationOverrideSettings = {
     codex?: boolean | null
     hermes?: boolean | null
     pi?: boolean | null
+    omp?: boolean | null
     grok?: boolean | null
   } | null
   temperature?: number | null

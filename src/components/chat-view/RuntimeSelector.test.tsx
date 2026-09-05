@@ -14,6 +14,8 @@ jest.mock('../../contexts/language-context', () => ({
           'sidebar.runtimeSelector.hermesDescription': 'Hermes on this device',
           'sidebar.runtimeSelector.piLabel': 'pi',
           'sidebar.runtimeSelector.piDescription': 'pi on this device',
+          'sidebar.runtimeSelector.ompLabel': 'omp',
+          'sidebar.runtimeSelector.ompDescription': 'Oh My Pi on this device',
           'sidebar.runtimeSelector.grokLabel': 'Grok',
           'sidebar.runtimeSelector.grokDescription': 'Grok on this device',
         }) as Record<string, string>
@@ -36,6 +38,10 @@ jest.mock('../../assets/provider-icons/hermes.svg', () => ({
 jest.mock('../../assets/provider-icons/pi.svg', () => ({
   __esModule: true,
   default: 'pi-logo',
+}))
+jest.mock('../../assets/provider-icons/omp.svg', () => ({
+  __esModule: true,
+  default: 'omp-logo',
 }))
 jest.mock('../../assets/provider-icons/xai.svg', () => ({
   __esModule: true,
@@ -64,6 +70,7 @@ describe('RuntimeSelector', () => {
       'codex',
       'hermes',
       'pi',
+      'omp',
       'grok',
     ])
     expect(resolveAvailableRuntimeId('yolo', true)).toBeUndefined()
@@ -71,6 +78,7 @@ describe('RuntimeSelector', () => {
     expect(resolveAvailableRuntimeId('codex', true)).toBe('codex')
     expect(resolveAvailableRuntimeId('hermes', true)).toBe('hermes')
     expect(resolveAvailableRuntimeId('pi', true)).toBe('pi')
+    expect(resolveAvailableRuntimeId('omp', true)).toBe('omp')
     expect(resolveAvailableRuntimeId('grok', true)).toBe('grok')
   })
 

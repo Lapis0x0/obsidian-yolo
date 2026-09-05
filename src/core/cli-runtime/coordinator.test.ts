@@ -113,6 +113,7 @@ const runtimeHarness = () => {
   const codexRuntimes: TestRuntime[] = []
   const hermesRuntimes: TestRuntime[] = []
   const piRuntimes: TestRuntime[] = []
+  const ompRuntimes: TestRuntime[] = []
   const grokRuntimes: TestRuntime[] = []
   const createClaudeRuntime = jest.fn(() => {
     const runtime = new TestRuntime('claude-code')
@@ -134,6 +135,11 @@ const runtimeHarness = () => {
     piRuntimes.push(runtime)
     return runtime
   })
+  const createOmpRuntime = jest.fn(() => {
+    const runtime = new TestRuntime('omp')
+    ompRuntimes.push(runtime)
+    return runtime
+  })
   const createGrokRuntime = jest.fn(() => {
     const runtime = new TestRuntime('grok')
     grokRuntimes.push(runtime)
@@ -144,6 +150,7 @@ const runtimeHarness = () => {
     codex: { create: createCodexRuntime },
     hermes: { create: createHermesRuntime },
     pi: { create: createPiRuntime },
+    omp: { create: createOmpRuntime },
     grok: { create: createGrokRuntime },
   }
   return {
@@ -151,6 +158,7 @@ const runtimeHarness = () => {
     codexRuntimes,
     hermesRuntimes,
     piRuntimes,
+    ompRuntimes,
     grokRuntimes,
     createClaudeRuntime,
     createCodexRuntime,
