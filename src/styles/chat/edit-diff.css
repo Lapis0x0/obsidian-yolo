@@ -18,14 +18,14 @@
   overflow: hidden;
   color: var(--text-muted);
   font-family: var(--font-monospace);
-  font-size: var(--font-smallest);
+  font-size: var(--font-small);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .yolo-edit-diff-notice {
   color: var(--text-faint);
-  font-size: var(--font-smallest);
+  font-size: var(--font-smaller);
 }
 
 .yolo-edit-diff-body {
@@ -37,7 +37,7 @@
   border-radius: var(--radius-s);
   background-color: var(--background-primary-alt);
   font-family: var(--font-monospace);
-  font-size: var(--font-smaller);
+  font-size: var(--font-small);
   line-height: 1.5;
 }
 
@@ -103,5 +103,5 @@
 
 .yolo-edit-diff-footer {
   color: var(--text-faint);
-  font-size: var(--font-smallest);
+  font-size: var(--font-smaller);
 }
