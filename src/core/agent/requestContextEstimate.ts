@@ -35,6 +35,7 @@ export const estimateContinuationRequestContextTokens = async ({
   toolServerPreferences,
   contextualInjections,
   toolCapabilityMode,
+  modeEnvironmentPrompt,
   modePersonaPrompt,
   modePersonaModuleId,
   moduleChatModeId,
@@ -54,6 +55,7 @@ export const estimateContinuationRequestContextTokens = async ({
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
   modePersonaModuleId?: string
   moduleChatModeId?: string
@@ -99,6 +101,7 @@ export const estimateContinuationRequestContextTokens = async ({
     compaction,
     contextualInjections,
     runtimeModePrompt,
+    modeEnvironmentPrompt,
     modePersonaPrompt,
     modePersonaModuleId,
     moduleChatModeId,

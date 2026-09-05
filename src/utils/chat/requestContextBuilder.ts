@@ -584,6 +584,8 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
+    /** Max's environment section — see `ChatModeRuntime.modeEnvironmentPrompt`. */
+    modeEnvironmentPrompt?: string
     /** Module chat mode persona — see `ChatContextPolicy`. */
     modePersonaPrompt?: string
     modePersonaModuleId?: string
@@ -616,6 +618,7 @@ export class RequestContextBuilder {
     compaction,
     contextualInjections,
     runtimeModePrompt,
+    modeEnvironmentPrompt,
     modePersonaPrompt,
     modePersonaModuleId,
     moduleChatModeId,
@@ -633,6 +636,7 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
+    modeEnvironmentPrompt?: string
     modePersonaPrompt?: string
     modePersonaModuleId?: string
     /** Full running mode id — scopes skill resolution to the mode's own
@@ -739,6 +743,7 @@ export class RequestContextBuilder {
           deferredToolCatalogText,
           compaction,
           runtimeModePrompt,
+          modeEnvironmentPrompt,
           modePersonaPrompt,
           modePersonaModuleId,
           moduleChatModeId,
@@ -802,6 +807,7 @@ export class RequestContextBuilder {
     compaction?: ChatConversationCompactionLike | null
     contextualInjections?: ContextualInjection[]
     runtimeModePrompt?: string
+    modeEnvironmentPrompt?: string
     modePersonaPrompt?: string
     modePersonaModuleId?: string
     /** Full running mode id — scopes skill resolution to the mode's own
@@ -1847,6 +1853,7 @@ ${entries}
     deferredToolCatalogText,
     compaction,
     runtimeModePrompt,
+    modeEnvironmentPrompt,
     modePersonaPrompt,
     modePersonaModuleId,
     moduleChatModeId,
@@ -1860,6 +1867,7 @@ ${entries}
     deferredToolCatalogText?: string
     compaction?: ChatConversationCompactionLike | null
     runtimeModePrompt?: string
+    modeEnvironmentPrompt?: string
     modePersonaPrompt?: string
     modePersonaModuleId?: string
     /** Full running mode id — scopes skill resolution to the mode's own
@@ -1879,6 +1887,7 @@ ${entries}
         modePersonaModuleId,
         contextPolicy,
         moduleChatModeId,
+        modeEnvironmentPrompt,
       )
       const systemContent = systemSections
         .map((section) =>
@@ -1904,6 +1913,7 @@ ${entries}
       modePersonaPrompt,
       contextPolicy,
       moduleChatModeId,
+      modeEnvironmentPrompt,
     )
     return store.getOrCreate(conversationId, fingerprint, build, {
       reuseOnly: mode === 'reuse',
@@ -1928,6 +1938,7 @@ ${entries}
     modePersonaPrompt?: string,
     contextPolicy?: ChatContextPolicy,
     moduleChatModeId?: string,
+    modeEnvironmentPrompt?: string,
   ): string {
     // `useAssistant === false` (module chat modes) makes `getCurrentAssistant`
     // return null below, which already changes the `assistant` field of this
@@ -1965,6 +1976,10 @@ ${entries}
       hasOnDemandTools,
       deferredToolCatalogText: deferredToolCatalogText ?? '',
       runtimeModePrompt: runtimeModePrompt?.trim() ?? '',
+      // Switching between Max and another mode changes this text (and only
+      // this text, when the tool grant happens to coincide) — without it the
+      // frozen snapshot would keep serving the previous mode's system prompt.
+      modeEnvironmentPrompt: modeEnvironmentPrompt?.trim() ?? '',
       useAssistant,
       modePersonaPrompt: modePersonaPrompt?.trim() ?? '',
       includeSkills: this.includeSkills,
@@ -2026,6 +2041,7 @@ ${entries}
     modePersonaModuleId?: string,
     contextPolicy?: ChatContextPolicy,
     moduleChatModeId?: string,
+    modeEnvironmentPrompt?: string,
   ): Promise<SystemPromptSections> {
     const sections: SystemPromptSections = []
     const useAssistant = contextPolicy?.useAssistant ?? true
@@ -2079,6 +2095,18 @@ ${entries}
         bucket: 'system',
         id: 'system.runtime-mode',
         content: trimmedRuntimeModePrompt,
+      })
+    }
+
+    // Max's environment (cwd, OS, shell, date, tool discipline) — sits right
+    // after the capability prompt it qualifies, and inside the frozen
+    // snapshot because none of it changes within a conversation.
+    const trimmedModeEnvironmentPrompt = modeEnvironmentPrompt?.trim()
+    if (trimmedModeEnvironmentPrompt) {
+      sections.push({
+        bucket: 'system',
+        id: 'system.max-mode',
+        content: trimmedModeEnvironmentPrompt,
       })
     }
 

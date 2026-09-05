@@ -1,3 +1,6 @@
+import type { App } from 'obsidian'
+
+import { resolveMaxEnvironmentPrompt } from '../../core/agent/max-environment-prompt'
 import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
 import { getToolName } from '../../core/mcp/tool-name-utils'
@@ -12,7 +15,7 @@ import type { Assistant } from '../../types/assistant.types'
 import type { NativeToolPolicy } from '../../types/llm/request'
 
 import type { ChatMode } from './chat-input/ChatModeSelect'
-import { isAgentChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
+import { isModuleChatMode, isToolChatMode } from './chat-input/ChatModeSelect'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,
@@ -63,6 +66,14 @@ export type ChatModeRuntime = {
    * function's doc comment for why this must never be a separately-set flag.
    */
   bashReadOnly: boolean
+  /**
+   * Environment facts the running mode has to state to the model — cwd, OS,
+   * shell, date, tool discipline. Only Max produces one (see
+   * `buildMaxEnvironmentPrompt`); it rides the same runtime → agent input →
+   * `requestContextBuilder` pipeline as `modePersonaPrompt` and lands in its
+   * own `system.max-mode` section.
+   */
+  modeEnvironmentPrompt?: string
   /** Module chat mode persona, injected in place of assistant instructions. */
   modePersonaPrompt?: string
   /** The owning module id, for the persona injection's `module="..."` attribute. */
@@ -96,9 +107,17 @@ export type ChatModeRuntimeInput = {
   mode: ChatMode
   /**
    * Auto-approve tool calls (YOLO). Orthogonal to `mode`; only takes effect in
-   * Agent mode.
+   * the tool modes, Agent and Max, each of which stores its own value (see
+   * `yoloPreferenceKeyForMode`).
    */
   yoloEnabled?: boolean
+  /**
+   * Needed only to describe Max's environment to the model (cwd comes from
+   * the vault's real directory — see `resolveMaxEnvironmentPrompt`). Callers
+   * that can never run Max — Quick Ask, tests of the Ask/Agent/module
+   * branches — omit it; every surface that offers the mode passes it.
+   */
+  app?: App
   assistant?: AssistantRuntimeOptions | null
   assistantEnabledToolNames: string[]
   /**
@@ -121,6 +140,7 @@ const MODULE_CONTEXT_POLICY: ChatContextPolicy = Object.freeze({
 export function resolveChatModeRuntime({
   mode,
   yoloEnabled = false,
+  app,
   assistant,
   assistantEnabledToolNames,
   moduleChatMode,
@@ -129,16 +149,24 @@ export function resolveChatModeRuntime({
     return resolveModuleChatModeRuntime(moduleChatMode)
   }
 
+  const modeEnvironmentPrompt =
+    mode === 'max' && app ? resolveMaxEnvironmentPrompt(app) : undefined
+
   const enableTools = assistant?.enableTools ?? true
   const includeBuiltinTools = enableTools
     ? (assistant?.includeBuiltinTools ?? true)
     : false
 
-  const isAgentMode = isAgentChatMode(mode)
-  // `ChatMode` has no `'max'` yet (S2a adds it), so this only ever resolves
-  // to 'ask' or 'agent' today — `getToolNamesForChatMode` already answers
-  // correctly for all three.
-  const builtinMode: BuiltinChatModeId = isAgentMode ? 'agent' : 'ask'
+  // Which built-in mode's capability grant applies. A module chat mode that
+  // reached here without its registration (the defensive fallback below) is
+  // not a tool mode, so it lands on 'ask'.
+  const builtinMode: BuiltinChatModeId =
+    mode === 'max' ? 'max' : mode === 'agent' ? 'agent' : 'ask'
+  // Max and Agent are the same shape at this layer — the assistant
+  // participates, tools run, YOLO applies. Everything that differs between
+  // them is declared per capability (`chatModes`) and resolved above, not
+  // branched on here.
+  const isToolMode = isToolChatMode(mode)
   const exposedBuiltinToolNames = new Set(getToolNamesForChatMode(builtinMode))
   const allowedToolNames = enableTools
     ? assistantEnabledToolNames.filter(
@@ -154,17 +182,18 @@ export function resolveChatModeRuntime({
       maxAutoIterations: DEFAULT_AGENT_MAX_AUTO_ITERATIONS,
     },
     allowedToolNames,
-    toolPreferences: isAgentMode ? assistant?.toolPreferences : undefined,
-    builtinCapabilityPreferences: isAgentMode
+    toolPreferences: isToolMode ? assistant?.toolPreferences : undefined,
+    builtinCapabilityPreferences: isToolMode
       ? assistant?.builtinCapabilityPreferences
       : undefined,
-    toolServerPreferences: isAgentMode
+    toolServerPreferences: isToolMode
       ? assistant?.toolServerPreferences
       : undefined,
-    bypassToolApproval: isAgentMode && yoloEnabled,
-    toolCapabilityMode: isAgentMode ? 'agent' : 'ask',
+    bypassToolApproval: isToolMode && yoloEnabled,
+    toolCapabilityMode: builtinMode,
     bashReadOnly: false,
     contextPolicy: BUILT_IN_CONTEXT_POLICY,
+    modeEnvironmentPrompt,
   }
 }
 
@@ -175,11 +204,21 @@ export function resolveChatModeRuntime({
  * UI, so the chat mode has to reach them as a policy they can enforce inside
  * their own loop. Ask stays read-only rather than tool-less: the promise is
  * "do not change my vault", not "do not look at it".
+ *
+ * Max maps onto the same policy as Agent, not a wider one: `NativeToolPolicy`
+ * describes what a *provider's own* tools may do, and Max's extra reach comes
+ * entirely from YOLO tools that such a provider never runs. Promising more
+ * here would hand a provider's sandbox permissions we never granted it.
  */
 export function resolveNativeToolPolicy(
   runtime: ChatModeRuntime,
 ): NativeToolPolicy {
-  if (runtime.toolCapabilityMode !== 'agent') return 'read-only'
+  if (
+    runtime.toolCapabilityMode !== 'agent' &&
+    runtime.toolCapabilityMode !== 'max'
+  ) {
+    return 'read-only'
+  }
   return runtime.bypassToolApproval ? 'unrestricted' : 'edit'
 }
 

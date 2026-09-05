@@ -1,6 +1,9 @@
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 
-import { resolveChatModeRuntime } from './chat-runtime-profiles'
+import {
+  resolveChatModeRuntime,
+  resolveNativeToolPolicy,
+} from './chat-runtime-profiles'
 
 function moduleChatMode(
   overrides: Partial<RegisteredModuleChatModeV1['mode']> = {},
@@ -325,6 +328,136 @@ describe('resolveChatModeRuntime', () => {
       'yolo_local__fs_read',
       'yolo_local__todo_write',
     ])
+  })
+
+  // YOLO Max (master.md Q2/Q5/Q8/Q11, p1-design.md §2). Max is the third
+  // built-in mode: same runtime shape as Agent, a different capability grant.
+  describe('max mode', () => {
+    // Everything an assistant could have enabled, so the assertions below
+    // measure what the *mode* grants rather than what the fixture happened to
+    // list.
+    const everyBuiltinTool = [
+      'yolo_local__fs_read',
+      'yolo_local__fs_edit',
+      'yolo_local__fs_write',
+      'yolo_local__bash',
+      'yolo_local__js_eval',
+      'yolo_local__read_file',
+      'yolo_local__write_file',
+      'yolo_local__edit_file',
+      'yolo_local__terminal_command',
+      'yolo_local__todo_write',
+      'yolo_local__memory_add',
+      'yolo_local__web_search',
+      'yolo_local__delegate_subagent',
+      'yolo_local__ask_user_question',
+      'yolo_local__context_compact',
+      'playwright__browser_click',
+    ]
+
+    it('exposes the native file tools and the real terminal, and hides the vault-API tools they replace', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'max',
+        assistant,
+        assistantEnabledToolNames: everyBuiltinTool,
+      })
+
+      expect(runtime.allowedToolNames).toEqual([
+        'yolo_local__read_file',
+        'yolo_local__write_file',
+        'yolo_local__edit_file',
+        'yolo_local__terminal_command',
+        'yolo_local__todo_write',
+        'yolo_local__memory_add',
+        'yolo_local__web_search',
+        'yolo_local__delegate_subagent',
+        'yolo_local__ask_user_question',
+        'yolo_local__context_compact',
+        // Not this layer's business — MCP servers pass through untouched.
+        'playwright__browser_click',
+      ])
+      // The vault-API file tools, the virtual bash, and js_eval are the four
+      // Max drops (Q5/Q11).
+      expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_read')
+      expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_edit')
+      expect(runtime.allowedToolNames).not.toContain('yolo_local__fs_write')
+      expect(runtime.allowedToolNames).not.toContain('yolo_local__bash')
+      expect(runtime.allowedToolNames).not.toContain('yolo_local__js_eval')
+    })
+
+    it('runs the same loop and assistant wiring as agent mode', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'max',
+        assistant,
+        assistantEnabledToolNames,
+      })
+
+      expect(runtime.loopConfig).toEqual({
+        enableTools: true,
+        includeBuiltinTools: true,
+        maxAutoIterations: 100,
+      })
+      expect(runtime.toolPreferences).toEqual(assistant.toolPreferences)
+      expect(runtime.toolServerPreferences).toEqual(
+        assistant.toolServerPreferences,
+      )
+      expect(runtime.bashReadOnly).toBe(false)
+      expect(runtime.contextPolicy).toEqual({ useAssistant: true })
+      expect(runtime.toolCapabilityMode).toBe('max')
+    })
+
+    it('honours its own YOLO flag', () => {
+      expect(
+        resolveChatModeRuntime({
+          mode: 'max',
+          assistant,
+          assistantEnabledToolNames,
+        }).bypassToolApproval,
+      ).toBe(false)
+      expect(
+        resolveChatModeRuntime({
+          mode: 'max',
+          yoloEnabled: true,
+          assistant,
+          assistantEnabledToolNames,
+        }).bypassToolApproval,
+      ).toBe(true)
+    })
+
+    it('carries no environment prompt without an app to read the vault path from', () => {
+      // S2a call sites all pass `app`; omitting it is what the module-branch
+      // and policy tests here do, and it must not throw.
+      expect(
+        resolveChatModeRuntime({
+          mode: 'max',
+          assistant,
+          assistantEnabledToolNames,
+        }).modeEnvironmentPrompt,
+      ).toBeUndefined()
+    })
+  })
+
+  describe('resolveNativeToolPolicy', () => {
+    const policyFor = (mode: 'ask' | 'agent' | 'max', yoloEnabled = false) =>
+      resolveNativeToolPolicy(
+        resolveChatModeRuntime({
+          mode,
+          yoloEnabled,
+          assistant,
+          assistantEnabledToolNames,
+        }),
+      )
+
+    it('promises a provider-run toolset no more than Agent does, even in Max', () => {
+      expect(policyFor('ask')).toBe('read-only')
+      expect(policyFor('agent')).toBe('edit')
+      expect(policyFor('max')).toBe('edit')
+    })
+
+    it('lifts the restriction in Max under YOLO, same as Agent', () => {
+      expect(policyFor('agent', true)).toBe('unrestricted')
+      expect(policyFor('max', true)).toBe('unrestricted')
+    })
   })
 
   // YOLO Max S1/S1b (master.md §6, p1-design.md §2/§3): the `native_files`

@@ -146,6 +146,7 @@ export const estimateContextBreakdown = async ({
   toolServerPreferences,
   contextualInjections,
   toolCapabilityMode,
+  modeEnvironmentPrompt,
   modePersonaPrompt,
   modePersonaModuleId,
   moduleChatModeId,
@@ -165,6 +166,7 @@ export const estimateContextBreakdown = async ({
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
   modePersonaModuleId?: string
   moduleChatModeId?: string
@@ -208,6 +210,7 @@ export const estimateContextBreakdown = async ({
     compaction,
     contextualInjections,
     runtimeModePrompt,
+    modeEnvironmentPrompt,
     modePersonaPrompt,
     modePersonaModuleId,
     moduleChatModeId,

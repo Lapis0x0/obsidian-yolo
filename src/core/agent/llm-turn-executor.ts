@@ -84,6 +84,7 @@ type AgentLlmTurnExecutorInput = {
   }
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
   modePersonaModuleId?: string
   moduleChatModeId?: string
@@ -282,6 +283,7 @@ export class AgentLlmTurnExecutor {
           compaction: this.input.compaction,
           contextualInjections: this.input.contextualInjections,
           runtimeModePrompt,
+          modeEnvironmentPrompt: this.input.modeEnvironmentPrompt,
           modePersonaPrompt: this.input.modePersonaPrompt,
           modePersonaModuleId: this.input.modePersonaModuleId,
           moduleChatModeId: this.input.moduleChatModeId,

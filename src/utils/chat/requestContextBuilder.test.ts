@@ -2990,6 +2990,7 @@ describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
       contextPolicy?: { useAssistant: boolean }
       modePersonaPrompt?: string
       modePersonaModuleId?: string
+      modeEnvironmentPrompt?: string
       store?: SystemPromptSnapshotStore
     },
   ): Promise<string> {
@@ -3013,6 +3014,7 @@ describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
       contextPolicy: opts.contextPolicy,
       modePersonaPrompt: opts.modePersonaPrompt,
       modePersonaModuleId: opts.modePersonaModuleId,
+      modeEnvironmentPrompt: opts.modeEnvironmentPrompt,
     })
     const system = requestMessages.find((m) => m.role === 'system')
     expect(system).toBeDefined()
@@ -3100,6 +3102,35 @@ describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
     )
     expect(moduleModePersonaChanged).not.toEqual(moduleMode)
     expect(moduleModePersonaChanged).toContain('Persona V2')
+  })
+
+  it('emits the mode environment section and refreshes the frozen snapshot when it changes', async () => {
+    const store = new SystemPromptSnapshotStore()
+
+    const agentMode = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-mode-environment',
+      store,
+    })
+    expect(agentMode).not.toContain('<max_environment>')
+
+    // Same conversation, same everything else — switching into Max must not
+    // keep serving the previous mode's frozen system prompt.
+    const maxMode = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-mode-environment',
+      store,
+      modeEnvironmentPrompt: '<max_environment>cwd: /vault</max_environment>',
+    })
+    expect(maxMode).toContain('<max_environment>cwd: /vault</max_environment>')
+
+    const maxModeElsewhere = await buildSystemContent(settingsWithAssistant, {
+      conversationId: 'conv-mode-environment',
+      store,
+      modeEnvironmentPrompt: '<max_environment>cwd: /other</max_environment>',
+    })
+    expect(maxModeElsewhere).toContain(
+      '<max_environment>cwd: /other</max_environment>',
+    )
+    expect(maxModeElsewhere).not.toContain('/vault')
   })
 })
 

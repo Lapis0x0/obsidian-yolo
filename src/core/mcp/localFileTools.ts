@@ -73,6 +73,13 @@ export const LOCAL_FS_SPLIT_ACTION_TOOL_NAMES = Object.keys(
 
 export const LOCAL_FS_EDIT_TOOL_NAMES = ['fs_edit', 'fs_write'] as const
 
+/**
+ * The `native_files` counterparts of `LOCAL_FS_EDIT_TOOL_NAMES` — the tools
+ * that stand for "this run can edit files" in Max, where the vault-backed
+ * ones are not exposed at all.
+ */
+export const NATIVE_FS_EDIT_TOOL_NAMES = ['edit_file', 'write_file'] as const
+
 export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
   'memory_add',
   'memory_update',

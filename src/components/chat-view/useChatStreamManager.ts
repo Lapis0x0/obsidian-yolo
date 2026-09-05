@@ -440,6 +440,7 @@ export function useChatStreamManager({
         resolveChatModeRuntime({
           mode: chatMode,
           yoloEnabled,
+          app,
           assistant: selectedAssistant,
           assistantEnabledToolNames: getEnabledAssistantToolNames(
             selectedAssistant,
@@ -524,6 +525,7 @@ export function useChatStreamManager({
           compaction: manualCompaction,
           contextualInjections: manualContextualInjections,
           runtimeModePrompt,
+          modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
           modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
           modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
           moduleChatModeId: chatModeRuntime.moduleChatModeId,
@@ -567,6 +569,7 @@ export function useChatStreamManager({
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
             contextualInjections: manualContextualInjections,
+            modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
             modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
             modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
             moduleChatModeId: chatModeRuntime.moduleChatModeId,
@@ -717,6 +720,7 @@ export function useChatStreamManager({
           resolveChatModeRuntime({
             mode: chatMode,
             yoloEnabled,
+            app,
             assistant: selectedAssistant,
             assistantEnabledToolNames: getEnabledAssistantToolNames(
               selectedAssistant,
@@ -813,6 +817,7 @@ export function useChatStreamManager({
           bashReadOnly: chatModeRuntime.bashReadOnly,
           moduleToolApprovalPolicies:
             chatModeRuntime.moduleToolApprovalPolicies,
+          modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
           modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
           modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
           moduleChatModeId: chatModeRuntime.moduleChatModeId,
@@ -1073,6 +1078,7 @@ export function useChatStreamManager({
       const chatModeRuntime = resolveChatModeRuntime({
         mode: chatMode,
         yoloEnabled,
+        app,
         assistant: selectedAssistant,
         assistantEnabledToolNames: getEnabledAssistantToolNames(
           selectedAssistant,
@@ -1099,6 +1105,7 @@ export function useChatStreamManager({
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+        modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
         modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
         modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
         moduleChatModeId: chatModeRuntime.moduleChatModeId,

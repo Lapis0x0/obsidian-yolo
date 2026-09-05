@@ -101,6 +101,13 @@ export type AgentRuntimeRunInput = {
   allowedSkillPaths?: string[]
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
+  /**
+   * Environment facts the running mode states to the model (cwd, OS, shell,
+   * date, tool discipline). Only Max supplies one — see
+   * `buildMaxEnvironmentPrompt`. Rendered as its own `system.max-mode`
+   * section, not folded into the persona or the capability prompt.
+   */
+  modeEnvironmentPrompt?: string
   /** Module chat mode persona, injected in place of assistant instructions. */
   modePersonaPrompt?: string
   /** The owning module id, for the persona injection's `module="..."` attribute. */
