@@ -14,7 +14,9 @@ describe('buildMaxEnvironmentPrompt', () => {
 
     // Without the cwd the model cannot know what a relative path means, and
     // no other system section carries it.
-    expect(prompt).toContain('Working directory: /Users/me/Notes')
+    expect(prompt).toContain(
+      "Working directory (the user's Obsidian vault): /Users/me/Notes",
+    )
     expect(prompt).toContain('darwin (arm64)')
     expect(prompt).toContain('Shell: posix')
     expect(prompt).toContain('Today: 2026-09-05')
@@ -22,11 +24,14 @@ describe('buildMaxEnvironmentPrompt', () => {
     expect(prompt.endsWith('</max_environment>')).toBe(true)
   })
 
-  it('names the vault-API tools it must not call, since both toolsets do "edit a file"', () => {
+  it('never mentions the mode name or the tools of other modes', () => {
     const prompt = buildMaxEnvironmentPrompt(facts)
 
-    expect(prompt).toContain('read_file, write_file and edit_file')
-    expect(prompt).toContain('fs_read, fs_edit, fs_write, bash')
+    // The model in a Max run has never seen fs_read/bash or "Agent mode";
+    // naming them here would only plant identifiers it must not use, and
+    // "not the vault API" carries no information for it either.
+    expect(prompt).not.toMatch(/Max mode|Agent mode|vault API/i)
+    expect(prompt).not.toMatch(/\bfs_(read|edit|write)\b|\bbash\b/)
   })
 
   it('carries the tool discipline the mode depends on being followed', () => {

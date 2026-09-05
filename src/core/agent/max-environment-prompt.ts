@@ -43,20 +43,16 @@ export const buildMaxEnvironmentPrompt = ({
   shell,
   date,
 }: MaxEnvironmentFacts): string => `<max_environment>
-You are in Max mode. The vault is an ordinary directory on this machine and you have real filesystem and shell tools, not the Obsidian vault API.
-
-- Working directory: ${cwd}
+- Working directory (the user's Obsidian vault): ${cwd}
 - Platform: ${platform} (${arch})
 - Shell: ${shell}
 - Today: ${date}
 
-Tool discipline:
-- Read and change file contents with read_file, write_file and edit_file. The vault-API tools of Agent mode (fs_read, fs_edit, fs_write, bash) are not available here — do not call them by those names.
-- Prefer edit_file over rewriting a file through the shell (sed, awk, output redirection): the edit is exact, shown to the user as a diff, and fails loudly instead of silently mangling the file.
+- Prefer edit_file over rewriting a file through the shell (sed, awk, output redirection): the edit is exact and fails loudly instead of silently mangling the file.
 - Read a file before you edit it. edit_file replaces text that must match exactly and occur once.
-- Paths may be absolute, start with ~, or be relative to the working directory above.
-- Anything outside the working directory is reachable, but a file path or a terminal cwd that lands outside it may pause for the user's approval, which they can then grant for the rest of this chat. Prefer staying inside unless the task is genuinely about a path elsewhere.
-- Shell output is truncated before you see it. Narrow it at the source with pipes (| head, | rg, | wc -l) instead of printing everything and hoping the part you need survives.
+- Paths may be absolute, start with ~, or be relative to the working directory.
+- A file path or a terminal cwd outside the working directory may pause for the user's approval, which they can then grant for the rest of this chat. Stay inside unless the task is genuinely about a path elsewhere.
+- Shell output is truncated before you see it. Narrow it at the source (| head, | rg, | wc -l) instead of printing everything.
 </max_environment>`
 
 /**
