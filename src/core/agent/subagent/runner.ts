@@ -20,8 +20,8 @@ import type { AgentConversationState } from '../service'
 import type { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from '../types'
 
 import {
-  SUBAGENT_DEFAULT_SYSTEM_PROMPT,
   SUBAGENT_MAX_AUTO_ITERATIONS,
+  buildSubagentSystemPrompt,
 } from './constants'
 import type { SubagentParentContext } from './parent-context'
 import { subagentRuntimeRegistry } from './runtime-registry'
@@ -285,9 +285,16 @@ async function runChildAgent(
     reasoningLevel: parent.reasoningLevel,
     requestParams: parent.requestParams,
     abortSignal: abortController.signal,
-    systemPromptOverride: SUBAGENT_DEFAULT_SYSTEM_PROMPT,
+    systemPromptOverride: buildSubagentSystemPrompt(
+      parent.modeEnvironmentPrompt,
+    ),
     toolApprovalConversationId: parent.conversationId,
     bypassToolApproval: parent.bypassToolApproval,
+    capabilityOverrides: parent.capabilityOverrides,
+    vaultPathBoundary: parent.vaultPathBoundary,
+    // Not `modeEnvironmentPrompt` as well: it is already folded into the
+    // override above, and the section pipeline is skipped for this run.
+    toolCapabilityMode: parent.toolCapabilityMode,
   }
 
   const unsubscribe = runtime.subscribe((snapshot) => {

@@ -18,6 +18,23 @@ Guidelines:
 - Prefer focused research, inspection, summarization, or second-opinion work within the task boundary.`
 
 /**
+ * A child's full system prompt. `systemPromptOverride` deliberately replaces
+ * the whole section pipeline (see `RequestContextBuilder`), so anything the
+ * parent's mode has to state about the environment — Max's cwd, platform,
+ * shell and tool discipline — has to be appended here or the child never
+ * learns it (docs/plans/09-05-yolo-max/master.md §4 Q11). Ask and Agent
+ * produce no such section and the prompt is unchanged for them.
+ */
+export const buildSubagentSystemPrompt = (
+  modeEnvironmentPrompt?: string,
+): string => {
+  const environment = modeEnvironmentPrompt?.trim()
+  return environment
+    ? `${SUBAGENT_DEFAULT_SYSTEM_PROMPT}\n\n${environment}`
+    : SUBAGENT_DEFAULT_SYSTEM_PROMPT
+}
+
+/**
  * Baseline tools blocked for every child subagent run regardless of settings:
  * `delegate_subagent` (no recursive subagent dispatch) and `ask_user_question`
  * (no UI surface to render the prompt). These are runtime-enforced.

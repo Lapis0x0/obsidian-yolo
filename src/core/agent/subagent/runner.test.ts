@@ -1,6 +1,12 @@
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type { NativeAgentRuntime } from '../native-runtime'
+import type { AgentRuntimeRunInput } from '../types'
 
+import {
+  SUBAGENT_DEFAULT_SYSTEM_PROMPT,
+  buildSubagentSystemPrompt,
+} from './constants'
+import { buildSubagentParentContext } from './parent-context'
 import {
   autoRejectPendingApprovals,
   buildSubagentContinuationInput,
@@ -155,5 +161,56 @@ describe('buildSubagentContinuationInput', () => {
     const continuation = buildSubagentContinuationInput(input)
 
     expect(continuation.requestMessages).toBe(messages)
+  })
+})
+
+// A subagent inherits the parent's mode, not just its tool names
+// (docs/plans/09-05-yolo-max/master.md §4 Q11).
+describe('subagent inherits the parent chat mode', () => {
+  const capabilityOverrides = new Map([
+    ['native_files', { forceEnabled: true }],
+    ['terminal', { forceEnabled: true, allowAlwaysAllow: true }],
+  ])
+  const vaultPathBoundary = {
+    vaultBasePath: '/home/me/vault',
+    homeDir: '/home/me',
+  }
+
+  it('carries the mode grant, the vault boundary and the environment through the parent context', () => {
+    const parent = buildSubagentParentContext(
+      {
+        conversationId: 'conv-1',
+        allowedToolNames: ['yolo_local__terminal_command'],
+        bypassToolApproval: true,
+        capabilityOverrides,
+        vaultPathBoundary,
+        toolCapabilityMode: 'max',
+        modeEnvironmentPrompt: '<max_environment>…</max_environment>',
+      } as unknown as AgentRuntimeRunInput,
+      { enableTools: true, includeBuiltinTools: true, maxAutoIterations: 100 },
+    )
+
+    expect(parent).toMatchObject({
+      capabilityOverrides,
+      vaultPathBoundary,
+      toolCapabilityMode: 'max',
+      modeEnvironmentPrompt: '<max_environment>…</max_environment>',
+      // The trust tier the parent is running under travels too.
+      bypassToolApproval: true,
+    })
+  })
+
+  it('appends the parent mode environment to the subagent system prompt', () => {
+    expect(buildSubagentSystemPrompt('<max_environment>cwd</max_environment>'))
+      .toBe(`${SUBAGENT_DEFAULT_SYSTEM_PROMPT}
+
+<max_environment>cwd</max_environment>`)
+  })
+
+  it('leaves the subagent prompt untouched for a mode with no environment section', () => {
+    expect(buildSubagentSystemPrompt()).toBe(SUBAGENT_DEFAULT_SYSTEM_PROMPT)
+    expect(buildSubagentSystemPrompt('   ')).toBe(
+      SUBAGENT_DEFAULT_SYSTEM_PROMPT,
+    )
   })
 })
