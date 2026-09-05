@@ -4047,7 +4047,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
 
 .yolo-chat-mode-select-item[data-state='checked']
   .yolo-chat-mode-select-item__icon,
-.yolo-chat-mode-agent-card[data-state='checked']
+.yolo-chat-mode-toggle-card[data-state='checked']
   .yolo-chat-mode-select-item__icon,
 .yolo-chat-mode-select-item[data-highlighted]
   .yolo-chat-mode-select-item__icon {
@@ -4057,7 +4057,7 @@ button.yolo-chat-user-input-submit-button-circle.is-stop:hover:not(:disabled) {
 /* Self-drawn dropdown rows: Ask remains a plain button; every tool mode
  * (Agent, Max — see `isToolChatMode`) hosts its own YOLO switch while the
  * outer row keeps the same popover-item sizing as before. Cards are told
- * apart by `data-mode`, so the shared `.yolo-chat-mode-agent-card` block
+ * apart by `data-mode`, so the shared `.yolo-chat-mode-toggle-card` block
  * styles both. */
 button.yolo-chat-mode-select-item {
   width: 100%;
@@ -4098,26 +4098,26 @@ button.yolo-chat-mode-select-item[data-state='checked'] {
     color-mix(in srgb, var(--background-modifier-border) 60%, transparent) !important;
 }
 
-.yolo-chat-mode-agent-card {
+.yolo-chat-mode-toggle-card {
   display: flex;
   align-items: flex-start;
   gap: 10px;
 }
 
-.yolo-chat-mode-agent-card:focus-visible {
+.yolo-chat-mode-toggle-card:focus-visible {
   outline: none;
   box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
   border-radius: var(--radius-s);
 }
 
-.yolo-chat-mode-agent-card__title-row {
+.yolo-chat-mode-toggle-card__title-row {
   display: flex;
   align-items: center;
   gap: 10px;
   min-width: 0;
 }
 
-.yolo-chat-mode-agent-card__title-row .yolo-chat-mode-select-item__label {
+.yolo-chat-mode-toggle-card__title-row .yolo-chat-mode-select-item__label {
   flex: 0 0 auto;
 }
 

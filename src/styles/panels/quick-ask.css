@@ -477,7 +477,7 @@ button.yolo-quick-ask-continue-menu-item:focus {
 }
 
 .yolo-quick-ask-mode-popover button.yolo-chat-mode-select-item:focus-visible,
-.yolo-quick-ask-mode-popover .yolo-chat-mode-agent-card:focus-visible {
+.yolo-quick-ask-mode-popover .yolo-chat-mode-toggle-card:focus-visible {
   box-shadow: inset 0 0 0 2px var(--interactive-accent) !important;
 }
 

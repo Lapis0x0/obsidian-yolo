@@ -692,7 +692,7 @@ export const ChatModeSelect = forwardRef<
                     role="menuitemradio"
                     tabIndex={0}
                     aria-checked={isSelected}
-                    className="yolo-popover-item yolo-chat-mode-agent-card"
+                    className="yolo-popover-item yolo-chat-mode-toggle-card"
                     data-mode={option.value}
                     data-state={isSelected ? 'checked' : 'unchecked'}
                     ref={(element) => {
@@ -713,7 +713,7 @@ export const ChatModeSelect = forwardRef<
                       {option.icon}
                     </span>
                     <span className="yolo-chat-mode-select-item__content">
-                      <span className="yolo-chat-mode-agent-card__title-row">
+                      <span className="yolo-chat-mode-toggle-card__title-row">
                         <span className="yolo-chat-mode-select-item__label">
                           {t(option.labelKey, option.labelFallback)}
                         </span>
