@@ -249,6 +249,18 @@ export function RuntimeSelector({
     }
   }
 
+  /**
+   * A variant switch changes the runtime like any other pick, but leaves the
+   * menu open so its own state — and the check moving onto this row — is
+   * visible right where it was flipped. Same contract as the mode picker's
+   * YOLO switches (`ChatModeSelect`).
+   */
+  const switchVariant = (runtimeId: CliRuntimeId) => {
+    if (runtimeId !== currentRuntimeId) {
+      onRuntimeChange(runtimeId)
+    }
+  }
+
   const focusNavItem = (key: NavKey | undefined) => {
     const target = key ? itemRefs.current[key] : null
     if (!target) return
@@ -330,6 +342,14 @@ export function RuntimeSelector({
         onKeyDown={handleMenuKeyDown}
         onMouseEnter={clearHoverCloseTimeout}
         onMouseLeave={closeMenuWithDelay}
+        onFocusOutside={(event) => {
+          // Switching runtime rebuilds the conversation, and the fresh chat
+          // input autofocuses — a focus move the dismissable layer would
+          // otherwise read as "the user left" and close on, taking the menu
+          // down the instant a variant switch is flipped inside it. Pointer
+          // outside, Escape, and mouse-leave still close it.
+          event.preventDefault()
+        }}
       >
         <DropdownMenu.Label id={menuLabelId} className="yolo-sr-only">
           {t('sidebar.runtimeSelector.menuLabel')}
@@ -408,14 +428,14 @@ export function RuntimeSelector({
                             }}
                             onClick={(event) => {
                               event.stopPropagation()
-                              selectRuntime(toggleTargetId)
+                              switchVariant(toggleTargetId)
                             }}
                             onKeyDown={(event) => {
                               if (event.key !== 'Enter' && event.key !== ' ')
                                 return
                               event.preventDefault()
                               event.stopPropagation()
-                              selectRuntime(toggleTargetId)
+                              switchVariant(toggleTargetId)
                             }}
                           >
                             <span className="yolo-runtime-selector__variant-toggle-label">
@@ -432,12 +452,17 @@ export function RuntimeSelector({
                       },
                     )}
                   </span>
-                  <span className="yolo-runtime-selector__option-description">
-                    {t(row.primary.descriptionKey)}
+                  {/* The check rides the description line rather than the row,
+                      so it sits directly under the variant switches instead of
+                      pushing them in off the row's right edge. */}
+                  <span className="yolo-runtime-selector__option-description-row">
+                    <span className="yolo-runtime-selector__option-description">
+                      {t(row.primary.descriptionKey)}
+                    </span>
+                    <span className="yolo-popover-item__indicator">
+                      <Check size={12} aria-hidden="true" />
+                    </span>
                   </span>
-                </span>
-                <span className="yolo-popover-item__indicator">
-                  <Check size={12} aria-hidden="true" />
                 </span>
               </div>
             )

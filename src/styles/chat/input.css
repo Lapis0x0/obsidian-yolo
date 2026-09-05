@@ -217,6 +217,27 @@ button.yolo-runtime-selector[data-compact='true']
   flex: 0 1 auto;
 }
 
+/* 描述与对钩同一行，对钩靠右 —— 与标题行右端的变体开关上下对齐。
+   这里只管对钩在本组件内的排布；它的颜色 / 选中显隐仍归
+   src/styles/chat/popover.css 的 .yolo-popover-item__indicator。 */
+.yolo-runtime-selector__option-description-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.yolo-runtime-selector__option-description-row
+  > .yolo-runtime-selector__option-description {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.yolo-runtime-selector__option-description-row > .yolo-popover-item__indicator {
+  flex: 0 0 auto;
+  margin-left: auto;
+}
+
 /* 家族变体开关：视觉语汇对齐对话模式弹窗里的 YOLO 开关。
    这里是 <button>，Obsidian 全局 button 样式会盖上 border / background /
    box-shadow，必须 !important 复位（与 .yolo-chat-mode-yolo-toggle 同一原因）。 */
