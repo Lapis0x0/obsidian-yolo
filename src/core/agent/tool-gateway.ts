@@ -45,6 +45,17 @@ import {
 import { McpManager } from '../mcp/mcpManager'
 import { parseToolName } from '../mcp/tool-name-utils'
 import { unwrapInvokeToolArguments } from '../tools/internal/invoke_tool/definition'
+import {
+  type NativePathBoundary,
+  OUTSIDE_VAULT_ALLOWANCE_KEY,
+  isInsideVault,
+  resolveNativePathWithin,
+} from '../tools/native/paths'
+import {
+  getCapabilityOverrideForTool,
+  getToolDefinition,
+} from '../tools/registry'
+import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import {
   DEFAULT_BLOCKED_PREFIXES,
@@ -175,6 +186,9 @@ const getRequiredLocalWriteArgumentNames = (toolName: string): string[] => {
 const getToolCallDiagnostics = (request: ToolCallRequest) =>
   request.metadata?.argumentDiagnostics
 
+const nonEmptyOrUndefined = <T extends object>(value: T): T | undefined =>
+  Object.keys(value).length === 0 ? undefined : value
+
 const getLocalWriteToolShortName = (toolCallName: string): string | null => {
   try {
     const parsed = parseToolName(toolCallName)
@@ -280,6 +294,20 @@ export class AgentToolGateway {
   private readonly bypassToolApproval: boolean
   private readonly bashReadOnly: boolean
   private readonly moduleToolApprovalPolicies?: ReadonlyMap<string, boolean>
+  /**
+   * The running chat mode's own capability grant — see
+   * `ChatModeCapabilityOverride`. Produced by `resolveChatModeRuntime` and
+   * threaded down to `McpManager` as well, because a capability the mode
+   * forces on has to be both offered to the model and executable.
+   */
+  private readonly capabilityOverrides?: ChatModeCapabilityOverrides
+  /**
+   * Where the vault is and what `~` means, for the outside-the-vault
+   * approval (master.md §4 Q7/Q10). Present only for a mode that enforces
+   * that boundary (Max); absent everywhere else, which is what keeps Agent's
+   * long-standing terminal behavior unchanged.
+   */
+  private readonly vaultPathBoundary?: NativePathBoundary
   private readonly ajv: AjvInstance
   private readonly schemaValidatorCache = new Map<
     string,
@@ -304,6 +332,8 @@ export class AgentToolGateway {
       bypassToolApproval?: boolean
       bashReadOnly?: boolean
       moduleToolApprovalPolicies?: ReadonlyMap<string, boolean>
+      capabilityOverrides?: ChatModeCapabilityOverrides
+      vaultPathBoundary?: NativePathBoundary
     },
   ) {
     this.toolsEnabled = options?.toolsEnabled ?? true
@@ -326,6 +356,8 @@ export class AgentToolGateway {
     this.bypassToolApproval = options?.bypassToolApproval ?? false
     this.bashReadOnly = options?.bashReadOnly ?? false
     this.moduleToolApprovalPolicies = options?.moduleToolApprovalPolicies
+    this.capabilityOverrides = options?.capabilityOverrides
+    this.vaultPathBoundary = options?.vaultPathBoundary
     // `strict: false` keeps ajv tolerant of MCP tool schemas that include
     // vendor-specific keywords or non-canonical types. `allErrors` lists every
     // violation in the error message so the model has enough signal to retry;
@@ -366,6 +398,7 @@ export class AgentToolGateway {
     // so omitting it is safe for harness validation.
     const tools = await this.mcpManager.listAvailableTools({
       includeBuiltinTools: true,
+      capabilityOverrides: this.capabilityOverrides,
     })
     return tools.find((tool) => tool.name === toolName) ?? null
   }
@@ -615,36 +648,57 @@ export class AgentToolGateway {
   }
 
   /**
-   * Fixes the module chat mode approval/execution snapshot onto a tool call
-   * request at creation time — see `ToolCallRequest.metadata.approvalPolicy`
-   * / `.executionConstraints`. A no-op (returns `request` unchanged) for
-   * every non-module-chat-mode run, since `moduleToolApprovalPolicies` is
-   * only ever set by `resolveModuleChatModeRuntime`.
+   * Everything about the *running mode* that a tool call has to keep after
+   * the run that created it is fixed here, at creation time, and read back
+   * off `ToolCallRequest.metadata` afterwards — by the gateway's own initial
+   * state, by the two execution paths that bypass the gateway
+   * (`AgentService.approveToolCall` and the UI's recovery path), and by the
+   * approval card. Nothing downstream re-derives it from a live registry or
+   * a live mode, so reloading, upgrading or switching modes never changes the
+   * outcome of a call that already exists.
    *
-   * `approvalPolicy` is written only for tools the mode itself declared
-   * (i.e. present as a key in `moduleToolApprovalPolicies`) — host tools
-   * granted via the mode's capability tier (bash, fs_edit, ...) are not in
-   * that map and keep following the normal approval resolution.
-   * `executionConstraints.bashReadOnly` is written for every bash-identity
-   * call in a module chat mode run, regardless of whether it's a mode tool.
+   * Three independent facts, each written only when it applies:
+   *   - `approvalPolicy` / `executionConstraints`: module chat modes only
+   *     (`moduleToolApprovalPolicies` is set by
+   *     `resolveModuleChatModeRuntime` and nothing else). `approvalPolicy` is
+   *     written only for tools the mode itself declared — host tools granted
+   *     through the mode's capability tier keep normal approval resolution;
+   *     `bashReadOnly` is written for every bash-identity call in such a run.
+   *   - `allowAlwaysAllow`: the mode's override of the owning capability's
+   *     `approval.allowAlwaysAllow` declaration (master.md §4 Q8 — Max opens
+   *     "always allow" on the terminal).
+   *   - `outsideVaultPath`: the resolved absolute path this call reaches
+   *     outside the vault (master.md §4 Q7/Q10).
    */
-  private attachModuleChatModeSnapshot(
-    request: ToolCallRequest,
-  ): ToolCallRequest {
-    if (!this.moduleToolApprovalPolicies) {
-      return request
-    }
-    const requiresApproval = this.moduleToolApprovalPolicies.get(request.name)
+  private attachChatModeSnapshot(request: ToolCallRequest): ToolCallRequest {
+    const requiresApproval = this.moduleToolApprovalPolicies?.get(request.name)
     const approvalPolicy: 'auto' | 'always-require-user' | undefined =
       requiresApproval === undefined
         ? undefined
         : requiresApproval
           ? 'always-require-user'
           : 'auto'
-    const executionConstraints = this.isBashToolCall(request.name)
-      ? { bashReadOnly: this.bashReadOnly }
-      : undefined
-    if (approvalPolicy === undefined && executionConstraints === undefined) {
+    // Both facts the two gateway-bypassing execution paths cannot re-derive:
+    // the module mode's bash tier, and whether the running mode granted this
+    // call's capability past the user's global switch.
+    const executionConstraints = nonEmptyOrUndefined({
+      ...(this.moduleToolApprovalPolicies && this.isBashToolCall(request.name)
+        ? { bashReadOnly: this.bashReadOnly }
+        : {}),
+      ...(this.resolveCapabilityOverride(request.name)?.forceEnabled
+        ? { capabilityForceEnabled: true }
+        : {}),
+    })
+    const allowAlwaysAllow = this.resolveCapabilityOverride(
+      request.name,
+    )?.allowAlwaysAllow
+    const outsideVaultPath = this.findPathOutsideVault(request) ?? undefined
+    if (
+      approvalPolicy === undefined &&
+      executionConstraints === undefined &&
+      allowAlwaysAllow === undefined &&
+      outsideVaultPath === undefined
+    ) {
       return request
     }
     return {
@@ -653,7 +707,53 @@ export class AgentToolGateway {
         ...request.metadata,
         ...(approvalPolicy !== undefined ? { approvalPolicy } : {}),
         ...(executionConstraints !== undefined ? { executionConstraints } : {}),
+        ...(allowAlwaysAllow !== undefined ? { allowAlwaysAllow } : {}),
+        ...(outsideVaultPath !== undefined ? { outsideVaultPath } : {}),
       },
+    }
+  }
+
+  /** The running mode's override for the capability owning this tool, if any. */
+  private resolveCapabilityOverride(toolName: string) {
+    if (!this.capabilityOverrides) return undefined
+    try {
+      const parsed = parseToolName(toolName)
+      if (parsed.serverName !== getLocalFileToolServerName()) return undefined
+      return getCapabilityOverrideForTool(
+        this.capabilityOverrides,
+        parsed.toolName,
+      )
+    } catch {
+      return undefined
+    }
+  }
+
+  /**
+   * The absolute path this call reaches when it lands outside the vault, or
+   * null. Reads which argument carries a real filesystem path off the tool's
+   * own `filesystemPathArg` declaration, and resolves it with exactly the
+   * function the tool will use, against exactly the boundary the tool will
+   * use — the check and the write must not be able to disagree.
+   *
+   * Null when the mode enforces no boundary (`vaultPathBoundary` absent),
+   * when the tool declares no filesystem path, when the argument is missing,
+   * and when the path cannot be resolved at all: an unresolvable path throws
+   * identically inside the tool, so there is nothing here to approve.
+   */
+  private findPathOutsideVault(request: ToolCallRequest): string | null {
+    const boundary = this.vaultPathBoundary
+    if (!boundary) return null
+    try {
+      const parsed = parseToolName(request.name)
+      if (parsed.serverName !== getLocalFileToolServerName()) return null
+      const argKey = getToolDefinition(parsed.toolName)?.filesystemPathArg
+      if (!argKey) return null
+      const raw = getToolCallArgumentsObject(request.arguments)?.[argKey]
+      if (typeof raw !== 'string' || raw.trim() === '') return null
+      const resolved = resolveNativePathWithin(boundary, raw)
+      return isInsideVault(resolved, boundary.vaultBasePath) ? null : resolved
+    } catch {
+      return null
     }
   }
 
@@ -679,7 +779,7 @@ export class AgentToolGateway {
     //
     // The order within this pipeline is load-bearing. Argument parsing has to
     // come first, because the wrapped name and arguments live inside the
-    // parsed payload. `attachModuleChatModeSnapshot` has to come *last*,
+    // parsed payload. `attachChatModeSnapshot` has to come *last*,
     // because it looks a tool up by name to find its declared approval
     // policy — run against the envelope it would silently miss a module tool's
     // `always-require-user` and let the user grant a blanket allow.
@@ -690,7 +790,7 @@ export class AgentToolGateway {
       return unwrapped.ok
         ? {
             ok: true as const,
-            request: this.attachModuleChatModeSnapshot(unwrapped.request),
+            request: this.attachChatModeSnapshot(unwrapped.request),
           }
         : unwrapped
     })
@@ -839,6 +939,26 @@ export class AgentToolGateway {
       }
     }
 
+    // Reaching outside the vault is its own permission, asked once and then
+    // held for the whole conversation (master.md §4 Q7). It sits after the
+    // unconditional blocked-prefix rejection above and before every approval
+    // tier below, because it is a question about *where* the call lands, not
+    // about how much the user trusts the tool: `full_access` on native_files
+    // must not silently authorize a write to somewhere else on the machine.
+    // Full trust (YOLO) skips it, exactly as it skips every other approval —
+    // the blocked-prefix hard stop above is the only thing it never skips.
+    const outsideVaultPath = request.metadata?.outsideVaultPath
+    if (
+      outsideVaultPath !== undefined &&
+      !this.bypassToolApproval &&
+      !this.mcpManager.isExecutionAllowanceGranted(
+        OUTSIDE_VAULT_ALLOWANCE_KEY,
+        this.toolApprovalConversationId ?? conversationId,
+      )
+    ) {
+      return { status: ToolCallResponseStatus.PendingApproval }
+    }
+
     if (isAskRequest === 'primary-ask') {
       const validation = validateAskUserQuestionArgs(
         getToolCallArgumentsObject(request.arguments) ?? {},
@@ -853,7 +973,7 @@ export class AgentToolGateway {
     }
 
     // Module chat mode tools carry a persisted approval policy fixed at
-    // creation time (see `attachModuleChatModeSnapshot`). It fully replaces
+    // creation time (see `attachChatModeSnapshot`). It fully replaces
     // the normal approval resolution below — in particular it is NOT
     // affected by `bypassToolApproval` (YOLO) or the mcpManager "always
     // allow this conversation" list, which only `shouldAutoExecuteTool`
@@ -1232,7 +1352,14 @@ export class AgentToolGateway {
   private async callToolWithDebug(
     params: McpToolCallParamsWithDebug,
   ): Promise<ToolCallResponse> {
-    const { debugTraceId, ...toolParams } = params
+    const { debugTraceId, ...rest } = params
+    // Injected here rather than at each call site: every dispatch out of this
+    // gateway runs under the same mode grant, so there is one place to state it.
+    const toolParams: McpToolCallParams = {
+      ...rest,
+      capabilityForceEnabled: this.resolveCapabilityOverride(rest.name)
+        ?.forceEnabled,
+    }
     return captureLLMDebugOperation({
       traceId: debugTraceId,
       signal: toolParams.signal,
@@ -1329,6 +1456,7 @@ export class AgentToolGateway {
 
     const available = await this.mcpManager.listAvailableTools({
       includeBuiltinTools: true,
+      capabilityOverrides: this.capabilityOverrides,
     })
     const isDisclosable = async (tool: McpTool): Promise<boolean> =>
       !this.isLoadToolSchemasRequest(tool.name) &&
@@ -1584,6 +1712,8 @@ export class AgentToolGateway {
       conversationId: this.toolApprovalConversationId ?? conversationId,
       requestArgs,
       requireAutoExecution,
+      capabilityForceEnabled: this.resolveCapabilityOverride(request.name)
+        ?.forceEnabled,
     })
   }
 
@@ -1687,6 +1817,14 @@ export class AgentToolGateway {
     }
     if (!this.allowedToolNames.has(toolName)) {
       return false
+    }
+
+    // A capability the running mode grants unconditionally is authorized here
+    // regardless of what the assistant's own preferences say — the same fact
+    // `McpManager` applies to the persisted global switch, so the model's
+    // tool list and this gate never disagree about what Max can run.
+    if (this.resolveCapabilityOverride(toolName)?.forceEnabled) {
+      return true
     }
 
     if (!this.toolPreferences && !this.builtinCapabilityPreferences) {

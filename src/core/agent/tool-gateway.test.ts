@@ -1844,4 +1844,292 @@ describe('AgentToolGateway', () => {
       ).toBeUndefined()
     })
   })
+
+  // YOLO Max's mode-level trust (docs/plans/09-05-yolo-max/master.md §4
+  // Q7/Q8/Q10/Q11). Two facts travel with the run: what the mode grants past
+  // the user's switches, and where the vault boundary is.
+  describe('chat mode capability grant and the vault boundary', () => {
+    const MAX_OVERRIDES = new Map([
+      ['native_files', { forceEnabled: true }],
+      ['terminal', { forceEnabled: true, allowAlwaysAllow: true }],
+    ])
+    const BOUNDARY = { vaultBasePath: '/home/me/vault', homeDir: '/home/me' }
+
+    const buildMcpManager = (
+      overrides: Partial<{
+        isToolExecutionAllowed: boolean
+        grantedAllowanceKeys: string[]
+      }> = {},
+    ) => {
+      const granted = new Set(overrides.grantedAllowanceKeys ?? [])
+      return {
+        isToolExecutionAllowed: jest
+          .fn()
+          .mockReturnValue(overrides.isToolExecutionAllowed ?? true),
+        isExecutionAllowanceGranted: jest
+          .fn()
+          .mockImplementation((key: string) => granted.has(key)),
+        getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      } as unknown as McpManager
+    }
+
+    const maxGateway = (
+      mcpManager: McpManager,
+      options: Partial<{
+        bypassToolApproval: boolean
+        capabilityOverrides: typeof MAX_OVERRIDES | undefined
+        vaultPathBoundary: typeof BOUNDARY | undefined
+        builtinCapabilityPreferences: Record<
+          string,
+          {
+            enabled?: boolean
+            approvalMode?: 'full_access' | 'require_approval'
+          }
+        >
+      }> = {},
+    ) =>
+      new AgentToolGateway(mcpManager, {
+        allowedToolNames: [
+          'yolo_local__read_file',
+          'yolo_local__write_file',
+          'yolo_local__edit_file',
+          'yolo_local__terminal_command',
+        ],
+        builtinCapabilityPreferences: options.builtinCapabilityPreferences ?? {
+          native_files: { enabled: true, approvalMode: 'full_access' },
+          terminal: { enabled: true, approvalMode: 'require_approval' },
+        },
+        bypassToolApproval: options.bypassToolApproval ?? false,
+        capabilityOverrides:
+          'capabilityOverrides' in options
+            ? options.capabilityOverrides
+            : MAX_OVERRIDES,
+        vaultPathBoundary:
+          'vaultPathBoundary' in options ? options.vaultPathBoundary : BOUNDARY,
+      })
+
+    const call = (
+      gateway: AgentToolGateway,
+      name: string,
+      args: Record<string, unknown>,
+      conversationId = 'conv-1',
+    ) =>
+      gateway.createToolMessage({
+        toolCallRequests: [
+          {
+            id: 'tool-1',
+            name,
+            arguments: createCompleteToolCallArguments({ value: args }),
+          },
+        ],
+        conversationId,
+      }).toolCalls[0]
+
+    it('runs a forced capability the assistant turned off, and passes the grant to the manager', () => {
+      const mcpManager = buildMcpManager()
+      const gateway = maxGateway(mcpManager, {
+        builtinCapabilityPreferences: {
+          native_files: { enabled: true, approvalMode: 'full_access' },
+          terminal: { enabled: false, approvalMode: 'require_approval' },
+        },
+      })
+
+      const entry = call(gateway, 'yolo_local__terminal_command', {
+        command: 'ls',
+      })
+
+      expect(entry?.response.status).toBe(ToolCallResponseStatus.Running)
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock accessed for assertion
+      expect(mcpManager.isToolExecutionAllowed).toHaveBeenCalledWith(
+        expect.objectContaining({ capabilityForceEnabled: true }),
+      )
+      // And persisted, so the post-approval path — which never sees the
+      // gateway — can execute it too.
+      expect(
+        entry?.request.metadata?.executionConstraints?.capabilityForceEnabled,
+      ).toBe(true)
+    })
+
+    it('still rejects a disabled capability the mode does not grant', () => {
+      const mcpManager = buildMcpManager()
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__terminal_command'],
+        builtinCapabilityPreferences: {
+          terminal: { enabled: false, approvalMode: 'require_approval' },
+        },
+        capabilityOverrides: new Map([
+          ['native_files', { forceEnabled: true }],
+        ]),
+      })
+
+      const entry = call(gateway, 'yolo_local__terminal_command', {
+        command: 'ls',
+      })
+
+      expect(entry?.response.status).toBe(ToolCallResponseStatus.Rejected)
+    })
+
+    it("snapshots the mode's always-allow override onto the request", () => {
+      const gateway = maxGateway(buildMcpManager())
+
+      expect(
+        call(gateway, 'yolo_local__terminal_command', { command: 'rm x' })
+          ?.request.metadata?.allowAlwaysAllow,
+      ).toBe(true)
+      // native_files declares no override, so nothing is written and the UI
+      // keeps reading the capability.
+      expect(
+        call(gateway, 'yolo_local__read_file', {
+          path: '/home/me/vault/a.md',
+        })?.request.metadata?.allowAlwaysAllow,
+      ).toBeUndefined()
+    })
+
+    it('pauses a full_access native write that lands outside the vault, and says where', () => {
+      const entry = call(
+        maxGateway(buildMcpManager()),
+        'yolo_local__write_file',
+        {
+          path: '~/Desktop/notes.md',
+          content: 'x',
+        },
+      )
+
+      expect(entry?.response.status).toBe(
+        ToolCallResponseStatus.PendingApproval,
+      )
+      expect(entry?.request.metadata?.outsideVaultPath).toBe(
+        '/home/me/Desktop/notes.md',
+      )
+    })
+
+    it('lets the same call run inside the vault, including through a relative path', () => {
+      const gateway = maxGateway(buildMcpManager())
+
+      for (const path of ['notes/a.md', '/home/me/vault/notes/a.md', '.']) {
+        const entry = call(gateway, 'yolo_local__write_file', {
+          path,
+          content: 'x',
+        })
+        expect(entry?.response.status).toBe(ToolCallResponseStatus.Running)
+        expect(entry?.request.metadata?.outsideVaultPath).toBeUndefined()
+      }
+    })
+
+    it("checks only the terminal's explicit cwd, never the command text", () => {
+      const gateway = maxGateway(buildMcpManager())
+
+      expect(
+        call(gateway, 'yolo_local__terminal_command', {
+          command: 'ls',
+          cwd: '/etc',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.PendingApproval)
+      // A read-only command mentioning an outside path but declaring no cwd
+      // runs: the command text is not a path expression (Q10).
+      expect(
+        call(gateway, 'yolo_local__terminal_command', { command: 'ls /etc' })
+          ?.response.status,
+      ).toBe(ToolCallResponseStatus.Running)
+    })
+
+    it('lets one granted boundary permission cover all four entry points', () => {
+      const gateway = maxGateway(
+        buildMcpManager({
+          grantedAllowanceKeys: ['native:outside-vault'],
+        }),
+      )
+
+      expect(
+        call(gateway, 'yolo_local__read_file', { path: '/etc/hosts' })?.response
+          .status,
+      ).toBe(ToolCallResponseStatus.Running)
+      expect(
+        call(gateway, 'yolo_local__write_file', {
+          path: '/etc/hosts',
+          content: 'x',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.Running)
+      expect(
+        call(gateway, 'yolo_local__edit_file', {
+          path: '/etc/hosts',
+          oldText: 'a',
+          newText: 'b',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.Running)
+      expect(
+        call(gateway, 'yolo_local__terminal_command', {
+          command: 'ls',
+          cwd: '/etc',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.Running)
+    })
+
+    it('does not accept a standing allow on the tool itself as boundary permission', () => {
+      // `isToolExecutionAllowed` says yes (the user allowed this tool for the
+      // chat) but the boundary was never granted — the two are different
+      // permissions and only the exact key satisfies the boundary.
+      const gateway = maxGateway(buildMcpManager({ grantedAllowanceKeys: [] }))
+
+      expect(
+        call(gateway, 'yolo_local__terminal_command', {
+          command: 'ls',
+          cwd: '/etc',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.PendingApproval)
+    })
+
+    it('checks the boundary against the parent conversation for a subagent run', () => {
+      const mcpManager = buildMcpManager()
+      const gateway = new AgentToolGateway(mcpManager, {
+        allowedToolNames: ['yolo_local__read_file'],
+        builtinCapabilityPreferences: {
+          native_files: { enabled: true, approvalMode: 'full_access' },
+        },
+        capabilityOverrides: MAX_OVERRIDES,
+        vaultPathBoundary: BOUNDARY,
+        toolApprovalConversationId: 'conv-parent',
+      })
+
+      call(gateway, 'yolo_local__read_file', { path: '/etc/hosts' }, 'task-9')
+
+      // eslint-disable-next-line @typescript-eslint/unbound-method -- Jest mock accessed for assertion
+      expect(mcpManager.isExecutionAllowanceGranted).toHaveBeenCalledWith(
+        'native:outside-vault',
+        'conv-parent',
+      )
+    })
+
+    it('skips the boundary under full trust, but never the blocked-prefix stop', () => {
+      const gateway = maxGateway(buildMcpManager(), {
+        bypassToolApproval: true,
+      })
+
+      expect(
+        call(gateway, 'yolo_local__write_file', {
+          path: '/etc/hosts',
+          content: 'x',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.Running)
+      expect(
+        call(gateway, 'yolo_local__terminal_command', {
+          command: 'rm -rf /',
+          cwd: '/etc',
+        })?.response.status,
+      ).toBe(ToolCallResponseStatus.Error)
+    })
+
+    it('enforces no boundary at all for a mode that declares none', () => {
+      const gateway = maxGateway(buildMcpManager(), {
+        vaultPathBoundary: undefined,
+      })
+
+      const entry = call(gateway, 'yolo_local__write_file', {
+        path: '/etc/hosts',
+        content: 'x',
+      })
+      expect(entry?.response.status).toBe(ToolCallResponseStatus.Running)
+      expect(entry?.request.metadata?.outsideVaultPath).toBeUndefined()
+    })
+  })
 })

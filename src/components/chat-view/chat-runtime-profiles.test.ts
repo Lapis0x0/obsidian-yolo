@@ -424,6 +424,81 @@ describe('resolveChatModeRuntime', () => {
       ).toBe(true)
     })
 
+    it('grants native_files and the terminal unconditionally, and opens always-allow on the terminal', () => {
+      const overrides = resolveChatModeRuntime({
+        mode: 'max',
+        assistant,
+        assistantEnabledToolNames,
+      }).capabilityOverrides
+      expect([...(overrides ?? [])]).toEqual([
+        ['native_files', { forceEnabled: true }],
+        ['terminal', { forceEnabled: true, allowAlwaysAllow: true }],
+      ])
+    })
+
+    it('keeps a forced capability in the tool set even when the assistant has it off', () => {
+      // The assistant enabled neither native_files nor terminal — Max grants
+      // them anyway, which is what makes "Max is a real terminal" true rather
+      // than conditional on an unrelated Agent-mode switch.
+      const runtime = resolveChatModeRuntime({
+        mode: 'max',
+        assistant,
+        assistantEnabledToolNames: ['yolo_local__memory_add'],
+      })
+      expect(runtime.allowedToolNames).toEqual([
+        'yolo_local__memory_add',
+        'yolo_local__read_file',
+        'yolo_local__write_file',
+        'yolo_local__edit_file',
+        'yolo_local__terminal_command',
+      ])
+    })
+
+    it('does not force built-in tools in when the assistant excludes all of them', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'max',
+        assistant: { ...assistant, includeBuiltinTools: false },
+        assistantEnabledToolNames: ['playwright__browser_click'],
+      })
+      expect(runtime.allowedToolNames).toEqual(['playwright__browser_click'])
+    })
+
+    it('adds each forced tool once even when the assistant already enabled it', () => {
+      const runtime = resolveChatModeRuntime({
+        mode: 'max',
+        assistant,
+        assistantEnabledToolNames: ['yolo_local__terminal_command'],
+      })
+      expect(runtime.allowedToolNames).toEqual([
+        'yolo_local__terminal_command',
+        'yolo_local__read_file',
+        'yolo_local__write_file',
+        'yolo_local__edit_file',
+      ])
+    })
+
+    it('leaves ask and agent with no capability override and no vault boundary', () => {
+      for (const mode of ['ask', 'agent'] as const) {
+        const runtime = resolveChatModeRuntime({
+          mode,
+          assistant,
+          assistantEnabledToolNames,
+        })
+        expect(runtime.capabilityOverrides).toBeUndefined()
+        expect(runtime.vaultPathBoundary).toBeUndefined()
+      }
+    })
+
+    it('carries no vault boundary without an app to locate the vault with', () => {
+      expect(
+        resolveChatModeRuntime({
+          mode: 'max',
+          assistant,
+          assistantEnabledToolNames,
+        }).vaultPathBoundary,
+      ).toBeUndefined()
+    })
+
     it('carries no environment prompt without an app to read the vault path from', () => {
       // S2a call sites all pass `app`; omitting it is what the module-branch
       // and policy tests here do, and it must not throw.

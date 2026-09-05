@@ -282,6 +282,17 @@
   }
 }
 
+/* Why this pending call needs a decision — today only "the path is outside
+ * the vault". Pushed to the left of the footer's right-aligned actions. */
+.yolo-toolcall-footer-notice {
+  margin-right: auto;
+  padding-right: var(--size-4-2);
+  min-width: 0;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  overflow-wrap: anywhere;
+}
+
 .yolo-toolcall-footer-actions {
   display: flex;
   align-items: center;

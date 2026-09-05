@@ -188,7 +188,36 @@ export type ToolCallRequest = {
      */
     executionConstraints?: {
       bashReadOnly?: boolean
+      /**
+       * The running chat mode granted this call's capability unconditionally
+       * (see `ChatModeCapabilityOverride.forceEnabled`). Persisted for the
+       * same reason `bashReadOnly` is: without it, approving a Max terminal
+       * call whose capability the user switched off globally would be refused
+       * by `McpManager` at the moment of execution.
+       */
+      capabilityForceEnabled?: boolean
     }
+    /**
+     * The running chat mode's override of the owning capability's
+     * `approval.allowAlwaysAllow` declaration, fixed at creation time
+     * alongside the fields above (see `AgentToolGateway`'s
+     * `attachChatModeSnapshot`). The approval card prefers it over the
+     * capability's static declaration, so a call created in Max keeps the
+     * "always allow for this chat" option it was created with even after the
+     * conversation is switched back to Agent. Absent means "no mode override
+     * — read the capability".
+     */
+    allowAlwaysAllow?: boolean
+    /**
+     * Absolute filesystem path this call reaches that lies outside the vault,
+     * resolved at creation time (docs/plans/09-05-yolo-max/master.md §4
+     * Q7/Q10). Present only for a run whose mode enforces the vault boundary.
+     * Its presence is what makes the call pause for approval, what the card
+     * explains to the user, and what makes an "always allow" on it grant the
+     * shared `OUTSIDE_VAULT_ALLOWANCE_KEY` permission rather than only this
+     * tool's own.
+     */
+    outsideVaultPath?: string
   }
 }
 

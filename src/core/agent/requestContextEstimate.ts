@@ -13,6 +13,7 @@ import type { ContextualInjection } from '../../utils/chat/contextual-injections
 import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { McpManager } from '../mcp/mcpManager'
+import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import {
   type ToolCapabilityMode,
@@ -34,6 +35,7 @@ export const estimateContinuationRequestContextTokens = async ({
   toolPreferences,
   toolServerPreferences,
   contextualInjections,
+  capabilityOverrides,
   toolCapabilityMode,
   modeEnvironmentPrompt,
   modePersonaPrompt,
@@ -54,6 +56,8 @@ export const estimateContinuationRequestContextTokens = async ({
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
+  /** The running chat mode's capability grant; see `AgentToolGateway`. */
+  capabilityOverrides?: ChatModeCapabilityOverrides
   toolCapabilityMode?: ToolCapabilityMode
   modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
@@ -64,6 +68,7 @@ export const estimateContinuationRequestContextTokens = async ({
   const availableTools = enableTools
     ? await mcpManager.listAvailableTools({
         includeBuiltinTools,
+        capabilityOverrides,
         // Tailor built-in tool schemas to the active model so the token
         // estimate reflects what the model will actually see at request time.
         chatModelModalities: model.modalities,

@@ -110,6 +110,10 @@ export const terminalCommandDefinition = defineTool({
   // fallbacks" principle). This gate must not be copied to `js_eval` — that
   // tool has no platform restriction today (see its own definition.ts).
   isAvailable: () => Platform.isDesktop,
+  // Only the *explicit* cwd, never the command text (master.md §4 Q10): a
+  // shell line is not a path expression, and pretending to parse one would
+  // trade a boundary the user can reason about for a guess.
+  filesystemPathArg: 'cwd',
   chatLabel: {
     key: 'settings.agent.builtinTerminalCommandLabel',
     fallback: 'Terminal Commands',

@@ -11,6 +11,7 @@ import { useSettings } from '../../contexts/settings-context'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
+import { getExtraAllowanceKeysForRequest } from '../../core/tools/native/paths'
 import { readEditReviewSnapshot } from '../../database/json/chat/editReviewSnapshotStore'
 import { selectionHighlightController } from '../../features/editor/selection-highlight/selectionHighlightController'
 import type { useChatHistory } from '../../hooks/useChatHistory'
@@ -390,6 +391,7 @@ export function useChatDomainActions({
               request.name,
               conversationId,
               args,
+              getExtraAllowanceKeysForRequest(request),
             )
           }
         }
@@ -446,6 +448,8 @@ export function useChatDomainActions({
               // `ToolCallRequest.metadata.executionConstraints`.
               bashReadOnly:
                 request.metadata?.executionConstraints?.bashReadOnly,
+              capabilityForceEnabled:
+                request.metadata?.executionConstraints?.capabilityForceEnabled,
             }),
           getResponseBody: (response) => response,
         })

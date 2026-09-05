@@ -59,6 +59,7 @@ import ToolMessage, {
   getToolDisplayInfo,
   getToolResultDisplayText,
   getToolSuccessIconKind,
+  isAlwaysAllowDisabledForRequest,
 } from './ToolMessage'
 
 describe('ToolMessage rendering', () => {
@@ -538,6 +539,7 @@ describe('ToolMessage headline helpers', () => {
     reject: 'Reject',
     abort: 'Abort',
     allowForThisChat: 'Allow for this chat',
+    outsideVaultNotice: (path: string) => `Outside the vault: ${path}`,
     approvePlan: 'Approve plan',
     stayInPlan: 'Stay in plan',
     todoWriteCleared: 'Cleared list',
@@ -1148,5 +1150,52 @@ describe('ToolMessage headline helpers', () => {
         labels,
       }).summaryText,
     ).toBe('完成第二步')
+  })
+})
+
+describe('isAlwaysAllowDisabledForRequest', () => {
+  it('follows the owning capability when the call carries no mode override', () => {
+    // `terminal` declares allowAlwaysAllow: false, `file_editing` true.
+    expect(
+      isAlwaysAllowDisabledForRequest({ name: 'yolo_local__terminal_command' }),
+    ).toBe(true)
+    expect(
+      isAlwaysAllowDisabledForRequest({ name: 'yolo_local__fs_edit' }),
+    ).toBe(false)
+  })
+
+  it("prefers the running mode's snapshot over the capability declaration", () => {
+    // Max opens always-allow on the terminal (master.md §4 Q8) ...
+    expect(
+      isAlwaysAllowDisabledForRequest({
+        name: 'yolo_local__terminal_command',
+        metadata: { allowAlwaysAllow: true },
+      }),
+    ).toBe(false)
+    // ... and the snapshot can equally close it on a capability that allows it.
+    expect(
+      isAlwaysAllowDisabledForRequest({
+        name: 'yolo_local__fs_edit',
+        metadata: { allowAlwaysAllow: false },
+      }),
+    ).toBe(true)
+  })
+
+  it('keeps a module mode per-call gate above any mode override', () => {
+    expect(
+      isAlwaysAllowDisabledForRequest({
+        name: 'module-mode-learning-chat__start_course_generation',
+        metadata: {
+          approvalPolicy: 'always-require-user',
+          allowAlwaysAllow: true,
+        },
+      }),
+    ).toBe(true)
+  })
+
+  it('leaves third-party MCP tools enabled', () => {
+    expect(isAlwaysAllowDisabledForRequest({ name: 'playwright__click' })).toBe(
+      false,
+    )
   })
 })

@@ -21,6 +21,7 @@ import {
 } from '../../utils/llm/contextTokenEstimate'
 import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capability-registry'
 import { McpManager } from '../mcp/mcpManager'
+import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import {
   type ToolCapabilityMode,
@@ -145,6 +146,7 @@ export const estimateContextBreakdown = async ({
   toolPreferences,
   toolServerPreferences,
   contextualInjections,
+  capabilityOverrides,
   toolCapabilityMode,
   modeEnvironmentPrompt,
   modePersonaPrompt,
@@ -165,6 +167,8 @@ export const estimateContextBreakdown = async ({
   toolPreferences?: Record<string, AssistantToolPreference>
   toolServerPreferences?: Record<string, AssistantToolServerPreference>
   contextualInjections?: ContextualInjection[]
+  /** The running chat mode's capability grant; see `AgentToolGateway`. */
+  capabilityOverrides?: ChatModeCapabilityOverrides
   toolCapabilityMode?: ToolCapabilityMode
   modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
@@ -175,6 +179,7 @@ export const estimateContextBreakdown = async ({
   const availableTools = enableTools
     ? await mcpManager.listAvailableTools({
         includeBuiltinTools,
+        capabilityOverrides,
         chatModelModalities: model.modalities,
       })
     : []

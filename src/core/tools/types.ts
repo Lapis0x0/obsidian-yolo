@@ -106,6 +106,40 @@ export type BuiltinToolCategory = 'vault' | 'context' | 'external'
 export type BuiltinChatModeId = 'ask' | 'agent' | 'max'
 
 /**
+ * What a running chat mode overrides about one capability's policy, for the
+ * duration of a single run.
+ *
+ * This is the mode's own trust contract, not a per-capability declaration:
+ * "Max is a real terminal" is a fact about Max, and putting it here keeps
+ * every capability free of per-mode tables (docs/plans/09-05-yolo-max/
+ * master.md §4 Q8, §6). It is produced in exactly one place —
+ * `resolveChatModeRuntime` — and travels with the run.
+ */
+export type ChatModeCapabilityOverride = Readonly<{
+  /**
+   * The mode grants this capability unconditionally. Overrides both the
+   * global `settings.mcp.builtinCapabilityOptions[id].disabled` switch (read
+   * by `McpManager`, which gates the model's tool list *and* execution) and
+   * the assistant's own `builtinCapabilityPreferences` entry (read by
+   * `AgentToolGateway`). It does not override a tool's `isAvailable` —
+   * environment availability is not a trust question.
+   */
+  forceEnabled?: boolean
+  /**
+   * The mode permits "always allow for this chat" even though the capability
+   * declares `approval.allowAlwaysAllow: false`. Snapshotted onto each tool
+   * call request at creation time, never read live by the UI.
+   */
+  allowAlwaysAllow?: boolean
+}>
+
+/** Keyed by capability id. See {@link ChatModeCapabilityOverride}. */
+export type ChatModeCapabilityOverrides = ReadonlyMap<
+  string,
+  ChatModeCapabilityOverride
+>
+
+/**
  * Context available when building a tool's MCP protocol projection (i.e.
  * listing the catalog). No execution-time dependencies (signal, toolCallId,
  * ...) belong here — those live on `ToolContext`.
@@ -236,6 +270,15 @@ export type BuiltinToolDefinition<Name extends string = string> = {
   getMcpTool: (ctx: ToolCatalogContext) => Omit<McpTool, 'name'>
   /** Environment availability (platform, provider config, ...). Omitted = always available. */
   isAvailable?: (ctx: ToolAvailabilityContext) => boolean
+  /**
+   * The argument that carries a real filesystem path — one that may point
+   * anywhere on the machine rather than inside the vault. Declared here so
+   * the vault-boundary approval in `AgentToolGateway` reads it off the tool
+   * itself instead of keeping a tool-name table of its own
+   * (docs/plans/09-05-yolo-max/master.md §4 Q7/Q10). Omitted for every tool
+   * whose paths are vault-relative.
+   */
+  filesystemPathArg?: string
   /**
    * Chat-surface display label. Distinct from the owning capability's
    * `label`: the capability is "File Editing", its tools are "Edit" / "Write".

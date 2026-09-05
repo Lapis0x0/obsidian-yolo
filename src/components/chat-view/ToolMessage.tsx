@@ -105,6 +105,7 @@ export type ToolLabels = {
   reject: string
   abort: string
   allowForThisChat: string
+  outsideVaultNotice: (path: string) => string
   approvePlan: string
   stayInPlan: string
   todoWriteCleared: string
@@ -137,6 +138,40 @@ type ToolRequestLike = {
 
 const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
   write: 'Write file',
+}
+
+/**
+ * Whether the approval card must hide "always allow for this chat" and offer
+ * only a one-off Allow.
+ *
+ * Reads the call's own creation-time snapshot before the live registry, in
+ * this order:
+ *   1. `exit_plan_mode` — a plan hand-off is a decision, never a standing rule.
+ *   2. A module chat mode tool declared `requiresApproval: true`: an
+ *      unconditional per-call gate the service layer refuses to bypass anyway
+ *      (see `AgentToolGateway.attachChatModeSnapshot` and
+ *      `AgentService.approveToolCall`).
+ *   3. The running mode's own override, if it stated one — Max opens "always
+ *      allow" on the terminal (master.md §4 Q8). Snapshotted, so a call
+ *      already on screen keeps the option it was created with.
+ *   4. The owning capability's static `approval.allowAlwaysAllow`
+ *      declaration (D7). Tools no capability owns — third-party MCP tools,
+ *      retired local names — resolve to `undefined`, i.e. not disabled.
+ */
+export const isAlwaysAllowDisabledForRequest = (
+  request: ToolRequestLike,
+): boolean => {
+  if (request.name === CLAUDE_EXIT_PLAN_MODE_TOOL) return true
+  if (request.metadata?.approvalPolicy === 'always-require-user') return true
+  if (request.metadata?.allowAlwaysAllow !== undefined) {
+    return !request.metadata.allowAlwaysAllow
+  }
+  try {
+    const { toolName } = parseToolName(request.name)
+    return getCapabilityForTool(toolName)?.approval.allowAlwaysAllow === false
+  } catch {
+    return false
+  }
 }
 
 export const getToolLabels = (t?: TranslateFn): ToolLabels => {
@@ -250,6 +285,11 @@ export const getToolLabels = (t?: TranslateFn): ToolLabels => {
       'chat.toolCall.allowForThisChat',
       'Allow for this chat',
     ),
+    outsideVaultNotice: (path: string) =>
+      translate(
+        'chat.toolCall.outsideVaultNotice',
+        'This path is outside the vault: {path}',
+      ).replace('{path}', path),
     approvePlan: translate('chat.toolCall.approvePlan', 'Approve plan'),
     stayInPlan: translate('chat.toolCall.stayInPlan', 'Stay in plan'),
     todoWriteCleared: translate(
@@ -1127,27 +1167,10 @@ function ToolCallItem({
       : response.status
   // 是否禁用"始终允许"按钮（某些高危工具每次必须人审）
   const isExitPlanMode = request.name === CLAUDE_EXIT_PLAN_MODE_TOOL
-  const isAlwaysAllowDisabled = useMemo(() => {
-    if (isExitPlanMode) return true
-    // Module chat mode tools declared `requiresApproval: true` are an
-    // unconditional per-call confirmation gate (see `tool-gateway.ts`'s
-    // `attachModuleChatModeSnapshot`) — the "always allow this
-    // conversation" option would be misleading since the service layer
-    // rejects it anyway (see `AgentService.approveToolCall`).
-    if (request.metadata?.approvalPolicy === 'always-require-user') return true
-    try {
-      // D7 (phase2-migration.md D7 item 7): "always allow" is now a
-      // capability-level fact (`approval.allowAlwaysAllow`) rather than a
-      // hand-maintained tool-name list. Non-capability tools (third-party
-      // MCP tools, retired local tool names) resolve to `undefined` here,
-      // which correctly means "not disabled" — the pre-refactor list only
-      // ever named `bash` and `terminal_command`.
-      const { toolName } = parseToolName(request.name)
-      return getCapabilityForTool(toolName)?.approval.allowAlwaysAllow === false
-    } catch {
-      return false
-    }
-  }, [isExitPlanMode, request.metadata?.approvalPolicy, request.name])
+  const isAlwaysAllowDisabled = useMemo(
+    () => isAlwaysAllowDisabledForRequest(request),
+    [request],
+  )
   const pendingAllowLabel = isExitPlanMode
     ? toolLabels.approvePlan
     : toolLabels.allow
@@ -1460,6 +1483,11 @@ function ToolCallItem({
       )}
       {footerMode && (
         <div key={footerMode} className="yolo-toolcall-footer">
+          {footerMode === 'pending' && request.metadata?.outsideVaultPath && (
+            <div className="yolo-toolcall-footer-notice">
+              {toolLabels.outsideVaultNotice(request.metadata.outsideVaultPath)}
+            </div>
+          )}
           {footerMode === 'pending' && (
             <div className="yolo-toolcall-footer-actions">
               {isAlwaysAllowDisabled ? (

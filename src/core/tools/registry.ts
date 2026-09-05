@@ -6,6 +6,8 @@ import type {
   BuiltinCapabilityDefinition,
   BuiltinChatModeId,
   BuiltinToolDefinition,
+  ChatModeCapabilityOverride,
+  ChatModeCapabilityOverrides,
 } from './types'
 
 /**
@@ -126,5 +128,30 @@ export const getToolNamesForChatMode = (mode: BuiltinChatModeId): string[] =>
       ),
     )
 
+/**
+ * Fully-qualified names of the tools one capability owns. Same projection as
+ * {@link getToolNamesForChatMode}, addressed by capability instead of by
+ * mode — used where a runtime grant names capabilities rather than tools.
+ */
+export const getToolNamesForCapability = (capabilityId: string): string[] =>
+  (getCapability(capabilityId)?.tools ?? []).map((tool) =>
+    getToolName(getLocalFileToolServerName(), tool.name),
+  )
+
 export const isBuiltinCapabilityId = (id: string): id is BuiltinCapabilityId =>
   CAPABILITIES.some((capability) => capability.id === id)
+
+/**
+ * The running mode's override for the capability that owns `toolName` (a
+ * short name, not an FQN), if any. The single lookup every consumer of
+ * {@link ChatModeCapabilityOverrides} goes through, so "which capability owns
+ * this tool" is answered here rather than at each call site.
+ */
+export const getCapabilityOverrideForTool = (
+  overrides: ChatModeCapabilityOverrides | undefined,
+  toolName: string,
+): ChatModeCapabilityOverride | undefined => {
+  if (!overrides) return undefined
+  const capability = getCapabilityForTool(toolName)
+  return capability ? overrides.get(capability.id) : undefined
+}

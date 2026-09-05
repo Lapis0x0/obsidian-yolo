@@ -491,6 +491,7 @@ export function useChatStreamManager({
         ? await mcpManager.listAvailableTools({
             includeBuiltinTools: effectiveIncludeBuiltinTools,
             chatModelModalities: effectiveModel.modalities,
+            capabilityOverrides: chatModeRuntime.capabilityOverrides,
           })
         : []
       const {
@@ -817,6 +818,8 @@ export function useChatStreamManager({
           bashReadOnly: chatModeRuntime.bashReadOnly,
           moduleToolApprovalPolicies:
             chatModeRuntime.moduleToolApprovalPolicies,
+          capabilityOverrides: chatModeRuntime.capabilityOverrides,
+          vaultPathBoundary: chatModeRuntime.vaultPathBoundary,
           modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
           modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
           modePersonaModuleId: chatModeRuntime.modePersonaModuleId,
@@ -1104,6 +1107,7 @@ export function useChatStreamManager({
         allowedToolNames: chatModeRuntime.allowedToolNames,
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
+        capabilityOverrides: chatModeRuntime.capabilityOverrides,
         toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
         modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
         modePersonaPrompt: chatModeRuntime.modePersonaPrompt,

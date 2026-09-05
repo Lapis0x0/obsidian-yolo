@@ -161,6 +161,8 @@ export class NativeAgentRuntime implements AgentRuntime {
       bypassToolApproval: input.bypassToolApproval,
       bashReadOnly: input.bashReadOnly,
       moduleToolApprovalPolicies: input.moduleToolApprovalPolicies,
+      capabilityOverrides: input.capabilityOverrides,
+      vaultPathBoundary: input.vaultPathBoundary,
     })
     const worker = createAgentLoopWorker()
     const runId = uuidv4()
@@ -250,6 +252,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                     baseInjections: input.contextualInjections,
                     messages: conversationMessages,
                   }),
+                  capabilityOverrides: input.capabilityOverrides,
                   toolCapabilityMode: input.toolCapabilityMode,
                   modeEnvironmentPrompt: input.modeEnvironmentPrompt,
                   modePersonaPrompt: input.modePersonaPrompt,
@@ -452,6 +455,7 @@ export class NativeAgentRuntime implements AgentRuntime {
                           baseInjections: input.contextualInjections,
                           messages: conversationMessages,
                         }),
+                        capabilityOverrides: input.capabilityOverrides,
                         toolCapabilityMode: input.toolCapabilityMode,
                         modeEnvironmentPrompt: input.modeEnvironmentPrompt,
                         modePersonaPrompt: input.modePersonaPrompt,

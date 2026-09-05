@@ -29,10 +29,11 @@ import type { RagKnowledgeAccess } from '../rag/ragAccess'
 import { executeBuiltinTool } from '../tools/dispatcher'
 import {
   getCapabilityForTool,
+  getCapabilityOverrideForTool,
   getToolDefinition,
   isBuiltinToolName,
 } from '../tools/registry'
-import type { ToolContext } from '../tools/types'
+import type { ChatModeCapabilityOverrides, ToolContext } from '../tools/types'
 
 import { InvalidToolNameException, McpNotAvailableException } from './exception'
 import type { InProcessToolServer } from './inProcessToolServer'
@@ -173,9 +174,17 @@ export class McpManager {
    * (below), then, for tools already migrated into the registry, that
    * tool's own `isAvailable(ctx)` (master.md §3.1b / decision 18 —
    * environment availability is separate from user authorization).
+   *
+   * `capabilityForceEnabled` is the running chat mode's grant for *this* tool
+   * (see `ChatModeCapabilityOverride.forceEnabled`). It can lift the persisted
+   * gate but never the `isAvailable` one: Max forcing `terminal` on must not
+   * conjure a terminal on mobile.
    */
-  private isLocalToolEnabled(toolName: string): boolean {
-    if (!this.isLocalToolPersistedEnabled(toolName)) {
+  private isLocalToolEnabled(
+    toolName: string,
+    capabilityForceEnabled?: boolean,
+  ): boolean {
+    if (!this.isLocalToolPersistedEnabled(toolName, capabilityForceEnabled)) {
       return false
     }
 
@@ -206,7 +215,13 @@ export class McpManager {
    * (`web_ops`/`fs_edit_ops`/`memory_ops`) plus a generic fallback into a
    * single lookup through the tool's owning capability.
    */
-  private isLocalToolPersistedEnabled(toolName: string): boolean {
+  private isLocalToolPersistedEnabled(
+    toolName: string,
+    capabilityForceEnabled?: boolean,
+  ): boolean {
+    if (capabilityForceEnabled) {
+      return true
+    }
     const capability = getCapabilityForTool(toolName)
     if (!capability) {
       // Unknown/retired local short name (e.g. a pre-v79 `fs_list`) — no
@@ -993,6 +1008,7 @@ export class McpManager {
   private getAvailableToolsCacheKey(
     includeBuiltinTools: boolean,
     chatModelModalities: ChatModelModality[] | undefined,
+    capabilityOverrides: ChatModeCapabilityOverrides | undefined,
   ): string {
     // Modalities are part of the cache key because built-in tool schemas
     // (notably fs_read) are tailored per-model. Sort to be stable across the
@@ -1000,7 +1016,17 @@ export class McpManager {
     const modalityFingerprint = chatModelModalities
       ? [...chatModelModalities].sort().join(',')
       : 'superset'
-    return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}`
+    // Only `forceEnabled` changes which tools are listed, so only it belongs
+    // in the key — an Agent run and a Max run must not share an entry, but
+    // two Max runs must.
+    const forcedFingerprint = capabilityOverrides
+      ? [...capabilityOverrides]
+          .filter(([, override]) => override.forceEnabled)
+          .map(([id]) => id)
+          .sort()
+          .join(',')
+      : ''
+    return `${includeBuiltinTools ? 'with_builtin' : 'mcp_only'}|${modalityFingerprint}|${forcedFingerprint}`
   }
 
   private shouldPrewarmToolTokenCosts(serverName: string): boolean {
@@ -1083,13 +1109,17 @@ export class McpManager {
   public async listAvailableTools({
     includeBuiltinTools = false,
     chatModelModalities,
+    capabilityOverrides,
   }: {
     includeBuiltinTools?: boolean
     chatModelModalities?: ChatModelModality[]
+    /** The running chat mode's capability grant; see `AgentToolGateway`. */
+    capabilityOverrides?: ChatModeCapabilityOverrides
   } = {}): Promise<McpTool[]> {
     const cacheKey = this.getAvailableToolsCacheKey(
       includeBuiltinTools,
       chatModelModalities,
+      capabilityOverrides,
     )
     const cached = this.availableToolsCache.get(cacheKey)
     if (cached) {
@@ -1122,7 +1152,13 @@ export class McpManager {
             vaultBasePath: getVaultBasePath(this.app),
             chatModelModalities,
           })
-            .filter((tool) => this.isLocalToolEnabled(tool.name))
+            .filter((tool) =>
+              this.isLocalToolEnabled(
+                tool.name,
+                getCapabilityOverrideForTool(capabilityOverrides, tool.name)
+                  ?.forceEnabled,
+              ),
+            )
             .map((tool) => ({
               ...tool,
               name: getToolName(getLocalFileToolServerName(), tool.name),
@@ -1145,18 +1181,60 @@ export class McpManager {
     requestToolName: string,
     conversationId: string,
     requestArgs?: Record<string, unknown>,
+    /**
+     * Permissions this same approval also grants, beyond the call's own tool
+     * and argument-derived keys — today only the vault-boundary key, so that
+     * one "always allow" on a call reaching outside the vault covers every
+     * tool that can reach outside it (master.md §4 Q7).
+     */
+    extraAllowanceKeys?: readonly string[],
+  ): void {
+    const allowanceKey = this.buildExecutionAllowanceKey({
+      requestToolName,
+      requestArgs,
+    })
+    for (const key of [
+      allowanceKey,
+      requestToolName,
+      ...(extraAllowanceKeys ?? []),
+    ]) {
+      this.grantExecutionAllowance(key, conversationId)
+    }
+  }
+
+  /**
+   * Adds a bare allowance key to a conversation's granted set. The set is the
+   * same one `allowToolForConversation` writes and `isToolExecutionAllowed`
+   * reads; this is simply the "grant exactly this permission" entry point,
+   * for permissions that are not derived from a tool name plus arguments.
+   */
+  public grantExecutionAllowance(
+    allowanceKey: string,
+    conversationId: string,
   ): void {
     let allowedTools = this.allowedToolsByConversation.get(conversationId)
     if (!allowedTools) {
       allowedTools = new Set<string>()
       this.allowedToolsByConversation.set(conversationId, allowedTools)
     }
-    const allowanceKey = this.buildExecutionAllowanceKey({
-      requestToolName,
-      requestArgs,
-    })
     allowedTools.add(allowanceKey)
-    allowedTools.add(requestToolName)
+  }
+
+  /**
+   * Exact membership test for one allowance key — deliberately *not*
+   * `isToolExecutionAllowed`, which also honors the bare tool name. A
+   * standing "always allow this tool" must not silently satisfy a distinct
+   * permission such as the vault boundary.
+   */
+  public isExecutionAllowanceGranted(
+    allowanceKey: string,
+    conversationId?: string,
+  ): boolean {
+    if (!conversationId) return false
+    return (
+      this.allowedToolsByConversation.get(conversationId)?.has(allowanceKey) ??
+      false
+    )
   }
 
   public isToolExecutionAllowed({
@@ -1164,16 +1242,22 @@ export class McpManager {
     conversationId,
     requestArgs,
     requireAutoExecution = false,
+    capabilityForceEnabled,
   }: {
     requestToolName: string
     conversationId?: string
     requestArgs?: Record<string, unknown>
     requireAutoExecution?: boolean
+    /**
+     * The running chat mode grants this call's capability unconditionally;
+     * see `ChatModeCapabilityOverride.forceEnabled`.
+     */
+    capabilityForceEnabled?: boolean
   }): boolean {
     try {
       const { serverName, toolName } = parseToolName(requestToolName)
       if (serverName === getLocalFileToolServerName()) {
-        if (!this.isLocalToolEnabled(toolName)) {
+        if (!this.isLocalToolEnabled(toolName, capabilityForceEnabled)) {
           return false
         }
       } else if (this.inProcessServers.has(serverName)) {
@@ -1238,6 +1322,7 @@ export class McpManager {
     subagentParentContext,
     bashApprovalMode,
     bashReadOnly,
+    capabilityForceEnabled,
   }: {
     name: string
     args?: Record<string, unknown> | undefined
@@ -1255,6 +1340,14 @@ export class McpManager {
     bashApprovalMode?: AssistantToolApprovalMode
     /** Forces the structurally read-only bash variant; see tool-gateway.ts. */
     bashReadOnly?: boolean
+    /**
+     * The running chat mode grants this call's capability unconditionally.
+     * Callers that reach here without the gateway (post-approval execution,
+     * the chat UI's recovery path) read it off the request's own
+     * `metadata.executionConstraints` snapshot, exactly as they do for
+     * `bashReadOnly`.
+     */
+    capabilityForceEnabled?: boolean
   }): Promise<ToolCallResponse> {
     const toolAbortController = new AbortController()
     if (id !== undefined) {
@@ -1279,7 +1372,7 @@ export class McpManager {
       const parsedArgs: Record<string, unknown> | undefined = args
 
       if (serverName === getLocalFileToolServerName()) {
-        if (!this.isLocalToolEnabled(toolName)) {
+        if (!this.isLocalToolEnabled(toolName, capabilityForceEnabled)) {
           throw new Error(`Built-in tool ${toolName} is disabled`)
         }
         // Every built-in tool executes through the registry dispatcher.

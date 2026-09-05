@@ -2433,6 +2433,7 @@ describe('AgentService subagent approval routing', () => {
       'yolo_local__fs_edit',
       'conv-parent',
       undefined,
+      [],
     )
   })
 

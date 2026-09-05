@@ -2345,6 +2345,7 @@ export const en: TranslationKeys = {
       abort: 'Abort',
       alwaysAllowThisTool: 'Always allow this tool',
       allowForThisChat: 'Allow for this chat',
+      outsideVaultNotice: 'This path is outside the vault: {path}',
       approvePlan: 'Approve plan',
       stayInPlan: 'Stay in plan',
     },

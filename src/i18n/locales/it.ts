@@ -2203,6 +2203,7 @@ export const it: DeepPartial<TranslationKeys> = {
       abort: 'Interrompi',
       alwaysAllowThisTool: 'Consenti sempre questo strumento',
       allowForThisChat: 'Consenti per questa chat',
+      outsideVaultNotice: 'Questo percorso è fuori dal vault: {path}',
       approvePlan: 'Approva il piano',
       stayInPlan: 'Resta in modalità piano',
     },

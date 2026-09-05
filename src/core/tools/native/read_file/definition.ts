@@ -68,6 +68,7 @@ export const readFileDefinition = defineTool({
   // not exist on mobile, so advertising this tool there would only produce
   // tool calls guaranteed to fail.
   isAvailable: () => Platform.isDesktop,
+  filesystemPathArg: 'path',
   execute: async (args, ctx) => {
     const { app, settings, signal, chatModelId } = ctx
 

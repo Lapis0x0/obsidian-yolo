@@ -7,10 +7,20 @@ import { getToolName } from '../../core/mcp/tool-name-utils'
 import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabilityProfile'
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 import {
+  type NativePathBoundary,
+  resolveNativePathBoundary,
+} from '../../core/tools/native/paths'
+import {
+  type BuiltinCapabilityId,
+  getToolNamesForCapability,
   getToolNamesForChatMode,
   listBuiltinToolNames,
 } from '../../core/tools/registry'
-import type { BuiltinChatModeId } from '../../core/tools/types'
+import type {
+  BuiltinChatModeId,
+  ChatModeCapabilityOverride,
+  ChatModeCapabilityOverrides,
+} from '../../core/tools/types'
 import type { Assistant } from '../../types/assistant.types'
 import type { NativeToolPolicy } from '../../types/llm/request'
 
@@ -27,6 +37,46 @@ type AssistantRuntimeOptions = Pick<
 >
 
 export const DEFAULT_AGENT_MAX_AUTO_ITERATIONS = 100
+
+/**
+ * Max's standard trust tier, stated once (docs/plans/09-05-yolo-max/master.md
+ * §4 Q8). These are facts about *Max*, not about the two capabilities, which
+ * is why they live here rather than as per-mode fields on each capability:
+ * "Max is a real filesystem and a real terminal" is the mode's definition, and
+ * a mode that promises a terminal cannot be silently emptied by a switch the
+ * user flipped for Agent.
+ *
+ * What is deliberately *not* here: approval tiers. `native_files` already
+ * declares `full_access` and `terminal` already declares `require_approval`,
+ * so overriding either would only overwrite a user who changed it in
+ * settings — the tier stays theirs. Only `terminal`'s blanket ban on "always
+ * allow" is lifted, because that ban exists for a mode where the terminal is
+ * an exception rather than the point.
+ */
+const MAX_CAPABILITY_OVERRIDES: ReadonlyMap<
+  BuiltinCapabilityId,
+  ChatModeCapabilityOverride
+> = new Map([
+  ['native_files', { forceEnabled: true }],
+  ['terminal', { forceEnabled: true, allowAlwaysAllow: true }],
+])
+
+/**
+ * Max's vault boundary, or undefined when this machine has none (mobile, or
+ * a vault not backed by the local filesystem — both cases where Max is not
+ * selectable anyway). Undefined means no outside-the-vault approval, which is
+ * exactly what Ask and Agent get: their terminal keeps the trust model it has
+ * always had.
+ */
+const resolveMaxVaultPathBoundary = (
+  app: App,
+): NativePathBoundary | undefined => {
+  try {
+    return resolveNativePathBoundary(app)
+  } catch {
+    return undefined
+  }
+}
 
 /**
  * Every built-in tool, by fully-qualified name. Membership in this set is the
@@ -66,6 +116,19 @@ export type ChatModeRuntime = {
    * function's doc comment for why this must never be a separately-set flag.
    */
   bashReadOnly: boolean
+  /**
+   * The mode's own capability grant — what it forces on regardless of the
+   * user's switches, and where it relaxes "always allow". Only Max produces
+   * one (see `MAX_CAPABILITY_OVERRIDES`). Consumed by `AgentToolGateway` and,
+   * through it, by `McpManager`'s tool listing and execution gates.
+   */
+  capabilityOverrides?: ChatModeCapabilityOverrides
+  /**
+   * The vault boundary this mode enforces: a call whose filesystem path
+   * argument resolves outside it pauses for approval. Only Max sets one —
+   * Ask and Agent keep the trust model their tools have always had.
+   */
+  vaultPathBoundary?: NativePathBoundary
   /**
    * Environment facts the running mode has to state to the model — cwd, OS,
    * shell, date, tool discipline. Only Max produces one (see
@@ -167,12 +230,32 @@ export function resolveChatModeRuntime({
   // them is declared per capability (`chatModes`) and resolved above, not
   // branched on here.
   const isToolMode = isToolChatMode(mode)
+  const capabilityOverrides: ChatModeCapabilityOverrides | undefined =
+    mode === 'max' ? MAX_CAPABILITY_OVERRIDES : undefined
   const exposedBuiltinToolNames = new Set(getToolNamesForChatMode(builtinMode))
+  // A capability the mode grants unconditionally joins the run's tool set
+  // even when the assistant has it off — the same fact `McpManager` and
+  // `AgentToolGateway` apply to their own gates. `includeBuiltinTools: false`
+  // still wins: that is the assistant saying "no host tools at all", which
+  // is a different statement from "not this capability".
+  const forcedBuiltinToolNames =
+    includeBuiltinTools && capabilityOverrides
+      ? [...capabilityOverrides]
+          .filter(([, override]) => override.forceEnabled)
+          .flatMap(([capabilityId]) => getToolNamesForCapability(capabilityId))
+          .filter((name) => exposedBuiltinToolNames.has(name))
+      : []
   const allowedToolNames = enableTools
-    ? assistantEnabledToolNames.filter(
-        (name) =>
-          !BUILTIN_TOOL_NAMES.has(name) || exposedBuiltinToolNames.has(name),
-      )
+    ? [
+        ...new Set([
+          ...assistantEnabledToolNames.filter(
+            (name) =>
+              !BUILTIN_TOOL_NAMES.has(name) ||
+              exposedBuiltinToolNames.has(name),
+          ),
+          ...forcedBuiltinToolNames,
+        ]),
+      ]
     : undefined
 
   return {
@@ -193,6 +276,9 @@ export function resolveChatModeRuntime({
     toolCapabilityMode: builtinMode,
     bashReadOnly: false,
     contextPolicy: BUILT_IN_CONTEXT_POLICY,
+    capabilityOverrides,
+    vaultPathBoundary:
+      mode === 'max' && app ? resolveMaxVaultPathBoundary(app) : undefined,
     modeEnvironmentPrompt,
   }
 }

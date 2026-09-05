@@ -28,6 +28,7 @@ import {
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { parseToolName } from '../mcp/tool-name-utils'
+import { getExtraAllowanceKeysForRequest } from '../tools/native/paths'
 
 import {
   type AssistantRenderStreamListener,
@@ -1555,6 +1556,7 @@ export class AgentService {
           toolCall.request.name,
           conversationId,
           getToolCallArgumentsObject(toolCall.request.arguments),
+          getExtraAllowanceKeysForRequest(toolCall.request),
         )
       }
     }
@@ -1613,6 +1615,9 @@ export class AgentService {
             // `ToolCallRequest.metadata.executionConstraints`.
             bashReadOnly:
               toolCall.request.metadata?.executionConstraints?.bashReadOnly,
+            capabilityForceEnabled:
+              toolCall.request.metadata?.executionConstraints
+                ?.capabilityForceEnabled,
           }),
         getResponseBody: (response) => response,
       }),
@@ -1874,6 +1879,7 @@ export class AgentService {
         request.name,
         entry.parentConversationId,
         getToolCallArgumentsObject(request.arguments),
+        getExtraAllowanceKeysForRequest(request),
       )
     }
 
@@ -1892,6 +1898,10 @@ export class AgentService {
           conversationId: entry.parentConversationId,
           conversationMessages: entry.runtime.getMessages(),
           roundId: located.toolMessage.id,
+          // Same snapshot the parent path reads: a subagent inherits the
+          // parent mode's capability grant, so its approved calls must too.
+          capabilityForceEnabled:
+            request.metadata?.executionConstraints?.capabilityForceEnabled,
         }),
       )
     } catch (error) {

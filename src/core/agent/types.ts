@@ -16,6 +16,8 @@ import { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { BaseLLMProvider } from '../llm/base'
 import type { ResponseDeliveryMode } from '../llm/responseDeliveryMode'
 import { McpManager } from '../mcp/mcpManager'
+import type { NativePathBoundary } from '../tools/native/paths'
+import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import type { AutoContextCompactionChatOptions } from './compaction'
 import type { ToolCapabilityMode } from './tool-capability-prompt'
@@ -99,6 +101,18 @@ export type AgentRuntimeRunInput = {
     exclude: string[]
   }
   allowedSkillPaths?: string[]
+  /**
+   * The running chat mode's own capability grant (see
+   * `ChatModeCapabilityOverride`). Reaches both `AgentToolGateway` and, via
+   * it and `AgentLlmTurnExecutor`, `McpManager` — a capability the mode
+   * forces on must be offered to the model *and* executable.
+   */
+  capabilityOverrides?: ChatModeCapabilityOverrides
+  /**
+   * Where the vault is and what `~` means, for the outside-the-vault
+   * approval. Present only for a mode that enforces that boundary (Max).
+   */
+  vaultPathBoundary?: NativePathBoundary
   contextualInjections?: ContextualInjection[]
   toolCapabilityMode?: ToolCapabilityMode
   /**

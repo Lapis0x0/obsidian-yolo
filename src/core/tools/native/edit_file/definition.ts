@@ -61,6 +61,7 @@ export const editFileDefinition = defineTool({
   },
   contextPrunable: true,
   isAvailable: () => Platform.isDesktop,
+  filesystemPathArg: 'path',
   execute: async (args, ctx) => {
     const absolutePath = await resolveNativeFilePathArg(ctx.app, args)
 

@@ -45,6 +45,7 @@ import {
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
+import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import { CONTEXT_COMPACT_TOOL_NAME } from './compaction'
 import {
@@ -83,6 +84,8 @@ type AgentLlmTurnExecutorInput = {
     streamFallbackRecoveryEnabled?: boolean
   }
   contextualInjections?: ContextualInjection[]
+  /** The running chat mode's capability grant; see `AgentToolGateway`. */
+  capabilityOverrides?: ChatModeCapabilityOverrides
   toolCapabilityMode?: ToolCapabilityMode
   modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
@@ -232,6 +235,7 @@ export class AgentLlmTurnExecutor {
         ? await this.input.mcpManager.listAvailableTools({
             includeBuiltinTools: this.input.includeBuiltinTools,
             chatModelModalities: this.input.model.modalities,
+            capabilityOverrides: this.input.capabilityOverrides,
           })
         : []
       // When the provider runs web search itself, offering ours too just gives

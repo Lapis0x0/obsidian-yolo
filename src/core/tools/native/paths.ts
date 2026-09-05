@@ -31,42 +31,165 @@ export function getVaultBasePath(app: App): string {
 }
 
 /**
+ * The one session-level permission that covers reaching outside the vault,
+ * whichever tool does the reaching (master.md §4 Q7: the thing the user is
+ * asked about is the boundary, not the tool). Granted through
+ * `McpManager.grantExecutionAllowance` and checked with
+ * `isExecutionAllowanceGranted`, so it lives in the same per-conversation
+ * allowance set as every "always allow" decision.
+ */
+export const OUTSIDE_VAULT_ALLOWANCE_KEY = 'native:outside-vault'
+
+/**
+ * The extra permissions an "always allow for this chat" on `request` grants
+ * beyond that call's own tool and arguments. One helper rather than the same
+ * conditional at each of the three approval entry points.
+ */
+export const getExtraAllowanceKeysForRequest = (request: {
+  metadata?: { outsideVaultPath?: string }
+}): string[] =>
+  request.metadata?.outsideVaultPath === undefined
+    ? []
+    : [OUTSIDE_VAULT_ALLOWANCE_KEY]
+
+/**
+ * The two machine facts every native path resolves against: where relative
+ * paths start, and what `~` means. Bundled into one value because the tool
+ * gateway needs the exact same pair the tools use — a boundary decision made
+ * against a different vault root or home directory than the write itself
+ * uses is not a boundary at all.
+ */
+export type NativePathBoundary = Readonly<{
+  /** Absolute vault root; relative paths resolve here, and it is the boundary. */
+  vaultBasePath: string
+  /** Absolute home directory for `~` expansion; `''` when unknown. */
+  homeDir: string
+}>
+
+/**
+ * This machine's boundary. Throws for the same reason `getVaultBasePath`
+ * does. `process.env` rather than `node:os` so the whole path contract stays
+ * synchronous — `AgentToolGateway` decides a tool call's initial state
+ * synchronously, and an async resolver there would mean two implementations
+ * that can disagree about where a write lands.
+ */
+export function resolveNativePathBoundary(app: App): NativePathBoundary {
+  return {
+    vaultBasePath: getVaultBasePath(app),
+    homeDir:
+      (typeof process === 'undefined'
+        ? undefined
+        : (process.env.HOME ?? process.env.USERPROFILE)) ?? '',
+  }
+}
+
+/**
  * Resolves a model-supplied path to an absolute, normalized filesystem path.
  *
  *   - absolute path        -> used as given (still normalized)
- *   - `~` / `~/...`        -> expanded against the OS home directory
- *   - anything else        -> resolved against the vault root
+ *   - `~` / `~/...`        -> expanded against `boundary.homeDir`
+ *   - anything else        -> resolved against `boundary.vaultBasePath`
  *
- * `node:path` / `node:os` are imported dynamically so this module stays out
- * of the mobile static graph (AGENTS.md "Runtime Boundaries"); the callers
- * are desktop-only tools, but the import graph is what the build checks.
+ * Pure string work, no `node:path`: this runs both inside the tools and,
+ * synchronously, inside the gateway's approval decision, and those two must
+ * be the same function. Separators in the result follow the shape of the
+ * inputs — backslashes for a Windows-shaped path, forward slashes otherwise.
  */
-export async function resolveNativePath(
-  app: App,
+export function resolveNativePathWithin(
+  boundary: NativePathBoundary,
   inputPath: string,
-): Promise<string> {
-  const [path, os] = await Promise.all([
-    // eslint-disable-next-line import/no-nodejs-modules -- desktop-only, dynamically imported so mobile never loads it
-    import('node:path'),
-    // eslint-disable-next-line import/no-nodejs-modules -- desktop-only, dynamically imported so mobile never loads it
-    import('node:os'),
-  ])
-
+): string {
   const raw = inputPath.trim()
   if (raw === '') {
     throw new Error('path must be a non-empty string.')
   }
 
   let candidate = raw
-  if (candidate === '~') {
-    candidate = os.homedir()
-  } else if (candidate.startsWith('~/') || candidate.startsWith('~\\')) {
-    candidate = path.join(os.homedir(), candidate.slice(2))
+  if (
+    candidate === '~' ||
+    candidate.startsWith('~/') ||
+    candidate.startsWith('~\\')
+  ) {
+    if (boundary.homeDir === '') {
+      throw new Error(
+        'Cannot expand "~": this machine reports no home directory. Use an absolute path.',
+      )
+    }
+    candidate =
+      candidate === '~'
+        ? boundary.homeDir
+        : joinUnderRoot(boundary.homeDir, candidate.slice(2))
   }
 
-  return path.isAbsolute(candidate)
-    ? path.resolve(candidate)
-    : path.resolve(getVaultBasePath(app), candidate)
+  return normalizeAbsolutePath(
+    isAbsolutePath(candidate)
+      ? candidate
+      : joinUnderRoot(boundary.vaultBasePath, candidate),
+  )
+}
+
+/**
+ * Joins with a single separator. Dropping the base's trailing separator
+ * matters at a filesystem root: `'/' + '/' + rest` would read as the `//`
+ * UNC prefix, and a `..` under it would then stop one level too high.
+ */
+const joinUnderRoot = (base: string, rest: string): string =>
+  `${base.replace(/[\\/]+$/, '')}/${rest}`
+
+/**
+ * Resolves a model-supplied path against the vault this app is open on. Thin
+ * wrapper over {@link resolveNativePathWithin}; kept async because every
+ * caller is inside a tool's async `execute`.
+ */
+export async function resolveNativePath(
+  app: App,
+  inputPath: string,
+): Promise<string> {
+  return resolveNativePathWithin(resolveNativePathBoundary(app), inputPath)
+}
+
+const WINDOWS_DRIVE_ROOT = /^[a-zA-Z]:[\\/]/
+
+const isAbsolutePath = (value: string): boolean =>
+  value.startsWith('/') ||
+  value.startsWith('\\') ||
+  WINDOWS_DRIVE_ROOT.test(value)
+
+/**
+ * Collapses `.`/`..`/duplicate separators in an already-rooted path, keeping
+ * the root prefix (`/`, `//server`, `C:/`) intact. `..` at the root is
+ * dropped rather than escaping it, matching `path.resolve`.
+ */
+const normalizeAbsolutePath = (value: string): string => {
+  const windows = looksLikeWindowsPath(value)
+  const unified = value.replace(/\\/g, '/')
+
+  let root = '/'
+  let rest = unified.slice(1)
+  const driveMatch = /^([a-zA-Z]:)\//.exec(unified)
+  if (unified.startsWith('//')) {
+    root = '//'
+    rest = unified.slice(2)
+  } else if (driveMatch) {
+    root = `${driveMatch[1]}/`
+    rest = unified.slice(driveMatch[0].length)
+  }
+
+  const segments: string[] = []
+  for (const segment of rest.split('/')) {
+    if (segment === '' || segment === '.') continue
+    if (segment === '..') {
+      segments.pop()
+      continue
+    }
+    segments.push(segment)
+  }
+
+  let out = `${root}${segments.join('/')}`
+  if (out.length > 1 && out.endsWith('/')) {
+    out = out.slice(0, -1)
+  }
+  return windows ? out.replace(/\//g, '\\') : out
 }
 
 /**

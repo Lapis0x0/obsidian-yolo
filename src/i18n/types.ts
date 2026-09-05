@@ -2019,6 +2019,7 @@ export type TranslationKeys = {
       abort?: string
       alwaysAllowThisTool?: string
       allowForThisChat?: string
+      outsideVaultNotice?: string
       approvePlan?: string
       stayInPlan?: string
     }

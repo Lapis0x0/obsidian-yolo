@@ -2213,6 +2213,7 @@ export const zh: TranslationKeys = {
       abort: '停止执行',
       alwaysAllowThisTool: '始终允许此工具',
       allowForThisChat: '本对话内允许',
+      outsideVaultNotice: '该路径在仓库之外：{path}',
       approvePlan: '批准计划',
       stayInPlan: '留在计划模式',
     },

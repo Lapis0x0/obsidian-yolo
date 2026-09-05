@@ -288,3 +288,197 @@ describe('McpManager connected tool catalog', () => {
     expect(listTools).not.toHaveBeenCalled()
   })
 })
+
+// YOLO Max's mode-level capability grant (docs/plans/09-05-yolo-max/master.md
+// §4 Q8). The point of the exercise: the global switch gates *both* the model's
+// tool list and execution, so a mode that promises a terminal has to lift both
+// or the model is offered a tool that then refuses to run.
+describe('McpManager per-run capability grant', () => {
+  const originalIsDesktop = Platform.isDesktop
+  const MAX_OVERRIDES = new Map([
+    ['terminal', { forceEnabled: true, allowAlwaysAllow: true }],
+  ])
+
+  beforeEach(() => {
+    Platform.isDesktop = true
+  })
+
+  afterEach(() => {
+    Platform.isDesktop = originalIsDesktop
+  })
+
+  const createManager = (
+    builtinCapabilityOptions: Record<string, { disabled?: boolean }> = {},
+  ) =>
+    new McpManager({
+      pluginId: 'test-plugin',
+      app: {
+        vault: { configDir: OBSIDIAN_CONFIG_DIR },
+      } as unknown as App,
+      settings: {
+        mcp: { servers: [], builtinCapabilityOptions },
+        webSearch: {
+          providers: [],
+          defaultProviderId: undefined,
+          common: {
+            resultSize: 8,
+            searchTimeoutMs: 15000,
+            scrapeTimeoutMs: 20000,
+          },
+        },
+      } as never,
+      openApplyReview: jest.fn(),
+      registerSettingsListener: () => () => {},
+    })
+
+  const listNames = async (
+    manager: McpManager,
+    capabilityOverrides?: typeof MAX_OVERRIDES,
+  ) =>
+    (
+      await manager.listAvailableTools({
+        includeBuiltinTools: true,
+        capabilityOverrides,
+      })
+    ).map((tool) => tool.name)
+
+  it('offers and allows a globally disabled capability the run forces on', async () => {
+    const manager = createManager({ terminal: { disabled: true } })
+
+    expect(await listNames(manager)).not.toContain(
+      'yolo_local__terminal_command',
+    )
+    expect(await listNames(manager, MAX_OVERRIDES)).toContain(
+      'yolo_local__terminal_command',
+    )
+
+    expect(
+      manager.isToolExecutionAllowed({
+        requestToolName: 'yolo_local__terminal_command',
+        requireAutoExecution: true,
+      }),
+    ).toBe(false)
+    expect(
+      manager.isToolExecutionAllowed({
+        requestToolName: 'yolo_local__terminal_command',
+        requireAutoExecution: true,
+        capabilityForceEnabled: true,
+      }),
+    ).toBe(true)
+  })
+
+  it('never lifts the platform gate, only the user switch', async () => {
+    Platform.isDesktop = false
+    const manager = createManager({ terminal: { disabled: true } })
+
+    expect(await listNames(manager, MAX_OVERRIDES)).not.toContain(
+      'yolo_local__terminal_command',
+    )
+    expect(
+      manager.isToolExecutionAllowed({
+        requestToolName: 'yolo_local__terminal_command',
+        requireAutoExecution: true,
+        capabilityForceEnabled: true,
+      }),
+    ).toBe(false)
+  })
+
+  it('refuses to execute a disabled built-in through callTool without the grant', async () => {
+    const manager = createManager({ terminal: { disabled: true } })
+
+    await expect(
+      manager.callTool({
+        name: 'yolo_local__terminal_command',
+        args: { command: 'ls' },
+      }),
+    ).resolves.toMatchObject({
+      status: ToolCallResponseStatus.Error,
+      error: expect.stringContaining('is disabled'),
+    })
+  })
+
+  it('does not let a forced run poison the tool list cache for other runs', async () => {
+    const manager = createManager({ terminal: { disabled: true } })
+
+    expect(await listNames(manager, MAX_OVERRIDES)).toContain(
+      'yolo_local__terminal_command',
+    )
+    expect(await listNames(manager)).not.toContain(
+      'yolo_local__terminal_command',
+    )
+  })
+})
+
+// The vault-boundary permission (master.md §4 Q7) lives in the same
+// per-conversation allowance set as every "always allow", addressed by an
+// explicit key instead of being derived from a tool name plus arguments.
+describe('McpManager execution allowances', () => {
+  const createManager = () =>
+    new McpManager({
+      pluginId: 'test-plugin',
+      app: { vault: { configDir: OBSIDIAN_CONFIG_DIR } } as unknown as App,
+      settings: {
+        mcp: { servers: [], builtinCapabilityOptions: {} },
+        webSearch: {
+          providers: [],
+          defaultProviderId: undefined,
+          common: {
+            resultSize: 8,
+            searchTimeoutMs: 15000,
+            scrapeTimeoutMs: 20000,
+          },
+        },
+      } as never,
+      openApplyReview: jest.fn(),
+      registerSettingsListener: () => () => {},
+    })
+
+  it('grants and reports a bare allowance key, scoped to its conversation', () => {
+    const manager = createManager()
+
+    expect(
+      manager.isExecutionAllowanceGranted('native:outside-vault', 'conv-1'),
+    ).toBe(false)
+    manager.grantExecutionAllowance('native:outside-vault', 'conv-1')
+    expect(
+      manager.isExecutionAllowanceGranted('native:outside-vault', 'conv-1'),
+    ).toBe(true)
+    expect(
+      manager.isExecutionAllowanceGranted('native:outside-vault', 'conv-2'),
+    ).toBe(false)
+    expect(manager.isExecutionAllowanceGranted('native:outside-vault')).toBe(
+      false,
+    )
+  })
+
+  it('carries the extra keys an approval grants alongside the tool itself', () => {
+    const manager = createManager()
+
+    manager.allowToolForConversation(
+      'yolo_local__write_file',
+      'conv-1',
+      { path: '/etc/hosts' },
+      ['native:outside-vault'],
+    )
+
+    expect(
+      manager.isExecutionAllowanceGranted('native:outside-vault', 'conv-1'),
+    ).toBe(true)
+    expect(
+      manager.isToolExecutionAllowed({
+        requestToolName: 'yolo_local__write_file',
+        conversationId: 'conv-1',
+      }),
+    ).toBe(true)
+  })
+
+  it('does not treat a plain tool allowance as the boundary permission', () => {
+    const manager = createManager()
+
+    manager.allowToolForConversation('yolo_local__terminal_command', 'conv-1')
+
+    expect(
+      manager.isExecutionAllowanceGranted('native:outside-vault', 'conv-1'),
+    ).toBe(false)
+  })
+})

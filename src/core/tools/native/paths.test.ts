@@ -8,7 +8,14 @@ import * as path from 'node:path'
 import { FileSystemAdapter } from 'obsidian'
 import type { App } from 'obsidian'
 
-import { getVaultBasePath, isInsideVault, resolveNativePath } from './paths'
+import {
+  OUTSIDE_VAULT_ALLOWANCE_KEY,
+  getExtraAllowanceKeysForRequest,
+  getVaultBasePath,
+  isInsideVault,
+  resolveNativePath,
+  resolveNativePathWithin,
+} from './paths'
 
 const VAULT = path.resolve('/tmp/yolo-vault')
 
@@ -132,5 +139,68 @@ describe('isInsideVault', () => {
 
   it('rejects an empty vault base path instead of matching everything', () => {
     expect(isInsideVault('/home/me/vault/a.md', '')).toBe(false)
+  })
+})
+
+describe('resolveNativePathWithin', () => {
+  // The gateway's approval decision and the tool's own write go through this
+  // one function, so what it does off-platform matters: these cases are the
+  // Windows shapes a macOS/Linux `path.resolve` could never be asked about.
+  const windowsBoundary = {
+    vaultBasePath: 'C:\\Users\\me\\vault',
+    homeDir: 'C:\\Users\\me',
+  }
+
+  it('resolves a relative path against a Windows vault root', () => {
+    expect(resolveNativePathWithin(windowsBoundary, 'notes/a.md')).toBe(
+      'C:\\Users\\me\\vault\\notes\\a.md',
+    )
+  })
+
+  it('collapses .. out of a Windows vault root', () => {
+    expect(resolveNativePathWithin(windowsBoundary, '..\\other\\x.txt')).toBe(
+      'C:\\Users\\me\\other\\x.txt',
+    )
+  })
+
+  it('expands ~ against the boundary home directory, not the machine one', () => {
+    expect(resolveNativePathWithin(windowsBoundary, '~/Downloads/x.csv')).toBe(
+      'C:\\Users\\me\\Downloads\\x.csv',
+    )
+  })
+
+  it('keeps a UNC root intact', () => {
+    expect(
+      resolveNativePathWithin(windowsBoundary, '\\\\srv\\share\\a.md'),
+    ).toBe('\\\\srv\\share\\a.md')
+  })
+
+  it('refuses to expand ~ when the boundary has no home directory', () => {
+    expect(() =>
+      resolveNativePathWithin(
+        { vaultBasePath: '/home/me/vault', homeDir: '' },
+        '~/x.md',
+      ),
+    ).toThrow(/no home directory/)
+  })
+
+  it('never escapes the root with leading ..', () => {
+    expect(
+      resolveNativePathWithin(
+        { vaultBasePath: '/', homeDir: '/home/me' },
+        '../../etc/hosts',
+      ),
+    ).toBe('/etc/hosts')
+  })
+})
+
+describe('getExtraAllowanceKeysForRequest', () => {
+  it('grants the shared boundary permission only for an outside-vault call', () => {
+    expect(getExtraAllowanceKeysForRequest({ metadata: {} })).toEqual([])
+    expect(
+      getExtraAllowanceKeysForRequest({
+        metadata: { outsideVaultPath: '/etc/hosts' },
+      }),
+    ).toEqual([OUTSIDE_VAULT_ALLOWANCE_KEY])
   })
 })
