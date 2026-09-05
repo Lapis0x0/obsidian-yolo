@@ -2096,6 +2096,10 @@ export const it: DeepPartial<TranslationKeys> = {
       fileDeleted:
         'Questo file e stato eliminato. Usa annulla per ripristinarlo.',
       fileMissing: 'Il file non esiste piu o e stato spostato.',
+      snapshotUnavailable:
+        'Questo dispositivo non ha uno snapshot di quella modifica, quindi non puo essere annullata ne revisionata. Gli snapshot restano sul dispositivo che ha fatto la modifica.',
+      reviewOutsideVault:
+        'Questo file si trova fuori dal vault, quindi non puo essere revisionato nell editor. Annulla funziona comunque.',
     },
     errorCard: {
       title: 'Questa risposta non e stata generata',

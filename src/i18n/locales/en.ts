@@ -2238,6 +2238,10 @@ export const en: TranslationKeys = {
       undoFailed: 'Undo failed. Please try again.',
       fileDeleted: 'This file was deleted. Use undo to restore it.',
       fileMissing: 'The file no longer exists or has been moved.',
+      snapshotUnavailable:
+        'This device has no snapshot of that edit, so it cannot be undone or reviewed. Snapshots stay on the device that made the edit.',
+      reviewOutsideVault:
+        'This file lives outside the vault, so it cannot be reviewed in the editor. Undo still works.',
     },
     errorCard: {
       title: 'This response failed to generate',

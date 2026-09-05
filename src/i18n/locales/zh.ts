@@ -2118,6 +2118,10 @@ export const zh: TranslationKeys = {
       undoFailed: '撤销失败，请稍后重试。',
       fileDeleted: '文件已被删除，可使用撤销进行恢复。',
       fileMissing: '文件不存在或已被移动。',
+      snapshotUnavailable:
+        '本设备没有这次编辑的快照，无法撤销或评审（快照只保存在本机，不随笔记同步）。',
+      reviewOutsideVault:
+        '该文件在 vault 之外，无法在编辑器中评审；撤销仍然可用。',
     },
     errorCard: {
       title: '本次回复生成失败',

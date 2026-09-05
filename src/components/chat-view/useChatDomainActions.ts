@@ -1,6 +1,6 @@
 import { EditorView } from '@codemirror/view'
 import { useMutation } from '@tanstack/react-query'
-import { Notice, TFile, TFolder, normalizePath } from 'obsidian'
+import { Notice, TFile } from 'obsidian'
 import { Dispatch, MutableRefObject, SetStateAction, useCallback } from 'react'
 
 import { useApp } from '../../contexts/app-context'
@@ -52,32 +52,15 @@ import {
   yoloPreferencePatch,
 } from './chat-input/ChatModeSelect'
 import { invalidateChatRuntimeNavigation } from './cliChatIntegration'
+import {
+  isOutsideVaultEditPath,
+  openEditTarget,
+  usableSnapshotPair,
+} from './editTargetIo'
 import { isDelegateSubagentToolName } from './messageNavigatorUtils'
 import type { QueryProgressState } from './QueryProgress'
 import type { useChatStreamManager } from './useChatStreamManager'
 import { serializeActiveBranchByUserMessageId } from './useYoloChatSession'
-
-const ensureDirectoryPathExists = async (
-  app: ReturnType<typeof useApp>,
-  path: string,
-): Promise<void> => {
-  const segments = normalizePath(path)
-    .split('/')
-    .filter((segment) => segment.length > 0)
-
-  let currentPath = ''
-  for (const segment of segments) {
-    currentPath = currentPath.length > 0 ? `${currentPath}/${segment}` : segment
-    const existing = app.vault.getAbstractFileByPath(currentPath)
-    if (!existing) {
-      await app.vault.createFolder(currentPath)
-      continue
-    }
-    if (!(existing instanceof TFolder)) {
-      throw new Error(`Path exists and is not a folder: ${currentPath}`)
-    }
-  }
-}
 
 const offsetToSelectionPosition = (content: string, offset: number) => {
   const clampedOffset = Math.max(0, Math.min(offset, content.length))
@@ -882,6 +865,9 @@ export function useChatDomainActions({
 
       try {
         const undoStateByPath = new Map<string, 'applied' | 'unavailable'>()
+        // 「快照根本不在本机」和「文件后来又被改过」是两回事，前者只能提示
+        // 换回做出这次编辑的设备，所以分开记。
+        let missingSnapshotCount = 0
 
         for (const fileGroup of summary.files) {
           const [firstSnapshot, latestSnapshot] = await Promise.all([
@@ -899,52 +885,37 @@ export function useChatDomainActions({
             }),
           ])
 
-          if (!firstSnapshot || !latestSnapshot) {
+          const snapshots = usableSnapshotPair(firstSnapshot, latestSnapshot)
+          if (!snapshots) {
+            missingSnapshotCount += 1
             undoStateByPath.set(fileGroup.path, 'unavailable')
             continue
           }
 
-          const targetFile = app.vault.getAbstractFileByPath(fileGroup.path)
-          const currentFile = targetFile instanceof TFile ? targetFile : null
+          const target = await openEditTarget(app, fileGroup.path)
+          const currentContent = await target.read()
 
-          if (latestSnapshot.afterExists) {
-            if (!currentFile) {
-              undoStateByPath.set(fileGroup.path, 'unavailable')
-              continue
-            }
-
-            const currentContent = await app.vault.read(currentFile)
-            if (currentContent !== latestSnapshot.afterContent) {
-              undoStateByPath.set(fileGroup.path, 'unavailable')
-              continue
-            }
-          } else if (targetFile) {
+          if (
+            snapshots.latest.afterExists
+              ? currentContent !== snapshots.latest.afterContent
+              : currentContent !== null
+          ) {
             undoStateByPath.set(fileGroup.path, 'unavailable')
             continue
           }
 
           undoStateByPath.set(fileGroup.path, 'applied')
 
-          if (!firstSnapshot.beforeExists) {
-            if (currentFile) {
-              await app.fileManager.trashFile(currentFile)
+          if (!snapshots.first.beforeExists) {
+            if (currentContent !== null) {
+              await target.trash()
             }
             continue
           }
 
-          if (currentFile) {
-            const currentContent = await app.vault.read(currentFile)
-            if (currentContent !== firstSnapshot.beforeContent) {
-              await app.vault.modify(currentFile, firstSnapshot.beforeContent)
-            }
-            continue
+          if (currentContent !== snapshots.first.beforeContent) {
+            await target.write(snapshots.first.beforeContent)
           }
-
-          const parentPath = fileGroup.path.split('/').slice(0, -1).join('/')
-          if (parentPath.length > 0) {
-            await ensureDirectoryPathExists(app, parentPath)
-          }
-          await app.vault.create(fileGroup.path, firstSnapshot.beforeContent)
         }
 
         const appliedCount = summary.files.filter(
@@ -1008,6 +979,13 @@ export function useChatDomainActions({
               '部分文件已撤销，另一些文件因后续变更未覆盖。',
             ),
           )
+        } else if (missingSnapshotCount === summary.files.length) {
+          new Notice(
+            t(
+              'chat.editSummary.snapshotUnavailable',
+              '本设备没有这次编辑的快照，无法撤销或评审（快照只保存在本机，不随笔记同步）。',
+            ),
+          )
         } else {
           new Notice(
             t(
@@ -1041,6 +1019,19 @@ export function useChatDomainActions({
       firstRoundId,
       latestRoundId,
     }: GroupEditSummary['files'][number]) => {
+      // 评审是 Obsidian 编辑器视图上的 diff 覆盖层，只能开在 vault 里的
+      // Markdown 文件上。vault 外的文件（只有 Max 的原生工具会写）没有
+      // `TFile`，也就没有可覆盖的编辑器；撤销仍然走 node fs，照常可用。
+      if (isOutsideVaultEditPath(path)) {
+        new Notice(
+          t(
+            'chat.editSummary.reviewOutsideVault',
+            '该文件在 vault 之外，无法在编辑器中评审；撤销仍然可用。',
+          ),
+        )
+        return
+      }
+
       const targetEntry = app.vault.getAbstractFileByPath(path)
       const targetFile = targetEntry instanceof TFile ? targetEntry : null
 
@@ -1071,8 +1062,9 @@ export function useChatDomainActions({
         }),
       ])
 
-      if (firstSnapshot && latestSnapshot) {
-        if (!latestSnapshot.afterExists) {
+      const snapshots = usableSnapshotPair(firstSnapshot, latestSnapshot)
+      if (snapshots) {
+        if (!snapshots.latest.afterExists) {
           new Notice(
             t(
               'chat.editSummary.fileDeleted',
@@ -1090,7 +1082,7 @@ export function useChatDomainActions({
         }
 
         const currentContent = await app.vault.read(targetFile)
-        if (currentContent !== latestSnapshot.afterContent) {
+        if (currentContent !== snapshots.latest.afterContent) {
           const leaf = app.workspace.getLeaf(false)
           await leaf.openFile(targetFile)
           new Notice(
@@ -1104,8 +1096,8 @@ export function useChatDomainActions({
 
         await plugin.openApplyReview({
           file: targetFile,
-          originalContent: firstSnapshot.beforeContent,
-          newContent: latestSnapshot.afterContent,
+          originalContent: snapshots.first.beforeContent,
+          newContent: snapshots.latest.afterContent,
           viewMode: 'applied-review',
           reviewMode: 'full',
         })
@@ -1119,6 +1111,13 @@ export function useChatDomainActions({
 
       const leaf = app.workspace.getLeaf(false)
       await leaf.openFile(targetFile)
+      // 卡片还在，快照不在：这台设备没做过这次编辑，或者文件大到没留正文。
+      new Notice(
+        t(
+          'chat.editSummary.snapshotUnavailable',
+          '本设备没有这次编辑的快照，无法撤销或评审（快照只保存在本机，不随笔记同步）。',
+        ),
+      )
     },
     [app, app.vault, app.workspace, currentConversationId, plugin, t],
   )

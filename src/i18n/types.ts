@@ -1925,6 +1925,8 @@ export type TranslationKeys = {
       undoFailed?: string
       fileDeleted?: string
       fileMissing?: string
+      snapshotUnavailable?: string
+      reviewOutsideVault?: string
     }
     errorCard?: {
       title?: string
