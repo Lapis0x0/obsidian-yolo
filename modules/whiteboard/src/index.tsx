@@ -26,6 +26,12 @@ import { WhiteboardCanvas } from './ui/canvas'
 const MODULE_ID = 'whiteboard'
 const VIEW_TYPE = 'yolo-whiteboard'
 
+/** The whiteboard's identity everywhere the host draws it — file view, ribbon
+ * and both context-menu entries — so a board is recognizable as one thing.
+ * Not `layout-grid`: the canvas already spends that icon on "tidy" (see
+ * `ui/canvas.ts`), and a module should not say two things with one drawing. */
+const WHITEBOARD_ICON = 'waypoints'
+
 yolo.registerModule({
   id: MODULE_ID,
   activate(host) {
@@ -37,7 +43,7 @@ yolo.registerModule({
       viewType: VIEW_TYPE,
       extensions: ['yoloboard'],
       name: createWhiteboardLocalizedText('module.name'),
-      icon: 'layout-grid',
+      icon: WHITEBOARD_ICON,
       factory: (context) => {
         const canvas = new WhiteboardCanvas(context, host)
         const forgetOpenBoard = openBoards.add(canvas)
@@ -64,17 +70,27 @@ yolo.registerModule({
     // as long as the module is active, independent of any open leaf.
     host.lifecycle.add(registerWhiteboardRenameRewriter(host))
 
-    // Creation entries (p1-design §5): command creates at the vault root;
-    // the folder context menu action creates inside the target folder.
+    // Creation entries (p1-design §5): command and ribbon create at the vault
+    // root; the folder context menu action creates inside the target folder.
+    // The ribbon is a creation entry rather than an "open" one because a board
+    // is a file — there is no home surface for it to open.
     host.workspace.registerCommand({
       id: 'new-whiteboard',
       name: createWhiteboardLocalizedText('command.newWhiteboard'),
       callback: () => createWhiteboard(host, ''),
     })
+    // The ribbon says "YOLO whiteboard", not just "whiteboard": Obsidian's own
+    // Canvas ribbon action sits in the same strip under that exact name in
+    // several locales, and two identical tooltips make the strip unreadable.
+    host.workspace.registerRibbonAction({
+      icon: WHITEBOARD_ICON,
+      title: createWhiteboardLocalizedText('menu.newWhiteboard'),
+      onClick: () => void createWhiteboard(host, ''),
+    })
     host.workspace.registerFileMenuAction({
       id: 'whiteboard-new-in-folder',
       title: createWhiteboardLocalizedText('menu.newWhiteboard'),
-      icon: 'layout-grid',
+      icon: WHITEBOARD_ICON,
       appliesTo: 'folder',
       onSelect: (entry) => createWhiteboard(host, entry.path),
     })
@@ -87,7 +103,7 @@ yolo.registerModule({
     host.workspace.registerFileMenuAction({
       id: 'whiteboard-import-canvas',
       title: createWhiteboardLocalizedText('menu.importCanvas'),
-      icon: 'layout-grid',
+      icon: WHITEBOARD_ICON,
       appliesTo: 'file',
       extensions: ['canvas'],
       onSelect: (entry) => importCanvasFileAndOpen(host, entry.path),

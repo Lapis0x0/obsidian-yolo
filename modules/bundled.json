@@ -40,7 +40,7 @@
     {
       "id": "whiteboard",
       "version": "0.1.1",
-      "icon": "layout-grid",
+      "icon": "waypoints",
       "localizations": {
         "en": {
           "name": "YOLO Whiteboard",
@@ -70,7 +70,7 @@
       "manifestUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/module.json",
       "manifest": {
         "byteSize": 1886,
-        "sha256": "770dca47128161df54a999777199f455406e9ecabb4701adfad24b1a6a76c12c"
+        "sha256": "61bbc382ea190edf06635d33a2f943304f6f3ecf23b52ff7dd9491c6d50a1252"
       }
     }
   ]

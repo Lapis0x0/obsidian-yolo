@@ -1,6 +1,6 @@
 {
   "id": "whiteboard",
-  "icon": "layout-grid",
+  "icon": "waypoints",
   "localizations": {
     "en": {
       "name": "YOLO Whiteboard",
