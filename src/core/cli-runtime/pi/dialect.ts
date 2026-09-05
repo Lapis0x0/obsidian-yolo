@@ -40,6 +40,24 @@ export type PiRuntimeDialect = Readonly<{
    * runs the agent and leaves this undefined.
    */
   isPromptSettledWithoutAgentRun?: (promptResponse: unknown) => boolean
+  /**
+   * Protocol version to negotiate on connect, when the runtime gates its
+   * chunked transport behind an opt-in. omp caps a physical stdout frame at
+   * 1 MiB and needs v2 before it will split an oversized response into
+   * reassemblable chunks; pi has no cap and no handshake.
+   */
+  negotiateProtocolVersion?: number
+  /**
+   * Where the session transcript is read from, for hydration and for the
+   * entries a fork replays. pi answers `get_entries` over RPC. omp has no
+   * such command at all — it answers `get_messages`, which returns *converted
+   * messages* rather than the raw entries a fork has to write back out, and
+   * it reports the unknown command without an `id`, so the request would
+   * simply hang. Its transcript is read from the session file instead: the
+   * same v3 JSONL this engine already writes when forking, and already the
+   * shape the entry mapping expects.
+   */
+  historySource: 'rpc' | 'session-file'
 }>
 
 export const PI_RUNTIME_DIALECT: PiRuntimeDialect = {
@@ -48,4 +66,5 @@ export const PI_RUNTIME_DIALECT: PiRuntimeDialect = {
   notFoundMessage:
     'pi CLI was not found on this device. Install pi (npm i -g @earendil-works/pi-cli, package name may vary), or set a custom CLI path in Settings → Agent, then retry.',
   isTurnSettled: isPiAgentSettled,
+  historySource: 'rpc',
 }

@@ -172,7 +172,10 @@ export class PiCliRuntime implements CliRuntime {
     const target = ref.sessionPathHint ?? ref.nativeSessionId
     const handle = await this.startProcessHandle(target)
     try {
-      const response = await handle.transport.request('get_entries', {})
+      const response = await this.readSessionEntries(
+        handle,
+        ref.sessionPathHint,
+      )
       const { messages, compactionBoundaries } = mapPiEntriesToHydration(
         response,
         this.runtimeId,
@@ -352,7 +355,17 @@ export class PiCliRuntime implements CliRuntime {
     }
 
     const handle = this.activeHandle
-    const entriesResponse = await handle.transport.request('get_entries', {})
+    // The file is resolved first: it is both where the fork is written and,
+    // for a session-file dialect, where the transcript is read from.
+    const state = await handle.transport.request('get_state', {})
+    const identity = extractPiSessionIdentity(state)
+    const sourceFile = activeRef.sessionPathHint ?? identity?.sessionFile
+    if (!sourceFile) {
+      throw new Error(
+        `${this.command} session file is unknown; cannot rewrite a turn.`,
+      )
+    }
+    const entriesResponse = await this.readSessionEntries(handle, sourceFile)
     const checkpoint = resolvePiRewriteCheckpoint(
       entriesResponse,
       input.sourceUserMessageId,
@@ -362,14 +375,6 @@ export class PiCliRuntime implements CliRuntime {
       0,
       checkpoint.userIndex,
     )
-    const state = await handle.transport.request('get_state', {})
-    const identity = extractPiSessionIdentity(state)
-    const sourceFile = activeRef.sessionPathHint ?? identity?.sessionFile
-    if (!sourceFile) {
-      throw new Error(
-        `${this.command} session file is unknown; cannot rewrite a turn.`,
-      )
-    }
 
     const nextRef = checkpoint.resumeAt
       ? await this.writeForkedSession({
@@ -387,6 +392,53 @@ export class PiCliRuntime implements CliRuntime {
       ...(input.selectedSkills ? { selectedSkills: input.selectedSkills } : {}),
       ...(this.activeSessionRef ? { sessionRef: this.activeSessionRef } : {}),
     })
+  }
+
+  /**
+   * The session transcript, in the `{ entries }` shape the entry mapping and
+   * the fork writer both consume. `historySource` decides where it comes
+   * from — see `PiRuntimeDialect`. Reading the file yields the same records
+   * `get_entries` does, minus the two file-level headers: `session` (which
+   * the fork writer regenerates) and omp's fixed-width `title` slot, which
+   * is physical framing rather than a transcript entry.
+   */
+  private async readSessionEntries(
+    handle: PiProcessHandle,
+    sessionFile: string | undefined,
+  ): Promise<unknown> {
+    if (this.dialect.historySource === 'rpc') {
+      return handle.transport.request('get_entries', {})
+    }
+    const file =
+      sessionFile ??
+      extractPiSessionIdentity(await handle.transport.request('get_state', {}))
+        ?.sessionFile
+    if (!file) {
+      throw new Error(
+        `${this.command} session file is unknown; cannot read the transcript.`,
+      )
+    }
+    const fs =
+      await loadDesktopNodeModule<typeof import('node:fs/promises')>(
+        'node:fs/promises',
+      )
+    const entries: unknown[] = []
+    for (const line of (await fs.readFile(file, 'utf8')).split('\n')) {
+      if (!line.trim()) continue
+      let parsed: unknown
+      try {
+        parsed = JSON.parse(line)
+      } catch {
+        continue
+      }
+      const type =
+        parsed && typeof parsed === 'object'
+          ? (parsed as { type?: unknown }).type
+          : undefined
+      if (type === 'session' || type === 'title') continue
+      entries.push(parsed)
+    }
+    return { entries }
   }
 
   private async writeForkedSession({
@@ -501,7 +553,11 @@ export class PiCliRuntime implements CliRuntime {
       args,
       cwd: this.options.vaultPath,
     })
-    const transport = new PiRpcTransport(process)
+    const transport = new PiRpcTransport(process, {
+      ...(this.dialect.negotiateProtocolVersion !== undefined
+        ? { negotiateProtocolVersion: this.dialect.negotiateProtocolVersion }
+        : {}),
+    })
     return { process, transport }
   }
 

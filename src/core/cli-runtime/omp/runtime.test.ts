@@ -15,6 +15,20 @@ jest.mock('../login-shell-env', () => ({
 jest.mock('../cli-path-override', () => ({
   getCliPathOverride: () => undefined,
 }))
+jest.mock('../../../utils/platform/desktopNodeModule', () => ({
+  loadDesktopNodeModule: async (specifier: string) => {
+    switch (specifier) {
+      /* eslint-disable @typescript-eslint/no-require-imports, import/no-nodejs-modules -- stands in for the desktop-only loader this mock replaces; jest.mock's factory is hoisted above imports, so it cannot await a dynamic import */
+      case 'node:fs/promises':
+        return require('node:fs/promises')
+      case 'node:path':
+        return require('node:path')
+      /* eslint-enable @typescript-eslint/no-require-imports, import/no-nodejs-modules */
+      default:
+        throw new Error(`Unexpected desktop module: ${specifier}`)
+    }
+  },
+}))
 jest.mock('../pi/process')
 
 /** Minimal scriptable `omp --mode rpc` stand-in (see pi's own fake process). */
@@ -24,6 +38,12 @@ class FakeOmpProcess implements PiProcessLike {
   private dataListener: ((chunk: string) => void) | null = null
   private exitListener: PiProcessExitListener | null = null
 
+  constructor() {
+    // omp answers the protocol handshake the `ready` frame invites; the
+    // engine holds every other command until this lands.
+    this.handlers.set('negotiate_protocol', () => ({ protocolVersion: 2 }))
+  }
+
   registerHandler(type: string, fn: () => unknown): void {
     this.handlers.set(type, fn)
     const queued = this.pendingByType.get(type)
@@ -32,9 +52,16 @@ class FakeOmpProcess implements PiProcessLike {
     for (const id of queued) this.respond(type, id, fn())
   }
 
+  private readonly written: string[] = []
+
+  sentTypes(): string[] {
+    return this.written
+  }
+
   write(text: string): void {
     const record = JSON.parse(text) as Record<string, unknown>
     const type = record.type as string
+    this.written.push(type)
     const id = record.id
     if (typeof id !== 'string') return // fire-and-forget, e.g. `abort`
     const handler = this.handlers.get(type)
@@ -62,6 +89,16 @@ class FakeOmpProcess implements PiProcessLike {
 
   onData(listener: (chunk: string) => void): () => void {
     this.dataListener = listener
+    // Real omp writes this before it processes any command.
+    queueMicrotask(() =>
+      this.emitLine({
+        type: 'ready',
+        protocolVersion: 1,
+        supportedProtocolVersions: [1, 2],
+        maxFrameBytes: 1_048_576,
+        maxReassembledFrameBytes: 67_108_864,
+      }),
+    )
     return () => {
       this.dataListener = null
     }
@@ -194,5 +231,56 @@ describe('omp on the pi engine — turn terminality', () => {
 
     expect(runStates(events)).toEqual(['running', 'completed'])
     await runtime.dispose()
+  })
+})
+
+describe('omp on the pi engine — session transcript', () => {
+  it('hydrates from the session file, never asking for pi’s get_entries', async () => {
+    /* eslint-disable import/no-nodejs-modules -- exercises the desktop-only session-file read against a real temp dir; runs in Jest/Node only */
+    const fs = await import('node:fs/promises')
+    const os = await import('node:os')
+    const path = await import('node:path')
+    /* eslint-enable import/no-nodejs-modules */
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'omp-hydrate-'))
+    const sessionFile = path.join(dir, 'session.jsonl')
+    // Exactly what omp writes: a fixed-width title slot, the v3 header, then
+    // `message` entries whose role lives on the nested message.
+    await fs.writeFile(
+      sessionFile,
+      [
+        { type: 'title', v: 1, title: '问候', pad: '' },
+        { type: 'session', version: 3, id: 's1', cwd: '/vault' },
+        {
+          type: 'message',
+          id: 'u1',
+          message: { role: 'user', content: [{ type: 'text', text: '你好' }] },
+        },
+        {
+          type: 'message',
+          id: 'a1',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: '你好！' }],
+          },
+        },
+      ]
+        .map((entry) => JSON.stringify(entry))
+        .join('\n') + '\n',
+    )
+
+    const runtime = createRuntime()
+    const hydration = await runtime.openSession({
+      runtimeId: 'omp',
+      nativeSessionId: 's1',
+      sessionPathHint: sessionFile,
+    })
+
+    expect(hydration.messages.map((message) => message.role)).toEqual([
+      'user',
+      'assistant',
+    ])
+    const sent = startedProcesses.flatMap((process) => process.sentTypes())
+    expect(sent).not.toContain('get_entries')
+    await fs.rm(dir, { recursive: true, force: true })
   })
 })

@@ -54,4 +54,9 @@ export const OMP_RUNTIME_DIALECT: PiRuntimeDialect = {
     'omp CLI was not found on this device. Install oh-my-pi (bun install -g @oh-my-pi/pi-coding-agent), or set a custom CLI path in Settings → Agent, then retry.',
   isTurnSettled: isOmpTurnSettled,
   isPromptSettledWithoutAgentRun: isOmpPromptSettledWithoutAgentRun,
+  // omp's model catalog alone runs past the 1 MiB physical frame cap of
+  // protocol v1, which answers `get_available_models` with a flat "RPC
+  // response exceeded the transport limit" instead of the catalog.
+  negotiateProtocolVersion: 2,
+  historySource: 'session-file',
 }
