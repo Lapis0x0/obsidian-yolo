@@ -83,6 +83,8 @@ export const en: TranslationKeys = {
       piDescription: 'Pi on this device',
       ompLabel: 'omp',
       ompDescription: 'Oh My Pi on this device',
+      variantToggleHint:
+        'Switch between {base} and {variant} — changing channel starts a new session',
       grokLabel: 'Grok',
       grokDescription: 'Grok Build on this device',
     },

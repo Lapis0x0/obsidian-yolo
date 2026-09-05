@@ -92,6 +92,7 @@ export type TranslationKeys = {
       piDescription: string
       ompLabel: string
       ompDescription: string
+      variantToggleHint: string
       grokLabel: string
       grokDescription: string
     }

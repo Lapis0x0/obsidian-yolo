@@ -106,3 +106,31 @@ export const CLI_RUNTIME_DESCRIPTORS: readonly CliRuntimeDescriptor[] =
 export const getCliRuntimeDescriptor = (
   id: CliRuntimeId,
 ): CliRuntimeDescriptor => DESCRIPTORS_BY_ID[id]
+
+/**
+ * One row of the runtime picker: the runtime whose identity the row carries,
+ * plus the runtimes that declared `variantOf` on it and therefore fold into
+ * this row as inline switches instead of claiming rows of their own.
+ *
+ * Collapsing is resolved here rather than in the selector so the picker stays
+ * generic — declaring `variantOf` on a new fork is the whole cost of folding
+ * it in. Only the picker consumes rows; every other surface (badges, input
+ * controls, settings) reads descriptors by id, because those surfaces state
+ * *which* runtime is in play and a variant is never "its base" there.
+ */
+export type CliRuntimeSelectorRow = Readonly<{
+  primary: CliRuntimeDescriptor
+  /** In registry order; empty for a runtime nothing forks. */
+  variants: readonly CliRuntimeDescriptor[]
+}>
+
+/** Ordered by display order, same as `CLI_RUNTIME_DESCRIPTORS` minus variants. */
+export const CLI_RUNTIME_SELECTOR_ROWS: readonly CliRuntimeSelectorRow[] =
+  CLI_RUNTIME_DESCRIPTORS.filter((descriptor) => !descriptor.variantOf).map(
+    (primary) => ({
+      primary,
+      variants: CLI_RUNTIME_DESCRIPTORS.filter(
+        (descriptor) => descriptor.variantOf === primary.id,
+      ),
+    }),
+  )

@@ -1,31 +1,78 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Check, ChevronDown } from 'lucide-react'
-import { useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
 import {
-  CLI_RUNTIME_DESCRIPTORS,
+  CLI_RUNTIME_SELECTOR_ROWS,
   type CliRuntimeDescriptor,
   type CliRuntimeId,
+  type CliRuntimeSelectorRow,
   getCliRuntimeDescriptor,
   isCliRuntimeAvailable,
 } from '../../core/cli-runtime'
+import { getNodeWindow } from '../../utils/dom/window-context'
 import { YoloDropdownContent } from '../common/popover'
 
-export type RuntimeSelectorOption = CliRuntimeDescriptor
-
-export const getRuntimeSelectorOptions = (
+/**
+ * The picker's rows — variants fold into the row of the runtime they fork
+ * (see `CLI_RUNTIME_SELECTOR_ROWS`). Folding is presentation only: every
+ * runtime, variants included, stays independently selectable.
+ */
+export const getRuntimeSelectorRows = (
   cliRuntimeAvailable: boolean,
-): readonly RuntimeSelectorOption[] =>
-  cliRuntimeAvailable ? CLI_RUNTIME_DESCRIPTORS : []
+): readonly CliRuntimeSelectorRow[] =>
+  cliRuntimeAvailable ? CLI_RUNTIME_SELECTOR_ROWS : NO_ROWS
 
-export const resolveAvailableRuntimeId = (
-  value: string,
-  cliRuntimeAvailable: boolean,
-): CliRuntimeId | undefined =>
-  getRuntimeSelectorOptions(cliRuntimeAvailable).find(
-    (option) => option.id === value,
-  )?.id
+export type RuntimeSelectorRowState = Readonly<{
+  /** Checked while *any* member of the family is the current runtime. */
+  isSelected: boolean
+  /** What clicking the row body selects — the member its switches show. */
+  rowTargetId: CliRuntimeId
+  variants: readonly Readonly<{
+    descriptor: CliRuntimeDescriptor
+    /** The switch is on only while this exact variant is the current runtime. */
+    isActive: boolean
+    /** What flipping the switch selects: on → the variant, off → the family base. */
+    toggleTargetId: CliRuntimeId
+  }>[]
+}>
+
+/**
+ * How one collapsed row reads against the current runtime. A variant is never
+ * remembered: when the current runtime is outside this family every switch is
+ * off, so the row body falls back to the base runtime.
+ */
+export const resolveRuntimeSelectorRowState = (
+  row: CliRuntimeSelectorRow,
+  currentRuntimeId: CliRuntimeId,
+): RuntimeSelectorRowState => {
+  const variants = row.variants.map((descriptor) => {
+    const isActive = descriptor.id === currentRuntimeId
+    return {
+      descriptor,
+      isActive,
+      toggleTargetId: isActive ? row.primary.id : descriptor.id,
+    }
+  })
+  const activeVariant = variants.find((variant) => variant.isActive)
+  return {
+    isSelected:
+      row.primary.id === currentRuntimeId || activeVariant !== undefined,
+    rowTargetId: activeVariant?.descriptor.id ?? row.primary.id,
+    variants,
+  }
+}
+
+/**
+ * Arrow-key navigation addresses every focusable element in the list: one key
+ * per row, plus one per variant switch, so a row and its switches never
+ * collide.
+ */
+type NavKey = CliRuntimeId | `variant:${CliRuntimeId}`
+const variantNavKey = (id: CliRuntimeId): NavKey => `variant:${id}`
+
+const NO_ROWS: readonly CliRuntimeSelectorRow[] = []
 
 export type RuntimeSelectorProps = {
   currentRuntimeId: CliRuntimeId
@@ -61,6 +108,19 @@ export function RuntimeSelector({
   const menuLabelId = useId()
   const cliRuntimeAvailable = isCliRuntimeAvailable()
   const hoverCloseTimeoutRef = useRef<number | null>(null)
+  const itemRefs = useRef<Partial<Record<NavKey, HTMLElement | null>>>({})
+
+  const rows = getRuntimeSelectorRows(cliRuntimeAvailable)
+  const navOrder = useMemo(() => {
+    const keys: NavKey[] = []
+    for (const row of rows) {
+      keys.push(row.primary.id)
+      for (const variant of row.variants) {
+        keys.push(variantNavKey(variant.id))
+      }
+    }
+    return keys
+  }, [rows])
 
   const clearHoverCloseTimeout = () => {
     if (hoverCloseTimeoutRef.current !== null) {
@@ -170,13 +230,55 @@ export function RuntimeSelector({
     return null
   }
 
-  const availableOptions = getRuntimeSelectorOptions(cliRuntimeAvailable)
   const currentOption = getCliRuntimeDescriptor(currentRuntimeId)
+  const selectedRow = rows.find(
+    (row) =>
+      row.primary.id === currentRuntimeId ||
+      row.variants.some((variant) => variant.id === currentRuntimeId),
+  )
   const currentLabel = t(currentOption.labelKey, currentOption.defaultLabel)
   const accessibleLabel = t('sidebar.runtimeSelector.accessibleLabel').replace(
     '{runtime}',
     currentLabel,
   )
+
+  const selectRuntime = (runtimeId: CliRuntimeId) => {
+    setIsOpen(false)
+    if (runtimeId !== currentRuntimeId) {
+      onRuntimeChange(runtimeId)
+    }
+  }
+
+  const focusNavItem = (key: NavKey | undefined) => {
+    const target = key ? itemRefs.current[key] : null
+    if (!target) return
+    target.focus({ preventScroll: true })
+    target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+  }
+
+  // The rows are plain elements rather than Radix items (a Radix item swallows
+  // Enter/Space and blocks Tab, so a switch nested in one is unreachable by
+  // keyboard), so arrow-key movement is ours to drive.
+  const handleMenuKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
+    event.preventDefault()
+    event.stopPropagation()
+    const ownerWindow = getNodeWindow(triggerRef.current)
+    const activeElement = ownerWindow.document.activeElement
+    const currentIndex = navOrder.findIndex(
+      (key) => itemRefs.current[key] === activeElement,
+    )
+    if (currentIndex < 0) {
+      // Entering the list: land on the row that owns the current runtime —
+      // for a variant that is the row it folded into, not a row of its own.
+      focusNavItem(selectedRow?.primary.id ?? navOrder[0])
+      return
+    }
+    const delta = event.key === 'ArrowDown' ? 1 : -1
+    focusNavItem(
+      navOrder[(currentIndex + delta + navOrder.length) % navOrder.length],
+    )
+  }
 
   return (
     <DropdownMenu.Root
@@ -225,56 +327,122 @@ export function RuntimeSelector({
         sideOffset={6}
         align="start"
         collisionPadding={8}
-        loop
+        onKeyDown={handleMenuKeyDown}
         onMouseEnter={clearHoverCloseTimeout}
         onMouseLeave={closeMenuWithDelay}
       >
         <DropdownMenu.Label id={menuLabelId} className="yolo-sr-only">
           {t('sidebar.runtimeSelector.menuLabel')}
         </DropdownMenu.Label>
-        <DropdownMenu.RadioGroup
+        <div
           className="yolo-model-select-list yolo-runtime-selector__list"
-          value={currentRuntimeId}
+          role="group"
           aria-labelledby={menuLabelId}
-          onValueChange={(value) => {
-            const runtimeId = resolveAvailableRuntimeId(
-              value,
-              cliRuntimeAvailable,
-            )
-            if (runtimeId && runtimeId !== currentRuntimeId) {
-              onRuntimeChange(runtimeId)
-            }
-          }}
         >
-          {availableOptions.map((option) => {
+          {rows.map((row) => {
+            // A row stands for a runtime family. Its switches say which member
+            // is in play, and the row body follows them.
+            const { isSelected, rowTargetId, variants } =
+              resolveRuntimeSelectorRowState(row, currentRuntimeId)
             return (
-              <DropdownMenu.RadioItem
-                key={option.id}
-                value={option.id}
+              <div
+                key={row.primary.id}
+                role="menuitemradio"
+                tabIndex={0}
+                aria-checked={isSelected}
                 className="yolo-popover-item yolo-runtime-selector__option"
-                data-runtime-id={option.id}
+                data-runtime-id={rowTargetId}
+                data-state={isSelected ? 'checked' : 'unchecked'}
+                ref={(element) => {
+                  itemRefs.current[row.primary.id] = element
+                }}
+                onClick={() => selectRuntime(rowTargetId)}
+                onKeyDown={(event) => {
+                  // Enter/Space on a nested switch bubbles up here; a switch
+                  // must not double as "pick this row".
+                  if (event.target !== event.currentTarget) return
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    selectRuntime(rowTargetId)
+                  }
+                }}
               >
                 <span
                   className="yolo-runtime-selector__option-icon"
                   aria-hidden="true"
                 >
-                  <RuntimeIcon runtimeId={option.id} />
+                  <RuntimeIcon runtimeId={row.primary.id} />
                 </span>
                 <span className="yolo-runtime-selector__option-copy">
-                  <span className="yolo-runtime-selector__option-label">
-                    {t(option.labelKey, option.defaultLabel)}
+                  <span className="yolo-runtime-selector__option-title-row">
+                    <span className="yolo-runtime-selector__option-label">
+                      {t(row.primary.labelKey, row.primary.defaultLabel)}
+                    </span>
+                    {variants.map(
+                      ({ descriptor, isActive, toggleTargetId }) => {
+                        const variantLabel = t(
+                          descriptor.labelKey,
+                          descriptor.defaultLabel,
+                        )
+                        const toggleHint = t(
+                          'sidebar.runtimeSelector.variantToggleHint',
+                        )
+                          .replace(
+                            '{base}',
+                            t(row.primary.labelKey, row.primary.defaultLabel),
+                          )
+                          .replace('{variant}', variantLabel)
+                        return (
+                          <button
+                            key={descriptor.id}
+                            type="button"
+                            role="switch"
+                            aria-checked={isActive}
+                            data-active={isActive}
+                            data-runtime-id={descriptor.id}
+                            title={toggleHint}
+                            className="yolo-runtime-selector__variant-toggle"
+                            ref={(element) => {
+                              itemRefs.current[variantNavKey(descriptor.id)] =
+                                element
+                            }}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              selectRuntime(toggleTargetId)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key !== 'Enter' && event.key !== ' ')
+                                return
+                              event.preventDefault()
+                              event.stopPropagation()
+                              selectRuntime(toggleTargetId)
+                            }}
+                          >
+                            <span className="yolo-runtime-selector__variant-toggle-label">
+                              {variantLabel}
+                            </span>
+                            <span
+                              className="yolo-runtime-selector__variant-toggle-switch"
+                              aria-hidden="true"
+                            >
+                              <span className="yolo-runtime-selector__variant-toggle-thumb" />
+                            </span>
+                          </button>
+                        )
+                      },
+                    )}
                   </span>
                   <span className="yolo-runtime-selector__option-description">
-                    {t(option.descriptionKey)}
+                    {t(row.primary.descriptionKey)}
                   </span>
                 </span>
-                <DropdownMenu.ItemIndicator className="yolo-popover-item__indicator">
+                <span className="yolo-popover-item__indicator">
                   <Check size={12} aria-hidden="true" />
-                </DropdownMenu.ItemIndicator>
-              </DropdownMenu.RadioItem>
+                </span>
+              </div>
             )
           })}
-        </DropdownMenu.RadioGroup>
+        </div>
       </YoloDropdownContent>
     </DropdownMenu.Root>
   )

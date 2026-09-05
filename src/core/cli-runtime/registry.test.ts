@@ -1,5 +1,9 @@
 import { RUNTIME_CAPABILITIES } from './capabilities'
-import { CLI_RUNTIME_DESCRIPTORS, getCliRuntimeDescriptor } from './registry'
+import {
+  CLI_RUNTIME_DESCRIPTORS,
+  CLI_RUNTIME_SELECTOR_ROWS,
+  getCliRuntimeDescriptor,
+} from './registry'
 import { CLI_RUNTIME_IDS } from './types'
 
 describe('CLI runtime registry', () => {
@@ -47,6 +51,38 @@ describe('CLI runtime registry', () => {
     // A variant still has an id of its own everywhere else, and the runtime it
     // folds into never declares the relationship back.
     expect(getCliRuntimeDescriptor('pi').variantOf).toBeUndefined()
+  })
+
+  it('collapses variants into their base runtime’s selector row', () => {
+    expect(
+      CLI_RUNTIME_SELECTOR_ROWS.map((row) => [
+        row.primary.id,
+        row.variants.map((variant) => variant.id),
+      ]),
+    ).toEqual([
+      ['claude-code', []],
+      ['codex', []],
+      ['hermes', []],
+      ['pi', ['omp']],
+      ['grok', []],
+    ])
+  })
+
+  it('keeps every runtime reachable through exactly one selector row', () => {
+    const members = CLI_RUNTIME_SELECTOR_ROWS.flatMap((row) => [
+      row.primary.id,
+      ...row.variants.map((variant) => variant.id),
+    ])
+    expect([...members].sort()).toEqual([...CLI_RUNTIME_IDS].sort())
+  })
+
+  it('never nests a variant under another variant', () => {
+    for (const row of CLI_RUNTIME_SELECTOR_ROWS) {
+      expect(row.primary.variantOf).toBeUndefined()
+      for (const variant of row.variants) {
+        expect(variant.variantOf).toBe(row.primary.id)
+      }
+    }
   })
 
   it('gives omp the same capabilities as the pi runtime it forks', () => {

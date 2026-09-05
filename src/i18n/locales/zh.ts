@@ -83,6 +83,8 @@ export const zh: TranslationKeys = {
       piDescription: '本机 Pi 运行时',
       ompLabel: 'omp',
       ompDescription: '本机 Oh My Pi 运行时',
+      variantToggleHint:
+        '在 {base} 与 {variant} 之间切换——更换渠道会开启新会话',
       grokLabel: 'Grok',
       grokDescription: '本机 Grok Build 运行时',
     },

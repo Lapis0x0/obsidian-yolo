@@ -53,9 +53,17 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import {
   RuntimeSelector,
-  getRuntimeSelectorOptions,
-  resolveAvailableRuntimeId,
+  getRuntimeSelectorRows,
+  resolveRuntimeSelectorRowState,
 } from './RuntimeSelector'
+
+const selectorRow = (primaryId: string) => {
+  const row = getRuntimeSelectorRows(true).find(
+    (candidate) => candidate.primary.id === primaryId,
+  )
+  if (!row) throw new Error(`no selector row for ${primaryId}`)
+  return row
+}
 
 describe('RuntimeSelector', () => {
   const originalIsDesktop = Platform.isDesktop
@@ -64,28 +72,60 @@ describe('RuntimeSelector', () => {
     Platform.isDesktop = originalIsDesktop
   })
 
-  it('exposes only CLI providers on desktop', () => {
-    expect(getRuntimeSelectorOptions(true).map((option) => option.id)).toEqual([
+  it('exposes no provider without desktop capability', () => {
+    expect(getRuntimeSelectorRows(false)).toEqual([])
+  })
+
+  it('folds omp into the pi row instead of giving it a row of its own', () => {
+    expect(getRuntimeSelectorRows(true).map((row) => row.primary.id)).toEqual([
       'claude-code',
       'codex',
       'hermes',
       'pi',
-      'omp',
       'grok',
     ])
-    expect(resolveAvailableRuntimeId('yolo', true)).toBeUndefined()
-    expect(resolveAvailableRuntimeId('claude-code', true)).toBe('claude-code')
-    expect(resolveAvailableRuntimeId('codex', true)).toBe('codex')
-    expect(resolveAvailableRuntimeId('hermes', true)).toBe('hermes')
-    expect(resolveAvailableRuntimeId('pi', true)).toBe('pi')
-    expect(resolveAvailableRuntimeId('omp', true)).toBe('omp')
-    expect(resolveAvailableRuntimeId('grok', true)).toBe('grok')
+    expect(selectorRow('pi').variants.map((variant) => variant.id)).toEqual([
+      'omp',
+    ])
   })
 
-  it('exposes no provider without desktop capability', () => {
-    expect(getRuntimeSelectorOptions(false)).toEqual([])
-    expect(resolveAvailableRuntimeId('claude-code', false)).toBeUndefined()
-    expect(resolveAvailableRuntimeId('codex', false)).toBeUndefined()
+  it('checks the pi row with its omp switch on while omp is the runtime', () => {
+    const state = resolveRuntimeSelectorRowState(selectorRow('pi'), 'omp')
+
+    expect(state.isSelected).toBe(true)
+    // Clicking the row body follows the switch — it re-selects omp, not pi.
+    expect(state.rowTargetId).toBe('omp')
+    expect(state.variants).toEqual([
+      expect.objectContaining({ isActive: true, toggleTargetId: 'pi' }),
+    ])
+  })
+
+  it('checks the pi row with its omp switch off while pi is the runtime', () => {
+    const state = resolveRuntimeSelectorRowState(selectorRow('pi'), 'pi')
+
+    expect(state.isSelected).toBe(true)
+    expect(state.rowTargetId).toBe('pi')
+    expect(state.variants).toEqual([
+      expect.objectContaining({ isActive: false, toggleTargetId: 'omp' }),
+    ])
+  })
+
+  it('shows the switch off — with no memory of the last family member — while another runtime is current', () => {
+    const state = resolveRuntimeSelectorRowState(selectorRow('pi'), 'codex')
+
+    expect(state.isSelected).toBe(false)
+    expect(state.rowTargetId).toBe('pi')
+    expect(state.variants).toEqual([
+      expect.objectContaining({ isActive: false, toggleTargetId: 'omp' }),
+    ])
+  })
+
+  it('leaves a row without variants nothing to switch between', () => {
+    const state = resolveRuntimeSelectorRowState(selectorRow('codex'), 'codex')
+
+    expect(state.variants).toEqual([])
+    expect(state.rowTargetId).toBe('codex')
+    expect(state.isSelected).toBe(true)
   })
 
   it('renders and accessibly announces the current runtime', () => {
@@ -128,6 +168,23 @@ describe('RuntimeSelector', () => {
     expect(html).toContain('aria-label="CLI provider: Grok"')
     expect(html).toContain('src="xai-logo"')
     expect(html).toContain('data-provider="xai"')
+  })
+
+  // The trigger states which runtime is in play, so a variant never hides
+  // behind the runtime it collapses into — only the open menu's rows merge.
+  it('names omp on the trigger instead of the pi row it folds into', () => {
+    Platform.isDesktop = true
+
+    const html = renderToStaticMarkup(
+      <RuntimeSelector currentRuntimeId="omp" onRuntimeChange={() => {}} />,
+    )
+
+    expect(html).toContain('data-runtime-id="omp"')
+    expect(html).toContain('aria-label="CLI provider: omp"')
+    expect(html).toContain('>omp<')
+    expect(html).toContain('src="omp-logo"')
+    expect(html).toContain('data-provider="omp"')
+    expect(html).not.toContain('pi-logo')
   })
 
   it('renders no runtime entry on mobile even with a stale CLI selection', () => {

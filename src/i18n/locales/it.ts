@@ -100,6 +100,8 @@ export const it: DeepPartial<TranslationKeys> = {
       piDescription: 'Pi su questo dispositivo',
       ompLabel: 'omp',
       ompDescription: 'Oh My Pi su questo dispositivo',
+      variantToggleHint:
+        'Passa tra {base} e {variant} — cambiare canale avvia una nuova sessione',
       grokLabel: 'Grok',
       grokDescription: 'Grok Build su questo dispositivo',
     },

@@ -189,12 +189,104 @@ button.yolo-runtime-selector[data-compact='true']
   padding-block: 7px;
 }
 
+/* 行本身不是 Radix item（内嵌开关需要键盘可达），没有 [data-highlighted]，
+   键盘高亮态由 :focus-visible 提供 —— 与 .yolo-chat-mode-toggle-card 同一约定。 */
+.yolo-runtime-selector__option:focus-visible:not([data-state='checked']) {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--interactive-accent);
+  border-radius: var(--radius-s);
+}
+
 .yolo-runtime-selector__option-copy {
   display: flex;
   min-width: 0;
   flex: 1;
   flex-direction: column;
   gap: 2px;
+}
+
+.yolo-runtime-selector__option-title-row {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 10px;
+}
+
+.yolo-runtime-selector__option-title-row
+  > .yolo-runtime-selector__option-label {
+  flex: 0 1 auto;
+}
+
+/* 家族变体开关：视觉语汇对齐对话模式弹窗里的 YOLO 开关。
+   这里是 <button>，Obsidian 全局 button 样式会盖上 border / background /
+   box-shadow，必须 !important 复位（与 .yolo-chat-mode-yolo-toggle 同一原因）。 */
+.yolo-runtime-selector__variant-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  margin-left: auto;
+  height: 18px;
+  min-height: 0;
+  padding: 2px 0;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--text-muted);
+  font-size: var(--font-ui-smallest);
+  font-weight: var(--font-medium);
+  line-height: 1;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.yolo-runtime-selector__variant-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--interactive-accent) !important;
+  border-radius: var(--radius-s);
+}
+
+.yolo-runtime-selector__variant-toggle[data-active='true'] {
+  color: var(--interactive-accent);
+}
+
+.yolo-runtime-selector__variant-toggle-label {
+  letter-spacing: 0.02em;
+}
+
+.yolo-runtime-selector__variant-toggle-switch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 26px;
+  height: 15px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--background-modifier-border);
+  transition: background var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-runtime-selector__variant-toggle[data-active='true']
+  .yolo-runtime-selector__variant-toggle-switch {
+  background: var(--interactive-accent);
+}
+
+.yolo-runtime-selector__variant-toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--background-primary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: transform var(--yolo-anim-duration-feedback) ease;
+}
+
+.yolo-runtime-selector__variant-toggle[data-active='true']
+  .yolo-runtime-selector__variant-toggle-thumb {
+  transform: translateX(11px);
 }
 
 .yolo-runtime-selector__option-label,
