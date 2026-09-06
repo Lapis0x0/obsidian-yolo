@@ -75,6 +75,7 @@ import type {
 } from './core/mcp/localMcpServerConfig'
 import type { McpCoordinator } from './core/mcp/mcpCoordinator'
 import type { McpManager } from './core/mcp/mcpManager'
+import { migrateLegacyMemoryFiles } from './core/memory/legacyMemoryMigration'
 import {
   CoreModuleAgentCapabilityProvider,
   CoreModuleChatCapabilityProvider,
@@ -2268,6 +2269,14 @@ export default class YoloPlugin extends Plugin {
         .finally(() => {
           prewarmLiteSkillRegistry(this.app, this.settings)
         })
+    })
+    // One-time, idempotent migration of pre-v2 single-file memory into the v2
+    // per-scope directories. Runs off the request path; a failure only means
+    // the old files stay put and the next startup retries.
+    this.app.workspace.onLayoutReady(() => {
+      void migrateLegacyMemoryFiles(this.app, this.settings).catch((error) => {
+        console.error('[YOLO] Legacy memory migration failed', error)
+      })
     })
     this.app.workspace.onLayoutReady(() => {
       void this.runtimeComponentService?.start().catch((error) => {
