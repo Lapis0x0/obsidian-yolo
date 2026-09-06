@@ -586,7 +586,7 @@ export const zh: TranslationKeys = {
       fsEditReviewToggle: '编辑文件是否需要审批',
       fsEditReviewToggleDesc:
         '开启后，Agent 的 fs_edit 会先进入 inline/apply 审阅，再写入文件。',
-      builtinFsEditOpsLabel: '文件编辑工作集',
+      builtinFsEditOpsLabel: '文件编辑工具集',
       builtinFsEditOpsDesc: '局部编辑或完整写入文件内容',
       builtinOpenSkillLabel: '加载技能',
       builtinOpenSkillDesc: '加载技能 Markdown',
@@ -655,7 +655,6 @@ export const zh: TranslationKeys = {
       toolDisclosureAlways: '常驻上下文',
       toolDisclosureMixed: '混合',
       toolDisclosureOnDemand: '按需披露',
-      moduleToolSetUnavailable: '不可用',
       editorEnabled: '已启用',
       editorDisabled: '已禁用',
       editorModel: '模型',
@@ -2183,7 +2182,7 @@ export const zh: TranslationKeys = {
       displayName: {
         fs_read: '读取文件',
         fs_edit: '文本编辑',
-        fs_edit_ops: '文件编辑工作集',
+        fs_edit_ops: '文件编辑工具集',
         bash: 'Bash',
         open_skill: '加载技能',
       },

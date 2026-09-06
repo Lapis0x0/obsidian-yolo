@@ -8,7 +8,7 @@ export const en = {
     importAllCanvas: 'Import every Canvas as a YOLO whiteboard',
   },
   tools: {
-    label: 'Whiteboard',
+    label: 'Whiteboard Toolset',
     description:
       'Create YOLO whiteboards and edit their cards, connections and groups.',
   },

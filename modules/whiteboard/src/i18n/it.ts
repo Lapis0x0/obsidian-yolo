@@ -8,7 +8,7 @@ export const it = {
     importAllCanvas: 'Importa tutti i Canvas come lavagne YOLO',
   },
   tools: {
-    label: 'Lavagna',
+    label: 'Set lavagna',
     description:
       'Crea lavagne YOLO e modificane schede, collegamenti e gruppi.',
   },

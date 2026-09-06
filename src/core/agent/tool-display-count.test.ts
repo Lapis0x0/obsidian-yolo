@@ -79,6 +79,55 @@ describe('countEnabledVisibleAssistantTools', () => {
     ).toBe(0)
   })
 
+  // The `58 / 56 active` regression: this used to fold only `file_editing`
+  // and `web_access` into one unit each, from a hand-written pair of member
+  // name sets, while the agent editor folds *every* capability into one row.
+  // Any other multi-tool capability therefore counted once per member here
+  // and once per capability there, so the enabled count could exceed the
+  // total. Counted off the registry now, so a capability added later is
+  // folded without anyone remembering to add it to a list.
+  it('counts a multi-tool capability outside the old hand-written pair as one', () => {
+    const enabledToolNames = [
+      'yolo_local__read_file',
+      'yolo_local__write_file',
+      'yolo_local__edit_file',
+    ]
+
+    expect(
+      countEnabledVisibleAssistantTools(
+        assistantWithTools(enabledToolNames),
+        enabledToolNames.map(tool),
+      ),
+    ).toBe(1)
+  })
+
+  it('counts a module tool set as one, and only while the module contributes it', () => {
+    const toolNames = [
+      'yolo_whiteboard__create_board',
+      'yolo_whiteboard__edit_board',
+    ]
+    const moduleToolSets = [
+      {
+        serverName: 'yolo_whiteboard',
+        toolNames: ['create_board', 'edit_board'],
+      },
+    ]
+
+    expect(
+      countEnabledVisibleAssistantTools(
+        assistantWithTools(toolNames),
+        toolNames.map(tool),
+        moduleToolSets,
+      ),
+    ).toBe(1)
+
+    // The module is gone: its tools leave the catalog with it, and nothing a
+    // stale preference says can put the row back into the count.
+    expect(
+      countEnabledVisibleAssistantTools(assistantWithTools(toolNames), [], []),
+    ).toBe(0)
+  })
+
   it('counts available remote MCP tools individually', () => {
     const assistant = assistantWithTools([
       'server__enabled_tool',

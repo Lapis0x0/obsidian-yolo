@@ -8,7 +8,7 @@ export const zh = {
     importAllCanvas: '把全部 Canvas 导入为 YOLO 白板',
   },
   tools: {
-    label: '白板',
+    label: '白板工具集',
     description: '新建 YOLO 白板，编辑板上的卡片、连线与分组。',
   },
   menu: {
