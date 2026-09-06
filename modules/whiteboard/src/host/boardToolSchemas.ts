@@ -19,6 +19,27 @@ import { ARRANGE_ACTIONS, COLOR_NAME_LIST } from '../domain/edit'
 
 const COLORS = `${COLOR_NAME_LIST.join(', ')}, or a hex colour like "#7852ee"`
 
+/**
+ * What a default card holds, so the model has a sense of scale before it
+ * writes rather than a `w×h` it cannot interpret.
+ *
+ * A board is a spatial medium: the model is not filling fields, it is laying
+ * out a page. How much text belongs on one card, whether a thought is one card
+ * or two, whether three cards side by side will look balanced — every one of
+ * those judgements happens before a single character is written, and none of
+ * them is possible from a pixel count alone. One anchor is enough; the model
+ * extrapolates from it better than it reads a table.
+ *
+ * Measured, not derived: rendered in a real card scaled to 260x156, a plain
+ * paragraph at 13px on a 19.5px line takes 7 lines, holding 119 Chinese
+ * characters or 210 of English. Rounded down here because real markdown
+ * carries heading and paragraph spacing that plain prose does not. These
+ * numbers describe NEW_CARD_SIZE specifically — change NEW_CARD_CELLS and they
+ * have to be measured again.
+ */
+const CARD_CAPACITY =
+  'A text card is 260x156 by default: about 7 lines, which is roughly 110 Chinese characters or 200 of English prose. Capacity scales with area, so a card twice as tall holds about twice as much; give w and h when a card needs to hold more.'
+
 const pathProperty = {
   type: 'string',
   description: 'Vault-relative path of the board, ending in .yoloboard.',
@@ -142,6 +163,8 @@ export const boardToolSchemas = {
     'Edit a YOLO whiteboard: add, change, connect, group, move and delete its cards.',
     '',
     'Read the board first (fs_read on its path) — the summary gives every card an id, a position and a preview, and those ids are what this tool addresses. Read one card in full with "<board path>#<card id>".',
+    '',
+    CARD_CAPACITY,
     '',
     'All six operation lists are applied in one step, always in this order: delete, create, update, connect, group, arrange. So one call can add three cards, connect them, frame them and line them up, and each stage can name what the one before it produced. If any operation is invalid the whole call is rejected and the board is left untouched.',
     '',
