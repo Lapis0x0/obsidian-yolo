@@ -2,6 +2,7 @@ import { AssistantWorkspaceScope } from '../../types/assistant.types'
 
 import {
   buildRagScopeForWorkspace,
+  buildScopeExemptPathSet,
   collectToolCallPaths,
   describePathDenial,
   findPathOutsideScope,
@@ -538,5 +539,78 @@ describe('buildRagScopeForWorkspace', () => {
         settings,
       }),
     ).toEqual({ empty: true })
+  })
+})
+
+describe('buildScopeExemptPathSet', () => {
+  const memorySettings = {
+    yolo: { baseDir: 'YOLO' },
+    currentAssistantId: 'a1',
+    assistants: [
+      { id: 'a1', name: 'Researcher' },
+      { id: 'a2', name: 'Editor' },
+    ],
+  }
+
+  it("exempts the run's own memory directories alongside granted skills", () => {
+    const exemptPaths = buildScopeExemptPathSet({
+      allowedSkillPaths: ['Skills/pkg/SKILL.md'],
+      settings: memorySettings,
+    })
+
+    expect(exemptPaths).toEqual(
+      new Set([
+        'Skills/pkg/SKILL.md',
+        'YOLO/memory/global/',
+        'YOLO/memory/Researcher/',
+      ]),
+    )
+  })
+
+  it('lets scoped tool calls reach memory files but not another assistant', () => {
+    const exemptPaths = buildScopeExemptPathSet({ settings: memorySettings })
+    const workspace = scope({ include: ['Projects'] })
+
+    for (const path of [
+      'YOLO/memory/global/MEMORY.md',
+      'YOLO/memory/global/likes-tea.md',
+      'YOLO/memory/Researcher/MEMORY.md',
+    ]) {
+      expect(
+        findPathOutsideScope('fs_write', { path }, workspace, { exemptPaths }),
+      ).toBeNull()
+      expect(
+        resolvePathVisibility(path, { scope: workspace, exemptPaths }),
+      ).toBe('visible')
+    }
+
+    expect(
+      findPathOutsideScope(
+        'fs_write',
+        { path: 'YOLO/memory/Editor/MEMORY.md' },
+        workspace,
+        { exemptPaths },
+      ),
+    ).toBe('YOLO/memory/Editor/MEMORY.md')
+    expect(
+      resolvePathVisibility('YOLO/memory/Editor/MEMORY.md', {
+        scope: workspace,
+        exemptPaths,
+      }),
+    ).toBe('out-of-scope')
+  })
+
+  it('follows the configured base directory', () => {
+    expect(
+      buildScopeExemptPathSet({
+        settings: { ...memorySettings, yolo: { baseDir: 'Meta/AI' } },
+      }),
+    ).toEqual(new Set(['Meta/AI/memory/global/', 'Meta/AI/memory/Researcher/']))
+  })
+
+  it('still exempts global memory when no assistant is selected', () => {
+    expect(
+      buildScopeExemptPathSet({ settings: { yolo: { baseDir: 'YOLO' } } }),
+    ).toEqual(new Set(['YOLO/memory/global/']))
   })
 })

@@ -347,7 +347,6 @@ describe('resolveChatModeRuntime', () => {
       'yolo_local__edit_file',
       'yolo_local__terminal_command',
       'yolo_local__todo_write',
-      'yolo_local__memory_add',
       'yolo_local__web_search',
       'yolo_local__delegate_subagent',
       'yolo_local__ask_user_question',
@@ -368,7 +367,6 @@ describe('resolveChatModeRuntime', () => {
         'yolo_local__edit_file',
         'yolo_local__terminal_command',
         'yolo_local__todo_write',
-        'yolo_local__memory_add',
         'yolo_local__web_search',
         'yolo_local__delegate_subagent',
         'yolo_local__ask_user_question',
@@ -443,10 +441,10 @@ describe('resolveChatModeRuntime', () => {
       const runtime = resolveChatModeRuntime({
         mode: 'max',
         assistant,
-        assistantEnabledToolNames: ['yolo_local__memory_add'],
+        assistantEnabledToolNames: ['yolo_local__todo_write'],
       })
       expect(runtime.allowedToolNames).toEqual([
-        'yolo_local__memory_add',
+        'yolo_local__todo_write',
         'yolo_local__read_file',
         'yolo_local__write_file',
         'yolo_local__edit_file',

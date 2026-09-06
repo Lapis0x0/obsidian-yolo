@@ -77,7 +77,6 @@ export const estimateContinuationRequestContextTokens = async ({
   const {
     filteredTools,
     hasTools,
-    hasMemoryTools,
     hasOnDemandTools,
     requestTools,
     deferredToolCatalog,
@@ -99,7 +98,6 @@ export const estimateContinuationRequestContextTokens = async ({
   const requestMessages = await requestContextBuilder.generateRequestMessages({
     messages,
     hasTools,
-    hasMemoryTools,
     hasOnDemandTools,
     deferredToolCatalogText: deferredToolCatalog?.text,
     model,

@@ -2,7 +2,6 @@ import type { Assistant } from '../../types/assistant.types'
 import type { McpTool } from '../../types/mcp.types'
 import {
   LOCAL_FS_EDIT_TOOL_NAMES,
-  LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES,
   getLocalFileToolServerName,
 } from '../mcp/localFileTools'
 import { parseToolName } from '../mcp/tool-name-utils'
@@ -14,7 +13,7 @@ import {
 } from './tool-preferences'
 
 // `web_access`'s member tool short names, derived from the registry rather
-// than hand-listed — matches the other two groups below, which come from
+// than hand-listed — matches the other group below, which comes from
 // `localFileTools.ts`'s own multi-tool-capability constants. Previously
 // imported from `core/tools/legacy-persistence-keys.ts`
 // (`WEB_OPS_SPLIT_ACTION_TOOL_NAMES`), deleted as part of the D9 settings
@@ -24,7 +23,6 @@ const WEB_ACCESS_TOOL_NAMES: readonly string[] =
 
 const BUILTIN_TOOL_GROUPS: ReadonlyArray<ReadonlySet<string>> = [
   new Set(LOCAL_FS_EDIT_TOOL_NAMES),
-  new Set(LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES),
   new Set(WEB_ACCESS_TOOL_NAMES),
 ]
 

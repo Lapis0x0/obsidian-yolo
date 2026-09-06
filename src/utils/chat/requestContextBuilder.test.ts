@@ -1093,7 +1093,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1219,7 +1218,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1319,7 +1317,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1426,7 +1423,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1478,7 +1474,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1553,7 +1548,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1663,7 +1657,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -1738,7 +1731,6 @@ describe('RequestContextBuilder generateRequestMessages', () => {
       systemPromptSnapshotMode: 'create',
       messages: historyMessages,
       hasTools: false,
-      hasMemoryTools: false,
       model: {
         provider: 'openai',
         model: 'gpt-test',
@@ -2290,7 +2282,6 @@ describe('parseToolMessage document hoisting', () => {
         },
       ],
       hasTools: true,
-      hasMemoryTools: false,
       // Use a PDF-capable model so prepareDocumentsForModel passes document parts through.
       model: {
         id: PDF_MODEL_ID,
@@ -2715,7 +2706,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
         conversationId: 'conv-memory-rules',
         // No memory tools, no memory content: the rules still ship, otherwise a
         // first-time user's model would never learn memory exists.
-        hasMemoryTools: false,
         systemPromptSnapshotMode: 'create',
       })
 
@@ -2766,7 +2756,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(first)).toContain('MEM_V1')
@@ -2778,7 +2767,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     // Frozen: still V1, and memory was not re-read for the second iteration.
@@ -2791,7 +2779,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-2',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(other)).toContain('MEM_V2')
@@ -2813,7 +2800,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(first)).toContain('MEM_V1')
@@ -2825,7 +2811,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
 
@@ -2847,7 +2832,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(beforeCompact)).toContain('MEM_BEFORE_COMPACT')
@@ -2858,7 +2842,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(afterMemoryWrite)).toContain('MEM_BEFORE_COMPACT')
@@ -2870,7 +2853,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       compaction: {
         anchorMessageId: 'tool-compact',
         summary: 'Earlier context summary',
@@ -2953,7 +2935,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(a)).toContain('MEM_V1')
@@ -2976,7 +2957,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(b)).toContain('MEM_V1')
@@ -2995,7 +2975,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'reuse',
     })
     expect(getSystemContent(estimate)).toContain('MEM_V1')
@@ -3006,7 +2985,6 @@ describe('RequestContextBuilder system prompt freezing', () => {
       messages: userMessages,
       model,
       conversationId: 'conv-1',
-      hasMemoryTools: true,
       systemPromptSnapshotMode: 'create',
     })
     expect(getSystemContent(real)).toContain('MEM_V2')

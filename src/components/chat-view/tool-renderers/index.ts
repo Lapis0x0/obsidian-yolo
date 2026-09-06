@@ -36,7 +36,7 @@ import type { ToolRenderer } from './types'
  * with or without a `summary` — because it renders through the default
  * collapsed card.
  *
- * Tools with no `summary` here (memory_add/update/delete, context_compact,
+ * Tools with no `summary` here (context_compact,
  * context_prune_tool_results, ask_user_question, delegate_subagent) had no
  * branch in the pre-D8 `if` chain either — their header shows only the
  * title, no summary text. `delegate_subagent` is a special case: its
@@ -49,9 +49,6 @@ import type { ToolRenderer } from './types'
  * sources of truth for the same value).
  */
 export const TOOL_RENDERERS = {
-  memory_add: genericRenderer,
-  memory_update: genericRenderer,
-  memory_delete: genericRenderer,
   delegate_subagent: delegateSubagentRenderer,
   context_prune_tool_results: genericRenderer,
   context_compact: genericRenderer,

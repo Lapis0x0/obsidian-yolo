@@ -34,9 +34,6 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   'fs_read',
   'fs_edit',
   'fs_write',
-  'memory_add',
-  'memory_update',
-  'memory_delete',
   'web_search',
   'web_scrape',
   JS_SANDBOX_TOOL_NAME,
@@ -136,18 +133,9 @@ export const LOCAL_FS_EDIT_TOOL_NAMES = ['fs_edit', 'fs_write'] as const
  */
 export const NATIVE_FS_EDIT_TOOL_NAMES = ['edit_file', 'write_file'] as const
 
-export const LOCAL_MEMORY_SPLIT_ACTION_TOOL_NAMES = [
-  'memory_add',
-  'memory_update',
-  'memory_delete',
-] as const
-
 const LOCAL_FS_WRITE_TOOL_NAMES = new Set<string>([
   'fs_edit',
   ...LOCAL_FS_SPLIT_ACTION_TOOL_NAMES,
-  'memory_add',
-  'memory_update',
-  'memory_delete',
 ])
 
 /**
@@ -177,9 +165,6 @@ const LOCAL_FILE_TOOL_CATALOG_ORDER: readonly BuiltinToolName[] = [
   'fs_edit',
   'fs_write',
   BASH_TOOL_NAME,
-  'memory_add',
-  'memory_update',
-  'memory_delete',
   WEB_SEARCH_TOOL_NAME,
   WEB_SCRAPE_TOOL_NAME,
   JS_SANDBOX_TOOL_NAME,

@@ -231,7 +231,6 @@ export class AgentLlmTurnExecutor {
       const {
         filteredTools,
         hasTools,
-        hasMemoryTools,
         hasOnDemandTools,
         requestTools,
         deferredToolCatalog,
@@ -259,7 +258,6 @@ export class AgentLlmTurnExecutor {
         await this.input.requestContextBuilder.generateRequestMessages({
           messages: this.input.messages,
           hasTools,
-          hasMemoryTools,
           hasOnDemandTools,
           deferredToolCatalogText: deferredToolCatalog?.text,
           model: this.input.model,

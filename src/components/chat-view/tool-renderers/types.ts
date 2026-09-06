@@ -71,8 +71,8 @@ export type ToolRendererProps = {
  * `terminal_command/chat-summary.ts` / `todo_write/chat-summary.ts`).
  *
  * Returns `undefined` for "no summary" — e.g. every tool that had no branch
- * in the old `if` chain (memory_add/update/delete, context_compact,
- * context_prune_tool_results, ask_user_question) simply omits this field.
+ * in the old `if` chain (context_compact, context_prune_tool_results,
+ * ask_user_question) simply omits this field.
  */
 export type ToolChatSummaryLabels = {
   todoWriteCleared: string

@@ -186,7 +186,6 @@ export const estimateContextBreakdown = async ({
   const {
     filteredTools,
     hasTools,
-    hasMemoryTools,
     hasOnDemandTools,
     requestTools,
     deferredToolCatalog,
@@ -208,7 +207,6 @@ export const estimateContextBreakdown = async ({
   const sections = await requestContextBuilder.generateRequestSections({
     messages,
     hasTools,
-    hasMemoryTools,
     hasOnDemandTools,
     deferredToolCatalogText: deferredToolCatalog?.text,
     model,

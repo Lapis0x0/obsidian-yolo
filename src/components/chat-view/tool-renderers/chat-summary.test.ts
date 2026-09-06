@@ -1,12 +1,12 @@
-// Pins the chat-surface header summary text for all 16 active built-in
+// Pins the chat-surface header summary text for every active built-in
 // tools (docs/plans/2026-08-15-tool-registry/phase2-migration.md D8). Each
 // expected value below was read directly off the pre-D8 `if` chain in
 // `ToolMessage.tsx`'s private `getLocalToolSummaryText` before it was
 // replaced by a `TOOL_RENDERERS` lookup — this file is the regression net
 // for that rewrite: it must keep passing with the exact same strings.
 //
-// Tools with no summary (memory_add/update/delete, context_compact,
-// context_prune_tool_results, ask_user_question) had no branch in that `if`
+// Tools with no summary (context_compact, context_prune_tool_results,
+// ask_user_question) had no branch in that `if`
 // chain either — `TOOL_RENDERERS[name].summary` must be `undefined` for
 // them, same as before. `delegate_subagent`'s header summary is computed
 // elsewhere (`ToolMessage.tsx`'s own `getDelegateSubagentSummary`, applied
@@ -57,9 +57,6 @@ const summarize = (
 
 describe('TOOL_RENDERERS summary — tools with no header summary (unchanged)', () => {
   it.each([
-    'memory_add',
-    'memory_update',
-    'memory_delete',
     'context_compact',
     'context_prune_tool_results',
     'ask_user_question',

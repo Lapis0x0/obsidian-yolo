@@ -40,16 +40,6 @@ describe('assertNoDuplicates', () => {
 })
 
 describe('registry queries', () => {
-  it('finds the memory capability by id', () => {
-    const capability = getCapability('memory')
-    expect(capability?.id).toBe('memory')
-    expect(capability?.tools.map((tool) => tool.name)).toEqual([
-      'memory_add',
-      'memory_update',
-      'memory_delete',
-    ])
-  })
-
   it('finds the subagent_delegation capability by id', () => {
     const capability = getCapability('subagent_delegation')
     expect(capability?.id).toBe('subagent_delegation')
@@ -62,10 +52,13 @@ describe('registry queries', () => {
     expect(getCapability('not_a_real_capability')).toBeUndefined()
   })
 
-  it('finds each memory tool by name', () => {
-    expect(getToolDefinition('memory_add')?.name).toBe('memory_add')
-    expect(getToolDefinition('memory_update')?.name).toBe('memory_update')
-    expect(getToolDefinition('memory_delete')?.name).toBe('memory_delete')
+  it('finds the file_editing capability by id', () => {
+    const capability = getCapability('file_editing')
+    expect(capability?.id).toBe('file_editing')
+    expect(capability?.tools.map((tool) => tool.name)).toEqual([
+      'fs_edit',
+      'fs_write',
+    ])
   })
 
   it('finds delegate_subagent by name', () => {
@@ -79,7 +72,7 @@ describe('registry queries', () => {
   })
 
   it('maps a tool name back to its owning capability', () => {
-    expect(getCapabilityForTool('memory_delete')?.id).toBe('memory')
+    expect(getCapabilityForTool('fs_write')?.id).toBe('file_editing')
     expect(getCapabilityForTool('delegate_subagent')?.id).toBe(
       'subagent_delegation',
     )
@@ -87,10 +80,10 @@ describe('registry queries', () => {
   })
 
   it('type-guards tool names and capability ids', () => {
-    expect(isBuiltinToolName('memory_add')).toBe(true)
+    expect(isBuiltinToolName('fs_write')).toBe(true)
     expect(isBuiltinToolName('delegate_subagent')).toBe(true)
     expect(isBuiltinToolName('not_a_real_tool')).toBe(false)
-    expect(isBuiltinCapabilityId('memory')).toBe(true)
+    expect(isBuiltinCapabilityId('file_editing')).toBe(true)
     expect(isBuiltinCapabilityId('subagent_delegation')).toBe(true)
     expect(isBuiltinCapabilityId('not_a_real_capability')).toBe(false)
   })
@@ -232,7 +225,6 @@ describe('chat mode visibility', () => {
       'context_compaction',
       'context_pruning',
       'file_reading',
-      'memory',
       'subagent_delegation',
       'user_questions',
       'vault_shell',
@@ -244,7 +236,6 @@ describe('chat mode visibility', () => {
       'file_editing',
       'file_reading',
       'js_sandbox',
-      'memory',
       'subagent_delegation',
       'terminal',
       'todo_list',
@@ -255,7 +246,6 @@ describe('chat mode visibility', () => {
     max: [
       'context_compaction',
       'context_pruning',
-      'memory',
       'native_files',
       'subagent_delegation',
       'terminal',
@@ -292,9 +282,6 @@ describe('chat mode visibility', () => {
         'yolo_local__context_prune_tool_results',
         'yolo_local__delegate_subagent',
         'yolo_local__edit_file',
-        'yolo_local__memory_add',
-        'yolo_local__memory_delete',
-        'yolo_local__memory_update',
         'yolo_local__read_file',
         'yolo_local__terminal_command',
         'yolo_local__todo_write',

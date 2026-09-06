@@ -28,8 +28,9 @@ import { renderPdfPagesToImages } from '../../../utils/pdf/renderPdfPagesToImage
 import { PdfSliceError, slicePdfPages } from '../../../utils/pdf/slicePdfPages'
 import {
   buildAllowedSkillPathSet,
+  buildScopeExemptPathSet,
   describePathDenial,
-  normalizeSkillPathForExemption,
+  normalizeExemptPath,
   resolvePathVisibility,
 } from '../../agent/workspaceScope'
 import { findWebviewHandleByPageId } from '../../browser/activeWebviewProbe'
@@ -207,6 +208,12 @@ export const fsReadDefinition = defineTool({
     const allowedSkillPathSet = allowedSkillPaths
       ? buildAllowedSkillPathSet(allowedSkillPaths)
       : undefined
+    // The scope gate below is wider than skill identity above: it also
+    // exempts this run's own memory directories (`buildScopeExemptPathSet`).
+    const scopeExemptPathSet = buildScopeExemptPathSet({
+      allowedSkillPaths,
+      settings,
+    })
 
     const results: Array<
       | {
@@ -272,7 +279,7 @@ export const fsReadDefinition = defineTool({
         return { status: ToolCallResponseStatus.Aborted }
       }
 
-      if (allowedSkillPathSet?.has(normalizeSkillPathForExemption(path))) {
+      if (allowedSkillPathSet?.has(normalizeExemptPath(path))) {
         const skillDocument = await getLiteSkillDocumentByPath({
           app,
           path,
@@ -451,7 +458,7 @@ export const fsReadDefinition = defineTool({
       const visibility = resolvePathVisibility(file.path, {
         scope: workspaceScope,
         settings,
-        exemptPaths: allowedSkillPathSet,
+        exemptPaths: scopeExemptPathSet,
       })
       if (visibility !== 'visible') {
         results.push({

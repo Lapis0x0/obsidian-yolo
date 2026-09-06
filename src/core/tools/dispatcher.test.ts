@@ -15,7 +15,7 @@ import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { executeBuiltinTool } from './dispatcher'
-import { memoryAddDefinition } from './memory_add/definition'
+import { todoWriteDefinition } from './todo_write/definition'
 import type { ToolContext } from './types'
 
 const app = {} as App
@@ -26,13 +26,13 @@ function makeCtx(overrides: Partial<ToolContext> = {}): ToolContext {
 
 describe('executeBuiltinTool: abort short-circuit', () => {
   it('returns Aborted and does not execute the tool body when signal is already aborted', async () => {
-    const executeSpy = jest.spyOn(memoryAddDefinition, 'execute')
+    const executeSpy = jest.spyOn(todoWriteDefinition, 'execute')
     const controller = new AbortController()
     controller.abort()
 
     const result = await executeBuiltinTool(
-      'memory_add',
-      { content: 'should not run' },
+      'todo_write',
+      { todos: [] },
       makeCtx({ signal: controller.signal }),
     )
 
@@ -188,11 +188,11 @@ describe('executeBuiltinTool: unknown tool name', () => {
 
 describe('executeBuiltinTool: normalizes a thrown tool error', () => {
   it('converts an Error thrown from execute() into an Error-status result rather than rejecting', async () => {
-    const result = await executeBuiltinTool('memory_add', {}, makeCtx())
+    const result = await executeBuiltinTool('fs_read', {}, makeCtx())
 
     expect(result).toEqual({
       status: ToolCallResponseStatus.Error,
-      error: 'content or items is required.',
+      error: 'paths must be an array of strings.',
     })
   })
 })

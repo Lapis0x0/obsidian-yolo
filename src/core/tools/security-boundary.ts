@@ -1,7 +1,7 @@
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import {
-  buildAllowedSkillPathSet,
+  buildScopeExemptPathSet,
   describePathDenial,
   findPathOutsideScope,
   findPathWithinExcludedRoot,
@@ -64,9 +64,10 @@ export function enforceBuiltinToolSecurityBoundary(
   // for UI Rejected status, but we re-validate here so manual-approval /
   // direct-call code paths cannot bypass the constraint.
   if (workspaceScope?.enabled) {
-    const exemptPaths = allowedSkillPaths
-      ? buildAllowedSkillPathSet(allowedSkillPaths)
-      : undefined
+    const exemptPaths = buildScopeExemptPathSet({
+      allowedSkillPaths,
+      settings,
+    })
     const offendingPath = findPathOutsideScope(toolName, args, workspaceScope, {
       exemptPaths,
     })

@@ -497,7 +497,6 @@ export function useChatStreamManager({
       const {
         filteredTools,
         hasTools,
-        hasMemoryTools,
         hasOnDemandTools,
         requestTools,
         deferredToolCatalog,
@@ -519,7 +518,6 @@ export function useChatStreamManager({
         await requestContextBuilder.generateRequestMessages({
           messages,
           hasTools,
-          hasMemoryTools,
           hasOnDemandTools,
           deferredToolCatalogText: deferredToolCatalog?.text,
           model: effectiveModel,

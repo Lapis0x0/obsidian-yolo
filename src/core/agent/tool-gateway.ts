@@ -75,7 +75,7 @@ import {
 } from './tool-preferences'
 import { isInvokeToolName, isLoadToolSchemasToolName } from './tool-selection'
 import {
-  buildAllowedSkillPathSet,
+  buildScopeExemptPathSet,
   describePathDenial,
   findPathOutsideScope,
 } from './workspaceScope'
@@ -502,14 +502,19 @@ export class AgentToolGateway {
 
   private findRequestPathOutsideScope(request: ToolCallRequest): string | null {
     if (!this.workspaceScope?.enabled) return null
+    // Resolved outside the try: the catch below is there to tolerate a
+    // malformed tool name or arguments blob, and must not be able to turn a
+    // failure to read settings into a silently skipped scope check.
+    const exemptPaths = buildScopeExemptPathSet({
+      allowedSkillPaths: this.allowedSkillPaths,
+      settings: this.mcpManager.getSettingsSnapshot(),
+    })
     try {
       const parsed = parseToolName(request.name)
       if (parsed.serverName !== getLocalFileToolServerName()) return null
       const args = getToolCallArgumentsObject(request.arguments)
       return findPathOutsideScope(parsed.toolName, args, this.workspaceScope, {
-        exemptPaths: this.allowedSkillPaths
-          ? buildAllowedSkillPathSet(this.allowedSkillPaths)
-          : undefined,
+        exemptPaths,
       })
     } catch {
       return null

@@ -1237,6 +1237,7 @@ describe('AgentToolGateway', () => {
     const mcpManager = {
       isToolExecutionAllowed: jest.fn(),
       getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      getSettingsSnapshot: jest.fn().mockReturnValue({}),
     } as unknown as McpManager
 
     const gateway = new AgentToolGateway(mcpManager, {
@@ -1283,6 +1284,7 @@ describe('AgentToolGateway', () => {
     const mcpManager = {
       isToolExecutionAllowed: jest.fn().mockReturnValue(true),
       getJsSandboxSettings: jest.fn().mockReturnValue({}),
+      getSettingsSnapshot: jest.fn().mockReturnValue({}),
     } as unknown as McpManager
 
     const gateway = new AgentToolGateway(mcpManager, {

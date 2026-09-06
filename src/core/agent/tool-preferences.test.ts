@@ -187,9 +187,6 @@ describe('tool-preferences defaults', () => {
       expect(getDefaultApprovalModeForTool('yolo_local__fs_read')).toBe(
         'full_access',
       )
-      expect(getDefaultApprovalModeForTool('yolo_local__memory_add')).toBe(
-        'full_access',
-      )
       expect(getDefaultApprovalModeForTool('yolo_local__todo_write')).toBe(
         'full_access',
       )
@@ -269,7 +266,6 @@ describe('tool-preferences defaults', () => {
         [
           'file_reading',
           'file_editing',
-          'memory',
           'context_compaction',
           'context_pruning',
           'todo_list',

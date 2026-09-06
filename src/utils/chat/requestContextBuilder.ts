@@ -578,7 +578,6 @@ export class RequestContextBuilder {
   public async generateRequestMessages(args: {
     messages: ChatMessage[]
     hasTools?: boolean
-    hasMemoryTools?: boolean
     hasOnDemandTools?: boolean
     deferredToolCatalogText?: string
     model: ChatModel
@@ -612,7 +611,6 @@ export class RequestContextBuilder {
   private async assembleRequest({
     messages,
     hasTools = false,
-    hasMemoryTools = false,
     hasOnDemandTools = false,
     deferredToolCatalogText,
     model: _model,
@@ -630,7 +628,6 @@ export class RequestContextBuilder {
   }: {
     messages: ChatMessage[]
     hasTools?: boolean
-    hasMemoryTools?: boolean
     hasOnDemandTools?: boolean
     deferredToolCatalogText?: string
     model: ChatModel
@@ -740,7 +737,6 @@ export class RequestContextBuilder {
       : await this.resolveSystemPromptSnapshot({
           conversationId,
           hasTools,
-          hasMemoryTools,
           hasOnDemandTools,
           deferredToolCatalogText,
           compaction,
@@ -801,7 +797,6 @@ export class RequestContextBuilder {
   public async generateRequestSections(args: {
     messages: ChatMessage[]
     hasTools?: boolean
-    hasMemoryTools?: boolean
     hasOnDemandTools?: boolean
     deferredToolCatalogText?: string
     model: ChatModel
@@ -1865,7 +1860,6 @@ ${entries}
   private async resolveSystemPromptSnapshot({
     conversationId,
     hasTools,
-    hasMemoryTools,
     hasOnDemandTools,
     deferredToolCatalogText,
     compaction,
@@ -1879,7 +1873,6 @@ ${entries}
   }: {
     conversationId: string
     hasTools: boolean
-    hasMemoryTools: boolean
     hasOnDemandTools: boolean
     deferredToolCatalogText?: string
     compaction?: ChatConversationCompactionLike | null
@@ -1896,7 +1889,6 @@ ${entries}
     const build = async (): Promise<SystemPromptSnapshot> => {
       const systemSections = await this.buildSystemPromptSections(
         hasTools,
-        hasMemoryTools,
         hasOnDemandTools,
         deferredToolCatalogText,
         runtimeModePrompt,
@@ -1922,7 +1914,6 @@ ${entries}
 
     const fingerprint = this.computeSystemPromptFingerprint(
       hasTools,
-      hasMemoryTools,
       hasOnDemandTools,
       deferredToolCatalogText,
       compaction,
@@ -1947,7 +1938,6 @@ ${entries}
    */
   private computeSystemPromptFingerprint(
     hasTools: boolean,
-    hasMemoryTools: boolean,
     hasOnDemandTools: boolean,
     deferredToolCatalogText: string | undefined,
     compaction?: ChatConversationCompactionLike | null,
@@ -1991,7 +1981,6 @@ ${entries}
 
     return stableStringify({
       hasTools,
-      hasMemoryTools,
       hasOnDemandTools,
       deferredToolCatalogText: deferredToolCatalogText ?? '',
       runtimeModePrompt: runtimeModePrompt?.trim() ?? '',
@@ -2052,7 +2041,6 @@ ${entries}
    */
   private async buildSystemPromptSections(
     hasTools: boolean,
-    hasMemoryTools: boolean,
     hasOnDemandTools: boolean,
     deferredToolCatalogText: string | undefined,
     runtimeModePrompt?: string,
@@ -2077,7 +2065,6 @@ ${entries}
     // legacy parts[] order in `buildCustomInstructionsSection`.
     const customInstructionSubsections =
       await this.buildCustomInstructionsSubsections(
-        hasMemoryTools,
         useAssistant,
         modePersonaPrompt,
         modePersonaModuleId,
@@ -2196,7 +2183,6 @@ ${entries}
    * second path that re-reads memory files or skill entries.
    */
   private async buildCustomInstructionsSubsections(
-    hasMemoryTools: boolean,
     useAssistant = true,
     modePersonaPrompt?: string,
     modePersonaModuleId?: string,

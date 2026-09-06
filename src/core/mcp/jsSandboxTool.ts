@@ -24,7 +24,7 @@ import {
   buildAllowedSkillPathSet,
   buildRagScopeForWorkspace,
   describePathDenial,
-  isCoveredBySkillPathExemption,
+  isCoveredByScopeExemption,
   isVisibleForTraversal,
   resolvePathVisibility,
 } from '../agent/workspaceScope'
@@ -2328,7 +2328,7 @@ const resolveFolderByPath = (
   if (
     scope?.enabled &&
     !isVisibleForTraversal(normalizedPath, scope) &&
-    !(exemptPaths && isCoveredBySkillPathExemption(normalizedPath, exemptPaths))
+    !(exemptPaths && isCoveredByScopeExemption(normalizedPath, exemptPaths))
   ) {
     throw new Error(describePathDenial('out-of-scope', trimmedPath, 'folder'))
   }

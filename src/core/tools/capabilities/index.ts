@@ -3,7 +3,6 @@ import { contextPruningCapability } from './context-pruning'
 import { fileEditingCapability } from './file-editing'
 import { fileReadingCapability } from './file-reading'
 import { jsSandboxCapability } from './js-sandbox'
-import { memoryCapability } from './memory'
 import { nativeFilesCapability } from './native-files'
 import { subagentDelegationCapability } from './subagent-delegation'
 import { terminalCapability } from './terminal'
@@ -26,7 +25,7 @@ import { webAccessCapability } from './web-access'
  * order, with no separate `BUILTIN_TOOL_DISPLAY_ORDER` table. Order below is
  * grouped by category and matches the pre-D7 display order exactly —
  * vault: fs_read -> bash -> fs_edit_ops; context: context_prune_tool_results
- * -> context_compact -> ask_user_question -> todo_write -> memory_ops;
+ * -> context_compact -> ask_user_question -> todo_write;
  * external: web_ops -> js_eval -> terminal_command -> delegate_subagent (see
  * master.md §3.1's category column plus the external category's former
  * `BUILTIN_TOOL_DISPLAY_ORDER` list, and the vault/context orders' former
@@ -41,7 +40,6 @@ export const CAPABILITIES = [
   contextCompactionCapability,
   userQuestionsCapability,
   todoListCapability,
-  memoryCapability,
   webAccessCapability,
   jsSandboxCapability,
   terminalCapability,

@@ -35,11 +35,17 @@
 - 验证路径：dev vault 手测，分别触发 Tab 补全、选区改写、Quick Ask 续写档，确认响应延迟和不经过 Agent 权限体系。
 
 ## 工具系统
-- 核心代码：`src/core/tools/`。`capabilities/`（`file-editing.ts`、`file-reading.ts`、`vault-shell.ts`、`terminal.ts`、`todo-list.ts`、`memory.ts`、`web-access.ts`、`js-sandbox.ts`、`subagent-delegation.ts`、`user-questions.ts`、`context-compaction.ts`、`context-pruning.ts`）是唯一注册点——工具目录、设置项、审批策略、持久化 key 都从这里派生，不要另开侧表。`dispatcher.ts`（43 行）是唯一执行路径。
+- 核心代码：`src/core/tools/`。`capabilities/`（`file-editing.ts`、`file-reading.ts`、`vault-shell.ts`、`terminal.ts`、`todo-list.ts`、`web-access.ts`、`js-sandbox.ts`、`subagent-delegation.ts`、`user-questions.ts`、`context-compaction.ts`、`context-pruning.ts`）是唯一注册点——工具目录、设置项、审批策略、持久化 key 都从这里派生，不要另开侧表。`dispatcher.ts`（43 行）是唯一执行路径。
 - 按需披露（1.6.8 起是唯一模式，全局开关已下线）：不进请求 `tools` 数组的工具以裸名字活在系统提示词目录里，由 `src/core/agent/tool-catalog.ts` 构造、`tool-selection.ts` 决定哪些常驻；模型经 `src/core/tools/internal/invoke_tool/` 发起调用，需要 schema 时批量走 `internal/load_tool_schemas/`。两者都是协议内工具，不走 `defineTool`/`CAPABILITIES`、不进设置页；`tool-gateway.ts` 在任何策略求值之前把 `invoke_tool` 请求改写成真实工具的请求——这个顺序是安全不变量。
 - 模块自有格式：`structured-vault-formats.ts` 是一张静态扩展名表（当前只有 `.yoloboard` → `yolo_whiteboard__edit_board`），让 `fs_edit`/`fs_write` 拒绝把这类文件当纯文本改写。它刻意不查运行时注册表，好让同一次调用的行为跟机器上装没装那个模块无关。
-- 具体工具实现目录：`bash/`、`fs_edit/`、`fs_read/`、`fs_write/`、`terminal_command/`、`todo_write/`、`web_search/`、`web_scrape/`、`js_eval/`、`ask_user_question/`、`memory_add/update/delete/`、`delegate_subagent/`、`context_compact/`、`context_prune_tool_results/`，以及协议内的 `internal/`。
+- 具体工具实现目录：`bash/`、`fs_edit/`、`fs_read/`、`fs_write/`、`terminal_command/`、`todo_write/`、`web_search/`、`web_scrape/`、`js_eval/`、`ask_user_question/`、`delegate_subagent/`、`context_compact/`、`context_prune_tool_results/`，以及协议内的 `internal/`。
 - 验证路径：`dispatcher.test.ts`、`registry.test.ts`、`tool-catalog-equivalence.test.ts` 覆盖分发与目录一致性；单个工具改动看对应目录下的 `*.test.ts`。
+
+## 记忆系统
+- 触发方式：无用户入口，也没有专用工具。记忆是 vault 里的普通 markdown：`<YOLO baseDir>/memory/global/` 对所有助手生效，`<YOLO baseDir>/memory/<助手名>/` 只对该助手生效（`global` 是保留名）。每个目录一份 `MEMORY.md` 索引加若干条子文档，索引全文进系统提示词，子文档由模型按需用通用文件工具读写。
+- 核心代码：`src/core/memory/memoryStore.ts`（目录/索引路径解析、助手目录名去重与保留名、索引读取，是唯一一份路径算法）、`legacyMemoryMigration.ts`（插件加载时把 v1 的 `memory/global.md`、`memory/<助手名>.md` 一次性合并成 `legacy-memory.md` + 索引行，由 `main.ts` 在 `onLayoutReady` 触发）、`src/utils/chat/requestContextBuilder.ts` 里 `buildCustomInstructionsSubsections` 的 memory 段（`<memory>` 与固定英文 `<memory_rules>` 的唯一装配点，不要再开第二条读记忆的路径）。
+- 依赖子系统：读写全靠通用文件工具（`fs_read`/`fs_edit`/`fs_write`，Max 下是 `read_file`/`write_file`/`edit_file`），因此没有文件写入能力的模式（Ask）只读不写。两个记忆目录在 `workspaceScope.ts` 的 `buildScopeExemptPathSet` 里与 skill 路径一起豁免工作区范围，别的助手的目录不豁免。索引路径进 `computeSystemPromptFingerprint` 与 `PromptSourceWatcher`，用户手改 `MEMORY.md` 会让系统提示词快照失效；模型自己写的那次由 `maybeWithInternalWrite` 抑制，下个会话生效。上下文占用走 `contextBreakdown` 的 `memory` 桶。
+- 验证路径：`src/core/memory/memoryStore.test.ts`、`legacyMemoryMigration.test.ts`、`src/utils/chat/requestContextBuilder.test.ts`（注入与指纹）、`src/core/agent/workspaceScope.test.ts`（豁免）；手测在 dev vault 建两级 `MEMORY.md`，开会话看 Context Usage 的 memory 桶，再让模型记一条偏好看它是否自发建子文档并更新索引。
 
 ## MCP
 - 核心代码：`src/core/mcp/`——`mcpManager.ts`/`mcpCoordinator.ts`（生命周期与协调）、`desktopLocalMcpServer.ts`/`inProcessToolServer.ts`（本地/进程内 server）、`mcpOAuth*.ts`（OAuth 流程）、`localFileTools.ts`（vault 文件工具作为本地 MCP server 暴露）、`jsSandboxTool.ts`。

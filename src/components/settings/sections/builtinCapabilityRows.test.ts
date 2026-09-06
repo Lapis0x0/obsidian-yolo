@@ -29,7 +29,6 @@ describe('buildBuiltinCapabilityRows', () => {
       'context_compaction',
       'user_questions',
       'todo_list',
-      'memory',
       'web_access',
       'js_sandbox',
       'terminal',
@@ -45,7 +44,6 @@ describe('buildBuiltinCapabilityRows', () => {
       'Compact Context',
       'Ask User',
       'Task List',
-      'Memory Toolset',
       'Web Search Toolset',
       'Analysis Sandbox',
       'Terminal Commands',
@@ -82,20 +80,18 @@ describe('groupCapabilityRowsByCategory', () => {
 
     const context = groups.find((group) => group.category === 'context')
     // context_prune_tool_results -> context_compact -> ask_user_question ->
-    // todo_write -> memory_ops.
+    // todo_write.
     expect(context?.rows.map((row) => row.id)).toEqual([
       'context_pruning',
       'context_compaction',
       'user_questions',
       'todo_list',
-      'memory',
     ])
     expect(context?.rows.map((row) => row.label)).toEqual([
       'Prune Tool Results',
       'Compact Context',
       'Ask User',
       'Task List',
-      'Memory Toolset',
     ])
 
     const external = groups.find((group) => group.category === 'external')

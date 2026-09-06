@@ -43,9 +43,8 @@ describe('countEnabledVisibleAssistantTools', () => {
     const enabledToolNames = [
       'yolo_local__fs_edit',
       'yolo_local__fs_write',
-      'yolo_local__memory_add',
-      'yolo_local__memory_update',
-      'yolo_local__memory_delete',
+      'yolo_local__web_search',
+      'yolo_local__web_scrape',
       'yolo_local__fs_read',
     ]
 

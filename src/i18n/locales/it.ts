@@ -651,15 +651,6 @@ export const it: DeepPartial<TranslationKeys> = {
       builtinFsEditOpsLabel: 'Set modifica file',
       builtinFsEditOpsDesc:
         'Modifica testo mirato o scrive il contenuto completo del file',
-      builtinMemoryOpsLabel: 'Set strumenti memoria',
-      builtinMemoryOpsDesc: 'Aggiungi, aggiorna ed elimina memoria',
-      builtinMemoryAddLabel: 'Aggiungi memoria',
-      builtinMemoryAddDesc:
-        "Aggiunge una memoria globale o dell'assistant con id assegnato automaticamente.",
-      builtinMemoryUpdateLabel: 'Aggiorna memoria',
-      builtinMemoryUpdateDesc: 'Aggiorna una memoria esistente tramite id.',
-      builtinMemoryDeleteLabel: 'Elimina memoria',
-      builtinMemoryDeleteDesc: 'Elimina una memoria esistente tramite id.',
       builtinOpenSkillLabel: 'Apri skill',
       builtinOpenSkillDesc: 'Carica uno skill markdown',
       builtinWebSearchLabel: 'Ricerca web',
@@ -2184,9 +2175,6 @@ export const it: DeepPartial<TranslationKeys> = {
         fs_edit: 'Modifica testo',
         fs_edit_ops: 'Set modifica file',
         bash: 'Bash',
-        memory_add: 'Aggiungi memoria',
-        memory_update: 'Aggiorna memoria',
-        memory_delete: 'Elimina memoria',
         open_skill: 'Apri skill',
       },
       dangerousBash: {

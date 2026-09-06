@@ -38,13 +38,6 @@ import {
 } from './tool-catalog'
 import { getAssistantToolDisclosureMode } from './tool-preferences'
 
-const LOCAL_MEMORY_TOOL_NAMES = new Set([
-  'memory_ops',
-  'memory_add',
-  'memory_update',
-  'memory_delete',
-])
-
 export const isLoadToolSchemasToolName = (toolName: string): boolean => {
   try {
     const parsed = parseToolName(toolName)
@@ -54,18 +47,6 @@ export const isLoadToolSchemasToolName = (toolName: string): boolean => {
     )
   } catch {
     return toolName === LOAD_TOOL_SCHEMAS_LOCAL_TOOL_NAME
-  }
-}
-
-export const isMemoryToolAvailable = (toolName: string): boolean => {
-  try {
-    const parsed = parseToolName(toolName)
-    return (
-      parsed.serverName === getLocalFileToolServerName() &&
-      LOCAL_MEMORY_TOOL_NAMES.has(parsed.toolName)
-    )
-  } catch {
-    return LOCAL_MEMORY_TOOL_NAMES.has(toolName)
   }
 }
 
@@ -216,7 +197,6 @@ export const selectAllowedTools = async ({
 }): Promise<{
   filteredTools: McpTool[]
   hasTools: boolean
-  hasMemoryTools: boolean
   hasOnDemandTools: boolean
   requestTools: RequestTool[] | undefined
   /**
@@ -315,9 +295,6 @@ export const selectAllowedTools = async ({
   return {
     filteredTools,
     hasTools: filteredTools.length > 0,
-    hasMemoryTools: filteredTools.some((tool) =>
-      isMemoryToolAvailable(tool.name),
-    ),
     hasOnDemandTools: hasOnDemand,
     requestTools: buildRequestTools(requestToolDefinitions),
     deferredToolCatalog,

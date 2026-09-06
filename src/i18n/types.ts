@@ -469,14 +469,6 @@ export type TranslationKeys = {
       safetyControlsDesc?: string
       builtinFsEditOpsLabel?: string
       builtinFsEditOpsDesc?: string
-      builtinMemoryOpsLabel?: string
-      builtinMemoryOpsDesc?: string
-      builtinMemoryAddLabel?: string
-      builtinMemoryAddDesc?: string
-      builtinMemoryUpdateLabel?: string
-      builtinMemoryUpdateDesc?: string
-      builtinMemoryDeleteLabel?: string
-      builtinMemoryDeleteDesc?: string
       builtinOpenSkillLabel?: string
       builtinOpenSkillDesc?: string
       builtinWebSearchLabel?: string
@@ -1995,9 +1987,6 @@ export type TranslationKeys = {
         fs_edit?: string
         fs_edit_ops?: string
         bash?: string
-        memory_add?: string
-        memory_update?: string
-        memory_delete?: string
         open_skill?: string
       }
       dangerousBash?: {

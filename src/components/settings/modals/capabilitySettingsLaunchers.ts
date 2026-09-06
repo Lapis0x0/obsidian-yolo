@@ -147,12 +147,9 @@ const openWebSearchSettings: SettingsLauncher = ({ app, plugin }) => {
  * declares `hasSettings: true` and forgets a branch there silently opens the
  * wrong settings panel instead of failing to compile.
  *
- * Only 2 entries today for the same reason `TOOL_RENDERERS` has 4: only
- * `memory` and `subagent_delegation` are registered in `CAPABILITIES` so
- * far (D2/D3). This table grows in lockstep with `CAPABILITIES` as D6 lands.
+ * This table grows in lockstep with `CAPABILITIES`.
  */
 export const CAPABILITY_SETTINGS_LAUNCHERS = {
-  memory: null,
   subagent_delegation: openSubagentSettings,
   context_pruning: null,
   context_compaction: null,

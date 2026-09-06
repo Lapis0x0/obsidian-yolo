@@ -2,6 +2,10 @@ import { normalizePath } from 'obsidian'
 
 import { AssistantWorkspaceScope } from '../../types/assistant.types'
 import {
+  type MemorySettingsLike,
+  resolveMemoryDirPaths,
+} from '../memory/memoryStore'
+import {
   type YoloSettingsLike,
   getYoloUserDataRootDir,
   isWithinYoloUserDataRoot,
@@ -137,7 +141,7 @@ export function resolvePathVisibility(
     !isPathAllowedByScope(path, options.scope) &&
     !(
       options.exemptPaths &&
-      isCoveredBySkillPathExemption(path, options.exemptPaths)
+      isCoveredByScopeExemption(path, options.exemptPaths)
     )
   ) {
     return 'out-of-scope'
@@ -236,7 +240,7 @@ export function collectToolCallPaths(
  * Returns the first out-of-scope path (for error messaging), or null if all
  * paths are allowed / scope is disabled / tool has no path args.
  */
-export function normalizeSkillPathForExemption(path: string): string {
+export function normalizeExemptPath(path: string): string {
   const trimmed = path.trim()
   if (
     trimmed.startsWith(BUILTIN_SKILL_PATH_PREFIX) ||
@@ -250,19 +254,66 @@ export function normalizeSkillPathForExemption(path: string): string {
 export function buildAllowedSkillPathSet(
   paths: readonly string[],
 ): Set<string> {
-  return new Set(paths.map(normalizeSkillPathForExemption))
+  return new Set(paths.map(normalizeExemptPath))
 }
 
-export function isCoveredBySkillPathExemption(
+/**
+ * Every host-managed path a workspace-scoped run may still touch: the skills
+ * it was granted, plus its own two memory directories (global + this
+ * assistant's). Memory is host-managed data like skills are — an assistant
+ * whose `include` happens not to list `<baseDir>/memory` must still be able
+ * to read and write its own memory through the generic file tools, which is
+ * the only way to reach it since the dedicated memory tools were removed.
+ * Another assistant's directory is not in the set, so scope still separates
+ * them.
+ *
+ * A directory exemption is stored with a trailing `/`, which is what
+ * {@link isCoveredByScopeExemption} matches subtree-wise; skill paths keep
+ * their existing exact/`SKILL.md`-package semantics. Kept separate from
+ * {@link buildAllowedSkillPathSet}, whose set doubles as "is this path a
+ * skill document" in `fs_read`.
+ */
+export function buildScopeExemptPathSet({
+  allowedSkillPaths,
+  settings,
+}: {
+  allowedSkillPaths?: readonly string[]
+  settings?: MemorySettingsLike | null
+}): Set<string> | undefined {
+  const exemptPaths = new Set(
+    (allowedSkillPaths ?? []).map(normalizeExemptPath),
+  )
+  // `settings.currentAssistantId` is the run's assistant at every site that
+  // enforces scope: workspace scope is itself an assistant-level setting, and
+  // these gates never carry an assistant id of their own. An exemption is not
+  // an injection, so a mode running without an assistant merely gets a
+  // directory it has no reason to visit.
+  const memoryDirs = resolveMemoryDirPaths({
+    settings: settings ?? undefined,
+    assistantId: settings?.currentAssistantId,
+  })
+  for (const dir of [memoryDirs.global, memoryDirs.assistant]) {
+    if (dir) exemptPaths.add(`${normalizePath(dir)}/`)
+  }
+  return exemptPaths.size > 0 ? exemptPaths : undefined
+}
+
+export function isCoveredByScopeExemption(
   path: string,
   exemptPaths: ReadonlySet<string>,
 ): boolean {
-  const normalizedPath = normalizeSkillPathForExemption(path)
+  const normalizedPath = normalizeExemptPath(path)
   if (exemptPaths.has(normalizedPath)) return true
 
-  for (const skillPath of exemptPaths) {
-    if (!skillPath.endsWith('/SKILL.md')) continue
-    const packageDir = skillPath.slice(0, -'/SKILL.md'.length)
+  for (const exemptPath of exemptPaths) {
+    // Directory exemption (see `buildScopeExemptPathSet`): everything under
+    // it is covered.
+    if (exemptPath.endsWith('/')) {
+      if (normalizedPath.startsWith(exemptPath)) return true
+      continue
+    }
+    if (!exemptPath.endsWith('/SKILL.md')) continue
+    const packageDir = exemptPath.slice(0, -'/SKILL.md'.length)
     if (normalizedPath.startsWith(`${packageDir}/`)) return true
   }
   return false
@@ -286,7 +337,7 @@ export function findPathOutsideScope(
     }
     if (
       options?.exemptPaths &&
-      isCoveredBySkillPathExemption(path, options.exemptPaths)
+      isCoveredByScopeExemption(path, options.exemptPaths)
     ) {
       continue
     }
