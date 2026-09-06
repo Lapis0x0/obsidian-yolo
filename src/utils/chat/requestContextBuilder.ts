@@ -14,9 +14,10 @@ import type {
 } from '../../core/agent/systemPromptSnapshotStore'
 import { toModelToolName } from '../../core/mcp/localFileTools'
 import {
-  getMemoryPromptContext,
-  resolveMemoryFilePaths,
-} from '../../core/memory/memoryManager'
+  readMemoryIndexes,
+  resolveMemoryDirPaths,
+  resolveMemoryIndexPaths,
+} from '../../core/memory/memoryStore'
 import { MODULE_RENDERED_FILE_SOURCE_MAX_BYTES } from '../../core/modules/moduleFileTextRendererRegistry'
 import type { YoloModuleFileTextRendererV1 } from '../../core/modules/types'
 import {
@@ -1965,11 +1966,13 @@ ${entries}
     const useAssistant = contextPolicy?.useAssistant ?? true
     const assistant = useAssistant ? this.getCurrentAssistant() : null
     const latestCompaction = getLatestChatConversationCompaction(compaction)
-    // The exact memory files this request will read. Captures baseDir, the
+    // The exact memory indexes this request will read. Captures baseDir, the
     // assistant name, AND the sibling-driven duplicate index — so a same-named
     // assistant being added/renamed (which changes which file we read) refreshes
     // the snapshot even though the current assistant's own fields are unchanged.
-    const memoryPaths = resolveMemoryFilePaths({
+    // Only the two MEMORY.md indexes are watched: the fact files under them
+    // never reach the system prompt, so editing one must not evict the prefix.
+    const memoryPaths = resolveMemoryIndexPaths({
       settings: this.settings,
       assistantId: this.settings.currentAssistantId,
     })
@@ -2230,22 +2233,29 @@ ${modePersonaPrompt.trim()}
       })
     }
 
-    // Memory block — bucket: memory
-    const memoryContext = await getMemoryPromptContext({
+    // Memory block — bucket: memory. Only the two MEMORY.md indexes are
+    // injected, in full; the fact files they point at are read on demand with
+    // the ordinary file tools. The XML shape is part of the provider cache
+    // prefix — keep it stable.
+    const memoryDirPaths = resolveMemoryDirPaths({
+      settings: this.settings,
+      assistantId: currentAssistant?.id,
+    })
+    const memoryIndexes = await readMemoryIndexes({
       app: this.app,
       settings: this.settings,
       assistantId: currentAssistant?.id,
     })
-    if (memoryContext.global || memoryContext.assistant) {
+    if (memoryIndexes.global || memoryIndexes.assistant) {
       const memoryParts: string[] = []
-      if (memoryContext.global) {
+      if (memoryIndexes.global) {
         memoryParts.push(`<global>
-${memoryContext.global}
+${memoryIndexes.global}
 </global>`)
       }
-      if (memoryContext.assistant) {
+      if (memoryIndexes.assistant) {
         memoryParts.push(`<assistant>
-${memoryContext.assistant}
+${memoryIndexes.assistant}
 </assistant>`)
       }
       sections.push({
@@ -2257,19 +2267,30 @@ ${memoryParts.join('\n\n')}
       })
     }
 
-    // Memory rules — bucket: system (per breakdown spec)
-    if (hasMemoryTools) {
-      sections.push({
-        bucket: 'system',
-        id: 'system.memory-rules',
-        content: `<memory_rules>
-- Memory stores durable user profile, interaction preferences, corrected assistant behavior, and cross-session continuity that would not naturally live in vault notes.
-- When the user reveals important durable information or corrects your behavior, proactively use memory tools to add or update memory.
-- When a memory becomes outdated, redundant, or clearly superseded, proactively update or delete it.
-- Prefer updating an existing relevant memory instead of adding duplicates.
+    // Memory rules — bucket: system (per breakdown spec).
+    // Injected unconditionally: a first-time user has no index yet, so gating
+    // the rules on one existing would mean the model never learns that memory
+    // exists and the cold start could never happen. The text is fixed English
+    // in the cache prefix, and read-only modes simply never use its write half.
+    // It names the real directories rather than a tool, because the modes that
+    // can write use different file tools (`fs_write` / `write_file`).
+    const memoryLocationRule = memoryDirPaths.assistant
+      ? `- Location: \`${memoryDirPaths.global}/\` applies to every assistant; \`${memoryDirPaths.assistant}/\` only to this one. Facts private to this assistant go there, everything else goes to global.`
+      : `- Location: \`${memoryDirPaths.global}/\` applies to every assistant.`
+    sections.push({
+      bucket: 'system',
+      id: 'system.memory-rules',
+      content: `<memory_rules>
+Memory is for durable facts that do not belong in a vault note: who the user is, how they want you to work, and context that must survive across sessions.
+${memoryLocationRule}
+- Layout: each directory holds a MEMORY.md index plus one file per fact. You see the index above in full; you do not see the files. Index line: \`- [Title](file.md) — when to open me\`.
+- Read: at the start of a task, if an index line looks relevant, read that file before acting. Never rely on the index line alone.
+- Write: one fact per file, frontmatter \`name\` (kebab-case, equals the filename) and \`description\` (one sentence). Say why a preference exists so it can be applied to new situations. Link related facts with [[name]].
+- Before adding, check the index for an entry on the same subject and update it instead. Delete a file and its index line when it is wrong or obsolete.
+- Write absolute dates, never relative ones. Do not record what a vault note already says; point at the note.
+- Every add, rename, or delete of a fact file updates MEMORY.md in the same turn. Create the directory and MEMORY.md if missing.
 </memory_rules>`,
-      })
-    }
+    })
 
     if (this.includeSkills) {
       const disabledSkillNames = this.settings.skills?.disabledSkillIds ?? []

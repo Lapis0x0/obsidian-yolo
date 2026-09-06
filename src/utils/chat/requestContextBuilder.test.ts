@@ -5,10 +5,14 @@ jest.mock('../../database/json/chat/promptSnapshotStore', () => ({
   readPromptSnapshotEntries: jest.fn(async () => ({})),
 }))
 
-jest.mock('../../core/memory/memoryManager', () => ({
-  getMemoryPromptContext: jest.fn(async () => ''),
-  resolveMemoryFilePaths: jest.fn(() => ({
-    global: 'YOLO/memory/global.md',
+jest.mock('../../core/memory/memoryStore', () => ({
+  readMemoryIndexes: jest.fn(async () => ({ global: null, assistant: null })),
+  resolveMemoryIndexPaths: jest.fn(() => ({
+    global: 'YOLO/memory/global/MEMORY.md',
+    assistant: null,
+  })),
+  resolveMemoryDirPaths: jest.fn(() => ({
+    global: 'YOLO/memory/global',
     assistant: null,
   })),
 }))
@@ -25,7 +29,10 @@ jest.mock('../../core/skills/liteSkills', () => ({
 }))
 
 import { SystemPromptSnapshotStore } from '../../core/agent/systemPromptSnapshotStore'
-import { getMemoryPromptContext } from '../../core/memory/memoryManager'
+import {
+  readMemoryIndexes,
+  resolveMemoryDirPaths,
+} from '../../core/memory/memoryStore'
 import {
   getLiteSkillDocument,
   listLiteSkillEntries,
@@ -2457,7 +2464,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
     },
   ]
 
-  const memMock = jest.mocked(getMemoryPromptContext)
+  const memMock = jest.mocked(readMemoryIndexes)
 
   const makeApp = () =>
     createMockApp({ files: [], fileContents: new Map() }) as never
@@ -2690,6 +2697,61 @@ describe('RequestContextBuilder system prompt freezing', () => {
     )
   })
 
+  it('injects memory rules unconditionally, naming the resolved memory directories', async () => {
+    const pathsMock = jest.mocked(resolveMemoryDirPaths)
+    pathsMock.mockReturnValue({
+      global: 'Custom/memory/global',
+      assistant: 'Custom/memory/Scoped agent',
+    })
+    memMock.mockResolvedValue({ global: null, assistant: null })
+
+    try {
+      const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+        includeSkills: false,
+      })
+      const messages = await builder.generateRequestMessages({
+        messages: userMessages,
+        model,
+        conversationId: 'conv-memory-rules',
+        // No memory tools, no memory content: the rules still ship, otherwise a
+        // first-time user's model would never learn memory exists.
+        hasMemoryTools: false,
+        systemPromptSnapshotMode: 'create',
+      })
+
+      const systemContent = getSystemContent(messages)
+      expect(systemContent).toContain('<memory_rules>')
+      expect(systemContent).toContain('`Custom/memory/global/`')
+      expect(systemContent).toContain('`Custom/memory/Scoped agent/`')
+      // No index content anywhere -> the <memory> block itself is omitted.
+      expect(systemContent).not.toContain('<memory>')
+    } finally {
+      pathsMock.mockReturnValue({
+        global: 'YOLO/memory/global',
+        assistant: null,
+      })
+    }
+  })
+
+  it('omits the assistant location from memory rules when no assistant is active', async () => {
+    memMock.mockResolvedValue({ global: null, assistant: null })
+    const builder = new RequestContextBuilder(makeApp(), baseSettings, {
+      includeSkills: false,
+    })
+    const messages = await builder.generateRequestMessages({
+      messages: userMessages,
+      model,
+      conversationId: 'conv-memory-rules-global-only',
+      systemPromptSnapshotMode: 'create',
+    })
+
+    const systemContent = getSystemContent(messages)
+    expect(systemContent).toContain(
+      '- Location: `YOLO/memory/global/` applies to every assistant.',
+    )
+    expect(systemContent).not.toContain('only to this one')
+  })
+
   it('freezes memory in the system prompt for the conversation lifetime (create mode)', async () => {
     const store = new SystemPromptSnapshotStore()
     const builder = new RequestContextBuilder(makeApp(), baseSettings, {
@@ -2709,7 +2771,7 @@ describe('RequestContextBuilder system prompt freezing', () => {
     })
     expect(getSystemContent(first)).toContain('MEM_V1')
 
-    // Memory is rewritten mid-conversation (e.g. a memory_add tool call).
+    // MEMORY.md is rewritten mid-conversation (e.g. an fs_write tool call).
     memMock.mockResolvedValue({ global: 'MEM_V2', assistant: null })
 
     const second = await builder.generateRequestMessages({
@@ -3012,12 +3074,13 @@ describe('RequestContextBuilder ChatContextPolicy (module chat modes)', () => {
     skills: {},
   } as unknown as YoloSettings
 
-  const memMock = jest.mocked(getMemoryPromptContext)
+  const memMock = jest.mocked(readMemoryIndexes)
 
   beforeEach(() => {
-    // Mirrors real getMemoryPromptContext gating: assistant memory only
-    // materializes when an assistantId is actually passed in — required so
-    // this suite can tell "assistant cut off" apart from "mock ignores args".
+    // Mirrors real readMemoryIndexes behavior: the assistant index only
+    // materializes when an assistantId is actually passed in (the store has no
+    // fallback to settings.currentAssistantId) — required so this suite can
+    // tell "assistant cut off" apart from "mock ignores args".
     memMock.mockImplementation(async ({ assistantId }) => ({
       global: 'GLOBAL_MEMORY',
       assistant: assistantId ? 'ASSISTANT_MEMORY' : null,

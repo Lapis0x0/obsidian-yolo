@@ -4,6 +4,13 @@ export const DEFAULT_YOLO_BASE_DIR = 'YOLO'
 export const YOLO_SKILLS_SUBDIR = 'skills'
 export const YOLO_SKILLS_INDEX_FILE_NAME = 'Skills.md'
 export const YOLO_SNIPPETS_FILE_NAME = 'snippets.md'
+// Memory v2 layout: `<baseDir>/memory/{global,<assistantDirName>}/MEMORY.md`
+// plus one ordinary markdown file per fact next to each index. `global` is a
+// reserved directory name — an assistant actually named "global" is stored
+// under `global (assistant)`; see `src/core/memory/memoryStore.ts`.
+export const YOLO_MEMORY_SUBDIR = 'memory'
+export const YOLO_MEMORY_INDEX_FILE_NAME = 'MEMORY.md'
+export const YOLO_MEMORY_GLOBAL_DIR_NAME = 'global'
 export const YOLO_JSON_DB_DIR_NAME = '.yolo_json_db'
 // Cleanup-only: the retired PGlite-backed vector store used to snapshot here.
 // The only remaining reader of this name is `DatabaseManager`'s legacy-artifact
