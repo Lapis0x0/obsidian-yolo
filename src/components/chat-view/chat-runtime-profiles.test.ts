@@ -1,6 +1,11 @@
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
+import {
+  getToolNamesForCapability,
+  listCapabilities,
+} from '../../core/tools/registry'
 
 import {
+  ASSISTANT_INERT_BUILTIN_TOOL_NAMES,
   resolveChatModeRuntime,
   resolveNativeToolPolicy,
 } from './chat-runtime-profiles'
@@ -576,5 +581,59 @@ describe('resolveChatModeRuntime', () => {
       expect(runtime.allowedToolNames).toEqual(['yolo_local__fs_read'])
       expect(runtime.bypassToolApproval).toBe(true)
     })
+  })
+})
+
+describe('ASSISTANT_INERT_BUILTIN_TOOL_NAMES', () => {
+  // A switch the user can move is a promise that moving it does something. The
+  // agent editor drops these rows rather than showing a switch that cannot
+  // keep it — the failure is not cosmetic: a user who turns `native_files`
+  // "off" would be told this agent cannot reach their filesystem, while Max
+  // goes on reading and writing it.
+  it('holds native_files, whose switch no mode obeys', () => {
+    for (const name of getToolNamesForCapability('native_files')) {
+      expect(ASSISTANT_INERT_BUILTIN_TOOL_NAMES.has(name)).toBe(true)
+    }
+  })
+
+  it('leaves terminal alone, since agent mode does obey its switch', () => {
+    for (const name of getToolNamesForCapability('terminal')) {
+      expect(ASSISTANT_INERT_BUILTIN_TOOL_NAMES.has(name)).toBe(false)
+    }
+  })
+
+  // The property, so a capability added later is judged rather than assumed:
+  // a tool is here exactly when no mode both exposes its capability and then
+  // leaves the choice to the assistant.
+  it('holds a capability exactly when every mode exposing it forces it on', () => {
+    for (const capability of listCapabilities()) {
+      const forcedEverywhere =
+        capability.chatModes.length > 0 &&
+        capability.chatModes.every((mode) => {
+          const runtime = resolveChatModeRuntime({
+            mode,
+            yoloEnabled: false,
+            assistant: {
+              enableTools: true,
+              includeBuiltinTools: true,
+              toolPreferences: {},
+              builtinCapabilityPreferences: {
+                [capability.id]: { enabled: false },
+              },
+              toolServerPreferences: {},
+            },
+            assistantEnabledToolNames: [],
+          })
+          const names = getToolNamesForCapability(capability.id)
+          return names.every((name) => runtime.allowedToolNames?.includes(name))
+        })
+
+      const names = getToolNamesForCapability(capability.id)
+      for (const name of names) {
+        expect(ASSISTANT_INERT_BUILTIN_TOOL_NAMES.has(name)).toBe(
+          forcedEverywhere,
+        )
+      }
+    }
   })
 })

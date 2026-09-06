@@ -83,6 +83,7 @@ import {
   estimateTextTokens,
 } from '../../../utils/llm/contextTokenEstimate'
 import { formatTokenCount } from '../../../utils/llm/formatTokenCount'
+import { ASSISTANT_INERT_BUILTIN_TOOL_NAMES } from '../../chat-view/chat-runtime-profiles'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'
@@ -504,7 +505,15 @@ export function AgentsSectionContent({
       )
       .then((tools) => {
         if (mounted) {
-          setAvailableTools(tools)
+          // Filtered here, at the one place the catalog enters this editor, so
+          // the rows, the group counts, the header count and the token
+          // estimate all speak about the same set of tools rather than each
+          // re-deriving which ones belong.
+          setAvailableTools(
+            tools.filter(
+              (tool) => !ASSISTANT_INERT_BUILTIN_TOOL_NAMES.has(tool.name),
+            ),
+          )
         }
       })
       .catch((error: unknown) => {

@@ -15,6 +15,7 @@ import {
   getToolNamesForCapability,
   getToolNamesForChatMode,
   listBuiltinToolNames,
+  listCapabilities,
 } from '../../core/tools/registry'
 import type {
   BuiltinChatModeId,
@@ -60,6 +61,40 @@ const MAX_CAPABILITY_OVERRIDES: ReadonlyMap<
   ['native_files', { forceEnabled: true }],
   ['terminal', { forceEnabled: true, allowAlwaysAllow: true }],
 ])
+
+/**
+ * Built-in tools an assistant's own switch cannot move, so the agent editor
+ * offers no switch for them.
+ *
+ * A capability is the assistant's to configure when some mode both exposes it
+ * (`chatModes`) and then leaves it alone. Both halves are already stated in
+ * their right places — visibility on the capability, the trust grant on the
+ * mode — and this is the one place that puts them together, because "can the
+ * user change this?" is a question neither half can answer by itself.
+ *
+ * Today only `native_files` fails it: Max is its only mode and Max forces it
+ * on. A switch for it would read as control over whether this agent can touch
+ * the local filesystem while being nothing of the kind — off still means on in
+ * Max, on still means off everywhere else. That is worse than absent: a user
+ * who turns it off has been told they are safe, and they are not.
+ */
+export const ASSISTANT_INERT_BUILTIN_TOOL_NAMES: ReadonlySet<string> = new Set(
+  listCapabilities()
+    // `listCapabilities()` widens `id` to string (registry.ts's own note on
+    // why); every element is still one of `CAPABILITIES`.
+    .map((capability) => ({
+      id: capability.id as BuiltinCapabilityId,
+      chatModes: capability.chatModes,
+    }))
+    .filter(({ id, chatModes }) =>
+      chatModes.every(
+        (mode) =>
+          mode === 'max' &&
+          MAX_CAPABILITY_OVERRIDES.get(id)?.forceEnabled === true,
+      ),
+    )
+    .flatMap(({ id }) => getToolNamesForCapability(id)),
+)
 
 /**
  * Max's vault boundary, or undefined when this machine has none (mobile, or
