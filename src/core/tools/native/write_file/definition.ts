@@ -28,6 +28,7 @@ const WRITE_FILE_DESCRIPTION = [
 
 export const writeFileDefinition = defineTool({
   name: 'write_file',
+  summaryAction: 'edit',
   getMcpTool: () =>
     ({
       description: WRITE_FILE_DESCRIPTION,

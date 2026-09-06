@@ -17,6 +17,7 @@ import { defineTool } from '../define'
 // rather than inlining everything (phase2-migration.md D6 batch 6).
 export const jsEvalDefinition = defineTool({
   name: 'js_eval',
+  summaryAction: 'analysis',
   // Matches the still-live `getLocalFileTools()` projection, which calls
   // `getJsSandboxTool()` with no settings argument (`localFileTools.ts`'s
   // schema array literally has `getJsSandboxTool(),`) — `ToolCatalogContext`

@@ -39,6 +39,7 @@ const DELEGATE_SUBAGENT_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const delegateSubagentDefinition = defineTool({
   name: 'delegate_subagent',
+  summaryAction: 'agentInternal',
   getMcpTool: () => DELEGATE_SUBAGENT_MCP_TOOL,
   chatLabel: {
     key: 'settings.agent.builtinDelegateSubagentLabel',

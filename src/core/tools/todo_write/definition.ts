@@ -104,6 +104,7 @@ const executeTodoWrite = (
 
 export const todoWriteDefinition = defineTool({
   name: 'todo_write',
+  summaryAction: 'agentInternal',
   getMcpTool: () => TODO_WRITE_MCP_TOOL,
   chatLabel: {
     key: 'settings.agent.builtinTodoWriteLabel',

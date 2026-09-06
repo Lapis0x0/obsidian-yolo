@@ -25,6 +25,7 @@ const CONTEXT_COMPACT_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const contextCompactDefinition = defineTool({
   name: 'context_compact',
+  summaryAction: 'agentInternal',
   getMcpTool: () => CONTEXT_COMPACT_MCP_TOOL,
   chatLabel: {
     key: 'settings.agent.builtinContextCompactLabel',

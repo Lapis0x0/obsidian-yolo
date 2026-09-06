@@ -35,6 +35,7 @@ const READ_FILE_DESCRIPTION = [
 
 export const readFileDefinition = defineTool({
   name: 'read_file',
+  summaryAction: 'read',
   getMcpTool: () =>
     ({
       description: READ_FILE_DESCRIPTION,

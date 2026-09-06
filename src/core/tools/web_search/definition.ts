@@ -32,6 +32,7 @@ const WEB_SEARCH_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const webSearchDefinition = defineTool({
   name: 'web_search',
+  summaryAction: 'web',
   getMcpTool: () => WEB_SEARCH_MCP_TOOL,
   // Provider-readiness gate, ported verbatim from `isLocalToolEnabled`
   // (`src/core/mcp/mcpManager.ts`) — the one pre-existing genuine

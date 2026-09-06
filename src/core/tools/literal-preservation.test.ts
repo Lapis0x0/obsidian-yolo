@@ -85,6 +85,7 @@ const probeTool = defineTool({
   name: 'probe_tool',
   getMcpTool: () => ({ description: '', inputSchema: { type: 'object' } }),
   chatLabel: { key: 'probe', fallback: 'probe' },
+  summaryAction: 'agentInternal',
   execute: () =>
     Promise.resolve({ status: ToolCallResponseStatus.Success, text: '' }),
 })

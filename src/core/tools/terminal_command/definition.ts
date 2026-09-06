@@ -97,6 +97,7 @@ const getOptionalBooleanArg = (
 
 export const terminalCommandDefinition = defineTool({
   name: 'terminal_command',
+  summaryAction: 'terminal',
   getMcpTool: () => TERMINAL_COMMAND_MCP_TOOL,
   // Platform gate — the ONE deliberate behavior change in this batch
   // (master.md §3.1b, approved 2026-08-15): previously `terminal_command` was

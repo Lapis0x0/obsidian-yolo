@@ -17,6 +17,7 @@ import type { LocalToolCallResultMetadata } from '../types'
 
 export const fsWriteDefinition = defineTool({
   name: 'fs_write',
+  summaryAction: 'edit',
   // Schema copied verbatim from the `fs_write` entry in `getLocalFileTools()`
   // (`src/core/mcp/localFileTools.ts`). Static, like `fs_edit`'s.
   getMcpTool: () =>

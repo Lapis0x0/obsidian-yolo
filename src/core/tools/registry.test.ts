@@ -11,6 +11,7 @@ import {
   listCapabilities,
 } from './registry'
 import type { BuiltinChatModeId } from './types'
+import { TOOL_SUMMARY_ACTIONS } from './types'
 
 describe('assertNoDuplicates', () => {
   it('does not throw for a list with no duplicates', () => {
@@ -329,5 +330,29 @@ describe('chat mode visibility', () => {
         true,
       )
     }
+  })
+})
+
+describe('summary actions', () => {
+  it('declares a valid summary action on every built-in tool', () => {
+    const unclassified = listBuiltinTools()
+      .filter(
+        (tool) =>
+          !(TOOL_SUMMARY_ACTIONS as readonly string[]).includes(
+            tool.summaryAction,
+          ),
+      )
+      .map((tool) => tool.name)
+    expect(unclassified).toEqual([])
+  })
+
+  it('classifies the file tools of both toolsets as reads and edits', () => {
+    const actionOf = (name: string) => getToolDefinition(name)?.summaryAction
+    expect(actionOf('fs_read')).toBe('read')
+    expect(actionOf('read_file')).toBe('read')
+    expect(actionOf('fs_write')).toBe('edit')
+    expect(actionOf('fs_edit')).toBe('edit')
+    expect(actionOf('write_file')).toBe('edit')
+    expect(actionOf('edit_file')).toBe('edit')
   })
 })

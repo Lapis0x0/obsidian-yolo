@@ -20,6 +20,8 @@ import { isCliToolCallCapability } from '../../core/cli-runtime/tool-call'
 import { InvalidToolNameException } from '../../core/mcp/exception'
 import { getLocalFileToolServerName } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import { getToolDefinition } from '../../core/tools/registry'
+import type { ToolSummaryAction } from '../../core/tools/types'
 import { readEditReviewSnapshots } from '../../database/edit-review/editReviewSnapshotStore'
 import {
   AssistantToolMessageGroup,
@@ -303,25 +305,18 @@ const TOOL_RUN_SUMMARY_BUCKET_ORDER = [
 
 type ToolRunSummaryBucket = (typeof TOOL_RUN_SUMMARY_BUCKET_ORDER)[number]
 
-const TOOL_RUN_SUMMARY_BUCKET_BY_TOOL: Record<string, ToolRunSummaryBucket> = {
-  fs_read: 'read',
-  fs_list: 'search',
-  fs_search: 'search',
-  web_search: 'web',
-  web_scrape: 'web',
-  fs_write: 'edit',
-  fs_edit: 'edit',
-  fs_move: 'edit',
-  fs_delete: 'edit',
-  fs_create_dir: 'edit',
-  // Legacy tool names — keep summarizing historical conversations.
-  fs_create_file: 'edit',
-  fs_delete_file: 'edit',
-  fs_delete_dir: 'edit',
-  bash: 'virtualTerminal',
-  terminal_command: 'terminal',
-  js_eval: 'analysis',
-}
+/**
+ * Every bucket except `command` and `other` is a {@link ToolSummaryAction} a
+ * built-in tool declares on itself; those two exist only here, for the CLI
+ * table below and for calls nothing recognizes.
+ *
+ * `agentInternal` tools (todo list, context compaction, delegation, asking the
+ * user) fold into `other` on purpose — see that value's doc comment in
+ * `core/tools/types.ts`.
+ */
+const toolSummaryActionBucket = (
+  action: ToolSummaryAction,
+): ToolRunSummaryBucket => (action === 'agentInternal' ? 'other' : action)
 
 const CLI_TOOL_RUN_SUMMARY_BUCKET_BY_NAME: Record<
   string,
@@ -391,12 +386,17 @@ const getToolRunSummaryKey = (
     return { kind: 'builtin', bucket: 'other' }
   }
 
-  // The verb table is keyed by short name, so it is scoped to the host server:
-  // an MCP tool that happens to be called `fs_read` is not a host file read.
+  // Scoped to the host server: an MCP tool that happens to be called `fs_read`
+  // is not a host file read. Retired built-in names (`fs_create_file` and the
+  // like) no longer resolve to a definition and fall to `other` — a historical
+  // conversation loses one verb, which is not worth a name table.
   if (parsed.serverName === getLocalFileToolServerName()) {
+    const definition = getToolDefinition(parsed.toolName)
     return {
       kind: 'builtin',
-      bucket: TOOL_RUN_SUMMARY_BUCKET_BY_TOOL[parsed.toolName] ?? 'other',
+      bucket: definition
+        ? toolSummaryActionBucket(definition.summaryAction)
+        : 'other',
     }
   }
 

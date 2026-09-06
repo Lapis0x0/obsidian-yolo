@@ -258,6 +258,34 @@ export type ToolContext = {
  * `string`, defeating every completeness check this project exists to add).
  * `defineTool` below instantiates `Name` with the literal tool name.
  */
+/**
+ * What a call to this tool *did*, coarse enough to count. The chat surface
+ * groups a collapsed tool run by this value ("Read 2 files, 1 web lookup"),
+ * so it is declared on the tool like every other per-tool policy rather than
+ * kept in a name table beside the registry (AGENTS.md: nothing about a
+ * built-in tool gets a side table).
+ *
+ * `agentInternal` is for tools that act on the run itself rather than on the
+ * vault or the outside world (todo list, context compaction, subagent
+ * delegation, asking the user). They deliberately get no verb of their own in
+ * the summary line — naming one would add a clause the reader cannot act on —
+ * so they land in the same unnamed tail clause as unrecognizable calls. It is
+ * still an explicit declaration, not a lookup miss: there is no "unclassified"
+ * value, and every built-in tool must pick one of these.
+ */
+export const TOOL_SUMMARY_ACTIONS = [
+  'read',
+  'search',
+  'web',
+  'edit',
+  'virtualTerminal',
+  'terminal',
+  'analysis',
+  'agentInternal',
+] as const
+
+export type ToolSummaryAction = (typeof TOOL_SUMMARY_ACTIONS)[number]
+
 export type BuiltinToolDefinition<Name extends string = string> = {
   name: Name
   /**
@@ -284,6 +312,8 @@ export type BuiltinToolDefinition<Name extends string = string> = {
    * `label`: the capability is "File Editing", its tools are "Edit" / "Write".
    */
   chatLabel: I18nText
+  /** How a call to this tool is counted in a collapsed tool-run summary. */
+  summaryAction: ToolSummaryAction
   /** Whether this tool's result can be dropped by `context_prune_tool_results`. */
   contextPrunable?: boolean
   execute: (

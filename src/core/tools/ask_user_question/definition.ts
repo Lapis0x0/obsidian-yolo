@@ -57,6 +57,7 @@ const ASK_USER_QUESTION_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const askUserQuestionDefinition = defineTool({
   name: 'ask_user_question',
+  summaryAction: 'agentInternal',
   getMcpTool: () => ASK_USER_QUESTION_MCP_TOOL,
   chatLabel: {
     key: 'settings.agent.builtinAskUserQuestionLabel',

@@ -134,6 +134,7 @@ const FS_READ_DESCRIPTION = [
 
 export const fsReadDefinition = defineTool({
   name: 'fs_read',
+  summaryAction: 'read',
   // Must be a function: the `modality` schema field is tailored per active
   // chat model (see `buildFsReadModalitySchema`'s doc comment) — omitted
   // entirely for text-only models, `['text', 'pdf']` for PDF-capable models,

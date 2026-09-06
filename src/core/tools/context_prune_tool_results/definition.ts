@@ -41,6 +41,7 @@ const CONTEXT_PRUNE_TOOL_RESULTS_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const contextPruneToolResultsDefinition = defineTool({
   name: 'context_prune_tool_results',
+  summaryAction: 'agentInternal',
   getMcpTool: () => CONTEXT_PRUNE_TOOL_RESULTS_MCP_TOOL,
   chatLabel: {
     key: 'settings.agent.builtinContextPruneToolResultsLabel',

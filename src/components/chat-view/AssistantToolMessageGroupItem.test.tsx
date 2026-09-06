@@ -39,6 +39,7 @@ jest.mock('../../database/edit-review/editReviewSnapshotStore', () => ({
 jest.mock('./AssistantEditSummary', () => ({
   __esModule: true,
   default: () => null,
+  renderDeltaPair: (added: number, removed: number) => `+${added} -${removed}`,
 }))
 jest.mock('./AssistantMessageAnnotations', () => ({
   __esModule: true,
@@ -492,6 +493,8 @@ describe('AssistantToolMessageGroupItem', () => {
           | ToolCallResponseStatus.Running
           | ToolCallResponseStatus.AwaitingUserInput
         cliCapability?: 'command_execution' | 'file_change'
+        /** Path this call reports as edited, as a real edit tool would. */
+        editedPath?: string
       }[],
     ): ChatToolMessage => ({
       role: 'tool',
@@ -517,7 +520,31 @@ describe('AssistantToolMessageGroupItem', () => {
           ? { status: call.status }
           : {
               status: ToolCallResponseStatus.Success,
-              data: { type: 'text', text: 'ok' },
+              data: {
+                type: 'text',
+                text: 'ok',
+                ...(call.editedPath
+                  ? {
+                      metadata: {
+                        editSummary: {
+                          files: [
+                            {
+                              path: call.editedPath,
+                              addedLines: 1,
+                              removedLines: 0,
+                              operation: 'edit' as const,
+                              undoStatus: 'unavailable' as const,
+                            },
+                          ],
+                          totalFiles: 1,
+                          totalAddedLines: 1,
+                          totalRemovedLines: 0,
+                          undoStatus: 'unavailable' as const,
+                        },
+                      },
+                    }
+                  : {}),
+              },
             },
       })),
     })
@@ -575,7 +602,7 @@ describe('AssistantToolMessageGroupItem', () => {
             reasoningOnlyMessage,
             buildToolMessage('tool-1', [
               { name: 'yolo_local__fs_read' },
-              { name: 'yolo_local__fs_list' },
+              { name: 'yolo_local__web_search' },
             ]),
             finalAssistantMessage,
           ]}
@@ -586,7 +613,7 @@ describe('AssistantToolMessageGroupItem', () => {
       // tool call toward the two-call threshold.
       expect(html).toContain('yolo-tool-run-summary')
       expect(html).toContain('Read 1 file(s)')
-      expect(html).toContain('Searched 1 time(s)')
+      expect(html).toContain('1 web lookup(s)')
     })
 
     it('folds the answer message thinking block into the preceding collapsed run', () => {
@@ -676,6 +703,47 @@ describe('AssistantToolMessageGroupItem', () => {
 
       expect(html).toContain('yolo-tool-run-summary')
       expect(html).toContain('aria-expanded="false"')
+    })
+
+    it("gives Max's native file tools the same verbs as the vault toolset", () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__read_file' },
+              { name: 'yolo_local__write_file' },
+            ]),
+            finalAssistantMessage,
+          ]}
+        />,
+      )
+
+      expect(html).toContain('Read 1 file(s)')
+      expect(html).toContain('Edited 1 file(s)')
+      expect(html).not.toContain('other action')
+    })
+
+    it('counts an edit once when the run also reports an edit summary', () => {
+      const html = renderToStaticMarkup(
+        <AssistantToolMessageGroupItem
+          {...baseProps}
+          messages={[
+            hiddenAssistantMessage,
+            buildToolMessage('tool-1', [
+              { name: 'yolo_local__write_file', editedPath: 'a.md' },
+              { name: 'yolo_local__edit_file', editedPath: 'b.md' },
+            ]),
+            finalAssistantMessage,
+          ]}
+        />,
+      )
+
+      // The edit summary names the files, so the `edit` bucket stays silent —
+      // and the calls must not resurface as unclassified "other actions".
+      expect(html).toContain('Edited 2 file(s)')
+      expect(html).not.toContain('other action')
     })
 
     it('summarizes CLI capabilities instead of treating them as other actions', () => {

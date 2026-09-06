@@ -24,6 +24,7 @@ const WEB_SCRAPE_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const webScrapeDefinition = defineTool({
   name: 'web_scrape',
+  summaryAction: 'web',
   getMcpTool: () => WEB_SCRAPE_MCP_TOOL,
   // Deliberately no `isAvailable` — unlike `web_search`, `web_scrape` does
   // NOT gate on a configured search provider: `runWebScrape` falls back to

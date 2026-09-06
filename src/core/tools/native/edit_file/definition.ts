@@ -31,6 +31,7 @@ const EDIT_FILE_DESCRIPTION = [
 
 export const editFileDefinition = defineTool({
   name: 'edit_file',
+  summaryAction: 'edit',
   getMcpTool: () =>
     ({
       description: EDIT_FILE_DESCRIPTION,

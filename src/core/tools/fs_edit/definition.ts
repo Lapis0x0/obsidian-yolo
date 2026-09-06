@@ -28,6 +28,7 @@ import {
 
 export const fsEditDefinition = defineTool({
   name: 'fs_edit',
+  summaryAction: 'edit',
   // Schema copied verbatim from the `fs_edit` entry in `getLocalFileTools()`
   // (`src/core/mcp/localFileTools.ts`). Static (no modality/platform
   // dependence), so `getMcpTool` ignores its `ctx` argument — matching

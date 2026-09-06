@@ -52,6 +52,7 @@ const BASH_MCP_TOOL: Omit<McpTool, 'name'> = {
 
 export const bashDefinition = defineTool({
   name: 'bash',
+  summaryAction: 'virtualTerminal',
   getMcpTool: () => BASH_MCP_TOOL,
   // D6b: this tool's catalog-inclusion gate — previously
   // `isRuntimeComponentEnabled('bash-engine')` embedded directly inside
