@@ -335,17 +335,42 @@ export const GROUP_LABEL_WORLD_FONT_PX = 20
 export const OVERVIEW_GROUP_LABEL_MIN_SCREEN_PX = 12
 
 /**
- * Size a text card is created at. Deliberately at the small end of what the
- * spikes' boards used (226-334 wide) — an empty card should not take half
- * the screen; the user resizes the ones that grow.
+ * Dot-grid spacing in world units — the finest the lattice ever gets, and the
+ * canvas's base unit of length. Card sizes, the floor a card may be dragged
+ * to, and the step drags and tidy snap to are all whole multiples of it.
  *
- * Both dimensions are whole grid cells (20 x 14 — see GRID_WORLD_STEP_PX,
- * which is derived from the width). A card whose height were not would have
- * its top edge on the lattice and its bottom edge between two lines once a
- * drag snapped it there, so a column of cards could never be given even
- * gaps by dragging alone.
+ * A literal, and independent of any card size, because it is the coordinate
+ * system every board's contents are already laid out on. Deriving it from the
+ * default card — as this once did — made a purely cosmetic change to that card
+ * a breaking one: every card on every existing board would stop sitting on the
+ * lattice, and snapping and tidy would land somewhere new.
+ *
+ * 13 puts 20 cells across a default card, which is Obsidian Canvas's ratio for
+ * its own (a 400-unit card on a 20-unit grid). Its default *text* node, 250x60,
+ * would give 12.5, but that is a one-line sticky rather than a card, and its
+ * own file cards do not follow it.
  */
-export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 182 })
+export const GRID_WORLD_STEP_PX = 13
+
+/**
+ * Size a text card is created at, in grid cells. Deliberately at the small end
+ * of what the spikes' boards used (226-334 wide) — an empty card should not
+ * take half the screen; the user resizes the ones that grow.
+ *
+ * 5:3 rather than square-ish: a card holds prose, and prose wants lines long
+ * enough to read. 20 x 12 still holds four or five lines of body text, which is
+ * more than an empty card has to promise.
+ *
+ * Whole cells — a card whose height were not would have its top edge on the
+ * lattice and its bottom edge between two lines once a drag snapped it there,
+ * so a column of cards could never be given even gaps by dragging alone.
+ */
+const NEW_CARD_CELLS = Object.freeze({ w: 20, h: 12 })
+
+export const NEW_CARD_SIZE = Object.freeze({
+  w: GRID_WORLD_STEP_PX * NEW_CARD_CELLS.w,
+  h: GRID_WORLD_STEP_PX * NEW_CARD_CELLS.h,
+})
 
 /**
  * Size a card that shows something else is created at: a note, an image, a
@@ -357,13 +382,16 @@ export const NEW_CARD_SIZE = Object.freeze({ w: 260, h: 182 })
  * two lines at a time, or a picture at a fifth of its size, is a card that
  * has to be resized before it can be read at all.
  *
- * 390 is 30 grid cells, the whole-cell neighbour of Obsidian Canvas's own
+ * 30 cells square is 390, the whole-cell neighbour of Obsidian Canvas's own
  * 400 x 400 `defaultFileNodeDimensions` (its text nodes are 250 x 60, and it
- * splits the two for the same reason). Whole cells for the reason above, and
- * a literal for the same reason NEW_CARD_SIZE is one: the cell is derived
- * from the card, not the other way round.
+ * splits the two for the same reason).
  */
-export const NEW_EMBED_CARD_SIZE = Object.freeze({ w: 390, h: 390 })
+const NEW_EMBED_CARD_CELLS = 30
+
+export const NEW_EMBED_CARD_SIZE = Object.freeze({
+  w: GRID_WORLD_STEP_PX * NEW_EMBED_CARD_CELLS,
+  h: GRID_WORLD_STEP_PX * NEW_EMBED_CARD_CELLS,
+})
 
 /** World-space stagger between cards created by one multi-file drop, so
  * three dropped notes read as three cards rather than one. */
@@ -375,25 +403,6 @@ export const DROP_STAGGER_PX = 24
  * Throttled rather than per-keystroke because a note card's write is a real
  * file write, and the board's own save is debounced downstream anyway. */
 export const EDIT_PERSIST_THROTTLE_MS = 400
-
-/**
- * How many grid cells a default card spans.
- *
- * The grid is fixed by this ratio rather than by an absolute world spacing
- * because the ratio is what the eye actually judges — and unlike a spacing,
- * it does not move with the camera: dot spacing and card size both scale, so
- * `step / cardWidth` is the same at every zoom. Two boards agree visually
- * when they agree here, whatever they are zoomed to.
- *
- * 20 is Obsidian Canvas's figure for its default card — a 400-unit card on a
- * 20-unit grid. (Its default *text* node, 250x60, would give 12.5, but that
- * is a one-line sticky rather than a card, and its own file cards do not
- * follow it.)
- */
-const GRID_CELLS_PER_CARD = 20
-
-/** Dot-grid spacing in world units — the finest the lattice ever gets. */
-export const GRID_WORLD_STEP_PX = NEW_CARD_SIZE.w / GRID_CELLS_PER_CARD
 
 /**
  * How long a card takes to travel to the place an align, distribute or tidy
@@ -427,9 +436,9 @@ export const GRID_MIN_SCREEN_STEP_PX = 10
  *
  * Obsidian Canvas enforces no floor at all — `node.resize({width: 1})` sticks,
  * collapsing a node into a line that cannot be grabbed again. Expressed in
- * cells rather than pixels for the same reason the grid itself is: it is the
- * ratio to a card that carries meaning, so a future change to the default
- * card size drags the floor along with it instead of silently orphaning it.
+ * cells rather than pixels because the floor has to agree with the lattice the
+ * card is being dragged along: a card stopped by it should stop on a grid line,
+ * not a step short of one.
  *
  * 4x3 is the smallest rectangle that still holds one line of 13px body text
  * with its 6px/10px padding and border — below that a card cannot show its
