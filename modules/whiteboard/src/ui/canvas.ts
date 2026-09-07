@@ -1079,7 +1079,8 @@ export class WhiteboardCanvas {
       getSourcePath: () => this.sourcePathForBoard(),
       getBody: (id) => this.cardRenderer.getRuntime(id)?.bodyEl ?? null,
       isAvailable: () => this.canCreate,
-      isEditing: (id) => this.editing?.nodeId === id,
+      editingText: (id) =>
+        this.editing?.nodeId === id ? this.editing.editor.getValue() : null,
       beginGeneration: (id) => this.beginCardGeneration(id),
       endGeneration: (id, text, options) =>
         this.endCardGeneration(id, text, options),
@@ -4669,7 +4670,15 @@ export class WhiteboardCanvas {
       // pasted into it is filed. A note card is its own document; a text card
       // lives inside the board file, so "here" is the board.
       sourcePath: node.type === 'file' ? node.file : this.sourcePathForBoard(),
-      onChange: () => this.scheduleEditPersist(id),
+      onChange: () => {
+        this.scheduleEditPersist(id)
+        // An empty card keeps its chips while its editor is open, and loses
+        // them at the first character (./canvas/cardGeneration.ts). Typing is
+        // the only thing that changes that answer while the editor holds the
+        // card's text, so this is where it is re-asked — no second state to
+        // keep in step.
+        this.cardGeneration.syncChips(id)
+      },
       onBlur: (text) => this.finishEdit(id, text),
     })
     const scopeDisposer = this.context.registerKeymap([
@@ -4695,6 +4704,11 @@ export class WhiteboardCanvas {
     // is how the two lay a block out, which is bounded by that block and
     // measured, not estimated (obsidianMarkdownEditor.ts's `openAtLine`).
     if (startLine > 0) editor.openAtLine(startLine)
+    // A card opened while still empty keeps its chips beside the caret: the
+    // main way one gets made — dragging an arrow into empty space — opens the
+    // editor on the spot, and chips that waited for it to close would never
+    // be seen there. Appended after the editor, which the body now holds.
+    this.cardGeneration.syncChips(id)
   }
 
   /**

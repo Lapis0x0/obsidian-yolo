@@ -10,6 +10,14 @@
 //     typed into the card takes them away (`syncChips` is called from the same
 //     content path that renders every other card state, so "has content" is
 //     never asked twice).
+//     An open editor does not end that state, it *is* it: a card created by
+//     dragging an arrow opens its editor immediately, and chips that waited
+//     for the editor to close would mean the main gesture of rung one never
+//     showed them. So the chips sit in the body next to the editor for as
+//     long as what is typed in it is still empty — caret and chips at once,
+//     type or click. Pressing a chip must not be read as leaving the editor
+//     first, so a chip holds the focus through `mousedown` (`preventDefault`)
+//     and lets its own `click` be what closes the editor, in that order.
 //   - **generating** — the body holds a status line and the text as it
 //     arrives. Nothing is written to the board while it streams: the card is
 //     pinned, the renderer is told to leave it alone, and the accumulated text
@@ -59,7 +67,12 @@ export type CardGenerationCallbacks = Readonly<{
   getBody: (id: NodeId) => HTMLElement | null
   /** False on a board that cannot be edited or is drawn as an overview. */
   isAvailable: () => boolean
-  isEditing: (id: NodeId) => boolean
+  /**
+   * The live text of this card's open editor, or null when it is not the
+   * card being edited. While an editor is open it — not the node — is what
+   * the card is showing, so it is what "still empty" has to be asked of.
+   */
+  editingText: (id: NodeId) => string | null
   /**
    * Hands the card's body over for streaming: pins the card, empties the
    * body, and marks it generating. Null when the card cannot take a run.
@@ -173,12 +186,15 @@ export class CardGeneration {
   private wantsChips(id: NodeId): boolean {
     if (!this.callbacks.isAvailable()) return false
     if (this.generations.has(id)) return false
-    if (this.callbacks.isEditing(id)) return false
     const node = this.callbacks.getNode(id)
     // A file card is never "empty" in this sense: its content lives in a note,
     // and an empty note is a note to write in, not a card to generate into
     // (Q20).
-    return node?.type === 'text' && node.text.trim() === ''
+    if (node?.type !== 'text') return false
+    // An open editor is the card's content while it is open — including the
+    // keystrokes it holds that the board has not been told about yet.
+    const editing = this.callbacks.editingText(id)
+    return (editing ?? node.text).trim() === ''
   }
 
   private buildChips(
@@ -195,6 +211,17 @@ export class CardGeneration {
       chip.type = 'button'
       chip.className = CHIP_CLASS
       chip.textContent = this.callbacks.t(instruction.labelKey)
+      // Order, not luck. A chip pressed while the card's editor is open would
+      // otherwise blur it first, and that blur commits and re-renders the
+      // card — taking this very chip out of the document before its `click`
+      // ever ran. Refusing the focus change here leaves exactly one thing that
+      // ends the edit: `beginGeneration`, on the click below, which blurs the
+      // editor through the ordinary `finishEdit` path (committing the empty
+      // text it opened with is a no-op, so no history step) and only then
+      // takes the body.
+      chip.addEventListener('mousedown', (event) => {
+        event.preventDefault()
+      })
       chip.addEventListener('click', (event) => {
         event.stopPropagation()
         this.start(id, instruction)
