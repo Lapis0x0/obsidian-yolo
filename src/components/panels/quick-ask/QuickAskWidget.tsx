@@ -44,6 +44,11 @@ type QuickAskOverlayOptions = {
   contextText: string
   fileTitle: string
   sourceFilePath?: string
+  /**
+   * Extra context from whoever opened the panel, injected after the editor
+   * snapshot — see QuickAskShowOptions.getSurfaceContext.
+   */
+  getSurfaceContext?: () => string | Promise<string>
   initialPrompt?: string
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
@@ -81,6 +86,15 @@ export class QuickAskOverlay {
   private dragPosition: { x: number; y: number } | null = null
   // Resize state - when set, override panel size
   private resizeSize: { width: number; height: number } | null = null
+  /**
+   * Width chosen by the first anchored placement, kept for later ones.
+   *
+   * The anchor's content column is measured in screen pixels, so on a surface
+   * that scales its content — a zoomed board — recomputing it would resize the
+   * panel every time the anchor moves. Following an anchor is about where the
+   * panel is, not how big it is.
+   */
+  private anchoredWidth: number | null = null
   // pos is only meaningful for CM-based anchors (ViewPlugin route)
   private pos: number | null = null
   /**
@@ -285,6 +299,7 @@ export class QuickAskOverlay {
                       contextText={this.options.contextText}
                       fileTitle={this.options.fileTitle}
                       sourceFilePath={this.options.sourceFilePath}
+                      getSurfaceContext={this.options.getSurfaceContext}
                       initialPrompt={this.options.initialPrompt}
                       initialMentionables={this.options.initialMentionables}
                       initialMode={this.options.initialMode}
@@ -311,6 +326,7 @@ export class QuickAskOverlay {
                       contextText={this.options.contextText}
                       fileTitle={this.options.fileTitle}
                       sourceFilePath={this.options.sourceFilePath}
+                      getSurfaceContext={this.options.getSurfaceContext}
                       initialPrompt={this.options.initialPrompt}
                       initialMentionables={this.options.initialMentionables}
                       initialMode={this.options.initialMode}
@@ -351,6 +367,13 @@ export class QuickAskOverlay {
     this.cleanupCallbacks.push(() =>
       hostWindow.removeEventListener('resize', handleResize),
     )
+
+    // An anchor that moves without scrolling says so itself — a board pans by
+    // transform, which fires neither scroll nor resize.
+    const unsubscribeAnchor = this.options.anchor.subscribe?.(this.reanchor)
+    if (unsubscribeAnchor) {
+      this.cleanupCallbacks.push(unsubscribeAnchor)
+    }
 
     const scrollEl = this.options.anchor.scrollEl
     if (scrollEl) {
@@ -394,6 +417,21 @@ export class QuickAskOverlay {
       hostWindow.removeEventListener('keydown', handleKeyDown, true)
       this.cleanupListeners = null
     }
+  }
+
+  /**
+   * Re-place the panel against an anchor that has physically moved.
+   *
+   * The first anchored placement locks itself into `dragPosition` so that
+   * later content growth and document edits stop pulling the panel around;
+   * an anchor moving under it is the one case where that lock has to be
+   * re-taken. A panel the user has dragged or docked has left the anchor
+   * behind for good and stays where it was put.
+   */
+  private reanchor = () => {
+    if (this.hasUserDragged || this.isDockedTopRight) return
+    this.dragPosition = null
+    this.schedulePositionUpdate()
   }
 
   private schedulePositionUpdate() {
@@ -456,10 +494,11 @@ export class QuickAskOverlay {
 
     const contentBounds = anchor.getContentBounds()
     const editorContentWidth = contentBounds.width
-    const maxPanelWidth = Math.max(
-      120,
-      Math.min(editorContentWidth, viewportWidth - margin * 2),
-    )
+    const maxPanelWidth =
+      this.resizeSize?.width ??
+      this.anchoredWidth ??
+      Math.max(120, Math.min(editorContentWidth, viewportWidth - margin * 2))
+    this.anchoredWidth = maxPanelWidth
 
     const contentLeft = contentBounds.left - hostRect.left
     const contentRight = contentLeft + editorContentWidth

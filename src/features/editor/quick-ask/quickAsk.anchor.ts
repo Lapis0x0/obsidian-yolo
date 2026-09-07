@@ -51,6 +51,15 @@ export type QuickAskAnchor = {
    */
   getSelectionRects: () => { startRect: AnchorRect; endRect: AnchorRect } | null
   /**
+   * Tells the overlay the anchor has moved without the DOM scrolling.
+   *
+   * Scroll and resize events cover every anchor that lives in a scroller. A
+   * surface that moves its content by transform — a board panning under the
+   * cursor — emits neither, so it says so itself. Returns an unsubscribe.
+   * Only implemented by anchors that need it.
+   */
+  subscribe?: (onMove: () => void) => () => void
+  /**
    * Whether the anchor is still valid.
    * For PDF: checks that the live Range still has client rects.
    * Always returns true for CM anchors.
@@ -64,6 +73,7 @@ export function createCmAnchor(
   view: EditorView,
   pos: number,
   selectionAnchor: { from: number; to: number } | null,
+  options?: { subscribe?: (onMove: () => void) => () => void },
 ): QuickAskAnchor {
   const resolveHostEl = (): HTMLElement => {
     const viewDom = view.dom
@@ -83,6 +93,7 @@ export function createCmAnchor(
   return {
     hostEl: resolveHostEl(),
     scrollEl: view.scrollDOM ?? null,
+    ...(options?.subscribe ? { subscribe: options.subscribe } : {}),
 
     getDockReferenceRect(): DOMRect {
       const leafContent = view.dom?.closest('.workspace-leaf-content')

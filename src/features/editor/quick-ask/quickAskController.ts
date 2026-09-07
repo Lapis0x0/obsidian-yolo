@@ -32,6 +32,7 @@ type QuickAskWidgetPayload = {
     contextText: string
     fileTitle: string
     sourceFilePath?: string
+    getSurfaceContext?: () => string | Promise<string>
     initialPrompt?: string
     initialMentionables?: Mentionable[]
     initialMode?: QuickAskLaunchMode
@@ -264,6 +265,7 @@ export class QuickAskController {
     const isRewriteEntry = options?.isRewriteEntry
     const autoSend = options?.autoSend
     const initialAssistantId = options?.initialAssistantId
+    const getSurfaceContext = options?.getSurfaceContext
 
     // Close any existing Quick Ask panel (CM or PDF)
     this.close(false)
@@ -317,6 +319,7 @@ export class QuickAskController {
             contextText,
             fileTitle,
             sourceFilePath,
+            getSurfaceContext,
             initialPrompt,
             initialMentionables,
             initialMode,

@@ -26,4 +26,13 @@ export type QuickAskShowOptions = {
   isRewriteEntry?: boolean
   autoSend?: boolean
   initialAssistantId?: string
+  /**
+   * Extra context describing the surface the panel was opened from, appended
+   * to the request after the editor snapshot.
+   *
+   * Read when a request is built rather than when the panel opens: the
+   * surface keeps changing while the panel is up, and describing one can mean
+   * reading files. See `SurfaceContextInjection`.
+   */
+  getSurfaceContext?: () => string | Promise<string>
 }

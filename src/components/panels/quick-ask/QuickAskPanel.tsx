@@ -59,7 +59,10 @@ import {
 } from '../../../types/reasoning'
 import type { ToolCallResponse } from '../../../types/tool-call.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
-import type { EditorSnapshotInjection } from '../../../utils/chat/contextual-injections'
+import type {
+  ContextualInjection,
+  EditorSnapshotInjection,
+} from '../../../utils/chat/contextual-injections'
 import {
   getMentionableKey,
   serializeMentionable,
@@ -166,6 +169,12 @@ type QuickAskPanelPropsBase = {
   contextText: string
   fileTitle: string
   sourceFilePath?: string
+  /**
+   * Extra context from whoever opened this panel, injected after the editor
+   * snapshot (see QuickAskShowOptions.getSurfaceContext). Read when a request
+   * is built, not when the panel opens.
+   */
+  getSurfaceContext?: () => string | Promise<string>
   initialPrompt?: string
   initialMentionables?: Mentionable[]
   initialMode?: QuickAskLaunchMode
@@ -216,6 +225,7 @@ export function QuickAskPanel({
   contextText,
   fileTitle,
   sourceFilePath,
+  getSurfaceContext,
   initialPrompt,
   initialMentionables,
   initialMode,
@@ -713,6 +723,17 @@ export function QuickAskPanel({
       sourceFilePath,
     ])
 
+  // The surface's own description follows the editor snapshot: the snapshot is
+  // what the user is looking at, the surface is what it sits in.
+  const contextualInjections = useMemo<ContextualInjection[]>(() => {
+    const injections: ContextualInjection[] = []
+    if (editorSnapshotInjection) injections.push(editorSnapshotInjection)
+    if (getSurfaceContext) {
+      injections.push({ type: 'surface-context', getText: getSurfaceContext })
+    }
+    return injections
+  }, [editorSnapshotInjection, getSurfaceContext])
+
   const { autoScrollToBottom, forceScrollToBottom, isAutoFollowEnabled } =
     useAutoScroll({
       scrollContainerRef: chatAreaRef,
@@ -1065,9 +1086,7 @@ export function QuickAskPanel({
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
             allowedSkillPaths,
             toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
-            contextualInjections: editorSnapshotInjection
-              ? [editorSnapshotInjection]
-              : [],
+            contextualInjections,
             requestParams: {
               deliveryMode: 'incremental',
               primaryRequestTimeoutMs:
@@ -1126,7 +1145,7 @@ export function QuickAskPanel({
       t,
       yoloEnabled,
       reasoningLevel,
-      editorSnapshotInjection,
+      contextualInjections,
     ],
   )
 
