@@ -100,6 +100,21 @@ export const en = {
     importNoneFound: 'No Canvas files found in this vault.',
     invalidUrl: 'Only http and https addresses can be added.',
   },
+  cardAi: {
+    instruction: {
+      expand: 'Expand',
+      ideas: 'Ideas',
+      challenge: 'Challenge',
+      summarize: 'Summarize',
+    },
+    status: {
+      preparing: 'Reading the board…',
+      reading: 'Reading {count} card(s)…',
+      writing: 'Writing…',
+    },
+    stop: 'Stop',
+    failed: 'Could not write this card.',
+  },
   card: {
     missingFile: 'File missing',
     missingFileHint: 'This card refers to "{path}", which no longer exists.',

@@ -92,6 +92,21 @@ export const zh = {
     importNoneFound: '库中没有找到 Canvas 文件。',
     invalidUrl: '只能添加 http 和 https 地址。',
   },
+  cardAi: {
+    instruction: {
+      expand: '展开',
+      ideas: '灵感',
+      challenge: '质疑',
+      summarize: '总结',
+    },
+    status: {
+      preparing: '正在阅读白板…',
+      reading: '正在查看 {count} 张卡片…',
+      writing: '正在生成…',
+    },
+    stop: '停止',
+    failed: '生成这张卡片失败。',
+  },
   card: {
     missingFile: '文件丢失',
     missingFileHint: '此卡片引用的「{path}」已不存在。',

@@ -18,9 +18,12 @@
 import {
   type CardContextNoteTexts,
   buildCardContext,
+  cardBlock,
   cardSourceNotePaths,
+  cardsInsideGroup,
 } from '../domain/cardContext'
-import type { Board, NodeId } from '../domain/fileFormat'
+import type { Board, BoardNode, NodeId } from '../domain/fileFormat'
+import { fileNodeKind } from '../domain/naming'
 
 import { readNoteBody, readNotePreviews } from './noteText'
 
@@ -39,6 +42,43 @@ export async function resolveCardContextNotes(
     if (body !== null) texts.set(notePath, body)
   }
   return texts
+}
+
+/**
+ * One card in full, as `read_card` returns it (master.md §5): the card's own
+ * text, a note card's whole note, and a group's members one after another —
+ * asking for a group is asking for what is in it.
+ *
+ * Null means no such card, which the tool reports as a failed read rather
+ * than as an empty one.
+ */
+export async function readCardForModel(
+  host: YoloModuleHostApiV1,
+  board: Board,
+  cardId: NodeId,
+): Promise<string | null> {
+  const card = board.nodes.find((node) => node.id === cardId)
+  if (!card) return null
+  const cards = card.type === 'group' ? cardsInsideGroup(board, card) : [card]
+  const noteTexts = new Map<string, string>()
+  for (const path of notePathsOf(cards)) {
+    const body = await readNoteBody(host, path)
+    if (body !== null) noteTexts.set(path, body)
+  }
+  if (card.type === 'group' && cards.length === 0) {
+    return `${card.id} is a group with no cards inside it.`
+  }
+  return cards.flatMap((node) => cardBlock(node, noteTexts)).join('\n')
+}
+
+function notePathsOf(cards: readonly BoardNode[]): string[] {
+  const paths: string[] = []
+  for (const card of cards) {
+    if (card.type !== 'file') continue
+    if (fileNodeKind(card.file) !== 'markdown') continue
+    if (!paths.includes(card.file)) paths.push(card.file)
+  }
+  return paths
 }
 
 /** The context text for one card, notes and all. */

@@ -127,6 +127,7 @@ import { takePendingFit } from '../host/pendingFit'
 import { createWhiteboardTranslation } from '../i18n'
 
 import { CameraController } from './canvas/cameraController'
+import { CardGeneration } from './canvas/cardGeneration'
 import { CardRenderer, type NodeRuntime } from './canvas/cardRenderer'
 import { EdgeLayer } from './canvas/edgeLayer'
 import { OverviewLayer } from './canvas/overviewLayer'
@@ -237,6 +238,9 @@ const INTERACTION_LAYER_HIDDEN_CLASS =
 const RESIZER_CLASS = 'yolo-whiteboard-resizer'
 const CONNECTION_POINT_CLASS = 'yolo-whiteboard-connection-point'
 const CARD_EDITING_CLASS = 'yolo-whiteboard-card-editing'
+/** On a card whose body is being written into by rung one
+ * (./canvas/cardGeneration.ts). */
+const CARD_GENERATING_CLASS = 'yolo-whiteboard-card-generating'
 const CARD_DRAGGING_CLASS = 'yolo-whiteboard-card-dragging'
 const CARD_CONNECT_TARGET_CLASS = 'yolo-whiteboard-card-connect-target'
 const MARQUEE_CLASS = 'yolo-whiteboard-marquee'
@@ -454,6 +458,11 @@ export class WhiteboardCanvas {
    * rendering. Owns `NodeRuntime`; constructed once in `ensureDom` (see
    * ./canvas/cardRenderer.ts's own doc comment for the split's rationale). */
   private cardRenderer!: CardRenderer
+  /** Rung one: the empty card's chips and the generation they start
+   * (./canvas/cardGeneration.ts). Constructed with the renderer in
+   * `ensureDom`, and the only thing besides the editor that may own a card's
+   * body. */
+  private cardGeneration!: CardGeneration
   private readonly engine = new VirtualizationEngine()
   private readonly pinnedIds = new Set<NodeId>()
 
@@ -769,6 +778,12 @@ export class WhiteboardCanvas {
       const action = planNodeCommit(board, this.editing.nodeId, liveText)
       if (action.kind === 'updateBoard') board = action.board
     }
+    // A generation in flight holds its text in the DOM and nowhere else until
+    // it settles — the same race the live editor above is folded in for.
+    for (const [id, text] of this.cardGeneration.pendingTexts()) {
+      const action = planNodeCommit(board, id, text)
+      if (action.kind === 'updateBoard') board = action.board
+    }
     return serializeBoard(board)
   }
 
@@ -1058,15 +1073,31 @@ export class WhiteboardCanvas {
         t: (key, fallback) => this.t(key, fallback),
       },
     )
+    this.cardGeneration = new CardGeneration(this.host, {
+      getBoard: () => this.board,
+      getNode: (id) => this.nodesById.get(id),
+      getSourcePath: () => this.sourcePathForBoard(),
+      getBody: (id) => this.cardRenderer.getRuntime(id)?.bodyEl ?? null,
+      isAvailable: () => this.canCreate,
+      isEditing: (id) => this.editing?.nodeId === id,
+      beginGeneration: (id) => this.beginCardGeneration(id),
+      endGeneration: (id, text, options) =>
+        this.endCardGeneration(id, text, options),
+      reportError: (stage, error) => this.reportError(stage, error),
+      notice: (message) => this.host.ui.notice(message),
+      t: (key, fallback) => this.t(key, fallback),
+    })
     this.cardRenderer = new CardRenderer(this.context, this.host, world, {
       getNode: (id) => this.nodesById.get(id),
       isSelected: (id) => this.selectedIds.has(id),
       isFocused: (id) => this.focusedNodeId === id,
       isEditing: (id) => this.editing?.nodeId === id,
+      isGenerating: (id) => this.cardGeneration.isGenerating(id),
       isRenamingGroup: (id) => this.isRenaming({ kind: 'group', id }),
       onGroupLabelKeyDown: (id, event) =>
         this.handleLabelKeyDown({ kind: 'group', id }, event),
       onGroupLabelBlur: (id) => this.endRename(true, { kind: 'group', id }),
+      onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
       canBuildContent: () => this.canBuildContent,
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
@@ -1375,6 +1406,13 @@ export class WhiteboardCanvas {
       // Inside the editor this is a word selection, not a request to open
       // what is already open.
       if (this.editing?.nodeId === nodeId) return
+      // A card being generated into has its text in the DOM and its body
+      // under the stream; asking to type in it is asking to stop (Q35). The
+      // editor opens on what has arrived, from `endCardGeneration`.
+      if (this.cardGeneration.isGenerating(nodeId)) {
+        this.cardGeneration.stop(nodeId, { edit: true })
+        return
+      }
       this.editCard(nodeId)
       return
     }
@@ -4138,6 +4176,9 @@ export class WhiteboardCanvas {
    * iterates, so it would otherwise never be queued for unmount on its
    * own. */
   private purgeNodeRuntime(id: NodeId): void {
+    // A run writing into a card that is going away has nowhere to land: the
+    // stop settles it, and `planNodeCommit` finds no node to commit to.
+    this.cardGeneration.stop(id)
     // The node is going away, so there is nothing left to rename and nothing
     // to write what was typed to; drop the session rather than commit it.
     this.endRename(false, { kind: 'group', id })
@@ -4400,6 +4441,16 @@ export class WhiteboardCanvas {
   // which this class owns, not of edge drawing.
   // -----------------------------------------------------------------------
 
+  /**
+   * Every mounted card's chips, re-asked. Which chips an empty card offers
+   * depends on what points into it (`cardInstructions`), so the one place
+   * that answer can change without the card itself being re-rendered is an
+   * edge appearing or disappearing.
+   */
+  private syncAllChips(): void {
+    for (const id of this.engine.mounted) this.cardGeneration.syncChips(id)
+  }
+
   private rebuildEdgesSvg(): void {
     this.edgeLayer.rebuildEdgesSvg(this.board.edges)
     // A rebuild starts every edge visible; cull the off-screen ones now rather
@@ -4409,6 +4460,7 @@ export class WhiteboardCanvas {
       this.edgeLayer.updateVisibility(this.worldViewportRect(), this.pinnedIds)
     }
     this.restoreEdgeSelection()
+    this.syncAllChips()
   }
 
   /** Drops selected ids whose edge is gone and re-applies the class to the
@@ -4501,6 +4553,49 @@ export class WhiteboardCanvas {
       .getRuntime(this.enteredNodeId)
       ?.el?.classList.remove(CARD_ENTERED_CLASS)
     this.enteredNodeId = null
+  }
+
+  // ---- rung one: generating into a card ----------------------------------
+  //
+  // The two halves of handing a card's body to `./canvas/cardGeneration.ts`
+  // and taking it back. Deliberately shaped like `enterEditMode`/`finishEdit`:
+  // a generation and an edit are the same claim on the same element, they pin
+  // the card the same way, and they commit through the same
+  // `commitCardText`, so nothing downstream has to know which of the two
+  // wrote a card.
+
+  private beginCardGeneration(id: NodeId): HTMLElement | null {
+    if (!this.canCreate) return null
+    const node = this.nodesById.get(id)
+    if (!node || node.type !== 'text') return null
+    const runtime = this.cardRenderer.getRuntime(id)
+    if (!runtime?.bodyEl) return null
+    // A card cannot be edited and generated into at once; the blur commits
+    // whatever was typed through the one path that writes it.
+    if (this.editing?.nodeId === id) this.editing.editor.blur()
+    this.cardRenderer.destroyCardContent(runtime)
+    runtime.bodyEl.replaceChildren()
+    runtime.el?.classList.add(CARD_GENERATING_CLASS)
+    this.pinnedIds.add(id)
+    return runtime.bodyEl
+  }
+
+  private endCardGeneration(
+    id: NodeId,
+    text: string,
+    { edit }: { edit: boolean },
+  ): void {
+    const runtime = this.cardRenderer.getRuntime(id)
+    runtime?.el?.classList.remove(CARD_GENERATING_CLASS)
+    runtime?.bodyEl?.replaceChildren()
+    this.pinnedIds.delete(id)
+    // One history step for the whole run (Q20): everything that streamed lands
+    // on the board at once, and Cmd+Z takes the card back to empty.
+    if (text !== '') {
+      this.commitCardText(id, text, `card-ai-${this.nextEditSessionId()}`)
+    }
+    void this.cardRenderer.renderCardPreview(id)
+    if (edit) this.enterEditMode(id)
   }
 
   private enterEditMode(id: NodeId): void {
@@ -4743,6 +4838,12 @@ export class WhiteboardCanvas {
 
   private teardownAllCards(): void {
     this.forceCommitActiveEdit()
+    // Every card is about to be destroyed, and a run's text belongs to the
+    // board that is going away — committing it here would land it on the one
+    // arriving (the reason `endEditForIncomingBoard` exists). What streamed is
+    // already in `getViewData`'s snapshot, so nothing typed or generated is
+    // lost by dropping it.
+    this.cardGeneration.abandonAll()
     this.interaction = null
     this.pendingPointerMove = null
     this.setLiveNodeRects(null)

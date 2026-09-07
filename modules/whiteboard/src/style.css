@@ -1049,6 +1049,128 @@
   display: none;
 }
 
+/* --- rung one: an empty card's chips, and a card writing itself ------------
+ * (docs/plans/09-07-whiteboard-card-ai/master.md §5, and
+ * ui/canvas/cardGeneration.ts for what builds them.)
+ *
+ * Both live *inside* the card body, laid over it rather than after it: an
+ * empty card's body holds an empty render, and a chip row placed in flow
+ * under it would sit wherever that render happened to end. Absolute over the
+ * body is the same box in every card, and the body is already a containing
+ * block (see .yolo-whiteboard-card-body above).
+ *
+ * The chips are the one exemption from the content mask (D7) a markdown card
+ * gets, and it is narrow on purpose: a chip is not content the mask exists to
+ * cover (a link, a checkbox, an embed) — it is a control that only exists
+ * while the card has no content at all, and it disappears at the first
+ * character. The container stays unhittable so the gaps around the chips are
+ * still card, and still drag it. */
+
+.yolo-whiteboard-card-chips {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-content: center;
+  justify-content: center;
+  padding: 8px;
+  pointer-events: none;
+}
+
+/* Obsidian styles every <button> globally (height, padding, background,
+ * shadow), so a chip has to state its own — component-scoped, resetting what
+ * it inherits rather than fighting it with !important. */
+.yolo-whiteboard-card-chip {
+  pointer-events: auto;
+  height: auto;
+  min-height: 0;
+  padding: 3px 9px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 12px;
+  background-color: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  cursor: pointer;
+  opacity: 0.75;
+  transition: opacity var(--yolo-anim-duration-feedback, 120ms) ease-out;
+}
+
+.yolo-whiteboard-card-chip:hover {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+  opacity: 1;
+}
+
+/* The card while it is being written into. In flow, because the body was
+ * emptied for it and this is the card's content for as long as the run
+ * lasts. */
+.yolo-whiteboard-card-stream {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 6px 10px;
+  overflow: hidden;
+}
+
+.yolo-whiteboard-card-stream-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  flex: 0 0 auto;
+  color: var(--text-faint);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.yolo-whiteboard-card-stream-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* The stop control outlives the status text: once the card is writing itself
+ * there is nothing left to say, but there is still something to stop. */
+.yolo-whiteboard-card-stream-stop {
+  pointer-events: auto;
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  padding: 1px 7px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  background-color: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.4;
+  cursor: pointer;
+}
+
+.yolo-whiteboard-card-stream-stop:hover {
+  background-color: var(--background-primary);
+  color: var(--text-normal);
+}
+
+/* Plain text, not a render: the model's output is committed and rendered as
+ * Markdown once, when the run settles. Re-parsing it per token is the cost
+ * this deliberately does not pay, and `pre-wrap` is what keeps the source
+ * readable in the meantime. */
+.yolo-whiteboard-card-stream-text {
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 4px;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-normal);
+}
+
 /* --- edges (W3-A) ----------------------------------------------------------
  * One SVG overlay in the world layer draws every edge (ui/canvas.ts's
  * rebuildEdgesSvg/redrawEdgesForCards). `overflow: visible` on a nominally

@@ -125,7 +125,7 @@ function sourcesSection(
       lines.push('', ...cardBlock(source, noteTexts))
       continue
     }
-    const members = groupMembers(board, source)
+    const members = cardsInsideGroup(board, source)
     const label = source.label ? ` "${source.label}"` : ''
     lines.push(
       '',
@@ -137,11 +137,22 @@ function sourcesSection(
   return lines.join('\n')
 }
 
-function cardBlock(card: BoardNode, noteTexts: CardContextNoteTexts): string[] {
-  return [`--- ${card.id} ---`, cardBody(card, noteTexts)]
+/** One card as the model reads it: its id, then its text in full. */
+export function cardBlock(
+  card: BoardNode,
+  noteTexts: CardContextNoteTexts,
+): string[] {
+  return [`--- ${card.id} ---`, describeCardContent(card, noteTexts)]
 }
 
-function cardBody(card: BoardNode, noteTexts: CardContextNoteTexts): string {
+/**
+ * What a card says, in full — the text side of `read_card` as well as of a
+ * source block, so the two can never describe the same card differently.
+ */
+export function describeCardContent(
+  card: BoardNode,
+  noteTexts: CardContextNoteTexts,
+): string {
   switch (card.type) {
     case 'text':
       return card.text.trim() === '' ? '(this card is empty)' : card.text
@@ -172,13 +183,15 @@ function expandedSources(board: Board, nodeId: NodeId): BoardNode[] {
   for (const id of cardSourceIds(board, nodeId)) {
     const source = board.nodes.find((node) => node.id === id)
     if (!source) continue
-    if (source.type === 'group') expanded.push(...groupMembers(board, source))
+    if (source.type === 'group')
+      expanded.push(...cardsInsideGroup(board, source))
     else expanded.push(source)
   }
   return expanded
 }
 
-function groupMembers(board: Board, group: BoardNode): BoardNode[] {
+/** The cards a group carries — membership is geometry, not a stored list. */
+export function cardsInsideGroup(board: Board, group: BoardNode): BoardNode[] {
   const cards = board.nodes.filter((node) => node.type !== 'group')
   const memberIds = new Set(nodesInsideGroup(group, cards))
   return cards.filter((node) => memberIds.has(node.id))

@@ -152,9 +152,17 @@ export type CardRendererCallbacks = Readonly<{
   isSelected: (id: NodeId) => boolean
   isFocused: (id: NodeId) => boolean
   isEditing: (id: NodeId) => boolean
+  /** True while a card's body holds a generation's streaming text
+   * (./cardGeneration.ts). Like editing, it owns the body outright: nothing
+   * may rebuild or unmount the card under it. */
+  isGenerating: (id: NodeId) => boolean
   isRenamingGroup: (id: NodeId) => boolean
   onGroupLabelKeyDown: (id: NodeId, event: KeyboardEvent) => void
   onGroupLabelBlur: (id: NodeId) => void
+  /** Called after a text card's content has been (re)built, so the empty-card
+   * chips can be put back or taken away from the one place every card state
+   * passes through. */
+  onTextCardRendered: (id: NodeId) => void
   canBuildContent: () => boolean
   queueContentSync: (id: NodeId) => void
   dequeueContentSync: (id: NodeId) => void
@@ -426,6 +434,9 @@ export class CardRenderer {
     // virtualization engine, but stay defensive: only the commit path
     // (finishEdit) ever destroys a live editor.
     if (this.callbacks.isEditing(id)) return
+    // A card being written into by a generation holds its text in the DOM and
+    // nowhere else until the run settles (./cardGeneration.ts).
+    if (this.callbacks.isGenerating(id)) return
     // A group being renamed is pinned for the same reason: its label holds
     // the caret, and unmounting would take the text being typed with it.
     if (this.callbacks.isRenamingGroup(id)) return
@@ -797,6 +808,7 @@ export class CardRenderer {
       node.text,
       this.callbacks.getSourcePath(),
     )
+    this.callbacks.onTextCardRendered(id)
   }
 
   /**
@@ -851,6 +863,9 @@ export class CardRenderer {
     // the reading surface is waiting behind it with the card's scroll position
     // on it (style.css). Rebuilding either one now would throw that away.
     if (this.callbacks.isEditing(id)) return
+    // Same for a card that is being generated into: the stream owns the body,
+    // and the text in it is not on the board yet.
+    if (this.callbacks.isGenerating(id)) return
     if (!this.callbacks.canBuildContent()) {
       this.callbacks.queueContentSync(id)
       return

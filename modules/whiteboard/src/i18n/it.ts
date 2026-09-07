@@ -95,6 +95,21 @@ export const it = {
     importNoneFound: 'Nessun file Canvas trovato in questo vault.',
     invalidUrl: 'Si possono aggiungere solo indirizzi http e https.',
   },
+  cardAi: {
+    instruction: {
+      expand: 'Approfondisci',
+      ideas: 'Idee',
+      challenge: 'Metti in dubbio',
+      summarize: 'Riassumi',
+    },
+    status: {
+      preparing: 'Lettura della lavagna…',
+      reading: 'Lettura di {count} scheda/e…',
+      writing: 'Scrittura…',
+    },
+    stop: 'Ferma',
+    failed: 'Impossibile scrivere questa scheda.',
+  },
   card: {
     missingFile: 'File mancante',
     missingFileHint:
