@@ -123,6 +123,7 @@ import {
   computeWorldViewportRect,
   intersectsViewport,
 } from '../domain/virtualization'
+import { resolveCardContext } from '../host/cardContext'
 import { takePendingFit } from '../host/pendingFit'
 import { createWhiteboardTranslation } from '../i18n'
 
@@ -4680,6 +4681,28 @@ export class WhiteboardCanvas {
         this.cardGeneration.syncChips(id)
       },
       onBlur: (text) => this.finishEdit(id, text),
+      // Rung two of the board's AI ladder (master.md §6.3): the host's Quick
+      // Ask, opened by the trigger inside the card's own editor.
+      quickAsk: {
+        // Resolved per request, against the board as it is at that moment —
+        // an Agent-mode turn that just rewrote the board must be described by
+        // the board it produced, not by the one this editor opened over. The
+        // same assembly rung one generates from (host/cardContext.ts), so the
+        // two rungs cannot come to describe a card differently; only the
+        // prompt wrapped around it differs.
+        getContext: () =>
+          resolveCardContext(
+            this.host,
+            this.board,
+            id,
+            this.sourcePathForBoard(),
+          ),
+        // A board pans and zooms by transform and fires no scroll event, so
+        // the panel has no other way to learn the card moved out from under
+        // it.
+        subscribeAnchorMove: (onMove) =>
+          this.cameraController.subscribeViewChange(onMove),
+      },
     })
     const scopeDisposer = this.context.registerKeymap([
       {

@@ -137,6 +137,19 @@ export class CameraController {
    * (`flushOverviewChromeZoomScale`). */
   private overviewChromeStale = false
 
+  /**
+   * Who else wants to hear that the camera moved.
+   *
+   * The board pans and zooms by writing one `transform`, which produces no
+   * scroll event: anything positioned in screen space against a world
+   * position has no other way to learn it has to re-project itself. The
+   * toolbar is re-positioned directly (`CameraControllerCallbacks`) because
+   * the canvas always has one; this is for the things that come and go — a
+   * host Quick Ask panel anchored to an open card editor (master.md §6.3) —
+   * which subscribe while they exist and unsubscribe when they don't.
+   */
+  private readonly viewChangeListeners = new Set<() => void>()
+
   /** Memoised zoom-out floor, keyed on the node array it was derived from —
    * see `zoomScaleBounds`. Also dropped on resize (`invalidateScaleFloor`),
    * which the node array cannot report. */
@@ -169,6 +182,19 @@ export class CameraController {
    * directly. */
   get view(): CanvasView {
     return this.viewValue
+  }
+
+  /**
+   * Runs `onChange` on every frame the camera writes its transform, for as
+   * long as the returned disposer has not been called. Called once per frame
+   * of a pan or zoom glide, which is exactly what a follower needs and no
+   * more.
+   */
+  subscribeViewChange(onChange: () => void): () => void {
+    this.viewChangeListeners.add(onChange)
+    return () => {
+      this.viewChangeListeners.delete(onChange)
+    }
   }
 
   /** Viewport-relative position of a mouse event. */
@@ -399,6 +425,7 @@ export class CameraController {
     // re-projected whenever the camera moves. Both are no-ops when nothing is
     // selected and nothing is being typed, which is the common case.
     this.callbacks.positionToolbar()
+    for (const listener of this.viewChangeListeners) listener()
   }
 
   /**

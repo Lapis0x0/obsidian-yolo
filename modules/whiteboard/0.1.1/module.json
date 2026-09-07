@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "whiteboard",
   "version": "0.1.1",
-  "hostApi": "^1.8.0",
+  "hostApi": "^1.9.0",
   "dataSchemas": {
     "settings": {
       "readMin": 0,
@@ -19,8 +19,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 181059,
-          "sha256": "1612f0020caa99d992a6f347e8fa35a35b3ee809ff62cc9677c6ec1f4526b95a",
+          "byteSize": 181474,
+          "sha256": "982d06c04d2eeecc73fed5d5a60db8c9877a744ebfe41637c165232fc5ff5c3b",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/entry.js",
           "storage": "module"
         },
@@ -43,8 +43,8 @@
           "role": "entry",
           "name": "entry.js",
           "path": "entry.js",
-          "byteSize": 181059,
-          "sha256": "1612f0020caa99d992a6f347e8fa35a35b3ee809ff62cc9677c6ec1f4526b95a",
+          "byteSize": 181474,
+          "sha256": "982d06c04d2eeecc73fed5d5a60db8c9877a744ebfe41637c165232fc5ff5c3b",
           "url": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/module-whiteboard-v0.1.1/entry.js",
           "storage": "module"
         },
