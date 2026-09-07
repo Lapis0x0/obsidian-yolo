@@ -108,6 +108,22 @@ export class QuickAskOverlay {
   constructor(private readonly options: QuickAskOverlayOptions) {}
 
   mount(pos?: number): void {
+    // One panel at a time, whoever opened it. `closeCurrentWithAnimation` and
+    // `focusCurrentInput` address *the* panel, and the shared overlay root
+    // belongs to one host element — a second live overlay would leave both
+    // pointing at the wrong one. Closing goes through the previous owner's
+    // own callback so its bookkeeping unwinds with it.
+    const previous = QuickAskOverlay.currentInstance
+    if (previous && previous !== this) {
+      // A panel already mid-fade would otherwise run its owner's close a
+      // fifth of a second from now — after this one has taken the focus.
+      if (previous.closeAnimationTimeout !== null) {
+        previous.hostWindow.clearTimeout(previous.closeAnimationTimeout)
+        previous.closeAnimationTimeout = null
+      }
+      previous.options.onClose()
+    }
+
     this.pos = pos ?? 0
     QuickAskOverlay.currentInstance = this
     this.mountOverlay()
