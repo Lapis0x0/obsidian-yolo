@@ -18,18 +18,9 @@
 // has never made a board pays for two names in the catalog, not two schemas.
 
 import { applyBoardEdit } from '../domain/edit'
-import {
-  type Board,
-  emptyBoard,
-  parseBoard,
-  serializeBoard,
-} from '../domain/fileFormat'
+import { emptyBoard, parseBoard, serializeBoard } from '../domain/fileFormat'
 import { mintEdgeId, mintNodeId } from '../domain/ids'
-import {
-  previewablePaths,
-  readBoardCard,
-  summarizeBoard,
-} from '../domain/summary'
+import { readBoardCard, summarizeBoard } from '../domain/summary'
 import {
   createWhiteboardLocalizedText,
   createWhiteboardTranslation,
@@ -41,17 +32,10 @@ import {
 } from '../ui/constants'
 
 import { boardToolSchemas } from './boardToolSchemas'
+import { readNotePreviews } from './noteText'
 import type { OpenBoards } from './openBoards'
 
 export const BOARD_EXTENSION = 'yoloboard'
-
-/**
- * How much of a note card's backing file is read before it is clipped to a
- * preview. Generous next to the ~50 characters that survive, because what
- * gets dropped first is frontmatter and blank lines, and a note whose first
- * kilobyte is all frontmatter should still show a sentence.
- */
-const NOTE_PREVIEW_SOURCE_CHARS = 2000
 
 export function registerWhiteboardAgentTools(
   host: YoloModuleHostApiV1,
@@ -112,32 +96,6 @@ async function renderBoardForModel(
     path,
     previews: await readNotePreviews(host, result.board),
   })
-}
-
-async function readNotePreviews(
-  host: YoloModuleHostApiV1,
-  board: Board,
-): Promise<Map<string, string>> {
-  const previews = new Map<string, string>()
-  for (const notePath of previewablePaths(board)) {
-    try {
-      const text = await host.vault.readText(notePath)
-      previews.set(notePath, noteBody(text).slice(0, NOTE_PREVIEW_SOURCE_CHARS))
-    } catch {
-      // A card pointing at a file that is gone is a real state a board can be
-      // in, and the summary already says which path it points at. Leaving the
-      // preview out says "unresolved" without turning one broken reference
-      // into a failed read of the whole board.
-    }
-  }
-  return previews
-}
-
-/** The note minus its frontmatter, which is metadata rather than what the
- * card is about. */
-function noteBody(markdown: string): string {
-  const match = /^---\r?\n[\s\S]*?\r?\n---\r?\n?/.exec(markdown)
-  return match ? markdown.slice(match[0].length) : markdown
 }
 
 // ---- writing -------------------------------------------------------------
