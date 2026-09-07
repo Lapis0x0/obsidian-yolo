@@ -10,6 +10,8 @@
 
 import type { EditorView } from '@codemirror/view'
 
+import { getNodeWindow } from '../../../utils/dom/window-context'
+
 /**
  * Minimal rect shape used throughout the anchor API.
  * Using a structural type so both CM's Rect and DOMRect satisfy it.
@@ -91,7 +93,7 @@ export function createCmAnchor(
       if (scrollRect) return scrollRect
       return (
         view.dom?.getBoundingClientRect() ??
-        document.body.getBoundingClientRect()
+        view.dom.ownerDocument.body.getBoundingClientRect()
       )
     },
 
@@ -100,10 +102,14 @@ export function createCmAnchor(
       const scrollRect = scrollDom?.getBoundingClientRect()
       const sizer = scrollDom?.querySelector('.cm-sizer')
       const sizerRect = sizer?.getBoundingClientRect()
+      // The editor's own document, not the global one: in a popout the
+      // theme variable lives on that window's root element, and the main
+      // window's value is not the one this view is laid out with.
+      const rootEl = view.dom.ownerDocument.documentElement
       const fallbackWidth = parseInt(
-        getComputedStyle(document.documentElement).getPropertyValue(
-          '--file-line-width',
-        ) || '720',
+        getNodeWindow(rootEl)
+          .getComputedStyle(rootEl)
+          .getPropertyValue('--file-line-width') || '720',
         10,
       )
       const width = sizerRect?.width ?? scrollRect?.width ?? fallbackWidth

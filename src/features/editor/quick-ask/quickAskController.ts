@@ -15,6 +15,7 @@ import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelec
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
 import { createCmAnchor, createPdfAnchor } from './quickAsk.anchor'
+import { createQuickAskTriggerExtension } from './quickAsk.trigger'
 import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
@@ -488,99 +489,30 @@ export class QuickAskController {
     )
   }
 
+  /**
+   * The Markdown-view route: the same trigger every surface uses, resolving
+   * the editor to show on from the active Markdown view. `quickAskOverlayPlugin`
+   * rides along because this route mounts the panel through a CodeMirror state
+   * effect, so the overlay's lifetime follows the view it was opened on.
+   */
   createTriggerExtension(): Extension {
+    const resolveEditor = (view: EditorView): Editor | null => {
+      const editor = this.deps.getActiveMarkdownView()?.editor
+      if (!editor) return null
+      const activeView = this.deps.getEditorView(editor)
+      if (activeView && activeView !== view) return null
+      return editor
+    }
+
     return [
       quickAskOverlayPlugin,
-      EditorView.domEventHandlers({
-        beforeinput: (event, view) => {
-          // Check if Quick Ask feature is enabled (default: true)
-          const enableQuickAsk =
-            this.deps.getSettings().continuationOptions?.enableQuickAsk ?? true
-          if (!enableQuickAsk) {
-            return false
-          }
-
-          if (event.defaultPrevented) {
-            return false
-          }
-
-          // Get trigger string from settings (default: @)
-          const triggerStr =
-            this.deps.getSettings().continuationOptions?.quickAskTrigger ?? '@'
-
-          const inputEvent = event
-          if (inputEvent.inputType !== 'insertText') {
-            return false
-          }
-          if (inputEvent.isComposing) {
-            return false
-          }
-
-          // Determine what character the user is typing
-          const typedChar = inputEvent.data ?? ''
-
-          // Only proceed if the typed character could be part of the trigger
-          if (typedChar.length !== 1) {
-            return false
-          }
-
-          const selection = view.state.selection.main
-          if (!selection.empty) {
-            return false
-          }
-
-          // Check if cursor is at an empty line or at line start
-          const line = view.state.doc.lineAt(selection.head)
-          const lineTextBeforeCursor = line.text.slice(
-            0,
-            selection.head - line.from,
-          )
-
-          // Build the potential trigger sequence: existing text + new character
-          const potentialSequence = lineTextBeforeCursor + typedChar
-
-          // Check if the potential sequence matches the trigger string
-          if (potentialSequence !== triggerStr) {
-            // Check if it could be a partial match (for multi-char triggers)
-            if (
-              triggerStr.length > 1 &&
-              triggerStr.startsWith(potentialSequence)
-            ) {
-              // Allow the character to be typed, it might complete the trigger later
-              return false
-            }
-            return false
-          }
-
-          const markdownView = this.deps.getActiveMarkdownView()
-          const editor = markdownView?.editor
-          if (!editor) {
-            return false
-          }
-
-          const activeView = this.deps.getEditorView(editor)
-          if (activeView && activeView !== view) {
-            return false
-          }
-
-          // Prevent default input
-          event.preventDefault()
-          event.stopPropagation()
-
-          // Clear the trigger characters from the line before showing panel
-          if (lineTextBeforeCursor.length > 0) {
-            // Delete the partial trigger that was already typed
-            const deleteFrom = line.from
-            const deleteTo = selection.head
-            view.dispatch({
-              changes: { from: deleteFrom, to: deleteTo },
-              selection: { anchor: deleteFrom },
-            })
-          }
-
-          // Show Quick Ask panel
+      createQuickAskTriggerExtension({
+        getSettings: () => this.deps.getSettings(),
+        canTrigger: (view) => resolveEditor(view) !== null,
+        show: (view) => {
+          const editor = resolveEditor(view)
+          if (!editor) return
           this.show(editor, view)
-          return true
         },
       }),
     ]
