@@ -78,7 +78,9 @@ export function createEmbeddedQuickAskAttacher(
         // that file, so the path is all there is to name it by.
         fileTitle: sourcePath.split('/').pop() ?? sourcePath,
         sourceFilePath: sourcePath,
-        ...(options.getContext ? { getSurfaceContext: options.getContext } : {}),
+        ...(options.getContext
+          ? { getSurfaceContext: options.getContext }
+          : {}),
         onClose: closePanel,
       })
       overlay = mounted
