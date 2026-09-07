@@ -512,6 +512,37 @@ export type YoloModuleMarkdownEditorOptionsV1 = Readonly<{
   sourcePath: string
   onChange?: (text: string) => void
   onBlur?: (text: string) => void
+  /**
+   * Turns on Quick Ask inside this editor: typing the user's Quick Ask
+   * trigger opens the host's panel next to the caret, with the same modes,
+   * models and write-back — continuation and rewrite land in this editor —
+   * as it has in a note.
+   *
+   * The module supplies only what the host cannot know: what this editor is
+   * embedded in, and when it has moved. It is never handed the panel, the
+   * editor object, or the CodeMirror view.
+   *
+   * While the panel is up the module does not hear `onBlur`; focus has gone
+   * to the panel, not away from the editor. If focus is somewhere else once
+   * the panel closes, the blur arrives then.
+   */
+  quickAsk?: Readonly<{
+    /**
+     * Describes what surrounds this editor — a card's board, its neighbours,
+     * where it sits — in whatever form the module wants the model to read.
+     * Called each time a request is built, so a surface that changed while
+     * the panel was open is described as it is now. May be asynchronous:
+     * describing a surface can mean reading files.
+     */
+    getContext?: () => string | Promise<string>
+    /**
+     * Called with a callback to run whenever this editor moves on screen
+     * without the page scrolling — a board panning or zooming by transform,
+     * which fires no scroll event. Returns an unsubscribe. The panel follows
+     * the editor unless the user has dragged or docked it.
+     */
+    subscribeAnchorMove?: (onMove: () => void) => () => void
+  }>
 }>
 
 /**

@@ -92,7 +92,11 @@ jest.mock('obsidian', () => ({
 // covers is the host's side of it — argument checking, post-deactivation
 // guarding, and that a leaked editor is destroyed with the module.
 type FakeEditor = {
-  options: { value: string; sourcePath: string }
+  options: {
+    value: string
+    sourcePath: string
+    quickAsk?: { attach: (target: unknown) => { destroy: () => void } }
+  }
   onChange?: (text: string) => void
   onBlur?: (text: string) => void
   destroyed: boolean
@@ -193,12 +197,17 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
     markdownRender.mockImplementation(() => Promise.resolve())
   })
 
-  const create = () => {
+  const create = (
+    extra: Partial<
+      ConstructorParameters<typeof ObsidianModuleUiCapabilityProvider>[0]
+    > = {},
+  ) => {
     const lifecycle = new ModuleLifecycleScope()
     const activation = new ObsidianModuleUiCapabilityProvider({
       app,
       createConfirmModal: (modalApp, options) =>
         new MockConfirmModal(modalApp, options),
+      ...extra,
     }).create('learning', lifecycle)
     activation.activate()
     return { lifecycle, activation, ui: activation.api }
@@ -679,6 +688,61 @@ describe('ObsidianModuleUiCapabilityProvider', () => {
       createdEditors[0].onBlur?.('after dispose')
       expect(onChange).toHaveBeenCalledTimes(1)
       expect(onBlur).not.toHaveBeenCalled()
+    })
+
+    // The module says what its editor is embedded in and when it moved; the
+    // host owns everything else about the panel.
+    it('hands Quick Ask the module description, guarded like every other callback', () => {
+      const attachQuickAsk = jest.fn(() => ({ destroy: jest.fn() }))
+      const getContext = jest.fn(() => 'board summary')
+      const subscribeAnchorMove = jest.fn(() => jest.fn())
+      const { lifecycle, ui } = create({ attachQuickAsk })
+
+      ui.createMarkdownEditor({
+        ...editorOptions(),
+        quickAsk: { getContext, subscribeAnchorMove },
+      })
+
+      const target = { sourcePath: 'boards/ideas.yoloboard' }
+      createdEditors[0].options.quickAsk?.attach(target)
+      expect(attachQuickAsk).toHaveBeenCalledTimes(1)
+      const [forwarded, forwardedTarget] = attachQuickAsk.mock
+        .calls[0] as unknown as [
+        {
+          getContext: () => string
+          subscribeAnchorMove: (onMove: () => void) => () => void
+        },
+        unknown,
+      ]
+      expect(forwardedTarget).toBe(target)
+      expect(forwarded.subscribeAnchorMove).toBe(subscribeAnchorMove)
+      expect(forwarded.getContext()).toBe('board summary')
+
+      lifecycle.dispose()
+      expect(forwarded.getContext()).toBe('')
+      expect(getContext).toHaveBeenCalledTimes(1)
+    })
+
+    it('leaves Quick Ask off unless the module asks for it', () => {
+      const attachQuickAsk = jest.fn(() => ({ destroy: jest.fn() }))
+      const { lifecycle, ui } = create({ attachQuickAsk })
+
+      ui.createMarkdownEditor(editorOptions())
+
+      expect(createdEditors[0].options.quickAsk).toBeUndefined()
+      lifecycle.dispose()
+    })
+
+    it('validates Quick Ask options', () => {
+      const { lifecycle, ui } = create()
+      expect(() =>
+        ui.createMarkdownEditor({
+          ...editorOptions(),
+          quickAsk: { getContext: 'nope' as unknown as () => string },
+        }),
+      ).toThrow('must be a function')
+      expect(createdEditors).toHaveLength(0)
+      lifecycle.dispose()
     })
 
     it('destroys an editor the module left behind, and only once', () => {

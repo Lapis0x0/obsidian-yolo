@@ -15,13 +15,13 @@ import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelec
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
 import { createCmAnchor, createPdfAnchor } from './quickAsk.anchor'
+import { buildQuickAskContextText } from './quickAsk.context'
 import { createQuickAskTriggerExtension } from './quickAsk.trigger'
 import type {
   QuickAskLaunchMode,
   QuickAskSelectionScope,
   QuickAskShowOptions,
 } from './quickAsk.types'
-import { QUICK_ASK_CURSOR_MARKER } from './quickAsk.types'
 
 type QuickAskWidgetPayload = {
   pos: number
@@ -60,8 +60,6 @@ type QuickAskControllerDeps = {
   getActiveFileTitle: () => string
 }
 
-const DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS = 5000
-const DEFAULT_QUICK_ASK_CONTEXT_AFTER_CHARS = 2000
 const quickAskWidgetEffect = StateEffect.define<QuickAskWidgetPayload | null>()
 
 const quickAskOverlayPlugin = ViewPlugin.fromClass(
@@ -235,26 +233,11 @@ export class QuickAskController {
         : { from: selection.from, to: selection.to }
 
     // Get context text around cursor with marker
-    const continuationOptions = this.deps.getSettings().continuationOptions
-    const beforeChars = Math.max(
-      0,
-      continuationOptions?.quickAskContextBeforeChars ??
-        DEFAULT_QUICK_ASK_CONTEXT_BEFORE_CHARS,
+    const contextText = buildQuickAskContextText(
+      view,
+      pos,
+      this.deps.getSettings(),
     )
-    const afterChars = Math.max(
-      0,
-      continuationOptions?.quickAskContextAfterChars ??
-        DEFAULT_QUICK_ASK_CONTEXT_AFTER_CHARS,
-    )
-    const doc = view.state.doc
-    const beforeStart = Math.max(0, pos - beforeChars)
-    const afterEnd = Math.min(doc.length, pos + afterChars)
-    const before = doc.sliceString(beforeStart, pos)
-    const after = doc.sliceString(pos, afterEnd)
-    const contextText =
-      before.length > 0 || after.length > 0
-        ? `${before}${QUICK_ASK_CURSOR_MARKER}${after}`
-        : ''
     const fileTitle = this.deps.getActiveFileTitle()
     const sourceFilePath = this.deps.getActiveMarkdownView()?.file?.path
     const initialPrompt = options?.initialPrompt

@@ -20,7 +20,7 @@
 // — when a future Obsidian changes shape, the error should say where.
 
 import { EditorView } from '@codemirror/view'
-import { type App, TFile } from 'obsidian'
+import { type App, type Editor, TFile } from 'obsidian'
 
 import { getNodeWindow } from '../../utils/dom/window-context'
 
@@ -44,10 +44,15 @@ type ObsidianMarkdownEditorInstance = {
   set(value: string, clear?: boolean): void
   destroy(): void
   cm: EditorView
-  editor: {
-    getValue(): string
-    setValue(value: string): void
-  }
+  /**
+   * Obsidian's own `Editor`, the same object a Markdown view exposes —
+   * `editor.cm` is the view above. Host features that write into an editor
+   * (continuation, in particular) speak this interface and nothing narrower,
+   * which is why the whole of it is declared here rather than the two methods
+   * this file happens to call. It stays inside the host: a module gets
+   * `YoloModuleMarkdownEditorV1`, which exposes neither this nor `cm`.
+   */
+  editor: Editor
 }
 
 type ObsidianMarkdownEditorClass = new (
@@ -103,12 +108,73 @@ export type ObsidianMarkdownEditorHandle = {
   destroy(): void
 }
 
+/**
+ * What an embedded editor hands the surface that opens Quick Ask on it. Both
+ * are host-internal — `editor` and `cm` never leave the host.
+ */
+export type ObsidianMarkdownEditorQuickAskTarget = {
+  view: EditorView
+  editor: Editor
+  sourcePath: string
+  /**
+   * Whether a Quick Ask panel is up on this editor. The owner does not hear
+   * about focus leaving for the panel — see the blur gate below.
+   */
+  onPanelOpenChange: (open: boolean) => void
+}
+
+export type ObsidianMarkdownEditorQuickAskSession = {
+  destroy(): void
+}
+
+/**
+ * Installs Quick Ask on an editor. Structural on purpose: this file knows
+ * that an editor can carry Quick Ask, not how Quick Ask is built.
+ */
+export type ObsidianMarkdownEditorQuickAsk = {
+  attach(
+    target: ObsidianMarkdownEditorQuickAskTarget,
+  ): ObsidianMarkdownEditorQuickAskSession
+}
+
 export type ObsidianMarkdownEditorOptions = {
   container: HTMLElement
   value: string
   sourcePath: string
   onChange?: (text: string) => void
   onBlur?: (text: string) => void
+  quickAsk?: ObsidianMarkdownEditorQuickAsk
+}
+
+/**
+ * What the owner hears about focus while a Quick Ask panel is up.
+ *
+ * Opening the panel takes the focus out of the editor, and an owner that
+ * treats blur as "the user is done here" would tear the editor down under the
+ * panel it just opened. So the blur is swallowed while the panel lives, and
+ * reconciled when it closes: focus is normally handed back to the editor, and
+ * if it went somewhere else instead, the owner hears the blur it missed.
+ */
+export function createQuickAskBlurGate(deps: {
+  emitBlur: () => void
+  editorHasFocus: () => boolean
+}): {
+  handleBlur(): void
+  setPanelOpen(open: boolean): void
+} {
+  let panelOpen = false
+  return {
+    handleBlur() {
+      if (panelOpen) return
+      deps.emitBlur()
+    },
+    setPanelOpen(open: boolean) {
+      if (open === panelOpen) return
+      panelOpen = open
+      if (open) return
+      if (!deps.editorHasFocus()) deps.emitBlur()
+    },
+  }
 }
 
 class ObsidianMarkdownEditorUnavailableError extends Error {
@@ -187,10 +253,22 @@ export function assertMarkdownEditorInstance(
       'the editor instance exposes no CodeMirror view',
     )
   }
-  if (!value.editor || typeof value.editor.getValue !== 'function') {
-    throw new ObsidianMarkdownEditorUnavailableError(
-      'the editor instance exposes no editor interface',
-    )
+  // Beyond reading and writing the whole document: the members Quick Ask's
+  // continuation path drives an editor through, checked here so a shape
+  // change is reported when the editor is built rather than when someone
+  // asks it to write.
+  for (const method of [
+    'getValue',
+    'setValue',
+    'getCursor',
+    'replaceRange',
+    'posToOffset',
+  ] as const) {
+    if (typeof value.editor?.[method] !== 'function') {
+      throw new ObsidianMarkdownEditorUnavailableError(
+        'the editor instance exposes no editor interface',
+      )
+    }
   }
 }
 
@@ -414,13 +492,28 @@ export function createObsidianMarkdownEditor(
   }
 
   const onBlur = options.onBlur
+  const blurGate = createQuickAskBlurGate({
+    emitBlur: () => {
+      if (!destroyed) onBlur?.(read())
+    },
+    editorHasFocus: () => instance.cm.hasFocus,
+  })
   const handleBlur = (event: FocusEvent): void => {
     if (destroyed) return
     const next = event.relatedTarget
     if (next instanceof Node && instance.cm.contentDOM.contains(next)) return
-    onBlur?.(read())
+    blurGate.handleBlur()
   }
   if (onBlur) instance.cm.contentDOM.addEventListener('blur', handleBlur)
+
+  const quickAsk = options.quickAsk?.attach({
+    view: instance.cm,
+    editor: instance.editor,
+    sourcePath: options.sourcePath,
+    onPanelOpenChange: (open) => {
+      if (!destroyed) blurGate.setPanelOpen(open)
+    },
+  })
 
   instance.set(options.value, true)
 
@@ -437,6 +530,7 @@ export function createObsidianMarkdownEditor(
     destroy: () => {
       if (destroyed) return
       destroyed = true
+      quickAsk?.destroy()
       if (onBlur) instance.cm.contentDOM.removeEventListener('blur', handleBlur)
       // Obsidian points `workspace.activeEditor` at whichever owner has focus
       // and only clears it when one of its own views unloads. Nothing unloads

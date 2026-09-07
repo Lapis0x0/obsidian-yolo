@@ -225,6 +225,7 @@ import {
 } from './features/editor/diff-review/review-model'
 import type { InlineSuggestionGhostPayload } from './features/editor/inline-suggestion/inlineSuggestion'
 import { InlineSuggestionController } from './features/editor/inline-suggestion/inlineSuggestionController'
+import { createEmbeddedQuickAskAttacher } from './features/editor/quick-ask/embeddedQuickAsk'
 import type { QuickAskSelectionScope } from './features/editor/quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from './features/editor/quick-ask/quickAsk.types'
 import { QuickAskController } from './features/editor/quick-ask/quickAskController'
@@ -4213,6 +4214,7 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
         ui: new ObsidianModuleUiCapabilityProvider({
           app: this.app,
           createConfirmModal: (app, options) => new ConfirmModal(app, options),
+          attachQuickAsk: createEmbeddedQuickAskAttacher(this),
           actionToasts: {
             show: (toast) => {
               if (!this.actionToastController) {

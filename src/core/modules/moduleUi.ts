@@ -20,6 +20,8 @@ import {
 } from './obsidianMarkdownContentView'
 import {
   type ObsidianMarkdownEditorHandle,
+  type ObsidianMarkdownEditorQuickAskSession,
+  type ObsidianMarkdownEditorQuickAskTarget,
   createObsidianMarkdownEditor,
 } from './obsidianMarkdownEditor'
 import type {
@@ -97,9 +99,23 @@ export type ModuleConfirmModalFactory = (
   },
 ) => ModuleConfirmModal
 
+/**
+ * Installs Quick Ask on an editor a module asked for. Injected rather than
+ * imported: Quick Ask is a host feature that reaches for the plugin, and the
+ * module layer only knows an editor can carry it.
+ */
+export type ModuleEditorQuickAskAttacher = (
+  options: Readonly<{
+    getContext?: () => string | Promise<string>
+    subscribeAnchorMove?: (onMove: () => void) => () => void
+  }>,
+  target: ObsidianMarkdownEditorQuickAskTarget,
+) => ObsidianMarkdownEditorQuickAskSession
+
 export type ObsidianModuleUiCapabilityProviderOptions = {
   app: App
   createConfirmModal: ModuleConfirmModalFactory
+  attachQuickAsk?: ModuleEditorQuickAskAttacher
   actionToasts?: Readonly<{
     show(toast: YoloModuleActionToastV1): void
     dismiss(id: string): void
@@ -112,6 +128,7 @@ export class ObsidianModuleUiCapabilityProvider
 {
   private readonly app: App
   private readonly createConfirmModal: ModuleConfirmModalFactory
+  private readonly attachQuickAsk?: ModuleEditorQuickAskAttacher
   private readonly actionToasts: ObsidianModuleUiCapabilityProviderOptions['actionToasts']
   private readonly reportCleanupError: (
     moduleId: string,
@@ -121,6 +138,7 @@ export class ObsidianModuleUiCapabilityProvider
   constructor(options: ObsidianModuleUiCapabilityProviderOptions) {
     this.app = options.app
     this.createConfirmModal = options.createConfirmModal
+    this.attachQuickAsk = options.attachQuickAsk
     this.actionToasts = options.actionToasts
     this.reportCleanupError = options.reportCleanupError ?? (() => undefined)
   }
@@ -388,6 +406,18 @@ export class ObsidianModuleUiCapabilityProvider
         requireString(options.sourcePath, 'Markdown editor source path')
         requireOptionalFunction(options.onChange, 'Markdown editor onChange')
         requireOptionalFunction(options.onBlur, 'Markdown editor onBlur')
+        const quickAsk = options.quickAsk
+        if (quickAsk !== undefined && typeof quickAsk !== 'object') {
+          throw new TypeError('Markdown editor Quick Ask options are invalid')
+        }
+        requireOptionalFunction(
+          quickAsk?.getContext,
+          'Markdown editor Quick Ask context',
+        )
+        requireOptionalFunction(
+          quickAsk?.subscribeAnchorMove,
+          'Markdown editor Quick Ask anchor subscription',
+        )
 
         // Callbacks are guarded rather than merely forwarded: an editor can
         // outlive activation by a beat (a blur fires as the workspace tears
@@ -399,12 +429,42 @@ export class ObsidianModuleUiCapabilityProvider
             callback?.(text)
           }
 
+        // Quick Ask calls back into the module for its surface description
+        // long after mounting, so it is guarded the same way the callbacks
+        // above are: a module that has stopped describes nothing.
+        const attachQuickAsk = this.attachQuickAsk
+        const moduleGetContext = quickAsk?.getContext
         const handle = createObsidianMarkdownEditor(this.app, {
           container: options.container,
           value: options.value,
           sourcePath: normalizeModuleVaultPath(options.sourcePath),
           ...(options.onChange ? { onChange: notify(options.onChange) } : {}),
           ...(options.onBlur ? { onBlur: notify(options.onBlur) } : {}),
+          ...(quickAsk && attachQuickAsk
+            ? {
+                quickAsk: {
+                  attach: (target) =>
+                    attachQuickAsk(
+                      {
+                        ...(moduleGetContext
+                          ? {
+                              getContext: () =>
+                                active && activationComplete
+                                  ? moduleGetContext()
+                                  : '',
+                            }
+                          : {}),
+                        ...(quickAsk.subscribeAnchorMove
+                          ? {
+                              subscribeAnchorMove: quickAsk.subscribeAnchorMove,
+                            }
+                          : {}),
+                      },
+                      target,
+                    ),
+                },
+              }
+            : {}),
         })
         editors.add(handle)
 
