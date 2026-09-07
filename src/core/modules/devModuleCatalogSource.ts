@@ -22,16 +22,19 @@ import {
 import type { ModuleCatalogEntry } from './types'
 
 export type MergedModuleCatalogSourceOptions = Readonly<{
-  /** Wins ties and every module the overlay does not resolve a newer candidate for. */
+  /** Wins every module the overlay does not resolve an at-least-equal candidate for. */
   primary: ModuleCatalogResolutionSource
-  /** Wins only for modules where it resolves a strictly newer version than primary. */
+  /** Wins for modules where it resolves a version no older than primary's. */
   overlay: ModuleCatalogResolutionSource
 }>
 
 /**
  * Merges two catalog sources into one, picking per module id whichever side
- * resolves the higher installable version. Ties and modules the overlay does
- * not resolve stay with the primary source.
+ * resolves the higher installable version. Modules the overlay does not
+ * resolve stay with the primary source. A tie goes to the overlay: the local
+ * artifact downloader below serves bundled bytes for every bundled
+ * (id, version) pair, so the overlay's manifest is the one those bytes hash
+ * to once a local rebuild changes an already published version in place.
  */
 export function createMergedModuleCatalogSource(
   options: MergedModuleCatalogSourceOptions,
@@ -62,7 +65,7 @@ export function createMergedModuleCatalogSource(
           compareModuleVersions(
             overlayResolved.version,
             primaryResolved.version,
-          ) > 0)
+          ) >= 0)
       ) {
         byId.set(entry.id, entry)
         nextWinners.set(entry.id, 'overlay')

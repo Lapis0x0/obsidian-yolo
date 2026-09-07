@@ -94,6 +94,55 @@ describe('createMergedModuleCatalogSource', () => {
     ).toEqual(descriptor('learning', '0.1.5-dev.0'))
   })
 
+  it('prefers the overlay when both sides resolve the same version', async () => {
+    const primaryEntry: ModuleCatalogEntry = {
+      id: 'learning',
+      version: '0.1.4',
+      name: 'Learning',
+    }
+    const overlayEntry: ModuleCatalogEntry = {
+      id: 'learning',
+      version: '0.1.4',
+      name: 'Learning (local build)',
+    }
+    const primary = fakeSource({
+      load: async () => [primaryEntry],
+      getResolvedVersion: (id) =>
+        id === 'learning'
+          ? {
+              version: '0.1.4',
+              hostApi: '^1.6.0',
+              platforms: ['desktop'],
+              dataSchemas: {},
+              manifestUrl: 'primary',
+              manifest: { byteSize: 1, sha256: 'a'.repeat(64) },
+            }
+          : undefined,
+    })
+    const overlay = fakeSource({
+      load: async () => [overlayEntry],
+      getResolvedVersion: (id) =>
+        id === 'learning'
+          ? {
+              version: '0.1.4',
+              hostApi: '^1.6.0',
+              platforms: ['desktop'],
+              dataSchemas: {},
+              manifestUrl: 'overlay',
+              manifest: { byteSize: 2, sha256: 'b'.repeat(64) },
+            }
+          : undefined,
+    })
+
+    const merged = createMergedModuleCatalogSource({ primary, overlay })
+    await expect(merged.load()).resolves.toEqual([overlayEntry])
+    // The local downloader serves bundled bytes for this (id, version), so the
+    // overlay's manifest is the only one those bytes can hash to.
+    expect(merged.getResolvedVersion('learning')?.manifest.sha256).toBe(
+      'b'.repeat(64),
+    )
+  })
+
   it('keeps the primary when the overlay does not resolve an installable version', async () => {
     const primaryEntry: ModuleCatalogEntry = {
       id: 'learning',
@@ -319,7 +368,7 @@ describe('createDevModuleCatalogOverlay', () => {
     expect(fallbackDownload).not.toHaveBeenCalled()
   })
 
-  it('leaves an already-current official module and network downloads untouched', async () => {
+  it('keeps resolving the local build of an already active version, and leaves network downloads untouched', async () => {
     const adapter = new FakeAdapter()
     const fallbackDownload = jest.fn(async () => new Uint8Array([1, 2, 3]))
 
@@ -340,7 +389,13 @@ describe('createDevModuleCatalogOverlay', () => {
     })
 
     await overlay.catalogSource.load()
-    expect(overlay.catalogSource.getResolvedVersion('learning')).toBeUndefined()
+    // A local rebuild of the version already on the device must stay
+    // resolvable — with the bundled manifest, since the downloader below
+    // serves the local bytes for it.
+    expect(overlay.catalogSource.getResolvedVersion('learning')).toMatchObject({
+      version: '0.1.5-dev.0',
+      manifest: { byteSize: 42, sha256: 'b'.repeat(64) },
+    })
 
     const nonBundled = officialDescriptor('other-module', '2.0.0')
     const sources = overlay.resolveDownloadSources({

@@ -1,6 +1,8 @@
 import type { ModuleArtifactDescriptor } from './moduleArtifactVerifier'
 import type { ModuleDeviceState } from './moduleDeviceStateStore'
 import { ModuleReadinessReconciler } from './moduleReadinessReconciler'
+import type { OfficialModuleCatalogV1 } from './officialModuleCatalog'
+import { OfficialModuleCatalogSource } from './officialModuleCatalogSource'
 
 const HASH = 'a'.repeat(64)
 const descriptor: ModuleArtifactDescriptor = {
@@ -155,6 +157,112 @@ describe('ModuleReadinessReconciler', () => {
     expect(durable).toMatchObject({
       active: descriptor,
       pending: { descriptor: rebuilt },
+    })
+  })
+
+  test('repairs a same-version rebuild resolved through the real catalog source', async () => {
+    const rebuiltManifest = { byteSize: 2, sha256: 'b'.repeat(64) }
+    let durable: ModuleDeviceState | null = {
+      moduleId: 'learning',
+      platform: 'desktop',
+      active: descriptor,
+      pending: null,
+    }
+    const catalog = {
+      schemaVersion: 1,
+      modules: [
+        {
+          id: 'learning',
+          icon: 'graduation-cap',
+          localizations: {
+            en: { name: 'Learning', description: 'Spaced repetition' },
+            zh: { name: '学习', description: '间隔重复' },
+            it: { name: 'Apprendimento', description: 'Ripetizione' },
+          },
+          versions: [
+            {
+              version: '1.0.0',
+              hostApi: '^1.1.0',
+              platforms: ['desktop', 'mobile'],
+              dataSchemas: {},
+              manifestUrl: descriptor.manifestUrl,
+              manifest: rebuiltManifest,
+            },
+          ],
+        },
+      ],
+    } as unknown as OfficialModuleCatalogV1
+    const catalogSource = new OfficialModuleCatalogSource({
+      client: { load: async () => catalog, loadFresh: async () => catalog },
+      locale: 'en',
+      getCompatibility: async () => ({
+        hostApi: '1.1.0',
+        platform: 'desktop' as const,
+        // The device already runs this exact version — only the artifact
+        // behind it was rebuilt locally.
+        activeVersion: '1.0.0',
+      }),
+    })
+    await catalogSource.load()
+
+    const repair = jest.fn(async () => ({
+      schemaVersion: 1 as const,
+      id: 'learning',
+      version: '1.0.0',
+      hostApi: '^1.1.0',
+      dataSchemas: {},
+      variants: [{ platform: 'desktop' as const, entry: 'main.js', files: [] }],
+    }))
+    const reconciler = new ModuleReadinessReconciler({
+      deviceStateStore: {
+        runExclusive: async (_moduleId, operation) =>
+          operation({
+            read: async () => durable,
+            write: async (next) => {
+              durable = next
+              return next
+            },
+            remove: async () => {
+              durable = null
+            },
+          }),
+      },
+      intentStore: { get: async () => 'enabled' },
+      catalogSource,
+      artifactStore: {
+        readManifestBytes: async () => new Uint8Array([0]),
+        readEntryBytes: async () => new Uint8Array([0]),
+        listVersionFiles: async () => [],
+        removeVersionArtifacts: async () => undefined,
+      },
+      installer: {
+        install: async () => {
+          throw new Error('not used')
+        },
+        repair,
+      },
+      platform: 'desktop',
+      subtleCrypto: { digest: async () => new ArrayBuffer(32) },
+    })
+
+    await expect(
+      reconciler.ensureModuleReady('learning'),
+    ).resolves.toMatchObject({
+      status: 'ready',
+      installedVersion: '1.0.0',
+      repairedVersions: ['1.0.0'],
+    })
+    expect(repair).toHaveBeenCalledWith(
+      expect.objectContaining({
+        version: '1.0.0',
+        hostApi: '^1.1.0',
+        manifest: rebuiltManifest,
+      }),
+      expect.any(AbortSignal),
+    )
+    expect(durable).toMatchObject({
+      active: descriptor,
+      pending: { descriptor: { manifest: rebuiltManifest } },
     })
   })
 })

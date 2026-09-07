@@ -84,6 +84,34 @@ describe('OfficialModuleCatalogSource latest-only policy', () => {
     ])
   })
 
+  it('resolves the active version so a rebuilt artifact can be repaired', async () => {
+    const rebuilt = {
+      ...version('1.2.0'),
+      hostApi: '^1.4.0',
+      manifest: { byteSize: 12, sha256: 'b'.repeat(64) },
+    }
+    const fixture = source(catalog([rebuilt]), '1.2.0')
+    await expect(fixture.source.load()).resolves.toMatchObject([
+      { id: 'learning', version: '1.2.0' },
+    ])
+    expect(fixture.source.getResolvedVersion('learning')?.version).toBe('1.2.0')
+    expect(
+      fixture.source.getResolvedArtifactDescriptor(
+        'learning',
+        '1.2.0',
+        'desktop',
+      )?.manifest.sha256,
+    ).toBe('b'.repeat(64))
+  })
+
+  it('does not resolve a version older than the active installation', async () => {
+    const fixture = source(catalog([version('1.1.0')]), '1.2.0')
+    await expect(fixture.source.load()).resolves.toMatchObject([
+      { id: 'learning', version: '1.2.0' },
+    ])
+    expect(fixture.source.getResolvedVersion('learning')).toBeUndefined()
+  })
+
   it('does not backtrack to an older compatible version', async () => {
     const fixture = source(
       catalog([version('2.0.0', '^2.0.0'), version('1.2.0')]),

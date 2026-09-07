@@ -173,10 +173,17 @@ export class OfficialModuleCatalogSource implements ModuleCatalogSource {
         )
       }
 
-      const newerThanActive =
+      // A resolved candidate answers "which version would this catalog install
+      // or repair for the module", not "is there something newer". Resolving
+      // the already active version is what lets a rebuilt artifact of that same
+      // version be repaired from the catalog's current descriptor; it never
+      // turns into an update offer, because the catalog entry still carries the
+      // very same version and `resolveStatus` only reports `update-available`
+      // for a strictly newer one.
+      const installable =
         compatibility.activeVersion === undefined ||
-        compareModuleVersions(latest.version, compatibility.activeVersion) > 0
-      if (compatibilityIssues.length === 0 && newerThanActive) {
+        compareModuleVersions(latest.version, compatibility.activeVersion) >= 0
+      if (compatibilityIssues.length === 0 && installable) {
         resolvedVersions[module.id] = latest
         entries.push(catalogEntry(module, latest.version, locale))
       } else {

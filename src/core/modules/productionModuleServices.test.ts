@@ -514,11 +514,22 @@ describe('createProductionModuleServices', () => {
     expect(await harness.adapter.exists(previousRoot)).toBe(true)
   })
 
-  it('rejects a stale same-version candidate without removing active artifacts', async () => {
+  // The hash, not the version, binds a download to what the user confirmed: a
+  // rebuilt artifact keeps the version and changes only the manifest.
+  it('rejects a same-version candidate whose manifest changed, without removing active artifacts', async () => {
     const harness = createHarness()
     await harness.services.refresh()
     const candidate = harness.services.getInstallCandidate('learning')!
     await harness.services.install(candidate)
+
+    const rebuilt = JSON.parse(harness.fixture.catalog) as {
+      modules: Array<{ versions: Array<{ manifest: { sha256: string } }> }>
+    }
+    rebuilt.modules[0].versions[0].manifest.sha256 = 'c'.repeat(64)
+    harness.catalogRequest.mockResolvedValueOnce(
+      response(JSON.stringify(rebuilt)),
+    )
+    await harness.services.checkForUpdates()
 
     await expect(harness.services.install(candidate)).rejects.toThrow(
       'candidate changed after confirmation',
@@ -688,8 +699,8 @@ describe('createProductionModuleServices', () => {
 
   // Deleting or reinstalling the plugin folder wipes the artifacts while the
   // device-state row survives. That row keeps reporting the module installed at
-  // a version whose bytes are gone, which refuses the install ("not newer than
-  // active") and refuses the uninstall (no intent left to clear).
+  // a version whose bytes are gone, and refuses the uninstall (no intent left
+  // to clear).
   it('drops a device state whose intent and artifacts are both gone', async () => {
     const harness = createHarness()
     const root = await seedActiveVersion(harness, '1.2.3')
@@ -697,7 +708,12 @@ describe('createProductionModuleServices', () => {
     harness.intents.delete('learning')
     harness.activeVersions.delete('learning')
     await harness.services.refresh()
-    expect(harness.services.getInstallCandidate('learning')).toBeUndefined()
+    // The catalog resolves the very version the dead row claims, so the
+    // reinstall is offered even before startup drops that row.
+    expect(harness.services.getInstallCandidate('learning')).toMatchObject({
+      moduleId: 'learning',
+      expectedVersion: '1.2.3',
+    })
 
     await harness.services.start()
 
