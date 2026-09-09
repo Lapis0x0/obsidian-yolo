@@ -349,7 +349,7 @@ export type BuiltinCapabilityDefinition<
    *
    * Module chat modes do not go through this field at all: their tool grant is
    * self-declared (capability tier + mode tools, see
-   * `resolveModuleCapabilityProfile`), never narrowed per built-in mode.
+   * `resolveAgentCapabilityProfile`), never narrowed per built-in mode.
    */
   chatModes: readonly BuiltinChatModeId[]
   defaultEnabled: boolean

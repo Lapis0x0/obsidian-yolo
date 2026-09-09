@@ -1,3 +1,16 @@
+/**
+ * The programmatic entry point for running the agent: one call in, an event
+ * stream out, for callers with no conversation to own and no UI to wire up —
+ * host features under `src/features/`, and every module call arriving through
+ * `host.agent.stream`. Despite the file name this is a service, not a
+ * type/contract module.
+ *
+ * `AgentService` (service.ts) sits below it and owns the *session*: state,
+ * persistence, approval routed to a chat surface. Chat views use it directly
+ * because they have a conversation; nobody else should hand-assemble its run
+ * input — come through `stream()`/`run()` here and state the trust tier as
+ * `capability` instead.
+ */
 import type {
   SerializedEditorState,
   SerializedElementNode,

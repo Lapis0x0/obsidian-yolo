@@ -207,7 +207,7 @@ export const selectAllowedTools = async ({
 }> => {
   // Post-D9 (docs/plans/2026-08-15-tool-registry/phase2-migration.md D9),
   // `allowedToolNames` is always a fully-expanded list of real tool FQNs —
-  // `getEnabledAssistantToolNames` and `resolveModuleCapabilityProfile`
+  // `getEnabledAssistantToolNames` and `resolveAgentCapabilityProfile`
   // (its only producers) both expand capabilities/tiers into member tool
   // names before this is ever called, so no virtual group name can appear
   // here (decision 12: no virtual tool names anywhere in the system).

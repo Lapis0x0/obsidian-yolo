@@ -4,7 +4,8 @@
 
 ## Chat surfaces
 
-下面两个入口（Quick Ask、Chat 视图）的 Ask/Agent 模式都通过 `AgentService.run` (`src/core/agent/service.ts`) 派发；每次调用拿到的运行时权限由 `resolveChatModeRuntime` 计算 (`src/components/chat-view/chat-runtime-profiles.ts`，被 `src/core/agent/tool-gateway.ts` 消费)。Quick Ask 另外还有第三档模式（续写），完全不走 `AgentService`——见下方对应条目。
+下面两个入口（Quick Ask、Chat 视图）的 Ask/Agent 模式都通过 `AgentService.run` (`src/core/agent/service.ts`) 派发；每次调用拿到的运行时权限由 `resolveChatModeRuntime` 计算 (`src/core/agent/chat-runtime-profiles.ts`，被 `src/core/agent/tool-gateway.ts` 消费)。Quick Ask 另外还有第三档模式（续写），完全不走 `AgentService`——见下方对应条目。
+没有聊天界面的调用方（宿主 feature、模块经 `host.agent.stream`）不走这两个入口，而是走 `YoloAgentApiService` (`src/core/agent/agent-api.ts`)，用 `capability` 声明信任档位（`none` / `vault-read` / `vault-write`，见 `src/core/agent/capability-profile.ts`），最终落到同一个 runtime。
 
 ### Quick Ask
 - 触发方式：编辑器内快捷键/命令唤起的浮层，由 `QuickAskController`（`src/features/editor/quick-ask/quickAskController.ts`）在 `src/main.ts` 中挂载。面板本体 `src/components/panels/quick-ask/QuickAskPanel.tsx` 有三档模式（`QuickAskVisibleMode = 'ask' | 'agent' | 'continue'`，`src/features/editor/quick-ask/quickAsk.types.ts`）：Ask/Agent 两档走 `AgentService.run`；「续写」档不走 agent runtime，而是通过 `plugin.continueWriting()` 调用下面「灵光写作 / Sparkle」一节的 `ContinuationController`。三档是同一面板内切换，不是三个独立入口。
