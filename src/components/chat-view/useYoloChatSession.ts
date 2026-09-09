@@ -14,6 +14,8 @@ import { v4 as uuidv4 } from 'uuid'
 import { useLanguage } from '../../contexts/language-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import type { ChatMode } from '../../core/agent/chat-mode'
+import { isModuleChatMode } from '../../core/agent/chat-mode'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
@@ -46,9 +48,7 @@ import {
 } from '../../utils/chat/selection-mentionables'
 
 import {
-  type ChatMode,
   chatModeForSave,
-  isModuleChatMode,
   normalizePersistedChatMode,
   normalizeYoloEnabled,
   readYoloPreference,

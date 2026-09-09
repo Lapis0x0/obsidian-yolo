@@ -20,6 +20,11 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useMcp } from '../../../contexts/mcp-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { resolveAssistantTimeContextEnabled } from '../../../core/agent/assistant-capabilities'
+import type {
+  ChatModeSelectOptionValue,
+  ToolChatMode,
+} from '../../../core/agent/chat-mode'
+import { resolveChatModeRuntime } from '../../../core/agent/chat-runtime-profiles'
 import { getEnabledAssistantToolNames } from '../../../core/agent/tool-preferences'
 import { materializeTextEditPlan } from '../../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../../core/edits/textEditPlan'
@@ -75,8 +80,6 @@ import { AssistantRenderStreamProvider } from '../../chat-view/assistant-render-
 import AssistantToolMessageGroupItem from '../../chat-view/AssistantToolMessageGroupItem'
 import {
   ChatModeSelect,
-  type ChatModeSelectOptionValue,
-  type ToolChatMode,
   yoloPreferencePatch,
 } from '../../chat-view/chat-input/ChatModeSelect'
 import type { ChatUserInputRef } from '../../chat-view/chat-input/ChatUserInput'
@@ -91,7 +94,6 @@ import {
 } from '../../chat-view/chat-input/ReasoningSelect'
 import { SubmitButton } from '../../chat-view/chat-input/SubmitButton'
 import { editorStateToPlainText } from '../../chat-view/chat-input/utils/editor-state-to-plain-text'
-import { resolveChatModeRuntime } from '../../chat-view/chat-runtime-profiles'
 import { getChatSurfacePreset } from '../../chat-view/chat-surface-presets'
 import { LiveEdgeFollowProvider } from '../../chat-view/live-edge-follow-context'
 import { SharedConversationSurface } from '../../chat-view/SharedConversationSurface'

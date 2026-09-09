@@ -8,6 +8,8 @@ import { useLanguage } from '../../contexts/language-context'
 import { useMcp } from '../../contexts/mcp-context'
 import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
+import type { ChatMode } from '../../core/agent/chat-mode'
+import { isModuleChatMode, isToolChatMode } from '../../core/agent/chat-mode'
 import { materializeTextEditPlan } from '../../core/edits/textEditEngine'
 import { parseTextEditPlan } from '../../core/edits/textEditPlan'
 import { captureLLMDebugOperation } from '../../core/llm/debugCapture'
@@ -45,12 +47,7 @@ import {
 } from '../../utils/chat/tool-result-index'
 import { readTFileContent } from '../../utils/obsidian'
 
-import {
-  type ChatMode,
-  isModuleChatMode,
-  isToolChatMode,
-  yoloPreferencePatch,
-} from './chat-input/ChatModeSelect'
+import { yoloPreferencePatch } from './chat-input/ChatModeSelect'
 import { invalidateChatRuntimeNavigation } from './cliChatIntegration'
 import {
   isOutsideVaultEditPath,

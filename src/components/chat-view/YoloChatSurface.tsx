@@ -14,6 +14,7 @@ import {
 } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import type { ChatMode } from '../../core/agent/chat-mode'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import type {
   ChatRuntimeActions,
@@ -57,7 +58,6 @@ import { getNodeWindow } from '../../utils/dom/window-context'
 import { formatTokenCount } from '../../utils/llm/formatTokenCount'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
-import type { ChatMode } from './chat-input/ChatModeSelect'
 import type { ChatUserInputRef } from './chat-input/ChatUserInput'
 import { editorStateToPlainText } from './chat-input/utils/editor-state-to-plain-text'
 import { ChatRuntimeActionsProvider } from './chat-runtime-actions-context'

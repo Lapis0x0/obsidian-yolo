@@ -26,9 +26,9 @@ export type EditableUserMessageItemProps = {
   runtimeControls?: ReactNode
   showPlaceholder?: boolean
   currentAssistantId?: string
-  currentChatMode?: import('./chat-input/ChatModeSelect').ChatMode
+  currentChatMode?: import('../../core/agent/chat-mode').ChatMode
   onSelectChatModeForConversation?: (
-    mode: import('./chat-input/ChatModeSelect').ChatMode,
+    mode: import('../../core/agent/chat-mode').ChatMode,
   ) => void
   onControlPopoverOpenChange?: (isOpen: boolean) => void
   allowAgentModeOption?: boolean

@@ -25,6 +25,11 @@ import {
   resolveAssistantTimeContextEnabled,
 } from '../../core/agent/assistant-capabilities'
 import { resolveAssistantModelId } from '../../core/agent/assistant-model'
+import type { ChatMode } from '../../core/agent/chat-mode'
+import {
+  availableBuiltinChatModes,
+  isModuleChatMode,
+} from '../../core/agent/chat-mode'
 import { getLatestAssistantContextUsage } from '../../core/agent/compaction'
 import {
   type ChatRuntimeId,
@@ -78,12 +83,9 @@ import { AssistantRenderStreamProvider } from './assistant-render-stream-context
 import {
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
-  type ChatMode,
   type ModuleChatModeOption,
   type YoloByMode,
-  availableBuiltinChatModes,
   chatModeForSave,
-  isModuleChatMode,
 } from './chat-input/ChatModeSelect'
 import ChatUserInput from './chat-input/ChatUserInput'
 import type { ChatUserInputProps } from './chat-input/ChatUserInput'

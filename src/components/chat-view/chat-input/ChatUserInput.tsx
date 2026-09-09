@@ -19,6 +19,14 @@ import {
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import type {
+  ChatModeSelectValue,
+  ToolChatMode,
+} from '../../../core/agent/chat-mode'
+import {
+  availableBuiltinChatModes,
+  isModuleChatMode,
+} from '../../../core/agent/chat-mode'
 import type { CliContextUsageCategory } from '../../../core/cli-runtime/types'
 import { getYoloSnippetsPath } from '../../../core/paths/yoloPaths'
 import type { LiteSkillEntry } from '../../../core/skills/liteSkills'
@@ -48,12 +56,8 @@ import {
 } from './chatInputDraft'
 import {
   ChatModeSelect,
-  type ChatModeSelectValue,
   type ModuleChatModeOption,
-  type ToolChatMode,
   type YoloByMode,
-  availableBuiltinChatModes,
-  isModuleChatMode,
   narrowToMentionChatMode,
 } from './ChatModeSelect'
 import { ChatQuickAccess } from './ChatQuickAccess'

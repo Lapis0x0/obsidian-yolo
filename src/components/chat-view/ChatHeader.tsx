@@ -8,6 +8,8 @@ import type {
 import { useEffect, useRef } from 'react'
 
 import { useLanguage } from '../../contexts/language-context'
+import type { ChatMode } from '../../core/agent/chat-mode'
+import { isModuleChatMode } from '../../core/agent/chat-mode'
 import type { AgentConversationRunSummary } from '../../core/agent/service'
 import {
   type ChatRuntimeId,
@@ -28,7 +30,6 @@ import type { ConversationOverrideSettings } from '../../types/conversation-sett
 import type { MentionableBlockData } from '../../types/mentionable'
 
 import { AssistantSelector } from './AssistantSelector'
-import { type ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
 import { ChatListDropdown } from './ChatListDropdown'
 import { HermesProfileSelector } from './HermesProfileSelector'
 import { RuntimeSelector } from './RuntimeSelector'

@@ -1,12 +1,12 @@
 import { MutableRefObject, useCallback, useEffect } from 'react'
 
+import type { ChatMode } from '../../core/agent/chat-mode'
 import type { ChatRuntimeId, CliSessionRef } from '../../core/cli-runtime'
 import type { ChatUserMessage } from '../../types/chat'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 
 import type { ChatRuntimeSnapshot } from './Chat'
-import type { ChatMode } from './chat-input/ChatModeSelect'
 
 export type UseChatRuntimeSnapshotParams = {
   /** 每当影响 ChatRuntimeSnapshot 的 state 变化时上报当前快照。 */

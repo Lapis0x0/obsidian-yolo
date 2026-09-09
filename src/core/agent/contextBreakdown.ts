@@ -1,4 +1,3 @@
-import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type {
   AssistantToolPreference,
   AssistantToolServerPreference,
@@ -23,6 +22,7 @@ import { resolveEffectiveMaxContextTokens } from '../../utils/llm/model-capabili
 import { McpManager } from '../mcp/mcpManager'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
+import type { ChatContextPolicy } from './chat-runtime-profiles'
 import {
   type ToolCapabilityMode,
   buildToolCapabilityPrompt,

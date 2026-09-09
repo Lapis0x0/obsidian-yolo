@@ -1,17 +1,19 @@
 import { Platform } from 'obsidian'
 
+import {
+  CHAT_MODES,
+  availableBuiltinChatModes,
+  isModuleChatMode,
+  isToolChatMode,
+} from '../../../core/agent/chat-mode'
 import type { RegisteredModuleChatModeV1 } from '../../../core/modules/moduleChatModeRegistry'
 
 import {
-  CHAT_MODES,
   CLAUDE_CODE_CHAT_MODES,
   CODEX_CHAT_MODES,
   type ModuleChatModeOption,
-  availableBuiltinChatModes,
   chatModeForSave,
   isChatMode,
-  isModuleChatMode,
-  isToolChatMode,
   isYoloModeActive,
   narrowToMentionChatMode,
   normalizePersistedChatMode,

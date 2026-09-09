@@ -2,8 +2,8 @@ import type { App, TFile, TFolder } from 'obsidian'
 import { normalizePath } from 'obsidian'
 
 import { editorStateToPlainText } from '../../components/chat-view/chat-input/utils/editor-state-to-plain-text'
-import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type { QueryProgressState } from '../../components/chat-view/QueryProgress'
+import type { ChatContextPolicy } from '../../core/agent/chat-runtime-profiles'
 import {
   buildCompactionResumeMessage,
   buildCompactionSummaryMessage,

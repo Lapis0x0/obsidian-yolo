@@ -1,8 +1,5 @@
-import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
-import {
-  getToolNamesForCapability,
-  listCapabilities,
-} from '../../core/tools/registry'
+import type { RegisteredModuleChatModeV1 } from '../modules/moduleChatModeRegistry'
+import { getToolNamesForCapability, listCapabilities } from '../tools/registry'
 
 import {
   ASSISTANT_INERT_BUILTIN_TOOL_NAMES,

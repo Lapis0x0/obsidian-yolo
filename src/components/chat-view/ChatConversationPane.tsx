@@ -14,6 +14,8 @@ import {
   useRef,
 } from 'react'
 
+import type { ChatMode } from '../../core/agent/chat-mode'
+import { isToolChatMode } from '../../core/agent/chat-mode'
 import {
   MOTION_DURATION_ENTER_S,
   MOTION_DURATION_EXIT_S,
@@ -22,8 +24,6 @@ import {
 } from '../../styles/tokens/motion'
 import type { ChatTimelineItem } from '../../types/chat-timeline'
 
-import type { ChatMode } from './chat-input/ChatModeSelect'
-import { isToolChatMode } from './chat-input/ChatModeSelect'
 import type {
   ChatTimelineRenderVersion,
   UserMessageViewportState,

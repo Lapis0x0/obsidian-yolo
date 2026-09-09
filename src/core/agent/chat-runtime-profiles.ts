@@ -1,32 +1,32 @@
 import type { App } from 'obsidian'
 
-import { resolveAgentCapabilityProfile } from '../../core/agent/capability-profile'
-import { resolveMaxEnvironmentPrompt } from '../../core/agent/max-environment-prompt'
-import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
-import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
-import { getToolName } from '../../core/mcp/tool-name-utils'
-import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
+import type { Assistant } from '../../types/assistant.types'
+import type { NativeToolPolicy } from '../../types/llm/request'
+import { getToolName } from '../mcp/tool-name-utils'
+import type { RegisteredModuleChatModeV1 } from '../modules/moduleChatModeRegistry'
 import {
   type NativePathBoundary,
   resolveNativePathBoundary,
-} from '../../core/tools/native/paths'
+} from '../tools/native/paths'
 import {
   type BuiltinCapabilityId,
   getToolNamesForCapability,
   getToolNamesForChatMode,
   listBuiltinToolNames,
   listCapabilities,
-} from '../../core/tools/registry'
+} from '../tools/registry'
 import type {
   BuiltinChatModeId,
   ChatModeCapabilityOverride,
   ChatModeCapabilityOverrides,
-} from '../../core/tools/types'
-import type { Assistant } from '../../types/assistant.types'
-import type { NativeToolPolicy } from '../../types/llm/request'
+} from '../tools/types'
 
-import type { ChatMode } from './chat-input/ChatModeSelect'
-import { isModuleChatMode, isToolChatMode } from './chat-input/ChatModeSelect'
+import { resolveAgentCapabilityProfile } from './capability-profile'
+import type { ChatMode } from './chat-mode'
+import { isModuleChatMode, isToolChatMode } from './chat-mode'
+import { resolveMaxEnvironmentPrompt } from './max-environment-prompt'
+import type { ToolCapabilityMode } from './tool-capability-prompt'
+import type { AgentRuntimeLoopConfig } from './types'
 
 type AssistantRuntimeOptions = Pick<
   Assistant,

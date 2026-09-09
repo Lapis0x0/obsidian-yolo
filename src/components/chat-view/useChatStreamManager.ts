@@ -14,6 +14,14 @@ import { usePlugin } from '../../contexts/plugin-context'
 import { useSettings } from '../../contexts/settings-context'
 import { resolveAssistantIncludeCurrentFileContent } from '../../core/agent/assistant-capabilities'
 import { DEFAULT_BLOCKED_PREFIXES } from '../../core/agent/bash/command-classifier'
+import type { ChatMode } from '../../core/agent/chat-mode'
+import { isModuleChatMode } from '../../core/agent/chat-mode'
+import { resolveWorkspaceScopeForRuntimeInput } from '../../core/agent/chat-runtime-inputs'
+import {
+  type ChatModeRuntime,
+  resolveChatModeRuntime,
+  resolveNativeToolPolicy,
+} from '../../core/agent/chat-runtime-profiles'
 import {
   CONTEXT_COMPACT_TOOL_NAME,
   buildManualCompactionState,
@@ -68,13 +76,6 @@ import {
 } from '../../utils/llm/provider-config'
 import { ErrorModal } from '../modals/ErrorModal'
 
-import { ChatMode, isModuleChatMode } from './chat-input/ChatModeSelect'
-import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
-import {
-  type ChatModeRuntime,
-  resolveChatModeRuntime,
-  resolveNativeToolPolicy,
-} from './chat-runtime-profiles'
 import {
   createProviderSessionAccessor,
   resolveTurnIdentity,

@@ -1,4 +1,3 @@
-import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type { AssistantToolApprovalMode } from '../../types/assistant.types'
 import {
   ChatConversationCompactionLike,
@@ -19,6 +18,7 @@ import { McpManager } from '../mcp/mcpManager'
 import type { NativePathBoundary } from '../tools/native/paths'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
+import type { ChatContextPolicy } from './chat-runtime-profiles'
 import type { AutoContextCompactionChatOptions } from './compaction'
 import type { ToolCapabilityMode } from './tool-capability-prompt'
 

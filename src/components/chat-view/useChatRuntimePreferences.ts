@@ -12,6 +12,11 @@ import {
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
+import type {
+  BuiltinChatMode,
+  ChatMode,
+  ToolChatMode,
+} from '../../core/agent/chat-mode'
 import { DEFAULT_ASSISTANT_ID } from '../../core/agent/default-assistant'
 import {
   type ChatRuntimeId,
@@ -26,9 +31,6 @@ import type { ReasoningLevel } from '../../types/reasoning'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
 import {
-  type BuiltinChatMode,
-  type ChatMode,
-  type ToolChatMode,
   readYoloPreference,
   resolveYoloByMode,
   yoloPreferencePatch,

@@ -1,15 +1,16 @@
 import { resolveAssistantModelId } from '../../core/agent/assistant-model'
+import type {
+  BuiltinChatMode,
+  ChatMode,
+  ToolChatMode,
+} from '../../core/agent/chat-mode'
+import { isModuleChatMode, isToolChatMode } from '../../core/agent/chat-mode'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 import type { ReasoningLevel } from '../../types/reasoning'
 
 import {
-  type BuiltinChatMode,
-  type ChatMode,
-  type ToolChatMode,
   chatModeForSave,
-  isModuleChatMode,
-  isToolChatMode,
   readYoloPreference,
   yoloPreferencePatch,
 } from './chat-input/ChatModeSelect'

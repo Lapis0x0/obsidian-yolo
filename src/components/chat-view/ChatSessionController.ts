@@ -1,5 +1,7 @@
 import { v4 as uuidv4 } from 'uuid'
 
+import type { ChatMode } from '../../core/agent/chat-mode'
+import { isModuleChatMode } from '../../core/agent/chat-mode'
 import type {
   AgentConversationRunSummary,
   AgentConversationState,
@@ -34,11 +36,7 @@ import { groupAssistantAndToolMessages } from '../../utils/chat/message-groups'
 import type { RequestContextBuilder } from '../../utils/chat/requestContextBuilder'
 import { stampUserMessageTimeContext } from '../../utils/prompt/timeContext'
 
-import {
-  type ChatMode,
-  isModuleChatMode,
-  yoloPreferencePatch,
-} from './chat-input/ChatModeSelect'
+import { yoloPreferencePatch } from './chat-input/ChatModeSelect'
 import {
   buildAssistantErrorContinuation,
   buildRetrySubmissionMessages,

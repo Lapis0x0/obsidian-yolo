@@ -30,6 +30,7 @@ import {
   getAssistantModelSelectValue,
   modelIdFromAssistantModelSelectValue,
 } from '../../../core/agent/assistant-model'
+import { ASSISTANT_INERT_BUILTIN_TOOL_NAMES } from '../../../core/agent/chat-runtime-profiles'
 import { countEnabledVisibleAssistantTools } from '../../../core/agent/tool-display-count'
 import {
   buildDefaultBuiltinCapabilityPreferences,
@@ -83,7 +84,6 @@ import {
   estimateTextTokens,
 } from '../../../utils/llm/contextTokenEstimate'
 import { formatTokenCount } from '../../../utils/llm/formatTokenCount'
-import { ASSISTANT_INERT_BUILTIN_TOOL_NAMES } from '../../chat-view/chat-runtime-profiles'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextArea } from '../../common/ObsidianTextArea'

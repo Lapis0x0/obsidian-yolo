@@ -16,11 +16,11 @@ const mockCompilePlainUserMessagePrompt = jest.fn(
   }),
 )
 
-jest.mock('../../components/chat-view/chat-runtime-inputs', () => ({
+jest.mock('./chat-runtime-inputs', () => ({
   resolveWorkspaceScopeForRuntimeInput: jest.fn(() => null),
 }))
 
-jest.mock('../../components/chat-view/chat-runtime-profiles', () => ({
+jest.mock('./chat-runtime-profiles', () => ({
   resolveChatModeRuntime: jest.fn(() => ({
     loopConfig: {
       enableTools: true,
@@ -63,7 +63,6 @@ jest.mock('../../utils/chat/requestContextBuilder', () => ({
 import { TFile, TFolder } from 'obsidian'
 import type { App } from 'obsidian'
 
-import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ChatMessage, ChatUserMessage } from '../../types/chat'
 import {
@@ -84,6 +83,7 @@ import {
 } from './agent-api'
 import type { YoloAgentRunRequest } from './agent-api'
 import { AGENT_CAPABILITY_TOOL_NAMES } from './capability-profile'
+import { resolveChatModeRuntime } from './chat-runtime-profiles'
 import type { AgentConversationState, AgentService } from './service'
 
 describe('agent api helpers', () => {

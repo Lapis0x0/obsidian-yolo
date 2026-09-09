@@ -6,8 +6,6 @@ import type {
 import type { App } from 'obsidian'
 import { v4 as uuidv4 } from 'uuid'
 
-import { resolveWorkspaceScopeForRuntimeInput } from '../../components/chat-view/chat-runtime-inputs'
-import { resolveChatModeRuntime } from '../../components/chat-view/chat-runtime-profiles'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { AssistantWorkspaceScope } from '../../types/assistant.types'
 import type {
@@ -33,6 +31,8 @@ import { isSkillEnabledForAssistant } from '../skills/skillPolicy'
 import { resolveAgentApiContext } from './agent-api-context'
 import { resolveAgentCapabilityProfile } from './capability-profile'
 import type { YoloAgentCapability } from './capability-profile'
+import { resolveWorkspaceScopeForRuntimeInput } from './chat-runtime-inputs'
+import { resolveChatModeRuntime } from './chat-runtime-profiles'
 import { DEFAULT_ASSISTANT_ID } from './default-assistant'
 import type {
   AgentConversationState,

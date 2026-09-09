@@ -33,6 +33,7 @@ import { PROVIDER_PRESET_INFO } from '../../../../../constants'
 import { useApp } from '../../../../../contexts/app-context'
 import { useLanguage } from '../../../../../contexts/language-context'
 import { useSettings } from '../../../../../contexts/settings-context'
+import type { ChatMode } from '../../../../../core/agent/chat-mode'
 import { Assistant } from '../../../../../types/assistant.types'
 import { ChatModel } from '../../../../../types/chat-model.types'
 import {
@@ -46,7 +47,6 @@ import {
   serializeMentionable,
 } from '../../../../../utils/chat/mentionable'
 import { SearchableMentionable } from '../../../../../utils/fuzzy-search'
-import { type ChatMode } from '../../ChatModeSelect'
 import { getMentionableIcon } from '../../utils/get-metionable-icon'
 import { MenuOption, MenuTextMatch } from '../shared/LexicalMenu'
 import {

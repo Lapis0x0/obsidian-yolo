@@ -1,4 +1,3 @@
-import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type {
   AssistantToolPreference,
   AssistantToolServerPreference,
@@ -15,6 +14,7 @@ import { estimateJsonTokens } from '../../utils/llm/contextTokenEstimate'
 import { McpManager } from '../mcp/mcpManager'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
+import type { ChatContextPolicy } from './chat-runtime-profiles'
 import {
   type ToolCapabilityMode,
   buildToolCapabilityPrompt,

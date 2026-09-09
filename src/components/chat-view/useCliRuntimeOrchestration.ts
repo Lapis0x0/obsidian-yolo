@@ -11,6 +11,8 @@ import {
 } from 'react'
 import { v4 as uuidv4 } from 'uuid'
 
+import type { ChatModeSelectValue } from '../../core/agent/chat-mode'
+import { isModuleChatMode } from '../../core/agent/chat-mode'
 import {
   type ChatRuntimeActions,
   type ChatRuntimeApprovalAction,
@@ -39,10 +41,6 @@ import type { CurrentFileViewState, Mentionable } from '../../types/mentionable'
 import type { ReasoningLevel } from '../../types/reasoning'
 import { AcknowledgementModal } from '../modals/AcknowledgementModal'
 
-import {
-  type ChatModeSelectValue,
-  isModuleChatMode,
-} from './chat-input/ChatModeSelect'
 import {
   type CliChatOperationSnapshot,
   getCliChatOperationCoordinator,

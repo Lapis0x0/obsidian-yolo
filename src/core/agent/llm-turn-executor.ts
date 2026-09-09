@@ -1,6 +1,5 @@
 import { v4 as uuidv4 } from 'uuid'
 
-import type { ChatContextPolicy } from '../../components/chat-view/chat-runtime-profiles'
 import type {
   AssistantToolPreference,
   AssistantToolServerPreference,
@@ -43,6 +42,7 @@ import { fromModelToolName } from '../mcp/localFileTools'
 import { McpManager } from '../mcp/mcpManager'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
+import type { ChatContextPolicy } from './chat-runtime-profiles'
 import {
   type ToolCapabilityMode,
   buildToolCapabilityPrompt,

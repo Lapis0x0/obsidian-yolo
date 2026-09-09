@@ -29,6 +29,7 @@ import {
 import { useApp } from '../../../contexts/app-context'
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
+import type { ChatMode } from '../../../core/agent/chat-mode'
 import { LiteSkillEntry } from '../../../core/skills/liteSkills'
 import { SnippetEntry } from '../../../core/snippets/snippetsManager'
 import { Assistant } from '../../../types/assistant.types'
@@ -54,7 +55,6 @@ import { fileToMentionableOffice } from '../../../utils/llm/office'
 import { fileToMentionablePDF } from '../../../utils/llm/pdf'
 import { fileToMentionableTextAttachment } from '../../../utils/llm/text-attachment'
 
-import { ChatMode } from './ChatModeSelect'
 import LexicalContentEditable from './LexicalContentEditable'
 import {
   setLexicalStateFromExternalState,
