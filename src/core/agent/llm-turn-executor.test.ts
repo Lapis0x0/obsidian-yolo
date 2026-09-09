@@ -260,11 +260,12 @@ describe('AgentLlmTurnExecutor', () => {
 
     await executor.run()
 
+    // No `runtimeMode` given, so the run defaults to Agent and carries Agent's
+    // routing text. It no longer varies with the tool list — `enableTools:
+    // false` above used to turn this into a three-item gap report.
     expect(generateRequestMessages).toHaveBeenCalledWith(
       expect.objectContaining({
-        runtimeModePrompt: expect.stringContaining(
-          'file editing, path operations, and terminal commands',
-        ),
+        runtimeModePrompt: expect.stringContaining('You are in Agent mode'),
       }),
     )
     expect(mockExecuteSingleTurn).toHaveBeenCalledWith(

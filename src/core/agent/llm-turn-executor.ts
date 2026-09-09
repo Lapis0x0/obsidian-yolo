@@ -43,10 +43,7 @@ import { McpManager } from '../mcp/mcpManager'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import type { ChatContextPolicy } from './chat-runtime-profiles'
-import {
-  type ToolCapabilityMode,
-  buildToolCapabilityPrompt,
-} from './tool-capability-prompt'
+import { type RuntimeMode, buildRuntimeModePrompt } from './runtime-mode-prompt'
 import { selectAllowedTools } from './tool-selection'
 
 type AgentLlmTurnExecutorInput = {
@@ -81,7 +78,7 @@ type AgentLlmTurnExecutorInput = {
   contextualInjections?: ContextualInjection[]
   /** The running chat mode's capability grant; see `AgentToolGateway`. */
   capabilityOverrides?: ChatModeCapabilityOverrides
-  toolCapabilityMode?: ToolCapabilityMode
+  runtimeMode?: RuntimeMode
   modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
   modePersonaModuleId?: string
@@ -228,32 +225,26 @@ export class AgentLlmTurnExecutor {
             capabilityOverrides: this.input.capabilityOverrides,
           })
         : []
-      const {
-        filteredTools,
-        hasTools,
-        hasOnDemandTools,
-        requestTools,
-        deferredToolCatalog,
-      } = await selectAllowedTools({
-        availableTools,
-        allowedToolNames: this.input.allowedToolNames,
-        toolPreferences: this.input.toolPreferences,
-        toolServerPreferences: this.input.toolServerPreferences,
-        model: this.input.model,
-        apiType: this.input.apiType,
-        jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
-        settings: this.input.mcpManager.getSettingsSnapshot(),
-      })
+      const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
+        await selectAllowedTools({
+          availableTools,
+          allowedToolNames: this.input.allowedToolNames,
+          toolPreferences: this.input.toolPreferences,
+          toolServerPreferences: this.input.toolServerPreferences,
+          model: this.input.model,
+          apiType: this.input.apiType,
+          jsSandboxSettings: this.input.mcpManager.getJsSandboxSettings(),
+          settings: this.input.mcpManager.getSettingsSnapshot(),
+        })
       tools = requestTools
       updateLLMDebugTrace(debugTrace?.id, {
         toolPlanDurationMs: Date.now() - toolPlanStart,
       })
 
       const contextPreparationStart = Date.now()
-      const runtimeModePrompt = buildToolCapabilityPrompt({
-        mode: this.input.toolCapabilityMode ?? 'agent',
-        toolNames: filteredTools.map((tool) => tool.name),
-      })
+      const runtimeModePrompt = buildRuntimeModePrompt(
+        this.input.runtimeMode ?? 'agent',
+      )
       const baseRequestMessages =
         await this.input.requestContextBuilder.generateRequestMessages({
           messages: this.input.messages,

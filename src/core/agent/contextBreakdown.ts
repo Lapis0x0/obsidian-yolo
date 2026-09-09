@@ -23,10 +23,7 @@ import { McpManager } from '../mcp/mcpManager'
 import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import type { ChatContextPolicy } from './chat-runtime-profiles'
-import {
-  type ToolCapabilityMode,
-  buildToolCapabilityPrompt,
-} from './tool-capability-prompt'
+import { type RuntimeMode, buildRuntimeModePrompt } from './runtime-mode-prompt'
 import { selectAllowedTools } from './tool-selection'
 
 /** Token breakdown for a single bucket in the context-usage popover. */
@@ -147,7 +144,7 @@ export const estimateContextBreakdown = async ({
   toolServerPreferences,
   contextualInjections,
   capabilityOverrides,
-  toolCapabilityMode,
+  runtimeMode,
   modeEnvironmentPrompt,
   modePersonaPrompt,
   modePersonaModuleId,
@@ -169,7 +166,7 @@ export const estimateContextBreakdown = async ({
   contextualInjections?: ContextualInjection[]
   /** The running chat mode's capability grant; see `AgentToolGateway`. */
   capabilityOverrides?: ChatModeCapabilityOverrides
-  toolCapabilityMode?: ToolCapabilityMode
+  runtimeMode?: RuntimeMode
   modeEnvironmentPrompt?: string
   modePersonaPrompt?: string
   modePersonaModuleId?: string
@@ -183,27 +180,19 @@ export const estimateContextBreakdown = async ({
         chatModelModalities: model.modalities,
       })
     : []
-  const {
-    filteredTools,
-    hasTools,
-    hasOnDemandTools,
-    requestTools,
-    deferredToolCatalog,
-  } = await selectAllowedTools({
-    availableTools,
-    allowedToolNames,
-    toolPreferences,
-    toolServerPreferences,
-    model,
-    apiType,
-    jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-    settings: mcpManager.getSettingsSnapshot(),
-  })
+  const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
+    await selectAllowedTools({
+      availableTools,
+      allowedToolNames,
+      toolPreferences,
+      toolServerPreferences,
+      model,
+      apiType,
+      jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+      settings: mcpManager.getSettingsSnapshot(),
+    })
 
-  const runtimeModePrompt = buildToolCapabilityPrompt({
-    mode: toolCapabilityMode ?? 'agent',
-    toolNames: filteredTools.map((tool) => tool.name),
-  })
+  const runtimeModePrompt = buildRuntimeModePrompt(runtimeMode ?? 'agent')
   const sections = await requestContextBuilder.generateRequestSections({
     messages,
     hasTools,

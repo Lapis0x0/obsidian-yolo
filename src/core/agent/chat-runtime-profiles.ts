@@ -25,7 +25,7 @@ import { resolveAgentCapabilityProfile } from './capability-profile'
 import type { ChatMode } from './chat-mode'
 import { isModuleChatMode, isToolChatMode } from './chat-mode'
 import { resolveMaxEnvironmentPrompt } from './max-environment-prompt'
-import type { ToolCapabilityMode } from './tool-capability-prompt'
+import type { RuntimeMode } from './runtime-mode-prompt'
 import type { AgentRuntimeLoopConfig } from './types'
 
 type AssistantRuntimeOptions = Pick<
@@ -143,7 +143,7 @@ export type ChatModeRuntime = {
   builtinCapabilityPreferences: Assistant['builtinCapabilityPreferences']
   toolServerPreferences: Assistant['toolServerPreferences']
   bypassToolApproval: boolean
-  toolCapabilityMode: ToolCapabilityMode
+  runtimeMode: RuntimeMode
   /**
    * True when the shared 'bash' tool identity must run read-only for this
    * entire run. Always false for built-in modes. Follows
@@ -308,7 +308,7 @@ export function resolveChatModeRuntime({
       ? assistant?.toolServerPreferences
       : undefined,
     bypassToolApproval: isToolMode && yoloEnabled,
-    toolCapabilityMode: builtinMode,
+    runtimeMode: builtinMode,
     bashReadOnly: false,
     contextPolicy: BUILT_IN_CONTEXT_POLICY,
     capabilityOverrides,
@@ -334,10 +334,7 @@ export function resolveChatModeRuntime({
 export function resolveNativeToolPolicy(
   runtime: ChatModeRuntime,
 ): NativeToolPolicy {
-  if (
-    runtime.toolCapabilityMode !== 'agent' &&
-    runtime.toolCapabilityMode !== 'max'
-  ) {
+  if (runtime.runtimeMode !== 'agent' && runtime.runtimeMode !== 'max') {
     return 'read-only'
   }
   return runtime.bypassToolApproval ? 'unrestricted' : 'edit'
@@ -380,7 +377,7 @@ function resolveModuleChatModeRuntime(
     builtinCapabilityPreferences: undefined,
     toolServerPreferences: undefined,
     bypassToolApproval: false,
-    toolCapabilityMode: registered.mode.capability === 'none' ? 'ask' : 'agent',
+    runtimeMode: registered.mode.capability === 'none' ? 'ask' : 'agent',
     bashReadOnly: capabilityProfile.bashReadOnly,
     modePersonaPrompt: registered.mode.personaPrompt,
     modePersonaModuleId: registered.moduleId,

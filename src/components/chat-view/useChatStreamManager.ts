@@ -30,12 +30,12 @@ import {
   resolveAutoContextCompactionChatOptions,
 } from '../../core/agent/compaction'
 import { estimateContinuationRequestContextTokens } from '../../core/agent/requestContextEstimate'
+import { buildRuntimeModePrompt } from '../../core/agent/runtime-mode-prompt'
 import {
   type AgentConversationRunSummary,
   type AgentConversationState,
   buildAgentConversationRunSummary,
 } from '../../core/agent/service'
-import { buildToolCapabilityPrompt } from '../../core/agent/tool-capability-prompt'
 import { getEnabledAssistantToolNames } from '../../core/agent/tool-preferences'
 import { selectAllowedTools } from '../../core/agent/tool-selection'
 import type { AgentRuntimeRunInput } from '../../core/agent/types'
@@ -495,26 +495,20 @@ export function useChatStreamManager({
             capabilityOverrides: chatModeRuntime.capabilityOverrides,
           })
         : []
-      const {
-        filteredTools,
-        hasTools,
-        hasOnDemandTools,
-        requestTools,
-        deferredToolCatalog,
-      } = await selectAllowedTools({
-        availableTools,
-        allowedToolNames: effectiveAllowedToolNames,
-        toolPreferences: chatModeRuntime.toolPreferences,
-        toolServerPreferences: chatModeRuntime.toolServerPreferences,
-        model: effectiveModel,
-        apiType: manualApiType,
-        jsSandboxSettings: mcpManager.getJsSandboxSettings(),
-        settings,
-      })
-      const runtimeModePrompt = buildToolCapabilityPrompt({
-        mode: chatModeRuntime.toolCapabilityMode,
-        toolNames: filteredTools.map((tool) => tool.name),
-      })
+      const { hasTools, hasOnDemandTools, requestTools, deferredToolCatalog } =
+        await selectAllowedTools({
+          availableTools,
+          allowedToolNames: effectiveAllowedToolNames,
+          toolPreferences: chatModeRuntime.toolPreferences,
+          toolServerPreferences: chatModeRuntime.toolServerPreferences,
+          model: effectiveModel,
+          apiType: manualApiType,
+          jsSandboxSettings: mcpManager.getJsSandboxSettings(),
+          settings,
+        })
+      const runtimeModePrompt = buildRuntimeModePrompt(
+        chatModeRuntime.runtimeMode,
+      )
       const compactionPrefix =
         await requestContextBuilder.generateRequestMessages({
           messages,
@@ -568,7 +562,7 @@ export function useChatStreamManager({
             allowedToolNames: effectiveAllowedToolNames,
             toolPreferences: chatModeRuntime.toolPreferences,
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
-            toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+            runtimeMode: chatModeRuntime.runtimeMode,
             contextualInjections: manualContextualInjections,
             modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
             modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
@@ -803,7 +797,7 @@ export function useChatStreamManager({
           builtinCapabilityPreferences:
             chatModeRuntime.builtinCapabilityPreferences,
           toolServerPreferences: chatModeRuntime.toolServerPreferences,
-          toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+          runtimeMode: chatModeRuntime.runtimeMode,
           bypassToolApproval: chatModeRuntime.bypassToolApproval,
           blockedCommandPrefixes: settings.mcp.builtinCapabilityOptions.terminal
             ?.blockedPrefixes ?? [...DEFAULT_BLOCKED_PREFIXES],
@@ -1108,7 +1102,7 @@ export function useChatStreamManager({
         toolPreferences: chatModeRuntime.toolPreferences,
         toolServerPreferences: chatModeRuntime.toolServerPreferences,
         capabilityOverrides: chatModeRuntime.capabilityOverrides,
-        toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+        runtimeMode: chatModeRuntime.runtimeMode,
         modeEnvironmentPrompt: chatModeRuntime.modeEnvironmentPrompt,
         modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
         modePersonaModuleId: chatModeRuntime.modePersonaModuleId,

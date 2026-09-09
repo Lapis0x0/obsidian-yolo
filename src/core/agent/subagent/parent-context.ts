@@ -14,7 +14,7 @@ import type { BaseLLMProvider } from '../../llm/base'
 import type { McpManager } from '../../mcp/mcpManager'
 import type { NativePathBoundary } from '../../tools/native/paths'
 import type { ChatModeCapabilityOverrides } from '../../tools/types'
-import type { ToolCapabilityMode } from '../tool-capability-prompt'
+import type { RuntimeMode } from '../runtime-mode-prompt'
 import type { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from '../types'
 
 export type SubagentParentContext = {
@@ -44,7 +44,7 @@ export type SubagentParentContext = {
    */
   capabilityOverrides?: ChatModeCapabilityOverrides
   vaultPathBoundary?: NativePathBoundary
-  toolCapabilityMode?: ToolCapabilityMode
+  runtimeMode?: RuntimeMode
   /**
    * The parent mode's environment section. A child runs with
    * `systemPromptOverride`, which skips section assembly entirely, so the
@@ -79,7 +79,7 @@ export function buildSubagentParentContext(
     bypassToolApproval: input.bypassToolApproval,
     capabilityOverrides: input.capabilityOverrides,
     vaultPathBoundary: input.vaultPathBoundary,
-    toolCapabilityMode: input.toolCapabilityMode,
+    runtimeMode: input.runtimeMode,
     modeEnvironmentPrompt: input.modeEnvironmentPrompt,
   }
 }

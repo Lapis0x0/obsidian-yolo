@@ -1087,7 +1087,7 @@ export function QuickAskPanel({
               chatModeRuntime.builtinCapabilityPreferences,
             toolServerPreferences: chatModeRuntime.toolServerPreferences,
             allowedSkillPaths,
-            toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+            runtimeMode: chatModeRuntime.runtimeMode,
             contextualInjections,
             requestParams: {
               deliveryMode: 'incremental',

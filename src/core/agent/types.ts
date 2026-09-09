@@ -20,7 +20,7 @@ import type { ChatModeCapabilityOverrides } from '../tools/types'
 
 import type { ChatContextPolicy } from './chat-runtime-profiles'
 import type { AutoContextCompactionChatOptions } from './compaction'
-import type { ToolCapabilityMode } from './tool-capability-prompt'
+import type { RuntimeMode } from './runtime-mode-prompt'
 
 export type AgentRuntimeSnapshot = {
   messages: ChatMessage[]
@@ -114,7 +114,7 @@ export type AgentRuntimeRunInput = {
    */
   vaultPathBoundary?: NativePathBoundary
   contextualInjections?: ContextualInjection[]
-  toolCapabilityMode?: ToolCapabilityMode
+  runtimeMode?: RuntimeMode
   /**
    * Environment facts the running mode states to the model (cwd, OS, shell,
    * date, tool discipline). Only Max supplies one — see

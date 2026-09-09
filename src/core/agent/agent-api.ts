@@ -595,7 +595,7 @@ export async function resolveAgentApiRunInput({
       builtinCapabilityPreferences:
         chatModeRuntime.builtinCapabilityPreferences,
       toolServerPreferences: chatModeRuntime.toolServerPreferences,
-      toolCapabilityMode: chatModeRuntime.toolCapabilityMode,
+      runtimeMode: chatModeRuntime.runtimeMode,
       bypassToolApproval: chatModeRuntime.bypassToolApproval,
       modePersonaPrompt: chatModeRuntime.modePersonaPrompt,
       modePersonaModuleId: chatModeRuntime.modePersonaModuleId,

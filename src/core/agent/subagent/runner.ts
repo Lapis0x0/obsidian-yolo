@@ -294,7 +294,7 @@ async function runChildAgent(
     vaultPathBoundary: parent.vaultPathBoundary,
     // Not `modeEnvironmentPrompt` as well: it is already folded into the
     // override above, and the section pipeline is skipped for this run.
-    toolCapabilityMode: parent.toolCapabilityMode,
+    runtimeMode: parent.runtimeMode,
   }
 
   const unsubscribe = runtime.subscribe((snapshot) => {

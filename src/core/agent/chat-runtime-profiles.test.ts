@@ -113,20 +113,20 @@ describe('resolveChatModeRuntime module chat mode branch', () => {
     expect(runtime.bypassToolApproval).toBe(false)
   })
 
-  it("maps capability 'none' to toolCapabilityMode 'ask', others to 'agent'", () => {
+  it("maps capability 'none' to runtimeMode 'ask', others to 'agent'", () => {
     expect(
       resolveChatModeRuntime({
         mode: 'module:learning:chat',
         assistantEnabledToolNames: [],
         moduleChatMode: moduleChatMode({ capability: 'none' }),
-      }).toolCapabilityMode,
+      }).runtimeMode,
     ).toBe('ask')
     expect(
       resolveChatModeRuntime({
         mode: 'module:learning:chat',
         assistantEnabledToolNames: [],
         moduleChatMode: moduleChatMode({ capability: 'vault-read' }),
-      }).toolCapabilityMode,
+      }).runtimeMode,
     ).toBe('agent')
   })
 
@@ -214,7 +214,7 @@ describe('resolveChatModeRuntime', () => {
     expect(runtime.toolPreferences).toBeUndefined()
     expect(runtime.toolServerPreferences).toBeUndefined()
     expect(runtime.bypassToolApproval).toBe(false)
-    expect(runtime.toolCapabilityMode).toBe('ask')
+    expect(runtime.runtimeMode).toBe('ask')
   })
 
   it('keeps full tool set in agent mode with per-tool preferences', () => {
@@ -230,7 +230,7 @@ describe('resolveChatModeRuntime', () => {
       assistant.toolServerPreferences,
     )
     expect(runtime.bypassToolApproval).toBe(false)
-    expect(runtime.toolCapabilityMode).toBe('agent')
+    expect(runtime.runtimeMode).toBe('agent')
   })
 
   it('enables bypass only when agent mode and YOLO are combined', () => {
@@ -247,7 +247,7 @@ describe('resolveChatModeRuntime', () => {
       assistant.toolServerPreferences,
     )
     expect(runtime.bypassToolApproval).toBe(true)
-    expect(runtime.toolCapabilityMode).toBe('agent')
+    expect(runtime.runtimeMode).toBe('agent')
   })
 
   it('ignores YOLO outside agent mode', () => {
@@ -403,7 +403,7 @@ describe('resolveChatModeRuntime', () => {
       )
       expect(runtime.bashReadOnly).toBe(false)
       expect(runtime.contextPolicy).toEqual({ useAssistant: true })
-      expect(runtime.toolCapabilityMode).toBe('max')
+      expect(runtime.runtimeMode).toBe('max')
     })
 
     it('honours its own YOLO flag', () => {

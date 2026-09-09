@@ -184,7 +184,7 @@ describe('subagent inherits the parent chat mode', () => {
         bypassToolApproval: true,
         capabilityOverrides,
         vaultPathBoundary,
-        toolCapabilityMode: 'max',
+        runtimeMode: 'max',
         modeEnvironmentPrompt: '<max_environment>…</max_environment>',
       } as unknown as AgentRuntimeRunInput,
       { enableTools: true, includeBuiltinTools: true, maxAutoIterations: 100 },
@@ -193,7 +193,7 @@ describe('subagent inherits the parent chat mode', () => {
     expect(parent).toMatchObject({
       capabilityOverrides,
       vaultPathBoundary,
-      toolCapabilityMode: 'max',
+      runtimeMode: 'max',
       modeEnvironmentPrompt: '<max_environment>…</max_environment>',
       // The trust tier the parent is running under travels too.
       bypassToolApproval: true,
