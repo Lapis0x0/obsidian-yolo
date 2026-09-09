@@ -252,7 +252,7 @@ describe('ToolMessage rendering', () => {
     expect(markup).toContain('Reject')
     // The SplitButton (and its "allow for this chat" menu option) must not
     // render at all — approvalPolicy: 'always-require-user' degrades it to
-    // a single plain "Allow" button. See `AgentService.approveToolCall`'s
+    // a single plain "Allow" button. See `AgentSessionService.approveToolCall`'s
     // matching server-side rejection of allowForConversation for this call.
     expect(markup).not.toContain('yolo-split-button')
   })

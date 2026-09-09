@@ -353,7 +353,7 @@ export function useChatDomainActions({
 
         if (allowForConversation) {
           if (request.metadata?.approvalPolicy === 'always-require-user') {
-            // See `AgentService.approveToolCall`'s matching guard: module
+            // See `AgentSessionService.approveToolCall`'s matching guard: module
             // chat mode tools declared `requiresApproval: true` are an
             // unconditional per-call confirmation gate and must never be
             // added to the conversation's "always allow" list, even from

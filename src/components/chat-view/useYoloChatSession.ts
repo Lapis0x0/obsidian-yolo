@@ -513,7 +513,7 @@ export function useYoloChatSession({
    * 分支切换只改这一项元数据，因此只写这一项。
    *
    * 附带写一份 UI 手里的 messages 是数据覆盖风险：生成期间正文走 assistant
-   * render stream，UI 快照可能落后整个生成阶段，而这条写入与 AgentService 的
+   * render stream，UI 快照可能落后整个生成阶段，而这条写入与 AgentSessionService 的
    * 最终持久化不共享同一条串行链——它若后落地，数据库就会留下被截断的正文。
    */
   const persistActiveBranchSelection = useCallback(async () => {
@@ -1264,9 +1264,9 @@ export function useYoloChatSession({
     ],
   )
 
-  // 消息态/偏好切换/AgentService 注册/持久化全部收编进
+  // 消息态/偏好切换/AgentSessionService 注册/持久化全部收编进
   // ChatSessionController.branchFromAssistantGroup（含分支缺口修复：分支的
-  // 消息现在会注册进 AgentService 内存态,不再只写 React state + 磁盘）。
+  // 消息现在会注册进 AgentSessionService 内存态,不再只写 React state + 磁盘）。
   // 本函数只解析 policy（settings / module 注册表 / i18n 都不下放进
   // controller）并翻译结果为 UI 反应。
   const handleAssistantMessageGroupBranch = useCallback(
@@ -1451,7 +1451,7 @@ export function useYoloChatSession({
       (conversationId) => {
         if (conversationId !== currentConversationId) return
         if (agentService.isRunning(conversationId)) return
-        // Pull the latest messages directly from AgentService — the React
+        // Pull the latest messages directly from AgentSessionService — the React
         // closure's `chatMessages` is stale at this point because the result
         // was just appended synchronously and React hasn't re-rendered yet.
         const latestMessages = agentService.getState(conversationId).messages

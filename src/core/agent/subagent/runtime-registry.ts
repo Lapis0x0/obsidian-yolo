@@ -9,7 +9,7 @@ import type { NativeAgentRuntime } from '../native-runtime'
  *   1. `runChildAgent` registers an entry on start; unregisters on finalize.
  *   2. While a subagent's tool call is in `PendingApproval`, the SubagentCard
  *      renders an inline approval block whose buttons call into
- *      `AgentService.approveToolCall` / `rejectToolCall`.
+ *      `AgentSessionService.approveToolCall` / `rejectToolCall`.
  *   3. The service first checks this registry by `toolCallId`; if a match is
  *      found, the approval action targets the subagent's runtime directly —
  *      bypassing the parent-conversation continuation path.

@@ -12,7 +12,7 @@ const localFileToolName = (name: string): string =>
  * but resolve to the same grant:
  *
  *   - Host-internal callers pass `capability` to
- *     `YoloAgentApiService.run` / `.stream` (`agent-api.ts`).
+ *     `AgentRunApi.run` / `.stream` (`agent-api.ts`).
  *   - Modules pass `capability` to `host.agent.stream`, whose Host API type
  *     `YoloModuleAgentCapabilityV1` is an alias of this union so the published
  *     contract keeps its versioned name without becoming a second vocabulary.

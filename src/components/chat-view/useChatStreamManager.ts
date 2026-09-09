@@ -299,8 +299,8 @@ export function useChatStreamManager({
   const baseCompactionStateRef = useRef<ChatConversationCompactionState>(
     compaction ?? [],
   )
-  // Pure shadow of AgentService's run status for `currentConversationId` — no
-  // write path bypasses AgentService for this value (unlike `chatMessages`/
+  // Pure shadow of AgentSessionService's run status for `currentConversationId` — no
+  // write path bypasses AgentSessionService for this value (unlike `chatMessages`/
   // `compactionState`/`pendingCompactionAnchorMessageId`, which still have
   // legitimate direct writes elsewhere and stay as-is; see the 2026-08-11
   // architecture-governance audit). Safe to source purely from the
@@ -341,7 +341,7 @@ export function useChatStreamManager({
 
       // The `chatMessages`/`compactionState`/`pendingCompactionAnchorMessageId`
       // mirror into React state used to happen here — it's now
-      // `ChatSessionController`'s own independent AgentService subscription
+      // `ChatSessionController`'s own independent AgentSessionService subscription
       // (see docs/plans/2026-08-11-arch-governance-step3-chat-state-ownership.md,
       // "分期 C1"). This effect keeps its own subscription only for
       // `baseConversationMessagesRef`/`baseCompactionStateRef` (read by

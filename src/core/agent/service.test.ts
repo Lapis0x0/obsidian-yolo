@@ -2,7 +2,7 @@ import { ChatMessage, ChatUserMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { backgroundTaskCompletionBus } from './background-task/completion-bus'
-import { AgentService, RUNNING_PERSIST_MIN_INTERVAL_MS } from './service'
+import { AgentSessionService, RUNNING_PERSIST_MIN_INTERVAL_MS } from './service'
 import { subagentRuntimeRegistry } from './subagent/runtime-registry'
 import { subagentTaskRegistry } from './subagent/task-registry'
 import type { SubagentTaskRecord } from './subagent/types'
@@ -33,7 +33,7 @@ type AgentServiceInternals = {
 }
 
 const getAgentServiceInternals = (
-  service: AgentService,
+  service: AgentSessionService,
 ): AgentServiceInternals => service as unknown as AgentServiceInternals
 
 const runtimeInstances: MockRuntimeInstance[] = []
@@ -130,13 +130,13 @@ const createStreamingMessages = (): ChatMessage[] => [
   },
 ]
 
-describe('AgentService abort handling', () => {
+describe('AgentSessionService abort handling', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
   })
 
   it('marks streaming assistant and active tool calls as aborted immediately', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const abortController = new AbortController()
 
     const runPromise = service.run({
@@ -188,7 +188,7 @@ describe('AgentService abort handling', () => {
   })
 
   it('preserves aborted state when a late snapshot still reports streaming', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const abortController = new AbortController()
 
     const runPromise = service.run({
@@ -239,7 +239,7 @@ describe('AgentService abort handling', () => {
   })
 
   it('keeps the existing branch in place while a branch retry is starting', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const userMessage: ChatMessage = {
       role: 'user',
       id: 'user-1',
@@ -337,7 +337,7 @@ describe('AgentService abort handling', () => {
   })
 
   it('aborting a single tool call keeps the run alive (issue #338)', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const mcpAbortToolCall = jest.fn()
 
     const runPromise = service.run({
@@ -408,7 +408,7 @@ describe('AgentService abort handling', () => {
   })
 })
 
-describe('AgentService assistant render stream separation', () => {
+describe('AgentSessionService assistant render stream separation', () => {
   const makeStreamingAssistantMessage = (
     content: string,
     options?: Partial<Extract<ChatMessage, { role: 'assistant' }>>,
@@ -436,7 +436,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('keeps pure display deltas out of the conversation snapshot and routes them to the render stream', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const publishedStates: ChatMessage[][] = []
     service.subscribe(
       'conv-streaming-publish',
@@ -513,7 +513,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('folds the first appearance of content back into the snapshot', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const publishedStates: ChatMessage[][] = []
     service.subscribe(
       'conv-first-appearance',
@@ -560,7 +560,7 @@ describe('AgentService assistant render stream separation', () => {
   // 按 `length` 判定时，provider 先吐出的换行/空格会白白消耗掉唯一一次折回，
   // 等真正的第一个可见字符到来时反而只走 stream，gate 整段生成期间不翻转。
   it('folds on the first visible character, not on leading whitespace', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const publishedStates: ChatMessage[][] = []
     service.subscribe(
       'conv-whitespace-first',
@@ -611,7 +611,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('folds on the first visible reasoning character, not on leading whitespace', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const publishedStates: ChatMessage[][] = []
     service.subscribe(
       'conv-whitespace-reasoning',
@@ -655,7 +655,7 @@ describe('AgentService assistant render stream separation', () => {
   // 事务顺序：最终值 → 结构快照 → 定格。终态值必须是最终值本身，而不是最后
   // 一个 delta——provider 的最终结果可能重写正文、规范化 reasoning。
   it('settles the stream on the final value, after the structural snapshot', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const events: string[] = []
     service.subscribe(
       'conv-terminal-final',
@@ -730,7 +730,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('notifies run summary subscribers on semantic events only, never on display deltas', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const summarySubscriber = jest.fn()
     service.subscribeToRunSummaries(summarySubscriber)
     // Initial emit on subscribe.
@@ -793,7 +793,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('publishes tool call request changes immediately and cancels pending streaming publish', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const subscriber = jest.fn()
     service.subscribe('conv-tool-request-publish', subscriber, {
       emitCurrent: false,
@@ -843,7 +843,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('publishes completion immediately and cancels pending streaming publish', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const subscriber = jest.fn()
     service.subscribe('conv-complete-publish', subscriber, {
       emitCurrent: false,
@@ -883,7 +883,7 @@ describe('AgentService assistant render stream separation', () => {
   })
 
   it('publishes abort immediately and cancels pending streaming publish', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const subscriber = jest.fn()
     service.subscribe('conv-abort-publish', subscriber, { emitCurrent: false })
 
@@ -1031,7 +1031,7 @@ const makeFailedSubagentTaskRecord = (): SubagentTaskRecord => {
   }
 }
 
-describe('AgentService dropConversation', () => {
+describe('AgentSessionService dropConversation', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
     jest.useFakeTimers()
@@ -1044,7 +1044,7 @@ describe('AgentService dropConversation', () => {
 
   it('drops in-memory conversation state without persisting a deleted empty state', () => {
     const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
-    const service = new AgentService({ persistConversationMessages })
+    const service = new AgentSessionService({ persistConversationMessages })
     const internals = getAgentServiceInternals(service)
     const subscriber = jest.fn()
     const stateFeedSubscriber = jest.fn()
@@ -1104,7 +1104,7 @@ describe('AgentService dropConversation', () => {
 
   it('does not let stale reads, subscriptions, or writes recreate a dropped conversation', async () => {
     const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
-    const service = new AgentService({ persistConversationMessages })
+    const service = new AgentSessionService({ persistConversationMessages })
     const internals = getAgentServiceInternals(service)
 
     service.replaceConversationMessages('conv-no-revive', [
@@ -1159,7 +1159,7 @@ describe('AgentService dropConversation', () => {
   })
 
   it('does not create a conversation entry when checking an unknown running state', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const internals = getAgentServiceInternals(service)
 
     expect(service.isRunning('conv-never-created')).toBe(false)
@@ -1169,7 +1169,7 @@ describe('AgentService dropConversation', () => {
   it('does not recreate a dropped conversation when an aborted run settles', async () => {
     const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
     const abortToolCall = jest.fn()
-    const service = new AgentService({ persistConversationMessages })
+    const service = new AgentSessionService({ persistConversationMessages })
     const internals = getAgentServiceInternals(service)
     const userMessage = makeUserMessage('u1', 'run')
     const runPromise = service.run({
@@ -1222,7 +1222,7 @@ describe('AgentService dropConversation', () => {
   })
 
   it('ignores background subagent completions after a conversation was dropped', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const internals = getAgentServiceInternals(service)
     const record = {
       ...makeFailedSubagentTaskRecord(),
@@ -1255,7 +1255,7 @@ describe('AgentService dropConversation', () => {
   })
 })
 
-describe('AgentService conversation persistence flush', () => {
+describe('AgentSessionService conversation persistence flush', () => {
   beforeEach(() => {
     jest.useFakeTimers()
   })
@@ -1267,7 +1267,7 @@ describe('AgentService conversation persistence flush', () => {
 
   it('persists the latest conversation state before returning', async () => {
     const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
-    const service = new AgentService({ persistConversationMessages })
+    const service = new AgentSessionService({ persistConversationMessages })
     const message = makeUserMessage('u-flush', 'persist me')
 
     service.replaceConversationMessages('conv-flush', [message], [], {
@@ -1287,7 +1287,7 @@ describe('AgentService conversation persistence flush', () => {
   })
 })
 
-describe('AgentService conversation persistence cadence', () => {
+describe('AgentSessionService conversation persistence cadence', () => {
   const makeStreamingAssistantMessage = (
     content: string,
   ): Extract<ChatMessage, { role: 'assistant' }> => ({
@@ -1319,7 +1319,7 @@ describe('AgentService conversation persistence cadence', () => {
   // conversation first, then the run starts.
   const startRun = async (conversationId: string) => {
     const persistConversationMessages = jest.fn().mockResolvedValue(undefined)
-    const service = new AgentService({ persistConversationMessages })
+    const service = new AgentSessionService({ persistConversationMessages })
     const userMessage = makeUserMessage('u1', 'hello')
 
     service.replaceConversationMessages(conversationId, [userMessage], [], {
@@ -1468,13 +1468,13 @@ describe('AgentService conversation persistence cadence', () => {
   })
 })
 
-describe('AgentService main activity summary', () => {
+describe('AgentSessionService main activity summary', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
   })
 
   it('marks a live runtime as active, abortable, and queueable', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-live',
       loopConfig: {
@@ -1500,7 +1500,7 @@ describe('AgentService main activity summary', () => {
   })
 
   it('marks pending approval and awaiting user input as active but not queueable', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     service.replaceConversationMessages('conv-pending', [
       makeUserMessage('u1', 'hi'),
@@ -1530,7 +1530,7 @@ describe('AgentService main activity summary', () => {
   })
 
   it('marks foreground running tool calls as active without treating background results as active', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     service.replaceConversationMessages('conv-tool', [
       makeUserMessage('u1', 'hi'),
@@ -1557,7 +1557,7 @@ describe('AgentService main activity summary', () => {
   })
 
   it('aborts foreground tool calls without an active runtime and leaves background results untouched', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     service.replaceConversationMessages('conv-stop-tool', [
       makeUserMessage('u1', 'hi'),
       makeToolMessage(ToolCallResponseStatus.Running),
@@ -1586,7 +1586,7 @@ describe('AgentService main activity summary', () => {
   })
 
   it('calls the registered foreground aborter when stopping main activity', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const abort = jest.fn()
     service.replaceConversationMessages('conv-tracker', [
       makeUserMessage('u1', 'hi'),
@@ -1604,9 +1604,9 @@ describe('AgentService main activity summary', () => {
   })
 })
 
-describe('AgentService background subagent results', () => {
+describe('AgentSessionService background subagent results', () => {
   it('persists live transcript fallback before compacting completed registry records', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const record = makeFailedSubagentTaskRecord()
     subagentTaskRegistry.register(record)
     service.startBackgroundTaskResultListener()
@@ -1700,13 +1700,13 @@ const makeAssistantToolMessages = ({
   ]
 }
 
-describe('AgentService continuation input', () => {
+describe('AgentSessionService continuation input', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
   })
 
   it('drops stale requestMessages when continuing after approved tool calls', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const userMessage = makeUserMessage('u1', 'dispatch once')
     const staleRequestMessages = [userMessage]
     const callTool = jest.fn().mockResolvedValue({
@@ -1774,7 +1774,7 @@ describe('AgentService continuation input', () => {
   })
 
   it('approveToolCall passes the persisted executionConstraints.bashReadOnly to mcpManager.callTool', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const userMessage = makeUserMessage('u1', 'dispatch once')
     const callTool = jest.fn().mockResolvedValue({
       status: ToolCallResponseStatus.Success,
@@ -1822,7 +1822,7 @@ describe('AgentService continuation input', () => {
   })
 
   it('approveToolCall ignores allowForConversation when the persisted approvalPolicy is always-require-user', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const userMessage = makeUserMessage('u1', 'dispatch once')
     const allowToolForConversation = jest.fn()
     const callTool = jest.fn().mockResolvedValue({
@@ -1873,7 +1873,7 @@ describe('AgentService continuation input', () => {
   })
 
   it('drops stale requestMessages when continuing after answered user questions', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const userMessage = makeUserMessage('u1', 'ask then continue')
     const staleRequestMessages = [userMessage]
 
@@ -1930,13 +1930,13 @@ describe('AgentService continuation input', () => {
   })
 })
 
-describe('AgentService mid-run user message queue', () => {
+describe('AgentSessionService mid-run user message queue', () => {
   beforeEach(() => {
     runtimeInstances.length = 0
   })
 
   it('returns idle when no run is active', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const result = service.enqueueUserMessage(
       'conv-idle',
       makeUserMessage('u1', 'hello'),
@@ -1946,7 +1946,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('enqueues a message while a run is active', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-1',
       loopConfig: {
@@ -1968,7 +1968,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('refuses enqueue when a tool call is pending approval', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-approval',
       loopConfig: {
@@ -2005,7 +2005,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('drains the queue when the runtime hits an llm_request boundary', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-drain',
       loopConfig: {
@@ -2037,7 +2037,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('preserves prior conversation history after a queued message is drained', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const priorUser = makeUserMessage('u0', 'earlier question')
     const priorAssistant: ChatMessage = {
       role: 'assistant',
@@ -2093,7 +2093,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('atomically removes a message while it is still queued', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-remove',
       loopConfig: {
@@ -2121,7 +2121,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('cannot remove a message after the runtime has drained it', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-remove-drained',
       loopConfig: {
@@ -2150,7 +2150,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('refuses enqueue for non-default branches', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-branch',
       loopConfig: {
@@ -2179,7 +2179,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('clears the queue and emits an abort event when aborted', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-abort',
       loopConfig: {
@@ -2208,7 +2208,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('starts a continuation run when the queue still has messages after run completion', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-cont',
       loopConfig: {
@@ -2253,7 +2253,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('refuses enqueue when the active run is on the single-turn fast path', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-fast',
       loopConfig: {
@@ -2277,7 +2277,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 
   it('does not schedule continuation for fast-path runs even if the queue is non-empty', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const runPromise = service.run({
       conversationId: 'conv-fast-cont',
       loopConfig: {
@@ -2308,7 +2308,7 @@ describe('AgentService mid-run user message queue', () => {
   })
 })
 
-describe('AgentService subagent approval routing', () => {
+describe('AgentSessionService subagent approval routing', () => {
   type FakeRuntime = {
     findToolCall: jest.Mock
     setToolCallResponse: jest.Mock
@@ -2391,7 +2391,7 @@ describe('AgentService subagent approval routing', () => {
 
   it('approveToolCall routes to the subagent runtime, executes, and resumes', async () => {
     const { toolCallId, runtime, mcpManager, resumeRun } = registerEntry()
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     const ok = await service.approveToolCall({
       conversationId: 'irrelevant-parent-conv',
@@ -2421,7 +2421,7 @@ describe('AgentService subagent approval routing', () => {
 
   it('approveToolCall with allowForConversation scopes the allow to the parent conv', async () => {
     const { toolCallId, mcpManager } = registerEntry()
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     await service.approveToolCall({
       conversationId: 'irrelevant',
@@ -2439,7 +2439,7 @@ describe('AgentService subagent approval routing', () => {
 
   it('rejectToolCall routes to the subagent runtime and resumes', () => {
     const { toolCallId, runtime, mcpManager, resumeRun } = registerEntry()
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     const ok = service.rejectToolCall({
       conversationId: 'irrelevant',
@@ -2458,7 +2458,7 @@ describe('AgentService subagent approval routing', () => {
   it('approveToolCall surfaces callTool errors as Error response', async () => {
     const { toolCallId, runtime, mcpManager } = registerEntry()
     mcpManager.callTool.mockRejectedValueOnce(new Error('boom'))
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     await service.approveToolCall({
       conversationId: 'irrelevant',
@@ -2481,7 +2481,7 @@ describe('AgentService subagent approval routing', () => {
     const { toolCallId, runtime } = registerEntry()
     // Simulate a race: the call was already resolved before approve fired.
     runtime.findToolCall.mockReturnValueOnce(null)
-    const service = new AgentService()
+    const service = new AgentSessionService()
 
     const ok = await service.approveToolCall({
       conversationId: 'irrelevant',

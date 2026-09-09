@@ -5,7 +5,7 @@ import { isModuleChatMode } from '../../core/agent/chat-mode'
 import type {
   AgentConversationRunSummary,
   AgentConversationState,
-  AgentService,
+  AgentSessionService,
 } from '../../core/agent/service'
 import type {
   ChatRuntimeId,
@@ -218,12 +218,12 @@ export type ChatSessionRunConversationParams = {
 
 export type ChatSessionControllerDeps = {
   /**
-   * Long-lived object — read the current AgentService through a getter
+   * Long-lived object — read the current AgentSessionService through a getter
    * rather than caching it, matching CLAUDE.md's "Runtime Boundaries" rule
    * for every other controller in this directory.
    */
   getAgentService: () => Pick<
-    AgentService,
+    AgentSessionService,
     | 'subscribe'
     | 'getState'
     | 'replaceConversationMessages'
@@ -356,7 +356,7 @@ export type BranchFromAssistantGroupResult = {
  *   of surfacing `Notice`; the calling hook translates results into UI
  *   reactions (Notice, focus, scroll, input-box rebuild).
  *
- * AgentService is the authoritative source for `chatMessages` /
+ * AgentSessionService is the authoritative source for `chatMessages` /
  * `compactionState` / `pendingCompactionAnchorMessageId` *while a run is in
  * flight or has left tracked state behind* — the controller keeps its own
  * subscription (re-pointed whenever `currentConversationId` changes) and
@@ -364,7 +364,7 @@ export type BranchFromAssistantGroupResult = {
  * calls `useChatStreamManager` used to make into React state directly. Direct
  * edits (this file's commands) remain legitimate — see the 2026-08-11
  * architecture-governance audit referenced in the plan for why these three
- * fields are not pure AgentService shadows.
+ * fields are not pure AgentSessionService shadows.
  */
 export class ChatSessionController {
   private snapshot: ChatSessionSnapshot
@@ -432,7 +432,7 @@ export class ChatSessionController {
   }
 
   /**
-   * Re-establish the AgentService subscription after `dispose()` dropped it.
+   * Re-establish the AgentSessionService subscription after `dispose()` dropped it.
    * React StrictMode (dev builds — see ChatView.tsx) replays the mount effect
    * as setup → cleanup → setup; without this, the cleanup's `dispose()` would
    * leave the second mount permanently unsubscribed.
@@ -594,7 +594,7 @@ export class ChatSessionController {
   }
 
   /**
-   * Align AgentService's in-memory copy of the conversation with a message
+   * Align AgentSessionService's in-memory copy of the conversation with a message
    * list the user just mutated outside of a run (deletions). Without this the
    * service keeps the pre-deletion list and any later publish — a background
    * task result appending to `entry.state.messages`, for instance — pushes the
@@ -795,7 +795,7 @@ export class ChatSessionController {
   /**
    * Equivalent to the original `handleUserMessageSubmit`
    * (`useChatDomainActions.ts`): compiles the submitted user message's
-   * prompt, writes the working copy + AgentService + debounced persistence,
+   * prompt, writes the working copy + AgentSessionService + debounced persistence,
    * and triggers the run. Shared by the normal `submit()` yolo path and
    * `retryAssistantMessageGroup` (its `retryBranchTarget` is the only thing
    * that differs between the two call sites, exactly as before the move).
@@ -1115,7 +1115,7 @@ export class ChatSessionController {
   }
 
   /**
-   * Changing the conversation identity re-points the AgentService
+   * Changing the conversation identity re-points the AgentSessionService
    * subscription — every other setter is a plain field write.
    */
   setCurrentConversationId = (action: SetStateActionLike<string>): void => {
@@ -1320,10 +1320,10 @@ export class ChatSessionController {
 
   /**
    * Equivalent to the original `handleAssistantMessageGroupBranch`, plus the
-   * confirmed AgentService-registration fix: the branched conversation's
-   * messages are now registered into AgentService memory (`replaceConversationMessages`
+   * confirmed AgentSessionService-registration fix: the branched conversation's
+   * messages are now registered into AgentSessionService memory (`replaceConversationMessages`
    * + re-pointing this controller's own subscription) before persistence,
-   * instead of only ever reaching AgentService on the first submit in the new
+   * instead of only ever reaching AgentSessionService on the first submit in the new
    * branch.
    *
    * `policy` carries every value that depends on settings / the module
@@ -1402,7 +1402,7 @@ export class ChatSessionController {
       activeBranchByUserMessageId: nextActiveBranchByUserMessageId,
     })
 
-    // Fix: register into AgentService memory before anything else observes
+    // Fix: register into AgentSessionService memory before anything else observes
     // `newConversationId` — see method doc.
     this.deps
       .getAgentService()
@@ -1577,7 +1577,7 @@ export class ChatSessionController {
    * Implicit-dependency note (see the plan's C2 design-audit section): this
    * method does not call `this.setCompactionState` directly after a
    * successful compaction. `replaceConversationMessages` below reaches this
-   * same controller's own AgentService subscription (`mergeAgentState`,
+   * same controller's own AgentSessionService subscription (`mergeAgentState`,
    * re-pointed per `currentConversationId` since C1), which synchronously
    * folds the new compaction entry into this snapshot. Confirmed still true
    * post-C1: the controller, not `useChatStreamManager`, now owns that

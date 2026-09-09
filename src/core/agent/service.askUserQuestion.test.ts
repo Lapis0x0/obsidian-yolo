@@ -1,7 +1,7 @@
 import { ChatMessage } from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
-import { AgentService } from './service'
+import { AgentSessionService } from './service'
 
 jest.mock('./native-runtime', () => ({
   NativeAgentRuntime: jest.fn().mockImplementation(() => {
@@ -54,9 +54,9 @@ const buildMessagesWithAwaiting = (): ChatMessage[] => [
   },
 ]
 
-describe('AgentService.answerUserQuestion (recovery path)', () => {
+describe('AgentSessionService.answerUserQuestion (recovery path)', () => {
   it('commits the user answers to the trailing awaiting tool message', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     service.replaceConversationMessages('conv', buildMessagesWithAwaiting(), [])
 
     const outcome = await service.answerUserQuestion({
@@ -90,7 +90,7 @@ describe('AgentService.answerUserQuestion (recovery path)', () => {
   })
 
   it('returns not_awaiting if the call is no longer awaiting', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     const messages = buildMessagesWithAwaiting()
     // Pre-mark the call as Aborted (e.g. stop-generation was clicked)
     const toolMessage = messages[1]
@@ -110,7 +110,7 @@ describe('AgentService.answerUserQuestion (recovery path)', () => {
   })
 
   it('returns not_found for an unknown tool call id', async () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     service.replaceConversationMessages('conv', buildMessagesWithAwaiting(), [])
     const outcome = await service.answerUserQuestion({
       conversationId: 'conv',
@@ -121,7 +121,7 @@ describe('AgentService.answerUserQuestion (recovery path)', () => {
   })
 
   it('exposes isWaitingUserInput in the run summary while awaiting', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     service.replaceConversationMessages('conv', buildMessagesWithAwaiting(), [])
     const summary = service.getConversationRunSummary('conv')
     expect(summary.isWaitingUserInput).toBe(true)
@@ -129,7 +129,7 @@ describe('AgentService.answerUserQuestion (recovery path)', () => {
   })
 
   it('abortConversation aborts awaiting user input even when no active run owns it', () => {
-    const service = new AgentService()
+    const service = new AgentSessionService()
     service.replaceConversationMessages('conv', buildMessagesWithAwaiting(), [])
     expect(service.abortConversation('conv')).toBe(true)
     const state = service.getState('conv')

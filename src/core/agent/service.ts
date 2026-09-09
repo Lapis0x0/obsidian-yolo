@@ -1,3 +1,20 @@
+/**
+ * The owner of an agent *session*: conversation state, its persistence, and
+ * the approval and question pauses that have to be answered by a human in a
+ * chat surface. A session outlives any single run — it is what a chat view
+ * subscribes to, reloads, branches, and resumes.
+ *
+ * `NativeAgentRuntime` (native-runtime.ts) sits below it and owns the loop
+ * itself: LLM turns, tool calls, compaction, guardrails. `AgentRunApi`
+ * (agent-api.ts) sits above it and turns one programmatic call into an event
+ * stream for callers that have no conversation of their own.
+ *
+ * Only a caller that actually holds a conversation — the chat views — should
+ * use this class directly. Everyone else (host features under `src/features/`,
+ * and modules arriving through `host.agent.stream`) goes through `AgentRunApi`
+ * and states a trust tier as `capability` rather than assembling a run input
+ * here.
+ */
 import { v4 as uuidv4 } from 'uuid'
 
 import type { YoloSettings } from '../../settings/schema/setting.types'
@@ -180,7 +197,7 @@ type AgentRunEntry = {
  */
 type ConversationPublishMode = 'immediate' | 'stream-only'
 
-type AgentServiceOptions = {
+type AgentSessionServiceOptions = {
   getSettings?: () => YoloSettings
   persistConversationMessages?: (payload: {
     conversationId: string
@@ -935,7 +952,7 @@ export type AbortedQueuedMessagesSubscriber = (
 
 type ForegroundToolAborter = () => void
 
-export class AgentService {
+export class AgentSessionService {
   private conversationEntries = new Map<string, ConversationEntry>()
   private runEntriesByKey = new Map<string, AgentRunEntry>()
   private foregroundToolAbortersByConversation = new Map<
@@ -988,7 +1005,7 @@ export class AgentService {
    */
   private readonly assistantRenderStreams = new AssistantRenderStreamStore()
 
-  constructor(private readonly options: AgentServiceOptions = {}) {}
+  constructor(private readonly options: AgentSessionServiceOptions = {}) {}
 
   getAssistantRenderStream(
     conversationId: string,

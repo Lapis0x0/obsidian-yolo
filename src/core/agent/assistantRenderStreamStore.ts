@@ -8,7 +8,7 @@
  * 全树 diff。
  *
  * 这个 store 就是被分离出来的那条流：按 `conversationId + messageId` 索引，由
- * AgentService 单例持有（popout 与主窗口的插件 JS 同一 realm，共享同一个
+ * AgentSessionService 单例持有（popout 与主窗口的插件 JS 同一 realm，共享同一个
  * producer；每个窗口只拥有自己的播放器、DOM 与滚动控制器）。
  *
  * 不变量：
@@ -21,7 +21,7 @@
  *   订阅生命周期的比较本来就无意义（中间的值全都错过了，必须重新同步）。
  * - terminal 条目在订阅数归零后才回收：终态值必须能被后挂载的订阅者读到。
  *
- * 生命周期由 AgentService 的发布事务驱动，顺序是「写入最终值 → 发布结构快照
+ * 生命周期由 AgentSessionService 的发布事务驱动，顺序是「写入最终值 → 发布结构快照
  * → 定格（`markTerminalExcept`）」。因此 `publish` 与 `markTerminal*` 分属两个
  * 阶段，不要把它们重新合并成一次调用。
  */
@@ -41,7 +41,7 @@ export type AssistantRenderStreamListener = (
   value: AssistantRenderStreamValue,
 ) => void
 
-/** UI 侧只需要这两个能力；AgentService 结构上满足它。 */
+/** UI 侧只需要这两个能力；AgentSessionService 结构上满足它。 */
 export type AssistantRenderStreamAccess = {
   getAssistantRenderStream(
     conversationId: string,

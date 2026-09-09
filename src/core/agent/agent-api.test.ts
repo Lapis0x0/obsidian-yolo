@@ -74,7 +74,7 @@ import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import type { McpManager } from '../mcp/mcpManager'
 
 import {
-  YoloAgentApiService,
+  AgentRunApi,
   buildAgentApiPrompt,
   conversationStateToEvents,
   mergeInProcessServerToolNames,
@@ -84,7 +84,7 @@ import {
 import type { YoloAgentRunRequest } from './agent-api'
 import { AGENT_CAPABILITY_TOOL_NAMES } from './capability-profile'
 import { resolveChatModeRuntime } from './chat-runtime-profiles'
-import type { AgentConversationState, AgentService } from './service'
+import type { AgentConversationState, AgentSessionService } from './service'
 
 describe('agent api helpers', () => {
   beforeEach(() => {
@@ -566,13 +566,13 @@ describe('agent api helpers', () => {
   })
 })
 
-describe('YoloAgentApiService in-process tool server lifecycle', () => {
+describe('AgentRunApi in-process tool server lifecycle', () => {
   const buildService = ({
     mcpManager,
     agentServiceOverrides,
   }: {
     mcpManager: McpManager
-    agentServiceOverrides: Partial<AgentService>
+    agentServiceOverrides: Partial<AgentSessionService>
   }) => {
     const settings = {
       currentAssistantId: 'assistant-1',
@@ -602,9 +602,9 @@ describe('YoloAgentApiService in-process tool server lifecycle', () => {
       })),
       abortConversation: jest.fn(() => false),
       ...agentServiceOverrides,
-    } as unknown as AgentService
+    } as unknown as AgentSessionService
 
-    return new YoloAgentApiService({
+    return new AgentRunApi({
       app: { vault: {} } as unknown as App,
       getSettings: () => settings,
       getAgentService: () => agentService,
@@ -648,7 +648,7 @@ describe('YoloAgentApiService in-process tool server lifecycle', () => {
         run: jest.fn(async (input) => {
           capturedInput = input.input as { allowedToolNames?: string[] }
           return { conversationId: input.conversationId }
-        }) as unknown as AgentService['run'],
+        }) as unknown as AgentSessionService['run'],
       },
     })
 
@@ -723,7 +723,9 @@ describe('YoloAgentApiService in-process tool server lifecycle', () => {
           } as unknown as AgentConversationState)
           return () => undefined
         }),
-        run: jest.fn(async () => undefined) as unknown as AgentService['run'],
+        run: jest.fn(
+          async () => undefined,
+        ) as unknown as AgentSessionService['run'],
         abortConversation: jest.fn(() => true),
       },
     })
@@ -760,7 +762,9 @@ describe('YoloAgentApiService in-process tool server lifecycle', () => {
           } as unknown as AgentConversationState)
           return () => undefined
         }),
-        run: jest.fn(async () => undefined) as unknown as AgentService['run'],
+        run: jest.fn(
+          async () => undefined,
+        ) as unknown as AgentSessionService['run'],
       },
     })
 
@@ -798,7 +802,7 @@ function buildResolveAgentApiRunInputArgs(request: YoloAgentRunRequest) {
       getRevision: jest.fn(() => 1),
       setWatchedPaths: jest.fn(),
     })),
-  } as unknown as AgentService
+  } as unknown as AgentSessionService
 
   return {
     request,

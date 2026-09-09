@@ -18,7 +18,7 @@ type StoreEntry = {
 }
 
 /**
- * Per-conversation cache of the resolved system prompt. Held by `AgentService`
+ * Per-conversation cache of the resolved system prompt. Held by `AgentSessionService`
  * (a plugin-level singleton) so it survives `RequestContextBuilder` rebuilds
  * triggered by unrelated settings churn.
  *

@@ -657,7 +657,7 @@ export class AgentToolGateway {
    * the run that created it is fixed here, at creation time, and read back
    * off `ToolCallRequest.metadata` afterwards — by the gateway's own initial
    * state, by the two execution paths that bypass the gateway
-   * (`AgentService.approveToolCall` and the UI's recovery path), and by the
+   * (`AgentSessionService.approveToolCall` and the UI's recovery path), and by the
    * approval card. Nothing downstream re-derives it from a live registry or
    * a live mode, so reloading, upgrading or switching modes never changes the
    * outcome of a call that already exists.
@@ -1077,7 +1077,7 @@ export class AgentToolGateway {
     }
     // `AwaitingUserInput` is intentionally excluded here: it is a paused state
     // (only used by `ask_user_question`) and must not be auto-executed. The
-    // gateway resumes it via `AgentService.answerUserQuestion` instead.
+    // gateway resumes it via `AgentSessionService.answerUserQuestion` instead.
     const runnableEntries = nextToolCalls
       .map((toolCall, index) => ({ index, toolCall }))
       .filter(

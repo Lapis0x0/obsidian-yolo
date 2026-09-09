@@ -19,7 +19,7 @@ const createService = (): jest.Mocked<YoloChatRuntimeActionService> =>
   }) as unknown as jest.Mocked<YoloChatRuntimeActionService>
 
 describe('createYoloChatRuntimeActions', () => {
-  it('delegates run cancellation to AgentService', async () => {
+  it('delegates run cancellation to AgentSessionService', async () => {
     const service = createService()
     const actions = createYoloChatRuntimeActions(service)
 

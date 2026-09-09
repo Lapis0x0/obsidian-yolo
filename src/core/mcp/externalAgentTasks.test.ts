@@ -3,7 +3,7 @@ import type { App } from 'obsidian'
 import { ChatManager } from '../../database/json/chat/ChatManager'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import * as agentApi from '../agent/agent-api'
-import type { AgentService } from '../agent/service'
+import type { AgentSessionService } from '../agent/service'
 
 import {
   type ExternalAgentTask,
@@ -132,7 +132,7 @@ describe('ExternalAgentTaskService', () => {
       flushConversationPersistence,
       subscribe: jest.fn().mockReturnValue(jest.fn()),
       run: jest.fn().mockResolvedValue(undefined),
-    } as unknown as AgentService
+    } as unknown as AgentSessionService
     const service = new ExternalAgentTaskService({
       app,
       getSettings: () => settings,

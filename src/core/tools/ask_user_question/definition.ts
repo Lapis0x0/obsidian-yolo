@@ -68,7 +68,7 @@ export const askUserQuestionDefinition = defineTool({
   // never had a `case` in `callLocalFileTool`'s switch to port from: the
   // gateway (`core/agent/tool-gateway.ts`, around `resolveInitialResponse`)
   // resolves it straight to `AwaitingUserInput` after schema validation, and
-  // `AgentService.answerUserQuestion` later resolves that pause directly to
+  // `AgentSessionService.answerUserQuestion` later resolves that pause directly to
   // a Success response built from the user's own answers — "mirrors
   // approveToolCall but skips the MCP execution path" (service.ts's doc
   // comment on that method). This body exists only because
@@ -77,7 +77,7 @@ export const askUserQuestionDefinition = defineTool({
   // execute path fails loudly instead of silently producing a bogus result.
   execute: async () => {
     throw new Error(
-      "ask_user_question does not execute through executeBuiltinTool. It is resolved by the agent gateway pausing to AwaitingUserInput and AgentService.answerUserQuestion resuming it directly from the user's answers.",
+      "ask_user_question does not execute through executeBuiltinTool. It is resolved by the agent gateway pausing to AwaitingUserInput and AgentSessionService.answerUserQuestion resuming it directly from the user's answers.",
     )
   },
 })

@@ -25,10 +25,10 @@ import { ConfirmModal } from './components/modals/ConfirmModal'
 import { mountUpdateToast } from './components/UpdateToast'
 import { CHAT_VIEW_TYPE } from './constants'
 import { BAKED_PLUGIN_VERSION } from './constants/bakedVersion'
-import type { YoloAgentApi, YoloAgentApiService } from './core/agent/agent-api'
+import type { AgentRunApi, YoloAgentApi } from './core/agent/agent-api'
 import type {
   AgentConversationRunSummary,
-  AgentService,
+  AgentSessionService,
 } from './core/agent/service'
 import {
   clearAllChatGPTOAuthServices,
@@ -372,9 +372,9 @@ export default class YoloPlugin extends Plugin {
     null
   private cliRuntimeCapabilityError: unknown = null
   private cliRunSummaryUnsubscribe: (() => void) | null = null
-  private agentService: AgentService | null = null
-  private agentServiceReady: Promise<AgentService> | null = null
-  private agentApiService: YoloAgentApiService | null = null
+  private agentService: AgentSessionService | null = null
+  private agentServiceReady: Promise<AgentSessionService> | null = null
+  private agentApiService: AgentRunApi | null = null
   private agentNotificationCoordinator: AgentNotificationCoordinator | null =
     null
   private backgroundActivityRegistry: BackgroundActivityRegistry | null = null
@@ -1244,12 +1244,12 @@ export default class YoloPlugin extends Plugin {
     this.agentService?.abortAll()
   }
 
-  async warmupAgentService(): Promise<AgentService> {
+  async warmupAgentService(): Promise<AgentSessionService> {
     if (!this.agentServiceReady) {
       this.agentServiceReady = (async () => {
         try {
-          const { AgentService } = await import('./core/agent/service')
-          const { YoloAgentApiService } = await import('./core/agent/agent-api')
+          const { AgentSessionService } = await import('./core/agent/service')
+          const { AgentRunApi } = await import('./core/agent/agent-api')
           const { createAgentConversationPersistence } = await import(
             './core/agent/conversationPersistence'
           )
@@ -1258,7 +1258,7 @@ export default class YoloPlugin extends Plugin {
           }
           const { persistConversationMessages } =
             createAgentConversationPersistence(this.app, () => this.settings)
-          const service = new AgentService({
+          const service = new AgentSessionService({
             getSettings: () => this.settings,
             persistConversationMessages,
           })
@@ -1270,7 +1270,7 @@ export default class YoloPlugin extends Plugin {
           this.registerEvent(this.app.vault.on('rename', h.rename))
           service.startBackgroundTaskResultListener()
           this.agentService = service
-          this.agentApiService = new YoloAgentApiService({
+          this.agentApiService = new AgentRunApi({
             app: this.app,
             getSettings: () => this.settings,
             getAgentService: () => this.getAgentService(),
@@ -1287,7 +1287,7 @@ export default class YoloPlugin extends Plugin {
     return this.agentServiceReady
   }
 
-  getAgentService(): AgentService {
+  getAgentService(): AgentSessionService {
     if (!this.agentService) {
       throw new Error(
         '[YOLO] Agent service is not ready yet; await plugin.warmupAgentService() first.',

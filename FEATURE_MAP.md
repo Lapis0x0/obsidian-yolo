@@ -4,26 +4,26 @@
 
 ## Chat surfaces
 
-下面两个入口（Quick Ask、Chat 视图）的 Ask/Agent 模式都通过 `AgentService.run` (`src/core/agent/service.ts`) 派发；每次调用拿到的运行时权限由 `resolveChatModeRuntime` 计算 (`src/core/agent/chat-runtime-profiles.ts`，被 `src/core/agent/tool-gateway.ts` 消费)。Quick Ask 另外还有第三档模式（续写），完全不走 `AgentService`——见下方对应条目。
-没有聊天界面的调用方（宿主 feature、模块经 `host.agent.stream`）不走这两个入口，而是走 `YoloAgentApiService` (`src/core/agent/agent-api.ts`)，用 `capability` 声明信任档位（`none` / `vault-read` / `vault-write`，见 `src/core/agent/capability-profile.ts`），最终落到同一个 runtime。
+下面两个入口（Quick Ask、Chat 视图）的 Ask/Agent 模式都通过 `AgentSessionService.run` (`src/core/agent/service.ts`) 派发；每次调用拿到的运行时权限由 `resolveChatModeRuntime` 计算 (`src/core/agent/chat-runtime-profiles.ts`，被 `src/core/agent/tool-gateway.ts` 消费)。Quick Ask 另外还有第三档模式（续写），完全不走 `AgentSessionService`——见下方对应条目。
+没有聊天界面的调用方（宿主 feature、模块经 `host.agent.stream`）不走这两个入口，而是走 `AgentRunApi` (`src/core/agent/agent-api.ts`)，用 `capability` 声明信任档位（`none` / `vault-read` / `vault-write`，见 `src/core/agent/capability-profile.ts`），最终落到同一个 runtime。
 
 ### Quick Ask
-- 触发方式：编辑器内快捷键/命令唤起的浮层，由 `QuickAskController`（`src/features/editor/quick-ask/quickAskController.ts`）在 `src/main.ts` 中挂载。面板本体 `src/components/panels/quick-ask/QuickAskPanel.tsx` 有三档模式（`QuickAskVisibleMode = 'ask' | 'agent' | 'continue'`，`src/features/editor/quick-ask/quickAsk.types.ts`）：Ask/Agent 两档走 `AgentService.run`；「续写」档不走 agent runtime，而是通过 `plugin.continueWriting()` 调用下面「灵光写作 / Sparkle」一节的 `ContinuationController`。三档是同一面板内切换，不是三个独立入口。
+- 触发方式：编辑器内快捷键/命令唤起的浮层，由 `QuickAskController`（`src/features/editor/quick-ask/quickAskController.ts`）在 `src/main.ts` 中挂载。面板本体 `src/components/panels/quick-ask/QuickAskPanel.tsx` 有三档模式（`QuickAskVisibleMode = 'ask' | 'agent' | 'continue'`，`src/features/editor/quick-ask/quickAsk.types.ts`）：Ask/Agent 两档走 `AgentSessionService.run`；「续写」档不走 agent runtime，而是通过 `plugin.continueWriting()` 调用下面「灵光写作 / Sparkle」一节的 `ContinuationController`。三档是同一面板内切换，不是三个独立入口。
 - 核心代码：`src/features/editor/quick-ask/`（唤起、锚点定位、生命周期）+ UI 在 `QuickAskPanel.tsx`、`QuickAskWidget.tsx`。
-- 依赖子系统：Ask/Agent 档走 `AgentService`（`plugin.getAgentService()`）+ `assistantRenderStreamStore`（流式渲染，见下）；续写档走 `ContinuationController`（`src/features/editor/continuation/continuationController.ts`）→ `executeSingleTurn`（`src/core/ai/single-turn.ts`）。
+- 依赖子系统：Ask/Agent 档走 `AgentSessionService`（`plugin.getAgentService()`）+ `assistantRenderStreamStore`（流式渲染，见下）；续写档走 `ContinuationController`（`src/features/editor/continuation/continuationController.ts`）→ `executeSingleTurn`（`src/core/ai/single-turn.ts`）。
 - 验证路径：dev vault 手测，在任意笔记编辑器内分别触发 Quick Ask 的 Ask/Agent/续写三档。
 
 ### Chat 视图（侧边栏 / 标签页 / 分屏 / 独立窗口）
 - 触发方式：只有一个视图类型 `CHAT_VIEW_TYPE`（`src/ChatView.tsx`，挂载 `src/components/chat-view/Chat.tsx`），通过 `plugin.openChatView({ placement })` 打开到四种 Obsidian leaf 位置之一——`ChatLeafPlacement = 'sidebar' | 'split' | 'tab' | 'window'`（`src/features/chat/chatLeafSessionManager.ts`）。对应四个命令：`open-new-chat`（侧栏）、`open-chat-tab`、`open-chat-split`、`open-chat-window`（`src/main.ts`），实际打开/复用/新建 leaf 的逻辑在 `ChatViewNavigator`（`src/features/chat/chatViewNavigator.ts`）。四种挂载位置是同一份功能，不是四个不同的产品面；`ChatMode` 不是挂载位置的一部分，是下面这条正交的能力轴。
-- 核心代码：`src/components/chat-view/`（`ChatSessionController.ts` 管理会话状态与 `AgentService` 订阅、`ChatConversationPane.tsx`/`ChatTimelineList.tsx` 渲染时间线）。
-- 依赖子系统：任一挂载位置内部都叠加同一层 `ChatMode`（`'ask' | 'agent' | ModuleChatModeId`，定义于 `ChatModeSelect.tsx`）切换出的能力集——Ask 模式屏蔽写文件/vault shell/终端/todo 等能力（`CHAT_BLOCKED_CAPABILITY_IDS`，`chat-runtime-profiles.ts`）；`AgentService`、`resolveChatModeRuntime`、模块自定义聊天模式（`RegisteredModuleChatModeV1`，见「模块系统」）都接入同一个 `ChatMode` 类型体系。另有一条与 `ChatMode` 正交的运行时轴：同一个视图既可以跑 YOLO 原生 agent（`YoloChatSurface.tsx`），也可以整体切到外部 CLI 运行时（`CliChatSurface.tsx`，切换入口 `RuntimeSelector.tsx`）——见下方「外部 CLI 运行时」条目，那条路径不经过 `AgentService`。挂载到独立窗口（`placement: 'window'`）时叠加下方「Popout / 多窗口」一节的约束。
+- 核心代码：`src/components/chat-view/`（`ChatSessionController.ts` 管理会话状态与 `AgentSessionService` 订阅、`ChatConversationPane.tsx`/`ChatTimelineList.tsx` 渲染时间线）。
+- 依赖子系统：任一挂载位置内部都叠加同一层 `ChatMode`（`'ask' | 'agent' | ModuleChatModeId`，定义于 `ChatModeSelect.tsx`）切换出的能力集——Ask 模式屏蔽写文件/vault shell/终端/todo 等能力（`CHAT_BLOCKED_CAPABILITY_IDS`，`chat-runtime-profiles.ts`）；`AgentSessionService`、`resolveChatModeRuntime`、模块自定义聊天模式（`RegisteredModuleChatModeV1`，见「模块系统」）都接入同一个 `ChatMode` 类型体系。另有一条与 `ChatMode` 正交的运行时轴：同一个视图既可以跑 YOLO 原生 agent（`YoloChatSurface.tsx`），也可以整体切到外部 CLI 运行时（`CliChatSurface.tsx`，切换入口 `RuntimeSelector.tsx`）——见下方「外部 CLI 运行时」条目，那条路径不经过 `AgentSessionService`。挂载到独立窗口（`placement: 'window'`）时叠加下方「Popout / 多窗口」一节的约束。
 - 验证路径：dev vault 手测——四种 placement 各自打开/复用 leaf 是否正确（`chatViewNavigator.test.ts` 覆盖对应状态机），以及任一 placement 下 Ask/Agent 两种 ChatMode 的能力屏蔽是否符合预期（`ChatSessionController.test.ts`）。
 
 ### Streaming 渲染约束（跨 Ask/Agent 模式的所有入口）
 - 生成中的内容/推理不进会话快照，活在 `assistantRenderStreamStore`（`src/core/agent/assistantRenderStreamStore.ts`）里；快照只在语义边界折叠回去。改流式渲染前务必先读这个文件，不要引入逐 token 发布会话快照的路径。
 
 ## 外部 CLI 运行时（Chat 视图内的第二种执行面）
-- 触发方式：Chat 视图顶部的 `RuntimeSelector.tsx` 从 YOLO 原生 agent 切到某个外部 CLI 代理，之后整条对话由该 CLI 进程驱动，UI 换成 `CliChatSurface.tsx`。这不是 `AgentService` 的另一种编排，而是并列的另一类执行面——AGENTS.md「不要造第二条 agent 编排路径」约束的是前者内部，不是这里。
+- 触发方式：Chat 视图顶部的 `RuntimeSelector.tsx` 从 YOLO 原生 agent 切到某个外部 CLI 代理，之后整条对话由该 CLI 进程驱动，UI 换成 `CliChatSurface.tsx`。这不是 `AgentSessionService` 的另一种编排，而是并列的另一类执行面——AGENTS.md「不要造第二条 agent 编排路径」约束的是前者内部，不是这里。
 - 核心代码：`src/core/cli-runtime/`——`registry.ts`（描述符驱动的运行时注册面）、`coordinator.ts`（工厂装配与生命周期）、`conversation-controller.ts`（会话状态机）、`session-service.ts`/`session-index.ts`（会话落盘与索引）、`permission-profile.ts`（权限档）、`model-catalog.ts`；各家实现在 `claude/`、`codex/`、`grok/`、`hermes/`、`pi/` 与 `acp/`（Agent Client Protocol）。
 - 依赖子系统：桌面端独占（子进程 + 登录 shell 环境，`desktop.ts`/`login-shell-env.ts`）。`index.ts` 会被移动端一起加载，桌面实现必须留在它的静态图之外。
 - 验证路径：目录内测试与源文件基本一一对应（`registry.test.ts`、`coordinator.test.ts`、`conversation-controller.test.ts`、`permission-profile.test.ts` 等）；`src/components/chat-view/CliChatSurface.test.tsx` 覆盖 UI 侧；真机手测需要本地装好对应 CLI。
@@ -32,7 +32,7 @@
 - 产品命名注记：这条线在设置页/侧边栏统一品牌为「灵光写作 / Sparkle」（`fdcc10ff`），代码里没有与之对应的统一目录——`src/features/editor/` 下 Tab 补全、选区改写、续写是并列的兄弟目录，只是共用同一条底层执行路径。不要再用「Write Assist」指代这整条产品线，那是改名前遗留的说法；`continuation` 现在专指续写这一个子能力（见下）。
 - 触发方式：笔记内联的低延迟单轮生成，三个触发点共享同一条实现：Tab 补全（`tab-completion`）、选区改写（`selection-rewrite`）、续写（`continuation`，被 Quick Ask 的「续写」档通过 `plugin.continueWriting()` 调用，见上「Quick Ask」条目）。
 - 核心代码：共同的执行路径是 `executeSingleTurn`（`src/core/ai/single-turn.ts`，709 行）。三个调用方：`src/features/editor/tab-completion/tabCompletionController.ts`、`src/features/editor/selection-rewrite/selectionRewriteController.ts`、`src/features/editor/continuation/continuationController.ts`（`ContinuationController`，仅被 `QuickAskPanel.tsx` 续写档调用，不直接被其他 UI 使用）。
-- 依赖子系统：**不接入** `AgentService` 或 agent 编排——这是一条独立的单轮路径，改动时不要把它并入 agent runtime，也不要给它加工具循环。改 `single-turn.ts` 时要意识到三个调用方都会受影响。
+- 依赖子系统：**不接入** `AgentSessionService` 或 agent 编排——这是一条独立的单轮路径，改动时不要把它并入 agent runtime，也不要给它加工具循环。改 `single-turn.ts` 时要意识到三个调用方都会受影响。
 - 验证路径：dev vault 手测，分别触发 Tab 补全、选区改写、Quick Ask 续写档，确认响应延迟和不经过 Agent 权限体系。
 
 ## 工具系统

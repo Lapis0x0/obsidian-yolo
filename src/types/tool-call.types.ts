@@ -182,7 +182,7 @@ export type ToolCallRequest = {
      * Execution constraints fixed alongside `approvalPolicy` at creation
      * time, for the two execution paths that call `McpManager.callTool`
      * directly instead of going through `AgentToolGateway`
-     * (`AgentService.approveToolCall` and the chat UI's pending-tool-call
+     * (`AgentSessionService.approveToolCall` and the chat UI's pending-tool-call
      * recovery path) — neither has access to the gateway's live
      * `bashReadOnly` option, so it must be persisted on the request itself.
      */

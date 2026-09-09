@@ -150,7 +150,7 @@ const DEFAULT_WRITE_ACTION_LABELS: Record<string, string> = {
  *   2. A module chat mode tool declared `requiresApproval: true`: an
  *      unconditional per-call gate the service layer refuses to bypass anyway
  *      (see `AgentToolGateway.attachChatModeSnapshot` and
- *      `AgentService.approveToolCall`).
+ *      `AgentSessionService.approveToolCall`).
  *   3. The running mode's own override, if it stated one — Max opens "always
  *      allow" on the terminal (master.md §4 Q8). Snapshotted, so a call
  *      already on screen keeps the option it was created with.

@@ -72,7 +72,7 @@ type UseChatHistory = {
   /**
    * 字段级更新：只写会话行上的 `activeBranchByUserMessageId`，不碰 messages。
    *
-   * 分支选择是纯 UI 元数据，而 messages 的权威来源在生成期间是 AgentService。
+   * 分支选择是纯 UI 元数据，而 messages 的权威来源在生成期间是 AgentSessionService。
    * 让分支切换顺带写一份 UI 手里的 messages 快照，就等于用一份可能落后整个
    * 生成阶段的正文覆盖数据库——两条写入不共享同一条串行链，谁后落地谁说了算。
    */

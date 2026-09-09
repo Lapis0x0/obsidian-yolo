@@ -56,7 +56,7 @@ export const delegateSubagentDefinition = defineTool({
   // catch did.
   //
   // Approval note (D3 question 2): this tool's OWN pending-approval flow is
-  // the ordinary one (`AgentService.approveToolCall` -> the gateway ->
+  // the ordinary one (`AgentSessionService.approveToolCall` -> the gateway ->
   // this `execute`), same as every other tool. `approveSubagentToolCall`
   // (`src/core/agent/service.ts:1760`) is a different concern entirely: it
   // routes approval for tool calls made *by* an already-running subagent's

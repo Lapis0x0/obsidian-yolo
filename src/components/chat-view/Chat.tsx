@@ -628,7 +628,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     ))
   useEffect(() => {
     // StrictMode（dev 构建）会把本 effect 重放为 setup→cleanup→setup：
-    // cleanup 的 dispose() 掉线后由 setup 幂等重建 AgentService 订阅。
+    // cleanup 的 dispose() 掉线后由 setup 幂等重建 AgentSessionService 订阅。
     sessionController.resumeAgentSubscription()
     return () => sessionController.dispose()
   }, [sessionController])

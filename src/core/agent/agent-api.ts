@@ -2,14 +2,13 @@
  * The programmatic entry point for running the agent: one call in, an event
  * stream out, for callers with no conversation to own and no UI to wire up —
  * host features under `src/features/`, and every module call arriving through
- * `host.agent.stream`. Despite the file name this is a service, not a
- * type/contract module.
+ * `host.agent.stream`.
  *
- * `AgentService` (service.ts) sits below it and owns the *session*: state,
- * persistence, approval routed to a chat surface. Chat views use it directly
- * because they have a conversation; nobody else should hand-assemble its run
- * input — come through `stream()`/`run()` here and state the trust tier as
- * `capability` instead.
+ * `AgentSessionService` (service.ts) sits below it and owns the *session*:
+ * state, persistence, approval routed to a chat surface. Chat views use it
+ * directly because they have a conversation; nobody else should hand-assemble
+ * its run input — come through `stream()`/`run()` here and state the trust
+ * tier as `capability` instead.
  */
 import type {
   SerializedEditorState,
@@ -51,7 +50,7 @@ import type {
   AgentConversationState,
   AgentRunActivity,
   AgentRunStatus,
-  AgentService,
+  AgentSessionService,
 } from './service'
 import { getEnabledAssistantToolNames } from './tool-preferences'
 import type { AgentRuntimeLoopConfig, AgentRuntimeRunInput } from './types'
@@ -189,10 +188,10 @@ type AgentApiRunInput = {
   activity?: AgentRunActivity
 }
 
-export type YoloAgentApiServiceOptions = {
+export type AgentRunApiOptions = {
   app: App
   getSettings: () => YoloSettings
-  getAgentService: () => AgentService
+  getAgentService: () => AgentSessionService
   getMcpManager: () => Promise<McpManager>
   /**
    * Optional so pre-existing test fixtures that construct this service
@@ -203,10 +202,10 @@ export type YoloAgentApiServiceOptions = {
   getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
 
-export class YoloAgentApiService implements YoloAgentApi {
+export class AgentRunApi implements YoloAgentApi {
   private readonly abortControllers = new Map<string, AbortController>()
 
-  constructor(private readonly options: YoloAgentApiServiceOptions) {}
+  constructor(private readonly options: AgentRunApiOptions) {}
 
   async run(request: YoloAgentRunRequest): Promise<YoloAgentRunResult> {
     let conversationId = ''
@@ -320,7 +319,7 @@ export async function* streamResolvedAgentRunEvents({
   loopConfig: AgentRuntimeLoopConfig
   input: AgentRuntimeRunInput
   activity?: AgentRunActivity
-  agentService: AgentService
+  agentService: AgentSessionService
 }): AsyncIterable<YoloAgentEvent> {
   const queue = new AsyncEventQueue<YoloAgentEvent>()
   let previous = createEmptySnapshotTracker()
@@ -457,7 +456,7 @@ export async function resolveAgentApiRunInput({
   abortSignal: AbortSignal
   app: App
   settings: YoloSettings
-  agentService: AgentService
+  agentService: AgentSessionService
   mcpManager: McpManager
   /**
    * Registry snapshot of module-contributed tool sets (whiteboard, etc.) —

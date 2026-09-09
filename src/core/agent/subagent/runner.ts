@@ -326,7 +326,7 @@ async function runChildAgent(
 
   // While the runtime is paused on a PendingApproval tool call, this promise
   // gates the next loop iteration. Resolved by `resumeRun` (called from
-  // `AgentService.approveToolCall` / `rejectToolCall` after they patch the
+  // `AgentSessionService.approveToolCall` / `rejectToolCall` after they patch the
   // runtime's tool call response). Recreated for each pause so multiple
   // sequential approvals work.
   let approvalResolver: (() => void) | null = null

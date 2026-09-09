@@ -11,7 +11,7 @@ import {
 import { DEFAULT_ASSISTANT_ID } from '../agent/default-assistant'
 import {
   type AgentConversationState,
-  type AgentService,
+  type AgentSessionService,
   buildAgentConversationRunSummary,
 } from '../agent/service'
 import type { ModuleToolSetRegistry } from '../modules/moduleToolSetRegistry'
@@ -64,10 +64,10 @@ type ExternalAgentTaskRuntime = {
 type ExternalAgentTaskServiceOptions = {
   app: App
   getSettings: () => YoloSettings
-  getAgentService: () => Promise<AgentService>
+  getAgentService: () => Promise<AgentSessionService>
   getMcpManager: () => Promise<McpManager>
   openConversation: (conversationId: string) => Promise<void>
-  /** See `YoloAgentApiServiceOptions['getModuleToolSetRegistry']` — same optionality reason. */
+  /** See `AgentRunApiOptions['getModuleToolSetRegistry']` — same optionality reason. */
   getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
 

@@ -5,7 +5,7 @@ import { z } from 'zod/v4'
 import { BAKED_PLUGIN_VERSION } from '../../constants/bakedVersion'
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import { loadDesktopNodeModule } from '../../utils/platform/desktopNodeModule'
-import type { AgentService } from '../agent/service'
+import type { AgentSessionService } from '../agent/service'
 import type { ModuleToolSetRegistry } from '../modules/moduleToolSetRegistry'
 import { describeKnowledgeBaseCatalog } from '../rag/knowledgeBaseCatalog'
 import type { RagKnowledgeAccess } from '../rag/ragAccess'
@@ -44,11 +44,11 @@ type LocalMcpSession = {
 type DesktopLocalMcpServerOptions = {
   app: App
   getSettings: () => YoloSettings
-  getAgentService: () => Promise<AgentService>
+  getAgentService: () => Promise<AgentSessionService>
   getMcpManager: () => Promise<McpManager>
   ragAccess: RagKnowledgeAccess
   openConversation: (conversationId: string) => Promise<void>
-  /** See `YoloAgentApiServiceOptions['getModuleToolSetRegistry']` — same optionality reason. */
+  /** See `AgentRunApiOptions['getModuleToolSetRegistry']` — same optionality reason. */
   getModuleToolSetRegistry?: () => ModuleToolSetRegistry
 }
 

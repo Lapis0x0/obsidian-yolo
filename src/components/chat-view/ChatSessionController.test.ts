@@ -1,7 +1,7 @@
 import type {
   AgentConversationRunSummary,
   AgentConversationState,
-  AgentService,
+  AgentSessionService,
 } from '../../core/agent/service'
 import type {
   CliConversationController,
@@ -115,9 +115,9 @@ const emptyState = (conversationId: string): AgentConversationState => ({
   pendingCompactionAnchorMessageId: null,
 })
 
-/** Minimal in-memory stand-in for AgentService's subscribe/getState/replaceConversationMessages
+/** Minimal in-memory stand-in for AgentSessionService's subscribe/getState/replaceConversationMessages
  * trio — enough to exercise ChatSessionController's own subscription without pulling in the
- * real AgentService (which needs an obsidian App/mcp/etc). */
+ * real AgentSessionService (which needs an obsidian App/mcp/etc). */
 function createMockAgentService() {
   const conversations = new Map<string, AgentConversationState>()
   const subscribers = new Map<
@@ -181,7 +181,7 @@ function createMockAgentService() {
     enqueueUserMessage,
     push,
   } as unknown as Pick<
-    AgentService,
+    AgentSessionService,
     | 'subscribe'
     | 'getState'
     | 'replaceConversationMessages'
@@ -337,7 +337,7 @@ describe('ChatSessionController', () => {
     await expect(result.outcome.ok).resolves.toBe(true)
     expect(controller.getSnapshot().chatMessages).toEqual([])
     // Emptying is a message-level edit, not a conversation deletion: the id
-    // stays alive (an AgentService `dropConversation` would tombstone it and
+    // stays alive (an AgentSessionService `dropConversation` would tombstone it and
     // silently drop every later run) and the empty list is written back.
     expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
       'c1',
@@ -432,7 +432,7 @@ describe('ChatSessionController', () => {
     expect(createOrUpdateConversation).toHaveBeenCalledTimes(1)
   })
 
-  it('branchFromAssistantGroup slices messages, registers them into AgentService, and persists a new conversation', async () => {
+  it('branchFromAssistantGroup slices messages, registers them into AgentSessionService, and persists a new conversation', async () => {
     const user1 = userMessage('user-1')
     const assistant1 = assistantMessage('assistant-1')
     const user2 = userMessage('user-2')
@@ -466,7 +466,7 @@ describe('ChatSessionController', () => {
     expect(snapshot.chatMessages[0]).toBe(user1)
     expect(snapshot.chatMessages[1]).toBe(assistant1)
 
-    // Fix under test: AgentService must have the branched messages registered
+    // Fix under test: AgentSessionService must have the branched messages registered
     // immediately, not only after the first submit in the new branch.
     expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
       newConversationId,
@@ -534,7 +534,7 @@ describe('ChatSessionController', () => {
     expect(listener).not.toHaveBeenCalled()
   })
 
-  it('merges AgentService pushes into its own snapshot once subscribed', () => {
+  it('merges AgentSessionService pushes into its own snapshot once subscribed', () => {
     const { controller, agentService } = createController('c1', [])
 
     const pushedAssistant = assistantMessage('assistant-1')
@@ -549,7 +549,7 @@ describe('ChatSessionController', () => {
     expect(controller.getSnapshot().chatMessages).toEqual([pushedAssistant])
   })
 
-  it('re-points its AgentService subscription when the conversation id changes', () => {
+  it('re-points its AgentSessionService subscription when the conversation id changes', () => {
     const { controller, agentService } = createController('c1', [])
 
     controller.setCurrentConversationId('c2')
@@ -595,7 +595,7 @@ describe('ChatSessionController', () => {
     expect(controller.getSnapshot().chatMessages).toEqual([])
 
     controller.resumeAgentSubscription()
-    // resume syncs the current AgentService state immediately…
+    // resume syncs the current AgentSessionService state immediately…
     expect(controller.getSnapshot().chatMessages).toEqual([
       assistantMessage('dropped-while-disposed'),
     ])
@@ -648,7 +648,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       expect(result).toEqual({ kind: 'blocked_waiting_approval' })
     })
 
-    it('enqueues into AgentService while queueable, without touching chatMessages', () => {
+    it('enqueues into AgentSessionService while queueable, without touching chatMessages', () => {
       const { controller, agentService } = createController('c1', [])
       agentService.enqueueUserMessage.mockReturnValueOnce('enqueued')
       const result = controller.submit({
@@ -713,7 +713,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       ])
     })
 
-    it('registers the message into AgentService and triggers the injected run on a plain idle submit', async () => {
+    it('registers the message into AgentSessionService and triggers the injected run on a plain idle submit', async () => {
       const {
         controller,
         agentService,
@@ -740,7 +740,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       expect(controller.getSnapshot().messageReasoningMap.get('draft-1')).toBe(
         'off',
       )
-      // Submitted through the yolo main line — registered into AgentService…
+      // Submitted through the yolo main line — registered into AgentSessionService…
       expect(agentService.replaceConversationMessages).toHaveBeenCalledWith(
         'c1',
         expect.arrayContaining([expect.objectContaining({ id: 'draft-1' })]),
@@ -893,7 +893,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       expect(result).toEqual({ kind: 'empty' })
     })
 
-    it('compacts, persists immediately, and folds the entry back through the AgentService subscription', async () => {
+    it('compacts, persists immediately, and folds the entry back through the AgentSessionService subscription', async () => {
       const {
         controller,
         agentService,
@@ -922,7 +922,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       // The controller never calls `setCompactionState` itself — this proves
       // the implicit-dependency note in `compactContext`'s doc comment: the
       // entry above reached this snapshot only via the controller's own
-      // AgentService subscription re-merging.
+      // AgentSessionService subscription re-merging.
       expect(controller.getSnapshot().compactionState).toEqual([
         expect.objectContaining({ anchorMessageId: 'u1' }),
       ])
@@ -959,7 +959,7 @@ describe('ChatSessionController — C2 submit/abortRun/compactContext/retry', ()
       expect(result).toEqual({ kind: 'failed' })
     })
 
-    it('drops the retried group, resubmits, and registers the trimmed history into AgentService', async () => {
+    it('drops the retried group, resubmits, and registers the trimmed history into AgentSessionService', async () => {
       const user1 = userMessage('user-1')
       const assistant1 = assistantMessage('assistant-1')
       const { controller, agentService, runConversation } = createController(

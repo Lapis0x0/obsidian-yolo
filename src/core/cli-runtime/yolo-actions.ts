@@ -1,4 +1,7 @@
-import type { AgentService, AnswerUserQuestionPayload } from '../agent/service'
+import type {
+  AgentSessionService,
+  AnswerUserQuestionPayload,
+} from '../agent/service'
 import { subagentTaskRegistry } from '../agent/subagent/task-registry'
 import type { SubagentTaskRecord } from '../agent/subagent/types'
 
@@ -10,7 +13,7 @@ import type {
 import type { ConversationRef } from './types'
 
 export type YoloChatRuntimeActionService = Pick<
-  AgentService,
+  AgentSessionService,
   | 'abortConversation'
   | 'abortToolCall'
   | 'answerUserQuestion'
