@@ -11,15 +11,12 @@ import type {
   YoloAgentEvent,
   YoloAgentRunRequest,
 } from '../agent/agent-api'
+import { AGENT_CAPABILITY_TOOL_NAMES } from '../agent/capability-profile'
 import type { InProcessToolServer } from '../mcp/inProcessToolServer'
 import { getToolName } from '../mcp/tool-name-utils'
 
 import type { ModuleLifecycleScope } from './lifecycleScope'
 import { ModuleAgentDebugCollector } from './moduleAgentDebugLog'
-import {
-  MODULE_CAPABILITY_TOOL_NAMES,
-  resolveModuleCapabilityProfile,
-} from './moduleCapabilityProfile'
 import { assertModuleId } from './moduleStore'
 import type {
   YoloModuleAgentEventV1,
@@ -443,7 +440,6 @@ function mapRequest(
   abortSignal: AbortSignal,
   toolContext: ModuleToolRuntimeContext,
 ): YoloAgentRunRequest {
-  const capabilityProfile = resolveModuleCapabilityProfile(request.capability)
   return {
     ...(request.prompt !== undefined ? { prompt: request.prompt } : {}),
     ...(request.messages ? { messages: request.messages.map(mapMessage) } : {}),
@@ -451,13 +447,13 @@ function mapRequest(
     mode: 'agent',
     yolo: true,
     systemPromptOverride: request.systemPrompt,
-    tools: {
-      allowedToolNames: [...capabilityProfile.allowedHostToolNames],
-      ...(toolContext.inProcessServer
-        ? { inProcessServer: toolContext.inProcessServer }
-        : {}),
-    },
-    bashReadOnly: capabilityProfile.bashReadOnly,
+    // The tier travels as-is: `agent-api.ts` expands it through the same
+    // `resolveAgentCapabilityProfile` a host-internal caller would hit, so the
+    // module path grants neither more nor less than the host path.
+    capability: request.capability,
+    ...(toolContext.inProcessServer
+      ? { tools: { inProcessServer: toolContext.inProcessServer } }
+      : {}),
     ...(request.workspaceScope
       ? {
           workspaceScope: {
@@ -535,8 +531,8 @@ function publicToolName(
   name: string,
   moduleToolNameByFullName: ReadonlyMap<string, string>,
 ): string {
-  if (name === MODULE_CAPABILITY_TOOL_NAMES.bash) return 'vault.bash'
-  if (name === MODULE_CAPABILITY_TOOL_NAMES.edit) return 'vault.edit'
+  if (name === AGENT_CAPABILITY_TOOL_NAMES.bash) return 'vault.bash'
+  if (name === AGENT_CAPABILITY_TOOL_NAMES.edit) return 'vault.edit'
   return moduleToolNameByFullName.get(name) ?? 'unknown'
 }
 

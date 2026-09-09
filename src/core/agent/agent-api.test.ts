@@ -83,6 +83,7 @@ import {
   resolveAgentApiRunInput,
 } from './agent-api'
 import type { YoloAgentRunRequest } from './agent-api'
+import { AGENT_CAPABILITY_TOOL_NAMES } from './capability-profile'
 import type { AgentConversationState, AgentService } from './service'
 
 describe('agent api helpers', () => {
@@ -301,6 +302,52 @@ describe('agent api helpers', () => {
     await expect(
       resolveAgentApiRunInput(buildResolveAgentApiRunInputArgs({})),
     ).rejects.toThrow('Either prompt or messages must be provided')
+  })
+
+  it('expands a capability tier into the host tool grant and bashReadOnly', async () => {
+    jest.mocked(resolveChatModeRuntime).mockReturnValueOnce({
+      loopConfig: {
+        enableTools: true,
+        includeBuiltinTools: true,
+        maxAutoIterations: 100,
+      },
+      allowedToolNames: [
+        AGENT_CAPABILITY_TOOL_NAMES.bash,
+        AGENT_CAPABILITY_TOOL_NAMES.edit,
+        'server__search',
+      ],
+      toolPreferences: undefined,
+      bypassToolApproval: false,
+    } as unknown as ReturnType<typeof resolveChatModeRuntime>)
+
+    const result = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({
+        prompt: 'Read a few notes',
+        capability: 'vault-read',
+      }),
+    )
+
+    // 'vault-read' grants the bash identity only, and carries the read-only
+    // constraint separately — the same expansion the module path used to do
+    // for itself before the tier moved down here.
+    expect(result.input.allowedToolNames).toEqual([
+      AGENT_CAPABILITY_TOOL_NAMES.bash,
+    ])
+    expect(result.input.bashReadOnly).toBe(true)
+  })
+
+  it('lets an explicit tool list and bashReadOnly win over the capability tier', async () => {
+    const result = await resolveAgentApiRunInput(
+      buildResolveAgentApiRunInputArgs({
+        prompt: 'Read a few notes',
+        capability: 'vault-read',
+        tools: { allowedToolNames: ['server__search'] },
+        bashReadOnly: false,
+      }),
+    )
+
+    expect(result.input.allowedToolNames).toEqual(['server__search'])
+    expect(result.input.bashReadOnly).toBe(false)
   })
 
   it('only narrows runtime allowed tools', () => {

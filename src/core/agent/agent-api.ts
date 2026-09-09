@@ -31,6 +31,8 @@ import { listLiteSkillEntries } from '../skills/liteSkills'
 import { isSkillEnabledForAssistant } from '../skills/skillPolicy'
 
 import { resolveAgentApiContext } from './agent-api-context'
+import { resolveAgentCapabilityProfile } from './capability-profile'
+import type { YoloAgentCapability } from './capability-profile'
 import { DEFAULT_ASSISTANT_ID } from './default-assistant'
 import type {
   AgentConversationState,
@@ -68,6 +70,17 @@ export type YoloAgentRunRequest = {
   /** Auto-approve tool calls (YOLO). Only effective in Agent mode. */
   yolo?: boolean
   context?: YoloAgentContext[]
+  /**
+   * Trust tier shorthand for callers that have no chat surface to resolve a
+   * chat mode from: expands to this run's host tool grant and its
+   * `bashReadOnly` setting through `resolveAgentCapabilityProfile`, so a
+   * caller can ask for "a read-only agent" without hand-assembling a tool
+   * name list.
+   *
+   * `tools.allowedToolNames` and `bashReadOnly` still win when given
+   * explicitly — the tier only fills in what the caller left unsaid.
+   */
+  capability?: YoloAgentCapability
   tools?: {
     allowedToolNames?: string[]
     /**
@@ -94,8 +107,8 @@ export type YoloAgentRunRequest = {
   workspaceScope?: AssistantWorkspaceScope
   /**
    * 强制本次 run 的 bash 工具调用使用结构性只读变体：mkdir/mv/rm/rmdir 一律
-   * command not found，且不受审批档位影响。供仅授予只读能力的调用方使用
-   * （见 `src/core/modules/moduleAgent.ts` 的 `vault-read` module agent 能力）。
+   * command not found，且不受审批档位影响。通常不必显式传：`capability:
+   * 'vault-read'` 已经会把它设成 true。
    */
   bashReadOnly?: boolean
   systemPromptOverride?: string
@@ -469,10 +482,17 @@ export async function resolveAgentApiRunInput({
     assistant,
     assistantEnabledToolNames,
   })
+  const capabilityProfile =
+    request.capability !== undefined
+      ? resolveAgentCapabilityProfile(request.capability)
+      : undefined
   const allowedToolNames = mergeInProcessServerToolNames(
     narrowAllowedToolNames(
       chatModeRuntime.allowedToolNames,
-      request.tools?.allowedToolNames,
+      request.tools?.allowedToolNames ??
+        (capabilityProfile
+          ? [...capabilityProfile.allowedHostToolNames]
+          : undefined),
     ),
     request.tools?.inProcessServer,
   )
@@ -570,7 +590,7 @@ export async function resolveAgentApiRunInput({
       workspaceScope:
         request.workspaceScope ??
         resolveWorkspaceScopeForRuntimeInput(assistant),
-      bashReadOnly: request.bashReadOnly,
+      bashReadOnly: request.bashReadOnly ?? capabilityProfile?.bashReadOnly,
       allowedSkillPaths,
       requestParams: {
         deliveryMode: 'incremental',

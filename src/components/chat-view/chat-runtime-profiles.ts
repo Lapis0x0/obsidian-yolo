@@ -1,10 +1,10 @@
 import type { App } from 'obsidian'
 
+import { resolveAgentCapabilityProfile } from '../../core/agent/capability-profile'
 import { resolveMaxEnvironmentPrompt } from '../../core/agent/max-environment-prompt'
 import type { ToolCapabilityMode } from '../../core/agent/tool-capability-prompt'
 import type { AgentRuntimeLoopConfig } from '../../core/agent/types'
 import { getToolName } from '../../core/mcp/tool-name-utils'
-import { resolveModuleCapabilityProfile } from '../../core/modules/moduleCapabilityProfile'
 import type { RegisteredModuleChatModeV1 } from '../../core/modules/moduleChatModeRegistry'
 import {
   type NativePathBoundary,
@@ -147,7 +147,7 @@ export type ChatModeRuntime = {
   /**
    * True when the shared 'bash' tool identity must run read-only for this
    * entire run. Always false for built-in modes. Follows
-   * `resolveModuleCapabilityProfile` for module chat modes — see that
+   * `resolveAgentCapabilityProfile` for module chat modes — see that
    * function's doc comment for why this must never be a separately-set flag.
    */
   bashReadOnly: boolean
@@ -353,7 +353,7 @@ export function resolveNativeToolPolicy(
 function resolveModuleChatModeRuntime(
   registered: RegisteredModuleChatModeV1,
 ): ChatModeRuntime {
-  const capabilityProfile = resolveModuleCapabilityProfile(
+  const capabilityProfile = resolveAgentCapabilityProfile(
     registered.mode.capability,
   )
   const moduleTools = registered.mode.tools ?? []

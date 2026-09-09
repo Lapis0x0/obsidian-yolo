@@ -77,9 +77,7 @@ describe('CoreModuleAgentCapabilityProvider', () => {
       mode: 'agent',
       yolo: true,
       systemPromptOverride: 'System',
-      tools: {
-        allowedToolNames: ['yolo_local__bash'],
-      },
+      capability: 'vault-read',
       workspaceScope: {
         enabled: true,
         include: ['References'],
@@ -119,12 +117,12 @@ describe('CoreModuleAgentCapabilityProvider', () => {
   })
 
   it.each([
-    ['vault-read' as const, true],
-    ['vault-write' as const, false],
-    ['none' as const, false],
+    ['vault-read' as const],
+    ['vault-write' as const],
+    ['none' as const],
   ])(
-    'maps capability %s to bashReadOnly=%s so bash writes stay gated by capability, not just tool visibility',
-    async (capability, expectedBashReadOnly) => {
+    'forwards capability %s verbatim so the module path resolves the same grant as a host-internal caller',
+    async (capability) => {
       let received: YoloAgentRunRequest | undefined
       const agent: YoloAgentApi = {
         run: jest.fn(),
@@ -149,7 +147,11 @@ describe('CoreModuleAgentCapabilityProvider', () => {
         }),
       )
 
-      expect(received?.bashReadOnly).toBe(expectedBashReadOnly)
+      // `bashReadOnly` and the host tool grant are no longer computed here:
+      // agent-api.ts expands the tier for every caller, and
+      // capability-profile.test.ts covers what each tier grants.
+      expect(received?.capability).toBe(capability)
+      expect(received?.bashReadOnly).toBeUndefined()
       lifecycle.dispose()
     },
   )
@@ -574,10 +576,11 @@ describe('CoreModuleAgentCapabilityProvider', () => {
           inputSchema: { type: 'object', properties: {} },
         },
       ])
-      // The requested allowedToolNames stay capability-scoped (empty for
-      // 'none'); agent-api.ts is responsible for unioning in the
-      // in-process server's tool names — see agent-api.test.ts.
-      expect(received?.tools?.allowedToolNames).toEqual([])
+      // The tier travels unexpanded: agent-api.ts resolves 'none' into an
+      // empty host tool grant and then unions in the in-process server's tool
+      // names — see agent-api.test.ts.
+      expect(received?.capability).toBe('none')
+      expect(received?.tools?.allowedToolNames).toBeUndefined()
     })
 
     it('uses a distinct server name per stream call to avoid registration collisions on concurrent runs', async () => {

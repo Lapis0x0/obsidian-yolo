@@ -1,5 +1,7 @@
 import type { ReactNode } from 'react'
 
+import type { YoloAgentCapability } from '../agent/capability-profile'
+
 import type { ModuleConfigV1 } from './moduleConfig'
 import type { ModuleFailure } from './moduleFailure'
 import type { LocalizedTextV1 } from './moduleI18n'
@@ -157,7 +159,14 @@ export type YoloModuleBackgroundV1 = {
   remove(id: string): void
 }
 
-export type YoloModuleAgentCapabilityV1 = 'none' | 'vault-read' | 'vault-write'
+/**
+ * The Host API's versioned name for a run's trust tier. Deliberately an alias
+ * rather than its own union: host-internal callers and modules must resolve
+ * the same tier through the same table (`resolveAgentCapabilityProfile`), and
+ * a second literal union here would be exactly the kind of side table that
+ * lets the two grants drift apart.
+ */
+export type YoloModuleAgentCapabilityV1 = YoloAgentCapability
 
 export type YoloModuleAgentMessageV1 =
   | Readonly<{
