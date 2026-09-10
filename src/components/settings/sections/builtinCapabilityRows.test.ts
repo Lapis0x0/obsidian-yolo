@@ -34,6 +34,7 @@ describe('buildBuiltinCapabilityRows', () => {
       'terminal',
       'subagent_delegation',
       'native_files',
+      'vault_search',
     ])
 
     expect(rows.map((row) => row.label)).toEqual([
@@ -49,6 +50,7 @@ describe('buildBuiltinCapabilityRows', () => {
       'Terminal Commands',
       'Delegate Subagent',
       'Local Filesystem Toolset',
+      'Vault Search',
     ])
   })
 })
@@ -66,16 +68,19 @@ describe('groupCapabilityRowsByCategory', () => {
 
     const vault = groups.find((group) => group.category === 'vault')
     // fs_read -> bash -> fs_edit_ops (survey-current-state.md §四; the task
-    // brief's "已经替你查清的事实").
+    // brief's "已经替你查清的事实"), then capabilities registered after that
+    // frozen order — `vault_search` (docs/plans/09-10-vault-search).
     expect(vault?.rows.map((row) => row.id)).toEqual([
       'file_reading',
       'vault_shell',
       'file_editing',
+      'vault_search',
     ])
     expect(vault?.rows.map((row) => row.label)).toEqual([
       'Read File',
       'Bash (Vault Shell)',
       'File Editing Toolset',
+      'Vault Search',
     ])
 
     const context = groups.find((group) => group.category === 'context')

@@ -20,17 +20,18 @@ import {
 import { validateVaultPath } from './vaultFileOps'
 
 /**
- * Keyword / semantic (RAG) / hybrid vault retrieval, orchestrated for the
- * external `vault_search` MCP tool (see `desktopLocalMcpServer.ts`).
+ * Keyword / semantic (RAG) / hybrid vault retrieval, shared by the two
+ * surfaces that expose it:
  *
- * This logic used to live inside the internal agent's `fs_search` tool. That
- * tool was retired in favor of the agent's sandboxed bash tool (YOLO-45),
- * which does its own read-only search (grep/find/rg) directly over the
- * `/vault` mount. Two callers remain: the external `vault_search` MCP tool
- * (JSON via `runVaultSearch`) and the bash tool's custom `search` command
- * (structured via `runVaultSearchStructured`, see
- * `src/core/agent/bash/vaultBashSearch.ts`) — semantic retrieval returns to
- * the agent as a bash command rather than a separate tool schema.
+ *   - the built-in `vault_search` tool the agent calls (structured, via
+ *     `runVaultSearchStructured` — see
+ *     `src/core/tools/vault_search/definition.ts`)
+ *   - the desktop local MCP server's own `vault_search` tool, for external
+ *     clients (JSON, via `runVaultSearch` — see `desktopLocalMcpServer.ts`)
+ *
+ * It used to be reachable from the agent only as the virtual shell's custom
+ * `search` subcommand; that subcommand is gone (docs/plans/09-10-vault-search/
+ * plan.md D11) and semantic retrieval is a tool of its own again.
  */
 
 const MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024
@@ -566,7 +567,7 @@ const collectKeywordSearchResults = async ({
       .getMarkdownFiles()
       .filter((file) => isPathInSearchScope(file.path, scopeTarget))
       // Unlike the files/dirs sweeps above, this one used to have no
-      // hidden-root/workspace-scope filter at all — `vaultBashSearch.ts`'s
+      // hidden-root/workspace-scope filter at all — the `vault_search` tool's
       // per-result post-filter was the only thing keeping user-data content
       // and out-of-scope files out of agent-visible content search. Filtering
       // here too means those files are never read in the first place.

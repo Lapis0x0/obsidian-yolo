@@ -68,6 +68,7 @@ export const TOOL_RENDERERS = {
   read_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
   write_file: fileEditingRenderer,
   edit_file: fileEditingRenderer,
+  vault_search: genericRenderer,
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

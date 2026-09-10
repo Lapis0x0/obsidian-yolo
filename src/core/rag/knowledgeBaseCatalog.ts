@@ -3,8 +3,9 @@ import type { KnowledgeBase } from '../../settings/schema/setting.types'
 /**
  * Model-facing catalog of the configured knowledge bases (name + description),
  * appended to every search surface that accepts a `knowledgeBase` name —
- * the MCP `search` tool, `bash`'s `search --kb`, and `js_eval`'s
- * `$db.search(…, knowledgeBase)`. One text so the three stay in lockstep.
+ * the built-in `vault_search` tool, the MCP `vault_search` tool, and
+ * `js_eval`'s `$db.search(…, knowledgeBase)`. One text so the three stay in
+ * lockstep.
  */
 export function describeKnowledgeBaseCatalog(
   knowledgeBases: readonly KnowledgeBase[],

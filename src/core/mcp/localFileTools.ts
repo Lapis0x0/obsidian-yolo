@@ -46,6 +46,7 @@ export const LOCAL_FILE_TOOL_SHORT_NAMES = [
   'read_file',
   'write_file',
   'edit_file',
+  'vault_search',
 ] as const
 
 /**
@@ -178,6 +179,8 @@ const LOCAL_FILE_TOOL_CATALOG_ORDER: readonly BuiltinToolName[] = [
   'read_file',
   'write_file',
   'edit_file',
+  // `vault_search` (all three modes). Appended for the same reason.
+  'vault_search',
 ]
 
 assertNoDuplicates(

@@ -8,6 +8,7 @@ import { subagentDelegationCapability } from './subagent-delegation'
 import { terminalCapability } from './terminal'
 import { todoListCapability } from './todo-list'
 import { userQuestionsCapability } from './user-questions'
+import { vaultSearchCapability } from './vault-search'
 import { vaultShellCapability } from './vault-shell'
 import { webAccessCapability } from './web-access'
 
@@ -49,4 +50,5 @@ export const CAPABILITIES = [
   // capability that did not exist then belongs after it (see the row-order
   // regression test in `builtinCapabilityRows.test.ts`).
   nativeFilesCapability,
+  vaultSearchCapability,
 ] as const

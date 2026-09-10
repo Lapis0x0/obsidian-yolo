@@ -642,6 +642,9 @@ export const it: DeepPartial<TranslationKeys> = {
       builtinBashLabel: 'Terminale virtuale',
       builtinBashDesc:
         'Cerca e ispeziona i file del vault, più operazioni su percorsi mkdir/mv/rm',
+      builtinVaultSearchLabel: 'Ricerca nel vault',
+      builtinVaultSearchDesc:
+        'Cerca nel vault per significato, combinando il recupero vettoriale delle knowledge base con la corrispondenza per parole chiave.',
       safetyControls: 'Controlli di sicurezza',
       safetyControlsDesc:
         'Configura una revisione aggiuntiva prima che gli agent eseguano operazioni rischiose sui file.',

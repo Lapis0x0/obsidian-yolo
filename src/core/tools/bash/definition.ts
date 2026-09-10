@@ -1,4 +1,3 @@
-import type { KnowledgeBase } from '../../../settings/schema/setting.types'
 import type { McpTool } from '../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import {
@@ -12,8 +11,6 @@ import {
   truncateBashOutputForContext,
 } from '../../agent/bash/outputBudget'
 import { createVaultBashFileSystem } from '../../agent/bash/vaultBashFileSystem'
-import { createVaultBashSearch } from '../../agent/bash/vaultBashSearch'
-import { describeKnowledgeBaseCatalog } from '../../rag/knowledgeBaseCatalog'
 import {
   acquireRuntimeComponent,
   isRuntimeComponentEnabled,
@@ -25,15 +22,8 @@ import { getTextArg } from '../tool-args'
 // (`src/core/mcp/localFileTools.ts`). `getMcpTool` only ever describes the
 // protocol shape — it stays unconditional; whether the tool is currently
 // offered is `isAvailable`'s job (see below, D6b).
-/**
- * @param knowledgeBases When given, the `search --kb` hint lists the
- * configured knowledge bases by name; the settings-agnostic catalog omits it
- * and `applyDynamicToolDescriptions` fills it in per request.
- */
-export function buildBashToolDescription(
-  knowledgeBases?: readonly KnowledgeBase[],
-): string {
-  return `A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate \`fs_read\` tool — this shell has no read command. To search, use the \`search [-n N] [--kb "NAME"] "query" [path]\` command inside this shell (hybrid RAG + keyword retrieval; \`--kb\` restricts semantic retrieval to one knowledge base by name).${knowledgeBases ? ` ${describeKnowledgeBaseCatalog(knowledgeBases)}` : ''} Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate \`fs_edit\` or \`fs_write\` tool instead.`
+export function buildBashToolDescription(): string {
+  return `A sandboxed virtual shell over the vault, mounted at /vault (cwd defaults there); nothing outside /vault exists. To read a file, call the separate \`fs_read\` tool — this shell has no read command. To search by meaning, call the separate \`vault_search\` tool; grep and find work here for literal matches. Path operations — mkdir, mv, rm — run directly here. Content writes are unavailable here — call the separate \`fs_edit\` or \`fs_write\` tool instead.`
 }
 
 const BASH_MCP_TOOL: Omit<McpTool, 'name'> = {
@@ -97,7 +87,6 @@ export const bashDefinition = defineTool({
       app,
       settings,
       workspaceScope,
-      ragAccess,
       signal,
       toolCallId,
       bashApprovalMode,
@@ -132,13 +121,6 @@ export const bashDefinition = defineTool({
       const session = lease.api.createSession({
         fs,
         confirmDangerousOperation,
-        search: createVaultBashSearch({
-          app,
-          settings,
-          ragAccess,
-          workspaceScope,
-          signal,
-        }),
         signal,
         readOnly: bashReadOnly ?? false,
       })

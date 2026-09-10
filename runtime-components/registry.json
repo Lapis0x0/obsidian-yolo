@@ -11,8 +11,8 @@
       "descriptionKey": "settings.modules.runtimeComponents.bashEngine.description",
       "impactKey": "settings.modules.runtimeComponents.bashEngine.impact",
       "entry": "runtime-components/bash-engine/dist/entry.js",
-      "byteSize": 1279381,
-      "sha256": "4d3486fab4f01c5c82964e2c0678cc4d90b58cc1bbf43c5b877f521ce3e6d35a"
+      "byteSize": 1277558,
+      "sha256": "a980c278135e905bab64c4603dc15857c3ba87ee98ae822c45a85188fbbf96c8"
     },
     {
       "id": "embedding-engine",

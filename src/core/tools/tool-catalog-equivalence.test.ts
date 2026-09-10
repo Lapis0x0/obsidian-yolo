@@ -53,6 +53,9 @@ const EXPECTED_ORDER_WITH_BASH = [
   'read_file',
   'write_file',
   'edit_file',
+  // `vault_search` (docs/plans/09-10-vault-search) — appended for the same
+  // reason.
+  'vault_search',
 ]
 
 function expectCatalogMatchesRegistry(

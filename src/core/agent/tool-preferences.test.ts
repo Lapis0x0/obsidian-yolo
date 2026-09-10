@@ -274,6 +274,7 @@ describe('tool-preferences defaults', () => {
           'js_sandbox',
           'subagent_delegation',
           'native_files',
+          'vault_search',
         ].sort(),
       )
     })

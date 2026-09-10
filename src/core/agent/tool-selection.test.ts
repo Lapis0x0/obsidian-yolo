@@ -412,7 +412,7 @@ describe('applyDynamicToolDescriptions', () => {
   const settings = { knowledgeBases } as unknown as YoloSettings
   const tools: McpTool[] = [
     {
-      name: 'yolo_local__bash',
+      name: 'yolo_local__vault_search',
       description: 'static',
       inputSchema: { type: 'object', properties: {} },
     },
@@ -423,26 +423,37 @@ describe('applyDynamicToolDescriptions', () => {
     },
   ]
 
-  it('lists the configured knowledge bases in bash and js_eval descriptions', () => {
-    const [bash, jsEval] = applyDynamicToolDescriptions(tools, {
+  const knowledgeBaseArgDescription = (tool: McpTool): string =>
+    (
+      (tool.inputSchema.properties?.knowledgeBase ?? {}) as {
+        description?: string
+      }
+    ).description ?? ''
+
+  it("lists the configured knowledge bases in vault_search's knowledgeBase argument and js_eval's description", () => {
+    const [vaultSearch, jsEval] = applyDynamicToolDescriptions(tools, {
       jsSandboxSettings: { allowDbQuery: true },
       settings,
     })
-    for (const tool of [bash, jsEval]) {
-      expect(tool.description).toContain('- 读书笔记 - 书摘与书评')
-      expect(tool.description).toContain('- Work')
+    for (const text of [
+      knowledgeBaseArgDescription(vaultSearch),
+      jsEval.description,
+    ]) {
+      expect(text).toContain('- 读书笔记 - 书摘与书评')
+      expect(text).toContain('- Work')
     }
-    expect(bash.description).toContain('--kb')
     expect(jsEval.description).toContain(
       '$db.search(query, limit?, knowledgeBase?)',
     )
   })
 
   it('tells the model when no knowledge base exists', () => {
-    const [bash] = applyDynamicToolDescriptions(tools, {
+    const [vaultSearch] = applyDynamicToolDescriptions(tools, {
       jsSandboxSettings: {},
       settings: { knowledgeBases: [] } as unknown as YoloSettings,
     })
-    expect(bash.description).toContain('No knowledge bases are configured')
+    expect(knowledgeBaseArgDescription(vaultSearch)).toContain(
+      'No knowledge bases are configured',
+    )
   })
 })

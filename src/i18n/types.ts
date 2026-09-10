@@ -463,6 +463,8 @@ export type TranslationKeys = {
       builtinFsEditDesc?: string
       builtinBashLabel?: string
       builtinBashDesc?: string
+      builtinVaultSearchLabel?: string
+      builtinVaultSearchDesc?: string
       fsEditReviewToggle?: string
       fsEditReviewToggleDesc?: string
       safetyControls?: string

@@ -113,7 +113,7 @@ export type PathVisibility = 'visible' | 'hidden' | 'out-of-scope'
  * this vault path" should defer to, for an already-resolved, literal vault
  * path (not a raw tool argument that might still be a wikilink — see
  * `describePathDenial`'s doc comment). Before this existed, `fs_read`,
- * `security-boundary.ts`, `vaultBashFileSystem.ts`, `vaultBashSearch.ts`,
+ * `security-boundary.ts`, `vaultBashFileSystem.ts`, the vault search tool,
  * and `jsSandboxTool.ts` each re-paired `isWithinYoloUserDataRoot` +
  * `isPathAllowedByScope` by hand, and the priority between them (hidden
  * always wins, unconditionally) was implicit in call order rather than

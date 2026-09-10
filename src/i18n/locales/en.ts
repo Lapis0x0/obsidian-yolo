@@ -629,6 +629,9 @@ export const en: TranslationKeys = {
       builtinBashLabel: 'Virtual terminal',
       builtinBashDesc:
         'Search and inspect vault files, plus mkdir/mv/rm path operations',
+      builtinVaultSearchLabel: 'Vault Search',
+      builtinVaultSearchDesc:
+        'Search the vault by meaning, combining knowledge-base vector retrieval with keyword matching.',
       safetyControls: 'Safety Controls',
       safetyControlsDesc:
         'Configure extra review behavior before agents perform risky file operations.',

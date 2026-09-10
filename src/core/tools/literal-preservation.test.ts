@@ -51,6 +51,7 @@ const EXPECTED_TOOL_NAMES = [
   'read_file',
   'write_file',
   'edit_file',
+  'vault_search',
 ] as const
 
 const EXPECTED_CAPABILITY_IDS = [
@@ -66,6 +67,7 @@ const EXPECTED_CAPABILITY_IDS = [
   'terminal',
   'subagent_delegation',
   'native_files',
+  'vault_search',
 ] as const
 
 // The load-bearing assertions. Widening either union to `string` breaks
