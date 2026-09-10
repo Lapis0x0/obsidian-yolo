@@ -17,6 +17,7 @@ import {
   FileText,
   FolderClosedIcon,
   MessageSquare,
+  Zap,
 } from 'lucide-react'
 import { TFile } from 'obsidian'
 import {
@@ -34,6 +35,7 @@ import { useApp } from '../../../../../contexts/app-context'
 import { useLanguage } from '../../../../../contexts/language-context'
 import { useSettings } from '../../../../../contexts/settings-context'
 import type { ChatMode } from '../../../../../core/agent/chat-mode'
+import { availableBuiltinChatModes } from '../../../../../core/agent/chat-mode'
 import { Assistant } from '../../../../../types/assistant.types'
 import { ChatModel } from '../../../../../types/chat-model.types'
 import {
@@ -124,14 +126,46 @@ type MentionMenuMode = 'direct-search' | 'entry'
 type MentionChatMode = ChatMode
 
 /**
- * The `/` switcher offers the two modes that exist on every device and carry
- * no extra state of their own. Max is deliberately not here: it is
- * desktop-only and has its own trust profile, both of which the full mode
- * selector shows and this one-line menu cannot. A conversation already in
- * Max highlights Agent instead (`narrowToMentionChatMode`), the same way a
- * module chat mode does.
+ * The switcher offers every built-in mode selectable on this device — the
+ * same list the full mode selector builds from, so Max appears here on
+ * desktop and is absent on mobile without this menu restating the rule (see
+ * `availableBuiltinChatModes`). What it deliberately does not carry is the
+ * per-mode YOLO switch: picking a mode here only changes the capability, and
+ * the trust flag each tool mode owns stays whatever the full selector last
+ * set. Module chat modes are still out of scope — they are registry-resolved
+ * and highlight Agent instead (`narrowToMentionChatMode`).
  */
-const MENTION_CHAT_MODES: readonly MentionChatMode[] = ['ask', 'agent']
+const mentionChatModes = (): readonly MentionChatMode[] =>
+  availableBuiltinChatModes()
+
+const MENTION_CHAT_MODE_TEXT: Record<
+  'ask' | 'agent' | 'max',
+  {
+    labelKey: string
+    labelFallback: string
+    descKey: string
+    descFallback: string
+  }
+> = {
+  ask: {
+    labelKey: 'chatMode.ask',
+    labelFallback: 'Ask',
+    descKey: 'chatMode.askDesc',
+    descFallback: 'Ask, refine, create',
+  },
+  agent: {
+    labelKey: 'chatMode.agent',
+    labelFallback: 'Agent',
+    descKey: 'chatMode.agentDesc',
+    descFallback: 'Tools for complex tasks',
+  },
+  max: {
+    labelKey: 'chatMode.max',
+    labelFallback: 'Max',
+    descKey: 'chatMode.maxDesc',
+    descFallback: 'Work directly on local files and the terminal (desktop)',
+  },
+}
 
 type MentionTypeaheadOptionPayload =
   | {
@@ -266,12 +300,13 @@ function MentionsTypeaheadMenuItem(
       'yolo-rail-menu-row-icon',
     )
   } else if (option.payload.kind === 'mode') {
-    iconNode =
-      option.payload.mode === 'agent' ? (
-        <Bot size={15} className="yolo-rail-menu-row-icon" />
-      ) : (
-        <MessageSquare size={15} className="yolo-rail-menu-row-icon" />
-      )
+    const ModeIcon =
+      option.payload.mode === 'agent'
+        ? Bot
+        : option.payload.mode === 'max'
+          ? Zap
+          : MessageSquare
+    iconNode = <ModeIcon size={15} className="yolo-rail-menu-row-icon" />
   } else {
     const Icon = getMentionableIcon(option.payload.mentionable)
     if (Icon) {
@@ -449,19 +484,22 @@ export default function NewMentionsPlugin({
   const chatModeEntries = useMemo(() => {
     if (!onSelectChatMode) return []
     const modeKeys: MentionChatMode[] = allowAgentModeOption
-      ? [...MENTION_CHAT_MODES]
+      ? [...mentionChatModes()]
       : ['ask']
-    return modeKeys.map((mode) => ({
-      mode,
-      label:
-        mode === 'agent'
-          ? t('chatMode.agent', 'Agent')
-          : t('chatMode.ask', 'Ask'),
-      subtitle:
-        mode === 'agent'
-          ? t('chatMode.agentDesc', 'Enable tool calling capabilities')
-          : t('chatMode.askDesc', 'Ask, refine, create'),
-    }))
+    return modeKeys.flatMap((mode) => {
+      const text =
+        mode === 'ask' || mode === 'agent' || mode === 'max'
+          ? MENTION_CHAT_MODE_TEXT[mode]
+          : null
+      if (!text) return []
+      return [
+        {
+          mode,
+          label: t(text.labelKey, text.labelFallback),
+          subtitle: t(text.descKey, text.descFallback),
+        },
+      ]
+    })
   }, [allowAgentModeOption, onSelectChatMode, t])
 
   const toModeOption = useCallback(

@@ -240,19 +240,18 @@ export const resolveYoloByMode = (
 }
 
 /**
- * Narrows a chat mode down to what the mention menu's `/` mode switcher
- * understands (`MENTION_CHAT_MODES` = `['ask', 'agent']` only — see
- * `MentionPlugin.tsx`, consumed from `ChatUserInput.tsx`). Max and module
- * chat modes are agent-like (tools + capability profile), so they narrow to
- * `'agent'` rather than dropping out as `undefined` — otherwise the menu
- * would highlight `'ask'` as the current mode while the conversation is
- * actually running one of them.
+ * Narrows a chat mode down to what the mention menu's mode switcher
+ * understands (the built-in modes selectable on this device — see
+ * `MentionPlugin.tsx`, consumed from `ChatUserInput.tsx`). Built-in modes
+ * pass through unchanged; a module chat mode is agent-like (tools +
+ * capability profile) and so narrows to `'agent'` rather than dropping out
+ * as `undefined` — otherwise the menu would highlight `'ask'` as the current
+ * mode while the conversation is actually running one of them.
  */
 export function narrowToMentionChatMode(
   mode: ChatModeSelectValue | undefined,
-): 'ask' | 'agent' | undefined {
-  if (mode === 'ask') return 'ask'
-  if (mode === 'agent' || mode === 'max') return 'agent'
+): 'ask' | 'agent' | 'max' | undefined {
+  if (mode === 'ask' || mode === 'agent' || mode === 'max') return mode
   if (mode !== undefined && isModuleChatMode(mode)) return 'agent'
   return undefined
 }

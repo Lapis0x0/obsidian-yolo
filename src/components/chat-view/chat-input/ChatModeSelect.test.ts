@@ -222,16 +222,13 @@ describe('resolveVisibleModuleModeOptions', () => {
 })
 
 describe('narrowToMentionChatMode', () => {
-  it('passes ask/agent through unchanged', () => {
+  it('passes every built-in mode through unchanged — the mention menu lists the same built-ins the full selector does', () => {
     expect(narrowToMentionChatMode('ask')).toBe('ask')
     expect(narrowToMentionChatMode('agent')).toBe('agent')
+    expect(narrowToMentionChatMode('max')).toBe('max')
   })
 
-  it('narrows Max to agent — the compact / switcher does not offer it, so the highlight has to land on the nearest mode it does offer', () => {
-    expect(narrowToMentionChatMode('max')).toBe('agent')
-  })
-
-  it('narrows a module chat mode to agent — the mention menu only understands CHAT_MODES (ask/agent), so a module mode must fall back to the closest built-in mode rather than the unrelated ask', () => {
+  it('narrows a module chat mode to agent — the mention menu only understands built-in modes, so a module mode must fall back to the closest built-in mode rather than the unrelated ask', () => {
     expect(narrowToMentionChatMode('module:learning:chat')).toBe('agent')
   })
 
