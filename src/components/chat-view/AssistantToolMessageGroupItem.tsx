@@ -209,7 +209,7 @@ type AssistantMessageRenderPlan = {
   hasToolResponseForThis: boolean
   hidden: boolean
   visible: boolean
-  rendersOnlyReasoning: boolean
+  rendersOnlyRunAffordances: boolean
 }
 
 // Single source of truth for "does this assistant message render anything",
@@ -267,19 +267,21 @@ const getAssistantMessageRenderPlan = ({
         shouldShowAssistantToolPreview,
     )
 
-  // Renders nothing but a thinking block — foldable into a tool-run summary
-  // alongside the tool cards it interleaves with.
-  const rendersOnlyReasoning =
+  // Renders nothing but the run's own affordances: a thinking block, the
+  // in-flight tool-call preview, or the empty shell a turn opens with before
+  // the provider has sent anything. None of that is narrative — it all
+  // describes the tool run this message sits inside — so it folds into that
+  // run's summary line instead of ending the run. Only narrative output
+  // (an answer, annotations, a provider-side search, an error card) ends it.
+  const rendersOnlyRunAffordances =
     visible &&
-    hasVisibleReasoning &&
-    !message.content &&
-    !message.annotations &&
+    !hasVisibleContent &&
+    !hasVisibleAnnotations &&
     !hostedWebSearchMessage &&
     !(
       message.metadata?.generationState === 'error' &&
       Boolean(message.metadata?.errorMessage)
-    ) &&
-    !shouldShowAssistantToolPreview
+    )
 
   return {
     hostedWebSearchMessage,
@@ -287,7 +289,7 @@ const getAssistantMessageRenderPlan = ({
     hasToolResponseForThis,
     hidden,
     visible,
-    rendersOnlyReasoning,
+    rendersOnlyRunAffordances,
   }
 }
 
@@ -489,7 +491,18 @@ type ToolRunSegment = {
    */
   editSummary: GroupEditSummary | null
   requiresUserAction: boolean
+  /**
+   * 本段此刻还有事情没做完：有请求还没建出工具消息、有调用还没落定，或者成员
+   * 助手消息仍在流式生成。折叠行不会因此多出或少掉任何一个字——它只用来给整
+   * 行文字挂上光流动画，所以这个状态的开关是零布局代价的。
+   */
+  isActive: boolean
 }
+
+const isSettledToolCallStatus = (status: ToolCallResponseStatus): boolean =>
+  status !== ToolCallResponseStatus.Running &&
+  status !== ToolCallResponseStatus.PendingApproval &&
+  status !== ToolCallResponseStatus.AwaitingUserInput
 
 const getFileBaseName = (path: string): string => {
   const segments = path.split('/')
@@ -525,30 +538,57 @@ const buildToolRunSummaryDisplay = (
   segment: ToolRunSegment,
   t: (keyPath: string, fallback?: string) => string,
 ): {
-  clauses: ReactNode[]
+  clauses: { key: string; node: ReactNode }[]
   separator: string
   stats: [number, number] | null
 } => {
   const { editSummary } = segment
-  const clauses: ReactNode[] = []
+  const clauses: { key: string; node: ReactNode }[] = []
+
+  // 按 {count} 拆模板而不是直接插值：数字必须单独成节点，才能在它变化时靠换
+  // key 重挂来重播入场动画。拆而不是插值的理由和下面 {tool} 那处一样——数字
+  // 在句子里的位置由各语言的模板决定，这里不能假设它在末尾。
+  const renderCountLabel = (
+    template: string,
+    count: number,
+    replacements: Record<string, string> = {},
+  ): ReactNode => {
+    const fill = (text: string) =>
+      Object.entries(replacements).reduce(
+        (filled, [token, value]) => filled.replace(`{${token}}`, value),
+        text,
+      )
+    const [before, after = ''] = template.split('{count}')
+    return (
+      <>
+        {fill(before)}
+        <span key={count} className="yolo-tool-run-summary__count">
+          {count}
+        </span>
+        {fill(after)}
+      </>
+    )
+  }
 
   if (editSummary && editSummary.totalFiles === 1) {
     const file = editSummary.files[0]
     const label = EDIT_FILE_SUMMARY_LABELS[file.operation]
-    clauses.push(
-      t(label.key, label.fallback).replace(
+    clauses.push({
+      key: 'edit-file',
+      node: t(label.key, label.fallback).replace(
         '{name}',
         getFileBaseName(file.path),
       ),
-    )
+    })
   } else if (editSummary && editSummary.totalFiles >= 2) {
     const label = TOOL_RUN_SUMMARY_LABELS.edit
-    clauses.push(
-      t(label.key, label.fallback).replace(
-        '{count}',
-        String(editSummary.totalFiles),
+    clauses.push({
+      key: 'edit',
+      node: renderCountLabel(
+        t(label.key, label.fallback),
+        editSummary.totalFiles,
       ),
-    )
+    })
   }
 
   const pushBucketClause = (bucket: ToolRunSummaryBucket) => {
@@ -557,7 +597,10 @@ const buildToolRunSummaryDisplay = (
       return
     }
     const label = TOOL_RUN_SUMMARY_LABELS[bucket]
-    clauses.push(t(label.key, label.fallback).replace('{count}', String(count)))
+    clauses.push({
+      key: bucket,
+      node: renderCountLabel(t(label.key, label.fallback), count),
+    })
   }
 
   // `other` is appended after the tool sets rather than in bucket order: it is
@@ -571,11 +614,14 @@ const buildToolRunSummaryDisplay = (
 
   for (const tally of segment.toolSetTallies) {
     if (!tally.soleToolName) {
-      clauses.push(
-        t(TOOL_SET_SUMMARY_LABEL.key, TOOL_SET_SUMMARY_LABEL.fallback)
-          .replace('{name}', tally.label)
-          .replace('{count}', String(tally.count)),
-      )
+      clauses.push({
+        key: `set:${tally.setId}`,
+        node: renderCountLabel(
+          t(TOOL_SET_SUMMARY_LABEL.key, TOOL_SET_SUMMARY_LABEL.fallback),
+          tally.count,
+          { name: tally.label },
+        ),
+      })
       continue
     }
     // The tool name sits a layer below the set name, so it gets its own span.
@@ -586,15 +632,18 @@ const buildToolRunSummaryDisplay = (
       TOOL_SET_SUMMARY_SINGLE_LABEL.key,
       TOOL_SET_SUMMARY_SINGLE_LABEL.fallback,
     ).split('{tool}')
-    clauses.push(
-      <>
-        {before.replace('{name}', tally.label)}
-        <span className="yolo-tool-run-summary__tool">
-          {tally.soleToolName}
-        </span>
-        {(after ?? '').replace('{name}', tally.label)}
-      </>,
-    )
+    clauses.push({
+      key: `set:${tally.setId}`,
+      node: (
+        <>
+          {before.replace('{name}', tally.label)}
+          <span className="yolo-tool-run-summary__tool">
+            {tally.soleToolName}
+          </span>
+          {(after ?? '').replace('{name}', tally.label)}
+        </>
+      ),
+    })
   }
 
   pushBucketClause('other')
@@ -602,6 +651,8 @@ const buildToolRunSummaryDisplay = (
   return {
     clauses,
     separator: editSummary ? ', ' : ' · ',
+    // 折叠状态下成员一律不渲染，所以还没回来的那次调用只能由这行说出来。它是
+    // 纯追加的行尾标记：出现和消失都不碰前面任何一个字，也不改变它们的位置。
     stats:
       editSummary && editSummary.totalLineStatsAvailable
         ? [editSummary.totalAddedLines, editSummary.totalRemovedLines]
@@ -910,16 +961,19 @@ function AssistantToolMessageGroupItem({
     [displayedMessages, hidePendingAssistantPlaceholders],
   )
 
-  // A run of two or more tool calls — plus any thinking-only assistant
-  // messages interleaved with them — gets a stable summary as soon as it is
-  // observed. Details stay collapsed by default; only a run requiring user
-  // action expands automatically so approval and answer controls remain
-  // immediately available.
+  // A run of two or more tool calls — plus the assistant messages that only
+  // narrate it (thinking blocks, the in-flight tool preview, the empty shell a
+  // turn opens with) — gets a stable summary as soon as it is observed.
+  // Details stay collapsed by default; only a run requiring user action
+  // expands automatically so approval and answer controls remain immediately
+  // available.
   const toolRunSegments = useMemo(() => {
     const segments: ToolRunSegment[] = []
     let firstMemberIndex = -1
     let lastMemberIndex = -1
     let toolMessages: ChatToolMessage[] = []
+    let pendingRequestCount = 0
+    let hasStreamingMember = false
 
     const addMember = (index: number) => {
       if (firstMemberIndex === -1) {
@@ -931,7 +985,11 @@ function AssistantToolMessageGroupItem({
     const close = (boundaryIndex: number | null) => {
       if (toolMessages.length > 0) {
         const toolCalls = toolMessages.flatMap((message) => message.toolCalls)
-        if (toolCalls.length >= 2) {
+        // A request the model has emitted but whose tool message does not exist
+        // yet counts toward the threshold. Without it the summary line would
+        // only materialize one beat later, when that tool message lands, and
+        // everything below it would shift by a row in the meantime.
+        if (toolCalls.length + pendingRequestCount >= 2) {
           const bucketCounts: ToolRunSegment['bucketCounts'] = {}
           const bySet = new Map<
             string,
@@ -974,12 +1032,20 @@ function AssistantToolMessageGroupItem({
                 call.response.status ===
                   ToolCallResponseStatus.AwaitingUserInput,
             ),
+            isActive:
+              pendingRequestCount > 0 ||
+              hasStreamingMember ||
+              toolCalls.some(
+                (call) => !isSettledToolCallStatus(call.response.status),
+              ),
           })
         }
       }
       firstMemberIndex = -1
       lastMemberIndex = -1
       toolMessages = []
+      pendingRequestCount = 0
+      hasStreamingMember = false
     }
 
     displayedMessages.forEach((message, index) => {
@@ -990,8 +1056,16 @@ function AssistantToolMessageGroupItem({
       }
       const plan =
         message.role === 'assistant' ? messageRenderPlans[index] : null
-      if (plan?.rendersOnlyReasoning) {
+      if (message.role === 'assistant' && plan?.rendersOnlyRunAffordances) {
         addMember(index)
+        if (plan.shouldShowAssistantToolPreview) {
+          // Only an unanswered request belongs here. A thinking-only message
+          // whose requests already have a tool message would double-count.
+          pendingRequestCount += message.toolCallRequests?.length ?? 0
+        }
+        if (message.metadata?.generationState === 'streaming') {
+          hasStreamingMember = true
+        }
         return
       }
       const rendersNothing =
@@ -1496,15 +1570,15 @@ function AssistantToolMessageGroupItem({
                   type="button"
                   className={`yolo-tool-run-summary${
                     isSegmentExpanded ? ' is-expanded' : ''
-                  }`}
+                  }${toolRunSegment.isActive ? ' is-active' : ''}`}
                   aria-expanded={isSegmentExpanded}
                   onClick={() => toggleToolRunSegment(toolRunSegment.key)}
                 >
                   <span className="yolo-tool-run-summary__text">
                     {summaryDisplay.clauses.map((clause, clauseIndex) => (
-                      <Fragment key={clauseIndex}>
+                      <Fragment key={clause.key}>
                         {clauseIndex > 0 ? summaryDisplay.separator : null}
-                        {clause}
+                        {clause.node}
                       </Fragment>
                     ))}
                   </span>

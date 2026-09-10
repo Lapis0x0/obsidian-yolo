@@ -2965,6 +2965,92 @@ button.yolo-mermaid-modal-control:disabled {
   color: var(--text-faint);
 }
 
+/* 段还在跑时，整行文字被一条亮带反复扫过。折叠行的文字本身一个字都不变、也不
+ * 增删任何节点，所以这个状态的开关完全没有布局代价——高度和宽度全程不动。
+ *
+ * 动效例外说明：这里动的是 background-position 而不是 opacity / transform。
+ * 光流的本体就是渐变在文字里的位移，用 transform 表达不了；它只触发绘制、不触
+ * 发布局，代价可控。周期同理不取 motion token——token 覆盖的是入场/退场/微反馈
+ * 这类一次性过渡，而这是一条常驻循环。
+ *
+ * 渐变两端各留一段纯常态色，且首尾帧的可视窗口都落在这两段里：这样无论动画停
+ * 在哪一帧（reduced-motion 的全局兜底会把时长压到 0.01ms，等于冻在终帧），文字
+ * 都是均匀的 text-muted，不会留下半截高光。因此这里不需要、也不应该再写单独的
+ * reduced-motion 关闭块。 */
+.yolo-tool-run-summary.is-active .yolo-tool-run-summary__text {
+  background-image: linear-gradient(
+    90deg,
+    var(--text-muted) 0%,
+    var(--text-muted) 40%,
+    var(--text-normal) 50%,
+    var(--text-muted) 60%,
+    var(--text-muted) 100%
+  );
+  background-size: 300% 100%;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: yolo-tool-run-summary-shimmer 1.8s var(--yolo-anim-ease-linear)
+    infinite;
+}
+
+/* 点名的工具名平时比摘要更淡（text-faint）。光流期间它必须让出自己的填充色，
+ * 否则父元素裁剪出来的渐变到它这里就断了，整行会亮一段、暗一段。 */
+.yolo-tool-run-summary.is-active .yolo-tool-run-summary__tool {
+  -webkit-text-fill-color: inherit;
+}
+
+@keyframes yolo-tool-run-summary-shimmer {
+  from {
+    background-position: 100% 50%;
+  }
+  to {
+    background-position: 0% 50%;
+  }
+}
+
+/* 计数变化时数字重新落一次位。节点靠 React 换 key 重挂来触发，参照推理强度那
+ * 个档位文字的切换（src/styles/chat/input.css 的 __header-current）。
+ *
+ * 关键约束：光流是靠 background-clip:text 把渐变裁到文字上的，而只要子节点身
+ * 上挂了动画，它就会被提升成独立的合成层、从父元素的裁剪区里掉出去；此时它自
+ * 己的填充色是继承来的 transparent，结果就是数字整段动画期间凭空消失。所以每
+ * 一帧都显式给它实色填充，让它在动画期间自己画自己。这个填充**只能写在
+ * keyframes 里**，不能写进下面的基础规则——动画一结束元素不再是合成层，基础
+ * 样式里的继承透明会让它重新回到父元素的渐变中，整行才是连续的。
+ *
+ * 动效例外说明：blur 不是 opacity / transform，但「散开再聚拢」是这个切换的
+ * 主体观感，去掉就只剩生硬的位移；它只触发绘制、不触发布局。reduced-motion
+ * 的全局兜底把时长压到 0.01ms，动画瞬间结束、数字直接落位，无需单独关闭块。 */
+.yolo-tool-run-summary__count {
+  display: inline-block;
+  /* 等宽数字：6→7 这种同位数变化不该让后面的文字左右挪一下。 */
+  font-variant-numeric: tabular-nums;
+  animation: yolo-tool-run-summary-count-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-tool-run-summary-count-in {
+  0% {
+    -webkit-text-fill-color: var(--text-muted);
+    opacity: 0;
+    filter: blur(2px);
+    transform: translateY(4px);
+  }
+  55% {
+    -webkit-text-fill-color: var(--text-muted);
+    opacity: 1;
+    filter: blur(0.5px);
+  }
+  100% {
+    -webkit-text-fill-color: var(--text-muted);
+    opacity: 1;
+    filter: blur(0);
+    transform: translateY(0);
+  }
+}
+
 /* 编辑段的增删行数：放在 __text 之外的固定宽度兄弟节点，这样整行过长触发
  * 省略号截断时，被吃掉的是前面的文字，而不是最该被看到的 +N/-M。 */
 .yolo-tool-run-summary__stats {
