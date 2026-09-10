@@ -191,6 +191,7 @@ export const zh: TranslationKeys = {
         '流式主请求等待多久后判定为超时。无论是否启用自动恢复，此超时都会生效；若已启用自动恢复，超时后会自动改用非流式再尝试一次。默认 60 秒。',
       globalSystemPrompt: '全局系统提示词',
       globalSystemPromptDesc: '该提示将追加到每次聊天的最前面。',
+      globalSystemPromptPlaceholder: '写 ![[笔记名]] 可嵌入该笔记全文',
       continuationSystemPrompt: '默认续写系统提示词',
       continuationSystemPromptDesc:
         '用于续写功能的系统消息。留空将使用内置默认值。',
@@ -642,6 +643,7 @@ export const zh: TranslationKeys = {
       editorChooseIcon: '选择图标',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc: '该 Agent 的主行为指令。',
+      editorSystemPromptPlaceholder: '写 ![[笔记名]] 可嵌入该笔记全文',
       editorSystemPromptExpand: '放大编辑',
       editorSystemPromptCollapse: '关闭放大视图',
       editorEnableProjectInstructions: '读取项目指令文件',

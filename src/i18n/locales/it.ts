@@ -240,6 +240,8 @@ export const it: DeepPartial<TranslationKeys> = {
       globalSystemPrompt: 'Prompt di sistema globale',
       globalSystemPromptDesc:
         "Questo prompt viene aggiunto all'inizio di ogni conversazione chat.",
+      globalSystemPromptPlaceholder:
+        'Scrivi ![[Nota]] per incorporare il testo completo di quella nota',
       continuationSystemPrompt:
         'Prompt di sistema di continuazione predefinito',
       continuationSystemPromptDesc:
@@ -710,6 +712,8 @@ export const it: DeepPartial<TranslationKeys> = {
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc:
         'Istruzione comportamentale principale per questo agent.',
+      editorSystemPromptPlaceholder:
+        'Scrivi ![[Nota]] per incorporare il testo completo di quella nota',
       editorSystemPromptExpand: 'Espandi editor',
       editorSystemPromptCollapse: 'Chiudi editor espanso',
       editorEnableProjectInstructions: 'Carica file di istruzioni del progetto',

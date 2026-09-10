@@ -197,6 +197,7 @@ export type TranslationKeys = {
       primaryRequestTimeoutDesc?: string
       globalSystemPrompt: string
       globalSystemPromptDesc: string
+      globalSystemPromptPlaceholder?: string
       continuationSystemPrompt: string
       continuationSystemPromptDesc: string
       chatTitlePrompt: string
@@ -515,6 +516,7 @@ export type TranslationKeys = {
       editorChooseIcon?: string
       editorSystemPrompt?: string
       editorSystemPromptDesc?: string
+      editorSystemPromptPlaceholder?: string
       editorSystemPromptExpand?: string
       editorSystemPromptCollapse?: string
       editorEnableProjectInstructions?: string

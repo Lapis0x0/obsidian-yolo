@@ -267,6 +267,9 @@ export function DefaultModelsAndPromptsSection({
             <ObsidianSetting className="yolo-settings-textarea yolo-models-textarea-card-body">
               <ObsidianTextArea
                 value={settings.systemPrompt}
+                placeholder={t(
+                  'settings.defaults.globalSystemPromptPlaceholder',
+                )}
                 onChange={(value: string) => {
                   commitSettingsUpdate({ systemPrompt: value }, 'systemPrompt')
                 }}

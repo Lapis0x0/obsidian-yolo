@@ -71,6 +71,7 @@ import {
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 import { stableStringify } from '../json/stableStringify'
 import { collectWikilinkPaths } from '../llm/annotate-wikilinks'
+import { expandPromptEmbeds } from '../llm/expand-prompt-embeds'
 import { isImageTFile, tFileToImageDataUrl } from '../llm/image'
 import {
   chatModelSupportsPdf,
@@ -2191,15 +2192,22 @@ ${entries}
     const sections: SystemPromptSections = []
     const currentAssistant = useAssistant ? this.getCurrentAssistant() : null
 
-    // Custom system prompt (global)
-    const customInstruction = this.settings.systemPrompt.trim()
+    // Custom system prompt (global). `![[Note]]` embeds written here are
+    // expanded to the note's text in place; see expandPromptEmbeds. This and
+    // the assistant prompt below are the only two positions that expand —
+    // both are authored by the user and only ever read by the model.
+    const customInstruction = (
+      await expandPromptEmbeds(this.app, this.settings.systemPrompt)
+    ).trim()
 
     // Assistant instructions — bucket: system (assistant prompt is system-prompt-side).
     // Module chat modes (`useAssistant === false`) inject their persona in
     // the exact same slot instead — an in-place substitution, not an
     // addition, per `ChatContextPolicy`.
     if (currentAssistant?.systemPrompt) {
-      const resolvedAssistantSystemPrompt = currentAssistant.systemPrompt.trim()
+      const resolvedAssistantSystemPrompt = (
+        await expandPromptEmbeds(this.app, currentAssistant.systemPrompt)
+      ).trim()
       if (resolvedAssistantSystemPrompt) {
         sections.push({
           bucket: 'system',

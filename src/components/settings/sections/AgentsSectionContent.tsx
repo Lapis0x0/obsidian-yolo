@@ -1516,6 +1516,9 @@ export function AgentsSectionContent({
                 <ObsidianSetting className="yolo-settings-textarea">
                   <ObsidianTextArea
                     value={draftAgent.systemPrompt}
+                    placeholder={t(
+                      'settings.agent.editorSystemPromptPlaceholder',
+                    )}
                     onChange={(value) =>
                       setDraftAgent({ ...draftAgent, systemPrompt: value })
                     }
@@ -1578,6 +1581,9 @@ export function AgentsSectionContent({
                       <textarea
                         ref={expandedPromptTextareaRef}
                         className="yolo-agent-system-prompt-overlay-textarea"
+                        placeholder={t(
+                          'settings.agent.editorSystemPromptPlaceholder',
+                        )}
                         value={draftAgent.systemPrompt}
                         onChange={(e) =>
                           setDraftAgent({

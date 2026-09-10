@@ -223,6 +223,8 @@ export const en: TranslationKeys = {
       globalSystemPrompt: 'Global system prompt',
       globalSystemPromptDesc:
         'This prompt is added to the beginning of every chat conversation.',
+      globalSystemPromptPlaceholder:
+        "Write ![[Note]] to embed that note's full text",
       continuationSystemPrompt: 'Default continuation system prompt',
       continuationSystemPromptDesc:
         'Used as the system message when generating continuation text; leave empty to fall back to the built-in default.',
@@ -694,6 +696,8 @@ export const en: TranslationKeys = {
       editorChooseIcon: 'Choose icon',
       editorSystemPrompt: 'System prompt',
       editorSystemPromptDesc: 'Primary behavior instruction for this agent.',
+      editorSystemPromptPlaceholder:
+        "Write ![[Note]] to embed that note's full text",
       editorSystemPromptExpand: 'Expand editor',
       editorSystemPromptCollapse: 'Close expanded editor',
       editorEnableProjectInstructions: 'Load project instruction files',
