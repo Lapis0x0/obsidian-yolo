@@ -61,9 +61,12 @@ describe('TOOL_RENDERERS summary — tools with no header summary (unchanged)', 
     'context_prune_tool_results',
     'ask_user_question',
     'delegate_subagent',
-  ] as const)('%s has no summary function wired', (toolName) => {
-    expect(TOOL_RENDERERS[toolName].summary).toBeUndefined()
-  })
+  ] as const)(
+    '%s declares summary: null rather than omitting it',
+    (toolName) => {
+      expect(TOOL_RENDERERS[toolName].summary).toBeNull()
+    },
+  )
 })
 
 describe('TOOL_RENDERERS summary — fs_read', () => {
@@ -294,6 +297,34 @@ describe('load_tool_schemas summary (internal tool, not in TOOL_RENDERERS)', () 
     expect(
       getLoadToolSchemasChatSummary({ argumentsObject: {} }),
     ).toBeUndefined()
+  })
+})
+
+describe('TOOL_RENDERERS summary — vault_search', () => {
+  it('query only', () => {
+    expect(summarize('vault_search', { query: 'spaced repetition' })).toBe(
+      'spaced repetition',
+    )
+  })
+
+  it('appends the path and knowledge base that narrowed the search', () => {
+    expect(
+      summarize('vault_search', {
+        query: 'spaced repetition',
+        path: 'Notes/Learning',
+        knowledgeBase: 'Research',
+      }),
+    ).toBe('spaced repetition | Notes/Learning | Research')
+  })
+
+  it('long query: truncated at 60 like every other summary', () => {
+    expect(summarize('vault_search', { query: 'q'.repeat(80) })).toBe(
+      `${'q'.repeat(59)}...`,
+    )
+  })
+
+  it('empty query: no summary', () => {
+    expect(summarize('vault_search', { query: '   ' })).toBeUndefined()
   })
 })
 

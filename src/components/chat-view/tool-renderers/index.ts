@@ -10,6 +10,7 @@ import {
 } from '../../../core/tools/registry'
 import { terminalCommandRenderer } from '../../../core/tools/terminal_command/ui'
 import { getTodoWriteChatSummary } from '../../../core/tools/todo_write/chat-summary'
+import { getVaultSearchChatSummary } from '../../../core/tools/vault_search/chat-summary'
 import { getWebScrapeChatSummary } from '../../../core/tools/web_scrape/chat-summary'
 import { getWebSearchChatSummary } from '../../../core/tools/web_search/chat-summary'
 
@@ -50,10 +51,13 @@ import type { ToolRenderer } from './types'
  */
 export const TOOL_RENDERERS = {
   delegate_subagent: delegateSubagentRenderer,
-  context_prune_tool_results: genericRenderer,
-  context_compact: genericRenderer,
+  // a bookkeeping call with no argument worth a header.
+  context_prune_tool_results: { kind: 'generic', summary: null },
+  // a bookkeeping call with no argument worth a header.
+  context_compact: { kind: 'generic', summary: null },
   todo_write: { kind: 'generic', summary: getTodoWriteChatSummary },
-  ask_user_question: genericRenderer,
+  // the question itself renders in the card body.
+  ask_user_question: { kind: 'generic', summary: null },
   fs_read: { kind: 'generic', summary: getFsReadChatSummary },
   fs_edit: fileEditingRenderer,
   fs_write: fileEditingRenderer,
@@ -68,7 +72,7 @@ export const TOOL_RENDERERS = {
   read_file: { kind: 'generic', summary: getFileEditingPathChatSummary },
   write_file: fileEditingRenderer,
   edit_file: fileEditingRenderer,
-  vault_search: genericRenderer,
+  vault_search: { kind: 'generic', summary: getVaultSearchChatSummary },
 } satisfies Record<BuiltinToolName, ToolRenderer>
 
 /**

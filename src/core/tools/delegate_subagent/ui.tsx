@@ -90,4 +90,9 @@ const render = ({
 export const delegateSubagentRenderer: ToolRenderer = {
   kind: 'replace',
   render,
+  // Not "no summary" — its header summary is computed in `ToolMessage.tsx`
+  // (`getDelegateSubagentSummary`, applied as a response-independent
+  // override in `getHeadlineDisplayInfo`). Wiring one here too would give
+  // the same header two competing sources.
+  summary: null,
 }

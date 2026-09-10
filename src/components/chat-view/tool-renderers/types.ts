@@ -70,9 +70,9 @@ export type ToolRendererProps = {
  * narrows `labels` down to only the fields it actually reads (see
  * `terminal_command/chat-summary.ts` / `todo_write/chat-summary.ts`).
  *
- * Returns `undefined` for "no summary" — e.g. every tool that had no branch
- * in the old `if` chain (context_compact, context_prune_tool_results,
- * ask_user_question) simply omits this field.
+ * Returns `undefined` for "no summary" on a particular call — e.g. an empty
+ * query. A tool that should never show one declares `summary: null` instead
+ * of omitting the field; see `ToolRenderer`.
  */
 export type ToolChatSummaryLabels = {
   todoWriteCleared: string
@@ -153,7 +153,19 @@ export type ToolChatSummaryFn = (args: {
  * branches are preserved as-is).
  */
 export type ToolRenderer = {
-  summary?: ToolChatSummaryFn
+  /**
+   * Required, and `null` is a real answer — not an omission.
+   *
+   * `kind` and `summary` are orthogonal decisions, so a shared constant that
+   * settles one of them must not silently settle the other. When this field
+   * was optional, wiring a new tool to the `genericRenderer` constant read as
+   * "no custom card" while also, unnoticed, meaning "no header summary" —
+   * which is how `vault_search` shipped with a bare title while every
+   * comparable tool showed its arguments. Making it required forces the
+   * second decision to be written down: a summary function, or `null` with a
+   * reason.
+   */
+  summary: ToolChatSummaryFn | null
 } & (
   | { kind: 'generic' }
   | {
