@@ -1,5 +1,6 @@
 import { type App, FileSystemAdapter } from 'obsidian'
 
+import { runSerialByKey } from '../../../utils/async/serialQueue'
 import { getTextArg } from '../tool-args'
 
 // The path contract shared by every tool in this directory: how a
@@ -272,6 +273,24 @@ export function toEditSummaryPath(
   // no relative path to return, so keep the absolute one.
   return relative.length === 0 ? absPath : relative.replace(/\\/g, '/')
 }
+
+/**
+ * Runs `operation` with no other native write to the same file in flight.
+ * `absolutePath` must come from `resolveNativePath`; the queue key is that
+ * path as `isInsideVault` compares it, so two spellings of one Windows file
+ * (`C:\Notes\A.md` / `c:\notes\a.md`) share a queue. Keyed per `App` so
+ * every caller on this vault — parallel calls, subagents — contends on it.
+ */
+export const runSerialByNativePath = <T>(
+  app: App,
+  absolutePath: string,
+  operation: () => Promise<T>,
+): Promise<T> =>
+  runSerialByKey(
+    app,
+    normalizeForComparison(absolutePath, looksLikeWindowsPath(absolutePath)),
+    operation,
+  )
 
 const looksLikeWindowsPath = (value: string): boolean =>
   /^[a-zA-Z]:[\\/]/.test(value) || value.startsWith('\\\\')

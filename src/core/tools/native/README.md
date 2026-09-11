@@ -19,7 +19,8 @@ Shared here:
   against (`NATIVE_PATH_ARG_DESCRIPTION`, `resolveNativeFilePathArg`,
   `resolveNativePath`, `getVaultBasePath`), plus `isInsideVault`, the
   synchronous vault-boundary judgment the tool gateway needs for out-of-vault
-  approval.
+  approval, and `runSerialByNativePath`, the per-file queue every native
+  write runs its read-modify-write in.
 - `text.ts` — the binary-file guard applied before bytes are decoded for the
   model.
 

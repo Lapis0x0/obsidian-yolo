@@ -18,7 +18,11 @@ import {
   buildNativeFileChangeSummary,
   nativeEditSummaryPath,
 } from '../edit-summary'
-import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
+import {
+  NATIVE_PATH_ARG_DESCRIPTION,
+  resolveNativeFilePathArg,
+  runSerialByNativePath,
+} from '../paths'
 import { assertDecodableAsText } from '../text'
 
 const EDIT_FILE_DESCRIPTION = [
@@ -86,55 +90,64 @@ export const editFileDefinition = defineTool({
 
     // eslint-disable-next-line import/no-nodejs-modules -- desktop-only tool, dynamically imported so mobile never loads it
     const fs = await import('node:fs/promises')
-    const stat = await fs.stat(absolutePath)
-    if (!stat.isFile()) {
-      throw new Error(`Not a file: ${absolutePath}`)
-    }
-    if (stat.size > MAX_FILE_SIZE_BYTES) {
-      throw new Error(
-        `File too large (${stat.size} bytes). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+
+    // A read-modify-write: parallel calls on one file (a Max round runs them
+    // concurrently) would all edit the same snapshot and the last write would
+    // win. In turn, each call sees the previous one's result — edits anchor on
+    // content, so that is correct, and a stale anchor fails as no-match. The
+    // summary stays inside too: the round's review snapshot keeps the first
+    // before-content and the latest after-content, so it must see write order.
+    return runSerialByNativePath(ctx.app, absolutePath, async () => {
+      const stat = await fs.stat(absolutePath)
+      if (!stat.isFile()) {
+        throw new Error(`Not a file: ${absolutePath}`)
+      }
+      if (stat.size > MAX_FILE_SIZE_BYTES) {
+        throw new Error(
+          `File too large (${stat.size} bytes). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+        )
+      }
+
+      const bytes = new Uint8Array(await fs.readFile(absolutePath))
+      assertDecodableAsText(bytes, absolutePath)
+      const content = new TextDecoder().decode(bytes)
+
+      const { nextContent, occurrences } = replaceAll
+        ? replaceEveryOccurrence({ content, oldText, newText, absolutePath })
+        : replaceUniqueOccurrence({ content, oldText, newText, absolutePath })
+
+      if (nextContent.length > MAX_FILE_SIZE_BYTES) {
+        throw new Error(
+          `Content too large after edit (${nextContent.length} chars). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+        )
+      }
+
+      const summaryPath = nativeEditSummaryPath(ctx, absolutePath)
+      const appliedAt = Date.now()
+      await maybeWithInternalWrite(ctx.promptSourceWatcher, summaryPath, () =>
+        fs.writeFile(absolutePath, nextContent, 'utf-8'),
       )
-    }
 
-    const bytes = new Uint8Array(await fs.readFile(absolutePath))
-    assertDecodableAsText(bytes, absolutePath)
-    const content = new TextDecoder().decode(bytes)
-
-    const { nextContent, occurrences } = replaceAll
-      ? replaceEveryOccurrence({ content, oldText, newText, absolutePath })
-      : replaceUniqueOccurrence({ content, oldText, newText, absolutePath })
-
-    if (nextContent.length > MAX_FILE_SIZE_BYTES) {
-      throw new Error(
-        `Content too large after edit (${nextContent.length} chars). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
-      )
-    }
-
-    const summaryPath = nativeEditSummaryPath(ctx, absolutePath)
-    const appliedAt = Date.now()
-    await maybeWithInternalWrite(ctx.promptSourceWatcher, summaryPath, () =>
-      fs.writeFile(absolutePath, nextContent, 'utf-8'),
-    )
-
-    return {
-      status: ToolCallResponseStatus.Success,
-      text: formatJsonResult({
-        tool: 'edit_file',
-        path: absolutePath,
-        replacements: occurrences,
-        changed: nextContent !== content,
-        message: 'Applied edit.',
-      }),
-      metadata: await buildNativeFileChangeSummary({
-        ctx,
-        absolutePath,
-        beforeContent: content,
-        afterContent: nextContent,
-        beforeExists: true,
-        afterExists: true,
-        appliedAt,
-      }),
-    }
+      return {
+        status: ToolCallResponseStatus.Success,
+        text: formatJsonResult({
+          tool: 'edit_file',
+          path: absolutePath,
+          replacements: occurrences,
+          changed: nextContent !== content,
+          message: 'Applied edit.',
+        }),
+        metadata: await buildNativeFileChangeSummary({
+          ctx,
+          absolutePath,
+          beforeContent: content,
+          afterContent: nextContent,
+          beforeExists: true,
+          afterExists: true,
+          appliedAt,
+        }),
+      }
+    })
   },
 })
 

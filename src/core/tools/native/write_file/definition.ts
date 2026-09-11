@@ -16,7 +16,11 @@ import {
   nativeEditSummaryPath,
   readNativeSnapshotSource,
 } from '../edit-summary'
-import { NATIVE_PATH_ARG_DESCRIPTION, resolveNativeFilePathArg } from '../paths'
+import {
+  NATIVE_PATH_ARG_DESCRIPTION,
+  resolveNativeFilePathArg,
+  runSerialByNativePath,
+} from '../paths'
 
 const WRITE_FILE_DESCRIPTION = [
   'Create a file, or replace an existing file with new full content, straight on the local filesystem. Desktop-only. Missing parent directories are created.',
@@ -81,60 +85,65 @@ export const writeFileDefinition = defineTool({
       import('node:path'),
     ])
 
-    const existingSize = await statFileSize(fs, absolutePath)
-    if (existingSize === 'directory') {
-      throw new Error(
-        `Path is a directory, cannot overwrite as a file: ${absolutePath}`,
+    // Serialized with every other native write to this file (see
+    // `edit_file`), so the before-content the diff card records is the one
+    // this write actually replaced.
+    return runSerialByNativePath(ctx.app, absolutePath, async () => {
+      const existingSize = await statFileSize(fs, absolutePath)
+      if (existingSize === 'directory') {
+        throw new Error(
+          `Path is a directory, cannot overwrite as a file: ${absolutePath}`,
+        )
+      }
+
+      // The before-content has to be read before the write, and only for the
+      // diff card — `null` means this edit gets no card (binary, or too large
+      // to hold in memory), never that the write is refused.
+      const beforeContent =
+        existingSize === null
+          ? ''
+          : await readNativeSnapshotSource(fs, absolutePath, existingSize)
+
+      const summaryPath = nativeEditSummaryPath(ctx, absolutePath)
+      const appliedAt = Date.now()
+      await maybeWithInternalWrite(
+        ctx.promptSourceWatcher,
+        summaryPath,
+        async () => {
+          await fs.mkdir(path.dirname(absolutePath), { recursive: true })
+          await fs.writeFile(absolutePath, content, 'utf-8')
+        },
       )
-    }
 
-    // The before-content has to be read before the write, and only for the
-    // diff card — `null` means this edit gets no card (binary, or too large
-    // to hold in memory), never that the write is refused.
-    const beforeContent =
-      existingSize === null
-        ? ''
-        : await readNativeSnapshotSource(fs, absolutePath, existingSize)
+      const metadata: LocalToolCallResultMetadata | undefined =
+        beforeContent === null
+          ? undefined
+          : await buildNativeFileChangeSummary({
+              ctx,
+              absolutePath,
+              beforeContent,
+              afterContent: content,
+              beforeExists: existingSize !== null,
+              afterExists: true,
+              appliedAt,
+            })
 
-    const summaryPath = nativeEditSummaryPath(ctx, absolutePath)
-    const appliedAt = Date.now()
-    await maybeWithInternalWrite(
-      ctx.promptSourceWatcher,
-      summaryPath,
-      async () => {
-        await fs.mkdir(path.dirname(absolutePath), { recursive: true })
-        await fs.writeFile(absolutePath, content, 'utf-8')
-      },
-    )
-
-    const metadata: LocalToolCallResultMetadata | undefined =
-      beforeContent === null
-        ? undefined
-        : await buildNativeFileChangeSummary({
-            ctx,
-            absolutePath,
-            beforeContent,
-            afterContent: content,
-            beforeExists: existingSize !== null,
-            afterExists: true,
-            appliedAt,
-          })
-
-    const byteSize = new TextEncoder().encode(content).length
-    return {
-      status: ToolCallResponseStatus.Success,
-      text: formatJsonResult({
-        tool: 'write_file',
-        path: absolutePath,
-        created: existingSize === null,
-        byteSize,
-        message:
-          existingSize === null
-            ? 'Created file.'
-            : `Overwrote file (was ${existingSize} bytes).`,
-      }),
-      metadata,
-    }
+      const byteSize = new TextEncoder().encode(content).length
+      return {
+        status: ToolCallResponseStatus.Success,
+        text: formatJsonResult({
+          tool: 'write_file',
+          path: absolutePath,
+          created: existingSize === null,
+          byteSize,
+          message:
+            existingSize === null
+              ? 'Created file.'
+              : `Overwrote file (was ${existingSize} bytes).`,
+        }),
+        metadata,
+      }
+    })
   },
 })
 

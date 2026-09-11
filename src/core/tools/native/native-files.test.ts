@@ -393,6 +393,41 @@ describe('edit_file', () => {
 
     await expect(fs.readFile(target, 'utf-8')).resolves.toBe('after')
   })
+
+  it('keeps every edit when parallel calls hit the same file', async () => {
+    withChat()
+    const lines = Array.from({ length: 10 }, (_, i) => `line ${i}`)
+    const original = lines.join('\n')
+    await fs.writeFile(path.join(vaultRoot, 'a.md'), original)
+    // 同一文件的三种写法，解析后必须落进同一个队列。
+    const spellings = ['a.md', path.join(vaultRoot, 'a.md'), './x/../a.md']
+
+    await Promise.all(
+      lines.map((line, i) =>
+        expectSuccess('edit_file', {
+          path: spellings[i % spellings.length],
+          oldText: line,
+          newText: `LINE ${i}`,
+        }),
+      ),
+    )
+
+    const expected = lines.map((_, i) => `LINE ${i}`).join('\n')
+    await expect(
+      fs.readFile(path.join(vaultRoot, 'a.md'), 'utf-8'),
+    ).resolves.toBe(expected)
+    await expect(
+      readEditReviewSnapshot({
+        app: ctx.app,
+        conversationId: 'conv-1',
+        roundId: 'round-1',
+        filePath: 'a.md',
+      }),
+    ).resolves.toMatchObject({
+      beforeContent: original,
+      afterContent: expected,
+    })
+  })
 })
 
 describe('native write tools produce edit summaries', () => {
