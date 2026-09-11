@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 32,
+  "revision": 33,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.9",
+    "version": "1.6.9.1",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.1",
     "releaseNotes": {
-      "en": "## 1.6.9 Max Mode & Memory Rework 🚀\n\n### Agent & modes\n\n- Introduced Max mode, a fully native all-round agent experience on desktop.\n- Added the oh-my-pi (omp) CLI runtime.\n\n### Memory & tools\n\n- Reworked the memory system into an index plus sub-documents, and removed the dedicated memory tools.\n- Reworked the diff and snapshot mechanism; expanding an edit tool card now shows the real diff.\n- Improved the classification and logic behind collapsed tool-call summaries.\n\n### Modules & updates\n\n- Fixed modules never being reinstallable after the plugin directory was deleted.\n- Simplified redundant validation in the module and update paths.",
-      "zh": "## 1.6.9 Max 模式与记忆系统重构 🚀\n\n### Agent 与模式\n\n- 引入 Max 模式，实现桌面端原生全能 agent 体验。\n- 新增 oh-my-pi（omp）CLI runtime。\n\n### 记忆与工具\n\n- 记忆系统重构为索引 + 子文档，移除专用记忆工具。\n- 优化 diff 与快照实现机制，现在 edit 工具卡片展开后会显示真实 diff。\n- 优化工具折叠摘要的分类与逻辑。\n\n### 模块与更新\n\n- 修复删除插件目录后模块永远无法重新安装的问题。\n- 精简模块与更新链路的冗余校验代码。"
+      "en": "## 1.6.9.1 Max Mode Polish ✨\n\n### Agent & tools\n\n- Filled in vector retrieval for vault search in Max, and unified the search tools across the Ask/Agent/Max chat modes.\n- Fixed edits being lost when Max mode ran parallel edit_file calls on the same file. (#594)\n- Optimized the architecture design, unifying the programmatic entry point for calling the Agent.\n\n### Prompts\n\n- Global/Agent system prompts now support the ![[note]] syntax to embed constraints from other documents.\n- Improved the prompt design for the model proactively suggesting a switch between Ask/Agent/Max capabilities.\n\n### Chat & interface\n\n- Right-click the YOLO ribbon icon to choose whether to open Chat in the sidebar, a tab, a split, or a separate window.\n- Added Max mode to the mode list in the @ menu.\n- Improved the styling and animation design of collapsed tool groups.",
+      "zh": "## 1.6.9.1 Max 模式打磨 ✨\n\n### Agent 与工具\n\n- 补全 Max 的 vault search 向量检索的能力，并统一 Ask/Agent/Max 三种对话模式的检索工具。\n- 修复 Max 模式并行 edit_file 同一文件丢失编辑的问题。（#594）\n- 优化架构设计，统一 Agent 程序化调用入口。\n\n### 提示词\n\n- 系统全局/Agent提示词支持 ![[笔记]] 语法来嵌入其他文档的约束。\n- 优化模型主动建议 Ask/Agent/Max 能力切换的提示词设计。\n\n### 对话与界面\n\n- 右键侧边栏 YOLO 图标可选择在侧边栏、标签页、分屏或独立窗口打开 Chat。\n- 为 @ 菜单的模式列表补齐 Max 模式。\n- 优化工具折叠组的样式与动画设计。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.9/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9/main.js",
-        "byteSize": 9519872,
-        "sha256": "319f36bdc4f4025819fc6ec60cb11b0cb5396bc2166933d2e9a8704727e2af1d"
+        "mirrorPath": "core/1.6.9.1/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.1/main.js",
+        "byteSize": 9528687,
+        "sha256": "ae1f94c8a661ddb3fc00c4628922939b3582e926746649ffbb284d242d3538a3"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.9/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9/manifest.json",
-        "byteSize": 411,
-        "sha256": "d4a3d0c661f06f43e7d7d86c7e13bc8a969e735fdeaedce5ee8351538805ac58"
+        "mirrorPath": "core/1.6.9.1/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.1/manifest.json",
+        "byteSize": 413,
+        "sha256": "2f6f9c05ed15b78d8ca7976af82120dec789a13987c14d7945c53fd0c651c618"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.9/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9/styles.css",
-        "byteSize": 678694,
-        "sha256": "dad7ef5182ab582ef9c24cf2d02bc6b97d9fdbf2180c1e5702cc70671a1d62d7"
+        "mirrorPath": "core/1.6.9.1/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.1/styles.css",
+        "byteSize": 682484,
+        "sha256": "003dcafb12086f90a7ac0f1884ebe8b77b7a4043ecb6db4b4afefe2be2d04a71"
       }
     }
   },
