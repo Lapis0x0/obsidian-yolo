@@ -38,10 +38,13 @@ jobs:
       # Every artifact any published version can ask for must still be
       # attached. Runs here rather than in the release workflow because this
       # checkout has the full tag history the referenced set is derived from.
+      # The mirror is skipped: this run rebuilds it for the current version
+      # below, so a new artifact is always absent here, and `verify-pages`
+      # checks the mirror's runtime artifacts once it is current.
       - name: Audit runtime component artifact completeness
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/runtime-assets.mjs audit
+        run: node scripts/runtime-assets.mjs audit --skip-mirror
 
       - name: Reconcile GitHub Release state into signed metadata
         env:
