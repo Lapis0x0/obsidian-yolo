@@ -1600,6 +1600,12 @@ export type TranslationKeys = {
 
   // Chat Interface
   chat: {
+    ribbonMenu: {
+      openInSidebar: string
+      openInTab: string
+      openInSplit: string
+      openInWindow: string
+    }
     placeholder: string
     placeholderCompact?: string
     placeholderPrefix?: string

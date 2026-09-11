@@ -1763,6 +1763,12 @@ export const zh: TranslationKeys = {
   },
 
   chat: {
+    ribbonMenu: {
+      openInSidebar: '在侧边栏中打开',
+      openInTab: '在标签页中打开',
+      openInSplit: '在分屏中打开',
+      openInWindow: '在独立窗口中打开',
+    },
     placeholder: '输入消息...「@添加引用或模型，/选择技能或命令」',
     placeholderCompact: '点击展开编辑...',
     placeholderPrefix: '输入消息...',

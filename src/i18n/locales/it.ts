@@ -1702,6 +1702,12 @@ export const it: DeepPartial<TranslationKeys> = {
   },
 
   chat: {
+    ribbonMenu: {
+      openInSidebar: 'Apri nella barra laterale',
+      openInTab: 'Apri in una scheda',
+      openInSplit: 'Apri in divisione',
+      openInWindow: 'Apri in una finestra',
+    },
     placeholder:
       'Scrivi un messaggio...「@ per aggiungere riferimenti o modelli, / per scegliere una skill o un comando」',
     placeholderCompact: 'Clicca per espandere e modificare...',

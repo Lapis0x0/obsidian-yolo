@@ -1853,6 +1853,12 @@ export const en: TranslationKeys = {
   },
 
   chat: {
+    ribbonMenu: {
+      openInSidebar: 'Open in sidebar',
+      openInTab: 'Open in tab',
+      openInSplit: 'Open in split',
+      openInWindow: 'Open in window',
+    },
     placeholder:
       'Type a message...「@ to add references or models, / to choose a skill or command」',
     placeholderCompact: 'Click to expand and edit...',

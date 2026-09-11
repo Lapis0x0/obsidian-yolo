@@ -3,6 +3,7 @@ import { EditorView } from '@codemirror/view'
 import {
   Editor,
   MarkdownView,
+  Menu,
   Notice,
   Platform,
   Plugin,
@@ -2337,8 +2338,16 @@ export default class YoloPlugin extends Plugin {
     )
 
     // This creates an icon in the left ribbon.
-    this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
+    const ribbonIconEl = this.addRibbonIcon(YOLO_ICON_ID, 'YOLO Chat', () => {
       void this.openChatView({ placement: this.resolveRibbonPlacement() })
+    })
+    // Right-click picks a one-off placement. The ribbon container binds its
+    // own hide/show menu on `contextmenu`, so stop propagation or it replaces
+    // ours; right-clicking elsewhere on the ribbon still reaches it.
+    this.registerDomEvent(ribbonIconEl, 'contextmenu', (event) => {
+      event.preventDefault()
+      event.stopPropagation()
+      this.showRibbonPlacementMenu(event)
     })
 
     this.setupBackgroundActivityStatusBar()
@@ -3963,6 +3972,50 @@ ${validationResult.error.issues.map((v) => v.message).join('\n')}`)
       return last ?? 'sidebar'
     }
     return action
+  }
+
+  private showRibbonPlacementMenu(event: MouseEvent) {
+    const items: {
+      placement: ChatLeafPlacement
+      title: string
+      icon: string
+    }[] = [
+      {
+        placement: 'sidebar',
+        title: this.t('chat.ribbonMenu.openInSidebar'),
+        icon: 'lucide-panel-right',
+      },
+      {
+        placement: 'tab',
+        title: this.t('chat.ribbonMenu.openInTab'),
+        icon: 'lucide-file-plus',
+      },
+      {
+        placement: 'split',
+        title: this.t('chat.ribbonMenu.openInSplit'),
+        icon: 'lucide-separator-vertical',
+      },
+    ]
+    if (Platform.isDesktop) {
+      items.push({
+        placement: 'window',
+        title: this.t('chat.ribbonMenu.openInWindow'),
+        icon: 'lucide-picture-in-picture-2',
+      })
+    }
+
+    const menu = new Menu()
+    for (const { placement, title, icon } of items) {
+      menu.addItem((item) =>
+        item
+          .setTitle(title)
+          .setIcon(icon)
+          .onClick(() => {
+            void this.openChatView({ placement })
+          }),
+      )
+    }
+    menu.showAtMouseEvent(event)
   }
 
   async openCurrentOrSidebarNewChat() {
