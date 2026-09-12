@@ -621,8 +621,15 @@ export const resolveVisibleHistoryPrefix = (
  * "上一轮同 id 的工具调用已是 Aborted 而这一轮不是"或"上一轮同 id 的
  * assistant 已是 aborted 而这一轮报 streaming"时改写消息；前缀里的每条消息
  * 在上一轮就是它自己（同一个对象引用），两个条件都不可能成立，因此对前缀
- * 折叠必然是恒等变换。跳过它之后，每个 chunk 的代价只随本轮响应长度增长，
- * 而不再随整段会话历史增长。
+ * 折叠必然是恒等变换。跳过它之后，每个 chunk 不再为整段历史建两张 Map、分配
+ * 中间数组或按 id 查找锚点。
+ *
+ * 注意这并没有把每 chunk 的代价降到与历史长度无关：下面那次 spread 仍然要把
+ * 前缀的每一个引用抄进新数组。数组身份必须每帧重建——最后一条消息的文本变了
+ * 就得是新对象，装着它的数组也得是新数组，dev 构建还会把发布出去的状态深冻结。
+ * 结构共享保的是元素身份而不是数组身份，所以前缀里的消息对象是复用的，剩下的
+ * 只有纯指针复制，量级远低于原先的 Map 构建。要连这一趟也去掉，得让 stream-only
+ * 帧完全不折数组、只把变化的那条 assistant 推进 render stream，那是独立的一轮。
  */
 export const mergeVisibleMessages = (
   previousVisibleMessages: ChatMessage[],
