@@ -507,7 +507,13 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
           {reasoningPreview}
         </div>
       </div>
-      <div className="yolo-assistant-message-metadata-body">
+      {/*
+        折叠态由上面的预览轨道负责呈现"正在想什么"，展开态才由这里呈现全文，
+        两者不重叠。因此折叠时干脆不挂载：思考过程动辄上万字，把它留在
+        grid-template-rows: 0fr 的盒子里只是视觉上压成零高，整棵子树仍然参与
+        每一次布局。
+      */}
+      {showBody && (
         <div className="yolo-assistant-message-metadata-content">
           <TransitioningMarkdown
             content={snapshotReasoning}
@@ -516,7 +522,7 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
             generationState={generationState}
           />
         </div>
-      </div>
+      )}
     </div>
   )
 })

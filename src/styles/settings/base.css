@@ -590,44 +590,45 @@ select.yolo-module-settings-select {
   color: color-mix(in srgb, var(--text-faint) 78%, var(--text-muted));
 }
 
+/*
+ * 思考全文只在展开时挂载（见 AssistantMessageReasoning），所以这里没有"折叠
+ * 态"可言：元素一出现就是终态，入场只能用 keyframes，而不是靠 .is-expanded
+ * 切换属性再等过渡。reduced-motion 由 tokens/motion.css 的全局兜底覆盖。
+ */
 .yolo-assistant-message-metadata-content {
   color: var(--text-muted);
   min-height: 0;
   overflow: hidden;
   margin-left: var(--yolo-assistant-metadata-line-offset);
-  padding: 0 0 0 calc(var(--size-4-2) + var(--yolo-assistant-metadata-dot-gap));
+  padding: 0 0 var(--size-4-2)
+    calc(var(--size-4-2) + var(--yolo-assistant-metadata-dot-gap));
   font-size: var(--font-ui-small);
-  opacity: 0;
-  transform: translateY(-4px);
-  border-left: 1px solid transparent;
+  border-left: 1px solid
+    color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
+  animation: yolo-assistant-metadata-content-enter
+    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
+}
+
+@keyframes yolo-assistant-metadata-content-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 .yolo-assistant-message-metadata-content .markdown-rendered {
   color: inherit;
 }
 
-.yolo-assistant-message-metadata.is-expanded
-  .yolo-assistant-message-metadata-content {
-  padding-bottom: var(--size-4-2);
-  opacity: 1;
-  transform: translateY(0);
-  border-left-color: color-mix(
-    in srgb,
-    var(--background-modifier-border) 80%,
-    transparent
-  );
-}
-
 .yolo-assistant-message-metadata-annotations {
   display: flex;
   flex-direction: column;
   gap: var(--size-2-1);
-}
-
-.yolo-assistant-message-metadata-body {
-  display: grid;
-  grid-template-rows: 0fr;
-  overflow: hidden;
 }
 
 .yolo-assistant-message-metadata-preview {
@@ -713,11 +714,6 @@ select.yolo-module-settings-select {
 .yolo-assistant-message-metadata-preview--panel.is-overflowing {
   -webkit-mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
   mask-image: linear-gradient(to bottom, transparent 0, #000 16px);
-}
-
-.yolo-assistant-message-metadata.is-expanded
-  .yolo-assistant-message-metadata-body {
-  grid-template-rows: 1fr;
 }
 
 .yolo-assistant-message-metadata-toggle {

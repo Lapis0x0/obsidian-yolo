@@ -172,6 +172,23 @@ describe('AssistantMessageReasoning', () => {
     })
   })
 
+  // 折叠态由预览轨道呈现"正在想什么"，全文一行都不该挂在 DOM 里——否则那棵
+  // 上万字的子树虽然被压成零高，仍然要参与每一次布局。
+  it('does not mount the reasoning body while collapsed', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMessageReasoning
+        reasoning="思考正文不该出现在折叠态里"
+        hasAnswerContent
+        generationState="completed"
+        reasoningDurationMs={1_200}
+      />,
+    )
+
+    expect(html).not.toContain('yolo-assistant-message-metadata-content')
+    expect(html).not.toContain('思考正文不该出现在折叠态里')
+    expect(html).toContain('yolo-assistant-message-metadata-toggle')
+  })
+
   it('keeps the reasoning title when the response generation fails', () => {
     const html = renderToStaticMarkup(
       <AssistantMessageReasoning
