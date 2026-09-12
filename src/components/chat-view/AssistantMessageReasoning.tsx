@@ -23,7 +23,6 @@ type ReasoningStage = 'requesting' | 'thinking' | 'settled'
 
 const REASONING_PREVIEW_MAX_BUFFER_LENGTH = 4000
 const REASONING_PREVIEW_TRIM_CHUNK_LENGTH = 2000
-const REASONING_PREVIEW_UPDATE_INTERVAL_MS = 64
 // WAAPI's `duration` wants milliseconds; the shared token is in seconds.
 const REASONING_PREVIEW_TRANSITION_MS = MOTION_DURATION_ENTER_S * 1000
 const useSafeLayoutEffect =
@@ -87,54 +86,23 @@ export const getReasoningPreviewViewportMetrics = ({
 export const formatReasoningDurationSeconds = (durationMs: number): number =>
   Math.max(1, Math.round(durationMs / 1000))
 
-const useThrottledReasoningRollText = (value: string, enabled: boolean) => {
-  const [displayed, setDisplayed] = useState(value)
-  const latestRef = useRef(value)
-  const updateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const wasEnabledRef = useRef(enabled)
-  const lastUpdateRef = useRef(0)
+/**
+ * 预览轨道只在"正在思考且未展开"时更新文字；停下来时要定格在最后一次显示的
+ * 内容上，收场过渡才不会先把字抹掉再收高度。
+ *
+ * 这里不再自带定时器：上游的思考流已经按固定节拍采样过一次，再叠一层节流只会
+ * 把同一段文字的延迟翻倍。
+ */
+const useHeldReasoningRollText = (value: string, enabled: boolean): string => {
+  const heldRef = useRef(value)
 
   useEffect(() => {
-    latestRef.current = value
-
-    if (!enabled) {
-      wasEnabledRef.current = false
-      if (updateTimerRef.current) {
-        clearTimeout(updateTimerRef.current)
-        updateTimerRef.current = null
-      }
-      return
+    if (enabled) {
+      heldRef.current = value
     }
+  }, [enabled, value])
 
-    if (!wasEnabledRef.current) {
-      wasEnabledRef.current = true
-      setDisplayed(value)
-      lastUpdateRef.current = Date.now()
-      return
-    }
-
-    if (displayed === value || updateTimerRef.current) return
-
-    const now = Date.now()
-    const delay = Math.max(
-      0,
-      REASONING_PREVIEW_UPDATE_INTERVAL_MS - (now - lastUpdateRef.current),
-    )
-    updateTimerRef.current = setTimeout(() => {
-      updateTimerRef.current = null
-      setDisplayed(latestRef.current)
-      lastUpdateRef.current = Date.now()
-    }, delay)
-  }, [displayed, enabled, value])
-
-  useEffect(
-    () => () => {
-      if (updateTimerRef.current) clearTimeout(updateTimerRef.current)
-    },
-    [],
-  )
-
-  return displayed
+  return enabled ? value : heldRef.current
 }
 
 const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
@@ -168,7 +136,9 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
   const rootRef = useRef<HTMLDivElement | null>(null)
 
   const isStreaming = generationState === 'streaming'
-  const reasoning = useAssistantStreamedReasoning({
+  // `reasoning` 只供 React 结构（预览轨道、stage、可展开性）使用；markdown 主体
+  // 读 `reasoningSource`，以 `snapshotReasoning` 作初值/回退值。
+  const { reasoning, reasoningSource } = useAssistantStreamedReasoning({
     conversationId,
     messageId,
     isStreaming: isGenerating,
@@ -222,16 +192,16 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
     reasoningDurationMs !== undefined
       ? formatReasoningDurationSeconds(reasoningDurationMs)
       : null
+  const isPreviewLive = stage === 'thinking' && !showBody
   const reasoningRollText = useMemo(
-    () => getReasoningRollText(reasoning),
-    [reasoning],
+    () => (isPreviewLive ? getReasoningRollText(reasoning) : ''),
+    [isPreviewLive, reasoning],
   )
-  const reasoningPreview = useThrottledReasoningRollText(
+  const reasoningPreview = useHeldReasoningRollText(
     reasoningRollText,
-    stage === 'thinking' && !showBody,
+    isPreviewLive,
   )
-  const showPreview =
-    reasoningPreview.length > 0 && !showBody && stage === 'thinking'
+  const showPreview = reasoningPreview.length > 0 && isPreviewLive
   const isPanelPreview = previewLines > 1
   const [isPreviewOverflowing, setIsPreviewOverflowing] = useState(false)
   const previewViewportRef = useRef<HTMLDivElement | null>(null)
@@ -476,7 +446,8 @@ const AssistantMessageReasoning = memo(function AssistantMessageReasoning({
       <div className="yolo-assistant-message-metadata-body">
         <div className="yolo-assistant-message-metadata-content">
           <TransitioningMarkdown
-            content={reasoning}
+            content={snapshotReasoning}
+            contentSource={reasoningSource}
             scale="xs"
             generationState={generationState}
           />
