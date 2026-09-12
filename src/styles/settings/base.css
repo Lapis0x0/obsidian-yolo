@@ -592,8 +592,9 @@ select.yolo-module-settings-select {
 
 /*
  * 思考全文只在展开时挂载（见 AssistantMessageReasoning），所以这里没有"折叠
- * 态"可言：元素一出现就是终态，入场只能用 keyframes，而不是靠 .is-expanded
- * 切换属性再等过渡。reduced-motion 由 tokens/motion.css 的全局兜底覆盖。
+ * 态"可言：元素一出现就是终态。改为条件渲染之前，两态是靠 .is-expanded 切换
+ * opacity / transform 实现的，但那两个属性上从来没有 transition——展开一直是
+ * 瞬时的。这里保持同样的观感，不引入入场动画。
  */
 .yolo-assistant-message-metadata-content {
   color: var(--text-muted);
@@ -605,20 +606,6 @@ select.yolo-module-settings-select {
   font-size: var(--font-ui-small);
   border-left: 1px solid
     color-mix(in srgb, var(--background-modifier-border) 80%, transparent);
-  animation: yolo-assistant-metadata-content-enter
-    var(--yolo-anim-duration-enter) var(--yolo-anim-ease-out);
-}
-
-@keyframes yolo-assistant-metadata-content-enter {
-  from {
-    opacity: 0;
-    transform: translateY(-4px);
-  }
-
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .yolo-assistant-message-metadata-content .markdown-rendered {
