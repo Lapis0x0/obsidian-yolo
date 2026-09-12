@@ -1,8 +1,17 @@
-import { ChatMessage, ChatUserMessage } from '../../types/chat'
+import {
+  ChatConversationCompactionState,
+  ChatMessage,
+  ChatUserMessage,
+} from '../../types/chat'
 import { ToolCallResponseStatus } from '../../types/tool-call.types'
 
 import { backgroundTaskCompletionBus } from './background-task/completion-bus'
-import { AgentSessionService, RUNNING_PERSIST_MIN_INTERVAL_MS } from './service'
+import {
+  AgentSessionService,
+  RUNNING_PERSIST_MIN_INTERVAL_MS,
+  mergeVisibleMessages,
+  resolveVisibleHistoryPrefix,
+} from './service'
 import { subagentRuntimeRegistry } from './subagent/runtime-registry'
 import { subagentTaskRegistry } from './subagent/task-registry'
 import type { SubagentTaskRecord } from './subagent/types'
@@ -15,7 +24,10 @@ type MockRuntimeInstance = {
     () => void,
     [(snapshot: { messages: ChatMessage[] }) => void]
   >
-  emitSnapshot: (messages: ChatMessage[]) => void
+  emitSnapshot: (
+    messages: ChatMessage[],
+    compaction?: ChatConversationCompactionState,
+  ) => void
   resolveRun: () => void
   rejectRun: (error: Error) => void
   getRunInput: () => AgentRuntimeRunInput | null
@@ -43,7 +55,7 @@ jest.mock('./native-runtime', () => ({
     let subscriber:
       | ((snapshot: {
           messages: ChatMessage[]
-          compaction: []
+          compaction: ChatConversationCompactionState
           pendingCompactionAnchorMessageId: null
         }) => void)
       | null = null
@@ -67,10 +79,10 @@ jest.mock('./native-runtime', () => ({
           subscriber = null
         }
       }),
-      emitSnapshot: (messages) => {
+      emitSnapshot: (messages, compaction = []) => {
         subscriber?.({
           messages,
-          compaction: [],
+          compaction,
           pendingCompactionAnchorMessageId: null,
         })
       },
@@ -2489,5 +2501,435 @@ describe('AgentSessionService subagent approval routing', () => {
     })
 
     expect(ok).toBe(false)
+  })
+})
+
+/**
+ * 修复前 `mergeVisibleMessages` 的等价重建：每次调用都在整段 `baseMessages`
+ * 里重新定位锚点、整段切片，再对「前缀 + 响应」整体做一次折叠。折叠本身直接
+ * 复用现在的 `mergeVisibleMessages`——前缀传空数组时它就退化成原实现里那唯一
+ * 的一次整体折叠，所以这个 oracle 不需要复制任何折叠逻辑，也不会随实现漂移。
+ */
+const legacyMergeVisibleMessages = (
+  previousVisibleMessages: ChatMessage[],
+  baseMessages: ChatMessage[],
+  anchorMessageId: string | undefined,
+  responseMessages: ChatMessage[],
+): ChatMessage[] => {
+  const anchorIndex = anchorMessageId
+    ? baseMessages.findIndex((message) => message.id === anchorMessageId)
+    : -1
+  const nextMessages =
+    anchorIndex === -1
+      ? responseMessages
+      : [...baseMessages.slice(0, anchorIndex + 1), ...responseMessages]
+
+  return mergeVisibleMessages(previousVisibleMessages, [], nextMessages)
+}
+
+const createUserHistoryMessage = (id: string): ChatUserMessage => ({
+  role: 'user',
+  id,
+  content: null,
+  promptContent: id,
+  mentionables: [],
+})
+
+const createAssistantHistoryMessage = (
+  id: string,
+  content: string,
+  generationState: 'streaming' | 'completed' | 'aborted' = 'completed',
+): ChatMessage => ({
+  role: 'assistant',
+  id,
+  content,
+  metadata: { generationState },
+})
+
+const createToolHistoryMessage = (
+  id: string,
+  toolCallId: string,
+  status: ToolCallResponseStatus,
+): ChatMessage => ({
+  role: 'tool',
+  id,
+  toolCalls: [
+    {
+      request: { id: toolCallId, name: 'local:fs_read' },
+      response: { status } as never,
+    },
+  ],
+})
+
+describe('visible history prefix merging', () => {
+  it('resolves the prefix up to and including the anchor', () => {
+    const baseMessages = [
+      createUserHistoryMessage('user-1'),
+      createAssistantHistoryMessage('assistant-1', 'first answer'),
+      createUserHistoryMessage('user-2'),
+    ]
+
+    expect(resolveVisibleHistoryPrefix(baseMessages, 'user-2')).toEqual(
+      baseMessages,
+    )
+    expect(resolveVisibleHistoryPrefix(baseMessages, 'user-1')).toEqual([
+      baseMessages[0],
+    ])
+    // 锚点不在历史里、或根本没有锚点时，可见历史完全交给运行时快照决定。
+    expect(resolveVisibleHistoryPrefix(baseMessages, 'missing')).toEqual([])
+    expect(resolveVisibleHistoryPrefix(baseMessages, undefined)).toEqual([])
+  })
+
+  it('matches the pre-fix merge result across a multi-chunk stream', () => {
+    const baseMessages = [
+      createUserHistoryMessage('user-1'),
+      createAssistantHistoryMessage('assistant-1', 'first answer'),
+      createToolHistoryMessage(
+        'tool-history',
+        'tool-call-history',
+        ToolCallResponseStatus.Success,
+      ),
+      createUserHistoryMessage('user-2'),
+    ]
+    const anchorMessageId = 'user-2'
+    const prefix = resolveVisibleHistoryPrefix(baseMessages, anchorMessageId)
+
+    const snapshots: ChatMessage[][] = [
+      [createAssistantHistoryMessage('assistant-2', 'a', 'streaming')],
+      [createAssistantHistoryMessage('assistant-2', 'ab', 'streaming')],
+      [createAssistantHistoryMessage('assistant-2', 'abc', 'streaming')],
+      [
+        createAssistantHistoryMessage('assistant-2', 'abc', 'completed'),
+        createToolHistoryMessage(
+          'tool-2',
+          'tool-call-2',
+          ToolCallResponseStatus.Running,
+        ),
+      ],
+      [
+        createAssistantHistoryMessage('assistant-2', 'abc', 'completed'),
+        createToolHistoryMessage(
+          'tool-2',
+          'tool-call-2',
+          ToolCallResponseStatus.Success,
+        ),
+        createAssistantHistoryMessage('assistant-3', 'done', 'streaming'),
+      ],
+    ]
+
+    let current: ChatMessage[] = [...baseMessages]
+    let legacy: ChatMessage[] = [...baseMessages]
+
+    for (const snapshot of snapshots) {
+      current = mergeVisibleMessages(current, prefix, snapshot)
+      legacy = legacyMergeVisibleMessages(
+        legacy,
+        baseMessages,
+        anchorMessageId,
+        snapshot,
+      )
+      expect(current).toEqual(legacy)
+    }
+
+    // 结构共享不变式：前缀里的消息必须仍是原来那几个对象，而不是副本。
+    baseMessages.forEach((message, index) => {
+      expect(current[index]).toBe(message)
+    })
+    expect(current).not.toBe(baseMessages)
+  })
+
+  it('still folds an aborted turn back onto a late snapshot', () => {
+    const baseMessages = [
+      createUserHistoryMessage('user-1'),
+      createUserHistoryMessage('user-2'),
+    ]
+    const anchorMessageId = 'user-2'
+    const prefix = resolveVisibleHistoryPrefix(baseMessages, anchorMessageId)
+
+    const runningSnapshot: ChatMessage[] = [
+      createAssistantHistoryMessage('assistant-1', 'partial', 'streaming'),
+      createToolHistoryMessage(
+        'tool-1',
+        'tool-call-1',
+        ToolCallResponseStatus.Running,
+      ),
+    ]
+
+    const merged = mergeVisibleMessages(baseMessages, prefix, runningSnapshot)
+    expect(merged).toEqual(
+      legacyMergeVisibleMessages(
+        baseMessages,
+        baseMessages,
+        anchorMessageId,
+        runningSnapshot,
+      ),
+    )
+
+    // 用户中断：可见状态里这一轮被标记成 aborted。
+    const abortedMessages: ChatMessage[] = [
+      ...prefix,
+      createAssistantHistoryMessage('assistant-1', 'partial', 'aborted'),
+      createToolHistoryMessage(
+        'tool-1',
+        'tool-call-1',
+        ToolCallResponseStatus.Aborted,
+      ),
+    ]
+
+    // 中断之后仍有迟到的快照报 streaming / running，折叠必须把它按住。
+    const afterAbort = mergeVisibleMessages(
+      abortedMessages,
+      prefix,
+      runningSnapshot,
+    )
+
+    expect(afterAbort).toEqual(
+      legacyMergeVisibleMessages(
+        abortedMessages,
+        baseMessages,
+        anchorMessageId,
+        runningSnapshot,
+      ),
+    )
+    expect(afterAbort[2]).toMatchObject({
+      role: 'assistant',
+      metadata: { generationState: 'aborted' },
+    })
+    expect(afterAbort[3]).toMatchObject({
+      role: 'tool',
+      toolCalls: [{ response: { status: ToolCallResponseStatus.Aborted } }],
+    })
+  })
+
+  it('falls back to the snapshot alone when the anchor is not in the history', () => {
+    const baseMessages = [createUserHistoryMessage('user-1')]
+    const snapshot = [
+      createAssistantHistoryMessage('assistant-1', 'answer', 'streaming'),
+    ]
+
+    for (const anchorMessageId of [undefined, 'missing']) {
+      const prefix = resolveVisibleHistoryPrefix(baseMessages, anchorMessageId)
+      expect(mergeVisibleMessages(baseMessages, prefix, snapshot)).toEqual(
+        legacyMergeVisibleMessages(
+          baseMessages,
+          baseMessages,
+          anchorMessageId,
+          snapshot,
+        ),
+      )
+    }
+  })
+})
+
+describe('AgentSessionService streaming merge cost', () => {
+  beforeEach(() => {
+    runtimeInstances.length = 0
+  })
+
+  it('stops rescanning the history prefix on every streaming chunk', async () => {
+    let historyIdReads = 0
+    const createCountedUserMessage = (id: string): ChatUserMessage => {
+      const message: Record<string, unknown> = {
+        role: 'user',
+        content: null,
+        promptContent: id,
+        mentionables: [],
+      }
+      Object.defineProperty(message, 'id', {
+        enumerable: true,
+        get: () => {
+          historyIdReads += 1
+          return id
+        },
+      })
+      return message as unknown as ChatUserMessage
+    }
+
+    const history: ChatMessage[] = Array.from({ length: 60 }, (_, index) =>
+      index % 2 === 0
+        ? createCountedUserMessage(`user-${index}`)
+        : createAssistantHistoryMessage(
+            `assistant-${index}`,
+            `answer ${index}`,
+          ),
+    )
+    history.push(createCountedUserMessage('user-anchor'))
+
+    const service = new AgentSessionService()
+    const runPromise = service.run({
+      conversationId: 'conversation-merge-cost',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conversation-merge-cost',
+        messages: history,
+      } as never,
+    })
+
+    const runtime = runtimeInstances[0]
+    // 第一个快照是结构事件（消息数变了），照常整段发布一次。
+    runtime.emitSnapshot([
+      createAssistantHistoryMessage('assistant-answer', 'a', 'streaming'),
+    ])
+
+    const readsAfterFirstSnapshot = historyIdReads
+    const chunkCount = 30
+    for (let index = 2; index <= chunkCount + 1; index += 1) {
+      runtime.emitSnapshot([
+        createAssistantHistoryMessage(
+          'assistant-answer',
+          'a'.repeat(index),
+          'streaming',
+        ),
+      ])
+    }
+
+    // 纯正文增量不再触碰历史前缀里的任何一条消息：修复前每个 chunk 都要为了
+    // 定位锚点把整段历史重新扫一遍。
+    expect(historyIdReads).toBe(readsAfterFirstSnapshot)
+
+    const state = service.getState('conversation-merge-cost')
+    expect(state.messages).toHaveLength(history.length + 1)
+    expect(state.messages.at(-1)).toMatchObject({
+      id: 'assistant-answer',
+      content: 'a'.repeat(chunkCount + 1),
+    })
+    history.forEach((message, index) => {
+      expect(state.messages[index]).toBe(message)
+    })
+
+    runtime.resolveRun()
+    await runPromise
+  })
+
+  it('resolves a new prefix for the next run instead of reusing the old one', async () => {
+    const firstUserMessage = createUserHistoryMessage('user-1')
+    const service = new AgentSessionService()
+
+    const firstRun = service.run({
+      conversationId: 'conversation-merge-anchor',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conversation-merge-anchor',
+        messages: [firstUserMessage],
+      } as never,
+    })
+
+    const firstRuntime = runtimeInstances[0]
+    const firstAnswer = createAssistantHistoryMessage(
+      'assistant-1',
+      'first answer',
+    )
+    firstRuntime.emitSnapshot([firstAnswer])
+    firstRuntime.resolveRun()
+    await firstRun
+
+    expect(service.getState('conversation-merge-anchor').messages).toEqual([
+      firstUserMessage,
+      firstAnswer,
+    ])
+
+    // 第二轮的锚点是新的用户消息，前缀必须跟着扩展到它为止。
+    const secondUserMessage = createUserHistoryMessage('user-2')
+    const secondRun = service.run({
+      conversationId: 'conversation-merge-anchor',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conversation-merge-anchor',
+        messages: [firstUserMessage, firstAnswer, secondUserMessage],
+      } as never,
+    })
+
+    const secondRuntime = runtimeInstances[1]
+    const secondAnswer = createAssistantHistoryMessage(
+      'assistant-2',
+      'second answer',
+    )
+    secondRuntime.emitSnapshot([secondAnswer])
+
+    expect(service.getState('conversation-merge-anchor').messages).toEqual([
+      firstUserMessage,
+      firstAnswer,
+      secondUserMessage,
+      secondAnswer,
+    ])
+
+    secondRuntime.resolveRun()
+    await secondRun
+  })
+
+  it('keeps the full prefix after the runtime compacts mid-run', async () => {
+    const history: ChatMessage[] = [
+      createUserHistoryMessage('user-1'),
+      createAssistantHistoryMessage('assistant-1', 'first answer'),
+      createUserHistoryMessage('user-2'),
+    ]
+
+    const service = new AgentSessionService()
+    const runPromise = service.run({
+      conversationId: 'conversation-merge-compaction',
+      loopConfig: {
+        enableTools: true,
+        maxAutoIterations: 100,
+        includeBuiltinTools: true,
+      },
+      input: {
+        conversationId: 'conversation-merge-compaction',
+        messages: history,
+      } as never,
+    })
+
+    const runtime = runtimeInstances[0]
+    const compaction: ChatConversationCompactionState = [
+      {
+        anchorMessageId: 'assistant-1',
+        summary: 'summary of the earlier turns',
+        compactedAt: 1,
+      },
+    ]
+    runtime.emitSnapshot(
+      [createAssistantHistoryMessage('assistant-2', 'after compaction')],
+      compaction,
+    )
+
+    const state = service.getState('conversation-merge-compaction')
+    // 压缩只改变送给模型的上下文，可见历史前缀照旧完整保留。
+    expect(state.messages).toEqual([
+      ...history,
+      createAssistantHistoryMessage('assistant-2', 'after compaction'),
+    ])
+    expect(state.compaction).toEqual(compaction)
+
+    // 压缩之后继续流式输出，前缀仍然逐条引用相同——run 内缓存的前缀不会被
+    // 压缩事件带偏。
+    runtime.emitSnapshot(
+      [
+        createAssistantHistoryMessage(
+          'assistant-2',
+          'after compaction and more',
+          'streaming',
+        ),
+      ],
+      compaction,
+    )
+    const nextState = service.getState('conversation-merge-compaction')
+    history.forEach((message, index) => {
+      expect(nextState.messages[index]).toBe(message)
+    })
+    expect(nextState.messages).toHaveLength(history.length + 1)
+
+    runtime.resolveRun()
+    await runPromise
   })
 })
