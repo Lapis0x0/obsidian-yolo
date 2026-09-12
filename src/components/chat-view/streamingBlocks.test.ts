@@ -125,6 +125,67 @@ describe('splitMarkdownBlocks', () => {
     expect(split(markdown)).toEqual([markdown])
   })
 
+  it('does not split a link reference definition whose destination is on the next line', () => {
+    const markdown = [
+      'See the [docs][ref].',
+      '',
+      '[ref]:',
+      'https://example.com',
+    ].join('\n')
+
+    expect(split(markdown)).toEqual([markdown])
+  })
+
+  it('still splits answers whose code contains a TypeScript index signature', () => {
+    // `  [key: string]: number` is indented by two spaces, so a loose label
+    // class would read it as a link reference definition and disable splitting.
+    const markdown = [
+      'Declare the cache type:',
+      '',
+      '```ts',
+      'interface Cache {',
+      '  [key: string]: number',
+      '}',
+      '```',
+      '',
+      'Then index it by name.',
+    ].join('\n')
+
+    expect(split(markdown).length).toBeGreaterThan(1)
+  })
+
+  it('still splits answers whose code contains a CSS attribute selector', () => {
+    // `[data-state]:not(.x)` starts a line and its label is made of word
+    // characters and a hyphen — only the required whitespace after `]:` keeps
+    // it out of the unsplittable path.
+    const markdown = [
+      'Scope the rule:',
+      '',
+      '```css',
+      '[data-state]:not(.yolo-open) {',
+      '  opacity: 0;',
+      '}',
+      '```',
+      '',
+      'That hides the closed state.',
+    ].join('\n')
+
+    expect(split(markdown).length).toBeGreaterThan(1)
+  })
+
+  it('still splits prose containing ordinary inline links', () => {
+    const markdown = [
+      'Read the [docs](https://example.com) first.',
+      '',
+      'Then run the command.',
+    ].join('\n')
+
+    expect(split(markdown)).toEqual([
+      'Read the [docs](https://example.com) first.',
+      '\n\nThen run the command.',
+    ])
+  })
+
   it('splits CJK content', () => {
     const markdown = ['## 标题', '', '第一段内容。', '', '第二段内容。'].join(
       '\n',

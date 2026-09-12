@@ -33,7 +33,18 @@ const FOOTNOTE_PATTERN = /\[\^[\w-]{1,200}\]/
 // Same problem for link reference definitions: `[ref]: https://…` resolves
 // `[text][ref]` from anywhere in the document, so the two must be parsed
 // together.
-const LINK_REFERENCE_DEFINITION_PATTERN = /^ {0,3}\[[^\]\n]+\]:/m
+//
+// 这里对 CommonMark 的合法形态做了两处收窄，理由与 FOOTNOTE_PATTERN 相同：宽松的
+// 字符类会把代码当成链接引用定义，从而让整篇回答退回不可切分路径、把 O(n²) 的
+// 整篇重解析还回来。
+// - label 只允许单词字符与连字符：排除 TypeScript 索引签名 `[key: string]:`
+//   这类行首写法（CommonMark 的 label 允许空格和标点，但真实回答里带空格的
+//   label 极少，代码里的方括号表达式极多）。
+// - `]:` 之后必须跟空白（空格、制表符或换行，后者是 CommonMark 允许的换行后接
+//   destination 的写法）：排除 CSS 属性选择器加伪类的 `[data-state]:not(.x)`。
+//   代价是漏掉 `[ref]:https://…` 这种冒号后不留空白的合法写法——它在规范上成立
+//   但在真实文档里几乎不出现，换取排除常见代码误伤是划算的。
+const LINK_REFERENCE_DEFINITION_PATTERN = /^ {0,3}\[[\w-]{1,200}\]:\s/m
 
 function requiresWholeDocumentParse(markdown: string): boolean {
   return (

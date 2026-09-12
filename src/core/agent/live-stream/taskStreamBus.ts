@@ -1,5 +1,12 @@
 // 通用实时任务流事件总线。
 // producer 按 toolCallId 推 stdout/stderr/status，UI 订阅同一 id 的快照。
+//
+// 生命周期由总线自己负责，与 assistantRenderStreamStore 的 recycleIfSettled 同一语义：
+// 快照在「进入终态（status: 'done'）且订阅者归零」时回收。两个条件缺一不可——
+// 只看终态会在工具调用刚结束、卡片还要读最后一次快照完成渲染时把内容抽走；
+// 只看订阅者归零则会误删仍在运行的后台命令正在累积的输出。
+// 回收之后 UI 读到 null，LiveTaskCard 回落到已持久化的工具结果，这正是终态内容的
+// 长期归宿，因此回收不会丢失用户可见的信息。
 
 /** snapshot 中 stdout/stderr 字段的最大字符数（超出时从前端截断） */
 const SNAPSHOT_MAX_CHARS = 1 * 1024 * 1024 // 1MB chars
@@ -41,6 +48,7 @@ export class LiveTaskStreamBus {
       if (subs?.size === 0) {
         this.subscribers.delete(toolCallId)
       }
+      this.recycleIfSettled(toolCallId)
     }
   }
 
@@ -72,15 +80,24 @@ export class LiveTaskStreamBus {
         fn(event)
       }
     }
+
+    // 没有订阅者时终态事件直接回收：这条工具调用的输出已经写进持久化的工具结果，
+    // 留在内存里只会随工具调用次数线性堆积。
+    this.recycleIfSettled(toolCallId)
   }
 
   getSnapshot(toolCallId: string): LiveTaskStreamSnapshot | null {
     return this.snapshots.get(toolCallId) ?? null
   }
 
-  clearSnapshot(toolCallId: string): void {
+  private recycleIfSettled(toolCallId: string): void {
+    if ((this.subscribers.get(toolCallId)?.size ?? 0) > 0) {
+      return
+    }
+    if (this.snapshots.get(toolCallId)?.status !== 'done') {
+      return
+    }
     this.snapshots.delete(toolCallId)
-    this.subscribers.delete(toolCallId)
   }
 }
 
