@@ -588,34 +588,61 @@ const isBlockedTerminalCommandRequest = (
   )
 }
 
-const mergeVisibleMessages = (
-  previousVisibleMessages: ChatMessage[],
+/**
+ * 可见历史前缀：合并锚点及其之前的那段消息，也就是本次 run 不会再改动的
+ * 那段历史。`input.messages` 与合并锚点都是 run 启动时定下的常量（锚点被
+ * 刻意固定，见 `run` 里 `historyMergeAnchorMessageId` 的注释），所以这段
+ * 前缀在整个 run 期间不变，按 run 解析一次即可，不必每个流式 chunk 重新
+ * `findIndex` + `slice` 一遍整段会话。
+ *
+ * 锚点缺失或在 `baseMessages` 里找不到时返回空前缀，可见历史完全由运行时
+ * 快照决定——与之前"没有锚点 / anchorIndex === -1 就只用 responseMessages"
+ * 的行为一致。
+ */
+export const resolveVisibleHistoryPrefix = (
   baseMessages: ChatMessage[],
   anchorMessageId: string | undefined,
-  responseMessages: ChatMessage[],
 ): ChatMessage[] => {
   if (!anchorMessageId) {
-    return reconcileAssistantGenerationState(
-      previousVisibleMessages,
-      responseMessages,
-    )
+    return []
   }
 
   const anchorIndex = baseMessages.findIndex(
     (message) => message.id === anchorMessageId,
   )
 
-  if (anchorIndex === -1) {
+  return anchorIndex === -1 ? [] : baseMessages.slice(0, anchorIndex + 1)
+}
+
+/**
+ * 把运行时快照折回成可见消息列表：固定的历史前缀 + 折叠过的响应段。
+ *
+ * 折叠只作用于锚点之后的响应段。`reconcileAssistantGenerationState` 只会在
+ * "上一轮同 id 的工具调用已是 Aborted 而这一轮不是"或"上一轮同 id 的
+ * assistant 已是 aborted 而这一轮报 streaming"时改写消息；前缀里的每条消息
+ * 在上一轮就是它自己（同一个对象引用），两个条件都不可能成立，因此对前缀
+ * 折叠必然是恒等变换。跳过它之后，每个 chunk 的代价只随本轮响应长度增长，
+ * 而不再随整段会话历史增长。
+ */
+export const mergeVisibleMessages = (
+  previousVisibleMessages: ChatMessage[],
+  historyPrefix: ChatMessage[],
+  responseMessages: ChatMessage[],
+): ChatMessage[] => {
+  if (historyPrefix.length === 0) {
     return reconcileAssistantGenerationState(
       previousVisibleMessages,
       responseMessages,
     )
   }
 
-  return reconcileAssistantGenerationState(previousVisibleMessages, [
-    ...baseMessages.slice(0, anchorIndex + 1),
-    ...responseMessages,
-  ])
+  return [
+    ...historyPrefix,
+    ...reconcileAssistantGenerationState(
+      previousVisibleMessages.slice(historyPrefix.length),
+      responseMessages,
+    ),
+  ]
 }
 
 const hasPendingApproval = (messages: ChatMessage[]): boolean => {
@@ -2192,6 +2219,12 @@ export class AgentSessionService {
     // for subsequent assistant/tool messages within the same runtime.
     const historyMergeAnchorMessageId =
       input.sourceUserMessageId ?? input.messages.at(-1)?.id
+    // 锚点与 `input.messages` 在本次 run 内都不再变化，前缀因此只解析一次；
+    // 流式回调每个 chunk 只折叠锚点之后的响应段。
+    const visibleHistoryPrefix = resolveVisibleHistoryPrefix(
+      input.messages,
+      historyMergeAnchorMessageId,
+    )
 
     const runtimeInput: AgentRuntimeRunInput = {
       ...input,
@@ -2243,8 +2276,7 @@ export class AgentSessionService {
       const previousRunState = currentRunEntry.state
       const mergedMessages = mergeVisibleMessages(
         previousRunState.messages,
-        input.messages,
-        historyMergeAnchorMessageId,
+        visibleHistoryPrefix,
         snapshot.messages,
       )
       const nextRunState = {
