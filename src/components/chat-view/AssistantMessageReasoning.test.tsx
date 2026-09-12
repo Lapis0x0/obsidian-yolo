@@ -19,6 +19,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 
 import AssistantMessageReasoning, {
   formatReasoningDurationSeconds,
+  getReasoningPreviewFrame,
   getReasoningPreviewHoldOffset,
   getReasoningPreviewViewportMetrics,
   getReasoningRollText,
@@ -102,6 +103,90 @@ describe('AssistantMessageReasoning', () => {
       scrollOffset: 20,
       isOverflowing: true,
     })
+  })
+
+  // ResizeObserver 回调拿到的就是这两个数（轨道盒子的宽高），下面这组用例
+  // 描述的是"这一次量测该写什么 CSS 变量、要不要跑位移动画"。
+  describe('getReasoningPreviewFrame', () => {
+    const frame = ({
+      height,
+      width = 300,
+      previousWidth = 300,
+      previousHeight,
+      previousScrollOffset = 0,
+    }: {
+      height: number
+      width?: number
+      previousWidth?: number
+      previousHeight: number
+      previousScrollOffset?: number
+    }) =>
+      getReasoningPreviewFrame({
+        width,
+        height,
+        lineHeight: 20,
+        previewLines: 5,
+        previousWidth,
+        previousHeight,
+        previousScrollOffset,
+      })
+
+    it('writes the viewport height and never animates the very first measurement', () => {
+      expect(frame({ height: 60, previousHeight: 0 })).toEqual({
+        viewportHeight: 40,
+        scrollOffset: 0,
+        isOverflowing: false,
+        transition: 'reset',
+      })
+    })
+
+    it('holds the running animation while new text stays on the same visual line', () => {
+      expect(
+        frame({ height: 140, previousHeight: 140, previousScrollOffset: 20 }),
+      ).toMatchObject({ scrollOffset: 20, transition: 'hold' })
+    })
+
+    it('animates the track once the preview is capped and grows further', () => {
+      expect(
+        frame({ height: 160, previousHeight: 140, previousScrollOffset: 20 }),
+      ).toEqual({
+        viewportHeight: 100,
+        scrollOffset: 40,
+        isOverflowing: true,
+        transition: 'animate',
+      })
+    })
+
+    it('drops the animation when rewrapping or shrinking makes the offset meaningless', () => {
+      expect(
+        frame({
+          height: 160,
+          width: 240,
+          previousHeight: 140,
+          previousScrollOffset: 20,
+        }),
+      ).toMatchObject({ transition: 'reset' })
+      expect(
+        frame({ height: 120, previousHeight: 160, previousScrollOffset: 40 }),
+      ).toMatchObject({ transition: 'reset' })
+    })
+  })
+
+  // 折叠态由预览轨道呈现"正在想什么"，全文一行都不该挂在 DOM 里——否则那棵
+  // 上万字的子树虽然被压成零高，仍然要参与每一次布局。
+  it('does not mount the reasoning body while collapsed', () => {
+    const html = renderToStaticMarkup(
+      <AssistantMessageReasoning
+        reasoning="思考正文不该出现在折叠态里"
+        hasAnswerContent
+        generationState="completed"
+        reasoningDurationMs={1_200}
+      />,
+    )
+
+    expect(html).not.toContain('yolo-assistant-message-metadata-content')
+    expect(html).not.toContain('思考正文不该出现在折叠态里')
+    expect(html).toContain('yolo-assistant-message-metadata-toggle')
   })
 
   it('keeps the reasoning title when the response generation fails', () => {

@@ -145,13 +145,30 @@ export function useAssistantStreamedContent({
     : { content: streamed, contentSource: null }
 }
 
-// 思考文本没有命令式通道：预览轨道、`hasReasoningText` 判定、折叠态都要走
-// React。它本来就以 REASONING_STREAM_SAMPLE_MS 为节拍刷新，这里按同一节拍采样，
-// 把 token 频率与渲染频率解耦。
+// 思考正文走命令式源，不再按节拍进 React。剩下要进 React 的只有「预览轨道要
+// 显示哪段文字」和 stage 状态机读的那份文本——它们是 React 结构，无法用命令式
+// 源驱动，因此仍按固定节拍采样，把 token 频率与渲染频率解耦。
 const REASONING_STREAM_SAMPLE_MS = 64
 
+type StreamedReasoning = {
+  /**
+   * 供 React 结构使用的思考文本：预览轨道的文字、stage 判定、是否可展开。
+   * 按 REASONING_STREAM_SAMPLE_MS 采样，markdown 主体不读它。
+   */
+  reasoning: string
+  /** 非 null 表示思考正文由命令式源实时驱动。 */
+  reasoningSource: StreamingContentSource | null
+}
+
 /**
- * 订阅一条生成中 assistant 消息的思考流，按固定节拍采样。
+ * 订阅一条生成中 assistant 消息的思考流。
+ *
+ * 思考文本比正文简单：`<think>` / `<yolo_block>` 只出现在正文里，思考内容内部
+ * 不会再嵌套它们，所以这里没有"出现标签就退回慢路径"的分支——生成期间命令式源
+ * 恒为非 null，markdown 主体完全不进 React。世代切换（retry / resume）同样不必
+ * 在这里判定：重写会让播放器读到的目标不再以当前可见文本为前缀，
+ * `StreamingMarkdown` 自己就会放弃播放缓冲直接落位。
+ *
  * `ownerNodeRef` 用于取节点所属窗口的定时器：popout 与主窗口是不同的
  * BrowserWindow，被遮挡窗口的 timer 会被节流。
  */
@@ -165,13 +182,28 @@ export function useAssistantStreamedReasoning({
   conversationId?: string
   messageId?: string
   isStreaming: boolean
+  /** 会话快照里的折回值：最近一次结构事件时的思考文本。 */
   reasoning: string
   ownerNodeRef: React.RefObject<HTMLElement>
-}): string {
+}): StreamedReasoning {
   const access = useAssistantRenderStreamAccess()
   const enabled =
     isStreaming && access !== null && !!conversationId && !!messageId
+  const latestReasoningRef = useRef(reasoning)
+  const listenersRef = useRef(new Set<() => void>())
   const [sampled, setSampled] = useState<string | null>(null)
+
+  const getContent = useCallback(() => latestReasoningRef.current, [])
+  const subscribe = useCallback((listener: () => void) => {
+    listenersRef.current.add(listener)
+    return () => {
+      listenersRef.current.delete(listener)
+    }
+  }, [])
+  const reasoningSource = useMemo<StreamingContentSource>(
+    () => ({ getContent, subscribe }),
+    [getContent, subscribe],
+  )
 
   useEffect(() => {
     if (!enabled || !access || !conversationId || !messageId) {
@@ -179,19 +211,20 @@ export function useAssistantStreamedReasoning({
       return
     }
 
-    let latest: string | null = null
     let timer: number | null = null
     let timerWindow: Window | null = null
 
     const flush = () => {
       timer = null
-      if (latest !== null) {
-        setSampled(latest)
-      }
+      setSampled(latestReasoningRef.current)
     }
 
     const apply = (value: AssistantRenderStreamValue) => {
-      latest = value.reasoning
+      latestReasoningRef.current = value.reasoning
+      // 命令式通道：只改写目标值并通知播放器，可见帧由播放器自己的 rAF 决定。
+      for (const listener of [...listenersRef.current]) {
+        listener()
+      }
       if (timer !== null) {
         return
       }
@@ -219,5 +252,8 @@ export function useAssistantStreamedReasoning({
     }
   }, [access, conversationId, enabled, messageId, ownerNodeRef])
 
-  return enabled && sampled !== null ? sampled : reasoning
+  if (!enabled) {
+    return { reasoning, reasoningSource: null }
+  }
+  return { reasoning: sampled ?? reasoning, reasoningSource }
 }

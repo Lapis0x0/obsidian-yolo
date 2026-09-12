@@ -428,12 +428,18 @@ const StreamingMarkdown = memo(function StreamingMarkdown({
   citationSources,
 }: StreamingMarkdownProps) {
   const followLiveEdge = useLiveEdgeFollow()
-  const [displayedContent, setDisplayedContent] = useState(content)
+  // 新挂载的播放器没有"读者还没看到的积压"：缓冲是用来抹平正在观看的这条流的
+  // 抖动，不是用来回放历史。所以挂载时直接对齐命令式源的当前值——`content` 是
+  // 上一次结构事件时的折回值，可能已经落后一大截（思考过程折叠期间尤其如此），
+  // 从它开始播会把整段已经生成完的文本按阅读速度重放一遍。
+  const [displayedContent, setDisplayedContent] = useState(
+    () => contentSource?.getContent() ?? content,
+  )
   // Bumped once, one fade window after the buffer empties, so the tail
   // re-renders with the expired window pruned and sheds its spans.
   const [, setRevealClock] = useState(0)
-  const displayedContentRef = useRef(content)
-  const targetContentRef = useRef(content)
+  const displayedContentRef = useRef(displayedContent)
+  const targetContentRef = useRef(displayedContent)
   const containerRef = useRef<HTMLDivElement>(null)
   const splitCacheRef = useRef<MarkdownBlockSplit | null>(null)
   const revealStateRef = useRef<RevealState>({
