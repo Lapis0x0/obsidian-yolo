@@ -17,10 +17,11 @@
  *
  *     The two sources are held to different standards on purpose. The
  *     Release is the durable, complete store and must hold everything.
- *     The R2 mirror is a latest-only snapshot (`build-pages` rebuilds it for
- *     the current version alone), so it is checked only for what the newest
- *     version references — a superseded artifact missing from R2 is the
- *     design working, with those users falling back to the Release.
+ *     The Cloudflare R2 mirror is a content-addressed, latest-only snapshot
+ *     (`distribution.mjs build-mirror` rebuilds it for the current version
+ *     alone), so it is checked only for what the newest version references —
+ *     a superseded artifact missing from R2 is the design working, with those
+ *     users falling back to the Release.
  *
  *     This direction is the one that matters. Nothing is ever deleted, so
  *     stale artifacts are harmless (the entire history to date is ~20 MB, and

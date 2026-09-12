@@ -142,7 +142,7 @@ test('distribution keeps the R2 mirror best-effort and outside the release gate'
   assert.equal(check['continue-on-error'], true)
   assert.equal(buildMirror['continue-on-error'], true)
   assert.equal(uploadMirror['continue-on-error'], true)
-  assert.match(uploadMirror.if, /steps\.pages_build\.outcome == 'success'/)
+  assert.match(uploadMirror.if, /steps\.mirror_build\.outcome == 'success'/)
   assert.equal(verifyAfterDeploy, undefined)
   assert.match(distributionSource, /verification deferred to a later reconcile/)
   assert.doesNotMatch(

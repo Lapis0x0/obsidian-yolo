@@ -39,7 +39,7 @@ jobs:
       # attached. Runs here rather than in the release workflow because this
       # checkout has the full tag history the referenced set is derived from.
       # The mirror is skipped: this run rebuilds it for the current version
-      # below, so a new artifact is always absent here, and `verify-pages`
+      # below, so a new artifact is always absent here, and `verify-mirror`
       # checks the mirror's runtime artifacts once it is current.
       - name: Audit runtime component artifact completeness
         env:
@@ -114,23 +114,23 @@ jobs:
           https://purge.jsdelivr.net/gh/Lapis0x0/obsidian-yolo@main/modules/catalog-v1.json
 
       - name: Check current mirror content
-        id: pages
+        id: mirror
         continue-on-error: true
-        run: node scripts/distribution.mjs verify-pages
+        run: node scripts/distribution.mjs verify-mirror
 
       - name: Build latest-only mirror snapshot
-        id: pages_build
-        if: steps.pages.outcome != 'success'
+        id: mirror_build
+        if: steps.mirror.outcome != 'success'
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/distribution.mjs build-pages
+        run: node scripts/distribution.mjs build-mirror
 
       - name: Upload latest-only snapshot to R2
-        id: pages_deploy
+        id: mirror_upload
         if: >-
-          steps.pages.outcome != 'success' &&
-          steps.pages_build.outcome == 'success'
+          steps.mirror.outcome != 'success' &&
+          steps.mirror_build.outcome == 'success'
         continue-on-error: true
         env:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
@@ -140,16 +140,16 @@ jobs:
       - name: Summarize distribution state
         run: |
           revision="$(node -p "require('./distribution/feed-v1.json').revision")"
-          if [[ "${{ steps.pages.outcome }}" == 'success' ]]; then
-            pages_status='verified current'
-          elif [[ "${{ steps.pages_build.outcome }}" != 'success' ]]; then
-            pages_status='degraded (snapshot build failed; rerun reconcile to retry)'
-          elif [[ "${{ steps.pages_deploy.outcome }}" == 'success' ]]; then
-            pages_status='upload submitted; verification deferred to a later reconcile'
+          if [[ "${{ steps.mirror.outcome }}" == 'success' ]]; then
+            mirror_status='verified current'
+          elif [[ "${{ steps.mirror_build.outcome }}" != 'success' ]]; then
+            mirror_status='degraded (snapshot build failed; rerun reconcile to retry)'
+          elif [[ "${{ steps.mirror_upload.outcome }}" == 'success' ]]; then
+            mirror_status='upload submitted; verification deferred to a later reconcile'
           else
-            pages_status='degraded (upload failed; rerun reconcile to retry)'
+            mirror_status='degraded (upload failed; rerun reconcile to retry)'
           fi
           echo "### Distribution revision $revision" >> "$GITHUB_STEP_SUMMARY"
           echo '- GitHub Release archive: authoritative' >> "$GITHUB_STEP_SUMMARY"
           echo '- Signed GitHub Raw Feed: current' >> "$GITHUB_STEP_SUMMARY"
-          echo "- Cloudflare R2 mirror: $pages_status" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Cloudflare R2 mirror: $mirror_status" >> "$GITHUB_STEP_SUMMARY"
