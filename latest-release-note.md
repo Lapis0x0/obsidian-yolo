@@ -1,39 +1,39 @@
-## 1.6.9.1 Max Mode Polish ✨
+## 1.6.9.2 Performance Improvements ⚡
 
-### Agent & tools
+### Reading & writing
 
-- Filled in vector retrieval for vault search in Max, and unified the search tools across the Ask/Agent/Max chat modes.
-- Fixed edits being lost when Max mode ran parallel edit_file calls on the same file. (#594)
-- Optimized the architecture design, unifying the programmatic entry point for calling the Agent.
+- You can now select text in reading mode to ask about it, add it to the sidebar, and keep it highlighted. (#596)
+- Fixed the PDF selection menu and highlights not working in pop-out windows.
+- Improved the prompt design for Tab completion to make multiple suggestions more stable.
 
-### Prompts
+### Chat & agent
 
-- Global/Agent system prompts now support the ![[note]] syntax to embed constraints from other documents.
-- Improved the prompt design for the model proactively suggesting a switch between Ask/Agent/Max capabilities.
+- Models in Ask/Agent mode can now read images in your vault on their own (requires a vision-capable model). (#595)
+- Improved performance while the model is generating.
 
-### Chat & interface
+### Knowledge base
 
-- Right-click the YOLO ribbon icon to choose whether to open Chat in the sidebar, a tab, a split, or a separate window.
-- Added Max mode to the mode list in the @ menu.
-- Improved the styling and animation design of collapsed tool groups.
+- Fixed indexing slowing down while staying on the knowledge base settings page.
+- Fixed indexing getting stuck on large numbers of PDF documents due to the old PDF cache mechanism.
+- Removed the size and page limits for PDF indexing.
 
 ---
 
-## 1.6.9.1 Max 模式打磨 ✨
+## 1.6.9.2 性能优化 ⚡
 
-### Agent 与工具
+### 阅读与写作
 
-- 补全 Max 的 vault search 向量检索的能力，并统一 Ask/Agent/Max 三种对话模式的检索工具。
-- 修复 Max 模式并行 edit_file 同一文件丢失编辑的问题。（#594）
-- 优化架构设计，统一 Agent 程序化调用入口。
+- 阅读模式下选中文字也能提问、加入侧边栏并保留高亮。（#596）
+- 独立窗口中的 PDF 选区菜单与高亮恢复正常。
+- 优化 tab 补全场景的提示词设计以提高多补全的稳定性。
 
-### 提示词
+### 对话与 Agent
 
-- 系统全局/Agent提示词支持 ![[笔记]] 语法来嵌入其他文档的约束。
-- 优化模型主动建议 Ask/Agent/Max 能力切换的提示词设计。
+- Ask/Agent 模式下模型可以自主读取 Vault 中的图片（需模型支持视觉）。（#595）
+- 优化模型生成过程中的性能表现。
 
-### 对话与界面
+### 知识库
 
-- 右键侧边栏 YOLO 图标可选择在侧边栏、标签页、分屏或独立窗口打开 Chat。
-- 为 @ 菜单的模式列表补齐 Max 模式。
-- 优化工具折叠组的样式与动画设计。
+- 修复停留在知识库设置页时索引变慢的问题。
+- 修复原 PDF 缓存机制导致索引大量 PDF 文档时卡住的问题。
+- 取消 PDF 索引的大小与页数限制。
