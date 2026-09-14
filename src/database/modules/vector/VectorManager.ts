@@ -30,11 +30,7 @@ import {
   createYieldController,
   yieldToMain,
 } from '../../../utils/common/yield-to-main'
-import {
-  PDF_INDEX_MAX_BYTES,
-  PDF_INDEX_MAX_PAGES,
-  extractPdfText,
-} from '../../../utils/pdf/extractPdfText'
+import { extractPdfText } from '../../../utils/pdf/extractPdfText'
 import { matchesIncludeExcludeScope } from '../../../utils/scope-match'
 
 const PDF_PAGE_CHUNK_CHAR_THRESHOLD = 1500
@@ -74,7 +70,7 @@ export type ReconcileConfig = {
    * this when the embedding provider returns 429 (e.g. Azure S0 tier).
    */
   embeddingConcurrency?: number
-  /** Optional YOLO-root-aware settings handle; enables the PDF text cache. */
+  /** Optional YOLO-root-aware settings handle; locates the YOLO base dir to exclude. */
   settings?: YoloSettingsLike | null
 }
 
@@ -542,7 +538,6 @@ export class VectorManager {
             textSplitter,
             config.chunkSize,
             signal,
-            config.settings ?? null,
           )
           batchDesired.push(...fileChunks)
           totalChunksDiscovered += fileChunks.length
@@ -890,10 +885,9 @@ export class VectorManager {
     textSplitter: RecursiveCharacterTextSplitter,
     chunkSize: number,
     signal?: AbortSignal,
-    settings?: YoloSettingsLike | null,
   ): Promise<DesiredChunk[]> {
     if (file.extension?.toLowerCase() === 'pdf') {
-      return this.chunkifyPdf(file, chunkSize, signal, settings)
+      return this.chunkifyPdf(file, chunkSize, signal)
     }
 
     const fileContent = await this.app.vault.cachedRead(file)
@@ -921,22 +915,18 @@ export class VectorManager {
     file: TFile,
     chunkSize: number,
     signal?: AbortSignal,
-    settings?: YoloSettingsLike | null,
   ): Promise<DesiredChunk[]> {
-    if (file.stat.size > PDF_INDEX_MAX_BYTES) {
-      console.warn(
-        `[YOLO] Skipping PDF (>${PDF_INDEX_MAX_BYTES} bytes): ${file.path}`,
-      )
-      return []
-    }
-
     let pages: { page: number; text: string }[]
     try {
+      // No size/page cap: indexing a large book is the user's own trade-off,
+      // and a capped book would be silently skipped or partially indexed.
+      // No text cache either: indexing only reaches files whose mtime changed,
+      // which the path:mtime:size cache key misses by construction — writing
+      // here would only duplicate the whole library's text into the cache.
       const extracted = await extractPdfText(this.app, file, {
         signal,
-        maxBinaryBytes: PDF_INDEX_MAX_BYTES,
-        maxPages: PDF_INDEX_MAX_PAGES,
-        settings: settings ?? null,
+        maxBinaryBytes: Infinity,
+        maxPages: Infinity,
       })
       pages = extracted.pages
     } catch (error) {

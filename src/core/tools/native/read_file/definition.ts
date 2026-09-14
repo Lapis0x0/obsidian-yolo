@@ -8,8 +8,8 @@ import { uint8ArrayToBase64 } from '../../../../utils/base64'
 import { getImageMimeTypeFromExtension } from '../../../../utils/llm/image'
 import { chatModelSupportsVision } from '../../../../utils/llm/model-modalities'
 import {
-  PDF_INDEX_MAX_BYTES,
-  PDF_INDEX_MAX_PAGES,
+  PDF_READ_MAX_BYTES,
+  PDF_READ_MAX_PAGES,
   extractPdfTextFromBase64,
 } from '../../../../utils/pdf/extractPdfText'
 import { defineTool } from '../../define'
@@ -98,7 +98,7 @@ export const readFileDefinition = defineTool({
     }
 
     if (extension === 'pdf') {
-      if (stat.size > PDF_INDEX_MAX_BYTES) {
+      if (stat.size > PDF_READ_MAX_BYTES) {
         throw new Error(`PDF too large (${stat.size} bytes).`)
       }
       const base64 = uint8ArrayToBase64(
@@ -109,7 +109,7 @@ export const readFileDefinition = defineTool({
       // than a `TFile`.
       const { pages } = await extractPdfTextFromBase64(app, base64, {
         signal,
-        maxPages: PDF_INDEX_MAX_PAGES,
+        maxPages: PDF_READ_MAX_PAGES,
         settings,
         sourceLabel: `native:${absolutePath}`,
       })

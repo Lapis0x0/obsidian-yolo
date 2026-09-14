@@ -20,8 +20,8 @@ import {
 } from '../../../utils/llm/resolve-wikilink-target'
 import { parseOfficeDocument } from '../../../utils/office'
 import {
-  PDF_INDEX_MAX_BYTES,
-  PDF_INDEX_MAX_PAGES,
+  PDF_READ_MAX_BYTES,
+  PDF_READ_MAX_PAGES,
   extractPdfText,
 } from '../../../utils/pdf/extractPdfText'
 import { renderPdfPagesToImages } from '../../../utils/pdf/renderPdfPagesToImages'
@@ -482,7 +482,7 @@ export const fsReadDefinition = defineTool({
 
       const isPdf = file.extension?.toLowerCase() === 'pdf'
       if (isPdf) {
-        if (file.stat.size > PDF_INDEX_MAX_BYTES) {
+        if (file.stat.size > PDF_READ_MAX_BYTES) {
           results.push({
             path,
             ok: false,
@@ -636,8 +636,8 @@ export const fsReadDefinition = defineTool({
           try {
             const extracted = await extractPdfText(app, file, {
               signal,
-              maxBinaryBytes: PDF_INDEX_MAX_BYTES,
-              maxPages: PDF_INDEX_MAX_PAGES,
+              maxBinaryBytes: PDF_READ_MAX_BYTES,
+              maxPages: PDF_READ_MAX_PAGES,
               settings,
             })
             pdfSliceFallbackPages = extracted.pages
@@ -790,8 +790,8 @@ export const fsReadDefinition = defineTool({
         try {
           const extracted = await extractPdfText(app, file, {
             signal,
-            maxBinaryBytes: PDF_INDEX_MAX_BYTES,
-            maxPages: PDF_INDEX_MAX_PAGES,
+            maxBinaryBytes: PDF_READ_MAX_BYTES,
+            maxPages: PDF_READ_MAX_PAGES,
             settings,
           })
           pages = extracted.pages

@@ -11,11 +11,11 @@ import { createYieldController } from '../common/yield-to-main'
 
 import { loadPdfPages } from './pdfPages'
 
-/** Hard cap for vault PDF indexing (binary size). */
-export const PDF_INDEX_MAX_BYTES = 50 * 1024 * 1024
+/** Default binary-size cap when chat reads a PDF's text (knowledge base indexing is uncapped). */
+export const PDF_READ_MAX_BYTES = 50 * 1024 * 1024
 
-/** Hard cap for vault PDF indexing (page count). */
-export const PDF_INDEX_MAX_PAGES = 500
+/** Default page cap when chat reads a PDF's text (knowledge base indexing is uncapped). */
+export const PDF_READ_MAX_PAGES = 500
 
 type YoloSettingsLike = {
   yolo?: {
@@ -41,8 +41,8 @@ export async function extractPdfText(
   file: TFile,
   options: ExtractPdfTextOptions = {},
 ): Promise<{ pages: { page: number; text: string }[] }> {
-  const maxBinaryBytes = options.maxBinaryBytes ?? PDF_INDEX_MAX_BYTES
-  const maxPages = options.maxPages ?? PDF_INDEX_MAX_PAGES
+  const maxBinaryBytes = options.maxBinaryBytes ?? PDF_READ_MAX_BYTES
+  const maxPages = options.maxPages ?? PDF_READ_MAX_PAGES
 
   if (file.stat.size > maxBinaryBytes) {
     throw new Error(
@@ -134,7 +134,7 @@ export async function extractPdfTextFromBase64(
   base64: string,
   options: ExtractPdfTextFromBase64Options = {},
 ): Promise<{ pages: { page: number; text: string }[] }> {
-  const maxPages = options.maxPages ?? PDF_INDEX_MAX_PAGES
+  const maxPages = options.maxPages ?? PDF_READ_MAX_PAGES
 
   const cacheKey =
     options.settings !== undefined

@@ -18,8 +18,6 @@ jest.mock('exponential-backoff', () => ({
 }))
 
 jest.mock('../../../utils/pdf/extractPdfText', () => ({
-  PDF_INDEX_MAX_BYTES: 50_000_000,
-  PDF_INDEX_MAX_PAGES: 1000,
   extractPdfText: jest.fn(),
 }))
 

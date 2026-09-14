@@ -79,8 +79,8 @@ import {
 } from '../llm/model-modalities'
 import { getNestedFiles, readTFileContent } from '../obsidian'
 import {
-  PDF_INDEX_MAX_BYTES,
-  PDF_INDEX_MAX_PAGES,
+  PDF_READ_MAX_BYTES,
+  PDF_READ_MAX_PAGES,
   extractPdfText,
   extractPdfTextFromBase64,
 } from '../pdf/extractPdfText'
@@ -2593,8 +2593,8 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
             })
           } else if (ext === 'pdf') {
             const { pages } = await extractPdfText(this.app, file, {
-              maxBinaryBytes: PDF_INDEX_MAX_BYTES,
-              maxPages: PDF_INDEX_MAX_PAGES,
+              maxBinaryBytes: PDF_READ_MAX_BYTES,
+              maxPages: PDF_READ_MAX_PAGES,
               settings: this.settings,
             })
             rawContent = pages
