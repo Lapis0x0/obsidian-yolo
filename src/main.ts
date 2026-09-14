@@ -803,11 +803,11 @@ export default class YoloPlugin extends Plugin {
           this.showQuickAskWithOptions(editor, view, options),
         showQuickAskWithAutoSend: (editor, view, options) =>
           this.showQuickAskWithAutoSend(editor, view, options),
-        showQuickAskFromPdf: (args) =>
-          this.getQuickAskController().showFromPdf(args),
-        pruneOrphanedQuickAskPdfInstance: (activePdfLeaves) =>
-          this.getQuickAskController().pruneOrphanedPdfInstance(
-            activePdfLeaves,
+        showQuickAskFromReadOnlySelection: (args) =>
+          this.getQuickAskController().showFromReadOnlySelection(args),
+        pruneOrphanedReadOnlyQuickAsk: (openLeaves) =>
+          this.getQuickAskController().pruneOrphanedReadOnlyInstance(
+            openLeaves,
           ),
         openChatWithSelectionAndPrefill: async (
           selectedBlock,

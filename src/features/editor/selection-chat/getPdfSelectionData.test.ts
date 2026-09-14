@@ -163,7 +163,7 @@ describe('getPdfSelectionData', () => {
     const leaf = makePdfLeaf('sample.pdf', leafContent)
     const app = makeApp([leaf])
 
-    expect(getPdfSelectionData(app as any)).toBeNull()
+    expect(getPdfSelectionData(app as any, window.getSelection())).toBeNull()
   })
 
   test('returns null when selection is outside any PDF leaf (not in PDF DOM)', () => {
@@ -190,7 +190,7 @@ describe('getPdfSelectionData', () => {
     const app = makeApp([leaf])
     // Must be null (not { kind: 'empty' }) — Markdown badges must not be cleared
 
-    expect(getPdfSelectionData(app as any)).toBeNull()
+    expect(getPdfSelectionData(app as any, window.getSelection())).toBeNull()
   })
 
   test('returns { kind: "empty" } when selection is inside PDF but collapsed/empty', () => {
@@ -210,7 +210,7 @@ describe('getPdfSelectionData', () => {
     const leaf = makePdfLeaf('notes/doc.pdf', leafContent)
     const app = makeApp([leaf])
 
-    const result = getPdfSelectionData(app as any)
+    const result = getPdfSelectionData(app as any, window.getSelection())
     // Now returns { kind: 'empty', leaf } since the leaf can be resolved
     expect(result).toMatchObject({ kind: 'empty' })
   })
@@ -233,7 +233,7 @@ describe('getPdfSelectionData', () => {
     const leaf = makePdfLeaf('docs/paper.pdf', leafContent)
     const app = makeApp([leaf])
 
-    const result = getPdfSelectionData(app as any)
+    const result = getPdfSelectionData(app as any, window.getSelection())
     expect(result).not.toBeNull()
     expect(result).toMatchObject({
       kind: 'data',
@@ -263,7 +263,7 @@ describe('getPdfSelectionData', () => {
     const leaf = makePdfLeaf('book.pdf', leafContent)
     const app = makeApp([leaf])
 
-    const result = getPdfSelectionData(app as any)
+    const result = getPdfSelectionData(app as any, window.getSelection())
     expect(result).not.toBeNull()
 
     expect((result as any).pageNumber).toBe(2) // range.startContainer page, not focus page
@@ -290,7 +290,7 @@ describe('getPdfSelectionData', () => {
     // Both leaves present; leafA is listed first (like active leaf)
     const app = makeApp([leafA, leafB])
 
-    const result = getPdfSelectionData(app as any)
+    const result = getPdfSelectionData(app as any, window.getSelection())
     expect(result).not.toBeNull()
 
     expect((result as any).file.path).toBe('file_B.pdf') // must be B, not A
@@ -363,7 +363,7 @@ describe('getPdfSelectionData', () => {
     const leaf = makePdfLeaf('orphan.pdf', leafContent)
     const app = makeApp([leaf])
 
-    const result = getPdfSelectionData(app as any)
+    const result = getPdfSelectionData(app as any, window.getSelection())
     // Page number cannot be resolved → kind:'empty' (not null, since it IS inside PDF)
     // Now returns { kind: 'empty', leaf } since the leaf can be resolved
     expect(result).toMatchObject({ kind: 'empty' })

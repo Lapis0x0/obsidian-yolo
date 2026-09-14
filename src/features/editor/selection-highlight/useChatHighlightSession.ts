@@ -6,6 +6,7 @@ import {
   PDF_ANNOTATION_UI_SELECTOR,
   pdfSelectionHighlightController,
 } from './pdfSelectionHighlightController'
+import { readingSelectionHighlightController } from './readingSelectionHighlightController'
 import { selectionHighlightController } from './selectionHighlightController'
 
 type UseChatHighlightSessionArgs = {
@@ -22,8 +23,8 @@ type UseChatHighlightSessionArgs = {
 
 /**
  * Editor leaf surfaces that count as "user interacted with a real editor" and
- * therefore end the current sticky cycle.  Includes both the markdown CM
- * editor and Obsidian's built-in PDF viewer.
+ * therefore end the current sticky cycle.  Includes Markdown notes (editing
+ * and reading mode) and Obsidian's built-in PDF viewer.
  */
 const EDITOR_LEAF_SELECTOR =
   '.workspace-leaf-content[data-type="markdown"], .workspace-leaf-content[data-type="pdf"]'
@@ -56,6 +57,7 @@ function collectSelectionHighlightIds(
 function dispatchReconcile(activeIds: Set<string>): void {
   selectionHighlightController.reconcileActiveIds(activeIds)
   pdfSelectionHighlightController.reconcileActiveIds(activeIds)
+  readingSelectionHighlightController.reconcileActiveIds(activeIds)
 }
 
 export type UseChatHighlightSessionResult = {

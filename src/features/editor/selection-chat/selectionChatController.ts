@@ -11,6 +11,7 @@ import {
 
 import { ChatView } from '../../../ChatView'
 import type {
+  ReadOnlySelectionSource,
   SelectionActionMode,
   SelectionActionRewriteBehavior,
 } from '../../../components/selection/SelectionActionsMenu'
@@ -19,6 +20,10 @@ import {
   SelectionInfo,
   SelectionManager,
 } from '../../../components/selection/SelectionManager'
+import {
+  getSelectionVisualLineRects,
+  trimRangeEndWhitespace,
+} from '../../../components/selection/selectionRangeGeometry'
 import { getChatModelClient } from '../../../core/llm/manager'
 import type YoloPlugin from '../../../main'
 import { YoloSettings } from '../../../settings/schema/setting.types'
@@ -28,10 +33,13 @@ import type {
   MentionableBlockData,
 } from '../../../types/mentionable'
 import { getMentionableBlockData } from '../../../utils/obsidian'
+import { buildQuickAskContextTextFromSource } from '../quick-ask/quickAsk.context'
 import type { QuickAskSelectionScope } from '../quick-ask/quickAsk.types'
 import type { QuickAskLaunchMode } from '../quick-ask/quickAsk.types'
 import { QUICK_ASK_CURSOR_MARKER } from '../quick-ask/quickAsk.types'
+import type { ReadOnlyQuickAskArgs } from '../quick-ask/quickAskController'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
+import { readingSelectionHighlightController } from '../selection-highlight/readingSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
 import {
@@ -39,9 +47,14 @@ import {
   getPdfPageContextText,
 } from './getPdfPageContextText'
 import type { PdfSelectionResult } from './getPdfSelectionData'
-import { getPdfLeafContentEl } from './getPdfSelectionData'
-import { PdfSelectionManager } from './PdfSelectionManager'
+import { getPdfLeafContentEl, getPdfSelectionData } from './getPdfSelectionData'
+import {
+  type ReadingSelectionData,
+  type ReadingSelectionResult,
+  getReadingSelectionData,
+} from './getReadingSelectionData'
 import { resolveMarkdownTableSelectionFromTableElement } from './tableSelectionResolver'
+import { WorkspaceSelectionWatcher } from './workspaceSelectionWatcher'
 
 type EditorRange = {
   from: number
@@ -60,6 +73,44 @@ type MarkdownSelectionSnapshot = {
 }
 
 const TABLE_SELECTION_LOSS_PRESERVE_MS = 800
+
+type PdfSelectionData = Extract<PdfSelectionResult, { kind: 'data' }>
+
+type ReadOnlyActionHandlers = {
+  buildPinnedBlock: () => MentionableBlockData
+  openAsk: (
+    prompt: string,
+    assistantId: string | undefined,
+  ) => void | Promise<void>
+}
+
+/** Selection geometry the widget positions itself from. */
+function createDomSelectionInfo(
+  range: Range,
+  text: string,
+): SelectionInfo | null {
+  const effectiveRange = trimRangeEndWhitespace(range)
+  const rects = getSelectionVisualLineRects(effectiveRange)
+  const rect = rects.at(-1)
+  if (!rect) return null
+  return {
+    text,
+    range: effectiveRange,
+    rect,
+    isMultiLine: rects.length > 1 || text.includes('\n'),
+  }
+}
+
+/** Offset of the first character of 0-based `line` in `text`. */
+function getLineStartOffset(text: string, line: number): number {
+  let offset = 0
+  for (let i = 0; i < line; i += 1) {
+    const next = text.indexOf('\n', offset)
+    if (next < 0) return text.length
+    offset = next + 1
+  }
+  return offset
+}
 
 type SelectionChatControllerDeps = {
   plugin: YoloPlugin
@@ -92,28 +143,15 @@ type SelectionChatControllerDeps = {
     },
   ) => void
   /**
-   * Show a Quick Ask overlay from a PDF selection.
-   * Does not require an editor — handles anchor and context internally.
+   * Show a Quick Ask overlay from a PDF or reading-mode selection.
+   * Does not require an editor — handles anchor and highlight internally.
    */
-  showQuickAskFromPdf: (args: {
-    leaf: WorkspaceLeaf
-    range: Range
-    file: import('obsidian').TFile
-    pageNumber: number
-    contextText?: string
-    initialMentionables?: Mentionable[]
-    initialPrompt?: string
-    initialMode?: QuickAskLaunchMode
-    autoSend?: boolean
-    initialAssistantId?: string
-  }) => void
+  showQuickAskFromReadOnlySelection: (args: ReadOnlyQuickAskArgs) => void
   /**
-   * Drop any PDF Quick Ask instance whose owning leaf is no longer in
-   * `activePdfLeaves`.  Called from `layout-change` to avoid orphan overlays.
+   * Drop the read-only Quick Ask instance if its owning leaf is no longer in
+   * `openLeaves`. Called from `layout-change` to avoid orphan overlays.
    */
-  pruneOrphanedQuickAskPdfInstance: (
-    activePdfLeaves: Set<WorkspaceLeaf>,
-  ) => void
+  pruneOrphanedReadOnlyQuickAsk: (openLeaves: Set<WorkspaceLeaf>) => void
   openChatWithSelectionAndPrefill: (
     selectedBlock: MentionableBlockData,
     text: string,
@@ -176,8 +214,8 @@ export class SelectionChatController {
       initialAssistantId?: string
     },
   ) => void
-  private readonly showQuickAskFromPdf: SelectionChatControllerDeps['showQuickAskFromPdf']
-  private readonly pruneOrphanedQuickAskPdfInstance: SelectionChatControllerDeps['pruneOrphanedQuickAskPdfInstance']
+  private readonly showQuickAskFromReadOnlySelection: SelectionChatControllerDeps['showQuickAskFromReadOnlySelection']
+  private readonly pruneOrphanedReadOnlyQuickAsk: SelectionChatControllerDeps['pruneOrphanedReadOnlyQuickAsk']
   private readonly openChatWithSelectionAndPrefill: (
     selectedBlock: MentionableBlockData,
     text: string,
@@ -195,29 +233,40 @@ export class SelectionChatController {
   private readonly updatePdfQuoteMention: SelectionChatControllerDeps['updatePdfQuoteMention']
 
   private selectionManager: SelectionManager | null = null
-  private pdfSelectionManager: PdfSelectionManager | null = null
   /**
-   * Single shared widget instance (markdown or pdf source).
+   * The Markdown view (and its mode) the CodeMirror `selectionManager` was
+   * set up for. Reading mode has no editor selection to follow, so toggling
+   * the mode re-initializes.
+   */
+  private markdownSelectionTarget: {
+    view: MarkdownView
+    mode: string
+  } | null = null
+  /** `selectionchange` in every window, for PDF and reading-mode selections. */
+  private selectionWatcher: WorkspaceSelectionWatcher | null = null
+  /**
+   * Single shared widget instance (markdown, pdf or reading source).
    * Only one widget can exist at a time because SelectionChatWidget uses a
    * static overlayRoot; concurrent widgets would corrupt each other's DOM.
    */
   private selectionChatWidget: SelectionChatWidget | null = null
   /**
-   * The PDF leaf the current `selectionChatWidget` belongs to, when its source
-   * is `'pdf'`.  Used by `layout-change` to drop the widget if the leaf was
-   * closed.  Always null when the widget's source is `'markdown'`.
+   * The leaf the current `selectionChatWidget` belongs to, when its source is
+   * a read-only surface (`'pdf'` / `'reading'`). Used by `layout-change` to
+   * drop the widget if the leaf was closed. Always null for `'markdown'`.
    */
-  private currentWidgetPdfLeaf: WorkspaceLeaf | null = null
+  private currentWidgetReadOnlyLeaf: WorkspaceLeaf | null = null
   private currentMarkdownSelectionSnapshot: MarkdownSelectionSnapshot | null =
     null
   /**
-   * Stable identity of the most recent PDF selection we've synced to chat
-   * (file + page + content).  Used to skip the addHighlight + sync + remount
-   * cycle when PdfSelectionManager re-fires for the same logical selection,
-   * which would otherwise leave the chat mention pointing at a stale
-   * highlight id and cause the highlight to disappear on next reconcile.
+   * Stable identity of the most recent read-only selection we've synced to
+   * chat (surface + file + location + content). Used to skip the addHighlight
+   * + sync + remount cycle when the selection watcher re-fires for the same
+   * logical selection, which would otherwise leave the chat mention pointing
+   * at a stale highlight id and cause the highlight to disappear on next
+   * reconcile.
    */
-  private lastSyncedPdfKey: string | null = null
+  private lastSyncedReadOnlyKey: string | null = null
   private enableSelectionChat = true
   private layoutChangeEventRef: EventRef | null = null
 
@@ -229,9 +278,9 @@ export class SelectionChatController {
     this.getEditorView = deps.getEditorView
     this.showQuickAskWithOptions = deps.showQuickAskWithOptions
     this.showQuickAskWithAutoSend = deps.showQuickAskWithAutoSend
-    this.showQuickAskFromPdf = deps.showQuickAskFromPdf
-    this.pruneOrphanedQuickAskPdfInstance =
-      deps.pruneOrphanedQuickAskPdfInstance
+    this.showQuickAskFromReadOnlySelection =
+      deps.showQuickAskFromReadOnlySelection
+    this.pruneOrphanedReadOnlyQuickAsk = deps.pruneOrphanedReadOnlyQuickAsk
     this.openChatWithSelectionAndPrefill = deps.openChatWithSelectionAndPrefill
     this.addSelectionToSidebarChat = deps.addSelectionToSidebarChat
     this.openChatWithSelectionAndSend = deps.openChatWithSelectionAndSend
@@ -258,13 +307,14 @@ export class SelectionChatController {
       this.selectionManager = null
     }
 
-    if (this.pdfSelectionManager) {
-      this.pdfSelectionManager.destroy()
-      this.pdfSelectionManager = null
+    if (this.selectionWatcher) {
+      this.selectionWatcher.stop()
+      this.selectionWatcher = null
     }
 
     const view = this.app.workspace.getActiveViewOfType(MarkdownView)
-    if (view) {
+    this.markdownSelectionTarget = view ? { view, mode: view.getMode() } : null
+    if (view?.getMode() === 'source') {
       const editorContainer = view.containerEl.querySelector('.cm-editor')
       if (editorContainer) {
         this.selectionManager = new SelectionManager(
@@ -282,16 +332,21 @@ export class SelectionChatController {
       }
     }
 
-    // PDF selection sync — works on both desktop and mobile.
-    this.pdfSelectionManager = new PdfSelectionManager(this.app, {
-      enabled: enableSelectionChat,
-      debounceDelay: 150,
-    })
-    this.pdfSelectionManager.init((result) => {
-      this.handlePdfSelectionChange(result)
-    })
+    // PDF and reading-mode selection sync — works on desktop, mobile and in
+    // popout windows.
+    this.selectionWatcher = new WorkspaceSelectionWatcher(
+      this.app,
+      150,
+      (selection) => {
+        this.handlePdfSelectionChange(getPdfSelectionData(this.app, selection))
+        this.handleReadingSelectionChange(
+          getReadingSelectionData(this.app, selection),
+        )
+      },
+    )
+    this.selectionWatcher.start()
 
-    // Prune highlight entries for PDF leaves that get closed. initialize() can
+    // Prune highlight entries for leaves that get closed. initialize() can
     // be called multiple times (settings reload), so unregister the previous
     // listener before adding a new one to avoid accumulating callbacks.
     if (this.layoutChangeEventRef) {
@@ -300,19 +355,33 @@ export class SelectionChatController {
     }
     this.layoutChangeEventRef = this.app.workspace.on('layout-change', () => {
       pdfSelectionHighlightController.pruneDetachedLeaves(this.app)
+      readingSelectionHighlightController.pruneDetachedLeaves(this.app)
 
-      // Drop our PDF cursor-chat widget if its leaf was closed.
-      const activePdfLeaves = new Set(this.app.workspace.getLeavesOfType('pdf'))
+      const openLeaves = new Set([
+        ...this.app.workspace.getLeavesOfType('pdf'),
+        ...this.app.workspace.getLeavesOfType('markdown'),
+      ])
+      // Drop our read-only cursor-chat widget if its leaf was closed.
       if (
-        this.currentWidgetPdfLeaf &&
-        !activePdfLeaves.has(this.currentWidgetPdfLeaf)
+        this.currentWidgetReadOnlyLeaf &&
+        !openLeaves.has(this.currentWidgetReadOnlyLeaf)
       ) {
         this.destroyCurrentWidget()
-        this.lastSyncedPdfKey = null
+        this.lastSyncedReadOnlyKey = null
       }
+      // Drop the read-only Quick Ask overlay if its leaf was closed.
+      this.pruneOrphanedReadOnlyQuickAsk(openLeaves)
 
-      // Drop the PDF Quick Ask overlay if its leaf was closed.
-      this.pruneOrphanedQuickAskPdfInstance(activePdfLeaves)
+      // Switching the active note between editing and reading mode changes
+      // which selection surface is live.
+      const activeView = this.app.workspace.getActiveViewOfType(MarkdownView)
+      if (
+        activeView !== (this.markdownSelectionTarget?.view ?? null) ||
+        (activeView &&
+          activeView.getMode() !== this.markdownSelectionTarget?.mode)
+      ) {
+        this.initialize()
+      }
     })
     this.plugin.registerEvent(this.layoutChangeEventRef)
   }
@@ -326,19 +395,22 @@ export class SelectionChatController {
       this.selectionManager.destroy()
       this.selectionManager = null
     }
-    if (this.pdfSelectionManager) {
-      this.pdfSelectionManager.destroy()
-      this.pdfSelectionManager = null
+    if (this.selectionWatcher) {
+      this.selectionWatcher.stop()
+      this.selectionWatcher = null
     }
+    this.markdownSelectionTarget = null
     if (this.layoutChangeEventRef) {
       this.app.workspace.offref(this.layoutChangeEventRef)
       this.layoutChangeEventRef = null
     }
     this.currentMarkdownSelectionSnapshot = null
-    // Drop all highlights and detach PDF eventBus listeners.  Reconcile in
-    // Chat.tsx only clears 'chat' owner; here we want everything gone.
+    // Drop all highlights and detach PDF eventBus / reading-view observers.
+    // Reconcile in Chat.tsx only clears 'chat' owner; here we want everything
+    // gone.
     selectionHighlightController.clearAll()
     pdfSelectionHighlightController.clearAll()
+    readingSelectionHighlightController.clearAll()
   }
 
   // Kept for the public API surface; selection highlight reconcile is now driven
@@ -352,13 +424,7 @@ export class SelectionChatController {
       this.selectionChatWidget.destroy()
       this.selectionChatWidget = null
     }
-    this.currentWidgetPdfLeaf = null
-  }
-
-  private static buildPdfSelectionKey(
-    data: Extract<PdfSelectionResult, { kind: 'data' }>,
-  ): string {
-    return `${data.file.path}#${data.pageNumber}#${data.content}`
+    this.currentWidgetReadOnlyLeaf = null
   }
 
   private createMarkdownSelectionSnapshot(
@@ -650,8 +716,8 @@ export class SelectionChatController {
 
     this.syncSelectionBadge(snapshot)
 
-    // Switching to a markdown selection invalidates any sticky PDF state.
-    this.lastSyncedPdfKey = null
+    // Switching to a markdown selection invalidates any sticky read-only state.
+    this.lastSyncedReadOnlyKey = null
 
     this.destroyCurrentWidget()
 
@@ -864,8 +930,142 @@ export class SelectionChatController {
   }
 
   /**
-   * Called by PdfSelectionManager when the user's selection inside a PDF view
-   * changes.
+   * Selection cleared inside a read-only surface: drop its widget and the
+   * chat badge.
+   */
+  private handleReadOnlySelectionEmpty(): void {
+    this.destroyCurrentWidget()
+    this.lastSyncedReadOnlyKey = null
+
+    const targetLeaf = this.plugin
+      .getChatLeafSessionManager()
+      .resolveTargetLeaf()
+    if (targetLeaf?.view instanceof ChatView) {
+      targetLeaf.view.clearSelectionFromChat()
+    }
+  }
+
+  /**
+   * Re-firing the selection watcher for the *same* logical selection (e.g.
+   * because mounting our overlay nudges the selection observer) used to
+   * re-run addHighlight + syncSelectionToChat. syncSelectionMentionable keys
+   * mentions by content (not by highlightId), so the re-sync was a no-op
+   * while the new highlight in the registry got a fresh id — leaving the chat
+   * mention pointing at the *old* id. The next reconcile wiped the new
+   * highlight, breaking persistence. Callers skip the whole cycle when the
+   * selection identity is unchanged.
+   */
+  private isSyncedReadOnlySelection(key: string, leaf: WorkspaceLeaf): boolean {
+    return (
+      this.lastSyncedReadOnlyKey === key &&
+      this.selectionChatWidget !== null &&
+      this.currentWidgetReadOnlyLeaf === leaf
+    )
+  }
+
+  private syncReadOnlySelectionToChat(blockData: MentionableBlockData): void {
+    const targetLeaf = this.plugin
+      .getChatLeafSessionManager()
+      .resolveTargetLeaf()
+    if (targetLeaf?.view instanceof ChatView) {
+      targetLeaf.view.syncSelectionToChat(blockData)
+    }
+  }
+
+  private mountReadOnlyWidget(args: {
+    source: ReadOnlySelectionSource
+    leaf: WorkspaceLeaf
+    key: string
+    hostEl: HTMLElement
+    selection: SelectionInfo
+    handlers: ReadOnlyActionHandlers
+    onQuoteAction?: () => void
+  }): void {
+    this.destroyCurrentWidget()
+    this.lastSyncedReadOnlyKey = args.key
+    this.currentWidgetReadOnlyLeaf = args.leaf
+
+    this.selectionChatWidget = new SelectionChatWidget({
+      source: args.source,
+      plugin: this.plugin,
+      selection: args.selection,
+      hostEl: args.hostEl,
+      onClose: () => {
+        // User dismissed the indicator/menu (Esc or click outside). Drop the
+        // widget but do NOT clear lastSyncedReadOnlyKey: the chat mention +
+        // highlight should persist until the underlying selection changes.
+        this.destroyCurrentWidget()
+      },
+      onAction: (
+        actionId,
+        instruction,
+        mode,
+        _rewriteBehavior,
+        assistantId,
+      ) => {
+        void this.handleReadOnlySelectionAction(
+          actionId,
+          mode,
+          instruction,
+          assistantId,
+          args.handlers,
+        )
+      },
+      onQuoteAction: args.onQuoteAction,
+    })
+    this.selectionChatWidget.mount()
+  }
+
+  /**
+   * Routes an action on a read-only selection. Rewrite actions are filtered
+   * out at the menu level, so that branch is unreachable.
+   */
+  private async handleReadOnlySelectionAction(
+    actionId: string,
+    mode: SelectionActionMode,
+    instruction: string,
+    assistantId: string | undefined,
+    handlers: ReadOnlyActionHandlers,
+  ): Promise<void> {
+    // undefined = "follow current selection" → use the sidebar's active assistant
+    const resolvedAssistantId =
+      assistantId !== undefined
+        ? assistantId
+        : this.getSettings().currentAssistantId
+
+    if (mode === 'rewrite') {
+      return
+    }
+
+    if (mode === 'chat-input') {
+      const pinned = handlers.buildPinnedBlock()
+      if (actionId === 'add-to-sidebar') {
+        await this.addSelectionToSidebarChat(pinned)
+        return
+      }
+      await this.openChatWithSelectionAndPrefill(
+        pinned,
+        instruction.trim(),
+        resolvedAssistantId,
+      )
+      return
+    }
+
+    if (mode === 'chat-send') {
+      await this.openChatWithSelectionAndSend(
+        handlers.buildPinnedBlock(),
+        instruction.trim(),
+        resolvedAssistantId,
+      )
+      return
+    }
+
+    await handlers.openAsk(instruction.trim(), resolvedAssistantId)
+  }
+
+  /**
+   * Called by the selection watcher when the user's selection inside a PDF
+   * view changes.
    */
   private handlePdfSelectionChange(result: PdfSelectionResult): void {
     // null means the selection is not inside any PDF at all.
@@ -876,40 +1076,16 @@ export class SelectionChatController {
     if (!enableSelectionChat) return
 
     if (result.kind === 'empty') {
-      // Destroy the PDF widget if there was one
-      this.destroyCurrentWidget()
-      this.lastSyncedPdfKey = null
-
-      // Also sync the sidebar badge (existing behaviour)
-      const targetLeaf = this.plugin
-        .getChatLeafSessionManager()
-        .resolveTargetLeaf()
-      if (targetLeaf?.view instanceof ChatView) {
-        targetLeaf.view.clearSelectionFromChat()
-      }
+      this.handleReadOnlySelectionEmpty()
       return
     }
 
-    // result.kind === 'data'
-    // Re-firing PdfSelectionManager for the *same* logical selection (e.g.
-    // because mounting our overlay nudges the selection observer) used to
-    // re-run addHighlight + syncSelectionToChat.  syncSelectionMentionable
-    // keys mentions by content (not by highlightId), so the re-sync was a
-    // no-op while the new highlight in the registry got a fresh id — leaving
-    // the chat mention pointing at the *old* id.  The next reconcile wiped
-    // the new highlight, breaking persistence.  Skip the whole cycle when
-    // the selection identity is unchanged.
-    const selectionKey = SelectionChatController.buildPdfSelectionKey(result)
-    if (
-      this.lastSyncedPdfKey === selectionKey &&
-      this.selectionChatWidget &&
-      this.currentWidgetPdfLeaf === result.leaf
-    ) {
+    const selectionKey = `pdf#${result.file.path}#${result.pageNumber}#${result.content}`
+    if (this.isSyncedReadOnlySelection(selectionKey, result.leaf)) {
       return
     }
 
-    // Mount PDF widget — generate fresh highlight id only for genuinely new
-    // selections.
+    // Generate a fresh highlight id only for genuinely new selections.
     const highlightId = crypto.randomUUID()
 
     if (this.shouldPersistSelectionHighlight()) {
@@ -936,24 +1112,13 @@ export class SelectionChatController {
       highlightId,
     }
 
-    // Sync to sidebar chat badge (existing behaviour, conditional on ChatView)
-    const targetLeaf = this.plugin
-      .getChatLeafSessionManager()
-      .resolveTargetLeaf()
-    if (targetLeaf?.view instanceof ChatView) {
-      targetLeaf.view.syncSelectionToChat(blockData)
-    }
+    this.syncReadOnlySelectionToChat(blockData)
 
     // Determine host element for the PDF widget BEFORE destroying the old one.
     // If the leaf DOM is not in the expected shape, leave the existing widget
     // (whatever it is) intact rather than destroying it then bailing out.
     const leafContentEl = getPdfLeafContentEl(result.leaf)
     if (!leafContentEl) return
-
-    // Now safe to swap widgets.
-    this.destroyCurrentWidget()
-    this.lastSyncedPdfKey = selectionKey
-    this.currentWidgetPdfLeaf = result.leaf
 
     const pdfData = result
 
@@ -986,9 +1151,9 @@ export class SelectionChatController {
     // indicator at the page edge.  We want the rect at the visual *end* of
     // the selection (last line, rightmost glyph).
     //
-    // SelectionManager (markdown) just takes `rects[rects.length - 1]`
-    // because CodeMirror keeps spans in document = visual order.  PDF.js's
-    // textLayer behaves differently:
+    // Reading mode and SelectionManager (markdown) just take the last visual
+    // line rect because their DOM keeps spans in document = visual order.
+    // PDF.js's textLayer behaves differently:
     //   - it inserts hidden helper spans (e.g. an `endOfContent` element)
     //     whose rect may span the full page height, so the literal last
     //     rect or the geometrically lowest rect can both be misleading;
@@ -1020,98 +1185,42 @@ export class SelectionChatController {
       }
     }
 
-    this.selectionChatWidget = new SelectionChatWidget({
+    this.mountReadOnlyWidget({
       source: 'pdf',
-      plugin: this.plugin,
+      leaf: result.leaf,
+      key: selectionKey,
+      hostEl: leafContentEl,
       selection: {
         text: result.content,
         range: result.range,
         rect: lastRect,
         isMultiLine: glyphRects.length > 1 || result.content.includes('\n'),
       },
-      pdfData,
-      hostEl: leafContentEl,
-      onClose: () => {
-        // User dismissed the indicator/menu (Esc or click outside).  Drop the
-        // widget but do NOT clear lastSyncedPdfKey: the chat mention + PDF
-        // highlight should persist until the underlying selection changes.
-        this.destroyCurrentWidget()
-      },
-      onAction: (
-        actionId: string,
-        instruction: string,
-        mode: SelectionActionMode,
-        rewriteBehavior?: SelectionActionRewriteBehavior,
-        assistantId?: string,
-      ) => {
-        void this.handlePdfSelectionAction(
-          actionId,
-          mode,
-          instruction,
-          rewriteBehavior,
-          pdfData,
-          blockData,
-          pdfPageContextPromise,
-          assistantId,
-        )
+      handlers: {
+        buildPinnedBlock: () => this.buildPinnedPdfBlock(pdfData, blockData),
+        openAsk: (prompt, assistantId) =>
+          this.openPdfQuickAsk(
+            pdfData,
+            blockData,
+            pdfPageContextPromise,
+            prompt,
+            assistantId,
+          ),
       },
       onQuoteAction: () => {
         void this.handlePdfQuoteAction(pdfData, blockData)
       },
     })
-    this.selectionChatWidget.mount()
   }
 
-  /**
-   * Routes a PDF selection action to the appropriate handler.
-   */
-  private async handlePdfSelectionAction(
-    actionId: string,
-    mode: SelectionActionMode,
-    instruction: string,
-    _rewriteBehavior: SelectionActionRewriteBehavior | undefined,
-    pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
+  /** Opens Quick Ask with the PDF selection as mentionable. */
+  private async openPdfQuickAsk(
+    pdfData: PdfSelectionData,
     blockData: MentionableBlockData,
     pdfPageContextPromise: Promise<PdfPageContextResult | null>,
-    assistantId?: string,
+    prompt: string,
+    assistantId: string | undefined,
   ): Promise<void> {
-    // undefined = "follow current selection" → use the sidebar's active assistant
-    const resolvedAssistantId =
-      assistantId !== undefined
-        ? assistantId
-        : this.getSettings().currentAssistantId
-
-    // rewrite is filtered out at the menu level — this branch is unreachable
-    if (mode === 'rewrite') {
-      return
-    }
-
-    if (mode === 'chat-input') {
-      const pinned = this.buildPinnedPdfBlock(pdfData, blockData)
-      if (actionId === 'add-to-sidebar') {
-        await this.addSelectionToSidebarChat(pinned)
-        return
-      }
-      await this.openChatWithSelectionAndPrefill(
-        pinned,
-        instruction.trim(),
-        resolvedAssistantId,
-      )
-      return
-    }
-
-    if (mode === 'chat-send') {
-      await this.openChatWithSelectionAndSend(
-        this.buildPinnedPdfBlock(pdfData, blockData),
-        instruction.trim(),
-        resolvedAssistantId,
-      )
-      return
-    }
-
-    // mode === 'ask' — open Quick Ask with PDF selection as mentionable
-    const prompt = instruction.trim()
-
     // Wait for the eagerly-started page text extraction. By now (user typed
     // a prompt and clicked send) the pdfjs load has likely completed.
     const pdfPageContext = await pdfPageContextPromise
@@ -1128,13 +1237,16 @@ export class SelectionChatController {
       source: 'selection',
     }
 
-    this.showQuickAskFromPdf({
-      leaf: pdfData.leaf,
-      range: pdfData.range,
-      file: pdfData.file,
-      pageNumber: pdfData.pageNumber,
+    this.showQuickAskFromReadOnlySelection({
+      source: {
+        kind: 'pdf',
+        leaf: pdfData.leaf,
+        range: pdfData.range,
+        file: pdfData.file,
+        pageNumber: pdfData.pageNumber,
+      },
       contextText,
-      initialAssistantId: resolvedAssistantId,
+      initialAssistantId: assistantId,
       initialMentionables: [mentionable],
       initialPrompt: prompt || undefined,
       initialMode: 'ask',
@@ -1147,8 +1259,8 @@ export class SelectionChatController {
    * registering a NEW 'pinned' highlight (fresh id, independent from the
    * transient 'sync' one currently tracked in chat) so a later selection
    * that sweeps 'sync' entries on the leaf cannot wipe it. Shared by the
-   * add-to-sidebar / chat-input / chat-send actions in
-   * `handlePdfSelectionAction` AND the PDF quote button
+   * add-to-sidebar / chat-input / chat-send actions (routed through
+   * `handleReadOnlySelectionAction`) AND the PDF quote button
    * (`handlePdfQuoteAction`) — the only two producers of PDF pinned blocks.
    * See docs/plans/2026-08-16-pdf-annotation-quotes.md item 5.
    *
@@ -1160,7 +1272,7 @@ export class SelectionChatController {
    * `persistSelectionHighlight` only gates whether the entry paints.
    */
   private buildPinnedPdfBlock(
-    pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
+    pdfData: PdfSelectionData,
     blockData: MentionableBlockData,
   ): MentionableBlockData {
     const pinnedId = crypto.randomUUID()
@@ -1194,7 +1306,7 @@ export class SelectionChatController {
    * `AssistantSelectionQuoteButton.handleCreateQuote`.
    */
   private async handlePdfQuoteAction(
-    pdfData: Extract<PdfSelectionResult, { kind: 'data' }>,
+    pdfData: PdfSelectionData,
     blockData: MentionableBlockData,
   ): Promise<void> {
     const pinnedBlock = this.buildPinnedPdfBlock(pdfData, blockData)
@@ -1231,6 +1343,136 @@ export class SelectionChatController {
         }),
       },
     )
+  }
+
+  /**
+   * Called by the selection watcher when the user's selection inside a
+   * Markdown view in reading mode changes. Mirrors the PDF flow: sync
+   * highlight + chat badge, then the read-only widget.
+   */
+  private handleReadingSelectionChange(result: ReadingSelectionResult): void {
+    // null means the selection is not inside any reading view at all.
+    if (result === null) return
+
+    const enableSelectionChat =
+      this.getSettings().continuationOptions?.enableSelectionChat ?? true
+    if (!enableSelectionChat) return
+
+    if (result.kind === 'empty') {
+      this.handleReadOnlySelectionEmpty()
+      return
+    }
+
+    const selectionKey = `reading#${result.file.path}#${result.startLine}-${result.endLine}#${result.content}`
+    if (this.isSyncedReadOnlySelection(selectionKey, result.leaf)) {
+      return
+    }
+
+    const selection = createDomSelectionInfo(result.range, result.content)
+    if (!selection) return
+
+    const highlightId = crypto.randomUUID()
+    if (this.shouldPersistSelectionHighlight()) {
+      readingSelectionHighlightController.addHighlight(
+        result.leaf,
+        highlightId,
+        { range: result.range, file: result.file },
+        'sync',
+        'chat',
+      )
+    }
+
+    const blockData: MentionableBlockData = {
+      content: result.content,
+      file: result.file,
+      startLine: result.startLine,
+      endLine: result.endLine,
+      source: 'selection-sync',
+      highlightId,
+    }
+
+    this.syncReadOnlySelectionToChat(blockData)
+
+    this.mountReadOnlyWidget({
+      source: 'reading',
+      leaf: result.leaf,
+      key: selectionKey,
+      hostEl: result.view.containerEl,
+      selection,
+      handlers: {
+        buildPinnedBlock: () => this.buildPinnedReadingBlock(result, blockData),
+        openAsk: (prompt, assistantId) =>
+          this.openReadingQuickAsk(result, blockData, prompt, assistantId),
+      },
+    })
+  }
+
+  /**
+   * A 'pinned' reading-mode highlight with its own id, independent from the
+   * transient 'sync' one, so a later selection cannot sweep it away.
+   */
+  private buildPinnedReadingBlock(
+    readingData: ReadingSelectionData,
+    blockData: MentionableBlockData,
+  ): MentionableBlockData {
+    const pinnedId = crypto.randomUUID()
+    readingSelectionHighlightController.addHighlight(
+      readingData.leaf,
+      pinnedId,
+      { range: readingData.range, file: readingData.file },
+      'pinned',
+      'chat',
+      { paint: this.shouldPersistSelectionHighlight() },
+    )
+    return {
+      ...blockData,
+      source: 'selection-pinned',
+      highlightId: pinnedId,
+    }
+  }
+
+  /**
+   * Opens Quick Ask on a reading-mode selection. The surrounding context comes
+   * from the note source, with the cursor marker placed where the selected
+   * text starts when it appears verbatim in its lines (plain prose), else at
+   * the start of its first line.
+   */
+  private openReadingQuickAsk(
+    readingData: ReadingSelectionData,
+    blockData: MentionableBlockData,
+    prompt: string,
+    assistantId: string | undefined,
+  ): void {
+    const source = readingData.view.data
+    const linesStart = getLineStartOffset(source, readingData.startLine - 1)
+    const linesEnd = getLineStartOffset(source, readingData.endLine)
+    const found = source.indexOf(readingData.content, linesStart)
+    const cursor = found >= 0 && found < linesEnd ? found : linesStart
+
+    const mentionable: MentionableBlock = {
+      type: 'block',
+      ...blockData,
+      source: 'selection',
+    }
+
+    this.showQuickAskFromReadOnlySelection({
+      source: {
+        kind: 'reading',
+        leaf: readingData.leaf,
+        range: readingData.range,
+        file: readingData.file,
+      },
+      contextText: buildQuickAskContextTextFromSource(
+        source,
+        cursor,
+        this.getSettings(),
+      ),
+      initialAssistantId: assistantId,
+      initialMentionables: [mentionable],
+      initialPrompt: prompt || undefined,
+      initialMode: 'ask',
+      autoSend: prompt.length > 0,
+    })
   }
 
   private adjustSelectionLength(

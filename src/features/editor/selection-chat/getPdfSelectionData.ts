@@ -163,7 +163,7 @@ function getFileFromPdfLeaf(leaf: WorkspaceLeaf): TFile | null {
 // ──────────────────────────────────────────────────────────────────────────────
 
 /**
- * Attempt to extract PDF selection data from the current browser selection.
+ * Attempt to extract PDF selection data from a document's selection.
  *
  * Returns a three-state discriminated union:
  *   - `null`               – selection is not inside any PDF view (caller must NOT clear badges)
@@ -175,8 +175,10 @@ function getFileFromPdfLeaf(leaf: WorkspaceLeaf): TFile | null {
  * This means the result is always attributed to the correct leaf even when
  * multiple PDF tabs are open.
  */
-export function getPdfSelectionData(app: App): PdfSelectionResult {
-  const selection = window.getSelection()
+export function getPdfSelectionData(
+  app: App,
+  selection: Selection | null,
+): PdfSelectionResult {
   if (!selection || selection.rangeCount === 0) {
     return null
   }

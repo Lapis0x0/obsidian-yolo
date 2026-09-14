@@ -19,6 +19,35 @@ export function buildQuickAskContextText(
   pos: number,
   settings: YoloSettings,
 ): string {
+  const doc = view.state.doc
+  return buildContextText(
+    (from, to) => doc.sliceString(from, to),
+    doc.length,
+    pos,
+    settings,
+  )
+}
+
+/** `buildQuickAskContextText` for a document held as a plain string. */
+export function buildQuickAskContextTextFromSource(
+  source: string,
+  pos: number,
+  settings: YoloSettings,
+): string {
+  return buildContextText(
+    (from, to) => source.slice(from, to),
+    source.length,
+    pos,
+    settings,
+  )
+}
+
+function buildContextText(
+  slice: (from: number, to: number) => string,
+  length: number,
+  pos: number,
+  settings: YoloSettings,
+): string {
   const continuationOptions = settings.continuationOptions
   const beforeChars = Math.max(
     0,
@@ -30,9 +59,8 @@ export function buildQuickAskContextText(
     continuationOptions?.quickAskContextAfterChars ??
       DEFAULT_QUICK_ASK_CONTEXT_AFTER_CHARS,
   )
-  const doc = view.state.doc
-  const before = doc.sliceString(Math.max(0, pos - beforeChars), pos)
-  const after = doc.sliceString(pos, Math.min(doc.length, pos + afterChars))
+  const before = slice(Math.max(0, pos - beforeChars), pos)
+  const after = slice(pos, Math.min(length, pos + afterChars))
   return before.length > 0 || after.length > 0
     ? `${before}${QUICK_ASK_CURSOR_MARKER}${after}`
     : ''

@@ -11,10 +11,17 @@ import type YoloPlugin from '../../../main'
 import type { YoloSettings } from '../../../settings/schema/setting.types'
 import type { Mentionable } from '../../../types/mentionable'
 import { getPdfLeafContentEl } from '../selection-chat/getPdfSelectionData'
+import { getReadingViewRenderer } from '../selection-chat/readingViewSections'
 import { pdfSelectionHighlightController } from '../selection-highlight/pdfSelectionHighlightController'
+import { readingSelectionHighlightController } from '../selection-highlight/readingSelectionHighlightController'
 import { selectionHighlightController } from '../selection-highlight/selectionHighlightController'
 
-import { createCmAnchor, createPdfAnchor } from './quickAsk.anchor'
+import {
+  type QuickAskAnchor,
+  createCmAnchor,
+  createPdfAnchor,
+  createReadingAnchor,
+} from './quickAsk.anchor'
 import { buildQuickAskContextText } from './quickAsk.context'
 import { createQuickAskTriggerExtension } from './quickAsk.trigger'
 import type {
@@ -51,6 +58,31 @@ type QuickAskWidgetState = {
   pos: number
   close: (restoreFocus?: boolean) => void
 } | null
+
+/**
+ * A selection on a rendered, non-editable surface Quick Ask can open from:
+ * a PDF page or a Markdown view in reading mode.
+ */
+export type ReadOnlyQuickAskSource =
+  | {
+      kind: 'pdf'
+      leaf: WorkspaceLeaf
+      range: Range
+      file: TFile
+      pageNumber: number
+    }
+  | { kind: 'reading'; leaf: WorkspaceLeaf; range: Range; file: TFile }
+
+export type ReadOnlyQuickAskArgs = {
+  source: ReadOnlyQuickAskSource
+  contextText?: string
+  initialMentionables?: Mentionable[]
+  initialPrompt?: string
+  initialMode?: QuickAskLaunchMode
+  initialInput?: string
+  autoSend?: boolean
+  initialAssistantId?: string
+}
 
 type QuickAskControllerDeps = {
   plugin: YoloPlugin
@@ -112,15 +144,15 @@ const quickAskOverlayPlugin = ViewPlugin.fromClass(
 
 export class QuickAskController {
   private quickAskWidgetState: QuickAskWidgetState = null
-  private pdfQuickAskInstance: {
+  private readOnlyQuickAskInstance: {
     overlay: QuickAskOverlay
     leaf: WorkspaceLeaf
   } | null = null
   private highlightTakeoverToken = 0
   /** id of the current quickask highlight, so we can clear it on close */
   private currentHighlightId: string | null = null
-  /** id of the current quickask PDF highlight, so we can clear it on close */
-  private currentPdfHighlightId: string | null = null
+  /** Clears the current quickask highlight on a read-only surface. */
+  private clearReadOnlyHighlight: (() => void) | null = null
 
   constructor(private readonly deps: QuickAskControllerDeps) {}
 
@@ -131,17 +163,14 @@ export class QuickAskController {
   }
 
   close(restoreFocus = true) {
-    // Destroy PDF instance if present
-    if (this.pdfQuickAskInstance) {
-      const { overlay } = this.pdfQuickAskInstance
-      this.pdfQuickAskInstance = null
+    // Destroy the read-only surface instance if present
+    if (this.readOnlyQuickAskInstance) {
+      const { overlay } = this.readOnlyQuickAskInstance
+      this.readOnlyQuickAskInstance = null
       overlay.destroy()
     }
 
-    if (this.currentPdfHighlightId) {
-      pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
-      this.currentPdfHighlightId = null
-    }
+    this.clearReadOnlyHighlightNow()
 
     const state = this.quickAskWidgetState
     if (!state) {
@@ -268,10 +297,7 @@ export class QuickAskController {
           selectionHighlightController.clearById(this.currentHighlightId)
           this.currentHighlightId = null
         }
-        if (this.currentPdfHighlightId) {
-          pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
-          this.currentPdfHighlightId = null
-        }
+        this.clearReadOnlyHighlightNow()
         this.quickAskWidgetState = null
       }
       view.dispatch({ effects: quickAskWidgetEffect.of(null) })
@@ -323,55 +349,31 @@ export class QuickAskController {
   }
 
   /**
-   * Launch a Quick Ask overlay from a PDF selection.
+   * Launch a Quick Ask overlay from a selection on a read-only surface.
    * Bypasses the CodeMirror ViewPlugin path entirely.
    */
-  showFromPdf(args: {
-    leaf: WorkspaceLeaf
-    range: Range
-    file: TFile
-    pageNumber: number
-    contextText?: string
-    initialMentionables?: Mentionable[]
-    initialPrompt?: string
-    initialMode?: QuickAskLaunchMode
-    initialInput?: string
-    autoSend?: boolean
-    initialAssistantId?: string
-  }): void {
-    void this.showFromPdfAfterWarmup(args).catch((error: unknown) => {
-      console.error('[YOLO] Failed to open Quick Ask from PDF:', error)
-    })
+  showFromReadOnlySelection(args: ReadOnlyQuickAskArgs): void {
+    void this.showFromReadOnlySelectionAfterWarmup(args).catch(
+      (error: unknown) => {
+        console.error('[YOLO] Failed to open Quick Ask from selection:', error)
+      },
+    )
   }
 
-  private async showFromPdfAfterWarmup(args: {
-    leaf: WorkspaceLeaf
-    range: Range
-    file: TFile
-    pageNumber: number
-    contextText?: string
-    initialMentionables?: Mentionable[]
-    initialPrompt?: string
-    initialMode?: QuickAskLaunchMode
-    initialInput?: string
-    autoSend?: boolean
-    initialAssistantId?: string
-  }): Promise<void> {
+  private async showFromReadOnlySelectionAfterWarmup(
+    args: ReadOnlyQuickAskArgs,
+  ): Promise<void> {
     await this.deps.plugin.warmupAgentService()
 
-    const hostEl = getPdfLeafContentEl(args.leaf)
-    if (!hostEl) {
-      // PDF leaf DOM not in expected shape — refuse to mount rather than
-      // falling back to document.body (would float in wrong coordinate space).
+    const { source } = args
+    // Refuse to mount when the leaf DOM is not in the expected shape rather
+    // than falling back to document.body (wrong coordinate space).
+    const anchor = this.createReadOnlyAnchor(source)
+    if (!anchor?.isValid()) {
       return
     }
 
-    const anchor = createPdfAnchor(args.range, hostEl)
-    if (!anchor.isValid()) {
-      return
-    }
-
-    // Close any existing Quick Ask (CM or PDF)
+    // Close any existing Quick Ask (CM or read-only surface)
     this.close(false)
 
     const capabilities: QuickAskCapabilities = {
@@ -381,15 +383,12 @@ export class QuickAskController {
     }
 
     const onClose = () => {
-      const instance = this.pdfQuickAskInstance
+      const instance = this.readOnlyQuickAskInstance
       if (instance) {
-        this.pdfQuickAskInstance = null
+        this.readOnlyQuickAskInstance = null
         instance.overlay.destroy()
       }
-      if (this.currentPdfHighlightId) {
-        pdfSelectionHighlightController.clearById(this.currentPdfHighlightId)
-        this.currentPdfHighlightId = null
-      }
+      this.clearReadOnlyHighlightNow()
     }
 
     const overlay = new QuickAskOverlay({
@@ -397,8 +396,8 @@ export class QuickAskController {
       anchor,
       capabilities,
       contextText: args.contextText ?? '',
-      fileTitle: args.file.basename,
-      sourceFilePath: args.file.path,
+      fileTitle: source.file.basename,
+      sourceFilePath: source.file.path,
       initialPrompt: args.initialPrompt,
       initialMentionables: args.initialMentionables,
       initialMode: args.initialMode ?? 'ask',
@@ -408,38 +407,78 @@ export class QuickAskController {
       onClose,
     })
 
-    this.pdfQuickAskInstance = { overlay, leaf: args.leaf }
+    this.readOnlyQuickAskInstance = { overlay, leaf: source.leaf }
     overlay.mount()
 
-    // Mirror Markdown's persistence: register a 'sync' highlight on the PDF
-    // leaf so the selected range stays visually highlighted while the Quick
-    // Ask floats. Cleared in close()/onClose. Gated by the same setting.
+    // Mirror Markdown's persistence: register a 'sync' highlight so the
+    // selected range stays visually highlighted while the Quick Ask floats.
+    // Cleared in close()/onClose. Gated by the same setting.
     if (
       this.deps.getSettings().continuationOptions.persistSelectionHighlight ??
       true
     ) {
       const id = `quickask:${crypto.randomUUID()}`
-      this.currentPdfHighlightId = id
-      pdfSelectionHighlightController.addHighlight(
-        args.leaf,
-        id,
-        { range: args.range, pageNumber: args.pageNumber, file: args.file },
-        'sync',
-        'quickask',
-      )
+      if (source.kind === 'pdf') {
+        pdfSelectionHighlightController.addHighlight(
+          source.leaf,
+          id,
+          {
+            range: source.range,
+            pageNumber: source.pageNumber,
+            file: source.file,
+          },
+          'sync',
+          'quickask',
+        )
+        this.clearReadOnlyHighlight = () =>
+          pdfSelectionHighlightController.clearById(id)
+      } else {
+        readingSelectionHighlightController.addHighlight(
+          source.leaf,
+          id,
+          { range: source.range, file: source.file },
+          'sync',
+          'quickask',
+        )
+        this.clearReadOnlyHighlight = () =>
+          readingSelectionHighlightController.clearById(id)
+      }
     }
   }
 
+  private createReadOnlyAnchor(
+    source: ReadOnlyQuickAskSource,
+  ): QuickAskAnchor | null {
+    if (source.kind === 'pdf') {
+      const hostEl = getPdfLeafContentEl(source.leaf)
+      return hostEl ? createPdfAnchor(source.range, hostEl) : null
+    }
+    const renderer = getReadingViewRenderer(source.leaf.view)
+    if (!renderer) return null
+    return createReadingAnchor(
+      source.range,
+      source.leaf.view.containerEl,
+      renderer.previewEl,
+      renderer.sizerEl,
+    )
+  }
+
+  private clearReadOnlyHighlightNow(): void {
+    const clear = this.clearReadOnlyHighlight
+    this.clearReadOnlyHighlight = null
+    clear?.()
+  }
+
   /**
-   * If the owning PDF leaf is no longer in the workspace, drop the lingering
-   * Quick Ask instance.  Caller (SelectionChatController) drives this from
-   * `layout-change`.
+   * If the owning leaf is no longer in the workspace, drop the lingering
+   * read-only Quick Ask instance. Caller (SelectionChatController) drives
+   * this from `layout-change`.
    */
-  pruneOrphanedPdfInstance(activePdfLeaves: Set<WorkspaceLeaf>): void {
-    const instance = this.pdfQuickAskInstance
+  pruneOrphanedReadOnlyInstance(openLeaves: Set<WorkspaceLeaf>): void {
+    const instance = this.readOnlyQuickAskInstance
     if (!instance) return
-    if (!activePdfLeaves.has(instance.leaf)) {
-      this.pdfQuickAskInstance = null
+    if (!openLeaves.has(instance.leaf)) {
+      this.readOnlyQuickAskInstance = null
       instance.overlay.destroy()
     }
   }

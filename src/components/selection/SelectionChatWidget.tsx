@@ -5,12 +5,14 @@ import { Root, createRoot } from 'react-dom/client'
 import { LanguageProvider } from '../../contexts/language-context'
 import { PluginProvider } from '../../contexts/plugin-context'
 import { SettingsProvider } from '../../contexts/settings-context'
-import type { PdfSelectionResult } from '../../features/editor/selection-chat/getPdfSelectionData'
 import type YoloPlugin from '../../main'
+import { getNodeWindow } from '../../utils/dom/window-context'
 
 import type {
+  ReadOnlySelectionSource,
   SelectionActionMode,
   SelectionActionRewriteBehavior,
+  SelectionChatSource,
 } from './SelectionActionsMenu'
 import { SelectionActionsMenu } from './SelectionActionsMenu'
 import { SelectionIndicator, getIndicatorPosition } from './SelectionIndicator'
@@ -42,12 +44,11 @@ type MarkdownWidgetOptions = {
   ) => void | Promise<void>
 }
 
-type PdfWidgetOptions = {
-  source: 'pdf'
+type ReadOnlyWidgetOptions = {
+  source: ReadOnlySelectionSource
   plugin: YoloPlugin
   selection: SelectionInfo
-  pdfData: Extract<PdfSelectionResult, { kind: 'data' }>
-  /** The PDF leaf content element — used as host and for scroll listeners. */
+  /** The leaf content element — used as host and for scroll listeners. */
   hostEl: HTMLElement
   onClose: () => void
   onAction: (
@@ -62,10 +63,10 @@ type PdfWidgetOptions = {
    * item 6) — a control independent from `SelectionActionsMenu`, not one of
    * its entries.
    */
-  onQuoteAction: () => void
+  onQuoteAction?: () => void
 }
 
-type SelectionChatWidgetOptions = MarkdownWidgetOptions | PdfWidgetOptions
+type SelectionChatWidgetOptions = MarkdownWidgetOptions | ReadOnlyWidgetOptions
 
 // ─── Body component (source-agnostic) ───────────────────────────────────────
 
@@ -73,7 +74,7 @@ type SelectionChatWidgetBodyProps = {
   plugin: YoloPlugin
   selection: SelectionInfo
   hostEl: HTMLElement
-  source: 'markdown' | 'pdf'
+  source: SelectionChatSource
   onClose: () => void
   onLengthDragStart?: (startClientY: number, currentClientY: number) => boolean
   onAction: (
@@ -248,7 +249,7 @@ export class SelectionChatWidget {
   mount(): void {
     this.overlayHost = this.options.hostEl
     const overlayRoot = SelectionChatWidget.getOverlayRoot(this.overlayHost)
-    const overlayContainer = document.createElement('div')
+    const overlayContainer = this.overlayHost.ownerDocument.createElement('div')
     overlayContainer.className = 'yolo-selection-chat-overlay'
     overlayRoot.appendChild(overlayContainer)
     this.overlayContainer = overlayContainer
@@ -312,7 +313,7 @@ export class SelectionChatWidget {
 
     if (SelectionChatWidget.overlayRoot) return SelectionChatWidget.overlayRoot
 
-    const root = document.createElement('div')
+    const root = host.ownerDocument.createElement('div')
     root.className = 'yolo-selection-chat-overlay-root'
     host.appendChild(root)
     host.classList.add('yolo-selection-chat-overlay-host')
@@ -361,20 +362,21 @@ export class SelectionChatWidget {
       }, 80)
     }
 
-    window.addEventListener('pointerdown', handlePointerDown, true)
-    window.addEventListener('keydown', handleKeyDown, true)
+    const hostWindow = getNodeWindow(this.options.hostEl)
+    hostWindow.addEventListener('pointerdown', handlePointerDown, true)
+    hostWindow.addEventListener('keydown', handleKeyDown, true)
     this.options.hostEl.addEventListener('scroll', handleScroll, true)
 
     this.cleanupListeners = () => {
-      window.removeEventListener('pointerdown', handlePointerDown, true)
-      window.removeEventListener('keydown', handleKeyDown, true)
+      hostWindow.removeEventListener('pointerdown', handlePointerDown, true)
+      hostWindow.removeEventListener('keydown', handleKeyDown, true)
       this.options.hostEl.removeEventListener('scroll', handleScroll, true)
       this.cleanupListeners = null
     }
   }
 
   private refreshSelectionPosition(): void {
-    const selection = window.getSelection()
+    const selection = getNodeWindow(this.options.hostEl).getSelection()
     if (!selection || selection.rangeCount === 0) {
       this.handleClose()
       return
@@ -437,7 +439,7 @@ export class SelectionChatWidget {
           assistantId,
         )
     }
-    // For PDF, onAction doesn't need selection (it's already captured in pdfData)
+    // Read-only surfaces captured their selection data when the widget mounted.
     return opts.onAction
   }
 
@@ -469,7 +471,7 @@ export class SelectionChatWidget {
               }
               onAction={onAction}
               onQuoteAction={
-                this.options.source === 'pdf'
+                this.options.source !== 'markdown'
                   ? this.options.onQuoteAction
                   : undefined
               }

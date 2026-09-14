@@ -152,73 +152,37 @@ export function createCmAnchor(
   }
 }
 
-// ─── PDF factory ─────────────────────────────────────────────────────────────
+// ─── DOM range factories (read-only surfaces) ────────────────────────────────
 
-export function createPdfAnchor(
+/**
+ * Anchor on a live browser Range inside a rendered, non-editable leaf.
+ *
+ * Elements are narrowed by `closest` results rather than `instanceof
+ * HTMLElement`: in an Obsidian popout the element belongs to another realm
+ * and would fail the main window's constructor check.
+ */
+function createDomRangeAnchor(
   range: Range,
   leafContentEl: HTMLElement,
+  options: {
+    scrollEl: HTMLElement
+    getContentBounds: () => { left: number; width: number }
+  },
 ): QuickAskAnchor {
-  const workspaceEl = leafContentEl.closest('.workspace')
-  const appContainerEl = leafContentEl.closest('.app-container')
-  const hostEl: HTMLElement =
-    workspaceEl instanceof HTMLElement
-      ? workspaceEl
-      : appContainerEl instanceof HTMLElement
-        ? appContainerEl
-        : leafContentEl
-
-  const scrollCandidate = leafContentEl.querySelector('.pdf-viewer-container')
-  const scrollEl: HTMLElement =
-    scrollCandidate instanceof HTMLElement ? scrollCandidate : leafContentEl
+  const hostEl =
+    leafContentEl.closest<HTMLElement>('.workspace') ??
+    leafContentEl.closest<HTMLElement>('.app-container') ??
+    leafContentEl
 
   return {
     hostEl,
-    scrollEl,
+    scrollEl: options.scrollEl,
 
     getDockReferenceRect(): DOMRect {
       return leafContentEl.getBoundingClientRect()
     },
 
-    getContentBounds(): { left: number; width: number } {
-      // The "content column" must equal where text actually starts on the
-      // page, not the .page rect (which includes wide page margins) and not
-      // .pdf-viewer-container (which includes the thumbnail sidebar). We
-      // derive it from the selection's own glyph rects: the leftmost glyph
-      // is the column-left, mirroring how cm-sizer behaves for Markdown.
-      const startNode = range.startContainer
-      const startEl =
-        startNode.nodeType === 1
-          ? (startNode as Element)
-          : startNode.parentElement
-      const pageEl = startEl?.closest('.page')
-
-      const allRects = Array.from(range.getClientRects())
-      const glyphRects = allRects.filter(
-        (r) => r.width > 0 && r.height > 0 && r.height < 60,
-      )
-
-      if (glyphRects.length > 0 && pageEl instanceof HTMLElement) {
-        const pageRect = pageEl.getBoundingClientRect()
-        let minLeft = glyphRects[0].left
-        for (let i = 1; i < glyphRects.length; i += 1) {
-          if (glyphRects[i].left < minLeft) minLeft = glyphRects[i].left
-        }
-        const width = Math.max(120, pageRect.right - minLeft)
-        return { left: minLeft, width }
-      }
-
-      if (pageEl instanceof HTMLElement) {
-        const rect = pageEl.getBoundingClientRect()
-        if (rect.width > 0) {
-          return { left: rect.left, width: rect.width }
-        }
-      }
-
-      const containerEl =
-        leafContentEl.querySelector('.pdf-viewer-container') ?? leafContentEl
-      const rect = containerEl.getBoundingClientRect()
-      return { left: rect.left, width: rect.width }
-    },
+    getContentBounds: options.getContentBounds,
 
     getAnchorRect(): DOMRect | null {
       const rects = range.getClientRects()
@@ -240,4 +204,75 @@ export function createPdfAnchor(
       return range.getClientRects().length > 0
     },
   }
+}
+
+export function createPdfAnchor(
+  range: Range,
+  leafContentEl: HTMLElement,
+): QuickAskAnchor {
+  const scrollEl =
+    leafContentEl.querySelector<HTMLElement>('.pdf-viewer-container') ??
+    leafContentEl
+
+  return createDomRangeAnchor(range, leafContentEl, {
+    scrollEl,
+    getContentBounds(): { left: number; width: number } {
+      // The "content column" must equal where text actually starts on the
+      // page, not the .page rect (which includes wide page margins) and not
+      // .pdf-viewer-container (which includes the thumbnail sidebar). We
+      // derive it from the selection's own glyph rects: the leftmost glyph
+      // is the column-left, mirroring how cm-sizer behaves for Markdown.
+      const startNode = range.startContainer
+      const startEl =
+        startNode.nodeType === 1
+          ? (startNode as Element)
+          : startNode.parentElement
+      const pageEl = startEl?.closest<HTMLElement>('.page')
+
+      const allRects = Array.from(range.getClientRects())
+      const glyphRects = allRects.filter(
+        (r) => r.width > 0 && r.height > 0 && r.height < 60,
+      )
+
+      if (glyphRects.length > 0 && pageEl) {
+        const pageRect = pageEl.getBoundingClientRect()
+        let minLeft = glyphRects[0].left
+        for (let i = 1; i < glyphRects.length; i += 1) {
+          if (glyphRects[i].left < minLeft) minLeft = glyphRects[i].left
+        }
+        const width = Math.max(120, pageRect.right - minLeft)
+        return { left: minLeft, width }
+      }
+
+      if (pageEl) {
+        const rect = pageEl.getBoundingClientRect()
+        if (rect.width > 0) {
+          return { left: rect.left, width: rect.width }
+        }
+      }
+
+      const rect = scrollEl.getBoundingClientRect()
+      return { left: rect.left, width: rect.width }
+    },
+  })
+}
+
+/**
+ * Anchor on a selection in a Markdown view's reading mode. The preview
+ * element scrolls; the sizer is the readable content column, the reading-mode
+ * counterpart of `.cm-sizer`.
+ */
+export function createReadingAnchor(
+  range: Range,
+  leafContentEl: HTMLElement,
+  previewEl: HTMLElement,
+  sizerEl: HTMLElement,
+): QuickAskAnchor {
+  return createDomRangeAnchor(range, leafContentEl, {
+    scrollEl: previewEl,
+    getContentBounds(): { left: number; width: number } {
+      const rect = sizerEl.getBoundingClientRect()
+      return { left: rect.left, width: rect.width }
+    },
+  })
 }

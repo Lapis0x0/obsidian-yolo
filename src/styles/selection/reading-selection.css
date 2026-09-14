@@ -1,0 +1,13 @@
+/* ============================================
+   Reading Selection - Persistent highlight for Markdown reading mode
+   ============================================ */
+
+/* Painted by readingSelectionHighlightController via the CSS Custom Highlight
+   API, so the rendered DOM is never mutated. Same tint as the persisted
+   selection layer in the editor (selection-chat.css). */
+::highlight(yolo-reading-selection) {
+  background-color: var(
+    --text-selection,
+    color-mix(in srgb, var(--interactive-accent) 18%, transparent)
+  );
+}

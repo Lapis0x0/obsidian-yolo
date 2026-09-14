@@ -16,6 +16,11 @@ export type {
   SelectionActionRewriteBehavior,
 } from '../../features/editor/selection-chat/selectionChatActionCatalog'
 
+/** Rendered surfaces whose selection cannot be rewritten in place. */
+export type ReadOnlySelectionSource = 'pdf' | 'reading'
+
+export type SelectionChatSource = 'markdown' | ReadOnlySelectionSource
+
 export type SelectionAction = {
   id: string
   label: string
@@ -39,8 +44,8 @@ type SelectionActionsMenuProps = {
     assistantId?: string,
   ) => void | Promise<void>
   onHoverChange: (isHovering: boolean) => void
-  /** PDF selections cannot be rewritten — pass 'pdf' to hide rewrite actions. */
-  source?: 'markdown' | 'pdf'
+  /** Read-only surfaces (PDF, reading mode) hide rewrite actions. */
+  source?: SelectionChatSource
   /**
    * PDF-only "引用" entry, prepended above every other action. Deliberately
    * NOT part of `selectionChatActionCatalog`: that catalog also drives the
@@ -72,11 +77,11 @@ export function SelectionActionsMenu({
   const actions: SelectionAction[] = useMemo(() => {
     if (!settings) return []
     const resolved = resolveSelectionChatActions(settings, t)
-    // PDF selections have no writable target: filter out all rewrite-mode actions.
+    // Read-only selections have no writable target: filter out rewrite actions.
     const displayActions =
-      source === 'pdf'
-        ? resolved.filter((action) => action.mode !== 'rewrite')
-        : resolved
+      source === 'markdown'
+        ? resolved
+        : resolved.filter((action) => action.mode !== 'rewrite')
 
     const mapped: SelectionAction[] = displayActions.map((action) => ({
       id: action.id,
