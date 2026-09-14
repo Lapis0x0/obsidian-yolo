@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 33,
+  "revision": 34,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.9.1",
+    "version": "1.6.9.2",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.1",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.2",
     "releaseNotes": {
-      "en": "## 1.6.9.1 Max Mode Polish ✨\n\n### Agent & tools\n\n- Filled in vector retrieval for vault search in Max, and unified the search tools across the Ask/Agent/Max chat modes.\n- Fixed edits being lost when Max mode ran parallel edit_file calls on the same file. (#594)\n- Optimized the architecture design, unifying the programmatic entry point for calling the Agent.\n\n### Prompts\n\n- Global/Agent system prompts now support the ![[note]] syntax to embed constraints from other documents.\n- Improved the prompt design for the model proactively suggesting a switch between Ask/Agent/Max capabilities.\n\n### Chat & interface\n\n- Right-click the YOLO ribbon icon to choose whether to open Chat in the sidebar, a tab, a split, or a separate window.\n- Added Max mode to the mode list in the @ menu.\n- Improved the styling and animation design of collapsed tool groups.",
-      "zh": "## 1.6.9.1 Max 模式打磨 ✨\n\n### Agent 与工具\n\n- 补全 Max 的 vault search 向量检索的能力，并统一 Ask/Agent/Max 三种对话模式的检索工具。\n- 修复 Max 模式并行 edit_file 同一文件丢失编辑的问题。（#594）\n- 优化架构设计，统一 Agent 程序化调用入口。\n\n### 提示词\n\n- 系统全局/Agent提示词支持 ![[笔记]] 语法来嵌入其他文档的约束。\n- 优化模型主动建议 Ask/Agent/Max 能力切换的提示词设计。\n\n### 对话与界面\n\n- 右键侧边栏 YOLO 图标可选择在侧边栏、标签页、分屏或独立窗口打开 Chat。\n- 为 @ 菜单的模式列表补齐 Max 模式。\n- 优化工具折叠组的样式与动画设计。"
+      "en": "## 1.6.9.2 Performance Improvements ⚡\n\n### Reading & writing\n\n- You can now select text in reading mode to ask about it, add it to the sidebar, and keep it highlighted. (#596)\n- Fixed the PDF selection menu and highlights not working in pop-out windows.\n- Improved the prompt design for Tab completion to make multiple suggestions more stable.\n\n### Chat & agent\n\n- Models in Ask/Agent mode can now read images in your vault on their own (requires a vision-capable model). (#595)\n- Improved performance while the model is generating.\n\n### Knowledge base\n\n- Fixed indexing slowing down while staying on the knowledge base settings page.\n- Fixed indexing getting stuck on large numbers of PDF documents due to the old PDF cache mechanism.\n- Removed the size and page limits for PDF indexing.",
+      "zh": "## 1.6.9.2 性能优化 ⚡\n\n### 阅读与写作\n\n- 阅读模式下选中文字也能提问、加入侧边栏并保留高亮。（#596）\n- 独立窗口中的 PDF 选区菜单与高亮恢复正常。\n- 优化 tab 补全场景的提示词设计以提高多补全的稳定性。\n\n### 对话与 Agent\n\n- Ask/Agent 模式下模型可以自主读取 Vault 中的图片（需模型支持视觉）。（#595）\n- 优化模型生成过程中的性能表现。\n\n### 知识库\n\n- 修复停留在知识库设置页时索引变慢的问题。\n- 修复原 PDF 缓存机制导致索引大量 PDF 文档时卡住的问题。\n- 取消 PDF 索引的大小与页数限制。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.9.1/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.1/main.js",
-        "byteSize": 9528687,
-        "sha256": "ae1f94c8a661ddb3fc00c4628922939b3582e926746649ffbb284d242d3538a3"
+        "mirrorPath": "core/1.6.9.2/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.2/main.js",
+        "byteSize": 9537666,
+        "sha256": "71a8dc7fa77daf1cdfd8ce0e7470e6e6566aa529081f6604c1af3adb28a5633f"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.9.1/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.1/manifest.json",
+        "mirrorPath": "core/1.6.9.2/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.2/manifest.json",
         "byteSize": 413,
-        "sha256": "2f6f9c05ed15b78d8ca7976af82120dec789a13987c14d7945c53fd0c651c618"
+        "sha256": "82ea418f0542bd2e9574f4d308b30a9f2d34255ea84d5f474d1cb0bc31e94d5b"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.9.1/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.1/styles.css",
-        "byteSize": 682484,
-        "sha256": "003dcafb12086f90a7ac0f1884ebe8b77b7a4043ecb6db4b4afefe2be2d04a71"
+        "mirrorPath": "core/1.6.9.2/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.2/styles.css",
+        "byteSize": 682940,
+        "sha256": "c40cfb9ca5af890a9b89ce8d4f1efa178865c3457ba6c52ebb933c49109263a5"
       }
     }
   },
