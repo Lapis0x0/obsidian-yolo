@@ -75,6 +75,42 @@ describe('IndexedDbVectorStore', () => {
     }
   })
 
+  it('reports one mtime per file when many chunks share a (path, mtime) key', async () => {
+    const indexedDB = new IDBFactory()
+    const store = await openStore(indexedDB)
+    try {
+      await store.insertVectors([
+        ...[1, 2, 3].map((line) =>
+          insert({
+            path: 'a.md',
+            mtime: 100,
+            metadata: { startLine: line, endLine: line },
+          }),
+        ),
+        insert({
+          path: 'a.md',
+          mtime: 300,
+          metadata: { startLine: 4, endLine: 4 },
+        }),
+        ...[1, 2].map((line) =>
+          insert({
+            path: 'b.md',
+            mtime: 50,
+            metadata: { startLine: line, endLine: line },
+          }),
+        ),
+        insert({ path: 'a.md', mtime: 999, model: MODEL_B }),
+      ])
+
+      expect(await store.getFileMtimes(MODEL_A)).toEqual({
+        'a.md': 300,
+        'b.md': 50,
+      })
+    } finally {
+      store.close()
+    }
+  })
+
   it('deletes vectors by id', async () => {
     const indexedDB = new IDBFactory()
     const store = await openStore(indexedDB)

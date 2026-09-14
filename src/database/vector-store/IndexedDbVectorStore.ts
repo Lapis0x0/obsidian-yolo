@@ -149,9 +149,15 @@ export class IndexedDbVectorStore implements VectorStore {
       number
     >
     // Key cursor over `[model, path, mtime]`: reads index entries only, never
-    // the (vector + content carrying) record values.
+    // the (vector + content carrying) record values. `nextunique` collapses a
+    // file's chunks (they share one key) inside the database, so callbacks
+    // scale with files rather than chunks — the settings page polls this
+    // while an index run is writing to the same store.
     await new Promise<void>((resolve, reject) => {
-      const request = index.openKeyCursor(compoundKeyPrefixRange([modelId]))
+      const request = index.openKeyCursor(
+        compoundKeyPrefixRange([modelId]),
+        'nextunique',
+      )
       request.onerror = () =>
         reject(vectorDbError('mtime scan failed', request.error))
       request.onsuccess = () => {

@@ -262,53 +262,65 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   // Cheap per-kb stats/pending recompute: on mount, whenever the knowledge
   // base list or its scopes change, and on a throttled vault-event timer —
   // matches the plan's "Tab 挂载、每次运行结束、vault 文件事件节流 2s 后重算".
-  const refreshKbData = useCallback(async () => {
-    if (knowledgeBases.length === 0) {
-      setKbData({})
-      return
-    }
-    const dbManager = await plugin.getDbManager()
-    const currentDimension = settings.embeddingModels.find(
-      (model) => model.id === settings.embeddingModelId,
-    )?.dimension
-    const entries = await Promise.all(
-      knowledgeBases.map(async (kb): Promise<[string, KbData]> => {
-        try {
-          const vectorManager = await dbManager.getVectorManager(kb.id)
-          const [docCount, stats, pending] = await Promise.all([
-            vectorManager.getIndexedFileCount(settings.embeddingModelId),
-            vectorManager.getEmbeddingStats(),
-            plugin.countPendingChanges(kb.id),
-          ])
-          const modelStats = stats.find(
-            (s) => s.model === settings.embeddingModelId,
-          )
-          const rowCount = modelStats?.rowCount ?? 0
-          return [
-            kb.id,
-            {
-              docCount,
-              chunkCount: rowCount,
-              estimateMb: inMemoryIndexMb(rowCount, currentDimension) ?? 0,
-              pendingChanged: pending.changed,
-            },
-          ]
-        } catch (error) {
-          console.warn(
-            `[YOLO] Failed to load knowledge base stats for "${kb.id}".`,
-            error,
-          )
-          return [kb.id, EMPTY_KB_DATA]
-        }
-      }),
-    )
-    setKbData(Object.fromEntries(entries))
-  }, [
-    plugin,
-    knowledgeBases,
-    settings.embeddingModelId,
-    settings.embeddingModels,
-  ])
+  // `onlyKbIds` recomputes just those bases and merges them in; omit it to
+  // recompute every base and drop entries for bases that no longer exist.
+  const refreshKbData = useCallback(
+    async (onlyKbIds?: ReadonlySet<string>) => {
+      if (knowledgeBases.length === 0) {
+        setKbData({})
+        return
+      }
+      const dbManager = await plugin.getDbManager()
+      const currentDimension = settings.embeddingModels.find(
+        (model) => model.id === settings.embeddingModelId,
+      )?.dimension
+      const targets = onlyKbIds
+        ? knowledgeBases.filter((kb) => onlyKbIds.has(kb.id))
+        : knowledgeBases
+      const entries = await Promise.all(
+        targets.map(async (kb): Promise<[string, KbData]> => {
+          try {
+            const vectorManager = await dbManager.getVectorManager(kb.id)
+            const [docCount, stats, pending] = await Promise.all([
+              vectorManager.getIndexedFileCount(settings.embeddingModelId),
+              vectorManager.getEmbeddingStats(),
+              plugin.countPendingChanges(kb.id),
+            ])
+            const modelStats = stats.find(
+              (s) => s.model === settings.embeddingModelId,
+            )
+            const rowCount = modelStats?.rowCount ?? 0
+            return [
+              kb.id,
+              {
+                docCount,
+                chunkCount: rowCount,
+                estimateMb: inMemoryIndexMb(rowCount, currentDimension) ?? 0,
+                pendingChanged: pending.changed,
+              },
+            ]
+          } catch (error) {
+            console.warn(
+              `[YOLO] Failed to load knowledge base stats for "${kb.id}".`,
+              error,
+            )
+            return [kb.id, EMPTY_KB_DATA]
+          }
+        }),
+      )
+      setKbData((previous) =>
+        onlyKbIds
+          ? { ...previous, ...Object.fromEntries(entries) }
+          : Object.fromEntries(entries),
+      )
+    },
+    [
+      plugin,
+      knowledgeBases,
+      settings.embeddingModelId,
+      settings.embeddingModels,
+    ],
+  )
 
   const knowledgeBaseScopeKey = useMemo(
     () =>
@@ -325,20 +337,27 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
   // While a run is active, vectors land in IndexedDB batch by batch
   // (VectorManager flushes per adaptive batch), so poll the same cheap stats
   // on the vault-event cadence to let the card's doc/chunk/MB numbers grow
-  // live instead of sitting at 0 until completion.
-  const anyRunRunning = useMemo(
+  // live instead of sitting at 0 until completion. Only running bases are
+  // polled: idle bases' numbers can't move from a run, and every scan here
+  // competes with the run for the main thread and the store's transactions.
+  const runningKbIdsKey = useMemo(
     () =>
-      Object.values(indexSnapshot.runs).some((run) => run.status === 'running'),
+      Object.entries(indexSnapshot.runs)
+        .filter(([, run]) => run.status === 'running')
+        .map(([kbId]) => kbId)
+        .sort()
+        .join('\n'),
     [indexSnapshot],
   )
   useEffect(() => {
-    if (!anyRunRunning) return
+    if (!runningKbIdsKey) return
+    const runningKbIds = new Set(runningKbIdsKey.split('\n'))
     const win = sectionWindowRef.current
     const timer = win.setInterval(() => {
-      void refreshKbData()
+      void refreshKbData(runningKbIds)
     }, 2000)
     return () => win.clearInterval(timer)
-  }, [anyRunRunning, refreshKbData])
+  }, [runningKbIdsKey, refreshKbData])
 
   const previousRunningKbIdsRef = useRef<Set<string>>(new Set())
   useEffect(() => {
