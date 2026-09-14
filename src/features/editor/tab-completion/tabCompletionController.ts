@@ -85,12 +85,10 @@ const TAB_COMPLETION_CANDIDATE_COUNT = 3
 const TAB_COMPLETION_CANDIDATE_SEPARATOR = '<yolo_next_suggestion/>'
 const TAB_COMPLETION_CONSTRAINTS_BLOCK = `\n\nAdditional constraints:\n${TAB_COMPLETION_CONSTRAINTS_PLACEHOLDER}`
 const TAB_COMPLETION_MULTIPLE_CANDIDATES_CONSTRAINT =
-  `Generate exactly ${TAB_COMPLETION_CANDIDATE_COUNT} candidate completions in sequence. ` +
-  `Separate them with the exact token ${TAB_COMPLETION_CANDIDATE_SEPARATOR}. ` +
-  'Each candidate must independently fit the text before and after the cursor, match the existing language, tone, format, and writing style, and must not refer to the other candidates. ' +
-  'When the context allows, offer meaningfully different continuation directions instead of superficial paraphrases or identical openings. ' +
-  'Never sacrifice correctness, coherence, or direct insertability for variety; if the context strongly supports only one continuation, similar candidates are acceptable. ' +
-  'Do not number or label the candidates, and do not output the separator inside a candidate.'
+  `Give ${TAB_COMPLETION_CANDIDATE_COUNT} alternative completions, separated by ${TAB_COMPLETION_CANDIDATE_SEPARATOR}.\n` +
+  '- Each must fit at the <mask/> on its own and follow the rules above, including length.\n' +
+  '- Take different directions when the context allows; if only one continuation makes sense, similar ones are fine.\n' +
+  '- No numbering, labels, or commentary.'
 
 const trimPartialSeparator = (text: string): string => {
   const maxPrefixLength = Math.min(
@@ -171,21 +169,23 @@ const buildTabCompletionUserMessage = (
   if (textToReplace !== null) {
     return (
       titleSection +
-      'This is an inline replacement request. The content inside <text_to_replace> will be replaced by your output. Return only the replacement text.\n\n' +
-      'The final document text will be <text_before_cursor> with <text_to_replace> replaced by your output, followed by <text_after_cursor>.\n\n' +
+      'This is an inline replacement request. Each candidate will replace the content inside <text_to_replace>.\n' +
+      'For each candidate, the final document text will be <text_before_cursor> with <text_to_replace> replaced by the candidate, followed by <text_after_cursor>.\n\n' +
       `<text_before_cursor>\n${before}\n</text_before_cursor>\n` +
       `<text_to_replace>\n${textToReplace}\n</text_to_replace>\n` +
-      `<text_after_cursor>\n${after}\n</text_after_cursor>`
+      `<text_after_cursor>\n${after}\n</text_after_cursor>\n\n` +
+      `Return ${TAB_COMPLETION_CANDIDATE_COUNT} replacement candidates for <text_to_replace>, separated by ${TAB_COMPLETION_CANDIDATE_SEPARATOR}.`
     )
   }
   return (
     titleSection +
     'This is an inline completion request. The <mask/> is the cursor position between <text_before_cursor> and <text_after_cursor>.\n' +
-    'The final document text will be: <text_before_cursor> + your output + <text_after_cursor>.\n' +
-    'Continue exactly from the end of <text_before_cursor>. Return only the text to insert at <mask/>.\n\n' +
+    'For each candidate, the final document text will be: <text_before_cursor> + candidate + <text_after_cursor>.\n' +
+    'Each candidate continues exactly from the end of <text_before_cursor>.\n\n' +
     `<text_before_cursor>\n${before}\n</text_before_cursor>\n` +
     `${MASK_TAG}\n` +
-    `<text_after_cursor>\n${after}\n</text_after_cursor>`
+    `<text_after_cursor>\n${after}\n</text_after_cursor>\n\n` +
+    `Return ${TAB_COMPLETION_CANDIDATE_COUNT} candidates for ${MASK_TAG}, separated by ${TAB_COMPLETION_CANDIDATE_SEPARATOR}.`
   )
 }
 
