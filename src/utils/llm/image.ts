@@ -33,6 +33,11 @@ const EXTENSION_TO_MIME: Record<string, string> = {
   webp: 'image/webp',
 }
 
+export type ImageCompressionOptions = {
+  enabled: boolean
+  quality: number // 1-100
+}
+
 export function isImageTFile(file: TFile): boolean {
   const ext = file.extension?.toLowerCase() ?? ''
   return IMAGE_FILE_EXTENSIONS.has(ext)
@@ -67,20 +72,77 @@ export async function fileToMentionableImage(
 }
 
 /**
+ * Encode image bytes as a base64 data URL, compressing with the Canvas API
+ * when `compression` is enabled below quality 100.
+ * GIF is never compressed (may be animated).
+ * PNG is converted to JPEG (transparency becomes white).
+ * JPEG/WebP are re-encoded at the given quality.
+ */
+export async function encodeImageDataUrl(
+  buffer: ArrayBuffer,
+  ext: string,
+  compression?: ImageCompressionOptions,
+): Promise<string> {
+  const normalizedExt = ext.toLowerCase()
+  const mimeType =
+    getImageMimeTypeFromExtension(normalizedExt) ?? 'application/octet-stream'
+  if (
+    !compression?.enabled ||
+    compression.quality >= 100 ||
+    normalizedExt === 'gif'
+  ) {
+    return `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`
+  }
+
+  const scale = compression.quality / 100
+  const blob = new Blob([buffer], { type: mimeType })
+  const bitmap = await createImageBitmap(blob)
+
+  // Scale dimensions and quality by the same factor
+  const targetWidth = Math.round(bitmap.width * scale)
+  const targetHeight = Math.round(bitmap.height * scale)
+
+  const canvas = new OffscreenCanvas(targetWidth, targetHeight)
+  const ctx = canvas.getContext('2d')
+  if (!ctx) {
+    bitmap.close()
+    return `data:${mimeType};base64,${arrayBufferToBase64(buffer)}`
+  }
+
+  // For PNG → JPEG conversion, fill white background first
+  if (normalizedExt === 'png') {
+    ctx.fillStyle = '#ffffff'
+    ctx.fillRect(0, 0, targetWidth, targetHeight)
+  }
+
+  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight)
+  bitmap.close()
+
+  const outputMime = normalizedExt === 'webp' ? 'image/webp' : 'image/jpeg'
+  const outputBlob = await canvas.convertToBlob({
+    type: outputMime,
+    quality: scale,
+  })
+  const base64 = arrayBufferToBase64(await outputBlob.arrayBuffer())
+  return `data:${outputMime};base64,${base64}`
+}
+
+/**
  * Read a vault image TFile and return a base64 data URL suitable for the
  * `image_url` content part used by OpenAI / Anthropic vision payloads.
  *
- * Pass `options.cache` to enable the persistent image cache.
- * When cache is disabled (default), behaviour is unchanged.
+ * Pass `options.cache` to enable the persistent image cache, and
+ * `options.compression` to compress on a cache miss. Both default to off.
  */
 export async function tFileToImageDataUrl(
   app: App,
   file: TFile,
-  options?: { cache?: { enabled: true; settings?: YoloSettingsLike | null } },
+  options?: {
+    cache?: { enabled: true; settings?: YoloSettingsLike | null }
+    compression?: ImageCompressionOptions
+  },
 ): Promise<string> {
   const ext = file.extension?.toLowerCase() ?? ''
-  const mimeType =
-    getImageMimeTypeFromExtension(ext) ?? 'application/octet-stream'
 
   if (options?.cache?.enabled) {
     const key = buildImageCacheKey(file.path, file.stat.mtime, file.stat.size)
@@ -91,8 +153,7 @@ export async function tFileToImageDataUrl(
     }
 
     const buffer = await app.vault.readBinary(file)
-    const base64 = arrayBufferToBase64(buffer)
-    const dataUrl = `data:${mimeType};base64,${base64}`
+    const dataUrl = await encodeImageDataUrl(buffer, ext, options.compression)
 
     void batchWriteImageCache(
       app,
@@ -106,8 +167,7 @@ export async function tFileToImageDataUrl(
   }
 
   const buffer = await app.vault.readBinary(file)
-  const base64 = arrayBufferToBase64(buffer)
-  return `data:${mimeType};base64,${base64}`
+  return encodeImageDataUrl(buffer, ext, options?.compression)
 }
 
 function fileToBase64(file: File): Promise<string> {

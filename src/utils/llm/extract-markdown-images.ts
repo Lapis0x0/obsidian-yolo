@@ -6,17 +6,12 @@ import {
   buildImageCacheKey,
 } from '../../database/json/chat/imageCacheStore'
 import { ContentPart } from '../../types/llm/request'
-import { arrayBufferToBase64 } from '../base64'
 
-const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
-
-const MIME_TYPES: Record<string, string> = {
-  png: 'image/png',
-  jpg: 'image/jpeg',
-  jpeg: 'image/jpeg',
-  gif: 'image/gif',
-  webp: 'image/webp',
-}
+import {
+  IMAGE_FILE_EXTENSIONS,
+  type ImageCompressionOptions,
+  encodeImageDataUrl,
+} from './image'
 
 // Matches both ![[image.png]], ![[image.png|size]], ![[path/image.png|alt]]
 // and ![alt](path/to/image.png)
@@ -24,11 +19,6 @@ const IMAGE_EMBED_REGEX = /!\[\[([^\]]+)\]\]|!\[([^\]]*)\]\(([^)]+)\)/g
 
 const DEFAULT_EXTERNAL_FETCH_TIMEOUT_MS = 5000
 const DEFAULT_EXTERNAL_FETCH_MAX_BYTES = 10 * 1024 * 1024 // 10MB
-
-export type ImageCompressionOptions = {
-  enabled: boolean
-  quality: number // 1-100
-}
 
 export type ExternalImageFetchOptions = {
   enabled: boolean
@@ -54,7 +44,7 @@ function getExtension(filename: string): string {
 }
 
 function isImageExtension(ext: string): boolean {
-  return IMAGE_EXTENSIONS.has(ext)
+  return IMAGE_FILE_EXTENSIONS.has(ext)
 }
 
 function isHttpUrl(link: string): boolean {
@@ -123,88 +113,6 @@ function resolveImageFile(
   const sourceDir = sourcePath.substring(0, sourcePath.lastIndexOf('/'))
   const relativePath = sourceDir ? `${sourceDir}/${linkPath}` : linkPath
   return app.vault.getFileByPath(relativePath) ?? null
-}
-
-/**
- * Compress an image using Canvas API.
- * GIF is skipped (may be animated).
- * PNG is converted to JPEG (transparency becomes white).
- * JPEG/WebP are re-encoded at the given quality.
- */
-async function compressImage(
-  buffer: ArrayBuffer,
-  ext: string,
-  quality: number,
-): Promise<{
-  base64: string
-  mimeType: string
-  originalWidth: number
-  originalHeight: number
-  scaledWidth: number
-  scaledHeight: number
-}> {
-  // GIF: skip compression (may be animated)
-  if (ext === 'gif') {
-    return {
-      base64: arrayBufferToBase64(buffer),
-      mimeType: 'image/gif',
-      originalWidth: 0,
-      originalHeight: 0,
-      scaledWidth: 0,
-      scaledHeight: 0,
-    }
-  }
-
-  const scale = quality / 100
-  const blob = new Blob([buffer], { type: MIME_TYPES[ext] ?? 'image/png' })
-  const bitmap = await createImageBitmap(blob)
-
-  const origWidth = bitmap.width
-  const origHeight = bitmap.height
-
-  // Scale dimensions and quality by the same factor
-  const targetWidth = Math.round(origWidth * scale)
-  const targetHeight = Math.round(origHeight * scale)
-
-  const canvas = new OffscreenCanvas(targetWidth, targetHeight)
-  const ctx = canvas.getContext('2d')
-  if (!ctx) {
-    bitmap.close()
-    return {
-      base64: arrayBufferToBase64(buffer),
-      mimeType: MIME_TYPES[ext] ?? 'image/png',
-      originalWidth: origWidth,
-      originalHeight: origHeight,
-      scaledWidth: origWidth,
-      scaledHeight: origHeight,
-    }
-  }
-
-  // For PNG → JPEG conversion, fill white background first
-  if (ext === 'png') {
-    ctx.fillStyle = '#ffffff'
-    ctx.fillRect(0, 0, targetWidth, targetHeight)
-  }
-
-  ctx.drawImage(bitmap, 0, 0, targetWidth, targetHeight)
-  bitmap.close()
-
-  // Determine output format
-  const outputMime = ext === 'webp' ? 'image/webp' : 'image/jpeg'
-  const outputBlob = await canvas.convertToBlob({
-    type: outputMime,
-    quality: scale,
-  })
-
-  const compressedBuffer = await outputBlob.arrayBuffer()
-  return {
-    base64: arrayBufferToBase64(compressedBuffer),
-    mimeType: outputMime,
-    originalWidth: origWidth,
-    originalHeight: origHeight,
-    scaledWidth: targetWidth,
-    scaledHeight: targetHeight,
-  }
 }
 
 type LocalImageMatch = {
@@ -393,20 +301,7 @@ export async function extractMarkdownImages(
         cursor = match.endIndex
         continue
       }
-      let dataUrl: string
-
-      if (compression?.enabled && compression.quality < 100) {
-        const compressed = await compressImage(
-          buffer,
-          match.ext,
-          compression.quality,
-        )
-        dataUrl = `data:${compressed.mimeType};base64,${compressed.base64}`
-      } else {
-        const base64 = arrayBufferToBase64(buffer)
-        const mimeType = MIME_TYPES[match.ext] ?? 'image/png'
-        dataUrl = `data:${mimeType};base64,${base64}`
-      }
+      const dataUrl = await encodeImageDataUrl(buffer, match.ext, compression)
 
       parts.push({
         type: 'image_url',

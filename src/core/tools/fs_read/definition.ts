@@ -1,6 +1,9 @@
 import { Platform } from 'obsidian'
 
-import { buildPdfPageImageCacheKey } from '../../../database/json/chat/imageCacheStore'
+import {
+  buildImageCacheKey,
+  buildPdfPageImageCacheKey,
+} from '../../../database/json/chat/imageCacheStore'
 import type { ContentPart } from '../../../types/llm/request'
 import type { McpTool } from '../../../types/mcp.types'
 import {
@@ -10,6 +13,7 @@ import {
 import { uint8ArrayToBase64 } from '../../../utils/base64'
 import { collectWikilinkPaths } from '../../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../../utils/llm/extract-markdown-images'
+import { isImageTFile, tFileToImageDataUrl } from '../../../utils/llm/image'
 import {
   chatModelSupportsPdf,
   chatModelSupportsVision,
@@ -124,7 +128,7 @@ const FS_READ_DESCRIPTION = [
   '- open page: browser://<page_id> from <browser_context>',
   '- wikilink: [[Note#Heading]] or bare Note#^blockId (nested headings ok; .md optional). Exact vault path wins first.',
   '',
-  'Omit range fields for a full read. Targeted read: startLine and optionally endLine or maxLines (1-based; PDF pages). Office files (.docx/.pptx/.xlsx) parse to markdown.',
+  'Omit range fields for a full read. Targeted read: startLine and optionally endLine or maxLines (1-based; PDF pages). Office files (.docx/.pptx/.xlsx) parse to markdown. Image files (.png/.jpg/.jpeg/.gif/.webp) are attached for the model to look at; range fields do not apply.',
   '',
   'browser://:',
   '- copy page_id from <browser_context>; never invent browser://https://... or browser://domain/path',
@@ -923,6 +927,80 @@ export const fsReadDefinition = defineTool({
         continue
       }
 
+      // An image has no text form: it reaches the model as an image or not at
+      // all. So the two gates the markdown-embed path below applies (a
+      // text-only endpoint 400s on the payload, issue #255; the user's
+      // image-reading switch) refuse the entry here instead of silently
+      // degrading, and the encoding shares that path's compression and cache
+      // so an image costs the same whether it was embedded or read directly.
+      if (isImageTFile(file)) {
+        if (!chatModelAcceptsImages) {
+          results.push({
+            path,
+            ok: false,
+            error:
+              'This file is an image and the active chat model cannot accept image input.',
+          })
+          continue
+        }
+        if (!(settings?.chatOptions?.imageReadingEnabled ?? true)) {
+          results.push({
+            path,
+            ok: false,
+            error:
+              'This file is an image, but image reading is turned off in settings.',
+          })
+          continue
+        }
+
+        try {
+          const dataUrl = await tFileToImageDataUrl(app, file, {
+            cache: { enabled: true, settings },
+            compression: {
+              enabled: settings?.chatOptions?.imageCompressionEnabled ?? true,
+              quality: settings?.chatOptions?.imageCompressionQuality ?? 85,
+            },
+          })
+          perFileAttachmentParts.push({
+            path,
+            parts: [
+              {
+                type: 'image_url',
+                image_url: {
+                  url: dataUrl,
+                  cacheKey: buildImageCacheKey(
+                    file.path,
+                    file.stat.mtime,
+                    file.stat.size,
+                  ),
+                },
+              },
+            ],
+          })
+        } catch (error) {
+          results.push({
+            path,
+            ok: false,
+            error: `Failed to read image: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          })
+          continue
+        }
+
+        results.push({
+          path,
+          ok: true,
+          totalLines: 0,
+          hasMoreBelow: false,
+          nextStartLine: null,
+          content: 'The image is attached after this tool result.',
+          effectiveModality: 'image',
+          ...wikilinkResultFields,
+        })
+        continue
+      }
+
       const officeKind = getOfficeDocumentKindFromExtension(file.extension)
       if (officeKind) {
         if (file.stat.size > OFFICE_READ_MAX_BYTES) {
@@ -1083,6 +1161,19 @@ export const fsReadDefinition = defineTool({
           : operation
 
       const rawContent = await app.vault.read(file)
+      // No text file contains a NUL character (the same heuristic `grep` and
+      // `git` use). Without this, an unrecognized binary format decodes into
+      // replacement-character noise that costs tokens and tells the model
+      // nothing.
+      if (rawContent.includes('\u0000')) {
+        results.push({
+          path,
+          ok: false,
+          error:
+            'This file looks like a binary file (contains NUL bytes), not text, and has no readable form.',
+        })
+        continue
+      }
       const content = rawContent
       const lines = content.length === 0 ? [] : content.split('\n')
       const sliced = sliceLinesForFsReadOperation(lines, effectiveOperation)
