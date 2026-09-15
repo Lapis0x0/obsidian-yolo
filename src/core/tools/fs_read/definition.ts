@@ -13,7 +13,11 @@ import {
 import { uint8ArrayToBase64 } from '../../../utils/base64'
 import { collectWikilinkPaths } from '../../../utils/llm/annotate-wikilinks'
 import { extractMarkdownImages } from '../../../utils/llm/extract-markdown-images'
-import { isImageTFile, tFileToImageDataUrl } from '../../../utils/llm/image'
+import {
+  IMAGE_READ_MAX_BYTES,
+  isImageTFile,
+  tFileToImageDataUrl,
+} from '../../../utils/llm/image'
 import {
   chatModelSupportsPdf,
   chatModelSupportsVision,
@@ -948,6 +952,14 @@ export const fsReadDefinition = defineTool({
             ok: false,
             error:
               'This file is an image, but image reading is turned off in settings.',
+          })
+          continue
+        }
+        if (file.stat.size > IMAGE_READ_MAX_BYTES) {
+          results.push({
+            path,
+            ok: false,
+            error: `Image too large (${file.stat.size} bytes). Max allowed is ${IMAGE_READ_MAX_BYTES}.`,
           })
           continue
         }

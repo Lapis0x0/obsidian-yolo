@@ -1,11 +1,17 @@
-import { Platform } from 'obsidian'
+import { type App, Platform } from 'obsidian'
 
+import { buildImageCacheKey } from '../../../../database/local-cache/localCacheStore'
 import type { YoloSettings } from '../../../../settings/schema/setting.types'
 import type { ContentPart } from '../../../../types/llm/request'
 import type { McpTool } from '../../../../types/mcp.types'
 import { ToolCallResponseStatus } from '../../../../types/tool-call.types'
 import { uint8ArrayToBase64 } from '../../../../utils/base64'
-import { getImageMimeTypeFromExtension } from '../../../../utils/llm/image'
+import {
+  IMAGE_READ_MAX_BYTES,
+  cachedImageDataUrl,
+  getImageMimeTypeFromExtension,
+  parseImageDataUrl,
+} from '../../../../utils/llm/image'
 import { chatModelSupportsVision } from '../../../../utils/llm/model-modalities'
 import {
   PDF_READ_MAX_BYTES,
@@ -85,13 +91,17 @@ export const readFileDefinition = defineTool({
 
     const extension = getVaultPathExtension(absolutePath)
 
-    const imageMimeType = getImageMimeTypeFromExtension(extension)
-    if (imageMimeType) {
+    if (getImageMimeTypeFromExtension(extension)) {
       return readAsImage({
+        app,
         absolutePath,
-        mimeType: imageMimeType,
+        extension,
         sizeBytes: stat.size,
-        bytes: new Uint8Array(await fs.readFile(absolutePath)),
+        mtimeMs: stat.mtimeMs,
+        // A copy into a fresh Uint8Array: a Node Buffer can be a view into a
+        // larger shared pool, so its `.buffer` is not the file's bytes alone.
+        readBytes: async () =>
+          new Uint8Array(await fs.readFile(absolutePath)).buffer,
         chatModelId,
         settings,
       })
@@ -179,18 +189,22 @@ const getReadRange = (
   return { type: 'lines', startLine, endLine }
 }
 
-const readAsImage = ({
+const readAsImage = async ({
+  app,
   absolutePath,
-  mimeType,
+  extension,
   sizeBytes,
-  bytes,
+  mtimeMs,
+  readBytes,
   chatModelId,
   settings,
 }: {
+  app: App
   absolutePath: string
-  mimeType: string
+  extension: string
   sizeBytes: number
-  bytes: Uint8Array
+  mtimeMs: number
+  readBytes: () => Promise<ArrayBuffer>
   chatModelId?: string
   settings?: YoloSettings
 }) => {
@@ -216,19 +230,29 @@ const readAsImage = ({
       `${absolutePath} is an image, but image reading is turned off in settings.`,
     )
   }
-  if (sizeBytes > MAX_FILE_SIZE_BYTES) {
+  if (sizeBytes > IMAGE_READ_MAX_BYTES) {
     throw new Error(
-      `Image too large (${sizeBytes} bytes). Max allowed is ${MAX_FILE_SIZE_BYTES}.`,
+      `Image too large (${sizeBytes} bytes). Max allowed is ${IMAGE_READ_MAX_BYTES}.`,
     )
   }
 
-  const parts: ContentPart[] = [
-    {
-      type: 'image_url',
-      image_url: {
-        url: `data:${mimeType};base64,${uint8ArrayToBase64(bytes)}`,
-      },
+  // Same encoding and cache as `fs_read`, so the image costs the same tokens
+  // whichever tool read it, and the cache key lets the saved conversation
+  // store a `cache://` reference instead of the whole data URL.
+  const cacheKey = buildImageCacheKey(absolutePath, mtimeMs, sizeBytes)
+  const dataUrl = await cachedImageDataUrl(app, {
+    key: cacheKey,
+    sourcePath: absolutePath,
+    ext: extension,
+    readBytes,
+    compression: {
+      enabled: settings?.chatOptions?.imageCompressionEnabled ?? true,
+      quality: settings?.chatOptions?.imageCompressionQuality ?? 85,
     },
+  })
+
+  const parts: ContentPart[] = [
+    { type: 'image_url', image_url: { url: dataUrl, cacheKey } },
   ]
   return {
     status: ToolCallResponseStatus.Success as const,
@@ -236,7 +260,8 @@ const readAsImage = ({
       tool: 'read_file',
       path: absolutePath,
       kind: 'image',
-      mimeType,
+      // Compression can re-encode (PNG becomes JPEG), so report what is sent.
+      mimeType: parseImageDataUrl(dataUrl).mimeType,
       byteSize: sizeBytes,
       message: 'The image is attached after this tool result.',
     }),

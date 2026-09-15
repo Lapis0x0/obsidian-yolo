@@ -1,6 +1,7 @@
 import type { App, TFile } from 'obsidian'
 
 import {
+  type LocalCacheApp,
   buildImageCacheKey,
   lookupImageDataUrls,
   writeImageDataUrls,
@@ -36,6 +37,14 @@ export type ImageCompressionOptions = {
   enabled: boolean
   quality: number // 1-100
 }
+
+/**
+ * Largest image file a read tool (`fs_read`, `read_file`) will decode. The
+ * file is read whole and drawn onto a canvas to compress, so the bound is on
+ * memory, not on what a provider accepts — compression brings anything under
+ * it down to a sendable size.
+ */
+export const IMAGE_READ_MAX_BYTES = 20 * 1024 * 1024
 
 export function isImageTFile(file: TFile): boolean {
   const ext = file.extension?.toLowerCase() ?? ''
@@ -144,20 +153,48 @@ export async function tFileToImageDataUrl(
   const ext = file.extension?.toLowerCase() ?? ''
 
   if (options?.cache) {
-    const key = buildImageCacheKey(file.path, file.stat.mtime, file.stat.size)
-    const cached = (await lookupImageDataUrls(app, [key])).get(key)
-    if (cached !== undefined) {
-      return cached
-    }
-
-    const buffer = await app.vault.readBinary(file)
-    const dataUrl = await encodeImageDataUrl(buffer, ext, options.compression)
-    await writeImageDataUrls(app, [{ key, dataUrl, sourcePath: file.path }])
-    return dataUrl
+    return cachedImageDataUrl(app, {
+      key: buildImageCacheKey(file.path, file.stat.mtime, file.stat.size),
+      sourcePath: file.path,
+      ext,
+      readBytes: () => app.vault.readBinary(file),
+      compression: options.compression,
+    })
   }
 
   const buffer = await app.vault.readBinary(file)
   return encodeImageDataUrl(buffer, ext, options?.compression)
+}
+
+/**
+ * The encoded data URL for an image, served from the local cache when present
+ * and encoded then cached otherwise. The source only supplies its identity and
+ * a way to read its bytes, so a vault file and a file read straight from disk
+ * share one cache and one compression path.
+ */
+export async function cachedImageDataUrl(
+  app: LocalCacheApp,
+  source: {
+    key: string
+    sourcePath: string
+    ext: string
+    readBytes: () => Promise<ArrayBuffer>
+    compression?: ImageCompressionOptions
+  },
+): Promise<string> {
+  const cached = (await lookupImageDataUrls(app, [source.key])).get(source.key)
+  if (cached !== undefined) {
+    return cached
+  }
+  const dataUrl = await encodeImageDataUrl(
+    await source.readBytes(),
+    source.ext,
+    source.compression,
+  )
+  await writeImageDataUrls(app, [
+    { key: source.key, dataUrl, sourcePath: source.sourcePath },
+  ])
+  return dataUrl
 }
 
 function fileToBase64(file: File): Promise<string> {

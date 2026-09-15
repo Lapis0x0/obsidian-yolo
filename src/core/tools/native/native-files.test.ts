@@ -168,20 +168,47 @@ describe('read_file', () => {
     )
     await fs.writeFile(path.join(vaultRoot, 'pixel.png'), png)
 
-    const result = await run('read_file', { path: 'pixel.png' })
-    if (result.status !== ToolCallResponseStatus.Success) {
-      throw new Error('expected success')
+    // Compression needs a real canvas; jsdom has none.
+    ctx.settings = {
+      chatOptions: { imageCompressionEnabled: false },
+    } as unknown as ToolContext['settings']
+
+    const read = async () => {
+      const result = await run('read_file', { path: 'pixel.png' })
+      if (result.status !== ToolCallResponseStatus.Success) {
+        throw new Error('expected success')
+      }
+      return result
     }
-    expect(JSON.parse(result.text)).toMatchObject({
+
+    const first = await read()
+    expect(JSON.parse(first.text)).toMatchObject({
       kind: 'image',
       mimeType: 'image/png',
     })
-    expect(result.contentParts).toEqual([
+    // The cache key is what lets the saved conversation keep a `cache://`
+    // reference instead of the whole data URL.
+    expect(first.contentParts).toEqual([
       {
         type: 'image_url',
-        image_url: { url: `data:image/png;base64,${png.toString('base64')}` },
+        image_url: {
+          url: `data:image/png;base64,${png.toString('base64')}`,
+          cacheKey: expect.any(String),
+        },
       },
     ])
+
+    // Served from the local cache: rewrite the file with different bytes but
+    // the same identity (path, size, mtime) and the first encoding comes back.
+    const pixelPath = path.join(vaultRoot, 'pixel.png')
+    const pinnedMtime = new Date(1_700_000_000_000)
+    await fs.writeFile(pixelPath, Buffer.alloc(png.length, 0x41))
+    await fs.utimes(pixelPath, pinnedMtime, pinnedMtime)
+    expect((await read()).contentParts).not.toEqual(first.contentParts)
+    const cachedParts = (await read()).contentParts
+    await fs.writeFile(pixelPath, Buffer.alloc(png.length, 0x42))
+    await fs.utimes(pixelPath, pinnedMtime, pinnedMtime)
+    expect((await read()).contentParts).toEqual(cachedParts)
   })
 
   it('refuses a binary file rather than emitting replacement characters', async () => {
