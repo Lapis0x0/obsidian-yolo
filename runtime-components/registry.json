@@ -23,8 +23,8 @@
       "descriptionKey": "settings.modules.runtimeComponents.embeddingEngine.description",
       "impactKey": "settings.modules.runtimeComponents.embeddingEngine.impact",
       "entry": "runtime-components/embedding-engine/dist/entry.js",
-      "byteSize": 487974,
-      "sha256": "e1e1b926fab28d8d74918990c05940480708fa19b9d8325c8a054c44eef07125",
+      "byteSize": 487806,
+      "sha256": "460179cfc4590fd837e1837ace2b44fdad77ecce6a4a96104a8b3acaf68c5fc6",
       "assets": [
         {
           "name": "ort-wasm-simd-threaded.asyncify.wasm",

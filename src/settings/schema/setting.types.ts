@@ -76,6 +76,14 @@ export type KnowledgeBase = z.infer<typeof knowledgeBaseSchema>
 
 const localEmbeddingSettingsSchema = z.object({
   endpoint: z.string().catch(DEFAULT_LOCAL_EMBEDDING_ENDPOINT),
+  /**
+   * The local embedding shelf's CPU / GPU tab. q8 models always run on CPU
+   * (they're slower on WebGPU); fp16 models run on WebGPU when this is
+   * `'gpu'` and the machine supports it. Switching doesn't require
+   * reindexing — the same fp16 weights produce the same vectors on either
+   * backend.
+   */
+  device: z.enum(['cpu', 'gpu']).catch('cpu'),
 })
 export type LocalEmbeddingSettings = z.infer<
   typeof localEmbeddingSettingsSchema
@@ -461,6 +469,7 @@ export const yoloSettingsSchema = z.object({
    */
   localEmbedding: localEmbeddingSettingsSchema.catch({
     endpoint: DEFAULT_LOCAL_EMBEDDING_ENDPOINT,
+    device: 'cpu',
   }),
 
   // MCP configuration

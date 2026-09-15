@@ -1,4 +1,5 @@
 import type {
+  EmbeddingWorkerDevice,
   EmbeddingWorkerErrorInfo,
   EmbeddingWorkerErrorStage,
 } from './protocol'
@@ -8,13 +9,12 @@ import type {
  * `error.message` string (the old shape) loses which stage failed and which
  * device was in use — both matter for triage (e.g. a corrupt ONNX file vs.
  * a WASM instantiation failure surface as unrelated problems that need
- * different fixes). `device` is `'wasm'`-only in this release; see
- * `EmbeddingWorkerInitRequest` in `protocol.ts`.
+ * different fixes).
  */
 export function toErrorInfo(
   error: unknown,
   stage: EmbeddingWorkerErrorStage,
-  device?: 'wasm',
+  device?: EmbeddingWorkerDevice,
 ): EmbeddingWorkerErrorInfo {
   if (error instanceof Error) {
     return {

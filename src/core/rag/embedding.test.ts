@@ -127,6 +127,7 @@ describe('getEmbeddingModelClient', () => {
     const localSettings: any = {
       providers: [],
       embeddingModels: [localModel],
+      localEmbedding: { endpoint: 'https://huggingface.co', device: 'gpu' },
     }
 
     beforeEach(() => {
@@ -151,6 +152,7 @@ describe('getEmbeddingModelClient', () => {
         expect.objectContaining({
           catalogEntry: expect.objectContaining({ id: 'bge-small-en-v1.5' }),
           manager: { fakeManager: true },
+          device: 'gpu',
         }),
       )
       expect(mockLocalGetEmbedding).toHaveBeenCalledWith('hello', {

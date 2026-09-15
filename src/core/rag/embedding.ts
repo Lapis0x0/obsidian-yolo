@@ -35,6 +35,7 @@ function buildRemoteEmbedding(
 }
 
 function buildLocalEmbedding(
+  settings: YoloSettings,
   embeddingModel: YoloSettings['embeddingModels'][number],
 ): {
   getEmbedding: RawGetEmbedding
@@ -56,7 +57,11 @@ function buildLocalEmbedding(
       'Local embedding models are not available on this platform.',
     )
   }
-  const client = createLocalEmbeddingClient({ catalogEntry, manager })
+  const client = createLocalEmbeddingClient({
+    catalogEntry,
+    manager,
+    device: settings.localEmbedding.device,
+  })
   return {
     getEmbedding: (text, options) => client.getEmbedding(text, options),
     dispose: () => client.dispose(),
@@ -84,7 +89,7 @@ export const getEmbeddingModelClient = ({
     dispose,
     releaseIdleSession,
   } = isLocal
-    ? buildLocalEmbedding(embeddingModel)
+    ? buildLocalEmbedding(settings, embeddingModel)
     : {
         getEmbedding: buildRemoteEmbedding(settings, embeddingModel),
         dispose: undefined,

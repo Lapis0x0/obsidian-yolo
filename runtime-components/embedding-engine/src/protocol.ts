@@ -14,6 +14,8 @@ export type EmbeddingWorkerSpec = Readonly<{
   dtype?: 'q8' | 'fp16'
 }>
 
+export type EmbeddingWorkerDevice = 'wasm' | 'webgpu'
+
 export type EmbeddingWorkerInitRequest = Readonly<{
   type: 'init'
   requestId: number
@@ -23,15 +25,11 @@ export type EmbeddingWorkerInitRequest = Readonly<{
   modelFiles: Readonly<Record<string, ArrayBuffer>>
   spec: EmbeddingWorkerSpec
   /**
-   * Only `'wasm'` is supported in this release — the JSEP/WebGPU wasm
-   * variant is not shipped as a declared asset (see `WASM_ASSET_NAMES`
-   * below), so there is nothing for a `'webgpu'` request to load. `entry.ts`
-   * rejects a `'webgpu'` `createSession` request before a worker is ever
-   * spun up. `dtype` (see `EmbeddingDtype` below) is independent of device —
-   * WebGPU support is what's planned to return in a future release, at which
-   * point this widens back to `'wasm' | 'webgpu'`.
+   * Both devices load the same wasm asset pair (see `WASM_ASSET_NAMES`
+   * below). Which one to use is the host's decision; the worker never
+   * silently substitutes one for the other.
    */
-  device: 'wasm'
+  device: EmbeddingWorkerDevice
   numThreads: number
 }>
 
@@ -72,7 +70,7 @@ export type EmbeddingWorkerErrorInfo = Readonly<{
   message: string
   stack?: string
   stage: EmbeddingWorkerErrorStage
-  device?: 'wasm'
+  device?: EmbeddingWorkerDevice
 }>
 
 export type EmbeddingWorkerResponse =
@@ -80,7 +78,7 @@ export type EmbeddingWorkerResponse =
       type: 'init-result'
       requestId: number
       ok: true
-      device: 'wasm'
+      device: EmbeddingWorkerDevice
     }>
   | Readonly<{
       type: 'init-result'

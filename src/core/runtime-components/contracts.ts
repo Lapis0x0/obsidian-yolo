@@ -270,13 +270,10 @@ export type EmbeddingEngineCreateSessionOptions = Readonly<{
   loadModelFile(file: string, signal?: AbortSignal): Promise<Uint8Array>
   spec: EmbeddingEngineSpec
   /**
-   * `'webgpu'` is kept in the type for forward compatibility but is not
-   * supported in this release — `createSession` rejects it rather than
-   * silently falling back to `'wasm'`, since the component doesn't ship the
-   * JSEP/WebGPU wasm variant as a declared asset. Omit this option (or pass
-   * `'wasm'` explicitly) until WebGPU support returns in a future release.
-   * `dtype` (on `EmbeddingEngineSpec` above) is independent of device and
-   * already supported on `'wasm'`.
+   * Defaults to `'wasm'`. A `'webgpu'` session that fails to initialize
+   * rejects instead of falling back to `'wasm'` — choosing a device is the
+   * caller's decision. Only worthwhile for fp16 weights: q8 on WebGPU is
+   * slower than on wasm.
    */
   device?: 'wasm' | 'webgpu'
   signal?: AbortSignal

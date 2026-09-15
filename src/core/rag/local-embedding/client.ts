@@ -11,11 +11,14 @@ import {
 
 import type { LocalEmbeddingCatalogEntry } from './catalog'
 import type { LocalEmbeddingModelManager } from './manager'
+import { isLocalEmbeddingGpuSupported } from './webgpu'
 
 /** One `session.embed()` call handles at most this many texts. */
 const BATCH_SIZE = 16
 /** Idle session teardown — releases the Worker and the `embedding-engine` lease. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
+
+export type LocalEmbeddingDevicePreference = 'cpu' | 'gpu'
 
 type QueueItem = Readonly<{
   text: string
@@ -47,8 +50,12 @@ export type LocalEmbeddingSessionClient = Readonly<{
 }>
 
 /**
- * One Worker session per catalog id, shared and refcounted across every
- * `LocalEmbeddingSessionClient` for that model. A KB's `RAGEngine` acquires
+ * One Worker session per catalog id and device preference, shared and
+ * refcounted across every `LocalEmbeddingSessionClient` for that pair. The
+ * preference is part of the key because it is fixed for a session's life:
+ * a settings save that flips the CPU / GPU tab recreates clients (see
+ * `ragEngine.ts`), and those must land on a fresh session rather than
+ * reuse one already running on the other backend. A KB's `RAGEngine` acquires
  * one on `createLocalEmbeddingClient()` and releases it on `dispose()`;
  * multiple KBs indexing with the same model (or a settings save that
  * recreates the client — see `ragEngine.ts`) share the same underlying
@@ -56,7 +63,10 @@ export type LocalEmbeddingSessionClient = Readonly<{
  * ~570MB of weights).
  */
 type SharedSession = {
+  readonly key: string
   readonly catalogEntry: LocalEmbeddingCatalogEntry
+  /** Only fp16 entries ever want WebGPU — q8 is slower there than on wasm. */
+  readonly wantsGpu: boolean
   readonly manager: LocalEmbeddingModelManager
   refCount: number
   sessionPromise: Promise<SessionHandle> | null
@@ -71,14 +81,19 @@ const sharedSessions = new Map<string, SharedSession>()
 function acquireSharedSession(
   catalogEntry: LocalEmbeddingCatalogEntry,
   manager: LocalEmbeddingModelManager,
+  device: LocalEmbeddingDevicePreference,
 ): SharedSession {
-  const existing = sharedSessions.get(catalogEntry.id)
+  const wantsGpu = device === 'gpu' && catalogEntry.dtype === 'fp16'
+  const key = `${catalogEntry.id}:${wantsGpu ? 'gpu' : 'cpu'}`
+  const existing = sharedSessions.get(key)
   if (existing) {
     existing.refCount += 1
     return existing
   }
   const shared: SharedSession = {
+    key,
     catalogEntry,
+    wantsGpu,
     manager,
     refCount: 1,
     sessionPromise: null,
@@ -87,7 +102,7 @@ function acquireSharedSession(
     flushing: false,
     microtaskFlushScheduled: false,
   }
-  sharedSessions.set(catalogEntry.id, shared)
+  sharedSessions.set(key, shared)
   return shared
 }
 
@@ -95,8 +110,8 @@ function acquireSharedSession(
 async function releaseSharedSession(shared: SharedSession): Promise<void> {
   shared.refCount -= 1
   if (shared.refCount > 0) return
-  if (sharedSessions.get(shared.catalogEntry.id) === shared) {
-    sharedSessions.delete(shared.catalogEntry.id)
+  if (sharedSessions.get(shared.key) === shared) {
+    sharedSessions.delete(shared.key)
   }
   await teardownSession(shared)
 }
@@ -116,7 +131,7 @@ function bumpIdleTimer(shared: SharedSession): void {
 }
 
 async function createSession(shared: SharedSession): Promise<SessionHandle> {
-  const { catalogEntry, manager } = shared
+  const { catalogEntry, manager, wantsGpu } = shared
   if (!Platform.isDesktop) {
     throw new Error(
       'Local embedding models are only available on desktop Obsidian.',
@@ -156,7 +171,11 @@ async function createSession(shared: SharedSession): Promise<SessionHandle> {
         maxTokens: catalogEntry.maxTokens,
         dtype: catalogEntry.dtype,
       },
-      device: 'wasm',
+      // A GPU preference on a machine without a usable GPU (settings sync
+      // across devices) runs on wasm; both backends produce the same
+      // vectors for the same weights, so the index stays valid.
+      device:
+        wantsGpu && (await isLocalEmbeddingGpuSupported()) ? 'webgpu' : 'wasm',
     })
     return { lease, session }
   } catch (error) {
@@ -293,7 +312,7 @@ function scheduleFlush(shared: SharedSession): void {
  * Bridges one `EmbeddingModel` (providerId `yolo-local`) to the
  * `embedding-engine` runtime component. The returned handle is lightweight:
  * the actual Worker session lives in a module-level registry shared and
- * refcounted by catalog id (see `SharedSession` above), acquired on creation
+ * refcounted by catalog id and device preference (see `SharedSession` above), acquired on creation
  * and released on `dispose()`.
  *
  * `dispose()` is idempotent, and every `getEmbedding()` call after it
@@ -308,8 +327,13 @@ function scheduleFlush(shared: SharedSession): void {
 export function createLocalEmbeddingClient(options: {
   catalogEntry: LocalEmbeddingCatalogEntry
   manager: LocalEmbeddingModelManager
+  device: LocalEmbeddingDevicePreference
 }): LocalEmbeddingSessionClient {
-  const shared = acquireSharedSession(options.catalogEntry, options.manager)
+  const shared = acquireSharedSession(
+    options.catalogEntry,
+    options.manager,
+    options.device,
+  )
   let disposed = false
   let releasePromise: Promise<void> | null = null
 

@@ -17,6 +17,12 @@ import {
   createLocalEmbeddingClient,
 } from './client'
 import { LocalEmbeddingModelManager } from './manager'
+import { isLocalEmbeddingGpuSupported } from './webgpu'
+
+jest.mock('./webgpu', () => ({
+  isLocalEmbeddingGpuSupported: jest.fn(),
+}))
+const mockGpuSupported = jest.mocked(isLocalEmbeddingGpuSupported)
 
 const ENTRY: LocalEmbeddingCatalogEntry = {
   id: 'test-model',
@@ -32,6 +38,12 @@ const ENTRY: LocalEmbeddingCatalogEntry = {
   files: [{ path: 'config.json', byteSize: 4, sha256: 'x'.repeat(64) }],
   totalBytes: 4,
   prefixes: { query: 'query: ', document: 'passage: ' },
+}
+
+const FP16_ENTRY: LocalEmbeddingCatalogEntry = {
+  ...ENTRY,
+  id: 'test-model-fp16',
+  dtype: 'fp16',
 }
 
 function createManager(): LocalEmbeddingModelManager {
@@ -60,8 +72,17 @@ describe('createLocalEmbeddingClient', () => {
   let clients: LocalEmbeddingSessionClient[]
 
   /** Tracked so `afterEach` can dispose every session (and its idle timer). */
-  function makeClient(): LocalEmbeddingSessionClient {
-    const client = createLocalEmbeddingClient({ catalogEntry: ENTRY, manager })
+  function makeClient(
+    options: {
+      catalogEntry?: LocalEmbeddingCatalogEntry
+      device?: 'cpu' | 'gpu'
+    } = {},
+  ): LocalEmbeddingSessionClient {
+    const client = createLocalEmbeddingClient({
+      catalogEntry: options.catalogEntry ?? ENTRY,
+      manager,
+      device: options.device ?? 'cpu',
+    })
     clients.push(client)
     return client
   }
@@ -69,6 +90,7 @@ describe('createLocalEmbeddingClient', () => {
   beforeEach(() => {
     jest.useRealTimers()
     clients = []
+    mockGpuSupported.mockReset().mockResolvedValue(true)
     manager = createManager()
     jest.spyOn(manager, 'getState').mockReturnValue({ status: 'ready' })
     jest
@@ -296,5 +318,57 @@ describe('createLocalEmbeddingClient', () => {
 
     await expect(client.getEmbedding('b')).rejects.toThrow(/not installed/)
     expect(sessionDispose).toHaveBeenCalledTimes(1)
+  })
+
+  describe('device selection', () => {
+    function requestedDevice(callIndex = 0): unknown {
+      return (createSession.mock.calls[callIndex][0] as { device?: string })
+        .device
+    }
+
+    it('runs an fp16 model on WebGPU when the preference is gpu and the machine supports it', async () => {
+      await makeClient({
+        catalogEntry: FP16_ENTRY,
+        device: 'gpu',
+      }).getEmbedding('a')
+      expect(requestedDevice()).toBe('webgpu')
+    })
+
+    it('keeps a q8 model on wasm even when the preference is gpu', async () => {
+      await makeClient({ device: 'gpu' }).getEmbedding('a')
+      expect(requestedDevice()).toBe('wasm')
+      expect(mockGpuSupported).not.toHaveBeenCalled()
+    })
+
+    it('runs an fp16 model on wasm when the preference is cpu', async () => {
+      await makeClient({
+        catalogEntry: FP16_ENTRY,
+        device: 'cpu',
+      }).getEmbedding('a')
+      expect(requestedDevice()).toBe('wasm')
+    })
+
+    it('runs on wasm when the preference is gpu but the machine lacks WebGPU support', async () => {
+      mockGpuSupported.mockResolvedValue(false)
+      await makeClient({
+        catalogEntry: FP16_ENTRY,
+        device: 'gpu',
+      }).getEmbedding('a')
+      expect(requestedDevice()).toBe('wasm')
+    })
+
+    it('does not share a session between clients with different device preferences', async () => {
+      await makeClient({
+        catalogEntry: FP16_ENTRY,
+        device: 'cpu',
+      }).getEmbedding('a')
+      await makeClient({
+        catalogEntry: FP16_ENTRY,
+        device: 'gpu',
+      }).getEmbedding('b')
+      expect(createSession).toHaveBeenCalledTimes(2)
+      expect(requestedDevice(0)).toBe('wasm')
+      expect(requestedDevice(1)).toBe('webgpu')
+    })
   })
 })
