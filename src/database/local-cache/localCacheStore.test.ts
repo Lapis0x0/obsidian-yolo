@@ -1,6 +1,20 @@
 import 'fake-indexeddb/auto'
 import { IDBFactory } from 'fake-indexeddb'
 
+const DECLARED_SIZE_PREFIX = '#declared-size:'
+
+jest.mock('../../utils/common/utf8-byte-length', () => {
+  const actual = jest.requireActual<
+    typeof import('../../utils/common/utf8-byte-length')
+  >('../../utils/common/utf8-byte-length')
+  return {
+    utf8ByteLength: (text: string) => {
+      const declared = /^#declared-size:(\d+)#/.exec(text)
+      return declared ? Number(declared[1]) : actual.utf8ByteLength(text)
+    },
+  }
+})
+
 import {
   LOCAL_CACHE_MAX_BYTES,
   clearLocalCache,
@@ -30,11 +44,13 @@ const createApp = () => {
   }
 }
 
-/** An ASCII data URL of exactly `bytes` bytes. */
-const dataUrlOfSize = (bytes: number): string => {
-  const prefix = 'data:image/png;base64,'
-  return prefix + 'A'.repeat(bytes - prefix.length)
-}
+/**
+ * A data URL the size measurement reports as `bytes` bytes. Budget tests need
+ * hundreds of megabytes; allocating them for real makes the suite slow enough
+ * to time out under a full parallel run.
+ */
+const dataUrlOfSize = (bytes: number): string =>
+  `${DECLARED_SIZE_PREFIX}${bytes}#data:image/png;base64,AAAA`
 
 const MB = 1024 * 1024
 
