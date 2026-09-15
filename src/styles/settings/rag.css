@@ -773,13 +773,18 @@
 
 .yolo-kb-ml-device {
   display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--size-4-3);
+  flex-direction: column;
+  gap: var(--size-4-2);
   padding: var(--size-4-2) var(--size-4-3);
   border-bottom: 1px solid var(--background-modifier-border);
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
+}
+
+/* Full-width tabs: CPU takes the left half, GPU the right. */
+.yolo-kb-ml-device .yolo-mode-seg {
+  display: flex;
+  width: 100%;
 }
 
 .yolo-kb-ml-foot {
