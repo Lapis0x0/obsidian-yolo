@@ -9,7 +9,10 @@ import {
   readRuntimeComponentAsset,
 } from '../../runtime-components/runtimeComponentAccess'
 
-import type { LocalEmbeddingCatalogEntry } from './catalog'
+import type {
+  LocalEmbeddingCatalogEntry,
+  LocalEmbeddingDevice,
+} from './catalog'
 import type { LocalEmbeddingModelManager } from './manager'
 import { isLocalEmbeddingGpuSupported } from './webgpu'
 
@@ -17,8 +20,6 @@ import { isLocalEmbeddingGpuSupported } from './webgpu'
 const BATCH_SIZE = 16
 /** Idle session teardown — releases the Worker and the `embedding-engine` lease. */
 const IDLE_DISPOSE_MS = 10 * 60 * 1000
-
-export type LocalEmbeddingDevicePreference = 'cpu' | 'gpu'
 
 type QueueItem = Readonly<{
   text: string
@@ -81,7 +82,7 @@ const sharedSessions = new Map<string, SharedSession>()
 function acquireSharedSession(
   catalogEntry: LocalEmbeddingCatalogEntry,
   manager: LocalEmbeddingModelManager,
-  device: LocalEmbeddingDevicePreference,
+  device: LocalEmbeddingDevice,
 ): SharedSession {
   const wantsGpu = device === 'gpu' && catalogEntry.dtype === 'fp16'
   const key = `${catalogEntry.id}:${wantsGpu ? 'gpu' : 'cpu'}`
@@ -327,7 +328,7 @@ function scheduleFlush(shared: SharedSession): void {
 export function createLocalEmbeddingClient(options: {
   catalogEntry: LocalEmbeddingCatalogEntry
   manager: LocalEmbeddingModelManager
-  device: LocalEmbeddingDevicePreference
+  device: LocalEmbeddingDevice
 }): LocalEmbeddingSessionClient {
   const shared = acquireSharedSession(
     options.catalogEntry,

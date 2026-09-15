@@ -94,6 +94,34 @@ describe('LOCAL_EMBEDDING_CATALOG', () => {
     },
   )
 
+  it.each(LOCAL_EMBEDDING_CATALOG.map((entry) => [entry.id, entry] as const))(
+    '%s: is listed on at least one device tab, and q8 never on GPU',
+    (_id, entry) => {
+      expect(entry.devices.length).toBeGreaterThan(0)
+      if ((entry.dtype ?? 'q8') === 'q8') {
+        expect(entry.devices).not.toContain('gpu')
+      }
+    },
+  )
+
+  it('every model offered on CPU as q8 also has a GPU fp16 variant with identical inference settings', () => {
+    for (const entry of LOCAL_EMBEDDING_CATALOG) {
+      if ((entry.dtype ?? 'q8') !== 'q8') continue
+      const variant = getLocalEmbeddingCatalogEntry(`${entry.id}-fp16`)
+      expect(variant).toMatchObject({
+        hfRepo: entry.hfRepo,
+        revision: entry.revision,
+        dimension: entry.dimension,
+        maxTokens: entry.maxTokens,
+        pooling: entry.pooling,
+        normalize: entry.normalize,
+        dtype: 'fp16',
+        devices: ['gpu'],
+      })
+      expect(variant?.prefixes).toEqual(entry.prefixes)
+    }
+  })
+
   it('getLocalEmbeddingCatalogEntry finds an entry by id', () => {
     expect(getLocalEmbeddingCatalogEntry('bge-m3')?.hfRepo).toBe(
       'Xenova/bge-m3',

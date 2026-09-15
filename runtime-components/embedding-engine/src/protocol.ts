@@ -137,12 +137,16 @@ export type EmbeddingDtype = 'q8' | 'fp16'
  * transformers.js 按 dtype 请求的 ONNX 权重文件名后缀不同
  * （见 @huggingface/transformers 的 DEFAULT_DTYPE_SUFFIX_MAPPING）。
  * catalog 条目必须按自己声明的 dtype 在 files 里带上对应文件。
+ *
+ * 这里只列主权重文件。外部数据文件（如 `model_fp16.onnx_data`）是否需要
+ * 由模型 config.json 的 `transformers.js_config.use_external_data_format`
+ * 决定，按模型而非按 dtype，由对应 catalog 条目自行声明。
  */
 export const DTYPE_WEIGHT_FILES: Readonly<
   Record<EmbeddingDtype, readonly string[]>
 > = {
   q8: ['onnx/model_quantized.onnx'],
-  fp16: ['onnx/model_fp16.onnx', 'onnx/model_fp16.onnx_data'],
+  fp16: ['onnx/model_fp16.onnx'],
 }
 
 /**

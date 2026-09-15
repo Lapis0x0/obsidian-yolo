@@ -29,6 +29,9 @@ export type LocalEmbeddingCatalogFile = Readonly<{
   sha256: string
 }>
 
+/** The local embedding shelf's CPU / GPU tabs — see `LocalEmbeddingCatalogEntry.devices`. */
+export type LocalEmbeddingDevice = 'cpu' | 'gpu'
+
 export type LocalEmbeddingCatalogEntry = Readonly<{
   /** Our stable slug — becomes `EmbeddingModel.model` for entries created via the P3 UI. */
   id: string
@@ -45,6 +48,13 @@ export type LocalEmbeddingCatalogEntry = Readonly<{
   normalize: boolean
   /** ONNX weight precision — defaults to `'q8'` when omitted. See `DTYPE_WEIGHT_FILES` in `protocol.ts`. */
   dtype?: 'q8' | 'fp16'
+  /**
+   * Which settings tabs list this entry. Declared rather than derived from
+   * `dtype`: q8 is CPU-only (it's slower on WebGPU than on wasm), fp16
+   * variants of those models are GPU-only, but a model shipped only as fp16
+   * (Qwen3) belongs on both.
+   */
+  devices: readonly LocalEmbeddingDevice[]
   files: readonly LocalEmbeddingCatalogFile[]
   /** `Σ files[].byteSize` — asserted by `catalog.test.ts`, used for download progress totals. */
   totalBytes: number
@@ -58,12 +68,7 @@ export type LocalEmbeddingCatalogEntry = Readonly<{
   prefixes?: Readonly<{ query: string; document: string }>
 }>
 
-/**
- * Display/download order in the settings UI mirrors this array order — lightweight
- * recommended defaults first (BGE small EN/ZH), then general multilingual picks,
- * then heavier high-quality models (BGE-M3, Qwen3).
- */
-export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
+const BASE_ENTRIES: readonly LocalEmbeddingCatalogEntry[] = [
   {
     id: 'bge-small-en-v1.5',
     hfRepo: 'Xenova/bge-small-en-v1.5',
@@ -75,6 +80,7 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     maxTokens: 512,
     pooling: 'mean',
     normalize: true,
+    devices: ['cpu'],
     files: [
       {
         path: 'config.json',
@@ -127,6 +133,7 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     maxTokens: 512,
     pooling: 'mean',
     normalize: true,
+    devices: ['cpu'],
     files: [
       {
         path: 'config.json',
@@ -177,6 +184,7 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     maxTokens: 512,
     pooling: 'mean',
     normalize: true,
+    devices: ['cpu'],
     files: [
       {
         path: 'config.json',
@@ -228,6 +236,7 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     maxTokens: 8192,
     pooling: 'mean',
     normalize: true,
+    devices: ['cpu'],
     files: [
       {
         path: 'config.json',
@@ -279,6 +288,7 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     maxTokens: 8192,
     pooling: 'cls',
     normalize: true,
+    devices: ['cpu'],
     files: [
       {
         path: 'config.json',
@@ -337,6 +347,7 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     // text); fp16 keeps it clean (cosine similarity 1.0, matching fp32) at
     // roughly half fp32's weight size. See P2 follow-up investigation notes.
     dtype: 'fp16',
+    devices: ['cpu', 'gpu'],
     files: [
       {
         path: 'config.json',
@@ -385,6 +396,78 @@ export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] = [
     },
   },
 ]
+
+/**
+ * fp16 weights for models whose base entry is q8, keyed by base entry id.
+ * Same repo and revision as the base; the byteSize/sha256 come from the Hub
+ * tree API's `lfs` metadata at that revision. None of these declares
+ * external data for `model_fp16.onnx` in its `config.json`
+ * (`transformers.js_config.use_external_data_format`), so each is one file.
+ */
+const FP16_WEIGHTS: Readonly<Record<string, LocalEmbeddingCatalogFile>> = {
+  'bge-small-en-v1.5': {
+    path: 'onnx/model_fp16.onnx',
+    byteSize: 66749212,
+    sha256: '4d76223b73a3fd708f009a93a830a6ed5e536b07c77d3c812ba7b35a4988d767',
+  },
+  'bge-small-zh-v1.5': {
+    path: 'onnx/model_fp16.onnx',
+    byteSize: 47497427,
+    sha256: '60d0fe5eb8d4e251d4b24dff010a2625c10a013503f0d09f625e8a9b0311315f',
+  },
+  'multilingual-e5-small': {
+    path: 'onnx/model_fp16.onnx',
+    byteSize: 235336732,
+    sha256: '0e0fe349c99ea21c6f3aa273af21f7fb753c1e1174ef1647032029c2be3251c3',
+  },
+  'nomic-embed-text-v1.5': {
+    path: 'onnx/model_fp16.onnx',
+    byteSize: 273859028,
+    sha256: 'cf5b5a86edb00f895561803cfc04729090a958340b8ca2ad76c143f565f6bb04',
+  },
+  'bge-m3': {
+    path: 'onnx/model_fp16.onnx',
+    byteSize: 1133992936,
+    sha256: '4f1a646a3d4f39985589e9991a717044ede8278617fe55e3d246838bc05055e9',
+  },
+}
+
+/**
+ * A GPU-tab variant of a q8 base entry: identical tokenizer, pooling and
+ * prefixes by construction, only the weight file differs. Its own id gives
+ * it its own index namespace — q8 and fp16 vectors live in different spaces
+ * and must never share one.
+ */
+function fp16Variant(
+  base: LocalEmbeddingCatalogEntry,
+  weights: LocalEmbeddingCatalogFile,
+): LocalEmbeddingCatalogEntry {
+  const files = [
+    ...base.files.filter((file) => !file.path.startsWith('onnx/')),
+    weights,
+  ]
+  return {
+    ...base,
+    id: `${base.id}-fp16`,
+    dtype: 'fp16',
+    devices: ['gpu'],
+    files,
+    totalBytes: files.reduce((total, file) => total + file.byteSize, 0),
+  }
+}
+
+/**
+ * Display/download order in the settings UI mirrors this array order within
+ * each tab — lightweight recommended defaults first (BGE small EN/ZH), then
+ * general multilingual picks, then heavier high-quality models (BGE-M3,
+ * Qwen3). Each fp16 variant sits right after its base entry so both tabs
+ * keep that order.
+ */
+export const LOCAL_EMBEDDING_CATALOG: readonly LocalEmbeddingCatalogEntry[] =
+  BASE_ENTRIES.flatMap((entry) => {
+    const weights = FP16_WEIGHTS[entry.id]
+    return weights ? [entry, fp16Variant(entry, weights)] : [entry]
+  })
 
 export function getLocalEmbeddingCatalogEntry(
   catalogId: string,

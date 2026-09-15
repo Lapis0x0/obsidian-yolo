@@ -35,6 +35,7 @@ const ENTRY: LocalEmbeddingCatalogEntry = {
   maxTokens: 128,
   pooling: 'mean',
   normalize: true,
+  devices: ['cpu'],
   files: [{ path: 'config.json', byteSize: 4, sha256: 'x'.repeat(64) }],
   totalBytes: 4,
   prefixes: { query: 'query: ', document: 'passage: ' },
