@@ -1396,6 +1396,14 @@ export const en: TranslationKeys = {
       localEmbedding: {
         groupLabel: 'Local',
         groupDesc: 'Runs on your device — your notes never leave this machine.',
+        deviceAriaLabel: 'Local inference device',
+        deviceCpu: 'CPU',
+        deviceGpu: 'GPU',
+        deviceCpuHint:
+          'Runs on the processor — smaller download and memory use',
+        deviceGpuHint:
+          'Runs on the graphics card — much faster, about twice the download size',
+        deviceGpuUnsupported: 'GPU inference is not supported on this device',
         desktopOnly: 'Local embedding models are only available on desktop.',
         metaLine: '{{dimension}} dims · {{size}}',
         download: 'Download',

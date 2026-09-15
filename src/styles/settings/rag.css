@@ -771,6 +771,17 @@
   letter-spacing: 0.07em;
 }
 
+.yolo-kb-ml-device {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--size-4-3);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
 .yolo-kb-ml-foot {
   display: flex;
   flex-wrap: wrap;

@@ -1133,6 +1133,12 @@ export type TranslationKeys = {
       localEmbedding?: {
         groupLabel?: string
         groupDesc?: string
+        deviceAriaLabel?: string
+        deviceCpu?: string
+        deviceGpu?: string
+        deviceCpuHint?: string
+        deviceGpuHint?: string
+        deviceGpuUnsupported?: string
         desktopOnly?: string
         metaLine?: string
         download?: string

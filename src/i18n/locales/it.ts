@@ -1295,6 +1295,15 @@ export const it: DeepPartial<TranslationKeys> = {
         groupLabel: 'Locale',
         groupDesc:
           'Eseguito sul tuo dispositivo: le note non lasciano questo computer.',
+        deviceAriaLabel: 'Dispositivo di inferenza locale',
+        deviceCpu: 'CPU',
+        deviceGpu: 'GPU',
+        deviceCpuHint:
+          'Eseguito sul processore: download e memoria più contenuti',
+        deviceGpuHint:
+          'Eseguito sulla scheda grafica: molto più veloce, download circa doppio',
+        deviceGpuUnsupported:
+          "L'inferenza su GPU non è supportata su questo dispositivo",
         desktopOnly:
           'I modelli di embedding locali sono disponibili solo su desktop.',
         metaLine: '{{dimension}} dim · {{size}}',

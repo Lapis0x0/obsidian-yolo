@@ -59,6 +59,15 @@
   color: var(--text-normal);
 }
 
+.yolo-mode-seg .yolo-mode-seg-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yolo-mode-seg .yolo-mode-seg-btn:disabled:hover {
+  color: var(--text-muted);
+}
+
 .yolo-mode-seg .yolo-mode-seg-btn:focus-visible {
   outline: 2px solid var(--interactive-accent);
   outline-offset: 2px;

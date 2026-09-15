@@ -1,4 +1,11 @@
-import { Check, ChevronDown, ChevronRight, ExternalLink } from 'lucide-react'
+import {
+  Check,
+  ChevronDown,
+  ChevronRight,
+  Cpu,
+  ExternalLink,
+  Zap,
+} from 'lucide-react'
 import { Notice, Platform } from 'obsidian'
 import {
   useEffect,
@@ -13,6 +20,7 @@ import { useSettings } from '../../../../contexts/settings-context'
 import {
   LOCAL_EMBEDDING_CATALOG,
   LocalEmbeddingCatalogEntry,
+  LocalEmbeddingDevice,
   getLocalEmbeddingCatalogEntry,
 } from '../../../../core/rag/local-embedding/catalog'
 import {
@@ -21,6 +29,7 @@ import {
   LOCAL_EMBEDDING_PROVIDER_ID,
 } from '../../../../core/rag/local-embedding/constants'
 import type { LocalEmbeddingModelState } from '../../../../core/rag/local-embedding/manager'
+import { isLocalEmbeddingGpuSupported } from '../../../../core/rag/local-embedding/webgpu'
 import type YoloPlugin from '../../../../main'
 import { EmbeddingModel } from '../../../../types/embedding-model.types'
 import {
@@ -30,6 +39,7 @@ import {
 import { ObsidianButton } from '../../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../../common/ObsidianDropdown'
 import { ObsidianTextInput } from '../../../common/ObsidianTextInput'
+import { ModeSegmentedControl } from '../../common/ModeSegmentedControl'
 
 const CUSTOM_ENDPOINT_SENTINEL = '__custom__'
 const DELETE_CONFIRM_TIMEOUT_MS = 3000
@@ -450,6 +460,29 @@ export function LocalEmbeddingShelf({ plugin }: LocalEmbeddingShelfProps) {
     }))
   }
 
+  // `null` while the adapter probe is in flight — the GPU tab only disables
+  // once the machine is known not to support it.
+  const [gpuSupported, setGpuSupported] = useState<boolean | null>(null)
+  useEffect(() => {
+    let cancelled = false
+    void isLocalEmbeddingGpuSupported().then((supported) => {
+      if (!cancelled) setGpuSupported(supported)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+  // A `'gpu'` setting synced from another machine stays untouched here; this
+  // machine just shows (and runs) the CPU side until it can use a GPU.
+  const deviceTab: LocalEmbeddingDevice =
+    gpuSupported === false ? 'cpu' : settings.localEmbedding.device
+  const handleDeviceChange = (device: LocalEmbeddingDevice) => {
+    applySettingsUpdate((prev) => ({
+      ...prev,
+      localEmbedding: { ...prev.localEmbedding, device },
+    }))
+  }
+
   const groupHeader = (
     <div className="yolo-kb-ml-group">
       <b>{tr('groupLabel', '本地')}</b>
@@ -478,7 +511,39 @@ export function LocalEmbeddingShelf({ plugin }: LocalEmbeddingShelfProps) {
   return (
     <>
       {groupHeader}
-      {LOCAL_EMBEDDING_CATALOG.map((entry) => {
+      <div className="yolo-kb-ml-device">
+        <ModeSegmentedControl<LocalEmbeddingDevice>
+          value={deviceTab}
+          ariaLabel={tr('deviceAriaLabel', '本地推理设备')}
+          options={[
+            { value: 'cpu', label: tr('deviceCpu', 'CPU'), Icon: Cpu },
+            {
+              value: 'gpu',
+              label: tr('deviceGpu', 'GPU'),
+              Icon: Zap,
+              disabled: gpuSupported === false,
+              title:
+                gpuSupported === false
+                  ? tr('deviceGpuUnsupported', '此设备不支持 GPU 推理')
+                  : undefined,
+            },
+          ]}
+          onChange={handleDeviceChange}
+        />
+        <span>
+          {gpuSupported === false
+            ? tr('deviceGpuUnsupported', '此设备不支持 GPU 推理')
+            : deviceTab === 'gpu'
+              ? tr(
+                  'deviceGpuHint',
+                  '在显卡上推理，速度快得多，模型体积约为 CPU 版的两倍',
+                )
+              : tr('deviceCpuHint', '在处理器上推理，模型体积与内存占用更小')}
+        </span>
+      </div>
+      {LOCAL_EMBEDDING_CATALOG.filter((entry) =>
+        entry.devices.includes(deviceTab),
+      ).map((entry) => {
         const state: LocalEmbeddingModelState = modelSnapshot.get(entry.id) ?? {
           status: 'not-installed',
         }
