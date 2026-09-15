@@ -93,7 +93,21 @@ function probeEnvironment(): EmbeddingEngineEnvironmentProbe {
   return { ok: true, webgpu, threads }
 }
 
+/**
+ * Returns a standalone buffer suitable for the transfer list. When `bytes`
+ * already spans its whole buffer (the common case for model files read off
+ * disk) the buffer is reused as-is: slicing would momentarily hold a second
+ * full copy, which for a ~1 GB fp16 weight file is enough to exhaust the
+ * renderer heap.
+ */
 function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
+  if (
+    bytes.byteOffset === 0 &&
+    bytes.byteLength === bytes.buffer.byteLength &&
+    bytes.buffer instanceof ArrayBuffer
+  ) {
+    return bytes.buffer
+  }
   return bytes.buffer.slice(
     bytes.byteOffset,
     bytes.byteOffset + bytes.byteLength,

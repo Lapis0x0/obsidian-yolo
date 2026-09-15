@@ -149,16 +149,17 @@ export const DTYPE_WEIGHT_FILES: Readonly<
 
 /**
  * Matches `component.config.json`'s declared `assets` names. onnxruntime-web
- * dynamically `import()`s the `.mjs` loader alongside its `.wasm` binary
- * (see `ju()`/`instantiateWasm` in `ort.min.mjs`) — both must be present for
- * the plain-wasm backend to initialize.
+ * dynamically `import()`s the `.mjs` loader alongside its `.wasm` binary —
+ * both must be present for the backend to initialize.
  *
- * The JSEP/WebGPU variant (`ort-wasm-simd-threaded.jsep.{wasm,mjs}`, ~21MB)
- * is deliberately not declared here in this release — `device` is `'wasm'`
- * only (see `EmbeddingWorkerInitRequest`), so shipping it would just be
- * unused weight. It returns as a declared asset alongside WebGPU support.
+ * The variant must pair with the ORT JS entry the worker bundle actually
+ * resolves: Transformers.js imports `onnxruntime-web/webgpu`, whose 1.30
+ * build loads the asyncify pair (it serves both the WebGPU EP and plain
+ * wasm). Swapping the wasm without the entry, or vice versa, can still run
+ * and even produce plausible numbers — change all three together: this
+ * list, `component.config.json`, and `installWasmPaths` in `worker.ts`.
  */
 export const WASM_ASSET_NAMES: readonly string[] = [
-  'ort-wasm-simd-threaded.wasm',
-  'ort-wasm-simd-threaded.mjs',
+  'ort-wasm-simd-threaded.asyncify.wasm',
+  'ort-wasm-simd-threaded.asyncify.mjs',
 ]

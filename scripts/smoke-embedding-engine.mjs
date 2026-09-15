@@ -194,7 +194,10 @@ async function main() {
   const wasm = {}
   await readAssetsInto(
     wasm,
-    ['ort-wasm-simd-threaded.wasm', 'ort-wasm-simd-threaded.mjs'],
+    [
+      'ort-wasm-simd-threaded.asyncify.wasm',
+      'ort-wasm-simd-threaded.asyncify.mjs',
+    ],
     path.join(root, 'runtime-components/embedding-engine/dist/assets'),
   )
 
