@@ -5,9 +5,6 @@ type ModeSegmentedControlOption<T extends string> = {
   value: T
   label: string
   Icon: LucideIcon
-  disabled?: boolean
-  /** Native tooltip — e.g. why an option is disabled. */
-  title?: string
 }
 
 type ModeSegmentedControlProps<T extends string> = {
@@ -41,13 +38,11 @@ export function ModeSegmentedControl<T extends string>({
       }
     >
       <div className="yolo-mode-seg-glider" aria-hidden="true" />
-      {options.map(({ value: optionValue, label, Icon, disabled, title }) => (
+      {options.map(({ value: optionValue, label, Icon }) => (
         <button
           key={optionValue}
           type="button"
           role="tab"
-          disabled={disabled}
-          title={title}
           aria-selected={value === optionValue}
           className={`yolo-mode-seg-btn${
             value === optionValue ? ' is-active' : ''

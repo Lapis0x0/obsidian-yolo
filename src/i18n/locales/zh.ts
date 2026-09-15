@@ -1315,8 +1315,6 @@ export const zh: TranslationKeys = {
         deviceAriaLabel: '本地推理设备',
         deviceCpu: 'CPU',
         deviceGpu: 'GPU',
-        deviceCpuHint: '在处理器上推理，模型体积与内存占用更小',
-        deviceGpuHint: '在显卡上推理，速度快得多，模型体积约为 CPU 版的两倍',
         deviceGpuUnsupported: '此设备不支持 GPU 推理',
         desktopOnly: '本地嵌入模型仅支持桌面端。',
         metaLine: '{{dimension}} 维 · {{size}}',

@@ -771,20 +771,52 @@
   letter-spacing: 0.07em;
 }
 
-.yolo-kb-ml-device {
+.yolo-kb-ml-device-tabs {
   display: flex;
-  flex-direction: column;
-  gap: var(--size-4-2);
-  padding: var(--size-4-2) var(--size-4-3);
   border-bottom: 1px solid var(--background-modifier-border);
-  color: var(--text-faint);
-  font-size: var(--font-ui-smaller);
 }
 
-/* Full-width tabs: CPU takes the left half, GPU the right. */
-.yolo-kb-ml-device .yolo-mode-seg {
-  display: flex;
-  width: 100%;
+/* A row of the model list rather than a floating control: two equal halves,
+ * the active one marked by an accent underline. Scoped under the tab strip
+ * to override Obsidian's global button chrome. */
+.yolo-kb-ml-device-tabs .yolo-kb-ml-device-tab {
+  display: inline-flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: auto;
+  margin-bottom: -1px;
+  padding: var(--size-4-2) var(--size-4-3);
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 0;
+  color: var(--text-muted);
+  background: transparent !important;
+  box-shadow: none !important;
+  font-size: var(--font-ui-small);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+}
+
+.yolo-kb-ml-device-tabs .yolo-kb-ml-device-tab:hover:not(:disabled) {
+  color: var(--text-normal);
+  background: var(--background-modifier-hover) !important;
+}
+
+.yolo-kb-ml-device-tabs .yolo-kb-ml-device-tab.is-active {
+  border-bottom-color: var(--interactive-accent);
+  color: var(--text-normal);
+}
+
+.yolo-kb-ml-device-tabs .yolo-kb-ml-device-tab:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.yolo-kb-ml-device-tabs .yolo-kb-ml-device-tab:focus-visible {
+  outline: 2px solid var(--interactive-accent);
+  outline-offset: -2px;
 }
 
 .yolo-kb-ml-foot {

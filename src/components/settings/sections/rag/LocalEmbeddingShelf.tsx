@@ -39,7 +39,6 @@ import {
 import { ObsidianButton } from '../../../common/ObsidianButton'
 import { ObsidianDropdown } from '../../../common/ObsidianDropdown'
 import { ObsidianTextInput } from '../../../common/ObsidianTextInput'
-import { ModeSegmentedControl } from '../../common/ModeSegmentedControl'
 
 const CUSTOM_ENDPOINT_SENTINEL = '__custom__'
 const DELETE_CONFIRM_TIMEOUT_MS = 3000
@@ -511,35 +510,40 @@ export function LocalEmbeddingShelf({ plugin }: LocalEmbeddingShelfProps) {
   return (
     <>
       {groupHeader}
-      <div className="yolo-kb-ml-device">
-        <ModeSegmentedControl<LocalEmbeddingDevice>
-          value={deviceTab}
-          ariaLabel={tr('deviceAriaLabel', '本地推理设备')}
-          options={[
-            { value: 'cpu', label: tr('deviceCpu', 'CPU'), Icon: Cpu },
-            {
-              value: 'gpu',
-              label: tr('deviceGpu', 'GPU'),
-              Icon: Zap,
-              disabled: gpuSupported === false,
-              title:
-                gpuSupported === false
+      <div
+        className="yolo-kb-ml-device-tabs"
+        role="tablist"
+        aria-label={tr('deviceAriaLabel', '本地推理设备')}
+      >
+        {(
+          [
+            { device: 'cpu', label: tr('deviceCpu', 'CPU'), Icon: Cpu },
+            { device: 'gpu', label: tr('deviceGpu', 'GPU'), Icon: Zap },
+          ] as const
+        ).map(({ device, label, Icon }) => {
+          const unavailable = device === 'gpu' && gpuSupported === false
+          return (
+            <button
+              key={device}
+              type="button"
+              role="tab"
+              aria-selected={deviceTab === device}
+              disabled={unavailable}
+              title={
+                unavailable
                   ? tr('deviceGpuUnsupported', '此设备不支持 GPU 推理')
-                  : undefined,
-            },
-          ]}
-          onChange={handleDeviceChange}
-        />
-        <span>
-          {gpuSupported === false
-            ? tr('deviceGpuUnsupported', '此设备不支持 GPU 推理')
-            : deviceTab === 'gpu'
-              ? tr(
-                  'deviceGpuHint',
-                  '在显卡上推理，速度快得多，模型体积约为 CPU 版的两倍',
-                )
-              : tr('deviceCpuHint', '在处理器上推理，模型体积与内存占用更小')}
-        </span>
+                  : undefined
+              }
+              className={`yolo-kb-ml-device-tab${
+                deviceTab === device ? ' is-active' : ''
+              }`}
+              onClick={() => handleDeviceChange(device)}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          )
+        })}
       </div>
       {LOCAL_EMBEDDING_CATALOG.filter((entry) =>
         entry.devices.includes(deviceTab),

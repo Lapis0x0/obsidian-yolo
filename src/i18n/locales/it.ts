@@ -1298,10 +1298,6 @@ export const it: DeepPartial<TranslationKeys> = {
         deviceAriaLabel: 'Dispositivo di inferenza locale',
         deviceCpu: 'CPU',
         deviceGpu: 'GPU',
-        deviceCpuHint:
-          'Eseguito sul processore: download e memoria più contenuti',
-        deviceGpuHint:
-          'Eseguito sulla scheda grafica: molto più veloce, download circa doppio',
         deviceGpuUnsupported:
           "L'inferenza su GPU non è supportata su questo dispositivo",
         desktopOnly:

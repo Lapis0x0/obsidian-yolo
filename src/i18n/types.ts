@@ -1136,8 +1136,6 @@ export type TranslationKeys = {
         deviceAriaLabel?: string
         deviceCpu?: string
         deviceGpu?: string
-        deviceCpuHint?: string
-        deviceGpuHint?: string
         deviceGpuUnsupported?: string
         desktopOnly?: string
         metaLine?: string
