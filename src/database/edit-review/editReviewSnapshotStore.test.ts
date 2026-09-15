@@ -6,6 +6,7 @@ import {
   MAX_SNAPSHOT_CONTENT_CHARS,
   clearAllEditReviewSnapshotStores,
   deleteEditReviewSnapshotStore,
+  getEditReviewSnapshotUsageBytes,
   readEditReviewSnapshot,
   readEditReviewSnapshots,
   upsertEditReviewSnapshot,
@@ -324,5 +325,30 @@ describe('editReviewSnapshotStore', () => {
     await expect(
       readEditReviewSnapshots({ app, conversationId: 'conv-1', keys: [] }),
     ).resolves.toEqual([])
+  })
+
+  it('measures stored snapshot text in UTF-8 bytes', async () => {
+    const app = createApp()
+    await expect(getEditReviewSnapshotUsageBytes(app)).resolves.toBe(0)
+
+    await upsertEditReviewSnapshot({
+      app,
+      conversationId: 'conv-1',
+      roundId: 'round-1',
+      filePath: 'a.md',
+      beforeContent: 'abc',
+      afterContent: '你好',
+    })
+    await upsertEditReviewSnapshot({
+      app,
+      conversationId: 'conv-2',
+      roundId: 'round-1',
+      filePath: 'b.md',
+      beforeContent: '',
+      afterContent: 'xy',
+    })
+
+    // 'abc' 3 + '你好' 6 + '' 0 + 'xy' 2
+    await expect(getEditReviewSnapshotUsageBytes(app)).resolves.toBe(11)
   })
 })

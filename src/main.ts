@@ -205,8 +205,7 @@ import {
 } from './core/update/updateChecker'
 import type { DatabaseManager } from './database/DatabaseManager'
 import { ChatManager } from './database/json/chat/ChatManager'
-import { pruneImageCache } from './database/json/chat/imageCacheStore'
-import { prunePdfTextCache } from './database/json/chat/pdfTextCacheStore'
+import { importLegacyImageCache } from './database/local-cache/legacyImageCacheImport'
 import type {
   ReconcileResult,
   VectorManager,
@@ -2247,6 +2246,8 @@ export default class YoloPlugin extends Plugin {
     } catch (error) {
       console.error('[YOLO] User data root migration failed', error)
     }
+    // Before any view is registered: cache reads wait for this to settle.
+    void importLegacyImageCache(this.app, this.settings)
     this.warnIfInstallationIncomplete()
     this.activateModules()
     this.syncOAuthRuntimesFromSettings()
@@ -2254,9 +2255,6 @@ export default class YoloPlugin extends Plugin {
       console.error('[YOLO] Failed to initialize local MCP server', error)
     })
 
-    // Prune stale image cache entries (>30 days) on startup
-    void pruneImageCache(this.app, 30, this.settings)
-    void prunePdfTextCache(this.app, 30, this.settings)
     await this.getRagIndexService().initialize()
     // One-time, idempotent migration of legacy skill frontmatter. Skill files
     // themselves remain at their user-chosen paths.

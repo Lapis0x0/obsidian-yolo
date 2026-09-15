@@ -37,9 +37,12 @@ export const YOLO_USER_DATA_SUBDIR_NAMES = [
 /**
  * Chat subdirectories left behind by removed features: the timeline height
  * cache (superseded by the chat history window), the progress cache of the
- * deleted `delegate_external_agent` tool, and the edit review snapshots that
- * now live in a device-local IndexedDB database
- * (`database/edit-review/editReviewSnapshotStore.ts`). Nothing writes them any
+ * deleted `delegate_external_agent` tool, the edit review snapshots that now
+ * live in a device-local IndexedDB database
+ * (`database/edit-review/editReviewSnapshotStore.ts`), and the PDF text cache
+ * that moved into the local cache (`database/local-cache/localCacheStore.ts`).
+ * The old image cache is not listed: history references its entries, so it is
+ * imported first (`database/local-cache/legacyImageCacheImport.ts`). Nothing writes them any
  * more, but they were never cleaned up automatically — a long-running vault
  * can hold thousands of dead ~1KB files (one per conversation ever opened,
  * including deleted ones), and the review snapshots are far heavier than that.
@@ -54,6 +57,7 @@ const LEGACY_CHAT_CACHE_DIR_NAMES = [
   'timeline_height_cache',
   'external_agent_progress',
   'edit_review_snapshots',
+  'pdf_cache',
 ] as const
 
 export type YoloSettingsLike = {

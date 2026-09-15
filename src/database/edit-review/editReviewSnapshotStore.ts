@@ -3,6 +3,7 @@ import {
   resolveVaultDatabaseNamespaceId,
 } from '../../core/storage/vaultDatabaseNamespace'
 import { countFileChangeStats } from '../../utils/chat/editSummary'
+import { utf8ByteLength } from '../../utils/common/utf8-byte-length'
 
 /**
  * Edit review snapshots are device-local working state, not user data.
@@ -188,6 +189,38 @@ export const readEditReviewSnapshots = async ({
     return results
   })
 }
+
+/**
+ * Bytes of snapshot text held on this device, for the storage figure in
+ * settings. Walks every record with a cursor rather than keeping a running
+ * total: it runs only when that page opens, and a total would need a schema
+ * change to store.
+ */
+export const getEditReviewSnapshotUsageBytes = async (
+  app: EditReviewSnapshotApp,
+): Promise<number> =>
+  transaction(app, 'readonly', (store) => {
+    return new Promise<number>((resolve, reject) => {
+      let total = 0
+      const request = store.openCursor()
+      request.onsuccess = () => {
+        const cursor = request.result
+        if (!cursor) {
+          resolve(total)
+          return
+        }
+        const snapshot = parseSnapshot(cursor.value)
+        if (snapshot) {
+          total +=
+            utf8ByteLength(snapshot.beforeContent) +
+            utf8ByteLength(snapshot.afterContent)
+        }
+        cursor.continue()
+      }
+      request.onerror = () =>
+        reject(snapshotDbError('request failed', request.error))
+    })
+  })
 
 export const deleteEditReviewSnapshotStore = async (
   app: EditReviewSnapshotApp,
