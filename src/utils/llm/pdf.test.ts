@@ -1,17 +1,17 @@
 /**
  * Mock the cache store: we want to verify the write path is invoked or skipped
- * without going through the real JSON adapter. SHA-256 keying still uses real
+ * without going through IndexedDB. SHA-256 keying still uses real
  * crypto.subtle, which is available in jsdom/node 20+.
  */
-jest.mock('../../database/json/chat/pdfTextCacheStore', () => {
-  const writes: Array<{ hash: string; pages: unknown[] }> = []
+jest.mock('../../database/local-cache/localCacheStore', () => {
+  const writes: Array<{ key: string; pages: unknown[] }> = []
   return {
     __esModule: true,
     buildPdfTextCacheKeyFromContent: jest.fn(
       async (b64: string) => `c:${b64.length}`,
     ),
-    writePdfTextCacheEntry: jest.fn(
-      async (_app: unknown, entry: { hash: string; pages: unknown[] }) => {
+    writePdfText: jest.fn(
+      async (_app: unknown, entry: { key: string; pages: unknown[] }) => {
         writes.push(entry)
       },
     ),
@@ -74,22 +74,20 @@ describe('fileToMentionablePDF', () => {
   beforeEach(() => {
     pdfjsMode = 'ok'
     const cacheStoreMock = jest.requireMock(
-      '../../database/json/chat/pdfTextCacheStore',
+      '../../database/local-cache/localCacheStore',
     )
     cacheStoreMock.__resetWrites()
   })
 
   it('returns mentionable with pageCount and writes cache on happy path', async () => {
     const app = { vault: {} }
-    const m = await fileToMentionablePDF(app as never, makeFile(8), {
-      settings: {},
-    })
+    const m = await fileToMentionablePDF(app as never, makeFile(8))
     expect(m.type).toBe('pdf')
     expect(m.pageCount).toBe(2)
     expect(typeof m.rawData).toBe('string')
 
     const cacheStoreMock = jest.requireMock(
-      '../../database/json/chat/pdfTextCacheStore',
+      '../../database/local-cache/localCacheStore',
     )
     expect(cacheStoreMock.__getWrites()).toHaveLength(1)
     expect(cacheStoreMock.__getWrites()[0]?.pages).toHaveLength(2)
@@ -98,9 +96,7 @@ describe('fileToMentionablePDF', () => {
   it('still returns a usable mentionable when pdfjs load fails (native-PDF path stays alive)', async () => {
     pdfjsMode = 'throw-load'
     const app = { vault: {} }
-    const m = await fileToMentionablePDF(app as never, makeFile(8), {
-      settings: {},
-    })
+    const m = await fileToMentionablePDF(app as never, makeFile(8))
     // Upload must NOT throw — Claude / Gemini only need rawData.
     expect(m.type).toBe('pdf')
     expect(m.rawData).toBeDefined()
@@ -108,7 +104,7 @@ describe('fileToMentionablePDF', () => {
     expect(m.pageCount).toBeUndefined()
 
     const cacheStoreMock = jest.requireMock(
-      '../../database/json/chat/pdfTextCacheStore',
+      '../../database/local-cache/localCacheStore',
     )
     // No cache write when extraction failed — non-native fallback will retry later.
     expect(cacheStoreMock.__getWrites()).toHaveLength(0)
@@ -118,7 +114,6 @@ describe('fileToMentionablePDF', () => {
     const app = { vault: {} }
     await expect(
       fileToMentionablePDF(app as never, makeFile(64), {
-        settings: {},
         maxBinaryBytes: 32,
       }),
     ).rejects.toThrow(/PDF too large/)
@@ -127,9 +122,7 @@ describe('fileToMentionablePDF', () => {
   it('preserves pageCount when text extraction fails mid-pass (load OK, text throws)', async () => {
     pdfjsMode = 'throw-text'
     const app = { vault: {} }
-    const m = await fileToMentionablePDF(app as never, makeFile(8), {
-      settings: {},
-    })
+    const m = await fileToMentionablePDF(app as never, makeFile(8))
     // loadPdfPages throws partway through per-page text extraction; the outer
     // catch falls back to getPdfPageCount (numPages-only, no text) which
     // succeeds. pageCount should come through even without text.
@@ -137,16 +130,7 @@ describe('fileToMentionablePDF', () => {
     expect(m.pageCount).toBe(2)
 
     const cacheStoreMock = jest.requireMock(
-      '../../database/json/chat/pdfTextCacheStore',
-    )
-    expect(cacheStoreMock.__getWrites()).toHaveLength(0)
-  })
-
-  it('skips cache writes when settings is omitted', async () => {
-    const app = { vault: {} }
-    await fileToMentionablePDF(app as never, makeFile(8))
-    const cacheStoreMock = jest.requireMock(
-      '../../database/json/chat/pdfTextCacheStore',
+      '../../database/local-cache/localCacheStore',
     )
     expect(cacheStoreMock.__getWrites()).toHaveLength(0)
   })

@@ -3,7 +3,7 @@ import { Platform } from 'obsidian'
 import {
   buildImageCacheKey,
   buildPdfPageImageCacheKey,
-} from '../../../database/json/chat/imageCacheStore'
+} from '../../../database/local-cache/localCacheStore'
 import type { ContentPart } from '../../../types/llm/request'
 import type { McpTool } from '../../../types/mcp.types'
 import {
@@ -642,7 +642,7 @@ export const fsReadDefinition = defineTool({
               signal,
               maxBinaryBytes: PDF_READ_MAX_BYTES,
               maxPages: PDF_READ_MAX_PAGES,
-              settings,
+              useCache: true,
             })
             pdfSliceFallbackPages = extracted.pages
           } catch (extractErr) {
@@ -730,7 +730,6 @@ export const fsReadDefinition = defineTool({
               file,
               reqStart,
               reqEnd,
-              settings,
             )
           } catch (error) {
             results.push({
@@ -796,7 +795,7 @@ export const fsReadDefinition = defineTool({
             signal,
             maxBinaryBytes: PDF_READ_MAX_BYTES,
             maxPages: PDF_READ_MAX_PAGES,
-            settings,
+            useCache: true,
           })
           pages = extracted.pages
         } catch (error) {
@@ -955,7 +954,7 @@ export const fsReadDefinition = defineTool({
 
         try {
           const dataUrl = await tFileToImageDataUrl(app, file, {
-            cache: { enabled: true, settings },
+            cache: true,
             compression: {
               enabled: settings?.chatOptions?.imageCompressionEnabled ?? true,
               quality: settings?.chatOptions?.imageCompressionQuality ?? 85,
@@ -1221,7 +1220,7 @@ export const fsReadDefinition = defineTool({
               enabled: settings?.chatOptions?.imageCompressionEnabled ?? true,
               quality: settings?.chatOptions?.imageCompressionQuality ?? 85,
             },
-            cache: { enabled: true, settings },
+            cache: true,
             externalUrl: {
               enabled:
                 settings?.chatOptions?.externalImageFetchEnabled ?? false,

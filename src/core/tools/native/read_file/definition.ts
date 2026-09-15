@@ -110,7 +110,7 @@ export const readFileDefinition = defineTool({
       const { pages } = await extractPdfTextFromBase64(app, base64, {
         signal,
         maxPages: PDF_READ_MAX_PAGES,
-        settings,
+        useCache: true,
         sourceLabel: `native:${absolutePath}`,
       })
       return readPdfPages({ absolutePath, pages, range })

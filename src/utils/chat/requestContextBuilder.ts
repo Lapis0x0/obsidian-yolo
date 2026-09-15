@@ -368,7 +368,7 @@ function renderAttachedDocumentBlock({
  * untouched. This is the modality gate — adapters never have to handle a
  * document part for a non-pdf model.
  *
- * Text extraction goes through the shared `pdfTextCacheStore` keyed by content
+ * Text extraction goes through the local PDF text cache keyed by content
  * hash: the upload site already wrote pages there during `fileToMentionablePDF`,
  * so the common case is a pure cache hit (no pdfjs invocation per turn). Cache
  * miss (e.g. legacy mentionable, or upload-time write failure) falls back to a
@@ -401,7 +401,7 @@ export async function prepareDocumentsForModel(
           context.app,
           part.data,
           {
-            settings: context.settings,
+            useCache: true,
             sourceLabel: `upload:${part.name}`,
           },
         )
@@ -1614,7 +1614,7 @@ ${message.annotations
         mentionedImageFiles.map(async (file) => {
           try {
             return await tFileToImageDataUrl(this.app, file, {
-              cache: { enabled: true, settings: this.settings },
+              cache: true,
             })
           } catch (error) {
             console.warn(
@@ -2595,7 +2595,7 @@ ${[...folderPathSet].map((path) => `- \`${path}\``).join('\n')}`)
             const { pages } = await extractPdfText(this.app, file, {
               maxBinaryBytes: PDF_READ_MAX_BYTES,
               maxPages: PDF_READ_MAX_PAGES,
-              settings: this.settings,
+              useCache: true,
             })
             rawContent = pages
               .map((p) => `<page ${p.page}>\n${p.text}\n</page ${p.page}>`)

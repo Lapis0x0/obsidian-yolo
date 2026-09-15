@@ -10,10 +10,10 @@ import { usePlugin } from '../contexts/plugin-context'
 import { useSettings } from '../contexts/settings-context'
 import type { AutoPromotedTransportMode } from '../core/llm/requestTransport'
 import { promoteProviderTransportModeToObsidian } from '../core/llm/transportModePromotion'
-import { batchLookupImageCache } from '../database/json/chat/imageCacheStore'
 import { compactConversationMessagesForStorage } from '../database/json/chat/promptSnapshotStore'
 import { ChatConversationMetadata } from '../database/json/chat/types'
 import type { ChatConversationCliSession } from '../database/json/chat/types'
+import { lookupImageDataUrls } from '../database/local-cache/localCacheStore'
 import {
   ChatConversationCompactionLike,
   ChatConversationCompactionState,
@@ -22,6 +22,7 @@ import {
   normalizeChatConversationCompactionState,
 } from '../types/chat'
 import { ConversationOverrideSettings } from '../types/conversation-settings.types'
+import type { ContentPart } from '../types/llm/request'
 import { Mentionable } from '../types/mentionable'
 import { ToolCallResponseStatus } from '../types/tool-call.types'
 import {
@@ -445,7 +446,7 @@ export function useChatHistory(): UseChatHistory {
       const messages = conversation.messages.map((message) =>
         deserializeChatMessage(message, app),
       )
-      await hydrateImageCacheRefs(messages, app, settingsRef.current)
+      await hydrateImageCacheRefs(messages, app)
       return messages
     },
     [chatManager, app],
@@ -471,7 +472,7 @@ export function useChatHistory(): UseChatHistory {
       const messages = conversation.messages.map((m) =>
         deserializeChatMessage(m, app),
       )
-      await hydrateImageCacheRefs(messages, app, settingsRef.current)
+      await hydrateImageCacheRefs(messages, app)
       return {
         messages,
         overrides: conversation.overrides,
@@ -778,61 +779,56 @@ const deserializeChatMessage = (
 }
 
 /**
+ * Placeholder for a history image whose cached copy is gone — evicted to keep
+ * the local cache within budget, cleared by the user, or never present on
+ * this device (history syncs, the cache does not). Only the model reads it:
+ * the chat view does not render tool-result content parts.
+ */
+const UNAVAILABLE_CACHED_IMAGE_TEXT =
+  '[Image unavailable: its cached copy was cleared.]'
+
+/**
  * Hydrate cache:// refs in tool message contentParts back to data URLs.
- * Mutates messages in place for efficiency.
+ * Mutates the freshly deserialized messages in place, before they are
+ * published anywhere.
  */
 const hydrateImageCacheRefs = async (
   messages: ChatMessage[],
   app: App,
-  settings?: { yolo?: { baseDir?: string } } | null,
 ): Promise<void> => {
-  // Collect all cache keys that need resolution
-  const cacheKeys = new Set<string>()
+  const refs: Array<{ parts: ContentPart[]; index: number; key: string }> = []
   for (const msg of messages) {
     if (msg.role !== 'tool') continue
     for (const tc of msg.toolCalls) {
       if (tc.response.status !== ToolCallResponseStatus.Success) continue
       const parts = tc.response.data.contentParts
       if (!parts) continue
-      for (const part of parts) {
+      parts.forEach((part, index) => {
         if (
           part.type === 'image_url' &&
           part.image_url.url.startsWith('cache://')
         ) {
-          cacheKeys.add(part.image_url.cacheKey ?? part.image_url.url.slice(8))
+          refs.push({
+            parts,
+            index,
+            key: part.image_url.cacheKey ?? part.image_url.url.slice(8),
+          })
         }
-      }
+      })
     }
   }
+  if (refs.length === 0) return
 
-  if (cacheKeys.size === 0) return
-
-  // Batch lookup
-  const resolved = await batchLookupImageCache(
+  const resolved = await lookupImageDataUrls(
     app,
-    Array.from(cacheKeys),
-    settings,
+    refs.map((ref) => ref.key),
   )
 
-  // Replace cache refs with resolved data URLs
-  for (const msg of messages) {
-    if (msg.role !== 'tool') continue
-    for (const tc of msg.toolCalls) {
-      if (tc.response.status !== ToolCallResponseStatus.Success) continue
-      const parts = tc.response.data.contentParts
-      if (!parts) continue
-      for (const part of parts) {
-        if (
-          part.type === 'image_url' &&
-          part.image_url.url.startsWith('cache://')
-        ) {
-          const key = part.image_url.cacheKey ?? part.image_url.url.slice(8)
-          const dataUrl = resolved.get(key)
-          if (dataUrl) {
-            part.image_url.url = dataUrl
-          }
-        }
-      }
-    }
+  for (const { parts, index, key } of refs) {
+    const dataUrl = resolved.get(key)
+    // A `cache://` URL must never reach a provider: it is not an image.
+    parts[index] = dataUrl
+      ? { type: 'image_url', image_url: { url: dataUrl, cacheKey: key } }
+      : { type: 'text', text: UNAVAILABLE_CACHED_IMAGE_TEXT }
   }
 }

@@ -2,11 +2,10 @@ import type { App, TFile } from 'obsidian'
 
 import { acquireRuntimeComponent } from '../../core/runtime-components/runtimeComponentAccess'
 import {
-  batchLookupImageCache,
-  batchWriteImageCache,
   buildPdfPageImageCacheKey,
-} from '../../database/json/chat/imageCacheStore'
-import type { YoloSettingsLike } from '../../database/json/chat/imageCacheStore'
+  lookupImageDataUrls,
+  writeImageDataUrls,
+} from '../../database/local-cache/localCacheStore'
 
 export type RenderedPdfPage = {
   page: number
@@ -28,7 +27,7 @@ export type RenderPdfPagesResult = {
  * [1, totalPages].
  *
  * Caching: each rendered page is keyed by `pdf:<path>:<mtime>:<size>:p<N>`
- * via the global image cache store. Cache hits skip the render step.
+ * via the local cache. Cache hits skip the render step.
  *
  * Throws on any failure — callers must NOT fall back to text mode.
  */
@@ -37,7 +36,6 @@ export async function renderPdfPagesToImages(
   file: TFile,
   startPage: number,
   endPage: number | undefined,
-  settings?: YoloSettingsLike | null,
 ): Promise<RenderPdfPagesResult> {
   const buf = await app.vault.readBinary(file)
   const bytes = new Uint8Array(buf)
@@ -66,7 +64,7 @@ export async function renderPdfPagesToImages(
       ),
     )
 
-    const cacheHits = await batchLookupImageCache(app, cacheKeys, settings)
+    const cacheHits = await lookupImageDataUrls(app, cacheKeys)
 
     const missedIndices = pages
       .map((_, i) => i)
@@ -96,11 +94,11 @@ export async function renderPdfPagesToImages(
 
     if (missedIndices.length > 0) {
       const newEntries = missedIndices.map((i) => ({
-        hash: cacheKeys[i],
+        key: cacheKeys[i],
         dataUrl: freshDataUrls.get(pages[i]) ?? '',
         sourcePath: file.path,
       }))
-      await batchWriteImageCache(app, newEntries, settings)
+      await writeImageDataUrls(app, newEntries)
     }
 
     const rendered: RenderedPdfPage[] = pages.map((page, i) => {

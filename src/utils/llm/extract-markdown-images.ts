@@ -1,10 +1,10 @@
 import { App, TFile, requestUrl } from 'obsidian'
 
 import {
-  batchLookupImageCache,
-  batchWriteImageCache,
   buildImageCacheKey,
-} from '../../database/json/chat/imageCacheStore'
+  lookupImageDataUrls,
+  writeImageDataUrls,
+} from '../../database/local-cache/localCacheStore'
 import { ContentPart } from '../../types/llm/request'
 
 import {
@@ -26,15 +26,9 @@ export type ExternalImageFetchOptions = {
   maxBytes?: number
 }
 
-type YoloSettingsLike = {
-  yolo?: {
-    baseDir?: string
-  }
-}
-
 export type ImageExtractOptions = {
   compression?: ImageCompressionOptions
-  cache?: { enabled: true; settings?: YoloSettingsLike | null }
+  cache?: boolean
   externalUrl?: ExternalImageFetchOptions
 }
 
@@ -172,7 +166,7 @@ async function fetchRemoteImage(
  * Extract images embedded in markdown text and build an interleaved
  * ContentPart array (text -> image -> text -> image -> ...).
  *
- * Supports optional compression (Canvas API) and global cache.
+ * Supports optional compression (Canvas API) and the local image cache.
  *
  * Returns null contentParts if the text contains no resolvable image embeds.
  * Images that cannot be resolved or read are silently skipped
@@ -235,16 +229,13 @@ export async function extractMarkdownImages(
   }
 
   // Batch cache lookup
-  const cacheEnabled = !!options?.cache?.enabled
-  let cacheHits = new Map<string, string>()
-  if (cacheEnabled) {
-    const allKeys = matches.map((m) => m.cacheKey)
-    cacheHits = await batchLookupImageCache(
-      app,
-      allKeys,
-      options?.cache?.settings,
-    )
-  }
+  const cacheEnabled = !!options?.cache
+  const cacheHits = cacheEnabled
+    ? await lookupImageDataUrls(
+        app,
+        matches.map((m) => m.cacheKey),
+      )
+    : new Map<string, string>()
 
   const compression = options?.compression
   const externalTimeoutMs =
@@ -252,7 +243,7 @@ export async function extractMarkdownImages(
   const externalMaxBytes =
     options?.externalUrl?.maxBytes ?? DEFAULT_EXTERNAL_FETCH_MAX_BYTES
   const newCacheEntries: Array<{
-    hash: string
+    key: string
     dataUrl: string
     sourcePath: string
   }> = []
@@ -311,7 +302,7 @@ export async function extractMarkdownImages(
       // Queue for cache write
       if (cacheEnabled) {
         newCacheEntries.push({
-          hash: match.cacheKey,
+          key: match.cacheKey,
           dataUrl,
           sourcePath: match.kind === 'local' ? match.file.path : match.url,
         })
@@ -335,9 +326,8 @@ export async function extractMarkdownImages(
     }
   }
 
-  // Batch write new cache entries (fire-and-forget)
   if (newCacheEntries.length > 0) {
-    void batchWriteImageCache(app, newCacheEntries, options?.cache?.settings)
+    await writeImageDataUrls(app, newCacheEntries)
   }
 
   return { contentParts: parts }

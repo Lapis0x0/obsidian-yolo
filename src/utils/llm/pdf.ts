@@ -2,8 +2,8 @@ import type { App } from 'obsidian'
 
 import {
   buildPdfTextCacheKeyFromContent,
-  writePdfTextCacheEntry,
-} from '../../database/json/chat/pdfTextCacheStore'
+  writePdfText,
+} from '../../database/local-cache/localCacheStore'
 import { MentionablePDF } from '../../types/mentionable'
 import { uint8ArrayToBase64 } from '../base64'
 import { createYieldController } from '../common/yield-to-main'
@@ -21,15 +21,8 @@ export const PDF_UPLOAD_MAX_BYTES = 24 * 1024 * 1024
 /** Match the global vault PDF page extraction cap. */
 const UPLOAD_MAX_PAGES = 500
 
-type YoloSettingsLike = {
-  yolo?: {
-    baseDir?: string
-  }
-}
-
 export type FileToMentionablePDFOptions = {
   maxBinaryBytes?: number
-  settings?: YoloSettingsLike | null
 }
 
 /**
@@ -37,7 +30,7 @@ export type FileToMentionablePDFOptions = {
  *
  * pdfjs runs exactly once at upload time: we read the page count AND extract
  * full text in the same pass, then persist the text into the shared
- * `pdfTextCacheStore` keyed by content hash. Native-PDF adapters
+ * local cache keyed by content hash. Native-PDF adapters
  * (Claude / Gemini) only need `rawData` and ignore the cache; non-native
  * adapters hit the cache during request build and skip pdfjs entirely.
  *
@@ -91,26 +84,14 @@ export async function fileToMentionablePDF(
     }
   }
 
-  // Best-effort write to the shared text cache. Skipped on extraction failure
+  // Best-effort write to the local text cache. Skipped on extraction failure
   // (no pages to write); the non-native fallback path will retry extraction.
-  if (extractedPages !== null && options.settings !== undefined) {
-    try {
-      const cacheKey = await buildPdfTextCacheKeyFromContent(base64)
-      await writePdfTextCacheEntry(
-        app,
-        {
-          hash: cacheKey,
-          sourcePath: `upload:${file.name}`,
-          pages: extractedPages,
-        },
-        options.settings,
-      )
-    } catch (error) {
-      console.warn(
-        `[YOLO] Failed to persist PDF text cache for upload ${file.name}:`,
-        error instanceof Error ? error.message : error,
-      )
-    }
+  if (extractedPages !== null) {
+    await writePdfText(app, {
+      key: await buildPdfTextCacheKeyFromContent(base64),
+      sourcePath: `upload:${file.name}`,
+      pages: extractedPages,
+    })
   }
 
   return {

@@ -1,11 +1,10 @@
 import type { App, TFile } from 'obsidian'
 
 import {
-  YoloSettingsLike,
-  batchLookupImageCache,
-  batchWriteImageCache,
   buildImageCacheKey,
-} from '../../database/json/chat/imageCacheStore'
+  lookupImageDataUrls,
+  writeImageDataUrls,
+} from '../../database/local-cache/localCacheStore'
 import { MentionableImage } from '../../types/mentionable'
 import { arrayBufferToBase64 } from '../base64'
 
@@ -131,38 +130,29 @@ export async function encodeImageDataUrl(
  * Read a vault image TFile and return a base64 data URL suitable for the
  * `image_url` content part used by OpenAI / Anthropic vision payloads.
  *
- * Pass `options.cache` to enable the persistent image cache, and
+ * Pass `options.cache` to enable the local image cache, and
  * `options.compression` to compress on a cache miss. Both default to off.
  */
 export async function tFileToImageDataUrl(
   app: App,
   file: TFile,
   options?: {
-    cache?: { enabled: true; settings?: YoloSettingsLike | null }
+    cache?: boolean
     compression?: ImageCompressionOptions
   },
 ): Promise<string> {
   const ext = file.extension?.toLowerCase() ?? ''
 
-  if (options?.cache?.enabled) {
+  if (options?.cache) {
     const key = buildImageCacheKey(file.path, file.stat.mtime, file.stat.size)
-    const hits = await batchLookupImageCache(app, [key], options.cache.settings)
-    const cached = hits.get(key)
+    const cached = (await lookupImageDataUrls(app, [key])).get(key)
     if (cached !== undefined) {
       return cached
     }
 
     const buffer = await app.vault.readBinary(file)
     const dataUrl = await encodeImageDataUrl(buffer, ext, options.compression)
-
-    void batchWriteImageCache(
-      app,
-      [{ hash: key, dataUrl, sourcePath: file.path }],
-      options.cache.settings,
-    ).catch((error) => {
-      console.warn('[YOLO] Failed to write image cache', file.path, error)
-    })
-
+    await writeImageDataUrls(app, [{ key, dataUrl, sourcePath: file.path }])
     return dataUrl
   }
 

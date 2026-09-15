@@ -562,9 +562,7 @@ const MessageInputCore = forwardRef<MessageInputCoreRef, MessageInputCoreProps>(
         }
         if (pdfFiles.length > 0) {
           void Promise.allSettled(
-            pdfFiles.map((file) =>
-              fileToMentionablePDF(app, file, { settings }),
-            ),
+            pdfFiles.map((file) => fileToMentionablePDF(app, file)),
           ).then((results) => {
             const successes: MentionablePDF[] = []
             results.forEach((result, idx) => {

@@ -1,4 +1,4 @@
-jest.mock('../../database/json/chat/pdfTextCacheStore', () => {
+jest.mock('../../database/local-cache/localCacheStore', () => {
   const cache: Record<string, { page: number; text: string }[]> = {}
   return {
     __esModule: true,
@@ -9,15 +9,15 @@ jest.mock('../../database/json/chat/pdfTextCacheStore', () => {
     buildPdfTextCacheKeyFromContent: jest.fn(
       (base64: string) => `c:${base64.length}:${base64.slice(0, 8)}`,
     ),
-    lookupPdfTextCache: jest.fn(
-      async (_app: unknown, hash: string) => cache[hash] ?? null,
+    lookupPdfText: jest.fn(
+      async (_app: unknown, key: string) => cache[key] ?? null,
     ),
-    writePdfTextCacheEntry: jest.fn(
+    writePdfText: jest.fn(
       async (
         _app: unknown,
-        entry: { hash: string; pages: { page: number; text: string }[] },
+        entry: { key: string; pages: { page: number; text: string }[] },
       ) => {
-        cache[entry.hash] = entry.pages
+        cache[entry.key] = entry.pages
       },
     ),
     __resetCache: () => {
@@ -78,7 +78,7 @@ describe('extractPdfText', () => {
 })
 
 describe('extractPdfTextFromBase64', () => {
-  it('extracts pages from base64 input without touching the cache when settings is omitted', async () => {
+  it('extracts pages from base64 input without touching the cache when useCache is omitted', async () => {
     const app = { vault: { adapter: {} } }
     // Tiny valid-looking base64 — content is irrelevant because pdfjs is mocked.
     const { pages } = await extractPdfTextFromBase64(
@@ -91,22 +91,21 @@ describe('extractPdfTextFromBase64', () => {
 
   it('serves cached pages on key hit, skipping pdfjs entirely', async () => {
     const cacheStoreMock = jest.requireMock(
-      '../../database/json/chat/pdfTextCacheStore',
+      '../../database/local-cache/localCacheStore',
     )
     cacheStoreMock.__resetCache()
-    cacheStoreMock.lookupPdfTextCache.mockClear()
-    cacheStoreMock.writePdfTextCacheEntry.mockClear()
+    cacheStoreMock.lookupPdfText.mockClear()
+    cacheStoreMock.writePdfText.mockClear()
 
     const app = { vault: {} }
-    const settings = {}
 
     // First call: cache miss → runs pdfjs (mocked) → writes entry.
     const first = await extractPdfTextFromBase64(app as never, 'JVBERi0xLjQK', {
-      settings,
+      useCache: true,
       sourceLabel: 'upload:test.pdf',
     })
     expect(first.pages).toHaveLength(1)
-    expect(cacheStoreMock.writePdfTextCacheEntry).toHaveBeenCalledTimes(1)
+    expect(cacheStoreMock.writePdfText).toHaveBeenCalledTimes(1)
 
     // Make pdfjs throw on next invocation — second call must come from cache.
     const pdfjs = jest.requireMock('pdfjs-dist')
@@ -118,13 +117,13 @@ describe('extractPdfTextFromBase64', () => {
       app as never,
       'JVBERi0xLjQK',
       {
-        settings,
+        useCache: true,
         sourceLabel: 'upload:test.pdf',
       },
     )
     expect(second.pages).toEqual(first.pages)
     // Still only one write — second call was a hit.
-    expect(cacheStoreMock.writePdfTextCacheEntry).toHaveBeenCalledTimes(1)
-    expect(cacheStoreMock.lookupPdfTextCache).toHaveBeenCalledTimes(2)
+    expect(cacheStoreMock.writePdfText).toHaveBeenCalledTimes(1)
+    expect(cacheStoreMock.lookupPdfText).toHaveBeenCalledTimes(2)
   })
 })

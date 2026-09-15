@@ -32,7 +32,7 @@ export async function renderCurrentFilePointerInjection(
     const pointerText = `${pointerLines.join('\n')}\n\n`
     try {
       const dataUrl = await tFileToImageDataUrl(ctx.app, file, {
-        cache: { enabled: true, settings: ctx.settings },
+        cache: true,
       })
       return {
         role: 'user',
