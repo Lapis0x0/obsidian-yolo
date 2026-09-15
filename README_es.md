@@ -68,7 +68,7 @@
 
 - **`1.6`**
   - **Modelos de embedding locales on-device y múltiples bases de conocimiento**: indexa sin ninguna clave API, divide y gestiona las bases de conocimiento de forma independiente, y deja que el Agente elija automáticamente la correcta por su nombre.
-  - **Chat por CLI**: en escritorio puedes controlar desde la misma interfaz de chat el Claude Code, Codex, Hermes o Pi CLI con el que ya has iniciado sesión.
+  - **Chat por CLI**: en escritorio puedes controlar desde la misma interfaz de chat el Claude Code, Codex, Hermes, Pi o Grok CLI con el que ya has iniciado sesión.
   - **El nuevo Modo de Aprendizaje**: convierte cualquier tema y material de referencia en un proyecto de aprendizaje personalizado con esquemas estructurados, puntos de conocimiento, tarjetas de estudio y un mapa de conocimiento interactivo, respaldado por la repetición espaciada FSRS y la importación de `.apkg` de Anki para un repaso sostenible a largo plazo.
 
 - **`1.5`**: Presenta un nuevo runtime de Agente que convierte la IA de simples preguntas y respuestas en colaboración activa, con llamada completa a herramientas, MCP, Skills, Bash de escritorio, subagentes y búsqueda web, además de un contexto y una memoria más inteligentes para sesiones largas, RAG híbrido renovado, reconocimiento de foco/PDF y chat multiventana con Agentes en segundo plano.
@@ -85,7 +85,7 @@
 <td align="center"><img src="./assets/learning-mode.gif" alt="Learning Mode" width="100%"></td>
 </tr>
 <tr valign="top">
-<td align="center">Ve más allá de las respuestas. YOLO entiende y trabaja directamente con tu Vault, llama a herramientas y servidores MCP, y usa Skills para hacer trabajo real a tu manera. En escritorio puedes cambiar con un clic al Claude Code o Codex con el que ya has iniciado sesión y dejar que trabajen directamente en tu Vault.</td>
+<td align="center">Ve más allá de las respuestas. YOLO entiende y trabaja directamente con tu Vault, llama a herramientas y servidores MCP, y usa Skills para hacer trabajo real a tu manera. En escritorio puedes cambiar con un clic a un agente CLI compatible con el que ya has iniciado sesión y dejar que trabaje directamente en tu Vault.</td>
 <td align="center">Convierte temas y material de origen en un sistema de aprendizaje personal, y luego usa tarjetas y el repaso con FSRS para pasar de notas guardadas a conocimiento duradero.</td>
 </tr>
 <tr>
@@ -105,7 +105,7 @@ Además de las capacidades principales anteriores, YOLO también ofrece:
 
 | Función | Descripción |
 |---------|-------------|
-| 🖥️ Agente CLI (escritorio) | Reutiliza el Claude Code / Codex con el que ya has iniciado sesión en tu equipo y conversa con el agente CLI dentro de Obsidian |
+| 🖥️ Agente CLI (escritorio) | Reutiliza un agente CLI compatible con el que ya has iniciado sesión en tu equipo, incluidos Claude Code, Codex, Hermes, Pi y Grok, directamente dentro de Obsidian |
 | 🔌 Soporte de agentes externos | Conecta clientes MCP como Hermes y OpenClaw a la búsqueda en el Vault de YOLO, o delega tareas a un Agente YOLO configurado |
 | ⚡ Quick Ask | Pregunta, edita y continúa escribiendo sin salir del editor |
 | 🔎 RAG del Vault | Recupera información en todo tu Vault para obtener respuestas basadas en tus propias notas |
