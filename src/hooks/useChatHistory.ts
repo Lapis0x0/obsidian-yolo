@@ -779,18 +779,14 @@ const deserializeChatMessage = (
 }
 
 /**
- * Placeholder for a history image whose cached copy is gone — evicted to keep
- * the local cache within budget, cleared by the user, or never present on
- * this device (history syncs, the cache does not). Only the model reads it:
- * the chat view does not render tool-result content parts.
- */
-const UNAVAILABLE_CACHED_IMAGE_TEXT =
-  '[Image unavailable: its cached copy was cleared.]'
-
-/**
  * Hydrate cache:// refs in tool message contentParts back to data URLs.
  * Mutates the freshly deserialized messages in place, before they are
  * published anywhere.
+ *
+ * A ref whose entry is missing stays a `cache://` ref. The conversation is
+ * saved back from this state and syncs to other devices, so replacing it here
+ * would destroy a reference another device's cache can still resolve; the
+ * request builder turns an unresolved ref into a note for the model instead.
  */
 const hydrateImageCacheRefs = async (
   messages: ChatMessage[],
@@ -826,9 +822,11 @@ const hydrateImageCacheRefs = async (
 
   for (const { parts, index, key } of refs) {
     const dataUrl = resolved.get(key)
-    // A `cache://` URL must never reach a provider: it is not an image.
-    parts[index] = dataUrl
-      ? { type: 'image_url', image_url: { url: dataUrl, cacheKey: key } }
-      : { type: 'text', text: UNAVAILABLE_CACHED_IMAGE_TEXT }
+    if (dataUrl) {
+      parts[index] = {
+        type: 'image_url',
+        image_url: { url: dataUrl, cacheKey: key },
+      }
+    }
   }
 }

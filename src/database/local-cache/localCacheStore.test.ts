@@ -104,14 +104,14 @@ describe('localCacheStore', () => {
     await writeImageDataUrls(app, [
       { key: 'img', dataUrl: dataUrlOfSize(100), sourcePath: 'a.png' },
     ])
-    // '你好' is 6 bytes in UTF-8.
     await writePdfText(app, {
       key: 'pdf',
       sourcePath: 'book.pdf',
       pages: [{ page: 1, text: '你好' }],
     })
 
-    expect(await getLocalCacheUsageBytes(app)).toBe(106)
+    // 100 for the image; '你好' is 6 bytes plus the per-page overhead.
+    expect(await getLocalCacheUsageBytes(app)).toBe(100 + 6 + 32)
 
     await clearLocalCache(app)
     expect(await getLocalCacheUsageBytes(app)).toBe(0)
@@ -175,9 +175,43 @@ describe('localCacheStore', () => {
     expect(await getLocalCacheUsageBytes(app)).toBeLessThanOrEqual(
       LOCAL_CACHE_MAX_BYTES,
     )
+    // Records are kept in batch order until the budget is full.
     expect([
       ...(await lookupImageDataUrls(app, ['first', 'second'])).keys(),
-    ]).toEqual(['second'])
+    ]).toEqual(['first'])
+  })
+
+  it('keeps an image and a PDF text under the same caller key apart', async () => {
+    const app = createApp()
+    await writeImageDataUrls(app, [
+      { key: 'same', dataUrl: dataUrlOfSize(100), sourcePath: 'a.png' },
+    ])
+    await writePdfText(app, {
+      key: 'same',
+      sourcePath: 'b.pdf',
+      pages: [{ page: 1, text: 'text' }],
+    })
+
+    expect((await lookupImageDataUrls(app, ['same'])).get('same')).toBe(
+      dataUrlOfSize(100),
+    )
+    expect(await lookupPdfText(app, 'same')).toEqual([
+      { page: 1, text: 'text' },
+    ])
+  })
+
+  it('charges PDF pages against the budget even when their text is empty', async () => {
+    const app = createApp()
+    await writePdfText(app, {
+      key: 'scan',
+      sourcePath: 'scan.pdf',
+      pages: [
+        { page: 1, text: '' },
+        { page: 2, text: '' },
+      ],
+    })
+
+    expect(await getLocalCacheUsageBytes(app)).toBeGreaterThan(0)
   })
 
   describe('legacy image cache import', () => {

@@ -2394,6 +2394,33 @@ describe('parseToolMessage document hoisting', () => {
     )
   })
 
+  it('tells the model about a history image whose cache:// ref did not resolve', async () => {
+    const unresolvedPart: ContentPart = {
+      type: 'image_url',
+      image_url: { url: 'cache://abc123', cacheKey: 'abc123' },
+    }
+
+    const messages = await buildMessagesWithToolResponse(
+      'yolo_local__fs_read',
+      [unresolvedPart],
+    )
+
+    const sentParts = messages
+      .filter((m) => m.role === 'user' && Array.isArray(m.content))
+      .flatMap((m) => m.content as ContentPart[])
+    expect(
+      sentParts.some(
+        (p) => p.type === 'image_url' && p.image_url.url.startsWith('cache://'),
+      ),
+    ).toBe(false)
+    expect(sentParts).toContainEqual({
+      type: 'text',
+      text: expect.stringContaining('Image unavailable'),
+    })
+    // The conversation keeps the ref for devices that can still resolve it.
+    expect(unresolvedPart.image_url.url).toBe('cache://abc123')
+  })
+
   it('mixed image + document → header is "Attachments from tool call"', async () => {
     const imagePart: ContentPart = {
       type: 'image_url',

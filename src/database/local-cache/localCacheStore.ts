@@ -152,15 +152,12 @@ export const writeImageDataUrls = async (
   app: LocalCacheApp,
   images: ReadonlyArray<{ key: string; dataUrl: string; sourcePath: string }>,
 ): Promise<void> => {
+  const now = Date.now()
   await writeRecords(
     app,
-    images.map(({ key, dataUrl, sourcePath }) => ({
-      key,
-      kind: 'image',
-      sourcePath,
-      value: dataUrl,
-      byteSize: utf8ByteLength(dataUrl),
-    })),
+    images.map(({ key, dataUrl, sourcePath }) =>
+      imageRecord({ key, dataUrl, sourcePath, lastAccessedAt: now }),
+    ),
   )
 }
 
@@ -173,6 +170,13 @@ export const lookupPdfText = async (
   return Array.isArray(value) ? value : null
 }
 
+/**
+ * Structured-clone overhead charged per stored page, so a scanned PDF whose
+ * pages extract to empty text still costs something against the budget
+ * instead of occupying storage for free.
+ */
+const PDF_PAGE_OVERHEAD_BYTES = 32
+
 export const writePdfText = async (
   app: LocalCacheApp,
   entry: { key: string; sourcePath: string; pages: PdfTextPage[] },
@@ -184,9 +188,11 @@ export const writePdfText = async (
       sourcePath: entry.sourcePath,
       value: entry.pages,
       byteSize: entry.pages.reduce(
-        (sum, page) => sum + utf8ByteLength(page.text),
+        (sum, page) =>
+          sum + PDF_PAGE_OVERHEAD_BYTES + utf8ByteLength(page.text),
         0,
       ),
+      lastAccessedAt: Date.now(),
     },
   ])
 }
@@ -227,13 +233,14 @@ let legacyImport: Promise<void> | null = null
 
 /**
  * Starts the one-time import of the old vault image cache. `load` returns its
- * entries (or null when there is nothing to import); `cleanup` removes the old
- * files and runs only after the entries are committed, so an interrupted
- * import simply runs again next time — writes are keyed, so repeating one is
- * harmless.
+ * entries (or null when there is nothing to import).
  *
- * Entries go in most recently used first and stop at the budget, so what
- * survives is what the user touched last.
+ * `cleanup` removes the old files once `load` has produced them, whether or
+ * not the write succeeded: a write that fails (a device whose real quota is
+ * below the budget, say) would fail the same way on every start, and the old
+ * file is only a cache. An import cut off before it finishes — the app closed
+ * mid-way — never reaches `cleanup`, so it runs again next time; writes are
+ * keyed, so repeating one is harmless.
  */
 export const startLegacyImageCacheImport = (
   app: LocalCacheApp,
@@ -244,42 +251,32 @@ export const startLegacyImageCacheImport = (
     return legacyImport
   }
   legacyImport = (async () => {
+    let legacyEntries: LegacyImageCacheEntry[] | null
     try {
-      const legacyEntries = await load()
-      if (!legacyEntries) {
-        return
-      }
-      const ordered = [...legacyEntries].sort(
-        (a, b) => b.lastAccessedAt - a.lastAccessedAt,
+      legacyEntries = await load()
+    } catch (error) {
+      console.warn('[YOLO] Failed to read the legacy image cache', error)
+      return
+    }
+    if (!legacyEntries) {
+      return
+    }
+    // Most recently used first, so when the budget runs out what survives is
+    // what the user touched last.
+    const records = [...legacyEntries]
+      .sort((a, b) => b.lastAccessedAt - a.lastAccessedAt)
+      .map(imageRecord)
+    try {
+      await transaction(app, 'readwrite', (stores) =>
+        putWithinBudget(stores, records),
       )
-      let budget = LOCAL_CACHE_MAX_BYTES
-      const accepted: Array<LocalCacheRecord & { lastAccessedAt: number }> = []
-      for (const legacy of ordered) {
-        const byteSize = utf8ByteLength(legacy.dataUrl)
-        if (byteSize > budget) {
-          break
-        }
-        budget -= byteSize
-        accepted.push({
-          key: legacy.key,
-          kind: 'image',
-          sourcePath: legacy.sourcePath,
-          value: legacy.dataUrl,
-          byteSize,
-          lastAccessedAt: legacy.lastAccessedAt,
-        })
-      }
-      if (accepted.length > 0) {
-        await transaction(app, 'readwrite', async (stores) => {
-          for (const record of accepted) {
-            await putRecord(stores, record, record.lastAccessedAt)
-          }
-          await evictOverBudget(stores, new Set())
-        })
-      }
-      await cleanup()
     } catch (error) {
       console.warn('[YOLO] Failed to import the legacy image cache', error)
+    }
+    try {
+      await cleanup()
+    } catch (error) {
+      console.warn('[YOLO] Failed to remove the legacy image cache', error)
     }
   })()
   return legacyImport
@@ -296,6 +293,37 @@ const awaitLegacyImport = async (): Promise<void> => {
 // ---------------------------------------------------------------------------
 
 type CacheStores = { values: IDBObjectStore; entries: IDBObjectStore }
+
+type LocalCacheRecordWithAccess = LocalCacheRecord & { lastAccessedAt: number }
+
+const imageRecord = ({
+  key,
+  dataUrl,
+  sourcePath,
+  lastAccessedAt,
+}: {
+  key: string
+  dataUrl: string
+  sourcePath: string
+  lastAccessedAt: number
+}): LocalCacheRecordWithAccess => ({
+  key,
+  kind: 'image',
+  sourcePath,
+  value: dataUrl,
+  byteSize: utf8ByteLength(dataUrl),
+  lastAccessedAt,
+})
+
+/**
+ * The primary key a record is stored under. Callers' keys are unchanged (chat
+ * history holds them as `cache://<key>`), but image and PDF-text keys come
+ * from the same 32-bit hash over the same `path:mtime:size` shape, so without
+ * the kind a PDF and an unrelated image could land on one record and keep
+ * overwriting each other.
+ */
+const storageKey = (kind: LocalCacheKind, key: string): string =>
+  `${kind}:${key}`
 
 const lookupValues = async (
   app: LocalCacheApp,
@@ -314,11 +342,12 @@ const lookupValues = async (
     await transaction(app, 'readwrite', async ({ values, entries }) => {
       const now = Date.now()
       for (const key of uniqueKeys) {
-        const entry = await requestResult(entries.get(key))
-        if (!isEntry(entry) || entry.kind !== kind) {
+        const id = storageKey(kind, key)
+        const entry = await requestResult(entries.get(id))
+        if (!isEntry(entry)) {
           continue
         }
-        const value = (await requestResult(values.get(key))) as
+        const value = (await requestResult(values.get(id))) as
           | LocalCacheValue
           | undefined
         if (value === undefined) {
@@ -337,79 +366,85 @@ const lookupValues = async (
 
 const writeRecords = async (
   app: LocalCacheApp,
-  records: readonly LocalCacheRecord[],
+  records: readonly LocalCacheRecordWithAccess[],
 ): Promise<void> => {
-  // Last write wins within a batch, and an entry larger than the whole budget
-  // is never stored — it could only be written to be evicted.
-  const byKey = new Map<string, LocalCacheRecord>()
-  for (const record of records) {
-    if (record.byteSize <= LOCAL_CACHE_MAX_BYTES) {
-      byKey.set(record.key, record)
-    }
-  }
-  if (byKey.size === 0) {
+  if (records.length === 0) {
     return
   }
   try {
     await awaitLegacyImport()
-    await transaction(app, 'readwrite', async (stores) => {
-      const now = Date.now()
-      for (const record of byKey.values()) {
-        await putRecord(stores, record, now)
-      }
-      await evictOverBudget(stores, new Set(byKey.keys()))
-    })
+    await transaction(app, 'readwrite', (stores) =>
+      putWithinBudget(stores, records),
+    )
   } catch (error) {
     console.warn('[YOLO] Local cache write failed', error)
   }
 }
 
-const putRecord = async (
-  { values, entries }: CacheStores,
-  record: LocalCacheRecord,
-  lastAccessedAt: number,
-): Promise<void> => {
-  const existing = await requestResult(entries.get(record.key))
-  const entry: LocalCacheEntry = {
-    key: record.key,
-    kind: record.kind,
-    byteSize: record.byteSize,
-    sourcePath: record.sourcePath,
-    createdAt: isEntry(existing) ? existing.createdAt : lastAccessedAt,
-    lastAccessedAt,
-  }
-  await requestResult(values.put(record.value, record.key))
-  await requestResult(entries.put(entry))
-}
-
 /**
- * Brings the total back under budget, least recently used first. Entries just
- * written in this transaction go last — in their batch order — so a write
- * evicts older data before it evicts itself, and the budget still holds when a
- * single batch is larger than it.
+ * Makes room first, then writes — in that order so that the storage freed by
+ * eviction is available to the write itself, rather than the write having to
+ * fit before anything old is let go.
+ *
+ * Which incoming records are kept: a later record for the same key replaces
+ * an earlier one, and records are taken in order until the budget is full, so
+ * callers put what matters most first. A record larger than the whole budget
+ * is never stored. Existing entries are then evicted least recently used
+ * first until the kept records fit.
  */
-const evictOverBudget = async (
+const putWithinBudget = async (
   { values, entries }: CacheStores,
-  justWritten: ReadonlySet<string>,
+  records: readonly LocalCacheRecordWithAccess[],
 ): Promise<void> => {
-  const all = (await requestResult(entries.getAll())).filter(isEntry)
-  let total = all.reduce((sum, entry) => sum + entry.byteSize, 0)
-  if (total <= LOCAL_CACHE_MAX_BYTES) {
+  const latestByKey = new Map<string, LocalCacheRecordWithAccess>()
+  for (const record of records) {
+    const id = storageKey(record.kind, record.key)
+    latestByKey.delete(id)
+    latestByKey.set(id, record)
+  }
+  const kept = new Map<string, LocalCacheRecordWithAccess>()
+  let incomingBytes = 0
+  for (const [id, record] of latestByKey) {
+    if (incomingBytes + record.byteSize > LOCAL_CACHE_MAX_BYTES) {
+      continue
+    }
+    incomingBytes += record.byteSize
+    kept.set(id, record)
+  }
+  if (kept.size === 0) {
     return
   }
-  const older = all
-    .filter((entry) => !justWritten.has(entry.key))
+
+  const existing = (await requestResult(entries.getAll())).filter(isEntry)
+  const createdAtById = new Map(
+    existing.map((entry) => [entry.key, entry.createdAt]),
+  )
+  // Entries about to be overwritten are replaced, not added to.
+  const others = existing
+    .filter((entry) => !kept.has(entry.key))
     .sort((a, b) => a.lastAccessedAt - b.lastAccessedAt)
-  const written = [...justWritten]
-    .map((key) => all.find((entry) => entry.key === key))
-    .filter((entry): entry is LocalCacheEntry => entry !== undefined)
-  for (const entry of [...older, ...written]) {
+  let total =
+    others.reduce((sum, entry) => sum + entry.byteSize, 0) + incomingBytes
+  for (const entry of others) {
     if (total <= LOCAL_CACHE_MAX_BYTES) {
       break
     }
     await requestResult(values.delete(entry.key))
     await requestResult(entries.delete(entry.key))
     total -= entry.byteSize
+  }
+
+  for (const [id, record] of kept) {
+    const entry: LocalCacheEntry = {
+      key: id,
+      kind: record.kind,
+      byteSize: record.byteSize,
+      sourcePath: record.sourcePath,
+      createdAt: createdAtById.get(id) ?? record.lastAccessedAt,
+      lastAccessedAt: record.lastAccessedAt,
+    }
+    await requestResult(values.put(record.value, id))
+    await requestResult(entries.put(entry))
   }
 }
 

@@ -363,6 +363,21 @@ function renderAttachedDocumentBlock({
 }
 
 /**
+ * A tool-result image still pointing at `cache://` after history hydration had
+ * no cached copy on this device — evicted, cleared, or never cached here
+ * (history syncs, the local cache does not). It is not an image a provider can
+ * fetch, so the model is told instead. The conversation itself keeps the ref:
+ * another device may still resolve it.
+ */
+const UNRESOLVED_CACHED_IMAGE_TEXT =
+  '[Image unavailable: its cached copy is not on this device.]'
+
+const replaceUnresolvedCachedImage = (part: ContentPart): ContentPart =>
+  part.type === 'image_url' && part.image_url.url.startsWith('cache://')
+    ? { type: 'text', text: UNRESOLVED_CACHED_IMAGE_TEXT }
+    : part
+
+/**
  * Convert `document` content parts to plain text for models that don't
  * advertise the `pdf` modality. Native-PDF-capable models leave document parts
  * untouched. This is the modality gate — adapters never have to handle a
@@ -1389,9 +1404,9 @@ ${message.annotations
           // user message after all tool messages, so the message sequence stays valid.
           const parts = toolCall.response.data.contentParts
           if (parts) {
-            const hoistableParts = parts.filter(
-              (p) => p.type === 'image_url' || p.type === 'document',
-            )
+            const hoistableParts = parts
+              .filter((p) => p.type === 'image_url' || p.type === 'document')
+              .map(replaceUnresolvedCachedImage)
             if (hoistableParts.length > 0) {
               const hasImage = hoistableParts.some(
                 (p) => p.type === 'image_url',
