@@ -218,6 +218,7 @@ export const it: DeepPartial<TranslationKeys> = {
     supportYolo: {
       name: 'Supporta il progetto',
       desc: 'Se trovi utile questo plugin, considera di supportarne lo sviluppo!',
+      star: 'Star YOLO',
       afdian: 'Afdian (CN)',
       buyMeACoffee: 'Buy Me a Coffee',
       reportBug: 'Segnala bug',

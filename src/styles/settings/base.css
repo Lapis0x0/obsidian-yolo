@@ -4,6 +4,27 @@
   border-top: none;
 }
 
+/* 这张卡片右侧是一组并列动作按钮，而不是单个控件。
+   Obsidian 原生 .setting-item 的横向布局会让按钮组挤占描述文本的宽度，
+   因此改为标题、描述、按钮各占一行。 */
+.yolo-settings-support-yolo.setting-item {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--size-4-2);
+}
+
+.yolo-settings-support-yolo.setting-item .setting-item-info {
+  margin-right: 0;
+  width: 100%;
+}
+
+.yolo-settings-support-yolo.setting-item .setting-item-control {
+  width: 100%;
+  flex-wrap: wrap;
+  justify-content: flex-start;
+  gap: var(--size-4-2);
+}
+
 .yolo-settings-section:not(:first-child) {
   margin-top: var(--size-4-10);
 }
