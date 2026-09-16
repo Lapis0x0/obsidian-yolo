@@ -200,7 +200,8 @@ export const en: TranslationKeys = {
     },
     supportYolo: {
       name: 'Support the project',
-      desc: 'If you find this plugin valuable, consider supporting its development!',
+      desc: 'If you find this plugin valuable, consider supporting its development.',
+      feedbackHint: 'Hit a problem or have an idea? {bug} or {feature}',
       star: 'Star YOLO',
       afdian: 'Afdian (CN)',
       buyMeACoffee: 'Buy Me a Coffee',

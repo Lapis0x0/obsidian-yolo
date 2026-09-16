@@ -1,4 +1,4 @@
-import { ButtonComponent } from 'obsidian'
+import { ButtonComponent, setIcon } from 'obsidian'
 import { useEffect, useRef, useState } from 'react'
 
 import { useObsidianSetting } from './ObsidianSetting'
@@ -63,8 +63,21 @@ export function ObsidianButton({
   useEffect(() => {
     if (!buttonComponent) return
 
-    if (text) buttonComponent.setButtonText(text)
-    if (icon) buttonComponent.setIcon(icon)
+    if (icon && text) {
+      // setIcon() 会清空按钮内容，图标和文字不能靠 setIcon + setButtonText 共存；
+      // 各给一个 span 容器，间距由 .yolo-button-icon-text 负责。
+      buttonComponent.buttonEl.empty()
+      buttonComponent.buttonEl.addClass('yolo-button-icon-text')
+      const iconEl = buttonComponent.buttonEl.createSpan({
+        cls: 'yolo-button-icon',
+      })
+      setIcon(iconEl, icon)
+      buttonComponent.buttonEl.createSpan({ text })
+    } else {
+      buttonComponent.buttonEl.removeClass('yolo-button-icon-text')
+      if (text) buttonComponent.setButtonText(text)
+      if (icon) buttonComponent.setIcon(icon)
+    }
     if (tooltip) buttonComponent.setTooltip(tooltip)
     if (className) buttonComponent.buttonEl.addClass(className)
     if (cta) buttonComponent.setCta()

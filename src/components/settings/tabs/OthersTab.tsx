@@ -1,4 +1,5 @@
 import { App, Platform } from 'obsidian'
+import { Fragment } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
@@ -36,6 +37,23 @@ function buildFeatureRequestUrl(language: Language): string {
   const template =
     language === 'zh' ? 'feature_request_zh.yml' : 'feature_request.yml'
   return `${YOLO_REPO_URL}/issues/new?template=${template}`
+}
+
+/**
+ * 把 `{bug}` / `{feature}` 占位符替换成链接节点。
+ * 占位符而非前后缀拼接，是为了让各语言自己决定语序。
+ */
+function renderFeedbackHint(
+  template: string,
+  bugLink: React.ReactNode,
+  featureLink: React.ReactNode,
+): React.ReactNode {
+  return template.split(/(\{bug\}|\{feature\})/).map((part, index) => {
+    if (part === '{bug}') return <Fragment key={index}>{bugLink}</Fragment>
+    if (part === '{feature}')
+      return <Fragment key={index}>{featureLink}</Fragment>
+    return <Fragment key={index}>{part}</Fragment>
+  })
 }
 
 type OthersTabProps = {
@@ -196,15 +214,44 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
       <div className="yolo-settings-section">
         <ObsidianSetting
           name={t('settings.supportYolo.name')}
-          desc={t('settings.supportYolo.desc')}
+          descNode={
+            <>
+              {t('settings.supportYolo.desc')}{' '}
+              {renderFeedbackHint(
+                t('settings.supportYolo.feedbackHint'),
+                <a
+                  className="yolo-settings-support-link"
+                  href={buildBugReportUrl(plugin.manifest.version, language)}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    openExternalLink(
+                      buildBugReportUrl(plugin.manifest.version, language),
+                    )
+                  }}
+                >
+                  {t('settings.supportYolo.reportBug')}
+                </a>,
+                <a
+                  className="yolo-settings-support-link"
+                  href={buildFeatureRequestUrl(language)}
+                  onClick={(event) => {
+                    event.preventDefault()
+                    openExternalLink(buildFeatureRequestUrl(language))
+                  }}
+                >
+                  {t('settings.supportYolo.featureRequest')}
+                </a>,
+              )}
+            </>
+          }
           heading
           className="yolo-settings-support-yolo"
         >
           <ObsidianButton
             text={t('settings.supportYolo.star')}
-            onClick={() =>
-              openExternalLink('https://github.com/Lapis0x0/obsidian-yolo')
-            }
+            icon="star"
+            className="yolo-settings-support-star"
+            onClick={() => openExternalLink(YOLO_REPO_URL)}
             cta
           />
           <ObsidianButton
@@ -216,18 +263,6 @@ export function OthersTab({ app, plugin }: OthersTabProps) {
             onClick={() =>
               openExternalLink('https://buymeacoffee.com/lapis0x0')
             }
-          />
-          <ObsidianButton
-            text={t('settings.supportYolo.reportBug')}
-            onClick={() =>
-              openExternalLink(
-                buildBugReportUrl(plugin.manifest.version, language),
-              )
-            }
-          />
-          <ObsidianButton
-            text={t('settings.supportYolo.featureRequest')}
-            onClick={() => openExternalLink(buildFeatureRequestUrl(language))}
           />
         </ObsidianSetting>
       </div>

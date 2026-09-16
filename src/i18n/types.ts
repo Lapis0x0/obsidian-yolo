@@ -180,6 +180,7 @@ export type TranslationKeys = {
     supportYolo: {
       name: string
       desc: string
+      feedbackHint: string
       star: string
       afdian: string
       buyMeACoffee: string

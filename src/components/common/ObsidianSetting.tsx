@@ -20,6 +20,8 @@ type ObsidianSettingProps = {
   name?: string
   nameExtra?: React.ReactNode
   desc?: string
+  /** 富文本描述（可含链接）。传入后接管描述区，`desc` 不再生效。 */
+  descNode?: React.ReactNode
   heading?: boolean
   className?: string
   required?: boolean
@@ -30,6 +32,7 @@ export function ObsidianSetting({
   name,
   nameExtra,
   desc,
+  descNode,
   heading,
   className,
   required,
@@ -60,7 +63,7 @@ export function ObsidianSetting({
     if (!setting) return
 
     setting.setName(name ?? '')
-    setting.setDesc(desc ?? '')
+    if (!descNode) setting.setDesc(desc ?? '')
     if (heading) setting.setHeading()
     setting.settingEl.setAttrs({
       class: classNames(defaultSettingElClassName.current, className ?? ''),
@@ -71,7 +74,7 @@ export function ObsidianSetting({
         required ? 'yolo-settings-required' : '',
       ),
     })
-  }, [name, desc, heading, className, setting, required])
+  }, [name, desc, descNode, heading, className, setting, required])
 
   useEffect(() => {
     if (!setting || !nameExtra) {
@@ -109,6 +112,7 @@ export function ObsidianSetting({
         {nameExtraContainer && nameExtra
           ? createPortal(nameExtra, nameExtraContainer)
           : null}
+        {setting && descNode ? createPortal(descNode, setting.descEl) : null}
         {children}
       </div>
     </SettingContext.Provider>

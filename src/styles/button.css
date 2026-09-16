@@ -1,0 +1,11 @@
+/* ObsidianButton 的图标 + 文字形态。
+   Obsidian 的 setIcon() 会清空按钮内容，所以组件把图标和文字各放进一个 span，
+   这里只负责两者之间的间距与图标尺寸。按钮本身的 flex 居中来自 Obsidian。 */
+.yolo-button-icon-text {
+  gap: var(--size-4-1);
+}
+
+.yolo-button-icon-text .yolo-button-icon {
+  display: flex;
+  --icon-size: var(--icon-s);
+}

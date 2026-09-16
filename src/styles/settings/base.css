@@ -25,6 +25,31 @@
   gap: var(--size-4-2);
 }
 
+/* 用 --text-accent 而非 --link-color：后者在 .setting-item-description 内被
+   就地改写成了描述文字的 muted 灰，链接会和正文完全同色。 */
+.yolo-settings-support-yolo .yolo-settings-support-link {
+  color: var(--text-accent);
+  text-decoration: var(--link-decoration);
+  cursor: var(--cursor-link);
+  margin-inline: 0.15em;
+}
+
+.yolo-settings-support-yolo .yolo-settings-support-link:hover {
+  color: var(--text-accent-hover);
+  text-decoration: var(--link-decoration-hover);
+}
+
+/* Lucide 的 star 是描边图形；填充 currentColor 即得实心星，并跟随按钮文字颜色。
+   只作用于这个按钮——填充是 Star 的语义，不是图标按钮的通用行为。 */
+.yolo-settings-support-yolo .yolo-settings-support-star .yolo-button-icon {
+  --icon-size: var(--icon-xs);
+  --icon-stroke: 1px;
+}
+
+.yolo-settings-support-yolo .yolo-settings-support-star .yolo-button-icon svg {
+  fill: currentColor;
+}
+
 .yolo-settings-section:not(:first-child) {
   margin-top: var(--size-4-10);
 }

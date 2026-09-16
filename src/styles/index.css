@@ -18,6 +18,8 @@
 
 @import './popover/index.css';
 
+@import './button.css';
+
 @import './action-toast.css';
 @import './acknowledgement-modal.css';
 @import './yolo-icon.css';
