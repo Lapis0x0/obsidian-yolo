@@ -1,4 +1,5 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import clsx from 'clsx'
 import dayjs from 'dayjs'
 import { useReducedMotion } from 'framer-motion'
 import {
@@ -39,6 +40,7 @@ import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
 import { ConfirmModal } from '../../modals/ConfirmModal'
+import { SortableCardGrid } from '../common/SortableCardGrid'
 import { IndexProgressRing } from '../IndexProgressRing'
 import {
   EmbeddingDbManageModal,
@@ -231,8 +233,10 @@ function CardScopeCaption({
   )
 }
 
+const getKnowledgeBaseId = (kb: KnowledgeBase) => kb.id
+
 export function RAGSection({ app, plugin }: RAGSectionProps) {
-  const { settings, setSettings } = useSettings()
+  const { settings, setSettings, updateSettings } = useSettings()
   const { t } = useLanguage()
 
   const [indexSnapshot, setIndexSnapshot] = useState<RagIndexServiceSnapshot>(
@@ -1081,8 +1085,21 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
             />
           </div>
 
-          <div className="yolo-kb-grid">
-            {knowledgeBases.map((kb) => {
+          <SortableCardGrid
+            className="yolo-kb-grid"
+            items={knowledgeBases}
+            getId={getKnowledgeBaseId}
+            onOpen={(kb) => handleOpenKbModal(kb.id)}
+            onReorder={(nextKnowledgeBases) =>
+              updateSettings((current) => ({
+                ...current,
+                knowledgeBases: nextKnowledgeBases,
+              }))
+            }
+            getCardClassName={(kb) =>
+              clsx('yolo-kb-card', { 'is-indexing': activeKbId === kb.id })
+            }
+            renderCard={(kb) => {
               const data = kbData[kb.id] ?? EMPTY_KB_DATA
               const run = indexSnapshot.runs[kb.id]
               const isThisIndexing = activeKbId === kb.id
@@ -1099,19 +1116,7 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                   : undefined
 
               return (
-                <article
-                  key={kb.id}
-                  className={`yolo-agent-card yolo-agent-card--clickable yolo-kb-card${isThisIndexing ? ' is-indexing' : ''}`}
-                  role="button"
-                  tabIndex={0}
-                  onClick={() => handleOpenKbModal(kb.id)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault()
-                      handleOpenKbModal(kb.id)
-                    }
-                  }}
-                >
+                <>
                   {isThisIndexing && (
                     <div className="yolo-kb-card-ring">
                       <IndexProgressRing percent={ringPercentFor(run, true)} />
@@ -1293,29 +1298,31 @@ export function RAGSection({ app, plugin }: RAGSectionProps) {
                       </div>
                     </div>
                   </div>
-                </article>
+                </>
               )
-            })}
-            <article
-              className="yolo-agent-create-card"
-              role="button"
-              tabIndex={0}
-              onClick={() => handleOpenKbModal()}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  handleOpenKbModal()
-                }
-              }}
-            >
-              <div className="yolo-agent-create-card-icon">
-                <Plus size={28} />
-              </div>
-              <div className="yolo-agent-create-card-text">
-                {t('settings.knowledgeBases.new', '新建知识库')}
-              </div>
-            </article>
-          </div>
+            }}
+            trailing={
+              <article
+                className="yolo-agent-create-card"
+                role="button"
+                tabIndex={0}
+                onClick={() => handleOpenKbModal()}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault()
+                    handleOpenKbModal()
+                  }
+                }}
+              >
+                <div className="yolo-agent-create-card-icon">
+                  <Plus size={28} />
+                </div>
+                <div className="yolo-agent-create-card-text">
+                  {t('settings.knowledgeBases.new', '新建知识库')}
+                </div>
+              </article>
+            }
+          />
         </div>
 
         {/* Embedding model shelf: the API row below only selects among

@@ -1,0 +1,100 @@
+/*
+ * Drag states for `SortableCardGrid` (src/components/settings/common/).
+ * The resting card is `.yolo-agent-card` from agent.css; this file only adds
+ * what reordering needs. The card itself is the drag source — no handle —
+ * so the affordance comes from how the card responds to a press.
+ */
+
+.yolo-sortable-card {
+  /* Long-press lifts the card on touch; keep the OS text callout out of it. */
+  -webkit-touch-callout: none;
+  user-select: none;
+  touch-action: manipulation;
+}
+
+/* L1 receipt: the card sinks under the press, instantly. */
+.yolo-sortable-card:active:not(.is-placeholder):not(:has(button:active)) {
+  transform: scale(0.98);
+}
+
+/* The slot the lifted card came from. */
+.yolo-agent-card.is-placeholder,
+.yolo-agent-card.is-placeholder:hover {
+  border-style: dashed;
+  border-color: color-mix(
+    in srgb,
+    var(--background-modifier-border) 88%,
+    transparent
+  );
+  background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+  box-shadow: none;
+}
+
+.yolo-agent-card.is-placeholder > * {
+  opacity: 0;
+}
+
+/* The card following the pointer (rendered in a DragOverlay). */
+.yolo-agent-card.is-lifted {
+  cursor: grabbing;
+  animation: yolo-sortable-card-lift var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+.yolo-agent-card.is-lifted::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--shadow-l, 0 10px 30px rgba(0, 0, 0, 0.25));
+  pointer-events: none;
+  opacity: 0;
+  animation: yolo-sortable-card-shadow-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+.is-dropping .yolo-agent-card.is-lifted {
+  animation: yolo-sortable-card-settle var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+.is-dropping .yolo-agent-card.is-lifted::after {
+  animation: yolo-sortable-card-shadow-out var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+@keyframes yolo-sortable-card-lift {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes yolo-sortable-card-settle {
+  from {
+    transform: scale(1.03);
+  }
+  to {
+    transform: scale(1);
+  }
+}
+
+@keyframes yolo-sortable-card-shadow-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes yolo-sortable-card-shadow-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}

@@ -25,6 +25,7 @@ import { McpServerState, McpServerStatus } from '../../../types/mcp.types'
 import { renderAssistantIcon } from '../../../utils/assistant-icon'
 import { ObsidianButton } from '../../common/ObsidianButton'
 import { ConfirmModal } from '../../modals/ConfirmModal'
+import { SortableCardGrid } from '../common/SortableCardGrid'
 import { AgentSkillsModal } from '../modals/AgentSkillsModal'
 import { AgentToolsModal } from '../modals/AgentToolsModal'
 import { AssistantsModal } from '../modals/AssistantsModal'
@@ -40,8 +41,10 @@ type AgentSectionProps = {
   app: App
 }
 
+const getAssistantId = (assistant: Assistant) => assistant.id
+
 export function AgentSection({ app }: AgentSectionProps) {
-  const { settings, setSettings } = useSettings()
+  const { settings, setSettings, updateSettings } = useSettings()
   const { t } = useLanguage()
   const plugin = usePlugin()
   const assistants = settings.assistants || []
@@ -418,21 +421,19 @@ export function AgentSection({ app }: AgentSectionProps) {
           </div>
         </div>
 
-        <div className="yolo-agent-grid">
-          {assistants.map((assistant) => (
-            <article
-              key={assistant.id}
-              className="yolo-agent-card yolo-agent-card--clickable"
-              role="button"
-              tabIndex={0}
-              onClick={() => handleOpenAssistantsModal(assistant.id)}
-              onKeyDown={(event) => {
-                if (event.key === 'Enter' || event.key === ' ') {
-                  event.preventDefault()
-                  handleOpenAssistantsModal(assistant.id)
-                }
-              }}
-            >
+        <SortableCardGrid
+          className="yolo-agent-grid"
+          items={assistants}
+          getId={getAssistantId}
+          onOpen={(assistant) => handleOpenAssistantsModal(assistant.id)}
+          onReorder={(nextAssistants) =>
+            updateSettings((current) => ({
+              ...current,
+              assistants: nextAssistants,
+            }))
+          }
+          renderCard={(assistant) => (
+            <>
               <div className="yolo-agent-card-top">
                 <div className="yolo-agent-card-top-main">
                   <div className="yolo-agent-avatar">
@@ -537,28 +538,30 @@ export function AgentSection({ app }: AgentSectionProps) {
                   } skills`}
                 </span>
               </div>
+            </>
+          )}
+          trailing={
+            <article
+              className="yolo-agent-create-card"
+              role="button"
+              tabIndex={0}
+              onClick={() => handleOpenAssistantsModal(undefined, true)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' || event.key === ' ') {
+                  event.preventDefault()
+                  handleOpenAssistantsModal(undefined, true)
+                }
+              }}
+            >
+              <div className="yolo-agent-create-card-icon">
+                <Plus size={28} />
+              </div>
+              <div className="yolo-agent-create-card-text">
+                {t('settings.agent.newAgent', 'New agent')}
+              </div>
             </article>
-          ))}
-          <article
-            className="yolo-agent-create-card"
-            role="button"
-            tabIndex={0}
-            onClick={() => handleOpenAssistantsModal(undefined, true)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' || event.key === ' ') {
-                event.preventDefault()
-                handleOpenAssistantsModal(undefined, true)
-              }
-            }}
-          >
-            <div className="yolo-agent-create-card-icon">
-              <Plus size={28} />
-            </div>
-            <div className="yolo-agent-create-card-text">
-              {t('settings.agent.newAgent', 'New agent')}
-            </div>
-          </article>
-        </div>
+          }
+        />
       </section>
 
       <section className="yolo-agent-block">

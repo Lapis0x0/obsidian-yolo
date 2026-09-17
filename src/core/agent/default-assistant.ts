@@ -122,10 +122,14 @@ export const ensureDefaultAssistantInSettings = (
     ? normalizeDefaultAssistant(existingDefault)
     : createDefaultAssistant()
 
-  const nextAssistants: Assistant[] = [
-    normalizedDefault,
-    ...assistants.filter((assistant) => !isDefaultAssistantId(assistant.id)),
-  ]
+  // The default agent keeps the position the user sorted it to; a missing
+  // one is added at the front.
+  const nextAssistants: Assistant[] = existingDefault
+    ? assistants.flatMap((assistant) => {
+        if (!isDefaultAssistantId(assistant.id)) return [assistant]
+        return assistant === existingDefault ? [normalizedDefault] : []
+      })
+    : [normalizedDefault, ...assistants]
 
   return {
     ...settings,

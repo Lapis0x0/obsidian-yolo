@@ -1176,8 +1176,11 @@ button.yolo-agent-chip--more:hover {
   font-weight: var(--font-medium);
 }
 
+/* Keyboard focus only: a mouse press or drag also focuses the card, and that
+   focus must not leave it looking selected once the pointer moves away. */
 .yolo-agent-card:hover,
-.yolo-agent-card:focus-within {
+.yolo-agent-card:focus-visible,
+.yolo-agent-card:has(:focus-visible) {
   border-color: color-mix(in srgb, var(--interactive-accent) 55%, transparent);
   background: color-mix(
     in srgb,
@@ -1290,7 +1293,8 @@ button.yolo-agent-chip--more:hover {
 }
 
 .yolo-agent-card:hover .yolo-agent-card-menu-trigger,
-.yolo-agent-card:focus-within .yolo-agent-card-menu-trigger,
+.yolo-agent-card:focus-visible .yolo-agent-card-menu-trigger,
+.yolo-agent-card:has(:focus-visible) .yolo-agent-card-menu-trigger,
 .yolo-agent-card-menu-trigger:focus-visible {
   opacity: 1;
   pointer-events: auto;

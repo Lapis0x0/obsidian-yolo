@@ -103,6 +103,26 @@ describe('ensureDefaultAssistantInSettings', () => {
     expect(result.assistants[0]?.modelId).toBeUndefined()
   })
 
+  it('keeps the default agent where the user sorted it', () => {
+    const base = ensureDefaultAssistantInSettings({
+      ...createBaseSettings(),
+      assistants: [],
+    })
+    const defaultAssistant = base.assistants[0]
+    const custom = { ...defaultAssistant, id: 'custom-a', name: 'A' }
+    const settings = {
+      ...base,
+      assistants: [custom, defaultAssistant],
+    }
+
+    const result = ensureDefaultAssistantInSettings(settings)
+
+    expect(result.assistants.map((assistant) => assistant.id)).toEqual([
+      'custom-a',
+      DEFAULT_ASSISTANT_ID,
+    ])
+  })
+
   it('preserves follow-default modelId and does not rewrite existing concrete modelId', () => {
     const followSettings = {
       ...createBaseSettings(),

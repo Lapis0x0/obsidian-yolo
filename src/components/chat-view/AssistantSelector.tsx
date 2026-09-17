@@ -180,13 +180,6 @@ export function AssistantSelector({
     openPluginSettingsTab(app, plugin, 'agent')
   }
 
-  const defaultAssistant = assistants.find((assistant) =>
-    isDefaultAssistantId(assistant.id),
-  )
-  const customAssistants = assistants.filter(
-    (assistant) => !isDefaultAssistantId(assistant.id),
-  )
-
   const renderMetaRow = (assistant: Assistant) => {
     const followDefaultLabel = t(
       'settings.agent.followDefaultModel',
@@ -322,8 +315,7 @@ export function AssistantSelector({
         sideOffset={14}
       >
         <ul className="yolo-assistant-selector-list yolo-model-select-list">
-          {defaultAssistant && renderAssistantRow(defaultAssistant)}
-          {customAssistants.map((assistant) => renderAssistantRow(assistant))}
+          {assistants.map((assistant) => renderAssistantRow(assistant))}
         </ul>
 
         <div className="yolo-assistant-selector-footer">
