@@ -523,6 +523,7 @@ describe('getSkillScanDirs', () => {
       '.claude/skills',
       '.agents/skills',
       '.codex/skills',
+      '.opencode/skills',
     ])
   })
 })

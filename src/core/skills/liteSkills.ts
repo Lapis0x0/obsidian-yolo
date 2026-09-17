@@ -111,6 +111,7 @@ export const EXTERNAL_PROJECT_SKILL_DIRS = [
   '.claude/skills',
   '.agents/skills',
   '.codex/skills',
+  '.opencode/skills',
 ] as const
 
 /** Skill roots owned by YOLO and therefore eligible for migrations. */
