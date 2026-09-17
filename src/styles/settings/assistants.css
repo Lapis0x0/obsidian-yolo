@@ -1,72 +1,3 @@
-/* Template Section Styles */
-.yolo-templates-container {
-  display: flex;
-  flex-direction: column;
-}
-
-.yolo-templates-header {
-  display: grid;
-  grid-template-columns: 1fr 112px; /* Name and Actions columns */
-  gap: var(--size-4-4);
-  align-items: center;
-  min-height: var(--size-4-10);
-  border-bottom: var(--border-width) solid var(--background-modifier-border);
-  font-weight: var(--font-medium);
-  color: var(--text-muted);
-
-  & > div {
-    padding: var(--size-4-1);
-  }
-  & > div:nth-child(1) {
-    text-align: left;
-  }
-  & > div:nth-child(2) {
-    text-align: center;
-  }
-}
-
-.yolo-templates-empty {
-  padding: var(--size-4-4) 0;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  color: var(--text-muted);
-}
-
-.yolo-template {
-  border-bottom: var(--border-width) solid var(--background-modifier-border);
-}
-
-.yolo-template-row {
-  display: grid;
-  grid-template-columns: 1fr 112px; /* Match columns with .yolo-templates-header */
-  gap: var(--size-4-4);
-  align-items: center;
-  min-height: var(--size-4-10);
-
-  & > div {
-    padding: var(--size-4-1);
-  }
-}
-
-.yolo-template-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.yolo-template-actions {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--size-4-1);
-
-  svg {
-    height: var(--icon-l);
-    width: var(--icon-l);
-    stroke-width: var(--icon-stroke);
-  }
-}
-
 .yolo-continue-response-button-container {
   display: flex;
   justify-content: center;
@@ -165,13 +96,6 @@
   width: auto;
   min-width: max(var(--radix-popover-trigger-width, 0px), 200px);
   max-width: 240px;
-}
-
-.yolo-assistant-selector-empty {
-  padding: var(--size-4-2);
-  color: var(--text-muted);
-  text-align: center;
-  font-size: var(--font-smallest);
 }
 
 .yolo-assistant-selector-list {
@@ -316,20 +240,6 @@
 .yolo-assistant-selector-item-name {
   font-weight: var(--font-medium);
   color: var(--text-normal);
-}
-
-.yolo-assistant-selector-item-description {
-  font-size: var(--font-smallest);
-  color: var(--text-muted);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-.yolo-assistant-selector-item-current {
-  font-size: var(--font-smallest);
-  color: var(--interactive-accent);
-  font-weight: var(--font-medium);
 }
 
 /* ───────────────────────────────────────────────────────────────
@@ -618,45 +528,6 @@ button.yolo-assistant-selector-footer-btn:hover {
 }
 
 /* Assistants Section */
-.yolo-settings-header-row {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 16px;
-}
-
-.yolo-settings-header-row .yolo-settings-header {
-  margin: 0;
-}
-
-.yolo-add-assistant-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  border-radius: 4px;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  border: none;
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 500;
-  transition: background-color 0.2s ease;
-}
-
-.yolo-no-assistants {
-  padding: 24px;
-  text-align: center;
-  background: var(--background-secondary);
-  border-radius: 8px;
-  border: 1px dashed var(--background-modifier-border);
-  color: var(--text-muted);
-  font-size: 15px;
-}
-
-.yolo-no-assistants-text {
-  margin: 0;
-}
 
 /* Assistant Editor */
 .yolo-assistant-editor {
@@ -665,14 +536,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   padding: 16px;
   margin: 8px 0;
   border: 1px solid var(--background-modifier-border);
-}
-
-.yolo-assistant-editor-inline {
-  margin-top: 0;
-  border-top: none;
-  border-top-left-radius: 0;
-  border-top-right-radius: 0;
-  animation: yolo-assistant-editor-slide-in 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes yolo-assistant-editor-slide-in {
@@ -688,10 +551,6 @@ button.yolo-assistant-selector-footer-btn:hover {
     padding-top: 16px;
     padding-bottom: 16px;
   }
-}
-
-.yolo-assistant-editor-new {
-  animation: yolo-assistant-editor-fade-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 @keyframes yolo-assistant-editor-fade-in {
@@ -710,197 +569,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   gap: 8px;
   justify-content: flex-end;
   margin-top: 12px;
-}
-
-/* Assistants List */
-.yolo-assistants-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 12px;
-}
-
-/* Assistant Item */
-.yolo-assistant-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-m);
-  transition: all 0.2s ease;
-  cursor: grab;
-}
-
-.yolo-assistant-item:hover {
-  background: var(--background-secondary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-}
-
-.yolo-assistant-item.editing {
-  border-color: var(--interactive-accent);
-  box-shadow: 0 0 0 2px
-    color-mix(in srgb, var(--interactive-accent) 10%, transparent);
-  cursor: default;
-}
-
-.yolo-assistant-item.active {
-  border-color: var(--interactive-accent);
-  background: var(--background-primary-alt);
-}
-
-.yolo-assistant-item.disabled {
-  opacity: 0.5;
-}
-
-.yolo-assistant-item.disabled .yolo-assistant-content {
-  pointer-events: none;
-}
-
-.yolo-assistant-item.yolo-assistant-item-dragging {
-  opacity: 0.5;
-  cursor: grabbing;
-}
-
-.yolo-assistant-item.yolo-assistant-item-drop-success {
-  animation: yolo-assistant-drop-success 0.7s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-@keyframes yolo-assistant-drop-success {
-  0%,
-  100% {
-    transform: scale(1);
-    background: var(--background-primary);
-  }
-  25% {
-    transform: scale(0.98);
-  }
-  50% {
-    background: color-mix(in srgb, var(--interactive-accent) 25%, transparent);
-    transform: scale(1.01);
-  }
-}
-
-/* Drag Handle */
-.yolo-assistant-drag-handle {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: grab;
-  color: var(--text-faint);
-  transition: color 0.2s ease;
-  flex-shrink: 0;
-}
-
-.yolo-assistant-drag-handle:hover {
-  color: var(--text-muted);
-}
-
-.yolo-assistant-drag-handle .yolo-drag-handle {
-  display: flex;
-  padding: 2px;
-}
-
-.yolo-assistant-drag-handle .yolo-drag-handle.yolo-drag-handle--active {
-  color: var(--interactive-accent);
-}
-
-/* Assistant Content */
-.yolo-assistant-content {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.yolo-assistant-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.yolo-assistant-icon {
-  width: 28px;
-  height: 28px;
-  border-radius: var(--radius-s);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  background: var(--interactive-accent);
-  color: var(--text-on-accent);
-  transition: all 0.2s ease;
-}
-
-.yolo-assistant-icon svg {
-  width: 16px;
-  height: 16px;
-}
-
-.yolo-assistant-info {
-  flex: 1;
-  min-width: 0;
-}
-
-.yolo-assistant-name {
-  font-weight: 500;
-  font-size: 14px;
-  color: var(--text-normal);
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  line-height: 1.4;
-}
-
-.yolo-assistant-badge {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--interactive-accent);
-  background: color-mix(in srgb, var(--interactive-accent) 10%, transparent);
-  padding: 2px 8px;
-  border-radius: var(--radius-s);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.yolo-assistant-description {
-  font-size: 12px;
-  color: var(--text-muted);
-  line-height: 1.4;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Assistant Controls */
-.yolo-assistant-controls {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-  margin-left: auto;
-}
-
-.yolo-assistant-controls button {
-  padding: 6px;
-  min-width: unset;
-  height: auto;
-}
-
-.yolo-assistant-controls button:hover:not(:disabled) {
-  background: var(--background-modifier-hover);
-}
-
-.yolo-assistant-controls button:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.yolo-assistant-controls button svg {
-  width: 16px;
-  height: 16px;
 }
 
 /* Editor specific styles */
@@ -1039,8 +707,6 @@ button.yolo-assistant-selector-footer-btn:hover {
   background: var(--interactive-accent-hover);
 }
 
-/* ==================== Assistant Icon Selector in Settings ==================== */
-
 /* ==================== Emoji Icon Styles (No Background) ==================== */
 
 /* 助手选择器当前图标 - emoji 无背景 */
@@ -1055,9 +721,6 @@ button.yolo-assistant-selector-footer-btn:hover {
 }
 
 /* 设置面板助手列表图标 - emoji 无背景 */
-.yolo-assistant-icon:has(.yolo-icon-emoji) {
-  background: none;
-}
 
 /* Emoji 图标字体大小调整 */
 .yolo-icon-emoji {

@@ -316,39 +316,8 @@ export type TranslationKeys = {
       chatFontScaleDesc?: string
     }
     assistants: {
-      title: string
-      desc: string
-      configureAssistants: string
-      assistantsCount: string
-      addAssistant: string
-      noAssistants: string
-      // existing optional keys in locales
       editAssistant?: string
-      deleteAssistant?: string
       noAssistant?: string
-      selectAssistant?: string
-      name?: string
-      nameDesc?: string
-      description?: string
-      descriptionDesc?: string
-      descriptionPlaceholder?: string
-      systemPrompt?: string
-      actions?: string
-      // new optional helpers
-      namePlaceholder?: string
-      systemPromptDesc?: string
-      systemPromptPlaceholder?: string
-      defaultAssistantName?: string
-      // Confirm modal & aria
-      deleteConfirmTitle?: string
-      deleteConfirmMessagePrefix?: string
-      deleteConfirmMessageSuffix?: string
-      addAssistantAria?: string
-      deleteAssistantAria?: string
-      dragHandleAria?: string
-      duplicate?: string
-      copySuffix?: string
-      currentBadge?: string
       manageAll?: string
     }
     agent?: {
