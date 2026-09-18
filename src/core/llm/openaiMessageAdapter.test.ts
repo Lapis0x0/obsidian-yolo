@@ -1,3 +1,5 @@
+import OpenAI from 'openai'
+
 import { LLMRequest } from '../../types/llm/request'
 
 import { OpenAIMessageAdapter } from './openaiMessageAdapter'
@@ -25,7 +27,48 @@ class TestOpenAIMessageAdapter extends OpenAIMessageAdapter {
   parseStreaming(raw: unknown) {
     return this.parseStreamingResponseChunk(raw as never)
   }
+
+  /**
+   * Drives the real `streamResponse` entry point with a stub client, so the
+   * test covers the same path a provider takes instead of reaching into the
+   * adapter's internals.
+   */
+  async collectStream(rawChunks: unknown[]) {
+    const client = {
+      chat: {
+        completions: {
+          create: () =>
+            Promise.resolve(
+              (async function* () {
+                for (const chunk of rawChunks) {
+                  yield chunk as never
+                }
+              })(),
+            ),
+        },
+      },
+    } as unknown as OpenAI
+
+    const stream = await this.streamResponse(client, {
+      model: 'gpt-5.4-mini',
+      stream: true,
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    const parsed = []
+    for await (const chunk of stream) {
+      parsed.push(chunk)
+    }
+    return parsed
+  }
 }
+
+const textChunk = (id: string, content: string) => ({
+  id,
+  object: 'chat.completion.chunk',
+  model: 'gpt-5.4-mini',
+  choices: [{ index: 0, delta: { content }, finish_reason: null }],
+})
 
 describe('OpenAIMessageAdapter', () => {
   const adapter = new TestOpenAIMessageAdapter()
@@ -247,5 +290,65 @@ describe('OpenAIMessageAdapter', () => {
       preview:
         '{"id":"chunk-1","choices":null,"message":"Invalid stream payload"}',
     })
+  })
+  it('skips relay keep-alive frames that carry no choices', async () => {
+    const chunks = await adapter.collectStream([
+      { type: 'ping' },
+      textChunk('chunk-1', 'Hello'),
+      {},
+      textChunk('chunk-2', ' world'),
+    ])
+
+    expect(chunks.map((chunk) => chunk.choices[0]?.delta.content)).toEqual([
+      'Hello',
+      ' world',
+    ])
+  })
+
+  it('reports a format error when the whole stream never carried choices', async () => {
+    let caught: unknown
+    try {
+      await adapter.collectStream([
+        { type: 'message_start', message: { id: 'msg_1' } },
+        { type: 'content_block_delta', delta: { text: 'Hello' } },
+      ])
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(LLMResponseFormatError)
+    expect((caught as LLMResponseFormatError).payload).toMatchObject({
+      adapter: 'OpenAI-compatible',
+      stage: 'streaming response chunk',
+      expected: 'choices_array',
+      problem: { type: 'missing_choices' },
+      responseKeys: ['type', 'message'],
+    })
+  })
+
+  it('reports an upstream error frame immediately, even after valid chunks', async () => {
+    let caught: unknown
+    try {
+      await adapter.collectStream([
+        textChunk('chunk-1', 'Hello'),
+        { error: { message: 'upstream is overloaded', type: 'server_error' } },
+        textChunk('chunk-2', ' world'),
+      ])
+    } catch (error) {
+      caught = error
+    }
+
+    expect(caught).toBeInstanceOf(LLMResponseFormatError)
+    expect((caught as LLMResponseFormatError).payload).toMatchObject({
+      stage: 'streaming response chunk',
+      upstreamError: {
+        message: 'upstream is overloaded',
+        type: 'server_error',
+      },
+    })
+  })
+
+  it('accepts a stream that ends without any chunk at all', async () => {
+    await expect(adapter.collectStream([])).resolves.toEqual([])
   })
 })

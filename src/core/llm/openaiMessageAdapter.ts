@@ -27,7 +27,10 @@ import {
 import { getToolCallArgumentsText } from '../../types/tool-call.types'
 import { filterEmptyAssistantMessages } from '../../utils/chat/tool-boundary'
 
-import { requireResponseChoicesArray } from './responseFormatError'
+import {
+  createStreamingChoicesGuard,
+  requireResponseChoicesArray,
+} from './responseFormatError'
 
 /**
  * Normalize OpenAI-compatible `annotations` (returned by OpenAI's hosted web
@@ -414,9 +417,17 @@ export class OpenAIMessageAdapter {
   private async *streamResponseGenerator(
     stream: AsyncIterable<ChatCompletionChunk>,
   ): AsyncIterable<LLMResponseStreaming> {
+    const guard = createStreamingChoicesGuard({
+      adapter: this.adapterName,
+      stage: 'streaming response chunk',
+    })
     for await (const chunk of stream) {
+      if (!guard.acceptChunk(chunk)) {
+        continue
+      }
       yield this.parseStreamingResponseChunk(chunk)
     }
+    guard.assertStreamProducedChoices()
   }
 
   protected buildChatCompletionCreateParams(params: {

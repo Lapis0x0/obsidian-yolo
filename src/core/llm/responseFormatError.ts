@@ -252,3 +252,60 @@ export function requireResponseChoicesArray<T>(
     response,
   })
 }
+
+export type StreamingChoicesGuard = {
+  /**
+   * `true` when the frame carries `choices` and should be parsed, `false` when
+   * it must be skipped. Relays and gateways interleave non-OpenAI frames into
+   * the SSE stream (keep-alive pings, leftovers from an Anthropic-to-OpenAI
+   * conversion); a single one of those must not fail an otherwise healthy
+   * response. Stateful: each call also records what the stream has produced.
+   */
+  acceptChunk: (chunk: unknown) => boolean
+  /**
+   * Throws when the stream ended without a single `choices`-carrying chunk,
+   * reporting the first skipped frame as evidence. This is the case where the
+   * endpoint really does speak a different protocol.
+   */
+  assertStreamProducedChoices: () => void
+}
+
+export function createStreamingChoicesGuard(
+  options: Omit<ResponseFormatErrorOptions, 'response' | 'expected'>,
+): StreamingChoicesGuard {
+  let sawChoicesChunk = false
+  let skippedChunk: { value: unknown } | null = null
+
+  return {
+    acceptChunk: (chunk: unknown): boolean => {
+      if (isRecord(chunk) && Array.isArray(chunk.choices)) {
+        sawChoicesChunk = true
+        return true
+      }
+
+      // A frame the payload builder can read an upstream error out of is never
+      // protocol noise, so it is reported immediately rather than deferred to
+      // the stream's end.
+      if (extractUpstreamError(chunk).upstreamError) {
+        throw new LLMResponseFormatError({
+          ...options,
+          expected: 'choices_array',
+          response: chunk,
+        })
+      }
+
+      skippedChunk ??= { value: chunk }
+      return false
+    },
+    assertStreamProducedChoices: () => {
+      if (sawChoicesChunk || !skippedChunk) {
+        return
+      }
+      throw new LLMResponseFormatError({
+        ...options,
+        expected: 'choices_array',
+        response: skippedChunk.value,
+      })
+    },
+  }
+}
