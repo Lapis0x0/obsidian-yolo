@@ -29,7 +29,6 @@ import {
   type TouchEvent as ReactTouchEvent,
   forwardRef,
   useCallback,
-  useEffect,
   useMemo,
   useRef,
   useState,
@@ -40,6 +39,8 @@ import {
   MOTION_DURATION_ENTER_S,
   MOTION_EASE_OUT_CSS,
 } from '../../../styles/tokens/motion'
+
+import { useOptimisticOrder } from './useOptimisticOrder'
 
 /**
  * Card grid whose cards reorder by dragging the card itself — no handle.
@@ -128,14 +129,12 @@ export function SortableCardGrid<T>({
     setPortalBody(node?.ownerDocument.body ?? null)
   }, [])
   const [activeId, setActiveId] = useState<string | null>(null)
-  // Saving settings is async; until the saved list comes back through
-  // `items`, render the dropped order so the card doesn't jump back.
-  const [pendingOrder, setPendingOrder] = useState<string[] | null>(null)
+  const {
+    ordered: orderedItems,
+    applyOrder,
+    revertOrder,
+  } = useOptimisticOrder(items, getId)
   const suppressOpenUntilRef = useRef(0)
-
-  useEffect(() => {
-    setPendingOrder(null)
-  }, [items])
 
   const sensors = useSensors(
     useSensor(CardMouseSensor, {
@@ -148,15 +147,6 @@ export function SortableCardGrid<T>({
       },
     }),
   )
-
-  const orderedItems = useMemo(() => {
-    if (!pendingOrder) return items
-    const byId = new Map(items.map((item) => [getId(item), item]))
-    return pendingOrder.flatMap((id) => {
-      const item = byId.get(id)
-      return item === undefined ? [] : [item]
-    })
-  }, [items, pendingOrder, getId])
 
   const ids = useMemo(() => orderedItems.map(getId), [orderedItems, getId])
   const activeItem =
@@ -185,10 +175,10 @@ export function SortableCardGrid<T>({
     const newIndex = ids.indexOf(String(over.id))
     if (oldIndex < 0 || newIndex < 0) return
     const next = arrayMove([...orderedItems], oldIndex, newIndex)
-    setPendingOrder(next.map(getId))
+    applyOrder(next)
     void onReorder(next).catch((error: unknown) => {
       console.error('[YOLO] Failed to save card order', error)
-      setPendingOrder(null)
+      revertOrder()
     })
   }
 

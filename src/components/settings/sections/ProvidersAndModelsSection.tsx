@@ -1,6 +1,8 @@
 import {
   DndContext,
   type DragEndEvent,
+  type DragStartEvent,
+  MeasuringStrategy,
   PointerSensor,
   closestCenter,
   useSensor,
@@ -30,6 +32,10 @@ import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import { getEmbeddingModelClient } from '../../../core/rag/embedding'
 import type YoloPlugin from '../../../main'
+import {
+  MOTION_DURATION_ENTER_S,
+  MOTION_EASE_OUT_CSS,
+} from '../../../styles/tokens/motion'
 import { ChatModel } from '../../../types/chat-model.types'
 import { EmbeddingModel } from '../../../types/embedding-model.types'
 import { LLMProvider } from '../../../types/provider.types'
@@ -40,6 +46,7 @@ import { ObsidianButton } from '../../common/ObsidianButton'
 import { ObsidianSetting } from '../../common/ObsidianSetting'
 import { ObsidianTextInput } from '../../common/ObsidianTextInput'
 import { ObsidianToggle } from '../../common/ObsidianToggle'
+import { useOptimisticOrder } from '../common/useOptimisticOrder'
 import { AddChatModelModal } from '../modals/AddChatModelModal'
 import { AddEmbeddingModelModal } from '../modals/AddEmbeddingModelModal'
 import { ConnectivityTestModal } from '../modals/ConnectivityTestModal'
@@ -47,6 +54,18 @@ import { EditChatModelModal } from '../modals/EditChatModelModal'
 import { EditEmbeddingModelModal } from '../modals/EditEmbeddingModelModal'
 import { EditProviderModal } from '../modals/ProviderFormModal'
 import { ProviderPickerModal } from '../modals/ProviderPickerModal'
+
+// Rows make way for the dragged one on the same curve the sortable card grid
+// uses, so reordering feels the same wherever it appears in settings.
+const SORT_TRANSITION = {
+  duration: MOTION_DURATION_ENTER_S * 1000,
+  easing: MOTION_EASE_OUT_CSS,
+}
+
+// Declared once so `useOptimisticOrder` keeps a stable reference across renders.
+function getEntityId<T extends { id: string }>(entity: T) {
+  return entity.id
+}
 
 type ProvidersAndModelsSectionProps = {
   app: App
@@ -73,7 +92,6 @@ type ProviderSectionItemProps = {
   handleToggleEnableChatModel: (modelId: string, value: boolean) => void
   handleChatModelDragEnd: (event: DragEndEvent) => void
   handleEmbeddingModelDragEnd: (event: DragEndEvent) => void
-  onCollapseForDrag: () => void
 }
 
 function getProviderDisplayBaseUrl(provider: LLMProvider): string {
@@ -717,7 +735,6 @@ function ProviderSectionItem({
   handleToggleEnableChatModel,
   handleChatModelDragEnd,
   handleEmbeddingModelDragEnd,
-  onCollapseForDrag,
 }: ProviderSectionItemProps) {
   const isChatGPTOAuth = provider.presetType === 'chatgpt-oauth'
   const isGeminiOAuth = provider.presetType === 'gemini-oauth'
@@ -732,7 +749,7 @@ function ProviderSectionItem({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: provider.id })
+  } = useSortable({ id: provider.id, transition: SORT_TRANSITION })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -763,14 +780,6 @@ function ProviderSectionItem({
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           {...listeners}
-          onPointerDown={(e) => {
-            onCollapseForDrag()
-            ;(
-              listeners as
-                | Record<string, (e: React.PointerEvent) => void>
-                | undefined
-            )?.onPointerDown?.(e)
-          }}
         >
           <GripVertical />
         </button>
@@ -1149,7 +1158,7 @@ function ChatModelRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: model.id })
+  } = useSortable({ id: model.id, transition: SORT_TRANSITION })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -1234,7 +1243,7 @@ function EmbeddingModelRow({
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: model.id })
+  } = useSortable({ id: model.id, transition: SORT_TRANSITION })
 
   const style: React.CSSProperties = {
     transform: CSS.Transform.toString(transform),
@@ -1320,9 +1329,27 @@ export function ProvidersAndModelsSection({
       activationConstraint: { distance: 5 },
     }),
   )
+  // Every reorderable list here saves asynchronously, so each one renders the
+  // dropped order locally until its save lands.
+  const {
+    ordered: orderedProviders,
+    applyOrder: applyProviderOrder,
+    revertOrder: revertProviderOrder,
+  } = useOptimisticOrder(settings.providers, getEntityId)
+  const {
+    ordered: orderedChatModels,
+    applyOrder: applyChatModelOrder,
+    revertOrder: revertChatModelOrder,
+  } = useOptimisticOrder(settings.chatModels, getEntityId)
+  const {
+    ordered: orderedEmbeddingModels,
+    applyOrder: applyEmbeddingModelOrder,
+    revertOrder: revertEmbeddingModelOrder,
+  } = useOptimisticOrder(settings.embeddingModels, getEntityId)
+
   const providerIds = useMemo(
-    () => settings.providers.map((provider) => provider.id),
-    [settings.providers],
+    () => orderedProviders.map((provider) => provider.id),
+    [orderedProviders],
   )
   const providersCountLabel = t(
     'settings.providers.providersCount',
@@ -1419,18 +1446,37 @@ export function ProvidersAndModelsSection({
     requestAnimationFrame(() => tryFind())
   }
 
+  // A tall expanded provider is unwieldy to drag, so it collapses — but only
+  // once the drag is real. Collapsing on pointer down would shrink the row
+  // while a plain tap is still undecided, and dnd-kit would be left holding
+  // the geometry the row had before it shrank.
+  const handleProviderDragStart = ({ active }: DragStartEvent) => {
+    const providerId = String(active.id)
+    setExpandedProviders((prev) => {
+      if (!prev.has(providerId)) return prev
+      const next = new Set(prev)
+      next.delete(providerId)
+      return next
+    })
+  }
+
   const handleProviderDragEnd = async ({ active, over }: DragEndEvent) => {
     if (!over || active.id === over.id) {
       return
     }
 
-    const oldIndex = settings.providers.findIndex((p) => p.id === active.id)
-    const newIndex = settings.providers.findIndex((p) => p.id === over.id)
+    const oldIndex = orderedProviders.findIndex((p) => p.id === active.id)
+    const newIndex = orderedProviders.findIndex((p) => p.id === over.id)
     if (oldIndex < 0 || newIndex < 0) {
       return
     }
 
-    const reorderedProviders = arrayMove(settings.providers, oldIndex, newIndex)
+    const reorderedProviders = arrayMove(
+      [...orderedProviders],
+      oldIndex,
+      newIndex,
+    )
+    applyProviderOrder(reorderedProviders)
     try {
       await setSettings({
         ...settings,
@@ -1439,6 +1485,7 @@ export function ProvidersAndModelsSection({
       triggerProviderDropSuccessFeedback(String(active.id))
     } catch (error) {
       console.error('[YOLO] Failed to reorder providers:', error)
+      revertProviderOrder()
       new Notice('Failed to reorder providers.')
     }
   }
@@ -1451,7 +1498,7 @@ export function ProvidersAndModelsSection({
       return
     }
 
-    const providerModels = settings.chatModels.filter(
+    const providerModels = orderedChatModels.filter(
       (model) => model.providerId === providerId,
     )
     const oldIndex = providerModels.findIndex((model) => model.id === active.id)
@@ -1465,14 +1512,17 @@ export function ProvidersAndModelsSection({
       oldIndex,
       newIndex,
     )
+    // Models of other providers keep their slots; only this provider's models
+    // are re-dealt into the positions they already occupied.
     const queue = [...reorderedProviderModels]
-    const updatedChatModels = settings.chatModels.map((model) => {
+    const updatedChatModels = orderedChatModels.map((model) => {
       if (model.providerId !== providerId) {
         return model
       }
       return queue.shift() ?? model
     })
 
+    applyChatModelOrder(updatedChatModels)
     try {
       await setSettings({
         ...settings,
@@ -1481,6 +1531,7 @@ export function ProvidersAndModelsSection({
       triggerProviderDropSuccess(providerId, String(active.id))
     } catch (error) {
       console.error('[YOLO] Failed to reorder chat models:', error)
+      revertChatModelOrder()
       new Notice('Failed to reorder chat models.')
     }
   }
@@ -1493,7 +1544,7 @@ export function ProvidersAndModelsSection({
       return
     }
 
-    const providerModels = settings.embeddingModels.filter(
+    const providerModels = orderedEmbeddingModels.filter(
       (model) => model.providerId === providerId,
     )
     const oldIndex = providerModels.findIndex((model) => model.id === active.id)
@@ -1508,13 +1559,14 @@ export function ProvidersAndModelsSection({
       newIndex,
     )
     const queue = [...reorderedProviderModels]
-    const updatedEmbeddingModels = settings.embeddingModels.map((model) => {
+    const updatedEmbeddingModels = orderedEmbeddingModels.map((model) => {
       if (model.providerId !== providerId) {
         return model
       }
       return queue.shift() ?? model
     })
 
+    applyEmbeddingModelOrder(updatedEmbeddingModels)
     try {
       await setSettings({
         ...settings,
@@ -1523,6 +1575,7 @@ export function ProvidersAndModelsSection({
       triggerProviderDropSuccess(providerId, String(active.id))
     } catch (error) {
       console.error('[YOLO] Failed to reorder embedding models:', error)
+      revertEmbeddingModelOrder()
       new Notice('Failed to reorder embedding models.')
     }
   }
@@ -1791,18 +1844,23 @@ export function ProvidersAndModelsSection({
           <DndContext
             sensors={providerSensors}
             collisionDetection={closestCenter}
+            // The dragged provider collapses as it is lifted, so the rows below
+            // move; re-measure throughout instead of trusting the one snapshot
+            // taken when the drag started.
+            measuring={{ droppable: { strategy: MeasuringStrategy.Always } }}
+            onDragStart={handleProviderDragStart}
             onDragEnd={(event) => void handleProviderDragEnd(event)}
           >
             <SortableContext
               items={providerIds}
               strategy={verticalListSortingStrategy}
             >
-              {settings.providers.map((provider) => {
+              {orderedProviders.map((provider) => {
                 const isExpanded = expandedProviders.has(provider.id)
-                const chatModels = settings.chatModels.filter(
+                const chatModels = orderedChatModels.filter(
                   (m) => m.providerId === provider.id,
                 )
-                const embeddingModels = settings.embeddingModels.filter(
+                const embeddingModels = orderedEmbeddingModels.filter(
                   (m) => m.providerId === provider.id,
                 )
 
@@ -1831,14 +1889,6 @@ export function ProvidersAndModelsSection({
                     }
                     handleEmbeddingModelDragEnd={(event) =>
                       void handleEmbeddingModelDragEnd(provider.id, event)
-                    }
-                    onCollapseForDrag={() =>
-                      setExpandedProviders((prev) => {
-                        if (!prev.has(provider.id)) return prev
-                        const next = new Set(prev)
-                        next.delete(provider.id)
-                        return next
-                      })
                     }
                   />
                 )

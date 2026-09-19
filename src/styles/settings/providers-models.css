@@ -177,12 +177,18 @@
 
 .yolo-provider-drag-handle {
   all: unset;
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   color: var(--text-faint);
   cursor: grab;
   user-select: none;
+  /* The handle exists only to drag: a touch starting here must never be
+     claimed as a page scroll, or the browser fires pointercancel and
+     dnd-kit's PointerSensor aborts the drag mid-gesture. */
+  touch-action: none;
+  -webkit-touch-callout: none;
   padding: 0;
   margin: 0;
   appearance: none;
@@ -190,6 +196,17 @@
   transition:
     transform 120ms ease,
     color 120ms ease;
+}
+
+/* On touch the icon alone is a far smaller target than a fingertip. Grow the
+   hit area with a pseudo-element so the visual size stays put; keep the right
+   edge tight so it doesn't swallow presses meant for the header trigger. */
+@media (pointer: coarse) {
+  .yolo-provider-drag-handle::before {
+    content: '';
+    position: absolute;
+    inset: -12px -4px -12px -12px;
+  }
 }
 
 .yolo-provider-drag-handle:hover {

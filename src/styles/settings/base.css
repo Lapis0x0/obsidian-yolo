@@ -463,6 +463,7 @@ select.yolo-module-settings-select {
 
 /* Drag handle for reorderable rows */
 .yolo-drag-handle {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -470,6 +471,21 @@ select.yolo-module-settings-select {
   cursor: grab;
   padding: 0 var(--size-4-1);
   user-select: none;
+  /* The handle exists only to drag: a touch starting here must never be
+     claimed as a page scroll, or the browser fires pointercancel and
+     dnd-kit's PointerSensor aborts the drag mid-gesture. */
+  touch-action: none;
+  -webkit-touch-callout: none;
+}
+
+/* On touch the icon alone is a far smaller target than a fingertip. Grow the
+   hit area with a pseudo-element so the row's column widths stay put. */
+@media (pointer: coarse) {
+  .yolo-drag-handle::before {
+    content: '';
+    position: absolute;
+    inset: -10px -4px -10px -10px;
+  }
 }
 
 .yolo-drag-handle:hover {
