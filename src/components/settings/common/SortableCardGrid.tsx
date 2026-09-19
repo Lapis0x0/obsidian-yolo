@@ -4,13 +4,9 @@ import {
   DragOverlay,
   type DragStartEvent,
   type DropAnimation,
-  MouseSensor,
-  TouchSensor,
   closestCenter,
   defaultDropAnimationSideEffects,
   getClientRect,
-  useSensor,
-  useSensors,
 } from '@dnd-kit/core'
 import {
   SortableContext,
@@ -41,6 +37,7 @@ import {
 } from '../../../styles/tokens/motion'
 
 import { useOptimisticOrder } from './useOptimisticOrder'
+import { useSortableDragSensors } from './useSortableDragSensors'
 
 /**
  * Card grid whose cards reorder by dragging the card itself — no handle.
@@ -59,9 +56,6 @@ type SortableCardGridProps<T> = {
   trailing?: ReactNode
 }
 
-const DRAG_DISTANCE_PX = 5
-const TOUCH_LONG_PRESS_MS = 250
-const TOUCH_TOLERANCE_PX = 5
 const SORT_TRANSITION = {
   duration: MOTION_DURATION_ENTER_S * 1000,
   easing: MOTION_EASE_OUT_CSS,
@@ -73,44 +67,6 @@ const MEASURING = {
     measure: (node: HTMLElement) =>
       getClientRect(node, { ignoreTransform: true }),
   },
-}
-
-// A drag that starts on a control nested in the card (the "…" menu trigger)
-// belongs to that control, not to the card.
-const startsOnNestedControl = (event: Event) => {
-  const target = event.target as Element | null
-  return (
-    typeof target?.closest === 'function' &&
-    target.closest('button, a, input, textarea, select') !== null
-  )
-}
-
-class CardMouseSensor extends MouseSensor {
-  static activators = [
-    {
-      eventName: 'onMouseDown' as const,
-      handler: (
-        event: ReactMouseEvent,
-        options: Parameters<(typeof MouseSensor.activators)[0]['handler']>[1],
-      ) =>
-        !startsOnNestedControl(event.nativeEvent) &&
-        MouseSensor.activators[0].handler(event, options),
-    },
-  ]
-}
-
-class CardTouchSensor extends TouchSensor {
-  static activators = [
-    {
-      eventName: 'onTouchStart' as const,
-      handler: (
-        event: ReactTouchEvent,
-        options: Parameters<(typeof TouchSensor.activators)[0]['handler']>[1],
-      ) =>
-        !startsOnNestedControl(event.nativeEvent) &&
-        TouchSensor.activators[0].handler(event, options),
-    },
-  ]
 }
 
 export function SortableCardGrid<T>({
@@ -136,17 +92,7 @@ export function SortableCardGrid<T>({
   } = useOptimisticOrder(items, getId)
   const suppressOpenUntilRef = useRef(0)
 
-  const sensors = useSensors(
-    useSensor(CardMouseSensor, {
-      activationConstraint: { distance: DRAG_DISTANCE_PX },
-    }),
-    useSensor(CardTouchSensor, {
-      activationConstraint: {
-        delay: TOUCH_LONG_PRESS_MS,
-        tolerance: TOUCH_TOLERANCE_PX,
-      },
-    }),
-  )
+  const sensors = useSortableDragSensors()
 
   const ids = useMemo(() => orderedItems.map(getId), [orderedItems, getId])
   const activeItem =

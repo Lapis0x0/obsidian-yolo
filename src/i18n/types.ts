@@ -826,6 +826,7 @@ export type TranslationKeys = {
     }
     models: {
       title: string
+      dragHandle?: string
       chatModels: string
       embeddingModels: string
       addChatModel: string

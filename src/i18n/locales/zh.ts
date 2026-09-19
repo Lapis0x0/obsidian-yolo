@@ -1026,6 +1026,7 @@ export const zh: TranslationKeys = {
       addCustomEmbeddingModel: '添加自定义嵌入模型',
       editChatModel: '编辑聊天模型',
       editEmbeddingModel: '编辑嵌入模型',
+      dragHandle: '拖拽排序',
       editCustomChatModel: '编辑自定义聊天模型',
       editCustomEmbeddingModel: '编辑自定义嵌入模型',
       modelId: '调用ID',

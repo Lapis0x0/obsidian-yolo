@@ -1012,6 +1012,7 @@ export const it: DeepPartial<TranslationKeys> = {
       addCustomEmbeddingModel: 'Aggiungi modello embedding personalizzato',
       editChatModel: 'Modifica modello chat',
       editEmbeddingModel: 'Modifica modello embedding',
+      dragHandle: 'Trascina per riordinare',
       editCustomChatModel: 'Modifica modello chat personalizzato',
       editCustomEmbeddingModel: 'Modifica modello embedding personalizzato',
       modelId: 'ID modello',

@@ -140,29 +140,86 @@
   border-radius: var(--radius-m);
   background: var(--background-primary);
   overflow: hidden;
-  cursor: grab;
   transition:
     border-color 160ms ease,
     box-shadow 180ms ease,
     background-color 160ms ease;
 }
 
-.yolo-provider-section:active {
-  cursor: grabbing;
-}
-
-/* Provider drag visual feedback */
-.yolo-provider-dragging {
-  background-color: var(--background-primary);
-  transform: translateX(2px) scale(0.995);
-  opacity: 0.98;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
-}
-
 .yolo-provider-section:hover,
 .yolo-provider-section:focus-within {
   border-color: var(--background-modifier-border);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.06);
+}
+
+/*
+ * While a row is dragged it is rendered twice: the row itself stays put as the
+ * empty slot, and a copy in a DragOverlay follows the pointer. Same treatment
+ * as the sortable card grid, so reordering reads the same across settings.
+ *
+ * These rules follow :hover deliberately — the pointer sits over the slot when
+ * a drag begins, and both selectors carry the same specificity.
+ */
+
+/* The slot the lifted row came from. */
+.yolo-provider-section.yolo-provider-dragging {
+  border-style: dashed;
+  border-color: color-mix(
+    in srgb,
+    var(--background-modifier-border) 88%,
+    transparent
+  );
+  background: color-mix(in srgb, var(--background-secondary) 92%, transparent);
+  box-shadow: none;
+}
+
+.yolo-provider-section.yolo-provider-dragging > * {
+  opacity: 0;
+}
+
+/* The copy following the pointer. Full-bleed rows look wrong scaled up, so
+   this one only gains a shadow — the lift reads from the shadow alone. */
+.yolo-provider-section.yolo-provider-lifted {
+  position: relative;
+  cursor: grabbing;
+  /* The row clips its contents to the rounded corners; the lifted copy holds
+     only the header, so it can let the shadow out. */
+  overflow: visible;
+}
+
+.yolo-provider-section.yolo-provider-lifted::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: var(--shadow-l, 0 10px 30px rgba(0, 0, 0, 0.25));
+  pointer-events: none;
+  opacity: 0;
+  animation: yolo-provider-lift-shadow-in var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+.is-dropping .yolo-provider-section.yolo-provider-lifted::after {
+  animation: yolo-provider-lift-shadow-out var(--yolo-anim-duration-enter)
+    var(--yolo-anim-ease-out) forwards;
+}
+
+@keyframes yolo-provider-lift-shadow-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes yolo-provider-lift-shadow-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
 }
 
 .yolo-provider-drag-over-before {
@@ -175,50 +232,7 @@
   transition: border-bottom 120ms ease;
 }
 
-.yolo-provider-drag-handle {
-  all: unset;
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-faint);
-  cursor: grab;
-  user-select: none;
-  /* The handle exists only to drag: a touch starting here must never be
-     claimed as a page scroll, or the browser fires pointercancel and
-     dnd-kit's PointerSensor aborts the drag mid-gesture. */
-  touch-action: none;
-  -webkit-touch-callout: none;
-  padding: 0;
-  margin: 0;
-  appearance: none;
-  -webkit-appearance: none;
-  transition:
-    transform 120ms ease,
-    color 120ms ease;
-}
-
-/* On touch the icon alone is a far smaller target than a fingertip. Grow the
-   hit area with a pseudo-element so the visual size stays put; keep the right
-   edge tight so it doesn't swallow presses meant for the header trigger. */
-@media (pointer: coarse) {
-  .yolo-provider-drag-handle::before {
-    content: '';
-    position: absolute;
-    inset: -12px -4px -12px -12px;
-  }
-}
-
-.yolo-provider-drag-handle:hover {
-  color: var(--text-normal);
-}
-
-.yolo-provider-drag-handle:active {
-  cursor: grabbing;
-}
-
 .yolo-provider-main-trigger {
-  all: unset;
   flex: 0 1 auto;
   min-width: 0;
   max-inline-size: min(320px, 42%);
@@ -233,28 +247,6 @@
   overflow: hidden;
 }
 
-.yolo-provider-main-trigger:hover,
-.yolo-provider-main-trigger:focus,
-.yolo-provider-main-trigger:focus-visible,
-.yolo-provider-main-trigger:active {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-}
-
-.yolo-provider-header > .yolo-provider-drag-handle,
-.yolo-provider-header > .yolo-provider-main-trigger {
-  background: transparent !important;
-  border: 0 !important;
-  box-shadow: none !important;
-}
-
-.yolo-provider-drag-handle svg {
-  width: var(--icon-m);
-  height: var(--icon-m);
-  stroke-width: var(--icon-stroke);
-}
-
 /* Provider drop success animation - reuse existing drop-flash animation */
 .yolo-provider-drop-success {
   animation: yolo-drop-flash 650ms ease-out;
@@ -266,9 +258,21 @@
   padding: var(--size-4-2) var(--size-4-3);
   background: var(--background-primary);
   gap: var(--size-4-2);
+  cursor: pointer;
+  /* A long press lifts the row on touch; keep the OS text callout out of it. */
+  -webkit-touch-callout: none;
+  user-select: none;
+  touch-action: manipulation;
 }
 
-.yolo-provider-header > .yolo-provider-drag-handle,
+/* L1 receipt: the row sinks under the press, instantly. Far gentler than the
+   cards' 0.98 — a full-width row scaled that far visibly pulls off its own
+   edges. Presses on a nested control belong to that control, not the row. */
+.yolo-provider-section:not(.yolo-provider-dragging)
+  > .yolo-provider-header:active:not(:has(button:active)) {
+  transform: scale(0.995);
+}
+
 .yolo-provider-header > .yolo-provider-main-trigger,
 .yolo-provider-header > .yolo-provider-base-url-btn,
 .yolo-provider-header > .yolo-provider-secondary-trigger {
@@ -382,7 +386,6 @@
 }
 
 .yolo-provider-secondary-trigger {
-  all: unset;
   flex: 0 0 auto;
   display: flex;
   align-items: center;

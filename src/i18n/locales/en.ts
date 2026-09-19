@@ -1103,6 +1103,7 @@ export const en: TranslationKeys = {
       addCustomEmbeddingModel: 'Add custom embedding model',
       editChatModel: 'Edit chat model',
       editEmbeddingModel: 'Edit embedding model',
+      dragHandle: 'Drag to reorder',
       editCustomChatModel: 'Edit custom chat model',
       editCustomEmbeddingModel: 'Edit custom embedding model',
       modelId: 'Model ID',
