@@ -134,8 +134,6 @@ export type TranslationKeys = {
       subtitle: string
       backToChat: string
       modelSectionTitle: string
-      continuationModel: string
-      continuationModelDesc: string
       contextSectionTitle: string
       ragToggle: string
       ragToggleDesc: string
@@ -497,20 +495,9 @@ export type TranslationKeys = {
       toolApprovalDangerousOnly?: string
       toolDisclosureAlways?: string
       toolDisclosureOnDemand?: string
-      editorEnabled?: string
-      editorDisabled?: string
       editorModel?: string
       editorModelDesc?: string
       followDefaultModel?: string
-      editorModelCurrent?: string
-      editorMaxOutputTokens?: string
-      editorMaxOutputTokensDesc?: string
-      editorMaxContextMessages?: string
-      editorCustomParameters?: string
-      editorCustomParametersDesc?: string
-      editorCustomParametersAdd?: string
-      editorCustomParametersKeyPlaceholder?: string
-      editorCustomParametersValuePlaceholder?: string
       editorToolsCount?: string
       editorEstimatedContextTokens?: string
       editorSkillsCount?: string
