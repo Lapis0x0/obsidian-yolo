@@ -212,30 +212,26 @@ button.yolo-runtime-selector[data-compact='true']
   gap: 10px;
 }
 
+/* 名字吃掉整行的空余，把它右边的一切（变体开关、对钩）顶到行尾成列。
+   这里靠 flex-grow 而不是 auto margin：开关自己带 `margin-left: auto`，
+   再给对钩加一个的话，两个 auto margin 会平分剩余空间，开关就会悬在行
+   中间而不是靠右。 */
 .yolo-runtime-selector__option-title-row
   > .yolo-runtime-selector__option-label {
-  flex: 0 1 auto;
+  flex: 1 1 auto;
 }
 
-/* 描述与对钩同一行，对钩靠右 —— 与标题行右端的变体开关上下对齐。
-   这里只管对钩在本组件内的排布；它的颜色 / 选中显隐仍归
-   src/styles/chat/popover.css 的 .yolo-popover-item__indicator。 */
-.yolo-runtime-selector__option-description-row {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 10px;
-}
-
-.yolo-runtime-selector__option-description-row
-  > .yolo-runtime-selector__option-description {
-  flex: 0 1 auto;
-  min-width: 0;
-}
-
-.yolo-runtime-selector__option-description-row > .yolo-popover-item__indicator {
+/* 对钩贴在行尾，开关排在它内侧。共享的 .yolo-popover-item__indicator 是用
+   opacity 隐藏的，仍然占位 —— 那在模型列表那种纯文字行里无所谓，但这里行尾
+   紧挨着变体开关，未勾选的行会让开关凭空左移一个对钩的宽度，看着就是没靠
+   右。所以只在本组件内、且只对未勾选的行撤掉占位。 */
+.yolo-runtime-selector__option-title-row > .yolo-popover-item__indicator {
   flex: 0 0 auto;
-  margin-left: auto;
+}
+
+.yolo-runtime-selector__option:not([data-state='checked'])
+  .yolo-popover-item__indicator {
+  display: none;
 }
 
 /* 家族变体开关：视觉语汇对齐对话模式弹窗里的 YOLO 开关。
@@ -310,23 +306,13 @@ button.yolo-runtime-selector[data-compact='true']
   transform: translateX(11px);
 }
 
-.yolo-runtime-selector__option-label,
-.yolo-runtime-selector__option-description {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .yolo-runtime-selector__option-label {
+  overflow: hidden;
   color: var(--text-normal);
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-medium);
-}
-
-.yolo-runtime-selector__option-description {
-  color: var(--text-muted);
-  font-size: var(--font-ui-smallest);
-  font-weight: var(--font-normal);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .yolo-context-usage-ring {

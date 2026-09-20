@@ -6,18 +6,11 @@ jest.mock('../../contexts/language-context', () => ({
           'sidebar.runtimeSelector.accessibleLabel': 'CLI provider: {runtime}',
           'sidebar.runtimeSelector.menuLabel': 'CLI provider',
           'sidebar.runtimeSelector.claudeCodeLabel': 'Claude Code',
-          'sidebar.runtimeSelector.claudeCodeDescription':
-            'Claude Code on this device',
           'sidebar.runtimeSelector.codexLabel': 'Codex',
-          'sidebar.runtimeSelector.codexDescription': 'Codex on this device',
           'sidebar.runtimeSelector.hermesLabel': 'Hermes',
-          'sidebar.runtimeSelector.hermesDescription': 'Hermes on this device',
           'sidebar.runtimeSelector.piLabel': 'pi',
-          'sidebar.runtimeSelector.piDescription': 'pi on this device',
           'sidebar.runtimeSelector.ompLabel': 'omp',
-          'sidebar.runtimeSelector.ompDescription': 'Oh My Pi on this device',
           'sidebar.runtimeSelector.grokLabel': 'Grok',
-          'sidebar.runtimeSelector.grokDescription': 'Grok on this device',
         }) as Record<string, string>
       )[key] ?? key,
   }),

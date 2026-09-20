@@ -83,21 +83,14 @@ export type TranslationKeys = {
       menuLabel: string
       claudeCodeLabel: string
       claudeCodeShortLabel: string
-      claudeCodeDescription: string
       codexLabel: string
-      codexDescription: string
       hermesLabel: string
-      hermesDescription: string
       piLabel: string
-      piDescription: string
       ompLabel: string
-      ompDescription: string
       variantToggleHint: string
       grokLabel: string
-      grokDescription: string
       codebuddyLabel: string
       codebuddyShortLabel: string
-      codebuddyDescription: string
     }
     chatList?: {
       searchPlaceholder?: string

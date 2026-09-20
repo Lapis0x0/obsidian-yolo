@@ -331,7 +331,7 @@ export function RuntimeSelector({
       <YoloDropdownContent
         anchorRef={triggerRef}
         variant="default"
-        minWidth={224}
+        minWidth={176}
         maxWidth={280}
         maxHeight={320}
         className="yolo-runtime-selector__content"
@@ -451,14 +451,9 @@ export function RuntimeSelector({
                         )
                       },
                     )}
-                  </span>
-                  {/* The check rides the description line rather than the row,
-                      so it sits directly under the variant switches instead of
-                      pushing them in off the row's right edge. */}
-                  <span className="yolo-runtime-selector__option-description-row">
-                    <span className="yolo-runtime-selector__option-description">
-                      {t(row.primary.descriptionKey)}
-                    </span>
+                    {/* Last in the title row, pushed right: the check sits
+                        outboard of the variant switches so neither moves as
+                        the selection changes. */}
                     <span className="yolo-popover-item__indicator">
                       <Check size={12} aria-hidden="true" />
                     </span>

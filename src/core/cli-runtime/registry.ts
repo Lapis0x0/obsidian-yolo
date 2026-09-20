@@ -32,7 +32,6 @@ export type CliRuntimeDescriptor = Readonly<{
    * Falls back to `labelKey` when a runtime has no shorter form.
    */
   shortLabelKey?: string
-  descriptionKey: string
   /**
    * This runtime is a variant of another one and collapses into *that*
    * runtime's single row in the selector, instead of claiming a row of its
@@ -53,7 +52,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       defaultLabel: 'Claude Code',
       labelKey: 'sidebar.runtimeSelector.claudeCodeLabel',
       shortLabelKey: 'sidebar.runtimeSelector.claudeCodeShortLabel',
-      descriptionKey: 'sidebar.runtimeSelector.claudeCodeDescription',
       icon: { src: anthropicLogo, provider: 'anthropic' },
       capabilities: RUNTIME_CAPABILITIES['claude-code'],
     },
@@ -61,7 +59,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       id: 'codex',
       defaultLabel: 'Codex',
       labelKey: 'sidebar.runtimeSelector.codexLabel',
-      descriptionKey: 'sidebar.runtimeSelector.codexDescription',
       icon: { src: openaiLogo, provider: 'openai' },
       capabilities: RUNTIME_CAPABILITIES.codex,
     },
@@ -69,7 +66,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       id: 'hermes',
       defaultLabel: 'Hermes',
       labelKey: 'sidebar.runtimeSelector.hermesLabel',
-      descriptionKey: 'sidebar.runtimeSelector.hermesDescription',
       icon: { src: hermesLogo, provider: 'hermes' },
       capabilities: RUNTIME_CAPABILITIES.hermes,
     },
@@ -77,7 +73,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       id: 'pi',
       defaultLabel: 'Pi',
       labelKey: 'sidebar.runtimeSelector.piLabel',
-      descriptionKey: 'sidebar.runtimeSelector.piDescription',
       icon: { src: piLogo, provider: 'pi' },
       capabilities: RUNTIME_CAPABILITIES.pi,
     },
@@ -85,7 +80,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       id: 'omp',
       defaultLabel: 'omp',
       labelKey: 'sidebar.runtimeSelector.ompLabel',
-      descriptionKey: 'sidebar.runtimeSelector.ompDescription',
       variantOf: 'pi',
       icon: { src: ompLogo, provider: 'omp' },
       capabilities: RUNTIME_CAPABILITIES.omp,
@@ -94,7 +88,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       id: 'grok',
       defaultLabel: 'Grok',
       labelKey: 'sidebar.runtimeSelector.grokLabel',
-      descriptionKey: 'sidebar.runtimeSelector.grokDescription',
       icon: { src: xaiLogo, provider: 'xai' },
       capabilities: RUNTIME_CAPABILITIES.grok,
     },
@@ -103,7 +96,6 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       defaultLabel: 'CodeBuddy',
       labelKey: 'sidebar.runtimeSelector.codebuddyLabel',
       shortLabelKey: 'sidebar.runtimeSelector.codebuddyShortLabel',
-      descriptionKey: 'sidebar.runtimeSelector.codebuddyDescription',
       icon: { src: codebuddyLogo, provider: 'codebuddy' },
       capabilities: RUNTIME_CAPABILITIES.codebuddy,
     },
