@@ -140,6 +140,7 @@
 | [MCP](./documentation/zh-CN/mcp.md) · [CLI Agent](./documentation/zh-CN/cli-agent.md) · [模块](./documentation/zh-CN/modules.md) | 进阶扩展 |
 | [设置参考](./documentation/zh-CN/settings-reference.md) · [常见问题](./documentation/zh-CN/faq.md) | 查阅 |
 
+文档也提供 [English](./documentation/en/README.md) 和 [Italiano](./documentation/it/README.md) 版本。截图统一使用英文界面，各语言共用同一套图。
 
 ## Installation
 

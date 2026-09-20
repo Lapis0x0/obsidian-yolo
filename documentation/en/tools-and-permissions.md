@@ -12,7 +12,7 @@ If you just want to feel safe quickly, remember three things:
 
 YOLO packages its abilities into 13 **tool capabilities**. The unit you enable, disable and set approval on is the capability, not the individual tool.
 
-Where to manage them: **Settings → Agent → Global capabilities → Tools → Manage tools**.
+Where to manage them: **Settings → YOLO → Agent → Global capabilities → Tools → Manage tools**.
 
 The switches here are a **global gate**: turn one off and no Agent can use it. Each Agent can narrow things further in its own config — the two layers are AND-ed together, so a capability that is on globally but off for a given Agent is still unavailable to that Agent.
 
@@ -101,7 +101,7 @@ One more thing: YOLO's own internal data folder (`data` under the base folder) i
 
 ## Runtime components
 
-Some capabilities depend on runtime components that are downloaded separately, managed under **Settings → Modules → Runtime components**:
+Some capabilities depend on runtime components that are downloaded separately, managed under **Settings → YOLO → Modules → Runtime components**:
 
 | Component | What it backs | What happens without it | Size |
 |------|---------|-----------|------|

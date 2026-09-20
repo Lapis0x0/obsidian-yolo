@@ -9,7 +9,7 @@ MCP (Model Context Protocol) is an open protocol that lets AI plug into external
 
 ## Connecting to external MCP services
 
-Where: **Settings → Agent → Global capabilities → Tools → Manage tools**. MCP server management sits at the bottom of that dialog — click **Add custom tool server (MCP)**.
+Where: **Settings → YOLO → Agent → Global capabilities → Tools → Manage tools**. MCP server management sits at the bottom of that dialog — click **Add custom tool server (MCP)**.
 
 The form supports two editing modes, **Form** and **JSON**, and you can switch between them freely.
 
@@ -90,7 +90,7 @@ Every Agent can also control that server separately from its own **Tools** tab:
 
 The other direction: you can let Claude Desktop and other MCP clients use your vault.
 
-Where: **Settings → Agent → External agent access** (**desktop only**).
+Where: **Settings → YOLO → Agent → External agent access** (**desktop only**).
 
 Turn on **Allow external agent access** and YOLO starts a local HTTP MCP service, on port **28124** by default (deliberately dodging the 27123/27124 that the Local REST API plugin tends to use).
 

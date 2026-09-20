@@ -20,7 +20,7 @@ YOLO/memory/<Agent name>/MEMORY.md   ← index, applies only to this Agent
 YOLO/memory/<Agent name>/<a memory>.md
 ```
 
-> **The `YOLO` base folder name is changeable.** Edit it under **Settings → Others → Maintenance → YOLO base folder**, and the Skills, memory and other folders follow it. For readability this page always writes `YOLO/` — substitute your own setting.
+> **The `YOLO` base folder name is changeable.** Edit it under **Settings → YOLO → Others → Maintenance → YOLO base folder**, and the Skills, memory and other folders follow it. For readability this page always writes `YOLO/` — substitute your own setting.
 
 Each folder is one `MEMORY.md` index plus a set of standalone fact files: **one fact, one file**.
 

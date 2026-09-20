@@ -103,8 +103,8 @@ YOLO has more than one default model; they're several independent slots. Knowing
 | **Default chat model** | Models → Default model policies & prompts | The model every chat surface starts with |
 | **Conversation title model** | Same place | Generates a chat title from the first message. **A cheap small model is the right call here** |
 | **Embedding model** | Knowledge tab | Shared by every knowledge base. Changing it invalidates every index |
-| **Continuation model** | Sparkle settings | Used by tab completion and selection rewrites |
-| **Completion model** | Sparkle settings | Can be pointed at a different model from the continuation model |
+| **Continuation model** | Sparkle settings | Used by Quick Ask's continuation tab and by selection rewrites. **Also the fallback for tab completion** |
+| **Completion model** | Sparkle settings | Tab completion prefers this one; **leave it empty and it falls back to the continuation model** |
 
 ## Global system prompt
 

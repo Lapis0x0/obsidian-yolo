@@ -5,8 +5,12 @@
 ## 选择语言 / Choose a language
 
 - [简体中文](./zh-CN/README.md)
+- [English](./en/README.md)
+- [Italiano](./it/README.md)
 
-英文及其他语言正在翻译中。
+截图统一使用英文界面，各语言共用同一套图。实际界面语言跟随 Obsidian 的设置。
+
+Screenshots use the English UI and are shared across all languages. Your actual interface follows your Obsidian language setting.
 
 ---
 

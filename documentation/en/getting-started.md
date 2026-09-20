@@ -48,13 +48,13 @@ Once the provider is added, expand its card and click **Add chat model**.
 
 You can pick from the list of available models it fetches automatically, or type a model ID by hand. If you want to add several at once, switch to **Batch** mode and tick them off.
 
-### Step 3: make it the default
-
-Scroll down to **Default model policies & prompts** at the bottom of the Models tab and set **Default chat model** to the model you just added.
-
 ![Models settings: expanding a provider shows the chat models under it](../assets/settings-models.png)
 
 > Screenshots in this documentation show the English interface.
+
+### Step 3: make it the default
+
+Scroll down to **Default model policies & prompts** at the bottom of the Models tab and set **Default chat model** to the model you just added.
 
 ## Your first chat
 

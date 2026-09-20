@@ -9,7 +9,7 @@ MCP（Model Context Protocol）是一个开放协议，让 AI 接入外部服务
 
 ## 接入外部 MCP 服务
 
-入口：**设置 → Agent → 全局能力 → 工具 → 「管理工具」**，弹窗底部是 MCP 服务器管理，点「**添加 MCP 服务器**」。
+入口：**设置 → YOLO → Agent → 全局能力 → 工具 → 「管理工具」**，弹窗底部是 MCP 服务器管理，点「**添加 MCP 服务器**」。
 
 表单支持**表单模式**和 **JSON 模式**两种编辑方式，可以互相切换。
 
@@ -90,7 +90,7 @@ MCP（Model Context Protocol）是一个开放协议，让 AI 接入外部服务
 
 反过来，你可以让 Claude Desktop、其他 MCP 客户端使用你的库。
 
-入口：**设置 → Agent → 外部 Agent 接入**（**仅桌面端**）。
+入口：**设置 → YOLO → Agent → 外部 Agent 接入**（**仅桌面端**）。
 
 打开「允许外部 Agent 访问」后，YOLO 会在本机起一个 HTTP MCP 服务，默认端口 **28124**（刻意避开 Local REST API 插件常用的 27123/27124）。
 

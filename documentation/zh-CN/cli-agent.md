@@ -22,7 +22,7 @@
 1. 先在系统里装好对应的 CLI 工具
 2. 完成它自己的登录鉴权（比如 `claude` 要先自己登录过）
 
-装好之后 YOLO 会自动检测可执行文件。如果检测不到，去 **设置 → Agent → CLI 运行时**，为对应的 CLI 手动填可执行文件路径（`which claude` 或 Windows 上 `where claude` 的输出）。
+装好之后 YOLO 会自动检测可执行文件。如果检测不到，去 **设置 → YOLO → Agent → CLI 运行时**，为对应的 CLI 手动填可执行文件路径（`which claude` 或 Windows 上 `where claude` 的输出）。
 
 路径填错时下面会出现红色提示说这个路径在本机不存在，会退回自动检测。
 

@@ -58,7 +58,9 @@ Switch modes in the dropdown next to the input box, or with `@` → Mode.
 
 Mostly read-only. It can read notes, search the knowledge base, search the web and find files in the vault, but it **cannot edit the body of your notes**.
 
-One counter-intuitive detail deserves its own mention: in Ask mode YOLO can still run **file management operations** like `mkdir`, `mv` and `rm` (create folders, move files, delete files). So Ask is not the same as "strictly read-only" — it won't change the words in your notes, but it can move the files around. Those dangerous operations **require your approval every single time**, and cannot be set to "always allow".
+One counter-intuitive detail deserves its own mention: in Ask mode YOLO can still run **file management operations** like `mkdir`, `mv` and `rm` (create folders, move files, delete files). So Ask is not the same as "strictly read-only" — it won't change the words in your notes, but it can move the files around.
+
+These operations **only ever happen inside your vault**: they run through the virtual terminal, a sandbox mounted on the vault root, which cannot reach any other file on your operating system. And dangerous operations like these **need your approval every single time** — they can't be set to "always allow".
 
 ### Agent — tools enabled, for multi-step work
 

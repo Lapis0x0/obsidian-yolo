@@ -126,9 +126,21 @@ Beyond the core capabilities above, YOLO also provides:
 
 ## Documentation
 
-Full user documentation lives in **[documentation/](./documentation/README.md)** — covering first-time setup, the three chat modes and their permission boundaries, knowledge base indexing, tools and approvals, Skills, MCP, CLI agents, and a full settings reference.
+Full user documentation lives in **[documentation/en](./documentation/en/README.md)**:
 
-> Currently available in **[简体中文](./documentation/zh-CN/README.md)**. English translation is in progress.
+| | |
+|---|---|
+| [Getting started](./documentation/en/getting-started.md) | Install, configure a working model, run your first chat |
+| [Models & providers](./documentation/en/models.md) | Connect providers, OAuth sign-in, model parameters |
+| [Chat](./documentation/en/chat.md) | Referencing notes, the three modes, tool approvals, applying edits |
+| [Sparkle](./documentation/en/sparkle.md) | Quick Ask, Tab completion, selection rewrite |
+| [Knowledge base](./documentation/en/knowledge-base.md) | Indexing, multiple knowledge bases, local embedding models |
+| [Tools & permissions](./documentation/en/tools-and-permissions.md) | What it can touch, and how to rein it in |
+| [Memory](./documentation/en/memory.md) · [Skills](./documentation/en/skills.md) · [Agents](./documentation/en/assistants.md) | Tailoring it to you |
+| [MCP](./documentation/en/mcp.md) · [CLI agents](./documentation/en/cli-agent.md) · [Modules](./documentation/en/modules.md) | Going further |
+| [Settings reference](./documentation/en/settings-reference.md) · [FAQ](./documentation/en/faq.md) | Look things up |
+
+Also available in [简体中文](./documentation/zh-CN/README.md) and [Italiano](./documentation/it/README.md).
 
 ## Installation
 

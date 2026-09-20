@@ -22,7 +22,7 @@ If you already use command-line AI tools like Claude Code or Codex, YOLO can dri
 1. Install the CLI tool on your system first
 2. Finish its own login/auth (for instance, you have to have signed into `claude` yourself)
 
-Once it's installed, YOLO detects the executable automatically. If it doesn't, go to **Settings → Agent → CLI runtimes** and fill in the executable path for that CLI by hand (the output of `which claude`, or `where claude` on Windows).
+Once it's installed, YOLO detects the executable automatically. If it doesn't, go to **Settings → YOLO → Agent → CLI runtimes** and fill in the executable path for that CLI by hand (the output of `which claude`, or `where claude` on Windows).
 
 If the path is wrong, a red message appears underneath saying it doesn't exist on this machine, and YOLO falls back to auto-detection.
 

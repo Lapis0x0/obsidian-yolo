@@ -41,7 +41,7 @@ When you want to write your own skill, just ask the AI to do it with **skill-cre
 
 ## Writing your own
 
-Skills live under `YOLO/skills/` in your vault (`YOLO` is the changeable base folder name, see **Settings → Others → Maintenance → YOLO base folder**), in one of two shapes:
+Skills live under `YOLO/skills/` in your vault (`YOLO` is the changeable base folder name, see **Settings → YOLO → Others → Maintenance → YOLO base folder**), in one of two shapes:
 
 - **Single file**: `YOLO/skills/my-skill.md`
 - **Folder package**: `YOLO/skills/my-skill/SKILL.md`, for when you need to ship scripts or reference material alongside it
@@ -90,7 +90,7 @@ A skill can only use in-vault tools (file editing, the virtual terminal and so o
 
 ## Importing existing skills
 
-**Settings → Agent → Skills → Import Skill**, from three sources:
+**Settings → YOLO → Agent → Skills → Import Skill**, from three sources:
 
 - **Drag and drop** a file or folder in
 - **Pick a file or folder**
@@ -107,7 +107,7 @@ On a name clash you can choose **Overwrite all** or **Skip conflicts**.
 
 Two layers:
 
-- **Global**: Settings → Agent → the Skills list, one switch each. Turn it off and no Agent can use it
+- **Global**: Settings → YOLO → Agent → the Skills list, one switch each. Turn it off and no Agent can use it
 - **Per Agent**: switch it individually in the Skills tab of the Agent editor, where you can also override the loading mode
 
 The first time you use skills you need to click **Initialize Skills system** once, which writes the template files into your skills folder.

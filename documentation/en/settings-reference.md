@@ -115,7 +115,7 @@ Four collapsible cards, all of them global settings:
 
 ### Notifications
 
-> In the interface this block lives at the **very bottom of the Agent tab** (its translation keys are under the etc namespace, which makes it easy to look in the wrong place in the code).
+> In the interface this block lives at the **very bottom of the Agent tab**.
 
 | Setting | Default |
 |------|------|
@@ -177,7 +177,7 @@ See [Knowledge base and search](./knowledge-base.md).
 
 **The status bar at the top** changes with state: when indexing is off it shows an **Enable and index** button; when everything is running it shows how many documents are indexed, how many are pending update, the **Auto update** toggle, an **Update now** button, and a "…" menu (Rebuild all indexes / Manage index data / Disable indexing).
 
-**Each knowledge base card** has four things to configure: Name, Description (handed to the model so it can decide which base to query), the scope to include, and the scope to exclude.
+**Each knowledge base card** has three things to configure: Name, Description (handed to the model so it can decide which base to query), and Scope. Scope is a single field — in the folder picker you mark a folder as included or excluded.
 
 **Embedding model** is split into API models and a local shelf.
 

@@ -75,7 +75,7 @@ Nella palette dei comandi c'è anche «Accetta completamento», comodo se vuoi a
 
 ### I parametri regolabili
 
-- **Modello completamento tab** — può essere diverso dal modello della chat. Qui sta bene un modello piccolo e veloce: la latenza conta più dell'intelligenza
+- **Modello completamento tab** — può essere diverso dal modello chat predefinito. Qui sta bene un modello piccolo e veloce: la latenza conta più dell'intelligenza. **Se lo lasci vuoto, ripiega sul modello di continuazione**
 - **Timeout richiesta** — da 1 a 120 secondi
 - **Vincoli completamento tab** — una richiesta aggiuntiva, per esempio «scrivi in italiano» o «non completare i blocchi di codice»
 - **Ritardo trigger** — minimo 200 millisecondi

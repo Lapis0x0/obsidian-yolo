@@ -115,7 +115,7 @@ Quattro schede richiudibili, tutte impostazioni globali.
 
 ### Notifiche
 
-> Nell'interfaccia questo blocco si trova **in fondo alla scheda Agent** (anche se le sue chiavi di traduzione stanno nel namespace `etc`, il che rende facile cercare nel posto sbagliato nel codice).
+> Nell'interfaccia questo blocco si trova **in fondo alla scheda Agent**.
 
 | Impostazione | Predefinito |
 |------|------|

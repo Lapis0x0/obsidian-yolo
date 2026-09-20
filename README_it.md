@@ -124,6 +124,22 @@ Oltre alle capacità principali sopra descritte, YOLO fornisce anche:
    - [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys) / [Gemini](https://aistudio.google.com/apikey) / [Groq](https://console.groq.com/keys)
 4. Apri la sidebar per iniziare a chattare — oppure prova Quick Ask digitando `@` nell'editor
 
+## Documentazione
+
+La documentazione completa si trova in **[documentation/it](./documentation/it/README.md)**: dalla prima configurazione alle funzionalità avanzate.
+
+| | |
+|---|---|
+| [Primi passi](./documentation/it/getting-started.md) | Installazione, configurazione di un modello, prima conversazione |
+| [Modelli e provider](./documentation/it/models.md) | Collegare i vari servizi, login OAuth, parametri dei modelli |
+| [Chat](./documentation/it/chat.md) | Citare note, le tre modalità, approvazione degli strumenti |
+| [Sparkle](./documentation/it/sparkle.md) | Quick Ask, completamento con Tab, riscrittura della selezione |
+| [Knowledge base](./documentation/it/knowledge-base.md) | Indicizzazione, knowledge base multiple, embedding locali |
+| [Strumenti e permessi](./documentation/it/tools-and-permissions.md) | Cosa può fare e come limitarlo |
+| [Impostazioni](./documentation/it/settings-reference.md) · [FAQ](./documentation/it/faq.md) | Consultazione |
+
+> Gli screenshot usano l'interfaccia in inglese e sono condivisi tra tutte le lingue.
+
 ## Installazione
 
 ### Store Plugin Community (Consigliato)

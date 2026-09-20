@@ -59,7 +59,7 @@ With an embedding model in place, click **Enable and index** on the status row. 
 
 You can split your vault into several independent knowledge bases, each covering a different scope — "Work notes" and "Reading notes" kept apart, say. When searching, the AI **works out which one to query from the name and description**.
 
-Click **New knowledge base**; there are only four things to configure per base:
+Click **New knowledge base**; there are only three things to configure per base:
 
 - **Name** — required, and it has to be unique
 - **Description** — optional, but write one. **This text is handed to the model to help it decide which base to search**

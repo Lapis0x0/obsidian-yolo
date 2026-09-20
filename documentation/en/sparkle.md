@@ -75,7 +75,7 @@ The command palette also has an `Accept completion` command, so you can bind it 
 
 ### The knobs you can turn
 
-- **Completion model** — can be separate from your chat model. A small fast model is the right fit here; latency matters more than intelligence
+- **Completion model** — can be separate from your default chat model. A small fast model is the right fit here; latency matters more than intelligence. **Leave it empty and it falls back to the continuation model**
 - **Request timeout (seconds)** — 1 to 120
 - **Tab completion constraints** — extra instructions attached to the prompt, like "write in another language" or "don't complete code blocks"
 - **Trigger delay (ms)** — 200 ms minimum

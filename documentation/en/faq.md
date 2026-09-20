@@ -92,7 +92,7 @@ If you abort the conversation, any queued message that hasn't been sent goes bac
 
 ### Tab completion does nothing at all
 
-**Tab completion is off by default.** Go to **Settings → Sparkle → Enable tab completion** and turn it on.
+**Tab completion is off by default.** Go to **Settings → YOLO → Sparkle → Enable tab completion** and turn it on.
 
 If it still doesn't fire after that, check two things: whether the rules in the triggers table actually match how you type (by default it only fires after a comma, colon, line break or list item), and whether turning on **Auto completion after idle** helps — that fires after you stop typing regardless.
 
@@ -166,7 +166,7 @@ Default port 28124 is occupied — most often by a plugin like Local REST API. J
 
 ### Can I rename the folder YOLO creates in my vault
 
-Yes. **Settings → Others → Maintenance → YOLO base folder**, which defaults to `YOLO`.
+Yes. **Settings → YOLO → Others → Maintenance → YOLO base folder**, which defaults to `YOLO`.
 
 Be aware this is a **move operation**: after the change the plugin tries to move the contents of the old folder to the new path. If the target path already exists and isn't empty, it refuses and keeps the old setting. Back up first.
 
@@ -174,7 +174,7 @@ It also can't be a hidden folder (it can't start with `.`), or Obsidian won't in
 
 ### How do I move my configuration to a new computer
 
-**Settings → Others → Maintenance → Export settings**, export to JSON, then import on the new device.
+**Settings → YOLO → Others → Maintenance → Export settings**, export to JSON, then import on the new device.
 
 Be aware that some things are **local to the device and don't travel**: CLI executable paths, CLI session history, local embedding model files, and runtime components.
 
@@ -197,4 +197,4 @@ Open an issue:
 
 Including your Obsidian version, operating system, plugin version, reproduction steps and what actually happened helps the most.
 
-If the problem is in a model request, turn on **Settings → Others → Maintenance → Enable LLM request debugging**, reproduce it once, and export the raw request from the Debug button on the message. API keys are redacted in the export, **but it contains the raw conversation** — check it yourself before pasting it anywhere.
+If the problem is in a model request, turn on **Settings → YOLO → Others → Maintenance → Enable LLM request debugging**, reproduce it once, and export the raw request from the Debug button on the message. API keys are redacted in the export, **but it contains the raw conversation** — check it yourself before pasting it anywhere.

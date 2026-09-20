@@ -48,13 +48,13 @@ Una volta aggiunto il provider, espandi la sua scheda e clicca su «**Aggiungi m
 
 Puoi scegliere dalla lista dei modelli disponibili recuperata automaticamente, oppure inserire a mano l'ID del modello. Se vuoi aggiungerne parecchi in una volta, passa alla **modalità di aggiunta «In blocco»** e spunta quelli che ti servono.
 
-### Terzo passo: impostarlo come predefinito
-
-Scorri fino alla sezione «**Criteri modello predefiniti e prompt**», in fondo alla scheda Modelli, e imposta il modello appena aggiunto come «**Modello chat predefinito**».
-
 ![Pagina delle impostazioni Modelli: espandendo un provider si vede l'elenco dei suoi modelli chat](../assets/settings-models.png)
 
 > Gli screenshot di questa documentazione usano tutti l'interfaccia in inglese. La tua interfaccia seguirà la lingua impostata in Obsidian, ma posizioni e disposizione degli elementi sono identiche.
+
+### Terzo passo: impostarlo come predefinito
+
+Scorri fino alla sezione «**Criteri modello predefiniti e prompt**», in fondo alla scheda Modelli, e imposta il modello appena aggiunto come «**Modello chat predefinito**».
 
 ## La prima conversazione
 
