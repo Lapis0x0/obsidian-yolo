@@ -25,6 +25,12 @@
 </p>
 
 <p align="center">
+  <a href="./documentation/en/README.md">
+    <img src="https://img.shields.io/badge/Documentation-Guía_de_uso-0EA5E9?style=flat-square&logo=bookstack&logoColor=white" alt="Documentation">
+  </a>
+</p>
+
+<p align="center">
   <a href="https://discord.gg/d8EHm48ppU">
     <img src="https://img.shields.io/badge/Discord-Join_the_community-5865F2?style=flat-square&logo=discord&logoColor=white" alt="Join the Discord community">
   </a>
@@ -124,12 +130,6 @@ Además de las capacidades principales anteriores, YOLO también ofrece:
    - [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys) / [Gemini](https://aistudio.google.com/apikey) / [Groq](https://console.groq.com/keys)
 4. Abre la barra lateral para empezar a chatear, o prueba Quick Ask escribiendo `@` en el editor
 
-## Documentación
-
-La documentación completa para usuarios está en **[documentation/en](./documentation/en/README.md)**: desde la primera configuración hasta MCP, Skills y agentes CLI.
-
-Disponible en [English](./documentation/en/README.md), [简体中文](./documentation/zh-CN/README.md) e [Italiano](./documentation/it/README.md). La traducción al español aún no está disponible.
-
 ## Instalación
 
 ### Tienda de complementos de la comunidad (recomendado)
@@ -155,6 +155,12 @@ Consulta el Inicio rápido más arriba.
 - [ ] Asistente integrado — un ayudante fijado en una esquina para configuración/agentes, con compactación automática y tareas programadas
 - [ ] Mejor pizarra con IA
 - [ ] Entrada de voz y notas de reuniones
+
+## Documentación
+
+La documentación completa para usuarios está en **[documentation/en](./documentation/en/README.md)**: desde la primera configuración hasta MCP, Skills y agentes CLI.
+
+Disponible en [English](./documentation/en/README.md), [简体中文](./documentation/zh-CN/README.md) e [Italiano](./documentation/it/README.md). La traducción al español aún no está disponible.
 
 ## Comentarios y problemas
 
