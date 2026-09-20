@@ -25,9 +25,7 @@
 </p>
 
 <p align="center">
-  <a href="./documentation/en/README.md">
-    <img src="https://img.shields.io/badge/Documentation-Guía_de_uso-0EA5E9?style=flat-square&logo=bookstack&logoColor=white" alt="Documentation">
-  </a>
+  <a href="./documentation/en/README.md"><b>Documentación</b></a> | <a href="./documentation/en/getting-started.md">Primeros pasos</a> | <a href="./documentation/en/faq.md">FAQ</a> <sub>(en inglés)</sub>
 </p>
 
 <p align="center">

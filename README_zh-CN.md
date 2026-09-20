@@ -25,9 +25,7 @@
 </p>
 
 <p align="center">
-  <a href="./documentation/zh-CN/README.md">
-    <img src="https://img.shields.io/badge/Documentation-使用文档-0EA5E9?style=flat-square&logo=bookstack&logoColor=white" alt="Documentation">
-  </a>
+  <a href="./documentation/zh-CN/README.md"><b>使用文档</b></a> | <a href="./documentation/zh-CN/getting-started.md">快速开始</a> | <a href="./documentation/zh-CN/faq.md">常见问题</a>
 </p>
 
 <p align="center">
