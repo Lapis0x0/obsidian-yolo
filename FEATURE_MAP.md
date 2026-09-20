@@ -24,7 +24,7 @@
 
 ## 外部 CLI 运行时（Chat 视图内的第二种执行面）
 - 触发方式：Chat 视图顶部的 `RuntimeSelector.tsx` 从 YOLO 原生 agent 切到某个外部 CLI 代理，之后整条对话由该 CLI 进程驱动，UI 换成 `CliChatSurface.tsx`。这不是 `AgentSessionService` 的另一种编排，而是并列的另一类执行面——AGENTS.md「不要造第二条 agent 编排路径」约束的是前者内部，不是这里。
-- 核心代码：`src/core/cli-runtime/`——`registry.ts`（描述符驱动的运行时注册面）、`coordinator.ts`（工厂装配与生命周期）、`conversation-controller.ts`（会话状态机）、`session-service.ts`/`session-index.ts`（会话落盘与索引）、`permission-profile.ts`（权限档）、`model-catalog.ts`；各家实现在 `claude/`、`codex/`、`grok/`、`hermes/`、`pi/` 与 `acp/`（Agent Client Protocol）。
+- 核心代码：`src/core/cli-runtime/`——`registry.ts`（描述符驱动的运行时注册面）、`coordinator.ts`（工厂装配与生命周期）、`conversation-controller.ts`（会话状态机）、`session-service.ts`/`session-index.ts`（会话落盘与索引）、`permission-profile.ts`（权限档）、`model-catalog.ts`；各家实现在 `claude/`、`codebuddy/`、`codex/`、`grok/`、`hermes/`、`pi/` 与 `acp/`（Agent Client Protocol）。
 - 依赖子系统：桌面端独占（子进程 + 登录 shell 环境，`desktop.ts`/`login-shell-env.ts`）。`index.ts` 会被移动端一起加载，桌面实现必须留在它的静态图之外。
 - 验证路径：目录内测试与源文件基本一一对应（`registry.test.ts`、`coordinator.test.ts`、`conversation-controller.test.ts`、`permission-profile.test.ts` 等）；`src/components/chat-view/CliChatSurface.test.tsx` 覆盖 UI 侧；真机手测需要本地装好对应 CLI。
 
