@@ -1,6 +1,6 @@
 import type { InitializeResponse } from '@agentclientprotocol/sdk'
 
-import type { CliRuntimeId } from '../types'
+import type { CliPermissionProfileUpdate, CliRuntimeId } from '../types'
 
 export type AcpResolvedCommand = Readonly<{
   command: string
@@ -41,4 +41,18 @@ export type AcpAgentProfile = Readonly<{
    * expose one leave it `undefined` and `compact()` throws.
    */
   compactCommand?: string
+  /**
+   * Translates the product's permission profile (Agent/Plan + YOLO) into one
+   * of the session mode ids this agent advertises in its `session/new` /
+   * `session/load` response, which `AcpCliRuntime` then applies with
+   * `session/set_mode`.
+   *
+   * ACP deliberately leaves mode ids up to each agent — the protocol carries
+   * an id, a name and a description, but no machine-readable semantics — so
+   * the mapping cannot be derived and has to be declared per agent here.
+   * Agents that advertise no modes (or no mode matching a given profile)
+   * leave this undefined / return `null`, and their own default policy
+   * stands.
+   */
+  resolveSessionModeId?(update: CliPermissionProfileUpdate): string | null
 }>

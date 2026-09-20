@@ -26,4 +26,13 @@ export const hermesAgentProfile: AcpAgentProfile = {
   // compaction event, so `AcpCliRuntime.compact()` synthesizes the
   // `compaction_boundary` itself once the prompt round-trip resolves.
   compactCommand: '/compress',
+  // Hermes exposes its edit-approval policy as ACP session modes. Agent maps
+  // to the workspace-scoped policy so edits inside the vault stop asking
+  // while anything outside it still does; YOLO maps to the session-wide one.
+  // Plan mode never reaches an agent-mode policy (the product collapses
+  // `yoloEnabled` to false there), so it stays on the ask-every-time default.
+  resolveSessionModeId: ({ mode, yoloEnabled }) => {
+    if (mode === 'plan') return 'default'
+    return yoloEnabled ? 'dont_ask' : 'accept_edits'
+  },
 }

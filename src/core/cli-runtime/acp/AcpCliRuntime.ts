@@ -12,6 +12,7 @@ import {
 import { RUNTIME_CAPABILITIES } from '../capabilities'
 import type {
   CliApprovalResponse,
+  CliPermissionProfileUpdate,
   CliQuestionResponse,
   CliRewriteTurnInput,
   CliRuntime,
@@ -27,11 +28,13 @@ import type {
   CliTurnInput,
 } from '../types'
 
+import type { AcpAgentProfile } from './agent-profile'
 import { AcpHost, type AcpHostOptions, type AcpHostResolver } from './host'
 import {
   AcpSessionAggregator,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
+  extractAcpSessionModeState,
   extractAcpSessionModelState,
   isAcpImagePromptBlock,
   mapAcpTurnUsage,
@@ -51,11 +54,14 @@ export type AcpCliRuntimeOptions = Readonly<{
   resolveHost?: AcpHostResolver
   createProcess?: AcpHostOptions['createProcess']
   /**
-   * Agent-provided manual-compaction slash command (see
-   * `AcpAgentProfile.compactCommand`). Absent means the connected agent has
-   * no such affordance and `compact()` throws.
+   * The connected agent's plug-in point, supplied by its factory. Everything
+   * agent-specific this runtime consumes comes from here — the manual
+   * compaction command and the permission-profile-to-session-mode mapping —
+   * so adding an agent affordance does not mean threading another loose
+   * field through every ACP factory. Absent in tests that exercise only the
+   * agent-agnostic paths.
    */
-  compactCommand?: string
+  profile?: AcpAgentProfile
   /**
    * Optional recovery for when resuming a stored session fails to load
    * (e.g. the process/place it lived in is no longer reachable).
@@ -99,6 +105,9 @@ export class AcpCliRuntime implements CliRuntime {
   private activeSessionRef: CliSessionRef | null = null
   private models: CliRuntimeModel[] = []
   private modelId: string | null = null
+  private permissionProfile: CliPermissionProfileUpdate | null = null
+  private sessionModeIds: ReadonlySet<string> = new Set()
+  private currentSessionModeId: string | null = null
   private turnInFlight = false
   private cancelRequested = false
   private disposed = false
@@ -159,7 +168,7 @@ export class AcpCliRuntime implements CliRuntime {
           mcpServers: [],
         }),
       )
-      this.captureModelState(response)
+      this.captureSessionState(response)
     } catch (error) {
       unregister()
       if (!this.options.sessionRecovery) throw error
@@ -197,11 +206,12 @@ export class AcpCliRuntime implements CliRuntime {
       const response = await host.call((connection) =>
         connection.newSession({ cwd: this.options.cwd, mcpServers: [] }),
       )
-      this.captureModelState(response)
+      this.captureSessionState(response)
       this.bindSession(host, {
         runtimeId: this.runtimeId,
         nativeSessionId: response.sessionId,
       })
+      await this.applySessionMode()
       return
     }
 
@@ -217,7 +227,7 @@ export class AcpCliRuntime implements CliRuntime {
             mcpServers: [],
           }),
         )
-        this.captureModelState(response)
+        this.captureSessionState(response)
       } catch (error) {
         if (!this.options.sessionRecovery) throw error
         await this.bindRecoveredSession(input.sessionRef)
@@ -225,6 +235,7 @@ export class AcpCliRuntime implements CliRuntime {
       }
     }
     this.bindSession(host, input.sessionRef)
+    await this.applySessionMode()
   }
 
   async getConfiguration(
@@ -253,11 +264,58 @@ export class AcpCliRuntime implements CliRuntime {
     return this.getConfiguration()
   }
 
-  private captureModelState(response: unknown): void {
-    const state = extractAcpSessionModelState(response)
-    if (!state) return
-    this.models = state.models
-    this.modelId = state.currentModelId ?? this.modelId
+  /**
+   * Records what a `session/new` or `session/load` response says about the
+   * session we are about to bind. Model state feeds the picker; mode state
+   * is what `applySessionMode` needs, and re-reading it per session matters
+   * because an ACP mode belongs to *one* session — carrying the previous
+   * session's mode over would make the runtime think the new session was
+   * already on the right policy and skip setting it.
+   */
+  private captureSessionState(response: unknown): void {
+    const modelState = extractAcpSessionModelState(response)
+    if (modelState) {
+      this.models = modelState.models
+      this.modelId = modelState.currentModelId ?? this.modelId
+    }
+    const modeState = extractAcpSessionModeState(response)
+    this.sessionModeIds = modeState?.modeIds ?? new Set()
+    this.currentSessionModeId = modeState?.currentModeId ?? null
+  }
+
+  /**
+   * Hot-update of the product's Agent/Plan + YOLO profile. The profile is
+   * kept whether or not a session is bound yet (`ensureReady` can run after
+   * the toggle) and is applied to the agent on every binding, so switching
+   * conversations cannot leave the agent on the previous session's policy.
+   */
+  async updatePermissionProfile(
+    update: CliPermissionProfileUpdate,
+  ): Promise<void> {
+    this.permissionProfile = { ...update }
+    await this.applySessionMode()
+  }
+
+  /**
+   * Requests the agent's session mode matching the current permission
+   * profile. Silently does nothing when there is no bound session, when the
+   * agent declares no mapping, or when the mapped mode is not among the ones
+   * this session advertised — a mode id is agent-defined free text, and
+   * asking for one the agent never offered would only earn a protocol error
+   * for a toggle the user flipped.
+   */
+  private async applySessionMode(): Promise<void> {
+    const profile = this.permissionProfile
+    const sessionId = this.activeSessionRef?.nativeSessionId
+    if (!profile || !sessionId) return
+    const modeId = this.options.profile?.resolveSessionModeId?.(profile)
+    if (!modeId || !this.sessionModeIds.has(modeId)) return
+    if (modeId === this.currentSessionModeId) return
+    const host = await this.getHost()
+    await host.call((connection) =>
+      connection.setSessionMode({ sessionId, modeId }),
+    )
+    this.currentSessionModeId = modeId
   }
 
   async sendTurn(input: CliTurnInput): Promise<void> {
@@ -350,7 +408,7 @@ export class AcpCliRuntime implements CliRuntime {
     if (!this.activeSessionRef) {
       throw new Error(`${this.runtimeId} runtime is not ready.`)
     }
-    const compactCommand = this.options.compactCommand
+    const compactCommand = this.options.profile?.compactCommand
     if (!compactCommand) {
       throw new Error(`${this.runtimeId} does not support compaction.`)
     }
@@ -495,7 +553,7 @@ export class AcpCliRuntime implements CliRuntime {
       connection.newSession({ cwd: this.options.cwd, mcpServers: [] }),
     )
     await this.attachHost(host, false)
-    this.captureModelState(response)
+    this.captureSessionState(response)
     const ref: CliSessionRef = {
       runtimeId: this.runtimeId,
       nativeSessionId: response.sessionId,
@@ -517,17 +575,40 @@ export class AcpCliRuntime implements CliRuntime {
       connection.newSession({ cwd: this.options.cwd, mcpServers: [] }),
     )
     await this.attachHost(host, false)
-    this.captureModelState(response)
+    this.captureSessionState(response)
     this.bindSession(
       host,
       { runtimeId: this.runtimeId, nativeSessionId: response.sessionId },
       requestedRef,
     )
+    await this.applySessionMode()
   }
 
   private async handleRequestPermission(
     request: RequestPermissionRequest,
   ): Promise<RequestPermissionResponse> {
+    // YOLO is a standing authorization the user gave for this conversation,
+    // so answering on their behalf executes that decision rather than
+    // inventing one. The session mode above already stops most requests from
+    // being sent at all; this covers what an agent gates outside that policy
+    // (Hermes, for one, never routes command approvals through it).
+    //
+    // `approve_for_session` is the closest the protocol gets to the intent
+    // "for this conversation": ACP's option kinds are only `allow_once` and
+    // `allow_always`, so an agent offering both a session-scoped and a
+    // permanent choice reports them under the same kind, and the option ids
+    // that tell them apart are agent-defined free text. Picking the first
+    // such option is therefore the most that can be done to avoid leaving a
+    // permanent allow-list entry behind — it holds for Hermes, which lists
+    // "Allow for session" ahead of "Allow always", but is an ordering
+    // convention, not a guarantee the protocol makes.
+    if (this.permissionProfile?.yoloEnabled) {
+      const optionId = resolveApprovalOptionId(
+        request.options,
+        'approve_for_session',
+      )
+      if (optionId) return { outcome: { outcome: 'selected', optionId } }
+    }
     const [assistant, tool] = buildPendingApprovalMessages(
       request,
       this.runtimeId,

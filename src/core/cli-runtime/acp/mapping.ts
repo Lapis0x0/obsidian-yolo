@@ -596,6 +596,50 @@ export const buildCancelledApprovalOutcome = (): RequestPermissionResponse => ({
 })
 
 // ---------------------------------------------------------------------------
+// Session mode state
+// ---------------------------------------------------------------------------
+
+/**
+ * `session/new` and `session/load` responses carry the agent's edit-policy
+ * modes as `modes: { currentModeId, availableModes }` when it supports them
+ * (ACP's Session Modes). `AcpCliRuntime` needs both halves: the id set to
+ * check a profile-declared mode is actually offered before requesting it,
+ * and the current id so a freshly bound session starts from the agent's
+ * truth rather than whatever the previous session was left on.
+ */
+export type AcpSessionModeState = Readonly<{
+  modeIds: ReadonlySet<string>
+  currentModeId: string | null
+}>
+
+export const extractAcpSessionModeState = (
+  response: unknown,
+): AcpSessionModeState | null => {
+  if (typeof response !== 'object' || response === null) return null
+  const modes = (response as { modes?: unknown }).modes
+  if (typeof modes !== 'object' || modes === null) return null
+  const { availableModes, currentModeId } = modes as {
+    availableModes?: unknown
+    currentModeId?: unknown
+  }
+  if (!Array.isArray(availableModes)) return null
+  const modeIds = new Set<string>()
+  for (const raw of availableModes) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const { id } = raw as { id?: unknown }
+    if (typeof id === 'string' && id.length > 0) modeIds.add(id)
+  }
+  if (modeIds.size === 0) return null
+  return {
+    modeIds,
+    currentModeId:
+      typeof currentModeId === 'string' && currentModeId.length > 0
+        ? currentModeId
+        : null,
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Session model state
 // ---------------------------------------------------------------------------
 

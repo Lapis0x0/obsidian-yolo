@@ -8,6 +8,7 @@ import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import type { CliRuntimeEvent } from '../types'
 
 import { AcpCliRuntime } from './AcpCliRuntime'
+import type { AcpAgentProfile } from './agent-profile'
 import { AcpHost } from './host'
 import type { AcpProcessExitListener, AcpProcessLike } from './process'
 
@@ -172,11 +173,23 @@ const wireServerRequestReplies = (agent: FakeAcpAgent): void => {
   })
 }
 
-const createRuntime = (agent: FakeAcpAgent, compactCommand?: string) =>
+const createProfile = (
+  overrides: Partial<AcpAgentProfile>,
+): AcpAgentProfile => ({
+  runtimeId: 'hermes',
+  displayName: 'Hermes',
+  resolveCommand: async () => null,
+  ...overrides,
+})
+
+const createRuntime = (
+  agent: FakeAcpAgent,
+  profileOverrides?: Partial<AcpAgentProfile>,
+) =>
   new AcpCliRuntime('hermes', {
     cwd: '/vault',
     createProcess: async () => agent,
-    ...(compactCommand ? { compactCommand } : {}),
+    ...(profileOverrides ? { profile: createProfile(profileOverrides) } : {}),
   })
 
 /** Grok is the runtime whose capabilities declare `supportsImageAttachments: false`. */
@@ -689,6 +702,180 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
+  /**
+   * Session modes are how an ACP agent exposes its own approval policy, and
+   * they are the only lever that stops it from asking in the first place.
+   * The mode ids are agent-defined, so the mapping comes from the profile.
+   */
+  const MODES = {
+    currentModeId: 'tame',
+    availableModes: [{ id: 'tame' }, { id: 'wild' }],
+  }
+
+  const yoloAwareProfile: Partial<AcpAgentProfile> = {
+    resolveSessionModeId: ({ yoloEnabled }) => (yoloEnabled ? 'wild' : 'tame'),
+  }
+
+  const collectModeRequests = (agent: FakeAcpAgent): string[] => {
+    const applied: string[] = []
+    agent.on('session/set_mode', (message) => {
+      applied.push((message.params as { modeId: string }).modeId)
+      return {}
+    })
+    return applied
+  }
+
+  it('applies the profile-mapped session mode to the agent once a session binds', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1', modes: MODES }))
+    const applied = collectModeRequests(agent)
+
+    const runtime = createRuntime(agent, yoloAwareProfile)
+    // Deliberately before ensureReady: the toggle can be flipped while no
+    // session is bound yet, and the profile still has to reach the agent.
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: true })
+    await runtime.ensureReady({})
+
+    expect(applied).toEqual(['wild'])
+    await runtime.dispose()
+  })
+
+  it('re-applies the session mode when another session binds', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1', modes: MODES }))
+    // A freshly loaded session carries its own mode — the one the agent
+    // actually has it on, not whatever the previously bound session was set
+    // to. Skipping the re-apply here is what would silently strand the new
+    // session on the agent's default policy.
+    agent.on('session/load', () => ({ modes: MODES }))
+    const applied = collectModeRequests(agent)
+
+    const runtime = createRuntime(agent, yoloAwareProfile)
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: true })
+    await runtime.ensureReady({})
+    await runtime.ensureReady({
+      sessionRef: { runtimeId: 'hermes', nativeSessionId: 'sess-2' },
+    })
+
+    expect(applied).toEqual(['wild', 'wild'])
+    await runtime.dispose()
+  })
+
+  it('leaves the agent alone when it never advertised the mapped mode', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({
+      sessionId: 'sess-1',
+      modes: { currentModeId: 'tame', availableModes: [{ id: 'tame' }] },
+    }))
+    const applied = collectModeRequests(agent)
+
+    const runtime = createRuntime(agent, yoloAwareProfile)
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: true })
+    await runtime.ensureReady({})
+
+    expect(applied).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('answers permission requests itself while YOLO is on, raising no card', async () => {
+    const agent = new FakeAcpAgent()
+    wireServerRequestReplies(agent)
+    agent.on('session/new', () => ({ sessionId: 'sess-1', modes: MODES }))
+    collectModeRequests(agent)
+    let permissionOutcome: unknown
+    agent.on('session/prompt', async (message) => {
+      const params = message.params as { sessionId: string }
+      permissionOutcome = await agent.request('session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call-1',
+          title: 'Run rm -rf',
+          kind: 'execute',
+        },
+        // Hermes's real list: a session-scoped and a permanent option, both
+        // reported under ACP's single `allow_always` kind, session first.
+        options: [
+          { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+          {
+            optionId: 'session',
+            name: 'Allow for session',
+            kind: 'allow_always',
+          },
+          {
+            optionId: 'permanent',
+            name: 'Allow always',
+            kind: 'allow_always',
+          },
+          { optionId: 'deny', name: 'Reject once', kind: 'reject_once' },
+        ],
+      })
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent, yoloAwareProfile)
+    const events = collectEvents(runtime)
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: true })
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ content: 'clean up' })
+
+    // Session-scoped, not permanent: YOLO authorizes this conversation, so
+    // it must not leave a standing allow-list entry in the agent.
+    expect(permissionOutcome).toEqual({
+      outcome: { outcome: 'selected', optionId: 'session' },
+    })
+    // Nothing was ever surfaced for the user to act on.
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'message_upsert' &&
+          event.message.id === 'acp-result-call-1',
+      ),
+    ).toBe(false)
+    await runtime.dispose()
+  })
+
+  it('still raises an approval card once YOLO is turned back off', async () => {
+    const agent = new FakeAcpAgent()
+    wireServerRequestReplies(agent)
+    agent.on('session/new', () => ({ sessionId: 'sess-1', modes: MODES }))
+    collectModeRequests(agent)
+    agent.on('session/prompt', async (message) => {
+      const params = message.params as { sessionId: string }
+      await agent.request('session/request_permission', {
+        sessionId: params.sessionId,
+        toolCall: {
+          toolCallId: 'call-1',
+          title: 'Run rm -rf',
+          kind: 'execute',
+        },
+        options: [{ optionId: 'once', name: 'Allow once', kind: 'allow_once' }],
+      })
+      return { stopReason: 'end_turn' }
+    })
+
+    const runtime = createRuntime(agent, yoloAwareProfile)
+    const events = collectEvents(runtime)
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: true })
+    await runtime.ensureReady({})
+    await runtime.updatePermissionProfile({ mode: 'agent', yoloEnabled: false })
+    const turnPromise = runtime.sendTurn({ content: 'clean up' })
+    await new Promise((resolve) => setTimeout(resolve, 10))
+
+    expect(
+      events.some(
+        (event) =>
+          event.type === 'message_upsert' &&
+          event.message.id === 'acp-result-call-1',
+      ),
+    ).toBe(true)
+    await runtime.respondApproval({
+      requestId: 'call-1',
+      decision: 'approve_once',
+    })
+    await turnPromise
+    await runtime.dispose()
+  })
+
   it('answers an approval with the state its card becomes, not by republishing it', async () => {
     const agent = new FakeAcpAgent()
     wireServerRequestReplies(agent)
@@ -965,7 +1152,7 @@ describe('AcpCliRuntime', () => {
         return { stopReason: 'end_turn' }
       })
 
-      const runtime = createRuntime(agent, '/compress')
+      const runtime = createRuntime(agent, { compactCommand: '/compress' })
       const events = collectEvents(runtime)
       await runtime.ensureReady({})
 

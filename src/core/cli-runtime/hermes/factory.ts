@@ -90,7 +90,7 @@ export const createHermesRuntimeFactory = async (
           }
           acquiredKeyCounts.clear()
         },
-        compactCommand: hermesAgentProfile.compactCommand,
+        profile: hermesAgentProfile,
       })
     },
     warm: () => hostPool.warm(HERMES_DEFAULT_PROFILE_ID),
