@@ -124,6 +124,23 @@
 4. 打开侧边栏，开始对话——或者在编辑器里输入 `@` 试试 Quick Ask
 
 
+## 文档
+
+完整使用文档在 **[documentation/zh-CN](./documentation/zh-CN/README.md)**，覆盖从第一次配置到进阶玩法：
+
+| | |
+|---|---|
+| [快速开始](./documentation/zh-CN/getting-started.md) | 装好、配一个能用的模型、完成第一次对话 |
+| [模型与提供商](./documentation/zh-CN/models.md) | 接入各家服务、OAuth 登录、模型参数 |
+| [对话](./documentation/zh-CN/chat.md) | 引用笔记、Ask/Agent/Max 三种模式、工具审批、改动落地 |
+| [灵光写作](./documentation/zh-CN/sparkle.md) | Quick Ask、Tab 补全、选区改写 |
+| [知识库与检索](./documentation/zh-CN/knowledge-base.md) | 建索引、多知识库、本地嵌入模型 |
+| [工具与权限](./documentation/zh-CN/tools-and-permissions.md) | 它能做什么、怎么管住它 |
+| [记忆](./documentation/zh-CN/memory.md) · [Skills](./documentation/zh-CN/skills.md) · [Agent](./documentation/zh-CN/assistants.md) | 让它更懂你 |
+| [MCP](./documentation/zh-CN/mcp.md) · [CLI Agent](./documentation/zh-CN/cli-agent.md) · [模块](./documentation/zh-CN/modules.md) | 进阶扩展 |
+| [设置参考](./documentation/zh-CN/settings-reference.md) · [常见问题](./documentation/zh-CN/faq.md) | 查阅 |
+
+
 ## Installation
 
 ### 社区插件商店（推荐）

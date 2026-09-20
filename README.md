@@ -124,6 +124,12 @@ Beyond the core capabilities above, YOLO also provides:
    - [OpenAI](https://platform.openai.com/api-keys) / [Anthropic](https://console.anthropic.com/settings/keys) / [Gemini](https://aistudio.google.com/apikey) / [Groq](https://console.groq.com/keys)
 4. Open the sidebar to start chatting — or try Quick Ask by typing `@` in the editor
 
+## Documentation
+
+Full user documentation lives in **[documentation/](./documentation/README.md)** — covering first-time setup, the three chat modes and their permission boundaries, knowledge base indexing, tools and approvals, Skills, MCP, CLI agents, and a full settings reference.
+
+> Currently available in **[简体中文](./documentation/zh-CN/README.md)**. English translation is in progress.
+
 ## Installation
 
 ### Community Plugin Store (Recommended)
