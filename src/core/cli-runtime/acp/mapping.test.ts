@@ -476,6 +476,81 @@ describe('buildPendingApprovalMessages', () => {
       response: { status: ToolCallResponseStatus.PendingApproval },
     })
   })
+
+  /**
+   * Shaped after a real CodeBuddy permission request: ACP types this payload
+   * as a ToolCallUpdate, so the agent sends only what changed and leaves the
+   * title and kind it already announced in the preceding `tool_call`.
+   */
+  const incrementalRequest: RequestPermissionRequest = {
+    sessionId: 'sess-1',
+    toolCall: {
+      toolCallId: 'chatcmpl-tool-90ed',
+      rawInput: { command: 'echo hi', description: 'Run echo' },
+    },
+    options: [],
+  }
+
+  const announced = {
+    toolCallId: 'chatcmpl-tool-90ed',
+    title: 'Bash',
+    name: 'Bash',
+    kind: 'execute' as const,
+    status: 'in_progress' as const,
+    content: [],
+    rawInput: {},
+  }
+
+  it('falls back to the tool call id when nothing was announced for it', () => {
+    const [, tool] = buildPendingApprovalMessages(incrementalRequest, 'hermes')
+
+    expect(tool.toolCalls[0].request.name).toBe('chatcmpl-tool-90ed')
+    expect(
+      tool.toolCalls[0].request.metadata?.cliToolCall?.capability,
+    ).toBeUndefined()
+  })
+
+  it('names the card from the state the agent already announced', () => {
+    const [, tool] = buildPendingApprovalMessages(
+      incrementalRequest,
+      'codebuddy',
+      announced,
+    )
+
+    expect(tool.toolCalls[0].request.name).toBe('Bash')
+    expect(tool.toolCalls[0].request.metadata?.cliToolCall).toMatchObject({
+      name: 'Bash',
+      capability: 'command_execution',
+    })
+  })
+
+  it('still prefers a field the request itself carries over the remembered one', () => {
+    const [, tool] = buildPendingApprovalMessages(
+      {
+        ...incrementalRequest,
+        toolCall: { ...incrementalRequest.toolCall, title: 'Renamed' },
+      },
+      'codebuddy',
+      { ...announced, name: undefined },
+    )
+
+    expect(tool.toolCalls[0].request.name).toBe('Renamed')
+  })
+
+  it('keeps the request’s own rawInput rather than the announced placeholder', () => {
+    const [, tool] = buildPendingApprovalMessages(
+      incrementalRequest,
+      'codebuddy',
+      announced,
+    )
+
+    // `announced.rawInput` is the empty object the agent opened the call
+    // with; the request carries the arguments the user is approving.
+    expect(tool.toolCalls[0].request.arguments).toMatchObject({
+      kind: 'complete',
+      value: { command: 'echo hi' },
+    })
+  })
 })
 
 describe('toAcpPromptBlocks', () => {

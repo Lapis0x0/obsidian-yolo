@@ -678,6 +678,7 @@ export class AcpCliRuntime implements CliRuntime {
     const [assistant, tool] = buildPendingApprovalMessages(
       request,
       this.runtimeId,
+      this.aggregator.getToolCall(request.toolCall.toolCallId),
     )
     this.emit({ type: 'message_upsert', message: assistant })
     this.emit({ type: 'message_upsert', message: tool })

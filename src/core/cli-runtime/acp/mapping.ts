@@ -365,6 +365,15 @@ export class AcpSessionAggregator {
     this.splitNextAssistantText = false
   }
 
+  /**
+   * What this tool call last reported through `session/update`. Read by the
+   * approval path, whose `session/request_permission` payload is only an
+   * increment over these notifications (see `buildPendingApprovalMessages`).
+   */
+  getToolCall(toolCallId: string): AcpToolCallState | undefined {
+    return this.toolCalls.get(toolCallId)
+  }
+
   /** Advances the aggregation epoch. Call once per live turn, before the prompt is sent. */
   beginTurn(): void {
     this.turnSequence += 1
@@ -483,20 +492,39 @@ export const upsertAcpMessage = (
   else messages[index] = message
 }
 
+/**
+ * `known` is the state this tool call already reported through
+ * `session/update`, looked up by the caller.
+ *
+ * ACP types `session/request_permission`'s `toolCall` as a *`ToolCallUpdate`*
+ * — an increment over what the agent already sent, not a self-contained
+ * description. Agents act on that: CodeBuddy's permission request carries
+ * only `toolCallId` and `rawInput`, having announced `title: "Bash"` and the
+ * call's `kind` in the preceding `tool_call` notification. Reading the
+ * request alone therefore leaves the approval card with no title to show but
+ * the raw tool-call id, and no `kind` to classify the call by — so the card
+ * the user is asked to approve would be headed `chatcmpl-tool-90ed20f2…`
+ * while the very same call renders as "Bash" everywhere else.
+ *
+ * Merging the remembered state underneath the request restores both. The
+ * request still wins field by field, because an increment that *does* carry
+ * a field is the newer truth.
+ */
 export const buildPendingApprovalMessages = (
   request: RequestPermissionRequest,
   runtimeId: CliRuntimeId,
+  known?: AcpToolCallState,
 ): [ChatAssistantMessage, ChatToolMessage] => {
   const toolCall = request.toolCall
-  const title = toolCall.title ?? toolCall.toolCallId
+  const title = toolCall.title ?? known?.title ?? toolCall.toolCallId
   const state: AcpToolCallState = {
     toolCallId: toolCall.toolCallId,
     title,
-    name: toolCall.name ?? undefined,
-    kind: toolCall.kind ?? undefined,
+    name: toolCall.name ?? known?.name ?? undefined,
+    kind: toolCall.kind ?? known?.kind ?? undefined,
     status: toolCall.status ?? 'pending',
-    content: toolCall.content ?? [],
-    rawInput: toolCall.rawInput,
+    content: toolCall.content ?? known?.content ?? [],
+    rawInput: toolCall.rawInput ?? known?.rawInput,
   }
   const capability = mapAcpToolKindToCapability(state.kind)
   const argumentsValue =
