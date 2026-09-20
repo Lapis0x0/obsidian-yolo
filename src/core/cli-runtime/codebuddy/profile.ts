@@ -24,6 +24,9 @@ export const codebuddyAgentProfile: AcpAgentProfile = {
   // than emitting a structured ACP event, so `AcpCliRuntime.compact()`
   // draws the `compaction_boundary` itself once the prompt resolves.
   compactCommand: '/compact',
+  // CodeBuddy's `thought_level` option spells "decide for me" as `enabled`,
+  // alongside `disabled` and the explicit minimal/low/…/max levels.
+  autoThoughtLevelValueId: 'enabled',
   /**
    * CodeBuddy exposes its permission policy as ACP session modes, using the
    * same vocabulary as its `--permission-mode` flag. Of the eight ids it

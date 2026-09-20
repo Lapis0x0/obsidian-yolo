@@ -1535,3 +1535,132 @@ describe('AcpCliRuntime', () => {
     })
   })
 })
+
+describe('AcpCliRuntime thought level', () => {
+  const THOUGHT_LEVEL = {
+    type: 'select',
+    id: 'thought_level',
+    name: 'Deep Thinking',
+    category: 'thought_level',
+    currentValue: 'enabled',
+    options: [
+      { value: 'low', name: 'Low' },
+      { value: 'high', name: 'High' },
+      { value: 'enabled', name: 'On (default)' },
+    ],
+  }
+
+  const autoAwareProfile: Partial<AcpAgentProfile> = {
+    autoThoughtLevelValueId: 'enabled',
+  }
+
+  const collectConfigWrites = (
+    agent: FakeAcpAgent,
+  ): { configId: string; value: unknown }[] => {
+    const applied: { configId: string; value: unknown }[] = []
+    agent.on('session/set_config_option', (message) => {
+      const params = message.params as { configId: string; value: unknown }
+      applied.push({ configId: params.configId, value: params.value })
+      return {
+        configOptions: [{ ...THOUGHT_LEVEL, currentValue: params.value }],
+      }
+    })
+    return applied
+  }
+
+  const readyRuntime = async (agent: FakeAcpAgent) => {
+    agent.on('session/new', () => ({
+      sessionId: 'sess-1',
+      configOptions: [THOUGHT_LEVEL],
+    }))
+    const runtime = createRuntime(agent, autoAwareProfile)
+    await runtime.ensureReady({})
+    return runtime
+  }
+
+  it('publishes the agent’s levels and current value onto the configuration', async () => {
+    const agent = new FakeAcpAgent()
+    const runtime = await readyRuntime(agent)
+
+    const configuration = await runtime.getConfiguration([
+      { id: 'm1', label: 'Model One', reasoningEfforts: [] },
+    ])
+
+    expect(configuration.reasoningEffort).toBe('enabled')
+    expect(configuration.models[0].reasoningEfforts).toEqual([
+      { id: 'low' },
+      { id: 'high' },
+      { id: 'enabled' },
+    ])
+    await runtime.dispose()
+  })
+
+  it('writes a picked level through session/set_config_option', async () => {
+    const agent = new FakeAcpAgent()
+    const applied = collectConfigWrites(agent)
+    const runtime = await readyRuntime(agent)
+
+    const configuration = await runtime.updateConfiguration({
+      reasoningEffort: 'high',
+    })
+
+    expect(applied).toEqual([{ configId: 'thought_level', value: 'high' }])
+    // The agent's reply is what updates local state, not the requested value.
+    expect(configuration.reasoningEffort).toBe('high')
+    await runtime.dispose()
+  })
+
+  /**
+   * `auto` is the product's word for "let the agent decide"; the agent spells
+   * it with its own value id, which only the profile knows.
+   */
+  it('translates the product’s auto level to the profile-declared value', async () => {
+    const agent = new FakeAcpAgent()
+    const applied = collectConfigWrites(agent)
+    const runtime = await readyRuntime(agent)
+
+    await runtime.updateConfiguration({ reasoningEffort: 'high' })
+    await runtime.updateConfiguration({ reasoningEffort: 'auto' })
+
+    expect(applied.map((write) => write.value)).toEqual(['high', 'enabled'])
+    await runtime.dispose()
+  })
+
+  it('drops a level the agent never advertised instead of erroring', async () => {
+    const agent = new FakeAcpAgent()
+    const applied = collectConfigWrites(agent)
+    const runtime = await readyRuntime(agent)
+
+    await runtime.updateConfiguration({ reasoningEffort: 'xhigh' })
+
+    expect(applied).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('sends nothing when the picked level is already current', async () => {
+    const agent = new FakeAcpAgent()
+    const applied = collectConfigWrites(agent)
+    const runtime = await readyRuntime(agent)
+
+    await runtime.updateConfiguration({ reasoningEffort: 'enabled' })
+
+    expect(applied).toEqual([])
+    await runtime.dispose()
+  })
+
+  it('reports no reasoning surface for an agent without config options', async () => {
+    const agent = new FakeAcpAgent()
+    agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+    const applied = collectConfigWrites(agent)
+    const runtime = createRuntime(agent, autoAwareProfile)
+    await runtime.ensureReady({})
+
+    const configuration = await runtime.updateConfiguration({
+      reasoningEffort: 'high',
+    })
+
+    expect(applied).toEqual([])
+    expect(configuration.reasoningEffort).toBeNull()
+    await runtime.dispose()
+  })
+})

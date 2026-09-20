@@ -14,6 +14,7 @@ import {
   AcpSessionAggregator,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
+  extractAcpThoughtLevelState,
   mapAcpUsageUpdate,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
@@ -553,5 +554,109 @@ describe('mapAcpUsageUpdate', () => {
         size: 200_000,
       }),
     ).toBeNull()
+  })
+})
+
+describe('extractAcpThoughtLevelState', () => {
+  /**
+   * Shaped after what CodeBuddy actually returns from `session/new`: the
+   * reserved `thought_level` category alongside the mode and model
+   * selectors that share the same `configOptions` array.
+   */
+  const response = {
+    sessionId: 's1',
+    configOptions: [
+      {
+        type: 'select',
+        id: 'mode',
+        name: 'Permission Mode',
+        category: 'mode',
+        currentValue: 'default',
+        options: [{ value: 'default', name: 'Always Ask' }],
+      },
+      {
+        type: 'select',
+        id: 'thought_level',
+        name: 'Deep Thinking',
+        category: 'thought_level',
+        currentValue: 'high',
+        options: [
+          {
+            value: 'disabled',
+            name: 'Off',
+            description: 'No extended thinking',
+          },
+          { value: 'low', name: 'Low' },
+          { value: 'high', name: 'High', description: 'Deep reasoning' },
+          { value: 'enabled', name: 'On (default)' },
+        ],
+      },
+    ],
+  }
+
+  it('picks the thought_level option out of the shared config list', () => {
+    const state = extractAcpThoughtLevelState(response)
+
+    expect(state?.optionId).toBe('thought_level')
+    expect(state?.currentValue).toBe('high')
+    expect(state?.options).toEqual([
+      { id: 'disabled', description: 'No extended thinking' },
+      { id: 'low' },
+      { id: 'high', description: 'Deep reasoning' },
+      { id: 'enabled' },
+    ])
+  })
+
+  it('collects every value id so a write can be validated before sending', () => {
+    expect([
+      ...(extractAcpThoughtLevelState(response)?.valueIds ?? []),
+    ]).toEqual(['disabled', 'low', 'high', 'enabled'])
+  })
+
+  it('flattens grouped select options in the order the agent listed them', () => {
+    const state = extractAcpThoughtLevelState({
+      configOptions: [
+        {
+          type: 'select',
+          id: 'thought_level',
+          category: 'thought_level',
+          currentValue: 'fast',
+          options: [
+            {
+              group: 'cheap',
+              name: 'Cheap',
+              options: [{ value: 'fast', name: 'Fast' }],
+            },
+            {
+              group: 'deep',
+              name: 'Deep',
+              options: [{ value: 'slow', name: 'Slow' }],
+            },
+          ],
+        },
+      ],
+    })
+
+    expect(state?.options.map((option) => option.id)).toEqual(['fast', 'slow'])
+  })
+
+  it('ignores a boolean option that claims the category', () => {
+    expect(
+      extractAcpThoughtLevelState({
+        configOptions: [
+          {
+            type: 'boolean',
+            id: 'thinking',
+            category: 'thought_level',
+            currentValue: true,
+          },
+        ],
+      }),
+    ).toBeNull()
+  })
+
+  it('returns null for agents that advertise no config options at all', () => {
+    expect(extractAcpThoughtLevelState({ sessionId: 's1' })).toBeNull()
+    expect(extractAcpThoughtLevelState(null)).toBeNull()
   })
 })

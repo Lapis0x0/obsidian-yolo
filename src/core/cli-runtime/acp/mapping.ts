@@ -34,6 +34,7 @@ import { createCliToolCallRequest } from '../tool-call'
 import type {
   CliApprovalDecision,
   CliContextUsage,
+  CliReasoningEffortOption,
   CliRuntimeId,
   CliRuntimeModel,
 } from '../types'
@@ -694,4 +695,101 @@ export const extractAcpSessionModelState = (
         ? currentModelId
         : null,
   }
+}
+
+// ---------------------------------------------------------------------------
+// Session config options (reasoning effort)
+// ---------------------------------------------------------------------------
+
+/**
+ * ACP's session config options (`configOptions` on `session/new` /
+ * `session/load`, written back with `session/set_config_option`) are a
+ * generic list of agent-defined selectors. The spec does not define what any
+ * of them *mean*, with one exception that matters here: `category` carries a
+ * small reserved vocabulary — `mode`, `model`, `model_config`,
+ * `thought_level` — specifically so a client can recognise the common
+ * selectors without knowing the agent.
+ *
+ * This reads the `thought_level` one, which is the product's reasoning
+ * effort. Everything else the agent advertises is deliberately ignored: the
+ * option ids and values are free text, so an option this product has no
+ * concept for cannot be rendered as anything more useful than a raw
+ * dropdown, and guessing at its meaning would be worse than leaving it to
+ * the agent's own default.
+ */
+export type AcpThoughtLevelState = Readonly<{
+  /** The option's own id, needed to write the value back. */
+  optionId: string
+  /** Selectable levels, in the order the agent listed them. */
+  options: readonly CliReasoningEffortOption[]
+  /** Ids of every selectable level, for validating a write before sending it. */
+  valueIds: ReadonlySet<string>
+  currentValue: string | null
+}>
+
+/**
+ * Select options arrive either flat or grouped; the product has no grouped
+ * presentation for reasoning levels, so groups are flattened in order.
+ */
+const flattenSelectOptions = (
+  options: unknown,
+): { id: string; description?: string }[] => {
+  if (!Array.isArray(options)) return []
+  const flattened: { id: string; description?: string }[] = []
+  for (const raw of options) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const {
+      value,
+      description,
+      options: grouped,
+    } = raw as {
+      value?: unknown
+      description?: unknown
+      options?: unknown
+    }
+    if (Array.isArray(grouped)) {
+      flattened.push(...flattenSelectOptions(grouped))
+      continue
+    }
+    if (typeof value !== 'string' || value.length === 0) continue
+    flattened.push({
+      id: value,
+      ...(typeof description === 'string' && description.length > 0
+        ? { description }
+        : {}),
+    })
+  }
+  return flattened
+}
+
+export const extractAcpThoughtLevelState = (
+  response: unknown,
+): AcpThoughtLevelState | null => {
+  if (typeof response !== 'object' || response === null) return null
+  const configOptions = (response as { configOptions?: unknown }).configOptions
+  if (!Array.isArray(configOptions)) return null
+  for (const raw of configOptions) {
+    if (typeof raw !== 'object' || raw === null) continue
+    const { id, type, category, currentValue, options } = raw as {
+      id?: unknown
+      type?: unknown
+      category?: unknown
+      currentValue?: unknown
+      options?: unknown
+    }
+    if (category !== 'thought_level' || type !== 'select') continue
+    if (typeof id !== 'string' || id.length === 0) continue
+    const mapped = flattenSelectOptions(options)
+    if (mapped.length === 0) return null
+    return {
+      optionId: id,
+      options: mapped,
+      valueIds: new Set(mapped.map((option) => option.id)),
+      currentValue:
+        typeof currentValue === 'string' && currentValue.length > 0
+          ? currentValue
+          : null,
+    }
+  }
+  return null
 }

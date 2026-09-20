@@ -32,10 +32,12 @@ import type { AcpAgentProfile } from './agent-profile'
 import { AcpHost, type AcpHostOptions, type AcpHostResolver } from './host'
 import {
   AcpSessionAggregator,
+  type AcpThoughtLevelState,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModeState,
   extractAcpSessionModelState,
+  extractAcpThoughtLevelState,
   isAcpImagePromptBlock,
   mapAcpTurnUsage,
   mapAcpUsageUpdate,
@@ -108,6 +110,7 @@ export class AcpCliRuntime implements CliRuntime {
   private permissionProfile: CliPermissionProfileUpdate | null = null
   private sessionModeIds: ReadonlySet<string> = new Set()
   private currentSessionModeId: string | null = null
+  private thoughtLevel: AcpThoughtLevelState | null = null
   private turnInFlight = false
   private cancelRequested = false
   private disposed = false
@@ -242,16 +245,32 @@ export class AcpCliRuntime implements CliRuntime {
     cachedModels?: readonly CliRuntimeModel[],
   ): Promise<CliRuntimeConfiguration> {
     const models = this.models.length ? this.models : [...(cachedModels ?? [])]
-    return { models, modelId: this.modelId, reasoningEffort: null }
+    const thoughtLevel = this.thoughtLevel
+    if (!thoughtLevel) {
+      return { models, modelId: this.modelId, reasoningEffort: null }
+    }
+    // The product hangs reasoning levels off each model, while ACP scopes the
+    // `thought_level` option to the *session*. The agent already narrows the
+    // option to what the session's current model supports and re-sends the
+    // whole set whenever the model changes, so publishing the one live list
+    // on every model keeps the picker correct without inventing a per-model
+    // breakdown the protocol never reports.
+    return {
+      models: models.map((model) => ({
+        ...model,
+        reasoningEfforts: [...thoughtLevel.options],
+      })),
+      modelId: this.modelId,
+      reasoningEffort: thoughtLevel.currentValue,
+    }
   }
 
   async updateConfiguration(
     update: CliRuntimeConfigurationUpdate,
   ): Promise<CliRuntimeConfiguration> {
     // Model selection goes through ACP's `session/set_model` extension when
-    // the agent reported a model list; reasoning has no ACP surface, so that
-    // part of the update is ignored. A `null` modelId means "keep the agent's
-    // own selection" — the protocol has no way to unset a model.
+    // the agent reported a model list. A `null` modelId means "keep the
+    // agent's own selection" — the protocol has no way to unset a model.
     const modelId = update.modelId
     if (modelId && modelId !== this.modelId && this.activeSessionRef) {
       const host = await this.getHost()
@@ -261,7 +280,50 @@ export class AcpCliRuntime implements CliRuntime {
       )
       this.modelId = modelId
     }
+    if (update.reasoningEffort !== undefined) {
+      await this.applyThoughtLevel(update.reasoningEffort)
+    }
     return this.getConfiguration()
+  }
+
+  /**
+   * Writes the product's reasoning level onto the agent's `thought_level`
+   * config option (ACP `session/set_config_option`).
+   *
+   * The product's `auto` level means "let the agent decide", which each
+   * agent spells with its own value id — hence the profile-declared
+   * `autoThoughtLevelValueId`. Any level the agent did not advertise is
+   * dropped rather than sent, the same way `applySessionMode` refuses a mode
+   * id the session never offered: these ids are agent-defined free text, and
+   * asking for one the agent does not know would only earn a protocol error
+   * for a picker the user just clicked.
+   *
+   * The response carries the agent's full, refreshed option set (changing one
+   * option may change the others), so the reply is what updates local state
+   * rather than the value that was requested.
+   */
+  private async applyThoughtLevel(level: string | null): Promise<void> {
+    const thoughtLevel = this.thoughtLevel
+    const sessionId = this.activeSessionRef?.nativeSessionId
+    if (!thoughtLevel || !sessionId) return
+    const requested =
+      level === null || level === 'auto'
+        ? this.options.profile?.autoThoughtLevelValueId
+        : level
+    if (!requested || !thoughtLevel.valueIds.has(requested)) return
+    if (requested === thoughtLevel.currentValue) return
+    const host = await this.getHost()
+    const response = await host.call((connection) =>
+      connection.request('session/set_config_option', {
+        sessionId,
+        configId: thoughtLevel.optionId,
+        value: requested,
+      }),
+    )
+    this.thoughtLevel = extractAcpThoughtLevelState(response) ?? {
+      ...thoughtLevel,
+      currentValue: requested,
+    }
   }
 
   /**
@@ -281,6 +343,10 @@ export class AcpCliRuntime implements CliRuntime {
     const modeState = extractAcpSessionModeState(response)
     this.sessionModeIds = modeState?.modeIds ?? new Set()
     this.currentSessionModeId = modeState?.currentModeId ?? null
+    // Scoped to one session for the same reason modes are: the agent narrows
+    // the levels it offers to the session's current model, so carrying the
+    // previous session's list over would offer levels this one may reject.
+    this.thoughtLevel = extractAcpThoughtLevelState(response)
   }
 
   /**

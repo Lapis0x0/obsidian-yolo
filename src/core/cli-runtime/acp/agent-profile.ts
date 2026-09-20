@@ -55,4 +55,17 @@ export type AcpAgentProfile = Readonly<{
    * stands.
    */
   resolveSessionModeId?(update: CliPermissionProfileUpdate): string | null
+  /**
+   * The value id this agent's `thought_level` config option uses for "decide
+   * for me", which is what the product's `auto` reasoning level means.
+   *
+   * ACP defines the `thought_level` *category* but leaves its value ids to
+   * each agent (CodeBuddy uses `enabled`, alongside explicit `low`/`high`/…
+   * levels), and no field in the option marks which one is the agent's own
+   * default. So, exactly like `resolveSessionModeId` above, this cannot be
+   * derived and has to be declared. Agents that leave it undefined keep
+   * `auto` as a no-op: the picker still shows the explicit levels, and
+   * selecting `auto` leaves the agent on whatever it last had.
+   */
+  autoThoughtLevelValueId?: string
 }>
