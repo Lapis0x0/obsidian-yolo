@@ -446,6 +446,10 @@ export const en: TranslationKeys = {
         'Rewrite instruction (required for preset prompt).',
       actionInstructionRewritePlaceholder:
         'For example: make it concise and keep Markdown structure.',
+      actionAssistant: 'Assistant',
+      actionAssistantDesc:
+        'Assistant used when running this action; leave it empty to follow the current selection.',
+      actionAssistantFollowCurrent: 'Follow current selection',
       duplicate: 'Duplicate',
       copySuffix: ' (copy)',
       dragHandleAria: 'Drag to reorder',
@@ -1107,6 +1111,7 @@ export const en: TranslationKeys = {
       },
       availableModelsAuto: 'Available models (auto-fetched)',
       searchModels: 'Search models...',
+      addMode: 'Add mode',
       modeSingle: 'Single',
       modeBatch: 'Batch',
       batchSelectAll: 'Select all',
@@ -1326,6 +1331,10 @@ export const en: TranslationKeys = {
       chunks: 'Chunks',
       pendingFiles: '{{n}} file(s) changed',
       lastUpdated: 'Last updated {{time}}',
+      updatedJustNow: 'Updated just now',
+      updatedMinutesAgo: 'Updated {{n}} minute(s) ago',
+      updatedHoursAgo: 'Updated {{n}} hour(s) ago',
+      updatedDaysAgo: 'Updated {{n}} day(s) ago',
       enableAndIndex: 'Enable and index',
       disable: 'Disable indexing',
       rebuildThis: 'Rebuild this base',
@@ -1404,6 +1413,10 @@ export const en: TranslationKeys = {
         'e.g. Daily meeting notes and current project docs',
       scopeTitle: 'Scope',
       scopeDesc: 'Decides which folders go into this knowledge base.',
+      scopeWholeVault: 'Entire vault',
+      scopeOnlyPrefix: 'Only',
+      scopeAndMore: ' and more ({{n}} in total)',
+      scopeExcludeSuffix: ', excluding {{n}} folder(s)',
       nameRequired: 'Enter a name for the knowledge base',
       nameDuplicate: 'A knowledge base with this name already exists',
       saveFailed: 'Failed to save the knowledge base',
@@ -1868,6 +1881,8 @@ export const en: TranslationKeys = {
       controlsLabel: 'Diagram controls',
     },
     stopGeneration: 'Stop generation',
+    scrollToBottom: 'Scroll to bottom',
+    scrollToBottomWhileStreaming: 'Scroll to bottom and keep following',
     queueMessage: {
       tooltip: 'Queue this message — it will be sent after the current step',
       hint: 'Waiting for the agent to finish the current step...',
@@ -1875,6 +1890,10 @@ export const en: TranslationKeys = {
         'Approve or reject the pending tool call before sending a new message.',
       blockedAwaitingInput:
         "Answer the agent's question in the chat before sending a new message.",
+      blockedActiveTool:
+        'Wait for the running tool call to finish before sending a new message.',
+      blockedActiveTooltip:
+        'You can send again once the running tool call finishes',
       abortedRestoredOne: 'Queued message restored to the input box',
       abortedRestoredMany:
         'Restored the latest queued message to the input box ({{count}} dropped)',
@@ -1995,6 +2014,8 @@ export const en: TranslationKeys = {
       cancelError: 'Could not stop the CLI run: {message}',
       openError: 'Could not open the CLI session: {message}',
       transitionError: 'Could not leave the current CLI session: {message}',
+      unboundMessageError:
+        'The CLI session has not been established yet, so this provider message cannot be shown.',
       sessionFallbackDividerTitle: 'Switched to default',
       sessionFallbackDividerDescription:
         'The original agent "{profile}" is unavailable, so this conversation switched to default — earlier messages are not in its memory.',
@@ -2397,6 +2418,7 @@ export const en: TranslationKeys = {
       'Index complete · {{count}} file(s) could not be indexed.',
     continueComplete: 'Resumed index completed.',
     continueFailed: 'Resumed index failed.',
+    indexCancelled: 'Indexing cancelled.',
     openYoloNewChatFailed:
       'Failed to open the YOLO chat window; try the command palette first.',
     updatingIndex: 'Updating vault index…',
@@ -2407,6 +2429,7 @@ export const en: TranslationKeys = {
       'Failed to migrate to JSON storage; please check the console for details.',
     reloadingPlugin: 'Reloading "next-composer" due to migration',
     settingsInvalid: 'Invalid settings',
+    settingsUpdateFailed: 'Failed to update settings',
     transportModeAutoPromoted:
       'Detected network/CORS issue. Automatically switched this provider to {mode}.',
     capturePdfNoLeaf: 'No PDF file is currently open.',

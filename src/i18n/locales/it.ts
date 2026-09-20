@@ -469,6 +469,10 @@ export const it: DeepPartial<TranslationKeys> = {
         'Istruzione di riscrittura (richiesta per il prompt predefinito).',
       actionInstructionRewritePlaceholder:
         'Ad esempio: rendilo conciso e mantieni la struttura Markdown.',
+      actionAssistant: 'Assistente',
+      actionAssistantDesc:
+        "Assistente usato durante l'esecuzione di questa azione; lascia vuoto per seguire la selezione corrente.",
+      actionAssistantFollowCurrent: 'Segui la selezione corrente',
       duplicate: 'Duplica',
       copySuffix: '(copia)',
       dragHandleAria: 'Trascina per riordinare',
@@ -1028,6 +1032,7 @@ export const it: DeepPartial<TranslationKeys> = {
       },
       availableModelsAuto: 'Modelli disponibili (recuperati automaticamente)',
       searchModels: 'Cerca modelli...',
+      addMode: 'Modalità di aggiunta',
       modeSingle: 'Singolo',
       modeBatch: 'In blocco',
       batchSelectAll: 'Seleziona tutto',
@@ -1232,6 +1237,10 @@ export const it: DeepPartial<TranslationKeys> = {
       chunks: 'Chunk',
       pendingFiles: '{{n}} file modificati',
       lastUpdated: 'Ultimo aggiornamento {{time}}',
+      updatedJustNow: 'Aggiornata poco fa',
+      updatedMinutesAgo: 'Aggiornata {{n}} minuti fa',
+      updatedHoursAgo: 'Aggiornata {{n}} ore fa',
+      updatedDaysAgo: 'Aggiornata {{n}} giorni fa',
       enableAndIndex: 'Attiva e indicizza',
       disable: 'Disattiva indicizzazione',
       rebuildThis: 'Ricostruisci questa base',
@@ -1317,6 +1326,10 @@ export const it: DeepPartial<TranslationKeys> = {
         'Es. Verbali riunioni quotidiane e documenti dei progetti in corso',
       scopeTitle: 'Ambito',
       scopeDesc: 'Decide quali cartelle entrano in questa knowledge base.',
+      scopeWholeVault: 'Intero vault',
+      scopeOnlyPrefix: 'Solo',
+      scopeAndMore: ' e altre ({{n}} in totale)',
+      scopeExcludeSuffix: ', escluse {{n}} cartelle',
       nameRequired: 'Inserisci un nome per la knowledge base',
       nameDuplicate: 'Esiste già una knowledge base con questo nome',
       saveFailed: 'Impossibile salvare la knowledge base',
@@ -1725,6 +1738,8 @@ export const it: DeepPartial<TranslationKeys> = {
       controlsLabel: 'Controlli diagramma',
     },
     stopGeneration: 'Ferma generazione',
+    scrollToBottom: 'Torna in fondo',
+    scrollToBottomWhileStreaming: 'Torna in fondo e continua a seguire',
     queueMessage: {
       tooltip:
         'Metti in coda questo messaggio — verrà inviato al termine del passaggio corrente',
@@ -1733,6 +1748,10 @@ export const it: DeepPartial<TranslationKeys> = {
         'Approva o rifiuta lo strumento in attesa prima di inviare un nuovo messaggio.',
       blockedAwaitingInput:
         "Rispondi alla domanda dell'agente nella chat prima di inviare un nuovo messaggio.",
+      blockedActiveTool:
+        'Attendi il completamento della chiamata allo strumento in corso prima di inviare un nuovo messaggio.',
+      blockedActiveTooltip:
+        'Potrai inviare di nuovo al termine della chiamata allo strumento in corso',
       abortedRestoredOne:
         'Messaggio in coda ripristinato nella casella di input',
       abortedRestoredMany:
@@ -1856,6 +1875,8 @@ export const it: DeepPartial<TranslationKeys> = {
       openError: 'Impossibile aprire la sessione CLI: {message}',
       transitionError:
         'Impossibile lasciare la sessione CLI corrente: {message}',
+      unboundMessageError:
+        'La sessione CLI non è ancora stata avviata: impossibile mostrare questo messaggio del provider.',
       sessionFallbackDividerTitle: 'Passato al profilo predefinito',
       sessionFallbackDividerDescription:
         'L\'agente originale "{profile}" non è disponibile, quindi questa conversazione è passata al profilo predefinito: i messaggi precedenti non fanno parte della sua memoria.',
@@ -2264,6 +2285,7 @@ export const it: DeepPartial<TranslationKeys> = {
     indexedWithSkipped: 'Indice completato · {{count}} file non indicizzabili.',
     continueComplete: 'Indicizzazione ripresa completata.',
     continueFailed: 'Indicizzazione ripresa fallita.',
+    indexCancelled: 'Indicizzazione annullata.',
     openYoloNewChatFailed:
       'Impossibile aprire la finestra chat YOLO; prova prima dal palette comandi.',
     updatingIndex: 'Aggiornamento indice vault in corso…',
@@ -2274,6 +2296,7 @@ export const it: DeepPartial<TranslationKeys> = {
       'Migrazione a storage JSON fallita; controlla la console per i dettagli.',
     reloadingPlugin: 'Ricaricamento "next-composer" a causa della migrazione',
     settingsInvalid: 'Impostazioni non valide',
+    settingsUpdateFailed: 'Impossibile aggiornare le impostazioni',
     transportModeAutoPromoted:
       'Rilevato un problema di rete/CORS. Questo provider e stato impostato automaticamente su {mode}.',
     capturePdfNoLeaf: 'Nessun file PDF aperto al momento.',

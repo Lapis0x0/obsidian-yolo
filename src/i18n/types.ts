@@ -844,6 +844,7 @@ export type TranslationKeys = {
       availableModelsAuto?: string
       searchModels?: string
       // batch add models
+      addMode?: string
       modeSingle?: string
       modeBatch?: string
       batchSelectAll?: string
@@ -1049,6 +1050,10 @@ export type TranslationKeys = {
       delete?: string
       deleteConfirm?: string
       lastUpdated?: string
+      updatedJustNow?: string
+      updatedMinutesAgo?: string
+      updatedHoursAgo?: string
+      updatedDaysAgo?: string
       setAsCurrent?: string
       // Create/edit modal
       createTitle?: string
@@ -1060,6 +1065,10 @@ export type TranslationKeys = {
       fieldDescriptionPlaceholder?: string
       scopeTitle?: string
       scopeDesc?: string
+      scopeWholeVault?: string
+      scopeOnlyPrefix?: string
+      scopeAndMore?: string
+      scopeExcludeSuffix?: string
       nameRequired?: string
       nameDuplicate?: string
       saveFailed?: string
@@ -1498,6 +1507,9 @@ export type TranslationKeys = {
       actionInstructionPlaceholder: string
       actionInstructionRewriteDesc: string
       actionInstructionRewritePlaceholder: string
+      actionAssistant: string
+      actionAssistantDesc: string
+      actionAssistantFollowCurrent: string
       duplicate: string
       copySuffix?: string
       dragHandleAria?: string
@@ -1617,11 +1629,15 @@ export type TranslationKeys = {
       controlsLabel?: string
     }
     stopGeneration?: string
+    scrollToBottom?: string
+    scrollToBottomWhileStreaming?: string
     queueMessage?: {
       tooltip?: string
       hint?: string
       blockedApproval?: string
       blockedAwaitingInput?: string
+      blockedActiveTool?: string
+      blockedActiveTooltip?: string
       abortedRestoredOne?: string
       abortedRestoredMany?: string
     }
@@ -1731,6 +1747,7 @@ export type TranslationKeys = {
       cancelError?: string
       openError?: string
       transitionError?: string
+      unboundMessageError?: string
       sessionFallbackDividerTitle?: string
       sessionFallbackDividerDescription?: string
       sessionFallbackUnknownProfile?: string
@@ -2068,6 +2085,7 @@ export type TranslationKeys = {
     indexedWithSkipped?: string
     continueComplete?: string
     continueFailed?: string
+    indexCancelled?: string
     openYoloNewChatFailed: string
     updatingIndex: string
     indexUpdated: string
@@ -2076,6 +2094,7 @@ export type TranslationKeys = {
     migrationFailed: string
     reloadingPlugin: string
     settingsInvalid: string
+    settingsUpdateFailed: string
     transportModeAutoPromoted: string
     capturePdfNoLeaf?: string
     capturePdfFailed?: string
