@@ -349,8 +349,6 @@ export const zh: TranslationKeys = {
       actionCategoryDesc: '选项所属的分类',
       actionIcon: '图标',
       actionIconDesc: '选择一个图标',
-      actionEnabled: '启用',
-      actionEnabledDesc: '是否在续写预设中显示此选项',
       moveUp: '上移',
       moveDown: '下移',
       duplicate: '复制',
@@ -437,10 +435,6 @@ export const zh: TranslationKeys = {
       skillsCountWithEnabled: '{count} 个技能（已启用 {enabled} 个）',
       skillsGlobalDesc:
         '技能会从内置技能、{path}/*.md 文件与 {path}/<folder>/SKILL.md 目录包中自动发现。在这里禁用后，所有 Agent 都无法使用。',
-      yoloBaseDir: 'YOLO 根目录',
-      yoloBaseDirDesc:
-        '填写库内相对路径（不要以 / 开头）。例如：放在库根目录填 YOLO；放在 setting 文件夹下填 setting/YOLO。',
-      yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'YOLO 根目录不能使用隐藏文件夹。请移除文件夹名称开头的“.”，例如将 .yolo 改为 yolo。',
       yoloBaseDirMigrated:
@@ -455,8 +449,6 @@ export const zh: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO 根目录未移动',
       yoloBaseDirConflictMessage:
         '{target} 已存在且包含文件。为避免覆盖或合并数据，本次未移动任何内容。请选择空目录或尚不存在的路径。',
-      skillsSourcePath:
-        '来源：内置技能 + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: '刷新',
       skillsEmptyHint:
         '未发现技能。请在 {path} 下创建 Markdown 文件或包含 SKILL.md 的文件夹。',
@@ -607,7 +599,6 @@ export const zh: TranslationKeys = {
         toolBypassNotice:
           '若该 Agent 启用了终端命令或第三方 MCP 工具，此范围可被绕过，不构成安全边界。',
       },
-      editorTabModel: '模型',
       editorName: '名称',
       editorNameDesc: 'Agent 显示名称',
       editorDescription: '描述',
@@ -632,7 +623,6 @@ export const zh: TranslationKeys = {
       toolApprovalRequire: '需要审批',
       toolApprovalDangerousOnly: '危险操作审批',
       toolDisclosureAlways: '常驻上下文',
-      toolDisclosureMixed: '混合',
       toolDisclosureOnDemand: '按需披露',
       editorEnabled: '已启用',
       editorDisabled: '已禁用',
@@ -640,15 +630,6 @@ export const zh: TranslationKeys = {
       editorModelDesc: '选择此 Agent 使用的模型',
       followDefaultModel: '跟随默认模型',
       editorModelCurrent: '当前：{model}',
-      editorModelSampling: '采样参数',
-      editorModelResetDefaults: '恢复默认值',
-      modelPresetFocused: '专注',
-      modelPresetBalanced: '平衡',
-      modelPresetCreative: '创意',
-      editorTemperature: '温度',
-      editorTemperatureDesc: '0.0 - 2.0',
-      editorTopP: 'Top P',
-      editorTopPDesc: '0.0 - 1.0',
       editorMaxOutputTokens: '最大输出 token',
       editorMaxOutputTokensDesc: '最大生成 token 数',
       editorMaxContextMessages: '上下文条数',
@@ -1499,11 +1480,6 @@ export const zh: TranslationKeys = {
       title: '灵光写作',
       aiSubsectionTitle: '超级续写',
       tabSubsectionTitle: 'Tab 补全',
-      superContinuation: '启用灵光写作视图',
-      superContinuationDesc:
-        '开启后，侧边栏将提供灵光写作视图，可为续写配置专用模型、参数、规则与参考范围。关闭后，仅保留 Chat 视图。',
-      continuationModel: '续写模型',
-      continuationModelDesc: '指定在灵光写作中用于续写的模型。',
       selectionChatSubsectionTitle: 'Cursor Chat',
       selectionChatDescription:
         '围绕选中文本提供就地提问、改写、解释等快捷操作。',
@@ -1542,8 +1518,6 @@ export const zh: TranslationKeys = {
       tabCompletion: '启用 Tab 补全',
       tabCompletionDesc:
         '当触发规则命中时自动请求补全，并以灰色幽灵文本形式给出建议，按下 Tab 接受。',
-      tabCompletionMultipleCandidates: '生成多条候选',
-      tabCompletionMultipleCandidatesDesc: '开启后将会生成三条补全建议。',
       tabCompletionModel: '补全模型',
       tabCompletionModelDesc: '选择用于 Tab 补全和调整篇幅的模型。',
       tabCompletionTriggerDelay: '触发延迟（毫秒）',
@@ -1564,15 +1538,6 @@ export const zh: TranslationKeys = {
       tabCompletionLengthPresetMedium: '中',
       tabCompletionLengthPresetLong: '长',
       tabCompletionAdvanced: '高级设置',
-      tabCompletionContextRange: '上下文范围',
-      tabCompletionContextRangeDesc:
-        '发送给模型的上下文总字符数（按 4:1 比例分配给光标前后）。',
-      tabCompletionMinContextLength: '最小上下文长度',
-      tabCompletionMinContextLengthDesc:
-        '光标前文本长度不足该值时不触发 Tab 补全。',
-      tabCompletionTemperature: '采样温度',
-      tabCompletionTemperatureDesc:
-        '控制补全的创造性（0 为确定性，值越大越发散）。',
       tabCompletionRequestTimeout: '请求超时（秒）',
       tabCompletionRequestTimeoutDesc:
         '若补全请求超过该秒数仍未返回则强制中止。适合较慢或需要较长推理的模型。',

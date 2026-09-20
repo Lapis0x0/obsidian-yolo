@@ -334,9 +334,6 @@ export type TranslationKeys = {
       skillsCount?: string
       skillsCountWithEnabled?: string
       skillsGlobalDesc?: string
-      yoloBaseDir?: string
-      yoloBaseDirDesc?: string
-      yoloBaseDirPlaceholder?: string
       yoloBaseDirHiddenPath?: string
       yoloBaseDirMigrated?: string
       yoloBaseDirMigrationConflict?: string
@@ -345,7 +342,6 @@ export type TranslationKeys = {
       yoloBaseDirMigrationManualRepair?: string
       yoloBaseDirConflictTitle?: string
       yoloBaseDirConflictMessage?: string
-      skillsSourcePath?: string
       refreshSkills?: string
       skillsEmptyHint?: string
       createSkillTemplates?: string
@@ -477,7 +473,6 @@ export type TranslationKeys = {
         enableDesc?: string
         toolBypassNotice?: string
       }
-      editorTabModel?: string
       editorName?: string
       editorNameDesc?: string
       editorDescription?: string
@@ -501,7 +496,6 @@ export type TranslationKeys = {
       toolApprovalRequire?: string
       toolApprovalDangerousOnly?: string
       toolDisclosureAlways?: string
-      toolDisclosureMixed?: string
       toolDisclosureOnDemand?: string
       editorEnabled?: string
       editorDisabled?: string
@@ -509,15 +503,6 @@ export type TranslationKeys = {
       editorModelDesc?: string
       followDefaultModel?: string
       editorModelCurrent?: string
-      editorModelSampling?: string
-      editorModelResetDefaults?: string
-      modelPresetFocused?: string
-      modelPresetBalanced?: string
-      modelPresetCreative?: string
-      editorTemperature?: string
-      editorTemperatureDesc?: string
-      editorTopP?: string
-      editorTopPDesc?: string
       editorMaxOutputTokens?: string
       editorMaxOutputTokensDesc?: string
       editorMaxContextMessages?: string
@@ -1290,10 +1275,6 @@ export type TranslationKeys = {
       title: string
       aiSubsectionTitle: string
       tabSubsectionTitle: string
-      superContinuation: string
-      superContinuationDesc: string
-      continuationModel: string
-      continuationModelDesc: string
       selectionChatSubsectionTitle: string
       selectionChatDescription: string
       selectionChatToggle: string
@@ -1325,8 +1306,6 @@ export type TranslationKeys = {
       tabCompletionAdvancedSectionDesc: string
       tabCompletion: string
       tabCompletionDesc: string
-      tabCompletionMultipleCandidates: string
-      tabCompletionMultipleCandidatesDesc: string
       tabCompletionModel: string
       tabCompletionModelDesc: string
       tabCompletionTriggerDelay: string
@@ -1345,12 +1324,6 @@ export type TranslationKeys = {
       tabCompletionLengthPresetMedium: string
       tabCompletionLengthPresetLong: string
       tabCompletionAdvanced: string
-      tabCompletionContextRange: string
-      tabCompletionContextRangeDesc: string
-      tabCompletionMinContextLength: string
-      tabCompletionMinContextLengthDesc: string
-      tabCompletionTemperature: string
-      tabCompletionTemperatureDesc: string
       tabCompletionRequestTimeout: string
       tabCompletionRequestTimeoutDesc: string
       tabCompletionConstraints: string
@@ -1486,8 +1459,6 @@ export type TranslationKeys = {
       actionCategoryDesc: string
       actionIcon: string
       actionIconDesc: string
-      actionEnabled: string
-      actionEnabledDesc: string
       moveUp: string
       moveDown: string
       duplicate: string

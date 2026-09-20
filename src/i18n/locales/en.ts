@@ -391,8 +391,6 @@ export const en: TranslationKeys = {
       actionCategoryDesc: 'Category this action belongs to',
       actionIcon: 'Icon',
       actionIconDesc: 'Choose an icon',
-      actionEnabled: 'Enabled',
-      actionEnabledDesc: 'Whether to show this action in smart space',
       moveUp: 'Move up',
       moveDown: 'Move down',
       duplicate: 'Duplicate',
@@ -484,10 +482,6 @@ export const en: TranslationKeys = {
       skillsCountWithEnabled: '{count} skills (enabled {enabled})',
       skillsGlobalDesc:
         'Skills are discovered from built-in skills, {path}/*.md files, and {path}/<folder>/SKILL.md packages. Disable a skill here to block it for all agents.',
-      yoloBaseDir: 'YOLO base folder',
-      yoloBaseDirDesc:
-        'Enter a vault-relative path (without a leading /). Example: use YOLO at vault root, or setting/YOLO under the setting folder.',
-      yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'YOLO root cannot use hidden folders. Remove the dot at the beginning of the folder name, for example change .yolo to yolo.',
       yoloBaseDirMigrated:
@@ -503,8 +497,6 @@ export const en: TranslationKeys = {
       yoloBaseDirConflictTitle: 'YOLO root was not moved',
       yoloBaseDirConflictMessage:
         '{target} already exists and contains files. Nothing was moved to avoid overwriting or merging data. Choose an empty or nonexistent folder.',
-      skillsSourcePath:
-        'Source: built-in skills + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: 'Refresh',
       skillsEmptyHint:
         'No skills found. Create a Markdown file or a folder containing SKILL.md under {path}.',
@@ -664,7 +656,6 @@ export const en: TranslationKeys = {
         toolBypassNotice:
           'Agents with terminal commands or third-party MCP tools enabled can go around this range — it is not a security boundary.',
       },
-      editorTabModel: 'Model',
       editorName: 'Name',
       editorNameDesc: 'Agent display name',
       editorDescription: 'Description',
@@ -691,7 +682,6 @@ export const en: TranslationKeys = {
       toolApprovalRequire: 'Require approval',
       toolApprovalDangerousOnly: 'Approve dangerous operations',
       toolDisclosureAlways: 'In context',
-      toolDisclosureMixed: 'Mixed',
       toolDisclosureOnDemand: 'On demand',
       editorEnabled: 'Enabled',
       editorDisabled: 'Disabled',
@@ -699,15 +689,6 @@ export const en: TranslationKeys = {
       editorModelDesc: 'Select the model used by this agent',
       followDefaultModel: 'Follow default model',
       editorModelCurrent: 'Current: {model}',
-      editorModelSampling: 'Sampling parameters',
-      editorModelResetDefaults: 'Restore defaults',
-      modelPresetFocused: 'Focused',
-      modelPresetBalanced: 'Balanced',
-      modelPresetCreative: 'Creative',
-      editorTemperature: 'Temperature',
-      editorTemperatureDesc: '0.0 - 2.0',
-      editorTopP: 'Top P',
-      editorTopPDesc: '0.0 - 1.0',
       editorMaxOutputTokens: 'Max output tokens',
       editorMaxOutputTokensDesc: 'Maximum generated tokens',
       editorMaxContextMessages: 'Max context messages',
@@ -1595,12 +1576,6 @@ export const en: TranslationKeys = {
       title: 'Sparkle',
       aiSubsectionTitle: 'Super continuation',
       tabSubsectionTitle: 'Tab completion',
-      superContinuation: 'Enable Sparkle view',
-      superContinuationDesc:
-        'Enable the Sparkle sidebar view where you can configure dedicated continuation models, parameters, rules, and reference sources; when disabled, only the chat view is available.',
-      continuationModel: 'Continuation model',
-      continuationModelDesc:
-        'Select the model used for continuation in Sparkle.',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
         'Provides inline ask, rewrite, explain, and other quick actions around selected text.',
@@ -1643,9 +1618,6 @@ export const en: TranslationKeys = {
       tabCompletion: 'Enable tab completion',
       tabCompletionDesc:
         'Request a completion when a trigger rule matches, then show it as gray ghost text that can be accepted with the tab key.',
-      tabCompletionMultipleCandidates: 'Generate multiple candidates',
-      tabCompletionMultipleCandidatesDesc:
-        'Generate three completion suggestions when enabled.',
       tabCompletionModel: 'Completion model',
       tabCompletionModelDesc:
         'Choose the model used for tab completion and length adjustment.',
@@ -1671,15 +1643,6 @@ export const en: TranslationKeys = {
       tabCompletionLengthPresetMedium: 'Medium',
       tabCompletionLengthPresetLong: 'Long',
       tabCompletionAdvanced: 'Advanced settings',
-      tabCompletionContextRange: 'Context range',
-      tabCompletionContextRangeDesc:
-        'Total characters of context sent to the model (split 4:1 between before and after cursor).',
-      tabCompletionMinContextLength: 'Minimum context length',
-      tabCompletionMinContextLengthDesc:
-        'Skip tab completion unless the text before the cursor contains at least this many characters.',
-      tabCompletionTemperature: 'Sampling temperature',
-      tabCompletionTemperatureDesc:
-        'Controls creativity for prefix suggestions (0 = deterministic, higher = more diverse).',
       tabCompletionRequestTimeout: 'Request timeout (seconds)',
       tabCompletionRequestTimeoutDesc:
         'Abort a tab completion request if it takes longer than this many seconds. Raise it for slower or long-reasoning models.',

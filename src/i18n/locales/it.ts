@@ -414,8 +414,6 @@ export const it: DeepPartial<TranslationKeys> = {
       actionCategoryDesc: 'Gruppo in cui viene visualizzata questa azione',
       actionIcon: 'Icona',
       actionIconDesc: 'Icona visiva per questa azione',
-      actionEnabled: 'Abilitata',
-      actionEnabledDesc: 'Mostra questa azione nello smart space',
       moveUp: 'Sposta su',
       moveDown: 'Sposta giù',
       duplicate: 'Duplica',
@@ -507,10 +505,6 @@ export const it: DeepPartial<TranslationKeys> = {
       skillsCountWithEnabled: '{count} competenze (abilitate {enabled})',
       skillsGlobalDesc:
         'Le skill vengono rilevate dalle skill integrate, dai file {path}/*.md e dai pacchetti {path}/<folder>/SKILL.md. Disabilitale qui per bloccarle su tutti gli agent.',
-      yoloBaseDir: 'Cartella base YOLO',
-      yoloBaseDirDesc:
-        'Inserisci un percorso relativo al vault (senza / iniziale). Esempio: YOLO nella radice del vault, oppure setting/YOLO nella cartella setting.',
-      yoloBaseDirPlaceholder: 'YOLO',
       yoloBaseDirHiddenPath:
         'La cartella base YOLO non può usare cartelle nascoste. Rimuovi il punto iniziale dal nome, ad esempio cambia .yolo in yolo.',
       yoloBaseDirMigrated:
@@ -526,8 +520,6 @@ export const it: DeepPartial<TranslationKeys> = {
       yoloBaseDirConflictTitle: 'La cartella base YOLO non è stata spostata',
       yoloBaseDirConflictMessage:
         '{target} esiste già e contiene file. Nessun contenuto è stato spostato per evitare sovrascritture o fusioni. Scegli una cartella vuota o inesistente.',
-      skillsSourcePath:
-        'Origine: skill integrate + {path}/*.md + {path}/<folder>/SKILL.md',
       refreshSkills: 'Aggiorna',
       skillsEmptyHint:
         'Nessuna skill trovata. Crea un file Markdown o una cartella contenente SKILL.md in {path}.',
@@ -675,7 +667,6 @@ export const it: DeepPartial<TranslationKeys> = {
         toolBypassNotice:
           'Gli agent con comandi da terminale o strumenti MCP di terze parti abilitati possono aggirare questo ambito: non è un confine di sicurezza.',
       },
-      editorTabModel: 'Modello',
       editorName: 'Nome',
       editorNameDesc: "Nome visualizzato dell'agent",
       editorDescription: 'Descrizione',
@@ -703,7 +694,6 @@ export const it: DeepPartial<TranslationKeys> = {
       toolApprovalRequire: 'Richiedi approvazione',
       toolApprovalDangerousOnly: 'Approva solo operazioni pericolose',
       toolDisclosureAlways: 'In contesto',
-      toolDisclosureMixed: 'Misto',
       toolDisclosureOnDemand: 'Su richiesta',
       editorEnabled: 'Abilitato',
       editorDisabled: 'Disabilitato',
@@ -711,10 +701,6 @@ export const it: DeepPartial<TranslationKeys> = {
       editorModelDesc: 'Seleziona il modello usato da questo agent',
       followDefaultModel: 'Segui modello predefinito',
       editorModelCurrent: 'Corrente: {model}',
-      editorTemperature: 'Temperatura',
-      editorTemperatureDesc: '0.0 - 2.0',
-      editorTopP: 'Top P',
-      editorTopPDesc: '0.0 - 1.0',
       editorMaxOutputTokens: 'Token massimi in output',
       editorMaxOutputTokensDesc: 'Numero massimo di token generati',
       editorToolsCount: '{count} strumenti',
@@ -1448,12 +1434,6 @@ export const it: DeepPartial<TranslationKeys> = {
       title: 'Sparkle',
       aiSubsectionTitle: 'Continuazione AI',
       tabSubsectionTitle: 'Completamento Tab',
-      superContinuation: 'Abilita vista Sparkle',
-      superContinuationDesc:
-        'Abilita la vista Sparkle nella barra laterale per configurare modelli, parametri, regole e fonti di riferimento dedicati alla continuazione. Se disabilitata, resta disponibile solo la vista Chat.',
-      continuationModel: 'Modello di continuazione',
-      continuationModelDesc:
-        'Seleziona il modello usato per la continuazione in Sparkle.',
       selectionChatSubsectionTitle: 'Cursor chat',
       selectionChatDescription:
         'Offre azioni rapide sul testo selezionato, come chiedere, riscrivere o spiegare.',
@@ -1496,9 +1476,6 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletion: 'Completamento tab',
       tabCompletionDesc:
         'Genera suggerimenti quando una regola trigger corrisponde.',
-      tabCompletionMultipleCandidates: 'Genera più suggerimenti',
-      tabCompletionMultipleCandidatesDesc:
-        'Quando attivo, genera tre suggerimenti di completamento.',
       tabCompletionModel: 'Modello completamento tab',
       tabCompletionModelDesc:
         'Modello usato per il completamento tab e la regolazione della lunghezza.',
@@ -1525,15 +1502,6 @@ export const it: DeepPartial<TranslationKeys> = {
       tabCompletionLengthPresetMedium: 'Medio',
       tabCompletionLengthPresetLong: 'Lungo',
       tabCompletionAdvanced: 'Impostazioni avanzate',
-      tabCompletionContextRange: 'Intervallo contesto',
-      tabCompletionContextRangeDesc:
-        'Caratteri totali di contesto inviati al modello (divisi 4:1 tra prima e dopo il cursore).',
-      tabCompletionMinContextLength: 'Lunghezza minima contesto',
-      tabCompletionMinContextLengthDesc:
-        'Numero minimo di caratteri richiesti prima del cursore per attivare i suggerimenti.',
-      tabCompletionTemperature: 'Temperatura',
-      tabCompletionTemperatureDesc:
-        'Controlla la casualità dei suggerimenti (0 = deterministico, 1 = creativo).',
       tabCompletionRequestTimeout: 'Timeout richiesta (secondi)',
       tabCompletionRequestTimeoutDesc:
         'Interrompe la richiesta di completamento se supera questo numero di secondi. Aumentalo per modelli più lenti o con ragionamento lungo.',
