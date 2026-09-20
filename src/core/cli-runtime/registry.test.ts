@@ -65,6 +65,7 @@ describe('CLI runtime registry', () => {
       ['hermes', []],
       ['pi', ['omp']],
       ['grok', []],
+      ['codebuddy', []],
     ])
   })
 

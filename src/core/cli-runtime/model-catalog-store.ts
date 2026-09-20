@@ -30,6 +30,7 @@ const documentSchema = z.object({
     pi: z.array(modelSchema).optional(),
     omp: z.array(modelSchema).optional(),
     grok: z.array(modelSchema).optional(),
+    codebuddy: z.array(modelSchema).optional(),
   }),
 })
 

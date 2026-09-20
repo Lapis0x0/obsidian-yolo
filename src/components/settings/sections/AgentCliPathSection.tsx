@@ -137,6 +137,16 @@ export function AgentCliPathSection({ app }: AgentCliPathSectionProps) {
         )}
         placeholder="~/.grok/bin/grok"
       />
+      <CliPathRow
+        app={app}
+        runtimeId="codebuddy"
+        name={t('settings.agent.codebuddyCliPathName', 'CodeBuddy CLI path')}
+        desc={t(
+          'settings.agent.codebuddyCliPathDesc',
+          'Custom path to the codebuddy executable — paste the output of "which codebuddy" ("where codebuddy" on Windows). Leave empty to auto-detect. Stored on this device only.',
+        )}
+        placeholder="/usr/local/bin/codebuddy"
+      />
     </>
   )
 }

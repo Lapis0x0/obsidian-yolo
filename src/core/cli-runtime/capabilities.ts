@@ -170,6 +170,35 @@ export const RUNTIME_CAPABILITIES: Record<
     supportsImageAttachments: true,
     supportsQueueWhileGenerating: false,
   },
+  // CodeBuddy Code speaks ACP with the fullest capability set of any agent
+  // behind `AcpCliRuntime` so far: it advertises `loadSession`, image
+  // prompts, and permission policies as ACP session modes — including a
+  // `plan` one, which is why this is the first ACP runtime with plan mode
+  // turned on. Rewrite stays off because ACP has no call for it, and native
+  // skills/MCP panels stay off because those read through `CliRuntime`
+  // methods the generic ACP runtime does not implement for any agent.
+  codebuddy: {
+    supportsPlanMode: true,
+    showsYoloToggle: true,
+    needsWarmup: false,
+    hasNativeSkills: false,
+    hasNativeMcpPanel: false,
+    hasPluginManagement: false,
+    hasAssistants: false,
+    supportsMessageRewrite: false,
+    supportsContextCompaction: true,
+    supportsVaultExport: false,
+    supportsSubagentWatch: false,
+    // Same reasoning as pi/claude-code: these two gate the *yolo-native*
+    // model and reasoning pickers, which would conflict with CodeBuddy's own
+    // model list. The CLI model picker still renders via CliRuntimeControls,
+    // fed by whatever models the agent reports on `session/new`.
+    supportsModelControl: false,
+    supportsReasoningSelect: false,
+    skipsImageModelCapabilityCheck: true,
+    supportsImageAttachments: true,
+    supportsQueueWhileGenerating: false,
+  },
   grok: {
     supportsPlanMode: false,
     showsYoloToggle: false,

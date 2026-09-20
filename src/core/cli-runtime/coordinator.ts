@@ -5,6 +5,7 @@ import type { YoloSettingsLike } from '../paths/yoloManagedData'
 import type { ClaudeRuntimeOptions } from './claude/factory'
 import { createClaudeRuntimeFactory } from './claude/factory'
 import { createCliChatRuntimeActions } from './cli-actions'
+import { createCodebuddyRuntimeFactory } from './codebuddy/factory'
 import type { CodexRuntimeOptions } from './codex/factory'
 import { createCodexRuntimeFactory } from './codex/factory'
 import { CliConversationController } from './conversation-controller'
@@ -125,6 +126,7 @@ const defaultLoadRuntimeFactories = async (
     piFactory,
     ompFactory,
     grokFactory,
+    codebuddyFactory,
   ] = await Promise.all([
     createClaudeRuntimeFactory(deps),
     createCodexRuntimeFactory(deps),
@@ -132,6 +134,7 @@ const defaultLoadRuntimeFactories = async (
     createPiRuntimeFactory(deps),
     createOmpRuntimeFactory(deps),
     createGrokRuntimeFactory(deps),
+    createCodebuddyRuntimeFactory(deps),
   ])
   return {
     'claude-code': claudeFactory,
@@ -140,6 +143,7 @@ const defaultLoadRuntimeFactories = async (
     pi: piFactory,
     omp: ompFactory,
     grok: grokFactory,
+    codebuddy: codebuddyFactory,
   }
 }
 

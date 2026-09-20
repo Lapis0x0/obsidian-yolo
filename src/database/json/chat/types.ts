@@ -10,7 +10,14 @@ export const CHAT_SCHEMA_VERSION = 1
 export type ChatConversationOrigin = 'user' | 'external-agent'
 
 export type ChatConversationCliSession = {
-  runtimeId: 'claude-code' | 'codex' | 'hermes' | 'pi' | 'omp' | 'grok'
+  runtimeId:
+    | 'claude-code'
+    | 'codex'
+    | 'hermes'
+    | 'pi'
+    | 'omp'
+    | 'grok'
+    | 'codebuddy'
   nativeSessionId: string
   sessionPathHint?: string
   /** Hermes profile this session lives under (see `CliSessionRef.profileId`). */

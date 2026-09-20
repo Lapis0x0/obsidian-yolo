@@ -87,6 +87,9 @@ export const zh: TranslationKeys = {
         '在 {base} 与 {variant} 之间切换——更换渠道会开启新会话',
       grokLabel: 'Grok',
       grokDescription: '本机 Grok Build 运行时',
+      codebuddyLabel: 'CodeBuddy',
+      codebuddyShortLabel: 'CB',
+      codebuddyDescription: '本机 CodeBuddy Code 运行时',
     },
     chatList: {
       searchPlaceholder: '搜索聊天记录',
@@ -673,6 +676,9 @@ export const zh: TranslationKeys = {
       grokCliPathName: 'Grok CLI 路径',
       grokCliPathDesc:
         '自定义 grok 可执行文件路径，可粘贴 which grok（Windows 为 where grok）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
+      codebuddyCliPathName: 'CodeBuddy CLI 路径',
+      codebuddyCliPathDesc:
+        '自定义 codebuddy 可执行文件路径，可粘贴 which codebuddy（Windows 为 where codebuddy）的输出。留空则自动检测；仅保存在本设备，不随库同步。',
       cliPathMissing: '该路径在本设备上不存在，将回退到自动检测。',
       autoContextCompactionBlockTitle: '上下文压缩',
       autoContextCompaction: '自动压缩上下文',

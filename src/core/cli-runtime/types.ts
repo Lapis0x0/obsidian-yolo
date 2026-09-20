@@ -23,6 +23,7 @@ export const CLI_RUNTIME_IDS = [
   'pi',
   'omp',
   'grok',
+  'codebuddy',
 ] as const
 export type CliRuntimeId = (typeof CLI_RUNTIME_IDS)[number]
 export type ChatRuntimeId = 'yolo' | CliRuntimeId

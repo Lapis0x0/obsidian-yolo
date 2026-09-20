@@ -87,6 +87,9 @@ export const en: TranslationKeys = {
         'Switch between {base} and {variant} — changing channel starts a new session',
       grokLabel: 'Grok',
       grokDescription: 'Grok Build on this device',
+      codebuddyLabel: 'CodeBuddy',
+      codebuddyShortLabel: 'CB',
+      codebuddyDescription: 'CodeBuddy Code on this device',
     },
     chatList: {
       searchPlaceholder: 'Search conversations',
@@ -733,6 +736,9 @@ export const en: TranslationKeys = {
       grokCliPathName: 'Grok CLI path',
       grokCliPathDesc:
         'Custom path to the grok executable — paste the output of "which grok" ("where grok" on Windows). Leave empty to auto-detect. Stored on this device only.',
+      codebuddyCliPathName: 'CodeBuddy CLI path',
+      codebuddyCliPathDesc:
+        'Custom path to the codebuddy executable — paste the output of "which codebuddy" ("where codebuddy" on Windows). Leave empty to auto-detect. Stored on this device only.',
       cliPathMissing:
         'This path does not exist on this device; auto-detection will be used instead.',
       autoContextCompactionBlockTitle: 'Context compaction',

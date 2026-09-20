@@ -145,6 +145,7 @@ const runtimeHarness = () => {
     grokRuntimes.push(runtime)
     return runtime
   })
+  const createCodebuddyRuntime = jest.fn(() => new TestRuntime('codebuddy'))
   const factories: CliRuntimeFactories = {
     'claude-code': { create: createClaudeRuntime },
     codex: { create: createCodexRuntime },
@@ -152,6 +153,7 @@ const runtimeHarness = () => {
     pi: { create: createPiRuntime },
     omp: { create: createOmpRuntime },
     grok: { create: createGrokRuntime },
+    codebuddy: { create: createCodebuddyRuntime },
   }
   return {
     claudeRuntimes,

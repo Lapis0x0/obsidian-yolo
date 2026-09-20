@@ -83,6 +83,7 @@ describe('RuntimeSelector', () => {
       'hermes',
       'pi',
       'grok',
+      'codebuddy',
     ])
     expect(selectorRow('pi').variants.map((variant) => variant.id)).toEqual([
       'omp',

@@ -1,4 +1,5 @@
 import anthropicLogo from '../../assets/provider-icons/anthropic.svg'
+import codebuddyLogo from '../../assets/provider-icons/codebuddy.svg'
 import hermesLogo from '../../assets/provider-icons/hermes.svg'
 import ompLogo from '../../assets/provider-icons/omp.svg'
 import openaiLogo from '../../assets/provider-icons/openai.svg'
@@ -96,6 +97,15 @@ const DESCRIPTORS_BY_ID: Readonly<Record<CliRuntimeId, CliRuntimeDescriptor>> =
       descriptionKey: 'sidebar.runtimeSelector.grokDescription',
       icon: { src: xaiLogo, provider: 'xai' },
       capabilities: RUNTIME_CAPABILITIES.grok,
+    },
+    codebuddy: {
+      id: 'codebuddy',
+      defaultLabel: 'CodeBuddy',
+      labelKey: 'sidebar.runtimeSelector.codebuddyLabel',
+      shortLabelKey: 'sidebar.runtimeSelector.codebuddyShortLabel',
+      descriptionKey: 'sidebar.runtimeSelector.codebuddyDescription',
+      icon: { src: codebuddyLogo, provider: 'codebuddy' },
+      capabilities: RUNTIME_CAPABILITIES.codebuddy,
     },
   }
 

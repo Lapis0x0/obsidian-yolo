@@ -95,6 +95,9 @@ export type TranslationKeys = {
       variantToggleHint: string
       grokLabel: string
       grokDescription: string
+      codebuddyLabel: string
+      codebuddyShortLabel: string
+      codebuddyDescription: string
     }
     chatList?: {
       searchPlaceholder?: string
@@ -532,6 +535,8 @@ export type TranslationKeys = {
       ompCliPathDesc?: string
       grokCliPathName?: string
       grokCliPathDesc?: string
+      codebuddyCliPathName?: string
+      codebuddyCliPathDesc?: string
       cliPathMissing?: string
       autoContextCompactionBlockTitle?: string
       autoContextCompaction?: string

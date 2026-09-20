@@ -19,6 +19,7 @@ export type ConversationOverrideSettings = {
     pi?: 'agent' | 'plan' | null
     omp?: 'agent' | 'plan' | null
     grok?: 'agent' | 'plan' | null
+    codebuddy?: 'agent' | 'plan' | null
   } | null
   /** Per-conversation CLI YOLO flag, keyed like settings `cliAgentYoloEnabledByRuntime`. */
   cliAgentYoloEnabledByRuntime?: {
@@ -28,6 +29,7 @@ export type ConversationOverrideSettings = {
     pi?: boolean | null
     omp?: boolean | null
     grok?: boolean | null
+    codebuddy?: boolean | null
   } | null
   temperature?: number | null
   top_p?: number | null

@@ -104,6 +104,9 @@ export const it: DeepPartial<TranslationKeys> = {
         'Passa tra {base} e {variant} — cambiare canale avvia una nuova sessione',
       grokLabel: 'Grok',
       grokDescription: 'Grok Build su questo dispositivo',
+      codebuddyLabel: 'CodeBuddy',
+      codebuddyShortLabel: 'CB',
+      codebuddyDescription: 'CodeBuddy Code su questo dispositivo',
     },
     chatList: {
       searchPlaceholder: 'Cerca conversazioni',
@@ -744,6 +747,9 @@ export const it: DeepPartial<TranslationKeys> = {
       grokCliPathName: 'Percorso CLI di Grok',
       grokCliPathDesc:
         'Percorso personalizzato dell\'eseguibile grok — incolla l\'output di "which grok" ("where grok" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
+      codebuddyCliPathName: 'Percorso CLI di CodeBuddy',
+      codebuddyCliPathDesc:
+        'Percorso personalizzato dell\'eseguibile codebuddy — incolla l\'output di "which codebuddy" ("where codebuddy" su Windows). Lascia vuoto per il rilevamento automatico. Salvato solo su questo dispositivo.',
       cliPathMissing:
         'Questo percorso non esiste su questo dispositivo; verrà usato il rilevamento automatico.',
       autoContextCompactionBlockTitle: 'Compattazione contesto',
