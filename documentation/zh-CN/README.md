@@ -1,5 +1,7 @@
 # YOLO 使用文档
 
+简体中文 · [English](../en/README.md) · [Italiano](../it/README.md)
+
 YOLO 是一个 Obsidian 插件，把 AI 助手放进你的 Vault：和笔记对话、让它直接读写文件、检索整个知识库、在编辑器里补全和改写，以及通过模块扩展出学习、白板这样的完整功能。
 
 ## 从这里开始

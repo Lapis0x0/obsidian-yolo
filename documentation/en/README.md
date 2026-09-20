@@ -1,5 +1,7 @@
 # YOLO documentation
 
+[简体中文](../zh-CN/README.md) · English · [Italiano](../it/README.md)
+
 YOLO is an Obsidian plugin that puts an AI assistant inside your vault: chat with your notes, let it read and write files directly, search your whole knowledge base, complete and rewrite text right in the editor, and extend it with full-blown modules such as Learning and Whiteboard.
 
 ## Start here

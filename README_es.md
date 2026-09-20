@@ -126,7 +126,7 @@ Además de las capacidades principales anteriores, YOLO también ofrece:
 
 ## Documentación
 
-La documentación completa para usuarios está en **[documentation/](./documentation/README.md)**: desde la primera configuración hasta MCP, Skills y agentes CLI.
+La documentación completa para usuarios está en **[documentation/en](./documentation/en/README.md)**: desde la primera configuración hasta MCP, Skills y agentes CLI.
 
 Disponible en [English](./documentation/en/README.md), [简体中文](./documentation/zh-CN/README.md) e [Italiano](./documentation/it/README.md). La traducción al español aún no está disponible.
 
