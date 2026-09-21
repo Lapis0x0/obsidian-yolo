@@ -506,6 +506,12 @@ export function createObsidianMarkdownEditor(
   }
   if (onBlur) instance.cm.contentDOM.addEventListener('blur', handleBlur)
 
+  instance.set(options.value, true)
+
+  // After `set`, never before: `set(value, true)` replaces the CodeMirror
+  // state with a fresh one built from the component's own extensions, so
+  // anything appended to the state it replaces — the trigger extension this
+  // installs — is dropped with it.
   const quickAsk = options.quickAsk?.attach({
     view: instance.cm,
     editor: instance.editor,
@@ -514,8 +520,6 @@ export function createObsidianMarkdownEditor(
       if (!destroyed) blurGate.setPanelOpen(open)
     },
   })
-
-  instance.set(options.value, true)
 
   return {
     getValue: read,
