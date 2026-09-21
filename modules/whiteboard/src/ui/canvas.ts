@@ -1080,6 +1080,7 @@ export class WhiteboardCanvas {
       getSourcePath: () => this.sourcePathForBoard(),
       getBody: (id) => this.cardRenderer.getRuntime(id)?.bodyEl ?? null,
       isAvailable: () => this.canCreate,
+      isFocused: (id) => this.focusedNodeId === id,
       editingText: (id) =>
         this.editing?.nodeId === id ? this.editing.editor.getValue() : null,
       beginGeneration: (id) => this.beginCardGeneration(id),
@@ -3075,6 +3076,9 @@ export class WhiteboardCanvas {
     // so it answers to the same frame gate as every other build.
     if (previous !== null) this.contentSyncQueue.add(previous)
     if (next !== null) this.contentSyncQueue.add(next)
+    // An empty card offers its AI hint only while it is the focused one.
+    if (previous !== null) this.cardGeneration.syncChips(previous)
+    if (next !== null) this.cardGeneration.syncChips(next)
   }
 
   private setEdgeSelection(ids: readonly EdgeId[]): void {

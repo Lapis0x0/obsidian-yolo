@@ -93,6 +93,7 @@ export const zh = {
     invalidUrl: '只能添加 http 和 https 地址。',
   },
   cardAi: {
+    hint: '输入内容，或交给 AI：',
     instruction: {
       expand: '展开',
       ideas: '灵感',

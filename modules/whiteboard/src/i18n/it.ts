@@ -96,6 +96,7 @@ export const it = {
     invalidUrl: 'Si possono aggiungere solo indirizzi http e https.',
   },
   cardAi: {
+    hint: "Scrivi, oppure chiedi all'AI: ",
     instruction: {
       expand: 'Approfondisci',
       ideas: 'Idee',

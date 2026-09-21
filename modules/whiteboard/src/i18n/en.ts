@@ -101,6 +101,7 @@ export const en = {
     invalidUrl: 'Only http and https addresses can be added.',
   },
   cardAi: {
+    hint: 'Type, or ask AI: ',
     instruction: {
       expand: 'Expand',
       ideas: 'Ideas',
