@@ -38,6 +38,14 @@ export const it = {
     distributeVertical: 'Distribuisci verticalmente',
     tidy: 'Riordina',
   },
+  controls: {
+    zoomIn: 'Ingrandisci',
+    resetZoom: 'Reimposta zoom',
+    zoomToFit: 'Adatta alla vista',
+    zoomOut: 'Riduci',
+    undo: 'Annulla',
+    redo: 'Ripeti',
+  },
   cardMenu: {
     newCard: 'Aggiungi scheda',
     addNote: 'Aggiungi nota',

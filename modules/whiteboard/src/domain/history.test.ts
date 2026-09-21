@@ -106,4 +106,22 @@ describe('BoardHistory', () => {
     expect(history.canUndo()).toBe(false)
     expect(history.canRedo()).toBe(false)
   })
+
+  it('reports every change to what can be undone or redone', () => {
+    const [a, b] = [board('a'), board('b')]
+    const onChange = jest.fn()
+    const history = new BoardHistory(undefined, onChange)
+    history.reset(a)
+    history.push(b)
+    history.undo()
+    history.redo()
+    expect(onChange).toHaveBeenCalledTimes(4)
+
+    // Neither a coalesced rewrite nor a step with nowhere to go changes it.
+    history.push(board('b2'), 'edit')
+    onChange.mockClear()
+    history.push(board('b3'), 'edit')
+    history.redo()
+    expect(onChange).not.toHaveBeenCalled()
+  })
 })

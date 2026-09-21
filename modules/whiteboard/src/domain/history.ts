@@ -39,7 +39,14 @@ export class BoardHistory {
    */
   private topKey: string | null = null
 
-  constructor(private readonly max: number = HISTORY_MAX_ENTRIES) {}
+  /**
+   * @param onChange Called whenever what `canUndo` / `canRedo` answer may
+   * have changed — for a control that greys out with nothing to undo.
+   */
+  constructor(
+    private readonly max: number = HISTORY_MAX_ENTRIES,
+    private readonly onChange: () => void = () => undefined,
+  ) {}
 
   /** Starts over from `board` as the present. Used when a file is loaded or
    * reloaded: snapshots of the previous content cannot be applied to it, and
@@ -49,6 +56,7 @@ export class BoardHistory {
     this.entries.push(board)
     this.index = 0
     this.topKey = null
+    this.onChange()
   }
 
   push(board: Board, coalesceKey?: string): void {
@@ -67,6 +75,7 @@ export class BoardHistory {
     if (this.entries.length > this.max) this.entries.shift()
     this.index = this.entries.length - 1
     this.topKey = coalesceKey ?? null
+    this.onChange()
   }
 
   canUndo(): boolean {
@@ -81,6 +90,7 @@ export class BoardHistory {
     if (!this.canUndo()) return null
     this.index -= 1
     this.topKey = null
+    this.onChange()
     return this.entries[this.index]
   }
 
@@ -88,6 +98,7 @@ export class BoardHistory {
     if (!this.canRedo()) return null
     this.index += 1
     this.topKey = null
+    this.onChange()
     return this.entries[this.index]
   }
 }

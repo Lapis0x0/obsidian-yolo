@@ -41,6 +41,14 @@ export const en = {
     tidy: 'Tidy up',
   },
   // The creation bar along the bottom of the canvas (P3 batch 3, surface 3).
+  controls: {
+    zoomIn: 'Zoom in',
+    resetZoom: 'Reset zoom',
+    zoomToFit: 'Zoom to fit',
+    zoomOut: 'Zoom out',
+    undo: 'Undo',
+    redo: 'Redo',
+  },
   cardMenu: {
     newCard: 'Add card',
     addNote: 'Add note',

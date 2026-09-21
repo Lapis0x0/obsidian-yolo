@@ -13,6 +13,7 @@
 
 import {
   approachScale,
+  clampScale,
   approachView,
   cameraFromView,
   dragPan,
@@ -719,6 +720,49 @@ export class CameraController {
     // Persisted from the target either way, so a board closed mid-glide
     // reopens where the move was going rather than wherever it had got to.
     this.commitCameraNow()
+  }
+
+  /**
+   * The controls' zoom in / zoom out: one step of √2 about the middle of the
+   * viewport, Obsidian Canvas's step (measured: its `zoom` is log2 of the
+   * scale and each button moves it by 0.5). Steps taken while a previous one
+   * is still gliding build on where that one is going, so a quick double
+   * click is two steps.
+   */
+  zoomStep(direction: 1 | -1): void {
+    const glide = this.cameraGlide
+    const scale =
+      glide?.kind === 'view'
+        ? glide.target.scale
+        : glide?.kind === 'anchored'
+          ? glide.targetScale
+          : this.viewValue.scale
+    this.zoomAboutCentre(scale * Math.SQRT2 ** direction)
+  }
+
+  /**
+   * Back to 1:1 without moving: the middle of the viewport stays the middle.
+   * Obsidian Canvas's "reset zoom" control, and deliberately not
+   * `resetCamera` (Shift+0, "back to the origin"), which also goes home.
+   */
+  resetZoom(): void {
+    this.zoomAboutCentre(1)
+  }
+
+  private zoomAboutCentre(scale: number): void {
+    const glide = this.cameraGlide
+    // The view a glide is heading for, when one is running: its centre is
+    // the centre the user is about to be looking at.
+    const from = glide?.kind === 'view' ? glide.target : this.viewValue
+    const rect = this.viewportEl.getBoundingClientRect()
+    const centre = { x: rect.width / 2, y: rect.height / 2 }
+    this.moveCameraTo(
+      viewAnchoredAt(
+        centre,
+        screenToWorld(from, centre),
+        clampScale(scale, this.zoomScaleBounds()),
+      ),
+    )
   }
 
   /**

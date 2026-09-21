@@ -1747,6 +1747,83 @@ button.yolo-whiteboard-card-menu-button:active {
   display: none;
 }
 
+/* --- top-right controls (ui/canvasControls.ts) --------------------------
+ * Obsidian Canvas's `.canvas-controls`, rule for rule (read off a running
+ * 1.13.7), under our own classes: the same theme tokens drive both, so a
+ * theme that restyles Canvas's column restyles this one. Items are real
+ * buttons, so Obsidian's global button styles apply: `button.` specificity
+ * resets them, and the hover is stated rather than left to `button:hover`. */
+.yolo-whiteboard-controls {
+  position: absolute;
+  top: var(--size-4-2);
+  inset-inline-end: var(--size-4-2);
+  z-index: var(--layer-cover);
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-2);
+  font-size: var(--font-ui-medium);
+  /* The overlay is pointer-transparent; the column takes events back. */
+  pointer-events: auto;
+}
+
+.is-mobile .yolo-whiteboard-controls {
+  inset-inline-end: var(--size-4-3);
+}
+
+.yolo-whiteboard-control-group {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: var(--canvas-controls-radius);
+  background-color: var(--interactive-normal);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: var(--input-shadow);
+}
+
+.is-mobile .yolo-whiteboard-control-group {
+  border: none;
+}
+
+button.yolo-whiteboard-control-item {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: auto;
+  padding: var(--size-4-2);
+  border: none;
+  border-bottom: 1px solid var(--background-modifier-border);
+  border-radius: 0;
+  box-shadow: none;
+  background-color: var(--background-primary);
+  color: var(--text-muted);
+  font-size: inherit;
+  line-height: 1;
+  cursor: var(--cursor);
+  --icon-size: var(--canvas-controls-icon-size);
+  --icon-stroke: var(--canvas-controls-icon-stroke);
+}
+
+button.yolo-whiteboard-control-item:last-child {
+  border-bottom: none;
+}
+
+button.yolo-whiteboard-control-item:hover {
+  background-color: var(--interactive-hover);
+}
+
+.is-mobile button.yolo-whiteboard-control-item {
+  border: none;
+  background-color: transparent;
+}
+
+.yolo-whiteboard-control-item svg {
+  pointer-events: none;
+}
+
+.yolo-whiteboard-control-item.is-disabled svg {
+  color: var(--text-faint);
+}
+
 /* --- creation prompt (file picker / URL entry) ---------------------------
  * The panel that asks which note, which media file, or what URL. Stands in for
  * the `FuzzySuggestModal` Canvas opens for the same three actions — see

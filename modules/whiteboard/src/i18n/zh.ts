@@ -37,6 +37,14 @@ export const zh = {
     distributeVertical: '垂直等距分布',
     tidy: '整理',
   },
+  controls: {
+    zoomIn: '放大',
+    resetZoom: '重置缩放',
+    zoomToFit: '总览全局',
+    zoomOut: '缩小',
+    undo: '撤销',
+    redo: '重做',
+  },
   cardMenu: {
     newCard: '添加卡片',
     addNote: '添加笔记',

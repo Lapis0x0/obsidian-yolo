@@ -143,6 +143,7 @@ import {
   type CardMenuAction,
   type CardMenuIconName,
 } from './cardMenu'
+import { CanvasControls } from './canvasControls'
 import {
   ARRANGE_ANIMATION_EASING,
   ARRANGE_ANIMATION_MS,
@@ -473,7 +474,9 @@ export class WhiteboardCanvas {
   /** Undo/redo over board content. Seeded on load, pushed by
    * `applyBoardChange`, and never touched by camera movement (see
    * `applyHistoryBoard`). */
-  private readonly history = new BoardHistory()
+  private readonly history = new BoardHistory(undefined, () =>
+    this.canvasControls?.refresh(),
+  )
   /** The off-screen card that warms the rendering pipeline; see `preheat`. */
   private preheatRenderer: ReturnType<
     YoloModuleHostApiV1['ui']['createMarkdownRenderer']
@@ -565,6 +568,8 @@ export class WhiteboardCanvas {
   // Creation surfaces (P3 batch 3 wave B): the bottom bar, and the panel that
   // asks which file or what URL before a card can be made.
   private cardMenu: CardMenu | null = null
+  /** The top-right zoom and history column (./canvasControls.ts). */
+  private canvasControls: CanvasControls | null = null
   private prompt: PromptOverlay | null = null
 
   // Resize (W3-C): one shared handle layer for the whole board, parked over
@@ -626,8 +631,7 @@ export class WhiteboardCanvas {
    * permanent one to keep in step with a world layer that is rebuilt on every
    * reload. */
   private createGhostEl: HTMLElement | null = null
-  /** Which key waves alignment away, which is a platform question — resolved
-   * once, on first use (see `snappingWanted`). */
+  /** Resolved once, on first use (see `onMacOS`). */
   private isMacOS: boolean | null = null
   /** canvas.ts's own copy of the board's edges by id, kept in step by
    * `syncBoardIndex` — the lookup every edge-*gesture* and label-editing path
@@ -853,6 +857,8 @@ export class WhiteboardCanvas {
     this.prompt = null
     this.cardMenu?.destroy()
     this.cardMenu = null
+    this.canvasControls?.destroy()
+    this.canvasControls = null
     this.toolbarController.destroy()
     this.overviewLayer?.destroy()
     this.overviewLayer = null
@@ -1186,6 +1192,57 @@ export class WhiteboardCanvas {
         (at) => this.promptForWebCard(at),
       ),
     ])
+    // Obsidian Canvas's top-right column, in the same overlay for the same
+    // reason. The buttons act on the board, so an open card edit is ended
+    // first — the same as clicking anywhere else on the board would.
+    const onBoard = (action: () => void) => () => {
+      this.forceCommitActiveEdit()
+      action()
+    }
+    this.canvasControls = new CanvasControls(
+      doc,
+      this.toolbarController.overlay,
+      [
+        [
+          {
+            label: this.t('controls.zoomIn'),
+            icon: 'plus',
+            onSelect: () => this.cameraController.zoomStep(1),
+          },
+          {
+            label: this.t('controls.resetZoom'),
+            icon: 'rotate-cw',
+            onSelect: () => this.cameraController.resetZoom(),
+          },
+          {
+            // Canvas's own tooltip names the key, spelled the platform's way.
+            label: `${this.t('controls.zoomToFit')}\n(${this.onMacOS() ? '⇧ 1' : 'Shift + 1'})`,
+            icon: 'maximize',
+            onSelect: () =>
+              this.cameraController.fitCameraToNodes(this.board.nodes),
+          },
+          {
+            label: this.t('controls.zoomOut'),
+            icon: 'minus',
+            onSelect: () => this.cameraController.zoomStep(-1),
+          },
+        ],
+        [
+          {
+            label: this.t('controls.undo'),
+            icon: 'undo-2',
+            onSelect: onBoard(() => this.undo()),
+            isEnabled: () => this.history.canUndo(),
+          },
+          {
+            label: this.t('controls.redo'),
+            icon: 'redo-2',
+            onSelect: onBoard(() => this.redo()),
+            isEnabled: () => this.history.canRedo(),
+          },
+        ],
+      ],
+    )
     // A freshly built world element carries none of the old one's inline
     // custom properties, so the handle size has to be written again. It is
     // pushed from here rather than hard-coded in the stylesheet so it stays
@@ -2721,10 +2778,15 @@ export class WhiteboardCanvas {
     // board: the card would jump to a neighbour the user cannot see, and the
     // guide drawn for it would be a line across the whole viewport.
     if (this.overview) return false
+    return this.onMacOS() ? !e.ctrlKey : !e.altKey
+  }
+
+  /** Which modifier waves alignment away, and how a shortcut is spelled. */
+  private onMacOS(): boolean {
     this.isMacOS ??= /Mac|iPhone|iPad/.test(
       this.context.getWindow().navigator.userAgent,
     )
-    return this.isMacOS ? !e.ctrlKey : !e.altKey
+    return this.isMacOS
   }
 
   private updateNodeDragPositions(
