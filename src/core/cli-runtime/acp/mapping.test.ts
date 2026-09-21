@@ -407,6 +407,161 @@ describe('ACP session update aggregation — replay mode', () => {
   })
 })
 
+describe('ACP file-change diffs', () => {
+  const apply = (
+    aggregator: AcpSessionAggregator,
+    update: SessionUpdate,
+  ): ChatToolMessage =>
+    (aggregator.apply(update, 'hermes') as [unknown, ChatToolMessage])[1]
+
+  const editSummaryOf = (tool: ChatToolMessage) => {
+    const response = tool.toolCalls[0].response
+    return response.status === ToolCallResponseStatus.Success
+      ? response.data.metadata?.editSummary
+      : undefined
+  }
+
+  const startEdit = (
+    aggregator: AcpSessionAggregator,
+    diffs: Array<{ path: string; oldText?: string | null; newText: string }>,
+  ) =>
+    apply(aggregator, {
+      sessionUpdate: 'tool_call',
+      toolCallId: 'edit-1',
+      title: 'Edit note.md',
+      kind: 'edit',
+      status: 'pending',
+      content: diffs.map((diff) => ({ type: 'diff' as const, ...diff })),
+    })
+
+  const complete = (aggregator: AcpSessionAggregator) =>
+    apply(aggregator, {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'edit-1',
+      status: 'completed',
+      content: [
+        { type: 'content', content: { type: 'text', text: 'Edited.' } },
+      ],
+    })
+
+  it('keeps the diff from tool_call after the completing update replaces content', () => {
+    // Hermes' real sequence: the diff rides on the pending tool_call, and the
+    // completing update swaps content for plain result text.
+    const aggregator = new AcpSessionAggregator()
+    startEdit(aggregator, [
+      { path: '/vault/note.md', oldText: 'a\nb\n', newText: 'a\nc\nd\n' },
+    ])
+    const tool = complete(aggregator)
+
+    const response = tool.toolCalls[0].response
+    expect(response).toMatchObject({
+      status: ToolCallResponseStatus.Success,
+      data: { text: 'Edited.' },
+    })
+    expect(editSummaryOf(tool)).toEqual({
+      files: [
+        {
+          path: '/vault/note.md',
+          addedLines: 2,
+          removedLines: 1,
+          lineStatsAvailable: true,
+          operation: 'edit',
+          undoStatus: 'unavailable',
+          reviewRoundId: undefined,
+        },
+      ],
+      totalFiles: 1,
+      totalAddedLines: 2,
+      totalRemovedLines: 1,
+      undoStatus: 'unavailable',
+    })
+    expect(
+      aggregator.getToolCall('edit-1')?.diffs.map((diff) => diff.newText),
+    ).toEqual(['a\nc\nd\n'])
+  })
+
+  it('treats oldText: null as a new file', () => {
+    const aggregator = new AcpSessionAggregator()
+    startEdit(aggregator, [
+      { path: '/vault/new.md', oldText: null, newText: 'x\ny' },
+    ])
+    expect(editSummaryOf(complete(aggregator))?.files).toEqual([
+      expect.objectContaining({
+        operation: 'create',
+        addedLines: 2,
+        removedLines: 0,
+        lineStatsAvailable: true,
+      }),
+    ])
+  })
+
+  it('does not count an omitted oldText as a creation', () => {
+    const aggregator = new AcpSessionAggregator()
+    startEdit(aggregator, [{ path: '/vault/note.md', newText: 'x\ny\n' }])
+    const summary = editSummaryOf(complete(aggregator))
+
+    expect(summary?.files).toEqual([
+      expect.objectContaining({
+        path: '/vault/note.md',
+        operation: 'edit',
+        lineStatsAvailable: false,
+      }),
+    ])
+    expect(summary?.totalLineStatsAvailable).toBe(false)
+  })
+
+  it('merges repeated reports per path: first known oldText, latest newText', () => {
+    const aggregator = new AcpSessionAggregator()
+    startEdit(aggregator, [
+      { path: '/vault/a.md', oldText: 'one\n', newText: 'two\n' },
+      { path: '/vault/b.md', newText: 'b1\n' },
+    ])
+    apply(aggregator, {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'edit-1',
+      status: 'in_progress',
+      content: [
+        {
+          type: 'diff',
+          path: '/vault/a.md',
+          oldText: 'two\n',
+          newText: 'three\n',
+        },
+        { type: 'diff', path: '/vault/b.md', oldText: 'b0\n', newText: 'b2\n' },
+      ],
+    })
+    complete(aggregator)
+
+    expect(aggregator.getToolCall('edit-1')?.diffs).toEqual([
+      { path: '/vault/a.md', oldText: 'one\n', newText: 'three\n' },
+      { path: '/vault/b.md', oldText: 'b0\n', newText: 'b2\n' },
+    ])
+  })
+
+  it('keeps a known new-file null over a later re-report', () => {
+    const aggregator = new AcpSessionAggregator()
+    startEdit(aggregator, [
+      { path: '/vault/new.md', oldText: null, newText: 'v1' },
+    ])
+    apply(aggregator, {
+      sessionUpdate: 'tool_call_update',
+      toolCallId: 'edit-1',
+      content: [
+        {
+          type: 'diff',
+          path: '/vault/new.md',
+          oldText: 'v1',
+          newText: 'v2',
+        },
+      ],
+    })
+    expect(editSummaryOf(complete(aggregator))?.files[0]).toMatchObject({
+      operation: 'create',
+      addedLines: 1,
+    })
+  })
+})
+
 describe('ACP approval decision mapping', () => {
   const options: PermissionOption[] = [
     { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
@@ -498,6 +653,7 @@ describe('buildPendingApprovalMessages', () => {
     kind: 'execute' as const,
     status: 'in_progress' as const,
     content: [],
+    diffs: [],
     rawInput: {},
   }
 

@@ -1,5 +1,6 @@
 import type {
   ContentBlock,
+  Diff,
   PermissionOption,
   Plan,
   PlanEntry,
@@ -27,6 +28,7 @@ import {
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
+  type ToolEditSummaryFile,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
 import { createToolEditSummary } from '../../../utils/chat/editSummary'
@@ -111,41 +113,95 @@ const mapAcpToolCallStatusToResponseStatus = (
   return ToolCallResponseStatus.Running
 }
 
-/** Builds a `ToolEditSummary` from ACP `diff` tool-call content, reusing the
- * shared line-diff engine. ACP-driven edits happen outside YOLO's own
- * file-tool executor, so — like Codex's file-change mapping — undo is marked
- * unavailable rather than claiming a snapshot that was never captured. */
-const buildAcpEditSummary = (
-  content: readonly ToolCallContent[],
-): ReturnType<typeof createToolEditSummary> => {
-  const diffs = content.filter(
+/**
+ * Folds the `diff` items of one incoming `content` array into the diffs this
+ * call has already reported, keyed by path.
+ *
+ * ACP makes `content` a full replacement on every update, and agents use that
+ * as specified: Hermes reports the edit's `diff` on the pending `tool_call`,
+ * then completes with a `tool_call_update` whose `content` is only the result
+ * text. Reading diffs off the latest `content` therefore finds none by the
+ * time the call succeeds. Remembering them apart from `content` keeps the
+ * replacement semantics intact while holding on to what the call changed.
+ *
+ * Per path, `newText` follows the latest report — a later update is the newer
+ * truth about where the file ended up. `oldText` keeps the first *known*
+ * report: it describes the file before this call touched it, and a later
+ * re-report can only be relative to an intermediate state of the same call.
+ * An omitted `oldText` states nothing, so a later report is allowed to fill
+ * it in; `null` does state something (the file did not exist) and is kept.
+ */
+const mergeAcpDiffs = (
+  previous: readonly Diff[],
+  content: readonly ToolCallContent[] | null | undefined,
+): Diff[] => {
+  const incoming = (content ?? []).filter(
     (item): item is Extract<ToolCallContent, { type: 'diff' }> =>
       item.type === 'diff',
   )
-  if (diffs.length === 0) return undefined
-  const files = diffs.flatMap((diff) => {
+  if (incoming.length === 0) return [...previous]
+  const byPath = new Map<string, Diff>(
+    previous.map((diff) => [diff.path, diff]),
+  )
+  for (const { path, oldText, newText } of incoming) {
+    const known = byPath.get(path)
+    byPath.set(path, {
+      path,
+      oldText: known && known.oldText !== undefined ? known.oldText : oldText,
+      newText,
+    })
+  }
+  return [...byPath.values()]
+}
+
+/** Builds a `ToolEditSummary` from the diffs an ACP call reported, reusing
+ * the shared line-diff engine. ACP-driven edits happen outside YOLO's own
+ * file-tool executor, so — like Codex's file-change mapping — undo is marked
+ * unavailable rather than claiming a snapshot that was never captured. */
+const buildAcpEditSummary = (
+  diffs: readonly Diff[],
+): ReturnType<typeof createToolEditSummary> => {
+  const files = diffs.flatMap((diff): ToolEditSummaryFile[] => {
+    // ACP gives `oldText` three meanings: a string is the prior content,
+    // `null` means the file is new, and an omitted field says nothing about
+    // the prior state. Counting the last case as a creation would report
+    // every line as added — so the path is listed without line stats.
+    if (diff.oldText === undefined) {
+      return [
+        {
+          path: diff.path,
+          addedLines: 0,
+          removedLines: 0,
+          lineStatsAvailable: false,
+          operation: 'edit',
+          undoStatus: 'unavailable',
+        },
+      ]
+    }
     const summary = createToolEditSummary({
       path: diff.path,
       beforeContent: diff.oldText ?? '',
       afterContent: diff.newText,
-      beforeExists: diff.oldText !== null && diff.oldText !== undefined,
+      beforeExists: diff.oldText !== null,
       afterExists: true,
     })
-    return summary ? summary.files : []
+    return summary
+      ? summary.files.map((file) => ({
+          ...file,
+          undoStatus: 'unavailable' as const,
+        }))
+      : []
   })
   if (files.length === 0) return undefined
-  const undoFiles = files.map((file) => ({
-    ...file,
-    undoStatus: 'unavailable' as const,
-  }))
+  const totalsComplete = files.every(
+    (file) => file.lineStatsAvailable !== false,
+  )
   return {
-    files: undoFiles,
-    totalFiles: undoFiles.length,
-    totalAddedLines: undoFiles.reduce((sum, file) => sum + file.addedLines, 0),
-    totalRemovedLines: undoFiles.reduce(
-      (sum, file) => sum + file.removedLines,
-      0,
-    ),
+    files,
+    totalFiles: files.length,
+    totalAddedLines: files.reduce((sum, file) => sum + file.addedLines, 0),
+    totalRemovedLines: files.reduce((sum, file) => sum + file.removedLines, 0),
+    ...(totalsComplete ? {} : { totalLineStatsAvailable: false }),
     undoStatus: 'unavailable',
   }
 }
@@ -184,6 +240,11 @@ export type AcpToolCallState = {
   kind?: ToolKind
   status: ToolCallStatus
   content: ToolCallContent[]
+  /**
+   * Every file diff this call has reported, one per path — held apart from
+   * `content`, which each update replaces wholesale. See `mergeAcpDiffs`.
+   */
+  diffs: Diff[]
   rawInput?: unknown
 }
 
@@ -194,6 +255,7 @@ export const applyAcpToolCall = (update: ToolCall): AcpToolCallState => ({
   kind: update.kind,
   status: update.status ?? 'pending',
   content: update.content ?? [],
+  diffs: mergeAcpDiffs([], update.content),
   rawInput: update.rawInput,
 })
 
@@ -207,6 +269,7 @@ export const applyAcpToolCallUpdate = (
   kind: update.kind ?? current?.kind,
   status: update.status ?? current?.status ?? 'pending',
   content: update.content ?? current?.content ?? [],
+  diffs: mergeAcpDiffs(current?.diffs ?? [], update.content),
   rawInput: update.rawInput !== undefined ? update.rawInput : current?.rawInput,
 })
 
@@ -244,7 +307,7 @@ export const mapAcpToolCallState = (
               text: toolCallContentToText(state.content),
               ...(capability === 'file_change'
                 ? (() => {
-                    const editSummary = buildAcpEditSummary(state.content)
+                    const editSummary = buildAcpEditSummary(state.diffs)
                     return editSummary ? { metadata: { editSummary } } : {}
                   })()
                 : {}),
@@ -524,6 +587,7 @@ export const buildPendingApprovalMessages = (
     kind: toolCall.kind ?? known?.kind ?? undefined,
     status: toolCall.status ?? 'pending',
     content: toolCall.content ?? known?.content ?? [],
+    diffs: mergeAcpDiffs(known?.diffs ?? [], toolCall.content),
     rawInput: toolCall.rawInput ?? known?.rawInput,
   }
   const capability = mapAcpToolKindToCapability(state.kind)
