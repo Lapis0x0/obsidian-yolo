@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 35,
+  "revision": 36,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.9.3",
+    "version": "1.6.9.4",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.3",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.4",
     "releaseNotes": {
-      "en": "## 1.6.9.3 Local Acceleration & Caching ⚡\n\n- Local embedding models now support GPU-accelerated inference.\n- Improved the storage mechanism for the image and PDF cache.\n- Added automatic detection of OpenCode skills in your vault (.opencode/skills). (#597)\n- Agent and knowledge base cards can now be reordered by dragging.",
-      "zh": "## 1.6.9.3 本地加速与缓存优化 ⚡\n\n- 本地 embedding 模型支持 GPU 加速推理。\n- 优化当前图片/PDF 缓存存储机制。\n- 支持自动识别 vault 中 OpenCode 的 skills（.opencode/skills）。（#597）\n- 支持拖动排序 Agent 与知识库卡片。"
+      "en": "## 1.6.9.4 CLI Agent Improvements 🤖\n\n- Added full diff display for changes made by CLI Agents.\n- CLI chats now support manually setting a default model.\n- Added support for CodeBuddy CLI.\n- Improved Hermes's permission policy and fixed a bug where YOLO mode still required step-by-step approval.\n- Improved the drag-and-drop experience on the Provider page.\n- Fixed reply generation failing with some relay services that send keep-alive frames.",
+      "zh": "## 1.6.9.4 CLI Agent 体验增强 🤖\n\n- 为 CLI Agent 添加完整的修改 diff 展示支持。\n- CLI 对话支持手动设置默认模型。\n- 支持 CodeBuddy CLI。\n- 优化 Hermes 的权限策略，修复 YOLO 模式下仍需逐步审批的 bug。\n- 优化 Provider 页的拖拽体验。\n- 修复部分中转服务因发送保活帧导致回复生成失败的问题。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.9.3/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.3/main.js",
-        "byteSize": 9547165,
-        "sha256": "c2aaae4a0a055f2313ea3c751a85b5c22469bc7b4393fc770c0392b643638de0"
+        "mirrorPath": "core/1.6.9.4/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.4/main.js",
+        "byteSize": 9568804,
+        "sha256": "40aad809b320d314803b50da4d18b9df37565388ea2c757ee96bec139ce7bb31"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.9.3/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.3/manifest.json",
+        "mirrorPath": "core/1.6.9.4/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.4/manifest.json",
         "byteSize": 413,
-        "sha256": "90c5193f5022223a1dece8785dc71900201c8e366097d17c1992872041fc0b2d"
+        "sha256": "ed08a3d45fde6104cd95b8c627acee3d0029883e36c29d9df1a8a0deea0d204b"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.9.3/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.3/styles.css",
-        "byteSize": 681973,
-        "sha256": "70e52e91fe4fb4dd92c18f91a30a8621deb5ccf5d8a893ba6ddbcfab898f3893"
+        "mirrorPath": "core/1.6.9.4/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.4/styles.css",
+        "byteSize": 685947,
+        "sha256": "1edb4454e333de9143657473966e522b26b7be3c2389d7d1423f1389d39138c5"
       }
     }
   },
