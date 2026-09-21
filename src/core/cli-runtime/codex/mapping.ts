@@ -14,7 +14,7 @@ import {
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
 import { buildFileChangeRowsFromTexts } from '../../tools/file-change-rows'
-import { createCliToolCallRequest } from '../tool-call'
+import { createCliToolCallRequest, toCliEditSummaryPath } from '../tool-call'
 import type { CliCompactionBoundary } from '../types'
 
 import { parseBareHunkRows } from './bare-hunk-rows'
@@ -141,14 +141,6 @@ const stringifyRawToolOutput = (output: unknown): string => {
     : stringify(output)
 }
 
-const toWorkspaceRelativePath = (path: string, cwd?: string): string => {
-  const normalizedPath = path.replace(/\\/g, '/')
-  const normalizedCwd = cwd?.replace(/\\/g, '/').replace(/\/$/, '')
-  return normalizedCwd && normalizedPath.startsWith(`${normalizedCwd}/`)
-    ? normalizedPath.slice(normalizedCwd.length + 1)
-    : normalizedPath
-}
-
 const userInputText = (content: CodexUserInput[]): string =>
   content
     .map((part) => {
@@ -230,7 +222,7 @@ const buildFileChangeRows = (
   change: CodexFileChange,
   cwd?: string,
 ): FileChangeRows => {
-  const path = toWorkspaceRelativePath(change.path, cwd)
+  const path = toCliEditSummaryPath(change.path, cwd)
   if (change.kind.type === 'add') {
     return buildFileChangeRowsFromTexts(path, '', change.diff)
   }
@@ -245,7 +237,7 @@ const buildFileChangeEditSummary = (
   cwd?: string,
 ): ToolEditSummary => {
   const files = changes.map((change) => ({
-    path: toWorkspaceRelativePath(change.path, cwd),
+    path: toCliEditSummaryPath(change.path, cwd),
     ...countFileChangeLines(change),
     operation: toEditOperation(change.kind),
     undoStatus: 'unavailable' as const,

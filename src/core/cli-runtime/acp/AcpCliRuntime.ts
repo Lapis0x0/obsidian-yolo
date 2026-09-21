@@ -97,7 +97,7 @@ type PendingApproval = {
  */
 export class AcpCliRuntime implements CliRuntime {
   private readonly listeners = new Set<CliRuntimeEventListener>()
-  private readonly aggregator = new AcpSessionAggregator()
+  private readonly aggregator: AcpSessionAggregator
   private readonly pendingApprovals = new Map<string, PendingApproval>()
 
   private host: AcpHost | null = null
@@ -118,7 +118,9 @@ export class AcpCliRuntime implements CliRuntime {
   constructor(
     readonly runtimeId: CliRuntimeId,
     private readonly options: AcpCliRuntimeOptions,
-  ) {}
+  ) {
+    this.aggregator = new AcpSessionAggregator('live', options.cwd)
+  }
 
   /**
    * Read-only peek used to populate the transcript before the session is
@@ -153,7 +155,7 @@ export class AcpCliRuntime implements CliRuntime {
       return { ref, messages: [], compactionBoundaries: [] }
     }
 
-    const aggregator = new AcpSessionAggregator('replay')
+    const aggregator = new AcpSessionAggregator('replay', this.options.cwd)
     const messages: ChatMessage[] = []
     const unregister = host.registerSession(ref.nativeSessionId, {
       onUpdate: (update) => {
@@ -679,6 +681,7 @@ export class AcpCliRuntime implements CliRuntime {
       request,
       this.runtimeId,
       this.aggregator.getToolCall(request.toolCall.toolCallId),
+      this.options.cwd,
     )
     this.emit({ type: 'message_upsert', message: assistant })
     this.emit({ type: 'message_upsert', message: tool })

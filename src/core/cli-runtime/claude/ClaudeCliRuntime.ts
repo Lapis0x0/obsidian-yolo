@@ -33,7 +33,7 @@ import {
   type CliChatMode,
   resolveClaudePermissionMode,
 } from '../permission-profile'
-import { createCliToolCallRequest } from '../tool-call'
+import { createCliToolCallRequest, toCliEditSummaryPath } from '../tool-call'
 import type {
   CliApprovalResponse,
   CliPermissionProfileUpdate,
@@ -63,7 +63,6 @@ import {
   applyClaudeFileChangeResult,
   buildClaudePendingFileChangeRows,
   getClaudePendingFilePath,
-  toVaultRelativePath,
 } from './fileChange'
 import {
   extractTextContent,
@@ -1384,7 +1383,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       const files = [
         ...new Set(
           (result.filesChanged ?? []).map((path) =>
-            toVaultRelativePath(this.vaultPath, path),
+            toCliEditSummaryPath(path, this.vaultPath),
           ),
         ),
       ]

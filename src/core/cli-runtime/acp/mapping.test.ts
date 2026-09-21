@@ -448,6 +448,25 @@ describe('ACP file-change diffs', () => {
       ],
     })
 
+  it('records every path in the vault-relative form, whatever form the agent reported', () => {
+    // CodeBuddy reports absolute paths, Hermes paths relative to its cwd.
+    const aggregator = new AcpSessionAggregator('live', '/vault')
+    startEdit(aggregator, [
+      { path: '/vault/notes/a.md', oldText: 'a\n', newText: 'b\n' },
+      { path: 'notes/b.md', oldText: 'a\n', newText: 'b\n' },
+      { path: '/elsewhere/c.md', oldText: 'a\n', newText: 'b\n' },
+    ])
+    const tool = complete(aggregator)
+
+    const paths = ['notes/a.md', 'notes/b.md', '/elsewhere/c.md']
+    expect(editSummaryOf(tool)?.files.map((file) => file.path)).toEqual(paths)
+    expect(
+      tool.toolCalls[0].request.metadata?.fileChangeRows?.map(
+        (file) => file.path,
+      ),
+    ).toEqual(paths)
+  })
+
   it('keeps the diff from tool_call after the completing update replaces content', () => {
     // Hermes' real sequence: the diff rides on the pending tool_call, and the
     // completing update swaps content for plain result text.

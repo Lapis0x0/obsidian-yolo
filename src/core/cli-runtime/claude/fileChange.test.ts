@@ -10,7 +10,6 @@ import {
   applyClaudeEdit,
   applyClaudeFileChangeResult,
   buildClaudePendingFileChangeRows,
-  toVaultRelativePath,
 } from './fileChange'
 import { hydrateClaudeSessionMessages, toToolCallRequest } from './messages'
 
@@ -43,12 +42,6 @@ describe('Claude file-change mapping', () => {
     // An empty oldString creates a file.
     expect(applyClaudeEdit(null, '', 'new', false)).toBe('new')
     expect(applyClaudeEdit('text', '', 'new', false)).toBeNull()
-  })
-
-  it('keeps paths outside the vault absolute', () => {
-    expect(toVaultRelativePath('/vault/', '/vault/a/b.md')).toBe('a/b.md')
-    expect(toVaultRelativePath('C:\\vault', 'C:\\vault\\a.md')).toBe('a.md')
-    expect(toVaultRelativePath('/vault', '/other/a.md')).toBe('/other/a.md')
   })
 
   it('maps a Write that creates a file to an all-added diff', () => {

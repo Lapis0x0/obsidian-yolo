@@ -7,6 +7,7 @@ import type {
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { createToolEditSummary } from '../../../utils/chat/editSummary'
 import { buildFileChangeRowsFromTexts } from '../../tools/file-change-rows'
+import { toCliEditSummaryPath } from '../tool-call'
 
 // Claude Code's own file tools, mapped onto the shared file-change contract
 // (`FileChangeRows` on the request, `editSummary` on the response). Field
@@ -26,23 +27,6 @@ const CLAUDE_FILE_CHANGE_TOOLS: ReadonlySet<string> = new Set([
 
 export const isClaudeFileChangeTool = (toolName: string): boolean =>
   CLAUDE_FILE_CHANGE_TOOLS.has(toolName)
-
-/**
- * Claude reports absolute paths (its cwd is the vault root). Everything the
- * chat keys on a path — the turn's checkpoint summary and each call's
- * `editSummary` alike — uses the vault-relative form, so one file is one row
- * in the edit summary panel. Paths outside the vault stay absolute.
- */
-export const toVaultRelativePath = (
-  vaultPath: string,
-  filePath: string,
-): string => {
-  const normalizedVaultPath = vaultPath.replace(/\\/g, '/').replace(/\/$/, '')
-  const normalizedFilePath = filePath.replace(/\\/g, '/')
-  return normalizedFilePath.startsWith(`${normalizedVaultPath}/`)
-    ? normalizedFilePath.slice(normalizedVaultPath.length + 1)
-    : normalizedFilePath
-}
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
@@ -208,7 +192,7 @@ export const applyClaudeFileChangeResult = (
     response.data.metadata?.cliToolResult,
   )
   if (!change) return toolCall
-  const path = toVaultRelativePath(vaultPath, change.filePath)
+  const path = toCliEditSummaryPath(change.filePath, vaultPath)
   const editSummary = buildEditSummary(path, change)
   return {
     request: withFileChangeRows(request, [
@@ -282,7 +266,7 @@ export const buildClaudePendingFileChangeRows = (
   }
   if (after === null) return null
   return buildFileChangeRowsFromTexts(
-    toVaultRelativePath(vaultPath, filePath),
+    toCliEditSummaryPath(filePath, vaultPath),
     current ?? '',
     after,
   )

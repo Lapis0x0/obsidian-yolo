@@ -38,7 +38,7 @@ import {
   buildFileChangeRowsFromContent,
   buildFileChangeRowsFromTexts,
 } from '../../tools/file-change-rows'
-import { createCliToolCallRequest } from '../tool-call'
+import { createCliToolCallRequest, toCliEditSummaryPath } from '../tool-call'
 import type {
   CliApprovalDecision,
   CliContextUsage,
@@ -175,10 +175,17 @@ const mapAcpToolCallStatusToResponseStatus = (
  * re-report can only be relative to an intermediate state of the same call.
  * An omitted `oldText` states nothing, so a later report is allowed to fill
  * it in; `null` does state something (the file did not exist) and is kept.
+ *
+ * Paths are recorded in the one form every consumer keys on
+ * (`toCliEditSummaryPath` against the agent's `cwd`): agents differ here —
+ * CodeBuddy reports absolute paths, Hermes paths relative to its cwd — and
+ * the rows, the `editSummary` and the review snapshot must all name one file
+ * the same way, as must two reports of it in different forms.
  */
 const mergeAcpDiffs = (
   previous: readonly Diff[],
   content: readonly ToolCallContent[] | null | undefined,
+  cwd: string | undefined,
 ): Diff[] => {
   const incoming = (content ?? []).filter(
     (item): item is Extract<ToolCallContent, { type: 'diff' }> =>
@@ -188,7 +195,9 @@ const mergeAcpDiffs = (
   const byPath = new Map<string, Diff>(
     previous.map((diff) => [diff.path, diff]),
   )
-  for (const { path, oldText, newText } of incoming) {
+  for (const item of incoming) {
+    const { oldText, newText } = item
+    const path = toCliEditSummaryPath(item.path, cwd)
     const known = byPath.get(path)
     byPath.set(path, {
       path,
@@ -293,20 +302,26 @@ export type AcpToolCallState = {
   rawInput?: unknown
 }
 
-export const applyAcpToolCall = (update: ToolCall): AcpToolCallState => ({
+/** `cwd` is the agent's working directory, which its relative paths are
+ * relative to (see `mergeAcpDiffs`). */
+export const applyAcpToolCall = (
+  update: ToolCall,
+  cwd?: string,
+): AcpToolCallState => ({
   toolCallId: update.toolCallId,
   title: update.title,
   name: update.name ?? undefined,
   kind: update.kind,
   status: update.status ?? 'pending',
   content: update.content ?? [],
-  diffs: mergeAcpDiffs([], update.content),
+  diffs: mergeAcpDiffs([], update.content, cwd),
   rawInput: update.rawInput,
 })
 
 export const applyAcpToolCallUpdate = (
   current: AcpToolCallState | undefined,
   update: ToolCallUpdate,
+  cwd?: string,
 ): AcpToolCallState => ({
   toolCallId: update.toolCallId,
   title: update.title ?? current?.title ?? update.toolCallId,
@@ -314,7 +329,7 @@ export const applyAcpToolCallUpdate = (
   kind: update.kind ?? current?.kind,
   status: update.status ?? current?.status ?? 'pending',
   content: update.content ?? current?.content ?? [],
-  diffs: mergeAcpDiffs(current?.diffs ?? [], update.content),
+  diffs: mergeAcpDiffs(current?.diffs ?? [], update.content, cwd),
   rawInput: update.rawInput !== undefined ? update.rawInput : current?.rawInput,
 })
 
@@ -462,7 +477,11 @@ export class AcpSessionAggregator {
   private textSegment = 0
   private splitNextAssistantText = false
 
-  constructor(private readonly mode: AcpSessionAggregatorMode = 'live') {}
+  /** `cwd`: the agent's working directory, see `mergeAcpDiffs`. */
+  constructor(
+    private readonly mode: AcpSessionAggregatorMode = 'live',
+    private readonly cwd?: string,
+  ) {}
 
   reset(): void {
     this.assistantText.clear()
@@ -567,7 +586,7 @@ export class AcpSessionAggregator {
     }
     if (update.sessionUpdate === 'tool_call') {
       this.splitNextAssistantText = true
-      const state = applyAcpToolCall(update)
+      const state = applyAcpToolCall(update, this.cwd)
       this.toolCalls.set(state.toolCallId, state)
       return mapAcpToolCallState(state, runtimeId)
     }
@@ -575,6 +594,7 @@ export class AcpSessionAggregator {
       const state = applyAcpToolCallUpdate(
         this.toolCalls.get(update.toolCallId),
         update,
+        this.cwd,
       )
       this.toolCalls.set(state.toolCallId, state)
       return mapAcpToolCallState(state, runtimeId)
@@ -623,6 +643,7 @@ export const buildPendingApprovalMessages = (
   request: RequestPermissionRequest,
   runtimeId: CliRuntimeId,
   known?: AcpToolCallState,
+  cwd?: string,
 ): [ChatAssistantMessage, ChatToolMessage] => {
   const toolCall = request.toolCall
   const title = toolCall.title ?? known?.title ?? toolCall.toolCallId
@@ -633,7 +654,7 @@ export const buildPendingApprovalMessages = (
     kind: toolCall.kind ?? known?.kind ?? undefined,
     status: toolCall.status ?? 'pending',
     content: toolCall.content ?? known?.content ?? [],
-    diffs: mergeAcpDiffs(known?.diffs ?? [], toolCall.content),
+    diffs: mergeAcpDiffs(known?.diffs ?? [], toolCall.content, cwd),
     rawInput: toolCall.rawInput ?? known?.rawInput,
   }
   const capability = getAcpToolCallCapability(state)
