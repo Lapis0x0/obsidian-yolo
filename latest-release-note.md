@@ -1,15 +1,19 @@
-## 1.6.9.3 Local Acceleration & Caching ⚡
+## 1.6.9.4 CLI Agent Improvements 🤖
 
-- Local embedding models now support GPU-accelerated inference.
-- Improved the storage mechanism for the image and PDF cache.
-- Added automatic detection of OpenCode skills in your vault (.opencode/skills). (#597)
-- Agent and knowledge base cards can now be reordered by dragging.
+- Added full diff display for changes made by CLI Agents.
+- CLI chats now support manually setting a default model.
+- Added support for CodeBuddy CLI.
+- Improved Hermes's permission policy and fixed a bug where YOLO mode still required step-by-step approval.
+- Improved the drag-and-drop experience on the Provider page.
+- Fixed reply generation failing with some relay services that send keep-alive frames.
 
 ---
 
-## 1.6.9.3 本地加速与缓存优化 ⚡
+## 1.6.9.4 CLI Agent 体验增强 🤖
 
-- 本地 embedding 模型支持 GPU 加速推理。
-- 优化当前图片/PDF 缓存存储机制。
-- 支持自动识别 vault 中 OpenCode 的 skills（.opencode/skills）。（#597）
-- 支持拖动排序 Agent 与知识库卡片。
+- 为 CLI Agent 添加完整的修改 diff 展示支持。
+- CLI 对话支持手动设置默认模型。
+- 支持 CodeBuddy CLI。
+- 优化 Hermes 的权限策略，修复 YOLO 模式下仍需逐步审批的 bug。
+- 优化 Provider 页的拖拽体验。
+- 修复部分中转服务因发送保活帧导致回复生成失败的问题。
