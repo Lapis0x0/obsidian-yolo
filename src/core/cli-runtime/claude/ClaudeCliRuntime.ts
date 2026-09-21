@@ -14,12 +14,15 @@ import type {
 } from '../../../types/chat'
 import type { ContentPart } from '../../../types/llm/request'
 import {
+  type FileChangeRows,
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { ReasoningPhaseTracker } from '../../../utils/chat/reasoningPhaseTracker'
+import { isDecodableAsText } from '../../tools/native/text'
+import { MAX_FILE_SIZE_BYTES } from '../../tools/tool-args'
 import {
   mapClaudeGetContextUsage,
   mapClaudeResultContextUsage,
@@ -58,11 +61,17 @@ import {
 } from './askUserQuestion'
 import { AsyncPushQueue } from './asyncQueue'
 import {
-  CLAUDE_BASH_TOOL,
+  applyClaudeFileChangeResult,
+  buildClaudePendingFileChangeRows,
+  getClaudePendingFilePath,
+  toVaultRelativePath,
+} from './fileChange'
+import {
   extractTextContent,
   extractThinkingContent,
   extractToolResults,
   extractToolUses,
+  getClaudeToolCapability,
   hydrateClaudeSessionMessages,
   hydrateClaudeSessionTranscript,
   parseClaudeTaskNotification,
@@ -142,12 +151,35 @@ const toCliMcpServerStatus = (status: {
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
 
-const toVaultRelativePath = (vaultPath: string, filePath: string): string => {
-  const normalizedVaultPath = vaultPath.replace(/\\/g, '/').replace(/\/$/, '')
-  const normalizedFilePath = filePath.replace(/\\/g, '/')
-  return normalizedFilePath.startsWith(`${normalizedVaultPath}/`)
-    ? normalizedFilePath.slice(normalizedVaultPath.length + 1)
-    : normalizedFilePath
+/**
+ * The file a pending Edit / Write would change, read as it is on disk right
+ * now — the approval preview's before-text. `null` = the file does not exist.
+ * Anything that is not a small text file (over `MAX_FILE_SIZE_BYTES`, the
+ * limit past which the native write tools stop snapshotting too; binary; a
+ * directory; any I/O error) yields `undefined`: no preview, the card keeps
+ * its default sections.
+ */
+const readPendingFileText = async (
+  absolutePath: string,
+): Promise<string | null | undefined> => {
+  try {
+    // eslint-disable-next-line import/no-nodejs-modules -- the Claude runtime is desktop-only; dynamically imported so mobile never loads it
+    const fs = await import('node:fs/promises')
+    let stat: Awaited<ReturnType<typeof fs.stat>>
+    try {
+      stat = await fs.stat(absolutePath)
+    } catch (error) {
+      if ((error as { code?: unknown }).code === 'ENOENT') return null
+      throw error
+    }
+    if (!stat.isFile() || stat.size > MAX_FILE_SIZE_BYTES) return undefined
+    const bytes = new Uint8Array(await fs.readFile(absolutePath))
+    return isDecodableAsText(bytes)
+      ? new TextDecoder().decode(bytes)
+      : undefined
+  } catch {
+    return undefined
+  }
 }
 
 const cloneToolMessage = (message: ChatToolMessage): ChatToolMessage => ({
@@ -316,7 +348,7 @@ export class ClaudeCliRuntime implements CliRuntime {
     this.assertClaudeRef(ref)
     const sdk = await this.getSdk()
     const messages = await sdk.getSessionMessages(ref.nativeSessionId)
-    return { ref, ...hydrateClaudeSessionTranscript(messages) }
+    return { ref, ...hydrateClaudeSessionTranscript(messages, this.vaultPath) }
   }
 
   async readSubagent(ref: CliSubagentRef): Promise<readonly ChatMessage[]> {
@@ -327,7 +359,7 @@ export class ClaudeCliRuntime implements CliRuntime {
       ref.parentSessionRef.nativeSessionId,
       ref.subagentId,
     )
-    return hydrateClaudeSessionMessages(messages)
+    return hydrateClaudeSessionMessages(messages, this.vaultPath)
   }
 
   async ensureReady(input: CliRuntimeReadyInput): Promise<void> {
@@ -905,7 +937,25 @@ export class ClaudeCliRuntime implements CliRuntime {
           toolUseID: options.toolUseID,
         }
       }
-      this.ensureToolRequest(options.toolUseID, toolName, normalizedInput)
+      // Only a file tool waits on a disk read before its pending card goes
+      // up; every other tool registers its approval synchronously.
+      const pendingFilePath =
+        kind === 'approval'
+          ? getClaudePendingFilePath(toolName, normalizedInput)
+          : null
+      const fileChangeRows = pendingFilePath
+        ? await this.buildPendingFileChangeRows(
+            pendingFilePath,
+            toolName,
+            normalizedInput,
+          )
+        : null
+      this.ensureToolRequest(
+        options.toolUseID,
+        toolName,
+        normalizedInput,
+        fileChangeRows,
+      )
       this.upsertTool(
         options.toolUseID,
         kind === 'question'
@@ -937,6 +987,21 @@ export class ClaudeCliRuntime implements CliRuntime {
         else options.signal.addEventListener('abort', abort, { once: true })
       })
     }
+  }
+
+  private async buildPendingFileChangeRows(
+    filePath: string,
+    toolName: string,
+    input: Record<string, unknown>,
+  ): Promise<FileChangeRows | null> {
+    const current = await readPendingFileText(filePath)
+    if (current === undefined) return null
+    return buildClaudePendingFileChangeRows(
+      this.vaultPath,
+      toolName,
+      input,
+      current,
+    )
   }
 
   private settlePending(
@@ -1353,23 +1418,32 @@ export class ClaudeCliRuntime implements CliRuntime {
           ),
         ),
       ]
-      if (!result.canRewind || files.length === 0) return
+      // The checkpoint reports insertions/deletions for the whole turn, not
+      // per file. With exactly one file those *are* that file's turn-wide
+      // numbers — better than any single call's `editSummary`, which counts
+      // only its own change — and the summary is attached after every call
+      // of the turn, so it wins the panel's by-path overwrite
+      // (`collectGroupEditSummary`). With several files it has nothing true
+      // to say per file, so it is not published and each Edit / Write
+      // call's own `editSummary` stands.
+      const [path] = files
+      if (!result.canRewind || files.length !== 1 || !path) return
       const insertions = result.insertions ?? 0
       const deletions = result.deletions ?? 0
-      const hasPerFileStats = files.length === 1
       this.emit({
         type: 'turn_edit_summary',
         sourceUserMessageId,
         summary: {
-          files: files.map((path, index) => ({
-            path,
-            addedLines: index === 0 ? insertions : 0,
-            removedLines: index === 0 ? deletions : 0,
-            lineStatsAvailable: hasPerFileStats,
-            operation: 'edit',
-            undoStatus: 'unavailable',
-          })),
-          totalFiles: files.length,
+          files: [
+            {
+              path,
+              addedLines: insertions,
+              removedLines: deletions,
+              operation: 'edit',
+              undoStatus: 'unavailable',
+            },
+          ],
+          totalFiles: 1,
           totalAddedLines: insertions,
           totalRemovedLines: deletions,
           undoStatus: 'unavailable',
@@ -1429,6 +1503,7 @@ export class ClaudeCliRuntime implements CliRuntime {
 
   private ensurePartialToolRequest(tool: StreamedToolInput): void {
     if (tool.name === CLAUDE_ASK_USER_QUESTION_TOOL) return
+    const capability = getClaudeToolCapability(tool.name)
     const request = createCliToolCallRequest({
       id: tool.id,
       arguments: createPartialToolCallArguments(tool.rawInput),
@@ -1437,9 +1512,7 @@ export class ClaudeCliRuntime implements CliRuntime {
         eventType: 'tool_use',
         name: tool.name,
         ...(tool.parentCallId ? { parentCallId: tool.parentCallId } : {}),
-        ...(tool.name === CLAUDE_BASH_TOOL
-          ? { capability: 'command_execution' as const }
-          : {}),
+        ...(capability ? { capability } : {}),
       },
     })
     if (tool.parentCallId) {
@@ -1471,12 +1544,22 @@ export class ClaudeCliRuntime implements CliRuntime {
     toolUseId: string,
     toolName: string,
     input: Record<string, unknown>,
+    fileChangeRows: FileChangeRows | null,
   ): void {
-    const request = toToolCallRequest({
+    const baseRequest = toToolCallRequest({
       id: toolUseId,
       name: toolName,
       input,
     })
+    const request: ToolCallRequest = fileChangeRows
+      ? {
+          ...baseRequest,
+          metadata: {
+            ...baseRequest.metadata,
+            fileChangeRows: [fileChangeRows],
+          },
+        }
+      : baseRequest
     this.setAssistantToolRequest(request)
     const existing = this.tools.get(toolUseId)
     this.tools.set(toolUseId, {
@@ -1506,7 +1589,10 @@ export class ClaudeCliRuntime implements CliRuntime {
       id: toolUseId,
       name: 'unknown',
     }
-    this.tools.set(toolUseId, { request, response })
+    this.tools.set(
+      toolUseId,
+      applyClaudeFileChangeResult(this.vaultPath, { request, response }),
+    )
     this.emitTool(toolUseId)
   }
 

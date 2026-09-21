@@ -1,3 +1,9 @@
+/* eslint-disable import/no-nodejs-modules -- the pending Write preview reads a real file from a temp directory */
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
+/* eslint-enable import/no-nodejs-modules */
+
 import type {
   CanUseTool,
   Options,
@@ -28,44 +34,47 @@ type QueryInput = {
 }
 
 it('hydrates nested Claude tool calls with their native parent relationship', () => {
-  const messages = hydrateClaudeSessionMessages([
-    {
-      type: 'assistant',
-      uuid: 'nested-assistant',
-      session_id: 'session-1',
-      parent_tool_use_id: 'parent-tool',
-      parent_agent_id: null,
-      message: {
-        id: 'nested-message',
-        role: 'assistant',
-        content: [
-          {
-            type: 'tool_use',
-            id: 'child-tool',
-            name: 'Read',
-            input: { file_path: '/vault/note.md' },
-          },
-        ],
+  const messages = hydrateClaudeSessionMessages(
+    [
+      {
+        type: 'assistant',
+        uuid: 'nested-assistant',
+        session_id: 'session-1',
+        parent_tool_use_id: 'parent-tool',
+        parent_agent_id: null,
+        message: {
+          id: 'nested-message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'child-tool',
+              name: 'Read',
+              input: { file_path: '/vault/note.md' },
+            },
+          ],
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'nested-result',
-      session_id: 'session-1',
-      parent_tool_use_id: 'parent-tool',
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'child-tool',
-            content: 'note contents',
-          },
-        ],
+      {
+        type: 'user',
+        uuid: 'nested-result',
+        session_id: 'session-1',
+        parent_tool_use_id: 'parent-tool',
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'child-tool',
+              content: 'note contents',
+            },
+          ],
+        },
       },
-    },
-  ] as SessionMessage[])
+    ] as SessionMessage[],
+    '/vault',
+  )
 
   expect(messages).toMatchObject([
     {
@@ -101,59 +110,62 @@ it('hydrates nested Claude tool calls with their native parent relationship', ()
 })
 
 it('hydrates async Agent completion notifications back into the dispatch call', () => {
-  const messages = hydrateClaudeSessionMessages([
-    {
-      type: 'assistant',
-      uuid: 'agent-request',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'assistant',
-        content: [
-          {
-            type: 'tool_use',
-            id: 'agent-call',
-            name: 'Agent',
-            input: { description: 'Inspect runtime', prompt: 'Inspect it.' },
-          },
-        ],
+  const messages = hydrateClaudeSessionMessages(
+    [
+      {
+        type: 'assistant',
+        uuid: 'agent-request',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'agent-call',
+              name: 'Agent',
+              input: { description: 'Inspect runtime', prompt: 'Inspect it.' },
+            },
+          ],
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'agent-launched',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content: [
-          {
-            type: 'tool_result',
-            tool_use_id: 'agent-call',
-            content: 'Async agent launched successfully.',
-          },
-        ],
+      {
+        type: 'user',
+        uuid: 'agent-launched',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'agent-call',
+              content: 'Async agent launched successfully.',
+            },
+          ],
+        },
+        toolUseResult: {
+          status: 'async_launched',
+          agentId: 'agent-1',
+        },
+      } as unknown as SessionMessage,
+      {
+        type: 'user',
+        uuid: 'agent-completed',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content:
+            '<task-notification><task-id>agent-1</task-id><tool-use-id>agent-call</tool-use-id><status>completed</status><summary>Agent finished</summary><result>Review complete</result></task-notification>',
+        },
       },
-      toolUseResult: {
-        status: 'async_launched',
-        agentId: 'agent-1',
-      },
-    } as unknown as SessionMessage,
-    {
-      type: 'user',
-      uuid: 'agent-completed',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content:
-          '<task-notification><task-id>agent-1</task-id><tool-use-id>agent-call</tool-use-id><status>completed</status><summary>Agent finished</summary><result>Review complete</result></task-notification>',
-      },
-    },
-  ] as SessionMessage[])
+    ] as SessionMessage[],
+    '/vault',
+  )
 
   expect(messages).toHaveLength(2)
   expect(messages[1]).toMatchObject({
@@ -179,55 +191,58 @@ it('hydrates async Agent completion notifications back into the dispatch call', 
 })
 
 it('hides Claude local command envelopes from restored chat history', () => {
-  const messages = hydrateClaudeSessionMessages([
-    {
-      type: 'user',
-      uuid: 'command-caveat',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content:
-          '<local-command-caveat>Generated while running a local command.</local-command-caveat>',
+  const messages = hydrateClaudeSessionMessages(
+    [
+      {
+        type: 'user',
+        uuid: 'command-caveat',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content:
+            '<local-command-caveat>Generated while running a local command.</local-command-caveat>',
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'command-model',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content:
-          '<command-name>/model</command-name><command-message>model</command-message><command-args>haiku</command-args>',
+      {
+        type: 'user',
+        uuid: 'command-model',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content:
+            '<command-name>/model</command-name><command-message>model</command-message><command-args>haiku</command-args>',
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'command-output',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content:
-          '<local-command-stdout>Set model to haiku</local-command-stdout>',
+      {
+        type: 'user',
+        uuid: 'command-output',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content:
+            '<local-command-stdout>Set model to haiku</local-command-stdout>',
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'real-user-message',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content: '你现在是什么模式',
+      {
+        type: 'user',
+        uuid: 'real-user-message',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content: '你现在是什么模式',
+        },
       },
-    },
-  ] as SessionMessage[])
+    ] as SessionMessage[],
+    '/vault',
+  )
 
   expect(messages).toEqual([
     expect.objectContaining({
@@ -239,55 +254,58 @@ it('hides Claude local command envelopes from restored chat history', () => {
 })
 
 it('restores native compaction boundaries and hides their synthetic summaries', () => {
-  const transcript = hydrateClaudeSessionTranscript([
-    {
-      type: 'assistant',
-      uuid: 'assistant-before-compact',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'assistant',
-        content: [{ type: 'text', text: 'Before compact' }],
+  const transcript = hydrateClaudeSessionTranscript(
+    [
+      {
+        type: 'assistant',
+        uuid: 'assistant-before-compact',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'assistant',
+          content: [{ type: 'text', text: 'Before compact' }],
+        },
       },
-    },
-    {
-      type: 'system',
-      subtype: 'compact_boundary',
-      uuid: 'compact-1',
-      compactMetadata: {
-        trigger: 'manual',
-        preTokens: 42_000,
-        postTokens: 8_000,
-        preservedSegment: { anchorUuid: 'summary-1' },
+      {
+        type: 'system',
+        subtype: 'compact_boundary',
+        uuid: 'compact-1',
+        compactMetadata: {
+          trigger: 'manual',
+          preTokens: 42_000,
+          postTokens: 8_000,
+          preservedSegment: { anchorUuid: 'summary-1' },
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'summary-1',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: {
-        role: 'user',
-        content: 'This session is being continued from a previous summary.',
+      {
+        type: 'user',
+        uuid: 'summary-1',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: {
+          role: 'user',
+          content: 'This session is being continued from a previous summary.',
+        },
       },
-    },
-    {
-      type: 'user',
-      uuid: 'real-user',
-      session_id: 'session-1',
-      parent_tool_use_id: null,
-      parent_agent_id: null,
-      message: { role: 'user', content: 'Continue' },
-    },
-    {
-      type: 'system',
-      subtype: 'compact_boundary',
-      uuid: 'compact-2',
-      compactMetadata: { trigger: 'auto' },
-    },
-  ] as unknown as SessionMessage[])
+      {
+        type: 'user',
+        uuid: 'real-user',
+        session_id: 'session-1',
+        parent_tool_use_id: null,
+        parent_agent_id: null,
+        message: { role: 'user', content: 'Continue' },
+      },
+      {
+        type: 'system',
+        subtype: 'compact_boundary',
+        uuid: 'compact-2',
+        compactMetadata: { trigger: 'auto' },
+      },
+    ] as unknown as SessionMessage[],
+    '/vault',
+  )
 
   expect(transcript.messages.map((message) => message.id)).toEqual([
     'assistant-before-compact',
@@ -468,6 +486,14 @@ const flushPromises = async (): Promise<void> => {
   for (let index = 0; index < 12; index += 1) {
     await Promise.resolve()
   }
+}
+
+// For paths that wait on real I/O, which microtask flushing cannot drain.
+const waitFor = async (condition: () => boolean): Promise<void> => {
+  for (let attempt = 0; attempt < 200 && !condition(); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+  expect(condition()).toBe(true)
 }
 
 const assistantMessage = (
@@ -811,23 +837,7 @@ describe('ClaudeCliRuntime', () => {
     })
   })
 
-  it('publishes a shared edit summary from Claude file checkpoints', async () => {
-    const { sdk, queryInstance } = createSdk()
-    queryInstance.rewindFiles.mockResolvedValue({
-      canRewind: true,
-      filesChanged: ['/vault/src/a.ts', '/vault/src/b.ts'],
-      insertions: 7,
-      deletions: 2,
-    })
-    const events: CliRuntimeEvent[] = []
-    const runtime = new ClaudeCliRuntime({
-      vaultPath: '/vault',
-      loadSdk: async () => sdk,
-      resolveProcessSupport: async () => processSupport,
-    })
-    runtime.subscribe((event) => events.push(event))
-    await runtime.ensureReady({})
-    await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit files' })
+  const pushSuccessResult = (queryInstance: FakeQuery): void => {
     queryInstance.push({
       type: 'result',
       subtype: 'success',
@@ -851,6 +861,26 @@ describe('ClaudeCliRuntime', () => {
       uuid: 'result-1',
       session_id: 'session-1',
     } as unknown as SDKMessage)
+  }
+
+  it('publishes the checkpoint summary of a single-file turn', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.rewindFiles.mockResolvedValue({
+      canRewind: true,
+      filesChanged: ['/vault/src/a.ts'],
+      insertions: 7,
+      deletions: 2,
+    })
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit files' })
+    pushSuccessResult(queryInstance)
     await flushPromises()
 
     expect(queryInstance.rewindFiles).toHaveBeenCalledWith('user-1', {
@@ -859,16 +889,217 @@ describe('ClaudeCliRuntime', () => {
     expect(events).toContainEqual({
       type: 'turn_edit_summary',
       sourceUserMessageId: 'user-1',
-      summary: expect.objectContaining({
-        totalFiles: 2,
+      summary: {
+        files: [
+          {
+            path: 'src/a.ts',
+            addedLines: 7,
+            removedLines: 2,
+            operation: 'edit',
+            undoStatus: 'unavailable',
+          },
+        ],
+        totalFiles: 1,
         totalAddedLines: 7,
         totalRemovedLines: 2,
-        files: [
-          expect.objectContaining({ path: 'src/a.ts' }),
-          expect.objectContaining({ path: 'src/b.ts' }),
-        ],
-      }),
+        undoStatus: 'unavailable',
+      },
     })
+  })
+
+  it('leaves a multi-file turn to the per-call summaries', async () => {
+    const { sdk, queryInstance } = createSdk()
+    queryInstance.rewindFiles.mockResolvedValue({
+      canRewind: true,
+      filesChanged: ['/vault/src/a.ts', '/vault/src/b.ts'],
+      insertions: 7,
+      deletions: 2,
+    })
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit files' })
+    pushSuccessResult(queryInstance)
+    await flushPromises()
+
+    expect(queryInstance.rewindFiles).toHaveBeenCalled()
+    expect(events.some((event) => event.type === 'turn_edit_summary')).toBe(
+      false,
+    )
+  })
+
+  it('maps a completed Edit to vault-relative rows and a per-call summary', async () => {
+    const { sdk, queryInstance } = createSdk()
+    const events: CliRuntimeEvent[] = []
+    const runtime = new ClaudeCliRuntime({
+      vaultPath: '/vault',
+      loadSdk: async () => sdk,
+      resolveProcessSupport: async () => processSupport,
+    })
+    runtime.subscribe((event) => events.push(event))
+    await runtime.ensureReady({})
+    await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit' })
+    queryInstance.push({
+      type: 'assistant',
+      parent_tool_use_id: null,
+      uuid: 'assistant-1',
+      session_id: 'session-1',
+      message: {
+        id: 'msg-1',
+        role: 'assistant',
+        content: [
+          {
+            type: 'tool_use',
+            id: 'edit-1',
+            name: 'Edit',
+            input: {
+              file_path: '/vault/notes/a.md',
+              old_string: 'two',
+              new_string: 'TWO',
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage)
+    queryInstance.push({
+      type: 'user',
+      parent_tool_use_id: null,
+      session_id: 'session-1',
+      message: {
+        role: 'user',
+        content: [
+          { type: 'tool_result', tool_use_id: 'edit-1', content: 'ok' },
+        ],
+      },
+      tool_use_result: {
+        filePath: '/vault/notes/a.md',
+        oldString: 'two',
+        newString: 'TWO',
+        originalFile: 'one\ntwo\nthree\n',
+        structuredPatch: [],
+        userModified: false,
+        replaceAll: false,
+      },
+    } as unknown as SDKMessage)
+    await flushPromises()
+
+    const toolMessage = events
+      .flatMap((event) =>
+        event.type === 'message_upsert' && event.message.role === 'tool'
+          ? [event.message]
+          : [],
+      )
+      .at(-1)
+    const toolCall =
+      toolMessage?.role === 'tool' ? toolMessage.toolCalls[0] : null
+    expect(toolCall?.request.metadata?.cliToolCall?.capability).toBe(
+      'file_change',
+    )
+    expect(toolCall?.request.metadata?.fileChangeRows).toEqual([
+      expect.objectContaining({
+        path: 'notes/a.md',
+        completeness: 'diff',
+        rows: expect.arrayContaining([
+          expect.objectContaining({ change: 'removed', text: 'two' }),
+          expect.objectContaining({ change: 'added', text: 'TWO' }),
+        ]),
+      }),
+    ])
+    expect(toolCall?.response).toMatchObject({
+      status: ToolCallResponseStatus.Success,
+      data: {
+        metadata: {
+          editSummary: {
+            files: [
+              {
+                path: 'notes/a.md',
+                addedLines: 1,
+                removedLines: 1,
+                operation: 'edit',
+                undoStatus: 'unavailable',
+              },
+            ],
+            undoStatus: 'unavailable',
+          },
+        },
+      },
+    })
+  })
+
+  it('previews a pending Write against the file on disk', async () => {
+    const vaultPath = await mkdtemp(join(tmpdir(), 'yolo-claude-'))
+    try {
+      await writeFile(join(vaultPath, 'a.md'), 'keep\nold\n')
+      const { sdk, queryInputs } = createSdk()
+      const events: CliRuntimeEvent[] = []
+      const runtime = new ClaudeCliRuntime({
+        vaultPath,
+        loadSdk: async () => sdk,
+        resolveProcessSupport: async () => processSupport,
+      })
+      runtime.subscribe((event) => events.push(event))
+      await runtime.ensureReady({})
+      const canUseTool = queryInputs[0].options?.canUseTool as CanUseTool
+      void canUseTool(
+        'Write',
+        { file_path: join(vaultPath, 'a.md'), content: 'keep\nnew\n' },
+        {
+          signal: new AbortController().signal,
+          toolUseID: 'write-1',
+          requestId: 'request-1',
+        },
+      )
+      await waitFor(() =>
+        events.some(
+          (event) =>
+            event.type === 'message_upsert' &&
+            event.message.role === 'tool' &&
+            event.message.toolCalls[0]?.response.status ===
+              ToolCallResponseStatus.PendingApproval,
+        ),
+      )
+
+      const pending = events.flatMap((event) =>
+        event.type === 'message_upsert' && event.message.role === 'tool'
+          ? event.message.toolCalls
+          : [],
+      )[0]
+      expect(pending?.request.metadata?.fileChangeRows).toEqual([
+        {
+          path: 'a.md',
+          completeness: 'diff',
+          hiddenTrailingLines: 0,
+          rows: [
+            {
+              type: 'line',
+              change: 'unchanged',
+              oldLineNumber: 1,
+              newLineNumber: 1,
+              text: 'keep',
+            },
+            {
+              type: 'line',
+              change: 'removed',
+              oldLineNumber: 2,
+              text: 'old',
+            },
+            {
+              type: 'line',
+              change: 'added',
+              newLineNumber: 2,
+              text: 'new',
+            },
+          ],
+        },
+      ])
+    } finally {
+      await rm(vaultPath, { recursive: true, force: true })
+    }
   })
 
   it('emits context_usage from Claude result usage and modelUsage', async () => {
@@ -1803,7 +2034,14 @@ describe('ClaudeCliRuntime', () => {
         requestId: 'request-3',
       },
     )
-    await flushPromises()
+    // A Write reads the file on disk for its preview before it registers.
+    await waitFor(() =>
+      events.some(
+        (event) =>
+          event.type === 'message_upsert' &&
+          event.message.id === 'claude-tool-tool-3',
+      ),
+    )
     await runtime.respondApproval({
       requestId: 'request-3',
       decision: 'approve_for_session',
