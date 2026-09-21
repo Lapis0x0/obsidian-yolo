@@ -1,53 +1,100 @@
 import cx from 'clsx'
-import { useMemo } from 'react'
+import { ChevronDown, ChevronRight } from 'lucide-react'
+import { useState } from 'react'
 
 import { useLanguage } from '../../../contexts/language-context'
-import type { EditDiffSource } from '../../../core/tools/file-editing-diff'
-import { createInlineDiffLines } from '../../../utils/chat/diff'
+import type {
+  EditDiffRow,
+  FileChangeRows,
+} from '../../../types/tool-call.types'
 
-import {
-  type EditDiffChange,
-  buildEditContentRows,
-  buildEditDiffRows,
-} from './editDiffRows'
-
-const CHANGE_SIGN: Record<EditDiffChange, string> = {
+const CHANGE_SIGN: Record<
+  Extract<EditDiffRow, { type: 'line' }>['change'],
+  string
+> = {
   added: '+',
   removed: '-',
-  modified: '~',
   unchanged: ' ',
 }
 
 /**
- * The expanded body of a file-editing tool card: the file's path, then the
- * diff of what the call changed.
+ * The expanded body of a file-editing tool card: the files a call changed,
+ * each drawn by {@link EditDiffView}.
+ *
+ * One file renders as-is. Several files render as a list of their paths with
+ * only the first one open — a CLI agent that rewrites a dozen files in one
+ * call would otherwise flood the chat with every diff at once.
  *
  * Pure React — no `document` / `window` access at all, which is also what
- * keeps it correct in an Obsidian popout (AGENTS.md "Popout / Multi-window":
- * anything that did reach for the DOM would have to go through
- * `utils/dom/window-context.ts` to avoid the main window's globals).
+ * keeps it correct in an Obsidian popout (AGENTS.md "Popout / Multi-window").
  */
-export function EditDiffView({ source }: { source: EditDiffSource }) {
-  const { t } = useLanguage()
+export function FileChangeList({ files }: { files: FileChangeRows[] }) {
+  const [openIndexes, setOpenIndexes] = useState<ReadonlySet<number>>(
+    () => new Set([0]),
+  )
 
-  const { rows, hiddenTrailingLines } = useMemo(() => {
-    if (source.kind === 'afterOnly') {
-      return buildEditContentRows({ text: source.afterText })
-    }
-    return buildEditDiffRows({
-      lines: createInlineDiffLines(
-        source.beforeText === '' ? [] : source.beforeText.split('\n'),
-        source.afterText === '' ? [] : source.afterText.split('\n'),
-      ),
+  if (files.length === 1) {
+    return (
+      <div className="yolo-edit-diff">
+        <FileChangePath path={files[0].path} />
+        <EditDiffView file={files[0]} />
+      </div>
+    )
+  }
+
+  const toggle = (index: number) => {
+    setOpenIndexes((current) => {
+      const next = new Set(current)
+      if (!next.delete(index)) {
+        next.add(index)
+      }
+      return next
     })
-  }, [source])
+  }
 
   return (
-    <div className="yolo-edit-diff">
-      <div className="yolo-edit-diff-path" title={source.path}>
-        {source.path}
-      </div>
-      {source.kind === 'afterOnly' && (
+    <div className="yolo-edit-diff-files">
+      {files.map((file, index) => {
+        const isOpen = openIndexes.has(index)
+        return (
+          <div className="yolo-edit-diff" key={`${index}:${file.path}`}>
+            <button
+              type="button"
+              className="yolo-edit-diff-file-toggle"
+              aria-expanded={isOpen}
+              title={file.path}
+              onClick={() => toggle(index)}
+            >
+              {isOpen ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+              <span className="yolo-edit-diff-path">{file.path}</span>
+            </button>
+            {isOpen && <EditDiffView file={file} />}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+export function FileChangePath({ path }: { path: string }) {
+  return (
+    <div className="yolo-edit-diff-path" title={path}>
+      {path}
+    </div>
+  )
+}
+
+/**
+ * One file's diff, drawn exactly as handed over: the rows arrive already
+ * numbered, folded and truncated (`core/tools/file-change-rows.ts`), so this
+ * holds no diff logic of its own.
+ */
+export function EditDiffView({ file }: { file: FileChangeRows }) {
+  const { t } = useLanguage()
+
+  return (
+    <>
+      {file.completeness === 'afterOnly' && (
         <div className="yolo-edit-diff-notice">
           {t(
             'chat.toolCall.editDiff.originalUnavailable',
@@ -56,7 +103,7 @@ export function EditDiffView({ source }: { source: EditDiffSource }) {
         </div>
       )}
       <div className="yolo-edit-diff-body">
-        {rows.map((row, index) =>
+        {file.rows.map((row, index) =>
           row.type === 'gap' ? (
             <div className="yolo-edit-diff-gap" key={`gap-${index}`}>
               {t(
@@ -83,14 +130,14 @@ export function EditDiffView({ source }: { source: EditDiffSource }) {
           ),
         )}
       </div>
-      {hiddenTrailingLines > 0 && (
+      {file.hiddenTrailingLines > 0 && (
         <div className="yolo-edit-diff-footer">
           {t(
             'chat.toolCall.editDiff.truncatedLines',
             '还有 {{count}} 行未显示',
-          ).replace('{{count}}', String(hiddenTrailingLines))}
+          ).replace('{{count}}', String(file.hiddenTrailingLines))}
         </div>
       )}
-    </div>
+    </>
   )
 }

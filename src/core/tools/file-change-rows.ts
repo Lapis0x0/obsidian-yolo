@@ -1,4 +1,26 @@
-import type { InlineDiffLine } from '../../../utils/chat/diff'
+import type {
+  EditDiffRow,
+  EditDiffRows,
+  FileChangeRows,
+} from '../../types/tool-call.types'
+import {
+  type AlignedDiffLine,
+  createInlineDiffLines,
+} from '../../utils/chat/diff'
+
+// The shared builders of the file-change contract (`FileChangeRows`,
+// `types/tool-call.types.ts`). Folding and truncation happen here, when the
+// rows are *built*, not when they are drawn: `createInlineDiffLines` emits
+// every unchanged line, so rows built without folding would carry the whole
+// file into whatever persists them (a CLI call's `request.metadata`). The
+// card only draws what it is handed.
+//
+// Budget allocation across files: each file gets its own budget. A call that
+// touches several files builds one `FileChangeRows` per file with the same
+// per-file limits a single-file call has, so no file's diff depends on which
+// other files happened to share its call, and the multi-file list expands one
+// file at a time by default — the render cost of what is on screen stays that
+// of a single file.
 
 /**
  * How many unchanged lines stay visible on each side of a changed run.
@@ -20,49 +42,22 @@ export const EDIT_DIFF_MAX_CHANGED_LINES = 300
  */
 export const EDIT_DIFF_MAX_PLAIN_LINES = EDIT_DIFF_MAX_CHANGED_LINES
 
-export type EditDiffChange = 'unchanged' | 'added' | 'removed' | 'modified'
-
-export type EditDiffRow =
-  | {
-      type: 'line'
-      change: EditDiffChange
-      /** 1-based line number in the pre-edit text; absent for added lines. */
-      oldLineNumber?: number
-      /** 1-based line number in the post-edit text; absent for removed lines. */
-      newLineNumber?: number
-      text: string
-    }
-  | { type: 'gap'; hiddenLines: number }
-
-export type EditDiffRows = {
-  rows: EditDiffRow[]
-  /**
-   * Lines dropped by the cap, reported under the rendered rows. 0 when
-   * nothing was cut.
-   */
-  hiddenTrailingLines: number
-}
-
-const lineText = (line: InlineDiffLine): string =>
+const lineText = (line: AlignedDiffLine): string =>
   line.tokens.map((token) => token.text).join('')
 
-const isChanged = (line: InlineDiffLine): boolean => line.type !== 'unchanged'
+const isChanged = (line: AlignedDiffLine): boolean => line.type !== 'unchanged'
 
 /**
  * Turns `createInlineDiffLines`' flat line list into the rows the card
  * renders: line numbers assigned, far-away unchanged lines collapsed into
  * gap rows, and the whole thing cut off past `maxChangedLines`.
- *
- * Split out of `EditDiffView.tsx` as a pure function so it is testable in
- * this repo's DOM-free Jest environment (same reasoning as
- * `ChatModeSelect.ts`'s exported helpers).
  */
 export const buildEditDiffRows = ({
   lines,
   contextLines = EDIT_DIFF_CONTEXT_LINES,
   maxChangedLines = EDIT_DIFF_MAX_CHANGED_LINES,
 }: {
-  lines: InlineDiffLine[]
+  lines: AlignedDiffLine[]
   contextLines?: number
   maxChangedLines?: number
 }): EditDiffRows => {
@@ -135,7 +130,7 @@ export const buildEditDiffRows = ({
 }
 
 /**
- * The "new content only" render (`EditDiffSource` kind `afterOnly`): every
+ * The "new content only" render (`completeness: 'afterOnly'`): every
  * line shown as-is with its new-file line number, capped the same way. No
  * collapsing — with no changed lines to anchor context around, collapsing
  * would hide the entire content.
@@ -160,3 +155,29 @@ export const buildEditContentRows = ({
     hiddenTrailingLines: Math.max(0, lines.length - maxLines),
   }
 }
+
+const splitLines = (text: string): string[] =>
+  text === '' ? [] : text.split('\n')
+
+/** One file's diff from its full before/after texts. */
+export const buildFileChangeRowsFromTexts = (
+  path: string,
+  beforeText: string,
+  afterText: string,
+): FileChangeRows => ({
+  path,
+  completeness: 'diff',
+  ...buildEditDiffRows({
+    lines: createInlineDiffLines(splitLines(beforeText), splitLines(afterText)),
+  }),
+})
+
+/** One file's written content alone, for when the before-text is unobtainable. */
+export const buildFileChangeRowsFromContent = (
+  path: string,
+  afterText: string,
+): FileChangeRows => ({
+  path,
+  completeness: 'afterOnly',
+  ...buildEditContentRows({ text: afterText }),
+})

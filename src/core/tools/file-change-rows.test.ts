@@ -1,16 +1,21 @@
+import type { EditDiffRow } from '../../types/tool-call.types'
 import {
-  type InlineDiffLine,
+  type AlignedDiffLine,
   createInlineDiffLines,
-} from '../../../utils/chat/diff'
+} from '../../utils/chat/diff'
 
 import {
   EDIT_DIFF_MAX_CHANGED_LINES,
-  type EditDiffRow,
   buildEditContentRows,
   buildEditDiffRows,
-} from './editDiffRows'
+  buildFileChangeRowsFromContent,
+  buildFileChangeRowsFromTexts,
+} from './file-change-rows'
 
-const line = (type: InlineDiffLine['type'], text: string): InlineDiffLine => ({
+const line = (
+  type: AlignedDiffLine['type'],
+  text: string,
+): AlignedDiffLine => ({
   type,
   tokens: [
     {
@@ -150,5 +155,60 @@ describe('buildEditContentRows', () => {
 
     expect(rows).toHaveLength(5)
     expect(hiddenTrailingLines).toBe(7)
+  })
+})
+
+describe('buildFileChangeRowsFromTexts', () => {
+  it('folds at construction time, so the rows never carry the whole file', () => {
+    const unchanged = Array.from({ length: 1000 }, (_, index) => `l${index}`)
+    const before = unchanged.join('\n')
+    const after = [
+      ...unchanged.slice(0, 500),
+      'new',
+      ...unchanged.slice(500),
+    ].join('\n')
+
+    const file = buildFileChangeRowsFromTexts('note.md', before, after)
+
+    expect(file.path).toBe('note.md')
+    expect(file.completeness).toBe('diff')
+    // 3 context lines on each side, the added line, and the two gaps.
+    expect(file.rows).toHaveLength(9)
+    expect(file.rows[0]).toEqual({ type: 'gap', hiddenLines: 497 })
+  })
+
+  it('treats an empty before-text as a pure creation', () => {
+    expect(
+      buildFileChangeRowsFromTexts('note.md', '', 'a\nb').rows.map(describeRow),
+    ).toEqual(['added:-/1:a', 'added:-/2:b'])
+  })
+
+  it('gives every file of a multi-file call its own changed-line budget', () => {
+    // The budget is per file: a file does not lose rows because another file
+    // in the same call was large.
+    const rewrite = (count: number) =>
+      Array.from({ length: count }, (_, index) => `line-${index}`).join('\n')
+
+    const files = [
+      buildFileChangeRowsFromTexts('big.md', '', rewrite(400)),
+      buildFileChangeRowsFromTexts('small.md', '', rewrite(5)),
+    ]
+
+    expect(files.map((file) => file.rows.length)).toEqual([
+      EDIT_DIFF_MAX_CHANGED_LINES,
+      5,
+    ])
+    expect(files.map((file) => file.hiddenTrailingLines)).toEqual([100, 0])
+  })
+})
+
+describe('buildFileChangeRowsFromContent', () => {
+  it('marks the rows as the written content alone', () => {
+    const file = buildFileChangeRowsFromContent('note.md', 'a\nb')
+    expect(file.completeness).toBe('afterOnly')
+    expect(file.rows.map(describeRow)).toEqual([
+      'unchanged:-/1:a',
+      'unchanged:-/2:b',
+    ])
   })
 })

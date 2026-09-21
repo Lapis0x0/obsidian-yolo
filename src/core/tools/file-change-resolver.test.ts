@@ -1,4 +1,6 @@
 import {
+  type FileChangeRows,
+  type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
   type ToolEditOperation,
@@ -7,9 +9,21 @@ import {
 } from '../../types/tool-call.types'
 import type { EditUndoSnapshot } from '../../utils/chat/editUndoSnapshotStore'
 
-import { resolveEditDiffSource } from './file-editing-diff'
+import {
+  type FileChangeResolution,
+  buildPendingFileChangeRows,
+  resolveFileChangeRows,
+} from './file-change-resolver'
+import {
+  buildFileChangeRowsFromContent,
+  buildFileChangeRowsFromTexts,
+} from './file-change-rows'
 
-const request = (value: Record<string, unknown>) => ({
+const request = (
+  value: Record<string, unknown>,
+  name = 'yolo_local__fs_write',
+): Pick<ToolCallRequest, 'name' | 'arguments' | 'metadata'> => ({
+  name,
   arguments: createCompleteToolCallArguments({ value }),
 })
 
@@ -17,6 +31,10 @@ const success = (editSummary?: ToolEditSummary): ToolCallResponse => ({
   status: ToolCallResponseStatus.Success,
   data: { type: 'text', text: '{}', metadata: { editSummary } },
 })
+
+const pending: ToolCallResponse = {
+  status: ToolCallResponseStatus.PendingApproval,
+}
 
 const summaryOf = (
   path: string,
@@ -53,133 +71,239 @@ const snapshot = (
   ...overrides,
 })
 
-describe('resolveEditDiffSource', () => {
+const rowsOf = (...files: FileChangeRows[]): FileChangeResolution => ({
+  type: 'rows',
+  files,
+})
+
+const pendingRead = (resolution: FileChangeResolution | null) => {
+  if (resolution?.type !== 'readCurrent') {
+    throw new Error(`expected readCurrent, got ${JSON.stringify(resolution)}`)
+  }
+  return resolution.read
+}
+
+describe('resolveFileChangeRows', () => {
+  it('uses pre-built rows on the request as they are', () => {
+    const prebuilt = [
+      buildFileChangeRowsFromTexts('a.md', 'x', 'y'),
+      buildFileChangeRowsFromContent('b.md', 'z'),
+    ]
+    expect(
+      resolveFileChangeRows(
+        { name: 'Edit', metadata: { fileChangeRows: prebuilt } },
+        pending,
+      ),
+    ).toEqual(rowsOf(...prebuilt))
+  })
+
   it('diffs oldText/newText straight from the arguments', () => {
     expect(
-      resolveEditDiffSource(
+      resolveFileChangeRows(
         request({ path: 'note.md', oldText: 'a', newText: 'b' }),
         success(editedSummary('note.md')),
         // Even with a snapshot on hand, the arguments win: they are what this
         // call asked for and they survive a reload.
-        snapshot(),
+        { undoSnapshot: snapshot() },
       ),
-    ).toEqual({
-      kind: 'exact',
-      path: 'note.md',
-      beforeText: 'a',
-      afterText: 'b',
-    })
+    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', 'a', 'b')))
+  })
+
+  it('draws the arguments diff while pending approval too', () => {
+    expect(
+      resolveFileChangeRows(
+        request({ path: 'note.md', oldText: 'a', newText: 'b' }),
+        pending,
+      ),
+    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', 'a', 'b')))
   })
 
   it('falls back to the in-memory undo snapshot when the arguments carry no original text', () => {
     expect(
-      resolveEditDiffSource(
+      resolveFileChangeRows(
         request({ path: 'note.md', content: 'after\n' }),
         success(editedSummary('note.md')),
-        snapshot(),
+        { undoSnapshot: snapshot() },
       ),
-    ).toEqual({
-      kind: 'exact',
-      path: 'note.md',
-      beforeText: 'before\n',
-      afterText: 'after\n',
-    })
+    ).toEqual(
+      rowsOf(buildFileChangeRowsFromTexts('note.md', 'before\n', 'after\n')),
+    )
   })
 
   it('treats a snapshot of a file that did not exist as an empty original', () => {
     expect(
-      resolveEditDiffSource(
+      resolveFileChangeRows(
         request({ path: 'note.md', content: 'after\n' }),
         success(createdSummary('note.md')),
-        snapshot({ beforeExists: false, beforeContent: '' }),
+        { undoSnapshot: snapshot({ beforeExists: false, beforeContent: '' }) },
       ),
-    ).toEqual({
-      kind: 'exact',
-      path: 'note.md',
-      beforeText: '',
-      afterText: 'after\n',
-    })
+    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', '', 'after\n')))
   })
 
   it('reads a pure creation off the persisted editSummary when no snapshot survives', () => {
     expect(
-      resolveEditDiffSource(
+      resolveFileChangeRows(
         request({ path: 'note.md', content: 'line\n' }),
         // The native tools report the resolved path, which need not equal the
         // `path` argument — the creation is recognised by operation, not path.
         success(createdSummary('/outside/vault/note.md')),
-        undefined,
       ),
-    ).toEqual({
-      kind: 'exact',
-      path: 'note.md',
-      beforeText: '',
-      afterText: 'line\n',
-    })
+    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', '', 'line\n')))
   })
 
   it('shows the written content alone when the original is gone', () => {
     expect(
-      resolveEditDiffSource(
+      resolveFileChangeRows(
         request({ path: 'note.md', content: 'rewritten\n' }),
         success(editedSummary('note.md')),
-        undefined,
       ),
-    ).toEqual({
-      kind: 'afterOnly',
-      path: 'note.md',
-      afterText: 'rewritten\n',
-    })
+    ).toEqual(rowsOf(buildFileChangeRowsFromContent('note.md', 'rewritten\n')))
   })
 
   it("uses fs_edit's line-range newText as the written content", () => {
     expect(
-      resolveEditDiffSource(
+      resolveFileChangeRows(
         request({ path: 'note.md', startLine: 2, endLine: 4, newText: 'x\n' }),
         success(editedSummary('note.md')),
-        undefined,
       ),
-    ).toEqual({ kind: 'afterOnly', path: 'note.md', afterText: 'x\n' })
+    ).toEqual(rowsOf(buildFileChangeRowsFromContent('note.md', 'x\n')))
   })
 
   it('never uses the review snapshot: an overwrite with no undo snapshot stays afterOnly', () => {
-    // Guards the decision documented on `resolveEditDiffSource`: the review
-    // snapshot accumulates the whole round, so it must not stand in here.
-    const resolved = resolveEditDiffSource(
+    // The review snapshot accumulates the whole round, so it must not stand
+    // in for this call's own before-text.
+    const resolved = resolveFileChangeRows(
       request({ path: 'note.md', content: 'second write\n' }),
       success(editedSummary('note.md')),
-      undefined,
     )
-    expect(resolved?.kind).toBe('afterOnly')
+    expect(
+      resolved?.type === 'rows' ? resolved.files[0].completeness : null,
+    ).toBe('afterOnly')
   })
 
-  it('returns null for every non-success status so the default sections stay', () => {
+  it('returns null for error, rejected and running calls so the default sections stay', () => {
     const args = request({ path: 'note.md', oldText: 'a', newText: 'b' })
-    expect(
-      resolveEditDiffSource(args, {
-        status: ToolCallResponseStatus.Error,
-        error: 'boom',
-      }),
-    ).toBeNull()
-    expect(
-      resolveEditDiffSource(args, {
-        status: ToolCallResponseStatus.Rejected,
-        reason: 'no',
-      }),
-    ).toBeNull()
-    expect(
-      resolveEditDiffSource(args, {
-        status: ToolCallResponseStatus.PendingApproval,
-      }),
-    ).toBeNull()
+    const prebuilt: Pick<ToolCallRequest, 'name' | 'metadata'> = {
+      name: 'Edit',
+      metadata: {
+        fileChangeRows: [buildFileChangeRowsFromTexts('a.md', 'x', 'y')],
+      },
+    }
+    for (const response of [
+      { status: ToolCallResponseStatus.Error, error: 'boom' },
+      { status: ToolCallResponseStatus.Rejected, reason: 'no' },
+      { status: ToolCallResponseStatus.Running },
+    ] satisfies ToolCallResponse[]) {
+      expect(resolveFileChangeRows(args, response)).toBeNull()
+      // The status gate applies to pre-built rows as well.
+      expect(resolveFileChangeRows(prebuilt, response)).toBeNull()
+    }
   })
 
   it('returns null when there is no path, and when there is nothing written to show', () => {
     expect(
-      resolveEditDiffSource(request({ oldText: 'a', newText: 'b' }), success()),
+      resolveFileChangeRows(request({ oldText: 'a', newText: 'b' }), success()),
     ).toBeNull()
     expect(
-      resolveEditDiffSource(request({ path: 'note.md' }), success()),
+      resolveFileChangeRows(request({ path: 'note.md' }), success()),
     ).toBeNull()
+  })
+})
+
+describe('pending approval without the original in the arguments', () => {
+  it('asks for the current vault file for fs_write', () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request({ path: 'note.md', content: 'new\n' }),
+        pending,
+        // A pending call has not written anything, so no snapshot applies —
+        // but even a stale one must not beat the file on disk.
+        { undoSnapshot: snapshot() },
+      ),
+    )
+    expect(read.path).toBe('note.md')
+    expect(read.filesystem).toBe('vault')
+  })
+
+  it('reads through node:fs for the native tools', () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request(
+          { path: '~/notes/a.txt', content: 'new\n' },
+          'yolo_local__write_file',
+        ),
+        pending,
+      ),
+    )
+    expect(read.filesystem).toBe('native')
+  })
+
+  it('diffs an overwrite against the current content', () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request({ path: 'note.md', content: 'a\nB\nc' }),
+        pending,
+      ),
+    )
+    expect(
+      buildPendingFileChangeRows(read, { state: 'text', text: 'a\nb\nc' }),
+    ).toEqual(buildFileChangeRowsFromTexts('note.md', 'a\nb\nc', 'a\nB\nc'))
+  })
+
+  it('draws a pure creation when the file does not exist yet', () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request({ path: 'note.md', content: 'a' }),
+        pending,
+      ),
+    )
+    expect(buildPendingFileChangeRows(read, { state: 'absent' })).toEqual(
+      buildFileChangeRowsFromTexts('note.md', '', 'a'),
+    )
+  })
+
+  it('shows the written content alone when the file cannot be read', () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request({ path: 'note.md', content: 'a' }),
+        pending,
+      ),
+    )
+    expect(buildPendingFileChangeRows(read, { state: 'unreadable' })).toEqual(
+      buildFileChangeRowsFromContent('note.md', 'a'),
+    )
+  })
+
+  it("applies fs_edit's line range to the current content", () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request(
+          { path: 'note.md', startLine: 2, endLine: 3, newText: 'X' },
+          'yolo_local__fs_edit',
+        ),
+        pending,
+      ),
+    )
+    expect(
+      buildPendingFileChangeRows(read, { state: 'text', text: 'a\nb\nc\nd' }),
+    ).toEqual(buildFileChangeRowsFromTexts('note.md', 'a\nb\nc\nd', 'a\nX\nd'))
+  })
+
+  it('falls back to the written content when the line range does not apply', () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request(
+          { path: 'note.md', startLine: 8, endLine: 9, newText: 'X' },
+          'yolo_local__fs_edit',
+        ),
+        pending,
+      ),
+    )
+    expect(
+      buildPendingFileChangeRows(read, { state: 'text', text: 'a\nb' }),
+    ).toEqual(buildFileChangeRowsFromContent('note.md', 'X'))
+    expect(buildPendingFileChangeRows(read, { state: 'absent' })).toEqual(
+      buildFileChangeRowsFromContent('note.md', 'X'),
+    )
   })
 })

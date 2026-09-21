@@ -112,6 +112,47 @@ export type ToolEditSummary = {
   undoStatus: ToolEditUndoStatus
 }
 
+/**
+ * One row of a file-change diff as the chat card draws it: already numbered,
+ * with far-away unchanged lines already collapsed into `gap` rows.
+ *
+ * `change` has exactly the three values any producer can construct — line
+ * alignment (`createInlineDiffLines`) and a bare unified hunk both yield a
+ * rewritten line as a `removed` + `added` pair, never as one "modified" row.
+ */
+export type EditDiffRow =
+  | {
+      type: 'line'
+      change: 'unchanged' | 'added' | 'removed'
+      /** 1-based line number in the pre-edit text; absent for added lines. */
+      oldLineNumber?: number
+      /** 1-based line number in the post-edit text; absent for removed lines. */
+      newLineNumber?: number
+      text: string
+    }
+  | { type: 'gap'; hiddenLines: number }
+
+export type EditDiffRows = {
+  rows: EditDiffRow[]
+  /** Lines dropped by the render budget, reported under the rows; 0 when none. */
+  hiddenTrailingLines: number
+}
+
+/**
+ * The one contract every file-change card renders: one file's diff, folded
+ * and truncated at construction time so that persisting it never persists
+ * the whole file (see `core/tools/file-change-rows.ts`).
+ */
+export type FileChangeRows = EditDiffRows & {
+  path: string
+  /**
+   * `'afterOnly'` — the pre-edit content is not obtainable, so `rows` are the
+   * written content alone and the card says so instead of passing it off as
+   * a diff.
+   */
+  completeness: 'diff' | 'afterOnly'
+}
+
 export type ToolFsReadOperationSummary =
   | {
       type: 'full'
@@ -173,6 +214,15 @@ export type ToolCallRequest = {
     thoughtSignature?: string
     argumentDiagnostics?: ToolCallArgumentDiagnostics
     cliToolCall?: CliToolCallMetadata
+    /**
+     * Pre-built file-change rows for a call whose producer already knows what
+     * it changed (a CLI runtime's mapping layer). Lives on the request rather
+     * than the response because the request exists in every status — the
+     * `PendingApproval` response has no data to carry it. Native file tools
+     * leave it unset: `resolveFileChangeRows` computes theirs from the
+     * arguments.
+     */
+    fileChangeRows?: FileChangeRows[]
     /**
      * Module chat mode tool approval, fixed at tool-call creation time by
      * `AgentToolGateway` and never recomputed afterward — every consumer

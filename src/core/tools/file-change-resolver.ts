@@ -1,33 +1,75 @@
 import {
+  type FileChangeRows,
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
   getToolCallArgumentsObject,
 } from '../../types/tool-call.types'
 import type { EditUndoSnapshot } from '../../utils/chat/editUndoSnapshotStore'
+import { materializeTextEditPlan } from '../edits/textEditEngine'
+import { InvalidToolNameException } from '../mcp/exception'
+import { parseToolName } from '../mcp/tool-name-utils'
+
+import {
+  buildFileChangeRowsFromContent,
+  buildFileChangeRowsFromTexts,
+} from './file-change-rows'
+import { getFsEditPlan } from './fs_edit/schema-helpers'
 
 /**
- * What the expanded card of a file-editing tool call should diff.
+ * The statuses whose card draws the file change instead of the default
+ * sections. The one place this is decided, for native and CLI calls alike.
  *
- * - `exact` — both sides are known to be what *this* call changed, so the
- *   card shows a real before/after diff.
- * - `afterOnly` — only the written content survived; the pre-edit content is
- *   gone (see `resolveEditDiffSource`'s last branch). The card renders the
- *   new content plainly, with a note, rather than dressing it up as a diff
- *   it cannot compute.
+ * - `Success` — the change happened; draw what it was.
+ * - `PendingApproval` — nothing has been written yet and there is no error
+ *   to read; what the user needs in order to decide is what would change.
+ *
+ * Failed and rejected calls keep the default error / rejection sections.
+ * `Running` does too: the write may be under way, so the disk is neither the
+ * before nor the after.
  */
-export type EditDiffSource =
-  | {
-      kind: 'exact'
-      path: string
-      beforeText: string
-      afterText: string
-    }
-  | {
-      kind: 'afterOnly'
-      path: string
-      afterText: string
-    }
+const DRAWN_STATUSES: ReadonlySet<ToolCallResponse['status']> = new Set([
+  ToolCallResponseStatus.Success,
+  ToolCallResponseStatus.PendingApproval,
+])
+
+/**
+ * A pending call whose before-text is the file as it is on disk right now —
+ * an overwrite (`fs_write` / `write_file`) or an `fs_edit` line-range edit.
+ * "Waiting for approval" means the write has not happened, so the current
+ * content *is* the before-text; the resolver is pure and cannot read it, so
+ * it hands this back and the card reads the file (`file-editing-ui.tsx`),
+ * then finishes with {@link buildPendingFileChangeRows}.
+ */
+export type PendingCurrentFileRead = {
+  path: string
+  /** Which API reaches the file: the vault (`fs_*`) or `node:fs` (native). */
+  filesystem: 'vault' | 'native'
+  /** The post-edit text given the current one (`null` = no file yet). */
+  applyTo: (currentText: string | null) => string | null
+  /** What the call writes, shown alone when the current text is unobtainable. */
+  writtenText: string
+}
+
+/** What reading the file on disk found. */
+export type CurrentFileText =
+  | { state: 'absent' }
+  | { state: 'text'; text: string }
+  | { state: 'unreadable' }
+
+export type FileChangeResolution =
+  | { type: 'rows'; files: FileChangeRows[] }
+  | { type: 'readCurrent'; read: PendingCurrentFileRead }
+
+export type FileChangeResolverContext = {
+  /** This call's in-memory undo snapshot, when one survives. */
+  undoSnapshot?: EditUndoSnapshot
+}
+
+const NATIVE_FILESYSTEM_TOOLS: ReadonlySet<string> = new Set([
+  'write_file',
+  'edit_file',
+])
 
 const getStringArg = (
   args: Record<string, unknown> | undefined,
@@ -37,50 +79,63 @@ const getStringArg = (
   return typeof value === 'string' ? value : undefined
 }
 
+const getFilesystem = (requestName: string): 'vault' | 'native' => {
+  try {
+    return NATIVE_FILESYSTEM_TOOLS.has(parseToolName(requestName).toolName)
+      ? 'native'
+      : 'vault'
+  } catch (error) {
+    if (!(error instanceof InvalidToolNameException)) {
+      throw error
+    }
+    return 'vault'
+  }
+}
+
 /**
- * Picks the most trustworthy before/after pair available for one
- * file-editing tool call (`fs_edit`, `fs_write`, `edit_file`, `write_file`).
+ * The single resolver of what a file-editing card draws, for every producer.
  *
- * The order below is "precise to this call" first, never "most complete
- * text" first:
+ * Pre-built rows on the request (`metadata.fileChangeRows`, a CLI runtime's
+ * mapping layer) are used as they are. Otherwise the call is one of the
+ * native file tools (`fs_edit`, `fs_write`, `edit_file`, `write_file`) and
+ * its rows are computed here, from the source most precise to *this call*:
  *
  * 1. **The arguments themselves** (`oldText` + `newText`) — `fs_edit`'s
  *    exact-replace mode and `edit_file` carry the whole change in the call,
- *    persisted with the message. This is the only source that still works
- *    after a reload, and it is scoped to exactly the fragment the model
- *    rewrote, so the card reads the same on the first render and on the
- *    hundredth.
- * 2. **The in-memory undo snapshot** — keyed by `toolCallId + path`, so it
- *    is this call's own before/after full text. Covers `fs_write` /
- *    `write_file` overwrites and `fs_edit`'s line-range mode, where the
- *    arguments hold no original text. It does not survive a reload and is
- *    evicted past a size cap; both simply fall through to a later branch.
- * 3. **`editSummary.operation === 'create'`** — a pure creation has no
+ *    persisted with the message, so it reads the same in every status and
+ *    after a reload.
+ * 2. **Pending approval: the file on disk** — for an overwrite or a
+ *    line-range edit the arguments hold no original text, but nothing has
+ *    been written yet, so the current content is the before-text. Returned
+ *    as `readCurrent` for the card to finish.
+ * 3. **The in-memory undo snapshot** — this call's own before/after full
+ *    text (keyed by `toolCallId + path`). Lost on reload and evicted past a
+ *    size cap; both fall through.
+ * 4. **`editSummary.operation === 'create'`** — a pure creation has no
  *    before-content to lose, so the written content is, exactly, all added.
- *    Persisted with the message, so it keeps working after a reload.
- * 4. **The written content alone** — everything else: an overwrite whose
- *    snapshot is gone (reload, eviction, or a file too large to snapshot).
- *    The card says so instead of guessing.
+ * 5. **The written content alone** (`afterOnly`) — an overwrite whose
+ *    snapshot is gone. The card says so instead of guessing.
  *
  * Deliberately NOT consulted: the IndexedDB review snapshot
- * (`database/edit-review/editReviewSnapshotStore.ts`). It is keyed by
- * conversation + round + path and accumulates *the whole round*, so when a
- * turn touches the same file twice its before-content belongs to the first
- * write, not to the call whose card is open. A diff that is wrong in exactly
- * the case the user most needs it (repeated edits to one file) is worse than
- * saying the original is unavailable.
+ * (`database/edit-review/editReviewSnapshotStore.ts`). It accumulates the
+ * whole round, so when a turn touches the same file twice its before-content
+ * belongs to the first write, not to the call whose card is open.
  *
- * Returns `null` when there is nothing worth drawing — any non-`Success`
- * status (the default error / rejection sections stay in charge), a call
- * with no `path`, or a call with no written content to show either.
+ * Returns `null` when there is nothing to draw — a status outside
+ * {@link DRAWN_STATUSES}, a call with no `path`, or nothing written to show.
  */
-export const resolveEditDiffSource = (
-  request: Pick<ToolCallRequest, 'arguments'>,
+export const resolveFileChangeRows = (
+  request: Pick<ToolCallRequest, 'name' | 'arguments' | 'metadata'>,
   response: ToolCallResponse,
-  undoSnapshot?: EditUndoSnapshot,
-): EditDiffSource | null => {
-  if (response.status !== ToolCallResponseStatus.Success) {
+  context: FileChangeResolverContext = {},
+): FileChangeResolution | null => {
+  if (!DRAWN_STATUSES.has(response.status)) {
     return null
+  }
+
+  const prebuilt = request.metadata?.fileChangeRows
+  if (prebuilt) {
+    return prebuilt.length > 0 ? { type: 'rows', files: prebuilt } : null
   }
 
   const args = getToolCallArgumentsObject(request.arguments)
@@ -92,36 +147,108 @@ export const resolveEditDiffSource = (
   const oldText = getStringArg(args, 'oldText')
   const newText = getStringArg(args, 'newText')
   if (oldText !== undefined && newText !== undefined) {
-    return { kind: 'exact', path, beforeText: oldText, afterText: newText }
-  }
-
-  if (undoSnapshot) {
-    return {
-      kind: 'exact',
-      path,
-      beforeText: undoSnapshot.beforeExists ? undoSnapshot.beforeContent : '',
-      afterText: undoSnapshot.afterExists ? undoSnapshot.afterContent : '',
-    }
+    return rows(buildFileChangeRowsFromTexts(path, oldText, newText))
   }
 
   // `content` is `fs_write` / `write_file`'s full-content argument;
   // `newText` alone is `fs_edit`'s line-range mode (no `oldText` to pair
-  // with, which is why it falls through the first branch).
-  const writtenText = getStringArg(args, 'content') ?? newText
+  // with, which is why it fell through the branch above).
+  const content = getStringArg(args, 'content')
+  const writtenText = content ?? newText
   if (writtenText === undefined) {
     return null
   }
 
+  if (response.status === ToolCallResponseStatus.PendingApproval) {
+    return {
+      type: 'readCurrent',
+      read: {
+        path,
+        filesystem: getFilesystem(request.name),
+        applyTo:
+          content !== undefined
+            ? () => content
+            : (currentText) => applyLineRangeEdit(args ?? {}, currentText),
+        writtenText,
+      },
+    }
+  }
+
+  const { undoSnapshot } = context
+  if (undoSnapshot) {
+    return rows(
+      buildFileChangeRowsFromTexts(
+        path,
+        undoSnapshot.beforeExists ? undoSnapshot.beforeContent : '',
+        undoSnapshot.afterExists ? undoSnapshot.afterContent : '',
+      ),
+    )
+  }
+
   // Each of these four tools writes exactly one file per call, so a single
   // `create` entry is unambiguous — matched by count and operation rather
-  // than by path, because the native tools report the *resolved* absolute
-  // path while the argument may be relative or `~`-prefixed.
-  const editedFiles = response.data.metadata?.editSummary?.files ?? []
+  // than by path, because the native tools report the *resolved* path while
+  // the argument may be relative or `~`-prefixed.
+  const editedFiles =
+    response.status === ToolCallResponseStatus.Success
+      ? (response.data.metadata?.editSummary?.files ?? [])
+      : []
   const isPureCreation =
     editedFiles.length === 1 && editedFiles[0].operation === 'create'
   if (isPureCreation) {
-    return { kind: 'exact', path, beforeText: '', afterText: writtenText }
+    return rows(buildFileChangeRowsFromTexts(path, '', writtenText))
   }
 
-  return { kind: 'afterOnly', path, afterText: writtenText }
+  return rows(buildFileChangeRowsFromContent(path, writtenText))
+}
+
+const rows = (file: FileChangeRows): FileChangeResolution => ({
+  type: 'rows',
+  files: [file],
+})
+
+/**
+ * `fs_edit`'s line-range edit applied to the current text, through the same
+ * plan parser and engine the tool executes with — so the preview is what the
+ * write would do, or `null` where the write itself would fail.
+ */
+const applyLineRangeEdit = (
+  args: Record<string, unknown>,
+  currentText: string | null,
+): string | null => {
+  if (currentText === null) {
+    return null
+  }
+  let plan: ReturnType<typeof getFsEditPlan>
+  try {
+    plan = getFsEditPlan(args)
+  } catch {
+    return null
+  }
+  const materialized = materializeTextEditPlan({ content: currentText, plan })
+  return materialized.errors.length > 0 ? null : materialized.newContent
+}
+
+/**
+ * Finishes a {@link PendingCurrentFileRead} once the card has read the file:
+ * a real diff against the current text (or against nothing, for a file that
+ * does not exist yet), or the written content alone when the file could not
+ * be read or the edit does not apply to it.
+ */
+export const buildPendingFileChangeRows = (
+  read: PendingCurrentFileRead,
+  current: CurrentFileText,
+): FileChangeRows => {
+  if (current.state !== 'unreadable') {
+    const beforeText = current.state === 'text' ? current.text : null
+    const afterText = read.applyTo(beforeText)
+    if (afterText !== null) {
+      return buildFileChangeRowsFromTexts(
+        read.path,
+        beforeText ?? '',
+        afterText,
+      )
+    }
+  }
+  return buildFileChangeRowsFromContent(read.path, read.writtenText)
 }

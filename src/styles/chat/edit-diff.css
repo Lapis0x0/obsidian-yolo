@@ -14,6 +14,50 @@
   min-width: 0;
 }
 
+.yolo-edit-diff-files {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-2-3);
+  min-width: 0;
+}
+
+/* 多文件时每个文件的路径本身就是展开开关。Obsidian 全局给 button 加了底色、
+ * 阴影和内边距，这里逐项复位成一行纯文本。 */
+button.yolo-edit-diff-file-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--size-2-1);
+  width: 100%;
+  min-width: 0;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+button.yolo-edit-diff-file-toggle:hover {
+  background: transparent;
+  color: var(--text-normal);
+}
+
+button.yolo-edit-diff-file-toggle:focus-visible {
+  outline: 2px solid
+    color-mix(in srgb, var(--interactive-accent) 55%, transparent);
+  outline-offset: 1px;
+}
+
+button.yolo-edit-diff-file-toggle > svg {
+  flex: 0 0 auto;
+}
+
+button.yolo-edit-diff-file-toggle:hover .yolo-edit-diff-path {
+  color: inherit;
+}
+
 .yolo-edit-diff-path {
   overflow: hidden;
   color: var(--text-muted);
@@ -58,10 +102,6 @@
 
 .yolo-edit-diff-row--removed {
   background-color: color-mix(in srgb, var(--text-error) 14%, transparent);
-}
-
-.yolo-edit-diff-row--modified {
-  background-color: color-mix(in srgb, var(--text-accent) 14%, transparent);
 }
 
 .yolo-edit-diff-gutter {

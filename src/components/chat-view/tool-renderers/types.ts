@@ -139,8 +139,9 @@ export type ToolChatSummaryFn = (args: {
  * to the default rendering — e.g. `delegate_subagent`'s renderer returns
  * `null` while pending approval, matching current behavior where the approval
  * footer (not `SubagentCard`) owns that state; the file-editing `content`
- * renderer returns `null` for every non-`Success` status, so a failed or
- * rejected write still shows its error/rejection section verbatim.
+ * renderer returns `null` for every status `resolveFileChangeRows` does not
+ * draw, so a failed or rejected write still shows its error/rejection
+ * section verbatim.
  *
  * `summary` (D8) is orthogonal to `kind` — a `generic`-kind tool can still
  * have a custom header summary (most of them do); see `ToolChatSummaryFn`'s

@@ -26,6 +26,15 @@ export type InlineDiffLine = {
   tokens: InlineDiffToken[]
 }
 
+/**
+ * What line-level alignment (`createInlineDiffLines`) actually produces: a
+ * rewritten line comes out as a `removed` + `added` pair, never as
+ * `'modified'` — that value only exists for the block-level inline render.
+ */
+export type AlignedDiffLine = InlineDiffLine & {
+  type: 'unchanged' | 'added' | 'removed'
+}
+
 export type MarkdownBlockType =
   | 'blank'
   | 'paragraph'
@@ -797,7 +806,7 @@ function escapeRegExp(value: string): string {
 export function createInlineDiffLines(
   originalLines: string[],
   modifiedLines: string[],
-): InlineDiffLine[] {
+): AlignedDiffLine[] {
   if (originalLines.length === 0 && modifiedLines.length === 0) {
     return []
   }
@@ -828,7 +837,7 @@ export function createInlineDiffLines(
     advOptions,
   ).changes
 
-  const inlineLines: InlineDiffLine[] = []
+  const inlineLines: AlignedDiffLine[] = []
   let lastOriginalEndLineNumberExclusive = 1
 
   advLineChanges.forEach((change: LineRangeMapping) => {
