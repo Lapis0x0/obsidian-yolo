@@ -50,6 +50,16 @@ export type ConversationRef = YoloConversationRef | CliSessionRef
 export const isCliSessionRef = (ref: ConversationRef): ref is CliSessionRef =>
   ref.runtimeId !== 'yolo'
 
+/**
+ * The conversation id a CLI session's chat state is keyed under wherever a
+ * conversation id is asked for — notably its edit review snapshots, which the
+ * runtime that saw the edit writes and the chat surface showing the edit
+ * reads. Derived from the provider-native session, the one identity both
+ * sides hold.
+ */
+export const getCliSessionConversationId = (ref: CliSessionRef): string =>
+  `${ref.runtimeId}:${ref.nativeSessionId}`
+
 export type CliSessionHydration = {
   ref: CliSessionRef
   messages: ChatMessage[]

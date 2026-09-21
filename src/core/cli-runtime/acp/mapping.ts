@@ -289,9 +289,15 @@ const mergeAcpDiffs = (
 /** Builds a `ToolEditSummary` from the diffs an ACP call reported, reusing
  * the shared line-diff engine. ACP-driven edits happen outside YOLO's own
  * file-tool executor, so — like Codex's file-change mapping — undo is marked
- * unavailable rather than claiming a snapshot that was never captured. */
+ * unavailable rather than claiming a snapshot that was never captured.
+ *
+ * Every file names `reviewRoundId`, the round its review snapshot is stored
+ * under (`recordCliEditReviewSnapshot`): the call's own tool message id, set
+ * explicitly because the id the transcript ends up giving the message is not
+ * guaranteed to be the one it was emitted with. */
 const buildAcpEditSummary = (
   shown: readonly AcpShownDiff[],
+  reviewRoundId: string,
 ): ReturnType<typeof createToolEditSummary> => {
   const files = shown.flatMap(({ diff }): ToolEditSummaryFile[] => {
     // ACP gives `oldText` three meanings: a string is the prior content,
@@ -307,6 +313,7 @@ const buildAcpEditSummary = (
           lineStatsAvailable: false,
           operation: 'edit',
           undoStatus: 'unavailable',
+          reviewRoundId,
         },
       ]
     }
@@ -316,6 +323,7 @@ const buildAcpEditSummary = (
       afterContent: diff.newText,
       beforeExists: diff.oldText !== null,
       afterExists: true,
+      reviewRoundId,
     })
     return summary
       ? summary.files.map((file) => ({
@@ -460,6 +468,7 @@ export const mapAcpToolCallState = (
                 ? (() => {
                     const editSummary = buildAcpEditSummary(
                       getAcpShownDiffs(state),
+                      acpToolMessageId(state.toolCallId),
                     )
                     return editSummary ? { metadata: { editSummary } } : {}
                   })()

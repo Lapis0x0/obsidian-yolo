@@ -15,6 +15,7 @@ import { Platform } from 'obsidian'
 
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { CliConversationController } from '../conversation-controller'
+import { recordCliEditReviewSnapshot } from '../edit-review'
 import type { CliRuntimeEvent } from '../types'
 
 import { ClaudeCliRuntime } from './ClaudeCliRuntime'
@@ -27,6 +28,11 @@ import type {
   ClaudeSdkModule,
   ClaudeSdkQuery,
 } from './types'
+
+jest.mock('../edit-review', () => ({
+  recordCliEditReviewSnapshot: jest.fn(async () => undefined),
+}))
+const mockedRecordSnapshot = jest.mocked(recordCliEditReviewSnapshot)
 
 type QueryInput = {
   prompt: AsyncIterable<SDKUserMessage> | string
@@ -1028,6 +1034,151 @@ describe('ClaudeCliRuntime', () => {
           },
         },
       },
+    })
+  })
+
+  describe('recording review snapshots', () => {
+    const pushEdit = (
+      queryInstance: ReturnType<typeof createSdk>['queryInstance'],
+      filePath: string,
+    ) => {
+      queryInstance.push({
+        type: 'assistant',
+        parent_tool_use_id: null,
+        uuid: 'assistant-1',
+        session_id: 'session-1',
+        message: {
+          id: 'msg-1',
+          role: 'assistant',
+          content: [
+            {
+              type: 'tool_use',
+              id: 'edit-1',
+              name: 'Edit',
+              input: { file_path: filePath, old_string: 'b', new_string: 'B' },
+            },
+          ],
+        },
+      } as unknown as SDKMessage)
+      queryInstance.push({
+        type: 'user',
+        parent_tool_use_id: null,
+        session_id: 'session-1',
+        message: {
+          role: 'user',
+          content: [
+            { type: 'tool_result', tool_use_id: 'edit-1', content: 'ok' },
+          ],
+        },
+        tool_use_result: {
+          filePath,
+          oldString: 'b',
+          newString: 'B',
+          originalFile: 'a\nb\n',
+          structuredPatch: [],
+          userModified: false,
+          replaceAll: false,
+        },
+      } as unknown as SDKMessage)
+    }
+
+    const runEdit = async (diskText: string) => {
+      const vaultPath = await mkdtemp(join(tmpdir(), 'yolo-claude-'))
+      try {
+        await writeFile(join(vaultPath, 'a.md'), diskText)
+        const { sdk, queryInstance } = createSdk()
+        const events: CliRuntimeEvent[] = []
+        const runtime = new ClaudeCliRuntime({
+          vaultPath,
+          loadSdk: async () => sdk,
+          resolveProcessSupport: async () => processSupport,
+          app: {} as never,
+        })
+        runtime.subscribe((event) => events.push(event))
+        await runtime.ensureReady({})
+        await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit' })
+        pushEdit(queryInstance, join(vaultPath, 'a.md'))
+        await flushPromises()
+        // The disk read is real I/O.
+        await new Promise((resolve) => setTimeout(resolve, 50))
+        return events
+      } finally {
+        await rm(vaultPath, { recursive: true, force: true })
+      }
+    }
+
+    beforeEach(() => mockedRecordSnapshot.mockClear())
+
+    it('records a completed Edit the disk bears out, under its tool card id', async () => {
+      const events = await runEdit('a\nB\n')
+
+      expect(mockedRecordSnapshot).toHaveBeenCalledTimes(1)
+      expect(mockedRecordSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          roundId: 'claude-tool-edit-1',
+          path: 'a.md',
+          beforeContent: 'a\nb\n',
+          afterContent: 'a\nB\n',
+        }),
+      )
+      // The call's editSummary names the same round for the panel to read.
+      const toolCall = events
+        .flatMap((event) =>
+          event.type === 'message_upsert' && event.message.role === 'tool'
+            ? event.message.toolCalls
+            : [],
+        )
+        .at(-1)
+      expect(toolCall?.response).toMatchObject({
+        data: {
+          metadata: {
+            editSummary: { files: [{ reviewRoundId: 'claude-tool-edit-1' }] },
+          },
+        },
+      })
+    })
+
+    it('names the latest edit round on a single-file turn summary', async () => {
+      const { sdk, queryInstance } = createSdk()
+      queryInstance.rewindFiles.mockResolvedValue({
+        canRewind: true,
+        filesChanged: ['/vault/a.md'],
+        insertions: 1,
+        deletions: 1,
+      })
+      const events: CliRuntimeEvent[] = []
+      const runtime = new ClaudeCliRuntime({
+        vaultPath: '/vault',
+        loadSdk: async () => sdk,
+        resolveProcessSupport: async () => processSupport,
+      })
+      runtime.subscribe((event) => events.push(event))
+      await runtime.ensureReady({})
+      await runtime.sendTurn({ userMessageId: 'user-1', content: 'edit' })
+      pushEdit(queryInstance, '/vault/a.md')
+      pushSuccessResult(queryInstance)
+      await flushPromises()
+
+      // The summary is attached to the turn's last successful call, which need
+      // not be the one that changed the file.
+      expect(events).toContainEqual(
+        expect.objectContaining({
+          type: 'turn_edit_summary',
+          summary: expect.objectContaining({
+            files: [
+              expect.objectContaining({
+                path: 'a.md',
+                reviewRoundId: 'claude-tool-edit-1',
+              }),
+            ],
+          }),
+        }),
+      )
+    })
+
+    it('records nothing when the file no longer is what the Edit produced', async () => {
+      await runEdit('changed again\n')
+      expect(mockedRecordSnapshot).not.toHaveBeenCalled()
     })
   })
 

@@ -19,6 +19,7 @@ import {
 } from './askUserQuestion'
 import {
   applyClaudeFileChangeResult,
+  claudeToolMessageId,
   isClaudeFileChangeTool,
 } from './fileChange'
 
@@ -460,7 +461,7 @@ export const hydrateClaudeSessionTranscript = (
     if (completedTools.has(toolUseId)) continue
     hydrated.push({
       role: 'tool',
-      id: `claude-tool-${toolUseId}`,
+      id: claudeToolMessageId(toolUseId),
       toolCalls: [
         {
           request,

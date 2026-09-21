@@ -75,6 +75,7 @@ export const createHermesRuntimeFactory = async (
       }
       return new AcpCliRuntime('hermes', {
         cwd: createDeps.vaultPath,
+        app: createDeps.app,
         resolveHost: () => acquire(profileId),
         // Resuming a session whose profile no longer loads (deleted,
         // corrupted sessions.db, ...) falls back to a fresh session under

@@ -28,6 +28,15 @@ const CLAUDE_FILE_CHANGE_TOOLS: ReadonlySet<string> = new Set([
 export const isClaudeFileChangeTool = (toolName: string): boolean =>
   CLAUDE_FILE_CHANGE_TOOLS.has(toolName)
 
+/**
+ * The live tool card's id — one owner for the `claude-tool-` id. It is also
+ * the round a file change's review snapshot is stored under, named on the
+ * call's `editSummary` as `reviewRoundId` because a restored transcript gives
+ * the same call a different message id.
+ */
+export const claudeToolMessageId = (toolUseId: string): string =>
+  `claude-tool-${toolUseId}`
+
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
 
@@ -63,7 +72,8 @@ export const applyClaudeEdit = (
 }
 
 /** A completed call's change, as the tool itself reported it. */
-type CompletedFileChange = {
+export type ClaudeCompletedFileChange = {
+  /** Absolute, as Claude reports it. */
   filePath: string
   /** Whole file before the call; `null` = the call created it. */
   before: string | null
@@ -73,10 +83,15 @@ type CompletedFileChange = {
   shown: { before: string; after: string }
 }
 
-const readCompletedFileChange = (
+/**
+ * The whole-file change a completed Edit / Write / NotebookEdit made, read
+ * from its SDK result; `null` for anything else or a result whose shape is
+ * not the SDK's.
+ */
+export const readClaudeCompletedFileChange = (
   toolName: string,
   result: unknown,
-): CompletedFileChange | null => {
+): ClaudeCompletedFileChange | null => {
   if (!isRecord(result)) return null
 
   if (toolName === CLAUDE_WRITE_TOOL) {
@@ -145,7 +160,8 @@ const readCompletedFileChange = (
 
 const buildEditSummary = (
   path: string,
-  change: CompletedFileChange,
+  change: ClaudeCompletedFileChange,
+  reviewRoundId: string,
 ): ToolEditSummary | undefined => {
   const summary = createToolEditSummary({
     path,
@@ -153,6 +169,7 @@ const buildEditSummary = (
     afterContent: change.after,
     beforeExists: change.before !== null,
     afterExists: true,
+    reviewRoundId,
   })
   if (!summary) return undefined
   // Claude wrote the file, not YOLO: there is no snapshot to undo from.
@@ -187,13 +204,17 @@ export const applyClaudeFileChangeResult = (
 ): { request: ToolCallRequest; response: ToolCallResponse } => {
   const { request, response } = toolCall
   if (response.status !== ToolCallResponseStatus.Success) return toolCall
-  const change = readCompletedFileChange(
+  const change = readClaudeCompletedFileChange(
     request.name,
     response.data.metadata?.cliToolResult,
   )
   if (!change) return toolCall
   const path = toCliEditSummaryPath(change.filePath, vaultPath)
-  const editSummary = buildEditSummary(path, change)
+  const editSummary = buildEditSummary(
+    path,
+    change,
+    claudeToolMessageId(request.id),
+  )
   return {
     request: withFileChangeRows(request, [
       buildFileChangeRowsFromTexts(

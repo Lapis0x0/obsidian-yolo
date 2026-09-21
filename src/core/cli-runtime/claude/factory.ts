@@ -31,6 +31,7 @@ export const createClaudeRuntimeFactory = async (
       new ClaudeCliRuntime({
         ...getClaudeRuntimeOptions(),
         vaultPath: createDeps.vaultPath,
+        app: createDeps.app,
       }),
   }
 }

@@ -49,7 +49,7 @@ describe('createClaudeRuntimeFactory', () => {
     expect(runtime).toBeDefined()
   })
 
-  it('uses the caller-supplied options verbatim, merged with the create-time vault path', async () => {
+  it('uses the caller-supplied options verbatim, merged with the create-time vault path and app', async () => {
     const getConfiguredCliPath = () => '/bin/claude'
     const getClaudeRuntimeOptions = jest.fn(() => ({ getConfiguredCliPath }))
     const factory = await createClaudeRuntimeFactory({
@@ -64,6 +64,7 @@ describe('createClaudeRuntimeFactory', () => {
     expect(ClaudeCliRuntimeMock).toHaveBeenCalledWith({
       getConfiguredCliPath,
       vaultPath: '/vault/current',
+      app,
     })
     expect(mockedGetCliPathOverride).not.toHaveBeenCalled()
   })

@@ -2209,9 +2209,11 @@ export const en: TranslationKeys = {
       snapshotUnavailable:
         'This device has no snapshot of that edit, so it cannot be undone or reviewed. Snapshots stay on the device that made the edit.',
       reviewOutsideVault:
-        'This file lives outside the vault, so it cannot be reviewed in the editor. Undo still works.',
+        'This file lives outside the vault, so it cannot be reviewed in the editor.',
       reviewWhileRunning:
         'The agent is still running and may edit the file again. Review it once the run finishes.',
+      reviewContentChanged:
+        'The file has changed again since this edit, so the review cannot be opened.',
     },
     errorCard: {
       title: 'This response failed to generate',

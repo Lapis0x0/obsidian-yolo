@@ -4,7 +4,10 @@ import type {
   RequestPermissionResponse,
 } from '@agentclientprotocol/sdk'
 
-import { MAX_SNAPSHOT_CONTENT_CHARS } from '../../../database/edit-review/editReviewSnapshotStore'
+import {
+  type EditReviewSnapshotApp,
+  MAX_SNAPSHOT_CONTENT_CHARS,
+} from '../../../database/edit-review/editReviewSnapshotStore'
 import type { ChatMessage, ChatToolMessage } from '../../../types/chat'
 import {
   type ToolCallResponse,
@@ -13,6 +16,7 @@ import {
 import { readNativeCurrentText } from '../../tools/native/current-text'
 import { resolveNativePathWithin } from '../../tools/native/paths'
 import { RUNTIME_CAPABILITIES } from '../capabilities'
+import { recordCliEditReviewSnapshot } from '../edit-review'
 import type {
   CliApprovalResponse,
   CliPermissionProfileUpdate,
@@ -89,6 +93,12 @@ export type AcpCliRuntimeOptions = Readonly<{
    * when hosts are not pooled (`resolveHost` absent).
    */
   releaseHost?: () => void
+  /**
+   * Where edit review snapshots are stored. A file change the runtime could
+   * settle against disk is recorded there, so the edit summary panel can open
+   * it in the review overlay. Absent in tests that do not exercise that.
+   */
+  app?: EditReviewSnapshotApp
 }>
 
 type PendingApproval = {
@@ -524,8 +534,10 @@ export class AcpCliRuntime implements CliRuntime {
   /**
    * Once a file-change call completes, reads each file it reported a diff for
    * and settles the diff against it (`resolveAcpWholeFileDiff`): the card is
-   * redrawn from whole-file texts with real line numbers. Done in the runtime
-   * because the mapping only sees protocol messages and never the disk.
+   * redrawn from whole-file texts with real line numbers, and those texts are
+   * recorded as the call's review snapshot. Done in the runtime because the
+   * mapping only sees protocol messages — never the disk, the session, or the
+   * snapshot store.
    *
    * Once per call. A file whose new text is past the review snapshot's size
    * cap is not read — nothing downstream could keep it.
@@ -580,6 +592,27 @@ export class AcpCliRuntime implements CliRuntime {
     // Nothing settled draws the card exactly as before: leave it untouched.
     if (wholeFileDiffs.length === 0) return
     for (const message of messages) this.emitMessage(message)
+    // Settled texts are whole files the disk bears out — what the review
+    // overlay needs. A diff with no known before-text has nothing to review
+    // against.
+    const app = this.options.app
+    if (!app) return
+    await Promise.all(
+      wholeFileDiffs.flatMap(({ path, oldText, newText }) =>
+        oldText === undefined
+          ? []
+          : [
+              recordCliEditReviewSnapshot({
+                app,
+                sessionRef,
+                roundId: acpToolMessageId(state.toolCallId),
+                path,
+                beforeContent: oldText,
+                afterContent: newText,
+              }),
+            ],
+      ),
+    )
   }
 
   /** Emits a transcript message, keeping `turnToolCards` in step with it. */

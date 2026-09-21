@@ -2082,10 +2082,10 @@ export const zh: TranslationKeys = {
       fileMissing: '文件不存在或已被移动。',
       snapshotUnavailable:
         '本设备没有这次编辑的快照，无法撤销或评审（快照只保存在本机，不随笔记同步）。',
-      reviewOutsideVault:
-        '该文件在 vault 之外，无法在编辑器中评审；撤销仍然可用。',
+      reviewOutsideVault: '该文件在 vault 之外，无法在编辑器中评审。',
       reviewWhileRunning:
         'Agent 仍在运行，可能继续修改文件。请等它结束后再评审。',
+      reviewContentChanged: '文件在这次修改之后又被改动过，无法打开修订视图。',
     },
     errorCard: {
       title: '本次回复生成失败',

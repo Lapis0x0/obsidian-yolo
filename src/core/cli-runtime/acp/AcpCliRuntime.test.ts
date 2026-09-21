@@ -10,6 +10,7 @@ import type { InitializeResponse } from '@agentclientprotocol/sdk'
 import type { ChatToolMessage } from '../../../types/chat'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
 import { buildFileChangeRowsFromTexts } from '../../tools/file-change-rows'
+import { recordCliEditReviewSnapshot } from '../edit-review'
 import type { CliRuntimeEvent } from '../types'
 
 import { AcpCliRuntime } from './AcpCliRuntime'
@@ -26,6 +27,11 @@ jest.mock('../../../utils/platform/desktopNodeModule', () => ({
   loadDesktopNodeModule: async (specifier: string) =>
     jest.requireActual(specifier) as unknown,
 }))
+
+jest.mock('../edit-review', () => ({
+  recordCliEditReviewSnapshot: jest.fn(async () => undefined),
+}))
+const mockedRecordSnapshot = jest.mocked(recordCliEditReviewSnapshot)
 
 type RpcMessage = {
   id?: string | number
@@ -712,6 +718,7 @@ describe('AcpCliRuntime', () => {
 
     beforeEach(async () => {
       vault = await mkdtemp(join(tmpdir(), 'yolo-acp-disk-'))
+      mockedRecordSnapshot.mockClear()
     })
 
     afterEach(async () => {
@@ -754,6 +761,7 @@ describe('AcpCliRuntime', () => {
       const runtime = new AcpCliRuntime('codebuddy', {
         cwd: vault,
         createProcess: async () => agent,
+        app: {} as never,
       })
       const events = collectEvents(runtime)
       await runtime.ensureReady({})
@@ -782,6 +790,17 @@ describe('AcpCliRuntime', () => {
           '1\n2\nnew 3\n4\n',
         ),
       ])
+      // …and records the whole-file texts for the review overlay, under the
+      // round the call's editSummary names.
+      expect(mockedRecordSnapshot).toHaveBeenCalledWith(
+        expect.objectContaining({
+          sessionRef: { runtimeId: 'codebuddy', nativeSessionId: 'sess-1' },
+          roundId: 'acp-result-edit-1',
+          path: 'a.md',
+          beforeContent: '1\n2\nold 3\n4\n',
+          afterContent: '1\n2\nnew 3\n4\n',
+        }),
+      )
     })
 
     it('leaves the rows unnumbered when the disk does not bear the diff out', async () => {
@@ -795,6 +814,7 @@ describe('AcpCliRuntime', () => {
         { type: 'line', change: 'removed', text: 'old' },
         { type: 'line', change: 'added', text: 'new' },
       ])
+      expect(mockedRecordSnapshot).not.toHaveBeenCalled()
     })
   })
 

@@ -51,6 +51,7 @@ export const createGrokRuntimeFactory = async (
       let acquired = false
       return new AcpCliRuntime('grok', {
         cwd: createDeps.vaultPath,
+        app: createDeps.app,
         resolveHost: () => {
           if (!hostPromise) {
             acquired = true

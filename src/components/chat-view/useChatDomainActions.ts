@@ -49,12 +49,9 @@ import { readTFileContent } from '../../utils/obsidian'
 
 import { yoloPreferencePatch } from './chat-input/ChatModeSelect'
 import { invalidateChatRuntimeNavigation } from './cliChatIntegration'
-import {
-  isOutsideVaultEditPath,
-  openEditTarget,
-  usableSnapshotPair,
-} from './editTargetIo'
+import { openEditTarget, usableSnapshotPair } from './editTargetIo'
 import { isDelegateSubagentToolName } from './messageNavigatorUtils'
+import { openEditSummaryFile } from './openEditSummaryFile'
 import type { QueryProgressState } from './QueryProgress'
 import type { useChatStreamManager } from './useChatStreamManager'
 import { serializeActiveBranchByUserMessageId } from './useYoloChatSession'
@@ -1013,133 +1010,16 @@ export function useChatDomainActions({
   )
 
   const handleOpenEditSummaryFile = useCallback(
-    async ({
-      path,
-      firstRoundId,
-      latestRoundId,
-    }: GroupEditSummary['files'][number]) => {
-      // 评审是 Obsidian 编辑器视图上的 diff 覆盖层，只能开在 vault 里的
-      // Markdown 文件上。vault 外的文件（只有 Max 的原生工具会写）没有
-      // `TFile`，也就没有可覆盖的编辑器；撤销仍然走 node fs，照常可用。
-      if (isOutsideVaultEditPath(path)) {
-        new Notice(
-          t(
-            'chat.editSummary.reviewOutsideVault',
-            '该文件在 vault 之外，无法在编辑器中评审；撤销仍然可用。',
-          ),
-        )
-        return
-      }
-
-      const targetEntry = app.vault.getAbstractFileByPath(path)
-      const targetFile = targetEntry instanceof TFile ? targetEntry : null
-
-      if (!currentConversationId) {
-        if (!targetFile) {
-          new Notice(
-            t('chat.editSummary.fileMissing', '文件不存在或已被移动。'),
-          )
-          return
-        }
-        const leaf = app.workspace.getLeaf(false)
-        void leaf.openFile(targetFile)
-        return
-      }
-
-      const [firstSnapshot, latestSnapshot] = await Promise.all([
-        readEditReviewSnapshot({
-          app,
-          conversationId: currentConversationId,
-          roundId: firstRoundId,
-          filePath: path,
-        }),
-        readEditReviewSnapshot({
-          app,
-          conversationId: currentConversationId,
-          roundId: latestRoundId,
-          filePath: path,
-        }),
-      ])
-
-      const snapshots = usableSnapshotPair(firstSnapshot, latestSnapshot)
-      if (snapshots) {
-        // 覆盖层没有监听文件改动：agent 若在审阅期间再次写同一文件，跨越
-        // suggestion 边界的待决块会被未经用户确认地判定为已结算。所以本对话的
-        // agent 仍在运行（含等待审批）时不打开修订视图。
-        if (isCurrentConversationRunActive) {
-          new Notice(
-            t(
-              'chat.editSummary.reviewWhileRunning',
-              'Agent 仍在运行，可能继续修改文件。请等它结束后再评审。',
-            ),
-          )
-          return
-        }
-
-        if (!snapshots.latest.afterExists) {
-          new Notice(
-            t(
-              'chat.editSummary.fileDeleted',
-              '文件已被删除，可使用撤销进行恢复。',
-            ),
-          )
-          return
-        }
-
-        if (!targetFile) {
-          new Notice(
-            t('chat.editSummary.fileMissing', '文件不存在或已被移动。'),
-          )
-          return
-        }
-
-        const currentContent = await app.vault.read(targetFile)
-        if (currentContent !== snapshots.latest.afterContent) {
-          const leaf = app.workspace.getLeaf(false)
-          await leaf.openFile(targetFile)
-          new Notice(
-            t(
-              'chat.editSummary.undoUnavailable',
-              '文件内容已变化，无法安全撤销本轮修改。',
-            ),
-          )
-          return
-        }
-
-        await plugin.openApplyReview({
-          file: targetFile,
-          originalContent: snapshots.first.beforeContent,
-          newContent: snapshots.latest.afterContent,
-          viewMode: 'applied-review',
-          reviewMode: 'full',
-        })
-        return
-      }
-
-      if (!targetFile) {
-        new Notice(t('chat.editSummary.fileMissing', '文件不存在或已被移动。'))
-        return
-      }
-
-      const leaf = app.workspace.getLeaf(false)
-      await leaf.openFile(targetFile)
-      // 卡片还在，快照不在：这台设备没做过这次编辑，或者文件大到没留正文。
-      new Notice(
-        t(
-          'chat.editSummary.snapshotUnavailable',
-          '本设备没有这次编辑的快照，无法撤销或评审（快照只保存在本机，不随笔记同步）。',
-        ),
-      )
-    },
-    [
-      app,
-      app.vault,
-      app.workspace,
-      currentConversationId,
-      isCurrentConversationRunActive,
-      plugin,
-      t,
-    ],
+    (file: GroupEditSummary['files'][number]) =>
+      openEditSummaryFile({
+        app,
+        openApplyReview: (state) => plugin.openApplyReview(state),
+        t,
+        conversationId: currentConversationId || null,
+        isRunActive: isCurrentConversationRunActive,
+        file,
+      }),
+    [app, currentConversationId, isCurrentConversationRunActive, plugin, t],
   )
 
   const updateToolMessageInChatHistory = useCallback(

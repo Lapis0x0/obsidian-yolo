@@ -59,6 +59,7 @@ export const createCodebuddyRuntimeFactory = async (
       let acquired = false
       return new AcpCliRuntime('codebuddy', {
         cwd: createDeps.vaultPath,
+        app: createDeps.app,
         resolveHost: () => {
           if (!hostPromise) {
             acquired = true

@@ -1890,6 +1890,7 @@ export type TranslationKeys = {
       snapshotUnavailable?: string
       reviewOutsideVault?: string
       reviewWhileRunning?: string
+      reviewContentChanged?: string
     }
     errorCard?: {
       title?: string

@@ -508,7 +508,8 @@ describe('ACP file-change diffs', () => {
           lineStatsAvailable: true,
           operation: 'edit',
           undoStatus: 'unavailable',
-          reviewRoundId: undefined,
+          // The round its review snapshot is stored under: the tool card's id.
+          reviewRoundId: 'acp-result-edit-1',
         },
       ],
       totalFiles: 1,

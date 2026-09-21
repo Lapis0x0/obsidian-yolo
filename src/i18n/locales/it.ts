@@ -2077,9 +2077,11 @@ export const it: DeepPartial<TranslationKeys> = {
       snapshotUnavailable:
         'Questo dispositivo non ha uno snapshot di quella modifica, quindi non puo essere annullata ne revisionata. Gli snapshot restano sul dispositivo che ha fatto la modifica.',
       reviewOutsideVault:
-        'Questo file si trova fuori dal vault, quindi non puo essere revisionato nell editor. Annulla funziona comunque.',
+        'Questo file si trova fuori dal vault, quindi non puo essere revisionato nell editor.',
       reviewWhileRunning:
         "L'agente e ancora in esecuzione e potrebbe modificare di nuovo il file. Revisionalo al termine dell'esecuzione.",
+      reviewContentChanged:
+        'Il file e stato modificato di nuovo dopo questa modifica, quindi la revisione non puo essere aperta.',
     },
     errorCard: {
       title: 'Questa risposta non e stata generata',
