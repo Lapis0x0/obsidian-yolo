@@ -250,10 +250,11 @@ describe('Codex message mapping', () => {
             kind: { type: 'update', move_path: null },
             diff: '@@ -1 +1,2 @@\n-old\n+new\n+added',
           },
+          // Codex puts an added file's whole content in `diff`, unprefixed.
           {
             path: '/vault/src/b.ts',
             kind: { type: 'add' },
-            diff: '@@ -0,0 +1 @@\n+created',
+            diff: 'created\n',
           },
         ],
       },
@@ -264,6 +265,30 @@ describe('Codex message mapping', () => {
       role: 'tool',
       toolCalls: [
         {
+          request: {
+            metadata: {
+              cliToolCall: { capability: 'file_change' },
+              fileChangeRows: [
+                {
+                  path: 'src/a.ts',
+                  completeness: 'diff',
+                  hiddenTrailingLines: 0,
+                  rows: [
+                    { change: 'removed', oldLineNumber: 1, text: 'old' },
+                    { change: 'added', newLineNumber: 1, text: 'new' },
+                    { change: 'added', newLineNumber: 2, text: 'added' },
+                  ],
+                },
+                {
+                  path: 'src/b.ts',
+                  completeness: 'diff',
+                  rows: [
+                    { change: 'added', newLineNumber: 1, text: 'created' },
+                  ],
+                },
+              ],
+            },
+          },
           response: {
             status: ToolCallResponseStatus.Success,
             data: {
@@ -277,6 +302,51 @@ describe('Codex message mapping', () => {
                     { path: 'src/b.ts', operation: 'create' },
                   ],
                 },
+              },
+            },
+          },
+        },
+      ],
+    })
+  })
+
+  it('draws a deleted file from the content Codex reports for it', () => {
+    const [, tool] = mapCodexItem(
+      {
+        type: 'fileChange',
+        id: 'patch-2',
+        status: 'completed',
+        changes: [
+          {
+            path: '/vault/gone.md',
+            kind: { type: 'delete' },
+            diff: 'bye1\nbye2\n',
+          },
+        ],
+      },
+      '/vault',
+    )
+
+    expect(tool).toMatchObject({
+      toolCalls: [
+        {
+          request: {
+            metadata: {
+              fileChangeRows: [
+                {
+                  path: 'gone.md',
+                  rows: [
+                    { change: 'removed', oldLineNumber: 1, text: 'bye1' },
+                    { change: 'removed', oldLineNumber: 2, text: 'bye2' },
+                  ],
+                },
+              ],
+            },
+          },
+          response: {
+            data: {
+              metadata: {
+                editSummary: { totalAddedLines: 0, totalRemovedLines: 2 },
               },
             },
           },

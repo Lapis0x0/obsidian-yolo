@@ -5,6 +5,7 @@ import type {
   ChatUserMessage,
 } from '../../../types/chat'
 import {
+  type FileChangeRows,
   type ToolCallRequest,
   type ToolCallResponse,
   ToolCallResponseStatus,
@@ -12,9 +13,11 @@ import {
   type ToolEditSummary,
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
+import { buildFileChangeRowsFromTexts } from '../../tools/file-change-rows'
 import { createCliToolCallRequest } from '../tool-call'
 import type { CliCompactionBoundary } from '../types'
 
+import { parseBareHunkRows } from './bare-hunk-rows'
 import {
   decodeCodexExecEnvelope,
   normalizeCodexToolInput,
@@ -200,13 +203,50 @@ const toEditOperation = (
   return 'edit'
 }
 
+// A trailing newline ends the last line; it does not open another one.
+const countTextLines = (text: string): number =>
+  text === '' ? 0 : text.split('\n').length - (text.endsWith('\n') ? 1 : 0)
+
+type CodexFileChange = Extract<
+  CodexThreadItem,
+  { type: 'fileChange' }
+>['changes'][number]
+
+// `diff` is only a diff for an update (bare hunks). For an added or deleted
+// file Codex puts the file's whole content there, unprefixed.
+const countFileChangeLines = (
+  change: CodexFileChange,
+): { addedLines: number; removedLines: number } => {
+  if (change.kind.type === 'add') {
+    return { addedLines: countTextLines(change.diff), removedLines: 0 }
+  }
+  if (change.kind.type === 'delete') {
+    return { addedLines: 0, removedLines: countTextLines(change.diff) }
+  }
+  return countUnifiedDiffLines(change.diff)
+}
+
+const buildFileChangeRows = (
+  change: CodexFileChange,
+  cwd?: string,
+): FileChangeRows => {
+  const path = toWorkspaceRelativePath(change.path, cwd)
+  if (change.kind.type === 'add') {
+    return buildFileChangeRowsFromTexts(path, '', change.diff)
+  }
+  if (change.kind.type === 'delete') {
+    return buildFileChangeRowsFromTexts(path, change.diff, '')
+  }
+  return { path, completeness: 'diff', ...parseBareHunkRows(change.diff) }
+}
+
 const buildFileChangeEditSummary = (
-  changes: Extract<CodexThreadItem, { type: 'fileChange' }>['changes'],
+  changes: CodexFileChange[],
   cwd?: string,
 ): ToolEditSummary => {
   const files = changes.map((change) => ({
     path: toWorkspaceRelativePath(change.path, cwd),
-    ...countUnifiedDiffLines(change.diff),
+    ...countFileChangeLines(change),
     operation: toEditOperation(change.kind),
     undoStatus: 'unavailable' as const,
   }))
@@ -324,7 +364,7 @@ export const mapCodexItem = (
     return toolPair({ request, response: toResponse(item, output) })
   }
   if (item.type === 'fileChange') {
-    const request = createCliToolCallRequest({
+    const cliRequest = createCliToolCallRequest({
       id: item.id,
       input: { changes: item.changes },
       metadata: {
@@ -334,6 +374,13 @@ export const mapCodexItem = (
         capability: 'file_change',
       },
     })
+    const fileChangeRows = item.changes
+      .filter((change) => change.diff !== '')
+      .map((change) => buildFileChangeRows(change, cwd))
+    const request: ToolCallRequest = {
+      ...cliRequest,
+      metadata: { ...cliRequest.metadata, fileChangeRows },
+    }
     const response = toResponse(item, stringify(item.changes))
     return toolPair({
       request,
