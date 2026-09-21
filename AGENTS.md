@@ -80,6 +80,7 @@ Obsidian popouts are separate BrowserWindows. Plugin JS still runs in one realm,
 
 - React event handlers that call async functions must use `void` wrappers.
 - Do not directly set `element.style.cursor` or `element.style.userSelect`; use `setCssProps`.
+- Obsidian renders every `aria-label` as a hover tooltip. Use it only where that tooltip is wanted (icon-only buttons); an element that already shows its name as visible text is named by that text or by `aria-labelledby`, never by a duplicate `aria-label`.
 - Every `eslint-disable` directive must include a reason.
 - All CSS classes must use the `yolo-` prefix. Host styles live in `src/styles/**`; module styles live with their module.
 - When styling native controls, assume Obsidian core and theme styles apply globally. Use component-scoped `element.yolo-*` selectors, explicitly reset affected properties, and use `!important` only for a confirmed host-style collision.
