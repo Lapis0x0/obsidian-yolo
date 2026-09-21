@@ -1079,6 +1079,16 @@
   pointer-events: none;
 }
 
+/* A placeholder yields to anything drawn where it sits. An empty CodeMirror
+ * line holds nothing but its `<br>`; the host's inline widgets — a
+ * continuation's thinking indicator, its ghost text, a tab completion — are
+ * drawn onto that line while the document itself stays empty, so the text
+ * alone would keep the hint up underneath them. */
+.yolo-whiteboard-editor-host:has(.cm-line > :not(br))
+  > .yolo-whiteboard-card-chips {
+  display: none;
+}
+
 .yolo-whiteboard-card-chip-separator {
   margin: 0 0.35em;
 }
