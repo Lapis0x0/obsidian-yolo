@@ -4,11 +4,14 @@ import type {
   RequestPermissionResponse,
 } from '@agentclientprotocol/sdk'
 
+import { MAX_SNAPSHOT_CONTENT_CHARS } from '../../../database/edit-review/editReviewSnapshotStore'
 import type { ChatMessage, ChatToolMessage } from '../../../types/chat'
 import {
   type ToolCallResponse,
   ToolCallResponseStatus,
 } from '../../../types/tool-call.types'
+import { readNativeCurrentText } from '../../tools/native/current-text'
+import { resolveNativePathWithin } from '../../tools/native/paths'
 import { RUNTIME_CAPABILITIES } from '../capabilities'
 import type {
   CliApprovalResponse,
@@ -33,15 +36,18 @@ import { AcpHost, type AcpHostOptions, type AcpHostResolver } from './host'
 import {
   AcpSessionAggregator,
   type AcpThoughtLevelState,
+  type AcpToolCallState,
   acpToolMessageId,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModeState,
   extractAcpSessionModelState,
   extractAcpThoughtLevelState,
+  isAcpDiskSettlementPending,
   isAcpImagePromptBlock,
   mapAcpTurnUsage,
   mapAcpUsageUpdate,
+  resolveAcpWholeFileDiff,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
   upsertAcpMessage,
@@ -107,6 +113,8 @@ export class AcpCliRuntime implements CliRuntime {
    * `settleRunningToolCards`.
    */
   private readonly turnToolCards = new Map<string, ChatToolMessage>()
+  /** Completed file-change calls whose files are being read, by toolCallId. */
+  private readonly diskSettlements = new Map<string, Promise<void>>()
 
   private host: AcpHost | null = null
   private ownsHost = false
@@ -441,6 +449,9 @@ export class AcpCliRuntime implements CliRuntime {
       // outcome can only be `aborted`, regardless of what `stopReason` the
       // (possibly racing) prompt response reports.
       const aborted = this.cancelRequested || result.stopReason === 'cancelled'
+      // The turn's cards are final once their files are read — before the
+      // terminal run state, so the transcript that closes the turn has them.
+      await Promise.all(this.diskSettlements.values())
       this.settleRunningToolCards(aborted)
       // Before the terminal run state, which closes the turn's metrics window.
       // ACP has no turn-duration field, so it is measured around the prompt
@@ -508,6 +519,67 @@ export class AcpCliRuntime implements CliRuntime {
         ),
       })
     }
+  }
+
+  /**
+   * Once a file-change call completes, reads each file it reported a diff for
+   * and settles the diff against it (`resolveAcpWholeFileDiff`): the card is
+   * redrawn from whole-file texts with real line numbers. Done in the runtime
+   * because the mapping only sees protocol messages and never the disk.
+   *
+   * Once per call. A file whose new text is past the review snapshot's size
+   * cap is not read — nothing downstream could keep it.
+   */
+  private settleAgainstDiskOnce(toolCallId: string): void {
+    const state = this.aggregator.getToolCall(toolCallId)
+    const sessionRef = this.activeSessionRef
+    if (
+      !state ||
+      !sessionRef ||
+      !isAcpDiskSettlementPending(state) ||
+      this.diskSettlements.has(toolCallId)
+    ) {
+      return
+    }
+    const task = this.settleAgainstDisk(state, sessionRef)
+      .catch((error: unknown) => {
+        console.warn('[YOLO] Failed to read ACP file change from disk', error)
+      })
+      .finally(() => this.diskSettlements.delete(toolCallId))
+    this.diskSettlements.set(toolCallId, task)
+  }
+
+  private async settleAgainstDisk(
+    state: AcpToolCallState,
+    sessionRef: CliSessionRef,
+  ): Promise<void> {
+    const boundary = { vaultBasePath: this.options.cwd, homeDir: '' }
+    const settled = await Promise.all(
+      state.diffs.map(async (diff) => {
+        if (diff.newText.length > MAX_SNAPSHOT_CONTENT_CHARS) return null
+        let absolutePath: string
+        try {
+          absolutePath = resolveNativePathWithin(boundary, diff.path)
+        } catch {
+          return null
+        }
+        return resolveAcpWholeFileDiff(
+          diff,
+          await readNativeCurrentText(absolutePath),
+        )
+      }),
+    )
+    // The session moved on while the files were read: its cards are gone.
+    if (this.activeSessionRef !== sessionRef) return
+    const wholeFileDiffs = settled.filter((diff) => diff !== null)
+    const messages = this.aggregator.settleToolCallAgainstDisk(
+      state.toolCallId,
+      wholeFileDiffs,
+      this.runtimeId,
+    )
+    // Nothing settled draws the card exactly as before: leave it untouched.
+    if (wholeFileDiffs.length === 0) return
+    for (const message of messages) this.emitMessage(message)
   }
 
   /** Emits a transcript message, keeping `turnToolCards` in step with it. */
@@ -670,6 +742,12 @@ export class AcpCliRuntime implements CliRuntime {
         }
         for (const message of this.aggregator.apply(update, this.runtimeId)) {
           this.emitMessage(message)
+        }
+        if (
+          update.sessionUpdate === 'tool_call' ||
+          update.sessionUpdate === 'tool_call_update'
+        ) {
+          this.settleAgainstDiskOnce(update.toolCallId)
         }
       },
       onRequestPermission: (request) => this.handleRequestPermission(request),

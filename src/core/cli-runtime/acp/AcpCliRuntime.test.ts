@@ -1,10 +1,15 @@
-/* eslint-disable import/no-nodejs-modules -- exercises the desktop-only ACP transport boundary */
+/* eslint-disable import/no-nodejs-modules -- exercises the desktop-only ACP transport boundary, and reads real files for disk settlement */
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { PassThrough } from 'node:stream'
 /* eslint-enable import/no-nodejs-modules */
 
 import type { InitializeResponse } from '@agentclientprotocol/sdk'
 
+import type { ChatToolMessage } from '../../../types/chat'
 import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import { buildFileChangeRowsFromTexts } from '../../tools/file-change-rows'
 import type { CliRuntimeEvent } from '../types'
 
 import { AcpCliRuntime } from './AcpCliRuntime'
@@ -700,6 +705,97 @@ describe('AcpCliRuntime', () => {
       },
     })
     await runtime.dispose()
+  })
+
+  describe('settling a completed file change against disk', () => {
+    let vault: string
+
+    beforeEach(async () => {
+      vault = await mkdtemp(join(tmpdir(), 'yolo-acp-disk-'))
+    })
+
+    afterEach(async () => {
+      await rm(vault, { recursive: true, force: true })
+    })
+
+    const runEditTurn = async (diff: {
+      path: string
+      oldText: string
+      newText: string
+    }) => {
+      const agent = new FakeAcpAgent()
+      agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+      agent.on('session/prompt', (message) => {
+        const { sessionId } = message.params as { sessionId: string }
+        agent.notify('session/update', {
+          sessionId,
+          update: {
+            sessionUpdate: 'tool_call',
+            toolCallId: 'edit-1',
+            title: 'Edit a.md',
+            kind: 'edit',
+            status: 'pending',
+            content: [{ type: 'diff', ...diff }],
+          },
+        })
+        agent.notify('session/update', {
+          sessionId,
+          update: {
+            sessionUpdate: 'tool_call_update',
+            toolCallId: 'edit-1',
+            status: 'completed',
+            content: [
+              { type: 'content', content: { type: 'text', text: 'Done.' } },
+            ],
+          },
+        })
+        return { stopReason: 'end_turn' }
+      })
+      const runtime = new AcpCliRuntime('codebuddy', {
+        cwd: vault,
+        createProcess: async () => agent,
+      })
+      const events = collectEvents(runtime)
+      await runtime.ensureReady({})
+      await runtime.sendTurn({ content: 'edit a.md' })
+      await runtime.dispose()
+      const cards = events.flatMap((event) =>
+        event.type === 'message_upsert' &&
+        event.message.id === 'acp-result-edit-1'
+          ? [event.message as ChatToolMessage]
+          : [],
+      )
+      return cards.at(-1)?.toolCalls[0].request.metadata?.fileChangeRows
+    }
+
+    it('redraws a span diff from the whole file, with its real line numbers, before the turn ends', async () => {
+      await writeFile(join(vault, 'a.md'), '1\n2\nnew 3\n4\n')
+      const rows = await runEditTurn({
+        path: join(vault, 'a.md'),
+        oldText: 'old 3\n',
+        newText: 'new 3\n',
+      })
+      expect(rows).toEqual([
+        buildFileChangeRowsFromTexts(
+          'a.md',
+          '1\n2\nold 3\n4\n',
+          '1\n2\nnew 3\n4\n',
+        ),
+      ])
+    })
+
+    it('leaves the rows unnumbered when the disk does not bear the diff out', async () => {
+      await writeFile(join(vault, 'a.md'), 'changed again\n')
+      const rows = await runEditTurn({
+        path: 'a.md',
+        oldText: 'old\n',
+        newText: 'new\n',
+      })
+      expect(rows?.[0].rows).toEqual([
+        { type: 'line', change: 'removed', text: 'old' },
+        { type: 'line', change: 'added', text: 'new' },
+      ])
+    })
   })
 
   describe('settling cards at the end of a turn', () => {

@@ -8,7 +8,10 @@ import type {
 } from '@agentclientprotocol/sdk'
 
 import type { ChatToolMessage } from '../../../types/chat'
-import { ToolCallResponseStatus } from '../../../types/tool-call.types'
+import {
+  type FileChangeRows,
+  ToolCallResponseStatus,
+} from '../../../types/tool-call.types'
 import {
   buildFileChangeRowsFromContent,
   buildFileChangeRowsFromTexts,
@@ -20,9 +23,24 @@ import {
   buildPendingApprovalMessages,
   extractAcpThoughtLevelState,
   mapAcpUsageUpdate,
+  resolveAcpWholeFileDiff,
   resolveApprovalOptionId,
   toAcpPromptBlocks,
 } from './mapping'
+
+/**
+ * A reported diff's rows before the runtime settled it against disk: ACP does
+ * not say whether its texts are the whole file, so the line numbers are left
+ * out rather than shown possibly wrong.
+ */
+const unnumbered = (file: FileChangeRows): FileChangeRows => ({
+  ...file,
+  rows: file.rows.map((row) =>
+    row.type === 'line'
+      ? { type: 'line', change: row.change, text: row.text }
+      : row,
+  ),
+})
 
 describe('ACP session update aggregation', () => {
   it('concatenates streaming agent_message_chunk deltas into one message', () => {
@@ -601,7 +619,7 @@ describe('ACP file-change diffs', () => {
       buildFileChangeRowsFromTexts('/vault/new.md', '', 'x\ny\n'),
       // Omitted says nothing about the prior state: written content only.
       buildFileChangeRowsFromContent('/vault/unknown.md', 'z\n'),
-    ]
+    ].map(unnumbered)
     expect(expected.map((file) => file.completeness)).toEqual([
       'diff',
       'diff',
@@ -635,14 +653,86 @@ describe('ACP file-change diffs', () => {
       'file_change',
     )
     expect(rowsOf(tool)).toEqual([
-      buildFileChangeRowsFromTexts('/vault/a.md', 'a', 'b'),
+      unnumbered(buildFileChangeRowsFromTexts('/vault/a.md', 'a', 'b')),
     ])
+  })
+
+  it('draws a call settled against disk from the whole-file texts, with line numbers', () => {
+    // CodeBuddy's shape: the diff is only the replaced span.
+    const aggregator = new AcpSessionAggregator('live', '/vault')
+    startEdit(aggregator, [
+      { path: '/vault/a.md', oldText: 'old 3\n', newText: 'new 3\n' },
+    ])
+    complete(aggregator)
+    const whole = {
+      path: 'a.md',
+      oldText: '1\n2\nold 3\n4\n',
+      newText: '1\n2\nnew 3\n4\n',
+    }
+    const [, tool] = aggregator.settleToolCallAgainstDisk(
+      'edit-1',
+      [whole],
+      'codebuddy',
+    ) as [unknown, ChatToolMessage]
+
+    expect(rowsOf(tool)).toEqual([
+      buildFileChangeRowsFromTexts('a.md', whole.oldText, whole.newText),
+    ])
+    expect(editSummaryOf(tool)?.files).toEqual([
+      expect.objectContaining({ path: 'a.md', addedLines: 1, removedLines: 1 }),
+    ])
+    // A later update of the same call keeps what disk settled.
+    expect(rowsOf(complete(aggregator))).toEqual(rowsOf(tool))
+  })
+
+  it('returns nothing to settle for a call the session no longer knows', () => {
+    const aggregator = new AcpSessionAggregator()
+    expect(aggregator.settleToolCallAgainstDisk('gone', [], 'hermes')).toEqual(
+      [],
+    )
   })
 
   it('attaches no rows to a file-change call that reported no diff', () => {
     const aggregator = new AcpSessionAggregator()
     startEdit(aggregator, [])
     expect(rowsOf(complete(aggregator))).toBeUndefined()
+  })
+})
+
+describe('resolveAcpWholeFileDiff', () => {
+  const text = (value: string) => ({ state: 'text' as const, text: value })
+
+  it('takes a diff whose new text is the whole file as it is', () => {
+    const diff = { path: 'a.md', oldText: 'a\n', newText: 'b\n' }
+    expect(resolveAcpWholeFileDiff(diff, text('b\n'))).toBe(diff)
+    const created = { path: 'a.md', oldText: null, newText: 'b' }
+    expect(resolveAcpWholeFileDiff(created, text('b'))).toBe(created)
+  })
+
+  it('puts a replaced span back into the file to recover the whole before-text', () => {
+    expect(
+      resolveAcpWholeFileDiff(
+        { path: 'a.md', oldText: 'old\n', newText: 'new\n' },
+        text('1\nnew\n3\n'),
+      ),
+    ).toEqual({ path: 'a.md', oldText: '1\nold\n3\n', newText: '1\nnew\n3\n' })
+  })
+
+  it('makes no claim when the disk does not bear the diff out', () => {
+    const span = { path: 'a.md', oldText: 'old', newText: 'new' }
+    // Changed again since, or the span occurs more than once.
+    expect(resolveAcpWholeFileDiff(span, text('other'))).toBeNull()
+    expect(resolveAcpWholeFileDiff(span, text('new new'))).toBeNull()
+    // Nothing to put back for an absent or unknown before-text.
+    expect(
+      resolveAcpWholeFileDiff({ ...span, oldText: null }, text('a new b')),
+    ).toBeNull()
+    expect(
+      resolveAcpWholeFileDiff({ path: 'a.md', newText: 'new' }, text('a new')),
+    ).toBeNull()
+    // No text to compare against.
+    expect(resolveAcpWholeFileDiff(span, { state: 'absent' })).toBeNull()
+    expect(resolveAcpWholeFileDiff(span, { state: 'unreadable' })).toBeNull()
   })
 })
 
@@ -818,7 +908,9 @@ describe('buildPendingApprovalMessages', () => {
         metadata: {
           cliToolCall: { capability: 'file_change' },
           fileChangeRows: [
-            buildFileChangeRowsFromTexts('/vault/test.md', 'a\n', 'b\n'),
+            unnumbered(
+              buildFileChangeRowsFromTexts('/vault/test.md', 'a\n', 'b\n'),
+            ),
           ],
         },
       },
@@ -845,7 +937,7 @@ describe('buildPendingApprovalMessages', () => {
       },
     )
     expect(tool.toolCalls[0].request.metadata?.fileChangeRows).toEqual([
-      buildFileChangeRowsFromTexts('/vault/x.md', '', 'new\n'),
+      unnumbered(buildFileChangeRowsFromTexts('/vault/x.md', '', 'new\n')),
     ])
   })
 })

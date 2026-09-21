@@ -34,6 +34,7 @@ import {
   createCompleteToolCallArguments,
 } from '../../../types/tool-call.types'
 import { createToolEditSummary } from '../../../utils/chat/editSummary'
+import type { CurrentFileText } from '../../tools/file-change-resolver'
 import {
   buildFileChangeRowsFromContent,
   buildFileChangeRowsFromTexts,
@@ -122,30 +123,107 @@ const getAcpToolCallCapability = (
   (state.diffs.length > 0 ? 'file_change' : undefined)
 
 /**
- * The card's file-change rows, built from the diffs the call reported — one
- * per path, already folded and truncated, so what persists with the request
- * is bounded no matter how large the files are.
+ * What one path of a call is shown and counted from. ACP does not say
+ * whether a `diff`'s texts are the whole file or only the replaced span, and
+ * agents differ (Hermes reports whole files, CodeBuddy the span), so a
+ * reported diff's line numbers are unproven: counted from 1, they are right
+ * for a whole file and wrong for a span. Once the call has completed the
+ * runtime settles it against the file on disk (`resolveAcpWholeFileDiff`),
+ * and a path it could settle is shown from those whole-file texts.
+ */
+type AcpShownDiff = { diff: Diff; wholeFile: boolean }
+
+const getAcpShownDiffs = (state: AcpToolCallState): AcpShownDiff[] =>
+  state.diffs.map((diff) => {
+    const whole = state.wholeFileDiffs?.find(
+      (candidate) => candidate.path === diff.path,
+    )
+    return whole ? { diff: whole, wholeFile: true } : { diff, wholeFile: false }
+  })
+
+/** A row list with no line numbers — the renderer leaves the gutter blank. */
+const withoutLineNumbers = (file: FileChangeRows): FileChangeRows => ({
+  ...file,
+  rows: file.rows.map((row) =>
+    row.type === 'line'
+      ? { type: 'line', change: row.change, text: row.text }
+      : row,
+  ),
+})
+
+/**
+ * The card's file-change rows — one per path, already folded and truncated,
+ * so what persists with the request is bounded no matter how large the files
+ * are. Rows from a diff not settled against disk carry no line numbers:
+ * showing numbers that may be wrong is worse than showing none.
  *
  * `oldText` carries ACP's three meanings through: a string is the prior
  * content (a real diff), `null` is a new file (everything added), and an
  * omitted field says nothing about the prior state, so only the written
  * content is shown, marked as such (`afterOnly`).
  */
-const buildAcpFileChangeRows = (diffs: readonly Diff[]): FileChangeRows[] =>
-  diffs.map(({ path, oldText, newText }) =>
-    oldText === undefined
-      ? buildFileChangeRowsFromContent(path, newText)
-      : buildFileChangeRowsFromTexts(path, oldText ?? '', newText),
-  )
+const buildAcpFileChangeRows = (
+  shown: readonly AcpShownDiff[],
+): FileChangeRows[] =>
+  shown.map(({ diff: { path, oldText, newText }, wholeFile }) => {
+    const rows =
+      oldText === undefined
+        ? buildFileChangeRowsFromContent(path, newText)
+        : buildFileChangeRowsFromTexts(path, oldText ?? '', newText)
+    return wholeFile ? rows : withoutLineNumbers(rows)
+  })
 
 /** `request.metadata.fileChangeRows` for a file-change call that has diffs. */
 const getAcpFileChangeRows = (
   capability: CliToolCallCapability | undefined,
-  diffs: readonly Diff[],
+  state: AcpToolCallState,
 ): FileChangeRows[] | undefined =>
-  capability === 'file_change' && diffs.length > 0
-    ? buildAcpFileChangeRows(diffs)
+  capability === 'file_change' && state.diffs.length > 0
+    ? buildAcpFileChangeRows(getAcpShownDiffs(state))
     : undefined
+
+/**
+ * Settles one reported diff against the file on disk after its call
+ * completed, returning the diff as whole-file texts, or `null` when the disk
+ * does not bear it out:
+ *
+ * - the file equals `newText` — the report already was the whole file;
+ * - `newText` occurs exactly once in the file — the report was the replaced
+ *   span, and putting `oldText` back in its place is the file before the call;
+ * - anything else (the file changed again since, the span is ambiguous, an
+ *   absent or unknown `oldText` has nothing to put back) — no claim is made.
+ *
+ * Decided from the protocol fields and the disk alone, never from which
+ * agent sent the diff.
+ */
+export const resolveAcpWholeFileDiff = (
+  diff: Diff,
+  disk: CurrentFileText,
+): Diff | null => {
+  if (disk.state !== 'text') return null
+  if (disk.text === diff.newText) return diff
+  if (typeof diff.oldText !== 'string' || diff.newText === '') return null
+  const at = disk.text.indexOf(diff.newText)
+  if (at < 0 || disk.text.indexOf(diff.newText, at + 1) >= 0) return null
+  return {
+    path: diff.path,
+    oldText:
+      disk.text.slice(0, at) +
+      diff.oldText +
+      disk.text.slice(at + diff.newText.length),
+    newText: disk.text,
+  }
+}
+
+/**
+ * True for a completed file-change call whose diffs have not been settled
+ * against disk yet — the runtime's cue to read the files once.
+ */
+export const isAcpDiskSettlementPending = (state: AcpToolCallState): boolean =>
+  state.status === 'completed' &&
+  state.wholeFileDiffs === undefined &&
+  state.diffs.length > 0 &&
+  getAcpToolCallCapability(state) === 'file_change'
 
 const mapAcpToolCallStatusToResponseStatus = (
   status: ToolCallStatus,
@@ -213,9 +291,9 @@ const mergeAcpDiffs = (
  * file-tool executor, so — like Codex's file-change mapping — undo is marked
  * unavailable rather than claiming a snapshot that was never captured. */
 const buildAcpEditSummary = (
-  diffs: readonly Diff[],
+  shown: readonly AcpShownDiff[],
 ): ReturnType<typeof createToolEditSummary> => {
-  const files = diffs.flatMap((diff): ToolEditSummaryFile[] => {
+  const files = shown.flatMap(({ diff }): ToolEditSummaryFile[] => {
     // ACP gives `oldText` three meanings: a string is the prior content,
     // `null` means the file is new, and an omitted field says nothing about
     // the prior state. Counting the last case as a creation would report
@@ -302,6 +380,12 @@ export type AcpToolCallState = {
    * `content`, which each update replaces wholesale. See `mergeAcpDiffs`.
    */
   diffs: Diff[]
+  /**
+   * `diffs` settled against disk as whole-file texts once the call completed
+   * (`resolveAcpWholeFileDiff`), one per path that could be settled.
+   * `undefined` until the runtime has done so; `[]` when no path could.
+   */
+  wholeFileDiffs?: Diff[]
   rawInput?: unknown
 }
 
@@ -333,6 +417,9 @@ export const applyAcpToolCallUpdate = (
   status: update.status ?? current?.status ?? 'pending',
   content: update.content ?? current?.content ?? [],
   diffs: mergeAcpDiffs(current?.diffs ?? [], update.content, cwd),
+  ...(current?.wholeFileDiffs
+    ? { wholeFileDiffs: current.wholeFileDiffs }
+    : {}),
   rawInput: update.rawInput !== undefined ? update.rawInput : current?.rawInput,
 })
 
@@ -353,7 +440,7 @@ export const mapAcpToolCallState = (
       name: state.name ?? state.title,
       ...(capability ? { capability } : {}),
     },
-    fileChangeRows: getAcpFileChangeRows(capability, state.diffs),
+    fileChangeRows: getAcpFileChangeRows(capability, state),
   })
   const responseStatus = mapAcpToolCallStatusToResponseStatus(state.status)
   const response: ToolCallResponse =
@@ -371,7 +458,9 @@ export const mapAcpToolCallState = (
               text: toolCallContentToText(state.content),
               ...(capability === 'file_change'
                 ? (() => {
-                    const editSummary = buildAcpEditSummary(state.diffs)
+                    const editSummary = buildAcpEditSummary(
+                      getAcpShownDiffs(state),
+                    )
                     return editSummary ? { metadata: { editSummary } } : {}
                   })()
                 : {}),
@@ -503,6 +592,24 @@ export class AcpSessionAggregator {
    */
   getToolCall(toolCallId: string): AcpToolCallState | undefined {
     return this.toolCalls.get(toolCallId)
+  }
+
+  /**
+   * Records what settling a completed call against disk found (see
+   * `resolveAcpWholeFileDiff`) and returns its re-mapped messages, now drawn
+   * from the whole-file texts. Nothing when the call is no longer known —
+   * the session was reset while the files were being read.
+   */
+  settleToolCallAgainstDisk(
+    toolCallId: string,
+    wholeFileDiffs: Diff[],
+    runtimeId: CliRuntimeId,
+  ): ChatMessage[] {
+    const current = this.toolCalls.get(toolCallId)
+    if (!current) return []
+    const state = { ...current, wholeFileDiffs }
+    this.toolCalls.set(toolCallId, state)
+    return mapAcpToolCallState(state, runtimeId)
   }
 
   /** Advances the aggregation epoch. Call once per live turn, before the prompt is sent. */
@@ -661,7 +768,7 @@ export const buildPendingApprovalMessages = (
     rawInput: toolCall.rawInput ?? known?.rawInput,
   }
   const capability = getAcpToolCallCapability(state)
-  const fileChangeRows = getAcpFileChangeRows(capability, state.diffs)
+  const fileChangeRows = getAcpFileChangeRows(capability, state)
   const argumentsValue =
     capability === 'command_execution'
       ? { command: extractAcpCommandText(state) }
