@@ -2,7 +2,6 @@ import type { MutableRefObject } from 'react'
 
 import type {
   CliChatMode,
-  CliRuntimeConfiguration,
   CliRuntimeConfigurationUpdate,
   CliRuntimeId,
   CliRuntimeModel,
@@ -14,6 +13,12 @@ import {
 import type { YoloSettings } from '../../settings/schema/setting.types'
 import type { ConversationOverrideSettings } from '../../types/conversation-settings.types'
 
+/**
+ * The per-runtime default the user explicitly set from the model picker
+ * ("Set as default"). Nothing set means "follow the CLI's own configuration":
+ * an empty update, so no `set_model` is sent and the runtime keeps whatever
+ * its config file selects.
+ */
 export const resolveCliRuntimePreference = (
   settings: YoloSettings,
   runtimeId: CliRuntimeId,
@@ -36,25 +41,29 @@ export const resolveCliRuntimePreference = (
   }
 }
 
-export const rememberCliRuntimeConfiguration = (
+/**
+ * Sets (or, with `null`, clears) the runtime's explicit default. The default
+ * is one model plus the reasoning effort chosen alongside it, so clearing or
+ * replacing it drops the runtime's stored efforts as well.
+ */
+export const setCliRuntimeDefault = (
   settings: YoloSettings,
   runtimeId: CliRuntimeId,
-  configuration: CliRuntimeConfiguration,
+  preference: { modelId: string; reasoningEffort: string | null } | null,
 ): YoloSettings => {
   const cliModelIdByRuntime = {
     ...settings.chatOptions.cliModelIdByRuntime,
   }
-  const cliReasoningEffortByModel = {
-    ...settings.chatOptions.cliReasoningEffortByModel,
-  }
-  const modelId = configuration.modelId ?? undefined
-  if (modelId) {
-    cliModelIdByRuntime[runtimeId] = modelId
-    const effortKey = `${runtimeId}:${modelId}`
-    if (configuration.reasoningEffort) {
-      cliReasoningEffortByModel[effortKey] = configuration.reasoningEffort
-    } else {
-      Reflect.deleteProperty(cliReasoningEffortByModel, effortKey)
+  const cliReasoningEffortByModel = Object.fromEntries(
+    Object.entries(settings.chatOptions.cliReasoningEffortByModel ?? {}).filter(
+      ([key]) => !key.startsWith(`${runtimeId}:`),
+    ),
+  )
+  if (preference) {
+    cliModelIdByRuntime[runtimeId] = preference.modelId
+    if (preference.reasoningEffort) {
+      cliReasoningEffortByModel[`${runtimeId}:${preference.modelId}`] =
+        preference.reasoningEffort
     }
   } else {
     Reflect.deleteProperty(cliModelIdByRuntime, runtimeId)

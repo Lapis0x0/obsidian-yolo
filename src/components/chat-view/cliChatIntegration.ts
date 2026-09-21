@@ -187,17 +187,13 @@ export const prepareCliConversation = async ({
         : {}),
     }
   } else if (!existingSessionRef) {
-    const stagedConfiguration = controller.getSnapshot().configuration
-    initialConfiguration = stagedConfiguration
-      ? {
-          modelId: stagedConfiguration.modelId,
-          reasoningEffort: stagedConfiguration.reasoningEffort,
-        }
-      : resolveCliRuntimePreference(
-          settings,
-          runtimeId,
-          scope.getModelCatalogSnapshot().get(runtimeId) ?? [],
-        )
+    // A fresh session starts from the explicit default, if any; a pick made
+    // in this conversation before binding is layered on top by the controller.
+    initialConfiguration = resolveCliRuntimePreference(
+      settings,
+      runtimeId,
+      scope.getModelCatalogSnapshot().get(runtimeId) ?? [],
+    )
   }
   await controller.ensureReady(initialConfiguration)
 }

@@ -1888,6 +1888,9 @@ export const it: DeepPartial<TranslationKeys> = {
       defaultModel: 'Modello predefinito di {provider}',
       loadError: 'Impossibile caricare i modelli CLI: {message}',
       updateError: 'Impossibile aggiornare la configurazione CLI: {message}',
+      defaultBadge: 'Predefinito',
+      setAsDefault: 'Imposta come predefinito',
+      removeDefault: 'Rimuovi predefinito',
     },
     claudePlugins: {
       title: 'Gestisci plugin',

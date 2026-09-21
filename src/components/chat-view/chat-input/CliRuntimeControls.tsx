@@ -23,6 +23,9 @@ type CliRuntimeControlsProps = {
   disabled?: boolean
   onModelChange: (modelId: string | null) => void
   onReasoningEffortChange: (effort: string | null) => void
+  /** The runtime's explicit default model; `null` follows the CLI's config. */
+  defaultModelId?: string | null
+  onToggleDefaultModel?: (modelId: string) => void
 }
 
 export function CliRuntimeControls({
@@ -32,6 +35,8 @@ export function CliRuntimeControls({
   disabled = false,
   onModelChange,
   onReasoningEffortChange,
+  defaultModelId = null,
+  onToggleDefaultModel,
 }: CliRuntimeControlsProps) {
   const { t } = useLanguage()
   const models = configuration?.models.length
@@ -94,6 +99,20 @@ export function CliRuntimeControls({
               ]
         }
         onChange={onModelChange}
+        defaultOption={
+          onToggleDefaultModel && models.length > 0
+            ? {
+                id: defaultModelId,
+                onToggle: onToggleDefaultModel,
+                badgeLabel: t('chat.cliControls.defaultBadge', 'Default'),
+                setLabel: t('chat.cliControls.setAsDefault', 'Set as default'),
+                removeLabel: t(
+                  'chat.cliControls.removeDefault',
+                  'Remove default',
+                ),
+              }
+            : undefined
+        }
         align="center"
         sideOffset={8}
         popover={{

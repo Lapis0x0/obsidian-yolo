@@ -325,6 +325,56 @@
   opacity: 1;
 }
 
+/*
+ * 模型选择器的「默认」标记与行内「设为默认 / 取消默认」按钮（目前只有 CLI
+ * runtime 的选择器传入 defaultOption）。静息态只显示标记；鼠标悬停时按钮
+ * 接替标记的位置——选中行在对钩左侧，其余行贴右（未选中行没有对钩元素）。
+ */
+.yolo-model-select-default-badge {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: var(--font-normal);
+  line-height: 1.2;
+  padding: 2px 6px;
+  border-radius: var(--radius-s);
+  color: var(--text-accent);
+  background: color-mix(in srgb, var(--interactive-accent) 15%, transparent);
+}
+
+button.yolo-model-select-default-action {
+  display: none;
+  flex-shrink: 0;
+  height: auto;
+  margin: 0;
+  padding: 2px 6px;
+  border: none;
+  border-radius: var(--radius-s);
+  box-shadow: none;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: var(--font-normal);
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+button.yolo-model-select-default-action:hover {
+  background: var(--background-modifier-active-hover);
+  color: var(--text-normal);
+}
+
+.yolo-model-select-list
+  > .yolo-popover-item:hover
+  > button.yolo-model-select-default-action {
+  display: inline-flex;
+}
+
+.yolo-model-select-list
+  > .yolo-popover-item:hover
+  > .yolo-model-select-default-badge {
+  display: none;
+}
+
 .yolo-popover-surface ul li {
   margin: 0;
   min-width: 180px;

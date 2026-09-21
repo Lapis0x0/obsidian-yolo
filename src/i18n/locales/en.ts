@@ -2027,6 +2027,9 @@ export const en: TranslationKeys = {
       defaultModel: '{provider} default model',
       loadError: 'Could not load CLI models: {message}',
       updateError: 'Could not update CLI configuration: {message}',
+      defaultBadge: 'Default',
+      setAsDefault: 'Set as default',
+      removeDefault: 'Remove default',
     },
     claudePlugins: {
       title: 'Manage Plugins',

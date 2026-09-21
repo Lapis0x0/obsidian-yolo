@@ -1757,6 +1757,9 @@ export type TranslationKeys = {
       defaultModel?: string
       loadError?: string
       updateError?: string
+      defaultBadge?: string
+      setAsDefault?: string
+      removeDefault?: string
     }
     claudePlugins?: {
       title?: string

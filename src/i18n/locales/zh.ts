@@ -1919,6 +1919,9 @@ export const zh: TranslationKeys = {
       defaultModel: '{provider} 默认模型',
       loadError: '无法加载 CLI 模型：{message}',
       updateError: '无法更新 CLI 配置：{message}',
+      defaultBadge: '默认',
+      setAsDefault: '设为默认',
+      removeDefault: '取消默认',
     },
     claudePlugins: {
       title: '插件管理',

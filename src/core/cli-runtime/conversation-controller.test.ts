@@ -617,7 +617,7 @@ describe('CliConversationController', () => {
     }
     const controller = new CliConversationController(runtime, () => models)
 
-    controller.stageConfiguration({
+    await controller.updateConfiguration({
       modelId: 'luna',
       reasoningEffort: 'medium',
     })
@@ -638,6 +638,27 @@ describe('CliConversationController', () => {
     expect(runtime.configurationUpdates).toEqual([
       { modelId: 'luna', reasoningEffort: null },
     ])
+  })
+
+  it('applies only explicit picks on bind, never display-only staging', async () => {
+    const runtime = new FakeCliRuntime()
+    const models = [
+      { id: 'sol', label: 'Sol', reasoningEfforts: [{ id: 'medium' }] },
+      { id: 'luna', label: 'Luna', reasoningEfforts: [{ id: 'medium' }] },
+    ]
+    runtime.configuration = { models, modelId: 'sol', reasoningEffort: null }
+    const controller = new CliConversationController(runtime, () => models)
+
+    controller.stageConfiguration({
+      modelId: 'luna',
+      reasoningEffort: 'medium',
+    })
+    await controller.ensureReady()
+
+    expect(runtime.configurationUpdates).toEqual([])
+    expect(controller.getSnapshot().configuration).toMatchObject({
+      modelId: 'sol',
+    })
   })
 
   it('stages null instead of inventing a selection when nothing is requested or the remembered model is stale', () => {

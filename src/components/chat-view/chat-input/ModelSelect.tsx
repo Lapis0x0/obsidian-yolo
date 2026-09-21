@@ -25,6 +25,19 @@ export type ModelSelectOption = {
   group?: string
 }
 
+/**
+ * Opt-in "default option" affordance: the default row carries a badge, and a
+ * hovered/highlighted row shows an inline button that sets or removes it.
+ * Picking a row stays a separate action — the button never selects its row.
+ */
+export type ModelSelectDefaultOption = {
+  id: string | null
+  onToggle: (optionId: string) => void
+  badgeLabel: string
+  setLabel: string
+  removeLabel: string
+}
+
 export const ModelSelect = forwardRef<
   HTMLButtonElement,
   {
@@ -44,6 +57,7 @@ export const ModelSelect = forwardRef<
       isMenuOpen: boolean,
     ) => void
     options?: ModelSelectOption[]
+    defaultOption?: ModelSelectDefaultOption
     disabled?: boolean
   }
 >(
@@ -61,6 +75,7 @@ export const ModelSelect = forwardRef<
       popover,
       onKeyDown,
       options: externalOptions,
+      defaultOption,
       disabled = false,
     } = {},
     ref,
@@ -327,6 +342,31 @@ export const ModelSelect = forwardRef<
                       <span className="yolo-popover-item__label">
                         {modelOption.label}
                       </span>
+                      {defaultOption?.id === modelOption.id ? (
+                        <span className="yolo-model-select-default-badge">
+                          {defaultOption.badgeLabel}
+                        </span>
+                      ) : null}
+                      {defaultOption ? (
+                        <button
+                          type="button"
+                          className="yolo-model-select-default-action"
+                          tabIndex={-1}
+                          // Radix selects the row on pointerup/click; stop
+                          // both so the button only toggles the default.
+                          onPointerDown={(event) => event.stopPropagation()}
+                          onPointerUp={(event) => event.stopPropagation()}
+                          onClick={(event) => {
+                            event.preventDefault()
+                            event.stopPropagation()
+                            defaultOption.onToggle(modelOption.id)
+                          }}
+                        >
+                          {defaultOption.id === modelOption.id
+                            ? defaultOption.removeLabel
+                            : defaultOption.setLabel}
+                        </button>
+                      ) : null}
                       <DropdownMenu.ItemIndicator className="yolo-popover-item__indicator">
                         <Check size={12} />
                       </DropdownMenu.ItemIndicator>

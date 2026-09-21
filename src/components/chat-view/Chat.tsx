@@ -954,6 +954,7 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
     cliChatRuntimeActions,
     handleCliModelChange,
     handleCliReasoningEffortChange,
+    handleCliDefaultModelToggle,
     handleCliUserMessageRewrite,
   } = useCliRuntimeOrchestration({
     app,
@@ -1971,6 +1972,11 @@ const Chat = forwardRef<ChatRef, ChatProps>((props, ref) => {
               }
               onModelChange={handleCliModelChange}
               onReasoningEffortChange={handleCliReasoningEffortChange}
+              defaultModelId={
+                settings.chatOptions.cliModelIdByRuntime?.[activeRuntimeId] ??
+                null
+              }
+              onToggleDefaultModel={handleCliDefaultModelToggle}
             />
           ) : undefined
         }

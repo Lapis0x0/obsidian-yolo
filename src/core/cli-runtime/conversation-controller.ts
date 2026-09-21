@@ -492,6 +492,10 @@ export class CliConversationController {
   private readyTail: Promise<void> = Promise.resolve()
   private permissionUpdateTail: Promise<void> = Promise.resolve()
   private appliedPermissionProfile: CliPermissionProfileUpdate | null = null
+  // Model/effort the user explicitly picked before the session bound. Only
+  // this is applied on bind: a staged configuration is display state, and
+  // anything not picked stays on the runtime's own configured default.
+  private pendingConfigurationUpdate: CliRuntimeConfigurationUpdate = {}
   private disposed = false
 
   constructor(
@@ -614,15 +618,12 @@ export class CliConversationController {
   ): Promise<void> {
     this.assertActive()
     const operation = this.captureOperation()
-    const stagedConfiguration = this.snapshot.configuration
+    const merged = {
+      ...initialConfiguration,
+      ...this.pendingConfigurationUpdate,
+    }
     const configurationToApply =
-      initialConfiguration ??
-      (stagedConfiguration
-        ? {
-            modelId: stagedConfiguration.modelId,
-            reasoningEffort: stagedConfiguration.reasoningEffort,
-          }
-        : undefined)
+      Object.keys(merged).length > 0 ? merged : undefined
     const task = this.readyTail
       .catch(() => undefined)
       .then(async () => {
@@ -901,7 +902,17 @@ export class CliConversationController {
   ): Promise<CliRuntimeConfiguration | undefined> {
     this.assertActive()
     if (!this.acceptingEvents) {
-      return this.stageConfiguration(update)
+      const staged = this.stageConfiguration(update)
+      if (staged) {
+        this.pendingConfigurationUpdate = {
+          ...this.pendingConfigurationUpdate,
+          ...('modelId' in update ? { modelId: staged.modelId } : {}),
+          ...('reasoningEffort' in update
+            ? { reasoningEffort: staged.reasoningEffort }
+            : {}),
+        }
+      }
+      return staged
     }
     const operation = this.captureOperation()
     try {
@@ -962,13 +973,9 @@ export class CliConversationController {
     const current = this.snapshot.configuration
     const requestedModelId =
       'modelId' in update ? update.modelId : current?.modelId
-    // No invented selection: when nothing is requested/remembered (or the
-    // remembered id is no longer in the catalog), stage `null` — "the
-    // runtime's own current model". Falling back to the catalog head here
-    // would not just display an arbitrary model, it would be applied via
-    // set_model once the session binds (the runtime restores its real model
-    // on bind and the orchestration layer remembers it, so a fresh
-    // conversation's staged null resolves to the truth one turn later).
+    // No invented selection: when nothing is requested (or the requested id
+    // is no longer in the catalog), stage `null` — "the runtime's own current
+    // model", which the runtime reports once the session binds.
     const modelId =
       requestedModelId != null &&
       models.some((model) => model.id === requestedModelId)
@@ -1052,6 +1059,7 @@ export class CliConversationController {
       this.acceptingEvents = true
       this.bindingTarget = undefined
       this.bindingEpoch = null
+      this.pendingConfigurationUpdate = {}
       this.publish({
         ...this.snapshot,
         configuration,
@@ -1103,6 +1111,7 @@ export class CliConversationController {
   private beginSessionTransition(ref: CliSessionRef | null): void {
     this.conversationEpoch += 1
     this.resetEventGate()
+    this.pendingConfigurationUpdate = {}
     this.pendingOptimisticUserMessageId = null
     this.reconciledNativeUserMessageIds.clear()
     this.restoredCacheHitRate = null
