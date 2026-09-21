@@ -284,7 +284,7 @@ describe('editReviewSnapshotStore', () => {
     ).resolves.toMatchObject({
       contentAvailable: false,
       lineStatsAvailable: true,
-      addedLines: MAX_SNAPSHOT_CONTENT_CHARS + 1,
+      addedLines: MAX_SNAPSHOT_CONTENT_CHARS,
       removedLines: 0,
     })
   })

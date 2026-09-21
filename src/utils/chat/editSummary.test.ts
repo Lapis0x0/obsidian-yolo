@@ -341,6 +341,26 @@ describe('editSummary helpers', () => {
     ).toEqual({ addedLines: 0, removedLines: 5000, lineStatsAvailable: true })
   })
 
+  it('does not count the trailing newline of a create or delete as a line', () => {
+    expect(
+      countFileChangeStats({
+        beforeContent: '',
+        afterContent: 'x\ny\n',
+        beforeExists: false,
+        afterExists: true,
+      }),
+    ).toEqual({ addedLines: 2, removedLines: 0, lineStatsAvailable: true })
+
+    expect(
+      countFileChangeStats({
+        beforeContent: '\n',
+        afterContent: '',
+        beforeExists: true,
+        afterExists: false,
+      }),
+    ).toEqual({ addedLines: 0, removedLines: 1, lineStatsAvailable: true })
+  })
+
   it('reports available line stats for ordinary edits', () => {
     expect(
       countFileChangeStats({

@@ -146,8 +146,11 @@ export const countChangedLines = (
   )
 }
 
+// 末尾换行是最后一行的结束符，不是新一行的开始：'x\ny\n' 是两行。
 const countContentLines = (content: string): number => {
-  return content.length === 0 ? 0 : content.split('\n').length
+  if (content.length === 0) return 0
+  const lines = content.split('\n').length
+  return content.endsWith('\n') ? lines - 1 : lines
 }
 
 export const countFileChangeStats = ({
