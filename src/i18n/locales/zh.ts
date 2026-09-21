@@ -1967,6 +1967,10 @@ export const zh: TranslationKeys = {
       codexUnsupportedVersion:
         '当前 Codex CLI 版本不支持查询 MCP 服务器状态，请升级 Codex CLI 后重试。',
     },
+    modelSelect: {
+      searchPlaceholder: '搜索模型',
+      empty: '没有匹配的模型',
+    },
     quickAccess: {
       manage: '管理常用入口',
       searchPlaceholder: '搜索 Skills 或快捷指令',

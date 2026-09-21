@@ -169,6 +169,61 @@
   min-height: 0;
 }
 
+/* Shared across ModelSelect variants: the search field. It sits on the edge
+   facing the trigger — the edge Radix anchors, so the one that stays put
+   while filtering shrinks the list. First in the DOM (it is what opening
+   focuses); a popover that opened upward (data-side="top", Radix's own
+   attribute, flipped with it) moves it to the bottom. */
+.yolo-model-select-popover > .yolo-model-select-search {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--size-2-2);
+  margin: 4px 6px;
+  padding: 0 6px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  color: var(--text-muted);
+  background: var(--background-modifier-form-field);
+}
+
+.yolo-model-select-popover[data-side='top'] > .yolo-model-select-search {
+  order: 1;
+}
+
+.yolo-model-select-popover > .yolo-model-select-search:focus-within {
+  border-color: var(--background-modifier-border-focus);
+}
+
+.yolo-model-select-search > svg {
+  flex: 0 0 auto;
+}
+
+/* Obsidian styles every text input (height, border, shadow, focus ring);
+   the field's frame is the wrapper above, so the input itself is bare. */
+.yolo-model-select-search > input[type='text'] {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: var(--font-ui-smaller);
+}
+
+.yolo-model-select-search > input[type='text']:focus {
+  border: 0;
+  box-shadow: none;
+}
+
+.yolo-model-select-empty {
+  padding: 10px 12px;
+  color: var(--text-faint);
+  font-size: var(--font-ui-smaller);
+}
+
 /* default 变体下的 group-label / separator / list / item 样式集中在这里。
    --continuation 变体的同名元素样式集中在 src/styles/panels/continuation.css。
    两个文件按变体严格隔离，避免源码顺序决定胜者的"屎山"问题。 */

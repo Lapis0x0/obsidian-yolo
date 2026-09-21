@@ -1941,6 +1941,10 @@ export const it: DeepPartial<TranslationKeys> = {
       codexUnsupportedVersion:
         'Questa versione di Codex CLI non supporta la query dello stato dei server MCP. Aggiorna Codex CLI.',
     },
+    modelSelect: {
+      searchPlaceholder: 'Cerca modelli',
+      empty: 'Nessun modello corrispondente',
+    },
     quickAccess: {
       manage: 'Gestisci accessi rapidi',
       searchPlaceholder: 'Cerca skill o comandi rapidi',

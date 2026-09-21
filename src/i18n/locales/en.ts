@@ -2078,6 +2078,10 @@ export const en: TranslationKeys = {
       codexUnsupportedVersion:
         'This Codex CLI version does not support querying MCP server status. Please upgrade Codex CLI.',
     },
+    modelSelect: {
+      searchPlaceholder: 'Search models',
+      empty: 'No matching model',
+    },
     quickAccess: {
       manage: 'Manage quick access',
       searchPlaceholder: 'Search skills or snippets',

@@ -1803,6 +1803,10 @@ export type TranslationKeys = {
       codexReadOnlyNote?: string
       codexUnsupportedVersion?: string
     }
+    modelSelect?: {
+      searchPlaceholder?: string
+      empty?: string
+    }
     quickAccess?: {
       manage?: string
       searchPlaceholder?: string

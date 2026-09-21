@@ -1,7 +1,8 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
-import { Check, ChevronDown, ChevronUp } from 'lucide-react'
+import { Check, ChevronDown, ChevronUp, Search } from 'lucide-react'
 import { forwardRef, useCallback, useEffect, useRef, useState } from 'react'
 
+import { useLanguage } from '../../../contexts/language-context'
 import { useSettings } from '../../../contexts/settings-context'
 import {
   getNodeDocument,
@@ -81,8 +82,21 @@ export const ModelSelect = forwardRef<
     ref,
   ) => {
     const { settings, setSettings } = useSettings()
+    const { t } = useLanguage()
     const [isOpen, setIsOpen] = useState(false)
+    const [query, setQuery] = useState('')
     const triggerRef = useRef<HTMLButtonElement | null>(null)
+    const searchRef = useRef<HTMLInputElement | null>(null)
+    const contentRef = useRef<HTMLDivElement | null>(null)
+    /**
+     * The side the popover actually opened on, held for as long as it stays
+     * open. Radix re-picks a side whenever the content's size changes, so a
+     * list that only fitted above would jump below the trigger the moment a
+     * search made it short enough to fit there.
+     */
+    const [openedSide, setOpenedSide] = useState<
+      'top' | 'bottom' | 'left' | 'right' | null
+    >(null)
     const itemRefs = useRef<Record<string, HTMLDivElement | null>>({})
     const selectedModelId = externalModelId ?? settings.chatModelId
 
@@ -120,10 +134,21 @@ export const ModelSelect = forwardRef<
             group: providerId,
           })),
       )
+    // Matched against what the row shows, the id behind it, and the provider
+    // group it sits under — typing a provider's name narrows to its models.
+    const normalizedQuery = query.trim().toLocaleLowerCase()
+    const visibleOptions =
+      normalizedQuery.length === 0
+        ? modelOptions
+        : modelOptions.filter((model) =>
+            [model.label, model.id, model.group ?? ''].some((text) =>
+              text.toLocaleLowerCase().includes(normalizedQuery),
+            ),
+          )
     const orderedGroups = Array.from(
-      new Set(modelOptions.map((model) => model.group ?? '')),
+      new Set(visibleOptions.map((model) => model.group ?? '')),
     )
-    const orderedModelIds = modelOptions.map((model) => model.id)
+    const orderedModelIds = visibleOptions.map((model) => model.id)
 
     // 触发器上显示的当前模型文案
     const getCurrentModelDisplay = () => {
@@ -182,14 +207,103 @@ export const ModelSelect = forwardRef<
       [orderedModelIds, selectedModelId],
     )
 
+    // Opening puts the caret in the search field — a long list is searched
+    // more often than stepped through — while the list still opens scrolled
+    // to the current model.
     useEffect(() => {
       if (!isOpen) return
       const ownerWindow = getNodeWindow(triggerRef.current)
       const rafId = ownerWindow.requestAnimationFrame(() => {
-        focusSelectedItem()
+        const opened = contentRef.current?.dataset.side
+        if (
+          opened === 'top' ||
+          opened === 'bottom' ||
+          opened === 'left' ||
+          opened === 'right'
+        ) {
+          setOpenedSide(opened)
+        }
+        itemRefs.current[selectedModelId]?.scrollIntoView({
+          block: 'center',
+          inline: 'nearest',
+        })
+        searchRef.current?.focus({ preventScroll: true })
       })
       return () => ownerWindow.cancelAnimationFrame(rafId)
-    }, [isOpen, focusSelectedItem])
+      // Only on opening: re-running while open would pull focus back to the
+      // field from a row being navigated with the keyboard.
+    }, [isOpen])
+
+    const focusEdgeItem = (edge: 'first' | 'last') => {
+      const id =
+        edge === 'first'
+          ? orderedModelIds[0]
+          : orderedModelIds[orderedModelIds.length - 1]
+      const target = id ? itemRefs.current[id] : null
+      if (!target) return
+      target.focus({ preventScroll: true })
+      target.scrollIntoView({ block: 'nearest', inline: 'nearest' })
+    }
+
+    const selectModel = (modelId: string) => {
+      if (onChange) {
+        onChange(modelId)
+      } else {
+        void (async () => {
+          try {
+            await setSettings({
+              ...settings,
+              chatModelId: modelId,
+            })
+          } catch (error: unknown) {
+            console.error('Failed to update chat model setting', error)
+          }
+        })()
+      }
+      onModelSelected?.(modelId)
+    }
+
+    /**
+     * Keeps typing in the search field. A Radix menu reads every printable
+     * key as typeahead and moves focus to the matching row, so keys are
+     * stopped here, in the capture phase, before the menu sees them: in the
+     * field, everything but the keys that navigate out of it; on a row (the
+     * pointer moved focus there), a printable key or Backspace sends focus
+     * back to the field, where the key then lands.
+     */
+    const handleContentKeyDownCapture = (event: React.KeyboardEvent) => {
+      const search = searchRef.current
+      if (!search) return
+      if (event.target === search) {
+        if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+          event.preventDefault()
+          event.stopPropagation()
+          focusEdgeItem(event.key === 'ArrowDown' ? 'first' : 'last')
+          return
+        }
+        if (event.key === 'Enter') {
+          event.preventDefault()
+          event.stopPropagation()
+          const first = orderedModelIds[0]
+          if (first === undefined) return
+          selectModel(first)
+          handleOpenChange(false)
+          return
+        }
+        if (event.key === 'Escape' || event.key === 'Tab') return
+        event.stopPropagation()
+        return
+      }
+      const printable =
+        event.key.length === 1 &&
+        !event.ctrlKey &&
+        !event.metaKey &&
+        !event.altKey
+      if (printable || event.key === 'Backspace') {
+        search.focus({ preventScroll: true })
+        event.stopPropagation()
+      }
+    }
 
     const handleTriggerKeyDown = (
       event: React.KeyboardEvent<HTMLButtonElement>,
@@ -228,8 +342,12 @@ export const ModelSelect = forwardRef<
       }
     }
 
-    const handleOpenChange = (open: boolean) => {
+    function handleOpenChange(open: boolean) {
       setIsOpen(open)
+      if (!open) {
+        setQuery('')
+        setOpenedSide(null)
+      }
       onMenuOpenChange?.(open)
     }
 
@@ -250,6 +368,7 @@ export const ModelSelect = forwardRef<
         </DropdownMenu.Trigger>
 
         <YoloDropdownContent
+          ref={contentRef}
           container={container}
           anchorRef={triggerRef}
           variant={popover?.variant ?? 'default'}
@@ -261,12 +380,16 @@ export const ModelSelect = forwardRef<
               ? `yolo-model-select-popover ${popover.className}`
               : 'yolo-model-select-popover'
           }
-          side={side}
+          side={openedSide ?? side}
+          // Once the side is held, nothing may move it — collision avoidance
+          // is what flips it. The list only ever shrinks while open.
+          avoidCollisions={openedSide === null}
           sideOffset={sideOffset}
           align={align}
           alignOffset={alignOffset}
           collisionPadding={8}
           loop
+          onKeyDownCapture={handleContentKeyDownCapture}
           onPointerDownOutside={(e) => {
             // 阻止事件冒泡，防止关闭父容器
             e.stopPropagation()
@@ -276,6 +399,23 @@ export const ModelSelect = forwardRef<
             triggerRef.current?.focus({ preventScroll: true })
           }}
         >
+          {/* First in the DOM; the stylesheet moves it to whichever edge
+              faces the trigger (data-side), the edge that stays put while
+              filtering shrinks the list. */}
+          <div className="yolo-model-select-search">
+            <Search size={12} strokeWidth={2} />
+            <input
+              ref={searchRef}
+              type="text"
+              value={query}
+              onChange={(event) => setQuery(event.currentTarget.value)}
+              // No aria-label: Obsidian turns it into a hover tooltip that
+              // would repeat the placeholder (AGENTS.md).
+              placeholder={t('chat.modelSelect.searchPlaceholder', '搜索模型')}
+              spellCheck={false}
+              autoComplete="off"
+            />
+          </div>
           <DropdownMenu.RadioGroup
             className="yolo-model-select-list"
             value={selectedModelId}
@@ -288,29 +428,18 @@ export const ModelSelect = forwardRef<
                 focusByDelta(-1)
               }
             }}
-            onValueChange={(modelId: string) => {
-              if (onChange) {
-                onChange(modelId)
-              } else {
-                void (async () => {
-                  try {
-                    await setSettings({
-                      ...settings,
-                      chatModelId: modelId,
-                    })
-                  } catch (error: unknown) {
-                    console.error('Failed to update chat model setting', error)
-                  }
-                })()
-              }
-              onModelSelected?.(modelId)
-            }}
+            onValueChange={selectModel}
           >
+            {visibleOptions.length === 0 ? (
+              <div className="yolo-model-select-empty">
+                {t('chat.modelSelect.empty', '没有匹配的模型')}
+              </div>
+            ) : null}
             {(() => {
               let runningIndex = 0
 
               return orderedGroups.flatMap((group, groupIndex) => {
-                const groupModels = modelOptions.filter(
+                const groupModels = visibleOptions.filter(
                   (model) => (model.group ?? '') === group,
                 )
                 if (groupModels.length === 0) return []
