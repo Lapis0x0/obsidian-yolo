@@ -4,7 +4,7 @@ import type {
   RequestPermissionResponse,
 } from '@agentclientprotocol/sdk'
 
-import type { ChatMessage } from '../../../types/chat'
+import type { ChatMessage, ChatToolMessage } from '../../../types/chat'
 import {
   type ToolCallResponse,
   ToolCallResponseStatus,
@@ -33,6 +33,7 @@ import { AcpHost, type AcpHostOptions, type AcpHostResolver } from './host'
 import {
   AcpSessionAggregator,
   type AcpThoughtLevelState,
+  acpToolMessageId,
   buildCancelledApprovalOutcome,
   buildPendingApprovalMessages,
   extractAcpSessionModeState,
@@ -99,6 +100,13 @@ export class AcpCliRuntime implements CliRuntime {
   private readonly listeners = new Set<CliRuntimeEventListener>()
   private readonly aggregator: AcpSessionAggregator
   private readonly pendingApprovals = new Map<string, PendingApproval>()
+  /**
+   * Every tool card this live turn has put on screen, by message id, as it
+   * currently stands — including the `Running` an approval card becomes when
+   * `respondApproval` answers it. Read when the turn ends; see
+   * `settleRunningToolCards`.
+   */
+  private readonly turnToolCards = new Map<string, ChatToolMessage>()
 
   private host: AcpHost | null = null
   private ownsHost = false
@@ -415,7 +423,7 @@ export class AcpCliRuntime implements CliRuntime {
     }
     const sessionId = this.activeSessionRef.nativeSessionId
     this.cancelRequested = false
-    this.aggregator.beginTurn()
+    this.beginAggregatorTurn()
     this.emit({ type: 'run_state', state: 'running' })
     this.turnInFlight = true
     const startedAt = Date.now()
@@ -433,6 +441,7 @@ export class AcpCliRuntime implements CliRuntime {
       // outcome can only be `aborted`, regardless of what `stopReason` the
       // (possibly racing) prompt response reports.
       const aborted = this.cancelRequested || result.stopReason === 'cancelled'
+      this.settleRunningToolCards(aborted)
       // Before the terminal run state, which closes the turn's metrics window.
       // ACP has no turn-duration field, so it is measured around the prompt
       // call the same way Codex measures its own.
@@ -447,8 +456,64 @@ export class AcpCliRuntime implements CliRuntime {
       })
     } catch (error) {
       this.turnInFlight = false
+      this.settleRunningToolCards(true)
       throw error
     }
+  }
+
+  /** Opens a live turn: a new aggregation epoch, and no cards of its own yet. */
+  private beginAggregatorTurn(): void {
+    this.aggregator.beginTurn()
+    this.turnToolCards.clear()
+  }
+
+  /**
+   * A prompt turn is over once `session/prompt` returns — ACP reports the
+   * turn's end only after the agent has stopped working on it — so no call of
+   * the turn can still be running, and a card still showing `Running` is one
+   * the agent never reported back on. Hermes produces exactly that on every
+   * approved edit: its `session/request_permission` carries a toolCallId of
+   * its own, so the approval card turns `Running` when answered while the
+   * edit itself runs and completes under a different id, and nothing ever
+   * addresses the approval card again.
+   *
+   * Such a card settles to `Success` — the state the host already gives "a
+   * grant with no follow-up of its own" (`CliRuntime.respondApproval`); the
+   * work it stood for has finished, and any result the agent had is on the
+   * card it did report on. An aborted or failed turn settles it to `Aborted`
+   * instead: the call was cut off, not finished. This is a protocol rule,
+   * applied to every card of the turn alike, whichever agent produced it.
+   */
+  private settleRunningToolCards(aborted: boolean): void {
+    const settled: ToolCallResponse = aborted
+      ? { status: ToolCallResponseStatus.Aborted }
+      : {
+          status: ToolCallResponseStatus.Success,
+          data: { type: 'text', text: '' },
+        }
+    for (const card of [...this.turnToolCards.values()]) {
+      if (
+        !card.toolCalls.some(
+          ({ response }) => response.status === ToolCallResponseStatus.Running,
+        )
+      ) {
+        continue
+      }
+      this.emitMessage({
+        ...card,
+        toolCalls: card.toolCalls.map((toolCall) =>
+          toolCall.response.status === ToolCallResponseStatus.Running
+            ? { ...toolCall, response: settled }
+            : toolCall,
+        ),
+      })
+    }
+  }
+
+  /** Emits a transcript message, keeping `turnToolCards` in step with it. */
+  private emitMessage(message: ChatMessage): void {
+    if (message.role === 'tool') this.turnToolCards.set(message.id, message)
+    this.emit({ type: 'message_upsert', message })
   }
 
   async rewriteTurn(_input: CliRewriteTurnInput): Promise<void> {
@@ -482,7 +547,7 @@ export class AcpCliRuntime implements CliRuntime {
     }
     const host = await this.getHost()
     const sessionId = this.activeSessionRef.nativeSessionId
-    this.aggregator.beginTurn()
+    this.beginAggregatorTurn()
     await host.call((connection) =>
       connection.prompt({
         sessionId,
@@ -527,11 +592,27 @@ export class AcpCliRuntime implements CliRuntime {
         ? { outcome: { outcome: 'selected', optionId } }
         : buildCancelledApprovalOutcome(),
     )
-    // No matching option means the outcome went out as cancelled, so the tool
-    // is not about to run.
-    return optionId
-      ? { status: ToolCallResponseStatus.Running }
-      : { status: ToolCallResponseStatus.Rejected }
+    // A declined request, or no matching option (the outcome then went out
+    // as cancelled), means the tool is not about to run.
+    const settled: ToolCallResponse =
+      optionId && response.decision !== 'reject'
+        ? { status: ToolCallResponseStatus.Running }
+        : { status: ToolCallResponseStatus.Rejected }
+    // The host publishes `settled` onto the card; mirror it here so the
+    // turn's end knows the card now stands at it (`settleRunningToolCards`).
+    const cardId = acpToolMessageId(response.requestId)
+    const card = this.turnToolCards.get(cardId)
+    if (card) {
+      this.turnToolCards.set(cardId, {
+        ...card,
+        toolCalls: card.toolCalls.map((toolCall) =>
+          toolCall.request.id === response.requestId
+            ? { ...toolCall, response: settled }
+            : toolCall,
+        ),
+      })
+    }
+    return settled
   }
 
   /** ACP has no user-question request — nothing is ever pending to answer. */
@@ -588,7 +669,7 @@ export class AcpCliRuntime implements CliRuntime {
           return
         }
         for (const message of this.aggregator.apply(update, this.runtimeId)) {
-          this.emit({ type: 'message_upsert', message })
+          this.emitMessage(message)
         }
       },
       onRequestPermission: (request) => this.handleRequestPermission(request),
@@ -683,8 +764,8 @@ export class AcpCliRuntime implements CliRuntime {
       this.aggregator.getToolCall(request.toolCall.toolCallId),
       this.options.cwd,
     )
-    this.emit({ type: 'message_upsert', message: assistant })
-    this.emit({ type: 'message_upsert', message: tool })
+    this.emitMessage(assistant)
+    this.emitMessage(tool)
     return new Promise<RequestPermissionResponse>((resolve) => {
       this.pendingApprovals.set(request.toolCall.toolCallId, {
         options: request.options,

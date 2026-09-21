@@ -261,12 +261,15 @@ const buildAcpEditSummary = (
 }
 
 /** The tool card's identity — one owner for the `acp-result-` id. */
+export const acpToolMessageId = (toolCallId: string): string =>
+  `acp-result-${toolCallId}`
+
 const buildAcpToolMessage = (
   request: ToolCallRequest,
   response: ToolCallResponse,
 ): ChatToolMessage => ({
   role: 'tool',
-  id: `acp-result-${request.id}`,
+  id: acpToolMessageId(request.id),
   toolCalls: [{ request, response }],
 })
 

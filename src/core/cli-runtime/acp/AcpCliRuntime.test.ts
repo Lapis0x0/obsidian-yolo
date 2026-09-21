@@ -702,6 +702,117 @@ describe('AcpCliRuntime', () => {
     await runtime.dispose()
   })
 
+  describe('settling cards at the end of a turn', () => {
+    // Hermes' shape: the approval request carries a toolCallId of its own, so
+    // nothing the agent sends afterwards ever addresses the approval card.
+    const startApprovedTurn = (
+      stopReason: 'end_turn' | 'cancelled',
+    ): FakeAcpAgent => {
+      const agent = new FakeAcpAgent()
+      wireServerRequestReplies(agent)
+      agent.on('session/new', () => ({ sessionId: 'sess-1' }))
+      agent.on('session/prompt', async (message) => {
+        const params = message.params as { sessionId: string }
+        await agent.request('session/request_permission', {
+          sessionId: params.sessionId,
+          toolCall: {
+            toolCallId: 'edit-approval-1',
+            title: 'Approve edit: a.md',
+            kind: 'edit',
+          },
+          options: [
+            { optionId: 'once', name: 'Allow once', kind: 'allow_once' },
+            { optionId: 'deny', name: 'Reject', kind: 'reject_once' },
+          ],
+        })
+        return { stopReason }
+      })
+      return agent
+    }
+
+    const lastCardStatus = (events: CliRuntimeEvent[], messageId: string) => {
+      const upserts = events.filter(
+        (event) =>
+          event.type === 'message_upsert' && event.message.id === messageId,
+      )
+      const last = upserts.at(-1)
+      return last?.type === 'message_upsert' && last.message.role === 'tool'
+        ? last.message.toolCalls[0].response.status
+        : undefined
+    }
+
+    it('settles an approved card nothing reported back on to success before the turn completes', async () => {
+      const agent = startApprovedTurn('end_turn')
+      const runtime = createRuntime(agent)
+      const events = collectEvents(runtime)
+      await runtime.ensureReady({})
+      const turn = runtime.sendTurn({ content: 'edit a.md' })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      await expect(
+        runtime.respondApproval({
+          requestId: 'edit-approval-1',
+          decision: 'approve_once',
+        }),
+      ).resolves.toEqual({ status: ToolCallResponseStatus.Running })
+      await turn
+
+      expect(lastCardStatus(events, 'acp-result-edit-approval-1')).toBe(
+        ToolCallResponseStatus.Success,
+      )
+      const settledIndex = events.findLastIndex(
+        (event) =>
+          event.type === 'message_upsert' &&
+          event.message.id === 'acp-result-edit-approval-1',
+      )
+      const completedIndex = events.findIndex(
+        (event) => event.type === 'run_state' && event.state === 'completed',
+      )
+      expect(settledIndex).toBeLessThan(completedIndex)
+      await runtime.dispose()
+    })
+
+    it('settles it to aborted when the turn was cancelled', async () => {
+      const agent = startApprovedTurn('cancelled')
+      const runtime = createRuntime(agent)
+      const events = collectEvents(runtime)
+      await runtime.ensureReady({})
+      const turn = runtime.sendTurn({ content: 'edit a.md' })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      await runtime.respondApproval({
+        requestId: 'edit-approval-1',
+        decision: 'approve_once',
+      })
+      await turn
+
+      expect(lastCardStatus(events, 'acp-result-edit-approval-1')).toBe(
+        ToolCallResponseStatus.Aborted,
+      )
+      await runtime.dispose()
+    })
+
+    it('reports a declined request as rejected and leaves it alone', async () => {
+      const agent = startApprovedTurn('end_turn')
+      const runtime = createRuntime(agent)
+      const events = collectEvents(runtime)
+      await runtime.ensureReady({})
+      const turn = runtime.sendTurn({ content: 'edit a.md' })
+      await new Promise((resolve) => setTimeout(resolve, 10))
+      await expect(
+        runtime.respondApproval({
+          requestId: 'edit-approval-1',
+          decision: 'reject',
+        }),
+      ).resolves.toEqual({ status: ToolCallResponseStatus.Rejected })
+      await turn
+
+      // The only upsert is the pending card: the host publishes `Rejected`.
+      expect(lastCardStatus(events, 'acp-result-edit-approval-1')).toBe(
+        ToolCallResponseStatus.PendingApproval,
+      )
+      await runtime.dispose()
+    })
+  })
+
   /**
    * Session modes are how an ACP agent exposes its own approval policy, and
    * they are the only lever that stops it from asking in the first place.
