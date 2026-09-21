@@ -29,6 +29,7 @@ import {
 } from '../../features/editor/diff-review/review-model'
 import type YoloPlugin from '../../main'
 import type { ApplyViewState } from '../../types/apply-view.types'
+import { getNodeDocument, getNodeWindow } from '../../utils/dom/window-context'
 
 import type { ApplyViewActions } from './types'
 
@@ -75,25 +76,27 @@ class InlineReviewWidget extends WidgetType {
     return this.suggestion.activeSide === 'modified' ? 'original' : 'modified'
   }
 
-  override toDOM(): HTMLElement {
+  override toDOM(view: EditorView): HTMLElement {
+    const doc = getNodeDocument(view.dom)
     const side = this.inactiveSide()
     const display = getReviewDraftDisplay(this.suggestion, side)
     const text = display.text
-    const root = document.createElement('div')
+    const root = doc.createElement('div')
     root.className = `yolo-inline-review-widget is-${side}`
     root.setAttribute('data-review-id', String(this.suggestion.id))
 
-    const content = document.createElement('div')
+    const content = doc.createElement('div')
     content.className = 'yolo-inline-review-content'
 
     if (text.length === 0) {
       root.classList.add('is-deletion')
-      const placeholder = document.createElement('div')
+      const placeholder = doc.createElement('div')
       placeholder.className = 'yolo-inline-review-deletion-placeholder'
       content.appendChild(placeholder)
     } else {
       content.appendChild(
         createBlockSection(
+          doc,
           text,
           side === 'original' ? 'is-removed' : 'is-added',
         ),
@@ -122,18 +125,15 @@ class InlineReviewWidget extends WidgetType {
 }
 
 function getWidgetTextOffset(root: HTMLElement, event: MouseEvent): number {
+  const doc = getNodeDocument(root)
   /* eslint-disable @typescript-eslint/no-deprecated -- Older Obsidian Electron versions expose only this caret hit-test API */
   const caretRangeFromPoint = (
-    document as Document & {
+    doc as Document & {
       caretRangeFromPoint?: (x: number, y: number) => Range | null
     }
   ).caretRangeFromPoint
   /* eslint-enable @typescript-eslint/no-deprecated -- End compatibility-only caret API access */
-  const caret = caretRangeFromPoint?.call(
-    document,
-    event.clientX,
-    event.clientY,
-  )
+  const caret = caretRangeFromPoint?.call(doc, event.clientX, event.clientY)
   if (!caret || !root.contains(caret.startContainer)) return 0
 
   const line = (
@@ -143,32 +143,33 @@ function getWidgetTextOffset(root: HTMLElement, event: MouseEvent): number {
   ) as HTMLElement | null | undefined
   if (!line) return 0
 
-  const withinLine = document.createRange()
+  const withinLine = doc.createRange()
   withinLine.selectNodeContents(line)
   withinLine.setEnd(caret.startContainer, caret.startOffset)
   return Number(line.dataset.textOffset ?? 0) + withinLine.toString().length
 }
 
-function createTokenElement(text: string): HTMLElement {
-  const span = document.createElement('span')
+function createTokenElement(doc: Document, text: string): HTMLElement {
+  const span = doc.createElement('span')
   span.textContent = text
   span.className = 'yolo-inline-diff yolo-inline-diff-add'
   return span
 }
 
 function createBlockSection(
+  doc: Document,
   text: string,
   state: 'is-added' | 'is-removed',
 ): HTMLElement {
-  const section = document.createElement('div')
+  const section = doc.createElement('div')
   section.className = `yolo-inline-review-section ${state}`
 
   let offset = 0
   text.split('\n').forEach((line) => {
-    const lineEl = document.createElement('div')
+    const lineEl = doc.createElement('div')
     lineEl.className = 'yolo-inline-review-line'
     lineEl.dataset.textOffset = String(offset)
-    const token = createTokenElement(line)
+    const token = createTokenElement(doc, line)
     if (state === 'is-removed') {
       token.classList.replace('yolo-inline-diff-add', 'yolo-inline-diff-remove')
     }
@@ -181,12 +182,13 @@ function createBlockSection(
 }
 
 function createButton(
+  doc: Document,
   className: string,
   label: string,
   content: string,
   onClick: () => void,
 ): HTMLButtonElement {
-  const button = document.createElement('button')
+  const button = doc.createElement('button')
   button.type = 'button'
   button.className = className
   button.setAttribute('aria-label', label)
@@ -204,15 +206,16 @@ function createButton(
 }
 
 function createActionButton(
+  doc: Document,
   icon: string,
   label: string,
   onClick: () => void,
 ): HTMLButtonElement {
-  const button = createButton('yolo-apply-action', label, '', onClick)
+  const button = createButton(doc, 'yolo-apply-action', label, '', onClick)
   if (icon === '✓') button.classList.add('yolo-apply-action-accept')
   if (icon === '×') button.classList.add('yolo-apply-action-reject')
 
-  const iconEl = document.createElement('span')
+  const iconEl = doc.createElement('span')
   iconEl.className = 'yolo-apply-action-icon'
   iconEl.textContent = icon
   button.appendChild(iconEl)
@@ -377,26 +380,27 @@ export class InlineDiffReviewOverlay {
   private mountFloatingControls(): void {
     const host = this.options.view.dom
     host.classList.add('yolo-inline-review-host')
+    const doc = getNodeDocument(host)
 
-    const root = document.createElement('div')
+    const root = doc.createElement('div')
     root.className = 'yolo-inline-review-floating-root'
     root.setAttribute('aria-label', 'Inline review controls')
 
-    const rail = document.createElement('div')
+    const rail = doc.createElement('div')
     rail.className = 'yolo-inline-review-floating-rail'
     rail.style.transition = FLOATING_RAIL_POSITION_TRANSITION
     root.appendChild(rail)
 
-    const actions = document.createElement('div')
+    const actions = doc.createElement('div')
     actions.className = 'yolo-inline-review-floating-actions'
     actions.style.transition = FLOATING_ACTIONS_POSITION_TRANSITION
     actions.appendChild(
-      createActionButton('×', this.getRejectActiveLabel(), () =>
+      createActionButton(doc, '×', this.getRejectActiveLabel(), () =>
         this.rejectDisplayedActive(),
       ),
     )
     actions.appendChild(
-      createActionButton('✓', this.getAcceptActiveLabel(), () =>
+      createActionButton(doc, '✓', this.getAcceptActiveLabel(), () =>
         this.acceptDisplayedActive(),
       ),
     )
@@ -416,7 +420,7 @@ export class InlineDiffReviewOverlay {
       this.onViewportChange,
       { passive: true },
     )
-    window.addEventListener('resize', this.onViewportChange)
+    getNodeWindow(host).addEventListener('resize', this.onViewportChange)
 
     this.onEditorPointerOver = (event) => {
       const target = event.target
@@ -432,26 +436,29 @@ export class InlineDiffReviewOverlay {
   }
 
   private mountToolbar(): void {
-    const toolbar = document.createElement('div')
+    const doc = getNodeDocument(this.options.view.dom)
+    const toolbar = doc.createElement('div')
     toolbar.className = 'yolo-inline-review-toolbar'
-    const pill = document.createElement('div')
+    const pill = doc.createElement('div')
     pill.className = 'yolo-inline-review-toolbar-pill'
 
-    const nav = document.createElement('div')
+    const nav = doc.createElement('div')
     nav.className = 'yolo-inline-review-toolbar-nav'
     nav.appendChild(
       createButton(
+        doc,
         'yolo-toolbar-icon-btn',
         this.options.plugin.t('applyView.prevChange', 'Previous change'),
         '↑',
         () => this.goToPrevious(),
       ),
     )
-    const progress = document.createElement('span')
+    const progress = doc.createElement('span')
     progress.className = 'yolo-apply-progress'
     nav.appendChild(progress)
     nav.appendChild(
       createButton(
+        doc,
         'yolo-toolbar-icon-btn',
         this.options.plugin.t('applyView.nextChange', 'Next change'),
         '↓',
@@ -460,10 +467,11 @@ export class InlineDiffReviewOverlay {
     )
     pill.appendChild(nav)
 
-    const actions = document.createElement('div')
+    const actions = doc.createElement('div')
     actions.className = 'yolo-inline-review-toolbar-actions'
     actions.appendChild(
       createButton(
+        doc,
         'yolo-toolbar-btn yolo-accept',
         this.getAcceptAllLabel(),
         this.getAcceptAllLabel(),
@@ -472,6 +480,7 @@ export class InlineDiffReviewOverlay {
     )
     actions.appendChild(
       createButton(
+        doc,
         'yolo-toolbar-btn yolo-exclude',
         this.getRejectAllLabel(),
         this.getRejectAllLabel(),
@@ -492,7 +501,10 @@ export class InlineDiffReviewOverlay {
     const pill = toolbar?.querySelector<HTMLElement>(
       '.yolo-inline-review-toolbar-pill',
     )
-    const statusBar = document.querySelector<HTMLElement>('.status-bar')
+    // 状态栏只存在于主窗口；popout 里查自己的 document 得到 null，不偏移。
+    const statusBar = getNodeDocument(
+      this.options.view.dom,
+    ).querySelector<HTMLElement>('.status-bar')
     if (!toolbar || !pill || !statusBar) return
 
     const hostRect = this.options.view.dom.getBoundingClientRect()
@@ -518,7 +530,10 @@ export class InlineDiffReviewOverlay {
         'scroll',
         this.onViewportChange,
       )
-      window.removeEventListener('resize', this.onViewportChange)
+      getNodeWindow(this.options.view.dom).removeEventListener(
+        'resize',
+        this.onViewportChange,
+      )
     }
     this.onViewportChange = null
 
@@ -895,13 +910,14 @@ export class InlineDiffReviewOverlay {
     const { file } = this.options.state
     const { vault } = this.options.plugin.app
     const editorContent = this.options.view.state.doc.toString()
+    const ownerWindow = getNodeWindow(this.options.view.dom)
 
     return await new Promise<string>((resolve) => {
       let finished = false
       const finish = (content: string) => {
         if (finished) return
         finished = true
-        window.clearTimeout(timeoutId)
+        ownerWindow.clearTimeout(timeoutId)
         vault.offref(modifyRef)
         resolve(content)
       }
@@ -915,7 +931,7 @@ export class InlineDiffReviewOverlay {
       const modifyRef = vault.on('modify', (modifiedFile) => {
         if (modifiedFile.path === file.path) void readSavedContent()
       })
-      const timeoutId = window.setTimeout(() => {
+      const timeoutId = ownerWindow.setTimeout(() => {
         finish(this.options.view.state.doc.toString())
       }, 5000)
 
