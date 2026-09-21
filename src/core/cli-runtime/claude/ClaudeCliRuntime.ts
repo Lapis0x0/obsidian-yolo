@@ -21,8 +21,7 @@ import {
   createPartialToolCallArguments,
 } from '../../../types/tool-call.types'
 import { ReasoningPhaseTracker } from '../../../utils/chat/reasoningPhaseTracker'
-import { isDecodableAsText } from '../../tools/native/text'
-import { MAX_FILE_SIZE_BYTES } from '../../tools/tool-args'
+import { readNativeCurrentText } from '../../tools/native/current-text'
 import {
   mapClaudeGetContextUsage,
   mapClaudeResultContextUsage,
@@ -150,37 +149,6 @@ const toCliMcpServerStatus = (status: {
 
 const getErrorMessage = (error: unknown): string =>
   error instanceof Error ? error.message : String(error)
-
-/**
- * The file a pending Edit / Write would change, read as it is on disk right
- * now — the approval preview's before-text. `null` = the file does not exist.
- * Anything that is not a small text file (over `MAX_FILE_SIZE_BYTES`, the
- * limit past which the native write tools stop snapshotting too; binary; a
- * directory; any I/O error) yields `undefined`: no preview, the card keeps
- * its default sections.
- */
-const readPendingFileText = async (
-  absolutePath: string,
-): Promise<string | null | undefined> => {
-  try {
-    // eslint-disable-next-line import/no-nodejs-modules -- the Claude runtime is desktop-only; dynamically imported so mobile never loads it
-    const fs = await import('node:fs/promises')
-    let stat: Awaited<ReturnType<typeof fs.stat>>
-    try {
-      stat = await fs.stat(absolutePath)
-    } catch (error) {
-      if ((error as { code?: unknown }).code === 'ENOENT') return null
-      throw error
-    }
-    if (!stat.isFile() || stat.size > MAX_FILE_SIZE_BYTES) return undefined
-    const bytes = new Uint8Array(await fs.readFile(absolutePath))
-    return isDecodableAsText(bytes)
-      ? new TextDecoder().decode(bytes)
-      : undefined
-  } catch {
-    return undefined
-  }
-}
 
 const cloneToolMessage = (message: ChatToolMessage): ChatToolMessage => ({
   ...message,
@@ -994,13 +962,15 @@ export class ClaudeCliRuntime implements CliRuntime {
     toolName: string,
     input: Record<string, unknown>,
   ): Promise<FileChangeRows | null> {
-    const current = await readPendingFileText(filePath)
-    if (current === undefined) return null
+    // The file as it is on disk right now is the approval preview's
+    // before-text; anything that is not a small text file gets no preview.
+    const current = await readNativeCurrentText(filePath)
+    if (current.state === 'unreadable') return null
     return buildClaudePendingFileChangeRows(
       this.vaultPath,
       toolName,
       input,
-      current,
+      current.state === 'text' ? current.text : null,
     )
   }
 

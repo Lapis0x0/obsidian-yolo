@@ -23,6 +23,10 @@ Shared here:
   write runs its read-modify-write in.
 - `text.ts` — the binary-file guard applied before bytes are decoded for the
   model.
+- `current-text.ts` — `readNativeCurrentText`, a file's current text for
+  comparison and diffing (the pending-write preview, and the CLI runtimes
+  reading what an external agent changes): small text files only, every
+  failure reported as `unreadable` rather than thrown.
 
 `line-slicing.ts` deliberately stays in the tools root: the vault-backed
 `fs_read` shares it, so it is not native-only.

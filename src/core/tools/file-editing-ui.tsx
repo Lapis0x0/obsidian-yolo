@@ -26,7 +26,7 @@ import {
   resolveFileChangeRows,
 } from './file-change-resolver'
 import { getFileEditingPathChatSummary } from './file-editing-support'
-import { readNativeSnapshotSource } from './native/edit-summary'
+import { readNativeCurrentText } from './native/current-text'
 import { resolveNativePath } from './native/paths'
 import { MAX_FILE_SIZE_BYTES } from './tool-args'
 
@@ -115,8 +115,8 @@ function PendingFileChangeView({ read }: { read: PendingCurrentFileRead }) {
 /**
  * The file's current text, through the same filesystem API the tool will
  * write with: the vault for `fs_*`, `node:fs` for the native tools (whose
- * paths may lie outside the vault, and which are desktop-only — hence the
- * dynamic import).
+ * paths may lie outside the vault, and which are desktop-only — read through
+ * the shared `readNativeCurrentText`).
  *
  * Files over `MAX_FILE_SIZE_BYTES` — the size past which the write tools
  * themselves stop snapshotting the before-content — and non-text files are
@@ -144,23 +144,7 @@ const readCurrentFileText = async (
     if (!Platform.isDesktop) {
       return { state: 'unreadable' }
     }
-    const absolutePath = await resolveNativePath(app, path)
-    // eslint-disable-next-line import/no-nodejs-modules -- desktop-only branch, dynamically imported so mobile never loads it
-    const fs = await import('node:fs/promises')
-    let stat: Awaited<ReturnType<typeof fs.stat>>
-    try {
-      stat = await fs.stat(absolutePath)
-    } catch (error) {
-      if ((error as { code?: unknown }).code === 'ENOENT') {
-        return { state: 'absent' }
-      }
-      throw error
-    }
-    if (stat.isDirectory() || stat.size > MAX_FILE_SIZE_BYTES) {
-      return { state: 'unreadable' }
-    }
-    const text = await readNativeSnapshotSource(fs, absolutePath, stat.size)
-    return text === null ? { state: 'unreadable' } : { state: 'text', text }
+    return await readNativeCurrentText(await resolveNativePath(app, path))
   } catch {
     return { state: 'unreadable' }
   }
