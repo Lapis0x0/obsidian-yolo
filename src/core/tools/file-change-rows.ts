@@ -142,7 +142,7 @@ export const buildEditContentRows = ({
   text: string
   maxLines?: number
 }): EditDiffRows => {
-  const lines = text.split('\n')
+  const lines = splitLines(text)
   const rows: EditDiffRow[] = lines.slice(0, maxLines).map((line, index) => ({
     type: 'line' as const,
     change: 'unchanged' as const,
@@ -156,8 +156,14 @@ export const buildEditContentRows = ({
   }
 }
 
-const splitLines = (text: string): string[] =>
-  text === '' ? [] : text.split('\n')
+// A trailing newline terminates the last line; it does not open an empty
+// one. Without this every newline-terminated file ends in a phantom blank
+// row (and a create reads as one line longer than its `+N`).
+const splitLines = (text: string): string[] => {
+  if (text === '') return []
+  const lines = text.split('\n')
+  return text.endsWith('\n') ? lines.slice(0, -1) : lines
+}
 
 /** One file's diff from its full before/after texts. */
 export const buildFileChangeRowsFromTexts = (

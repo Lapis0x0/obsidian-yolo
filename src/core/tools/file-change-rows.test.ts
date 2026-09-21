@@ -143,6 +143,20 @@ describe('buildEditContentRows', () => {
     ).toEqual(['unchanged:-/1:a', 'unchanged:-/2:b', 'unchanged:-/3:c'])
   })
 
+  it('does not draw the trailing newline as an extra blank line', () => {
+    expect(
+      buildFileChangeRowsFromContent('n.md', 'a\nb\n').rows.map(describeRow),
+    ).toEqual(['unchanged:-/1:a', 'unchanged:-/2:b'])
+    expect(
+      buildFileChangeRowsFromTexts('n.md', '', 'a\nb\n').rows.map(describeRow),
+    ).toEqual(['added:-/1:a', 'added:-/2:b'])
+    expect(
+      buildFileChangeRowsFromTexts('n.md', 'a\nb\n', 'a\nc\n').rows.map(
+        describeRow,
+      ),
+    ).toEqual(['unchanged:1/1:a', 'removed:2/-:b', 'added:-/2:c'])
+  })
+
   it('caps long content and reports the remainder', () => {
     const text = Array.from({ length: 12 }, (_, index) => `l${index}`).join(
       '\n',
