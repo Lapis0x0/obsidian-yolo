@@ -13,6 +13,7 @@ import { parseToolName } from '../mcp/tool-name-utils'
 import {
   buildFileChangeRowsFromContent,
   buildFileChangeRowsFromTexts,
+  withoutLineNumbers,
 } from './file-change-rows'
 import { getFsEditPlan } from './fs_edit/schema-helpers'
 
@@ -44,7 +45,9 @@ const DRAWN_STATUSES: ReadonlySet<ToolCallResponse['status']> = new Set([
 
 /**
  * A pending call whose before-text is the file as it is on disk right now —
- * an overwrite (`fs_write` / `write_file`) or an `fs_edit` line-range edit.
+ * an overwrite (`fs_write` / `write_file`), an `fs_edit` line-range edit, or
+ * an exact replace (`fs_edit` / `edit_file`), whose `oldText` is only a
+ * fragment and needs the file to be placed at its real lines.
  * "Waiting for approval" means the write has not happened, so the current
  * content *is* the before-text; the resolver is pure and cannot read it, so
  * it hands this back and the card reads the file (`file-editing-ui.tsx`),
@@ -56,8 +59,12 @@ export type PendingCurrentFileRead = {
   filesystem: 'vault' | 'native'
   /** The post-edit text given the current one (`null` = no file yet). */
   applyTo: (currentText: string | null) => string | null
-  /** What the call writes, shown alone when the current text is unobtainable. */
-  writtenText: string
+  /**
+   * What the card shows when the current text is unobtainable or the edit
+   * does not apply to it: the written content alone, or a replace's fragment
+   * diff without line numbers.
+   */
+  fallback: FileChangeRows
 }
 
 /** What reading the file on disk found. */
@@ -112,17 +119,18 @@ const getFilesystem = (requestName: string): 'vault' | 'native' => {
  * (`fs_edit`, `fs_write`, `edit_file`, `write_file`) and its rows are
  * computed here, from the source most precise to *this call*:
  *
- * 1. **The arguments themselves** (`oldText` + `newText`) — `fs_edit`'s
- *    exact-replace mode and `edit_file` carry the whole change in the call,
- *    persisted with the message, so it reads the same in every status and
- *    after a reload.
- * 2. **Pending approval: the file on disk** — for an overwrite or a
- *    line-range edit the arguments hold no original text, but nothing has
- *    been written yet, so the current content is the before-text. Returned
- *    as `readCurrent` for the card to finish.
- * 3. **The in-memory undo snapshot** — this call's own before/after full
+ * 1. **Pending approval: the file on disk** — nothing has been written yet,
+ *    so the current content is the before-text. An overwrite or line-range
+ *    edit has no original text in its arguments at all, and a replace's
+ *    `oldText` is only a fragment, so all of them are returned as
+ *    `readCurrent` for the card to finish into a whole-file diff.
+ * 2. **The in-memory undo snapshot** — this call's own before/after full
  *    text (keyed by `toolCallId + path`). Lost on reload and evicted past a
  *    size cap; both fall through.
+ * 3. **A replace's fragment** (`oldText` + `newText`) — persisted with the
+ *    message, so it survives a reload, but it is not the file: drawn without
+ *    line numbers, which would count from the fragment's first line. Also
+ *    what a replace shows while running, when the disk is mid-write.
  * 4. **`editSummary.operation === 'create'`** — a pure creation has no
  *    before-content to lose, so the written content is, exactly, all added.
  * 5. **The written content alone** (`afterOnly`) — an overwrite whose
@@ -160,20 +168,20 @@ export const resolveFileChangeRows = (
     return null
   }
 
+  // `content` is `fs_write` / `write_file`'s full-content argument; `newText`
+  // is a replace's replacement (with `oldText`) or, alone, `fs_edit`'s
+  // line-range mode.
+  const content = getStringArg(args, 'content')
   const oldText = getStringArg(args, 'oldText')
   const newText = getStringArg(args, 'newText')
-  if (oldText !== undefined && newText !== undefined) {
-    return rows(buildFileChangeRowsFromTexts(path, oldText, newText))
-  }
-
-  // `content` is `fs_write` / `write_file`'s full-content argument;
-  // `newText` alone is `fs_edit`'s line-range mode (no `oldText` to pair
-  // with, which is why it fell through the branch above).
-  const content = getStringArg(args, 'content')
   const writtenText = content ?? newText
   if (writtenText === undefined) {
     return null
   }
+  const fragment =
+    oldText !== undefined && newText !== undefined
+      ? withoutLineNumbers(buildFileChangeRowsFromTexts(path, oldText, newText))
+      : null
 
   if (response.status === ToolCallResponseStatus.PendingApproval) {
     return {
@@ -184,18 +192,19 @@ export const resolveFileChangeRows = (
         applyTo:
           content !== undefined
             ? () => content
-            : (currentText) => applyLineRangeEdit(args ?? {}, currentText),
-        writtenText,
+            : (currentText) => applyEditArgs(args ?? {}, currentText),
+        fallback: fragment ?? buildFileChangeRowsFromContent(path, writtenText),
       },
     }
   }
 
-  // Every source below describes a finished write: the undo snapshot and
-  // `editSummary` are what the write left behind, and `afterOnly` claims the
-  // before-text is gone. While the call is still running none of that holds
-  // yet, so it keeps the default sections until it completes.
+  // Every source below but the fragment describes a finished write: the undo
+  // snapshot and `editSummary` are what the write left behind, and
+  // `afterOnly` claims the before-text is gone. While the call is still
+  // running none of that holds yet; only a replace's fragment, fixed when the
+  // call was made, can be shown.
   if (response.status !== ToolCallResponseStatus.Success) {
-    return null
+    return fragment ? rows(fragment) : null
   }
 
   const { undoSnapshot } = context
@@ -207,6 +216,10 @@ export const resolveFileChangeRows = (
         undoSnapshot.afterExists ? undoSnapshot.afterContent : '',
       ),
     )
+  }
+
+  if (fragment) {
+    return rows(fragment)
   }
 
   // Each of these four tools writes exactly one file per call, so a single
@@ -229,16 +242,27 @@ const rows = (file: FileChangeRows): FileChangeResolution => ({
 })
 
 /**
- * `fs_edit`'s line-range edit applied to the current text, through the same
- * plan parser and engine the tool executes with — so the preview is what the
- * write would do, or `null` where the write itself would fail.
+ * An edit's arguments applied to the current text the way the tool executes
+ * them — `edit_file`'s `replaceAll` as an exact split/join, everything else
+ * (`fs_edit`'s replace and line-range modes, `edit_file`'s unique replace)
+ * through the plan parser and engine both tools run — so the preview is what
+ * the write would do, or `null` where the write itself would fail.
  */
-const applyLineRangeEdit = (
+const applyEditArgs = (
   args: Record<string, unknown>,
   currentText: string | null,
 ): string | null => {
   if (currentText === null) {
     return null
+  }
+  if (args.replaceAll === true) {
+    const oldText = getStringArg(args, 'oldText')
+    const newText = getStringArg(args, 'newText')
+    if (!oldText || newText === undefined) {
+      return null
+    }
+    const segments = currentText.split(oldText)
+    return segments.length > 1 ? segments.join(newText) : null
   }
   let plan: ReturnType<typeof getFsEditPlan>
   try {
@@ -253,8 +277,8 @@ const applyLineRangeEdit = (
 /**
  * Finishes a {@link PendingCurrentFileRead} once the card has read the file:
  * a real diff against the current text (or against nothing, for a file that
- * does not exist yet), or the written content alone when the file could not
- * be read or the edit does not apply to it.
+ * does not exist yet), or the read's fallback when the file could not be read
+ * or the edit does not apply to it.
  */
 export const buildPendingFileChangeRows = (
   read: PendingCurrentFileRead,
@@ -271,5 +295,5 @@ export const buildPendingFileChangeRows = (
       )
     }
   }
-  return buildFileChangeRowsFromContent(read.path, read.writtenText)
+  return read.fallback
 }

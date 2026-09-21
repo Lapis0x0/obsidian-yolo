@@ -38,6 +38,7 @@ import type { CurrentFileText } from '../../tools/file-change-resolver'
 import {
   buildFileChangeRowsFromContent,
   buildFileChangeRowsFromTexts,
+  withoutLineNumbers,
 } from '../../tools/file-change-rows'
 import { createCliToolCallRequest, toCliEditSummaryPath } from '../tool-call'
 import type {
@@ -140,16 +141,6 @@ const getAcpShownDiffs = (state: AcpToolCallState): AcpShownDiff[] =>
     )
     return whole ? { diff: whole, wholeFile: true } : { diff, wholeFile: false }
   })
-
-/** A row list with no line numbers — the renderer leaves the gutter blank. */
-const withoutLineNumbers = (file: FileChangeRows): FileChangeRows => ({
-  ...file,
-  rows: file.rows.map((row) =>
-    row.type === 'line'
-      ? { type: 'line', change: row.change, text: row.text }
-      : row,
-  ),
-})
 
 /**
  * The card's file-change rows — one per path, already folded and truncated,

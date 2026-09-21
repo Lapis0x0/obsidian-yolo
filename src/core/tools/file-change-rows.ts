@@ -187,3 +187,19 @@ export const buildFileChangeRowsFromContent = (
   completeness: 'afterOnly',
   ...buildEditContentRows({ text: afterText }),
 })
+
+/**
+ * A row list with no line numbers — the renderer leaves the gutter blank.
+ * For a diff between fragments rather than whole files (a replace's
+ * `oldText`/`newText`, an ACP agent's snippet), whose numbers would count
+ * from the fragment's first line instead of the file's: showing numbers that
+ * may be wrong is worse than showing none.
+ */
+export const withoutLineNumbers = (file: FileChangeRows): FileChangeRows => ({
+  ...file,
+  rows: file.rows.map((row) =>
+    row.type === 'line'
+      ? { type: 'line', change: row.change, text: row.text }
+      : row,
+  ),
+})

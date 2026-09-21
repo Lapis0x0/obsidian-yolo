@@ -17,6 +17,7 @@ import {
 import {
   buildFileChangeRowsFromContent,
   buildFileChangeRowsFromTexts,
+  withoutLineNumbers,
 } from './file-change-rows'
 
 const request = (
@@ -97,25 +98,76 @@ describe('resolveFileChangeRows', () => {
     ).toEqual(rowsOf(...prebuilt))
   })
 
-  it('diffs oldText/newText straight from the arguments', () => {
+  it("draws a finished replace from this call's undo snapshot, at the file's real lines", () => {
+    expect(
+      resolveFileChangeRows(
+        request({ path: 'note.md', oldText: 'before', newText: 'after' }),
+        success(editedSummary('note.md')),
+        { undoSnapshot: snapshot() },
+      ),
+    ).toEqual(
+      rowsOf(buildFileChangeRowsFromTexts('note.md', 'before\n', 'after\n')),
+    )
+  })
+
+  it("falls back to a finished replace's fragment, without line numbers, once the snapshot is gone", () => {
     expect(
       resolveFileChangeRows(
         request({ path: 'note.md', oldText: 'a', newText: 'b' }),
         success(editedSummary('note.md')),
-        // Even with a snapshot on hand, the arguments win: they are what this
-        // call asked for and they survive a reload.
-        { undoSnapshot: snapshot() },
       ),
-    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', 'a', 'b')))
+    ).toEqual(
+      rowsOf(
+        withoutLineNumbers(buildFileChangeRowsFromTexts('note.md', 'a', 'b')),
+      ),
+    )
   })
 
-  it('draws the arguments diff while pending approval too', () => {
-    expect(
+  it('places a pending replace at its real lines by reading the file', () => {
+    const read = pendingRead(
       resolveFileChangeRows(
-        request({ path: 'note.md', oldText: 'a', newText: 'b' }),
+        request(
+          { path: 'note.md', oldText: 'l2', newText: 'L2' },
+          'yolo_local__fs_edit',
+        ),
         pending,
       ),
-    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', 'a', 'b')))
+    )
+    expect(
+      buildPendingFileChangeRows(read, { state: 'text', text: 'l1\nl2\nl3\n' }),
+    ).toEqual(
+      buildFileChangeRowsFromTexts('note.md', 'l1\nl2\nl3\n', 'l1\nL2\nl3\n'),
+    )
+    // The replace would fail against this text, so there is nothing to place:
+    // the fragment is shown, unnumbered.
+    expect(
+      buildPendingFileChangeRows(read, { state: 'text', text: 'other\n' }),
+    ).toEqual(
+      withoutLineNumbers(buildFileChangeRowsFromTexts('note.md', 'l2', 'L2')),
+    )
+  })
+
+  it("applies edit_file's replaceAll to every occurrence in the pending preview", () => {
+    const read = pendingRead(
+      resolveFileChangeRows(
+        request(
+          {
+            path: '/abs/note.md',
+            oldText: 'x',
+            newText: 'y',
+            replaceAll: true,
+          },
+          'yolo_local__edit_file',
+        ),
+        pending,
+      ),
+    )
+    expect(read.filesystem).toBe('native')
+    expect(
+      buildPendingFileChangeRows(read, { state: 'text', text: 'x\na\nx\n' }),
+    ).toEqual(
+      buildFileChangeRowsFromTexts('/abs/note.md', 'x\na\nx\n', 'y\na\ny\n'),
+    )
   })
 
   it('falls back to the in-memory undo snapshot when the arguments carry no original text', () => {
@@ -210,12 +262,19 @@ describe('resolveFileChangeRows', () => {
         running,
       ),
     ).toEqual(rowsOf(built))
+    // A replace mid-write: only its fragment is fixed, and it is not placed
+    // in the file, so it carries no line numbers.
     expect(
       resolveFileChangeRows(
         request({ path: 'note.md', oldText: 'a', newText: 'b' }),
         running,
+        { undoSnapshot: snapshot() },
       ),
-    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', 'a', 'b')))
+    ).toEqual(
+      rowsOf(
+        withoutLineNumbers(buildFileChangeRowsFromTexts('note.md', 'a', 'b')),
+      ),
+    )
     // An overwrite mid-write: the disk is neither the before nor the after,
     // and the write has left no snapshot or summary yet.
     expect(
