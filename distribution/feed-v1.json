@@ -1,36 +1,36 @@
 {
   "schemaVersion": 1,
-  "revision": 36,
+  "revision": 37,
   "keyId": "yolo-distribution-2026-01",
   "core": {
-    "version": "1.6.9.4",
+    "version": "1.6.9.5",
     "minAppVersion": "1.8.7",
-    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.4",
+    "releaseUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/tag/1.6.9.5",
     "releaseNotes": {
-      "en": "## 1.6.9.4 CLI Agent Improvements 🤖\n\n- Added full diff display for changes made by CLI Agents.\n- CLI chats now support manually setting a default model.\n- Added support for CodeBuddy CLI.\n- Improved Hermes's permission policy and fixed a bug where YOLO mode still required step-by-step approval.\n- Improved the drag-and-drop experience on the Provider page.\n- Fixed reply generation failing with some relay services that send keep-alive frames.",
-      "zh": "## 1.6.9.4 CLI Agent 体验增强 🤖\n\n- 为 CLI Agent 添加完整的修改 diff 展示支持。\n- CLI 对话支持手动设置默认模型。\n- 支持 CodeBuddy CLI。\n- 优化 Hermes 的权限策略，修复 YOLO 模式下仍需逐步审批的 bug。\n- 优化 Provider 页的拖拽体验。\n- 修复部分中转服务因发送保活帧导致回复生成失败的问题。"
+      "en": "## 1.6.9.5 Model Search 🔍\n\n- Added search and filtering to the model list.\n- Updated some capabilities required by the Whiteboard module.",
+      "zh": "## 1.6.9.5 模型搜索 🔍\n\n- 模型列表支持搜索与过滤。\n- 更新了部分白板模块所需的能力。"
     },
     "assets": {
       "mainJs": {
         "name": "main.js",
-        "mirrorPath": "core/1.6.9.4/main.js",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.4/main.js",
-        "byteSize": 9568804,
-        "sha256": "40aad809b320d314803b50da4d18b9df37565388ea2c757ee96bec139ce7bb31"
+        "mirrorPath": "core/1.6.9.5/main.js",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.5/main.js",
+        "byteSize": 9575700,
+        "sha256": "01256d79fb7a2cd3efe87566484cb32cac70c4ce49fd32e1441eae03e93350f9"
       },
       "manifestJson": {
         "name": "manifest.json",
-        "mirrorPath": "core/1.6.9.4/manifest.json",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.4/manifest.json",
+        "mirrorPath": "core/1.6.9.5/manifest.json",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.5/manifest.json",
         "byteSize": 413,
-        "sha256": "ed08a3d45fde6104cd95b8c627acee3d0029883e36c29d9df1a8a0deea0d204b"
+        "sha256": "c852050710bfc3808635bf0efa3ef06605f4210410c2c07ba96ed6bf088b5f39"
       },
       "stylesCss": {
         "name": "styles.css",
-        "mirrorPath": "core/1.6.9.4/styles.css",
-        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.4/styles.css",
-        "byteSize": 685947,
-        "sha256": "1edb4454e333de9143657473966e522b26b7be3c2389d7d1423f1389d39138c5"
+        "mirrorPath": "core/1.6.9.5/styles.css",
+        "canonicalUrl": "https://github.com/Lapis0x0/obsidian-yolo/releases/download/1.6.9.5/styles.css",
+        "byteSize": 688155,
+        "sha256": "189cba3c3191b543b12b4fe4c7b26c285fd35deef97a694961a75c74aad58d38"
       }
     }
   },
