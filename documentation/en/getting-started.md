@@ -28,7 +28,7 @@ Click **Add provider**. A picker opens, grouped by region and type:
 
 - **International**: OpenAI, Anthropic, Gemini, Mistral, Groq, xAI and others
 - **China**: DeepSeek, Moonshot, Zhipu, Doubao, SiliconFlow, MiniMax and others
-- **Gateway**: OpenRouter, APIMart — one key, many models
+- **Gateway**: OpenRouter, APIMart, Fluxion AI — one key, many models
 - **Cloud**: Azure OpenAI, Amazon Bedrock
 - **Local**: Ollama, LM Studio — the model runs on your own machine
 - **Custom provider**: any OpenAI-compatible endpoint; just fill in Base URL and API key

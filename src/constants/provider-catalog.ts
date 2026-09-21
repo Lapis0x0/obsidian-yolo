@@ -5,6 +5,7 @@ import azureOpenaiLogo from '../assets/provider-icons/azure-openai.svg'
 import cerebrasLogo from '../assets/provider-icons/cerebras.svg'
 import deepseekLogo from '../assets/provider-icons/deepseek.svg'
 import doubaoLogo from '../assets/provider-icons/doubao.svg'
+import fluxionLogo from '../assets/provider-icons/fluxion.svg'
 import geminiLogo from '../assets/provider-icons/gemini.svg'
 import groqLogo from '../assets/provider-icons/groq.svg'
 import hunyuanLogo from '../assets/provider-icons/hunyuan.svg'
@@ -169,6 +170,16 @@ export const PROVIDER_CATALOG: Record<
     // Referral link — see the "Sponsors" section in the README.
     apiKeyUrl: 'https://go.apimart.ai/gh-obsidian-yolo',
   },
+  fluxion: {
+    monogram: 'Fx',
+    tint: 'indigo',
+    category: 'gw',
+    logo: fluxionLogo,
+    sponsor: true,
+    // Referral link — see the "Sponsors" section in the README.
+    apiKeyUrl:
+      'https://fluxionai.space/register?source=github&campaign=github-yolo&promo=YOLO',
+  },
   'azure-openai': {
     monogram: 'Az',
     tint: 'blue',
@@ -277,6 +288,7 @@ const FLAT_ORDER: Exclude<LLMProviderPresetType, 'openai-compatible'>[] = [
   'gemini-oauth',
   'openrouter',
   'apimart',
+  'fluxion',
   'xai',
   'mistral',
   'perplexity',

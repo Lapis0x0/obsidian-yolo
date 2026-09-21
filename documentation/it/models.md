@@ -12,7 +12,7 @@ Un «provider» è l'origine di un modello: un fornitore di API, oppure un servi
 |------|------|
 | **Internazionale** | OpenAI, Anthropic, Gemini, Mistral, Perplexity, Groq, xAI, Together AI, Cerebras, SambaNova, Morph |
 | **Cina** | DeepSeek, Moonshot, Zhipu, Doubao, SiliconFlow, StepFun, MiniMax, Hunyuan, Xiaomi MiMo |
-| **Aggregatori** | OpenRouter, APIMart |
+| **Aggregatori** | OpenRouter, APIMart, Fluxion AI |
 | **Cloud** | Azure OpenAI, Amazon Bedrock |
 | **Locali** | Ollama, LM Studio |
 

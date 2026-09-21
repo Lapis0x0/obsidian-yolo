@@ -183,6 +183,17 @@ export const PROVIDER_PRESET_INFO = {
       RESPONSE_STREAMING_MODE_SETTING,
     ],
   },
+  fluxion: {
+    label: 'Fluxion AI',
+    defaultProviderId: 'fluxion',
+    requireApiKey: true,
+    requireBaseUrl: false,
+    supportEmbedding: false,
+    additionalSettings: [
+      REQUEST_TRANSPORT_MODE_SETTING,
+      RESPONSE_STREAMING_MODE_SETTING,
+    ],
+  },
   ollama: {
     label: 'Ollama',
     defaultProviderId: 'ollama',

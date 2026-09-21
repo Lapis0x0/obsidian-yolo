@@ -66,6 +66,18 @@
   <a href="https://go.apimart.ai/gh-obsidian-yolo"><b>Registrati su APIMart →</b></a>
 </td>
 </tr>
+<tr>
+<td width="200" align="center" valign="middle">
+  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">
+    <img src="./assets/sponsor-fluxion.png" alt="Fluxion AI" width="163">
+  </a>
+</td>
+<td valign="middle">
+  Grazie a <b><a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO">Fluxion AI</a></b> per aver sponsorizzato questo progetto! Fluxion AI è un servizio di inoltro API che aiuta sviluppatori indipendenti e aziende ad accedere e gestire i principali modelli di AI del mondo tramite un'unica API. La pianificazione dinamica su più linee migliora la disponibilità, e prestazioni dei modelli, tempi di risposta e costi sono trasparenti. Con Fable 5.1, Fluxion AI consente di risparmiare fino a circa il 90% rispetto ai prezzi dell'API ufficiale di Claude.
+  <br><br>
+  <a href="https://fluxionai.space/register?source=github&amp;campaign=github-yolo&amp;promo=YOLO"><b>Registrati su Fluxion AI →</b></a>
+</td>
+</tr>
 </table>
 
 ## Novità recenti

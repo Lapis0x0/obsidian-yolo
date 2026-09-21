@@ -12,7 +12,7 @@ A "provider" is where a model comes from — an API service, or an inference ser
 |------|------|
 | **International** | OpenAI, Anthropic, Gemini, Mistral, Perplexity, Groq, xAI, Together AI, Cerebras, SambaNova, Morph |
 | **China** | DeepSeek, Moonshot, Zhipu, Doubao, SiliconFlow, StepFun, MiniMax, Hunyuan, Xiaomi MiMo |
-| **Gateway** | OpenRouter, APIMart |
+| **Gateway** | OpenRouter, APIMart, Fluxion AI |
 | **Cloud** | Azure OpenAI, Amazon Bedrock |
 | **Local** | Ollama, LM Studio |
 

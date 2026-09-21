@@ -28,7 +28,7 @@ Clicca su «**Aggiungi provider**»: si apre un selettore diviso in categorie pe
 
 - **Internazionale**: OpenAI, Anthropic, Gemini, Mistral, Groq, xAI e altri
 - **Cina**: DeepSeek, Moonshot, Zhipu, Doubao, SiliconFlow, MiniMax e altri
-- **Aggregatori**: OpenRouter, APIMart — una sola chiave per i modelli di più fornitori
+- **Aggregatori**: OpenRouter, APIMart, Fluxion AI — una sola chiave per i modelli di più fornitori
 - **Cloud**: Azure OpenAI, Amazon Bedrock
 - **Locali**: Ollama, LM Studio — il modello gira sul tuo computer
 - **Provider personalizzato**: qualunque endpoint compatibile con OpenAI, basta indicare URL base e chiave API

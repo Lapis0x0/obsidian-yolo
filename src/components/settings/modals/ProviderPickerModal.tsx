@@ -2,7 +2,7 @@ import { Search } from 'lucide-react'
 import { App } from 'obsidian'
 import { useMemo, useState } from 'react'
 
-import { PROVIDER_PRESET_INFO } from '../../../constants'
+import { PROVIDER_API_INFO, PROVIDER_PRESET_INFO } from '../../../constants'
 import {
   PROVIDER_CATALOG,
   PROVIDER_PICKER_CATEGORIES,
@@ -216,8 +216,8 @@ function ProviderPickerComponent({
           const catalog = PROVIDER_CATALOG[presetType]
           const info = PROVIDER_PRESET_INFO[presetType]
           const isAdded = addedPresets.has(presetType)
-          const isOpenAiCompatible =
-            getDefaultApiTypeForPresetType(presetType) === 'openai-compatible'
+          const apiType = getDefaultApiTypeForPresetType(presetType)
+          const isOpenAiCompatible = apiType === 'openai-compatible'
           return (
             <button
               key={presetType}
@@ -243,10 +243,14 @@ function ProviderPickerComponent({
                             'settings.providers.badgeOpenAiCompatible',
                             'OpenAI compatible',
                           )
-                        : t(
-                            'settings.providers.badgeNative',
-                            'Native protocol',
-                          )}
+                        : catalog.category === 'gw'
+                          ? // A gateway speaks another vendor's protocol,
+                            // so "native" would misattribute it — name it.
+                            PROVIDER_API_INFO[apiType].label
+                          : t(
+                              'settings.providers.badgeNative',
+                              'Native protocol',
+                            )}
                     </span>
                     {catalog.sponsor && (
                       <span className="yolo-pp-badge yolo-pp-badge--rose">

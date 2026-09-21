@@ -28,7 +28,7 @@
 
 - **国际**：OpenAI、Anthropic、Gemini、Mistral、Groq、xAI 等
 - **中国**：DeepSeek、月之暗面、智谱、豆包、硅基流动、MiniMax 等
-- **路由聚合**：OpenRouter、APIMart —— 一个 Key 用多家模型
+- **路由聚合**：OpenRouter、APIMart、Fluxion AI —— 一个 Key 用多家模型
 - **云厂商**：Azure OpenAI、Amazon Bedrock
 - **本地**：Ollama、LM Studio —— 模型跑在你自己电脑上
 - **自定义提供商**：任意 OpenAI 兼容端点，填 Base URL 和 API Key 即可

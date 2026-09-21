@@ -12,7 +12,7 @@ YOLO 自己不提供模型，你需要接入至少一个。这一篇讲怎么接
 |------|------|
 | **国际** | OpenAI、Anthropic、Gemini、Mistral、Perplexity、Groq、xAI、Together AI、Cerebras、SambaNova、Morph |
 | **中国** | DeepSeek、月之暗面 Moonshot、智谱、豆包、硅基流动、阶跃星辰、MiniMax、混元、小米 MiMo |
-| **路由聚合** | OpenRouter、APIMart |
+| **路由聚合** | OpenRouter、APIMart、Fluxion AI |
 | **云厂商** | Azure OpenAI、Amazon Bedrock |
 | **本地** | Ollama、LM Studio |
 
