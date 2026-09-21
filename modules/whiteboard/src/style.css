@@ -67,7 +67,7 @@
   inset: 0;
   overflow: hidden;
   /* A left-drag from empty canvas is marquee-select (W3-A), not pan — pan
-   * is middle-drag (anywhere) or Alt+left-drag from empty canvas, so the
+   * is middle-drag or Space+left-drag (anywhere) or Alt+left-drag from empty canvas, so the
    * base cursor no longer implies "grab to pan"; the grabbing cursor of an
    * actual pan comes from .yolo-whiteboard-pan-capture below. */
   cursor: default;
@@ -98,6 +98,19 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
+  cursor: grabbing;
+}
+
+/* Space held (canvas.ts's armSpacePan): the same box takes the pointer over
+ * the whole viewport, so hovering anywhere shows the hand and a press
+ * anywhere — a card included — lands on it and pans. Only this childless
+ * element changes, for the same reason the pan's cursor lives here. */
+.yolo-whiteboard-pan-capture.yolo-whiteboard-pan-capture-armed {
+  pointer-events: auto;
+  cursor: grab;
+}
+
+.yolo-whiteboard-pan-capture.yolo-whiteboard-pan-capture-armed:active {
   cursor: grabbing;
 }
 

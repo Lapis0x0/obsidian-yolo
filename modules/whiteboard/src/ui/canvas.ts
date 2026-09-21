@@ -221,6 +221,9 @@ const NO_PINS: ReadonlySet<NodeId> = new Set()
 const ROOT_CLASS = 'yolo-whiteboard-root'
 const VIEWPORT_CLASS = 'yolo-whiteboard-viewport'
 const PAN_CAPTURE_CLASS = 'yolo-whiteboard-pan-capture'
+/** On the pan capture while Space is held: it takes the pointer over the whole
+ * viewport and shows the grab cursor, so a left press anywhere is a pan. */
+const PAN_CAPTURE_ARMED_CLASS = 'yolo-whiteboard-pan-capture-armed'
 const VIEWPORT_HIDDEN_CLASS = 'yolo-whiteboard-viewport-hidden'
 const VIEWPORT_DROP_ACTIVE_CLASS = 'yolo-whiteboard-viewport-drop-active'
 const WORLD_CLASS = 'yolo-whiteboard-world'
@@ -476,6 +479,10 @@ export class WhiteboardCanvas {
     YoloModuleHostApiV1['ui']['createMarkdownRenderer']
   > | null = null
   private viewKeymapDisposer: (() => void) | null = null
+  /** The element a pan captures the pointer on (see CameraController). */
+  private panCaptureEl!: HTMLElement
+  /** Space is held on this board: a left press pans, like a middle press. */
+  private spacePanArmed = false
   private editSessionCounter = 0
 
   /** Camera (pan/zoom) state and its glide animation. Constructed once in
@@ -833,6 +840,9 @@ export class WhiteboardCanvas {
     this.viewportEl?.removeEventListener('drop', this.onDrop)
     win.removeEventListener('pointermove', this.onPointerMove)
     win.removeEventListener('pointerup', this.onPointerUp)
+    win.removeEventListener('keyup', this.onKeyUp)
+    win.removeEventListener('blur', this.disarmSpacePan)
+    this.disarmSpacePan()
     this.vaultSubscriptionDisposer?.()
     this.vaultSubscriptionDisposer = null
     this.viewKeymapDisposer?.()
@@ -986,6 +996,7 @@ export class WhiteboardCanvas {
     const panCapture = doc.createElement('div')
     panCapture.className = PAN_CAPTURE_CLASS
     viewport.appendChild(panCapture)
+    this.panCaptureEl = panCapture
     root.appendChild(viewport)
 
     const error = doc.createElement('div')
@@ -1206,6 +1217,8 @@ export class WhiteboardCanvas {
     this.viewportEl.addEventListener('pointerdown', this.onPointerDown)
     win.addEventListener('pointermove', this.onPointerMove)
     win.addEventListener('pointerup', this.onPointerUp)
+    win.addEventListener('keyup', this.onKeyUp)
+    win.addEventListener('blur', this.disarmSpacePan)
     this.viewportEl.addEventListener('wheel', this.cameraController.onWheel, {
       passive: false,
     })
@@ -1300,8 +1313,9 @@ export class WhiteboardCanvas {
     this.toolbarController.closePopover()
     const nodeId = this.nodeIdAtPointer(e)
 
-    if (e.button === 1) {
-      // Middle-click always pans, even starting from a card.
+    if (e.button === 1 || (e.button === 0 && this.spacePanArmed)) {
+      // Middle-click always pans, even starting from a card; so does a left
+      // press while Space is held.
       e.preventDefault()
       this.startPan(e)
       return
@@ -2987,7 +3001,52 @@ export class WhiteboardCanvas {
       { modifiers: ['Shift'], key: '1', handler: fitAll },
       { modifiers: ['Shift'], key: '2', handler: fitSelection },
       { modifiers: ['Shift'], key: '0', handler: home },
+      // Obsidian names Space by its character (measured: both `key` and
+      // `vkey` are " "), not by 'Space'.
+      { modifiers: [], key: ' ', handler: this.armSpacePan },
     ])
+  }
+
+  // -----------------------------------------------------------------------
+  // Space + left drag pans, the whiteboard convention (Obsidian Canvas,
+  // Figma, Excalidraw) for everyone without a middle button to spare.
+  //
+  // Pressing Space is a keymap binding, so it only arms on the active board
+  // and in whichever window it lives in. Releasing it is not something a
+  // keymap can say — Obsidian's scopes see keydown only — so the release is a
+  // `keyup` on this view's own window, plus `blur` for a release that
+  // happens while the window is not listening.
+  // -----------------------------------------------------------------------
+
+  private readonly armSpacePan = (): boolean => {
+    // A space typed into something is a space: the card being edited, a
+    // label being renamed, a Quick Ask panel — anything that takes text.
+    const active = this.context.getDocument().activeElement
+    if (
+      active instanceof HTMLElement &&
+      (active.isContentEditable ||
+        active.tagName === 'INPUT' ||
+        active.tagName === 'TEXTAREA')
+    ) {
+      return false
+    }
+    // Consumed even while already armed: the key auto-repeats, and each
+    // repeat left through would scroll whatever Obsidian scrolls on Space.
+    if (!this.spacePanArmed) {
+      this.spacePanArmed = true
+      this.panCaptureEl.classList.add(PAN_CAPTURE_ARMED_CLASS)
+    }
+    return true
+  }
+
+  private readonly disarmSpacePan = (): void => {
+    if (!this.spacePanArmed) return
+    this.spacePanArmed = false
+    this.panCaptureEl.classList.remove(PAN_CAPTURE_ARMED_CLASS)
+  }
+
+  private readonly onKeyUp = (e: KeyboardEvent): void => {
+    if (e.code === 'Space' || e.key === ' ') this.disarmSpacePan()
   }
 
   /** Whether the board can be changed at all — the single test every mutating

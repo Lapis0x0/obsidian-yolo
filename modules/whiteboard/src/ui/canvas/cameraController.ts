@@ -205,6 +205,12 @@ export class CameraController {
 
   readonly onWheel = (e: WheelEvent): void => {
     if (this.callbacks.isParseFailed()) return
+    // Shift turns a vertical wheel sideways. macOS does that before the event
+    // is raised (it arrives as deltaX); Windows leaves it to whoever scrolls,
+    // and scrolling here is ours.
+    const sideways = e.shiftKey && e.deltaX === 0
+    const deltaX = sideways ? e.deltaY : e.deltaX
+    const deltaY = sideways ? 0 : e.deltaY
     // Zoom stays a canvas gesture wherever the pointer is, including over an
     // open editor — it is about the board, not about what is under the
     // cursor. (Obsidian Canvas zooms over a focused node too.)
@@ -235,12 +241,12 @@ export class CameraController {
     // to get the browser's scrolling would also hand back every link, checkbox
     // and callout fold the mask exists to cover. This scrolls the element
     // directly and leaves the mask absolute.
-    if (this.callbacks.scrollFocusedCardBy(e.target, e.deltaX, e.deltaY)) {
+    if (this.callbacks.scrollFocusedCardBy(e.target, deltaX, deltaY)) {
       e.preventDefault()
       return
     }
     e.preventDefault()
-    this.panByWheel(e.deltaX, e.deltaY)
+    this.panByWheel(deltaX, deltaY)
   }
 
   /**
