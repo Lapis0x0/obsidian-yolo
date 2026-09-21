@@ -1089,6 +1089,12 @@
   display: none;
 }
 
+/* A card is too narrow for the host's reasoning snippet beside its thinking
+ * indicator; the indicator alone says enough. */
+.yolo-whiteboard-editor-host .yolo-thinking-snippet {
+  display: none;
+}
+
 .yolo-whiteboard-card-chip-separator {
   margin: 0 0.35em;
 }

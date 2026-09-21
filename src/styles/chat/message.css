@@ -357,6 +357,29 @@
   line-height: 1;
 }
 
+/* 编辑器内联时随所在编辑器的正文字号缩放：笔记里与原先的固定尺寸基本一致，
+   嵌入在更小字号里的编辑器（白板卡片）也不会比正文大一圈；不换行，避免被
+   挤窄时逐字竖排。 */
+.yolo-thinking-indicator-inline .yolo-thinking-loader {
+  gap: 0.4em;
+  white-space: nowrap;
+}
+
+.yolo-thinking-indicator-inline .yolo-thinking-icon {
+  flex-shrink: 0;
+  width: 1.15em;
+  height: 1.15em;
+}
+
+.yolo-thinking-indicator-inline .yolo-thinking-icon-svg {
+  width: 0.75em;
+  height: 0.75em;
+}
+
+.yolo-thinking-indicator-inline .yolo-thinking-text {
+  font-size: 1em;
+}
+
 /* 旋转的 Sparkles 图标 */
 .yolo-thinking-icon {
   position: relative;
