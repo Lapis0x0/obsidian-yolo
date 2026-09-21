@@ -44,6 +44,7 @@ jest.mock('./tool-cards/CliSubagentCard', () => ({
 import * as React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 
+import { buildFileChangeRowsFromTexts } from '../../core/tools/file-change-rows'
 import type { ChatTerminalCommandResultMessage } from '../../types/chat'
 import {
   type ToolCallResponse,
@@ -184,6 +185,54 @@ describe('ToolMessage rendering', () => {
         }),
       }),
     )
+  })
+
+  it('draws a CLI file_change call from its pre-built rows instead of the arguments JSON', () => {
+    const markup = renderToStaticMarkup(
+      React.createElement(ToolMessage, {
+        message: {
+          role: 'tool',
+          id: 'tool-message-1',
+          toolCalls: [
+            {
+              request: {
+                id: 'edit-approval-1',
+                name: 'Approve edit: test.md',
+                arguments: createCompleteToolCallArguments({
+                  value: { tool: 'patch', arguments: { path: 'test.md' } },
+                }),
+                metadata: {
+                  cliToolCall: {
+                    runtimeId: 'hermes',
+                    eventType: 'requestPermission',
+                    name: 'Approve edit: test.md',
+                    capability: 'file_change',
+                  },
+                  fileChangeRows: [
+                    buildFileChangeRowsFromTexts(
+                      '/vault/test.md',
+                      'kept\nold line\n',
+                      'kept\nnew line\n',
+                    ),
+                  ],
+                },
+              },
+              response: { status: ToolCallResponseStatus.PendingApproval },
+            },
+          ],
+        },
+        conversationId: 'conversation-1',
+        onMessageUpdate: () => {},
+      }),
+    )
+
+    expect(markup).toContain('/vault/test.md')
+    expect(markup).toContain('yolo-edit-diff-row--removed')
+    expect(markup).toContain('old line')
+    expect(markup).toContain('yolo-edit-diff-row--added')
+    expect(markup).toContain('new line')
+    // The rows own the content area: no parameters / result code blocks.
+    expect(mockedObsidianCodeBlock).not.toHaveBeenCalled()
   })
 
   it('renders approval actions for pending delegate_subagent calls', () => {

@@ -23,14 +23,23 @@ import { getFsEditPlan } from './fs_edit/schema-helpers'
  * - `Success` — the change happened; draw what it was.
  * - `PendingApproval` — nothing has been written yet and there is no error
  *   to read; what the user needs in order to decide is what would change.
+ * - `Running` — the call is under way (for a CLI runtime this can be the
+ *   whole wait for the user's approval, or the agent writing after it); what
+ *   it is changing is already known and is what the user is looking for.
  *
  * Failed and rejected calls keep the default error / rejection sections.
- * `Running` does too: the write may be under way, so the disk is neither the
- * before nor the after.
+ *
+ * This gate answers "is there a change to show", not "is the disk in a known
+ * state". A mid-write disk is neither the before nor the after, so the
+ * sources that depend on what is on disk or what the write left behind
+ * restrict themselves to the status where that holds (see the resolver
+ * body); rows fixed when the call was made — pre-built rows, an
+ * `oldText`/`newText` pair in the arguments — hold in every status here.
  */
 const DRAWN_STATUSES: ReadonlySet<ToolCallResponse['status']> = new Set([
   ToolCallResponseStatus.Success,
   ToolCallResponseStatus.PendingApproval,
+  ToolCallResponseStatus.Running,
 ])
 
 /**
@@ -96,9 +105,12 @@ const getFilesystem = (requestName: string): 'vault' | 'native' => {
  * The single resolver of what a file-editing card draws, for every producer.
  *
  * Pre-built rows on the request (`metadata.fileChangeRows`, a CLI runtime's
- * mapping layer) are used as they are. Otherwise the call is one of the
- * native file tools (`fs_edit`, `fs_write`, `edit_file`, `write_file`) and
- * its rows are computed here, from the source most precise to *this call*:
+ * mapping layer) are used as they are, and they are a CLI call's only
+ * source: its arguments are provider-native, so reading them as the native
+ * tools' `path` / `content` / `oldText` would only ever match by coincidence
+ * of field names. Otherwise the call is one of the native file tools
+ * (`fs_edit`, `fs_write`, `edit_file`, `write_file`) and its rows are
+ * computed here, from the source most precise to *this call*:
  *
  * 1. **The arguments themselves** (`oldText` + `newText`) — `fs_edit`'s
  *    exact-replace mode and `edit_file` carry the whole change in the call,
@@ -122,7 +134,9 @@ const getFilesystem = (requestName: string): 'vault' | 'native' => {
  * belongs to the first write, not to the call whose card is open.
  *
  * Returns `null` when there is nothing to draw — a status outside
- * {@link DRAWN_STATUSES}, a call with no `path`, or nothing written to show.
+ * {@link DRAWN_STATUSES}, a CLI call without pre-built rows, a call with no
+ * `path`, nothing written to show, or a native call still running whose
+ * change only a finished write can describe.
  */
 export const resolveFileChangeRows = (
   request: Pick<ToolCallRequest, 'name' | 'arguments' | 'metadata'>,
@@ -134,8 +148,10 @@ export const resolveFileChangeRows = (
   }
 
   const prebuilt = request.metadata?.fileChangeRows
-  if (prebuilt) {
-    return prebuilt.length > 0 ? { type: 'rows', files: prebuilt } : null
+  if (prebuilt || request.metadata?.cliToolCall) {
+    return prebuilt && prebuilt.length > 0
+      ? { type: 'rows', files: prebuilt }
+      : null
   }
 
   const args = getToolCallArgumentsObject(request.arguments)
@@ -174,6 +190,14 @@ export const resolveFileChangeRows = (
     }
   }
 
+  // Every source below describes a finished write: the undo snapshot and
+  // `editSummary` are what the write left behind, and `afterOnly` claims the
+  // before-text is gone. While the call is still running none of that holds
+  // yet, so it keeps the default sections until it completes.
+  if (response.status !== ToolCallResponseStatus.Success) {
+    return null
+  }
+
   const { undoSnapshot } = context
   if (undoSnapshot) {
     return rows(
@@ -189,10 +213,7 @@ export const resolveFileChangeRows = (
   // `create` entry is unambiguous — matched by count and operation rather
   // than by path, because the native tools report the *resolved* path while
   // the argument may be relative or `~`-prefixed.
-  const editedFiles =
-    response.status === ToolCallResponseStatus.Success
-      ? (response.data.metadata?.editSummary?.files ?? [])
-      : []
+  const editedFiles = response.data.metadata?.editSummary?.files ?? []
   const isPureCreation =
     editedFiles.length === 1 && editedFiles[0].operation === 'create'
   if (isPureCreation) {

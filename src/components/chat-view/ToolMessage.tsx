@@ -3,6 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion'
 import { ChevronDown, ChevronRight, Loader2 } from 'lucide-react'
 import { Notice } from 'obsidian'
 import {
+  type ReactNode,
   memo,
   useCallback,
   useEffect,
@@ -30,6 +31,7 @@ import {
   parseLocalFsActionFromToolArgs,
 } from '../../core/mcp/localFileTools'
 import { parseToolName } from '../../core/mcp/tool-name-utils'
+import { resolveFileChangeRows } from '../../core/tools/file-change-resolver'
 import { INVOKE_TOOL_NAME } from '../../core/tools/internal/invoke_tool/definition'
 import {
   LOAD_TOOL_SCHEMAS_CHAT_LABEL,
@@ -74,6 +76,7 @@ import {
   handleRuntimeToolRejection,
 } from './runtime-action-handlers'
 import { CliSubagentCard } from './tool-cards/CliSubagentCard'
+import { FileChangeList } from './tool-cards/EditDiffView'
 import { LiveTaskCard } from './tool-cards/LiveTaskCard'
 import { type ToolRenderer, getToolRenderer } from './tool-renderers'
 import {
@@ -402,6 +405,31 @@ const getLocalBuiltinToolRenderer = (
     }
     return null
   }
+}
+
+/**
+ * The expanded body of a CLI `file_change` call: the rows its runtime's
+ * mapping layer built, through the same `resolveFileChangeRows` the native
+ * file tools' card uses — so which statuses draw a change is decided in one
+ * place for both. Like a `kind: 'content'` renderer it owns the whole content
+ * area; `null` (not a file change, or nothing pre-built) leaves the default
+ * sections.
+ *
+ * An inline capability branch rather than a `TOOL_RENDERERS` entry for the
+ * same reason as `LiveTaskCard` below: CLI calls carry provider-native names
+ * that never pass `getLocalBuiltinToolRenderer`'s server gate. Read-only in
+ * every status, approval included — the agent executes the write and hears
+ * only approve or reject, so per-hunk choices here would reach no one.
+ */
+const renderCliFileChange = (
+  request: ToolCallRequest,
+  response: ToolCallResponse,
+): ReactNode => {
+  if (!isCliToolCallCapability(request, 'file_change')) return null
+  const resolution = resolveFileChangeRows(request, response)
+  return resolution?.type === 'rows' ? (
+    <FileChangeList files={resolution.files} />
+  ) : null
 }
 
 const extractLegacyExternalAgentArgs = (
@@ -1402,7 +1430,7 @@ function ToolCallItem({
                     void handleAbort()
                   },
                 })
-              : null
+              : renderCliFileChange(request, response)
 
           return (
             <div

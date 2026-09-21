@@ -181,7 +181,7 @@ describe('resolveFileChangeRows', () => {
     ).toBe('afterOnly')
   })
 
-  it('returns null for error, rejected and running calls so the default sections stay', () => {
+  it('returns null for error and rejected calls so the default sections stay', () => {
     const args = request({ path: 'note.md', oldText: 'a', newText: 'b' })
     const prebuilt: Pick<ToolCallRequest, 'name' | 'metadata'> = {
       name: 'Edit',
@@ -192,12 +192,60 @@ describe('resolveFileChangeRows', () => {
     for (const response of [
       { status: ToolCallResponseStatus.Error, error: 'boom' },
       { status: ToolCallResponseStatus.Rejected, reason: 'no' },
-      { status: ToolCallResponseStatus.Running },
     ] satisfies ToolCallResponse[]) {
       expect(resolveFileChangeRows(args, response)).toBeNull()
       // The status gate applies to pre-built rows as well.
       expect(resolveFileChangeRows(prebuilt, response)).toBeNull()
     }
+  })
+
+  it('draws a running call only from rows fixed when the call was made', () => {
+    const running: ToolCallResponse = {
+      status: ToolCallResponseStatus.Running,
+    }
+    const built = buildFileChangeRowsFromTexts('a.md', 'x', 'y')
+    expect(
+      resolveFileChangeRows(
+        { name: 'Edit', metadata: { fileChangeRows: [built] } },
+        running,
+      ),
+    ).toEqual(rowsOf(built))
+    expect(
+      resolveFileChangeRows(
+        request({ path: 'note.md', oldText: 'a', newText: 'b' }),
+        running,
+      ),
+    ).toEqual(rowsOf(buildFileChangeRowsFromTexts('note.md', 'a', 'b')))
+    // An overwrite mid-write: the disk is neither the before nor the after,
+    // and the write has left no snapshot or summary yet.
+    expect(
+      resolveFileChangeRows(
+        request({ path: 'note.md', content: 'new\n' }),
+        running,
+        { undoSnapshot: snapshot() },
+      ),
+    ).toBeNull()
+  })
+
+  it("never reads a CLI call's provider-native arguments as a native tool's", () => {
+    // Field names that happen to match `fs_write`'s must not be diffed.
+    const cliRequest: Pick<ToolCallRequest, 'name' | 'arguments' | 'metadata'> =
+      {
+        name: 'write',
+        arguments: createCompleteToolCallArguments({
+          value: { path: 'note.md', content: 'new\n' },
+        }),
+        metadata: {
+          cliToolCall: {
+            runtimeId: 'hermes',
+            eventType: 'tool_call',
+            name: 'write',
+            capability: 'file_change',
+          },
+        },
+      }
+    expect(resolveFileChangeRows(cliRequest, success())).toBeNull()
+    expect(resolveFileChangeRows(cliRequest, pending)).toBeNull()
   })
 
   it('returns null when there is no path, and when there is nothing written to show', () => {
