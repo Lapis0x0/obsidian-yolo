@@ -36,6 +36,9 @@ const DROP_ZONE_ACTIVE_CLASS = 'yolo-whiteboard-prompt-drop-active'
  * another character instead. */
 const MAX_RENDERED_SUGGESTIONS = 50
 
+/** Numbers each panel's title id, so the input can point at its own. */
+let titleIdCounter = 0
+
 export type PromptSuggestion = Readonly<{
   /** What `onSubmit` receives when this row is chosen — a vault path. */
   value: string
@@ -45,13 +48,35 @@ export type PromptSuggestion = Readonly<{
   detail?: string
 }>
 
+/**
+ * A last row that makes what was asked for instead of picking it — Obsidian's
+ * quick switcher offers the same when what is typed names no existing note.
+ * Shown only while the query names something (`nameFor`) that no suggestion
+ * is already called.
+ */
+export type PromptOverlayCreate = Readonly<{
+  /** The name this query would create, or null when it names nothing. */
+  nameFor: (query: string) => string | null
+  /** The row's text for that name. */
+  label: (name: string) => string
+  onCreate: (name: string) => void
+}>
+
 export type PromptOverlayMode =
   | Readonly<{ kind: 'text' }>
   | Readonly<{
       kind: 'pick'
       suggestions: readonly PromptSuggestion[]
       emptyText: string
+      create?: PromptOverlayCreate
     }>
+
+/** One row of the list, whatever choosing it does. */
+type PromptRow = Readonly<{
+  title: string
+  detail?: string
+  choose: () => void
+}>
 
 /**
  * A second way to answer the same ask: instead of typing the value, drop the
@@ -118,7 +143,7 @@ export class PromptOverlay {
   private readonly backdropEl: HTMLElement
   private readonly inputEl: HTMLInputElement
   private readonly listEl: HTMLElement | null
-  private matches: readonly PromptSuggestion[] = []
+  private rows: readonly PromptRow[] = []
   private activeIndex = 0
   private settled = false
 
@@ -132,7 +157,7 @@ export class PromptOverlay {
     // A press on the board behind the panel dismisses it, the way clicking
     // away from a menu does. Pressing the panel itself must not, so the panel
     // stops the event before it reaches here.
-    backdrop.addEventListener('pointerdown', () => this.settle(null))
+    backdrop.addEventListener('pointerdown', () => this.dismiss())
     // The wheel belongs to the ask, not to the board behind it — the same
     // rule as the press, and for a second reason besides: the panel's own
     // list is a scroller, and the canvas's wheel handler ends in an
@@ -152,6 +177,7 @@ export class PromptOverlay {
 
     const title = doc.createElement('div')
     title.className = TITLE_CLASS
+    title.id = `yolo-whiteboard-prompt-title-${++titleIdCounter}`
     title.textContent = options.title
     panel.appendChild(title)
 
@@ -159,7 +185,10 @@ export class PromptOverlay {
     input.type = 'text'
     input.className = INPUT_CLASS
     input.placeholder = options.placeholder
-    input.setAttribute('aria-label', options.title)
+    // Named by the visible title rather than by `aria-label`: Obsidian turns
+    // every `aria-label` into a hover tooltip, and one repeating the title
+    // right above it is noise.
+    input.setAttribute('aria-labelledby', title.id)
     input.addEventListener('keydown', (event) => this.onKeyDown(event))
     panel.appendChild(input)
     this.inputEl = input
@@ -191,7 +220,7 @@ export class PromptOverlay {
 
   /** Dismisses from outside (the view is closing). */
   close(): void {
-    this.settle(null)
+    this.dismiss()
   }
 
   // -- internals ----------------------------------------------------------
@@ -235,12 +264,13 @@ export class PromptOverlay {
   private onKeyDown(event: KeyboardEvent): void {
     if (event.key === 'Escape') {
       event.preventDefault()
-      this.settle(null)
+      this.dismiss()
       return
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      this.settle(this.currentValue())
+      const choice = this.currentChoice()
+      if (choice) this.finish(choice)
       return
     }
     if (this.listEl === null) return
@@ -258,25 +288,32 @@ export class PromptOverlay {
   /** What Enter commits: the highlighted row, or the raw text when there is
    * no list. Null when there is nothing to commit — an empty box, or a query
    * that matches no file — so Enter is inert rather than closing on nothing. */
-  private currentValue(): string | null {
+  private currentChoice(): (() => void) | null {
     if (this.listEl === null) {
       const typed = this.inputEl.value.trim()
-      return typed.length > 0 ? typed : null
+      return typed.length > 0 ? () => this.options.onSubmit(typed) : null
     }
-    return this.matches[this.activeIndex]?.value ?? null
+    return this.rows[this.activeIndex]?.choose ?? null
   }
 
   private refreshMatches(): void {
     const mode = this.options.mode
     if (this.listEl === null || mode.kind !== 'pick') return
-    this.matches = filterSuggestions(
-      mode.suggestions,
-      this.inputEl.value,
-    ).slice(0, MAX_RENDERED_SUGGESTIONS)
+    const query = this.inputEl.value
+    const rows: PromptRow[] = filterSuggestions(mode.suggestions, query)
+      .slice(0, MAX_RENDERED_SUGGESTIONS)
+      .map((suggestion) => ({
+        title: suggestion.title,
+        detail: suggestion.detail,
+        choose: () => this.options.onSubmit(suggestion.value),
+      }))
+    const createRow = this.createRow(mode, query)
+    if (createRow) rows.push(createRow)
+    this.rows = rows
     this.activeIndex = 0
     this.listEl.replaceChildren()
 
-    if (this.matches.length === 0) {
+    if (this.rows.length === 0) {
       const empty = this.doc.createElement('div')
       empty.className = EMPTY_CLASS
       empty.textContent = mode.emptyText
@@ -284,33 +321,50 @@ export class PromptOverlay {
       return
     }
 
-    for (const [index, suggestion] of this.matches.entries()) {
+    for (const [index, row] of this.rows.entries()) {
       const item = this.doc.createElement('div')
       item.className = ITEM_CLASS
       const title = this.doc.createElement('div')
       title.className = ITEM_TITLE_CLASS
-      title.textContent = suggestion.title
+      title.textContent = row.title
       item.appendChild(title)
-      if (suggestion.detail) {
+      if (row.detail) {
         const detail = this.doc.createElement('div')
         detail.className = ITEM_DETAIL_CLASS
-        detail.textContent = suggestion.detail
+        detail.textContent = row.detail
         item.appendChild(detail)
       }
       // Highlight follows the pointer so the keyboard and the mouse agree on
       // what Enter would take.
       item.addEventListener('pointerenter', () => this.setActiveIndex(index))
-      item.addEventListener('click', () => this.settle(suggestion.value))
+      item.addEventListener('click', () => this.finish(row.choose))
       this.listEl.appendChild(item)
     }
     this.markActiveItem()
   }
 
+  /** The "create it" row, when the query names something nothing is called
+   * yet. Compared against every suggestion, not only the ones drawn. */
+  private createRow(
+    mode: Extract<PromptOverlayMode, { kind: 'pick' }>,
+    query: string,
+  ): PromptRow | null {
+    const create = mode.create
+    if (!create) return null
+    const name = create.nameFor(query)
+    if (!name) return null
+    const taken = name.toLowerCase()
+    if (mode.suggestions.some((s) => s.title.toLowerCase() === taken)) {
+      return null
+    }
+    return { title: create.label(name), choose: () => create.onCreate(name) }
+  }
+
   private setActiveIndex(index: number): void {
-    if (this.matches.length === 0) return
+    if (this.rows.length === 0) return
     // Wraps, so ArrowUp from the first row reaches the last — the behaviour of
     // every suggester in Obsidian.
-    const count = this.matches.length
+    const count = this.rows.length
     this.activeIndex = ((index % count) + count) % count
     this.markActiveItem()
   }
@@ -324,8 +378,9 @@ export class PromptOverlay {
     }
   }
 
-  private settle(value: string | null): void {
-    this.finish(value === null ? null : () => this.options.onSubmit(value))
+  /** Closes without choosing anything. */
+  private dismiss(): void {
+    this.finish(null)
   }
 
   /** Closes the panel exactly once, running `commit` — what the user chose,

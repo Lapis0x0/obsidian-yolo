@@ -63,6 +63,7 @@ export const en = {
     urlPlaceholder: 'https://example.com',
     webDropHint: 'or drop an HTML file here',
     noMatches: 'No matching file.',
+    createNote: 'Create note "{name}"',
     noMedia: 'This vault has no images, audio or video.',
   },
   // Floating toolbar over the current selection (P3 batch 3).
@@ -138,6 +139,7 @@ export const en = {
     hint: 'The file could not be parsed. It has not been modified — fix it outside the whiteboard and reopen.',
     createFailed: 'Could not create a new whiteboard.',
     convertFailed: 'Could not convert this card into a note.',
+    createNoteFailed: 'Could not create the note.',
     dropFailed: 'Could not add the dropped file to this whiteboard.',
     importFailed: 'Could not import this Canvas file.',
   },

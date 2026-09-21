@@ -163,6 +163,9 @@ export type CardRendererCallbacks = Readonly<{
    * chips can be put back or taken away from the one place every card state
    * passes through. */
   onTextCardRendered: (id: NodeId) => void
+  /** Called after a note card's text has been read and drawn — the first
+   * moment its editor can be opened (`noteText` is known). */
+  onNoteCardRendered: (id: NodeId) => void
   canBuildContent: () => boolean
   queueContentSync: (id: NodeId) => void
   dequeueContentSync: (id: NodeId) => void
@@ -798,6 +801,7 @@ export class CardRenderer {
       runtime.missingFile = false
       runtime.noteText = text
       this.renderMarkdownInto(id, runtime, text, node.file)
+      this.callbacks.onNoteCardRendered(id)
       return
     }
 

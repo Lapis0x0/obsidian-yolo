@@ -86,6 +86,7 @@ import {
   generateCardNoteFileName,
   generateDroppedHtmlFileName,
   isMarkdownPath,
+  sanitizeFileName,
 } from '../domain/naming'
 import {
   addEdge,
@@ -138,12 +139,12 @@ import {
   DISTRIBUTE_MENU,
   ToolbarController,
 } from './canvas/toolbarController'
+import { CanvasControls } from './canvasControls'
 import {
   CardMenu,
   type CardMenuAction,
   type CardMenuIconName,
 } from './cardMenu'
-import { CanvasControls } from './canvasControls'
 import {
   ARRANGE_ANIMATION_EASING,
   ARRANGE_ANIMATION_MS,
@@ -568,6 +569,10 @@ export class WhiteboardCanvas {
   // Creation surfaces (P3 batch 3 wave B): the bottom bar, and the panel that
   // asks which file or what URL before a card can be made.
   private cardMenu: CardMenu | null = null
+  /** A note card that opens its editor as soon as its note has been read —
+   * one just created from the note prompt, whose text is not known until the
+   * first read lands (`enterEditMode` declines before it). */
+  private editWhenNoteRendered: NodeId | null = null
   /** The top-right zoom and history column (./canvasControls.ts). */
   private canvasControls: CanvasControls | null = null
   private prompt: PromptOverlay | null = null
@@ -1118,6 +1123,11 @@ export class WhiteboardCanvas {
         this.handleLabelKeyDown({ kind: 'group', id }, event),
       onGroupLabelBlur: (id) => this.endRename(true, { kind: 'group', id }),
       onTextCardRendered: (id) => this.cardGeneration.syncChips(id),
+      onNoteCardRendered: (id) => {
+        if (this.editWhenNoteRendered !== id) return
+        this.editWhenNoteRendered = null
+        this.enterEditMode(id)
+      },
       canBuildContent: () => this.canBuildContent,
       queueContentSync: (id) => {
         this.contentSyncQueue.add(id)
@@ -3835,9 +3845,37 @@ export class WhiteboardCanvas {
           .listMarkdownFiles()
           .map((file) => this.suggestionForPath(file.path)),
         emptyText: this.t('prompt.noMatches'),
+        // A note that does not exist yet is one keystroke away rather than a
+        // text card and a "convert to note" later.
+        create: {
+          nameFor: (query) => sanitizeFileName(query) || null,
+          label: (name) => this.t('prompt.createNote').replace('{name}', name),
+          onCreate: (name) => void this.createNoteCardAt(name, center),
+        },
       },
       onSubmit: (path) => this.addFileCards([path], center),
     })
+  }
+
+  /** Writes a new, empty note beside the board and puts it on the board as a
+   * note card, opened for typing. */
+  private async createNoteCardAt(
+    baseName: string,
+    world: ScreenPoint,
+  ): Promise<void> {
+    if (!this.canEdit) return
+    let path: string
+    try {
+      path = await this.createBoardNote(baseName, '')
+    } catch (error) {
+      this.reportError('create note', error)
+      this.host.ui.notice(this.t('error.createNoteFailed'))
+      return
+    }
+    const [id] = this.addFileCards([path], world)
+    if (id === undefined) return
+    this.clearSelection()
+    this.editWhenNoteRendered = id
   }
 
   private promptForMediaCard(
@@ -3971,13 +4009,16 @@ export class WhiteboardCanvas {
   /** Adds one file card per vault path, staggered from `world`. Which kind of
    * card each becomes is decided at render time from its extension, so this
    * is one path for notes, images, audio and video alike. */
-  private addFileCards(paths: readonly string[], world: ScreenPoint): void {
-    if (!this.canEdit || paths.length === 0) return
+  private addFileCards(paths: readonly string[], world: ScreenPoint): NodeId[] {
+    if (!this.canEdit || paths.length === 0) return []
     let board = this.board
+    const ids: NodeId[] = []
     for (const [index, path] of paths.entries()) {
       const offset = index * DROP_STAGGER_PX
+      const id = this.nextNodeId(board)
+      ids.push(id)
       board = addNode(board, {
-        id: this.nextNodeId(board),
+        id,
         type: 'file',
         x: Math.round(world.x - NEW_EMBED_CARD_SIZE.w / 2 + offset),
         y: Math.round(world.y - NEW_EMBED_CARD_SIZE.h / 2 + offset),
@@ -3990,6 +4031,7 @@ export class WhiteboardCanvas {
     this.applyBoardChange(board)
     this.recomputeVisibility()
     this.drainQueues()
+    return ids
   }
 
   // -----------------------------------------------------------------------
@@ -4182,17 +4224,7 @@ export class WhiteboardCanvas {
       this.t('file.newNoteBaseName'),
     )
     try {
-      // No ensureFolder: the board's own folder exists by definition.
-      const folderPath = this.boardFolderPath()
-      const existingNames = new Set(
-        this.host.vault
-          .listChildren(folderPath)
-          .filter((entry) => entry.kind === 'file')
-          .map((entry) => entry.name),
-      )
-      const fileName = generateCardNoteFileName(baseName, existingNames)
-      const path = folderPath ? `${folderPath}/${fileName}` : fileName
-      await this.host.vault.createText(path, body)
+      const path = await this.createBoardNote(baseName, body)
 
       // The board may have moved on while the file was being written.
       const latest = this.nodesById.get(node.id)
@@ -4221,6 +4253,29 @@ export class WhiteboardCanvas {
       this.reportError('convert card to note', error)
       this.host.ui.notice(this.t('error.convertFailed'))
     }
+  }
+
+  /**
+   * Writes a note beside the board under `baseName`, numbered if that name is
+   * taken, and returns its path — the one rule both a converted card and a
+   * note created from the prompt follow.
+   */
+  private async createBoardNote(
+    baseName: string,
+    body: string,
+  ): Promise<string> {
+    // No ensureFolder: the board's own folder exists by definition.
+    const folderPath = this.boardFolderPath()
+    const existingNames = new Set(
+      this.host.vault
+        .listChildren(folderPath)
+        .filter((entry) => entry.kind === 'file')
+        .map((entry) => entry.name),
+    )
+    const fileName = generateCardNoteFileName(baseName, existingNames)
+    const path = folderPath ? `${folderPath}/${fileName}` : fileName
+    await this.host.vault.createText(path, body)
+    return path
   }
 
   /**

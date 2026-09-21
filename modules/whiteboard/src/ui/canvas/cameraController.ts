@@ -13,9 +13,9 @@
 
 import {
   approachScale,
-  clampScale,
   approachView,
   cameraFromView,
+  clampScale,
   dragPan,
   fitViewToBounds,
   gridStepForScale,

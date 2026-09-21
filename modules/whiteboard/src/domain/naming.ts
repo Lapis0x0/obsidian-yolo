@@ -214,7 +214,10 @@ export function cardNoteContent(
   return { baseName: sanitized, body: rest.replace(/^(\r?\n)+/, '') }
 }
 
-function sanitizeFileName(value: string): string {
+/** A typed name made safe to be a file's base name: characters no vault file
+ * may carry (or that would break a `[[link]]` to it) become spaces. Empty
+ * when nothing legal is left. */
+export function sanitizeFileName(value: string): string {
   return (
     value
       .replace(ILLEGAL_FILE_NAME_CHARS, ' ')

@@ -59,6 +59,7 @@ export const zh = {
     urlPlaceholder: 'https://example.com',
     webDropHint: '或把 HTML 文件拖到这里',
     noMatches: '没有匹配的文件。',
+    createNote: '新建笔记「{name}」',
     noMedia: '库中没有图片、音频或视频。',
   },
   toolbar: {
@@ -129,6 +130,7 @@ export const zh = {
     hint: '文件解析失败，内容未被修改——请在白板外修复后重新打开。',
     createFailed: '新建白板失败。',
     convertFailed: '无法把这张卡片转为笔记。',
+    createNoteFailed: '新建笔记失败。',
     dropFailed: '无法把拖入的文件加到白板上。',
     importFailed: '无法导入这个 Canvas 文件。',
   },

@@ -60,6 +60,7 @@ export const it = {
     urlPlaceholder: 'https://example.com',
     webDropHint: 'oppure trascina qui un file HTML',
     noMatches: 'Nessun file corrispondente.',
+    createNote: 'Crea la nota "{name}"',
     noMedia: 'Questo vault non contiene immagini, audio o video.',
   },
   toolbar: {
@@ -134,6 +135,7 @@ export const it = {
     hint: 'Il file non è stato interpretato correttamente. Non è stato modificato: correggilo fuori dalla lavagna e riaprilo.',
     createFailed: 'Impossibile creare una nuova lavagna.',
     convertFailed: 'Impossibile convertire questa scheda in una nota.',
+    createNoteFailed: 'Impossibile creare la nota.',
     dropFailed: 'Impossibile aggiungere alla lavagna il file trascinato.',
     importFailed: 'Impossibile importare questo file Canvas.',
   },
